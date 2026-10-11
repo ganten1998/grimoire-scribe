@@ -50,8 +50,10 @@ static bool g_pressure_missing;   // contact without pressure for a while: use a
 
 static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
 static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
-// Power state from the Kindle's power service: `lipc-wait-event -m com.lab126.powerd ...` runs
-// as a child and prints one line per event (the same events KOReader uses for its screensaver).
+// Power state from the Kindle's power service (the events KOReader uses for its screensaver).
+// A child shell loops `lipc-wait-event` in one-shot mode: each run prints a single line and
+// exits, which flushes it. (The continuous -m mode block-buffers into a pipe: on device 2026-10-10
+// no event ever arrived.)
 static int g_powerd_fd = -1;
 static pid_t g_powerd_pid = -1;
 static char g_powerd_buf[512];
@@ -507,11 +509,14 @@ static void powerd_start(void) {
         return;
     }
     if (pid == 0) {
+        setpgid(0, 0);  // its own group, so the loop and its child can be stopped together
         dup2(p[1], 1);
         close(p[0]);
         close(p[1]);
-        execlp("lipc-wait-event", "lipc-wait-event", "-m", "com.lab126.powerd",
-               "goingToScreenSaver,outOfScreenSaver,readyToSuspend,wakeupFromSuspend", (char *)NULL);
+        execlp("sh", "sh", "-c",
+               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
+               " || sleep 2; done",
+               (char *)NULL);
         _exit(127);
     }
     close(p[1]);
@@ -825,6 +830,7 @@ void input_close(void) {
     if (g_orient_fd >= 0) close(g_orient_fd);
     g_orient_fd = -1;
     if (g_powerd_pid > 0) {
+        kill(-g_powerd_pid, SIGTERM);  // the shell and its current lipc-wait-event
         kill(g_powerd_pid, SIGTERM);
         waitpid(g_powerd_pid, NULL, 0);
     }

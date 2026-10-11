@@ -222,6 +222,8 @@ void sys_request_sleep(void) {
     q_push(e);
 }
 void sys_kindle_ui(bool run) { (void)run; }
+void sys_prevent_sleep(bool prevent) { (void)prevent; }
+void sys_activity(void) {}
 bool display_overwritten(const Canvas *screen) { (void)screen; return false; }
 
 void display_close(void) {

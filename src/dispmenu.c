@@ -137,7 +137,10 @@ DmResult dispmenu_pointer(DispMenu *m, App *a, int ph, float x, float y, uint32_
             int mins = k_sleep_steps[clampi((int)s.value, 0, N_SLEEP_STEPS - 1)];
             changed = mins != a->settings.sleep_minutes;
             a->settings.sleep_minutes = mins;
-            if (ph == 2) settings_save(&a->settings);
+            if (ph == 2) {
+                settings_save(&a->settings);
+                app_apply_sleep_policy(a);
+            }
         } else {
             int *v = m->active == D_BRIGHT ? &m->intensity : &m->warmth;
             changed = (int)s.value != *v;

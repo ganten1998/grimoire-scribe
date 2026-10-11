@@ -60,6 +60,8 @@ int app_init(App *a, int w, int h, float dpi) {
     app_invalidate_all(a, REFRESH_FULL);
     a->pending_rotation = -1;
     a->last_input = now_ms();
+    a->prevent_applied = -1;
+    app_apply_sleep_policy(a);
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
@@ -103,9 +105,11 @@ void app_event(App *a, const InEvent *ev) {
         // sleep screen); just make sure nothing is lost. Quitting is Library > Exit.
         qlog("power button: saving");
         if (a->scr == SCR_EDITOR) editor_save_now(a);
+        if (!a->asleep) a->power_pressed_at = now_ms() | 1;  // expect goingToScreenSaver soon
         return;
     }
     if (ev->type == IN_SLEEP) {
+        a->power_pressed_at = 0;
         app_sleep(a);
         return;
     }
@@ -116,6 +120,11 @@ void app_event(App *a, const InEvent *ev) {
     if (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON) {
         a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
         a->sleep_requested = false;
+        // Quire grabs the pen and touch: tell the power service someone is here.
+        if (a->last_input - a->last_activity_poke > 60000) {
+            a->last_activity_poke = a->last_input;
+            sys_activity();
+        }
         if (a->asleep) app_wake(a);  // woke without hearing about it: never stay "asleep"
     }
     k_screens[a->scr].event(a, ev);
@@ -213,7 +222,22 @@ void app_set_rotation(App *a, int r) {
     app_invalidate_all(a, REFRESH_FULL);
 }
 
+void app_apply_sleep_policy(App *a) {
+    int want = a->settings.sleep_minutes == 0;
+    if (want == a->prevent_applied) return;
+    a->prevent_applied = want;
+    sys_prevent_sleep(want);
+}
+
 void app_tick(App *a, uint32_t now) {
+    // A power press the power service did not follow with a sleep announcement: ask for sleep.
+    if (a->power_pressed_at && !a->asleep && (int32_t)(now - a->power_pressed_at) > 2500) {
+        a->power_pressed_at = 0;
+        qlog("sleep: no announcement after the power button; requesting sleep");
+        sys_prevent_sleep(false);
+        a->prevent_applied = 0;
+        sys_request_sleep();
+    }
     if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0) {
         a->wake_redraw_at = 0;
         app_redraw(a);

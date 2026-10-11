@@ -18,3 +18,7 @@ void sys_request_sleep(void);
 // Resume / pause the Kindle's window manager (only if the launcher paused it): the Kindle's own
 // screensaver can only show while it runs.
 void sys_kindle_ui(bool run);
+// Keep the power service from sleeping on its own (only for "Sleep after: never").
+void sys_prevent_sleep(bool prevent);
+// Tell the power service the user is active (Quire grabs the pen and touch, so it cannot see).
+void sys_activity(void);

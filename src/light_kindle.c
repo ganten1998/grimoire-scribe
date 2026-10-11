@@ -39,6 +39,19 @@ void sys_request_sleep(void) {
     if (system("lipc-set-prop -i com.lab126.powerd powerButton 1 >/dev/null 2>&1") != 0) qlog("sleep: request failed");
 }
 
+void sys_prevent_sleep(bool prevent) {
+    char cmd[96];
+    snprintf(cmd, sizeof cmd, "lipc-set-prop -i com.lab126.powerd preventScreenSaver %d >/dev/null 2>&1", prevent ? 1 : 0);
+    if (system(cmd) != 0) qlog("sleep: preventScreenSaver %d failed", prevent);
+    else qlog("sleep: preventScreenSaver %d", prevent);
+}
+
+void sys_activity(void) {
+    // Same as KOReader: resets the power service's idle (screensaver) timer.
+    if (system("lipc-set-prop -i com.lab126.powerd touchScreenSaverTimeout 1 >/dev/null 2>&1") != 0)
+        qlog("sleep: activity poke failed");
+}
+
 void sys_kindle_ui(bool run) {
     const char *stopped = getenv("QUIRE_AWESOME_STOPPED");
     if (!stopped || strcmp(stopped, "yes")) return;  // the launcher did not pause it

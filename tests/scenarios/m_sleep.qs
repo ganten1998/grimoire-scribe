@@ -31,4 +31,10 @@ wait 400
 shot 04-asleep-pinned-page-1
 wake
 wait 400
+# power button with no announcement from the power service: Quire asks for sleep itself
+power
+wait 3200
+shot 05-power-fallback-asleep
+wake
+wait 300
 quit
