@@ -58,7 +58,8 @@ void tool_params_default(ToolKind t, ToolParams *o) {
         break;
     case TOOL_PENCIL:
     default:
-        *o = (ToolParams){0.30f, 0.85f, 0.30f, 0.95f, 0.03f, 0.85f, 1.25f, 15.f, 60.f, 2.6f, 0.45f, 0.65f, 0.12f};
+        // 0.20..0.45 mm: a sharp HB, close to the other tools' widths; tilt still shades wider.
+        *o = (ToolParams){0.20f, 0.45f, 0.30f, 0.95f, 0.03f, 0.85f, 1.25f, 15.f, 60.f, 1.6f, 0.45f, 0.65f, 0.10f};
         break;
     }
 }

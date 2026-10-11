@@ -108,9 +108,12 @@ static struct {
     int slot;
     int id[MAX_SLOTS];
     int x[MAX_SLOTS], y[MAX_SLOTS];
+    int tool[MAX_SLOTS];         // ABS_MT_TOOL_TYPE: 0 finger, 1 pen, 2 palm (MT_TOOL_PALM)
+    uint32_t down_at[MAX_SLOTS]; // when the contact landed
     int main;          // slot we follow, -1 none
     bool active;       // main finger down (as reported to the app)
     bool suppressed;   // palm: ignore until all fingers lift
+    bool suppressed_pinch;  // a late second contact: no pinch until all fingers lift
     float last_x, last_y;
 } T = {.main = -1};
 
@@ -240,7 +243,27 @@ static void pen_frame(void) {
     P.dirty = false;
 }
 
+static bool g_pen_dropping;
+static int g_drops;
+
+// Reads the pen's current buttons and axes straight from the device (after a SYN_DROPPED).
+static void pen_resync(void) {
+    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
+    if (ioctl(g_pen.fd, EVIOCGKEY(sizeof keys), keys) >= 0) {
+        P.tool_pen = test_bit(keys, BTN_TOOL_PEN);
+        P.tool_rubber = test_bit(keys, BTN_TOOL_RUBBER);
+        P.touching = test_bit(keys, BTN_TOUCH);
+        P.side = test_bit(keys, BTN_STYLUS);
+    }
+    struct input_absinfo ai;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_X), &ai) >= 0) P.x = ai.value;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &ai) >= 0) P.y = ai.value;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_PRESSURE), &ai) >= 0) P.p = ai.value;
+    P.dirty = true;
+}
+
 static void handle_pen(const struct input_event *ev) {
+    if (g_pen_dropping && !(ev->type == EV_SYN && ev->code == SYN_REPORT)) return;
     if (g_raw_logged < 160 && ev->type != EV_SYN) {
         g_raw_logged++;
         qlog("input: raw pen type %u code %u value %d", ev->type, ev->code, ev->value);
@@ -273,13 +296,38 @@ static void handle_pen(const struct input_event *ev) {
         P.dirty = true;
         break;
     case EV_SYN:
-        if (ev->code == SYN_REPORT) pen_frame();
+        if (ev->code == SYN_DROPPED) {
+            // The kernel's buffer overflowed: everything up to the next SYN_REPORT is partial.
+            // Ignore it, then re-read the pen's real state so a stroke ends or continues cleanly.
+            g_pen_dropping = true;
+            g_drops++;
+            qlog("input: pen events dropped by the kernel (%d so far); resyncing", g_drops);
+        } else if (ev->code == SYN_REPORT) {
+            if (g_pen_dropping) {
+                g_pen_dropping = false;
+                pen_resync();
+            }
+            pen_frame();
+        }
         break;
     default: break;
     }
 }
 
-static bool palm_window(void) { return P.prox || (now_ms() - g_pen_left_ms) < 300; }
+// Touches are ignored while the pen is near and for a second after it leaves: the writing hand
+// rests on the screen between strokes.
+static bool palm_window(void) { return P.prox || (now_ms() - g_pen_left_ms) < 1000; }
+
+// Ends the single-finger stream without a tap (the UP lands nowhere near any control).
+static void cancel_touch(void) {
+    if (!T.active) return;
+    InEvent e = {0};
+    e.type = IN_TOUCH_UP;
+    e.x = e.y = -10000.f;
+    e.t_ms = now_ms();
+    q_push(e);
+    T.active = false;
+}
 
 static bool g_pinching;
 
@@ -296,17 +344,43 @@ static void emit_pinch(InType t, int s1, int s2) {
 
 static void touch_frame(void) {
     // Two fingers down = pinch (zoom/pan). The single-finger stream pauses until all lift.
+    // A contact the panel flags as a palm cancels touch input until every contact lifts.
     int fingers = 0, s1 = -1, s2 = -1;
-    for (int s = 0; s < MAX_SLOTS; s++)
-        if (T.id[s] >= 0) {
-            fingers++;
-            if (s1 < 0) s1 = s;
-            else if (s2 < 0) s2 = s;
+    bool palm = false;
+    for (int s = 0; s < MAX_SLOTS; s++) {
+        if (T.id[s] < 0) continue;
+        if (T.tool[s] == 2) {
+            palm = true;
+            continue;
         }
-    if (fingers >= 2 && !palm_window()) {
+        fingers++;
+        if (s1 < 0) s1 = s;
+        else if (s2 < 0) s2 = s;
+    }
+    if (palm && !g_pinching) {
+        cancel_touch();
+        T.suppressed = true;
+    }
+    if (g_pinching && (palm_window() || palm)) {
+        // The pen came near (or a palm landed) mid-pinch: stop zooming right there.
+        g_pinching = false;
+        q_push((InEvent){.type = IN_PINCH_END, .t_ms = now_ms()});
+        T.suppressed = true;
+        return;
+    }
+    if (fingers >= 2 && !palm_window() && !palm && !T.suppressed_pinch) {
         if (!g_pinching) {
+            // A real pinch puts both fingers down together; a palm or a second hand arrives
+            // later. Late second contacts are treated as a palm.
+            uint32_t a = T.down_at[s1], b = T.down_at[s2];
+            if ((a > b ? a - b : b - a) > 400) {
+                cancel_touch();
+                T.suppressed = true;
+                T.suppressed_pinch = true;
+                return;
+            }
             g_pinching = true;
-            T.active = false;      // the first finger's press turns into the pinch
+            cancel_touch();        // the first finger's press turns into the pinch
             T.suppressed = true;   // and no tap fires when the fingers lift
             emit_pinch(IN_PINCH_BEGIN, s1, s2);
         } else {
@@ -329,7 +403,7 @@ static void touch_frame(void) {
     }
     bool any = false;
     for (int s = 0; s < MAX_SLOTS; s++) any |= T.id[s] >= 0;
-    if (!any) T.suppressed = false;
+    if (!any) T.suppressed = T.suppressed_pinch = false;
     if (T.main < 0 && !T.suppressed)
         for (int s = 0; s < MAX_SLOTS; s++)
             if (T.id[s] >= 0) {
@@ -358,7 +432,14 @@ static void handle_touch(const struct input_event *ev) {
         int s = T.slot;
         switch (ev->code) {
         case ABS_MT_SLOT: T.slot = clampi(ev->value, 0, MAX_SLOTS - 1); break;
-        case ABS_MT_TRACKING_ID: T.id[s] = ev->value; break;
+        case ABS_MT_TRACKING_ID:
+            if (ev->value >= 0 && T.id[s] < 0) {
+                T.down_at[s] = now_ms();
+                T.tool[s] = 0;
+            }
+            T.id[s] = ev->value;
+            break;
+        case ABS_MT_TOOL_TYPE: T.tool[s] = ev->value; break;
         case ABS_MT_POSITION_X: T.x[s] = ev->value; break;
         case ABS_MT_POSITION_Y: T.y[s] = ev->value; break;
         default: break;

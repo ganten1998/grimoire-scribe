@@ -19,7 +19,10 @@ typedef struct {
     uint32_t next_page_id;
 } NotebookInfo;
 
+#define SETTINGS_VERSION 2
+
 typedef struct {
+    int version;                  // settings_version from the file (defaults migrate on upgrade)
     ToolParams tools[TOOL_COUNT];
     ToolKind current_tool;
     int panel_x, panel_y;         // floating panel top-left
@@ -28,6 +31,7 @@ typedef struct {
     bool mirror_pdf;              // write documents/Quire/<folder>/<name>.pdf on close
     bool follow_rotation;         // turn the UI with the Kindle (otherwise stay as is)
     bool invert;                  // white on black
+    bool pinch_zoom;              // two-finger zoom in the editor
     InputCalib pen_calib, touch_calib;
     int http_port;                // share server, default 8765
 } Settings;

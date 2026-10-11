@@ -205,10 +205,9 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     if (rect_is_empty(r)) return;
     // Pen mode only tolerates DU updates; anything else must leave it first. And let pending DU
     // updates finish before a grayscale update over them, so the settle is not merged away.
-    if (mode != REFRESH_FAST) {
-        set_pen_mode(false);
-        if (g_last_mode == REFRESH_FAST) fbink_wait_for_complete(g_fd, LAST_MARKER);
-    }
+    // (No wait for pending DU updates here: blocking stalls input reading, the kernel's evdev
+    // buffer overflows and strokes get cut. Grayscale settles now only run after a pause.)
+    if (mode != REFRESH_FAST) set_pen_mode(false);
     g_live = mode == REFRESH_FAST;
     copy_rect(screen, r);
     g_live = false;

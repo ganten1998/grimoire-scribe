@@ -45,6 +45,12 @@ struct EditorState {
     Page *page;
     Canvas page_canvas;
     bool page_dirty, info_dirty, changed;
+    bool thumb_dirty;           // page 1 changed: library thumbnail to write when leaving it
+    // Grays settle in one GL16 refresh once the writer pauses (not after every stroke): while
+    // strokes come in quick succession only fast DU updates go out, nothing blocks.
+    Rect settle;                // page rect still showing dithered live ink
+    uint32_t settle_at;
+    bool panel_stale;           // Undo/Redo/Clear availability changed: repaint at the settle
     uint32_t last_up;
 
     PageHistory *hist;
@@ -85,8 +91,9 @@ struct EditorState {
     float zoom_default, zoom_min;
     int view_w, view_h;         // screen size the view was set up for
     Page *canvas_page;          // which page page_canvas currently shows
-    bool pinching;
+    bool pinching, pinch_committed;  // committed once the fingers clearly spread or move
     float pinch_d0, pinch_z0, pinch_px, pinch_py;  // start spread/zoom, page point under midpoint
+    float pinch_mx0, pinch_my0;
     uint32_t last_pinch_paint;
 
     DispMenu dm;                // Display sheet (front light, invert)
@@ -575,6 +582,9 @@ static void repaint_panel(App *a, RefreshMode m) {
 
 // ---- pages ----
 
+static void settle_now(App *a);
+static void write_thumb_if_needed(App *a);
+
 static void save_thumb_from_canvas(App *a) {
     Canvas t;
     if (canvas_init(&t, S->pgw / 3, S->pgh / 3) != 0) return;
@@ -587,7 +597,7 @@ static void save_page(App *a) {
     if (!S->open) return;
     if (S->page_dirty) {
         if (store_save_page(&S->nb, S->index, S->page) != 0) app_toast(a, "Could not save this page!", 4000);
-        if (S->index == 0) save_thumb_from_canvas(a);
+        if (S->index == 0) S->thumb_dirty = true;  // written when leaving the page (it is slow)
         S->page_dirty = false;
         S->info_dirty = true;
     }
@@ -603,7 +613,10 @@ static void render_page_full(App *a) {
 }
 
 static void go_to_page(App *a, int index) {
+    S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
+    S->panel_stale = false;
     save_page(a);
+    write_thumb_if_needed(a);
     index = clampi(index, 0, S->nb.npages - 1);
     Page *np = page_at(a, index);
     if (!np) {
@@ -622,6 +635,7 @@ static void go_to_page(App *a, int index) {
 static void close_notebook(App *a) {
     if (!S->open) return;
     save_page(a);
+    write_thumb_if_needed(a);
     if (S->index != 0 && S->changed) {
         // Keep the library thumbnail (page 1) in sync even if we never visited it.
         Page *p0;
@@ -739,11 +753,12 @@ static void draw_end(App *a) {
     bool was_empty = S->page->n == 0;
     page_add(S->page, s);
     if (h && S->page->n && S->page->strokes[S->page->n - 1] == s) history_push_add(h, S->page->n - 1, s);
-    // Settle the grays the fast waveform could not show.
-    show(a, s->bbox, REFRESH_UI);
+    // Settle later, once the writer pauses (see settle_now).
+    S->settle = rect_union(S->settle, s->bbox);
+    S->settle_at = now_ms() + 450;
     mark_changed(a);
     // Only touch the panel when Undo/Redo availability actually changed.
-    if (!had_undo || had_redo || was_empty) repaint_panel(a, REFRESH_UI);
+    if (!had_undo || had_redo || was_empty) S->panel_stale = true;
 }
 
 static void erase_segment(App *a, float sx, float sy, float pressure) {
@@ -866,6 +881,7 @@ static void pen_button(App *a, const InEvent *ev) {
 }
 
 static void undo_redo(App *a, bool undo) {
+    settle_now(a);
     History *h = cur_hist(a);
     Rect d;
     if (!h || !(undo ? history_undo(h, S->page, &d) : history_redo(h, S->page, &d))) return;
@@ -1188,8 +1204,11 @@ static void pinch(App *a, const InEvent *ev) {
             S->dragging = false;
             S->owner = OWN_NONE;
         }
-        if (S->owner != OWN_NONE || S->paper_open) return;
+        if (S->owner != OWN_NONE || S->paper_open || !a->settings.pinch_zoom) return;
         S->pinching = true;
+        S->pinch_committed = false;
+        S->pinch_mx0 = mx;
+        S->pinch_my0 = my;
         S->pinch_d0 = d > 10.f ? d : 10.f;
         S->pinch_z0 = S->zoom;
         to_page(a, mx, my, &S->pinch_px, &S->pinch_py);
@@ -1198,6 +1217,17 @@ static void pinch(App *a, const InEvent *ev) {
     }
     if (!S->pinching) return;
     if (ev->type == IN_PINCH_MOVE) {
+        // Nothing happens until the fingers clearly spread/close or travel: resting fingers
+        // (or a hand) must not zoom or flash the screen.
+        if (!S->pinch_committed) {
+            float spread = fabsf(d / S->pinch_d0 - 1.f), travel = hypotf(mx - S->pinch_mx0, my - S->pinch_my0);
+            if (spread < 0.10f && travel < (float)ui_px(70)) return;
+            S->pinch_committed = true;
+            // Re-anchor at the commit point so the view does not jump by the dead zone.
+            S->pinch_d0 = d > 10.f ? d : 10.f;
+            S->pinch_z0 = S->zoom;
+            to_page(a, mx, my, &S->pinch_px, &S->pinch_py);
+        }
         S->zoom = S->pinch_z0 * d / S->pinch_d0;
         S->zoom = clampf(S->zoom, S->zoom_min, S->zoom_default * 4.f);
         S->ox = S->pinch_px - mx / S->zoom;  // keep the pinched spot under the fingers
@@ -1210,7 +1240,8 @@ static void pinch(App *a, const InEvent *ev) {
         return;
     }
     S->pinching = false;  // IN_PINCH_END
-    compose_all(a, REFRESH_FULL);
+    // Settle without a flash, and only if the view actually changed.
+    if (S->pinch_committed) compose_all(a, REFRESH_UI);
 }
 
 void editor_leave(App *a) {
@@ -1218,6 +1249,7 @@ void editor_leave(App *a) {
     if (S->owner == OWN_DRAW) draw_end(a);
     if (S->owner == OWN_ERASE) erase_end(a);
     save_page(a);
+    write_thumb_if_needed(a);
 }
 
 void editor_event(App *a, const InEvent *ev) {
@@ -1316,7 +1348,24 @@ void editor_event(App *a, const InEvent *ev) {
     }
 }
 
+// The deferred settle: one GL16 refresh for everything written since the last pause.
+static void settle_now(App *a) {
+    if (!rect_is_empty(S->settle)) show(a, S->settle, REFRESH_UI);
+    S->settle = RECT_EMPTY;
+    if (S->panel_stale) repaint_panel(a, REFRESH_UI);
+    S->panel_stale = false;
+}
+
+static void write_thumb_if_needed(App *a) {
+    if (!S->thumb_dirty || S->index != 0) return;
+    save_thumb_from_canvas(a);
+    S->thumb_dirty = false;
+}
+
 void editor_tick(App *a, uint32_t now) {
+    if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) &&
+        (int32_t)(now - S->settle_at) >= 0)
+        settle_now(a);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once.
     if (S->open && S->btn_down && !S->btn_used_for_ink && !S->btn_hold_fired && S->owner == OWN_NONE &&
         !S->paper_open && !S->pages_open && now - S->btn_down_at >= 1200) {
@@ -1324,5 +1373,6 @@ void editor_tick(App *a, uint32_t now) {
         S->nclicks = 0;
         clear_page(a);
     }
-    if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 1500) save_page(a);
+    // Autosave after a real pause (and never while the pen is down).
+    if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000) save_page(a);
 }

@@ -18,7 +18,7 @@ enum {
     H_NONE, H_BACK, H_NEW, H_NEWFOLDER, H_SHARE, H_SETTINGS, H_EXIT, H_PREV, H_NEXT,
     H_CARD, H_CARD_MORE,
     H_PAPER, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
-    H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY,
+    H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH,
     H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_MORE_PDF, H_MORE_DELETE,
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
@@ -371,7 +371,7 @@ static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
 
 static void draw_settings(App *a) {
     Canvas *c = &a->screen;
-    Rect card = sheet_rect(a, ui_px(1690));
+    Rect card = sheet_rect(a, ui_px(1820));
     Rect in = ui_sheet(c, card, "Settings");
     int rh = ui_px(140), gap = ui_px(24), y = in.y;
     Rect r1 = {in.x, y, in.w, rh};
@@ -413,6 +413,10 @@ static void draw_settings(App *a) {
     Rect r5 = {in.x, y, in.w, ui_px(110)};
     ui_checkbox(c, r5, "Turn with the Kindle (portrait and landscape)", a->settings.follow_rotation);
     hits_add(&S->hits, r5, H_SET_ROTATE, 0);
+    y += ui_px(130);
+    Rect r6 = {in.x, y, in.w, ui_px(110)};
+    ui_checkbox(c, r6, "Pinch with two fingers to zoom", a->settings.pinch_zoom);
+    hits_add(&S->hits, r6, H_SET_PINCH, 0);
     y += ui_px(130);
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)},
                    "Clear a page: click the pen button 3 times, or hold it 1 s without touching.", 60);
@@ -652,6 +656,11 @@ static void act(App *a, const Hit *h) {
     case H_SET_CALIB: S->modal = MOD_NONE; calibrate_open(a); break;
     case H_SET_MIRROR:
         a->settings.mirror_pdf = !a->settings.mirror_pdf;
+        settings_save(&a->settings);
+        redraw(a, REFRESH_UI);
+        break;
+    case H_SET_PINCH:
+        a->settings.pinch_zoom = !a->settings.pinch_zoom;
         settings_save(&a->settings);
         redraw(a, REFRESH_UI);
         break;

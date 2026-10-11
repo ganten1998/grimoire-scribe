@@ -152,6 +152,29 @@ TEST(settings_roundtrip) {
     CHECK_NEAR(t.pen_calib.ax, -1860.f, 1e-2);
 }
 
+TEST(settings_upgrade_keeps_tweaks) {
+    // An old settings file (no settings_version): pencil size still the old default,
+    // tilt widening tuned by hand.
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    const char *old = "current_tool=0\npencil.size_min_mm=0.30\npencil.size_max_mm=0.85\npencil.tilt_size=3.10\n"
+                      "mech.grain=0.35\n";
+    write_file_atomic(path, old, strlen(old));
+    Settings s;
+    settings_load(&s);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].size_min_mm, 0.20f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].size_max_mm, 0.45f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].tilt_size, 3.10f, 1e-3);  // the owner's own value stays
+    CHECK_NEAR(s.tools[TOOL_MECH_PENCIL].grain, 0.50f, 1e-3);
+    CHECK(s.version == SETTINGS_VERSION);
+    // Saved again, an upgraded file never migrates twice.
+    s.tools[TOOL_PENCIL].size_max_mm = 0.85f;  // now a deliberate choice
+    settings_save(&s);
+    Settings t;
+    settings_load(&t);
+    CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
+}
+
 TEST(safe_names) {
     char out[64];
     export_safe_name("a/b:c?", out, sizeof out);
@@ -169,6 +192,7 @@ int main(void) {
     RUN(notebooks);
     RUN(fuzz_deserialize);
     RUN(settings_roundtrip);
+    RUN(settings_upgrade_keeps_tweaks);
     RUN(safe_names);
     int rc = tl_done();
     system(cmd);

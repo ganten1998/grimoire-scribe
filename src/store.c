@@ -694,6 +694,7 @@ void settings_default(Settings *s) {
     s->side_button = 2;  // highlighter
     s->mirror_pdf = true;
     s->follow_rotation = true;
+    s->pinch_zoom = true;
     s->http_port = 8765;
 }
 
@@ -738,14 +739,50 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "mirror_pdf")) s->mirror_pdf = atoi(v) != 0;
     else if (!strcmp(k, "follow_rotation")) s->follow_rotation = atoi(v) != 0;
     else if (!strcmp(k, "invert")) s->invert = atoi(v) != 0;
+    else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = atoi(v) != 0;
+    else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
+}
+
+// Defaults that changed between versions. A saved value still equal to the old default was never
+// tuned by the owner, so it moves to the new default; anything they changed stays as it is.
+static void settings_upgrade(Settings *s) {
+    static const struct {
+        ToolKind tool;
+        size_t off;
+        float old_v;
+    } changed[] = {
+        {TOOL_PENCIL, offsetof(ToolParams, size_min_mm), 0.30f},
+        {TOOL_PENCIL, offsetof(ToolParams, size_max_mm), 0.85f},
+        {TOOL_PENCIL, offsetof(ToolParams, tilt_size), 2.6f},
+        {TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.25f},
+        {TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.12f},
+        {TOOL_MECH_PENCIL, offsetof(ToolParams, grain), 0.35f},
+        {TOOL_MECH_PENCIL, offsetof(ToolParams, smoothing), 0.20f},
+    };
+    if (s->version >= SETTINGS_VERSION) return;
+    for (size_t i = 0; i < sizeof changed / sizeof changed[0]; i++) {
+        float *v = (float *)((char *)&s->tools[changed[i].tool] + changed[i].off);
+        ToolParams d;
+        tool_params_default(changed[i].tool, &d);
+        float nv = *(float *)((char *)&d + changed[i].off);
+        if (fabsf(*v - changed[i].old_v) < 0.005f && fabsf(*v - nv) >= 0.005f) {
+            qlog("settings: %s default updated %.2f -> %.2f", tool_name(changed[i].tool), *v, nv);
+            *v = nv;
+        }
+    }
+    s->version = SETTINGS_VERSION;
 }
 
 int settings_load(Settings *s) {
     settings_default(s);
+    s->version = 0;  // files written before versioning have no settings_version key
     char path[600];
     snprintf(path, sizeof path, "%s/settings.ini", g_root);
-    return ini_parse_file(path, settings_cb, s) == 0 ? 0 : 1;
+    int rc = ini_parse_file(path, settings_cb, s) == 0 ? 0 : 1;
+    if (rc == 0) settings_upgrade(s);
+    else s->version = SETTINGS_VERSION;
+    return rc;
 }
 
 int settings_save(const Settings *s) {
@@ -756,9 +793,11 @@ int settings_save(const Settings *s) {
     if (!buf) return -1;
     n += (size_t)snprintf(buf + n, cap - n,
                           "# Quire settings\ncurrent_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
-                          "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\nhttp_port=%d\n",
+                          "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nhttp_port=%d\n"
+                          "settings_version=%d\n",
                           (int)s->current_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
-                          s->mirror_pdf, s->follow_rotation, s->invert, s->http_port);
+                          s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->http_port,
+                          SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
     for (int i = 0; i < 2; i++)
