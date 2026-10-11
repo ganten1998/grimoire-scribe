@@ -1,0 +1,859 @@
+########################################
+#                                      #
+# THIS FILE IS GENERATED, DO NOT EDIT  #
+#                                      #
+########################################
+
+.templates_sha: &template_sha 0c312d9c7255f46e741d43bcd1930f09cd12efe7 # see https://docs.gitlab.com/ee/ci/yaml/#includefile
+
+include:
+  # Alpine container builder template
+  - project: 'freedesktop/ci-templates'
+    ref: *template_sha
+    file: '/templates/alpine.yml'
+  # Arch container builder template
+  - project: 'freedesktop/ci-templates'
+    ref: *template_sha
+    file: '/templates/arch.yml'
+  # Debian container builder template
+  - project: 'freedesktop/ci-templates'
+    ref: *template_sha
+    file: '/templates/debian.yml'
+  # Fedora container builder template
+  - project: 'freedesktop/ci-templates'
+    ref: *template_sha
+    file: '/templates/fedora.yml'
+  # Ubuntu container builder template
+  - project: 'freedesktop/ci-templates'
+    ref: *template_sha
+    file: '/templates/ubuntu.yml'
+
+stages:
+  - prep             # rebuild the container images if there is a change
+  - build            # for actually building and testing things in a container
+  - VM               # for running the test suite in a VM
+  - autotools        # distribution builds with autotools
+  - meson            # distribution builds with meson
+  - tarballs         # tarball builds
+  - container_clean  # clean up unused container images
+  - merge-check      # check for a merge request
+
+variables:
+  # The upstrem repository we will check for images
+  FDO_UPSTREAM_REPO: libevdev/libevdev
+  LIBEVDEV_SKIP_ROOT_TESTS: 1
+  GIT_DEPTH: 1
+  MESON_BUILDDIR: 'build dir'
+
+.default_artifacts:
+  artifacts:
+    paths:
+      - _build/test/test-suite.log
+      - $MESON_BUILDDIR/meson-logs/
+    expire_in: 1 week
+    when: on_failure
+    reports:
+      junit: $MESON_BUILDDIR/junit-*.xml
+
+.autotools_build:
+  extends:
+    - .default_artifacts
+  script:
+    - mkdir _build
+    - pushd _build > /dev/null
+    - ../autogen.sh --disable-silent-rules $CONFIGURE_FLAGS
+    - make
+    - make check
+    - if ! [[ -z "$MAKE_ARGS" ]]; then make $MAKE_ARGS; fi
+    - popd > /dev/null
+
+.meson_build:
+  extends:
+    - .default_artifacts
+  script:
+    - .gitlab-ci/meson-build.sh
+
+.fedora:34:
+  extends: .fdo.distribution-image@fedora
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: '34'
+
+.fedora:35:
+  extends: .fdo.distribution-image@fedora
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: '35'
+
+.ubuntu:21.04:
+  extends: .fdo.distribution-image@ubuntu
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: '21.04'
+
+.ubuntu:21.10:
+  extends: .fdo.distribution-image@ubuntu
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: '21.10'
+
+.debian:stable:
+  extends: .fdo.distribution-image@debian
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: 'stable'
+
+.debian:sid:
+  extends: .fdo.distribution-image@debian
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: 'sid'
+
+.arch:rolling:
+  extends: .fdo.distribution-image@arch
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: 'rolling'
+
+.alpine:latest:
+  extends: .fdo.distribution-image@alpine
+  variables:
+    FDO_DISTRIBUTION_TAG: '2022-02-02.0'
+    FDO_DISTRIBUTION_VERSION: 'latest'
+
+
+
+#################################################################
+#                                                               #
+#                          prep stage                           #
+#                                                               #
+#################################################################
+
+# Re-generate the CI script and make sure it's the one currently checked in
+# If this job fails, re-generate the gitlab-ci.yml script, see
+# $SRCDIR/.gitlab-ci/generate-gitlab-ci.py
+#
+check-ci-script:
+  image: golang:alpine
+  stage: prep
+  before_script:
+    - apk add python3 py-pip git
+    - pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates
+  script:
+    - ci-fairy generate-template
+    - git diff --exit-code && exit 0 || true
+    - echo "Committed gitlab-ci.yml differs from generated gitlab-ci.yml. Please verify"
+    - exit 1
+
+#
+# Verify that commit messages are as expected, signed-off, etc.
+#
+
+check-commit:
+  image: golang:alpine
+  stage: prep
+  before_script:
+    - apk add python3 py-pip git
+    - pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates
+  script:
+    - ci-fairy check-commits --signed-off-by --junit-xml=results.xml
+  except:
+    - master@libevdev/libevdev
+  variables:
+    GIT_DEPTH: 100
+  artifacts:
+    reports:
+      junit: results.xml
+
+#
+# Verify that the merge request has the allow-collaboration checkbox ticked
+#
+
+check-merge-request:
+  image: golang:alpine
+  stage: merge-check
+  before_script:
+    - apk add python3 py-pip git
+    - pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates
+  script:
+    - ci-fairy check-merge-request --require-allow-collaboration --junit-xml=results.xml
+  artifacts:
+    when: on_failure
+    reports:
+      junit: results.xml
+  allow_failure: true
+
+
+.fedora.packages:
+  variables:
+    FDO_DISTRIBUTION_PACKAGES: 'git gcc gcc-c++ meson automake autoconf libtool make pkgconfig python3 check-devel valgrind binutils doxygen xz clang-analyzer'
+
+.ubuntu.packages:
+  variables:
+    FDO_DISTRIBUTION_PACKAGES: 'git gcc g++ meson automake autoconf libtool make pkg-config python3 check valgrind binutils doxygen xz-utils'
+
+.debian.packages:
+  variables:
+    FDO_DISTRIBUTION_PACKAGES: 'git gcc g++ meson automake autoconf libtool make pkg-config python3 check valgrind binutils doxygen xz-utils'
+
+.arch.packages:
+  variables:
+    FDO_DISTRIBUTION_PACKAGES: 'git gcc meson automake autoconf libtool make pkgconfig python3 check valgrind binutils doxygen'
+
+.alpine.packages:
+  variables:
+    FDO_DISTRIBUTION_PACKAGES: 'git gcc g++ meson automake autoconf libtool make pkgconfig python3 check-dev valgrind binutils doxygen xz linux-headers'
+
+
+# Pulls in the qemu container from upstream or rebuilds it if missing
+.fedora:35@qemu-prep:
+  extends:
+    - .fedora:35
+    - .fedora.packages
+    - .fdo.qemu-build@fedora
+  stage: prep
+  tags:
+    - kvm
+  variables:
+    GIT_STRATEGY: none
+    FDO_DISTRIBUTION_TAG: qemu-2022-02-02.0
+  allow_failure: true
+
+# Always rebuilds the container
+.fedora:35@qemu-forced-rebuild:
+  extends:
+    - .fedora:35@qemu-prep
+  variables:
+    FDO_FORCE_REBUILD: 1
+  only:
+    - schedules
+
+# This is the actual job
+fedora:35@qemu-prep:
+  extends: .fedora:35@qemu-prep
+
+fedora:35@qemu-forced-rebuild:
+  extends: .fedora:35@qemu-forced-rebuild
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+fedora:34@container-prep:
+  extends:
+    - .fedora:34
+    - .fedora.packages
+    - .fdo.container-build@fedora
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+fedora:34@container-forced-rebuild:
+  extends:
+    - fedora:34@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+fedora:35@container-prep:
+  extends:
+    - .fedora:35
+    - .fedora.packages
+    - .fdo.container-build@fedora
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+fedora:35@container-forced-rebuild:
+  extends:
+    - fedora:35@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+ubuntu:21.04@container-prep:
+  extends:
+    - .ubuntu:21.04
+    - .ubuntu.packages
+    - .fdo.container-build@ubuntu
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+ubuntu:21.04@container-forced-rebuild:
+  extends:
+    - ubuntu:21.04@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+ubuntu:21.10@container-prep:
+  extends:
+    - .ubuntu:21.10
+    - .ubuntu.packages
+    - .fdo.container-build@ubuntu
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+ubuntu:21.10@container-forced-rebuild:
+  extends:
+    - ubuntu:21.10@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+debian:stable@container-prep:
+  extends:
+    - .debian:stable
+    - .debian.packages
+    - .fdo.container-build@debian
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+debian:stable@container-forced-rebuild:
+  extends:
+    - debian:stable@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+debian:sid@container-prep:
+  extends:
+    - .debian:sid
+    - .debian.packages
+    - .fdo.container-build@debian
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+debian:sid@container-forced-rebuild:
+  extends:
+    - debian:sid@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+arch:rolling@container-prep:
+  extends:
+    - .arch:rolling
+    - .arch.packages
+    - .fdo.container-build@arch
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+arch:rolling@container-forced-rebuild:
+  extends:
+    - arch:rolling@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+# Pulls in the container from upstream or rebuilds it if missing
+alpine:latest@container-prep:
+  extends:
+    - .alpine:latest
+    - .alpine.packages
+    - .fdo.container-build@alpine
+  stage: prep
+  variables:
+    GIT_STRATEGY: none
+
+# Always rebuilds the container
+alpine:latest@container-forced-rebuild:
+  extends:
+    - alpine:latest@container-prep
+  only:
+    - schedules
+  variables:
+    FDO_FORCE_REBUILD: 1
+
+
+#################################################################
+#                                                               #
+#                   container clean stage                       #
+#                 run during the clean stage                    #
+#                                                               #
+#################################################################
+
+#
+# This stage will look for the container images we currently have in
+# the registry and will remove any that are not tagged with the provided
+# $container_image:$tag
+.container-clean:
+  stage: container_clean
+  image: golang:alpine
+  before_script:
+    - apk add python3 py-pip git
+    - pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates
+  script:
+    # Go to your Profile, Settings, Access Tokens
+    # Create a personal token with 'api' scope, copy the value.
+    # Go to CI/CD, Schedules, schedule a new monthly job (or edit the existing one)
+    # Define a variable of type File named AUTHFILE. Content is that token
+    # value.
+    - ci-fairy -v --authfile $AUTHFILE delete-image
+            --repository $FDO_DISTRIBUTION_NAME/$FDO_DISTRIBUTION_VERSION
+            --exclude-tag $FDO_DISTRIBUTION_TAG
+  dependencies: []
+  allow_failure: true
+  only:
+    - schedules
+
+### fedora 34
+fedora:34@container-clean:
+  extends:
+    - .fedora:34
+    - .container-clean
+  needs: ["fedora:34@container-prep"]
+
+### fedora 35
+fedora:35@container-clean:
+  extends:
+    - .fedora:35
+    - .container-clean
+  needs: ["fedora:35@container-prep"]
+
+### ubuntu 21.04
+ubuntu:21.04@container-clean:
+  extends:
+    - .ubuntu:21.04
+    - .container-clean
+  needs: ["ubuntu:21.04@container-prep"]
+
+### ubuntu 21.10
+ubuntu:21.10@container-clean:
+  extends:
+    - .ubuntu:21.10
+    - .container-clean
+  needs: ["ubuntu:21.10@container-prep"]
+
+### debian stable
+debian:stable@container-clean:
+  extends:
+    - .debian:stable
+    - .container-clean
+  needs: ["debian:stable@container-prep"]
+
+### debian sid
+debian:sid@container-clean:
+  extends:
+    - .debian:sid
+    - .container-clean
+  needs: ["debian:sid@container-prep"]
+
+### arch rolling
+arch:rolling@container-clean:
+  extends:
+    - .arch:rolling
+    - .container-clean
+  needs: ["arch:rolling@container-prep"]
+
+### alpine latest
+alpine:latest@container-clean:
+  extends:
+    - .alpine:latest
+    - .container-clean
+  needs: ["alpine:latest@container-prep"]
+
+
+#################################################################
+#                                                               #
+#                       build stage                             #
+#                                                               #
+#################################################################
+
+.autotools-build@template:
+  extends:
+    - .autotools_build
+  stage: build
+  dependencies: []
+  variables:
+    MAKE_ARGS: "distcheck"
+
+.meson-build@template:
+  extends:
+    - .meson_build
+  stage: build
+  dependencies: []
+  variables:
+    NINJA_ARGS: "dist"
+
+
+fedora:34@autotools-build:
+  extends:
+    - .fedora:34
+    - .autotools-build@template
+  stage: autotools
+  needs: ['fedora:34@container-prep']
+
+fedora:34@meson-build:
+  extends:
+    - .fedora:34
+    - .meson-build@template
+  stage: meson
+  needs: ['fedora:34@container-prep']
+
+
+fedora:35@autotools-build:
+  extends:
+    - .fedora:35
+    - .autotools-build@template
+  stage: autotools
+  needs: ['fedora:35@container-prep']
+
+fedora:35@meson-build:
+  extends:
+    - .fedora:35
+    - .meson-build@template
+  stage: meson
+  needs: ['fedora:35@container-prep']
+
+
+ubuntu:21.04@autotools-build:
+  extends:
+    - .ubuntu:21.04
+    - .autotools-build@template
+  stage: autotools
+  needs: ['ubuntu:21.04@container-prep']
+
+ubuntu:21.04@meson-build:
+  extends:
+    - .ubuntu:21.04
+    - .meson-build@template
+  stage: meson
+  needs: ['ubuntu:21.04@container-prep']
+
+
+ubuntu:21.10@autotools-build:
+  extends:
+    - .ubuntu:21.10
+    - .autotools-build@template
+  stage: autotools
+  needs: ['ubuntu:21.10@container-prep']
+
+ubuntu:21.10@meson-build:
+  extends:
+    - .ubuntu:21.10
+    - .meson-build@template
+  stage: meson
+  needs: ['ubuntu:21.10@container-prep']
+
+
+debian:stable@autotools-build:
+  extends:
+    - .debian:stable
+    - .autotools-build@template
+  stage: autotools
+  needs: ['debian:stable@container-prep']
+
+debian:stable@meson-build:
+  extends:
+    - .debian:stable
+    - .meson-build@template
+  stage: meson
+  needs: ['debian:stable@container-prep']
+
+
+debian:sid@autotools-build:
+  extends:
+    - .debian:sid
+    - .autotools-build@template
+  stage: autotools
+  needs: ['debian:sid@container-prep']
+
+debian:sid@meson-build:
+  extends:
+    - .debian:sid
+    - .meson-build@template
+  stage: meson
+  needs: ['debian:sid@container-prep']
+
+
+arch:rolling@autotools-build:
+  extends:
+    - .arch:rolling
+    - .autotools-build@template
+  stage: autotools
+  needs: ['arch:rolling@container-prep']
+
+arch:rolling@meson-build:
+  extends:
+    - .arch:rolling
+    - .meson-build@template
+  stage: meson
+  needs: ['arch:rolling@container-prep']
+
+
+alpine:latest@autotools-build:
+  extends:
+    - .alpine:latest
+    - .autotools-build@template
+  stage: autotools
+  needs: ['alpine:latest@container-prep']
+
+alpine:latest@meson-build:
+  extends:
+    - .alpine:latest
+    - .meson-build@template
+  stage: meson
+  needs: ['alpine:latest@container-prep']
+
+
+# Build argument tests
+#
+# We only run the build option combinations on one image
+# because they're supposed to fail equally on all
+.fedora-custom-build@autotools-template:
+  extends:
+    - .fedora:34
+    - .autotools-build@template
+  stage: build
+  needs: ['fedora:34@container-prep']
+
+no-valgrind:autotools:
+  extends: .fedora-custom-build@autotools-template
+  before_script:
+    - dnf remove -y valgrind
+
+no-check:autotools:
+  extends: .fedora-custom-build@autotools-template
+  before_script:
+    - dnf remove -y check check-devel
+
+no-doxygen:autotools:
+  extends: .fedora-custom-build@autotools-template
+  before_script:
+    - dnf remove -y doxygen
+  variables:
+    MAKE_ARGS: ''  # disable distcheck, requires doxygen
+
+# doxygen is required for distcheck
+no-doxygen-check-valgrind:autotools:
+  extends: .fedora-custom-build@autotools-template
+  before_script:
+    - dnf remove -y doxygen valgrind check check-devel
+  variables:
+    MAKE_ARGS: ''  # disable distcheck, requires doxygen
+
+no-nm:autotools:
+  extends: .fedora-custom-build@autotools-template
+  before_script:
+    - mv /usr/bin/nm /usr/bin/nm.moved
+
+enable-gcov:autotools:
+  extends: .fedora-custom-build@autotools-template
+  variables:
+    CONFIGURE_FLAGS: "--enable-gcov"
+
+.fedora-custom-build@meson-template:
+  extends:
+    - .fedora:34
+    - .meson-build@template
+  stage: build
+  needs: ['fedora:34@container-prep']
+
+no-valgrind:meson:
+  extends: .fedora-custom-build@meson-template
+  before_script:
+    - dnf remove -y valgrind
+
+no-check:meson:
+  extends: .fedora-custom-build@meson-template
+  before_script:
+    - dnf remove -y check check-devel
+  variables:
+    MESON_ARGS: -Dtests=disabled
+    SKIP_MESON_TEST: 1
+
+# doxygen is required for dist
+no-doxygen:meson:
+  extends: .fedora-custom-build@meson-template
+  before_script:
+    - dnf remove -y doxygen
+  variables:
+    MESON_ARGS: -Ddocumentation=disabled
+    NINJA_ARGS: ''
+
+# doxygen is required for dist
+no-doxygen-check-valgrind:meson:
+  extends: .fedora-custom-build@meson-template
+  before_script:
+    - dnf remove -y doxygen valgrind check check-devel
+  variables:
+    MESON_ARGS: -Dtests=disabled -Ddocumentation=disabled
+    NINJA_ARGS: ''
+    SKIP_MESON_TEST: 1
+
+enable-gcov:meson:
+  extends: .fedora-custom-build@meson-template
+  variables:
+    MESON_ARGS: '-Dcoverity=true'
+
+scan-build:meson:
+  extends: .fedora-custom-build@meson-template
+  variables:
+    NINJA_ARGS: 'scan-build'
+    SKIP_MESON_TEST: 1
+
+static-build:meson:
+  extends: .fedora-custom-build@meson-template
+  script:
+    - meson "$MESON_BUILDDIR" --default-library=static --prefix=$PWD/prefix-meson/
+    - ninja -C "$MESON_BUILDDIR" install
+    - ls -l $PWD/prefix-meson/lib64/libevdev.a
+
+soname:
+  extends:
+    - .fedora:34
+  stage: build
+  script:
+  - ./autogen.sh --prefix=$PWD/prefix-autotools/
+  - make install
+  - ls -l $PWD/prefix-autotools/lib/libevdev.so.2.3.0
+  - meson "$MESON_BUILDDIR" --prefix=$PWD/prefix-meson/
+  - ninja -C "$MESON_BUILDDIR" install
+  - ls -l $PWD/prefix-meson/lib64/libevdev.so.2.3.0
+  needs: ['fedora:34@container-prep']
+
+#################################################################
+#                                                               #
+#                          VM stage                             #
+#                                                               #
+#################################################################
+
+.check_tainted: &check_tainted |
+  # make sure the kernel is not tainted
+  if [[ "$(/app/vmctl exec cat /proc/sys/kernel/tainted)" -gt 0 ]];
+  then
+    echo tainted kernel ;
+    exit 1 ;
+  fi
+
+.qemu@fedora:35:
+  extends:
+    - .fedora:35
+  stage: VM
+  image: $CI_REGISTRY_IMAGE/$FDO_DISTRIBUTION_NAME/$FDO_DISTRIBUTION_VERSION:qemu-$FDO_DISTRIBUTION_TAG
+  tags:
+    - kvm
+  variables:
+    MESON_BUILDDIR: build_dir
+  script:
+    # start our vm, no args required
+    - /app/vmctl start
+
+    - *check_tainted
+
+    - "scp -r $PWD vm:"
+    - echo "CI_JOB_ID=\"$CI_JOB_ID\"" > sshenv
+    - echo "CI_JOB_NAME=\"$CI_JOB_NAME\"" >> sshenv
+    - echo "MESON_BUILDDIR=\"$MESON_BUILDDIR\"" >> sshenv
+    - echo "MESON_TEST_ARGS=\"$MESON_TEST_ARGS\"" >> sshenv
+    - echo "NINJA_ARGS=\"$NINJA_ARGS\"" >> sshenv
+    - "scp sshenv vm:~/$CI_PROJECT_NAME/.meson_environment"
+    - /app/vmctl exec "cd $CI_PROJECT_NAME ; .gitlab-ci/meson-build.sh" && touch .success || true
+    # no matter the results of the tests, we want to fetch the logs
+    - scp -r vm:$CI_PROJECT_NAME/"$MESON_BUILDDIR" .
+
+    - *check_tainted
+
+    - /app/vmctl stop
+
+    - if [[ ! -e .success ]] ;
+      then
+        exit 1 ;
+      fi
+  artifacts:
+    name: "qemu-meson-logs-$CI_JOB_NAME"
+    when: always
+    expire_in: 1 week
+    paths:
+      - $MESON_BUILDDIR/meson-logs
+      - console.out
+    reports:
+      junit: $MESON_BUILDDIR/junit-*.xml
+
+  retry:
+    max: 2
+    when: script_failure
+  needs: ['fedora:35@qemu-prep']
+
+qemu:meson:
+  extends: .qemu@fedora:35
+
+qemu:meson:valgrind:
+  extends: .qemu@fedora:35
+  variables:
+    MESON_TEST_ARGS: '--setup=valgrind'
+
+meson-from-tarball:
+  extends:
+    - .fedora:35
+  stage: tarballs
+  script:
+    - export INSTALLDIR="$PWD/_inst"
+    - mkdir _build
+    - pushd _build > /dev/null
+    - ../autogen.sh --disable-silent-rules $CONFIGURE_FLAGS
+    - make
+    - make distcheck
+    - popd > /dev/null
+    - mkdir -p _tarball_dir
+    - tar xf _build/libevdev-*.tar.xz -C _tarball_dir
+    - pushd _tarball_dir/libevdev-*/ > /dev/null
+    - meson "$MESON_BUILDDIR" --prefix="$INSTALLDIR"
+    - ninja -C "$MESON_BUILDDIR" test
+    - ninja -C "$MESON_BUILDDIR" install
+    - popd > /dev/null
+    - ls -lR $INSTALLDIR
+  needs: ['fedora:35@container-prep']
+
+autotools-from-tarball:
+  extends:
+    - .fedora:35
+  stage: tarballs
+  script:
+    - export INSTALLDIR="$PWD/_inst"
+    - meson "$MESON_BUILDDIR"
+    - ninja -C "$MESON_BUILDDIR" dist
+    - mkdir -p _tarball_dir
+    - tar xf "$MESON_BUILDDIR"/meson-dist/libevdev-*.xz -C _tarball_dir
+    - pushd _tarball_dir/libevdev-*/ > /dev/null
+    - mkdir _build
+    - pushd _build > /dev/null
+    - ../autogen.sh --disable-silent-rules --prefix="$INSTALLDIR" $CONFIGURE_FLAGS
+    - make
+    - make install
+    - make distcheck
+    - popd > /dev/null
+    - popd > /dev/null
+    - ls -lR $INSTALLDIR
+  needs: ['fedora:35@container-prep']

@@ -1,0 +1,4 @@
+build
+quire-data/
+*.o
+.DS_Store

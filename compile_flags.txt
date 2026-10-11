@@ -1,0 +1,9 @@
+-std=gnu11
+-D_GNU_SOURCE
+-Isrc
+-Ithird_party
+-Ibuild/gen
+-Ithird_party/FBInk
+-Itests
+-DQUIRE_SIM
+-I/opt/homebrew/include/SDL2

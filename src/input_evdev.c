@@ -1,0 +1,685 @@
+// input_evdev.c: Kindle input from evdev.
+//
+// Devices are classified by capability, not by path:
+//   pen   = EV_ABS ABS_X + ABS_PRESSURE and EV_KEY BTN_TOOL_PEN. The Scribe 2 has two:
+//           "stylus-custom" (event5), a virtual pen fed by Amazon's pen service, scaled to the
+//           screen and aligned with touch, but it only reports position + buttons; and
+//           "WacomDigitizer" (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure
+//           0..4095 and tilt in 1/100 degree (seen on device 2026-10-10). Quire takes position
+//           and buttons from the scaled pen (grabbed) and pressure + tilt from the raw one (read
+//           without a grab, so the pen service keeps feeding the scaled pen).
+//   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
+//   power = EV_KEY KEY_POWER
+// Pen and touch are EVIOCGRAB'ed so the (paused) framework never sees them; the power key is
+// only watched, so the system keeps handling it if we die.
+//
+// Pen events follow the Wacom tool protocol (BTN_TOOL_PEN / BTN_TOOL_RUBBER bracket the
+// proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
+// the same model KOReader uses on the Scribe (input.wacom_protocol).
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <math.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+#include "calib_fit.h"
+#include "input.h"
+
+#define BITS_PER_LONG (sizeof(long) * 8)
+#define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
+static bool test_bit(const unsigned long *a, int bit) { return (a[bit / BITS_PER_LONG] >> (bit % BITS_PER_LONG)) & 1UL; }
+
+typedef struct {
+    int fd;
+    struct input_absinfo ax, ay, ap, atx, aty, amp;  // amp: ABS_MT_PRESSURE, if any
+    bool has_touch_btn;
+} Dev;
+
+static int g_raw_logged;          // raw pen events written to the log (bring-up)
+static int g_contact_frames;      // pen frames in contact so far
+static bool g_pressure_seen;      // any nonzero pressure ever reported
+static bool g_pressure_missing;   // contact without pressure for a while: use a fixed value
+
+static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
+static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
+static int g_rot;             // logical screen rotation, quarter turns clockwise
+static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
+static struct {
+    int p, tx, ty;
+    bool seen;
+    bool rubber, side;  // the raw digitizer also reports the eraser end and the side button
+} W;
+static bool g_side_reported;  // last side-button state sent as IN_PEN_BUTTON
+static int g_power_fd = -1;
+static int g_watch = -1;
+static int g_sigpipe[2] = {-1, -1};
+static volatile sig_atomic_t g_quit;
+static int g_w, g_h;
+static InputCalib g_pen_cal, g_touch_cal;
+static InputCaps g_caps;
+
+// ---- event queue ----
+
+#define QN 4096
+static InEvent g_q[QN];
+static int g_qh, g_qt;
+static int g_logged_pen, g_logged_touch;
+static void q_push(InEvent e) {
+    // Device bring-up: the first events of each kind go to the log.
+    bool pen = e.type >= IN_PEN_DOWN && e.type <= IN_PEN_LEAVE;
+    bool touch = e.type >= IN_TOUCH_DOWN && e.type <= IN_TOUCH_UP;
+    if ((pen && e.type != IN_PEN_HOVER && g_logged_pen++ < 120) || (touch && g_logged_touch++ < 120))
+        qlog("input: ev %d at %.0f,%.0f (raw %.3f,%.3f) p %.2f tilt %.0f,%.0f eraser %d side %d", e.type, e.x, e.y, e.nx,
+             e.ny, e.pressure, e.tilt_x, e.tilt_y, e.eraser, e.side_button);
+    int n = (g_qt + 1) % QN;
+    if (n == g_qh) return;  // full: drop (the app drains every loop, so this is pathological)
+    g_q[g_qt] = e;
+    g_qt = n;
+}
+static bool q_pop(InEvent *e) {
+    if (g_qh == g_qt) return false;
+    *e = g_q[g_qh];
+    g_qh = (g_qh + 1) % QN;
+    return true;
+}
+
+// ---- pen state ----
+
+static struct {
+    bool tool_pen, tool_rubber;  // tracked separately: a flip sends PEN 0 / RUBBER 1 in either order
+    bool prox, eraser, touching, side;
+    bool was_prox, was_touching;
+    int x, y, p, tx, ty;
+    bool dirty;
+} P;
+static uint32_t g_pen_left_ms;
+
+// ---- touch state ----
+
+#define MAX_SLOTS 16
+static struct {
+    int slot;
+    int id[MAX_SLOTS];
+    int x[MAX_SLOTS], y[MAX_SLOTS];
+    int main;          // slot we follow, -1 none
+    bool active;       // main finger down (as reported to the app)
+    bool suppressed;   // palm: ignore until all fingers lift
+    float last_x, last_y;
+} T = {.main = -1};
+
+static float norm(int v, const struct input_absinfo *a) {
+    int span = a->maximum - a->minimum;
+    return span > 0 ? clampf((float)(v - a->minimum) / (float)span, 0.f, 1.f) : 0.f;
+}
+
+// Tilt in degrees. Linux reports ABS_TILT resolution in units per radian; without one, small
+// ranges (Wacom's typical -64..63) are taken as degrees, larger ones scaled to +-90.
+static float tilt_deg(int v, const struct input_absinfo *a) {
+    if (a->maximum == a->minimum) return 0.f;
+    if (a->resolution > 0) return clampf((float)v / (float)a->resolution * 57.29578f, -90.f, 90.f);
+    int m = abs(a->minimum) > abs(a->maximum) ? abs(a->minimum) : abs(a->maximum);
+    if (m <= 127) return clampf((float)v, -90.f, 90.f);
+    return clampf((float)v * 90.f / (float)m, -90.f, 90.f);
+}
+
+// Panel <-> logical screen for a device turned `g_rot` quarter turns clockwise. g_w x g_h is the
+// panel; the logical screen is g_h x g_w when turned sideways.
+static void panel_to_logical(float px, float py, float *lx, float *ly) {
+    float W = (float)(g_w - 1), H = (float)(g_h - 1);
+    switch (g_rot & 3) {
+    case 1: *lx = H - py; *ly = px; break;
+    case 2: *lx = W - px; *ly = H - py; break;
+    case 3: *lx = py; *ly = W - px; break;
+    default: *lx = px; *ly = py; break;
+    }
+}
+
+void input_logical_to_panel(float lx, float ly, float *px, float *py) {
+    float W = (float)(g_w - 1), H = (float)(g_h - 1);
+    switch (g_rot & 3) {
+    case 1: *px = ly; *py = H - lx; break;
+    case 2: *px = W - lx; *py = H - ly; break;
+    case 3: *px = W - ly; *py = lx; break;
+    default: *px = lx; *py = ly; break;
+    }
+}
+
+void input_set_orientation(int quarter_turns) { g_rot = quarter_turns & 3; }
+
+static void map(const InputCalib *c, float nx, float ny, float *x, float *y) {
+    float px, py;
+    calib_apply(c, nx, ny, &px, &py);
+    px = clampf(px, 0.f, (float)(g_w - 1));
+    py = clampf(py, 0.f, (float)(g_h - 1));
+    panel_to_logical(px, py, x, y);
+}
+
+static void handle_wacom(const struct input_event *ev) {
+    if (ev->type == EV_KEY) {
+        if (ev->code == BTN_TOOL_RUBBER) W.rubber = ev->value != 0;
+        else if (ev->code == BTN_STYLUS) W.side = ev->value != 0;
+        return;
+    }
+    if (ev->type != EV_ABS) return;
+    switch (ev->code) {
+    case ABS_PRESSURE: W.p = ev->value; W.seen = true; break;
+    case ABS_TILT_X: W.tx = ev->value; break;
+    case ABS_TILT_Y: W.ty = ev->value; break;
+    default: break;
+    }
+}
+
+static void emit_pen(InType t) {
+    InEvent e = {0};
+    e.type = t;
+    e.nx = norm(P.x, &g_pen.ax);
+    e.ny = norm(P.y, &g_pen.ay);
+    map(&g_pen_cal, e.nx, e.ny, &e.x, &e.y);
+    e.pressure = t == IN_PEN_UP || t == IN_PEN_HOVER || t == IN_PEN_LEAVE ? 0.f : norm(P.p, &g_pen.ap);
+    if (g_wacom.fd >= 0 && W.seen && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) e.pressure = norm(W.p, &g_wacom.ap);
+    if ((t == IN_PEN_DOWN || t == IN_PEN_MOVE)) {
+        if (e.pressure > 0.f || W.seen) g_pressure_seen = true;
+        if (!g_pressure_seen && ++g_contact_frames > 40 && !g_pressure_missing) {
+            g_pressure_missing = true;
+            qlog("input: pen touches but reports no pressure; using a fixed 0.6 until it does");
+        }
+        if (g_pressure_missing && !g_pressure_seen) e.pressure = 0.6f;
+    }
+    if (g_wacom.fd >= 0) {
+        e.tilt_x = tilt_deg(W.tx, &g_wacom.atx);
+        e.tilt_y = tilt_deg(W.ty, &g_wacom.aty);
+    } else {
+        e.tilt_x = g_caps.has_tilt ? tilt_deg(P.tx, &g_pen.atx) : 0.f;
+        e.tilt_y = g_caps.has_tilt ? tilt_deg(P.ty, &g_pen.aty) : 0.f;
+    }
+    e.eraser = P.eraser;
+    e.side_button = P.side || W.side;
+    e.t_ms = now_ms();
+    q_push(e);
+}
+
+static void emit_touch(InType t, float x, float y) {
+    InEvent e = {0};
+    e.type = t;
+    e.nx = x;
+    e.ny = y;
+    map(&g_touch_cal, x, y, &e.x, &e.y);
+    e.t_ms = now_ms();
+    q_push(e);
+}
+
+static void pen_frame(void) {
+    P.prox = P.tool_pen || P.tool_rubber;
+    // The eraser end may only be visible on the raw digitizer (the virtual pen can drop it).
+    P.eraser = P.tool_rubber || W.rubber;
+    bool touching = P.touching;
+    if (!g_pen.has_touch_btn) touching = P.prox && P.p > g_pen.ap.minimum;
+    if (P.prox && !P.was_prox && T.active) {
+        // The pen arrived while a finger (likely the palm) was down: end that touch.
+        emit_touch(IN_TOUCH_UP, T.last_x, T.last_y);
+        T.active = false;
+        T.suppressed = true;
+    }
+    if (touching && !P.was_touching) emit_pen(IN_PEN_DOWN);
+    else if (touching && P.dirty) emit_pen(IN_PEN_MOVE);
+    else if (!touching && P.was_touching) emit_pen(IN_PEN_UP);
+    else if (!touching && P.prox && P.dirty) emit_pen(IN_PEN_HOVER);
+    if (!P.prox && P.was_prox) {
+        emit_pen(IN_PEN_LEAVE);
+        g_pen_left_ms = now_ms();
+    }
+    P.was_touching = touching;
+    P.was_prox = P.prox;
+    P.dirty = false;
+}
+
+static void handle_pen(const struct input_event *ev) {
+    if (g_raw_logged < 160 && ev->type != EV_SYN) {
+        g_raw_logged++;
+        qlog("input: raw pen type %u code %u value %d", ev->type, ev->code, ev->value);
+    }
+    switch (ev->type) {
+    case EV_KEY:
+        switch (ev->code) {
+        case BTN_TOOL_PEN: P.tool_pen = ev->value != 0; break;
+        case BTN_TOOL_RUBBER: P.tool_rubber = ev->value != 0; break;
+        case BTN_TOUCH: P.touching = ev->value != 0; break;
+        case BTN_STYLUS: P.side = ev->value != 0; break;
+        default: break;
+        }
+        break;
+    case EV_ABS:
+        switch (ev->code) {
+        case ABS_X: P.x = ev->value; break;
+        case ABS_Y: P.y = ev->value; break;
+        case ABS_PRESSURE: P.p = ev->value; break;
+        case ABS_MT_PRESSURE:  // some digitizers only report the MT flavour
+            if (g_pen.amp.maximum > g_pen.amp.minimum)
+                P.p = g_pen.ap.minimum + (int)((int64_t)(ev->value - g_pen.amp.minimum) *
+                                               (g_pen.ap.maximum - g_pen.ap.minimum) /
+                                               (g_pen.amp.maximum - g_pen.amp.minimum));
+            break;
+        case ABS_TILT_X: P.tx = ev->value; break;
+        case ABS_TILT_Y: P.ty = ev->value; break;
+        default: return;
+        }
+        P.dirty = true;
+        break;
+    case EV_SYN:
+        if (ev->code == SYN_REPORT) pen_frame();
+        break;
+    default: break;
+    }
+}
+
+static bool palm_window(void) { return P.prox || (now_ms() - g_pen_left_ms) < 300; }
+
+static bool g_pinching;
+
+static void emit_pinch(InType t, int s1, int s2) {
+    InEvent e = {0};
+    e.type = t;
+    float n1x = norm(T.x[s1], &g_touch.ax), n1y = norm(T.y[s1], &g_touch.ay);
+    float n2x = norm(T.x[s2], &g_touch.ax), n2y = norm(T.y[s2], &g_touch.ay);
+    map(&g_touch_cal, n1x, n1y, &e.x, &e.y);
+    map(&g_touch_cal, n2x, n2y, &e.x2, &e.y2);
+    e.t_ms = now_ms();
+    q_push(e);
+}
+
+static void touch_frame(void) {
+    // Two fingers down = pinch (zoom/pan). The single-finger stream pauses until all lift.
+    int fingers = 0, s1 = -1, s2 = -1;
+    for (int s = 0; s < MAX_SLOTS; s++)
+        if (T.id[s] >= 0) {
+            fingers++;
+            if (s1 < 0) s1 = s;
+            else if (s2 < 0) s2 = s;
+        }
+    if (fingers >= 2 && !palm_window()) {
+        if (!g_pinching) {
+            g_pinching = true;
+            T.active = false;      // the first finger's press turns into the pinch
+            T.suppressed = true;   // and no tap fires when the fingers lift
+            emit_pinch(IN_PINCH_BEGIN, s1, s2);
+        } else {
+            emit_pinch(IN_PINCH_MOVE, s1, s2);
+        }
+        return;
+    }
+    if (g_pinching) {
+        g_pinching = false;
+        InEvent e = {0};
+        e.type = IN_PINCH_END;
+        e.t_ms = now_ms();
+        q_push(e);
+    }
+    // Follow one finger: the first to land; another finger never moves the pointer.
+    if (T.main >= 0 && T.id[T.main] < 0) {
+        if (T.active) emit_touch(IN_TOUCH_UP, T.last_x, T.last_y);
+        T.active = false;
+        T.main = -1;
+    }
+    bool any = false;
+    for (int s = 0; s < MAX_SLOTS; s++) any |= T.id[s] >= 0;
+    if (!any) T.suppressed = false;
+    if (T.main < 0 && !T.suppressed)
+        for (int s = 0; s < MAX_SLOTS; s++)
+            if (T.id[s] >= 0) {
+                T.main = s;
+                break;
+            }
+    if (T.main < 0 || T.suppressed) return;
+    if (palm_window()) {
+        T.suppressed = true;
+        if (T.active) emit_touch(IN_TOUCH_UP, T.last_x, T.last_y);
+        T.active = false;
+        return;
+    }
+    float x = norm(T.x[T.main], &g_touch.ax), y = norm(T.y[T.main], &g_touch.ay);
+    if (!T.active) {
+        T.active = true;
+        emit_touch(IN_TOUCH_DOWN, x, y);
+    } else if (x != T.last_x || y != T.last_y)
+        emit_touch(IN_TOUCH_MOVE, x, y);
+    T.last_x = x;
+    T.last_y = y;
+}
+
+static void handle_touch(const struct input_event *ev) {
+    if (ev->type == EV_ABS) {
+        int s = T.slot;
+        switch (ev->code) {
+        case ABS_MT_SLOT: T.slot = clampi(ev->value, 0, MAX_SLOTS - 1); break;
+        case ABS_MT_TRACKING_ID: T.id[s] = ev->value; break;
+        case ABS_MT_POSITION_X: T.x[s] = ev->value; break;
+        case ABS_MT_POSITION_Y: T.y[s] = ev->value; break;
+        default: break;
+        }
+    } else if (ev->type == EV_KEY && ev->code == BTN_TOUCH && ev->value == 0) {
+        // Belt and braces: some panels only signal the final lift through BTN_TOUCH.
+        for (int s = 0; s < MAX_SLOTS; s++) T.id[s] = -1;
+    } else if (ev->type == EV_SYN && ev->code == SYN_REPORT) {
+        touch_frame();
+    }
+}
+
+static void drain(int fd, void (*fn)(const struct input_event *)) {
+    struct input_event evs[64];
+    for (;;) {
+        ssize_t r = read(fd, evs, sizeof evs);
+        if (r <= 0) break;
+        for (size_t i = 0; i < (size_t)r / sizeof evs[0]; i++) fn(&evs[i]);
+        if ((size_t)r < sizeof evs) break;
+    }
+}
+
+static int orient_code_to_turns(int v) {
+    // KOReader's KindleGyroTransform (kx132.h / bma4xy): 15 portrait up, 16 portrait down,
+    // 17 landscape left (device turned clockwise), 18 landscape right (counter-clockwise).
+    switch (v) {
+    case 15: return 0;
+    case 17: return 1;
+    case 16: return 2;
+    case 18: return 3;
+    default: return -1;  // face up/down and other codes: keep the current orientation
+    }
+}
+
+static void handle_orient_fd(void) {
+    struct input_event evs[16];
+    ssize_t r = read(g_orient_fd, evs, sizeof evs);
+    for (ssize_t i = 0; r > 0 && i < r / (ssize_t)sizeof evs[0]; i++) {
+        if (evs[i].type != EV_ABS || evs[i].code != ABS_PRESSURE) continue;
+        int t = orient_code_to_turns(evs[i].value);
+        qlog("input: orientation code %d -> %d", evs[i].value, t);
+        if (t < 0) continue;
+        InEvent e = {0};
+        e.type = IN_ORIENTATION;
+        e.value = t;
+        e.t_ms = now_ms();
+        q_push(e);
+    }
+}
+
+static void handle_power_fd(void) {
+    struct input_event evs[16];
+    ssize_t r = read(g_power_fd, evs, sizeof evs);
+    for (ssize_t i = 0; r > 0 && i < r / (ssize_t)sizeof evs[0]; i++)
+        if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER && evs[i].value == 1) {
+            InEvent e = {0};
+            e.type = IN_POWER;
+            e.t_ms = now_ms();
+            q_push(e);
+        }
+}
+
+// ---- setup ----
+
+static void on_signal(int sig) {
+    (void)sig;
+    g_quit = 1;
+    if (g_sigpipe[1] >= 0) {
+        char c = 1;
+        ssize_t w = write(g_sigpipe[1], &c, 1);
+        (void)w;
+    }
+}
+
+void input_default_calib(InputCalib *pen, InputCalib *touch) {
+    // KOReader applies no axis swap/mirror for the Scribe: the axes map straight onto the
+    // upright framebuffer. Swap only if the ranges say the axes are crossed.
+    InputCalib p = {false, false, (float)g_w, 0.f, (float)g_h, 0.f};
+    if (g_pen.fd >= 0) {
+        int mx = g_pen.ax.maximum, my = g_pen.ay.maximum;
+        if (abs(mx - g_h) < abs(mx - g_w) && abs(my - g_w) < abs(my - g_h)) p.swap_xy = true;
+    }
+    InputCalib t = {false, false, (float)g_w, 0.f, (float)g_h, 0.f};
+    if (g_touch.fd >= 0) {
+        int mx = g_touch.ax.maximum, my = g_touch.ay.maximum;
+        float aspect_dev = my ? (float)mx / (float)my : 1.f, aspect_scr = g_h ? (float)g_w / (float)g_h : 1.f;
+        if ((aspect_dev > 1.f) != (aspect_scr > 1.f)) t.swap_xy = true;
+    }
+    if (pen) *pen = p;
+    if (touch) *touch = t;
+}
+
+void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
+    if (pen) g_pen_cal = *pen;
+    if (touch) g_touch_cal = *touch;
+}
+
+const InputCaps *input_caps(void) { return &g_caps; }
+void input_watch_fd(int fd) { g_watch = fd; }
+
+int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
+    g_w = screen_w;
+    g_h = screen_h;
+    memset(&P, 0, sizeof P);
+    for (int s = 0; s < MAX_SLOTS; s++) T.id[s] = -1;
+    DIR *d = opendir("/dev/input");
+    if (!d) {
+        qlog("input: cannot open /dev/input: %s", strerror(errno));
+        return -1;
+    }
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (strncmp(e->d_name, "event", 5)) continue;
+        char path[300];
+        snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
+        int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) continue;
+        char name[64] = "?";
+        ioctl(fd, EVIOCGNAME(sizeof name), name);
+        unsigned long evb[NLONGS(EV_MAX + 1)] = {0}, keyb[NLONGS(KEY_MAX + 1)] = {0}, absb[NLONGS(ABS_MAX + 1)] = {0};
+        ioctl(fd, EVIOCGBIT(0, sizeof evb), evb);
+        ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keyb), keyb);
+        ioctl(fd, EVIOCGBIT(EV_ABS, sizeof absb), absb);
+        bool has_abs = test_bit(evb, EV_ABS), has_key = test_bit(evb, EV_KEY);
+        {
+            char axes[256] = "";
+            size_t al = 0;
+            static const struct { int code; const char *n; } names[] = {
+                {ABS_X, "X"}, {ABS_Y, "Y"}, {ABS_PRESSURE, "P"}, {ABS_DISTANCE, "DIST"}, {ABS_TILT_X, "TX"},
+                {ABS_TILT_Y, "TY"}, {ABS_MT_POSITION_X, "MTX"}, {ABS_MT_POSITION_Y, "MTY"},
+                {ABS_MT_PRESSURE, "MTP"}, {ABS_MT_TOOL_TYPE, "MTTOOL"}};
+            for (size_t k = 0; k < sizeof names / sizeof names[0] && al < sizeof axes - 40; k++) {
+                if (!test_bit(absb, names[k].code)) continue;
+                struct input_absinfo ai = {0};
+                ioctl(fd, EVIOCGABS(names[k].code), &ai);
+                al += (size_t)snprintf(axes + al, sizeof axes - al, " %s[%d..%d r%d]", names[k].n, ai.minimum, ai.maximum,
+                                       ai.resolution);
+            }
+            qlog("input: found %s \"%s\" abs:%s keys:%s%s%s%s%s", path, name, axes[0] ? axes : " none",
+                 test_bit(keyb, BTN_TOOL_PEN) ? " TOOL_PEN" : "", test_bit(keyb, BTN_TOOL_RUBBER) ? " RUBBER" : "",
+                 test_bit(keyb, BTN_TOUCH) ? " TOUCH" : "", test_bit(keyb, BTN_STYLUS) ? " STYLUS" : "",
+                 test_bit(keyb, KEY_POWER) ? " POWER" : "");
+        }
+        bool pen = has_abs && has_key && test_bit(absb, ABS_X) && test_bit(absb, ABS_PRESSURE) &&
+                   test_bit(keyb, BTN_TOOL_PEN);
+        bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
+        bool power = !pen && !touch && has_key && test_bit(keyb, KEY_POWER);
+        // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
+        if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
+            struct input_absinfo ai = {0};
+            ioctl(fd, EVIOCGABS(ABS_PRESSURE), &ai);
+            if (ai.minimum >= 10 && ai.maximum <= 30) {
+                g_orient_fd = fd;
+                g_caps.has_orientation = true;
+                int t = orient_code_to_turns(ai.value);
+                g_caps.orientation = t < 0 ? 0 : t;
+                qlog("input: orientation sensor %s (%s), current code %d -> %d", path, name, ai.value, g_caps.orientation);
+                continue;
+            }
+        }
+        // The scaled pen (axis maxima match the screen) drives the pointer; another pen device,
+        // if any, only supplies pressure + tilt.
+        bool scaled = false;
+        if (pen) {
+            struct input_absinfo ax = {0}, ay = {0};
+            ioctl(fd, EVIOCGABS(ABS_X), &ax);
+            ioctl(fd, EVIOCGABS(ABS_Y), &ay);
+            scaled = (abs(ax.maximum - g_w) <= 2 && abs(ay.maximum - g_h) <= 2) ||
+                     (abs(ax.maximum - g_h) <= 2 && abs(ay.maximum - g_w) <= 2);
+            if (!scaled && g_wacom.fd < 0 && test_bit(absb, ABS_PRESSURE)) {
+                g_wacom.fd = fd;
+                ioctl(fd, EVIOCGABS(ABS_PRESSURE), &g_wacom.ap);
+                ioctl(fd, EVIOCGABS(ABS_TILT_X), &g_wacom.atx);
+                ioctl(fd, EVIOCGABS(ABS_TILT_Y), &g_wacom.aty);
+                qlog("input: pressure/tilt source %s (%s), p %d..%d tilt %d..%d (not grabbed)", path, name,
+                     g_wacom.ap.minimum, g_wacom.ap.maximum, g_wacom.atx.minimum, g_wacom.atx.maximum);
+                continue;
+            }
+        }
+        if (pen && g_pen.fd >= 0 && scaled) {
+            // A scaled pen found after a raw one: the raw one becomes the pressure source.
+            close(fd);
+            continue;
+        }
+        if (pen && g_pen.fd < 0) {
+            g_pen.fd = fd;
+            ioctl(fd, EVIOCGABS(ABS_X), &g_pen.ax);
+            ioctl(fd, EVIOCGABS(ABS_Y), &g_pen.ay);
+            ioctl(fd, EVIOCGABS(ABS_PRESSURE), &g_pen.ap);
+            if (test_bit(absb, ABS_MT_PRESSURE)) ioctl(fd, EVIOCGABS(ABS_MT_PRESSURE), &g_pen.amp);
+            g_caps.has_tilt = test_bit(absb, ABS_TILT_X) && test_bit(absb, ABS_TILT_Y);
+            if (g_caps.has_tilt) {
+                ioctl(fd, EVIOCGABS(ABS_TILT_X), &g_pen.atx);
+                ioctl(fd, EVIOCGABS(ABS_TILT_Y), &g_pen.aty);
+            }
+            g_pen.has_touch_btn = test_bit(keyb, BTN_TOUCH);
+            if (ioctl(fd, EVIOCGRAB, 1) != 0) qlog("input: could not grab the pen: %s", strerror(errno));
+            g_caps.has_pen = true;
+            g_caps.has_pressure = g_pen.ap.maximum > g_pen.ap.minimum;
+            strlcpy_q(g_caps.pen_name, name, sizeof g_caps.pen_name);
+            qlog("input: pen %s (%s) x %d..%d y %d..%d p %d..%d tilt %s %d..%d res %d", path, name, g_pen.ax.minimum,
+                 g_pen.ax.maximum, g_pen.ay.minimum, g_pen.ay.maximum, g_pen.ap.minimum, g_pen.ap.maximum,
+                 g_caps.has_tilt ? "yes" : "no", g_pen.atx.minimum, g_pen.atx.maximum, g_pen.atx.resolution);
+        } else if (touch && g_touch.fd < 0) {
+            g_touch.fd = fd;
+            ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &g_touch.ax);
+            ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &g_touch.ay);
+            if (ioctl(fd, EVIOCGRAB, 1) != 0) qlog("input: could not grab touch: %s", strerror(errno));
+            g_caps.has_touch = true;
+            strlcpy_q(g_caps.touch_name, name, sizeof g_caps.touch_name);
+            qlog("input: touch %s (%s) x %d..%d y %d..%d", path, name, g_touch.ax.minimum, g_touch.ax.maximum,
+                 g_touch.ay.minimum, g_touch.ay.maximum);
+        } else if (power && g_power_fd < 0) {
+            g_power_fd = fd;
+            g_caps.has_power = true;
+            qlog("input: power key %s (%s)", path, name);
+        } else {
+            close(fd);
+        }
+    }
+    closedir(d);
+    if (g_pen.fd < 0 && g_wacom.fd >= 0) {
+        // Only a raw digitizer: use it for everything (calibration maps its axes).
+        g_pen = g_wacom;
+        g_wacom.fd = -1;
+        ioctl(g_pen.fd, EVIOCGABS(ABS_X), &g_pen.ax);
+        ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &g_pen.ay);
+        ioctl(g_pen.fd, EVIOCGRAB, 1);
+        g_caps.has_pen = g_caps.has_pressure = true;
+        g_caps.has_tilt = g_pen.atx.maximum > g_pen.atx.minimum;
+        qlog("input: using the raw digitizer as the pen");
+    }
+    if (g_wacom.fd >= 0) {
+        g_caps.has_pressure = g_wacom.ap.maximum > g_wacom.ap.minimum;
+        g_caps.has_tilt = g_wacom.atx.maximum > g_wacom.atx.minimum;
+    }
+    if (g_pen.fd < 0) qlog("input: WARNING no pen digitizer found");
+    if (g_touch.fd < 0) qlog("input: WARNING no touch panel found");
+    input_default_calib(&g_pen_cal, &g_touch_cal);
+    if (pen && pen->valid) g_pen_cal = *pen;
+    if (touch && touch->valid) g_touch_cal = *touch;
+
+    if (pipe(g_sigpipe) == 0) {
+        fcntl(g_sigpipe[0], F_SETFL, O_NONBLOCK);
+        fcntl(g_sigpipe[1], F_SETFL, O_NONBLOCK);
+    }
+    struct sigaction sa = {0};
+    sa.sa_handler = on_signal;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+    return (g_pen.fd >= 0 || g_touch.fd >= 0) ? 0 : -1;
+}
+
+int input_poll(InEvent *ev, int timeout_ms) {
+    if (g_quit) {
+        *ev = (InEvent){.type = IN_QUIT, .t_ms = now_ms()};
+        g_quit = 0;
+        return 1;
+    }
+    if (q_pop(ev)) return 1;
+    struct pollfd pf[7];
+    int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1;
+    if (g_orient_fd >= 0) iori = n, pf[n++] = (struct pollfd){g_orient_fd, POLLIN, 0};
+    if (g_wacom.fd >= 0) iwac = n, pf[n++] = (struct pollfd){g_wacom.fd, POLLIN, 0};
+    if (g_pen.fd >= 0) ipen = n, pf[n++] = (struct pollfd){g_pen.fd, POLLIN, 0};
+    if (g_touch.fd >= 0) itouch = n, pf[n++] = (struct pollfd){g_touch.fd, POLLIN, 0};
+    if (g_power_fd >= 0) ipow = n, pf[n++] = (struct pollfd){g_power_fd, POLLIN, 0};
+    if (g_sigpipe[0] >= 0) isig = n, pf[n++] = (struct pollfd){g_sigpipe[0], POLLIN, 0};
+    if (g_watch >= 0) pf[n++] = (struct pollfd){g_watch, POLLIN, 0};
+    int r = poll(pf, (nfds_t)n, timeout_ms);
+    if (r <= 0) return 0;
+    // Raw digitizer first, so a pen frame uses this sample's pressure.
+    if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
+    if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
+    if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
+    if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
+    if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
+    if (isig >= 0 && (pf[isig].revents & POLLIN)) {
+        char buf[16];
+        while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
+        }
+    }
+    if (g_quit) {
+        *ev = (InEvent){.type = IN_QUIT, .t_ms = now_ms()};
+        g_quit = 0;
+        return 1;
+    }
+    // Side button presses/releases, from whichever pen device reports them.
+    bool side = P.side || W.side;
+    if (side != g_side_reported) {
+        g_side_reported = side;
+        InEvent b = {0};
+        b.type = IN_PEN_BUTTON;
+        b.side_button = side;
+        b.nx = norm(P.x, &g_pen.ax);
+        b.ny = norm(P.y, &g_pen.ay);
+        map(&g_pen_cal, b.nx, b.ny, &b.x, &b.y);
+        b.t_ms = now_ms();
+        qlog("input: pen button %s", side ? "down" : "up");
+        q_push(b);
+    }
+    return q_pop(ev) ? 1 : 0;
+}
+
+void input_close(void) {
+    if (g_pen.fd >= 0) {
+        ioctl(g_pen.fd, EVIOCGRAB, 0);
+        close(g_pen.fd);
+    }
+    if (g_touch.fd >= 0) {
+        ioctl(g_touch.fd, EVIOCGRAB, 0);
+        close(g_touch.fd);
+    }
+    if (g_power_fd >= 0) close(g_power_fd);
+    if (g_wacom.fd >= 0) close(g_wacom.fd);
+    g_wacom.fd = -1;
+    if (g_orient_fd >= 0) close(g_orient_fd);
+    g_orient_fd = -1;
+    for (int i = 0; i < 2; i++)
+        if (g_sigpipe[i] >= 0) close(g_sigpipe[i]);
+    g_pen.fd = g_touch.fd = g_power_fd = -1;
+    g_sigpipe[0] = g_sigpipe[1] = -1;
+}
