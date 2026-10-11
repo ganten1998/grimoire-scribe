@@ -18,6 +18,8 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
   writing). The eraser removes whole strokes; the Premium Pen's eraser end erases with any tool.
 - **Pen button**: hold it while writing to highlight (or erase, in Settings); click it 3 times,
   or hold it about a second without touching the screen, to clear the page. The toolbar's broom clears too.
+- **Pages**: tap the page counter on the toolbar for a grid of page previews; tick pages and
+  Delete (they go to `quire/trash`), or tap a preview to jump there.
 - **Display**: the Kindle's front light brightness and warmth (system levels 0..24, the same
   ones the stock UI uses), and an invert option that shows Quire white on black.
 - **Zoom and rotation**: pinch with two fingers to zoom 1x..4x and pan; a chip resets to 100%.
