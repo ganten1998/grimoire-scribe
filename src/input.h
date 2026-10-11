@@ -23,6 +23,8 @@ typedef enum {
     IN_PEN_BUTTON,                         // pen side button pressed/released (side_button = state)
     IN_ORIENTATION,                        // device turned: value = quarter turns clockwise (0..3)
     IN_PINCH_BEGIN, IN_PINCH_MOVE, IN_PINCH_END,  // two fingers: (x,y) and (x2,y2)
+    IN_SLEEP,                              // the Kindle is going to sleep (goingToScreenSaver)
+    IN_WAKE,                               // and waking up (outOfScreenSaver)
 } InType;
 
 typedef struct {

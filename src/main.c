@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         app_flush(&app);
         uint32_t t = now_ms();
         uint32_t every = (t - started) < 15000 ? 700 : 3000;
-        if (t - last_guard >= every) {
+        if (t - last_guard >= every && !app.asleep) {
             last_guard = t;
             if (display_overwritten(&app.screen)) {
                 guards++;

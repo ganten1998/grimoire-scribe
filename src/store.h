@@ -32,6 +32,8 @@ typedef struct {
     bool follow_rotation;         // turn the UI with the Kindle (otherwise stay as is)
     bool invert;                  // white on black
     bool pinch_zoom;              // two-finger zoom in the editor
+    int sleep_mode;               // sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own
+    int sleep_minutes;            // sleep after this long without input (0 = never)
     InputCalib pen_calib, touch_calib;
     int http_port;                // share server, default 8765
 } Settings;
@@ -68,6 +70,10 @@ int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file mo
 // Missing page file -> empty page of nb->paper. Points are scaled if the stored size differs.
 int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out);
 int store_save_page(const NotebookInfo *nb, int index, const Page *p);
+
+// The pinned sleep screen (a full page, P5 PGM at root/sleep.pgm).
+int store_save_sleep_image(const Canvas *c);
+int store_load_sleep_image(Canvas *out);
 
 // Thumbnails (P5 PGM, ~ 1/8 page size).
 int store_save_thumb(const char *id, const Canvas *thumb);

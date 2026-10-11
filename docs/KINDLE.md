@@ -27,8 +27,12 @@ documents/Quire/            PDF mirror (USB road), shows up in the Kindle librar
 
 ## Leaving
 
-- **Library > Exit**, or press the **power button**: Quire saves everything and returns to the
-  Kindle home screen. (Press power again to sleep.) The screensaver is held off while Quire runs.
+- **Library > Exit** saves everything and returns to the Kindle home screen.
+- The **power button** puts the Kindle to sleep *in* Quire: the sleep screen is the page you were
+  on (or a pinned page, or the Kindle's own screensaver: Display > Sleep), and waking returns
+  to it. Quire listens to the power service (`lipc-wait-event -m com.lab126.powerd
+  goingToScreenSaver,outOfScreenSaver,...`) like KOReader does, and its own "Sleep after"
+  timer asks for sleep with `lipc-set-prop -i com.lab126.powerd powerButton 1`.
 - Ink is also autosaved 1.5 s after every stroke, so a crash or a forced reboot loses at most
   the last stroke.
 

@@ -1,6 +1,8 @@
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 #include "app.h"
 
+#include "light.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +24,9 @@ static const ScreenOps k_screens[SCR_COUNT] = {
     [SCR_CALIB] = OPS(calibrate), [SCR_SHARE] = OPS(share),
 };
 #undef OPS
+
+static void app_sleep(App *a);
+static void app_wake(App *a);
 
 const char *app_docs_dir(void) {
 #ifdef QUIRE_KINDLE
@@ -54,6 +59,7 @@ int app_init(App *a, int w, int h, float dpi) {
     k_screens[SCR_LIBRARY].enter(a);
     app_invalidate_all(a, REFRESH_FULL);
     a->pending_rotation = -1;
+    a->last_input = now_ms();
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
@@ -93,10 +99,24 @@ void app_event(App *a, const InEvent *ev) {
         return;
     }
     if (ev->type == IN_POWER) {
-        // Clean exit back to the Kindle UI; the launcher restores the framework.
-        qlog("power button: saving and exiting");
-        a->running = false;
+        // The power service handles the button itself (it announces the sleep, which draws the
+        // sleep screen); just make sure nothing is lost. Quitting is Library > Exit.
+        qlog("power button: saving");
+        if (a->scr == SCR_EDITOR) editor_save_now(a);
         return;
+    }
+    if (ev->type == IN_SLEEP) {
+        app_sleep(a);
+        return;
+    }
+    if (ev->type == IN_WAKE) {
+        app_wake(a);
+        return;
+    }
+    if (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON) {
+        a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
+        a->sleep_requested = false;
+        if (a->asleep) app_wake(a);  // woke without hearing about it: never stay "asleep"
     }
     k_screens[a->scr].event(a, ev);
 }
@@ -122,6 +142,55 @@ void app_toast(App *a, const char *msg, int ms) {
     toast_draw(a);
 }
 
+void app_redraw(App *a) {
+    a->toast_visible = false;
+    a->dirty = RECT_EMPTY;
+    k_screens[a->scr].leave(a);
+    k_screens[a->scr].enter(a);
+    app_invalidate_all(a, REFRESH_FULL);
+}
+
+// The sleep screen: the page you were on (or the pinned page), so the Kindle "sleeps on" your
+// notebook and wakes straight back into it. Mode 2 hands over to the Kindle's own screensaver.
+static void app_sleep(App *a) {
+    if (a->asleep) return;
+    a->asleep = true;
+    a->wake_redraw_at = 0;
+    if (a->scr == SCR_EDITOR) editor_save_now(a);
+    qlog("sleep: mode %d", a->settings.sleep_mode);
+    if (a->settings.sleep_mode == 2) {
+        sys_kindle_ui(true);
+        return;
+    }
+    Canvas *c = &a->screen;
+    Canvas pinned = {0};
+    const Canvas *src = NULL;
+    if (a->settings.sleep_mode == 1 && store_load_sleep_image(&pinned) == 0) src = &pinned;
+    if (!src) src = editor_page_canvas(a);
+    if (src) {
+        canvas_reset_clip(c);
+        canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
+        canvas_blit_fit(c, src, (Rect){0, 0, a->w, a->h});
+    }  // (no page open: the screen as it is, e.g. the library, stays up)
+    display_present(c, (Rect){0, 0, a->w, a->h}, REFRESH_FULL);
+    display_wait();
+    canvas_free(&pinned);
+}
+
+static void app_wake(App *a) {
+    if (!a->asleep) return;
+    a->asleep = false;
+    a->last_input = now_ms();
+    a->sleep_requested = false;
+    qlog("wake");
+    if (a->settings.sleep_mode == 2) {
+        sys_kindle_ui(false);
+        a->wake_redraw_at = now_ms() + 2500;  // let the Kindle's screensaver close first
+        return;
+    }
+    app_redraw(a);
+}
+
 void app_set_rotation(App *a, int r) {
     r &= 3;
     int w, h;
@@ -145,6 +214,18 @@ void app_set_rotation(App *a, int r) {
 }
 
 void app_tick(App *a, uint32_t now) {
+    if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0) {
+        a->wake_redraw_at = 0;
+        app_redraw(a);
+    }
+    // Sleep after a while without input, the same way the power button does.
+    if (!a->asleep && !a->sleep_requested && a->settings.sleep_minutes > 0 &&
+        (int32_t)(now - a->last_input) >= a->settings.sleep_minutes * 60000 &&
+        !(a->scr == SCR_EDITOR && editor_busy(a)) && a->scr != SCR_SHARE) {
+        a->sleep_requested = true;
+        sys_request_sleep();
+    }
+    if (a->asleep) return;
     if (a->pending_rotation >= 0 && a->pending_rotation != a->rotation && !(a->scr == SCR_EDITOR && editor_busy(a))) {
         int r = a->pending_rotation;
         a->pending_rotation = -1;
@@ -167,6 +248,7 @@ void app_invalidate(App *a, Rect r, RefreshMode m) {
 void app_invalidate_all(App *a, RefreshMode m) { app_invalidate(a, (Rect){0, 0, a->w, a->h}, m); }
 
 void app_flush(App *a) {
+    if (a->asleep) return;  // the sleep screen stays up until wake
     if (rect_is_empty(a->dirty) && rect_is_empty(g_self_dirty)) return;
     RefreshMode m = a->dirty_mode;
     if (!rect_is_empty(g_self_dirty)) {

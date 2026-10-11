@@ -43,5 +43,7 @@ void canvas_downsample(Canvas *dst, const Canvas *src);
 // Downsample keeping thin dark lines visible: each output pixel blends the box average
 // toward the box minimum (weight 0..1). Used for paper previews.
 void canvas_downsample_keep_lines(Canvas *dst, const Canvas *src, float weight);
+// Scales src into box keeping its aspect (box filter down, nearest up), centered in box.
+void canvas_blit_fit(Canvas *dst, const Canvas *src, Rect box);
 // Invert a rect (used for pressed/selected feedback).
 void canvas_invert(Canvas *c, Rect r);

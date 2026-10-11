@@ -1,6 +1,7 @@
 // light_kindle.c: front light through lipc (com.lab126.powerd), as the stock UI and KOReader do.
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -32,3 +33,15 @@ void light_get(int *intensity, int *warmth) {
 
 void light_set_intensity(int level) { set_prop("flIntensity", level); }
 void light_set_warmth(int level) { set_prop("currentAmberLevel", level); }
+
+void sys_request_sleep(void) {
+    qlog("sleep: asking the power service to sleep");
+    if (system("lipc-set-prop -i com.lab126.powerd powerButton 1 >/dev/null 2>&1") != 0) qlog("sleep: request failed");
+}
+
+void sys_kindle_ui(bool run) {
+    const char *stopped = getenv("QUIRE_AWESOME_STOPPED");
+    if (!stopped || strcmp(stopped, "yes")) return;  // the launcher did not pause it
+    if (system(run ? "killall -CONT awesome 2>/dev/null" : "killall -STOP awesome 2>/dev/null") != 0)
+        qlog("sleep: could not %s the Kindle UI", run ? "resume" : "pause");
+}

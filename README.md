@@ -20,6 +20,9 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
   or hold it about a second without touching the screen, to clear the page. The toolbar's broom clears too.
 - **Pages**: tap the page counter on the toolbar for a grid of page previews; tick pages and
   Delete (they go to `quire/trash`), or tap a preview to jump there.
+- **Sleep**: the power button (or "Sleep after" N minutes without use, in Display) puts the
+  Kindle to sleep showing the page you're on, or a page you pinned, or the Kindle's own
+  screensaver; waking returns straight into Quire. Quit with Library > Exit.
 - **Display**: the Kindle's front light brightness and warmth (system levels 0..24, the same
   ones the stock UI uses), and an invert option that shows Quire white on black.
 - **Zoom and rotation**: pinch with two fingers to zoom 1x..4x and pan; a chip resets to 100%.

@@ -1189,6 +1189,15 @@ void editor_enter(App *a) {
 
 bool editor_busy(App *a) { return S && (S->owner != OWN_NONE || S->pinching); }
 
+const Canvas *editor_page_canvas(App *a) {
+    return (S && S->open && S->page_canvas.px) ? &S->page_canvas : NULL;
+}
+
+bool editor_pin_sleep_page(App *a) {
+    const Canvas *c = editor_page_canvas(a);
+    return c && store_save_sleep_image(c) == 0;
+}
+
 // Two fingers: zoom around the midpoint and pan with it.
 static void pinch(App *a, const InEvent *ev) {
     float mx = (ev->x + ev->x2) * 0.5f, my = (ev->y + ev->y2) * 0.5f;

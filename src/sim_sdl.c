@@ -212,6 +212,16 @@ void light_get(int *i, int *w) {
 }
 void light_set_intensity(int v) { g_light_i = clampi(v, 0, LIGHT_MAX); }
 void light_set_warmth(int v) { g_light_w = clampi(v, 0, LIGHT_MAX); }
+// Simulated sleep: the "power service" answers a sleep request straight away.
+static void q_push(InEvent e);
+void sys_request_sleep(void) {
+    InEvent e = {0};
+    e.type = IN_SLEEP;
+    e.value = 2;
+    e.t_ms = now_ms();
+    q_push(e);
+}
+void sys_kindle_ui(bool run) { (void)run; }
 bool display_overwritten(const Canvas *screen) { (void)screen; return false; }
 
 void display_close(void) {
@@ -371,6 +381,11 @@ static void script_step(void) {
             }
             InEvent e = make_ev(IN_PINCH_END, 0, 0, false);
             e.t_ms += (uint32_t)(steps + 1) * 160;
+            q_push(e);
+            return;
+        } else if (!strcmp(a, "sleep") || !strcmp(a, "wake")) {
+            InEvent e = make_ev(!strcmp(a, "sleep") ? IN_SLEEP : IN_WAKE, 0, 0, true);
+            e.value = !strcmp(a, "sleep") ? 2 : 1;
             q_push(e);
             return;
         } else if (!strcmp(a, "power")) {

@@ -643,10 +643,7 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
 
 // ---- thumbnails ----
 
-int store_save_thumb(const char *id, const Canvas *t) {
-    char dir[600], path[700];
-    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
-    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+static int save_pgm(const char *path, const Canvas *t) {
     char hdr[64];
     int hl = snprintf(hdr, sizeof hdr, "P5\n%d %d\n255\n", t->w, t->h);
     size_t len = (size_t)hl + (size_t)t->w * (size_t)t->h;
@@ -659,16 +656,13 @@ int store_save_thumb(const char *id, const Canvas *t) {
     return rc;
 }
 
-int store_load_thumb(const char *id, Canvas *out) {
-    char dir[600], path[700];
+static int load_pgm(const char *path, Canvas *out) {
     memset(out, 0, sizeof *out);
-    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
-    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
     size_t len;
     uint8_t *d = read_file(path, &len);
     if (!d) return -1;
     int w = 0, h = 0, mx = 0, off = 0;
-    if (sscanf((char *)d, "P5 %d %d %d%n", &w, &h, &mx, &off) != 3 || w <= 0 || h <= 0 || w > 4000 || h > 4000 ||
+    if (sscanf((char *)d, "P5 %d %d %d%n", &w, &h, &mx, &off) != 3 || w <= 0 || h <= 0 || w > 8000 || h > 8000 ||
         mx != 255 || (size_t)off + 1 + (size_t)w * h > len) {
         free(d);
         return -1;
@@ -680,6 +674,33 @@ int store_load_thumb(const char *id, Canvas *out) {
     memcpy(out->px, d + off + 1, (size_t)w * h);
     free(d);
     return 0;
+}
+
+int store_save_thumb(const char *id, const Canvas *t) {
+    char dir[600], path[700];
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
+    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+    return save_pgm(path, t);
+}
+
+int store_load_thumb(const char *id, Canvas *out) {
+    char dir[600], path[700];
+    memset(out, 0, sizeof *out);
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
+    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+    return load_pgm(path, out);
+}
+
+int store_save_sleep_image(const Canvas *c) {
+    char path[600];
+    snprintf(path, sizeof path, "%s/sleep.pgm", g_root);
+    return save_pgm(path, c);
+}
+
+int store_load_sleep_image(Canvas *out) {
+    char path[600];
+    snprintf(path, sizeof path, "%s/sleep.pgm", g_root);
+    return load_pgm(path, out);
 }
 
 // ---- settings ----
@@ -695,6 +716,8 @@ void settings_default(Settings *s) {
     s->mirror_pdf = true;
     s->follow_rotation = true;
     s->pinch_zoom = true;
+    s->sleep_mode = 0;
+    s->sleep_minutes = 10;
     s->http_port = 8765;
 }
 
@@ -740,6 +763,8 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "follow_rotation")) s->follow_rotation = atoi(v) != 0;
     else if (!strcmp(k, "invert")) s->invert = atoi(v) != 0;
     else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = atoi(v) != 0;
+    else if (!strcmp(k, "sleep_mode")) s->sleep_mode = clampi(atoi(v), 0, 2);
+    else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = clampi(atoi(v), 0, 240);
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
 }
@@ -793,10 +818,10 @@ int settings_save(const Settings *s) {
     if (!buf) return -1;
     n += (size_t)snprintf(buf + n, cap - n,
                           "# Quire settings\ncurrent_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
-                          "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nhttp_port=%d\n"
+                          "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
                           "settings_version=%d\n",
                           (int)s->current_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
-                          s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->http_port,
+                          s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->sleep_mode, s->sleep_minutes, s->http_port,
                           SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};

@@ -11,3 +11,10 @@ bool light_available(void);
 void light_get(int *intensity, int *warmth);
 void light_set_intensity(int level);
 void light_set_warmth(int level);
+
+// Other bits of the Kindle system Quire drives.
+// Ask the power service to go to sleep, exactly as a power button press would.
+void sys_request_sleep(void);
+// Resume / pause the Kindle's window manager (only if the launcher paused it): the Kindle's own
+// screensaver can only show while it runs.
+void sys_kindle_ui(bool run);

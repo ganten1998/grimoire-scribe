@@ -131,29 +131,6 @@ static void unique_name(App *a, const char *base, char *out, size_t cap) {
     }
 }
 
-// Scales src into box keeping aspect (box filter down, nearest up), centered.
-static void blit_fit(Canvas *dst, const Canvas *src, Rect box) {
-    float sc = fminf((float)box.w / src->w, (float)box.h / src->h);
-    int w = (int)(src->w * sc), h = (int)(src->h * sc);
-    int ox = box.x + (box.w - w) / 2, oy = box.y + (box.h - h) / 2;
-    Rect clip = rect_intersect((Rect){ox, oy, w, h}, dst->clip);
-    for (int y = clip.y; y < clip.y + clip.h; y++) {
-        int sy0 = (int)((float)(y - oy) / sc), sy1 = (int)((float)(y - oy + 1) / sc);
-        if (sy1 <= sy0) sy1 = sy0 + 1;
-        for (int x = clip.x; x < clip.x + clip.w; x++) {
-            int sx0 = (int)((float)(x - ox) / sc), sx1 = (int)((float)(x - ox + 1) / sc);
-            if (sx1 <= sx0) sx1 = sx0 + 1;
-            unsigned sum = 0, n = 0;
-            for (int yy = sy0; yy < sy1 && yy < src->h; yy++)
-                for (int xx = sx0; xx < sx1 && xx < src->w; xx++) {
-                    sum += src->px[yy * src->stride + xx];
-                    n++;
-                }
-            dst->px[y * dst->stride + x] = n ? (uint8_t)(sum / n) : 255;
-        }
-    }
-}
-
 static const Canvas *paper_preview(App *a, PaperKind k) {
     Canvas *c = &S->paper_prev[k];
     if (!c->px) {
@@ -192,7 +169,7 @@ static void draw_card(App *a, Rect r, int idx) {
         Canvas *cc = c;
         Rect saved = cc->clip;
         canvas_set_clip(cc, rect_inflate(tb, -ui_px(3)));
-        if (t) blit_fit(cc, t, rect_inflate(tb, -ui_px(3)));
+        if (t) canvas_blit_fit(cc, t, rect_inflate(tb, -ui_px(3)));
         cc->clip = saved;
     }
     canvas_round_rect(c, tb, ui_px(16), 0, false, ui_px(4));
@@ -317,7 +294,7 @@ static void draw_new(App *a) {
         Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap), ty + (i / cols) * cell_h, tw, tht};
         canvas_fill(c, tr, 255);
         const Canvas *pv = paper_preview(a, k);
-        if (pv) blit_fit(c, pv, tr);
+        if (pv) canvas_blit_fit(c, pv, tr);
         bool sel = S->new_paper == k;
         canvas_round_rect(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};

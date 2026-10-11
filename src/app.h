@@ -29,6 +29,10 @@ typedef struct App {
     int ui_refreshes_since_full;   // promote to FULL every 30
     int rotation;                  // applied device rotation (quarter turns clockwise)
     int pending_rotation;          // reported by the sensor, applied when it is safe; -1 none
+    bool asleep;                   // the Kindle is showing the sleep screen
+    uint32_t last_input;           // for the sleep timeout
+    bool sleep_requested;
+    uint32_t wake_redraw_at;       // 0 none: redraw after the Kindle's own screensaver closes
 
     // Toast (drawn by app over any screen, auto-hidden after toast_until).
     char toast[128];
@@ -86,6 +90,10 @@ DECLARE_SCREEN(share)
 void editor_open_notebook(App *a, const char *id);   // loads, switches to SCR_EDITOR
 void editor_save_now(App *a);                        // flush pending page/info saves
 bool editor_busy(App *a);                            // a stroke / drag / pinch is in progress
+const Canvas *editor_page_canvas(App *a);            // the open page (paper + ink), or NULL
+bool editor_pin_sleep_page(App *a);                  // saves the open page as the sleep screen
+// Redraw the current screen from scratch (after sleep, or anything that drew over us).
+void app_redraw(App *a);
 void pensettings_open(App *a, ToolKind tab);         // switch to SCR_PENSET (returns to prev_scr)
 void calibrate_open(App *a);                         // switch to SCR_CALIB (returns to prev_scr)
 void share_open(App *a);                             // switch to SCR_SHARE (returns to prev_scr)

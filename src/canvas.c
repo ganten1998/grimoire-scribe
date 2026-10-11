@@ -179,6 +179,28 @@ void canvas_downsample_keep_lines(Canvas *dst, const Canvas *src, float weight) 
     }
 }
 
+void canvas_blit_fit(Canvas *dst, const Canvas *src, Rect box) {
+    float sc = fminf((float)box.w / src->w, (float)box.h / src->h);
+    int w = (int)(src->w * sc), h = (int)(src->h * sc);
+    int ox = box.x + (box.w - w) / 2, oy = box.y + (box.h - h) / 2;
+    Rect clip = rect_intersect((Rect){ox, oy, w, h}, dst->clip);
+    for (int y = clip.y; y < clip.y + clip.h; y++) {
+        int sy0 = (int)((float)(y - oy) / sc), sy1 = (int)((float)(y - oy + 1) / sc);
+        if (sy1 <= sy0) sy1 = sy0 + 1;
+        for (int x = clip.x; x < clip.x + clip.w; x++) {
+            int sx0 = (int)((float)(x - ox) / sc), sx1 = (int)((float)(x - ox + 1) / sc);
+            if (sx1 <= sx0) sx1 = sx0 + 1;
+            unsigned sum = 0, n = 0;
+            for (int yy = sy0; yy < sy1 && yy < src->h; yy++)
+                for (int xx = sx0; xx < sx1 && xx < src->w; xx++) {
+                    sum += src->px[yy * src->stride + xx];
+                    n++;
+                }
+            dst->px[y * dst->stride + x] = n ? (uint8_t)(sum / n) : 255;
+        }
+    }
+}
+
 void canvas_invert(Canvas *c, Rect r) {
     r = rect_intersect(r, c->clip);
     for (int y = r.y; y < r.y + r.h; y++) {

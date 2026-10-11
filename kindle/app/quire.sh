@@ -113,7 +113,7 @@ usleep 900000 2>/dev/null || sleep 1
 
 cd "$DIR" || exit 1
 rm -f /tmp/quire.alive
-QUIRE_ROOT="$ROOT" "$DIR/quire" >>"$LOG" 2>&1 &
+QUIRE_AWESOME_STOPPED="$AWESOME_STOPPED" QUIRE_ROOT="$ROOT" "$DIR/quire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Quire running as pid $QPID"
 # Watchdog: Quire touches /tmp/quire.alive every 2 s once its first frame is up. No first

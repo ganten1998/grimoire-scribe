@@ -1,6 +1,8 @@
 // dispmenu.h: the Display sheet (front light brightness + warmth, invert Quire's colors).
 // A modal hosted by the editor and the library; it draws itself and handles pointer input.
 #pragma once
+#include <stdlib.h>
+
 #include "app.h"
 
 typedef enum { DM_NONE = 0, DM_CHANGED, DM_CLOSED, DM_INVERTED } DmResult;
@@ -10,7 +12,8 @@ typedef struct {
     Rect rect;
     HitList hits;
     int intensity, warmth;   // 0..LIGHT_MAX, -1 unknown
-    int active;              // slider being dragged: 0 none, 1 brightness, 2 warmth
+    int active;              // slider being dragged (its D_* id), 0 none
+    Rect active_row;         // that slider's row
     uint32_t last_apply;
     Press press;
 } DispMenu;

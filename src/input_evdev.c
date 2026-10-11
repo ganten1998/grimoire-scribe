@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "calib_fit.h"
@@ -49,6 +50,12 @@ static bool g_pressure_missing;   // contact without pressure for a while: use a
 
 static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
 static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
+// Power state from the Kindle's power service: `lipc-wait-event -m com.lab126.powerd ...` runs
+// as a child and prints one line per event (the same events KOReader uses for its screensaver).
+static int g_powerd_fd = -1;
+static pid_t g_powerd_pid = -1;
+static char g_powerd_buf[512];
+static size_t g_powerd_len;
 static int g_rot;             // logical screen rotation, quarter turns clockwise
 static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
 static struct {
@@ -490,6 +497,61 @@ static void handle_orient_fd(void) {
     }
 }
 
+static void powerd_start(void) {
+    int p[2];
+    if (pipe(p) != 0) return;
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(p[0]);
+        close(p[1]);
+        return;
+    }
+    if (pid == 0) {
+        dup2(p[1], 1);
+        close(p[0]);
+        close(p[1]);
+        execlp("lipc-wait-event", "lipc-wait-event", "-m", "com.lab126.powerd",
+               "goingToScreenSaver,outOfScreenSaver,readyToSuspend,wakeupFromSuspend", (char *)NULL);
+        _exit(127);
+    }
+    close(p[1]);
+    fcntl(p[0], F_SETFL, O_NONBLOCK);
+    g_powerd_fd = p[0];
+    g_powerd_pid = pid;
+    qlog("input: watching the power service (pid %d)", (int)pid);
+}
+
+static void handle_powerd_fd(void) {
+    ssize_t r = read(g_powerd_fd, g_powerd_buf + g_powerd_len, sizeof g_powerd_buf - 1 - g_powerd_len);
+    if (r <= 0) {
+        if (r == 0) {  // the watcher died: stop polling it
+            close(g_powerd_fd);
+            g_powerd_fd = -1;
+            qlog("input: power service watcher ended");
+        }
+        return;
+    }
+    g_powerd_len += (size_t)r;
+    g_powerd_buf[g_powerd_len] = 0;
+    char *line;
+    while ((line = strchr(g_powerd_buf, '\n'))) {
+        *line = 0;
+        qlog("input: power service: %s", g_powerd_buf);
+        InEvent e = {0};
+        if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
+        else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16)) e.type = IN_WAKE;
+        if (e.type) {
+            e.value = atoi(g_powerd_buf + strcspn(g_powerd_buf, " "));
+            e.t_ms = now_ms();
+            q_push(e);
+        }
+        size_t used = (size_t)(line - g_powerd_buf) + 1;
+        memmove(g_powerd_buf, line + 1, g_powerd_len - used + 1);
+        g_powerd_len -= used;
+    }
+    if (g_powerd_len >= sizeof g_powerd_buf - 1) g_powerd_len = 0;  // no newline in sight: drop
+}
+
 static void handle_power_fd(void) {
     struct input_event evs[16];
     ssize_t r = read(g_power_fd, evs, sizeof evs);
@@ -682,6 +744,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
     if (pen && pen->valid) g_pen_cal = *pen;
     if (touch && touch->valid) g_touch_cal = *touch;
 
+    powerd_start();
     if (pipe(g_sigpipe) == 0) {
         fcntl(g_sigpipe[0], F_SETFL, O_NONBLOCK);
         fcntl(g_sigpipe[1], F_SETFL, O_NONBLOCK);
@@ -701,8 +764,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         return 1;
     }
     if (q_pop(ev)) return 1;
-    struct pollfd pf[7];
-    int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1;
+    struct pollfd pf[8];
+    int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1, ipwd = -1;
+    if (g_powerd_fd >= 0) ipwd = n, pf[n++] = (struct pollfd){g_powerd_fd, POLLIN, 0};
     if (g_orient_fd >= 0) iori = n, pf[n++] = (struct pollfd){g_orient_fd, POLLIN, 0};
     if (g_wacom.fd >= 0) iwac = n, pf[n++] = (struct pollfd){g_wacom.fd, POLLIN, 0};
     if (g_pen.fd >= 0) ipen = n, pf[n++] = (struct pollfd){g_pen.fd, POLLIN, 0};
@@ -718,6 +782,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
     if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
     if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
     if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
+    if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
     if (isig >= 0 && (pf[isig].revents & POLLIN)) {
         char buf[16];
         while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
@@ -759,6 +824,13 @@ void input_close(void) {
     g_wacom.fd = -1;
     if (g_orient_fd >= 0) close(g_orient_fd);
     g_orient_fd = -1;
+    if (g_powerd_pid > 0) {
+        kill(g_powerd_pid, SIGTERM);
+        waitpid(g_powerd_pid, NULL, 0);
+    }
+    if (g_powerd_fd >= 0) close(g_powerd_fd);
+    g_powerd_fd = -1;
+    g_powerd_pid = -1;
     for (int i = 0; i < 2; i++)
         if (g_sigpipe[i] >= 0) close(g_sigpipe[i]);
     g_pen.fd = g_touch.fd = g_power_fd = -1;
