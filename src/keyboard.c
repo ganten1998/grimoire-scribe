@@ -131,23 +131,31 @@ static int key_at(const Keyboard *kb, float x, float y) {
 KbResult keyboard_pointer(Keyboard *kb, int phase, float x, float y, uint32_t t, Rect *dirty) {
     *dirty = RECT_EMPTY;
     if (!kb->open) return KB_NONE;
+    kb->field_dirty = RECT_EMPTY;
     Key keys[MAX_KEYS];
     int n = layout(kb->area, keys);
     if (phase == 0) {
         press_begin(&kb->press, x, y, t);
         kb->pressed_key = key_at(kb, x, y);
-        if (kb->pressed_key >= 0) *dirty = keys[kb->pressed_key].r;
-        return KB_NONE;
-    }
-    if (phase == 1) {
+        kb->typed = false;
+        if (kb->pressed_key < 0) return KB_NONE;
+        *dirty = keys[kb->pressed_key].r;
+        int c = keys[kb->pressed_key].code;
+        if (c == K_SHIFT || c == K_DONE || c == K_CANCEL) return KB_NONE;
+        kb->typed = true;  // type now: the lift only releases the key
+    } else if (phase == 1) {
         press_move(&kb->press, x, y);
         return KB_NONE;
+    } else {
+        int k = kb->pressed_key;
+        kb->pressed_key = -1;
+        if (k < 0 || k >= n) return KB_NONE;
+        *dirty = keys[k].r;
+        if (kb->typed) return KB_NONE;
+        if (key_at(kb, x, y) != k) return KB_NONE;  // slid off the key: no input
     }
-    int k = kb->pressed_key;
-    kb->pressed_key = -1;
+    int k = kb->pressed_key >= 0 ? kb->pressed_key : key_at(kb, x, y);
     if (k < 0 || k >= n) return KB_NONE;
-    *dirty = keys[k].r;
-    if (key_at(kb, x, y) != k) return KB_NONE;  // slid off the key: no input
     int code = keys[k].code;
     size_t len = strlen(kb->text);
     switch (code) {
@@ -170,6 +178,6 @@ KbResult keyboard_pointer(Keyboard *kb, int phase, float x, float y, uint32_t t,
             *dirty = kb->area;
         }
     }
-    *dirty = rect_union(*dirty, field_rect(kb->area));
+    kb->field_dirty = field_rect(kb->area);
     return KB_CHANGED;
 }

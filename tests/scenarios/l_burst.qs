@@ -1,7 +1,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 600 496
+tap 510 460
 tap 1564 2254
 wait 300
 pen line 200 500 270 540 6 0.5 0.7

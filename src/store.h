@@ -26,6 +26,7 @@ typedef struct {
     ToolParams tools[TOOL_COUNT];
     ToolKind current_tool;        // what the pen draws with (may be the eraser)
     ToolKind draw_tool;           // the drawing tool the toolbar's tool button shows
+    PaperKind music_layout;       // the last custom music layout built (offered on the Custom tile)
     int panel_x, panel_y;         // floating panel top-left
     bool panel_collapsed;
     int side_button;              // holding the pen button: 0 nothing, 1 eraser, 2 highlighter
@@ -82,6 +83,7 @@ int store_load_thumb(const char *id, Canvas *out);   // canvas_init'd by the cal
 
 // Page file format "QPG1" (little-endian):
 //   char magic[4]="QPG1"; u16 version=1; u16 paper; u32 w, h; u32 nstrokes;
+//   (version 2, custom music paper only: u32 paper follows h; the u16 then says PAPER_MUSIC)
 //   per stroke: u8 tool; u8 pad[3]; u32 seed; f32 params[13] (ToolParams field order);
 //               u32 npts; per point: f32 x, y; u16 pressure*65535; i16 tilt_x*100, tilt_y*100; u32 t_ms
 // Readers reject bad magic, clamp counts against the file size, and never trust lengths.

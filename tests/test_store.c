@@ -136,6 +136,38 @@ TEST(fuzz_deserialize) {
     free(d);
 }
 
+TEST(custom_music_paper_roundtrip) {
+    MusicLayout m = {.systems = 3, .n = 5, .part = {PART_TREBLE, PART_BASS, PART_TAB6, PART_LYRICS, PART_TAB4}};
+    PaperKind k = music_encode(&m);
+    MusicLayout r;
+    CHECK(paper_is_custom(k) && music_decode(k, &r));
+    CHECK(r.systems == 3 && r.n == 5 && r.part[1] == PART_BASS && r.part[4] == PART_TAB4);
+    CHECK(paper_sanitize((uint32_t)k, PAPER_BLANK) == k);
+    CHECK(paper_sanitize((uint32_t)PAPER_CUSTOM_FLAG, PAPER_BLANK) == PAPER_BLANK);         // no parts
+    CHECK(paper_sanitize((uint32_t)PAPER_CUSTOM_FLAG | 1u << 24 | 15u, PAPER_BLANK) == PAPER_BLANK);  // bad part
+    CHECK(paper_sanitize(999u, PAPER_MEDIUM) == PAPER_MEDIUM);
+    CHECK(music_max_systems(&m) >= 2 && music_max_systems(&m) <= MUSIC_MAX_SYSTEMS);
+    Page *p = page_new(1860, 2480, k);
+    page_add(p, squiggle(0, 300.f));
+    uint8_t *d;
+    size_t len;
+    CHECK(page_serialize(p, &d, &len) == 0);
+    CHECK(d[4] == 2);  // version 2 only for custom paper
+    Page *q = NULL;
+    CHECK(page_deserialize(d, len, &q) == 0 && q && q->paper == k && q->n == 1);
+    for (size_t l = 0; l < len; l += 5) {
+        Page *t;
+        CHECK(page_deserialize(d, l, &t) != 0 || (page_free(t), 1));
+    }
+    page_free(q);
+    free(d);
+    page_free(p);
+    p = page_new(1860, 2480, PAPER_BASS5);
+    CHECK(page_serialize(p, &d, &len) == 0 && d[4] == 1);  // fixed papers stay version 1
+    free(d);
+    page_free(p);
+}
+
 TEST(settings_roundtrip) {
     Settings s, t;
     settings_default(&s);

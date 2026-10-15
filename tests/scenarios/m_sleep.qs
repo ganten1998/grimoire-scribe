@@ -3,7 +3,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 600 496
+tap 510 460
 tap 1564 2254
 wait 300
 pen curve 300 520 50 70 0.7 4

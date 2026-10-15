@@ -1,7 +1,7 @@
 # Quire
 
 A homebrew notebook for the jailbroken **Kindle Scribe 2** (2024): narrow, medium and wide
-rule plus Cornell, dot grid, graph, sheet music, grand staff and guitar tab, a library of notebooks and folders, seven pens tuned for the Scribe's
+rule plus Cornell, dot grid, graph, sheet music, grand staff, guitar and 4/5/6/7-string bass tab, custom music layouts, a library of notebooks and folders, seven pens tuned for the Scribe's
 pressure + tilt digitizer, a floating tool panel, and three easy ways to get pages onto a
 computer. One static binary, launched from a Library scriptlet. Typeset in Terminess.
 
@@ -11,7 +11,10 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
 
 - **Paper**: narrow (5.5 mm), medium (7.1 mm), wide (9 mm) rule, each with or without the
   margin line, Cornell notes (cue column + summary), 5 mm dot grid, 5 mm graph paper, roomy 8-staff
-  sheet music, grand staff (treble + bass with brace), 6-line guitar tab, blank. Each page can change paper on its own (undoable).
+  sheet music, grand staff (treble + bass with brace), 6-line guitar tab, 4/5/6/7-string bass tab,
+  blank, and **Custom music**: stack treble / bass / alto / tenor / drum / plain staves, 4-7 line
+  tabs and lyric lines into a system (up to 6 parts), reorder them, choose how many systems go on a
+  page (it shows how many fit), with a live page preview. Treble directly over bass gets a piano brace. Each page can change paper on its own (undoable).
 - **Library**: notebooks as cards with thumbnails, one level of folders, rename / move / delete
   (delete goes to `quire/trash`, never unlinked). Notebooks reopen on the page you left.
 - **Pens**: pencil (graphite with paper grain, shades when tilted), mechanical pencil (thin,

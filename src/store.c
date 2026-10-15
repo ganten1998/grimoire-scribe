@@ -93,7 +93,7 @@ static void info_cb(void *ctx, const char *k, const char *v) {
     NotebookInfo *nb = ctx;
     if (!strcmp(k, "name")) clean_line(nb->name, v, sizeof nb->name);
     else if (!strcmp(k, "folder")) clean_line(nb->folder, v, sizeof nb->folder);
-    else if (!strcmp(k, "paper")) nb->paper = (PaperKind)clampi(atoi(v), 0, PAPER_COUNT - 1);
+    else if (!strcmp(k, "paper")) nb->paper = paper_sanitize((uint32_t)strtoul(v, NULL, 10), PAPER_MEDIUM);
     else if (!strcmp(k, "created")) nb->created = atoll(v);
     else if (!strcmp(k, "modified")) nb->modified = atoll(v);
     else if (!strcmp(k, "last_page")) nb->last_page = atoi(v);
@@ -142,9 +142,9 @@ static int write_info(const NotebookInfo *nb) {
     clean_line(name, nb->name, sizeof name);
     clean_line(folder, nb->folder, sizeof folder);
     int n = snprintf(buf, cap,
-                     "# Quire notebook\nname=%s\nfolder=%s\npaper=%d\ncreated=%lld\nmodified=%lld\n"
+                     "# Quire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n"
                      "last_page=%d\nnext_page_id=%u\npages=",
-                     name, folder, (int)nb->paper, (long long)nb->created, (long long)nb->modified, nb->last_page,
+                     name, folder, (unsigned)nb->paper, (long long)nb->created, (long long)nb->modified, nb->last_page,
                      nb->next_page_id);
     for (int i = 0; i < nb->npages && (size_t)n < cap - 16; i++)
         n += snprintf(buf + n, cap - (size_t)n, "%s%u", i ? "," : "", nb->page_ids[i]);
@@ -200,7 +200,7 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
              tm.tm_hour, tm.tm_min, tm.tm_sec, rnd);
     clean_line(nb->name, name && *name ? name : "Untitled", sizeof nb->name);
     clean_line(nb->folder, folder ? folder : "", sizeof nb->folder);
-    nb->paper = (paper >= 0 && paper < PAPER_COUNT) ? paper : PAPER_MEDIUM;
+    nb->paper = paper_sanitize((uint32_t)paper, PAPER_MEDIUM);
     nb->created = nb->modified = (int64_t)t;
     nb->npages = 1;
     nb->page_ids[0] = 1;
@@ -513,11 +513,15 @@ static void w_f32(W *w, float f) {
 
 int page_serialize(const Page *p, uint8_t **out, size_t *len) {
     W w = {0};
+    // Version 2 only when the paper needs it (a custom music layout, 32 bits): fixed-paper
+    // pages stay version 1, readable by older builds.
+    bool custom = paper_is_custom(p->paper);
     w_bytes(&w, "QPG1", 4);
-    w_u16(&w, 1);
-    w_u16(&w, (uint16_t)p->paper);
+    w_u16(&w, custom ? 2 : 1);
+    w_u16(&w, custom ? (uint16_t)PAPER_MUSIC : (uint16_t)p->paper);
     w_u32(&w, (uint32_t)p->w);
     w_u32(&w, (uint32_t)p->h);
+    if (custom) w_u32(&w, (uint32_t)p->paper);
     w_u32(&w, (uint32_t)p->n);
     for (int i = 0; i < p->n; i++) {
         const Stroke *s = p->strokes[i];
@@ -591,11 +595,13 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     const uint8_t *m = r_take(&r, 4);
     if (!m || memcmp(m, "QPG1", 4) != 0) return -1;
     uint16_t ver = r_u16(&r);
-    uint16_t paper = r_u16(&r);
-    uint32_t w = r_u32(&r), h = r_u32(&r), ns = r_u32(&r);
-    if (r.err || ver != 1 || w == 0 || h == 0 || w > 20000 || h > 20000) return -1;
+    uint32_t paper = r_u16(&r);
+    uint32_t w = r_u32(&r), h = r_u32(&r);
+    if (ver == 2) paper = r_u32(&r);
+    uint32_t ns = r_u32(&r);
+    if (r.err || (ver != 1 && ver != 2) || w == 0 || h == 0 || w > 20000 || h > 20000) return -1;
     if (ns > (len - r.pos) / STROKE_HEADER_BYTES) return -1;
-    Page *p = page_new((int)w, (int)h, paper < PAPER_COUNT ? (PaperKind)paper : PAPER_BLANK);
+    Page *p = page_new((int)w, (int)h, paper_sanitize(paper, PAPER_BLANK));
     if (!p) return -1;
     for (uint32_t i = 0; i < ns && !r.err; i++) {
         uint8_t tool = r_u8(&r);
@@ -713,6 +719,7 @@ void settings_default(Settings *s) {
     for (int t = 0; t < TOOL_COUNT; t++) tool_params_default(t, &s->tools[t]);
     s->current_tool = TOOL_PENCIL;
     s->draw_tool = TOOL_PENCIL;
+    s->music_layout = music_default();
     s->panel_x = s->panel_y = -1;
     s->side_button = 2;  // highlighter
     s->mirror_pdf = true;
@@ -757,6 +764,7 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
         return;
     }
     if (!strcmp(k, "current_tool")) s->current_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
+    else if (!strcmp(k, "music_layout")) s->music_layout = paper_sanitize((uint32_t)strtoul(v, NULL, 10), music_default());
     else if (!strcmp(k, "draw_tool")) s->draw_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
     else if (!strcmp(k, "panel_x")) s->panel_x = atoi(v);
     else if (!strcmp(k, "panel_y")) s->panel_y = atoi(v);
@@ -822,10 +830,10 @@ int settings_save(const Settings *s) {
     n += (size_t)snprintf(buf + n, cap - n,
                           "# Quire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
                           "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
-                          "settings_version=%d\n",
+                          "music_layout=%u\nsettings_version=%d\n",
                           (int)s->current_tool, (int)s->draw_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
                           s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->sleep_mode, s->sleep_minutes, s->http_port,
-                          SETTINGS_VERSION);
+                          (unsigned)s->music_layout, SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
     for (int i = 0; i < 2; i++)

@@ -2,7 +2,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 600 496
+tap 510 460
 tap 1564 2254
 wait 300
 pentap 1768 358
@@ -121,7 +121,7 @@ wait 100
 pentap 1768 1242
 wait 200
 shot 04-paper-sheet
-pentap 1599 1058
+pentap 1066 1027
 wait 300
 shot 05-paper-music
 pentap 1768 594

@@ -81,7 +81,7 @@ Page *page_new(int w, int h, PaperKind paper) {
     if (!p) return NULL;
     p->w = w;
     p->h = h;
-    p->paper = (paper >= 0 && paper < PAPER_COUNT) ? paper : PAPER_BLANK;
+    p->paper = paper_sanitize((uint32_t)paper, PAPER_BLANK);
     return p;
 }
 

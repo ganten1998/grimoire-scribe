@@ -57,14 +57,17 @@ TEST(paper_subregion_matches_full) {
     Canvas full, part;
     canvas_init(&full, W, H);
     canvas_init(&part, W, H);
-    for (int k = 0; k < PAPER_COUNT; k++) {
+    MusicLayout mix = {.systems = 3, .n = 5, .part = {PART_TREBLE, PART_BASS, PART_TAB6, PART_LYRICS, PART_TAB4}};
+    MusicLayout clefs = {.systems = 2, .n = 4, .part = {PART_ALTO, PART_TENOR, PART_PERC, PART_TAB7}};
+    for (int i = 0; i < PAPER_COUNT + 2; i++) {
+        PaperKind k = i < PAPER_COUNT ? (PaperKind)i : music_encode(i == PAPER_COUNT ? &mix : &clefs);
         paper_render(&full, k, (Rect){0, 0, W, H}, DPI);
         canvas_fill(&part, (Rect){0, 0, W, H}, 77);
         Rect tiles[] = {{0, 0, 700, 900}, {700, 0, W - 700, 900}, {0, 900, 333, H - 900}, {333, 900, W - 333, H - 900}};
         for (int i = 0; i < 4; i++) paper_render(&part, k, tiles[i], DPI);
         CHECK(memcmp(full.px, part.px, (size_t)W * H) == 0);
         char name[64];
-        snprintf(name, sizeof name, "paper-%d.png", k);
+        snprintf(name, sizeof name, "paper-%d.png", i);
         out_png(name, &full);
     }
     // Pitch for medium rule: find consecutive rule rows in a column away from the margin.

@@ -4,7 +4,7 @@ shot 01-library-empty
 tap 965 95
 wait 200
 shot 02-new-sheet
-tap 600 496
+tap 510 460
 wait 100
 tap 1564 2254
 wait 400

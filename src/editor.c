@@ -13,15 +13,16 @@
 #include "app.h"
 #include "export.h"
 #include "dispmenu.h"
+#include "musicbuild.h"
 #include "history.h"
 
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
-    P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
+    P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
     PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, P_TOOLPICK, P_PICK_TOOL,
 };
 
-typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS } Owner;
+typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD } Owner;
 
 // Every page visited while a notebook is open stays in memory with its history: undo
 // actions point at the page's live Stroke objects, so a page must never be freed and
@@ -122,6 +123,9 @@ struct EditorState {
     Rect paper_rect;
     HitList modal_hits;
     Canvas paper_prev[PAPER_COUNT];
+    Canvas custom_prev;         // the Custom music tile's preview (one layout at a time)
+    PaperKind custom_prev_k;
+    MusicBuild mb;              // the Custom music sheet
 };
 
 #define S (a->ed)
@@ -300,7 +304,14 @@ static void draw_panel(App *a) {
 }
 
 static const Canvas *paper_preview(App *a, PaperKind k) {
-    Canvas *c = &S->paper_prev[k];
+    Canvas *c;
+    if (paper_is_custom(k)) {
+        c = &S->custom_prev;
+        if (c->px && S->custom_prev_k != k) canvas_free(c);
+        S->custom_prev_k = k;
+    } else {
+        c = &S->paper_prev[clampi((int)k, 0, PAPER_COUNT - 1)];
+    }
     if (!c->px) {
         Canvas full;
         if (canvas_init(&full, S->pgw, S->pgh) != 0) return NULL;
@@ -314,7 +325,8 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
 static void draw_paper_sheet(App *a) {
     Canvas *c = &a->screen;
     hits_clear(&S->modal_hits);
-    int m = ui_px(70), gap_ = ui_px(30), cols = PAPER_COUNT > 8 ? 5 : 4, rows = (PAPER_COUNT + cols - 1) / cols;
+    const int ntiles = PAPER_PICKER_COUNT;
+    int m = ui_px(70), gap_ = ui_px(30), cols = ntiles > 15 ? 6 : ntiles > 8 ? 5 : 4, rows = (ntiles + cols - 1) / cols;
     int tw = (a->w - 2 * m - ui_px(72) - (cols - 1) * gap_) / cols;
     if (tw > a->w / 6) tw = a->w / 6;
     int max_th = (a->h - ui_px(120) - ui_px(72) - ui_px(190) - ui_px(80)) / rows - ui_px(100);
@@ -324,17 +336,21 @@ static void draw_paper_sheet(App *a) {
     int sheet_h = ui_px(120) + ui_px(72) + rows * cell_h + ui_px(190);
     S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
     Rect in = ui_sheet(c, S->paper_rect, "Paper for this page");
-    for (int i = 0; i < PAPER_COUNT; i++) {
-        PaperKind k = paper_at(i);
+    for (int i = 0; i < ntiles; i++) {
+        // The last tile is Custom music: it shows this page's layout, or the last one built.
+        bool custom = i == PAPER_COUNT;
+        bool page_custom = S->page && paper_is_custom(S->page->paper);
+        PaperKind k = custom ? (page_custom ? S->page->paper : a->settings.music_layout) : paper_at(i);
         Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap_), in.y + (i / cols) * cell_h, tw, th};
         canvas_fill(c, tr, 255);
         const Canvas *pv = paper_preview(a, k);
-        if (pv) canvas_blit(c, pv, (Rect){0, 0, tw, th}, tr.x, tr.y);
-        bool sel = S->page && S->page->paper == (PaperKind)k;
+        if (pv) canvas_blit_fit(c, pv, tr);
+        bool sel = custom ? page_custom : (S->page && S->page->paper == k);
         canvas_round_rect(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f,
-                           (Rect){tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)}, paper_name(k), 0);
-        hits_add(&S->modal_hits, (Rect){tr.x, tr.y, tw, th + ui_px(90)}, P_PICK_PAPER, (int)k);
+                           (Rect){tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)},
+                           custom ? "Custom music..." : paper_name(k), 0);
+        hits_add(&S->modal_hits, (Rect){tr.x, tr.y, tw, th + ui_px(90)}, custom ? P_PICK_CUSTOM : P_PICK_PAPER, (int)k);
     }
     Rect cancel = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
     ui_button(c, cancel, ICON_NONE, "Cancel", BTN_PLAIN);
@@ -598,6 +614,7 @@ static void compose(App *a, Rect r) {
     if (rect_overlaps(r, S->panel)) draw_panel(a);
     if (S->paper_open && rect_overlaps(r, S->paper_rect)) draw_paper_sheet(a);
     if (S->dm.open && rect_overlaps(r, S->dm.rect)) dispmenu_draw(&S->dm, a);
+    if (S->mb.open && rect_overlaps(r, S->mb.rect)) musicbuild_draw(&S->mb, a);
     if (S->tools_open && rect_overlaps(r, S->tools_rect)) draw_tools(a);
 }
 
@@ -915,7 +932,7 @@ static void pen_button(App *a, const InEvent *ev) {
     S->clicks[S->nclicks++] = t;
     if (S->nclicks == 3 && S->clicks[2] - S->clicks[0] <= 1200) {
         S->nclicks = 0;
-        if (S->owner == OWN_NONE && !S->paper_open && !S->pages_open) clear_page(a);
+        if (S->owner == OWN_NONE && !S->paper_open && !S->mb.open && !S->pages_open) clear_page(a);
     }
 }
 
@@ -1127,16 +1144,28 @@ static void panel_act(App *a, const Hit *h) {
     }
 }
 
+// Changes this page's paper (undoable) and repaints.
+static void apply_paper(App *a, PaperKind k) {
+    History *hi = cur_hist(a);
+    if (hi) history_push_paper(hi, S->page->paper, k);
+    S->page->paper = k;
+    render_page_full(a);
+    compose_all(a, REFRESH_FULL);
+    mark_changed(a);
+}
+
 static void modal_act(App *a, const Hit *h) {
     Rect sheet = S->paper_rect;
     S->paper_open = false;
     if (h->id == P_PICK_PAPER && S->page->paper != (PaperKind)h->arg) {
-        History *hi = cur_hist(a);
-        if (hi) history_push_paper(hi, S->page->paper, (PaperKind)h->arg);
-        S->page->paper = (PaperKind)h->arg;
-        render_page_full(a);
-        compose_all(a, REFRESH_FULL);
-        mark_changed(a);
+        apply_paper(a, (PaperKind)h->arg);
+        return;
+    }
+    if (h->id == P_PICK_CUSTOM) {
+        compose(a, sheet);
+        musicbuild_open(&S->mb, a, S->page->paper);
+        Rect r = rect_union(sheet, musicbuild_draw(&S->mb, a));
+        app_invalidate(a, r, REFRESH_UI);
         return;
     }
     compose(a, sheet);
@@ -1215,6 +1244,8 @@ void editor_free(App *a) {
     free(S->pages_sel);
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
+    canvas_free(&S->custom_prev);
+    musicbuild_free(&S->mb);
     free(S);
     a->ed = NULL;
 }
@@ -1235,6 +1266,7 @@ void editor_enter(App *a) {
     S->owner = OWN_NONE;
     S->paper_open = false;
     S->dm.open = false;
+    S->mb.open = false;
     S->tools_open = false;
     compose(a, (Rect){0, 0, a->w, a->h});
 }
@@ -1265,7 +1297,7 @@ static void pinch(App *a, const InEvent *ev) {
             S->dragging = false;
             S->owner = OWN_NONE;
         }
-        if (S->owner != OWN_NONE || S->paper_open || !a->settings.pinch_zoom) return;
+        if (S->owner != OWN_NONE || S->paper_open || S->mb.open || !a->settings.pinch_zoom) return;
         S->pinching = true;
         S->pinch_committed = false;
         S->pinch_mx0 = mx;
@@ -1342,6 +1374,12 @@ void editor_event(App *a, const InEvent *ev) {
             press_begin(&S->tools_press, ev->x, ev->y, ev->t_ms);
             return;
         }
+        if (S->mb.open) {
+            S->owner = OWN_BUILD;
+            Rect d;
+            musicbuild_pointer(&S->mb, a, 0, ev->x, ev->y, ev->t_ms, &d);
+            return;
+        }
         if (S->dm.open) {
             S->owner = OWN_DISPLAY;
             Rect d;
@@ -1408,6 +1446,23 @@ void editor_event(App *a, const InEvent *ev) {
             repaint_panel(a, REFRESH_UI);
         }
         break;
+    case OWN_BUILD: {
+        Rect d;
+        MbResult r = musicbuild_pointer(&S->mb, a, ph, ev->x, ev->y, ev->t_ms, &d);
+        if (r == MB_DONE) {
+            compose(a, d);
+            PaperKind k = musicbuild_result(&S->mb);
+            if (S->page->paper != k) apply_paper(a, k);
+            else app_invalidate(a, d, REFRESH_UI);
+        } else if (r == MB_CANCEL) {
+            compose(a, d);
+            app_invalidate(a, d, REFRESH_UI);
+        } else if (!rect_is_empty(d)) {
+            app_invalidate(a, d, REFRESH_UI);
+        }
+        if (ph == 2) S->owner = OWN_NONE;
+        break;
+    }
     case OWN_DISPLAY: {
         Rect d;
         DmResult r = dispmenu_pointer(&S->dm, a, ph, ev->x, ev->y, ev->t_ms, &d);
@@ -1451,7 +1506,7 @@ void editor_tick(App *a, uint32_t now) {
         settle_now(a);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once.
     if (S->open && S->btn_down && !S->btn_used_for_ink && !S->btn_hold_fired && S->owner == OWN_NONE &&
-        !S->paper_open && !S->pages_open && now - S->btn_down_at >= 1200) {
+        !S->paper_open && !S->mb.open && !S->pages_open && now - S->btn_down_at >= 1200) {
         S->btn_hold_fired = true;
         S->nclicks = 0;
         clear_page(a);

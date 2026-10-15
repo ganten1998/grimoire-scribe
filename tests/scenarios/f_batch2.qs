@@ -2,7 +2,7 @@
 wait 300
 tap 965 95
 wait 100
-tap 1590 496
+tap 1346 460
 wait 50
 shot 01-new-sheet-8-papers
 tap 1564 2254

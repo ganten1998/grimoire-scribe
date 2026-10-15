@@ -9,15 +9,16 @@
 #include "app.h"
 #include "export.h"
 #include "dispmenu.h"
+#include "musicbuild.h"
 #include "keyboard.h"
 
-typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY } Modal;
+typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
     H_NONE, H_BACK, H_NEW, H_NEWFOLDER, H_SHARE, H_SETTINGS, H_EXIT, H_PREV, H_NEXT,
     H_CARD, H_CARD_MORE,
-    H_PAPER, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
+    H_PAPER, H_PAPER_CUSTOM, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
     H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH,
     H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_MORE_PDF, H_MORE_DELETE,
     H_FMORE_RENAME, H_FMORE_REMOVE,
@@ -44,6 +45,9 @@ struct LibraryState {
     Canvas *thumbs;       // per notebook, lazily loaded (px == NULL until then)
     bool *thumb_tried;
     Canvas paper_prev[PAPER_COUNT];
+    Canvas custom_prev;   // one custom music layout's preview at a time
+    PaperKind custom_prev_k;
+    MusicBuild mb;
 
     Modal modal;
     KbPurpose kbp;
@@ -53,6 +57,7 @@ struct LibraryState {
     PaperKind new_paper;
     char new_name[STORE_NAME_LEN];
     int move_page;
+    uint32_t kb_settle_at;  // when to clean the keyboard up with one GL16 (0 = none)
 
     HitList hits;
     Press press;
@@ -132,7 +137,14 @@ static void unique_name(App *a, const char *base, char *out, size_t cap) {
 }
 
 static const Canvas *paper_preview(App *a, PaperKind k) {
-    Canvas *c = &S->paper_prev[k];
+    Canvas *c;
+    if (paper_is_custom(k)) {
+        c = &S->custom_prev;
+        if (c->px && S->custom_prev_k != k) canvas_free(c);
+        S->custom_prev_k = k;
+    } else {
+        c = &S->paper_prev[clampi((int)k, 0, PAPER_COUNT - 1)];
+    }
     if (!c->px) {
         Canvas full;
         int pw, ph;
@@ -283,7 +295,8 @@ static void draw_new(App *a) {
     Rect card = sheet_rect(a, ui_px(2300));
     Rect in = ui_sheet(c, card, "New notebook");
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, in.y, in.w, ui_px(70)}, "Paper", 0);
-    int gap = ui_px(30), cols = PAPER_COUNT > 8 ? 5 : 4, rows = (PAPER_COUNT + cols - 1) / cols;
+    const int ntiles = PAPER_PICKER_COUNT;
+    int gap = ui_px(30), cols = ntiles > 15 ? 6 : ntiles > 8 ? 5 : 4, rows = (ntiles + cols - 1) / cols;
     int tw = (in.w - gap * (cols - 1)) / cols;
     if (tw > ui_px(300)) tw = ui_px(300);
     // Fit the height too (landscape): leave room for the name rows and the buttons.
@@ -293,17 +306,21 @@ static void draw_new(App *a) {
     int tht = tw * 4 / 3, cell_h = tht + ui_px(100);
     int gridw = cols * tw + (cols - 1) * gap;
     int ty = in.y + ui_px(80);
-    for (int i = 0; i < PAPER_COUNT; i++) {
-        PaperKind k = paper_at(i);
+    for (int i = 0; i < ntiles; i++) {
+        // The last tile is Custom music: the chosen layout, or the last one built.
+        bool custom = i == PAPER_COUNT;
+        bool new_custom = paper_is_custom(S->new_paper);
+        PaperKind k = custom ? (new_custom ? S->new_paper : a->settings.music_layout) : paper_at(i);
         Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap), ty + (i / cols) * cell_h, tw, tht};
         canvas_fill(c, tr, 255);
         const Canvas *pv = paper_preview(a, k);
         if (pv) canvas_blit_fit(c, pv, tr);
-        bool sel = S->new_paper == k;
+        bool sel = custom ? new_custom : S->new_paper == k;
         canvas_round_rect(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};
-        font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f, lr, paper_name(k), 0);
-        hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, tht + ui_px(90)}, H_PAPER, (int)k);
+        font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f, lr,
+                           custom ? "Custom music..." : paper_name(k), 0);
+        hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, tht + ui_px(90)}, custom ? H_PAPER_CUSTOM : H_PAPER, (int)k);
     }
     int y = ty + rows * cell_h + ui_px(20);
     char line[200];
@@ -469,6 +486,7 @@ static void draw_modal(App *a) {
     }
     case MOD_KB: keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h}); break;
     case MOD_DISPLAY: dispmenu_draw(&S->dm, a); break;
+    case MOD_MUSIC: draw_new(a); musicbuild_draw(&S->mb, a); break;
     default: break;
     }
 }
@@ -630,6 +648,10 @@ static void act(App *a, const Hit *h) {
         open_modal(a, S->items[h->arg].is_folder ? MOD_FOLDER_MORE : MOD_MORE);
         break;
     case H_PAPER: S->new_paper = (PaperKind)h->arg; redraw(a, REFRESH_UI); break;
+    case H_PAPER_CUSTOM:
+        musicbuild_open(&S->mb, a, S->new_paper);
+        open_modal(a, MOD_MUSIC);
+        break;
     case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, "Name", S->new_name); break;
     case H_NEW_CREATE: create_notebook(a); break;
     case H_CANCEL: close_modal(a); break;
@@ -735,6 +757,8 @@ void library_free(App *a) {
     if (!S) return;
     free_lists(a);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
+    canvas_free(&S->custom_prev);
+    musicbuild_free(&S->mb);
     free(S);
     a->lib = NULL;
 }
@@ -764,6 +788,19 @@ void library_event(App *a, const InEvent *ev) {
         }
         return;
     }
+    if (S->modal == MOD_MUSIC) {
+        Rect d;
+        MbResult r = musicbuild_pointer(&S->mb, a, ph, ev->x, ev->y, ev->t_ms, &d);
+        if (r == MB_DONE || r == MB_CANCEL) {
+            if (r == MB_DONE) S->new_paper = musicbuild_result(&S->mb);
+            musicbuild_free(&S->mb);
+            S->modal = MOD_NEW;
+            redraw(a, REFRESH_UI);
+        } else if (!rect_is_empty(d)) {
+            app_invalidate(a, d, REFRESH_UI);
+        }
+        return;
+    }
     if (S->modal == MOD_KB) {
         Rect d;
         KbResult r = keyboard_pointer(&S->kb, ph, ev->x, ev->y, ev->t_ms, &d);
@@ -771,9 +808,17 @@ void library_event(App *a, const InEvent *ev) {
             kb_finished(a, r == KB_DONE);
             return;
         }
-        if (!rect_is_empty(d)) {
+        if (!rect_is_empty(d) || !rect_is_empty(S->kb.field_dirty)) {
+            // Typing stays on the fast waveform: the text first (what the eye is on), then
+            // the key. One clean GL16 of the keyboard follows once typing pauses.
             keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h});
-            app_invalidate(a, d, ph == 0 ? REFRESH_FAST : REFRESH_UI);
+            if (!rect_is_empty(S->kb.field_dirty)) {
+                app_invalidate(a, S->kb.field_dirty, REFRESH_FAST);
+                app_flush(a);
+            }
+            app_invalidate(a, d, REFRESH_FAST);
+            S->kb_settle_at = now_ms() + 900;
+            if (!S->kb_settle_at) S->kb_settle_at = 1;
         }
         return;
     }
@@ -798,4 +843,9 @@ void library_event(App *a, const InEvent *ev) {
     }
 }
 
-void library_tick(App *a, uint32_t now) {}
+void library_tick(App *a, uint32_t now) {
+    if (S->kb_settle_at && (int32_t)(now - S->kb_settle_at) >= 0) {
+        S->kb_settle_at = 0;
+        if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
+    }
+}

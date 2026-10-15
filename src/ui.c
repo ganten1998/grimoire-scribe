@@ -53,6 +53,9 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_FOUNTAIN] = 0xF0D13,     // md-fountain_pen_tip
     [ICON_FINELINER] = 0xF0F49,    // md-draw
     [ICON_MARKER] = 0xF0648,       // md-grease_pencil
+    [ICON_UP] = 0xF0143,           // md-chevron_up
+    [ICON_DOWN] = 0xF0140,         // md-chevron_down
+    [ICON_MUSIC] = 0xF075A,        // md-music
 };
 
 IconKind ui_tool_icon(int tool) {

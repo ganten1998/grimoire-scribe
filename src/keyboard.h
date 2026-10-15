@@ -16,6 +16,8 @@ typedef struct {
     Rect area;       // where it was last drawn (whole modal)
     Press press;
     int pressed_key; // -1 if none
+    bool typed;      // the pressed key already typed on touch-down
+    Rect field_dirty;// set by keyboard_pointer when the text field changed (refresh it first)
 } Keyboard;
 
 void keyboard_open(Keyboard *kb, const char *title, const char *initial);
@@ -24,5 +26,6 @@ void keyboard_close(Keyboard *kb);
 // Returns the rect it covered (to invalidate).
 Rect keyboard_draw(Keyboard *kb, Canvas *c, Rect screen);
 // Pointer events only (pen or touch, already unified by the caller as down/move/up).
-// *dirty receives the rect needing redraw (may be empty).
+// *dirty receives the rect needing redraw (may be empty). Characters and backspace type on
+// touch-down (no waiting for the lift); Shift, Cancel and Done act on release.
 KbResult keyboard_pointer(Keyboard *kb, int phase /*0 down,1 move,2 up*/, float x, float y, uint32_t t, Rect *dirty);

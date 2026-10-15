@@ -16,8 +16,44 @@ typedef enum {
     PAPER_DOTS = 10,      // 5 mm dot grid
     PAPER_GRID = 11,      // 5 mm graph paper
     PAPER_CORNELL = 12,   // Cornell notes: cue column, notes, summary
-    PAPER_COUNT
+    PAPER_BASS4 = 13,     // bass tablature, 4 / 5 / 6 / 7 strings
+    PAPER_BASS5 = 14,
+    PAPER_BASS6 = 15,
+    PAPER_BASS7 = 16,
+    PAPER_COUNT,          // fixed kinds end here
+    // A custom music layout (see MusicLayout): this flag | systems << 24 | part i << 4*i.
+    PAPER_CUSTOM_FLAG = 0x40000000
 } PaperKind;
+
+// The parts a custom music system stacks, top to bottom. Stored on disk: never reorder.
+typedef enum {
+    PART_NONE = 0,
+    PART_TREBLE, PART_BASS, PART_ALTO, PART_TENOR, PART_PERC, PART_STAFF,
+    PART_TAB4, PART_TAB5, PART_TAB6, PART_TAB7, PART_LYRICS,
+    PART_COUNT
+} MusicPart;
+
+#define MUSIC_MAX_PARTS 6
+#define MUSIC_MAX_SYSTEMS 12
+
+typedef struct {
+    int systems;                    // systems per page, 1..MUSIC_MAX_SYSTEMS
+    int n;                          // parts per system, 1..MUSIC_MAX_PARTS
+    MusicPart part[MUSIC_MAX_PARTS];
+} MusicLayout;
+
+bool paper_is_custom(PaperKind k);
+// A fixed kind or a well-formed custom layout; anything else becomes `fallback`.
+PaperKind paper_sanitize(uint32_t v, PaperKind fallback);
+PaperKind music_encode(const MusicLayout *m);
+bool music_decode(PaperKind k, MusicLayout *m);   // false if k is not a custom layout
+const char *music_part_name(MusicPart p);         // "Treble staff", "Tab, 6 lines", ...
+// The most systems that fit on a page with staff spaces still big enough to write in.
+int music_max_systems(const MusicLayout *m);
+PaperKind music_default(void);                    // treble staff over 6-line tab, 5 systems
+
+// Pickers offer the fixed kinds in paper_at() order, then one "Custom music" tile.
+#define PAPER_PICKER_COUNT (PAPER_COUNT + 1)
 
 const char *paper_name(PaperKind k);   // e.g. "Narrow rule", "Narrow, no margin", "Sheet music"
 // The order papers are offered in pickers (index 0..PAPER_COUNT-1 -> kind).
