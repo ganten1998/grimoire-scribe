@@ -18,10 +18,10 @@
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
-    PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT,
+    PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, P_TOOLPICK, P_PICK_TOOL,
 };
 
-typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES } Owner;
+typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS } Owner;
 
 // Every page visited while a notebook is open stays in memory with its history: undo
 // actions point at the page's live Stroke objects, so a page must never be freed and
@@ -98,6 +98,12 @@ struct EditorState {
 
     DispMenu dm;                // Display sheet (front light, invert)
 
+    // Tool picker (opened from the toolbar's tool button).
+    bool tools_open;
+    Rect tools_rect;
+    HitList tools_hits;
+    Press tools_press;
+
     // Pages view: page previews with checkboxes; delete the ticked ones.
     bool pages_open;
     int pages_screen;           // which screenful of previews
@@ -135,9 +141,9 @@ static int box(void) { return ui_px(120); }       // collapsed square
 static int label_h(void) { return sc(60); }
 
 static int panel_height(void) {
-    // header, 14 buttons (5 tools, undo, redo, clear, prev, next, paper, display, pen feel,
+    // header, 11 buttons (tool, eraser, undo, redo, clear, prev, next, paper, display, pen feel,
     // library), the page label and 3 dividers. Must match draw_panel.
-    return head_h() + gap() + 14 * (btn_h() + gap()) + label_h() + gap() + 3 * div_h() + ui_px(6);
+    return head_h() + gap() + 11 * (btn_h() + gap()) + label_h() + gap() + 3 * div_h() + ui_px(6);
 }
 
 static void fit_panel_to(int screen_h) {
@@ -202,14 +208,12 @@ static void draw_panel(App *a) {
     Canvas *c = &a->screen;
     Rect p = S->panel;
     hits_clear(&S->hits);
-    static const IconKind tool_icons[TOOL_COUNT] = {ICON_PENCIL, ICON_MECH_PENCIL, ICON_BALLPOINT, ICON_ERASER,
-                                                    ICON_HIGHLIGHTER};
     if (S->collapsed) {
         canvas_round_rect(c, p, ui_px(22), 255, true, 0);
         canvas_round_rect(c, p, ui_px(22), 0, false, ui_px(6));
         Rect ir = rect_inflate(p, -ui_px(20));
         ir.h -= ui_px(12);
-        ui_icon(c, tool_icons[a->settings.current_tool], ir, 0);
+        ui_icon(c, ui_tool_icon(a->settings.current_tool), ir, 0);
         // Expand hint in the corner.
         ui_icon(c, ICON_EXPAND, (Rect){p.x + p.w - ui_px(40), p.y + p.h - ui_px(40), ui_px(30), ui_px(30)}, 0);
         hits_add(&S->hits, p, P_EXPAND, 0);
@@ -229,15 +233,19 @@ static void draw_panel(App *a) {
     y = p.y + head_h();
     canvas_hline(c, p.x + ui_px(6), p.x + p.w - ui_px(6), y - ui_px(4), ui_px(3), 0);
     y += gap();
-    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL, TOOL_MECH_PENCIL, TOOL_BALLPOINT, TOOL_HIGHLIGHTER,
-                                               TOOL_ERASER};
-    for (int i = 0; i < TOOL_COUNT; i++) {
-        ToolKind t = order[i];
-        Rect r = {x, y, w, btn_h()};
-        ui_button(c, r, tool_icons[t], NULL, tool_style(a, (ToolKind)t));
-        hits_add(&S->hits, r, P_TOOL, t);
-        y += btn_h() + gap();
-    }
+    // The drawing tool (tap: the picker) and the eraser.
+    ToolKind dt = a->settings.draw_tool == TOOL_ERASER ? TOOL_PENCIL : a->settings.draw_tool;
+    Rect rt = {x, y, w, btn_h()};
+    ui_button(c, rt, ui_tool_icon(dt), NULL, a->settings.current_tool == dt ? BTN_SELECTED : BTN_PLAIN);
+    // A small corner mark says "more tools here".
+    canvas_disc_aa(c, (float)(rt.x + rt.w - ui_px(16)), (float)(rt.y + rt.h - ui_px(16)), (float)ui_px(7),
+                   a->settings.current_tool == dt ? 255 : 0, 1.f);
+    hits_add(&S->hits, rt, P_TOOLPICK, 0);
+    y += btn_h() + gap();
+    Rect re = {x, y, w, btn_h()};
+    ui_button(c, re, ICON_ERASER, NULL, tool_style(a, TOOL_ERASER));
+    hits_add(&S->hits, re, P_TOOL, TOOL_ERASER);
+    y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6), ui_px(3), 160);
     y += div_h();
     History *h = S->open ? cur_hist(a) : NULL;
@@ -306,12 +314,15 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
 static void draw_paper_sheet(App *a) {
     Canvas *c = &a->screen;
     hits_clear(&S->modal_hits);
-    int m = ui_px(70), gap_ = ui_px(30), cols = 4, rows = (PAPER_COUNT + cols - 1) / cols;
+    int m = ui_px(70), gap_ = ui_px(30), cols = PAPER_COUNT > 8 ? 5 : 4, rows = (PAPER_COUNT + cols - 1) / cols;
     int tw = (a->w - 2 * m - ui_px(72) - (cols - 1) * gap_) / cols;
     if (tw > a->w / 6) tw = a->w / 6;
+    int max_th = (a->h - ui_px(120) - ui_px(72) - ui_px(190) - ui_px(80)) / rows - ui_px(100);
+    if (tw * 4 / 3 > max_th) tw = max_th * 3 / 4;
     int th = tw * 4 / 3, cell_h = th + ui_px(100);
     int gridw = cols * tw + (cols - 1) * gap_;
-    S->paper_rect = (Rect){m, a->h / 6, a->w - 2 * m, ui_px(120) + ui_px(72) + rows * cell_h + ui_px(190)};
+    int sheet_h = ui_px(120) + ui_px(72) + rows * cell_h + ui_px(190);
+    S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
     Rect in = ui_sheet(c, S->paper_rect, "Paper for this page");
     for (int i = 0; i < PAPER_COUNT; i++) {
         PaperKind k = paper_at(i);
@@ -406,6 +417,33 @@ static void blit_view(App *a, Rect r) {
             unsigned top = r0[x0] * (255 - w) + r0[x1] * w, bot = r1[x0] * (255 - w) + r1[x1] * w;
             dst[r.x + i] = (uint8_t)((top * (255 - wy) + bot * wy + 32512) / 65025);
         }
+    }
+}
+
+// ---- tool picker ----
+
+static const ToolKind k_draw_tools[] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_BALLPOINT, TOOL_FOUNTAIN,
+                                        TOOL_FINELINER, TOOL_MARKER,      TOOL_HIGHLIGHTER};
+#define N_DRAW_TOOLS ((int)(sizeof k_draw_tools / sizeof k_draw_tools[0]))
+
+static void draw_tools(App *a) {
+    Canvas *c = &a->screen;
+    hits_clear(&S->tools_hits);
+    int bw = ui_px(300), bh = ui_px(150), g = ui_px(16), cols = 2, rows = (N_DRAW_TOOLS + cols - 1) / cols;
+    int w = cols * bw + (cols - 1) * g + 2 * ui_px(30), h = ui_px(110) + rows * bh + (rows - 1) * g + ui_px(40);
+    int x = S->panel.x - w - ui_px(20);
+    if (x < ui_px(10)) x = S->panel.x + S->panel.w + ui_px(20);
+    int y = clampi(S->panel.y, ui_px(10), a->h - h - ui_px(10));
+    S->tools_rect = (Rect){x, y, w, h};
+    canvas_round_rect(c, S->tools_rect, ui_px(22), 255, true, 0);
+    canvas_round_rect(c, S->tools_rect, ui_px(22), 0, false, ui_px(6));
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){x + ui_px(30), y, w - ui_px(60), ui_px(100)}, "Tools", 0);
+    for (int i = 0; i < N_DRAW_TOOLS; i++) {
+        ToolKind t = k_draw_tools[i];
+        Rect r = {x + ui_px(30) + (i % cols) * (bw + g), y + ui_px(100) + (i / cols) * (bh + g), bw, bh};
+        const char *name = t == TOOL_MECH_PENCIL ? "Mechanical" : tool_name(t);
+        ui_button(c, r, ui_tool_icon(t), name, a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN);
+        hits_add(&S->tools_hits, r, P_PICK_TOOL, t);
     }
 }
 
@@ -560,6 +598,7 @@ static void compose(App *a, Rect r) {
     if (rect_overlaps(r, S->panel)) draw_panel(a);
     if (S->paper_open && rect_overlaps(r, S->paper_rect)) draw_paper_sheet(a);
     if (S->dm.open && rect_overlaps(r, S->dm.rect)) dispmenu_draw(&S->dm, a);
+    if (S->tools_open && rect_overlaps(r, S->tools_rect)) draw_tools(a);
 }
 
 // A page-space change: recompose what it covers on screen and refresh it.
@@ -1031,8 +1070,20 @@ static void set_collapsed(App *a, bool c) {
 
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
+    case P_TOOLPICK:
+        S->tools_open = true;
+        draw_tools(a);
+        app_invalidate(a, S->tools_rect, REFRESH_UI);
+        break;
     case P_TOOL:
-        if (a->settings.current_tool == (ToolKind)h->arg) break;
+        if (a->settings.current_tool == (ToolKind)h->arg) {
+            // Tapping the active eraser again goes back to the drawing tool.
+            if (h->arg != TOOL_ERASER) break;
+            a->settings.current_tool = a->settings.draw_tool;
+            settings_save(&a->settings);
+            repaint_panel(a, REFRESH_UI);
+            break;
+        }
         a->settings.current_tool = (ToolKind)h->arg;
         settings_save(&a->settings);
         repaint_panel(a, REFRESH_UI);
@@ -1184,6 +1235,7 @@ void editor_enter(App *a) {
     S->owner = OWN_NONE;
     S->paper_open = false;
     S->dm.open = false;
+    S->tools_open = false;
     compose(a, (Rect){0, 0, a->w, a->h});
 }
 
@@ -1285,6 +1337,11 @@ void editor_event(App *a, const InEvent *ev) {
             pages_event(a, 0, ev);
             return;
         }
+        if (S->tools_open) {
+            S->owner = OWN_TOOLS;
+            press_begin(&S->tools_press, ev->x, ev->y, ev->t_ms);
+            return;
+        }
         if (S->dm.open) {
             S->owner = OWN_DISPLAY;
             Rect d;
@@ -1333,6 +1390,23 @@ void editor_event(App *a, const InEvent *ev) {
     case OWN_PAGES:
         pages_event(a, ph, ev);
         if (ph == 2) S->owner = OWN_NONE;
+        break;
+    case OWN_TOOLS:
+        press_move(&S->tools_press, ev->x, ev->y);
+        if (ph != 2) break;
+        S->owner = OWN_NONE;
+        {
+            const Hit *h = hits_find(&S->tools_hits, S->tools_press.x0, S->tools_press.y0);
+            if (h && press_is_tap(&S->tools_press, h->r)) {
+                a->settings.current_tool = a->settings.draw_tool = (ToolKind)h->arg;
+                settings_save(&a->settings);
+            }
+            // Picked or tapped outside: close it.
+            S->tools_open = false;
+            compose(a, S->tools_rect);
+            app_invalidate(a, S->tools_rect, REFRESH_UI);
+            repaint_panel(a, REFRESH_UI);
+        }
         break;
     case OWN_DISPLAY: {
         Rect d;

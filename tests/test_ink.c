@@ -221,9 +221,35 @@ TEST(tool_sampler) {
     out_png("tools.png", &c);
     canvas_free(&c);
     page_free(pg);
+    // The newer pens: a handwriting-like loop line, a pressure ramp, and a figure that shows the
+    // fountain pen's nib angle (thin one way, thick the other).
+    static const ToolKind more[3] = {TOOL_FOUNTAIN, TOOL_FINELINER, TOOL_MARKER};
+    Page *p2 = page_new(W, H, PAPER_MEDIUM);
+    for (int i = 0; i < 3; i++) {
+        float y0 = 380 + i * 700;
+        ToolParams prm;
+        tool_params_default(more[i], &prm);
+        Stroke *loop = stroke_new(more[i], &prm, 7u + (uint32_t)i);
+        for (int k = 0; k <= 220; k++) {
+            float f = (float)k / 220.f, ang = f * 6.f * 6.2831853f;
+            PenSample q = {330.f + f * 1300.f + 60.f * cosf(ang), y0 + 60.f * sinf(ang), 0.55f + 0.3f * sinf(f * 3.14f), 0, 0, (uint32_t)k * 5};
+            stroke_append(loop, &q, DPI);
+        }
+        page_add(p2, loop);
+        page_add(p2, make_stroke(more[i], 330, y0 + 220, 1700, y0 + 220, 160, 0.05f, 1.f, 0));
+        page_add(p2, make_stroke(more[i], 330, y0 + 330, 900, y0 + 420, 60, 0.7f, 0.7f, 0));
+        page_add(p2, make_stroke(more[i], 1000, y0 + 420, 1600, y0 + 330, 60, 0.7f, 0.7f, 0));
+    }
+    canvas_init(&c, W, H);
+    page_render(&c, p2, (Rect){0, 0, W, H}, DPI);
+    for (int i = 0; i < 3; i++) font_draw(&c, FONT_BOLD, 60, 330, 280 + i * 700, tool_name(more[i]), 0);
+    out_png("tools2.png", &c);
+    canvas_free(&c);
+    page_free(p2);
 }
 
 int main(void) {
+    font_init();  // some papers draw labels and clefs
     RUN(rects);
     RUN(canvas_basics);
     RUN(paper_subregion_matches_full);

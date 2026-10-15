@@ -280,12 +280,16 @@ static Rect sheet_rect(App *a, int h) {
 
 static void draw_new(App *a) {
     Canvas *c = &a->screen;
-    Rect card = sheet_rect(a, ui_px(1820));
+    Rect card = sheet_rect(a, ui_px(2300));
     Rect in = ui_sheet(c, card, "New notebook");
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, in.y, in.w, ui_px(70)}, "Paper", 0);
-    int gap = ui_px(30), cols = 4, rows = (PAPER_COUNT + cols - 1) / cols;
+    int gap = ui_px(30), cols = PAPER_COUNT > 8 ? 5 : 4, rows = (PAPER_COUNT + cols - 1) / cols;
     int tw = (in.w - gap * (cols - 1)) / cols;
     if (tw > ui_px(300)) tw = ui_px(300);
+    // Fit the height too (landscape): leave room for the name rows and the buttons.
+    int avail = in.h - ui_px(80) - ui_px(420);
+    int max_th = avail / rows - ui_px(100);
+    if (tw * 4 / 3 > max_th) tw = max_th * 3 / 4;
     int tht = tw * 4 / 3, cell_h = tht + ui_px(100);
     int gridw = cols * tw + (cols - 1) * gap;
     int ty = in.y + ui_px(80);

@@ -705,12 +705,14 @@ int store_load_sleep_image(Canvas *out) {
 
 // ---- settings ----
 
-static const char *k_tool_keys[TOOL_COUNT] = {"pencil", "mech", "ballpoint", "eraser", "highlighter"};
+static const char *k_tool_keys[TOOL_COUNT] = {"pencil",      "mech",     "ballpoint", "eraser",
+                                              "highlighter", "fountain", "fineliner", "marker"};
 
 void settings_default(Settings *s) {
     memset(s, 0, sizeof *s);
     for (int t = 0; t < TOOL_COUNT; t++) tool_params_default(t, &s->tools[t]);
     s->current_tool = TOOL_PENCIL;
+    s->draw_tool = TOOL_PENCIL;
     s->panel_x = s->panel_y = -1;
     s->side_button = 2;  // highlighter
     s->mirror_pdf = true;
@@ -755,6 +757,7 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
         return;
     }
     if (!strcmp(k, "current_tool")) s->current_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
+    else if (!strcmp(k, "draw_tool")) s->draw_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
     else if (!strcmp(k, "panel_x")) s->panel_x = atoi(v);
     else if (!strcmp(k, "panel_y")) s->panel_y = atoi(v);
     else if (!strcmp(k, "panel_collapsed")) s->panel_collapsed = atoi(v) != 0;
@@ -817,10 +820,10 @@ int settings_save(const Settings *s) {
     char *buf = malloc(cap);
     if (!buf) return -1;
     n += (size_t)snprintf(buf + n, cap - n,
-                          "# Quire settings\ncurrent_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
+                          "# Quire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
                           "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
                           "settings_version=%d\n",
-                          (int)s->current_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
+                          (int)s->current_tool, (int)s->draw_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
                           s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->sleep_mode, s->sleep_minutes, s->http_port,
                           SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};

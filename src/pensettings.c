@@ -145,19 +145,20 @@ static void draw_all(App *a) {
     Rect reset = {a->w - m - ui_px(360), by, ui_px(360), bh};
     ui_button(c, reset, ICON_NONE, "Reset tool", BTN_PLAIN);
     hits_add(&S->hits, reset, H_RESET, 0);
-    font_draw_left(c, FONT_BOLD, ui_title_size() * 1.2f, (Rect){back.x + bh + ui_px(30), 0, ui_px(900), th}, "Pen feel", 0);
+    char title[64];
+    snprintf(title, sizeof title, "Pen feel: %s", tool_name(S->tab));
+    font_draw_left(c, FONT_BOLD, ui_title_size() * 1.1f, (Rect){back.x + bh + ui_px(30), 0, reset.x - back.x - bh - ui_px(50), th},
+                   title, 0);
     canvas_hline(c, 0, a->w, th, ui_px(4), 0);
     // Tabs.
-    static const IconKind icons[TOOL_COUNT] = {ICON_PENCIL, ICON_MECH_PENCIL, ICON_BALLPOINT, ICON_ERASER,
-                                               ICON_HIGHLIGHTER};
-    static const char *labels[TOOL_COUNT] = {"Pencil", "Mechanical", "Ballpoint", "Eraser", "Highlighter"};
-    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL, TOOL_MECH_PENCIL, TOOL_BALLPOINT, TOOL_HIGHLIGHTER,
-                                               TOOL_ERASER};
+    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_BALLPOINT,   TOOL_FOUNTAIN,
+                                               TOOL_FINELINER, TOOL_MARKER,      TOOL_HIGHLIGHTER, TOOL_ERASER};
     int tw = (a->w - 2 * m - (TOOL_COUNT - 1) * ui_px(16)) / TOOL_COUNT, ty = th + ui_px(24), tabh = ui_px(150);
     for (int i = 0; i < TOOL_COUNT; i++) {
         ToolKind t = order[i];
         Rect r = {m + i * (tw + ui_px(16)), ty, tw, tabh};
-        ui_button(c, r, icons[t], labels[t], S->tab == (ToolKind)t ? BTN_SELECTED : BTN_PLAIN);
+        // With this many tools the tabs are icons only; the title names the selected one.
+        ui_button(c, r, ui_tool_icon(t), NULL, S->tab == (ToolKind)t ? BTN_SELECTED : BTN_PLAIN);
         hits_add(&S->hits, r, H_TAB, t);
     }
     // Graph + pad.

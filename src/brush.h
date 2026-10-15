@@ -9,6 +9,9 @@ typedef enum {
     TOOL_BALLPOINT = 2,
     TOOL_ERASER = 3,
     TOOL_HIGHLIGHTER = 4,
+    TOOL_FOUNTAIN = 5,     // italic nib: thick/thin by stroke direction
+    TOOL_FINELINER = 6,    // constant thin crisp line
+    TOOL_MARKER = 7,       // broad felt tip
     TOOL_COUNT
 } ToolKind;
 

@@ -95,9 +95,19 @@ else
     # Pillow off is not enough to stop the clock / window manager repainting on 5.7.2+.
     if killall -STOP awesome 2>/dev/null; then AWESOME_STOPPED=yes; fi
     # On 5.17+ the status bar is its own upstart job and draws over everything.
-    if [ -f /etc/upstart/statusbar.conf ]; then
-        stop statusbar 2>/dev/null && STOPPED_JOBS="$STOPPED_JOBS statusbar"
-    fi
+    # On 5.17+ the status bar (clock, battery) is its own upstart job and draws over everything.
+    # Its name varies by device/firmware, so stop every job that looks like one.
+    for conf in /etc/upstart/*status*.conf /etc/upstart/*chrome*.conf; do
+        [ -f "$conf" ] || continue
+        job=$(basename "$conf" .conf)
+        if stop "$job" >/dev/null 2>&1; then
+            STOPPED_JOBS="$STOPPED_JOBS $job"
+            log "stopped job $job"
+        fi
+    done
+    # For diagnosis: what is still running that could draw (logged once per launch).
+    log "pillow disabled: $PILLOW_DISABLED, awesome stopped: $AWESOME_STOPPED"
+    log "upstart jobs running: $(initctl list 2>/dev/null | grep -i 'start/running' | cut -d' ' -f1 | tr '\n' ' ')"
 fi
 
 # Stay awake while Quire runs (it saves and exits on the power button).

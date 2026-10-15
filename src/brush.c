@@ -11,6 +11,9 @@ const char *tool_name(ToolKind t) {
     case TOOL_BALLPOINT: return "Ballpoint";
     case TOOL_ERASER: return "Eraser";
     case TOOL_HIGHLIGHTER: return "Highlighter";
+    case TOOL_FOUNTAIN: return "Fountain pen";
+    case TOOL_FINELINER: return "Fineliner";
+    case TOOL_MARKER: return "Marker";
     default: return "Tool";
     }
 }
@@ -52,6 +55,16 @@ void tool_params_default(ToolKind t, ToolParams *o) {
     case TOOL_ERASER:
         *o = (ToolParams){2.5f, 7.0f, 1.f, 1.f, 0.0f, 0.60f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.f};
         break;
+    case TOOL_FOUNTAIN:
+        // Nib width 0.35..1.1 mm with pressure; the angled nib makes it calligraphic.
+        *o = (ToolParams){0.35f, 1.10f, 0.90f, 1.00f, 0.02f, 0.60f, 0.80f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
+        break;
+    case TOOL_FINELINER:
+        *o = (ToolParams){0.28f, 0.34f, 1.00f, 1.00f, 0.01f, 0.30f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
+        break;
+    case TOOL_MARKER:
+        *o = (ToolParams){1.50f, 2.00f, 0.92f, 1.00f, 0.01f, 0.40f, 0.70f, 30.f, 75.f, 0.3f, 0.f, 0.04f, 0.30f};
+        break;
     case TOOL_HIGHLIGHTER:
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
         *o = (ToolParams){4.0f, 5.0f, 0.55f, 0.65f, 0.02f, 0.50f, 0.80f, 30.f, 70.f, 0.2f, 0.f, 0.f, 0.40f};
@@ -71,6 +84,7 @@ typedef struct {
     float core;    // extra darkness toward the center (ballpoint)
     float jitter;  // per-dab darkness variation, scaled by grain
     bool graphite; // paper-tooth deposition with ragged edges (pencils)
+    bool nib;      // italic nib: an ellipse at a fixed angle (fountain pen)
 } ToolLook;
 
 static ToolLook look_of(ToolKind t) {
@@ -78,6 +92,9 @@ static ToolLook look_of(ToolKind t) {
     case TOOL_MECH_PENCIL: return (ToolLook){32, 0.20f, 0.f, 0.06f, true};
     case TOOL_BALLPOINT: return (ToolLook){12, 0.10f, 0.35f, 0.f, false};
     case TOOL_HIGHLIGHTER: return (ToolLook){110, 0.06f, 0.f, 0.f, false};
+    case TOOL_FOUNTAIN: return (ToolLook){8, 0.10f, 0.f, 0.f, false, true};
+    case TOOL_FINELINER: return (ToolLook){5, 0.08f, 0.f, 0.f, false};
+    case TOOL_MARKER: return (ToolLook){22, 0.14f, 0.f, 0.f, false};
     default: return (ToolLook){38, 0.35f, 0.f, 0.10f, true};
     }
 }
@@ -202,7 +219,8 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
     }
     // Spacing compensation: about 2r/spacing dabs cover a pixel on the stroke's spine, so
     // each dab deposits the fraction that composes to `op` overall.
-    float n = fmaxf(1.f, 2.f * r / spacing_for(r));
+    // (An italic nib only overlaps itself across its narrow axis: 0.22 of the round tip.)
+    float n = fmaxf(1.f, 2.f * r * (lk.nib ? 0.22f : 1.f) / spacing_for(r));
     float inv_n = 1.f / n;
     float g_eff = grain * (1.f - 0.5f * pr);
     float r_in = fmaxf(0.f, r * (1.f - lk.rim) - 0.5f);
@@ -229,6 +247,12 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
                 k = k * k * (3.f - 2.f * k);
                 a = op * prof * lerpf(1.f, k, grain);
             } else {
+                if (lk.nib) {
+                    // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
+                    const float ca = 0.7660444f, sa = 0.6427876f, ratio = 0.22f;
+                    float u = dx * ca + dy * sa, v = (-dx * sa + dy * ca) / ratio;
+                    d = sqrtf(u * u + v * v);
+                }
                 if (d >= r_out) continue;
                 float prof = d <= r_in ? 1.f : (r_out - d) / (r_out - r_in);
                 if (lk.core > 0.f) prof = fminf(1.f, prof * (1.f + lk.core * (1.f - d / r_out)));

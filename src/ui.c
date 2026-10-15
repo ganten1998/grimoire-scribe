@@ -50,7 +50,16 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_BROOM] = 0xF00E2,        // md-broom
     [ICON_BRIGHTNESS] = 0xF00DF,   // md-brightness_6
     [ICON_INVERT] = 0xF0301,       // md-invert_colors
+    [ICON_FOUNTAIN] = 0xF0D13,     // md-fountain_pen_tip
+    [ICON_FINELINER] = 0xF0F49,    // md-draw
+    [ICON_MARKER] = 0xF0648,       // md-grease_pencil
 };
+
+IconKind ui_tool_icon(int tool) {
+    static const IconKind k[] = {ICON_PENCIL,   ICON_MECH_PENCIL, ICON_BALLPOINT, ICON_ERASER,
+                                 ICON_HIGHLIGHTER, ICON_FOUNTAIN, ICON_FINELINER,  ICON_MARKER};
+    return tool >= 0 && tool < (int)(sizeof k / sizeof k[0]) ? k[tool] : ICON_PENCIL;
+}
 
 void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray) {
     if (k <= ICON_NONE || k >= ICON_COUNT || !k_icon_cp[k]) return;

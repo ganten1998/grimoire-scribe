@@ -23,6 +23,9 @@ void display_pen_mode(bool on);
 // True if the panel no longer shows `screen` (another process drew over us). Samples a grid
 // of pixels from the framebuffer; cheap. The simulator never reports an overwrite.
 bool display_overwritten(const Canvas *screen);
+// The same check limited to a band of the screen (dense sampling): catches small intruders such
+// as the Kindle's status bar clock. `skip` (may be empty) is excluded, e.g. a visible toast.
+bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip);
 // Blocks until pending refreshes have completed (used before exit / screenshots).
 void display_wait(void);
 void display_close(void);

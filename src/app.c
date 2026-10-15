@@ -151,13 +151,15 @@ void app_toast(App *a, const char *msg, int ms) {
     toast_draw(a);
 }
 
-void app_redraw(App *a) {
+void app_redraw_mode(App *a, RefreshMode m) {
     a->toast_visible = false;
     a->dirty = RECT_EMPTY;
     k_screens[a->scr].leave(a);
     k_screens[a->scr].enter(a);
-    app_invalidate_all(a, REFRESH_FULL);
+    app_invalidate_all(a, m);
 }
+
+void app_redraw(App *a) { app_redraw_mode(a, REFRESH_FULL); }
 
 // The sleep screen: the page you were on (or the pinned page), so the Kindle "sleeps on" your
 // notebook and wakes straight back into it. Mode 2 hands over to the Kindle's own screensaver.
@@ -192,12 +194,11 @@ static void app_wake(App *a) {
     a->last_input = now_ms();
     a->sleep_requested = false;
     qlog("wake");
-    if (a->settings.sleep_mode == 2) {
-        sys_kindle_ui(false);
-        a->wake_redraw_at = now_ms() + 2500;  // let the Kindle's screensaver close first
-        return;
-    }
-    app_redraw(a);
+    if (a->settings.sleep_mode == 2) sys_kindle_ui(false);
+    // Back to work at once (no-flash refresh), then once more a moment later in case the Kindle
+    // UI (its screensaver closing, the status bar) drew something on the way out.
+    app_redraw_mode(a, REFRESH_UI);
+    a->wake_redraw_at = now_ms() + (a->settings.sleep_mode == 2 ? 2500 : 1500);
 }
 
 void app_set_rotation(App *a, int r) {
@@ -238,9 +239,9 @@ void app_tick(App *a, uint32_t now) {
         a->prevent_applied = 0;
         sys_request_sleep();
     }
-    if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0) {
+    if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0 && !(a->scr == SCR_EDITOR && editor_busy(a))) {
         a->wake_redraw_at = 0;
-        app_redraw(a);
+        app_invalidate_all(a, REFRESH_UI);  // the screen is already right: just push it again
     }
     // Sleep after a while without input, the same way the power button does.
     if (!a->asleep && !a->sleep_requested && a->settings.sleep_minutes > 0 &&

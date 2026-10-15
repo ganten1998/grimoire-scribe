@@ -1,7 +1,7 @@
 # Quire
 
 A homebrew notebook for the jailbroken **Kindle Scribe 2** (2024): narrow, medium and wide
-rule plus sheet music, a library of notebooks and folders, three pens tuned for the Scribe's
+rule plus Cornell, dot grid, graph, sheet music, grand staff and guitar tab, a library of notebooks and folders, seven pens tuned for the Scribe's
 pressure + tilt digitizer, a floating tool panel, and three easy ways to get pages onto a
 computer. One static binary, launched from a Library scriptlet. Typeset in Terminess.
 
@@ -10,11 +10,13 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
 ## What it does
 
 - **Paper**: narrow (5.5 mm), medium (7.1 mm), wide (9 mm) rule, each with or without the
-  margin line, roomy 8-staff sheet music, blank. Each page can change paper on its own (undoable).
+  margin line, Cornell notes (cue column + summary), 5 mm dot grid, 5 mm graph paper, roomy 8-staff
+  sheet music, grand staff (treble + bass with brace), 6-line guitar tab, blank. Each page can change paper on its own (undoable).
 - **Library**: notebooks as cards with thumbnails, one level of folders, rename / move / delete
   (delete goes to `quire/trash`, never unlinked). Notebooks reopen on the page you left.
 - **Pens**: pencil (graphite with paper grain, shades when tilted), mechanical pencil (thin,
-  even), ballpoint (solid, quick to full ink), highlighter (broad gray that never hides the
+  even), ballpoint (solid, quick to full ink), fountain pen (italic nib: thick and thin by
+  direction), fineliner (crisp, constant width), marker (broad, dark), highlighter (broad gray that never hides the
   writing). The eraser removes whole strokes; the Premium Pen's eraser end erases with any tool.
 - **Pen button**: hold it while writing to highlight (or erase, in Settings); click it 3 times,
   or hold it about a second without touching the screen, to clear the page. The toolbar's broom clears too.
@@ -32,8 +34,8 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
   "full at" and curve, tilt start/full, how much tilt widens and lightens, grain, smoothing.
   A live pressure-curve graph, raw-to-mapped readout and a scratch pad to try them.
 - **Floating panel**: drag it anywhere by its grip; tap the corner arrows to collapse it into a
-  small box showing the current tool, tap the box to expand, drag the box too. Holds the tools,
-  undo / redo, prev / page count / next (or new page), paper, pen feel, library.
+  small box showing the current tool, tap the box to expand, drag the box too. Holds the tool button
+  (tap it for a picker of all seven pens), the eraser, undo / redo, clear, prev / page count / next (or new page), paper, pen feel, library.
 - **Getting pages off the Kindle** (see [docs/EXPORT.md](docs/EXPORT.md)):
   1. *Wi-Fi*: Library > Share shows `http://<kindle-ip>:8765`; open it in any browser for
      PNG pages, PDF / zip notebooks, folder and everything zips.

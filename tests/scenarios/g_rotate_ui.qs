@@ -2,11 +2,11 @@
 wait 300
 tap 965 95
 wait 100
-tap 765 656
-tap 1564 1934
+tap 600 496
+tap 1564 2254
 wait 400
 pen curve 300 520 40 70 0.7 5
-pentap 1768 1890
+pentap 1768 1566
 wait 500
 rotate 1
 wait 500

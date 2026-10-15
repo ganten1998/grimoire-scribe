@@ -11,6 +11,11 @@ typedef enum {
     PAPER_NARROW_NM = 5,  // the three rules again, without the margin line
     PAPER_MEDIUM_NM = 6,
     PAPER_WIDE_NM = 7,
+    PAPER_GRAND = 8,      // piano grand staff: treble + bass systems with clefs and a brace
+    PAPER_TAB = 9,        // guitar tablature: six-line staves
+    PAPER_DOTS = 10,      // 5 mm dot grid
+    PAPER_GRID = 11,      // 5 mm graph paper
+    PAPER_CORNELL = 12,   // Cornell notes: cue column, notes, summary
     PAPER_COUNT
 } PaperKind;
 

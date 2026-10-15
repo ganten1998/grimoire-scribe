@@ -1,8 +1,8 @@
 wait 200
 tap 965 95
 wait 100
-tap 765 656
-tap 1564 1934
+tap 600 496
+tap 1564 2254
 wait 300
 pen down 300 700 0.35 0 0
 pen move 312 706 0.356 0 0

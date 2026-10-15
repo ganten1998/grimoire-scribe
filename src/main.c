@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     // The Kindle UI may repaint once more after we start (the scriptlet "book" closing, a
     // late home-screen refresh). Check the panel still shows us; if not, repaint everything.
     uint32_t started = now_ms(), last_guard = started;
-    int guards = 0;
+    int guards = 0, startup_repaints = 0;
 #ifdef QUIRE_KINDLE
     heartbeat();
     uint32_t last_beat = now_ms();
@@ -94,15 +94,31 @@ int main(int argc, char **argv) {
         app_tick(&app, now_ms());
         app_flush(&app);
         uint32_t t = now_ms();
-        uint32_t every = (t - started) < 15000 ? 700 : 3000;
+        uint32_t every = (t - started) < 15000 ? 700 : 1500;
         if (t - last_guard >= every && !app.asleep) {
             last_guard = t;
+            // The Kindle's status bar strip (clock, battery) lives at the top of the panel: check
+            // that band densely, and repaint just it (no flash) when something drew there.
+            Rect skip = app.toast_visible ? app.toast_rect : RECT_EMPTY;
+            Rect top = {0, 0, app.w, ui_px(150)};
             if (display_overwritten(&app.screen)) {
                 guards++;
                 qlog("screen guard: repainting (#%d)", guards);
                 app_invalidate_all(&app, REFRESH_FULL);
                 app_flush(&app);
+            } else if (display_band_overwritten(&app.screen, top, skip)) {
+                guards++;
+                qlog("screen guard: repainting the top band (#%d)", guards);
+                app_invalidate(&app, top, REFRESH_UI);
+                app_flush(&app);
             }
+        }
+        // Two unconditional repaints shortly after launch catch the Kindle UI's last frame (the
+        // home screen strip that could land on top of Quire's first frame).
+        if (!app.asleep && ((startup_repaints == 0 && t - started > 1200) || (startup_repaints == 1 && t - started > 3500))) {
+            startup_repaints++;
+            app_invalidate_all(&app, REFRESH_UI);
+            app_flush(&app);
         }
 #ifdef QUIRE_KINDLE
         if (now_ms() - last_beat > 2000) {

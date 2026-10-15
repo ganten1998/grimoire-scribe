@@ -258,6 +258,27 @@ bool display_overwritten(const Canvas *screen) {
     return false;
 }
 
+bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
+    if (g_fd < 0 || g_st.bpp != 8 || g_last_mode == REFRESH_FAST) return false;
+    band = rect_intersect(band, (Rect){0, 0, screen->w < LW ? screen->w : LW, screen->h < LH ? screen->h : LH});
+    int differ = 0, total = 0;
+    for (int y = band.y + 2; y < band.y + band.h; y += 6)
+        for (int x = band.x + 2; x < band.x + band.w; x += 6) {
+            if (rect_contains(skip, x, y)) continue;
+            uint8_t want = screen->px[(size_t)y * screen->stride + x];
+            uint8_t have = g_fb[fb_index(x, y)];
+            if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);
+            total++;
+            if (abs((int)want - (int)have) > 24) differ++;
+        }
+    if (total && differ > total / 100 + 2) {
+        qlog("display: %d of %d samples in band %d,%d %dx%d differ (something drew there)", differ, total, band.x,
+             band.y, band.w, band.h);
+        return true;
+    }
+    return false;
+}
+
 void display_wait(void) {
     if (g_fd >= 0) fbink_wait_for_complete(g_fd, LAST_MARKER);
 }

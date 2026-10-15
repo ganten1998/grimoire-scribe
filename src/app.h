@@ -32,7 +32,7 @@ typedef struct App {
     bool asleep;                   // the Kindle is showing the sleep screen
     uint32_t last_input;           // for the sleep timeout
     bool sleep_requested;
-    uint32_t wake_redraw_at;       // 0 none: redraw after the Kindle's own screensaver closes
+    uint32_t wake_redraw_at;       // 0 none: a follow-up redraw after waking
     uint32_t last_activity_poke;   // when the power service was last told the user is active
     uint32_t power_pressed_at;     // a press waiting for the power service to announce sleep
     int prevent_applied;           // last preventScreenSaver sent (-1 none)
@@ -97,6 +97,8 @@ const Canvas *editor_page_canvas(App *a);            // the open page (paper + i
 bool editor_pin_sleep_page(App *a);                  // saves the open page as the sleep screen
 // Redraw the current screen from scratch (after sleep, or anything that drew over us).
 void app_redraw(App *a);
+// Same, with the refresh to use (waking uses a no-flash refresh: faster to get back to work).
+void app_redraw_mode(App *a, RefreshMode m);
 // Apply the sleep policy to the power service (call after changing settings.sleep_minutes).
 void app_apply_sleep_policy(App *a);
 void pensettings_open(App *a, ToolKind tab);         // switch to SCR_PENSET (returns to prev_scr)

@@ -2,22 +2,23 @@
 wait 200
 tap 965 95
 wait 100
-tap 1095 656
-tap 1564 1934
+tap 930 496
+tap 1564 2254
 wait 300
 pen curve 300 700 45 80 0.6 4
 pen line 300 900 1300 950 80 0.2 0.9
-pentap 1768 1890
+pentap 1768 1566
 wait 400
 tap 965 95
 wait 100
-tap 1425 656
-tap 1564 1934
+tap 1590 996
+tap 1564 2254
 wait 300
-pentap 1768 574
+pentap 1768 358
+pentap 1188 561
 pen curve 300 420 30 60 0.7 3
 pen line 300 520 1300 520 60 0.7 0.7
-pentap 1768 1890
+pentap 1768 1566
 wait 400
 shot 01-library-thumbs
 # New folder "School"
@@ -54,7 +55,7 @@ wait 300
 tap 1535 95
 wait 200
 shot 08-settings
-tap 930 546
+tap 930 446
 wait 400
 shot 09-penfeel-pencil
 tap 1152 289
@@ -70,7 +71,7 @@ wait 300
 # Calibration
 tap 1535 95
 wait 200
-tap 930 710
+tap 930 610
 wait 300
 shot 11-calib-first
 pentap 223 298

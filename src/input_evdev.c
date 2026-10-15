@@ -514,7 +514,7 @@ static void powerd_start(void) {
         close(p[0]);
         close(p[1]);
         execlp("sh", "sh", "-c",
-               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
+               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver,wakeupFromSuspend"
                " || sleep 2; done",
                (char *)NULL);
         _exit(127);
@@ -544,7 +544,8 @@ static void handle_powerd_fd(void) {
         qlog("input: power service: %s", g_powerd_buf);
         InEvent e = {0};
         if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
-        else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16)) e.type = IN_WAKE;
+        else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16) || !strncmp(g_powerd_buf, "wakeupFromSuspend", 17))
+            e.type = IN_WAKE;
         if (e.type) {
             e.value = atoi(g_powerd_buf + strcspn(g_powerd_buf, " "));
             e.t_ms = now_ms();

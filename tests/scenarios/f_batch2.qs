@@ -2,10 +2,10 @@
 wait 300
 tap 965 95
 wait 100
-tap 765 1156
+tap 1590 496
 wait 50
 shot 01-new-sheet-8-papers
-tap 1564 1934
+tap 1564 2254
 wait 400
 pen curve 300 520 40 70 0.7 5
 pen curve 300 660 40 70 0.7 5
@@ -29,7 +29,7 @@ side on
 side off
 wait 400
 shot 04-cleared
-pentap 1768 918
+pentap 1768 594
 wait 400
 shot 05-undo-clear
 # pinch zoom in around the writing, write small, then reset with the chip

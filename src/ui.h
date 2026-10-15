@@ -16,7 +16,7 @@ typedef enum {
     ICON_GRIP, ICON_FOLDER, ICON_NOTEBOOK, ICON_MORE, ICON_SHARE,
     ICON_TRASH, ICON_CHECK, ICON_BACK, ICON_TARGET, ICON_EXIT,
     ICON_TUNE, ICON_RENAME, ICON_FOLDER_MOVE, ICON_FOLDER_PLUS, ICON_DOWNLOAD, ICON_HIGHLIGHTER,
-    ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT,
+    ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT, ICON_FOUNTAIN, ICON_FINELINER, ICON_MARKER,
     ICON_COUNT
 } IconKind;
 
@@ -31,6 +31,8 @@ float ui_text_size(void);        // body text px (~ 3.4 mm)
 float ui_title_size(void);       // title text px (~ 5 mm)
 float ui_small_size(void);       // small text px (~ 2.6 mm)
 
+// The icon for a drawing tool (ToolKind value).
+IconKind ui_tool_icon(int tool);
 // Icon glyph scaled to fit r (with a small inset), centered.
 void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray);
 

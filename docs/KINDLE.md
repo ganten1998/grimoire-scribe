@@ -41,7 +41,9 @@ documents/Quire/            PDF mirror (USB road), shows up in the Kindle librar
 - **Strokes land away from the pen tip, or mirrored**: Library > Settings > Calibrate pen and
   touch. Tap five targets with the pen, five with a finger, check, Save. If even that is hard to
   reach, tap the **Quire - reset pen calibration** item in the Library.
-- **The Kindle UI draws over Quire** (clock, status bar): create an empty file named
+- **The Kindle UI draws over Quire** (clock, status bar): the launcher now also stops every
+  upstart job named like `*status*` / `*chrome*` and logs the jobs it saw running; Quire also
+  repaints its top band whenever something else draws there. If it still shows, create an empty file named
   `stop-framework` in the `quire` folder. Quire then stops the Kindle UI entirely instead of
   pausing it (it takes a few seconds longer to come back afterwards).
 - **Nothing happens when tapping Quire**: check `quire/quire.log`; the scriptlet logs whether it

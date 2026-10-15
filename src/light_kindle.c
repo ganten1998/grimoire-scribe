@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -18,10 +19,28 @@ static int get_prop(const char *prop) {
     return v;
 }
 
+// Runs a shell command without waiting for it (double fork: no zombie, no stall). Writing to the
+// power service takes tens of ms; doing that on the input path made the first touches laggy.
+static void run_bg(const char *cmd) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        qlog("sys: cannot fork for: %s", cmd);
+        return;
+    }
+    if (pid == 0) {
+        if (fork() == 0) {
+            execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    waitpid(pid, NULL, 0);  // the intermediate child exits at once
+}
+
 static void set_prop(const char *prop, int v) {
     char cmd[128];
     snprintf(cmd, sizeof cmd, "lipc-set-prop -i com.lab126.powerd %s %d >/dev/null 2>&1", prop, clampi(v, 0, LIGHT_MAX));
-    if (system(cmd) != 0) qlog("light: %s -> %d failed", prop, v);
+    run_bg(cmd);
 }
 
 bool light_available(void) { return access("/usr/bin/lipc-set-prop", X_OK) == 0 || access("/bin/lipc-set-prop", X_OK) == 0; }
@@ -36,25 +55,23 @@ void light_set_warmth(int level) { set_prop("currentAmberLevel", level); }
 
 void sys_request_sleep(void) {
     qlog("sleep: asking the power service to sleep");
-    if (system("lipc-set-prop -i com.lab126.powerd powerButton 1 >/dev/null 2>&1") != 0) qlog("sleep: request failed");
+    run_bg("lipc-set-prop -i com.lab126.powerd powerButton 1 >/dev/null 2>&1");
 }
 
 void sys_prevent_sleep(bool prevent) {
     char cmd[96];
     snprintf(cmd, sizeof cmd, "lipc-set-prop -i com.lab126.powerd preventScreenSaver %d >/dev/null 2>&1", prevent ? 1 : 0);
-    if (system(cmd) != 0) qlog("sleep: preventScreenSaver %d failed", prevent);
-    else qlog("sleep: preventScreenSaver %d", prevent);
+    run_bg(cmd);
+    qlog("sleep: preventScreenSaver %d", prevent);
 }
 
 void sys_activity(void) {
     // Same as KOReader: resets the power service's idle (screensaver) timer.
-    if (system("lipc-set-prop -i com.lab126.powerd touchScreenSaverTimeout 1 >/dev/null 2>&1") != 0)
-        qlog("sleep: activity poke failed");
+    run_bg("lipc-set-prop -i com.lab126.powerd touchScreenSaverTimeout 1 >/dev/null 2>&1");
 }
 
 void sys_kindle_ui(bool run) {
     const char *stopped = getenv("QUIRE_AWESOME_STOPPED");
     if (!stopped || strcmp(stopped, "yes")) return;  // the launcher did not pause it
-    if (system(run ? "killall -CONT awesome 2>/dev/null" : "killall -STOP awesome 2>/dev/null") != 0)
-        qlog("sleep: could not %s the Kindle UI", run ? "resume" : "pause");
+    run_bg(run ? "killall -CONT awesome 2>/dev/null" : "killall -STOP awesome 2>/dev/null");
 }

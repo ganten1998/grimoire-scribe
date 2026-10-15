@@ -24,7 +24,8 @@ typedef struct {
 typedef struct {
     int version;                  // settings_version from the file (defaults migrate on upgrade)
     ToolParams tools[TOOL_COUNT];
-    ToolKind current_tool;
+    ToolKind current_tool;        // what the pen draws with (may be the eraser)
+    ToolKind draw_tool;           // the drawing tool the toolbar's tool button shows
     int panel_x, panel_y;         // floating panel top-left
     bool panel_collapsed;
     int side_button;              // holding the pen button: 0 nothing, 1 eraser, 2 highlighter
