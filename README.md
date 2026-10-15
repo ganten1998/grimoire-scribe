@@ -43,7 +43,7 @@ computer. One static binary, launched from a Library scriptlet. Typeset in Termi
   1. *Wi-Fi*: Library > Share shows `http://<kindle-ip>:8765`; open it in any browser for
      PNG pages, PDF / zip notebooks, folder and everything zips.
   2. *SSH*: `tools/quire-pull` rsyncs and renders PDFs on the Mac with the same renderer.
-  3. *USB*: closing a notebook writes its PDF to `documents/Quire/<folder>/`.
+  3. *USB*: closing a notebook writes its PDF to `quire/PDFs/<folder>/`, in the background.
 
 ## Install
 

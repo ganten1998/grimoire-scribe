@@ -1,5 +1,6 @@
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 #include "app.h"
+#include "bgjob.h"
 
 #include "light.h"
 
@@ -28,14 +29,10 @@ static const ScreenOps k_screens[SCR_COUNT] = {
 static void app_sleep(App *a);
 static void app_wake(App *a);
 
-const char *app_docs_dir(void) {
-#ifdef QUIRE_KINDLE
-    return "/mnt/us/documents";
-#else
+const char *app_mirror_dir(void) {
     static char buf[600];
-    snprintf(buf, sizeof buf, "%s/documents", store_root());
+    snprintf(buf, sizeof buf, "%s/PDFs", store_root());
     return buf;
-#endif
 }
 
 int app_init(App *a, int w, int h, float dpi) {
@@ -72,6 +69,7 @@ int app_init(App *a, int w, int h, float dpi) {
 void app_shutdown(App *a) {
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     k_screens[a->scr].leave(a);
+    bg_detach_rest();  // queued PDF exports finish on their own after Quire exits
     settings_save(&a->settings);
     for (int i = 0; i < SCR_COUNT; i++) k_screens[i].free_(a);
     canvas_free(&a->toast_under);
@@ -241,6 +239,8 @@ void app_apply_sleep_policy(App *a) {
 }
 
 void app_tick(App *a, uint32_t now) {
+    int bg = bg_poll();
+    if (bg) app_toast(a, bg > 0 ? "PDF saved to quire/PDFs" : "Could not save the PDF", 2500);
     // A power press the power service did not follow with a sleep announcement: ask for sleep.
     if (a->power_pressed_at && !a->asleep && (int32_t)(now - a->power_pressed_at) > 2500) {
         a->power_pressed_at = 0;

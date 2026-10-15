@@ -9,6 +9,7 @@
 #include "app.h"
 #include "export.h"
 #include "dispmenu.h"
+#include "bgjob.h"
 #include "musicbuild.h"
 #include "keyboard.h"
 
@@ -394,7 +395,7 @@ static void draw_settings(App *a) {
     hits_add(&S->hits, r2b, H_SET_DISPLAY, 0);
     y += rh + gap * 2;
     Rect r3 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r3, "Mirror PDFs to documents/Quire (USB)", a->settings.mirror_pdf);
+    ui_checkbox(c, r3, "Mirror PDFs to quire/PDFs (USB)", a->settings.mirror_pdf);
     hits_add(&S->hits, r3, H_SET_MIRROR, 0);
     y += ui_px(130);
     Rect r4 = {in.x, y, in.w, ui_px(110)};
@@ -442,7 +443,7 @@ static void draw_modal(App *a) {
             {ICON_NOTEBOOK, "Open", H_MORE_OPEN, 0, BTN_PLAIN},
             {ICON_RENAME, "Rename", H_MORE_RENAME, 0, BTN_PLAIN},
             {ICON_FOLDER_MOVE, "Move to folder", H_MORE_MOVE, 0, BTN_PLAIN},
-            {ICON_DOWNLOAD, "Save PDF to documents/Quire now", H_MORE_PDF, 0, BTN_PLAIN},
+            {ICON_DOWNLOAD, "Save PDF to quire/PDFs now", H_MORE_PDF, 0, BTN_PLAIN},
             {ICON_TRASH, "Delete", H_MORE_DELETE, 0, BTN_PLAIN},
             {ICON_CLOSE, "Cancel", H_CANCEL, 0, BTN_PLAIN},
         };
@@ -519,7 +520,7 @@ static void open_kb(App *a, KbPurpose p, const char *title, const char *initial)
 
 // ---- actions ----
 
-// Keeps documents/Quire in step when a notebook is renamed, moved or deleted: the old mirror
+// Keeps quire/PDFs in step when a notebook is renamed, moved or deleted: the old mirror
 // PDF goes away, and (unless deleting) a fresh one is written under the new name/folder.
 static void mirror_follow(App *a, const char *id, bool deleting) {
     NotebookInfo *now = malloc(sizeof *now);
@@ -528,12 +529,23 @@ static void mirror_follow(App *a, const char *id, bool deleting) {
         for (int i = 0; i < S->nbooks; i++) {
             if (strcmp(S->books[i].id, id)) continue;
             char oldp[1200], newp[1200];
-            export_mirror_path(&S->books[i], app_docs_dir(), oldp, sizeof oldp);
-            export_mirror_path(now, app_docs_dir(), newp, sizeof newp);
+            export_mirror_path(&S->books[i], app_mirror_dir(), oldp, sizeof oldp);
+            export_mirror_path(now, app_mirror_dir(), newp, sizeof newp);
             bool had = access(oldp, F_OK) == 0;
-            if (had && (deleting || strcmp(oldp, newp))) unlink(oldp);
-            if (had && !deleting && strcmp(oldp, newp) && a->settings.mirror_pdf)
-                export_mirror_pdf(now, a->dpi, app_docs_dir());
+            if (had && !deleting && strcmp(oldp, newp)) {
+                // A rename or move: move the PDF along (instant) instead of re-rendering it.
+                char dir[1200];
+                strlcpy_q(dir, newp, sizeof dir);
+                char *slash = strrchr(dir, '/');
+                if (slash) *slash = 0;
+                mkdir_p(dir);
+                if (rename(oldp, newp) != 0 && a->settings.mirror_pdf) {
+                    unlink(oldp);
+                    bg_mirror_pdf(id, a->dpi, app_mirror_dir(), false);
+                }
+            } else if (had && deleting) {
+                unlink(oldp);
+            }
         }
     }
     free(now);
@@ -701,19 +713,17 @@ static void act(App *a, const Hit *h) {
     case H_MORE_MOVE: open_modal(a, MOD_MOVE); break;
     case H_MORE_PDF:
         if (it) {
-            app_toast(a, "Saving PDF...", 10000);
-            app_flush(a);
-            int rc = export_mirror_pdf(&S->books[it->nb], a->dpi, app_docs_dir());
+            bg_mirror_pdf(S->books[it->nb].id, a->dpi, app_mirror_dir(), true);
             S->modal = MOD_NONE;
             redraw(a, REFRESH_UI);
-            app_toast(a, rc == 0 ? "Saved to documents/Quire" : "Could not save the PDF", 3000);
+            app_toast(a, "Saving the PDF in the background...", 2500);
         }
         break;
     case H_MORE_DELETE: open_modal(a, MOD_DELETE); break;
     case H_DELETE_YES:
         if (it && !it->is_folder) {
             char nb_path[1200];
-            export_mirror_path(&S->books[it->nb], app_docs_dir(), nb_path, sizeof nb_path);
+            export_mirror_path(&S->books[it->nb], app_mirror_dir(), nb_path, sizeof nb_path);
             unlink(nb_path);  // the notebook goes to trash; its mirror PDF should not linger
             store_delete(S->books[it->nb].id);
         }

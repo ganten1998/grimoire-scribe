@@ -392,24 +392,24 @@ int export_folder_zip(const char *folder, float dpi, Buf *out) {
     return zip_end(&z);
 }
 
-void export_mirror_path(const NotebookInfo *nb, const char *docs_dir, char *buf, size_t cap) {
+void export_mirror_path(const NotebookInfo *nb, const char *mirror_dir, char *buf, size_t cap) {
     char sf[STORE_NAME_LEN], sn[STORE_NAME_LEN];
     export_safe_name(nb->name, sn, sizeof sn);
     if (nb->folder[0]) {
         export_safe_name(nb->folder, sf, sizeof sf);
-        snprintf(buf, cap, "%s/Quire/%s/%s.pdf", docs_dir, sf, sn);
+        snprintf(buf, cap, "%s/%s/%s.pdf", mirror_dir, sf, sn);
     } else
-        snprintf(buf, cap, "%s/Quire/%s.pdf", docs_dir, sn);
+        snprintf(buf, cap, "%s/%s.pdf", mirror_dir, sn);
 }
 
-int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *docs_dir) {
+int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *mirror_dir) {
     char sf[STORE_NAME_LEN], sn[STORE_NAME_LEN], dir[800], path[1000];
     export_safe_name(nb->name, sn, sizeof sn);
     if (nb->folder[0]) {
         export_safe_name(nb->folder, sf, sizeof sf);
-        snprintf(dir, sizeof dir, "%s/Quire/%s", docs_dir, sf);
+        snprintf(dir, sizeof dir, "%s/%s", mirror_dir, sf);
     } else
-        snprintf(dir, sizeof dir, "%s/Quire", docs_dir);
+        snprintf(dir, sizeof dir, "%s", mirror_dir);
     if (mkdir_p(dir) != 0) return -1;
     snprintf(path, sizeof path, "%s/%s.pdf", dir, sn);
     Buf pdf = {0};

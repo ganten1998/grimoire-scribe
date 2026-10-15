@@ -13,6 +13,7 @@
 #include "app.h"
 #include "export.h"
 #include "dispmenu.h"
+#include "bgjob.h"
 #include "musicbuild.h"
 #include "history.h"
 
@@ -706,8 +707,7 @@ static void close_notebook(App *a) {
         }
     }
     if (a->settings.mirror_pdf && S->changed) {
-        int rc = export_mirror_pdf(&S->nb, a->dpi, app_docs_dir());
-        if (rc != 0) qlog("mirror pdf failed for %s", S->nb.id);
+        bg_mirror_pdf(S->nb.id, a->dpi, app_mirror_dir(), false);
     }
     free_histories(a);
     pthumbs_clear(a);

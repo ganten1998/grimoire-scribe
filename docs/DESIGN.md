@@ -124,8 +124,8 @@ last pen-up, on page change, on leaving the editor and on exit.
    `~/Quire/<folder>/<notebook>.pdf` + `pages/NNN.png`. Incremental; renders only what changed.
    `quire-pull --http <ip>` uses the share server instead (curl), no ssh needed.
 3. **USB cable** - with `mirror_pdf` on (default), closing a notebook writes
-   `/mnt/us/documents/Quire/<folder>/<name>.pdf`. Plug in; they're in documents/Quire (and
-   show up in the Kindle library).
+   `/mnt/us/quire/PDFs/<folder>/<name>.pdf` from a niced background process (bgjob.c), so
+   the UI never waits on a render. Plug in; they're in quire/PDFs. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Quire.)
 
 ## Folders
 

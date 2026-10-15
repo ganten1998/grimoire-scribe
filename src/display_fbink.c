@@ -148,6 +148,9 @@ int display_open(int *w, int *h, float *dpi) {
 // as after the GL16 settle on pen-up. (Thresholding made light pencil vanish; forcing every inked
 // pixel black made live strokes look thick and dark, then "fade" when they settled.)
 static bool g_live;
+// Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
+// there legitimately differs from the canvas, so the overwrite checks skip it.
+static Rect g_live_area;
 static bool g_invert;  // Quire's colors inverted (user setting), on top of the fb's own flag
 void display_set_invert(bool on) { g_invert = on; }
 static const uint8_t k_bayer8[64] = {
@@ -212,6 +215,8 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     copy_rect(screen, r);
     g_live = false;
     g_last_mode = mode;
+    if (mode == REFRESH_FAST) g_live_area = rect_union(g_live_area, r);
+    else if (mode == REFRESH_FULL || rect_contains_rect(r, g_live_area)) g_live_area = RECT_EMPTY;
     FBInkConfig rc = g_cfg;
     rc.is_flashing = mode == REFRESH_FULL;
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
@@ -258,13 +263,40 @@ bool display_overwritten(const Canvas *screen) {
     return false;
 }
 
+bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
+    *where = RECT_EMPTY;
+    if (g_fd < 0 || g_st.bpp != 8) return false;
+    int w = screen->w < LW ? screen->w : LW;
+    int h = screen->h < LH ? screen->h : LH;
+    const int step = 24;
+    int differ = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (int y = step / 2; y < h; y += step)
+        for (int x = step / 2; x < w; x += step) {
+            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
+            uint8_t want = screen->px[(size_t)y * screen->stride + x];
+            uint8_t have = g_fb[fb_index(x, y)];
+            if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);
+            if (abs((int)want - (int)have) <= 24) continue;
+            differ++;
+            if (x < x0) x0 = x;
+            if (y < y0) y0 = y;
+            if (x > x1) x1 = x;
+            if (y > y1) y1 = y;
+        }
+    // A few stray samples are ink still settling; another window's strip is dozens.
+    if (differ < 8) return false;
+    *where = rect_intersect((Rect){x0 - step, y0 - step, x1 - x0 + 2 * step, y1 - y0 + 2 * step}, (Rect){0, 0, w, h});
+    qlog("display: %d samples differ in %d,%d %dx%d (something drew there)", differ, where->x, where->y, where->w, where->h);
+    return true;
+}
+
 bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
-    if (g_fd < 0 || g_st.bpp != 8 || g_last_mode == REFRESH_FAST) return false;
+    if (g_fd < 0 || g_st.bpp != 8) return false;
     band = rect_intersect(band, (Rect){0, 0, screen->w < LW ? screen->w : LW, screen->h < LH ? screen->h : LH});
     int differ = 0, total = 0;
     for (int y = band.y + 2; y < band.y + band.h; y += 6)
         for (int x = band.x + 2; x < band.x + band.w; x += 6) {
-            if (rect_contains(skip, x, y)) continue;
+            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
             uint8_t want = screen->px[(size_t)y * screen->stride + x];
             uint8_t have = g_fb[fb_index(x, y)];
             if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);

@@ -22,7 +22,7 @@ quire/app/quire, quire.sh    the program and its launcher
 quire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm
 quire/settings.ini, folders.ini, quire.log
 quire/trash/                deleted notebooks and pages
-documents/Quire/            PDF mirror (USB road), shows up in the Kindle library too
+quire/PDFs/                 PDF mirror (USB road); kept out of documents/ so the Kindle never indexes it
 ```
 
 ## Leaving

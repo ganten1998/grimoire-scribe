@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "bgjob.h"
 #include "export.h"
 #include "testlib.h"
 
@@ -101,9 +102,22 @@ TEST(notebooks) {
     snprintf(cmd, sizeof cmd, "unzip -tq '%s' >/dev/null && unzip -l '%s' | grep -q 'Physics/page-002.png'", path, path);
     CHECK(system(cmd) == 0);
     char docs[700];
-    snprintf(docs, sizeof docs, "%s/documents", root);
+    snprintf(docs, sizeof docs, "%s/PDFs", root);
     CHECK(export_mirror_pdf(&nb, 300.f, docs) == 0);
-    snprintf(path, sizeof path, "%s/Quire/School/Physics.pdf", docs);
+    snprintf(path, sizeof path, "%s/School/Physics.pdf", docs);
+    CHECK(access(path, F_OK) == 0);
+    // The same export through the background queue: the UI never waits for it.
+    unlink(path);
+    bg_mirror_pdf(nb.id, 300.f, docs, true);
+    bg_mirror_pdf(nb.id, 300.f, docs, false);  // queued behind the running one (it may be stale)
+    bg_mirror_pdf(nb.id, 300.f, docs, false);  // a duplicate of a queued job merges into it
+    int got = 0;
+    for (int i = 0; i < 600 && (bg_busy() || !got); i++) {
+        int r = bg_poll();
+        if (r) got = r;
+        usleep(10000);
+    }
+    CHECK(got == 1 && !bg_busy());
     CHECK(access(path, F_OK) == 0);
     CHECK(store_delete(nb2.id) == 0);
     CHECK(store_list(&list, &n) == 0 && n == 1);

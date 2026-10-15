@@ -31,9 +31,9 @@ int export_notebook_zip(const NotebookInfo *nb, float dpi, ZipWriter *z, const c
 // Every notebook in folder ("" = all notebooks, grouped "<folder>/<name>/..."). To bound memory
 // on the device, folder/all zips carry each notebook's PDF + raw files, not per-page PNGs.
 int export_folder_zip(const char *folder, float dpi, Buf *out);
-// Writes the documents mirror <docs_dir>/Quire/<folder>/<name>.pdf atomically. 0 on success.
-int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *docs_dir);
+// Writes the mirror <mirror_dir>/<folder>/<name>.pdf atomically. 0 on success.
+int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *mirror_dir);
 // Where export_mirror_pdf puts (or put) this notebook's PDF.
-void export_mirror_path(const NotebookInfo *nb, const char *docs_dir, char *buf, size_t cap);
+void export_mirror_path(const NotebookInfo *nb, const char *mirror_dir, char *buf, size_t cap);
 // File-name-safe version of a notebook/folder name ("/" ":" etc. replaced, never empty).
 void export_safe_name(const char *in, char *out, size_t cap);

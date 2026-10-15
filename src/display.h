@@ -26,6 +26,10 @@ bool display_overwritten(const Canvas *screen);
 // The same check limited to a band of the screen (dense sampling): catches small intruders such
 // as the Kindle's status bar clock. `skip` (may be empty) is excluded, e.g. a visible toast.
 bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip);
+// Finds a patch anywhere on screen that another process drew (a 24 px sampling grid, so a
+// strip of the Kindle home window is caught even when it covers little of the screen).
+// True with *where = the bounding box of the mismatching samples (padded).
+bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where);
 // Blocks until pending refreshes have completed (used before exit / screenshots).
 void display_wait(void);
 void display_close(void);

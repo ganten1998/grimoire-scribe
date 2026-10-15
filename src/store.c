@@ -111,8 +111,9 @@ static void info_cb(void *ctx, const char *k, const char *v) {
     }
 }
 
-int store_load_info(const char *id, NotebookInfo *out) {
-    char dir[600], path[700];
+int store_load_info(const char *id_in, NotebookInfo *out) {
+    char dir[600], path[700], id[STORE_ID_LEN];
+    strlcpy_q(id, id_in, sizeof id);  // id_in may be out->id itself: copy it before the memset
     if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
     memset(out, 0, sizeof *out);
     strlcpy_q(out->id, id, sizeof out->id);

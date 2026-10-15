@@ -19,6 +19,7 @@ Rect rect_union(Rect a, Rect b);       // empty operands are ignored
 Rect rect_intersect(Rect a, Rect b);   // RECT_EMPTY when disjoint
 Rect rect_inflate(Rect r, int by);     // grow on all sides (negative shrinks)
 bool rect_contains(Rect r, int x, int y);
+bool rect_contains_rect(Rect outer, Rect inner);  // an empty inner is contained
 bool rect_overlaps(Rect a, Rect b);
 Rect rect_from_points(float x0, float y0, float x1, float y1, float pad); // bbox, floor/ceil, padded
 

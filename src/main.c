@@ -101,10 +101,14 @@ int main(int argc, char **argv) {
             // that band densely, and repaint just it (no flash) when something drew there.
             Rect skip = app.toast_visible ? app.toast_rect : RECT_EMPTY;
             Rect top = {0, 0, app.w, ui_px(150)};
-            if (display_overwritten(&app.screen)) {
+            Rect where;
+            if (display_find_overwrite(&app.screen, skip, &where)) {
                 guards++;
-                qlog("screen guard: repainting (#%d)", guards);
-                app_invalidate_all(&app, REFRESH_FULL);
+                // Most of the screen: a clean full refresh. A patch: repaint just it, no flash.
+                bool most = (int64_t)where.w * where.h > (int64_t)app.w * app.h * 2 / 5;
+                qlog("screen guard: repainting %s (#%d)", most ? "everything" : "the patch", guards);
+                if (most) app_invalidate_all(&app, REFRESH_FULL);
+                else app_invalidate(&app, where, REFRESH_UI);
                 app_flush(&app);
             } else if (display_band_overwritten(&app.screen, top, skip)) {
                 guards++;

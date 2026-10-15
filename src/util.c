@@ -42,6 +42,11 @@ Rect rect_inflate(Rect r, int by) {
     return r;
 }
 
+bool rect_contains_rect(Rect o, Rect in) {
+    if (rect_is_empty(in)) return true;
+    return in.x >= o.x && in.y >= o.y && in.x + in.w <= o.x + o.w && in.y + in.h <= o.y + o.h;
+}
+
 bool rect_contains(Rect r, int x, int y) {
     return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }

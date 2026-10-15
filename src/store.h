@@ -30,7 +30,7 @@ typedef struct {
     int panel_x, panel_y;         // floating panel top-left
     bool panel_collapsed;
     int side_button;              // holding the pen button: 0 nothing, 1 eraser, 2 highlighter
-    bool mirror_pdf;              // write documents/Quire/<folder>/<name>.pdf on close
+    bool mirror_pdf;              // write quire/PDFs/<folder>/<name>.pdf on close
     bool follow_rotation;         // turn the UI with the Kindle (otherwise stay as is)
     bool invert;                  // white on black
     bool pinch_zoom;              // two-finger zoom in the editor

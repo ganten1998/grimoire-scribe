@@ -225,6 +225,12 @@ void sys_kindle_ui(bool run) { (void)run; }
 void sys_prevent_sleep(bool prevent) { (void)prevent; }
 void sys_activity(void) {}
 bool display_overwritten(const Canvas *screen) { (void)screen; return false; }
+bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
+    (void)screen;
+    (void)skip;
+    *where = RECT_EMPTY;
+    return false;
+}
 bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     (void)screen;
     (void)band;

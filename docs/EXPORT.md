@@ -64,7 +64,7 @@ Host kindle
 
 ## 3. USB cable
 
-With **Settings > Mirror PDFs to documents/Quire** on (the default), closing a notebook writes
-`documents/Quire/<folder>/<name>.pdf`. Renaming, moving or deleting a notebook moves or removes
-its PDF too. Plug the Kindle in and copy them; they also appear in the Kindle's own library.
+With **Settings > Mirror PDFs to quire/PDFs** on (the default), closing a notebook writes
+`quire/PDFs/<folder>/<name>.pdf` in the background. Renaming, moving or deleting a notebook moves
+or removes its PDF too. Plug the Kindle in and copy them. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Quire.)
 The raw notebooks are in the `quire` folder if you want everything.
