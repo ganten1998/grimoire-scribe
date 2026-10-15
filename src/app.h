@@ -35,6 +35,7 @@ typedef struct App {
     uint32_t wake_redraw_at;       // 0 none: a follow-up redraw after waking
     uint32_t last_activity_poke;   // when the power service was last told the user is active
     uint32_t power_pressed_at;     // a press waiting for the power service to announce sleep
+    uint32_t wake_fallback_at;     // asleep + power pressed: wake by then if outOfScreenSaver never came
     int prevent_applied;           // last preventScreenSaver sent (-1 none)
 
     // Toast (drawn by app over any screen, auto-hidden after toast_until).

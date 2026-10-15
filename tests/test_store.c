@@ -223,6 +223,7 @@ int main(void) {
     CHECK(store_init(root) == 0);
     RUN(notebooks);
     RUN(fuzz_deserialize);
+    RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
     RUN(safe_names);

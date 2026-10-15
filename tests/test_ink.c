@@ -53,6 +53,54 @@ TEST(canvas_basics) {
     canvas_free(&c);
 }
 
+// The original per-pixel rounded rect: the fast one must match it exactly.
+static void ref_round_rect(Canvas *c, Rect r, int radius, uint8_t gray, bool filled, int t) {
+    if (rect_is_empty(r)) return;
+    int maxr = (r.w < r.h ? r.w : r.h) / 2;
+    if (radius > maxr) radius = maxr;
+    if (radius < 0) radius = 0;
+    Rect b = rect_intersect(r, c->clip);
+    float rr = (float)radius;
+    for (int y = b.y; y < b.y + b.h; y++) {
+        float py = y + 0.5f;
+        for (int x = b.x; x < b.x + b.w; x++) {
+            float px = x + 0.5f;
+            float cx = clampf(px, r.x + rr, r.x + r.w - rr);
+            float cy = clampf(py, r.y + rr, r.y + r.h - rr);
+            float dx = px - cx, dy = py - cy;
+            float d;
+            if (dx != 0.f || dy != 0.f) d = sqrtf(dx * dx + dy * dy) - rr;
+            else d = -fminf(fminf(px - r.x, r.x + r.w - px), fminf(py - r.y, r.y + r.h - py));
+            float a = clampf(0.5f - d, 0.f, 1.f);
+            if (!filled) a = fminf(a, clampf(0.5f - (-(d + t)), 0.f, 1.f));
+            if (a <= 0.f) continue;
+            uint8_t *p = &c->px[y * c->stride + x];
+            *p = a >= 1.f ? gray : (uint8_t)(*p + (gray - *p) * a + 0.5f);
+        }
+    }
+}
+
+TEST(round_rect_fast_matches_reference) {
+    Canvas a, b;
+    canvas_init(&a, 400, 300);
+    canvas_init(&b, 400, 300);
+    srand(7);
+    for (int it = 0; it < 600; it++) {
+        Rect r = {rand() % 380 - 40, rand() % 280 - 40, 1 + rand() % 300, 1 + rand() % 250};
+        int rad = rand() % 60, t = 1 + rand() % 12;
+        bool filled = rand() & 1;
+        uint8_t g = (uint8_t)(rand() % 256);
+        Rect clip = it % 3 ? (Rect){0, 0, 400, 300} : (Rect){rand() % 200, rand() % 150, 50 + rand() % 200, 50 + rand() % 150};
+        canvas_set_clip(&a, clip);
+        canvas_set_clip(&b, clip);
+        canvas_round_rect(&a, r, rad, g, filled, t);
+        ref_round_rect(&b, r, rad, g, filled, t);
+    }
+    CHECK(memcmp(a.px, b.px, (size_t)a.stride * 300) == 0);
+    canvas_free(&a);
+    canvas_free(&b);
+}
+
 TEST(paper_subregion_matches_full) {
     Canvas full, part;
     canvas_init(&full, W, H);
@@ -255,6 +303,7 @@ int main(void) {
     font_init();  // some papers draw labels and clefs
     RUN(rects);
     RUN(canvas_basics);
+    RUN(round_rect_fast_matches_reference);
     RUN(paper_subregion_matches_full);
     RUN(pressure_tilt_mapping);
     RUN(live_equals_rerender);

@@ -35,6 +35,16 @@ wait 400
 power
 wait 3200
 shot 05-power-fallback-asleep
+# a tap on the sleep screen must not draw Quire over it
+pentap 900 1200
+wait 300
+shot 06-tap-while-asleep-still-asleep
+# power pressed while asleep, and no outOfScreenSaver ever comes: wake after 3 s anyway
+power
+wait 3300
+shot 07-power-fallback-awake
+# an outOfScreenSaver while already awake still repaints (no lost wake)
 wake
 wait 300
+shot 08-wake-while-awake
 quit

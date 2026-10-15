@@ -106,6 +106,7 @@ void app_event(App *a, const InEvent *ev) {
         qlog("power button: saving");
         if (a->scr == SCR_EDITOR) editor_save_now(a);
         if (!a->asleep) a->power_pressed_at = now_ms() | 1;  // expect goingToScreenSaver soon
+        else a->wake_fallback_at = (now_ms() + 3000) | 1;    // expect outOfScreenSaver soon
         return;
     }
     if (ev->type == IN_SLEEP) {
@@ -114,6 +115,11 @@ void app_event(App *a, const InEvent *ev) {
         return;
     }
     if (ev->type == IN_WAKE) {
+        if (!a->asleep) {
+            // Out of a screensaver Quire never saw start: still take the screen back.
+            qlog("wake: out of the screensaver while Quire thought it was awake; repainting");
+            a->asleep = true;
+        }
         app_wake(a);
         return;
     }
@@ -125,8 +131,10 @@ void app_event(App *a, const InEvent *ev) {
             a->last_activity_poke = a->last_input;
             sys_activity();
         }
-        if (a->asleep) app_wake(a);  // woke without hearing about it: never stay "asleep"
     }
+    // While the Kindle shows its sleep screen, pen and touch are not Quire's: drawing over the
+    // screensaver because the panel reported a touch is how a wrong screen ended up on it.
+    if (a->asleep && app_pointer_phase(ev) >= 0) return;
     k_screens[a->scr].event(a, ev);
 }
 
@@ -167,6 +175,7 @@ static void app_sleep(App *a) {
     if (a->asleep) return;
     a->asleep = true;
     a->wake_redraw_at = 0;
+    a->wake_fallback_at = 0;
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
     if (a->settings.sleep_mode == 2) {
@@ -191,6 +200,7 @@ static void app_sleep(App *a) {
 static void app_wake(App *a) {
     if (!a->asleep) return;
     a->asleep = false;
+    a->wake_fallback_at = 0;
     a->last_input = now_ms();
     a->sleep_requested = false;
     qlog("wake");
@@ -238,6 +248,10 @@ void app_tick(App *a, uint32_t now) {
         sys_prevent_sleep(false);
         a->prevent_applied = 0;
         sys_request_sleep();
+    }
+    if (a->asleep && a->wake_fallback_at && (int32_t)(now - a->wake_fallback_at) >= 0) {
+        qlog("wake: power pressed but no outOfScreenSaver within 3 s; waking anyway");
+        app_wake(a);
     }
     if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0 && !(a->scr == SCR_EDITOR && editor_busy(a))) {
         a->wake_redraw_at = 0;

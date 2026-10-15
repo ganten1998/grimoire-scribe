@@ -514,7 +514,7 @@ static void powerd_start(void) {
         close(p[0]);
         close(p[1]);
         execlp("sh", "sh", "-c",
-               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver,wakeupFromSuspend"
+               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
                " || sleep 2; done",
                (char *)NULL);
         _exit(127);
@@ -544,7 +544,10 @@ static void handle_powerd_fd(void) {
         qlog("input: power service: %s", g_powerd_buf);
         InEvent e = {0};
         if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
-        else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16) || !strncmp(g_powerd_buf, "wakeupFromSuspend", 17))
+        // Only outOfScreenSaver is a wake. (wakeupFromSuspend is not: the Kindle also resumes
+        // briefly on its own timers while the screensaver stays up, and treating that as a wake
+        // drew Quire over the screensaver and lost track of the real wake that followed.)
+        else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16))
             e.type = IN_WAKE;
         if (e.type) {
             e.value = atoi(g_powerd_buf + strcspn(g_powerd_buf, " "));
