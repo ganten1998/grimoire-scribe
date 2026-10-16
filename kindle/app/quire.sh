@@ -22,16 +22,32 @@ if [ "$1" = "--reset-calibration" ]; then
     exit 0
 fi
 
-# Only one Quire at a time.
-if pidof quire >/dev/null 2>&1; then
-    exit 0
-fi
+log() { echo "$(date '+%F %T') quire.sh: $*" >>"$LOG"; }
+
+# Only one Quire at a time. The lock is this launcher's pid, not `pidof quire`: a background PDF
+# export can outlive Quire (and shares its name), and a launcher that is still restoring the
+# Kindle UI after Quire exited must finish first, or its restore lands on top of the new Quire.
+LOCK=/tmp/quire.launcher.pid
+lock_holder() {
+    p=$(cat "$LOCK" 2>/dev/null)
+    [ -n "$p" ] && [ "$p" != "$$" ] && kill -0 "$p" 2>/dev/null && grep -q quire.sh "/proc/$p/cmdline" 2>/dev/null && echo "$p"
+}
+TRIES=0
+while HOLDER=$(lock_holder) && [ -n "$HOLDER" ]; do
+    TRIES=$((TRIES + 1))
+    if [ "$TRIES" -gt 20 ]; then
+        log "already running (launcher pid $HOLDER), not starting another"
+        exit 0
+    fi
+    usleep 500000 2>/dev/null || sleep 1
+done
+echo "$$" >"$LOCK"
+release() { [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
 
 # Keep the log from growing forever.
 if [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 1048576 ]; then
     mv -f "$LOG" "$LOG.1"
 fi
-log() { echo "$(date '+%F %T') quire.sh: $*" >>"$LOG"; }
 
 STOP_FRAMEWORK=no
 [ "$1" = "--stop-framework" ] && STOP_FRAMEWORK=yes
@@ -75,7 +91,7 @@ restore() {
         lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
     fi
 }
-trap restore EXIT
+trap 'restore; release' EXIT
 trap 'restore; exit 1' INT TERM HUP
 
 log "starting Quire (stop framework: $STOP_FRAMEWORK) on $(cat /etc/prettyversion.txt 2>/dev/null)"
@@ -129,10 +145,21 @@ log "Quire running as pid $QPID"
 # Watchdog: Quire touches /tmp/quire.alive every 2 s once its first frame is up. No first
 # frame within 25 s, or a heartbeat older than 15 s, means it is stuck: kill it so the trap
 # restores the Kindle UI instead of leaving the device paused.
+# While the Kindle is suspended Quire cannot touch the heartbeat either, so after a gap in this
+# loop (the device slept) give Quire a fresh 20 s before judging it.
 START=$(date +%s)
+LAST=$START
+GRACE=0
 while kill -0 "$QPID" 2>/dev/null; do
     sleep 2
     NOW=$(date +%s)
+    if [ $((NOW - LAST)) -gt 8 ]; then
+        log "watchdog: the device slept for $((NOW - LAST))s, waiting for a fresh heartbeat"
+        GRACE=$((NOW + 20))
+        START=$NOW
+    fi
+    LAST=$NOW
+    [ "$NOW" -lt "$GRACE" ] && continue
     if [ -f /tmp/quire.alive ]; then
         AGE=$((NOW - $(date -r /tmp/quire.alive +%s 2>/dev/null || echo "$NOW")))
         if [ "$AGE" -gt 15 ]; then

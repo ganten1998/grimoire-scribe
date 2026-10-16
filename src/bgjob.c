@@ -8,6 +8,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 #include "export.h"
 #include "store.h"
@@ -36,6 +39,19 @@ static int run_job(const Job *j) {
     return rc;
 }
 
+// In a forked child: let go of everything inherited from Quire (input devices, possibly
+// grabbed; the framebuffer; the power-service pipe), and take a name of its own so nobody
+// mistakes it for Quire. stdout/stderr stay: they are the log.
+static void child_setup(void) {
+#ifdef __linux__
+    prctl(PR_SET_NAME, "quire-bg", 0, 0, 0);
+#endif
+    long max = sysconf(_SC_OPEN_MAX);
+    if (max < 0 || max > 4096) max = 4096;
+    for (int fd = 3; fd < max; fd++) close(fd);
+    if (nice(10) < 0) { /* best effort */ }
+}
+
 static void start_next(void) {
     if (g_pid > 0 || g_n == 0) return;
     Job j = g_q[0];
@@ -49,7 +65,7 @@ static void start_next(void) {
     }
     if (pid == 0) {
         // The child only renders and writes files: no display, no input, no atexit handlers.
-        if (nice(10) < 0) { /* best effort */ }
+        child_setup();
         _exit(run_job(&j) == 0 ? 0 : 1);
     }
     g_pid = pid;
@@ -101,7 +117,7 @@ void bg_detach_rest(void) {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        if (nice(10) < 0) { /* best effort */ }
+        child_setup();
         // Wait for the running export first (it writes the same folder).
         while (g_pid > 0 && kill(g_pid, 0) == 0) usleep(200000);
         for (int i = 0; i < g_n; i++) run_job(&g_q[i]);
