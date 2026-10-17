@@ -12,8 +12,10 @@
 DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=/mnt/us/quire
 LOG=$ROOT/quire.log
-PORT=8765
 mkdir -p "$ROOT"
+# The share server's port (Settings may change it; the firewall hole must match).
+PORT=$(sed -n 's/^http_port=\([0-9][0-9]*\)$/\1/p' "$ROOT/settings.ini" 2>/dev/null | tail -n 1)
+[ -n "$PORT" ] || PORT=8765
 
 if [ "$1" = "--reset-calibration" ]; then
     if [ -f "$ROOT/settings.ini" ]; then
@@ -71,6 +73,8 @@ restore() {
         killall -CONT volumd 2>/dev/null
     fi
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
+    # Quire's power-service watcher, should a crash have left it behind.
+    pkill -f "lipc-wait-event com.lab126.powerd goingToScreenSaver" 2>/dev/null
     if [ "$STOP_FRAMEWORK" = yes ]; then
         cd / && start lab126_gui 2>/dev/null
         return
@@ -91,8 +95,17 @@ restore() {
         lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
     fi
 }
+QPID=""
+stop_quire() {
+    [ -n "$QPID" ] || return
+    kill "$QPID" 2>/dev/null
+    sleep 2
+    kill -9 "$QPID" 2>/dev/null
+    wait "$QPID" 2>/dev/null
+}
 trap 'restore; release' EXIT
-trap 'restore; exit 1' INT TERM HUP
+# Never hand the screen back to the Kindle while Quire still has it.
+trap 'stop_quire; restore; exit 1' INT TERM HUP
 
 log "starting Quire (stop framework: $STOP_FRAMEWORK) on $(cat /etc/prettyversion.txt 2>/dev/null)"
 
@@ -104,7 +117,7 @@ if [ "$STOP_FRAMEWORK" = yes ]; then
     trap "" TERM
     stop lab126_gui 2>/dev/null
     usleep 1250000 2>/dev/null || sleep 2
-    trap 'restore; exit 1' INT TERM HUP
+    trap 'stop_quire; restore; exit 1' INT TERM HUP
 else
     cat /dev/fb0 >/var/tmp/quire-fb.dump 2>/dev/null
     lipc-set-prop com.lab126.pillow disableEnablePillow disable 2>/dev/null && PILLOW_DISABLED=yes

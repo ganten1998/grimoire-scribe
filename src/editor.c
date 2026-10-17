@@ -214,8 +214,8 @@ static void draw_panel(App *a) {
     Rect p = S->panel;
     hits_clear(&S->hits);
     if (S->collapsed) {
-        canvas_round_rect(c, p, ui_px(22), 255, true, 0);
-        canvas_round_rect(c, p, ui_px(22), 0, false, ui_px(6));
+        ui_frame(c, p, ui_px(22), 255, true, 0);
+        ui_frame(c, p, ui_px(22), 0, false, ui_px(6));
         Rect ir = rect_inflate(p, -ui_px(20));
         ir.h -= ui_px(12);
         ui_icon(c, ui_tool_icon(a->settings.current_tool), ir, 0);
@@ -224,8 +224,8 @@ static void draw_panel(App *a) {
         hits_add(&S->hits, p, P_EXPAND, 0);
         return;
     }
-    canvas_round_rect(c, p, ui_px(22), 255, true, 0);
-    canvas_round_rect(c, p, ui_px(22), 0, false, ui_px(6));
+    ui_frame(c, p, ui_px(22), 255, true, 0);
+    ui_frame(c, p, ui_px(22), 0, false, ui_px(6));
     int x = p.x + ui_px(14), w = p.w - ui_px(28);
     int y = p.y + ui_px(10);
     // Header: grip (drag) + collapse.
@@ -277,7 +277,7 @@ static void draw_panel(App *a) {
     char lab[32];
     snprintf(lab, sizeof lab, "%d / %d", S->index + 1, S->nb.npages);
     Rect lr = {x - ui_px(6), y, w + ui_px(12), label_h()};
-    canvas_round_rect(c, lr, ui_px(10), 0, false, ui_px(2));  // a tappable chip: opens Pages
+    ui_frame(c, lr, ui_px(10), 0, false, ui_px(2));  // a tappable chip: opens Pages
     font_draw_centered(c, FONT_BOLD, ui_small_size() * (g_pscale < 1.f ? g_pscale : 1.f), lr, lab, 0);
     hits_add(&S->hits, lr, P_PAGES, 0);
     y += label_h() + gap();
@@ -347,7 +347,7 @@ static void draw_paper_sheet(App *a) {
         const Canvas *pv = paper_preview(a, k);
         if (pv) canvas_blit_fit(c, pv, tr);
         bool sel = custom ? page_custom : (S->page && S->page->paper == k);
-        canvas_round_rect(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
+        ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f,
                            (Rect){tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)},
                            custom ? "Custom music..." : paper_name(k), 0);
@@ -452,8 +452,8 @@ static void draw_tools(App *a) {
     if (x < ui_px(10)) x = S->panel.x + S->panel.w + ui_px(20);
     int y = clampi(S->panel.y, ui_px(10), a->h - h - ui_px(10));
     S->tools_rect = (Rect){x, y, w, h};
-    canvas_round_rect(c, S->tools_rect, ui_px(22), 255, true, 0);
-    canvas_round_rect(c, S->tools_rect, ui_px(22), 0, false, ui_px(6));
+    ui_frame(c, S->tools_rect, ui_px(22), 255, true, 0);
+    ui_frame(c, S->tools_rect, ui_px(22), 0, false, ui_px(6));
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){x + ui_px(30), y, w - ui_px(60), ui_px(100)}, "Tools", 0);
     for (int i = 0; i < N_DRAW_TOOLS; i++) {
         ToolKind t = k_draw_tools[i];
@@ -550,7 +550,7 @@ static void pages_draw(App *a) {
     snprintf(title, sizeof title, "Pages (%d)", S->nb.npages);
     font_draw_left(c, FONT_BOLD, ui_title_size() * 1.15f,
                    (Rect){back.x + bh + ui_px(30), 0, rall.x - back.x - bh - ui_px(50), th0}, title, 0);
-    canvas_hline(c, 0, a->w, th0, ui_px(4), 0);
+    ui_rule(c, 0, a->w, th0, ui_px(4), 0);
     int cols, rows, cw, ch, th;
     pages_geom(a, &cols, &rows, &cw, &ch, &th);
     int per = cols * rows, screens = (S->nb.npages + per - 1) / per;
@@ -571,10 +571,10 @@ static void pages_draw(App *a) {
             }
         }
         bool cur = i == S->index, sel = i < S->pages_sel_cap && S->pages_sel[i];
-        canvas_round_rect(c, rect_inflate(tr, cur ? ui_px(8) : 0), ui_px(12), 0, false, cur ? ui_px(8) : ui_px(3));
+        ui_frame(c, rect_inflate(tr, cur ? ui_px(8) : 0), ui_px(12), 0, false, cur ? ui_px(8) : ui_px(3));
         Rect cb = {tr.x + tr.w - ui_px(96), tr.y + ui_px(16), ui_px(80), ui_px(80)};
-        canvas_round_rect(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
-        canvas_round_rect(c, cb, ui_px(12), 0, false, ui_px(5));
+        ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
+        ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
         if (sel) ui_icon(c, ICON_CHECK, cb, 255);
         char lab[32];
         snprintf(lab, sizeof lab, cur ? "Page %d (open)" : "Page %d", i + 1);
@@ -609,7 +609,7 @@ static void compose(App *a, Rect r) {
         char z[48];
         snprintf(z, sizeof z, "%d%%   tap to reset", (int)lrintf(S->zoom / S->zoom_default * 100.f));
         Rect c = zoom_chip(a);
-        canvas_round_rect(&a->screen, c, c.h / 2, 0, true, 0);
+        ui_frame(&a->screen, c, c.h / 2, 0, true, 0);
         font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), c, z, 255);
     }
     if (rect_overlaps(r, S->panel)) draw_panel(a);
@@ -650,18 +650,24 @@ static void save_thumb_from_canvas(App *a) {
     canvas_free(&t);
 }
 
-static void save_page(App *a) {
-    if (!S->open) return;
+// False if the page could not be written; it then stays dirty (and in memory), so callers
+// that would drop it (turning the page, closing) must stay put instead.
+static bool save_page(App *a) {
+    if (!S->open) return true;
     if (S->page_dirty) {
-        if (store_save_page(&S->nb, S->index, S->page) != 0) app_toast(a, "Could not save this page!", 4000);
+        if (store_save_page(&S->nb, S->index, S->page) != 0) {
+            app_toast(a, "Could not save this page. Is the storage full?", 5000);
+            return false;
+        }
         if (S->index == 0) S->thumb_dirty = true;  // written when leaving the page (it is slow)
         S->page_dirty = false;
         S->info_dirty = true;
     }
     if (S->info_dirty) {
-        store_save_info(&S->nb);
+        if (store_save_info(&S->nb) != 0) return false;
         S->info_dirty = false;
     }
+    return true;
 }
 
 static void render_page_full(App *a) {
@@ -672,7 +678,7 @@ static void render_page_full(App *a) {
 static void go_to_page(App *a, int index) {
     S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
     S->panel_stale = false;
-    save_page(a);
+    if (!save_page(a)) return;
     write_thumb_if_needed(a);
     index = clampi(index, 0, S->nb.npages - 1);
     Page *np = page_at(a, index);
@@ -1110,7 +1116,7 @@ static void panel_act(App *a, const Hit *h) {
     case P_PREV: go_to_page(a, S->index - 1); break;
     case P_NEXT:
         if (S->index >= S->nb.npages - 1) {
-            save_page(a);
+            if (!save_page(a)) return;
             if (store_add_page(&S->nb, S->nb.npages, S->page->paper) != 0) {
                 app_toast(a, "Could not add a page", 3000);
                 return;
@@ -1134,6 +1140,7 @@ static void panel_act(App *a, const Hit *h) {
     case P_LIBRARY:
         app_toast(a, "Saving...", 8000);
         app_flush(a);
+        if (!save_page(a)) return;  // stay with the unsaved page rather than drop it
         close_notebook(a);
         app_switch(a, SCR_LIBRARY);
         app_toast(a, "Saved", 1200);

@@ -36,6 +36,7 @@ typedef struct {
     bool pinch_zoom;              // two-finger zoom in the editor
     int sleep_mode;               // sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own
     int sleep_minutes;            // sleep after this long without input (0 = never)
+    int theme;                    // UiTheme: 0 gothic, 1 classic (settings.ini: theme=gothic|classic)
     InputCalib pen_calib, touch_calib;
     int http_port;                // share server, default 8765
 } Settings;
@@ -60,6 +61,8 @@ int store_add_folder(const char *name);
 int store_remove_folder(const char *name);   // only from folders.ini; notebooks keep theirs
 int store_create(const char *name, const char *folder, PaperKind paper, NotebookInfo *out); // with 1 empty page
 int store_load_info(const char *id, NotebookInfo *out);
+// Pages found damaged since the last call (each was renamed to p<id>.qpg.damaged-<time>).
+int store_take_corrupt_count(void);
 int store_save_info(NotebookInfo *nb);      // also bumps modified
 int store_rename(const char *id, const char *name);
 int store_set_folder(const char *id, const char *folder);

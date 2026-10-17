@@ -44,6 +44,8 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/nb/nope.pdf")
 check "missing notebook 404" "[ $code = 404 ]"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/")
 check "POST rejected ($code)" "[ $code = 405 ]"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' "$URL/api/list.json")
+check "foreign Host refused ($code)" "[ $code = 400 ]"
 QUIRE_OUT="$B/pulled" tools/quire-pull --http 127.0.0.1 --png >"$B/pull.log" 2>&1
 check "quire-pull --http" "ls $B/pulled/*.pdf >/dev/null 2>&1 || ls $B/pulled/*/*.pdf >/dev/null 2>&1"
 kill $APP 2>/dev/null || true

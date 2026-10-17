@@ -104,6 +104,52 @@ void canvas_round_rect(Canvas *c, Rect r, int radius, uint8_t gray, bool filled,
     }
 }
 
+// Coverage of a rect with its corners cut off at 45 degrees by ch px (an octagon; a square with
+// ch = half its side is a lozenge). The boundary is the intersection of half-planes, so the max
+// of the plane distances is the exact signed distance inside and a close one outside.
+static inline float ch_alpha(float cx, float cy, float hw, float hh, float k, float px, float py, bool filled,
+                             int t) {
+    float ax = fabsf(px - cx), ay = fabsf(py - cy);
+    float d = fmaxf(fmaxf(ax - hw, ay - hh), (ax + ay - k) * 0.70710678f);
+    float a = cov(d);
+    if (!filled) a = fminf(a, cov(-(d + (float)t)));
+    return a;
+}
+
+void canvas_chamfer_rect(Canvas *c, Rect r, int ch, uint8_t gray, bool filled, int t) {
+    if (rect_is_empty(r)) return;
+    int maxc = (r.w < r.h ? r.w : r.h) / 2;
+    if (ch > maxc) ch = maxc;
+    if (ch < 0) ch = 0;
+    Rect b = rect_intersect(r, c->clip);
+    float hw = r.w * 0.5f, hh = r.h * 0.5f, cx = r.x + hw, cy = r.y + hh, k = hw + hh - (float)ch;
+    // As in canvas_round_rect: away from the cut corners a row's coverage depends on y only.
+    int E = ch + t + 2;
+    int m0 = r.x + E, m1 = r.x + r.w - E;
+    for (int y = b.y; y < b.y + b.h; y++) {
+        float py = y + 0.5f;
+        uint8_t *row = &c->px[(size_t)y * c->stride];
+        for (int x = b.x; x < b.x + b.w; x++) {
+            if (x >= m0 && x < m1) {
+                float a = ch_alpha(cx, cy, hw, hh, k, x + 0.5f, py, filled, t);
+                int x1 = m1 < b.x + b.w ? m1 : b.x + b.w;
+                if (a >= 1.f) memset(row + x, gray, (size_t)(x1 - x));
+                else if (a > 0.f)
+                    for (int q = x; q < x1; q++) blend_px(&row[q], gray, a);
+                x = x1 - 1;
+                continue;
+            }
+            float a = ch_alpha(cx, cy, hw, hh, k, x + 0.5f, py, filled, t);
+            if (a > 0.f) blend_px(&row[x], gray, a);
+        }
+    }
+}
+
+void canvas_lozenge(Canvas *c, float cx, float cy, float r, uint8_t gray) {
+    int s = (int)lrintf(r * 2.f);
+    canvas_chamfer_rect(c, (Rect){(int)lrintf(cx - r), (int)lrintf(cy - r), s, s}, s / 2, gray, true, 0);
+}
+
 void canvas_hline(Canvas *c, int x0, int x1, int y, int t, uint8_t gray) {
     if (x1 < x0) {
         int s = x0;

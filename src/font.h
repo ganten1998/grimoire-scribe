@@ -3,10 +3,23 @@
 #pragma once
 #include "canvas.h"
 
-typedef enum { FONT_REGULAR = 0, FONT_BOLD = 1 } FontFace;
+// What the text is for; the theme picks the typeface. Classic: all Terminess. Gothic: IM FELL
+// English for text (overprinted for bold), its small caps for labels, UnifrakturMaguntia for
+// titles. FIXED faces are Terminess in every theme: paper labels, so pages never change.
+typedef enum {
+    FONT_REGULAR = 0,
+    FONT_BOLD = 1,
+    FONT_TITLE,
+    FONT_CAPS,
+    FONT_FIXED,
+    FONT_FIXED_BOLD,
+    FONT_FACE_COUNT
+} FontFace;
 
 int font_init(void);   // 0 on success
 void font_shutdown(void);
+void font_set_gothic(bool gothic);
+bool font_gothic(void);
 
 // Draws UTF-8 text with its baseline at y. Returns advance width in px.
 int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char *utf8, uint8_t gray);

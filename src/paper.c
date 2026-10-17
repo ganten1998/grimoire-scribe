@@ -135,7 +135,7 @@ static void tab(Canvas *c, float dpi) {
         float fs = space * 1.75f;
         static const char *letters[3] = {"T", "A", "B"};
         for (int i = 0; i < 3; i++)
-            font_draw(c, FONT_BOLD, fs, x0 + (int)lrintf(space * 0.6f), (int)lrintf(y0 + space * (1.6f + 1.6f * (float)i)), letters[i], 60);
+            font_draw(c, FONT_FIXED_BOLD, fs, x0 + (int)lrintf(space * 0.6f), (int)lrintf(y0 + space * (1.6f + 1.6f * (float)i)), letters[i], 60);
     }
 }
 
@@ -266,7 +266,7 @@ static void draw_part(Canvas *c, MusicPart p, float y0, float space, int x0, int
             static const char *letters[3] = {"T", "A", "B"};
             for (int i = 0; i < 3; i++) {
                 float cy = y0 + h * ((float)i + 0.5f) / 3.f;
-                font_draw(c, FONT_BOLD, fs, x0 + (int)lrintf(space * 0.6f), (int)lrintf(cy + fs * 0.34f), letters[i], 60);
+                font_draw(c, FONT_FIXED_BOLD, fs, x0 + (int)lrintf(space * 0.6f), (int)lrintf(cy + fs * 0.34f), letters[i], 60);
             }
         }
         break;
@@ -373,9 +373,9 @@ static void cornell(Canvas *c, float dpi) {
     canvas_vline(c, cue, head, sum, lt, 120);
     canvas_hline(c, 0, c->w, sum, lt, 120);
     float fs = mm_to_px(2.6f, dpi);
-    font_draw(c, FONT_REGULAR, fs, px_mm(4.f, dpi), head - px_mm(3.f, dpi), "Cues", 150);
-    font_draw(c, FONT_REGULAR, fs, cue + px_mm(4.f, dpi), head - px_mm(3.f, dpi), "Notes", 150);
-    font_draw(c, FONT_REGULAR, fs, px_mm(4.f, dpi), sum + px_mm(6.f, dpi), "Summary", 150);
+    font_draw(c, FONT_FIXED, fs, px_mm(4.f, dpi), head - px_mm(3.f, dpi), "Cues", 150);
+    font_draw(c, FONT_FIXED, fs, cue + px_mm(4.f, dpi), head - px_mm(3.f, dpi), "Notes", 150);
+    font_draw(c, FONT_FIXED, fs, px_mm(4.f, dpi), sum + px_mm(6.f, dpi), "Summary", 150);
 }
 
 void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {

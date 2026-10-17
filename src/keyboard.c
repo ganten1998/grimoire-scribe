@@ -89,11 +89,11 @@ static void key_label(const Keyboard *kb, int code, char *buf) {
 Rect keyboard_draw(Keyboard *kb, Canvas *c, Rect screen) {
     Rect area = modal_rect(screen);
     kb->area = area;
-    canvas_round_rect(c, area, ui_px(24), 255, true, 0);
-    canvas_round_rect(c, area, ui_px(24), 0, false, ui_px(6));
+    ui_frame(c, area, ui_px(24), 255, true, 0);
+    ui_frame(c, area, ui_px(24), 0, false, ui_px(6));
     Rect f = field_rect(area);
-    canvas_round_rect(c, f, ui_px(12), 255, true, 0);
-    canvas_round_rect(c, f, ui_px(12), 0, false, ui_px(3));
+    ui_frame(c, f, ui_px(12), 255, true, 0);
+    ui_frame(c, f, ui_px(12), 0, false, ui_px(3));
     float ts = ui_text_size();
     int tw = kb->title[0] ? font_measure(FONT_BOLD, ts, kb->title) + ui_px(30) : 0;
     if (tw) font_draw_left(c, FONT_BOLD, ts, (Rect){f.x + ui_px(24), f.y, tw, f.h}, kb->title, 0);
@@ -112,8 +112,8 @@ Rect keyboard_draw(Keyboard *kb, Canvas *c, Rect screen) {
         ButtonStyle st = (i == kb->pressed_key || (keys[i].code == K_SHIFT && kb->shift)) ? BTN_SELECTED
                          : keys[i].code == K_DONE                                       ? BTN_PRIMARY
                                                                                         : BTN_PLAIN;
-        canvas_round_rect(c, keys[i].r, ui_px(12), st == BTN_SELECTED ? 0 : 255, true, 0);
-        canvas_round_rect(c, keys[i].r, ui_px(12), 0, false, st == BTN_PRIMARY ? ui_px(6) : ui_px(3));
+        ui_frame(c, keys[i].r, ui_px(12), st == BTN_SELECTED ? 0 : 255, true, 0);
+        ui_frame(c, keys[i].r, ui_px(12), 0, false, st == BTN_PRIMARY ? ui_px(6) : ui_px(3));
         float ks = strlen(lab) > 1 ? ui_text_size() : ui_title_size();
         font_draw_centered(c, FONT_BOLD, ks, keys[i].r, lab, st == BTN_SELECTED ? 255 : 0);
     }

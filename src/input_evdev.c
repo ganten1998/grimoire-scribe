@@ -29,6 +29,7 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/prctl.h>
 
 #include "calib_fit.h"
 #include "input.h"
@@ -510,6 +511,9 @@ static void powerd_start(void) {
     }
     if (pid == 0) {
         setpgid(0, 0);  // its own group, so the loop and its child can be stopped together
+#ifdef __linux__
+        prctl(PR_SET_PDEATHSIG, SIGTERM);  // and it goes when Quire does, even on a crash
+#endif
         dup2(p[1], 1);
         close(p[0]);
         close(p[1]);

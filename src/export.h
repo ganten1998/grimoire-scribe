@@ -7,6 +7,7 @@
 typedef struct {
     uint8_t *data;
     size_t len, cap;
+    bool err;  // sticky: an append ran out of memory, the contents are incomplete
 } Buf;
 void buf_free(Buf *b);
 int buf_append(Buf *b, const void *p, size_t n);

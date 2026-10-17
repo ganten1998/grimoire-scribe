@@ -147,8 +147,18 @@ int write_file_atomic(const char *path, const void *data, size_t len) {
         p += w;
         left -= (size_t)w;
     }
-    fsync(fd);
-    close(fd);
+    // A late error (disk full, I/O) must not let a short file replace a good one.
+    if (fsync(fd) != 0) {
+        qlog("fsync %s: %s", tmp, strerror(errno));
+        close(fd);
+        unlink(tmp);
+        return -1;
+    }
+    if (close(fd) != 0) {
+        qlog("close %s: %s", tmp, strerror(errno));
+        unlink(tmp);
+        return -1;
+    }
     if (rename(tmp, path) != 0) {
         qlog("rename %s: %s", path, strerror(errno));
         unlink(tmp);

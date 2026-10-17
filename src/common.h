@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define APP_NAME "Quire"
 #ifndef QUIRE_VERSION
 #define QUIRE_VERSION "dev"
 #endif

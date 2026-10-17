@@ -18,8 +18,11 @@ static int g_w = 1860, g_h = 2480;
 
 void store_set_device(float dpi, int w, int h) {
     if (dpi > 50.f) g_dpi = dpi;
-    if (w > 0) g_w = w;
-    if (h > 0) g_h = h;
+    // Pages are portrait whatever way the screen was turned at launch.
+    if (w > 0 && h > 0) {
+        g_w = w < h ? w : h;
+        g_h = w < h ? h : w;
+    }
 }
 float store_dpi(void) { return g_dpi; }
 void store_page_size(int *w, int *h) {
@@ -111,6 +114,32 @@ static void info_cb(void *ctx, const char *k, const char *v) {
     }
 }
 
+static int cmp_u32(const void *a, const void *b) {
+    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+    return x < y ? -1 : x > y;
+}
+
+static void rebuild_pages(const char *dir, NotebookInfo *nb) {
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d)) && nb->npages < STORE_MAX_PAGES) {
+        unsigned long id;
+        char tail[8];
+        if (sscanf(e->d_name, "p%lu.qp%7s", &id, tail) == 2 && !strcmp(tail, "g") && id > 0 && id < 0x7fffffff)
+            nb->page_ids[nb->npages++] = (uint32_t)id;
+    }
+    closedir(d);
+    qsort(nb->page_ids, (size_t)nb->npages, sizeof nb->page_ids[0], cmp_u32);
+}
+
+static int g_corrupt_pages;
+int store_take_corrupt_count(void) {
+    int n = g_corrupt_pages;
+    g_corrupt_pages = 0;
+    return n;
+}
+
 int store_load_info(const char *id_in, NotebookInfo *out) {
     char dir[600], path[700], id[STORE_ID_LEN];
     strlcpy_q(id, id_in, sizeof id);  // id_in may be out->id itself: copy it before the memset
@@ -119,6 +148,12 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     strlcpy_q(out->id, id, sizeof out->id);
     snprintf(path, sizeof path, "%s/notebook.ini", dir);
     if (ini_parse_file(path, info_cb, out) != 0) return -1;
+    if (out->npages == 0) {
+        // A damaged or empty notebook.ini: rebuild the page list from the page files, so the
+        // next save cannot drop every page but the first.
+        rebuild_pages(dir, out);
+        if (out->npages > 0) qlog("store: %s had no page list, found %d page file(s)", id, out->npages);
+    }
     if (out->npages == 0) {  // never leave a notebook without a page
         out->page_ids[0] = 1;
         out->npages = 1;
@@ -206,9 +241,22 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
     nb->npages = 1;
     nb->page_ids[0] = 1;
     nb->next_page_id = 2;
-    char dir[600];
-    store_notebook_dir(nb->id, dir, sizeof dir);
-    if (mkdir_p(dir) != 0) return -1;
+    char dir[600], parent[600];
+    snprintf(parent, sizeof parent, "%s/notebooks", g_root);
+    if (mkdir_p(parent) != 0) return -1;
+    // Two notebooks made in the same second must never share a directory: plain mkdir, and a
+    // fresh random suffix if the name is taken.
+    for (int attempt = 0;; attempt++) {
+        store_notebook_dir(nb->id, dir, sizeof dir);
+        if (mkdir(dir, 0755) == 0) break;
+        if (errno != EEXIST || attempt >= 8) {
+            qlog("store: cannot create %s: %s", dir, strerror(errno));
+            return -1;
+        }
+        char rnd2[8];
+        random_hex(rnd2, 4);
+        memcpy(nb->id + strlen(nb->id) - 4, rnd2, 4);
+    }
     Page *p = page_new(g_w, g_h, nb->paper);
     if (!p) return -1;
     int rc = write_page_file(nb, 1, p);
@@ -305,8 +353,12 @@ static int load_folders_ini(FolderName **out, int *n) {
     if (!txt) return 0;
     int cap = 0;
     char *save = NULL;
+    bool first = true;
     for (char *line = strtok_r(txt, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
-        if (!*line || line[0] == '#') continue;
+        // Only the header line is a comment: a folder may well be called "#1".
+        bool header = first && !strncmp(line, "# ", 2) && strstr(line, " folders");
+        first = false;
+        if (!*line || header) continue;
         if (*n == cap) {
             int nc = cap ? cap * 2 : 8;
             FolderName *na = realloc(*out, (size_t)nc * sizeof *na);
@@ -458,7 +510,15 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
     uint8_t *data = read_file(path, &len);
     Page *p = NULL;
     if (data) {
-        if (page_deserialize(data, len, &p) != 0) qlog("store: corrupt page %s, starting blank", path);
+        if (page_deserialize(data, len, &p) != 0) {
+            // Keep the damaged file (it may be from a newer version) instead of letting the
+            // next autosave replace it with the blank page shown in its place.
+            char aside[760];
+            snprintf(aside, sizeof aside, "%s.damaged-%lld", path, (long long)wall_time());
+            int rc = rename(path, aside);
+            qlog("store: corrupt page %s, %s; starting blank", path, rc == 0 ? "set aside" : "could not set aside");
+            g_corrupt_pages++;
+        }
         free(data);
     }
     if (!p) p = page_new(w, h, nb->paper);
@@ -726,6 +786,7 @@ void settings_default(Settings *s) {
     s->mirror_pdf = true;
     s->follow_rotation = true;
     s->pinch_zoom = true;
+    s->theme = 0;
     s->sleep_mode = 0;
     s->sleep_minutes = 10;
     s->http_port = 8765;
@@ -775,6 +836,7 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "follow_rotation")) s->follow_rotation = atoi(v) != 0;
     else if (!strcmp(k, "invert")) s->invert = atoi(v) != 0;
     else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = atoi(v) != 0;
+    else if (!strcmp(k, "theme")) s->theme = !strcmp(v, "classic") ? 1 : 0;
     else if (!strcmp(k, "sleep_mode")) s->sleep_mode = clampi(atoi(v), 0, 2);
     else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = clampi(atoi(v), 0, 240);
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
@@ -831,10 +893,10 @@ int settings_save(const Settings *s) {
     n += (size_t)snprintf(buf + n, cap - n,
                           "# Quire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
                           "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
-                          "music_layout=%u\nsettings_version=%d\n",
+                          "music_layout=%u\ntheme=%s\nsettings_version=%d\n",
                           (int)s->current_tool, (int)s->draw_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
                           s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->sleep_mode, s->sleep_minutes, s->http_port,
-                          (unsigned)s->music_layout, SETTINGS_VERSION);
+                          (unsigned)s->music_layout, s->theme == 1 ? "classic" : "gothic", SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
     for (int i = 0; i < 2; i++)

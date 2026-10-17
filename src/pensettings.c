@@ -129,7 +129,7 @@ static void draw_pad_frame(App *a) {
     float pitch = mm_to_px(7.14f, a->dpi);
     for (float y = S->pad.y + pitch; y < S->pad.y + S->pad.h - 4; y += pitch)
         canvas_hline(c, S->pad.x, S->pad.x + S->pad.w, (int)y, ui_px(2), 185);
-    canvas_round_rect(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
+    ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
     ui_button(c, clear_rect(a), ICON_NONE, "Clear", BTN_PLAIN);
 }
 
@@ -149,7 +149,7 @@ static void draw_all(App *a) {
     snprintf(title, sizeof title, "Pen feel: %s", tool_name(S->tab));
     font_draw_left(c, FONT_BOLD, ui_title_size() * 1.1f, (Rect){back.x + bh + ui_px(30), 0, reset.x - back.x - bh - ui_px(50), th},
                    title, 0);
-    canvas_hline(c, 0, a->w, th, ui_px(4), 0);
+    ui_rule(c, 0, a->w, th, ui_px(4), 0);
     // Tabs.
     static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_BALLPOINT,   TOOL_FOUNTAIN,
                                                TOOL_FINELINER, TOOL_MARKER,      TOOL_HIGHLIGHTER, TOOL_ERASER};

@@ -20,6 +20,10 @@ void canvas_rect_outline(Canvas *c, Rect r, int t, uint8_t gray);
 // Rounded rect, filled or outlined (thickness t), antialiased corners.
 void canvas_round_rect(Canvas *c, Rect r, int radius, uint8_t gray, bool filled, int t);
 // Axis-aligned crisp lines (used by paper rules). Thickness grows down/right.
+// Rect with 45-degree cut corners (ch px), same filled/outline rules as canvas_round_rect.
+void canvas_chamfer_rect(Canvas *c, Rect r, int ch, uint8_t gray, bool filled, int t);
+// Filled diamond of "radius" r (center to tip).
+void canvas_lozenge(Canvas *c, float cx, float cy, float r, uint8_t gray);
 void canvas_hline(Canvas *c, int x0, int x1, int y, int t, uint8_t gray);
 void canvas_vline(Canvas *c, int x, int y0, int y1, int t, uint8_t gray);
 // Antialiased line with round caps; width in px (may be fractional). Opaque paint (not deposit).

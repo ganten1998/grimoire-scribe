@@ -39,9 +39,11 @@ SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 all: sim headless test tools kindle package
 
 # ---- generated: embedded fonts ----
-$(BUILD)/gen/fonts.c: assets/TerminessNerdFontMono-Regular.ttf assets/TerminessNerdFontMono-Bold.ttf
+FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf UnifrakturMaguntia-Book.ttf \
+         IMFeENrm28P.ttf IMFeENsc28P.ttf
+$(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
-	( cd assets && xxd -i TerminessNerdFontMono-Regular.ttf && xxd -i TerminessNerdFontMono-Bold.ttf ) > $@.tmp && mv $@.tmp $@
+	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
 
 # ---- simulator ----
 SIM_FLAGS := -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer

@@ -73,6 +73,10 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
             if (i == 0) font_draw_left(c, FONT_REGULAR, ui_text_size(), row, "Front light controls are not available here.", 60);
             continue;
         }
+        if (i == 1 && m->warmth < 0) {  // no amber LEDs on this Kindle
+            font_draw_left(c, FONT_REGULAR, ui_text_size(), row, "This Kindle has no warmth control.", 60);
+            continue;
+        }
         Slider s;
         slider_for(m, a, i == 0 ? D_BRIGHT : D_WARM, row, &s);
         char vt[16];

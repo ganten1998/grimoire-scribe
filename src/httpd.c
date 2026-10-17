@@ -1,4 +1,6 @@
-// httpd.c: a tiny, single-client HTTP/1.0 server for the share screen.
+// httpd.c: a tiny HTTP/1.0 server for the share screen. Pages and the notebook list are
+// answered in-process; anything that renders (PDF, zip, PNG) is answered by a forked child, so
+// a big export can neither freeze the UI nor trip the launcher's watchdog.
 #include "httpd.h"
 
 #include <arpa/inet.h>
@@ -11,7 +13,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "export.h"
@@ -34,6 +39,14 @@ static struct {
     size_t sent;
     uint32_t t0;
 } g_c = {.fd = -1};
+
+#define MAX_CHILDREN 2
+static pid_t g_children[MAX_CHILDREN];
+
+static void reap_children(void) {
+    for (int i = 0; i < MAX_CHILDREN; i++)
+        if (g_children[i] > 0 && waitpid(g_children[i], NULL, WNOHANG) != 0) g_children[i] = 0;
+}
 
 static void set_nonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
 
@@ -129,7 +142,8 @@ static void url_decode(char *s) {
 
 static void respond(int code, const char *ctype, const Buf *body, const char *download_name) {
     const char *reason = code == 200 ? "OK" : code == 404 ? "Not Found" : code == 405 ? "Method Not Allowed"
-                                          : code == 400 ? "Bad Request" : "Internal Server Error";
+                                          : code == 400 ? "Bad Request" : code == 503 ? "Service Unavailable"
+                                          : "Internal Server Error";
     Buf *o = &g_c.out;
     buf_printf(o, "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
                   "Cache-Control: no-store\r\n", code, reason, ctype, body ? body->len : 0);
@@ -331,7 +345,7 @@ static void route(char *path) {
         ZipWriter z;
         zip_begin(&z, &b);
         int rc = export_notebook_zip(nb, g_dpi, &z, "");
-        zip_end(&z);
+        if (zip_end(&z) != 0) rc = -1;
         snprintf(fname, sizeof fname, "%s.zip", safe);
         if (rc == 0) respond(200, "application/zip", &b, fname);
         else respond_text(500, "export failed");
@@ -363,11 +377,89 @@ static void route(char *path) {
     free(nb);
 }
 
+// The Host header must name the Kindle by address (or be absent). A page on another site that
+// rebinds its own hostname to the Kindle's address sends that hostname, and is refused.
+static bool host_ok(const char *req) {
+    const char *h = req;
+    while ((h = strchr(h, '\n'))) {
+        h++;
+        if (strncasecmp(h, "Host:", 5)) continue;
+        h += 5;
+        while (*h == ' ' || *h == '\t') h++;
+        size_t n = strcspn(h, "\r\n");
+        char host[128];
+        if (n == 0 || n >= sizeof host) return false;
+        memcpy(host, h, n);
+        host[n] = 0;
+        if (host[0] == '[') return true;  // IPv6 literal
+        char *colon = strchr(host, ':');
+        if (colon) *colon = 0;
+        if (!strcmp(host, "localhost")) return true;
+        struct in_addr ia;
+        return inet_pton(AF_INET, host, &ia) == 1;
+    }
+    return true;
+}
+
+static bool heavy(const char *path) {
+    if (!strncmp(path, "/all.zip", 8) || !strncmp(path, "/folder/", 8)) return true;
+    if (strncmp(path, "/nb/", 4)) return false;
+    return strstr(path, ".pdf") || strstr(path, ".zip") || (strstr(path, ".png") && !strstr(path, "thumb.png"));
+}
+
+// Child side of a heavy request: render, send everything (blocking), exit.
+static void serve_in_child(const char *method, char *path) {
+    int keep = g_c.fd;
+    for (int fd = 3; fd < 1024; fd++)
+        if (fd != keep) close(fd);
+    if (nice(5) < 0) { /* best effort */ }
+    fcntl(keep, F_SETFL, fcntl(keep, F_GETFL, 0) & ~O_NONBLOCK);
+    struct timeval tv = {60, 0};  // a reader that stalls for a minute is gone
+    setsockopt(keep, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+    route(path);
+    if (!strcmp(method, "HEAD")) {
+        char *end = memmem(g_c.out.data, g_c.out.len, "\r\n\r\n", 4);
+        if (end) g_c.out.len = (size_t)(end - (char *)g_c.out.data) + 4;
+    }
+    size_t sent = 0;
+    while (sent < g_c.out.len) {
+        ssize_t w = send(keep, g_c.out.data + sent, g_c.out.len - sent, MSG_NOSIGNAL);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) break;
+        sent += (size_t)w;
+    }
+    shutdown(keep, SHUT_WR);
+    _exit(0);
+}
+
 static void handle_request(void) {
     char method[8] = {0}, path[600] = {0};
     if (sscanf(g_c.req, "%7s %599s", method, path) != 2) return respond_text(400, "bad request");
     if (strcmp(method, "GET") && strcmp(method, "HEAD")) return respond_text(405, "GET only");
+    if (!host_ok(g_c.req)) {
+        qlog("httpd: refused a request for another host");
+        return respond_text(400, "use the address shown on the Kindle");
+    }
     qlog("httpd: %s %s", method, path);
+    if (heavy(path)) {
+        reap_children();
+        int slot = -1;
+        for (int i = 0; i < MAX_CHILDREN; i++)
+            if (g_children[i] <= 0) slot = i;
+        if (slot >= 0) {
+            pid_t pid = fork();
+            if (pid == 0) serve_in_child(method, path);
+            if (pid > 0) {
+                g_children[slot] = pid;
+                g_served++;
+                client_close();  // the child owns the connection now
+                return;
+            }
+            qlog("httpd: fork failed (%s), exporting in-process", strerror(errno));
+        } else {
+            return respond_text(503, "busy with other downloads, try again in a moment");
+        }
+    }
     route(path);
     if (!strcmp(method, "HEAD")) {
         // Keep only the headers.
@@ -379,6 +471,7 @@ static void handle_request(void) {
 
 void httpd_poll(void) {
     if (g_listen < 0) return;
+    reap_children();
     if (g_c.st == C_IDLE) {
         int fd = accept(g_listen, NULL, NULL);
         if (fd < 0) return;

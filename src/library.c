@@ -20,7 +20,7 @@ enum {
     H_NONE, H_BACK, H_NEW, H_NEWFOLDER, H_SHARE, H_SETTINGS, H_EXIT, H_PREV, H_NEXT,
     H_CARD, H_CARD_MORE,
     H_PAPER, H_PAPER_CUSTOM, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
-    H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH,
+    H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH, H_SET_THEME,
     H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_MORE_PDF, H_MORE_DELETE,
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
@@ -174,7 +174,7 @@ static void draw_card(App *a, Rect r, int idx) {
     Item *it = &S->items[idx];
     int th = r.w * 4 / 3;
     Rect tb = {r.x, r.y, r.w, th};
-    canvas_round_rect(c, tb, ui_px(16), 255, true, 0);
+    ui_frame(c, tb, ui_px(16), 255, true, 0);
     if (it->is_folder) {
         ui_icon(c, ICON_FOLDER, rect_inflate(tb, -r.w / 5), 0);
     } else {
@@ -185,7 +185,7 @@ static void draw_card(App *a, Rect r, int idx) {
         if (t) canvas_blit_fit(cc, t, rect_inflate(tb, -ui_px(3)));
         cc->clip = saved;
     }
-    canvas_round_rect(c, tb, ui_px(16), 0, false, ui_px(4));
+    ui_frame(c, tb, ui_px(16), 0, false, ui_px(4));
     char line2[96];
     const char *title;
     if (it->is_folder) {
@@ -246,10 +246,14 @@ static void draw_base(App *a) {
     if (S->cur_folder[0]) {
         ui_icon(c, ICON_FOLDER, (Rect){x, by + ui_px(25), ui_px(100), ui_px(100)}, 0);
         x += ui_px(115);
+    } else if (ui_theme() == THEME_GOTHIC) {
+        ui_emblem(c, (float)(x + ui_px(55)), (float)th / 2.f, (float)ui_px(52), 0, 255);
+        x += ui_px(140);
     }
-    font_draw_left(c, FONT_BOLD, ui_title_size() * 1.25f, (Rect){x, 0, rx - x - ui_px(20), th},
-                   S->cur_folder[0] ? S->cur_folder : "Quire", 0);
-    canvas_hline(c, 0, a->w, th, ui_px(4), 0);
+    font_draw_left(c, FONT_TITLE, ui_title_size() * 1.25f, (Rect){x, 0, rx - x - ui_px(20), th},
+                   S->cur_folder[0] ? S->cur_folder : APP_NAME, 0);
+    ui_rule(c, 0, a->w, th, ui_px(4), 0);
+    ui_frieze(c, 0, a->w, th + ui_px(9), ui_px(28), 0);
 
     int cols, rows, cw, ch;
     grid_geom(a, &cols, &rows, &cw, &ch);
@@ -271,7 +275,7 @@ static void draw_base(App *a) {
     int pages = (S->nitems + pp - 1) / pp;
     if (pages < 1) pages = 1;
     int y = a->h - bottom_h();
-    canvas_hline(c, 0, a->w, y, ui_px(3), 0);
+    ui_rule(c, 0, a->w, y - ui_px(10), ui_px(3), 0);
     Rect pr = {m, y + ui_px(15), ui_px(220), bottom_h() - ui_px(30)};
     Rect nr = {a->w - m - ui_px(220), pr.y, ui_px(220), pr.h};
     ui_button(c, pr, ICON_PREV, NULL, S->page > 0 ? BTN_PLAIN : BTN_DISABLED);
@@ -317,7 +321,7 @@ static void draw_new(App *a) {
         const Canvas *pv = paper_preview(a, k);
         if (pv) canvas_blit_fit(c, pv, tr);
         bool sel = custom ? new_custom : S->new_paper == k;
-        canvas_round_rect(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
+        ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};
         font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f, lr,
                            custom ? "Custom music..." : paper_name(k), 0);
@@ -357,8 +361,8 @@ static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     for (int i = 0; i < n; i++) {
         Rect r = {in.x, in.y + i * (rh + gap), in.w, rh};
         Canvas *c = &a->screen;
-        canvas_round_rect(c, r, ui_px(16), rows[i].st == BTN_SELECTED ? 0 : 255, true, 0);
-        canvas_round_rect(c, r, ui_px(16), rows[i].st == BTN_DISABLED ? 170 : 0, false,
+        ui_frame(c, r, ui_px(16), rows[i].st == BTN_SELECTED ? 0 : 255, true, 0);
+        ui_frame(c, r, ui_px(16), rows[i].st == BTN_DISABLED ? 170 : 0, false,
                           rows[i].st == BTN_PRIMARY ? ui_px(6) : ui_px(3));
         uint8_t fg = rows[i].st == BTN_SELECTED ? 255 : rows[i].st == BTN_DISABLED ? 170 : 0;
         if (rows[i].icon) ui_icon(c, rows[i].icon, (Rect){r.x + ui_px(20), r.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, fg);
@@ -393,7 +397,14 @@ static void draw_settings(App *a) {
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2b.x + rh + ui_px(10), r2b.y, r2b.w, rh},
                    "Display: brightness, warmth, invert", 0);
     hits_add(&S->hits, r2b, H_SET_DISPLAY, 0);
-    y += rh + gap * 2;
+    y += rh + gap;
+    Rect rt = {in.x, y, in.w, ui_px(110)};
+    canvas_fill(c, rt, 255);
+    ui_icon(c, ICON_CASTLE, (Rect){rt.x, rt.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
+    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){rt.x + ui_px(110), rt.y, rt.w - ui_px(110), rt.h},
+                   ui_theme() == THEME_GOTHIC ? "Style: Gothic (tap for Classic)" : "Style: Classic (tap for Gothic)", 0);
+    hits_add(&S->hits, rt, H_SET_THEME, 0);
+    y += ui_px(130);
     Rect r3 = {in.x, y, in.w, ui_px(110)};
     ui_checkbox(c, r3, "Mirror PDFs to quire/PDFs (USB)", a->settings.mirror_pdf);
     hits_add(&S->hits, r3, H_SET_MIRROR, 0);
@@ -416,10 +427,7 @@ static void draw_settings(App *a) {
     Rect r6 = {in.x, y, in.w, ui_px(110)};
     ui_checkbox(c, r6, "Pinch with two fingers to zoom", a->settings.pinch_zoom);
     hits_add(&S->hits, r6, H_SET_PINCH, 0);
-    y += ui_px(130);
-    font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)},
-                   "Clear a page: click the pen button 3 times, or hold it 1 s without touching.", 60);
-    y += ui_px(80);
+    y += ui_px(150);
     const InputCaps *caps = input_caps();
     char about[256];
     snprintf(about, sizeof about, "Quire %s  pen: %s%s%s", QUIRE_VERSION, caps && caps->has_pen ? caps->pen_name : "none",
@@ -678,6 +686,12 @@ static void act(App *a, const Hit *h) {
         a->settings.pinch_zoom = !a->settings.pinch_zoom;
         settings_save(&a->settings);
         redraw(a, REFRESH_UI);
+        break;
+    case H_SET_THEME:
+        a->settings.theme = a->settings.theme == THEME_CLASSIC ? THEME_GOTHIC : THEME_CLASSIC;
+        ui_set_theme((UiTheme)a->settings.theme);
+        settings_save(&a->settings);
+        redraw(a, REFRESH_FULL);
         break;
     case H_SET_DISPLAY:
         dispmenu_open(&S->dm, a);

@@ -25,7 +25,10 @@ int buf_append(Buf *b, const void *p, size_t n) {
         size_t nc = b->cap ? b->cap : 4096;
         while (nc < b->len + n) nc *= 2;
         uint8_t *nd = realloc(b->data, nc);
-        if (!nd) return -1;
+        if (!nd) {
+            b->err = true;
+            return -1;
+        }
         b->data = nd;
         b->cap = nc;
     }
@@ -82,6 +85,11 @@ static int render_page(const NotebookInfo *nb, int index, float dpi, Canvas *c) 
     }
     if (!p) {
         p = page_new(1860, 2480, nb->paper);  // missing page: blank at Scribe size
+    }
+    // A page bigger than any e-ink screen is damaged or hostile: do not try to allocate it.
+    if (p && (p->w > 6000 || p->h > 6000)) {
+        page_free(p);
+        return -1;
     }
     if (!p || canvas_init(c, p->w, p->h) != 0) {
         page_free(p);
@@ -185,7 +193,7 @@ int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out) {
         buf_printf(out, "trailer\n<< /Size %d /Root 1 0 R /Info 3 0 R >>\nstartxref\n%zu\n%%%%EOF\n", nobj + 1, xref);
     }
     free(off);
-    return rc;
+    return rc != 0 || out->err ? -1 : 0;
 }
 
 // ---- zip ----
@@ -299,8 +307,9 @@ int zip_end(ZipWriter *z) {
     le32(o, (uint32_t)z->central.len);
     le32(o, cd_off);
     int rc = buf_append(o, "\0\0", 2);
+    bool bad = z->central.err || o->err;
     buf_free(&z->central);
-    return rc;
+    return rc != 0 || bad ? -1 : 0;
 }
 
 static int add_raw_files(const NotebookInfo *nb, ZipWriter *z, const char *dirprefix) {

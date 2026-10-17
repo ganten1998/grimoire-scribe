@@ -79,7 +79,7 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
             if (i == b->m.n) font_draw_left(c, FONT_REGULAR, ui_small_size(), rect_inflate(row, -ui_px(20)), "(add a part below)", 150);
             continue;
         }
-        canvas_round_rect(c, row, ui_px(12), 0, false, ui_px(3));
+        ui_frame(c, row, ui_px(12), 0, false, ui_px(3));
         char lab[48];
         snprintf(lab, sizeof lab, "%d  %s", i + 1, music_part_name(b->m.part[i]));
         font_draw_left(c, FONT_REGULAR, ts, (Rect){row.x + ui_px(24), row.y, row.w, row.h}, lab, 0);
@@ -128,7 +128,7 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     canvas_fill(c, pv, 255);
     const Canvas *p = preview(b, a);
     if (p) canvas_blit_fit(c, p, pv);
-    canvas_round_rect(c, rect_inflate(pv, ui_px(3)), ui_px(8), 0, false, ui_px(3));
+    ui_frame(c, rect_inflate(pv, ui_px(3)), ui_px(8), 0, false, ui_px(3));
     int bh = ui_px(140), bw2 = ui_px(380);
     Rect cancel = {in.x, in.y + in.h - bh, bw2, bh};
     Rect done = {in.x + in.w - bw2, in.y + in.h - bh, bw2, bh};

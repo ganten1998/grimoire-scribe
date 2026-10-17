@@ -1,8 +1,8 @@
 // ui.h: e-ink widgets. Stateless draw functions + hit tests; screens own the state.
-// Style: white surfaces, 3 px black outlines, rounded corners, bold labels, no grays
+// Style: white surfaces, 3 px black outlines, themed corners (ui_frame), bold labels, no grays
 // below 128 except ink, so everything stays crisp under GL16/DU refresh.
 // Sizes scale with dpi via ui_px(); at 300 dpi a standard touch target is ~ 10 mm.
-// All UI type AND icons come from Terminess Nerd Font (icons are its Material Design glyphs).
+// Icons come from Terminess Nerd Font (its Material Design glyphs); type follows the theme.
 #pragma once
 #include "canvas.h"
 #include "font.h"
@@ -17,7 +17,7 @@ typedef enum {
     ICON_TRASH, ICON_CHECK, ICON_BACK, ICON_TARGET, ICON_EXIT,
     ICON_TUNE, ICON_RENAME, ICON_FOLDER_MOVE, ICON_FOLDER_PLUS, ICON_DOWNLOAD, ICON_HIGHLIGHTER,
     ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT, ICON_FOUNTAIN, ICON_FINELINER, ICON_MARKER,
-    ICON_UP, ICON_DOWN, ICON_MUSIC,
+    ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE,
     ICON_COUNT
 } IconKind;
 
@@ -25,6 +25,10 @@ typedef struct {
     float dpi;
     float scale;      // dpi / 300
 } UiMetrics;
+
+typedef enum { THEME_GOTHIC = 0, THEME_CLASSIC = 1 } UiTheme;
+void ui_set_theme(UiTheme t);   // also switches the fonts
+UiTheme ui_theme(void);
 
 void ui_init(float dpi);
 int ui_px(float px_at_300dpi);   // scales a 300-dpi pixel size to the current dpi
@@ -53,6 +57,15 @@ void ui_slider_layout(Slider *s, Rect row);
 void ui_slider_draw(Canvas *c, const Slider *s, const char *value_text);
 // Maps an x coordinate to a snapped value; returns true if the value changed.
 bool ui_slider_set_from_x(Slider *s, float x);
+
+// A box in the theme's shape (rounded, or cut corners), same arguments as canvas_round_rect.
+void ui_frame(Canvas *c, Rect r, int radius, uint8_t gray, bool filled, int t);
+// A horizontal rule (gothic: thick over thin).
+void ui_rule(Canvas *c, int x0, int x1, int y, int t, uint8_t gray);
+// Gothic only: a cornice of pointed arches h px deep hanging from y.
+void ui_frieze(Canvas *c, int x0, int x1, int y, int h, uint8_t gray);
+// Gothic quatrefoil ornament of radius r.
+void ui_emblem(Canvas *c, float cx, float cy, float r, uint8_t ink, uint8_t bg);
 
 // Modal sheet: dims nothing (e-ink), draws a white card with a thick border + title bar.
 // Returns the content rect inside the card.

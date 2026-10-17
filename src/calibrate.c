@@ -75,7 +75,7 @@ static void draw(App *a) {
         }
     } else {
         S->pad = (Rect){m, a->h / 2 - ui_px(120), a->w - 2 * m, ui_px(340)};
-        canvas_round_rect(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
+        ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
         int slot = 0;
         Rect save = bar(a, slot++), redo = bar(a, slot++), cancel = bar(a, slot++);
         ui_button(c, save, ICON_CHECK, "Save", BTN_PRIMARY);

@@ -49,6 +49,7 @@ int app_init(App *a, int w, int h, float dpi) {
                         a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);
     ui_init(dpi);
     if (font_init() != 0) return -1;
+    ui_set_theme((UiTheme)a->settings.theme);
     display_set_invert(a->settings.invert);
     for (int i = 0; i < SCR_COUNT; i++) k_screens[i].init(a);
     a->scr = SCR_LIBRARY;
@@ -62,7 +63,10 @@ int app_init(App *a, int w, int h, float dpi) {
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
-    if (!a->settings.pen_calib.valid) app_toast(a, "Tip: Settings > Calibrate pen if strokes land off the tip", 6000);
+    if (caps && !caps->has_pen)
+        app_toast(a, "No pen found. " APP_NAME " is made for the Kindle Scribe; writing needs its pen.", 10000);
+    else if (!a->settings.pen_calib.valid)
+        app_toast(a, "Tip: Settings > Calibrate pen if strokes land off the tip", 6000);
     return 0;
 }
 
@@ -241,6 +245,8 @@ void app_apply_sleep_policy(App *a) {
 void app_tick(App *a, uint32_t now) {
     int bg = bg_poll();
     if (bg) app_toast(a, bg > 0 ? "PDF saved to quire/PDFs" : "Could not save the PDF", 2500);
+    if (store_take_corrupt_count() > 0)
+        app_toast(a, "A damaged page was set aside and a blank one put in its place (see quire.log)", 6000);
     // A power press the power service did not follow with a sleep announcement: ask for sleep.
     if (a->power_pressed_at && !a->asleep && (int32_t)(now - a->power_pressed_at) > 2500) {
         a->power_pressed_at = 0;

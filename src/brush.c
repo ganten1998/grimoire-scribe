@@ -277,7 +277,8 @@ static PenSample interp(const PenSample *a, const PenSample *b, float t) {
     s.pressure = lerpf(a->pressure, b->pressure, t);
     s.tilt_x = lerpf(a->tilt_x, b->tilt_x, t);
     s.tilt_y = lerpf(a->tilt_y, b->tilt_y, t);
-    s.t_ms = a->t_ms + (uint32_t)((float)(b->t_ms - a->t_ms) * t);
+    // In signed 64-bit: times read from a file may run backwards.
+    s.t_ms = (uint32_t)((int64_t)a->t_ms + (int64_t)((double)((int64_t)b->t_ms - (int64_t)a->t_ms) * t));
     return s;
 }
 

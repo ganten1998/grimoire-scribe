@@ -1,4 +1,6 @@
 // test_store.c: store + export.
+#include <dirent.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -221,6 +223,55 @@ TEST(settings_upgrade_keeps_tweaks) {
     CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
 }
 
+// A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
+// notebook.ini gets its page list back from the page files.
+TEST(damage_is_kept) {
+    NotebookInfo nb;
+    CHECK(store_create("Fragile", "", PAPER_MEDIUM, &nb) == 0);
+    CHECK(store_add_page(&nb, 1, PAPER_MEDIUM) == 0);
+    CHECK(store_add_page(&nb, 2, PAPER_MEDIUM) == 0);
+    char dir[700], path[800];
+    snprintf(dir, sizeof dir, "%s/notebooks/%s", root, nb.id);
+    snprintf(path, sizeof path, "%s/p2.qpg", dir);
+    FILE *f = fopen(path, "wb");
+    CHECK(f != NULL);
+    if (f) {
+        fputs("QPG1 this is not a page", f);
+        fclose(f);
+    }
+    Page *p = NULL;
+    CHECK(store_load_page(&nb, 1, 1860, 2480, &p) == 0 && p && p->n == 0);
+    page_free(p);
+    CHECK(store_take_corrupt_count() == 1);
+    CHECK(store_take_corrupt_count() == 0);
+    struct stat st;
+    CHECK(stat(path, &st) != 0);  // moved aside...
+    int aside = 0;
+    DIR *d = opendir(dir);
+    for (struct dirent *e; d && (e = readdir(d));)
+        if (!strncmp(e->d_name, "p2.qpg.damaged-", 15)) aside++;
+    if (d) closedir(d);
+    CHECK(aside == 1);  // ...not deleted
+
+    snprintf(path, sizeof path, "%s/notebook.ini", dir);
+    f = fopen(path, "wb");
+    if (f) fclose(f);  // truncated to nothing
+    NotebookInfo back;
+    CHECK(store_load_info(nb.id, &back) == 0);
+    CHECK(back.npages == 2 && back.page_ids[0] == 1 && back.page_ids[1] == 3);  // p2 is set aside
+}
+
+TEST(folder_named_like_a_comment) {
+    CHECK(store_add_folder("#1") == 0);
+    char (*fs)[STORE_NAME_LEN] = NULL;
+    int n = 0;
+    CHECK(store_list_folders(&fs, &n) == 0);
+    bool found = false;
+    for (int i = 0; i < n; i++) found |= !strcmp(fs[i], "#1");
+    CHECK(found);
+    free(fs);
+}
+
 TEST(safe_names) {
     char out[64];
     export_safe_name("a/b:c?", out, sizeof out);
@@ -241,6 +292,8 @@ int main(void) {
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
     RUN(safe_names);
+    RUN(damage_is_kept);
+    RUN(folder_named_like_a_comment);
     int rc = tl_done();
     system(cmd);
     return rc;
