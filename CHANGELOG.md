@@ -8,6 +8,10 @@ First public pre-release, and a new name: **Quire is now Grimoire**.
   titles, Jersey 10 text, drawn as exact pixel blocks), carved-stone frames, an arcade of
   pointed arches, lozenge checkboxes and sliders, a new Library cover. Settings > Style switches
   to the plain Classic look.
+- **Two new pens**: **charcoal** (coarse grain, crumbly edges, loose dust, broad and soft on
+  its side) and a **calligraphy pen**, a broad-edge nib held at 90 degrees to the pen's real
+  lean, so a right hand leaning to the bottom right writes classic 45 degree italic and a left
+  hand gets the mirror image. The tool picker is now a 3 x 3 grid of nine pens.
 - **Moving from Quire**: the first launch moves `quire/` to `grimoire/` and removes the old
   launcher; nothing to do by hand.
 - **Safer storage**: a page that cannot be read is set aside (`*.damaged-<time>`) instead of

@@ -12,10 +12,12 @@ typedef enum {
     TOOL_FOUNTAIN = 5,     // italic nib: thick/thin by stroke direction
     TOOL_FINELINER = 6,    // constant thin crisp line
     TOOL_MARKER = 7,       // broad felt tip
+    TOOL_CHARCOAL = 8,     // soft stick: coarse grain, crumbly edges, broad on its side
+    TOOL_CALLIGRAPHY = 9,  // broad-edge nib held at 90 degrees to the pen's lean
     TOOL_COUNT
 } ToolKind;
 
-const char *tool_name(ToolKind t);   // "Pencil", "Mechanical pencil", "Ballpoint", "Eraser", "Highlighter"
+const char *tool_name(ToolKind t);   // "Pencil", "Mechanical pencil", "Ballpoint", "Eraser", "Highlighter"...
 
 // Every field is user-tweakable per tool (pensettings.c draws one slider per entry of
 // tool_param_table). Stored in settings.ini and snapshotted into each stroke.
@@ -53,7 +55,8 @@ static inline float *tool_param_ptr(ToolParams *p, const ParamInfo *pi) {
 typedef struct {
     float x, y;          // page px
     float pressure;      // raw normalized 0..1 (device ABS_PRESSURE / max)
-    float tilt_x, tilt_y;// degrees, 0 = vertical; 0,0 if the digitizer lacks tilt
+    float tilt_x, tilt_y;// degrees, 0 = vertical; 0,0 if the digitizer lacks tilt. In the page's
+                         // frame: positive = the pen's top leans toward +x (right) / +y (down)
     uint32_t t_ms;
 } PenSample;
 
@@ -61,8 +64,12 @@ float brush_pressure(const ToolParams *p, float raw);           // -> 0..1
 float brush_tilt(const ToolParams *p, float tilt_x, float tilt_y); // -> 0..1
 // Dab radius (px) and opacity (0..1) for a sample.
 void brush_dab(ToolKind t, const ToolParams *p, const PenSample *s, float dpi, float *radius_px, float *opacity);
-// Largest radius any sample with these params can produce (for bbox padding).
-float brush_max_radius(const ToolParams *p, float dpi);
+// Largest radius any sample of this tool with these params can produce (for bbox padding).
+float brush_max_radius(ToolKind t, const ToolParams *p, float dpi);
+// Calligraphy: the nib's pen angle for a pen tilted (tilt_x, tilt_y), in degrees above the
+// horizontal (45 = the edge rises to the right at 45 degrees). The broad edge sits at 90
+// degrees to the pen's lean; a pen held nearly upright gets the default 45 (leaning bottom right).
+float brush_nib_angle(const ToolParams *p, float tilt_x, float tilt_y);
 
 // Incremental renderer. Live drawing and re-rendering both go through brush_add so the
 // results are pixel-identical. Ink color is fixed per tool (pencil graphite ~40,
@@ -76,6 +83,8 @@ typedef struct {
     PenSample prev;
     float carry;         // distance carried to the next dab
     uint32_t dab_index;
+    bool nib_init;       // calligraphy: smoothed nib orientation as (cos, sin) of twice the
+    float nib_c, nib_s;  // edge angle, so an edge and its reverse are the same orientation
 } BrushState;
 
 void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, float dpi);

@@ -100,8 +100,13 @@ static void draw_readout(App *a) {
         char tilt[64];
         if (caps && !caps->has_tilt) snprintf(tilt, sizeof tilt, "tilt: not reported");
         else snprintf(tilt, sizeof tilt, "tilt %d deg -> %.2f", (int)lrintf(tilt_deg), brush_tilt(p, S->live_tx, S->live_ty));
-        snprintf(line, sizeof line, "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f", S->live_raw,
-                 brush_pressure(p, S->live_raw), tilt, r * 2.f * 25.4f / a->dpi, op);
+        if (S->tab == TOOL_CALLIGRAPHY)
+            snprintf(line, sizeof line, "pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg", S->live_raw,
+                     brush_pressure(p, S->live_raw), tilt, r * 2.f * 25.4f / a->dpi,
+                     (int)lrintf(brush_nib_angle(p, S->live_tx, S->live_ty)));
+        else
+            snprintf(line, sizeof line, "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f", S->live_raw,
+                     brush_pressure(p, S->live_raw), tilt, r * 2.f * 25.4f / a->dpi, op);
     }
     font_draw_left(c, FONT_REGULAR, ui_small_size(), S->readout, line, 0);
 }
@@ -111,6 +116,9 @@ static void draw_slider_row(App *a, int i) {
     const ParamInfo *pi = tool_param_table(&n);
     const ParamInfo *p = &pi[S->slider_param[i]];
     Slider sl = {.min = p->min, .max = p->max, .step = p->step, .label = p->label, .unit = p->unit};
+    // The calligraphy nib turns with the pen's lean once the pen tilts this far.
+    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_min_deg")) sl.label = "Nib follows lean from";
+    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_max_deg")) sl.label = "Nib fully follows at";
     sl.value = *tool_param_ptr(&a->settings.tools[S->tab], p);
     ui_slider_layout(&sl, S->slider_rows[i]);
     char vt[32];
@@ -151,8 +159,8 @@ static void draw_all(App *a) {
                    title, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
     // Tabs.
-    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_BALLPOINT,   TOOL_FOUNTAIN,
-                                               TOOL_FINELINER, TOOL_MARKER,      TOOL_HIGHLIGHTER, TOOL_ERASER};
+    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_CHARCOAL,    TOOL_BALLPOINT,   TOOL_FINELINER,
+                                               TOOL_MARKER,    TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER, TOOL_ERASER};
     int tw = (a->w - 2 * m - (TOOL_COUNT - 1) * ui_px(16)) / TOOL_COUNT, ty = th + ui_px(24), tabh = ui_px(150);
     for (int i = 0; i < TOOL_COUNT; i++) {
         ToolKind t = order[i];

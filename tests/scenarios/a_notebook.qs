@@ -19,13 +19,13 @@ pen line 300 1080 1200 1080 120 0.5 0.5 55 0
 wait 100
 # Mechanical pencil
 pentap 1768 358
-pentap 1504 395
+pentap 1188 395
 wait 100
 pen curve 300 1300 35 80 0.6 5
 pen line 300 1420 1400 1420 100 0.1 1.0
 # Ballpoint
 pentap 1768 358
-pentap 1188 561
+pentap 872 561
 wait 100
 pen curve 300 1650 35 80 0.6 5
 pen line 300 1770 1400 1770 100 0.1 1.0

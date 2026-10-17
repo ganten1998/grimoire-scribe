@@ -48,6 +48,7 @@ static int g_raw_logged;          // raw pen events written to the log (bring-up
 static int g_contact_frames;      // pen frames in contact so far
 static bool g_pressure_seen;      // any nonzero pressure ever reported
 static bool g_pressure_missing;   // contact without pressure for a while: use a fixed value
+static bool g_tilt_flip;          // grimoire/tilt-flip: the digitizer's tilt axes are reversed
 
 static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
 static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
@@ -212,6 +213,10 @@ static void emit_pen(InType t) {
         e.tilt_x = g_caps.has_tilt ? tilt_deg(P.tx, &g_pen.atx) : 0.f;
         e.tilt_y = g_caps.has_tilt ? tilt_deg(P.ty, &g_pen.aty) : 0.f;
     }
+    // Into the screen's frame, like the position (the calligraphy nib turns with the lean).
+    // On the owner's Scribe 2, held the way its sensor calls upside down, a right hand reads
+    // (-40, -46) raw: leaning toward the screen's bottom right, (+40, +46) here.
+    calib_tilt(&g_pen_cal, g_rot, g_tilt_flip, &e.tilt_x, &e.tilt_y);
     e.eraser = P.eraser;
     e.side_button = P.side || W.side;
     e.t_ms = now_ms();
@@ -618,6 +623,8 @@ void input_watch_fd(int fd) { g_watch = fd; }
 int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
     g_w = screen_w;
     g_h = screen_h;
+    g_tilt_flip = access("/mnt/us/grimoire/tilt-flip", F_OK) == 0;
+    if (g_tilt_flip) qlog("input: tilt-flip: reversing the pen's tilt direction");
     memset(&P, 0, sizeof P);
     for (int s = 0; s < MAX_SLOTS; s++) T.id[s] = -1;
     DIR *d = opendir("/dev/input");

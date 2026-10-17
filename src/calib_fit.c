@@ -9,6 +9,28 @@ void calib_apply(const InputCalib *c, float nx, float ny, float *sx, float *sy) 
     *sy = c->ay * v + c->by;
 }
 
+void calib_tilt(const InputCalib *c, int rot, bool flip, float *tilt_x, float *tilt_y) {
+    float x = *tilt_x, y = *tilt_y;
+    if (c->swap_xy) {
+        float t = x;
+        x = y;
+        y = t;
+    }
+    if (c->ax < 0.f) x = -x;
+    if (c->ay < 0.f) y = -y;
+    if (flip) {
+        x = -x;
+        y = -y;
+    }
+    // A direction turns like a position delta (see panel_to_logical in input_evdev.c).
+    switch (rot & 3) {
+    case 1: *tilt_x = -y; *tilt_y = x; break;
+    case 2: *tilt_x = -x; *tilt_y = -y; break;
+    case 3: *tilt_x = y; *tilt_y = -x; break;
+    default: *tilt_x = x; *tilt_y = y; break;
+    }
+}
+
 static float corr(const float *a, const float *b, int n) {
     double ma = 0, mb = 0;
     for (int i = 0; i < n; i++) {

@@ -439,14 +439,15 @@ static void blit_view(App *a, Rect r) {
 
 // ---- tool picker ----
 
-static const ToolKind k_draw_tools[] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_BALLPOINT, TOOL_FOUNTAIN,
-                                        TOOL_FINELINER, TOOL_MARKER,      TOOL_HIGHLIGHTER};
+// Dry media, then pens, then the nibs and the highlighter (three to a row).
+static const ToolKind k_draw_tools[] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_CHARCOAL,   TOOL_BALLPOINT, TOOL_FINELINER,
+                                        TOOL_MARKER,    TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER};
 #define N_DRAW_TOOLS ((int)(sizeof k_draw_tools / sizeof k_draw_tools[0]))
 
 static void draw_tools(App *a) {
     Canvas *c = &a->screen;
     hits_clear(&S->tools_hits);
-    int bw = ui_px(300), bh = ui_px(150), g = ui_px(16), cols = 2, rows = (N_DRAW_TOOLS + cols - 1) / cols;
+    int bw = ui_px(300), bh = ui_px(150), g = ui_px(16), cols = 3, rows = (N_DRAW_TOOLS + cols - 1) / cols;
     int w = cols * bw + (cols - 1) * g + 2 * ui_px(30), h = ui_px(110) + rows * bh + (rows - 1) * g + ui_px(40);
     int x = S->panel.x - w - ui_px(20);
     if (x < ui_px(10)) x = S->panel.x + S->panel.w + ui_px(20);
@@ -458,7 +459,7 @@ static void draw_tools(App *a) {
     for (int i = 0; i < N_DRAW_TOOLS; i++) {
         ToolKind t = k_draw_tools[i];
         Rect r = {x + ui_px(30) + (i % cols) * (bw + g), y + ui_px(100) + (i / cols) * (bh + g), bw, bh};
-        const char *name = t == TOOL_MECH_PENCIL ? "Mechanical" : tool_name(t);
+        const char *name = t == TOOL_MECH_PENCIL ? "Mechanical" : t == TOOL_CALLIGRAPHY ? "Calligraphy" : tool_name(t);
         ui_button(c, r, ui_tool_icon(t), name, a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN);
         hits_add(&S->tools_hits, r, P_PICK_TOOL, t);
     }

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Name: Grimoire - reset pen calibration
-# Author: ganten
+# Author: Ganten
 #
 # Forgets Grimoire's pen + touch calibration (use it if strokes land far from the pen tip and
 # the in-app calibration is hard to reach). Output is shown on screen.

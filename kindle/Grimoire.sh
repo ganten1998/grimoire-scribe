@@ -1,6 +1,6 @@
 #!/bin/sh
 # Name: Grimoire
-# Author: ganten
+# Author: Ganten
 # Icon: @ICON@
 # DontUseFBInk
 #

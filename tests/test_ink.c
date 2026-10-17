@@ -198,6 +198,167 @@ TEST(live_equals_rerender) {
     page_free(pg);
 }
 
+// A straight stroke straight onto a white canvas; returns how many pixels it inked (< 128).
+static int ink_line(Canvas *c, ToolKind t, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
+    ToolParams prm;
+    tool_params_default(t, &prm);
+    BrushState b;
+    brush_begin(&b, t, &prm, 99u, DPI);
+    for (int i = 0; i <= 80; i++) {
+        float f = (float)i / 80.f;
+        PenSample s = {lerpf(x0, x1, f), lerpf(y0, y1, f), p, tx, ty, (uint32_t)i * 5};
+        brush_add(&b, c, &s);
+    }
+    int n = 0;
+    for (int i = 0; i < c->w * c->h; i++) n += c->px[i] < 128;
+    return n;
+}
+
+static int ink_on_fresh(ToolKind t, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
+    Canvas c;
+    canvas_init(&c, 1000, 1000);
+    int n = ink_line(&c, t, x0, y0, x1, y1, p, tx, ty);
+    canvas_free(&c);
+    return n;
+}
+
+// The calligraphy nib's broad edge sits at 90 degrees to the pen's lean: a right hand leaning
+// toward the bottom right makes strokes toward the bottom right broad and strokes up to the
+// right hairlines; a left hand mirrors that; an upright pen gets the 45 degree default.
+TEST(calligraphy_nib) {
+    ToolParams p;
+    tool_params_default(TOOL_CALLIGRAPHY, &p);
+    CHECK_NEAR(brush_nib_angle(&p, 0, 0), 45.f, 0.01);
+    CHECK_NEAR(brush_nib_angle(&p, 40, 46), 39.02f, 0.05);   // edge rises right
+    CHECK_NEAR(brush_nib_angle(&p, -40, 46), 140.98f, 0.05); // edge falls right
+    CHECK_NEAR(brush_nib_angle(&p, 3, 3), 45.f, 0.01);       // too upright to trust the lean
+    int down_r = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, 40, 46);
+    int up_r = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, 40, 46);
+    CHECK(down_r > 4 * up_r);
+    int down_l = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, -40, 46);
+    int up_l = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, -40, 46);
+    CHECK(up_l > 4 * down_l);
+    CHECK(abs(down_r - up_l) < down_r / 10);  // the mirror image, near enough
+    CHECK(ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, 0, 0) > 4 * ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, 0, 0));
+    // The fountain pen keeps its fixed 40 degree italic nib whatever the lean.
+    CHECK(ink_on_fresh(TOOL_FOUNTAIN, 300, 300, 700, 700, 0.7f, 40, 46) ==
+          ink_on_fresh(TOOL_FOUNTAIN, 300, 300, 700, 700, 0.7f, -40, 46));
+}
+
+// Charcoal: paper shows through even when pressed, harder pressure is darker, and laid on its
+// side it is broader and lighter.
+TEST(charcoal_texture) {
+    Canvas c;
+    canvas_init(&c, 1000, 400);
+    ink_line(&c, TOOL_CHARCOAL, 100, 200, 900, 200, 0.6f, 0, 0);
+    int light = 0, total = 0;
+    for (int y = 195; y <= 205; y++)
+        for (int x = 300; x < 700; x++, total++) light += c.px[y * c.w + x] > 200;
+    CHECK(light * 50 > total);   // > 2% of the core is bare paper
+    CHECK(light * 2 < total);    // but most of it is charcoal
+    canvas_free(&c);
+    long soft = 0, hard = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        canvas_init(&c, 1000, 400);
+        ink_line(&c, TOOL_CHARCOAL, 100, 200, 900, 200, pass ? 1.f : 0.35f, 0, 0);
+        long sum = 0;
+        for (int y = 190; y <= 210; y++)
+            for (int x = 300; x < 700; x++) sum += 255 - c.px[y * c.w + x];
+        if (pass) hard = sum;
+        else soft = sum;
+        canvas_free(&c);
+    }
+    CHECK(hard > soft * 3 / 2);
+    int upright = ink_on_fresh(TOOL_CHARCOAL, 100, 500, 900, 500, 0.8f, 0, 0);
+    Canvas side;
+    canvas_init(&side, 1000, 1000);
+    ink_line(&side, TOOL_CHARCOAL, 100, 500, 900, 500, 0.8f, 75, 0);
+    int rows = 0;  // rows touched by the side stroke vs the upright one
+    for (int y = 0; y < side.h; y++) {
+        int any = 0;
+        for (int x = 400; x < 600; x++) any |= side.px[y * side.w + x] < 200;
+        rows += any;
+    }
+    CHECK(rows > 50);  // about 3x the 2 mm upright width
+    CHECK(upright > 0);
+    canvas_free(&side);
+}
+
+// Every tool's ink stays inside the stroke's bbox (what redraws and erasing rely on), including
+// charcoal's rough edge and dust and its broad side.
+TEST(ink_inside_bbox) {
+    for (int t = 0; t < TOOL_COUNT; t++) {
+        if (t == TOOL_ERASER) continue;
+        for (int side = 0; side < 2; side++) {
+            ToolParams prm;
+            tool_params_default(t, &prm);
+            prm.grain = side ? 1.f : prm.grain;  // the roughest edge it can have
+            Stroke *s = stroke_new(t, &prm, 4242u + (uint32_t)t);
+            for (int i = 0; i <= 60; i++) {
+                float f = (float)i / 60.f;
+                PenSample q = {300.f + f * 1200.f, 700.f + 200.f * sinf(f * 5.f), 1.f, side ? 80.f : 30.f, side ? 10.f : 30.f,
+                               (uint32_t)i * 5};
+                stroke_append(s, &q, DPI);
+            }
+            Canvas c;
+            canvas_init(&c, W, H);
+            BrushState b;
+            brush_begin(&b, s->tool, &s->params, s->seed, DPI);
+            for (int i = 0; i < s->n; i++) brush_add(&b, &c, &s->pts[i]);
+            int outside = 0, inked = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                    if (c.px[y * W + x] < 255) {
+                        inked++;
+                        outside += !rect_contains(s->bbox, x, y);
+                    }
+            CHECK(inked > 0);
+            CHECK(outside == 0);
+            if (outside) fprintf(stderr, "  tool %d side %d: %d inked px outside the bbox\n", t, side, outside);
+            canvas_free(&c);
+            stroke_free(s);
+        }
+    }
+}
+
+// The new pens re-render exactly as they were drawn live (the calligraphy nib's smoothing and
+// charcoal's dust are part of the deterministic state), in full and in pieces.
+TEST(new_pens_live_equals_rerender) {
+    Page *pg = page_new(W, H, PAPER_MEDIUM);
+    Canvas live, re, chunk;
+    canvas_init(&live, W, H);
+    canvas_init(&re, W, H);
+    canvas_init(&chunk, W, H);
+    paper_render(&live, pg->paper, (Rect){0, 0, W, H}, DPI);
+    static const ToolKind ts[3] = {TOOL_CHARCOAL, TOOL_CALLIGRAPHY, TOOL_CHARCOAL};
+    static const float tilts[3][2] = {{30, 30}, {40, 46}, {70, 20}};
+    for (int k = 0; k < 3; k++) {
+        ToolParams prm;
+        tool_params_default(ts[k], &prm);
+        Stroke *s = stroke_new(ts[k], &prm, 77u + (uint32_t)k);
+        for (int i = 0; i <= 120; i++) {
+            float f = (float)i / 120.f, ang = f * 4.f * 6.2831853f;
+            // Wobbling tilt, so the nib keeps turning and smoothing.
+            PenSample q = {300.f + f * 1200.f + 60.f * cosf(ang), 500.f + k * 600.f + 60.f * sinf(ang),
+                           0.4f + 0.5f * sinf(f * 3.f), tilts[k][0] + 8.f * sinf(f * 11.f), tilts[k][1] - 6.f * cosf(f * 7.f),
+                           (uint32_t)i * 5};
+            stroke_append(s, &q, DPI);
+        }
+        BrushState b;
+        brush_begin(&b, s->tool, &s->params, s->seed, DPI);
+        for (int i = 0; i < s->n; i++) brush_add(&b, &live, &s->pts[i]);
+        page_add(pg, s);
+    }
+    page_render(&re, pg, (Rect){0, 0, W, H}, DPI);
+    CHECK(memcmp(live.px, re.px, (size_t)W * H) == 0);
+    for (int i = 0; i < 6; i++) page_render(&chunk, pg, (Rect){i * 310, 0, 310, H}, DPI);
+    CHECK(memcmp(live.px, chunk.px, (size_t)W * H) == 0);
+    canvas_free(&live);
+    canvas_free(&re);
+    canvas_free(&chunk);
+    page_free(pg);
+}
+
 TEST(hit_test) {
     Stroke *s = make_stroke(TOOL_BALLPOINT, 100, 100, 500, 100, 20, 0.5f, 0.5f, 0);
     CHECK(stroke_hit(s, 300, 100 + 25.f * sinf(0.5f * 9.f), 3, DPI));
@@ -310,5 +471,9 @@ int main(void) {
     RUN(hit_test);
     RUN(history_roundtrip);
     RUN(tool_sampler);
+    RUN(calligraphy_nib);
+    RUN(charcoal_texture);
+    RUN(ink_inside_bbox);
+    RUN(new_pens_live_equals_rerender);
     return tl_done();
 }

@@ -55,7 +55,9 @@ grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so 
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default: FBInk notes it skips the rotation stage at the Scribe's fb rotation),
-  `stop-framework` stops the Kindle UI instead of pausing it.
+  `stop-framework` stops the Kindle UI instead of pausing it, `tilt-flip` reverses the pen's
+  tilt direction (only needed if the calligraphy nib turns the wrong way on your Kindle: it
+  should give thick strokes down to the right when a right hand leans the pen that way).
 - Everything Grimoire and its launcher do is logged to `grimoire/grimoire.log` (rotated at 1 MB).
 
 ## How it fits in (facts vs. assumptions)

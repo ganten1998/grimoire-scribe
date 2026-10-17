@@ -10,7 +10,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 1. Paper: narrow rule, medium (college) rule, wide rule, sheet music. (Blank is a bonus 5th.)
 2. Library: see notebooks, create notebooks, come back to them later (reopens at the last page).
 3. Native pen: Scribe pen over the Wacom EMR digitizer (evdev), pressure + tilt, eraser end.
-4. Three drawing tools: pencil, mechanical pencil, ballpoint. Each tool has its OWN
+4. Drawing tools (three at first, nine now: pencil, mechanical pencil, charcoal, ballpoint,
+   fineliner, marker, fountain pen, calligraphy pen, highlighter). Each tool has its OWN
    tweakable pressure and tilt sensitivity (plus width/darkness ranges).
 5. A floating side panel: draggable, collapses into a small box on a click, expands on a
    click. Holds tools, undo/redo, pages, paper, pen settings, back to library.
@@ -75,6 +76,15 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 - Grain: a fixed paper-tooth noise field over absolute page coordinates. A dab's coverage
   at a pixel is multiplied by a tooth factor; light pressure shows more tooth. Pencil high,
   mechanical lower, ballpoint ~0.
+- Nibs: the fountain pen stamps an ellipse at a fixed 40 degrees (4.5:1). The calligraphy pen
+  stamps a flat square-cut nib (a superellipse, about 8:1) whose broad edge sits at 90 degrees
+  to the pen's lean, read from tilt_x/tilt_y in the page frame (input_evdev.c turns the
+  digitizer's tilt like positions: calib_tilt). Below its tilt window the lean is not trusted
+  and the nib blends to the default 45 degrees (a right hand leaning bottom right); along the
+  stroke the orientation is smoothed over ~1.5 mm, as part of the deterministic brush state.
+- Charcoal: the graphite path with the tooth sampled at twice the scale (clumps), a rougher
+  and softer edge, less valley filling at full pressure, and loose specks up to 0.4 r past the
+  edge, hashed on page position and the stroke seed. brush_max_radius accounts for all of it.
 - Blend: "deposit" darkens only: dst = dst - (dst - ink) * a, applied per dab.
 - Eraser is a stroke eraser (removes whole strokes it touches); one pen-down..up is ONE
   undo step. The eraser end of the pen (BTN_TOOL_RUBBER) and holding the side button

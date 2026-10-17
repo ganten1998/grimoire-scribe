@@ -1,7 +1,7 @@
 # Grimoire
 
 **A handwriting notebook for the jailbroken Kindle Scribe.** Lined, dotted, graph and Cornell
-paper, sheet music and guitar or bass tab you can mix and stack yourself, seven pens tuned to the
+paper, sheet music and guitar or bass tab you can mix and stack yourself, nine pens tuned to the
 Scribe's pressure and tilt, folders, and three easy ways to get your pages onto a computer as PDF
 or PNG. Everything stays on the Kindle in open files: no account, no cloud, no tracking.
 
@@ -13,7 +13,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 
 <p>
 <img src="docs/screens/library.png" width="32%" alt="Library">
-<img src="docs/screens/writing.png" width="32%" alt="Writing with the floating tool panel">
+<img src="docs/screens/pens.png" width="32%" alt="Charcoal and the calligraphy pen">
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
@@ -66,9 +66,16 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   blank, sheet music, grand staff, guitar tab, 4 to 7 string bass tab, and **Custom music**:
   stack treble, bass, alto, tenor, drum and plain staves, tabs and lyric lines, and choose how
   many systems fit on a page. Each page can have its own paper.
-- **Pens**: pencil, mechanical pencil, ballpoint, fountain pen, fineliner, marker, highlighter.
-  Every pen's pressure and tilt response can be tuned (Settings > Pen sensitivity). The eraser
-  removes whole strokes; the eraser end of the Premium Pen works too.
+- **Pens**: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
+  calligraphy pen, highlighter. Every pen's pressure and tilt response can be tuned
+  (Settings > Pen sensitivity). The eraser removes whole strokes; the eraser end of the Premium
+  Pen works too.
+  - **Charcoal** is grainy and crumbly, darker the harder you press; lay the pen low and it
+    shades broad and soft with the side of the stick.
+  - **The calligraphy pen** is a broad-edge nib that sits at 90 degrees to the way the pen
+    leans, like a real one: lean toward the bottom right (a right hand) and you get the classic
+    45 degree italic, thick going down to the right and hairline going up; lean toward the bottom
+    left (a left hand) and the nib mirrors. Hold the pen upright and it keeps the 45 degree nib.
 - **The floating panel** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
   it anywhere; tap the corner arrows to fold it into a small box.
 - **Pen button**: hold it to highlight (or erase; Settings), click it three times to clear the page.

@@ -14,6 +14,8 @@ const char *tool_name(ToolKind t) {
     case TOOL_FOUNTAIN: return "Fountain pen";
     case TOOL_FINELINER: return "Fineliner";
     case TOOL_MARKER: return "Marker";
+    case TOOL_CHARCOAL: return "Charcoal";
+    case TOOL_CALLIGRAPHY: return "Calligraphy pen";
     default: return "Tool";
     }
 }
@@ -65,6 +67,16 @@ void tool_params_default(ToolKind t, ToolParams *o) {
     case TOOL_MARKER:
         *o = (ToolParams){1.50f, 2.00f, 0.92f, 1.00f, 0.01f, 0.40f, 0.70f, 30.f, 75.f, 0.3f, 0.f, 0.04f, 0.30f};
         break;
+    case TOOL_CHARCOAL:
+        // 0.8..2.4 mm, strongly pressure-led; only a pen laid low (past normal writing tilt)
+        // turns it on its side: much broader and lighter. Heavy grain.
+        *o = (ToolParams){0.80f, 2.40f, 0.30f, 1.00f, 0.03f, 0.85f, 1.00f, 45.f, 75.f, 2.0f, 0.35f, 0.85f, 0.15f};
+        break;
+    case TOOL_CALLIGRAPHY:
+        // The fountain pen's ink on a broader, flatter nib (0.7..1.4 mm, little flex). The tilt
+        // range here says when the nib starts to follow the pen's lean (see brush_nib_angle).
+        *o = (ToolParams){0.70f, 1.40f, 0.92f, 1.00f, 0.02f, 0.60f, 0.80f, 10.f, 25.f, 0.f, 0.f, 0.f, 0.30f};
+        break;
     case TOOL_HIGHLIGHTER:
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
         *o = (ToolParams){4.0f, 5.0f, 0.55f, 0.65f, 0.02f, 0.50f, 0.80f, 30.f, 70.f, 0.2f, 0.f, 0.f, 0.40f};
@@ -78,26 +90,49 @@ void tool_params_default(ToolKind t, ToolParams *o) {
 }
 
 // Per-tool look that is not user-tweakable.
+typedef enum { NIB_NONE = 0, NIB_ITALIC, NIB_BROAD_EDGE } NibKind;
 typedef struct {
     uint8_t ink;
     float rim;     // fraction of the radius that fades out
     float core;    // extra darkness toward the center (ballpoint)
     float jitter;  // per-dab darkness variation, scaled by grain
-    bool graphite; // paper-tooth deposition with ragged edges (pencils)
-    bool nib;      // italic nib: an ellipse at a fixed angle (fountain pen)
+    bool graphite; // paper-tooth deposition with ragged edges (pencils, charcoal)
+    NibKind nib;   // italic: an ellipse at a fixed 40 degrees (fountain pen); broad edge: a
+                   // square-cut flat nib turned by the pen's lean (calligraphy)
+    // Graphite only (pencils use the defaults):
+    bool coarse;   // tooth sampled at twice the scale: clumpy charcoal grit
+    float rough;   // how far the edge follows the tooth (x radius x grain)
+    float edge;    // soft edge width (x radius)
+    float fill;    // how much full pressure fills the tooth's valleys
+    float dust;    // chance of a loose speck just outside the edge
+    float band;    // half-width of the tooth threshold's soft step (wider = grayer, less speckle)
 } ToolLook;
 
 static ToolLook look_of(ToolKind t) {
+    ToolLook lk;
     switch (t) {
-    case TOOL_MECH_PENCIL: return (ToolLook){32, 0.20f, 0.f, 0.06f, true};
-    case TOOL_BALLPOINT: return (ToolLook){12, 0.10f, 0.35f, 0.f, false};
-    case TOOL_HIGHLIGHTER: return (ToolLook){110, 0.06f, 0.f, 0.f, false};
-    case TOOL_FOUNTAIN: return (ToolLook){8, 0.10f, 0.f, 0.f, false, true};
-    case TOOL_FINELINER: return (ToolLook){5, 0.08f, 0.f, 0.f, false};
-    case TOOL_MARKER: return (ToolLook){22, 0.14f, 0.f, 0.f, false};
-    default: return (ToolLook){38, 0.35f, 0.f, 0.10f, true};
+    case TOOL_MECH_PENCIL: lk = (ToolLook){32, 0.20f, 0.f, 0.06f, true}; break;
+    case TOOL_BALLPOINT: lk = (ToolLook){12, 0.10f, 0.35f, 0.f, false}; break;
+    case TOOL_HIGHLIGHTER: lk = (ToolLook){110, 0.06f, 0.f, 0.f, false}; break;
+    case TOOL_FOUNTAIN: lk = (ToolLook){8, 0.10f, 0.f, 0.f, false, NIB_ITALIC}; break;
+    case TOOL_CALLIGRAPHY: lk = (ToolLook){6, 0.08f, 0.f, 0.f, false, NIB_BROAD_EDGE}; break;
+    case TOOL_FINELINER: lk = (ToolLook){5, 0.08f, 0.f, 0.f, false}; break;
+    case TOOL_MARKER: lk = (ToolLook){22, 0.14f, 0.f, 0.f, false}; break;
+    case TOOL_CHARCOAL: lk = (ToolLook){14, 0.f, 0.f, 0.12f, true, NIB_NONE, true, 0.95f, 0.32f, 0.50f, 0.05f, 0.24f}; break;
+    default: lk = (ToolLook){38, 0.35f, 0.f, 0.10f, true}; break;
     }
+    if (lk.graphite && !lk.coarse) {  // the pencils
+        lk.rough = 0.6f;
+        lk.edge = 0.22f;
+        lk.fill = 0.70f;
+        lk.band = 0.16f;
+    }
+    return lk;
 }
+
+// Nib shapes: long axis along the edge, the short one this fraction of it.
+#define ITALIC_RATIO 0.22f
+#define BROAD_RATIO 0.13f
 
 static float sane(float v, float lo, float hi, float dflt) {
     if (!(v == v)) return dflt;  // NaN
@@ -139,12 +174,46 @@ void brush_dab(ToolKind t, const ToolParams *p, const PenSample *s, float dpi, f
     (void)t;
 }
 
-float brush_max_radius(const ToolParams *p, float dpi) {
+float brush_max_radius(ToolKind t, const ToolParams *p, float dpi) {
     float w = fmaxf(sane(p->size_min_mm, 0.1f, 12.f, 0.3f), sane(p->size_max_mm, 0.1f, 12.f, 0.5f));
     w *= 1.f + sane(p->tilt_size, 0.f, 4.f, 0.f);
-    // + 30%: graphite edges follow the paper tooth slightly past the nominal radius.
-    float r = mm_to_px(w, dpi) * 0.5f * (1.f + 0.3f * sane(p->grain, 0.f, 1.f, 0.f));
+    // + 30%: graphite edges follow the paper tooth slightly past the nominal radius. Charcoal
+    // reaches further: a rougher edge, and loose specks beyond it.
+    float grain = sane(p->grain, 0.f, 1.f, 0.f);
+    float k = t == TOOL_CHARCOAL ? 1.f + fmaxf(0.5f * 0.95f * grain, 0.40f) : 1.f + 0.3f * grain;
+    float r = mm_to_px(w, dpi) * 0.5f * k + (t == TOOL_CHARCOAL ? 1.f : 0.f);
     return r < 0.5f ? 0.5f : r;
+}
+
+// Default lean for a pen held nearly upright: toward the bottom right, the way a right hand
+// holds a calligraphy pen. As twice-the-edge-angle: the edge is at 90 degrees to the lean.
+static void nib_target(const ToolParams *p, float tx, float ty, float *c2, float *s2) {
+    // Lean direction on the page: the pen's top, projected (screen frame, y down).
+    float lx = tanf(sane(tx, -89.f, 89.f, 0.f) * (float)M_PI / 180.f);
+    float ly = tanf(sane(ty, -89.f, 89.f, 0.f) * (float)M_PI / 180.f);
+    float w = brush_tilt(p, tx, ty);   // 0 = too upright to trust the lean
+    float def2 = -0.5f * (float)M_PI;  // lean 45 deg down-right -> edge at -45 deg -> 2x = -90
+    float a2 = def2;
+    if (w > 0.f && (lx != 0.f || ly != 0.f)) {
+        // Edge angle = lean + 90 deg, so twice it = 2 * lean + 180 deg.
+        float lean2 = 2.f * atan2f(ly, lx) + (float)M_PI;
+        float d = lean2 - def2;
+        while (d > (float)M_PI) d -= 2.f * (float)M_PI;
+        while (d <= -(float)M_PI) d += 2.f * (float)M_PI;
+        a2 = def2 + w * d;  // along the shorter way round, so the blend never jumps
+    }
+    *c2 = cosf(a2);
+    *s2 = sinf(a2);
+}
+
+float brush_nib_angle(const ToolParams *p, float tx, float ty) {
+    float c2, s2;
+    nib_target(p, tx, ty, &c2, &s2);
+    // Screen angle of the edge (y down) -> pen angle above the horizontal, in 0..180.
+    float deg = -0.5f * atan2f(s2, c2) * 180.f / (float)M_PI;
+    while (deg < 0.f) deg += 180.f;
+    while (deg >= 180.f) deg -= 180.f;
+    return deg;
 }
 
 // ---- paper tooth: a fixed, tiled value-noise texture over absolute page pixels ----
@@ -209,8 +278,34 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
     float r, op;
     brush_dab(b->tool, &b->params, s, b->dpi, &r, &op);
     uint32_t idx = b->dab_index++;
-    if (op <= 0.f) return RECT_EMPTY;
     ToolLook lk = look_of(b->tool);
+    // Calligraphy: the nib follows the pen's lean, lightly smoothed along the stroke (about
+    // 1.5 mm), so sensor noise does not wobble the edge. Updated for every dab, inked or not.
+    float nca = 0.7660444f, nsa = 0.6427876f;  // italic nib at 40 degrees (fountain pen)
+    if (lk.nib == NIB_BROAD_EDGE) {
+        float c2, s2;
+        nib_target(&b->params, s->tilt_x, s->tilt_y, &c2, &s2);
+        if (!b->nib_init) {
+            b->nib_init = true;
+            b->nib_c = c2;
+            b->nib_s = s2;
+        } else {
+            float k = 1.f - expf(-spacing_for(r) / mm_to_px(1.5f, b->dpi));
+            float nc = b->nib_c + (c2 - b->nib_c) * k, ns = b->nib_s + (s2 - b->nib_s) * k;
+            float l = sqrtf(nc * nc + ns * ns);
+            if (l > 1e-3f) {
+                b->nib_c = nc / l;
+                b->nib_s = ns / l;
+            } else {
+                b->nib_c = c2;
+                b->nib_s = s2;
+            }
+        }
+        float a = 0.5f * atan2f(b->nib_s, b->nib_c);
+        nca = cosf(a);
+        nsa = sinf(a);
+    }
+    if (op <= 0.f) return RECT_EMPTY;
     float grain = sane(b->params.grain, 0.f, 1.f, 0.f);
     float pr = brush_pressure(&b->params, s->pressure);
     if (lk.jitter > 0.f) {
@@ -219,18 +314,22 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
     }
     // Spacing compensation: about 2r/spacing dabs cover a pixel on the stroke's spine, so
     // each dab deposits the fraction that composes to `op` overall.
-    // (An italic nib only overlaps itself across its narrow axis: 0.22 of the round tip.)
-    float n = fmaxf(1.f, 2.f * r * (lk.nib ? 0.22f : 1.f) / spacing_for(r));
+    // (A nib only overlaps itself across its narrow axis: its ratio of the round tip.)
+    float nib_ratio = lk.nib == NIB_ITALIC ? ITALIC_RATIO : BROAD_RATIO;
+    float n = fmaxf(1.f, 2.f * r * (lk.nib ? nib_ratio : 1.f) / spacing_for(r));
     float inv_n = 1.f / n;
     float g_eff = grain * (1.f - 0.5f * pr);
     float r_in = fmaxf(0.f, r * (1.f - lk.rim) - 0.5f);
     float r_out = r + 0.5f;
     // Graphite: light pressure only reaches the peaks of the tooth, pressing harder fills the
     // valleys; the stroke edge follows the tooth too, so it is ragged instead of a smooth tube.
-    float thr = grain * (0.80f - 0.70f * pr);
-    float edge_w = fmaxf(0.9f, r * 0.22f);
-    float rough = r * 0.6f * grain;
-    Rect box = rect_intersect(rect_from_points(s->x, s->y, s->x, s->y, r + 1.f + (lk.graphite ? rough * 0.5f : 0.f)), c->clip);
+    float thr = grain * (0.80f - lk.fill * pr);
+    float edge_w = fmaxf(0.9f, r * lk.edge);
+    float rough = r * lk.rough * grain;
+    // Charcoal dust: loose specks up to this far past the edge, fixed to the paper.
+    float dust_w = lk.dust > 0.f ? r * 0.40f : 0.f;
+    float reach = lk.graphite ? fmaxf(rough * 0.5f, dust_w) : 0.f;
+    Rect box = rect_intersect(rect_from_points(s->x, s->y, s->x, s->y, r + 1.f + reach), c->clip);
     for (int y = box.y; y < box.y + box.h; y++) {
         float dy = (float)y + 0.5f - s->y;
         for (int x = box.x; x < box.x + box.w; x++) {
@@ -238,20 +337,35 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
             float d = sqrtf(dx * dx + dy * dy);
             float a;
             if (lk.graphite) {
-                float t = tooth_at(x, y);
+                float t = lk.coarse ? 0.78f * tooth_at(x >> 1, y >> 1) + 0.22f * tooth_at(x, y) : tooth_at(x, y);
                 float de = d + (0.5f - t) * rough;  // peaks pick up graphite a little further out
-                if (de >= r_out) continue;
+                if (de >= r_out) {
+                    if (dust_w <= 0.f || de >= r_out + dust_w) continue;
+                    // A speck where the paper catches it: rarer further from the edge.
+                    float chance = lk.dust * (1.f - (de - r_out) / dust_w);
+                    float h = (float)(hash2((uint32_t)x * 7u + b->seed, (uint32_t)y * 13u + 0xD057u) & 0xFFFF) / 65535.f;
+                    if (h >= chance) continue;
+                    a = op * 0.75f * (0.5f + 0.5f * t);
+                    float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
+                    canvas_deposit_px(c, x, y, lk.ink, ad);
+                    continue;
+                }
                 float prof = clampf((r_out - de) / edge_w, 0.f, 1.f);
-                float lo = thr - 0.16f, hi = thr + 0.16f;
+                float lo = thr - lk.band, hi = thr + lk.band;
                 float k = clampf((t - lo) / (hi - lo), 0.f, 1.f);
                 k = k * k * (3.f - 2.f * k);
                 a = op * prof * lerpf(1.f, k, grain);
             } else {
-                if (lk.nib) {
+                if (lk.nib == NIB_ITALIC) {
                     // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
-                    const float ca = 0.7660444f, sa = 0.6427876f, ratio = 0.22f;
-                    float u = dx * ca + dy * sa, v = (-dx * sa + dy * ca) / ratio;
+                    float u = dx * nca + dy * nsa, v = (-dx * nsa + dy * nca) / ITALIC_RATIO;
                     d = sqrtf(u * u + v * v);
+                } else if (lk.nib == NIB_BROAD_EDGE) {
+                    // A flat, square-cut nib (a superellipse): crisp angled ends like a real
+                    // broad-edge pen, hairlines along the edge, full width across it.
+                    float u = dx * nca + dy * nsa, v = (-dx * nsa + dy * nca) / BROAD_RATIO;
+                    float u2 = u * u, v2 = v * v;
+                    d = sqrtf(sqrtf(u2 * u2 + v2 * v2));
                 }
                 if (d >= r_out) continue;
                 float prof = d <= r_in ? 1.f : (r_out - d) / (r_out - r_in);

@@ -29,7 +29,7 @@ void stroke_append(Stroke *s, const PenSample *pt, float dpi) {
         s->cap = nc;
     }
     s->pts[s->n++] = *pt;
-    float pad = brush_max_radius(&s->params, dpi) + 2.f;
+    float pad = brush_max_radius(s->tool, &s->params, dpi) + 2.f;
     s->bbox = rect_union(s->bbox, rect_from_points(pt->x, pt->y, pt->x, pt->y, pad));
 }
 

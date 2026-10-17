@@ -15,7 +15,7 @@ tap 1066 893
 tap 1564 2254
 wait 300
 pentap 1768 358
-pentap 1188 561
+pentap 872 561
 pen curve 300 420 30 60 0.7 3
 pen line 300 520 1300 520 60 0.7 0.7
 pentap 1768 1566

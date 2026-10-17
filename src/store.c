@@ -772,8 +772,8 @@ int store_load_sleep_image(Canvas *out) {
 
 // ---- settings ----
 
-static const char *k_tool_keys[TOOL_COUNT] = {"pencil",      "mech",     "ballpoint", "eraser",
-                                              "highlighter", "fountain", "fineliner", "marker"};
+static const char *k_tool_keys[TOOL_COUNT] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
+                                              "fountain", "fineliner", "marker",    "charcoal", "calligraphy"};
 
 void settings_default(Settings *s) {
     memset(s, 0, sizeof *s);

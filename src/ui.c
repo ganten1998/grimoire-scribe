@@ -3,6 +3,8 @@
 // Terminess Nerd Font in both.
 #include "ui.h"
 
+#include "brush.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -140,11 +142,14 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_DOWN] = 0xF0140,         // md-chevron_down
     [ICON_MUSIC] = 0xF075A,        // md-music
     [ICON_CASTLE] = 0xF011A,       // md-castle
+    [ICON_CHARCOAL] = 0xF00B5,     // md-blur (grainy dots)
+    [ICON_CALLIGRAPHY] = 0xF06D3,  // md-feather (a quill)
 };
 
 IconKind ui_tool_icon(int tool) {
-    static const IconKind k[] = {ICON_PENCIL,   ICON_MECH_PENCIL, ICON_BALLPOINT, ICON_ERASER,
-                                 ICON_HIGHLIGHTER, ICON_FOUNTAIN, ICON_FINELINER,  ICON_MARKER};
+    static const IconKind k[] = {ICON_PENCIL,      ICON_MECH_PENCIL, ICON_BALLPOINT, ICON_ERASER,   ICON_HIGHLIGHTER,
+                                 ICON_FOUNTAIN,    ICON_FINELINER,   ICON_MARKER,    ICON_CHARCOAL, ICON_CALLIGRAPHY};
+    _Static_assert(sizeof k / sizeof k[0] == TOOL_COUNT, "an icon for every tool");
     return tool >= 0 && tool < (int)(sizeof k / sizeof k[0]) ? k[tool] : ICON_PENCIL;
 }
 
