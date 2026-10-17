@@ -1,4 +1,6 @@
-// font.c: TrueType text through stb_truetype with a small glyph cache.
+// font.c: TrueType text through stb_truetype with a small glyph cache. Pixel fonts (drawn on
+// a grid of `unit` font units) are rendered one bitmap pixel per design pixel, without
+// smoothing, then blown up to whole k x k blocks, so they stay razor sharp at any size.
 #include "font.h"
 
 #include <math.h>
@@ -11,21 +13,23 @@ extern unsigned char TerminessNerdFontMono_Regular_ttf[];
 extern unsigned int TerminessNerdFontMono_Regular_ttf_len;
 extern unsigned char TerminessNerdFontMono_Bold_ttf[];
 extern unsigned int TerminessNerdFontMono_Bold_ttf_len;
-extern unsigned char UnifrakturMaguntia_Book_ttf[];
-extern unsigned int UnifrakturMaguntia_Book_ttf_len;
-extern unsigned char IMFeENrm28P_ttf[];
-extern unsigned int IMFeENrm28P_ttf_len;
-extern unsigned char IMFeENsc28P_ttf[];
-extern unsigned int IMFeENsc28P_ttf_len;
+extern unsigned char Jacquard24_Regular_ttf[];
+extern unsigned int Jacquard24_Regular_ttf_len;
+extern unsigned char Jersey10_Regular_ttf[];
+extern unsigned int Jersey10_Regular_ttf_len;
 
 // The embedded TrueType files. Terminess (with the Nerd Font icons) is always there; the
-// others belong to the gothic theme.
-enum { TTF_TERM, TTF_TERM_BOLD, TTF_FRAKTUR, TTF_FELL, TTF_FELL_SC, TTF_COUNT };
+// pixel faces belong to the gothic theme: Jacquard 24 (pixel blackletter) for titles, Jersey
+// 10 for text and labels.
+enum { TTF_TERM, TTF_TERM_BOLD, TTF_JACQUARD, TTF_JERSEY, TTF_COUNT };
 static stbtt_fontinfo g_font[TTF_COUNT];
 static bool g_ready;
+// Font units per design pixel (0 = an outline font, drawn smooth). Measured: every outline
+// point of these files sits on this grid.
+static const int k_unit[TTF_COUNT] = {[TTF_JACQUARD] = 30, [TTF_JERSEY] = 75};
 
-// What a FontFace means under the current theme: which file, how much bigger than asked (the
-// book faces have a smaller x-height than Terminess), and whether to embolden by overprinting.
+// What a FontFace means under the current theme: which file, how much bigger than asked, and
+// whether to embolden by overprinting (one design pixel for pixel faces).
 typedef struct {
     uint8_t ttf;
     float scale;
@@ -40,11 +44,20 @@ static void map_faces(bool gothic) {
         [FONT_FIXED] = {TTF_TERM, 1.f, false},      [FONT_FIXED_BOLD] = {TTF_TERM_BOLD, 1.f, false},
     };
     static const FaceMap goth[FONT_FACE_COUNT] = {
-        [FONT_REGULAR] = {TTF_FELL, 1.16f, false},  [FONT_BOLD] = {TTF_FELL, 1.16f, true},
-        [FONT_TITLE] = {TTF_FRAKTUR, 1.22f, false}, [FONT_CAPS] = {TTF_FELL_SC, 1.16f, true},
-        [FONT_FIXED] = {TTF_TERM, 1.f, false},      [FONT_FIXED_BOLD] = {TTF_TERM_BOLD, 1.f, false},
+        [FONT_REGULAR] = {TTF_JERSEY, 1.15f, false},  [FONT_BOLD] = {TTF_JERSEY, 1.15f, true},
+        [FONT_TITLE] = {TTF_JACQUARD, 1.1f, false},   [FONT_CAPS] = {TTF_JERSEY, 1.15f, true},
+        [FONT_FIXED] = {TTF_TERM, 1.f, false},        [FONT_FIXED_BOLD] = {TTF_TERM_BOLD, 1.f, false},
     };
     memcpy(g_map, gothic ? goth : classic, sizeof g_map);
+}
+
+// Pixel faces: how many screen pixels one design pixel becomes at a requested line height.
+static int pixel_k(int ttf, float px) {
+    int a, d, l;
+    stbtt_GetFontVMetrics(&g_font[ttf], &a, &d, &l);
+    float line = (float)(a - d) / (float)k_unit[ttf];
+    int k = (int)lrintf(px / line);
+    return k < 1 ? 1 : k;
 }
 
 static bool g_gothic;
@@ -52,7 +65,7 @@ static bool g_gothic;
 typedef struct {
     bool used;
     uint8_t face;       // TTF_* index
-    int size4;          // size * 4, rounded
+    int size4;          // size * 4, rounded; pixel faces: -k
     uint32_t cp;
     int w, h, xoff, yoff;
     int advance;        // unscaled advance (font units)
@@ -74,7 +87,7 @@ static void cache_flush(void) {
 int font_init(void) {
     if (g_ready) return 0;
     const unsigned char *data[TTF_COUNT] = {TerminessNerdFontMono_Regular_ttf, TerminessNerdFontMono_Bold_ttf,
-                                            UnifrakturMaguntia_Book_ttf, IMFeENrm28P_ttf, IMFeENsc28P_ttf};
+                                            Jacquard24_Regular_ttf, Jersey10_Regular_ttf};
     for (int i = 0; i < TTF_COUNT; i++)
         if (!stbtt_InitFont(&g_font[i], data[i], stbtt_GetFontOffsetForIndex(data[i], 0))) {
             qlog("font: init failed for face %d", i);
@@ -97,8 +110,27 @@ void font_shutdown(void) {
     g_ready = false;
 }
 
+// A pixel face's glyph at k screen pixels per design pixel: hard-edged k x k blocks.
+static void make_pixel_glyph(Glyph *g, const stbtt_fontinfo *fi, int unit, int k, uint32_t cp) {
+    float s = 1.f / (float)unit;
+    int w, h, xo, yo;
+    uint8_t *small = stbtt_GetCodepointBitmap(fi, s, s, (int)cp, &w, &h, &xo, &yo);
+    g->bmp = NULL;
+    g->w = w * k;
+    g->h = h * k;
+    g->xoff = xo * k;
+    g->yoff = yo * k;
+    if (small && w > 0 && h > 0) {
+        g->bmp = malloc((size_t)g->w * (size_t)g->h);  // freed with stbtt_FreeBitmap (free)
+        if (g->bmp)
+            for (int y = 0; y < g->h; y++)
+                for (int x = 0; x < g->w; x++) g->bmp[y * g->w + x] = small[(y / k) * w + x / k] >= 128 ? 255 : 0;
+    }
+    if (small) stbtt_FreeBitmap(small, NULL);
+}
+
 static const Glyph *glyph_get(int ttf, float px, uint32_t cp) {
-    int size4 = (int)lrintf(px * 4.f);
+    int size4 = k_unit[ttf] ? -pixel_k(ttf, px) : (int)lrintf(px * 4.f);
     uint32_t hsh = (cp * 2654435761u) ^ ((uint32_t)size4 * 40503u) ^ ((uint32_t)ttf * 977u);
     for (int probe = 0; probe < 16; probe++) {
         Glyph *g = &g_cache[(hsh + (uint32_t)probe) % CACHE_SLOTS];
@@ -109,10 +141,14 @@ static const Glyph *glyph_get(int ttf, float px, uint32_t cp) {
                 return glyph_get(ttf, px, cp);
             }
             const stbtt_fontinfo *fi = &g_font[ttf];
-            float scale = stbtt_ScaleForPixelHeight(fi, size4 / 4.f);
             int adv, lsb;
             stbtt_GetCodepointHMetrics(fi, (int)cp, &adv, &lsb);
-            g->bmp = stbtt_GetCodepointBitmap(fi, scale, scale, (int)cp, &g->w, &g->h, &g->xoff, &g->yoff);
+            if (size4 < 0) {
+                make_pixel_glyph(g, fi, k_unit[ttf], -size4, cp);
+            } else {
+                float scale = stbtt_ScaleForPixelHeight(fi, size4 / 4.f);
+                g->bmp = stbtt_GetCodepointBitmap(fi, scale, scale, (int)cp, &g->w, &g->h, &g->xoff, &g->yoff);
+            }
             g->advance = adv;
             g->used = true;
             g->cp = cp;
@@ -172,18 +208,26 @@ static void blit_glyph(Canvas *c, const Glyph *g, int gx, int gy, uint8_t gray) 
     }
 }
 
+// Horizontal font units -> screen pixels for a face at a size (pixel faces: whole design
+// pixels, so every glyph starts on the grid).
+static float units_to_px(int ttf, float gpx, int units) {
+    if (k_unit[ttf]) return (float)(lrintf((float)units / (float)k_unit[ttf]) * pixel_k(ttf, gpx));
+    return stbtt_ScaleForPixelHeight(&g_font[ttf], gpx) * (float)units;
+}
+
 static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const char *s, uint8_t gray) {
     if (!g_ready || !s) return 0;
     FaceMap m = face_of(f);
     float fpx = px * m.scale;
-    // Overprinting a second copy this far to the right makes a book face read as bold on e-ink.
-    int bold = m.embolden ? (int)fmaxf(1.f, lrintf(fpx / 34.f)) : 0;
+    // Overprinting a second copy to the right reads as bold on e-ink: by one design pixel for a
+    // pixel face, by a size-relative amount for an outline face.
+    int bold = !m.embolden ? 0 : k_unit[m.ttf] ? pixel_k(m.ttf, fpx) : (int)fmaxf(1.f, lrintf(fpx / 34.f));
     float pen = (float)x;
     uint32_t prev = 0;
     int prev_ttf = -1;
     while (*s) {
         uint32_t cp = utf8_next(&s);
-        // Glyphs a book face lacks (symbols, arrows) come from Terminess at the asked size.
+        // Glyphs a theme face lacks (symbols, arrows) come from Terminess at the asked size.
         int ttf = m.ttf;
         float gpx = fpx;
         if (ttf != TTF_TERM && ttf != TTF_TERM_BOLD && cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[ttf], (int)cp)) {
@@ -191,15 +235,14 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
             gpx = px;
         }
         const stbtt_fontinfo *fi = &g_font[ttf];
-        float scale = stbtt_ScaleForPixelHeight(fi, gpx);
-        if (prev && prev_ttf == ttf) pen += scale * (float)stbtt_GetCodepointKernAdvance(fi, (int)prev, (int)cp);
+        if (prev && prev_ttf == ttf) pen += units_to_px(ttf, gpx, stbtt_GetCodepointKernAdvance(fi, (int)prev, (int)cp));
         const Glyph *g = glyph_get(ttf, gpx, cp);
         if (c && g->bmp) {
             int gx = (int)lrintf(pen) + g->xoff, gy = baseline + g->yoff;
             blit_glyph(c, g, gx, gy, gray);
             for (int b = 1; b <= bold; b++) blit_glyph(c, g, gx + b, gy, gray);
         }
-        pen += scale * (float)g->advance + (float)bold;
+        pen += units_to_px(ttf, gpx, g->advance) + (float)bold;
         prev = cp;
         prev_ttf = ttf;
     }
@@ -217,6 +260,7 @@ int font_ascent(FontFace f, float px) {
     FaceMap m = face_of(f);
     int a, d, l;
     stbtt_GetFontVMetrics(&g_font[m.ttf], &a, &d, &l);
+    if (k_unit[m.ttf]) return (int)lrintf((float)a / (float)k_unit[m.ttf]) * pixel_k(m.ttf, px * m.scale);
     return (int)lrintf(a * stbtt_ScaleForPixelHeight(&g_font[m.ttf], px * m.scale));
 }
 
@@ -225,6 +269,7 @@ int font_descent(FontFace f, float px) {
     FaceMap m = face_of(f);
     int a, d, l;
     stbtt_GetFontVMetrics(&g_font[m.ttf], &a, &d, &l);
+    if (k_unit[m.ttf]) return (int)lrintf((float)-d / (float)k_unit[m.ttf]) * pixel_k(m.ttf, px * m.scale);
     return (int)lrintf(-d * stbtt_ScaleForPixelHeight(&g_font[m.ttf], px * m.scale));
 }
 

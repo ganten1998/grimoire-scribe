@@ -5,7 +5,8 @@ paper, sheet music and guitar or bass tab you can mix and stack yourself, seven 
 Scribe's pressure and tilt, folders, and three easy ways to get your pages onto a computer as PDF
 or PNG. Everything stays on the Kindle in open files: no account, no cloud, no tracking.
 
-It comes dressed for the occasion: blackletter titles, carved-stone frames and pointed arches
+It comes dressed like a castle in an old console game: pixel blackletter titles, pixel type,
+carved-stone frames and pointed arches
 (a plain **Classic** style is one tap away in Settings).
 
 Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
@@ -130,7 +131,7 @@ Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
 Much of what Grimoire knows about the Kindle comes from [KOReader](https://koreader.rocks) and
 [kindlemodding.org](https://kindlemodding.org).
 
-- Terminess Nerd Font, UnifrakturMaguntia and IM FELL English: SIL Open Font License 1.1
+- Terminess Nerd Font, Jacquard 24 and Jersey 10: SIL Open Font License 1.1
   (`assets/*-OFL-1.1.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 

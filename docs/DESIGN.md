@@ -28,7 +28,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 |---|---|---|
 | common.h / util.c | Rect math, mm_to_px, clampf, time, logging, string helpers | - |
 | canvas.h/.c | 8-bit gray canvas, clip, fill, AA lines/discs, ink deposit, blit, downsample | common |
-| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = IM FELL English (+ small caps, overprinted bold) and UnifrakturMaguntia titles; FIXED faces (paper labels) are Terminess in both, so pages never change with the theme | canvas |
+| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme | canvas |
 | paper.h/.c | page backgrounds (rules, staves) | canvas |
 | brush.h/.c | tool params, pressure/tilt mapping, deterministic dab renderer, smoother | canvas |
 | page.h/.c | Stroke, Page, hit-test, page render, thumbnail | brush, paper |

@@ -250,7 +250,8 @@ static void draw_base(App *a) {
         ui_emblem(c, (float)(x + ui_px(55)), (float)th / 2.f, (float)ui_px(52), 0, 255);
         x += ui_px(140);
     }
-    font_draw_left(c, FONT_TITLE, ui_title_size() * 1.25f, (Rect){x, 0, rx - x - ui_px(20), th},
+    font_draw_left(c, FONT_TITLE, ui_title_size() * (ui_theme() == THEME_GOTHIC ? 1.8f : 1.25f),
+                   (Rect){x, 0, rx - x - ui_px(20), th},
                    S->cur_folder[0] ? S->cur_folder : APP_NAME, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
     ui_frieze(c, 0, a->w, th + ui_px(9), ui_px(28), 0);

@@ -4,7 +4,8 @@
 
 First public pre-release, and a new name: **Quire is now Grimoire**.
 
-- **Gothic style**: blackletter titles, a book face for text, carved-stone frames, an arcade of
+- **Gothic style**: crisp pixel type like an old console game (Jacquard 24 pixel blackletter
+  titles, Jersey 10 text, drawn as exact pixel blocks), carved-stone frames, an arcade of
   pointed arches, lozenge checkboxes and sliders, a new Library cover. Settings > Style switches
   to the plain Classic look.
 - **Moving from Quire**: the first launch moves `quire/` to `grimoire/` and removes the old
