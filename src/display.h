@@ -15,7 +15,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode);
 // Device rotation (quarter turns clockwise): the logical screen the app draws is mapped onto
 // the panel accordingly. Fills the logical width/height (swapped for 1 and 3).
 void display_set_orientation(int quarter_turns, int *w, int *h);
-// Show Quire's colors inverted (white on black) when on.
+// Show Grimoire's colors inverted (white on black) when on.
 void display_set_invert(bool on);
 // Low-latency handwriting mode (MTK pen mode on the Scribe). While on, only REFRESH_FAST
 // should be used; any other mode turns it off first. No-op where unsupported.

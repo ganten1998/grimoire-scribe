@@ -1,5 +1,5 @@
 // export.h: turning notebooks into files people can use elsewhere. Pure (no UI);
-// shared by the app, the share server, and the host-side tools/quire-export CLI.
+// shared by the app, the share server, and the host-side tools/grimoire-export CLI.
 // Compression uses stbi_zlib_compress from third_party/stb_image_write.h.
 #pragma once
 #include "store.h"

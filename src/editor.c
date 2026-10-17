@@ -1009,7 +1009,7 @@ static void pages_delete(App *a) {
     for (int i = n - 1; i >= 0; i--) {
         if (i >= S->pages_sel_cap || !S->pages_sel[i]) continue;
         uint32_t pid = S->nb.page_ids[i];
-        if (store_delete_page(&S->nb, i) != 0) continue;  // the file goes to quire/trash
+        if (store_delete_page(&S->nb, i) != 0) continue;  // the file goes to grimoire/trash
         forget_page(a, pid);
         if (i < cur) deleted_before++;
     }
@@ -1024,7 +1024,7 @@ static void pages_delete(App *a) {
     S->info_dirty = true;
     save_page(a);
     char msg[64];
-    snprintf(msg, sizeof msg, k == 1 ? "Deleted 1 page (kept in quire/trash)" : "Deleted %d pages (kept in quire/trash)", k);
+    snprintf(msg, sizeof msg, k == 1 ? "Deleted 1 page (kept in grimoire/trash)" : "Deleted %d pages (kept in grimoire/trash)", k);
     compose_all(a, REFRESH_FULL);
     app_toast(a, msg, 2500);
 }

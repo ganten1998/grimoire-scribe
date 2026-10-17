@@ -15,6 +15,12 @@ On the Kindle: turn Wi-Fi on, then **Library > Share**. It shows an address like
 
 Keep the Share screen open while downloading; leaving it stops the server.
 
+Security: the server has no password. It only listens while the Share screen is open, the
+firewall hole is only on the Wi-Fi interface, it is read-only (GET), and it refuses requests
+whose `Host` is not an IP address (so a web page cannot reach it through a rebound hostname).
+Do not open Share on a network you do not trust. PDF, zip and PNG downloads are rendered by a
+separate process, so the Kindle stays responsive during a big download (two at a time).
+
 Scriptable endpoints:
 
 | path | returns |
@@ -28,7 +34,7 @@ Scriptable endpoints:
 | `/all.zip` | everything, grouped by folder (PDF + raw) |
 
 ```json
-{"device": "Quire", "version": "0.1.0",
+{"device": "Grimoire", "version": "0.1.0",
  "notebooks": [{"id": "20261010-183859-1fdf", "name": "Lecture notes", "folder": "School",
                 "pages": 3, "paper": "Medium rule", "modified": 1791672139,
                 "pdf": "/nb/20261010-183859-1fdf.pdf", "zip": "/nb/20261010-183859-1fdf.zip",
@@ -36,18 +42,18 @@ Scriptable endpoints:
  "folders": ["School"]}
 ```
 
-## 2. From a terminal: `tools/quire-pull`
+## 2. From a terminal: `tools/grimoire-pull`
 
 ```
-tools/quire-pull --http 192.168.1.23     # over Wi-Fi (Share screen open), no SSH needed
-tools/quire-pull                         # over SSH: rsync + render here
-tools/quire-pull --png --open            # also PNG pages; open the folder when done
+tools/grimoire-pull --http 192.168.1.23     # over Wi-Fi (Share screen open), no SSH needed
+tools/grimoire-pull                         # over SSH: rsync + render here
+tools/grimoire-pull --png --open            # also PNG pages; open the folder when done
 ```
 
-Output: `~/Quire/<folder>/<notebook>.pdf` (and `<notebook>/page-NNN.png`), `$QUIRE_OUT` to change.
+Output: `~/Grimoire/<folder>/<notebook>.pdf` (and `<notebook>/page-NNN.png`), `$GRIMOIRE_OUT` to change.
 
-SSH mode rsyncs `/mnt/us/quire/notebooks/` from `$QUIRE_HOST` (default `kindle`) into
-`~/Library/Caches/quire`, then runs `build/host/quire-export` (`make tools`). It is incremental:
+SSH mode rsyncs `/mnt/us/grimoire/notebooks/` from `$GRIMOIRE_HOST` (default `kindle`) into
+`~/Library/Caches/grimoire`, then runs `build/host/grimoire-export` (`make tools`). It is incremental:
 only notebooks changed since their last export are rendered again. You need an SSH server on
 the Kindle (an SSH / USBNetwork package for your jailbreak; look in KPM or KindleForge; over USB
 networking the Kindle typically answers at 192.168.15.244). If you don't have one, the Wi-Fi mode
@@ -59,12 +65,12 @@ Host kindle
     User root
 ```
 
-`quire-export [--png] [--zip] [--force] <quire-root> <out-dir>` also works on any copy of the
-`quire` folder, e.g. one copied off over USB.
+`grimoire-export [--png] [--zip] [--force] <grimoire-root> <out-dir>` also works on any copy of the
+`grimoire` folder, e.g. one copied off over USB.
 
 ## 3. USB cable
 
-With **Settings > Mirror PDFs to quire/PDFs** on (the default), closing a notebook writes
-`quire/PDFs/<folder>/<name>.pdf` in the background. Renaming, moving or deleting a notebook moves
-or removes its PDF too. Plug the Kindle in and copy them. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Quire.)
-The raw notebooks are in the `quire` folder if you want everything.
+With **Settings > Mirror PDFs to grimoire/PDFs** on (the default), closing a notebook writes
+`grimoire/PDFs/<folder>/<name>.pdf` in the background. Renaming, moving or deleting a notebook moves
+or removes its PDF too. Plug the Kindle in and copy them. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Grimoire.)
+The raw notebooks are in the `grimoire` folder if you want everything.

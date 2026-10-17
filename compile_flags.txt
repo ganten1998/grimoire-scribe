@@ -5,5 +5,5 @@
 -Ibuild/gen
 -Ithird_party/FBInk
 -Itests
--DQUIRE_SIM
+-DGRIMOIRE_SIM
 -I/opt/homebrew/include/SDL2

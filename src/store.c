@@ -178,7 +178,7 @@ static int write_info(const NotebookInfo *nb) {
     clean_line(name, nb->name, sizeof name);
     clean_line(folder, nb->folder, sizeof folder);
     int n = snprintf(buf, cap,
-                     "# Quire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n"
+                     "# Grimoire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n"
                      "last_page=%d\nnext_page_id=%u\npages=",
                      name, folder, (unsigned)nb->paper, (long long)nb->created, (long long)nb->modified, nb->last_page,
                      nb->next_page_id);
@@ -378,7 +378,7 @@ static int save_folders_ini(FolderName *f, int n) {
     size_t cap = 32 + (size_t)n * STORE_NAME_LEN;
     char *buf = malloc(cap);
     if (!buf) return -1;
-    size_t len = (size_t)snprintf(buf, cap, "# Quire folders\n");
+    size_t len = (size_t)snprintf(buf, cap, "# Grimoire folders\n");
     for (int i = 0; i < n; i++) len += (size_t)snprintf(buf + len, cap - len, "%s\n", f[i]);
     int rc = write_file_atomic(path, buf, len);
     free(buf);
@@ -891,7 +891,7 @@ int settings_save(const Settings *s) {
     char *buf = malloc(cap);
     if (!buf) return -1;
     n += (size_t)snprintf(buf + n, cap - n,
-                          "# Quire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
+                          "# Grimoire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
                           "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
                           "music_layout=%u\ntheme=%s\nsettings_version=%d\n",
                           (int)s->current_tool, (int)s->draw_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,

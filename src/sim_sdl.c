@@ -1,10 +1,10 @@
 // sim_sdl.c: desktop simulator implementing display.h + input.h.
 //
-// Window mode (SDL3, built with QUIRE_SIM_SDL): mouse = pen, right button = finger, keys
-// tweak pressure/tilt. Headless mode (QUIRE_SCRIPT=<file>, and the only mode of the
-// quire-headless build, which does not link SDL at all): events come from a script and the
+// Window mode (SDL3, built with GRIMOIRE_SIM_SDL): mouse = pen, right button = finger, keys
+// tweak pressure/tilt. Headless mode (GRIMOIRE_SCRIPT=<file>, and the only mode of the
+// grimoire-headless build, which does not link SDL at all): events come from a script and the
 // screen can be dumped to PNG ("shot NAME") for automated checks. See docs/SIM.md.
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
 #endif
@@ -20,7 +20,7 @@
 #include "stb_image_write.h"
 
 static int g_w = 1860, g_h = 2480;
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
 static float g_scale = 0.36f;
 #endif
 static bool g_headless;
@@ -87,14 +87,14 @@ static bool g_sim_invert;  // display_set_invert
 static uint8_t *g_eink;  // what the simulated panel shows
 static int g_stats[3];
 static long long g_area[3];
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
 static SDL_Window *g_win;
 static SDL_Renderer *g_ren;
 static SDL_Texture *g_tex;
 #endif
 
 static void parse_size(void) {
-    const char *s = getenv("QUIRE_SIM_SIZE");
+    const char *s = getenv("GRIMOIRE_SIM_SIZE");
     int w, h;
     if (s && sscanf(s, "%dx%d", &w, &h) == 2 && w > 100 && h > 100) {
         g_w = w;
@@ -104,28 +104,28 @@ static void parse_size(void) {
 
 int display_open(int *w, int *h, float *dpi) {
     parse_size();
-    g_headless = getenv("QUIRE_SCRIPT") != NULL;
+    g_headless = getenv("GRIMOIRE_SCRIPT") != NULL;
     g_eink = malloc((size_t)g_w * g_h);
     if (!g_eink) return -1;
     memset(g_eink, 255, (size_t)g_w * g_h);
     *w = g_w;
     *h = g_h;
     *dpi = 300.f;
-#ifndef QUIRE_SIM_SDL
+#ifndef GRIMOIRE_SIM_SDL
     if (!g_headless) {
-        fprintf(stderr, "quire-headless needs QUIRE_SCRIPT=<file> (use quire-sim for a window)\n");
+        fprintf(stderr, "grimoire-headless needs GRIMOIRE_SCRIPT=<file> (use grimoire-sim for a window)\n");
         return -1;
     }
 #endif
     if (g_headless) return 0;
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return -1;
     }
     const SDL_DisplayMode *dm = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
     if (dm) g_scale = fminf(0.5f, (float)(dm->h - 80) / (float)g_h);
-    g_win = SDL_CreateWindow("Quire (sim)", (int)(g_w * g_scale), (int)(g_h * g_scale), 0);
+    g_win = SDL_CreateWindow("Grimoire (sim)", (int)(g_w * g_scale), (int)(g_h * g_scale), 0);
     g_ren = g_win ? SDL_CreateRenderer(g_win, NULL) : NULL;
     g_tex = g_ren ? SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, g_w, g_h) : NULL;
     if (g_tex) SDL_SetTextureScaleMode(g_tex, SDL_SCALEMODE_LINEAR);
@@ -136,7 +136,7 @@ int display_open(int *w, int *h, float *dpi) {
 }
 
 static void sdl_show(void) {
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
     if (g_headless || !g_tex) return;
     void *pix;
     int pitch;
@@ -239,10 +239,10 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
 }
 
 void display_close(void) {
-    if (g_headless || getenv("QUIRE_SIM_STATS"))
+    if (g_headless || getenv("GRIMOIRE_SIM_STATS"))
         fprintf(stderr, "refreshes: fast %d (%.1f MP), ui %d (%.1f MP), full %d (%.1f MP)\n", g_stats[0],
                 g_area[0] / 1e6, g_stats[1], g_area[1] / 1e6, g_stats[2], g_area[2] / 1e6);
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);
     if (g_win) SDL_DestroyWindow(g_win);
@@ -262,7 +262,7 @@ static bool g_side, g_eraser;
 
 static void shot(const char *name) {
     if (!g_last_screen) return;
-    const char *dir = getenv("QUIRE_SHOTS");
+    const char *dir = getenv("GRIMOIRE_SHOTS");
     char path[700];
     snprintf(path, sizeof path, "%s/%s.png", dir && *dir ? dir : "shots", name);
     mkdir_p(dir && *dir ? dir : "shots");
@@ -421,7 +421,7 @@ static void script_step(void) {
 // ---- input ----
 
 static float g_pressure = 0.6f;
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
 static float g_tx, g_ty;
 static bool g_mouse_down, g_finger_down;
 #endif
@@ -430,9 +430,9 @@ int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
     input_default_calib(&g_pen, &g_touch);
     if (pen) g_pen = *pen;
     if (touch) g_touch = *touch;
-    const char *sp = getenv("QUIRE_SIM_PRESSURE");
+    const char *sp = getenv("GRIMOIRE_SIM_PRESSURE");
     if (sp) g_pressure = clampf((float)atof(sp), 0.f, 1.f);
-    const char *script = getenv("QUIRE_SCRIPT");
+    const char *script = getenv("GRIMOIRE_SCRIPT");
     if (script) {
         g_script = fopen(script, "r");
         if (!g_script) {
@@ -448,11 +448,11 @@ void input_close(void) {
     g_script = NULL;
 }
 
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
 static void update_title(void) {
     if (!g_win) return;
     char t[200];
-    snprintf(t, sizeof t, "Quire (sim)  pressure %.1f  tilt %.0f,%.0f  [1-9,0 pressure, arrows tilt, hold E eraser, S side, P power]",
+    snprintf(t, sizeof t, "Grimoire (sim)  pressure %.1f  tilt %.0f,%.0f  [1-9,0 pressure, arrows tilt, hold E eraser, S side, P power]",
              g_pressure, g_tx, g_ty);
     SDL_SetWindowTitle(g_win, t);
 }
@@ -573,7 +573,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
         if (!g_script_done) script_step();
         return q_pop(ev) ? 1 : 0;
     }
-#ifdef QUIRE_SIM_SDL
+#ifdef GRIMOIRE_SIM_SDL
     uint32_t until = now_ms() + (uint32_t)(timeout_ms < 0 ? 1000000 : timeout_ms);
     for (;;) {
         sdl_pump();

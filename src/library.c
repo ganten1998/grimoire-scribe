@@ -406,7 +406,7 @@ static void draw_settings(App *a) {
     hits_add(&S->hits, rt, H_SET_THEME, 0);
     y += ui_px(130);
     Rect r3 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r3, "Mirror PDFs to quire/PDFs (USB)", a->settings.mirror_pdf);
+    ui_checkbox(c, r3, "Mirror PDFs to grimoire/PDFs (USB)", a->settings.mirror_pdf);
     hits_add(&S->hits, r3, H_SET_MIRROR, 0);
     y += ui_px(130);
     Rect r4 = {in.x, y, in.w, ui_px(110)};
@@ -430,7 +430,7 @@ static void draw_settings(App *a) {
     y += ui_px(150);
     const InputCaps *caps = input_caps();
     char about[256];
-    snprintf(about, sizeof about, "Quire %s  pen: %s%s%s", QUIRE_VERSION, caps && caps->has_pen ? caps->pen_name : "none",
+    snprintf(about, sizeof about, "Grimoire %s  pen: %s%s%s", GRIMOIRE_VERSION, caps && caps->has_pen ? caps->pen_name : "none",
              caps && caps->has_pressure ? ", pressure" : "", caps && caps->has_tilt ? ", tilt" : "");
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)}, about, 60);
     snprintf(about, sizeof about, "Data: %s", store_root());
@@ -451,7 +451,7 @@ static void draw_modal(App *a) {
             {ICON_NOTEBOOK, "Open", H_MORE_OPEN, 0, BTN_PLAIN},
             {ICON_RENAME, "Rename", H_MORE_RENAME, 0, BTN_PLAIN},
             {ICON_FOLDER_MOVE, "Move to folder", H_MORE_MOVE, 0, BTN_PLAIN},
-            {ICON_DOWNLOAD, "Save PDF to quire/PDFs now", H_MORE_PDF, 0, BTN_PLAIN},
+            {ICON_DOWNLOAD, "Save PDF to grimoire/PDFs now", H_MORE_PDF, 0, BTN_PLAIN},
             {ICON_TRASH, "Delete", H_MORE_DELETE, 0, BTN_PLAIN},
             {ICON_CLOSE, "Cancel", H_CANCEL, 0, BTN_PLAIN},
         };
@@ -487,7 +487,7 @@ static void draw_modal(App *a) {
         char title[160];
         snprintf(title, sizeof title, "Delete \"%s\"?", S->books[it->nb].name);
         MenuRow rows[] = {
-            {ICON_TRASH, "Delete (moves it to quire/trash)", H_DELETE_YES, 0, BTN_PRIMARY},
+            {ICON_TRASH, "Delete (moves it to grimoire/trash)", H_DELETE_YES, 0, BTN_PRIMARY},
             {ICON_CLOSE, "Keep it", H_CANCEL, 0, BTN_PLAIN},
         };
         draw_menu(a, title, rows, 2);
@@ -528,7 +528,7 @@ static void open_kb(App *a, KbPurpose p, const char *title, const char *initial)
 
 // ---- actions ----
 
-// Keeps quire/PDFs in step when a notebook is renamed, moved or deleted: the old mirror
+// Keeps grimoire/PDFs in step when a notebook is renamed, moved or deleted: the old mirror
 // PDF goes away, and (unless deleting) a fresh one is written under the new name/folder.
 static void mirror_follow(App *a, const char *id, bool deleting) {
     NotebookInfo *now = malloc(sizeof *now);
@@ -744,7 +744,7 @@ static void act(App *a, const Hit *h) {
         S->modal = MOD_NONE;
         reload(a);
         redraw(a, REFRESH_FULL);
-        app_toast(a, "Moved to quire/trash", 2500);
+        app_toast(a, "Moved to grimoire/trash", 2500);
         break;
     case H_FMORE_RENAME:
         if (it) open_kb(a, KBP_RENAME_FOLDER, "Folder", it->folder);

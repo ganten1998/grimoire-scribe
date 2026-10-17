@@ -85,7 +85,7 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
         hits_add(&m->hits, row, i == 0 ? D_BRIGHT : D_WARM, 0);
     }
     Rect inv = {in.x, y, in.w, rh};
-    ui_checkbox(c, inv, "Invert colors in Quire (white on black)", a->settings.invert);
+    ui_checkbox(c, inv, "Invert colors in Grimoire (white on black)", a->settings.invert);
     hits_add(&m->hits, inv, D_INVERT, 0);
     y += rh;
     // Sleep section.

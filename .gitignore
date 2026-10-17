@@ -1,4 +1,4 @@
 build
-quire-data/
+grimoire-data/
 *.o
 .DS_Store

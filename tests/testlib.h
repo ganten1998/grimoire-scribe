@@ -31,8 +31,8 @@ static inline int tl_done(void) {
     return tl_failures ? 1 : 0;
 }
 
-// Scratch dir for tests (Makefile sets QUIRE_TEST_TMP).
+// Scratch dir for tests (Makefile sets GRIMOIRE_TEST_TMP).
 static inline const char *tl_tmp(void) {
-    const char *t = getenv("QUIRE_TEST_TMP");
+    const char *t = getenv("GRIMOIRE_TEST_TMP");
     return t ? t : "/tmp";
 }

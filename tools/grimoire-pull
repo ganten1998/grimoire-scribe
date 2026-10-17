@@ -1,0 +1,109 @@
+#!/bin/sh
+# grimoire-pull: copy Grimoire notebooks from a Kindle to this computer as PDFs (and PNGs).
+#
+#   grimoire-pull                     over SSH (rsync), renders locally with grimoire-export
+#   grimoire-pull --http 192.168.1.23 over Wi-Fi from Grimoire's Share screen, no SSH needed
+#   options: --png (also per-page PNGs)  --open (reveal the folder)  -h (help)
+#
+# Environment:
+#   GRIMOIRE_HOST   ssh host of the Kindle (default: kindle, e.g. a ~/.ssh/config entry)
+#   GRIMOIRE_OUT    where PDFs go (default: ~/Grimoire)
+#   GRIMOIRE_CACHE  rsync mirror of the raw notebooks (default: ~/Library/Caches/grimoire)
+set -eu
+
+HOST=${GRIMOIRE_HOST:-kindle}
+OUT=${GRIMOIRE_OUT:-$HOME/Grimoire}
+CACHE=${GRIMOIRE_CACHE:-$HOME/Library/Caches/grimoire}
+MODE=ssh
+HTTP=
+PNG=
+OPEN=
+
+usage() {
+    cat <<'EOF'
+grimoire-pull: copy Grimoire notebooks from your Kindle to this computer.
+
+  grimoire-pull                      SSH mode: rsync the raw notebooks, render PDFs here
+  grimoire-pull --http <ip[:port]>   Wi-Fi mode: open Library > Share on the Kindle first
+  grimoire-pull --png                also write one PNG per page
+  grimoire-pull --open               open the output folder when done
+
+Output goes to $GRIMOIRE_OUT (default ~/Grimoire), one folder per Grimoire folder.
+
+SSH mode needs an SSH server on the Kindle (an SSH / USBNetwork package for your jailbreak,
+e.g. from KPM or KindleForge). Over USB networking the Kindle is typically reachable at
+192.168.15.244, or use its Wi-Fi address once SSH over Wi-Fi is enabled. Add a host entry:
+
+  Host kindle
+      HostName 192.168.15.244
+      User root
+
+Wi-Fi mode needs nothing on the Kindle beyond Grimoire: open Library > Share and pass the
+address it shows, e.g.  grimoire-pull --http 192.168.1.23
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --http) MODE=http; HTTP=${2:?--http needs an address}; shift ;;
+    --png) PNG=--png ;;
+    --open) OPEN=1 ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "grimoire-pull: unknown option $1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+
+mkdir -p "$OUT"
+
+if [ "$MODE" = http ]; then
+    case "$HTTP" in *:*) ;; *) HTTP="$HTTP:8765" ;; esac
+    command -v curl >/dev/null || { echo "grimoire-pull: needs curl" >&2; exit 1; }
+    command -v python3 >/dev/null || { echo "grimoire-pull: needs python3 to read the listing" >&2; exit 1; }
+    LIST=$(curl -fsS --max-time 20 "http://$HTTP/api/list.json") || {
+        echo "grimoire-pull: cannot reach http://$HTTP (is Library > Share open on the Kindle?)" >&2
+        exit 1
+    }
+    # One record per notebook: folder, name, pdf url, png urls (space separated), joined by
+    # the ASCII unit separator (not a tab: the shell collapses an empty leading tab field).
+    printf '%s' "$LIST" | python3 -I -c '
+import json, sys
+d = json.load(sys.stdin)
+bad = "/\\:*?\"<>|"
+def safe(s):
+    s = "".join("_" if (c in bad or ord(c) < 32) else c for c in s).strip(" .")
+    return s or "Untitled"
+for nb in d.get("notebooks", []):
+    print("\x1f".join([safe(nb.get("folder", "")) if nb.get("folder") else "", safe(nb["name"]), nb["pdf"], " ".join(nb.get("pngs", []))]))
+' | while IFS="$(printf '\037')" read -r folder name pdf pngs; do
+        dir=$OUT
+        [ -n "$folder" ] && dir="$OUT/$folder"
+        mkdir -p "$dir"
+        echo "  ${folder:+$folder/}$name"
+        curl -fsS --max-time 300 -o "$dir/$name.pdf.part" "http://$HTTP$pdf" && mv "$dir/$name.pdf.part" "$dir/$name.pdf"
+        if [ -n "$PNG" ]; then
+            mkdir -p "$dir/$name"
+            i=1
+            for p in $pngs; do
+                curl -fsS --max-time 120 -o "$dir/$name/$(printf 'page-%03d.png' "$i")" "http://$HTTP$p"
+                i=$((i + 1))
+            done
+        fi
+    done
+else
+    command -v rsync >/dev/null || { echo "grimoire-pull: needs rsync" >&2; exit 1; }
+    HERE=$(cd "$(dirname "$0")" && pwd)
+    EXPORT=
+    for c in "$HERE/grimoire-export" "$HERE/../build/host/grimoire-export" "$(command -v grimoire-export 2>/dev/null || true)"; do
+        [ -n "$c" ] && [ -x "$c" ] && { EXPORT=$c; break; }
+    done
+    [ -n "$EXPORT" ] || { echo "grimoire-pull: build grimoire-export first (make tools)" >&2; exit 1; }
+    mkdir -p "$CACHE/root/notebooks"
+    echo "grimoire-pull: syncing from $HOST:/mnt/us/grimoire/notebooks/"
+    rsync -az --delete-after "$HOST:/mnt/us/grimoire/notebooks/" "$CACHE/root/notebooks/"
+    "$EXPORT" $PNG "$CACHE/root" "$OUT"
+fi
+
+echo "grimoire-pull: done -> $OUT"
+[ -n "$OPEN" ] && command -v open >/dev/null && open "$OUT"
+exit 0

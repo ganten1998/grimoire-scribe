@@ -205,8 +205,8 @@ static void route_index(void) {
     store_list(&nbs, &n);
     store_list_folders(&folders, &nf);
     Buf b = {0};
-    page_head(&b, "Quire");
-    buf_printf(&b, "<h1>Quire</h1><p class=meta>%d notebook%s on your Kindle</p>"
+    page_head(&b, "Grimoire");
+    buf_printf(&b, "<h1>Grimoire</h1><p class=meta>%d notebook%s on your Kindle</p>"
                    "<p><a class=big href='/all.zip'>Download everything (zip)</a></p>", n, n == 1 ? "" : "s");
     for (int f = -1; f < nf; f++) {
         const char *folder = f < 0 ? "" : folders[f];
@@ -226,7 +226,7 @@ static void route_index(void) {
         if (!count) buf_printf(&b, "<p class=meta>empty</p>");
         buf_printf(&b, "</div>");
     }
-    buf_printf(&b, "<p class=meta style='margin-top:40px'>Quire %s</p></body></html>", QUIRE_VERSION);
+    buf_printf(&b, "<p class=meta style='margin-top:40px'>Grimoire %s</p></body></html>", GRIMOIRE_VERSION);
     respond(200, "text/html; charset=utf-8", &b, NULL);
     buf_free(&b);
     free(nbs);
@@ -256,8 +256,8 @@ static void route_list_json(void) {
     store_list(&nbs, &n);
     store_list_folders(&folders, &nf);
     Buf b = {0};
-    buf_printf(&b, "{\"device\":\"Quire\",\"version\":");
-    json_str(&b, QUIRE_VERSION);
+    buf_printf(&b, "{\"device\":\"Grimoire\",\"version\":");
+    json_str(&b, GRIMOIRE_VERSION);
     buf_printf(&b, ",\"notebooks\":[");
     for (int i = 0; i < n; i++) {
         const NotebookInfo *nb = &nbs[i];
@@ -296,7 +296,7 @@ static void route(char *path) {
     if (!strcmp(path, "/all.zip")) {
         Buf b = {0};
         int rc = export_folder_zip("", g_dpi, &b);
-        if (rc == 0) respond(200, "application/zip", &b, "Quire.zip");
+        if (rc == 0) respond(200, "application/zip", &b, "Grimoire.zip");
         else respond_text(500, "export failed");
         buf_free(&b);
         return;

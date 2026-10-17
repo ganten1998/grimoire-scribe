@@ -9,7 +9,7 @@
 //   GET /nb/<id>/thumb.png        thumbnail
 //   GET /folder/<name>.zip        every notebook in a folder
 //   GET /all.zip                  everything
-//   GET /api/list.json            machine-readable listing (used by tools/quire-pull)
+//   GET /api/list.json            machine-readable listing (used by tools/grimoire-pull)
 // Non-blocking sockets; one request at a time; responses are built into a Buf then
 // written in chunks from httpd_poll so the UI stays responsive.
 #pragma once

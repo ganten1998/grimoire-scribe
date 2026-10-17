@@ -4,9 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define APP_NAME "Quire"
-#ifndef QUIRE_VERSION
-#define QUIRE_VERSION "dev"
+#define APP_NAME "Grimoire"
+#ifndef GRIMOIRE_VERSION
+#define GRIMOIRE_VERSION "dev"
 #endif
 
 typedef struct {
@@ -33,7 +33,7 @@ uint32_t now_ms(void);      // monotonic milliseconds
 int64_t wall_time(void);    // unix seconds
 void sleep_ms(int ms);
 
-// Logging goes to stderr; on Kindle the launcher redirects it to root/quire.log.
+// Logging goes to stderr; on Kindle the launcher redirects it to root/grimoire.log.
 void qlog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 // Bounded string copy that always terminates. Returns strlen(dst).

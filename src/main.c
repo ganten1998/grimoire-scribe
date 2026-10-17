@@ -5,12 +5,12 @@
 
 #include "app.h"
 
-#ifdef QUIRE_KINDLE
+#ifdef GRIMOIRE_KINDLE
 #include <fcntl.h>
 #include <unistd.h>
-// The launcher's watchdog kills Quire and restores the Kindle UI if this file goes stale,
+// The launcher's watchdog kills Grimoire and restores the Kindle UI if this file goes stale,
 // so a hang can never leave the device stuck with its UI paused.
-#define HEARTBEAT "/tmp/quire.alive"
+#define HEARTBEAT "/tmp/grimoire.alive"
 static void heartbeat(void) {
     int fd = open(HEARTBEAT, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) {
@@ -21,14 +21,14 @@ static void heartbeat(void) {
 #endif
 
 static void usage(void) {
-    printf("Quire %s: a notebook for the Kindle Scribe\n"
-           "  env QUIRE_ROOT   data directory (default %s)\n"
+    printf("Grimoire %s: a notebook for the Kindle Scribe\n"
+           "  env GRIMOIRE_ROOT   data directory (default %s)\n"
            "  --version        print the version\n",
-           QUIRE_VERSION,
-#ifdef QUIRE_KINDLE
-           "/mnt/us/quire"
+           GRIMOIRE_VERSION,
+#ifdef GRIMOIRE_KINDLE
+           "/mnt/us/grimoire"
 #else
-           "./quire-data"
+           "./grimoire-data"
 #endif
     );
 }
@@ -36,7 +36,7 @@ static void usage(void) {
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--version")) {
-            printf("%s\n", QUIRE_VERSION);
+            printf("%s\n", GRIMOIRE_VERSION);
             return 0;
         }
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -44,13 +44,13 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    const char *root = getenv("QUIRE_ROOT");
-#ifdef QUIRE_KINDLE
-    if (!root || !*root) root = "/mnt/us/quire";
+    const char *root = getenv("GRIMOIRE_ROOT");
+#ifdef GRIMOIRE_KINDLE
+    if (!root || !*root) root = "/mnt/us/grimoire";
 #else
-    if (!root || !*root) root = "./quire-data";
+    if (!root || !*root) root = "./grimoire-data";
 #endif
-    qlog("Quire %s starting, data in %s", QUIRE_VERSION, root);
+    qlog("Grimoire %s starting, data in %s", GRIMOIRE_VERSION, root);
     if (store_init(root) != 0) return 1;
 
     int w, h;
@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     // late home-screen refresh). Check the panel still shows us; if not, repaint everything.
     uint32_t started = now_ms(), last_guard = started;
     int guards = 0, startup_repaints = 0;
-#ifdef QUIRE_KINDLE
+#ifdef GRIMOIRE_KINDLE
     heartbeat();
     uint32_t last_beat = now_ms();
 #endif
@@ -118,13 +118,13 @@ int main(int argc, char **argv) {
             }
         }
         // Two unconditional repaints shortly after launch catch the Kindle UI's last frame (the
-        // home screen strip that could land on top of Quire's first frame).
+        // home screen strip that could land on top of Grimoire's first frame).
         if (!app.asleep && ((startup_repaints == 0 && t - started > 1200) || (startup_repaints == 1 && t - started > 3500))) {
             startup_repaints++;
             app_invalidate_all(&app, REFRESH_UI);
             app_flush(&app);
         }
-#ifdef QUIRE_KINDLE
+#ifdef GRIMOIRE_KINDLE
         if (now_ms() - last_beat > 2000) {
             heartbeat();
             last_beat = now_ms();

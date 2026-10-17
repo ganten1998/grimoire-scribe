@@ -73,7 +73,7 @@ int app_init(App *a, int w, int h, float dpi) {
 void app_shutdown(App *a) {
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     k_screens[a->scr].leave(a);
-    bg_detach_rest();  // queued PDF exports finish on their own after Quire exits
+    bg_detach_rest();  // queued PDF exports finish on their own after Grimoire exits
     settings_save(&a->settings);
     for (int i = 0; i < SCR_COUNT; i++) k_screens[i].free_(a);
     canvas_free(&a->toast_under);
@@ -118,8 +118,8 @@ void app_event(App *a, const InEvent *ev) {
     }
     if (ev->type == IN_WAKE) {
         if (!a->asleep) {
-            // Out of a screensaver Quire never saw start: still take the screen back.
-            qlog("wake: out of the screensaver while Quire thought it was awake; repainting");
+            // Out of a screensaver Grimoire never saw start: still take the screen back.
+            qlog("wake: out of the screensaver while Grimoire thought it was awake; repainting");
             a->asleep = true;
         }
         app_wake(a);
@@ -128,13 +128,13 @@ void app_event(App *a, const InEvent *ev) {
     if (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON) {
         a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
         a->sleep_requested = false;
-        // Quire grabs the pen and touch: tell the power service someone is here.
+        // Grimoire grabs the pen and touch: tell the power service someone is here.
         if (a->last_input - a->last_activity_poke > 60000) {
             a->last_activity_poke = a->last_input;
             sys_activity();
         }
     }
-    // While the Kindle shows its sleep screen, pen and touch are not Quire's: drawing over the
+    // While the Kindle shows its sleep screen, pen and touch are not Grimoire's: drawing over the
     // screensaver because the panel reported a touch is how a wrong screen ended up on it.
     if (a->asleep && app_pointer_phase(ev) >= 0) return;
     k_screens[a->scr].event(a, ev);
@@ -244,9 +244,9 @@ void app_apply_sleep_policy(App *a) {
 
 void app_tick(App *a, uint32_t now) {
     int bg = bg_poll();
-    if (bg) app_toast(a, bg > 0 ? "PDF saved to quire/PDFs" : "Could not save the PDF", 2500);
+    if (bg) app_toast(a, bg > 0 ? "PDF saved to grimoire/PDFs" : "Could not save the PDF", 2500);
     if (store_take_corrupt_count() > 0)
-        app_toast(a, "A damaged page was set aside and a blank one put in its place (see quire.log)", 6000);
+        app_toast(a, "A damaged page was set aside and a blank one put in its place (see grimoire.log)", 6000);
     // A power press the power service did not follow with a sleep announcement: ask for sleep.
     if (a->power_pressed_at && !a->asleep && (int32_t)(now - a->power_pressed_at) > 2500) {
         a->power_pressed_at = 0;

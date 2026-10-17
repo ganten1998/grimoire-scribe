@@ -71,7 +71,7 @@ void sys_activity(void) {
 }
 
 void sys_kindle_ui(bool run) {
-    const char *stopped = getenv("QUIRE_AWESOME_STOPPED");
+    const char *stopped = getenv("GRIMOIRE_AWESOME_STOPPED");
     if (!stopped || strcmp(stopped, "yes")) return;  // the launcher did not pause it
     run_bg(run ? "killall -CONT awesome 2>/dev/null" : "killall -STOP awesome 2>/dev/null");
 }

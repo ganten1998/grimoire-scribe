@@ -39,12 +39,12 @@ static int run_job(const Job *j) {
     return rc;
 }
 
-// In a forked child: let go of everything inherited from Quire (input devices, possibly
+// In a forked child: let go of everything inherited from Grimoire (input devices, possibly
 // grabbed; the framebuffer; the power-service pipe), and take a name of its own so nobody
-// mistakes it for Quire. stdout/stderr stay: they are the log.
+// mistakes it for Grimoire. stdout/stderr stay: they are the log.
 static void child_setup(void) {
 #ifdef __linux__
-    prctl(PR_SET_NAME, "quire-bg", 0, 0, 0);
+    prctl(PR_SET_NAME, "grimoire-bg", 0, 0, 0);
 #endif
     long max = sysconf(_SC_OPEN_MAX);
     if (max < 0 || max > 4096) max = 4096;

@@ -15,8 +15,8 @@
 //  2. Framebuffer quirk: on the Scribe 2 the framebuffer's memory can be upside down relative
 //     to the touch/pen panel, depending on the rotation the Kindle UI left it in (the stock UI
 //     renders rotated itself). Seen on device 2026-10-10: at fb rotate 1 every tap landed exactly
-//     180 degrees from the drawn button. Override with an empty /mnt/us/quire/screen-flip or
-//     /mnt/us/quire/screen-noflip.
+//     180 degrees from the drawn button. Override with an empty /mnt/us/grimoire/screen-flip or
+//     /mnt/us/grimoire/screen-noflip.
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +32,7 @@ static uint8_t *g_fb;
 static size_t g_fblen;
 static bool g_pen_mode;
 static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
-// MTK pen mode is opt-in (empty file /mnt/us/quire/pen-mode): FBInk notes that on Bellatrix3
+// MTK pen mode is opt-in (empty file /mnt/us/grimoire/pen-mode): FBInk notes that on Bellatrix3
 // small pen-mode DU updates skip the MDP (the rotation stage) at 90/270 degree rotations, and
 // the Scribe 2 runs at fb rotate 1, so live ink could land nowhere visible. Plain DU partial
 // updates are what KOReader uses for its pen input too.
@@ -130,10 +130,10 @@ int display_open(int *w, int *h, float *dpi) {
     }
     if (g_st.is_mtk) qlog("display: auto REAGL off -> %d", fbink_mtk_toggle_auto_reagl(g_fd, false));
     g_flip = g_st.current_rota == 1;  // FB_ROTATE_CW: observed upside down vs. the panel
-    if (access("/mnt/us/quire/screen-flip", F_OK) == 0) g_flip = true;
-    if (access("/mnt/us/quire/screen-noflip", F_OK) == 0) g_flip = false;
+    if (access("/mnt/us/grimoire/screen-flip", F_OK) == 0) g_flip = true;
+    if (access("/mnt/us/grimoire/screen-noflip", F_OK) == 0) g_flip = false;
     qlog("display: fb rotate %u -> %s", g_st.current_rota, g_flip ? "drawing rotated 180 degrees" : "drawing as is");
-    g_pen_wanted = access("/mnt/us/quire/pen-mode", F_OK) == 0;
+    g_pen_wanted = access("/mnt/us/grimoire/pen-mode", F_OK) == 0;
     qlog("display: MTK pen mode %s", g_pen_wanted ? "enabled (flag file)" : "off (plain DU for live ink)");
     PW = LW = (int)g_st.screen_width;
     PH = LH = (int)g_st.screen_height;
@@ -151,7 +151,7 @@ static bool g_live;
 // Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
 // there legitimately differs from the canvas, so the overwrite checks skip it.
 static Rect g_live_area;
-static bool g_invert;  // Quire's colors inverted (user setting), on top of the fb's own flag
+static bool g_invert;  // Grimoire's colors inverted (user setting), on top of the fb's own flag
 void display_set_invert(bool on) { g_invert = on; }
 static const uint8_t k_bayer8[64] = {
     0,  32, 8,  40, 2,  34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4,  36, 14, 46,
@@ -257,7 +257,7 @@ bool display_overwritten(const Canvas *screen) {
     // A handful of mismatches can be ink in flight; a real overwrite changes a lot.
     // (The toast is overlaid only on the panel, never in the canvas: a few percent at most.)
     if (differ > total / 8) {
-        qlog("display: framebuffer differs from Quire's screen at %d of %d samples (another process drew)", differ, total);
+        qlog("display: framebuffer differs from Grimoire's screen at %d of %d samples (another process drew)", differ, total);
         return true;
     }
     return false;

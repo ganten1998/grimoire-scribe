@@ -1,19 +1,19 @@
 #!/bin/sh
 # Runs the headless app on the Share screen against an existing data root and checks every route.
-# usage: tests/share_check.sh <quire-root>
+# usage: tests/share_check.sh <grimoire-root>
 set -eu
 ROOT=$1
 B=build/share-check
 rm -rf "$B" && mkdir -p "$B"
-QUIRE_ROOT="$ROOT" QUIRE_SCRIPT=tests/scenarios/c_share.qs QUIRE_SHOTS=build/shots/c_share \
-    build/host/quire-headless 2>"$B/app.log" &
+GRIMOIRE_ROOT="$ROOT" GRIMOIRE_SCRIPT=tests/scenarios/c_share.qs GRIMOIRE_SHOTS=build/shots/c_share \
+    build/host/grimoire-headless 2>"$B/app.log" &
 APP=$!
 URL=http://127.0.0.1:8765
 for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS -o /dev/null "$URL/" 2>/dev/null && break; sleep 0.5; done
 fail=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 curl -fsS "$URL/" -o "$B/index.html"
-check "index html" "grep -q '<h1>Quire</h1>' $B/index.html"
+check "index html" "grep -q '<h1>Grimoire</h1>' $B/index.html"
 curl -fsS "$URL/api/list.json" -o "$B/list.json"
 check "list.json parses" "python3 -I -m json.tool $B/list.json >/dev/null"
 ID=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['id'])")
@@ -46,8 +46,8 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/")
 check "POST rejected ($code)" "[ $code = 405 ]"
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' "$URL/api/list.json")
 check "foreign Host refused ($code)" "[ $code = 400 ]"
-QUIRE_OUT="$B/pulled" tools/quire-pull --http 127.0.0.1 --png >"$B/pull.log" 2>&1
-check "quire-pull --http" "ls $B/pulled/*.pdf >/dev/null 2>&1 || ls $B/pulled/*/*.pdf >/dev/null 2>&1"
+GRIMOIRE_OUT="$B/pulled" tools/grimoire-pull --http 127.0.0.1 --png >"$B/pull.log" 2>&1
+check "grimoire-pull --http" "ls $B/pulled/*.pdf >/dev/null 2>&1 || ls $B/pulled/*/*.pdf >/dev/null 2>&1"
 kill $APP 2>/dev/null || true
 wait $APP 2>/dev/null || true
 [ $fail = 0 ] && echo "SHARE CHECK PASSED" || { echo "SHARE CHECK FAILED"; exit 1; }

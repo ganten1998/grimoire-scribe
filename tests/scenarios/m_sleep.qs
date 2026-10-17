@@ -31,11 +31,11 @@ wait 400
 shot 04-asleep-pinned-page-1
 wake
 wait 400
-# power button with no announcement from the power service: Quire asks for sleep itself
+# power button with no announcement from the power service: Grimoire asks for sleep itself
 power
 wait 3200
 shot 05-power-fallback-asleep
-# a tap on the sleep screen must not draw Quire over it
+# a tap on the sleep screen must not draw Grimoire over it
 pentap 900 1200
 wait 300
 shot 06-tap-while-asleep-still-asleep

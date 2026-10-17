@@ -1,8 +1,8 @@
-# Quire: a homebrew notebook for the Kindle Scribe 2
+# Grimoire: a homebrew notebook for the Kindle Scribe 2
 
-Quire is a standalone notebook app for a jailbroken Kindle Scribe 2 (2024, "Pisco",
+Grimoire is a standalone notebook app for a jailbroken Kindle Scribe 2 (2024, "Pisco",
 MTK Bellatrix3, 1860x2480 @ 300 ppi, firmware 5.19.x, hard-float userland).
-Launched from a Library scriptlet (documents/Quire.sh). One static binary (musl, armhf), no runtime dependencies.
+Launched from a Library scriptlet (documents/Grimoire.sh). One static binary (musl, armhf), no runtime dependencies.
 A desktop simulator (SDL3) and an SDL-free headless script runner exist for development.
 
 ## Requirements (from the owner)
@@ -28,13 +28,13 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 |---|---|---|
 | common.h / util.c | Rect math, mm_to_px, clampf, time, logging, string helpers | - |
 | canvas.h/.c | 8-bit gray canvas, clip, fill, AA lines/discs, ink deposit, blit, downsample | common |
-| font.h/.c | stb_truetype text from embedded Terminess Nerd Font Mono (regular/bold), the UI font everywhere | canvas |
+| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = IM FELL English (+ small caps, overprinted bold) and UnifrakturMaguntia titles; FIXED faces (paper labels) are Terminess in both, so pages never change with the theme | canvas |
 | paper.h/.c | page backgrounds (rules, staves) | canvas |
 | brush.h/.c | tool params, pressure/tilt mapping, deterministic dab renderer, smoother | canvas |
 | page.h/.c | Stroke, Page, hit-test, page render, thumbnail | brush, paper |
 | history.h/.c | per-page undo/redo with stroke ownership | page |
 | store.h/.c | notebooks on disk, page files, settings ini, thumbnails | page, brush |
-| ui.h/.c | widgets (button, slider, sheet, toast, hit lists); icons are Terminess Nerd Font glyphs | canvas, font |
+| ui.h/.c | widgets (button, slider, sheet, toast, hit lists) in two themes; `ui_frame` draws any box in the theme's shape (rounded, or cut corners via `canvas_chamfer_rect`), plus gothic ornaments (rules, arch frieze, quatrefoil); icons are Terminess Nerd Font glyphs | canvas, font |
 | keyboard.h/.c | on-screen keyboard modal (rename / name a notebook) | ui |
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch | all screens |
 | library.h/.c | library screen, new-notebook sheet (paper picker), rename/delete | app, store, ui, keyboard |
@@ -80,7 +80,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   undo step. The eraser end of the pen (BTN_TOOL_RUBBER) and holding the side button
   (BTN_STYLUS) erase regardless of the selected tool.
 
-## On-disk layout (root = /mnt/us/quire on Kindle, $QUIRE_ROOT or ./quire-data in sim)
+## On-disk layout (root = /mnt/us/grimoire on Kindle, $GRIMOIRE_ROOT or ./grimoire-data in sim)
 
 ```
 root/settings.ini              tool params x4, current tool, panel pos/collapsed, calibration
@@ -94,8 +94,8 @@ last pen-up, on page change, on leaving the editor and on exit.
 
 ## Kindle integration
 
-- Scriptlet `documents/Quire.sh` (hdnext jailbreaks; KUAL is obsolete there) detaches
-  `/mnt/us/quire/app/quire.sh`, which: disables the screensaver
+- Scriptlet `documents/Grimoire.sh` (hdnext jailbreaks; KUAL is obsolete there) detaches
+  `/mnt/us/grimoire/app/grimoire.sh`, which: disables the screensaver
   (`lipc-set-prop com.lab126.powerd preventScreenSaver 1`), hides pillow (status bar),
   SIGSTOPs the framework processes so nothing else draws or eats input, runs the binary,
   and on exit restores everything (SIGCONT, pillow, screensaver) and asks for a full repaint.
@@ -105,12 +105,12 @@ last pen-up, on page change, on leaving the editor and on exit.
 
 ## Build
 
-- `make sim` (macOS/Linux, SDL3) -> build/host/quire-sim
-- `make headless` (no SDL) -> build/host/quire-headless; `make scenarios` runs tests/scenarios/*.qs
+- `make sim` (macOS/Linux, SDL3) -> build/host/grimoire-sim
+- `make headless` (no SDL) -> build/host/grimoire-headless; `make scenarios` runs tests/scenarios/*.qs
 - `make check` -> everything verifiable without the device
 - `make test` (host, ASan+UBSan) -> runs tests/test_*.c
-- `make kindle` (zig cc -target arm-linux-musleabihf, static) -> build/kindle/quire
-- `make package` -> build/dist/Quire.zip
+- `make kindle` (zig cc -target arm-linux-musleabihf, static) -> build/kindle/grimoire
+- `make package` -> build/dist/Grimoire.zip
 
 ## Getting notebooks onto a computer (three roads, all share export.c)
 
@@ -118,14 +118,14 @@ last pen-up, on page change, on leaving the editor and on exit.
    (`http://<kindle-ip>:8765`) in big type. Any browser: index of folders and notebooks with
    thumbnails; per page PNG, per notebook PDF / zip, per folder zip, everything zip.
    `/api/list.json` makes it scriptable. The server only runs while the Share screen is open.
-2. **SSH / rsync** - `tools/quire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
-   (USBNetwork or any sshd on the device, host from `$QUIRE_HOST`, default `kindle`), then runs
-   the host build of the same renderer, `quire-export`, to produce
-   `~/Quire/<folder>/<notebook>.pdf` + `pages/NNN.png`. Incremental; renders only what changed.
-   `quire-pull --http <ip>` uses the share server instead (curl), no ssh needed.
+2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
+   (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
+   the host build of the same renderer, `grimoire-export`, to produce
+   `~/Grimoire/<folder>/<notebook>.pdf` + `pages/NNN.png`. Incremental; renders only what changed.
+   `grimoire-pull --http <ip>` uses the share server instead (curl), no ssh needed.
 3. **USB cable** - with `mirror_pdf` on (default), closing a notebook writes
-   `/mnt/us/quire/PDFs/<folder>/<name>.pdf` from a niced background process (bgjob.c), so
-   the UI never waits on a render. Plug in; they're in quire/PDFs. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Quire.)
+   `/mnt/us/grimoire/PDFs/<folder>/<name>.pdf` from a niced background process (bgjob.c), so
+   the UI never waits on a render. Plug in; they're in grimoire/PDFs. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Grimoire.)
 
 ## Folders
 

@@ -12,7 +12,7 @@ void light_get(int *intensity, int *warmth);
 void light_set_intensity(int level);
 void light_set_warmth(int level);
 
-// Other bits of the Kindle system Quire drives.
+// Other bits of the Kindle system Grimoire drives.
 // Ask the power service to go to sleep, exactly as a power button press would.
 void sys_request_sleep(void);
 // Resume / pause the Kindle's window manager (only if the launcher paused it): the Kindle's own
@@ -20,5 +20,5 @@ void sys_request_sleep(void);
 void sys_kindle_ui(bool run);
 // Keep the power service from sleeping on its own (only for "Sleep after: never").
 void sys_prevent_sleep(bool prevent);
-// Tell the power service the user is active (Quire grabs the pen and touch, so it cannot see).
+// Tell the power service the user is active (Grimoire grabs the pen and touch, so it cannot see).
 void sys_activity(void);

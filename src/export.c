@@ -151,7 +151,7 @@ int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out) {
     OBJ(3);
     buf_printf(out, "<< /Title ");
     pdf_text(out, nb->name);
-    buf_printf(out, " /Creator (Quire %s) /Producer (Quire) >>\nendobj\n", QUIRE_VERSION);
+    buf_printf(out, " /Creator (Grimoire %s) /Producer (Grimoire) >>\nendobj\n", GRIMOIRE_VERSION);
     for (int i = 0; i < np && rc == 0; i++) {
         Canvas c;
         if (render_page(nb, i, dpi, &c) != 0) {

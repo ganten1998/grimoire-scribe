@@ -1,6 +1,6 @@
 // bgjob.h: PDF mirror exports in a background process. Rendering a notebook to PDF takes
 // seconds on the Kindle; on the UI thread it froze typing and drawing (and a long one tripped
-// the launcher's watchdog, which killed Quire). One child process at a time, niced, works
+// the launcher's watchdog, which killed Grimoire). One child process at a time, niced, works
 // through a small queue of notebook ids; each child loads the notebook's latest info itself.
 #pragma once
 #include <stdbool.h>

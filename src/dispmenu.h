@@ -1,4 +1,4 @@
-// dispmenu.h: the Display sheet (front light brightness + warmth, invert Quire's colors).
+// dispmenu.h: the Display sheet (front light brightness + warmth, invert Grimoire's colors).
 // A modal hosted by the editor and the library; it draws itself and handles pointer input.
 #pragma once
 #include <stdlib.h>

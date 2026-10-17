@@ -65,8 +65,8 @@ void app_toast(App *a, const char *msg, int ms);
 // Turn the UI to a device rotation now (relayouts every screen).
 void app_set_rotation(App *a, int quarter_turns);
 // Where documents mirror PDFs go (/mnt/us/documents on Kindle, <root>/documents elsewhere).
-// Where the PDF mirror lives: quire/PDFs (outside documents/, so the Kindle never indexes
-// it: each indexed PDF made the home screen redraw its library, on top of Quire).
+// Where the PDF mirror lives: grimoire/PDFs (outside documents/, so the Kindle never indexes
+// it: each indexed PDF made the home screen redraw its library, on top of Grimoire).
 const char *app_mirror_dir(void);
 // Pressed-state feedback for a tapped control: invert + FAST refresh now.
 void app_press_feedback(App *a, Rect r);

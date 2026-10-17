@@ -5,7 +5,7 @@
 //           "stylus-custom" (event5), a virtual pen fed by Amazon's pen service, scaled to the
 //           screen and aligned with touch, but it only reports position + buttons; and
 //           "WacomDigitizer" (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure
-//           0..4095 and tilt in 1/100 degree (seen on device 2026-10-10). Quire takes position
+//           0..4095 and tilt in 1/100 degree (seen on device 2026-10-10). Grimoire takes position
 //           and buttons from the scaled pen (grabbed) and pressure + tilt from the raw one (read
 //           without a grab, so the pen service keeps feeding the scaled pen).
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
@@ -512,7 +512,7 @@ static void powerd_start(void) {
     if (pid == 0) {
         setpgid(0, 0);  // its own group, so the loop and its child can be stopped together
 #ifdef __linux__
-        prctl(PR_SET_PDEATHSIG, SIGTERM);  // and it goes when Quire does, even on a crash
+        prctl(PR_SET_PDEATHSIG, SIGTERM);  // and it goes when Grimoire does, even on a crash
 #endif
         dup2(p[1], 1);
         close(p[0]);
@@ -550,7 +550,7 @@ static void handle_powerd_fd(void) {
         if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
         // Only outOfScreenSaver is a wake. (wakeupFromSuspend is not: the Kindle also resumes
         // briefly on its own timers while the screensaver stays up, and treating that as a wake
-        // drew Quire over the screensaver and lost track of the real wake that followed.)
+        // drew Grimoire over the screensaver and lost track of the real wake that followed.)
         else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16))
             e.type = IN_WAKE;
         if (e.type) {

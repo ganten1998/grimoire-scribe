@@ -64,7 +64,7 @@ static void draw(App *a) {
         const char *lines[] = {
             "Pages as PNG, notebooks as PDF or zip, folders and everything as zip.",
             "Same Wi-Fi network only. Keep this screen open while downloading.",
-            "From a terminal: tools/quire-pull --http <address above>",
+            "From a terminal: tools/grimoire-pull --http <address above>",
         };
         for (int i = 0; i < 3; i++) {
             font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(64)}, lines[i], 60);

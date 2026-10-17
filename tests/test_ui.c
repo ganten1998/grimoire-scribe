@@ -96,7 +96,7 @@ TEST(sheets) {
     Rect inner = ui_sheet(&c, (Rect){40, y, 1780, 500}, "New notebook");
     font_draw_left(&c, FONT_REGULAR, ui_text_size(), (Rect){inner.x, inner.y, inner.w, 80},
                    "The quick brown fox jumps over the lazy dog. 0123456789", 0);
-    ui_toast(&c, (Rect){0, 0, 1860, 2480}, "PDF saved to quire/PDFs");
+    ui_toast(&c, (Rect){0, 0, 1860, 2480}, "PDF saved to grimoire/PDFs");
     out_png("widgets.png", &c);
     canvas_free(&c);
 }
