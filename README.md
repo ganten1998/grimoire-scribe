@@ -41,7 +41,7 @@ updating; most people keep OTA updates blocked.
 ## Install
 
 1. Download `Grimoire-<version>.zip` from the
-   [Releases](../../releases) page and unzip it. You get a `documents` folder with two files.
+   [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files.
 2. Connect the Kindle to your computer. The Scribe uses MTP: on a Mac, use
    [OpenMTP](https://openmtp.ganeshrvel.com) (or `brew install --cask openmtp`); on Windows and
    Linux it shows up as a device.
