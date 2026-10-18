@@ -200,7 +200,9 @@ static void draw_card(App *a, Rect r, int idx) {
     }
     int more = ui_px(110);
     Rect tr = {r.x, r.y + th + ui_px(14), r.w - more - ui_px(10), ui_px(70)};
-    font_draw_left(c, FONT_BOLD, ui_text_size(), tr, title, 0);
+    // Gothic names use the pixel face's regular weight: its overprinted bold turns a name in
+    // capitals into a solid black bar.
+    font_draw_left(c, ui_theme() == THEME_GOTHIC ? FONT_REGULAR : FONT_BOLD, ui_text_size(), tr, title, 0);
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){r.x, tr.y + tr.h, r.w - more - ui_px(10), ui_px(56)}, line2,
                    60);
     Rect mr = {r.x + r.w - more, r.y + th + ui_px(20), more, ui_px(110)};

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Lighter notebook names**: in the Gothic style, notebook and folder names on the Library
+  cards use the pixel font's regular weight instead of its bold, which turned a name in
+  capitals into a solid black bar.
+
 ## 1.0.0-rc.1 (2026-10-17)
 
 First public pre-release, and a new name: **Quire is now Grimoire**.
