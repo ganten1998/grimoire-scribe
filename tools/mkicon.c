@@ -1,7 +1,8 @@
-// mkicon.c: draws the Library cover (assets/icon.png) with the app's own gothic widgets.
-// `make icon` rebuilds it; the PNG is committed, so packaging never needs this tool.
+// mkicon.c: draws the Library cover (assets/icon.png) with the app's own gothic widgets and the
+// logo's pixel bat. `make icon` rebuilds it; the PNG is committed, so packaging never needs it.
 #include <stdio.h>
 
+#include "bat.h"
 #include "canvas.h"
 #include "font.h"
 #include "ui.h"
@@ -20,6 +21,9 @@ int main(int argc, char **argv) {
     canvas_chamfer_rect(&c, rect_inflate(card, -14), 18, 0, false, 2);
     ui_frieze(&c, 22, W - 22, 22, 18, 0);
     ui_emblem(&c, W / 2.f, 160.f, 66.f, 0, 255);
+    // The bat in the window instead of its lozenge, on the title's grid (86 px Jacquard: 2 px blocks).
+    canvas_lozenge(&c, W / 2.f, 160.f, 66.f * 0.32f + 3.f, 255);
+    draw_bat(&c, W / 2 - BAT_W, 160 - BAT_H, 2);
     font_draw_centered(&c, FONT_TITLE, 86.f, (Rect){14, 262, W - 28, 80}, "Grimoire", 0);
     canvas_lozenge(&c, W / 2.f, 352.f, 6.f, 0);
     canvas_hline(&c, 60, W / 2 - 14, 351, 2, 0);

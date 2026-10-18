@@ -63,10 +63,11 @@ static void draw(App *a) {
         y += ui_px(30);
         const char *lines[] = {
             "Pages as PNG, notebooks as PDF or zip, folders and everything as zip.",
+            "Effects: transparent, recolored or filtered copies of any page.",
             "Same Wi-Fi network only. Keep this screen open while downloading.",
             "From a terminal: tools/grimoire-pull --http <address above>",
         };
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(64)}, lines[i], 60);
             y += ui_px(70);
         }
@@ -85,7 +86,7 @@ static void draw(App *a) {
 }
 
 static void start(App *a) {
-    if (!httpd_running()) S->started = httpd_start(a->settings.http_port, a->dpi) == 0;
+    if (!httpd_running()) S->started = httpd_start(a->settings.http_port, a->dpi, ui_theme() == THEME_GOTHIC) == 0;
     else S->started = true;
     input_watch_fd(S->started ? httpd_fd() : -1);
     S->last_count = httpd_requests_served();

@@ -15,6 +15,16 @@ int buf_printf(Buf *b, const char *fmt, ...) __attribute__((format(printf, 2, 3)
 
 // One page rendered at full size (paper + ink) as an 8-bit grayscale PNG.
 int export_page_png(const NotebookInfo *nb, int index, float dpi, Buf *out);
+// What export_page_png_ex drew.
+typedef struct {
+    int w, h;        // the page's full size, px
+    uint32_t paper;  // its PaperKind
+    Rect ink;        // ink-only renders: box of the pixels darker than 250 (empty if none)
+} PageRender;
+// The same with only some layers (PAGE_LAYER_* from page.h; a left-out layer is white), shrunk
+// `shrink` times by averaging whole blocks (1 = full size). info may be NULL.
+int export_page_png_ex(const NotebookInfo *nb, int index, float dpi, int layers, int shrink, PageRender *info,
+                       Buf *out);
 // Whole notebook as a PDF: one page per notebook page, each a Flate-compressed DeviceGray
 // image at the page's physical size (w/dpi inches). Title = notebook name.
 int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out);

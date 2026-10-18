@@ -37,5 +37,9 @@ void page_clear_strokes(Page *p);
 // Renders paper + every stroke intersecting region, clipped to region. Strokes are
 // replayed from their first sample with brush_add so the result equals the live render.
 void page_render(Canvas *c, const Page *p, Rect region, float dpi);
+// The same with either layer left out (the canvas keeps what it had there, white if fresh):
+// the share studio recolors paper and ink separately.
+enum { PAGE_LAYER_PAPER = 1, PAGE_LAYER_INK = 2, PAGE_LAYER_ALL = 3 };
+void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers);
 // Renders the whole page then box-downsamples into thumb (thumb size sets the scale).
 void page_render_thumb(Canvas *thumb, const Page *p, float dpi);

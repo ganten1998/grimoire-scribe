@@ -1,7 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta (2026-10-18)
 
+- **A logo, and a bat on the cover**: "Grimoire" in the pixel blackletter with a pixel bat over
+  it; the same bat now sits in the window of the Library cover, in place of the diamond.
+- **Effects in Share over Wi-Fi**: a studio in the browser makes new pictures of any page:
+  transparent, white, colored or gradient backgrounds; paper lines shown, hidden or recolored;
+  ink in a color or a gradient across the writing (a Signature preset: transparent, gradient,
+  trimmed); tones (gray, duotone, invert), warmth, tint, brightness and contrast; a crop to the
+  ink; presets from Sepia to Blueprint. It downloads a PNG, a zip of PNGs or a PDF, and shows the
+  ImageMagick command that makes the same picture.
+- **Share over Wi-Fi fixes**: a browser asking for several things at once (the page previews of
+  a notebook) could get the wrong file or a dropped connection, because the server answered a
+  new connection from the previous request before the new one had arrived. Each connection now
+  has its own buffer, downloads beyond the two the Kindle renders at once wait their turn
+  instead of being refused, an idle connection no longer holds up the others, and notebook page
+  previews load at a third of the size.
+- **Share pages in your style**: the browser pages use Grimoire's own fonts, Jacquard 24 titles
+  and Jersey 10 text in the Gothic style (kept pixel-sharp), Terminess in Classic.
 - **Lighter notebook names**: in the Gothic style, notebook and folder names on the Library
   cards use the pixel font's regular weight instead of its bold, which turned a name in
   capitals into a solid black bar.

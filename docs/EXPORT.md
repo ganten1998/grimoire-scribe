@@ -9,17 +9,47 @@ On the Kindle: turn Wi-Fi on, then **Library > Share**. It shows an address like
 `http://192.168.1.23:8765`. Open it in a browser on any computer or phone on the same network:
 
 - every folder and notebook with a thumbnail
-- per notebook: **PDF**, **ZIP** (PDF + one PNG per page + the raw files), and a page view
-  where each page is a full-resolution PNG
+- per notebook: **PDF**, **ZIP** (PDF + one PNG per page + the raw files), **Effects** (below),
+  and a page view where each page is a full-resolution PNG
 - per folder: a zip; at the top: **Download everything**
 
-Keep the Share screen open while downloading; leaving it stops the server.
+Keep the Share screen open while downloading; leaving it stops the server. The pages use
+Grimoire's own fonts in the style picked on the Kindle (Gothic: Jacquard 24 titles and Jersey 10
+text, sized to stay pixel-sharp; Classic: Terminess).
+
+### Effects
+
+**Effects** (on every notebook, and under each page) opens a studio that makes new pictures of
+your pages. The Kindle sends each page as two layers, the empty paper and the ink alone, and the
+browser puts them back together your way:
+
+- **Background**: white, transparent, a color, or a gradient (two colors and an angle)
+- **Paper lines**: shown or hidden, in any color and strength (music staves are paper too)
+- **Ink**: as written, one color, or a gradient across the writing (or across the whole page)
+- **Look**: a tone (gray, duotone, invert), warmth (cool to warm), a tint, brightness, contrast
+- **Crop and size**: the whole page or trimmed to the ink plus a margin; 100%, 50% or 25%
+- **Presets** to start from: Transparent, Signature (transparent, gradient ink, trimmed),
+  Warm, Sepia, Parchment, Blueprint, Chalkboard, Night, Sunset ink, Aurora
+
+Download the page you are looking at as a PNG, or every page as a zip of PNGs or as one PDF.
+Transparent PNGs keep the ink's soft edges (pencil grain, light pressure) as partial
+transparency, so they sit cleanly on any background. The browser remembers your last settings.
+
+Every control is one ImageMagick operation, and the studio prints the `magick` command (ImageMagick 7,
+macOS or Linux shell) that makes the same picture from the page's two layer files, linked right
+above it: handy for scripts and batch work. `tests/studio_check.js` holds the studio's pixels
+against ImageMagick's for a few dozen settings; they agree to within one color level.
+
+The browser does the image work; the Kindle only renders the layers, two at a time. Previews
+use them at half size, every page with the same paper shares one paper layer, and flipping
+through pages only loads the page you stop on (←/→ or type a page number).
 
 Security: the server has no password. It only listens while the Share screen is open, the
 firewall hole is only on the Wi-Fi interface, it is read-only (GET), and it refuses requests
 whose `Host` is not an IP address (so a web page cannot reach it through a rebound hostname).
 Do not open Share on a network you do not trust. PDF, zip and PNG downloads are rendered by a
-separate process, so the Kindle stays responsive during a big download (two at a time).
+separate process, so the Kindle stays responsive during a big download; it renders two at a
+time and the rest wait their turn.
 
 Scriptable endpoints:
 
@@ -29,6 +59,10 @@ Scriptable endpoints:
 | `/nb/<id>.pdf` | notebook PDF |
 | `/nb/<id>.zip` | notebook zip |
 | `/nb/<id>/<n>.png` | page n (1-based), 1860x2480 grayscale PNG |
+| `/nb/<id>/<n>.png?layer=ink` | page n's ink alone, on white |
+| `/nb/<id>/<n>.png?layer=paper` | page n's paper alone, without the ink |
+| `/nb/<id>/<n>.png?f=2` | any of the above shrunk 2x (`f` = 2 to 8); headers `X-Page-Size` (full size), `X-Paper` (paper kind) and, for the ink, `X-Ink-Box` (`x,y,w,h` at full size, or `none`) |
+| `/nb/<id>/studio` | the Effects studio (`?p=<n>` opens page n) |
 | `/nb/<id>/thumb.png` | thumbnail |
 | `/folder/<name>.zip` | every notebook in a folder (PDF + raw) |
 | `/all.zip` | everything, grouped by folder (PDF + raw) |

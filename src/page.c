@@ -131,10 +131,15 @@ void page_clear_strokes(Page *p) {
 }
 
 void page_render(Canvas *c, const Page *p, Rect region, float dpi) {
+    page_render_layers(c, p, region, dpi, PAGE_LAYER_ALL);
+}
+
+void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers) {
     Rect saved = c->clip;
     Rect r = rect_intersect(region, saved);
     if (rect_is_empty(r)) return;
-    paper_render(c, p->paper, r, dpi);
+    if (layers & PAGE_LAYER_PAPER) paper_render(c, p->paper, r, dpi);
+    if (!(layers & PAGE_LAYER_INK)) return;
     canvas_set_clip(c, r);
     BrushState b;
     for (int i = 0; i < p->n; i++) {

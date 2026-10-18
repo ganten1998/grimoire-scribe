@@ -72,7 +72,7 @@ void export_safe_name(const char *in, char *out, size_t cap) {
 
 // ---- rendering helpers ----
 
-static int render_page(const NotebookInfo *nb, int index, float dpi, Canvas *c) {
+static int render_page(const NotebookInfo *nb, int index, float dpi, int layers, Canvas *c, uint32_t *paper) {
     // Rendered at the size the page was drawn at (no device scaling).
     char path[800];
     snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", store_root(), nb->id, nb->page_ids[index]);
@@ -95,14 +95,62 @@ static int render_page(const NotebookInfo *nb, int index, float dpi, Canvas *c) 
         page_free(p);
         return -1;
     }
-    page_render(c, p, (Rect){0, 0, p->w, p->h}, dpi);
+    page_render_layers(c, p, (Rect){0, 0, p->w, p->h}, dpi, layers);
+    if (paper) *paper = (uint32_t)p->paper;
     page_free(p);
     return 0;
 }
 
 int export_page_png(const NotebookInfo *nb, int index, float dpi, Buf *out) {
+    return export_page_png_ex(nb, index, dpi, PAGE_LAYER_ALL, 1, NULL, out);
+}
+
+// The box of the pixels darker than 250 (the studio's "ink" threshold too), empty if none.
+static Rect dark_box(const Canvas *c) {
+    int x0 = c->w, y0 = c->h, x1 = -1, y1 = -1;
+    for (int y = 0; y < c->h; y++) {
+        const uint8_t *row = c->px + y * c->stride;
+        int first = -1, last = -1;
+        for (int x = 0; x < c->w; x++)
+            if (row[x] < 250) {
+                if (first < 0) first = x;
+                last = x;
+            }
+        if (first < 0) continue;
+        if (first < x0) x0 = first;
+        if (last > x1) x1 = last;
+        if (y < y0) y0 = y;
+        y1 = y;
+    }
+    return x1 < 0 ? (Rect){0, 0, 0, 0} : (Rect){x0, y0, x1 - x0 + 1, y1 - y0 + 1};
+}
+
+int export_page_png_ex(const NotebookInfo *nb, int index, float dpi, int layers, int shrink, PageRender *info,
+                       Buf *out) {
     Canvas c;
-    if (index < 0 || index >= nb->npages || render_page(nb, index, dpi, &c) != 0) return -1;
+    uint32_t paper = 0;
+    if (index < 0 || index >= nb->npages || shrink < 1 || render_page(nb, index, dpi, layers, &c, &paper) != 0)
+        return -1;
+    if (info) *info = (PageRender){c.w, c.h, paper, layers == PAGE_LAYER_INK ? dark_box(&c) : (Rect){0, 0, 0, 0}};
+    if (shrink > 1) {  // whole shrink x shrink blocks from the top left; leftover edge pixels drop
+        Canvas s;
+        if (c.w / shrink < 1 || c.h / shrink < 1 || canvas_init(&s, c.w / shrink, c.h / shrink) != 0) {
+            canvas_free(&c);
+            return -1;
+        }
+        int n = shrink * shrink;
+        for (int y = 0; y < s.h; y++)
+            for (int x = 0; x < s.w; x++) {
+                int sum = 0;
+                for (int j = 0; j < shrink; j++) {
+                    const uint8_t *row = c.px + (y * shrink + j) * c.stride + x * shrink;
+                    for (int i = 0; i < shrink; i++) sum += row[i];
+                }
+                s.px[y * s.stride + x] = (uint8_t)((sum + n / 2) / n);
+            }
+        canvas_free(&c);
+        c = s;
+    }
     int len = 0;
     unsigned char *png = stbi_write_png_to_mem(c.px, c.stride, c.w, c.h, 1, &len);
     canvas_free(&c);
@@ -154,7 +202,7 @@ int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out) {
     buf_printf(out, " /Creator (Grimoire %s) /Producer (Grimoire) >>\nendobj\n", GRIMOIRE_VERSION);
     for (int i = 0; i < np && rc == 0; i++) {
         Canvas c;
-        if (render_page(nb, i, dpi, &c) != 0) {
+        if (render_page(nb, i, dpi, PAGE_LAYER_ALL, &c, NULL) != 0) {
             rc = -1;
             break;
         }

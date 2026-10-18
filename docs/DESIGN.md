@@ -38,6 +38,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | ui.h/.c | widgets (button, slider, sheet, toast, hit lists) in two themes; `ui_frame` draws any box in the theme's shape (rounded, or cut corners via `canvas_chamfer_rect`), plus gothic ornaments (rules, arch frieze, quatrefoil); icons are Terminess Nerd Font glyphs | canvas, font |
 | keyboard.h/.c | on-screen keyboard modal (rename / name a notebook) | ui |
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch | all screens |
+| httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
 | library.h/.c | library screen, new-notebook sheet (paper picker), rename/delete | app, store, ui, keyboard |
 | editor.h/.c | the notebook editor, live ink, eraser, floating panel, page nav, autosave | app, page, history, store |
 | pensettings.h/.c | per-tool sensitivity screen: sliders, curve graph, live readout, test pad | app, brush, ui |
@@ -128,6 +129,16 @@ last pen-up, on page change, on leaving the editor and on exit.
    (`http://<kindle-ip>:8765`) in big type. Any browser: index of folders and notebooks with
    thumbnails; per page PNG, per notebook PDF / zip, per folder zip, everything zip.
    `/api/list.json` makes it scriptable. The server only runs while the Share screen is open.
+   Up to 16 connections at once, each with its own request buffer (a shared one once answered a
+   new connection from the previous request); renders fork, two at a time, the rest queue
+   oldest first and are dropped when their browser hangs up. The pages use the fonts of the
+   Kindle's style (served from the binary, cached a year). The
+   Effects studio (`web/studio.js` + `.css`, embedded at build time) rebuilds a page in the
+   browser from its `?layer=paper` and `?layer=ink` renders: background, then lines and ink
+   composited over it with each layer's darkness as alpha, then tone, warmth, tint,
+   brightness/contrast, crop and scale. Each step is one ImageMagick 7 operation computed with
+   ImageMagick's own math, and the page prints the equivalent `magick` command;
+   `tests/studio_check.js` (run by `make check` when node and magick exist) compares the two.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce

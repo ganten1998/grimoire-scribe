@@ -1,4 +1,9 @@
-# Grimoire
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="Grimoire" width="572">
+  </picture>
+</h1>
 
 **A handwriting notebook for the jailbroken Kindle Scribe.** Lined, dotted, graph and Cornell
 paper, sheet music and guitar or bass tab you can mix and stack yourself, nine pens tuned to the
@@ -17,9 +22,9 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release.** 1.0.0-rc.1 is in daily use on one Kindle Scribe (2024). It autosaves every
-> stroke and keeps damaged files instead of overwriting them, but treat it as a release candidate:
-> copy your notebooks off now and then (Library > Share makes that one click).
+> **Pre-release.** 1.0.0-beta is in daily use on one Kindle Scribe (2024). It autosaves every
+> stroke and keeps damaged files instead of overwriting them, but treat it as a beta: copy your
+> notebooks off now and then (Library > Share makes that one click).
 
 ## Will it run on my Kindle?
 
@@ -91,8 +96,9 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 
 1. **Wi-Fi**: turn on Wi-Fi, open **Library > Share**, and visit the address it shows from any
    browser on the same network. Download a notebook as PDF or zip, single pages as PNG, or
-   everything at once. Only devices on your network can reach it, and only while the Share
-   screen is open.
+   everything at once. **Effects** makes transparent, recolored or filtered copies (gradient
+   signatures, warm tones, sepia, blueprint and more) and shows the matching ImageMagick command. Only
+   devices on your network can reach it, and only while the Share screen is open.
 2. **USB**: every notebook you close is also saved as a PDF in `grimoire/PDFs/<folder>/`.
 3. **SSH** (for the terminal-inclined): `tools/grimoire-pull` syncs everything and renders PDFs
    on your computer.
