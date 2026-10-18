@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Effects preview**: the transparency checkerboard covers only the page, which now has a thin
+  outline on a gray surround, so you can see where the page ends.
+
 ## 1.0.0-beta (2026-10-18)
 
 - **A logo, and a bat on the cover**: "Grimoire" in the pixel blackletter with a pixel bat over
