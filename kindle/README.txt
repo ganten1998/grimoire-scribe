@@ -7,12 +7,20 @@ INSTALL
 3. Eject. Tap "Grimoire" in your Library (it can take a minute to appear).
 
 UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are kept.
+GOING BACK to 1.0.0-beta or 1.0.0-rc.1: they set aside pages in a newer format and drop data
+they do not know. Read "Moving between versions" in the README (source code link below) first.
 FROM QUIRE: install as above and tap Grimoire once; your notebooks move over by themselves.
 KOREADER: Grimoire is a separate app. Quit KOReader first, then tap Grimoire in the Library.
 It will not start from KOReader's file browser, because KOReader keeps the pen and the screen.
 
+LEAVING: Library > Exit, or hold the power button 4 seconds (the way out when stuck, too):
+Grimoire saves and closes. Never use the passcode reset code 111222777 to get out of anything:
+it erases the Kindle, notebooks included.
+PASSCODE: a Device Passcode is paused while Grimoire is open and put back when you leave.
+
 Your notebooks live in the "grimoire" folder on the Kindle. Closed notebooks are also saved as
-PDFs in grimoire/PDFs. Library > Share serves everything over Wi-Fi to any browser.
+PDFs in grimoire/PDFs (Grimoire writes them again, so mark up copies, not these). Library > Share
+serves everything over Wi-Fi to any browser: scan its QR code with a phone.
 
 Needs a Kindle Scribe with a jailbreak that runs scriptlets (Vera, SpiderCat, WinterBreak...).
 Problems? Attach grimoire/grimoire.log to a bug report:
