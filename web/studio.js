@@ -925,9 +925,9 @@
         (canvas.width = img.w), (canvas.height = img.h);
         canvas.getContext('2d').putImageData(new ImageData(img.rgba, img.w, img.h), 0, 0);
         stage.classList.toggle('alpha', img.alpha);
+        const pw = box.w / step, ph = box.h / step;
         // TRANSLATORS: the picture's size in pixels, whether it has transparent parts, and whether
         // Trim to ink found no ink (then the whole page is kept).
-        const pw = box.w / step, ph = box.h / step;
         info.textContent = img.alpha && box.empty ? t('%d × %d px, transparent, no ink to trim to', pw, ph)
                            : img.alpha ? t('%d × %d px, transparent', pw, ph)
                            : box.empty ? t('%d × %d px, no ink to trim to', pw, ph)

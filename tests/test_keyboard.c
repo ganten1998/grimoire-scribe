@@ -222,6 +222,32 @@ TEST(letters_layout_kept) {
     CHECK(keyboard_pointer(&kb, 2, 1643, 2365, 40, &d) == KB_DONE);
 }
 
+// In Spanish the letters page has n tilde right of l, as Spanish keyboards do: "Año" and "AÑO"
+// type without the accents page. The row is then as wide as the others; in English it is not
+// there (letters_layout_kept holds the English page's keys where they were).
+TEST(spanish_letters_have_enye) {
+    i18n_set("es");
+    Keyboard kb;
+    open_kb(&kb, "");
+    Rect l = {0}, n = {0}, q = {0}, p = {0};
+    CHECK(keyboard_key_rect(&kb, 0xF1, &n) && keyboard_key_rect(&kb, 'l', &l));
+    CHECK(n.y == l.y && n.x > l.x + l.w && n.w == l.w);
+    CHECK(keyboard_key_rect(&kb, 'q', &q) && keyboard_key_rect(&kb, 'p', &p));
+    CHECK(n.x + n.w == p.x + p.w);
+    press(&kb, 'a');
+    press(&kb, 0xF1);
+    press(&kb, 'o');
+    CHECK(!kb.page && !strcmp(kb.text, "a\xc3\xb1o"));
+    press(&kb, KB_KEY_SHIFT);
+    press(&kb, 0xF1);
+    CHECK(!kb.page && !strcmp(kb.text, "a\xc3\xb1o\xc3\x91"));
+    i18n_set("en");
+    open_kb(&kb, "");
+    CHECK(!keyboard_key_rect(&kb, 0xF1, &n));
+    press(&kb, KB_KEY_PAGE);
+    CHECK(keyboard_key_rect(&kb, 0xF1, &n));  // still on the accents page in every language
+}
+
 // Every character on the accents page, and its capital, is in every face of both themes (no
 // borrowing from Terminess, no missing glyph).
 TEST(accents_in_every_face) {
@@ -331,6 +357,7 @@ int main(void) {
     RUN(never_cut_inside_a_character);
     RUN(long_name_tail_is_whole_characters);
     RUN(letters_layout_kept);
+    RUN(spanish_letters_have_enye);
     RUN(accents_in_every_face);
     RUN(one_character_keys_at_title_size);
     RUN(typed_name_is_stored_whole);

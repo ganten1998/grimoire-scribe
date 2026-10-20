@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 07:15-0500\n"
+"POT-Creation-Date: 2026-10-20 08:12-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1654,6 +1654,8 @@ msgctxt "studio"
 msgid "Try again"
 msgstr ""
 
+#. TRANSLATORS: the picture's size in pixels, whether it has transparent parts, and whether
+#. Trim to ink found no ink (then the whole page is kept).
 #: web/studio.js
 #, javascript-format
 msgctxt "studio"

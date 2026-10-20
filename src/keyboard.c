@@ -31,6 +31,10 @@ static const uint16_t k_rows[2][4][11] = {
      {0xBF, 0xA1, 0xAB, 0xBB, 0xB7}},
 };
 
+// In Spanish the letters page's middle row ends with n tilde, as on Spanish keyboards (to the right
+// of l): a letter of the alphabet there, not an accent to fetch from the other page.
+static const uint16_t k_row_es[11] = {'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 0xF1};
+
 static int row_len(const uint16_t *row) {
     int n = 0;
     while (n < 11 && row[n]) n++;
@@ -150,11 +154,13 @@ static int layout(Rect area, int page, Key *keys) {
     int top = area.y + ui_px(170);
     int inner_x = area.x + ui_px(30), inner_w = area.w - ui_px(60);
     int kw = (inner_w - 9 * gap) / 10;
+    bool enye = !page && !strcmp(i18n_current(), "es");
     for (int r = 0; r < 3; r++) {
-        int cnt = row_len(rows[r]);
+        const uint16_t *row = enye && r == 2 ? k_row_es : rows[r];
+        int cnt = row_len(row);
         int rowx = inner_x + (inner_w - (cnt * kw + (cnt - 1) * gap)) / 2;
         for (int i = 0; i < cnt; i++)
-            keys[n++] = (Key){{rowx + i * (kw + gap), top + r * (kh + gap), kw, kh}, rows[r][i]};
+            keys[n++] = (Key){{rowx + i * (kw + gap), top + r * (kh + gap), kw, kh}, row[i]};
     }
     // Row 4: shift, up to seven keys (centered between), backspace.
     int y = top + 3 * (kh + gap);
