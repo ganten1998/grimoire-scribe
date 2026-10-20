@@ -7,7 +7,8 @@ obsolete; apps are **scriptlets**: `.sh` files in `documents/` that show up in t
 books and run when tapped (the jailbreak's SH_Integration does this).
 
 1. Download the release zip (or run `make package` for `build/dist/Grimoire.zip`) and unzip it
-   to get a `documents` folder with two files.
+   to get a `documents` folder with two files, and a `KOReader plugin (optional)` folder for a
+   hand install of the KOReader plugin (see KOReader below).
 2. Plug in the Kindle. Newer Kindles speak MTP, not USB storage, so on a Mac use OpenMTP
    (`brew install --cask openmtp`).
 3. Copy both files into the Kindle's `documents` folder. That is the whole install:
@@ -20,18 +21,32 @@ Data lives in `/mnt/us/grimoire` (the `grimoire` folder on the USB storage):
 ```
 grimoire/app/grimoire, grimoire.sh    the program and its launcher
 grimoire/app/BUILD_ID, CAPABILITIES   the build unpacked there; what the launcher supports
+grimoire/app/koreader/grimoire.koplugin   KOReader's Grimoire plugin, as the app carries it
 grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      holds "paused" while the launcher has the Device Passcode paused
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
+grimoire/.koplugin-installed   the build whose plugin went into KOReader, or "removed"
 grimoire/trash/                deleted notebooks and pages
 grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so the Kindle never indexes it
 ```
 
+With KOReader installed (`/mnt/us/koreader`), Grimoire also has these there:
+
+```
+koreader/plugins/grimoire.koplugin     the plugin, installed (Tools > Grimoire in KOReader)
+koreader/settings/grimoire_launch.txt  the plugin's launch marker, while a hand-over is under way
+```
+
+and one key in KOReader's own settings, `grimoire_start_with`, while a hand-over borrows
+KOReader's `start_with` for its next start (KOReader below).
+
 ## Leaving
 
-- **Library > Exit** saves everything and returns to the Kindle home screen.
+- **Library > Exit** saves everything and returns to the Kindle home screen. Opened from KOReader
+  (KOReader below), it reads **Back to KOReader**: it and the 4 s hold end Grimoire the same way,
+  and KOReader starts again in its place.
 - **Holding the power button 4 seconds** saves and leaves from any screen, asleep or awake, a
   locked Kindle included (awake, a "Saved. Leaving Grimoire." toast shows first). A Kindle that
   stays locked after a press (no `outOfScreenSaver` within 3 s, the power service still in its
@@ -45,7 +60,10 @@ grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so 
   `leaving: staying this once (...)`.
 - The **power button** puts the Kindle to sleep *in* Grimoire: the sleep screen is the page you were
   on (or a pinned page, or the Kindle's own screensaver: Display > Sleep screen), and waking returns
-  to it. Grimoire listens to the power service like KOReader does: a shell loop of one-shot
+  to it. Opened from KOReader, the Kindle's own screensaver cannot show (it needs the Kindle UI,
+  which KOReader keeps paused), so the page does instead, and the log says so once: `sleep: the
+  Kindle's own screensaver needs the Kindle UI, which KOReader keeps paused: the page instead`.
+  Grimoire listens to the power service like KOReader does: a shell loop of one-shot
   `lipc-wait-event -s 0 com.lab126.powerd goingToScreenSaver,outOfScreenSaver` behind a TERM trap,
   so it dies with Grimoire and takes lipc-wait-event along. A run that fails is logged as
   `input: power service watcher failed, retrying (lipc-wait-event exit status N; ...)` and tried
@@ -100,32 +118,187 @@ has done since 2016:
   `device passcode: left off by an earlier session; telling the user`.
 - While Grimoire is open the passcode does not protect the Kindle; the README's Privacy section
   says so.
+- Hosted by KOReader (KOReader below), the launcher leaves all of this alone and logs `device
+  passcode: left to KOReader, which pauses it for its session`: `koreader.sh` paused the passcode
+  for KOReader's session and puts it back when KOReader quits.
+
+## The language
+
+The screens are in English or Spanish: settings.ini `language=` is `auto` (the default), `en` or
+`es` (docs/FORMAT.md). For `auto` the binary looks once at startup, before it draws anything, and
+the first of these that is set decides:
+
+1. `GRIMOIRE_LANG`, should a launcher set it (none does today);
+2. the Kindle's own language, the one its Settings picked: the `LANG=` line of
+   `/var/local/system/locale`, or its `LC_ALL=` line if it has no `LANG=`;
+3. `LC_ALL`, `LC_MESSAGES`, then `LANG` from the environment.
+
+A language Grimoire does not speak (also `C` and `POSIX`) means English. The Kindle's file ranks
+above the environment because KOReader's `koreader.sh` exports `LC_ALL=en_US.UTF-8` to what it
+starts (hosted, the launcher drops that LC_ALL too: KOReader below). grimoire.log says what was
+chosen and why, a line worth asking testers for:
+
+```
+i18n: language es (auto, from the Kindle's locale es_ES.UTF-8)
+i18n: language en (auto, from LANG=en_US.UTF-8; /var/local/system/locale cannot be read)
+i18n: language es (set in Settings)
+```
+
+A `language=` this version does not speak (a newer one's) works as `auto` and adds `; settings.ini
+says language=xx, a language this version does not speak`. A Kindle set to Spanish gets every
+screen, the share pages and the studio in Spanish; grimoire.log stays English, and so do paths,
+file names and folder names. The launcher's own `locale: LANG=...` line reads the same file.
+
+## KOReader
+
+KOReader's Grimoire plugin (`kindle/koreader/grimoire.koplugin`: `main.lua` and `_meta.lua`,
+GPL-3.0-or-later) opens Grimoire inside KOReader's session and brings KOReader back after it.
+
+**What it offers.** On a Kindle (elsewhere it adds nothing), Tools > Grimoire has Open Grimoire,
+Notebook PDFs (KOReader's file browser in `grimoire/PDFs`, closing an open book first, with a
+note that Grimoire rewrites those files) and Reset pen calibration (after a confirmation it runs
+`grimoire/app/grimoire.sh --reset-calibration`), and KOReader's gestures get an Open Grimoire
+action (`grimoire_open`). Its words are its own, since KOReader's catalogs do not have them:
+English and Spanish, picked by KOReader's language setting, English for any other.
+
+**How it gets into KOReader.** The app carries the plugin (`grimoire/app/koreader`). A plain start
+of `Grimoire.sh` from the Library (not `--unpack-only`, `--hosted` or `--reset-calibration`)
+copies it into `koreader/plugins/grimoire.koplugin` when `koreader/reader.lua` exists, each file
+whole (a copy, then a rename; KOReader is not running then, the guard saw to that), and writes the
+build it came from into `grimoire/.koplugin-installed`, so later starts copy it again only for a
+new build.
+
+- A plugin folder gone while the marker is there counts as deleted by the user: the marker then
+  reads `removed`, and the plugin never goes back in by itself. A folder copied back by hand is kept
+  up to date again.
+- A Library start that finds no `koreader/reader.lua` deletes the marker, so a KOReader installed
+  (or reinstalled) later gets the plugin. A removal is thus a plugin deleted while KOReader stayed
+  installed, as far as Grimoire can tell: a KPM uninstall and reinstall with no Grimoire start in
+  between looks the same, and copying the zip's folder puts the plugin back.
+- `Grimoire.sh` logs `installed KOReader's Grimoire plugin into <dir> (Tools > Grimoire in
+  KOReader)`, `updated KOReader's Grimoire plugin in <dir>`, once `KOReader's Grimoire plugin was
+  removed from <dir>: not installing it again`, once `KOReader is no longer installed: a KOReader
+  installed later gets the Grimoire plugin`, and `could not create <dir> ...` or `could not copy
+  <file> ...` when the copy fails (Grimoire starts anyway).
+- The zip carries the same files as `KOReader plugin (optional)/grimoire.koplugin`, for KOReader
+  without Library scriptlets; never as a top-level `koreader` folder, which, copied over MTP, could
+  replace someone's KOReader (package_check pins both).
+
+**Open Grimoire, step by step.**
+
+1. The plugin refuses at once, with a message, without `/var/tmp/koreader.sh` (the copy
+   `koreader.sh` runs from while KOReader is up: this KOReader was not started by it), and when
+   none of `STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED` and `AWESOME_STOPPED` is `yes` (koreader.sh
+   paused nothing, as from KPVBooklet).
+2. With `documents/Grimoire.sh` there, its Capabilities line (in its first 10 lines) must list
+   `unpack-only` and `hosted` (else "This Grimoire cannot open from KOReader: copy a newer
+   Grimoire.sh into the Kindle's documents folder."), and "Preparing Grimoire..." shows while
+   `sh documents/Grimoire.sh --unpack-only` unpacks a newer build ("Grimoire could not unpack
+   itself." when that fails). Without it, the unpacked app is used if it is there ("Grimoire is not
+   installed" if not). Either way `grimoire/app/grimoire.sh` must list `hosted` too.
+3. The hand-over: the plugin writes the launch marker `koreader/settings/grimoire_launch.txt`,
+   borrows `start_with` for KOReader's next start (`last` when a book is open; `filemanager` from
+   the file browser when it was `last`), keeping the old value in `grimoire_start_with`, and wraps
+   `Device.exit` for that one exit. Then it asks for KOReader's restart (`exitOrRestart` with
+   `UIManager:restartKOReader()`).
+4. KOReader closes the book or the file browser and runs its own `Device:exit()`, the only place
+   it lets go of the screen, the pen and the touch screen. The wrapper runs after it, in a pcall:
+   `sh grimoire/app/grimoire.sh --hosted koreader` in the foreground, then it deletes the marker if
+   that returned 0.
+5. reader.lua exits with code 85, KOReader's restart, and `koreader.sh` starts KOReader again in
+   the same session. It kept the Kindle UI paused all along, so none of the Kindle's own screens
+   show in between, and the passcode stays paused. KOReader's own start reopens the book
+   (`start_with`), and the plugin puts `start_with` back.
+6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
+   another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
+   start. See grimoire/grimoire.log." over the book or the file browser.
+
+From the file browser, `exitOrRestart` asks for the restart at once, so a failure there comes back
+to the plugin's pcall and is undone (the `Device.exit` wrapper, the marker and the borrowed
+`start_with`), followed by "Grimoire could not start". From a book, KOReader closes the book and
+asks on its next tick, past that pcall: a failure then ends KOReader without the hand-over, and the
+marker reports it at the next start, which also gives `start_with` back. A failure inside the
+wrapper is caught by its own pcall, so reader.lua still exits with 85 and KOReader comes back.
+KOReader's log (`koreader/crash.log`) gets `Grimoire: running ...` and `Grimoire: back in
+KOReader, grimoire.sh status N`, and on trouble `Grimoire: the hand-over failed: ...`,
+`Grimoire: could not restart KOReader: ...` or `Grimoire: the last hand-over did not run
+Grimoire`.
+
+**Hosted mode** (`app/grimoire.sh --hosted koreader`) refuses with exit 3, logging the reason as
+`grimoire.sh: not starting...` and printing it on stderr, unless all of these hold:
+
+- the host is `koreader` (`not starting: --hosted <name> is no host Grimoire knows (the one host is
+  koreader).`);
+- `KOREADER_DIR` is set (`not starting: --hosted koreader runs only inside KOReader, from its
+  Grimoire plugin.`);
+- reader.lua is among the launcher's parents, by their `/proc/<pid>/stat` names and cmdlines, and
+  koreader.sh is reader.lua's own parent: a `/var/tmp/koreader.sh` left by a crashed session proves
+  neither (`not starting hosted: KOReader's reader.lua (pid N) was not started by koreader.sh.`, or
+  `... KOReader's reader.lua is not among this launcher's parents.`);
+- none of reader.lua's `/proc/<pid>/fd` entries points into `/dev/input/`, as an exclusive grab
+  belongs to the open device (`not starting hosted: KOReader still has /dev/input/eventN open (this
+  is not its exit path), so Grimoire would get no pen or touch.`); a list that cannot be read lets
+  this through;
+- KOReader's `STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED` or `AWESOME_STOPPED` is `yes` (`not
+  starting hosted: KOReader left the Kindle UI running (koreader.sh paused nothing).`).
+
+Right after these checks, before the lock wait and even when another Grimoire holds the lock, it
+stops awesome again when KOReader had it stopped (KOReader's exit has just woken it, on Special
+Offers Kindles), and it never continues it. It also drops KOReader's `LC_ALL` and keeps `LANG`, so
+Grimoire sees the locale a start from the Library sees. Of what a Library start does, it keeps the
+lock (another Grimoire: `already running (launcher pid N), not starting another` and exit 1, which
+leaves KOReader's launch marker), the priority, the share port's firewall hole, the watchdog and
+the log, and preventScreenSaver 1 while Grimoire starts, putting KOReader's own value back at the
+end. It stops the status jobs while Grimoire runs (the KOReader that KPM installs leaves the 5.17+
+status bar running) and starts them again. It never touches the screen dump, pillow, the home
+booklet, volumd, lab126_gui or the passcode: a `stop-framework` file is ignored (`the
+stop-framework flag does not apply inside KOReader, which paused the Kindle UI itself`). It skips
+the settle wait and runs Grimoire in the foreground with `GRIMOIRE_HOST=koreader`: Exit reads Back
+to KOReader, and sleep mode 2 shows the page. Exit statuses: 0 Grimoire ran, 1 another Grimoire is
+running, 3 refused.
+
+Its log lines: `starting Grimoire hosted by KOReader (reader.lua pid N; KOReader stopped the
+framework: yes|no, awesome: yes|no) on <firmware>`, `awesome stopped again, as KOReader had it`,
+`device passcode: left to KOReader, which pauses it for its session`, and at the end `handing the
+screen back to KOReader` and `power state at exit: X`. After KUAL's start without the framework
+it adds `KOReader stopped the Kindle framework: the power button may not put the Kindle to sleep
+in Grimoire`: KOReader drops its stand-in for the framework, which the power service wants before
+it takes the power button, at its exit.
 
 ## The launcher
 
-`documents/Grimoire.sh` takes flags for tools such as the planned KOReader plugin:
+`documents/Grimoire.sh` takes flags for tools such as KOReader's Grimoire plugin:
 
 - `Grimoire.sh --unpack-only` migrates from Quire and unpacks when BUILD_ID differs, starts
   nothing, and exits 0. Run again with the same build, it does nothing.
 - `Grimoire.sh --reset-calibration` runs `app/grimoire.sh --reset-calibration` in the foreground;
   its exit status is the answer.
+- `Grimoire.sh --hosted koreader` unpacks like `--unpack-only`, then runs `app/grimoire.sh
+  --hosted koreader` in the foreground (no detaching, no plugin install): Grimoire inside
+  KOReader's session (KOReader above). Its status is then that launcher's: 0 Grimoire ran, 1
+  another Grimoire is running, 3 refused.
 - Exit statuses: 0 done (for a plain start, Grimoire is on its way); 1 the app could not be
-  unpacked, or the calibration could not be reset; 2 `--unpack-only` or `--reset-calibration` did
-  nothing because the old Quire app is still running (a plain start returns 0 then); 3 refused
-  inside KOReader.
+  unpacked, or the calibration could not be reset; 2 `--unpack-only`, `--reset-calibration` or
+  `--hosted` did nothing because the old Quire app is still running (a plain start returns 0
+  then); 3 refused inside KOReader, or `--hosted` outside it. Past the unpack, `--hosted` answers
+  with `app/grimoire.sh`'s status.
 - The KOReader guard: when `KOREADER_DIR` is set or `pidof reader.lua` succeeds, the launcher
   logs a line, prints the same text on stderr and exits 3. Only outside KOReader (a Library tap
   while a KOReader lingers) does it also show "Grimoire did not start: KOReader is running." with
-  eips near the top of the screen, about 2 s later. Only `--unpack-only` and `--reset-calibration`
-  pass the guard; 1.1 adds `--hosted`. `app/grimoire.sh` has the same guard.
-- Capabilities: line 6 of `Grimoire.sh` is `# Capabilities: guard unpack-only`, and
+  eips near the top of the screen, about 2 s later. `--unpack-only` and `--reset-calibration` pass
+  the guard. `--hosted` goes the other way: it passes only with `KOREADER_DIR` set (else `not
+  starting: --hosted is for KOReader's Grimoire plugin, inside KOReader.`, exit 3), and
+  `app/grimoire.sh` checks the rest (KOReader above). `app/grimoire.sh` has the same guard for a
+  plain start.
+- Capabilities: line 6 of `Grimoire.sh` is `# Capabilities: guard unpack-only hosted`, and
   `app/CAPABILITIES` carries the same words; line 2 of `app/grimoire.sh` is
-  `# Capabilities: guard`, which describes that file. A tool reads the first `# Capabilities: `
-  line within the first 10 lines of `documents/Grimoire.sh`:
+  `# Capabilities: guard hosted`, which describes that file. A tool reads the first
+  `# Capabilities: ` line within the first 10 lines of `documents/Grimoire.sh`:
   `head -n 10 documents/Grimoire.sh | sed -n 's/^# Capabilities: //p'`. It must never grep the
   whole file: the archive appended to the scriptlet holds `app/grimoire.sh`, whose own
-  `# Capabilities: guard` line describes only that file, and a tool that kept the last match would
-  think `unpack-only` unsupported (package_check pins that the header's line is the file's first).
+  `# Capabilities: guard hosted` line describes only that file, and a tool that kept the last match
+  would think `unpack-only` unsupported (package_check pins that the header's line is the file's
+  first).
   Nor may a tool run a launcher to find out, because an older launcher ignores a flag it does not
   know and starts Grimoire. Read the Capabilities line of the very file you are going to run, run
   `Grimoire.sh --unpack-only` only when its line lists `unpack-only`, and trust `app/CAPABILITIES`
@@ -147,11 +320,26 @@ has done since 2016:
   upstart job named like `*status*` / `*chrome*` and logs the jobs it saw running; Grimoire also
   repaints its top band whenever something else draws there. If it still shows, create an empty file named
   `stop-framework` in the `grimoire` folder. Grimoire then stops the Kindle UI entirely instead of
-  pausing it (it takes a few seconds longer to come back afterwards).
+  pausing it (it takes a few seconds longer to come back afterwards). Hosted by KOReader the file
+  is ignored: KOReader pauses the Kindle UI itself.
 - **Nothing happens when tapping Grimoire**: check `grimoire/grimoire.log`; the scriptlet logs whether it
   unpacked the app, and the app logs the device it found. `Grimoire.sh: not starting: KOReader is
   still running (reader.lua, pid N) ...` means a KOReader was left behind (after a crash, say):
   restart the Kindle.
+- **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: the hand-over did not
+  run Grimoire. grimoire.log has the launcher's reason, one of the `grimoire.sh: not starting...`
+  lines (KOReader above) or `already running (launcher pid N), not starting another`; with no
+  such line, the hand-over failed inside KOReader, and KOReader's `crash.log` has a `Grimoire:`
+  line about it.
+- **A `grimoire` folder moved to a Scribe of the other size** (1860x2480 and 1986x2648): the
+  notebooks keep their page size (docs/FORMAT.md, Page size), and the calibration is scaled at
+  startup, logged as `calibration: the pen calibration was made on a 1860x2480 panel; scaled to
+  this 1986x2648 one` (with ` (not recorded: taken as an 1860x2480 Scribe's)` after `panel` for a
+  calibration from before 1.1), the same for touch. A panel record gone stale shows as `... was
+  made on a WxH panel, but its scale fits a WxH one: scaled from that to this WxH one`, or `...,
+  but its scale fits this WxH one: made here, kept as it is`. A page file of another size than its
+  notebook's (written by a version before 1.1 on the other Scribe) logs `store: <path> is WxH:
+  scaled to WxH` once per run.
 - **"This page was made by a newer Grimoire. It is read-only here."**: the page came from a newer
   Grimoire; update Grimoire to change it. grimoire.log says what happened: `store: <path> opens
   read-only and stays as it is on disk` and `store: read-only page: <reason>` when such a page is
@@ -174,7 +362,16 @@ has done since 2016:
   reports 0 dpi: for a device it does not identify (named `Unidentified!` or `Unknown!`) it
   guesses 167 dpi. Grimoire then takes the dpi from the panel's physical size in vinfo (diagonal
   pixels over diagonal mm, or one side if only the width is known) when that comes to 100..600,
-  else 300, and logs `display: FBInk does not know this device (...)`.
+  else 300, and logs `display: FBInk does not know this device (...)`. On a color panel (FBInk's
+  color panel flag at 32 bpp, the Scribe Colorsoft) the driver reads an update some time after it
+  was sent, in tiles, so a change made before that would show half old or striped: Grimoire logs
+  `display: colour panel: fast refreshes other than live ink wait until the driver has read the
+  frame`, and after each such refresh it waits with `MXCFB_WAIT_FOR_MDP_COMPLETION`, logging the
+  first 20 as `display: waited N ms for the colour panel's driver to read fast refresh M`. Live
+  ink never waits (a pen stroke, erasing, the pen feel pad, the calibration's check line), so it
+  writes no such lines. A wait the driver refuses, or one over a second, logs
+  `display: MXCFB_WAIT_FOR_MDP_COMPLETION <error> after N ms (marker M): no longer waiting for the
+  colour panel's read` and turns the wait off for the session.
 - **The Share screen** never puts the Kindle's IP address in grimoire.log. It logs
   `share: QR code for the wlan0 address, port 8765`, or
   `share: no Wi-Fi address, so no QR code; showing the usb0 address, port 8765` (USBNetwork
@@ -202,8 +399,9 @@ has done since 2016:
   and the readback. `input:` lines give open errors, the power keys (a WARNING when there are
   several or none; the power key line ends with `, timed when read (EVIOCSCLOCKID failed)` if hold
   timing fell back to read times) and the orientation sensor check. A `settings:` line gives
-  sleep_mode, sleep_minutes and side_button. The launcher's lines after `grimoire.sh: starting
-  Grimoire` give `locale: LANG=...`, `device passcode: on` or `off` (then what it did with it),
+  sleep_mode, sleep_minutes and side_button, and an `i18n:` line the language and why (The language
+  above). The launcher's lines after `grimoire.sh: starting Grimoire` (or `starting Grimoire hosted
+  by KOReader`) give `locale: LANG=...`, `device passcode: on` or `off` (then what it did with it),
   `power state: ...`, `blanket modules: ...` (marked `(Special Offers)` when the ad screensaver is
   loaded), `KOReader: installed, version <git-rev>` or `KOReader: not installed`, and
   `user id: N`; at exit, `power state at exit: X`. None of these identify the unit or a network,
@@ -235,12 +433,31 @@ Facts (from source):
   grabs the input cannot let happen.
 - Firmware 5.16.3+ userland is hard-float: Grimoire is a static musl ARMv7 VFPv4 AAPCS-VFP binary,
   so it needs no libraries from the device at all.
+- The panels: 1860x2480 on the 2022 and 2024 Scribes, 1986x2648 on the Scribe 3 and the Scribe
+  Colorsoft, 300 dpi on all of them. On the Colorsoft's color panel the driver reads the
+  framebuffer for an update some time after it was sent (about 23 ms, by a measurement on a
+  Colorsoft that `src/display_fbink.c` cites, not one of this project's checks), in tiles; its
+  FW 5.19.6 kernels have `MXCFB_WAIT_FOR_MDP_COMPLETION` (`_IOW('F', 0x4D, uint32_t)`, not in
+  FBInk's `eink/mtk-kindle.h`), which KOReader waits with too.
+- KOReader, as its Grimoire plugin relies on it: it keeps the pen, the touch screen and the screen
+  to itself until its own `Device:exit()` (on the Kindle an own field of the device class:
+  `frontend/device/kindle/device.lua` sets `KindleScribe.exit = KindleTouch.exit`).
+  `koreader.sh` runs from a copy at `/var/tmp/koreader.sh` while KOReader is up, starts KOReader
+  again in the same session whenever reader.lua exits with code 85 (its Restart), and keeps the
+  Kindle UI paused all the while. It exports `LC_ALL=en_US.UTF-8` and its pause
+  (`STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED`, `AWESOME_STOPPED`) to what KOReader runs; started
+  from KPVBooklet it pauses nothing. KOReader's exit wakes awesome on Special Offers Kindles, and
+  the KOReader that KPM installs leaves the 5.17+ status bar running.
 
 How Grimoire uses that:
 
 - `src/display_fbink.c` writes the framebuffer directly (8 or 32 bpp, via `fbink_get_fb_pointer`)
   and refreshes with DU (live ink, in MTK pen mode), GL16 (UI, settling a finished stroke's grays),
-  GC16 + flash (page turns, screen changes, every 30 UI refreshes).
+  GC16 + flash (page turns, screen changes, every 30 UI refreshes). On a color panel it waits for
+  the driver's read after every fast refresh but live ink's.
+- KOReader's Grimoire plugin hands over in KOReader's exit path, after `Device:exit()`, and asks
+  for the restart (code 85), so Grimoire gets the input and the screen and KOReader comes back
+  without the Kindle UI ever waking (KOReader above).
 - `src/input_evdev.c` finds devices by capability (not path), grabs pen + touch, watches the
   power key (its press, its release and a 4 s hold, timed by the kernel's event stamps), and maps
   axes through a calibration (default: straight onto the upright screen, swapped only if the axis
@@ -269,3 +486,9 @@ tells the story):
   `suspended`) are the same there.
 - Accented notebook and folder names become UTF-8 file names under `grimoire/PDFs`; whether the
   Scribe shows them correctly over MTP is not checked yet.
+- The Scribe 3 and the Scribe Colorsoft have no public jailbreak: the checks cover their
+  1986x2648 screen and the color panel's wait in the simulator only (`GRIMOIRE_SIM_SIZE=1986x2648`
+  and `display.last_fast`, docs/SIM.md).
+- The KOReader internals the plugin uses (`Device.exit`, `exitOrRestart`,
+  `UIManager:restartKOReader()`, `start_with`, `DataStorage:getSettingsDir()`) are taken as
+  KOReader has them; `tests/koplugin_test.lua` plays the plugin against stand-ins for them.
