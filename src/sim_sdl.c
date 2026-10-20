@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app.h"  // app_probe, for the script's expect checks
 #include "calib_fit.h"
 #include "display.h"
 #include "input.h"
@@ -238,6 +239,7 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     return false;
 }
 
+static void expect_finish(void);
 void display_close(void) {
     if (g_headless || getenv("GRIMOIRE_SIM_STATS"))
         fprintf(stderr, "refreshes: fast %d (%.1f MP), ui %d (%.1f MP), full %d (%.1f MP)\n", g_stats[0],
@@ -249,6 +251,7 @@ void display_close(void) {
     if (!g_headless) SDL_Quit();
 #endif
     free(g_eink);
+    expect_finish();  // exits with status 3 if a check failed
 }
 
 // ---- script mode ----
@@ -286,10 +289,110 @@ static void pen_ev(InType t, float x, float y, float p, float tx, float ty, uint
 
 static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false)); }
 
+// ---- expect: checks in a script ----
+//
+// "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
+// value is the rest of the line after one space; nothing there means the empty string. KEY is
+// anything app_probe() answers (docs/SIM.md lists them). Like a shot, a check waits until
+// everything queued before it was handled and the screen flushed (input_poll). A failed check is
+// printed and the run goes on; at the end the run exits with status 3 (display_close).
+
+typedef enum { EXPECT_IS, EXPECT_HAS, EXPECT_NOT } ExpectOp;
+static const char *const k_expect_ops[] = {"is", "has", "not"};
+
+static struct {
+    bool pending;  // read, not checked yet
+    bool bad;      // the line could not be read: it fails when its turn comes
+    int line;
+    ExpectOp op;
+    char key[64];
+    char value[512];
+} g_expect;
+static int g_line_no;  // the script line being read (1-based)
+static int g_expect_total, g_expect_failed;
+
+// Reads "expect KEY OP VALUE" (s starts at "expect") into g_expect.
+static void expect_read(const char *s) {
+    memset(&g_expect, 0, sizeof g_expect);
+    g_expect.pending = true;
+    g_expect.line = g_line_no;
+    const char *k = s + 6;
+    while (*k == ' ' || *k == '\t') k++;
+    size_t kl = strcspn(k, " \t\r\n");
+    const char *o = k + kl;
+    while (*o == ' ' || *o == '\t') o++;
+    size_t ol = strcspn(o, " \t\r\n");
+    const char *v = o + ol;
+    if (*v == ' ' || *v == '\t') v++;  // the one space before the value
+    size_t vl = strcspn(v, "\r\n");
+    int op = -1;
+    for (int i = 0; i < 3; i++)
+        if (ol == strlen(k_expect_ops[i]) && !strncmp(o, k_expect_ops[i], ol)) op = i;
+    if (kl == 0 || kl >= sizeof g_expect.key || op < 0 || vl >= sizeof g_expect.value) {
+        g_expect.bad = true;
+        return;
+    }
+    memcpy(g_expect.key, k, kl);
+    memcpy(g_expect.value, v, vl);
+    g_expect.op = (ExpectOp)op;
+}
+
+static void expect_check(void) {
+    g_expect.pending = false;
+    g_expect_total++;
+    char got[512] = "";
+    if (g_expect.bad) {
+        fprintf(stderr, "expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", g_expect.line);
+    } else if (app_probe(g_expect.key, got, sizeof got) != 0) {
+        fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
+    } else {
+        bool ok = g_expect.op == EXPECT_IS    ? !strcmp(got, g_expect.value)
+                  : g_expect.op == EXPECT_HAS ? strstr(got, g_expect.value) != NULL
+                                              : strcmp(got, g_expect.value) != 0;
+        if (ok) return;
+        fprintf(stderr, "expect failed (line %d): %s is \"%s\", wanted %s \"%s\"\n", g_expect.line, g_expect.key, got,
+                k_expect_ops[g_expect.op], g_expect.value);
+    }
+    g_expect_failed++;
+}
+
+static void expect_not_run(int line) {
+    fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", line);
+    g_expect_total++;
+    g_expect_failed++;
+}
+
+// The app quit before the script ended (Library > Exit, say): the checks it never got to fail
+// too, or a tap that lands on Exit by mistake would let the rest of a script pass unseen.
+static void expect_unrun(void) {
+    if (g_expect.pending) {
+        g_expect.pending = false;
+        expect_not_run(g_expect.line);
+    }
+    char line[512];
+    while (g_script && fgets(line, sizeof line, g_script)) {
+        g_line_no++;
+        const char *s = line;
+        while (isspace((unsigned char)*s)) s++;
+        if (!strncmp(s, "expect", 6) && (!s[6] || isspace((unsigned char)s[6]))) expect_not_run(g_line_no);
+    }
+}
+
+static void expect_finish(void) {
+    if (!g_expect_total) return;
+    if (!g_expect_failed) {
+        fprintf(stderr, "expect: all %d checks passed\n", g_expect_total);
+        return;
+    }
+    fprintf(stderr, "expect: %d of %d checks failed\n", g_expect_failed, g_expect_total);
+    exit(3);
+}
+
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
 static void script_step(void) {
     char line[512];
     while (fgets(line, sizeof line, g_script)) {
+        g_line_no++;
         char *s = line;
         while (isspace((unsigned char)*s)) s++;
         if (!*s || *s == '#') continue;
@@ -374,6 +477,9 @@ static void script_step(void) {
         } else if (!strcmp(a, "shot")) {
             strlcpy_q(g_pending_shot, b, sizeof g_pending_shot);
             return;
+        } else if (!strcmp(a, "expect")) {
+            expect_read(s);
+            return;  // checked where a shot is taken: once this batch is handled and flushed
         } else if (!strcmp(a, "rotate")) {
             InEvent e = make_ev(IN_ORIENTATION, 0, 0, true);
             e.value = atoi(b) & 3;
@@ -444,6 +550,7 @@ int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
 }
 
 void input_close(void) {
+    expect_unrun();
     if (g_script) fclose(g_script);
     g_script = NULL;
 }
@@ -565,6 +672,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
             shot(g_pending_shot);
             g_pending_shot[0] = 0;
         }
+        if (g_expect.pending) expect_check();  // an expect waits for the same moment
         if ((int32_t)(now_ms() - g_wait_until) < 0) {
             uint32_t left = g_wait_until - now_ms();
             sleep_ms((int)(left < (uint32_t)timeout_ms ? left : (uint32_t)timeout_ms));

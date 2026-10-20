@@ -876,3 +876,44 @@ void library_tick(App *a, uint32_t now) {
         if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
     }
 }
+
+// ---- headless checks ----
+
+// The script runner's "library.*" keys (app_probe forwards them without the prefix).
+int library_probe(App *a, const char *key, char *out, size_t cap) {
+    static const char *const sheets[] = {
+        [MOD_NONE] = "none",
+        [MOD_NEW] = "new",
+        [MOD_SETTINGS] = "settings",
+        [MOD_MORE] = "more",
+        [MOD_FOLDER_MORE] = "folder-more",
+        [MOD_MOVE] = "move",
+        [MOD_DELETE] = "delete",
+        [MOD_KB] = "keyboard",
+        [MOD_DISPLAY] = "display",
+        [MOD_MUSIC] = "music",
+    };
+    if (!S) return -1;
+    if (!strcmp(key, "sheet")) {
+        const char *m = (size_t)S->modal < sizeof sheets / sizeof sheets[0] ? sheets[S->modal] : NULL;
+        if (m) snprintf(out, cap, "%s", m);
+        else snprintf(out, cap, "%d", (int)S->modal);
+    } else if (!strcmp(key, "folder")) {
+        snprintf(out, cap, "%s", S->cur_folder);
+    } else if (!strcmp(key, "items")) {
+        snprintf(out, cap, "%d", S->nitems);
+    } else if (!strcmp(key, "page")) {
+        snprintf(out, cap, "%d", S->page + 1);
+    } else if (!strcmp(key, "pages")) {
+        int pp = per_page(a), pages = (S->nitems + pp - 1) / pp;
+        snprintf(out, cap, "%d", pages > 0 ? pages : 1);
+    } else if (!strcmp(key, "text")) {
+        snprintf(out, cap, "%s", S->modal == MOD_KB ? S->kb.text : "");
+    } else if (!strcmp(key, "paper")) {
+        if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
+        else snprintf(out, cap, "%d", (int)S->new_paper);
+    } else {
+        return -1;
+    }
+    return 0;
+}

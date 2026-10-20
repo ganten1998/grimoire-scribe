@@ -1522,3 +1522,45 @@ void editor_tick(App *a, uint32_t now) {
     // Autosave after a real pause (and never while the pen is down).
     if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000) save_page(a);
 }
+
+// ---- headless checks ----
+
+// The script runner's "editor.*" keys (app_probe forwards them without the prefix).
+int editor_probe(App *a, const char *key, char *out, size_t cap) {
+    // settings.ini's tool names (store.c); a tool missing here shows as its number.
+    static const char *const tools[] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
+                                        "fountain", "fineliner", "marker",    "charcoal", "calligraphy"};
+    if (!S) return -1;
+    bool page = S->open && S->page;
+    if (!strcmp(key, "page")) {
+        snprintf(out, cap, "%d", S->open ? S->index + 1 : 0);
+    } else if (!strcmp(key, "pages")) {
+        snprintf(out, cap, "%d", S->open ? S->nb.npages : 0);
+    } else if (!strcmp(key, "tool")) {
+        int t = (int)a->settings.current_tool;
+        if (t >= 0 && t < (int)(sizeof tools / sizeof tools[0])) snprintf(out, cap, "%s", tools[t]);
+        else snprintf(out, cap, "%d", t);
+    } else if (!strcmp(key, "zoom")) {
+        snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
+    } else if (!strcmp(key, "modal")) {
+        // What is in front (input goes to the first one open, in this order).
+        const char *m = S->pages_open   ? "pages"
+                        : S->tools_open ? "tools"
+                        : S->mb.open    ? "music"
+                        : S->dm.open    ? "display"
+                        : S->paper_open ? "paper"
+                                        : "none";
+        snprintf(out, cap, "%s", m);
+    } else if (!strcmp(key, "strokes")) {
+        snprintf(out, cap, "%d", page ? S->page->n : 0);
+    } else if (!strcmp(key, "paper")) {
+        if (!page) snprintf(out, cap, "none");
+        else if (paper_is_custom(S->page->paper)) snprintf(out, cap, "custom");
+        else snprintf(out, cap, "%d", (int)S->page->paper);
+    } else if (!strcmp(key, "panel")) {
+        snprintf(out, cap, "%s", S->collapsed ? "collapsed" : "expanded");
+    } else {
+        return -1;
+    }
+    return 0;
+}

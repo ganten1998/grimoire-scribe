@@ -112,5 +112,10 @@ void share_open(App *a);                             // switch to SCR_SHARE (ret
 
 // The headless runner's `expect` checks read the app's state through this (tests only; cheap).
 // Keys: "screen" (library|editor|penset|calib|share), "toast" (the visible toast, "" if none),
-// "asleep" (0|1), "rotation" (0..3), "size" (WxH). 0 and the value in out, -1 for an unknown key.
+// "asleep" (0|1), "rotation" (0..3), "size" (WxH), "settings.<settings.ini key>" for a few,
+// "light.intensity", "light.warmth", and "editor.*" / "library.*" (below); docs/SIM.md has them
+// all. 0 and the value in out, -1 for an unknown key.
 int app_probe(const char *key, char *out, size_t cap);
+// The screens' own keys, asked without their "editor." / "library." prefix (same contract).
+int editor_probe(App *a, const char *key, char *out, size_t cap);
+int library_probe(App *a, const char *key, char *out, size_t cap);
