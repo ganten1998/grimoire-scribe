@@ -628,8 +628,14 @@ static void handle_request(Client *c) {
         qlog("httpd: refused a request for another host");
         return respond_text(400, "use the address shown on the Kindle");
     }
-    // grimoire.log goes to public bug reports: a folder's name (the user's own words) stays out.
-    qlog("httpd: %s %s", method, !strncmp(path, "/folder/", 8) ? "/folder/<name>.zip" : path);
+    // grimoire.log goes to public bug reports: a folder's name (the user's own words) stays out,
+    // however the path is spelled, and so does anything that is not a plain path (a request in
+    // proxy form carries this Kindle's address).
+    char shown[sizeof path];
+    strlcpy_q(shown, path, sizeof shown);
+    url_decode(shown);
+    qlog("httpd: %s %s", method,
+         path[0] != '/' ? "(not a path)" : !strncmp(shown, "/folder/", 8) ? "/folder/<name>.zip" : path);
     if (heavy(path)) {
         c->st = C_QUEUED;  // start_renders() takes it from here; t0 = when the request came in
         return;
