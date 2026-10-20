@@ -114,16 +114,23 @@ void font_shutdown(void) {
     g_ready = false;
 }
 
+// Design pixels a pixel face's glyph is set below where the font has it. Jersey 10 draws the
+// inverted exclamation mark exactly as its i, a dot over a stem standing on the baseline, so a
+// Spanish exclamation would open with what reads as an i ("iHola!"). Lowered by the depth of
+// the face's descenders (g j p q y reach two design pixels below the baseline), it hangs as type
+// usually sets it: the dot at the x-height, the stem below the baseline.
+static int pixel_drop(int ttf, uint32_t cp) { return ttf == TTF_JERSEY && cp == 0xA1 ? 2 : 0; }
+
 // A pixel face's glyph at k screen pixels per design pixel: hard-edged k x k blocks.
-static void make_pixel_glyph(Glyph *g, const stbtt_fontinfo *fi, int unit, int k, uint32_t cp) {
-    float s = 1.f / (float)unit;
+static void make_pixel_glyph(Glyph *g, int ttf, int k, uint32_t cp) {
+    float s = 1.f / (float)k_unit[ttf];
     int w, h, xo, yo;
-    uint8_t *small = stbtt_GetCodepointBitmap(fi, s, s, (int)cp, &w, &h, &xo, &yo);
+    uint8_t *small = stbtt_GetCodepointBitmap(&g_font[ttf], s, s, (int)cp, &w, &h, &xo, &yo);
     g->bmp = NULL;
     g->w = w * k;
     g->h = h * k;
     g->xoff = xo * k;
-    g->yoff = yo * k;
+    g->yoff = (yo + pixel_drop(ttf, cp)) * k;
     if (small && w > 0 && h > 0) {
         g->bmp = malloc((size_t)g->w * (size_t)g->h);  // freed with stbtt_FreeBitmap (free)
         if (g->bmp)
@@ -148,7 +155,7 @@ static Glyph *glyph_get(int ttf, float px, uint32_t cp) {
             int adv, lsb;
             stbtt_GetCodepointHMetrics(fi, (int)cp, &adv, &lsb);
             if (size4 < 0) {
-                make_pixel_glyph(g, fi, k_unit[ttf], -size4, cp);
+                make_pixel_glyph(g, ttf, -size4, cp);
             } else {
                 float scale = stbtt_ScaleForPixelHeight(fi, size4 / 4.f);
                 g->bmp = stbtt_GetCodepointBitmap(fi, scale, scale, (int)cp, &g->w, &g->h, &g->xoff, &g->yoff);
