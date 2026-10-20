@@ -185,11 +185,15 @@ static History *cur_hist(App *a) {
     return e ? &e->h : NULL;
 }
 
+// Page `index` from disk, at the notebook's page size (S->pgw x S->pgh, use_page_size): every page
+// the editor reads comes through here, so none can come at the screen's size instead.
+static int load_page(App *a, int index, Page **out) { return store_load_page(&S->nb, index, S->pgw, S->pgh, out); }
+
 // The page at index, from the session cache or (first visit) from disk.
 static Page *page_at(App *a, int index) {
     PageHistory *e = entry_for(a, S->nb.page_ids[index]);
     if (!e) return NULL;
-    if (!e->page && store_load_page(&S->nb, index, S->pgw, S->pgh, &e->page) != 0) return NULL;
+    if (!e->page && load_page(a, index, &e->page) != 0) return NULL;
     return e->page;
 }
 
@@ -509,7 +513,7 @@ static const Canvas *pthumb(App *a, int index) {
     for (int i = 0; i < S->nhist; i++)
         if (S->hist[i].page_id == S->nb.page_ids[index]) p = S->hist[i].page;
     if (!p) {
-        if (store_load_page(&S->nb, index, S->pgw, S->pgh, &p) != 0) return t;
+        if (load_page(a, index, &p) != 0) return t;
         temp = true;
     }
     Canvas full;
@@ -746,7 +750,7 @@ static void close_notebook(App *a) {
     if (S->index != 0 && S->changed) {
         // Keep the library thumbnail (page 1) in sync even if we never visited it.
         Page *p0;
-        if (store_load_page(&S->nb, 0, S->pgw, S->pgh, &p0) == 0) {
+        if (load_page(a, 0, &p0) == 0) {
             Canvas t;
             if (canvas_init(&t, S->pgw / 3, S->pgh / 3) == 0) {
                 page_render_thumb(&t, p0, a->dpi);
@@ -1602,10 +1606,23 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
     } else if (!strcmp(key, "zoom")) {
         snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
     } else if (!strcmp(key, "page_size")) {
-        if (S->open) snprintf(out, cap, "%dx%d", S->pgw, S->pgh);  // the notebook's, whatever the screen
+        // The open page's own size: its notebook's, whatever the screen (a page that came at the
+        // screen's size instead would show here).
+        if (has_page) snprintf(out, cap, "%dx%d", S->page->w, S->page->h);
         else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "scale")) {
         snprintf(out, cap, "%.2f", S->open ? S->zoom : 0.f);  // screen px per page px
+    } else if (!strcmp(key, "zoomed")) {
+        snprintf(out, cap, "%d", S->open && zoomed(a) ? 1 : 0);  // the zoom chip shows
+    } else if (!strcmp(key, "stroke_start")) {
+        // Where the page's newest stroke starts, in page px: ink lands under the pen through the view.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        if (st && st->n) snprintf(out, cap, "%.0f %.0f", st->pts[0].x, st->pts[0].y);
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "music_max")) {
+        // The most systems the Custom music sheet's layout fits on the page it is for.
+        if (S->mb.open) snprintf(out, cap, "%d", music_max_systems(&S->mb.m, S->mb.page_h, a->dpi));
+        else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "modal")) {
         // What is in front (input goes to the first one open, in this order).
         const char *m = S->pages_open   ? "pages"
