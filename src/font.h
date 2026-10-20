@@ -43,7 +43,7 @@ void font_draw_left_name(Canvas *c, FontFace f, float px, Rect r, const char *ut
 // characters), each centered in r or left-aligned, in slots line_h px apart (0: the face's own
 // height) with the block centered vertically in r. Text that fits on one line is drawn exactly as
 // font_draw_centered or font_draw_left draws it. Two lines are balanced: the break that keeps the
-// longer line shortest, unless one right after punctuation makes it at most a quarter longer
+// longer line shortest, unless one right after punctuation makes it at most half again as long
 // ("Wide, no margin" breaks after its comma). Only text that still does not fit ends in "...".
 // Returns the lines drawn.
 int font_draw_wrapped(Canvas *c, FontFace f, float px, Rect r, const char *utf8, int max_lines, int line_h,
@@ -56,8 +56,9 @@ int font_wrap_lines(FontFace f, float px, const char *utf8, int w, int *widest);
 // same from 27 to 43 px), an outline face in quarter pixels. px if it fits as it is; 0 if even
 // the smallest does not.
 float font_fit_px(FontFace f, float px, float min_px, const char *utf8, int maxw);
-// Whenever text is cut short to fit (font_draw_centered, font_draw_left, font_draw_wrapped), the
-// hook hears of it: the text as given, the width it needs (for wrapped text, its last line's)
-// and the width it has, in px. NULL takes it away. The headless runner's fit check uses it.
+// Whenever text is cut short to fit (font_draw_centered, font_draw_left, font_draw_wrapped), or
+// font_draw_wrapped breaks a word between its letters, the hook hears of it: the text as given,
+// the width it needs (for wrapped text, its last line's, or the broken word's) and the width it
+// has, in px. NULL takes it away. The headless runner's fit check uses it.
 typedef void (*FontOverflowHook)(const char *utf8, int need, int have);
 void font_set_overflow_hook(FontOverflowHook hook);

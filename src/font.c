@@ -454,9 +454,11 @@ static const char *next_char(const char *s) {
 }
 
 // As many whole words on each line as fit w; a word wider than w on its own is broken between its
-// characters (at least one to a line). Keeps up to max lines; returns how many the text needs.
-static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, int max) {
+// characters (at least one to a line), and *broken gets the widest such word's width (else 0).
+// Keeps up to max lines; returns how many the text needs.
+static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, int max, int *broken) {
     int n = 0;
+    *broken = 0;
     for (s = skip_spaces(s); *s; s = skip_spaces(s)) {
         const char *fits = NULL;  // the end of the longest run of words that fits
         for (const char *e = s; *skip_spaces(e);) {
@@ -466,6 +468,10 @@ static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, in
             fits = e = we;
         }
         if (!fits) {
+            const char *we = s;
+            while (*we && *we != ' ') we++;
+            int ww = measure_n(f, px, s, we);
+            if (ww > *broken) *broken = ww;
             fits = next_char(s);
             while (*fits && *fits != ' ' && measure_n(f, px, s, next_char(fits)) <= w) fits = next_char(fits);
         }
@@ -476,8 +482,10 @@ static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, in
     return n;
 }
 
-// The two-line break that keeps the longer line shortest, or one right after punctuation if its
-// longer line is at most a quarter longer than that. False if no break makes two lines that fit.
+// The two-line break that keeps the longer line shortest, or one right after punctuation, where a
+// clause ends ("Narrow," over "no margin"), whose longer line is at most half again as long: a
+// first clause much shorter than the rest stays on the line with it. False if no break makes two
+// lines that fit.
 static bool wrap_two(FontFace f, float px, const char *s, int w, Span out[2]) {
     s = skip_spaces(s);
     const char *end = s + strlen(s);
@@ -489,7 +497,7 @@ static bool wrap_two(FontFace f, float px, const char *s, int w, Span out[2]) {
         const char *s2 = skip_spaces(b);
         int w1 = measure_n(f, px, s, b), w2 = measure_n(f, px, s2, end);
         if (w1 > w || w2 > w) continue;
-        float score = (float)(w1 > w2 ? w1 : w2) * (strchr(",.;:!?)", b[-1]) ? 0.8f : 1.f);
+        float score = (float)(w1 > w2 ? w1 : w2) * (strchr(",.;:!?)", b[-1]) ? 2.f / 3.f : 1.f);
         if (!found || score < best) {
             best = score;
             out[0] = (Span){s, b};
@@ -500,9 +508,10 @@ static bool wrap_two(FontFace f, float px, const char *s, int w, Span out[2]) {
     return found;
 }
 
-// The lines font_draw_wrapped breaks text into for width w: how many it needs, up to max kept.
-static int wrap(FontFace f, float px, const char *s, int w, Span *out, int max) {
-    int n = wrap_greedy(f, px, s, w, out, max);
+// The lines font_draw_wrapped breaks text into for width w: how many it needs, up to max kept;
+// *broken as for wrap_greedy (two lines broken at a space never break a word: each fits w).
+static int wrap(FontFace f, float px, const char *s, int w, Span *out, int max, int *broken) {
+    int n = wrap_greedy(f, px, s, w, out, max, broken);
     if (n == 2 && max >= 2) wrap_two(f, px, s, w, out);
     return n;
 }
@@ -516,7 +525,7 @@ int font_wrap_lines(FontFace f, float px, const char *utf8, int w, int *widest) 
         return *skip_spaces(utf8) ? 1 : 0;
     }
     Span ln[WRAP_MAX];
-    int n = wrap(f, px, utf8, w, ln, WRAP_MAX);
+    int broken, n = wrap(f, px, utf8, w, ln, WRAP_MAX, &broken);
     for (int i = 0; widest && i < n && i < WRAP_MAX; i++) {
         int lw = measure_n(f, px, ln[i].s, ln[i].e);
         if (lw > *widest) *widest = lw;
@@ -534,7 +543,10 @@ int font_draw_wrapped(Canvas *c, FontFace f, float px, Rect r, const char *utf8,
     }
     if (max_lines > WRAP_MAX) max_lines = WRAP_MAX;
     Span ln[WRAP_MAX];
-    int n = wrap(f, px, utf8, r.w, ln, WRAP_MAX), shown = n < max_lines ? n : max_lines;
+    int broken, n = wrap(f, px, utf8, r.w, ln, WRAP_MAX, &broken), shown = n < max_lines ? n : max_lines;
+    // A word wider than the line, split between two of its letters with no hyphen: the hook hears
+    // of it as of a cut (a translation should take a shorter word, or two).
+    if (broken && g_overflow) g_overflow(utf8, broken, r.w);
     int asc = font_ascent(f, px), desc = font_descent(f, px), lh = line_h > 0 ? line_h : asc + desc;
     int top = r.y + (r.h - shown * lh) / 2;
     for (int i = 0; i < shown; i++) {

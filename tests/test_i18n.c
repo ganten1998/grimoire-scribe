@@ -702,9 +702,19 @@ TEST(overflow_hook) {
     CHECK(g_hook_calls == 2);
     font_draw_wrapped(&c, FONT_REGULAR, 34.f, (Rect){0, 0, 300, 200}, longer, 2, 0, true, 0);
     CHECK(g_hook_calls == 3 && !strcmp(g_hook_text, longer) && g_hook_have == 300);
+    // A word wider than its line, broken between two of its letters (with no hyphen): reported,
+    // with the word's width, though every line fits.
+    const char *word = "Notenlinienpapier", *two = "Notenlinienpapier kariert";
+    int ww = font_measure(FONT_REGULAR, 34.f, word);
+    g_hook_calls = 0;
+    font_draw_wrapped(&c, FONT_REGULAR, 34.f, (Rect){0, 0, ww - 20, 200}, two, 4, 0, true, 0);
+    CHECK(g_hook_calls == 1 && !strcmp(g_hook_text, two) && g_hook_need == ww && g_hook_have == ww - 20);
+    g_hook_calls = 0;
+    font_draw_wrapped(&c, FONT_REGULAR, 34.f, (Rect){0, 0, ww, 200}, two, 4, 0, true, 0);  // the word fits
+    CHECK(g_hook_calls == 0);
     font_set_overflow_hook(NULL);
     font_draw_left(&c, FONT_REGULAR, 44.f, (Rect){0, 0, 200, 100}, longer, 0);
-    CHECK(g_hook_calls == 3);
+    CHECK(g_hook_calls == 0);
     canvas_free(&c);
 }
 
@@ -727,6 +737,18 @@ TEST(wrapping) {
     int best = first3 > after3 ? first3 : after3, other = after4 > last3 ? after4 : last3;
     CHECK(widest == (best < other ? best : other));
     CHECK(widest < full * 2 / 3);
+    // A break after a comma wins while its longer line is at most half again as long as the
+    // balanced break's: "Fino," over "sin margen", like its neighbours, not "Fino, sin" over "margen".
+    const char *fino = "Fino, sin margen";
+    int rest = font_measure(FONT_REGULAR, ls, "sin margen");
+    CHECK(font_measure(FONT_REGULAR, ls, "Fino, sin") < rest);  // (the balanced break is narrower)
+    CHECK(font_wrap_lines(FONT_REGULAR, ls, fino, rest + 4, &widest) == 2 && widest == rest);
+    // A first clause much shorter than the rest stays on the line with it, though the rest would
+    // fit a line of its own.
+    const char *tip = "Tip: aaaa bbbb cccc dddd eeee ffff gggg hhhh";
+    int tip_w = font_measure(FONT_REGULAR, ls, tip), after = font_measure(FONT_REGULAR, ls, tip + 5);
+    CHECK(font_wrap_lines(FONT_REGULAR, ls, tip, tip_w - 1, &widest) == 2 && after <= tip_w - 1);
+    CHECK(widest < after);  // (after "Tip:" the longer line would be the rest)
     // Fits: one line; nothing: none; a word wider than the line: broken between its letters.
     CHECK(font_wrap_lines(FONT_REGULAR, ls, s, full, NULL) == 1);
     CHECK(font_wrap_lines(FONT_REGULAR, ls, "", 100, NULL) == 0);
