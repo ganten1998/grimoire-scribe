@@ -299,9 +299,10 @@ static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false
 //
 // "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
 // value is the rest of the line after one space; nothing there means the empty string. KEY is
-// anything app_probe() answers (docs/SIM.md lists them). Like a shot, a check waits until
-// everything queued before it was handled and the screen flushed (input_poll). A failed check is
-// printed and the run goes on; at the end the run exits with status 3 (display_close).
+// anything app_probe() answers (docs/SIM.md lists them). A check sees the app once everything
+// queued before it was handled and the screen flushed: right away after a line that ends a batch
+// (a tap, wait or shot), else at the next poll, like a shot. A failed check is printed and the
+// run goes on; at the end the run exits with status 3 (display_close).
 
 typedef enum { EXPECT_IS, EXPECT_HAS, EXPECT_NOT } ExpectOp;
 static const char *const k_expect_ops[] = {"is", "has", "not"};
@@ -485,7 +486,13 @@ static void script_step(void) {
             return;
         } else if (!strcmp(a, "expect")) {
             expect_read(s);
-            return;  // checked where a shot is taken: once this batch is handled and flushed
+            // Nothing queued since the last flush: check now and read on (no extra refresh or
+            // timer tick slips in). Else once this batch is handled and flushed, like a shot.
+            if (g_qh == g_qt) {
+                expect_check();
+                continue;
+            }
+            return;
         } else if (!strcmp(a, "rotate")) {
             InEvent e = make_ev(IN_ORIENTATION, 0, 0, true);
             e.value = atoi(b) & 3;
