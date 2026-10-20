@@ -1,9 +1,10 @@
 // editor.c: the notebook editor. Live ink, stroke eraser, the floating panel, page
 // navigation, paper changes, autosave.
 //
-// Pixels: page_canvas holds paper + ink at page resolution (the device's portrait size, fixed).
-// The view maps page -> screen (zoom + pan): 100% in portrait, fit-to-width when the Kindle is
-// turned sideways, pinch to zoom 1x..4x. a->screen = the viewed page + panel (+ paper sheet).
+// Pixels: page_canvas holds paper + ink at page resolution: the notebook's page size, the screen
+// it was made on (a notebook from another Scribe keeps its own). The view maps page -> screen
+// (zoom + pan): the page's width fits the screen's (100% upright for a notebook made on this
+// screen), pinch to zoom up to 4x that. a->screen = the viewed page + panel (+ paper sheet).
 // compose(r) rebuilds a screen rect from those layers; show(page rect) is the page-side entry.
 #include <math.h>
 #include <stdio.h>
@@ -369,6 +370,10 @@ static bool view_identity(App *a) {
 static void view_clamp(App *a) {
     S->zoom = clampf(S->zoom, S->zoom_min, S->zoom_default * 4.f);
     float vw = (float)a->w / S->zoom, vh = (float)a->h / S->zoom;  // visible page area
+    // A page fitted to a screen of another size (a notebook from another Scribe) spans it but for
+    // float rounding: exactly, so the fitted view sits at no offset (and shows no zoom chip).
+    if (fabsf(vw - (float)S->pgw) < 0.01f) vw = (float)S->pgw;
+    if (fabsf(vh - (float)S->pgh) < 0.01f) vh = (float)S->pgh;
     S->ox = vw >= (float)S->pgw ? -(vw - (float)S->pgw) / 2.f : clampf(S->ox, 0.f, (float)S->pgw - vw);
     S->oy = vh >= (float)S->pgh ? -(vh - (float)S->pgh) / 2.f : clampf(S->oy, 0.f, (float)S->pgh - vh);
     // Snap to exactly 100% / no offset in portrait so the fast identity path is used.
@@ -378,7 +383,9 @@ static void view_clamp(App *a) {
     }
 }
 
-// Portrait: 100%. Sideways: the page fills the width (pan with two fingers).
+// The page fills the screen's width: 100% upright for a page of this screen's size, the whole page
+// for a notebook from another Scribe (theirs are 3:4 too), and sideways the width (pan with two
+// fingers; pinching out shows the whole page).
 static void view_reset(App *a) {
     S->zoom_min = fminf((float)a->w / (float)S->pgw, (float)a->h / (float)S->pgh);
     S->zoom_default = (float)a->w / (float)S->pgw;
@@ -718,6 +725,20 @@ static void go_to_page(App *a, int index) {
     arrive_readonly(a);
 }
 
+// The open notebook's page size (it keeps the one it was made with, whatever the screen). The page
+// canvas and the paper previews are made at it: when it changes they go, to be made again.
+static void use_page_size(App *a) {
+    int w, h;
+    store_notebook_page_size(&S->nb, &w, &h);
+    if (w == S->pgw && h == S->pgh) return;
+    S->pgw = w;
+    S->pgh = h;
+    canvas_free(&S->page_canvas);
+    S->canvas_page = NULL;
+    for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
+    canvas_free(&S->custom_prev);
+}
+
 static void close_notebook(App *a) {
     if (!S->open) return;
     save_page(a);
@@ -751,6 +772,7 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
+    use_page_size(a);
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
     S->page = page_at(a, S->index);
     if (!S->page) {
@@ -1577,6 +1599,11 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%d", (int)a->settings.current_tool);
     } else if (!strcmp(key, "zoom")) {
         snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
+    } else if (!strcmp(key, "page_size")) {
+        if (S->open) snprintf(out, cap, "%dx%d", S->pgw, S->pgh);  // the notebook's, whatever the screen
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "scale")) {
+        snprintf(out, cap, "%.2f", S->open ? S->zoom : 0.f);  // screen px per page px
     } else if (!strcmp(key, "modal")) {
         // What is in front (input goes to the first one open, in this order).
         const char *m = S->pages_open   ? "pages"

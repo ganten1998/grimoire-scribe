@@ -93,11 +93,33 @@ The 13 parameters, in order, with the range every reader clamps them to:
 | 5 | pressure_ceiling | 0.05 to 1 | | 12 | smoothing | 0 to 1 |
 | 6 | pressure_gamma | 0.25 to 4 | | | | |
 
-Readers also read a float that is not finite as 0 and clamp x and y to -10000..30000. A page
-stored at another size than the screen's is scaled when it is opened (the points are multiplied),
-and written at the new size after an edit. Rendering replays each stroke from its first point, so
-how a page looks depends on these bytes alone: `tests/test_golden.c` holds renders recorded from
-1.0.0-beta that every later version must reproduce.
+Readers also read a float that is not finite as 0 and clamp x and y to -10000..30000. Rendering
+replays each stroke from its first point, so how a page looks depends on these bytes alone:
+`tests/test_golden.c` holds renders recorded from 1.0.0-beta that every later version must
+reproduce.
+
+### Page size
+
+Ruled, dot and graph paper and their margins are drawn in millimetres at the page's dpi (300 on
+every Scribe) from the page's top left, and stroke widths are in millimetres: a bigger page has
+more lines, not wider ones (music papers spread their staves over the page's height between
+margins of a fixed size). Scaling a page's points therefore moves its ink off the paper it was
+written on. The Scribe 3 and the Scribe Colorsoft are 1986x2648, the 2022 and 2024 Scribes
+1860x2480 (6.8% apart): ink scaled from one to the other lands about two medium rules off near
+the bottom of the page.
+
+- **1.1 on:** a notebook keeps the page size it was made with (`page_w`, `page_h` in
+  `notebook.ini`), wherever it is opened. The editor fits the page to the screen (its width to the
+  screen's width), and the Pages view, the thumbnails, the sleep screen and every export are made
+  at the page's own size. New pages get the notebook's size. A page file of another size than its
+  notebook's (one a version before 1.1 scaled to another screen, below) has its points scaled back
+  to the notebook's size when it is opened, which puts the ink written on the notebook's own screen
+  back on its lines, and is written at that size after an edit. Exports scale it back the same way
+  and leave its file as it is.
+- **Before 1.1** (1.0.0-beta, rc.1, beta.2): every page opens at the screen's size, its points
+  scaled when the stored size differs, and a page edited there is written at the screen's size.
+  Back in 1.1 such a page goes back to its notebook's size: the ink it had moves back onto its
+  lines, and ink the older version added on the other Scribe moves by the ratio of the sizes.
 
 ### Chunks
 
@@ -309,6 +331,13 @@ Frozen while 1.0.0-beta is in use:
 | `last_page` | the page index opened next time |
 | `next_page_id` | the id the next new page gets |
 | `pages` | the page ids in order, comma-separated |
+| `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
+
+A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
+keys), or with a value outside 100 to 6000, takes the size of its first page file, in `pages`
+order, whose first 16 bytes give one (any version 1 to 255), else the device's own; the next save
+writes it. So a notebook moved between Scribes by a version before 1.1 takes the size its first
+page has now (if that page was edited on the other Scribe, the other Scribe's size).
 
 From 1.0.0-beta.2 on, a line whose key it does not know is written back after the keys it knows,
 whole lines up to 2 KB in all (a line that does not fit is left out and logged), and a `paper`
@@ -332,7 +361,8 @@ Frozen while 1.0.0-beta is in use:
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
   never touch.
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
-  unknown keys on its next save.
+  unknown keys on its next save. (The page size is such a key: what a version does without it is in
+  its own section.)
 
 ## Moving between versions
 
@@ -361,4 +391,5 @@ row.
 | a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
+| `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size from the first page file); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

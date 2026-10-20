@@ -73,19 +73,10 @@ void export_safe_name(const char *in, char *out, size_t cap) {
 // ---- rendering helpers ----
 
 static int render_page(const NotebookInfo *nb, int index, float dpi, int layers, Canvas *c, uint32_t *paper) {
-    // Rendered at the size the page was drawn at (no device scaling).
-    char path[800];
-    snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", store_root(), nb->id, nb->page_ids[index]);
-    size_t len;
-    uint8_t *d = read_file(path, &len);
+    // Rendered at the notebook's page size, as the editor has the page: one an older version scaled
+    // to another screen goes back to that size, and a missing or damaged page is blank paper of it.
     Page *p = NULL;
-    if (d) {
-        page_deserialize(d, len, &p);
-        free(d);
-    }
-    if (!p) {
-        p = page_new(1860, 2480, nb->paper);  // missing page: blank at Scribe size
-    }
+    if (store_read_page(nb, index, &p) != 0) return -1;
     // A page bigger than any e-ink screen is damaged or hostile: do not try to allocate it.
     if (p && (p->w > 6000 || p->h > 6000)) {
         page_free(p);

@@ -19,6 +19,8 @@ typedef struct {
     int npages;
     uint32_t page_ids[STORE_MAX_PAGES]; // page order; files are p<id>.qpg
     uint32_t next_page_id;
+    int page_w, page_h;           // its pages' size, px: the screen it was made on, kept wherever it
+                                  // is opened (notebook.ini page_w, page_h; see store_load_info)
     char extra[STORE_EXTRA_LEN];  // notebook.ini lines this build does not know ("key=value\n"
                                   // each), written back as they were
 } NotebookInfo;
@@ -48,11 +50,14 @@ typedef struct {
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/
 const char *store_root(void);
-// Device geometry used to scale pages drawn at another size and to size stroke bboxes.
+// Device geometry: the page size of the notebooks made here, and the dpi stroke bboxes are sized at.
 void store_set_device(float dpi, int w, int h);
 float store_dpi(void);
-// The page size new pages get (the device's portrait screen), regardless of rotation.
+// The page size new notebooks get (the device's portrait screen), regardless of rotation.
 void store_page_size(int *w, int *h);
+// The size of a notebook's pages: nb->page_w x nb->page_h, which store_create and store_load_info
+// always set (the device's size for a NotebookInfo that has none).
+void store_notebook_page_size(const NotebookInfo *nb, int *w, int *h);
 
 void settings_default(Settings *s);
 // Missing file / keys -> defaults; values clamped to ParamInfo ranges. What the file holds that
@@ -67,7 +72,10 @@ int store_list_folders(char (**out)[STORE_NAME_LEN], int *n);   // distinct non-
 // Folders exist as notebook.folder values plus root/folders.ini (so empty folders persist).
 int store_add_folder(const char *name);
 int store_remove_folder(const char *name);   // only from folders.ini; notebooks keep theirs
-int store_create(const char *name, const char *folder, PaperKind paper, NotebookInfo *out); // with 1 empty page
+// With 1 empty page, at the device's page size (recorded as the notebook's).
+int store_create(const char *name, const char *folder, PaperKind paper, NotebookInfo *out);
+// A notebook.ini with no page size (versions before 1.1 write none, and 1.0.0-beta drops it on a
+// save) takes the size of its first page file that has one, else the device's.
 int store_load_info(const char *id, NotebookInfo *out);
 // Pages found damaged since the last call (each was renamed to p<id>.qpg.damaged-<time>).
 int store_take_corrupt_count(void);
@@ -83,12 +91,18 @@ int store_delete(const char *id);           // moves to trash/
 int store_notebook_dir(const char *id, char *buf, size_t cap);
 
 // Pages. Index is the position in nb->page_ids.
-// Writes an empty page (never over a page file already there: the next free id) + info.
+// Writes an empty page at the notebook's page size (never over a page file already there: the
+// next free id) + info.
 int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
-// Missing page file -> empty page of nb->paper. Points are scaled if the stored size differs.
-// A page from a newer version comes back read-only (Page.readonly) and is never set aside.
+// The page at w x h, the notebook's page size (store_notebook_page_size): a page file of another
+// size, one an older version scaled to its own screen, has its points scaled back. Missing page
+// file -> empty page of nb->paper. A damaged file is set aside (p<id>.qpg.damaged-<time>). A page
+// from a newer version comes back read-only (Page.readonly) and is never set aside.
 int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out);
+// The same for exports, always at the notebook's page size, and nothing on disk changes: a page
+// that is missing or does not read is a blank page of nb->paper, and its file stays as it is.
+int store_read_page(const NotebookInfo *nb, int index, Page **out);
 // A read-only page is never written: its file stays as it is (and this returns 0).
 int store_save_page(const NotebookInfo *nb, int index, const Page *p);
 

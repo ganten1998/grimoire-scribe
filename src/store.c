@@ -30,6 +30,20 @@ void store_page_size(int *w, int *h) {
     *w = g_w;
     *h = g_h;
 }
+
+// A page size a notebook can have: a screen's (bigger ones are damage; export.c refuses them too).
+static bool page_size_ok(long w, long h) { return w >= 100 && h >= 100 && w <= 6000 && h <= 6000; }
+// A size as written in an ini value ("1986"), 0 for one that is no size at all.
+static int size_value(const char *v, char **end) {
+    long x = strtol(v, end, 10);
+    return x > 0 && x <= 100000 ? (int)x : 0;
+}
+
+void store_notebook_page_size(const NotebookInfo *nb, int *w, int *h) {
+    bool own = page_size_ok(nb->page_w, nb->page_h);
+    *w = own ? nb->page_w : g_w;
+    *h = own ? nb->page_h : g_h;
+}
 const char *store_root(void) { return g_root; }
 
 int store_init(const char *root) {
@@ -180,6 +194,9 @@ static bool info_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "modified")) nb->modified = atoll(v);
     else if (!strcmp(k, "last_page")) nb->last_page = atoi(v);
     else if (!strcmp(k, "next_page_id")) nb->next_page_id = (uint32_t)strtoul(v, NULL, 10);
+    // The page size (1.1 on). A value no screen has is not kept: store_load_info finds the size.
+    else if (!strcmp(k, "page_w")) nb->page_w = size_value(v, NULL);
+    else if (!strcmp(k, "page_h")) nb->page_h = size_value(v, NULL);
     else if (!strcmp(k, "pages")) {
         nb->npages = 0;
         const char *p = v;
@@ -234,6 +251,8 @@ int store_take_corrupt_count(void) {
     return n;
 }
 
+static bool page_file_size(const char *path, int *w, int *h);
+
 int store_load_info(const char *id_in, NotebookInfo *out) {
     char dir[600], path[700], id[STORE_ID_LEN];
     strlcpy_q(id, id_in, sizeof id);  // id_in may be out->id itself: copy it before the memset
@@ -255,6 +274,16 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     if (out->npages == 0) {  // never leave a notebook without a page
         out->page_ids[0] = 1;
         out->npages = 1;
+    }
+    if (!page_size_ok(out->page_w, out->page_h)) {
+        // No page size recorded (a notebook from before 1.1, or one 1.0.0-beta saved: it drops the
+        // keys): the size its first page file has, else the device's. The next save records it.
+        out->page_w = g_w;
+        out->page_h = g_h;
+        for (int i = 0; i < out->npages; i++) {
+            snprintf(path, sizeof path, "%s/p%u.qpg", dir, out->page_ids[i]);
+            if (page_file_size(path, &out->page_w, &out->page_h)) break;
+        }
     }
     uint32_t maxid = 0;
     for (int i = 0; i < out->npages; i++)
@@ -280,6 +309,9 @@ static int write_info(const NotebookInfo *nb) {
               nb->next_page_id);
     for (int i = 0; i < nb->npages && i < STORE_MAX_PAGES; i++) sb_printf(&b, "%s%u", i ? "," : "", nb->page_ids[i]);
     sb_put(&b, "\n", 1);
+    int pw, ph;
+    store_notebook_page_size(nb, &pw, &ph);
+    sb_printf(&b, "page_w=%d\npage_h=%d\n", pw, ph);
     sb_put(&b, nb->extra, strnlen(nb->extra, sizeof nb->extra));  // keys a newer version wrote, as they were
     int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
     free(b.d);
@@ -337,6 +369,8 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
     nb->npages = 1;
     nb->page_ids[0] = 1;
     nb->next_page_id = 2;
+    nb->page_w = g_w;  // the device's page size, the notebook's wherever it is opened later
+    nb->page_h = g_h;
     char dir[600], parent[600];
     snprintf(parent, sizeof parent, "%s/notebooks", g_root);
     if (mkdir_p(parent) != 0) return -1;
@@ -353,7 +387,7 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
         random_hex(rnd2, 4);
         memcpy(nb->id + strlen(nb->id) - 4, rnd2, 4);
     }
-    Page *p = page_new(g_w, g_h, nb->paper);
+    Page *p = page_new(nb->page_w, nb->page_h, nb->paper);
     if (!p) return -1;
     int rc = write_page_file(nb, 1, p);
     page_free(p);
@@ -634,7 +668,9 @@ int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
         qlog_once("store: %s: p%u.qpg is not in the page list; left as it is", nb->id, pid);
     }
     nb->next_page_id = pid + 1;
-    Page *p = page_new(g_w, g_h, paper);
+    int w, h;
+    store_notebook_page_size(nb, &w, &h);
+    Page *p = page_new(w, h, paper);
     if (!p) return -1;
     int rc = write_page_file(nb, pid, p);
     page_free(p);
@@ -657,6 +693,10 @@ int store_delete_page(NotebookInfo *nb, int index) {
     return store_save_info(nb);
 }
 
+// A page file of another size than its notebook's: an older version opened it on a screen of
+// another size (versions before 1.1 scale every page to the screen) and wrote it so after an edit.
+// Its points go back to the notebook's size. Rules and stroke widths are in mm, the same on every
+// screen, so the older version's scaling moved the ink off its lines: this puts it back.
 static void scale_page(Page *p, int w, int h) {
     if (p->w == w && p->h == h) return;
     float sx = (float)w / (float)p->w, sy = (float)h / (float)p->h;
@@ -699,6 +739,28 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
         } else if (p->readonly) {
             qlog("store: %s opens read-only and stays as it is on disk", path);
         }
+        free(data);
+    }
+    if (!p) p = page_new(w, h, nb->paper);
+    if (!p) return -1;
+    if (p->w != w || p->h != h) qlog_once("store: %s is %dx%d: scaled to %dx%d", path, p->w, p->h, w, h);
+    scale_page(p, w, h);
+    *out = p;
+    return 0;
+}
+
+int store_read_page(const NotebookInfo *nb, int index, Page **out) {
+    *out = NULL;
+    if (index < 0 || index >= nb->npages) return -1;
+    int w, h;
+    store_notebook_page_size(nb, &w, &h);
+    char path[700];
+    page_path(nb, nb->page_ids[index], path, sizeof path);
+    size_t len;
+    uint8_t *data = read_file(path, &len);
+    Page *p = NULL;
+    if (data) {
+        page_deserialize(data, len, &p);  // damage leaves p NULL: a blank page below, the file as it is
         free(data);
     }
     if (!p) p = page_new(w, h, nb->paper);
@@ -1071,6 +1133,24 @@ static int page_parse(const uint8_t *buf, size_t len, Page **out, bool quiet) {
 }
 
 int page_deserialize(const uint8_t *buf, size_t len, Page **out) { return page_parse(buf, len, out, false); }
+
+// The size a page file says it has, from the 16 bytes every version starts with (magic, version,
+// u16 paper, w, h), the rest unread. False for a file that has none (missing, cut short, damage).
+static bool page_file_size(const char *path, int *w, int *h) {
+    uint8_t b[16];
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return false;
+    bool got = read(fd, b, sizeof b) == (ssize_t)sizeof b;
+    close(fd);
+    if (!got || memcmp(b, "QPG1", 4) != 0) return false;
+    unsigned ver = (unsigned)b[4] | (unsigned)b[5] << 8;
+    uint32_t pw = (uint32_t)b[8] | (uint32_t)b[9] << 8 | (uint32_t)b[10] << 16 | (uint32_t)b[11] << 24;
+    uint32_t ph = (uint32_t)b[12] | (uint32_t)b[13] << 8 | (uint32_t)b[14] << 16 | (uint32_t)b[15] << 24;
+    if (ver == 0 || ver > PAGE_NEWER_MAX || !page_size_ok((long)pw, (long)ph)) return false;
+    *w = (int)pw;
+    *h = (int)ph;
+    return true;
+}
 
 // ---- thumbnails ----
 
