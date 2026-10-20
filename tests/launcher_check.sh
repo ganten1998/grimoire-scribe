@@ -5,9 +5,9 @@
 # (tests/shims/fake-grimoire). Checks unpacking, --unpack-only, the KOReader guard,
 # --reset-calibration, the order of the pause and the restore, the restore on a locked Kindle,
 # the watchdog and its device timings, the move from Quire, the hosted run inside KOReader
-# (--hosted koreader, under tests/shims/fake-koreader) and its refusals, and the install of
-# KOReader's Grimoire plugin, once with each POSIX shell found (sh, dash, busybox sh); the shells
-# run side by side.
+# (--hosted koreader, under tests/shims/fake-koreader) and its refusals, the lock another Grimoire
+# holds, and the install of KOReader's Grimoire plugin, once with each POSIX shell found (sh, dash,
+# busybox sh); the shells run side by side.
 # usage: tests/launcher_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -143,7 +143,8 @@ after_start() { n=$(at "$STARTED"); [ -n "$n" ] && tail -n +"$((n + 1))" "$SHIM_
 # runs a command with what koreader.sh exports for a session that paused the Kindle UI (and a
 # quick watchdog), through env: VAR=value words may come first, and nothing outlives the call
 # (assignments before a shell function do, in some shells). The command is mostly fake-koreader,
-# a reader.lua that koreader.sh started, running its own command the way os.execute does.
+# a reader.lua that koreader.sh started, running its own command the way os.execute does, and
+# that pidof finds meanwhile, as on the Kindle.
 hosted_tree() {  # hosted_tree NAME
     tree "$1"
     sh "$DOC" --unpack-only
@@ -152,7 +153,10 @@ hosted_tree() {  # hosted_tree NAME
     : >"$US/koreader/reader.lua"
     : >"$SHIM_LOG"
 }
-ko_paused() { env KOREADER_DIR="$US/koreader" STOP_FRAMEWORK=no AWESOME_STOPPED=yes PILLOW_HARD_DISABLED=yes GRIMOIRE_WD_TICK=0.2 "$@"; }
+ko_paused() {
+    env KOREADER_DIR="$US/koreader" STOP_FRAMEWORK=no AWESOME_STOPPED=yes PILLOW_HARD_DISABLED=yes LC_ALL=en_US.UTF-8 \
+        GRIMOIRE_WD_TICK=0.2 "$@"
+}
 # KOReader's Grimoire plugin in KOReader's plugins folder is the one the app carries.
 PLUGIN_REL=koreader/plugins/grimoire.koplugin
 plugin_is_payload() {
@@ -197,6 +201,7 @@ suite() {
     check "$s first run: the launcher finishes" wait_until 150 launcher_done
     check "$s first run starts app/grimoire.sh detached" has "$SHIM_LOG" "setsid sh $APP/grimoire.sh"
     check "$s first run starts the binary" has "$SHIM_LOG" "$STARTED$US/grimoire awesome_stopped=yes"
+    check "$s first run passes the locale on as it is" has "$SHIM_LOG" "grimoire lc_all=C "
     check "$s pillow off, then back on" in_order "$PILLOW_OFF" "$STARTED" "$PILLOW_ON"
     check "$s awesome stopped, then continued" in_order "killall -STOP awesome" "$STARTED" "killall -CONT awesome"
     check "$s status bar job stopped, then started" in_order "stop statusbar" "$STARTED" "start statusbar"
@@ -515,8 +520,9 @@ suite() {
     : >"$T/sys/etc/upstart/chromebar.conf"
     mkdir -p "$SHIM_STATE/not-running" && : >"$SHIM_STATE/not-running/chromebar"
     echo 1 >"$SHIM_STATE/lipc/com.lab126.powerd.preventScreenSaver"
-    # KOReader still has ordinary files open (its log, a pipe), not the screen or the input.
-    ko_paused FAKE_KO_HOLDS="/mnt/us/koreader/crash.log pipe:[4021]" fake-koreader \
+    # KOReader still has ordinary files open (its log, a pipe), not the screen or the input. LANG
+    # comes down from the Kindle UI, as it does to a start from the Library.
+    ko_paused LANG=es_ES.UTF-8 FAKE_KO_HOLDS="/mnt/us/koreader/crash.log pipe:[4021]" fake-koreader \
         sh "$APP/grimoire.sh" --hosted koreader 2>"$T/stderr"
     rc=$?
     l="$s hosted"
@@ -524,8 +530,13 @@ suite() {
     check "$l: in the foreground (Grimoire ended before it returned)" has "$SHIM_LOG" "grimoire exits"
     check "$l: logged as hosted" has "$LOGF" "grimoire.sh: starting Grimoire hosted by KOReader (reader.lua pid"
     check "$l: Grimoire told its host (GRIMOIRE_HOST)" has "$SHIM_LOG" "grimoire host=koreader"
+    check "$l: KOReader's LC_ALL kept from Grimoire, LANG carried on" has "$SHIM_LOG" \
+        "grimoire lc_all=(unset) lang=es_ES.UTF-8"
     check "$l: Grimoire never wakes awesome" has "$SHIM_LOG" "$STARTED$US/grimoire awesome_stopped=no"
     check "$l: awesome stopped again (AWESOME_STOPPED=yes)" in_order "killall -STOP awesome" "$STARTED"
+    check "$l: awesome stopped again first, before the lipc calls" in_order "killall -STOP awesome" \
+        "lipc-get-prop -s com.lab126.powerd state"
+    check "$l: awesome stopped again (logged)" has "$LOGF" "grimoire.sh: awesome stopped again, as KOReader had it"
     check "$l: awesome never continued" lacks "$SHIM_LOG" "killall -CONT awesome"
     check "$l: pillow left alone" lacks "$SHIM_LOG" "disableEnablePillow"
     check "$l: no home booklet" lacks "$SHIM_LOG" "com.lab126.appmgrd"
@@ -635,6 +646,37 @@ suite() {
         check "$l: no lock taken" [ ! -e "$GRIMOIRE_TMP/grimoire.launcher.pid" ]
     done
     check "$s hosted refused (wrong-parent): names reader.lua's pid" has "$LOGF" "was not started by koreader.sh"
+    # Another Grimoire's launcher holds the lock (alive, and grimoire.sh by its scratch /proc
+    # cmdline): hosted, that is exit 1, so KOReader's plugin keeps its launch marker and says
+    # Grimoire could not start; from the Library it is 0, as nothing happens. Either way Grimoire
+    # does not start and the lock stays the other's. awesome, which KOReader's exit woke, is stopped
+    # again even so: before the lock wait, and never continued.
+    hosted_tree hosted-locked
+    sleep 60 &
+    holder=$!
+    mkdir -p "$T/sys/proc/$holder"
+    printf 'sh\000%s\000' "$APP/grimoire.sh" >"$T/sys/proc/$holder/cmdline"
+    echo "$holder" >"$GRIMOIRE_TMP/grimoire.launcher.pid"
+    ko_paused fake-koreader sh "$APP/grimoire.sh" --hosted koreader 2>"$T/stderr"
+    rc=$?
+    l="$s hosted, another Grimoire running"
+    check "$l: exit 1 ($rc)" is "$rc" 1
+    check "$l: logged" has "$LOGF" "grimoire.sh: already running (launcher pid $holder), not starting another"
+    check "$l: Grimoire not started" lacks "$SHIM_LOG" "$STARTED"
+    check "$l: nothing else touched" sh -c '! grep -qE "lipc-|iptables|^stop |^start |killall -CONT" "$1"' sh "$SHIM_LOG"
+    check "$l: awesome stopped again before the lock wait" has "$SHIM_LOG" "killall -STOP awesome"
+    check "$l: the lock stays the other's" is "$(content "$GRIMOIRE_TMP/grimoire.launcher.pid")" "$holder"
+    : >"$SHIM_LOG"
+    : >"$LOGF"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" 2>/dev/null
+    rc=$?
+    l="$s from the Library, another Grimoire running"
+    check "$l: returns 0 ($rc)" is "$rc" 0
+    check "$l: logged" has "$LOGF" "grimoire.sh: already running (launcher pid $holder), not starting another"
+    check "$l: Grimoire not started" lacks "$SHIM_LOG" "$STARTED"
+    check "$l: the lock stays the other's" is "$(content "$GRIMOIRE_TMP/grimoire.launcher.pid")" "$holder"
+    kill "$holder" 2>/dev/null
+    wait "$holder" 2>/dev/null
     # documents/Grimoire.sh --hosted: inside KOReader it runs app/grimoire.sh --hosted in the
     # foreground (never detached, no plugin install); outside KOReader it refuses.
     hosted_tree doc-hosted
@@ -696,6 +738,27 @@ suite() {
     start_doc
     check "$s plugin copied back by hand: kept up to date again" plugin_is_payload
     check "$s plugin copied back by hand: the marker holds the build" is "$(content "$MARK")" "$BUILD_ID"
+    # KOReader uninstalled (KPM, say), then installed again: a start in between forgets the marker,
+    # so the new KOReader gets the plugin, even though the old one's plugin was removed by hand.
+    rm -rf "${US:?}/$PLUGIN_REL"
+    start_doc
+    check "$s plugin removed, then KOReader: the plugin marked removed first" is "$(content "$MARK")" removed
+    rm -rf "${US:?}/koreader"
+    : >"$SHIM_LOG"
+    start_doc
+    check "$s KOReader uninstalled: the marker forgotten" [ ! -e "$MARK" ]
+    check "$s KOReader uninstalled: logged" has "$LOGF" \
+        "Grimoire.sh: KOReader is no longer installed: a KOReader installed later gets the Grimoire plugin"
+    check "$s KOReader uninstalled: Grimoire still starts" has "$SHIM_LOG" "grimoire exits"
+    start_doc
+    check "$s KOReader uninstalled: logged once only" lacks "$LOGF" "KOReader is no longer installed"
+    mkdir -p "$US/koreader/plugins"
+    : >"$US/koreader/reader.lua"
+    start_doc
+    check "$s KOReader installed again: the plugin goes in" plugin_is_payload
+    check "$s KOReader installed again: installed (logged)" has "$LOGF" \
+        "Grimoire.sh: installed KOReader's Grimoire plugin into $US/$PLUGIN_REL"
+    check "$s KOReader installed again: the marker holds the build" is "$(content "$MARK")" "$BUILD_ID"
     # Copied in by hand before Grimoire ever started (no marker yet): brought up to date.
     tree koplugin-by-hand
     sh "$DOC" --unpack-only

@@ -142,14 +142,23 @@ esac
 # installed, a start from the Library copies it into KOReader's plugins folder once, then keeps
 # that copy up to date: grimoire/.koplugin-installed holds the build it came from. A plugin folder
 # the user deleted stays deleted (the marker then reads "removed"); one copied back by hand, from
-# the zip's "KOReader plugin (optional)" folder, is kept up to date again. KOReader is not running
-# here (the guard above), so it never loads a half-copied plugin, and each file goes in whole
-# (a copy, then a rename).
+# the zip's "KOReader plugin (optional)" folder, is kept up to date again. A start that finds no
+# KOReader forgets the marker, so a KOReader installed later (even the same one again, which comes
+# without the plugin) gets it: only a plugin deleted while KOReader stayed counts as removed.
+# KOReader is not running here (the guard above), so it never loads a half-copied plugin, and
+# each file goes in whole (a copy, then a rename).
 koplugin() {
     src=$APP/koreader/grimoire.koplugin
     dst=$US/koreader/plugins/grimoire.koplugin
     mark=$US/grimoire/.koplugin-installed
-    { [ -f "$US/koreader/reader.lua" ] && [ -d "$src" ]; } || return 0
+    if [ ! -f "$US/koreader/reader.lua" ]; then
+        if [ -e "$mark" ]; then
+            rm -f "$mark"
+            log "KOReader is no longer installed: a KOReader installed later gets the Grimoire plugin"
+        fi
+        return 0
+    fi
+    [ -d "$src" ] || return 0
     was=$(cat "$mark" 2>/dev/null)
     if [ -e "$mark" ] && [ ! -d "$dst" ]; then
         if [ "$was" != removed ]; then

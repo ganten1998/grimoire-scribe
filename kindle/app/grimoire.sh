@@ -24,10 +24,11 @@
 # dump, pillow, the home booklet, volumd, lab126_gui or the passcode. It keeps the lock, the
 # priority, the share port's firewall hole, the watchdog and the log, saves and puts back the
 # power service's preventScreenSaver, and stops the status jobs while Grimoire runs (the KOReader
-# that KPM installs leaves the 5.17+ status bar running). It skips the settle wait and runs
-# Grimoire in the foreground. Exit status: 0 Grimoire ran; 1 another Grimoire is running; 3
-# refused: not inside a KOReader that koreader.sh started and that paused the Kindle UI, or not
-# from its exit path (its reader.lua still holds an input device).
+# that KPM installs leaves the 5.17+ status bar running). It stops awesome again, which KOReader's
+# exit woke, keeps KOReader's LC_ALL from Grimoire, skips the settle wait and runs Grimoire in the
+# foreground. Exit status: 0 Grimoire ran; 1 another Grimoire is running; 3 refused: not inside a
+# KOReader that koreader.sh started and that paused the Kindle UI, or not from its exit path (its
+# reader.lua still holds an input device).
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
@@ -123,6 +124,16 @@ if [ "$1" = "--hosted" ]; then
         exit 3
     fi
     HOSTED=koreader
+    # First of all: KOReader's exit has just woken awesome on Special Offers Kindles (a KOReader
+    # quitting for good wants the Kindle UI back), so stop it again before the lock wait and the
+    # lipc calls below give it time to draw. koreader.sh continues it when KOReader quits; this
+    # launcher never does. (Logged once the session's log lines start.)
+    AWESOME_RESTOPPED=no
+    if [ "$KO_AWESOME_STOPPED" = yes ] && killall -STOP awesome 2>/dev/null; then AWESOME_RESTOPPED=yes; fi
+    # koreader.sh exports LC_ALL=en_US.UTF-8 for KOReader itself, whatever the Kindle's language.
+    # Grimoire gets the locale a start from the Library gets: LANG, which koreader.sh leaves as it
+    # found it, carries on, and KOReader's LC_ALL goes.
+    unset LC_ALL
 else
     # KOReader keeps the pen and the touch screen to itself while it runs: Grimoire would get
     # neither, and the restore below would wake the Kindle UI underneath KOReader. See
@@ -396,12 +407,8 @@ stop_status_jobs() {
 }
 
 if [ -n "$HOSTED" ]; then
-    # KOReader paused the Kindle UI. Its exit wakes awesome on Special Offers Kindles (KOReader
-    # quitting for good wants the Kindle UI back): stop it again. koreader.sh continues it when
-    # KOReader quits; this launcher never does.
-    if [ "$KO_AWESOME_STOPPED" = yes ] && killall -STOP awesome 2>/dev/null; then
-        log "awesome stopped again, as KOReader had it"
-    fi
+    # KOReader paused the Kindle UI; awesome, which its exit woke, was stopped again first thing.
+    [ "$AWESOME_RESTOPPED" = yes ] && log "awesome stopped again, as KOReader had it"
     stop_status_jobs
     log "upstart jobs running: $(initctl list 2>/dev/null | grep -i 'start/running' | cut -d' ' -f1 | tr '\n' ' ')"
 elif [ "$STOP_FRAMEWORK" = yes ]; then

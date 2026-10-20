@@ -4,7 +4,9 @@
 # runs the command given as its child, the way KOReader's os.execute runs grimoire.sh --hosted
 # koreader, and returns its status. FAKE_KO_PARENT is the parent's command line (default
 # /bin/sh /var/tmp/koreader.sh --asap), split at spaces; FAKE_KO_HOLDS the files it still has open
-# (/proc/<pid>/fd), none by default, as after KOReader's exit.
+# (/proc/<pid>/fd), none by default, as after KOReader's exit. Meanwhile pidof finds reader.lua
+# too ($SHIM_STATE/pidof, as tests/shims/pidof reads it): on the Kindle KOReader is still running
+# while it waits in os.execute, so a hosted start must never take that for a KOReader left behind.
 P=${GRIMOIRE_SYSROOT:?}/proc
 mkdir -p "$P/$$/fd" "$P/$PPID"
 echo "$$ (reader.lua) S $PPID $$ $$ 0 -1 4194560" >"$P/$$/stat"
@@ -17,6 +19,11 @@ done
 echo "$PPID (sh) S 1 $PPID $PPID 0 -1 4194560" >"$P/$PPID/stat"
 # shellcheck disable=SC2086 # split on purpose
 printf '%s\000' ${FAKE_KO_PARENT:-/bin/sh /var/tmp/koreader.sh --asap} >"$P/$PPID/cmdline"
+PIDOF=${SHIM_STATE:?}/pidof/reader.lua
+was=$(cat "$PIDOF" 2>/dev/null)
+mkdir -p "${PIDOF%/*}"
+echo $$ >"$PIDOF"
 "$@"
 status=$?
+if [ -n "$was" ]; then echo "$was" >"$PIDOF"; else rm -f "$PIDOF"; fi
 exit $status
