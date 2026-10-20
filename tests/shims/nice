@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stand-in for nice in tests/launcher_check.sh: records the call; with no arguments it prints
+# the niceness (SHIM_NICE, default 0) as busybox does; `nice -n N command...` runs the command.
+echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+if [ $# -eq 0 ]; then
+    echo "${SHIM_NICE:-0}"
+    exit 0
+fi
+[ "$1" = -n ] && shift 2
+exec "$@"

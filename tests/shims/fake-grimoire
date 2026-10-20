@@ -1,0 +1,40 @@
+#!/bin/sh
+# Stands in for the Grimoire binary in tests/launcher_check.sh, which copies it over
+# app/grimoire after the unpack. Records how it was started and its pid ($SHIM_STATE/grimoire.pid),
+# then by FAKE_MODE:
+#   normal (default)  draws (writes the fake framebuffer), beats once, exits after a moment
+#   slow              the first frame after 3 s, then a beat every 2 s; exits after about 7 s
+#   hang              never beats (no first frame)
+#   stale             beats once, then never again
+# A hang or stale one is stuck the way a real Grimoire can be: its TERM handler only sets its
+# quit flag, so it notes the TERM and runs on until it is KILLed (or for a minute at most, should
+# the test go wrong).
+# FAKE_EXIT_STATE: the power state to leave behind (the Kindle locked while Grimoire ran).
+echo "grimoire root=$GRIMOIRE_ROOT awesome_stopped=$GRIMOIRE_AWESOME_STOPPED" >>"${SHIM_LOG:?}"
+echo $$ >"${SHIM_STATE:?}/grimoire.pid"
+beat() { : >"${GRIMOIRE_TMP:?}/grimoire.alive"; }
+case "${FAKE_MODE:-normal}" in
+hang | stale)
+    [ "$FAKE_MODE" = stale ] && beat
+    trap 'echo "grimoire caught TERM, runs on" >>"$SHIM_LOG"' TERM
+    n=0
+    while [ $n -lt 300 ]; do
+        sleep 0.2
+        n=$((n + 1))
+    done
+    exit 0
+    ;;
+slow)
+    sleep 3
+    beat
+    sleep 2
+    beat
+    sleep 2
+    ;;
+esac
+printf 'GRIMOIRE' >"${GRIMOIRE_SYSROOT:?}/dev/fb0"
+beat
+[ -n "${FAKE_EXIT_STATE:-}" ] && echo "$FAKE_EXIT_STATE" >"${SHIM_STATE:?}/lipc/com.lab126.powerd.state"
+sleep 0.3
+echo "grimoire exits" >>"$SHIM_LOG"
+exit 0

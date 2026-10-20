@@ -5,7 +5,7 @@
 #   make tools     host CLI grimoire-export             -> build/host/grimoire-export
 #   make kindle    static armhf binary (zig cc)      -> build/kindle/grimoire
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
-#   make check     tests + scenarios + share server + exporter + ARM build
+#   make check     tests + scenarios + share server + exporter + ARM build + the zip + its launchers
 #   make all       sim + test + tools + kindle + package
 
 BUILD   ?= build
@@ -147,16 +147,40 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # One self-contained file: documents/Grimoire.sh (Library entry, icon embedded) with the app tar
 # appended after a marker line; it unpacks itself into /mnt/us/grimoire/app on first run. Copying
 # a single file into documents/ over MTP is all an install or update takes.
+# The app also carries CAPABILITIES, the words of Grimoire.sh's "# Capabilities:" line (for a tool
+# that must not run a launcher to learn what it supports), and licenses/: the GPL, the fonts'
+# licenses, and one for each third-party part of the binary. Every third_party/<dir> ships its
+# LICENSE* / COPYING* as <dir>-LICENSE.txt (and CREDITS* as <dir>-CREDITS.txt); the stb headers
+# carry their license inside, shipped once as stb-LICENSE.txt; the binary is linked static
+# against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt.
 PKG := $(BUILD)/dist/stage
+RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
+VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
 package: $(BUILD)/dist/Grimoire.zip
-$(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh assets/icon.png \
-                           kindle/README.txt LICENSE VERSION
+$(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION $(wildcard assets/*-OFL-1.1.txt) \
+                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES)
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
+	sed -n 's/^# Capabilities: //p' kindle/Grimoire.sh > $(PKG)/app/CAPABILITIES
 	cp LICENSE $(PKG)/app/licenses/GPL-3.0.txt
 	cp assets/*-OFL-1.1.txt $(PKG)/app/licenses/
+	for d in third_party/*/; do d=$${d%/}; n=$${d##*/}; out=$(PKG)/app/licenses/$$n-LICENSE.txt; \
+	  for f in $$d/LICENSE* $$d/COPYING*; do [ -f "$$f" ] || continue; \
+	    [ -s $$out ] && printf '\n\n' >> $$out; cat "$$f" >> $$out; done; \
+	  for f in $$d/CREDITS*; do [ -f "$$f" ] && cp "$$f" $(PKG)/app/licenses/$$n-CREDITS.txt; done; \
+	done; true
+	names=; : > $(PKG)/stb.all; for h in third_party/stb_*.h; do \
+	  awk '/^This software is available under 2 licenses/ { p = 1 } p && /^\*\// { exit } p' $$h > $(PKG)/stb.one; \
+	  [ -s $(PKG)/stb.one ] || { echo "package: no license text found in $$h"; exit 1; }; \
+	  names="$${names:+$$names, }$${h##*/}"; cmp -s $(PKG)/stb.one $(PKG)/stb.all || cat $(PKG)/stb.one >> $(PKG)/stb.all; \
+	done; { echo "$$names: single-file libraries by Sean Barrett (https://github.com/nothings/stb)."; echo; \
+	  cat $(PKG)/stb.all; } > $(PKG)/app/licenses/stb-LICENSE.txt; rm -f $(PKG)/stb.one $(PKG)/stb.all
+	lib=$$($(ZIG) env 2>/dev/null | sed -n 's/.*lib_dir"* *[=:] *"\([^"]*\)".*/\1/p'); \
+	  if [ -f "$$lib/libc/musl/COPYRIGHT" ]; then cat "$$lib/libc/musl/COPYRIGHT" > $(PKG)/app/licenses/musl-COPYRIGHT.txt; \
+	  else echo "package: musl's COPYRIGHT is not in zig's lib dir ($$lib)"; exit 1; fi
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
-	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh licenses
+	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
 	id=$$(shasum $(BUILD)/dist/app.tar | cut -c1-12); \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
@@ -174,8 +198,14 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,
-# the share server against a real HTTP client, the host exporter, and the ARM build.
-check: test scenarios tools kindle
+# the share server against a real HTTP client, the host exporter, the ARM build, and the zip
+# people install: what it holds, and its launchers run against stand-ins for the Kindle's tools.
+.PHONY: package-check launcher-check
+package-check: package
+	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
+launcher-check: package
+	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
+check: test scenarios tools kindle package-check launcher-check
 	tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"
