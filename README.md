@@ -22,9 +22,9 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release.** 1.0.0-beta is in daily use on one Kindle Scribe (2024). It autosaves every
-> stroke and keeps damaged files instead of overwriting them, but treat it as a beta: copy your
-> notebooks off now and then (Library > Share makes that one click).
+> **Pre-release.** Grimoire is in daily use on one Kindle Scribe (2024), and testers run it on
+> theirs. It autosaves every stroke and keeps damaged files instead of overwriting them, but
+> treat it as a beta: copy your notebooks off now and then (Library > Share makes that one click).
 
 ## Will it run on my Kindle?
 
@@ -34,8 +34,8 @@ see [kindlemodding.org](https://kindlemodding.org) to jailbreak.
 
 | Kindle | Status |
 |---|---|
-| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.19 | **Works.** This is the tested device (5.19.6, Vera). |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Should work.** Same platform. If the screen is upside down, see Troubleshooting. |
+| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.19.6 (Vera); a tester runs it on 5.20.1 (Vera). |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Reported working**: a tester runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
@@ -57,7 +57,8 @@ updating; most people keep OTA updates blocked.
    a minute). Tap it.
 
 The first launch takes a few seconds while it unpacks itself into a `grimoire` folder. To
-**update**, copy the new `Grimoire.sh` over the old one; your notebooks and settings stay.
+**update**, copy the new `Grimoire.sh` over the old one; your notebooks and settings stay. Going
+back to an older version works the same way (see Moving between versions).
 
 **Coming from Quire** (Grimoire's old name)? Copy the new files and tap Grimoire once. It moves
 your notebooks and settings from `quire/` to `grimoire/` and removes the old Quire launcher.
@@ -67,6 +68,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Library**: notebooks as covers with thumbnails, one level of folders. Tap the `...` on a
   notebook to rename, move or delete it (deleted notebooks go to `grimoire/trash`, nothing is
   ever erased outright).
+- **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
+  for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
+  Finnish). Shift gives capitals and **abc** returns to the letters.
 - **Paper**: narrow, medium and wide rule (with or without margin), Cornell, dot grid, graph,
   blank, sheet music, grand staff, guitar tab, 4 to 7 string bass tab, and **Custom music**:
   stack treble, bass, alto, tenor, drum and plain staves, tabs and lyric lines, and choose how
@@ -85,26 +89,93 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   it anywhere; tap the corner arrows to fold it into a small box.
 - **Pen button**: hold it to highlight (or erase; Settings), click it three times to clear the page.
 - **Pages**: tap the page counter for a grid of previews; jump, or tick pages and delete them.
+  A page made by a newer Grimoire opens read-only (see Moving between versions).
 - **Pinch** to zoom up to 4x. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
-  page, or the Kindle's own screensaver). Waking brings you straight back. Quit with
-  **Library > Exit**.
+  page, or the Kindle's own screensaver). Waking brings you straight back.
+- **Leaving**: **Library > Exit**, or hold the power button 4 seconds on any screen, asleep or
+  awake. Grimoire saves your page and closes, and the Kindle comes back.
+- **Passcode**: if your Kindle has a Device Passcode, Grimoire pauses it while it is open and puts
+  it back when you leave, as KOReader does. The Kindle's passcode keypad cannot take a touch
+  while Grimoire holds the touch screen, so without the pause a locked Kindle could not be
+  unlocked (see Privacy).
 
 ## Getting pages off the Kindle
 
 Details in [docs/EXPORT.md](docs/EXPORT.md).
 
-1. **Wi-Fi**: turn on Wi-Fi, open **Library > Share**, and visit the address it shows from any
-   browser on the same network. Download a notebook as PDF or zip, single pages as PNG, or
-   everything at once. **Effects** makes transparent, recolored or filtered copies (gradient
-   signatures, warm tones, sepia, blueprint and more) and shows the matching ImageMagick command. Only
-   devices on your network can reach it, and only while the Share screen is open.
+1. **Wi-Fi**: turn on Wi-Fi and open **Library > Share**. Point your phone's camera at the QR code
+   it shows, or type the address under it into any browser on the same network. Download a
+   notebook as PDF or zip, single pages as PNG, or everything at once. **Effects** makes
+   transparent, recolored or filtered copies (gradient signatures, warm tones, sepia, blueprint
+   and more) and shows the matching ImageMagick command. Only devices on your network can reach
+   it, and only while the Share screen is open.
 2. **USB**: every notebook you close is also saved as a PDF in `grimoire/PDFs/<folder>/`.
 3. **SSH** (for the terminal-inclined): `tools/grimoire-pull` syncs everything and renders PDFs
    on your computer.
 
+## Does it work in KOReader?
+
+Grimoire is a separate app: quit KOReader (back to the Kindle's Library), then tap **Grimoire**.
+Started from inside KOReader (*Execute shell script* on `Grimoire.sh` in its file browser), it
+refuses, because KOReader keeps the pen and the touch screen to itself; KOReader then reports a
+non-zero status (3). A KOReader plugin is planned for 1.1.
+
+The notebook PDFs in `grimoire/PDFs` open in KOReader for reading. Grimoire writes a notebook's
+PDF again whenever you close the notebook after a change, so highlights or notes KOReader writes
+into that file are lost then: to mark one up, copy it out of `grimoire/PDFs` and open the copy.
+
+## Moving between versions
+
+Updating is one file, and so is going back. From 1.0.0-beta.2 on, Grimoire keeps what a newer
+version writes and does not understand (ink data, newer papers, extra page data, unknown lines
+in `settings.ini` and `notebook.ini`) and writes it back unchanged:
+
+- A page it cannot fully show opens **read-only**, with "This page was made by a newer Grimoire.
+  It is read-only here." Writing, erasing, clearing and changing its paper are refused on it;
+  deleting it still works. Update Grimoire to edit it.
+- A paper from a newer version shows as blank paper named **Newer paper** and stays the page's
+  paper. New pages added after such a page get it too.
+- A setting from a newer version that this one lacks works here as the nearest choice it has,
+  and stays in the file until you change that setting.
+
+1.0.0-beta and 1.0.0-rc.1 cannot do this. Open a notebook there after a newer version wrote to
+it, and data can be lost: they set a page in a newer format aside as
+`p<id>.qpg.damaged-<time>` and show it blank (just looking at it in Pages does this), and they
+drop newer data when they save. 1.0.0-beta.2 brings such pages back when you open the notebook
+again, and keeps both copies if the page was written again in the meantime; a page you deleted
+in the older version stays set aside. The file format and its rules are in
+[docs/FORMAT.md](docs/FORMAT.md).
+
+## Privacy
+
+- **Your Kindle's passcode is paused while Grimoire is open.** Anyone who wakes the Kindle then
+  sees your page without the passcode, and can leave Grimoire to the Kindle's home screen. The
+  passcode comes back when Grimoire closes. If the Kindle restarts while Grimoire is open, it
+  stays off: Grimoire says so at its next start, and you turn it back on in the Kindle's Settings.
+- **Erasing deletes.** The eraser removes whole strokes from the page file; nothing you erase is
+  kept in it. Pages and notebooks you delete are kept in `grimoire/trash` until you delete them
+  from a computer.
+- **Share has no password.** Anyone on the same network can open it while the Share screen is
+  open, and nobody once you leave it. Do not open Share on a network you do not trust.
+- **grimoire.log**, which a bug report asks for, holds no serial number, account or Wi-Fi name.
+  It does note the Kindle's own address on your network when Share is open (like `192.168.1.23`).
+
 ## Troubleshooting
 
+- **Stuck?** Hold the power button 4 seconds. Grimoire saves your page and closes, and the Kindle
+  comes back. If even that does nothing, hold it until the Kindle restarts (about 40 seconds); a
+  restart keeps your notebooks. Never use the passcode reset code 111222777 to get out of
+  anything: it erases the Kindle, notebooks included.
+- **"The Kindle passcode was left off"**: the Kindle restarted while Grimoire was open, so the
+  passcode Grimoire had paused did not come back. Turn it on again in the Kindle's Settings
+  (Device Options > Device Passcode); Grimoire leaves that to you.
+- **"This page was made by a newer Grimoire. It is read-only here."**: update Grimoire to change
+  that page. Nothing on it is lost (see Moving between versions).
+- **KOReader**: Grimoire does not start from inside it (see Does it work in KOReader?). If
+  "Grimoire did not start: KOReader is running." shows near the top of the screen after you tap
+  Grimoire in the Library, a KOReader is still running in the background (after a crash, say):
+  restart the Kindle.
 - **Strokes land away from the pen tip**: Settings > Calibrate pen and touch. If you cannot reach
   it, tap **Grimoire - reset pen calibration** in the Library.
 - **Everything is upside down** (possible on the 2022 Scribe): put an empty file named
@@ -127,7 +198,8 @@ keep your pages).
 Needs `zig` (the Kindle cross build), `clang`, and SDL3 for the desktop simulator.
 
 ```
-make check     # unit tests, scripted UI scenarios, share server, exporter, ARM build
+make check     # unit tests, scripted UI scenarios with state checks, share server, exporter,
+               # ARM build, and the zip with its launchers
 make sim       # desktop simulator window (docs/SIM.md)
 make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
 make package   # build/dist/Grimoire.zip
@@ -135,7 +207,8 @@ make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
 ```
 
 [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh model, the brush model
-and the file formats; [docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle.
+and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the files byte by byte;
+[docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle.
 
 ## License and credits
 
@@ -147,6 +220,12 @@ Much of what Grimoire knows about the Kindle comes from [KOReader](https://korea
 - Terminess Nerd Font, Jacquard 24 and Jersey 10: SIL Open Font License 1.1
   (`assets/*-OFL-1.1.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
+- QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
+  (upstream commit 3c6d0b3)
+- musl libc: MIT (the Kindle binary is linked statically against it)
+
+These licenses, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
+on the Kindle.
 
 Kindle and Kindle Scribe are trademarks of Amazon.com, Inc. or its affiliates. Grimoire is an
 independent project and is not affiliated with, endorsed by or supported by Amazon.

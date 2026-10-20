@@ -12,7 +12,7 @@ Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`).
 | arrow keys | tilt x / y in 5 degree steps (shown in the title bar) |
 | hold `E` | eraser end |
 | hold `S` | side button |
-| `P` | power button: saves, then the sleep screen (a press while asleep wakes) |
+| `P` | the power button: a short press saves and sleeps (through the fallback, 2.5 s after the release), a press on the sleep screen wakes (3 s after); hold it 4 s to leave Grimoire |
 | `Esc`, Cmd+Q | quit |
 
 `GRIMOIRE_SIM_SIZE=WxH` changes the virtual panel; `GRIMOIRE_SIM_STATS=1` prints refresh counts.
@@ -42,15 +42,35 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `wait MS` | let timers run (autosave, toasts, the share server) |
 | `shot NAME` | write what the panel shows to `$GRIMOIRE_SHOTS/NAME.png` |
 | `expect KEY is\|has\|not VALUE` | check the app's state (see Checks) |
-| `power`, `quit` | power button / quit (end of script also quits) |
+| `power` | a short press of the power button and its release (150 ms) |
+| `power down`, `power up` | one half each; the release reports the real time between them, so `power down`, `wait 3000`, `power up` is a 3 s press |
+| `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
+| `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
+| `quit` | quit (end of script also quits) |
+
+The simulated power service answers a sleep request (powerButton) with a sleep (goingToScreenSaver)
+while it is active or unreadable, and with a wake (outOfScreenSaver) while it is in
+`screenSaver`, `readyToSuspend` or `suspended`, so a request sent to a dozing Kindle shows up. Its
+state changes only through `powerd`. tests/scenarios/p_power.qs and p_power_locked.qs use all of
+this.
 
 Coordinates are screen pixels: portrait 1860x2480, or 2480x1860 after `rotate 1` or `rotate 3`,
 calibrated or not (as on the Kindle, a calibration maps the digitizer to the upright panel, so one
 made upright stays right sideways). The lines up to and including the next `wait`, `shot`, tap,
-drag, `pinch`, `rotate`, `sleep`, `wake` or `quit` are delivered as one batch, like a burst of
-digitizer samples between two screen refreshes on the device; a check after pen, touch, side,
-eraser or power lines ends a batch too. A line the runner does not know fails the run like a
+drag, `pinch`, `rotate`, `sleep`, `wake`, `powerhold` or `quit` are delivered as one batch, like a
+burst of digitizer samples between two screen refreshes on the device; a check after pen, touch,
+side, eraser or power lines ends a batch too. A line the runner does not know fails the run like a
 failed check (a misspelt `expect` would otherwise be skipped).
+
+The keyboard's keys in portrait (the Library's keyboard, for every name, at 300 dpi): shift
+175 2205, del 1679 2205, Cancel 217 2365, `-` 477 2365, the page key 696 2365 (labelled with a
+and e acute on the letters page, abc on the accents page), space 1060 2365, `.` 1382 2365, Done
+1643 2365. On the letters page: y 1725 the digits and y 1885 q to p at x = 133 + 177 n, y 2045
+a to l at x = 221 + 177 n, y 2205 z to m at x = 393 + 177 n. On the accents page: y 1725 a e i o u with an acute, then with a grave, at x = 133 + 177 n; y 1885 the
+same with a circumflex, then a diaeresis, at the same x; y 2045 n tilde, c cedilla, a and o
+tilde, sharp s, oe, ae, o slash, a ring at x = 221 + 177 n; y 2205 the inverted question and
+exclamation marks, the angle quotes and the middle dot at x = 570 + 177 n.
+tests/scenarios/u_accents.qs types accented names with them.
 
 ### Checks
 
@@ -73,10 +93,11 @@ expect failed (line 12): screen is "library", wanted is "editor"
 
 An unknown key, a line that cannot be read, an unknown command, and a check the script never
 reached because the app quit first (a tap that lands on Library > Exit) fail too. Where the app is
-meant to quit (Library > Exit on purpose), `expect running is 0` after it holds once it has quit,
-and fails while it still runs. The run ends with `expect: all 33 checks passed` or `expect: 2 of 33
-checks failed`, and exits with status 3 if any check failed. To find a value, write the check with
-a guess: the failure shows what the app holds.
+meant to quit (Library > Exit on purpose, `powerhold`, the second press on a Kindle that stays
+locked), `expect running is 0` after it holds once it has quit, and fails while it still runs.
+The run ends with `expect: all 33 checks passed` or `expect: 2 of 33 checks failed`, and exits
+with status 3 if any check failed. To find a value, write the check with a guess: the failure
+shows what the app holds.
 
 | key | value |
 |---|---|
@@ -113,8 +134,26 @@ A headless run ends only once the PDF exports it started are written (the app le
 child processes that outlive it), so the data a run leaves is whole.
 
 `make scenarios` runs every scenario on a fresh data root, or, for a script with a `# root: NAME`
-line, on a copy of scenario NAME's (d_persist reopens what b_library made). A run that leaves a
-file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those that did
-not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every check (exit 0)
-with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the comments, waits
-and taps must fail and be reported by its line number (exit 3).
+line, on a copy of scenario NAME's (d_persist reopens what b_library made; NAME must sort before
+the script). `# env: K=V` lines set the environment of that one scenario (values without spaces;
+r_passcode, s_passcode_once and t_passcode_left_off set `GRIMOIRE_PASSCODE`, as the launcher does
+on the Kindle). With `GRIMOIRE_TEST_PORT` set, the rule writes `http_port=` that port into
+every scenario's settings.ini before the run (over a copied root's too), so the share servers of
+checks running in several worktrees never collide on 8765. Both header lines are read by the
+Makefile rule only: running `grimoire-headless` by hand skips them like any comment. A run that
+leaves a file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those
+that did not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every
+check (exit 0) with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the
+comments, waits and taps must fail and be reported by its line number (exit 3).
+
+## The Share screen in tests
+
+`GRIMOIRE_SIM_ADDRS` (simulator and headless runner only) replaces the machine's network
+addresses, for example `GRIMOIRE_SIM_ADDRS="wlan0=192.168.0.20,usb0=192.168.15.244"`, or `""` for
+none. Without it, the simulator's QR code takes the first wlan* or en* address (a Mac's en0).
+`tools/qrdecode.swift` is a macOS Vision decoder (`qrdecode [--polarity] image...`) that
+`tests/share_check.sh` builds into `build/host/qrdecode`. Besides `c_share`, the share check writes
+`build/shots/c_share_classic`, `q_share_rotate`, `q_share_invert` and
+`share_layouts/<style>-<case>`: the style is gothic or classic, the case one, two, three, usb-only
+or none, and each folder holds `portrait.png` and `landscape.png`. The check fails on any
+`share: layout:` line in its app logs.

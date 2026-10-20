@@ -1,9 +1,83 @@
 # Changelog
 
-## Unreleased
+## Unreleased (1.0.0-beta.2)
 
+- **Hold the power button to leave**: hold it 4 seconds to save and leave Grimoire from any
+  screen, asleep or awake, and get the Kindle back. On a Kindle that stays locked after a press, a
+  second press does the same.
+- **Kindles with a passcode**: a Device Passcode is now paused while Grimoire is open and turned
+  back on when you leave, as KOReader does. With a passcode, the Kindle holds back its wake until
+  the passcode is typed, but its keypad cannot take a touch while Grimoire holds the touch screen:
+  Grimoire's page came back over a Kindle that stayed locked, and leaving painted the old screen
+  over the passcode keypad (a tester on 5.20.1 could only get out by restarting). Grimoire says so
+  the first time ("Your Kindle passcode is paused while Grimoire is open."), and if a restart while
+  it was open left the passcode off, it says that at its next start.
+- **Sleep and wake fixes**: the Kindle no longer falls asleep again right after waking. Three pen
+  side-button clicks while asleep no longer clear the page, and a pinch while asleep no longer
+  zooms it. A press right after another no longer requests sleep halfway through a long press.
+  Grimoire no longer draws over a Kindle that is still locked or asleep after a press, and no
+  longer sends a power-button request to a Kindle already in its screensaver. The sleep request is
+  ordered (preventScreenSaver 0, then powerButton 1), and "Sleep after: never" is restored after
+  each wake. Leaving Grimoire while the Kindle shows its screensaver or passcode prompt no longer
+  paints the old screen over it.
+- **Notebooks move between versions**: Grimoire now keeps what a newer version writes and does not
+  understand (ink data, papers, extra page data, unknown `settings.ini` and `notebook.ini` lines)
+  and writes it back unchanged. A page from a newer version opens read-only ("This page was made
+  by a newer Grimoire. It is read-only here.") instead of being set aside as damaged, and pages
+  1.0.0-beta set aside come back when their notebook is opened, if they are still in its page
+  list. Papers from a newer version show blank as "Newer paper" and are kept. A setting value from
+  a newer version that this one lacks (for example `side_button=3`) works here as the nearest value
+  it has. It stays in the file until a save finds the setting changed; from then on the setting is
+  saved as you set it, even if you set it back. `docs/FORMAT.md` documents the file format, and the
+  README's "Moving between versions" says what older versions do with newer notebooks.
+- **A QR code on the Share screen**: point a phone's camera at it to open the share page without
+  typing the address. It holds the Kindle's Wi-Fi address; other addresses (USBNetwork's, say) are
+  listed under it. Share also has a landscape layout, so the downloads counter no longer covers a
+  help line or the third address and text no longer runs past the card. Turning the Kindle or
+  waking it on the Share screen no longer restarts the share server, so queued downloads and pages
+  being sent are no longer dropped.
+- **Accents on the keyboard**: a new **áé** key beside the space bar opens a page with á é í ó ú,
+  à è ì ò ù, â ê î ô û, ä ë ï ö ü, ñ ç ã õ ß œ æ ø å and ¿ ¡ « », and the middle dot of Catalan
+  l·l. Shift gives the capitals and **abc** goes back; backspace removes a whole character.
+  Renaming keeps accents: the keyboard used to drop every non-ASCII byte from the name it opened,
+  so "Música" came back as "Msica".
+- **Gothic bold keeps accents legible**: bold labels, toasts, menus, Settings rows and keyboard keys
+  keep the two dots of ü ö ä ë, the tilde of ñ ã õ, the hat of â ê ô û and the ring of å, and the
+  carons, double acutes and ring of Czech, Slovak and Hungarian (č š ž ř ň ě ď ť ő ű ů) keep their
+  gap. The bold overprint used to fill them in (ü looked like ū). In bold, ß keeps the notch that
+  tells it from B, and ø and Ø keep their counters open around the slash. In every Gothic weight
+  the inverted exclamation mark now hangs below the line, as type usually sets it; it used to look
+  exactly like an i. ASCII text and the Classic style do not change.
+- **KOReader**: Grimoire no longer starts from inside KOReader, where it got neither pen nor touch
+  and its exit woke the Kindle UI underneath KOReader; KOReader shows status 3 instead. A Library
+  tap with a KOReader left running says so on the screen. For the KOReader plugin in 1.1:
+  `Grimoire.sh --unpack-only` with documented exit statuses, and Capabilities lines in
+  `Grimoire.sh` and `grimoire/app/grimoire.sh` (also `grimoire/app/CAPABILITIES`).
+- **Smaller fixes**: a tap on Undo or Clear right after a stroke now works at once (it was ignored
+  for about half a second). Turning the Kindle, or waking it, no longer closes an open Library
+  sheet (Settings, New notebook, the keyboard...). The paper pickers and Library cards no longer
+  show a paper they do not know as the 7-string bass tab. `settings.ini` is no longer written
+  through a fixed 8 KB buffer that was never checked.
 - **Effects preview**: the transparency checkerboard covers only the page, which now has a thin
   outline on a gray surround, so you can see where the page ends.
+- **Other Kindles**: the screen guard works on 32 bpp panels (Scribe Colorsoft); Grimoire closes
+  cleanly, giving the Kindle its screen back, if the panel takes no refresh at all; the dpi of a
+  device FBInk does not know comes from the panel's physical size.
+- **A more useful grimoire.log**: it starts with diagnostics for bug reports (the model code, never
+  the serial number; memory, display and input details; the sleep settings; the Kindle's language,
+  whether a passcode is set, the power state, Special Offers and KOReader's version) and ends with
+  the power state at exit. None of these lines identify the Kindle or its network. A
+  `watcher-multi` switch (an empty file in the `grimoire` folder) listens to the power service the
+  way KOReader does, for a device test.
+- **Licenses**: the app ships the licenses of FBInk, stb, musl and the QR code generator with the
+  GPL and the font licenses, in `grimoire/app/licenses`.
+- **For developers**: `make check` builds and inspects the zip and runs both launchers against
+  stand-ins for the Kindle's tools. The scripted scenarios check what the app holds after each
+  step (`expect` lines) and fail the build when a check fails or a script line is misspelt. After
+  the Kindle turns, the simulator maps input through the calibration the way the Kindle does, so
+  script taps land where they say on calibrated data too. `tests/test_golden.c` holds renders
+  recorded from 1.0.0-beta that every later version must reproduce, and `tests/test_format.c`
+  checks pages against a frozen copy of 1.0.0-beta's page reader.
 
 ## 1.0.0-beta (2026-10-18)
 

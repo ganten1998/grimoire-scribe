@@ -264,7 +264,7 @@ line. Values are clamped to their ranges when read.
 | `sleep_mode` | the sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own |
 | `sleep_minutes` | sleep after this long without input, 0 to 240 (0 = never) |
 | `http_port` | the share server's port, 1024 to 65535 (the launcher reads it too, the last such line) |
-| `passcode_told` | 0 or 1: Grimoire has said once that the launcher pauses the Kindle's passcode (1.0.0-beta.2 on) |
+| `passcode_told` | 0 or 1: the notice that the Kindle's passcode is paused while Grimoire is open was shown (since 1.0.0-beta.2; 1.0.0-beta drops it, and the notice shows once more) |
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
 | `settings_version` | 2: which default-changing upgrades have run |
