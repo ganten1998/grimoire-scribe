@@ -47,9 +47,18 @@ static bool q_pop(InEvent *e) {
 static InputCalib g_pen, g_touch;
 static InputCaps g_caps = {true, true, true, true, true, false, 0, "SDL mouse (sim)", "SDL right button (sim)"};
 static int g_watch_fd = -1;
+static int g_rot;  // quarter turns clockwise the screen is turned from the panel (input_set_orientation)
+
+// The simulated panel is the screen as it is upright: its sides swap while the Kindle is sideways.
+static void panel_size(float *pw, float *ph) {
+    *pw = (float)((g_rot & 1) ? g_h : g_w);
+    *ph = (float)((g_rot & 1) ? g_w : g_h);
+}
 
 void input_default_calib(InputCalib *pen, InputCalib *touch) {
-    InputCalib c = {false, false, (float)g_w, 0.f, (float)g_h, 0.f};
+    float pw, ph;
+    panel_size(&pw, &ph);
+    InputCalib c = {false, false, pw, 0.f, ph, 0.f};
     if (pen) *pen = c;
     if (touch) *touch = c;
 }
@@ -61,28 +70,46 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 
 const InputCaps *input_caps(void) { return &g_caps; }
 void input_watch_fd(int fd) { g_watch_fd = fd; }
-// The simulated panel is the logical screen itself: mouse and script coordinates are already
-// in rotated screen space, so these are identities. An uncalibrated mapping follows the turned
-// screen's size (display_set_orientation ran first), or after a turn every coordinate would land
-// scaled by the old size (x by 0.75, y by 1.33).
-void input_set_orientation(int quarter_turns) {
-    (void)quarter_turns;
-    if (!g_pen.valid) input_default_calib(&g_pen, NULL);
-    if (!g_touch.valid) input_default_calib(NULL, &g_touch);
+// Panel <-> screen for a Kindle turned g_rot quarter turns clockwise, as in input_evdev.c.
+// display_set_orientation has already swapped g_w and g_h when this is set.
+void input_set_orientation(int quarter_turns) { g_rot = quarter_turns & 3; }
+static void panel_to_logical(float px, float py, float *lx, float *ly) {
+    float pw, ph;
+    panel_size(&pw, &ph);
+    float W = pw - 1.f, H = ph - 1.f;
+    switch (g_rot & 3) {
+    case 1: *lx = H - py; *ly = px; break;
+    case 2: *lx = W - px; *ly = H - py; break;
+    case 3: *lx = py; *ly = W - px; break;
+    default: *lx = px; *ly = py; break;
+    }
 }
 void input_logical_to_panel(float lx, float ly, float *px, float *py) {
-    *px = lx;
-    *py = ly;
+    float pw, ph;
+    panel_size(&pw, &ph);
+    float W = pw - 1.f, H = ph - 1.f;
+    switch (g_rot & 3) {
+    case 1: *px = ly; *py = H - lx; break;
+    case 2: *px = W - lx; *py = H - ly; break;
+    case 3: *px = W - ly; *py = lx; break;
+    default: *px = lx; *py = ly; break;
+    }
 }
 
-// The sim reports "device" coordinates as screen/size so calibration math is exercised.
+// Mouse and script coordinates are screen pixels. Like the Kindle's digitizer, the sim reports
+// "device" coordinates as a place on the upright panel (0..1), which the calibration maps to
+// panel pixels, turned to the screen after: a calibration made upright stays right sideways, and
+// the calibration math is exercised.
 static InEvent make_ev(InType t, float sx, float sy, bool pen) {
     InEvent e = {0};
     e.type = t;
-    e.nx = sx / (float)g_w;
-    e.ny = sy / (float)g_h;
-    const InputCalib *c = pen ? &g_pen : &g_touch;
-    calib_apply(c, e.nx, e.ny, &e.x, &e.y);
+    float px, py, pw, ph;
+    input_logical_to_panel(sx, sy, &px, &py);
+    panel_size(&pw, &ph);
+    e.nx = px / pw;
+    e.ny = py / ph;
+    calib_apply(pen ? &g_pen : &g_touch, e.nx, e.ny, &px, &py);
+    panel_to_logical(px, py, &e.x, &e.y);
     e.t_ms = now_ms();
     return e;
 }
