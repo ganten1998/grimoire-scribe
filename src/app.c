@@ -41,6 +41,8 @@ static const char *app_host(void) {
     return h && !strcmp(h, "koreader") ? "koreader" : "";
 }
 
+static int g_sleep_shown;  // the sleep screen app_sleep last chose, for app_probe's "asleep.mode"
+
 // The sleep screen to use. Hosted, KOReader keeps the Kindle UI paused for its whole session and
 // the launcher never wakes it, so the Kindle's own screensaver (mode 2) cannot show: the page
 // does instead.
@@ -288,6 +290,7 @@ static void app_sleep(App *a) {
     if (a->scr == SCR_SHARE) share_sleep(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
     int mode = sleep_mode(a);
+    g_sleep_shown = mode;
     if (mode == 2) {
         sys_kindle_ui(true);
         return;
@@ -579,6 +582,10 @@ int app_probe(const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     }
     else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
+    else if (!strcmp(key, "asleep.mode")) {
+        if (a->asleep) snprintf(out, cap, "%d", g_sleep_shown);
+        else snprintf(out, cap, "%s", "");
+    }
     else if (!strcmp(key, "host")) snprintf(out, cap, "%s", app_host());
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);

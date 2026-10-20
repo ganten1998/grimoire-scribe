@@ -3,8 +3,10 @@
 # Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader sets
 # GRIMOIRE_HOST): the Library's Exit reads Back to KOReader, in a button as wide as the words, in
 # Gothic and Classic, upright and sideways (01, 02, 04, 05). Sleep mode 2, the Kindle's own
-# screensaver, needs the Kindle UI that KOReader keeps paused, so the page shows instead (03: the
-# page alone, no toolbar). Back to KOReader leaves the way Exit does.
+# screensaver, needs the Kindle UI that KOReader keeps paused, so the page shows instead: the
+# asleep.mode probe says which sleep screen is up, and 03 shows it (the page alone, no toolbar).
+# y_koreader_not_hosted holds the other side: from the Library, mode 2 stays the Kindle's own.
+# Back to KOReader leaves the way Exit does.
 wait 200
 expect host is koreader
 shot 01-library-back-to-koreader
@@ -38,9 +40,11 @@ sleep
 wait 400
 shot 03-asleep-mode-2-shows-the-page
 expect asleep is 1
+expect asleep.mode is 0
 wake
 wait 400
 expect asleep is 0
+expect asleep.mode is
 expect screen is editor
 # The Library in Classic: Settings, Style, Done.
 pentap 1768 1560
