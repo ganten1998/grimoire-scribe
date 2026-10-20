@@ -2,15 +2,23 @@
 # Runs the headless app on the Share screen against an existing data root and checks every route,
 # then once more in the Classic style for the page fonts.
 # usage: tests/share_check.sh <grimoire-root>
+# GRIMOIRE_TEST_PORT (default 8765) moves the server, so checks in several worktrees can run at once.
 set -eu
 ROOT=$1
+PORT=${GRIMOIRE_TEST_PORT:-8765}
 B=build/share-check
 rm -rf "$B" && mkdir -p "$B"
+# The app reads its port from the data root's settings (the root is a scratch copy of a scenario).
+if [ -f "$ROOT/settings.ini" ]; then
+    grep -v '^http_port=' "$ROOT/settings.ini" > "$B/settings.ini" || true
+    mv "$B/settings.ini" "$ROOT/settings.ini"
+fi
+echo "http_port=$PORT" >> "$ROOT/settings.ini"
 # Renders slowed down a little (as on the Kindle) so concurrent requests really queue.
 GRIMOIRE_HTTPD_DELAY_MS=150 GRIMOIRE_ROOT="$ROOT" GRIMOIRE_SCRIPT=tests/scenarios/c_share.qs \
     GRIMOIRE_SHOTS=build/shots/c_share build/host/grimoire-headless 2>"$B/app.log" &
 APP=$!
-URL=http://127.0.0.1:8765
+URL=http://127.0.0.1:$PORT
 up() { for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS -o /dev/null "$URL/" 2>/dev/null && break; sleep 0.5; done; }
 up
 fail=0
@@ -38,7 +46,7 @@ check "shrunk layer (f=2)" "file $B/paper-f2.png | grep -q 'PNG image data, 930 
 code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/nb/$ID/1.png?f=9")
 check "f out of range 400 ($code)" "[ $code = 400 ]"
 NPAGES=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['pages'])")
-check "parallel requests, late senders, idle and quitting connections" "python3 -I tests/share_parallel.py 8765 $ID $NPAGES >$B/parallel.log 2>&1"
+check "parallel requests, late senders, idle and quitting connections" "python3 -I tests/share_parallel.py $PORT $ID $NPAGES >$B/parallel.log 2>&1"
 check "ink and paper layers" "file $B/ink.png $B/paper.png | grep -c 'PNG image data, 1860 x 2480' | grep -q 2"
 check "layers are not the page" "! cmp -s $B/ink.png $B/p1.png && ! cmp -s $B/paper.png $B/p1.png"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/nb/$ID/1.png?layer=nope")
@@ -74,7 +82,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/")
 check "POST rejected ($code)" "[ $code = 405 ]"
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' "$URL/api/list.json")
 check "foreign Host refused ($code)" "[ $code = 400 ]"
-GRIMOIRE_OUT="$B/pulled" tools/grimoire-pull --http 127.0.0.1 --png >"$B/pull.log" 2>&1
+GRIMOIRE_OUT="$B/pulled" tools/grimoire-pull --http "127.0.0.1:$PORT" --png >"$B/pull.log" 2>&1
 check "grimoire-pull --http" "ls $B/pulled/*.pdf >/dev/null 2>&1 || ls $B/pulled/*/*.pdf >/dev/null 2>&1"
 kill $APP 2>/dev/null || true
 wait $APP 2>/dev/null || true

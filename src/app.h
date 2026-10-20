@@ -37,6 +37,8 @@ typedef struct App {
     uint32_t power_pressed_at;     // a press waiting for the power service to announce sleep
     uint32_t wake_fallback_at;     // asleep + power pressed: wake by then if outOfScreenSaver never came
     int prevent_applied;           // last preventScreenSaver sent (-1 none)
+    bool relayout;                 // leave/enter called only to re-lay out the same screen (rotation,
+                                   // a redraw after sleep): screens keep what they run (the share server)
 
     // Toast (drawn by app over any screen, auto-hidden after toast_until).
     char toast[128];
@@ -107,3 +109,8 @@ void app_apply_sleep_policy(App *a);
 void pensettings_open(App *a, ToolKind tab);         // switch to SCR_PENSET (returns to prev_scr)
 void calibrate_open(App *a);                         // switch to SCR_CALIB (returns to prev_scr)
 void share_open(App *a);                             // switch to SCR_SHARE (returns to prev_scr)
+
+// The headless runner's `expect` checks read the app's state through this (tests only; cheap).
+// Keys: "screen" (library|editor|penset|calib|share), "toast" (the visible toast, "" if none),
+// "asleep" (0|1), "rotation" (0..3), "size" (WxH). 0 and the value in out, -1 for an unknown key.
+int app_probe(const char *key, char *out, size_t cap);

@@ -28,6 +28,7 @@ static const ScreenOps k_screens[SCR_COUNT] = {
 
 static void app_sleep(App *a);
 static void app_wake(App *a);
+static App *g_probe_app;  // for app_probe (one App per process)
 
 const char *app_mirror_dir(void) {
     static char buf[600];
@@ -37,6 +38,7 @@ const char *app_mirror_dir(void) {
 
 int app_init(App *a, int w, int h, float dpi) {
     memset(a, 0, sizeof *a);
+    g_probe_app = a;
     a->w = w;
     a->h = h;
     a->dpi = dpi;
@@ -164,8 +166,10 @@ void app_toast(App *a, const char *msg, int ms) {
 void app_redraw_mode(App *a, RefreshMode m) {
     a->toast_visible = false;
     a->dirty = RECT_EMPTY;
+    a->relayout = true;
     k_screens[a->scr].leave(a);
     k_screens[a->scr].enter(a);
+    a->relayout = false;
     app_invalidate_all(a, m);
 }
 
@@ -230,8 +234,10 @@ void app_set_rotation(App *a, int r) {
     if (a->toast_visible) a->toast_rect = ui_toast_rect((Rect){0, 0, w, h}, a->toast);
     a->dirty = RECT_EMPTY;
     // Re-lay out the current screen in the new shape.
+    a->relayout = true;
     k_screens[a->scr].leave(a);
     k_screens[a->scr].enter(a);
+    a->relayout = false;
     app_invalidate_all(a, REFRESH_FULL);
 }
 
@@ -333,4 +339,17 @@ void app_switch(App *a, ScreenId s) {
 void app_press_feedback(App *a, Rect r) {
     canvas_invert(&a->screen, r);
     display_present(&a->screen, r, REFRESH_FAST);
+}
+
+int app_probe(const char *key, char *out, size_t cap) {
+    static const char *const k_names[SCR_COUNT] = {"library", "editor", "penset", "calib", "share"};
+    const App *a = g_probe_app;
+    if (!a || !key || !out || cap == 0) return -1;
+    if (!strcmp(key, "screen")) snprintf(out, cap, "%s", k_names[a->scr]);
+    else if (!strcmp(key, "toast")) snprintf(out, cap, "%s", a->toast_visible ? a->toast : "");
+    else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
+    else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
+    else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
+    else return -1;
+    return 0;
 }
