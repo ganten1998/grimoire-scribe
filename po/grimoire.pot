@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 09:20-0500\n"
+"POT-Creation-Date: 2026-10-20 10:07-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -270,7 +270,7 @@ msgstr ""
 msgid "Tap with a finger on the center of the target (%d of %d)."
 msgstr ""
 
-#. TRANSLATORS: calibration's buttons, bars across the screen (1724 px at 44 px). While the
+#. TRANSLATORS: calibration's buttons, bars across the screen (1708 px at 44 px). While the
 #. pen is calibrated, a finger works them, and the pen while touch is.
 #: src/calibrate.c
 msgid "Cancel (tap with a finger)"
@@ -365,7 +365,7 @@ msgstr ""
 msgid "Sleep"
 msgstr ""
 
-#. TRANSLATORS: makes the open page the sleep screen (544 px at 44 px, or 34 px).
+#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: src/dispmenu.c
 msgid "Pin this page"
 msgstr ""
@@ -381,7 +381,7 @@ msgctxt "sleep after"
 msgid "never"
 msgstr ""
 
-#. TRANSLATORS: closes a sheet: under its check mark here (344 px at 34 px), on Settings 364 px
+#. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
 #. at 44 px, on the keyboard 334 px at 44 px in bold.
 #: src/dispmenu.c src/keyboard.c src/library.c src/share.c
 msgid "Done"
@@ -947,7 +947,7 @@ msgstr ""
 msgid "%d of %d"
 msgstr ""
 
-#. TRANSLATORS: takes the layout built on the Custom music sheet (364 px at 34 px).
+#. TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).
 #: src/musicbuild.c
 msgid "Use layout"
 msgstr ""
@@ -1279,7 +1279,7 @@ msgstr ""
 msgid "Is another app using the port? Try again."
 msgstr ""
 
-#. TRANSLATORS: starts the share server again (404 px at 44 px, or 34 px).
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
 #: src/share.c
 msgid "Retry"
 msgstr ""

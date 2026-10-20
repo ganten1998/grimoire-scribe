@@ -114,7 +114,7 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
     y += rh;
     if (editor_page_canvas(a)) {
         Rect pin = {in.x, y + ui_px(8), ui_px(560), rh - ui_px(16)};
-        // TRANSLATORS: makes the open page the sleep screen (544 px at 44 px, or 34 px).
+        // TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
         ui_button(c, pin, ICON_NONE, _("Pin this page"), BTN_PLAIN);
         hits_add(&m->hits, pin, D_PIN, 0);
         y += rh;
@@ -130,7 +130,7 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
     ui_slider_draw(c, &s, vt);
     hits_add(&m->hits, after, D_SLEEP_AFTER, 0);
     Rect done = {in.x + in.w - ui_px(360), in.y + in.h - ui_px(140), ui_px(360), ui_px(140)};
-    // TRANSLATORS: closes a sheet: under its check mark here (344 px at 34 px), on Settings 364 px
+    // TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
     // at 44 px, on the keyboard 334 px at 44 px in bold.
     ui_button(c, done, ICON_CHECK, _("Done"), BTN_PRIMARY);
     hits_add(&m->hits, done, D_DONE, 0);

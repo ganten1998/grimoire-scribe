@@ -74,7 +74,7 @@ static void draw(App *a) {
         canvas_line_aa(c, cx - r * 1.6f, cy, cx + r * 1.6f, cy, (float)ui_px(4), 0);
         canvas_line_aa(c, cx, cy - r * 1.6f, cx, cy + r * 1.6f, (float)ui_px(4), 0);
         Rect cancel = bar(a, 0);
-        // TRANSLATORS: calibration's buttons, bars across the screen (1724 px at 44 px). While the
+        // TRANSLATORS: calibration's buttons, bars across the screen (1708 px at 44 px). While the
         // pen is calibrated, a finger works them, and the pen while touch is.
         ui_button(c, cancel, ICON_NONE, S->phase == PH_PEN ? _("Cancel (tap with a finger)") : _("Cancel"), BTN_PLAIN);
         hits_add(&S->hits, cancel, B_CANCEL, 0);

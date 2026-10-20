@@ -153,7 +153,7 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     Rect cancel = {in.x, in.y + in.h - bh, bw2, bh};
     Rect done = {in.x + in.w - bw2, in.y + in.h - bh, bw2, bh};
     ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
-    // TRANSLATORS: takes the layout built on the Custom music sheet (364 px at 34 px).
+    // TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).
     ui_button(c, done, ICON_CHECK, _("Use layout"), BTN_PRIMARY);
     hits_add(&b->hits, cancel, B_CANCEL, 0);
     hits_add(&b->hits, done, B_DONE, 0);

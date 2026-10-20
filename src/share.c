@@ -229,7 +229,7 @@ static void draw(App *a) {
     placed(a, "Done", done);
     if (n == 0) {
         Rect retry = {in.x, in.y + in.h - bh, bw, bh};
-        // TRANSLATORS: starts the share server again (404 px at 44 px, or 34 px).
+        // TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
         ui_button(c, retry, ICON_NONE, _("Retry"), BTN_PLAIN);
         hits_add(&S->hits, retry, H_RETRY, 0);
         placed(a, "Retry", retry);
