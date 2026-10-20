@@ -17,6 +17,15 @@
 //     renders rotated itself). Seen on device 2026-10-10: at fb rotate 1 every tap landed exactly
 //     180 degrees from the drawn button. Override with an empty /mnt/us/grimoire/screen-flip or
 //     /mnt/us/grimoire/screen-noflip.
+//
+// Colour panels (the Scribe Colorsoft: FBInk's has_color_panel, 32 bpp): the driver reads the
+// framebuffer for an update some time after it was sent (about 23 ms, measured on a Scribe
+// Colorsoft), in tiles. Pixels changed again before that show half old, striped. So after a fast
+// refresh that is not live ink (a pressed button, the panel being dragged, a pinch, a slider)
+// Grimoire waits until the driver has read the frame (MXCFB_WAIT_FOR_MDP_COMPLETION), as KOReader
+// does. Live ink (display_live_ink: a pen stroke, erasing included) never waits, so pen reading
+// never stalls: a stroke's frames only add ink the next one sends again, and erasing ends with a
+// grayscale refresh of all it erased, which repaints anything a frame's read caught half done.
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,6 +57,12 @@ static bool g_flip;           // framebuffer is 180 degrees from the panel's tou
 static int g_rot;             // device rotation, quarter turns clockwise
 static int PW, PH;            // panel (framebuffer view) size
 static int LW, LH;            // logical screen size (swapped when turned sideways)
+// Not in FBInk's eink/mtk-kindle.h: blocks until the driver has read the framebuffer for the
+// update with this marker (the FW 5.19.6 Colorsoft kernels have it).
+#define MXCFB_WAIT_FOR_MDP_COMPLETION _IOW('F', 0x4D, uint32_t)
+static bool g_mdp_wait;       // a colour panel: fast refreshes outside live ink wait for the driver's read
+static int g_mdp_logged;      // waits logged (the first few, for a tester's log)
+static LiveInk g_ink;         // strokes being drawn (display_live_ink): their fast frames never wait
 
 // Logical screen pixel -> framebuffer pixel (device rotation, then the framebuffer quirk).
 static void to_fb(int lx, int ly, int *fx, int *fy) {
@@ -131,7 +146,32 @@ static void set_pen_mode(bool on) {
     g_pen_mode = on;
 }
 
-void display_pen_mode(bool on) { set_pen_mode(on); }
+void display_live_ink(bool on) { live_ink_mark(&g_ink, on, now_ms()); }
+
+void display_pen_mode(bool on) {
+    display_live_ink(on);
+    set_pen_mode(on);
+}
+
+// After a fast refresh on a colour panel: wait until the driver has read the frame, so the next
+// change to those pixels cannot show through half done. A driver that refuses the wait, or takes
+// more than a second over it, is not asked again this session (logged once).
+static void mdp_wait(void) {
+    uint32_t marker = fbink_get_last_marker(), t0 = now_ms();
+    int rc = ioctl(g_fd, MXCFB_WAIT_FOR_MDP_COMPLETION, &marker);
+    uint32_t took = now_ms() - t0;
+    if (rc < 0 && errno == EINTR) return;
+    if (rc < 0 || took > 1000) {
+        g_mdp_wait = false;
+        qlog("display: MXCFB_WAIT_FOR_MDP_COMPLETION %s after %u ms (marker %u): no longer waiting for the colour "
+             "panel's read", rc < 0 ? strerror(errno) : "took too long", took, marker);
+        return;
+    }
+    if (g_mdp_logged < 20) {
+        g_mdp_logged++;
+        qlog("display: waited %u ms for the colour panel's driver to read fast refresh %u", took, marker);
+    }
+}
 
 int display_open(int *w, int *h, float *dpi) {
     memset(&g_cfg, 0, sizeof g_cfg);
@@ -187,6 +227,9 @@ int display_open(int *w, int *h, float *dpi) {
     qlog("display: fb rotate %u -> %s", g_st.current_rota, g_flip ? "drawing rotated 180 degrees" : "drawing as is");
     g_pen_wanted = access("/mnt/us/grimoire/pen-mode", F_OK) == 0;
     qlog("display: MTK pen mode %s", g_pen_wanted ? "enabled (flag file)" : "off (plain DU for live ink)");
+    g_mdp_wait = g_st.has_color_panel && g_st.bpp == 32;
+    if (g_mdp_wait)
+        qlog("display: colour panel: fast refreshes other than live ink wait until the driver has read the frame");
     PW = LW = (int)g_st.screen_width;
     PH = LH = (int)g_st.screen_height;
     *w = PW;
@@ -307,6 +350,8 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
     int ret = send_refresh(r, mode, &rc);
+    bool ink = live_ink_frame(&g_ink, mode, now_ms());
+    if (ret >= 0 && mode == REFRESH_FAST && g_mdp_wait && !ink) mdp_wait();
     if (ret >= 0 && g_presents < 40)
         qlog("display: refresh #%d %d,%d %dx%d mode %d pen %d -> ok, marker %u, fb[center]=%u", g_presents, r.x, r.y,
              r.w, r.h, mode, g_pen_mode, fbink_get_last_marker(), g_readback ? fb_gray(LW / 2, LH / 2) : 0u);

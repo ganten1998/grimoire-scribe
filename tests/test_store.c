@@ -167,7 +167,7 @@ TEST(custom_music_paper_roundtrip) {
     CHECK(paper_sanitize((uint32_t)PAPER_CUSTOM_FLAG, PAPER_BLANK) == PAPER_BLANK);         // no parts
     CHECK(paper_sanitize((uint32_t)PAPER_CUSTOM_FLAG | 1u << 24 | 15u, PAPER_BLANK) == PAPER_BLANK);  // bad part
     CHECK(paper_sanitize(999u, PAPER_MEDIUM) == PAPER_MEDIUM);
-    CHECK(music_max_systems(&m) >= 2 && music_max_systems(&m) <= MUSIC_MAX_SYSTEMS);
+    CHECK(music_max_systems(&m, 2480, 300.f) >= 2 && music_max_systems(&m, 2480, 300.f) <= MUSIC_MAX_SYSTEMS);
     Page *p = page_new(1860, 2480, k);
     page_add(p, squiggle(0, 300.f));
     uint8_t *d;

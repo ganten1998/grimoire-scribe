@@ -89,6 +89,8 @@ static void draw(App *a) {
 }
 
 static void restart(App *a, Phase ph, const char *msg) {
+    if (S->drawing) display_live_ink(false);  // a check stroke cut short (a finger on Start over)
+    S->drawing = false;
     S->phase = ph;
     S->target = 0;
     strlcpy_q(S->msg, msg ? msg : "", sizeof S->msg);
@@ -150,7 +152,17 @@ void calibrate_enter(App *a) {
     restart(a, PH_PEN, "");
 }
 
-void calibrate_leave(App *a) {}
+void calibrate_leave(App *a) {
+    if (S->drawing) display_live_ink(false);  // left in the middle of a check stroke (a finger on Save)
+    S->drawing = false;
+}
+
+// A calibration is saved with the panel it was made on, upright (the mapping is in its pixels), so
+// it follows the data to a panel of another size: app_init scales it there.
+static void made_on(App *a, int *w, int *h) {
+    *w = a->rotation & 1 ? a->h : a->w;
+    *h = a->rotation & 1 ? a->w : a->h;
+}
 
 static int button_at(App *a, float x, float y) {
     const Hit *h = hits_find(&S->hits, x, y);
@@ -167,6 +179,7 @@ void calibrate_event(App *a, const InEvent *ev) {
             tool_params_default(TOOL_BALLPOINT, &p);
             brush_begin(&S->bs, TOOL_BALLPOINT, &p, 7, a->dpi);
             S->drawing = true;
+            display_live_ink(true);  // live ink, as in the editor (but no pen mode: plain DU, as before)
         }
         if (S->drawing && pen) {
             PenSample s = {ev->x, ev->y, fmaxf(ev->pressure, 0.5f), 0, 0, ev->t_ms};
@@ -175,14 +188,21 @@ void calibrate_event(App *a, const InEvent *ev) {
             Rect d = brush_add(&S->bs, &a->screen, &s);
             a->screen.clip = saved;
             app_invalidate(a, rect_intersect(d, S->pad), REFRESH_FAST);
-            if (ph == 2) S->drawing = false;
+            if (ph == 2) {
+                S->drawing = false;
+                display_live_ink(false);
+            }
             return;
         }
         if (ph != 2) return;
         switch (button_at(a, ev->x, ev->y)) {
         case B_SAVE:
             a->settings.pen_calib = S->new_pen;
-            if (S->new_touch.valid) a->settings.touch_calib = S->new_touch;
+            made_on(a, &a->settings.pen_panel_w, &a->settings.pen_panel_h);
+            if (S->new_touch.valid) {
+                a->settings.touch_calib = S->new_touch;
+                made_on(a, &a->settings.touch_panel_w, &a->settings.touch_panel_h);
+            }
             settings_save(&a->settings);
             input_set_calib(&a->settings.pen_calib, a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);
             leave_to(a);

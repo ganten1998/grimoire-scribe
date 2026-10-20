@@ -93,11 +93,33 @@ The 13 parameters, in order, with the range every reader clamps them to:
 | 5 | pressure_ceiling | 0.05 to 1 | | 12 | smoothing | 0 to 1 |
 | 6 | pressure_gamma | 0.25 to 4 | | | | |
 
-Readers also read a float that is not finite as 0 and clamp x and y to -10000..30000. A page
-stored at another size than the screen's is scaled when it is opened (the points are multiplied),
-and written at the new size after an edit. Rendering replays each stroke from its first point, so
-how a page looks depends on these bytes alone: `tests/test_golden.c` holds renders recorded from
-1.0.0-beta that every later version must reproduce.
+Readers also read a float that is not finite as 0 and clamp x and y to -10000..30000. Rendering
+replays each stroke from its first point, so how a page looks depends on these bytes alone:
+`tests/test_golden.c` holds renders recorded from 1.0.0-beta that every later version must
+reproduce.
+
+### Page size
+
+Ruled, dot and graph paper and their margins are drawn in millimetres at the page's dpi (300 on
+every Scribe) from the page's top left, and stroke widths are in millimetres: a bigger page has
+more lines, not wider ones (music papers spread their staves over the page's height between
+margins of a fixed size). Scaling a page's points therefore moves its ink off the paper it was
+written on. The Scribe 3 and the Scribe Colorsoft are 1986x2648, the 2022 and 2024 Scribes
+1860x2480 (6.8% apart): ink scaled from one to the other lands about two medium rules off near
+the bottom of the page.
+
+- **1.1 on:** a notebook keeps the page size it was made with (`page_w`, `page_h` in
+  `notebook.ini`), wherever it is opened. The editor fits the page to the screen (its width to the
+  screen's width), as the sleep screen does; the Pages view, the thumbnails and every export are
+  made at the page's own size. New pages get the notebook's size. A page file of another size
+  than its notebook's (one a version before 1.1 scaled to another screen, below) has its points
+  scaled back to the notebook's size when it is opened, which puts the ink written on the
+  notebook's own screen back on its lines, and is written at that size after an edit. Exports
+  scale it back the same way and leave its file as it is.
+- **Before 1.1** (1.0.0-beta, rc.1, beta.2): every page opens at the screen's size, its points
+  scaled when the stored size differs, and a page edited there is written at the screen's size.
+  Back in 1.1 such a page goes back to its notebook's size: the ink it had moves back onto its
+  lines, and ink the older version added on the other Scribe moves by the ratio of the sizes.
 
 ### Erase strokes
 
@@ -307,8 +329,34 @@ line. Values are clamped to their ranges when read.
 | `theme` | `gothic` or `classic` |
 | `settings_version` | 2: which default-changing upgrades have run |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
+| `pen.panel` | `WxH`: the panel the pen calibration was made on, upright (since 1.1; below) |
 | `touch.valid`, `touch.swap`, `touch.ax`, `touch.bx`, `touch.ay`, `touch.by` | touch calibration |
+| `touch.panel` | `WxH`: the panel the touch calibration was made on (since 1.1) |
 | `<tool>.<param>` | a tool's setting: `<tool>` is `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy`; `<param>` is one of the 13 parameter names above |
+
+A calibration maps the digitizer's axes (u and v, each 0 to 1, swapped when `swap` is 1) to the
+pixels of the panel it was made on: x = ax * u + bx, y = ay * v + by. From 1.1 on, `panel`
+records that panel, upright, and at startup Grimoire scales a calibration made on a panel of
+another size (a grimoire folder copied from one Scribe to another) to its own: ax and bx by the
+ratio of the widths, ay and by by the ratio of the heights. It logs that, and the next settings
+save writes the new values with this panel's `panel`.
+
+- A calibration with no `panel` (made before 1.1, or saved by 1.0.0-beta, which drops the key)
+  counts as made on an 1860x2480 Scribe (the 2022 and 2024 Scribes, where nearly every
+  calibration before 1.1 was made).
+- Its own scale has the last word. A calibration only corrects the default mapping, which spans
+  the panel exactly: it spans a panel when its |ax| and |ay| are within 2.5% of that panel's
+  width and height (the two Scribe sizes are 6.8% apart). It was made on the first of these it
+  spans: the recorded (or assumed) panel, this one, then 1860x2480 and 1986x2648; spanning none,
+  the recorded one. So one recorded as another panel's that spans this one was made here and is
+  kept as it is (a calibration made on a 1986x2648 Scribe before 1.1), and one recorded as this
+  panel's that spans a Scribe's of the other size instead was made there and is scaled from it.
+  Both catch a `panel` line gone stale, whichever way: 1.0.0-beta.2 carries the line through a
+  calibration of its own, on a Scribe of either size.
+- A `panel` value that does not read as `WxH` (100 to 6000 each) is a line this version does not
+  understand: kept while the calibration's panel is not recorded. At startup a valid calibration
+  gets this panel's (it counts as not recorded until then, as above), and the next save writes
+  that in place of the line.
 
 From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 
@@ -347,6 +395,15 @@ Frozen while 1.0.0-beta is in use:
 | `last_page` | the page index opened next time |
 | `next_page_id` | the id the next new page gets |
 | `pages` | the page ids in order, comma-separated |
+| `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
+
+A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
+keys), or with a value outside 100 to 6000, takes the size most of its page files have, by their
+first 16 bytes (any version 1 to 255; a page without them does not count), a tie going to the size
+of the first such page in `pages` order; with no such page, the device's own. The next save writes
+it. A notebook moved between Scribes by a version before 1.1 has its pages edited there at the
+other Scribe's size (and 1.0.0-beta re-saves page 1 after a page delete), so it takes the size of
+most of its pages: the pages of the other size are scaled to it.
 
 From 1.0.0-beta.2 on, a line whose key it does not know is written back after the keys it knows,
 whole lines up to 2 KB in all (a line that does not fit is left out and logged), and a `paper`
@@ -370,7 +427,8 @@ Frozen while 1.0.0-beta is in use:
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
   never touch.
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
-  unknown keys on its next save.
+  unknown keys on its next save. (The page size and the calibration's panel are such keys: what a
+  version does without them is in their own sections.)
 
 ## Moving between versions
 
@@ -399,4 +457,6 @@ row.
 | a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
+| `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
+| `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale, on a Scribe of either size) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

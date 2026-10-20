@@ -1,9 +1,10 @@
 // editor.c: the notebook editor. Live ink, stroke eraser, the floating panel, page
 // navigation, paper changes, autosave.
 //
-// Pixels: page_canvas holds paper + ink at page resolution (the device's portrait size, fixed).
-// The view maps page -> screen (zoom + pan): 100% in portrait, fit-to-width when the Kindle is
-// turned sideways, pinch to zoom 1x..4x. a->screen = the viewed page + panel (+ paper sheet).
+// Pixels: page_canvas holds paper + ink at page resolution: the notebook's page size, the screen
+// it was made on (a notebook from another Scribe keeps its own). The view maps page -> screen
+// (zoom + pan): the page's width fits the screen's (100% upright for a notebook made on this
+// screen), pinch to zoom up to 4x that. a->screen = the viewed page + panel (+ paper sheet).
 // compose(r) rebuilds a screen rect from those layers; show(page rect) is the page-side entry.
 #include <math.h>
 #include <stdio.h>
@@ -184,11 +185,15 @@ static History *cur_hist(App *a) {
     return e ? &e->h : NULL;
 }
 
+// Page `index` from disk, at the notebook's page size (S->pgw x S->pgh, use_page_size): every page
+// the editor reads comes through here, so none can come at the screen's size instead.
+static int load_page(App *a, int index, Page **out) { return store_load_page(&S->nb, index, S->pgw, S->pgh, out); }
+
 // The page at index, from the session cache or (first visit) from disk.
 static Page *page_at(App *a, int index) {
     PageHistory *e = entry_for(a, S->nb.page_ids[index]);
     if (!e) return NULL;
-    if (!e->page && store_load_page(&S->nb, index, S->pgw, S->pgh, &e->page) != 0) return NULL;
+    if (!e->page && load_page(a, index, &e->page) != 0) return NULL;
     return e->page;
 }
 
@@ -369,6 +374,10 @@ static bool view_identity(App *a) {
 static void view_clamp(App *a) {
     S->zoom = clampf(S->zoom, S->zoom_min, S->zoom_default * 4.f);
     float vw = (float)a->w / S->zoom, vh = (float)a->h / S->zoom;  // visible page area
+    // A page fitted to a screen of another size (a notebook from another Scribe) spans it but for
+    // float rounding: exactly, so the fitted view sits at no offset (and shows no zoom chip).
+    if (fabsf(vw - (float)S->pgw) < 0.01f) vw = (float)S->pgw;
+    if (fabsf(vh - (float)S->pgh) < 0.01f) vh = (float)S->pgh;
     S->ox = vw >= (float)S->pgw ? -(vw - (float)S->pgw) / 2.f : clampf(S->ox, 0.f, (float)S->pgw - vw);
     S->oy = vh >= (float)S->pgh ? -(vh - (float)S->pgh) / 2.f : clampf(S->oy, 0.f, (float)S->pgh - vh);
     // Snap to exactly 100% / no offset in portrait so the fast identity path is used.
@@ -378,7 +387,9 @@ static void view_clamp(App *a) {
     }
 }
 
-// Portrait: 100%. Sideways: the page fills the width (pan with two fingers).
+// The page fills the screen's width: 100% upright for a page of this screen's size, the whole page
+// for a notebook from another Scribe (theirs are 3:4 too), and sideways the width (pan with two
+// fingers; pinching out shows the whole page).
 static void view_reset(App *a) {
     S->zoom_min = fminf((float)a->w / (float)S->pgw, (float)a->h / (float)S->pgh);
     S->zoom_default = (float)a->w / (float)S->pgw;
@@ -502,7 +513,7 @@ static const Canvas *pthumb(App *a, int index) {
     for (int i = 0; i < S->nhist; i++)
         if (S->hist[i].page_id == S->nb.page_ids[index]) p = S->hist[i].page;
     if (!p) {
-        if (store_load_page(&S->nb, index, S->pgw, S->pgh, &p) != 0) return t;
+        if (load_page(a, index, &p) != 0) return t;
         temp = true;
     }
     Canvas full;
@@ -718,6 +729,20 @@ static void go_to_page(App *a, int index) {
     arrive_readonly(a);
 }
 
+// The open notebook's page size (it keeps the one it was made with, whatever the screen). The page
+// canvas and the paper previews are made at it: when it changes they go, to be made again.
+static void use_page_size(App *a) {
+    int w, h;
+    store_notebook_page_size(&S->nb, &w, &h);
+    if (w == S->pgw && h == S->pgh) return;
+    S->pgw = w;
+    S->pgh = h;
+    canvas_free(&S->page_canvas);
+    S->canvas_page = NULL;
+    for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
+    canvas_free(&S->custom_prev);
+}
+
 static void close_notebook(App *a) {
     if (!S->open) return;
     save_page(a);
@@ -725,7 +750,7 @@ static void close_notebook(App *a) {
     if (S->index != 0 && S->changed) {
         // Keep the library thumbnail (page 1) in sync even if we never visited it.
         Page *p0;
-        if (store_load_page(&S->nb, 0, S->pgw, S->pgh, &p0) == 0) {
+        if (load_page(a, 0, &p0) == 0) {
             Canvas t;
             if (canvas_init(&t, S->pgw / 3, S->pgh / 3) == 0) {
                 page_render_thumb(&t, p0, a->dpi);
@@ -751,6 +776,7 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
+    use_page_size(a);
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
     S->page = page_at(a, S->index);
     if (!S->page) {
@@ -808,6 +834,7 @@ static void draw_begin(App *a, const InEvent *ev) {
         to_page(a, ev->x, ev->y, &S->ex, &S->ey);
         S->erase_dirty = RECT_EMPTY;
         if (S->btn_down) S->btn_used_for_ink = true;
+        display_live_ink(true);  // a pen stroke too: its frames never wait (erase_end repaints them)
         return;
     }
     if (S->btn_down) S->btn_used_for_ink = true;
@@ -896,6 +923,7 @@ static int snap_index(App *a, const Stroke *s) {
 
 static void erase_end(App *a) {
     S->owner = OWN_NONE;
+    display_live_ink(false);
     if (S->nremoved > 0) {
         // History wants original indices ascending, paired with their strokes.
         int n = S->nremoved;
@@ -1205,7 +1233,7 @@ static void modal_act(App *a, const Hit *h) {
     }
     if (h->id == P_PICK_CUSTOM) {
         compose(a, sheet);
-        musicbuild_open(&S->mb, a, S->page->paper);
+        musicbuild_open_page(&S->mb, a, S->page->paper, S->pgw, S->pgh);
         Rect r = rect_union(sheet, musicbuild_draw(&S->mb, a));
         app_invalidate(a, r, REFRESH_UI);
         return;
@@ -1577,6 +1605,24 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%d", (int)a->settings.current_tool);
     } else if (!strcmp(key, "zoom")) {
         snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
+    } else if (!strcmp(key, "page_size")) {
+        // The open page's own size: its notebook's, whatever the screen (a page that came at the
+        // screen's size instead would show here).
+        if (has_page) snprintf(out, cap, "%dx%d", S->page->w, S->page->h);
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "scale")) {
+        snprintf(out, cap, "%.2f", S->open ? S->zoom : 0.f);  // screen px per page px
+    } else if (!strcmp(key, "zoomed")) {
+        snprintf(out, cap, "%d", S->open && zoomed(a) ? 1 : 0);  // the zoom chip shows
+    } else if (!strcmp(key, "stroke_start")) {
+        // Where the page's newest stroke starts, in page px: ink lands under the pen through the view.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        if (st && st->n) snprintf(out, cap, "%.0f %.0f", st->pts[0].x, st->pts[0].y);
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "music_max")) {
+        // The most systems the Custom music sheet's layout fits on the page it is for.
+        if (S->mb.open) snprintf(out, cap, "%d", music_max_systems(&S->mb.m, S->mb.page_h, a->dpi));
+        else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "modal")) {
         // What is in front (input goes to the first one open, in this order).
         const char *m = S->pages_open   ? "pages"

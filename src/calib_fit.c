@@ -86,3 +86,41 @@ bool calib_fit(const CalPoint *p, int n, InputCalib *out) {
     *out = c;
     return true;
 }
+
+void calib_scale(InputCalib *c, int from_w, int from_h, int w, int h) {
+    if (from_w <= 0 || from_h <= 0) return;
+    // Multiplied first: the default mapping (ax = from_w) scales to exactly w.
+    c->ax = c->ax * (float)w / (float)from_w;
+    c->bx = c->bx * (float)w / (float)from_w;
+    c->ay = c->ay * (float)h / (float)from_h;
+    c->by = c->by * (float)h / (float)from_h;
+}
+
+bool calib_spans(const InputCalib *c, int w, int h) {
+    return w > 0 && h > 0 && fabsf(fabsf(c->ax) - (float)w) <= 0.025f * (float)w &&
+           fabsf(fabsf(c->ay) - (float)h) <= 0.025f * (float)h;
+}
+
+CalibMove calib_to_panel(InputCalib *c, int *from_w, int *from_h, int w, int h) {
+    if (*from_w <= 0 || *from_h <= 0) {
+        *from_w = 1860;
+        *from_h = 2480;
+    }
+    if (!c->valid) return CALIB_SAME;
+    // Made on the first of these it spans: the recorded panel, this one, then the Scribes' (the
+    // 2022 and 2024 Scribes; the Scribe 3 and the Colorsoft); spanning none, the recorded one.
+    const int panels[4][2] = {{*from_w, *from_h}, {w, h}, {1860, 2480}, {1986, 2648}};
+    int mw = *from_w, mh = *from_h;
+    for (int i = 0; i < 4; i++)
+        if (calib_spans(c, panels[i][0], panels[i][1])) {
+            mw = panels[i][0];
+            mh = panels[i][1];
+            break;
+        }
+    bool recorded_here = *from_w == w && *from_h == h;
+    *from_w = mw;
+    *from_h = mh;
+    if (mw == w && mh == h) return recorded_here ? CALIB_SAME : CALIB_MADE_HERE;
+    calib_scale(c, mw, mh, w, h);
+    return CALIB_SCALED;
+}

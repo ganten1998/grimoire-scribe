@@ -18,8 +18,33 @@ void display_set_orientation(int quarter_turns, int *w, int *h);
 // Show Grimoire's colors inverted (white on black) when on.
 void display_set_invert(bool on);
 // Low-latency handwriting mode (MTK pen mode on the Scribe). While on, only REFRESH_FAST
-// should be used; any other mode turns it off first. No-op where unsupported.
+// should be used; any other mode turns it off first. No-op where unsupported. The editor turns it
+// on for a stroke of ink, which marks live ink too (display_live_ink).
 void display_pen_mode(bool on);
+// Live ink: a stroke being drawn with the pen (writing, erasing, the pen feel pad, the calibration's
+// check line), on at its start and off at its end. On a colour panel every other fast refresh is
+// followed by a wait until the driver has read the frame (display_fbink.c); live ink never waits,
+// so pen reading never stalls. Changes nothing else (no pen mode).
+void display_live_ink(bool on);
+
+// Which fast refreshes are live ink, the rule display_fbink.c follows (the simulator follows it
+// too, and reports it to scripts): those sent while a stroke is drawn, and the first one within
+// 100 ms of its end (the samples that came with the pen lifting go out just after the stroke ends).
+typedef struct {
+    bool on;         // a stroke is being drawn
+    uint32_t ended;  // when the last one ended (0: none since the last fast refresh)
+} LiveInk;
+static inline void live_ink_mark(LiveInk *l, bool on, uint32_t now) {
+    if (l->on && !on) l->ended = now | 1;
+    l->on = on;
+}
+// For a refresh in `mode` sent at `now`: true when it is a fast refresh of live ink.
+static inline bool live_ink_frame(LiveInk *l, RefreshMode mode, uint32_t now) {
+    if (mode != REFRESH_FAST) return false;
+    bool ink = l->on || (l->ended && (int32_t)(now - l->ended) < 100);
+    l->ended = 0;
+    return ink;
+}
 // The screen guard. Both checks read the framebuffer back (8 or 32 bpp) to see whether another
 // process drew over Grimoire; cheap. The simulator never reports an overwrite.
 // This one samples a band of the screen densely: it catches small intruders such as the Kindle's

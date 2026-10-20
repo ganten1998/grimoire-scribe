@@ -14,10 +14,14 @@ typedef struct {
     Press press;
     Canvas prev;          // page preview at 1/4 size, rebuilt when the layout changes
     PaperKind prev_k;
+    int page_w, page_h;   // the page the layout is for: how many systems fit, the preview's size
 } MusicBuild;
 
-// Starts from `start` if it is a custom layout, else from the last one built (settings).
+// Starts from `start` if it is a custom layout, else from the last one built (settings), for a
+// new notebook's page (the device's page size).
 void musicbuild_open(MusicBuild *b, App *a, PaperKind start);
+// The same for a page of page_w x page_h (an open notebook's, which may be another screen's size).
+void musicbuild_open_page(MusicBuild *b, App *a, PaperKind start, int page_w, int page_h);
 Rect musicbuild_draw(MusicBuild *b, App *a);   // draws into a->screen, returns its rect
 // Pointer phase 0 down / 1 move / 2 up. MB_DONE: read musicbuild_result (already saved as
 // the last layout); MB_DONE and MB_CANCEL close the sheet (the host recomposes b->rect).
