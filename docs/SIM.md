@@ -99,25 +99,27 @@ exclamation marks, the angle quotes and the middle dot at x = 570 + 177 n. In Sp
 page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n.
 tests/scenarios/u_accents.qs types accented names with them.
 
-These hold in both styles and in every language (tests/scenarios/y_all_screens.qs taps them in
-each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and
-Settings 1535 95 (hosted by KOReader they move left, as Back to KOReader takes the room it
-needs). Settings' rows are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780,
-Style 930, Mirror PDFs 1060, the pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and
-Language 1580. The Language list has Automatic at 930 785, English 930 945, Español 930 1105 and
-Cancel 930 1265. Pen feel's tabs are at x = 130 + 177 n, y 289, in the order pencil, mechanical
-pencil, charcoal, ballpoint, fineliner, marker, fountain pen, calligraphy pen, highlighter,
-eraser. Sideways (2480x1860): the top bar has New at 1585 95, Share 1965 95 and Settings 2155 95;
-Settings' rows are at x 1240: Pen sensitivity y 260, Calibrate 425, Display 590, Language 1385;
-the Display sheet's sleep screen row is 1240 1005 and its Done 1770 1325; the Language list's
-Cancel 1240 1055. The first card's menu button is 431 896; in a notebook's menu Move to is
-1240 790 and Delete 1240 1110, Delete's Keep it 1240 845, Move to's Cancel 1240 1055, and a
-folder's menu has Cancel at 1240 950. Share's Done is 2160 1485. In New notebook, Rename is
-1950 1424 and the Custom music tile 1800 1115 (its sheet's Cancel 598 1693); the keyboard's page
-key is 928 1745 and its Cancel 279 1745. Pen feel's tabs are at x = 161 + 239 n, y 289 (the
-calligraphy pen's 1834). Calibration's corners are 298 223, 2182 223, 2182 1637 and 298 1637, its
-center 1240 930, touch's skip 1240 1475 and the check's Cancel 1240 1675. The editor's tool button
-is 2388 358.
+These hold in both styles, in English and in Spanish (tests/scenarios/y_all_screens.qs taps them
+in each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and
+Settings 1535 95. Its five buttons widen together for a longer word, up to 220 px each: New is at
+965 only while they are at most 191 px wide, Folder at 1155 up to 198 and Share at 1345 up to 212
+(the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
+Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
+are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
+pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. The Language list
+has Automatic at 930 785, English 930 945, Español 930 1105 and Cancel 930 1265. Pen feel's tabs
+are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
+fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
+top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
+sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
+is 1240 1005 and its Done 1770 1325; the Language list's Cancel 1240 1055. The first card's menu
+button is 431 896; in a notebook's menu Move to folder is 1240 790 and Delete 1240 1110, Delete's
+Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Cancel at 1240 950. Share's
+Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
+sheet's Cancel 598 1693); the keyboard's page key is 928 1745 and its Cancel 279 1745. Pen feel's
+tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's corners are 298 223,
+2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
+Cancel 1240 1675. The editor's tool button is 2388 358.
 
 ### Checks
 
@@ -245,8 +247,8 @@ comments, waits and taps must fail and be reported by its line number (exit 3).
 - tests/scenarios/y_all_screens.qs visits every screen and sheet, upright and sideways. It runs in
   every language, in Gothic and in Classic, with `GRIMOIRE_CHECK_FIT=1` and a made-up wlan0
   address, and a text cut short to fit fails the run (`fit[es]: ...`). Its taps land in both
-  styles and every language (the coordinates above), and it checks only what does not depend on
-  the language. Its shots, `build/shots/l10n/<lang>-<style>/` (01-library-empty to
+  styles, in English and in Spanish (the coordinates above), and it checks only what does not
+  depend on the language. Its shots, `build/shots/l10n/<lang>-<style>/` (01-library-empty to
   65-music-landscape), show translators every screen in context. `make scenarios` runs it too, in
   English and Gothic.
 - In each language, tests/l10n/long_root.qs opens Settings from a data root whose path is longer

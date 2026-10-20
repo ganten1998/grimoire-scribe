@@ -68,6 +68,12 @@ Its log then says `i18n: (simulator) the catalog for es comes from /tmp/l10n/es.
   Library's top-bar buttons widen together), but a word that still does not fit needs a shorter
   one. The glossary records several such choices: *Ajustes* rather than *Configuración* in the top
   bar, *Estilográfica* in the tool picker.
+- **The top bar's taps.** tests/scenarios/y_all_screens.qs taps the Library's New, Folder and
+  Share where English and Spanish put them. A top-bar word wider than 153 px in Gothic (159 px for
+  all but New) or 175 px in Classic, though within its comment's room, widens the buttons enough
+  to move New away from that tap (Folder and Share follow a little later), and make l10n-check then
+  fails on `expect` lines, not with a `fit` line. Keep those words that narrow, or the scenario's
+  taps and docs/SIM.md's coordinates have to change with them.
 - **Arguments.** Keep every `%s`, `%d` and the like, of the same kind and as many as the English
   has. To put them in another order, number them all: `%2$d %1$s`. The date does so: its English
   `%s %d, %02d:%02d` (month, day, hours, minutes) is `%2$d %1$s, %3$02d:%4$02d` in Spanish. Never
@@ -107,8 +113,10 @@ Take French, `fr`:
    ("Français"), its number of plural forms, and its plural rule, a function from a count to the
    index of that count's form, written to match Plural-Forms. English and Spanish share
    `plural_one_other` (`n != 1`); French needs one of its own (`n > 1`).
-3. Add its Plural-Forms line to `k_rules` in tests/test_i18n.c, as the catalog's header has it:
-   the test holds the catalog to the rule written in src/i18n.c.
+3. Add its Plural-Forms line to `k_rules` in tests/test_i18n.c, as the catalog's header has it.
+   The test holds the catalog's header to that line, a copy kept by hand, not to the function in
+   src/i18n.c, so add checks of the function too, to the `plurals` test there: `NG_` at 0, 1 and 2
+   with the forms the catalog gives (in French 0 and 1 take the first form, 2 the second).
 4. Translate, then `make l10n`: it merges the template into `po/fr.po` and compiles `po/fr.mo`,
    which the build embeds by itself (every `po/*.mo`). Settings > Language then lists the language
    by its own name, and Automatic picks it on a Kindle set to it (`fr`, `fr_CA.UTF-8`...).
@@ -130,11 +138,13 @@ tests/test_i18n.c checks both, and that the language's own name can be drawn in 
 - make l10n-check: a `.mo` that is not what msgfmt makes of its `.po` now; text cut short on any
   screen or sheet, in either style, upright or sideways (`fit[<lang>]: "..." needs W px, has R`);
   the Settings sheet from a deep data root, whose path is cut short as names are and does not
-  count; and the Library's top bar opened from KOReader.
+  count; and the Library's top bar opened from KOReader. A top bar widened past the every-screen
+  scenario's taps fails here too, on its `expect` lines (The top bar's taps, above).
 - tests/test_i18n.c: the same printf arguments, by type, in every translation and plural form;
-  the number of plural forms and the Plural-Forms rule; characters every face has; a damaged
-  catalog refused whole; and the widths no screen of the every-screen scenario shows: rare notices,
-  which must take at most two lines in both styles, the Share screen without an address, and Pen
-  feel's labels.
+  the number of plural forms; the Plural-Forms line against `k_rules`, and the plural rule itself
+  only at the counts its `plurals` test checks; characters every face has; a damaged catalog
+  refused whole; and the widths no screen of the every-screen scenario shows: rare notices, which
+  must take at most two lines in both styles, the Share screen without an address, and Pen feel's
+  labels.
 - tests/share_check.sh: the share pages and the studio in Spanish, and that no translation can add
   markup to them.

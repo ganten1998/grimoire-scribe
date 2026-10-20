@@ -186,10 +186,10 @@ new build.
 
 **Open Grimoire, step by step.**
 
-1. The plugin refuses at once, with a message, on a device that is not a Kindle, without
-   `/var/tmp/koreader.sh` (the copy `koreader.sh` runs from while KOReader is up: this KOReader was
-   not started by it), and when none of `STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED` and
-   `AWESOME_STOPPED` is `yes` (koreader.sh paused nothing, as from KPVBooklet).
+1. The plugin refuses at once, with a message, without `/var/tmp/koreader.sh` (the copy
+   `koreader.sh` runs from while KOReader is up: this KOReader was not started by it), and when
+   none of `STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED` and `AWESOME_STOPPED` is `yes` (koreader.sh
+   paused nothing, as from KPVBooklet).
 2. With `documents/Grimoire.sh` there, its Capabilities line (in its first 10 lines) must list
    `unpack-only` and `hosted` (else "This Grimoire cannot open from KOReader: copy a newer
    Grimoire.sh into the Kindle's documents folder."), and "Preparing Grimoire..." shows while
@@ -327,10 +327,10 @@ it takes the power button, at its exit.
   still running (reader.lua, pid N) ...` means a KOReader was left behind (after a crash, say):
   restart the Kindle.
 - **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: the hand-over did not
-  run Grimoire. grimoire.log has the launcher's reason, one of the `grimoire.sh: not starting
-  hosted: ...` lines (KOReader above) or `already running (launcher pid N), not starting another`;
-  with no such line, the hand-over failed inside KOReader, and KOReader's `crash.log` has a
-  `Grimoire:` line about it.
+  run Grimoire. grimoire.log has the launcher's reason, one of the `grimoire.sh: not starting...`
+  lines (KOReader above) or `already running (launcher pid N), not starting another`; with no
+  such line, the hand-over failed inside KOReader, and KOReader's `crash.log` has a `Grimoire:`
+  line about it.
 - **A `grimoire` folder moved to a Scribe of the other size** (1860x2480 and 1986x2648): the
   notebooks keep their page size (docs/FORMAT.md, Page size), and the calibration is scaled at
   startup, logged as `calibration: the pen calibration was made on a 1860x2480 panel; scaled to
@@ -435,18 +435,19 @@ Facts (from source):
   so it needs no libraries from the device at all.
 - The panels: 1860x2480 on the 2022 and 2024 Scribes, 1986x2648 on the Scribe 3 and the Scribe
   Colorsoft, 300 dpi on all of them. On the Colorsoft's color panel the driver reads the
-  framebuffer for an update some time after it was sent (about 23 ms, measured on one), in tiles;
-  its FW 5.19.6 kernels have `MXCFB_WAIT_FOR_MDP_COMPLETION` (`_IOW('F', 0x4D, uint32_t)`, not in
+  framebuffer for an update some time after it was sent (about 23 ms, by a measurement on a
+  Colorsoft that `src/display_fbink.c` cites, not one of this project's checks), in tiles; its
+  FW 5.19.6 kernels have `MXCFB_WAIT_FOR_MDP_COMPLETION` (`_IOW('F', 0x4D, uint32_t)`, not in
   FBInk's `eink/mtk-kindle.h`), which KOReader waits with too.
 - KOReader, as its Grimoire plugin relies on it: it keeps the pen, the touch screen and the screen
   to itself until its own `Device:exit()` (on the Kindle an own field of the device class:
-  `kindle/device.lua` sets `KindleScribe.exit = KindleTouch.exit`). `koreader.sh` runs from a copy
-  at `/var/tmp/koreader.sh` while KOReader is up, starts KOReader again in the same session
-  whenever reader.lua exits with code 85 (its Restart), and keeps the Kindle UI paused all the
-  while. It exports `LC_ALL=en_US.UTF-8` and its pause (`STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED`,
-  `AWESOME_STOPPED`) to what KOReader runs; started from KPVBooklet it pauses nothing. KOReader's
-  exit wakes awesome on Special Offers Kindles, and the KOReader that KPM installs leaves the 5.17+
-  status bar running.
+  `frontend/device/kindle/device.lua` sets `KindleScribe.exit = KindleTouch.exit`).
+  `koreader.sh` runs from a copy at `/var/tmp/koreader.sh` while KOReader is up, starts KOReader
+  again in the same session whenever reader.lua exits with code 85 (its Restart), and keeps the
+  Kindle UI paused all the while. It exports `LC_ALL=en_US.UTF-8` and its pause
+  (`STOP_FRAMEWORK`, `PILLOW_HARD_DISABLED`, `AWESOME_STOPPED`) to what KOReader runs; started
+  from KPVBooklet it pauses nothing. KOReader's exit wakes awesome on Special Offers Kindles, and
+  the KOReader that KPM installs leaves the 5.17+ status bar running.
 
 How Grimoire uses that:
 

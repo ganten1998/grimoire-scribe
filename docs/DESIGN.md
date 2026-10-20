@@ -147,8 +147,8 @@ for white ink and a precise eraser.
 
 - Stored like any stroke, with tool 3 (`TOOL_ERASER`, `stroke_is_erase`). The seed's top byte
   holds the texture, the drawing tool whose look it has + 1; 0 is the round hard tip, and so is any
-  other byte (4, the eraser's own, or one past this version's tools). The brush hashes only the
-  low 24 bits (`erase_seed` makes such a seed).
+  other byte (4, the eraser's own, or any value past this version's tools). The brush hashes only
+  the low 24 bits (`erase_seed` makes such a seed).
   `stroke_render_tool` gives the tool whose look and reach it draws with, from the seed, so the
   reader, `scale_page` and the editor know its bbox before its first point. White ink keeps
   everything of its tool but the color: width, nib, grain, pressure and tilt.
@@ -247,7 +247,9 @@ for white ink and a precise eraser.
   l10n, make l10n-check) and tests/test_i18n.c check each translation against its English: the
   same arguments, of the same types, positions allowed (all numbered or none).
 - Plural rules are written by hand in i18n.c (`k_langs`); a catalog's Plural-Forms line is only
-  data, which tests/test_i18n.c's `k_rules` holds to the rule written there.
+  data. tests/test_i18n.c holds that line to `k_rules`, the test's own copy of each rule, kept in
+  step with i18n.c by hand; the function in i18n.c is checked only by the `plurals` test's counts
+  (Spanish at 0, 1 and 2), so a new language adds such checks of its own.
 - Which language: settings.ini `language=`, `auto` by default (a code this version does not speak
   works as `auto` and goes back into the file as it was). For `auto`, `i18n_detect` at startup takes
   the first that is set of `GRIMOIRE_LANG`, on the Kindle the `LANG=` line of
@@ -385,7 +387,8 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
   `suspended`) the restore does not write the screen saved at the start back: it would cover the
   screensaver or the passcode prompt. A start from the Library also installs KOReader's Grimoire
   plugin into `koreader/plugins` when KOReader is there, keeps it up to date
-  (`root/.koplugin-installed`) and never brings back one the user deleted.
+  (`root/.koplugin-installed`) and does not bring back one the user deleted while KOReader stayed
+  installed.
 - Both launchers refuse a plain start inside KOReader (exit 3): `KOREADER_DIR` set, or `pidof
   reader.lua` succeeding. KOReader holds the pen and the touch screen, and Grimoire's exit would
   wake the Kindle UI underneath it. KOReader's way in is its Grimoire plugin
@@ -553,11 +556,11 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   against its English (the same printf arguments by type, the language's number of plural forms,
   only glyphs that Jersey 10, Jacquard 24 and Terminess regular and bold all have) and the
   catalog's Plural-Forms against `k_rules`; damaged catalogs refused whole; the choice of language
-  (settings.ini, the Kindle's locale file, the environment, in that order); dates; paper that
-  never changes with the language; the layout helpers (the overflow hook, wrapping, fit sizes,
-  button labels inside Gothic's carved line, button grids, chips, two-line toasts); and the widths
-  of text the every-screen scenario cannot reach (rare notices in both styles, the Share screen
-  without an address, Pen feel's raw labels).
+  (settings.ini, then `GRIMOIRE_LANG`, the Kindle's locale file, `LC_ALL`, `LC_MESSAGES` and
+  `LANG`); dates; paper that never changes with the language; the layout helpers (the overflow
+  hook, wrapping, fit sizes, button labels inside Gothic's carved line, button grids, chips,
+  two-line toasts); and the widths of text the every-screen scenario cannot reach (rare notices in
+  both styles, the Share screen without an address, Pen feel's raw labels).
 - tests/test_pagesize.c: notebooks keep their page size, pages an older version scaled come back
   to it, the size found from the page files (the size most have) and recorded by a listing,
   calibration scaling and the panel records in settings.ini, music layouts at both page heights,

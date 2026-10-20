@@ -3,16 +3,16 @@
 ## Unreleased (1.1)
 
 - **Grimoire in Spanish**: every screen, the share pages and the Effects studio now come in
-  Spanish too. A new **Settings > Language** row offers Automatic, English and Español. Automatic,
-  the default, follows the language of the Kindle's own Settings, so a Kindle set to Spanish shows
-  Grimoire in Spanish from the first start after the update; Settings > Language > English
-  switches back. A choice applies at once and is kept in `settings.ini` (`language=`). The Spanish
-  is a draft until a native speaker reviews it: `po/es-glossary.md` lists the words to confirm. In
-  Spanish the keyboard's letters page has ñ after l, and a new notebook is named "Cuaderno 20 oct".
-  Pages never change with the language: paper looks the same in every one (Cornell notes keep their
-  English headings), and so do PDFs, PNGs and thumbnails. grimoire.log stays in English and says
-  which language is in use and why (`i18n: language es (auto, from the Kindle's locale
-  es_ES.UTF-8)`).
+  Spanish too. A new **Settings > Language** row offers Automatic (named with the language it gives:
+  "Automatic (English)"), English and Español. Automatic, the default, follows the language of the
+  Kindle's own Settings, so a Kindle set to Spanish shows Grimoire in Spanish from the first start
+  after the update; Ajustes > Idioma > English (Settings > Language, in Spanish) switches back. A
+  choice applies at once and is kept in `settings.ini` (`language=`). The Spanish is a draft until
+  a native speaker reviews it: `po/es-glossary.md` lists the words to confirm. In Spanish the
+  keyboard's letters page has ñ after l, and a new notebook is named "Cuaderno 20 oct". Pages never
+  change with the language: paper looks the same in every one (Cornell notes keep their English
+  headings), and so do PDFs, PNGs and thumbnails. grimoire.log stays in English and says which
+  language is in use and why (`i18n: language es (auto, from the Kindle's locale es_ES.UTF-8)`).
 - **Text that fits**: a notice too long for one line takes two instead of being cut short, and a
   notice is never cut inside a character. The Library's top-bar buttons widen together for a longer
   word, the zoom chip widens for its text, and a paper's name too long for its tile, in New
@@ -33,22 +33,24 @@
   Kindle's home screen never shows), and when Grimoire ends KOReader starts again, with the book
   that was open. Opened so, the Library's Exit reads **Back to KOReader**, and holding the power
   button 4 s goes back too. The plugin speaks KOReader's language (English or Spanish). It is
-  optional: deleting `koreader/plugins/grimoire.koplugin` removes it for good, and the zip's new
-  "KOReader plugin (optional)" folder holds a copy for a hand install, never a top-level `koreader`
-  folder. Each start from the Library keeps the installed plugin up to date (the build it came from
-  is in `grimoire/.koplugin-installed`); a start that finds no KOReader forgets that, so a KOReader
-  installed later gets the plugin. *Execute shell script* on `Grimoire.sh` in KOReader still
-  refuses with status 3.
+  optional, and the zip's new "KOReader plugin (optional)" folder holds a copy for a hand install,
+  never a top-level `koreader` folder. Each start from the Library keeps the installed plugin up to
+  date, and `grimoire/.koplugin-installed` holds the build it came from; deleting
+  `koreader/plugins/grimoire.koplugin` while KOReader stays installed keeps the plugin out (the file
+  then reads `removed`). A start that finds no KOReader forgets that, so a KOReader installed later
+  gets the plugin. *Execute shell script* on `Grimoire.sh` in KOReader still refuses with status 3.
   - Hosted by KOReader, Grimoire leaves the passcode and the pause of the Kindle's screens to
     KOReader, which keeps both for its whole session (Grimoire only stops again what KOReader's
     exit woke). The Kindle's own screensaver as the sleep screen needs those screens, so the page
     shows instead. Only a KOReader started by `koreader.sh` that paused the Kindle's screens (its
-    Library item, KUAL) can open Grimoire. When the hand-over does not run Grimoire, KOReader comes
-    back and says "Grimoire could not start. See grimoire/grimoire.log.", and grimoire.log says why.
-  - For tools: `Grimoire.sh --hosted koreader` and `grimoire/app/grimoire.sh --hosted koreader`
-    (0 Grimoire ran, 1 another Grimoire is running, 3 refused), with `hosted` in the Capabilities
-    lines: `guard unpack-only hosted` in `Grimoire.sh` and `app/CAPABILITIES`, `guard hosted` in
-    `app/grimoire.sh`.
+    Library item, KUAL) can open Grimoire. When the hand-over does not run Grimoire, KOReader says
+    "Grimoire could not start. See grimoire/grimoire.log.": grimoire.log has the launcher's reason,
+    and for a failure inside KOReader, KOReader's `crash.log` has a `Grimoire:` line.
+  - For tools: `grimoire/app/grimoire.sh --hosted koreader` (0 Grimoire ran, 1 another Grimoire is
+    running, 3 refused), and `Grimoire.sh --hosted koreader`, which unpacks first and then answers
+    with that status, or exits 1 when it cannot unpack the app and 2 while the old Quire app still
+    runs (docs/KINDLE.md). `hosted` is in the Capabilities lines: `guard unpack-only hosted` in
+    `Grimoire.sh` and `app/CAPABILITIES`, `guard hosted` in `app/grimoire.sh`.
 - **Notebooks keep their page size**: the 2022 and 2024 Scribes have a 1860x2480 screen, the
   Scribe 3 and the Scribe Colorsoft a 1986x2648 one, and a notebook now keeps the page size it
   was made with (`page_w`, `page_h` in `notebook.ini`). On a Scribe of the other size its pages

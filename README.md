@@ -30,14 +30,15 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 
 You need a **Kindle Scribe** with a jailbreak that runs scriptlets (`.sh` files tapped from the
 Library). Current jailbreaks for the Scribe (Vera, SpiderCat, WinterBreak, Sanctuary) all do;
-see [kindlemodding.org](https://kindlemodding.org) to jailbreak.
+see [kindlemodding.org](https://kindlemodding.org) to jailbreak. On an older jailbreak that runs
+no scriptlets, KOReader can open Grimoire instead (see the table).
 
 | Kindle | Status |
 |---|---|
 | Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.19.6 (Vera); a tester runs it on 5.20.1 (Vera). |
 | Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Reported working**: a tester runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
-| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen it waits for each quick update to reach the screen before drawing over it, so buttons should not show striped. |
+| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
 
 Firmware 5.20.1 is the newest as of October 2026. Check that your jailbreak survives it before
@@ -47,8 +48,8 @@ updating; most people keep OTA updates blocked.
 
 1. Download `Grimoire-<version>.zip` from the
    [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files
-   (and a `KOReader plugin (optional)` folder, needed only in one case: see Does it work in
-   KOReader?).
+   (and a `KOReader plugin (optional)` folder for installing the KOReader plugin by hand: see Does
+   it work in KOReader?).
 2. Connect the Kindle to your computer. The Scribe uses MTP: on a Mac, use
    [OpenMTP](https://openmtp.ganeshrvel.com) (or `brew install --cask openmtp`); on Windows and
    Linux it shows up as a device.
@@ -112,8 +113,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 
 Grimoire speaks English and Spanish. **Settings > Language** offers **Automatic**, **English** and
 **Español**. Automatic, the default, follows the language set in the Kindle's own Settings, and
-gives English for a language Grimoire does not speak yet. So if your Kindle is set to Spanish,
-Grimoire is in Spanish from the first start after you update; Settings > Language > English
+gives English for a language Grimoire does not speak yet; its row names the language it gives
+("Automatic (English)"). So if your Kindle is set to Spanish, Grimoire is in Spanish from the
+first start after you update; **Ajustes > Idioma > English** (Settings > Language, in Spanish)
 switches it back. A choice applies at once and stays chosen.
 
 All of Grimoire follows it: every screen, the share pages and the Effects studio, and the name a
@@ -148,13 +150,16 @@ Kindle's `koreader` folder), tap **Grimoire** in the Library once. That adds Gri
 menu as **Tools > Grimoire**:
 
 - **Open Grimoire**: KOReader closes and Grimoire opens in its place, without the Kindle's home
-  screen in between. In Grimoire, Library > Exit reads **Back to KOReader**; it, or holding the
-  power button 4 seconds, brings KOReader back with the book you had open (or its file browser).
+  screen in between. In Grimoire, Library > Exit reads **Back to KOReader** (**Volver a KOReader**
+  in Spanish); it, or holding the power button 4 seconds, brings KOReader back with the book you
+  had open (or its file browser).
 - **Notebook PDFs**: KOReader's file browser in `grimoire/PDFs`.
 - **Reset pen calibration**: the same rescue as the Library's reset item.
 
 Open Grimoire is also an action for KOReader's gestures (Settings > Taps and gestures). The menu
-speaks KOReader's language, English or Spanish.
+speaks KOReader's language, English or Spanish (**Abrir Grimoire**, **PDF de los cuadernos**,
+**Restablecer la calibración del lápiz**). Only a start from the Library updates the plugin, so
+after you update Grimoire, tap it in the Library once.
 
 This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`
 start, which pauses the Kindle's own screens); a KOReader started another way says why Grimoire
@@ -167,11 +172,12 @@ put the Kindle to sleep inside Grimoire.
 KOReader keeps the pen and the touch screen to itself (KOReader reports status 3): use Tools >
 Grimoire instead.
 
-The plugin is optional. To remove it, delete `koreader/plugins/grimoire.koplugin`; Grimoire does
-not put it back. To put it back, or into a KOReader installed again since, or where the Library
-cannot run scriptlets, copy the zip's `KOReader plugin (optional)/grimoire.koplugin` folder into
-the Kindle's `koreader/plugins` (with `Grimoire.sh` in `documents` as usual). Never copy a folder
-named `koreader` onto the Kindle: it could replace your KOReader.
+The plugin is optional. To remove it, delete `koreader/plugins/grimoire.koplugin`; while KOReader
+stays installed, Grimoire does not put it back. To put it back, or into a KOReader installed again
+since, or where the Library cannot run scriptlets, copy the zip's
+`KOReader plugin (optional)/grimoire.koplugin` folder into the Kindle's `koreader/plugins` (with
+`Grimoire.sh` in `documents` as usual). Never copy a folder named `koreader` onto the Kindle: it
+could replace your KOReader.
 
 The notebook PDFs in `grimoire/PDFs` open in KOReader for reading. Grimoire writes a notebook's
 PDF again whenever you close the notebook after a change, and renames, moves or deletes it with
@@ -217,8 +223,15 @@ going back to an older version on a Scribe of the other size moves the ink on ev
 there.
 
 **Language.** 1.0.0-beta.2 keeps the Settings > Language choice in `settings.ini` (and shows
-English). 1.0.0-beta forgets it the next time it saves its settings, so back in 1.1 the language
-is Automatic again.
+English). 1.0.0-beta and 1.0.0-rc.1 forget it the next time they save their settings, so back in
+1.1 the language is Automatic again.
+
+**KOReader.** An older version leaves KOReader's Grimoire plugin where it is: Tools > Grimoire
+stays in KOReader, Notebook PDFs and Reset pen calibration still work, and Open Grimoire says
+"This Grimoire cannot open from KOReader", because a `Grimoire.sh` older than 1.1 cannot be opened
+from KOReader. Back in 1.1, Open Grimoire works again. To take the plugin out in the meantime,
+delete `koreader/plugins/grimoire.koplugin`; to have it again in 1.1, copy it in by hand (see Does
+it work in KOReader?).
 
 ## Privacy
 
@@ -248,10 +261,11 @@ is Automatic again.
   script* (see Does it work in KOReader?). If "Grimoire did not start: KOReader is running." shows
   near the top of the screen after you tap Grimoire in the Library, a KOReader is still running in
   the background (after a crash, say): restart the Kindle.
-- **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: KOReader closed, but
-  Grimoire did not run, and KOReader came back. A `grimoire.sh: not starting hosted:` line in
-  `grimoire/grimoire.log` says why (a KOReader not started from its Library item or KUAL, say),
-  and `already running` means another Grimoire was still open. "This Grimoire cannot open from
+- **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: the hand-over did not
+  run Grimoire. A `grimoire.sh: not starting` line in `grimoire/grimoire.log` says why (KOReader
+  had not let go of the pen and the touch screen, say), and `already running` means another
+  Grimoire was still open. With neither, the hand-over failed inside KOReader: KOReader's own log,
+  `koreader/crash.log`, has a line starting `Grimoire:` about it. "This Grimoire cannot open from
   KOReader" means the `Grimoire.sh` in `documents` is older than 1.1: copy a newer one.
 - **Strokes land away from the pen tip**: Settings > Calibrate pen and touch. If you cannot reach
   it, tap **Grimoire - reset pen calibration** in the Library.
