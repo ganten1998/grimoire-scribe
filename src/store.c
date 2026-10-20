@@ -253,6 +253,36 @@ int store_take_corrupt_count(void) {
 
 static bool page_file_size(const char *path, int *w, int *h);
 
+// The size most of a notebook's page files have (each from its first 16 bytes); a tie goes to the
+// size that comes first in page order. Pages without one (missing, damaged) do not count. Leaves
+// nb->page_w x page_h as it is when no page has a size. Stops reading once one size has more than
+// half the pages, so a notebook of one size reads half its page files.
+static void notebook_size_from_pages(const char *dir, NotebookInfo *nb) {
+    enum { SIZES = 4 };  // sizes counted, in the order first seen (a fifth is a page of damage)
+    int sw[SIZES], sh[SIZES], count[SIZES], nsizes = 0;
+    char path[700];
+    for (int i = 0; i < nb->npages; i++) {
+        int w, h, k = 0;
+        snprintf(path, sizeof path, "%s/p%u.qpg", dir, nb->page_ids[i]);
+        if (!page_file_size(path, &w, &h)) continue;
+        while (k < nsizes && (sw[k] != w || sh[k] != h)) k++;
+        if (k == nsizes) {
+            if (nsizes == SIZES) continue;
+            sw[k] = w;
+            sh[k] = h;
+            count[k] = 0;
+            nsizes++;
+        }
+        if (++count[k] * 2 > nb->npages) break;  // more than half: no other size can have more
+    }
+    int best = -1;
+    for (int k = 0; k < nsizes; k++)
+        if (best < 0 || count[k] > count[best]) best = k;  // a tie: the one seen first
+    if (best < 0) return;
+    nb->page_w = sw[best];
+    nb->page_h = sh[best];
+}
+
 int store_load_info(const char *id_in, NotebookInfo *out) {
     char dir[600], path[700], id[STORE_ID_LEN];
     strlcpy_q(id, id_in, sizeof id);  // id_in may be out->id itself: copy it before the memset
@@ -277,13 +307,12 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     }
     if (!page_size_ok(out->page_w, out->page_h)) {
         // No page size recorded (a notebook from before 1.1, or one 1.0.0-beta saved: it drops the
-        // keys): the size its first page file has, else the device's. The next save records it.
+        // keys): the size most of its page files have, else the device's. The next save records
+        // it. Most, not the first's: a version before 1.1 on a Scribe of the other size writes
+        // each page it edits at that size, and 1.0.0-beta re-saves page 1 after a page delete.
         out->page_w = g_w;
         out->page_h = g_h;
-        for (int i = 0; i < out->npages; i++) {
-            snprintf(path, sizeof path, "%s/p%u.qpg", dir, out->page_ids[i]);
-            if (page_file_size(path, &out->page_w, &out->page_h)) break;
-        }
+        notebook_size_from_pages(dir, out);
     }
     uint32_t maxid = 0;
     for (int i = 0; i < out->npages; i++)

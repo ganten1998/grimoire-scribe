@@ -282,7 +282,8 @@ TEST(rescaled_pages_come_back) {
 }
 
 // notebook.ini without the size (from before 1.1, or saved by 1.0.0-beta, which drops the keys):
-// the first page file that has a size gives it, else the device does. The next save records it.
+// the size most of its page files have gives it (a tie: the first page's), else the device does.
+// The next save records it.
 TEST(size_found_without_the_keys) {
     store_set_device(DPI, W2, H2);
     NotebookInfo nb;
@@ -292,7 +293,7 @@ TEST(size_found_without_the_keys) {
     store_set_device(DPI, W3, H3);  // opened on a Colorsoft
     NotebookInfo back;
     CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
-    // A first page that does not read: the next one says.
+    // Pages that do not read do not count: the others say.
     char p1[800], p2[800], p3[800];
     page_file(&nb, 0, p1, sizeof p1);
     page_file(&nb, 1, p2, sizeof p2);
@@ -301,10 +302,21 @@ TEST(size_found_without_the_keys) {
     CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
     CHECK(write_file_atomic(p1, "not a page at all, longer than sixteen bytes", 44) == 0);
     CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
-    // A page from a newer version still has its size in the first 16 bytes.
+    unlink(p2);
+    CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
+    // A page from a newer version still has its size in the first 16 bytes. One page of each size
+    // (a tie) gives the size of the first in page order; two of one size outnumber one.
     uint8_t v3[24] = {'Q', 'P', 'G', '1', 3, 0, 4, 0, W3 & 255, W3 >> 8, 0, 0, H3 & 255, H3 >> 8, 0, 0};
-    CHECK(write_file_atomic(p1, v3, sizeof v3) == 0);
+    uint8_t v2[24] = {'Q', 'P', 'G', '1', 3, 0, 4, 0, W2 & 255, W2 >> 8, 0, 0, H2 & 255, H2 >> 8, 0, 0};
+    CHECK(write_file_atomic(p1, v3, sizeof v3) == 0);  // 1986x2648, none, 1860x2480
     CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W3 && back.page_h == H3);
+    CHECK(write_file_atomic(p1, v2, sizeof v2) == 0 && write_file_atomic(p3, v3, sizeof v3) == 0);
+    CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
+    CHECK(write_file_atomic(p2, v3, sizeof v3) == 0);  // 1860x2480, 1986x2648, 1986x2648
+    CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W3 && back.page_h == H3);
+    store_set_device(DPI, W2, H2);
+    CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W3 && back.page_h == H3);
+    store_set_device(DPI, W3, H3);
     // No page file with a size at all: the device's.
     unlink(p1);
     unlink(p2);
@@ -338,6 +350,54 @@ TEST(size_found_without_the_keys) {
     append_line(&nb, "page_h=2648");
     CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W3 && back.page_h == H3);
     CHECK(strstr(back.extra, "lang=es") && !strstr(back.extra, "page_"));
+}
+
+// A ballpoint line across the page at height y.
+static Stroke *line_at(float y) {
+    ToolParams p;
+    tool_params_default(TOOL_BALLPOINT, &p);
+    Stroke *s = stroke_new(TOOL_BALLPOINT, &p, 1);
+    for (int i = 0; i < 10; i++) {
+        PenSample q = {200.f + 100.f * (float)i, y, 0.5f, 0, 0, (uint32_t)i};
+        stroke_append(s, &q, DPI);
+    }
+    return s;
+}
+
+// A notebook made on an 1860x2480 Scribe, three pages with a line near the bottom of each. A
+// version before 1.1 on a Colorsoft re-saves page 1 alone (1.0.0-beta does after a page delete)
+// and drops the size from notebook.ini. Most of its pages say 1860x2480: on either Scribe every
+// page opens at that size with its line where it was written, page 1's scaled back.
+TEST(most_pages_give_the_size) {
+    store_set_device(DPI, W2, H2);
+    NotebookInfo nb;
+    CHECK(store_create("Mixed by an older version", "", PAPER_MEDIUM, &nb) == 0);
+    CHECK(store_add_page(&nb, 1, PAPER_MEDIUM) == 0 && store_add_page(&nb, 2, PAPER_MEDIUM) == 0);
+    for (int i = 0; i < 3; i++) {
+        Page *p = NULL;
+        CHECK(store_load_page(&nb, i, W2, H2, &p) == 0 && p);
+        if (!p) return;
+        page_add(p, line_at(2300.f));
+        CHECK(store_save_page(&nb, i, p) == 0);
+        page_free(p);
+    }
+    older_version_rescales(&nb, 0, W3, H3);
+    drop_lines(&nb, "page_w=", "page_h=");
+    for (int dev = 0; dev < 2; dev++) {
+        store_set_device(DPI, dev ? W3 : W2, dev ? H3 : H2);
+        NotebookInfo back;
+        CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W2 && back.page_h == H2);
+        for (int i = 0; i < 3; i++) {
+            Page *p = NULL;
+            CHECK(store_load_page(&back, i, W2, H2, &p) == 0 && p && p->n == 1);
+            if (p && p->n == 1) CHECK_NEAR(p->strokes[0]->pts[0].y, 2300.0, 0.01);
+            page_free(p);
+        }
+    }
+    // Page 2 re-saved there too: now most pages are 1986x2648, and the notebook takes that size.
+    older_version_rescales(&nb, 1, W3, H3);
+    NotebookInfo back;
+    CHECK(store_load_info(nb.id, &back) == 0 && back.page_w == W3 && back.page_h == H3);
 }
 
 // ---- calibration follows the panel ----
@@ -553,6 +613,7 @@ int main(void) {
     RUN(notebook_keeps_its_size);
     RUN(rescaled_pages_come_back);
     RUN(size_found_without_the_keys);
+    RUN(most_pages_give_the_size);
     RUN(calibration_scaling_math);
     RUN(calibration_panel_in_settings);
     RUN(music_layouts_at_both_heights);

@@ -354,10 +354,12 @@ Frozen while 1.0.0-beta is in use:
 | `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
 
 A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
-keys), or with a value outside 100 to 6000, takes the size of its first page file, in `pages`
-order, whose first 16 bytes give one (any version 1 to 255), else the device's own; the next save
-writes it. So a notebook moved between Scribes by a version before 1.1 takes the size its first
-page has now (if that page was edited on the other Scribe, the other Scribe's size).
+keys), or with a value outside 100 to 6000, takes the size most of its page files have, by their
+first 16 bytes (any version 1 to 255; a page without them does not count), a tie going to the size
+of the first such page in `pages` order; with no such page, the device's own. The next save writes
+it. A notebook moved between Scribes by a version before 1.1 has its pages edited there at the
+other Scribe's size (and 1.0.0-beta re-saves page 1 after a page delete), so it takes the size of
+most of its pages: the pages of the other size are scaled to it.
 
 From 1.0.0-beta.2 on, a line whose key it does not know is written back after the keys it knows,
 whole lines up to 2 KB in all (a line that does not fit is left out and logged), and a `paper`
@@ -411,6 +413,6 @@ row.
 | a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
-| `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size from the first page file); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
+| `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
 | `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
