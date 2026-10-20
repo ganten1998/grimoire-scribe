@@ -31,3 +31,10 @@ void httpd_stop(void);
 int httpd_requests_served(void);
 // Best-effort list of this device's IPv4 addresses (non-loopback), "a.b.c.d" each.
 int net_ipv4_addrs(char out[][16], int max);
+// The same addresses with the interface each is on, Wi-Fi first: wlan*, then en* and eth*, then
+// the rest, usb* (USBNetwork) last. The launcher opens the share port on wlan0 only.
+typedef struct {
+    char ip[16];      // "a.b.c.d"
+    char ifname[16];  // "wlan0"
+} NetAddr;
+int net_ipv4_list(NetAddr *out, int max);
