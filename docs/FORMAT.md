@@ -115,8 +115,8 @@ drawn after it alone.
   white pencil leaves the paper's tooth.
 - **Seed.** The brush hashes seed bits 0 to 23 only (per-dab jitter, charcoal's specks).
 - **Parameters.** The texture tool's settings as the stroke was drawn: for white ink that pen's,
-  for the round tip the eraser's. The stroke reaches exactly as far as that tool does with them,
-  which is the area a version redraws around it.
+  for the round tip the eraser's. How far past its points the stroke can draw (which sets the area
+  a version redraws around it) is that tool's reach with those settings.
 - **Blend.** For each pixel a dab covers: value + (paper - value) x coverage, rounded, only if
   that is lighter, and never lighter than the paper. Where a dab covers a pixel fully (coverage
   0.999 or more) the pixel becomes exactly the paper. Coverage and dab spacing are the texture
