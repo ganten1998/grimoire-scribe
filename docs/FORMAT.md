@@ -21,6 +21,7 @@ root/sleep.pgm                          the pinned sleep screen (P5 PGM, full pa
 root/notebooks/<id>/notebook.ini        one notebook (below)
 root/notebooks/<id>/p<page id>.qpg      one page (below)
 root/notebooks/<id>/thumb.pgm           page 1, about a third of the page size (P5 PGM)
+root/notebooks/<id>/erased.txt          pages that may still hold erased ink (since 1.1; Compaction)
 root/notebooks/<id>/p<id>.qpg.damaged-<time>   a page that could not be read, kept
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
 root/PDFs/                              the PDF mirror (an export, not data)
@@ -155,6 +156,40 @@ out of a page the strokes that do not change how it looks: ink that later erase 
 entirely, and erase strokes that change no pixel, both checked on the page drawn with its paper
 and on its ink layer (`page_droppable` in `src/page.h`). A stroke erased only in part stays whole,
 with the erase strokes over it.
+
+The editor never keeps an erase stroke that changed no pixel of the page as it was drawn (over
+blank paper, or over ink taken away already): such a stroke is not stored and is no undo step.
+
+### Compaction
+
+Until it is left out, erased ink is in the page file: a zip of the notebook, a copy made with
+`grimoire-pull` and any older version still find it. From 1.1 on Grimoire takes it out when a
+notebook closes in the editor, in a background process (on a heavily erased page this can take a
+minute on the Kindle).
+
+- `erased.txt` in the notebook's folder lists the pages to look at, one page id per line in
+  decimal (lines that start with `#` are comments, and a line that is not a page id is skipped).
+  The editor adds a page when it writes the page with an erase stroke it did not have.
+- For each page listed, the page file is read, the strokes `page_droppable` marks are left out
+  (checked at the density Grimoire draws at, 300 dpi on every Scribe), and the page is written
+  again: to `p<id>.qpg.compact.tmp`, renamed over `p<id>.qpg`, and only if the page file still
+  holds, byte for byte, what was read (checked just before the rename; an older version or a copy
+  from a computer may have written it since). The other strokes, the paper and the chunks are
+  written as any save of the page writes them, and the page looks exactly as it did.
+- A page that is done goes off the list: compacted, with nothing to leave out, or one compaction
+  leaves as it is (read-only, of another size than its notebook's, damaged, missing, or no longer
+  in the notebook). A page it could not write stays listed. The list goes once it is empty.
+- Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
+  leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
+  written (each is its old file or its new one), and the list keeps the pages that are not done.
+  They are compacted the next time the notebook closes, or when Grimoire next starts.
+- Compaction never changes how a page looks, so the notebook's PDF mirror (`PDFs/`) is the same
+  whether it is written before or after; the two never run at the same time, and a reader of a
+  page file sees it before compaction or after, never between.
+
+1.0.0-beta and 1.0.0-beta.2 never read or write `erased.txt`: it stays as it is (and goes along
+with the folder to `trash/`). A listed page one of them saves is compacted from what it wrote.
+Pages deleted to `trash/` are not compacted.
 
 ### Chunks
 
@@ -316,7 +351,9 @@ line. Values are clamped to their ranges when read.
 | `draw_tool` | the drawing tool the toolbar's tool button shows: 0 to 9 |
 | `panel_x`, `panel_y` | the floating panel's top-left, screen pixels (-1 = the default place) |
 | `panel_collapsed` | 0 or 1 |
-| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter. Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2) |
+| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter (ink, even with `white`), 3 white ink with the pen's drawing tool (with the eraser picked, the drawing tool the toolbar shows; since 1.1). Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2: it reads 3 as 2, the highlighter, and saves 2; 1.0.0-beta.2 uses 3 as 2 and writes back 3) |
+| `eraser_mode` | the eraser (its button, the pen's eraser end, `side_button` 1): 0 takes whole strokes away (never an erase stroke: that would bring back the ink it covers), 1 is the precise eraser, which draws erase strokes with the round tip (Erase strokes) and the eraser's settings, its widths divided by the zoom (at least 0.10 mm) so that it keeps its size on the screen. Numeric and append-only (since 1.1; 1.0.0-beta drops it and its eraser takes whole strokes away; 1.0.0-beta.2 keeps it) |
+| `white` | 0 or 1: the drawing tools draw white ink, erase strokes with each tool's own settings and texture (since 1.1; 1.0.0-beta drops it, 1.0.0-beta.2 keeps it) |
 | `mirror_pdf` | 0 or 1: write `PDFs/<folder>/<name>.pdf` when a notebook closes |
 | `follow_rotation` | 0 or 1 |
 | `invert` | 0 or 1: white on black |
@@ -363,12 +400,12 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 - A line whose key it does not know (a new key, an unknown dotted key such as a tool or a tool
   setting it lacks, a calibration field it lacks) is written back as it was read, after the keys
   it knows (up to 64 KB of such lines).
-- A known key whose value it cannot use as written (`side_button=3`, a theme it lacks, a setting
-  beyond its range, a music layout with a part it lacks) is used as the nearest value it has, and
-  written back as it was until a save finds the setting at another value. That save writes the
-  new value, and from then on the setting is saved as set, also when it is set back. `http_port`
-  is the exception: it is saved as used, because the launcher opens the firewall for the port it
-  finds in the file.
+- A known key whose value it cannot use as written (`side_button=3` in 1.0.0-beta.2, a theme it
+  lacks, a setting beyond its range, a music layout with a part it lacks) is used as the nearest
+  value it has, and written back as it was until a save finds the setting at another value. That
+  save writes the new value, and from then on the setting is saved as set, also when it is set
+  back. `http_port` is the exception: it is saved as used, because the launcher opens the firewall
+  for the port it finds in the file.
 - A `settings_version` above its own is written back as it is.
 - The 0/1 keys (`panel_collapsed`, `mirror_pdf`, `follow_rotation`, `invert`, `pinch_zoom`,
   `passcode_told`, and the calibration's `valid` and `swap`) read any other value as on when it
@@ -425,10 +462,10 @@ Frozen while 1.0.0-beta is in use:
 - Data about one page: the stroke's ext bytes, an erase stroke's seed bits, the page's paper
   value, or a chunk.
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
-  never touch.
+  never touch (`erased.txt`, the pages left to compact, is one).
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
-  unknown keys on its next save. (The page size and the calibration's panel are such keys: what a
-  version does without them is in their own sections.)
+  unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode` and
+  `white` are such keys: what a version does without them is in their own sections.)
 
 ## Moving between versions
 
@@ -459,4 +496,7 @@ row.
 | a newer `settings_version` | saved as 2 | kept |
 | `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
 | `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale, on a Scribe of either size) |
+| `eraser_mode`, `white` | dropped on the next save; its eraser takes whole strokes away and its pens draw ink | kept; it does as 1.0.0-beta does |
+| `side_button=3` (white ink on the pen's button) | read as 2, the highlighter, and saved as 2 | used as 2, written back as 3 |
+| `erased.txt` (pages left to compact) | never read or written: it stays as it is | the same |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

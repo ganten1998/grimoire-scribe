@@ -15,6 +15,8 @@
 #include "export.h"
 #include "dispmenu.h"
 #include "bgjob.h"
+#include "compact.h"
+#include "inkmode.h"
 #include "musicbuild.h"
 #include "history.h"
 
@@ -67,6 +69,17 @@ struct EditorState {
     Stroke *cur;
     BrushState bs;
     Smoother sm;
+    // White ink and the precise eraser (erase strokes) restore the page's paper: this is it alone,
+    // at page size, for their strokes drawn live (page_render draws them over the same paper, so
+    // live equals re-render). Made at the first erase stroke, drawn again when one starts on a page
+    // of another paper or size than it holds, freed with the notebook.
+    Canvas paper;
+    PaperKind paper_k;          // the paper it holds (while paper.px)
+    // The open notebook's pages listed for compaction this session (compact_note_page), and the
+    // page that has an erase stroke its file does not have yet (listed once the page is saved).
+    uint32_t *noted;
+    int nnoted, capnoted;
+    uint32_t erased_pid;        // 0 none
 
     // Erasing: one gesture = one undo step.
     Stroke **snap;      // page stroke list at gesture start (to recover original indices)
@@ -664,6 +677,24 @@ static void save_thumb_from_canvas(App *a) {
     canvas_free(&t);
 }
 
+// Page `pid` was written with an erase stroke it did not have: its file keeps the ink under it
+// until compaction takes that out when the notebook closes (compact.h). Listed once per page and
+// session; false if the list could not be written.
+static bool note_for_compaction(App *a, uint32_t pid) {
+    for (int i = 0; i < S->nnoted; i++)
+        if (S->noted[i] == pid) return true;
+    if (compact_note_page(S->nb.id, pid) != 0) return false;
+    if (S->nnoted == S->capnoted) {
+        int nc = S->capnoted ? S->capnoted * 2 : 16;
+        uint32_t *nn = realloc(S->noted, (size_t)nc * sizeof *nn);
+        if (!nn) return true;  // (listed: only noted again next time)
+        S->noted = nn;
+        S->capnoted = nc;
+    }
+    S->noted[S->nnoted++] = pid;
+    return true;
+}
+
 // False if the page could not be written; it then stays dirty (and in memory), so callers
 // that would drop it (turning the page, closing) must stay put instead.
 static bool save_page(App *a) {
@@ -677,6 +708,10 @@ static bool save_page(App *a) {
         if (S->index == 0) S->thumb_dirty = true;  // written when leaving the page (it is slow)
         S->page_dirty = false;
         S->info_dirty = true;
+        // Its file has the erase stroke now (and the ink under it): listed for compaction. Here,
+        // not as the pen lifts, so the list's write never holds up the next stroke.
+        uint32_t pid = S->nb.page_ids[S->index];
+        if (S->erased_pid && (S->erased_pid != pid || note_for_compaction(a, pid))) S->erased_pid = 0;
     }
     if (S->info_dirty) {
         if (store_save_info(&S->nb) != 0) return false;
@@ -741,7 +776,47 @@ static void use_page_size(App *a) {
     S->canvas_page = NULL;
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
+    canvas_free(&S->paper);
 }
+
+#ifdef GRIMOIRE_SIM
+// Tests (editor.matches_closed): a hash of the open page drawn from its file as the notebook closed
+// to be compacted, so the page drawn from its file when the notebook opens again (compacted by
+// then, or not) can be held to it. (From its file, not the page canvas: a file keeps pressure in
+// 16 bits, so a page read back can differ from the one drawn live by a level here and there.)
+static struct {
+    char id[STORE_ID_LEN];
+    uint32_t page;
+    uint64_t hash;
+} g_closed;
+
+static uint64_t canvas_hash(const Canvas *c) {
+    uint64_t h = 1469598103934665603ull;  // FNV-1a
+    for (int y = 0; y < c->h; y++) {
+        const uint8_t *row = &c->px[(size_t)y * (size_t)c->stride];
+        for (int x = 0; x < c->w; x++) h = (h ^ row[x]) * 1099511628211ull;
+    }
+    return h;
+}
+
+static void closed_record(App *a) {
+    g_closed.id[0] = 0;
+    Page *p = NULL;
+    Canvas c;
+    if (store_read_page(&S->nb, S->index, &p) != 0 || canvas_init(&c, S->pgw, S->pgh) != 0) {
+        page_free(p);
+        return;
+    }
+    page_render(&c, p, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+    strlcpy_q(g_closed.id, S->nb.id, sizeof g_closed.id);
+    g_closed.page = S->nb.page_ids[S->index];
+    g_closed.hash = canvas_hash(&c);
+    canvas_free(&c);
+    page_free(p);
+}
+#else
+static void closed_record(App *a) {}
+#endif
 
 static void close_notebook(App *a) {
     if (!S->open) return;
@@ -763,14 +838,32 @@ static void close_notebook(App *a) {
     if (a->settings.mirror_pdf && S->changed) {
         bg_mirror_pdf(S->nb.id, a->dpi, app_mirror_dir(), false);
     }
+    // The ink erase strokes took away, out of the page files (compact.h): in the background, as it
+    // can take long on the Kindle, and after the PDF (which it does not change). Not while Grimoire
+    // leaves: the compaction would go with it, so the pages stay listed for the next start.
+    if (compact_listed(S->nb.id)) {
+        if (!a->running) {
+            qlog("compact: %s left listed for the next start (Grimoire is leaving)", S->nb.id);
+        } else {
+            closed_record(a);
+            bg_queue(BG_COMPACT_PAGES, S->nb.id, NULL, a->dpi, false);
+        }
+    }
     free_histories(a);
     pthumbs_clear(a);
+    canvas_free(&S->paper);
+    S->nnoted = 0;
+    S->erased_pid = 0;
     S->pages_open = false;
     S->open = false;
 }
 
 void editor_open_notebook(App *a, const char *id) {
     close_notebook(a);
+    // Every way into a notebook comes here (the Library's card and its menu, a new notebook): its
+    // compaction, queued or running, is stopped before anything here reads or writes its pages (a
+    // stopped compaction leaves each page file as it was; the list keeps the pages for later).
+    bg_cancel_notebook(id);
     if (store_load_info(id, &S->nb) != 0) {
         app_toast(a, "Could not open that notebook", 3000);
         return;
@@ -809,11 +902,18 @@ static PenSample sample_of(App *a, const InEvent *ev) {
     return s;
 }
 
-static ToolKind effective_tool(App *a, const InEvent *ev) {
-    if (ev->eraser) return TOOL_ERASER;  // the Premium Pen's eraser end
-    if (ev->side_button && a->settings.side_button == 1) return TOOL_ERASER;
-    if (ev->side_button && a->settings.side_button == 2) return TOOL_HIGHLIGHTER;
-    return a->settings.current_tool;
+// The open page's paper alone (S->paper), drawn again first if it holds another paper or size: what
+// an erase stroke restores toward live. NULL when there is no memory for it.
+static const Canvas *page_paper(App *a) {
+    Canvas *c = &S->paper;
+    if (c->px && (c->w != S->pgw || c->h != S->pgh)) canvas_free(c);
+    bool fresh = !c->px;
+    if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
+    if (fresh || S->paper_k != S->page->paper) {
+        S->paper_k = S->page->paper;
+        paper_render(c, S->paper_k, (Rect){0, 0, c->w, c->h}, a->dpi);
+    }
+    return c;
 }
 
 static void draw_begin(App *a, const InEvent *ev) {
@@ -823,8 +923,8 @@ static void draw_begin(App *a, const InEvent *ev) {
         S->has_pressed = false;
         return;
     }
-    ToolKind t = effective_tool(a, ev);
-    if (t == TOOL_ERASER) {
+    PenStroke ps = pen_stroke(&a->settings, ev->eraser, ev->side_button);
+    if (ps.act == PEN_WHOLE) {
         S->owner = OWN_ERASE;
         free(S->snap);
         S->nsnap = S->page->n;
@@ -840,14 +940,30 @@ static void draw_begin(App *a, const InEvent *ev) {
     if (S->btn_down) S->btn_used_for_ink = true;
     S->owner = OWN_DRAW;
     uint32_t seed = (ev->t_ms * 2654435761u) ^ (uint32_t)(S->page->n * 40503u) ^ (uint32_t)(ev->x * 97.f);
-    S->cur = stroke_new(t, &a->settings.tools[t], seed);
+    // White ink and the precise eraser are erase strokes (the same draw path as ink: its dabs,
+    // dirty rects, refreshes, settle, zoom, rotation and undo): white with the pen's own settings
+    // and texture, the eraser with its round tip, at the size on screen it has at any zoom.
+    bool erase = ps.act != PEN_INK;
+    const Canvas *paper = erase ? page_paper(a) : NULL;
+    if (erase && !paper) {
+        qlog("editor: no memory for the page's paper; the erase stroke is not drawn");
+        S->owner = OWN_MODAL;  // swallow the rest of this stroke
+        S->has_pressed = false;
+        return;
+    }
+    ToolParams prm = ps.act == PEN_PRECISE ? eraser_at_zoom(&a->settings.tools[TOOL_ERASER], S->zoom)
+                                           : a->settings.tools[ps.tool];
+    S->cur = erase ? stroke_new(TOOL_ERASER, &prm, erase_seed(ps.tool, seed)) : stroke_new(ps.tool, &prm, seed);
     if (!S->cur) {
         S->owner = OWN_NONE;
         return;
     }
-    brush_begin(&S->bs, t, &a->settings.tools[t], seed, a->dpi);
+    stroke_brush_begin(&S->bs, S->cur, a->dpi, paper ? paper->px : NULL, 0, 0, paper ? paper->stride : 0);
     smoother_reset(&S->sm);
-    display_pen_mode(true);
+    // Ink asks for the pen mode (where it is on); an erase stroke is live ink without it, as the
+    // stroke eraser is (the driver's pen path is for ink going down).
+    if (erase) display_live_ink(true);
+    else display_pen_mode(true);
 }
 
 static void draw_sample(App *a, const InEvent *ev) {
@@ -868,14 +984,23 @@ static void draw_end(App *a) {
         stroke_free(s);
         return;
     }
-    History *h = cur_hist(a);
-    bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
-    bool was_empty = S->page->n == 0;
-    page_add(S->page, s);
-    if (h && S->page->n && S->page->strokes[S->page->n - 1] == s) history_push_add(h, S->page->n - 1, s);
     // Settle later, once the writer pauses (see settle_now).
     S->settle = rect_union(S->settle, s->bbox);
     S->settle_at = now_ms() + 450;
+    if (stroke_is_erase(s) && !S->bs.restored) {
+        // An erase stroke that changed no pixel of the page (over blank paper, or ink the eraser
+        // had taken already): not kept, and no undo step that would do nothing. Its fast frames
+        // still settle with the rest.
+        stroke_free(s);
+        return;
+    }
+    History *h = cur_hist(a);
+    bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
+    bool was_empty = S->page->n == 0, erase = stroke_is_erase(s);
+    page_add(S->page, s);
+    bool kept = S->page->n && S->page->strokes[S->page->n - 1] == s;
+    if (h && kept) history_push_add(h, S->page->n - 1, s);
+    if (erase && kept) S->erased_pid = S->nb.page_ids[S->index];
     mark_changed(a);
     // Only touch the panel when Undo/Redo availability actually changed.
     if (!had_undo || had_redo || was_empty) S->panel_stale = true;
@@ -891,7 +1016,8 @@ static void erase_segment(App *a, float sx, float sy, float pressure) {
     Rect d = RECT_EMPTY;
     for (int i = S->page->n - 1; i >= 0; i--) {
         Stroke *s = S->page->strokes[i];
-        if (!stroke_hit_segment(s, S->ex, S->ey, x, y, r, a->dpi)) continue;
+        // Erase strokes stay: taking one away would bring back the ink it covers.
+        if (stroke_is_erase(s) || !stroke_hit_segment(s, S->ex, S->ey, x, y, r, a->dpi)) continue;
         page_remove(S->page, i);
         if (S->nremoved == S->capremoved) {
             int nc = S->capremoved ? S->capremoved * 2 : 16;
@@ -1301,6 +1427,9 @@ void editor_init(App *a) {
     if (!a->ed) return;
     store_page_size(&S->pgw, &S->pgh);
     S->zoom = S->zoom_default = S->zoom_min = 1.f;
+    // Erased ink an earlier run left in page files (it left with the notebook open, or a compaction
+    // was stopped): taken out now, in the background, unless the notebook is opened first.
+    compact_queue_listed(a->dpi);
 }
 
 void editor_free(App *a) {
@@ -1315,6 +1444,8 @@ void editor_free(App *a) {
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
+    canvas_free(&S->paper);
+    free(S->noted);
     musicbuild_free(&S->mb);
     free(S);
     a->ed = NULL;
@@ -1634,6 +1765,41 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", m);
     } else if (!strcmp(key, "strokes")) {
         snprintf(out, cap, "%d", has_page ? S->page->n : 0);
+    } else if (!strcmp(key, "erase_strokes")) {
+        int n = 0;
+        for (int i = 0; has_page && i < S->page->n; i++) n += stroke_is_erase(S->page->strokes[i]);
+        snprintf(out, cap, "%d", n);
+    } else if (!strcmp(key, "live_matches_render")) {
+        // The open page drawn afresh, pixel for pixel what drawing, erasing and undoing left in the
+        // page canvas: 1 when they are the same.
+        bool same = false;
+        Canvas c;
+        if (has_page && S->canvas_page == S->page && S->page_canvas.px && canvas_init(&c, S->pgw, S->pgh) == 0) {
+            page_render(&c, S->page, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+            same = S->page_canvas.w == c.w && S->page_canvas.h == c.h && S->page_canvas.stride == c.stride &&
+                   !memcmp(c.px, S->page_canvas.px, (size_t)c.stride * (size_t)c.h);
+            canvas_free(&c);
+        }
+        snprintf(out, cap, "%d", same ? 1 : 0);
+    } else if (!strcmp(key, "stroke_screen_mm")) {
+        // The newest stroke's widest, as the screen shows it at the zoom now (the precise eraser's
+        // keeps its setting at any zoom); empty with no stroke.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        if (st) snprintf(out, cap, "%.2f", st->params.size_max_mm * S->zoom);
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "paper_cache")) {
+        snprintf(out, cap, "%d", S->paper.px ? 1 : 0);  // the paper erase strokes restore toward
+    } else if (!strcmp(key, "matches_closed")) {
+        // The open page shows as its file did when its notebook last closed to be compacted (1 the
+        // same, 0 not); empty when that was another notebook or page.
+#ifdef GRIMOIRE_SIM
+        bool known = has_page && S->canvas_page == S->page && S->page_canvas.px && !strcmp(g_closed.id, S->nb.id) &&
+                     g_closed.page == S->nb.page_ids[S->index];
+        if (known) snprintf(out, cap, "%d", canvas_hash(&S->page_canvas) == g_closed.hash ? 1 : 0);
+        else snprintf(out, cap, "%s", "");
+#else
+        snprintf(out, cap, "%s", "");
+#endif
     } else if (!strcmp(key, "unsaved")) {
         snprintf(out, cap, "%d", S->open && (S->page_dirty || S->info_dirty) ? 1 : 0);
     } else if (!strcmp(key, "ticked")) {
