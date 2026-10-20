@@ -33,6 +33,10 @@ void bgimage_retry_missing(void);
 // file's size, the memory to decode it). A page KOReader sent (annotate.h) is kept as it is when it
 // is, and of its notebook's page size. 0 with its size, or -1 and why.
 int bgimage_drawable(const uint8_t *data, size_t len, int *w, int *h, const char **why);
+// Whether notebook nb's picture id has its file but is not decoded here: no page drawn since the
+// file came was drawn with it (a picture drawn stays decoded while it is among the last few drawn).
+// Once a picture job is done, the editor draws its page again only then (editor_picture_made).
+bool bgimage_undrawn(const char *nb, uint32_t id);
 
 // ---- files ----
 

@@ -5,7 +5,8 @@
 # pdfs: 1
 # Another page of the same book, page 5, comes before page 12: a new page in book order, the
 # notebook's first now, and the editor opens on it. Page 12 (with its ink) is the second. The new
-# first page is what the Library's card shows (no thumbnail of the page that was first before).
+# first page is what the Library's card shows: its thumbnail, which the editor makes as it leaves
+# the page (the one of the page that was first went), and the notebook's PDF is made again.
 wait 300
 shot 01-page-5-first
 expect screen is editor
@@ -26,5 +27,6 @@ wait 600
 shot 03-library
 expect screen is library
 expect library.items is 1
-expect library.card.1 is picture
+expect library.card.1 is thumb
+expect library.card.1.luma not 255
 quit

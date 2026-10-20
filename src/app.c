@@ -96,37 +96,36 @@ static void calib_follow_panel(InputCalib *c, int *pw, int *ph, int w, int h, co
 }
 
 // A page KOReader's Grimoire plugin sent to annotate (annotate.h), at startup, before anything opens
-// a notebook: the editor opens on its page, or a toast says why it could not. kindle/app/grimoire.sh
-// asks for it (GRIMOIRE_ANNOTATE=1) only when KOReader hosts Grimoire; a request this start was not
-// asked to open is deleted unopened.
-static void annotate_at_start(App *a) {
+// a notebook: the editor opens on its page. kindle/app/grimoire.sh asks for it (GRIMOIRE_ANNOTATE=1)
+// only when KOReader hosts Grimoire; a request this start was not asked to open is deleted
+// unopened. True when the page could not be opened, with why in msg, for app_init's startup toast.
+static bool annotate_at_start(App *a, char *msg, size_t cap) {
     const char *asked = getenv("GRIMOIRE_ANNOTATE");
     AnnotateResult r;
     annotate_take(asked && !strcmp(asked, "1") && *app_host(), &r);
     if (r.outcome == ANNOTATE_OPENED || r.outcome == ANNOTATE_MADE) {
-        editor_open_notebook_at(a, r.nb, r.pid);
-        return;
+        editor_open_notebook_at(a, r.nb, r.pid, r.outcome == ANNOTATE_MADE);
+        return false;
     }
-    if (r.outcome != ANNOTATE_FAILED) return;
-    char msg[256];
+    if (r.outcome != ANNOTATE_FAILED) return false;
     switch (r.why) {
     case ANNOTATE_WHY_PICTURE:
         // TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
         // and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
         // two. This one: the picture of the page KOReader sent is damaged or missing.
-        app_toast(a, _("Could not open the page KOReader sent: its picture does not read."), 8000);
+        snprintf(msg, cap, "%s", _("Could not open the page KOReader sent: its picture does not read."));
         break;
     case ANNOTATE_WHY_STORAGE:
         // TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
         // written.
-        app_toast(a, _("Could not add the page KOReader sent. Is the storage full?"), 8000);
+        snprintf(msg, cap, "%s", _("Could not add the page KOReader sent. Is the storage full?"));
         break;
     default:
         // TRANSLATORS: (as above) any other reason; %s is the log file that says why.
-        snprintf(msg, sizeof msg, _("Could not open the page KOReader sent (see %s)."), "grimoire.log");
-        app_toast(a, msg, 8000);
+        snprintf(msg, cap, _("Could not open the page KOReader sent (see %s)."), "grimoire.log");
         break;
     }
+    return true;
 }
 
 int app_init(App *a, int w, int h, float dpi) {
@@ -167,9 +166,14 @@ int app_init(App *a, int w, int h, float dpi) {
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
+    // A page KOReader sent to annotate: the editor opens on it now, under the toast below. When it
+    // could not be opened, why is that toast, unless the passcode was left off.
+    char note[256];
+    bool annotate_failed = annotate_at_start(a, note, sizeof note);
     // The launcher pauses the Kindle's passcode while Grimoire runs (kindle/app/grimoire.sh says
     // why) and says so here; "left-off": an earlier session ended without putting it back (told
     // at up to three starts while it stays off). That one goes first: the Kindle is unprotected.
+    // Then what became of the page KOReader just sent; the others wait for a later start.
     const char *passcode = getenv("GRIMOIRE_PASSCODE");
     char msg[256];
     if (passcode && !strcmp(passcode, "left-off")) {
@@ -177,6 +181,8 @@ int app_init(App *a, int w, int h, float dpi) {
         // TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
         // or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
         app_toast(a, _("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000);
+    } else if (annotate_failed) {
+        app_toast(a, note, 8000);
     } else if (caps && !caps->has_pen) {
         // TRANSLATORS: %s is the app's name, Grimoire.
         snprintf(msg, sizeof msg, _("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
@@ -191,7 +197,6 @@ int app_init(App *a, int w, int h, float dpi) {
         // sheet that says "Calibrate pen and touch": name them as they are translated.
         app_toast(a, _("Tip: Settings > Calibrate pen if strokes land off the tip"), 6000);
     }
-    annotate_at_start(a);
     return 0;
 }
 

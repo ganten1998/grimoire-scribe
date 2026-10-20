@@ -77,6 +77,8 @@ struct EditorState {
     // of another paper or size than it holds, freed with the notebook.
     Canvas paper;
     PaperKind paper_k;          // the paper it holds (while paper.px)
+    bool paper_stale;           // drawn while its picture was still being made: drawn again in place as
+                                // the next erase stroke starts (never freed then: a stroke reads it)
     // The open notebook's pages listed for compaction this session (compact_note_page); a page
     // with an erase stroke its file does not have yet is listed once the page is saved (to_list).
     uint32_t *noted;
@@ -956,24 +958,32 @@ void editor_open_notebook(App *a, const char *id) {
 }
 
 // A page KOReader sent (annotate.h): notebook id open at its page page_id, or where
-// editor_open_notebook opens it should it have no such page.
-void editor_open_notebook_at(App *a, const char *id, uint32_t page_id) {
+// editor_open_notebook opens it should it have no such page. added: the page was added to the
+// notebook (or the notebook made) at this start, a change like any other: the notebook's PDF is
+// made again as it closes, and the Library's card too when the page is its first.
+void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool added) {
     editor_open_notebook(a, id);
     if (!S->open || strcmp(S->nb.id, id)) return;
     for (int i = 0; i < S->nb.npages; i++)
         if (S->nb.page_ids[i] == page_id) {
             if (i != S->index) go_to_page(a, i);
-            return;
+            break;
         }
+    if (!added) return;
+    S->changed = true;
+    if (S->index == 0) S->thumb_dirty = true;
 }
 
 // A picture made in the background (a template's, a page KOReader sent: bgimage.h) may be the open
 // page's paper, drawn white while its file was missing: the page is drawn again with it, now, or once
-// the stroke or gesture under way is over (editor_tick), or as the editor comes back in front.
+// the stroke or gesture under way is over (editor_tick), or as the editor comes back in front. Only
+// such a page: one that shows its picture already (the job was another notebook's, or the templates'
+// previews), or whose picture is still to come, stays as it is.
 void editor_picture_made(App *a) {
     if (!S || !S->open || !S->page || !paper_is_image(S->page->paper)) return;
+    if (!bgimage_undrawn(S->nb.id, paper_image_id(S->page->paper))) return;
     S->canvas_page = NULL;
-    canvas_free(&S->paper);  // (what erase strokes restore toward: drawn white too)
+    S->paper_stale = true;  // (what erase strokes restore toward: drawn white too)
     if (a->scr == SCR_EDITOR && !a->asleep && !editor_busy(a) && S->page_canvas.px) {
         render_page_full(a);
         compose_all(a, REFRESH_UI);
@@ -1003,8 +1013,9 @@ static const Canvas *page_paper(App *a) {
     if (c->px && (c->w != S->pgw || c->h != S->pgh)) canvas_free(c);
     bool fresh = !c->px;
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
-    if (fresh || S->paper_k != S->page->paper) {
+    if (fresh || S->paper_stale || S->paper_k != S->page->paper) {
         S->paper_k = S->page->paper;
+        S->paper_stale = false;
         page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);  // (an image paper: its picture)
     }
     return c;
