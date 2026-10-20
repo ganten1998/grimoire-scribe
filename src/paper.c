@@ -25,7 +25,7 @@ const char *paper_name(PaperKind k) {
     case PAPER_BASS5: return "5-string bass";
     case PAPER_BASS6: return "6-string bass";
     case PAPER_BASS7: return "7-string bass";
-    default: return paper_is_custom(k) ? "Custom music" : "Paper";
+    default: return paper_is_known(k) ? "Custom music" : "Newer paper";
     }
 }
 
@@ -164,10 +164,10 @@ PaperKind music_encode(const MusicLayout *m) {
     return (PaperKind)v;
 }
 
+bool paper_is_known(PaperKind k) { return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL); }
+
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback) {
-    if (v < PAPER_COUNT) return (PaperKind)v;
-    if (music_decode((PaperKind)v, NULL)) return (PaperKind)v;
-    return fallback;
+    return paper_is_known((PaperKind)v) ? (PaperKind)v : fallback;
 }
 
 PaperKind music_default(void) {
@@ -408,7 +408,7 @@ void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
     default: {
         MusicLayout m;
         if (music_decode(k, &m)) music_custom(c, &m, dpi);
-        break;
+        break;  // anything else (a newer version's paper) stays blank
     }
     }
     c->clip = saved;

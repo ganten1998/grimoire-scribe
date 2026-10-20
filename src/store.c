@@ -511,13 +511,16 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
     Page *p = NULL;
     if (data) {
         if (page_deserialize(data, len, &p) != 0) {
-            // Keep the damaged file (it may be from a newer version) instead of letting the
-            // next autosave replace it with the blank page shown in its place.
+            // Keep the damaged file instead of letting the next autosave replace it with the
+            // blank page shown in its place. (A page from a newer version is not damage: it
+            // opens read-only.)
             char aside[760];
             snprintf(aside, sizeof aside, "%s.damaged-%lld", path, (long long)wall_time());
             int rc = rename(path, aside);
             qlog("store: corrupt page %s, %s; starting blank", path, rc == 0 ? "set aside" : "could not set aside");
             g_corrupt_pages++;
+        } else if (p->readonly) {
+            qlog("store: %s opens read-only and stays as it is on disk", path);
         }
         free(data);
     }
@@ -530,7 +533,93 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
 
 int store_save_page(const NotebookInfo *nb, int index, const Page *p) {
     if (index < 0 || index >= nb->npages) return -1;
+    // A read-only page stays as it is on disk: writing it would lose what this build cannot read.
+    if (p->readonly) return 0;
     return write_page_file(nb, nb->page_ids[index], p);
+}
+
+// ---- pages 1.0.0-beta set aside ----
+
+typedef struct {
+    uint32_t pid;
+    long long t;
+    char name[64];
+} Aside;
+
+static int cmp_aside(const void *a, const void *b) {
+    const Aside *x = a, *y = b;
+    if (x->pid != y->pid) return x->pid < y->pid ? -1 : 1;
+    return x->t < y->t ? 1 : x->t > y->t ? -1 : 0;  // newest first
+}
+
+static bool page_file_opens(const char *path) {
+    size_t len;
+    uint8_t *data = read_file(path, &len);
+    Page *p = NULL;
+    bool ok = data && page_deserialize(data, len, &p) == 0;
+    page_free(p);
+    free(data);
+    return ok;
+}
+
+int store_recover_pages(const NotebookInfo *nb) {
+    char dir[600];
+    if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return 0;
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    Aside *as = NULL;
+    int n = 0, cap = 0;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        unsigned long id;
+        long long t;
+        int end = 0;
+        if (sscanf(e->d_name, "p%lu.qpg.damaged-%lld%n", &id, &t, &end) != 2 || e->d_name[end] || id == 0 ||
+            id >= 0x7fffffff || strlen(e->d_name) >= sizeof as->name)
+            continue;
+        if (n == cap) {
+            int nc = cap ? cap * 2 : 8;
+            Aside *na = realloc(as, (size_t)nc * sizeof *na);
+            if (!na) break;
+            as = na;
+            cap = nc;
+        }
+        as[n].pid = (uint32_t)id;
+        as[n].t = t;
+        strlcpy_q(as[n].name, e->d_name, sizeof as[n].name);
+        n++;
+    }
+    closedir(d);
+    if (n) qsort(as, (size_t)n, sizeof *as, cmp_aside);
+    int restored = 0;
+    for (int i = 0; i < n;) {
+        int j = i;
+        while (j < n && as[j].pid == as[i].pid) j++;
+        char path[700], aside[760];
+        snprintf(path, sizeof path, "%s/p%u.qpg", dir, as[i].pid);
+        bool exists = access(path, F_OK) == 0;
+        // The newest copy that opens now, normally or read-only; real damage stays aside.
+        for (int k = i; k < j; k++) {
+            snprintf(aside, sizeof aside, "%s/%s", dir, as[k].name);
+            if (!page_file_opens(aside)) continue;
+            if (exists) {
+                // An older version wrote a fresh page there since (it was edited): keep both.
+                qlog("store: %s: %s opens now, but p%u.qpg exists too; both kept", nb->id, as[k].name, as[k].pid);
+            } else if (rename(aside, path) == 0) {
+                bool listed = false;
+                for (int q = 0; q < nb->npages && !listed; q++) listed = nb->page_ids[q] == as[k].pid;
+                qlog("store: %s: recovered p%u.qpg from %s%s", nb->id, as[k].pid, as[k].name,
+                     listed ? "" : " (not in the page list)");
+                restored++;
+            } else {
+                qlog("store: %s: could not recover %s: %s", nb->id, as[k].name, strerror(errno));
+            }
+            break;
+        }
+        i = j;
+    }
+    free(as);
+    return restored;
 }
 
 // ---- page format ----
@@ -572,24 +661,33 @@ static void w_f32(W *w, float f) {
     w_u32(w, u);
 }
 
+// The fixed paper kinds 1.0.0-beta knows (its PAPER_COUNT). Pages on one of them are version 1;
+// any other kind is version 2 (docs/FORMAT.md). Never changes, even when kinds are added.
+#define PAGE_V1_PAPERS 17u
+// Versions a newer Grimoire may write (3 and up, staying below 256): such a page opens read-only.
+// Anything else (0, or a number no version uses) is damage.
+#define PAGE_NEWER_MAX 255u
+
 int page_serialize(const Page *p, uint8_t **out, size_t *len) {
+    // A page this build cannot fully read would lose what it cannot read: it is never written.
+    if (p->readonly) return -1;
     W w = {0};
-    // Version 2 only when the paper needs it (a custom music layout, 32 bits): fixed-paper
-    // pages stay version 1, readable by older builds.
-    bool custom = paper_is_custom(p->paper);
+    // Version 2 only when the paper needs all 32 bits (custom music, or a paper from a newer
+    // version): other pages stay version 1, as 1.0.0-beta writes them. In version 2 the u16 says
+    // PAPER_MUSIC for custom music, as it always did, and PAPER_BLANK for any other kind.
+    bool v2 = (uint32_t)p->paper >= PAGE_V1_PAPERS;
+    PaperKind p16 = !v2 ? p->paper : paper_is_custom(p->paper) ? PAPER_MUSIC : PAPER_BLANK;
     w_bytes(&w, "QPG1", 4);
-    w_u16(&w, custom ? 2 : 1);
-    w_u16(&w, custom ? (uint16_t)PAPER_MUSIC : (uint16_t)p->paper);
+    w_u16(&w, v2 ? 2 : 1);
+    w_u16(&w, (uint16_t)p16);
     w_u32(&w, (uint32_t)p->w);
     w_u32(&w, (uint32_t)p->h);
-    if (custom) w_u32(&w, (uint32_t)p->paper);
+    if (v2) w_u32(&w, (uint32_t)p->paper);
     w_u32(&w, (uint32_t)p->n);
     for (int i = 0; i < p->n; i++) {
         const Stroke *s = p->strokes[i];
         w_u8(&w, (uint8_t)s->tool);
-        w_u8(&w, 0);
-        w_u8(&w, 0);
-        w_u8(&w, 0);
+        w_bytes(&w, s->ext, 3);  // as read (0 for strokes drawn here)
         w_u32(&w, s->seed);
         const float *f = (const float *)&s->params;
         for (int k = 0; k < 13; k++) w_f32(&w, f[k]);
@@ -604,6 +702,8 @@ int page_serialize(const Page *p, uint8_t **out, size_t *len) {
             w_u32(&w, q->t_ms);
         }
     }
+    // The chunks that followed the strokes, as they were read (this version writes none itself).
+    if (p->tail_len) w_bytes(&w, p->tail, p->tail_len);
     if (w.err) {
         free(w.d);
         return -1;
@@ -650,6 +750,52 @@ static float r_f32(R *r) {
 #define STROKE_HEADER_BYTES (4 + 4 + 13 * 4 + 4)
 #define POINT_BYTES (4 + 4 + 2 + 2 + 2 + 4)
 
+static bool sane_size(uint32_t w, uint32_t h) { return w > 0 && h > 0 && w <= 20000 && h <= 20000; }
+
+// A page from a newer version: only the 16 bytes every version starts with are read (magic,
+// version, u16 paper, w, h). It is shown blank, read-only.
+static int newer_page(unsigned ver, uint32_t w, uint32_t h, Page **out) {
+    bool sane = sane_size(w, h);
+    Page *p = page_new(sane ? (int)w : g_w, sane ? (int)h : g_h, PAPER_BLANK);
+    if (!p) return -1;
+    p->readonly = true;
+    qlog("store: read-only page: version %u is from a newer Grimoire, shown blank", ver);
+    *out = p;
+    return 0;
+}
+
+static bool tag_char(uint8_t c, bool first) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (!first && c >= '0' && c <= '9');
+}
+
+// The chunks after the last stroke, to the end of the file: u32 tag (four ASCII letters or digits,
+// the first a letter), u32 length, the bytes. This version knows no chunk. One whose tag starts
+// with a lowercase letter is safe to copy: carried, written back as it was. One starting with an
+// uppercase letter is critical, and like bytes that are not chunks, makes the page read-only.
+// The whole tail is kept either way. Returns why the page is read-only, or NULL.
+static const char *read_tail(R *r, Page *p, char *why, size_t cap) {
+    if (r->pos >= r->n) return NULL;
+    size_t tl = r->n - r->pos;
+    p->tail = malloc(tl);
+    if (!p->tail) return "no memory for its chunks";
+    memcpy(p->tail, r->d + r->pos, tl);
+    p->tail_len = tl;
+    while (r->pos < r->n) {
+        const uint8_t *c = r->d + r->pos;
+        if (r->n - r->pos < 8) return "cut-off bytes after the strokes";
+        bool ok = tag_char(c[0], true) && tag_char(c[1], false) && tag_char(c[2], false) && tag_char(c[3], false);
+        if (!ok) return "bytes after the strokes that are not chunks";
+        uint32_t clen = (uint32_t)c[4] | (uint32_t)c[5] << 8 | (uint32_t)c[6] << 16 | (uint32_t)c[7] << 24;
+        if (clen > r->n - r->pos - 8) return "a chunk longer than the file";
+        if (c[0] >= 'A' && c[0] <= 'Z') {
+            snprintf(why, cap, "a chunk this version does not know (%.4s)", (const char *)c);
+            return why;
+        }
+        r->pos += 8 + (size_t)clen;
+    }
+    return NULL;
+}
+
 int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     *out = NULL;
     R r = {buf, len, 0, false};
@@ -658,23 +804,36 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     uint16_t ver = r_u16(&r);
     uint32_t paper = r_u16(&r);
     uint32_t w = r_u32(&r), h = r_u32(&r);
+    if (r.err) return -1;
+    if (ver > 2 && ver <= PAGE_NEWER_MAX) return newer_page(ver, w, h, out);
+    if (ver != 1 && ver != 2) return -1;
     if (ver == 2) paper = r_u32(&r);
     uint32_t ns = r_u32(&r);
-    if (r.err || (ver != 1 && ver != 2) || w == 0 || h == 0 || w > 20000 || h > 20000) return -1;
+    if (r.err || !sane_size(w, h)) return -1;
     if (ns > (len - r.pos) / STROKE_HEADER_BYTES) return -1;
-    Page *p = page_new((int)w, (int)h, paper_sanitize(paper, PAPER_BLANK));
+    // A paper this build does not know stays as it is: drawn blank, written back.
+    Page *p = page_new((int)w, (int)h, (PaperKind)paper);
     if (!p) return -1;
+    uint32_t unknown_tools = 0;
     for (uint32_t i = 0; i < ns && !r.err; i++) {
         uint8_t tool = r_u8(&r);
-        r_take(&r, 3);
+        const uint8_t *ext = r_take(&r, 3);
         uint32_t seed = r_u32(&r);
         ToolParams prm;
         float *f = (float *)&prm;
         for (int k = 0; k < 13; k++) f[k] = r_f32(&r);
         uint32_t np = r_u32(&r);
-        if (r.err || tool >= TOOL_COUNT || np > (len - r.pos) / POINT_BYTES) {
+        if (r.err || np > (len - r.pos) / POINT_BYTES) {
             r.err = true;
             break;
+        }
+        if (tool >= TOOL_COUNT) {
+            // A newer version's tool: the record is laid out the same, so the page reads on.
+            // The stroke is left out (never drawn) and the page becomes read-only, so no save
+            // here can drop it.
+            r_take(&r, (size_t)np * POINT_BYTES);
+            unknown_tools++;
+            continue;
         }
         // Clamp params into their UI ranges so a hostile file cannot make huge dabs.
         int npi;
@@ -688,6 +847,7 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
             r.err = true;
             break;
         }
+        memcpy(s->ext, ext, 3);
         for (uint32_t k = 0; k < np; k++) {
             PenSample q;
             q.x = clampf(r_f32(&r), -10000.f, 30000.f);
@@ -703,6 +863,17 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     if (r.err) {
         page_free(p);
         return -1;
+    }
+    char why[96];
+    const char *ro = read_tail(&r, p, why, sizeof why);
+    if (unknown_tools) {
+        snprintf(why, sizeof why, "%u stroke%s with a tool this version does not have", unknown_tools,
+                 unknown_tools == 1 ? "" : "s");
+        ro = why;
+    }
+    if (ro) {
+        p->readonly = true;
+        qlog("store: read-only page: %s", ro);
     }
     *out = p;
     return 0;
