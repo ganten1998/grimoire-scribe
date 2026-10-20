@@ -83,8 +83,13 @@ int store_delete(const char *id);           // moves to trash/
 int store_notebook_dir(const char *id, char *buf, size_t cap);
 
 // Pages. Index is the position in nb->page_ids.
-// Writes an empty page (never over a page file already there: the next free id) + info.
+// Writes an empty page (never over a page file already there: the next free id) + info. Its paper
+// is store_new_page_paper(nb, paper): callers pass the paper of the page it follows (or replaces).
 int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
+// The paper of a page added after (or left in place of) a page on `after`: the same paper, but a
+// document page's picture (1.1's imported page image, paper_is_document) belongs to that page
+// alone: then the notebook's own paper (Blank if that is a document page's too).
+PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
 // Missing page file -> empty page of nb->paper. Points are scaled if the stored size differs.
 // A page from a newer version comes back read-only (Page.readonly) and is never set aside.

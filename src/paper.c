@@ -166,6 +166,11 @@ PaperKind music_encode(const MusicLayout *m) {
 
 bool paper_is_known(PaperKind k) { return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL); }
 
+bool paper_is_document(PaperKind k) {
+    uint32_t v = (uint32_t)k;
+    return v >> 28 == 0x5u && (v >> 26 & 3u) == 0 && (v >> 24 & 3u) == 1;
+}
+
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback) {
     return paper_is_known((PaperKind)v) ? (PaperKind)v : fallback;
 }

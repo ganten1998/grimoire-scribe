@@ -199,6 +199,13 @@ A paper a reader does not know (a value in an unassigned or reserved namespace, 
 with a part it lacks, a fixed kind added later) is drawn as blank paper and called "Newer paper"
 from 1.0.0-beta.2 on, and the page keeps the value and writes it back (version 2).
 
+One image-paper rule holds from 1.0.0-beta.2 on, ahead of 1.1: bits 24 and 25 of a `0x5.......`
+value are its role, and role 1 (with bits 26 and 27 clear: `0x51......`) is a document page, the
+picture of one imported page, which belongs to that page alone. A page added after one (the +
+button, the page left when every page is deleted) gets the notebook's paper instead, or Blank if
+the notebook's paper is a document page's too. Every other value is copied to the new page as it
+is. (1.0.0-beta reads every newer paper as Blank, so a page it adds after one is Blank.)
+
 **Chunk tags.** None are defined yet.
 
 | tag | kind | meaning | since |

@@ -23,6 +23,31 @@ static Stroke *squiggle(ToolKind t, float y) {
     return s;
 }
 
+// A page added after a page of 1.1's document role (an imported page image, 0x51......) gets the
+// notebook's paper, as 1.1 does: the + button and the page left when every page is deleted pass the
+// page they follow, and 1.1 would draw the other page's picture on the new one. A template (role 0)
+// and any other newer paper are kept, as are the known kinds.
+TEST(new_page_after_a_document_page) {
+    NotebookInfo nb;
+    CHECK(store_create("Annotated", "", PAPER_NARROW, &nb) == 0);
+    const PaperKind doc = (PaperKind)0x51000123u, tpl = (PaperKind)0x50000123u;
+    CHECK(paper_is_document(doc) && !paper_is_document(tpl));
+    CHECK(!paper_is_document((PaperKind)0x55000123u) && !paper_is_document((PaperKind)0x53000123u));
+    CHECK(!paper_is_document(PAPER_GRID) && !paper_is_document(music_default()));
+    CHECK(store_new_page_paper(&nb, doc) == PAPER_NARROW);
+    CHECK(store_new_page_paper(&nb, tpl) == tpl && store_new_page_paper(&nb, PAPER_GRID) == PAPER_GRID);
+    CHECK(store_new_page_paper(&nb, (PaperKind)0x55000123u) == (PaperKind)0x55000123u);
+    CHECK(store_add_page(&nb, 1, doc) == 0 && store_add_page(&nb, 2, tpl) == 0);
+    Page *p;
+    CHECK(store_load_page(&nb, 1, 1860, 2480, &p) == 0 && p->paper == PAPER_NARROW);
+    page_free(p);
+    CHECK(store_load_page(&nb, 2, 1860, 2480, &p) == 0 && p->paper == tpl);
+    page_free(p);
+    NotebookInfo odd = nb;
+    odd.paper = doc;  // a notebook whose own paper is a document page's: Blank, never the picture
+    CHECK(store_new_page_paper(&odd, doc) == PAPER_BLANK);
+}
+
 TEST(notebooks) {
     NotebookInfo nb, back;
     CHECK(store_create("Lecture notes", "", PAPER_NARROW, &nb) == 0);
@@ -316,6 +341,7 @@ int main(void) {
     system(cmd);
     CHECK(store_init(root) == 0);
     RUN(notebooks);
+    RUN(new_page_after_a_document_page);
     RUN(fuzz_deserialize);
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);

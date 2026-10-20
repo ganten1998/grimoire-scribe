@@ -50,6 +50,10 @@ bool paper_is_custom(PaperKind k);   // in the custom music namespace (well-form
 bool paper_is_known(PaperKind k);
 // A known kind as it is; anything else becomes `fallback` (where a known kind is required).
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback);
+// An image paper of 1.1's document page role (docs/FORMAT.md): a picture of one imported page,
+// 0x5 in the top four bits, role 1 in bits 24-25, bits 26-27 clear. This version draws it blank as
+// it does every newer paper, but a page added after one never takes it (store_new_page_paper).
+bool paper_is_document(PaperKind k);
 PaperKind music_encode(const MusicLayout *m);
 bool music_decode(PaperKind k, MusicLayout *m);   // false if k is not a custom layout
 const char *music_part_name(MusicPart p);         // "Treble staff", "Tab, 6 lines", ...

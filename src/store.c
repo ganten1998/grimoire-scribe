@@ -620,8 +620,14 @@ int store_list_folders(char (**out)[STORE_NAME_LEN], int *n) {
 
 // ---- pages ----
 
+PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after) {
+    if (!paper_is_document(after)) return after;
+    return paper_is_document(nb->paper) ? PAPER_BLANK : nb->paper;
+}
+
 int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     if (nb->npages >= STORE_MAX_PAGES) return -1;
+    paper = store_new_page_paper(nb, paper);  // never another page's document picture
     at = clampi(at, 0, nb->npages);
     // Never over a page file that is there already (one the page list does not name, as after a
     // page list was rebuilt): the new page takes the next free id instead.

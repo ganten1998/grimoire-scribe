@@ -34,7 +34,9 @@
   and writes it back unchanged. A page from a newer version opens read-only ("This page was made
   by a newer Grimoire. It is read-only here.") instead of being set aside as damaged, and pages
   1.0.0-beta set aside come back when their notebook is opened, if they are still in its page
-  list. Papers from a newer version show blank as "Newer paper" and are kept. A setting value from
+  list. Papers from a newer version show blank as "Newer paper" and are kept; a page added after a
+  page that holds one imported page's picture (1.1's document pages) gets the notebook's own paper,
+  as 1.1 does, never that picture. A setting value from
   a newer version that this one lacks (for example `side_button=3`) works here as the nearest value
   it has. It stays in the file until a save finds the setting changed; from then on the setting is
   saved as you set it, even if you set it back. A switch holding another value than 0 or 1 (a
