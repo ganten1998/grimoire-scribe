@@ -1,5 +1,6 @@
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 #include "app.h"
+#include "annotate.h"
 #include "bgimage.h"
 #include "bgjob.h"
 #include "calib_fit.h"
@@ -94,6 +95,40 @@ static void calib_follow_panel(InputCalib *c, int *pw, int *ph, int w, int h, co
     *ph = h;
 }
 
+// A page KOReader's Grimoire plugin sent to annotate (annotate.h), at startup, before anything opens
+// a notebook: the editor opens on its page, or a toast says why it could not. kindle/app/grimoire.sh
+// asks for it (GRIMOIRE_ANNOTATE=1) only when KOReader hosts Grimoire; a request this start was not
+// asked to open is deleted unopened.
+static void annotate_at_start(App *a) {
+    const char *asked = getenv("GRIMOIRE_ANNOTATE");
+    AnnotateResult r;
+    annotate_take(asked && !strcmp(asked, "1") && *app_host(), &r);
+    if (r.outcome == ANNOTATE_OPENED || r.outcome == ANNOTATE_MADE) {
+        editor_open_notebook_at(a, r.nb, r.pid);
+        return;
+    }
+    if (r.outcome != ANNOTATE_FAILED) return;
+    char msg[256];
+    switch (r.why) {
+    case ANNOTATE_WHY_PICTURE:
+        // TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
+        // and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
+        // two. This one: the picture of the page KOReader sent is damaged or missing.
+        app_toast(a, _("Could not open the page KOReader sent: its picture does not read."), 8000);
+        break;
+    case ANNOTATE_WHY_STORAGE:
+        // TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
+        // written.
+        app_toast(a, _("Could not add the page KOReader sent. Is the storage full?"), 8000);
+        break;
+    default:
+        // TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+        snprintf(msg, sizeof msg, _("Could not open the page KOReader sent (see %s)."), "grimoire.log");
+        app_toast(a, msg, 8000);
+        break;
+    }
+}
+
 int app_init(App *a, int w, int h, float dpi) {
     memset(a, 0, sizeof *a);
     g_probe_app = a;
@@ -156,6 +191,7 @@ int app_init(App *a, int w, int h, float dpi) {
         // sheet that says "Calibrate pen and touch": name them as they are translated.
         app_toast(a, _("Tip: Settings > Calibrate pen if strokes land off the tip"), 6000);
     }
+    annotate_at_start(a);
     return 0;
 }
 
@@ -462,7 +498,10 @@ static PowerdState powerd_state_now(char *name, size_t cap) {
 // a template's picture may now be there to draw. Returns bg_poll's result for the PDF mirror's toast.
 static int poll_jobs(App *a) {
     int done = -1, r = bg_poll_kind(&done);
-    if (done == BG_TEMPLATE) bgimage_retry_missing();
+    if (done == BG_TEMPLATE) {
+        bgimage_retry_missing();
+        editor_picture_made(a);  // (the open page may be on that picture: a page KOReader sent)
+    }
     if (done != BG_IMPORT_FOLDER) return r;
     int pages = 0, got = import_finished(r > 0, &pages);
     if (got > 0 && a->scr == SCR_LIBRARY && !a->asleep) app_redraw_mode(a, REFRESH_UI);  // (waking redraws it too)
@@ -613,10 +652,35 @@ void app_press_feedback(App *a, Rect r) {
     display_present(&a->screen, r, REFRESH_FAST);
 }
 
+// The runner's annotate.* keys: "role", the open page's paper ("document" for a page KOReader sent
+// or an imported one, "template", "" for any other); "luma", the open page as the editor holds it
+// now, its mean (255: white, as a picture still being made draws); the rest are annotate_probe's,
+// for the page open in the editor.
+static int annotate_app_probe(App *a, const char *key, char *out, size_t cap) {
+    char v[32];
+    if (!strcmp(key, "role")) {
+        PaperKind k = (PaperKind)(editor_probe(a, "paper", v, sizeof v) == 0 ? (uint32_t)strtoul(v, NULL, 10) : 0u);
+        snprintf(out, cap, "%s", paper_is_document(k) ? "document" : paper_is_image(k) ? "template" : "");
+        return 0;
+    }
+    if (!strcmp(key, "luma")) {
+        const Canvas *c = editor_page_canvas(a);
+        uint64_t sum = 0, np = c ? (uint64_t)c->w * (uint64_t)c->h : 0;
+        for (int y = 0; c && y < c->h; y++)
+            for (int x = 0; x < c->w; x++) sum += c->px[(size_t)y * (size_t)c->stride + (size_t)x];
+        if (np) snprintf(out, cap, "%d", (int)((sum + np / 2) / np));
+        else snprintf(out, cap, "%s", "");
+        return 0;
+    }
+    int page = editor_probe(a, "page", v, sizeof v) == 0 ? atoi(v) : 0;
+    return annotate_probe(key, page - 1, out, cap);
+}
+
 int app_probe(const char *key, char *out, size_t cap) {
     static const char *const k_names[SCR_COUNT] = {"library", "editor", "penset", "calib", "share"};
     App *a = g_probe_app;
     if (!a || !key || !out || cap == 0) return -1;
+    if (!strncmp(key, "annotate.", 9)) return annotate_app_probe(a, key + 9, out, cap);
     if (!strncmp(key, "editor.", 7)) return editor_probe(a, key + 7, out, cap);
     if (!strncmp(key, "library.", 8)) return library_probe(a, key + 8, out, cap);
     if (!strncmp(key, "penset.", 7)) return pensettings_probe(a, key + 7, out, cap);

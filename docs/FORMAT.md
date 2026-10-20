@@ -26,8 +26,10 @@ root/notebooks/<id>/p<id>.qpg.damaged-<time>   a page that could not be read, ke
 root/notebooks/<id>/bg/<pic>.png        a picture the notebook's image papers use (1.1; Image papers)
 root/notebooks/<id>/bg/index.ini        which content each picture holds (Image papers)
 root/notebooks/<id>/bg/pages.ini        the image paper of each page that has one (Image papers)
+root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
+root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
 root/PDFs/                              the PDF mirror (an export, not data)
 ```
@@ -388,7 +390,10 @@ its paper value), and so does a file there that is no PNG, is bigger than 32 MB,
 there.
 
 A picture is a PNG of the notebook's page size (`page_w` x `page_h`), 8-bit gray, or RGB when its
-source has colour. It is made from a source picture (PNG, JPEG or PNM; at most 8192 pixels a side
+source has colour; or, for an annotated page (below), the PNG KOReader's plugin wrote, kept as it is
+when it is of the notebook's page size and one Grimoire draws as it is (any PNG within the limits
+above: gray, palette or colour, 1 to 16 bits a channel, with or without transparency, which is drawn
+over white). It is made from a source picture (PNG, JPEG or PNM; at most 8192 pixels a side
 and 40 megapixels; a file of at most 64 MB, a template's at most 16 MB; and one that decodes in at
 most 256 MB, the file's own bytes included, by what its header says decoding takes, so a 16-bit
 colour PNG of more than about 20 megapixels or a progressive JPEG of more than about 35 is refused,
@@ -416,6 +421,8 @@ that one is taken by another key (0 is never given):
   the page size the picture is made for, so the id is known before the picture is made (that runs
   in the background): using the same file again gives the same paper value, and makes its picture
   again if its file went missing. The hash is the one the template's preview keeps (Templates).
+- for an annotated page, the same key of the PNG KOReader sent (its bytes and the notebook's page
+  size): the same page sent twice is one picture.
 
 `index.ini` is `# ...`, then one `<pic>=<key, 16 hex digits>` line per picture. The keys are
 Grimoire's own; other writers can leave their pictures out of it.
@@ -485,6 +492,101 @@ count), each page a document page; the notebook's own paper is Blank. It is made
   not imported, nor one without pictures, nor one whose path is 600 bytes or longer.
 
 Grimoire makes `import/` at startup, with a `README.txt`, if it is missing.
+
+### Annotated pages: `root/import/.annotate/` and `source.ini` (1.1 on)
+
+KOReader's Grimoire plugin (`kindle/koreader/grimoire.koplugin`), in a book, has Tools > Grimoire >
+Annotate this page in Grimoire (and a gesture that does the same). It draws the page the reader is
+on into a picture of the Scribe's page, upright: for a paged document (PDF, DjVu, comics, pictures)
+the whole page fitted and centred on white, at the reader's contrast, as the document has it (not
+reflowed, its scan not cleaned up, not inverted for night mode); for a reflowable one (EPUB, FB2,
+MOBI, TXT) the text as the screen shows it, crengine's own status bar at the top left white
+(KOReader's footer is never in it), its pictures not inverted for night mode, and a screen turned
+sideways fitted into the upright page. A
+KOReader without the calls for that writes a screenshot of the reader instead (the screen's size and
+shape, menus closed). It writes, into `import/.annotate/` (a dot-folder: the folder import skips it),
+emptied first, the picture as a PNG and a request, each into a temporary file renamed into place, and
+hands over to Grimoire as Open Grimoire does, with `--annotate` after `--hosted koreader`: the
+launcher sets `GRIMOIRE_ANNOTATE=1` for that start only.
+
+`request.ini`, one `key=value` a line (`#` lines are comments, a carriage return at a line's end is
+dropped, keys it does not know are left alone):
+
+| key | value |
+|---|---|
+| `version` | 1 (a request without the line counts as 1; any other version is refused) |
+| `book` | the book's key: KOReader's partial MD5 of its file (as its book settings keep it), as `source` above |
+| `title` | the book's title (its metadata's, else its file's name without the extension): a new notebook's name. Never logged |
+| `page`, `pages` | the page the reader is on (from 1) and the book's page count, `page` at most `pages` |
+| `kind` | `paged` or `reflowable` (lowercase letters) |
+| `picture` | the picture's file name in `import/.annotate/`: letters, digits, `-`, `_` and `.`, ending in `.png`, not starting with a dot |
+| `time` | when it was written, unix seconds (without it, the file's own time counts) |
+
+At startup Grimoire looks for `import/.annotate/request.ini`, and empties the folder (and removes
+it) whatever it does with what it finds:
+
+- A start not asked to open it (no `GRIMOIRE_ANNOTATE=1`, or not hosted by KOReader: Grimoire
+  started from the Library, or by Open Grimoire, after a hand-over that never reached it), or a
+  request whose time is more than 5 minutes away (before, or after: the clock was set back), is
+  deleted unopened, with one log line.
+- The picture must read whole: a PNG with all its chunks, its critical ones (IHDR, PLTE, IDAT,
+  IEND) matching their CRCs, and a picture Grimoire takes (Image papers), of at most 16 MB.
+  Otherwise nothing is made, and a toast says so.
+- The book's notebook is the newest one whose `notebook.ini` has its key as `source`, else the
+  newest one with no `source` line whose `source.ini` names the book (one whose `source` line an
+  older version dropped). Its compaction, queued or running, stops first, as when a notebook opens.
+  With none, a notebook is made for the book: named after the title (on one line, control
+  characters as spaces, broken UTF-8 left out, cut to 95 bytes between two characters; with
+  " 2", " 3"... added when a notebook has that name already, as two notebooks of one name would
+  share a PDF), at the top level, at the device's page size, its one page the annotated one. It
+  is built in `notebooks/.annotate-<id>/` (a dot-folder the Library and every older version skip)
+  and renamed into place once whole, so a failure leaves no notebook; a start finds what one cut
+  off left there, and removes it. Its own `paper` is its first page's (a document page's), so
+  pages added to it get Blank paper and the Library's card shows that page until the notebook has
+  a thumbnail.
+- The book page's page is the one `source.ini` maps it to, when that page is still in the
+  notebook: it opens as it is (a page sent again is never a second page). Otherwise a new page is
+  added on its picture, a document page (role 1), just before the first page of the notebook that
+  holds a later book page (so pages written after an annotated page, notes on it, stay with it),
+  else at the end. A new first page takes the place of the old one on the Library's card: the
+  thumbnail goes, and the notebook's `paper`, if a document page's, becomes the new page's.
+  Anything that cannot be written takes back what was added: the notebook stays as it was, and a
+  toast says so. A notebook of 2000 pages takes no more.
+- The editor opens on that page (its `last_page` notes it, unchanged `modified` when the page was
+  there already).
+
+The picture becomes the page's picture as it is (moved into `bg/<pic>.png`) when it is of the
+notebook's page size and one Grimoire draws as it is (a PNG of at most 32 MB, 6000 px a side, that
+decodes within 96 MB); the page shows it at once. Any other (a notebook made on a Scribe of the other
+size, a screenshot taken sideways) waits as `bg/<pic>.source.png` and is made into `bg/<pic>.png` in
+the background, as a template's picture is (fitted, Image papers), after which the source is
+removed, made or not; the page draws white until then, and is drawn again once it is made. A page
+whose picture went missing (its fitting never ran) gets it again from a request for that page that
+sends the same picture.
+
+`source.ini` in the notebook's folder, written atomically each time a page is added:
+
+```
+# Grimoire: the book this notebook annotates, from KOReader (docs/FORMAT.md)
+book=0f3c6e2a9b1d4c7e8f5a2b3c4d5e6f70
+kind=paged
+page.12.96=1
+page.40.96=5
+```
+
+`book` and `kind` as in the request (from the first one), then a `page.<book page>.<page count>=<page
+id>` line for each annotated page, in book order (by `(page - 1) / count`, then the page number, then
+the count). The count is part of the book page: a reflowable book's page numbers change with its
+font, margins and screen, so page 12 of 300 and page 12 of 340 are two pages, each with the picture
+of what was on the screen then; at the same layout a page number is the same page. A paged
+document's count never changes. A line whose page is no longer in the notebook (deleted) is left out
+of the next write, and that book page is a new page if it is sent again. Lines this version does not
+know are written back as they were: whole lines of up to 255 bytes, 1 KB in all.
+
+1.0.0-beta and 1.0.0-beta.2 never read or write `source.ini` or `import/.annotate/`: they stay as
+they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands over with
+`--annotate` only to a launcher whose `# Capabilities:` line says `annotate`, so an older Grimoire
+never gets a request. Raw notebook zips leave `source.ini` and `bg/<pic>.source.png` out.
 
 ## `settings.ini`
 
@@ -580,6 +682,7 @@ Frozen while 1.0.0-beta is in use:
 | `next_page_id` | the id the next new page gets |
 | `pages` | the page ids in order, comma-separated |
 | `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
+| `source` | the book the notebook annotates: KOReader's partial MD5 of the book's file, 1 to 63 letters, digits, `-` or `_` (since 1.1; Annotated pages). A value of another form is a line this version does not know (kept, as below). 1.0.0-beta drops the line on its next save; `source.ini` names the book too, and 1.1 writes the line back when it next adds or opens a page for that book. 1.0.0-beta.2 keeps it |
 
 A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
 keys), or with a value outside 100 to 6000, takes the size most of its page files have, by their
@@ -609,7 +712,8 @@ Frozen while 1.0.0-beta is in use:
 - Data about one page: the stroke's ext bytes, an erase stroke's seed bits, the page's paper
   value, or a chunk.
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
-  never touch (as `bg/`, Image papers, and `erased.txt`, the pages left to compact).
+  never touch (as `bg/`, Image papers, `erased.txt`, the pages left to compact, and `source.ini`,
+  an annotated notebook's book pages).
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
   unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode` and
   `white` are such keys: what a version does without them is in their own sections.)
@@ -651,4 +755,9 @@ row.
 | `eraser_mode`, `white` | dropped on the next save; its eraser takes whole strokes away and its pens draw ink | kept; it does as 1.0.0-beta does |
 | `side_button=3` (white ink on the pen's button) | read as 2, the highlighter, and saved as 2 | used as 2, written back as 3 |
 | `erased.txt` (pages left to compact) | never read or written: it stays as it is | the same |
+| `source=` in `notebook.ini` (an annotated notebook's book) | dropped on the next save; 1.1 finds the notebook through `source.ini` and writes the line back | kept |
+| `source.ini` (its book pages) | never read or written: it stays as it is. A page it deletes leaves a line there that 1.1 drops, and that book page becomes a new page when it is sent again | the same |
+| an annotated notebook's `paper` (its first page's picture, a document page's) | read as Medium rule: its new pages get Medium | kept; new pages get Blank (after a document page, the notebook's paper; Blank when that is a document page's) |
+| `import/.annotate/` (a request from KOReader) | never read | the same; KOReader's plugin never sends one to a launcher without the `annotate` capability |
+| `bg/<pic>.source.png` (a page picture waiting to be fitted) | never read or written; raw zips leave it out | the same |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

@@ -557,12 +557,31 @@ static int make_template(const char *id, const char *src) {
     return rc;
 }
 
+// ---- a page KOReader sent (annotate.h) ----
+
+// Whether src is notebook id's own bg/<6 hex digits>.source.png: a page picture KOReader's plugin
+// sent that is not of the notebook's page size, made into the page's picture here as a template's
+// is (its id comes from the same key), then removed, made or not: it is no picture of the notebook
+// (bg/ keeps only those), and the next request for its page brings another.
+static bool annotate_source(const char *id, const char *src) {
+    char dir[700];
+    if (bgimage_dir(id, dir, sizeof dir) != 0) return false;
+    size_t n = strlen(dir);
+    if (strncmp(src, dir, n) || src[n] != '/') return false;
+    const char *f = src + n + 1;
+    if (strlen(f) != 17 || strcmp(f + 6, ".source.png")) return false;
+    for (int k = 0; k < 6; k++)
+        if (!isxdigit((unsigned char)f[k])) return false;
+    return true;
+}
+
 int bg_template(const char *id, const char *src, float dpi) {
     (void)dpi;
     MemCap cap;
     cap_memory(&cap);
     int rc = !id || !*id ? make_previews(src) : make_template(id, src);  // no notebook: the folder's previews
     uncap_memory(&cap);
+    if (id && *id && annotate_source(id, src)) unlink(src);  // a page KOReader sent: done with (above)
     return rc;
 }
 

@@ -8,6 +8,7 @@
 #define STORE_ID_LEN 24
 #define STORE_NAME_LEN 96
 #define STORE_EXTRA_LEN 2048
+#define STORE_SOURCE_LEN 64
 
 typedef struct {
     char id[STORE_ID_LEN];        // directory name, e.g. "20261010-143205-a3f1"
@@ -21,6 +22,8 @@ typedef struct {
     uint32_t next_page_id;
     int page_w, page_h;           // its pages' size, px: the screen it was made on, kept wherever it
                                   // is opened (notebook.ini page_w, page_h; see store_load_info)
+    char source[STORE_SOURCE_LEN]; // the book it annotates (notebook.ini source=): KOReader's key of
+                                   // the book's file (annotate.h); "" for none
     char extra[STORE_EXTRA_LEN];  // notebook.ini lines this build does not know ("key=value\n"
                                   // each), written back as they were
 } NotebookInfo;
@@ -97,6 +100,9 @@ int store_take_corrupt_count(void);
 // again, both are kept. Returns how many came back; each is logged.
 int store_recover_pages(const NotebookInfo *nb);
 int store_save_info(NotebookInfo *nb);      // also bumps modified
+// A book key as notebook.ini's source= holds one: 1 to 63 letters, digits, '-' or '_'. A source=
+// line with any other value is one this version does not know: kept as it is (NotebookInfo.extra).
+bool store_source_ok(const char *key);
 // A fresh notebook id ("20261010-143205-a3f1": the local time and 4 random hex digits).
 void store_make_id(char id[STORE_ID_LEN]);
 int store_rename(const char *id, const char *name);

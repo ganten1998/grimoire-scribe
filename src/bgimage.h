@@ -28,6 +28,11 @@ bool bgimage_take_missing(void);
 void bgimage_forget(const char *nb);
 // Forgets only the remembered failures (a job may have written the file since).
 void bgimage_retry_missing(void);
+// Whether bgimage_render draws data, a whole file of len bytes, as one of a notebook's pictures:
+// a PNG of at most 6000 px a side, within what a picture drawn on the UI thread may take (the
+// file's size, the memory to decode it). A page KOReader sent (annotate.h) is kept as it is when it
+// is, and of its notebook's page size. 0 with its size, or -1 and why.
+int bgimage_drawable(const uint8_t *data, size_t len, int *w, int *h, const char **why);
 
 // ---- files ----
 

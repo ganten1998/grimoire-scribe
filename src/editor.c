@@ -955,6 +955,31 @@ void editor_open_notebook(App *a, const char *id) {
     arrive_readonly(a);
 }
 
+// A page KOReader sent (annotate.h): notebook id open at its page page_id, or where
+// editor_open_notebook opens it should it have no such page.
+void editor_open_notebook_at(App *a, const char *id, uint32_t page_id) {
+    editor_open_notebook(a, id);
+    if (!S->open || strcmp(S->nb.id, id)) return;
+    for (int i = 0; i < S->nb.npages; i++)
+        if (S->nb.page_ids[i] == page_id) {
+            if (i != S->index) go_to_page(a, i);
+            return;
+        }
+}
+
+// A picture made in the background (a template's, a page KOReader sent: bgimage.h) may be the open
+// page's paper, drawn white while its file was missing: the page is drawn again with it, now, or once
+// the stroke or gesture under way is over (editor_tick), or as the editor comes back in front.
+void editor_picture_made(App *a) {
+    if (!S || !S->open || !S->page || !paper_is_image(S->page->paper)) return;
+    S->canvas_page = NULL;
+    canvas_free(&S->paper);  // (what erase strokes restore toward: drawn white too)
+    if (a->scr == SCR_EDITOR && !a->asleep && !editor_busy(a) && S->page_canvas.px) {
+        render_page_full(a);
+        compose_all(a, REFRESH_UI);
+    }
+}
+
 bool editor_save_now(App *a) { return save_page(a); }
 
 // ---- ink ----
@@ -1790,6 +1815,11 @@ void editor_tick(App *a, uint32_t now) {
     // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
     // tries again 2 s later, not at every tick: each try says so with a toast.
     if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000 && !save_page(a)) S->last_up = now;
+    // A page whose picture was made while a stroke or gesture was under way (editor_picture_made).
+    if (S->open && S->page && S->canvas_page != S->page && S->page_canvas.px && S->owner == OWN_NONE && !S->pinching) {
+        render_page_full(a);
+        compose_all(a, REFRESH_UI);
+    }
 }
 
 // ---- headless checks ----
