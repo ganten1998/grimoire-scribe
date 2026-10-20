@@ -78,6 +78,6 @@ void page_render_thumb(Canvas *thumb, const Page *p, float dpi);
 // change nothing. Each is checked with the ones marked before it already left out, so leave them
 // out together. Returns how many, or -1 when out of memory (none marked). A page without erase
 // strokes has none. p is not changed (the editor's undo history holds pointers to its strokes):
-// leave the marked strokes out of a copy. It renders the page several times (three page-size
-// canvases), so it suits the moment a notebook closes, not every save.
+// leave the marked strokes out of a copy. It draws each candidate's bbox two to four times, in
+// two page-size canvases: work for the moment a notebook closes, not for every save.
 int page_droppable(const Page *p, float dpi, bool *drop);

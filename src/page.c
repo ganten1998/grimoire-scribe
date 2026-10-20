@@ -224,15 +224,19 @@ void page_render_thumb(Canvas *thumb, const Page *p, float dpi) {
 
 // ---- compaction ----
 
-// Whether drawing r without stroke i (and the strokes marked in drop) gives the pixels cur holds
-// there, drawn with it. Every pixel's value depends only on what was drawn over that pixel, and a
-// stroke draws inside its bbox, so r = its bbox settles it for the whole page. tmp is scratch.
-static bool same_without(Canvas *tmp, const Canvas *cur, const Page *p, Rect r, float dpi, int layers,
-                         const bool *drop, int i) {
-    if (!(layers & PAGE_LAYER_PAPER)) canvas_fill(tmp, r, 255);  // the ink layer starts white
-    render_layers(tmp, p, r, dpi, layers, drop, i);
+// Whether r drawn without stroke i is r drawn with it (both without the strokes marked in drop).
+// Every pixel's value depends only on what was drawn over that pixel, and a stroke draws inside
+// its bbox, so r = its bbox settles it for the whole page. a and b are page-size scratch.
+static bool same_without(Canvas *a, Canvas *b, const Page *p, Rect r, float dpi, int layers, const bool *drop,
+                         int i) {
+    if (!(layers & PAGE_LAYER_PAPER)) {  // the ink layer starts white
+        canvas_fill(a, r, 255);
+        canvas_fill(b, r, 255);
+    }
+    render_layers(a, p, r, dpi, layers, drop, -1);
+    render_layers(b, p, r, dpi, layers, drop, i);
     for (int y = r.y; y < r.y + r.h; y++)
-        if (memcmp(&tmp->px[y * tmp->stride + r.x], &cur->px[y * cur->stride + r.x], (size_t)r.w)) return false;
+        if (memcmp(&a->px[y * a->stride + r.x], &b->px[y * b->stride + r.x], (size_t)r.w)) return false;
     return true;
 }
 
@@ -250,23 +254,17 @@ int page_droppable(const Page *p, float dpi, bool *drop) {
         any = any || stroke_is_erase(p->strokes[i]);
     }
     if (!any) return 0;
-    Canvas all, ink, tmp;
-    if (canvas_init(&all, p->w, p->h) != 0) return -1;
-    if (canvas_init(&ink, p->w, p->h) != 0) {
-        canvas_free(&all);
+    Canvas a, b;
+    if (canvas_init(&a, p->w, p->h) != 0) return -1;
+    if (canvas_init(&b, p->w, p->h) != 0) {
+        canvas_free(&a);
         return -1;
     }
-    if (canvas_init(&tmp, p->w, p->h) != 0) {
-        canvas_free(&all);
-        canvas_free(&ink);
-        return -1;
-    }
-    Rect page = {0, 0, p->w, p->h};
-    render_layers(&all, p, page, dpi, PAGE_LAYER_ALL, NULL, -1);
-    render_layers(&ink, p, page, dpi, PAGE_LAYER_INK, NULL, -1);
-    // A stroke whose leaving out changes neither render is marked. all and ink then still hold
-    // the page as drawn without everything marked, so each check sees the ones before it. Ink
+    // A stroke whose leaving out changes neither the page nor its ink layer is marked. Marked
+    // strokes change nothing, so the page drawn without them is the page itself, and each check
+    // sees the ones marked before it: it draws only its stroke's bbox, with and without it. Ink
     // goes first: once it is out, the erase strokes over it may have nothing left to change.
+    Rect page = {0, 0, p->w, p->h};
     int n = 0;
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < p->n; i++) {
@@ -274,14 +272,13 @@ int page_droppable(const Page *p, float dpi, bool *drop) {
             if ((unsigned)s->tool >= TOOL_COUNT || stroke_is_erase(s) != (pass == 1)) continue;
             if (pass == 0 && !erased_later(p, i)) continue;
             Rect r = rect_intersect(s->bbox, page);
-            if (rect_is_empty(r) || !same_without(&tmp, &all, p, r, dpi, PAGE_LAYER_ALL, drop, i) ||
-                !same_without(&tmp, &ink, p, r, dpi, PAGE_LAYER_INK, drop, i))
+            if (rect_is_empty(r) || !same_without(&a, &b, p, r, dpi, PAGE_LAYER_ALL, drop, i) ||
+                !same_without(&a, &b, p, r, dpi, PAGE_LAYER_INK, drop, i))
                 continue;
             drop[i] = true;
             n++;
         }
-    canvas_free(&all);
-    canvas_free(&ink);
-    canvas_free(&tmp);
+    canvas_free(&a);
+    canvas_free(&b);
     return n;
 }
