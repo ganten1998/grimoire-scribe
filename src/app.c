@@ -1,10 +1,13 @@
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 #include "app.h"
+#include "bgimage.h"
 #include "bgjob.h"
 #include "calib_fit.h"
+#include "i18n.h"
 
 #include "light.h"
 #include "power.h"
+#include "templates.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,6 +102,10 @@ int app_init(App *a, int w, int h, float dpi) {
     a->last_input = now_ms();
     a->prevent_applied = -1;
     app_apply_sleep_policy(a);
+    // The owner's pictures (templates.h): the templates and import folders, and the folders of page
+    // pictures copied into import/ since the last run, made into notebooks in the background.
+    templates_init();
+    import_scan(dpi);
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
@@ -411,8 +418,26 @@ static PowerdState powerd_state_now(char *name, size_t cap) {
     return powerd_parse_state(name);
 }
 
+// A background job that finished: an import says how it went (the Library shows its new notebook),
+// a template's picture may now be there to draw. Returns bg_poll's result for the PDF mirror's toast.
+static int poll_jobs(App *a) {
+    int done = -1, r = bg_poll_kind(&done);
+    if (done == BG_TEMPLATE) bgimage_retry_missing();
+    if (done != BG_IMPORT_FOLDER) return r;
+    int pages = 0, got = import_finished(r > 0, &pages);
+    if (got > 0 && a->scr == SCR_LIBRARY && !a->asleep) app_redraw_mode(a, REFRESH_UI);  // (waking redraws it too)
+    if (got > 0) {
+        char msg[128];
+        snprintf(msg, sizeof msg, NG_("Imported a notebook of %d page.", "Imported a notebook of %d pages.", pages), pages);
+        app_toast(a, msg, 8000);
+    } else if (got < 0) {
+        app_toast(a, _("Could not import a folder of pages (see grimoire.log)."), 8000);
+    }
+    return 0;
+}
+
 void app_tick(App *a, uint32_t now) {
-    int bg = bg_poll();
+    int bg = poll_jobs(a);
     if (bg) app_toast(a, bg > 0 ? "PDF saved to grimoire/PDFs" : "Could not save the PDF", 2500);
     if (store_take_corrupt_count() > 0)
         app_toast(a, "A damaged page was set aside; a blank one took its place (see grimoire.log)", 6000);

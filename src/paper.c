@@ -3,10 +3,13 @@
 #include "paper.h"
 
 #include "font.h"
+#include "i18n.h"
 
 #include <math.h>
 
 const char *paper_name(PaperKind k) {
+    // A picture: a template the owner copied in, or a page of an imported document.
+    if (paper_is_image(k)) return paper_is_document(k) ? C_("paper", "Imported page") : C_("paper", "Template");
     switch (k) {
     case PAPER_NARROW: return "Narrow rule";
     case PAPER_MEDIUM: return "Medium rule";
@@ -164,10 +167,28 @@ PaperKind music_encode(const MusicLayout *m) {
     return (PaperKind)v;
 }
 
-bool paper_is_known(PaperKind k) { return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL); }
+// ---- image papers ----
+
+bool paper_is_image(PaperKind k) {
+    uint32_t v = (uint32_t)k;
+    // The namespace, then bits 24-27: the role (0 or 1) and the colour bits (0).
+    return (v & 0xF0000000u) == PAPER_IMAGE_FLAG && (v >> 24 & 15u) <= (uint32_t)PAPER_ROLE_DOCUMENT;
+}
+
+bool paper_is_document(PaperKind k) {
+    return paper_is_image(k) && ((uint32_t)k >> 24 & 3u) == (uint32_t)PAPER_ROLE_DOCUMENT;
+}
+
+PaperKind paper_image(int role, uint32_t id) {
+    return (PaperKind)(PAPER_IMAGE_FLAG | ((uint32_t)role & 3u) << 24 | (id & 0xFFFFFFu));
+}
+
+bool paper_is_known(PaperKind k) {
+    return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL) || paper_is_image(k);
+}
 
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback) {
-    return paper_is_known((PaperKind)v) ? (PaperKind)v : fallback;
+    return v < PAPER_COUNT || music_decode((PaperKind)v, NULL) ? (PaperKind)v : fallback;
 }
 
 PaperKind music_default(void) {

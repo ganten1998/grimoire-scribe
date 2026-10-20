@@ -327,9 +327,18 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     return 0;
 }
 
+static int write_info_at(const char *dir, const NotebookInfo *nb);
+
 static int write_info(const NotebookInfo *nb) {
-    char dir[600], path[700];
+    char dir[600];
     if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return -1;
+    return write_info_at(dir, nb);
+}
+
+int store_write_info_in(const char *dir, const NotebookInfo *nb) { return write_info_at(dir, nb); }
+
+static int write_info_at(const char *dir, const NotebookInfo *nb) {
+    char path[700];
     snprintf(path, sizeof path, "%s/notebook.ini", dir);
     char name[STORE_NAME_LEN], folder[STORE_NAME_LEN];
     clean_line(name, nb->name, sizeof name);
@@ -360,15 +369,169 @@ static void page_path(const NotebookInfo *nb, uint32_t pid, char *buf, size_t ca
     snprintf(buf, cap, "%s/notebooks/%s/p%u.qpg", g_root, nb->id, pid);
 }
 
-static int write_page_file(const NotebookInfo *nb, uint32_t pid, const Page *p) {
+static int write_page_at(const char *path, const Page *p) {
     uint8_t *data;
     size_t len;
     if (page_serialize(p, &data, &len) != 0) return -1;
-    char path[700];
-    page_path(nb, pid, path, sizeof path);
     int rc = write_file_atomic(path, data, len);
     free(data);
     return rc;
+}
+
+static int write_page_file(const NotebookInfo *nb, uint32_t pid, const Page *p) {
+    char path[700];
+    page_path(nb, pid, path, sizeof path);
+    return write_page_at(path, p);
+}
+
+int store_write_page_in(const char *dir, uint32_t pid, const Page *p) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/p%u.qpg", dir, pid);
+    return write_page_at(path, p);
+}
+
+// ---- bg/pages.ini: the image paper of every page that has one ----
+//
+// A page's paper is in its own file, but 1.0.0-beta saves a page whose paper it does not know as
+// version 1 Blank, and the page's picture would be lost to it. This list, which no older version
+// touches, brings it back (docs/FORMAT.md, Image papers): every save that makes a page's paper an
+// image paper, or makes it stop being one, updates it.
+
+typedef struct {
+    uint32_t pid, kind;
+} SideEntry;
+typedef struct {
+    SideEntry *e;
+    int n, cap;
+} Side;
+
+static void side_path(const char *bgdir, char *buf, size_t cap) { snprintf(buf, cap, "%s/pages.ini", bgdir); }
+
+static bool side_get(const Side *s, uint32_t pid, uint32_t *kind) {
+    for (int i = 0; i < s->n; i++)
+        if (s->e[i].pid == pid) {
+            *kind = s->e[i].kind;
+            return true;
+        }
+    return false;
+}
+
+// Lists pid with kind, or (kind 0) takes it off the list. -1 out of memory.
+static int side_set(Side *s, uint32_t pid, uint32_t kind) {
+    for (int i = 0; i < s->n; i++) {
+        if (s->e[i].pid != pid) continue;
+        if (kind) s->e[i].kind = kind;
+        else s->e[i] = s->e[--s->n];
+        return 0;
+    }
+    if (!kind) return 0;
+    if (s->n == s->cap) {
+        int nc = s->cap ? s->cap * 2 : 16;
+        SideEntry *ne = realloc(s->e, (size_t)nc * sizeof *ne);
+        if (!ne) return -1;
+        s->e = ne;
+        s->cap = nc;
+    }
+    s->e[s->n++] = (SideEntry){pid, kind};
+    return 0;
+}
+
+// Reads <bgdir>/pages.ini: lines p<page id>=<paper value>, for image papers only.
+static void side_load(const char *bgdir, Side *s) {
+    memset(s, 0, sizeof *s);
+    char path[760];
+    side_path(bgdir, path, sizeof path);
+    size_t len;
+    char *txt = read_file(path, &len);
+    if (!txt) return;
+    char *save = NULL;
+    for (char *line = strtok_r(txt, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        unsigned long pid, kind;
+        char *end;
+        if (line[0] != 'p') continue;
+        pid = strtoul(line + 1, &end, 10);
+        if (end == line + 1 || *end != '=' || pid == 0 || pid >= 0x7fffffff) continue;
+        kind = strtoul(end + 1, NULL, 10);
+        if (paper_is_image((PaperKind)(uint32_t)kind) && side_set(s, (uint32_t)pid, (uint32_t)kind) != 0) break;
+    }
+    free(txt);
+}
+
+static int cmp_side(const void *a, const void *b) {
+    const SideEntry *x = a, *y = b;
+    return x->pid < y->pid ? -1 : x->pid > y->pid;
+}
+
+static int side_save(const char *bgdir, Side *s) {
+    qsort(s->e, (size_t)s->n, sizeof *s->e, cmp_side);
+    Sb b = {0};
+    sb_printf(&b, "# Grimoire: the image paper of each page that has one (docs/FORMAT.md)\n");
+    for (int i = 0; i < s->n; i++) sb_printf(&b, "p%u=%u\n", s->e[i].pid, s->e[i].kind);
+    char path[760];
+    side_path(bgdir, path, sizeof path);
+    int rc = b.err || mkdir_p(bgdir) != 0 ? -1 : write_file_atomic(path, b.d, b.n);
+    free(b.d);
+    return rc;
+}
+
+static int notebook_bg_dir(const NotebookInfo *nb, char *buf, size_t cap) {
+    char dir[600];
+    if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return -1;
+    snprintf(buf, cap, "%s/bg", dir);
+    return 0;
+}
+
+// Brings bg/pages.ini in step with page pid's paper: an image paper listed, any other not.
+static void side_note(const NotebookInfo *nb, uint32_t pid, PaperKind paper) {
+    char bgdir[700], path[760];
+    if (notebook_bg_dir(nb, bgdir, sizeof bgdir) != 0) return;
+    side_path(bgdir, path, sizeof path);
+    bool image = paper_is_image(paper);
+    if (!image && access(path, F_OK) != 0) return;  // nothing listed: nothing to take off
+    Side s;
+    side_load(bgdir, &s);
+    uint32_t have;
+    bool listed = side_get(&s, pid, &have);
+    if (image ? !(listed && have == (uint32_t)paper) : listed) {
+        if (side_set(&s, pid, image ? (uint32_t)paper : 0) != 0 || side_save(bgdir, &s) != 0)
+            qlog("store: %s: could not update bg/pages.ini for p%u.qpg", nb->id, pid);
+    }
+    free(s.e);
+}
+
+// A page an older version saved as blank paper (version 1 Blank) that bg/pages.ini lists with an
+// image paper gets its picture back: in this version a page only ever goes to Blank by a save that
+// takes it off the list.
+static void side_restore(const NotebookInfo *nb, uint32_t pid, Page *p) {
+    if (p->paper != PAPER_BLANK || p->readonly) return;
+    char bgdir[700], path[760];
+    if (notebook_bg_dir(nb, bgdir, sizeof bgdir) != 0) return;
+    side_path(bgdir, path, sizeof path);
+    if (access(path, F_OK) != 0) return;
+    Side s;
+    side_load(bgdir, &s);
+    uint32_t kind;
+    if (side_get(&s, pid, &kind)) {
+        p->paper = (PaperKind)kind;
+        qlog_once("store: %s: p%u.qpg was saved with blank paper by an older version; its picture comes back from "
+                  "bg/pages.ini", nb->id, pid);
+    }
+    free(s.e);
+}
+
+int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n) {
+    Side s = {0};
+    int rc = 0;
+    for (int i = 0; i < n && rc == 0; i++)
+        if (paper_is_image(papers[i])) rc = side_set(&s, pids[i], (uint32_t)papers[i]);
+    if (rc == 0) rc = side_save(bgdir, &s);
+    free(s.e);
+    return rc;
+}
+
+PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after) {
+    if (!paper_is_document(after)) return after;
+    return paper_is_document(nb->paper) ? PAPER_BLANK : nb->paper;
 }
 
 static void random_hex(char *out, int n) {
@@ -385,16 +548,21 @@ static void random_hex(char *out, int n) {
     out[n] = 0;
 }
 
-int store_create(const char *name, const char *folder, PaperKind paper, NotebookInfo *out) {
-    NotebookInfo *nb = out;
-    memset(nb, 0, sizeof *nb);
+void store_make_id(char id[STORE_ID_LEN]) {
     time_t t = (time_t)wall_time();
     struct tm tm;
     localtime_r(&t, &tm);
     char rnd[8];
     random_hex(rnd, 4);
-    snprintf(nb->id, sizeof nb->id, "%04d%02d%02d-%02d%02d%02d-%s", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+    snprintf(id, STORE_ID_LEN, "%04d%02d%02d-%02d%02d%02d-%s", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
              tm.tm_hour, tm.tm_min, tm.tm_sec, rnd);
+}
+
+int store_create(const char *name, const char *folder, PaperKind paper, NotebookInfo *out) {
+    NotebookInfo *nb = out;
+    memset(nb, 0, sizeof *nb);
+    time_t t = (time_t)wall_time();
+    store_make_id(nb->id);
     clean_line(nb->name, name && *name ? name : "Untitled", sizeof nb->name);
     clean_line(nb->folder, folder ? folder : "", sizeof nb->folder);
     nb->paper = paper_sanitize((uint32_t)paper, PAPER_MEDIUM);
@@ -422,6 +590,7 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
     }
     Page *p = page_new(nb->page_w, nb->page_h, nb->paper);
     if (!p) return -1;
+    strlcpy_q(p->nb, nb->id, sizeof p->nb);
     int rc = write_page_file(nb, 1, p);
     page_free(p);
     if (rc != 0) return -1;
@@ -709,8 +878,11 @@ int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     nb->next_page_id = pid + 1;
     int w, h;
     store_notebook_page_size(nb, &w, &h);
+    paper = store_new_page_paper(nb, paper);  // never another page's document picture
     Page *p = page_new(w, h, paper);
     if (!p) return -1;
+    strlcpy_q(p->nb, nb->id, sizeof p->nb);
+    side_note(nb, pid, paper);
     int rc = write_page_file(nb, pid, p);
     page_free(p);
     if (rc != 0) return -1;
@@ -726,6 +898,7 @@ int store_delete_page(NotebookInfo *nb, int index) {
     page_path(nb, nb->page_ids[index], path, sizeof path);
     snprintf(base, sizeof base, "%s-p%u", nb->id, nb->page_ids[index]);
     if (access(path, F_OK) == 0) move_to_trash(path, base);
+    side_note(nb, nb->page_ids[index], PAPER_BLANK);  // a deleted page has no paper to list
     memmove(&nb->page_ids[index], &nb->page_ids[index + 1], (size_t)(nb->npages - index - 1) * sizeof nb->page_ids[0]);
     nb->npages--;
     nb->last_page = clampi(nb->last_page, 0, nb->npages - 1);
@@ -777,11 +950,14 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
             g_corrupt_pages++;
         } else if (p->readonly) {
             qlog("store: %s opens read-only and stays as it is on disk", path);
+        } else {
+            side_restore(nb, nb->page_ids[index], p);
         }
         free(data);
     }
     if (!p) p = page_new(w, h, nb->paper);
     if (!p) return -1;
+    strlcpy_q(p->nb, nb->id, sizeof p->nb);
     if (p->w != w || p->h != h) qlog_once("store: %s is %dx%d: scaled to %dx%d", path, p->w, p->h, w, h);
     scale_page(p, w, h);
     *out = p;
@@ -799,11 +975,13 @@ int store_read_page(const NotebookInfo *nb, int index, Page **out) {
     uint8_t *data = read_file(path, &len);
     Page *p = NULL;
     if (data) {
-        page_deserialize(data, len, &p);  // damage leaves p NULL: a blank page below, the file as it is
+        // Damage leaves p NULL: a blank page below, the file as it is.
+        if (page_deserialize(data, len, &p) == 0) side_restore(nb, nb->page_ids[index], p);
         free(data);
     }
     if (!p) p = page_new(w, h, nb->paper);
     if (!p) return -1;
+    strlcpy_q(p->nb, nb->id, sizeof p->nb);
     scale_page(p, w, h);
     *out = p;
     return 0;
@@ -813,6 +991,7 @@ int store_save_page(const NotebookInfo *nb, int index, const Page *p) {
     if (index < 0 || index >= nb->npages) return -1;
     // A read-only page stays as it is on disk: writing it would lose what this build cannot read.
     if (p->readonly) return 0;
+    side_note(nb, nb->page_ids[index], p->paper);
     return write_page_file(nb, nb->page_ids[index], p);
 }
 
@@ -1225,6 +1404,9 @@ static int load_pgm(const char *path, Canvas *out) {
     free(d);
     return 0;
 }
+
+int store_write_pgm(const char *path, const Canvas *c) { return save_pgm(path, c); }
+int store_read_pgm(const char *path, Canvas *out) { return load_pgm(path, out); }
 
 int store_save_thumb(const char *id, const Canvas *t) {
     char dir[600], path[700];

@@ -15,6 +15,7 @@
 #include "export.h"
 #include "dispmenu.h"
 #include "bgjob.h"
+#include "bgimage.h"
 #include "musicbuild.h"
 #include "history.h"
 
@@ -127,6 +128,9 @@ struct EditorState {
     Canvas paper_prev[PAPER_COUNT];
     Canvas custom_prev;         // the Custom music tile's preview (one layout at a time)
     PaperKind custom_prev_k;
+    Canvas image_prev;          // an image paper's preview: one of this notebook's pictures at a time
+    PaperKind image_prev_k;
+    char image_prev_nb[STORE_ID_LEN];
     MusicBuild mb;              // the Custom music sheet
 };
 
@@ -316,13 +320,22 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
         c = &S->custom_prev;
         if (c->px && S->custom_prev_k != k) canvas_free(c);
         S->custom_prev_k = k;
+    } else if (paper_is_image(k)) {
+        // A picture of this notebook's (the same value in another notebook can be another one).
+        c = &S->image_prev;
+        if (c->px && (S->image_prev_k != k || strcmp(S->image_prev_nb, S->nb.id) || c->w != S->pgw / 6 ||
+                      c->h != S->pgh / 6))
+            canvas_free(c);
+        S->image_prev_k = k;
+        strlcpy_q(S->image_prev_nb, S->nb.id, sizeof S->image_prev_nb);
     } else {
         c = &S->paper_prev[clampi((int)k, 0, PAPER_COUNT - 1)];
     }
     if (!c->px) {
         Canvas full;
         if (canvas_init(&full, S->pgw, S->pgh) != 0) return NULL;
-        paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+        if (paper_is_image(k)) bgimage_render(&full, S->nb.id, k, (Rect){0, 0, S->pgw, S->pgh});
+        else paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
         if (canvas_init(c, S->pgw / 6, S->pgh / 6) == 0) canvas_downsample_keep_lines(c, &full, 0.6f);
         canvas_free(&full);
     }
@@ -1315,6 +1328,7 @@ void editor_free(App *a) {
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
+    canvas_free(&S->image_prev);
     musicbuild_free(&S->mb);
     free(S);
     a->ed = NULL;

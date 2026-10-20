@@ -60,7 +60,9 @@ static const char *const k_kind_name[K_COUNT] = {"plain",          "empty",     
                                                  "critical chunk", "image paper",   "newer music part",
                                                  "empty, newer paper", "everything"};
 
-static const uint32_t IMAGE_PAPER = 0x50000001u;  // a 1.1 image paper id (namespace 0x5)
+// An image paper (namespace 0x5) with the colour bits set: a later version's, which this one does
+// not know (well-formed image papers are this version's own: tests/test_templates.c).
+static const uint32_t IMAGE_PAPER = 0x5C000001u;
 static const uint32_t MUSIC_NEWER = 0x4100000Cu;  // custom music with a part this version lacks
 
 static MusicLayout custom_layout(void) {

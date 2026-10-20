@@ -10,6 +10,7 @@
 #include "export.h"
 #include "dispmenu.h"
 #include "bgjob.h"
+#include "bgimage.h"
 #include "musicbuild.h"
 #include "keyboard.h"
 
@@ -139,7 +140,9 @@ static void unique_name(App *a, const char *base, char *out, size_t cap) {
 
 static const Canvas *paper_preview(App *a, PaperKind k) {
     Canvas *c;
-    if (!paper_is_known(k)) k = PAPER_BLANK;  // a newer version's paper (also as a card's fallback)
+    // A newer version's paper (also as a card's fallback), and an image paper: that is one of a
+    // notebook's own pictures (picture_card), here blank.
+    if (!paper_is_known(k) || paper_is_image(k)) k = PAPER_BLANK;
     if (paper_is_custom(k)) {
         c = &S->custom_prev;
         if (c->px && S->custom_prev_k != k) canvas_free(c);
@@ -159,10 +162,24 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
     return c->px ? c : NULL;
 }
 
+// The card of a notebook with no thumbnail yet whose paper is a picture: that picture (white while
+// its file is missing), never another paper.
+static void picture_card(App *a, int nb) {
+    const NotebookInfo *b = &S->books[nb];
+    int pw, ph;
+    store_notebook_page_size(b, &pw, &ph);
+    Canvas full;
+    if (canvas_init(&full, pw, ph) != 0) return;
+    bgimage_render(&full, b->id, b->paper, (Rect){0, 0, pw, ph});
+    if (canvas_init(&S->thumbs[nb], pw / 4, ph / 4) == 0) canvas_downsample_keep_lines(&S->thumbs[nb], &full, 0.6f);
+    canvas_free(&full);
+}
+
 static const Canvas *thumb_for(App *a, int nb) {
     if (!S->thumb_tried[nb]) {
         S->thumb_tried[nb] = true;
-        store_load_thumb(S->books[nb].id, &S->thumbs[nb]);
+        if (store_load_thumb(S->books[nb].id, &S->thumbs[nb]) != 0 && paper_is_image(S->books[nb].paper))
+            picture_card(a, nb);
     }
     if (S->thumbs[nb].px) return &S->thumbs[nb];
     return paper_preview(a, S->books[nb].paper);

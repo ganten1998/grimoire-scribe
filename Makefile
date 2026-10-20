@@ -21,6 +21,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
             src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c \
             src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c
+CORE_SRC += src/bgimage.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -76,7 +77,9 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # failed expect makes a run exit with status 3, and a run that leaves a file half-written (*.tmp)
 # fails too, as does one whose "# pdfs: N" line does not match the PDFs left in its root's PDFs/
 # (the mirror): every scenario still runs, then the rule fails naming them. "# env: K=V" lines
-# set a scenario's environment; nothing else of the caller's reaches the app's test hooks. Last,
+# set a scenario's environment; nothing else of the caller's reaches the app's test hooks.
+# "# copy: DIR DEST" lines copy what the folder DIR (in the repository, e.g. tests/fixtures/...)
+# holds into DEST under the scenario's data root before the run (templates, import folders). Last,
 # the runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written,
 # and in fail.qs every line but the comments, waits and taps must be reported as failed, with
 # exit status 3.
@@ -91,6 +94,10 @@ scenarios: $(BUILD)/host/grimoire-headless
 	    { grep -v '^http_port=' $$r/settings.ini 2>/dev/null; echo "http_port=$$GRIMOIRE_TEST_PORT"; } > $$r/settings.ini.port; \
 	    mv $$r/settings.ini.port $$r/settings.ini; fi; \
 	  if grep -q '^# settings: ' $$s; then r=$(BUILD)/scen/$$n; mkdir -p $$r; sed -n 's/^# settings: *//p' $$s >> $$r/settings.ini; fi; \
+	  if grep -q '^# copy: ' $$s; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
+	    if ! sed -n 's/^# copy: *//p' $$s | while read -r src dst; do \
+	      mkdir -p "$$r/$$dst" && cp -R "$$src/." "$$r/$$dst/" || exit 1; done; then \
+	      echo "$$n: a # copy: line failed"; failed="$$failed $$n"; continue; fi; fi; \
 	  envs=$$(sed -n 's/^# env: *//p' $$s | tr '\n' ' '); \
 	  env $$envs GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \

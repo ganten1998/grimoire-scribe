@@ -31,8 +31,13 @@ uint32_t erase_seed(ToolKind texture, uint32_t hash);
 // which must cover the canvas's clip while it draws; an ink stroke's ignores it.
 void stroke_brush_begin(BrushState *b, const Stroke *s, float dpi, const uint8_t *paper, int x0, int y0, int stride);
 
+#define PAGE_NB_LEN 24   // a notebook id with its terminator (STORE_ID_LEN)
+
 typedef struct {
     PaperKind paper;     // may be a kind this build does not know (paper_is_known): drawn blank, kept
+    // The notebook the page is in (its id): where an image paper's picture is (bgimage.c). The store
+    // sets it on every page it makes or reads for a notebook; "" (a page of none) draws one white.
+    char nb[PAGE_NB_LEN];
     int w, h;            // page px
     int n, cap;
     Stroke **strokes;    // owned, draw order
@@ -68,6 +73,11 @@ void page_render(Canvas *c, const Page *p, Rect region, float dpi);
 // every erase stroke. Draw both layers in one call.
 enum { PAGE_LAYER_PAPER = 1, PAGE_LAYER_INK = 2, PAGE_LAYER_ALL = 3 };
 void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers);
+// The page's paper alone over region, as page_render draws it: an image paper from its notebook's
+// picture (bgimage.c), any other kind by paper_render (which draws an image paper blank). Wherever
+// a page's paper is needed apart from its ink (what an erase stroke restores toward, drawn live),
+// take it from here.
+void page_paper_render(Canvas *c, const Page *p, Rect region, float dpi);
 // Renders the whole page then box-downsamples into thumb (thumb size sets the scale).
 void page_render_thumb(Canvas *thumb, const Page *p, float dpi);
 
