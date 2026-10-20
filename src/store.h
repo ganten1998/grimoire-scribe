@@ -72,8 +72,8 @@ int store_load_info(const char *id, NotebookInfo *out);
 int store_take_corrupt_count(void);
 // When a notebook is opened: pages an older version set aside (p<id>.qpg.damaged-<time>, as
 // 1.0.0-beta does with any page from a newer version) that open now go back to p<id>.qpg, the
-// newest copy if there are several. If p<id>.qpg exists again, both are kept. Returns how many
-// came back; each is logged.
+// newest copy if there are several. Only pages in the page list come back; if p<id>.qpg exists
+// again, both are kept. Returns how many came back; each is logged.
 int store_recover_pages(const NotebookInfo *nb);
 int store_save_info(NotebookInfo *nb);      // also bumps modified
 int store_rename(const char *id, const char *name);
@@ -82,7 +82,8 @@ int store_delete(const char *id);           // moves to trash/
 int store_notebook_dir(const char *id, char *buf, size_t cap);
 
 // Pages. Index is the position in nb->page_ids.
-int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper); // writes empty page + info
+// Writes an empty page (never over a page file already there: the next free id) + info.
+int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
 // Missing page file -> empty page of nb->paper. Points are scaled if the stored size differs.
 // A page from a newer version comes back read-only (Page.readonly) and is never set aside.

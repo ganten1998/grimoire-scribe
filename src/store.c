@@ -110,6 +110,25 @@ static void sb_printf(Sb *b, const char *fmt, ...) {
     b->n += (size_t)k;
 }
 
+// A note about something that stays as it is (a copy kept aside, lines that do not fit) is logged
+// the first time it comes up in a run, not on every listing or opening of the notebook.
+static void qlog_once(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void qlog_once(const char *fmt, ...) {
+    static uint64_t seen[256];
+    static int nseen;
+    char msg[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof msg, fmt, ap);
+    va_end(ap);
+    uint64_t h = 14695981039346656037ull;  // FNV-1a of the whole line
+    for (const char *c = msg; *c; c++) h = (h ^ (uint8_t)*c) * 1099511628211ull;
+    for (int i = 0; i < nseen; i++)
+        if (seen[i] == h) return;
+    if (nseen < (int)(sizeof seen / sizeof seen[0])) seen[nseen++] = h;
+    qlog("%s", msg);
+}
+
 // ---- tiny ini ----
 
 // Returns false for a key it does not know: the line then goes to `unknown` (if given), so keys
@@ -169,12 +188,14 @@ static bool info_cb(void *ctx, const char *k, const char *v) {
 }
 
 // notebook.ini lines this build does not know, written back after the keys it knows. Whole lines
-// only: one that no longer fits is left out (and logged).
+// only: one that no longer fits is left out (counted here, logged by store_load_info).
+static int g_info_dropped;
+
 static void info_unknown(void *ctx, const char *k, const char *v) {
     NotebookInfo *nb = ctx;
     size_t have = strnlen(nb->extra, sizeof nb->extra), need = strlen(k) + strlen(v) + 2;
     if (have + need >= sizeof nb->extra) {
-        qlog("store: %s: notebook.ini line \"%.40s\" does not fit, not kept", nb->id, k);
+        g_info_dropped++;
         return;
     }
     snprintf(nb->extra + have, sizeof nb->extra - have, "%s=%s\n", k, v);
@@ -213,7 +234,11 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     memset(out, 0, sizeof *out);
     strlcpy_q(out->id, id, sizeof out->id);
     snprintf(path, sizeof path, "%s/notebook.ini", dir);
+    g_info_dropped = 0;
     if (ini_parse_file(path, info_cb, info_unknown, out) != 0) return -1;
+    if (g_info_dropped)
+        qlog_once("store: %s: %d unknown notebook.ini line(s) do not fit in the %d bytes kept, left out", id,
+                  g_info_dropped, STORE_EXTRA_LEN);
     if (out->npages == 0) {
         // A damaged or empty notebook.ini: rebuild the page list from the page files, so the
         // next save cannot drop every page but the first.
@@ -520,7 +545,17 @@ int store_list_folders(char (**out)[STORE_NAME_LEN], int *n) {
 int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     if (nb->npages >= STORE_MAX_PAGES) return -1;
     at = clampi(at, 0, nb->npages);
-    uint32_t pid = nb->next_page_id++;
+    // Never over a page file that is there already (one the page list does not name, as after a
+    // page list was rebuilt): the new page takes the next free id instead.
+    uint32_t pid = nb->next_page_id;
+    for (int tries = 0;; tries++, pid++) {
+        char path[700];
+        page_path(nb, pid, path, sizeof path);
+        if (access(path, F_OK) != 0) break;
+        if (tries == 64) return -1;
+        qlog_once("store: %s: p%u.qpg is not in the page list; left as it is", nb->id, pid);
+    }
+    nb->next_page_id = pid + 1;
     Page *p = page_new(g_w, g_h, paper);
     if (!p) return -1;
     int rc = write_page_file(nb, pid, p);
@@ -616,11 +651,14 @@ static int cmp_aside(const void *a, const void *b) {
     return x->t < y->t ? 1 : x->t > y->t ? -1 : 0;  // newest first
 }
 
+static int page_parse(const uint8_t *buf, size_t len, Page **out, bool quiet);
+
+// Whether a file reads as a page now, normally or read-only (quietly: the page is not opened).
 static bool page_file_opens(const char *path) {
     size_t len;
     uint8_t *data = read_file(path, &len);
     Page *p = NULL;
-    bool ok = data && page_deserialize(data, len, &p) == 0;
+    bool ok = data && page_parse(data, len, &p, true) == 0;
     page_free(p);
     free(data);
     return ok;
@@ -659,8 +697,20 @@ int store_recover_pages(const NotebookInfo *nb) {
     for (int i = 0; i < n;) {
         int j = i;
         while (j < n && as[j].pid == as[i].pid) j++;
+        uint32_t pid = as[i].pid;
+        bool listed = false;
+        for (int q = 0; q < nb->npages && !listed; q++) listed = nb->page_ids[q] == pid;
+        if (!listed) {
+            // No longer one of the notebook's pages (deleted since, or missing from a page list
+            // that was rebuilt): put back, it would be no page of the notebook, and a new page
+            // could take its number and write over it. It stays aside.
+            qlog_once("store: %s: p%u.qpg is not in the page list; its set-aside copies stay aside (%s)", nb->id, pid,
+                      as[i].name);
+            i = j;
+            continue;
+        }
         char path[700], aside[760];
-        snprintf(path, sizeof path, "%s/p%u.qpg", dir, as[i].pid);
+        snprintf(path, sizeof path, "%s/p%u.qpg", dir, pid);
         bool exists = access(path, F_OK) == 0;
         // The newest copy that opens now, normally or read-only; real damage stays aside.
         for (int k = i; k < j; k++) {
@@ -668,15 +718,12 @@ int store_recover_pages(const NotebookInfo *nb) {
             if (!page_file_opens(aside)) continue;
             if (exists) {
                 // An older version wrote a fresh page there since (it was edited): keep both.
-                qlog("store: %s: %s opens now, but p%u.qpg exists too; both kept", nb->id, as[k].name, as[k].pid);
+                qlog_once("store: %s: %s opens now, but p%u.qpg exists too; both kept", nb->id, as[k].name, pid);
             } else if (rename(aside, path) == 0) {
-                bool listed = false;
-                for (int q = 0; q < nb->npages && !listed; q++) listed = nb->page_ids[q] == as[k].pid;
-                qlog("store: %s: recovered p%u.qpg from %s%s", nb->id, as[k].pid, as[k].name,
-                     listed ? "" : " (not in the page list)");
+                qlog("store: %s: recovered p%u.qpg from %s", nb->id, pid, as[k].name);
                 restored++;
             } else {
-                qlog("store: %s: could not recover %s: %s", nb->id, as[k].name, strerror(errno));
+                qlog_once("store: %s: could not recover %s: %s", nb->id, as[k].name, strerror(errno));
             }
             break;
         }
@@ -818,12 +865,12 @@ static bool sane_size(uint32_t w, uint32_t h) { return w > 0 && h > 0 && w <= 20
 
 // A page from a newer version: only the 16 bytes every version starts with are read (magic,
 // version, u16 paper, w, h). It is shown blank, read-only.
-static int newer_page(unsigned ver, uint32_t w, uint32_t h, Page **out) {
+static int newer_page(unsigned ver, uint32_t w, uint32_t h, Page **out, bool quiet) {
     bool sane = sane_size(w, h);
     Page *p = page_new(sane ? (int)w : g_w, sane ? (int)h : g_h, PAPER_BLANK);
     if (!p) return -1;
     p->readonly = true;
-    qlog("store: read-only page: version %u is from a newer Grimoire, shown blank", ver);
+    if (!quiet) qlog("store: read-only page: version %u is from a newer Grimoire, shown blank", ver);
     *out = p;
     return 0;
 }
@@ -860,7 +907,9 @@ static const char *read_tail(R *r, Page *p, char *why, size_t cap) {
     return NULL;
 }
 
-int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
+// The reader behind page_deserialize. `quiet` leaves the reason a page opens read-only out of the
+// log (for a check of a file, when no page is being opened).
+static int page_parse(const uint8_t *buf, size_t len, Page **out, bool quiet) {
     *out = NULL;
     R r = {buf, len, 0, false};
     const uint8_t *m = r_take(&r, 4);
@@ -869,7 +918,7 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     uint32_t paper = r_u16(&r);
     uint32_t w = r_u32(&r), h = r_u32(&r);
     if (r.err) return -1;
-    if (ver > 2 && ver <= PAGE_NEWER_MAX) return newer_page(ver, w, h, out);
+    if (ver > 2 && ver <= PAGE_NEWER_MAX) return newer_page(ver, w, h, out, quiet);
     if (ver != 1 && ver != 2) return -1;
     if (ver == 2) paper = r_u32(&r);
     uint32_t ns = r_u32(&r);
@@ -937,11 +986,13 @@ int page_deserialize(const uint8_t *buf, size_t len, Page **out) {
     }
     if (ro) {
         p->readonly = true;
-        qlog("store: read-only page: %s", ro);
+        if (!quiet) qlog("store: read-only page: %s", ro);
     }
     *out = p;
     return 0;
 }
+
+int page_deserialize(const uint8_t *buf, size_t len, Page **out) { return page_parse(buf, len, out, false); }
 
 // ---- thumbnails ----
 

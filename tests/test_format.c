@@ -506,15 +506,16 @@ TEST(set_aside_pages_come_back) {
     size_t fl = 0;
     page_serialize(fresh, &fd, &fl);
     CHECK(write_file_atomic(path, fd, fl) == 0);
-    // A page that is no longer in the notebook's list, and real damage that stays aside.
-    snprintf(aside, sizeof aside, "%s/p9.qpg.damaged-1792000100", dir);
-    CHECK(write_file_atomic(aside, v3, l3) == 0);
+    // A page that is no longer in the notebook's list stays aside, and so does real damage.
+    char aside9[900];
+    snprintf(aside9, sizeof aside9, "%s/p9.qpg.damaged-1792000100", dir);
+    CHECK(write_file_atomic(aside9, v3, l3) == 0);
     snprintf(aside, sizeof aside, "%s/p8.qpg.damaged-1792000100", dir);
     uint8_t *garbage = (uint8_t *)strdup("QPG1 not a page at all");
     lg = strlen((char *)garbage);
     CHECK(write_file_atomic(aside, garbage, lg) == 0);
 
-    CHECK(store_recover_pages(&nb) == 4);  // pages 1, 2 and 3, and p9
+    CHECK(store_recover_pages(&nb) == 3);  // pages 1, 2 and 3
     page_file(&nb, nb.page_ids[0], path, sizeof path);
     CHECK(same_file(path, v3, l3) && count_files(dir, "p1.qpg.damaged-") == 0);
     page_file(&nb, nb.page_ids[1], path, sizeof path);
@@ -524,7 +525,7 @@ TEST(set_aside_pages_come_back) {
     page_file(&nb, nb.page_ids[3], path, sizeof path);
     CHECK(same_file(path, fd, fl) && count_files(dir, "p4.qpg.damaged-") == 1);   // both kept
     snprintf(path, sizeof path, "%s/p9.qpg", dir);
-    CHECK(same_file(path, v3, l3));
+    CHECK(access(path, F_OK) != 0 && same_file(aside9, v3, l3));
     CHECK(count_files(dir, "p8.qpg.damaged-") == 1 && access(aside, F_OK) == 0);
     // They open read-only, as pages from a newer version do; nothing is counted as damage.
     Page *p = NULL;
@@ -787,6 +788,118 @@ TEST(notebook_ini_carries_unknown_lines) {
     free(huge);
 }
 
+static void put_page_list_aside(const char *dir) {
+    char ini[800];
+    snprintf(ini, sizeof ini, "%s/notebook.ini", dir);
+    const char *bare = "# Grimoire notebook\nname=Rebuilt\npaper=1\n";  // no page list, no next id
+    CHECK(write_file_atomic(ini, bare, strlen(bare)) == 0);
+}
+
+// A set-aside copy of a page the notebook no longer lists stays aside, where no new page can take
+// its number and write over it; and a new page never writes over a page file that is there.
+TEST(recovery_never_loses_a_page) {
+    NotebookInfo nb;
+    make_notebook("Rebuilt", &nb, 3);
+    char dir[700], path[800], aside[900];
+    snprintf(dir, sizeof dir, "%s/notebooks/%s", root, nb.id);
+    size_t l3;
+    uint8_t *v3 = readonly_bytes(RO_VERSION3, &l3);
+    // Page 4 was set aside by 1.0.0-beta, then notebook.ini lost its page list.
+    snprintf(aside, sizeof aside, "%s/p4.qpg.damaged-1792000000", dir);
+    CHECK(write_file_atomic(aside, v3, l3) == 0);
+    put_page_list_aside(dir);
+    NotebookInfo back;
+    CHECK(store_load_info(nb.id, &back) == 0 && back.npages == 3 && back.next_page_id == 4);  // rebuilt
+    CHECK(store_recover_pages(&back) == 0);
+    snprintf(path, sizeof path, "%s/p4.qpg", dir);
+    CHECK(access(path, F_OK) != 0 && same_file(aside, v3, l3));
+    // The next new page takes number 4; the copy is still there as it was, and then kept beside it.
+    CHECK(store_add_page(&back, back.npages, PAPER_GRID) == 0 && back.page_ids[3] == 4);
+    CHECK(same_file(aside, v3, l3));
+    CHECK(store_recover_pages(&back) == 0 && same_file(aside, v3, l3) && access(path, F_OK) == 0);
+    // A page file at the next number that the page list does not name is never written over.
+    uint32_t taken = back.next_page_id;
+    snprintf(path, sizeof path, "%s/p%u.qpg", dir, taken);
+    CHECK(write_file_atomic(path, v3, l3) == 0);
+    CHECK(store_add_page(&back, 0, PAPER_GRID) == 0);
+    CHECK(back.page_ids[0] == taken + 1 && back.next_page_id == taken + 2 && same_file(path, v3, l3));
+    NotebookInfo again;
+    CHECK(store_load_info(nb.id, &again) == 0 && again.npages == 5 && again.page_ids[0] == taken + 1);
+    free(v3);
+}
+
+// The log, for a while: stderr goes to a file between log_begin and log_end (which returns it).
+static int g_log_saved = -1;
+static char g_log_path[700];
+
+static void log_begin(void) {
+    snprintf(g_log_path, sizeof g_log_path, "%s/log-%d.txt", tl_tmp(), (int)getpid());
+    fflush(stderr);
+    g_log_saved = dup(2);
+    int fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        dup2(fd, 2);
+        close(fd);
+    }
+}
+
+static char *log_end(void) {
+    fflush(stderr);
+    if (g_log_saved >= 0) {
+        dup2(g_log_saved, 2);
+        close(g_log_saved);
+        g_log_saved = -1;
+    }
+    char *t = file_text(g_log_path);
+    unlink(g_log_path);
+    return t;
+}
+
+static int count_text(const char *text, const char *what) {
+    int n = 0;
+    for (const char *p = text; p && (p = strstr(p, what)); p += strlen(what)) n++;
+    return n;
+}
+
+// What stays as it is (a set-aside copy beside its page or of a page no longer listed, notebook.ini
+// lines that do not fit) is logged once, not on every opening or listing; checking the copies
+// logs no read-only reasons of its own.
+TEST(lasting_states_logged_once) {
+    NotebookInfo nb;
+    make_notebook("Logged once", &nb, 2);
+    char dir[700], aside[900], ini[800];
+    snprintf(dir, sizeof dir, "%s/notebooks/%s", root, nb.id);
+    size_t l10;
+    uint8_t *t10 = readonly_bytes(RO_TOOL10, &l10);
+    snprintf(aside, sizeof aside, "%s/p2.qpg.damaged-1792000000", dir);
+    CHECK(write_file_atomic(aside, t10, l10) == 0);  // p2.qpg is there too: both kept
+    snprintf(aside, sizeof aside, "%s/p7.qpg.damaged-1792000000", dir);
+    CHECK(write_file_atomic(aside, t10, l10) == 0);  // not in the page list
+    snprintf(ini, sizeof ini, "%s/notebook.ini", dir);
+    char *txt = file_text(ini);
+    size_t cap = (txt ? strlen(txt) : 0) + 8000, n = 0;
+    char *f = malloc(cap);
+    n += (size_t)snprintf(f + n, cap - n, "%s", txt ? txt : "");
+    for (int i = 0; i < 40; i++) n += (size_t)snprintf(f + n, cap - n, "newer%02d=%0100d\n", i, i);  // 4 KB
+    CHECK(write_file_atomic(ini, f, n) == 0);
+    int ok = 0;
+    log_begin();
+    for (int i = 0; i < 3; i++) {
+        NotebookInfo back;
+        ok += store_load_info(nb.id, &back) == 0 && back.npages == 2;
+        ok += store_recover_pages(&back) == 0;
+    }
+    char *log = log_end();
+    CHECK(ok == 6 && log != NULL);
+    CHECK(count_text(log, "both kept") == 1 && count_text(log, "not in the page list") == 1);
+    CHECK(count_text(log, "do not fit") == 1 && count_text(log, "read-only page") == 0);
+    if (log && (count_text(log, "both kept") != 1 || count_text(log, "do not fit") != 1)) fprintf(stderr, "%s", log);
+    free(log);
+    free(f);
+    free(txt);
+    free(t10);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/format-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -802,6 +915,8 @@ int main(void) {
     RUN(fuzz_new_paths);
     RUN(settings_carry_unknown_lines);
     RUN(notebook_ini_carries_unknown_lines);
+    RUN(recovery_never_loses_a_page);
+    RUN(lasting_states_logged_once);
     int rc = tl_done();
     system(cmd);
     return rc;
