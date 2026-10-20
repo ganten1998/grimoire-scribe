@@ -296,14 +296,13 @@ typedef struct {
 } DabTarget;
 
 // One pixel of a dab, the only place a dab writes one: a is the dab's own coverage, ad its share
-// once the spacing is compensated (what the deposit uses).
-static inline void put_px(DabTarget *t, Canvas *c, int x, int y, float ad, float a, bool erase) {
+// once the spacing is compensated (what the deposit uses). An erase dab restores toward paper, the
+// paper under the pixel (stamp_as reads it).
+static inline void put_px(DabTarget *t, Canvas *c, int x, int y, float ad, float a, bool erase, uint8_t paper) {
     if (!erase) {
         canvas_deposit_px(c, x, y, t->ink, ad);
         return;
     }
-    // (x, y) is inside the clip (stamp() clips its box to it), so the paper covers it.
-    uint8_t paper = t->paper ? t->paper[(ptrdiff_t)(y - t->y0) * t->stride + (x - t->x0)] : 255;
     const uint8_t *p = &c->px[y * c->stride + x];
     uint8_t was = *p;
     // Full coverage lands exactly on the paper: the spacing-compensated share alone would leave
@@ -409,6 +408,10 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     bool spans = erase && g_brush_erase_spans && !lk.graphite && lk.nib == NIB_NONE && g_eff <= 0.f &&
                  op >= 0.999f && r_in <= SPAN_MAX_R;
     for (int y = box.y; y < box.y + box.h; y++) {
+        // Erase: the row, and the paper under it ((x, y) is inside the clip, stamp's box being
+        // clipped to it, so the paper covers it).
+        const uint8_t *row = &c->px[y * c->stride];
+        const uint8_t *prow = erase && tg.paper ? &tg.paper[(ptrdiff_t)(y - tg.y0) * tg.stride] : NULL;
         float dy = (float)y + 0.5f - s->y;
         int sx0 = box.x + box.w, sx1 = sx0;  // the row's core span (none: x never gets there)
         float q = spans ? r_in * r_in - dy * dy : 0.f;
@@ -424,9 +427,17 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
             }
         }
         for (int x = box.x; x < box.x + box.w; x++) {
-            if (erase && x == sx0) {
-                x = sx1;
-                continue;
+            uint8_t paper = 255;
+            if (erase) {
+                if (x == sx0) {
+                    x = sx1;
+                    continue;
+                }
+                // A pixel already at its paper (or lighter) stays as it is (canvas_restore_px), so
+                // its coverage need not be worked out: most of a scrub goes over pixels its earlier
+                // dabs restored.
+                if (prow) paper = prow[x - tg.x0];
+                if (row[x] >= paper) continue;
             }
             float dx = (float)x + 0.5f - s->x;
             float d = sqrtf(dx * dx + dy * dy);
@@ -442,7 +453,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
                     if (h >= chance) continue;
                     a = op * 0.75f * (0.5f + 0.5f * t);
                     float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
-                    put_px(&tg, c, x, y, ad, a, erase);
+                    put_px(&tg, c, x, y, ad, a, erase, paper);
                     continue;
                 }
                 float prof = clampf((r_out - de) / edge_w, 0.f, 1.f);
@@ -473,7 +484,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
             }
             if (a <= 0.002f) continue;
             float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
-            put_px(&tg, c, x, y, ad, a, erase);
+            put_px(&tg, c, x, y, ad, a, erase, paper);
         }
     }
     if (tg.restored) b->restored = true;
