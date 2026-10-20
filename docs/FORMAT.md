@@ -530,31 +530,40 @@ it) whatever it does with what it finds:
   request whose time is more than 5 minutes away (before, or after: the clock was set back), is
   deleted unopened, with one log line.
 - The picture must read whole: a file of its own (a link is not followed), a PNG with all its
-  chunks, its critical ones (IHDR, PLTE, IDAT, IEND) matching their CRCs, and a picture Grimoire
-  takes (Image papers), of at most 16 MB.
+  chunks and nothing after its end, its critical ones (IHDR, PLTE, IDAT, IEND) matching their CRCs,
+  and a picture Grimoire takes (Image papers), of at most 16 MB.
   Otherwise nothing is made, and a toast says so.
 - The book's notebook is the newest one whose `notebook.ini` has its key as `source`, else the
   newest one with no `source` line whose `source.ini` names the book (one whose `source` line an
   older version dropped). Its compaction, queued or running, stops first, as when a notebook opens.
   With none, a notebook is made for the book: named after the title (on one line, control
-  characters as spaces, broken UTF-8 left out, cut to 95 bytes between two characters; with
+  characters as spaces, one space between two words, broken UTF-8 and the characters Grimoire's
+  fonts cannot draw left out (Chinese, Japanese and Korean: they would show as boxes), cut to 95
+  bytes between two characters; Untitled, in the language in use, when nothing is left; with
   " 2", " 3"... added when a notebook has that name already, as two notebooks of one name would
   share a PDF), at the top level, at the device's page size, its one page the annotated one. It
   is built in `notebooks/.annotate-<id>/` (a dot-folder the Library and every older version skip)
   and renamed into place once whole, so a failure leaves no notebook; a start finds what one cut
-  off left there, and removes it. Its own `paper` is its first page's (a document page's), so
-  pages added to it get Blank paper and the Library's card shows that page until the notebook has
-  a thumbnail.
+  off left there, and removes it. Its own `paper` is Blank, as an imported notebook's: what a page
+  added to it gets, and what a page whose file is missing or does not read shows (never another
+  book page's picture). Its card in the Library is its thumbnail, which the editor makes as it
+  leaves the page.
 - The book page's page is the one `source.ini` maps it to, when that page is still in the
   notebook: it opens as it is (a page sent again is never a second page). Otherwise a new page is
   added on its picture, a document page (role 1), just before the first page of the notebook that
   holds a later book page (so pages written after an annotated page, notes on it, stay with it),
-  else at the end. A new first page takes the place of the old one on the Library's card: the
-  thumbnail goes, and the notebook's `paper`, if a document page's, becomes the new page's.
-  Anything that cannot be written takes back what was added: the notebook stays as it was, and a
-  toast says so. A notebook of 2000 pages takes no more.
+  else at the end. The page is listed last: its id is taken first (`notebook.ini` written with
+  `next_page_id` past it, the page not listed, `modified` as it was), then its page file, its line
+  in `bg/pages.ini` and its line in `source.ini` are written, and only then does `notebook.ini`
+  list it. A start cut off on the way leaves files that name an id no version gives again
+  (1.0.0-beta takes `next_page_id` as it is), never a page; the same book page sent again is a
+  new page with the next id. A new first page takes the place of the old one on the Library's
+  card: the thumbnail goes, and the editor makes the new page's as it leaves the page. Anything
+  that cannot be written takes back what was added (all but the id, which stays given up): the
+  notebook stays as it was, and a toast says so. A notebook of 2000 pages takes no more.
 - The editor opens on that page (its `last_page` notes it, unchanged `modified` when the page was
-  there already).
+  there already). A page added, or a notebook made, at that start is a change like any other: the
+  notebook's PDF in `PDFs/` (the mirror, when it is on) is made again as it closes.
 
 The picture becomes the page's picture as it is (moved into `bg/<pic>.png`) when it is of the
 notebook's page size and one Grimoire draws as it is (a PNG of at most 32 MB, 6000 px a side, that
@@ -579,10 +588,12 @@ page.40.96=5
 id>` line for each annotated page, in book order (by `(page - 1) / count`, then the page number, then
 the count). The count is part of the book page: a reflowable book's page numbers change with its
 font, margins and screen, so page 12 of 300 and page 12 of 340 are two pages, each with the picture
-of what was on the screen then; at the same layout a page number is the same page. A paged
-document's count never changes. A line whose page is no longer in the notebook (deleted) is left out
-of the next write, and that book page is a new page if it is sent again. Lines this version does not
-know are written back as they were: whole lines of up to 255 bytes, 1 KB in all.
+of what was on the screen then. The same page number with the same count is the same page, whatever
+the layout: a layout that changed but kept the count opens the page made at the one before, with
+its picture. A paged document's count never changes. A line whose page is no longer in the notebook
+(deleted) is left out of the next write, and that book page is a new page if it is sent again. Lines
+this version does not know are written back as they were: whole lines of up to 255 bytes, 1 KB in
+all.
 
 1.0.0-beta and 1.0.0-beta.2 never read or write `source.ini` or `import/.annotate/`: they stay as
 they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands over with
@@ -758,7 +769,6 @@ row.
 | `erased.txt` (pages left to compact) | never read or written: it stays as it is | the same |
 | `source=` in `notebook.ini` (an annotated notebook's book) | dropped on the next save; 1.1 finds the notebook through `source.ini` and writes the line back | kept |
 | `source.ini` (its book pages) | never read or written: it stays as it is. A page it deletes leaves a line there that 1.1 drops, and that book page becomes a new page when it is sent again | the same |
-| an annotated notebook's `paper` (its first page's picture, a document page's) | read as Medium rule: its new pages get Medium | kept; new pages get Blank (after a document page, the notebook's paper; Blank when that is a document page's) |
 | `import/.annotate/` (a request from KOReader) | never read | the same; KOReader's plugin never sends one to a launcher without the `annotate` capability |
 | `bg/<pic>.source.png` (a page picture waiting to be fitted) | never read or written; raw zips leave it out | the same |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

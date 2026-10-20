@@ -15,6 +15,7 @@
 
 #include "bgimage.h"
 #include "bgjob.h"
+#include "font.h"
 #include "i18n.h"
 
 #define REQUEST_MAX 4096                // a request is a few lines
@@ -298,29 +299,39 @@ static size_t utf8_len(const uint8_t *s) {
     return n;
 }
 
+// Whether Grimoire's fonts draw the character at s (n bytes, a whole one). Every theme's face takes
+// what it lacks from Terminess, so a character Terminess lacks too (Chinese, Japanese, Korean) shows
+// as a box wherever the name is drawn. Any character while no font is loaded.
+static bool drawable(const uint8_t *s, size_t n) {
+    if (n == 1) return true;
+    uint32_t cp = n == 2   ? (s[0] & 0x1Fu) << 6 | (s[1] & 0x3Fu)
+                  : n == 3 ? (s[0] & 0x0Fu) << 12 | (s[1] & 0x3Fu) << 6 | (s[2] & 0x3Fu)
+                           : (s[0] & 0x07u) << 18 | (s[1] & 0x3Fu) << 12 | (s[2] & 0x3Fu) << 6 | (s[3] & 0x3Fu);
+    return font_has_glyph(FONT_FIXED, cp) || !font_has_glyph(FONT_FIXED, 'a');
+}
+
 void annotate_name(const char *title, char *out, size_t cap) {
     if (!cap) return;
     size_t k = 0;
     const uint8_t *s = (const uint8_t *)(title ? title : "");
-    while (*s && *s == ' ') s++;  // (leading spaces; control characters become spaces below)
     while (*s) {
         size_t n = utf8_len(s);
-        if (n == 0) {  // broken: left out
-            s++;
+        if (n == 0 || !drawable(s, n)) {  // broken, or one no font here draws: left out
+            s += n ? n : 1;
             continue;
         }
-        bool control = n == 1 ? (*s < 0x20 || *s == 0x7F) : (n == 2 && s[0] == 0xC2 && s[1] < 0xA0);
-        if (k + (control ? 1 : n) >= cap) break;  // the next character would not fit whole
-        if (control) out[k++] = ' ';
-        else
-            for (size_t i = 0; i < n; i++) out[k++] = (char)s[i];
+        // Spaces and control characters: one space between two words (none first or last).
+        if (n == 1 ? (*s <= ' ' || *s == 0x7F) : (n == 2 && s[0] == 0xC2 && s[1] < 0xA0)) {
+            if (k > 0 && out[k - 1] != ' ' && k + 1 < cap) out[k++] = ' ';
+        } else {
+            if (k + n >= cap) break;  // the next character would not fit whole
+            memcpy(out + k, s, n);
+            k += n;
+        }
         s += n;
     }
     while (k > 0 && out[k - 1] == ' ') k--;
     out[k] = 0;
-    size_t lead = 0;
-    while (out[lead] == ' ') lead++;  // (a control character first)
-    if (lead) memmove(out, out + lead, k - lead + 1);
 }
 
 // The name with " 2", " 3"... added when a notebook in all (n of them) has it already, as the
@@ -365,7 +376,8 @@ int annotate_png_check(const uint8_t *data, size_t len, int *w, int *h, const ch
     if (!data || len < 8 || memcmp(data, sig, 8)) return -1;
     bool idat = false, iend = false;
     int chunks = 0;
-    for (size_t at = 8; at < len && !iend; chunks++) {
+    size_t at = 8;
+    for (; at < len && !iend; chunks++) {
         *why = "cut short";
         if (len - at < 12) return -1;
         uint32_t n = be32(data + at);
@@ -391,6 +403,10 @@ int annotate_png_check(const uint8_t *data, size_t len, int *w, int *h, const ch
     }
     if (!iend || !idat) {
         *why = "cut short";
+        return -1;
+    }
+    if (at != len) {  // (more after its end: two writes of the file mixed, say)
+        *why = "damaged (something after its end)";
         return -1;
     }
     return bgimage_check(data, len, len, w, h, why);  // a picture Grimoire takes: its size, what it takes to decode
@@ -526,6 +542,18 @@ static int find_notebook(const NotebookInfo *all, int n, const char *book) {
     return -1;
 }
 
+// The id a new page of nb (in folder dir) gets: its next_page_id, stepping over a page file that is
+// there already (one its page list does not name), as store_add_page does. 0 when none is free.
+static uint32_t free_page_id(const char *dir, const NotebookInfo *nb) {
+    uint32_t id = nb->next_page_id ? nb->next_page_id : 1;
+    for (int tries = 0; tries < 64; tries++, id++) {
+        char path[800];
+        snprintf(path, sizeof path, "%s/p%u.qpg", dir, id);
+        if (access(path, F_OK) != 0) return id;
+    }
+    return 0;
+}
+
 // The request's page in notebook nb (loaded, its compaction stopped): the page that holds it, or a
 // new one. Picture: the request's file (src), its bytes and size.
 static void into_notebook(NotebookInfo *nb, const AnnotateRequest *r, const char *src, const uint8_t *png, size_t len,
@@ -600,36 +628,49 @@ static void into_notebook(NotebookInfo *nb, const AnnotateRequest *r, const char
     if (rc == 0) rc = place_picture(bgdir, pic, src, png, len, w, h, pw, ph, &fit, placed, sizeof placed);
     int at = annotate_insert_at(nb, &m, r->page, r->pages);
     PaperKind paper = paper_image(PAPER_ROLE_DOCUMENT, pic);
-    Page *p = rc == 0 ? page_new(pw, ph, paper) : NULL;
-    if (p) strlcpy_q(p->nb, nb->id, sizeof p->nb);
-    // Added on blank paper first (store_add_page gives no page another's document picture), then
-    // given its own; taken back whole if anything fails.
-    bool page_added = p && store_add_page(nb, at, PAPER_BLANK) == 0;
-    rc = page_added && store_save_page(nb, at, p) == 0 ? 0 : -1;
-    page_free(p);
-    if (rc == 0) {
-        pid = nb->page_ids[at];
-        rc = annotate_map_add(&m, r->page, r->pages, pid) == 0 && map_save(dir, &m, nb) == 0 ? 0 : -1;
+    // The page is listed last. Its id is taken first (notebook.ini's next_page_id, nothing listed
+    // yet); then its file on its own paper, its line in bg/pages.ini and its line in source.ini are
+    // written; then notebook.ini lists it. A start cut off on the way leaves files that name an id
+    // no version gives again (1.0.0-beta takes next_page_id as it is, never stepping over a page
+    // file), so they never become a page, nor tell another page's picture or book page.
+    uint32_t id = rc == 0 ? free_page_id(dir, nb) : 0;
+    char pagefile[800] = "";
+    bool taken = false, written = false;
+    if (id) {
+        nb->next_page_id = id + 1;
+        taken = store_write_info_in(dir, nb) == 0;  // (nothing else changes, its modified time neither)
     }
-    if (rc != 0) {
-        if (page_added) store_delete_page(nb, at);
+    Page *p = taken ? page_new(pw, ph, paper) : NULL;
+    if (p) {
+        strlcpy_q(p->nb, nb->id, sizeof p->nb);
+        memmove(&nb->page_ids[at + 1], &nb->page_ids[at], (size_t)(nb->npages - at) * sizeof nb->page_ids[0]);
+        nb->page_ids[at] = id;
+        nb->npages++;  // (in memory, until notebook.ini lists it below)
+        snprintf(pagefile, sizeof pagefile, "%s/p%u.qpg", dir, id);
+        written = store_save_page(nb, at, p) == 0;  // its file, and its line in bg/pages.ini
+    }
+    page_free(p);
+    nb->last_page = at;
+    bool listed = written && annotate_map_add(&m, r->page, r->pages, id) == 0 && map_save(dir, &m, nb) == 0 &&
+                  store_save_info(nb) == 0;
+    if (!listed) {
+        int e = errno;
+        if (written) unlink(pagefile);  // (never listed, and its id is not given again)
         if (placed[0]) unlink(placed);
         qlog("annotate: %s: page %d of %d could not be added (%s); the notebook stays as it was", nb->id, r->page,
-             r->pages, strerror(errno));
+             r->pages, strerror(e));
         fail(out, ANNOTATE_WHY_STORAGE);
         annotate_map_free(&m);
         return;
     }
-    // A new first page: the Library's card shows it (the thumbnail of the page before goes, and the
-    // notebook's paper, a document page's as the notebook was made, is this page's picture).
+    pid = id;
+    // A new first page: the Library's card shows it once the editor has drawn it (it makes the
+    // notebook's thumbnail as it leaves the page); the thumbnail of the page that was first goes.
     if (at == 0) {
         char thumb[700];
         snprintf(thumb, sizeof thumb, "%s/thumb.pgm", dir);
         unlink(thumb);
-        if (paper_is_document(nb->paper)) nb->paper = paper;
     }
-    nb->last_page = at;
-    if (store_save_info(nb) != 0) qlog("annotate: %s: could not note the page to open", nb->id);
     if (fit) {
         char file[900];
         source_file(bgdir, pic, file, sizeof file);
@@ -698,13 +739,14 @@ static void new_notebook(const AnnotateRequest *r, const NotebookInfo *all, int 
         annotate_map_free(&m);
     }
     if (rc == 0) {
-        // Named after the book (one with no title stays unnamed: read as Untitled, as any such);
-        // its own paper is its first page's (a document page's: pages added to it get Blank paper,
-        // and the Library's card shows that page until it has a thumbnail).
+        // Named after the book, as far as Grimoire's fonts draw its title (one they draw none of, or
+        // with no title: Untitled, numbered as any name). Its own paper is Blank, as an imported
+        // notebook's: what a page added to it gets, and what a page that does not read shows.
         char name[STORE_NAME_LEN];
         annotate_name(r->title, name, sizeof name);
-        unique_name(name, all, n, nb->name, sizeof nb->name);
-        nb->paper = paper;
+        // TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+        unique_name(name[0] ? name : _("Untitled"), all, n, nb->name, sizeof nb->name);
+        nb->paper = PAPER_BLANK;
         nb->created = nb->modified = wall_time();
         nb->next_page_id = 2;
         nb->page_w = pw;
@@ -751,6 +793,7 @@ static void handle(const AnnotateRequest *r, AnnotateResult *out) {
     snprintf(src, sizeof src, "%s/%s", dir, r->picture);
     size_t len = 0;
     struct stat st;
+    errno = 0;
     // (A file of its own, as the plugin writes it: never a link to one elsewhere, moved into bg/.)
     uint8_t *png = lstat(src, &st) == 0 && S_ISREG(st.st_mode) ? bgimage_read(src, PICTURE_MAX, &len) : NULL;
     int w = 0, h = 0;

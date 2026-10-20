@@ -64,9 +64,10 @@ int annotate_map_add(AnnotateMap *m, int page, int pages, uint32_t pid);
 // page holds a later one.
 int annotate_insert_at(const NotebookInfo *nb, const AnnotateMap *m, int page, int pages);
 
-// A new notebook's name: the title on one line (control characters as spaces, broken UTF-8 left
-// out, spaces trimmed), cut to the name limit between two characters, never inside one; empty
-// stays empty.
+// A new notebook's name: the title on one line (control characters as spaces, one space between two
+// words, none first or last), without broken UTF-8 and without the characters Grimoire's fonts
+// cannot draw (Chinese, Japanese, Korean: they would show as boxes), cut to the name limit between
+// two characters, never inside one. Empty when nothing is left (the caller names it Untitled).
 void annotate_name(const char *title, char *out, size_t cap);
 
 // Whether data is a PNG whose chunks are all there, in order, and whose critical ones (IHDR, PLTE,

@@ -18,6 +18,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
+#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+#: src/annotate.c src/store.c
+msgid "Untitled"
+msgstr ""
+
 #. TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
 #. and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
 #. two. This one: the picture of the page KOReader sent is damaged or missing.
@@ -1310,11 +1315,6 @@ msgstr ""
 
 #: src/share.c
 msgid "Wake the Kindle to share again."
-msgstr ""
-
-#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
-#: src/store.c
-msgid "Untitled"
 msgstr ""
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
