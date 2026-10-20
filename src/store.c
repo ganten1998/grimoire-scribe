@@ -1,6 +1,8 @@
 // store.c: notebooks, pages, settings, folders and thumbnails on disk.
 #include "store.h"
 
+#include "bgimage.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -436,25 +438,33 @@ static int side_set(Side *s, uint32_t pid, uint32_t kind) {
     return 0;
 }
 
-// Reads <bgdir>/pages.ini: lines p<page id>=<paper value>, for image papers only.
-static void side_load(const char *bgdir, Side *s) {
+// Reads <bgdir>/pages.ini: lines p<page id>=<paper value>, for image papers only. 0 (no file: an
+// empty list), or -1 when it is there but does not read, or there is no memory for it: then nothing
+// may be saved over it, or every other page's entry would go.
+static int side_load(const char *bgdir, Side *s) {
     memset(s, 0, sizeof *s);
     char path[760];
     side_path(bgdir, path, sizeof path);
     size_t len;
     char *txt = read_file(path, &len);
-    if (!txt) return;
+    if (!txt) return access(path, F_OK) == 0 ? -1 : 0;
+    int rc = 0;
     char *save = NULL;
-    for (char *line = strtok_r(txt, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+    for (char *line = strtok_r(txt, "\n", &save); line && rc == 0; line = strtok_r(NULL, "\n", &save)) {
         unsigned long pid, kind;
         char *end;
         if (line[0] != 'p') continue;
         pid = strtoul(line + 1, &end, 10);
         if (end == line + 1 || *end != '=' || pid == 0 || pid >= 0x7fffffff) continue;
         kind = strtoul(end + 1, NULL, 10);
-        if (paper_is_image((PaperKind)(uint32_t)kind) && side_set(s, (uint32_t)pid, (uint32_t)kind) != 0) break;
+        if (paper_is_image((PaperKind)(uint32_t)kind)) rc = side_set(s, (uint32_t)pid, (uint32_t)kind);
     }
     free(txt);
+    if (rc) {
+        free(s->e);
+        memset(s, 0, sizeof *s);
+    }
+    return rc;
 }
 
 static int cmp_side(const void *a, const void *b) {
@@ -474,22 +484,18 @@ static int side_save(const char *bgdir, Side *s) {
     return rc;
 }
 
-static int notebook_bg_dir(const NotebookInfo *nb, char *buf, size_t cap) {
-    char dir[600];
-    if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return -1;
-    snprintf(buf, cap, "%s/bg", dir);
-    return 0;
-}
-
 // Brings bg/pages.ini in step with page pid's paper: an image paper listed, any other not.
 static void side_note(const NotebookInfo *nb, uint32_t pid, PaperKind paper) {
     char bgdir[700], path[760];
-    if (notebook_bg_dir(nb, bgdir, sizeof bgdir) != 0) return;
+    if (bgimage_dir(nb->id, bgdir, sizeof bgdir) != 0) return;
     side_path(bgdir, path, sizeof path);
     bool image = paper_is_image(paper);
     if (!image && access(path, F_OK) != 0) return;  // nothing listed: nothing to take off
     Side s;
-    side_load(bgdir, &s);
+    if (side_load(bgdir, &s) != 0) {
+        qlog_once("store: %s: bg/pages.ini does not read; left as it is", nb->id);
+        return;
+    }
     uint32_t have;
     bool listed = side_get(&s, pid, &have);
     if (image ? !(listed && have == (uint32_t)paper) : listed) {
@@ -501,22 +507,30 @@ static void side_note(const NotebookInfo *nb, uint32_t pid, PaperKind paper) {
 
 // A page an older version saved as blank paper (version 1 Blank) that bg/pages.ini lists with an
 // image paper gets its picture back: in this version a page only ever goes to Blank by a save that
-// takes it off the list.
-static void side_restore(const NotebookInfo *nb, uint32_t pid, Page *p) {
-    if (p->paper != PAPER_BLANK || p->readonly) return;
+// takes it off the list. Whether it did.
+static bool side_restore(const NotebookInfo *nb, uint32_t pid, Page *p) {
+    if (p->paper != PAPER_BLANK || p->readonly) return false;
     char bgdir[700], path[760];
-    if (notebook_bg_dir(nb, bgdir, sizeof bgdir) != 0) return;
+    if (bgimage_dir(nb->id, bgdir, sizeof bgdir) != 0) return false;
     side_path(bgdir, path, sizeof path);
-    if (access(path, F_OK) != 0) return;
+    if (access(path, F_OK) != 0) return false;
     Side s;
-    side_load(bgdir, &s);
     uint32_t kind;
-    if (side_get(&s, pid, &kind)) {
+    bool back = side_load(bgdir, &s) == 0 && side_get(&s, pid, &kind);
+    if (back) {
         p->paper = (PaperKind)kind;
         qlog_once("store: %s: p%u.qpg was saved with blank paper by an older version; its picture comes back from "
                   "bg/pages.ini", nb->id, pid);
     }
     free(s.e);
+    return back;
+}
+
+static int g_restored_pages;
+int store_take_restored_count(void) {
+    int n = g_restored_pages;
+    g_restored_pages = 0;
+    return n;
 }
 
 int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n) {
@@ -950,8 +964,12 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
             g_corrupt_pages++;
         } else if (p->readonly) {
             qlog("store: %s opens read-only and stays as it is on disk", path);
-        } else {
-            side_restore(nb, nb->page_ids[index], p);
+        } else if (side_restore(nb, nb->page_ids[index], p)) {
+            // Written back as this version writes it, so the picture stays without the list's help,
+            // and counted (store_take_restored_count): what the older version drew of the page, the
+            // thumbnail and the PDF, is drawn again.
+            if (write_page_file(nb, nb->page_ids[index], p) != 0) qlog("store: %s: could not write its paper back", path);
+            g_restored_pages++;
         }
         free(data);
     }

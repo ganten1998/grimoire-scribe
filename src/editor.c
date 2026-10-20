@@ -758,6 +758,12 @@ static void use_page_size(App *a) {
 
 static void close_notebook(App *a) {
     if (!S->open) return;
+    // Pages an older version had saved on blank paper got their pictures back as they opened: the
+    // thumbnail and the PDF it drew of them are drawn again.
+    if (store_take_restored_count() > 0) {
+        S->changed = true;
+        if (S->index == 0) S->thumb_dirty = true;
+    }
     save_page(a);
     write_thumb_if_needed(a);
     if (S->index != 0 && S->changed) {
@@ -780,6 +786,8 @@ static void close_notebook(App *a) {
     pthumbs_clear(a);
     S->pages_open = false;
     S->open = false;
+    store_take_restored_count();  // (page 1, read for the thumbnail above, was drawn as it is now)
+    bgimage_forget(NULL);         // the notebook's pictures (up to 3 pages' worth) and its failures
 }
 
 void editor_open_notebook(App *a, const char *id) {
@@ -789,6 +797,7 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
+    bgimage_retry_missing();      // (a picture the Library found missing may be there now)
     use_page_size(a);
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
     S->page = page_at(a, S->index);

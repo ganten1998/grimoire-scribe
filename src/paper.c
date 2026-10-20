@@ -400,6 +400,16 @@ static void cornell(Canvas *c, float dpi) {
     font_draw(c, FONT_FIXED, fs, px_mm(4.f, dpi), sum + px_mm(6.f, dpi), "Summary", 150);
 }
 
+// paper_render given an image paper: a caller that should have taken the page's paper from
+// page_paper_render (page.h), which draws the picture. Counted for the tests, logged once.
+static int g_image_blank;
+
+int paper_take_image_blank_count(void) {
+    int n = g_image_blank;
+    g_image_blank = 0;
+    return n;
+}
+
 void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
     Rect saved = c->clip;
     canvas_set_clip(c, rect_intersect(region, saved));
@@ -408,6 +418,8 @@ void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
         return;
     }
     canvas_fill(c, c->clip, 255);
+    if (paper_is_image(k) && g_image_blank++ == 0)
+        qlog("paper: an image paper drawn as blank paper, without its notebook's picture (page_paper_render draws it)");
     switch (k) {
     // Spread ~30% apart so the three are clearly different on screen (the stationery values,
     // 6.35 / 7.14 / 8.73 mm, looked nearly identical between narrow and medium).

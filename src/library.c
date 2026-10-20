@@ -46,6 +46,7 @@ struct LibraryState {
     int page;
     Canvas *thumbs;       // per notebook, lazily loaded (px == NULL until then)
     bool *thumb_tried;
+    bool *thumb_picture;  // thumbs[i] is the notebook's picture paper (picture_card), not its thumb.pgm
     Canvas paper_prev[PAPER_COUNT];
     Canvas custom_prev;   // one custom music layout's preview at a time
     PaperKind custom_prev_k;
@@ -96,11 +97,13 @@ static void free_lists(App *a) {
     for (int i = 0; i < S->nbooks; i++) canvas_free(&S->thumbs[i]);
     free(S->thumbs);
     free(S->thumb_tried);
+    free(S->thumb_picture);
     free(S->books);
     free(S->folders);
     free(S->items);
     S->thumbs = NULL;
     S->thumb_tried = NULL;
+    S->thumb_picture = NULL;
     S->books = NULL;
     S->folders = NULL;
     S->items = NULL;
@@ -113,6 +116,7 @@ static void reload(App *a) {
     store_list_folders(&S->folders, &S->nfolders);
     S->thumbs = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumbs);
     S->thumb_tried = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_tried);
+    S->thumb_picture = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_picture);
     S->items = calloc((size_t)(S->nbooks + S->nfolders + 1), sizeof *S->items);
     if (!S->items) return;
     if (!S->cur_folder[0])
@@ -173,11 +177,13 @@ static void picture_card(App *a, int nb) {
     bgimage_render(&full, b->id, b->paper, (Rect){0, 0, pw, ph});
     if (canvas_init(&S->thumbs[nb], pw / 4, ph / 4) == 0) canvas_downsample_keep_lines(&S->thumbs[nb], &full, 0.6f);
     canvas_free(&full);
+    S->thumb_picture[nb] = S->thumbs[nb].px != NULL;
 }
 
 static const Canvas *thumb_for(App *a, int nb) {
     if (!S->thumb_tried[nb]) {
         S->thumb_tried[nb] = true;
+        S->thumb_picture[nb] = false;
         if (store_load_thumb(S->books[nb].id, &S->thumbs[nb]) != 0 && paper_is_image(S->books[nb].paper))
             picture_card(a, nb);
     }
@@ -937,6 +943,35 @@ void library_tick(App *a, uint32_t now) {
 
 // ---- headless checks ----
 
+// card.N (from 1, as library.items counts them): what card N shows, "folder", "thumb" (its
+// thumb.pgm), "picture" (its own picture paper, picture_card) or "paper K" (the preview of paper
+// K); card.N.luma: the mean of the pixels it shows, 0 to 255 ("none" for a folder).
+static int card_probe(App *a, const char *key, char *out, size_t cap) {
+    char *end;
+    long n = strtol(key, &end, 10);
+    bool luma = !strcmp(end, ".luma");
+    if (n < 1 || n > S->nitems || (*end && !luma)) return -1;
+    const Item *it = &S->items[n - 1];
+    if (it->is_folder) {
+        snprintf(out, cap, "%s", luma ? "none" : "folder");
+        return 0;
+    }
+    const Canvas *t = thumb_for(a, it->nb);
+    PaperKind k = S->books[it->nb].paper;
+    if (luma) {
+        uint64_t sum = 0;
+        for (int y = 0; t && y < t->h; y++)
+            for (int x = 0; x < t->w; x++) sum += t->px[(size_t)y * (size_t)t->stride + (size_t)x];
+        uint64_t np = t ? (uint64_t)t->w * (uint64_t)t->h : 0;
+        snprintf(out, cap, "%d", np ? (int)((sum + np / 2) / np) : 255);
+    } else if (S->thumbs[it->nb].px) {
+        snprintf(out, cap, "%s", S->thumb_picture[it->nb] ? "picture" : "thumb");
+    } else {  // (as paper_preview draws it)
+        snprintf(out, cap, "paper %u", (unsigned)(!paper_is_known(k) || paper_is_image(k) ? PAPER_BLANK : k));
+    }
+    return 0;
+}
+
 // The script runner's "library.*" keys (app_probe forwards them without the prefix).
 int library_probe(App *a, const char *key, char *out, size_t cap) {
     static const char *const sheets[] = {
@@ -975,6 +1010,8 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         MusicLayout m;
         if (S->modal == MOD_MUSIC) app_probe_music(&S->mb.m, out, cap);
         else app_probe_music(music_decode(S->new_paper, &m) ? &m : NULL, out, cap);
+    } else if (!strncmp(key, "card.", 5)) {
+        return card_probe(a, key + 5, out, cap);
     } else {
         return -1;
     }

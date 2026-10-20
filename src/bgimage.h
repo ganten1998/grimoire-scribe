@@ -6,7 +6,8 @@
 //
 // Making a picture (decoding a big JPEG, fitting it, encoding the PNG) takes seconds on the
 // Kindle: that runs in a forked child (bgjob.h, src/bgwork_template.c), never on the UI thread.
-// Drawing one decodes a page-size PNG once (it stays cached), which the UI thread can afford.
+// Drawing one decodes a page-size PNG once (it stays cached), which the UI thread can afford; a
+// file there that is no PNG, or bigger than a page picture can be, is not decoded (it draws white).
 #pragma once
 #include "canvas.h"
 #include "paper.h"
@@ -18,6 +19,7 @@
 // canvas is fitted inside it (aspect kept, centred) by the filter bgimage_normalize uses, pixel by
 // pixel from page coordinates. A missing or unreadable file draws white, is remembered (it is not
 // read again until bgimage_forget or bgimage_retry_missing), and raises bgimage_take_missing's flag.
+// The cache holds pictures by notebook and id: the same id in two notebooks is two pictures.
 void bgimage_render(Canvas *c, const char *nb, PaperKind k, Rect region);
 // Whether a page drew white since the last call because its picture was missing or unreadable:
 // for the editor to say so (renderers in forked children have nobody to tell).
@@ -43,15 +45,35 @@ typedef struct {
 } BgPicture;
 void bgpicture_free(BgPicture *p);
 
-// The biggest picture accepted: about 40 megapixels (a 12 MP phone photo is fine; decoding one
-// takes up to 4 bytes a pixel, more for a progressive JPEG).
+// The biggest picture accepted: about 40 megapixels (a 12 MP phone photo is fine), at most 8192 px
+// a side.
 #define BG_MAX_PIXELS 40000000L
+// The memory a picture may take to decode, its file's bytes included: what its header says
+// stb_image needs (a 16-bit PNG, a palette or a progressive JPEG take several bytes a pixel more
+// than the picture itself), so no picture can take more of the Kindle's 1 GB than this. Each
+// allocation stb_image makes is counted: one whose data inflates past what its header says (a
+// "zlib bomb") fails as it reaches twice that. A 16-bit colour PNG of more than about 20 MP is
+// refused, and a progressive JPEG of more than about 35 MP (22 MP when its colour is kept at full
+// resolution, 4:4:4).
+#define BG_DECODE_BUDGET ((size_t)256 << 20)
+// The biggest source picture file read (a template's is smaller still: templates.h).
+#define BG_SOURCE_MAX_BYTES ((size_t)64 << 20)
 
-// Whether data is a PNG, JPEG or PNM (PGM, PPM) picture Grimoire takes (no bigger than
-// BG_MAX_PIXELS, at most 8192 px a side), from its header alone: 0 with its size, or -1 and why.
-int bgimage_check(const uint8_t *data, size_t len, int *w, int *h, const char **why);
+// Whether data, the first len bytes of a picture file of file_len bytes (all of it, or enough for
+// its header), is a PNG, JPEG or PNM (PGM, PPM) picture Grimoire takes: no bigger than
+// BG_MAX_PIXELS, at most 8192 px a side, decoding within BG_DECODE_BUDGET. 0 with its size, or -1
+// and why.
+int bgimage_check(const uint8_t *data, size_t len, size_t file_len, int *w, int *h, const char **why);
+// What decoding a picture takes at most by its header (as above; the file's own bytes not
+// counted), or 0 when the header does not tell.
+size_t bgimage_decode_cost(const uint8_t *data, size_t len, size_t file_len);
+// The most memory the last decode (bgimage_decode, or a picture drawn) held at once through
+// stb_image: for the tests, which hold it to bgimage_decode_cost.
+size_t bgimage_last_decode_peak(void);
 // Decodes one: transparency over white (8 bits a channel; 16-bit PNGs are cut to 8), and gray
-// (ch 1) when no pixel has colour, else RGB. 0, or -1 and why.
+// (ch 1) when no pixel has colour, else RGB. 0; -1 and why when the picture is at fault (damaged,
+// unsupported, too big), so trying again gives the same; -2 when the memory it needed was not
+// there (another time it may be).
 int bgimage_decode(const uint8_t *data, size_t len, BgPicture *out, const char **why);
 // The picture as it is kept for a pw x ph page: fitted inside the page with its aspect kept,
 // centred on white, by an area filter (each page pixel averages the part of the picture it covers,
@@ -61,15 +83,22 @@ int bgimage_normalize(const BgPicture *src, int pw, int ph, BgPicture *out);
 int bgimage_luma(const BgPicture *p, Canvas *out);
 // Writes it as a PNG (gray or RGB), atomically. 0 on success.
 int bgimage_write_png(const char *path, const BgPicture *p);
+// A whole file of at most max bytes, read into a buffer of its size (caller frees), or NULL:
+// missing or no regular file, or bigger than max (errno EFBIG), or unreadable.
+uint8_t *bgimage_read(const char *path, size_t max, size_t *len);
 
 // Content keys (64 bits): a kept picture's (its size, channels and pixels), and a template's
-// before it is made (the source file's bytes and the page size it is made for). docs/FORMAT.md
-// says how ids come from them.
+// before it is made (a hash of the source file's bytes, with their length and the page size it is
+// made for). docs/FORMAT.md says how ids come from them.
 uint64_t bgimage_key(const BgPicture *p);
+// A file's bytes as one 64-bit hash: in memory, or read a piece at a time (never all of it in
+// memory: 0 with *hash and *len, or -1 when it does not read or changed while it was read).
+uint64_t bgimage_content_hash(const uint8_t *data, size_t len);
+int bgimage_content_hash_file(const char *path, uint64_t *hash, size_t *len);
+// A template's key from its file's hash and length, for a pw x ph page.
+uint64_t bgimage_template_key(uint64_t content, size_t len, int pw, int ph);
+// The same from the file's bytes.
 uint64_t bgimage_source_key(const uint8_t *data, size_t len, int pw, int ph);
-// The same key for a file, read a piece at a time (never all of it in memory): 0 with *key and
-// *len, or -1 (unreadable, or changed while it was read).
-int bgimage_source_key_file(const char *path, int pw, int ph, uint64_t *key, size_t *len);
 
 // ---- bg/index.ini: which id holds which key in a notebook's bg folder ----
 
@@ -81,7 +110,8 @@ typedef struct {
     BgIndexEntry *e;
     int n, cap;
 } BgIndex;
-// Reads <bgdir>/index.ini (none: empty). 0, or -1 out of memory.
+// Reads <bgdir>/index.ini (none: empty). 0, or -1: out of memory, or the file is there but does
+// not read (then nothing may be saved over it: it would lose the ids it lists).
 int bgindex_load(const char *bgdir, BgIndex *ix);
 int bgindex_save(const char *bgdir, const BgIndex *ix);   // atomically, sorted by id
 void bgindex_free(BgIndex *ix);

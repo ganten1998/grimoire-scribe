@@ -13,6 +13,8 @@ shot 01-library-imported
 expect toast is Imported a notebook of 3 pages.
 expect screen is library
 expect library.items is 1
+expect library.card.1 is thumb
+expect library.card.1.luma is 245
 tap 326 608
 wait 600
 shot 02-page-1

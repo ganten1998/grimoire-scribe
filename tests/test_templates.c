@@ -73,7 +73,61 @@ static void put_picture(const NotebookInfo *nb, uint32_t id, const BgPicture *p)
 
 static uint8_t *slurp(const char *path, size_t *len) { return read_file(path, len); }
 
+// A PNG of `bytes` bytes or more: picture p, with a chunk of its own (an ancillary one, which
+// decoders skip) of zeros after its header, as a big ICC profile or text would be.
+static void padded_png(const char *path, const BgPicture *p, size_t bytes) {
+    char tmp[700];
+    snprintf(tmp, sizeof tmp, "%s.plain.png", path);
+    put_png(tmp, p);
+    size_t len;
+    uint8_t *png = slurp(tmp, &len);
+    unlink(tmp);
+    uint8_t *out = calloc(1, len + bytes + 12);
+    if (png && out) {
+        memcpy(out, png, 33);  // the signature and IHDR
+        uint8_t *c = out + 33;
+        c[0] = (uint8_t)(bytes >> 24);
+        c[1] = (uint8_t)(bytes >> 16);
+        c[2] = (uint8_t)(bytes >> 8);
+        c[3] = (uint8_t)bytes;
+        memcpy(c + 4, "prvT", 4);
+        memcpy(c + 8 + bytes + 4, png + 33, len - 33);  // after its CRC: the rest
+        put_file(path, out, len + bytes + 12);
+    }
+    free(png);
+    free(out);
+}
+
 static bool exists(const char *path) { return access(path, F_OK) == 0; }
+
+// What the code under test logs (grimoire.log is its stderr), from log_capture to log_captured
+// (the text, which the caller frees).
+static int g_log_saved = -1;
+static char g_log_path[700];
+
+static void log_capture(void) {
+    snprintf(g_log_path, sizeof g_log_path, "%s/captured.log", root);
+    fflush(stderr);
+    g_log_saved = dup(2);
+    int fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        dup2(fd, 2);
+        close(fd);
+    }
+}
+
+static char *log_captured(void) {
+    fflush(stderr);
+    if (g_log_saved >= 0) {
+        dup2(g_log_saved, 2);
+        close(g_log_saved);
+        g_log_saved = -1;
+    }
+    size_t len;
+    char *t = read_file(g_log_path, &len);
+    if (t) fputs(t, stderr);  // (still in the test's own log)
+    return t;
+}
 
 static int count_prefix(const char *dir, const char *prefix) {
     int n = 0;
@@ -135,8 +189,10 @@ TEST(image_kinds) {
     canvas_init(&a, 60, 80);
     canvas_init(&b, 60, 80);
     canvas_fill(&a, (Rect){0, 0, 60, 80}, 0);
+    paper_take_image_blank_count();
     paper_render(&a, t, (Rect){0, 0, 60, 80}, 30.f);
     CHECK(memcmp(a.px, b.px, 60 * 80) == 0);
+    CHECK(paper_take_image_blank_count() == 1 && paper_take_image_blank_count() == 0);  // (a caller to fix)
     canvas_free(&a);
     canvas_free(&b);
     // Page version 2, the u16 Blank (1.0.0-beta's reading of it), the value kept.
@@ -225,6 +281,8 @@ TEST(image_paper_is_pure) {
     int white = 0;
     for (int i = 0; i < 643 * 857; i++) white += c.px[i] == 255;
     CHECK(white == 0);
+    // Every page render took the paper from the picture, never from paper_render.
+    CHECK(paper_take_image_blank_count() == 0);
     canvas_free(&c);
     page_free(bare);
     bgpicture_free(&black);
@@ -346,13 +404,14 @@ TEST(decoding) {
     bgpicture_free(&back);
 }
 
-// A PNG of w x h that is only its header (signature, IHDR, the start of an empty IDAT): enough
-// for the size checks, which stop at the first IDAT.
-static size_t png_header(uint8_t *out, uint32_t w, uint32_t h) {
+// A PNG of w x h, `depth` bits a channel of colour type `color` (0 gray, 2 RGB, 6 RGBA), that is
+// only its header (signature, IHDR, the start of an empty IDAT): enough for the size checks, which
+// stop at the first IDAT.
+static size_t png_header_of(uint8_t *out, uint32_t w, uint32_t h, uint8_t depth, uint8_t color) {
     static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     memcpy(out, sig, 8);
     const uint8_t ihdr[25] = {0, 0, 0, 13, 'I', 'H', 'D', 'R', (uint8_t)(w >> 24), (uint8_t)(w >> 16), (uint8_t)(w >> 8),
-                              (uint8_t)w, (uint8_t)(h >> 24), (uint8_t)(h >> 16), (uint8_t)(h >> 8), (uint8_t)h, 8, 0, 0,
+                              (uint8_t)w, (uint8_t)(h >> 24), (uint8_t)(h >> 16), (uint8_t)(h >> 8), (uint8_t)h, depth, color, 0,
                               0, 0, 0, 0, 0, 0};
     memcpy(out + 8, ihdr, 25);
     const uint8_t idat[12] = {0, 0, 0, 0, 'I', 'D', 'A', 'T', 0, 0, 0, 0};
@@ -360,19 +419,251 @@ static size_t png_header(uint8_t *out, uint32_t w, uint32_t h) {
     return 45;
 }
 
+static size_t png_header(uint8_t *out, uint32_t w, uint32_t h) { return png_header_of(out, w, h, 8, 0); }
+
 TEST(oversized_refused) {
     uint8_t b[64];
     int w, h;
     const char *why = "";
     size_t n = png_header(b, 8000, 6000);  // 48 megapixels
-    CHECK(bgimage_check(b, n, &w, &h, &why) != 0 && strstr(why, "40 megapixels"));
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) != 0 && strstr(why, "40 megapixels"));
     n = png_header(b, 9000, 10);  // past 8192 a side
-    CHECK(bgimage_check(b, n, &w, &h, &why) != 0 && strstr(why, "8192"));
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) != 0 && strstr(why, "8192"));
     n = png_header(b, 6000, 6000);  // 36 megapixels: taken
-    CHECK(bgimage_check(b, n, &w, &h, &why) == 0 && w == 6000 && h == 6000);
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) == 0 && w == 6000 && h == 6000);
     BgPicture p;
     n = png_header(b, 8000, 6000);
     CHECK(bgimage_decode(b, n, &p, &why) != 0 && !p.px);
+    // The memory it takes to decode, not only its pixels: 7900 x 5000 (39.5 MP) is taken in 8-bit
+    // gray (about 80 MB), and refused as 16-bit RGBA (about 630 MB).
+    n = png_header_of(b, 7900, 5000, 8, 0);
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) == 0);
+    size_t gray = bgimage_decode_cost(b, n, n);
+    CHECK(gray > (size_t)79000000 && gray < (size_t)82000000);
+    n = png_header_of(b, 7900, 5000, 16, 6);
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) != 0 && strstr(why, "memory"));
+    CHECK(bgimage_decode_cost(b, n, n) > ((size_t)600 << 20));
+    CHECK(bgimage_decode(b, n, &p, &why) == -1 && !p.px && strstr(why, "memory"));
+    // 16-bit RGB: 12 bytes a pixel at its peak, so 20 MP is taken and 25 MP is not.
+    n = png_header_of(b, 5000, 4000, 16, 2);
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) == 0);
+    n = png_header_of(b, 5000, 5000, 16, 2);
+    CHECK(bgimage_check(b, n, n, &w, &h, &why) != 0 && strstr(why, "memory"));
+    // The file's own bytes count too: the same header as the start of a 250 MB file is refused.
+    n = png_header_of(b, 5000, 4000, 16, 2);
+    CHECK(bgimage_check(b, n, (size_t)250 << 20, &w, &h, &why) != 0);
+}
+
+// ---- the decode budget ----
+
+typedef struct {
+    uint8_t *d;
+    size_t n;
+    uint32_t acc;
+    int bits;
+} Bits;
+
+static void put_bits(Bits *b, uint32_t v, int n) {  // deflate packs bits from the lowest up
+    for (int i = 0; i < n; i++) {
+        b->acc |= ((v >> i) & 1u) << b->bits;
+        if (++b->bits == 8) {
+            b->d[b->n++] = (uint8_t)b->acc;
+            b->acc = 0;
+            b->bits = 0;
+        }
+    }
+}
+
+static void put_code(Bits *b, uint32_t code, int n) {  // and a Huffman code from its top bit down
+    for (int i = n - 1; i >= 0; i--) put_bits(b, (code >> i) & 1u, 1);
+}
+
+// A 1x1 gray PNG whose IDAT inflates to `bytes` zeros (a "zlib bomb": the picture needs 2): a zlib
+// stream of one block of fixed codes, a 0, then copies of 258 bytes from 1 back.
+static uint8_t *png_bomb(size_t bytes, size_t *len) {
+    size_t copies = bytes / 258, zcap = 16 + (copies * 13 + 32) / 8;
+    uint8_t *png = calloc(1, 64 + zcap);
+    size_t n = png_header_of(png, 1, 1, 8, 0) - 12;  // the signature and IHDR, no IDAT yet
+    Bits b = {png + n + 8, 0, 0, 0};
+    b.d[b.n++] = 0x78;  // zlib: deflate, 32 KB window
+    b.d[b.n++] = 0x01;
+    put_bits(&b, 1, 1);  // the last block,
+    put_bits(&b, 1, 2);  // of fixed codes
+    put_code(&b, 0x30, 8);  // literal 0
+    for (size_t i = 0; i < copies; i++) {
+        put_code(&b, 0xC5, 8);  // length 258
+        put_code(&b, 0, 5);     // distance 1
+    }
+    put_code(&b, 0, 7);  // the end of the block
+    if (b.bits) put_bits(&b, 0, 8 - b.bits);
+    b.n += 4;  // its Adler-32 (left 0: never reached)
+    uint8_t *c = png + n;
+    c[0] = (uint8_t)(b.n >> 24);
+    c[1] = (uint8_t)(b.n >> 16);
+    c[2] = (uint8_t)(b.n >> 8);
+    c[3] = (uint8_t)b.n;
+    memcpy(c + 4, "IDAT", 4);
+    size_t at = n + 8 + b.n + 4;  // (its CRC left 0: stb_image does not check it)
+    static const uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
+    memcpy(png + at, iend, 12);
+    *len = at + 12;
+    return png;
+}
+
+TEST(decode_budget) {
+    // A bomb: its header is a fine 1x1 picture, and decoding it stops at twice what that needs.
+    size_t len;
+    uint8_t *bomb = png_bomb((size_t)64 << 20, &len);
+    int w = 0, h = 0;
+    const char *why = "";
+    CHECK(bgimage_check(bomb, len, len, &w, &h, &why) == 0 && w == 1 && h == 1);
+    size_t cost = bgimage_decode_cost(bomb, len, len);
+    BgPicture p;
+    CHECK(bgimage_decode(bomb, len, &p, &why) == -1 && !p.px && strstr(why, "damaged"));
+    CHECK(bgimage_last_decode_peak() <= 2 * cost + (1u << 20) && bgimage_last_decode_peak() < ((size_t)4 << 20));
+    free(bomb);
+    // Zeros after the picture's own data are allowed (stb_image reads what it needs), up to there.
+    bomb = png_bomb(16u << 10, &len);
+    CHECK(bgimage_decode(bomb, len, &p, &why) == 0 && p.w == 1 && p.h == 1 && p.px && p.px[0] == 0);
+    bgpicture_free(&p);
+    free(bomb);
+    // Every kind of picture takes no more to decode than its header says.
+    static const char *const files[] = {"gray16.png",       "gray16-big.png",  "palette.png",    "palette-trns.png",
+                                        "alpha.png",        "interlaced.png",  "interlaced16.png", "progressive.jpg",
+                                        "subsampled.jpg",   "baseline.jpg",    "gray.pgm",       "gray16.pgm"};
+    for (size_t i = 0; i < sizeof files / sizeof files[0]; i++) {
+        char path[700];
+        snprintf(path, sizeof path, "tests/fixtures/pictures/%s", files[i]);
+        uint8_t *d = slurp(path, &len);
+        size_t c = d ? bgimage_decode_cost(d, len, len) : 0;
+        int dec = d ? bgimage_decode(d, len, &p, &why) : -1;
+        size_t peak = bgimage_last_decode_peak();
+        if (dec != 0 || peak == 0 || peak > c) fprintf(stderr, "  %s: decode %d, peak %zu, cost %zu\n", files[i], dec, peak, c);
+        CHECK(dec == 0 && peak > 0 && peak <= c);
+        bgpicture_free(&p);
+        free(d);
+    }
+    // Headers stb_image reads that are less plain: an iPhone PNG (its CgBI chunk before IHDR, its
+    // data raw deflate) and a JPEG with padding between two segments. Taken, and decoded.
+    {
+        BgPicture g = noise(97, 61, 1);
+        char path[700];
+        snprintf(path, sizeof path, "%s/plain.png", root);
+        put_png(path, &g);
+        uint8_t *png = slurp(path, &len), *ip = calloc(1, len + 64);
+        size_t at = 8, n = 0;
+        memcpy(ip, png, 8);
+        n = 8;
+        static const uint8_t cgbi[16] = {0, 0, 0, 4, 'C', 'g', 'B', 'I', 0x50, 0x00, 0x20, 0x02, 0, 0, 0, 0};
+        memcpy(ip + n, cgbi, 16);
+        n += 16;
+        while (png && at + 12 <= len) {  // the chunks, the IDAT's zlib header and Adler-32 taken off
+            uint32_t cl = (uint32_t)png[at] << 24 | (uint32_t)png[at + 1] << 16 | (uint32_t)png[at + 2] << 8 | png[at + 3];
+            if (!memcmp(png + at + 4, "IDAT", 4)) {
+                uint32_t raw = cl - 6;
+                ip[n] = (uint8_t)(raw >> 24);
+                ip[n + 1] = (uint8_t)(raw >> 16);
+                ip[n + 2] = (uint8_t)(raw >> 8);
+                ip[n + 3] = (uint8_t)raw;
+                memcpy(ip + n + 4, "IDAT", 4);
+                memcpy(ip + n + 8, png + at + 10, raw);
+                n += 12 + raw;
+            } else {
+                memcpy(ip + n, png + at, 12 + cl);
+                n += 12 + cl;
+            }
+            at += 12 + cl;
+        }
+        CHECK(bgimage_check(ip, n, n, &w, &h, &why) == 0 && w == 97 && h == 61);
+        size_t c = bgimage_decode_cost(ip, n, n);
+        CHECK(bgimage_decode(ip, n, &p, &why) == 0 && p.px && !memcmp(p.px, g.px, 97 * 61));
+        CHECK(bgimage_last_decode_peak() <= c);
+        bgpicture_free(&p);
+        free(png);
+        free(ip);
+        bgpicture_free(&g);
+        uint8_t *jpg = slurp("tests/fixtures/pictures/baseline.jpg", &len), *pad = calloc(1, len + 8);
+        size_t app0 = 4 + ((size_t)jpg[4] << 8 | jpg[5]);  // after SOI and APP0 (JFIF)
+        memcpy(pad, jpg, app0);
+        memset(pad + app0, 0, 3);
+        memcpy(pad + app0 + 3, jpg + app0, len - app0);
+        BgPicture a = {0};
+        CHECK(jpg[2] == 0xFF && jpg[3] == 0xE0 && bgimage_check(pad, len + 3, len + 3, &w, &h, &why) == 0 && w == 900);
+        CHECK(bgimage_decode(jpg, len, &a, &why) == 0 && bgimage_decode(pad, len + 3, &p, &why) == 0);
+        CHECK(a.px && p.px && a.ch == p.ch && !memcmp(a.px, p.px, (size_t)a.w * (size_t)a.h * (size_t)a.ch));
+        bgpicture_free(&a);
+        bgpicture_free(&p);
+        free(jpg);
+        free(pad);
+    }
+    // A colour page picture as the store writes them (8 bits a channel), and a gray one.
+    for (int ch = 1; ch <= 3; ch += 2) {
+        BgPicture big = noise(931, 1240, ch);
+        char path[700];
+        snprintf(path, sizeof path, "%s/budget-%d.png", root, ch);
+        put_png(path, &big);
+        uint8_t *d = slurp(path, &len);
+        size_t c = d ? bgimage_decode_cost(d, len, len) : 0;
+        CHECK(d && bgimage_decode(d, len, &p, &why) == 0 && bgimage_last_decode_peak() <= c);
+        CHECK(p.px && !memcmp(p.px, big.px, (size_t)931 * 1240 * (size_t)ch));
+        bgpicture_free(&p);
+        bgpicture_free(&big);
+        free(d);
+    }
+}
+
+// What the UI thread decodes is a notebook's own picture: a file there that is no PNG, or bigger
+// than a page picture can be, draws white (the editor is told), and is never decoded.
+TEST(ui_picture_limits) {
+    NotebookInfo nb;
+    CHECK(store_create("Odd", "", PAPER_BLANK, &nb) == 0);
+    char dir[700], file[800];
+    CHECK(bgimage_dir(nb.id, dir, sizeof dir) == 0);
+    Page *p = page_new(PW, PH, PAPER_BLANK);
+    strlcpy_q(p->nb, nb.id, sizeof p->nb);
+    Canvas c;
+    canvas_init(&c, PW, PH);
+    // A JPEG under a picture's name.
+    size_t len;
+    uint8_t *jpg = slurp("tests/fixtures/pictures/baseline.jpg", &len);
+    bgimage_file(dir, 0x0000B1u, file, sizeof file);
+    put_file(file, jpg, len);
+    free(jpg);
+    // A PNG of more than 32 MB (a picture, then an ancillary chunk of zeros).
+    BgPicture g = solid(PW, PH, 1, 50);
+    bgimage_file(dir, 0x0000B2u, file, sizeof file);
+    padded_png(file, &g, (size_t)33 << 20);
+    // One that takes more than 96 MB to decode (a 6000 x 5000 RGB header): fine for an import's
+    // child, not here.
+    uint8_t hdr[64];
+    size_t hl = png_header_of(hdr, 6000, 5000, 8, 2);
+    int w, h;
+    const char *why = "";
+    CHECK(bgimage_check(hdr, hl, hl, &w, &h, &why) == 0);
+    bgimage_file(dir, 0x0000B3u, file, sizeof file);
+    put_file(file, hdr, hl);
+    const uint32_t ids[3] = {0x0000B1u, 0x0000B2u, 0x0000B3u};
+    static const char *const whys[3] = {"is not a PNG", "is bigger than a page picture can be", "is too big to decode"};
+    for (int i = 0; i < 3; i++) {
+        p->paper = paper_image(PAPER_ROLE_TEMPLATE, ids[i]);
+        canvas_fill(&c, (Rect){0, 0, PW, PH}, 0);
+        bgimage_take_missing();
+        log_capture();
+        page_render(&c, p, (Rect){0, 0, PW, PH}, DPI);
+        char *log = log_captured();
+        CHECK(c.px[0] == 255 && c.px[(PH / 2) * PW + PW / 2] == 255 && bgimage_take_missing());
+        CHECK(log && strstr(log, whys[i]));  // (a file of 33 MB is not even read)
+        free(log);
+    }
+    // The same picture as a PNG of its own size draws.
+    bgimage_file(dir, 0x0000B4u, file, sizeof file);
+    put_png(file, &g);
+    p->paper = paper_image(PAPER_ROLE_TEMPLATE, 0x0000B4u);
+    page_render(&c, p, (Rect){0, 0, PW, PH}, DPI);
+    CHECK(c.px[0] == 50 && !bgimage_take_missing());
+    canvas_free(&c);
+    page_free(p);
+    bgpicture_free(&g);
 }
 
 // Rows [y0, y1) all v, columns [x0, x1).
@@ -532,8 +823,8 @@ TEST(templates_same_file_same_id) {
     bgpicture_free(&again);
 }
 
-// The UI thread reads a template's key a piece at a time; the child that makes its picture has the
-// whole file in memory: the same key either way, whatever the file's length.
+// A file's hash read a piece at a time (as the UI may, for a small template) and from the whole
+// file in memory (as the children do): the same, whatever the file's length.
 TEST(source_key_streamed) {
     const size_t sizes[] = {0, 1, 7, 8, 9, 65535, 65536, 65537, 131072, 200003};
     uint8_t *d = malloc(200003);
@@ -544,11 +835,14 @@ TEST(source_key_streamed) {
         put_file(path, d, sizes[i]);
         uint64_t k = 0;
         size_t len = 99;
-        CHECK(bgimage_source_key_file(path, PW, PH, &k, &len) == 0 && len == sizes[i]);
-        CHECK(k == bgimage_source_key(d, sizes[i], PW, PH));
-        CHECK(k != bgimage_source_key(d, sizes[i], PH, PW));  // made for another page: another key
+        CHECK(bgimage_content_hash_file(path, &k, &len) == 0 && len == sizes[i]);
+        CHECK(k == bgimage_content_hash(d, sizes[i]));
+        uint64_t key = bgimage_template_key(k, len, PW, PH);
+        CHECK(key == bgimage_source_key(d, sizes[i], PW, PH));
+        CHECK(key != bgimage_template_key(k, len, PH, PW));  // made for another page: another key
+        if (sizes[i] > 1) CHECK(k != bgimage_content_hash(d + 1, sizes[i] - 1));
     }
-    CHECK(bgimage_source_key_file("/nonexistent/x.png", PW, PH, &(uint64_t){0}, &(size_t){0}) != 0);
+    CHECK(bgimage_content_hash_file("/nonexistent/x.png", &(uint64_t){0}, &(size_t){0}) != 0);
     free(d);
 }
 
@@ -580,7 +874,8 @@ TEST(templates_collision_steps) {
     // A picture file with no entry takes its id too, whatever it holds.
     BgPicture other = solid(PW, PH, 1, 9);
     put_picture(&nb2, id0, &other);
-    CHECK(template_install(&nb2, path, &k, &why) == 0 && paper_image_id(k) == next);
+    PaperKind k2 = PAPER_BLANK;
+    CHECK(template_install(&nb2, path, &k2, &why) == 0 && paper_image_id(k2) == next);
     drain_jobs(NULL);
     // The squatter is never touched.
     char d2[700], f2[800];
@@ -591,6 +886,30 @@ TEST(templates_collision_steps) {
     CHECK(d && bgimage_decode(d, len, &back, &why) == 0 && back.px && back.px[0] == 9);
     free(d);
     bgpicture_free(&back);
+    // The children made each picture under the id its notebook gave it, the next one, and nothing
+    // under the id that was taken; a page on it draws the template.
+    BgPicture want;
+    CHECK(bgimage_normalize(&g, PW, PH, &want) == 0);
+    const NotebookInfo *both[2] = {&nb, &nb2};
+    const PaperKind kinds[2] = {k, k2};
+    bgimage_retry_missing();
+    for (int i = 0; i < 2; i++) {
+        char bd[700], fn[800], f0[800];
+        bgimage_dir(both[i]->id, bd, sizeof bd);
+        bgimage_file(bd, next, fn, sizeof fn);
+        bgimage_file(bd, id0, f0, sizeof f0);
+        CHECK(exists(fn));
+        if (i == 0) CHECK(!exists(f0));
+        Page *pg = page_new(PW, PH, kinds[i]);
+        strlcpy_q(pg->nb, both[i]->id, sizeof pg->nb);
+        Canvas c;
+        canvas_init(&c, PW, PH);
+        page_render(&c, pg, (Rect){0, 0, PW, PH}, DPI);
+        CHECK(!memcmp(c.px, want.px, (size_t)PW * PH));
+        canvas_free(&c);
+        page_free(pg);
+    }
+    bgpicture_free(&want);
     bgpicture_free(&g);
     bgpicture_free(&other);
     // bgindex_claim on its own: an existing key keeps its id, new keys step past taken ones.
@@ -601,6 +920,47 @@ TEST(templates_collision_steps) {
     CHECK(bgindex_claim(&ix, dir, 0x1000000000000001ull, &b, &added) == 0 && b == 2 && added);
     CHECK(bgindex_claim(&ix, dir, 0x0000000000000000ull, &c, &added) == 0 && c == 1 && !added);
     bgindex_free(&ix);
+}
+
+// One id in two notebooks names two pictures: the cache holds each by its notebook too, so
+// pages drawn one after the other from either notebook each get their own.
+TEST(same_id_two_notebooks) {
+    NotebookInfo a, b;
+    CHECK(store_create("Left", "", PAPER_BLANK, &a) == 0 && store_create("Right", "", PAPER_BLANK, &b) == 0);
+    BgPicture pa = noise(PW, PH, 1), pb = noise(PW, PH, 1);
+    put_picture(&a, 0x00D00Du, &pa);
+    put_picture(&b, 0x00D00Du, &pb);
+    Page *qa = page_new(PW, PH, paper_image(PAPER_ROLE_DOCUMENT, 0x00D00Du));
+    Page *qb = page_new(PW, PH, qa->paper);
+    strlcpy_q(qa->nb, a.id, sizeof qa->nb);
+    strlcpy_q(qb->nb, b.id, sizeof qb->nb);
+    Canvas c;
+    canvas_init(&c, PW, PH);
+    bool right = true;
+    for (int i = 0; i < 6; i++) {
+        const Page *q = i % 2 ? qb : qa;
+        const BgPicture *want = i % 2 ? &pb : &pa;
+        page_render(&c, q, (Rect){0, 0, PW, PH}, DPI);
+        right = right && !memcmp(c.px, want->px, (size_t)PW * PH);
+        Rect r = {37, 51, 211, 97};  // a region alone, from the cache
+        canvas_fill(&c, (Rect){0, 0, PW, PH}, 0);
+        page_render(&c, q, r, DPI);
+        for (int y = r.y; y < r.y + r.h && right; y++)
+            right = !memcmp(&c.px[y * c.stride + r.x], &want->px[(size_t)y * PW + (size_t)r.x], (size_t)r.w);
+    }
+    CHECK(right);
+    // Forgetting one notebook's pictures leaves the other's.
+    bgimage_forget(a.id);
+    page_render(&c, qb, (Rect){0, 0, PW, PH}, DPI);
+    CHECK(!memcmp(c.px, pb.px, (size_t)PW * PH));
+    page_render(&c, qa, (Rect){0, 0, PW, PH}, DPI);
+    CHECK(!memcmp(c.px, pa.px, (size_t)PW * PH));
+    CHECK(paper_take_image_blank_count() == 0);
+    canvas_free(&c);
+    page_free(qa);
+    page_free(qb);
+    bgpicture_free(&pa);
+    bgpicture_free(&pb);
 }
 
 TEST(template_previews) {
@@ -629,19 +989,66 @@ TEST(template_previews) {
         CHECK(strcmp(t[i].name, "README"));
     }
     CHECK(i2 >= 0 && i2 < i3 && i3 < i10);
-    if (i10 >= 0) CHECK(!t[i10].thumb.px && !t[i10].bad);
+    if (i10 >= 0) CHECK(!t[i10].ready && !t[i10].bad && !template_thumb(&t[i10]));
     template_list_free(t, n);
     drain_jobs(NULL);  // the previews job
     CHECK(template_scan(&t, &n, DPI) == 0);
     for (int i = 0; i < n; i++) {
-        if (!strcmp(t[i].name, "t-3")) CHECK(t[i].bad && !t[i].thumb.px);
-        if (!strcmp(t[i].name, "t-10")) CHECK(t[i].thumb.px && t[i].thumb.w == PW / 6 && t[i].thumb.px[0] == 200);
-        if (!strcmp(t[i].name, "t-2")) CHECK(t[i].thumb.px && !t[i].bad);
+        CHECK(!t[i].thumb.px);  // (none read by the scan)
+        const Canvas *pv = template_thumb(&t[i]);
+        if (!strcmp(t[i].name, "t-3")) CHECK(t[i].bad && !pv);
+        if (!strcmp(t[i].name, "t-10")) CHECK(pv && pv->w == PW / 6 && pv->px[0] == 200 && template_thumb(&t[i]) == pv);
+        if (!strcmp(t[i].name, "t-2")) CHECK(pv && !t[i].bad);
     }
     template_list_free(t, n);
     CHECK(!bg_busy());  // all made: nothing queued again
     bgpicture_free(&a);
     bgpicture_free(&b);
+}
+
+// A template's key without reading it whole on the UI thread: a big template is taken once the
+// previews job has seen it (it keeps the hash of the file's bytes beside its preview), and the
+// picture the BG_TEMPLATE child makes from the bytes is the one that key names.
+TEST(big_template_uses_its_preview_key) {
+    NotebookInfo nb;
+    CHECK(store_create("Big", "", PAPER_BLANK, &nb) == 0);
+    BgPicture g = solid(300, 400, 1, 255);
+    for (int y = 0; y < 400; y += 25) memset(g.px + (size_t)y * 300, 30, 300);
+    char path[700];
+    snprintf(path, sizeof path, "%s/templates/Big lines.png", root);
+    padded_png(path, &g, (size_t)5 << 20);  // past the 4 MB read on the UI thread
+    struct stat st;
+    CHECK(stat(path, &st) == 0 && st.st_size > (5 << 20));
+    PaperKind k = PAPER_BLANK;
+    const char *why = "";
+    CHECK(template_install(&nb, path, &k, &why) != 0 && strstr(why, "preview") && !bg_busy());
+    Template *t;
+    int n;
+    CHECK(template_scan(&t, &n, DPI) == 0);  // queues the previews job
+    template_list_free(t, n);
+    drain_jobs(NULL);
+    CHECK(template_install(&nb, path, &k, &why) == 0 && paper_is_image(k));
+    size_t len;
+    uint8_t *d = slurp(path, &len);
+    CHECK(d && paper_image_id(k) == ((uint32_t)bgimage_source_key(d, len, PW, PH) & 0xFFFFFFu));
+    free(d);
+    int kind = -1;
+    drain_jobs(&kind);
+    CHECK(kind == BG_TEMPLATE);
+    bgimage_retry_missing();
+    BgPicture want;
+    CHECK(bgimage_normalize(&g, PW, PH, &want) == 0);
+    Page *p = page_new(PW, PH, k);
+    strlcpy_q(p->nb, nb.id, sizeof p->nb);
+    Canvas c;
+    canvas_init(&c, PW, PH);
+    page_render(&c, p, (Rect){0, 0, PW, PH}, DPI);
+    CHECK(!memcmp(c.px, want.px, (size_t)PW * PH));
+    canvas_free(&c);
+    page_free(p);
+    bgpicture_free(&want);
+    bgpicture_free(&g);
+    unlink(path);
 }
 
 // ---- pages ----
@@ -723,9 +1130,8 @@ TEST(sidecar_restores_beta_resave) {
     beta_resaves(&nb, nb.page_ids[0]);
     uint16_t p16;
     CHECK(file_version(&nb, nb.page_ids[0], &p16) == 1 && p16 == PAPER_BLANK);
-    // Back here, the page has its picture again (the editor's way in and the exports').
-    CHECK(store_load_page(&nb, 0, PW, PH, &p) == 0 && p && p->paper == k && p->n == 1);
-    page_free(p);
+    // Back here, the page has its picture again. Exports read it so, changing nothing on disk.
+    store_take_restored_count();
     CHECK(store_read_page(&nb, 0, &p) == 0 && p && p->paper == k && !strcmp(p->nb, nb.id));
     page_free(p);
     Buf png = {0};
@@ -736,6 +1142,35 @@ TEST(sidecar_restores_beta_resave) {
     CHECK(bgimage_decode(png.data, png.len, &back, &why) == 0 && back.px && block_is(&back, 0, 0, PW, PH, 77));
     bgpicture_free(&back);
     buf_free(&png);
+    CHECK(file_version(&nb, nb.page_ids[0], NULL) == 1 && store_take_restored_count() == 0);
+    // The editor's way in writes it back with its picture (version 2), once, and counts it: the
+    // editor then redraws the thumbnail and the PDF the older version drew blank.
+    CHECK(store_load_page(&nb, 0, PW, PH, &p) == 0 && p && p->paper == k && p->n == 1);
+    page_free(p);
+    CHECK(file_version(&nb, nb.page_ids[0], &p16) == 2 && p16 == PAPER_BLANK && store_take_restored_count() == 1);
+    CHECK(store_load_page(&nb, 0, PW, PH, &p) == 0 && p && p->paper == k && p->n == 1);
+    page_free(p);
+    CHECK(store_take_restored_count() == 0);
+    // A list that does not read (no permission here; damage, a card error on the Kindle) is never
+    // saved over: the entries it holds stay for when it reads again. (Root reads it anyway.)
+    char before[256] = "";
+    txt = (char *)slurp(side, &len);
+    if (txt) strlcpy_q(before, txt, sizeof before);
+    free(txt);
+    if (geteuid() != 0 && chmod(side, 0) == 0) {
+        CHECK(store_load_page(&nb, 2, PW, PH, &p) == 0 && p);
+        p->paper = k;
+        CHECK(store_save_page(&nb, 2, p) == 0);  // the page is saved; the list is left alone
+        page_free(p);
+        CHECK(chmod(side, 0644) == 0);
+        txt = (char *)slurp(side, &len);
+        CHECK(txt && !strcmp(txt, before));
+        free(txt);
+        CHECK(store_load_page(&nb, 2, PW, PH, &p) == 0 && p && p->paper == k);  // (its own file says so)
+        p->paper = PAPER_MEDIUM;
+        CHECK(store_save_page(&nb, 2, p) == 0);
+        page_free(p);
+    }
     // A page set to Blank here leaves the list: it stays Blank.
     CHECK(store_load_page(&nb, 0, PW, PH, &p) == 0 && p);
     p->paper = PAPER_BLANK;
@@ -843,6 +1278,7 @@ TEST(erasing_over_a_picture) {
     canvas_init(&c2, PW, PH);
     page_render(&c2, q, (Rect){0, 0, PW, PH}, DPI);
     CHECK(!memcmp(c.px, c2.px, (size_t)PW * PH));
+    CHECK(paper_take_image_blank_count() == 0);  // (compaction's paper too)
     free(drop);
     canvas_free(&c);
     canvas_free(&c2);
@@ -1012,7 +1448,12 @@ TEST(import_failure_leaves_nothing) {
     int nbefore;
     CHECK(store_list(&before, &nbefore) == 0);
     free(before);
+    log_capture();
     CHECK(bg_import_folder(src, DPI) != 0);
+    // Refused from its headers, before any page was made ("N page(s), for WxH pages" starts that).
+    char *log = log_captured();
+    CHECK(log && strstr(log, "page 2 of 3: not a PNG") && !strstr(log, "page(s), for"));
+    free(log);
     NotebookInfo nb, *after;
     int nafter;
     CHECK(store_load_info(id, &nb) != 0);
@@ -1025,9 +1466,157 @@ TEST(import_failure_leaves_nothing) {
         snprintf(path, sizeof path, "%s/%s", src, files[i]);
         CHECK(exists(path));
     }
+    // The folder is as it was (its mark gone), and the refusal is remembered (import_scan).
+    snprintf(path, sizeof path, "%s/.grimoire-import", src);
+    CHECK(!exists(path));
+    snprintf(path, sizeof path, "%s/import/.attempts", root);
+    char *txt = (char *)slurp(path, &(size_t){0});
+    CHECK(txt && strstr(txt, " 99\n"));
+    free(txt);
     // Remove the damage: the next start imports it.
     snprintf(path, sizeof path, "%s/page-2.png", src);
     unlink(path);
+}
+
+// Runs the imports import_scan queued, as app.c does: the results import_finished gives, in order.
+static int finish_imports(int *results, int max, int *pages) {
+    int got = 0;
+    uint32_t until = now_ms() + 90000;
+    for (bool last = false; !last;) {
+        last = !bg_busy() || (int32_t)(now_ms() - until) >= 0;
+        int kind = -1, r = bg_poll_kind(&kind);
+        if (kind == BG_IMPORT_FOLDER && got < max) {
+            results[got] = import_finished(r > 0, &pages[got]);
+            got++;
+        }
+        if (!last) usleep(5000);
+    }
+    return got;
+}
+
+static int notebooks_named(const char *name) {
+    NotebookInfo *all;
+    int n, count = 0;
+    if (store_list(&all, &n) != 0) return -1;
+    for (int i = 0; i < n; i++) count += !strcmp(all[i].name, name);
+    free(all);
+    return count;
+}
+
+// A page whose header comes after a lot of metadata (an ICC profile, text) is still a page: the
+// headers are checked from each file's first 64 KB, and from the whole file when that is not enough.
+TEST(import_big_header) {
+    char src[700], path[900];
+    snprintf(src, sizeof src, "%s/import/Annotated", root);
+    BgPicture g = solid(150, 200, 1, 110);
+    snprintf(path, sizeof path, "%s/1.png", src);
+    padded_png(path, &g, 300u << 10);
+    snprintf(path, sizeof path, "%s/2.png", src);
+    put_png(path, &g);
+    bgpicture_free(&g);
+    int res[2] = {0}, pages[2] = {0};
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 2, pages) == 1 && res[0] == 1 && pages[0] == 2);
+    CHECK(notebooks_named("Annotated") == 1 && !exists(src));
+}
+
+// A folder whose page is no picture fails once (one toast), then waits for its pictures to change,
+// however many starts there are; changed, it is imported.
+TEST(import_refused_waits) {
+    const char *files[] = {"page-1.png", "page-2.png"};
+    const uint8_t values[] = {40, 1};  // page 2 is text
+    char src[700], path[900];
+    import_folder_of("Waits", files, values, 2, src, sizeof src);
+    int res[4] = {0}, pages[4] = {0};
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 4, pages) == 1 && res[0] == -1);
+    snprintf(path, sizeof path, "%s/.grimoire-import", src);
+    CHECK(!exists(path));
+    for (int start = 0; start < 3; start++) CHECK(import_scan(DPI) == 0 && !bg_busy());
+    CHECK(notebooks_named("Waits") == 0);
+    // The page replaced by a picture: taken at the next start.
+    snprintf(path, sizeof path, "%s/page-2.png", src);
+    BgPicture g = solid(150, 200, 1, 90);
+    unlink(path);
+    put_png(path, &g);
+    bgpicture_free(&g);
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 4, pages) == 1 && res[0] == 1 && pages[0] == 2);
+    CHECK(notebooks_named("Waits") == 1 && !exists(src));
+    snprintf(path, sizeof path, "%s/import/.attempts", root);
+    char *txt = (char *)slurp(path, &(size_t){0});
+    CHECK(!txt || !strstr(txt, " 99\n"));  // (the record went with the folder)
+    free(txt);
+}
+
+// A failure that may pass (here: notebooks/ cannot be written) is tried at three starts, then the
+// folder waits for its pictures to change, so a failure that comes back costs three tries, not one
+// at every start: an import cut off each time (memory, a crash) is the same.
+TEST(import_retries_three_times) {
+    if (geteuid() == 0) return;  // (root writes anywhere)
+    const char *files[] = {"a.png"};
+    const uint8_t values[] = {70};
+    char src[700], nbdir[700];
+    import_folder_of("Thrice", files, values, 1, src, sizeof src);
+    snprintf(nbdir, sizeof nbdir, "%s/notebooks", root);
+    CHECK(chmod(nbdir, 0555) == 0);
+    int res[4] = {0}, pages[4] = {0}, tried = 0;
+    for (int start = 0; start < 5; start++)
+        if (import_scan(DPI) == 1) {
+            tried++;
+            CHECK(finish_imports(res, 4, pages) == 1 && res[0] == -1);
+        }
+    CHECK(chmod(nbdir, 0755) == 0);
+    CHECK(tried == 3 && notebooks_named("Thrice") == 0);
+    // Touched (a file added), it is tried again.
+    char path[900];
+    snprintf(path, sizeof path, "%s/b.png", src);
+    BgPicture g = solid(150, 200, 1, 80);
+    put_png(path, &g);
+    bgpicture_free(&g);
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 4, pages) == 1 && res[0] == 1 && pages[0] == 2);
+}
+
+// Cut off between the notebook's rename into place and its folder's move: the next start finishes
+// the move (the folder's mark names the notebook made) and makes no second notebook.
+TEST(import_made_before_moved) {
+    const char *files[] = {"p-1.png", "p-2.png"};
+    const uint8_t values[] = {20, 30};
+    char src[700];
+    import_folder_of("Twice", files, values, 2, src, sizeof src);
+    const char *id = "20261020-120005-f00d";
+    mark(src, id);
+    CHECK(bg_import_folder(src, DPI) == 0 && notebooks_named("Twice") == 1);
+    // Put the folder back as the cut-off run left it.
+    char done[700], back[900];
+    snprintf(done, sizeof done, "%s/import/done", root);
+    DIR *d = opendir(done);
+    for (struct dirent *e; d && (e = readdir(d));)
+        if (!strncmp(e->d_name, "Twice-", 6)) snprintf(back, sizeof back, "%s/%s", done, e->d_name);
+    if (d) closedir(d);
+    CHECK(rename(back, src) == 0);
+    mark(src, id);
+    int res[4] = {0}, pages[4] = {0};
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 4, pages) == 1 && res[0] == 1 && pages[0] == 2);
+    CHECK(notebooks_named("Twice") == 1 && !exists(src) && count_prefix(done, "Twice-") == 1);
+}
+
+// A notebook an import had finished (its notebook.ini written, last) but whose rename into place
+// was lost (a power cut after the folder's move was durable and before the rename was): the next
+// start puts it in place, never removes it.
+TEST(import_leftover_whole) {
+    const char *files[] = {"only.png"};
+    const uint8_t values[] = {60};
+    char src[700];
+    import_folder_of("Kept", files, values, 1, src, sizeof src);
+    const char *id = "20261020-120006-beef", *lost = "20261020-120007-cafe";
+    mark(src, id);
+    CHECK(bg_import_folder(src, DPI) == 0);
+    char from[700], to[700];
+    snprintf(from, sizeof from, "%s/notebooks/%s", root, id);
+    snprintf(to, sizeof to, "%s/notebooks/.import-%s", root, lost);
+    CHECK(rename(from, to) == 0 && notebooks_named("Kept") == 0);
+    CHECK(import_scan(DPI) == 0);
+    NotebookInfo nb;
+    CHECK(!exists(to) && store_load_info(lost, &nb) == 0 && nb.npages == 1 && !strcmp(nb.name, "Kept"));
+    CHECK(page_value(&nb, 0) == 60);
 }
 
 TEST(import_at_startup) {
@@ -1069,6 +1658,68 @@ TEST(import_at_startup) {
     CHECK(import_scan(DPI) == 0 && !bg_busy());
 }
 
+// A lock that cannot be taken for another reason than an import holding it says why (it is not
+// "an import from an earlier run is still going"); the folders wait for the next start either way.
+TEST(import_lock_errors) {
+    const char *files[] = {"x.png"};
+    const uint8_t values[] = {90};
+    char src[700], lock[700];
+    import_folder_of("Locked", files, values, 1, src, sizeof src);
+    snprintf(lock, sizeof lock, "%s/import/.lock", root);
+    unlink(lock);
+    CHECK(mkdir(lock, 0755) == 0);  // (no file can be opened there)
+    log_capture();
+    CHECK(import_scan(DPI) == 0 && !bg_busy());
+    char *log = log_captured();
+    CHECK(log && strstr(log, "lock cannot be taken (") && !strstr(log, "still going"));
+    free(log);
+    CHECK(rmdir(lock) == 0);
+    int res[2] = {0}, pages[2] = {0};
+    CHECK(import_scan(DPI) == 1 && finish_imports(res, 2, pages) == 1 && res[0] == 1 && pages[0] == 1);
+}
+
+// A folder or template whose path would not reach a background job whole (a job holds 600 bytes:
+// a long name in another script, under vfat's 255 characters) is left out, never cut and then
+// tried at every start. Here a deep root makes the paths long. (Last: it moves the store.)
+TEST(long_paths_left_out) {
+    char deep[512], seg[240];
+    memset(seg, 'd', 200);
+    seg[200] = 0;
+    snprintf(deep, sizeof deep, "%s/%s/", root, seg);
+    memset(seg, 'e', 150);
+    seg[150] = 0;
+    strcat(deep, seg);
+    CHECK(strlen(deep) < 500 && store_init(deep) == 0);
+    templates_init();
+    char name[240];
+    memset(name, 'n', 230);
+    name[230] = 0;
+    char path[1600];
+    BgPicture g = solid(150, 200, 1, 100);
+    snprintf(path, sizeof path, "%s/import/%s/p.png", deep, name);
+    put_png(path, &g);
+    snprintf(path, sizeof path, "%s/templates/%s.png", deep, name);
+    put_png(path, &g);
+    char shortp[700];
+    snprintf(shortp, sizeof shortp, "%s/templates/short.png", deep);
+    put_png(shortp, &g);
+    CHECK(import_scan(DPI) == 0 && !bg_busy());
+    snprintf(path, sizeof path, "%s/import/%s/.grimoire-import", deep, name);
+    CHECK(!exists(path));
+    Template *t;
+    int n;
+    CHECK(template_scan(&t, &n, DPI) == 0 && n == 1 && !strcmp(t[0].name, "short"));
+    template_list_free(t, n);
+    drain_jobs(NULL);
+    NotebookInfo nb;
+    PaperKind k;
+    const char *why = "";
+    CHECK(store_create("Deep", "", PAPER_BLANK, &nb) == 0);
+    snprintf(path, sizeof path, "%s/templates/%s.png", deep, name);
+    CHECK(template_install(&nb, path, &k, &why) != 0 && strstr(why, "long"));
+    bgpicture_free(&g);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/templates-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -1081,11 +1732,15 @@ int main(void) {
     RUN(missing_picture_draws_white);
     RUN(decoding);
     RUN(oversized_refused);
+    RUN(decode_budget);
+    RUN(ui_picture_limits);
     RUN(normalization);
     RUN(templates_same_file_same_id);
     RUN(source_key_streamed);
     RUN(templates_collision_steps);
+    RUN(same_id_two_notebooks);
     RUN(template_previews);
+    RUN(big_template_uses_its_preview_key);
     RUN(document_role_not_inherited);
     RUN(sidecar_restores_beta_resave);
     RUN(beta_reads_image_pages);
@@ -1096,6 +1751,13 @@ int main(void) {
     RUN(import_long_name);
     RUN(import_failure_leaves_nothing);
     RUN(import_at_startup);
+    RUN(import_big_header);
+    RUN(import_refused_waits);
+    RUN(import_retries_three_times);
+    RUN(import_made_before_moved);
+    RUN(import_leftover_whole);
+    RUN(import_lock_errors);
+    RUN(long_paths_left_out);
     int rc = tl_done();
     if (!rc) system(cmd);
     return rc;

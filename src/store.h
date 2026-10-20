@@ -111,8 +111,12 @@ int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file mo
 // file -> empty page of nb->paper. A damaged file is set aside (p<id>.qpg.damaged-<time>). A page
 // from a newer version comes back read-only (Page.readonly) and is never set aside. A page that
 // bg/pages.ini lists with an image paper but that reads as Blank (an older version saved it so)
-// gets its image paper back. Every page comes with Page.nb set to the notebook's id.
+// gets its image paper back, and is written so again (each such page counted, below). Every page
+// comes with Page.nb set to the notebook's id.
 int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out);
+// How many pages store_load_page gave their image paper back since the last call: the thumbnail
+// and PDF an older version made of them show blank paper, to be drawn again.
+int store_take_restored_count(void);
 // The same for exports, always at the notebook's page size, and nothing on disk changes: a page
 // that is missing or does not read is a blank page of nb->paper, and its file stays as it is.
 int store_read_page(const NotebookInfo *nb, int index, Page **out);

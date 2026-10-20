@@ -333,11 +333,17 @@ hex digits. A page names only pictures of its own notebook. A picture is written
 changed, and its id never names another picture, so a page looks the same in every later version:
 using a template on a page copies it into the notebook, and changing or deleting the template's
 file later changes no page. A missing or unreadable picture draws white paper (and the page keeps
-its paper value).
+its paper value), and so does a file there that is no PNG, is bigger than 32 MB, or takes more than
+96 MB to decode: Grimoire decodes a notebook's pictures as it draws them, and decodes nothing else
+there.
 
 A picture is a PNG of the notebook's page size (`page_w` x `page_h`), 8-bit gray, or RGB when its
 source has colour. It is made from a source picture (PNG, JPEG or PNM; at most 8192 pixels a side
-and 40 megapixels) like this: transparency over white; 16-bit channels cut to 8; then fitted inside
+and 40 megapixels; a file of at most 64 MB, a template's at most 16 MB; and one that decodes in at
+most 256 MB, the file's own bytes included, by what its header says decoding takes, so a 16-bit
+colour PNG of more than about 20 megapixels or a progressive JPEG of more than about 35 is refused,
+as is one whose data inflates past twice what its header says) like this: transparency over white;
+16-bit channels cut to 8; then fitted inside
 the page with its aspect kept (the fitted width or height rounded to whole pixels) and centred on
 white, each page pixel the average of the part of the picture it covers, weighted by area, with
 each axis's weights in 12-bit fixed point (they are rounded from their running total, so each adds
@@ -356,9 +362,10 @@ that one is taken by another key (0 is never given):
 
 - for a page picture of an import, the key of the picture as stored (a hash of its width, height,
   channels and pixels): the same page picture twice in one import is one file;
-- for a template, the key of the source file's bytes and the page size the picture is made for, so
-  the id is known before the picture is made (that runs in the background): using the same file
-  again gives the same paper value, and makes its picture again if its file went missing.
+- for a template, a key of the source file's bytes (a 64-bit hash of them, with their length) and
+  the page size the picture is made for, so the id is known before the picture is made (that runs
+  in the background): using the same file again gives the same paper value, and makes its picture
+  again if its file went missing. The hash is the one the template's preview keeps (Templates).
 
 `index.ini` is `# ...`, then one `<pic>=<key, 16 hex digits>` line per picture. The keys are
 Grimoire's own; other writers can leave their pictures out of it.
@@ -375,7 +382,10 @@ delete). A page that reads as Blank but that `pages.ini` lists with an image pap
 back when it is opened or exported: a page someone set to Blank in a version that keeps the list
 is off it. One set to Blank from the picker of a version before 1.1 cannot be told apart, and gets
 its picture back too. A page an older version gave another paper (from its own picker) keeps that
-paper.
+paper. Opened in the editor, a page that got its paper back so is written again with it (an export
+changes no file), and once the notebook closes its thumbnail and PDF, which the older version drew
+on blank paper, are drawn again. A `pages.ini` that is there but does not read is never written
+over (its entries would be lost): it is left as it is until it reads again.
 
 Raw notebook zips carry the notebook's `bg/` (`raw/bg/...`).
 
@@ -384,8 +394,11 @@ Raw notebook zips carry the notebook's `bg/` (`raw/bg/...`).
 The pictures the owner copies in to use as paper (over USB, while Grimoire is closed): files whose
 names end in `.png`, `.jpg`, `.jpeg` or `.pgm` (any case) and do not start with a dot. Grimoire
 makes the folder at startup, with a `README.txt`, if it is missing, and keeps previews of the files
-in `templates/.cache/` (P5 PGM, a sixth of the page each, named by a hash of the file's name, size
-and time; an empty `.bad` file of that name marks a file that is no picture it can use).
+in `templates/.cache/`, each named by a hash of the file's name, size and time: `<hash>.pgm`, the
+preview (P5 PGM, a sixth of the page); `<hash>.key`, a line `<hash of the file's bytes, 16 hex
+digits> <width> <height>`, from which the template's id comes (Ids), so the file need not be read
+again to use it; and an empty `<hash>.bad` for a file that is no picture it can use. A file whose
+path is 600 bytes or longer is left out.
 
 ### Imports: `root/import/<Name>/`
 
@@ -397,16 +410,29 @@ count), each page a document page; the notebook's own paper is Blank. It is made
 - The notebook is built in `notebooks/.import-<notebook id>/` (a dot-folder: the Library and every
   older version skip it) and renamed into place once it is whole. Then the folder moves to
   `import/done/<Name>-<YYYYMMDD-HHMMSS>`.
+- Every page's header is checked (it is a picture Grimoire takes, as above) before any picture is
+  made, so a folder with a page that is not fails at once.
 - A folder being imported holds `.grimoire-import`: the id of the notebook it becomes, or
   `done <notebook id>` when the notebook was made but the folder could not move (it is not imported
-  again).
+  again). A start that finds a mark with an id keeps that id: a notebook already made under it (an
+  import cut off between its rename into place and the folder's move) is finished, its folder
+  moved, and never made twice. An import that fails removes the mark.
+- `notebook.ini` is the last file written into the dot-folder, after every other one was made
+  durable (each file is fsynced), and the rename into place is made durable before the folder
+  moves (the folders are fsynced). A dot-folder that holds `notebook.ini` is whole: the next start
+  renames it into place. Any other is what an import that was cut off left, and is removed.
 - `import/.lock` is held (flock) while an import runs, one at a time, also by the imports a session
   leaves to finish after Grimoire closes. A start that finds it held leaves the folders for the
   next start.
 - A failed import (a picture that does not read, a full disk) or one cut off leaves no notebook and
-  keeps its folder as it was; the next start removes what a cut-off one left in `notebooks/` and
-  tries again. A start takes at most 8 folders; a folder of more than 2000 pictures is not
-  imported, nor one without pictures.
+  keeps its folder as it was. `import/.attempts` says how each folder still in `import/` fared:
+  `# ...`, then a line `<hash of the folder's name> <hash of its pictures' names, sizes and times>
+  <tries>` (16 hex digits, 16 hex digits, a number) for each folder an import tried, its tries
+  counted as each starts (99 once a page was no picture Grimoire takes). A folder refused so, or
+  tried at 3 starts (a full disk, an import cut off each time), waits until its pictures change: a
+  file added, removed, renamed or replaced, or the folder renamed. A start drops the lines of
+  folders no longer there. A start takes at most 8 folders; a folder of more than 2000 pictures is
+  not imported, nor one without pictures, nor one whose path is 600 bytes or longer.
 
 Grimoire makes `import/` at startup, with a `README.txt`, if it is missing.
 
@@ -551,10 +577,10 @@ row.
 | a critical chunk | ignored; dropped on a re-save | the page opens read-only |
 | bytes after the strokes that are not chunks | ignored; dropped on a re-save | the page opens read-only |
 | a paper it does not know | blank paper; a re-save turns it into version 1 Blank | blank paper, "Newer paper"; kept (version 2) |
-| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers) | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, a document page's too, so in 1.1 that new page shows the page's picture |
+| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, a document page's too, so in 1.1 that new page shows the page's picture |
 | a notebook's `bg/` folder | never read or written; its raw zips leave it out | the same |
 | an image paper as a notebook's `paper` | read as Medium rule: its new pages get Medium | kept; new pages get it (drawn blank there) |
-| `templates/`, `import/` in the data root | never read | the same |
+| `templates/`, `import/` in the data root (and `import/.attempts`) | never read | the same |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
 | a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |

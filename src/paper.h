@@ -84,5 +84,9 @@ PaperKind paper_at(int index);
 // Renders the background for `region` of a full page canvas (canvas size = page size).
 // Must be a pure function of (kind, canvas w/h, dpi, pixel position) so any sub-region
 // re-render matches a full render exactly. A kind this build does not know is blank paper, and so
-// is an image paper here: page_paper_render (page.h) draws it from its notebook's picture.
+// is an image paper here: page_paper_render (page.h) draws it from its notebook's picture, and is
+// what every page's paper must come from (the ink layer's erase strokes, drawn live, too).
 void paper_render(Canvas *c, PaperKind k, Rect region, float dpi);
+// How many times paper_render drew an image paper blank since the last call (the first is logged):
+// a caller that should have used page_paper_render. The tests hold page rendering to 0.
+int paper_take_image_blank_count(void);
