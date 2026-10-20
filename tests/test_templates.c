@@ -1404,6 +1404,46 @@ TEST(notebook_on_a_template) {
     bgpicture_free(&lines);
 }
 
+// The notebook's card drawn on white paper (the editor left the notebook before the template's
+// picture was made): the job that makes the picture draws the card again when the first page is on
+// it, and leaves it alone when the first page is not.
+TEST(card_drawn_again_with_its_picture) {
+    BgPicture g = solid(300, 400, 1, 255);
+    for (int y = 30; y < 400; y += 40) memset(g.px + (size_t)y * 300, 60, 300);
+    char path[700];
+    template_file("Card lines.png", &g, path, sizeof path);
+    NotebookInfo on, off;
+    CHECK(store_create("Card", "", PAPER_MEDIUM, &on) == 0 && store_create("Card 2", "", PAPER_MEDIUM, &off) == 0);
+    PaperKind k = PAPER_BLANK, k2 = PAPER_BLANK;
+    const char *why = "";
+    CHECK(template_install(&on, path, &k, &why) == 0 && store_start_on(&on, k) == 0);
+    CHECK(store_add_page(&off, 1, PAPER_MEDIUM) == 0 && template_install(&off, path, &k2, &why) == 0);
+    Page *p = NULL;
+    CHECK(store_load_page(&off, 1, PW, PH, &p) == 0 && p);
+    p->paper = k2;  // (the second page of the other notebook)
+    CHECK(store_save_page(&off, 1, p) == 0);
+    page_free(p);
+    Canvas white;
+    canvas_init(&white, PW / 3, PH / 3);
+    CHECK(store_save_thumb(on.id, &white) == 0 && store_save_thumb(off.id, &white) == 0);
+    drain_jobs(NULL);
+    bgimage_retry_missing();
+    Canvas card, want, other;
+    CHECK(store_load_thumb(on.id, &card) == 0 && store_read_page(&on, 0, &p) == 0 && p);
+    canvas_init(&want, PW / 3, PH / 3);
+    page_render_thumb(&want, p, DPI);
+    page_free(p);
+    CHECK(card.w == want.w && card.h == want.h && !memcmp(card.px, want.px, (size_t)want.w * want.h));
+    CHECK(memcmp(card.px, white.px, (size_t)white.w * white.h) != 0);
+    CHECK(store_load_thumb(off.id, &other) == 0 && !memcmp(other.px, white.px, (size_t)white.w * white.h));
+    canvas_free(&card);
+    canvas_free(&want);
+    canvas_free(&other);
+    canvas_free(&white);
+    unlink(path);
+    bgpicture_free(&g);
+}
+
 // bg/index.ini there but not readable (a card error, a permission): it is never saved over, which
 // would lose the ids it names, so no template goes into the notebook until it reads again, neither
 // on the UI thread nor in the background job. (Root reads it anyway.)
@@ -1937,6 +1977,7 @@ int main(void) {
     RUN(erasing_over_a_picture);
     RUN(listed_pages_restored_at_open);
     RUN(notebook_on_a_template);
+    RUN(card_drawn_again_with_its_picture);
     RUN(unreadable_index_kept);
     RUN(unreadable_template_tried_later);
     RUN(natural_order);

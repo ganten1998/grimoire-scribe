@@ -59,7 +59,7 @@ struct LibraryState {
     TplSheet ts;          // New notebook's More papers...: the Templates sheet over it
     char new_tpl[TEMPLATE_PATH_MAX];  // the template New notebook makes its notebook on ("" none)
     Canvas tpl_prev;      // and its preview, for its tile
-    unsigned card_gen;    // bgimage_generation when the picture cards were last drawn
+    unsigned card_gen;    // bgimage_generation when the cards were last read
 
     Modal modal;
     KbPurpose kbp;
@@ -125,6 +125,7 @@ static void free_lists(App *a) {
 
 static void reload(App *a) {
     free_lists(a);
+    S->card_gen = bgimage_generation();  // (the cards read from now on are up to date)
     store_list(&S->books, &S->nbooks);
     store_list_folders(&S->folders, &S->nfolders);
     S->thumbs = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumbs);
@@ -1162,19 +1163,16 @@ void library_tick(App *a, uint32_t now) {
     }
     Rect d;
     if (S->modal == MOD_TEMPLATES && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
-    // A background job ended: the cards drawn from a notebook's own picture (picture_card) are
-    // drawn again, as one may have been drawn white while its picture was being made (a notebook
-    // just made on a template).
+    // A background job ended (bgimage.h): the cards are read again. A template's picture made for a
+    // notebook since may be on its first page, whose card the job drew again (bgwork_template.c),
+    // or a card drawn from a notebook's own picture (picture_card) drew it white meanwhile.
     if (S->card_gen != bgimage_generation()) {
         S->card_gen = bgimage_generation();
-        bool again = false;
-        for (int i = 0; i < S->nbooks; i++)
-            if (S->thumb_picture[i]) {
-                canvas_free(&S->thumbs[i]);
-                S->thumb_tried[i] = false;
-                again = true;
-            }
-        if (again && S->modal == MOD_NONE) redraw(a, REFRESH_UI);
+        for (int i = 0; i < S->nbooks; i++) {
+            canvas_free(&S->thumbs[i]);
+            S->thumb_tried[i] = false;
+        }
+        if (S->nbooks && S->modal == MOD_NONE) redraw(a, REFRESH_UI);
     }
 }
 

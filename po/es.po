@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 10:51-0500\n"
+"POT-Creation-Date: 2026-10-20 11:18-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1314,8 +1314,8 @@ msgstr "Aún no hay plantillas"
 msgid "Copy PNG or JPG pictures into the %s folder over USB while Grimoire is closed."
 msgstr "Copia imágenes PNG o JPG en la carpeta %s por USB, con Grimoire cerrado."
 
-#. TRANSLATORS: the paragraph after it, the same way: README.txt is the file Grimoire wrote in
-#. that folder.
+#. TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); README.txt is the file Grimoire wrote in that folder.
 #: src/tplsheet.c
 msgid "Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 pixels. The README.txt there says more."
 msgstr "Funcionan mejor las imágenes en vertical, con la forma de una página (3:4); lo ideal es 1860 x 2480 píxeles. El README.txt de esa carpeta da más detalles."

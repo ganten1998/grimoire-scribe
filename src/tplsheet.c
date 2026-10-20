@@ -152,8 +152,8 @@ static void draw_empty(TplSheet *s, App *a, Rect r) {
     int line = ui_px(62), lines = 4;
     font_draw_wrapped(c, FONT_REGULAR, ts, (Rect){w.x, y, w.w, lines * line}, text, lines, line, true, 0);
     y += font_wrap_lines(FONT_REGULAR, ts, text, w.w, NULL) * line + ui_px(40);
-    // TRANSLATORS: the paragraph after it, the same way: README.txt is the file Grimoire wrote in
-    // that folder.
+    // TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
+    // 2180); README.txt is the file Grimoire wrote in that folder.
     const char *more = _("Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 pixels. The "
                          "README.txt there says more.");
     font_draw_wrapped(c, FONT_REGULAR, ts, (Rect){w.x, y, w.w, lines * line}, more, lines, line, true, 0);

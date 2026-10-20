@@ -460,7 +460,9 @@ New notebook and the editor's paper sheet offer the templates as tiles (their pr
 the last tile, More papers... (1.1). A page given one gets its image paper (role 0, a template) at
 once and the picture is made in the background; until it is there the page draws white paper. A
 notebook made on one in New notebook has that image paper as its own `paper` (`notebook.ini`), and
-its first page has it too.
+its first page has it too. The background job that makes a template's picture for a notebook also
+draws the notebook's `thumb.pgm` again when its first page is on that picture (the editor may
+have drawn it on white paper).
 
 ### Imports: `root/import/<Name>/`
 

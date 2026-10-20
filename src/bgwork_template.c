@@ -552,8 +552,26 @@ int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, 
     return 0;
 }
 
+// The notebook's card (thumb.pgm, of its first page) when that page is on picture pic, drawn again
+// once the picture is made: the editor drew it on white paper if the notebook was left before (a
+// first page written on in the seconds a picture takes on the Kindle).
+static void redraw_card(const NotebookInfo *nb, uint32_t pic, float dpi) {
+    Page *p = NULL;
+    if (store_read_page(nb, 0, &p) != 0) return;
+    int pw, ph;
+    store_notebook_page_size(nb, &pw, &ph);
+    Canvas t;
+    if (paper_is_image(p->paper) && !paper_is_document(p->paper) && paper_image_id(p->paper) == pic &&
+        canvas_init(&t, pw / 3, ph / 3) == 0) {
+        page_render_thumb(&t, p, dpi);
+        if (store_save_thumb(nb->id, &t) != 0) qlog("templates: %s: its card could not be drawn again", nb->id);
+        canvas_free(&t);
+    }
+    page_free(p);
+}
+
 // In the child: the picture template_install gave an id to, made for the notebook's page size.
-static int make_template(const char *id, const char *src) {
+static int make_template(const char *id, const char *src, float dpi) {
     NotebookInfo *nb = malloc(sizeof *nb);
     if (!nb || store_load_info(id, nb) != 0) {
         free(nb);
@@ -562,10 +580,10 @@ static int make_template(const char *id, const char *src) {
     }
     int pw, ph;
     store_notebook_page_size(nb, &pw, &ph);
-    free(nb);
     size_t len;
     uint8_t *data = read_source(src, TEMPLATE_MAX_BYTES, &len);
     if (!data) {
+        free(nb);
         qlog("templates: %s: the template file is gone", id);
         return -1;
     }
@@ -577,6 +595,7 @@ static int make_template(const char *id, const char *src) {
     bgindex_free(&ix);
     if (!known) {
         free(data);
+        free(nb);
         qlog("templates: %s: no id was given to this template (it changed since it was picked?)", id);
         return -1;
     }
@@ -591,16 +610,17 @@ static int make_template(const char *id, const char *src) {
         else qlog("templates: %s: bg/%06x.png made (%dx%d, %s)", id, (unsigned)pic, pw, ph, fit.ch == 3 ? "colour" : "gray");
         bgpicture_free(&p);
         bgpicture_free(&fit);
+        if (rc == 0) redraw_card(nb, pic, dpi);
     }
     free(data);
+    free(nb);
     return rc;
 }
 
 int bg_template(const char *id, const char *src, float dpi) {
-    (void)dpi;
     MemCap cap;
     cap_memory(&cap);
-    int rc = !id || !*id ? make_previews(src) : make_template(id, src);  // no notebook: the folder's previews
+    int rc = !id || !*id ? make_previews(src) : make_template(id, src, dpi);  // no notebook: the folder's previews
     uncap_memory(&cap);
     return rc;
 }
