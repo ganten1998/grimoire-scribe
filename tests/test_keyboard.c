@@ -222,6 +222,46 @@ TEST(accents_in_every_face) {
     CHECK(found == 34);
 }
 
+// A key with one character shows it at the title size, whatever its length in UTF-8 bytes; a
+// key with a word ("abc", "shift") at the text size. Inside its frame, each key holds exactly
+// what font_draw_centered draws at that size, in both styles.
+TEST(one_character_keys_at_title_size) {
+    static const struct {
+        int page;
+        uint32_t code;
+        const char *label;
+        bool word;
+    } k[] = {{0, 'a', "a", false},           {1, 0xE1, "\xc3\xa1", false},     {1, 0xF1, "\xc3\xb1", false},
+             {1, 0xFC, "\xc3\xbc", false},   {1, 0x153, "\xc5\x93", false},    {1, 0xBF, "\xc2\xbf", false},
+             {1, 0xB7, "\xc2\xb7", false},   {1, KB_KEY_PAGE, "abc", true},    {0, KB_KEY_SHIFT, "shift", true},
+             {0, KB_KEY_PAGE, "\xc3\xa1\xc3\xa9", true}};
+    for (int theme = THEME_GOTHIC; theme <= THEME_CLASSIC; theme++) {
+        ui_set_theme((UiTheme)theme);
+        Keyboard kb;
+        open_kb(&kb, "");
+        for (int i = 0; i < (int)(sizeof k / sizeof k[0]); i++) {
+            if (kb.page != k[i].page) press(&kb, KB_KEY_PAGE);
+            Rect r;
+            Canvas want;
+            if (!keyboard_key_rect(&kb, k[i].code, &r) || canvas_init(&want, r.w, r.h) != 0) {
+                CHECK(!"key");
+                continue;
+            }
+            canvas_fill(&want, (Rect){0, 0, r.w, r.h}, 255);
+            font_draw_centered(&want, FONT_BOLD, k[i].word ? ui_text_size() : ui_title_size(), (Rect){0, 0, r.w, r.h},
+                               k[i].label, 0);
+            int differ = 0;
+            for (int y = 20; y < r.h - 20; y++)  // clear of the frame
+                for (int x = 20; x < r.w - 20; x++)
+                    differ += g_c.px[(r.y + y) * g_c.stride + r.x + x] != want.px[y * want.stride + x];
+            if (differ) fprintf(stderr, "  key \"%s\" (theme %d): %d pixels off\n", k[i].label, theme, differ);
+            CHECK(differ == 0);
+            canvas_free(&want);
+        }
+    }
+    ui_set_theme(THEME_GOTHIC);
+}
+
 int main(void) {
     ui_init(300.f);
     if (font_init() != 0 || canvas_init(&g_c, k_screen.w, k_screen.h) != 0) return 1;
@@ -234,6 +274,7 @@ int main(void) {
     RUN(long_name_tail_is_whole_characters);
     RUN(letters_layout_kept);
     RUN(accents_in_every_face);
+    RUN(one_character_keys_at_title_size);
     canvas_free(&g_c);
     return tl_done();
 }
