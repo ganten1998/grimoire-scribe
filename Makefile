@@ -136,20 +136,28 @@ scenarios: $(BUILD)/host/grimoire-headless
 
 # ---- languages ----
 # For the maintainer, with GNU gettext installed: xgettext collects every marked string of src/
-# (with the TRANSLATORS comment above it) into po/grimoire.pot, msgmerge brings each
-# po/<lang>.po up to date with it, and msgfmt --check compiles each to po/<lang>.mo, failing on a
-# translation whose printf conversions (positional ones too) differ from its English. Commit
-# what changed. A new language is a new po/<lang>.po (msginit) plus its line in src/i18n.c.
+# (with the TRANSLATORS comment above it) into po/grimoire.pot, and the share studio's (web/
+# studio.js: t, tPages and N_) under the context "studio", which httpd.c sends the studio as
+# window.GRIMOIRE_L10N. msgmerge brings each po/<lang>.po up to date with it, and msgfmt --check
+# compiles each to po/<lang>.mo, failing on a translation whose printf conversions (positional
+# ones too) differ from its English. Commit what changed. A new language is a new po/<lang>.po
+# (msginit) plus its line in src/i18n.c.
 XGETTEXT_FLAGS := --from-code=UTF-8 --language=C --add-comments=TRANSLATORS --add-location=file \
                   -k_ -kN_ -kC_:1c,2 -kNC_:1c,2 -kNG_:1,2 \
                   --flag=_:1:pass-c-format --flag=C_:2:pass-c-format \
                   --flag=NG_:1:pass-c-format --flag=NG_:2:pass-c-format \
                   --package-name=Grimoire --package-version=$(VERSION) \
                   --msgid-bugs-address=https://github.com/ganten1998/grimoire-scribe/issues
+XGETTEXT_JS_FLAGS := --from-code=UTF-8 --language=JavaScript --add-comments=TRANSLATORS --add-location=file \
+                     -kt -kN_ -ktPages:1,2
 # No hash table and one byte order: the same .po makes the same .mo on any machine (l10n-check).
 MSGFMT_FLAGS := --check --no-hash --endianness=little
 l10n:
-	xgettext $(XGETTEXT_FLAGS) -o po/grimoire.pot $(sort $(wildcard src/*.c))
+	@mkdir -p $(BUILD)/l10n
+	xgettext $(XGETTEXT_FLAGS) -o $(BUILD)/l10n/c.pot $(sort $(wildcard src/*.c))
+	xgettext $(XGETTEXT_JS_FLAGS) -o $(BUILD)/l10n/studio.pot web/studio.js
+	awk '/^msgid / { if (n++) print "msgctxt \"studio\"" } { print }' $(BUILD)/l10n/studio.pot > $(BUILD)/l10n/studio-ctx.pot
+	msgcat --use-first -o po/grimoire.pot $(BUILD)/l10n/c.pot $(BUILD)/l10n/studio-ctx.pot
 	for p in $(wildcard po/*.po); do msgmerge --quiet --update --backup=none $$p po/grimoire.pot || exit 1; done
 	for p in $(wildcard po/*.po); do msgfmt $(MSGFMT_FLAGS) -o $${p%.po}.mo $$p || exit 1; done
 

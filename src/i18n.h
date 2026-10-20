@@ -35,6 +35,9 @@ const char *i18n_getc(const char *ctx, const char *msgid) __attribute__((format_
 const char *i18n_getn(const char *one, const char *many, long n) __attribute__((format_arg(1)));
 const char *i18n_getn_many(const char *one, const char *many, long n) __attribute__((format_arg(2)));
 extern const int i18n_ng;
+// The plural form for n of a string with a context (C_ and NG_ at once), looked up now; for
+// strings the code gets from a table (the share studio's, httpd.c), so it has no macro.
+const char *i18n_getnc(const char *ctx, const char *one, const char *many, long n) __attribute__((format_arg(2)));
 
 // The languages Grimoire speaks, English first: each one's code ("en", "es") and its name in
 // itself ("English", "Español"), which is never translated.
@@ -71,7 +74,8 @@ void i18n_apply(const char *setting);
 // date alone, "Oct 10", as in a new notebook's name.
 void format_date_short(int64_t t, char *buf, size_t cap);
 
-// For tests: each entry of the catalog for code, in catalog order (sorted by context and English).
+// Each entry of the catalog for code, in catalog order (sorted by context and English): for
+// tests, and for the share studio, which gets the words of its context (httpd.c).
 typedef struct {
     char ctx[64];                 // "" for none
     const char *id, *id_plural;   // the English, and its plural form (NULL for none)

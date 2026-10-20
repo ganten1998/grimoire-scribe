@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "export.h"
+#include "i18n.h"
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -127,15 +128,49 @@ void httpd_stop(void) {
 
 static void url_decode(char *s);
 
-static void html_esc(Buf *b, const char *s) {
-    for (; *s; s++) {
+// Text as HTML, safe in an element and in an attribute in either quotes: names, and every
+// translation (a catalog is third-party input; none may add markup).
+static void html_esc_n(Buf *b, const char *s, size_t n) {
+    for (const char *end = s + n; s < end && *s; s++) {
         switch (*s) {
         case '<': buf_printf(b, "&lt;"); break;
         case '>': buf_printf(b, "&gt;"); break;
         case '&': buf_printf(b, "&amp;"); break;
         case '"': buf_printf(b, "&quot;"); break;
+        case '\'': buf_printf(b, "&#39;"); break;
         default: buf_append(b, s, 1);
         }
+    }
+}
+
+static void html_esc(Buf *b, const char *s) { html_esc_n(b, s, strlen(s)); }
+
+// Whether the UTF-8 character at s is a letter past ASCII: U+00C0 to U+1FFF (Latin with its
+// accents, Greek, Cyrillic and the rest of the alphabets), but for the multiplication and division
+// signs. Signs below (inverted marks, quotes) and above (punctuation, arrows) are not.
+static bool accented_letter(const unsigned char *s) {
+    if (s[0] == 0xC3) return s[1] != 0x97 && s[1] != 0xB7;
+    return s[0] >= 0xC4 && s[0] <= 0xE1;
+}
+
+// Text in Gothic's bold (.big): the bold is a shadow one design pixel to the right, which fills
+// the gaps inside an accent (the dots of an u-umlaut run into a bar, the tilde of an n-tilde turns
+// into a lump), as the Kindle's overprint did before font.c spared the marks. So the letters past
+// ASCII go without it, in spans of class na (studio.js does the same): legible, a little lighter
+// than the rest.
+static void html_esc_bold(Buf *b, const char *s) {
+    if (!g_gothic) return html_esc(b, s);
+    while (*s) {
+        bool letters = accented_letter((const unsigned char *)s);
+        size_t n = 0;
+        while (s[n] && accented_letter((const unsigned char *)s + n) == letters) {
+            n++;
+            while (((unsigned char)s[n] & 0xC0) == 0x80) n++;  // the rest of the character
+        }
+        if (letters) buf_printf(b, "<span class=na>");
+        html_esc_n(b, s, n);
+        if (letters) buf_printf(b, "</span>");
+        s += n;
     }
 }
 
@@ -221,6 +256,9 @@ static void respond(int code, const char *ctype, const Buf *body, const char *do
     respond_bytes(code, ctype, body ? body->data : NULL, body ? body->len : 0, download_name, NULL, NULL);
 }
 
+// A plain-text answer. The ones a person can meet in a browser (a link to a notebook since
+// deleted, an export that failed) come in the Kindle's language; those only a script or a
+// hand-made address gets (bad request, layer is ink, paper or all) stay English.
 static void respond_text(int code, const char *msg) {
     Buf b = {0};
     buf_printf(&b, "%s\n", msg);
@@ -256,16 +294,18 @@ static const char k_css_gothic[] =
     "h1,h2{font-family:'Grimoire Title',serif;font-weight:normal}"
     "h1{font-size:calc(var(--tp1)*43);line-height:calc(var(--tp1)*43)}"
     "h2{font-size:calc(var(--tp)*43);line-height:calc(var(--tp)*43)}"
-    ".name{font-weight:normal}.big,b,strong{font-weight:normal;text-shadow:var(--px) 0 currentColor}";
+    ".name{font-weight:normal}.big,b,strong{font-weight:normal;text-shadow:var(--px) 0 currentColor}"
+    ".na{text-shadow:none}";  // (html_esc_bold)
 // One design pixel per theme size, rounded to whole device pixels (re-run on zoom).
 static const char k_js_pixels[] =
     "<script>(function(){function f(){var d=window.devicePixelRatio||1,s=document.documentElement.style;"
     "function k(n,t){s.setProperty(n,Math.max(1,Math.round(t*d))/d+'px')}"
     "k('--px',1.25);k('--pxs',0.9);k('--tp',1);k('--tp1',1.5)}f();addEventListener('resize',f)})()</script>";
 
+// The pages are in the Kindle's language (i18n.h): the lang attribute says which.
 static void page_head(Buf *b, const char *title) {
-    buf_printf(b, "<!doctype html><html><head><meta charset=utf-8>"
-                  "<meta name=viewport content='width=device-width,initial-scale=1'><title>");
+    buf_printf(b, "<!doctype html><html lang=%s><head><meta charset=utf-8>"
+                  "<meta name=viewport content='width=device-width,initial-scale=1'><title>", i18n_current());
     html_esc(b, title);
     buf_printf(b, "</title>");
     if (g_gothic) {
@@ -303,19 +343,31 @@ static void route_font(const char *name) {
         if (!strcmp(name, fonts[i].name))
             return respond_bytes(200, "font/ttf", fonts[i].data, *fonts[i].len, NULL,
                                  "public, max-age=31536000, immutable", NULL);
-    respond_text(404, "not found");
+    // TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.
+    respond_text(404, _("not found"));
 }
 
 static void nb_card(Buf *b, const NotebookInfo *nb) {
     buf_printf(b, "<div class=card><a href='/nb/%s'><img loading=lazy src='/nb/%s/thumb.png' alt=''></a>"
                   "<div class=name>", nb->id, nb->id);
     html_esc(b, nb->name);
-    char when[32];
+    char when[64], pages[64];
     format_time_short(nb->modified, when, sizeof when);
-    buf_printf(b, "</div><div class=meta>%d page%s &middot; %s &middot; %s</div>"
-                  "<div class=links><a href='/nb/%s.pdf'>PDF</a><a href='/nb/%s.zip'>ZIP</a><a href='/nb/%s'>pages</a>"
-                  "<a href='/nb/%s/studio'>effects</a></div></div>",
-               nb->npages, nb->npages == 1 ? "" : "s", when, paper_name(nb->paper), nb->id, nb->id, nb->id, nb->id);
+    // TRANSLATORS: on the share index, under a notebook: its pages, when it last changed and its
+    // paper, then links to it as a page of pictures and to the studio (Effects).
+    snprintf(pages, sizeof pages, NG_("%d page", "%d pages", nb->npages), nb->npages);
+    buf_printf(b, "</div><div class=meta>");
+    html_esc(b, pages);
+    buf_printf(b, " &middot; ");
+    html_esc(b, when);
+    buf_printf(b, " &middot; ");
+    html_esc(b, paper_label(nb->paper));
+    buf_printf(b, "</div><div class=links><a href='/nb/%s.pdf'>PDF</a><a href='/nb/%s.zip'>ZIP</a><a href='/nb/%s'>",
+               nb->id, nb->id, nb->id);
+    html_esc(b, C_("share link", "pages"));
+    buf_printf(b, "</a><a href='/nb/%s/studio'>", nb->id);
+    html_esc(b, C_("share link", "effects"));
+    buf_printf(b, "</a></div></div>");
 }
 
 static void route_index(void) {
@@ -327,15 +379,23 @@ static void route_index(void) {
     store_list_folders(&folders, &nf);
     Buf b = {0};
     page_head(&b, "Grimoire");
-    buf_printf(&b, "<h1>Grimoire</h1><p class=meta>%d notebook%s on your Kindle</p>"
-                   "<p><a class=big href='/all.zip'>Download everything (zip)</a></p>", n, n == 1 ? "" : "s");
+    char line[160];
+    // TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
+    snprintf(line, sizeof line, NG_("%d notebook on your Kindle", "%d notebooks on your Kindle", n), n);
+    buf_printf(&b, "<h1>Grimoire</h1><p class=meta>");
+    html_esc(&b, line);
+    buf_printf(&b, "</p><p><a class=big href='/all.zip'>");
+    // TRANSLATORS: the share index's big link to a zip of every notebook.
+    html_esc_bold(&b, _("Download everything (zip)"));
+    buf_printf(&b, "</a></p>");
     for (int f = -1; f < nf; f++) {
         const char *folder = f < 0 ? "" : folders[f];
         int count = 0;
         for (int i = 0; i < n; i++) count += !strcmp(nbs[i].folder, folder);
         if (f < 0 && !count) continue;
         buf_printf(&b, "<h2>");
-        html_esc(&b, f < 0 ? "Library" : folder);
+        // TRANSLATORS: the share index's heading over the notebooks in no folder.
+        html_esc(&b, f < 0 ? _("Library") : folder);
         if (f >= 0) {
             buf_printf(&b, " <a class=meta href='/folder/");
             url_esc(&b, folder);
@@ -344,7 +404,12 @@ static void route_index(void) {
         buf_printf(&b, "</h2><div class=grid>");
         for (int i = 0; i < n; i++)
             if (!strcmp(nbs[i].folder, folder)) nb_card(&b, &nbs[i]);
-        if (!count) buf_printf(&b, "<p class=meta>empty</p>");
+        if (!count) {
+            buf_printf(&b, "<p class=meta>");
+            // TRANSLATORS: on the share index, under a folder with no notebooks.
+            html_esc(&b, C_("folder", "empty"));
+            buf_printf(&b, "</p>");
+        }
         buf_printf(&b, "</div>");
     }
     buf_printf(&b, "<p class=meta style='margin-top:40px'>Grimoire %s</p></body></html>", GRIMOIRE_VERSION);
@@ -357,18 +422,53 @@ static void route_index(void) {
 static void route_notebook_html(const NotebookInfo *nb) {
     Buf b = {0};
     page_head(&b, nb->name);
-    buf_printf(&b, "<p><a href='/'>&larr; all notebooks</a></p><h1>");
+    buf_printf(&b, "<p><a href='/'>&larr; ");
+    // TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
+    // the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
+    html_esc(&b, _("all notebooks"));
+    buf_printf(&b, "</a></p><h1>");
     html_esc(&b, nb->name);
-    buf_printf(&b, "</h1><p><a class=big href='/nb/%s.pdf'>PDF</a><a class=big href='/nb/%s.zip'>ZIP (PDF + PNG pages + raw)</a>"
-                   "<a class=big href='/nb/%s/studio'>Effects (transparent, colors, gradients, filters)</a></p>"
-                   "<div class=pages>", nb->id, nb->id, nb->id);
-    for (int i = 0; i < nb->npages; i++)
-        buf_printf(&b, "<figure><a href='/nb/%s/%d.png'><img loading=lazy src='/nb/%s/%d.png?f=3' alt='page %d'></a>"
-                       "<figcaption class=meta>Page %d &middot; <a href='/nb/%s/studio?p=%d'>effects</a></figcaption></figure>",
-                   nb->id, i + 1, nb->id, i + 1, i + 1, i + 1, nb->id, i + 1);
+    buf_printf(&b, "</h1><p><a class=big href='/nb/%s.pdf'>PDF</a><a class=big href='/nb/%s.zip'>", nb->id, nb->id);
+    html_esc_bold(&b, _("ZIP (PDF + PNG pages + raw)"));
+    buf_printf(&b, "</a><a class=big href='/nb/%s/studio'>", nb->id);
+    html_esc_bold(&b, _("Effects (transparent, colors, gradients, filters)"));
+    buf_printf(&b, "</a></p><div class=pages>");
+    for (int i = 0; i < nb->npages; i++) {
+        char page[64];
+        snprintf(page, sizeof page, _("Page %d"), i + 1);
+        buf_printf(&b, "<figure><a href='/nb/%s/%d.png'><img loading=lazy src='/nb/%s/%d.png?f=3' alt='", nb->id, i + 1,
+                   nb->id, i + 1);
+        html_esc(&b, page);
+        buf_printf(&b, "'></a><figcaption class=meta>");
+        html_esc(&b, page);
+        buf_printf(&b, " &middot; <a href='/nb/%s/studio?p=%d'>", nb->id, i + 1);
+        html_esc(&b, C_("share link", "effects"));
+        buf_printf(&b, "</a></figcaption></figure>");
+    }
     buf_printf(&b, "</div></body></html>");
     respond(200, "text/html; charset=utf-8", &b, NULL);
     buf_free(&b);
+}
+
+// The studio's words in the language in use (window.GRIMOIRE_L10N), from the catalog's context
+// "studio" (make l10n puts web/studio.js's there): {"English": "translation"}, through json_str
+// (safe inside the script). A plural comes in its form for the notebook's page count, the one
+// count the studio words (studio.js, tPages). English: {}, and studio.js keeps its own words.
+typedef struct {
+    Buf *b;
+    int n;
+    long pages;
+} StudioWords;
+
+static void studio_word(const I18nEntry *e, void *arg) {
+    StudioWords *w = arg;
+    if (strcmp(e->ctx, "studio")) return;
+    const char *s = e->id_plural ? i18n_getnc("studio", e->id, e->id_plural, w->pages) : e->str;
+    if (!s || !*s) return;
+    if (w->n++) buf_printf(w->b, ",");
+    json_str(w->b, e->id);
+    buf_printf(w->b, ":");
+    json_str(w->b, s);
 }
 
 // The studio: the page's controls, the notebook as JSON, and web/studio.{css,js} inline. The
@@ -380,13 +480,20 @@ static void route_studio(const NotebookInfo *nb) {
     html_esc(&b, nb->name);
     buf_printf(&b, "</a></p><h1>");
     html_esc(&b, nb->name);
-    buf_printf(&b, "</h1><div id=studio><p class=meta>Loading the studio...</p></div>"
-                   "<noscript><p>The studio needs JavaScript.</p></noscript><script>window.GRIMOIRE_NB={\"id\":");
+    buf_printf(&b, "</h1><div id=studio><p class=meta>");
+    // TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
+    html_esc(&b, _("Loading the studio..."));
+    buf_printf(&b, "</p></div><noscript><p>");
+    html_esc(&b, _("The studio needs JavaScript."));
+    buf_printf(&b, "</p></noscript><script>window.GRIMOIRE_NB={\"id\":");
     json_str(&b, nb->id);
     buf_printf(&b, ",\"name\":");
     json_str(&b, nb->name);
     buf_printf(&b, ",\"pages\":%d,\"dpi\":%.0f,\"version\":", nb->npages, g_dpi);
     json_str(&b, GRIMOIRE_VERSION);
+    buf_printf(&b, "};window.GRIMOIRE_L10N={");
+    StudioWords w = {&b, 0, nb->npages};
+    i18n_walk(i18n_current(), studio_word, &w);
     buf_printf(&b, "};</script><style>");
     buf_append(&b, studio_css, studio_css_len);
     buf_printf(&b, "</style><script>");
@@ -450,7 +557,7 @@ static void route(char *path) {
         Buf b = {0};
         int rc = export_folder_zip("", g_dpi, &b);
         if (rc == 0) respond(200, "application/zip", &b, "Grimoire.zip");
-        else respond_text(500, "export failed");
+        else respond_text(500, _("export failed"));
         buf_free(&b);
         return;
     }
@@ -458,24 +565,24 @@ static void route(char *path) {
         char folder[STORE_NAME_LEN + 8];  // the longest folder name, and ".zip" after it
         strlcpy_q(folder, path + 8, sizeof folder);
         size_t l = strlen(folder);
-        if (l < 5 || strcmp(folder + l - 4, ".zip")) return respond_text(404, "not found");
+        if (l < 5 || strcmp(folder + l - 4, ".zip")) return respond_text(404, _("not found"));
         folder[l - 4] = 0;
-        if (l - 4 >= STORE_NAME_LEN) return respond_text(404, "not found");  // longer than any folder
+        if (l - 4 >= STORE_NAME_LEN) return respond_text(404, _("not found"));  // longer than any folder
         Buf b = {0};
         char fname[STORE_NAME_LEN + 8], safe[STORE_NAME_LEN];
         export_safe_name(folder, safe, sizeof safe);
         snprintf(fname, sizeof fname, "%s.zip", safe);
         if (export_folder_zip(folder, g_dpi, &b) == 0) respond(200, "application/zip", &b, fname);
-        else respond_text(500, "export failed");
+        else respond_text(500, _("export failed"));
         buf_free(&b);
         return;
     }
-    if (strncmp(path, "/nb/", 4)) return respond_text(404, "not found");
+    if (strncmp(path, "/nb/", 4)) return respond_text(404, _("not found"));
     // /nb/<id>[.pdf|.zip|/<n>.png[?layer=ink|paper]|/thumb.png|/studio]
     char id[STORE_ID_LEN + 16];
     const char *rest = path + 4;
     size_t il = strcspn(rest, "./");
-    if (il == 0 || il >= STORE_ID_LEN) return respond_text(404, "not found");
+    if (il == 0 || il >= STORE_ID_LEN) return respond_text(404, _("not found"));
     memcpy(id, rest, il);
     id[il] = 0;
     rest += il;
@@ -483,7 +590,7 @@ static void route(char *path) {
     if (!nb) return respond_text(500, "out of memory");
     if (store_load_info(id, nb) != 0) {
         free(nb);
-        return respond_text(404, "no such notebook");
+        return respond_text(404, _("no such notebook"));
     }
     char safe[STORE_NAME_LEN], fname[STORE_NAME_LEN + 16];
     export_safe_name(nb->name, safe, sizeof safe);
@@ -496,7 +603,7 @@ static void route(char *path) {
     } else if (!strcmp(rest, ".pdf")) {
         snprintf(fname, sizeof fname, "%s.pdf", safe);
         if (export_notebook_pdf(nb, g_dpi, &b) == 0) respond(200, "application/pdf", &b, fname);
-        else respond_text(500, "export failed");
+        else respond_text(500, _("export failed"));
     } else if (!strcmp(rest, ".zip")) {
         ZipWriter z;
         zip_begin(&z, &b);
@@ -504,7 +611,7 @@ static void route(char *path) {
         if (zip_end(&z) != 0) rc = -1;
         snprintf(fname, sizeof fname, "%s.zip", safe);
         if (rc == 0) respond(200, "application/zip", &b, fname);
-        else respond_text(500, "export failed");
+        else respond_text(500, _("export failed"));
     } else if (!strcmp(rest, "/thumb.png")) {
         Canvas t;
         if (store_load_thumb(nb->id, &t) == 0) {
@@ -545,10 +652,10 @@ static void route(char *path) {
             }
             respond_bytes(200, "image/png", b.data, b.len, NULL, NULL, hdr);
         } else {
-            respond_text(500, "export failed");
+            respond_text(500, _("export failed"));
         }
     } else {
-        respond_text(404, "not found");
+        respond_text(404, _("not found"));
     }
     buf_free(&b);
     free(nb);
@@ -626,7 +733,9 @@ static void handle_request(Client *c) {
     if (strcmp(method, "GET") && strcmp(method, "HEAD")) return respond_text(405, "GET only");
     if (!host_ok(c->req)) {
         qlog("httpd: refused a request for another host");
-        return respond_text(400, "use the address shown on the Kindle");
+        // TRANSLATORS: the answer to a browser that asked for the Kindle by another name than its
+        // address (as a page on another site would).
+        return respond_text(400, _("use the address shown on the Kindle"));
     }
     // grimoire.log goes to public bug reports: a folder's name (the user's own words) stays out.
     qlog("httpd: %s %s", method, !strncmp(path, "/folder/", 8) ? "/folder/<name>.zip" : path);

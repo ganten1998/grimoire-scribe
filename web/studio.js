@@ -21,22 +21,26 @@
         crop: 'page', margin: 60, scale: 100,
     });
 
+    // Marks a word for translation where it is a key as well: a preset's name is its key (Original
+    // keeps no crop or size); only the page shows it, translated (t, below).
+    const N_ = s => s;
     const PRESETS = [
-        ['Original', {}],
-        ['Transparent', { bg: 'none', lines: 'hide' }],
-        ['Signature', { bg: 'none', lines: 'hide', ink: 'gradient', crop: 'trim', margin: 40 }],
-        ['Warm', { warmth: 45 }],
-        ['Sepia', { tone: 'duotone' }],
-        ['Parchment', { bg: 'gradient', bgFrom: '#f7e9c6', bgTo: '#e4cc98', ink: 'color', inkColor: '#3b2a1a',
+        // TRANSLATORS: the studio's presets, each a whole look, on buttons.
+        [N_('Original'), {}],
+        [N_('Transparent'), { bg: 'none', lines: 'hide' }],
+        [N_('Signature'), { bg: 'none', lines: 'hide', ink: 'gradient', crop: 'trim', margin: 40 }],
+        [N_('Warm'), { warmth: 45 }],
+        [N_('Sepia'), { tone: 'duotone' }],
+        [N_('Parchment'), { bg: 'gradient', bgFrom: '#f7e9c6', bgTo: '#e4cc98', ink: 'color', inkColor: '#3b2a1a',
             lineColor: '#8b6b3d', lineOpacity: 45, warmth: 15 }],
-        ['Blueprint', { bg: 'color', bgColor: '#1f4e8c', ink: 'color', inkColor: '#ffffff', lineColor: '#ffffff',
+        [N_('Blueprint'), { bg: 'color', bgColor: '#1f4e8c', ink: 'color', inkColor: '#ffffff', lineColor: '#ffffff',
             lineOpacity: 30 }],
-        ['Chalkboard', { bg: 'color', bgColor: '#2e3b33', ink: 'color', inkColor: '#f4f1e8', lineColor: '#ffffff',
+        [N_('Chalkboard'), { bg: 'color', bgColor: '#2e3b33', ink: 'color', inkColor: '#f4f1e8', lineColor: '#ffffff',
             lineOpacity: 15 }],
-        ['Night', { tone: 'invert' }],
-        ['Sunset ink', { bg: 'none', lines: 'hide', ink: 'gradient', inkFrom: '#f12711', inkTo: '#f5af19', inkAngle: 135,
+        [N_('Night'), { tone: 'invert' }],
+        [N_('Sunset ink'), { bg: 'none', lines: 'hide', ink: 'gradient', inkFrom: '#f12711', inkTo: '#f5af19', inkAngle: 135,
             crop: 'trim' }],
-        ['Aurora', { bg: 'gradient', bgFrom: '#0f2027', bgTo: '#2c5364', bgAngle: 160, lines: 'hide', ink: 'gradient',
+        [N_('Aurora'), { bg: 'gradient', bgFrom: '#0f2027', bgTo: '#2c5364', bgAngle: 160, lines: 'hide', ink: 'gradient',
             inkFrom: '#a8ff78', inkTo: '#78ffd6', inkAngle: 90 }],
     ];
 
@@ -605,6 +609,20 @@
 
     const NB = window.GRIMOIRE_NB, NP = Math.max(1, NB.pages | 0), DPI = +NB.dpi || 300;
     const ID = encodeURIComponent(NB.id);
+    // The page's words, in the Kindle's language: httpd.c sends the translations, by their English
+    // (window.GRIMOIRE_L10N; none in English), and a word without one stays English. Only what is
+    // shown goes through t: keys, file names and the magick command never do. A value goes in at
+    // %d or %s (%1$d, %2$s... where a language puts them in another order), %% is a percent sign.
+    const L10N = window.GRIMOIRE_L10N || {};
+    const has = k => Object.prototype.hasOwnProperty.call(L10N, k) && typeof L10N[k] === 'string';
+    const fill = (s, args) => {
+        let next = 0;
+        return s.replace(/%(?:(\d+)\$)?([ds%])/g, (m, pos, kind) => (kind === '%' ? '%' : String(args[pos ? pos - 1 : next++])));
+    };
+    const t = (s, ...args) => fill(has(s) ? L10N[s] : s, args);
+    // A count of this notebook's pages in words: the Kindle sends a plural in its form for that
+    // count, the only one the studio words.
+    const tPages = (one, many) => fill(has(one) ? L10N[one] : NP === 1 ? one : many, [NP]);
     const root = document.getElementById('studio');
     const store = {
         get() {
@@ -624,11 +642,29 @@
     let pageNo = Math.min(NP, Math.max(1, parseInt(new URLSearchParams(location.search).get('p'), 10) || 1));
     let busy = false;
 
+    // An element's text. Gothic's bold labels (studio.css) are a shadow one design pixel to the
+    // right, which fills the gaps inside accents, so letters past ASCII go in spans without it
+    // (class na, as on the share pages: httpd.c); signs keep it.
+    const ACCENTED = /[^\P{L}\x00-\x7f]+/gu;
+    function setText(e, text) {
+        e.textContent = '';
+        const s = String(text);
+        let at = 0;
+        for (const m of s.matchAll(ACCENTED)) {
+            if (m.index > at) e.append(s.slice(at, m.index));
+            const span = document.createElement('span');
+            span.className = 'na';
+            span.textContent = m[0];
+            e.append(span);
+            at = m.index + m[0].length;
+        }
+        if (at < s.length) e.append(s.slice(at));
+    }
     const el = (tag, attrs, ...kids) => {
         const e = document.createElement(tag);
         for (const [k, v] of Object.entries(attrs || {})) {
             if (k === 'on') for (const [ev, fn] of Object.entries(v)) e.addEventListener(ev, fn);
-            else if (k === 'text') e.textContent = v;
+            else if (k === 'text') setText(e, v);
             else e.setAttribute(k, v);
         }
         for (const kid of kids) if (kid) e.append(kid);
@@ -659,8 +695,11 @@
             const timer = setTimeout(stop, 120000);  // the Kindle's queue never takes that long
             try {
                 const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-                if (r.status >= 400 && r.status < 500)
-                    throw Object.assign(new Error(`The Kindle answered ${r.status} for ${url}`), { final: true });
+                if (r.status >= 400 && r.status < 500) {
+                    // TRANSLATORS: the studio could not get a page from the Kindle: its answer (an
+                    // HTTP status, 404) for that address.
+                    throw Object.assign(new Error(t('The Kindle answered %d for %s', r.status, url)), { final: true });
+                }
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 const img = await decodeGray(new Uint8Array(await r.arrayBuffer()));
                 const size = /^(\d+)x(\d+)$/.exec(r.headers.get('X-Page-Size') || '');
@@ -678,7 +717,8 @@
                 signal.removeEventListener('abort', stop);
             }
         }
-        throw new Error(`The Kindle stopped answering (${last && last.message}). Is the Share screen still open?`);
+        // TRANSLATORS: %s is what went wrong, in the browser's words.
+        throw new Error(t('The Kindle stopped answering (%s). Is the Share screen still open?', last && last.message));
     }
 
     // Decoded layers, the most recently used kept up to about 80 MB.
@@ -731,51 +771,62 @@
     const seg = (key, label, opts, when) => ({ kind: 'seg', key, label, opts, when });
     const color = (key, label, when) => ({ kind: 'color', key, label, when });
     const range = (key, label, unit, when) => ({ kind: 'range', key, label, unit, when });
-    const shown = (key, v, unit) => (key === 'warmth' ? (v < 0 ? `cool ${-v}` : v > 0 ? `warm ${v}` : '0') : v + unit);
+    // TRANSLATORS: the Warmth slider's value: cooler (blue) or warmer (orange), by how much.
+    const shown = (key, v, unit) => (key === 'warmth' ? (v < 0 ? t('cool %d', -v) : v > 0 ? t('warm %d', v) : '0') : v + unit);
     const inkGrad = p => p.ink === 'gradient';
+    // The panel: a fieldset per section, a row per control; the first value of each choice is its
+    // key (settings, the command), the second its label.
     const PANEL = [
-        ['Background', [seg('bg', '', [['white', 'White'], ['none', 'Transparent'], ['color', 'Color'], ['gradient', 'Gradient']]),
-            color('bgColor', 'Color', p => p.bg === 'color'), color('bgFrom', 'From', p => p.bg === 'gradient'),
-            color('bgTo', 'To', p => p.bg === 'gradient'), range('bgAngle', 'Angle', '°', p => p.bg === 'gradient')]],
-        ['Paper lines', [seg('lines', '', [['show', 'Show'], ['hide', 'Hide']]),
-            color('lineColor', 'Color', p => p.lines === 'show'), range('lineOpacity', 'Strength', '%', p => p.lines === 'show')]],
-        ['Ink (your writing)', [seg('ink', '', [['black', 'As written'], ['color', 'Color'], ['gradient', 'Gradient']]),
-            color('inkColor', 'Color', p => p.ink === 'color'), color('inkFrom', 'From', inkGrad), color('inkTo', 'To', inkGrad),
-            range('inkAngle', 'Angle', '°', inkGrad),
-            seg('inkSpan', 'Across', [['writing', 'The writing'], ['page', 'The page']], inkGrad)]],
-        ['Look', [seg('tone', 'Tone', [['none', 'None'], ['gray', 'Gray'], ['duotone', 'Duotone'], ['invert', 'Invert']]),
-            color('duoDark', 'Shadows', p => p.tone === 'duotone'), color('duoLight', 'Highlights', p => p.tone === 'duotone'),
-            range('warmth', 'Warmth', ''), color('tint', 'Tint'), range('tintAmount', 'Tint amount', '%'),
-            range('brightness', 'Brightness', ''), range('contrast', 'Contrast', '')]],
-        ['Crop and size', [seg('crop', 'Crop', [['page', 'Whole page'], ['trim', 'Trim to ink']]),
-            range('margin', 'Margin', ' px', p => p.crop === 'trim'),
-            seg('scale', 'Size', [[100, '100%'], [50, '50%'], [25, '25%']])]],
+        // TRANSLATORS: the studio's controls: a heading per section, then the labels of its rows and
+        // of the choices on its buttons. Ink is the writing; the paper lines are the page's ruling.
+        [t('Background'), [seg('bg', '', [['white', t('White')], ['none', t('Transparent')], ['color', t('Color')],
+            ['gradient', t('Gradient')]]),
+            color('bgColor', t('Color'), p => p.bg === 'color'), color('bgFrom', t('From'), p => p.bg === 'gradient'),
+            color('bgTo', t('To'), p => p.bg === 'gradient'), range('bgAngle', t('Angle'), '°', p => p.bg === 'gradient')]],
+        [t('Paper lines'), [seg('lines', '', [['show', t('Show')], ['hide', t('Hide')]]),
+            color('lineColor', t('Color'), p => p.lines === 'show'),
+            range('lineOpacity', t('Strength'), '%', p => p.lines === 'show')]],
+        [t('Ink (your writing)'), [seg('ink', '', [['black', t('As written')], ['color', t('Color')], ['gradient', t('Gradient')]]),
+            color('inkColor', t('Color'), p => p.ink === 'color'), color('inkFrom', t('From'), inkGrad),
+            color('inkTo', t('To'), inkGrad), range('inkAngle', t('Angle'), '°', inkGrad),
+            seg('inkSpan', t('Across'), [['writing', t('The writing')], ['page', t('The page')]], inkGrad)]],
+        [t('Look'), [seg('tone', t('Tone'), [['none', t('None')], ['gray', t('Gray')], ['duotone', t('Duotone')],
+            ['invert', t('Invert')]]),
+            color('duoDark', t('Shadows'), p => p.tone === 'duotone'), color('duoLight', t('Highlights'), p => p.tone === 'duotone'),
+            range('warmth', t('Warmth'), ''), color('tint', t('Tint')), range('tintAmount', t('Tint amount'), '%'),
+            range('brightness', t('Brightness'), ''), range('contrast', t('Contrast'), '')]],
+        [t('Crop and size'), [seg('crop', t('Crop'), [['page', t('Whole page')], ['trim', t('Trim to ink')]]),
+            range('margin', t('Margin'), ' px', p => p.crop === 'trim'),
+            seg('scale', t('Size'), [[100, '100%'], [50, '50%'], [25, '25%']])]],
     ];
 
     const panel = el('div', { class: 'st-panel' });
-    const canvas = el('canvas', { width: 1, height: 1, 'aria-label': 'Preview' });
+    // TRANSLATORS: names for a screen reader: the picture, the page number's box, the arrows.
+    const canvas = el('canvas', { width: 1, height: 1, 'aria-label': t('Preview') });
     const veil = el('div', { class: 'st-veil' });
     const stage = el('div', { class: 'st-stage st-loading' }, canvas, veil);
-    const pageInput = el('input', { type: 'number', class: 'st-pnum', min: 1, max: NP, value: pageNo, 'aria-label': 'Page',
+    const pageInput = el('input', { type: 'number', class: 'st-pnum', min: 1, max: NP, value: pageNo, 'aria-label': t('Page'),
         on: { change: e => go(+e.target.value) } });
     const info = el('span', { class: 'st-info meta' });
     const msg = el('p', { class: 'st-msg meta', role: 'status' });
-    const nav = d => el('button', { class: 'st-btn', type: 'button', 'aria-label': d < 0 ? 'Previous page' : 'Next page',
+    const nav = d => el('button', { class: 'st-btn', type: 'button', 'aria-label': d < 0 ? t('Previous page') : t('Next page'),
         text: d < 0 ? '‹' : '›', on: { click: () => go(pageNo + d) } });
+    // TRANSLATORS: over the studio's picture: %s is the box with the page's number, %d the pages.
+    const [pageBefore, pageAfter] = t('Page %s of %d', '\u0000', NP).split('\u0000');
     const view = el('div', { class: 'st-view' },
-        el('div', { class: 'st-nav' }, nav(-1), el('span', { class: 'st-page' }, 'Page ', pageInput, ` of ${NP}`), nav(1), info),
+        el('div', { class: 'st-nav' }, nav(-1), el('span', { class: 'st-page' }, pageBefore, pageInput, pageAfter), nav(1), info),
         stage, msg);
 
     const sync = [];  // functions that bring a control up to date with P
     const presets = el('div', { class: 'st-presets' });
     // A preset is a whole look; it keeps your crop and size (Original resets those too).
     for (const [name, over] of PRESETS)
-        presets.append(el('button', { class: 'st-btn', type: 'button', text: name, on: { click: () => {
+        presets.append(el('button', { class: 'st-btn', type: 'button', text: t(name), on: { click: () => {
             const keep = name === 'Original' ? {} : { crop: P.crop, margin: P.margin, scale: P.scale };
             P = normalize(Object.assign({}, DEFAULTS, keep, over));
             changed();
         } } }));
-    panel.append(el('fieldset', {}, el('legend', { text: 'Presets' }), presets));
+    panel.append(el('fieldset', {}, el('legend', { text: t('Presets') }), presets));
     for (const [title, rows] of PANEL) {
         const fs = el('fieldset', {}, el('legend', { text: title }));
         for (const c of rows) {
@@ -813,16 +864,22 @@
     const progress = el('p', { class: 'st-msg meta', role: 'status' });
     const exportBtn = (text, kind, primary) => el('button', { class: 'st-btn' + (primary ? ' primary' : ''), type: 'button',
         text, on: { click: () => exportAs(kind) } });
-    panel.append(el('fieldset', {}, el('legend', { text: 'Export' }),
-        el('div', { class: 'st-presets' }, exportBtn('PNG, this page', 'png', true), exportBtn(`PNGs, all ${NP} pages (zip)`, 'zip'),
-           exportBtn(`PDF, all ${NP} pages`, 'pdf')), progress));
+    // TRANSLATORS: the studio's downloads: this page as a PNG, every page as PNGs in a zip, or as
+    // one PDF (%d is how many pages the notebook has).
+    panel.append(el('fieldset', {}, el('legend', { text: t('Export') }),
+        el('div', { class: 'st-presets' }, exportBtn(t('PNG, this page'), 'png', true),
+           exportBtn(tPages('PNGs, all %d page (zip)', 'PNGs, all %d pages (zip)'), 'zip'),
+           exportBtn(tPages('PDF, all %d page', 'PDF, all %d pages'), 'pdf')), progress));
 
     const cmd = el('pre', { class: 'st-cmd' });
-    const copyBtn = el('button', { class: 'st-btn', type: 'button', text: 'Copy command', on: { click: copyCommand } });
+    // TRANSLATORS: copies the ImageMagick command below the picture's settings.
+    const copyBtn = el('button', { class: 'st-btn', type: 'button', text: t('Copy command'), on: { click: copyCommand } });
     const inkLink = el('a', {}), paperLink = el('a', {});
     panel.append(el('fieldset', {}, el('legend', { text: 'ImageMagick' }),
-        el('p', { class: 'meta', text: 'The same picture from the page’s two layers, with ImageMagick 7 in a ' +
-                  'macOS or Linux terminal. Download the layers into one folder and run it there:' }),
+        // TRANSLATORS: over the command that makes the same picture with ImageMagick, and the links
+        // to the page's two layers (its ink, its paper) it is made from.
+        el('p', { class: 'meta', text: t('The same picture from the page’s two layers, with ImageMagick 7 in a ' +
+                  'macOS or Linux terminal. Download the layers into one folder and run it there:') }),
         el('p', {}, inkLink, ' · ', paperLink), cmd, copyBtn));
 
     root.textContent = '';
@@ -842,7 +899,7 @@
     }
     function say(text, retry) {
         msg.textContent = text;
-        if (retry) msg.append(' ', el('button', { class: 'st-btn', type: 'button', text: 'Try again', on: { click: retry } }));
+        if (retry) msg.append(' ', el('button', { class: 'st-btn', type: 'button', text: t('Try again'), on: { click: retry } }));
     }
     function draw() {
         queued = false;
@@ -868,8 +925,13 @@
         (canvas.width = img.w), (canvas.height = img.h);
         canvas.getContext('2d').putImageData(new ImageData(img.rgba, img.w, img.h), 0, 0);
         stage.classList.toggle('alpha', img.alpha);
-        info.textContent = `${box.w / step} × ${box.h / step} px` + (img.alpha ? ', transparent' : '') +
-                           (box.empty ? ', no ink to trim to' : '');
+        // TRANSLATORS: the picture's size in pixels, whether it has transparent parts, and whether
+        // Trim to ink found no ink (then the whole page is kept).
+        const pw = box.w / step, ph = box.h / step;
+        info.textContent = img.alpha && box.empty ? t('%d × %d px, transparent, no ink to trim to', pw, ph)
+                           : img.alpha ? t('%d × %d px, transparent', pw, ph)
+                           : box.empty ? t('%d × %d px, no ink to trim to', pw, ph)
+                           : t('%d × %d px', pw, ph);
     }
     // Flipping through pages only fetches the one you stop on; the others' requests are dropped.
     function go(n) {
@@ -885,7 +947,7 @@
             stage.classList.remove('st-loading');
             return changed();
         }
-        veil.textContent = `Loading page ${n}...`;
+        veil.textContent = t('Loading page %d...', n);
         stage.classList.add('st-loading');
         changed();
         navTimer = setTimeout(() => open(n), 150);
@@ -900,7 +962,7 @@
             if (n < NP) nextTimer = setTimeout(() => pageLayers(n + 1, 2).catch(() => {}), 600);  // likely next
         } catch (e) {
             if (n !== pageNo || e.name === 'AbortError') return;
-            veil.textContent = 'Not loaded';
+            veil.textContent = t('Not loaded');
             say(e.message, () => go(n));
         }
     }
@@ -927,7 +989,8 @@
         const p = Object.assign({}, P), step = 100 / p.scale, dpi = DPI / step, files = [];
         try {
             for (const n of pages) {
-                progress.textContent = pages.length > 1 ? `Page ${n} of ${NP}...` : 'Working...';
+                // TRANSLATORS: an export's progress, page by page.
+                progress.textContent = pages.length > 1 ? t('Page %d of %d...', n, NP) : t('Working...');
                 const L = await pageLayers(n, 1, true);
                 const img = render(p, L, exportBox(p, L, step), step);
                 if (kind === 'pdf') files.push(await pdfImage(img, dpi));
@@ -936,7 +999,7 @@
             if (kind === 'png') save(new Blob([files[0].data], { type: 'image/png' }), files[0].name);
             else if (kind === 'zip') save(zipFiles(files), `${base} (effects).zip`);
             else save(pdfFile(files, NB.name, NB.version || ''), `${base} (effects).pdf`);
-            progress.textContent = 'Done.';
+            progress.textContent = t('Done.');
         } catch (e) {
             progress.textContent = e.message || String(e);
         } finally {
@@ -961,13 +1024,13 @@
             t.remove();
             if (!ok) {
                 getSelection().selectAllChildren(cmd);  // the browser would not copy: select it for Cmd/Ctrl+C
-                copyBtn.textContent = 'Selected: press Cmd/Ctrl+C';
-                setTimeout(() => (copyBtn.textContent = 'Copy command'), 3000);
+                setText(copyBtn, t('Selected: press Cmd/Ctrl+C'));
+                setTimeout(() => setText(copyBtn, t('Copy command')), 3000);
                 return;
             }
         }
-        copyBtn.textContent = 'Copied';
-        setTimeout(() => (copyBtn.textContent = 'Copy command'), 1500);
+        setText(copyBtn, t('Copied'));
+        setTimeout(() => setText(copyBtn, t('Copy command')), 1500);
     }
 
     go(pageNo);

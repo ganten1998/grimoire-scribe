@@ -131,9 +131,9 @@ const char *i18n_getc(const char *ctx, const char *msgid) {
     return t ? t : msgid;
 }
 
-const char *i18n_getn(const char *one, const char *many, long n) {
+const char *i18n_getnc(const char *ctx, const char *one, const char *many, long n) {
     uint32_t len;
-    const char *t = g_have_cat && one && *one ? catalog_find(&g_cat, NULL, one, &len) : NULL;
+    const char *t = g_have_cat && one && *one ? catalog_find(&g_cat, ctx, one, &len) : NULL;
     if (t) {
         // Form k: past k NULs, if the translation has that many forms.
         const char *end = t + len;
@@ -143,7 +143,8 @@ const char *i18n_getn(const char *one, const char *many, long n) {
     return n == 1 ? one : many;
 }
 
-const char *i18n_getn_many(const char *one, const char *many, long n) { return i18n_getn(one, many, n); }
+const char *i18n_getn(const char *one, const char *many, long n) { return i18n_getnc(NULL, one, many, n); }
+const char *i18n_getn_many(const char *one, const char *many, long n) { return i18n_getnc(NULL, one, many, n); }
 
 // ---- choosing ----
 
