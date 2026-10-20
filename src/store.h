@@ -26,6 +26,7 @@ typedef struct {
 } NotebookInfo;
 
 #define SETTINGS_VERSION 2
+#define PANEL_PINS_MAX 4          // pens pinned to the editor's panel, at most
 
 typedef struct {
     int version;                  // settings_version from the file (defaults migrate on upgrade)
@@ -55,6 +56,10 @@ typedef struct {
     int eraser_mode;              // the eraser (its button, the eraser end, side_button 1): 0 takes
                                   // whole strokes away, 1 the precise eraser (erase strokes)
     bool white;                   // the drawing tools draw white ink (erase strokes, own texture)
+    // The pens pinned to the editor's panel under its tool button, in pin order: drawing tools
+    // only, each once (settings.ini panel_tools=, their names comma-separated).
+    ToolKind pins[PANEL_PINS_MAX];
+    int npins;
 } Settings;
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/
@@ -77,6 +82,12 @@ int settings_save(const Settings *s);
 // settings.ini's language= as the file has it, last line counting ("" without the file or the
 // key), read on its own: main.c sets the language before the app, and its settings, start.
 void settings_language(char *out, size_t cap);
+// The pinned pens: whether t is one; t pinned after the others, or unpinned (the others keep their
+// order), false for the eraser, a tool past the list, or a pin past PANEL_PINS_MAX; and their
+// settings.ini names in pin order, comma-separated, as panel_tools= has them ("" for none).
+bool settings_pinned(const Settings *s, ToolKind t);
+bool settings_toggle_pin(Settings *s, ToolKind t);
+void settings_pins_text(const Settings *s, char *out, size_t cap);
 
 // Library. store_list allocates *out (free()); sorted by modified, newest first.
 int store_list(NotebookInfo **out, int *n);

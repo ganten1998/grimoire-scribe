@@ -20,11 +20,13 @@
 #include "inkmode.h"
 #include "musicbuild.h"
 #include "history.h"
+#include "panel.h"
 
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
     PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, P_TOOLPICK, P_PICK_TOOL,
+    P_PIN_MODE, P_PICK_INK,
 };
 
 typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD } Owner;
@@ -93,6 +95,10 @@ struct EditorState {
     // Panel
     Rect panel;
     bool collapsed;
+    bool white_mark;            // as last drawn: the pen in use shows that it draws white ink
+    // What a tap on the eraser while it is in use goes back to: the pen used before it (one of the
+    // pins, or the tool button's), -1 for none. Its eraser end and the pen's button do not set it.
+    int before_eraser;
     bool dragging;
     float grab_dx, grab_dy;
     Rect drag_start_rect;
@@ -115,8 +121,12 @@ struct EditorState {
 
     DispMenu dm;                // Display sheet (front light, invert)
 
-    // Tool picker (opened from the toolbar's tool button).
+    // Tool picker (opened from the toolbar's tool button). In Pin mode a tap pins a pen to the
+    // panel, or unpins it.
     bool tools_open;
+    bool pin_mode;
+    int tools_y;                // where its top is meant to be: the panel's, as it opened (it stays
+                                // there while pins move the panel; laid out again at a turn)
     Rect tools_rect;
     HitList tools_hits;
     Press tools_press;
@@ -151,34 +161,27 @@ struct EditorState {
 
 // ---- layout ----
 
-// Panel metrics shrink (S->pscale) when the screen is too short for the full panel, i.e. when
-// the Kindle is turned sideways.
-static float g_pscale = 1.f;
-static int sc(float v) { return ui_px(v * g_pscale); }
-static int pw(void) { return ui_px(128); }       // expanded width (icons only)
-static int btn_h(void) { return sc(100); }
-static int gap(void) { return sc(8); }
-static int div_h(void) { return sc(20); }
-static int head_h(void) { return sc(80); }
-static int box(void) { return ui_px(120); }       // collapsed square
-static int label_h(void) { return sc(60); }
+// Panel metrics shrink (g_fit, panel.h) when the screen is too short for the full panel: the
+// Kindle turned sideways, with pens pinned.
+static PanelFit g_fit = {1.f, 1.f};
+static int sc(float v) { return ui_px(v * g_fit.scale); }
+static int pw(void) { return panel_w(); }        // expanded width (icons only)
+static int btn_h(void) { return panel_btn_h(g_fit); }
+static int gap(void) { return panel_gap(g_fit); }
+static int div_h(void) { return panel_div_h(g_fit); }
+static int head_h(void) { return panel_head_h(g_fit); }
+static int box(void) { return panel_box(); }      // collapsed square
+static int label_h(void) { return panel_label_h(g_fit); }
+static int npins(App *a) { return clampi(a->settings.npins, 0, PANEL_PINS_MAX); }
 
-static int panel_height(void) {
-    // header, 11 buttons (tool, eraser, undo, redo, clear, prev, next, paper, display, pen feel,
-    // library), the page label and 3 dividers. Must match draw_panel.
-    return head_h() + gap() + 11 * (btn_h() + gap()) + label_h() + gap() + 3 * div_h() + ui_px(6);
-}
-
-static void fit_panel_to(int screen_h) {
-    g_pscale = 1.f;
-    int full = panel_height(), room = screen_h - ui_px(24);
-    if (full > room) g_pscale = (float)room / (float)full;
-}
+static void fit_panel_to(App *a, int screen_h) { g_fit = panel_fit(screen_h, npins(a)); }
 
 static Rect panel_rect_at(App *a, int x, int y) {
-    int w = S->collapsed ? box() : pw(), h = S->collapsed ? box() : panel_height();
+    int w = S->collapsed ? box() : pw(), h = S->collapsed ? box() : panel_height(g_fit, npins(a));
+    // Its margins above and below stay free wherever it goes (fit_panel_to leaves room for them).
+    int m = h + 2 * ui_px(PANEL_MARGIN) <= a->h ? ui_px(PANEL_MARGIN) : 0;
     x = clampi(x, 0, a->w - w);
-    y = clampi(y, 0, a->h - h);
+    y = clampi(y, m, a->h - h - m);
     return (Rect){x, y, w, h};
 }
 
@@ -232,16 +235,39 @@ static ButtonStyle tool_style(App *a, ToolKind t) {
     return a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN;
 }
 
+// While the drawing tools draw white ink, the pen in use shows its icon hollow: white on white
+// paper shows nothing, and without a mark the pen would seem broken.
+static bool draws_white(App *a, ToolKind t) {
+    return a->settings.white && t == a->settings.current_tool && (unsigned)t < TOOL_COUNT && t != TOOL_ERASER;
+}
+
+// A pen's button on the panel (the tool button's, or a pinned one's), selected while it is the pen
+// in use, hollow while that draws white.
+static void draw_pen_button(App *a, Rect r, ToolKind t) {
+    if (draws_white(a, t)) {
+        ui_button_hollow(&a->screen, r, ui_tool_icon(t), BTN_SELECTED);
+        S->white_mark = true;
+    } else {
+        ui_button(&a->screen, r, ui_tool_icon(t), NULL, tool_style(a, t));
+    }
+}
+
 static void draw_panel(App *a) {
     Canvas *c = &a->screen;
     Rect p = S->panel;
     hits_clear(&S->hits);
+    S->white_mark = false;
     if (S->collapsed) {
         ui_frame(c, p, ui_px(22), 255, true, 0);
         ui_frame(c, p, ui_px(22), 0, false, ui_px(6));
         Rect ir = rect_inflate(p, -ui_px(20));
         ir.h -= ui_px(12);
-        ui_icon(c, ui_tool_icon(a->settings.current_tool), ir, 0);
+        if (draws_white(a, a->settings.current_tool)) {
+            ui_icon_hollow(c, ui_tool_icon(a->settings.current_tool), ir, 0, 255);
+            S->white_mark = true;
+        } else {
+            ui_icon(c, ui_tool_icon(a->settings.current_tool), ir, 0);
+        }
         // Expand hint in the corner.
         ui_icon(c, ICON_EXPAND, (Rect){p.x + p.w - ui_px(40), p.y + p.h - ui_px(40), ui_px(30), ui_px(30)}, 0);
         hits_add(&S->hits, p, P_EXPAND, 0);
@@ -261,15 +287,25 @@ static void draw_panel(App *a) {
     y = p.y + head_h();
     canvas_hline(c, p.x + ui_px(6), p.x + p.w - ui_px(6), y - ui_px(4), ui_px(3), 0);
     y += gap();
-    // The drawing tool (tap: the picker) and the eraser.
+    // The drawing tool (tap: the picker), the pens pinned under it, and the eraser. When the
+    // drawing tool is one of the pins, its pin shows it: the tool button shows a grid instead.
     ToolKind dt = a->settings.draw_tool == TOOL_ERASER ? TOOL_PENCIL : a->settings.draw_tool;
+    bool dt_pinned = settings_pinned(&a->settings, dt), dt_sel = !dt_pinned && a->settings.current_tool == dt;
     Rect rt = {x, y, w, btn_h()};
-    ui_button(c, rt, ui_tool_icon(dt), NULL, a->settings.current_tool == dt ? BTN_SELECTED : BTN_PLAIN);
-    // A small corner mark says "more tools here".
-    canvas_disc_aa(c, (float)(rt.x + rt.w - ui_px(16)), (float)(rt.y + rt.h - ui_px(16)), (float)ui_px(7),
-                   a->settings.current_tool == dt ? 255 : 0, 1.f);
+    if (dt_pinned) ui_button(c, rt, ICON_GRID, NULL, BTN_PLAIN);
+    else draw_pen_button(a, rt, dt);
+    // A small corner mark says "more tools here" (the grid says it by itself).
+    if (!dt_pinned)
+        canvas_disc_aa(c, (float)(rt.x + rt.w - ui_px(16)), (float)(rt.y + rt.h - ui_px(16)), (float)ui_px(7),
+                       dt_sel ? 255 : 0, 1.f);
     hits_add(&S->hits, rt, P_TOOLPICK, 0);
     y += btn_h() + gap();
+    for (int i = 0; i < npins(a); i++) {
+        Rect rp = {x, y, w, btn_h()};
+        draw_pen_button(a, rp, a->settings.pins[i]);
+        hits_add(&S->hits, rp, P_TOOL, a->settings.pins[i]);
+        y += btn_h() + gap();
+    }
     Rect re = {x, y, w, btn_h()};
     ui_button(c, re, ICON_ERASER, NULL, tool_style(a, TOOL_ERASER));
     hits_add(&S->hits, re, P_TOOL, TOOL_ERASER);
@@ -301,7 +337,7 @@ static void draw_panel(App *a) {
     snprintf(lab, sizeof lab, "%d / %d", S->index + 1, S->nb.npages);
     Rect lr = {x - ui_px(6), y, w + ui_px(12), label_h()};
     ui_frame(c, lr, ui_px(10), 0, false, ui_px(2));  // a tappable chip: opens Pages
-    font_draw_centered(c, FONT_BOLD, ui_small_size() * (g_pscale < 1.f ? g_pscale : 1.f), lr, lab, 0);
+    font_draw_centered(c, FONT_BOLD, ui_small_size() * (g_fit.scale < 1.f ? g_fit.scale : 1.f), lr, lab, 0);
     hits_add(&S->hits, lr, P_PAGES, 0);
     y += label_h() + gap();
     bool last = S->index >= S->nb.npages - 1;
@@ -502,29 +538,79 @@ static const ToolKind k_draw_tools[] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_C
                                         TOOL_MARKER,    TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER};
 #define N_DRAW_TOOLS ((int)(sizeof k_draw_tools / sizeof k_draw_tools[0]))
 
+// The ink row under the pens: one choice each, the pens drawing black ink or white (erase strokes:
+// docs/FORMAT.md). A later colour adds its choices to this control.
+static const struct {
+    const char *label;  // looked up where drawn, C_("ink", ...)
+    bool white;
+} k_inks[] = {
+    // TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
+    // the pens draw black ink. 426 px at 44 px, or two lines at 34 px.
+    {NC_("ink", "Black"), false},
+    // TRANSLATORS: the other choice of the tool picker's ink row: the pens draw white ink, which
+    // takes away the ink under it and keeps the paper's lines (426 px at 44 px).
+    {NC_("ink", "White"), true},
+};
+#define N_INKS ((int)(sizeof k_inks / sizeof k_inks[0]))
+
 static void draw_tools(App *a) {
     Canvas *c = &a->screen;
     hits_clear(&S->tools_hits);
     int bw = ui_px(300), bh = ui_px(150), g = ui_px(16), cols = 3, rows = (N_DRAW_TOOLS + cols - 1) / cols;
-    int w = cols * bw + (cols - 1) * g + 2 * ui_px(30), h = ui_px(110) + rows * bh + (rows - 1) * g + ui_px(40);
+    int gridw = cols * bw + (cols - 1) * g, inkh = ui_px(120);
+    int w = gridw + 2 * ui_px(30), h = ui_px(110) + rows * bh + (rows - 1) * g + g + inkh + ui_px(40);
     int x = S->panel.x - w - ui_px(20);
     if (x < ui_px(10)) x = S->panel.x + S->panel.w + ui_px(20);
-    int y = clampi(S->panel.y, ui_px(10), a->h - h - ui_px(10));
+    int y = clampi(S->tools_y, ui_px(10), a->h - h - ui_px(10));
     S->tools_rect = (Rect){x, y, w, h};
     ui_frame(c, S->tools_rect, ui_px(22), 255, true, 0);
     ui_frame(c, S->tools_rect, ui_px(22), 0, false, ui_px(6));
+    // The title row: at its right Pin, which turns the grid into the choice of the pens pinned to
+    // the panel, and there Done, which turns it back. Its width holds either word.
+    // TRANSLATORS: the tool picker's button at the top right that starts choosing the pens pinned
+    // to the panel, beside a pin (116 px at 34 px; the button widens for a longer word).
+    const char *pin = C_("panel", "Pin");
+    // TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
+    // that (116 px at 34 px, as Pin).
+    const char *done = _("Done");
+    float hs = ui_small_size();
+    int hh = ui_px(78), hi = hh - ui_px(24), lx = ui_px(14) + hi + ui_px(10), pad = ui_px(16);
+    int lw = font_measure(FONT_CAPS, hs, pin), dw = font_measure(FONT_CAPS, hs, done);
+    int hw = clampi(lx + (lw > dw ? lw : dw) + pad, ui_px(210), w / 2);
+    Rect hb = {x + w - ui_px(30) - hw, y + ui_px(14), hw, hh};
+    ui_button(c, hb, ICON_NONE, NULL, S->pin_mode ? BTN_PRIMARY : BTN_PLAIN);
+    ui_icon(c, S->pin_mode ? ICON_CHECK : ICON_PIN, (Rect){hb.x + ui_px(14), hb.y + (hh - hi) / 2, hi, hi}, 0);
+    ui_text(c, FONT_CAPS, hs, hs, (Rect){hb.x + lx, hb.y, hb.w - lx - pad, hh}, S->pin_mode ? done : pin, 1, true, 0);
+    hits_add(&S->tools_hits, hb, P_PIN_MODE, 0);
+    char title[160];
+    // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+    // tool button: a tap pins a pen or unpins it; %d is how many can be (4). About 700 px at 44 px
+    // in bold, or two lines at 34 px. Normally the title is Tools.
+    if (S->pin_mode) snprintf(title, sizeof title, _("Pin to the panel (up to %d)"), PANEL_PINS_MAX);
     // TRANSLATORS: the title of the editor's tool picker.
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){x + ui_px(30), y, w - ui_px(60), ui_px(100)}, _("Tools"), 0);
+    else snprintf(title, sizeof title, "%s", _("Tools"));
+    ui_text(c, FONT_BOLD, ui_text_size(), ui_small_size(), (Rect){x + ui_px(30), y, hb.x - x - ui_px(50), ui_px(100)},
+            title, 2, false, 0);
     for (int i = 0; i < N_DRAW_TOOLS; i++) {
         ToolKind t = k_draw_tools[i];
         Rect r = {x + ui_px(30) + (i % cols) * (bw + g), y + ui_px(100) + (i / cols) * (bh + g), bw, bh};
         // TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
-        // Calligraphy pen (284 px at 34 px, as the other tools' names).
+        // Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
         const char *name = t == TOOL_MECH_PENCIL   ? C_("tool", "Mechanical")
                            : t == TOOL_CALLIGRAPHY ? C_("tool", "Calligraphy")
                                                    : tool_label(t);
-        ui_button(c, r, ui_tool_icon(t), name, a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN);
+        // Selected: the pen in use, or in Pin mode a pen pinned.
+        bool sel = S->pin_mode ? settings_pinned(&a->settings, t) : a->settings.current_tool == t;
+        ui_button(c, r, ui_tool_icon(t), name, sel ? BTN_SELECTED : BTN_PLAIN);
         hits_add(&S->tools_hits, r, P_PICK_TOOL, t);
+    }
+    // The ink row, out of use in Pin mode (the pins are pens, whatever they draw).
+    int iy = y + ui_px(100) + rows * bh + (rows - 1) * g + g, iw = (gridw - (N_INKS - 1) * g) / N_INKS;
+    for (int i = 0; i < N_INKS; i++) {
+        Rect r = {x + ui_px(30) + i * (iw + g), iy, iw, inkh};
+        ButtonStyle st = S->pin_mode ? BTN_DISABLED : a->settings.white == k_inks[i].white ? BTN_SELECTED : BTN_PLAIN;
+        ui_button(c, r, ICON_NONE, C_("ink", k_inks[i].label), st);
+        if (!S->pin_mode) hits_add(&S->tools_hits, r, P_PICK_INK, i);
     }
 }
 
@@ -972,7 +1058,8 @@ static PenSample sample_of(App *a, const InEvent *ev) {
 }
 
 // The open page's paper alone (S->paper), drawn again first if it holds another paper or size: what
-// an erase stroke restores toward live. NULL when there is no memory for it.
+// an erase stroke restores toward live, as page_render draws it (an image paper's picture too).
+// NULL when there is no memory for it.
 static const Canvas *page_paper(App *a) {
     Canvas *c = &S->paper;
     if (c->px && (c->w != S->pgw || c->h != S->pgh)) canvas_free(c);
@@ -980,7 +1067,7 @@ static const Canvas *page_paper(App *a) {
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
     if (fresh || S->paper_k != S->page->paper) {
         S->paper_k = S->page->paper;
-        paper_render(c, S->paper_k, (Rect){0, 0, c->w, c->h}, a->dpi);
+        page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);
     }
     return c;
 }
@@ -1076,6 +1163,53 @@ static void draw_end(App *a) {
     if (!had_undo || had_redo || was_empty) S->panel_stale = true;
 }
 
+static float dist2_to_segment(float px, float py, float ax, float ay, float bx, float by) {
+    float dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    float t = l2 > 0.f ? clampf(((px - ax) * dx + (py - ay) * dy) / l2, 0.f, 1.f) : 0.f;
+    float ex = px - (ax + dx * t), ey = py - (ay + dy * t);
+    return ex * ex + ey * ey;
+}
+
+// A pixel shows ink when the page there is darker than its paper by more than this: a level or
+// two left by a dab's rounding is no ink anyone can see.
+#define INK_SHOWS 6
+
+// Whether the stroke eraser's segment (x0, y0)-(x1, y1), r wide each side, touches ink of stroke i
+// (page px) that shows. Where white ink or the precise eraser drawn after it took its ink away, the
+// page is its paper again (S->paper): touching it there takes nothing, though the rest of it shows.
+// The pixels counted are those within the eraser's reach and within the stroke's (its dab's radius
+// about its line) where the page is darker than the paper (another stroke's ink crossing it there
+// counts too). A stroke no erase stroke drawn after it reaches shows wherever it is.
+static bool touches_visible_ink(App *a, int i, float x0, float y0, float x1, float y1, float r) {
+    const Stroke *s = S->page->strokes[i];
+    bool covered = false;
+    for (int k = i + 1; k < S->page->n && !covered; k++)
+        covered = stroke_is_erase(S->page->strokes[k]) && rect_overlaps(S->page->strokes[k]->bbox, s->bbox);
+    if (!covered) return true;
+    const Canvas *pc = &S->page_canvas, *paper = S->canvas_page == S->page ? page_paper(a) : NULL;
+    if (!paper || paper->w != pc->w || paper->h != pc->h) return true;  // nothing to tell by: as before
+    Rect sweep = rect_intersect(rect_intersect(rect_from_points(x0, y0, x1, y1, r + 1.f), s->bbox),
+                                (Rect){0, 0, pc->w, pc->h});
+    if (rect_is_empty(sweep)) return false;
+    for (int j = 0; j < s->n; j++) {
+        const PenSample *pa = &s->pts[j], *pb = &s->pts[j + 1 < s->n ? j + 1 : j];
+        float ra, op;
+        brush_dab(s->tool, &s->params, pa, a->dpi, &ra, &op);
+        Rect sr = rect_intersect(rect_from_points(pa->x, pa->y, pb->x, pb->y, ra + 1.f), sweep);
+        for (int y = sr.y; y < sr.y + sr.h; y++) {
+            const uint8_t *row = &pc->px[(size_t)y * (size_t)pc->stride], *pr = &paper->px[(size_t)y * (size_t)paper->stride];
+            for (int x = sr.x; x < sr.x + sr.w; x++) {
+                if (pr[x] - row[x] <= INK_SHOWS) continue;
+                float qx = (float)x + 0.5f, qy = (float)y + 0.5f;
+                if (dist2_to_segment(qx, qy, x0, y0, x1, y1) <= r * r &&
+                    dist2_to_segment(qx, qy, pa->x, pa->y, pb->x, pb->y) <= ra * ra)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void erase_segment(App *a, float sx, float sy, float pressure) {
     const ToolParams *ep = &a->settings.tools[TOOL_ERASER];
     float p = brush_pressure(ep, pressure);
@@ -1086,8 +1220,11 @@ static void erase_segment(App *a, float sx, float sy, float pressure) {
     Rect d = RECT_EMPTY;
     for (int i = S->page->n - 1; i >= 0; i--) {
         Stroke *s = S->page->strokes[i];
-        // Erase strokes stay: taking one away would bring back the ink it covers.
-        if (stroke_is_erase(s) || !stroke_hit_segment(s, S->ex, S->ey, x, y, r, a->dpi)) continue;
+        // Erase strokes stay: taking one away would bring back the ink it covers. Ink they took
+        // away is not there to touch.
+        if (stroke_is_erase(s) || !stroke_hit_segment(s, S->ex, S->ey, x, y, r, a->dpi) ||
+            !touches_visible_ink(a, i, S->ex, S->ey, x, y, r))
+            continue;
         page_remove(S->page, i);
         if (S->nremoved == S->capremoved) {
             int nc = S->capremoved ? S->capremoved * 2 : 16;
@@ -1349,26 +1486,120 @@ static void set_collapsed(App *a, bool c) {
     persist_panel(a);
 }
 
+// ---- the tool picker's taps ----
+
+// The tool picker closed (a pen picked, or a tap outside it), and its Pin mode with it.
+static void close_tools(App *a) {
+    S->tools_open = false;
+    S->pin_mode = false;
+    compose(a, S->tools_rect);
+    app_invalidate(a, S->tools_rect, REFRESH_UI);
+    repaint_panel(a, REFRESH_UI);
+}
+
+// The panel's buttons changed (a pen pinned or unpinned): it is fitted again where it is, and drawn
+// with the picker beside it; where they no longer reach, the page shows again.
+static void panel_changed(App *a) {
+    Rect old = rect_union(S->panel, S->tools_open ? S->tools_rect : RECT_EMPTY);
+    fit_panel_to(a, a->h);
+    S->panel = panel_rect_at(a, S->panel.x, S->panel.y);
+    compose(a, old);  // (draws the panel and the picker whole, where they are now)
+    app_invalidate(a, rect_union(old, rect_union(S->panel, S->tools_open ? S->tools_rect : RECT_EMPTY)), REFRESH_UI);
+}
+
+// Pin mode: a pen pinned to the panel (after the others), or unpinned. Unpinned while in use, it
+// goes to the tool button, so the panel still shows the pen that draws.
+static void toggle_pin(App *a, ToolKind t) {
+    Settings *st = &a->settings;
+    bool was = settings_pinned(st, t);
+    if (!settings_toggle_pin(st, t)) {
+        char msg[200];
+        // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
+        // panel holds (%d, 4). About 1700 px at 44 px in bold, or two lines.
+        snprintf(msg, sizeof msg, _("The panel holds up to %d pens. Unpin one first."), PANEL_PINS_MAX);
+        app_toast(a, msg, 2500);
+        return;
+    }
+    if (was && st->current_tool == t) st->draw_tool = t;
+    settings_save(st);
+    panel_changed(a);
+}
+
+// A tap on the tool picker (the press is S->tools_press): a pen picked, which closes it, or in
+// Pin mode pinned or unpinned; Pin or Done, which turn Pin mode on or off; an ink chosen. A tap
+// outside it closes it; one inside, between its buttons, does nothing.
+static void tools_tap(App *a) {
+    const Press *p = &S->tools_press;
+    const Hit *h = hits_find(&S->tools_hits, p->x0, p->y0);
+    if (!h) {
+        if (!rect_contains(S->tools_rect, (int)p->x0, (int)p->y0)) close_tools(a);
+        return;
+    }
+    if (!press_is_tap(p, h->r)) return;
+    Settings *st = &a->settings;
+    switch (h->id) {
+    case P_PIN_MODE:
+        S->pin_mode = !S->pin_mode;
+        draw_tools(a);
+        app_invalidate(a, S->tools_rect, REFRESH_UI);
+        break;
+    case P_PICK_INK:
+        st->white = k_inks[clampi(h->arg, 0, N_INKS - 1)].white;
+        settings_save(st);
+        draw_tools(a);
+        app_invalidate(a, S->tools_rect, REFRESH_UI);
+        repaint_panel(a, REFRESH_UI);  // the pen in use shows whether it draws white
+        break;
+    case P_PICK_TOOL: {
+        ToolKind t = (ToolKind)h->arg;
+        if (S->pin_mode) {
+            toggle_pin(a, t);  // (the panel and the picker drawn again, or a toast at the cap)
+            break;
+        }
+        // A pinned pen picked is the one in use; the tool button keeps the pen it shows.
+        st->current_tool = t;
+        if (!settings_pinned(st, t)) st->draw_tool = t;
+        settings_save(st);
+        close_tools(a);
+        break;
+    }
+    default: break;
+    }
+}
+
+// The drawing tool the tool button shows (the pencil if settings.ini names the eraser there).
+static ToolKind button_tool(App *a) {
+    ToolKind t = a->settings.draw_tool;
+    return (unsigned)t < TOOL_COUNT && t != TOOL_ERASER ? t : TOOL_PENCIL;
+}
+
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
     case P_TOOLPICK:
         S->tools_open = true;
+        S->pin_mode = false;
+        S->tools_y = S->panel.y;
         draw_tools(a);
         app_invalidate(a, S->tools_rect, REFRESH_UI);
         break;
-    case P_TOOL:
-        if (a->settings.current_tool == (ToolKind)h->arg) {
-            // Tapping the active eraser again goes back to the drawing tool.
-            if (h->arg != TOOL_ERASER) break;
-            a->settings.current_tool = a->settings.draw_tool;
-            settings_save(&a->settings);
-            repaint_panel(a, REFRESH_UI);
-            break;
+    case P_TOOL: {
+        ToolKind t = (ToolKind)h->arg, cur = a->settings.current_tool;
+        if (t == cur && t != TOOL_ERASER) break;  // the pen in use already
+        if (t == cur) {
+            // Tapping the active eraser again goes back to the pen used just before it (a pinned
+            // one, or the tool button's), or to the tool button's if that one is off the panel now.
+            int b = S->before_eraser;
+            bool shown = b >= 0 && b < TOOL_COUNT && b != TOOL_ERASER &&
+                         ((ToolKind)b == button_tool(a) || settings_pinned(&a->settings, (ToolKind)b));
+            a->settings.current_tool = shown ? (ToolKind)b : button_tool(a);
+        } else {
+            if (t == TOOL_ERASER) S->before_eraser = (int)cur;
+            a->settings.current_tool = t;
         }
-        a->settings.current_tool = (ToolKind)h->arg;
         settings_save(&a->settings);
         repaint_panel(a, REFRESH_UI);
         break;
+    }
     case P_UNDO: undo_redo(a, true); break;
     case P_REDO: undo_redo(a, false); break;
     case P_PREV: go_to_page(a, S->index - 1); break;
@@ -1498,6 +1729,7 @@ void editor_init(App *a) {
     if (!a->ed) return;
     store_page_size(&S->pgw, &S->pgh);
     S->zoom = S->zoom_default = S->zoom_min = 1.f;
+    S->before_eraser = -1;
     // Erased ink an earlier run left in page files (it left with the notebook open, or a compaction
     // was stopped): taken out now, in the background, unless the notebook is opened first.
     compact_queue_listed(a->dpi);
@@ -1523,12 +1755,24 @@ void editor_free(App *a) {
     a->ed = NULL;
 }
 
+// Every sheet over the page closed: the paper sheet, Display, Custom music, the tool picker (and its
+// Pin mode). A sheet closed here stays open through a turn or a wake (editor_enter), laid out again
+// by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
+// closes with its notebook, and stays open through those too.)
+static void close_sheets(App *a) {
+    S->paper_open = false;
+    S->dm.open = false;
+    S->mb.open = false;
+    S->tools_open = false;
+    S->pin_mode = false;
+}
+
 void editor_enter(App *a) {
     if (!S->page_canvas.px && canvas_init(&S->page_canvas, S->pgw, S->pgh) != 0) return;
     if (S->open && S->page && S->canvas_page != S->page) render_page_full(a);
     if (S->view_w != a->w || S->view_h != a->h) view_reset(a);  // new notebook or turned
     S->pinching = false;
-    fit_panel_to(a->h);
+    fit_panel_to(a, a->h);
     S->collapsed = a->settings.panel_collapsed;
     int x = a->settings.panel_x, y = a->settings.panel_y;
     if (x < 0 || y < 0) {
@@ -1536,11 +1780,11 @@ void editor_enter(App *a) {
         y = ui_px(220);
     }
     S->panel = panel_rect_at(a, x, y);
+    S->tools_y = S->panel.y;
     S->owner = OWN_NONE;
-    S->paper_open = false;
-    S->dm.open = false;
-    S->mb.open = false;
-    S->tools_open = false;
+    // A turn, or the redraw after waking (a->relayout), lays out the same screen again: the sheet
+    // that was open stays open. Coming in from another screen, none is.
+    if (!a->relayout) close_sheets(a);
     compose(a, (Rect){0, 0, a->w, a->h});
 }
 
@@ -1709,18 +1953,7 @@ void editor_event(App *a, const InEvent *ev) {
         press_move(&S->tools_press, ev->x, ev->y);
         if (ph != 2) break;
         S->owner = OWN_NONE;
-        {
-            const Hit *h = hits_find(&S->tools_hits, S->tools_press.x0, S->tools_press.y0);
-            if (h && press_is_tap(&S->tools_press, h->r)) {
-                a->settings.current_tool = a->settings.draw_tool = (ToolKind)h->arg;
-                settings_save(&a->settings);
-            }
-            // Picked or tapped outside: close it.
-            S->tools_open = false;
-            compose(a, S->tools_rect);
-            app_invalidate(a, S->tools_rect, REFRESH_UI);
-            repaint_panel(a, REFRESH_UI);
-        }
+        tools_tap(a);
         break;
     case OWN_BUILD: {
         Rect d;
@@ -1909,6 +2142,34 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%d", (int)S->page->paper);
     } else if (!strcmp(key, "panel")) {
         snprintf(out, cap, "%s", S->collapsed ? "collapsed" : "expanded");
+    } else if (!strcmp(key, "panel_rect")) {
+        snprintf(out, cap, "%d %d %d %d", S->panel.x, S->panel.y, S->panel.w, S->panel.h);  // as toast.rect
+    } else if (!strcmp(key, "panel_button")) {
+        snprintf(out, cap, "%d", btn_h());  // an expanded panel's buttons' height, px
+    } else if (!strcmp(key, "panel_fits")) {
+        // 1 while the panel is inside the screen with its margins free above and below it, its
+        // buttons at full size (as without pins, upright or sideways)
+        Rect p = S->panel;
+        int m = ui_px(PANEL_MARGIN);
+        bool in = p.x >= 0 && p.x + p.w <= a->w && p.y >= m && p.y + p.h <= a->h - m;
+        snprintf(out, cap, "%d", in && btn_h() == ui_px(100) ? 1 : 0);
+    } else if (!strcmp(key, "pins")) {
+        settings_pins_text(&a->settings, out, cap);  // the pinned pens in pin order, as settings.ini names them
+    } else if (!strcmp(key, "draw_tool") || !strcmp(key, "tool_button")) {
+        // The tool button's pen; and what the button shows: that pen, or "grid" while it is pinned.
+        ToolKind t = button_tool(a);
+        const char *name = app_probe_tool(t);
+        bool grid = !strcmp(key, "tool_button") && settings_pinned(&a->settings, t);
+        snprintf(out, cap, "%s", grid ? "grid" : name ? name : "?");
+    } else if (!strcmp(key, "pin_mode")) {
+        snprintf(out, cap, "%d", S->tools_open && S->pin_mode ? 1 : 0);
+    } else if (!strcmp(key, "before_eraser")) {
+        // The pen used before the eraser (where a tap on the eraser in use goes back to, if it is
+        // still on the panel), empty for none.
+        const char *name = S->before_eraser >= 0 ? app_probe_tool((ToolKind)S->before_eraser) : NULL;
+        snprintf(out, cap, "%s", name ? name : "");
+    } else if (!strcmp(key, "white_mark")) {
+        snprintf(out, cap, "%d", S->white_mark ? 1 : 0);  // the panel as drawn last shows the pen draws white
     } else if (!strcmp(key, "music")) {
         // The layout on the Custom music sheet while it is open, else the page's custom paper.
         MusicLayout m;

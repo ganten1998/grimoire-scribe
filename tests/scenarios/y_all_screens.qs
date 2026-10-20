@@ -11,7 +11,7 @@ expect library.items is 0
 expect library.hint is 1
 shot 01-library-empty
 # Settings: every row. The style row twice (the other style's sheet in between), the mirror,
-# turning and pinching rows twice, the pen button row through its three texts.
+# turning and pinching rows twice, the pen button row through its four texts.
 tap 1535 95
 wait 50
 expect library.sheet is settings
@@ -25,6 +25,9 @@ tap 930 1060
 wait 50
 tap 930 1060
 wait 50
+tap 930 1190
+wait 50
+shot 04-settings-pen-button-3
 tap 930 1190
 wait 50
 shot 04-settings-pen-button-0
@@ -122,6 +125,13 @@ shot 11-penfeel-tab-8
 tap 1723 289
 wait 50
 shot 11-penfeel-tab-9
+tap 1559 1440
+wait 50
+expect settings.eraser_mode is 1
+shot 11-penfeel-tab-9-precise
+tap 1039 1440
+wait 50
+expect settings.eraser_mode is 0
 tap 1630 95
 wait 50
 shot 12-penfeel-reset
@@ -204,9 +214,10 @@ expect library.sheet is new
 tap 1564 2254
 wait 150
 expect screen is editor
-# The editor: the panel, the tool picker, the paper sheet, the Display sheet (Pin this page, then
-# the sleep screen back as it was), two more pages, the Pages view with Select all and Delete (3),
-# the zoom chip after a pinch, Clear.
+# The editor: the panel, the tool picker (White, then Pin mode: four pens pinned, a fifth refused,
+# all unpinned; Pen feel with white ink; Black), the paper sheet, the Display sheet (Pin this page,
+# then the sleep screen back as it was), two more pages, the Pages view with Select all and Delete
+# (3), the zoom chip after a pinch, Clear.
 pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
@@ -214,6 +225,55 @@ pentap 1768 358
 wait 50
 expect editor.modal is tools
 shot 24-tools
+pentap 1425 878
+wait 50
+expect settings.white is 1
+expect editor.white_mark is 1
+shot 24-tools-white
+pentap 1600 273
+wait 50
+expect editor.pin_mode is 1
+shot 24-tools-pin-mode
+pentap 1504 727
+wait 50
+pentap 1188 561
+wait 50
+pentap 1504 561
+wait 50
+pentap 1188 727
+wait 50
+expect editor.pins is highlighter,fineliner,marker,calligraphy
+pentap 872 395
+wait 50
+expect editor.pins is highlighter,fineliner,marker,calligraphy
+shot 24-tools-pin-cap
+pentap 1504 727
+wait 50
+pentap 1188 561
+wait 50
+pentap 1504 561
+wait 50
+pentap 1188 727
+wait 50
+expect editor.pins is
+pentap 1600 273
+wait 50
+expect editor.pin_mode is 0
+pentap 300 1800
+wait 50
+expect editor.modal is none
+pentap 1768 1458
+wait 100
+expect screen is penset
+shot 24-penfeel-white
+tap 125 95
+wait 100
+expect screen is editor
+pentap 1768 358
+wait 50
+pentap 951 878
+wait 50
+expect settings.white is 0
 pentap 872 561
 wait 50
 expect editor.modal is none
@@ -380,6 +440,17 @@ tap 2155 95
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
+tap 1240 1003
+wait 50
+expect settings.side_button is 3
+shot 45-settings-pen-button-3-landscape
+tap 1240 1003
+wait 50
+tap 1240 1003
+wait 50
+tap 1240 1003
+wait 50
+expect settings.side_button is 2
 tap 1908 1695
 wait 100
 expect library.sheet is none
@@ -402,6 +473,13 @@ pentap 2388 358
 wait 50
 expect editor.modal is tools
 shot 48-tools-landscape
+pentap 2220 273
+wait 50
+expect editor.pin_mode is 1
+shot 48-tools-pin-mode-landscape
+pentap 2220 273
+wait 50
+expect editor.pin_mode is 0
 pentap 1492 561
 wait 50
 expect editor.modal is none
@@ -490,6 +568,9 @@ wait 50
 pen line 700 600 1500 700 40 0.2 1.0
 wait 100
 shot 56-penfeel-landscape
+tap 2312 289
+wait 50
+shot 56-penfeel-eraser-landscape
 tap 125 95
 wait 100
 expect screen is library

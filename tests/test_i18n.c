@@ -667,6 +667,7 @@ TEST(raw_labels_fit) {
             CHECK(font_measure(FONT_REGULAR, ss, _("ink")) <= 570);
             CHECK(font_measure(FONT_REGULAR, ss, _("test pad")) <= 1180);
             CHECK(font_measure(FONT_REGULAR, ss, _("test pad (the eraser clears it)")) <= 1180);
+            CHECK(font_measure(FONT_REGULAR, ss, _("test pad (white ink: try it on the black)")) <= 1180);
         }
     }
     ui_set_theme(THEME_GOTHIC);

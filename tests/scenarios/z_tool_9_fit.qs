@@ -1,0 +1,97 @@
+# The panel with 0 to 4 pinned pens on the 2022 and 2024 Scribes' screen (1860x2480), upright and
+# sideways: always inside the screen with 12 px free above and below it, its buttons at full size
+# (editor.panel_fits). Each pen is pinned in the tool picker's Pin mode. (The Scribe 3's and the
+# Colorsoft's screen: z_tool_a_fit_colorsoft.)
+# settings: mirror_pdf=0
+wait 300
+tap 965 95
+wait 100
+tap 510 460
+tap 1564 2254
+wait 400
+expect screen is editor
+expect editor.pins is
+expect editor.panel_fits is 1
+rotate 1
+wait 300
+expect editor.panel_fits is 1
+rotate 0
+wait 300
+# One pin
+pentap 1768 358
+wait 200
+pentap 1600 273
+wait 200
+pentap 1504 727
+wait 200
+pentap 1600 273
+wait 200
+pentap 300 1800
+wait 200
+expect editor.pins is highlighter
+expect editor.panel_fits is 1
+rotate 1
+wait 300
+expect editor.panel_fits is 1
+rotate 0
+wait 300
+expect editor.panel_fits is 1
+# Two
+pentap 1768 358
+wait 200
+pentap 1600 273
+wait 200
+pentap 1188 561
+wait 200
+pentap 1600 273
+wait 200
+pentap 300 1800
+wait 200
+expect editor.pins is highlighter,fineliner
+expect editor.panel_fits is 1
+rotate 1
+wait 300
+expect editor.panel_fits is 1
+rotate 0
+wait 300
+expect editor.panel_fits is 1
+# Three
+pentap 1768 358
+wait 200
+pentap 1600 273
+wait 200
+pentap 1504 561
+wait 200
+pentap 1600 273
+wait 200
+pentap 300 1800
+wait 200
+expect editor.pins is highlighter,fineliner,marker
+expect editor.panel_fits is 1
+rotate 1
+wait 300
+expect editor.panel_fits is 1
+rotate 0
+wait 300
+expect editor.panel_fits is 1
+# Four
+pentap 1768 358
+wait 200
+pentap 1600 273
+wait 200
+pentap 1188 727
+wait 200
+pentap 1600 273
+wait 200
+pentap 300 1800
+wait 200
+expect editor.pins is highlighter,fineliner,marker,calligraphy
+expect editor.panel_fits is 1
+rotate 1
+wait 300
+expect editor.panel_fits is 1
+shot 01-four-pins-sideways
+rotate 0
+wait 300
+expect editor.panel_fits is 1
+quit

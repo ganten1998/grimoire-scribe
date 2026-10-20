@@ -685,6 +685,7 @@ int app_probe(const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     }
     else if (!strcmp(key, "settings.theme")) snprintf(out, cap, "%s", st->theme == THEME_CLASSIC ? "classic" : "gothic");
+    else if (!strcmp(key, "settings.panel_tools")) settings_pins_text(st, out, cap);  // the pins, as saved
     else if (!strcmp(key, "settings.language")) snprintf(out, cap, "%s", st->language);  // "auto" for one it lacks
     else if (!strcmp(key, "language")) snprintf(out, cap, "%s", i18n_current());  // the language in use
     else return -1;

@@ -101,9 +101,55 @@ TEST(sheets) {
     canvas_free(&c);
 }
 
+// The pin and grid icons (the tool picker's Pin, the panel's tool button when its pen is pinned)
+// are in the embedded font. A hollow icon, the pen in use drawing white ink, is the glyph's
+// outline: where the glyph is solid it shows the inside colour, around it a ring of the edge
+// colour; on a selected (black) button the same in white.
+TEST(pin_grid_and_hollow_icons) {
+    Canvas c;
+    canvas_init(&c, 600, 300);
+    canvas_fill(&c, (Rect){0, 0, 600, 300}, 255);
+    ui_icon(&c, ICON_PIN, (Rect){0, 0, 100, 100}, 0);
+    ui_icon(&c, ICON_GRID, (Rect){100, 0, 100, 100}, 0);
+    int dark[2] = {0, 0};
+    for (int y = 0; y < 100; y++)
+        for (int x = 0; x < 200; x++) dark[x / 100] += c.px[y * c.stride + x] < 128;
+    CHECK(dark[0] > 500 && dark[1] > 500);
+    // Solid, then hollow, the same icon in the same place: the solid's full pixels are the hollow's
+    // inside, and the hollow's ring reaches past the solid's edge.
+    Rect r = {0, 100, 120, 120};
+    canvas_fill(&c, (Rect){0, 100, 600, 200}, 255);
+    ui_icon(&c, ICON_PENCIL, r, 0);
+    ui_icon_hollow(&c, ICON_PENCIL, (Rect){r.x + 200, r.y, r.w, r.h}, 0, 255);
+    int inside = 0, inside_white = 0, ring = 0;
+    for (int y = r.y; y < r.y + r.h; y++)
+        for (int x = r.x; x < r.x + r.w; x++) {
+            uint8_t s = c.px[y * c.stride + x], h = c.px[y * c.stride + x + 200];
+            if (s < 8) inside++, inside_white += h > 247;  // (a glyph blends to within a level)
+            if (s == 255 && h < 128) ring++;
+        }
+    CHECK(inside > 300 && inside_white == inside && ring > inside / 4);
+    // On a selected button: the white glyph's solid pixels are black, inside a white ring.
+    Rect b = {330, 100, 120, 120};
+    ui_button(&c, b, ICON_PENCIL, NULL, BTN_SELECTED);
+    ui_button_hollow(&c, (Rect){b.x + 140, b.y, b.w, b.h}, ICON_PENCIL, BTN_SELECTED);
+    int core = 0, core_black = 0, white_ring = 0;
+    Rect in = rect_inflate(b, -22);  // inside the frame and its carved line
+    for (int y = in.y; y < in.y + in.h; y++)
+        for (int x = in.x; x < in.x + in.w; x++) {
+            uint8_t s = c.px[y * c.stride + x], h = c.px[y * c.stride + x + 140];
+            if (s == 255) core++, core_black += h < 8;
+            if (s < 8 && h > 128) white_ring++;
+        }
+    CHECK(core > 300 && core_black == core && white_ring > core / 4);
+    out_png("hollow.png", &c);
+    canvas_free(&c);
+}
+
 int main(void) {
     ui_init(300.f);
     if (font_init() != 0) return 1;
+    RUN(pin_grid_and_hollow_icons);
     RUN(slider_snap);
     RUN(press_logic);
     RUN(keyboard_typing);

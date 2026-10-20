@@ -145,6 +145,8 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_CHARCOAL] = 0xF00B5,     // md-blur (grainy dots)
     [ICON_CALLIGRAPHY] = 0xF06D3,  // md-feather (a quill)
     [ICON_LANGUAGE] = 0xF05CA,     // md-translate
+    [ICON_PIN] = 0xF0403,          // md-pin
+    [ICON_GRID] = 0xF0570,         // md-view_grid
 };
 
 IconKind ui_tool_icon(int tool) {
@@ -158,6 +160,15 @@ void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray) {
     if (k <= ICON_NONE || k >= ICON_COUNT || !k_icon_cp[k]) return;
     int inset = (r.w < r.h ? r.w : r.h) / 10;
     font_draw_icon(c, FONT_REGULAR, k_icon_cp[k], rect_inflate(r, -inset), gray);
+}
+
+void ui_icon_hollow(Canvas *c, IconKind k, Rect r, uint8_t edge, uint8_t inside) {
+    // The glyph drawn in edge all round within t px (a disc of offsets), then in inside where it is.
+    int t = ui_px(4);
+    for (int dy = -t; dy <= t; dy++)
+        for (int dx = -t; dx <= t; dx++)
+            if ((dx || dy) && dx * dx + dy * dy <= t * t) ui_icon(c, k, (Rect){r.x + dx, r.y + dy, r.w, r.h}, edge);
+    ui_icon(c, k, r, inside);
 }
 
 static int radius(void) { return ui_px(16); }
@@ -214,6 +225,12 @@ static void button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonSt
 
 void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st) {
     button(c, r, icon, label, st, 0.f);
+}
+
+void ui_button_hollow(Canvas *c, Rect r, IconKind icon, ButtonStyle st) {
+    button(c, r, ICON_NONE, NULL, st, 0.f);
+    uint8_t bg = st == BTN_SELECTED ? 0 : 255, fg = st == BTN_SELECTED ? 255 : (st == BTN_DISABLED ? 170 : 0);
+    ui_icon_hollow(c, icon, rect_inflate(rect_inflate(r, -ui_px(8)), -ui_px(6)), fg, bg);  // where button() puts it
 }
 
 float ui_button_text_px(Rect r, const char *label, ButtonStyle st) {
