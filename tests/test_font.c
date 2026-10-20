@@ -264,8 +264,9 @@ TEST(ascii_unchanged) {
 
 // ---- the Gothic bold and accents ----
 // The bold overprints the glyph one design pixel to the right. Accent marks it would fill in
-// (the dots of u-umlaut, the tilde, the circumflex, the ring) are drawn as designed instead;
-// everything else is exactly the overprint.
+// (the dots of u-umlaut, the tilde, the circumflex, the ring) are drawn as designed instead; in
+// sharp s and o slash a one-pixel gap moves right instead of closing; everything else is exactly
+// the overprint.
 
 static bool ink(const Canvas *c, int x, int y) { return c->px[y * c->stride + x] < 128; }
 
@@ -391,16 +392,17 @@ TEST(bold_tildes_and_hats_keep_their_gaps) {
         }
 }
 
-// Every glyph of the face from U+0021 to U+017F: the bold covers the regular weight and never
-// more than the plain overprint; ASCII and letters without such marks are exactly the plain
-// overprint, letters with them are not.
+// Every glyph of the face from U+0021 to U+017F: the bold covers the regular weight (but in
+// sharp s and o slash, whose gaps move right) and never more than the plain overprint; ASCII
+// and letters without such marks are exactly the plain overprint, letters with them are not.
 TEST(bold_differs_only_at_marks) {
     ui_set_theme(THEME_GOTHIC);
-    static const uint32_t harmless[] = {0xE7, 0xC7, 0xDF, 0xE6, 0x153, 0xAB, 0xBB, 0xE9, 0xE1, 0xED,
-                                        0xF3, 0xFA, 0xE0, 0xF9, 0xBF, 0xA1, 0xFF, 0xEF, 0xF8, 0x142};
+    static const uint32_t harmless[] = {0xE7, 0xC7, 0xE6, 0x153, 0xAB, 0xBB, 0xE9, 0xE1, 0xED, 0xF3,
+                                        0xFA, 0xE0, 0xF9, 0xBF, 0xA1, 0xFF, 0xEF, 0x142, 0xB7};
     // (i circumflex is not here: its hat's gap is two pixels wide, so the overprint keeps it.)
     static const uint32_t spared[] = {0xFC, 0xF6, 0xE4, 0xEB, 0xDC, 0xD6, 0xC4, 0xF1, 0xD1, 0xE3,
                                       0xF5, 0xE2, 0xEA, 0xF4, 0xFB, 0xE5, 0xC5, 0x10D, 0x151};
+    static const uint32_t moved[] = {0xDF, 0xF8, 0xD8};
     static const float sizes[] = {20.f, 44.f, 64.f};
     int checked = 0;
     for (int z = 0; z < 3; z++) {
@@ -426,10 +428,12 @@ TEST(bold_differs_only_at_marks) {
                     within &= !ink(&a, x, y) || ink(&b, x, y);
                     equal &= ink(&a, x, y) == ink(&b, x, y);
                 }
-            bool want_equal = cp < 0x80, want_spared = false;
+            bool want_equal = cp < 0x80, want_spared = false, want_moved = false;
             for (int i = 0; i < (int)(sizeof harmless / sizeof harmless[0]); i++) want_equal |= harmless[i] == cp;
             for (int i = 0; i < (int)(sizeof spared / sizeof spared[0]); i++) want_spared |= spared[i] == cp;
-            bool ok = k > 0 && covers && within && (!want_equal || equal) && (!want_spared || !equal);
+            for (int i = 0; i < (int)(sizeof moved / sizeof moved[0]); i++) want_moved |= moved[i] == cp;
+            bool ok = k > 0 && (covers || want_moved) && within && (!want_equal || equal) &&
+                      (!(want_spared || want_moved) || !equal);
             if (!ok) fprintf(stderr, "  U+%04X at %.0f px: k %d covers %d within %d equal %d\n", cp, px, k, covers, within, equal);
             CHECK(ok);
             checked++;
@@ -439,6 +443,77 @@ TEST(bold_differs_only_at_marks) {
         }
     }
     CHECK(checked > 3 * 250);
+}
+
+// Gaps in row y: runs of paper with ink on both sides.
+static int gaps_in_row(const Canvas *c, int y) {
+    int first = -1, last = -1, gaps = 0;
+    for (int x = 0; x < c->w; x++)
+        if (ink(c, x, y)) {
+            if (first < 0) first = x;
+            last = x;
+        }
+    for (int x = first + 1; first >= 0 && x <= last; x++) gaps += !ink(c, x, y) && ink(c, x - 1, y);
+    return gaps;
+}
+
+// The first run of ink in row y, in pixels (0 if the row has none).
+static int first_run(const Canvas *c, int y) {
+    int x = 0, n = 0;
+    while (x < c->w && !ink(c, x, y)) x++;
+    while (x < c->w && ink(c, x++, y)) n++;
+    return n;
+}
+
+// Sharp s and o slash in bold: every gap of the regular weight survives in each row (the
+// plain overprint closes the notch that sets sharp s apart from B, and fills the counter of
+// o slash on both sides of the slash), while the stroke on the left of each row still takes
+// the overprint (one design pixel wider: a stem of even weight), and sharp s stays several
+// design pixels away from a bold B and a bold 8.
+TEST(bold_letters_keep_their_gaps) {
+    ui_set_theme(THEME_GOTHIC);
+    static const char *const letters[] = {"\xc3\x9f", "\xc3\xb8", "\xc3\x98"};
+    for (int z = 0; z < NBOLD; z++) {
+        FontFace f = k_bold[z].f;
+        float px = k_bold[z].px;
+        int k = font_measure(FONT_BOLD, px, "B") - font_measure(FONT_REGULAR, px, "B");
+        for (int i = 0; i < 3; i++) {
+            Canvas r, b;
+            if (!blank(&r, px) || !blank(&b, px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&r, FONT_REGULAR, px, 0, letters[i]);
+            draw1(&b, f, px, 0, letters[i]);
+            int lost = 0, rows = 0, thin = 0;
+            for (int y = 0; y < r.h; y++) {
+                int g = gaps_in_row(&r, y);
+                rows += g > 0;
+                lost += gaps_in_row(&b, y) < g;
+                thin += first_run(&r, y) && first_run(&b, y) != first_run(&r, y) + k;
+            }
+            if (lost || thin || !rows)
+                fprintf(stderr, "  %s at %.0f px: %d of %d rows lost a gap, %d rows not emboldened\n", letters[i], px,
+                        lost, rows, thin);
+            CHECK(k > 0 && rows > 0 && lost == 0 && thin == 0);
+            for (int j = 0; i == 0 && j < 2; j++) {
+                Canvas o;
+                if (!blank(&o, px)) {
+                    CHECK(!"canvas");
+                    return;
+                }
+                draw1(&o, f, px, 0, j ? "8" : "B");
+                int differ = 0;
+                for (int y = 0; y < b.h; y++)
+                    for (int x = 0; x < b.w; x++) differ += ink(&b, x, y) != ink(&o, x, y);
+                if (differ < 4 * k * k) fprintf(stderr, "  sharp s at %.0f px: %d pixels from a %s\n", px, differ, j ? "8" : "B");
+                CHECK(k > 0 && differ >= 4 * k * k);
+                canvas_free(&o);
+            }
+            canvas_free(&r);
+            canvas_free(&b);
+        }
+    }
 }
 
 static int bottom_row(const Canvas *c) {
@@ -507,6 +582,7 @@ int main(void) {
     RUN(bold_umlauts_keep_two_dots);
     RUN(bold_tildes_and_hats_keep_their_gaps);
     RUN(bold_differs_only_at_marks);
+    RUN(bold_letters_keep_their_gaps);
     RUN(inverted_exclamation_is_not_an_i);
     return tl_done();
 }

@@ -4,9 +4,9 @@
 #include "canvas.h"
 
 // What the text is for; the theme picks the typeface. Classic: all Terminess. Gothic: pixel
-// faces, Jersey 10 for text and labels (overprinted one design pixel for bold, except accents
-// the overprint would fill in), Jacquard 24 (pixel blackletter) for titles. FIXED faces are
-// Terminess in every theme: paper labels.
+// faces, Jersey 10 for text and labels (overprinted one design pixel for bold, except where
+// that would fill in an accent or turn a letter into another), Jacquard 24 (pixel blackletter)
+// for titles. FIXED faces are Terminess in every theme: paper labels.
 typedef enum {
     FONT_REGULAR = 0,
     FONT_BOLD = 1,

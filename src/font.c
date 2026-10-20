@@ -221,13 +221,20 @@ static void blit(Canvas *c, const uint8_t *bmp, int w, int h, int gx, int gy, ui
 
 static void blit_glyph(Canvas *c, const Glyph *g, int gx, int gy, uint8_t gray) { blit(c, g->bmp, g->w, g->h, gx, gy, gray); }
 
+// Letters the overprint would turn into others: sharp s (U+00DF) closes into a B, the notch
+// between its stem and its bowls being all that tells them apart, and o slash (U+00F8, U+00D8)
+// fills its counter around the slash until it reads as a theta.
+static bool bold_keeps_gaps(uint32_t cp) { return cp == 0xDF || cp == 0xF8 || cp == 0xD8; }
+
 // The bold weight of a pixel glyph above U+007F, made on first use. Bold is the glyph printed
 // again one design pixel to the right, which closes every one-pixel gap: the dots of u-umlaut
 // run together into a macron, the tilde and the circumflex fill in. So here the letter takes the
 // overprint as before, but a detached mark (a component wholly above or below the letter's
 // largest part: an accent, a cedilla that does not touch) is drawn as designed when the
 // overprint would close a one-pixel gap in it. Marks it cannot harm (an acute, the dot of an
-// inverted exclamation mark) keep the overprint. ASCII never comes here: it draws exactly as
+// inverted exclamation mark) keep the overprint. In the letters of bold_keeps_gaps a one-pixel
+// gap moves one design pixel right instead of closing: the stroke on its left takes the
+// overprint, the one on its right keeps its width. ASCII never comes here: it draws exactly as
 // it always has. Returns NULL (plain overprint) if memory runs out.
 static const uint8_t *pixel_bold(Glyph *g) {
     if (g->bold || !g->bmp || g->size4 >= 0) return g->bold;
@@ -285,6 +292,10 @@ static const uint8_t *pixel_bold(Glyph *g) {
             out[y * (w + 1) + x] = 1;
             if (!plain[zone[l - 1]]) out[y * (w + 1) + x + 1] = 1;
         }
+    if (bold_keeps_gaps(g->cp))
+        for (int y = 0; y < h; y++)
+            for (int x = 1; x + 1 < w; x++)
+                if (!lab[y * w + x] && lab[y * w + x - 1] && lab[y * w + x + 1]) out[y * (w + 1) + x + 1] = 0;
     int bw = (w + 1) * k;
     g->bold = malloc((size_t)bw * (size_t)g->h);  // freed with the cache
     if (g->bold)
