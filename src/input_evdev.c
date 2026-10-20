@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/prctl.h>
 
@@ -75,6 +76,7 @@ static struct {
 static bool g_side_reported;  // last side-button state sent as IN_PEN_BUTTON
 static int g_power_fd = -1;
 static PowerKey g_pkey;       // the press being followed (release, or the 4 s hold)
+static bool g_power_mono;     // the power key's events are stamped in now_ms()'s clock (EVIOCSCLOCKID)
 static int g_watch = -1;
 static int g_sigpipe[2] = {-1, -1};
 static volatile sig_atomic_t g_quit;
@@ -615,8 +617,13 @@ static void handle_power_fd(void) {
     ssize_t r = read(g_power_fd, evs, sizeof evs);
     for (ssize_t i = 0; r > 0 && i < r / (ssize_t)sizeof evs[0]; i++)
         if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER) {
+            // Timed by when the kernel saw it, not when it was read: a short press whose release is
+            // read late (the loop was busy) must not count as a 4 s hold, nor a real one as short.
+            uint32_t t = g_power_mono ? (uint32_t)((uint64_t)evs[i].input_event_sec * 1000u +
+                                                   (uint64_t)evs[i].input_event_usec / 1000u)
+                                      : now_ms();
             int held = 0;
-            push_power(powerkey_event(&g_pkey, evs[i].value, now_ms(), &held), held);
+            push_power(powerkey_event(&g_pkey, evs[i].value, t, &held), held);
         }
 }
 
@@ -799,7 +806,11 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             g_caps.has_power = true;
             power_keys++;
             strlcpy_q(power_path, path, sizeof power_path);
-            qlog("input: power key %s (%s)", path, name);
+            // Its events stamped in now_ms()'s clock (only for this reader), to time a hold exactly.
+            int clk = CLOCK_MONOTONIC;
+            g_power_mono = ioctl(fd, EVIOCSCLOCKID, &clk) == 0;
+            qlog("input: power key %s (%s)%s", path, name,
+                 g_power_mono ? "" : ", timed when read (EVIOCSCLOCKID failed)");
         } else {
             if (power) {
                 power_keys++;

@@ -1,6 +1,7 @@
 # The power button's ways out of every stuck state: a sleep announcement Grimoire missed, a Kindle
 # still locked after a press, the side button and pinches while asleep, a wake announced while the
-# key is down, and the 4 s hold that saves and leaves Grimoire.
+# key is down, a press held short of 4 s, a press that follows another, and the 4 s hold that saves
+# and leaves Grimoire.
 wait 200
 tap 965 95
 wait 100
@@ -50,7 +51,14 @@ wait 400
 expect asleep is 0
 expect screen is editor
 shot 04-awake-ink-kept
-# A wake announced while the key is still down: its release must not ask for sleep 2.5 s later.
+# Grimoire thinks it is awake (it missed the Kindle going to sleep), the button goes down, and the
+# wake is announced while it is still down: its release must not ask for sleep 2.5 s later.
+power down
+wake
+power up
+wait 3000
+expect asleep is 0
+# The same on the sleep screen: a release is judged by the screen its press went down on.
 sleep
 wait 300
 power down
@@ -65,6 +73,33 @@ wake
 wait 3000
 expect asleep is 0
 shot 05-no-sleep-after-wake
+# The button held 3 s, short of the 4 s hold: nothing while it is down (no sleep request halfway
+# through a hold)...
+power down
+wait 3000
+expect asleep is 0
+shot 06-held-3s-still-awake
+# ...and its release is a short press: no announcement follows, so Grimoire asks for sleep.
+power up
+wait 3000
+expect asleep is 1
+wake
+wait 400
+expect asleep is 0
+# A short press, then the button held (press, see nothing, then hold: what a stuck user does):
+# the first press's sleep request must not go out while the second is down.
+power
+wait 1000
+power down
+wait 2500
+expect asleep is 0
+shot 07-second-press-held-still-awake
+power up
+sleep
+wait 300
+wake
+wait 400
+expect asleep is 0
 # Holding the power button 4 s saves the page and leaves Grimoire: the run ends here.
 pen line 300 1000 1400 1020 40 0.6 0.6
 powerhold

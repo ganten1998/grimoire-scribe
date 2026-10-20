@@ -40,7 +40,7 @@ typedef struct {
     float tilt_x, tilt_y;  // degrees from vertical, 0 if unsupported
     bool eraser;           // eraser end in use (BTN_TOOL_RUBBER)
     bool side_button;      // BTN_STYLUS held
-    int value;             // IN_ORIENTATION: quarter turns clockwise
+    int value;             // IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
     float x2, y2;          // pinch: the second finger (screen px)
     uint32_t t_ms;
 } InEvent;

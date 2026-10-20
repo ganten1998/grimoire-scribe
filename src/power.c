@@ -5,18 +5,18 @@
 #include <string.h>
 #include <strings.h>
 
-InType powerkey_event(PowerKey *k, int value, uint32_t now, int *held_ms) {
+InType powerkey_event(PowerKey *k, int value, uint32_t t, int *held_ms) {
     *held_ms = 0;
     if (value == 1) {
         // A press, even over one whose release never came: follow the new one.
         k->down = true;
         k->held_sent = false;
-        k->down_at = now;
+        k->down_at = t;
         return IN_POWER;
     }
     if (value == 0 && k->down) {
         k->down = false;
-        *held_ms = (int)(now - k->down_at);
+        *held_ms = (int)(t - k->down_at);
         return IN_POWER_UP;
     }
     return IN_NONE;
@@ -56,6 +56,17 @@ PowerdState powerd_parse_state(const char *s) {
 
 bool powerd_dozing(PowerdState s) {
     return s == POWERD_SCREENSAVER || s == POWERD_READY_TO_SUSPEND || s == POWERD_SUSPENDED;
+}
+
+PowerUpAction power_up_action(bool followed, bool answered, bool down_asleep, bool asleep, int held_ms) {
+    if (!followed) return POWER_UP_NOTHING;
+    // Held past the 4 s mark while Grimoire was busy (its IN_POWER_HELD never came): the release is
+    // the hold, answered or not, as the hold itself would have been.
+    if (held_ms >= INPUT_POWER_HOLD_MS) return POWER_UP_LEAVE;
+    // The power service answered (a wake announced while the key was down must not turn the release
+    // into a sleep request), or Grimoire slept or woke on its own while the key was down.
+    if (answered || down_asleep != asleep) return POWER_UP_NOTHING;
+    return asleep ? POWER_UP_WAKE_WAIT : POWER_UP_SLEEP_WAIT;
 }
 
 bool power_asleep_drops(const InEvent *ev) {

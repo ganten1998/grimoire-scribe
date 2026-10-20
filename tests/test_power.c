@@ -108,6 +108,55 @@ TEST(powerd_states) {
     CHECK(powerd_dozing(POWERD_SUSPENDED));
 }
 
+// A release read long after the key went up must be timed by the event stamps, not the read: the
+// platform passes the kernel's times, so a short press stays short and a real hold stays a hold.
+TEST(timed_by_event_stamps) {
+    PowerKey k = {0};
+    int held = 0;
+    g_down = 1;
+    powerkey_event(&k, 1, 1000, &held);              // the press, stamped 1000
+    CHECK(powerkey_event(&k, 0, 1200, &held) == IN_POWER_UP);  // its release, stamped 1200 (read at 6000)
+    CHECK(held == 200);
+    CHECK(power_up_action(true, false, false, false, held) == POWER_UP_SLEEP_WAIT);
+    // A real 4.5 s hold whose IN_POWER_HELD never went out (the loop was busy at the 4 s mark):
+    // both stamps arrive in one read, and the release is the hold.
+    powerkey_event(&k, 1, 20000, &held);
+    CHECK(powerkey_event(&k, 0, 24500, &held) == IN_POWER_UP);
+    CHECK(held == 4500);
+    CHECK(power_up_action(true, false, false, false, held) == POWER_UP_LEAVE);
+}
+
+TEST(release_decisions) {
+    // A short press while awake waits for goingToScreenSaver; on the sleep screen, for outOfScreenSaver.
+    CHECK(power_up_action(true, false, false, false, 150) == POWER_UP_SLEEP_WAIT);
+    CHECK(power_up_action(true, false, true, true, 150) == POWER_UP_WAKE_WAIT);
+    // Held 3 s, short of the hold: still a short press (its fallback starts at the release).
+    CHECK(power_up_action(true, false, false, false, 3000) == POWER_UP_SLEEP_WAIT);
+    CHECK(power_up_action(true, false, false, false, INPUT_POWER_HOLD_MS - 1) == POWER_UP_SLEEP_WAIT);
+    // A release whose time is unknown (it was lost, and found up at the 4 s check) is a short press.
+    CHECK(power_up_action(true, false, false, false, -1) == POWER_UP_SLEEP_WAIT);
+    CHECK(power_up_action(true, false, true, true, -1) == POWER_UP_WAKE_WAIT);
+    // Answered while the key was down: a wake announced mid-press asks for no sleep afterwards, on
+    // either screen (the ping-pong), and a sleep announced mid-press asks for no wake.
+    CHECK(power_up_action(true, true, false, false, 150) == POWER_UP_NOTHING);
+    CHECK(power_up_action(true, true, true, false, 150) == POWER_UP_NOTHING);
+    CHECK(power_up_action(true, true, true, true, 150) == POWER_UP_NOTHING);
+    CHECK(power_up_action(true, true, false, true, 150) == POWER_UP_NOTHING);
+    // Grimoire slept or woke on its own while the key was down: the release is judged by the
+    // screen its press went down on, so it asks for nothing.
+    CHECK(power_up_action(true, false, false, true, 150) == POWER_UP_NOTHING);
+    CHECK(power_up_action(true, false, true, false, 150) == POWER_UP_NOTHING);
+    // Held 4 s but the hold never reached Grimoire: the release leaves, whatever happened meanwhile.
+    CHECK(power_up_action(true, false, false, false, INPUT_POWER_HOLD_MS) == POWER_UP_LEAVE);
+    CHECK(power_up_action(true, true, true, false, 9000) == POWER_UP_LEAVE);
+    CHECK(power_up_action(true, false, true, true, 5000) == POWER_UP_LEAVE);
+    // A release with no press followed (the hold already spent it, or it was never seen): nothing,
+    // however long it claims.
+    CHECK(power_up_action(false, false, false, false, 150) == POWER_UP_NOTHING);
+    CHECK(power_up_action(false, false, false, false, INPUT_POWER_HOLD_MS + 200) == POWER_UP_NOTHING);
+    CHECK(power_up_action(false, false, true, true, 150) == POWER_UP_NOTHING);
+}
+
 static InEvent ev_of(InType t, bool side) {
     InEvent e = {0};
     e.type = t;
@@ -147,6 +196,8 @@ int main(void) {
     RUN(press_over_a_lost_release);
     RUN(clock_wraps);
     RUN(powerd_states);
+    RUN(timed_by_event_stamps);
+    RUN(release_decisions);
     RUN(asleep_drops);
     return tl_done();
 }

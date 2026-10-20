@@ -29,6 +29,7 @@ static const ScreenOps k_screens[SCR_COUNT] = {
 
 static void app_sleep(App *a);
 static void app_wake(App *a);
+static void app_leave(App *a);
 static App *g_probe_app;  // for app_probe (one App per process)
 
 const char *app_mirror_dir(void) {
@@ -113,6 +114,11 @@ void app_event(App *a, const InEvent *ev) {
         // decided at its release, or at the 4 s hold, which leaves Grimoire.
         qlog("power button: saving");
         if (a->scr == SCR_EDITOR) editor_save_now(a);
+        // It replaces the press before it: a fallback that one left waiting must not go off while
+        // this key is down (a sleep request in the middle of a hold: press, see nothing, then hold).
+        // Its own release arms whatever it needs.
+        a->power_pressed_at = 0;
+        a->wake_fallback_at = 0;
         a->power_down_at = now_ms() | 1;
         a->power_down_asleep = a->asleep;
         a->power_answered = false;
@@ -121,23 +127,27 @@ void app_event(App *a, const InEvent *ev) {
     if (ev->type == IN_POWER_UP) {
         if (ev->value >= 0) qlog("power button: up after %d ms", ev->value);
         else qlog("power button: up (its release was missed, so how long it was held is not known)");
-        bool pending = a->power_down_at && !a->power_answered;
+        bool followed = a->power_down_at != 0;
         a->power_down_at = 0;
         // A press the power service already answered needs nothing more: a wake announced while
         // the key was still down must not turn the release into a sleep request (that made the
         // Kindle fall asleep again right after waking).
-        if (!pending || ev->value >= INPUT_POWER_HOLD_MS) return;
-        if (!a->power_down_asleep && !a->asleep) a->power_pressed_at = now_ms() | 1;  // expect goingToScreenSaver soon
-        else if (a->power_down_asleep && a->asleep) a->wake_fallback_at = (now_ms() + 3000) | 1;  // and outOfScreenSaver
+        switch (power_up_action(followed, a->power_answered, a->power_down_asleep, a->asleep, ev->value)) {
+        case POWER_UP_SLEEP_WAIT: a->power_pressed_at = now_ms() | 1; break;          // expect goingToScreenSaver soon
+        case POWER_UP_WAKE_WAIT: a->wake_fallback_at = (now_ms() + 3000) | 1; break;  // and outOfScreenSaver
+        case POWER_UP_LEAVE:
+            qlog("power button held %d ms, but Grimoire was busy at the %d s mark: saving and leaving Grimoire",
+                 ev->value, INPUT_POWER_HOLD_MS / 1000);
+            app_leave(a);
+            break;
+        default: break;
+        }
         return;
     }
     if (ev->type == IN_POWER_HELD) {
         // The way out that always works: a locked Kindle, a panel that shows nothing, any screen.
-        // The launcher's exit trap gives the Kindle its UI back.
         qlog("power button held %d s: saving and leaving Grimoire", INPUT_POWER_HOLD_MS / 1000);
-        if (a->scr == SCR_EDITOR) editor_save_now(a);
-        if (!a->asleep) app_toast(a, "Saved. Leaving Grimoire.", 3000);  // shown by the last flush
-        a->running = false;
+        app_leave(a);
         return;
     }
     if (ev->type == IN_SLEEP) {
@@ -255,6 +265,19 @@ static void app_wake(App *a) {
     // UI (its screensaver closing, the status bar) drew something on the way out.
     app_redraw_mode(a, REFRESH_UI);
     a->wake_redraw_at = now_ms() + (a->settings.sleep_mode == 2 ? 2500 : 1500);
+}
+
+// Saves and leaves Grimoire: the way out of any stuck state (a 4 s hold of the power button). The
+// launcher's exit trap gives the Kindle its UI back.
+static void app_leave(App *a) {
+    if (a->scr == SCR_EDITOR) editor_save_now(a);
+    if (!a->asleep) {
+        char msg[64];
+        snprintf(msg, sizeof msg, "Saved. Leaving %s.", APP_NAME);
+        app_toast(a, msg, 3000);  // shown by the last flush
+    }
+    a->power_down_at = 0;  // the press is spent: its release, if it is read at all, asks for nothing
+    a->running = false;
 }
 
 void app_set_rotation(App *a, int r) {
