@@ -529,17 +529,21 @@ static void draw_settings(App *a) {
     hits_add(&S->hits, r3, H_SET_MIRROR, 0);
     y += ui_px(130);
     Rect r4 = {in.x, y, in.w, ui_px(110)};
-    // What holding the pen's side button does while writing (settings.ini side_button 0, 1, 2).
-    static const char *const btn_rows[3] = {
+    // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
+    static const char *const btn_rows[4] = {
         // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
         N_("Holding the pen button does nothing (tap to change)"),
         N_("Holding the pen button erases (tap to change)"),
         N_("Holding the pen button highlights (tap to change)"),
+        // TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
+        // draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
+        // at 44 px, sideways 1610, or two lines at 34 px.
+        N_("Holding the pen button draws white (tap to change)"),
     };
     canvas_fill(c, r4, 255);
     ui_icon(c, ICON_HIGHLIGHTER, (Rect){r4.x, r4.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
-    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){r4.x + ui_px(110), r4.y, r4.w - ui_px(110), r4.h},
-                   _(btn_rows[clampi(a->settings.side_button, 0, 2)]), 0);
+    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){r4.x + ui_px(110), r4.y, r4.w - ui_px(110), r4.h},
+            _(btn_rows[clampi(a->settings.side_button, 0, 3)]), 2, false, 0);
     hits_add(&S->hits, r4, H_SET_SIDE, 0);
     y += ui_px(130);
     Rect r5 = {in.x, y, in.w, ui_px(110)};
@@ -906,7 +910,7 @@ static void act(App *a, const Hit *h) {
         redraw(a, REFRESH_UI);
         break;
     case H_SET_SIDE:
-        a->settings.side_button = (a->settings.side_button + 1) % 3;
+        a->settings.side_button = (clampi(a->settings.side_button, 0, 3) + 1) % 4;
         settings_save(&a->settings);
         redraw(a, REFRESH_UI);
         break;

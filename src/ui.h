@@ -20,6 +20,7 @@ typedef enum {
     ICON_TUNE, ICON_RENAME, ICON_FOLDER_MOVE, ICON_FOLDER_PLUS, ICON_DOWNLOAD, ICON_HIGHLIGHTER,
     ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT, ICON_FOUNTAIN, ICON_FINELINER, ICON_MARKER,
     ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE, ICON_CHARCOAL, ICON_CALLIGRAPHY, ICON_LANGUAGE,
+    ICON_PIN, ICON_GRID,
     ICON_COUNT
 } IconKind;
 
@@ -42,6 +43,9 @@ float ui_small_size(void);       // small text px (~ 2.6 mm)
 IconKind ui_tool_icon(int tool);
 // Icon glyph scaled to fit r (with a small inset), centered.
 void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray);
+// The same icon hollow: its outline in edge, a few px wide, around its shape in inside (the
+// surface under it, so the glyph reads as drawn in outline). A pen that draws white ink shows so.
+void ui_icon_hollow(Canvas *c, IconKind k, Rect r, uint8_t edge, uint8_t inside);
 
 typedef enum { BTN_PLAIN = 0, BTN_SELECTED = 1, BTN_DISABLED = 2, BTN_PRIMARY = 3 } ButtonStyle;
 // Icon above label if both given; selected = inverted (black fill, white glyph). The label keeps
@@ -49,6 +53,9 @@ typedef enum { BTN_PLAIN = 0, BTN_SELECTED = 1, BTN_DISABLED = 2, BTN_PRIMARY = 
 // each way, 4 px clear of it. A label alone that is too long for its button (a translation) takes
 // a smaller size, down to the small one, then two lines (ui_text).
 void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st);
+// A button with its icon alone, drawn hollow (ui_icon_hollow) where ui_button draws it: the
+// editor's panel shows the pen in use so while it draws white ink.
+void ui_button_hollow(Canvas *c, Rect r, IconKind icon, ButtonStyle st);
 // The size ui_button draws a label alone at in r (the small size where it takes two lines), and
 // such a button with its label at px instead (one line at px, else two): a grid of buttons draws
 // every label at the smallest size any of them needs, rather than each at its own.

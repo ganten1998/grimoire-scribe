@@ -8,7 +8,7 @@
 
 #include "app.h"
 
-enum { H_BACK = 1, H_TAB, H_RESET, H_CLEAR, H_SLIDER, H_PAD };
+enum { H_BACK = 1, H_TAB, H_RESET, H_CLEAR, H_SLIDER, H_PAD, H_ERASER_MODE };
 
 struct PenSetState {
     ToolKind tab;
@@ -27,10 +27,14 @@ struct PenSetState {
     bool pen_owner;
     BrushState bs;
     Smoother sm;
-    // The precise eraser (eraser_mode 1) on the pad: an erase stroke, as in the editor, restoring
-    // the pad as it was drawn bare (its lines and its Clear button), copied here when it is.
+    // The precise eraser (eraser_mode 1) and white ink (white) on the pad: erase strokes, as in the
+    // editor, restoring the pad as it was drawn bare (its lines and its Clear button), copied here
+    // when it is. White on that shows nothing: the pad then has a black swatch to try it on.
     Canvas paper;
+    Rect swatch;           // empty when there is none
     bool erasing;          // the stroke on the pad is the precise eraser's
+    bool whiting;          // the stroke on the pad is white ink
+    bool wiping;           // the stroke on the pad is the stroke eraser's: it cleared the pad, and draws nothing
     float live_raw;        // last pen pressure seen on the pad (-1 none)
     float live_tx, live_ty;
     uint32_t last_readout;
@@ -47,7 +51,11 @@ static void value_text(const ParamInfo *pi, float v, char *buf, size_t cap) {
     // TRANSLATORS: an angle on Pen feel's sliders and in its readout ("45 deg"); "%d°" is fine.
     if (!strcmp(pi->unit, "deg")) snprintf(buf, cap, _("%d deg"), (int)lrintf(v));
     else if (!strcmp(pi->unit, "mm")) snprintf(buf, cap, "%.2f mm", v);
-    else if (!strcmp(pi->unit, "x")) snprintf(buf, cap, "+%.0f%%", v * 100.f);
+    // TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
+    // pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
+    // to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
+    // what it needs (about 120 px for "+400 %") and the name the rest.
+    else if (!strcmp(pi->unit, "x")) snprintf(buf, cap, _("+%.0f%%"), v * 100.f);
     else snprintf(buf, cap, "%.2f", v);
 }
 
@@ -155,11 +163,14 @@ static Rect clear_rect(App *a) {
     return (Rect){S->pad.x + S->pad.w - ui_px(220), S->pad.y + ui_px(14), ui_px(206), ui_px(100)};
 }
 
-// With the precise eraser, the pad as just drawn bare is its paper: the eraser restores it, lines
-// and Clear button, as it restores a page's paper in the editor (white ink here draws as ink: the
-// pad shows each tool's feel).
+// White ink on the pad: while the drawing tools draw white (settings.white), the pen draws white
+// on a drawing tool's tab, with its settings and texture, as in the editor.
+static bool pad_white(App *a) { return a->settings.white && S->tab != TOOL_ERASER; }
+
+// With the precise eraser or white ink, the pad as just drawn bare is its paper: they restore it,
+// lines and Clear button, as they restore a page's paper in the editor.
 static void pad_paper_take(App *a) {
-    if (a->settings.eraser_mode != 1) {
+    if (a->settings.eraser_mode != 1 && !pad_white(a)) {
         canvas_free(&S->paper);
         return;
     }
@@ -176,13 +187,21 @@ static void draw_pad_bare(App *a) {
     for (float y = S->pad.y + pitch; y < S->pad.y + S->pad.h - 4; y += pitch)
         canvas_hline(c, S->pad.x, S->pad.x + S->pad.w, (int)y, ui_px(2), 185);
     ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
-    // TRANSLATORS: the button that wipes Pen feel's test pad (190 px at 44 px, or 34 px).
+    // TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
     ui_button(c, clear_rect(a), ICON_NONE, _("Clear"), BTN_PLAIN);
 }
 
+// The pad drawn bare and taken as its paper; for white ink then a black swatch laid on it as ink,
+// under the Clear button's row (white on the bare pad shows nothing: on the swatch it shows the
+// tool's look, its grain and pressure, and the pad's lines it brings back).
 static void draw_pad_frame(App *a) {
     draw_pad_bare(a);
     pad_paper_take(a);
+    S->swatch = RECT_EMPTY;
+    if (pad_white(a) && S->paper.px) {
+        S->swatch = (Rect){S->pad.x + ui_px(30), S->pad.y + ui_px(130), S->pad.w - ui_px(60), S->pad.h - ui_px(160)};
+        canvas_fill(&a->screen, S->swatch, 0);
+    }
 }
 
 static void draw_all(App *a) {
@@ -195,7 +214,7 @@ static void draw_all(App *a) {
     ui_button(c, back, ICON_BACK, NULL, BTN_PLAIN);
     hits_add(&S->hits, back, H_BACK, 0);
     Rect reset = {a->w - m - ui_px(360), by, ui_px(360), bh};
-    // TRANSLATORS: puts the tool's pen feel back as it came (344 px at 44 px, or 34 px).
+    // TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
     ui_button(c, reset, ICON_NONE, _("Reset tool"), BTN_PLAIN);
     hits_add(&S->hits, reset, H_RESET, 0);
     char title[128];
@@ -228,6 +247,10 @@ static void draw_all(App *a) {
     hits_add(&S->hits, clear_rect(a), H_CLEAR, 0);
     // TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
     const char *pad = S->tab == TOOL_ERASER ? _("test pad (the eraser clears it)") : _("test pad");
+    if (S->tab == TOOL_ERASER && a->settings.eraser_mode == 1) pad = _("test pad");  // (it erases what it touches)
+    // TRANSLATORS: the same while the pens draw white ink, which shows only over ink: the pad then
+    // has a black part to try it on (1180 px at 34 px).
+    if (pad_white(a)) pad = _("test pad (white ink: try it on the black)");
     font_draw(c, FONT_REGULAR, ui_small_size(), S->pad.x, S->pad.y - ui_px(14), pad, 60);
     draw_readout(a);
     // Sliders.
@@ -251,9 +274,35 @@ static void draw_all(App *a) {
         S->nsliders++;
         y += rh;
     }
-    if (S->tab == TOOL_ERASER)
-        font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){m, y + ui_px(30), a->w - 2 * m, ui_px(80)},
-                       _("The eraser removes whole strokes; harder pressure = bigger reach."), 60);
+    if (S->tab != TOOL_ERASER) return;
+    // What the eraser does (settings.ini eraser_mode; its button in the editor, the pen's eraser
+    // end, the pen's button set to erase): two choices right of the row's name, where a slider row
+    // has its name and its track.
+    Rect row = {m, y + ui_px(24), a->w - 2 * m, ui_px(120)};
+    int name_w = row.w * 42 / 100, g = ui_px(20), cw = (row.w - name_w - g) / 2;
+    // TRANSLATORS: Pen feel's eraser tab: the name of the row that picks how the eraser works, left
+    // of its two choices, as a slider's name is left of it (720 px at 44 px, or two lines at 34 px).
+    const char *name = _("Eraser:");
+    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){row.x, row.y, name_w - ui_px(16), row.h}, name,
+            2, false, 0);
+    static const char *const modes[2] = {
+        // TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
+        // touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
+        NC_("eraser", "Whole strokes"),
+        // TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
+        // it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
+        NC_("eraser", "Precise"),
+    };
+    for (int i = 0; i < 2; i++) {
+        Rect r = {row.x + name_w + i * (cw + g), row.y, cw, row.h};
+        ui_button(c, r, ICON_NONE, C_("eraser", modes[i]), a->settings.eraser_mode == i ? BTN_SELECTED : BTN_PLAIN);
+        hits_add(&S->hits, r, H_ERASER_MODE, i);
+    }
+    y = row.y + row.h;
+    const char *note = _("The eraser removes whole strokes; harder pressure = bigger reach.");
+    // TRANSLATORS: under Pen feel's Eraser row while the precise eraser is picked (1760 px at 44 px).
+    if (a->settings.eraser_mode == 1) note = _("The eraser takes away only what it touches; harder pressure = bigger reach.");
+    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){m, y + ui_px(30), a->w - 2 * m, ui_px(80)}, note, 60);
 }
 
 void pensettings_open(App *a, ToolKind tab) {
@@ -276,6 +325,8 @@ void pensettings_enter(App *a) {
     S->active = -1;
     S->drawing = false;
     S->erasing = false;
+    S->whiting = false;
+    S->wiping = false;
     S->has_pressed = false;
     S->live_raw = -1.f;
     draw_all(a);
@@ -284,6 +335,8 @@ void pensettings_leave(App *a) {
     if (S->drawing) display_live_ink(false);  // left in the middle of a stroke on the pad
     S->drawing = false;
     S->erasing = false;
+    S->whiting = false;
+    S->wiping = false;
     canvas_free(&S->paper);
     settings_save(&a->settings);
 }
@@ -326,12 +379,14 @@ static void pad_sample(App *a, const InEvent *ev, bool first) {
     S->live_raw = ev->pressure;
     S->live_tx = ev->tilt_x;
     S->live_ty = ev->tilt_y;
-    if (S->tab == TOOL_ERASER && !S->erasing) return;
+    if (S->wiping) return;
     PenSample s = {ev->x, ev->y, ev->pressure, ev->tilt_x, ev->tilt_y, ev->t_ms};
-    if (first && S->erasing) {
-        // The precise eraser's round tip with its own settings (the pad is at 100%), restoring the
-        // pad's paper as the editor's restores a page's.
-        brush_begin(&S->bs, TOOL_ERASER, &a->settings.tools[TOOL_ERASER], ev->t_ms & 0xFFFFFFu, a->dpi);
+    if (first && (S->erasing || S->whiting)) {
+        // The precise eraser's round tip with its own settings (the pad is at 100%), or white ink
+        // with the tool's texture and settings, restoring the pad's paper as the editor's erase
+        // strokes restore a page's (their brush hashes the seed's low 24 bits).
+        ToolKind t = S->erasing ? TOOL_ERASER : S->tab;
+        brush_begin(&S->bs, t, &a->settings.tools[t], ev->t_ms & 0xFFFFFFu, a->dpi);
         brush_set_erase(&S->bs, S->paper.px, S->pad.x, S->pad.y, S->paper.stride);
         smoother_reset(&S->sm);
     } else if (first) {
@@ -369,7 +424,9 @@ void pensettings_event(App *a, const InEvent *ev) {
             // touches; the stroke eraser clears the pad.
             bool eraser = ev->eraser || S->tab == TOOL_ERASER;
             S->erasing = eraser && a->settings.eraser_mode == 1 && S->paper.px;
-            if (eraser && !S->erasing) {
+            S->whiting = !eraser && pad_white(a) && S->paper.px;
+            S->wiping = eraser && !S->erasing;
+            if (S->wiping) {
                 draw_pad_frame(a);
                 app_invalidate(a, rect_inflate(S->pad, ui_px(6)), REFRESH_UI);
             }
@@ -395,6 +452,8 @@ void pensettings_event(App *a, const InEvent *ev) {
         else {
             S->drawing = false;
             S->erasing = false;
+            S->whiting = false;
+            S->wiping = false;
             display_live_ink(false);
             draw_readout(a);
             draw_graph(a);
@@ -443,6 +502,13 @@ void pensettings_event(App *a, const InEvent *ev) {
         draw_pad_frame(a);
         app_invalidate(a, rect_inflate(S->pad, ui_px(6)), REFRESH_UI);
         break;
+    case H_ERASER_MODE:
+        // The pad is drawn bare again too: what the eraser does to it changes.
+        a->settings.eraser_mode = h.arg;
+        settings_save(&a->settings);
+        draw_all(a);
+        app_invalidate_all(a, REFRESH_UI);
+        break;
     default: break;
     }
 }
@@ -450,11 +516,22 @@ void pensettings_event(App *a, const InEvent *ev) {
 void pensettings_tick(App *a, uint32_t now) {}
 
 // Tests (app_probe's "penset." keys), while the pad keeps its copy of itself drawn bare (the precise
-// eraser on): "pad_ink" 1 while ink shows on the pad (a pixel darker than the bare pad there),
-// "pad_lighter" 1 when a pixel is lighter than the bare pad (one of its lines, or its Clear
-// button, erased away), "pad_ink_near.X.Y" 1 while ink shows within 12 px of the screen point X, Y.
-// Empty without the copy.
+// eraser on, or white ink): "pad_ink" 1 while ink shows on the pad (a pixel darker than the bare
+// pad there; white ink's swatch counts), "pad_lighter" 1 when a pixel is lighter than the bare pad
+// (one of its lines, or its Clear button, erased away), "pad_ink_near.X.Y" 1 while ink shows
+// within 12 px of the screen point X, Y. Empty without the copy. And "pad_white": 1 once white ink
+// (or the precise eraser) went through the swatch (a pixel of it lighter than black), empty
+// without a swatch.
 int pensettings_probe(App *a, const char *key, char *out, size_t cap) {
+    if (S && !strcmp(key, "pad_white")) {
+        bool lit = false;
+        for (int y = S->swatch.y; y < S->swatch.y + S->swatch.h && !lit; y++)
+            for (int x = S->swatch.x; x < S->swatch.x + S->swatch.w && !lit; x++)
+                lit = a->screen.px[(size_t)y * (size_t)a->screen.stride + (size_t)x] > 0;
+        if (rect_is_empty(S->swatch)) snprintf(out, cap, "%s", "");
+        else snprintf(out, cap, "%d", lit ? 1 : 0);
+        return 0;
+    }
     int px = 0, py = 0;
     bool near = !strncmp(key, "pad_ink_near.", 13) && sscanf(key + 13, "%d.%d", &px, &py) == 2;
     bool lighter = !strcmp(key, "pad_lighter");

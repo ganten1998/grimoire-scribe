@@ -1478,6 +1478,7 @@ void settings_default(Settings *s) {
     strlcpy_q(s->language, "auto", sizeof s->language);
     s->eraser_mode = 0;  // whole strokes, as before 1.1
     s->white = false;
+    s->before_eraser = -1;
 }
 
 // key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
@@ -1521,7 +1522,7 @@ static Sb g_set_unknown;
 static int g_set_dropped;  // unknown lines past the bound, logged once per load
 static struct {
     char key[48];
-    char used[24];  // the value used instead, as settings_save writes it
+    char used[64];  // the value used instead, as settings_save writes it (the longest: panel_tools)
     char *raw;      // the value in the file
 } g_kept[SETTINGS_KEPT_MAX];
 static int g_nkept;
@@ -1557,6 +1558,56 @@ static void keep_value(const char *k, const char *raw, const char *used) {
     strlcpy_q(g_kept[g_nkept].key, k, sizeof g_kept[0].key);
     strlcpy_q(g_kept[g_nkept].used, used, sizeof g_kept[0].used);
     g_kept[g_nkept++].raw = dup;
+}
+
+bool settings_pinned(const Settings *s, ToolKind t) {
+    for (int i = 0; i < s->npins && i < PANEL_PINS_MAX; i++)
+        if (s->pins[i] == t) return true;
+    return false;
+}
+
+bool settings_toggle_pin(Settings *s, ToolKind t) {
+    if ((unsigned)t >= TOOL_COUNT || t == TOOL_ERASER) return false;
+    for (int i = 0; i < s->npins; i++) {
+        if (s->pins[i] != t) continue;
+        memmove(&s->pins[i], &s->pins[i + 1], (size_t)(s->npins - i - 1) * sizeof s->pins[0]);
+        s->npins--;
+        return true;
+    }
+    if (s->npins >= PANEL_PINS_MAX) return false;
+    s->pins[s->npins++] = t;
+    return true;
+}
+
+void settings_pins_text(const Settings *s, char *out, size_t cap) {
+    size_t n = 0;
+    if (cap) out[0] = 0;
+    for (int i = 0; i < s->npins && i < PANEL_PINS_MAX && n < cap; i++)
+        n += (size_t)snprintf(out + n, cap - n, "%s%s", i ? "," : "", k_tool_keys[s->pins[i]]);
+}
+
+// panel_tools: the pinned pens' names in pin order, comma-separated (spaces around a name are
+// allowed). A name this version does not have (a newer one's pen), the eraser (it has its own
+// button) and a name already read are left out, and the first PANEL_PINS_MAX left are the pins.
+// A value read so is kept as it was until the pins change (keep_value).
+static void pins_kv(Settings *s, const char *k, const char *v) {
+    s->npins = 0;
+    for (const char *p = v; *p;) {
+        const char *e = strchr(p, ',');
+        size_t n = e ? (size_t)(e - p) : strlen(p);
+        const char *w = p;
+        size_t wn = n;
+        while (wn && *w == ' ') w++, wn--;
+        while (wn && w[wn - 1] == ' ') wn--;
+        for (int t = 0; t < TOOL_COUNT && s->npins < PANEL_PINS_MAX; t++)
+            if (t != TOOL_ERASER && strlen(k_tool_keys[t]) == wn && !strncmp(w, k_tool_keys[t], wn) &&
+                !settings_pinned(s, (ToolKind)t))
+                s->pins[s->npins++] = (ToolKind)t;
+        p = e ? e + 1 : p + n;
+    }
+    char used[128];
+    settings_pins_text(s, used, sizeof used);
+    keep_value(k, v, strcmp(v, used) ? used : NULL);
 }
 
 static int keep_int(const char *k, const char *v, int lo, int hi) {
@@ -1640,7 +1691,17 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
         keep_value(k, v, known ? NULL : "auto");
     } else if (!strcmp(k, "eraser_mode")) s->eraser_mode = keep_int(k, v, 0, 1);
     else if (!strcmp(k, "white")) s->white = keep_bool(k, v);
-    else return false;
+    else if (!strcmp(k, "panel_tools")) pins_kv(s, k, v);
+    else if (!strcmp(k, "before_eraser")) {
+        // A pen this version does not have (a newer one's), the eraser or no number at all is none
+        // here, and stays in the file.
+        char *end;
+        long x = strtol(v, &end, 10);
+        s->before_eraser = end != v && !*end && x >= 0 && x < TOOL_COUNT && x != TOOL_ERASER ? (int)x : -1;
+        char used[16];
+        snprintf(used, sizeof used, "%d", s->before_eraser);
+        keep_value(k, v, strcmp(v, used) ? used : NULL);
+    } else return false;
     return true;
 }
 
@@ -1746,6 +1807,9 @@ int settings_save(const Settings *s) {
     put_int(&b, "passcode_told", s->passcode_told);
     put_int(&b, "eraser_mode", s->eraser_mode);
     put_int(&b, "white", s->white);
+    settings_pins_text(s, t, sizeof t);
+    put(&b, "panel_tools", t);
+    put_int(&b, "before_eraser", s->before_eraser);
     snprintf(t, sizeof t, "%u", (unsigned)s->music_layout);
     put(&b, "music_layout", t);
     put(&b, "theme", s->theme == 1 ? "classic" : "gothic");

@@ -253,6 +253,91 @@ TEST(settings_upgrade_keeps_tweaks) {
     CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
 }
 
+// settings.ini's panel_tools: the pens pinned to the editor's panel, in pin order. A line written
+// by hand or by a newer version keeps the drawing tools this version has, each once, the eraser
+// left out, at most PANEL_PINS_MAX; it is written back as it was until the pins change.
+static bool has_pins_line(const char *path, const char *line) {
+    size_t len;
+    char *t = read_file(path, &len), want[200];
+    snprintf(want, sizeof want, "\n%s\n", line);
+    bool ok = t && strstr(t, want);
+    free(t);
+    return ok;
+}
+
+TEST(panel_tools) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    Settings s, t;
+    settings_default(&s);
+    CHECK(s.npins == 0 && !settings_pinned(&s, TOOL_PENCIL));
+    CHECK(settings_toggle_pin(&s, TOOL_HIGHLIGHTER) && settings_toggle_pin(&s, TOOL_FINELINER));
+    CHECK(!settings_toggle_pin(&s, TOOL_ERASER) && !settings_toggle_pin(&s, TOOL_COUNT));
+    CHECK(s.npins == 2 && settings_pinned(&s, TOOL_FINELINER) && !settings_pinned(&s, TOOL_ERASER));
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "panel_tools=highlighter,fineliner"));
+    CHECK(settings_load(&t) == 0 && t.npins == 2 && t.pins[0] == TOOL_HIGHLIGHTER && t.pins[1] == TOOL_FINELINER);
+    // None pinned: an empty line.
+    settings_default(&s);
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "panel_tools="));
+    CHECK(settings_load(&t) == 0 && t.npins == 0);
+    // Unknown names, the eraser and repeats are left out; the first four left are the pins.
+    const char *mixed = "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker\n";
+    CHECK(write_file_atomic(path, mixed, strlen(mixed)) == 0);
+    CHECK(settings_load(&t) == 0 && t.npins == 4);
+    CHECK(t.pins[0] == TOOL_HIGHLIGHTER && t.pins[1] == TOOL_PENCIL && t.pins[2] == TOOL_MECH_PENCIL &&
+          t.pins[3] == TOOL_BALLPOINT);
+    for (int i = 0; i < t.npins; i++)
+        for (int k = 0; k < i; k++) CHECK(t.pins[i] != t.pins[k] && t.pins[i] != TOOL_ERASER);
+    char text[128];
+    settings_pins_text(&t, text, sizeof text);
+    CHECK(!strcmp(text, "highlighter,pencil,mech,ballpoint"));
+    // Full: a fifth is refused, the pins stay as they were.
+    CHECK(!settings_toggle_pin(&t, TOOL_MARKER) && t.npins == 4 && !settings_pinned(&t, TOOL_MARKER));
+    // Saved unchanged, the line goes back as it was (a newer version's pen is still in it).
+    CHECK(settings_save(&t) == 0 &&
+          has_pins_line(path, "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker"));
+    // Changed, the pins are written as they are: unpinning one keeps the others' order.
+    CHECK(settings_toggle_pin(&t, TOOL_PENCIL) && t.npins == 3);
+    CHECK(settings_save(&t) == 0 && has_pins_line(path, "panel_tools=highlighter,mech,ballpoint"));
+    CHECK(settings_toggle_pin(&t, TOOL_CALLIGRAPHY) && t.pins[3] == TOOL_CALLIGRAPHY);
+    CHECK(settings_save(&t) == 0 && has_pins_line(path, "panel_tools=highlighter,mech,ballpoint,calligraphy"));
+    CHECK(settings_load(&s) == 0 && s.npins == 4 && s.pins[3] == TOOL_CALLIGRAPHY);
+    // Written by hand with spaces, and with nothing between commas.
+    const char *spaced = "panel_tools= fineliner ,, marker,\n";
+    CHECK(write_file_atomic(path, spaced, strlen(spaced)) == 0);
+    CHECK(settings_load(&t) == 0 && t.npins == 2 && t.pins[0] == TOOL_FINELINER && t.pins[1] == TOOL_MARKER);
+    unlink(path);
+}
+
+// settings.ini's before_eraser: the pen in use when the eraser was picked, -1 for none. A pen this
+// version lacks, the eraser or no number is none, and the line goes back as it was until it changes.
+TEST(before_eraser) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    Settings s, t;
+    settings_default(&s);
+    CHECK(s.before_eraser == -1);
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "before_eraser=-1"));
+    CHECK(settings_load(&t) == 0 && t.before_eraser == -1);
+    s.before_eraser = TOOL_MARKER;
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "before_eraser=7"));
+    CHECK(settings_load(&t) == 0 && t.before_eraser == TOOL_MARKER);
+    const char *odd[] = {"12", "3", "pencil", "4x", ""};
+    for (size_t i = 0; i < sizeof odd / sizeof odd[0]; i++) {
+        char f[64], line[64];
+        snprintf(f, sizeof f, "before_eraser=%s\n", odd[i]);
+        CHECK(write_file_atomic(path, f, strlen(f)) == 0);
+        CHECK(settings_load(&t) == 0 && t.before_eraser == -1);
+        snprintf(line, sizeof line, "before_eraser=%s", odd[i]);
+        CHECK(settings_save(&t) == 0 && has_pins_line(path, line));  // written back as it was
+    }
+    // Changed, it is written as it is.
+    t.before_eraser = TOOL_HIGHLIGHTER;
+    CHECK(settings_save(&t) == 0 && has_pins_line(path, "before_eraser=4"));
+    CHECK(settings_load(&s) == 0 && s.before_eraser == TOOL_HIGHLIGHTER);
+    unlink(path);
+}
+
 // A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
 // notebook.ini gets its page list back from the page files.
 TEST(damage_is_kept) {
@@ -346,6 +431,8 @@ int main(void) {
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
+    RUN(panel_tools);
+    RUN(before_eraser);
     RUN(safe_names);
     RUN(damage_is_kept);
     RUN(folder_named_like_a_comment);

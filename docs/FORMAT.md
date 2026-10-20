@@ -497,9 +497,11 @@ line. Values are clamped to their ranges when read.
 | `draw_tool` | the drawing tool the toolbar's tool button shows: 0 to 9 |
 | `panel_x`, `panel_y` | the floating panel's top-left, screen pixels (-1 = the default place) |
 | `panel_collapsed` | 0 or 1 |
-| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter (ink, even with `white`), 3 white ink with the pen's drawing tool (with the eraser picked, the drawing tool the toolbar shows; since 1.1). Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2: it reads 3 as 2, the highlighter, and saves 2; 1.0.0-beta.2 uses 3 as 2 and writes back 3) |
+| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter (ink, even with `white`), 3 white ink with the pen's drawing tool (with the eraser picked, the pen a tap on the eraser goes back to: `before_eraser`; since 1.1). Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2: it reads 3 as 2, the highlighter, and saves 2; 1.0.0-beta.2 uses 3 as 2 and writes back 3) |
 | `eraser_mode` | the eraser (its button, the pen's eraser end, `side_button` 1): 0 takes whole strokes away (never an erase stroke: that would bring back the ink it covers), 1 is the precise eraser, which draws erase strokes with the round tip (Erase strokes) and the eraser's settings, its widths divided by the zoom (at least 0.10 mm) so that it keeps its size on the screen. Numeric and append-only (since 1.1; 1.0.0-beta drops it and its eraser takes whole strokes away; 1.0.0-beta.2 keeps it) |
 | `white` | 0 or 1: the drawing tools draw white ink, erase strokes with each tool's own settings and texture (since 1.1; 1.0.0-beta drops it, 1.0.0-beta.2 keeps it) |
+| `panel_tools` | the pens pinned to the editor's panel under its tool button, in pin order: their names as `<tool>.<param>` has them (below), comma-separated, e.g. `highlighter,fineliner`; empty for none, spaces around a name allowed. A reader keeps the drawing tools it has, each once, in the order given, at most 4: a name it does not have (a later version's pen), `eraser` (the eraser has its own button) and a repeat are left out, and the line is written back as it was until the pins change (below). The pen in use (`current_tool`) always has a button: one that is neither `draw_tool` nor pinned (its pin dropped) becomes `draw_tool` as a notebook opens. Since 1.1; 1.0.0-beta drops it on its next save, 1.0.0-beta.2 keeps the line (neither has pins) |
+| `before_eraser` | the pen in use when the eraser was last picked on the panel: a tool id, 0 to 9 but the eraser's 3, or -1 for none (the default; any other value is read as -1 and written back as it was, below). A tap on the eraser in use goes back to it while it is on the panel (`draw_tool`, or pinned), else to `draw_tool`; while the eraser is in use the pen's button draws white (`side_button` 3) with that pen too. The pen's eraser end and its button never set it. Since 1.1; 1.0.0-beta drops it on its next save, 1.0.0-beta.2 keeps the line (the eraser of either goes back to `draw_tool`) |
 | `mirror_pdf` | 0 or 1: write `PDFs/<folder>/<name>.pdf` when a notebook closes |
 | `follow_rotation` | 0 or 1 |
 | `invert` | 0 or 1: white on black |
@@ -611,8 +613,9 @@ Frozen while 1.0.0-beta is in use:
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
   never touch (as `bg/`, Image papers, and `erased.txt`, the pages left to compact).
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
-  unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode` and
-  `white` are such keys: what a version does without them is in their own sections.)
+  unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode`,
+  `white`, `panel_tools` and `before_eraser` are such keys: what a version does without them is in
+  their own sections.)
 
 ## Moving between versions
 
@@ -649,6 +652,8 @@ row.
 | `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
 | `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale, on a Scribe of either size) |
 | `eraser_mode`, `white` | dropped on the next save; its eraser takes whole strokes away and its pens draw ink | kept; it does as 1.0.0-beta does |
+| `panel_tools` (pens pinned to the panel) | dropped on the next save (its panel has no pins): back in 1.1 the pens are pinned again by hand. A pinned pen in use stays the pen in use there, on no button of its panel; back in 1.1 it goes to the tool button (`draw_tool`) | kept (its panel has no pins; a pinned pen in use is on none of its buttons): back in 1.1 they are still pinned |
+| `before_eraser` (the pen the eraser goes back to) | dropped on the next save: its eraser, tapped again, goes back to `draw_tool`, as 1.1's does without the key | kept; its eraser goes back to `draw_tool`. Back in 1.1 the key names the pen used before the eraser was last picked in 1.1 |
 | `side_button=3` (white ink on the pen's button) | read as 2, the highlighter, and saved as 2 | used as 2, written back as 3 |
 | `erased.txt` (pages left to compact) | never read or written: it stays as it is | the same |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

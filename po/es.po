@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 10:07-0500\n"
+"POT-Creation-Date: 2026-10-20 13:53-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -408,7 +408,9 @@ msgstr "nunca"
 
 #. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
 #. at 44 px, on the keyboard 334 px at 44 px in bold.
-#: src/dispmenu.c src/keyboard.c src/library.c src/share.c
+#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
+#. that (116 px at 34 px, as Pin).
+#: src/dispmenu.c src/editor.c src/keyboard.c src/library.c src/share.c
 msgid "Done"
 msgstr "Listo"
 
@@ -438,13 +440,42 @@ msgstr "Partitura a medida..."
 msgid "%d%%   tap to reset"
 msgstr "%d %%   toca para restablecer"
 
+#. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
+#. the pens draw black ink. 426 px at 44 px, or two lines at 34 px.
+#: src/editor.c
+msgctxt "ink"
+msgid "Black"
+msgstr "Negro"
+
+#. TRANSLATORS: the other choice of the tool picker's ink row: the pens draw white ink, which
+#. takes away the ink under it and keeps the paper's lines (426 px at 44 px).
+#: src/editor.c
+msgctxt "ink"
+msgid "White"
+msgstr "Blanco"
+
+#. TRANSLATORS: the tool picker's button at the top right that starts choosing the pens pinned
+#. to the panel, beside a pin (116 px at 34 px; the button widens for a longer word).
+#: src/editor.c
+msgctxt "panel"
+msgid "Pin"
+msgstr "Fijar"
+
+#. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+#. tool button: a tap pins a pen or unpins it; %d is how many can be (4). About 700 px at 44 px
+#. in bold, or two lines at 34 px. Normally the title is Tools.
+#: src/editor.c
+#, c-format
+msgid "Pin to the panel (up to %d)"
+msgstr "Fijar en el panel (hasta %d)"
+
 #. TRANSLATORS: the title of the editor's tool picker.
 #: src/editor.c
 msgid "Tools"
 msgstr "Herramientas"
 
 #. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
-#. Calligraphy pen (284 px at 34 px, as the other tools' names).
+#. Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
 #: src/editor.c
 msgctxt "tool"
 msgid "Mechanical"
@@ -538,6 +569,16 @@ msgid "Deleted %d page (kept in %s)"
 msgid_plural "Deleted %d pages (kept in %s)"
 msgstr[0] "Se borró %d página (guardada en %s)"
 msgstr[1] "Se borraron %d páginas (guardadas en %s)"
+
+#. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
+#. panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+#. or two lines.
+#: src/editor.c
+#, c-format
+msgid "The panel holds up to %d pen. Unpin one first."
+msgid_plural "The panel holds up to %d pens. Unpin one first."
+msgstr[0] "En el panel cabe hasta %d herramienta. Quita una primero."
+msgstr[1] "En el panel caben hasta %d herramientas. Quita una primero."
 
 #: src/editor.c
 msgid "Could not add a page"
@@ -810,6 +851,14 @@ msgstr "Mantener presionado el botón del lápiz borra (toca para cambiar)"
 #: src/library.c
 msgid "Holding the pen button highlights (tap to change)"
 msgstr "Mantener presionado el botón del lápiz resalta (toca para cambiar)"
+
+#. TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
+#. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
+#. at 44 px, sideways 1610, or two lines at 34 px.
+#: src/library.c
+msgid "Holding the pen button draws white (tap to change)"
+msgstr ""
+"Mantener presionado el botón del lápiz dibuja en blanco (toca para cambiar)"
 
 #: src/library.c
 msgid "Turn with the Kindle (portrait and landscape)"
@@ -1154,6 +1203,15 @@ msgstr "Línea de letra"
 msgid "%d deg"
 msgstr "%d°"
 
+#. TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
+#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
+#. to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
+#. what it needs (about 120 px for "+400 %") and the name the rest.
+#: src/pensettings.c
+#, c-format
+msgid "+%.0f%%"
+msgstr "+%.0f %%"
+
 #. TRANSLATORS: the axes of Pen feel's pressure graph: under it, how hard the pen presses; over
 #. it, how much ink that puts down. Up to 570 px at 34 px (the test pad starts there).
 #: src/pensettings.c
@@ -1211,12 +1269,12 @@ msgstr "El plumín gira desde"
 msgid "Nib fully follows at"
 msgstr "Gira del todo desde"
 
-#. TRANSLATORS: the button that wipes Pen feel's test pad (190 px at 44 px, or 34 px).
+#. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
 #: src/pensettings.c
 msgid "Clear"
 msgstr "Limpiar"
 
-#. TRANSLATORS: puts the tool's pen feel back as it came (344 px at 44 px, or 34 px).
+#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
 #: src/pensettings.c
 msgid "Reset tool"
 msgstr "Restablecer"
@@ -1237,9 +1295,41 @@ msgstr "zona de prueba (el borrador la limpia)"
 msgid "test pad"
 msgstr "zona de prueba"
 
+#. TRANSLATORS: the same while the pens draw white ink, which shows only over ink: the pad then
+#. has a black part to try it on (1180 px at 34 px).
+#: src/pensettings.c
+msgid "test pad (white ink: try it on the black)"
+msgstr "zona de prueba (tinta blanca: pruébala sobre el negro)"
+
+#. TRANSLATORS: Pen feel's eraser tab: the name of the row that picks how the eraser works, left
+#. of its two choices, as a slider's name is left of it (720 px at 44 px, or two lines at 34 px).
+#: src/pensettings.c
+msgid "Eraser:"
+msgstr "Borrador:"
+
+#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
+#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
+#: src/pensettings.c
+msgctxt "eraser"
+msgid "Whole strokes"
+msgstr "Trazos enteros"
+
+#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
+#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
+#: src/pensettings.c
+msgctxt "eraser"
+msgid "Precise"
+msgstr "Preciso"
+
 #: src/pensettings.c
 msgid "The eraser removes whole strokes; harder pressure = bigger reach."
 msgstr "El borrador quita trazos enteros; más presión = más alcance."
+
+#. TRANSLATORS: under Pen feel's Eraser row while the precise eraser is picked (1760 px at 44 px).
+#: src/pensettings.c
+msgid ""
+"The eraser takes away only what it touches; harder pressure = bigger reach."
+msgstr "El borrador quita solo lo que toca; más presión = más alcance."
 
 #: src/pensettings.c
 msgid "Reset to defaults"
