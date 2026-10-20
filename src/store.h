@@ -1,4 +1,5 @@
-// store.h: everything on disk. See docs/DESIGN.md for the layout.
+// store.h: everything on disk. See docs/DESIGN.md for the layout and docs/FORMAT.md for the
+// files themselves.
 #pragma once
 #include "page.h"
 #include "input.h"
@@ -6,6 +7,7 @@
 #define STORE_MAX_PAGES 2000
 #define STORE_ID_LEN 24
 #define STORE_NAME_LEN 96
+#define STORE_EXTRA_LEN 2048
 
 typedef struct {
     char id[STORE_ID_LEN];        // directory name, e.g. "20261010-143205-a3f1"
@@ -17,6 +19,8 @@ typedef struct {
     int npages;
     uint32_t page_ids[STORE_MAX_PAGES]; // page order; files are p<id>.qpg
     uint32_t next_page_id;
+    char extra[STORE_EXTRA_LEN];  // notebook.ini lines this build does not know ("key=value\n"
+                                  // each), written back as they were
 } NotebookInfo;
 
 #define SETTINGS_VERSION 2
@@ -50,7 +54,10 @@ float store_dpi(void);
 void store_page_size(int *w, int *h);
 
 void settings_default(Settings *s);
-int settings_load(Settings *s);     // missing file / keys -> defaults; values clamped to ParamInfo ranges
+// Missing file / keys -> defaults; values clamped to ParamInfo ranges. What the file holds that
+// this build does not understand (a newer version's keys, or values beyond its ranges) is kept
+// and written back by settings_save (docs/FORMAT.md).
+int settings_load(Settings *s);
 int settings_save(const Settings *s);
 
 // Library. store_list allocates *out (free()); sorted by modified, newest first.
@@ -63,6 +70,11 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
 int store_load_info(const char *id, NotebookInfo *out);
 // Pages found damaged since the last call (each was renamed to p<id>.qpg.damaged-<time>).
 int store_take_corrupt_count(void);
+// When a notebook is opened: pages an older version set aside (p<id>.qpg.damaged-<time>, as
+// 1.0.0-beta does with any page from a newer version) that open now go back to p<id>.qpg, the
+// newest copy if there are several. Only pages in the page list come back; if p<id>.qpg exists
+// again, both are kept. Returns how many came back; each is logged.
+int store_recover_pages(const NotebookInfo *nb);
 int store_save_info(NotebookInfo *nb);      // also bumps modified
 int store_rename(const char *id, const char *name);
 int store_set_folder(const char *id, const char *folder);
@@ -70,10 +82,13 @@ int store_delete(const char *id);           // moves to trash/
 int store_notebook_dir(const char *id, char *buf, size_t cap);
 
 // Pages. Index is the position in nb->page_ids.
-int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper); // writes empty page + info
+// Writes an empty page (never over a page file already there: the next free id) + info.
+int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
 // Missing page file -> empty page of nb->paper. Points are scaled if the stored size differs.
+// A page from a newer version comes back read-only (Page.readonly) and is never set aside.
 int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out);
+// A read-only page is never written: its file stays as it is (and this returns 0).
 int store_save_page(const NotebookInfo *nb, int index, const Page *p);
 
 // The pinned sleep screen (a full page, P5 PGM at root/sleep.pgm).
@@ -84,11 +99,16 @@ int store_load_sleep_image(Canvas *out);
 int store_save_thumb(const char *id, const Canvas *thumb);
 int store_load_thumb(const char *id, Canvas *out);   // canvas_init'd by the callee
 
-// Page file format "QPG1" (little-endian):
-//   char magic[4]="QPG1"; u16 version=1; u16 paper; u32 w, h; u32 nstrokes;
-//   (version 2, custom music paper only: u32 paper follows h; the u16 then says PAPER_MUSIC)
-//   per stroke: u8 tool; u8 pad[3]; u32 seed; f32 params[13] (ToolParams field order);
+// Page file format "QPG1" (little-endian), byte by byte in docs/FORMAT.md:
+//   char magic[4]="QPG1"; u16 version; u16 paper; u32 w, h;   (these 16 bytes in every version)
+//   (version 2, a paper 1.0.0-beta does not know: u32 paper follows h; the u16 then says
+//    PAPER_MUSIC for custom music, PAPER_BLANK otherwise)  u32 nstrokes;
+//   per stroke: u8 tool; u8 ext[3]; u32 seed; f32 params[13] (ToolParams field order);
 //               u32 npts; per point: f32 x, y; u16 pressure*65535; i16 tilt_x*100, tilt_y*100; u32 t_ms
-// Readers reject bad magic, clamp counts against the file size, and never trust lengths.
+//   then chunks to the end of the file: u32 tag, u32 length, length bytes.
+// Readers reject bad magic, clamp counts against the file size, and never trust lengths. A page
+// from a newer version (version 3 to 255, a tool or a critical chunk this build does not know,
+// bytes after the strokes that are not chunks) reads as a read-only page instead of failing:
+// page_deserialize returns 0 with Page.readonly set, and page_serialize refuses such a page.
 int page_serialize(const Page *p, uint8_t **out, size_t *len);
 int page_deserialize(const uint8_t *buf, size_t len, Page **out);

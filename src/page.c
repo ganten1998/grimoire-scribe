@@ -81,7 +81,7 @@ Page *page_new(int w, int h, PaperKind paper) {
     if (!p) return NULL;
     p->w = w;
     p->h = h;
-    p->paper = paper_sanitize((uint32_t)paper, PAPER_BLANK);
+    p->paper = paper;  // an unknown kind stays as it is: a newer Grimoire draws it (docs/FORMAT.md)
     return p;
 }
 
@@ -89,6 +89,7 @@ void page_free(Page *p) {
     if (!p) return;
     page_clear_strokes(p);
     free(p->strokes);
+    free(p->tail);
     free(p);
 }
 
@@ -144,7 +145,7 @@ void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int la
     BrushState b;
     for (int i = 0; i < p->n; i++) {
         const Stroke *s = p->strokes[i];
-        if (!rect_overlaps(s->bbox, r)) continue;
+        if ((unsigned)s->tool >= TOOL_COUNT || !rect_overlaps(s->bbox, r)) continue;
         brush_begin(&b, s->tool, &s->params, s->seed, dpi);
         for (int k = 0; k < s->n; k++) brush_add(&b, c, &s->pts[k]);
     }

@@ -306,6 +306,7 @@ static void draw_panel(App *a) {
 
 static const Canvas *paper_preview(App *a, PaperKind k) {
     Canvas *c;
+    if (!paper_is_known(k)) k = PAPER_BLANK;  // a newer version's paper: blank, as it renders here
     if (paper_is_custom(k)) {
         c = &S->custom_prev;
         if (c->px && S->custom_prev_k != k) canvas_free(c);
@@ -338,9 +339,10 @@ static void draw_paper_sheet(App *a) {
     S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
     Rect in = ui_sheet(c, S->paper_rect, "Paper for this page");
     for (int i = 0; i < ntiles; i++) {
-        // The last tile is Custom music: it shows this page's layout, or the last one built.
+        // The last tile is Custom music: it shows this page's layout, or the last one built (also
+        // for a newer layout this build cannot draw, which is then not selected either).
         bool custom = i == PAPER_COUNT;
-        bool page_custom = S->page && paper_is_custom(S->page->paper);
+        bool page_custom = S->page && paper_is_known(S->page->paper) && paper_is_custom(S->page->paper);
         PaperKind k = custom ? (page_custom ? S->page->paper : a->settings.music_layout) : paper_at(i);
         Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap_), in.y + (i / cols) * cell_h, tw, th};
         canvas_fill(c, tr, 255);
@@ -656,7 +658,8 @@ static void save_thumb_from_canvas(App *a) {
 static bool save_page(App *a) {
     if (!S->open) return true;
     if (S->page_dirty) {
-        if (store_save_page(&S->nb, S->index, S->page) != 0) {
+        // A read-only page (from a newer Grimoire) is never written: its file stays as it is.
+        if (S->page && !S->page->readonly && store_save_page(&S->nb, S->index, S->page) != 0) {
             app_toast(a, "Could not save this page. Is the storage full?", 5000);
             return false;
         }
@@ -674,6 +677,24 @@ static bool save_page(App *a) {
 static void render_page_full(App *a) {
     page_render(&S->page_canvas, S->page, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
     S->canvas_page = S->page;
+}
+
+// A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
+// be and never changed: writing, erasing, clearing and paper changes are refused with this.
+static const char k_readonly_msg[] = "This page was made by a newer Grimoire. It is read-only here.";
+
+static bool refuse_readonly(App *a) {
+    if (!S->page || !S->page->readonly) return false;
+    app_toast(a, k_readonly_msg, 3000);
+    return true;
+}
+
+// On arriving at a page: a read-only page says so, and any other page takes that message down if
+// it is still up from the page before, so it never seems to be about this one.
+static void arrive_readonly(App *a) {
+    if (refuse_readonly(a) || !a->toast_visible || strcmp(a->toast, k_readonly_msg)) return;
+    a->toast_visible = false;
+    app_invalidate(a, a->toast_rect, REFRESH_UI);  // (already inside the arriving page's full repaint)
 }
 
 static void go_to_page(App *a, int index) {
@@ -694,6 +715,7 @@ static void go_to_page(App *a, int index) {
     render_page_full(a);
     view_reset(a);
     compose_all(a, REFRESH_FULL);
+    arrive_readonly(a);
 }
 
 static void close_notebook(App *a) {
@@ -728,6 +750,7 @@ void editor_open_notebook(App *a, const char *id) {
         app_toast(a, "Could not open that notebook", 3000);
         return;
     }
+    store_recover_pages(&S->nb);  // pages an older version set aside that open now
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
     S->page = page_at(a, S->index);
     if (!S->page) {
@@ -741,6 +764,7 @@ void editor_open_notebook(App *a, const char *id) {
     render_page_full(a);
     S->view_w = 0;  // set the view up afresh on enter
     app_switch(a, SCR_EDITOR);
+    arrive_readonly(a);
 }
 
 void editor_save_now(App *a) { save_page(a); }
@@ -767,6 +791,12 @@ static ToolKind effective_tool(App *a, const InEvent *ev) {
 }
 
 static void draw_begin(App *a, const InEvent *ev) {
+    if (refuse_readonly(a)) {  // neither ink nor the eraser (tool, eraser end or side button)
+        if (S->btn_down) S->btn_used_for_ink = true;
+        S->owner = OWN_MODAL;  // swallow the rest of this stroke
+        S->has_pressed = false;
+        return;
+    }
     ToolKind t = effective_tool(a, ev);
     if (t == TOOL_ERASER) {
         S->owner = OWN_ERASE;
@@ -903,6 +933,7 @@ static void erase_end(App *a) {
 }
 
 static void clear_page(App *a) {
+    if (refuse_readonly(a)) return;
     if (!S->page || S->page->n == 0) {
         app_toast(a, "This page is already empty", 1500);
         return;
@@ -945,6 +976,7 @@ static void pen_button(App *a, const InEvent *ev) {
 
 static void undo_redo(App *a, bool undo) {
     settle_now(a);
+    if (refuse_readonly(a)) return;
     History *h = cur_hist(a);
     Rect d;
     if (!h || !(undo ? history_undo(h, S->page, &d) : history_redo(h, S->page, &d))) return;
@@ -1127,6 +1159,7 @@ static void panel_act(App *a, const Hit *h) {
         go_to_page(a, S->index + 1);
         break;
     case P_PAPER:
+        if (refuse_readonly(a)) break;
         S->paper_open = true;
         draw_paper_sheet(a);
         app_invalidate(a, S->paper_rect, REFRESH_UI);
@@ -1154,6 +1187,7 @@ static void panel_act(App *a, const Hit *h) {
 
 // Changes this page's paper (undoable) and repaints.
 static void apply_paper(App *a, PaperKind k) {
+    if (refuse_readonly(a)) return;
     History *hi = cur_hist(a);
     if (hi) history_push_paper(hi, S->page->paper, k);
     S->page->paper = k;

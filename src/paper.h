@@ -22,6 +22,8 @@ typedef enum {
     PAPER_BASS7 = 16,
     PAPER_COUNT,          // fixed kinds end here
     // A custom music layout (see MusicLayout): this flag | systems << 24 | part i << 4*i.
+    // The top four bits name the namespace; 0x5 (image papers) and 0x6 (a ruled-paper builder)
+    // are reserved for later versions (docs/FORMAT.md).
     PAPER_CUSTOM_FLAG = 0x40000000
 } PaperKind;
 
@@ -42,8 +44,11 @@ typedef struct {
     MusicPart part[MUSIC_MAX_PARTS];
 } MusicLayout;
 
-bool paper_is_custom(PaperKind k);
-// A fixed kind or a well-formed custom layout; anything else becomes `fallback`.
+bool paper_is_custom(PaperKind k);   // in the custom music namespace (well-formed or not)
+// A fixed kind or a well-formed custom layout. Anything else is a paper from a newer version:
+// pages keep it, draw it blank and call it "Newer paper".
+bool paper_is_known(PaperKind k);
+// A known kind as it is; anything else becomes `fallback` (where a known kind is required).
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback);
 PaperKind music_encode(const MusicLayout *m);
 bool music_decode(PaperKind k, MusicLayout *m);   // false if k is not a custom layout
@@ -55,11 +60,11 @@ PaperKind music_default(void);                    // treble staff over 6-line ta
 // Pickers offer the fixed kinds in paper_at() order, then one "Custom music" tile.
 #define PAPER_PICKER_COUNT (PAPER_COUNT + 1)
 
-const char *paper_name(PaperKind k);   // e.g. "Narrow rule", "Narrow, no margin", "Sheet music"
+const char *paper_name(PaperKind k);   // e.g. "Narrow rule", "Narrow, no margin", "Newer paper"
 // The order papers are offered in pickers (index 0..PAPER_COUNT-1 -> kind).
 PaperKind paper_at(int index);
 
 // Renders the background for `region` of a full page canvas (canvas size = page size).
 // Must be a pure function of (kind, canvas w/h, dpi, pixel position) so any sub-region
-// re-render matches a full render exactly.
+// re-render matches a full render exactly. A kind this build does not know is blank paper.
 void paper_render(Canvas *c, PaperKind k, Rect region, float dpi);
