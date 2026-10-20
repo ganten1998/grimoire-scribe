@@ -333,7 +333,7 @@ static void expect_read(const char *s) {
     if (*v == ' ' || *v == '\t') v++;  // the one space before the value
     size_t vl = strcspn(v, "\r\n");
     int op = -1;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < (int)(sizeof k_expect_ops / sizeof k_expect_ops[0]); i++)
         if (ol == strlen(k_expect_ops[i]) && !strncmp(o, k_expect_ops[i], ol)) op = i;
     if (kl == 0 || kl >= sizeof g_expect.key || op < 0 || vl >= sizeof g_expect.value) {
         g_expect.bad = true;

@@ -1531,7 +1531,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
     static const char *const tools[] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
                                         "fountain", "fineliner", "marker",    "charcoal", "calligraphy"};
     if (!S) return -1;
-    bool page = S->open && S->page;
+    bool has_page = S->open && S->page;
     if (!strcmp(key, "page")) {
         snprintf(out, cap, "%d", S->open ? S->index + 1 : 0);
     } else if (!strcmp(key, "pages")) {
@@ -1552,11 +1552,11 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
                                         : "none";
         snprintf(out, cap, "%s", m);
     } else if (!strcmp(key, "strokes")) {
-        snprintf(out, cap, "%d", page ? S->page->n : 0);
+        snprintf(out, cap, "%d", has_page ? S->page->n : 0);
     } else if (!strcmp(key, "ticked")) {
         snprintf(out, cap, "%d", S->pages_open ? pages_selected(a) : 0);
     } else if (!strcmp(key, "paper")) {
-        if (!page) snprintf(out, cap, "none");
+        if (!has_page) snprintf(out, cap, "none");
         else if (paper_is_custom(S->page->paper)) snprintf(out, cap, "custom");
         else snprintf(out, cap, "%d", (int)S->page->paper);
     } else if (!strcmp(key, "panel")) {

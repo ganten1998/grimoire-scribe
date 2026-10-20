@@ -371,7 +371,7 @@ int app_probe(const char *key, char *out, size_t cap) {
     if (!strcmp(key, "light.intensity") || !strcmp(key, "light.warmth")) {
         int li, lw;
         light_get(&li, &lw);
-        snprintf(out, cap, "%d", key[6] == 'i' ? li : lw);
+        snprintf(out, cap, "%d", !strcmp(key, "light.intensity") ? li : lw);
         return 0;
     }
     if (!strcmp(key, "screen")) snprintf(out, cap, "%s", k_names[a->scr]);
