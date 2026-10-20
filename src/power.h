@@ -52,6 +52,14 @@ typedef enum {
 } PowerUpAction;
 PowerUpAction power_up_action(bool followed, bool answered, bool down_asleep, bool asleep, int held_ms);
 
+// The wake fallback: a short press on the sleep screen, and no outOfScreenSaver 3 s later. With the
+// power service awake (or unreadable), wake. Still in its screensaver or deeper, the Kindle is
+// locked (its passcode) or asleep: stay on the sleep screen, and the second time in a row leave
+// Grimoire, so the Kindle gets its screen, pen and touch back even on a device whose power key
+// cannot report a 4 s hold. `*locked` counts those in a row; a wake (any) resets it.
+typedef enum { WAKE_FALLBACK_WAKE, WAKE_FALLBACK_STAY, WAKE_FALLBACK_LEAVE } WakeFallback;
+WakeFallback power_wake_fallback(PowerdState st, int *locked);
+
 // Input Grimoire ignores while it shows its sleep screen (or the Kindle's): pen and touch, and the
 // start of a side button press or of a pinch (three clicks cleared the page, a pinch zoomed it).
 // Their ends still get through, so one that began before the sleep finishes: a button left down

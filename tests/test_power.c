@@ -157,6 +157,25 @@ TEST(release_decisions) {
     CHECK(power_up_action(false, false, true, true, 150) == POWER_UP_NOTHING);
 }
 
+TEST(wake_fallback_locked_twice) {
+    int locked = 0;
+    // Awake or unreadable: wake, and nothing is counted.
+    CHECK(power_wake_fallback(POWERD_ACTIVE, &locked) == WAKE_FALLBACK_WAKE);
+    CHECK(power_wake_fallback(POWERD_UNKNOWN, &locked) == WAKE_FALLBACK_WAKE);
+    CHECK(locked == 0);
+    // Still locked: stay on the sleep screen once, leave the second time in a row.
+    CHECK(power_wake_fallback(POWERD_SCREENSAVER, &locked) == WAKE_FALLBACK_STAY);
+    CHECK(locked == 1);
+    CHECK(power_wake_fallback(POWERD_SCREENSAVER, &locked) == WAKE_FALLBACK_LEAVE);
+    // A wake in between starts the count again (app_wake also resets it, for outOfScreenSaver).
+    locked = 0;
+    CHECK(power_wake_fallback(POWERD_READY_TO_SUSPEND, &locked) == WAKE_FALLBACK_STAY);
+    CHECK(power_wake_fallback(POWERD_ACTIVE, &locked) == WAKE_FALLBACK_WAKE);
+    CHECK(locked == 0);
+    CHECK(power_wake_fallback(POWERD_SUSPENDED, &locked) == WAKE_FALLBACK_STAY);
+    CHECK(power_wake_fallback(POWERD_SCREENSAVER, &locked) == WAKE_FALLBACK_LEAVE);
+}
+
 static InEvent ev_of(InType t, bool side) {
     InEvent e = {0};
     e.type = t;
@@ -198,6 +217,7 @@ int main(void) {
     RUN(powerd_states);
     RUN(timed_by_event_stamps);
     RUN(release_decisions);
+    RUN(wake_fallback_locked_twice);
     RUN(asleep_drops);
     return tl_done();
 }

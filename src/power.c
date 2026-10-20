@@ -69,6 +69,14 @@ PowerUpAction power_up_action(bool followed, bool answered, bool down_asleep, bo
     return asleep ? POWER_UP_WAKE_WAIT : POWER_UP_SLEEP_WAIT;
 }
 
+WakeFallback power_wake_fallback(PowerdState st, int *locked) {
+    if (!powerd_dozing(st)) {
+        *locked = 0;
+        return WAKE_FALLBACK_WAKE;
+    }
+    return ++*locked >= 2 ? WAKE_FALLBACK_LEAVE : WAKE_FALLBACK_STAY;
+}
+
 bool power_asleep_drops(const InEvent *ev) {
     switch (ev->type) {
     case IN_PEN_DOWN:
