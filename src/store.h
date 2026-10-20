@@ -7,6 +7,7 @@
 #define STORE_MAX_PAGES 2000
 #define STORE_ID_LEN 24
 #define STORE_NAME_LEN 96
+#define STORE_EXTRA_LEN 2048
 
 typedef struct {
     char id[STORE_ID_LEN];        // directory name, e.g. "20261010-143205-a3f1"
@@ -18,6 +19,8 @@ typedef struct {
     int npages;
     uint32_t page_ids[STORE_MAX_PAGES]; // page order; files are p<id>.qpg
     uint32_t next_page_id;
+    char extra[STORE_EXTRA_LEN];  // notebook.ini lines this build does not know ("key=value\n"
+                                  // each), written back as they were
 } NotebookInfo;
 
 #define SETTINGS_VERSION 2
@@ -51,7 +54,10 @@ float store_dpi(void);
 void store_page_size(int *w, int *h);
 
 void settings_default(Settings *s);
-int settings_load(Settings *s);     // missing file / keys -> defaults; values clamped to ParamInfo ranges
+// Missing file / keys -> defaults; values clamped to ParamInfo ranges. What the file holds that
+// this build does not understand (a newer version's keys, or values beyond its ranges) is kept
+// and written back by settings_save (docs/FORMAT.md).
+int settings_load(Settings *s);
 int settings_save(const Settings *s);
 
 // Library. store_list allocates *out (free()); sorted by modified, newest first.

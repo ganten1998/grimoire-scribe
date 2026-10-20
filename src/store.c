@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,11 +62,62 @@ int store_notebook_dir(const char *id, char *buf, size_t cap) {
     return 0;
 }
 
+// ---- text ----
+
+// A growing text buffer: appends never run past it, and a failed allocation sticks (err).
+typedef struct {
+    char *d;
+    size_t n, cap;
+    bool err;
+} Sb;
+
+static bool sb_room(Sb *b, size_t more) {
+    if (b->err) return false;
+    if (b->n + more < b->cap) return true;
+    size_t nc = b->cap ? b->cap : 1024;
+    while (nc <= b->n + more) nc *= 2;
+    char *nd = realloc(b->d, nc);
+    if (!nd) {
+        b->err = true;
+        return false;
+    }
+    b->d = nd;
+    b->cap = nc;
+    return true;
+}
+
+static void sb_put(Sb *b, const char *s, size_t len) {
+    if (!sb_room(b, len)) return;
+    memcpy(b->d + b->n, s, len);
+    b->n += len;
+    b->d[b->n] = 0;
+}
+
+static void sb_printf(Sb *b, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void sb_printf(Sb *b, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int k = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (k < 0) {
+        b->err = true;
+        return;
+    }
+    if (!sb_room(b, (size_t)k)) return;
+    va_start(ap, fmt);
+    vsnprintf(b->d + b->n, b->cap - b->n, fmt, ap);
+    va_end(ap);
+    b->n += (size_t)k;
+}
+
 // ---- tiny ini ----
 
-typedef void (*IniCb)(void *ctx, const char *key, const char *val);
+// Returns false for a key it does not know: the line then goes to `unknown` (if given), so keys
+// a newer version wrote can be written back (docs/FORMAT.md).
+typedef bool (*IniCb)(void *ctx, const char *key, const char *val);
+typedef void (*IniUnknown)(void *ctx, const char *key, const char *val);
 
-static int ini_parse_file(const char *path, IniCb cb, void *ctx) {
+static int ini_parse_file(const char *path, IniCb cb, IniUnknown unknown, void *ctx) {
     size_t len;
     char *txt = read_file(path, &len);
     if (!txt) return -1;
@@ -77,7 +129,7 @@ static int ini_parse_file(const char *path, IniCb cb, void *ctx) {
         char *v = eq + 1;
         size_t vl = strlen(v);
         if (vl && v[vl - 1] == '\r') v[vl - 1] = 0;
-        cb(ctx, line, v);
+        if (!cb(ctx, line, v) && unknown) unknown(ctx, line, v);
     }
     free(txt);
     return 0;
@@ -92,11 +144,12 @@ static void clean_line(char *dst, const char *src, size_t cap) {
 
 // ---- notebooks ----
 
-static void info_cb(void *ctx, const char *k, const char *v) {
+static bool info_cb(void *ctx, const char *k, const char *v) {
     NotebookInfo *nb = ctx;
     if (!strcmp(k, "name")) clean_line(nb->name, v, sizeof nb->name);
     else if (!strcmp(k, "folder")) clean_line(nb->folder, v, sizeof nb->folder);
-    else if (!strcmp(k, "paper")) nb->paper = paper_sanitize((uint32_t)strtoul(v, NULL, 10), PAPER_MEDIUM);
+    // A paper this build does not know stays as it is: new pages get it, a newer version draws it.
+    else if (!strcmp(k, "paper")) nb->paper = (PaperKind)(uint32_t)strtoul(v, NULL, 10);
     else if (!strcmp(k, "created")) nb->created = atoll(v);
     else if (!strcmp(k, "modified")) nb->modified = atoll(v);
     else if (!strcmp(k, "last_page")) nb->last_page = atoi(v);
@@ -111,7 +164,20 @@ static void info_cb(void *ctx, const char *k, const char *v) {
             if (id > 0) nb->page_ids[nb->npages++] = (uint32_t)id;
             p = *end == ',' ? end + 1 : end;
         }
+    } else return false;
+    return true;
+}
+
+// notebook.ini lines this build does not know, written back after the keys it knows. Whole lines
+// only: one that no longer fits is left out (and logged).
+static void info_unknown(void *ctx, const char *k, const char *v) {
+    NotebookInfo *nb = ctx;
+    size_t have = strnlen(nb->extra, sizeof nb->extra), need = strlen(k) + strlen(v) + 2;
+    if (have + need >= sizeof nb->extra) {
+        qlog("store: %s: notebook.ini line \"%.40s\" does not fit, not kept", nb->id, k);
+        return;
     }
+    snprintf(nb->extra + have, sizeof nb->extra - have, "%s=%s\n", k, v);
 }
 
 static int cmp_u32(const void *a, const void *b) {
@@ -147,7 +213,7 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
     memset(out, 0, sizeof *out);
     strlcpy_q(out->id, id, sizeof out->id);
     snprintf(path, sizeof path, "%s/notebook.ini", dir);
-    if (ini_parse_file(path, info_cb, out) != 0) return -1;
+    if (ini_parse_file(path, info_cb, info_unknown, out) != 0) return -1;
     if (out->npages == 0) {
         // A damaged or empty notebook.ini: rebuild the page list from the page files, so the
         // next save cannot drop every page but the first.
@@ -171,22 +237,20 @@ static int write_info(const NotebookInfo *nb) {
     char dir[600], path[700];
     if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return -1;
     snprintf(path, sizeof path, "%s/notebook.ini", dir);
-    size_t cap = 1024 + (size_t)nb->npages * 12;
-    char *buf = malloc(cap);
-    if (!buf) return -1;
     char name[STORE_NAME_LEN], folder[STORE_NAME_LEN];
     clean_line(name, nb->name, sizeof name);
     clean_line(folder, nb->folder, sizeof folder);
-    int n = snprintf(buf, cap,
-                     "# Grimoire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n"
-                     "last_page=%d\nnext_page_id=%u\npages=",
-                     name, folder, (unsigned)nb->paper, (long long)nb->created, (long long)nb->modified, nb->last_page,
-                     nb->next_page_id);
-    for (int i = 0; i < nb->npages && (size_t)n < cap - 16; i++)
-        n += snprintf(buf + n, cap - (size_t)n, "%s%u", i ? "," : "", nb->page_ids[i]);
-    n += snprintf(buf + n, cap - (size_t)n, "\n");
-    int rc = write_file_atomic(path, buf, (size_t)n);
-    free(buf);
+    Sb b = {0};
+    sb_printf(&b,
+              "# Grimoire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n"
+              "last_page=%d\nnext_page_id=%u\npages=",
+              name, folder, (unsigned)nb->paper, (long long)nb->created, (long long)nb->modified, nb->last_page,
+              nb->next_page_id);
+    for (int i = 0; i < nb->npages && i < STORE_MAX_PAGES; i++) sb_printf(&b, "%s%u", i ? "," : "", nb->page_ids[i]);
+    sb_put(&b, "\n", 1);
+    sb_put(&b, nb->extra, strnlen(nb->extra, sizeof nb->extra));  // keys a newer version wrote, as they were
+    int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
+    free(b.d);
     return rc;
 }
 
@@ -963,22 +1027,82 @@ void settings_default(Settings *s) {
     s->http_port = 8765;
 }
 
-static void calib_kv(InputCalib *c, const char *k, const char *v) {
+static bool calib_kv(InputCalib *c, const char *k, const char *v) {
     if (!strcmp(k, "valid")) c->valid = atoi(v) != 0;
     else if (!strcmp(k, "swap")) c->swap_xy = atoi(v) != 0;
     else if (!strcmp(k, "ax")) c->ax = strtof(v, NULL);
     else if (!strcmp(k, "bx")) c->bx = strtof(v, NULL);
     else if (!strcmp(k, "ay")) c->ay = strtof(v, NULL);
     else if (!strcmp(k, "by")) c->by = strtof(v, NULL);
+    else return false;
+    return true;
 }
 
-static void settings_cb(void *ctx, const char *k, const char *v) {
+// What settings.ini holds that this build does not understand goes back into the file as it
+// was: lines with keys it does not know (written after the ones it knows), and values of known
+// keys it cannot use as written (side_button=3, a theme it lacks, a slider past its range). Such a
+// value is used as the nearest one this build has, and written back unchanged while the setting
+// still has that value. Kept here, not in Settings (which is copied by value), for the file
+// settings_load read last.
+#define SETTINGS_UNKNOWN_MAX 65536  // bytes of unknown lines kept (a bound against a runaway file)
+#define SETTINGS_KEPT_MAX 64
+static Sb g_set_unknown;
+static int g_set_dropped;  // unknown lines past the bound, logged once per load
+static struct {
+    char key[48];
+    char used[24];  // the value used instead, as settings_save writes it
+    char *raw;      // the value in the file
+} g_kept[SETTINGS_KEPT_MAX];
+static int g_nkept;
+
+static void forget_unknown_settings(void) {
+    free(g_set_unknown.d);
+    g_set_unknown = (Sb){0};
+    for (int i = 0; i < g_nkept; i++) free(g_kept[i].raw);
+    g_nkept = 0;
+}
+
+static void settings_unknown(void *ctx, const char *k, const char *v) {
+    size_t need = strlen(k) + strlen(v) + 2;
+    if (g_set_unknown.n + need > SETTINGS_UNKNOWN_MAX) {
+        g_set_dropped++;
+        return;
+    }
+    sb_printf(&g_set_unknown, "%s=%s\n", k, v);
+}
+
+// A known key read: `used` is what this build made of `raw` when it could not use it as written,
+// NULL when it could (which forgets an earlier line's kept value: the last line counts).
+static void keep_value(const char *k, const char *raw, const char *used) {
+    int i = 0;
+    while (i < g_nkept && strcmp(g_kept[i].key, k)) i++;
+    if (i < g_nkept) {
+        free(g_kept[i].raw);
+        g_kept[i] = g_kept[--g_nkept];
+    }
+    if (!used || g_nkept == SETTINGS_KEPT_MAX || strlen(k) >= sizeof g_kept[0].key || strlen(raw) > 256) return;
+    char *dup = strdup(raw);
+    if (!dup) return;
+    strlcpy_q(g_kept[g_nkept].key, k, sizeof g_kept[0].key);
+    strlcpy_q(g_kept[g_nkept].used, used, sizeof g_kept[0].used);
+    g_kept[g_nkept++].raw = dup;
+}
+
+static int keep_int(const char *k, const char *v, int lo, int hi) {
+    int x = atoi(v), c = clampi(x, lo, hi);
+    char used[16];
+    snprintf(used, sizeof used, "%d", c);
+    keep_value(k, v, x != c ? used : NULL);
+    return c;
+}
+
+static bool settings_cb(void *ctx, const char *k, const char *v) {
     Settings *s = ctx;
     const char *dot = strchr(k, '.');
     if (dot) {
         char head[32];
         size_t hl = (size_t)(dot - k);
-        if (hl >= sizeof head) return;
+        if (hl >= sizeof head) return false;
         memcpy(head, k, hl);
         head[hl] = 0;
         const char *field = dot + 1;
@@ -988,30 +1112,48 @@ static void settings_cb(void *ctx, const char *k, const char *v) {
             if (strcmp(head, k_tool_keys[t])) continue;
             int n;
             const ParamInfo *pi = tool_param_table(&n);
-            for (int i = 0; i < n; i++)
-                if (!strcmp(field, pi[i].key)) {
-                    float f = strtof(v, NULL);
-                    if (f == f) *tool_param_ptr(&s->tools[t], &pi[i]) = clampf(f, pi[i].min, pi[i].max);
+            for (int i = 0; i < n; i++) {
+                if (strcmp(field, pi[i].key)) continue;
+                float f = strtof(v, NULL);
+                if (f == f) {
+                    float c = clampf(f, pi[i].min, pi[i].max);
+                    *tool_param_ptr(&s->tools[t], &pi[i]) = c;
+                    char used[24];
+                    snprintf(used, sizeof used, "%.4f", c);
+                    keep_value(k, v, f != c ? used : NULL);
                 }
+                return true;
+            }
+            return false;  // a setting this version's tools do not have
         }
-        return;
+        return false;      // a tool (or group) this version does not have
     }
-    if (!strcmp(k, "current_tool")) s->current_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
-    else if (!strcmp(k, "music_layout")) s->music_layout = paper_sanitize((uint32_t)strtoul(v, NULL, 10), music_default());
-    else if (!strcmp(k, "draw_tool")) s->draw_tool = (ToolKind)clampi(atoi(v), 0, TOOL_COUNT - 1);
+    if (!strcmp(k, "current_tool")) s->current_tool = (ToolKind)keep_int(k, v, 0, TOOL_COUNT - 1);
+    else if (!strcmp(k, "music_layout")) {
+        uint32_t x = (uint32_t)strtoul(v, NULL, 10);
+        s->music_layout = paper_sanitize(x, music_default());
+        char used[16];
+        snprintf(used, sizeof used, "%u", (unsigned)s->music_layout);
+        keep_value(k, v, (uint32_t)s->music_layout != x ? used : NULL);
+    } else if (!strcmp(k, "draw_tool")) s->draw_tool = (ToolKind)keep_int(k, v, 0, TOOL_COUNT - 1);
     else if (!strcmp(k, "panel_x")) s->panel_x = atoi(v);
     else if (!strcmp(k, "panel_y")) s->panel_y = atoi(v);
     else if (!strcmp(k, "panel_collapsed")) s->panel_collapsed = atoi(v) != 0;
-    else if (!strcmp(k, "side_button")) s->side_button = clampi(atoi(v), 0, 2);
+    else if (!strcmp(k, "side_button")) s->side_button = keep_int(k, v, 0, 2);
     else if (!strcmp(k, "mirror_pdf")) s->mirror_pdf = atoi(v) != 0;
     else if (!strcmp(k, "follow_rotation")) s->follow_rotation = atoi(v) != 0;
     else if (!strcmp(k, "invert")) s->invert = atoi(v) != 0;
     else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = atoi(v) != 0;
-    else if (!strcmp(k, "theme")) s->theme = !strcmp(v, "classic") ? 1 : 0;
-    else if (!strcmp(k, "sleep_mode")) s->sleep_mode = clampi(atoi(v), 0, 2);
-    else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = clampi(atoi(v), 0, 240);
+    else if (!strcmp(k, "theme")) {
+        s->theme = !strcmp(v, "classic") ? 1 : 0;
+        keep_value(k, v, s->theme == 1 || !strcmp(v, "gothic") ? NULL : "gothic");
+    } else if (!strcmp(k, "sleep_mode")) s->sleep_mode = keep_int(k, v, 0, 2);
+    else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = keep_int(k, v, 0, 240);
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
+    // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
+    else return false;
+    return true;
 }
 
 // Defaults that changed between versions. A saved value still equal to the old default was never
@@ -1047,40 +1189,74 @@ static void settings_upgrade(Settings *s) {
 int settings_load(Settings *s) {
     settings_default(s);
     s->version = 0;  // files written before versioning have no settings_version key
+    forget_unknown_settings();
+    g_set_dropped = 0;
     char path[600];
     snprintf(path, sizeof path, "%s/settings.ini", g_root);
-    int rc = ini_parse_file(path, settings_cb, s) == 0 ? 0 : 1;
+    int rc = ini_parse_file(path, settings_cb, settings_unknown, s) == 0 ? 0 : 1;
+    if (g_set_dropped) qlog("settings: %d unknown line(s) past %d bytes not kept", g_set_dropped, SETTINGS_UNKNOWN_MAX);
     if (rc == 0) settings_upgrade(s);
     else s->version = SETTINGS_VERSION;
     return rc;
 }
 
+// One known key: a value kept from the file goes back as it was while the setting is unchanged.
+static void put(Sb *b, const char *k, const char *v) {
+    for (int i = 0; i < g_nkept; i++)
+        if (!strcmp(g_kept[i].key, k)) {
+            if (!strcmp(g_kept[i].used, v)) v = g_kept[i].raw;
+            break;
+        }
+    sb_printf(b, "%s=%s\n", k, v);
+}
+
+static void put_int(Sb *b, const char *k, int v) {
+    char t[16];
+    snprintf(t, sizeof t, "%d", v);
+    put(b, k, t);
+}
+
 int settings_save(const Settings *s) {
     char path[600];
     snprintf(path, sizeof path, "%s/settings.ini", g_root);
-    size_t cap = 8192, n = 0;
-    char *buf = malloc(cap);
-    if (!buf) return -1;
-    n += (size_t)snprintf(buf + n, cap - n,
-                          "# Grimoire settings\ncurrent_tool=%d\ndraw_tool=%d\npanel_x=%d\npanel_y=%d\npanel_collapsed=%d\n"
-                          "side_button=%d\nmirror_pdf=%d\nfollow_rotation=%d\ninvert=%d\npinch_zoom=%d\nsleep_mode=%d\nsleep_minutes=%d\nhttp_port=%d\n"
-                          "music_layout=%u\ntheme=%s\nsettings_version=%d\n",
-                          (int)s->current_tool, (int)s->draw_tool, s->panel_x, s->panel_y, s->panel_collapsed, s->side_button,
-                          s->mirror_pdf, s->follow_rotation, s->invert, s->pinch_zoom, s->sleep_mode, s->sleep_minutes, s->http_port,
-                          (unsigned)s->music_layout, s->theme == 1 ? "classic" : "gothic", SETTINGS_VERSION);
+    Sb b = {0};
+    char t[64];
+    sb_printf(&b, "# Grimoire settings\n");
+    put_int(&b, "current_tool", (int)s->current_tool);
+    put_int(&b, "draw_tool", (int)s->draw_tool);
+    put_int(&b, "panel_x", s->panel_x);
+    put_int(&b, "panel_y", s->panel_y);
+    put_int(&b, "panel_collapsed", s->panel_collapsed);
+    put_int(&b, "side_button", s->side_button);
+    put_int(&b, "mirror_pdf", s->mirror_pdf);
+    put_int(&b, "follow_rotation", s->follow_rotation);
+    put_int(&b, "invert", s->invert);
+    put_int(&b, "pinch_zoom", s->pinch_zoom);
+    put_int(&b, "sleep_mode", s->sleep_mode);
+    put_int(&b, "sleep_minutes", s->sleep_minutes);
+    put_int(&b, "http_port", s->http_port);
+    snprintf(t, sizeof t, "%u", (unsigned)s->music_layout);
+    put(&b, "music_layout", t);
+    put(&b, "theme", s->theme == 1 ? "classic" : "gothic");
+    // A newer version's settings_version stays as it is: its own upgrades have already run.
+    put_int(&b, "settings_version", s->version > SETTINGS_VERSION ? s->version : SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
     for (int i = 0; i < 2; i++)
-        n += (size_t)snprintf(buf + n, cap - n, "%s.valid=%d\n%s.swap=%d\n%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n",
-                              cn[i], cs[i]->valid, cn[i], cs[i]->swap_xy, cn[i], cs[i]->ax, cn[i], cs[i]->bx, cn[i],
-                              cs[i]->ay, cn[i], cs[i]->by);
+        sb_printf(&b, "%s.valid=%d\n%s.swap=%d\n%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n", cn[i], cs[i]->valid,
+                  cn[i], cs[i]->swap_xy, cn[i], cs[i]->ax, cn[i], cs[i]->bx, cn[i], cs[i]->ay, cn[i], cs[i]->by);
     int np;
     const ParamInfo *pi = tool_param_table(&np);
-    for (int t = 0; t < TOOL_COUNT; t++)
-        for (int i = 0; i < np; i++)
-            n += (size_t)snprintf(buf + n, cap - n, "%s.%s=%.4f\n", k_tool_keys[t], pi[i].key,
-                                  *tool_param_ptr((ToolParams *)&s->tools[t], &pi[i]));
-    int rc = write_file_atomic(path, buf, n);
-    free(buf);
+    for (int tk = 0; tk < TOOL_COUNT; tk++)
+        for (int i = 0; i < np; i++) {
+            char key[64];
+            snprintf(key, sizeof key, "%s.%s", k_tool_keys[tk], pi[i].key);
+            snprintf(t, sizeof t, "%.4f", *tool_param_ptr((ToolParams *)&s->tools[tk], &pi[i]));
+            put(&b, key, t);
+        }
+    // Lines this build does not know, as they were.
+    if (g_set_unknown.n) sb_put(&b, g_set_unknown.d, g_set_unknown.n);
+    int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
+    free(b.d);
     return rc;
 }
