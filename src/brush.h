@@ -87,7 +87,10 @@ typedef struct {
     float nib_c, nib_s;  // edge angle, so an edge and its reverse are the same orientation
     // Erase mode (brush_set_erase): the dabs restore the paper instead of depositing ink.
     bool erase;
-    bool restored;           // erase mode: a dab has lightened at least one pixel so far
+    bool restored;           // erase mode: a dab has lightened a pixel of the canvas drawn on so far.
+                             // That canvas only: over ink the page's darker lines hide, an erase
+                             // stroke can leave the page as it was and still change the ink layer,
+                             // so whether a stroke may be left out is page_droppable's to say
     const uint8_t *paper;    // the paper under the canvas, one byte per pixel; NULL = white
     int paper_x0, paper_y0;  // the canvas pixel that paper[0] lies under
     int paper_stride;

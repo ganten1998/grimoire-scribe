@@ -608,8 +608,8 @@ TEST(fully_erased_stroke_leaves_nothing) {
 }
 
 // A reworked page: words erased whole, half, by two erasers together, a white pencil over a word,
-// erasers on bare paper, and a word written after the erasing.
-enum { RW_A, RW_EA, RW_B, RW_EB, RW_C, RW_EC1, RW_EC2, RW_D, RW_ED, RW_E, RW_WP, RW_NA, RW_NB, RW_F, RW_G, RW_COUNT };
+// erasers on bare paper, and words written after the erasing.
+enum { RW_A, RW_EA, RW_B, RW_EB, RW_C, RW_EC1, RW_EC2, RW_D, RW_ED, RW_E, RW_WP, RW_NA, RW_NB, RW_F, RW_G, RW_H, RW_COUNT };
 static Page *reworked_page(PaperKind k) {
     Page *pg = page_new(W, H, k);
     Stroke *s[RW_COUNT];
@@ -628,8 +628,21 @@ static Page *reworked_page(PaperKind k) {
     s[RW_NB] = white(TOOL_CHARCOAL, 900, 1600, 1500, 1650, 30, 0.8f, 1.f, 30, 30, 13u);
     s[RW_F] = ink(TOOL_MARKER, 220, 400, 480, 410, 10, 0.8f, 0.8f, 0, 0, 14u);  // over the erased word A
     s[RW_G] = ink(TOOL_PENCIL, 900, 2000, 1500, 2000, 10, 0.f, 0.f, 0, 0, 15u);  // below the deadzone, no eraser near
+    s[RW_H] = ink(TOOL_PENCIL, 950, 1420, 1450, 1430, 10, 0.f, 0.f, 0, 0, 16u);  // the same, over the earlier RW_NA
     for (int i = 0; i < RW_COUNT; i++) page_add(pg, s[i]);
     return pg;
+}
+
+// A staff line of music paper (drawn into scratch) at x = 1000: the centre of its rows, which are
+// darker than the highlighter's ink, and how many rows thick it is.
+static float staff_line(Canvas *scratch, int *thickness) {
+    paper_render(scratch, PAPER_MUSIC, FULL, DPI);
+    int y0 = 0, lt = 0;
+    for (int y = 0; y < H && !lt; y++)
+        if (scratch->px[y * W + 1000] <= 110)
+            for (y0 = y; scratch->px[(y0 + lt) * W + 1000] <= 110;) lt++;
+    *thickness = lt;
+    return (float)y0 + (float)lt * 0.5f;
 }
 
 // Compaction lists exactly what can go: the full render and the ink layer of the page without
@@ -671,9 +684,10 @@ TEST(compaction_drops_only_what_changes_nothing) {
         view_free(v);
         if (kinds[ki] == PAPER_MEDIUM) {
             // Gone: the words erased whole and their erasers, the erasers on bare paper. Kept: what
-            // still shows, and ink no eraser reaches even when it draws nothing (not erasing's to drop).
+            // still shows, and ink no later eraser reaches even when it draws nothing (not erasing's
+            // to drop), also over an earlier eraser.
             static const int gone[] = {RW_A, RW_EA, RW_B, RW_EB, RW_C, RW_EC1, RW_EC2, RW_NA, RW_NB};
-            static const int kept[] = {RW_D, RW_ED, RW_E, RW_WP, RW_F, RW_G};
+            static const int kept[] = {RW_D, RW_ED, RW_E, RW_WP, RW_F, RW_G, RW_H};
             for (size_t i = 0; i < sizeof gone / sizeof gone[0]; i++) CHECK(drop[gone[i]]);
             for (size_t i = 0; i < sizeof kept / sizeof kept[0]; i++) CHECK(!drop[kept[i]]);
             CHECK(n == (int)(sizeof gone / sizeof gone[0]));
@@ -685,13 +699,9 @@ TEST(compaction_drops_only_what_changes_nothing) {
     // below makes it a candidate (their boxes meet, their pixels do not).
     {
         Page *mp = page_new(W, H, PAPER_MUSIC);
-        paper_render(&a, PAPER_MUSIC, FULL, DPI);
-        int y0 = 0, lt = 0;
-        for (int y = 0; y < H && !lt; y++)
-            if (a.px[y * W + 1000] <= 110)
-                for (y0 = y; a.px[(y0 + lt) * W + 1000] <= 110;) lt++;
+        int lt;
+        float yc = staff_line(&a, &lt);
         CHECK(lt >= 2 && lt <= 4);
-        float yc = (float)y0 + (float)lt * 0.5f;
         ToolParams hp;
         tool_params_default(TOOL_HIGHLIGHTER, &hp);
         hp.size_min_mm = hp.size_max_mm = 0.1f;
@@ -734,6 +744,105 @@ TEST(compaction_drops_only_what_changes_nothing) {
     canvas_free(&b);
 }
 
+// Ink the page shows and the ink layer does not: a light pencil line along a staff line, under a
+// highlighter at full strength. On the ink layer the highlighter buries the pencil (both settle on
+// the same gray), but on the page the staff line is darker than the highlighter's ink, which leaves
+// it alone, so there the pencil still darkens the line. An eraser after them reaches into the
+// pencil's box without touching it, which makes the pencil a candidate: only the page's check
+// keeps it.
+TEST(compaction_checks_the_page_too) {
+    Canvas a, b;
+    canvas_init(&a, W, H);
+    canvas_init(&b, W, H);
+    int lt;
+    float yc = staff_line(&a, &lt);
+    CHECK(lt >= 2 && lt <= 4);
+    ToolParams pp, hp;
+    tool_params_default(TOOL_PENCIL, &pp);
+    tool_params_default(TOOL_HIGHLIGHTER, &hp);
+    hp.opacity_min = hp.opacity_max = 1.f;
+    Stroke *pencil = stroke_new(TOOL_PENCIL, &pp, 41u), *hl = stroke_new(TOOL_HIGHLIGHTER, &hp, 42u);
+    for (int i = 0; i <= 50; i++) {
+        PenSample q = {700.f + (float)i * 10.f, yc, 0.3f, 0, 0, (uint32_t)i * 5u};
+        stroke_append(pencil, &q, DPI);
+    }
+    for (int i = 0; i <= 80; i++) {
+        PenSample q = {600.f + (float)i * 10.f, yc, 1.f, 0, 0, (uint32_t)i * 5u};
+        stroke_append(hl, &q, DPI);
+    }
+    Page *mp = page_new(W, H, PAPER_MUSIC);
+    page_add(mp, pencil);
+    page_add(mp, hl);
+    page_add(mp, rubber(1250, yc, 1500, yc, 1.f, 43u));
+    CHECK(rect_overlaps(mp->strokes[0]->bbox, mp->strokes[2]->bbox));
+    // Without the pencil: another page, the same ink layer.
+    bool none[3] = {false, false, false}, first[3] = {true, false, false}, md[3];
+    Page *with = page_without(mp, none), *without = page_without(mp, first);
+    page_render(&a, with, FULL, DPI);
+    page_render(&b, without, FULL, DPI);
+    CHECK(diff_px(&a, &b, FULL) > 20);
+    canvas_fill(&a, FULL, 255);
+    canvas_fill(&b, FULL, 255);
+    page_render_layers(&a, with, FULL, DPI, PAGE_LAYER_INK);
+    page_render_layers(&b, without, FULL, DPI, PAGE_LAYER_INK);
+    CHECK(diff_px(&a, &b, FULL) == 0);
+    CHECK(page_droppable(mp, DPI, md) == 0 && !md[0] && !md[1] && !md[2]);
+    view_free(with);
+    view_free(without);
+    page_free(mp);
+    canvas_free(&a);
+    canvas_free(&b);
+}
+
+// BrushState.restored tells whether a stroke changed the canvas it drew on, the page. An eraser
+// over ink the paper hides there (a thin highlighter on a staff line darker than its ink) reports
+// no change, yet it changes the ink layer: page_droppable, which checks both, keeps it. It, not
+// `restored`, decides what a page may leave out.
+TEST(restored_is_the_page_only) {
+    Canvas paper, live, a, b;
+    canvas_init(&paper, W, H);
+    canvas_init(&live, W, H);
+    canvas_init(&a, W, H);
+    canvas_init(&b, W, H);
+    int lt;
+    float yc = staff_line(&paper, &lt);
+    CHECK(lt >= 2 && lt <= 4);
+    canvas_blit(&live, &paper, FULL, 0, 0);
+    ToolParams hp, ep;
+    tool_params_default(TOOL_HIGHLIGHTER, &hp);
+    hp.size_min_mm = hp.size_max_mm = 0.1f;
+    tool_params_default(TOOL_ERASER, &ep);
+    ep.size_min_mm = ep.size_max_mm = 0.1f;  // the precise eraser at its smallest, along the same points
+    Stroke *hl = stroke_new(TOOL_HIGHLIGHTER, &hp, 51u);
+    Stroke *er = stroke_new(TOOL_ERASER, &ep, erase_seed(TOOL_ERASER, 52u));
+    for (int i = 0; i <= 50; i++) {
+        PenSample q = {700.f + (float)i * 10.f, yc, 0.7f, 0, 0, (uint32_t)i * 5u};
+        stroke_append(hl, &q, DPI);
+        stroke_append(er, &q, DPI);
+    }
+    Page *mp = page_new(W, H, PAPER_MUSIC);
+    bool restored = true, md[2], no_eraser[2] = {false, true};
+    page_add(mp, draw_live(&live, &paper, hl, NULL));
+    page_add(mp, draw_live(&live, &paper, er, &restored));
+    CHECK(!restored);
+    CHECK(diff_px(&live, &paper, FULL) == 0);  // nothing changed on the page...
+    canvas_fill(&a, FULL, 255);
+    page_render_layers(&a, mp, FULL, DPI, PAGE_LAYER_INK);
+    Page *v = page_without(mp, no_eraser);
+    canvas_fill(&b, FULL, 255);
+    page_render_layers(&b, v, FULL, DPI, PAGE_LAYER_INK);
+    CHECK(diff_px(&a, &b, FULL) > 100);  // ...but the eraser changed the ink layer
+    CHECK(page_droppable(mp, DPI, md) == 0 && !md[0] && !md[1]);
+    view_free(v);
+    page_free(mp);
+    stroke_free(hl);
+    stroke_free(er);
+    canvas_free(&paper);
+    canvas_free(&live);
+    canvas_free(&a);
+    canvas_free(&b);
+}
+
 // The page and its ink layer must be drawn in one call: the ink layer alone restores toward white,
 // so drawing it over the paper in a second pass wipes the lines under every erase stroke.
 TEST(one_call_keeps_the_lines) {
@@ -766,8 +875,8 @@ TEST(one_call_keeps_the_lines) {
     page_free(pg);
 }
 
-// BrushState.restored says whether an erase stroke changed anything (the editor drops one that did
-// not): never on bare paper, always over ink, with or without the fast path.
+// BrushState.restored says whether an erase stroke changed the canvas it drew on: never on bare
+// paper, always over ink, with or without the fast path.
 TEST(restored_tells_a_no_op) {
     enum { PW = 600, PH = 400 };
     Canvas paper, c;
@@ -961,8 +1070,203 @@ TEST(reader_and_rescale_know_the_texture) {
     CHECK(system(cmd) == 0);
 }
 
+// ---- the look of erase strokes, recorded ----
+
+// GRIMOIRE_GOLDEN_PRINT=1 prints the table below instead of checking it (that is how it was made),
+// as in test_golden.c. FORMAT.md freezes how an erase stroke draws from 1.1 on, and until a
+// released version has drawn one, this table is what keeps a change to it from passing unnoticed:
+// re-record it only for a change meant to alter that look, before 1.1 ships; never afterwards, and
+// never to make another change pass. The values hold for the host build this suite runs on (clang
+// on arm64 macOS); elsewhere floats may round differently, so there the comparison is skipped.
+#if defined(__clang__) && defined(__aarch64__) && defined(__APPLE__)
+#define GOLDEN_HOST 1
+#else
+#define GOLDEN_HOST 0
+#endif
+
+// Recorded on 2026-10-20 from the 1.1 engine (lane inkcore).
+static const struct {
+    const char *name;
+    uint32_t crc;
+} k_look[] = {
+    {"medium rule, white pencil", 0x807def5du},
+    {"medium rule, white pencil, ink", 0x0ca259eau},
+    {"medium rule, white mechanical pencil", 0x20505b6eu},
+    {"medium rule, white mechanical pencil, ink", 0xc3f29e67u},
+    {"medium rule, white ballpoint", 0xfa3c4357u},
+    {"medium rule, white ballpoint, ink", 0x140df6f3u},
+    {"medium rule, round tip", 0x7de3880bu},
+    {"medium rule, round tip, ink", 0x6533900bu},
+    {"medium rule, white highlighter", 0x800f1d04u},
+    {"medium rule, white highlighter, ink", 0x2b56527cu},
+    {"medium rule, white fountain pen", 0x17a61725u},
+    {"medium rule, white fountain pen, ink", 0x32a41ca7u},
+    {"medium rule, white fineliner", 0x73b1784eu},
+    {"medium rule, white fineliner, ink", 0x1754e09fu},
+    {"medium rule, white marker", 0xbab3dfeeu},
+    {"medium rule, white marker, ink", 0x3c47f3e8u},
+    {"medium rule, white charcoal", 0x9f243fbdu},
+    {"medium rule, white charcoal, ink", 0xb3961079u},
+    {"medium rule, white calligraphy pen", 0xb1fc2850u},
+    {"medium rule, white calligraphy pen, ink", 0x5cec3bd2u},
+    {"medium rule, soft round tip", 0x621d8e19u},
+    {"medium rule, soft round tip, ink", 0x36779c1eu},
+    {"medium rule, fine round tip", 0xf477bc76u},
+    {"medium rule, fine round tip, ink", 0xacafd213u},
+    {"grand staff, white pencil", 0x5ab58951u},
+    {"grand staff, white pencil, ink", 0x0ca259eau},
+    {"grand staff, white mechanical pencil", 0x639afd54u},
+    {"grand staff, white mechanical pencil, ink", 0xc3f29e67u},
+    {"grand staff, white ballpoint", 0xc2109e2au},
+    {"grand staff, white ballpoint, ink", 0x140df6f3u},
+    {"grand staff, round tip", 0xd7a8a412u},
+    {"grand staff, round tip, ink", 0x6533900bu},
+    {"grand staff, white highlighter", 0x76ea94e2u},
+    {"grand staff, white highlighter, ink", 0x2b56527cu},
+    {"grand staff, white fountain pen", 0x00c8770cu},
+    {"grand staff, white fountain pen, ink", 0x32a41ca7u},
+    {"grand staff, white fineliner", 0x3e3fa675u},
+    {"grand staff, white fineliner, ink", 0x1754e09fu},
+    {"grand staff, white marker", 0x96a6610fu},
+    {"grand staff, white marker, ink", 0x3c47f3e8u},
+    {"grand staff, white charcoal", 0x8dde2f93u},
+    {"grand staff, white charcoal, ink", 0xb3961079u},
+    {"grand staff, white calligraphy pen", 0x5443ff59u},
+    {"grand staff, white calligraphy pen, ink", 0x5cec3bd2u},
+    {"grand staff, soft round tip", 0xa8a7d6c1u},
+    {"grand staff, soft round tip, ink", 0x36779c1eu},
+    {"grand staff, fine round tip", 0x18e2011bu},
+    {"grand staff, fine round tip, ink", 0xacafd213u},
+};
+
+static bool g_print;
+
+static uint32_t crc_table[256];
+static uint32_t crc32_bytes(uint32_t crc, const uint8_t *p, size_t n) {
+    if (!crc_table[1])
+        for (uint32_t i = 0; i < 256; i++) {
+            uint32_t c = i;
+            for (int k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            crc_table[i] = c;
+        }
+    crc = ~crc;
+    for (size_t i = 0; i < n; i++) crc = crc_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+    return ~crc;
+}
+
+static uint32_t crc_rect(const Canvas *c, Rect r) {
+    uint32_t crc = 0;
+    for (int y = r.y; y < r.y + r.h; y++) crc = crc32_bytes(crc, c->px + (size_t)y * c->stride + r.x, (size_t)r.w);
+    return crc;
+}
+
+static void look(const char *name, uint32_t crc) {
+    if (g_print) {
+        printf("    {\"%s\", 0x%08xu},\n", name, crc);
+        return;
+    }
+    if (!GOLDEN_HOST) return;
+    for (size_t i = 0; i < sizeof k_look / sizeof k_look[0]; i++)
+        if (!strcmp(k_look[i].name, name)) {
+            CHECK(k_look[i].crc == crc);
+            if (k_look[i].crc != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, k_look[i].crc);
+            return;
+        }
+    fprintf(stderr, "  %s: not in the table\n", name);
+    CHECK(!"every render has a recorded value");
+}
+
+// test_golden.c's stroke: a zigzag whose pressure starts below every deadzone, swells to full and
+// fades again, the pen leaning from left to right and nodding. Plain arithmetic only.
+static Stroke *zigzag(ToolKind tool, const ToolParams *prm, uint32_t seed, float y0) {
+    Stroke *s = stroke_new(tool, prm, seed);
+    enum { N = 161 };
+    for (int i = 0; i < N; i++) {
+        float f = (float)i / (float)(N - 1);
+        float tri = fabsf(fmodf(f * 6.f, 2.f) - 1.f);
+        float bell = 1.f - (2.f * f - 1.f) * (2.f * f - 1.f);
+        PenSample q = {220.f + 1420.f * f, y0 + 170.f * tri - 85.f + 60.f * f * f, i < 3 ? 0.f : 0.04f + 0.96f * bell,
+                       -60.f + 120.f * f, 50.f * tri - 15.f, (uint32_t)i * 7u};
+        stroke_append(s, &q, DPI);
+    }
+    return s;
+}
+
+// The erase stroke across that ink: a slower wave the other way, pressing hardest in the middle,
+// the pen leaning from right to left (so the calligraphy nib turns and charcoal lies on its side).
+static Stroke *wave(const ToolParams *prm, uint32_t seed, float y0) {
+    Stroke *s = stroke_new(TOOL_ERASER, prm, seed);
+    enum { N = 121 };
+    for (int i = 0; i < N; i++) {
+        float f = (float)i / (float)(N - 1);
+        float bell = 1.f - (2.f * f - 1.f) * (2.f * f - 1.f);
+        PenSample q = {1660.f - 1460.f * f, y0 + 110.f * sinf(f * 7.f), i < 2 ? 0.f : 0.1f + 0.9f * bell,
+                       65.f - 130.f * f, 20.f - 40.f * f * f, (uint32_t)i * 9u};
+        stroke_append(s, &q, DPI);
+    }
+    return s;
+}
+
+// The erase strokes recorded: every texture (TOOL_ERASER: the round tip, with its default 2.5 to
+// 7 mm), the round tip at half strength (the per-pixel path) and at its smallest.
+enum { LOOK_SOFT = TOOL_COUNT, LOOK_FINE, LOOK_COUNT };
+static const char *const k_look_key[LOOK_COUNT] = {
+    "white pencil", "white mechanical pencil", "white ballpoint", "round tip", "white highlighter",
+    "white fountain pen", "white fineliner", "white marker", "white charcoal", "white calligraphy pen",
+    "soft round tip", "fine round tip"};
+
+// How erase strokes draw: each one over ink of five tools, on ruled paper and a grand staff, the
+// page and its ink layer, compared with the recorded table (and each one erases plenty).
+TEST(erase_look_is_recorded) {
+    static const PaperKind papers[2] = {PAPER_MEDIUM, PAPER_GRAND};
+    static const ToolKind under[5] = {TOOL_MARKER, TOOL_PENCIL, TOOL_CHARCOAL, TOOL_FOUNTAIN, TOOL_BALLPOINT};
+    const float y0 = 1240.f;
+    const Rect band = {0, 980, W, 520};
+    Canvas c, inked;
+    CHECK(canvas_init(&c, W, H) == 0);
+    CHECK(canvas_init(&inked, W, H) == 0);
+    char key[96];
+    for (int pi = 0; pi < 2; pi++)
+        for (int v = 0; v < LOOK_COUNT; v++) {
+            Page *pg = page_new(W, H, papers[pi]);
+            for (int u = 0; u < 5; u++) {
+                ToolParams ip;
+                tool_params_default(under[u], &ip);
+                page_add(pg, zigzag(under[u], &ip, 0x00A5F00Du + (uint32_t)u * 40503u, y0 - 60.f + 30.f * (float)u));
+            }
+            if (v == 0 && !g_print) page_render(&inked, pg, band, DPI);  // the ink before any erasing
+            ToolKind tex = v < TOOL_COUNT ? (ToolKind)v : TOOL_ERASER;
+            ToolParams prm;
+            tool_params_default(tex, &prm);
+            if (v == LOOK_SOFT) prm.opacity_min = prm.opacity_max = 0.5f;
+            if (v == LOOK_FINE) prm.size_min_mm = prm.size_max_mm = 0.10f;
+            page_add(pg, wave(&prm, erase_seed(tex, 0x00C0DE00u + (uint32_t)v), y0));
+            const char *paper = papers[pi] == PAPER_MEDIUM ? "medium rule" : "grand staff";
+            page_render(&c, pg, band, DPI);
+            snprintf(key, sizeof key, "%s, %s", paper, k_look_key[v]);
+            look(key, crc_rect(&c, band));
+            if (!g_print) CHECK(diff_px(&c, &inked, band) > 1000);
+            canvas_fill(&c, band, 255);
+            page_render_layers(&c, pg, band, DPI, PAGE_LAYER_INK);
+            snprintf(key, sizeof key, "%s, %s, ink", paper, k_look_key[v]);
+            look(key, crc_rect(&c, band));
+            page_free(pg);
+        }
+    canvas_free(&c);
+    canvas_free(&inked);
+}
+
 int main(void) {
     font_init();  // some papers draw labels and clefs
+    g_print = getenv("GRIMOIRE_GOLDEN_PRINT") != NULL;
+    if (g_print) {  // the table only
+        printf("static const struct {\n    const char *name;\n    uint32_t crc;\n} k_look[] = {\n");
+        RUN(erase_look_is_recorded);
+        printf("};\n");
+        return 0;
+    }
+    if (!GOLDEN_HOST) fprintf(stderr, "  erase look: not the recording host (clang, arm64 macOS): renders not compared\n");
+    RUN(erase_look_is_recorded);
     RUN(restore_blend);
     RUN(live_equals_rerender);
     RUN(span_fast_path_is_the_per_pixel_path);
@@ -973,6 +1277,8 @@ int main(void) {
     RUN(erase_inside_bbox);
     RUN(fully_erased_stroke_leaves_nothing);
     RUN(compaction_drops_only_what_changes_nothing);
+    RUN(compaction_checks_the_page_too);
+    RUN(restored_is_the_page_only);
     RUN(one_call_keeps_the_lines);
     RUN(restored_tells_a_no_op);
     RUN(undo_and_redo_an_erase_stroke);
