@@ -267,6 +267,7 @@ line. Values are clamped to their ranges when read.
 | `passcode_told` | 0 or 1: the notice that the Kindle's passcode is paused while Grimoire is open was shown (since 1.0.0-beta.2; 1.0.0-beta drops it, and the notice shows once more) |
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
+| `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta.2 keeps the line and shows English; 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
 | `settings_version` | 2: which default-changing upgrades have run |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
 | `touch.valid`, `touch.swap`, `touch.ax`, `touch.bx`, `touch.ay`, `touch.by` | touch calibration |
@@ -278,7 +279,8 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   setting it lacks, a calibration field it lacks) is written back as it was read, after the keys
   it knows (up to 64 KB of such lines).
 - A known key whose value it cannot use as written (`side_button=3`, a theme it lacks, a setting
-  beyond its range, a music layout with a part it lacks) is used as the nearest value it has, and
+  beyond its range, a music layout with a part it lacks, a language it does not speak) is used
+  as the nearest value it has (for a language, `auto`), and
   written back as it was until a save finds the setting at another value. That save writes the
   new value, and from then on the setting is saved as set, also when it is set back. `http_port`
   is the exception: it is saved as used, because the launcher opens the firewall for the port it
@@ -358,6 +360,7 @@ row.
 | an unknown `settings.ini` key | dropped on the next save | kept |
 | a `settings.ini` value it cannot use | clamped, and saved clamped | used as the nearest value, written back as it was |
 | a 0/1 `settings.ini` key holding another value | saved as 1 (or 0) | used as on or off, written back as it was |
+| `language=` (1.1) | dropped on the next save: 1.1 follows the Kindle's language again | kept (the screens are English) |
 | a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |

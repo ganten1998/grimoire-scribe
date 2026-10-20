@@ -7,6 +7,8 @@
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
 #   make check     tests + scenarios + share server + exporter + ARM build + the zip + its launchers
 #   make all       sim + test + tools + kindle + package
+#   make l10n      (maintainer, needs GNU gettext) po/grimoire.pot from the sources, then every
+#                  po/<lang>.po merged with it and compiled to po/<lang>.mo
 
 BUILD   ?= build
 HOSTCC  ?= clang
@@ -19,11 +21,11 @@ COMMON  := -std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -I$(BUILD)/gen -DGRIMOIR
 
 CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.c \
             src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c
-CORE_SRC += src/power.c src/fbcheck.c
+CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
-GEN_SRC  := $(BUILD)/gen/fonts.c
+GEN_SRC  := $(BUILD)/gen/fonts.c $(BUILD)/gen/l10n.c
 WEB_GEN  := $(BUILD)/gen/web.c
 KINDLE_PLAT := src/display_fbink.c src/input_evdev.c src/light_kindle.c
 SIM_PLAT    := src/sim_sdl.c
@@ -39,7 +41,7 @@ HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
-.PHONY: all sim headless test tools kindle package scenarios check clean icon logo
+.PHONY: all sim headless test tools kindle package scenarios check clean icon logo l10n
 all: sim headless test tools kindle package
 
 # ---- generated: embedded fonts ----
@@ -48,6 +50,21 @@ FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacqua
 $(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
 	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
+
+# ---- generated: the languages ----
+# po/<lang>.po is a language's translations, for translators; po/<lang>.mo is it compiled by
+# msgfmt, committed like assets/icon.png so that building needs no gettext. Each .mo is embedded
+# like the fonts, with a table src/i18n.c finds them in by name (po/es.mo: "es"; the language list
+# itself is in src/i18n.c).
+L10N_MO := $(sort $(wildcard po/*.mo))
+$(BUILD)/gen/l10n.c: $(L10N_MO) Makefile
+	@mkdir -p $(BUILD)/gen
+	( echo '// The catalogs of po/*.mo, embedded by make (see the Makefile).'; echo '#include "i18n.h"'; \
+	  for f in $(notdir $(L10N_MO)); do ( cd po && xxd -i $$f ); done; \
+	  echo 'const I18nCatalog i18n_catalogs[] = {'; \
+	  for f in $(notdir $(L10N_MO)); do v=$$(printf '%s' "$$f" | tr -c 'A-Za-z0-9' _); \
+	    echo "    {\"$${f%.mo}\", $$v, sizeof $$v},"; done; \
+	  echo '    {0, 0, 0},'; echo '};' ) > $@.tmp && mv $@.tmp $@
 
 # ---- generated: the share studio's page (served inline by httpd.c) ----
 WEB := studio.js studio.css
@@ -112,6 +129,25 @@ scenarios: $(BUILD)/host/grimoire-headless
 	if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail.log; \
 	  echo "selftest fail: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail"; fi; \
 	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
+
+# ---- languages ----
+# For the maintainer, with GNU gettext installed: xgettext collects every marked string of src/
+# (with the TRANSLATORS comment above it) into po/grimoire.pot, msgmerge brings each
+# po/<lang>.po up to date with it, and msgfmt --check compiles each to po/<lang>.mo, failing on a
+# translation whose printf conversions (positional ones too) differ from its English. Commit
+# what changed. A new language is a new po/<lang>.po (msginit) plus its line in src/i18n.c.
+XGETTEXT_FLAGS := --from-code=UTF-8 --language=C --add-comments=TRANSLATORS --add-location=file \
+                  -k_ -kN_ -kC_:1c,2 -kNC_:1c,2 -kNG_:1,2 \
+                  --flag=_:1:pass-c-format --flag=C_:2:pass-c-format \
+                  --flag=NG_:1:pass-c-format --flag=NG_:2:pass-c-format \
+                  --package-name=Grimoire --package-version=$(VERSION) \
+                  --msgid-bugs-address=https://github.com/ganten1998/grimoire-scribe/issues
+# No hash table and one byte order: the same .po makes the same .mo on any machine (l10n-check).
+MSGFMT_FLAGS := --check --no-hash --endianness=little
+l10n:
+	xgettext $(XGETTEXT_FLAGS) -o po/grimoire.pot $(sort $(wildcard src/*.c))
+	for p in $(wildcard po/*.po); do msgmerge --quiet --update --backup=none $$p po/grimoire.pot || exit 1; done
+	for p in $(wildcard po/*.po); do msgfmt $(MSGFMT_FLAGS) -o $${p%.po}.mo $$p || exit 1; done
 
 # ---- host tools ----
 tools: $(BUILD)/host/grimoire-export

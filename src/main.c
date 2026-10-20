@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "i18n.h"
 
 #ifdef GRIMOIRE_KINDLE
 #include <ctype.h>
@@ -98,6 +99,12 @@ int main(int argc, char **argv) {
     log_device();
 #endif
     if (store_init(root) != 0) return 1;
+    // The language, before anything is drawn or said: Settings > Language (settings.ini), and
+    // for "auto" (the default) the Kindle's own (i18n.h says where that is found).
+    i18n_detect();
+    char lang[16];
+    settings_language(lang, sizeof lang);
+    i18n_apply(lang);
 
     int w, h;
     float dpi;

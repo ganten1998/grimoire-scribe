@@ -1,0 +1,144 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Grimoire package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Grimoire 1.0.0-beta\n"
+"Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
+"POT-Creation-Date: 2026-10-20 02:07-0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#. TRANSLATORS: under a folder's card in the Library.
+#: src/library.c
+#, c-format
+msgid "%d notebook"
+msgid_plural "%d notebooks"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
+#. date and time, "Oct 10, 14:32"). Sideways the line has 316 px at 34 px; when it is longer,
+#. the time is left out.
+#: src/library.c
+#, c-format
+msgid "%d page, %s"
+msgid_plural "%d pages, %s"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
+#. that language's name (each language is named in itself: "English", "Español").
+#: src/library.c
+#, c-format
+msgid "Automatic (%s)"
+msgstr ""
+
+#. TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+#: src/library.c
+#, c-format
+msgid "Language: %s"
+msgstr ""
+
+#: src/library.c
+msgid "Cancel"
+msgstr ""
+
+#. TRANSLATORS: the title of the list of languages (Settings > Language).
+#: src/library.c
+msgid "Language"
+msgstr ""
+
+#. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
+#: src/library.c
+#, c-format
+msgid "Notebook %s"
+msgstr ""
+
+#. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
+#. Library's cards, which are narrow when the Kindle is sideways.
+#: src/util.c
+msgctxt "month"
+msgid "Jan"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Feb"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Mar"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Apr"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "May"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Jun"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Jul"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Aug"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Sep"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Oct"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Nov"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Dec"
+msgstr ""
+
+#. TRANSLATORS: a date and time, "Oct 10, 14:32": the month (as above), the day, then hours and
+#. minutes on the 24-hour clock. Reorder them with %1$s, %2$d, %3$02d and %4$02d ("%2$d %1$s,
+#. %3$02d:%4$02d" is "10 Oct, 14:32"), using that form for all four.
+#: src/util.c
+#, c-format
+msgctxt "date"
+msgid "%s %d, %02d:%02d"
+msgstr ""
+
+#. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as
+#. above), then the day. "%2$d %1$s" is "10 Oct".
+#: src/util.c
+#, c-format
+msgctxt "date"
+msgid "%s %d"
+msgstr ""

@@ -1,6 +1,8 @@
 // store.c: notebooks, pages, settings, folders and thumbnails on disk.
 #include "store.h"
 
+#include "i18n.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1154,6 +1156,7 @@ void settings_default(Settings *s) {
     s->sleep_mode = 0;
     s->sleep_minutes = 10;
     s->http_port = 8765;
+    strlcpy_q(s->language, "auto", sizeof s->language);
 }
 
 // key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
@@ -1292,7 +1295,12 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
     else if (!strcmp(k, "passcode_told")) s->passcode_told = keep_bool(k, v);
-    else return false;
+    else if (!strcmp(k, "language")) {
+        // A language this version does not speak (a newer one's) acts as auto, and stays in the file.
+        bool known = i18n_setting_known(v);
+        strlcpy_q(s->language, known ? v : "auto", sizeof s->language);
+        keep_value(k, v, known ? NULL : "auto");
+    } else return false;
     return true;
 }
 
@@ -1338,6 +1346,19 @@ int settings_load(Settings *s) {
     if (rc == 0) settings_upgrade(s);
     else s->version = SETTINGS_VERSION;
     return rc;
+}
+
+#define LANGUAGE_PEEK 16  // longer than any language= this build can use
+static bool language_cb(void *ctx, const char *k, const char *v) {
+    if (!strcmp(k, "language")) strlcpy_q(ctx, v, LANGUAGE_PEEK);
+    return true;
+}
+
+void settings_language(char *out, size_t cap) {
+    char path[600], v[LANGUAGE_PEEK] = "";
+    snprintf(path, sizeof path, "%s/settings.ini", g_root);
+    ini_parse_file(path, language_cb, NULL, v);
+    strlcpy_q(out, v, cap);
 }
 
 // One known key: a value kept from the file goes back as it was while the setting is unchanged.
@@ -1408,6 +1429,8 @@ int settings_save(const Settings *s) {
             snprintf(t, sizeof t, "%.4f", *tool_param_ptr((ToolParams *)&s->tools[tk], &pi[i]));
             put(&b, key, t);
         }
+    // (Last of the known keys: the newest. A language this build lacks goes back as it was.)
+    put(&b, "language", i18n_setting_known(s->language) ? s->language : "auto");
     // Lines this build does not know, as they were.
     if (g_set_unknown.n) sb_put(&b, g_set_unknown.d, g_set_unknown.n);
     int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
