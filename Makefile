@@ -66,10 +66,27 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 	$(HOSTCC) $(COMMON) $(WARN) $(SIM_FLAGS) -DGRIMOIRE_SIM \
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) -o $@ -lm
 
-# Every tests/scenarios/*.qs against a fresh data root; screenshots in build/shots/<name>/.
+# Every tests/scenarios/*.qs against a fresh data root (a script with a "# root: NAME" line starts
+# from a copy of scenario NAME's data, so NAME must sort before it); screenshots in
+# build/shots/<name>/. A failed expect makes a run exit with status 3: every scenario still runs,
+# then the rule fails naming them. Last, the runner checks itself: tests/selftest/pass.qs must exit
+# 0, and fail.qs 3 with each of its expect lines reported as failed.
 scenarios: $(BUILD)/host/grimoire-headless
-	@set -e; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
-	  echo "== $$n"; GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n $(BUILD)/host/grimoire-headless; done
+	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
+	  from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
+	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
+	  echo "== $$n"; GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
+	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; done; \
+	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
+	echo "== selftest pass (every expect holds: exit 0)"; GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs \
+	  GRIMOIRE_SHOTS=$$d/shots $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
+	echo "== selftest fail (every expect fails: exit 3, all reported; log in $$d/fail.log)"; rc=0; \
+	GRIMOIRE_ROOT=$$d/fail GRIMOIRE_SCRIPT=tests/selftest/fail.qs GRIMOIRE_SHOTS=$$d/shots \
+	  $(BUILD)/host/grimoire-headless 2>$$d/fail.log || rc=$$?; \
+	want=$$(grep -c '^expect ' tests/selftest/fail.qs); got=$$(grep -c '^expect failed' $$d/fail.log); \
+	if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail.log; \
+	  echo "selftest fail: exit $$rc with $$got checks failed, wanted exit 3 with $$want"; failed="$$failed selftest/fail"; fi; \
+	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
 
 # ---- host tools ----
 tools: $(BUILD)/host/grimoire-export
