@@ -90,8 +90,12 @@ shot 09-penfeel-pencil
 expect screen is penset
 tap 1152 289
 wait 200
+expect settings.fountain.pressure_gamma not 2.9000
 drag touch 1000 1789 1500 1789 6
 wait 200
+# (1152, 289) is the Fountain pen's tab since the new pens came (shot 10's name is out of date),
+# and the drag set its pressure curve
+expect settings.fountain.pressure_gamma is 2.9000
 pen line 700 600 1500 700 80 0.2 1.0
 pen curve 700 820 30 60 0.8 4
 wait 200

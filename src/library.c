@@ -912,6 +912,11 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
     } else if (!strcmp(key, "paper")) {
         if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
         else snprintf(out, cap, "%d", (int)S->new_paper);
+    } else if (!strcmp(key, "music")) {
+        // The layout on the Custom music sheet while it is open, else New notebook's custom paper.
+        MusicLayout m;
+        if (S->modal == MOD_MUSIC) app_probe_music(&S->mb.m, out, cap);
+        else app_probe_music(music_decode(S->new_paper, &m) ? &m : NULL, out, cap);
     } else {
         return -1;
     }

@@ -1527,9 +1527,6 @@ void editor_tick(App *a, uint32_t now) {
 
 // The script runner's "editor.*" keys (app_probe forwards them without the prefix).
 int editor_probe(App *a, const char *key, char *out, size_t cap) {
-    // settings.ini's tool names (store.c); a tool missing here shows as its number.
-    static const char *const tools[] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
-                                        "fountain", "fineliner", "marker",    "charcoal", "calligraphy"};
     if (!S) return -1;
     bool has_page = S->open && S->page;
     if (!strcmp(key, "page")) {
@@ -1537,9 +1534,9 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
     } else if (!strcmp(key, "pages")) {
         snprintf(out, cap, "%d", S->open ? S->nb.npages : 0);
     } else if (!strcmp(key, "tool")) {
-        int t = (int)a->settings.current_tool;
-        if (t >= 0 && t < (int)(sizeof tools / sizeof tools[0])) snprintf(out, cap, "%s", tools[t]);
-        else snprintf(out, cap, "%d", t);
+        const char *name = app_probe_tool(a->settings.current_tool);  // a tool it lacks: its number
+        if (name) snprintf(out, cap, "%s", name);
+        else snprintf(out, cap, "%d", (int)a->settings.current_tool);
     } else if (!strcmp(key, "zoom")) {
         snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
     } else if (!strcmp(key, "modal")) {
@@ -1561,6 +1558,11 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%d", (int)S->page->paper);
     } else if (!strcmp(key, "panel")) {
         snprintf(out, cap, "%s", S->collapsed ? "collapsed" : "expanded");
+    } else if (!strcmp(key, "music")) {
+        // The layout on the Custom music sheet while it is open, else the page's custom paper.
+        MusicLayout m;
+        if (S->mb.open) app_probe_music(&S->mb.m, out, cap);
+        else app_probe_music(has_page && music_decode(S->page->paper, &m) ? &m : NULL, out, cap);
     } else {
         return -1;
     }

@@ -6,6 +6,7 @@ expect screen is library
 expect library.items is 2
 expect settings.pen.valid is 1
 expect settings.touch.valid is 1
+expect settings.fountain.pressure_gamma is 2.9000
 expect toast is
 tap 326 608
 wait 300

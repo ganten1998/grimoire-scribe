@@ -43,11 +43,14 @@ pentap 1622 1452
 wait 200
 shot 04-builder
 expect editor.modal is music
+expect editor.music is 5: treble tab6
 pentap 579 1279
+expect editor.music is 4: treble tab6 bass
 pentap 1571 1943
 wait 500
 shot 05-custom-page
 expect editor.modal is none
 expect editor.paper is custom
+expect editor.music is 4: treble tab6 bass
 expect editor.strokes is 3
 quit
