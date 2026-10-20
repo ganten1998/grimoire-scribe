@@ -5,17 +5,30 @@ on the Kindle, in a PNG, and in a PDF.
 
 ## 1. Wi-Fi: nothing to install
 
-On the Kindle: turn Wi-Fi on, then **Library > Share**. It shows an address like
-`http://192.168.1.23:8765`. Open it in a browser on any computer or phone on the same network:
+On the Kindle: turn Wi-Fi on, then **Library > Share**. It shows a QR code and, in big type
+under it, the same address, like `http://192.168.1.23:8765`. Point a phone's camera at the code,
+or open the address in a browser on any computer or phone on the same network:
 
 - every folder and notebook with a thumbnail
 - per notebook: **PDF**, **ZIP** (PDF + one PNG per page + the raw files), **Effects** (below),
   and a page view where each page is a full-resolution PNG
 - per folder: a zip; at the top: **Download everything**
 
-Keep the Share screen open while downloading; leaving it stops the server. The pages use
-Grimoire's own fonts in the style picked on the Kindle (Gothic: Jacquard 24 titles and Jersey 10
-text, sized to stay pixel-sharp; Classic: Terminess).
+The code holds the Kindle's Wi-Fi (wlan0) address, the only one the launcher opens the share port
+on. Other addresses, such as USBNetwork's usb0, are listed under it as small "Also:" lines and are
+not in the code; with USBNetwork only there is no code, and the Wi-Fi icon stays. Turned
+sideways, the screen puts the code on the left and the text on the right. With Invert on, the code
+is drawn as its negative, so the panel still shows it dark on light.
+
+Keep the Share screen open while downloading; leaving it stops the server. Turning the Kindle, or
+waking it on the Share screen, keeps the server and its downloads going. The pages use Grimoire's
+own fonts in the style picked on the Kindle (Gothic: Jacquard 24 titles and Jersey 10 text, sized
+to stay pixel-sharp; Classic: Terminess).
+
+The raw files in a zip are the notebook's `notebook.ini` and its `p<id>.qpg` pages, whose format
+is in [FORMAT.md](FORMAT.md). PNG, PDF and Share renders show a page from a newer Grimoire (one
+that opens read-only on the Kindle) as far as they can: a newer page format shows blank, and
+strokes with tools this version does not know are left out.
 
 ### Effects
 
@@ -68,7 +81,7 @@ Scriptable endpoints:
 | `/all.zip` | everything, grouped by folder (PDF + raw) |
 
 ```json
-{"device": "Grimoire", "version": "0.1.0",
+{"device": "Grimoire", "version": "1.0.0-beta.2",
  "notebooks": [{"id": "20261010-183859-1fdf", "name": "Lecture notes", "folder": "School",
                 "pages": 3, "paper": "Medium rule", "modified": 1791672139,
                 "pdf": "/nb/20261010-183859-1fdf.pdf", "zip": "/nb/20261010-183859-1fdf.zip",
@@ -101,6 +114,9 @@ Host kindle
 
 `grimoire-export [--png] [--zip] [--force] <grimoire-root> <out-dir>` also works on any copy of the
 `grimoire` folder, e.g. one copied off over USB.
+
+Build `grimoire-export` from the same release as the Grimoire on your Kindle (`make tools` again
+after an update): an older one, 1.0.0-beta's say, shows pages in a newer format blank.
 
 ## 3. USB cable
 
