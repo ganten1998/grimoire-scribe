@@ -1,4 +1,5 @@
 #!/bin/sh
+# Capabilities: guard
 # Grimoire launcher, started by the documents/Grimoire.sh scriptlet. Pauses the Kindle UI the way
 # KOReader does on upstart firmware (5.x, incl. 5.16+ hard-float and 5.19), runs Grimoire, and
 # ALWAYS restores everything on exit.
@@ -8,7 +9,10 @@
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
-# Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does.
+# Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does. The Capabilities
+# line above says what this file supports (guard: that refusal), for a tool that must not run it
+# to find out; it always describes this very file, while app/CAPABILITIES can outlive a
+# downgrade (see documents/Grimoire.sh).
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
