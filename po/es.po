@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
 "POT-Creation-Date: 2026-10-20 07:00-0500\n"
-"PO-Revision-Date: 2026-10-20 06:20-0500\n"
+"PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -23,8 +23,8 @@ msgstr ""
 #: src/app.c
 msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
 msgstr ""
-"El código de acceso del Kindle quedó desactivado. Vuelve a activarlo en los "
-"ajustes del Kindle."
+"La contraseña del Kindle quedó desactivada. Vuelve a activarla en la "
+"Configuración del Kindle."
 
 #. TRANSLATORS: %s is the app's name, Grimoire.
 #: src/app.c
@@ -38,23 +38,22 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "Your Kindle passcode is paused while %s is open."
-msgstr ""
-"El código de acceso del Kindle queda en pausa mientras %s está abierto."
+msgstr "La contraseña del Kindle queda suspendida mientras %s está abierto."
 
 #. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
 #. sheet that says "Calibrate pen and touch": name them as they are translated.
 #: src/app.c
 msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
 msgstr ""
-"Consejo: si el trazo no cae bajo la punta, ve a Ajustes > Calibrar el lápiz"
+"Consejo: si el trazo no queda bajo la punta, ve a Ajustes > Calibrar el lápiz"
 
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
 #. saved (a full storage), so it stays once.
 #: src/app.c
 msgid "Could not save this page. Hold power 4 s again to leave anyway."
 msgstr ""
-"No se pudo guardar esta página. Vuelve a mantener el botón de encendido 4 s "
-"para salir de todos modos."
+"No se pudo guardar esta página. Vuelve a mantener presionado el botón de "
+"encendido 4 s para salir de todos modos."
 
 #. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
 #. %s is the app's name, Grimoire.
@@ -66,7 +65,7 @@ msgstr "Guardado. Saliendo de %s."
 #: src/app.c
 #, c-format
 msgid "Leaving %s without this page."
-msgstr "Saliendo de %s sin esta página."
+msgstr "Saliendo de %s sin guardar esta página."
 
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: src/app.c
@@ -207,7 +206,7 @@ msgstr "Calibrar la pantalla táctil"
 
 #: src/calibrate.c
 msgid "Check it"
-msgstr "Comprobación"
+msgstr "Comprobar la calibración"
 
 #. TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
 #. tap five targets, one after another, with the pen, then with a finger; then draw to check.
@@ -239,7 +238,7 @@ msgstr "Cancelar"
 
 #: src/calibrate.c
 msgid "Touch was fine: skip (tap with the pen)"
-msgstr "La pantalla táctil ya iba bien: omitir (toca con el lápiz)"
+msgstr "La pantalla táctil ya funcionaba bien: omitir (toca con el lápiz)"
 
 #: src/calibrate.c
 msgid "Save"
@@ -261,7 +260,7 @@ msgstr "Esos toques no tienen sentido. Probemos otra vez."
 #: src/calibrate.c
 #, c-format
 msgid "The center was off by %.1f mm. Let's try again."
-msgstr "El centro se desvió %.1f mm. Probemos otra vez."
+msgstr "El toque del centro se desvió %.1f mm. Probemos otra vez."
 
 #: src/calibrate.c
 msgid "Pen done."
@@ -438,7 +437,9 @@ msgstr "No se pudo guardar esta página. ¿Está lleno el almacenamiento?"
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
 #: src/editor.c
 msgid "This page was made by a newer Grimoire. It is read-only here."
-msgstr "Esta página es de un Grimoire más nuevo. Aquí es de solo lectura."
+msgstr ""
+"Esta página se creó con una versión más reciente de Grimoire. Aquí es de solo "
+"lectura."
 
 #: src/editor.c
 msgid "Could not open that page"
@@ -713,11 +714,11 @@ msgstr "Pantalla: brillo, calidez, invertir"
 #. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
 #: src/library.c
 msgid "Style: Gothic (tap for Classic)"
-msgstr "Estilo: Gótico (toca para Clásico)"
+msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
 
 #: src/library.c
 msgid "Style: Classic (tap for Gothic)"
-msgstr "Estilo: Clásico (toca para Gótico)"
+msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
 
 #. TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
 #. every notebook.
@@ -729,15 +730,15 @@ msgstr "Copiar los PDF a %s (USB)"
 #. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
 #: src/library.c
 msgid "Holding the pen button does nothing (tap to change)"
-msgstr "Mantener el botón del lápiz no hace nada (toca para cambiar)"
+msgstr "Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
 
 #: src/library.c
 msgid "Holding the pen button erases (tap to change)"
-msgstr "Mantener el botón del lápiz borra (toca para cambiar)"
+msgstr "Mantener presionado el botón del lápiz borra (toca para cambiar)"
 
 #: src/library.c
 msgid "Holding the pen button highlights (tap to change)"
-msgstr "Mantener el botón del lápiz resalta (toca para cambiar)"
+msgstr "Mantener presionado el botón del lápiz resalta (toca para cambiar)"
 
 #: src/library.c
 msgid "Turn with the Kindle (portrait and landscape)"
@@ -1086,7 +1087,8 @@ msgstr "tinta"
 #: src/pensettings.c
 msgid "Draw on the pad to see live pressure and tilt."
 msgstr ""
-"Dibuja en la zona de prueba para ver la presión y la inclinación en vivo."
+"Dibuja en la zona de prueba para ver la presión y la inclinación en tiempo "
+"real."
 
 #. TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
 #: src/pensettings.c
@@ -1158,7 +1160,7 @@ msgstr "El borrador quita trazos enteros; más presión = más alcance."
 
 #: src/pensettings.c
 msgid "Reset to defaults"
-msgstr "Se restablecieron los valores iniciales"
+msgstr "Se restablecieron los valores predeterminados"
 
 #. TRANSLATORS: the Share screen's help, under the address: a line each, 1640 px at 34 px.
 #: src/share.c
@@ -1168,7 +1170,7 @@ msgstr "Páginas en PNG, cuadernos en PDF o zip, carpetas y todo en zip."
 #: src/share.c
 msgid "Effects: transparent, recolored or filtered copies of any page."
 msgstr ""
-"Efectos: copias de cualquier página transparentes, con otros colores o con "
+"Efectos: copias de cualquier página, transparentes, con otros colores o con "
 "filtros."
 
 #: src/share.c
@@ -1180,13 +1182,13 @@ msgstr ""
 #: src/share.c
 #, c-format
 msgid "Downloads served: %d"
-msgstr "Descargas servidas: %d"
+msgstr "Descargas realizadas: %d"
 
 #. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, about 1500 sideways),
 #. with its QR code, or without one (no Wi-Fi address).
 #: src/share.c
 msgid "Scan with your phone, or open this in a browser:"
-msgstr "Escanéalo con el teléfono o abre esto en un navegador:"
+msgstr "Escanea el código con tu teléfono o abre esto en un navegador:"
 
 #: src/share.c
 msgid "On your computer, open this in a browser:"
@@ -1520,7 +1522,7 @@ msgstr "Duotono"
 #: web/studio.js
 msgctxt "studio"
 msgid "Invert"
-msgstr "Invertir"
+msgstr "Invertido"
 
 #: web/studio.js
 msgctxt "studio"
@@ -1663,8 +1665,8 @@ msgid ""
 "or Linux terminal. Download the layers into one folder and run it there:"
 msgstr ""
 "La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en "
-"una terminal de macOS o Linux. Descarga las capas en una carpeta y ejecútalo "
-"allí:"
+"una terminal de macOS o Linux. Descarga las capas en una misma carpeta y "
+"ejecuta allí el comando:"
 
 #: web/studio.js
 msgctxt "studio"
@@ -1675,7 +1677,7 @@ msgstr "Reintentar"
 #, javascript-format
 msgctxt "studio"
 msgid "%d × %d px, transparent, no ink to trim to"
-msgstr "%d × %d px, transparente, sin tinta que recortar"
+msgstr "%d × %d px, transparente, sin tinta a la que ajustar"
 
 #: web/studio.js
 #, javascript-format
@@ -1687,7 +1689,7 @@ msgstr "%d × %d px, transparente"
 #, javascript-format
 msgctxt "studio"
 msgid "%d × %d px, no ink to trim to"
-msgstr "%d × %d px, sin tinta que recortar"
+msgstr "%d × %d px, sin tinta a la que ajustar"
 
 #: web/studio.js
 #, javascript-format

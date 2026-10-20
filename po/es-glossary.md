@@ -37,6 +37,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | deadzone | **zona muerta** | |
 | grain, smoothing | **grano**, **suavizado** | |
 | test pad | **zona de prueba** | |
+| live (pressure and tilt) | **en tiempo real** | *En vivo* is said of broadcasts. |
 
 ## Notebooks, papers, music
 
@@ -89,17 +90,21 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Sleep screen: ... | **En reposo: ...** (*En reposo: la página abierta*) | *Pantalla de reposo: ...* did not fit with the screensaver's line. |
 | screensaver | **salvapantallas** | *protector de pantalla* (Latin America). |
 | Pin this page | **Fijar esta página** | |
-| Style: Gothic / Classic | **Estilo: Gótico / Clásico** | |
+| Style: Gothic / Classic | **Estilo: Gótico / Clásico** (*Estilo: Gótico (toca para cambiar a Clásico)*) | *toca para Clásico* had no verb; the other rows a tap changes say *toca para cambiar*. |
 | Language, Automatic | **Idioma, Automático** | The languages' own names stay in themselves (*English*, *Español*). |
 | Calibrate | **Calibrar** (*Calibrar el lápiz y la pantalla táctil*) | |
+| Calibrate the pen / Calibrate touch / Check it | **Calibrar el lápiz / Calibrar la pantalla táctil / Comprobar la calibración** | Calibration's three step titles, all infinitives with their object (was *Comprobación*; a bare *Comprobar* read like a button). |
 | touch (the touchscreen) | **la pantalla táctil** | *el táctil* (Spain, informal). |
 | target (calibration) | **diana** | *blanco* (could read as *white*), *objetivo*. |
-| tap, hold, pinch | **tocar, mantener, pellizcar** | *pulsar* (Spain), *presionar* (Latin America) for the power button. |
+| tap, hold, pinch | **tocar, mantener presionado, pellizcar** (*Vuelve a mantener presionado el botón de encendido 4 s*, *Mantener presionado el botón del lápiz borra*) | *Mantener* alone does not say the button stays down; Amazon's Spanish help writes *mantén presionado el botón de encendido*. *Mantener pulsado* in Spain. A tap is a **toque** (*Esos toques no tienen sentido*; *El toque del centro se desvió 2.3 mm*, the tap on the center target, not the center itself). |
 | Mirror PDFs to grimoire/PDFs | **Copiar los PDF a grimoire/PDFs** | Folder names on the Kindle stay English (grimoire/PDFs, grimoire/trash, grimoire.log). |
 | trash (the folder) | grimoire/trash | |
 | storage | **almacenamiento** | |
-| passcode | **código de acceso** | As the Kindle's own Settings name it: please check. |
-| Kindle Settings | **los ajustes del Kindle** | Whatever the Kindle's own menu is called in Spanish (*Configuración*, *Todos los ajustes*). |
+| passcode | **contraseña** (*La contraseña del Kindle quedó desactivada*) | As the Kindle names it: Configuración > Opciones de dispositivo > *Contraseña del dispositivo*; Amazon's Spanish help says *contraseña de la pantalla de bloqueo*. Was *código de acceso*, which the Kindle does not use. |
+| paused (the passcode, while Grimoire is open) | **suspendida** (*La contraseña del Kindle queda suspendida mientras Grimoire está abierto*) | Suspended for a while, and back when Grimoire closes. *En pausa* is for playback, downloads or a subscription, not a password; *desactivada* is the left-off notice's word, which asks the reader to turn it back on. |
+| Kindle Settings | **la Configuración del Kindle** | The Kindle's own menus are *Configuración* and *Todas las configuraciones* (Amazon's Spanish help); capitalized as the menu's name, as the tip writes *ve a Ajustes*. Grimoire's own Settings stay *Ajustes*, which also keeps the two apart. Was *los ajustes del Kindle*. |
+| defaults (Reset to defaults) | **valores predeterminados** (*Se restablecieron los valores predeterminados*) | The usual interface word; was *valores iniciales*. |
+| a newer Grimoire | **una versión más reciente de Grimoire** (*Esta página se creó con una versión más reciente de Grimoire*) | *un Grimoire más nuevo* was a calque. The paper's short label stays *Papel más nuevo*. |
 
 ## The share pages and the studio
 
@@ -108,13 +113,14 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Share over Wi-Fi | **Compartir por Wi-Fi** | *wifi* is the RAE's spelling; the Kindle writes Wi-Fi. |
 | phone, computer | **teléfono, computadora** | *móvil*, *ordenador* (Spain); *celular* (Latin America). |
 | browser | **navegador** | |
-| download, served | **descargar, Descargas servidas** | |
+| download, served | **descargar, Descargas realizadas** | The counter is the downloads made; *Descargas servidas* read as a calque (food is served). *Descargas atendidas*. |
 | Effects, studio | **Efectos, estudio** | |
 | Presets | **Preajustes** | *Estilos*. |
 | Original, Transparent, Signature, Warm, Sepia, Parchment, Blueprint, Chalkboard, Night, Sunset ink, Aurora | **Original, Transparente, Firma, Cálido, Sepia, Pergamino, Cianotipo, Pizarra, Noche, Tinta de atardecer, Aurora** | *Plano* for Blueprint. |
 | Background, Gradient, Tint, Duotone | **Fondo, Degradado, Tinte, Duotono** | |
+| Tone: None, Gray, Duotone, Invert | **Tono: Ninguno, Gris, Duotono, Invertido** | The tones are values of *Tono*, so adjectives that agree with it; was *Invertir*. The Display sheet's *Invertir* is an action and stays. |
 | Shadows, Highlights | **Sombras, Luces** | |
-| Trim to ink, Whole page | **Ajustar a la tinta, Página entera** | *Recortar a la tinta*. |
+| Trim to ink, Whole page | **Ajustar a la tinta, Página entera** | *Recortar a la tinta*. When it finds no ink, the info line says **sin tinta a la que ajustar**, echoing the choice (was *sin tinta que recortar*, which made the ink the thing cut). |
 | Ink (your writing) | **Tinta (tu escritura)** | |
 | cool 30 / warm 30 | **frío 30 / cálido 30** | |
 
