@@ -117,10 +117,13 @@ drawn after it alone.
 - **Parameters.** The texture tool's settings as the stroke was drawn: for white ink that pen's,
   for the round tip the eraser's. How far past its points the stroke can draw (which sets the area
   a version redraws around it) is that tool's reach with those settings.
-- **Blend.** For each pixel a dab covers: value + (paper - value) x coverage, rounded, only if
-  that is lighter, and never lighter than the paper. Where a dab covers a pixel fully (coverage
-  0.999 or more) the pixel becomes exactly the paper. Coverage and dab spacing are the texture
-  tool's, as for its ink.
+- **Blend.** A dab lightens each pixel it covers by its share, the way a dab of ink darkens one:
+  its coverage spread over the n dabs that overlap on the stroke's spine (share = 1 - (1 -
+  coverage)^(1/n), with coverage capped at 0.999), so that the stroke as a whole moves the pixel
+  toward the paper by its coverage. The pixel becomes value + (paper - value) x share, rounded,
+  only if that is lighter, and never lighter than the paper. Where the dab's own coverage is 0.999
+  or more, the pixel becomes exactly the paper. Coverage, dab spacing and n are the texture tool's,
+  as for its ink.
 - **Paper.** The page's paper under the pixel, as the version draws it (a paper it does not know is
   blank: white). Drawn without its paper (the share studio's ink layer, `?layer=ink`), a page's
   erase strokes lighten toward white.
