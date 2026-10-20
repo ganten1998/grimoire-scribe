@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stand-in for pidof in tests/launcher_check.sh: records the call; a process "runs" when
+# $SHIM_STATE/pidof/<name> exists, and that file holds its pid.
+echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+cat "${SHIM_STATE:?}/pidof/$1" 2>/dev/null

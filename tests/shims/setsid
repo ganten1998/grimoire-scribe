@@ -1,0 +1,15 @@
+#!/bin/sh
+# Stand-in for setsid in tests/launcher_check.sh: records the call, then runs the command (in
+# the caller's session, which is all a test needs). With SHIM_HOLD set it first waits up to 10 s
+# for that file to appear, so the test can swap in the fake binary after the unpack and before
+# the launch; when the file never comes, it runs nothing.
+echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+if [ -n "${SHIM_HOLD:-}" ]; then
+    n=0
+    while [ ! -e "$SHIM_HOLD" ]; do
+        n=$((n + 1))
+        [ $n -le 100 ] || exit 1
+        sleep 0.1
+    done
+fi
+exec "$@"

@@ -5,7 +5,7 @@
 #   make tools     host CLI grimoire-export             -> build/host/grimoire-export
 #   make kindle    static armhf binary (zig cc)      -> build/kindle/grimoire
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
-#   make check     tests + scenarios + share server + exporter + ARM build
+#   make check     tests + scenarios + share server + exporter + ARM build + the zip + its launchers
 #   make all       sim + test + tools + kindle + package
 
 BUILD   ?= build
@@ -170,8 +170,14 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,
-# the share server against a real HTTP client, the host exporter, and the ARM build.
-check: test scenarios tools kindle
+# the share server against a real HTTP client, the host exporter, the ARM build, and the zip
+# people install: what it holds, and its launchers run against stand-ins for the Kindle's tools.
+.PHONY: package-check launcher-check
+package-check: package
+	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
+launcher-check: package
+	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
+check: test scenarios tools kindle package-check launcher-check
 	tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stand-in for lipc-get-prop in tests/launcher_check.sh: records the call and answers from
+# $SHIM_STATE/lipc/<publisher>.<property> (com.lab126.powerd.state holds "active",
+# "screenSaver"...); no such file is a failed call.
+echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+while [ $# -gt 2 ]; do shift; done  # skip the type options (-s, -i, -e, -q)
+cat "${SHIM_STATE:?}/lipc/$1.$2" 2>/dev/null

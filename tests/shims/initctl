@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stand-in for initctl in tests/launcher_check.sh: records the call; `initctl list` shows a
+# status bar job and volumd running, as on a 5.17+ Kindle.
+echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+if [ "$1" = list ]; then
+    echo "statusbar start/running, process 1201"
+    echo "volumd start/running, process 1202"
+fi

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Stands in for the Grimoire binary in tests/launcher_check.sh, which copies it over
+# app/grimoire after the unpack. Records how it was started, then by FAKE_MODE:
+#   normal (default)  draws (writes the fake framebuffer), beats once, exits after a moment
+#   hang              never beats (no first frame): the watchdog must kill it
+#   stale             beats once, then hangs: the watchdog must kill it
+# FAKE_EXIT_STATE: the power state to leave behind (the Kindle locked while Grimoire ran).
+echo "grimoire root=$GRIMOIRE_ROOT awesome_stopped=$GRIMOIRE_AWESOME_STOPPED" >>"${SHIM_LOG:?}"
+case "${FAKE_MODE:-normal}" in
+hang) exec sleep 30 ;;
+stale)
+    : >"${GRIMOIRE_TMP:?}/grimoire.alive"
+    exec sleep 30
+    ;;
+esac
+printf 'GRIMOIRE' >"${GRIMOIRE_SYSROOT:?}/dev/fb0"
+: >"${GRIMOIRE_TMP:?}/grimoire.alive"
+[ -n "${FAKE_EXIT_STATE:-}" ] && echo "$FAKE_EXIT_STATE" >"${SHIM_STATE:?}/lipc/com.lab126.powerd.state"
+sleep 0.3
+echo "grimoire exits" >>"$SHIM_LOG"
+exit 0
