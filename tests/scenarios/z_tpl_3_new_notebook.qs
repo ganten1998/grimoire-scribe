@@ -38,8 +38,8 @@ tap 511 452
 wait 200
 expect library.sheet is new
 expect library.template is Lined
+# (checked right after the tap: the job that makes the picture has only started)
 tap 1564 2254
-wait 300
 expect screen is editor
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is missing
