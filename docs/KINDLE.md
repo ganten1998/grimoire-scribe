@@ -23,7 +23,8 @@ grimoire/app/BUILD_ID, CAPABILITIES   the build unpacked there; what the launche
 grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
-grimoire/.passcode-paused      there while the launcher has the Device Passcode paused
+grimoire/.passcode-paused      holds "paused" while the launcher has the Device Passcode paused
+grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
 grimoire/trash/                deleted notebooks and pages
 grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so the Kindle never indexes it
 ```
@@ -36,6 +37,12 @@ grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so 
   stays locked after a press (no `outOfScreenSaver` within 3 s, the power service still in its
   screensaver) keeps Grimoire on its sleep screen; the second such press in a row saves and leaves
   as well, for a power key that cannot report a hold.
+- When the open page cannot be saved (a full userstore), leaving does not claim it was. Awake,
+  the first hold stays in Grimoire and shows "Could not save this page. Hold power 4 s again to
+  leave anyway." A second hold within a minute leaves, showing "Leaving Grimoire without this
+  page." From the sleep screen, and for the two-press exit of a locked Kindle, it leaves at once.
+  Each such try logs `leaving: the open page could not be saved`, and the first awake hold adds
+  `leaving: staying this once (...)`.
 - The **power button** puts the Kindle to sleep *in* Grimoire: the sleep screen is the page you were
   on (or a pinned page, or the Kindle's own screensaver: Display > Sleep screen), and waking returns
   to it. Grimoire listens to the power service like KOReader does: a shell loop of one-shot
@@ -50,9 +57,9 @@ grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so 
   and never sends a power button to one.
 - Ink is also autosaved 2 s after the pen lifts and at every press of the power button, so a
   crash or a forced reboot loses at most the last stroke. A page that fails to save stays open
-  (with a warning) instead of being dropped, and a page file that cannot be read is renamed
-  `p<N>.qpg.damaged-<time>` rather than overwritten. A page from a newer Grimoire is not damage:
-  it opens read-only, and its file is never written.
+  (with a warning, and the autosave tries again every 2 s) instead of being dropped, and a page
+  file that cannot be read is renamed `p<N>.qpg.damaged-<time>` rather than overwritten. A page
+  from a newer Grimoire is not damage: it opens read-only, and its file is never written.
 - When Grimoire exits while the Kindle is locked (power service state `screenSaver`,
   `readyToSuspend` or `suspended`), the launcher does not write the saved screen back, because it
   would cover the screensaver or the passcode prompt. Pillow, awesome, the stopped status jobs and
@@ -70,18 +77,27 @@ the passcode keypad. So the launcher pauses the passcode for the session, as KOR
 has done since 2016:
 
 - At the start, if `/var/local/system/userpasswdenabled` exists, `app/grimoire.sh` writes the
-  marker `grimoire/.passcode-paused` and removes the flag (`device passcode: paused while
-  Grimoire runs`). At the end of `restore()` it touches the flag back and removes the marker
-  (`device passcode: back on`); in stop-framework mode that happens before `start lab126_gui`,
-  which reads it. `restore()` runs however Grimoire ends: Library > Exit, the 4 s hold, a crash,
-  the watchdog.
-- A marker found with no flag at the next start means a session ended without `restore()` (the
-  Kindle restarted under Grimoire). The launcher then does not turn the passcode back on, since it
-  may have been changed or turned off since, and logs `device passcode: left off by a session
-  that did not end (a restart?); not turned back on here`.
+  marker `grimoire/.passcode-paused`, which holds `paused`, and only then removes the flag
+  (`device passcode: paused while Grimoire runs`). No marker, no pause: if it cannot be written
+  (a full or read-only userstore), the passcode stays on and the log says `device passcode: not
+  paused (could not write /mnt/us/grimoire/.passcode-paused, which a restart would need)`. At the
+  end of `restore()` the launcher touches the flag back and removes the marker (`device passcode:
+  back on`), after the home booklet has started; in stop-framework mode that happens before
+  `start lab126_gui`, which reads it. `restore()` runs however Grimoire ends: Library > Exit, the
+  4 s hold, a crash, the watchdog.
+- If the Kindle restarts while Grimoire is open, the passcode stays off. A marker found with no
+  flag at the next start means just that: a session ended without `restore()`. The launcher then
+  does not turn the passcode back on, since it may have been changed or turned off since, and logs
+  `device passcode: left off by a session that did not end (a restart?); not turned back on
+  here`. It keeps `grimoire/.passcode-left-off` and passes `GRIMOIRE_PASSCODE=left-off` at that
+  start and the next two while `/var/local/system/userpasswdenabled` is still missing, logging
+  `device passcode: still off since a session that did not end; telling the user (N of 3)`. It
+  deletes the file as soon as the passcode is back, or after the third start.
 - The binary learns which through `GRIMOIRE_PASSCODE`: with `paused` it shows "Your Kindle
-  passcode is paused while Grimoire is open." the first time (settings.ini `passcode_told`), with
-  `left-off` "The Kindle passcode was left off. Turn it back on in Kindle Settings."
+  passcode is paused while Grimoire is open." the first time (settings.ini `passcode_told`). With
+  `left-off` it shows "Your Kindle passcode was left off. Turn it back on in Kindle Settings." for
+  10 s, in place of any other start notice (no pen found, the calibration tip), and logs
+  `device passcode: left off by an earlier session; telling the user`.
 - While Grimoire is open the passcode does not protect the Kindle; the README's Privacy section
   says so.
 
@@ -104,9 +120,14 @@ has done since 2016:
   pass the guard; 1.1 adds `--hosted`. `app/grimoire.sh` has the same guard.
 - Capabilities: line 6 of `Grimoire.sh` is `# Capabilities: guard unpack-only`, and
   `app/CAPABILITIES` carries the same words; line 2 of `app/grimoire.sh` is
-  `# Capabilities: guard`, which describes that file. Tools must grep these lines and never run a
-  launcher to find out, because an older launcher ignores a flag it does not know and starts
-  Grimoire. Read the Capabilities line of the very file you are going to run, run
+  `# Capabilities: guard`, which describes that file. A tool reads the first `# Capabilities: `
+  line within the first 10 lines of `documents/Grimoire.sh`:
+  `head -n 10 documents/Grimoire.sh | sed -n 's/^# Capabilities: //p'`. It must never grep the
+  whole file: the archive appended to the scriptlet holds `app/grimoire.sh`, whose own
+  `# Capabilities: guard` line describes only that file, and a tool that kept the last match would
+  think `unpack-only` unsupported (package_check pins that the header's line is the file's first).
+  Nor may a tool run a launcher to find out, because an older launcher ignores a flag it does not
+  know and starts Grimoire. Read the Capabilities line of the very file you are going to run, run
   `Grimoire.sh --unpack-only` only when its line lists `unpack-only`, and trust `app/CAPABILITIES`
   only after that unpack succeeded: an older launcher's unpack (1.0.0-beta, rc.1) leaves a newer
   CAPABILITIES behind. A missing line means no support.
@@ -139,12 +160,13 @@ has done since 2016:
   `store: <id>: p<n>.qpg.damaged-<t> opens now, but p<n>.qpg exists too; both kept`,
   `store: <id>: p<n>.qpg is not in the page list; its set-aside copies stay aside (...)` and
   `store: <id>: <k> unknown notebook.ini line(s) do not fit in the 2048 bytes kept, left out`.
-  The "damaged page was set aside" toast now appears only for real damage. A set-aside page that
-  is no longer in the page list can be put back by hand, with Grimoire closed: rename it to
-  `p<n>.qpg` and add `<n>` to the `pages=` line of its `notebook.ini`.
-- **"The Kindle passcode was left off"**: the Kindle restarted while Grimoire had the passcode
-  paused (see The Device Passcode). Turn it back on in Kindle Settings > Device Options > Device
-  Passcode.
+  The toast "A damaged page was set aside; a blank one took its place (see grimoire.log)" now
+  appears only for real damage. A set-aside page that is no longer in the page list can be put
+  back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
+  of its `notebook.ini`.
+- **"Your Kindle passcode was left off"**: the Kindle restarted while Grimoire had the passcode
+  paused (see The Device Passcode); Grimoire says so at that start and the next two while it stays
+  off. Turn it back on in Kindle Settings > Device Options > Device Passcode.
 - **The screen**: the screen guard reads the framebuffer back at 32 bpp too (Scribe Colorsoft).
   It turns itself off after 10 repaints in a row and logs `screen guard: off after 10 repaints in
   a row (...)`. If the first frame and the next 4 refreshes all fail (retried once a second),
@@ -153,12 +175,18 @@ has done since 2016:
   guesses 167 dpi. Grimoire then takes the dpi from the panel's physical size in vinfo (diagonal
   pixels over diagonal mm, or one side if only the width is known) when that comes to 100..600,
   else 300, and logs `display: FBInk does not know this device (...)`.
-- **The Share screen** logs `share: QR code for http://<ip>:<port> (wlan0)`, or
-  `share: no Wi-Fi address, so no QR code; showing ...` (USBNetwork only), and
-  `share: laid out again (turned or woken); the server carries on` after a turn or a wake.
-  `share: layout: ...` appears only when something on the Share screen does not fit (a line cut
-  short, or two parts overlapping) and names the parts. There should be none; if one appears, it
-  is worth reporting with the orientation and style.
+- **The Share screen** never puts the Kindle's IP address in grimoire.log. It logs
+  `share: QR code for the wlan0 address, port 8765`, or
+  `share: no Wi-Fi address, so no QR code; showing the usb0 address, port 8765` (USBNetwork
+  only), and `share: laid out again (turned or woken); the server carries on` after a turn or a
+  wake. The server logs each request as `httpd: GET <path>`, and a folder zip as
+  `httpd: GET /folder/<name>.zip`, without the folder's name. `share: layout: ...` appears only
+  when something on the Share screen does not fit:
+  `share: layout: a line is cut to fit (W px wide, room for R)` leaves the line's text out, and a
+  part that leaves the card or runs into another is named with both rectangles. There should be
+  none; if one appears, it is worth reporting with the orientation and style. Only the simulator
+  also logs `share: (simulator) the code holds http://...`, which tests/share_check.sh compares
+  with the decoded code.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default: FBInk notes it skips the rotation stage at the Scribe's fb rotation),
@@ -179,8 +207,8 @@ has done since 2016:
   `power state: ...`, `blanket modules: ...` (marked `(Special Offers)` when the ad screensaver is
   loaded), `KOReader: installed, version <git-rev>` or `KOReader: not installed`, and
   `user id: N`; at exit, `power state at exit: X`. None of these identify the unit or a network,
-  so the log can be attached to public issues (the Share screen's lines above do name the
-  Kindle's local address).
+  and the Share screen's lines above name the interface and the port, never the address, so the
+  log can be attached to public issues.
 - Everything Grimoire and its launcher do is logged to `grimoire/grimoire.log` (rotated at 1 MB).
 
 ## How it fits in (facts vs. assumptions)
