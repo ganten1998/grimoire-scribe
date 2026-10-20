@@ -504,12 +504,14 @@ function Grimoire:sendPage(busy)
     local w, h = math.min(sw, sh), math.max(sw, sh)
     local png, tmp = dir .. "/page.png", dir .. "/page.png.tmp"
     local how = "drawn"
+    -- writePNG and Screen:shot answer false and why when the PNG could not be written (in a newer
+    -- KOReader), nothing in an older one: then a file that is there and not empty is taken as
+    -- written. (A PNG cut short all the same is refused by Grimoire, which checks every chunk of it.)
+    local ran, wrote, why
     local ok, bb = pcall(self.drawPage, self, w, h)
     if ok then
-        -- (writePNG answers nothing in older KOReaders: the file says whether it worked.)
-        local wrote = pcall(bb.writePNG, bb, tmp)
+        ran, wrote, why = pcall(bb.writePNG, bb, tmp)
         bb:free()
-        ok = wrote and is_nonempty_file(tmp)
     else
         -- An older KOReader, or one where drawing the page alone failed: a screenshot of the reader
         -- (KOReader's Screen:shot), with the menu closed already, "Preparing Grimoire..." taken down
@@ -518,13 +520,17 @@ function Grimoire:sendPage(busy)
         how = "a screenshot"
         UIManager:close(busy)
         UIManager:forceRePaint()
-        ok = pcall(Device.screen.shot, Device.screen, tmp) and is_nonempty_file(tmp)
+        ran, wrote, why = pcall(Device.screen.shot, Device.screen, tmp)
         UIManager:show(busy)
         UIManager:forceRePaint()
     end
+    ok = ran and wrote ~= false and is_nonempty_file(tmp)
     if not (ok and os.rename(tmp, png)) then
         os.remove(tmp)
-        logger.warn("Grimoire: could not write the page's picture")
+        -- Why, in lodepng's words or the error's (neither names a book or its file).
+        local reason = not ran and wrote or why
+        if not reason then reason = ok and "it could not be renamed into place" or "no file, or an empty one" end
+        logger.warn("Grimoire: could not write the page's picture:", tostring(reason))
         return false
     end
     local request = table.concat({

@@ -9,7 +9,7 @@
 local plugin_dir, scratch = arg[1], arg[2]
 assert(plugin_dir and scratch, "usage: luajit tests/koplugin_test.lua PLUGIN_DIR SCRATCH_DIR")
 
-local real_execute = os.execute
+local real_execute, real_open, real_rename = os.execute, io.open, os.rename
 local fails, count = 0, 0
 local function check(name, ok)
     count = count + 1
@@ -22,8 +22,8 @@ local function sh(cmd)
     local r = real_execute(cmd)
     return r == 0 or r == true
 end
-local function write(path, text)
-    local f = assert(io.open(path, "wb"))
+local function write(path, text) -- (the test's own writes: never counted as the plugin's)
+    local f = assert(real_open(path, "wb"))
     f:write(text)
     f:close()
 end
@@ -31,6 +31,22 @@ local function is_file(path) return sh("test -f " .. q(path)) end
 
 -- The world of one case: what the stand-ins answer, and every call they saw (W.calls, in order).
 local W
+
+-- Every file the plugin writes, by the path it writes it at (W.wrote: io.open in a mode that
+-- writes, writePNG, Screen:shot), and every rename, "from -> to" (W.renamed): a request and its
+-- picture are held to "written into a temporary file, then renamed into place". A rename to a path
+-- that ends in W.rename_fails fails, as on a full disk.
+io.open = function(path, mode) -- luacheck: ignore
+    if W and mode and mode:find("[wa+]") then table.insert(W.wrote, path) end
+    return real_open(path, mode)
+end
+os.rename = function(from, to) -- luacheck: ignore
+    if W then
+        table.insert(W.renamed, from .. " -> " .. to)
+        if W.rename_fails and to:sub(-#W.rename_fails) == W.rename_fails then return nil, "No space left on device" end
+    end
+    return real_rename(from, to)
+end
 
 -- KOReader's modules. Device is the device's class table, as require("device") returns it on a
 -- Kindle, with exit an own field (kindle/device.lua sets KindleScribe.exit = KindleTouch.exit);
@@ -42,14 +58,24 @@ local function device_exit(self)
     if W.exit_error then error("KOReader's exit failed") end
 end
 Device.isKindle = function() return W.kindle end
--- The screen, of W.screen's size; its shot (KOReader's Screen:shot) writes what it shows.
+-- The screen, of W.screen's size; its shot (KOReader's Screen:shot) writes what it shows, and
+-- answers as the screen's writePNG does (W.png_answers, below).
+local function png_answer(path, text)
+    table.insert(W.wrote, path)
+    if W.png_answers == "false" then -- a newer KOReader, the disk full part way
+        write(path, text:sub(1, 3))
+        return false, "failed to write"
+    end
+    write(path, W.png_answers == "empty" and "" or text)
+    if W.png_answers == "nothing" or W.png_answers == "empty" then return end -- (an older KOReader's)
+    return true
+end
 Device.screen = {
     getWidth = function() return W.screen.w end,
     getHeight = function() return W.screen.h end,
     shot = function(_, path)
         table.insert(W.calls, "shot")
-        write(path, string.format("SHOT %dx%d\n", W.screen.w, W.screen.h))
-        return true
+        return png_answer(path, string.format("SHOT %dx%d\n", W.screen.w, W.screen.h))
     end,
 }
 -- nextTick queues its task for run_ticks, KOReader's UI loop: UIManager runs its tasks without a
@@ -125,7 +151,9 @@ package.loaded["libs/libkoreader-lfs"] = {
     end,
 }
 -- BlitBuffers: their size, what was drawn into them (W.drawn), and the PNG each writes (a line
--- naming its size and what it holds); W.png_error makes writing fail as a full disk would.
+-- naming its size and what it holds). W.png_error makes writing raise an error; W.png_answers how
+-- it answers: "false" (cut short, and false with why, as a newer KOReader does), "nothing" (an
+-- older KOReader's: no answer), "empty" (no answer, an empty file); else true.
 local function new_bb(w, h, what)
     local bb = { w = w, h = h, what = what or "blank" }
     function bb.getWidth() return bb.w end
@@ -140,8 +168,7 @@ local function new_bb(w, h, what)
     end
     function bb.writePNG(_, path)
         if W.png_error then error("disk full") end
-        write(path, string.format("PNG %dx%d %s\n", bb.w, bb.h, bb.what))
-        return true
+        return png_answer(path, string.format("PNG %dx%d %s\n", bb.w, bb.h, bb.what))
     end
     function bb.free() W.freed = W.freed + 1 end
     return bb
@@ -251,6 +278,8 @@ local function world(name)
         drawn = {},
         freed = 0,
         logs = {},
+        wrote = {},
+        renamed = {},
         screen = { w = 1860, h = 2480 },
         -- The book a book's screen has open (new_ui): kind "paged" (a PDF), "reflowable" (an
         -- EPUB) or "old" (a PDF in a KOReader that cannot draw a page by itself).
@@ -792,6 +821,33 @@ local function logs_name_no_book(s)
     end
     check(s .. ": the log names no book", true)
 end
+-- The picture and the request each written into a temporary file, then renamed into place: no file
+-- of the requests' folder ever written under its own name, so Grimoire never reads half of one.
+local function written_whole(s)
+    local in_place = {}
+    for _, path in ipairs(W.wrote) do
+        if path:sub(1, #W.annotate + 1) == W.annotate .. "/" and not path:find("%.tmp$") then
+            table.insert(in_place, path)
+        end
+    end
+    for _, path in ipairs(in_place) do print("  written in place: " .. path) end
+    check(s .. ": nothing written in place", #in_place == 0)
+    local function renamed(name)
+        local want = W.annotate .. "/" .. name .. ".tmp -> " .. W.annotate .. "/" .. name
+        for _, r in ipairs(W.renamed) do
+            if r == want then return true end
+        end
+        return false
+    end
+    check(s .. ": the picture and the request renamed into place", renamed("page.png") and renamed("request.ini"))
+end
+-- A page that could not be sent: the message says so, nothing is left in the requests' folder (no
+-- picture, no request, nothing half-written), and there is no hand-over.
+local function not_sent(s)
+    check(s .. ": says so", told("Could not save this page for Grimoire. See koreader/crash.log."))
+    check(s .. ": nothing left in the folder", annotate_files() == "")
+    check(s .. ": no hand-over", not wrapped() and not is_file(W.marker) and not at("exitOrRestart"))
+end
 local ANNOTATE_CMD = " --hosted koreader --annotate"
 
 do -- In a book: Tools > Grimoire has Annotate this page in Grimoire, second; the gesture too.
@@ -832,6 +888,7 @@ do -- From a PDF: the whole page fitted to the Scribe's page, the PNG and the re
         and c.white_threshold == 200 and c.nightmode_document == 1)
     check(s .. ": into a page-size picture", read_all(W.annotate .. "/page.png") == "PNG 1860x2480 page 12\n")
     check(s .. ": the folder emptied first, nothing half-written", annotate_files() == "page.png request.ini")
+    written_whole(s)
     local r = request() or {}
     check(s .. ": the request names the book by its key", r.book == W.book.md5 and r.version == "1")
     check(s .. ": its title, page and page count", r.title == "Le Petit Prince" and r.page == "12" and r.pages == "96")
@@ -877,6 +934,7 @@ do -- From an EPUB: the text as the screen shows it (crengine's own status bar l
     check(s .. ": the picture", read_all(W.annotate .. "/page.png") == "PNG 1860x2480 text 31\n")
     local r = request() or {}
     check(s .. ": a reflowable book, page 31 of 340", r.kind == "reflowable" and r.page == "31" and r.pages == "340")
+    written_whole(s)
     run_ticks()
     W.calls = {}
     Device:exit()
@@ -914,7 +972,13 @@ do -- A KOReader that cannot draw a page by itself: a screenshot of the reader, 
     local r = request() or {}
     check(s .. ": the request all the same", r.page == "12" and r.picture == "page.png")
     check(s .. ": the hand-over goes ahead", wrapped() and at("exitOrRestart") ~= nil)
+    written_whole(s)
     logs_name_no_book(s)
+    -- Its Screen:shot answering false (a newer KOReader, its drawing failed): not sent.
+    world("annotate-old-shot-fails")
+    W.book.kind, W.png_answers = "old", "false"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent(s .. ", the screenshot not written")
 end
 
 do -- No key in the book's settings: worked out from its file (KOReader's partial MD5).
@@ -937,10 +1001,33 @@ do -- The picture cannot be written (a full disk): no request, no hand-over, the
     W.png_error = true
     koreader(true):onAnnotateInGrimoire()
     local s = "annotate, picture not written"
-    check(s .. ": says so", told("Could not save this page for Grimoire. See koreader/crash.log."))
     check(s .. ": Preparing Grimoire... closed", #W.closed == 1 and W.closed[1].text == "Preparing Grimoire...")
-    check(s .. ": nothing left in the folder", annotate_files() == "")
-    check(s .. ": no hand-over", not wrapped() and not is_file(W.marker) and not at("exitOrRestart"))
+    not_sent(s)
+    -- writePNG answering false (a newer KOReader), a file cut short left behind: not sent either,
+    -- and the log has lodepng's words for why.
+    world("annotate-png-false")
+    W.png_answers = "false"
+    koreader(true):onAnnotateInGrimoire()
+    s = "annotate, writePNG says it failed"
+    not_sent(s)
+    local why = false
+    for _, line in ipairs(W.logs) do why = why or line:find("failed to write", 1, true) ~= nil end
+    check(s .. ": the log says why", why)
+    -- An older KOReader's writePNG answers nothing: a file there and not empty counts as written,
+    -- an empty one does not.
+    world("annotate-png-nothing")
+    W.png_answers = "nothing"
+    koreader(true):onAnnotateInGrimoire()
+    check("annotate, writePNG answers nothing: sent", annotate_files() == "page.png request.ini" and wrapped())
+    world("annotate-png-empty")
+    W.png_answers = "empty"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent("annotate, writePNG answers nothing and writes nothing")
+    -- The request cannot be renamed into place (the disk full by then): its picture goes too.
+    world("annotate-request-not-written")
+    W.rename_fails = "/request.ini"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent("annotate, request not written")
 end
 
 do -- An app/grimoire.sh that cannot annotate (hosted only): Annotate says so, Open still works.
