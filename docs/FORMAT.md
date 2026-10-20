@@ -110,12 +110,12 @@ the bottom of the page.
 
 - **1.1 on:** a notebook keeps the page size it was made with (`page_w`, `page_h` in
   `notebook.ini`), wherever it is opened. The editor fits the page to the screen (its width to the
-  screen's width), and the Pages view, the thumbnails, the sleep screen and every export are made
-  at the page's own size. New pages get the notebook's size. A page file of another size than its
-  notebook's (one a version before 1.1 scaled to another screen, below) has its points scaled back
-  to the notebook's size when it is opened, which puts the ink written on the notebook's own screen
-  back on its lines, and is written at that size after an edit. Exports scale it back the same way
-  and leave its file as it is.
+  screen's width), as the sleep screen does; the Pages view, the thumbnails and every export are
+  made at the page's own size. New pages get the notebook's size. A page file of another size
+  than its notebook's (one a version before 1.1 scaled to another screen, below) has its points
+  scaled back to the notebook's size when it is opened, which puts the ink written on the
+  notebook's own screen back on its lines, and is written at that size after an edit. Exports
+  scale it back the same way and leave its file as it is.
 - **Before 1.1** (1.0.0-beta, rc.1, beta.2): every page opens at the screen's size, its points
   scaled when the stored size differs, and a page edited there is written at the screen's size.
   Back in 1.1 such a page goes back to its notebook's size: the ink it had moves back onto its
@@ -304,7 +304,8 @@ ratio of the widths, ay and by by the ratio of the heights. It logs that, and th
 save writes the new values with this panel's `panel`.
 
 - A calibration with no `panel` (made before 1.1, or saved by 1.0.0-beta, which drops the key)
-  counts as made on an 1860x2480 Scribe, where the calibrations before 1.1 were made.
+  counts as made on an 1860x2480 Scribe (the 2022 and 2024 Scribes, where nearly every
+  calibration before 1.1 was made).
 - Its own scale has the last word. A calibration only corrects the default mapping, which spans
   the panel exactly, so one whose |ax| and |ay| are within 2.5% of this panel's width and height,
   and not within 2.5% of the recorded (or assumed) panel's, was made here and is kept as it is.
