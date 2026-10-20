@@ -163,9 +163,13 @@ blank paper, or over ink taken away already): such a stroke is not stored and is
 ### Compaction
 
 Until it is left out, erased ink is in the page file: a zip of the notebook, a copy made with
-`grimoire-pull` and any older version still find it. From 1.1 on Grimoire takes it out when a
-notebook closes in the editor, in a background process (on a heavily erased page this can take a
-minute on the Kindle).
+`grimoire-pull` and any older version still find it. From 1.1 on Grimoire takes out the ink erased
+entirely (every pixel of it, on the page and on its ink layer) when a notebook closes in the
+editor, in a background process (on a heavily erased page this can take a minute on the Kindle).
+A stroke erased only in part stays whole in the file, with the erase strokes over it: the usual
+case when the precise eraser goes through part of a word written in one stroke, or when its soft
+edge only lightens the rim of a stroke. The erased part of such a stroke can still be found in a
+zip, a `grimoire-pull` copy or an older version.
 
 - `erased.txt` in the notebook's folder lists the pages to look at, one page id per line in
   decimal (lines that start with `#` are comments, and a line that is not a page id is skipped).
@@ -174,11 +178,22 @@ minute on the Kindle).
   (checked at the density Grimoire draws at, 300 dpi on every Scribe), and the page is written
   again: to `p<id>.qpg.compact.tmp`, renamed over `p<id>.qpg`, and only if the page file still
   holds, byte for byte, what was read (checked just before the rename; an older version or a copy
-  from a computer may have written it since). The other strokes, the paper and the chunks are
-  written as any save of the page writes them, and the page looks exactly as it did.
-- A page that is done goes off the list: compacted, with nothing to leave out, or one compaction
-  leaves as it is (read-only, of another size than its notebook's, damaged, missing, or no longer
-  in the notebook). A page it could not write stays listed. The list goes once it is empty.
+  from a computer may have written it since). The other strokes and the paper are written as any
+  save of the page writes them, and the page looks exactly as it did.
+- A page holding data this version reads past is left as it is: one that opens read-only (What a
+  reader does with a page, below), or one with ext bytes on any stroke, an erase stroke whose
+  texture byte is neither 0 nor a drawing tool + 1, a chunk of any kind after the strokes, or a
+  paper it does not know. The version that wrote that data may draw the page otherwise (a colour,
+  a layer, a texture that covers less than the round tip), so how 1.1 draws the page cannot tell
+  what may be left out of it. A version that adds such data can count on 1.1 never rewriting a
+  page that carries it.
+- A page that is done goes off the list: compacted, with nothing to leave out, missing (there is
+  no ink in it), or no longer in the notebook. A page compaction cannot judge stays listed, for a
+  later pass or for the version that can: one that does not read, one of another size than its
+  notebook's (compacted once the editor writes it at the notebook's size), and one holding data
+  1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
+  is there but does not read (a read error) is never written over: the editor tries again at its
+  next save, and compaction leaves it as it is.
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.

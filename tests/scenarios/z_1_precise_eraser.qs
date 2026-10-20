@@ -1,6 +1,7 @@
 # The precise eraser (eraser_mode=1, set by hand until Pen feel has its switch): the pen's eraser
 # end, the eraser button and the pen button (side_button=1) draw erase strokes that take away only
-# what they touch and keep the paper's lines. After each step the page drawn afresh is what live
+# what they touch and keep the paper's lines, each with the round tip and the eraser's settings
+# (editor.stroke_look, editor.stroke_settings). After each step the page drawn afresh is what live
 # drawing left (editor.live_matches_render): erasing, undo and redo, Clear page and its undo, a
 # paper change and its undo, another page on another paper. An erase stroke that changes nothing
 # is not kept. Closing the notebook compacts it in the background: its page file loses the ink
@@ -26,12 +27,16 @@ pen line 300 1200 1300 1250 80 0.5 0.8
 wait 300
 expect editor.strokes is 4
 expect editor.erase_strokes is 0
+expect editor.stroke_look is pencil
+expect editor.stroke_settings is pencil
 # The eraser end through the first line of writing: an erase stroke, kept like ink
 eraser line 500 640 560 780 12
 wait 700
 shot 01-eraser-end
 expect editor.strokes is 5
 expect editor.erase_strokes is 1
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.paper_cache is 1
 expect editor.live_matches_render is 1
 # The eraser button: the pen's tip erases
@@ -42,6 +47,8 @@ pen line 400 780 700 900 20 0.6 0.6
 wait 300
 expect editor.strokes is 6
 expect editor.erase_strokes is 2
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 # Tapped again: back to the pencil. The pen button (side_button=1) erases whatever the tip draws
 pentap 1768 466
@@ -53,6 +60,8 @@ side off
 wait 300
 expect editor.strokes is 7
 expect editor.erase_strokes is 3
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 # Over blank paper (its lines are the paper) it changes nothing: not kept, no undo step
 eraser line 300 1800 600 1900 15

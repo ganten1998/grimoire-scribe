@@ -25,6 +25,8 @@ shot 01-erased-fitted
 expect editor.strokes is 4
 expect editor.erase_strokes is 1
 expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.paper_cache is 1
 expect editor.live_matches_render is 1
 pinch 900 1500 300 750 6
@@ -35,6 +37,8 @@ wait 700
 shot 02-erased-zoomed
 expect editor.strokes is 5
 expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 pentap 1894 1566
 wait 1500

@@ -1,6 +1,7 @@
 # The precise eraser keeps its size on the screen (editor.stroke_screen_mm: the newest stroke's
 # width at the zoom it shows at): zoomed in, its widths on the page are divided by the zoom;
-# sideways too. Live equals a fresh render through all of it.
+# sideways too. It stays the round tip with the eraser's settings (at the zoom: stroke_settings).
+# Live equals a fresh render through all of it.
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
 wait 300
@@ -18,6 +19,8 @@ eraser line 400 480 440 700 12
 wait 300
 expect editor.strokes is 3
 expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 # Zoomed in around the writing: as big on the screen, smaller on the page
 pinch 600 600 300 750 6
@@ -29,6 +32,8 @@ wait 700
 shot 02-zoomed-erased
 expect editor.strokes is 4
 expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 tap 930 74
 wait 300
@@ -45,6 +50,8 @@ wait 700
 shot 04-sideways-erased
 expect editor.strokes is 5
 expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_look is round tip
+expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 rotate 0
 wait 600

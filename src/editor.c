@@ -35,6 +35,7 @@ typedef struct {
     uint32_t page_id;
     History h;
     Page *page;   // NULL until loaded
+    bool to_list; // it got an erase stroke this session that erased.txt may not list yet (compact.h)
 } PageHistory;
 
 struct EditorState {
@@ -75,11 +76,10 @@ struct EditorState {
     // of another paper or size than it holds, freed with the notebook.
     Canvas paper;
     PaperKind paper_k;          // the paper it holds (while paper.px)
-    // The open notebook's pages listed for compaction this session (compact_note_page), and the
-    // page that has an erase stroke its file does not have yet (listed once the page is saved).
+    // The open notebook's pages listed for compaction this session (compact_note_page); a page
+    // with an erase stroke its file does not have yet is listed once the page is saved (to_list).
     uint32_t *noted;
     int nnoted, capnoted;
-    uint32_t erased_pid;        // 0 none
 
     // Erasing: one gesture = one undo step.
     Stroke **snap;      // page stroke list at gesture start (to recover original indices)
@@ -189,6 +189,7 @@ static PageHistory *entry_for(App *a, uint32_t pid) {
     PageHistory *e = &S->hist[S->nhist++];
     e->page_id = pid;
     e->page = NULL;
+    e->to_list = false;
     history_init(&e->h);
     return e;
 }
@@ -695,6 +696,17 @@ static bool note_for_compaction(App *a, uint32_t pid) {
     return true;
 }
 
+// The pages that got an erase stroke this session, listed for compaction once their files have it:
+// at a save, not as the pen lifts, so the list's write never holds up the next stroke. A page the
+// list could not take (it could not be written, or did not read) is tried again at the next save.
+static void list_erased_pages(App *a) {
+    for (int i = 0; i < S->nhist; i++) {
+        PageHistory *e = &S->hist[i];
+        if (e->to_list && !(e->page == S->page && S->page_dirty) && note_for_compaction(a, e->page_id))
+            e->to_list = false;
+    }
+}
+
 // False if the page could not be written; it then stays dirty (and in memory), so callers
 // that would drop it (turning the page, closing) must stay put instead.
 static bool save_page(App *a) {
@@ -708,11 +720,8 @@ static bool save_page(App *a) {
         if (S->index == 0) S->thumb_dirty = true;  // written when leaving the page (it is slow)
         S->page_dirty = false;
         S->info_dirty = true;
-        // Its file has the erase stroke now (and the ink under it): listed for compaction. Here,
-        // not as the pen lifts, so the list's write never holds up the next stroke.
-        uint32_t pid = S->nb.page_ids[S->index];
-        if (S->erased_pid && (S->erased_pid != pid || note_for_compaction(a, pid))) S->erased_pid = 0;
     }
+    list_erased_pages(a);  // their files have the erase strokes now (and the ink under them)
     if (S->info_dirty) {
         if (store_save_info(&S->nb) != 0) return false;
         S->info_dirty = false;
@@ -838,9 +847,10 @@ static void close_notebook(App *a) {
     if (a->settings.mirror_pdf && S->changed) {
         bg_mirror_pdf(S->nb.id, a->dpi, app_mirror_dir(), false);
     }
-    // The ink erase strokes took away, out of the page files (compact.h): in the background, as it
-    // can take long on the Kindle, and after the PDF (which it does not change). Not while Grimoire
-    // leaves: the compaction would go with it, so the pages stay listed for the next start.
+    // The ink erase strokes took away entirely, out of the page files (compact.h): in the
+    // background, as it can take long on the Kindle, and after the PDF (which it does not change).
+    // Not while Grimoire leaves: the compaction would go with it, so the pages stay listed for the
+    // next start.
     if (compact_listed(S->nb.id)) {
         if (!a->running) {
             qlog("compact: %s left listed for the next start (Grimoire is leaving)", S->nb.id);
@@ -849,11 +859,15 @@ static void close_notebook(App *a) {
             bg_queue(BG_COMPACT_PAGES, S->nb.id, NULL, a->dpi, false);
         }
     }
+    int unlisted = 0;
+    for (int i = 0; i < S->nhist; i++) unlisted += S->hist[i].to_list;
+    if (unlisted)
+        qlog("compact: %s: %d page(s) with erased ink could not be listed; their files keep it until listed again",
+             S->nb.id, unlisted);
     free_histories(a);
     pthumbs_clear(a);
     canvas_free(&S->paper);
     S->nnoted = 0;
-    S->erased_pid = 0;
     S->pages_open = false;
     S->open = false;
 }
@@ -1000,7 +1014,8 @@ static void draw_end(App *a) {
     page_add(S->page, s);
     bool kept = S->page->n && S->page->strokes[S->page->n - 1] == s;
     if (h && kept) history_push_add(h, S->page->n - 1, s);
-    if (erase && kept) S->erased_pid = S->nb.page_ids[S->index];
+    PageHistory *e = erase && kept ? entry_for(a, S->nb.page_ids[S->index]) : NULL;
+    if (e) e->to_list = true;  // listed for compaction once the page is saved
     mark_changed(a);
     // Only touch the panel when Undo/Redo availability actually changed.
     if (!had_undo || had_redo || was_empty) S->panel_stale = true;
@@ -1787,6 +1802,33 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
         if (st) snprintf(out, cap, "%.2f", st->params.size_max_mm * S->zoom);
         else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "stroke_look")) {
+        // The newest stroke's look: its tool for ink ("pencil"), "white" and its texture for white
+        // ink ("white charcoal"), "round tip" for the precise eraser; empty with no stroke.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        ToolKind t = st ? stroke_render_tool(st) : TOOL_PENCIL;
+        const char *name = app_probe_tool(t);
+        if (!st) snprintf(out, cap, "%s", "");
+        else if (!stroke_is_erase(st)) snprintf(out, cap, "%s", name ? name : "?");
+        else if (t == TOOL_ERASER) snprintf(out, cap, "%s", "round tip");
+        else snprintf(out, cap, "white %s", name ? name : "?");
+    } else if (!strcmp(key, "stroke_settings")) {
+        // Whose pen feel the newest stroke was drawn with: the tool whose settings its parameters
+        // are (its look's tool tried first), "eraser" also for the eraser's at the zoom now (the
+        // precise eraser's widths are divided by it), "other" for none; empty with no stroke.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        const char *who = NULL;
+        ToolKind look = st ? stroke_render_tool(st) : TOOL_PENCIL;
+        for (int k = -1; st && !who && k < TOOL_COUNT; k++) {
+            ToolKind t = k < 0 ? look : (ToolKind)k;
+            if (!memcmp(&st->params, &a->settings.tools[t], sizeof st->params)) who = app_probe_tool(t);
+        }
+        ToolParams ez = eraser_at_zoom(&a->settings.tools[TOOL_ERASER], S->zoom);
+        if (st && !who && !memcmp(&st->params, &ez, sizeof ez)) who = app_probe_tool(TOOL_ERASER);
+        snprintf(out, cap, "%s", !st ? "" : who ? who : "other");
+    } else if (!strcmp(key, "compact_listed")) {
+        // 1 while the open notebook's erased.txt lists pages for compaction
+        snprintf(out, cap, "%d", S->open && compact_listed(S->nb.id) ? 1 : 0);
     } else if (!strcmp(key, "paper_cache")) {
         snprintf(out, cap, "%d", S->paper.px ? 1 : 0);  // the paper erase strokes restore toward
     } else if (!strcmp(key, "matches_closed")) {

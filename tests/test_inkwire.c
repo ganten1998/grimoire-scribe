@@ -2,7 +2,9 @@
 // the pen does, the eraser's size at a zoom), the settings that choose them, and compaction
 // (src/compact.h, src/bgwork_compact.c): a page file loses the strokes that change nothing, looks
 // exactly as before, and only pages the list names are touched.
+#include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "bgjob.h"
@@ -376,9 +378,27 @@ TEST(compaction_takes_erased_ink_out) {
     }
 }
 
+// Whether notebook nb's list names page pid.
+static bool lists(const NotebookInfo *nb, uint32_t pid) {
+    char lp[800];
+    list_path(nb, lp, sizeof lp);
+    size_t len;
+    char *t = read_file(lp, &len);
+    bool found = false;
+    for (char *l = t; l && *l && !found;) {
+        found = *l != '#' && strtoul(l, NULL, 10) == pid;
+        char *nl = strchr(l, '\n');
+        if (!nl) break;
+        l = nl + 1;
+    }
+    free(t);
+    return found;
+}
+
 // Pages compaction must leave as they are: from a newer version (read-only), at another size than
-// the notebook's (an older version wrote it on another Scribe), damaged, or missing. Each goes off
-// the list (there is nothing it could do), and the file stays byte for byte.
+// the notebook's (an older version wrote it on another Scribe), damaged, or missing. Each file
+// stays byte for byte. A missing page goes off the list (there is no ink in it); the others stay
+// listed, and the one of another size is compacted once it is written at the notebook's size.
 TEST(compaction_leaves_what_it_cannot_write) {
     NotebookInfo nb;
     CHECK(store_create("Left", "", PAPER_MEDIUM, &nb) == 0);
@@ -410,7 +430,206 @@ TEST(compaction_leaves_what_it_cannot_write) {
         free(now);
         free(was[i]);
     }
-    CHECK(!exists(path[3]) && !compact_listed(nb.id));
+    CHECK(!exists(path[3]) && !lists(&nb, nb.page_ids[3]));
+    for (int i = 0; i < 3; i++) CHECK(lists(&nb, nb.page_ids[i]));
+    // The page of another size, written at the notebook's (as the editor writes it after an edit):
+    // compacted now, and off the list.
+    Page *back = NULL;
+    CHECK(store_read_page(&nb, 1, &back) == 0 && back && back->w == W && back->n == 2);
+    CHECK(back && store_save_page(&nb, 1, back) == 0);
+    page_free(back);
+    CHECK(bg_compact_pages(nb.id, DPI) == 0);
+    back = NULL;
+    CHECK(store_read_page(&nb, 1, &back) == 0 && back && back->n == 0);
+    page_free(back);
+    CHECK(!lists(&nb, nb.page_ids[1]) && lists(&nb, nb.page_ids[0]) && lists(&nb, nb.page_ids[2]));
+    CHECK(store_delete(nb.id) == 0);
+}
+
+// Data this version reads past (docs/FORMAT.md, Registry): ext bytes on ink or on an erase stroke,
+// an erase stroke's texture it lacks (a later tool's, or 4, the eraser's own), a chunk, a paper it
+// does not know. The version that wrote it may draw the page otherwise (a colour, a layer, a
+// texture that covers less than the round tip), so such a page is never judged by how this version
+// draws it: left byte for byte, and listed for the version that wrote it. The same page without
+// that data is compacted.
+TEST(newer_data_is_left_as_it_is) {
+    enum { CASES = 7 };
+    NotebookInfo nb;
+    CHECK(store_create("Newer", "", PAPER_MEDIUM, &nb) == 0);
+    for (int i = 1; i < CASES; i++) CHECK(store_add_page(&nb, i, PAPER_MEDIUM) == 0);
+    Page *pg[CASES];
+    for (int i = 0; i < CASES; i++) pg[i] = erased_page(i == 5 ? (PaperKind)0x50000001u : PAPER_MEDIUM);
+    pg[0]->strokes[0]->ext[0] = 5;                   // ink in a newer version's colour
+    pg[1]->strokes[1]->ext[2] = 1;                   // a newer version's flag on the eraser
+    pg[2]->strokes[1]->seed = 0x20u << 24 | 12u;      // a texture a later tool would have
+    pg[3]->strokes[1]->seed = 4u << 24 | 12u;         // texture 4, the eraser's own
+    static const uint8_t chunk[] = {'n', 'o', 't', 'e', 3, 0, 0, 0, 'a', 'b', 'c'};  // safe to copy
+    pg[4]->tail = malloc(sizeof chunk);
+    if (pg[4]->tail) {
+        memcpy(pg[4]->tail, chunk, sizeof chunk);
+        pg[4]->tail_len = sizeof chunk;
+    }
+    // 5: an image paper (reserved, unknown here); 6: none of it.
+    size_t was_len[CASES];
+    uint8_t *was[CASES];
+    for (int i = 0; i < CASES; i++) {
+        CHECK(store_save_page(&nb, i, pg[i]) == 0);
+        Page *rd = NULL;
+        CHECK(store_read_page(&nb, i, &rd) == 0 && rd && !rd->readonly && rd->n == 8);
+        page_free(rd);
+        char path[800];
+        page_path(&nb, i, path, sizeof path);
+        was[i] = file_bytes(path, &was_len[i]);
+        CHECK(compact_note_page(nb.id, nb.page_ids[i]) == 0);
+    }
+    CHECK(bg_compact_pages(nb.id, DPI) == 0);
+    for (int i = 0; i < CASES; i++) {
+        char path[800];
+        page_path(&nb, i, path, sizeof path);
+        size_t l;
+        uint8_t *now = file_bytes(path, &l);
+        bool same = was[i] && now && l == was_len[i] && !memcmp(now, was[i], l);
+        if (i < CASES - 1) CHECK(same && lists(&nb, nb.page_ids[i]));
+        else CHECK(!same && now && l < was_len[i] && !lists(&nb, nb.page_ids[i]));
+        free(now);
+        free(was[i]);
+        page_free(pg[i]);
+    }
+    CHECK(store_delete(nb.id) == 0);
+}
+
+// The file is replaced only if it still holds what the pass read: a page written meanwhile (by the
+// editor, an older version or a copy from a computer) stays as that writer left it, with no
+// temporary file left behind, and listed; the next pass compacts what it holds then.
+static Page *g_meanwhile;
+static void write_meanwhile(const char *path) {
+    uint8_t *d;
+    size_t len;
+    if (page_serialize(g_meanwhile, &d, &len) != 0) return;
+    CHECK(write_file_atomic(path, d, len) == 0);
+    free(d);
+}
+
+TEST(a_page_written_meanwhile_stays) {
+    NotebookInfo nb;
+    CHECK(store_create("Meanwhile", "", PAPER_MEDIUM, &nb) == 0);
+    Page *p = erased_page(PAPER_MEDIUM);
+    CHECK(store_save_page(&nb, 0, p) == 0);
+    g_meanwhile = erased_page(PAPER_MEDIUM);
+    page_add(g_meanwhile, line(TOOL_FOUNTAIN, 300, 1900, 1200, 1950, 0.7f, 41u));
+    uint8_t *want;
+    size_t want_len;
+    CHECK(page_serialize(g_meanwhile, &want, &want_len) == 0);
+    char path[800], tmp[900];
+    page_path(&nb, 0, path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.compact.tmp", path);
+    CHECK(compact_note_page(nb.id, nb.page_ids[0]) == 0);
+    compact_test_before_replace = write_meanwhile;
+    CHECK(bg_compact_pages(nb.id, DPI) == 0);
+    compact_test_before_replace = NULL;
+    size_t l;
+    uint8_t *now = file_bytes(path, &l);
+    CHECK(now && l == want_len && !memcmp(now, want, l));
+    CHECK(!exists(tmp) && lists(&nb, nb.page_ids[0]));
+    free(now);
+    // The next pass leaves out of it what the writer's page lets go (its new stroke stays).
+    Page *rd = NULL;
+    CHECK(store_read_page(&nb, 0, &rd) == 0 && rd && rd->n == 9);
+    bool drop[16] = {0};
+    int expect = rd ? page_droppable(rd, DPI, drop) : -1;
+    CHECK(expect >= 3 && !drop[8]);
+    page_free(rd);
+    CHECK(bg_compact_pages(nb.id, DPI) == 0);
+    rd = NULL;
+    CHECK(store_read_page(&nb, 0, &rd) == 0 && rd && rd->n == 9 - expect);
+    CHECK(rd && rd->n && rd->strokes[rd->n - 1]->tool == TOOL_FOUNTAIN);
+    page_free(rd);
+    CHECK(!lists(&nb, nb.page_ids[0]));
+    free(want);
+    page_free(g_meanwhile);
+    g_meanwhile = NULL;
+    page_free(p);
+    CHECK(store_delete(nb.id) == 0);
+}
+
+// A stop (bg_cancel_notebook's SIGTERM) that comes while a page file is being replaced waits for
+// the rename: the page is its new file whole, no temporary file is left, and the list, not updated
+// yet, still names it (the next pass finds nothing more to leave out and lets it go).
+static void stop_now(const char *path) {
+    (void)path;
+    kill(getpid(), SIGTERM);
+}
+
+TEST(a_stop_waits_for_the_rename) {
+    NotebookInfo nb;
+    CHECK(store_create("Stopped", "", PAPER_MEDIUM, &nb) == 0);
+    Page *p = erased_page(PAPER_MEDIUM);
+    CHECK(store_save_page(&nb, 0, p) == 0);
+    Page *rd = NULL;
+    CHECK(store_read_page(&nb, 0, &rd) == 0 && rd && rd->n == 8);
+    bool drop[16] = {0};
+    CHECK(rd && page_droppable(rd, DPI, drop) >= 3);
+    for (int i = rd ? rd->n - 1 : -1; i >= 0; i--)
+        if (drop[i]) stroke_free(page_remove(rd, i));
+    uint8_t *want = NULL;
+    size_t want_len = 0;
+    CHECK(rd && page_serialize(rd, &want, &want_len) == 0);
+    page_free(rd);
+    char path[800], tmp[900];
+    page_path(&nb, 0, path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.compact.tmp", path);
+    CHECK(compact_note_page(nb.id, nb.page_ids[0]) == 0);
+    pid_t pid = fork();
+    if (pid == 0) {
+        compact_test_before_replace = stop_now;
+        bg_compact_pages(nb.id, DPI);
+        _exit(0);  // (not reached: the stop lands as soon as the page is replaced)
+    }
+    int st = 0;
+    CHECK(pid > 0 && waitpid(pid, &st, 0) == pid && WIFSIGNALED(st) && WTERMSIG(st) == SIGTERM);
+    size_t l;
+    uint8_t *now = file_bytes(path, &l);
+    CHECK(now && want && l == want_len && !memcmp(now, want, l));
+    CHECK(!exists(tmp) && lists(&nb, nb.page_ids[0]));
+    free(now);
+    CHECK(bg_compact_pages(nb.id, DPI) == 0 && !compact_listed(nb.id));
+    now = file_bytes(path, &l);
+    CHECK(now && l == want_len && !memcmp(now, want, l));
+    free(now);
+    free(want);
+    page_free(p);
+    CHECK(store_delete(nb.id) == 0);
+}
+
+// A list that is there but does not read now (a read error, no memory) is never written over: a
+// page noted then would have it list that page alone and forget the others. It is left as it is,
+// the editor tries again at its next save, and once it reads the page is added to what it lists.
+TEST(a_list_that_does_not_read_is_kept) {
+    NotebookInfo nb;
+    CHECK(store_create("Unread", "", PAPER_MEDIUM, &nb) == 0);
+    char lp[800];
+    list_path(&nb, lp, sizeof lp);
+    const char *t = "# a list\n3\n4\n";
+    CHECK(write_file_atomic(lp, t, strlen(t)) == 0);
+    CHECK(chmod(lp, 0) == 0);
+    FILE *f = fopen(lp, "rb");
+    if (f) {
+        fclose(f);  // (run as root, which reads it anyway: nothing to see here)
+    } else {
+        CHECK(compact_note_page(nb.id, 5) == -1);
+        CHECK(compact_listed(nb.id));  // it may list pages: the pass is tried
+        CHECK(bg_compact_pages(nb.id, DPI) == -1);
+    }
+    CHECK(chmod(lp, 0644) == 0);
+    size_t len;
+    char *back = (char *)read_file(lp, &len);
+    CHECK(back && !strcmp(back, t));
+    free(back);
+    CHECK(compact_note_page(nb.id, 5) == 0);
+    back = (char *)read_file(lp, &len);
+    const char *ids = back ? strchr(back, '\n') : NULL;
+    CHECK(ids && !strcmp(ids, "\n3\n4\n5\n"));
+    free(back);
     CHECK(store_delete(nb.id) == 0);
 }
 
@@ -474,6 +693,70 @@ TEST(compaction_left_from_an_earlier_run) {
     CHECK(store_delete(nb.id) == 0 && store_delete(other.id) == 0);
 }
 
+// A sketch reworked under scrubs (page.h: page_droppable takes seconds on it), with strokes to
+// leave out.
+static Page *heavy_page(void) {
+    Page *p = page_new(W, H, PAPER_MEDIUM);
+    for (int i = 0; i < 360; i++)
+        page_add(p, line(TOOL_PENCIL, 100 + (i % 7) * 20, 100 + i * 6, 1700 - (i % 5) * 30, 140 + i * 6, 0.8f,
+                         100u + (uint32_t)i));
+    for (int k = 0; k < 20; k++) page_add(p, rubber(150, 150 + k * 60, 1650, 1300 + k * 50, 1.f, 7000u + (uint32_t)k));
+    return p;
+}
+
+static void signal_noted(int sig) { (void)sig; }
+
+// Opening a notebook stops its compaction at once, in the middle of a page, on the Kindle too:
+// there Grimoire's SIGTERM handler (input_evdev.c) only notes the signal, and bgjob.c's child is a
+// fork that keeps it, so a pass that kept it would run to its end while Grimoire waits in
+// bg_cancel_notebook (and the launcher's watchdog kills it after 15 s). The page it was at is as it
+// was, still listed, with no temporary file; the next pass compacts it.
+TEST(opening_stops_a_running_pass) {
+    NotebookInfo nb;
+    CHECK(store_create("Heavy", "", PAPER_MEDIUM, &nb) == 0);
+    CHECK(store_add_page(&nb, 1, PAPER_MEDIUM) == 0);
+    Page *light = page_new(W, H, PAPER_MEDIUM);
+    page_add(light, line(TOOL_PENCIL, 300, 300, 900, 900, 0.7f, 21u));
+    Page *heavy = heavy_page();
+    CHECK(store_save_page(&nb, 0, light) == 0 && store_save_page(&nb, 1, heavy) == 0);
+    char path[800], tmp[900];
+    page_path(&nb, 1, path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.compact.tmp", path);
+    size_t was_len;
+    uint8_t *was = file_bytes(path, &was_len);
+    CHECK(compact_note_page(nb.id, nb.page_ids[0]) == 0 && compact_note_page(nb.id, nb.page_ids[1]) == 0);
+    CHECK(!bg_busy());
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = signal_noted;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, &old);
+    bg_queue(BG_COMPACT_PAGES, nb.id, NULL, DPI, false);
+    // Once the light page is done (off the list), the pass is in the heavy one.
+    for (int ms = 0; lists(&nb, nb.page_ids[0]) && ms < 60000; ms += 2) sleep_ms(2);
+    CHECK(!lists(&nb, nb.page_ids[0]) && lists(&nb, nb.page_ids[1]));
+    uint32_t t0 = now_ms();
+    bg_cancel_notebook(nb.id);
+    uint32_t took = now_ms() - t0;
+    sigaction(SIGTERM, &old, NULL);
+    CHECK(took < 1000);
+    CHECK(!bg_busy());
+    size_t l;
+    uint8_t *now = file_bytes(path, &l);
+    CHECK(was && now && l == was_len && !memcmp(now, was, l));
+    CHECK(lists(&nb, nb.page_ids[1]) && !exists(tmp));
+    free(now);
+    // The next pass gets through, and finds ink to leave out (so the stop above came in time).
+    CHECK(bg_compact_pages(nb.id, DPI) == 0 && !compact_listed(nb.id));
+    Page *rd = NULL;
+    CHECK(store_read_page(&nb, 1, &rd) == 0 && rd && rd->n < heavy->n);
+    page_free(rd);
+    free(was);
+    page_free(light);
+    page_free(heavy);
+    CHECK(store_delete(nb.id) == 0);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/inkwire-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -487,8 +770,13 @@ int main(void) {
     RUN(live_erase_equals_rerender);
     RUN(compaction_takes_erased_ink_out);
     RUN(compaction_leaves_what_it_cannot_write);
+    RUN(newer_data_is_left_as_it_is);
+    RUN(a_page_written_meanwhile_stays);
+    RUN(a_stop_waits_for_the_rename);
+    RUN(a_list_that_does_not_read_is_kept);
     RUN(the_list);
     RUN(compaction_left_from_an_earlier_run);
+    RUN(opening_stops_a_running_pass);
     int rc = tl_done();
     system(cmd);
     return rc;

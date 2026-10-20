@@ -26,6 +26,8 @@ shot 01-button-white-pencil
 expect editor.strokes is 3
 expect editor.erase_strokes is 1
 expect editor.tool is pencil
+expect editor.stroke_look is white pencil
+expect editor.stroke_settings is pencil
 expect editor.live_matches_render is 1
 # The marker picked: the button draws white marker
 pentap 1768 358
@@ -41,6 +43,8 @@ wait 700
 shot 02-button-white-marker
 expect editor.strokes is 5
 expect editor.erase_strokes is 2
+expect editor.stroke_look is white marker
+expect editor.stroke_settings is marker
 expect editor.live_matches_render is 1
 # The eraser picked: the button still draws white with the toolbar's tool (the marker)
 pentap 1768 466
@@ -52,6 +56,8 @@ side off
 wait 300
 expect editor.strokes is 6
 expect editor.erase_strokes is 3
+expect editor.stroke_look is white marker
+expect editor.stroke_settings is marker
 expect editor.live_matches_render is 1
 # The tip: the stroke eraser takes the pencil line away, not the white pencil across it
 pen line 400 860 420 940 10 0.6 0.6

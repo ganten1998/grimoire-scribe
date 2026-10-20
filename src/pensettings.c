@@ -422,3 +422,29 @@ void pensettings_event(App *a, const InEvent *ev) {
 }
 
 void pensettings_tick(App *a, uint32_t now) {}
+
+// Tests (app_probe's "penset." keys), while the pad keeps its copy of itself drawn bare (the precise
+// eraser on): "pad_ink" 1 while ink shows on the pad (a pixel darker than the bare pad there),
+// "pad_lighter" 1 when a pixel is lighter than the bare pad (one of its lines, or its Clear
+// button, erased away), "pad_ink_near.X.Y" 1 while ink shows within 12 px of the screen point X, Y.
+// Empty without the copy.
+int pensettings_probe(App *a, const char *key, char *out, size_t cap) {
+    int px = 0, py = 0;
+    bool near = !strncmp(key, "pad_ink_near.", 13) && sscanf(key + 13, "%d.%d", &px, &py) == 2;
+    bool lighter = !strcmp(key, "pad_lighter");
+    if (!S || (!near && !lighter && strcmp(key, "pad_ink"))) return -1;
+    if (!S->paper.px || S->paper.w != S->pad.w || S->paper.h != S->pad.h) {
+        snprintf(out, cap, "%s", "");
+        return 0;
+    }
+    Rect r = S->pad;
+    if (near) r = rect_intersect(r, (Rect){px - 12, py - 12, 25, 25});
+    bool found = false;
+    for (int y = r.y; y < r.y + r.h && !found; y++) {
+        const uint8_t *s = &a->screen.px[(size_t)y * (size_t)a->screen.stride + (size_t)r.x];
+        const uint8_t *b = &S->paper.px[(size_t)(y - S->pad.y) * (size_t)S->paper.stride + (size_t)(r.x - S->pad.x)];
+        for (int x = 0; x < r.w && !found; x++) found = lighter ? s[x] > b[x] : s[x] < b[x];
+    }
+    snprintf(out, cap, "%d", found ? 1 : 0);
+    return 0;
+}
