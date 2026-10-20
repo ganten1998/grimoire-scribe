@@ -619,6 +619,7 @@ int app_probe(const char *key, char *out, size_t cap) {
     if (!a || !key || !out || cap == 0) return -1;
     if (!strncmp(key, "editor.", 7)) return editor_probe(a, key + 7, out, cap);
     if (!strncmp(key, "library.", 8)) return library_probe(a, key + 8, out, cap);
+    if (!strncmp(key, "penset.", 7)) return pensettings_probe(a, key + 7, out, cap);
     // Settings, under their settings.ini names.
     const Settings *st = &a->settings;
     const struct {
@@ -634,6 +635,9 @@ int app_probe(const char *key, char *out, size_t cap) {
         {"settings.sleep_minutes", st->sleep_minutes},
         {"settings.pen.valid", st->pen_calib.valid},
         {"settings.touch.valid", st->touch_calib.valid},
+        {"settings.eraser_mode", st->eraser_mode},
+        {"settings.white", st->white},
+        {"bg.busy", bg_busy()},  // a background job (an export, a compaction) runs or waits
     };
     for (size_t i = 0; i < sizeof nums / sizeof nums[0]; i++)
         if (!strcmp(key, nums[i].key)) {

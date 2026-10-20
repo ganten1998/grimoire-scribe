@@ -131,6 +131,7 @@ int app_probe(const char *key, char *out, size_t cap);
 // The screens' own keys, asked without their "editor." / "library." prefix (same contract).
 int editor_probe(App *a, const char *key, char *out, size_t cap);
 int library_probe(App *a, const char *key, char *out, size_t cap);
+int pensettings_probe(App *a, const char *key, char *out, size_t cap);  // "penset.*": the pen feel pad
 // A custom music layout for the probes: "5: treble tab6 bass" (systems per page, then the parts
 // top to bottom); "" for NULL.
 void app_probe_music(const MusicLayout *m, char *out, size_t cap);

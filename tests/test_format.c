@@ -644,8 +644,8 @@ TEST(settings_carry_unknown_lines) {
     snprintf(f, cap,
              "# Grimoire settings\r\n"
              "current_tool=2\r\n"
-             "language=es\r\n"                       // a newer version's key (CRLF file)
-             "side_button=3\n"                       // a value this version does not have
+             "ink_palette=sepia\r\n"                 // a newer version's key (CRLF file)
+             "side_button=4\n"                       // a value this version does not have
              "theme=dark\n"
              "sleep_minutes=500\n"
              "pencil.size_max_mm=20\n"               // past this version's range
@@ -664,7 +664,7 @@ TEST(settings_carry_unknown_lines) {
     CHECK(write_file_atomic(path, f, strlen(f)) == 0);
     Settings s;
     CHECK(settings_load(&s) == 0);
-    CHECK(s.current_tool == TOOL_BALLPOINT && s.side_button == 2 && s.theme == 0 && s.sleep_minutes == 240);
+    CHECK(s.current_tool == TOOL_BALLPOINT && s.side_button == 3 && s.theme == 0 && s.sleep_minutes == 240);
     CHECK_NEAR(s.tools[TOOL_PENCIL].size_max_mm, 12.f, 1e-4);
     CHECK_NEAR(s.tools[TOOL_BALLPOINT].pressure_gamma, 2.5f, 1e-4);
     CHECK(s.music_layout == music_default() && s.version == 7 && s.http_port == 1024);
@@ -672,7 +672,7 @@ TEST(settings_carry_unknown_lines) {
     char *t = file_text(path);
     CHECK(t != NULL);
     if (t) {
-        CHECK(has_line(t, "language=es") == 1 && has_line(t, "pencil.color=3") == 1);
+        CHECK(has_line(t, "ink_palette=sepia") == 1 && has_line(t, "pencil.color=3") == 1);
         CHECK(has_line(t, "white.size_min_mm=0.5") == 1 && has_line(t, "pen.rotation=1") == 1);
         CHECK(has_line(t, "averyveryverylongheadthatisover32chars.k=v") == 1);
         CHECK(has_line(t, "url=http://host/?a=b&c=d==") == 1 && has_line(t, "empty=") == 1);
@@ -681,7 +681,7 @@ TEST(settings_carry_unknown_lines) {
         CHECK(has_line(t, ll) == 1);
         free(ll);
         // Known keys this version could not use as written go back as they were.
-        CHECK(has_line(t, "side_button=3") == 1 && has_line(t, "theme=dark") == 1);
+        CHECK(has_line(t, "side_button=4") == 1 && has_line(t, "theme=dark") == 1);
         CHECK(has_line(t, "sleep_minutes=500") == 1 && has_line(t, "pencil.size_max_mm=20") == 1);
         char ml[64];
         snprintf(ml, sizeof ml, "music_layout=%u", MUSIC_NEWER);
@@ -691,7 +691,7 @@ TEST(settings_carry_unknown_lines) {
         CHECK(has_line(t, "ballpoint.pressure_gamma=2.5000") == 1);
         CHECK(!strchr(t, '\r'));
         // Known keys come first, the unknown lines after them.
-        CHECK(strstr(t, "language=es") > strstr(t, "calligraphy.smoothing="));
+        CHECK(strstr(t, "ink_palette=sepia") > strstr(t, "calligraphy.smoothing="));
     }
     // A second round trip writes the very same file.
     Settings s2;
@@ -708,10 +708,10 @@ TEST(settings_carry_unknown_lines) {
     t = file_text(path);
     CHECK(t && has_line(t, "side_button=0") == 1 && has_line(t, "theme=classic") == 1);
     CHECK(t && has_line(t, "pencil.size_max_mm=0.5000") == 1 && has_line(t, "sleep_minutes=500") == 1);
-    CHECK(t && has_line(t, "language=es") == 1);
+    CHECK(t && has_line(t, "ink_palette=sepia") == 1);
     free(t);
     // The last line for a key counts: a later value this version has forgets the kept one.
-    const char *dup = "side_button=3\nside_button=2\ntheme=dark\ntheme=gothic\n";
+    const char *dup = "side_button=4\nside_button=2\ntheme=dark\ntheme=gothic\n";
     CHECK(write_file_atomic(path, dup, strlen(dup)) == 0);
     CHECK(settings_load(&s) == 0 && s.side_button == 2 && settings_save(&s) == 0);
     t = file_text(path);
@@ -863,11 +863,11 @@ TEST(long_names_cut_at_a_character) {
 TEST(changed_settings_stay_changed) {
     char path[700], f[256];
     snprintf(path, sizeof path, "%s/settings.ini", store_root());
-    snprintf(f, sizeof f, "side_button=3\ntheme=dark\npencil.size_max_mm=20\nmusic_layout=%u\nsleep_minutes=500\n",
+    snprintf(f, sizeof f, "side_button=4\ntheme=dark\npencil.size_max_mm=20\nmusic_layout=%u\nsleep_minutes=500\n",
              MUSIC_NEWER);
     CHECK(write_file_atomic(path, f, strlen(f)) == 0);
     Settings s;
-    CHECK(settings_load(&s) == 0 && s.side_button == 2 && s.theme == 0 && s.music_layout == music_default());
+    CHECK(settings_load(&s) == 0 && s.side_button == 3 && s.theme == 0 && s.music_layout == music_default());
     // Changed (every settings change is saved as it is made), then set back to what was used.
     MusicLayout m = custom_layout();
     s.side_button = 0;
@@ -875,7 +875,7 @@ TEST(changed_settings_stay_changed) {
     s.tools[TOOL_PENCIL].size_max_mm = 5.f;
     s.music_layout = music_encode(&m);
     CHECK(settings_save(&s) == 0);
-    s.side_button = 2;
+    s.side_button = 3;
     s.theme = 0;
     s.tools[TOOL_PENCIL].size_max_mm = 12.f;
     s.music_layout = music_default();
@@ -884,7 +884,7 @@ TEST(changed_settings_stay_changed) {
     snprintf(ml, sizeof ml, "music_layout=%u", (unsigned)music_default());
     for (int round = 0; round < 2; round++) {  // and the same again on the next save
         char *t = file_text(path);
-        CHECK(t && has_line(t, "side_button=2") == 1 && has_line(t, "theme=gothic") == 1);
+        CHECK(t && has_line(t, "side_button=3") == 1 && has_line(t, "theme=gothic") == 1);
         CHECK(t && has_line(t, "pencil.size_max_mm=12.0000") == 1 && has_line(t, ml) == 1);
         CHECK(t && has_line(t, "sleep_minutes=500") == 1);  // the setting nobody changed
         free(t);

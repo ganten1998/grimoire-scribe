@@ -27,6 +27,10 @@ struct PenSetState {
     bool pen_owner;
     BrushState bs;
     Smoother sm;
+    // The precise eraser (eraser_mode 1) on the pad: an erase stroke, as in the editor, restoring
+    // the pad as it was drawn bare (its lines and its Clear button), copied here when it is.
+    Canvas paper;
+    bool erasing;          // the stroke on the pad is the precise eraser's
     float live_raw;        // last pen pressure seen on the pad (-1 none)
     float live_tx, live_ty;
     uint32_t last_readout;
@@ -151,7 +155,20 @@ static Rect clear_rect(App *a) {
     return (Rect){S->pad.x + S->pad.w - ui_px(220), S->pad.y + ui_px(14), ui_px(206), ui_px(100)};
 }
 
-static void draw_pad_frame(App *a) {
+// With the precise eraser, the pad as just drawn bare is its paper: the eraser restores it, lines
+// and Clear button, as it restores a page's paper in the editor (white ink here draws as ink: the
+// pad shows each tool's feel).
+static void pad_paper_take(App *a) {
+    if (a->settings.eraser_mode != 1) {
+        canvas_free(&S->paper);
+        return;
+    }
+    if (S->paper.px && (S->paper.w != S->pad.w || S->paper.h != S->pad.h)) canvas_free(&S->paper);
+    if (!S->paper.px && canvas_init(&S->paper, S->pad.w, S->pad.h) != 0) return;
+    canvas_blit(&S->paper, &a->screen, S->pad, 0, 0);
+}
+
+static void draw_pad_bare(App *a) {
     Canvas *c = &a->screen;
     canvas_fill(c, S->pad, 255);
     // A few ruled lines so stroke widths read like they will on paper.
@@ -161,6 +178,11 @@ static void draw_pad_frame(App *a) {
     ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
     // TRANSLATORS: the button that wipes Pen feel's test pad (190 px at 44 px, or 34 px).
     ui_button(c, clear_rect(a), ICON_NONE, _("Clear"), BTN_PLAIN);
+}
+
+static void draw_pad_frame(App *a) {
+    draw_pad_bare(a);
+    pad_paper_take(a);
 }
 
 static void draw_all(App *a) {
@@ -246,12 +268,14 @@ void pensettings_init(App *a) {
     S->live_raw = -1.f;
 }
 void pensettings_free(App *a) {
+    if (a->ps) canvas_free(&a->ps->paper);
     free(a->ps);
     a->ps = NULL;
 }
 void pensettings_enter(App *a) {
     S->active = -1;
     S->drawing = false;
+    S->erasing = false;
     S->has_pressed = false;
     S->live_raw = -1.f;
     draw_all(a);
@@ -259,6 +283,8 @@ void pensettings_enter(App *a) {
 void pensettings_leave(App *a) {
     if (S->drawing) display_live_ink(false);  // left in the middle of a stroke on the pad
     S->drawing = false;
+    S->erasing = false;
+    canvas_free(&S->paper);
     settings_save(&a->settings);
 }
 
@@ -300,9 +326,15 @@ static void pad_sample(App *a, const InEvent *ev, bool first) {
     S->live_raw = ev->pressure;
     S->live_tx = ev->tilt_x;
     S->live_ty = ev->tilt_y;
-    if (S->tab == TOOL_ERASER) return;
+    if (S->tab == TOOL_ERASER && !S->erasing) return;
     PenSample s = {ev->x, ev->y, ev->pressure, ev->tilt_x, ev->tilt_y, ev->t_ms};
-    if (first) {
+    if (first && S->erasing) {
+        // The precise eraser's round tip with its own settings (the pad is at 100%), restoring the
+        // pad's paper as the editor's restores a page's.
+        brush_begin(&S->bs, TOOL_ERASER, &a->settings.tools[TOOL_ERASER], ev->t_ms & 0xFFFFFFu, a->dpi);
+        brush_set_erase(&S->bs, S->paper.px, S->pad.x, S->pad.y, S->paper.stride);
+        smoother_reset(&S->sm);
+    } else if (first) {
         ToolParams *p = &a->settings.tools[S->tab];
         brush_begin(&S->bs, S->tab, p, ev->t_ms, a->dpi);
         smoother_reset(&S->sm);
@@ -333,7 +365,11 @@ void pensettings_event(App *a, const InEvent *ev) {
         S->pen_owner = pen;
         if (h->id == H_PAD) {
             if (!pen) return;  // fingers do not draw
-            if (ev->eraser || S->tab == TOOL_ERASER) {
+            // The eraser (its tab, or the pen's eraser end): the precise one erases what it
+            // touches; the stroke eraser clears the pad.
+            bool eraser = ev->eraser || S->tab == TOOL_ERASER;
+            S->erasing = eraser && a->settings.eraser_mode == 1 && S->paper.px;
+            if (eraser && !S->erasing) {
                 draw_pad_frame(a);
                 app_invalidate(a, rect_inflate(S->pad, ui_px(6)), REFRESH_UI);
             }
@@ -358,6 +394,7 @@ void pensettings_event(App *a, const InEvent *ev) {
         if (ph == 1) pad_sample(a, ev, false);
         else {
             S->drawing = false;
+            S->erasing = false;
             display_live_ink(false);
             draw_readout(a);
             draw_graph(a);
@@ -411,3 +448,29 @@ void pensettings_event(App *a, const InEvent *ev) {
 }
 
 void pensettings_tick(App *a, uint32_t now) {}
+
+// Tests (app_probe's "penset." keys), while the pad keeps its copy of itself drawn bare (the precise
+// eraser on): "pad_ink" 1 while ink shows on the pad (a pixel darker than the bare pad there),
+// "pad_lighter" 1 when a pixel is lighter than the bare pad (one of its lines, or its Clear
+// button, erased away), "pad_ink_near.X.Y" 1 while ink shows within 12 px of the screen point X, Y.
+// Empty without the copy.
+int pensettings_probe(App *a, const char *key, char *out, size_t cap) {
+    int px = 0, py = 0;
+    bool near = !strncmp(key, "pad_ink_near.", 13) && sscanf(key + 13, "%d.%d", &px, &py) == 2;
+    bool lighter = !strcmp(key, "pad_lighter");
+    if (!S || (!near && !lighter && strcmp(key, "pad_ink"))) return -1;
+    if (!S->paper.px || S->paper.w != S->pad.w || S->paper.h != S->pad.h) {
+        snprintf(out, cap, "%s", "");
+        return 0;
+    }
+    Rect r = S->pad;
+    if (near) r = rect_intersect(r, (Rect){px - 12, py - 12, 25, 25});
+    bool found = false;
+    for (int y = r.y; y < r.y + r.h && !found; y++) {
+        const uint8_t *s = &a->screen.px[(size_t)y * (size_t)a->screen.stride + (size_t)r.x];
+        const uint8_t *b = &S->paper.px[(size_t)(y - S->pad.y) * (size_t)S->paper.stride + (size_t)(r.x - S->pad.x)];
+        for (int x = 0; x < r.w && !found; x++) found = lighter ? s[x] > b[x] : s[x] < b[x];
+    }
+    snprintf(out, cap, "%d", found ? 1 : 0);
+    return 0;
+}
