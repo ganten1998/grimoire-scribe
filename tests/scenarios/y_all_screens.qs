@@ -1,0 +1,408 @@
+# env: GRIMOIRE_CHECK_FIT=1
+# Every screen and sheet, for the fit check: make l10n-check runs this in every language, in
+# Gothic and in Classic, with GRIMOIRE_CHECK_FIT=1, and a run that cuts any text short to fit
+# fails (its shots, build/shots/l10n/<lang>-<style>/, show translators every screen); make
+# scenarios runs it in English and Gothic. Its taps land in both styles, and it checks only
+# what does not depend on the language. It leaves every setting as it found it.
+wait 100
+expect screen is library
+expect library.items is 0
+shot 01-library-empty
+# Settings: every row. The style row twice (the other style's sheet in between), the mirror,
+# turning and pinching rows twice, the pen button row through its three texts.
+tap 1535 95
+wait 50
+expect library.sheet is settings
+shot 02-settings
+tap 930 930
+wait 100
+shot 03-settings-other-style
+tap 930 930
+wait 100
+tap 930 1060
+wait 50
+tap 930 1060
+wait 50
+tap 930 1190
+wait 50
+shot 04-settings-pen-button-0
+tap 930 1190
+wait 50
+shot 05-settings-pen-button-1
+tap 930 1190
+wait 50
+tap 930 1320
+wait 50
+tap 930 1320
+wait 50
+tap 930 1450
+wait 50
+tap 930 1450
+wait 50
+expect library.sheet is settings
+expect settings.side_button is 2
+expect settings.mirror_pdf is 1
+expect settings.follow_rotation is 1
+expect settings.pinch_zoom is 1
+# Language: the list, Automatic (which changes nothing here), the list again, Cancel.
+tap 930 1580
+wait 50
+expect library.sheet is language
+shot 06-language
+tap 930 785
+wait 100
+expect library.sheet is settings
+expect settings.language is auto
+tap 930 1580
+wait 50
+expect library.sheet is language
+tap 930 1265
+wait 50
+expect library.sheet is settings
+# Display, with its sleep rows: each of the three sleep screens.
+tap 930 780
+wait 50
+expect library.sheet is display
+shot 07-display
+tap 930 1215
+wait 50
+shot 08-display-sleep-1
+tap 930 1215
+wait 50
+shot 09-display-sleep-2
+tap 930 1215
+wait 50
+expect settings.sleep_mode is 0
+tap 1462 1533
+wait 50
+expect library.sheet is settings
+# Pen feel: every tab (the pad drawn on in the pencil's and the calligraphy pen's: the live readout),
+# Reset tool.
+tap 930 460
+wait 100
+expect screen is penset
+shot 10-penfeel
+tap 130 289
+wait 50
+shot 11-penfeel-tab-0
+pen line 700 600 1500 700 40 0.2 1.0
+wait 100
+shot 11-penfeel-tab-0-drawn
+tap 307 289
+wait 50
+shot 11-penfeel-tab-1
+tap 484 289
+wait 50
+shot 11-penfeel-tab-2
+tap 661 289
+wait 50
+shot 11-penfeel-tab-3
+tap 838 289
+wait 50
+shot 11-penfeel-tab-4
+tap 1015 289
+wait 50
+shot 11-penfeel-tab-5
+tap 1192 289
+wait 50
+shot 11-penfeel-tab-6
+tap 1369 289
+wait 50
+shot 11-penfeel-tab-7
+pen line 700 600 1500 700 40 0.2 1.0
+wait 100
+shot 11-penfeel-tab-7-drawn
+tap 1546 289
+wait 50
+shot 11-penfeel-tab-8
+tap 1723 289
+wait 50
+shot 11-penfeel-tab-9
+tap 1630 95
+wait 50
+shot 12-penfeel-reset
+expect screen is penset
+tap 125 95
+wait 100
+expect screen is library
+# Calibration: taps that make no sense (all in one place), then the corners with the center far
+# off, then right; touch skipped with the pen; the check, then Cancel (keep the old calibration).
+tap 1535 95
+wait 50
+tap 930 620
+wait 100
+expect screen is calib
+shot 13-calib-pen
+pentap 930 1240
+pentap 930 1240
+pentap 930 1240
+pentap 930 1240
+pentap 930 1240
+wait 50
+shot 14-calib-no-sense
+pentap 223 298
+pentap 1637 298
+pentap 1637 2182
+pentap 223 2182
+pentap 930 1700
+wait 50
+shot 15-calib-center-off
+pentap 223 298
+pentap 1637 298
+pentap 1637 2182
+pentap 223 2182
+pentap 930 1240
+wait 50
+shot 16-calib-touch
+expect screen is calib
+pentap 930 1785
+wait 50
+shot 17-calib-check
+expect screen is calib
+tap 930 1985
+wait 100
+expect screen is library
+expect settings.pen.valid is 0
+# Share (a made-up address under make l10n-check), and Done.
+tap 1345 95
+wait 300
+expect screen is share
+shot 18-share
+tap 1540 2105
+wait 100
+expect screen is library
+# New notebook, Custom music and its Cancel, the name's keyboard with its accents page and its
+# Cancel, then Create.
+tap 965 95
+wait 50
+expect library.sheet is new
+shot 19-new
+tap 1625 1330
+wait 100
+expect library.sheet is music
+shot 20-music
+tap 290 1935
+wait 50
+expect library.sheet is new
+tap 1600 1676
+wait 50
+expect library.sheet is keyboard
+shot 21-keyboard
+tap 696 2365
+wait 50
+shot 22-keyboard-accents
+tap 696 2365
+wait 50
+tap 217 2365
+wait 50
+expect library.sheet is new
+tap 1564 2254
+wait 150
+expect screen is editor
+# The editor: the panel, the tool picker, the paper sheet, the Display sheet (Pin this page, then
+# the sleep screen back as it was), two more pages, the Pages view with Select all and Delete (3),
+# the zoom chip after a pinch, Clear.
+pen curve 300 600 40 70 0.7 4
+wait 100
+shot 23-editor
+pentap 1768 358
+wait 50
+expect editor.modal is tools
+shot 24-tools
+pentap 872 561
+wait 50
+expect editor.modal is none
+pentap 1768 1242
+wait 100
+expect editor.modal is paper
+shot 25-paper
+tap 1562 1837
+wait 100
+expect editor.modal is none
+pentap 1768 1350
+wait 100
+expect editor.modal is display
+shot 26-display-editor
+tap 500 1305
+wait 100
+shot 27-display-pinned
+expect settings.sleep_mode is 1
+tap 930 1165
+wait 50
+tap 930 1165
+wait 50
+expect settings.sleep_mode is 0
+tap 1462 1626
+wait 100
+expect editor.modal is none
+pentap 1768 1114
+wait 50
+pentap 1768 1114
+wait 50
+expect editor.pages is 3
+pentap 1768 1026
+wait 150
+expect editor.modal is pages
+shot 28-pages
+tap 1250 95
+wait 50
+expect editor.ticked is 3
+shot 29-pages-all
+tap 1630 95
+wait 150
+shot 30-pages-deleted
+expect editor.pages is 1
+tap 125 95
+wait 100
+expect editor.modal is none
+pen curve 300 600 40 70 0.7 4
+pinch 900 900 300 700 6
+wait 100
+expect editor.zoom not 1.00
+shot 31-zoom
+tap 930 74
+wait 100
+expect editor.zoom is 1.00
+pentap 1768 810
+wait 100
+expect editor.strokes is 0
+shot 32-cleared
+pentap 1768 1114
+wait 50
+pentap 1768 1114
+wait 50
+expect editor.pages is 3
+pentap 1768 1566
+wait 200
+expect screen is library
+# The Library: a notebook's menu, Save PDF now (its notice), Delete and Keep it; a folder
+# from the top bar ("A", on the keyboard), the notebook moved into it, the folder's menu while it
+# holds a notebook, inside it and back; an empty folder ("B"): inside it, its menu, its Rename
+# keyboard and Cancel, then Remove folder.
+shot 33-library-card
+tap 548 1052
+wait 50
+expect library.sheet is more
+shot 34-more
+tap 930 1155
+wait 50
+expect library.sheet is none
+shot 35-saving-pdf
+tap 548 1052
+wait 50
+tap 930 1315
+wait 50
+expect library.sheet is delete
+shot 37-delete
+tap 930 1050
+wait 50
+expect library.sheet is none
+expect library.items is 1
+tap 1155 95
+wait 50
+expect library.sheet is keyboard
+tap 175 2205
+tap 221 2045
+tap 1643 2365
+wait 100
+expect library.sheet is none
+expect library.items is 2
+tap 1151 1052
+wait 50
+expect library.sheet is more
+tap 930 995
+wait 50
+expect library.sheet is move
+shot 38-move
+tap 930 945
+wait 100
+expect library.sheet is none
+expect library.items is 1
+tap 548 1052
+wait 50
+expect library.sheet is folder-more
+shot 39-folder-more-holding
+tap 930 1155
+wait 50
+expect library.sheet is none
+tap 326 608
+wait 100
+expect library.folder is A
+expect library.items is 1
+shot 40-in-folder
+tap 125 95
+wait 100
+expect library.folder is
+tap 1155 95
+wait 50
+tap 175 2205
+tap 1101 2205
+tap 1643 2365
+wait 100
+expect library.items is 2
+tap 929 608
+wait 100
+expect library.folder is B
+expect library.items is 0
+shot 41-empty-folder
+tap 125 95
+wait 100
+tap 1151 1052
+wait 50
+expect library.sheet is folder-more
+shot 42-folder-more-empty
+tap 930 835
+wait 50
+expect library.sheet is keyboard
+shot 43-rename-folder
+tap 217 2365
+wait 50
+expect library.sheet is none
+tap 1151 1052
+wait 50
+tap 930 995
+wait 100
+expect library.sheet is none
+expect library.items is 1
+# Sideways: the Library, Settings, New notebook (its labels on two lines), the notebook's card (its
+# date line), its Pages.
+rotate 1
+wait 200
+expect rotation is 1
+shot 44-library-landscape
+tap 2155 95
+wait 100
+expect library.sheet is settings
+shot 45-settings-landscape
+tap 1908 1695
+wait 100
+expect library.sheet is none
+tap 1585 95
+wait 100
+expect library.sheet is new
+shot 46-new-landscape
+tap 570 1700
+wait 50
+expect library.sheet is none
+tap 267 530
+wait 100
+expect library.folder is A
+shot 47-in-folder-landscape
+tap 267 530
+wait 200
+expect screen is editor
+shot 48-editor-landscape
+pentap 2388 1028
+wait 150
+expect editor.modal is pages
+shot 49-pages-landscape
+tap 125 95
+wait 100
+expect editor.modal is none
+pentap 2388 1560
+wait 200
+expect screen is library
+rotate 0
+wait 200
+expect rotation is 0
+quit

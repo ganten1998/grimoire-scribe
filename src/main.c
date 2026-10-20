@@ -64,6 +64,23 @@ static void log_device(void) {
 }
 #endif
 
+#ifdef GRIMOIRE_SIM
+// The fit check (make l10n-check runs every screen with GRIMOIRE_CHECK_FIT=1): each text cut
+// short to fit its place is listed once (per text and room), and the run ends with status 3.
+static int g_fit_cuts;
+static void fit_report(const char *text, int need, int have) {
+    static uint32_t seen[512];
+    static int nseen;
+    uint32_t h = 2166136261u ^ (uint32_t)have;  // FNV-1a of the room and the text
+    for (const char *p = text; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+    for (int i = 0; i < nseen; i++)
+        if (seen[i] == h) return;
+    if (nseen < (int)(sizeof seen / sizeof seen[0])) seen[nseen++] = h;
+    g_fit_cuts++;
+    fprintf(stderr, "fit[%s]: \"%s\" needs %d px, has %d\n", i18n_current(), text, need, have);
+}
+#endif
+
 static void usage(void) {
     printf("Grimoire %s: a notebook for the Kindle Scribe\n"
            "  env GRIMOIRE_ROOT   data directory (default %s)\n"
@@ -105,6 +122,10 @@ int main(int argc, char **argv) {
     char lang[16];
     settings_language(lang, sizeof lang);
     i18n_apply(lang);
+#ifdef GRIMOIRE_SIM
+    const char *check_fit = getenv("GRIMOIRE_CHECK_FIT");
+    if (check_fit && !strcmp(check_fit, "1")) font_set_overflow_hook(fit_report);
+#endif
 
     int w, h;
     float dpi;
@@ -206,6 +227,12 @@ int main(int argc, char **argv) {
     app_shutdown(&app);
     display_wait();
     input_close();
-    display_close();
+    display_close();  // (a headless run whose expect checks failed exits here, with status 3)
+#ifdef GRIMOIRE_SIM
+    if (g_fit_cuts) {
+        fprintf(stderr, "fit: %d text%s cut short to fit\n", g_fit_cuts, g_fit_cuts == 1 ? "" : "s");
+        return 3;
+    }
+#endif
     return status;
 }
