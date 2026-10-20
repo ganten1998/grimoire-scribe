@@ -77,6 +77,9 @@ scenarios: $(BUILD)/host/grimoire-headless
 	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
 	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
+	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
+	    { grep -v '^http_port=' $$r/settings.ini 2>/dev/null; echo "http_port=$$GRIMOIRE_TEST_PORT"; } > $$r/settings.ini.port; \
+	    mv $$r/settings.ini.port $$r/settings.ini; fi; \
 	  GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
 	  if [ -n "$$(find $(BUILD)/scen/$$n -name '*.tmp' 2>/dev/null)" ]; then \

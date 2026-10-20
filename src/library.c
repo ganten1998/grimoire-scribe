@@ -791,7 +791,9 @@ void library_free(App *a) {
 }
 
 void library_enter(App *a) {
-    S->modal = MOD_NONE;
+    // A turn, or the redraw after waking, re-lays out the same screen: the open sheet stays open
+    // (every sheet lays itself out when drawn).
+    if (!a->relayout) S->modal = MOD_NONE;
     S->pressed = NULL;
     reload(a);
     redraw(a, REFRESH_FULL);

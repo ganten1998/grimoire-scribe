@@ -1,4 +1,4 @@
-# Tool picker + new pens, grand staff notebook
+# Tool picker + new pens, sheet music notebook
 wait 200
 tap 965 95
 wait 100
@@ -6,7 +6,6 @@ shot 01-new-sheet-papers
 expect library.sheet is new
 tap 1066 893
 wait 50
-# (1066, 893) picks Sheet music (3): the grand staff named in the first line is out of date
 expect library.paper is 3
 tap 1564 2254
 wait 400

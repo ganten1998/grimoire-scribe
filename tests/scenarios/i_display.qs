@@ -13,9 +13,12 @@ shot 01-before-clear
 expect editor.strokes is 2
 pentap 1768 810
 wait 300
+expect toast is Page cleared
 shot 02-cleared-by-toolbar
+expect editor.strokes is 0
 pentap 1768 594
 wait 300
+expect editor.strokes is 2
 pentap 1768 1350
 wait 300
 shot 03-display-sheet
@@ -30,8 +33,9 @@ wait 500
 shot 04-inverted
 expect settings.invert is 1
 expect editor.modal is display
-tap 1464 1346
+tap 1464 1624
 wait 300
 shot 05-sheet-closed-inverted
+expect editor.modal is none
 expect settings.invert is 1
 quit

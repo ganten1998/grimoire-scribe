@@ -27,9 +27,11 @@ shot 03-settings-landscape-other-way
 expect rotation is 3
 expect size is 2480x1860
 expect screen is library
+expect library.sheet is settings
 rotate 0
 wait 500
 shot 04-portrait
 expect rotation is 0
 expect size is 1860x2480
+expect library.sheet is settings
 quit

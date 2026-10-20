@@ -1416,6 +1416,9 @@ void editor_event(App *a, const InEvent *ev) {
             ui_pointer(a, &S->modal_hits, 0, ev, true);
         } else if (rect_contains(S->panel, (int)ev->x, (int)ev->y)) {
             S->owner = OWN_PANEL;
+            // A stroke just ended: Undo/Clear may have become available, but the panel (and its
+            // hit list) is only rebuilt at the settle. Settle now so the tap finds the live buttons.
+            if (S->panel_stale) settle_now(a);
             ui_pointer(a, &S->hits, 0, ev, false);
         } else if (pen) {
             draw_begin(a, ev);
