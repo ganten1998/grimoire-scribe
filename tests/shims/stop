@@ -1,3 +1,5 @@
 #!/bin/sh
-# Stand-in for a Kindle tool in tests/launcher_check.sh: records the call and succeeds.
+# Stand-in for upstart's stop in tests/launcher_check.sh: records the call and succeeds, unless
+# $SHIM_STATE/not-running/<job> exists: that job is not running, and stop fails as upstart's does.
 echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+[ ! -e "${SHIM_STATE:?}/not-running/$1" ]

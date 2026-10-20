@@ -10,8 +10,11 @@ UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are ke
 GOING BACK to 1.0.0-beta or 1.0.0-rc.1: they set aside pages in a newer format and drop data
 they do not know. Read "Moving between versions" in the README (source code link below) first.
 FROM QUIRE: install as above and tap Grimoire once; your notebooks move over by themselves.
-KOREADER: Grimoire is a separate app. Quit KOReader first, then tap Grimoire in the Library.
-It will not start from KOReader's file browser, because KOReader keeps the pen and the screen.
+KOREADER: Grimoire is a separate app; tap it in the Library. If KOReader is installed, tapping
+Grimoire once also adds Tools > Grimoire to KOReader, which opens Grimoire and comes back to your
+book. (Without it, quit KOReader first: Grimoire.sh does not run from KOReader's file browser.)
+For setups without Library scriptlets, copy the folder "KOReader plugin (optional)" from this zip:
+its grimoire.koplugin folder goes into koreader/plugins on the Kindle.
 PASSCODE: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open (as
 KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the Kindle
 restarts while Grimoire is open, the passcode stays off until you turn it back on in the Kindle's

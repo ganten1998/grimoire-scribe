@@ -34,6 +34,29 @@ static void app_wake(App *a);
 static void app_leave(App *a);
 static App *g_probe_app;  // for app_probe (one App per process)
 
+// The app that started this session and gets the screen back after it: "koreader" when
+// KOReader's Grimoire plugin did (kindle/app/grimoire.sh --hosted koreader sets GRIMOIRE_HOST),
+// "" for a start from the Kindle's Library.
+static const char *app_host(void) {
+    const char *h = getenv("GRIMOIRE_HOST");
+    return h && !strcmp(h, "koreader") ? "koreader" : "";
+}
+
+static int g_sleep_shown;  // the sleep screen app_sleep last chose, for app_probe's "asleep.mode"
+
+// The sleep screen to use. Hosted, KOReader keeps the Kindle UI paused for its whole session and
+// the launcher never wakes it, so the Kindle's own screensaver (mode 2) cannot show: the page
+// does instead.
+static int sleep_mode(const App *a) {
+    if (a->settings.sleep_mode != 2 || !*app_host()) return a->settings.sleep_mode;
+    static bool told;
+    if (!told) {
+        told = true;
+        qlog("sleep: the Kindle's own screensaver needs the Kindle UI, which KOReader keeps paused: the page instead");
+    }
+    return 0;
+}
+
 const char *app_mirror_dir(void) {
     static char buf[600];
     snprintf(buf, sizeof buf, "%s/PDFs", store_root());
@@ -308,14 +331,16 @@ static void app_sleep(App *a) {
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     if (a->scr == SCR_SHARE) share_sleep(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
-    if (a->settings.sleep_mode == 2) {
+    int mode = sleep_mode(a);
+    g_sleep_shown = mode;
+    if (mode == 2) {
         sys_kindle_ui(true);
         return;
     }
     Canvas *c = &a->screen;
     Canvas pinned = {0};
     const Canvas *src = NULL;
-    if (a->settings.sleep_mode == 1 && store_load_sleep_image(&pinned) == 0) src = &pinned;
+    if (mode == 1 && store_load_sleep_image(&pinned) == 0) src = &pinned;
     if (!src) src = editor_page_canvas(a);
     if (src) {
         canvas_reset_clip(c);
@@ -339,13 +364,14 @@ static void app_wake(App *a) {
     a->last_input = now_ms();
     a->sleep_requested = false;
     qlog("wake");
-    if (a->settings.sleep_mode == 2) sys_kindle_ui(false);
+    int mode = sleep_mode(a);
+    if (mode == 2) sys_kindle_ui(false);
     // A sleep request turned preventScreenSaver off: "Sleep after: never" wants it back on.
     app_apply_sleep_policy(a);
     // Back to work at once (no-flash refresh), then once more a moment later in case the Kindle
     // UI (its screensaver closing, the status bar) drew something on the way out.
     app_redraw_mode(a, REFRESH_UI);
-    a->wake_redraw_at = now_ms() + (a->settings.sleep_mode == 2 ? 2500 : 1500);
+    a->wake_redraw_at = now_ms() + (mode == 2 ? 2500 : 1500);
 }
 
 // Saves and leaves Grimoire: the way out of any stuck state (a 4 s hold of the power button, a
@@ -611,6 +637,11 @@ int app_probe(const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     }
     else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
+    else if (!strcmp(key, "asleep.mode")) {
+        if (a->asleep) snprintf(out, cap, "%d", g_sleep_shown);
+        else snprintf(out, cap, "%s", "");
+    }
+    else if (!strcmp(key, "host")) snprintf(out, cap, "%s", app_host());
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
     else if (!strcmp(key, "settings.pen.panel") || !strcmp(key, "settings.touch.panel")) {

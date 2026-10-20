@@ -12,6 +12,7 @@
 #include "bgjob.h"
 #include "musicbuild.h"
 #include "keyboard.h"
+#include "i18n.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
@@ -267,18 +268,31 @@ static void draw_base(App *a) {
         // TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
         {ICON_PLUS, _("New"), H_NEW, true},
     };
+    // Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader), Exit goes
+    // back to KOReader.
+    const char *host = getenv("GRIMOIRE_HOST");
+    bool hosted = host && !strcmp(host, "koreader");
+    // TRANSLATORS: the Library's top bar when Grimoire was opened from KOReader: in place of Exit,
+    // it goes back to KOReader. This one button takes the width it needs.
+    if (hosted) btns[0].label = _("Back to KOReader");
     enum { NBTNS = sizeof btns / sizeof btns[0] };
     // A word too long for its button (a translation) widens all five alike, as far as leaves the
     // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
-    for (int i = 0; i < NBTNS; i++) {
+    // Hosted, Exit's longer "Back to KOReader" takes only its own room.
+    for (int i = hosted ? 1 : 0; i < NBTNS; i++) {
         int need = ui_button_need_w(bh, btns[i].icon, btns[i].label, i == 4 ? BTN_PRIMARY : BTN_PLAIN);
         if (btns[i].show) bw = clampi(need, bw, ui_px(220));
     }
     int rx = a->w - m;
     for (int i = 0; i < NBTNS; i++) {
         if (!btns[i].show) continue;
-        rx -= bw;
-        Rect r = {rx, by, bw, bh};
+        int w = bw;
+        if (i == 0 && hosted) {  // as wide as its label needs, never narrower than the rest
+            int need = ui_button_need_w(bh, btns[0].icon, btns[0].label, BTN_PLAIN);
+            if (need > w) w = need;
+        }
+        rx -= w;
+        Rect r = {rx, by, w, bh};
         ui_button(c, r, btns[i].icon, btns[i].label, i == 4 ? BTN_PRIMARY : BTN_PLAIN);
         hits_add(&S->hits, r, btns[i].id, 0);
         rx -= ui_px(20);

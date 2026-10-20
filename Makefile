@@ -98,7 +98,7 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # the runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written,
 # and in fail.qs every line but the comments, waits and taps must be reported as failed, with
 # exit status 3.
-SIM_HOOKS := GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
+SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
@@ -258,15 +258,25 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # LICENSE* / COPYING* as <dir>-LICENSE.txt (and CREDITS* as <dir>-CREDITS.txt); the stb headers
 # carry their license inside, shipped once as stb-LICENSE.txt; the binary is linked static
 # against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt.
+# KOReader's Grimoire plugin (kindle/koreader/grimoire.koplugin) goes twice: in the app, as
+# app/koreader/grimoire.koplugin, which a Library start of Grimoire.sh installs into KOReader; and
+# in the zip as "KOReader plugin (optional)/grimoire.koplugin", for a hand install into the
+# Kindle's koreader/plugins. Never as a top-level koreader folder: copied over MTP, that could
+# replace someone's KOReader.
 PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
+KOPLUGIN_SRC := $(wildcard kindle/koreader/grimoire.koplugin/*.lua)
+KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
                            assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
-                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES)
+                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(KOPLUGIN_SRC)
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
+	mkdir -p $(PKG)/app/koreader/grimoire.koplugin "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin"
+	cp $(KOPLUGIN_SRC) $(PKG)/app/koreader/grimoire.koplugin/
+	cp $(KOPLUGIN_SRC) "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin/"
 	sed -n 's/^# Capabilities: //p' kindle/Grimoire.sh > $(PKG)/app/CAPABILITIES
 	cp LICENSE $(PKG)/app/licenses/GPL-3.0.txt
 	cp assets/*-OFL-1.1.txt $(PKG)/app/licenses/
@@ -285,7 +295,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	  if [ -f "$$lib/libc/musl/COPYRIGHT" ]; then cat "$$lib/libc/musl/COPYRIGHT" > $(PKG)/app/licenses/musl-COPYRIGHT.txt; \
 	  else echo "package: musl's COPYRIGHT is not in zig's lib dir ($$lib)"; exit 1; fi
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
-	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses
+	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses koreader
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
 	id=$$(shasum $(BUILD)/dist/app.tar | cut -c1-12); \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
@@ -298,7 +308,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	chmod +x $(PKG)/documents/*.sh
 	sed 's/@VERSION@/$(VERSION)/' kindle/README.txt > $(PKG)/README.txt
 	cp LICENSE $(PKG)/LICENSE.txt
-	( cd $(PKG) && rm -f ../Grimoire.zip && COPYFILE_DISABLE=1 zip -qrX ../Grimoire.zip documents README.txt LICENSE.txt )
+	( cd $(PKG) && rm -f ../Grimoire.zip && COPYFILE_DISABLE=1 zip -qrX ../Grimoire.zip documents README.txt LICENSE.txt "$(KOPLUGIN_ZIP)" )
 	cp $@ $(BUILD)/dist/Grimoire-$(VERSION).zip
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
