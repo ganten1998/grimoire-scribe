@@ -12,6 +12,7 @@
 #include "bgjob.h"
 #include "musicbuild.h"
 #include "keyboard.h"
+#include "i18n.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
@@ -237,11 +238,18 @@ static void draw_base(App *a) {
         {ICON_FOLDER_PLUS, "Folder", H_NEWFOLDER, !S->cur_folder[0]},
         {ICON_PLUS, "New", H_NEW, true},
     };
+    // Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader), Exit goes
+    // back to KOReader.
+    const char *host = getenv("GRIMOIRE_HOST");
+    if (host && !strcmp(host, "koreader")) btns[0].label = _("Back to KOReader");
     int rx = a->w - m;
     for (size_t i = 0; i < sizeof btns / sizeof btns[0]; i++) {
         if (!btns[i].show) continue;
-        rx -= bw;
-        Rect r = {rx, by, bw, bh};
+        // As wide as the label needs (ui_button's caption size), never narrower than the rest.
+        int w = font_measure(FONT_CAPS, ui_small_size(), btns[i].label) + ui_px(40);
+        if (w < bw) w = bw;
+        rx -= w;
+        Rect r = {rx, by, w, bh};
         ui_button(c, r, btns[i].icon, btns[i].label, i == 4 ? BTN_PRIMARY : BTN_PLAIN);
         hits_add(&S->hits, r, btns[i].id, 0);
         rx -= ui_px(20);
