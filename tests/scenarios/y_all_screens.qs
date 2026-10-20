@@ -1,10 +1,10 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # env: GRIMOIRE_SIM_ADDRS=wlan0=192.168.0.20
-# Every screen and sheet, for the fit check: make l10n-check runs this in every language, in
-# Gothic and in Classic, with GRIMOIRE_CHECK_FIT=1, and a run that cuts any text short to fit
-# fails (its shots, build/shots/l10n/<lang>-<style>/, show translators every screen); make
-# scenarios runs it in English and Gothic. Its taps land in both styles, and it checks only
-# what does not depend on the language. It leaves every setting as it found it.
+# Every screen and sheet, upright and sideways, for the fit check: make l10n-check runs this in
+# every language, in Gothic and in Classic, with GRIMOIRE_CHECK_FIT=1, and a run that cuts any
+# text short to fit fails (its shots, build/shots/l10n/<lang>-<style>/, show translators every
+# screen); make scenarios runs it in English and Gothic. Its taps land in both styles, and it
+# checks only what does not depend on the language. It leaves every setting as it found it.
 wait 100
 expect screen is library
 expect library.items is 0
@@ -366,7 +366,7 @@ wait 100
 expect library.sheet is none
 expect library.items is 1
 # Sideways: the Library, Settings, New notebook (its labels on two lines), the notebook's card (its
-# date line), the paper sheet, its Pages.
+# date line), the tool picker, the paper sheet, its Pages.
 rotate 1
 wait 200
 expect rotation is 1
@@ -393,6 +393,13 @@ tap 267 530
 wait 200
 expect screen is editor
 shot 48-editor-landscape
+pentap 2388 358
+wait 50
+expect editor.modal is tools
+shot 48-tools-landscape
+pentap 1492 561
+wait 50
+expect editor.modal is none
 pentap 2388 1244
 wait 150
 expect editor.modal is paper
@@ -410,6 +417,144 @@ expect editor.modal is none
 pentap 2388 1560
 wait 200
 expect screen is library
+# Sideways, the rest: in folder A the notebook's menu, its Delete and Move to; at the top level the
+# folder's menu, Settings' Display sheet (its last sleep screen) and language list, Pen feel (the
+# calligraphy pen drawn with), calibration (each step, then Cancel), Share, and New notebook's
+# keyboard (both pages) and Custom music.
+expect library.folder is A
+tap 431 896
+wait 50
+expect library.sheet is more
+shot 50-more-landscape
+tap 1240 1110
+wait 50
+expect library.sheet is delete
+shot 51-delete-landscape
+tap 1240 845
+wait 50
+expect library.sheet is none
+expect library.items is 1
+tap 431 896
+wait 50
+tap 1240 790
+wait 50
+expect library.sheet is move
+shot 52-move-landscape
+tap 1240 1055
+wait 50
+expect library.sheet is none
+tap 125 95
+wait 100
+expect library.folder is
+tap 431 896
+wait 50
+expect library.sheet is folder-more
+shot 53-folder-more-landscape
+tap 1240 950
+wait 50
+expect library.sheet is none
+tap 2155 95
+wait 100
+expect library.sheet is settings
+tap 1240 590
+wait 50
+expect library.sheet is display
+tap 1240 1005
+wait 50
+tap 1240 1005
+wait 50
+shot 54-display-landscape
+tap 1240 1005
+wait 50
+expect settings.sleep_mode is 0
+tap 1770 1325
+wait 50
+expect library.sheet is settings
+tap 1240 1385
+wait 50
+expect library.sheet is language
+shot 55-language-landscape
+tap 1240 1055
+wait 50
+expect library.sheet is settings
+tap 1240 260
+wait 100
+expect screen is penset
+tap 1834 289
+wait 50
+pen line 700 600 1500 700 40 0.2 1.0
+wait 100
+shot 56-penfeel-landscape
+tap 125 95
+wait 100
+expect screen is library
+tap 2155 95
+wait 50
+tap 1240 425
+wait 100
+expect screen is calib
+shot 57-calib-pen-landscape
+pentap 1240 930
+pentap 1240 930
+pentap 1240 930
+pentap 1240 930
+pentap 1240 930
+wait 50
+shot 58-calib-no-sense-landscape
+pentap 298 223
+pentap 2182 223
+pentap 2182 1637
+pentap 298 1637
+pentap 1240 1300
+wait 50
+shot 59-calib-center-off-landscape
+pentap 298 223
+pentap 2182 223
+pentap 2182 1637
+pentap 298 1637
+pentap 1240 930
+wait 50
+shot 60-calib-touch-landscape
+expect screen is calib
+pentap 1240 1475
+wait 50
+shot 61-calib-check-landscape
+tap 1240 1675
+wait 100
+expect screen is library
+expect settings.pen.valid is 0
+tap 1965 95
+wait 300
+expect screen is share
+shot 62-share-landscape
+tap 2160 1485
+wait 100
+expect screen is library
+tap 1585 95
+wait 50
+expect library.sheet is new
+tap 1950 1424
+wait 50
+expect library.sheet is keyboard
+shot 63-keyboard-landscape
+tap 928 1745
+wait 50
+shot 64-keyboard-accents-landscape
+tap 928 1745
+wait 50
+tap 279 1745
+wait 50
+expect library.sheet is new
+tap 1800 1115
+wait 100
+expect library.sheet is music
+shot 65-music-landscape
+tap 598 1693
+wait 50
+expect library.sheet is new
+tap 570 1700
+wait 50
+expect library.sheet is none
 rotate 0
 wait 200
 expect rotation is 0

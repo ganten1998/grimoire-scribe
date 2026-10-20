@@ -7,6 +7,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "app.h"
 #include "store.h"
 #include "ui.h"
 #include "testlib.h"
@@ -333,6 +334,49 @@ TEST(damaged_catalogs) {
     free(m);
 }
 
+// A context with plurals (httpd.c sends the studio its words so): the form for the count, English
+// for a language without the string.
+TEST(context_plurals) {
+    i18n_set("es");
+    const char *one = "PNGs, all %d page (zip)", *many = "PNGs, all %d pages (zip)";
+    CHECK(!strcmp(i18n_getnc("studio", one, many, 1), "PNG de %d p\xc3\xa1gina (zip)"));
+    CHECK(!strcmp(i18n_getnc("studio", one, many, 12), "PNG de las %d p\xc3\xa1ginas (zip)"));
+    CHECK(i18n_getnc(NULL, one, many, 12) == many);       // no such string outside its context
+    CHECK(i18n_getnc("nonesuch", one, many, 1) == one);
+    i18n_set("en");
+    CHECK(i18n_getnc("studio", one, many, 1) == one && i18n_getnc("studio", one, many, 2) == many);
+}
+
+// The names of papers, tools and music parts are identifiers (/api/list.json, grimoire.log): English
+// in every language. Their labels, which the screens show, are in the language in use, and every
+// language has each of them.
+TEST(labels_and_identifiers) {
+    for (int l = 0; l < i18n_language_count(); l++) {
+        i18n_set(i18n_language_code(l));
+        bool en = l == 0;
+        CHECK(!strcmp(paper_name(PAPER_NARROW), "Narrow rule") && !strcmp(tool_name(TOOL_PENCIL), "Pencil"));
+        CHECK(!strcmp(music_part_name(PART_TREBLE), "Treble staff"));
+        for (int i = 0; i < PAPER_COUNT; i++) {
+            PaperKind k = paper_at(i);
+            CHECK(en ? paper_label(k) == paper_name(k) : paper_label(k) != paper_name(k));
+            CHECK(missing_glyphs(paper_label(k)) == 0);
+        }
+        PaperKind custom = music_default(), newer = (PaperKind)0x50000001u;
+        CHECK(en ? paper_label(custom) == paper_name(custom) : paper_label(custom) != paper_name(custom));
+        CHECK(en ? paper_label(newer) == paper_name(newer) : paper_label(newer) != paper_name(newer));
+        for (int t = 0; t < TOOL_COUNT; t++) CHECK(en ? tool_label((ToolKind)t) == tool_name((ToolKind)t)
+                                                      : tool_label((ToolKind)t) != tool_name((ToolKind)t));
+        for (int p = PART_TREBLE; p < PART_COUNT; p++)
+            CHECK(en ? part_label((MusicPart)p) == music_part_name((MusicPart)p)
+                     : part_label((MusicPart)p) != music_part_name((MusicPart)p));
+        CHECK(!strcmp(part_label(PART_NONE), ""));
+    }
+    i18n_set("es");
+    CHECK(!strcmp(paper_label(PAPER_NARROW), "Rayado fino") && !strcmp(tool_label(TOOL_PENCIL), "Grafito"));
+    CHECK(!strcmp(part_label(PART_TREBLE), "Clave de sol"));
+    i18n_set("en");
+}
+
 // ---- choosing the language ----
 
 static void clear_env(void) {
@@ -507,49 +551,75 @@ TEST(dates) {
 // ---- text that must fit ----
 
 // Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
-// in every language and style, on the narrow (upright) screen: a toast has two lines. The English
-// as the sources have it today, formatted where it takes a value: keep this list in step with
-// the messages.
-static const char *const k_toasts[] = {
-    "Your Kindle passcode was left off. Turn it back on in Kindle Settings.",
-    "No pen found. Grimoire is made for the Kindle Scribe; writing needs its pen.",
-    "Your Kindle passcode is paused while Grimoire is open.",
-    "Tip: Settings > Calibrate pen if strokes land off the tip",
-    "Could not save this page. Hold power 4 s again to leave anyway.",
-    "Saved. Leaving Grimoire.",
-    "Leaving Grimoire without this page.",
-    "PDF saved to grimoire/PDFs",
-    "Could not save the PDF",
-    "A damaged page was set aside; a blank one took its place (see grimoire.log)",
-    "Could not create the notebook (storage full?)",
-    "Could not save this page. Is the storage full?",
-    "This page was made by a newer Grimoire. It is read-only here.",
-    "Could not open that page",
-    "Could not open that notebook",
-    "This page is already empty",
-    "Could not delete those pages",
-    "Could not add a page",
-    "Could not save the sleep screen",
-    "Deleted 1 page (kept in grimoire/trash)",
-    "Deleted 2000 pages (kept in grimoire/trash)",
-};
+// in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
+// formatted as the code formats it (keep this list in step with the messages); out holds them.
+enum { RARE_MAX = 32, RARE_LEN = 256 };
+static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
+    int n = 0;
+#define PUT(...) snprintf(out[n++], RARE_LEN, __VA_ARGS__)
+    PUT("%s", _("Your Kindle passcode was left off. Turn it back on in Kindle Settings."));
+    PUT(_("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
+    PUT(_("Your Kindle passcode is paused while %s is open."), APP_NAME);
+    PUT("%s", _("Tip: Settings > Calibrate pen if strokes land off the tip"));
+    PUT("%s", _("Could not save this page. Hold power 4 s again to leave anyway."));
+    PUT(_("Saved. Leaving %s."), APP_NAME);
+    PUT(_("Leaving %s without this page."), APP_NAME);
+    PUT(_("PDF saved to %s"), "grimoire/PDFs");
+    PUT("%s", _("Could not save the PDF"));
+    PUT(_("A damaged page was set aside; a blank one took its place (see %s)"), "grimoire.log");
+    PUT("%s", _("Could not create the notebook (storage full?)"));
+    PUT("%s", _("Could not save this page. Is the storage full?"));
+    PUT("%s", _("This page was made by a newer Grimoire. It is read-only here."));
+    PUT("%s", _("Could not open that page"));
+    PUT("%s", _("Could not open that notebook"));
+    PUT("%s", _("This page is already empty"));
+    PUT("%s", _("Could not delete those pages"));
+    PUT("%s", _("Could not add a page"));
+    PUT("%s", _("Could not save the sleep screen"));
+    PUT("%s", _("Calibration saved"));
+    PUT(_("Moved to %s"), "grimoire/trash");
+    PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 1), 1, "grimoire/trash");
+    PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 2000), 2000, "grimoire/trash");
+#undef PUT
+    return n;
+}
 
 TEST(rare_notices_fit) {
     Rect screen = {0, 0, 1860, 2480};
+    static char toasts[RARE_MAX][RARE_LEN];
     for (int l = 0; l < i18n_language_count(); l++) {
         i18n_set(i18n_language_code(l));
+        int nt = rare_notices(toasts);
         for (int th = THEME_GOTHIC; th <= THEME_CLASSIC; th++) {
             ui_set_theme((UiTheme)th);
-            for (size_t i = 0; i < sizeof k_toasts / sizeof k_toasts[0]; i++) {
-                const char *s = _(k_toasts[i]);
+            for (int i = 0; i < nt; i++) {
+                const char *s = toasts[i];
                 int lines = font_wrap_lines(FONT_BOLD, ui_text_size(), s, ui_toast_room(screen), NULL);
                 if (lines < 1 || lines > 2) fprintf(stderr, "  %s: \"%s\" needs %d lines\n", i18n_current(), s, lines);
                 CHECK(lines >= 1 && lines <= 2);
+                CHECK(strlen(s) < sizeof ((App *)0)->toast);  // whole in the toast's buffer
             }
             // The Display sheet's rows for a Kindle without the light (its whole width).
             int room = 1500 - (th == THEME_GOTHIC ? 80 : 72);
             CHECK(font_measure(FONT_REGULAR, ui_text_size(), _("Front light controls are not available here.")) <= room);
             CHECK(font_measure(FONT_REGULAR, ui_text_size(), _("This Kindle has no warmth control.")) <= room);
+            // The Share screen without an address (the scenario has one), and asleep: lines across
+            // the sheet's text room, the first in bold at the title size.
+            int share = 1860 - 2 * 70 - (th == THEME_GOTHIC ? 80 : 72);
+            const char *heads[] = {_("Turn on Wi-Fi on the Kindle first"), _("Could not start the server"), _("Asleep")};
+            const char *lines[] = {_("Then tap Retry."), _("Is another app using the port? Try again."),
+                                   _("Wake the Kindle to share again.")};
+            for (int i = 0; i < 3; i++) {
+                if (font_measure(FONT_BOLD, ui_title_size(), heads[i]) > share) fprintf(stderr, "  too wide: %s\n", heads[i]);
+                CHECK(font_measure(FONT_BOLD, ui_title_size(), heads[i]) <= share);
+                CHECK(font_measure(FONT_REGULAR, ui_text_size(), lines[i]) <= share);
+            }
+            // Its Retry button, under no icon (404 px, at 44 px or 34 px).
+            CHECK(font_fit_px(FONT_CAPS, ui_text_size(), ui_small_size(), _("Retry"), 420 - 16) > 0.f);
+            // A second address, on its own line in small type (sideways the column is narrower).
+            char also[160];
+            snprintf(also, sizeof also, _("Also: %s (%s)"), "http://192.168.15.244:8080", "usb0");
+            CHECK(font_measure(FONT_REGULAR, ui_small_size(), also) <= 1400);
         }
     }
     ui_set_theme(THEME_GOTHIC);
@@ -754,6 +824,8 @@ int main(void) {
     RUN(lookups);
     RUN(plurals);
     RUN(damaged_catalogs);
+    RUN(context_plurals);
+    RUN(labels_and_identifiers);
     RUN(locale_names);
     RUN(detection_order);
     RUN(applying_a_setting);
