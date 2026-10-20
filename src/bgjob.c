@@ -66,12 +66,54 @@ static void child_setup(void) {
     if (nice(10) < 0) { /* best effort */ }
 }
 
+// Which job goes first: something the user waits on (an export they asked for, a template's
+// picture), then the mirror PDFs, then imports, and compaction last. A compaction can take minutes
+// on the Kindle, and its pages stay listed until it is done, so nothing is lost by its waiting.
+static int rank(const Job *j) {
+    if (j->notify || j->kind == BG_TEMPLATE) return 0;
+    return j->kind == BG_MIRROR_PDF ? 1 : j->kind == BG_IMPORT_FOLDER ? 2 : 3;
+}
+
+static void take(int i, Job *out) {
+    *out = g_q[i];
+    memmove(g_q + i, g_q + i + 1, sizeof g_q[0] * (size_t)(g_n - i - 1));
+    g_n--;
+}
+
+// Grimoire's own SIGTERM, SIGINT and SIGHUP handlers only set a flag. A child keeps them until it
+// sets its own, and a stop sent in between (bg_cancel_notebook, just after the fork) would be lost:
+// Grimoire would wait in waitpid for the whole job. So they are held across the fork, and the child
+// puts them back to their defaults before it lets a held one in.
+static void stops_set(sigset_t *s) {
+    sigemptyset(s);
+    sigaddset(s, SIGTERM);
+    sigaddset(s, SIGINT);
+    sigaddset(s, SIGHUP);
+}
+
+static void child_stops_by_default(const sigset_t *was) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+    sigprocmask(SIG_SETMASK, was, NULL);
+}
+
 static void start_next(void) {
     if (g_pid > 0 || g_n == 0) return;
-    Job j = g_q[0];
-    memmove(g_q, g_q + 1, sizeof g_q[0] * (size_t)(g_n - 1));
-    g_n--;
+    int next = 0;
+    for (int i = 1; i < g_n; i++)
+        if (rank(&g_q[i]) < rank(&g_q[next])) next = i;
+    Job j;
+    take(next, &j);
+    sigset_t stops, was;
+    stops_set(&stops);
+    sigprocmask(SIG_BLOCK, &stops, &was);
     pid_t pid = fork();
+    if (pid != 0) sigprocmask(SIG_SETMASK, &was, NULL);
     if (pid < 0) {
         if (j.kind != BG_MIRROR_PDF) {  // only the PDF is worth a stall of the UI
             qlog("bg: cannot fork; %s of %s skipped", k_kind_names[j.kind], j.id[0] ? j.id : "a folder");
@@ -83,6 +125,7 @@ static void start_next(void) {
     }
     if (pid == 0) {
         // The child only renders and writes files: no display, no input, no atexit handlers.
+        child_stops_by_default(&was);
         child_setup();
 #ifdef GRIMOIRE_SIM
         // Tests: an export as slow as a big notebook's on the Kindle, so the next one queues.
@@ -108,9 +151,14 @@ void bg_queue(BgKind kind, const char *id, const char *path, float dpi, bool not
             return;
         }
     if (g_n == BG_QUEUE) {
-        qlog("bg: queue full, dropping the oldest job (%s)", g_q[0].id);
-        memmove(g_q, g_q + 1, sizeof g_q[0] * (BG_QUEUE - 1));
-        g_n--;
+        // The oldest of the last to go first: a compaction (its pages stay listed for the next one)
+        // before a mirror, before anything the user waits on.
+        int drop = 0;
+        for (int i = 1; i < g_n; i++)
+            if (rank(&g_q[i]) > rank(&g_q[drop])) drop = i;
+        Job gone;
+        take(drop, &gone);
+        qlog("bg: queue full, dropping the oldest %s (%s)", k_kind_names[gone.kind], gone.id[0] ? gone.id : "a folder");
     }
     Job *j = &g_q[g_n++];
     memset(j, 0, sizeof *j);
@@ -131,7 +179,7 @@ void bg_cancel_notebook(const char *id) {
         if (g_q[i].kind == BG_COMPACT_PAGES && !strcmp(g_q[i].id, id)) {
             memmove(g_q + i, g_q + i + 1, sizeof g_q[0] * (size_t)(g_n - i - 1));
             g_n--;
-            qlog("bg: compaction of %s dropped (the notebook opens)", id);
+            qlog("bg: compaction of %s dropped (the notebook opens or goes)", id);
         } else
             i++;
     }
@@ -139,7 +187,7 @@ void bg_cancel_notebook(const char *id) {
         kill(g_pid, SIGTERM);
         int st;
         waitpid(g_pid, &st, 0);
-        qlog("bg: compaction of %s stopped (the notebook opens)", id);
+        qlog("bg: compaction of %s stopped (the notebook opens or goes)", id);
         g_pid = -1;
     }
 }

@@ -15,12 +15,15 @@ typedef enum {
 } BgKind;
 
 // Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
-// through bg_poll (for something the user asked for and waits on).
+// through bg_poll (for something the user asked for and waits on). Jobs run one at a time, what the
+// user waits on first (a notify job, a template's picture), then mirror PDFs, imports, compaction;
+// a full queue lets its oldest compaction go first (its pages stay listed).
 void bg_queue(BgKind kind, const char *id, const char *path, float dpi, bool notify);
 // Queues the mirror PDF of notebook `id` (bg_queue with BG_MIRROR_PDF).
 void bg_mirror_pdf(const char *id, float dpi, const char *mirror_dir, bool notify);
-// Before a notebook opens: its queued compaction is dropped and a running one stopped (its writes
-// are safe to abandon), so the editor and a background rewrite never meet. Returns when it is gone.
+// Before a notebook opens or goes to the trash: its queued compaction is dropped and a running one
+// stopped (its writes are safe to abandon), so the editor and a background rewrite never meet.
+// Returns when it is gone.
 void bg_cancel_notebook(const char *id);
 // Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
 // succeeded / failed, else 0. Call it often (app_tick). The kind of the job that just finished

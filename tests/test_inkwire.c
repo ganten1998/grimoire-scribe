@@ -757,6 +757,43 @@ TEST(opening_stops_a_running_pass) {
     CHECK(store_delete(nb.id) == 0);
 }
 
+// The same stop sent right after the fork, before the child could set handlers of its own (a
+// notebook opened in the very pass that started its compaction): bgjob.c holds the stops across the
+// fork, so the child takes the stop with its default action and goes at once, with nothing written.
+TEST(a_stop_right_after_the_fork) {
+    NotebookInfo nb;
+    CHECK(store_create("Heavy too", "", PAPER_MEDIUM, &nb) == 0);
+    Page *heavy = heavy_page();
+    CHECK(store_save_page(&nb, 0, heavy) == 0);
+    char path[800], tmp[900];
+    page_path(&nb, 0, path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.compact.tmp", path);
+    size_t was_len;
+    uint8_t *was = file_bytes(path, &was_len);
+    CHECK(compact_note_page(nb.id, nb.page_ids[0]) == 0);
+    CHECK(!bg_busy());
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = signal_noted;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, &old);
+    bg_queue(BG_COMPACT_PAGES, nb.id, NULL, DPI, false);
+    uint32_t t0 = now_ms();
+    bg_cancel_notebook(nb.id);
+    uint32_t took = now_ms() - t0;
+    sigaction(SIGTERM, &old, NULL);
+    CHECK(took < 500);
+    CHECK(!bg_busy());
+    size_t l;
+    uint8_t *now = file_bytes(path, &l);
+    CHECK(was && now && l == was_len && !memcmp(now, was, l));
+    CHECK(lists(&nb, nb.page_ids[0]) && !exists(tmp));
+    free(now);
+    free(was);
+    page_free(heavy);
+    CHECK(store_delete(nb.id) == 0);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/inkwire-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -777,6 +814,7 @@ int main(void) {
     RUN(the_list);
     RUN(compaction_left_from_an_earlier_run);
     RUN(opening_stops_a_running_pass);
+    RUN(a_stop_right_after_the_fork);
     int rc = tl_done();
     system(cmd);
     return rc;

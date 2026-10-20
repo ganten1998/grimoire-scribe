@@ -953,6 +953,9 @@ static void act(App *a, const Hit *h) {
             char nb_path[1200];
             export_mirror_path(&S->books[it->nb], app_mirror_dir(), nb_path, sizeof nb_path);
             unlink(nb_path);  // the notebook goes to trash; its mirror PDF should not linger
+            // A compaction of it, queued or running, stops first: it would write into the folder
+            // in the trash (or leave a temporary file there).
+            bg_cancel_notebook(S->books[it->nb].id);
             store_delete(S->books[it->nb].id);
         }
         S->modal = MOD_NONE;
