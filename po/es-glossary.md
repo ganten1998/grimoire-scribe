@@ -38,6 +38,9 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | grain, smoothing | **grano**, **suavizado** | |
 | test pad | **zona de prueba** | |
 | live (pressure and tilt) | **en tiempo real** | *En vivo* is said of broadcasts. |
+| white ink, draws white | **tinta blanca**, **dibuja en blanco** (*Mantener presionado el botón del lápiz dibuja en blanco*; the test pad's *tinta blanca: pruébala sobre el negro*) | It takes away the ink under it and keeps the paper's lines. |
+| Black / White (the tool picker's ink row) | **Negro / Blanco** | *Tinta negra / Tinta blanca* (they fit too). The colours as nouns, as a colour choice names them, not agreeing with *tinta*. |
+| Eraser: Whole strokes / Precise (Pen feel) | **Borrador: Trazos enteros / Preciso** | *Por trazos / Exacto*. *Trazos enteros* as the eraser's note says it (*El borrador quita trazos enteros*); the precise one *quita solo lo que toca*. |
 
 ## Notebooks, papers, music
 
@@ -92,6 +95,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Sleep screen: ... | **En reposo: ...** (*En reposo: la página abierta*) | *Pantalla de reposo: ...* did not fit with the screensaver's line. |
 | screensaver | **salvapantallas** | *protector de pantalla* (Latin America). |
 | Pin this page | **Fijar esta página** | |
+| Pin (pens to the panel), unpin | **Fijar** (*Fijar en el panel (hasta 4)*), **quitar** (*Quita una primero*) | As *Fijar esta página*; *Anclar*, *desanclar*. The pens pinned are *herramientas* (*En el panel caben hasta 4 herramientas*), as the tool picker's title calls them. |
 | Style: Gothic / Classic | **Estilo: Gótico / Clásico** (*Estilo: Gótico (toca para cambiar a Clásico)*) | *toca para Clásico* had no verb; the other rows a tap changes say *toca para cambiar*. |
 | Language, Automatic | **Idioma, Automático** | The languages' own names stay in themselves (*English*, *Español*). |
 | Calibrate | **Calibrar** (*Calibrar el lápiz y la pantalla táctil*) | |
@@ -130,8 +134,8 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 - Decimals keep the point (*0.30 mm*), as the code writes them; Mexico and much of Central
   America write it so, Spain and most of South America write *0,30*. Please say which you expect.
-- Percent: *150 %* with a space on the zoom chip (as the RAE writes it); Pen feel's *+35%* is a
-  value the code writes and stays as it is.
+- Percent: *150 %* with a space (as the RAE writes it), on the zoom chip and on Pen feel's Tilt
+  widens value (*+35 %*).
 - Angles: *45°* (the English writes *45 deg*).
 - Dates: *20 oct, 14:32*; *sept* for September (the RAE's abbreviation; *sep* is also used).
 - Quotes: «Cuaderno 20 oct» in the question before a notebook is deleted.
