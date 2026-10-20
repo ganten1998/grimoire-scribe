@@ -51,6 +51,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | folder | **carpeta** | |
 | Untitled | **Sin título** | The name of a notebook that has none (it is saved with it). |
 | Template (a picture used as paper) | **Plantilla** | Copied into grimoire/templates; the paper's name under its picture. |
+| More papers... (the last paper's tile, which opens the sheet of templates, *Plantillas*) | **Más papeles...** | *Otros papeles...* |
 | Imported page, to import | **Página importada**, **importar** | A page of a document brought in as pictures (*Se importó un cuaderno de 12 páginas*). |
 | rule, ruled | **rayado** | *pauta* (Spain), *raya* (Mexico). |
 | Narrow / Medium / Wide rule | **Rayado fino / medio / ancho** | *Rayado estrecho* is clearer but too wide sideways, where it ran into the next paper's name. *angosto* (Latin America). |
@@ -83,6 +84,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Back to KOReader | **Volver a KOReader** | In Exit's place when Grimoire was opened from KOReader; this one button takes the width it needs. |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
+| Back (the Templates sheet's button back to the papers) | **Volver** | *Atrás*. |
 | Delete | **Borrar** | *Eliminar*. A notebook or pages go (*Se borraron 3 páginas*). |
 | Clear (a page, the test pad) | **Limpiar** (*Se limpió la página*) | The strokes go, the page stays: not *borrar*, which deletes. *Vaciar* (*Página vaciada*). |
 | Rename | **Renombrar** | *Cambiar nombre*. |

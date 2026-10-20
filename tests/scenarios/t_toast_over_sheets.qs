@@ -35,7 +35,7 @@ expect library.sheet is new
 expect toast.rect is 422 1496 1636 110
 shot 03-new-sheet-landscape-toast-above-its-buttons
 # Custom music over it: the toast clears the music sheet's own controls
-tap 1795 1110
+tap 1240 1116
 wait 200
 expect library.sheet is music
 expect toast.rect is 422 895 1636 110

@@ -432,10 +432,14 @@ delete). A page that reads as Blank but that `pages.ini` lists with an image pap
 back when it is opened or exported: a page someone set to Blank in a version that keeps the list
 is off it. One set to Blank from the picker of a version before 1.1 cannot be told apart, and gets
 its picture back too. A page an older version gave another paper (from its own picker) keeps that
-paper. Opened in the editor, a page that got its paper back so is written again with it (an export
-changes no file), and once the notebook closes its thumbnail and PDF, which the older version drew
-on blank paper, are drawn again. A `pages.ini` that is there but does not read is never written
-over (its entries would be lost): it is left as it is until it reads again.
+paper. When the notebook is opened in the editor, every page the list names that is still one of
+its pages and reads as version 1 Blank gets its paper back and is written again with it, whether it
+is visited or not (a page is read whole only when its first 8 bytes say version 1 Blank, so a big
+notebook of imported pages opens without reading each page); an export changes no file. Once the
+notebook closes, its thumbnail and PDF, which the older version drew on blank paper, are drawn
+again. A page the list names that reads read-only (a newer version's) is left as it is. A
+`pages.ini` that is there but does not read is never written over (its entries would be lost): it
+is left as it is until it reads again.
 
 Raw notebook zips carry the notebook's `bg/` (`raw/bg/...`).
 
@@ -447,8 +451,22 @@ makes the folder at startup, with a `README.txt`, if it is missing, and keeps pr
 in `templates/.cache/`, each named by a hash of the file's name, size and time: `<hash>.pgm`, the
 preview (P5 PGM, a sixth of the page); `<hash>.key`, a line `<hash of the file's bytes, 16 hex
 digits> <width> <height>`, from which the template's id comes (Ids), so the file need not be read
-again to use it; and an empty `<hash>.bad` for a file that is no picture it can use. A file whose
-path is 600 bytes or longer is left out.
+again to use it; and an empty `<hash>.bad` for a file that is no picture it can use: its bytes are
+no picture Grimoire takes (as above), or it is bigger than 16 MB. A file that does not read when
+the previews are made (no memory for it, a read error) gets no `.bad`: a later scan tries it again.
+A file whose path is 600 bytes or longer is left out.
+
+New notebook and the editor's paper sheet offer the templates as tiles (their previews), behind
+the last tile, More papers... (1.1). A page given one gets its image paper (role 0, a template) at
+once and the picture is made in the background; until it is there the page draws white paper. A
+notebook made on one in New notebook has that image paper as its own `paper` (`notebook.ini`), and
+its first page has it too. The background job that makes a template's picture for a notebook also
+draws the notebook's `thumb.pgm` again when its first page is on that picture (the editor may
+have drawn it on white paper): to `thumb.pgm.card.tmp`, renamed over `thumb.pgm` only if that
+still holds, byte for byte, what it held before the job read the first page (checked just before
+the rename). The editor, which may have the notebook open, writes the card itself when it leaves
+the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
+the card again from the page as it is then, and after three tries leaves the editor's.
 
 ### Imports: `root/import/<Name>/`
 
@@ -576,7 +594,7 @@ Frozen while 1.0.0-beta is in use:
 |---|---|
 | `name` | the notebook's name, one line. A missing or empty one is read as "Untitled" (from 1.1 in the language of the screens: "Sin título" in Spanish), which the next save writes, as new notebooks get a name in that language ("Cuaderno 20 oct") |
 | `folder` | its folder, one line ("" = top level; one level of folders) |
-| `paper` | the paper new pages get: a paper value (decimal) |
+| `paper` | the paper new pages get: a paper value (decimal); from 1.1 also an image paper of the notebook's (a template's, for a notebook made on one in New notebook) |
 | `created`, `modified` | unix seconds |
 | `last_page` | the page index opened next time |
 | `next_page_id` | the id the next new page gets |
@@ -594,8 +612,12 @@ most of its pages: the pages of the other size are scaled to it.
 From 1.0.0-beta.2 on, a line whose key it does not know is written back after the keys it knows,
 whole lines up to 2 KB in all (a line that does not fit is left out and logged), and a `paper`
 it does not know is kept: new pages get it. A new notebook always starts on a paper the version
-offers. 1.0.0-beta drops unknown lines on its next save and reads an unknown `paper` as Medium
-rule.
+offers: from 1.1 that may be a template. Such a notebook is made on the paper picked before it (or
+Medium rule), and once it exists the template's picture is given its id in the notebook's `bg/`
+(made there in the background), and the notebook's `paper` and its first page go onto that image
+paper (the page listed in `bg/pages.ini`). If that cannot be done the notebook stays on the paper
+it was made on. 1.0.0-beta drops unknown lines on its next save and reads an unknown `paper` (an
+image paper too) as Medium rule.
 
 Frozen while 1.0.0-beta is in use:
 
@@ -635,7 +657,7 @@ row.
 | a paper it does not know | blank paper; a re-save turns it into version 1 Blank | blank paper, "Newer paper"; kept (version 2) |
 | an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, except after a document page (`0x51......`): then the notebook's paper, as in 1.1 (store_new_page_paper, the one image-paper rule it knows) |
 | a notebook's `bg/` folder | never read or written; its raw zips leave it out | the same |
-| an image paper as a notebook's `paper` | read as Medium rule: its new pages get Medium | kept; new pages get it (drawn blank there) |
+| an image paper as a notebook's `paper` (1.1: a notebook made on a template) | read as Medium rule, and saved so on its next save of `notebook.ini`: its new pages get Medium. Its pages keep their own papers (1.1 brings back from `bg/pages.ini` those it re-saved), so back in 1.1 only a page added after an imported page, or one whose file is missing, gets Medium | kept; new pages get it (drawn blank there) |
 | `templates/`, `import/` in the data root (and `import/.attempts`) | never read | the same |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |

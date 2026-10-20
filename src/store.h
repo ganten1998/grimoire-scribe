@@ -139,6 +139,17 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
 // How many pages store_load_page gave their image paper back since the last call: the thumbnail
 // and PDF an older version made of them show blank paper, to be drawn again.
 int store_take_restored_count(void);
+// When a notebook is opened in the editor: every page bg/pages.ini lists that reads as version 1
+// Blank (an older version saved it so) gets its image paper back now and is written so, as
+// store_load_page does for one page as it opens: then the notebook's thumbnail and PDF, which the
+// older version drew on blank paper, are drawn again when it closes, also for pages not visited.
+// Each counts in store_take_restored_count. Returns how many.
+int store_restore_listed_pages(const NotebookInfo *nb);
+// A notebook store_create just made (its one empty page) goes onto `paper`, which may be an image
+// paper of its own pictures: store_create takes only a paper the pickers offer, and a template's
+// picture can go into a notebook's bg/ only once the notebook exists (templates.h). Its own paper
+// (notebook.ini, what new pages get) and its first page's (listed in bg/pages.ini) are written.
+int store_start_on(NotebookInfo *nb, PaperKind paper);
 // The same for exports, always at the notebook's page size, and nothing on disk changes: a page
 // that is missing or does not read is a blank page of nb->paper, and its file stays as it is.
 int store_read_page(const NotebookInfo *nb, int index, Page **out);
@@ -153,6 +164,21 @@ int store_load_sleep_image(Canvas *out);
 // Thumbnails (P5 PGM, ~ 1/8 page size).
 int store_save_thumb(const char *id, const Canvas *thumb);
 int store_load_thumb(const char *id, Canvas *out);   // canvas_init'd by the callee
+// thumb.pgm as it is on disk now, in a number that changes whenever the file is written again (a
+// write is a new file, renamed into place: its inode, size and times): 0 when there is none, else
+// odd. A card read from it knows by this whether it was written since.
+uint64_t store_thumb_stamp(const char *id);
+// From a background job, which draws a notebook's card while the editor may have the notebook open
+// and write the card itself: thumb.pgm's bytes as they are now (NULL with *len 0 when there is
+// none), and the card written only if thumb.pgm still holds those bytes (was, was_len), checked
+// once the new card is written to a file of the job's own (thumb.pgm.card.tmp, so that the two
+// never write into one file), just before it replaces the old one. 0 written; 1 the card changed
+// meanwhile (it stays as it is); -1 not written.
+uint8_t *store_read_thumb_file(const char *id, size_t *len);
+int store_replace_thumb_if_same(const char *id, const Canvas *thumb, const uint8_t *was, size_t was_len);
+// Tests: called by store_replace_thumb_if_same just before it looks at thumb.pgm again (the editor
+// writing a card meanwhile).
+extern void (*store_test_before_card_replace)(const char *id);
 int store_write_pgm(const char *path, const Canvas *c);   // P5 PGM, atomically
 int store_read_pgm(const char *path, Canvas *out);        // canvas_init'd by the callee
 

@@ -14,8 +14,10 @@
 #include "musicbuild.h"
 #include "keyboard.h"
 #include "i18n.h"
+#include "tplsheet.h"
 
-typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE } Modal;
+typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
+               MOD_TEMPLATES } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -28,6 +30,7 @@ enum {
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
+    H_PAPER_MORE,
 };
 
 typedef struct {
@@ -53,6 +56,12 @@ struct LibraryState {
     Canvas custom_prev;   // one custom music layout's preview at a time
     PaperKind custom_prev_k;
     MusicBuild mb;
+    TplSheet ts;          // New notebook's More papers...: the Templates sheet over it
+    char new_tpl[TEMPLATE_PATH_MAX];  // the template New notebook makes its notebook on ("" none)
+    Canvas tpl_prev;      // and its preview, for its tile
+    unsigned card_gen;    // bgimage_generation when the cards were last read
+    uint64_t *card_stamp; // per notebook: what thumbs[i] was read from (store_thumb_stamp), or CARD_STALE
+    int cards_redrawn;    // times a background job changed a card on screen (the probe's)
 
     Modal modal;
     KbPurpose kbp;
@@ -104,12 +113,14 @@ static void free_lists(App *a) {
     free(S->thumbs);
     free(S->thumb_tried);
     free(S->thumb_picture);
+    free(S->card_stamp);
     free(S->books);
     free(S->folders);
     free(S->items);
     S->thumbs = NULL;
     S->thumb_tried = NULL;
     S->thumb_picture = NULL;
+    S->card_stamp = NULL;
     S->books = NULL;
     S->folders = NULL;
     S->items = NULL;
@@ -118,11 +129,13 @@ static void free_lists(App *a) {
 
 static void reload(App *a) {
     free_lists(a);
+    S->card_gen = bgimage_generation();  // (the cards read from now on are up to date)
     store_list(&S->books, &S->nbooks);
     store_list_folders(&S->folders, &S->nfolders);
     S->thumbs = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumbs);
     S->thumb_tried = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_tried);
     S->thumb_picture = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_picture);
+    S->card_stamp = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->card_stamp);
     S->items = calloc((size_t)(S->nbooks + S->nfolders + 1), sizeof *S->items);
     if (!S->items) return;
     if (!S->cur_folder[0])
@@ -172,6 +185,10 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
     return c->px ? c : NULL;
 }
 
+// A card drawn with a picture white in it (its file not made yet): read again once a background
+// job has ended (library_tick). No thumb.pgm has this stamp (store_thumb_stamp: 0 or odd).
+#define CARD_STALE 2u
+
 // The card of a notebook with no thumbnail yet whose paper is a picture: that picture (white while
 // its file is missing), never another paper.
 static void picture_card(App *a, int nb) {
@@ -180,7 +197,9 @@ static void picture_card(App *a, int nb) {
     store_notebook_page_size(b, &pw, &ph);
     Canvas full;
     if (canvas_init(&full, pw, ph) != 0) return;
+    bgimage_take_missing();  // (what drew white before)
     bgimage_render(&full, b->id, b->paper, (Rect){0, 0, pw, ph});
+    if (bgimage_take_missing() && S->card_stamp) S->card_stamp[nb] = CARD_STALE;
     if (canvas_init(&S->thumbs[nb], pw / 4, ph / 4) == 0) canvas_downsample_keep_lines(&S->thumbs[nb], &full, 0.6f);
     canvas_free(&full);
     S->thumb_picture[nb] = S->thumbs[nb].px != NULL;
@@ -190,6 +209,7 @@ static const Canvas *thumb_for(App *a, int nb) {
     if (!S->thumb_tried[nb]) {
         S->thumb_tried[nb] = true;
         S->thumb_picture[nb] = false;
+        if (S->card_stamp) S->card_stamp[nb] = store_thumb_stamp(S->books[nb].id);  // (before it is read)
         if (store_load_thumb(S->books[nb].id, &S->thumbs[nb]) != 0 && paper_is_image(S->books[nb].paper))
             picture_card(a, nb);
     }
@@ -382,49 +402,46 @@ static void draw_new(App *a) {
     // TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
     Rect in = ui_sheet(c, card, _("New notebook"));
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, in.y, in.w, ui_px(70)}, _("Paper"), 0);
-    const int ntiles = PAPER_PICKER_COUNT;
-    int gap = ui_px(30), cols = ntiles > 15 ? 6 : ntiles > 8 ? 5 : 4, rows = (ntiles + cols - 1) / cols;
-    int tw = (in.w - gap * (cols - 1)) / cols;
-    if (tw > ui_px(300)) tw = ui_px(300);
-    // Fit the height too (landscape): leave room for the name rows and the buttons.
-    int avail = in.h - ui_px(80) - ui_px(420);
-    int max_th = avail / rows - ui_px(100);
-    if (tw * 4 / 3 > max_th) tw = max_th * 3 / 4;
-    int tht = tw * 4 / 3, cell_h = tht + ui_px(100);
-    int gridw = cols * tw + (cols - 1) * gap;
+    // The tiles over the name rows and the buttons (420 px), under the heading (80): upright in 6
+    // columns, sideways in 7 (tplsheet.h).
+    int gap = ui_px(30);
+    PaperGrid g = paper_grid(PAPER_SHEET_TILES, in.w, in.h - ui_px(80) - ui_px(420), gap, ui_px(100), ui_px(300),
+                             PAPER_GRID_MIN_COLS);
+    int gridw = g.cols * g.tw + (g.cols - 1) * gap;
     int ty = in.y + ui_px(80);
-    for (int i = 0; i < ntiles; i++) {
-        // The last tile is Custom music: the chosen layout, or the last one built.
-        bool custom = i == PAPER_COUNT;
-        bool new_custom = paper_is_custom(S->new_paper);
-        PaperKind k = custom ? (new_custom ? S->new_paper : a->settings.music_layout) : paper_at(i);
-        Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap), ty + (i / cols) * cell_h, tw, tht};
+    bool tpl = S->new_tpl[0] != 0, new_custom = !tpl && paper_is_custom(S->new_paper);
+    for (int i = 0; i < PAPER_SHEET_TILES; i++) {
+        // The last two tiles. Custom music: the chosen layout, or the last one built. More papers:
+        // the template chosen on the Templates sheet it opens (S->new_paper is then what the
+        // notebook is made on if the template cannot be used).
+        bool custom = i == PAPER_COUNT, more = i == PAPER_COUNT + 1;
+        PaperKind k = more ? PAPER_BLANK : custom ? (new_custom ? S->new_paper : a->settings.music_layout) : paper_at(i);
+        Rect tr = {in.x + (in.w - gridw) / 2 + (i % g.cols) * (g.tw + gap), ty + (i / g.cols) * g.cell_h, g.tw, g.th};
         canvas_fill(c, tr, 255);
-        const Canvas *pv = paper_preview(a, k);
+        const Canvas *pv = more ? (tpl && S->tpl_prev.px ? &S->tpl_prev : NULL) : paper_preview(a, k);
         if (pv) canvas_blit_fit(c, pv, tr);
-        bool sel = custom ? new_custom : S->new_paper == k;
+        else if (more) paper_tile_more(c, tr);
+        bool sel = more ? tpl : custom ? new_custom : !tpl && S->new_paper == k;
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
-        Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};
-        // TRANSLATORS: the last paper's tile, which opens a sheet that builds a music paper from
-        // parts (about 278 px at 31 px, or two lines of that).
-        const char *label = custom ? _("Custom music...") : paper_label(k);
-        FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
-        float ls = ui_small_size() * 0.9f;
-        int lw = font_measure(lf, ls, label);
-        if (lw > lr.w || (lw > tw && strstr(label, ", "))) {
-            // Sideways the tiles are narrow: a label wider than its column goes on two lines under
-            // its tile rather than being cut short, and so does one with a comma that is wider
-            // than the tile ("Narrow," over "no margin": a break after a comma is preferred).
-            font_draw_wrapped(c, lf, ls, (Rect){tr.x, tr.y + tht + ui_px(8), tw, ui_px(80)}, label, 2, ui_px(40), true, 0);
-        } else {
-            font_draw_centered(c, lf, ls, lr, label, 0);
-        }
-        hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, tht + ui_px(90)}, custom ? H_PAPER_CUSTOM : H_PAPER, (int)k);
+        const char *label = paper_label(k);
+        // TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
+        // a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
+        // one line or two).
+        if (custom) label = _("Custom music...");
+        // TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
+        // Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
+        // at 31 px in New notebook sideways, on one line or two).
+        if (more) label = _("More papers...");
+        // (A label wider than its tile goes on two lines under it, as most do sideways: labels side
+        // by side never run into each other.)
+        paper_tile_label(c, tr, gap, label, sel);
+        hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, g.th + ui_px(90)}, more ? H_PAPER_MORE : custom ? H_PAPER_CUSTOM : H_PAPER,
+                 (int)k);
     }
-    int y = ty + rows * cell_h + ui_px(20);
+    int y = ty + g.rows * g.cell_h + ui_px(20);
     char line[320];
-    // TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
-    // icon), then the folder it goes in, or the Library itself.
+    // TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
+    // icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
     snprintf(line, sizeof line, _("Name: %s"), S->new_name);
     Rect rn = {in.x + in.w - ui_px(300), y, ui_px(300), ui_px(120)};
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, y, in.w - ui_px(330), ui_px(120)}, line, 0);
@@ -436,7 +453,8 @@ static void draw_new(App *a) {
     int bh = ui_px(140), bw = ui_px(380);
     Rect cancel = {in.x, in.y + in.h - bh, bw, bh};
     Rect create = {in.x + in.w - bw, in.y + in.h - bh, bw, bh};
-    // TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+    // TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+    // the main one), or at 34 px, or two lines of that.
     ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
     ui_button(c, create, ICON_NONE, _("Create"), BTN_PRIMARY);
     hits_add(&S->hits, cancel, H_CANCEL, 0);
@@ -670,6 +688,7 @@ static void draw_modal(App *a) {
     case MOD_KB: keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h}); break;
     case MOD_DISPLAY: dispmenu_draw(&S->dm, a); break;
     case MOD_MUSIC: draw_new(a); musicbuild_draw(&S->mb, a); break;
+    case MOD_TEMPLATES: draw_new(a); tplsheet_draw(&S->ts, a); break;
     default: break;
     }
 }
@@ -681,8 +700,9 @@ static void draw_modal(App *a) {
 static int toast_floor(App *a) {
     if (S->modal == MOD_NONE) return 0;
     if (S->modal == MOD_KB) return S->kb.area.y;
-    // (The Custom music sheet lies over the New notebook sheet: only its own controls count.)
-    const HitList *l = S->modal == MOD_MUSIC ? &S->mb.hits : &S->hits;
+    // (The Custom music and Templates sheets lie over the New notebook sheet: only their own
+    // controls count.)
+    const HitList *l = S->modal == MOD_MUSIC ? &S->mb.hits : S->modal == MOD_TEMPLATES ? &S->ts.hits : &S->hits;
     // (A toast of two lines is taller: the band is as tall as the toast up now, else one line.)
     Rect t = ui_toast_rect((Rect){0, 0, a->w, a->h}, a->toast_visible ? a->toast : "");
     int gap = ui_px(20), y = t.y, below = 0;  // below: the control the toast must stay above
@@ -760,15 +780,30 @@ static void mirror_follow(App *a, const char *id, bool deleting) {
     free(now);
 }
 
+// A notebook on a template (More papers...): templates.h. False if that could not be done: the
+// notebook stays on the paper picked before.
+static bool start_on_template(NotebookInfo *nb, const char *path) {
+    const char *why = "";
+    if (template_start_notebook(nb, path, &why) == 0) return true;
+    qlog("library: %s: the new notebook's template could not be used: %s", nb->id, why);
+    return false;
+}
+
 static void create_notebook(App *a) {
     NotebookInfo *nb = malloc(sizeof *nb);
     if (!nb) return;
     if (store_create(S->new_name, S->cur_folder, S->new_paper, nb) == 0) {
         S->modal = MOD_NONE;
+        bool tpl_ok = !S->new_tpl[0] || start_on_template(nb, S->new_tpl);
         char id[STORE_ID_LEN];
         strlcpy_q(id, nb->id, sizeof id);
         free(nb);
         editor_open_notebook(a, id);
+        if (!tpl_ok) {
+            char msg[256];
+            snprintf(msg, sizeof msg, _("Could not use that template (see %s)."), "grimoire.log");
+            app_toast(a, msg, 4000);
+        }
         return;
     }
     free(nb);
@@ -833,6 +868,8 @@ static void act(App *a, const Hit *h) {
         snprintf(base, sizeof base, _("Notebook %s"), day);
         unique_name(a, base, S->new_name, sizeof S->new_name);
         S->new_paper = PAPER_MEDIUM;
+        S->new_tpl[0] = 0;
+        canvas_free(&S->tpl_prev);
         open_modal(a, MOD_NEW);
         break;
     }
@@ -868,10 +905,18 @@ static void act(App *a, const Hit *h) {
         S->target = h->arg;
         open_modal(a, S->items[h->arg].is_folder ? MOD_FOLDER_MORE : MOD_MORE);
         break;
-    case H_PAPER: S->new_paper = (PaperKind)h->arg; redraw(a, REFRESH_UI); break;
+    case H_PAPER:
+        S->new_paper = (PaperKind)h->arg;
+        S->new_tpl[0] = 0;
+        redraw(a, REFRESH_UI);
+        break;
     case H_PAPER_CUSTOM:
         musicbuild_open(&S->mb, a, S->new_paper);
         open_modal(a, MOD_MUSIC);
+        break;
+    case H_PAPER_MORE:
+        tplsheet_open(&S->ts, a, NULL, PAPER_BLANK, S->new_tpl);
+        open_modal(a, MOD_TEMPLATES);
         break;
     case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, C_("keyboard", "Name"), S->new_name); break;
     case H_NEW_CREATE: create_notebook(a); break;
@@ -1008,6 +1053,8 @@ void library_free(App *a) {
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
     musicbuild_free(&S->mb);
+    tplsheet_close(&S->ts);
+    canvas_free(&S->tpl_prev);
     free(S);
     a->lib = NULL;
 }
@@ -1026,6 +1073,27 @@ void library_leave(App *a) { S->pressed = NULL; }
 void library_event(App *a, const InEvent *ev) {
     int ph = app_pointer_phase(ev);
     if (ph < 0) return;
+    if (S->modal == MOD_TEMPLATES) {
+        Rect d;
+        TsResult r = tplsheet_pointer(&S->ts, a, ph, ev->x, ev->y, ev->t_ms, &d);
+        if (r == TS_PICKED) {
+            // The notebook is made on it (create_notebook); its tile shows its preview meanwhile.
+            const char *path = tplsheet_path(&S->ts);
+            const Canvas *pv = tplsheet_preview(&S->ts);
+            strlcpy_q(S->new_tpl, path ? path : "", sizeof S->new_tpl);
+            canvas_free(&S->tpl_prev);
+            if (pv && canvas_init(&S->tpl_prev, pv->w, pv->h) == 0)
+                canvas_blit(&S->tpl_prev, pv, (Rect){0, 0, pv->w, pv->h}, 0, 0);
+            tplsheet_close(&S->ts);
+        }
+        if (r == TS_PICKED || r == TS_BACK || r == TS_CANCEL) {
+            S->modal = MOD_NEW;  // back to New notebook, also from a tap outside the sheet
+            redraw(a, REFRESH_UI);
+        } else if (!rect_is_empty(d)) {
+            app_invalidate(a, d, REFRESH_UI);
+        }
+        return;
+    }
     if (S->modal == MOD_DISPLAY) {
         Rect d;
         DmResult r = dispmenu_pointer(&S->dm, a, ph, ev->x, ev->y, ev->t_ms, &d);
@@ -1043,7 +1111,10 @@ void library_event(App *a, const InEvent *ev) {
         Rect d;
         MbResult r = musicbuild_pointer(&S->mb, a, ph, ev->x, ev->y, ev->t_ms, &d);
         if (r == MB_DONE || r == MB_CANCEL) {
-            if (r == MB_DONE) S->new_paper = musicbuild_result(&S->mb);
+            if (r == MB_DONE) {
+                S->new_paper = musicbuild_result(&S->mb);
+                S->new_tpl[0] = 0;  // (a layout built takes the place of a template picked before)
+            }
             musicbuild_free(&S->mb);
             S->modal = MOD_NEW;
             redraw(a, REFRESH_UI);
@@ -1099,6 +1170,27 @@ void library_tick(App *a, uint32_t now) {
         S->kb_settle_at = 0;
         if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
     }
+    Rect d;
+    if (S->modal == MOD_TEMPLATES && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
+    // A background job ended (bgimage.h): the cards it may have changed are read again. A
+    // template's picture made for a notebook since may be on its first page, whose card the job drew
+    // again (bgwork_template.c: its thumb.pgm is another file now), or a card drawn from a
+    // notebook's own picture (picture_card) drew it white meanwhile. Any other job (the templates'
+    // previews) changes no card, and the Library is not drawn again for it.
+    if (S->card_gen != bgimage_generation()) {
+        S->card_gen = bgimage_generation();
+        bool changed = false;
+        for (int i = 0; i < S->nbooks && S->card_stamp; i++) {
+            if (!S->thumb_tried[i] || S->card_stamp[i] == store_thumb_stamp(S->books[i].id)) continue;
+            canvas_free(&S->thumbs[i]);
+            S->thumb_tried[i] = false;
+            changed = true;
+        }
+        if (changed && S->modal == MOD_NONE) {
+            S->cards_redrawn++;
+            redraw(a, REFRESH_UI);
+        }
+    }
 }
 
 // ---- headless checks ----
@@ -1146,6 +1238,7 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_DISPLAY] = "display",
         [MOD_MUSIC] = "music",
         [MOD_LANGUAGE] = "language",
+        [MOD_TEMPLATES] = "templates",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {
@@ -1165,9 +1258,19 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", S->modal == MOD_KB ? S->kb.text : "");
     } else if (!strcmp(key, "hint")) {
         snprintf(out, cap, "%d", empty_hint_shown(a) ? 1 : 0);
+    } else if (!strcmp(key, "cards_redrawn")) {
+        snprintf(out, cap, "%d", S->cards_redrawn);  // after background jobs that changed a card
     } else if (!strcmp(key, "paper")) {
-        if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
+        if (S->new_tpl[0]) snprintf(out, cap, "template");
+        else if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
         else snprintf(out, cap, "%d", (int)S->new_paper);
+    } else if (!strcmp(key, "template")) {
+        // The template New notebook makes its notebook on: its file's name without its extension.
+        const char *slash = strrchr(S->new_tpl, '/'), *name = slash ? slash + 1 : S->new_tpl, *dot = strrchr(name, '.');
+        int len = dot ? (int)(dot - name) : (int)strlen(name);
+        snprintf(out, cap, "%.*s", len, name);
+    } else if (!strncmp(key, "templates.", 10)) {
+        return tplsheet_probe(S->modal == MOD_TEMPLATES ? &S->ts : NULL, key + 10, out, cap);
     } else if (!strcmp(key, "music")) {
         // The layout on the Custom music sheet while it is open, else New notebook's custom paper.
         MusicLayout m;

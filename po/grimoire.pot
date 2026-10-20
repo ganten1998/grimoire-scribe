@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 13:53-0500\n"
+"POT-Creation-Date: 2026-10-20 13:55-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -276,7 +276,8 @@ msgstr ""
 msgid "Cancel (tap with a finger)"
 msgstr ""
 
-#. TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
 #: src/calibrate.c src/editor.c src/keyboard.c src/library.c src/musicbuild.c
 msgid "Cancel"
 msgstr ""
@@ -402,8 +403,16 @@ msgstr ""
 msgid "Paper for this page"
 msgstr ""
 
-#. TRANSLATORS: the last paper's tile, which opens a sheet that builds a music paper from
-#. parts (about 278 px at 31 px, or two lines of that).
+#. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
+#. Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
+#. at 31 px in New notebook sideways, on one line or two).
+#: src/editor.c src/library.c
+msgid "More papers..."
+msgstr ""
+
+#. TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
+#. a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
+#. one line or two).
 #: src/editor.c src/library.c
 msgid "Custom music..."
 msgstr ""
@@ -563,6 +572,14 @@ msgstr ""
 
 #: src/editor.c
 msgid "Saved"
+msgstr ""
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
+#. on the Templates sheet could not become the page's paper (or the new notebook's); %s is
+#. the log file that says why.
+#: src/editor.c src/library.c
+#, c-format
+msgid "Could not use that template (see %s)."
 msgstr ""
 
 #. TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.
@@ -733,7 +750,8 @@ msgid "Tap New to start one."
 msgstr ""
 
 #. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
-#: src/library.c
+#. TRANSLATORS: (also) between the Templates sheet's page buttons, in bold: 440 px at 44 px.
+#: src/library.c src/tplsheet.c
 #, c-format
 msgid "Page %d of %d"
 msgstr ""
@@ -747,8 +765,8 @@ msgstr ""
 msgid "Paper"
 msgstr ""
 
-#. TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
-#. icon), then the folder it goes in, or the Library itself.
+#. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
+#. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
 #: src/library.c
 #, c-format
 msgid "Name: %s"
@@ -1385,6 +1403,51 @@ msgstr ""
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: src/store.c
 msgid "Untitled"
+msgstr ""
+
+#. TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
+#. offer (1560 px at 64 px in bold, sideways 2180).
+#: src/tplsheet.c
+msgid "No templates yet"
+msgstr ""
+
+#. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); %s is the folder on the Kindle's storage.
+#: src/tplsheet.c
+#, c-format
+msgid ""
+"Copy PNG or JPG pictures into the %s folder over USB while Grimoire is "
+"closed."
+msgstr ""
+
+#. TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); README.txt is the file Grimoire wrote in that folder.
+#: src/tplsheet.c
+msgid ""
+"Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 "
+"pixels. The README.txt there says more."
+msgstr ""
+
+#. TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
+#. does not read, or too big): how many; %s is the log file, which says which (by number). Up
+#. to 2 lines of 1560 px at 34 px, sideways 2180.
+#: src/tplsheet.c
+#, c-format
+msgid "Grimoire cannot use %d file there (see %s)."
+msgid_plural "Grimoire cannot use %d files there (see %s)."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: src/tplsheet.c
+msgid "Templates"
+msgstr ""
+
+#. TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
+#. 34 px).
+#: src/tplsheet.c
+msgid "Back"
 msgstr ""
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the

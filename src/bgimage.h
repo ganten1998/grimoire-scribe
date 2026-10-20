@@ -28,6 +28,9 @@ bool bgimage_take_missing(void);
 void bgimage_forget(const char *nb);
 // Forgets only the remembered failures (a job may have written the file since).
 void bgimage_retry_missing(void);
+// How many times bgimage_retry_missing ran: a screen that drew a picture white (its file was not
+// made yet: bgimage_take_missing said so) draws it again once this changes.
+unsigned bgimage_generation(void);
 
 // ---- files ----
 
