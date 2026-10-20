@@ -3,8 +3,9 @@
 # and the app/grimoire.sh it unpacks, in a scratch device tree, with the Kindle's tools replaced
 # by stand-ins that record every call (tests/shims) and the binary by a shell script
 # (tests/shims/fake-grimoire). Checks unpacking, --unpack-only, the KOReader guard,
-# --reset-calibration, the order of the pause and the restore, the restore on a locked Kindle and
-# the watchdog, once with each POSIX shell found (sh, dash, busybox sh).
+# --reset-calibration, the order of the pause and the restore, the restore on a locked Kindle,
+# the watchdog and its device timings, and the move from Quire, once with each POSIX shell found
+# (sh, dash, busybox sh); the shells run side by side.
 # usage: tests/launcher_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -57,18 +58,23 @@ if ! unzip -p "$ZIP" documents/Grimoire.sh >"$W/Grimoire.sh" 2>/dev/null ||
 fi
 BUILD_ID=$(awk -F= '/^BUILD_ID=/ { print $2; exit }' "$W/Grimoire.sh")
 
-# A fresh scratch Kindle: $T/us is /mnt/us, $T/tmp is /tmp, $T/sys holds /etc, /var and
-# /dev/fb0 (a plain file), $T/state the stand-ins' answers, $T/calls.log every call they got.
-tree() {
+# A scratch Kindle: $T/us is /mnt/us, $T/tmp is /tmp, $T/sys holds /etc, /var and /dev/fb0 (a
+# plain file), $T/state the stand-ins' answers, $T/calls.log every call they got.
+enter() {  # enter NAME: points the variables, and the launchers and stand-ins run next, at NAME
     T=$W/$SH_NAME/$1
-    rm -rf "$T"
-    mkdir -p "$T/us/documents" "$T/tmp" "$T/sys/etc/upstart" "$T/sys/var/tmp" "$T/sys/var/local/system" \
-        "$T/sys/dev" "$T/state/lipc" "$T/state/pidof"
     US=$T/us
     APP=$US/grimoire/app
     DOC=$US/documents/Grimoire.sh
     RESET="$US/documents/Grimoire - reset pen calibration.sh"
     LOGF=$US/grimoire/grimoire.log
+    GRIMOIRE_US=$US GRIMOIRE_TMP=$T/tmp GRIMOIRE_SYSROOT=$T/sys SHIM_LOG=$T/calls.log SHIM_STATE=$T/state
+    export GRIMOIRE_US GRIMOIRE_TMP GRIMOIRE_SYSROOT SHIM_LOG SHIM_STATE
+}
+tree() {  # tree NAME: a fresh scratch Kindle NAME, entered
+    enter "$1"
+    rm -rf "$T"
+    mkdir -p "$T/us/documents" "$T/tmp" "$T/sys/etc/upstart" "$T/sys/var/tmp" "$T/sys/var/local/system" \
+        "$T/sys/dev" "$T/state/lipc" "$T/state/pidof"
     ln "$W/Grimoire.sh" "$DOC" 2>/dev/null || cp "$W/Grimoire.sh" "$DOC"  # never written to
     cp "$W/reset.sh" "$RESET"
     : >"$T/sys/etc/upstart/volumd.conf"
@@ -78,8 +84,6 @@ tree() {
     printf 'KINDLE' >"$T/sys/dev/fb0"
     echo active >"$T/state/lipc/com.lab126.powerd.state"
     echo "screensaver splash" >"$T/state/lipc/com.lab126.blanket.load"
-    GRIMOIRE_US=$US GRIMOIRE_TMP=$T/tmp GRIMOIRE_SYSROOT=$T/sys SHIM_LOG=$T/calls.log SHIM_STATE=$T/state
-    export GRIMOIRE_US GRIMOIRE_TMP GRIMOIRE_SYSROOT SHIM_LOG SHIM_STATE
     : >"$SHIM_LOG"
 }
 fake() { cp "$SHIMS/fake-grimoire" "$APP/grimoire" && chmod +x "$APP/grimoire"; }
@@ -93,6 +97,23 @@ in_order() {  # in_order CALL...: each call was made, in this order
     done
 }
 launcher_done() { has "$LOGF" "restoring the Kindle UI" && [ ! -e "$GRIMOIRE_TMP/grimoire.launcher.pid" ]; }
+fake_gone() {  # the fake binary has stopped running
+    p=$(cat "$SHIM_STATE/grimoire.pid" 2>/dev/null)
+    [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null
+}
+finish() {  # finish PID TENTHS: waits for a launcher run in the background, its status in rc.
+    # Fails when it is not done in time, and then stops it (its trap stops the binary) and the fake.
+    if wait_until "$2" launcher_done; then
+        wait "$1"
+        rc=$?
+        return 0
+    fi
+    kill "$1" 2>/dev/null
+    wait "$1"
+    rc=$?
+    fake_gone || kill -9 "$(cat "$SHIM_STATE/grimoire.pid")" 2>/dev/null
+    return 1
+}
 lines_in() { wc -l <"$1" | tr -d ' '; }
 settings_reset() {  # the calibration is gone, the other settings are kept
     S=$US/grimoire/settings.ini
@@ -107,6 +128,16 @@ STARTED="grimoire root="  # what the fake binary records
 
 suite() {
     s="[$SH_NAME]"
+
+    # The device's own watchdog timings (no GRIMOIRE_WD_* set): a Grimoire that takes 3 s to its
+    # first frame and then beats every 2 s is left alone. That takes about 9 s, so it runs in the
+    # background while the other cases go on, and is checked at the end.
+    tree timings
+    sh "$DOC" --unpack-only
+    fake
+    : >"$SHIM_LOG"
+    FAKE_MODE=slow sh "$APP/grimoire.sh" &
+    timings_pid=$!
 
     # First run on a fresh Kindle: unpacks, then starts app/grimoire.sh detached. The setsid
     # stand-in holds the launch until the fake binary is in place.
@@ -240,34 +271,39 @@ suite() {
     out=$(sh "$RESET")
     check "$s reset scriptlet without settings ($out)" is "$out" "Grimoire: nothing to reset (no settings yet)."
 
-    # Locked when Grimoire exits: the saved screen stays off the lock screen, the rest is restored.
-    # Also: the port from settings.ini, renice, and the diagnostics of a passcode, Special Offers
-    # and an installed (not running) KOReader.
-    tree locked
-    sh "$DOC" --unpack-only
-    fake
-    printf 'http_port=18763\n' >"$US/grimoire/settings.ini"
-    : >"$T/sys/var/local/system/userpasswdenabled"
-    mkdir -p "$US/koreader"
-    : >"$US/koreader/reader.lua"
-    echo v2026.07.1 >"$US/koreader/git-rev"
-    echo "screensaver ad_screensaver splash" >"$SHIM_STATE/lipc/com.lab126.blanket.load"
-    : >"$SHIM_LOG"
-    FAKE_EXIT_STATE=screenSaver SHIM_NICE=5 GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-    rc=$?
-    check "$s locked at exit: returns 0 ($rc)" is "$rc" 0
-    check "$s locked at exit: the binary ran" has "$SHIM_LOG" "grimoire exits"
-    check "$s locked at exit: the saved screen is not put back" is "$(content "$T/sys/dev/fb0")" GRIMOIRE
-    check "$s locked at exit: the saved screen is dropped" [ ! -e "$T/sys/var/tmp/grimoire-fb.dump" ]
-    check "$s locked at exit: logged" has "$LOGF" "grimoire.sh: power state at exit: screenSaver, so the saved screen is not put back"
-    check "$s locked at exit: jobs, awesome, pillow and home still restored" in_order "$STARTED" "start statusbar" \
-        "killall -CONT awesome" "$PILLOW_ON" "$HOME_UP"
-    check "$s firewall hole on the port from settings.ini" in_order "iptables -A INPUT -i wlan0 -p tcp --dport 18763 -j ACCEPT" \
-        "$STARTED" "iptables -D INPUT -i wlan0 -p tcp --dport 18763 -j ACCEPT"
-    check "$s started niced: back to normal priority" has "$SHIM_LOG" "renice -n -5"
-    check "$s log: passcode on" has "$LOGF" "grimoire.sh: device passcode: on"
-    check "$s log: Special Offers" has "$LOGF" "grimoire.sh: blanket modules: screensaver ad_screensaver splash (Special Offers)"
-    check "$s log: KOReader installed, not running" has "$LOGF" "grimoire.sh: KOReader: installed, version v2026.07.1"
+    # Locked when Grimoire exits (the power service says screenSaver, readyToSuspend or
+    # suspended): the saved screen stays off the lock screen, the rest is restored. Checked once,
+    # on the way: the port from settings.ini, renice, and the diagnostics of a passcode, Special
+    # Offers and an installed (not running) KOReader.
+    for state in screenSaver readyToSuspend suspended; do
+        tree "locked-$state"
+        sh "$DOC" --unpack-only
+        fake
+        printf 'http_port=18763\n' >"$US/grimoire/settings.ini"
+        : >"$T/sys/var/local/system/userpasswdenabled"
+        mkdir -p "$US/koreader"
+        : >"$US/koreader/reader.lua"
+        echo v2026.07.1 >"$US/koreader/git-rev"
+        echo "screensaver ad_screensaver splash" >"$SHIM_STATE/lipc/com.lab126.blanket.load"
+        : >"$SHIM_LOG"
+        FAKE_EXIT_STATE=$state SHIM_NICE=5 GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+        rc=$?
+        l="$s locked at exit ($state)"
+        check "$l: returns 0 ($rc)" is "$rc" 0
+        check "$l: the binary ran" has "$SHIM_LOG" "grimoire exits"
+        check "$l: the saved screen is not put back" is "$(content "$T/sys/dev/fb0")" GRIMOIRE
+        check "$l: the saved screen is dropped" [ ! -e "$T/sys/var/tmp/grimoire-fb.dump" ]
+        check "$l: logged" has "$LOGF" "grimoire.sh: power state at exit: $state, so the saved screen is not put back"
+        check "$l: jobs, awesome, pillow and home still restored" in_order "$STARTED" "start statusbar" \
+            "killall -CONT awesome" "$PILLOW_ON" "$HOME_UP"
+        [ "$state" = screenSaver ] || continue
+        check "$s firewall hole on the port from settings.ini" in_order "iptables -A INPUT -i wlan0 -p tcp --dport 18763 -j ACCEPT" \
+            "$STARTED" "iptables -D INPUT -i wlan0 -p tcp --dport 18763 -j ACCEPT"
+        check "$s started niced: back to normal priority" has "$SHIM_LOG" "renice -n -5"
+        check "$s log: passcode on" has "$LOGF" "grimoire.sh: device passcode: on"
+        check "$s log: Special Offers" has "$LOGF" "grimoire.sh: blanket modules: screensaver ad_screensaver splash (Special Offers)"
+        check "$s log: KOReader installed, not running" has "$LOGF" "grimoire.sh: KOReader: installed, version v2026.07.1"
+    done
 
     # Stop-framework mode: lab126_gui stopped and started; locked at exit only shows in the log.
     tree stopfw
@@ -280,19 +316,31 @@ suite() {
     check "$s stop-framework: pillow and awesome left alone" sh -c '! grep -qE "disableEnablePillow|killall -(STOP|CONT) awesome" "$1"' sh "$SHIM_LOG"
     check "$s stop-framework: power state at exit logged" has "$LOGF" "grimoire.sh: power state at exit: readyToSuspend"
 
-    # The watchdog: no first frame, then a heartbeat that stops; both killed, the UI restored.
-    tree watchdog
-    sh "$DOC" --unpack-only
-    fake
-    : >"$SHIM_LOG"
-    FAKE_MODE=hang GRIMOIRE_WD_TICK=0.2 GRIMOIRE_WD_FIRST=1 sh "$APP/grimoire.sh"
-    rc=$?
-    check "$s watchdog: no first frame, killed" has "$LOGF" "grimoire.sh: watchdog: no first frame after 1s, killing Grimoire"
-    check "$s watchdog: the Kindle UI restored after ($rc)" in_order "$STARTED" "$PILLOW_ON" "$HOME_UP"
-    : >"$SHIM_LOG"
-    FAKE_MODE=stale GRIMOIRE_WD_TICK=0.2 GRIMOIRE_WD_STALE=1 sh "$APP/grimoire.sh"
-    check "$s watchdog: heartbeat stopped, killed" has "$LOGF" "grimoire.sh: watchdog: no heartbeat for"
-    check "$s watchdog: the Kindle UI restored after that too" in_order "$STARTED" "$PILLOW_ON" "$HOME_UP"
+    # The watchdog: no first frame, or a heartbeat that stops. A stuck Grimoire's TERM handler
+    # only sets its quit flag, so these fakes note the TERM and run on: the watchdog has to send
+    # TERM, then KILL (exit status 137), and the Kindle UI comes back after. The launcher runs in
+    # the background, bounded, so a watchdog that never kills fails in seconds.
+    for mode in hang stale; do
+        tree "watchdog-$mode"
+        sh "$DOC" --unpack-only
+        fake
+        : >"$SHIM_LOG"
+        if [ "$mode" = hang ]; then
+            why="no first frame after 1s, killing Grimoire"
+            FAKE_MODE=hang GRIMOIRE_WD_TICK=0.2 GRIMOIRE_WD_FIRST=1 sh "$APP/grimoire.sh" 2>"$T/stderr" &
+        else
+            why="no heartbeat for"
+            FAKE_MODE=stale GRIMOIRE_WD_TICK=0.2 GRIMOIRE_WD_STALE=1 sh "$APP/grimoire.sh" 2>"$T/stderr" &
+        fi
+        l="$s watchdog ($mode)"
+        check "$l: the launcher finishes" finish $! 150
+        check "$l: returns 0 ($rc)" is "$rc" 0
+        check "$l: logged" has "$LOGF" "grimoire.sh: watchdog: $why"
+        check "$l: TERM first" has "$SHIM_LOG" "grimoire caught TERM, runs on"
+        check "$l: then KILL" has "$LOGF" "grimoire.sh: Grimoire exited with status 137"
+        check "$l: Grimoire is gone" fake_gone
+        check "$l: the Kindle UI restored after" in_order "$STARTED" "$PILLOW_ON" "$HOME_UP"
+    done
 
     # From Quire: the data moves once, never under a refused start or while the old app runs.
     tree quire
@@ -313,9 +361,20 @@ suite() {
     check "$s Quire: its log goes on in grimoire.log" is "$(head -n 1 "$LOGF" 2>/dev/null)" "old log line"
     check "$s Quire: the old launcher is retired" [ ! -e "$US/documents/Quire.sh" ]
     check "$s Quire: then the app is unpacked" [ -f "$APP/grimoire" ]
+
+    # The run with the device's timings, started first.
+    enter timings
+    check "$s device timings: the launcher finishes" finish "$timings_pid" 250
+    check "$s device timings: returns 0 ($rc)" is "$rc" 0
+    check "$s device timings: a first frame after 3 s is not killed" lacks "$LOGF" "watchdog:"
+    check "$s device timings: Grimoire runs to its end" has "$SHIM_LOG" "grimoire exits"
+    check "$s device timings: exit status 0" has "$LOGF" "grimoire.sh: Grimoire exited with status 0"
 }
 
+# Each shell gets its own scratch Kindles and runs in the background; its report is printed once
+# it is done.
 ORIG_PATH=$PATH
+runs=""
 for SH_NAME in sh dash busybox; do
     SH_BIN=$(command -v "$SH_NAME" 2>/dev/null)
     if [ -z "$SH_BIN" ]; then
@@ -325,10 +384,17 @@ for SH_NAME in sh dash busybox; do
     # `sh` inside the launchers is this shell (busybox runs as sh when called so).
     mkdir -p "$W/$SH_NAME/bin"
     ln -s "$SH_BIN" "$W/$SH_NAME/bin/sh"
-    PATH=$W/$SH_NAME/bin:$SHIMS:$ORIG_PATH
-    export PATH
-    suite
-    PATH=$ORIG_PATH
+    (
+        PATH=$W/$SH_NAME/bin:$SHIMS:$ORIG_PATH
+        export PATH
+        suite
+        exit $fail
+    ) >"$W/$SH_NAME.out" 2>&1 &
+    runs="$runs $!:$SH_NAME"
+done
+for r in $runs; do
+    wait "${r%%:*}" || fail=1
+    cat "$W/${r#*:}.out"
 done
 
 # The scratch Kindles take room (an app in each): kept only when something failed.
