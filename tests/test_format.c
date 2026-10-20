@@ -761,9 +761,19 @@ TEST(notebook_ini_carries_unknown_lines) {
     NotebookInfo back;
     CHECK(store_load_info(nb.id, &back) == 0 && back.npages == 2 && (uint32_t)back.paper == IMAGE_PAPER);
     CHECK(store_save_info(&back) == 0);
-    CHECK(store_rename(nb.id, "Keys, renamed") == 0);           // load + save
-    CHECK(store_set_folder(nb.id, "Somewhere") == 0);          // load + save
-    CHECK(store_add_page(&back, back.npages, PAPER_GRID) == 0);  // the in-memory copy, saved
+    // Each of these writes the file from what it just read: every one must carry the lines on.
+    CHECK(store_rename(nb.id, "Keys, renamed") == 0);  // load + save
+    free(t);
+    t = file_text(path);
+    CHECK(t && has_line(t, "lang=es") == 1 && has_line(t, "tmpl=a=b=c") == 1 && has_line(t, "name=Keys, renamed") == 1);
+    CHECK(store_set_folder(nb.id, "Somewhere") == 0);  // load + save
+    free(t);
+    t = file_text(path);
+    CHECK(t && has_line(t, "lang=es") == 1 && has_line(t, "tmpl=a=b=c") == 1 && has_line(t, "folder=Somewhere") == 1);
+    CHECK(t && has_line(t, "name=Keys, renamed") == 1);
+    // The in-memory copy the editor would hold now: read again after those, a page added, saved.
+    CHECK(store_load_info(nb.id, &back) == 0);
+    CHECK(store_add_page(&back, back.npages, PAPER_GRID) == 0);
     free(t);
     t = file_text(path);
     CHECK(t != NULL);
@@ -781,11 +791,69 @@ TEST(notebook_ini_carries_unknown_lines) {
         CHECK(!strchr(t, '\r'));
     }
     NotebookInfo again;
-    CHECK(store_load_info(nb.id, &again) == 0 && again.npages == 3 && !strcmp(again.name, "Keys"));
+    CHECK(store_load_info(nb.id, &again) == 0 && again.npages == 3 && !strcmp(again.name, "Keys, renamed") &&
+          !strcmp(again.folder, "Somewhere"));
+    // And deleting a page saves them on as well.
+    CHECK(store_delete_page(&again, 2) == 0 && again.npages == 2);
+    free(t);
+    t = file_text(path);
+    CHECK(t && has_line(t, "lang=es") == 1 && has_line(t, "tmpl=a=b=c") == 1 && has_line(t, "last=1") == 1);
     free(t);
     free(f);
     free(longv);
     free(huge);
+}
+
+// Names longer than the 95 bytes notebook.ini keeps (1.0.0-beta's limit too, docs/FORMAT.md) are
+// cut at the start of a character, never inside one: the cut name is written back, and becomes
+// the mirror PDF's file name and the share pages' text.
+static bool valid_utf8(const char *s) {
+    const uint8_t *u = (const uint8_t *)s;
+    while (*u) {
+        int n = *u < 0x80 ? 0 : (*u & 0xE0) == 0xC0 ? 1 : (*u & 0xF0) == 0xE0 ? 2 : (*u & 0xF8) == 0xF0 ? 3 : -1;
+        if (n < 0) return false;
+        u++;
+        for (int i = 0; i < n; i++, u++)
+            if ((*u & 0xC0) != 0x80) return false;
+    }
+    return true;
+}
+
+TEST(long_names_cut_at_a_character) {
+    NotebookInfo nb, back;
+    make_notebook("Short", &nb, 1);
+    // 93 ASCII bytes, then n with a tilde (2 bytes) across the 95-byte limit, then more.
+    char name[200];
+    memset(name, 'a', 93);
+    snprintf(name + 93, sizeof name - 93, "\xc3\xb1\xc3\xb1 tail");
+    CHECK(store_rename(nb.id, name) == 0);
+    CHECK(store_load_info(nb.id, &back) == 0);
+    CHECK(strlen(back.name) == 93 + 2 && valid_utf8(back.name) && !memcmp(back.name + 93, "\xc3\xb1", 2));
+    // The limit inside the second byte of a 2-byte letter: that letter goes.
+    memset(name, 'b', 94);
+    snprintf(name + 94, sizeof name - 94, "\xc3\xb1 tail");
+    CHECK(store_rename(nb.id, name) == 0);
+    CHECK(store_load_info(nb.id, &back) == 0);
+    CHECK(strlen(back.name) == 94 && valid_utf8(back.name) && back.name[93] == 'b');
+    // A 4-byte character (an emoji) across the limit, in a folder name.
+    memset(name, 'c', 92);
+    snprintf(name + 92, sizeof name - 92, "\xf0\x9f\x8e\xb5 tail");
+    CHECK(store_set_folder(nb.id, name) == 0);
+    CHECK(store_load_info(nb.id, &back) == 0);
+    CHECK(strlen(back.folder) == 92 && valid_utf8(back.folder));
+    // folders.ini's lines the same.
+    CHECK(store_add_folder(name) == 0);
+    char (*fs)[STORE_NAME_LEN] = NULL;
+    int n = 0;
+    CHECK(store_list_folders(&fs, &n) == 0);
+    bool all_valid = n > 0;
+    for (int i = 0; i < n; i++) all_valid &= valid_utf8(fs[i]) && strlen(fs[i]) <= 95;
+    CHECK(all_valid);
+    free(fs);
+    // A name that fits is kept byte for byte, accents and all.
+    const char *fits = "M\xc3\xbasica espa\xc3\xb1ola \xe2\x82\xac";
+    CHECK(store_rename(nb.id, fits) == 0 && store_load_info(nb.id, &back) == 0 && !strcmp(back.name, fits));
+    CHECK(store_set_folder(nb.id, "") == 0);
 }
 
 // A value kept from settings.ini goes back only while the setting is untouched: once a save finds
@@ -820,6 +888,41 @@ TEST(changed_settings_stay_changed) {
         free(t);
         CHECK(settings_save(&s) == 0);
     }
+}
+
+// A 0/1 setting holding another value (a newer version's third state) is used as on or off and
+// written back as it was until the setting changes; calibration's valid and swap the same.
+TEST(bool_settings_carry_other_values) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    const char *f = "invert=2\nmirror_pdf=2\nfollow_rotation=2\npinch_zoom=auto\npanel_collapsed=2\n"
+                    "passcode_told=2\npen.valid=2\npen.swap=1\ntouch.valid=0\ntouch.swap=2\n";
+    CHECK(write_file_atomic(path, f, strlen(f)) == 0);
+    Settings s;
+    CHECK(settings_load(&s) == 0);
+    CHECK(s.invert && s.mirror_pdf && s.follow_rotation && !s.pinch_zoom && s.panel_collapsed && s.passcode_told);
+    CHECK(s.pen_calib.valid && s.pen_calib.swap_xy && !s.touch_calib.valid && s.touch_calib.swap_xy);
+    for (int round = 0; round < 2; round++) {  // kept on every save while unchanged
+        CHECK(settings_save(&s) == 0);
+        char *t = file_text(path);
+        CHECK(t && has_line(t, "invert=2") == 1 && has_line(t, "mirror_pdf=2") == 1);
+        CHECK(t && has_line(t, "follow_rotation=2") == 1 && has_line(t, "pinch_zoom=auto") == 1);
+        CHECK(t && has_line(t, "panel_collapsed=2") == 1 && has_line(t, "passcode_told=2") == 1);
+        CHECK(t && has_line(t, "pen.valid=2") == 1 && has_line(t, "pen.swap=1") == 1);
+        CHECK(t && has_line(t, "touch.valid=0") == 1 && has_line(t, "touch.swap=2") == 1);
+        free(t);
+    }
+    // Changed here: saved as set from then on, also when set back.
+    s.invert = false;
+    s.pen_calib.valid = false;
+    CHECK(settings_save(&s) == 0);
+    s.invert = true;
+    s.pen_calib.valid = true;
+    CHECK(settings_save(&s) == 0);
+    char *t = file_text(path);
+    CHECK(t && has_line(t, "invert=1") == 1 && has_line(t, "pen.valid=1") == 1 && has_line(t, "mirror_pdf=2") == 1);
+    free(t);
+    unlink(path);
 }
 
 static void put_page_list_aside(const char *dir) {
@@ -988,6 +1091,8 @@ int main(void) {
     RUN(settings_carry_unknown_lines);
     RUN(notebook_ini_carries_unknown_lines);
     RUN(changed_settings_stay_changed);
+    RUN(bool_settings_carry_other_values);
+    RUN(long_names_cut_at_a_character);
     RUN(recovery_never_loses_a_page);
     RUN(lasting_states_logged_once);
     RUN(params_past_their_ranges);
