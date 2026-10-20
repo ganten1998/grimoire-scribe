@@ -339,9 +339,10 @@ static void draw_paper_sheet(App *a) {
     S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
     Rect in = ui_sheet(c, S->paper_rect, "Paper for this page");
     for (int i = 0; i < ntiles; i++) {
-        // The last tile is Custom music: it shows this page's layout, or the last one built.
+        // The last tile is Custom music: it shows this page's layout, or the last one built (also
+        // for a newer layout this build cannot draw, which is then not selected either).
         bool custom = i == PAPER_COUNT;
-        bool page_custom = S->page && paper_is_custom(S->page->paper);
+        bool page_custom = S->page && paper_is_known(S->page->paper) && paper_is_custom(S->page->paper);
         PaperKind k = custom ? (page_custom ? S->page->paper : a->settings.music_layout) : paper_at(i);
         Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap_), in.y + (i / cols) * cell_h, tw, th};
         canvas_fill(c, tr, 255);
@@ -680,10 +681,20 @@ static void render_page_full(App *a) {
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
 // be and never changed: writing, erasing, clearing and paper changes are refused with this.
+static const char k_readonly_msg[] = "This page was made by a newer Grimoire. It is read-only here.";
+
 static bool refuse_readonly(App *a) {
     if (!S->page || !S->page->readonly) return false;
-    app_toast(a, "This page was made by a newer Grimoire. It is read-only here.", 3000);
+    app_toast(a, k_readonly_msg, 3000);
     return true;
+}
+
+// On arriving at a page: a read-only page says so, and any other page takes that message down if
+// it is still up from the page before, so it never seems to be about this one.
+static void arrive_readonly(App *a) {
+    if (refuse_readonly(a) || !a->toast_visible || strcmp(a->toast, k_readonly_msg)) return;
+    a->toast_visible = false;
+    app_invalidate(a, a->toast_rect, REFRESH_UI);  // (already inside the arriving page's full repaint)
 }
 
 static void go_to_page(App *a, int index) {
@@ -704,7 +715,7 @@ static void go_to_page(App *a, int index) {
     render_page_full(a);
     view_reset(a);
     compose_all(a, REFRESH_FULL);
-    refuse_readonly(a);  // say so on arrival
+    arrive_readonly(a);
 }
 
 static void close_notebook(App *a) {
@@ -753,7 +764,7 @@ void editor_open_notebook(App *a, const char *id) {
     render_page_full(a);
     S->view_w = 0;  // set the view up afresh on enter
     app_switch(a, SCR_EDITOR);
-    refuse_readonly(a);  // say so on arrival
+    arrive_readonly(a);
 }
 
 void editor_save_now(App *a) { save_page(a); }
