@@ -6,6 +6,7 @@
 #include "app.h"
 
 #ifdef GRIMOIRE_KINDLE
+#include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
 // The launcher's watchdog kills Grimoire and restores the Kindle UI if this file goes stale,
@@ -17,6 +18,48 @@ static void heartbeat(void) {
         if (write(fd, "1", 1) < 0) { /* best effort */ }
         close(fd);
     }
+}
+
+// The value of the first "<key> : value" line of a /proc file, trimmed ("?" if absent).
+static void proc_value(const char *file, const char *key, char *out, size_t cap) {
+    strlcpy_q(out, "?", cap);
+    FILE *f = fopen(file, "r");
+    if (!f) return;
+    char line[256];
+    size_t kl = strlen(key);
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, key, kl) || (line[kl] != ':' && !isspace((unsigned char)line[kl]))) continue;
+        char *v = strchr(line, ':');
+        if (!v) continue;
+        for (v++; isspace((unsigned char)*v); v++) {
+        }
+        v[strcspn(v, "\r\n")] = 0;
+        strlcpy_q(out, v, cap);
+        break;
+    }
+    fclose(f);
+}
+
+// What the device is, at the top of grimoire.log, so a tester's log answers the questions about
+// their Kindle. Nothing that identifies the unit or a network: people attach this log to public
+// issues, so /proc/usid gives only its first 6 characters (the model code, not the serial number).
+static void log_device(void) {
+    char code[8] = "?";
+    FILE *f = fopen("/proc/usid", "r");
+    if (f) {
+        size_t n = fread(code, 1, 6, f);
+        code[n] = 0;
+        for (size_t i = 0; i < n; i++)
+            if (!isalnum((unsigned char)code[i])) code[i] = '?';
+        fclose(f);
+    }
+    char total[32], avail[32], part[32], hw[64];
+    proc_value("/proc/meminfo", "MemTotal", total, sizeof total);
+    proc_value("/proc/meminfo", "MemAvailable", avail, sizeof avail);
+    proc_value("/proc/cpuinfo", "CPU part", part, sizeof part);
+    proc_value("/proc/cpuinfo", "Hardware", hw, sizeof hw);
+    qlog("device: model code %s (the first 6 characters of /proc/usid)", code[0] ? code : "?");
+    qlog("device: memory %s total, %s available; CPU part %s, hardware %s", total, avail, part, hw);
 }
 #endif
 
@@ -51,6 +94,9 @@ int main(int argc, char **argv) {
     if (!root || !*root) root = "./grimoire-data";
 #endif
     qlog("Grimoire %s starting, data in %s", GRIMOIRE_VERSION, root);
+#ifdef GRIMOIRE_KINDLE
+    log_device();
+#endif
     if (store_init(root) != 0) return 1;
 
     int w, h;
@@ -77,13 +123,22 @@ int main(int argc, char **argv) {
     // The Kindle UI may repaint once more after we start (the scriptlet "book" closing, a
     // late home-screen refresh). Check the panel still shows us; if not, repaint everything.
     uint32_t started = now_ms(), last_guard = started;
-    int guards = 0, startup_repaints = 0;
+    int guards = 0, guard_streak = 0, startup_repaints = 0, status = 0;
+    bool guard_on = true;
 #ifdef GRIMOIRE_KINDLE
     heartbeat();
     uint32_t last_beat = now_ms();
 #endif
 
     while (app.running) {
+        // A panel that took none of the first five refreshes is not Grimoire's to drive (a device
+        // FBInk does not know, say): leave, so the launcher gives the Kindle back its screen, pen
+        // and touch, instead of a device that looks frozen. (app_shutdown below saves.)
+        if (display_broken()) {
+            qlog("display: the first frame and the next 4 refreshes all failed; leaving so the Kindle UI comes back");
+            status = 1;
+            break;
+        }
         InEvent ev;
         // Block briefly (timers and the share server need regular ticks), then drain
         // everything queued so a burst of pen samples becomes one refresh.
@@ -95,13 +150,14 @@ int main(int argc, char **argv) {
         app_flush(&app);
         uint32_t t = now_ms();
         uint32_t every = (t - started) < 15000 ? 700 : 1500;
-        if (t - last_guard >= every && !app.asleep) {
+        if (t - last_guard >= every && !app.asleep && guard_on) {
             last_guard = t;
             // The Kindle's status bar strip (clock, battery) lives at the top of the panel: check
             // that band densely, and repaint just it (no flash) when something drew there.
             Rect skip = app.toast_visible ? app.toast_rect : RECT_EMPTY;
             Rect top = {0, 0, app.w, ui_px(150)};
             Rect where;
+            int before = guards;
             if (display_find_overwrite(&app.screen, skip, &where)) {
                 guards++;
                 // Most of the screen: a clean full refresh. A patch: repaint just it, no flash.
@@ -115,6 +171,14 @@ int main(int argc, char **argv) {
                 qlog("screen guard: repainting the top band (#%d)", guards);
                 app_invalidate(&app, top, REFRESH_UI);
                 app_flush(&app);
+            }
+            // A repaint puts the panel right, so a mismatch at every check means the framebuffer
+            // does not read back as drawn (a panel nobody here has tested): rather than repaint
+            // forever, the guard stops.
+            guard_streak = guards > before ? guard_streak + 1 : 0;
+            if (guard_streak >= 10) {
+                guard_on = false;
+                qlog("screen guard: off after 10 repaints in a row (the framebuffer does not read back as drawn)");
             }
         }
         // Two unconditional repaints shortly after launch catch the Kindle UI's last frame (the
@@ -136,5 +200,5 @@ int main(int argc, char **argv) {
     display_wait();
     input_close();
     display_close();
-    return 0;
+    return status;
 }

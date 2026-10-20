@@ -19,6 +19,7 @@
 #include "calib_fit.h"
 #include "display.h"
 #include "input.h"
+#include "power.h"
 #include "stb_image_write.h"
 
 static int g_w = 1860, g_h = 2480;
@@ -247,19 +248,30 @@ void light_get(int *i, int *w) {
 }
 void light_set_intensity(int v) { g_light_i = clampi(v, 0, LIGHT_MAX); }
 void light_set_warmth(int v) { g_light_w = clampi(v, 0, LIGHT_MAX); }
-// Simulated sleep: the "power service" answers a sleep request straight away.
+// The simulated power service's state, what sys_powerd_state reports: set by the script's
+// `powerd <state>` ("unknown" reads as unreadable). It never changes on its own.
+static char g_powerd_state[32] = "active";
+int sys_powerd_state(char *out, size_t cap) {
+    if (!g_powerd_state[0] || !strcmp(g_powerd_state, "unknown")) return -1;
+    strlcpy_q(out, g_powerd_state, cap);
+    return 0;
+}
+// Simulated sleep: the "power service" answers a sleep request straight away, like powerd takes a
+// power button: an awake Kindle goes to sleep, one already in its screensaver (by `powerd`) wakes.
 static void q_push(InEvent e);
 void sys_request_sleep(void) {
+    bool dozing = powerd_dozing(powerd_parse_state(g_powerd_state));
+    if (dozing) fprintf(stderr, "sim: powerButton 1 while the power service is in %s: it wakes the Kindle\n", g_powerd_state);
     InEvent e = {0};
-    e.type = IN_SLEEP;
-    e.value = 2;
+    e.type = dozing ? IN_WAKE : IN_SLEEP;
+    e.value = dozing ? 1 : 2;
     e.t_ms = now_ms();
     q_push(e);
 }
 void sys_kindle_ui(bool run) { (void)run; }
 void sys_prevent_sleep(bool prevent) { (void)prevent; }
 void sys_activity(void) {}
-bool display_overwritten(const Canvas *screen) { (void)screen; return false; }
+bool display_broken(void) { return false; }
 bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
     (void)screen;
     (void)skip;
@@ -454,6 +466,15 @@ static void pen_ev(InType t, float x, float y, float p, float tx, float ty, uint
 
 static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false)); }
 
+// The simulated power key: one event, its value how long the key was held (IN_POWER_UP and
+// IN_POWER_HELD, as input_evdev.c reports them).
+static uint32_t g_power_down_at;
+static void power_key(InType t, int held_ms) {
+    InEvent e = make_ev(t, 0, 0, true);
+    e.value = held_ms;
+    q_push(e);
+}
+
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
 static void script_step(void) {
     char line[512];
@@ -581,7 +602,25 @@ static void script_step(void) {
             q_push(e);
             return;
         } else if (!strcmp(a, "power")) {
-            q_push(make_ev(IN_POWER, 0, 0, true));
+            // power: a short press and its release; power down / power up: one half at a time
+            if (!strcmp(b, "down")) {
+                power_key(IN_POWER, 0);
+                g_power_down_at = now_ms();
+            } else if (!strcmp(b, "up")) {
+                power_key(IN_POWER_UP, (int)(now_ms() - g_power_down_at));
+            } else {
+                power_key(IN_POWER, 0);
+                power_key(IN_POWER_UP, 150);
+            }
+        } else if (!strcmp(a, "powerhold")) {
+            // held 4 s: the press, the hold (which leaves Grimoire), then the release
+            power_key(IN_POWER, 0);
+            power_key(IN_POWER_HELD, INPUT_POWER_HOLD_MS);
+            power_key(IN_POWER_UP, INPUT_POWER_HOLD_MS + 200);
+            return;
+        } else if (!strcmp(a, "powerd")) {
+            // powerd STATE: what the power service reports from now on (active, screenSaver, ...)
+            strlcpy_q(g_powerd_state, b, sizeof g_powerd_state);
         } else if (!strcmp(a, "quit")) {
             q_push(make_ev(IN_QUIT, 0, 0, true));
             g_script_done = true;
@@ -603,6 +642,7 @@ static float g_pressure = 0.6f;
 #ifdef GRIMOIRE_SIM_SDL
 static float g_tx, g_ty;
 static bool g_mouse_down, g_finger_down;
+static bool g_power_held;  // P held long enough: IN_POWER_HELD sent
 #endif
 
 int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
@@ -652,8 +692,11 @@ static void sdl_pump(void) {
             else if (k == SDLK_RIGHT) g_tx += 5;
             else if (k == SDLK_UP) g_ty -= 5;
             else if (k == SDLK_DOWN) g_ty += 5;
-            else if (k == SDLK_P) q_push(make_ev(IN_POWER, 0, 0, true));
-            else if (k == SDLK_S && !e.key.repeat) {
+            else if (k == SDLK_P && !e.key.repeat) {
+                power_key(IN_POWER, 0);
+                g_power_down_at = now_ms() | 1;
+                g_power_held = false;
+            } else if (k == SDLK_S && !e.key.repeat) {
                 InEvent b = make_ev(IN_PEN_BUTTON, 0, 0, true);
                 b.side_button = true;
                 q_push(b);
@@ -684,6 +727,9 @@ static void sdl_pump(void) {
                 InEvent b = make_ev(IN_PEN_BUTTON, 0, 0, true);
                 b.side_button = false;
                 q_push(b);
+            } else if (e.key.key == SDLK_P && g_power_down_at) {
+                power_key(IN_POWER_UP, (int)(now_ms() - g_power_down_at));
+                g_power_down_at = 0;
             }
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -731,6 +777,11 @@ static void sdl_pump(void) {
         case SDL_EVENT_WINDOW_EXPOSED: sdl_show(); break;
         default: break;
         }
+    }
+    // Holding P is holding the power button: 4 s leaves Grimoire.
+    if (g_power_down_at && !g_power_held && (int32_t)(now_ms() - g_power_down_at) >= INPUT_POWER_HOLD_MS) {
+        g_power_held = true;
+        power_key(IN_POWER_HELD, INPUT_POWER_HOLD_MS);
     }
 }
 #endif

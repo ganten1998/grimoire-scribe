@@ -3,6 +3,7 @@
 // and currentAmberLevel). Implemented by light_kindle.c and the simulator.
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 
 #define LIGHT_MAX 24
 
@@ -13,8 +14,15 @@ void light_set_intensity(int level);
 void light_set_warmth(int level);
 
 // Other bits of the Kindle system Grimoire drives.
-// Ask the power service to go to sleep, exactly as a power button press would.
+// Ask the power service to go to sleep, exactly as a power button press would. It turns
+// preventScreenSaver off first, in the same shell (the button is ignored while it is on), so a
+// "Sleep after: never" policy has to be applied again afterwards.
 void sys_request_sleep(void);
+// The power service's state, best effort (`lipc-get-prop -s com.lab126.powerd state`): 0 with e.g.
+// active, screenSaver, readyToSuspend or suspended in `out`, or -1 if it cannot be read. Blocks
+// (lipc can take half a second; at most about 1.5 s): only for the rare sleep and wake fallbacks,
+// never on the drawing path.
+int sys_powerd_state(char *out, size_t cap);
 // Resume / pause the Kindle's window manager (only if the launcher paused it): the Kindle's own
 // screensaver can only show while it runs.
 void sys_kindle_ui(bool run);

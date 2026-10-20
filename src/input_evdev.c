@@ -11,7 +11,8 @@
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
 //   power = EV_KEY KEY_POWER
 // Pen and touch are EVIOCGRAB'ed so the (paused) framework never sees them; the power key is
-// only watched, so the system keeps handling it if we die.
+// only watched, so the system keeps handling it if we die. Its press and release are both read:
+// holding it INPUT_POWER_HOLD_MS (4 s) is Grimoire's guaranteed way out.
 //
 // Pen events follow the Wacom tool protocol (BTN_TOOL_PEN / BTN_TOOL_RUBBER bracket the
 // proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
@@ -28,11 +29,13 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/prctl.h>
 
 #include "calib_fit.h"
 #include "input.h"
+#include "power.h"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
@@ -54,12 +57,15 @@ static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
 static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
 // Power state from the Kindle's power service (the events KOReader uses for its screensaver).
 // A child shell loops `lipc-wait-event` in one-shot mode: each run prints a single line and
-// exits, which flushes it. (The continuous -m mode block-buffers into a pipe: on device 2026-10-10
-// no event ever arrived.)
+// exits, which flushes it. (The continuous -m mode looked block-buffered into a pipe on device
+// 2026-10-10, but the launcher had preventScreenSaver 1 set that day, which alone stops every
+// sleep; KOReader reads `-m -s 0` through a pipe. An empty /mnt/us/grimoire/watcher-multi runs it
+// that way, for a device test: see powerd_start.)
 static int g_powerd_fd = -1;
 static pid_t g_powerd_pid = -1;
 static char g_powerd_buf[512];
 static size_t g_powerd_len;
+static int g_powerd_noise;    // watcher lines that are not events (failures, errors), for the log's sake
 static int g_rot;             // logical screen rotation, quarter turns clockwise
 static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
 static struct {
@@ -69,6 +75,8 @@ static struct {
 } W;
 static bool g_side_reported;  // last side-button state sent as IN_PEN_BUTTON
 static int g_power_fd = -1;
+static PowerKey g_pkey;       // the press being followed (release, or the 4 s hold)
+static bool g_power_mono;     // the power key's events are stamped in now_ms()'s clock (EVIOCSCLOCKID)
 static int g_watch = -1;
 static int g_sigpipe[2] = {-1, -1};
 static volatile sig_atomic_t g_quit;
@@ -505,7 +513,26 @@ static void handle_orient_fd(void) {
     }
 }
 
+// The watcher shell. `-s 0` waits with no timeout (KOReader and Amazon's own scripts always pass
+// -s). A run that fails prints a marker line (handle_powerd_fd logs it) and the loop tries again
+// 2 s later. lipc-wait-event runs in the background so that the TERM trap can stop it: the shell
+// gets TERM when Grimoire goes, even on a crash (PR_SET_PDEATHSIG), and takes its child along.
+// No more event names in the one-shot loop: each one is one more restart around suspend and
+// resume, and an outOfScreenSaver could fall into a restart's gap.
+#define WATCH_EVENTS "com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
+#define WATCH_FAILED "grimoire-watcher-failed"
+#define WATCH_TRAP "trap 'kill $w 2>/dev/null; exit 0' TERM; "
+static const char k_watch_one_shot[] = WATCH_TRAP
+    "while :; do lipc-wait-event -s 0 " WATCH_EVENTS " 2>&1 & w=$!; "
+    "wait $w || { echo \"" WATCH_FAILED " $?\"; sleep 2; }; done";
+// /mnt/us/grimoire/watcher-multi: one continuous run for every event, KOReader's way (no gap
+// between runs), for a device test of whether -m output reaches Grimoire through the pipe.
+static const char k_watch_multi[] = WATCH_TRAP
+    "while :; do lipc-wait-event -m -s 0 " WATCH_EVENTS " 2>&1 & w=$!; "
+    "wait $w; echo \"" WATCH_FAILED " $?\"; sleep 2; done";
+
 static void powerd_start(void) {
+    bool multi = access("/mnt/us/grimoire/watcher-multi", F_OK) == 0;
     int p[2];
     if (pipe(p) != 0) return;
     pid_t pid = fork();
@@ -522,17 +549,15 @@ static void powerd_start(void) {
         dup2(p[1], 1);
         close(p[0]);
         close(p[1]);
-        execlp("sh", "sh", "-c",
-               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
-               " || sleep 2; done",
-               (char *)NULL);
+        execlp("sh", "sh", "-c", multi ? k_watch_multi : k_watch_one_shot, (char *)NULL);
         _exit(127);
     }
     close(p[1]);
     fcntl(p[0], F_SETFL, O_NONBLOCK);
     g_powerd_fd = p[0];
     g_powerd_pid = pid;
-    qlog("input: watching the power service (pid %d)", (int)pid);
+    qlog("input: watching the power service (pid %d): %s", (int)pid,
+         multi ? "one continuous lipc-wait-event -m (the watcher-multi switch)" : "one-shot lipc-wait-event runs");
 }
 
 static void handle_powerd_fd(void) {
@@ -550,7 +575,6 @@ static void handle_powerd_fd(void) {
     char *line;
     while ((line = strchr(g_powerd_buf, '\n'))) {
         *line = 0;
-        qlog("input: power service: %s", g_powerd_buf);
         InEvent e = {0};
         if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
         // Only outOfScreenSaver is a wake. (wakeupFromSuspend is not: the Kindle also resumes
@@ -559,9 +583,18 @@ static void handle_powerd_fd(void) {
         else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16))
             e.type = IN_WAKE;
         if (e.type) {
+            qlog("input: power service: %s", g_powerd_buf);
             e.value = atoi(g_powerd_buf + strcspn(g_powerd_buf, " "));
             e.t_ms = now_ms();
             q_push(e);
+        } else if (g_powerd_noise++ < 20 || g_powerd_noise % 100 == 0) {
+            // A failed run, or what lipc-wait-event said on the way (its errors come through
+            // too). A watcher failing over and over would fill the log: the first 20, then 1 in 100.
+            if (!strncmp(g_powerd_buf, WATCH_FAILED, strlen(WATCH_FAILED)))
+                qlog("input: power service watcher failed, retrying (lipc-wait-event exit status%s; watcher message %d)",
+                     g_powerd_buf + strlen(WATCH_FAILED), g_powerd_noise);
+            else
+                qlog("input: power service watcher said: %s", g_powerd_buf);
         }
         size_t used = (size_t)(line - g_powerd_buf) + 1;
         memmove(g_powerd_buf, line + 1, g_powerd_len - used + 1);
@@ -570,16 +603,43 @@ static void handle_powerd_fd(void) {
     if (g_powerd_len >= sizeof g_powerd_buf - 1) g_powerd_len = 0;  // no newline in sight: drop
 }
 
+static void push_power(InType t, int held_ms) {
+    if (t == IN_NONE) return;
+    InEvent e = {0};
+    e.type = t;
+    e.value = held_ms;
+    e.t_ms = now_ms();
+    q_push(e);
+}
+
 static void handle_power_fd(void) {
     struct input_event evs[16];
     ssize_t r = read(g_power_fd, evs, sizeof evs);
     for (ssize_t i = 0; r > 0 && i < r / (ssize_t)sizeof evs[0]; i++)
-        if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER && evs[i].value == 1) {
-            InEvent e = {0};
-            e.type = IN_POWER;
-            e.t_ms = now_ms();
-            q_push(e);
+        if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER) {
+            // Timed by when the kernel saw it, not when it was read: a short press whose release is
+            // read late (the loop was busy) must not count as a 4 s hold, nor a real one as short.
+            uint32_t t = g_power_mono ? (uint32_t)((uint64_t)evs[i].input_event_sec * 1000u +
+                                                   (uint64_t)evs[i].input_event_usec / 1000u)
+                                      : now_ms();
+            int held = 0;
+            push_power(powerkey_event(&g_pkey, evs[i].value, t, &held), held);
         }
+}
+
+// Whether the power key is down right now, from the device itself: 1, 0, or -1 if it cannot tell.
+static int power_key_down(void) {
+    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
+    if (g_power_fd < 0 || ioctl(g_power_fd, EVIOCGKEY(sizeof keys), keys) < 0) return -1;
+    return test_bit(keys, KEY_POWER) ? 1 : 0;
+}
+
+// The 4 s hold, checked on every poll (they come at least every 30 ms), timeouts included.
+static void power_hold_check(void) {
+    int held = 0;
+    InType t = powerkey_tick(&g_pkey, now_ms(), power_key_down, &held);
+    if (t == IN_POWER_UP) qlog("input: the power key is up at the %d ms check: its release was missed", INPUT_POWER_HOLD_MS);
+    push_power(t, held);
 }
 
 // ---- setup ----
@@ -633,12 +693,17 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         return -1;
     }
     struct dirent *e;
+    int power_keys = 0;
+    char power_path[300] = "";
     while ((e = readdir(d))) {
         if (strncmp(e->d_name, "event", 5)) continue;
         char path[300];
         snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-        if (fd < 0) continue;
+        if (fd < 0) {
+            qlog("input: cannot open %s: %s", path, strerror(errno));
+            continue;
+        }
         char name[64] = "?";
         ioctl(fd, EVIOCGNAME(sizeof name), name);
         unsigned long evb[NLONGS(EV_MAX + 1)] = {0}, keyb[NLONGS(KEY_MAX + 1)] = {0}, absb[NLONGS(ABS_MAX + 1)] = {0};
@@ -681,6 +746,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                 qlog("input: orientation sensor %s (%s), current code %d -> %d", path, name, ai.value, g_caps.orientation);
                 continue;
             }
+            qlog("input: %s (%s) has ABS_PRESSURE %d..%d, outside an orientation sensor's 10..30: not used for "
+                 "rotation", path, name, ai.minimum, ai.maximum);
         }
         // The scaled pen (axis maxima match the screen) drives the pointer; another pen device,
         // if any, only supplies pressure + tilt.
@@ -737,12 +804,29 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         } else if (power && g_power_fd < 0) {
             g_power_fd = fd;
             g_caps.has_power = true;
-            qlog("input: power key %s (%s)", path, name);
+            power_keys++;
+            strlcpy_q(power_path, path, sizeof power_path);
+            // Its events stamped in now_ms()'s clock (only for this reader), to time a hold exactly.
+            int clk = CLOCK_MONOTONIC;
+            g_power_mono = ioctl(fd, EVIOCSCLOCKID, &clk) == 0;
+            qlog("input: power key %s (%s)%s", path, name,
+                 g_power_mono ? "" : ", timed when read (EVIOCSCLOCKID failed)");
         } else {
+            if (power) {
+                power_keys++;
+                qlog("input: %s (%s) is another power key, not watched", path, name);
+            }
             close(fd);
         }
     }
     closedir(d);
+    // The first power key found is the only one watched: if another device (a virtual one, say)
+    // is the one that reports presses, Grimoire never sees the button. (The pen and the touch
+    // panel are never taken for one, so a KEY_POWER they advertise does not count here.)
+    if (power_keys > 1)
+        qlog("input: WARNING %d devices report a power key; watching only %s", power_keys, power_path);
+    if (g_power_fd < 0) qlog("input: WARNING no power key found: no fallbacks, and no 4 s hold to leave");
+    if (!g_caps.has_orientation) qlog("input: no orientation sensor found");
     if (g_pen.fd < 0 && g_wacom.fd >= 0) {
         // Only a raw digitizer: use it for everything (calibration maps its axes).
         g_pen = g_wacom;
@@ -795,19 +879,21 @@ int input_poll(InEvent *ev, int timeout_ms) {
     if (g_sigpipe[0] >= 0) isig = n, pf[n++] = (struct pollfd){g_sigpipe[0], POLLIN, 0};
     if (g_watch >= 0) pf[n++] = (struct pollfd){g_watch, POLLIN, 0};
     int r = poll(pf, (nfds_t)n, timeout_ms);
-    if (r <= 0) return 0;
-    // Raw digitizer first, so a pen frame uses this sample's pressure.
-    if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
-    if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
-    if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
-    if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
-    if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
-    if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
-    if (isig >= 0 && (pf[isig].revents & POLLIN)) {
-        char buf[16];
-        while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
+    if (r > 0) {
+        // Raw digitizer first, so a pen frame uses this sample's pressure.
+        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
+        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
+        if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
+        if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
+        if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
+        if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
+        if (isig >= 0 && (pf[isig].revents & POLLIN)) {
+            char buf[16];
+            while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
+            }
         }
     }
+    power_hold_check();
     if (g_quit) {
         *ev = (InEvent){.type = IN_QUIT, .t_ms = now_ms()};
         g_quit = 0;

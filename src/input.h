@@ -25,7 +25,12 @@ typedef enum {
     IN_PINCH_BEGIN, IN_PINCH_MOVE, IN_PINCH_END,  // two fingers: (x,y) and (x2,y2)
     IN_SLEEP,                              // the Kindle is going to sleep (goingToScreenSaver)
     IN_WAKE,                               // and waking up (outOfScreenSaver)
+    IN_POWER_UP,                           // power button released: value = ms it was held (-1 unknown)
+    IN_POWER_HELD,                         // power button held INPUT_POWER_HOLD_MS: once per press
 } InType;
+
+// Holding the power button this long saves and leaves Grimoire (below the Kindle's own ~7 s menu).
+#define INPUT_POWER_HOLD_MS 4000
 
 typedef struct {
     InType type;
@@ -35,7 +40,7 @@ typedef struct {
     float tilt_x, tilt_y;  // degrees from vertical, 0 if unsupported
     bool eraser;           // eraser end in use (BTN_TOOL_RUBBER)
     bool side_button;      // BTN_STYLUS held
-    int value;             // IN_ORIENTATION: quarter turns clockwise
+    int value;             // IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
     float x2, y2;          // pinch: the second finger (screen px)
     uint32_t t_ms;
 } InEvent;
