@@ -95,6 +95,16 @@ IPTABLES_ADDED=no
 STOPPED_JOBS=""
 RESTORED=no
 
+# The Kindle is locked: its screensaver (or the passcode prompt over it) is up, or it is about
+# to suspend. Sets STATE to what the power service says.
+kindle_locked() {
+    STATE=$(lipc-get-prop -s com.lab126.powerd state 2>/dev/null)
+    case "$STATE" in
+    screenSaver | readyToSuspend | suspended) return 0 ;;
+    esac
+    return 1
+}
+
 restore() {
     [ "$RESTORED" = yes ] && return
     RESTORED=yes
@@ -109,6 +119,8 @@ restore() {
     # Grimoire's power-service watcher, should a crash have left it behind.
     pkill -f "lipc-wait-event com.lab126.powerd goingToScreenSaver" 2>/dev/null
     if [ "$STOP_FRAMEWORK" = yes ]; then
+        kindle_locked
+        log "power state at exit: ${STATE:-unknown}"
         cd / && start lab126_gui 2>/dev/null
         return
     fi
@@ -117,6 +129,14 @@ restore() {
     done
     if [ "$AWESOME_STOPPED" = yes ]; then
         killall -CONT awesome 2>/dev/null
+    fi
+    # Locked: the screen saved at the start must not go back over the Kindle's screensaver or
+    # its passcode prompt (the Kindle draws its own screen once it is unlocked).
+    if kindle_locked; then
+        log "power state at exit: $STATE, so the saved screen is not put back"
+        rm -f "$DUMP"
+    else
+        log "power state at exit: ${STATE:-unknown}"
     fi
     if [ "$PILLOW_DISABLED" = yes ]; then
         # Put back what was on screen before us, then let the home booklet repaint.
@@ -141,6 +161,29 @@ trap 'restore; release' EXIT
 trap 'stop_grimoire; restore; exit 1' INT TERM HUP
 
 log "starting Grimoire (stop framework: $STOP_FRAMEWORK) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"
+# What tells setups apart in a bug report. grimoire.log gets attached to public issues, so nothing
+# here may identify the device or its network (no serial number, address or network name).
+LANG_LINE=$(grep '^LANG=' "$SYS/var/local/system/locale" 2>/dev/null | head -n 1)
+log "locale: ${LANG_LINE:-unknown}"
+if [ -e "$SYS/var/local/system/userpasswdenabled" ]; then
+    log "device passcode: on"
+else
+    log "device passcode: off"
+fi
+STATE=$(lipc-get-prop -s com.lab126.powerd state 2>/dev/null)
+log "power state: ${STATE:-unknown}"
+BLANKET=$(lipc-get-prop -s com.lab126.blanket load 2>/dev/null)
+case "$BLANKET" in
+*ad_screensaver*) log "blanket modules: $BLANKET (Special Offers)" ;;
+*) log "blanket modules: ${BLANKET:-unknown}" ;;
+esac
+if [ -f "$US/koreader/reader.lua" ]; then
+    KO_REV=$(head -n 1 "$US/koreader/git-rev" 2>/dev/null)
+    log "KOReader: installed, version ${KO_REV:-unknown}"
+else
+    log "KOReader: not installed"
+fi
+log "user id: $(id -u 2>/dev/null)"
 
 # Launchers can start us niced; go back to normal priority for pen latency.
 [ "$(nice)" -gt 0 ] 2>/dev/null && renice -n "-$(nice)" $$ >/dev/null 2>&1
@@ -156,7 +199,6 @@ else
     lipc-set-prop com.lab126.pillow disableEnablePillow disable 2>/dev/null && PILLOW_DISABLED=yes
     # Pillow off is not enough to stop the clock / window manager repainting on 5.7.2+.
     if killall -STOP awesome 2>/dev/null; then AWESOME_STOPPED=yes; fi
-    # On 5.17+ the status bar is its own upstart job and draws over everything.
     # On 5.17+ the status bar (clock, battery) is its own upstart job and draws over everything.
     # Its name varies by device/firmware, so stop every job that looks like one.
     for conf in "$SYS"/etc/upstart/*status*.conf "$SYS"/etc/upstart/*chrome*.conf; do
@@ -172,7 +214,9 @@ else
     log "upstart jobs running: $(initctl list 2>/dev/null | grep -i 'start/running' | cut -d' ' -f1 | tr '\n' ' ')"
 fi
 
-# Stay awake while Grimoire runs (it saves and exits on the power button).
+# Keep the Kindle awake while Grimoire starts. Grimoire turns this off again unless Sleep after
+# is set to never (the power service ignores the button while it is on); then a press of the
+# power button sleeps on the page, and holding it leaves Grimoire.
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
 # Keep USB mass storage from yanking /mnt/us out from under us.
 if [ -e "$SYS/etc/upstart/volumd.conf" ] && killall -STOP volumd 2>/dev/null; then VOLUMD_STOPPED=yes; fi
