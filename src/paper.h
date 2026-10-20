@@ -53,8 +53,10 @@ PaperKind paper_sanitize(uint32_t v, PaperKind fallback);
 PaperKind music_encode(const MusicLayout *m);
 bool music_decode(PaperKind k, MusicLayout *m);   // false if k is not a custom layout
 const char *music_part_name(MusicPart p);         // "Treble staff", "Tab, 6 lines", ...
-// The most systems that fit on a page with staff spaces still big enough to write in.
-int music_max_systems(const MusicLayout *m);
+// The most systems that fit on a page page_h px tall (at dpi) with staff spaces still big enough
+// to write in. A layout keeps its systems on a page of another height: paper_render spaces them
+// to fit (with smaller staff spaces on a shorter page), it never drops one.
+int music_max_systems(const MusicLayout *m, int page_h, float dpi);
 PaperKind music_default(void);                    // treble staff over 6-line tab, 5 systems
 
 // Pickers offer the fixed kinds in paper_at() order, then one "Custom music" tile.

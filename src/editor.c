@@ -1227,7 +1227,7 @@ static void modal_act(App *a, const Hit *h) {
     }
     if (h->id == P_PICK_CUSTOM) {
         compose(a, sheet);
-        musicbuild_open(&S->mb, a, S->page->paper);
+        musicbuild_open_page(&S->mb, a, S->page->paper, S->pgw, S->pgh);
         Rect r = rect_union(sheet, musicbuild_draw(&S->mb, a));
         app_invalidate(a, r, REFRESH_UI);
         return;

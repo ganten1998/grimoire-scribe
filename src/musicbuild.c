@@ -27,17 +27,26 @@ static Rect card_rect(App *a) {
     return (Rect){(a->w - w) / 2, (a->h - h) / 3, w, h};
 }
 
-static void clamp_systems(MusicBuild *b) {
-    int mx = music_max_systems(&b->m);
+// The most systems of the layout that fit on the page it is for.
+static int fit(const MusicBuild *b, App *a) { return music_max_systems(&b->m, b->page_h, a->dpi); }
+
+static void clamp_systems(MusicBuild *b, App *a) {
+    int mx = fit(b, a);
     b->m.systems = clampi(b->m.systems, 1, mx);
 }
 
-void musicbuild_open(MusicBuild *b, App *a, PaperKind start) {
+void musicbuild_open_page(MusicBuild *b, App *a, PaperKind start, int page_w, int page_h) {
     canvas_free(&b->prev);
-    *b = (MusicBuild){.open = true};
+    *b = (MusicBuild){.open = true, .page_w = page_w, .page_h = page_h};
     if (!music_decode(start, &b->m) && !music_decode(a->settings.music_layout, &b->m)) music_decode(music_default(), &b->m);
-    clamp_systems(b);
+    clamp_systems(b, a);
     b->rect = card_rect(a);
+}
+
+void musicbuild_open(MusicBuild *b, App *a, PaperKind start) {
+    int pw, ph;
+    store_page_size(&pw, &ph);
+    musicbuild_open_page(b, a, start, pw, ph);
 }
 
 void musicbuild_free(MusicBuild *b) {
@@ -51,8 +60,7 @@ static const Canvas *preview(MusicBuild *b, App *a) {
     PaperKind k = music_encode(&b->m);
     if (b->prev.px && b->prev_k == k) return &b->prev;
     canvas_free(&b->prev);
-    int pw, ph;
-    store_page_size(&pw, &ph);
+    int pw = b->page_w, ph = b->page_h;
     Canvas full;
     if (canvas_init(&full, pw, ph) != 0) return NULL;
     paper_render(&full, k, (Rect){0, 0, pw, ph}, a->dpi);
@@ -104,7 +112,7 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     }
     y += ADD_ROWS * rh + ui_px(20);
     // Systems per page: [-] N [+]
-    int mx = music_max_systems(&b->m);
+    int mx = fit(b, a);
     Rect srow = {in.x, y, lw, rh};
     font_draw_left(c, FONT_BOLD, ts, (Rect){srow.x, srow.y, lw / 2, rh}, "Systems per page", 0);
     int bs = rh - pad;
@@ -157,7 +165,7 @@ MbResult musicbuild_pointer(MusicBuild *b, App *a, int ph, float x, float y, uin
     if (!h || !press_is_tap(&b->press, h->r)) return MB_NONE;
     MusicLayout *m = &b->m;
     int i = h->arg;
-    bool at_max = m->systems >= music_max_systems(m);  // stay "as many as fit" through edits
+    bool at_max = m->systems >= fit(b, a);  // stay "as many as fit" through edits
     switch (h->id) {
     case B_UP:
     case B_DOWN: {
@@ -191,8 +199,8 @@ MbResult musicbuild_pointer(MusicBuild *b, App *a, int ph, float x, float y, uin
         return MB_DONE;
     default: return MB_NONE;
     }
-    if (at_max && h->id != B_LESS) m->systems = music_max_systems(m);
-    clamp_systems(b);
+    if (at_max && h->id != B_LESS) m->systems = fit(b, a);
+    clamp_systems(b, a);
     musicbuild_draw(b, a);
     *dirty = b->rect;
     return MB_CHANGED;

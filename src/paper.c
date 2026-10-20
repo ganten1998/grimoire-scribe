@@ -217,10 +217,11 @@ static float system_units(const MusicLayout *m) {
     return u;
 }
 
-int music_max_systems(const MusicLayout *m) {
-    // The page height is not known here: use the Scribe's 2480 px at 300 dpi (any portrait
-    // page has nearly the same height in mm).
-    float avail = 2480.f / 300.f * 25.4f - MUSIC_TOP_MM - MUSIC_BOT_MM;
+int music_max_systems(const MusicLayout *m, int page_h, float dpi) {
+    // The page's height in mm less the margins music_custom keeps: a 1986x2648 page has room for
+    // more systems than an 1860x2480 one (whose answers are the same as when 2480 px was assumed).
+    float page_mm = (float)page_h / dpi * 25.4f;
+    float avail = page_mm - MUSIC_TOP_MM - MUSIC_BOT_MM;
     float su = system_units(m);
     int best = 1;
     for (int s = 1; s <= MUSIC_MAX_SYSTEMS; s++)
