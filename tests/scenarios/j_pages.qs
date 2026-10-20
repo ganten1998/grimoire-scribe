@@ -36,7 +36,7 @@ wait 200
 shot 02-ticked-2-and-4
 expect editor.ticked is 2
 tap 1630 95
-expect toast is Deleted 2 pages (kept in grimoire/trash)
+expect toast has Deleted 2 pages
 wait 400
 shot 03-after-delete
 expect editor.pages is 3
@@ -55,7 +55,7 @@ tap 1250 95
 wait 200
 expect editor.ticked is 3
 tap 1630 95
-expect toast is Deleted 3 pages (kept in grimoire/trash)
+expect toast has Deleted 3 pages
 wait 400
 shot 05-all-deleted
 expect editor.pages is 1

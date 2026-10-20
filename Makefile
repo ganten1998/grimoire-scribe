@@ -73,9 +73,9 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # 0, and fail.qs 3 with each of its expect lines reported as failed.
 scenarios: $(BUILD)/host/grimoire-headless
 	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
-	  from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
+	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
-	  echo "== $$n"; GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
+	  GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; done; \
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
 	echo "== selftest pass (every expect holds: exit 0)"; GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs \
