@@ -223,34 +223,49 @@ else
             "[ '${got% *} dark-on-light' = '$got' ] && grep -qF 'share: QR code for ${got% *} ' $B/app-invert.log"
     done
 fi
-# Made-up address lists (the simulator's GRIMOIRE_SIM_ADDRS) in both styles and orientations: the
-# code holds the Wi-Fi address whatever order the system lists the interfaces in, the others get a
-# line each, and over USBNetwork alone there is no code. Shots for review in build/shots/share_layouts/.
+# Made-up address lists (the simulator's GRIMOIRE_SIM_ADDRS): one, two and three addresses,
+# USBNetwork alone and none, in both styles and both orientations. The code holds the Wi-Fi address
+# whatever order the system lists the interfaces in, the others get a line each, over USBNetwork
+# alone there is no code, and with no address at all the screen asks for Wi-Fi. Shots for review
+# in build/shots/share_layouts/<style>-<case>/.
 L=build/shots/share_layouts
 rm -rf "$L" && mkdir -p "$L"
-printf 'wait 300\ntap 1345 95\nwait 600\nshot portrait\nrotate 1\nwait 600\nshot landscape\nquit\n' > "$B/layout.qs"
-for spec in "gothic wifi-usb wlan0=192.168.100.200,usb0=192.168.15.244" \
-            "classic three usb0=192.168.15.244,eth0=10.0.0.5,wlan0=192.168.100.200" \
-            "gothic usb-only usb0=192.168.15.244"; do
-    theme=${spec%% *}; rest=${spec#* }; name=${rest%% *}; addrs=${rest#* }
-    D=$B/layout-$theme-$name
-    rm -rf "$D" && mkdir -p "$D"
-    printf 'theme=%s\nhttp_port=%s\n' "$theme" "$PORT" > "$D/settings.ini"
-    GRIMOIRE_SIM_ADDRS=$addrs GRIMOIRE_ROOT="$D" GRIMOIRE_SCRIPT="$B/layout.qs" GRIMOIRE_SHOTS="$L/$theme-$name" \
-        build/host/grimoire-headless 2>"$D.log" || true
-    wifi=$(echo "$addrs" | tr ',' '\n' | sed -n 's/^wlan[0-9]*=//p' | head -n 1)
-    if [ -n "$wifi" ]; then
-        check "$theme $name: the code is the Wi-Fi address" "grep -qF 'share: QR code for http://$wifi:$PORT (wlan' $D.log"
-    else
-        check "$theme $name: no code" "grep -q 'share: no Wi-Fi address' $D.log && ! grep -q 'share: QR code' $D.log"
-    fi
-    [ -n "$QRDEC" ] || continue
-    for o in portrait landscape; do
-        got=$($QRDEC "$L/$theme-$name/$o.png" 2>/dev/null | head -n 1)
-        check "$theme $name $o: reads back '$got'" "[ '$got' = '${wifi:+http://$wifi:$PORT}' ]"
+printf 'wait 300\ntap 1345 95\nwait 400\nshot portrait\nrotate 1\nwait 400\nshot landscape\nquit\n' > "$B/layout.qs"
+for theme in gothic classic; do
+    for spec in "one|wlan0=192.168.100.200" \
+                "two|wlan0=192.168.100.200,usb0=192.168.15.244" \
+                "three|usb0=192.168.15.244,eth0=10.0.0.5,wlan0=192.168.100.200" \
+                "usb-only|usb0=192.168.15.244" \
+                "none|"; do
+        name=${spec%%|*}; addrs=${spec#*|}
+        D=$B/layout-$theme-$name
+        rm -rf "$D" && mkdir -p "$D"
+        printf 'theme=%s\nhttp_port=%s\n' "$theme" "$PORT" > "$D/settings.ini"
+        GRIMOIRE_SIM_ADDRS=$addrs GRIMOIRE_ROOT="$D" GRIMOIRE_SCRIPT="$B/layout.qs" GRIMOIRE_SHOTS="$L/$theme-$name" \
+            build/host/grimoire-headless 2>"$D.log" || true
+        wifi=$(echo "$addrs" | tr ',' '\n' | sed -n 's/^wlan[0-9]*=//p' | head -n 1)
+        if [ -n "$wifi" ]; then
+            check "$theme $name: the code is the Wi-Fi address" "grep -qF 'share: QR code for http://$wifi:$PORT (wlan' $D.log"
+        elif [ -n "$addrs" ]; then
+            check "$theme $name: no code" "grep -q 'share: no Wi-Fi address' $D.log && ! grep -q 'share: QR code' $D.log"
+        else
+            check "$theme $name: no address, no code" "grep -q 'httpd: listening' $D.log && ! grep -q 'share: QR code' $D.log"
+        fi
+        [ -n "$QRDEC" ] || continue
+        for o in portrait landscape; do
+            got=$($QRDEC "$L/$theme-$name/$o.png" 2>/dev/null | head -n 1)
+            check "$theme $name $o: reads back '$got'" "[ '$got' = '${wifi:+http://$wifi:$PORT}' ]"
+        done
     done
 done
 [ -n "$QRDEC" ] || echo "skip made-up addresses' QR codes read back (needs macOS and swiftc)"
+# share.c checks its own layout as it draws: a "share: layout:" line means a line was cut short to
+# fit its column (the address in big type included, the very string in the code), or a part of the
+# screen (the code, the text, the counter, a button) left the card or ran into another. There must
+# be none in any run above, in either style or orientation. (Each log must exist: grep exits 2.)
+no_layout_lines() { grep -H 'share: layout:' "$@"; [ $? = 1 ]; }
+check "the Share screen lays out clear in every run above" \
+    "no_layout_lines $B/app.log $B/app-classic.log $B/app-rotate.log $B/app-invert.log $B/layout-*.log"
 # Offline: the studio's picture from the layers fetched above against ImageMagick's.
 if command -v node >/dev/null 2>&1 && command -v magick >/dev/null 2>&1; then
     check "studio picture = ImageMagick's" "node tests/studio_check.js $B/ink.png $B/paper.png $B/studio '$INKBOX' >$B/studio.log 2>&1"
