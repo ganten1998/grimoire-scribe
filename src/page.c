@@ -1,6 +1,8 @@
 // page.c: strokes, pages, hit testing and page rendering.
 #include "page.h"
 
+#include "bgimage.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,6 +156,11 @@ void page_render(Canvas *c, const Page *p, Rect region, float dpi) {
     page_render_layers(c, p, region, dpi, PAGE_LAYER_ALL);
 }
 
+void page_paper_render(Canvas *c, const Page *p, Rect region, float dpi) {
+    if (paper_is_image(p->paper)) bgimage_render(c, p->nb, p->paper, region);
+    else paper_render(c, p->paper, region, dpi);
+}
+
 // Whether stroke i is drawn: it is not `left_out`, nor marked in skip (NULL = none marked).
 static bool drawn(const bool *skip, int left_out, int i) { return i != left_out && !(skip && skip[i]); }
 
@@ -216,7 +223,7 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
         if (!logged) qlog("page: out of memory, erase strokes restore toward white");
         logged = true;
     }
-    if (layers & PAGE_LAYER_PAPER) paper_render(c, p->paper, r, dpi);
+    if (layers & PAGE_LAYER_PAPER) page_paper_render(c, p, r, dpi);
     if (!(layers & PAGE_LAYER_INK)) return;
     for (int y = 0; copy && y < u.h; y++)
         memcpy(copy + (size_t)y * (size_t)u.w, &c->px[(u.y + y) * c->stride + u.x], (size_t)u.w);
@@ -464,7 +471,7 @@ static int compact_start(Compact *x) {
     x->marked = calloc((size_t)x->blocks_x * (size_t)p->h, 1);
     if (!x->ready[0] || !x->ready[1] || !x->marked) return -1;
     // Where the paper has marks (the reference is drawn over it later).
-    paper_render(&x->layer[0], p->paper, (Rect){0, 0, p->w, p->h}, x->dpi);
+    page_paper_render(&x->layer[0], p, (Rect){0, 0, p->w, p->h}, x->dpi);
     for (int y = 0; y < p->h; y++) {
         const uint8_t *row = &x->layer[0].px[y * x->layer[0].stride];
         uint8_t *m = &x->marked[(size_t)y * (size_t)x->blocks_x];

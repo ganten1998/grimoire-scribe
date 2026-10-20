@@ -93,6 +93,8 @@ int store_take_corrupt_count(void);
 // again, both are kept. Returns how many came back; each is logged.
 int store_recover_pages(const NotebookInfo *nb);
 int store_save_info(NotebookInfo *nb);      // also bumps modified
+// A fresh notebook id ("20261010-143205-a3f1": the local time and 4 random hex digits).
+void store_make_id(char id[STORE_ID_LEN]);
 int store_rename(const char *id, const char *name);
 int store_set_folder(const char *id, const char *folder);
 int store_delete(const char *id);           // moves to trash/
@@ -100,18 +102,30 @@ int store_notebook_dir(const char *id, char *buf, size_t cap);
 
 // Pages. Index is the position in nb->page_ids.
 // Writes an empty page at the notebook's page size (never over a page file already there: the
-// next free id) + info.
+// next free id) + info. Its paper is store_new_page_paper(nb, paper): callers pass the paper of
+// the page it follows (or replaces).
 int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
+// The paper of a page added after (or left in place of) a page on `after`: the same paper, but a
+// document page's picture (an imported page image, paper_is_document) belongs to that page alone:
+// then the notebook's own paper (Blank if that is a document page's too). A template stays.
+PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
 // The page at w x h, the notebook's page size (store_notebook_page_size): a page file of another
 // size, one an older version scaled to its own screen, has its points scaled back. Missing page
 // file -> empty page of nb->paper. A damaged file is set aside (p<id>.qpg.damaged-<time>). A page
-// from a newer version comes back read-only (Page.readonly) and is never set aside.
+// from a newer version comes back read-only (Page.readonly) and is never set aside. A page that
+// bg/pages.ini lists with an image paper but that reads as Blank (an older version saved it so)
+// gets its image paper back, and is written so again (each such page counted, below). Every page
+// comes with Page.nb set to the notebook's id.
 int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out);
+// How many pages store_load_page gave their image paper back since the last call: the thumbnail
+// and PDF an older version made of them show blank paper, to be drawn again.
+int store_take_restored_count(void);
 // The same for exports, always at the notebook's page size, and nothing on disk changes: a page
 // that is missing or does not read is a blank page of nb->paper, and its file stays as it is.
 int store_read_page(const NotebookInfo *nb, int index, Page **out);
-// A read-only page is never written: its file stays as it is (and this returns 0).
+// A read-only page is never written: its file stays as it is (and this returns 0). bg/pages.ini
+// follows the page's paper (an image paper listed, any other not).
 int store_save_page(const NotebookInfo *nb, int index, const Page *p);
 
 // The pinned sleep screen (a full page, P5 PGM at root/sleep.pgm).
@@ -121,6 +135,15 @@ int store_load_sleep_image(Canvas *out);
 // Thumbnails (P5 PGM, ~ 1/8 page size).
 int store_save_thumb(const char *id, const Canvas *thumb);
 int store_load_thumb(const char *id, Canvas *out);   // canvas_init'd by the callee
+int store_write_pgm(const char *path, const Canvas *c);   // P5 PGM, atomically
+int store_read_pgm(const char *path, Canvas *out);        // canvas_init'd by the callee
+
+// A notebook built in a folder of its own before it becomes one (an import, in a dot-folder that
+// store_list skips, renamed into notebooks/ once whole): its notebook.ini (modified as it is), a
+// page file, and bg/pages.ini for pages pids[i] on papers[i] (image papers only; bgdir is its bg).
+int store_write_info_in(const char *dir, const NotebookInfo *nb);
+int store_write_page_in(const char *dir, uint32_t pid, const Page *p);
+int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n);
 
 // Page file format "QPG1" (little-endian), byte by byte in docs/FORMAT.md:
 //   char magic[4]="QPG1"; u16 version; u16 paper; u32 w, h;   (these 16 bytes in every version)

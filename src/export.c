@@ -1,6 +1,7 @@
 // export.c: PNG / PDF / zip output for notebooks.
 #include "export.h"
 
+#include <dirent.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -351,6 +352,50 @@ int zip_end(ZipWriter *z) {
     return rc != 0 || bad ? -1 : 0;
 }
 
+static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+// The notebook's image papers (docs/FORMAT.md): raw/bg/<id>.png, index.ini and pages.ini, so a raw
+// copy of the notebook draws its pages as the Kindle does. PNGs are stored, not deflated again.
+static int add_raw_pictures(const char *dir, ZipWriter *z, const char *dirprefix) {
+    char bg[760];
+    snprintf(bg, sizeof bg, "%s/bg", dir);
+    DIR *dd = opendir(bg);
+    if (!dd) return 0;
+    char **names = NULL;
+    int n = 0, cap = 0;
+    for (struct dirent *e; (e = readdir(dd));) {
+        const char *f = e->d_name;  // <6 hex digits>.png
+        bool pic = strlen(f) == 10 && !strcmp(f + 6, ".png");
+        for (int k = 0; k < 6 && pic; k++) pic = (f[k] >= '0' && f[k] <= '9') || (f[k] >= 'a' && f[k] <= 'f');
+        if (!pic && strcmp(f, "index.ini") && strcmp(f, "pages.ini")) continue;
+        if (n == cap) {
+            int nc = cap ? cap * 2 : 16;
+            char **nn = realloc(names, (size_t)nc * sizeof *nn);
+            if (!nn) break;
+            names = nn;
+            cap = nc;
+        }
+        if (!(names[n] = strdup(e->d_name))) break;
+        n++;
+    }
+    closedir(dd);
+    if (n) qsort(names, (size_t)n, sizeof *names, cmp_str);
+    for (int i = 0; i < n; i++) {
+        char path[1000], name[700];
+        size_t len;
+        snprintf(path, sizeof path, "%s/%s", bg, names[i]);
+        uint8_t *d = read_file(path, &len);
+        if (d) {
+            snprintf(name, sizeof name, "%sraw/bg/%s", dirprefix, names[i]);
+            zip_add(z, name, d, len, !strstr(names[i], ".png"));
+            free(d);
+        }
+        free(names[i]);
+    }
+    free(names);
+    return 0;
+}
+
 static int add_raw_files(const NotebookInfo *nb, ZipWriter *z, const char *dirprefix) {
     char dir[700], path[900], name[600];
     store_notebook_dir(nb->id, dir, sizeof dir);
@@ -370,7 +415,7 @@ static int add_raw_files(const NotebookInfo *nb, ZipWriter *z, const char *dirpr
         zip_add(z, name, d, len, true);
         free(d);
     }
-    return 0;
+    return add_raw_pictures(dir, z, dirprefix);
 }
 
 static int notebook_into_zip(const NotebookInfo *nb, float dpi, ZipWriter *z, const char *prefix, const char *dirname_,

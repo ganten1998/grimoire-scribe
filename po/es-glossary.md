@@ -47,6 +47,8 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Library | **Biblioteca** | |
 | folder | **carpeta** | |
 | Untitled | **Sin título** | The name of a notebook that has none (it is saved with it). |
+| Template (a picture used as paper) | **Plantilla** | Copied into grimoire/templates; the paper's name under its picture. |
+| Imported page, to import | **Página importada**, **importar** | A page of a document brought in as pictures (*Se importó un cuaderno de 12 páginas*). |
 | rule, ruled | **rayado** | *pauta* (Spain), *raya* (Mexico). |
 | Narrow / Medium / Wide rule | **Rayado fino / medio / ancho** | *Rayado estrecho* is clearer but too wide sideways, where it ran into the next paper's name. *angosto* (Latin America). |
 | Narrow, no margin | **Fino, sin margen** (*Medio, sin margen*, *Ancho, sin margen*) | |

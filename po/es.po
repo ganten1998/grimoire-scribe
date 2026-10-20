@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 08:12-0500\n"
+"POT-Creation-Date: 2026-10-20 09:20-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -22,17 +22,13 @@ msgstr ""
 #. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
 #: src/app.c
 msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
-msgstr ""
-"La contraseña del Kindle quedó desactivada. Vuelve a activarla en la "
-"Configuración del Kindle."
+msgstr "La contraseña del Kindle quedó desactivada. Vuelve a activarla en la Configuración del Kindle."
 
 #. TRANSLATORS: %s is the app's name, Grimoire.
 #: src/app.c
 #, c-format
 msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
-msgstr ""
-"No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir "
-"hace falta su lápiz."
+msgstr "No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir hace falta su lápiz."
 
 #. TRANSLATORS: %s is the app's name, Grimoire.
 #: src/app.c
@@ -44,16 +40,13 @@ msgstr "La contraseña del Kindle queda suspendida mientras %s está abierto."
 #. sheet that says "Calibrate pen and touch": name them as they are translated.
 #: src/app.c
 msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
-msgstr ""
-"Consejo: si el trazo no queda bajo la punta, ve a Ajustes > Calibrar el lápiz"
+msgstr "Consejo: si el trazo no queda bajo la punta, ve a Ajustes > Calibrar el lápiz"
 
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
 #. saved (a full storage), so it stays once.
 #: src/app.c
 msgid "Could not save this page. Hold power 4 s again to leave anyway."
-msgstr ""
-"No se pudo guardar esta página. Vuelve a mantener presionado el botón de "
-"encendido 4 s para salir de todos modos."
+msgstr "No se pudo guardar esta página. Vuelve a mantener presionado el botón de encendido 4 s para salir de todos modos."
 
 #. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
 #. %s is the app's name, Grimoire.
@@ -66,6 +59,21 @@ msgstr "Guardado. Saliendo de %s."
 #, c-format
 msgid "Leaving %s without this page."
 msgstr "Saliendo de %s sin guardar esta página."
+
+#. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
+#: src/app.c
+#, c-format
+msgid "Imported a notebook of %d page."
+msgid_plural "Imported a notebook of %d pages."
+msgstr[0] "Se importó un cuaderno de %d página."
+msgstr[1] "Se importó un cuaderno de %d páginas."
+
+#. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
+#. that says why. The folder stays where it was.
+#: src/app.c
+#, c-format
+msgid "Could not import a folder of pages (see %s)."
+msgstr "No se pudo importar una carpeta de páginas (detalles en %s)."
 
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: src/app.c
@@ -81,8 +89,31 @@ msgstr "No se pudo guardar el PDF"
 #: src/app.c
 #, c-format
 msgid "A damaged page was set aside; a blank one took its place (see %s)"
-msgstr ""
-"Se apartó una página dañada y una en blanco ocupa su lugar (detalles en %s)"
+msgstr "Se apartó una página dañada y una en blanco ocupa su lugar (detalles en %s)"
+
+#: src/bgwork_template.c
+msgid "Templates for Grimoire"
+msgstr "Plantillas para Grimoire"
+
+#: src/bgwork_template.c
+msgid "Copy pictures here to write on them as paper: PNG or JPG files, upright, in the shape of a Kindle Scribe page (3:4). 1860 x 2480 pixels is best. Light lines on white work best on e-ink: dark areas hide your writing."
+msgstr "Copia aquí imágenes para escribir sobre ellas como papel: archivos PNG o JPG, en vertical, con la forma de una página del Kindle Scribe (3:4). Lo ideal es 1860 x 2480 píxeles. En una pantalla de tinta electrónica funcionan mejor las líneas claras sobre blanco: las zonas oscuras ocultan lo que escribes."
+
+#: src/bgwork_template.c
+msgid "Copy them in over USB while Grimoire is closed. A notebook keeps its own copy of each template it uses, so changing or deleting a file here never changes pages already written on it. Grimoire keeps its previews of these files in the .cache folder."
+msgstr "Cópialas por USB con Grimoire cerrado. Cada cuaderno guarda su propia copia de cada plantilla que usa, así que cambiar o borrar un archivo de aquí nunca cambia las páginas ya escritas sobre ella. Grimoire guarda en la carpeta .cache sus vistas previas de estos archivos."
+
+#: src/bgwork_template.c
+msgid "Importing pages into Grimoire"
+msgstr "Importar páginas a Grimoire"
+
+#: src/bgwork_template.c
+msgid "To write on pages you already have, such as a PDF saved as pictures, put a folder of PNG or JPG files here, one picture a page, and start Grimoire. The folder's name becomes the notebook's name, and the pages follow the file names in order (page-2 comes before page-10). Gray pictures import faster and take less room than colour ones."
+msgstr "Para escribir sobre páginas que ya tienes, como un PDF guardado como imágenes, pon aquí una carpeta de archivos PNG o JPG, una imagen por página, y abre Grimoire. El nombre de la carpeta será el nombre del cuaderno, y las páginas siguen el orden de los nombres de archivo (page-2 va antes de page-10). Las imágenes en gris se importan más rápido y ocupan menos espacio que las de color."
+
+#: src/bgwork_template.c
+msgid "Grimoire imports each folder in the background and then moves it into the done folder. Copy folders in over USB while Grimoire is closed."
+msgstr "Grimoire importa cada carpeta en segundo plano y después la mueve a la carpeta done. Copia las carpetas por USB con Grimoire cerrado."
 
 #. TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
 #. Mechanical pencil and the Calligraphy pen go by shorter names) and after "Pen feel:".
@@ -437,9 +468,7 @@ msgstr "No se pudo guardar esta página. ¿Está lleno el almacenamiento?"
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
 #: src/editor.c
 msgid "This page was made by a newer Grimoire. It is read-only here."
-msgstr ""
-"Esta página se creó con una versión más reciente de Grimoire. Aquí es de "
-"solo lectura."
+msgstr "Esta página se creó con una versión más reciente de Grimoire. Aquí es de solo lectura."
 
 #: src/editor.c
 msgid "Could not open that page"
@@ -730,8 +759,7 @@ msgstr "Copiar los PDF a %s (USB)"
 #. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
 #: src/library.c
 msgid "Holding the pen button does nothing (tap to change)"
-msgstr ""
-"Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
+msgstr "Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
 
 #: src/library.c
 msgid "Holding the pen button erases (tap to change)"
@@ -910,6 +938,18 @@ msgstr "%d de %d"
 msgid "Use layout"
 msgstr "Usar este diseño"
 
+#. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
+#. of a document imported as pictures (named as the other papers are, below).
+#: src/paper.c
+msgctxt "paper"
+msgid "Imported page"
+msgstr "Página importada"
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Template"
+msgstr "Plantilla"
+
 #. TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
 #. paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
 #. is preferred: "Narrow," over "no margin"), in both styles. Also on the share pages.
@@ -1087,9 +1127,7 @@ msgstr "tinta"
 #. 34 px; the readings below take that room too).
 #: src/pensettings.c
 msgid "Draw on the pad to see live pressure and tilt."
-msgstr ""
-"Dibuja en la zona de prueba para ver la presión y la inclinación en tiempo "
-"real."
+msgstr "Dibuja en la zona de prueba para ver la presión y la inclinación en tiempo real."
 
 #. TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
 #: src/pensettings.c
@@ -1170,14 +1208,11 @@ msgstr "Páginas en PNG, cuadernos en PDF o zip, carpetas y todo en zip."
 
 #: src/share.c
 msgid "Effects: transparent, recolored or filtered copies of any page."
-msgstr ""
-"Efectos: copias de cualquier página, transparentes, con otros colores o con "
-"filtros."
+msgstr "Efectos: copias de cualquier página, transparentes, con otros colores o con filtros."
 
 #: src/share.c
 msgid "Same Wi-Fi network only. Keep this screen open while downloading."
-msgstr ""
-"Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
+msgstr "Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
 
 #. TRANSLATORS: how many downloads the Share screen has answered since it opened.
 #: src/share.c
@@ -1397,8 +1432,7 @@ msgstr "El Kindle respondió %d a %s"
 #, javascript-format
 msgctxt "studio"
 msgid "The Kindle stopped answering (%s). Is the Share screen still open?"
-msgstr ""
-"El Kindle dejó de responder (%s). ¿Sigue abierta la pantalla Compartir?"
+msgstr "El Kindle dejó de responder (%s). ¿Sigue abierta la pantalla Compartir?"
 
 #. TRANSLATORS: the Warmth slider's value: cooler (blue) or warmer (orange), by how much.
 #: web/studio.js
@@ -1661,13 +1695,8 @@ msgstr "Copiar el comando"
 #. to the page's two layers (its ink, its paper) it is made from.
 #: web/studio.js
 msgctxt "studio"
-msgid ""
-"The same picture from the page’s two layers, with ImageMagick 7 in a macOS "
-"or Linux terminal. Download the layers into one folder and run it there:"
-msgstr ""
-"La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en "
-"una terminal de macOS o Linux. Descarga las capas en una misma carpeta y "
-"ejecuta allí el comando:"
+msgid "The same picture from the page’s two layers, with ImageMagick 7 in a macOS or Linux terminal. Download the layers into one folder and run it there:"
+msgstr "La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en una terminal de macOS o Linux. Descarga las capas en una misma carpeta y ejecuta allí el comando:"
 
 #: web/studio.js
 msgctxt "studio"

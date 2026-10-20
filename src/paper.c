@@ -10,6 +10,10 @@
 // The English names are identifiers too: /api/list.json gives them to scripts (httpd.c), so they
 // never change with the language; paper_label is what the screens and the share pages show.
 const char *paper_name(PaperKind k) {
+    // A picture: a template the owner copied in, or a page of an imported document.
+    // TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
+    // of a document imported as pictures (named as the other papers are, below).
+    if (paper_is_image(k)) return paper_is_document(k) ? NC_("paper", "Imported page") : NC_("paper", "Template");
     switch (k) {
     // TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
     // paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
@@ -175,10 +179,28 @@ PaperKind music_encode(const MusicLayout *m) {
     return (PaperKind)v;
 }
 
-bool paper_is_known(PaperKind k) { return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL); }
+// ---- image papers ----
+
+bool paper_is_image(PaperKind k) {
+    uint32_t v = (uint32_t)k;
+    // The namespace, then bits 24-27: the role (0 or 1) and the colour bits (0).
+    return (v & 0xF0000000u) == PAPER_IMAGE_FLAG && (v >> 24 & 15u) <= (uint32_t)PAPER_ROLE_DOCUMENT;
+}
+
+bool paper_is_document(PaperKind k) {
+    return paper_is_image(k) && ((uint32_t)k >> 24 & 3u) == (uint32_t)PAPER_ROLE_DOCUMENT;
+}
+
+PaperKind paper_image(int role, uint32_t id) {
+    return (PaperKind)(PAPER_IMAGE_FLAG | ((uint32_t)role & 3u) << 24 | (id & 0xFFFFFFu));
+}
+
+bool paper_is_known(PaperKind k) {
+    return (uint32_t)k < PAPER_COUNT || music_decode(k, NULL) || paper_is_image(k);
+}
 
 PaperKind paper_sanitize(uint32_t v, PaperKind fallback) {
-    return paper_is_known((PaperKind)v) ? (PaperKind)v : fallback;
+    return v < PAPER_COUNT || music_decode((PaperKind)v, NULL) ? (PaperKind)v : fallback;
 }
 
 PaperKind music_default(void) {
@@ -394,6 +416,16 @@ static void cornell(Canvas *c, float dpi) {
     font_draw(c, FONT_FIXED, fs, px_mm(4.f, dpi), sum + px_mm(6.f, dpi), "Summary", 150);
 }
 
+// paper_render given an image paper: a caller that should have taken the page's paper from
+// page_paper_render (page.h), which draws the picture. Counted for the tests, logged once.
+static int g_image_blank;
+
+int paper_take_image_blank_count(void) {
+    int n = g_image_blank;
+    g_image_blank = 0;
+    return n;
+}
+
 void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
     Rect saved = c->clip;
     canvas_set_clip(c, rect_intersect(region, saved));
@@ -402,6 +434,8 @@ void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
         return;
     }
     canvas_fill(c, c->clip, 255);
+    if (paper_is_image(k) && g_image_blank++ == 0)
+        qlog("paper: an image paper drawn as blank paper, without its notebook's picture (page_paper_render draws it)");
     switch (k) {
     // Spread ~30% apart so the three are clearly different on screen (the stationery values,
     // 6.35 / 7.14 / 8.73 mm, looked nearly identical between narrow and medium).

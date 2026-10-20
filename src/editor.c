@@ -15,6 +15,7 @@
 #include "export.h"
 #include "dispmenu.h"
 #include "bgjob.h"
+#include "bgimage.h"
 #include "musicbuild.h"
 #include "history.h"
 
@@ -127,6 +128,9 @@ struct EditorState {
     Canvas paper_prev[PAPER_COUNT];
     Canvas custom_prev;         // the Custom music tile's preview (one layout at a time)
     PaperKind custom_prev_k;
+    Canvas image_prev;          // an image paper's preview: one of this notebook's pictures at a time
+    PaperKind image_prev_k;
+    char image_prev_nb[STORE_ID_LEN];
     MusicBuild mb;              // the Custom music sheet
 };
 
@@ -313,13 +317,22 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
         c = &S->custom_prev;
         if (c->px && S->custom_prev_k != k) canvas_free(c);
         S->custom_prev_k = k;
+    } else if (paper_is_image(k)) {
+        // A picture of this notebook's (the same value in another notebook can be another one).
+        c = &S->image_prev;
+        if (c->px && (S->image_prev_k != k || strcmp(S->image_prev_nb, S->nb.id) || c->w != S->pgw / 6 ||
+                      c->h != S->pgh / 6))
+            canvas_free(c);
+        S->image_prev_k = k;
+        strlcpy_q(S->image_prev_nb, S->nb.id, sizeof S->image_prev_nb);
     } else {
         c = &S->paper_prev[clampi((int)k, 0, PAPER_COUNT - 1)];
     }
     if (!c->px) {
         Canvas full;
         if (canvas_init(&full, S->pgw, S->pgh) != 0) return NULL;
-        paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+        if (paper_is_image(k)) bgimage_render(&full, S->nb.id, k, (Rect){0, 0, S->pgw, S->pgh});
+        else paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
         if (canvas_init(c, S->pgw / 6, S->pgh / 6) == 0) canvas_downsample_keep_lines(c, &full, 0.6f);
         canvas_free(&full);
     }
@@ -778,6 +791,12 @@ static void use_page_size(App *a) {
 
 static void close_notebook(App *a) {
     if (!S->open) return;
+    // Pages an older version had saved on blank paper got their pictures back as they opened: the
+    // thumbnail and the PDF it drew of them are drawn again.
+    if (store_take_restored_count() > 0) {
+        S->changed = true;
+        if (S->index == 0) S->thumb_dirty = true;
+    }
     save_page(a);
     write_thumb_if_needed(a);
     if (S->index != 0 && S->changed) {
@@ -800,6 +819,8 @@ static void close_notebook(App *a) {
     pthumbs_clear(a);
     S->pages_open = false;
     S->open = false;
+    store_take_restored_count();  // (page 1, read for the thumbnail above, was drawn as it is now)
+    bgimage_forget(NULL);         // the notebook's pictures (up to 3 pages' worth) and its failures
 }
 
 void editor_open_notebook(App *a, const char *id) {
@@ -809,6 +830,7 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
+    bgimage_retry_missing();      // (a picture the Library found missing may be there now)
     use_page_size(a);
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
     S->page = page_at(a, S->index);
@@ -1349,6 +1371,7 @@ void editor_free(App *a) {
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
+    canvas_free(&S->image_prev);
     musicbuild_free(&S->mb);
     free(S);
     a->ed = NULL;

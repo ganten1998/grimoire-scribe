@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 08:12-0500\n"
+"POT-Creation-Date: 2026-10-20 09:20-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -60,6 +60,21 @@ msgstr ""
 msgid "Leaving %s without this page."
 msgstr ""
 
+#. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
+#: src/app.c
+#, c-format
+msgid "Imported a notebook of %d page."
+msgid_plural "Imported a notebook of %d pages."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
+#. that says why. The folder stays where it was.
+#: src/app.c
+#, c-format
+msgid "Could not import a folder of pages (see %s)."
+msgstr ""
+
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: src/app.c
 #, c-format
@@ -74,6 +89,44 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "A damaged page was set aside; a blank one took its place (see %s)"
+msgstr ""
+
+#: src/bgwork_template.c
+msgid "Templates for Grimoire"
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"Copy pictures here to write on them as paper: PNG or JPG files, upright, in "
+"the shape of a Kindle Scribe page (3:4). 1860 x 2480 pixels is best. Light "
+"lines on white work best on e-ink: dark areas hide your writing."
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"Copy them in over USB while Grimoire is closed. A notebook keeps its own "
+"copy of each template it uses, so changing or deleting a file here never "
+"changes pages already written on it. Grimoire keeps its previews of these "
+"files in the .cache folder."
+msgstr ""
+
+#: src/bgwork_template.c
+msgid "Importing pages into Grimoire"
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"To write on pages you already have, such as a PDF saved as pictures, put a "
+"folder of PNG or JPG files here, one picture a page, and start Grimoire. The "
+"folder's name becomes the notebook's name, and the pages follow the file "
+"names in order (page-2 comes before page-10). Gray pictures import faster "
+"and take less room than colour ones."
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"Grimoire imports each folder in the background and then moves it into the "
+"done folder. Copy folders in over USB while Grimoire is closed."
 msgstr ""
 
 #. TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
@@ -897,6 +950,18 @@ msgstr ""
 #. TRANSLATORS: takes the layout built on the Custom music sheet (364 px at 34 px).
 #: src/musicbuild.c
 msgid "Use layout"
+msgstr ""
+
+#. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
+#. of a document imported as pictures (named as the other papers are, below).
+#: src/paper.c
+msgctxt "paper"
+msgid "Imported page"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Template"
 msgstr ""
 
 #. TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
