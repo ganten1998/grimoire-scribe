@@ -61,7 +61,7 @@ rotate 1
 wait 300
 expect editor.modal is paper
 shot 03-paper-sideways
-tap 784 845
+tap 325 843
 wait 300
 expect editor.modal is none
 expect editor.paper is 10
