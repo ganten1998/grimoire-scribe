@@ -242,16 +242,9 @@ static void toast_follow(App *a) {
     a->toast_rect = r;
 }
 
-// A toast too long for its buffer is cut between two characters, never inside one.
-static void copy_toast(char *dst, const char *src, size_t cap) {
-    size_t n = strlcpy_q(dst, src, cap);
-    while (n > 0 && ((unsigned char)src[n] & 0xC0) == 0x80) n--;  // src[n]: the first byte left out
-    dst[n] = 0;
-}
-
 void app_toast(App *a, const char *msg, int ms) {
     toast_hide(a);
-    copy_toast(a->toast, msg ? msg : "", sizeof a->toast);
+    i18n_copy(a->toast, msg ? msg : "", sizeof a->toast);  // (too long: cut between two characters)
     a->toast_until = now_ms() + (uint32_t)ms;
     toast_draw(a);
 }

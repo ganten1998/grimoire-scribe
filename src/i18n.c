@@ -104,8 +104,47 @@ static const char *catalog_find(const Catalog *c, const char *ctx, const char *i
     return NULL;
 }
 
+#ifdef GRIMOIRE_SIM
+// The simulator's GRIMOIRE_L10N_DIR (a test hook, and a translator's shortcut): a language's
+// catalog is read from <dir>/<code>.mo instead of the binary, once, and kept for the run. NULL
+// when the variable is not set (the embedded catalogs, as on the Kindle) or that file is missing.
+static const unsigned char *sim_catalog(const char *code, uint32_t *size) {
+    static struct {
+        char code[8];
+        unsigned char *d;
+        uint32_t size;
+    } k_read[8];
+    const char *dir = getenv("GRIMOIRE_L10N_DIR");
+    if (!dir || !*dir || strlen(code) >= sizeof k_read[0].code) return NULL;
+    for (size_t i = 0; i < sizeof k_read / sizeof k_read[0]; i++) {
+        if (k_read[i].code[0] && strcmp(k_read[i].code, code)) continue;
+        if (!k_read[i].code[0]) {
+            char path[1024];
+            size_t len = 0;
+            snprintf(path, sizeof path, "%s/%s.mo", dir, code);
+            k_read[i].d = read_file(path, &len);
+            k_read[i].size = len < UINT32_MAX ? (uint32_t)len : 0;
+            snprintf(k_read[i].code, sizeof k_read[i].code, "%s", code);
+            qlog("i18n: (simulator) the catalog for %s %s %s", code, k_read[i].d ? "comes from" : "is not in", path);
+        }
+        *size = k_read[i].size;
+        return k_read[i].d;
+    }
+    return NULL;
+}
+#endif
+
 // The embedded catalog of a language: false if there is none (English) or it does not read.
 static bool catalog_for(const char *code, Catalog *out) {
+#ifdef GRIMOIRE_SIM
+    uint32_t sim_size;
+    const unsigned char *sim = sim_catalog(code, &sim_size);
+    if (sim) {
+        if (catalog_open(out, sim, sim_size)) return true;
+        qlog("i18n: the catalog for %s is damaged; using English", code);
+        return false;
+    }
+#endif
     for (const I18nCatalog *k = i18n_catalogs; k->code; k++)
         if (!strcmp(k->code, code)) {
             if (catalog_open(out, k->mo, k->size)) return true;
@@ -145,6 +184,20 @@ const char *i18n_getnc(const char *ctx, const char *one, const char *many, long 
 
 const char *i18n_getn(const char *one, const char *many, long n) { return i18n_getnc(NULL, one, many, n); }
 const char *i18n_getn_many(const char *one, const char *many, long n) { return i18n_getnc(NULL, one, many, n); }
+
+size_t i18n_copy(char *dst, const char *src, size_t cap) {
+    size_t n = strlcpy_q(dst, src, cap);
+    // The last character copied, if it is not whole (cut here, or before: by snprintf).
+    size_t lead = n;
+    while (lead > 0 && ((unsigned char)dst[lead - 1] & 0xC0) == 0x80) lead--;
+    if (lead > 0) {
+        unsigned char c = (unsigned char)dst[lead - 1];
+        size_t len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        if (n - (lead - 1) < len) n = lead - 1;
+    }
+    dst[n] = 0;
+    return n;
+}
 
 // ---- choosing ----
 

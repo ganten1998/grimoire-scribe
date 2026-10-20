@@ -620,6 +620,12 @@ TEST(rare_notices_fit) {
             char also[160];
             snprintf(also, sizeof also, _("Also: %s (%s)"), "http://192.168.15.244:8080", "usb0");
             CHECK(font_measure(FONT_REGULAR, ui_small_size(), also) <= 1400);
+            // Calibration's notes under what to do (the scenario sees them fit), as calibrate.c
+            // formats them: whole in their buffer, which is a toast's size.
+            char off[RARE_LEN];
+            snprintf(off, sizeof off, _("The center was off by %.1f mm. Let's try again."), 88.8);
+            const char *notes[] = {_("Those taps did not make sense. Let's try again."), off, _("Pen done.")};
+            for (int i = 0; i < 3; i++) CHECK(strlen(notes[i]) < sizeof ((App *)0)->toast);
             // Settings' Data line with the Kindle's own path: the label fits the sheet (the path is
             // a name, which a longer one is cut short as, unreported: tests/l10n/long_root.qs).
             char data[160];
@@ -629,6 +635,22 @@ TEST(rare_notices_fit) {
     }
     ui_set_theme(THEME_GOTHIC);
     i18n_set("en");
+}
+
+// A translation can be longer than the English a buffer was sized for: i18n_copy cuts it between
+// two characters, and takes off one that snprintf already cut.
+TEST(copies_cut_between_characters) {
+    char b[8];
+    CHECK(i18n_copy(b, "a\xc3\xb1o", sizeof b) == 4 && !strcmp(b, "a\xc3\xb1o"));  // "año", whole
+    CHECK(i18n_copy(b, "a\xc3\xb1o", 4) == 3 && !strcmp(b, "a\xc3\xb1"));
+    CHECK(i18n_copy(b, "a\xc3\xb1o", 3) == 1 && !strcmp(b, "a"));  // not "a" and half an n-tilde
+    CHECK(i18n_copy(b, "\xe2\x80\xa6!", 3) == 0 && !strcmp(b, ""));  // a three-byte character
+    CHECK(i18n_copy(b, "\xf0\x9f\x98\x80!", 5) == 4 && !strcmp(b, "\xf0\x9f\x98\x80"));
+    CHECK(i18n_copy(b, "\xf0\x9f\x98\x80!", 4) == 0 && !strcmp(b, ""));
+    CHECK(i18n_copy(b, "ab\xc3", sizeof b) == 2 && !strcmp(b, "ab"));  // cut by snprintf before
+    CHECK(i18n_copy(b, "abcdefghij", sizeof b) == 7 && !strcmp(b, "abcdefg"));
+    CHECK(i18n_copy(b, "", sizeof b) == 0 && !strcmp(b, ""));
+    CHECK(i18n_copy(b, "x", 1) == 0 && !strcmp(b, ""));
 }
 
 // Pen feel draws its graph's and pad's labels as they are (font_draw: never cut): under the
@@ -1000,6 +1022,7 @@ int main(void) {
     RUN(language_setting);
     RUN(dates);
     RUN(rare_notices_fit);
+    RUN(copies_cut_between_characters);
     RUN(raw_labels_fit);
     RUN(paper_is_the_same_in_every_language);
     RUN(overflow_hook);

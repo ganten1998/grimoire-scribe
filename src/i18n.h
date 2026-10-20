@@ -11,10 +11,12 @@
 //   NC_("paper", "Blank")            marks it with that context in a static table (look it up
 //                                    with C_() and the same context)
 //   NG_("%d page", "%d pages", n)    the plural form for n, looked up now
-// A lookup the language has no translation for gives the English. The lookups are declared
-// format_arg, so the compiler checks every printf against the English text (NG_ against both
-// forms); msgfmt --check (make l10n, make l10n-check) and tests/test_i18n.c check each
-// translation against its English.
+// A lookup the language has no translation for gives the English. _(), C_() and NG_() are calls
+// that return a const char *, so they cannot initialize a static table: mark its strings with
+// N_() or NC_() and look each up where it is drawn. The lookups are declared format_arg, so the
+// compiler checks every printf against the English text (NG_ against both forms); msgfmt --check
+// (make l10n, make l10n-check) and tests/test_i18n.c check each translation against its English.
+// A translation can be longer than the English a buffer was sized for: copy one with i18n_copy.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -38,6 +40,10 @@ extern const int i18n_ng;
 // The plural form for n of a string with a context (C_ and NG_ at once), looked up now; for
 // strings the code gets from a table (the share studio's, httpd.c), so it has no macro.
 const char *i18n_getnc(const char *ctx, const char *one, const char *many, long n) __attribute__((format_arg(2)));
+// Copies src into dst (cap bytes, with the NUL) as strlcpy_q does, but text too long for dst is
+// cut between two characters, never inside one, and so is text snprintf already cut inside one.
+// Returns the bytes copied.
+size_t i18n_copy(char *dst, const char *src, size_t cap);
 
 // The languages Grimoire speaks, English first: each one's code ("en", "es") and its name in
 // itself ("English", "Español"), which is never translated.

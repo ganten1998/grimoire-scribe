@@ -23,7 +23,7 @@ struct CalibState {
     CalPoint pts[NT];
     InputCalib old_pen, old_touch, new_pen, new_touch;
     ScreenId ret;
-    char msg[128];
+    char msg[sizeof ((App *)0)->toast];  // a note under what to do: as long as a toast can be
     Rect pad;
     bool drawing;
     BrushState bs;
@@ -101,7 +101,7 @@ static void draw(App *a) {
 static void restart(App *a, Phase ph, const char *msg) {
     S->phase = ph;
     S->target = 0;
-    strlcpy_q(S->msg, msg ? msg : "", sizeof S->msg);
+    i18n_copy(S->msg, msg ? msg : "", sizeof S->msg);  // (too long: cut between two characters)
     draw(a);
 }
 
@@ -118,7 +118,7 @@ static void finish_pass(App *a) {
     calib_apply(&c, S->pts[4].nx, S->pts[4].ny, &sx, &sy);
     float err = hypotf(sx - S->pts[4].sx, sy - S->pts[4].sy);
     if (err > mm_to_px(4.f, a->dpi)) {
-        char m[128];
+        char m[sizeof S->msg];
         snprintf(m, sizeof m, _("The center was off by %.1f mm. Let's try again."), err * 25.4f / a->dpi);
         restart(a, S->phase, m);
         return;

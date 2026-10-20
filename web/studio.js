@@ -1013,15 +1013,15 @@
         try {
             await navigator.clipboard.writeText(text);  // needs https or localhost
         } catch (e) {
-            const t = el('textarea', {});
-            t.value = text;
-            document.body.append(t);
-            t.select();
+            const ta = el('textarea', {});  // (not t: the button's words below go through t)
+            ta.value = text;
+            document.body.append(ta);
+            ta.select();
             let ok = false;
             try {
                 ok = document.execCommand('copy');
             } catch (e2) { /* reported below */ }
-            t.remove();
+            ta.remove();
             if (!ok) {
                 getSelection().selectAllChildren(cmd);  // the browser would not copy: select it for Cmd/Ctrl+C
                 setText(copyBtn, t('Selected: press Cmd/Ctrl+C'));
