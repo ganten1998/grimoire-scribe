@@ -57,3 +57,18 @@ PowerdState powerd_parse_state(const char *s) {
 bool powerd_dozing(PowerdState s) {
     return s == POWERD_SCREENSAVER || s == POWERD_READY_TO_SUSPEND || s == POWERD_SUSPENDED;
 }
+
+bool power_asleep_drops(const InEvent *ev) {
+    switch (ev->type) {
+    case IN_PEN_DOWN:
+    case IN_PEN_MOVE:
+    case IN_PEN_UP:
+    case IN_TOUCH_DOWN:
+    case IN_TOUCH_MOVE:
+    case IN_TOUCH_UP:
+    case IN_PINCH_BEGIN:
+    case IN_PINCH_MOVE: return true;
+    case IN_PEN_BUTTON: return ev->side_button;  // the press; its release gets through
+    default: return false;
+    }
+}

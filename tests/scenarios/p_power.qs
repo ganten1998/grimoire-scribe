@@ -1,6 +1,6 @@
 # The power button's ways out of every stuck state: a sleep announcement Grimoire missed, a Kindle
-# still locked after a press, the side button while asleep, a wake announced while the key is
-# down, and the 4 s hold that saves and leaves Grimoire.
+# still locked after a press, the side button and pinches while asleep, a wake announced while the
+# key is down, and the 4 s hold that saves and leaves Grimoire.
 wait 200
 tap 965 95
 wait 100
@@ -25,13 +25,15 @@ power
 wait 3300
 expect asleep is 1
 shot 03-still-locked-stays-asleep
-# Three side-button clicks while asleep start nothing (they cleared the page).
+# Three side-button clicks and a pinch while asleep start nothing (the clicks cleared the page,
+# the pinch zoomed it behind the sleep screen).
 side on
 side off
 side on
 side off
 side on
 side off
+pinch 930 1240 300 900 8
 wait 400
 expect asleep is 1
 expect toast not Page cleared
@@ -42,7 +44,7 @@ power
 sleep
 wait 3300
 expect asleep is 1
-# The Kindle wakes: the ink is all there.
+# The Kindle wakes: the ink is all there, at 100% (no zoom chip).
 wake
 wait 400
 expect asleep is 0

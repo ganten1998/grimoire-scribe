@@ -1,6 +1,7 @@
 // power.h: the power button and the Kindle's power service as pure logic (unit-tested on the
-// host): one press of the power key followed to its release or its 4 s hold (input_evdev.c), and
-// the power service's state, which app.c reads before its sleep and wake fallbacks act.
+// host): one press of the power key followed to its release or its 4 s hold (input_evdev.c), the
+// power service's state, which app.c reads before its sleep and wake fallbacks act, and the
+// decisions app.c takes on them.
 #pragma once
 #include "input.h"
 
@@ -36,3 +37,9 @@ PowerdState powerd_parse_state(const char *s);
 // The screensaver or deeper: the Kindle is not awake and may be waiting for its passcode, so
 // Grimoire must neither draw over it nor send it a power button (that would wake it).
 bool powerd_dozing(PowerdState s);
+
+// Input Grimoire ignores while it shows its sleep screen (or the Kindle's): pen and touch, and the
+// start of a side button press or of a pinch (three clicks cleared the page, a pinch zoomed it).
+// Their ends still get through, so one that began before the sleep finishes: a button left down
+// would clear the page by its hold right after the wake.
+bool power_asleep_drops(const InEvent *ev);

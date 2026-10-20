@@ -161,9 +161,7 @@ void app_event(App *a, const InEvent *ev) {
     // screensaver because the panel reported a touch is how a wrong screen ended up on it. The side
     // button and pinches start nothing either (three clicks cleared the page); only their ends get
     // through, so one that began before the sleep still finishes.
-    if (a->asleep && (app_pointer_phase(ev) >= 0 || (ev->type == IN_PEN_BUTTON && ev->side_button) ||
-                      ev->type == IN_PINCH_BEGIN || ev->type == IN_PINCH_MOVE))
-        return;
+    if (a->asleep && power_asleep_drops(ev)) return;
     if (!a->asleep && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON)) {
         a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
         a->sleep_requested = false;

@@ -1,5 +1,5 @@
-// test_power.c: the power key followed to its release or its 4 s hold, and the power service's
-// state as the sleep and wake fallbacks read it.
+// test_power.c: the power key followed to its release or its 4 s hold, the power service's state
+// as the sleep and wake fallbacks read it, and what Grimoire decides from them.
 #include "power.h"
 #include "testlib.h"
 
@@ -108,6 +108,38 @@ TEST(powerd_states) {
     CHECK(powerd_dozing(POWERD_SUSPENDED));
 }
 
+static InEvent ev_of(InType t, bool side) {
+    InEvent e = {0};
+    e.type = t;
+    e.side_button = side;
+    return e;
+}
+
+TEST(asleep_drops) {
+    // Pen and touch, the side button's press and a pinch's start and moves are ignored on the
+    // sleep screen (three clicks cleared the page, a pinch zoomed it behind the sleep screen).
+    static const InType dropped[] = {IN_PEN_DOWN,   IN_PEN_MOVE,   IN_PEN_UP,      IN_TOUCH_DOWN,
+                                     IN_TOUCH_MOVE, IN_TOUCH_UP,   IN_PINCH_BEGIN, IN_PINCH_MOVE};
+    for (size_t i = 0; i < sizeof dropped / sizeof dropped[0]; i++) {
+        InEvent e = ev_of(dropped[i], false);
+        CHECK(power_asleep_drops(&e));
+    }
+    InEvent press = ev_of(IN_PEN_BUTTON, true), release = ev_of(IN_PEN_BUTTON, false);
+    CHECK(power_asleep_drops(&press));
+    // The ends get through: a button that went down before the sleep must come up (its hold would
+    // clear the page after the wake), and a pinch begun before it must finish.
+    CHECK(!power_asleep_drops(&release));
+    InEvent end = ev_of(IN_PINCH_END, false);
+    CHECK(!power_asleep_drops(&end));
+    // So does everything the sleep and wake logic itself needs.
+    static const InType kept[] = {IN_POWER, IN_POWER_UP, IN_POWER_HELD, IN_SLEEP, IN_WAKE,
+                                  IN_QUIT,  IN_ORIENTATION, IN_PEN_HOVER, IN_PEN_LEAVE};
+    for (size_t i = 0; i < sizeof kept / sizeof kept[0]; i++) {
+        InEvent e = ev_of(kept[i], false);
+        CHECK(!power_asleep_drops(&e));
+    }
+}
+
 int main(void) {
     RUN(press_release);
     RUN(hold_once);
@@ -115,5 +147,6 @@ int main(void) {
     RUN(press_over_a_lost_release);
     RUN(clock_wraps);
     RUN(powerd_states);
+    RUN(asleep_drops);
     return tl_done();
 }
