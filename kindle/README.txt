@@ -18,7 +18,7 @@ Needs a Kindle Scribe with a jailbreak that runs scriptlets (Vera, SpiderCat, Wi
 Problems? Attach grimoire/grimoire.log to a bug report:
 https://github.com/ganten1998/grimoire-scribe/issues
 
-Grimoire is free software under the GNU GPL version 3 or later (LICENSE.txt). The licences of
+Grimoire is free software under the GNU GPL version 3 or later (LICENSE.txt). The licenses of
 the fonts and code it includes are in grimoire/app/licenses on the Kindle. Source code:
 https://github.com/ganten1998/grimoire-scribe
 Not affiliated with or endorsed by Amazon. Kindle is a trademark of Amazon.com, Inc.

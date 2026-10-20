@@ -121,9 +121,9 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # a single file into documents/ over MTP is all an install or update takes.
 # The app also carries CAPABILITIES, the words of Grimoire.sh's "# Capabilities:" line (for a tool
 # that must not run a launcher to learn what it supports), and licenses/: the GPL, the fonts'
-# licences, and one for each third-party part of the binary. Every third_party/<dir> ships its
+# licenses, and one for each third-party part of the binary. Every third_party/<dir> ships its
 # LICENSE* / COPYING* as <dir>-LICENSE.txt (and CREDITS* as <dir>-CREDITS.txt); the stb headers
-# carry their licence inside, shipped once as stb-LICENSE.txt; the binary is linked static
+# carry their license inside, shipped once as stb-LICENSE.txt; the binary is linked static
 # against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt.
 PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
@@ -144,7 +144,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	done; true
 	names=; : > $(PKG)/stb.all; for h in third_party/stb_*.h; do \
 	  awk '/^This software is available under 2 licenses/ { p = 1 } p && /^\*\// { exit } p' $$h > $(PKG)/stb.one; \
-	  [ -s $(PKG)/stb.one ] || { echo "package: no licence text found in $$h"; exit 1; }; \
+	  [ -s $(PKG)/stb.one ] || { echo "package: no license text found in $$h"; exit 1; }; \
 	  names="$${names:+$$names, }$${h##*/}"; cmp -s $(PKG)/stb.one $(PKG)/stb.all || cat $(PKG)/stb.one >> $(PKG)/stb.all; \
 	done; { echo "$$names: single-file libraries by Sean Barrett (https://github.com/nothings/stb)."; echo; \
 	  cat $(PKG)/stb.all; } > $(PKG)/app/licenses/stb-LICENSE.txt; rm -f $(PKG)/stb.one $(PKG)/stb.all
