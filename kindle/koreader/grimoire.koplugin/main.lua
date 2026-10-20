@@ -285,6 +285,10 @@ function Grimoire:handOver(launcher, busy)
         end, ...)
         if not ok then logger.warn("Grimoire: the hand-over failed:", err) end
     end
+    -- From the file browser, exitOrRestart closes it and asks for the restart at once, so a failure
+    -- comes back to this pcall and is undone below. From a book, KOReader closes the book and asks
+    -- on its next tick, past this pcall: a failure there ends KOReader without Device:exit(), and
+    -- the launch marker left behind tells the user at KOReader's next start.
     local ok, err = pcall(function()
         self.ui.menu:exitOrRestart(function() UIManager:restartKOReader() end)
     end)

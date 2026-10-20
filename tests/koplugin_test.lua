@@ -41,6 +41,8 @@ local function device_exit(self)
     if W.exit_error then error("KOReader's exit failed") end
 end
 Device.isKindle = function() return W.kindle end
+-- nextTick queues its task for run_ticks, KOReader's UI loop: UIManager runs its tasks without a
+-- pcall, so an error in one ends reader.lua.
 local UIManager = {
     show = function(_, widget)
         table.insert(W.shown, widget)
@@ -48,10 +50,15 @@ local UIManager = {
     end,
     close = function(_, widget) table.insert(W.closed, widget) end,
     forceRePaint = function() table.insert(W.calls, "repaint") end,
-    nextTick = function(_, f) f() end,
+    nextTick = function(_, f) table.insert(W.ticks, f) end,
     scheduleIn = function(_, _, f) table.insert(W.scheduled, f) end,
     restartKOReader = function() table.insert(W.calls, "restart") end,
 }
+local function run_ticks()
+    while W.ticks[1] do
+        table.remove(W.ticks, 1)()
+    end
+end
 local WidgetContainer = {}
 function WidgetContainer:extend(o)
     o = o or {}
@@ -149,6 +156,7 @@ local function world(name)
         shown = {},
         closed = {},
         scheduled = {},
+        ticks = {},
         actions = {},
         menus = 0,
         unpack_writes = "#!/bin/sh\n# Capabilities: guard hosted\n",
@@ -165,9 +173,16 @@ local function world(name)
     scriptlet("guard unpack-only hosted")
 end
 
--- The fake ui of a KOReader screen: the file browser, or a book.
+-- The fake ui of a KOReader screen: the file browser, or a book. W.restart_error makes closing it
+-- fail. Their menus' exitOrRestart differ as KOReader's do: the file browser's (FileManagerMenu)
+-- closes it and runs the callback at once; a book's (ReaderMenu) does both on the next tick.
 local function new_ui(in_book)
     local ui = {}
+    local function close_then(callback)
+        if W.restart_error then error("the screen would not close") end
+        ui:onClose()
+        if callback then callback() end
+    end
     ui.menu = {
         registerToMainMenu = function(_, plugin)
             W.menus = W.menus + 1
@@ -175,8 +190,11 @@ local function new_ui(in_book)
         end,
         exitOrRestart = function(_, callback)
             table.insert(W.calls, "exitOrRestart")
-            if W.restart_error then error("the book would not close") end
-            callback()
+            if in_book then
+                UIManager:nextTick(function() close_then(callback) end)
+            else
+                close_then(callback)
+            end
         end,
     }
     if in_book then
@@ -409,21 +427,63 @@ do -- Grimoire.sh renamed or gone: the app unpacked already runs; neither: not i
     untouched("not installed")
 end
 
-do -- KOReader will not restart: everything taken back, Open works again later.
+do -- The file browser will not close, so KOReader will not restart: its exitOrRestart fails at
+    -- once, inside the plugin's pcall. Everything is taken back (start_with too, borrowed here as
+    -- "filemanager"), and Open works again later.
     world("restart-error")
-    W.settings.start_with = "filemanager"
+    W.settings.start_with = "last"
     W.restart_error = true
-    local g = koreader(true)
+    local g = koreader(false)
     g:onOpenGrimoire()
     check("no restart: Device.exit back to KOReader's own", not wrapped())
     check("no restart: no marker", not is_file(W.marker))
-    check("no restart: start_with given back", W.settings.start_with == "filemanager"
+    check("no restart: start_with given back", W.settings.start_with == "last"
         and W.settings.grimoire_start_with == nil)
     check("no restart: Preparing Grimoire... closed", #W.closed == 1)
     check("no restart: says so", told("Grimoire could not start. See grimoire/grimoire.log."))
     W.restart_error = false
     g:onOpenGrimoire()
     check("no restart: Open works again", wrapped() and at("restart") ~= nil)
+end
+
+do -- From a book, KOReader closes it and restarts on its next tick, once Open has returned.
+    world("open-book")
+    local g = koreader(true)
+    g:onOpenGrimoire()
+    check("open from a book: the restart waits for the next tick", wrapped() and is_file(W.marker)
+        and at("exitOrRestart") ~= nil and not at("onClose") and not at("restart"))
+    run_ticks()
+    check("open from a book: the book closes, then KOReader restarts",
+        at("onClose") ~= nil and at("restart") ~= nil and at("onClose") < at("restart"))
+    W.calls = {}
+    Device:exit()
+    check("open from a book: KOReader's own exit, then grimoire.sh --hosted koreader",
+        at("exit") == 1 and hosted_runs() == 1 and not is_file(W.marker))
+end
+
+do -- The book will not close: that fails on the tick, past the plugin's pcall, and ends reader.lua
+    -- with no Device:exit(), so no Grimoire (koreader.sh then puts the Kindle UI back). The launch
+    -- marker tells the user at KOReader's next start, which also gives start_with back.
+    world("restart-error-book")
+    W.settings.start_with = "filemanager"
+    W.restart_error = true
+    local g = koreader(true)
+    g:onOpenGrimoire()
+    check("book will not close: Open goes ahead up to the tick", wrapped() and is_file(W.marker)
+        and W.settings.start_with == "last")
+    check("book will not close: the failure ends KOReader", not pcall(run_ticks))
+    check("book will not close: no restart, no Grimoire", not at("restart") and hosted_runs() == 0)
+    check("book will not close: the marker stays", is_file(W.marker))
+    W.restart_error = false
+    W.shown, W.scheduled = {}, {}
+    koreader(false)
+    check("book will not close, next start: start_with given back", W.settings.start_with == "filemanager"
+        and W.settings.grimoire_start_with == nil)
+    check("book will not close, next start: the marker is consumed", not is_file(W.marker))
+    check("book will not close, next start: one message, once the screen is up", #W.scheduled == 1)
+    if W.scheduled[1] then W.scheduled[1]() end
+    check("book will not close, next start: Grimoire could not start",
+        told("Grimoire could not start. See grimoire/grimoire.log."))
 end
 
 do -- Back to the book: KOReader's own start reopens it; start_with is borrowed for one start.
@@ -440,6 +500,7 @@ do -- Back to the book: KOReader's own start reopens it; start_with is borrowed 
         W.settings.lastfile = W.us .. "/documents/book.epub"
         local g = koreader(c[2])
         g:onOpenGrimoire()
+        run_ticks()
         check("from " .. c[1] .. ": KOReader starts with " .. c[4], W.settings.start_with == c[4])
         check("from " .. c[1] .. ": the original kept aside only when borrowed",
             (W.settings.grimoire_start_with ~= nil) == (c[3] ~= c[4]))
