@@ -56,12 +56,15 @@ static Dev g_pen = {.fd = -1}, g_touch = {.fd = -1};
 static int g_orient_fd = -1;  // accelerometer orientation codes (bma4xy_feature on the Scribe 2)
 // Power state from the Kindle's power service (the events KOReader uses for its screensaver).
 // A child shell loops `lipc-wait-event` in one-shot mode: each run prints a single line and
-// exits, which flushes it. (The continuous -m mode block-buffers into a pipe: on device 2026-10-10
-// no event ever arrived.)
+// exits, which flushes it. (The continuous -m mode looked block-buffered into a pipe on device
+// 2026-10-10, but the launcher had preventScreenSaver 1 set that day, which alone stops every
+// sleep; KOReader reads `-m -s 0` through a pipe. An empty /mnt/us/grimoire/watcher-multi runs it
+// that way, for a device test: see powerd_start.)
 static int g_powerd_fd = -1;
 static pid_t g_powerd_pid = -1;
 static char g_powerd_buf[512];
 static size_t g_powerd_len;
+static int g_powerd_noise;    // watcher lines that are not events (failures, errors), for the log's sake
 static int g_rot;             // logical screen rotation, quarter turns clockwise
 static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
 static struct {
@@ -508,7 +511,26 @@ static void handle_orient_fd(void) {
     }
 }
 
+// The watcher shell. `-s 0` waits with no timeout (KOReader and Amazon's own scripts always pass
+// -s). A run that fails prints a marker line (handle_powerd_fd logs it) and the loop tries again
+// 2 s later. lipc-wait-event runs in the background so that the TERM trap can stop it: the shell
+// gets TERM when Grimoire goes, even on a crash (PR_SET_PDEATHSIG), and takes its child along.
+// No more event names in the one-shot loop: each one is one more restart around suspend and
+// resume, and an outOfScreenSaver could fall into a restart's gap.
+#define WATCH_EVENTS "com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
+#define WATCH_FAILED "grimoire-watcher-failed"
+#define WATCH_TRAP "trap 'kill $w 2>/dev/null; exit 0' TERM; "
+static const char k_watch_one_shot[] = WATCH_TRAP
+    "while :; do lipc-wait-event -s 0 " WATCH_EVENTS " 2>&1 & w=$!; "
+    "wait $w || { echo \"" WATCH_FAILED " $?\"; sleep 2; }; done";
+// /mnt/us/grimoire/watcher-multi: one continuous run for every event, KOReader's way (no gap
+// between runs), for a device test of whether -m output reaches Grimoire through the pipe.
+static const char k_watch_multi[] = WATCH_TRAP
+    "while :; do lipc-wait-event -m -s 0 " WATCH_EVENTS " 2>&1 & w=$!; "
+    "wait $w; echo \"" WATCH_FAILED " $?\"; sleep 2; done";
+
 static void powerd_start(void) {
+    bool multi = access("/mnt/us/grimoire/watcher-multi", F_OK) == 0;
     int p[2];
     if (pipe(p) != 0) return;
     pid_t pid = fork();
@@ -525,17 +547,15 @@ static void powerd_start(void) {
         dup2(p[1], 1);
         close(p[0]);
         close(p[1]);
-        execlp("sh", "sh", "-c",
-               "while :; do lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver"
-               " || sleep 2; done",
-               (char *)NULL);
+        execlp("sh", "sh", "-c", multi ? k_watch_multi : k_watch_one_shot, (char *)NULL);
         _exit(127);
     }
     close(p[1]);
     fcntl(p[0], F_SETFL, O_NONBLOCK);
     g_powerd_fd = p[0];
     g_powerd_pid = pid;
-    qlog("input: watching the power service (pid %d)", (int)pid);
+    qlog("input: watching the power service (pid %d): %s", (int)pid,
+         multi ? "one continuous lipc-wait-event -m (the watcher-multi switch)" : "one-shot lipc-wait-event runs");
 }
 
 static void handle_powerd_fd(void) {
@@ -553,7 +573,6 @@ static void handle_powerd_fd(void) {
     char *line;
     while ((line = strchr(g_powerd_buf, '\n'))) {
         *line = 0;
-        qlog("input: power service: %s", g_powerd_buf);
         InEvent e = {0};
         if (!strncmp(g_powerd_buf, "goingToScreenSaver", 18)) e.type = IN_SLEEP;
         // Only outOfScreenSaver is a wake. (wakeupFromSuspend is not: the Kindle also resumes
@@ -562,9 +581,18 @@ static void handle_powerd_fd(void) {
         else if (!strncmp(g_powerd_buf, "outOfScreenSaver", 16))
             e.type = IN_WAKE;
         if (e.type) {
+            qlog("input: power service: %s", g_powerd_buf);
             e.value = atoi(g_powerd_buf + strcspn(g_powerd_buf, " "));
             e.t_ms = now_ms();
             q_push(e);
+        } else if (g_powerd_noise++ < 20 || g_powerd_noise % 100 == 0) {
+            // A failed run, or what lipc-wait-event said on the way (its errors come through
+            // too). A watcher failing over and over would fill the log: the first 20, then 1 in 100.
+            if (!strncmp(g_powerd_buf, WATCH_FAILED, strlen(WATCH_FAILED)))
+                qlog("input: power service watcher failed, retrying (lipc-wait-event exit status%s; watcher message %d)",
+                     g_powerd_buf + strlen(WATCH_FAILED), g_powerd_noise);
+            else
+                qlog("input: power service watcher said: %s", g_powerd_buf);
         }
         size_t used = (size_t)(line - g_powerd_buf) + 1;
         memmove(g_powerd_buf, line + 1, g_powerd_len - used + 1);
