@@ -47,6 +47,8 @@ int app_init(App *a, int w, int h, float dpi) {
     if (canvas_init(&a->screen, w, h) != 0) return -1;
     store_set_device(dpi, w, h);
     settings_load(&a->settings);
+    qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
+         a->settings.side_button);
     if (a->settings.pen_calib.valid || a->settings.touch_calib.valid)
         input_set_calib(a->settings.pen_calib.valid ? &a->settings.pen_calib : NULL,
                         a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);

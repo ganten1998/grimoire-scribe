@@ -6,6 +6,7 @@
 #include "app.h"
 
 #ifdef GRIMOIRE_KINDLE
+#include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
 // The launcher's watchdog kills Grimoire and restores the Kindle UI if this file goes stale,
@@ -17,6 +18,48 @@ static void heartbeat(void) {
         if (write(fd, "1", 1) < 0) { /* best effort */ }
         close(fd);
     }
+}
+
+// The value of the first "<key> : value" line of a /proc file, trimmed ("?" if absent).
+static void proc_value(const char *file, const char *key, char *out, size_t cap) {
+    strlcpy_q(out, "?", cap);
+    FILE *f = fopen(file, "r");
+    if (!f) return;
+    char line[256];
+    size_t kl = strlen(key);
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, key, kl) || (line[kl] != ':' && !isspace((unsigned char)line[kl]))) continue;
+        char *v = strchr(line, ':');
+        if (!v) continue;
+        for (v++; isspace((unsigned char)*v); v++) {
+        }
+        v[strcspn(v, "\r\n")] = 0;
+        strlcpy_q(out, v, cap);
+        break;
+    }
+    fclose(f);
+}
+
+// What the device is, at the top of grimoire.log, so a tester's log answers the questions about
+// their Kindle. Nothing that identifies the unit or a network: people attach this log to public
+// issues, so /proc/usid gives only its first 6 characters (the model code, not the serial number).
+static void log_device(void) {
+    char code[8] = "?";
+    FILE *f = fopen("/proc/usid", "r");
+    if (f) {
+        size_t n = fread(code, 1, 6, f);
+        code[n] = 0;
+        for (size_t i = 0; i < n; i++)
+            if (!isalnum((unsigned char)code[i])) code[i] = '?';
+        fclose(f);
+    }
+    char total[32], avail[32], part[32], hw[64];
+    proc_value("/proc/meminfo", "MemTotal", total, sizeof total);
+    proc_value("/proc/meminfo", "MemAvailable", avail, sizeof avail);
+    proc_value("/proc/cpuinfo", "CPU part", part, sizeof part);
+    proc_value("/proc/cpuinfo", "Hardware", hw, sizeof hw);
+    qlog("device: model code %s (the first 6 characters of /proc/usid)", code[0] ? code : "?");
+    qlog("device: memory %s total, %s available; CPU part %s, hardware %s", total, avail, part, hw);
 }
 #endif
 
@@ -51,6 +94,9 @@ int main(int argc, char **argv) {
     if (!root || !*root) root = "./grimoire-data";
 #endif
     qlog("Grimoire %s starting, data in %s", GRIMOIRE_VERSION, root);
+#ifdef GRIMOIRE_KINDLE
+    log_device();
+#endif
     if (store_init(root) != 0) return 1;
 
     int w, h;

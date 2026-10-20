@@ -658,12 +658,17 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         return -1;
     }
     struct dirent *e;
+    int power_keys = 0;
+    char power_path[300] = "";
     while ((e = readdir(d))) {
         if (strncmp(e->d_name, "event", 5)) continue;
         char path[300];
         snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-        if (fd < 0) continue;
+        if (fd < 0) {
+            qlog("input: cannot open %s: %s", path, strerror(errno));
+            continue;
+        }
         char name[64] = "?";
         ioctl(fd, EVIOCGNAME(sizeof name), name);
         unsigned long evb[NLONGS(EV_MAX + 1)] = {0}, keyb[NLONGS(KEY_MAX + 1)] = {0}, absb[NLONGS(ABS_MAX + 1)] = {0};
@@ -694,6 +699,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                    test_bit(keyb, BTN_TOOL_PEN);
         bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
         bool power = !pen && !touch && has_key && test_bit(keyb, KEY_POWER);
+        if (has_key && test_bit(keyb, KEY_POWER)) power_keys++;
         // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
         if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
             struct input_absinfo ai = {0};
@@ -706,6 +712,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                 qlog("input: orientation sensor %s (%s), current code %d -> %d", path, name, ai.value, g_caps.orientation);
                 continue;
             }
+            qlog("input: %s (%s) has ABS_PRESSURE %d..%d, outside an orientation sensor's 10..30: not used for "
+                 "rotation", path, name, ai.minimum, ai.maximum);
         }
         // The scaled pen (axis maxima match the screen) drives the pointer; another pen device,
         // if any, only supplies pressure + tilt.
@@ -762,12 +770,21 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         } else if (power && g_power_fd < 0) {
             g_power_fd = fd;
             g_caps.has_power = true;
+            strlcpy_q(power_path, path, sizeof power_path);
             qlog("input: power key %s (%s)", path, name);
         } else {
+            if (power) qlog("input: %s (%s) is another power key, not watched", path, name);
             close(fd);
         }
     }
     closedir(d);
+    // The first power key found is the only one watched: if another device (a virtual one, say)
+    // is the one that reports presses, Grimoire never sees the button.
+    if (power_keys > 1)
+        qlog("input: WARNING %d devices report a power key; watching only %s", power_keys,
+             power_path[0] ? power_path : "none of them");
+    if (g_power_fd < 0) qlog("input: WARNING no power key found: no fallbacks, and no 4 s hold to leave");
+    if (!g_caps.has_orientation) qlog("input: no orientation sensor found");
     if (g_pen.fd < 0 && g_wacom.fd >= 0) {
         // Only a raw digitizer: use it for everything (calibration maps its axes).
         g_pen = g_wacom;
