@@ -1366,9 +1366,9 @@ TEST(notebook_on_a_template) {
     for (int y = 20; y < 400; y += 25) memset(lines.px + (size_t)y * 300, 140, 300);
     char path[700];
     template_file("Planner week.png", &lines, path, sizeof path);
-    PaperKind k = PAPER_BLANK;
     const char *why = "";
-    CHECK(template_install(&nb, path, &k, &why) == 0 && store_start_on(&nb, k) == 0 && nb.paper == k);
+    CHECK(template_start_notebook(&nb, path, &why) == 0 && paper_is_image(nb.paper));
+    PaperKind k = nb.paper;
     NotebookInfo back;
     CHECK(store_load_info(nb.id, &back) == 0 && back.paper == k);
     CHECK(beta_paper_sanitize((uint32_t)k, 1u) == 1u);  // (1.0.0-beta: Medium rule)
@@ -1442,6 +1442,143 @@ TEST(card_drawn_again_with_its_picture) {
     canvas_free(&white);
     unlink(path);
     bgpicture_free(&g);
+}
+
+// The editor writing the notebook's card while the job draws it (leaving page 1, which it saves
+// first): the job draws the card again from page 1 as it is then, and writes that, never a mix of
+// the two; one that keeps changing is left as the editor wrote it after three tries. No file of
+// the job's is left behind.
+static NotebookInfo g_meanwhile;
+static int g_meanwhile_writes, g_meanwhile_max;
+
+static void editor_meanwhile(const char *id) {  // (in the job's child)
+    if (strcmp(id, g_meanwhile.id) || g_meanwhile_writes >= g_meanwhile_max) return;
+    g_meanwhile_writes++;
+    Page *p = NULL;
+    if (store_load_page(&g_meanwhile, 0, PW, PH, &p) == 0 && p) {
+        page_add(p, line_stroke(TOOL_PENCIL, 100.f + 60.f * (float)g_meanwhile_writes, 40u + (uint32_t)g_meanwhile_writes));
+        store_save_page(&g_meanwhile, 0, p);
+        page_free(p);
+    }
+    Canvas t;
+    if (canvas_init(&t, PW / 3, PH / 3) == 0) {
+        canvas_fill(&t, (Rect){0, 0, t.w, t.h}, (uint8_t)(10 * g_meanwhile_writes));
+        store_save_thumb(id, &t);
+        canvas_free(&t);
+    }
+}
+
+TEST(card_written_meanwhile) {
+    BgPicture g = solid(300, 400, 1, 255);
+    for (int y = 30; y < 400; y += 40) memset(g.px + (size_t)y * 300, 60, 300);
+    for (int round = 0; round < 2; round++) {
+        char path[700], name[64];
+        snprintf(name, sizeof name, "Meanwhile %d.png", round);
+        g.px[round] = 0;  // (another picture each round: its own job)
+        template_file(name, &g, path, sizeof path);
+        CHECK(store_create("Meanwhile", "", PAPER_MEDIUM, &g_meanwhile) == 0);
+        Canvas white;
+        canvas_init(&white, PW / 3, PH / 3);
+        CHECK(store_save_thumb(g_meanwhile.id, &white) == 0);  // (the editor's, on white paper)
+        canvas_free(&white);
+        // (All set before the job's child is forked, as the template goes in.)
+        g_meanwhile_writes = 0;
+        g_meanwhile_max = round ? 5 : 1;  // once; then every time
+        store_test_before_card_replace = editor_meanwhile;
+        log_capture();
+        const char *why = "";
+        CHECK(template_start_notebook(&g_meanwhile, path, &why) == 0);
+        drain_jobs(NULL);
+        char *log = log_captured();
+        store_test_before_card_replace = NULL;
+        bgimage_retry_missing();
+        Canvas card, want;
+        Page *p = NULL;
+        CHECK(store_load_thumb(g_meanwhile.id, &card) == 0 && store_read_page(&g_meanwhile, 0, &p) == 0 && p);
+        if (round == 0) {
+            // Drawn again from page 1 with the editor's stroke, over the editor's card.
+            CHECK(p->n == 1);
+            canvas_init(&want, PW / 3, PH / 3);
+            page_render_thumb(&want, p, DPI);
+            CHECK(card.w == want.w && card.h == want.h && !memcmp(card.px, want.px, (size_t)want.w * want.h));
+            canvas_free(&want);
+        } else {
+            // The editor wrote one each time (three): its last stays, whole.
+            CHECK(p->n == 3 && log && strstr(log, "changed each time"));
+            bool all = card.px != NULL;
+            for (int i = 0; all && i < card.w * card.h; i++) all = card.px[(size_t)(i / card.w) * card.stride + (size_t)(i % card.w)] == 30;
+            CHECK(all);
+        }
+        free(log);
+        page_free(p);
+        canvas_free(&card);
+        char dir[700];
+        snprintf(dir, sizeof dir, "%s/notebooks/%s", root, g_meanwhile.id);
+        CHECK(count_prefix(dir, "thumb.pgm.") == 0);
+        unlink(path);
+    }
+    bgpicture_free(&g);
+}
+
+// The pieces of it: thumb.pgm's bytes, written over only while they are what was read, and the
+// stamp a card read from it keeps (store_thumb_stamp), which another write of it changes.
+TEST(card_replaced_only_if_same) {
+    NotebookInfo nb;
+    CHECK(store_create("Card file", "", PAPER_MEDIUM, &nb) == 0);
+    size_t len = 7;
+    uint8_t *was = store_read_thumb_file(nb.id, &len);
+    CHECK(!was && len == 0 && store_thumb_stamp(nb.id) == 0);
+    Canvas a, b, got;
+    canvas_init(&a, 40, 50);
+    canvas_init(&b, 40, 50);
+    canvas_fill(&a, (Rect){0, 0, 40, 50}, 30);
+    canvas_fill(&b, (Rect){0, 0, 40, 50}, 200);
+    // None there, none read: written.
+    CHECK(store_replace_thumb_if_same(nb.id, &a, NULL, 0) == 0);
+    CHECK(store_load_thumb(nb.id, &got) == 0 && got.px[0] == 30);
+    canvas_free(&got);
+    uint64_t st = store_thumb_stamp(nb.id);
+    CHECK(st != 0 && (st & 1) && st == store_thumb_stamp(nb.id));
+    // Read, then written again by another (the editor): kept as that one wrote it.
+    was = store_read_thumb_file(nb.id, &len);
+    CHECK(was && len > 0);
+    CHECK(store_save_thumb(nb.id, &b) == 0 && store_thumb_stamp(nb.id) != st);
+    CHECK(store_replace_thumb_if_same(nb.id, &a, was, len) == 1);
+    CHECK(store_load_thumb(nb.id, &got) == 0 && got.px[0] == 200);
+    canvas_free(&got);
+    CHECK(store_replace_thumb_if_same(nb.id, &a, NULL, 0) == 1);  // (one is there, none was read)
+    free(was);
+    // Read as it is now: written.
+    was = store_read_thumb_file(nb.id, &len);
+    CHECK(store_replace_thumb_if_same(nb.id, &a, was, len) == 0);
+    CHECK(store_load_thumb(nb.id, &got) == 0 && got.px[0] == 30);
+    canvas_free(&got);
+    free(was);
+    char dir[700];
+    snprintf(dir, sizeof dir, "%s/notebooks/%s", root, nb.id);
+    CHECK(count_prefix(dir, "thumb.pgm.") == 0);
+    canvas_free(&a);
+    canvas_free(&b);
+}
+
+// New notebook on a template that cannot be used (a file that is no picture): the notebook stays
+// on the paper it was made on, its first page too, and nothing is put into it.
+TEST(new_notebook_template_refused) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/templates/Not a picture.png", root);
+    put_file(path, "no picture", 10);
+    NotebookInfo nb;
+    CHECK(store_create("Refused", "", PAPER_WIDE, &nb) == 0);
+    const char *why = "";
+    CHECK(template_start_notebook(&nb, path, &why) == -1 && why[0] && nb.paper == PAPER_WIDE && !bg_busy());
+    NotebookInfo back;
+    Page *p = NULL;
+    CHECK(store_load_info(nb.id, &back) == 0 && back.paper == PAPER_WIDE);
+    CHECK(store_read_page(&back, 0, &p) == 0 && p && p->paper == PAPER_WIDE);
+    page_free(p);
+    char bgdir[700];
+    CHECK(bgimage_dir(nb.id, bgdir, sizeof bgdir) == 0 && !exists(bgdir));
+    unlink(path);
 }
 
 // bg/index.ini there but not readable (a card error, a permission): it is never saved over, which
@@ -1978,6 +2115,9 @@ int main(void) {
     RUN(listed_pages_restored_at_open);
     RUN(notebook_on_a_template);
     RUN(card_drawn_again_with_its_picture);
+    RUN(card_written_meanwhile);
+    RUN(card_replaced_only_if_same);
+    RUN(new_notebook_template_refused);
     RUN(unreadable_index_kept);
     RUN(unreadable_template_tried_later);
     RUN(natural_order);

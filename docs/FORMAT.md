@@ -462,7 +462,11 @@ once and the picture is made in the background; until it is there the page draws
 notebook made on one in New notebook has that image paper as its own `paper` (`notebook.ini`), and
 its first page has it too. The background job that makes a template's picture for a notebook also
 draws the notebook's `thumb.pgm` again when its first page is on that picture (the editor may
-have drawn it on white paper).
+have drawn it on white paper): to `thumb.pgm.card.tmp`, renamed over `thumb.pgm` only if that
+still holds, byte for byte, what it held before the job read the first page (checked just before
+the rename). The editor, which may have the notebook open, writes the card itself when it leaves
+the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
+the card again from the page as it is then, and after three tries leaves the editor's.
 
 ### Imports: `root/import/<Name>/`
 

@@ -30,10 +30,12 @@ expect screen is library
 expect library.card.1 is thumb
 expect library.card.1.luma is 255
 shot 01-card-white-paper
+expect library.cards_redrawn is 0
 # (the template's picture: a slowed job, up to 10 s)
 wait 10000
 expect library.card.1 is thumb
 expect library.card.1.luma is 247
+expect library.cards_redrawn is 1
 shot 02-card-with-the-picture
 tap 326 608
 wait 600

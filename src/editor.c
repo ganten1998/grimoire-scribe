@@ -154,6 +154,11 @@ struct EditorState {
     // since (picture_gen: bgimage_generation then).
     bool picture_missing;
     unsigned picture_gen;
+    // A cache drew a picture white the same way (the paper erase strokes restore toward, the More
+    // papers tile's preview, a Pages preview): they are all dropped once a job has ended since the
+    // first such draw (white_gen), whichever page is open by then.
+    bool white_caches;
+    unsigned white_gen;
 };
 
 #define S (a->ed)
@@ -333,6 +338,13 @@ static void draw_panel(App *a) {
     }
 }
 
+// A cache was just drawn with a picture white in it (bgimage_take_missing; at generation gen):
+// it is dropped once a background job has ended since (pictures_arrived).
+static void note_white(App *a, unsigned gen) {
+    if (!S->white_caches || (int)(gen - S->white_gen) < 0) S->white_gen = gen;
+    S->white_caches = true;
+}
+
 static const Canvas *paper_preview(App *a, PaperKind k) {
     Canvas *c;
     if (!paper_is_known(k)) k = PAPER_BLANK;  // a newer version's paper: blank, as it renders here
@@ -354,8 +366,13 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
     if (!c->px) {
         Canvas full;
         if (canvas_init(&full, S->pgw, S->pgh) != 0) return NULL;
-        if (paper_is_image(k)) bgimage_render(&full, S->nb.id, k, (Rect){0, 0, S->pgw, S->pgh});
-        else paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+        if (paper_is_image(k)) {
+            bgimage_take_missing();  // (what drew white before)
+            bgimage_render(&full, S->nb.id, k, (Rect){0, 0, S->pgw, S->pgh});
+            if (bgimage_take_missing()) note_white(a, bgimage_generation());
+        } else {
+            paper_render(&full, k, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+        }
         if (canvas_init(c, S->pgw / 6, S->pgh / 6) == 0) canvas_downsample_keep_lines(c, &full, 0.6f);
         canvas_free(&full);
     }
@@ -557,6 +574,7 @@ static const Canvas *pthumb(App *a, int index) {
     if (canvas_init(t, S->pgw / 4, S->pgh / 4) != 0) return NULL;
     if (index == S->index) {
         canvas_downsample_keep_lines(t, &S->page_canvas, 0.35f);
+        if (S->picture_missing) note_white(a, S->picture_gen);  // (from the page as it drew white)
         return t;
     }
     // Pages visited this session are in memory; others are read just for the preview.
@@ -570,7 +588,9 @@ static const Canvas *pthumb(App *a, int index) {
     }
     Canvas full;
     if (canvas_init(&full, S->pgw, S->pgh) == 0) {
+        bgimage_take_missing();
         page_render(&full, p, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+        if (bgimage_take_missing()) note_white(a, bgimage_generation());
         canvas_downsample_keep_lines(t, &full, 0.35f);
         canvas_free(&full);
     }
@@ -936,8 +956,9 @@ static void close_notebook(App *a) {
     free_histories(a);
     pthumbs_clear(a);
     canvas_free(&S->paper);
+    canvas_free(&S->image_prev);  // (it may have drawn a picture white: made again from the file)
     tplsheet_close(&S->ts);
-    S->picture_missing = false;
+    S->picture_missing = S->white_caches = false;
     S->nnoted = 0;
     S->pages_open = false;
     S->open = false;
@@ -1002,7 +1023,9 @@ static const Canvas *page_paper(App *a) {
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
     if (fresh || S->paper_k != S->page->paper) {
         S->paper_k = S->page->paper;
+        bgimage_take_missing();
         page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);  // (an image paper's picture too)
+        if (bgimage_take_missing()) note_white(a, bgimage_generation());
     }
     return c;
 }
@@ -1858,25 +1881,38 @@ static void write_thumb_if_needed(App *a) {
     S->thumb_dirty = false;
 }
 
-// A background job ended since the open page drew its picture white (a template's, being made for
-// this notebook): the page is drawn again, with the picture if it is there now, and so is what
-// was drawn of it while it was missing (the paper erase strokes restore toward, the previews).
-static void picture_arrived(App *a) {
-    canvas_free(&S->paper);
-    canvas_free(&S->image_prev);
-    pthumbs_clear(a);
-    render_page_full(a);
-    if (S->picture_missing) return;  // (another job: this picture is still to come)
-    if (S->index == 0) S->thumb_dirty = true;  // the Library's card of the notebook
-    compose_all(a, REFRESH_FULL);
+// A background job ended since the open page (page), or a cache (caches: note_white), drew a
+// picture white (a template's, being made for this notebook): they are drawn again, with the
+// picture if it is there now, and so is what shows them.
+static void pictures_arrived(App *a, bool page, bool caches) {
+    if (caches) {
+        S->white_caches = false;
+        canvas_free(&S->paper);
+        canvas_free(&S->image_prev);
+        pthumbs_clear(a);
+    }
+    if (page) render_page_full(a);
+    if (page && !S->picture_missing) {  // (still missing: another job ended, this one is to come)
+        if (S->index == 0) S->thumb_dirty = true;  // the Library's card of the notebook
+        compose_all(a, REFRESH_FULL);
+    } else if (caches && S->pages_open) {
+        compose_all(a, REFRESH_UI);
+    } else if (caches && S->paper_open) {
+        draw_paper_sheet(a);
+        app_invalidate(a, S->paper_rect, REFRESH_UI);
+    }
 }
 
 void editor_tick(App *a, uint32_t now) {
     if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) &&
         (int32_t)(now - S->settle_at) >= 0)
         settle_now(a);
-    if (S->open && S->picture_missing && S->picture_gen != bgimage_generation() && S->owner == OWN_NONE && !S->pinching)
-        picture_arrived(a);
+    // (Never under a stroke: an erase stroke restores toward S->paper as it goes.)
+    if (S->open && S->owner == OWN_NONE && !S->pinching) {
+        bool page = S->picture_missing && S->picture_gen != bgimage_generation();
+        bool caches = S->white_caches && S->white_gen != bgimage_generation();
+        if (page || caches) pictures_arrived(a, page, caches);
+    }
     Rect d;
     if (S->open && S->owner == OWN_NONE && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once.

@@ -1,8 +1,10 @@
 // tplsheet.h: the Templates sheet, behind the "More papers..." tile of the editor's Paper sheet and
 // of New notebook: the pictures in grimoire/templates/ (templates.h) as tiles, a page of them at a
 // time, to pick one as paper. A tile's preview is read only while the tile is on screen, and a
-// tile whose preview the background job has not made yet shows a placeholder until it has. Also
-// the layout the paper pickers share: their grid of tiles and the labels under them.
+// tile whose preview the background job has not made yet shows a placeholder until it has (one
+// the job finds it cannot use keeps its place, crossed out, until the sheet opens again: no tile
+// moves under the pen). Also the layout the paper pickers share: their grid of tiles and the
+// labels under them.
 //
 // A modal hosted by the editor (in the Paper sheet's place) and the library (over New notebook).
 // It never shows or logs more of a template than its name on screen: names are the owner's.
@@ -51,8 +53,8 @@ typedef struct {
     Press press;
     Template *t;              // every template of the folder (template_scan), bad ones too
     int nt;
-    int *shown;               // the ones the sheet offers (not bad), indices into t
-    int n;
+    int *shown;               // its tiles, indices into t: the ones not bad as it opened (one the
+    int n;                    // previews job finds bad since keeps its tile, offered no more)
     int anchor;               // a template to keep in view, an index into shown: the first of the
                               // page last paged to (the selected one's, at first)
     int page, pages, per;     // as last laid out

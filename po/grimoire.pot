@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 12:00-0500\n"
+"POT-Creation-Date: 2026-10-20 13:34-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -402,15 +402,15 @@ msgid "Paper for this page"
 msgstr ""
 
 #. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
-#. Templates sheet, of pictures copied into grimoire/templates to write on as paper (one line
-#. of 222 px at 31 px in New notebook sideways, or two lines of 192).
+#. Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
+#. at 31 px in New notebook sideways, on one line or two).
 #: src/editor.c src/library.c
 msgid "More papers..."
 msgstr ""
 
 #. TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
-#. a sheet that builds a music paper from parts (one line of 222 px at 31 px in New notebook
-#. sideways, or two lines of 192).
+#. a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
+#. one line or two).
 #: src/editor.c src/library.c
 msgid "Custom music..."
 msgstr ""

@@ -57,7 +57,8 @@ void paper_tile_more(Canvas *c, Rect tr) {
 
 // ---- the sheet ----
 
-// The templates the sheet offers (every one not bad), and whether any of them waits for a preview.
+// The templates the sheet offers as it opens (every one not bad), and whether any of them waits for
+// a preview.
 static void rebuild_shown(TplSheet *s) {
     s->n = 0;
     s->pending = false;
@@ -66,6 +67,21 @@ static void rebuild_shown(TplSheet *s) {
         s->shown[s->n++] = i;
         if (!s->t[i].ready) s->pending = true;
     }
+}
+
+// A shown template the previews job found it cannot use since the sheet opened keeps its tile, so
+// that no tile moves under the pen, until the sheet opens again. How many it offers: the others.
+static int usable(const TplSheet *s) {
+    int u = 0;
+    for (int k = 0; k < s->n; k++) u += !s->t[s->shown[k]].bad;
+    return u;
+}
+
+// Whether one of those still waits for its preview.
+static bool waiting(const TplSheet *s) {
+    for (int k = 0; k < s->n; k++)
+        if (!s->t[s->shown[k]].bad && !s->t[s->shown[k]].ready) return true;
+    return false;
 }
 
 // The offered template that is the paper now (an index into shown), or -1.
@@ -134,6 +150,21 @@ static void tile_waiting(Canvas *c, Rect tr) {
     ui_icon(c, ICON_MORE, (Rect){tr.x + (tr.w - s) / 2, tr.y + (tr.h - s) / 2, s, s}, 170);
 }
 
+// A tile whose template the previews job found it cannot use since the sheet opened: a cross, in
+// gray. It cannot be picked, and is gone when the sheet opens again.
+static void tile_unusable(Canvas *c, Rect tr) {
+    int s = tr.w / 4;
+    ui_icon(c, ICON_CLOSE, (Rect){tr.x + (tr.w - s) / 2, tr.y + (tr.h - s) / 2, s, s}, 170);
+}
+
+// A paragraph of the empty state at y, centred, on the lines it takes (at most max, line px
+// apart): the y under it, so that every paragraph starts as far under the one before it.
+static int paragraph(Canvas *c, float px, Rect w, int y, const char *text, int max, int line) {
+    int n = clampi(font_wrap_lines(FONT_REGULAR, px, text, w.w, NULL), 1, max);
+    font_draw_wrapped(c, FONT_REGULAR, px, (Rect){w.x, y, w.w, n * line}, text, max, line, true, 0);
+    return y + n * line;
+}
+
 // No template to offer: how to add some.
 static void draw_empty(TplSheet *s, App *a, Rect r) {
     Canvas *c = &a->screen;
@@ -149,24 +180,23 @@ static void draw_empty(TplSheet *s, App *a, Rect r) {
     snprintf(text, sizeof text, _("Copy PNG or JPG pictures into the %s folder over USB while Grimoire is closed."),
              "grimoire/templates");
     float ts = ui_text_size();
-    int line = ui_px(62), lines = 4;
-    font_draw_wrapped(c, FONT_REGULAR, ts, (Rect){w.x, y, w.w, lines * line}, text, lines, line, true, 0);
-    y += font_wrap_lines(FONT_REGULAR, ts, text, w.w, NULL) * line + ui_px(40);
+    int line = ui_px(62);
+    y = paragraph(c, ts, w, y, text, 4, line) + ui_px(40);
     // TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
     // 2180); README.txt is the file Grimoire wrote in that folder.
     const char *more = _("Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 pixels. The "
                          "README.txt there says more.");
-    font_draw_wrapped(c, FONT_REGULAR, ts, (Rect){w.x, y, w.w, lines * line}, more, lines, line, true, 0);
-    y += font_wrap_lines(FONT_REGULAR, ts, more, w.w, NULL) * line + ui_px(40);
-    if (s->nt > s->n) {
-        int bad = s->nt - s->n;
+    y = paragraph(c, ts, w, y, more, 4, line) + ui_px(40);
+    int bad = 0;
+    for (int i = 0; i < s->nt; i++) bad += s->t[i].bad;
+    if (bad) {
         // TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
         // does not read, or too big): how many; %s is the log file, which says which (by number). Up
         // to 2 lines of 1560 px at 34 px, sideways 2180.
         snprintf(text, sizeof text, NG_("Grimoire cannot use %d file there (see %s).",
                                         "Grimoire cannot use %d files there (see %s).", bad),
                  bad, "grimoire.log");
-        font_draw_wrapped(c, FONT_REGULAR, ui_small_size(), (Rect){w.x, y, w.w, 2 * line}, text, 2, line, true, 0);
+        paragraph(c, ui_small_size(), w, y, text, 2, line);
     }
 }
 
@@ -178,9 +208,9 @@ Rect tplsheet_draw(TplSheet *s, App *a) {
     // TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
     // write on as paper), which More papers... opens (1560 px at 64 px).
     Rect in = ui_sheet(c, s->rect, _("Templates"));
-    int gap = ui_px(30), bh = ui_px(140);
+    int gap = ui_px(30), bh = ui_px(140), offered = usable(s);
     s->per = g.cols * g.rows;
-    s->pages = s->n ? (s->n + s->per - 1) / s->per : 1;
+    s->pages = offered ? (s->n + s->per - 1) / s->per : 1;
     s->page = clampi(s->anchor / s->per, 0, s->pages - 1);
     Rect back = {in.x, in.y + in.h - bh, ui_px(380), bh};
     // TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
@@ -191,7 +221,7 @@ Rect tplsheet_draw(TplSheet *s, App *a) {
     int first = s->page * s->per;
     for (int k = 0; k < s->n; k++)
         if (k < first || k >= first + s->per) canvas_free(&s->t[s->shown[k]].thumb);
-    if (s->n == 0) {
+    if (!offered) {
         draw_empty(s, a, (Rect){in.x, in.y, in.w, back.y - in.y});
         return s->rect;
     }
@@ -201,14 +231,19 @@ Rect tplsheet_draw(TplSheet *s, App *a) {
         Template *t = &s->t[s->shown[i]];
         Rect tr = {in.x + (in.w - gridw) / 2 + (k % g.cols) * (g.tw + gap), in.y + (k / g.cols) * g.cell_h, g.tw, g.th};
         canvas_fill(c, tr, 255);
-        const Canvas *pv = template_thumb(t);
-        if (pv) canvas_blit_fit(c, pv, tr);
-        else tile_waiting(c, tr);
-        if (!pv) s->pending = true;  // (also a preview gone since the scan: made again, then shown)
+        const Canvas *pv = t->bad ? NULL : template_thumb(t);
+        if (pv) {
+            canvas_blit_fit(c, pv, tr);
+        } else if (t->bad) {
+            tile_unusable(c, tr);
+        } else {
+            tile_waiting(c, tr);
+            s->pending = true;  // (also a preview gone since the scan: made again, then shown)
+        }
         bool sel = i == s->selected;
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         tile_name(c, tr, t->name, sel);
-        if (pv) hits_add(&s->hits, (Rect){tr.x, tr.y, tr.w, tr.h + ui_px(90)}, TS_HIT_TILE, i);  // (one waiting is not)
+        if (pv) hits_add(&s->hits, (Rect){tr.x, tr.y, tr.w, tr.h + ui_px(90)}, TS_HIT_TILE, i);  // (none waiting, unusable)
     }
     if (s->pages > 1) {
         Rect nr = {in.x + in.w - ui_px(220), back.y, ui_px(220), bh};
@@ -273,7 +308,7 @@ bool tplsheet_tick(TplSheet *s, App *a, uint32_t now, Rect *dirty) {
     s->gen = bgimage_generation();
     s->next_check = now + CHECK_MS;
     if (template_refresh(s->t, s->nt) == 0) return false;
-    rebuild_shown(s);
+    s->pending = waiting(s);  // (a template found unusable keeps its tile: usable)
     s->selected = find_selected(s);
     tplsheet_draw(s, a);
     *dirty = s->rect;
@@ -293,7 +328,7 @@ int tplsheet_probe(const TplSheet *s, const char *key, char *out, size_t cap) {
     int ready = 0;
     for (int k = 0; open && k < s->n; k++) ready += s->t[s->shown[k]].ready;
     if (!strcmp(key, "count")) {
-        if (open) snprintf(out, cap, "%d", s->n);
+        if (open) snprintf(out, cap, "%d", usable(s));
         else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "ready")) {
         if (open) snprintf(out, cap, "%d", ready);

@@ -552,22 +552,44 @@ int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, 
     return 0;
 }
 
+int template_start_notebook(NotebookInfo *nb, const char *path, const char **why) {
+    PaperKind k;
+    if (template_install(nb, path, &k, why) != 0) return -1;
+    if (store_start_on(nb, k) == 0) return 0;
+    *why = "the notebook cannot be written";
+    return -1;
+}
+
 // The notebook's card (thumb.pgm, of its first page) when that page is on picture pic, drawn again
 // once the picture is made: the editor drew it on white paper if the notebook was left before (a
-// first page written on in the seconds a picture takes on the Kindle).
+// first page written on in the seconds a picture takes on the Kindle). The editor may have the
+// notebook open still, and write the card itself as this draws it (leaving page 1, which it saves
+// first, or closing): then the card is drawn again from page 1 as it is now, up to three times.
 static void redraw_card(const NotebookInfo *nb, uint32_t pic, float dpi) {
-    Page *p = NULL;
-    if (store_read_page(nb, 0, &p) != 0) return;
     int pw, ph;
     store_notebook_page_size(nb, &pw, &ph);
-    Canvas t;
-    if (paper_is_image(p->paper) && !paper_is_document(p->paper) && paper_image_id(p->paper) == pic &&
-        canvas_init(&t, pw / 3, ph / 3) == 0) {
-        page_render_thumb(&t, p, dpi);
-        if (store_save_thumb(nb->id, &t) != 0) qlog("templates: %s: its card could not be drawn again", nb->id);
-        canvas_free(&t);
+    for (int tries = 0; tries < 3; tries++) {
+        size_t was_len;
+        uint8_t *was = store_read_thumb_file(nb->id, &was_len);
+        Page *p = NULL;
+        Canvas t;
+        int rc = 0;  // (page 1 not on the picture: nothing to draw)
+        if (store_read_page(nb, 0, &p) != 0) {
+            rc = -1;
+        } else if (paper_is_image(p->paper) && !paper_is_document(p->paper) && paper_image_id(p->paper) == pic) {
+            rc = canvas_init(&t, pw / 3, ph / 3) == 0 ? 0 : -1;
+            if (rc == 0) {
+                page_render_thumb(&t, p, dpi);
+                rc = store_replace_thumb_if_same(nb->id, &t, was, was_len);
+                canvas_free(&t);
+            }
+        }
+        page_free(p);
+        free(was);
+        if (rc < 0) qlog("templates: %s: its card could not be drawn again", nb->id);
+        if (rc != 1) return;
     }
-    page_free(p);
+    qlog("templates: %s: its card changed each time it was drawn again: the editor's stays", nb->id);
 }
 
 // In the child: the picture template_install gave an id to, made for the notebook's page size.

@@ -1,6 +1,7 @@
 // test_tplsheet.c: the Templates sheet (src/tplsheet.h): the paper pickers' grid, its pages of
 // tiles and what stays in view through a turn, picking, Back and a tap outside, tiles that wait for
 // their previews, and which tile is the page's paper.
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -143,11 +144,15 @@ TEST(pages_of_tiles) {
     probe(&s, "ready", v);
     CHECK(!strcmp(v, "0"));
     CHECK(!find_hit(&s, TS_HIT_TILE, 0) && find_hit(&s, TS_HIT_BACK, 0) && find_hit(&s, TS_HIT_NEXT, 0));
-    // The previews job ends: the tiles fill in, the broken file goes, in natural order.
+    // The previews job ends: the tiles fill in, in natural order; the broken file is offered no more
+    // but keeps its tile (the last) while the sheet is open.
     CHECK(drain_jobs() == BG_TEMPLATE);
     Rect d;
     CHECK(tplsheet_tick(&s, &a, now_ms(), &d) && !rect_is_empty(d));
-    CHECK(s.n == 50 && !s.pending && !strcmp(s.t[s.shown[1]].name, "page-2") && !strcmp(s.t[s.shown[9]].name, "page-10"));
+    CHECK(s.n == 51 && s.t[s.shown[50]].bad && !s.pending && !strcmp(s.t[s.shown[1]].name, "page-2") &&
+          !strcmp(s.t[s.shown[9]].name, "page-10"));
+    probe(&s, "count", v);
+    CHECK(!strcmp(v, "50"));
     probe(&s, "ready", v);
     CHECK(!strcmp(v, "50"));
     probe(&s, "pages", v);
@@ -288,6 +293,232 @@ TEST(empty_sheet) {
     canvas_free(&a.screen);
 }
 
+// A file the previews job finds it cannot use, sorted before the page shown: the tiles on that page
+// stay where they were (it keeps its tile, crossed out, until the sheet opens again).
+TEST(bad_file_keeps_its_place) {
+    char cmd[800];
+    snprintf(cmd, sizeof cmd, "rm -rf '%s/templates'", root);
+    CHECK(system(cmd) == 0);
+    templates_init();
+    char path[700], name[64];
+    snprintf(path, sizeof path, "%s/templates/0 broken.png", root);
+    CHECK(write_file_atomic(path, "no picture", 10) == 0);
+    for (int n = 1; n <= 40; n++) {
+        snprintf(name, sizeof name, "t%d.png", n);
+        put_template(n, name);
+    }
+    App a;
+    memset(&a, 0, sizeof a);
+    a.dpi = DPI;
+    screen(&a, 1860, 2480);
+    TplSheet s;
+    memset(&s, 0, sizeof s);
+    tplsheet_open(&s, &a, NULL, PAPER_BLANK, NULL);
+    tplsheet_draw(&s, &a);
+    Rect d;
+    const Hit *h = find_hit(&s, TS_HIT_NEXT, 0);
+    CHECK(h && tap(&s, &a, h->r, &d) == TS_CHANGED);
+    char before[64], v[64];
+    snprintf(before, sizeof before, "%s", s.t[s.shown[24]].name);  // page 2's first tile
+    CHECK(!strcmp(before, "t24"));
+    CHECK(drain_jobs() == BG_TEMPLATE);
+    CHECK(tplsheet_tick(&s, &a, now_ms(), &d));
+    probe(&s, "page", v);
+    CHECK(!strcmp(v, "2") && !strcmp(s.t[s.shown[24]].name, before) && find_hit(&s, TS_HIT_TILE, 24));
+    probe(&s, "count", v);
+    CHECK(!strcmp(v, "40") && s.n == 41 && s.t[s.shown[0]].bad && !s.pending);
+    // Back on page 1: the file's tile, which cannot be picked; opened again, it is gone.
+    h = find_hit(&s, TS_HIT_PREV, 0);
+    CHECK(h && tap(&s, &a, h->r, &d) == TS_CHANGED);
+    CHECK(!find_hit(&s, TS_HIT_TILE, 0) && find_hit(&s, TS_HIT_TILE, 1));
+    tplsheet_close(&s);
+    tplsheet_open(&s, &a, NULL, PAPER_BLANK, NULL);
+    tplsheet_draw(&s, &a);
+    CHECK(s.n == 40 && !strcmp(s.t[s.shown[0]].name, "t1") && find_hit(&s, TS_HIT_TILE, 0) && !bg_busy());
+    tplsheet_close(&s);
+    canvas_free(&a.screen);
+}
+
+static int count_previews(void) {
+    char dir[700];
+    snprintf(dir, sizeof dir, "%s/templates/.cache", root);
+    DIR *d = opendir(dir);
+    int n = 0;
+    struct dirent *e;
+    while (d && (e = readdir(d))) {
+        size_t l = strlen(e->d_name);
+        n += l > 4 && !strcmp(e->d_name + l - 4, ".pgm");
+    }
+    if (d) closedir(d);
+    return n;
+}
+
+// While the previews job runs (here: its child has not been reaped, so it still counts as running),
+// the sheet looks for the previews made so far every 1.5 s, and fills their tiles in before the job
+// is over; not sooner.
+TEST(fills_in_while_the_job_runs) {
+    App a;
+    memset(&a, 0, sizeof a);
+    a.dpi = DPI;
+    screen(&a, 1860, 2480);
+    put_template(88, "t0.png");  // first in natural order, no preview yet
+    int had = count_previews();
+    TplSheet s;
+    memset(&s, 0, sizeof s);
+    tplsheet_open(&s, &a, NULL, PAPER_BLANK, NULL);
+    tplsheet_draw(&s, &a);
+    CHECK(bg_busy() && s.pending && !s.t[s.shown[0]].ready && !find_hit(&s, TS_HIT_TILE, 0));
+    uint32_t until = now_ms() + 30000;
+    while (count_previews() == had && (int32_t)(now_ms() - until) < 0) usleep(5000);
+    CHECK(count_previews() == had + 1);
+    Rect d;
+    unsigned gen = bgimage_generation();
+    CHECK(!tplsheet_tick(&s, &a, s.next_check - 1, &d) && !s.t[s.shown[0]].ready);
+    CHECK(tplsheet_tick(&s, &a, s.next_check, &d) && s.t[s.shown[0]].ready && !s.pending);
+    CHECK(find_hit(&s, TS_HIT_TILE, 0) && bg_busy() && bgimage_generation() == gen);
+    drain_jobs();
+    tplsheet_close(&s);
+    canvas_free(&a.screen);
+}
+
+// The columns that hold ink (a pixel under 128) in r of c: *x0 the first, *x1 the last (-1, -1
+// for none).
+static void ink_columns(const Canvas *c, Rect r, int *x0, int *x1) {
+    *x0 = *x1 = -1;
+    for (int y = r.y; y < r.y + r.h; y++)
+        for (int x = r.x; x < r.x + r.w; x++)
+            if (c->px[(size_t)y * (size_t)c->stride + (size_t)x] < 128) {
+                if (*x0 < 0 || x < *x0) *x0 = x;
+                if (x > *x1) *x1 = x;
+            }
+}
+
+// UI-11: a paper tile's label never reaches past its tile (one wider than the tile goes on two
+// lines under it), so labels side by side never run into each other; a selected one, in bold,
+// stays within its column. In every language and style, in each picker's grid upright and
+// sideways.
+TEST(labels_keep_to_their_tiles) {
+    App a;
+    memset(&a, 0, sizeof a);
+    a.dpi = DPI;
+    PaperGrid g[6];
+    a.w = 1860, a.h = 2480;
+    paper_sheet_rect(&a, &g[0]);
+    a.w = 2480, a.h = 1860;
+    paper_sheet_rect(&a, &g[1]);
+    static const int box[4][2] = {{1640, 1590}, {1648, 1608}, {1720, 1070}, {1728, 1088}};  // New notebook's
+    for (int i = 0; i < 4; i++) g[2 + i] = paper_grid(PAPER_SHEET_TILES, box[i][0], box[i][1], 30, 100, 300, PAPER_GRID_MIN_COLS);
+    Canvas c;
+    CHECK(canvas_init(&c, 700, 600) == 0);
+    int gap = ui_px(30), wrapped = 0;
+    for (int l = 0; l < i18n_language_count(); l++) {
+        CHECK(i18n_set(i18n_language_code(l)));
+        for (int th = 0; th < 2; th++) {
+            ui_set_theme(th ? THEME_CLASSIC : THEME_GOTHIC);
+            for (int k = 0; k < 6; k++) {
+                Rect tr = {200, 20, g[k].tw, g[k].th};
+                for (int i = 0; i < PAPER_SHEET_TILES; i++) {
+                    const char *label = i < PAPER_COUNT    ? paper_label(paper_at(i))
+                                        : i == PAPER_COUNT ? _("Custom music...")
+                                                           : _("More papers...");
+                    for (int sel = 0; sel < 2; sel++) {
+                        canvas_fill(&c, (Rect){0, 0, c.w, c.h}, 255);
+                        paper_tile_label(&c, tr, gap, label, sel);
+                        int x0, x1, room = sel ? gap / 2 : ui_px(2);
+                        ink_columns(&c, (Rect){0, tr.y + tr.h, c.w, c.h - tr.y - tr.h}, &x0, &x1);
+                        bool in = x0 >= tr.x - room && x1 < tr.x + tr.w + room;
+                        if (!in)
+                            fprintf(stderr, "  (%s, %s, a %d px tile%s: \"%s\" inked from %d to %d)\n",
+                                    i18n_language_code(l), th ? "classic" : "gothic", tr.w, sel ? ", bold" : "", label,
+                                    x0 - tr.x, x1 - tr.x);
+                        CHECK(x0 >= 0 && in);
+                        wrapped += !sel && font_measure(FONT_REGULAR, ui_small_size() * 0.9f, label) > tr.w;
+                    }
+                }
+            }
+        }
+    }
+    CHECK(wrapped > 0);  // (some labels are wider than their tiles: the test sees two lines)
+    i18n_set("en");
+    ui_set_theme(THEME_GOTHIC);
+    canvas_free(&c);
+}
+
+// The empty state with files it cannot use: its heading, then three paragraphs (how to add
+// templates, what works best, how many files it cannot use), each starting as far under the one
+// before it whatever their numbers of lines, never as close as a line of it, nor far under the
+// heading. In every language and style, upright and sideways.
+TEST(empty_state_paragraphs) {
+    char cmd[800];
+    snprintf(cmd, sizeof cmd, "rm -rf '%s/templates'", root);
+    CHECK(system(cmd) == 0);
+    templates_init();
+    char path[700];
+    snprintf(path, sizeof path, "%s/templates/Scan.png", root);
+    CHECK(write_file_atomic(path, "no picture", 10) == 0);
+    snprintf(path, sizeof path, "%s/templates/Photo.jpg", root);
+    CHECK(write_file_atomic(path, "no picture either", 17) == 0);
+    App a;
+    memset(&a, 0, sizeof a);
+    a.dpi = DPI;
+    screen(&a, 1860, 2480);
+    TplSheet s;
+    memset(&s, 0, sizeof s);
+    tplsheet_open(&s, &a, NULL, PAPER_BLANK, NULL);
+    drain_jobs();
+    tplsheet_close(&s);
+    for (int l = 0; l < i18n_language_count(); l++) {
+        CHECK(i18n_set(i18n_language_code(l)));
+        for (int th = 0; th < 2; th++) {
+            ui_set_theme(th ? THEME_CLASSIC : THEME_GOTHIC);
+            for (int turn = 0; turn < 2; turn++) {
+                screen(&a, turn ? 2480 : 1860, turn ? 1860 : 2480);
+                canvas_fill(&a.screen, (Rect){0, 0, a.w, a.h}, 255);
+                tplsheet_open(&s, &a, NULL, PAPER_BLANK, NULL);
+                tplsheet_draw(&s, &a);
+                char v[64];
+                probe(&s, "count", v);
+                CHECK(!strcmp(v, "0") && s.nt == 2 && s.hits.n == 1);
+                // The text's column: the sheet's inside (ui_sheet says where), above Back.
+                Canvas scratch;
+                CHECK(canvas_init(&scratch, a.w, a.h) == 0);
+                Rect in = ui_sheet(&scratch, s.rect, _("Templates"));
+                canvas_free(&scratch);
+                Rect col = {in.x + ui_px(40), in.y, in.w - 2 * ui_px(40), in.h - ui_px(160)};
+                // Its bands of rows with ink (a few blank rows inside one, as under an accent,
+                // do not end it), and the blank between each and the next.
+                int gaps[64], ng = 0, last = -1, bands = 0;
+                for (int y = col.y; y < col.y + col.h; y++) {
+                    int x0, x1;
+                    ink_columns(&a.screen, (Rect){col.x, y, col.w, 1}, &x0, &x1);
+                    if (x0 < 0) continue;
+                    if (last < 0 || y - last > ui_px(6)) {
+                        if (last >= 0 && ng < 64) gaps[ng++] = y - last - 1;
+                        bands++;
+                    }
+                    last = y;
+                }
+                int wide = 0, widest = 0;
+                for (int i = 0; i < ng; i++) {
+                    wide += gaps[i] >= ui_px(45);  // (40 between the paragraphs, and the lines' own room)
+                    if (gaps[i] > widest) widest = gaps[i];
+                }
+                if (wide != 3 || widest > ui_px(120)) {
+                    fprintf(stderr, "  (%s, %s, %s: %d bands, gaps", i18n_language_code(l), th ? "classic" : "gothic",
+                            turn ? "sideways" : "upright", bands);
+                    for (int i = 0; i < ng; i++) fprintf(stderr, " %d", gaps[i]);
+                    fprintf(stderr, ")\n");
+                }
+                CHECK(wide == 3 && widest <= ui_px(120));
+                tplsheet_close(&s);
+            }
+        }
+    }
+    i18n_set("en");
+    ui_set_theme(THEME_GOTHIC);
+    canvas_free(&a.screen);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/tplsheet-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -302,6 +533,10 @@ int main(void) {
     RUN(tile_fills_in);
     RUN(page_paper_selected);
     RUN(empty_sheet);
+    RUN(bad_file_keeps_its_place);
+    RUN(fills_in_while_the_job_runs);
+    RUN(labels_keep_to_their_tiles);
+    RUN(empty_state_paragraphs);
     font_shutdown();
     int rc = tl_done();
     if (!rc) system(cmd);

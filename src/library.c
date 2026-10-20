@@ -60,6 +60,8 @@ struct LibraryState {
     char new_tpl[TEMPLATE_PATH_MAX];  // the template New notebook makes its notebook on ("" none)
     Canvas tpl_prev;      // and its preview, for its tile
     unsigned card_gen;    // bgimage_generation when the cards were last read
+    uint64_t *card_stamp; // per notebook: what thumbs[i] was read from (store_thumb_stamp), or CARD_STALE
+    int cards_redrawn;    // times a background job changed a card on screen (the probe's)
 
     Modal modal;
     KbPurpose kbp;
@@ -111,12 +113,14 @@ static void free_lists(App *a) {
     free(S->thumbs);
     free(S->thumb_tried);
     free(S->thumb_picture);
+    free(S->card_stamp);
     free(S->books);
     free(S->folders);
     free(S->items);
     S->thumbs = NULL;
     S->thumb_tried = NULL;
     S->thumb_picture = NULL;
+    S->card_stamp = NULL;
     S->books = NULL;
     S->folders = NULL;
     S->items = NULL;
@@ -131,6 +135,7 @@ static void reload(App *a) {
     S->thumbs = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumbs);
     S->thumb_tried = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_tried);
     S->thumb_picture = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->thumb_picture);
+    S->card_stamp = calloc((size_t)(S->nbooks ? S->nbooks : 1), sizeof *S->card_stamp);
     S->items = calloc((size_t)(S->nbooks + S->nfolders + 1), sizeof *S->items);
     if (!S->items) return;
     if (!S->cur_folder[0])
@@ -180,6 +185,10 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
     return c->px ? c : NULL;
 }
 
+// A card drawn with a picture white in it (its file not made yet): read again once a background
+// job has ended (library_tick). No thumb.pgm has this stamp (store_thumb_stamp: 0 or odd).
+#define CARD_STALE 2u
+
 // The card of a notebook with no thumbnail yet whose paper is a picture: that picture (white while
 // its file is missing), never another paper.
 static void picture_card(App *a, int nb) {
@@ -188,7 +197,9 @@ static void picture_card(App *a, int nb) {
     store_notebook_page_size(b, &pw, &ph);
     Canvas full;
     if (canvas_init(&full, pw, ph) != 0) return;
+    bgimage_take_missing();  // (what drew white before)
     bgimage_render(&full, b->id, b->paper, (Rect){0, 0, pw, ph});
+    if (bgimage_take_missing() && S->card_stamp) S->card_stamp[nb] = CARD_STALE;
     if (canvas_init(&S->thumbs[nb], pw / 4, ph / 4) == 0) canvas_downsample_keep_lines(&S->thumbs[nb], &full, 0.6f);
     canvas_free(&full);
     S->thumb_picture[nb] = S->thumbs[nb].px != NULL;
@@ -198,6 +209,7 @@ static const Canvas *thumb_for(App *a, int nb) {
     if (!S->thumb_tried[nb]) {
         S->thumb_tried[nb] = true;
         S->thumb_picture[nb] = false;
+        if (S->card_stamp) S->card_stamp[nb] = store_thumb_stamp(S->books[nb].id);  // (before it is read)
         if (store_load_thumb(S->books[nb].id, &S->thumbs[nb]) != 0 && paper_is_image(S->books[nb].paper))
             picture_card(a, nb);
     }
@@ -413,12 +425,12 @@ static void draw_new(App *a) {
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         const char *label = paper_label(k);
         // TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
-        // a sheet that builds a music paper from parts (one line of 222 px at 31 px in New notebook
-        // sideways, or two lines of 192).
+        // a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
+        // one line or two).
         if (custom) label = _("Custom music...");
         // TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
-        // Templates sheet, of pictures copied into grimoire/templates to write on as paper (one line
-        // of 222 px at 31 px in New notebook sideways, or two lines of 192).
+        // Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
+        // at 31 px in New notebook sideways, on one line or two).
         if (more) label = _("More papers...");
         // (A label wider than its tile goes on two lines under it, as most do sideways: labels side
         // by side never run into each other.)
@@ -764,21 +776,13 @@ static void mirror_follow(App *a, const char *id, bool deleting) {
     free(now);
 }
 
-// A notebook on a template (More papers...): its picture goes into the new notebook (made there in
-// the background, its first page white until then), and the notebook and its first page go onto
-// it. False if that could not be done: the notebook stays on the paper picked before.
+// A notebook on a template (More papers...): templates.h. False if that could not be done: the
+// notebook stays on the paper picked before.
 static bool start_on_template(NotebookInfo *nb, const char *path) {
-    PaperKind k;
     const char *why = "";
-    if (template_install(nb, path, &k, &why) != 0) {
-        qlog("library: %s: the new notebook's template could not be used: %s", nb->id, why);
-        return false;
-    }
-    if (store_start_on(nb, k) != 0) {
-        qlog("library: %s: the new notebook could not be put on its template", nb->id);
-        return false;
-    }
-    return true;
+    if (template_start_notebook(nb, path, &why) == 0) return true;
+    qlog("library: %s: the new notebook's template could not be used: %s", nb->id, why);
+    return false;
 }
 
 static void create_notebook(App *a) {
@@ -1164,16 +1168,24 @@ void library_tick(App *a, uint32_t now) {
     }
     Rect d;
     if (S->modal == MOD_TEMPLATES && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
-    // A background job ended (bgimage.h): the cards are read again. A template's picture made for a
-    // notebook since may be on its first page, whose card the job drew again (bgwork_template.c),
-    // or a card drawn from a notebook's own picture (picture_card) drew it white meanwhile.
+    // A background job ended (bgimage.h): the cards it may have changed are read again. A
+    // template's picture made for a notebook since may be on its first page, whose card the job drew
+    // again (bgwork_template.c: its thumb.pgm is another file now), or a card drawn from a
+    // notebook's own picture (picture_card) drew it white meanwhile. Any other job (the templates'
+    // previews) changes no card, and the Library is not drawn again for it.
     if (S->card_gen != bgimage_generation()) {
         S->card_gen = bgimage_generation();
-        for (int i = 0; i < S->nbooks; i++) {
+        bool changed = false;
+        for (int i = 0; i < S->nbooks && S->card_stamp; i++) {
+            if (!S->thumb_tried[i] || S->card_stamp[i] == store_thumb_stamp(S->books[i].id)) continue;
             canvas_free(&S->thumbs[i]);
             S->thumb_tried[i] = false;
+            changed = true;
         }
-        if (S->nbooks && S->modal == MOD_NONE) redraw(a, REFRESH_UI);
+        if (changed && S->modal == MOD_NONE) {
+            S->cards_redrawn++;
+            redraw(a, REFRESH_UI);
+        }
     }
 }
 
@@ -1242,6 +1254,8 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", S->modal == MOD_KB ? S->kb.text : "");
     } else if (!strcmp(key, "hint")) {
         snprintf(out, cap, "%d", empty_hint_shown(a) ? 1 : 0);
+    } else if (!strcmp(key, "cards_redrawn")) {
+        snprintf(out, cap, "%d", S->cards_redrawn);  // after background jobs that changed a card
     } else if (!strcmp(key, "paper")) {
         if (S->new_tpl[0]) snprintf(out, cap, "template");
         else if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");

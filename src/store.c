@@ -535,54 +535,6 @@ int store_take_restored_count(void) {
     return n;
 }
 
-static int page_parse(const uint8_t *buf, size_t len, Page **out, bool quiet);
-
-// Whether a page file starts as version 1 Blank (its first 8 bytes, the rest unread): how 1.0.0-beta
-// writes a page whose image paper it does not know.
-static bool page_file_v1_blank(const char *path) {
-    uint8_t b[8];
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) return false;
-    bool got = read(fd, b, sizeof b) == (ssize_t)sizeof b;
-    close(fd);
-    return got && !memcmp(b, "QPG1", 4) && b[4] == 1 && b[5] == 0 && b[6] == PAPER_BLANK && b[7] == 0;
-}
-
-int store_restore_listed_pages(const NotebookInfo *nb) {
-    char bgdir[700], path[760];
-    if (bgimage_dir(nb->id, bgdir, sizeof bgdir) != 0) return 0;
-    side_path(bgdir, path, sizeof path);
-    if (access(path, F_OK) != 0) return 0;
-    Side s;
-    if (side_load(bgdir, &s) != 0) return 0;  // (left as it is: store_load_page says so)
-    int restored = 0;
-    for (int i = 0; i < s.n; i++) {
-        bool listed = false;
-        for (int k = 0; k < nb->npages && !listed; k++) listed = nb->page_ids[k] == s.e[i].pid;
-        char pp[700];
-        page_path(nb, s.e[i].pid, pp, sizeof pp);
-        // Only a page of the notebook that reads as Blank by its first bytes is read whole: a big
-        // notebook of imported pages lists every page, and opens without reading each one.
-        if (!listed || !page_file_v1_blank(pp)) continue;
-        size_t len;
-        uint8_t *data = read_file(pp, &len);
-        Page *p = NULL;
-        if (data && page_parse(data, len, &p, true) == 0 && !p->readonly && p->paper == PAPER_BLANK) {
-            p->paper = (PaperKind)s.e[i].kind;
-            if (write_page_file(nb, s.e[i].pid, p) == 0) restored++;
-            else qlog("store: %s: could not write p%u.qpg's paper back", nb->id, s.e[i].pid);
-        }
-        page_free(p);
-        free(data);
-    }
-    free(s.e);
-    if (restored)
-        qlog("store: %s: %d page(s) an older version saved with blank paper get their pictures back from bg/pages.ini",
-             nb->id, restored);
-    g_restored_pages += restored;
-    return restored;
-}
-
 int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n) {
     Side s = {0};
     int rc = 0;
@@ -1103,6 +1055,52 @@ static bool page_file_opens(const char *path) {
     return ok;
 }
 
+// Whether a page file starts as version 1 Blank (its first 8 bytes, the rest unread): how 1.0.0-beta
+// writes a page whose image paper it does not know.
+static bool page_file_v1_blank(const char *path) {
+    uint8_t b[8];
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return false;
+    bool got = read(fd, b, sizeof b) == (ssize_t)sizeof b;
+    close(fd);
+    return got && !memcmp(b, "QPG1", 4) && b[4] == 1 && b[5] == 0 && b[6] == PAPER_BLANK && b[7] == 0;
+}
+
+int store_restore_listed_pages(const NotebookInfo *nb) {
+    char bgdir[700], path[760];
+    if (bgimage_dir(nb->id, bgdir, sizeof bgdir) != 0) return 0;
+    side_path(bgdir, path, sizeof path);
+    if (access(path, F_OK) != 0) return 0;
+    Side s;
+    if (side_load(bgdir, &s) != 0) return 0;  // (left as it is: store_load_page says so)
+    int restored = 0;
+    for (int i = 0; i < s.n; i++) {
+        bool listed = false;
+        for (int k = 0; k < nb->npages && !listed; k++) listed = nb->page_ids[k] == s.e[i].pid;
+        char pp[700];
+        page_path(nb, s.e[i].pid, pp, sizeof pp);
+        // Only a page of the notebook that reads as Blank by its first bytes is read whole: a big
+        // notebook of imported pages lists every page, and opens without reading each one.
+        if (!listed || !page_file_v1_blank(pp)) continue;
+        size_t len;
+        uint8_t *data = read_file(pp, &len);
+        Page *p = NULL;
+        if (data && page_parse(data, len, &p, true) == 0 && !p->readonly && p->paper == PAPER_BLANK) {
+            p->paper = (PaperKind)s.e[i].kind;
+            if (write_page_file(nb, s.e[i].pid, p) == 0) restored++;
+            else qlog("store: %s: could not write p%u.qpg's paper back", nb->id, s.e[i].pid);
+        }
+        page_free(p);
+        free(data);
+    }
+    free(s.e);
+    if (restored)
+        qlog("store: %s: %d page(s) an older version saved with blank paper get their pictures back from bg/pages.ini",
+             nb->id, restored);
+    g_restored_pages += restored;
+    return restored;
+}
+
 int store_recover_pages(const NotebookInfo *nb) {
     char dir[600];
     if (store_notebook_dir(nb->id, dir, sizeof dir) != 0) return 0;
@@ -1502,6 +1500,55 @@ int store_load_thumb(const char *id, Canvas *out) {
     if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
     snprintf(path, sizeof path, "%s/thumb.pgm", dir);
     return load_pgm(path, out);
+}
+
+uint64_t store_thumb_stamp(const char *id) {
+    char dir[600], path[700];
+    struct stat st;
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return 0;
+    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+    if (stat(path, &st) != 0) return 0;
+    uint64_t v[] = {(uint64_t)st.st_dev, (uint64_t)st.st_ino, (uint64_t)st.st_size, (uint64_t)st.st_mtime,
+                    (uint64_t)st.st_ctime};
+    uint64_t h = 1469598103934665603ull;  // FNV-1a over them
+    for (size_t i = 0; i < sizeof v / sizeof v[0]; i++)
+        for (int b = 0; b < 64; b += 8) h = (h ^ ((v[i] >> b) & 0xFF)) * 1099511628211ull;
+    return h | 1;
+}
+
+uint8_t *store_read_thumb_file(const char *id, size_t *len) {
+    char dir[600], path[700];
+    *len = 0;
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return NULL;
+    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+    uint8_t *d = read_file(path, len);
+    if (!d) *len = 0;
+    return d;
+}
+
+void (*store_test_before_card_replace)(const char *id);
+
+int store_replace_thumb_if_same(const char *id, const Canvas *t, const uint8_t *was, size_t was_len) {
+    char dir[600], path[700], mine[720];
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
+    snprintf(path, sizeof path, "%s/thumb.pgm", dir);
+    snprintf(mine, sizeof mine, "%s.card.tmp", path);
+    if (save_pgm(mine, t) != 0) return -1;
+    if (store_test_before_card_replace) store_test_before_card_replace(id);
+    size_t now_len = 0;
+    uint8_t *now = read_file(path, &now_len);
+    bool same = now ? was && now_len == was_len && !memcmp(now, was, was_len) : !was;
+    free(now);
+    if (!same || rename(mine, path) != 0) {
+        unlink(mine);
+        return same ? -1 : 1;
+    }
+    int dfd = open(dir, O_RDONLY);  // best effort: the rename itself durable
+    if (dfd >= 0) {
+        fsync(dfd);
+        close(dfd);
+    }
+    return 0;
 }
 
 int store_save_sleep_image(const Canvas *c) {

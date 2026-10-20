@@ -52,6 +52,12 @@ int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix,
 // is the one the previews job keeps beside each preview, so nothing big is read on the UI thread:
 // only a template of at most 4 MB with no preview yet is read here (whole, once).
 int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why);
+// New notebook on a template: notebook nb, which store_create just made, goes onto the template at
+// path. The template is installed into it (above: the first page draws white until its picture is
+// made), then the notebook's own paper and its first page go onto it (store_start_on). 0, or -1
+// and *why (for the log) when that could not be done: then the notebook stays on the paper it was
+// made on.
+int template_start_notebook(NotebookInfo *nb, const char *path, const char **why);
 
 // ---- imports ----
 
