@@ -1553,6 +1553,8 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", m);
     } else if (!strcmp(key, "strokes")) {
         snprintf(out, cap, "%d", page ? S->page->n : 0);
+    } else if (!strcmp(key, "ticked")) {
+        snprintf(out, cap, "%d", S->pages_open ? pages_selected(a) : 0);
     } else if (!strcmp(key, "paper")) {
         if (!page) snprintf(out, cap, "none");
         else if (paper_is_custom(S->page->paper)) snprintf(out, cap, "custom");
