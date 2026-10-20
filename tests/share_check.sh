@@ -11,9 +11,13 @@ set -eu
 ROOT=$1
 PORT=${GRIMOIRE_TEST_PORT:-8765}
 BUILD=${BUILD:-build}
-# The app's test hooks come from each run below, never from the caller's environment.
-unset GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_SIM_PRESSURE GRIMOIRE_SIM_STATS \
-    GRIMOIRE_SIM_SIZE GRIMOIRE_BG_DELAY_MS GRIMOIRE_CHECK_FIT GRIMOIRE_L10N_DIR
+# The app's test hooks come from each run below, never from the caller's environment; the runs
+# check English text, so they are in English whatever the caller's LANG says, unless a run below
+# names another language (GRIMOIRE_LANG ranks first).
+unset GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_SIM_PRESSURE \
+    GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_BG_DELAY_MS GRIMOIRE_CHECK_FIT GRIMOIRE_L10N_DIR
+GRIMOIRE_LANG=en
+export GRIMOIRE_LANG
 B=$BUILD/share-check
 HEADLESS=$BUILD/host/grimoire-headless
 rm -rf "$B" && mkdir -p "$B"
@@ -138,7 +142,15 @@ if [ -n "$FOLDER" ]; then
     # grimoire.log goes to public bug reports: the request is logged without the folder's name.
     check "the log leaves the folder's name out" \
         "grep -qF 'httpd: GET /folder/<name>.zip' $B/app.log && ! grep -qF '/folder/$FOLDER' $B/app.log"
+    # However the path is spelled: the same folder with 'folder' percent-encoded.
+    curl -fsS "$URL/%66older/$(python3 -I -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$FOLDER").zip" -o "$B/folder2.zip"
+    check "an encoded folder path is served and logged without its name" \
+        "[ \"\$(unzip -Z1 $B/folder.zip)\" = \"\$(unzip -Z1 $B/folder2.zip)\" ] && [ \$(grep -cF 'httpd: GET /folder/<name>.zip' $B/app.log) -ge 2 ] && ! grep -qF '%66older' $B/app.log"
 fi
+# A request in proxy form names an address in its request line: the log never repeats it.
+curl -s -o /dev/null --request-target "http://203.0.113.9:$PORT/api/list.json" "$URL/" || true
+check "a proxy-form request leaves its address out of the log" \
+    "grep -qF 'httpd: GET (not a path)' $B/app.log && ! grep -qF '203.0.113.9' $B/app.log"
 # A folder name as long as a folder's can be (95 bytes; with accents the keyboard gets there at
 # about 47 letters): the link to its zip answers too. One byte more cannot be a folder.
 LONG=$(python3 -I -c "

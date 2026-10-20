@@ -3,8 +3,10 @@
 # folder; documents/Grimoire.sh, the self-unpacking scriptlet (SH_Integration's keys, BUILD_ID,
 # the icon, the Capabilities line, the archive); the app inside it (the binary, the launcher,
 # CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font and every
-# third-party part of the binary); and that the launchers' test hooks fall back to the device's
-# own paths and timings. The plugin the app carries also goes through tests/koplugin_check.sh.
+# third-party part of the binary: the vendored code, musl and zig's compiler-rt, and the parts of
+# FBInk's tree with notices of their own); and that the launchers' test hooks fall back to the
+# device's own paths and timings. The plugin the app carries also goes through
+# tests/koplugin_check.sh.
 # usage: tests/package_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -163,6 +165,30 @@ for h in third_party/*.h; do
 done
 check "the stb notice has the MIT license" has "$B/app/licenses/stb-LICENSE.txt" "Permission is hereby granted"
 check "payload has licenses/musl-COPYRIGHT.txt" has "$B/app/licenses/musl-COPYRIGHT.txt" "musl as a whole is licensed"
+# zig cc also links zig's own compiler-rt into the binary (64-bit division, float conversions,
+# memcpy and more), which zig's MIT license covers.
+L=$B/app/licenses
+check "payload has licenses/zig-compiler-rt-LICENSE.txt, zig's MIT license" sh -c \
+    'grep -qF "Zig contributors" "$1" && grep -qF "Permission is hereby granted" "$1"' sh "$L/zig-compiler-rt-LICENSE.txt"
+# FBInk compiles two parts of its tree with notices of their own into the binary: cutef8
+# (cutef8/utf8.c) and Bjoern Hoehrmann's UTF-8 decoder (cutef8/dfa.c). Each ships the notice at the
+# head of its source and its entry in FBInk's CREDITS, the only text the tree has for them. A new
+# FBInk source in the build needs its notice too.
+check "the binary's FBInk sources are fbink.c, cutef8/utf8.c and cutef8/dfa.c" is \
+    "$(sed -n 's/^FBINK_SRC *:= *//p' Makefile)" '$(FBINK_DIR)/fbink.c $(FBINK_DIR)/cutef8/utf8.c $(FBINK_DIR)/cutef8/dfa.c'
+holds_lines() {  # holds_lines FILE: FILE has each line of stdin, whole
+    [ -s "$1" ] || return 1
+    while IFS= read -r l; do grep -qxF -- "$l" "$1" || return 1; done
+}
+F=third_party/FBInk
+{ sed -n '1,/\*\//p' "$F/cutef8/utf8.c"; awk -v RS= '/\* cutef8\/utf8\./' "$F/CREDITS"; } >"$B/cutef8.notice"
+{ grep '^// Copyright' "$F/cutef8/dfa.c"; awk -v RS= '/\* cutef8\/dfa\./' "$F/CREDITS"; } >"$B/dfa.notice"
+check "cutef8's notice found in the tree" grep -qF "placed in the public domain" "$B/cutef8.notice"
+check "dfa's notice found in the tree" grep -qF "Copyright (c) 2008-2010 Bjoern Hoehrmann" "$B/dfa.notice"
+check "payload has licenses/cutef8-LICENSE.txt: utf8.c's head and its CREDITS entry" \
+    holds_lines "$L/cutef8-LICENSE.txt" <"$B/cutef8.notice"
+check "payload has licenses/dfa-LICENSE.txt: dfa.c's copyright and its CREDITS entry" \
+    holds_lines "$L/dfa-LICENSE.txt" <"$B/dfa.notice"
 
 # The launchers' test hooks (tests/launcher_check.sh sets them) must fall back to the device's own
 # paths and timings: each shipped script reads exactly these GRIMOIRE_* variables, with exactly

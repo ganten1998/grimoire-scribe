@@ -21,9 +21,13 @@ sideways, the screen puts the code on the left and the text on the right. With I
 is drawn as its negative, so the panel still shows it dark on light.
 
 Keep the Share screen open while downloading; leaving it stops the server. Turning the Kindle, or
-waking it on the Share screen, keeps the server and its downloads going. The pages use Grimoire's
-own fonts in the style picked on the Kindle (Gothic: Jacquard 24 titles and Jersey 10 text, sized
-to stay pixel-sharp; Classic: Terminess).
+waking it on the Share screen, keeps the server and its downloads going. While the Kindle sleeps
+on the Share screen the server answers nothing new: a page asked for then waits, and loads after
+the wake if the browser has not given up. The sleep screen then shows "Asleep" and "Wake the
+Kindle to share again." instead of the code and the address (unless a pinned page or the Kindle's
+own screensaver is the sleep screen). The pages use Grimoire's own fonts in the style picked on
+the Kindle (Gothic: Jacquard 24 titles and Jersey 10 text, sized to stay pixel-sharp; Classic:
+Terminess).
 
 The raw files in a zip are the notebook's `notebook.ini` and its `p<id>.qpg` pages, whose format
 is in [FORMAT.md](FORMAT.md). PNG, PDF and Share renders show a page from a newer Grimoire (one

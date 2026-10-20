@@ -16,6 +16,9 @@ Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`).
 | `Esc`, Cmd+Q | quit |
 
 `GRIMOIRE_SIM_SIZE=WxH` changes the virtual panel; `GRIMOIRE_SIM_STATS=1` prints refresh counts.
+Two more slow the simulator down like a Kindle (simulator only): `GRIMOIRE_HTTPD_DELAY_MS` makes
+each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each background PDF
+export, so the next one queues behind it.
 
 ## Headless scripts
 
@@ -44,15 +47,18 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `expect KEY is\|has\|not VALUE` | check the app's state (see Checks) |
 | `power` | a short press of the power button and its release (150 ms) |
 | `power down`, `power up` | one half each; the release reports the real time between them, so `power down`, `wait 3000`, `power up` is a 3 s press |
+| `power held` | the 4 s mark of a press still down (IN_POWER_HELD alone, what input_evdev.c sends then), so `power down`, `power held` leaves while the key is down (check that with `expect running is 0`) |
 | `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
 | `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
+| `storage full`, `storage ok` | from now on every file write fails, as on a full userstore, or works again |
 | `quit` | quit (end of script also quits) |
 
 The simulated power service answers a sleep request (powerButton) with a sleep (goingToScreenSaver)
 while it is active or unreadable, and with a wake (outOfScreenSaver) while it is in
 `screenSaver`, `readyToSuspend` or `suspended`, so a request sent to a dozing Kindle shows up. Its
-state changes only through `powerd`. tests/scenarios/p_power.qs and p_power_locked.qs use all of
-this.
+state changes only through `powerd`. tests/scenarios/p_power.qs, p_power_locked.qs and
+p_power_released_late.qs (a 4.1 s press whose hold never arrived) use these commands, and
+v_storage_full.qs leaves with a page that cannot be saved.
 
 Coordinates are screen pixels: portrait 1860x2480, or 2480x1860 after `rotate 1` or `rotate 3`,
 calibrated or not (as on the Kindle, a calibration maps the digitizer to the upright panel, so one
@@ -93,8 +99,9 @@ expect failed (line 12): screen is "library", wanted is "editor"
 
 An unknown key, a line that cannot be read, an unknown command, and a check the script never
 reached because the app quit first (a tap that lands on Library > Exit) fail too. Where the app is
-meant to quit (Library > Exit on purpose, `powerhold`, the second press on a Kindle that stays
-locked), `expect running is 0` after it holds once it has quit, and fails while it still runs.
+meant to quit (Library > Exit on purpose, `power held` or `powerhold`, the second press on a Kindle
+that stays locked), `expect running is 0` after it holds once it has quit, and fails while it
+still runs.
 The run ends with `expect: all 33 checks passed` or `expect: 2 of 33 checks failed`, and exits
 with status 3 if any check failed. To find a value, write the check with a guess: the failure
 shows what the app holds.
@@ -102,8 +109,10 @@ shows what the app holds.
 | key | value |
 |---|---|
 | `running` | `1` while the app runs, `0` for a check after it quit (the runner answers this one) |
+| `watching` | `1` while input_poll also watches the share server's socket, else `0` (the runner answers this one too) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
 | `toast` | the toast showing, empty if none |
+| `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |
 | `asleep` | `1` while the sleep screen is up, else `0` |
 | `rotation` | the quarter turns applied, 0..3 |
 | `size` | the screen, `1860x2480` or `2480x1860` |
@@ -115,6 +124,7 @@ shows what the app holds.
 | `editor.zoom` | the zoom as the zoom chip shows it, with two decimals: `1.00` is the usual view (100% upright, the page's width sideways) |
 | `editor.modal` | what is in front of the page: `none`, `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
+| `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
 | `editor.ticked` | pages ticked in the Pages view |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |
@@ -136,13 +146,21 @@ child processes that outlive it), so the data a run leaves is whole.
 `make scenarios` runs every scenario on a fresh data root, or, for a script with a `# root: NAME`
 line, on a copy of scenario NAME's (d_persist reopens what b_library made; NAME must sort before
 the script). `# env: K=V` lines set the environment of that one scenario (values without spaces;
-r_passcode, s_passcode_once and t_passcode_left_off set `GRIMOIRE_PASSCODE`, as the launcher does
-on the Kindle). With `GRIMOIRE_TEST_PORT` set, the rule writes `http_port=` that port into
-every scenario's settings.ini before the run (over a copied root's too), so the share servers of
-checks running in several worktrees never collide on 8765. `# settings: key=value` lines are
-appended to the scenario's settings.ini before the run (after the port), for settings that have
-no control on screen yet. These header lines are read by the Makefile rule only: running
-`grimoire-headless` by hand skips them like any comment. A run that
+r_passcode, s_passcode_once, t_passcode_left_off and t_toast_over_sheets set `GRIMOIRE_PASSCODE`,
+as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`, y_koreader_hosted
+sets `GRIMOIRE_HOST` as the KOReader plugin's start does, and y_language and z_language_kept set
+`GRIMOIRE_LANG`). The rule first unsets `GRIMOIRE_HOST`, `GRIMOIRE_PASSCODE`, `GRIMOIRE_SIM_ADDRS`,
+`GRIMOIRE_HTTPD_DELAY_MS`, `GRIMOIRE_BG_DELAY_MS`, `GRIMOIRE_SIM_PRESSURE`, `GRIMOIRE_SIM_STATS`,
+`GRIMOIRE_SIM_SIZE`, `GRIMOIRE_CHECK_FIT`, `GRIMOIRE_LANG` and `GRIMOIRE_L10N_DIR`
+(tests/share_check.sh does too), so only `# env:` lines set them, and runs every scenario in
+English (`GRIMOIRE_LANG=en`) unless its `# env:` line names another language: the scenarios tap by
+coordinates and check English text. A `# pdfs: N` line wants the run to leave exactly N PDFs in its
+root's PDFs/ folder (v_leave_from_editor: 2). With `GRIMOIRE_TEST_PORT` set, the rule writes
+`http_port=` that port into every scenario's settings.ini before the run (over a copied root's
+too), so the share servers of checks running in several worktrees never collide on 8765.
+`# settings: key=value` lines are appended to the scenario's settings.ini before the run (after
+the port), for settings that have no control on screen yet. These header lines are read by the
+Makefile rule only: running `grimoire-headless` by hand skips them like any comment. A run that
 leaves a file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those
 that did not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every
 check (exit 0) with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the
@@ -154,8 +172,14 @@ comments, waits and taps must fail and be reported by its line number (exit 3).
 addresses, for example `GRIMOIRE_SIM_ADDRS="wlan0=192.168.0.20,usb0=192.168.15.244"`, or `""` for
 none. Without it, the simulator's QR code takes the first wlan* or en* address (a Mac's en0).
 `tools/qrdecode.swift` is a macOS Vision decoder (`qrdecode [--polarity] image...`) that
-`tests/share_check.sh` builds into `build/host/qrdecode`. Besides `c_share`, the share check writes
-`build/shots/c_share_classic`, `q_share_rotate`, `q_share_invert` and
+`tests/share_check.sh` builds into `build/host/qrdecode`. The check takes `BUILD` (default
+`build`, the Makefile passes its own) for the app, the decoder and the shots, and runs its own
+copy of `c_share` held open 25 s longer for its downloads (`make scenarios` runs the short one).
+Besides `c_share`, it writes `build/shots/c_share_classic`, `q_share_rotate`, `q_share_invert` and
 `share_layouts/<style>-<case>`: the style is gothic or classic, the case one, two, three, usb-only
-or none, and each folder holds `portrait.png` and `landscape.png`. The check fails on any
-`share: layout:` line in its app logs.
+or none, and each folder holds `portrait.png` and `landscape.png`. It keeps step with
+q_share_rotate by its shot names (01-share-portrait to 07-share-landscape-again, with
+04-asleep-no-code the sleep screen), so a renamed shot there needs the check changed too. The
+check fails on any `share: layout:` line in its app logs, and, over the made-up address lists, on
+an address in any line but the simulator's own `share: (simulator) ...` lines, which it compares
+with the codes it reads back.

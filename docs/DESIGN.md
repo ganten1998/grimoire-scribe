@@ -40,7 +40,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | ui.h/.c | widgets (button, slider, sheet, toast, hit lists) in two themes; `ui_frame` draws any box in the theme's shape (rounded, or cut corners via `canvas_chamfer_rect`), plus gothic ornaments (rules, arch frieze, quatrefoil); icons are Terminess Nerd Font glyphs | canvas, font |
 | keyboard.h/.c | on-screen keyboard modal (rename / name a notebook): UTF-8, a letters page and an accents page | ui |
 | qr.h/.c | QR codes as whole-pixel modules (the Share screen's address), with third_party/qrcodegen | canvas |
-| app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, power button and sleep | all screens |
+| app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, toasts, power button and sleep | all screens |
 | httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
 | share.c | the Share screen: the QR code, the addresses, its own layout check; the server runs only while it is open | app, httpd, qr |
 | library.h/.c | library screen, new-notebook sheet (paper picker), rename/delete | app, store, ui, keyboard |
@@ -68,6 +68,14 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 - Live stroke: each pen sample batch renders new dabs into page_canvas, recomposes the dirty
   rect, FAST refresh. On pen-up: UI refresh of the stroke bbox so pencil grays come back. A
   press on the panel before that settle settles first, so Undo and Clear answer at once.
+- Toasts are never stored in `App.screen`: `app_flush` overlays one just for the refresh and puts
+  the pixels under it straight back. `App.toast_floor` keeps them clear of a screen's controls:
+  a screen that keeps the bottom for controls sets it as it draws, and toasts sit above it. The
+  Library sets it in `redraw` for an open sheet: the keyboard's top, or else the top of the
+  control just under the first band of a toast's height that is clear of the sheet's controls,
+  found going up from the toast's usual place (for Custom music, only that sheet's own controls
+  count). `app_switch` clears the floor, and a toast already up moves at the next flush
+  (`toast_follow`).
 - Display safety (main.c, display_fbink.c): the screen guard reads the framebuffer back (8 and
   32 bpp) and repaints what another process drew; after 10 repaints in a row it turns itself off.
   If the first frame and the next 4 refreshes all fail (`display_broken`, retried once a second),
@@ -136,7 +144,8 @@ root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
-root/.passcode-paused          the launcher has the Device Passcode paused (Kindle integration)
+root/.passcode-paused          holds "paused" while the passcode is paused (Kindle integration)
+root/.passcode-left-off        how many starts were told a restart left the passcode off
 ```
 All writes are atomic: write `<file>.tmp`, fsync, rename. Page saves happen about 2 s after the
 last pen-up, at every press of the power button, on page change, on leaving the editor and on
@@ -182,14 +191,19 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
 - The Device Passcode: with one set, the Kindle holds back `outOfScreenSaver` until the passcode
   is typed, and its keypad cannot take a touch while Grimoire grabs the touch screen, so a locked
   Kindle could not be unlocked. Like KOReader, `app/grimoire.sh` removes
-  `/var/local/system/userpasswdenabled` for the session (marker `grimoire/.passcode-paused`) and
-  touches it back at the end of `restore()` (in stop-framework mode before `start lab126_gui`,
-  which reads it). A marker found with no flag at the next start means a session ended without
-  `restore()` (the Kindle restarted under Grimoire): the passcode is then not turned back on, since
-  it may have been changed or turned off since. The binary learns which through
-  `GRIMOIRE_PASSCODE` (`paused`, `left-off` or empty) and says so: "Your Kindle passcode is paused
-  while Grimoire is open." once (settings.ini `passcode_told`), or "The Kindle passcode was left
-  off. Turn it back on in Kindle Settings." at the start after a pause was left behind.
+  `/var/local/system/userpasswdenabled` for the session and touches it back at the end of
+  `restore()`, after the home booklet starts (in stop-framework mode before `start lab126_gui`,
+  which reads it). The pause needs its marker, `grimoire/.passcode-paused` (holding `paused`): it
+  is written first, with echo (a failed redirection on `:`, a special built-in, would end the
+  script), and a marker that cannot be written means no pause. A marker found with no flag at the
+  next start means a session ended without `restore()` (the Kindle restarted under Grimoire): the
+  passcode is then not turned back on, since it may have been changed or turned off since.
+  `grimoire/.passcode-left-off` counts the starts that tell the user so (that one and the next two
+  while the flag is still missing) and goes as soon as the passcode is back, or after the third.
+  The binary learns which through `GRIMOIRE_PASSCODE` (`paused`, `left-off` or empty) and says so:
+  "Your Kindle passcode is paused while Grimoire is open." once (settings.ini `passcode_told`), or
+  "Your Kindle passcode was left off. Turn it back on in Kindle Settings." in place of any other
+  start notice.
 - The binary EVIOCGRABs the pen and touch devices. The power button (not grabbed) is watched: a
   press saves, the power service sleeps and wakes the Kindle inside Grimoire (next section), and a
   4 s hold saves and exits. Signals SIGTERM/SIGINT/SIGHUP save and exit cleanly. Whichever way
@@ -216,12 +230,23 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
 - A held press (IN_POWER_HELD at INPUT_POWER_HOLD_MS = 4000, confirmed with EVIOCGKEY) saves and
   exits from any state, and so does a release held 4 s or more whose hold never reached Grimoire.
   The power key is timed by the kernel's event stamps (EVIOCSCLOCKID CLOCK_MONOTONIC).
+- `app_leave` (the hold, the second locked wake fallback) never drops a page unannounced:
+  `editor_save_now` returns whether the save worked. When it failed, awake, the first try stays
+  once (`App.leave_unsaved_at`) with a toast, and another within 60 s leaves without the page;
+  asleep it leaves at once. The autosave of a page that cannot be written tries again 2 s later,
+  not at every tick.
 - The sleep request sends `preventScreenSaver 0` and `powerButton 1` from one ordered shell, and
   the sleep policy is applied again at every wake, so "Sleep after: never" gets preventScreenSaver
   1 back.
 - While asleep, pen and touch, side-button presses and pinch begin/move are dropped
   (`power_asleep_drops`), but button releases and pinch ends pass, so one that began before the
   sleep finishes (a button left down would clear the page by its hold right after the wake).
+- Asleep on the Share screen, `share_sleep` stops watching the server's listening socket: no
+  screen ticks while asleep, so a connection waiting there would make `input_poll` return at once
+  and the main loop spin until the wake. It waits in the backlog instead, and `share_enter` (the
+  wake's relayout) watches the socket again. With no page to show (sleep mode 0, or mode 1 with
+  no pinned page), the sleep screen is `share_draw_asleep`'s card, without the code and the
+  address.
 - The pure logic and its tests: src/power.c (tests/test_power.c) and src/fbcheck.c
   (tests/test_fbcheck.c).
 
@@ -232,10 +257,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   tests/scenarios/*.qs. Scenarios check the app's state with `expect` lines (docs/SIM.md): a
   failed check, an unknown script line or a leftover `*.tmp` fails the build once every scenario
   has run, and a headless run waits for the PDF exports it started. A `# root: NAME` line starts a
-  scenario from another scenario's data (d_persist and x_turn_calibrated both use b_library's),
-  `# env: K=V` lines set its environment (r_passcode, s_passcode_once, t_passcode_left_off), and
-  with GRIMOIRE_TEST_PORT set every scenario's share server uses that port.
-  tests/selftest/pass.qs and fail.qs check the runner itself.
+  scenario from another scenario's data (d_persist and x_turn_calibrated both use b_library's,
+  s_passcode_once r_passcode's), `# env: K=V` lines set its environment (`GRIMOIRE_PASSCODE` in
+  r_passcode, s_passcode_once, t_passcode_left_off and t_toast_over_sheets, `GRIMOIRE_BG_DELAY_MS`
+  in v_leave_from_editor), and a `# pdfs: N` line wants exactly N PDFs in its root's PDFs/ folder.
+  The rule unsets the test hooks first, so nothing else of the caller's reaches them. With
+  GRIMOIRE_TEST_PORT set every scenario's share server uses that port. tests/selftest/pass.qs and
+  fail.qs check the runner itself.
+- Dependencies: HDRS holds the Makefile, VERSION and third_party/qrcodegen/qrcodegen.h besides
+  src/*.h, so a change of flags rebuilds every program (FBInk's objects follow only their own
+  .c files); the test binaries also depend on tests/*.h (beta_format.h among them), and the zip on
+  the Makefile. TEST_FLAGS pin `-ffp-contract=on`, because tests/test_golden.c's table holds only
+  with contraction on (clang's default, under which it was recorded).
 - `make check` -> everything verifiable without the device: the unit tests, the scenarios, the
   share server (tests/share_check.sh), the host exporter, the ARM build, and the zip:
   package-check (tests/package_check.sh, what the zip holds) and launcher-check
@@ -248,8 +281,14 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   assets/<family>-OFL-1.1.txt whose family begins the font's file name); every
   third_party/<dir>/LICENSE* or COPYING* as <dir>-LICENSE.txt and CREDITS* as <dir>-CREDITS.txt;
   the stb headers' license, extracted once into stb-LICENSE.txt; musl's COPYRIGHT, from `zig env`'s
-  lib_dir. A vendored directory with no license file, or a font without its OFL text, fails
-  package-check.
+  lib_dir; zig's LICENSE, found beside that lib_dir, as zig-compiler-rt-LICENSE.txt (zig cc links
+  its compiler-rt into the binary: 64-bit division, float conversions, memcpy and more); and for
+  the two parts of FBInk's tree with notices of their own (FBINK_SRC), cutef8-LICENSE.txt and
+  dfa-LICENSE.txt, each the head of its source (cutef8/utf8.c, cutef8/dfa.c) and its entry in
+  FBInk's CREDITS, the only text the tree has for them. The recipe fails when it cannot find zig's
+  LICENSE or musl's COPYRIGHT, or one of those notices. A vendored directory with no license file,
+  a font without its OFL text, or a missing notice fails package-check, and so does a change to
+  FBINK_SRC until its notice is added.
 
 ## Tests
 
@@ -280,6 +319,13 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   `GRIMOIRE_WD_*` set, so the device's 2, 25 and 15 s are used there; its watchdog fakes keep
   running after TERM, the way a stuck Grimoire does, so the check proves TERM and then KILL
   (status 137). The shells run side by side; the check takes about 20 s.
+- package_check also wants each third_party CREDITS file in licenses/ (FBInk-CREDITS.txt), and
+  builds both power-service watcher command lines from WATCH_EVENTS in src/input_evdev.c: the
+  binary must contain them, and `restore()`'s `pkill -f` pattern must match both. launcher_check
+  covers the passcode: it comes back only after the home booklet starts (the `lipc-set-prop`
+  stand-in notes whether it is set at each appmgrd call), the left-off notice comes at three starts
+  and not a fourth, and a marker that cannot be written leaves the passcode on while Grimoire
+  still runs.
 
 ## Getting notebooks onto a computer (three roads, all share export.c)
 
@@ -308,11 +354,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    opens the port on wlan0 only. The other addresses get an "Also:" line each, and with no Wi-Fi
    address the Wi-Fi icon stands in for the code. Landscape puts the code on the left and the
    text, counter and buttons on the right. The screen checks its own layout as it draws:
-   `draw_line` logs "share: layout: '<text>' is cut to fit" when a line is wider than its column
-   (font_draw_centered would shorten it with '...'), and `check_layout` logs any part (the code
-   or the icon, the text, the counter, Done, Retry) that leaves the card or overlaps another,
-   with both rects. tests/share_check.sh fails on any such line over 1, 2 and 3 addresses, USB
-   only and none, in both styles and both orientations.
+   `draw_line` logs "share: layout: a line is cut to fit (W px wide, room for R)" when a line is
+   wider than its column (font_draw_centered would shorten it with '...'; only the simulator adds
+   the line's text, which may be the address), and `check_layout` logs any part (the code or the
+   icon, the text, the counter, Done, Retry) that leaves the card or overlaps another, with both
+   rects. tests/share_check.sh fails on any such line over 1, 2 and 3 addresses, USB only and
+   none, in both styles and both orientations.
+   grimoire.log goes to public bug reports, so the Share screen never logs the address, only the
+   interface and the port ("share: QR code for the wlan0 address, port 8765"), and httpd logs a
+   folder zip's request as `/folder/<name>.zip`. Only the simulator adds "share: (simulator)
+   the code holds http://...", which share_check compares with the code it reads back. For every
+   made-up address list, in both styles, share_check also checks that no other line holds an
+   address, and its download run checks that a folder zip's request leaves the folder's name out.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce
@@ -321,10 +374,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
 3. **USB cable** - with `mirror_pdf` on (default), closing a notebook writes
    `/mnt/us/grimoire/PDFs/<folder>/<name>.pdf` from a niced background process (bgjob.c), so
    the UI never waits on a render. Plug in; they're in grimoire/PDFs. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Grimoire.)
+   Exports still queued at exit go to a detached child (`bg_detach_rest`), which waits for the
+   running one and writes the rest after Grimoire has gone. `app_shutdown` calls it after the
+   screens' `free_`, because `editor_free` closes the open notebook and so queues its PDF (leaving
+   straight from the editor: the 4 s hold, a Kindle that stays locked, a signal).
 
 ## Folders
 
 One level. A notebook's `folder` field ("" = top level). The library shows folders first as
 cards; tapping one lists its notebooks (with a back button). New notebooks are created in
 the open folder. Card menu: Rename, Move to folder (pick existing / new via keyboard / top
-level), Delete.
+level), Delete. Folders sort by name with accents folded (`cmp_name` in store.c: Latin-1 and
+Latin Extended-A letters compare as their base letters, ß as ss, æ as ae, œ as oe, ĳ as ij, þ as
+th, combining accents dropped), so Álgebra sorts among the A's; names that fold equal go by their
+bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character
+that would cross the limit (`clean_line`).

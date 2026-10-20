@@ -94,11 +94,13 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
   page, or the Kindle's own screensaver). Waking brings you straight back.
 - **Leaving**: **Library > Exit**, or hold the power button 4 seconds on any screen, asleep or
-  awake. Grimoire saves your page and closes, and the Kindle comes back.
-- **Passcode**: if your Kindle has a Device Passcode, Grimoire pauses it while it is open and puts
-  it back when you leave, as KOReader does. The Kindle's passcode keypad cannot take a touch
-  while Grimoire holds the touch screen, so without the pause a locked Kindle could not be
-  unlocked (see Privacy).
+  awake. Grimoire saves your page and closes, and the Kindle comes back. If the page cannot be
+  saved (the Kindle's storage is full), a hold while awake says so and stays; hold again within a
+  minute to leave without it.
+- **Passcode**: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open
+  (as KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the
+  Kindle restarts while Grimoire is open, the passcode stays off until you turn it back on in the
+  Kindle's Settings; Grimoire reminds you when it next starts (at up to three starts).
 
 ## Getting pages off the Kindle
 
@@ -136,8 +138,11 @@ in `settings.ini` and `notebook.ini`) and writes it back unchanged:
   deleting it still works. Update Grimoire to edit it.
 - A paper from a newer version shows as blank paper named **Newer paper** and stays the page's
   paper. New pages added after such a page get it too.
-- A setting from a newer version that this one lacks works here as the nearest choice it has,
-  and stays in the file until you change that setting.
+- A setting from a newer version that this one lacks works here as the nearest choice it has
+  (a switch with a third state counts as on or off), and stays in the file until you change that
+  setting.
+- A notebook or folder name longer than 95 bytes (about 47 accented letters) is cut to fit,
+  never in the middle of an accented letter.
 
 1.0.0-beta and 1.0.0-rc.1 cannot do this. Open a notebook there after a newer version wrote to
 it, and data can be lost: they set a page in a newer format aside as
@@ -149,17 +154,16 @@ in the older version stays set aside. The file format and its rules are in
 
 ## Privacy
 
-- **Your Kindle's passcode is paused while Grimoire is open.** Anyone who wakes the Kindle then
-  sees your page without the passcode, and can leave Grimoire to the Kindle's home screen. The
-  passcode comes back when Grimoire closes. If the Kindle restarts while Grimoire is open, it
-  stays off: Grimoire says so at its next start, and you turn it back on in the Kindle's Settings.
+- **Your Kindle's passcode is paused while Grimoire is open** (see Passcode above). Anyone who
+  wakes the Kindle then sees your page without the passcode, and can leave Grimoire to the
+  Kindle's home screen.
 - **Erasing deletes.** The eraser removes whole strokes from the page file; nothing you erase is
   kept in it. Pages and notebooks you delete are kept in `grimoire/trash` until you delete them
   from a computer.
 - **Share has no password.** Anyone on the same network can open it while the Share screen is
   open, and nobody once you leave it. Do not open Share on a network you do not trust.
-- **grimoire.log**, which a bug report asks for, holds no serial number, account or Wi-Fi name.
-  It does note the Kindle's own address on your network when Share is open (like `192.168.1.23`).
+- **grimoire.log**, which a bug report asks for, holds no serial number, account, Wi-Fi name or
+  network address, and Share notes downloads without notebook or folder names.
 
 ## Troubleshooting
 
@@ -167,9 +171,9 @@ in the older version stays set aside. The file format and its rules are in
   comes back. If even that does nothing, hold it until the Kindle restarts (about 40 seconds); a
   restart keeps your notebooks. Never use the passcode reset code 111222777 to get out of
   anything: it erases the Kindle, notebooks included.
-- **"The Kindle passcode was left off"**: the Kindle restarted while Grimoire was open, so the
-  passcode Grimoire had paused did not come back. Turn it on again in the Kindle's Settings
-  (Device Options > Device Passcode); Grimoire leaves that to you.
+- **"Your Kindle passcode was left off"**: the Kindle restarted while Grimoire was open. Turn the
+  passcode back on in the Kindle's Settings (Device Options > Device Passcode); Grimoire leaves
+  that to you.
 - **"This page was made by a newer Grimoire. It is read-only here."**: update Grimoire to change
   that page. Nothing on it is lost (see Moving between versions).
 - **KOReader**: Grimoire does not start from inside it (see Does it work in KOReader?). If
@@ -222,9 +226,11 @@ Much of what Grimoire knows about the Kindle comes from [KOReader](https://korea
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)
-- musl libc: MIT (the Kindle binary is linked statically against it)
+- Inside FBInk: cutef8 by Jeff Bezanson (public domain) and Bjoern Hoehrmann's UTF-8 decoder
+  (ISC, as FBInk's credits give it)
+- musl libc and zig's compiler-rt: MIT (the Kindle binary is linked statically against them)
 
-These licenses, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
+These notices, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
 on the Kindle.
 
 Kindle and Kindle Scribe are trademarks of Amazon.com, Inc. or its affiliates. Grimoire is an
