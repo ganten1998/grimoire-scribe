@@ -934,6 +934,44 @@ TEST(lasting_states_logged_once) {
     free(t10);
 }
 
+// A stroke parameter past its range, as a later version that widened one would write it: this
+// version and 1.0.0-beta both read it at the range's end, and both save the same narrowed bytes.
+TEST(params_past_their_ranges) {
+    ToolParams prm;
+    tool_params_default(TOOL_PENCIL, &prm);
+    prm.size_min_mm = 0.01f;
+    prm.size_max_mm = 50.f;
+    prm.pressure_gamma = 0.f;
+    prm.tilt_max_deg = -3.f;
+    prm.smoothing = 7.f;
+    Stroke *s = stroke_new(TOOL_PENCIL, &prm, 9u);
+    for (int i = 0; i < 12; i++) {
+        PenSample q = {300.f + (float)i * 40.f, 500.f, 0.5f, 0.f, 0.f, (uint32_t)i * 7u};
+        stroke_append(s, &q, DPI);
+    }
+    Page *p = page_new(1860, 2480, PAPER_MEDIUM);
+    page_add(p, s);
+    uint8_t *d = NULL, *mine = NULL, *theirs = NULL;
+    size_t len = 0, lm = 0, lt = 0;
+    CHECK(page_serialize(p, &d, &len) == 0);
+    Page *q = NULL;
+    CHECK(d && page_deserialize(d, len, &q) == 0 && q && !q->readonly && q->n == 1);
+    if (q && q->n == 1) {
+        const ToolParams *r = &q->strokes[0]->params;
+        CHECK(r->size_min_mm == 0.10f && r->size_max_mm == 12.f && r->pressure_gamma == 0.25f);
+        CHECK(r->tilt_max_deg == 5.f && r->smoothing == 1.f && r->opacity_max == prm.opacity_max);
+        CHECK(page_serialize(q, &mine, &lm) == 0);
+    }
+    CHECK(d && beta_resave(d, len, &theirs, &lt) == 0);
+    CHECK(mine && theirs && lm == lt && !memcmp(mine, theirs, lm));
+    CHECK(mine && lm == len && memcmp(mine, d, len) != 0);  // narrowed for good
+    free(d);
+    free(mine);
+    free(theirs);
+    page_free(q);
+    page_free(p);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/format-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -952,6 +990,7 @@ int main(void) {
     RUN(changed_settings_stay_changed);
     RUN(recovery_never_loses_a_page);
     RUN(lasting_states_logged_once);
+    RUN(params_past_their_ranges);
     int rc = tl_done();
     system(cmd);
     return rc;

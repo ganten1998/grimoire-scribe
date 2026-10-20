@@ -115,9 +115,10 @@ The case of the tag's first letter says what a reader that does not know the chu
   it opens the page read-only and never writes it.
 - **Lowercase: safe to copy.** A reader that does not know it keeps the chunk and writes it back
   exactly as it was, after the strokes and in the same order, whatever else it changed on the page.
-  So a safe chunk must stay true when an older version adds, removes or erases strokes or changes
-  the paper: it must never refer to strokes by their index. Data that would go stale belongs in a
-  critical chunk.
+  So a safe chunk must stay true when an older version adds, removes or erases strokes, changes
+  the paper, or scales the page to another size (its points are scaled and the new size written,
+  while the chunk stays as it was): it must never refer to strokes by their index, hold page
+  coordinates or depend on the page size. Data that would go stale belongs in a critical chunk.
 
 Bytes after the strokes that are not chunks (a header cut short, a tag that is not letters and
 digits, a length that runs past the end of the file) make the page read-only, never damaged.
@@ -208,8 +209,13 @@ from 1.0.0-beta.2 on, and the page keeps the value and writes it back (version 2
 
 - The first 16 bytes of a page file.
 - ToolParams is exactly 13 floats in the order above (`tests/test_golden.c` checks its size).
-- Every reader clamps stored parameters to the ranges above, so the ranges may grow but never
-  shrink: a narrower range would change how existing pages look.
+- The parameter ranges above, in both directions, while 1.0.0-beta or 1.0.0-beta.2 is in use.
+  Both clamp a stroke's parameters into these ranges when they read a page and write the clamped
+  values when they save it. A narrower range would change how existing pages look, and a wider one
+  would not survive: these versions draw a value past a range at the range's end and narrow it for
+  good on their next save of the page. A stroke that needs a value past a range keeps its
+  parameters in range and carries the rest elsewhere: in its ext bytes (a flag assigned in the
+  Registry first) or in a critical chunk (a safe chunk cannot name strokes).
 - Tool ids, fixed paper kinds and music parts are never renumbered or reordered.
 - A page with no new data is written byte for byte as 1.0.0-beta writes it.
 
@@ -233,7 +239,10 @@ When a notebook is opened in the editor (not when the Library lists it), every
 `p<id>.qpg.damaged-<time>` whose `p<id>.qpg` is missing and that opens now, normally or
 read-only, is renamed back to `p<id>.qpg` (the newest such copy if there are several). If
 `p<id>.qpg` exists again (an older version wrote a fresh page there after it was edited), both
-are kept. Every recovery is logged in `grimoire.log`.
+are kept. Only a page still in the notebook's `pages` list comes back: a copy of a page no longer
+in it (deleted since, or missing from a page list rebuilt after damage) stays aside. A new page
+never takes the number of a page file that is already there. Every recovery is logged in
+`grimoire.log`.
 
 ## `settings.ini`
 
@@ -268,9 +277,10 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   it knows (up to 64 KB of such lines).
 - A known key whose value it cannot use as written (`side_button=3`, a theme it lacks, a setting
   beyond its range, a music layout with a part it lacks) is used as the nearest value it has, and
-  written back as it was for as long as that setting keeps that value. Changing the setting writes
-  the new value. `http_port` is the exception: it is saved as used, because the launcher opens the
-  firewall for the port it finds in the file.
+  written back as it was until a save finds the setting at another value. That save writes the
+  new value, and from then on the setting is saved as set, also when it is set back. `http_port`
+  is the exception: it is saved as used, because the launcher opens the firewall for the port it
+  finds in the file.
 - A `settings_version` above its own is written back as it is.
 
 1.0.0-beta drops all of this on its next settings save (and writes its clamped values).
@@ -318,8 +328,9 @@ row.
 | a critical chunk | ignored; dropped on a re-save | the page opens read-only |
 | bytes after the strokes that are not chunks | ignored; dropped on a re-save | the page opens read-only |
 | a paper it does not know | blank paper; a re-save turns it into version 1 Blank | blank paper, "Newer paper"; kept (version 2) |
-| page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back |
+| page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
+| a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |
 | an unknown `notebook.ini` key | dropped on the next save | kept |
 | an unknown `notebook.ini` paper | read as Medium rule | kept; new pages get it |
 | an unknown `settings.ini` key | dropped on the next save | kept |
