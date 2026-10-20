@@ -29,10 +29,24 @@ own screensaver is the sleep screen). The pages use Grimoire's own fonts in the 
 the Kindle (Gothic: Jacquard 24 titles and Jersey 10 text, sized to stay pixel-sharp; Classic:
 Terminess).
 
+The pages are in the language Grimoire is in (Settings > Language, English or Spanish), and their
+`<html lang>` says which: the index's line ("2 cuadernos en tu Kindle"), its headings, dates ("10
+oct, 14:32") and links, each notebook's paper, a notebook's page and the Effects studio. So are the
+plain-text answers a person can meet in a browser: not found, no such notebook, export failed, and
+"use the address shown on the Kindle"; the ones only a script or a hand-made address gets stay
+English. The download file names, the endpoints and `/api/list.json` (whose `paper` stays the
+English name) are the same in every language.
+
 The raw files in a zip are the notebook's `notebook.ini` and its `p<id>.qpg` pages, whose format
 is in [FORMAT.md](FORMAT.md). PNG, PDF and Share renders show a page from a newer Grimoire (one
 that opens read-only on the Kindle) as far as they can: a newer page format shows blank, and
 strokes with tools this version does not know are left out.
+
+Every export has the notebook's page size, whichever Kindle makes it: 1860x2480 for a notebook
+made on a 2022 or 2024 Scribe, 1986x2648 for one made on a Scribe 3 or a Scribe Colorsoft. At 300
+dpi their PDF pages are 6.20x8.27 in and 6.62x8.83 in. A page an older version stretched to
+another Scribe's screen (FORMAT.md, Page size) exports at its notebook's size too, and a missing
+page as blank paper of that size.
 
 ### Effects
 
@@ -75,10 +89,10 @@ Scriptable endpoints:
 | `/api/list.json` | listing (below) |
 | `/nb/<id>.pdf` | notebook PDF |
 | `/nb/<id>.zip` | notebook zip |
-| `/nb/<id>/<n>.png` | page n (1-based), 1860x2480 grayscale PNG |
+| `/nb/<id>/<n>.png` | page n (1-based), a grayscale PNG at the notebook's page size (1860x2480 or 1986x2648) |
 | `/nb/<id>/<n>.png?layer=ink` | page n's ink alone, on white |
 | `/nb/<id>/<n>.png?layer=paper` | page n's paper alone, without the ink |
-| `/nb/<id>/<n>.png?f=2` | any of the above shrunk 2x (`f` = 2 to 8); headers `X-Page-Size` (full size), `X-Paper` (paper kind) and, for the ink, `X-Ink-Box` (`x,y,w,h` at full size, or `none`) |
+| `/nb/<id>/<n>.png?f=2` | any of the above shrunk 2x (`f` = 2 to 8); headers `X-Page-Size` (the full size, the notebook's), `X-Paper` (paper kind) and, for the ink, `X-Ink-Box` (`x,y,w,h` at full size, or `none`) |
 | `/nb/<id>/studio` | the Effects studio (`?p=<n>` opens page n) |
 | `/nb/<id>/thumb.png` | thumbnail |
 | `/folder/<name>.zip` | every notebook in a folder (PDF + raw) |
@@ -120,7 +134,9 @@ Host kindle
 `grimoire` folder, e.g. one copied off over USB.
 
 Build `grimoire-export` from the same release as the Grimoire on your Kindle (`make tools` again
-after an update): an older one, 1.0.0-beta's say, shows pages in a newer format blank.
+after an update): an older one, 1.0.0-beta's say, shows pages in a newer format blank. From 1.1
+on it renders every page at its notebook's page size, as the Kindle does; an older one renders
+each page at the size its file has (and a missing page at 1860x2480).
 
 ## 3. USB cable
 
@@ -128,3 +144,8 @@ With **Settings > Mirror PDFs to grimoire/PDFs** on (the default), closing a not
 `grimoire/PDFs/<folder>/<name>.pdf` in the background. Renaming, moving or deleting a notebook moves
 or removes its PDF too. Plug the Kindle in and copy them. (Not in documents/: the Kindle indexes every PDF there, and each one made its home screen redraw on top of Grimoire.)
 The raw notebooks are in the `grimoire` folder if you want everything.
+
+KOReader opens these PDFs with Tools > Grimoire > Notebook PDFs (with Grimoire's KOReader plugin:
+docs/KINDLE.md), or from its file browser. Grimoire writes a notebook's PDF again whenever the
+notebook closes after a change, and renames, moves or deletes it with the notebook, so highlights
+or notes KOReader writes into it are lost: read these, and annotate copies.

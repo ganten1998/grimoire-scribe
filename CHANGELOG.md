@@ -1,5 +1,89 @@
 # Changelog
 
+## Unreleased (1.1)
+
+- **Grimoire in Spanish**: every screen, the share pages and the Effects studio now come in
+  Spanish too. A new **Settings > Language** row offers Automatic, English and Español. Automatic,
+  the default, follows the language of the Kindle's own Settings, so a Kindle set to Spanish shows
+  Grimoire in Spanish from the first start after the update; Settings > Language > English
+  switches back. A choice applies at once and is kept in `settings.ini` (`language=`). The Spanish
+  is a draft until a native speaker reviews it: `po/es-glossary.md` lists the words to confirm. In
+  Spanish the keyboard's letters page has ñ after l, and a new notebook is named "Cuaderno 20 oct".
+  Pages never change with the language: paper looks the same in every one (Cornell notes keep their
+  English headings), and so do PDFs, PNGs and thumbnails. grimoire.log stays in English and says
+  which language is in use and why (`i18n: language es (auto, from the Kindle's locale
+  es_ES.UTF-8)`).
+- **Text that fits**: a notice too long for one line takes two instead of being cut short, and a
+  notice is never cut inside a character. The Library's top-bar buttons widen together for a longer
+  word, the zoom chip widens for its text, and a paper's name too long for its tile, in New
+  notebook or in the editor's paper sheet, goes on two lines. The Library card's line ("3 pages,
+  Oct 10, 14:32") is no longer cut sideways in Classic: it takes a smaller size where the style has
+  one, else leaves out the time. Custom music's part buttons draw their names at one size, and the
+  Settings rows keep their text inside the sheet.
+- **Share pages in Grimoire's language**: the share index, a notebook's page and the Effects
+  studio are in the language Grimoire is in (their `<html lang>` says which), dates included ("10
+  oct, 14:32"), and so are the messages a browser can show (a notebook that is gone, an export
+  that failed). `/api/list.json` and the download file names do not change: a notebook's `paper`
+  stays the English name. In the Gothic style, bold links keep accented letters legible. The
+  studio's export buttons say "page" for a one-page notebook ("PNGs, all 1 page (zip)").
+- **Open Grimoire from KOReader**: with KOReader installed, the next start of Grimoire from the
+  Library adds **Tools > Grimoire** to KOReader: **Open Grimoire**, **Notebook PDFs** (KOReader's
+  file browser in `grimoire/PDFs`) and **Reset pen calibration**, plus an Open Grimoire action for
+  KOReader's gestures. Open Grimoire closes KOReader, runs Grimoire in the same session (the
+  Kindle's home screen never shows), and when Grimoire ends KOReader starts again, with the book
+  that was open. Opened so, the Library's Exit reads **Back to KOReader**, and holding the power
+  button 4 s goes back too. The plugin speaks KOReader's language (English or Spanish). It is
+  optional: deleting `koreader/plugins/grimoire.koplugin` removes it for good, and the zip's new
+  "KOReader plugin (optional)" folder holds a copy for a hand install, never a top-level `koreader`
+  folder. Each start from the Library keeps the installed plugin up to date (the build it came from
+  is in `grimoire/.koplugin-installed`); a start that finds no KOReader forgets that, so a KOReader
+  installed later gets the plugin. *Execute shell script* on `Grimoire.sh` in KOReader still
+  refuses with status 3.
+  - Hosted by KOReader, Grimoire leaves the passcode and the pause of the Kindle's screens to
+    KOReader, which keeps both for its whole session (Grimoire only stops again what KOReader's
+    exit woke). The Kindle's own screensaver as the sleep screen needs those screens, so the page
+    shows instead. Only a KOReader started by `koreader.sh` that paused the Kindle's screens (its
+    Library item, KUAL) can open Grimoire. When the hand-over does not run Grimoire, KOReader comes
+    back and says "Grimoire could not start. See grimoire/grimoire.log.", and grimoire.log says why.
+  - For tools: `Grimoire.sh --hosted koreader` and `grimoire/app/grimoire.sh --hosted koreader`
+    (0 Grimoire ran, 1 another Grimoire is running, 3 refused), with `hosted` in the Capabilities
+    lines: `guard unpack-only hosted` in `Grimoire.sh` and `app/CAPABILITIES`, `guard hosted` in
+    `app/grimoire.sh`.
+- **Notebooks keep their page size**: the 2022 and 2024 Scribes have a 1860x2480 screen, the
+  Scribe 3 and the Scribe Colorsoft a 1986x2648 one, and a notebook now keeps the page size it
+  was made with (`page_w`, `page_h` in `notebook.ini`). On a Scribe of the other size its pages
+  are shown fitted to the screen, the writing on its lines; its new pages, thumbnails and every
+  export (PDFs, PNGs and the share pages' pictures, a missing page's blank one included) have the
+  notebook's size. Pages an earlier version stretched to another Scribe's screen come back to the
+  notebook's size. A `notebook.ini` without a size takes the size most of its page files have, a
+  tie going to the first page's. Custom music's "Systems per page" counts the page's own height
+  (a 1986x2648 page fits more).
+- **Calibration follows the panel**: `settings.ini` records the panel each calibration was made on
+  (`pen.panel`, `touch.panel`), and a `grimoire` folder copied to a Scribe of the other size has
+  its pen and touch calibration scaled to the new panel at startup. A record gone stale
+  (1.0.0-beta.2 keeps the line through a calibration of its own) is caught by the calibration's
+  own scale, on either size.
+- **Scribe Colorsoft**: on its color screen, a quick refresh other than the pen's own ink now waits
+  until the driver has read the frame (`MXCFB_WAIT_FOR_MDP_COMPLETION`), which should stop buttons
+  showing half old or striped while the panel is dragged or the page pinched. Writing, erasing,
+  the pen feel pad and the calibration's check line never wait. A driver that refuses the wait, or
+  takes over a second, is not asked again that session.
+- **For developers**: `make check` runs `make l10n-check`: the committed `po/*.mo` must be what
+  msgfmt makes of `po/*.po`, and `tests/scenarios/y_all_screens.qs` visits every screen and sheet
+  in every language and style with the fit check (`GRIMOIRE_CHECK_FIT=1`), which fails on any text
+  cut short (`fit[es]: ...`); its shots in `build/shots/l10n/<lang>-<style>/` show translators every
+  screen. `make l10n` (GNU gettext) collects the strings into `po/grimoire.pot` and updates and
+  compiles each language. `docs/TRANSLATING.md` says how to improve a translation or add one.
+  `GRIMOIRE_LANG` picks the simulator's language, `GRIMOIRE_L10N_DIR` reads a catalog from a
+  folder, and `GRIMOIRE_HOST=koreader` starts it as KOReader's plugin does; the scenarios run in
+  English. New checks cover the language, the hosted start, page sizes and live ink (`language`,
+  `host`, `asleep.mode`, `editor.page_size`, `editor.scale`, `display.last_fast` and more, in
+  docs/SIM.md).
+  `tests/share_check.sh` also checks the pages in Spanish and from a catalog full of markup, and
+  the studio's Copy command (with node). `tests/launcher_check.sh` runs hosted starts and their
+  refusals and installs the plugin; `tests/koplugin_check.sh` runs the plugin against stand-ins for
+  KOReader (with luajit). The test builds stop at the first undefined behaviour.
+
 ## Unreleased (1.0.0-beta.2)
 
 - **Hold the power button to leave**: hold it 4 seconds to save and leave Grimoire from any

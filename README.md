@@ -36,8 +36,8 @@ see [kindlemodding.org](https://kindlemodding.org) to jailbreak.
 |---|---|
 | Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.19.6 (Vera); a tester runs it on 5.20.1 (Vera). |
 | Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Reported working**: a tester runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
-| Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. |
-| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. |
+| Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
+| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen it waits for each quick update to reach the screen before drawing over it, so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
 
 Firmware 5.20.1 is the newest as of October 2026. Check that your jailbreak survives it before
@@ -46,7 +46,9 @@ updating; most people keep OTA updates blocked.
 ## Install
 
 1. Download `Grimoire-<version>.zip` from the
-   [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files.
+   [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files
+   (and a `KOReader plugin (optional)` folder, needed only in one case: see Does it work in
+   KOReader?).
 2. Connect the Kindle to your computer. The Scribe uses MTP: on a Mac, use
    [OpenMTP](https://openmtp.ganeshrvel.com) (or `brew install --cask openmtp`); on Windows and
    Linux it shows up as a device.
@@ -70,7 +72,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   ever erased outright).
 - **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
   for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
-  Finnish). Shift gives capitals and **abc** returns to the letters.
+  Finnish). Shift gives capitals and **abc** returns to the letters. With Grimoire in Spanish, the
+  letters page has **ñ** too, after l.
 - **Paper**: narrow, medium and wide rule (with or without margin), Cornell, dot grid, graph,
   blank, sheet music, grand staff, guitar tab, 4 to 7 string bass tab, and **Custom music**:
   stack treble, bass, alto, tenor, drum and plain staves, tabs and lyric lines, and choose how
@@ -96,11 +99,33 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Leaving**: **Library > Exit**, or hold the power button 4 seconds on any screen, asleep or
   awake. Grimoire saves your page and closes, and the Kindle comes back. If the page cannot be
   saved (the Kindle's storage is full), a hold while awake says so and stays; hold again within a
-  minute to leave without it.
+  minute to leave without it. Opened from KOReader, Exit reads **Back to KOReader**, and both ways
+  out take you back to KOReader.
 - **Passcode**: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open
   (as KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the
   Kindle restarts while Grimoire is open, the passcode stays off until you turn it back on in the
-  Kindle's Settings; Grimoire reminds you when it next starts (at up to three starts).
+  Kindle's Settings; Grimoire reminds you when it next starts (at up to three starts). Opened from
+  KOReader, Grimoire leaves the passcode to KOReader, which keeps it paused until KOReader quits.
+- **Language**: English or Spanish, following the Kindle's own language (see Language).
+
+## Language
+
+Grimoire speaks English and Spanish. **Settings > Language** offers **Automatic**, **English** and
+**Español**. Automatic, the default, follows the language set in the Kindle's own Settings, and
+gives English for a language Grimoire does not speak yet. So if your Kindle is set to Spanish,
+Grimoire is in Spanish from the first start after you update; Settings > Language > English
+switches it back. A choice applies at once and stays chosen.
+
+All of Grimoire follows it: every screen, the share pages and the Effects studio, and the name a
+new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct"). Your pages never change with the
+language: paper is drawn the same everywhere (Cornell notes keep their English headings), and the
+names you give notebooks and folders stay as you typed them. The KOReader plugin follows
+KOReader's own language.
+
+The Spanish is a draft until a native speaker reviews it: `po/es-glossary.md` lists the choices of
+words to confirm. Corrections and new languages are welcome;
+[docs/TRANSLATING.md](docs/TRANSLATING.md) says how. Translations are under Grimoire's license,
+GPL-3.0-or-later.
 
 ## Getting pages off the Kindle
 
@@ -118,14 +143,40 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 
 ## Does it work in KOReader?
 
-Grimoire is a separate app: quit KOReader (back to the Kindle's Library), then tap **Grimoire**.
-Started from inside KOReader (*Execute shell script* on `Grimoire.sh` in its file browser), it
-refuses, because KOReader keeps the pen and the touch screen to itself; KOReader then reports a
-non-zero status (3). A KOReader plugin is planned for 1.1.
+Yes: KOReader can open Grimoire and get you back to your book. With KOReader installed (the
+Kindle's `koreader` folder), tap **Grimoire** in the Library once. That adds Grimoire to KOReader's
+menu as **Tools > Grimoire**:
+
+- **Open Grimoire**: KOReader closes and Grimoire opens in its place, without the Kindle's home
+  screen in between. In Grimoire, Library > Exit reads **Back to KOReader**; it, or holding the
+  power button 4 seconds, brings KOReader back with the book you had open (or its file browser).
+- **Notebook PDFs**: KOReader's file browser in `grimoire/PDFs`.
+- **Reset pen calibration**: the same rescue as the Library's reset item.
+
+Open Grimoire is also an action for KOReader's gestures (Settings > Taps and gestures). The menu
+speaks KOReader's language, English or Spanish.
+
+This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`
+start, which pauses the Kindle's own screens); a KOReader started another way says why Grimoire
+cannot open from it. Opened from KOReader, Grimoire cannot show the Kindle's own screensaver as its
+sleep screen (that needs the Kindle's screens, which KOReader keeps paused), so it shows your page
+instead. With KOReader started from KUAL without the Kindle framework, the power button may not
+put the Kindle to sleep inside Grimoire.
+
+*Execute shell script* on `Grimoire.sh` in KOReader's file browser still refuses, because
+KOReader keeps the pen and the touch screen to itself (KOReader reports status 3): use Tools >
+Grimoire instead.
+
+The plugin is optional. To remove it, delete `koreader/plugins/grimoire.koplugin`; Grimoire does
+not put it back. To put it back, or into a KOReader installed again since, or where the Library
+cannot run scriptlets, copy the zip's `KOReader plugin (optional)/grimoire.koplugin` folder into
+the Kindle's `koreader/plugins` (with `Grimoire.sh` in `documents` as usual). Never copy a folder
+named `koreader` onto the Kindle: it could replace your KOReader.
 
 The notebook PDFs in `grimoire/PDFs` open in KOReader for reading. Grimoire writes a notebook's
-PDF again whenever you close the notebook after a change, so highlights or notes KOReader writes
-into that file are lost then: to mark one up, copy it out of `grimoire/PDFs` and open the copy.
+PDF again whenever you close the notebook after a change, and renames, moves or deletes it with
+the notebook, so highlights or notes KOReader writes into that file are lost: to mark one up, copy
+it out of `grimoire/PDFs` and open the copy.
 
 ## Moving between versions
 
@@ -152,6 +203,23 @@ again, and keeps both copies if the page was written again in the meantime; a pa
 in the older version stays set aside. The file format and its rules are in
 [docs/FORMAT.md](docs/FORMAT.md).
 
+**Scribes of two sizes.** The 2022 and 2024 Scribes have a 1860x2480 screen, the Scribe 3 and the
+Scribe Colorsoft a bigger one, 1986x2648. From 1.1 on, a notebook keeps the page size it was made
+with: on a Scribe of the other size its pages are shown fitted to the screen, the writing on its
+lines, and its new pages, PDFs and PNGs have the notebook's size. A notebook from before 1.1 takes
+the size most of its pages have. Your pen and touch calibration follows a `grimoire` folder copied
+to a Scribe of the other size: Grimoire scales it to the new screen when it starts. Versions before
+1.1 stretch every page to their own screen instead (by the 7% between the sizes, which moves the
+writing off its lines, about two medium rules near the bottom of the page), and save it so once
+you change that page. Back in 1.1, such a page returns to its notebook's size, which puts the
+writing done in 1.1 back on its lines (ink added in the older version moves by the same ratio). So
+going back to an older version on a Scribe of the other size moves the ink on every page it edits
+there.
+
+**Language.** 1.0.0-beta.2 keeps the Settings > Language choice in `settings.ini` (and shows
+English). 1.0.0-beta forgets it the next time it saves its settings, so back in 1.1 the language
+is Automatic again.
+
 ## Privacy
 
 - **Your Kindle's passcode is paused while Grimoire is open** (see Passcode above). Anyone who
@@ -176,10 +244,15 @@ in the older version stays set aside. The file format and its rules are in
   that to you.
 - **"This page was made by a newer Grimoire. It is read-only here."**: update Grimoire to change
   that page. Nothing on it is lost (see Moving between versions).
-- **KOReader**: Grimoire does not start from inside it (see Does it work in KOReader?). If
-  "Grimoire did not start: KOReader is running." shows near the top of the screen after you tap
-  Grimoire in the Library, a KOReader is still running in the background (after a crash, say):
-  restart the Kindle.
+- **KOReader**: open Grimoire from KOReader with Tools > Grimoire, never with *Execute shell
+  script* (see Does it work in KOReader?). If "Grimoire did not start: KOReader is running." shows
+  near the top of the screen after you tap Grimoire in the Library, a KOReader is still running in
+  the background (after a crash, say): restart the Kindle.
+- **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: KOReader closed, but
+  Grimoire did not run, and KOReader came back. A `grimoire.sh: not starting hosted:` line in
+  `grimoire/grimoire.log` says why (a KOReader not started from its Library item or KUAL, say),
+  and `already running` means another Grimoire was still open. "This Grimoire cannot open from
+  KOReader" means the `Grimoire.sh` in `documents` is older than 1.1: copy a newer one.
 - **Strokes land away from the pen tip**: Settings > Calibrate pen and touch. If you cannot reach
   it, tap **Grimoire - reset pen calibration** in the Library.
 - **Everything is upside down** (possible on the 2022 Scribe): put an empty file named
@@ -187,7 +260,8 @@ in the older version stays set aside. The file format and its rules are in
 - **Bits of the Kindle's own screen show through**: Grimoire repaints over them on its own. If
   it keeps happening, put an empty file named `stop-framework` in the `grimoire` folder; Grimoire
   then stops the Kindle interface completely while it runs (it takes a few seconds longer to
-  come back after Exit).
+  come back after Exit). Opened from KOReader, the file does nothing: KOReader pauses the Kindle
+  interface itself.
 - **Nothing happens when you tap Grimoire**: look at `grimoire/grimoire.log`. Please attach it
   to any bug report.
 
@@ -195,7 +269,7 @@ in the older version stays set aside. The file format and its rules are in
 
 Delete `Grimoire.sh` and `Grimoire - reset pen calibration.sh` from `documents`, then the
 `grimoire` folder (copy `grimoire/notebooks` or `grimoire/PDFs` somewhere first if you want to
-keep your pages).
+keep your pages). With KOReader, delete `koreader/plugins/grimoire.koplugin` too.
 
 ## Building from source
 
@@ -203,16 +277,20 @@ Needs `zig` (the Kindle cross build), `clang`, and SDL3 for the desktop simulato
 
 ```
 make check     # unit tests, scripted UI scenarios with state checks, share server, exporter,
-               # ARM build, and the zip with its launchers
+               # ARM build, the zip with its launchers and KOReader plugin, and every language
+               # on every screen (make l10n-check)
 make sim       # desktop simulator window (docs/SIM.md)
 make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
 make package   # build/dist/Grimoire.zip
 make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
+make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
 ```
 
-[docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh model, the brush model
-and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the files byte by byte;
-[docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle.
+The compiled languages (`po/*.mo`) are committed, so building needs no gettext; only `make l10n`
+needs GNU gettext. [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh
+model, the brush model, the languages and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the
+files byte by byte; [docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle and
+KOReader; [docs/TRANSLATING.md](docs/TRANSLATING.md) how to improve a translation or add one.
 
 ## License and credits
 

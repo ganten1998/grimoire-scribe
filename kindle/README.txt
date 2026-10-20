@@ -4,6 +4,8 @@ Grimoire @VERSION@: a handwriting notebook for the jailbroken Kindle Scribe
 INSTALL
 1. Connect the Kindle to your computer (on a Mac use OpenMTP: https://openmtp.ganeshrvel.com).
 2. Copy BOTH files from the "documents" folder here into the Kindle's "documents" folder.
+   (The "KOReader plugin (optional)" folder is only for KOReader without Library scriptlets:
+   see KOREADER below.)
 3. Eject. Tap "Grimoire" in your Library (it can take a minute to appear).
 
 UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are kept.
@@ -14,15 +16,19 @@ KOREADER: Grimoire is a separate app; tap it in the Library. If KOReader is inst
 Grimoire once also adds Tools > Grimoire to KOReader, which opens Grimoire and comes back to your
 book. (Without it, quit KOReader first: Grimoire.sh does not run from KOReader's file browser.)
 For setups without Library scriptlets, copy the folder "KOReader plugin (optional)" from this zip:
-its grimoire.koplugin folder goes into koreader/plugins on the Kindle.
+its grimoire.koplugin folder goes into koreader/plugins on the Kindle. To remove the plugin,
+delete koreader/plugins/grimoire.koplugin; Grimoire does not put it back.
+LANGUAGE: English or Spanish (a draft), in Settings > Language. Automatic, the default, follows
+the Kindle's own language.
 PASSCODE: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open (as
 KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the Kindle
 restarts while Grimoire is open, the passcode stays off until you turn it back on in the Kindle's
 Settings; Grimoire reminds you when it next starts.
 
 LEAVING: Library > Exit, or hold the power button 4 seconds (the way out when stuck, too):
-Grimoire saves and closes. Never use the passcode reset code 111222777 to get out of anything:
-it erases the Kindle, notebooks included.
+Grimoire saves and closes (opened from KOReader, Exit reads Back to KOReader, and both go back
+there). Never use the passcode reset code 111222777 to get out of anything: it erases the
+Kindle, notebooks included.
 
 Your notebooks live in the "grimoire" folder on the Kindle. Closed notebooks are also saved as
 PDFs in grimoire/PDFs (Grimoire writes them again, so mark up copies, not these). Library > Share
