@@ -112,5 +112,21 @@ void share_open(App *a);                             // switch to SCR_SHARE (ret
 
 // The headless runner's `expect` checks read the app's state through this (tests only; cheap).
 // Keys: "screen" (library|editor|penset|calib|share), "toast" (the visible toast, "" if none),
-// "asleep" (0|1), "rotation" (0..3), "size" (WxH). 0 and the value in out, -1 for an unknown key.
+// "asleep" (0|1), "rotation" (0..3), "size" (WxH), "settings.<settings.ini key>" for a few and
+// for every tool's pen feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth",
+// and "editor.*" / "library.*" (below); docs/SIM.md has them all. 0 and the value in out, -1 for
+// an unknown key.
 int app_probe(const char *key, char *out, size_t cap);
+// The screens' own keys, asked without their "editor." / "library." prefix (same contract).
+int editor_probe(App *a, const char *key, char *out, size_t cap);
+int library_probe(App *a, const char *key, char *out, size_t cap);
+// A custom music layout for the probes: "5: treble tab6 bass" (systems per page, then the parts
+// top to bottom); "" for NULL.
+void app_probe_music(const MusicLayout *m, char *out, size_t cap);
+// settings.ini's name for a tool ("pencil", "mech", ...), NULL past the list: how the probes name
+// tools. tests/test_probe.c holds it to what settings_save writes.
+static inline const char *app_probe_tool(ToolKind t) {
+    static const char *const k[TOOL_COUNT] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
+                                              "fountain", "fineliner", "marker",    "charcoal", "calligraphy"};
+    return (int)t >= 0 && (int)t < TOOL_COUNT ? k[t] : NULL;
+}

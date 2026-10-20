@@ -5,10 +5,12 @@ wait 100
 tap 510 460
 tap 1564 2254
 wait 300
+expect screen is editor
 pen curve 300 520 40 70 0.7 5
 pen line 300 700 1300 720 60 0.3 0.9
 wait 300
 shot 01-before-clear
+expect editor.strokes is 2
 pentap 1768 810
 wait 300
 shot 02-cleared-by-toolbar
@@ -17,12 +19,19 @@ wait 300
 pentap 1768 1350
 wait 300
 shot 03-display-sheet
+expect editor.modal is display
+expect settings.invert is 0
+expect light.intensity is 12
 drag touch 1000 598 1500 598 5
 wait 300
+expect light.intensity not 12
 tap 400 878
 wait 500
 shot 04-inverted
+expect settings.invert is 1
+expect editor.modal is display
 tap 1464 1346
 wait 300
 shot 05-sheet-closed-inverted
+expect settings.invert is 1
 quit

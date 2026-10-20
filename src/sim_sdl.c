@@ -13,7 +13,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 
+#include "app.h"  // app_probe, for the script's expect checks
 #include "calib_fit.h"
 #include "display.h"
 #include "input.h"
@@ -46,9 +48,18 @@ static bool q_pop(InEvent *e) {
 static InputCalib g_pen, g_touch;
 static InputCaps g_caps = {true, true, true, true, true, false, 0, "SDL mouse (sim)", "SDL right button (sim)"};
 static int g_watch_fd = -1;
+static int g_rot;  // quarter turns clockwise the screen is turned from the panel (input_set_orientation)
+
+// The simulated panel is the screen as it is upright: its sides swap while the Kindle is sideways.
+static void panel_size(float *pw, float *ph) {
+    *pw = (float)((g_rot & 1) ? g_h : g_w);
+    *ph = (float)((g_rot & 1) ? g_w : g_h);
+}
 
 void input_default_calib(InputCalib *pen, InputCalib *touch) {
-    InputCalib c = {false, false, (float)g_w, 0.f, (float)g_h, 0.f};
+    float pw, ph;
+    panel_size(&pw, &ph);
+    InputCalib c = {false, false, pw, 0.f, ph, 0.f};
     if (pen) *pen = c;
     if (touch) *touch = c;
 }
@@ -60,22 +71,46 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 
 const InputCaps *input_caps(void) { return &g_caps; }
 void input_watch_fd(int fd) { g_watch_fd = fd; }
-// The simulated panel is the logical screen itself: mouse and script coordinates are already
-// in rotated screen space, so these are identities.
-void input_set_orientation(int quarter_turns) { (void)quarter_turns; }
+// Panel <-> screen for a Kindle turned g_rot quarter turns clockwise, as in input_evdev.c.
+// display_set_orientation has already swapped g_w and g_h when this is set.
+void input_set_orientation(int quarter_turns) { g_rot = quarter_turns & 3; }
+static void panel_to_logical(float px, float py, float *lx, float *ly) {
+    float pw, ph;
+    panel_size(&pw, &ph);
+    float W = pw - 1.f, H = ph - 1.f;
+    switch (g_rot & 3) {
+    case 1: *lx = H - py; *ly = px; break;
+    case 2: *lx = W - px; *ly = H - py; break;
+    case 3: *lx = py; *ly = W - px; break;
+    default: *lx = px; *ly = py; break;
+    }
+}
 void input_logical_to_panel(float lx, float ly, float *px, float *py) {
-    *px = lx;
-    *py = ly;
+    float pw, ph;
+    panel_size(&pw, &ph);
+    float W = pw - 1.f, H = ph - 1.f;
+    switch (g_rot & 3) {
+    case 1: *px = ly; *py = H - lx; break;
+    case 2: *px = W - lx; *py = H - ly; break;
+    case 3: *px = W - ly; *py = lx; break;
+    default: *px = lx; *py = ly; break;
+    }
 }
 
-// The sim reports "device" coordinates as screen/size so calibration math is exercised.
+// Mouse and script coordinates are screen pixels. Like the Kindle's digitizer, the sim reports
+// "device" coordinates as a place on the upright panel (0..1), which the calibration maps to
+// panel pixels, turned to the screen after: a calibration made upright stays right sideways, and
+// the calibration math is exercised.
 static InEvent make_ev(InType t, float sx, float sy, bool pen) {
     InEvent e = {0};
     e.type = t;
-    e.nx = sx / (float)g_w;
-    e.ny = sy / (float)g_h;
-    const InputCalib *c = pen ? &g_pen : &g_touch;
-    calib_apply(c, e.nx, e.ny, &e.x, &e.y);
+    float px, py, pw, ph;
+    input_logical_to_panel(sx, sy, &px, &py);
+    panel_size(&pw, &ph);
+    e.nx = px / pw;
+    e.ny = py / ph;
+    calib_apply(pen ? &g_pen : &g_touch, e.nx, e.ny, &px, &py);
+    panel_to_logical(px, py, &e.x, &e.y);
     e.t_ms = now_ms();
     return e;
 }
@@ -238,6 +273,24 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     return false;
 }
 
+// A headless run ends once the PDF exports it started are written (bgjob.c leaves them to child
+// processes that outlive Grimoire), so what reads its data next (a scenario's "# root:" copy,
+// share_check.sh, the exporter) never meets a file half-written. A minute at most.
+static void wait_for_exports(void) {
+    bool said = false;
+    for (int ms = 0; ms < 60000;) {
+        pid_t r = waitpid(-1, NULL, WNOHANG);
+        if (r < 0) return;     // no child left
+        if (r > 0) continue;   // one ended: any more?
+        if (!said) fprintf(stderr, "headless: waiting for the PDF exports to finish\n");
+        said = true;
+        sleep_ms(20);
+        ms += 20;
+    }
+    fprintf(stderr, "headless: an export still runs after a minute; not waiting for it\n");
+}
+
+static void expect_finish(void);
 void display_close(void) {
     if (g_headless || getenv("GRIMOIRE_SIM_STATS"))
         fprintf(stderr, "refreshes: fast %d (%.1f MP), ui %d (%.1f MP), full %d (%.1f MP)\n", g_stats[0],
@@ -249,6 +302,8 @@ void display_close(void) {
     if (!g_headless) SDL_Quit();
 #endif
     free(g_eink);
+    if (g_headless) wait_for_exports();
+    expect_finish();  // exits with status 3 if a check failed
 }
 
 // ---- script mode ----
@@ -259,6 +314,119 @@ static char g_pending_shot[128];
 static bool g_script_done;
 static float g_px, g_py;  // last pen position
 static bool g_side, g_eraser;
+
+// ---- expect: checks in a script ----
+//
+// "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
+// value is the rest of the line after one space; nothing there means the empty string. KEY is
+// anything app_probe() answers (docs/SIM.md lists them), or "running": 1 while the app runs, 0
+// once it has quit. A check sees the app once everything queued before it was handled, ticked
+// and flushed: at once after a line that ends a batch (a tap, wait or shot; that is one main-loop
+// pass before a shot in its place would be taken), else at the next poll, like a shot. A failed
+// check is printed and the run goes on; at the end the run exits with status 3 (display_close).
+// A line the runner does not know fails the same way, or a misspelt check would pass unseen.
+
+typedef enum { EXPECT_IS, EXPECT_HAS, EXPECT_NOT } ExpectOp;
+static const char *const k_expect_ops[] = {"is", "has", "not"};
+
+static struct {
+    bool pending;  // read, not checked yet
+    bool bad;      // the line could not be read: it fails when its turn comes
+    int line;
+    ExpectOp op;
+    char key[64];
+    char value[512];
+} g_expect;
+static int g_line_no;  // the script line being read (1-based)
+static int g_expect_total, g_expect_failed;
+
+// Reads "expect KEY OP VALUE" (s starts at "expect") into g_expect.
+static void expect_read(const char *s) {
+    memset(&g_expect, 0, sizeof g_expect);
+    g_expect.pending = true;
+    g_expect.line = g_line_no;
+    const char *k = s + 6;
+    while (*k == ' ' || *k == '\t') k++;
+    size_t kl = strcspn(k, " \t\r\n");
+    const char *o = k + kl;
+    while (*o == ' ' || *o == '\t') o++;
+    size_t ol = strcspn(o, " \t\r\n");
+    const char *v = o + ol;
+    if (*v == ' ' || *v == '\t') v++;  // the one space before the value
+    size_t vl = strcspn(v, "\r\n");
+    int op = -1;
+    for (int i = 0; i < (int)(sizeof k_expect_ops / sizeof k_expect_ops[0]); i++)
+        if (ol == strlen(k_expect_ops[i]) && !strncmp(o, k_expect_ops[i], ol)) op = i;
+    if (kl == 0 || kl >= sizeof g_expect.key || op < 0 || vl >= sizeof g_expect.value) {
+        g_expect.bad = true;
+        return;
+    }
+    memcpy(g_expect.key, k, kl);
+    memcpy(g_expect.value, v, vl);
+    g_expect.op = (ExpectOp)op;
+}
+
+// Checks the expect just read. gone: the app quit before the script got to it, so only "running"
+// has an answer (0); any other key fails as not run.
+static void expect_check_as(bool gone) {
+    g_expect.pending = false;
+    g_expect_total++;
+    char got[512] = "";
+    bool running = !strcmp(g_expect.key, "running");
+    if (g_expect.bad) {
+        fprintf(stderr, "expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", g_expect.line);
+    } else if (gone && !running) {
+        fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", g_expect.line);
+    } else if (!running && app_probe(g_expect.key, got, sizeof got) != 0) {
+        fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
+    } else {
+        if (running) snprintf(got, sizeof got, "%d", gone ? 0 : 1);
+        bool ok = g_expect.op == EXPECT_IS    ? !strcmp(got, g_expect.value)
+                  : g_expect.op == EXPECT_HAS ? strstr(got, g_expect.value) != NULL
+                                              : strcmp(got, g_expect.value) != 0;
+        if (ok) return;
+        fprintf(stderr, "expect failed (line %d): %s is \"%s\", wanted %s \"%s\"\n", g_expect.line, g_expect.key, got,
+                k_expect_ops[g_expect.op], g_expect.value);
+    }
+    g_expect_failed++;
+}
+
+static void expect_check(void) { expect_check_as(false); }
+
+// A line script_step does not know ("expcet", "Expect"): it fails like a check, since a misspelt
+// check is a check never made.
+static void expect_unknown_line(void) {
+    fprintf(stderr, "expect failed (line %d): unknown command\n", g_line_no);
+    g_expect_total++;
+    g_expect_failed++;
+}
+
+// The app quit before the script ended (Library > Exit, say): the checks it never got to fail
+// too, or a tap that lands on Exit by mistake would let the rest of a script pass unseen. Where
+// a script means the app to quit, "expect running is 0" says so.
+static void expect_unrun(void) {
+    if (g_expect.pending) expect_check_as(true);
+    char line[512];
+    while (g_script && fgets(line, sizeof line, g_script)) {
+        g_line_no++;
+        const char *s = line;
+        while (isspace((unsigned char)*s)) s++;
+        if (!strncmp(s, "expect", 6) && (!s[6] || isspace((unsigned char)s[6]))) {
+            expect_read(s);
+            expect_check_as(true);
+        }
+    }
+}
+
+static void expect_finish(void) {
+    if (!g_expect_total) return;
+    if (!g_expect_failed) {
+        fprintf(stderr, "expect: all %d checks passed\n", g_expect_total);
+        return;
+    }
+    fprintf(stderr, "expect: %d of %d checks failed\n", g_expect_failed, g_expect_total);
+    exit(3);
+}
 
 static void shot(const char *name) {
     if (!g_last_screen) return;
@@ -290,6 +458,7 @@ static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false
 static void script_step(void) {
     char line[512];
     while (fgets(line, sizeof line, g_script)) {
+        g_line_no++;
         char *s = line;
         while (isspace((unsigned char)*s)) s++;
         if (!*s || *s == '#') continue;
@@ -374,6 +543,15 @@ static void script_step(void) {
         } else if (!strcmp(a, "shot")) {
             strlcpy_q(g_pending_shot, b, sizeof g_pending_shot);
             return;
+        } else if (!strcmp(a, "expect")) {
+            expect_read(s);
+            // Nothing queued since the last flush: check now and read on (no extra refresh or
+            // timer tick slips in). Else once this batch is handled and flushed, like a shot.
+            if (g_qh == g_qt) {
+                expect_check();
+                continue;
+            }
+            return;
         } else if (!strcmp(a, "rotate")) {
             InEvent e = make_ev(IN_ORIENTATION, 0, 0, true);
             e.value = atoi(b) & 3;
@@ -410,6 +588,7 @@ static void script_step(void) {
             return;
         } else {
             fprintf(stderr, "script: unknown command: %s", s);
+            expect_unknown_line();
         }
     }
     if (!g_script_done) {
@@ -444,6 +623,7 @@ int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
 }
 
 void input_close(void) {
+    expect_unrun();
     if (g_script) fclose(g_script);
     g_script = NULL;
 }
@@ -565,6 +745,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
             shot(g_pending_shot);
             g_pending_shot[0] = 0;
         }
+        if (g_expect.pending) expect_check();  // an expect waits for the same moment
         if ((int32_t)(now_ms() - g_wait_until) < 0) {
             uint32_t left = g_wait_until - now_ms();
             sleep_ms((int)(left < (uint32_t)timeout_ms ? left : (uint32_t)timeout_ms));

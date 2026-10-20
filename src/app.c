@@ -343,13 +343,74 @@ void app_press_feedback(App *a, Rect r) {
 
 int app_probe(const char *key, char *out, size_t cap) {
     static const char *const k_names[SCR_COUNT] = {"library", "editor", "penset", "calib", "share"};
-    const App *a = g_probe_app;
+    App *a = g_probe_app;
     if (!a || !key || !out || cap == 0) return -1;
+    if (!strncmp(key, "editor.", 7)) return editor_probe(a, key + 7, out, cap);
+    if (!strncmp(key, "library.", 8)) return library_probe(a, key + 8, out, cap);
+    // Settings, under their settings.ini names.
+    const Settings *st = &a->settings;
+    const struct {
+        const char *key;
+        int v;
+    } nums[] = {
+        {"settings.invert", st->invert},
+        {"settings.mirror_pdf", st->mirror_pdf},
+        {"settings.follow_rotation", st->follow_rotation},
+        {"settings.pinch_zoom", st->pinch_zoom},
+        {"settings.side_button", st->side_button},
+        {"settings.sleep_mode", st->sleep_mode},
+        {"settings.sleep_minutes", st->sleep_minutes},
+        {"settings.pen.valid", st->pen_calib.valid},
+        {"settings.touch.valid", st->touch_calib.valid},
+    };
+    for (size_t i = 0; i < sizeof nums / sizeof nums[0]; i++)
+        if (!strcmp(key, nums[i].key)) {
+            snprintf(out, cap, "%d", nums[i].v);
+            return 0;
+        }
+    if (!strcmp(key, "light.intensity") || !strcmp(key, "light.warmth")) {
+        int li, lw;
+        light_get(&li, &lw);
+        snprintf(out, cap, "%d", !strcmp(key, "light.intensity") ? li : lw);
+        return 0;
+    }
+    // A tool's pen feel, as settings.ini writes it: "settings.ballpoint.size_max_mm".
+    const char *tool = !strncmp(key, "settings.", 9) ? key + 9 : NULL, *dot = tool ? strchr(tool, '.') : NULL;
+    for (int t = 0; dot && t < TOOL_COUNT; t++) {
+        const char *name = app_probe_tool((ToolKind)t);
+        if (!name || strlen(name) != (size_t)(dot - tool) || strncmp(tool, name, strlen(name))) continue;
+        int n;
+        const ParamInfo *pi = tool_param_table(&n);
+        for (int i = 0; i < n; i++)
+            if (!strcmp(dot + 1, pi[i].key)) {
+                snprintf(out, cap, "%.4f", *tool_param_ptr(&a->settings.tools[t], &pi[i]));
+                return 0;
+            }
+    }
     if (!strcmp(key, "screen")) snprintf(out, cap, "%s", k_names[a->scr]);
     else if (!strcmp(key, "toast")) snprintf(out, cap, "%s", a->toast_visible ? a->toast : "");
     else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
+    else if (!strcmp(key, "settings.theme")) snprintf(out, cap, "%s", st->theme == THEME_CLASSIC ? "classic" : "gothic");
     else return -1;
     return 0;
+}
+
+void app_probe_music(const MusicLayout *m, char *out, size_t cap) {
+    // The parts by short names (src/paper.h order); a part missing here shows as its number.
+    static const char *const parts[PART_COUNT] = {
+        [PART_TREBLE] = "treble", [PART_BASS] = "bass",   [PART_ALTO] = "alto", [PART_TENOR] = "tenor",
+        [PART_PERC] = "drums",    [PART_STAFF] = "plain", [PART_TAB4] = "tab4", [PART_TAB5] = "tab5",
+        [PART_TAB6] = "tab6",     [PART_TAB7] = "tab7",   [PART_LYRICS] = "lyrics",
+    };
+    if (cap == 0) return;
+    out[0] = 0;
+    if (!m) return;
+    size_t n = (size_t)snprintf(out, cap, "%d:", m->systems);
+    for (int i = 0; i < m->n && i < MUSIC_MAX_PARTS && n < cap; i++) {
+        int p = (int)m->part[i];
+        const char *name = p > 0 && p < PART_COUNT ? parts[p] : NULL;
+        n += name ? (size_t)snprintf(out + n, cap - n, " %s", name) : (size_t)snprintf(out + n, cap - n, " %d", p);
+    }
 }

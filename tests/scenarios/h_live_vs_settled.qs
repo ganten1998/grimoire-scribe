@@ -4,6 +4,8 @@ wait 100
 tap 510 460
 tap 1564 2254
 wait 300
+expect screen is editor
+expect editor.tool is pencil
 pen down 300 700 0.35 0 0
 pen move 312 706 0.356 0 0
 pen move 324 712 0.362 0 0
@@ -85,9 +87,11 @@ pen move 1224 718 0.812 0 0
 pen move 1236 712 0.818 0 0
 pen move 1248 706 0.824 0 0
 shot 01-live-pencil-pen-down
+expect editor.strokes is 0
 pen up 1250 700
 wait 300
 shot 02-settled-pencil
+expect editor.strokes is 1
 pen down 300 1100 0.5 50 0
 pen move 315 1100 0.5 50 0
 pen move 330 1100 0.5 50 0
@@ -149,7 +153,9 @@ pen move 1155 1100 0.5 50 0
 pen move 1170 1100 0.5 50 0
 pen move 1185 1100 0.5 50 0
 shot 03-live-pencil-tilted
+expect editor.strokes is 1
 pen up 1200 1100
 wait 300
 shot 04-settled-tilted
+expect editor.strokes is 2
 quit

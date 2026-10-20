@@ -4,6 +4,7 @@ wait 100
 tap 510 460
 tap 1564 2254
 wait 300
+expect screen is editor
 pen line 200 500 270 540 6 0.5 0.7
 pen line 310 500 380 540 6 0.5 0.7
 pen line 420 500 490 540 6 0.5 0.7
@@ -65,7 +66,9 @@ pen line 1190 1140 1260 1180 6 0.5 0.7
 pen line 1300 1140 1370 1180 6 0.5 0.7
 pen line 1410 1140 1480 1180 6 0.5 0.7
 shot 01-burst-live
+expect editor.strokes is 60
 wait 700
 shot 02-burst-settled
+expect editor.strokes is 60
 wait 2500
 quit
