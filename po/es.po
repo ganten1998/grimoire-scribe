@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 11:18-0500\n"
+"POT-Creation-Date: 2026-10-20 12:00-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -262,7 +262,8 @@ msgstr "Toca con un dedo el centro de la diana (%d de %d)."
 msgid "Cancel (tap with a finger)"
 msgstr "Cancelar (toca con un dedo)"
 
-#. TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
 #: src/calibrate.c src/editor.c src/keyboard.c src/library.c src/musicbuild.c
 msgid "Cancel"
 msgstr "Cancelar"
@@ -709,8 +710,8 @@ msgstr "Cuaderno nuevo"
 msgid "Paper"
 msgstr "Papel"
 
-#. TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
-#. icon), then the folder it goes in, or the Library itself.
+#. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
+#. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
 #: src/library.c
 #, c-format
 msgid "Name: %s"

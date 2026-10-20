@@ -428,8 +428,8 @@ static void draw_new(App *a) {
     }
     int y = ty + g.rows * g.cell_h + ui_px(20);
     char line[320];
-    // TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
-    // icon), then the folder it goes in, or the Library itself.
+    // TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
+    // icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
     snprintf(line, sizeof line, _("Name: %s"), S->new_name);
     Rect rn = {in.x + in.w - ui_px(300), y, ui_px(300), ui_px(120)};
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, y, in.w - ui_px(330), ui_px(120)}, line, 0);
@@ -441,7 +441,8 @@ static void draw_new(App *a) {
     int bh = ui_px(140), bw = ui_px(380);
     Rect cancel = {in.x, in.y + in.h - bh, bw, bh};
     Rect create = {in.x + in.w - bw, in.y + in.h - bh, bw, bh};
-    // TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+    // TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+    // the main one), or at 34 px, or two lines of that.
     ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
     ui_button(c, create, ICON_NONE, _("Create"), BTN_PRIMARY);
     hits_add(&S->hits, cancel, H_CANCEL, 0);
