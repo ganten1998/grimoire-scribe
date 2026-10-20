@@ -30,6 +30,9 @@ pentap 872 561
 expect editor.tool is ballpoint
 pen curve 300 420 30 60 0.7 3
 pen line 300 520 1300 520 60 0.7 0.7
+# The Library puts the latest saved first, by whole seconds: this notebook's save must come in a
+# later second than the first one's, or a tie could put the older one first and move that.
+wait 1100
 pentap 1768 1566
 wait 400
 shot 01-library-thumbs
@@ -86,20 +89,19 @@ shot 08-settings
 expect library.sheet is settings
 tap 930 446
 wait 400
-shot 09-penfeel-pencil
+shot 09-penfeel-ballpoint
 expect screen is penset
 tap 1152 289
 wait 200
 expect settings.fountain.pressure_gamma not 2.9000
 drag touch 1000 1789 1500 1789 6
 wait 200
-# (1152, 289) is the Fountain pen's tab since the new pens came (shot 10's name is out of date),
-# and the drag set its pressure curve
+# (1152, 289) is the Fountain pen's tab since the new pens came, and the drag set its pressure curve
 expect settings.fountain.pressure_gamma is 2.9000
 pen line 700 600 1500 700 80 0.2 1.0
 pen curve 700 820 30 60 0.8 4
 wait 200
-shot 10-penfeel-ballpoint
+shot 10-penfeel-fountain
 expect screen is penset
 tap 125 95
 wait 300

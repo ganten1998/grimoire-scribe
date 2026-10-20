@@ -767,7 +767,7 @@ void editor_open_notebook(App *a, const char *id) {
     arrive_readonly(a);
 }
 
-void editor_save_now(App *a) { save_page(a); }
+bool editor_save_now(App *a) { return save_page(a); }
 
 // ---- ink ----
 
@@ -1556,8 +1556,9 @@ void editor_tick(App *a, uint32_t now) {
         S->nclicks = 0;
         clear_page(a);
     }
-    // Autosave after a real pause (and never while the pen is down).
-    if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000) save_page(a);
+    // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
+    // tries again 2 s later, not at every tick: each try says so with a toast.
+    if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000 && !save_page(a)) S->last_up = now;
 }
 
 // ---- headless checks ----
@@ -1587,6 +1588,8 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", m);
     } else if (!strcmp(key, "strokes")) {
         snprintf(out, cap, "%d", has_page ? S->page->n : 0);
+    } else if (!strcmp(key, "unsaved")) {
+        snprintf(out, cap, "%d", S->open && (S->page_dirty || S->info_dirty) ? 1 : 0);
     } else if (!strcmp(key, "ticked")) {
         snprintf(out, cap, "%d", S->pages_open ? pages_selected(a) : 0);
     } else if (!strcmp(key, "paper")) {

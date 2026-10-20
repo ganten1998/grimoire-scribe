@@ -73,6 +73,7 @@ Rect ui_sheet(Canvas *c, Rect card, const char *title);
 // Toast-style one-line message box centered near the bottom of the screen.
 Rect ui_toast_rect(Rect screen, const char *msg);
 void ui_toast(Canvas *c, Rect screen, const char *msg);
+void ui_toast_at(Canvas *c, Rect r, const char *msg);  // r: ui_toast_rect's, moved as the app needs
 void ui_checkbox(Canvas *c, Rect r, const char *label, bool checked);
 
 // Tap tracking shared by screens: a press that starts and ends in the same rect within

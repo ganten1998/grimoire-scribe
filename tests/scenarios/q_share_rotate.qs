@@ -5,6 +5,7 @@ wait 300
 tap 1345 95
 wait 700
 expect screen is share
+expect watching is 1
 shot 01-share-portrait
 wait 1000
 rotate 1
@@ -20,17 +21,24 @@ shot 03-share-portrait-again
 sleep
 wait 500
 expect asleep is 1
+# Asleep, nothing accepts a connection, so the server is not watched (one waiting would make
+# the main loop spin); the wake watches it again. With no page open, the sleep screen is the
+# card without the code (nothing would answer a phone that scanned it).
+expect watching is 0
+shot 04-asleep-no-code
 wake
 wait 700
 expect asleep is 0
 expect screen is share
-shot 04-share-after-wake
+expect watching is 1
+shot 05-share-after-wake
 wait 2000
 # Done
 tap 1540 2105
 wait 700
 expect screen is library
-shot 05-library
+expect watching is 0
+shot 06-library
 wait 1500
 # Share again, opened in portrait and turned while it is open: this visit starts the server
 # again and the turn keeps it (tests/share_check.sh counts one start per visit).
@@ -39,7 +47,7 @@ wait 700
 expect screen is share
 rotate 1
 wait 700
-shot 06-share-landscape-again
+shot 07-share-landscape-again
 wait 1500
 rotate 0
 wait 700

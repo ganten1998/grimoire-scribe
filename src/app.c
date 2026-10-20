@@ -71,12 +71,14 @@ int app_init(App *a, int w, int h, float dpi) {
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
     // The launcher pauses the Kindle's passcode while Grimoire runs (kindle/app/grimoire.sh says
-    // why) and says so here; "left-off": an earlier session ended without putting it back.
+    // why) and says so here; "left-off": an earlier session ended without putting it back (told
+    // at up to three starts while it stays off). That one goes first: the Kindle is unprotected.
     const char *passcode = getenv("GRIMOIRE_PASSCODE");
-    if (caps && !caps->has_pen)
+    if (passcode && !strcmp(passcode, "left-off")) {
+        qlog("device passcode: left off by an earlier session; telling the user");
+        app_toast(a, "Your Kindle passcode was left off. Turn it back on in Kindle Settings.", 10000);
+    } else if (caps && !caps->has_pen)
         app_toast(a, "No pen found. " APP_NAME " is made for the Kindle Scribe; writing needs its pen.", 10000);
-    else if (passcode && !strcmp(passcode, "left-off"))
-        app_toast(a, "The Kindle passcode was left off. Turn it back on in Kindle Settings.", 10000);
     else if (passcode && !strcmp(passcode, "paused") && !a->settings.passcode_told) {
         a->settings.passcode_told = true;
         app_toast(a, "Your Kindle passcode is paused while " APP_NAME " is open.", 8000);
@@ -88,9 +90,11 @@ int app_init(App *a, int w, int h, float dpi) {
 void app_shutdown(App *a) {
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     k_screens[a->scr].leave(a);
-    bg_detach_rest();  // queued PDF exports finish on their own after Grimoire exits
     settings_save(&a->settings);
     for (int i = 0; i < SCR_COUNT; i++) k_screens[i].free_(a);
+    // Queued PDF exports finish on their own after Grimoire exits. After editor_free: closing the
+    // open notebook (leaving straight from the editor) queues its mirror PDF.
+    bg_detach_rest();
     canvas_free(&a->toast_under);
     canvas_free(&a->screen);
     font_shutdown();
@@ -201,10 +205,31 @@ static void toast_hide(App *a) {
     g_self_dirty = rect_union(g_self_dirty, a->toast_rect);
 }
 
+// Where the toast goes: its usual place near the bottom, or, when the screen keeps the bottom
+// for its controls (the keyboard, a sheet's buttons), just above them, so their labels stay
+// readable while it shows.
+static Rect toast_place(const App *a) {
+    Rect r = ui_toast_rect((Rect){0, 0, a->w, a->h}, a->toast);
+    int gap = ui_px(20);
+    if (a->toast_floor > 0 && r.y + r.h + gap > a->toast_floor) r.y = a->toast_floor - r.h - gap;
+    if (r.y < gap) r.y = gap;
+    return r;
+}
+
 static void toast_draw(App *a) {
-    a->toast_rect = ui_toast_rect((Rect){0, 0, a->w, a->h}, a->toast);
+    a->toast_rect = toast_place(a);
     a->toast_visible = true;
     g_self_dirty = rect_union(g_self_dirty, a->toast_rect);
+}
+
+// A toast already up when the screen's floor changed (a sheet opened under it) moves: where it
+// was is repainted from the screen, and it is shown in its new place.
+static void toast_follow(App *a) {
+    if (!a->toast_visible) return;
+    Rect r = toast_place(a);
+    if (r.x == a->toast_rect.x && r.y == a->toast_rect.y && r.w == a->toast_rect.w && r.h == a->toast_rect.h) return;
+    g_self_dirty = rect_union(g_self_dirty, rect_union(a->toast_rect, r));
+    a->toast_rect = r;
 }
 
 void app_toast(App *a, const char *msg, int ms) {
@@ -239,6 +264,7 @@ static void app_sleep(App *a) {
     a->wake_redraw_at = 0;
     a->wake_fallback_at = 0;
     if (a->scr == SCR_EDITOR) editor_save_now(a);
+    if (a->scr == SCR_SHARE) share_sleep(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
     if (a->settings.sleep_mode == 2) {
         sys_kindle_ui(true);
@@ -253,7 +279,10 @@ static void app_sleep(App *a) {
         canvas_reset_clip(c);
         canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
         canvas_blit_fit(c, src, (Rect){0, 0, a->w, a->h});
-    }  // (no page open: the screen as it is, e.g. the library, stays up)
+    } else if (a->scr == SCR_SHARE) {
+        canvas_reset_clip(c);
+        share_draw_asleep(a);  // not the code: nothing answers it while asleep
+    }  // (else, with no page open, the screen as it is, e.g. the library, stays up)
     display_present(c, (Rect){0, 0, a->w, a->h}, REFRESH_FULL);
     display_wait();
     canvas_free(&pinned);
@@ -278,15 +307,27 @@ static void app_wake(App *a) {
 }
 
 // Saves and leaves Grimoire: the way out of any stuck state (a 4 s hold of the power button, a
-// Kindle that stays locked). The launcher's exit trap gives the Kindle its UI back.
+// Kindle that stays locked). The launcher's exit trap gives the Kindle its UI back. A page that
+// cannot be written (a full store) is never lost unannounced: awake, the first try says so and
+// stays, and another within a minute leaves without the page. Asleep (no toast can be seen, and
+// the Kindle needs its pen and touch back) it leaves at once, and the log says what was lost.
 static void app_leave(App *a) {
-    if (a->scr == SCR_EDITOR) editor_save_now(a);
+    a->power_down_at = 0;  // the press is spent: its release, if it is read at all, asks for nothing
+    bool saved = a->scr != SCR_EDITOR || editor_save_now(a);
+    uint32_t now = now_ms();
+    if (!saved) qlog("leaving: the open page could not be saved");
     if (!a->asleep) {
+        bool warned = a->leave_unsaved_at && now - a->leave_unsaved_at < 60000;
+        if (!saved && !warned) {
+            a->leave_unsaved_at = now | 1;
+            qlog("leaving: staying this once (holding the power button 4 s again within a minute leaves without the page)");
+            app_toast(a, "Could not save this page. Hold power 4 s again to leave anyway.", 10000);
+            return;
+        }
         char msg[64];
-        snprintf(msg, sizeof msg, "Saved. Leaving %s.", APP_NAME);
+        snprintf(msg, sizeof msg, saved ? "Saved. Leaving %s." : "Leaving %s without this page.", APP_NAME);
         app_toast(a, msg, 3000);  // shown by the last flush
     }
-    a->power_down_at = 0;  // the press is spent: its release, if it is read at all, asks for nothing
     a->running = false;
 }
 
@@ -304,13 +345,13 @@ void app_set_rotation(App *a, int r) {
         a->w = w;
         a->h = h;
     }
-    if (a->toast_visible) a->toast_rect = ui_toast_rect((Rect){0, 0, w, h}, a->toast);
     a->dirty = RECT_EMPTY;
     // Re-lay out the current screen in the new shape.
     a->relayout = true;
     k_screens[a->scr].leave(a);
     k_screens[a->scr].enter(a);
     a->relayout = false;
+    if (a->toast_visible) a->toast_rect = toast_place(a);  // the new shape (and the floor its enter set)
     app_invalidate_all(a, REFRESH_FULL);
 }
 
@@ -342,7 +383,7 @@ void app_tick(App *a, uint32_t now) {
     int bg = bg_poll();
     if (bg) app_toast(a, bg > 0 ? "PDF saved to grimoire/PDFs" : "Could not save the PDF", 2500);
     if (store_take_corrupt_count() > 0)
-        app_toast(a, "A damaged page was set aside and a blank one put in its place (see grimoire.log)", 6000);
+        app_toast(a, "A damaged page was set aside; a blank one took its place (see grimoire.log)", 6000);
     // A short power press the power service did not follow with a sleep announcement. If it is in
     // its screensaver already, Grimoire missed the announcement: show the sleep screen and send
     // nothing (a powerButton now would wake the Kindle again). Otherwise ask it to sleep.
@@ -419,6 +460,7 @@ void app_invalidate_all(App *a, RefreshMode m) { app_invalidate(a, (Rect){0, 0, 
 void app_flush(App *a) {
     if (a->asleep) return;  // the sleep screen stays up until wake
     if (rect_is_empty(a->dirty) && rect_is_empty(g_self_dirty)) return;
+    toast_follow(a);  // (a screen that moves its floor redraws, so there is something to flush)
     RefreshMode m = a->dirty_mode;
     if (!rect_is_empty(g_self_dirty)) {
         if (rect_is_empty(a->dirty) || m < REFRESH_UI) m = REFRESH_UI;
@@ -434,7 +476,7 @@ void app_flush(App *a) {
         overlay = canvas_init(&a->toast_under, a->toast_rect.w, a->toast_rect.h) == 0;
         if (overlay) {
             canvas_blit(&a->toast_under, &a->screen, a->toast_rect, 0, 0);
-            ui_toast(&a->screen, (Rect){0, 0, a->w, a->h}, a->toast);
+            ui_toast_at(&a->screen, a->toast_rect, a->toast);
         }
     }
     display_present(&a->screen, a->dirty, m);
@@ -450,6 +492,7 @@ void app_switch(App *a, ScreenId s) {
     k_screens[a->scr].leave(a);
     a->prev_scr = a->scr;
     a->scr = s;
+    a->toast_floor = 0;  // the new screen sets its own
     k_screens[s].enter(a);
     app_invalidate_all(a, REFRESH_FULL);  // a visible toast is overlaid again at the flush
 }
@@ -507,6 +550,11 @@ int app_probe(const char *key, char *out, size_t cap) {
     }
     if (!strcmp(key, "screen")) snprintf(out, cap, "%s", k_names[a->scr]);
     else if (!strcmp(key, "toast")) snprintf(out, cap, "%s", a->toast_visible ? a->toast : "");
+    else if (!strcmp(key, "toast.rect")) {
+        Rect r = a->toast_rect;
+        if (a->toast_visible) snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+        else snprintf(out, cap, "%s", "");
+    }
     else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);

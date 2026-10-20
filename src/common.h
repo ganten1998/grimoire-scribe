@@ -44,5 +44,10 @@ void format_time_short(int64_t t, char *buf, size_t cap);
 int mkdir_p(const char *path);
 // Atomic file write: path.tmp, fsync, rename. Returns 0 on success.
 int write_file_atomic(const char *path, const void *data, size_t len);
+#ifdef GRIMOIRE_SIM
+// The simulator's "storage full" (a script command): every write_file_atomic fails, as on a full
+// userstore, so a scenario can see what a failed save does.
+extern bool g_sim_storage_full;
+#endif
 // Reads a whole file; caller frees. Returns NULL on failure. *len set on success.
 void *read_file(const char *path, size_t *len);

@@ -32,7 +32,9 @@ FBINK_DIR := third_party/FBInk
 FBINK_SRC := $(FBINK_DIR)/fbink.c $(FBINK_DIR)/cutef8/utf8.c $(FBINK_DIR)/cutef8/dfa.c
 FBINK_DEF := -DFBINK_FOR_KINDLE -DFBINK_MINIMAL -DFBINK_VERSION='"master-886f25f"'
 
-HDRS := $(wildcard src/*.h) VERSION  # the version is compiled in: a bump rebuilds everything
+# The version is compiled in, and the Makefile holds every flag: a change to either rebuilds
+# everything.
+HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
@@ -71,11 +73,17 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # from a copy of scenario NAME's data, so NAME must sort before it; a run ends only once the PDF
 # exports it started are written, so that data is whole); screenshots in build/shots/<name>/. A
 # failed expect makes a run exit with status 3, and a run that leaves a file half-written (*.tmp)
-# fails too: every scenario still runs, then the rule fails naming them. Last, the runner checks
-# itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written, and in fail.qs every
-# line but the comments, waits and taps must be reported as failed, with exit status 3.
+# fails too, as does one whose "# pdfs: N" line does not match the PDFs left in its root's PDFs/
+# (the mirror): every scenario still runs, then the rule fails naming them. "# env: K=V" lines
+# set a scenario's environment; nothing else of the caller's reaches the app's test hooks. Last,
+# the runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written,
+# and in fail.qs every line but the comments, waits and taps must be reported as failed, with
+# exit status 3.
+SIM_HOOKS := GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
+             GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE
 scenarios: $(BUILD)/host/grimoire-headless
-	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
+	@unset $(SIM_HOOKS); \
+	failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
 	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
 	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
@@ -85,7 +93,11 @@ scenarios: $(BUILD)/host/grimoire-headless
 	  env $$envs GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
 	  if [ -n "$$(find $(BUILD)/scen/$$n -name '*.tmp' 2>/dev/null)" ]; then \
-	    echo "$$n left a file half-written"; failed="$$failed $$n"; fi; done; \
+	    echo "$$n left a file half-written"; failed="$$failed $$n"; fi; \
+	  pdfs=$$(sed -n 's/^# pdfs: *//p' $$s | head -n 1); \
+	  if [ -n "$$pdfs" ]; then got=$$(find $(BUILD)/scen/$$n/PDFs -name '*.pdf' 2>/dev/null | wc -l | tr -d ' '); \
+	    if [ "$$got" != "$$pdfs" ]; then echo "$$n left $$got PDFs in PDFs/, wanted $$pdfs"; failed="$$failed $$n"; fi; fi; \
+	done; \
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
 	echo "== selftest pass (every expect holds: exit 0, and the PDF export is done)"; \
 	GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs GRIMOIRE_SHOTS=$$d/shots \
@@ -125,10 +137,12 @@ $(BUILD)/host/mklogo: tools/mklogo.c tools/bat.h $(CORE_SRC) $(GEN_SRC) $(HDRS)
 
 # ---- unit tests (core + ui only; no platform) ----
 TESTS := $(patsubst tests/%.c,$(BUILD)/test/%,$(wildcard tests/test_*.c))
-TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer
+# Contraction (fused multiply-add) on, as clang does by default: tests/test_golden.c's renders
+# were recorded so, and turning it off changes them.
+TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -ffp-contract=on
 test: $(TESTS)
 	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(BUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
-$(BUILD)/test/%: tests/%.c tests/testlib.h $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
+$(BUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
 	@mkdir -p $(BUILD)/test/tmp
 	$(HOSTCC) $(COMMON) $(WARN) $(TEST_FLAGS) -Itests $< $(CORE_SRC) $(UI_SRC) $(GEN_SRC) -o $@ -lm
 
@@ -160,7 +174,7 @@ RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
-                           assets/icon.png kindle/README.txt LICENSE VERSION $(wildcard assets/*-OFL-1.1.txt) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES)
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
@@ -208,7 +222,7 @@ package-check: package
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
 check: test scenarios tools kindle package-check launcher-check
-	tests/share_check.sh $(BUILD)/scen/b_library
+	BUILD=$(BUILD) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"
 

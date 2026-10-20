@@ -327,8 +327,20 @@ static void draw_new(App *a) {
         bool sel = custom ? new_custom : S->new_paper == k;
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};
-        font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f, lr,
-                           custom ? "Custom music..." : paper_name(k), 0);
+        const char *label = custom ? "Custom music..." : paper_name(k);
+        FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
+        float ls = ui_small_size() * 0.9f;
+        const char *comma = strstr(label, ", ");
+        if (font_measure(lf, ls, label) > tw && comma && (size_t)(comma - label) < 40) {
+            // Sideways the tiles are narrow: "Narrow, no margin" goes on two lines, split after
+            // its comma, rather than being cut short.
+            char first[48];
+            snprintf(first, sizeof first, "%.*s", (int)(comma - label) + 1, label);
+            font_draw_centered(c, lf, ls, (Rect){lr.x, tr.y + tht + ui_px(8), lr.w, ui_px(40)}, first, 0);
+            font_draw_centered(c, lf, ls, (Rect){lr.x, tr.y + tht + ui_px(48), lr.w, ui_px(40)}, comma + 2, 0);
+        } else {
+            font_draw_centered(c, lf, ls, lr, label, 0);
+        }
         hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, tht + ui_px(90)}, custom ? H_PAPER_CUSTOM : H_PAPER, (int)k);
     }
     int y = ty + rows * cell_h + ui_px(20);
@@ -504,12 +516,38 @@ static void draw_modal(App *a) {
     }
 }
 
+// Where toasts must stay above while a sheet is open, so they never cover its controls: the
+// keyboard's top; else, when a toast in its usual place would cover any of the sheet's controls
+// (the buttons along a tall sheet's bottom), the top of a band of the toast's height clear of
+// them, found going up from there. 0: the usual place is clear.
+static int toast_floor(App *a) {
+    if (S->modal == MOD_NONE) return 0;
+    if (S->modal == MOD_KB) return S->kb.area.y;
+    // (The Custom music sheet lies over the New notebook sheet: only its own controls count.)
+    const HitList *l = S->modal == MOD_MUSIC ? &S->mb.hits : &S->hits;
+    Rect t = ui_toast_rect((Rect){0, 0, a->w, a->h}, "");  // (its height does not depend on the text)
+    int gap = ui_px(20), y = t.y, below = 0;  // below: the control the toast must stay above
+    for (bool moved = true; moved && y >= gap;) {
+        moved = false;
+        for (int i = 0; i < l->n; i++) {
+            Rect r = l->h[i].r;
+            if (r.y < y + t.h && r.y + r.h > y) {
+                y = r.y - t.h - gap;  // above this control, then look again from there
+                below = r.y;
+                moved = true;
+            }
+        }
+    }
+    return below;
+}
+
 static void redraw(App *a, RefreshMode m) {
     draw_base(a);
     if (S->modal != MOD_NONE) {
         hits_clear(&S->hits);  // a modal captures all input
         draw_modal(a);
     }
+    a->toast_floor = toast_floor(a);
     app_invalidate_all(a, m);
 }
 

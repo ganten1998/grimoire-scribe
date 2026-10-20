@@ -6,7 +6,7 @@ tap 1346 460
 wait 50
 expect library.sheet is new
 expect library.paper is 6
-shot 01-new-sheet-8-papers
+shot 01-new-sheet
 tap 1564 2254
 wait 400
 expect screen is editor

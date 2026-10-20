@@ -280,9 +280,10 @@ Rect ui_toast_rect(Rect screen, const char *msg) {
     return (Rect){screen.x + (screen.w - w) / 2, screen.y + screen.h - h - ui_px(120), w, h};
 }
 
-void ui_toast(Canvas *c, Rect screen, const char *msg) {
+void ui_toast(Canvas *c, Rect screen, const char *msg) { ui_toast_at(c, ui_toast_rect(screen, msg), msg); }
+
+void ui_toast_at(Canvas *c, Rect r, const char *msg) {
     float ts = ui_text_size();
-    Rect r = ui_toast_rect(screen, msg);
     int h = r.h;
     if (gothic()) {
         // A black banner with pointed ends and a white inner line.
