@@ -82,6 +82,9 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Share | **Compartir** | The top bar's buttons widen to hold it in Gothic (150 px; 138 px fit inside a button's carved line). |
 | Exit / New / Folder | **Salir / Nuevo / Carpeta** | |
 | Back to KOReader | **Volver a KOReader** | In Exit's place when Grimoire was opened from KOReader; this one button takes the width it needs. |
+| Annotate this page in Grimoire (KOReader's Tools > Grimoire, in a book) | **Anotar esta página en Grimoire** | The plugin's own words (its table in kindle/koreader/grimoire.koplugin/main.lua): *anotar*, to write notes on it. *Comentar*. |
+| the page KOReader sent (to annotate) | **la página que envió KOReader** (*No se pudo abrir la página que envió KOReader*) | *la página de KOReader* read as one of KOReader's own screens. |
+| picture (of a page) | **imagen** (*no se puede leer su imagen*) | As the import folder's README says *imágenes*; *foto* is a photograph. |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
 | Back (the Templates sheet's button back to the papers) | **Volver** | *Atrás*. |

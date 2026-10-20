@@ -18,7 +18,7 @@ W=$(cd "$(dirname "$ZIP")/.." && pwd)/launcher-check
 SHIMS=$REPO/tests/shims
 export LC_ALL=C  # Grimoire.sh ends in a binary archive
 unset KOREADER_DIR FAKE_MODE FAKE_EXIT_STATE SHIM_HOLD SHIM_NICE GRIMOIRE_WD_TICK GRIMOIRE_WD_FIRST GRIMOIRE_WD_STALE \
-    STOP_FRAMEWORK AWESOME_STOPPED PILLOW_HARD_DISABLED FAKE_KO_PARENT FAKE_KO_HOLDS
+    STOP_FRAMEWORK AWESOME_STOPPED PILLOW_HARD_DISABLED FAKE_KO_PARENT FAKE_KO_HOLDS GRIMOIRE_ANNOTATE
 rm -rf "$W" && mkdir -p "$W"
 fail=0
 check() {  # check NAME COMMAND...: ok when the command succeeds
@@ -565,6 +565,34 @@ suite() {
     check "$l: the lock released" [ ! -e "$GRIMOIRE_TMP/grimoire.launcher.pid" ]
     check "$l: nothing on stderr" [ ! -s "$T/stderr" ]
     check "$l: KOReader's plugin not installed by a hosted run" [ ! -e "$US/$PLUGIN_REL" ]
+    check "$l: no page to annotate passed on (Open Grimoire)" sh -c 'grep -qxF "grimoire annotate=" "$1"' sh "$SHIM_LOG"
+    # KOReader's Annotate this page in Grimoire: --annotate after --hosted koreader, and the binary
+    # is asked to open the page (GRIMOIRE_ANNOTATE=1), logged; app/grimoire.sh says it can.
+    check "$s app/grimoire.sh's Capabilities include annotate" sh -c \
+        'head -n 10 "$1" | sed -n "s/^# Capabilities: //p" | grep -qw annotate' sh "$APP/grimoire.sh"
+    hosted_tree hosted-annotate
+    ko_paused fake-koreader sh "$APP/grimoire.sh" --hosted koreader --annotate 2>"$T/stderr"
+    rc=$?
+    l="$s hosted, a page to annotate"
+    check "$l: returns 0 ($rc)" is "$rc" 0
+    check "$l: Grimoire ran hosted" has "$SHIM_LOG" "grimoire host=koreader"
+    check "$l: asked to open the page (GRIMOIRE_ANNOTATE=1)" sh -c 'grep -qxF "grimoire annotate=1" "$1"' sh "$SHIM_LOG"
+    check "$l: logged" has "$LOGF" "grimoire.sh: KOReader sent a page to annotate (grimoire/import/.annotate)"
+    check "$l: nothing on stderr" [ ! -s "$T/stderr" ]
+    # Only that start: a GRIMOIRE_ANNOTATE the launcher inherits never reaches the binary, hosted
+    # without --annotate or started from the Library (where --annotate means nothing either).
+    hosted_tree hosted-annotate-inherited
+    ko_paused GRIMOIRE_ANNOTATE=1 fake-koreader sh "$APP/grimoire.sh" --hosted koreader 2>/dev/null
+    check "$s hosted without --annotate, GRIMOIRE_ANNOTATE=1 inherited: not passed on" sh -c \
+        'grep -qxF "grimoire annotate=" "$1"' sh "$SHIM_LOG"
+    hosted_tree library-annotate
+    GRIMOIRE_ANNOTATE=1 GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" --annotate 2>/dev/null
+    rc=$?
+    l="$s from the Library with --annotate"
+    check "$l: an ordinary start ($rc)" sh -c '[ "$1" = 0 ] && grep -qxF "grimoire host=" "$2" && grep -qF "$3" "$2"' sh \
+        "$rc" "$SHIM_LOG" "$PILLOW_OFF"
+    check "$l: no page to annotate passed on" sh -c 'grep -qxF "grimoire annotate=" "$1"' sh "$SHIM_LOG"
+    check "$l: nothing logged of one" lacks "$LOGF" "sent a page to annotate"
     # KOReader had preventScreenSaver off, or it cannot be read: off again after.
     for prevent in 0 unreadable; do
         hosted_tree "hosted-prevent-$prevent"
@@ -688,6 +716,10 @@ suite() {
     check "$l: in the foreground (Grimoire ended before it returned)" has "$SHIM_LOG" "grimoire exits"
     check "$l: not detached" lacks "$SHIM_LOG" "setsid"
     check "$l: KOReader's plugin not installed" [ ! -e "$US/$PLUGIN_REL" ]
+    : >"$SHIM_LOG"
+    ko_paused fake-koreader sh "$DOC" --hosted koreader --annotate 2>/dev/null
+    check "$l --annotate: passed on to app/grimoire.sh, the page to Grimoire" sh -c \
+        'grep -qxF "grimoire host=koreader" "$1" && grep -qxF "grimoire annotate=1" "$1"' sh "$SHIM_LOG"
     : >"$SHIM_LOG"
     sh "$DOC" --hosted koreader 2>"$T/stderr"
     rc=$?

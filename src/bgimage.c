@@ -813,6 +813,28 @@ static int load_picture(const char *nb, uint32_t id, Canvas *out, const char **w
     return rc;
 }
 
+// What load_picture asks of a file before it decodes it.
+int bgimage_drawable(const uint8_t *data, size_t len, int *w, int *h, const char **why) {
+    static const uint8_t png_sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    size_t cost;
+    *why = "bigger than a page picture can be";
+    if (len > BG_UI_FILE_MAX) return -1;
+    *why = "not a PNG";
+    if (!data || len < 8 || memcmp(data, png_sig, 8)) return -1;
+    if (check_within(data, len, len, BG_UI_DECODE_BUDGET, w, h, &cost, why) != 0) return -1;
+    *why = "bigger than any page";
+    return *w > 6000 || *h > 6000 ? -1 : 0;
+}
+
+bool bgimage_undrawn(const char *nb, uint32_t id) {
+    char dir[700], path[800];
+    if (!nb || bgimage_dir(nb, dir, sizeof dir) != 0) return false;
+    for (int i = 0; i < BG_SLOTS; i++)
+        if (g_slot[i].img.px && g_slot[i].id == id && !strcmp(g_slot[i].nb, nb)) return false;
+    bgimage_file(dir, id, path, sizeof path);
+    return access(path, F_OK) == 0;
+}
+
 // Notebook nb's picture id, decoded, or NULL (missing or unreadable: remembered).
 static const Canvas *picture(const char *nb, uint32_t id) {
     for (int i = 0; i < BG_SLOTS; i++)

@@ -1,14 +1,15 @@
 -- tests/koplugin_test.lua: KOReader's Grimoire plugin (kindle/koreader/grimoire.koplugin) run
--- against stand-ins for the KOReader modules it uses: the device, UIManager, the menus, the
--- dispatcher, the settings, os.execute and os.getenv. Each case builds a scratch Kindle (a
--- documents/Grimoire.sh with a header, an unpacked app, /var/tmp/koreader.sh) and plays one way
--- of using the plugin, down to reader.lua's Device:exit() and KOReader's next start.
--- tests/koplugin_check.sh runs it with LuaJIT.
+-- against stand-ins for the KOReader modules it uses: the device and its screen, UIManager, the
+-- menus, the dispatcher, the settings, BlitBuffers, the documents (paged and reflowable, and one
+-- of an older KOReader that cannot draw a page by itself), os.execute and os.getenv. Each case
+-- builds a scratch Kindle (a documents/Grimoire.sh with a header, an unpacked app,
+-- /var/tmp/koreader.sh) and plays one way of using the plugin, down to reader.lua's Device:exit()
+-- and KOReader's next start. tests/koplugin_check.sh runs it with LuaJIT.
 -- usage: luajit tests/koplugin_test.lua PLUGIN_DIR SCRATCH_DIR
 local plugin_dir, scratch = arg[1], arg[2]
 assert(plugin_dir and scratch, "usage: luajit tests/koplugin_test.lua PLUGIN_DIR SCRATCH_DIR")
 
-local real_execute = os.execute
+local real_execute, real_open, real_rename = os.execute, io.open, os.rename
 local fails, count = 0, 0
 local function check(name, ok)
     count = count + 1
@@ -21,8 +22,8 @@ local function sh(cmd)
     local r = real_execute(cmd)
     return r == 0 or r == true
 end
-local function write(path, text)
-    local f = assert(io.open(path, "wb"))
+local function write(path, text) -- (the test's own writes: never counted as the plugin's)
+    local f = assert(real_open(path, "wb"))
     f:write(text)
     f:close()
 end
@@ -30,6 +31,22 @@ local function is_file(path) return sh("test -f " .. q(path)) end
 
 -- The world of one case: what the stand-ins answer, and every call they saw (W.calls, in order).
 local W
+
+-- Every file the plugin writes, by the path it writes it at (W.wrote: io.open in a mode that
+-- writes, writePNG, Screen:shot), and every rename, "from -> to" (W.renamed): a request and its
+-- picture are held to "written into a temporary file, then renamed into place". A rename to a path
+-- that ends in W.rename_fails fails, as on a full disk.
+io.open = function(path, mode) -- luacheck: ignore
+    if W and mode and mode:find("[wa+]") then table.insert(W.wrote, path) end
+    return real_open(path, mode)
+end
+os.rename = function(from, to) -- luacheck: ignore
+    if W then
+        table.insert(W.renamed, from .. " -> " .. to)
+        if W.rename_fails and to:sub(-#W.rename_fails) == W.rename_fails then return nil, "No space left on device" end
+    end
+    return real_rename(from, to)
+end
 
 -- KOReader's modules. Device is the device's class table, as require("device") returns it on a
 -- Kindle, with exit an own field (kindle/device.lua sets KindleScribe.exit = KindleTouch.exit);
@@ -41,6 +58,26 @@ local function device_exit(self)
     if W.exit_error then error("KOReader's exit failed") end
 end
 Device.isKindle = function() return W.kindle end
+-- The screen, of W.screen's size; its shot (KOReader's Screen:shot) writes what it shows, and
+-- answers as the screen's writePNG does (W.png_answers, below).
+local function png_answer(path, text)
+    table.insert(W.wrote, path)
+    if W.png_answers == "false" then -- a newer KOReader, the disk full part way
+        write(path, text:sub(1, 3))
+        return false, "failed to write"
+    end
+    write(path, W.png_answers == "empty" and "" or text)
+    if W.png_answers == "nothing" or W.png_answers == "empty" then return end -- (an older KOReader's)
+    return true
+end
+Device.screen = {
+    getWidth = function() return W.screen.w end,
+    getHeight = function() return W.screen.h end,
+    shot = function(_, path)
+        table.insert(W.calls, "shot")
+        return png_answer(path, string.format("SHOT %dx%d\n", W.screen.w, W.screen.h))
+    end,
+}
 -- nextTick queues its task for run_ticks, KOReader's UI loop: UIManager runs its tasks without a
 -- pcall, so an error in one ends reader.lua.
 local UIManager = {
@@ -83,22 +120,100 @@ package.loaded["dispatcher"] = {
     end,
 }
 package.loaded["datastorage"] = { getSettingsDir = function() return W.dir .. "/settings" end }
+local function file_size(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local n = f:seek("end")
+    f:close()
+    return n
+end
 package.loaded["libs/libkoreader-lfs"] = {
     attributes = function(path, what)
         local mode = sh("test -d " .. q(path)) and "directory" or (sh("test -f " .. q(path)) and "file") or nil
         if what == "mode" then return mode end
+        if what == "size" then return mode == "file" and file_size(path) or nil end
         return mode and { mode = mode } or nil
     end,
+    mkdir = function(path)
+        if sh("mkdir " .. q(path) .. " 2>/dev/null") then return true end
+        return nil, "cannot"
+    end,
+    dir = function(path)
+        local p = io.popen("ls -a " .. q(path) .. " 2>/dev/null")
+        local names = {}
+        for name in p:lines() do table.insert(names, name) end
+        p:close()
+        local i = 0
+        return function()
+            i = i + 1
+            return names[i]
+        end
+    end,
 }
+-- BlitBuffers: their size, what was drawn into them (W.drawn), and the PNG each writes (a line
+-- naming its size and what it holds). W.png_error makes writing raise an error; W.png_answers how
+-- it answers: "false" (cut short, and false with why, as a newer KOReader does), "nothing" (an
+-- older KOReader's: no answer), "empty" (no answer, an empty file); else true.
+local function new_bb(w, h, what)
+    local bb = { w = w, h = h, what = what or "blank" }
+    function bb.getWidth() return bb.w end
+    function bb.getHeight() return bb.h end
+    function bb.fill(_, color) bb.filled = color end
+    function bb.paintRect(_, x, y, rw, rh, color)
+        table.insert(W.drawn, string.format("paintRect %d %d %d %d %d", x, y, rw, rh, color))
+    end
+    function bb.blitFrom(_, src, x, y, ox, oy, bw, bh)
+        bb.what = src.what
+        table.insert(W.drawn, string.format("blitFrom %s %d %d %d %d %d %d", src.what, x, y, ox, oy, bw, bh))
+    end
+    function bb.writePNG(_, path)
+        if W.png_error then error("disk full") end
+        return png_answer(path, string.format("PNG %dx%d %s\n", bb.w, bb.h, bb.what))
+    end
+    function bb.free() W.freed = W.freed + 1 end
+    return bb
+end
+package.loaded["ffi/blitbuffer"] = {
+    TYPE_BB8 = 1,
+    COLOR_WHITE = 255,
+    new = function(w, h, kind)
+        assert(kind == 1, "a page picture is Gray8")
+        return new_bb(w, h)
+    end,
+}
+package.loaded["ui/geometry"] = { new = function(_, o) return o end }
+package.loaded["ui/renderimage"] = {
+    scaleBlitBuffer = function(_, bb, w, h, free_orig)
+        table.insert(W.drawn, string.format("scale %dx%d to %dx%d", bb.w, bb.h, w, h))
+        assert(free_orig == false, "the plugin frees what it made itself")
+        return new_bb(w, h, "scaled " .. bb.what)
+    end,
+}
+package.loaded["util"] = { partialMD5 = function(file)
+    table.insert(W.calls, "partialMD5")
+    return W.md5_of_file
+end }
 -- The plugin never opens a document itself (KOReader's own start does): this one would show it.
 package.loaded["apps/reader/readerui"] = {
     showReader = function() table.insert(W.calls, "showReader") end,
 }
+-- Every line logged, as KOReader's crash.log would have it (W.logs), to hold it to what it may say.
+local function log_line(...)
+    local parts = {}
+    for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
+    table.insert(W.logs, table.concat(parts, " "))
+end
 package.loaded["logger"] = {
-    info = function() end,
+    info = function(...) log_line(...) end,
     dbg = function() end,
-    warn = function() table.insert(W.calls, "warn") end,
-    err = function() table.insert(W.calls, "err") end,
+    warn = function(...)
+        log_line(...)
+        table.insert(W.calls, "warn")
+    end,
+    err = function(...)
+        log_line(...)
+        table.insert(W.calls, "err")
+    end,
 }
 G_reader_settings = { -- luacheck: ignore (KOReader's global)
     readSetting = function(_, key) return W.settings[key] end,
@@ -159,9 +274,21 @@ local function world(name)
         ticks = {},
         actions = {},
         menus = 0,
-        unpack_writes = "#!/bin/sh\n# Capabilities: guard hosted\n",
+        unpack_writes = "#!/bin/sh\n# Capabilities: guard hosted annotate\n",
+        drawn = {},
+        freed = 0,
+        logs = {},
+        wrote = {},
+        renamed = {},
+        screen = { w = 1860, h = 2480 },
+        -- The book a book's screen has open (new_ui): kind "paged" (a PDF), "reflowable" (an
+        -- EPUB) or "old" (a PDF in a KOReader that cannot draw a page by itself).
+        book = { kind = "paged", page = 12, pages = 96, md5 = "0f3c6e2a9b1d4c7e8f5a2b3c4d5e6f70",
+            title = "Le Petit Prince", native = { w = 612, h = 792 }, gamma = 1.5, header = 0 },
     }
     W.us = W.dir .. "/us"
+    W.book.file = W.us .. "/documents/book.epub"
+    W.annotate = W.us .. "/grimoire/import/.annotate"
     W.doc = W.us .. "/documents/Grimoire.sh"
     W.app_sh = W.us .. "/grimoire/app/grimoire.sh"
     W.koreader_sh = W.dir .. "/var/tmp/koreader.sh"
@@ -198,7 +325,60 @@ local function new_ui(in_book)
         end,
     }
     if in_book then
-        ui.document = { file = W.us .. "/documents/book.epub" }
+        local b = W.book
+        local doc = { file = b.file }
+        function doc.getPageCount() return b.pages end
+        function doc.getCurrentPage() return b.page end
+        function doc.getProps() return { title = b.title } end
+        ui.document = doc
+        ui.getCurrentPage = function() return b.page end
+        ui.doc_settings = { readSetting = function(_, key)
+            if key == "partial_md5_checksum" then return b.md5 end
+        end }
+        ui.doc_props = { display_title = b.title }
+        if b.kind == "reflowable" then
+            ui.rolling = {}
+            ui.view = { view_mode = b.view_mode or "page", state = { page = b.page, pos = 4321 },
+                visible_area = { x = 0, y = 0, w = W.screen.w, h = W.screen.h } }
+            doc._nightmode_images = true  -- (night mode's: images drawn inverted for an inverted screen)
+            function doc.drawCurrentViewByPage(_, target, x, y, rect, page)
+                table.insert(W.drawn, string.format("drawCurrentViewByPage %d %d %dx%d %d", x, y, rect.w, rect.h, page))
+                table.insert(W.drawn, "night images " .. tostring(doc._nightmode_images))
+                target.what = "text " .. page
+            end
+            function doc.drawCurrentViewByPos(_, target, x, y, rect, pos)
+                table.insert(W.drawn, string.format("drawCurrentViewByPos %d %d %dx%d %d", x, y, rect.w, rect.h, pos))
+                target.what = "text at " .. pos
+            end
+            function doc.getHeaderHeight() return b.header end
+        else
+            ui.paging = {}
+            -- A PDF read reflowed, its scan cleaned up, inverted for night mode.
+            doc.configurable = { text_wrap = 1, page_opt = 1, auto_straighten = 5, white_threshold = 200,
+                nightmode_document = 1 }
+            ui.view = { state = { page = b.page, gamma = b.gamma, saturation = b.saturation }, render_mode = b.render_mode }
+            if b.kind == "old" then
+                ui.view.render_mode = 0
+            else
+                function doc.getNativePageDimensions(_, page)
+                    assert(page == b.page, "the page the reader is on")
+                    return { w = b.native.w, h = b.native.h }
+                end
+                function doc.getPageDimensions(_, page, zoom, rotation)
+                    assert(page == b.page and rotation == 0)
+                    return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
+                end
+                function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
+                    table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
+                        page, zoom, rotation, tostring(gamma), tostring(last)))
+                    local c = doc.configurable
+                    table.insert(W.drawn, string.format("settings %s %s %s %s %s", tostring(c.text_wrap),
+                        tostring(c.page_opt), tostring(c.auto_straighten), tostring(c.white_threshold),
+                        tostring(c.nightmode_document)))
+                    target.what = "page " .. page
+                end
+            end
+        end
     else
         ui.file_chooser = { changeToPath = function(_, path) table.insert(W.calls, "changeToPath " .. path) end }
     end
@@ -598,6 +778,311 @@ do -- KOReader in Spanish: the plugin's own table; in another language, English.
     items = {}
     g:addToMainMenu(items)
     check("another language: English", items.grimoire.sub_item_table[1].text == "Open Grimoire")
+end
+
+-- ---- Annotate this page in Grimoire ----
+
+local function read_all(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+local function request() -- the request written, as key = value
+    local text = read_all(W.annotate .. "/request.ini")
+    if not text then return nil end
+    local r = {}
+    for k, v in text:gmatch("([%w_]+)=([^\n]*)") do r[k] = v end
+    return r
+end
+local function annotate_files() -- what the requests' folder holds, sorted, joined by spaces
+    local p = io.popen("ls -A " .. q(W.annotate) .. " 2>/dev/null")
+    local names = {}
+    for name in p:lines() do table.insert(names, name) end
+    p:close()
+    table.sort(names)
+    return table.concat(names, " ")
+end
+local function drew(prefix) -- the first thing drawn that starts with prefix
+    for _, d in ipairs(W.drawn) do
+        if d:sub(1, #prefix) == prefix then return d end
+    end
+    return nil
+end
+-- Nothing the plugin logged names the book: neither its title nor its file.
+local function logs_name_no_book(s)
+    for _, line in ipairs(W.logs) do
+        if line:find(W.book.title, 1, true) or line:find("book.epub", 1, true) or line:find("Secret", 1, true) then
+            print("  logged: " .. line)
+            check(s .. ": the log names no book", false)
+            return
+        end
+    end
+    check(s .. ": the log names no book", true)
+end
+-- The picture and the request each written into a temporary file, then renamed into place: no file
+-- of the requests' folder ever written under its own name, so Grimoire never reads half of one.
+local function written_whole(s)
+    local in_place = {}
+    for _, path in ipairs(W.wrote) do
+        if path:sub(1, #W.annotate + 1) == W.annotate .. "/" and not path:find("%.tmp$") then
+            table.insert(in_place, path)
+        end
+    end
+    for _, path in ipairs(in_place) do print("  written in place: " .. path) end
+    check(s .. ": nothing written in place", #in_place == 0)
+    local function renamed(name)
+        local want = W.annotate .. "/" .. name .. ".tmp -> " .. W.annotate .. "/" .. name
+        for _, r in ipairs(W.renamed) do
+            if r == want then return true end
+        end
+        return false
+    end
+    check(s .. ": the picture and the request renamed into place", renamed("page.png") and renamed("request.ini"))
+end
+-- A page that could not be sent: the message says so, nothing is left in the requests' folder (no
+-- picture, no request, nothing half-written), and there is no hand-over.
+local function not_sent(s)
+    check(s .. ": says so", told("Could not save this page for Grimoire. See koreader/crash.log."))
+    check(s .. ": nothing left in the folder", annotate_files() == "")
+    check(s .. ": no hand-over", not wrapped() and not is_file(W.marker) and not at("exitOrRestart"))
+end
+local ANNOTATE_CMD = " --hosted koreader --annotate"
+
+do -- In a book: Tools > Grimoire has Annotate this page in Grimoire, second; the gesture too.
+    world("annotate-menu")
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    local sub = items.grimoire.sub_item_table
+    check("annotate: in a book, four entries, Annotate second", #sub == 4 and sub[1].text == "Open Grimoire"
+        and sub[2].text == "Annotate this page in Grimoire" and sub[3].text == "Notebook PDFs")
+    check("annotate: the menu closes first (kept open by TouchMenu)", sub[2].keep_menu_open == true)
+    local a = W.actions.grimoire_annotate
+    check("annotate gesture: registered, in books only", a and a.event == "AnnotateInGrimoire"
+        and a.title == "Annotate this page in Grimoire" and a.reader == true and not a.general)
+    check("annotate: showing the menu runs nothing", calls_of("execute") == 0)
+end
+
+do -- From a PDF: the whole page fitted to the Scribe's page, the PNG and the request written whole,
+    -- then the hand-over with --annotate; KOReader comes back to the book.
+    world("annotate-pdf")
+    assert(sh("mkdir -p " .. q(W.annotate)))
+    write(W.annotate .. "/old.png", "an older request's picture")
+    W.book.file = W.us .. "/documents/Secret Diary.pdf"
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    local closed = false
+    items.grimoire.sub_item_table[2].callback({ closeMenu = function() closed = true end })
+    local s = "annotate a PDF"
+    check(s .. ": the menu closed", closed)
+    check(s .. ": unpacked first, Preparing Grimoire... up", at("execute sh '" .. W.doc .. "' --unpack-only") ~= nil
+        and at("show Preparing Grimoire...") ~= nil)
+    -- 612 x 792 points fitted to 1860 x 2480: the width decides (zoom 3.0392), centred down the page.
+    check(s .. ": the whole page drawn, fitted and centred", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 nil")
+    check(s .. ": as it is: not reflowed, cleaned up or inverted", drew("settings") == "settings 0 0 0 255 0")
+    local c = g.ui.document.configurable
+    check(s .. ": the book's own settings back after", c.text_wrap == 1 and c.page_opt == 1 and c.auto_straighten == 5
+        and c.white_threshold == 200 and c.nightmode_document == 1)
+    check(s .. ": into a page-size picture", read_all(W.annotate .. "/page.png") == "PNG 1860x2480 page 12\n")
+    check(s .. ": the folder emptied first, nothing half-written", annotate_files() == "page.png request.ini")
+    written_whole(s)
+    local r = request() or {}
+    check(s .. ": the request names the book by its key", r.book == W.book.md5 and r.version == "1")
+    check(s .. ": its title, page and page count", r.title == "Le Petit Prince" and r.page == "12" and r.pages == "96")
+    check(s .. ": a paged document, its picture", r.kind == "paged" and r.picture == "page.png")
+    check(s .. ": when it was written", tonumber(r.time) and math.abs(tonumber(r.time) - os.time()) <= 5)
+    check(s .. ": the BlitBuffer freed", W.freed >= 1)
+    check(s .. ": the hand-over waits for the next tick", wrapped() and is_file(W.marker) and at("exitOrRestart") ~= nil)
+    check(s .. ": back to the book after", W.settings.start_with == "last")
+    run_ticks()
+    W.calls = {}
+    Device:exit()
+    check(s .. ": KOReader's own exit, then grimoire.sh --hosted koreader --annotate",
+        at("exit") == 1 and at("execute sh '" .. W.app_sh .. "'" .. ANNOTATE_CMD) == 2)
+    check(s .. ": the marker goes once Grimoire ran", not is_file(W.marker))
+    logs_name_no_book(s)
+    W.calls = {}
+    g:onAnnotateInGrimoire()
+    check(s .. ": tapped again, nothing more", #W.calls == 0)
+    -- drawPage's last argument as the reader passes it: the saturation (KOReader 2024 on), else
+    -- the render mode (before).
+    world("annotate-pdf-saturation")
+    W.book.saturation, W.book.render_mode = 0.8, 0
+    koreader(true):onAnnotateInGrimoire()
+    check(s .. ", a KOReader with saturation: passed on", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 0.8")
+    world("annotate-pdf-render-mode")
+    W.book.render_mode = 0
+    koreader(true):onAnnotateInGrimoire()
+    check(s .. ", an older KOReader: its render mode passed on", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 0")
+end
+
+do -- From an EPUB: the text as the screen shows it (crengine's own status bar left out), the gesture.
+    world("annotate-epub")
+    W.book.kind = "reflowable"
+    W.book.page, W.book.pages, W.book.header = 31, 340, 46
+    local g = koreader(true)
+    g:onAnnotateInGrimoire()
+    local s = "annotate an EPUB"
+    check(s .. ": the page as the screen shows it", drew("drawCurrentViewByPage") == "drawCurrentViewByPage 0 0 1860x2480 31")
+    check(s .. ": crengine's status bar left white", drew("paintRect") == "paintRect 0 0 1860 46 255")
+    check(s .. ": images as they are, not night mode's", drew("night images") == "night images false"
+        and g.ui.document._nightmode_images == true)
+    check(s .. ": no scaling (the screen is the page)", not drew("scale"))
+    check(s .. ": the picture", read_all(W.annotate .. "/page.png") == "PNG 1860x2480 text 31\n")
+    local r = request() or {}
+    check(s .. ": a reflowable book, page 31 of 340", r.kind == "reflowable" and r.page == "31" and r.pages == "340")
+    written_whole(s)
+    run_ticks()
+    W.calls = {}
+    Device:exit()
+    check(s .. ": the hand-over", at("execute sh '" .. W.app_sh .. "'" .. ANNOTATE_CMD) == 2)
+    world("annotate-epub-scroll")
+    W.book.kind, W.book.view_mode = "reflowable", "scroll"
+    koreader(true):onAnnotateInGrimoire()
+    check("annotate an EPUB in scroll mode: drawn where it is", drew("drawCurrentViewByPos") == "drawCurrentViewByPos 0 0 1860x2480 4321")
+end
+
+do -- Read sideways: the landscape text fitted into the upright page, centred.
+    world("annotate-sideways")
+    W.book.kind = "reflowable"
+    W.screen = { w = 2480, h = 1860 }
+    koreader(true):onAnnotateInGrimoire()
+    local s = "annotate sideways"
+    check(s .. ": drawn at the screen's shape", drew("drawCurrentViewByPage") == "drawCurrentViewByPage 0 0 2480x1860 12")
+    check(s .. ": scaled to fit the upright page", drew("scale") == "scale 2480x1860 to 1860x1395")
+    check(s .. ": centred on it", drew("blitFrom") == "blitFrom scaled text 12 0 542 0 0 1860 1395")
+    check(s .. ": an upright picture", read_all(W.annotate .. "/page.png") == "PNG 1860x2480 scaled text 12\n")
+end
+
+do -- A KOReader that cannot draw a page by itself: a screenshot of the reader, the menu closed and
+    -- "Preparing Grimoire..." down while it is taken, then up again for the hand-over.
+    world("annotate-old")
+    W.book.kind = "old"
+    local g = koreader(true)
+    g:onAnnotateInGrimoire()
+    local s = "annotate in an older KOReader"
+    local busy = W.shown[1]
+    check(s .. ": a screenshot instead", at("shot") ~= nil and read_all(W.annotate .. "/page.png") == "SHOT 1860x2480\n")
+    check(s .. ": Preparing Grimoire... taken down, the page drawn again, then the shot",
+        W.closed[1] == busy and at("shot") > at("repaint"))
+    check(s .. ": then up again for the hand-over", W.shown[#W.shown] == busy and #W.closed == 1)
+    local r = request() or {}
+    check(s .. ": the request all the same", r.page == "12" and r.picture == "page.png")
+    check(s .. ": the hand-over goes ahead", wrapped() and at("exitOrRestart") ~= nil)
+    written_whole(s)
+    logs_name_no_book(s)
+    -- Its Screen:shot answering false (a newer KOReader, its drawing failed): not sent.
+    world("annotate-old-shot-fails")
+    W.book.kind, W.png_answers = "old", "false"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent(s .. ", the screenshot not written")
+end
+
+do -- No key in the book's settings: worked out from its file (KOReader's partial MD5).
+    world("annotate-md5")
+    W.book.md5 = nil
+    W.md5_of_file = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    koreader(true):onAnnotateInGrimoire()
+    check("annotate, no key kept: the file's partial MD5", at("partialMD5") ~= nil and (request() or {}).book == W.md5_of_file)
+    world("annotate-no-key")
+    W.book.md5 = nil
+    koreader(true):onAnnotateInGrimoire()
+    local s = "annotate, no key at all"
+    check(s .. ": says so", told("Could not save this page for Grimoire. See koreader/crash.log."))
+    check(s .. ": no request, no hand-over", not is_file(W.annotate .. "/request.ini") and not wrapped()
+        and not is_file(W.marker))
+end
+
+do -- The picture cannot be written (a full disk): no request, no hand-over, the message closed.
+    world("annotate-full")
+    W.png_error = true
+    koreader(true):onAnnotateInGrimoire()
+    local s = "annotate, picture not written"
+    check(s .. ": Preparing Grimoire... closed", #W.closed == 1 and W.closed[1].text == "Preparing Grimoire...")
+    not_sent(s)
+    -- writePNG answering false (a newer KOReader), a file cut short left behind: not sent either,
+    -- and the log has lodepng's words for why.
+    world("annotate-png-false")
+    W.png_answers = "false"
+    koreader(true):onAnnotateInGrimoire()
+    s = "annotate, writePNG says it failed"
+    not_sent(s)
+    local why = false
+    for _, line in ipairs(W.logs) do why = why or line:find("failed to write", 1, true) ~= nil end
+    check(s .. ": the log says why", why)
+    -- An older KOReader's writePNG answers nothing: a file there and not empty counts as written,
+    -- an empty one does not.
+    world("annotate-png-nothing")
+    W.png_answers = "nothing"
+    koreader(true):onAnnotateInGrimoire()
+    check("annotate, writePNG answers nothing: sent", annotate_files() == "page.png request.ini" and wrapped())
+    world("annotate-png-empty")
+    W.png_answers = "empty"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent("annotate, writePNG answers nothing and writes nothing")
+    -- The request cannot be renamed into place (the disk full by then): its picture goes too.
+    world("annotate-request-not-written")
+    W.rename_fails = "/request.ini"
+    koreader(true):onAnnotateInGrimoire()
+    not_sent("annotate, request not written")
+end
+
+do -- An app/grimoire.sh that cannot annotate (hosted only): Annotate says so, Open still works.
+    world("annotate-old-app")
+    W.unpack_writes = "#!/bin/sh\n# Capabilities: guard hosted\n"
+    local g = koreader(true)
+    g:onAnnotateInGrimoire()
+    local s = "annotate, app without annotate"
+    check(s .. ": update it, says the message", told("This Grimoire cannot annotate pages: copy a newer Grimoire.sh into the Kindle's documents folder."))
+    check(s .. ": nothing drawn or written", #W.drawn == 0 and annotate_files() == "")
+    check(s .. ": no hand-over", not wrapped() and not is_file(W.marker))
+    g:onOpenGrimoire()
+    check(s .. ": Open still hands over", wrapped() and at("exitOrRestart") ~= nil)
+    world("annotate-refused")
+    os.remove(W.koreader_sh)
+    koreader(true):onAnnotateInGrimoire()
+    check("annotate, no koreader.sh: refused as Open is", told("Grimoire opens only from a KOReader started by koreader.sh (its Library item or KUAL).")
+        and calls_of("execute") == 0 and #W.drawn == 0)
+end
+
+do -- grimoire.sh refused the hand-over (exit 3): the next start says so, and the page it sent goes
+    -- (no Grimoire would open it now).
+    world("annotate-not-run")
+    W.status.hosted = 768
+    local g = koreader(true)
+    g:onAnnotateInGrimoire()
+    run_ticks()
+    Device:exit()
+    local s = "annotate, Grimoire never ran"
+    check(s .. ": the request was there", annotate_files() == "page.png request.ini" and is_file(W.marker))
+    W.shown, W.scheduled = {}, {}
+    koreader(true)
+    check(s .. ": the next start removes it", annotate_files() == "" and not is_file(W.marker))
+    check(s .. ": and says Grimoire could not start", #W.scheduled == 1)
+end
+
+do -- The gesture in the file browser: no book to annotate.
+    world("annotate-no-book")
+    koreader(false):onAnnotateInGrimoire()
+    check("annotate without a book: says so", told("Open a book first: Grimoire annotates the page you are reading."))
+    untouched("annotate without a book")
+end
+
+do -- In Spanish.
+    world("annotate-es")
+    W.settings.language = "es"
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    check("annotate in Spanish: the menu", items.grimoire.sub_item_table[2].text == "Anotar esta página en Grimoire")
+    check("annotate in Spanish: the gesture", W.actions.grimoire_annotate.title == "Anotar esta página en Grimoire")
+    world("annotate-es-no-book")
+    W.settings.language = "es"
+    koreader(false):onAnnotateInGrimoire()
+    check("annotate in Spanish: the message", told("Primero abre un libro: Grimoire anota la página que estás leyendo."))
 end
 
 do -- _meta.lua: the name and description in KOReader's plugin list.

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 13:55-0500\n"
+"POT-Creation-Date: 2026-10-20 13:58-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -17,6 +17,33 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+#: src/annotate.c src/store.c
+msgid "Untitled"
+msgstr "Sin título"
+
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
+#. and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
+#. two. This one: the picture of the page KOReader sent is damaged or missing.
+#: src/app.c
+msgid "Could not open the page KOReader sent: its picture does not read."
+msgstr ""
+"No se pudo abrir la página que envió KOReader: no se puede leer su imagen."
+
+#. TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
+#. written.
+#: src/app.c
+msgid "Could not add the page KOReader sent. Is the storage full?"
+msgstr ""
+"No se pudo añadir la página que envió KOReader. ¿Está lleno el "
+"almacenamiento?"
+
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+#: src/app.c
+#, c-format
+msgid "Could not open the page KOReader sent (see %s)."
+msgstr "No se pudo abrir la página que envió KOReader (detalles en %s)."
 
 #. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
 #. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
@@ -1433,11 +1460,6 @@ msgstr "En reposo"
 #: src/share.c
 msgid "Wake the Kindle to share again."
 msgstr "Despierta el Kindle para volver a compartir."
-
-#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
-#: src/store.c
-msgid "Untitled"
-msgstr "Sin título"
 
 #. TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
 #. offer (1560 px at 64 px in bold, sideways 2180).

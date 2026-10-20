@@ -81,8 +81,9 @@ struct EditorState {
     // of another paper or size than it holds, freed with the notebook.
     Canvas paper;
     PaperKind paper_k;          // the paper it holds (while paper.px)
-    bool paper_stale;           // the page was drawn whole on an image paper since: drawn again
-                                // at its next use, so both come from the same pictures
+    bool paper_stale;           // drawn again in place at its next use (the next erase stroke's
+                                // start; never freed then, a stroke reads it): the page was drawn
+                                // whole on an image paper since, or its picture came after it
     // The open notebook's pages listed for compaction this session (compact_note_page); a page
     // with an erase stroke its file does not have yet is listed once the page is saved (to_list).
     uint32_t *noted;
@@ -1112,6 +1113,39 @@ void editor_open_notebook(App *a, const char *id) {
     S->view_w = 0;  // set the view up afresh on enter
     app_switch(a, SCR_EDITOR);
     arrive_readonly(a);
+}
+
+// A page KOReader sent (annotate.h): notebook id open at its page page_id, or where
+// editor_open_notebook opens it should it have no such page. added: the page was added to the
+// notebook (or the notebook made) at this start, a change like any other: the notebook's PDF is
+// made again as it closes, and the Library's card too when the page is its first.
+void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool added) {
+    editor_open_notebook(a, id);
+    if (!S->open || strcmp(S->nb.id, id)) return;
+    for (int i = 0; i < S->nb.npages; i++)
+        if (S->nb.page_ids[i] == page_id) {
+            if (i != S->index) go_to_page(a, i);
+            break;
+        }
+    if (!added) return;
+    S->changed = true;
+    if (S->index == 0) S->thumb_dirty = true;
+}
+
+// A picture made in the background (a template's, a page KOReader sent: bgimage.h) may be the open
+// page's paper, drawn white while its file was missing: the page is drawn again with it, now, or once
+// the stroke or gesture under way is over (editor_tick), or as the editor comes back in front. Only
+// such a page: one that shows its picture already (the job was another notebook's, or the templates'
+// previews), or whose picture is still to come, stays as it is.
+void editor_picture_made(App *a) {
+    if (!S || !S->open || !S->page || !paper_is_image(S->page->paper)) return;
+    if (!bgimage_undrawn(S->nb.id, paper_image_id(S->page->paper))) return;
+    S->canvas_page = NULL;
+    S->paper_stale = true;  // (what erase strokes restore toward: drawn white too)
+    if (a->scr == SCR_EDITOR && !a->asleep && !editor_busy(a) && S->page_canvas.px) {
+        render_page_full(a);
+        compose_all(a, REFRESH_UI);
+    }
 }
 
 bool editor_save_now(App *a) { return save_page(a); }
@@ -2255,6 +2289,11 @@ void editor_tick(App *a, uint32_t now) {
     // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
     // tries again 2 s later, not at every tick: each try says so with a toast.
     if (S->open && S->page_dirty && S->owner == OWN_NONE && now - S->last_up > 2000 && !save_page(a)) S->last_up = now;
+    // A page whose picture was made while a stroke or gesture was under way (editor_picture_made).
+    if (S->open && S->page && S->canvas_page != S->page && S->page_canvas.px && S->owner == OWN_NONE && !S->pinching) {
+        render_page_full(a);
+        compose_all(a, REFRESH_UI);
+    }
 }
 
 // ---- headless checks ----

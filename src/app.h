@@ -105,6 +105,8 @@ DECLARE_SCREEN(share)
 
 // Cross-screen entry points.
 void editor_open_notebook(App *a, const char *id);   // loads, switches to SCR_EDITOR
+void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool added);  // the same, at that page
+void editor_picture_made(App *a);                    // a picture job is done: the open page drawn again
 bool editor_save_now(App *a);                        // flush pending page/info saves; false if they failed
 bool editor_busy(App *a);                            // a stroke / drag / pinch is in progress
 const Canvas *editor_page_canvas(App *a);            // the open page (paper + ink), or NULL

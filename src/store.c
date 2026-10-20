@@ -200,6 +200,8 @@ static bool info_cb(void *ctx, const char *k, const char *v) {
     // The page size (1.1 on). A value no screen has is not kept: store_load_info finds the size.
     else if (!strcmp(k, "page_w")) nb->page_w = size_value(v, NULL);
     else if (!strcmp(k, "page_h")) nb->page_h = size_value(v, NULL);
+    // The book it annotates (1.1 on, annotate.h); a value of another form is a newer version's.
+    else if (!strcmp(k, "source") && store_source_ok(v)) strlcpy_q(nb->source, v, sizeof nb->source);
     else if (!strcmp(k, "pages")) {
         nb->npages = 0;
         const char *p = v;
@@ -358,6 +360,7 @@ static int write_info_at(const char *dir, const NotebookInfo *nb) {
     int pw, ph;
     store_notebook_page_size(nb, &pw, &ph);
     sb_printf(&b, "page_w=%d\npage_h=%d\n", pw, ph);
+    if (store_source_ok(nb->source)) sb_printf(&b, "source=%s\n", nb->source);
     sb_put(&b, nb->extra, strnlen(nb->extra, sizeof nb->extra));  // keys a newer version wrote, as they were
     int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
     free(b.d);
@@ -367,6 +370,16 @@ static int write_info_at(const char *dir, const NotebookInfo *nb) {
 int store_save_info(NotebookInfo *nb) {
     nb->modified = wall_time();
     return write_info(nb);
+}
+
+bool store_source_ok(const char *key) {
+    size_t n = key ? strnlen(key, STORE_SOURCE_LEN) : 0;
+    if (n == 0 || n >= STORE_SOURCE_LEN) return false;
+    for (size_t i = 0; i < n; i++)
+        if (!((key[i] >= '0' && key[i] <= '9') || (key[i] >= 'a' && key[i] <= 'z') || (key[i] >= 'A' && key[i] <= 'Z') ||
+              key[i] == '-' || key[i] == '_'))
+            return false;
+    return true;
 }
 
 static void page_path(const NotebookInfo *nb, uint32_t pid, char *buf, size_t cap) {
