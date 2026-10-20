@@ -1,7 +1,8 @@
 // test_pagesize.c: a notebook keeps the page size it was made with (the Scribe 3 and the Scribe
 // Colorsoft are 1986x2648, the 2022 and 2024 Scribes 1860x2480), wherever it is opened; a page an
 // older version scaled to another screen goes back to its notebook's size; calibrations follow the
-// panel; and how many music systems fit is worked out for the page's own height.
+// panel; how many music systems fit is worked out for the page's own height; and which fast
+// refreshes a colour panel waits after (all but live ink).
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 
 #include "calib_fit.h"
+#include "display.h"
 #include "export.h"
 #include "store.h"
 #include "testlib.h"
@@ -514,6 +516,34 @@ TEST(music_layouts_at_both_heights) {
         }
 }
 
+// ---- the colour panel's wait ----
+
+// Which fast refreshes are live ink (display.h): on a colour panel the Kindle waits for the
+// driver's read after every other fast refresh, so pen reading stalls for none of a stroke's.
+TEST(live_ink_frames) {
+    LiveInk l = {0};
+    CHECK(!live_ink_frame(&l, REFRESH_FAST, 1000));  // a pressed button, a dragged panel: waits
+    live_ink_mark(&l, true, 1000);                    // a stroke starts
+    CHECK(live_ink_frame(&l, REFRESH_FAST, 1010) && live_ink_frame(&l, REFRESH_FAST, 5000));
+    CHECK(!live_ink_frame(&l, REFRESH_UI, 5010) && !live_ink_frame(&l, REFRESH_FULL, 5020));  // only fast ones
+    live_ink_mark(&l, false, 6000);                   // the pen lifts
+    CHECK(!live_ink_frame(&l, REFRESH_UI, 6010));     // (a grayscale refresh in between is not one)
+    CHECK(live_ink_frame(&l, REFRESH_FAST, 6050));    // the samples that came with the lifting
+    CHECK(!live_ink_frame(&l, REFRESH_FAST, 6060));   // and no more
+    live_ink_mark(&l, true, 7000);
+    live_ink_mark(&l, false, 7010);
+    CHECK(!live_ink_frame(&l, REFRESH_FAST, 7120));   // 100 ms or more after the end: not
+    live_ink_mark(&l, false, 8000);                   // ended again (leaving a screen): nothing ends
+    CHECK(!live_ink_frame(&l, REFRESH_FAST, 8001));
+    // An end at the clock's wrap, and at 0 ms (never taken for no end at all).
+    live_ink_mark(&l, true, 0xFFFFFFF0u);
+    live_ink_mark(&l, false, 0xFFFFFFF0u);
+    CHECK(live_ink_frame(&l, REFRESH_FAST, 0x20u));
+    live_ink_mark(&l, true, 0);
+    live_ink_mark(&l, false, 0);
+    CHECK(live_ink_frame(&l, REFRESH_FAST, 5));
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/pagesize-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -526,6 +556,7 @@ int main(void) {
     RUN(calibration_scaling_math);
     RUN(calibration_panel_in_settings);
     RUN(music_layouts_at_both_heights);
+    RUN(live_ink_frames);
     int rc = tl_done();
     system(cmd);
     return rc;

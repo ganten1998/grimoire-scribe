@@ -123,6 +123,11 @@ static bool g_sim_invert;  // display_set_invert
 static uint8_t *g_eink;  // what the simulated panel shows
 static int g_stats[3];
 static long long g_area[3];
+// Live ink as display_fbink.c keeps it, for the script's display.* checks: whether a colour panel
+// would wait after the last fast refresh, and whether the app asks for the pen mode.
+static LiveInk g_ink;
+static int g_last_fast = -1;  // the last fast refresh: 1 live ink, 0 one to wait after, -1 none yet
+static bool g_pen_mode;       // display_pen_mode
 #ifdef GRIMOIRE_SIM_SDL
 static SDL_Window *g_win;
 static SDL_Renderer *g_ren;
@@ -209,6 +214,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     g_last_screen = screen;
     r = rect_intersect(r, (Rect){0, 0, g_w, g_h});
     if (rect_is_empty(r) || mode < 0 || mode > 2) return;
+    if (mode == REFRESH_FAST) g_last_fast = live_ink_frame(&g_ink, mode, now_ms()) ? 1 : 0;
     g_stats[mode]++;
     g_area[mode] += (long long)r.w * r.h;
     for (int y = r.y; y < r.y + r.h; y++) {
@@ -235,7 +241,11 @@ void display_set_orientation(int turns, int *w, int *h) {
     *w = g_w;
     *h = g_h;
 }
-void display_pen_mode(bool on) { (void)on; }
+void display_live_ink(bool on) { live_ink_mark(&g_ink, on, now_ms()); }
+void display_pen_mode(bool on) {
+    display_live_ink(on);
+    g_pen_mode = on;
+}
 void display_set_invert(bool on) { g_sim_invert = on; }
 
 // Simulated front light (the simulator has no light to drive).
@@ -332,11 +342,12 @@ static bool g_side, g_eraser;
 // "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
 // value is the rest of the line after one space; nothing there means the empty string. KEY is
 // anything app_probe() answers (docs/SIM.md lists them), "running": 1 while the app runs, 0
-// once it has quit, or "watching": 1 while input_poll also watches a file descriptor (the share
-// server's), else 0. A check sees the app once everything queued before it was handled, ticked
-// and flushed: at once after a line that ends a batch (a tap, wait or shot; that is one main-loop
-// pass before a shot in its place would be taken), else at the next poll, like a shot. A failed
-// check is printed and the run goes on; at the end the run exits with status 3 (display_close).
+// once it has quit, "watching": 1 while input_poll also watches a file descriptor (the share
+// server's), else 0, or a display.* key (display_probe). A check sees the app once everything
+// queued before it was handled, ticked and flushed: at once after a line that ends a batch (a
+// tap, wait or shot; that is one main-loop pass before a shot in its place would be taken), else
+// at the next poll, like a shot. A failed check is printed and the run goes on; at the end the
+// run exits with status 3 (display_close).
 // A line the runner does not know fails the same way, or a misspelt check would pass unseen.
 
 typedef enum { EXPECT_IS, EXPECT_HAS, EXPECT_NOT } ExpectOp;
@@ -379,6 +390,19 @@ static void expect_read(const char *s) {
     g_expect.op = (ExpectOp)op;
 }
 
+// The display.* keys, which the simulated panel answers: "display.ink" 1 while a stroke is drawn
+// (display_live_ink), "display.pen_mode" 1 while the app asks for the pen mode (display_pen_mode),
+// "display.last_fast" "ink" when the last fast refresh was live ink, "wait" when a colour panel
+// would have waited for the driver's read after it (display_fbink.c), empty before any.
+static bool display_probe(const char *key, char *out, size_t cap) {
+    if (!strcmp(key, "display.ink")) snprintf(out, cap, "%d", g_ink.on ? 1 : 0);
+    else if (!strcmp(key, "display.pen_mode")) snprintf(out, cap, "%d", g_pen_mode ? 1 : 0);
+    else if (!strcmp(key, "display.last_fast"))
+        snprintf(out, cap, "%s", g_last_fast < 0 ? "" : g_last_fast ? "ink" : "wait");
+    else return false;
+    return true;
+}
+
 // Checks the expect just read. gone: the app quit before the script got to it, so only "running"
 // has an answer (0); any other key fails as not run.
 static void expect_check_as(bool gone) {
@@ -390,7 +414,8 @@ static void expect_check_as(bool gone) {
         fprintf(stderr, "expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", g_expect.line);
     } else if (gone && !running) {
         fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", g_expect.line);
-    } else if (!running && !watching && app_probe(g_expect.key, got, sizeof got) != 0) {
+    } else if (!running && !watching && !display_probe(g_expect.key, got, sizeof got) &&
+               app_probe(g_expect.key, got, sizeof got) != 0) {
         fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
     } else {
         if (running) snprintf(got, sizeof got, "%d", gone ? 0 : 1);

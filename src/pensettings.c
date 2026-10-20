@@ -230,7 +230,11 @@ void pensettings_enter(App *a) {
     S->live_raw = -1.f;
     draw_all(a);
 }
-void pensettings_leave(App *a) { settings_save(&a->settings); }
+void pensettings_leave(App *a) {
+    if (S->drawing) display_live_ink(false);  // left in the middle of a stroke on the pad
+    S->drawing = false;
+    settings_save(&a->settings);
+}
 
 static void set_slider(App *a, int row, float x, RefreshMode m) {
     int n;
@@ -308,6 +312,7 @@ void pensettings_event(App *a, const InEvent *ev) {
                 app_invalidate(a, rect_inflate(S->pad, ui_px(6)), REFRESH_UI);
             }
             S->drawing = true;
+            display_live_ink(true);  // the pad's ink is live, as in the editor
             pad_sample(a, ev, true);
             return;
         }
@@ -327,6 +332,7 @@ void pensettings_event(App *a, const InEvent *ev) {
         if (ph == 1) pad_sample(a, ev, false);
         else {
             S->drawing = false;
+            display_live_ink(false);
             draw_readout(a);
             draw_graph(a);
             app_invalidate(a, rect_union(rect_union(S->readout, rect_inflate(S->graph, ui_px(70))), S->pad), REFRESH_UI);

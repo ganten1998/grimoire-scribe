@@ -830,6 +830,7 @@ static void draw_begin(App *a, const InEvent *ev) {
         to_page(a, ev->x, ev->y, &S->ex, &S->ey);
         S->erase_dirty = RECT_EMPTY;
         if (S->btn_down) S->btn_used_for_ink = true;
+        display_live_ink(true);  // a pen stroke too: its frames never wait (erase_end repaints them)
         return;
     }
     if (S->btn_down) S->btn_used_for_ink = true;
@@ -918,6 +919,7 @@ static int snap_index(App *a, const Stroke *s) {
 
 static void erase_end(App *a) {
     S->owner = OWN_NONE;
+    display_live_ink(false);
     if (S->nremoved > 0) {
         // History wants original indices ascending, paired with their strokes.
         int n = S->nremoved;

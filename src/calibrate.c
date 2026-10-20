@@ -89,6 +89,8 @@ static void draw(App *a) {
 }
 
 static void restart(App *a, Phase ph, const char *msg) {
+    if (S->drawing) display_live_ink(false);  // a check stroke cut short (a finger on Start over)
+    S->drawing = false;
     S->phase = ph;
     S->target = 0;
     strlcpy_q(S->msg, msg ? msg : "", sizeof S->msg);
@@ -151,7 +153,7 @@ void calibrate_enter(App *a) {
 }
 
 void calibrate_leave(App *a) {
-    if (S->drawing) display_pen_mode(false);  // left in the middle of a check stroke (a finger on Save)
+    if (S->drawing) display_live_ink(false);  // left in the middle of a check stroke (a finger on Save)
     S->drawing = false;
 }
 
@@ -177,7 +179,7 @@ void calibrate_event(App *a, const InEvent *ev) {
             tool_params_default(TOOL_BALLPOINT, &p);
             brush_begin(&S->bs, TOOL_BALLPOINT, &p, 7, a->dpi);
             S->drawing = true;
-            display_pen_mode(true);  // live ink, as in the editor
+            display_live_ink(true);  // live ink, as in the editor (but no pen mode: plain DU, as before)
         }
         if (S->drawing && pen) {
             PenSample s = {ev->x, ev->y, fmaxf(ev->pressure, 0.5f), 0, 0, ev->t_ms};
@@ -188,7 +190,7 @@ void calibrate_event(App *a, const InEvent *ev) {
             app_invalidate(a, rect_intersect(d, S->pad), REFRESH_FAST);
             if (ph == 2) {
                 S->drawing = false;
-                display_pen_mode(false);
+                display_live_ink(false);
             }
             return;
         }

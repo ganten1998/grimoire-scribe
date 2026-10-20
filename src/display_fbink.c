@@ -21,9 +21,11 @@
 // Colour panels (the Scribe Colorsoft: FBInk's has_color_panel, 32 bpp): the driver reads the
 // framebuffer for an update some time after it was sent (about 23 ms, measured on a Scribe
 // Colorsoft), in tiles. Pixels changed again before that show half old, striped. So after a fast
-// refresh that is not live ink (a pressed button, the panel being dragged, a pinch) Grimoire waits
-// until the driver has read the frame (MXCFB_WAIT_FOR_MDP_COMPLETION), as KOReader does. Live ink
-// never waits: each frame only adds ink the next one sends again, and pen reading must not stall.
+// refresh that is not live ink (a pressed button, the panel being dragged, a pinch, a slider)
+// Grimoire waits until the driver has read the frame (MXCFB_WAIT_FOR_MDP_COMPLETION), as KOReader
+// does. Live ink (display_live_ink: a pen stroke, erasing included) never waits, so pen reading
+// never stalls: a stroke's frames only add ink the next one sends again, and erasing ends with a
+// grayscale refresh of all it erased, which repaints anything a frame's read caught half done.
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,8 +62,7 @@ static int LW, LH;            // logical screen size (swapped when turned sidewa
 #define MXCFB_WAIT_FOR_MDP_COMPLETION _IOW('F', 0x4D, uint32_t)
 static bool g_mdp_wait;       // a colour panel: fast refreshes outside live ink wait for the driver's read
 static int g_mdp_logged;      // waits logged (the first few, for a tester's log)
-static bool g_ink;            // a stroke is being drawn (display_pen_mode): its fast frames are live ink
-static uint32_t g_ink_end;    // when the last stroke ended (0: none since the last fast frame)
+static LiveInk g_ink;         // strokes being drawn (display_live_ink): their fast frames never wait
 
 // Logical screen pixel -> framebuffer pixel (device rotation, then the framebuffer quirk).
 static void to_fb(int lx, int ly, int *fx, int *fy) {
@@ -145,11 +146,10 @@ static void set_pen_mode(bool on) {
     g_pen_mode = on;
 }
 
+void display_live_ink(bool on) { live_ink_mark(&g_ink, on, now_ms()); }
+
 void display_pen_mode(bool on) {
-    // The editor calls this at a stroke's start and end. The end's frame often goes out just after
-    // it (the samples that came with the pen lifting): a fast frame right after still is the stroke's.
-    if (g_ink && !on) g_ink_end = now_ms() | 1;
-    g_ink = on;
+    display_live_ink(on);
     set_pen_mode(on);
 }
 
@@ -350,8 +350,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
     int ret = send_refresh(r, mode, &rc);
-    bool ink = g_ink || (g_ink_end && (int32_t)(now_ms() - g_ink_end) < 100);
-    if (mode == REFRESH_FAST) g_ink_end = 0;
+    bool ink = live_ink_frame(&g_ink, mode, now_ms());
     if (ret >= 0 && mode == REFRESH_FAST && g_mdp_wait && !ink) mdp_wait();
     if (ret >= 0 && g_presents < 40)
         qlog("display: refresh #%d %d,%d %dx%d mode %d pen %d -> ok, marker %u, fb[center]=%u", g_presents, r.x, r.y,
