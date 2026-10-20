@@ -2,7 +2,7 @@
 # background, before the notebook is opened: its page file has lost the erased line and the pass
 # over it.
 # root: z_8_left_open
-wait 1500
+waitbg
 expect bg.busy is 0
 tap 326 608
 wait 500

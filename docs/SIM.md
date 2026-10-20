@@ -60,6 +60,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `rotate N` | the Kindle now turned N quarter turns clockwise (0..3) |
 | `sleep`, `wake` | the power service announcing the sleep screen, and its end |
 | `wait MS` | let timers run (autosave, toasts, the share server) |
+| `waitbg [MS]` | let timers run until no background job is queued or running (an import, a template's picture, a PDF), at most MS (60000 if not given): what it waited for took as long as the machine let it, so it ends with that job's toast up |
 | `shot NAME` | write what the panel shows to `$GRIMOIRE_SHOTS/NAME.png` |
 | `expect KEY is\|has\|not VALUE` | check the app's state (see Checks) |
 | `power` | a short press of the power button and its release (150 ms) |

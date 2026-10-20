@@ -6,9 +6,10 @@
 # copy: tests/fixtures/scen-import import
 # copy: tests/fixtures/scen-templates templates
 # pdfs: 1
-# The import takes about a second here; its toast shows for 8 s, so this wait holds for one that
-# takes up to 7.5 s on a busy machine.
-wait 7500
+# The import takes about a second on a quiet machine and longer on a busy one: waitbg waits for it
+# (and for the templates' previews) to end, which puts its toast up for 8 s.
+waitbg
+wait 300
 shot 01-library-imported
 expect toast is Imported a notebook of 3 pages.
 expect screen is library

@@ -16,6 +16,7 @@
 #include <sys/wait.h>
 
 #include "app.h"  // app_probe, for the script's expect checks
+#include "bgjob.h"  // bg_busy, for waitbg
 #include "calib_fit.h"
 #include "display.h"
 #include "input.h"
@@ -332,6 +333,7 @@ void display_close(void) {
 
 static FILE *g_script;
 static uint32_t g_wait_until;
+static bool g_wait_bg;  // waitbg: the wait ends early once no background job is queued or running
 static char g_pending_shot[128];
 static bool g_script_done;
 static float g_px, g_py;  // last pen position
@@ -587,6 +589,13 @@ static void script_step(void) {
             return;
         } else if (!strcmp(a, "wait")) {
             g_wait_until = now_ms() + (uint32_t)atoi(b);
+            g_wait_bg = false;
+            return;
+        } else if (!strcmp(a, "waitbg")) {
+            // Background work (an import, a template's picture, a PDF) takes as long as the machine
+            // lets it: wait for it to end, not a time that holds on a quiet machine only.
+            g_wait_until = now_ms() + (uint32_t)(*b ? atoi(b) : 60000);
+            g_wait_bg = true;
             return;
         } else if (!strcmp(a, "shot")) {
             strlcpy_q(g_pending_shot, b, sizeof g_pending_shot);
@@ -832,8 +841,10 @@ int input_poll(InEvent *ev, int timeout_ms) {
             g_pending_shot[0] = 0;
         }
         if (g_expect.pending) expect_check();  // an expect waits for the same moment
+        if (g_wait_bg && !bg_busy()) g_wait_bg = false, g_wait_until = now_ms();  // (reaped: its toast is up)
         if ((int32_t)(now_ms() - g_wait_until) < 0) {
             uint32_t left = g_wait_until - now_ms();
+            if (g_wait_bg && left > 20) left = 20;  // look again soon
             sleep_ms((int)(left < (uint32_t)timeout_ms ? left : (uint32_t)timeout_ms));
             return 0;
         }
