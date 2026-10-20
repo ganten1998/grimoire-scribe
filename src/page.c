@@ -157,9 +157,33 @@ void page_render(Canvas *c, const Page *p, Rect region, float dpi) {
 // Whether stroke i is drawn: it is not `left_out`, nor marked in skip (NULL = none marked).
 static bool drawn(const bool *skip, int left_out, int i) { return i != left_out && !(skip && skip[i]); }
 
-// page_render_layers, leaving out the strokes marked in skip and stroke left_out (compaction).
+// A stroke in pieces (compaction): runs of its points, each with the brush as it stands before the
+// run and the rect its dabs can draw into, measured by a dry run of the brush. A region drawn from
+// the pieces that reach into it, each from its own brush, gets exactly what a replay from the first
+// point gives it: the brush's course does not depend on the canvas, and the other pieces draw
+// nothing there.
+typedef struct {
+    int first, end;  // points first..end-1
+    Rect box;        // on the page (empty: they draw nothing)
+    BrushState b;    // before point `first`
+} Piece;
+
+// A page's strokes in pieces, each stroke cut the first time it is drawn so.
+typedef struct {
+    const Page *p;
+    float dpi;
+    Piece **pc;  // per stroke: its pieces once cut, else NULL
+    int *n;      // per stroke: how many
+    Piece *tmp;  // the pieces of the stroke being cut
+    int tmp_cap;
+} Pieces;
+
+static const Piece *pieces_of(Pieces *ps, int i, int *count);
+
+// page_render_layers, leaving out the strokes marked in skip and stroke left_out, and drawing each
+// stroke from its pieces if ps is given (compaction).
 static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers, const bool *skip,
-                          int left_out) {
+                          int left_out, Pieces *ps) {
     Rect saved = c->clip;
     Rect r = rect_intersect(region, saved);
     if (rect_is_empty(r)) return;
@@ -184,8 +208,8 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
                 b.x += a.w;
                 b.w -= a.w;
             }
-            render_layers(c, p, a, dpi, layers, skip, left_out);
-            render_layers(c, p, b, dpi, layers, skip, left_out);
+            render_layers(c, p, a, dpi, layers, skip, left_out, ps);
+            render_layers(c, p, b, dpi, layers, skip, left_out, ps);
             return;
         }
         static bool logged;
@@ -203,15 +227,30 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
         // An erase stroke stays inside its bbox, which u covers where it meets r: clipped to u it
         // draws the same pixels, and it never reads past the copy.
         canvas_set_clip(c, copy && stroke_is_erase(s) ? u : r);
-        stroke_brush_begin(&b, s, dpi, copy, u.x, u.y, u.w);
-        for (int k = 0; k < s->n; k++) brush_add(&b, c, &s->pts[k]);
+        int np = 0;
+        const Piece *pcs = ps ? pieces_of(ps, i, &np) : NULL;
+        if (!pcs) {  // whole (also when there was no memory to cut it)
+            stroke_brush_begin(&b, s, dpi, copy, u.x, u.y, u.w);
+            for (int k = 0; k < s->n; k++) brush_add(&b, c, &s->pts[k]);
+            continue;
+        }
+        for (int k = 0, next = -1; k < np; k++) {  // next: the point b stands before
+            const Piece *pc = &pcs[k];
+            if (!rect_overlaps(pc->box, r)) continue;
+            if (pc->first != next) {
+                b = pc->b;
+                if (stroke_is_erase(s)) brush_set_erase(&b, copy, u.x, u.y, u.w);
+            }
+            for (int m = pc->first; m < pc->end; m++) brush_add(&b, c, &s->pts[m]);
+            next = pc->end;
+        }
     }
     free(copy);
     c->clip = saved;
 }
 
 void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers) {
-    render_layers(c, p, region, dpi, layers, NULL, -1);
+    render_layers(c, p, region, dpi, layers, NULL, -1, NULL);
 }
 
 void page_render_thumb(Canvas *thumb, const Page *p, float dpi) {
@@ -224,27 +263,228 @@ void page_render_thumb(Canvas *thumb, const Page *p, float dpi) {
 
 // ---- compaction ----
 
-// Whether r drawn without stroke i is r drawn with it (both without the strokes marked in drop).
-// Every pixel's value depends only on what was drawn over that pixel, and a stroke draws inside
-// its bbox, so r = its bbox settles it for the whole page. a and b are page-size scratch.
-static bool same_without(Canvas *a, Canvas *b, const Page *p, Rect r, float dpi, int layers, const bool *drop,
-                         int i) {
-    if (!(layers & PAGE_LAYER_PAPER)) {  // the ink layer starts white
-        canvas_fill(a, r, 255);
-        canvas_fill(b, r, 255);
+// Stroke i's pieces, cut now if they are not yet (a piece ends at the first point that takes its
+// rect past 16 mm either way), or NULL when out of memory: then the stroke is drawn whole.
+static const Piece *pieces_of(Pieces *ps, int i, int *count) {
+    if (ps->pc[i]) {
+        *count = ps->n[i];
+        return ps->pc[i];
     }
-    render_layers(a, p, r, dpi, layers, drop, -1);
-    render_layers(b, p, r, dpi, layers, drop, i);
-    for (int y = r.y; y < r.y + r.h; y++)
-        if (memcmp(&a->px[y * a->stride + r.x], &b->px[y * b->stride + r.x], (size_t)r.w)) return false;
-    return true;
+    const Page *p = ps->p;
+    const Stroke *s = p->strokes[i];
+    float span = mm_to_px(16.f, ps->dpi);
+    Canvas none = {.w = p->w, .h = p->h, .stride = p->w, .clip = {0, 0, p->w, p->h}};  // no pixels: dry
+    BrushState b;
+    stroke_brush_begin(&b, s, ps->dpi, NULL, 0, 0, 0);
+    b.dry = true;
+    int n = 0;
+    for (int k = 0; k < s->n;) {
+        if (n == ps->tmp_cap) {
+            int nc = ps->tmp_cap ? ps->tmp_cap * 2 : 64;
+            Piece *np = realloc(ps->tmp, (size_t)nc * sizeof *np);
+            if (!np) return NULL;
+            ps->tmp = np;
+            ps->tmp_cap = nc;
+        }
+        Piece *pc = &ps->tmp[n++];
+        pc->first = k;
+        pc->box = RECT_EMPTY;
+        pc->b = b;
+        pc->b.dry = false;
+        do pc->box = rect_union(pc->box, brush_add(&b, &none, &s->pts[k++]));
+        while (k < s->n && pc->box.w < span && pc->box.h < span);
+        pc->end = k;
+    }
+    Piece *own = malloc(n ? (size_t)n * sizeof *own : 1);
+    if (!own) return NULL;
+    if (n) memcpy(own, ps->tmp, (size_t)n * sizeof *own);
+    ps->pc[i] = own;
+    *count = ps->n[i] = n;
+    return own;
 }
 
-// Whether an erase stroke after stroke i reaches into its bbox (only such ink can be erased).
-static bool erased_later(const Page *p, int i) {
-    for (int j = i + 1; j < p->n; j++)
-        if (stroke_is_erase(p->strokes[j]) && rect_overlaps(p->strokes[j]->bbox, p->strokes[i]->bbox)) return true;
+// What compaction works with.
+typedef struct {
+    const Page *p;
+    float dpi;
+    const bool *drop;  // the strokes marked so far
+    Pieces ps;
+    // The reference: the page as it is, each layer drawn where a check of that layer first needs
+    // it (`ready` per REF_BLOCK square). Marked strokes change nothing, so drawing it without them
+    // gives the same pixels and it never goes stale.
+    Canvas layer[2];   // the page, the ink layer
+    uint8_t *ready[2];
+    int blocks_x;
+    // Where the paper is white, a pixel of the ink layer is that pixel of the page, whatever is
+    // drawn: the same strokes over the same white, restoring toward the same white. So the ink
+    // layer is checked only in the rows where the paper has marks (`marked`, per row and REF_BLOCK
+    // of columns), and not at all on paper white all over (then there is no ink canvas either).
+    bool ink_too;
+    uint8_t *marked;
+    uint8_t *keep;     // the reference under a region, while a check draws over it
+    size_t keep_cap;
+} Compact;
+
+#define REF_BLOCK 16
+
+// Makes sure the reference of layer l (0 the page, 1 the ink layer) is drawn over r, a rect on the
+// page: the rect around the blocks r meets that are not yet (drawing a block again changes nothing).
+static void ref_ready(Compact *x, int l, Rect r) {
+    uint8_t *ready = x->ready[l];
+    int bx0 = r.x / REF_BLOCK, bx1 = (r.x + r.w - 1) / REF_BLOCK;
+    int by0 = r.y / REF_BLOCK, by1 = (r.y + r.h - 1) / REF_BLOCK;
+    int mx0 = bx1 + 1, mx1 = bx0 - 1, my0 = by1 + 1, my1 = by0 - 1;
+    for (int by = by0; by <= by1; by++)
+        for (int bx = bx0; bx <= bx1; bx++)
+            if (!ready[by * x->blocks_x + bx]) {
+                mx0 = bx < mx0 ? bx : mx0;
+                mx1 = bx > mx1 ? bx : mx1;
+                my0 = by < my0 ? by : my0;
+                my1 = by > my1 ? by : my1;
+            }
+    if (mx1 < mx0) return;
+    Rect t = {mx0 * REF_BLOCK, my0 * REF_BLOCK, (mx1 - mx0 + 1) * REF_BLOCK, (my1 - my0 + 1) * REF_BLOCK};
+    t = rect_intersect(t, (Rect){0, 0, x->p->w, x->p->h});
+    if (l) canvas_fill(&x->layer[l], t, 255);  // the ink layer starts white
+    render_layers(&x->layer[l], x->p, t, x->dpi, l ? PAGE_LAYER_INK : PAGE_LAYER_ALL, x->drop, -1, &x->ps);
+    for (int by = my0; by <= my1; by++) memset(&ready[by * x->blocks_x + mx0], 1, (size_t)(mx1 - mx0 + 1));
+}
+
+// Whether leaving out stroke k too (besides the marked ones) changes r, a rect on the page, in layer
+// l: 1 if it does, 0 if not, -1 out of memory. Draws r without them over the reference, compares
+// the two and puts the reference back.
+static int differs_in(Compact *x, int l, Rect r, int k) {
+    size_t need = (size_t)r.w * (size_t)r.h;
+    if (need > x->keep_cap) {
+        uint8_t *nk = realloc(x->keep, need);
+        if (!nk) return -1;
+        x->keep = nk;
+        x->keep_cap = need;
+    }
+    Canvas *c = &x->layer[l];
+    ref_ready(x, l, r);
+    for (int y = 0; y < r.h; y++)
+        memcpy(x->keep + (size_t)y * r.w, &c->px[(r.y + y) * c->stride + r.x], (size_t)r.w);
+    if (l) canvas_fill(c, r, 255);
+    render_layers(c, x->p, r, x->dpi, l ? PAGE_LAYER_INK : PAGE_LAYER_ALL, x->drop, k, &x->ps);
+    bool same = true;
+    for (int y = 0; y < r.h; y++) {
+        uint8_t *row = &c->px[(r.y + y) * c->stride + r.x];
+        const uint8_t *was = x->keep + (size_t)y * r.w;
+        same = same && !memcmp(row, was, (size_t)r.w);
+        memcpy(row, was, (size_t)r.w);
+    }
+    return !same;
+}
+
+// Whether row y of the paper has marks in the column blocks r spans.
+static bool row_marked(const Compact *x, int y, Rect r) {
+    const uint8_t *m = &x->marked[(size_t)y * (size_t)x->blocks_x];
+    for (int bx = r.x / REF_BLOCK; bx <= (r.x + r.w - 1) / REF_BLOCK; bx++)
+        if (m[bx]) return true;
     return false;
+}
+
+// The same for both layers: the page over r, then the ink layer over the runs of rows of r where
+// the paper has marks.
+static int differs(Compact *x, Rect r, int k) {
+    int d = differs_in(x, 0, r, k);
+    for (int y = r.y; x->ink_too && !d && y < r.y + r.h; y++) {
+        if (!row_marked(x, y, r)) continue;
+        int end = y + 1;
+        while (end < r.y + r.h && row_marked(x, end, r)) end++;
+        d = differs_in(x, 1, (Rect){r.x, y, r.w, end - y}, k);
+        y = end;
+    }
+    return d;
+}
+
+// Whether an erase stroke after stroke i reaches into r.
+static bool erased_after(const Page *p, int i, Rect r) {
+    for (int j = i + 1; j < p->n; j++)
+        if (stroke_is_erase(p->strokes[j]) && rect_overlaps(p->strokes[j]->bbox, r)) return true;
+    return false;
+}
+
+// Whether leaving out ink stroke i changes the page (1, 0, or -1 out of memory). It can change only
+// what its pieces draw over, so each piece's rect is checked. Pieces no later erase stroke reaches
+// go first: they show unless later ink covers them, so a stroke that stays is told at once.
+static int ink_matters(Compact *x, int i) {
+    int np;
+    const Piece *pcs = pieces_of(&x->ps, i, &np);
+    if (!pcs) return -1;
+    for (int pass = 0; pass < 2; pass++)
+        for (int k = 0; k < np; k++) {
+            Rect r = pcs[k].box;
+            if (rect_is_empty(r) || erased_after(x->p, i, r) != (pass == 1)) continue;
+            int d = differs(x, r, i);
+            if (d) return d;
+        }
+    return 0;
+}
+
+// The same for erase stroke j. It only lightens, and a pixel no ink before it darkened is at its
+// paper already, so it can change only where its pieces meet the pieces of earlier ink that is
+// not marked (inside that ink's bbox): those rects are checked, and an erase stroke over nothing
+// else is marked without drawing anything.
+static int erase_matters(Compact *x, int j) {
+    const Page *p = x->p;
+    int np;
+    if (!pieces_of(&x->ps, j, &np)) return -1;
+    for (int k = 0; k < np; k++) {
+        Rect box = x->ps.pc[j][k].box, r = RECT_EMPTY;
+        for (int i = 0; i < j && !rect_is_empty(box); i++) {
+            const Stroke *s = p->strokes[i];
+            bool ink = !stroke_is_erase(s) && (unsigned)s->tool < TOOL_COUNT;
+            if (x->drop[i] || !ink || !rect_overlaps(s->bbox, box)) continue;
+            int ni;
+            const Piece *pi = pieces_of(&x->ps, i, &ni);
+            if (!pi) return -1;
+            for (int m = 0; m < ni; m++) r = rect_union(r, rect_intersect(box, pi[m].box));
+        }
+        if (rect_is_empty(r)) continue;
+        int d = differs(x, r, j);
+        if (d) return d;
+    }
+    return 0;
+}
+
+// Gets x ready: room for the pieces, the reference canvases (nothing drawn in them yet) and
+// whether the paper is white all over. 0, or -1 out of memory.
+static int compact_start(Compact *x) {
+    const Page *p = x->p;
+    x->ps = (Pieces){.p = p, .dpi = x->dpi};
+    x->ps.pc = calloc((size_t)p->n, sizeof *x->ps.pc);
+    x->ps.n = calloc((size_t)p->n, sizeof *x->ps.n);
+    if (!x->ps.pc || !x->ps.n || canvas_init(&x->layer[0], p->w, p->h) != 0) return -1;
+    x->blocks_x = (p->w + REF_BLOCK - 1) / REF_BLOCK;
+    size_t blocks = (size_t)x->blocks_x * (size_t)((p->h + REF_BLOCK - 1) / REF_BLOCK);
+    x->ready[0] = calloc(blocks, 1);
+    x->ready[1] = calloc(blocks, 1);
+    x->marked = calloc((size_t)x->blocks_x * (size_t)p->h, 1);
+    if (!x->ready[0] || !x->ready[1] || !x->marked) return -1;
+    // Where the paper has marks (the reference is drawn over it later).
+    paper_render(&x->layer[0], p->paper, (Rect){0, 0, p->w, p->h}, x->dpi);
+    for (int y = 0; y < p->h; y++) {
+        const uint8_t *row = &x->layer[0].px[y * x->layer[0].stride];
+        uint8_t *m = &x->marked[(size_t)y * (size_t)x->blocks_x];
+        for (int k = 0; k < p->w; k++)
+            if (row[k] != 255) m[k / REF_BLOCK] = x->ink_too = true;
+    }
+    return x->ink_too && canvas_init(&x->layer[1], p->w, p->h) != 0 ? -1 : 0;
+}
+
+static void compact_free(Compact *x) {
+    for (int i = 0; x->ps.pc && i < x->p->n; i++) free(x->ps.pc[i]);
+    free(x->ps.pc);
+    free(x->ps.n);
+    free(x->ps.tmp);
+    for (int l = 0; l < 2; l++) {
+        canvas_free(&x->layer[l]);
+        free(x->ready[l]);
+    }
+    free(x->marked);
+    free(x->keep);
 }
 
 int page_droppable(const Page *p, float dpi, bool *drop) {
@@ -253,32 +493,29 @@ int page_droppable(const Page *p, float dpi, bool *drop) {
         drop[i] = false;
         any = any || stroke_is_erase(p->strokes[i]);
     }
-    if (!any) return 0;
-    Canvas a, b;
-    if (canvas_init(&a, p->w, p->h) != 0) return -1;
-    if (canvas_init(&b, p->w, p->h) != 0) {
-        canvas_free(&a);
-        return -1;
-    }
+    if (!any || p->w <= 0 || p->h <= 0) return 0;
     // A stroke whose leaving out changes neither the page nor its ink layer is marked. Marked
     // strokes change nothing, so the page drawn without them is the page itself, and each check
-    // sees the ones marked before it: it draws only its stroke's bbox, with and without it. Ink
-    // goes first: once it is out, the erase strokes over it may have nothing left to change.
-    Rect page = {0, 0, p->w, p->h};
-    int n = 0;
-    for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < p->n; i++) {
+    // sees the ones marked before it. Ink goes first: once it is out, the erase strokes over it may
+    // have nothing left to change.
+    Compact x = {.p = p, .dpi = dpi, .drop = drop};
+    const Rect page = {0, 0, p->w, p->h};
+    int n = compact_start(&x) == 0 ? 0 : -1;
+    for (int pass = 0; pass < 2 && n >= 0; pass++)
+        for (int i = 0; i < p->n && n >= 0; i++) {
             const Stroke *s = p->strokes[i];
             if ((unsigned)s->tool >= TOOL_COUNT || stroke_is_erase(s) != (pass == 1)) continue;
-            if (pass == 0 && !erased_later(p, i)) continue;
-            Rect r = rect_intersect(s->bbox, page);
-            if (rect_is_empty(r) || !same_without(&a, &b, p, r, dpi, PAGE_LAYER_ALL, drop, i) ||
-                !same_without(&a, &b, p, r, dpi, PAGE_LAYER_INK, drop, i))
-                continue;
-            drop[i] = true;
-            n++;
+            if (pass == 0 && !erased_after(p, i, s->bbox)) continue;  // only erasing makes ink go
+            if (rect_is_empty(rect_intersect(s->bbox, page))) continue;
+            int d = pass ? erase_matters(&x, i) : ink_matters(&x, i);
+            if (d < 0) {
+                n = -1;
+            } else if (!d) {
+                drop[i] = true;
+                n++;
+            }
         }
-    canvas_free(&a);
-    canvas_free(&b);
+    compact_free(&x);
+    if (n < 0) memset(drop, 0, (size_t)p->n * sizeof *drop);
     return n;
 }

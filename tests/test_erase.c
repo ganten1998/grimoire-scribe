@@ -744,6 +744,111 @@ TEST(compaction_drops_only_what_changes_nothing) {
     canvas_free(&b);
 }
 
+// The compaction rule the slow way: in stroke order, ink first, then erase strokes, a stroke on the
+// page is marked when the page and its ink layer, drawn whole without it and the strokes marked
+// before it, are what they are without those alone. Only ink a later erase stroke's bbox reaches
+// is a candidate.
+static int droppable_slowly(const Page *p, bool *drop) {
+    int n = 0;
+    bool any = false;
+    for (int i = 0; i < p->n; i++) {
+        drop[i] = false;
+        any = any || stroke_is_erase(p->strokes[i]);
+    }
+    if (!any) return 0;
+    const Rect all = {0, 0, p->w, p->h};
+    Canvas with[2], without[2];  // the page and its ink layer, without the marked strokes / and stroke i
+    for (int l = 0; l < 2; l++) {
+        canvas_init(&with[l], p->w, p->h);
+        canvas_init(&without[l], p->w, p->h);
+    }
+    page_render(&with[0], p, all, DPI);
+    page_render_layers(&with[1], p, all, DPI, PAGE_LAYER_INK);
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < p->n; i++) {
+            const Stroke *s = p->strokes[i];
+            if ((unsigned)s->tool >= TOOL_COUNT || stroke_is_erase(s) != (pass == 1)) continue;
+            bool later = false;
+            for (int j = i + 1; j < p->n; j++)
+                later = later || (stroke_is_erase(p->strokes[j]) && rect_overlaps(p->strokes[j]->bbox, s->bbox));
+            if ((pass == 0 && !later) || rect_is_empty(rect_intersect(s->bbox, all))) continue;
+            drop[i] = true;
+            Page *v = page_without(p, drop);
+            page_render(&without[0], v, all, DPI);
+            canvas_fill(&without[1], all, 255);
+            page_render_layers(&without[1], v, all, DPI, PAGE_LAYER_INK);
+            view_free(v);
+            drop[i] = diff_px(&with[0], &without[0], all) == 0 && diff_px(&with[1], &without[1], all) == 0;
+            n += drop[i];
+        }
+    for (int l = 0; l < 2; l++) {
+        canvas_free(&with[l]);
+        canvas_free(&without[l]);
+    }
+    return n;
+}
+
+static uint32_t g_rand = 1;
+static uint32_t rnd(void) {
+    g_rand ^= g_rand << 13;
+    g_rand ^= g_rand >> 17;
+    g_rand ^= g_rand << 5;
+    return g_rand;
+}
+static float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rnd() % 10001) / 10000.f; }
+
+// A random stroke over (and off) a w x h page: ink of any tool, or an erase stroke of any texture
+// (soft, grainy and laid on its side at times), wandering from a random start.
+static Stroke *random_stroke(int w, int h, bool erase) {
+    ToolKind t = (ToolKind)(rnd() % TOOL_COUNT);
+    if (!erase && t == TOOL_ERASER) t = TOOL_MARKER;
+    ToolParams prm;
+    tool_params_default(t, &prm);
+    if (rnd() % 3 == 0) prm.size_min_mm = prm.size_max_mm = frand(0.1f, 8.f);
+    if (rnd() % 5 == 0) prm.opacity_min = prm.opacity_max = frand(0.2f, 1.f);
+    if (rnd() % 5 == 0) prm.grain = frand(0.f, 1.f);
+    Stroke *s = stroke_new(erase ? TOOL_ERASER : t, &prm, erase ? erase_seed(t, rnd()) : rnd() & 0xFFFFFFu);
+    float x = frand(-60.f, (float)w + 60.f), y = frand(-60.f, (float)h + 60.f), ang = frand(0.f, 6.28f);
+    float step = frand(3.f, 30.f), pr = frand(0.f, 1.f), tx = frand(-70.f, 70.f), ty = frand(-70.f, 70.f);
+    int n = 1 + (int)(rnd() % (rnd() % 4 ? 40 : 160));
+    for (int k = 0; k < n; k++) {
+        PenSample q = {x, y, pr, tx, ty, (uint32_t)k * 6u};
+        stroke_append(s, &q, DPI);
+        ang += frand(-0.7f, 0.7f);
+        x += cosf(ang) * step;
+        y += sinf(ang) * step;
+        pr = clampf(pr + frand(-0.1f, 0.1f), 0.f, 1.f);
+    }
+    return s;
+}
+
+// Compaction marks exactly what the rule done the slow way marks, on random pages of ink and erase
+// strokes of every kind, on blank, ruled, dotted, music and graph paper, and the pages it leaves
+// render as before. (The fast way draws only the pieces of strokes near what it checks, and the
+// ink layer only where the paper has marks; this is what says that changes nothing.)
+TEST(compaction_is_the_rule) {
+    static const PaperKind kinds[5] = {PAPER_BLANK, PAPER_MEDIUM, PAPER_DOTS, PAPER_MUSIC, PAPER_GRID};
+    long marked = 0;
+    for (int it = 0; it < 16; it++) {
+        g_rand = 0x9E3779B9u + (uint32_t)it * 2654435761u;
+        int w = 250 + (int)(rnd() % 300), h = 250 + (int)(rnd() % 400);
+        Page *p = page_new(w, h, kinds[it % 5]);
+        for (int round = 0, rounds = 1 + (int)(rnd() % 3); round < rounds; round++) {
+            for (int i = 0, ni = 3 + (int)(rnd() % 12); i < ni; i++) page_add(p, random_stroke(w, h, false));
+            for (int i = 0, ne = 1 + (int)(rnd() % 6); i < ne; i++) page_add(p, random_stroke(w, h, true));
+        }
+        bool *fast = calloc((size_t)p->n, sizeof *fast), *slow = calloc((size_t)p->n, sizeof *slow);
+        int nf = page_droppable(p, DPI, fast), ns = droppable_slowly(p, slow);
+        CHECK(nf == ns && !memcmp(fast, slow, (size_t)p->n * sizeof *fast));
+        if (nf != ns) fprintf(stderr, "  page %d: %d marked, the slow way %d\n", it, nf, ns);
+        marked += nf;
+        free(fast);
+        free(slow);
+        page_free(p);
+    }
+    CHECK(marked > 20);  // the pages gave it plenty to mark
+}
+
 // Ink the page shows and the ink layer does not: a light pencil line along a staff line, under a
 // highlighter at full strength. On the ink layer the highlighter buries the pencil (both settle on
 // the same gray), but on the page the staff line is darker than the highlighter's ink, which leaves
@@ -1277,6 +1382,7 @@ int main(void) {
     RUN(erase_inside_bbox);
     RUN(fully_erased_stroke_leaves_nothing);
     RUN(compaction_drops_only_what_changes_nothing);
+    RUN(compaction_is_the_rule);
     RUN(compaction_checks_the_page_too);
     RUN(restored_is_the_page_only);
     RUN(one_call_keeps_the_lines);

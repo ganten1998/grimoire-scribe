@@ -78,6 +78,16 @@ void page_render_thumb(Canvas *thumb, const Page *p, float dpi);
 // change nothing. Each is checked with the ones marked before it already left out, so leave them
 // out together. Returns how many, or -1 when out of memory (none marked). A page without erase
 // strokes has none. p is not changed (the editor's undo history holds pointers to its strokes):
-// leave the marked strokes out of a copy. It draws each candidate's bbox two to four times, in
-// two page-size canvases: work for the moment a notebook closes, not for every save.
+// leave the marked strokes out of a copy. dpi is the one its strokes were built at.
+//
+// Cost: each candidate (ink a later erase stroke reaches, and every erase stroke) is checked by
+// drawing, without it, the rects it draws into, and comparing them with the page as it is (drawn
+// there once for all the checks). Only the pieces of strokes (runs of about 16 mm) that reach a
+// rect are replayed, and the ink layer is drawn only where the paper has marks. On the host, in
+// full renders of the same page: a page of writing with three words scrubbed out took 0.2, half a
+// page scrubbed six times over 2, a sketch of 360 long lines reworked under 20 half-page scrubs 4.
+// On the device that can be tens of seconds, and the launcher's watchdog kills Grimoire after
+// 15 s without a heartbeat: never call it on the UI thread. It only reads p, so a forked child (as
+// bgjob.c runs exports) can work on its own copy of the page. Memory: two page-size canvases (one
+// on paper white all over) and the pieces of the strokes it draws.
 int page_droppable(const Page *p, float dpi, bool *drop);

@@ -94,6 +94,10 @@ typedef struct {
     const uint8_t *paper;    // the paper under the canvas, one byte per pixel; NULL = white
     int paper_x0, paper_y0;  // the canvas pixel that paper[0] lies under
     int paper_stride;
+    // Dry (set by hand after begin): brush_add draws nothing and touches no pixel (the canvas may
+    // have none), but returns the rect each dab would draw into, clipped as ever, and the brush
+    // moves on exactly as when it draws. page_droppable measures strokes so.
+    bool dry;
 } BrushState;
 
 void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, float dpi);

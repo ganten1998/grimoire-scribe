@@ -338,10 +338,10 @@ static void restore_span(DabTarget *t, Canvas *c, int y, int x0, int x1) {
 // allow at 300 dpi has a radius of 354 px.
 #define SPAN_MAX_R 512.f
 
-// One dab. `erase` is a constant at both calls (stamp), so each gets a copy of its own: the ink
-// copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
+// One dab. `erase` and `dry` are constants at each call (stamp), so each gets a copy of its own: the
+// ink copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
 static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas *c, const PenSample *s,
-                                                           bool erase) {
+                                                           bool erase, bool dry) {
     float r, op;
     brush_dab(b->tool, &b->params, s, b->dpi, &r, &op);
     uint32_t idx = b->dab_index++;
@@ -397,6 +397,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     float dust_w = lk.dust > 0.f ? r * 0.40f : 0.f;
     float reach = lk.graphite ? fmaxf(rough * 0.5f, dust_w) : 0.f;
     Rect box = rect_intersect(rect_from_points(s->x, s->y, s->x, s->y, r + 1.f + reach), c->clip);
+    if (dry) return box;  // where it would draw, and nothing drawn (BrushState.dry)
     DabTarget tg = {lk.ink, b->paper, b->paper_x0, b->paper_y0, b->paper_stride, false};
     // Erase fast path: a round dab (no nib, not graphite) with no grain at full opacity gives
     // every pixel of its core full coverage, so a row's core is restored in one pass (restore_span)
@@ -492,7 +493,8 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
 }
 
 static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
-    return b->erase ? stamp_as(b, c, s, true) : stamp_as(b, c, s, false);
+    if (b->dry) return stamp_as(b, c, s, false, true);
+    return b->erase ? stamp_as(b, c, s, true, false) : stamp_as(b, c, s, false, false);
 }
 
 static PenSample interp(const PenSample *a, const PenSample *b, float t) {
