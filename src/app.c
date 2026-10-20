@@ -45,16 +45,22 @@ const char *app_mirror_dir(void) {
 // it is used, and recorded as this panel's (pen.panel, touch.panel) from the next settings save on.
 static void calib_follow_panel(InputCalib *c, int *pw, int *ph, int w, int h, const char *what) {
     if (!c->valid) return;
-    int fw = *pw > 0 ? *pw : 1860, fh = *ph > 0 ? *ph : 2480;
-    const char *rec = *pw > 0 ? "" : " (not recorded: taken as an 1860x2480 Scribe's)";
-    switch (calib_to_panel(c, *pw, *ph, w, h)) {
+    bool recorded = *pw > 0 && *ph > 0;
+    int rw = recorded ? *pw : 1860, rh = recorded ? *ph : 2480;  // the panel on record (or taken as it)
+    const char *rec = recorded ? "" : " (not recorded: taken as an 1860x2480 Scribe's)";
+    int fw = *pw, fh = *ph;  // the panel it was made on, its own scale says (calib_to_panel)
+    switch (calib_to_panel(c, &fw, &fh, w, h)) {
     case CALIB_SCALED:
-        qlog("calibration: the %s calibration was made on a %dx%d panel%s; scaled to this %dx%d one", what, fw, fh, rec,
-             w, h);
+        if (fw == rw && fh == rh)
+            qlog("calibration: the %s calibration was made on a %dx%d panel%s; scaled to this %dx%d one", what, fw, fh,
+                 rec, w, h);
+        else
+            qlog("calibration: the %s calibration was made on a %dx%d panel%s, but its scale fits a %dx%d one: scaled "
+                 "from that to this %dx%d one", what, rw, rh, rec, fw, fh, w, h);
         break;
     case CALIB_MADE_HERE:
         qlog("calibration: the %s calibration was made on a %dx%d panel%s, but its scale fits this %dx%d one: made "
-             "here, kept as it is", what, fw, fh, rec, w, h);
+             "here, kept as it is", what, rw, rh, rec, w, h);
         break;
     default: break;
     }

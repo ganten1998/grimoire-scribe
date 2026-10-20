@@ -101,13 +101,26 @@ bool calib_spans(const InputCalib *c, int w, int h) {
            fabsf(fabsf(c->ay) - (float)h) <= 0.025f * (float)h;
 }
 
-CalibMove calib_to_panel(InputCalib *c, int from_w, int from_h, int w, int h) {
-    if (from_w <= 0 || from_h <= 0) {
-        from_w = 1860;
-        from_h = 2480;
+CalibMove calib_to_panel(InputCalib *c, int *from_w, int *from_h, int w, int h) {
+    if (*from_w <= 0 || *from_h <= 0) {
+        *from_w = 1860;
+        *from_h = 2480;
     }
-    if (!c->valid || (from_w == w && from_h == h)) return CALIB_SAME;
-    if (calib_spans(c, w, h) && !calib_spans(c, from_w, from_h)) return CALIB_MADE_HERE;
-    calib_scale(c, from_w, from_h, w, h);
+    if (!c->valid) return CALIB_SAME;
+    // Made on the first of these it spans: the recorded panel, this one, then the Scribes' (the
+    // 2022 and 2024 Scribes; the Scribe 3 and the Colorsoft); spanning none, the recorded one.
+    const int panels[4][2] = {{*from_w, *from_h}, {w, h}, {1860, 2480}, {1986, 2648}};
+    int mw = *from_w, mh = *from_h;
+    for (int i = 0; i < 4; i++)
+        if (calib_spans(c, panels[i][0], panels[i][1])) {
+            mw = panels[i][0];
+            mh = panels[i][1];
+            break;
+        }
+    bool recorded_here = *from_w == w && *from_h == h;
+    *from_w = mw;
+    *from_h = mh;
+    if (mw == w && mh == h) return recorded_here ? CALIB_SAME : CALIB_MADE_HERE;
+    calib_scale(c, mw, mh, w, h);
     return CALIB_SCALED;
 }

@@ -1540,8 +1540,16 @@ int settings_save(const Settings *s) {
             snprintf(t, sizeof t, "%.4f", *tool_param_ptr((ToolParams *)&s->tools[tk], &pi[i]));
             put(&b, key, t);
         }
-    // Lines this build does not know, as they were.
-    if (g_set_unknown.n) sb_put(&b, g_set_unknown.d, g_set_unknown.n);
+    // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
+    // not read goes once the calibration's panel is recorded (written above in its place).
+    for (size_t at = 0; at < g_set_unknown.n;) {
+        const char *l = g_set_unknown.d + at, *nl = memchr(l, '\n', g_set_unknown.n - at);
+        size_t len = nl ? (size_t)(nl - l) + 1 : g_set_unknown.n - at;
+        at += len;
+        bool replaced = (panel[0][0] > 0 && !strncmp(l, "pen.panel=", 10)) ||
+                        (panel[1][0] > 0 && !strncmp(l, "touch.panel=", 12));
+        if (!replaced) sb_put(&b, l, len);
+    }
     int rc = b.err ? -1 : write_file_atomic(path, b.d, b.n);
     free(b.d);
     return rc;

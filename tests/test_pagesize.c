@@ -402,6 +402,11 @@ TEST(most_pages_give_the_size) {
 
 // ---- calibration follows the panel ----
 
+// calib_to_panel with the record given as values.
+static CalibMove to_panel(InputCalib *c, int from_w, int from_h, int w, int h) {
+    return calib_to_panel(c, &from_w, &from_h, w, h);
+}
+
 TEST(calibration_scaling_math) {
     // The default mapping scales exactly.
     InputCalib d = {true, false, (float)W2, 0.f, (float)H2, 0.f};
@@ -409,7 +414,7 @@ TEST(calibration_scaling_math) {
     CHECK(d.ax == (float)W3 && d.ay == (float)H3 && d.bx == 0.f && d.by == 0.f);
     // A Scribe 2 calibration (not recorded: taken as 1860x2480) on a Colorsoft: proportional.
     InputCalib c = {true, false, 1851.f, 7.5f, 2493.f, -12.f}, c0 = c;
-    CHECK(calib_to_panel(&c, 0, 0, W3, H3) == CALIB_SCALED);
+    CHECK(to_panel(&c, 0, 0, W3, H3) == CALIB_SCALED);
     CHECK_NEAR(c.ax, 1851.0 * W3 / W2, 1e-3);
     CHECK_NEAR(c.bx, 7.5 * W3 / W2, 1e-4);
     CHECK_NEAR(c.ay, 2493.0 * H3 / H2, 1e-3);
@@ -424,31 +429,82 @@ TEST(calibration_scaling_math) {
         CHECK_NEAR(y1, y0 * H3 / H2, 0.01);
     }
     // Back on the Scribe 2 (recorded as the Colorsoft's now): where it was.
-    CHECK(calib_to_panel(&c, W3, H3, W2, H2) == CALIB_SCALED);
+    CHECK(to_panel(&c, W3, H3, W2, H2) == CALIB_SCALED);
     CHECK_NEAR(c.ax, c0.ax, 1e-3);
     CHECK_NEAR(c.bx, c0.bx, 1e-4);
     CHECK_NEAR(c.ay, c0.ay, 1e-3);
     CHECK_NEAR(c.by, c0.by, 1e-4);
     // Swapped and mirrored axes: ax and bx still go with the panel's width.
     InputCalib s = {true, true, -1860.f, 1860.f, 2480.f, 0.f};
-    CHECK(calib_to_panel(&s, W2, H2, W3, H3) == CALIB_SCALED);
+    CHECK(to_panel(&s, W2, H2, W3, H3) == CALIB_SCALED);
     CHECK(s.swap_xy && s.ax == -1986.f && s.bx == 1986.f && s.ay == 2648.f && s.by == 0.f);
     // The same panel, or no calibration: nothing changes.
     InputCalib same = c0;
-    CHECK(calib_to_panel(&same, W2, H2, W2, H2) == CALIB_SAME && !memcmp(&same, &c0, sizeof c0));
-    CHECK(calib_to_panel(&same, 0, 0, W2, H2) == CALIB_SAME && !memcmp(&same, &c0, sizeof c0));
+    CHECK(to_panel(&same, W2, H2, W2, H2) == CALIB_SAME && !memcmp(&same, &c0, sizeof c0));
+    CHECK(to_panel(&same, 0, 0, W2, H2) == CALIB_SAME && !memcmp(&same, &c0, sizeof c0));
     InputCalib off = {false, false, 1860.f, 0.f, 2480.f, 0.f}, off0 = off;
-    CHECK(calib_to_panel(&off, 0, 0, W3, H3) == CALIB_SAME && !memcmp(&off, &off0, sizeof off));
+    CHECK(to_panel(&off, 0, 0, W3, H3) == CALIB_SAME && !memcmp(&off, &off0, sizeof off));
     // Not recorded, but its scale says this Colorsoft (a calibration 1.0.0-beta.2 made here): kept.
     InputCalib here = {true, false, 1979.f, 4.f, 2655.f, -3.f}, here0 = here;
-    CHECK(calib_to_panel(&here, 0, 0, W3, H3) == CALIB_MADE_HERE && !memcmp(&here, &here0, sizeof here));
+    CHECK(to_panel(&here, 0, 0, W3, H3) == CALIB_MADE_HERE && !memcmp(&here, &here0, sizeof here));
     // Recorded as a Colorsoft's, but redone on this Scribe 2 by a version that carried the line.
     InputCalib stale = {true, false, 1858.f, 2.f, 2477.f, 1.f}, stale0 = stale;
-    CHECK(calib_to_panel(&stale, W3, H3, W2, H2) == CALIB_MADE_HERE && !memcmp(&stale, &stale0, sizeof stale));
+    CHECK(to_panel(&stale, W3, H3, W2, H2) == CALIB_MADE_HERE && !memcmp(&stale, &stale0, sizeof stale));
     // In between (3% off both): the record, or the 1860x2480 it is taken as, decides.
     InputCalib mid = {true, false, 1926.f, 0.f, 2568.f, 0.f};
-    CHECK(calib_to_panel(&mid, 0, 0, W3, H3) == CALIB_SCALED);
+    CHECK(to_panel(&mid, 0, 0, W3, H3) == CALIB_SCALED);
     CHECK_NEAR(mid.ax, 1926.0 * W3 / W2, 1e-3);
+    // Panels whose sides change by different ratios (the Scribes' two do not: 1986 / 1860 is
+    // 2648 / 2480): ax and bx go by the widths, ay and by by the heights, the axes swapped or not.
+    for (int swap = 0; swap < 2; swap++) {
+        InputCalib u = {true, swap != 0, 1000.f, 12.f, 2000.f, -8.f}, u0 = u;
+        CHECK(to_panel(&u, 1000, 2000, 1500, 2200) == CALIB_SCALED);
+        CHECK(u.swap_xy == (swap != 0));
+        CHECK_NEAR(u.ax, 1500.0, 1e-3);
+        CHECK_NEAR(u.bx, 18.0, 1e-4);
+        CHECK_NEAR(u.ay, 2200.0, 1e-3);
+        CHECK_NEAR(u.by, -8.8, 1e-4);
+        for (int i = 0; i < 3; i++) {
+            float x0, y0, x1, y1;
+            calib_apply(&u0, pts[i][0], pts[i][1], &x0, &y0);
+            calib_apply(&u, pts[i][0], pts[i][1], &x1, &y1);
+            CHECK_NEAR(x1, x0 * 1.5, 0.01);
+            CHECK_NEAR(y1, y0 * 1.1, 0.01);
+        }
+    }
+    // A record gone stale the other way: recorded as this panel's, but spanning a Scribe's of the
+    // other size and not this one (1.0.0-beta.2 carried the line through a calibration it made on
+    // the other Scribe). It was made there, and is scaled from there, on either Scribe.
+    int fw = W3, fh = H3;
+    InputCalib s2 = {true, false, 1858.f, 2.f, 2477.f, 1.f};
+    CHECK(calib_to_panel(&s2, &fw, &fh, W3, H3) == CALIB_SCALED && fw == W2 && fh == H2);
+    CHECK_NEAR(s2.ax, 1858.0 * W3 / W2, 1e-3);
+    CHECK_NEAR(s2.bx, 2.0 * W3 / W2, 1e-4);
+    CHECK_NEAR(s2.ay, 2477.0 * H3 / H2, 1e-3);
+    CHECK_NEAR(s2.by, 1.0 * H3 / H2, 1e-4);
+    InputCalib s3 = {true, false, 1979.f, 4.f, 2655.f, -3.f}, s30 = s3;
+    fw = W2;
+    fh = H2;
+    CHECK(calib_to_panel(&s3, &fw, &fh, W2, H2) == CALIB_SCALED && fw == W3 && fh == H3);
+    CHECK_NEAR(s3.ax, 1979.0 * W2 / W3, 1e-3);
+    CHECK_NEAR(s3.ay, 2655.0 * H2 / H3, 1e-3);
+    // Not recorded (so taken as an 1860x2480 Scribe's) on a Scribe 2, but a Colorsoft's: scaled too.
+    InputCalib n3 = s30;
+    fw = fh = 0;
+    CHECK(calib_to_panel(&n3, &fw, &fh, W2, H2) == CALIB_SCALED && fw == W3 && fh == H3);
+    CHECK_NEAR(n3.ax, 1979.0 * W2 / W3, 1e-3);
+    // Made here, recorded as the other's: the panel it was made on is this one.
+    InputCalib h3 = s30;
+    fw = W2;
+    fh = H2;
+    CHECK(calib_to_panel(&h3, &fw, &fh, W3, H3) == CALIB_MADE_HERE && fw == W3 && fh == H3);
+    CHECK(!memcmp(&h3, &s30, sizeof h3));
+    // Recorded as this panel's and spanning no Scribe's panel (a calibration far off): the record
+    // stands, as it is.
+    InputCalib loose = {true, false, 1700.f, 5.f, 2300.f, 0.f}, loose0 = loose;
+    CHECK(to_panel(&loose, W2, H2, W2, H2) == CALIB_SAME && !memcmp(&loose, &loose0, sizeof loose));
+    CHECK(to_panel(&loose, 0, 0, W3, H3) == CALIB_SCALED);  // not recorded, not here: an 1860x2480 one's
+    CHECK_NEAR(loose.ax, 1700.0 * W3 / W2, 1e-3);
     // Spans: within 2.5% on both axes.
     InputCalib sp = {true, false, 1860.f * 1.024f, 0.f, -2480.f * 0.976f, 0.f};
     CHECK(calib_spans(&sp, W2, H2) && !calib_spans(&sp, W3, H3));
@@ -506,6 +562,26 @@ TEST(calibration_panel_in_settings) {
     CHECK(settings_save(&b) == 0);
     t = text_of(path);
     CHECK(t && has_line(t, "pen.panel=1860x2480") == 1 && !strstr(t, "1986x2648x2"));
+    free(t);
+    // A panel line this version cannot read stays while that calibration's panel is not recorded,
+    // and goes once it is (app_init records this panel at startup): one line, the recorded one.
+    const char *wide = "pen.valid=1\npen.ax=1986\npen.ay=2648\npen.panel=wide\ntouch.valid=1\ntouch.panel=narrow\n";
+    CHECK(write_file_atomic(path, wide, strlen(wide)) == 0);
+    CHECK(settings_load(&b) == 0 && b.pen_panel_w == 0 && b.touch_panel_w == 0);
+    CHECK(settings_save(&b) == 0);
+    t = text_of(path);
+    CHECK(t && has_line(t, "pen.panel=wide") == 1 && has_line(t, "touch.panel=narrow") == 1);
+    free(t);
+    b.pen_panel_w = W3;
+    b.pen_panel_h = H3;
+    CHECK(settings_save(&b) == 0);
+    t = text_of(path);
+    CHECK(t && has_line(t, "pen.panel=1986x2648") == 1 && !strstr(t, "pen.panel=wide"));
+    CHECK(t && has_line(t, "touch.panel=narrow") == 1);
+    free(t);
+    CHECK(settings_load(&b) == 0 && b.pen_panel_w == W3 && b.pen_panel_h == H3 && settings_save(&b) == 0);
+    t = text_of(path);
+    CHECK(t && has_line(t, "pen.panel=1986x2648") == 1 && !strstr(t, "pen.panel=wide"));
     free(t);
     unlink(path);
 }

@@ -307,12 +307,18 @@ save writes the new values with this panel's `panel`.
   counts as made on an 1860x2480 Scribe (the 2022 and 2024 Scribes, where nearly every
   calibration before 1.1 was made).
 - Its own scale has the last word. A calibration only corrects the default mapping, which spans
-  the panel exactly, so one whose |ax| and |ay| are within 2.5% of this panel's width and height,
-  and not within 2.5% of the recorded (or assumed) panel's, was made here and is kept as it is.
-  That covers a calibration made on a 1986x2648 Scribe before 1.1, and a `panel` line gone stale
-  (1.0.0-beta.2 carries the line through a calibration of its own).
+  the panel exactly: it spans a panel when its |ax| and |ay| are within 2.5% of that panel's
+  width and height (the two Scribe sizes are 6.8% apart). It was made on the first of these it
+  spans: the recorded (or assumed) panel, this one, then 1860x2480 and 1986x2648; spanning none,
+  the recorded one. So one recorded as another panel's that spans this one was made here and is
+  kept as it is (a calibration made on a 1986x2648 Scribe before 1.1), and one recorded as this
+  panel's that spans a Scribe's of the other size instead was made there and is scaled from it.
+  Both catch a `panel` line gone stale, whichever way: 1.0.0-beta.2 carries the line through a
+  calibration of its own, on a Scribe of either size.
 - A `panel` value that does not read as `WxH` (100 to 6000 each) is a line this version does not
-  understand: kept, and the calibration's panel is not recorded.
+  understand: kept while the calibration's panel is not recorded. At startup a valid calibration
+  gets this panel's (it counts as not recorded until then, as above), and the next save writes
+  that in place of the line.
 
 From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 
@@ -414,5 +420,5 @@ row.
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
 | `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
-| `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale) |
+| `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale, on a Scribe of either size) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
