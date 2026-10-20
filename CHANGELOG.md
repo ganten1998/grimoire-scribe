@@ -96,8 +96,9 @@
   folder's zip download is logged without the folder's name. A `watcher-multi` switch (an empty
   file in the `grimoire` folder) listens to the power service the way KOReader does, for a device
   test.
-- **Licenses**: the app ships the licenses of FBInk, stb, musl and the QR code generator with the
-  GPL and the font licenses, in `grimoire/app/licenses`.
+- **Licenses**: the app ships the licenses of FBInk, stb, musl, zig's compiler-rt and the QR code
+  generator, and the notices of cutef8 and Bjoern Hoehrmann's UTF-8 decoder (both compiled in with
+  FBInk), with the GPL and the font licenses, in `grimoire/app/licenses`.
 - **For developers**: `make check` builds and inspects the zip and runs both launchers against
   stand-ins for the Kindle's tools. The scripted scenarios check what the app holds after each
   step (`expect` lines) and fail the build when a check fails or a script line is misspelt. After

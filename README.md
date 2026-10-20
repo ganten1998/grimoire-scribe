@@ -226,9 +226,11 @@ Much of what Grimoire knows about the Kindle comes from [KOReader](https://korea
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)
-- musl libc: MIT (the Kindle binary is linked statically against it)
+- Inside FBInk: cutef8 by Jeff Bezanson (public domain) and Bjoern Hoehrmann's UTF-8 decoder
+  (ISC, as FBInk's credits give it)
+- musl libc and zig's compiler-rt: MIT (the Kindle binary is linked statically against them)
 
-These licenses, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
+These notices, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
 on the Kindle.
 
 Kindle and Kindle Scribe are trademarks of Amazon.com, Inc. or its affiliates. Grimoire is an

@@ -281,8 +281,14 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   assets/<family>-OFL-1.1.txt whose family begins the font's file name); every
   third_party/<dir>/LICENSE* or COPYING* as <dir>-LICENSE.txt and CREDITS* as <dir>-CREDITS.txt;
   the stb headers' license, extracted once into stb-LICENSE.txt; musl's COPYRIGHT, from `zig env`'s
-  lib_dir. A vendored directory with no license file, or a font without its OFL text, fails
-  package-check.
+  lib_dir; zig's LICENSE, found beside that lib_dir, as zig-compiler-rt-LICENSE.txt (zig cc links
+  its compiler-rt into the binary: 64-bit division, float conversions, memcpy and more); and for
+  the two parts of FBInk's tree with notices of their own (FBINK_SRC), cutef8-LICENSE.txt and
+  dfa-LICENSE.txt, each the head of its source (cutef8/utf8.c, cutef8/dfa.c) and its entry in
+  FBInk's CREDITS, the only text the tree has for them. The recipe fails when it cannot find zig's
+  LICENSE or musl's COPYRIGHT, or one of those notices. A vendored directory with no license file,
+  a font without its OFL text, or a missing notice fails package-check, and so does a change to
+  FBINK_SRC until its notice is added.
 
 ## Tests
 
