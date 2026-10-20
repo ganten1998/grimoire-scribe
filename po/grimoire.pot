@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 10:51-0500\n"
+"POT-Creation-Date: 2026-10-20 12:20-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -544,11 +544,14 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-#. panel holds (%d, 4). About 1700 px at 44 px in bold, or two lines.
+#. panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+#. or two lines.
 #: src/editor.c
 #, c-format
-msgid "The panel holds up to %d pens. Unpin one first."
-msgstr ""
+msgid "The panel holds up to %d pen. Unpin one first."
+msgid_plural "The panel holds up to %d pens. Unpin one first."
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/editor.c
 msgid "Could not add a page"
@@ -1172,8 +1175,9 @@ msgid "%d deg"
 msgstr ""
 
 #. TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
-#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip).
-#. Beside its slider's name, at 44 px in bold.
+#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
+#. to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
+#. what it needs (about 120 px for "+400 %") and the name the rest.
 #: src/pensettings.c
 #, c-format
 msgid "+%.0f%%"

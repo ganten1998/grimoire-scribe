@@ -60,6 +60,9 @@ typedef struct {
     // only, each once (settings.ini panel_tools=, their names comma-separated).
     ToolKind pins[PANEL_PINS_MAX];
     int npins;
+    // The pen in use when the eraser was last picked on the panel, a tool id or -1 for none: where
+    // a tap on the eraser in use goes back to while that pen is still on the panel.
+    int before_eraser;
 } Settings;
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/

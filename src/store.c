@@ -1478,6 +1478,7 @@ void settings_default(Settings *s) {
     strlcpy_q(s->language, "auto", sizeof s->language);
     s->eraser_mode = 0;  // whole strokes, as before 1.1
     s->white = false;
+    s->before_eraser = -1;
 }
 
 // key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
@@ -1691,7 +1692,16 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     } else if (!strcmp(k, "eraser_mode")) s->eraser_mode = keep_int(k, v, 0, 1);
     else if (!strcmp(k, "white")) s->white = keep_bool(k, v);
     else if (!strcmp(k, "panel_tools")) pins_kv(s, k, v);
-    else return false;
+    else if (!strcmp(k, "before_eraser")) {
+        // A pen this version does not have (a newer one's), the eraser or no number at all is none
+        // here, and stays in the file.
+        char *end;
+        long x = strtol(v, &end, 10);
+        s->before_eraser = end != v && !*end && x >= 0 && x < TOOL_COUNT && x != TOOL_ERASER ? (int)x : -1;
+        char used[16];
+        snprintf(used, sizeof used, "%d", s->before_eraser);
+        keep_value(k, v, strcmp(v, used) ? used : NULL);
+    } else return false;
     return true;
 }
 
@@ -1799,6 +1809,7 @@ int settings_save(const Settings *s) {
     put_int(&b, "white", s->white);
     settings_pins_text(s, t, sizeof t);
     put(&b, "panel_tools", t);
+    put_int(&b, "before_eraser", s->before_eraser);
     snprintf(t, sizeof t, "%u", (unsigned)s->music_layout);
     put(&b, "music_layout", t);
     put(&b, "theme", s->theme == 1 ? "classic" : "gothic");

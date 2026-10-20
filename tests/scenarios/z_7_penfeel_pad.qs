@@ -1,7 +1,7 @@
 # The Pen feel test pad with the precise eraser (eraser_mode=1): the pen's eraser end, and the tip
 # on the eraser's tab, erase only what they touch on the pad (its lines and Clear button stay), as
 # in the editor, instead of clearing it. The pad's strokes are live ink. (White ink on the pad:
-# z_d_penfeel_switch.) penset.pad_ink: ink shows on the pad; penset.pad_ink_near.X.Y: ink shows
+# z_tool_3_penfeel.) penset.pad_ink: ink shows on the pad; penset.pad_ink_near.X.Y: ink shows
 # near that point; penset.pad_lighter: a pixel of the pad is lighter than the pad drawn bare (one
 # of its lines, or its Clear button, erased away).
 # settings: eraser_mode=1

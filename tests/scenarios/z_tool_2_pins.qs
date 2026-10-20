@@ -28,6 +28,12 @@ wait 200
 expect editor.modal is tools
 expect editor.pin_mode is 1
 shot 01-pin-mode
+# The ink row is out of use in Pin mode: White there does nothing
+pentap 1425 878
+wait 200
+expect settings.white is 0
+expect editor.pin_mode is 1
+expect editor.white_mark is 0
 pentap 1504 727
 wait 200
 expect editor.modal is tools
@@ -57,6 +63,23 @@ pen line 300 700 1300 700 60 0.7 0.7
 wait 300
 expect editor.strokes is 1
 expect editor.stroke_look is highlighter
+# White with the pin in use: the pin shows the white mark (the tool button's pencil is not in use);
+# Black again
+pentap 1768 358
+wait 200
+pentap 1425 878
+wait 200
+expect settings.white is 1
+expect editor.tool is highlighter
+expect editor.white_mark is 1
+shot 03b-white-on-the-pin
+pentap 951 878
+wait 200
+expect settings.white is 0
+expect editor.white_mark is 0
+pentap 300 1800
+wait 200
+expect editor.modal is none
 # The eraser, now under both pins, on then off: back to the highlighter
 pentap 1768 682
 wait 100

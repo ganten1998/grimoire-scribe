@@ -79,6 +79,8 @@ struct EditorState {
     // of another paper or size than it holds, freed with the notebook.
     Canvas paper;
     PaperKind paper_k;          // the paper it holds (while paper.px)
+    bool paper_stale;           // the page was drawn whole on an image paper since: drawn again
+                                // at its next use, so both come from the same pictures
     // The open notebook's pages listed for compaction this session (compact_note_page); a page
     // with an erase stroke its file does not have yet is listed once the page is saved (to_list).
     uint32_t *noted;
@@ -96,9 +98,7 @@ struct EditorState {
     Rect panel;
     bool collapsed;
     bool white_mark;            // as last drawn: the pen in use shows that it draws white ink
-    // What a tap on the eraser while it is in use goes back to: the pen used before it (one of the
-    // pins, or the tool button's), -1 for none. Its eraser end and the pen's button do not set it.
-    int before_eraser;
+    int tool_button_shows;      // as last drawn: the tool button's pen, TB_GRID, or TB_NONE collapsed
     bool dragging;
     float grab_dx, grab_dy;
     Rect drag_start_rect;
@@ -235,6 +235,25 @@ static ButtonStyle tool_style(App *a, ToolKind t) {
     return a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN;
 }
 
+// The drawing tool the tool button shows (the pencil if settings.ini names the eraser there).
+static ToolKind button_tool(App *a) {
+    ToolKind t = a->settings.draw_tool;
+    return (unsigned)t < TOOL_COUNT && t != TOOL_ERASER ? t : TOOL_PENCIL;
+}
+
+// Where a tap on the eraser in use goes back to, and what the pen's button draws white with while
+// the eraser is in use: the pen used just before it (settings.ini before_eraser) while that is
+// still on the panel, a pin or the tool button's; else the tool button's.
+static ToolKind eraser_back(App *a) {
+    int b = a->settings.before_eraser;
+    bool shown = b >= 0 && b < TOOL_COUNT && b != TOOL_ERASER &&
+                 ((ToolKind)b == button_tool(a) || settings_pinned(&a->settings, (ToolKind)b));
+    return shown ? (ToolKind)b : button_tool(a);
+}
+
+// What the tool button showed as the panel was last drawn (editor.tool_button): its pen, or these.
+enum { TB_GRID = -1, TB_NONE = -2 };
+
 // While the drawing tools draw white ink, the pen in use shows its icon hollow: white on white
 // paper shows nothing, and without a mark the pen would seem broken.
 static bool draws_white(App *a, ToolKind t) {
@@ -257,6 +276,7 @@ static void draw_panel(App *a) {
     Rect p = S->panel;
     hits_clear(&S->hits);
     S->white_mark = false;
+    S->tool_button_shows = TB_NONE;
     if (S->collapsed) {
         ui_frame(c, p, ui_px(22), 255, true, 0);
         ui_frame(c, p, ui_px(22), 0, false, ui_px(6));
@@ -289,11 +309,16 @@ static void draw_panel(App *a) {
     y += gap();
     // The drawing tool (tap: the picker), the pens pinned under it, and the eraser. When the
     // drawing tool is one of the pins, its pin shows it: the tool button shows a grid instead.
-    ToolKind dt = a->settings.draw_tool == TOOL_ERASER ? TOOL_PENCIL : a->settings.draw_tool;
+    ToolKind dt = button_tool(a);
     bool dt_pinned = settings_pinned(&a->settings, dt), dt_sel = !dt_pinned && a->settings.current_tool == dt;
     Rect rt = {x, y, w, btn_h()};
-    if (dt_pinned) ui_button(c, rt, ICON_GRID, NULL, BTN_PLAIN);
-    else draw_pen_button(a, rt, dt);
+    if (dt_pinned) {
+        ui_button(c, rt, ICON_GRID, NULL, BTN_PLAIN);
+        S->tool_button_shows = TB_GRID;
+    } else {
+        draw_pen_button(a, rt, dt);
+        S->tool_button_shows = (int)dt;
+    }
     // A small corner mark says "more tools here" (the grid says it by itself).
     if (!dt_pinned)
         canvas_disc_aa(c, (float)(rt.x + rt.w - ui_px(16)), (float)(rt.y + rt.h - ui_px(16)), (float)ui_px(7),
@@ -561,6 +586,9 @@ static void draw_tools(App *a) {
     int w = gridw + 2 * ui_px(30), h = ui_px(110) + rows * bh + (rows - 1) * g + g + inkh + ui_px(40);
     int x = S->panel.x - w - ui_px(20);
     if (x < ui_px(10)) x = S->panel.x + S->panel.w + ui_px(20);
+    // Neither side has room for it beside a panel dragged to the middle: it goes over the panel
+    // then, whole on the screen (while it is open it takes every tap).
+    x = clampi(x, ui_px(10), a->w - w - ui_px(10));
     int y = clampi(S->tools_y, ui_px(10), a->h - h - ui_px(10));
     S->tools_rect = (Rect){x, y, w, h};
     ui_frame(c, S->tools_rect, ui_px(22), 255, true, 0);
@@ -863,6 +891,9 @@ static bool save_page(App *a) {
 static void render_page_full(App *a) {
     page_render(&S->page_canvas, S->page, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
     S->canvas_page = S->page;
+    // An image paper's picture can have come since its paper alone was drawn (S->paper: a picture
+    // made in the background draws white until it is there), and the page now shows it.
+    if (paper_is_image(S->page->paper)) S->paper_stale = true;
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -1057,16 +1088,18 @@ static PenSample sample_of(App *a, const InEvent *ev) {
     return s;
 }
 
-// The open page's paper alone (S->paper), drawn again first if it holds another paper or size: what
-// an erase stroke restores toward live, as page_render draws it (an image paper's picture too).
-// NULL when there is no memory for it.
+// The open page's paper alone (S->paper), drawn again first if it holds another paper or size, or
+// the page was drawn whole on an image paper since (paper_stale): what an erase stroke restores
+// toward live, as page_render draws it (an image paper's picture too). NULL when there is no memory
+// for it.
 static const Canvas *page_paper(App *a) {
     Canvas *c = &S->paper;
     if (c->px && (c->w != S->pgw || c->h != S->pgh)) canvas_free(c);
     bool fresh = !c->px;
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
-    if (fresh || S->paper_k != S->page->paper) {
+    if (fresh || S->paper_k != S->page->paper || S->paper_stale) {
         S->paper_k = S->page->paper;
+        S->paper_stale = false;
         page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);
     }
     return c;
@@ -1080,6 +1113,9 @@ static void draw_begin(App *a, const InEvent *ev) {
         return;
     }
     PenStroke ps = pen_stroke(&a->settings, ev->eraser, ev->side_button);
+    // The pen's button drawing white while the eraser is in use: with the pen a tap on the eraser
+    // goes back to, a pin too (pen_drawing_tool knows only the tool button's).
+    if (ps.act == PEN_WHITE && a->settings.current_tool == TOOL_ERASER) ps.tool = eraser_back(a);
     if (ps.act == PEN_WHOLE) {
         S->owner = OWN_ERASE;
         free(S->snap);
@@ -1174,40 +1210,87 @@ static float dist2_to_segment(float px, float py, float ax, float ay, float bx, 
 // two left by a dab's rounding is no ink anyone can see.
 #define INK_SHOWS 6
 
-// Whether the stroke eraser's segment (x0, y0)-(x1, y1), r wide each side, touches ink of stroke i
-// (page px) that shows. Where white ink or the precise eraser drawn after it took its ink away, the
-// page is its paper again (S->paper): touching it there takes nothing, though the rest of it shows.
-// The pixels counted are those within the eraser's reach and within the stroke's (its dab's radius
-// about its line) where the page is darker than the paper (another stroke's ink crossing it there
-// counts too). A stroke no erase stroke drawn after it reaches shows wherever it is.
-static bool touches_visible_ink(App *a, int i, float x0, float y0, float x1, float y1, float r) {
-    const Stroke *s = S->page->strokes[i];
-    bool covered = false;
-    for (int k = i + 1; k < S->page->n && !covered; k++)
-        covered = stroke_is_erase(S->page->strokes[k]) && rect_overlaps(S->page->strokes[k]->bbox, s->bbox);
-    if (!covered) return true;
-    const Canvas *pc = &S->page_canvas, *paper = S->canvas_page == S->page ? page_paper(a) : NULL;
-    if (!paper || paper->w != pc->w || paper->h != pc->h) return true;  // nothing to tell by: as before
-    Rect sweep = rect_intersect(rect_intersect(rect_from_points(x0, y0, x1, y1, r + 1.f), s->bbox),
-                                (Rect){0, 0, pc->w, pc->h});
-    if (rect_is_empty(sweep)) return false;
+// Whether the page is darker than its paper by more than INK_SHOWS anywhere over R (page px) within
+// r px of the segment (x0, y0)-(x1, y1) and within stroke s's reach of its line (as far as its bbox
+// reaches): the only pixels there where its ink can show. The page canvas may still show strokes
+// taken off the page in this sweep, which only makes more of it dark.
+static bool dark_near(App *a, const Stroke *s, const Canvas *paper, Rect R, float x0, float y0, float x1, float y1,
+                      float r) {
+    const Canvas *pc = &S->page_canvas;
+    float reach = brush_max_radius(s->tool, &s->params, a->dpi) + 2.f;
     for (int j = 0; j < s->n; j++) {
         const PenSample *pa = &s->pts[j], *pb = &s->pts[j + 1 < s->n ? j + 1 : j];
-        float ra, op;
-        brush_dab(s->tool, &s->params, pa, a->dpi, &ra, &op);
-        Rect sr = rect_intersect(rect_from_points(pa->x, pa->y, pb->x, pb->y, ra + 1.f), sweep);
+        Rect sr = rect_intersect(rect_from_points(pa->x, pa->y, pb->x, pb->y, reach + 1.f), R);
         for (int y = sr.y; y < sr.y + sr.h; y++) {
             const uint8_t *row = &pc->px[(size_t)y * (size_t)pc->stride], *pr = &paper->px[(size_t)y * (size_t)paper->stride];
             for (int x = sr.x; x < sr.x + sr.w; x++) {
                 if (pr[x] - row[x] <= INK_SHOWS) continue;
                 float qx = (float)x + 0.5f, qy = (float)y + 0.5f;
                 if (dist2_to_segment(qx, qy, x0, y0, x1, y1) <= r * r &&
-                    dist2_to_segment(qx, qy, pa->x, pa->y, pb->x, pb->y) <= ra * ra)
+                    dist2_to_segment(qx, qy, pa->x, pa->y, pb->x, pb->y) <= reach * reach)
                     return true;
             }
         }
     }
     return false;
+}
+
+// Whether stroke i's own ink shows over R (page px, on the page and in its bbox) within r px of the
+// segment (x0, y0)-(x1, y1): the page drawn there without it is lighter than with it by more than
+// INK_SHOWS somewhere in that reach, as page_droppable tells ink that matters. Both are drawn afresh
+// from the page as it is now (without the strokes this sweep took off, which the page canvas may
+// still show), over the page canvas, which gets its own pixels back. 1 or 0; -1 out of memory.
+static int own_ink_shows(App *a, int i, Rect R, float x0, float y0, float x1, float y1, float r) {
+    Canvas *pc = &S->page_canvas, keep, with;
+    if (canvas_init(&keep, R.w, R.h) != 0) return -1;
+    if (canvas_init(&with, R.w, R.h) != 0) {
+        canvas_free(&keep);
+        return -1;
+    }
+    canvas_blit(&keep, pc, R, 0, 0);  // (put back below)
+    page_render(pc, S->page, R, a->dpi);
+    canvas_blit(&with, pc, R, 0, 0);
+    // Without it: taken off the list and put back in its place (the list then has room for it, so
+    // page_insert cannot fail).
+    Stroke *s = page_remove(S->page, i);
+    page_render(pc, S->page, R, a->dpi);
+    page_insert(S->page, i, s);
+    bool shows = false;
+    for (int y = 0; y < R.h && !shows; y++) {
+        const uint8_t *without = &pc->px[(size_t)(R.y + y) * (size_t)pc->stride + (size_t)R.x];
+        const uint8_t *drawn = &with.px[(size_t)y * (size_t)with.stride];
+        float qy = (float)(R.y + y) + 0.5f;
+        for (int x = 0; x < R.w && !shows; x++)
+            shows = without[x] - drawn[x] > INK_SHOWS &&
+                    dist2_to_segment((float)(R.x + x) + 0.5f, qy, x0, y0, x1, y1) <= r * r;
+    }
+    canvas_blit(pc, &keep, (Rect){0, 0, R.w, R.h}, R.x, R.y);
+    canvas_free(&keep);
+    canvas_free(&with);
+    return shows;
+}
+
+// Whether the stroke eraser's segment (x0, y0)-(x1, y1), r wide each side, touches ink of stroke i
+// (page px) that shows. A stroke no erase stroke drawn after it reaches shows wherever it is, as
+// before 1.1. One that white ink or the precise eraser drawn after it reaches shows only where its
+// own ink is on the page (own_ink_shows): not where they took it away, though the rest of it shows,
+// nor where all there is to see is ink drawn later over that place, or a paper darker than it. That
+// takes drawing the page there twice, so first the page canvas is held to the paper (S->paper):
+// where nothing in reach is darker than the paper, nothing of it shows (scrubbing over white ink).
+static bool touches_visible_ink(App *a, int i, float x0, float y0, float x1, float y1, float r) {
+    const Stroke *s = S->page->strokes[i];
+    bool covered = false;
+    for (int k = i + 1; k < S->page->n && !covered; k++)
+        covered = stroke_is_erase(S->page->strokes[k]) && rect_overlaps(S->page->strokes[k]->bbox, s->bbox);
+    if (!covered) return true;
+    const Canvas *pc = &S->page_canvas;
+    if (S->canvas_page != S->page || !pc->px) return true;  // nothing to tell by: as before
+    Rect R = rect_intersect(rect_intersect(rect_from_points(x0, y0, x1, y1, r + 1.f), s->bbox),
+                            (Rect){0, 0, pc->w, pc->h});
+    if (rect_is_empty(R)) return false;
+    const Canvas *paper = page_paper(a);
+    if (paper && paper->w == pc->w && paper->h == pc->h && !dark_near(a, s, paper, R, x0, y0, x1, y1, r)) return false;
+    return own_ink_shows(a, i, R, x0, y0, x1, y1, r) != 0;  // (out of memory: as before)
 }
 
 static void erase_segment(App *a, float sx, float sy, float pressure) {
@@ -1221,7 +1304,7 @@ static void erase_segment(App *a, float sx, float sy, float pressure) {
     for (int i = S->page->n - 1; i >= 0; i--) {
         Stroke *s = S->page->strokes[i];
         // Erase strokes stay: taking one away would bring back the ink it covers. Ink they took
-        // away is not there to touch.
+        // away is not there to touch (touches_visible_ink).
         if (stroke_is_erase(s) || !stroke_hit_segment(s, S->ex, S->ey, x, y, r, a->dpi) ||
             !touches_visible_ink(a, i, S->ex, S->ey, x, y, r))
             continue;
@@ -1309,13 +1392,18 @@ static void clear_page(App *a) {
     app_toast(a, _("Page cleared"), 1500);
 }
 
-// Side button: clicks and holds that happen while not drawing.
+// Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
+// or the paper sheet. The pen's button clears no page from under one.
+static bool sheet_open(App *a) { return S->pages_open || S->tools_open || S->mb.open || S->dm.open || S->paper_open; }
+
+// Side button: clicks and holds that happen while not drawing. A press used for something else (a
+// stroke, or the pen on a button or a sheet while it is held) is neither a click nor a hold.
 static void pen_button(App *a, const InEvent *ev) {
     uint32_t t = ev->t_ms;
     if (ev->side_button) {
         S->btn_down = true;
         S->btn_down_at = t;
-        S->btn_used_for_ink = S->owner == OWN_DRAW || S->owner == OWN_ERASE;
+        S->btn_used_for_ink = S->owner != OWN_NONE || sheet_open(a);
         S->btn_hold_fired = false;
         return;
     }
@@ -1331,7 +1419,7 @@ static void pen_button(App *a, const InEvent *ev) {
     S->clicks[S->nclicks++] = t;
     if (S->nclicks == 3 && S->clicks[2] - S->clicks[0] <= 1200) {
         S->nclicks = 0;
-        if (S->owner == OWN_NONE && !S->paper_open && !S->mb.open && !S->pages_open) clear_page(a);
+        if (S->owner == OWN_NONE && !sheet_open(a)) clear_page(a);
     }
 }
 
@@ -1515,8 +1603,11 @@ static void toggle_pin(App *a, ToolKind t) {
     if (!settings_toggle_pin(st, t)) {
         char msg[200];
         // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-        // panel holds (%d, 4). About 1700 px at 44 px in bold, or two lines.
-        snprintf(msg, sizeof msg, _("The panel holds up to %d pens. Unpin one first."), PANEL_PINS_MAX);
+        // panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+        // or two lines.
+        snprintf(msg, sizeof msg, NG_("The panel holds up to %d pen. Unpin one first.",
+                                      "The panel holds up to %d pens. Unpin one first.", PANEL_PINS_MAX),
+                 PANEL_PINS_MAX);
         app_toast(a, msg, 2500);
         return;
     }
@@ -1546,9 +1637,9 @@ static void tools_tap(App *a) {
     case P_PICK_INK:
         st->white = k_inks[clampi(h->arg, 0, N_INKS - 1)].white;
         settings_save(st);
-        draw_tools(a);
-        app_invalidate(a, S->tools_rect, REFRESH_UI);
-        repaint_panel(a, REFRESH_UI);  // the pen in use shows whether it draws white
+        draw_panel(a);  // the pen in use shows whether it draws white
+        draw_tools(a);  // (over the panel where it covers it)
+        app_invalidate(a, rect_union(S->panel, S->tools_rect), REFRESH_UI);
         break;
     case P_PICK_TOOL: {
         ToolKind t = (ToolKind)h->arg;
@@ -1567,12 +1658,6 @@ static void tools_tap(App *a) {
     }
 }
 
-// The drawing tool the tool button shows (the pencil if settings.ini names the eraser there).
-static ToolKind button_tool(App *a) {
-    ToolKind t = a->settings.draw_tool;
-    return (unsigned)t < TOOL_COUNT && t != TOOL_ERASER ? t : TOOL_PENCIL;
-}
-
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
     case P_TOOLPICK:
@@ -1588,12 +1673,9 @@ static void panel_act(App *a, const Hit *h) {
         if (t == cur) {
             // Tapping the active eraser again goes back to the pen used just before it (a pinned
             // one, or the tool button's), or to the tool button's if that one is off the panel now.
-            int b = S->before_eraser;
-            bool shown = b >= 0 && b < TOOL_COUNT && b != TOOL_ERASER &&
-                         ((ToolKind)b == button_tool(a) || settings_pinned(&a->settings, (ToolKind)b));
-            a->settings.current_tool = shown ? (ToolKind)b : button_tool(a);
+            a->settings.current_tool = eraser_back(a);
         } else {
-            if (t == TOOL_ERASER) S->before_eraser = (int)cur;
+            if (t == TOOL_ERASER) a->settings.before_eraser = (int)cur;
             a->settings.current_tool = t;
         }
         settings_save(&a->settings);
@@ -1729,7 +1811,6 @@ void editor_init(App *a) {
     if (!a->ed) return;
     store_page_size(&S->pgw, &S->pgh);
     S->zoom = S->zoom_default = S->zoom_min = 1.f;
-    S->before_eraser = -1;
     // Erased ink an earlier run left in page files (it left with the notebook open, or a compaction
     // was stopped): taken out now, in the background, unless the notebook is opened first.
     compact_queue_listed(a->dpi);
@@ -1782,6 +1863,14 @@ void editor_enter(App *a) {
     S->panel = panel_rect_at(a, x, y);
     S->tools_y = S->panel.y;
     S->owner = OWN_NONE;
+    // The pen in use always has its button on the panel. One that has none (a pin a version without
+    // pins dropped, or one taken out of settings.ini by hand) goes to the tool button.
+    Settings *st = &a->settings;
+    if ((unsigned)st->current_tool < TOOL_COUNT && st->current_tool != TOOL_ERASER &&
+        st->current_tool != button_tool(a) && !settings_pinned(st, st->current_tool)) {
+        st->draw_tool = st->current_tool;
+        settings_save(st);
+    }
     // A turn, or the redraw after waking (a->relayout), lays out the same screen again: the sheet
     // that was open stays open. Coming in from another screen, none is.
     if (!a->relayout) close_sheets(a);
@@ -1879,6 +1968,7 @@ void editor_event(App *a, const InEvent *ev) {
     int ph = (type == IN_PEN_UP) ? 2 : app_pointer_phase(ev);
     if (ph < 0) return;
     if (ph == 0) {
+        if (pen && S->btn_down) S->btn_used_for_ink = true;  // (pen_button: no click, no hold)
         if (S->owner != OWN_NONE || S->pinching) return;  // one gesture at a time
         S->owner_is_pen = pen;
         if (S->pages_open) {
@@ -2013,9 +2103,11 @@ void editor_tick(App *a, uint32_t now) {
     if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) &&
         (int32_t)(now - S->settle_at) >= 0)
         settle_now(a);
-    // Holding the button ~1.2 s while hovering (no ink) clears the page once.
+    // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during
+    // which a sheet was in front of the page, nor one the pen pressed anything during.
+    if (S->btn_down && sheet_open(a)) S->btn_used_for_ink = true;
     if (S->open && S->btn_down && !S->btn_used_for_ink && !S->btn_hold_fired && S->owner == OWN_NONE &&
-        !S->paper_open && !S->mb.open && !S->pages_open && now - S->btn_down_at >= 1200) {
+        !sheet_open(a) && now - S->btn_down_at >= 1200) {
         S->btn_hold_fired = true;
         S->nclicks = 0;
         clear_page(a);
@@ -2155,18 +2247,27 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%d", in && btn_h() == ui_px(100) ? 1 : 0);
     } else if (!strcmp(key, "pins")) {
         settings_pins_text(&a->settings, out, cap);  // the pinned pens in pin order, as settings.ini names them
-    } else if (!strcmp(key, "draw_tool") || !strcmp(key, "tool_button")) {
-        // The tool button's pen; and what the button shows: that pen, or "grid" while it is pinned.
-        ToolKind t = button_tool(a);
-        const char *name = app_probe_tool(t);
-        bool grid = !strcmp(key, "tool_button") && settings_pinned(&a->settings, t);
-        snprintf(out, cap, "%s", grid ? "grid" : name ? name : "?");
+    } else if (!strcmp(key, "draw_tool")) {
+        const char *name = app_probe_tool(button_tool(a));  // the tool button's pen
+        snprintf(out, cap, "%s", name ? name : "?");
+    } else if (!strcmp(key, "tool_button")) {
+        // What the tool button showed as the panel was last drawn: its pen, "grid" while that pen
+        // is pinned, empty while the panel is collapsed.
+        int t = S->tool_button_shows;
+        const char *name = t >= 0 ? app_probe_tool((ToolKind)t) : NULL;
+        snprintf(out, cap, "%s", t == TB_GRID ? "grid" : t == TB_NONE ? "" : name ? name : "?");
     } else if (!strcmp(key, "pin_mode")) {
         snprintf(out, cap, "%d", S->tools_open && S->pin_mode ? 1 : 0);
+    } else if (!strcmp(key, "tools_rect")) {
+        // Where the tool picker is while it is open, "x y w h" (as toast.rect), else empty.
+        Rect r = S->tools_rect;
+        if (S->tools_open) snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+        else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "before_eraser")) {
-        // The pen used before the eraser (where a tap on the eraser in use goes back to, if it is
-        // still on the panel), empty for none.
-        const char *name = S->before_eraser >= 0 ? app_probe_tool((ToolKind)S->before_eraser) : NULL;
+        // The pen used before the eraser (settings.ini before_eraser: where a tap on the eraser in
+        // use goes back to, if it is still on the panel), empty for none.
+        int b = a->settings.before_eraser;
+        const char *name = b >= 0 && b < TOOL_COUNT ? app_probe_tool((ToolKind)b) : NULL;
         snprintf(out, cap, "%s", name ? name : "");
     } else if (!strcmp(key, "white_mark")) {
         snprintf(out, cap, "%d", S->white_mark ? 1 : 0);  // the panel as drawn last shows the pen draws white

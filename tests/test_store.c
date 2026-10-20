@@ -309,6 +309,35 @@ TEST(panel_tools) {
     unlink(path);
 }
 
+// settings.ini's before_eraser: the pen in use when the eraser was picked, -1 for none. A pen this
+// version lacks, the eraser or no number is none, and the line goes back as it was until it changes.
+TEST(before_eraser) {
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    Settings s, t;
+    settings_default(&s);
+    CHECK(s.before_eraser == -1);
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "before_eraser=-1"));
+    CHECK(settings_load(&t) == 0 && t.before_eraser == -1);
+    s.before_eraser = TOOL_MARKER;
+    CHECK(settings_save(&s) == 0 && has_pins_line(path, "before_eraser=7"));
+    CHECK(settings_load(&t) == 0 && t.before_eraser == TOOL_MARKER);
+    const char *odd[] = {"12", "3", "pencil", "4x", ""};
+    for (size_t i = 0; i < sizeof odd / sizeof odd[0]; i++) {
+        char f[64], line[64];
+        snprintf(f, sizeof f, "before_eraser=%s\n", odd[i]);
+        CHECK(write_file_atomic(path, f, strlen(f)) == 0);
+        CHECK(settings_load(&t) == 0 && t.before_eraser == -1);
+        snprintf(line, sizeof line, "before_eraser=%s", odd[i]);
+        CHECK(settings_save(&t) == 0 && has_pins_line(path, line));  // written back as it was
+    }
+    // Changed, it is written as it is.
+    t.before_eraser = TOOL_HIGHLIGHTER;
+    CHECK(settings_save(&t) == 0 && has_pins_line(path, "before_eraser=4"));
+    CHECK(settings_load(&s) == 0 && s.before_eraser == TOOL_HIGHLIGHTER);
+    unlink(path);
+}
+
 // A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
 // notebook.ini gets its page list back from the page files.
 TEST(damage_is_kept) {
@@ -403,6 +432,7 @@ int main(void) {
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
     RUN(panel_tools);
+    RUN(before_eraser);
     RUN(safe_names);
     RUN(damage_is_kept);
     RUN(folder_named_like_a_comment);
