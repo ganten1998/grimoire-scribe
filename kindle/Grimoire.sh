@@ -14,6 +14,10 @@
 #   Grimoire.sh --unpack-only        only unpack, start nothing
 #   Grimoire.sh --reset-calibration  forget the pen and touch calibration
 #   Other arguments go on to app/grimoire.sh (--stop-framework).
+# Exit status: 0 done (for a start: Grimoire is on its way, or the old Quire app is still running
+# and nothing happens); 1 the app could not be unpacked (or the calibration not reset); 2
+# --unpack-only or --reset-calibration did nothing because the old Quire app is still running;
+# 3 refused inside KOReader.
 #
 # Capabilities lists what this launcher supports, for a tool (the KOReader plugin) that must
 # never run a launcher to find out: an older one ignores a flag it does not know and starts
@@ -70,7 +74,15 @@ OLD=$US/quire
 if [ -d "$OLD" ] && [ ! -e "$US/grimoire" ]; then
     p=$(cat "$TMP/quire.launcher.pid" 2>/dev/null)
     if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
-        exit 0  # the old app is still running: try again after leaving it
+        # The old app is still running: try again after leaving it. There is no grimoire folder
+        # to log to yet, so a flag's caller learns it from the status.
+        case "$1" in
+        --unpack-only | --reset-calibration)
+            echo "Grimoire: the old Quire app is still running. Leave it, then try again." >&2
+            exit 2
+            ;;
+        esac
+        exit 0
     fi
     if mv "$OLD" "$US/grimoire"; then
         [ -f "$US/grimoire/quire.log" ] && mv -f "$US/grimoire/quire.log" "$LOG"

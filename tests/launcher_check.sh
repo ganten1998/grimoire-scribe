@@ -352,9 +352,20 @@ suite() {
     rc=$?
     check "$s Quire: a refused start moves nothing ($rc)" sh -c '[ "$1" = 3 ] && [ -d "$2/quire" ] && [ ! -e "$2/grimoire" ]' sh "$rc" "$US"
     echo $$ >"$T/tmp/quire.launcher.pid"
-    sh "$DOC" --unpack-only
+    sh "$DOC" --unpack-only 2>"$T/stderr"
     rc=$?
-    check "$s Quire: left alone while the old app runs ($rc)" sh -c '[ "$1" = 0 ] && [ -d "$2/quire" ] && [ ! -e "$2/grimoire" ]' sh "$rc" "$US"
+    check "$s Quire: --unpack-only while the old app runs: 2, nothing done ($rc)" \
+        sh -c '[ "$1" = 2 ] && [ -d "$2/quire" ] && [ ! -e "$2/grimoire" ]' sh "$rc" "$US"
+    check "$s Quire: --unpack-only says why on stderr" has "$T/stderr" "the old Quire app is still running"
+    sh "$DOC" --reset-calibration 2>/dev/null
+    rc=$?
+    check "$s Quire: --reset-calibration while the old app runs: 2, nothing done ($rc)" \
+        sh -c '[ "$1" = 2 ] && [ -d "$2/quire" ] && [ ! -e "$2/grimoire" ]' sh "$rc" "$US"
+    sh "$DOC"
+    rc=$?
+    check "$s Quire: a start while the old app runs does nothing ($rc)" \
+        sh -c '[ "$1" = 0 ] && [ -d "$2/quire" ] && [ ! -e "$2/grimoire" ]' sh "$rc" "$US"
+    check "$s Quire: and launches nothing" lacks "$SHIM_LOG" "setsid"
     rm -f "$T/tmp/quire.launcher.pid"
     sh "$DOC" --unpack-only
     check "$s Quire: the notebooks move over" sh -c '[ -f "$1/grimoire/notebooks/n1/notebook.ini" ] && [ ! -e "$1/quire" ]' sh "$US"
