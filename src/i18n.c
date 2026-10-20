@@ -186,6 +186,7 @@ const char *i18n_getn(const char *one, const char *many, long n) { return i18n_g
 const char *i18n_getn_many(const char *one, const char *many, long n) { return i18n_getnc(NULL, one, many, n); }
 
 size_t i18n_copy(char *dst, const char *src, size_t cap) {
+    if (!cap) return 0;
     size_t n = strlcpy_q(dst, src, cap);
     // The last character copied, if it is not whole (cut here, or before: by snprintf).
     size_t lead = n;

@@ -171,8 +171,10 @@ l10n:
 # shots, build/shots/l10n/<lang>-<style>/, show translators every screen in context. Then, in each
 # language, tests/l10n/long_root.qs opens Settings from a data root whose path is longer than the
 # sheet is wide: its Data line, a path, is cut short as names are, which the check must not count
-# (else make check would fail in a deep build directory). Under make check it waits for the
-# scenarios: both open the share server on the same port.
+# (else make check would fail in a deep build directory). Last, tests/l10n/hosted.qs, in every
+# language and style: the Library's top bar as KOReader opens it (Back to KOReader in Exit's place,
+# the one button that takes the width it needs). Under make check it waits for the scenarios: both
+# open the share server on the same port.
 L10N_SCENARIO := tests/scenarios/y_all_screens.qs
 L10N_LANGS := en $(basename $(notdir $(L10N_MO)))
 l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS)),scenarios)
@@ -199,6 +201,14 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=tests/l10n/long_root.qs \
 	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/long-root-$$lang $(BUILD)/host/grimoire-headless || failed="$$failed long-root-$$lang"; \
 	done; \
+	for lang in $(L10N_LANGS); do for style in gothic classic; do n=hosted-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
+	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n, opened from KOReader"; \
+	  echo "theme=$$style" > $$r/settings.ini; \
+	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" >> $$r/settings.ini; fi; \
+	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_HOST=koreader GRIMOIRE_ROOT=$$r \
+	    GRIMOIRE_SCRIPT=tests/l10n/hosted.qs GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
+	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
+	done; done; \
 	if [ -n "$$failed" ]; then echo "L10N CHECK FAILED:$$failed"; exit 1; fi; \
 	echo "l10n-check: every language fits ($(L10N_LANGS))"
 

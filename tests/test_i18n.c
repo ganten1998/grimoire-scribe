@@ -651,6 +651,8 @@ TEST(copies_cut_between_characters) {
     CHECK(i18n_copy(b, "abcdefghij", sizeof b) == 7 && !strcmp(b, "abcdefg"));
     CHECK(i18n_copy(b, "", sizeof b) == 0 && !strcmp(b, ""));
     CHECK(i18n_copy(b, "x", 1) == 0 && !strcmp(b, ""));
+    b[0] = 'z';
+    CHECK(i18n_copy(b, "x", 0) == 0 && b[0] == 'z');  // no room, not even for the NUL: untouched
 }
 
 // Pen feel draws its graph's and pad's labels as they are (font_draw: never cut): under the

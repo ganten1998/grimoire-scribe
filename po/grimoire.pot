@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 06:11-0500\n"
+"POT-Creation-Date: 2026-10-20 07:00-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -616,6 +616,12 @@ msgstr ""
 #. TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
 #: src/library.c
 msgid "New"
+msgstr ""
+
+#. TRANSLATORS: the Library's top bar when Grimoire was opened from KOReader: in place of Exit,
+#. it goes back to KOReader. This one button takes the width it needs.
+#: src/library.c
+msgid "Back to KOReader"
 msgstr ""
 
 #. TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).

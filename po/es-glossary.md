@@ -74,6 +74,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Settings | **Ajustes** | *Configuración* is 208 px at 34 px, more than the top bar's buttons can grow to hold (188 px in Gothic). |
 | Share | **Compartir** | The top bar's buttons widen to hold it in Gothic (150 px; 138 px fit inside a button's carved line). |
 | Exit / New / Folder | **Salir / Nuevo / Carpeta** | |
+| Back to KOReader | **Volver a KOReader** | In Exit's place when Grimoire was opened from KOReader; this one button takes the width it needs. |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
 | Delete | **Borrar** | *Eliminar*. A notebook or pages go (*Se borraron 3 páginas*). |
