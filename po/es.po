@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
 "POT-Creation-Date: 2026-10-20 06:02-0500\n"
-"PO-Revision-Date: 2026-10-20 04:02-0500\n"
+"PO-Revision-Date: 2026-10-20 06:20-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -454,7 +454,7 @@ msgstr "Esta página ya está vacía"
 
 #: src/editor.c
 msgid "Page cleared"
-msgstr "Página borrada"
+msgstr "Se limpió la página"
 
 #: src/editor.c
 msgid "Could not delete those pages"

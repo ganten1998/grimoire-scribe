@@ -76,7 +76,8 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Exit / New / Folder | **Salir / Nuevo / Carpeta** | |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
-| Delete | **Borrar** | *Eliminar*. |
+| Delete | **Borrar** | *Eliminar*. A notebook or pages go (*Se borraron 3 páginas*). |
+| Clear (a page, the test pad) | **Limpiar** (*Se limpió la página*) | The strokes go, the page stays: not *borrar*, which deletes. *Vaciar* (*Página vaciada*). |
 | Rename | **Renombrar** | *Cambiar nombre*. |
 | Keep it | **Conservarlo** | |
 | Remove folder | **Quitar la carpeta** | *Eliminar la carpeta*. |
