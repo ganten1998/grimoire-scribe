@@ -788,6 +788,40 @@ TEST(notebook_ini_carries_unknown_lines) {
     free(huge);
 }
 
+// A value kept from settings.ini goes back only while the setting is untouched: once a save finds
+// it changed, it is saved as set from then on, also when it is set back to the value used.
+TEST(changed_settings_stay_changed) {
+    char path[700], f[256];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    snprintf(f, sizeof f, "side_button=3\ntheme=dark\npencil.size_max_mm=20\nmusic_layout=%u\nsleep_minutes=500\n",
+             MUSIC_NEWER);
+    CHECK(write_file_atomic(path, f, strlen(f)) == 0);
+    Settings s;
+    CHECK(settings_load(&s) == 0 && s.side_button == 2 && s.theme == 0 && s.music_layout == music_default());
+    // Changed (every settings change is saved as it is made), then set back to what was used.
+    MusicLayout m = custom_layout();
+    s.side_button = 0;
+    s.theme = 1;
+    s.tools[TOOL_PENCIL].size_max_mm = 5.f;
+    s.music_layout = music_encode(&m);
+    CHECK(settings_save(&s) == 0);
+    s.side_button = 2;
+    s.theme = 0;
+    s.tools[TOOL_PENCIL].size_max_mm = 12.f;
+    s.music_layout = music_default();
+    CHECK(settings_save(&s) == 0);
+    char ml[64];
+    snprintf(ml, sizeof ml, "music_layout=%u", (unsigned)music_default());
+    for (int round = 0; round < 2; round++) {  // and the same again on the next save
+        char *t = file_text(path);
+        CHECK(t && has_line(t, "side_button=2") == 1 && has_line(t, "theme=gothic") == 1);
+        CHECK(t && has_line(t, "pencil.size_max_mm=12.0000") == 1 && has_line(t, ml) == 1);
+        CHECK(t && has_line(t, "sleep_minutes=500") == 1);  // the setting nobody changed
+        free(t);
+        CHECK(settings_save(&s) == 0);
+    }
+}
+
 static void put_page_list_aside(const char *dir) {
     char ini[800];
     snprintf(ini, sizeof ini, "%s/notebook.ini", dir);
@@ -915,6 +949,7 @@ int main(void) {
     RUN(fuzz_new_paths);
     RUN(settings_carry_unknown_lines);
     RUN(notebook_ini_carries_unknown_lines);
+    RUN(changed_settings_stay_changed);
     RUN(recovery_never_loses_a_page);
     RUN(lasting_states_logged_once);
     int rc = tl_done();

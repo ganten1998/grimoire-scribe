@@ -1092,8 +1092,8 @@ static bool calib_kv(InputCalib *c, const char *k, const char *v) {
 // What settings.ini holds that this build does not understand goes back into the file as it
 // was: lines with keys it does not know (written after the ones it knows), and values of known
 // keys it cannot use as written (side_button=3, a theme it lacks, a slider past its range). Such a
-// value is used as the nearest one this build has, and written back unchanged while the setting
-// still has that value. Kept here, not in Settings (which is copied by value), for the file
+// value is used as the nearest one this build has, and written back unchanged until the setting is
+// saved with another value. Kept here, not in Settings (which is copied by value), for the file
 // settings_load read last.
 #define SETTINGS_UNKNOWN_MAX 65536  // bytes of unknown lines kept (a bound against a runaway file)
 #define SETTINGS_KEPT_MAX 64
@@ -1252,10 +1252,17 @@ int settings_load(Settings *s) {
 }
 
 // One known key: a value kept from the file goes back as it was while the setting is unchanged.
+// Once the setting is saved with another value it was changed here, and the kept value is
+// forgotten: from then on the setting is saved as set, also when it is set back.
 static void put(Sb *b, const char *k, const char *v) {
     for (int i = 0; i < g_nkept; i++)
         if (!strcmp(g_kept[i].key, k)) {
-            if (!strcmp(g_kept[i].used, v)) v = g_kept[i].raw;
+            if (!strcmp(g_kept[i].used, v)) {
+                v = g_kept[i].raw;
+            } else {
+                free(g_kept[i].raw);
+                g_kept[i] = g_kept[--g_nkept];
+            }
             break;
         }
     sb_printf(b, "%s=%s\n", k, v);
