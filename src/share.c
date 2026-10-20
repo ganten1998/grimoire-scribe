@@ -169,6 +169,7 @@ void share_free(App *a) {
 }
 
 void share_enter(App *a) {
+    if (a->relayout && httpd_running()) qlog("share: laid out again (turned or woken); the server carries on");
     start(a);  // a server kept across a relayout goes on as it is
     draw(a);
 }
