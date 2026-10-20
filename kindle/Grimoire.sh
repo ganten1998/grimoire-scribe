@@ -6,25 +6,31 @@
 #
 # Scriptlet launcher (Vera / WinterBreak-era jailbreaks index .sh files in documents/ as books).
 # Self-contained: the app is appended below and unpacked to /mnt/us/grimoire/app; see docs/KINDLE.md.
-LOG=/mnt/us/grimoire/grimoire.log
-APP=/mnt/us/grimoire/app
+
+# Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
+# never set.
+US=${GRIMOIRE_US:-/mnt/us}
+TMP=${GRIMOIRE_TMP:-/tmp}
+LOG=$US/grimoire/grimoire.log
+APP=$US/grimoire/app
 BUILD_ID=@BUILD_ID@
 log() { echo "$(date '+%F %T') Grimoire.sh: $*" >>"$LOG"; }
 
 # Grimoire used to be called Quire. Its notebooks and settings move over once, before anything
 # creates the new folder; the old launcher (which would start the old app) is retired.
-OLD=/mnt/us/quire
-if [ -d "$OLD" ] && [ ! -e /mnt/us/grimoire ]; then
-    p=$(cat /tmp/quire.launcher.pid 2>/dev/null)
+OLD=$US/quire
+if [ -d "$OLD" ] && [ ! -e "$US/grimoire" ]; then
+    p=$(cat "$TMP/quire.launcher.pid" 2>/dev/null)
     if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
         exit 0  # the old app is still running: try again after leaving it
     fi
-    if mv "$OLD" /mnt/us/grimoire; then
-        [ -f /mnt/us/grimoire/quire.log ] && mv -f /mnt/us/grimoire/quire.log "$LOG"
-        log "moved the data from $OLD to /mnt/us/grimoire"
+    if mv "$OLD" "$US/grimoire"; then
+        [ -f "$US/grimoire/quire.log" ] && mv -f "$US/grimoire/quire.log" "$LOG"
+        log "moved the data from $OLD to $US/grimoire"
     fi
 fi
-for f in /mnt/us/documents/Quire.sh "/mnt/us/documents/Quire - reset pen calibration.sh"; do
+for f in "$US/documents/Quire.sh" "$US/documents/Quire - reset pen calibration.sh"; do
+    # The old launchers always named their folder as /mnt/us/quire.
     if [ -f "$f" ] && grep -q "/mnt/us/quire" "$f" 2>/dev/null; then
         rm -f "$f" && log "removed the old launcher $f"
     fi
