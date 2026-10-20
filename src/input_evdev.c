@@ -11,7 +11,8 @@
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
 //   power = EV_KEY KEY_POWER
 // Pen and touch are EVIOCGRAB'ed so the (paused) framework never sees them; the power key is
-// only watched, so the system keeps handling it if we die.
+// only watched, so the system keeps handling it if we die. Its press and release are both read:
+// holding it INPUT_POWER_HOLD_MS (4 s) is Grimoire's guaranteed way out.
 //
 // Pen events follow the Wacom tool protocol (BTN_TOOL_PEN / BTN_TOOL_RUBBER bracket the
 // proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
@@ -33,6 +34,7 @@
 
 #include "calib_fit.h"
 #include "input.h"
+#include "power.h"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
@@ -69,6 +71,7 @@ static struct {
 } W;
 static bool g_side_reported;  // last side-button state sent as IN_PEN_BUTTON
 static int g_power_fd = -1;
+static PowerKey g_pkey;       // the press being followed (release, or the 4 s hold)
 static int g_watch = -1;
 static int g_sigpipe[2] = {-1, -1};
 static volatile sig_atomic_t g_quit;
@@ -570,16 +573,38 @@ static void handle_powerd_fd(void) {
     if (g_powerd_len >= sizeof g_powerd_buf - 1) g_powerd_len = 0;  // no newline in sight: drop
 }
 
+static void push_power(InType t, int held_ms) {
+    if (t == IN_NONE) return;
+    InEvent e = {0};
+    e.type = t;
+    e.value = held_ms;
+    e.t_ms = now_ms();
+    q_push(e);
+}
+
 static void handle_power_fd(void) {
     struct input_event evs[16];
     ssize_t r = read(g_power_fd, evs, sizeof evs);
     for (ssize_t i = 0; r > 0 && i < r / (ssize_t)sizeof evs[0]; i++)
-        if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER && evs[i].value == 1) {
-            InEvent e = {0};
-            e.type = IN_POWER;
-            e.t_ms = now_ms();
-            q_push(e);
+        if (evs[i].type == EV_KEY && evs[i].code == KEY_POWER) {
+            int held = 0;
+            push_power(powerkey_event(&g_pkey, evs[i].value, now_ms(), &held), held);
         }
+}
+
+// Whether the power key is down right now, from the device itself: 1, 0, or -1 if it cannot tell.
+static int power_key_down(void) {
+    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
+    if (g_power_fd < 0 || ioctl(g_power_fd, EVIOCGKEY(sizeof keys), keys) < 0) return -1;
+    return test_bit(keys, KEY_POWER) ? 1 : 0;
+}
+
+// The 4 s hold, checked on every poll (they come at least every 30 ms), timeouts included.
+static void power_hold_check(void) {
+    int held = 0;
+    InType t = powerkey_tick(&g_pkey, now_ms(), power_key_down, &held);
+    if (t == IN_POWER_UP) qlog("input: the power key is up at the %d ms check: its release was missed", INPUT_POWER_HOLD_MS);
+    push_power(t, held);
 }
 
 // ---- setup ----
@@ -795,19 +820,21 @@ int input_poll(InEvent *ev, int timeout_ms) {
     if (g_sigpipe[0] >= 0) isig = n, pf[n++] = (struct pollfd){g_sigpipe[0], POLLIN, 0};
     if (g_watch >= 0) pf[n++] = (struct pollfd){g_watch, POLLIN, 0};
     int r = poll(pf, (nfds_t)n, timeout_ms);
-    if (r <= 0) return 0;
-    // Raw digitizer first, so a pen frame uses this sample's pressure.
-    if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
-    if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
-    if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
-    if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
-    if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
-    if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
-    if (isig >= 0 && (pf[isig].revents & POLLIN)) {
-        char buf[16];
-        while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
+    if (r > 0) {
+        // Raw digitizer first, so a pen frame uses this sample's pressure.
+        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
+        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
+        if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
+        if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
+        if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
+        if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
+        if (isig >= 0 && (pf[isig].revents & POLLIN)) {
+            char buf[16];
+            while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
+            }
         }
     }
+    power_hold_check();
     if (g_quit) {
         *ev = (InEvent){.type = IN_QUIT, .t_ms = now_ms()};
         g_quit = 0;

@@ -3,6 +3,7 @@
 #include "bgjob.h"
 
 #include "light.h"
+#include "power.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -106,19 +107,46 @@ void app_event(App *a, const InEvent *ev) {
     }
     if (ev->type == IN_POWER) {
         // The power service handles the button itself (it announces the sleep, which draws the
-        // sleep screen); just make sure nothing is lost. Quitting is Library > Exit.
+        // sleep screen); just make sure nothing is lost. What the press needs from Grimoire is
+        // decided at its release, or at the 4 s hold, which leaves Grimoire.
         qlog("power button: saving");
         if (a->scr == SCR_EDITOR) editor_save_now(a);
-        if (!a->asleep) a->power_pressed_at = now_ms() | 1;  // expect goingToScreenSaver soon
-        else a->wake_fallback_at = (now_ms() + 3000) | 1;    // expect outOfScreenSaver soon
+        a->power_down_at = now_ms() | 1;
+        a->power_down_asleep = a->asleep;
+        a->power_answered = false;
+        return;
+    }
+    if (ev->type == IN_POWER_UP) {
+        if (ev->value >= 0) qlog("power button: up after %d ms", ev->value);
+        else qlog("power button: up (its release was missed, so how long it was held is not known)");
+        bool pending = a->power_down_at && !a->power_answered;
+        a->power_down_at = 0;
+        // A press the power service already answered needs nothing more: a wake announced while
+        // the key was still down must not turn the release into a sleep request (that made the
+        // Kindle fall asleep again right after waking).
+        if (!pending || ev->value >= INPUT_POWER_HOLD_MS) return;
+        if (!a->power_down_asleep && !a->asleep) a->power_pressed_at = now_ms() | 1;  // expect goingToScreenSaver soon
+        else if (a->power_down_asleep && a->asleep) a->wake_fallback_at = (now_ms() + 3000) | 1;  // and outOfScreenSaver
+        return;
+    }
+    if (ev->type == IN_POWER_HELD) {
+        // The way out that always works: a locked Kindle, a panel that shows nothing, any screen.
+        // The launcher's exit trap gives the Kindle its UI back.
+        qlog("power button held %d s: saving and leaving Grimoire", INPUT_POWER_HOLD_MS / 1000);
+        if (a->scr == SCR_EDITOR) editor_save_now(a);
+        if (!a->asleep) app_toast(a, "Saved. Leaving Grimoire.", 3000);  // shown by the last flush
+        a->running = false;
         return;
     }
     if (ev->type == IN_SLEEP) {
         a->power_pressed_at = 0;
+        a->power_answered = true;
         app_sleep(a);
         return;
     }
     if (ev->type == IN_WAKE) {
+        a->power_pressed_at = 0;
+        a->power_answered = true;
         if (!a->asleep) {
             // Out of a screensaver Grimoire never saw start: still take the screen back.
             qlog("wake: out of the screensaver while Grimoire thought it was awake; repainting");
@@ -127,7 +155,14 @@ void app_event(App *a, const InEvent *ev) {
         app_wake(a);
         return;
     }
-    if (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON) {
+    // While the Kindle shows its sleep screen, pen and touch are not Grimoire's: drawing over the
+    // screensaver because the panel reported a touch is how a wrong screen ended up on it. The side
+    // button and pinches start nothing either (three clicks cleared the page); only their ends get
+    // through, so one that began before the sleep still finishes.
+    if (a->asleep && (app_pointer_phase(ev) >= 0 || (ev->type == IN_PEN_BUTTON && ev->side_button) ||
+                      ev->type == IN_PINCH_BEGIN || ev->type == IN_PINCH_MOVE))
+        return;
+    if (!a->asleep && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON)) {
         a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
         a->sleep_requested = false;
         // Grimoire grabs the pen and touch: tell the power service someone is here.
@@ -136,9 +171,6 @@ void app_event(App *a, const InEvent *ev) {
             sys_activity();
         }
     }
-    // While the Kindle shows its sleep screen, pen and touch are not Grimoire's: drawing over the
-    // screensaver because the panel reported a touch is how a wrong screen ended up on it.
-    if (a->asleep && app_pointer_phase(ev) >= 0) return;
     k_screens[a->scr].event(a, ev);
 }
 
@@ -178,7 +210,12 @@ void app_redraw(App *a) { app_redraw_mode(a, REFRESH_FULL); }
 // The sleep screen: the page you were on (or the pinned page), so the Kindle "sleeps on" your
 // notebook and wakes straight back into it. Mode 2 hands over to the Kindle's own screensaver.
 static void app_sleep(App *a) {
-    if (a->asleep) return;
+    if (a->asleep) {
+        // Already on the sleep screen, so a press that was waiting for a wake has its answer: the
+        // Kindle went (back) to sleep. The fallback must not wake Grimoire over it.
+        a->wake_fallback_at = 0;
+        return;
+    }
     a->asleep = true;
     a->wake_redraw_at = 0;
     a->wake_fallback_at = 0;
@@ -207,10 +244,13 @@ static void app_wake(App *a) {
     if (!a->asleep) return;
     a->asleep = false;
     a->wake_fallback_at = 0;
+    a->power_pressed_at = 0;  // a press taken for a sleep press was this wake's: no sleep request after it
     a->last_input = now_ms();
     a->sleep_requested = false;
     qlog("wake");
     if (a->settings.sleep_mode == 2) sys_kindle_ui(false);
+    // A sleep request turned preventScreenSaver off: "Sleep after: never" wants it back on.
+    app_apply_sleep_policy(a);
     // Back to work at once (no-flash refresh), then once more a moment later in case the Kindle
     // UI (its screensaver closing, the status bar) drew something on the way out.
     app_redraw_mode(a, REFRESH_UI);
@@ -248,22 +288,56 @@ void app_apply_sleep_policy(App *a) {
     sys_prevent_sleep(want);
 }
 
+// Asks the power service to sleep. The request turns preventScreenSaver off first (the button is
+// ignored while it is on); app_wake puts a "never" policy back.
+static void request_sleep(App *a) {
+    sys_request_sleep();
+    a->prevent_applied = 0;
+}
+
+// The power service's state, for a fallback to decide on and log ("unknown" if unreadable). It
+// blocks a moment (lipc), which only these rare fallbacks can afford.
+static PowerdState powerd_state_now(char *name, size_t cap) {
+    if (sys_powerd_state(name, cap) != 0) {
+        strlcpy_q(name, "unknown", cap);
+        return POWERD_UNKNOWN;
+    }
+    return powerd_parse_state(name);
+}
+
 void app_tick(App *a, uint32_t now) {
     int bg = bg_poll();
     if (bg) app_toast(a, bg > 0 ? "PDF saved to grimoire/PDFs" : "Could not save the PDF", 2500);
     if (store_take_corrupt_count() > 0)
         app_toast(a, "A damaged page was set aside and a blank one put in its place (see grimoire.log)", 6000);
-    // A power press the power service did not follow with a sleep announcement: ask for sleep.
+    // A short power press the power service did not follow with a sleep announcement. If it is in
+    // its screensaver already, Grimoire missed the announcement: show the sleep screen and send
+    // nothing (a powerButton now would wake the Kindle again). Otherwise ask it to sleep.
     if (a->power_pressed_at && !a->asleep && (int32_t)(now - a->power_pressed_at) > 2500) {
         a->power_pressed_at = 0;
-        qlog("sleep: no announcement after the power button; requesting sleep");
-        sys_prevent_sleep(false);
-        a->prevent_applied = 0;
-        sys_request_sleep();
+        char st[48];
+        if (powerd_dozing(powerd_state_now(st, sizeof st))) {
+            qlog("sleep: no announcement after the power button, but the power service is in %s; going to sleep "
+                 "without asking", st);
+            app_sleep(a);
+        } else {
+            qlog("sleep: no announcement after the power button (power service: %s); requesting sleep", st);
+            request_sleep(a);
+        }
     }
+    // A press on the sleep screen with no outOfScreenSaver after it. A power service still in its
+    // screensaver means the Kindle is still locked (its passcode) or asleep: never draw over it.
     if (a->asleep && a->wake_fallback_at && (int32_t)(now - a->wake_fallback_at) >= 0) {
-        qlog("wake: power pressed but no outOfScreenSaver within 3 s; waking anyway");
-        app_wake(a);
+        a->wake_fallback_at = 0;
+        char st[48];
+        if (powerd_dozing(powerd_state_now(st, sizeof st))) {
+            qlog("wake: no outOfScreenSaver within 3 s of the power button, and the power service is in %s: the "
+                 "Kindle is still locked or asleep, so Grimoire stays on its sleep screen (holding the power button "
+                 "4 s leaves Grimoire)", st);
+        } else {
+            qlog("wake: power pressed but no outOfScreenSaver within 3 s (power service: %s); waking anyway", st);
+            app_wake(a);
+        }
     }
     if (a->wake_redraw_at && (int32_t)(now - a->wake_redraw_at) >= 0 && !(a->scr == SCR_EDITOR && editor_busy(a))) {
         a->wake_redraw_at = 0;
@@ -274,7 +348,7 @@ void app_tick(App *a, uint32_t now) {
         (int32_t)(now - a->last_input) >= a->settings.sleep_minutes * 60000 &&
         !(a->scr == SCR_EDITOR && editor_busy(a)) && a->scr != SCR_SHARE) {
         a->sleep_requested = true;
-        sys_request_sleep();
+        request_sleep(a);
     }
     if (a->asleep) return;
     if (a->pending_rotation >= 0 && a->pending_rotation != a->rotation && !(a->scr == SCR_EDITOR && editor_busy(a))) {

@@ -52,6 +52,11 @@ typedef struct App {
     struct PenSetState *ps;
     struct CalibState *cal;
     struct ShareState *share;
+
+    // The power button press being followed (its release decides which fallback it needs).
+    uint32_t power_down_at;        // 0 none
+    bool power_down_asleep;        // it went down while Grimoire showed its sleep screen
+    bool power_answered;           // the power service announced a sleep or a wake since then
 } App;
 
 int app_init(App *a, int w, int h, float dpi);
