@@ -822,10 +822,10 @@ static Stroke *random_stroke(int w, int h, bool erase) {
     return s;
 }
 
-// Compaction marks exactly what the rule done the slow way marks, on random pages of ink and erase
-// strokes of every kind, on blank, ruled, dotted, music and graph paper, and the pages it leaves
-// render as before. (The fast way draws only the pieces of strokes near what it checks, and the
-// ink layer only where the paper has marks; this is what says that changes nothing.)
+// Compaction marks exactly what the rule done the slow way marks (so the page without the marked
+// strokes renders as before), on random pages of ink and erase strokes of every kind, on blank,
+// ruled, dotted, music and graph paper. The fast way draws only the pieces of strokes near what it
+// checks, and the ink layer only where the paper has marks: this is what says that changes nothing.
 TEST(compaction_is_the_rule) {
     static const PaperKind kinds[5] = {PAPER_BLANK, PAPER_MEDIUM, PAPER_DOTS, PAPER_MUSIC, PAPER_GRID};
     long marked = 0;
