@@ -1,0 +1,49 @@
+# Share turned sideways and back, then asleep and awake: the QR code beside the text in
+# landscape, one server the whole visit (tests/share_check.sh downloads across the turns and
+# checks it never restarts), stopped by Done and started again by the next visit.
+wait 300
+tap 1345 95
+wait 700
+expect screen is share
+shot 01-share-portrait
+wait 1000
+rotate 1
+wait 700
+expect rotation is 1
+expect size is 2480x1860
+shot 02-share-landscape
+wait 1000
+rotate 0
+wait 700
+expect size is 1860x2480
+shot 03-share-portrait-again
+sleep
+wait 500
+expect asleep is 1
+wake
+wait 700
+expect asleep is 0
+expect screen is share
+shot 04-share-after-wake
+wait 2000
+# Done
+tap 1540 2105
+wait 700
+expect screen is library
+shot 05-library
+wait 1500
+# Share again, from the portrait Library: the runner's taps land off target in landscape (they
+# are scaled for portrait), so the landscape header's Share button (x 1880-2050) is out of reach.
+tap 1345 95
+wait 700
+expect screen is share
+rotate 1
+wait 700
+shot 06-share-landscape-again
+wait 1500
+rotate 0
+wait 700
+tap 1540 2105
+wait 700
+expect screen is library
+quit
