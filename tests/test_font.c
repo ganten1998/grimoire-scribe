@@ -1,0 +1,588 @@
+// test_font.c: text drawing. The CRC table below was recorded at 56d931c, before the Gothic
+// bold learned to spare accents: every printable ASCII character, in every face, both themes
+// and a range of sizes, must draw byte for byte as it did then, and so must every face that is
+// never overprinted (accents included, all but the inverted exclamation mark, which Jersey 10
+// now sets lower) and the symbols the pixel faces borrow from Terminess.
+// GRIMOIRE_FONT_CRC=print prints a fresh table instead of checking (after a deliberate change).
+#include <stdint.h>
+
+#include "font.h"
+#include "ui.h"
+#include "testlib.h"
+
+// Terminess is anti-aliased: its edge pixels come out of float math that can round differently
+// where the compiler fuses multiply-adds differently (gcc, or an x86 host). The table was
+// recorded with clang on arm64; elsewhere only the pixel faces (thresholded, exact) are compared.
+#if defined(__clang__) && (defined(__aarch64__) || defined(__arm64__))
+#define OUTLINE_EXACT 1
+#else
+#define OUTLINE_EXACT 0
+#endif
+
+static uint32_t crc_table[256];
+
+static void crc_init(void) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        crc_table[i] = c;
+    }
+}
+
+static uint32_t crc_add(uint32_t crc, const void *data, size_t n) {
+    const uint8_t *p = data;
+    crc = ~crc;
+    while (n--) crc = crc_table[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
+    return ~crc;
+}
+
+// The strings: printable ASCII in order; words with the usual kerning pairs; the same words cut
+// to fit a narrow box (the ellipsis path); accented letters and the punctuation Spanish, French,
+// German, Catalan and the Nordic languages need; symbols the pixel faces lack (drawn from
+// Terminess). The inverted exclamation mark is not in the accents: Jersey 10 sets it lower on
+// purpose (see inverted_exclamation_is_not_an_i).
+enum { STR_ASCII, STR_WORDS, STR_FIT, STR_ACCENTS, STR_FALLBACK, STR_COUNT };
+static char g_ascii[96];
+static const char *k_words = "The quick brown fox jumps over the lazy dog. AV To Wa Yo LT 0123456789 (x) [y] {z}";
+static const char *k_accents =
+    "\xc3\xb1\xc3\x91\xc3\xbc\xc3\x9c\xc3\xb6\xc3\x96\xc3\xa4\xc3\x84\xc3\xab\xc3\xa9\xc3\xa8\xc3\xaa\xc3\xa7"
+    "\xc3\xa1\xc3\xad\xc3\xb3\xc3\xba\xc3\xa0\xc3\xac\xc3\xb2\xc3\xb9\xc3\xa2\xc3\xae\xc3\xb4\xc3\xbb\xc3\xa3"
+    "\xc3\xb5\xc2\xbf\xc2\xab\xc2\xbb\xc3\x9f\xc5\x93\xc5\x92\xc3\xa6\xc3\x86\xc3\xb8\xc3\x98\xc3\xa5"
+    "\xc3\x85\xc3\xbf\xc5\xb8\xc2\xba\xc2\xaa \xc3\x87 M\xc3\xbasica A\xc3\xb1" "adir col\xc2\xb7lecci\xc3\xb3";
+static const char *k_fallback = "\xe2\x86\x90 \xe2\x86\x92 \xc2\xb1 \xc2\xb2 \xc2\xb3 \xc2\xb5 \xc2\xbd";
+
+static const char *str_of(int s) {
+    switch (s) {
+    case STR_ASCII: return g_ascii;
+    case STR_WORDS:
+    case STR_FIT: return k_words;
+    case STR_ACCENTS: return k_accents;
+    default: return k_fallback;
+    }
+}
+
+static const float k_sizes[] = {12.f, 20.f, 26.f, 27.f, 34.f, 40.f, 44.f, 48.4f, 56.f, 61.f, 64.f, 80.f, 100.f};
+#define NSIZES (int)(sizeof k_sizes / sizeof k_sizes[0])
+
+// Draws one string black on white in a canvas sized to it and returns the CRC of the pixels,
+// the canvas size and the advance.
+static uint32_t render_crc(FontFace f, float px, int s) {
+    const char *str = str_of(s);
+    int asc = font_ascent(f, px), desc = font_descent(f, px);
+    int adv = font_measure(f, px, str);
+    int pad = (int)px;
+    int w = adv + 2 * pad, h = asc + desc + 2 * pad;
+    Canvas c;
+    if (canvas_init(&c, w, h) != 0) return 0;
+    int drawn = adv;
+    if (s == STR_FIT)
+        font_draw_centered(&c, f, px, (Rect){pad, pad, adv * 2 / 5, asc + desc}, str, 0);
+    else
+        drawn = font_draw(&c, f, px, pad, pad + asc, str, 0);
+    int head[5] = {w, h, adv, drawn, asc * 1000 + desc};
+    uint32_t crc = crc_add(0, head, sizeof head);
+    for (int y = 0; y < h; y++) crc = crc_add(crc, c.px + y * c.stride, (size_t)w);
+    canvas_free(&c);
+    return crc;
+}
+
+// Gothic FONT_BOLD and FONT_CAPS overprint; their accented letters are the ones allowed to change.
+static bool pinned(int theme, int face, int s) {
+    return !(s == STR_ACCENTS && theme == THEME_GOTHIC && (face == FONT_BOLD || face == FONT_CAPS));
+}
+
+// Whether the string draws through Terminess (anti-aliased) in that theme and face.
+static bool outline(int theme, int face, int s) {
+    return theme == THEME_CLASSIC || face == FONT_FIXED || face == FONT_FIXED_BOLD || s == STR_FALLBACK;
+}
+
+#define NCRC (2 * FONT_FACE_COUNT * NSIZES * STR_COUNT)
+// Recorded at 56d931c (clang, arm64). Order: theme (Gothic, Classic), face, size, string;
+// 0 = not pinned.
+static const uint32_t k_crc[NCRC] = {
+    0x8D79336Au, 0xF50559C7u, 0x89EA6B5Fu, 0xB6BBB110u, 0xBC2013CFu, 0xF97FB7A5u,
+    0x2EEFC06Cu, 0x73234FF1u, 0x10F4896Eu, 0x7614D942u, 0x289EBBD4u, 0xB65571BBu,
+    0x8A532B0Eu, 0x3E9E687Cu, 0xA7274629u, 0xD9C55742u, 0x25FE266Cu, 0xD34A2243u,
+    0xEC8BA815u, 0x0EA25A85u, 0xA7D52727u, 0xB37CABA6u, 0x0F512DD3u, 0x93FE4BFCu,
+    0x8BE49938u, 0x649A98ECu, 0x60B09D7Au, 0x7113F261u, 0xDE987AE2u, 0x68B8E04Du,
+    0xF82B0070u, 0x83279D58u, 0x6F930FDDu, 0x055B92AFu, 0x18BF62E6u, 0xE78022F7u,
+    0x98FA2857u, 0x63C18BA8u, 0x268B04ACu, 0x2F6887F9u, 0x3D97305Au, 0xE1646CE8u,
+    0x57BD8F3Bu, 0xE2E540B4u, 0x75C67173u, 0x54BD71D4u, 0x5AB1ACC1u, 0x50262B93u,
+    0x3DC54B6Bu, 0xB8E0663Eu, 0x3D4B312Eu, 0x49FC5B56u, 0x2886006Cu, 0x0C8313D2u,
+    0x07F1CD3Eu, 0x595A77F2u, 0x85599589u, 0x168CDDBFu, 0x6C70BE28u, 0x0B6D93BEu,
+    0xD56F8137u, 0xCD74D6CEu, 0x53FF26FBu, 0x68610B83u, 0x391C09E3u, 0xAB14842Du,
+    0x5924B57Fu, 0x39076CB3u, 0x00000000u, 0x706B449Fu, 0x191E4BF6u, 0xB56FFB9Eu,
+    0xCFFBE7F4u, 0x00000000u, 0xD5085BAEu, 0x4663E6DFu, 0x577D641Cu, 0xBB688B86u,
+    0x00000000u, 0xF67B0DB5u, 0xB6D85B01u, 0xCA2991A0u, 0xACF3AA2Cu, 0x00000000u,
+    0xF75F9211u, 0xC0D86DC5u, 0x9C1202CAu, 0xA2E19845u, 0x00000000u, 0x5C1027BAu,
+    0x8697E8AFu, 0x643D95AEu, 0xAE4C1614u, 0x00000000u, 0xB8DBAB99u, 0xF93AD865u,
+    0x99BD41FEu, 0x13D0C654u, 0x00000000u, 0x12B66E15u, 0xC7C415E2u, 0x99F69114u,
+    0xDE39762Cu, 0x00000000u, 0x3CAC323Cu, 0xBE2656D2u, 0xED01F71Bu, 0x387AA963u,
+    0x00000000u, 0xFCBE16D8u, 0x99683CABu, 0x3BB272D3u, 0xF3BB62B4u, 0x00000000u,
+    0xBA62E7A6u, 0x5A9160E0u, 0xEDD4D9A6u, 0xF86FA247u, 0x00000000u, 0x49D631D1u,
+    0x3C80E6E8u, 0x46AF5761u, 0x4DFCD982u, 0x00000000u, 0xF0BBAE3Au, 0xA5F46A9Fu,
+    0x1289C267u, 0x434A25F2u, 0x00000000u, 0x365B0A7Au, 0x45466955u, 0xA8B9E2A0u,
+    0x8CD43526u, 0x22D52FBCu, 0xF93E6504u, 0x9036F86Fu, 0xA4F956D0u, 0x86EED8BAu,
+    0x19D8D0ABu, 0xEEAFD3B1u, 0x599C30F4u, 0xF12A1ECDu, 0x39BD9080u, 0x67DEF86Eu,
+    0x0A4CD7F8u, 0x7CD01329u, 0x051EB8E8u, 0x0B8D3C06u, 0x6AC4694Eu, 0x10303F12u,
+    0x1B70396Eu, 0x78431E8Cu, 0x4301158Bu, 0xCE7A1DCDu, 0xA2D38B0Au, 0x82102305u,
+    0x8FC222E9u, 0x3D4FC254u, 0xA4CD90EBu, 0x4B64BA76u, 0x706305EBu, 0x7151AEB3u,
+    0xC4FFB9CFu, 0x524115CAu, 0x66F6DD97u, 0x4CAABD27u, 0xF9FC40F9u, 0x69646099u,
+    0x9F14C708u, 0xDD1D6CC0u, 0x6E0E8AEDu, 0xA5A861EFu, 0x5F191305u, 0x3B228739u,
+    0x2FB5C505u, 0xF2005FE6u, 0x7FABDD53u, 0xDC35DB73u, 0x2A7B6867u, 0x4E9A823Eu,
+    0x5C8671EDu, 0xC7F7FE62u, 0x1AB60105u, 0x16FE2FBFu, 0xCE17997Fu, 0x43700163u,
+    0x839EE47Fu, 0xEF05DD19u, 0x29641F13u, 0xD572ED9Du, 0x4E169F6Eu, 0xAA0EF2EAu,
+    0xEF6FF330u, 0x2A557C25u, 0xE45C5CD3u, 0xAB14842Du, 0x5924B57Fu, 0x39076CB3u,
+    0x00000000u, 0x706B449Fu, 0x191E4BF6u, 0xB56FFB9Eu, 0xCFFBE7F4u, 0x00000000u,
+    0xD5085BAEu, 0x4663E6DFu, 0x577D641Cu, 0xBB688B86u, 0x00000000u, 0xF67B0DB5u,
+    0xB6D85B01u, 0xCA2991A0u, 0xACF3AA2Cu, 0x00000000u, 0xF75F9211u, 0xC0D86DC5u,
+    0x9C1202CAu, 0xA2E19845u, 0x00000000u, 0x5C1027BAu, 0x8697E8AFu, 0x643D95AEu,
+    0xAE4C1614u, 0x00000000u, 0xB8DBAB99u, 0xF93AD865u, 0x99BD41FEu, 0x13D0C654u,
+    0x00000000u, 0x12B66E15u, 0xC7C415E2u, 0x99F69114u, 0xDE39762Cu, 0x00000000u,
+    0x3CAC323Cu, 0xBE2656D2u, 0xED01F71Bu, 0x387AA963u, 0x00000000u, 0xFCBE16D8u,
+    0x99683CABu, 0x3BB272D3u, 0xF3BB62B4u, 0x00000000u, 0xBA62E7A6u, 0x5A9160E0u,
+    0xEDD4D9A6u, 0xF86FA247u, 0x00000000u, 0x49D631D1u, 0x3C80E6E8u, 0x46AF5761u,
+    0x4DFCD982u, 0x00000000u, 0xF0BBAE3Au, 0xA5F46A9Fu, 0x1289C267u, 0x434A25F2u,
+    0x00000000u, 0x365B0A7Au, 0xFBE5AB20u, 0xA6F102A7u, 0xB993C598u, 0xAE77C13Bu,
+    0x64C2AF3Du, 0xABB59CB6u, 0x4E8B46A3u, 0xD2C9A466u, 0x4215FEA9u, 0xBE1A3BD4u,
+    0x07902E15u, 0x414D2F8Du, 0xCD2CB35Bu, 0x216CD482u, 0xF77C1875u, 0x8F1F3EAEu,
+    0xA68026C5u, 0xE5DA31E2u, 0xC0D1E024u, 0xC12FE0EEu, 0x67BF35B7u, 0x9EB2C046u,
+    0xF8D2527Fu, 0x2F6D33D2u, 0x18B3BE04u, 0x150E9A42u, 0xB8FE1345u, 0x4188D3CCu,
+    0xC92E4FC0u, 0xF41ED0ADu, 0xCA332E07u, 0x5ED4EB55u, 0xAEA965C1u, 0xEF597E31u,
+    0x27C35354u, 0x1B4DC403u, 0xB0C458B4u, 0xB3F5341Du, 0x48C35007u, 0xDDE64D0Au,
+    0x3637B46Eu, 0x798D4FEAu, 0xA6F049F1u, 0x44136FA7u, 0xDA2F9574u, 0x11B2F37Fu,
+    0x1FB94067u, 0xE7189716u, 0xCE570A4Au, 0xC88403C0u, 0x8322AAA6u, 0x002B58B4u,
+    0xB66F2798u, 0xA763B708u, 0x1239FF31u, 0x1FB470C7u, 0x7F8BC7AEu, 0x3146AF34u,
+    0xC0A00C93u, 0x2C44D991u, 0x54FB7217u, 0xE326AE52u, 0x6286D547u, 0xD7FF0BEAu,
+    0xE1A64EBEu, 0x1E5897E0u, 0xF2208B19u, 0xC1C43694u, 0xE9EC08D2u, 0xD7638795u,
+    0x99F872F2u, 0xEAF0FFE0u, 0x27D47C4Du, 0xE57E1170u, 0xE035021Eu, 0xE8B414B4u,
+    0x8CC98DACu, 0x78C731FAu, 0x86CD32C4u, 0xCEE7AE21u, 0xB4FAAE66u, 0x83FC626Au,
+    0xEBB55E85u, 0x7406074Bu, 0x62EF00EEu, 0x8C83A6D5u, 0xBC1CF1EEu, 0xF79435ECu,
+    0x0CAAFC4Fu, 0xEEDFBF3Du, 0xEA04179Bu, 0x62004280u, 0xB3BA3010u, 0xB3A7B03Eu,
+    0x3A92A4A5u, 0xE4C4AADCu, 0xACF7A858u, 0xD6B27D54u, 0x8A513B09u, 0xF8F70665u,
+    0x11CE3121u, 0x33B98874u, 0x3A25619Bu, 0xEFA983CAu, 0xFD7EF127u, 0xBAB7259Bu,
+    0x377E9519u, 0x7347CC50u, 0xB58AD568u, 0xDAFA9585u, 0x520532AEu, 0x1A9EF4D7u,
+    0x7F011A92u, 0x46A00122u, 0x6831C877u, 0xADB116BCu, 0x520F16F7u, 0x895DA953u,
+    0x1C9BFC67u, 0x9B16DA62u, 0x6E1FCA2Cu, 0x26B62016u, 0x34BF342Au, 0xCFE5C5C7u,
+    0x070D840Eu, 0xCC7849D6u, 0xF7B2A3AAu, 0xCD5E13A2u, 0xA74CFBBEu, 0x42FA0C32u,
+    0xFBE5AB20u, 0xA6F102A7u, 0xB993C598u, 0xAE77C13Bu, 0x64C2AF3Du, 0xABB59CB6u,
+    0x4E8B46A3u, 0xD2C9A466u, 0x4215FEA9u, 0xBE1A3BD4u, 0x07902E15u, 0x414D2F8Du,
+    0xCD2CB35Bu, 0x216CD482u, 0xF77C1875u, 0x8F1F3EAEu, 0xA68026C5u, 0xE5DA31E2u,
+    0xC0D1E024u, 0xC12FE0EEu, 0x67BF35B7u, 0x9EB2C046u, 0xF8D2527Fu, 0x2F6D33D2u,
+    0x18B3BE04u, 0x150E9A42u, 0xB8FE1345u, 0x4188D3CCu, 0xC92E4FC0u, 0xF41ED0ADu,
+    0xCA332E07u, 0x5ED4EB55u, 0xAEA965C1u, 0xEF597E31u, 0x27C35354u, 0x1B4DC403u,
+    0xB0C458B4u, 0xB3F5341Du, 0x48C35007u, 0xDDE64D0Au, 0x3637B46Eu, 0x798D4FEAu,
+    0xA6F049F1u, 0x44136FA7u, 0xDA2F9574u, 0x11B2F37Fu, 0x1FB94067u, 0xE7189716u,
+    0xCE570A4Au, 0xC88403C0u, 0x8322AAA6u, 0x002B58B4u, 0xB66F2798u, 0xA763B708u,
+    0x1239FF31u, 0x1FB470C7u, 0x7F8BC7AEu, 0x3146AF34u, 0xC0A00C93u, 0x2C44D991u,
+    0x54FB7217u, 0xE326AE52u, 0x6286D547u, 0xD7FF0BEAu, 0xE1A64EBEu, 0x1E5897E0u,
+    0xF2208B19u, 0xC1C43694u, 0xE9EC08D2u, 0xD7638795u, 0x99F872F2u, 0xEAF0FFE0u,
+    0x27D47C4Du, 0xE57E1170u, 0xE035021Eu, 0xE8B414B4u, 0x8CC98DACu, 0x78C731FAu,
+    0x86CD32C4u, 0xCEE7AE21u, 0xB4FAAE66u, 0x83FC626Au, 0xEBB55E85u, 0x7406074Bu,
+    0x62EF00EEu, 0x8C83A6D5u, 0xBC1CF1EEu, 0xF79435ECu, 0x0CAAFC4Fu, 0xEEDFBF3Du,
+    0xEA04179Bu, 0x62004280u, 0xB3BA3010u, 0xB3A7B03Eu, 0x3A92A4A5u, 0xE4C4AADCu,
+    0xACF7A858u, 0xD6B27D54u, 0x8A513B09u, 0xF8F70665u, 0x11CE3121u, 0x33B98874u,
+    0x3A25619Bu, 0xEFA983CAu, 0xFD7EF127u, 0xBAB7259Bu, 0x377E9519u, 0x7347CC50u,
+    0xB58AD568u, 0xDAFA9585u, 0x520532AEu, 0x1A9EF4D7u, 0x7F011A92u, 0x46A00122u,
+    0x6831C877u, 0xADB116BCu, 0x520F16F7u, 0x895DA953u, 0x1C9BFC67u, 0x9B16DA62u,
+    0x6E1FCA2Cu, 0x26B62016u, 0x34BF342Au, 0xCFE5C5C7u, 0x070D840Eu, 0xCC7849D6u,
+    0xF7B2A3AAu, 0xCD5E13A2u, 0xA74CFBBEu, 0x42FA0C32u, 0x1E5897E0u, 0xF2208B19u,
+    0xC1C43694u, 0xE9EC08D2u, 0xD7638795u, 0x99F872F2u, 0xEAF0FFE0u, 0x27D47C4Du,
+    0xE57E1170u, 0xE035021Eu, 0xE8B414B4u, 0x8CC98DACu, 0x78C731FAu, 0x86CD32C4u,
+    0xCEE7AE21u, 0xB4FAAE66u, 0x83FC626Au, 0xEBB55E85u, 0x7406074Bu, 0x62EF00EEu,
+    0x8C83A6D5u, 0xBC1CF1EEu, 0xF79435ECu, 0x0CAAFC4Fu, 0xEEDFBF3Du, 0xEA04179Bu,
+    0x62004280u, 0xB3BA3010u, 0xB3A7B03Eu, 0x3A92A4A5u, 0xE4C4AADCu, 0xACF7A858u,
+    0xD6B27D54u, 0x8A513B09u, 0xF8F70665u, 0x11CE3121u, 0x33B98874u, 0x3A25619Bu,
+    0xEFA983CAu, 0xFD7EF127u, 0xBAB7259Bu, 0x377E9519u, 0x7347CC50u, 0xB58AD568u,
+    0xDAFA9585u, 0x520532AEu, 0x1A9EF4D7u, 0x7F011A92u, 0x46A00122u, 0x6831C877u,
+    0xADB116BCu, 0x520F16F7u, 0x895DA953u, 0x1C9BFC67u, 0x9B16DA62u, 0x6E1FCA2Cu,
+    0x26B62016u, 0x34BF342Au, 0xCFE5C5C7u, 0x070D840Eu, 0xCC7849D6u, 0xF7B2A3AAu,
+    0xCD5E13A2u, 0xA74CFBBEu, 0x42FA0C32u, 0x1E5897E0u, 0xF2208B19u, 0xC1C43694u,
+    0xE9EC08D2u, 0xD7638795u, 0x99F872F2u, 0xEAF0FFE0u, 0x27D47C4Du, 0xE57E1170u,
+    0xE035021Eu, 0xE8B414B4u, 0x8CC98DACu, 0x78C731FAu, 0x86CD32C4u, 0xCEE7AE21u,
+    0xB4FAAE66u, 0x83FC626Au, 0xEBB55E85u, 0x7406074Bu, 0x62EF00EEu, 0x8C83A6D5u,
+    0xBC1CF1EEu, 0xF79435ECu, 0x0CAAFC4Fu, 0xEEDFBF3Du, 0xEA04179Bu, 0x62004280u,
+    0xB3BA3010u, 0xB3A7B03Eu, 0x3A92A4A5u, 0xE4C4AADCu, 0xACF7A858u, 0xD6B27D54u,
+    0x8A513B09u, 0xF8F70665u, 0x11CE3121u, 0x33B98874u, 0x3A25619Bu, 0xEFA983CAu,
+    0xFD7EF127u, 0xBAB7259Bu, 0x377E9519u, 0x7347CC50u, 0xB58AD568u, 0xDAFA9585u,
+    0x520532AEu, 0x1A9EF4D7u, 0x7F011A92u, 0x46A00122u, 0x6831C877u, 0xADB116BCu,
+    0x520F16F7u, 0x895DA953u, 0x1C9BFC67u, 0x9B16DA62u, 0x6E1FCA2Cu, 0x26B62016u,
+    0x34BF342Au, 0xCFE5C5C7u, 0x070D840Eu, 0xCC7849D6u, 0xF7B2A3AAu, 0xCD5E13A2u,
+    0xA74CFBBEu, 0x42FA0C32u, 0xFBE5AB20u, 0xA6F102A7u, 0xB993C598u, 0xAE77C13Bu,
+    0x64C2AF3Du, 0xABB59CB6u, 0x4E8B46A3u, 0xD2C9A466u, 0x4215FEA9u, 0xBE1A3BD4u,
+    0x07902E15u, 0x414D2F8Du, 0xCD2CB35Bu, 0x216CD482u, 0xF77C1875u, 0x8F1F3EAEu,
+    0xA68026C5u, 0xE5DA31E2u, 0xC0D1E024u, 0xC12FE0EEu, 0x67BF35B7u, 0x9EB2C046u,
+    0xF8D2527Fu, 0x2F6D33D2u, 0x18B3BE04u, 0x150E9A42u, 0xB8FE1345u, 0x4188D3CCu,
+    0xC92E4FC0u, 0xF41ED0ADu, 0xCA332E07u, 0x5ED4EB55u, 0xAEA965C1u, 0xEF597E31u,
+    0x27C35354u, 0x1B4DC403u, 0xB0C458B4u, 0xB3F5341Du, 0x48C35007u, 0xDDE64D0Au,
+    0x3637B46Eu, 0x798D4FEAu, 0xA6F049F1u, 0x44136FA7u, 0xDA2F9574u, 0x11B2F37Fu,
+    0x1FB94067u, 0xE7189716u, 0xCE570A4Au, 0xC88403C0u, 0x8322AAA6u, 0x002B58B4u,
+    0xB66F2798u, 0xA763B708u, 0x1239FF31u, 0x1FB470C7u, 0x7F8BC7AEu, 0x3146AF34u,
+    0xC0A00C93u, 0x2C44D991u, 0x54FB7217u, 0xE326AE52u, 0x6286D547u, 0xD7FF0BEAu,
+    0xE1A64EBEu, 0x1E5897E0u, 0xF2208B19u, 0xC1C43694u, 0xE9EC08D2u, 0xD7638795u,
+    0x99F872F2u, 0xEAF0FFE0u, 0x27D47C4Du, 0xE57E1170u, 0xE035021Eu, 0xE8B414B4u,
+    0x8CC98DACu, 0x78C731FAu, 0x86CD32C4u, 0xCEE7AE21u, 0xB4FAAE66u, 0x83FC626Au,
+    0xEBB55E85u, 0x7406074Bu, 0x62EF00EEu, 0x8C83A6D5u, 0xBC1CF1EEu, 0xF79435ECu,
+    0x0CAAFC4Fu, 0xEEDFBF3Du, 0xEA04179Bu, 0x62004280u, 0xB3BA3010u, 0xB3A7B03Eu,
+    0x3A92A4A5u, 0xE4C4AADCu, 0xACF7A858u, 0xD6B27D54u, 0x8A513B09u, 0xF8F70665u,
+    0x11CE3121u, 0x33B98874u, 0x3A25619Bu, 0xEFA983CAu, 0xFD7EF127u, 0xBAB7259Bu,
+    0x377E9519u, 0x7347CC50u, 0xB58AD568u, 0xDAFA9585u, 0x520532AEu, 0x1A9EF4D7u,
+    0x7F011A92u, 0x46A00122u, 0x6831C877u, 0xADB116BCu, 0x520F16F7u, 0x895DA953u,
+    0x1C9BFC67u, 0x9B16DA62u, 0x6E1FCA2Cu, 0x26B62016u, 0x34BF342Au, 0xCFE5C5C7u,
+    0x070D840Eu, 0xCC7849D6u, 0xF7B2A3AAu, 0xCD5E13A2u, 0xA74CFBBEu, 0x42FA0C32u,
+};
+
+TEST(ascii_unchanged) {
+    bool print = getenv("GRIMOIRE_FONT_CRC") && !strcmp(getenv("GRIMOIRE_FONT_CRC"), "print");
+    int i = 0, compared = 0, bad = 0;
+    if (print) printf("static const uint32_t k_crc[NCRC] = {\n");
+    for (int theme = THEME_GOTHIC; theme <= THEME_CLASSIC; theme++) {
+        ui_set_theme((UiTheme)theme);
+        for (int face = 0; face < FONT_FACE_COUNT; face++)
+            for (int z = 0; z < NSIZES; z++)
+                for (int s = 0; s < STR_COUNT; s++, i++) {
+                    uint32_t crc = pinned(theme, face, s) ? render_crc((FontFace)face, k_sizes[z], s) : 0;
+                    if (print) {
+                        printf("%s0x%08Xu,%s", i % 6 ? " " : "    ", crc, i % 6 == 5 || i == NCRC - 1 ? "\n" : "");
+                        continue;
+                    }
+                    if (!crc || (outline(theme, face, s) && !OUTLINE_EXACT)) continue;
+                    compared++;
+                    if (crc != k_crc[i]) {
+                        bad++;
+                        fprintf(stderr, "  changed: %s face %d at %.1f px, string %d\n",
+                                theme == THEME_GOTHIC ? "gothic" : "classic", face, k_sizes[z], s);
+                    }
+                }
+    }
+    if (print) printf("};\n");
+    ui_set_theme(THEME_GOTHIC);
+    CHECK(i == NCRC);
+    CHECK(print || compared > NCRC / 2 || !OUTLINE_EXACT);
+    CHECK(bad == 0);
+}
+
+// ---- the Gothic bold and accents ----
+// The bold overprints the glyph one design pixel to the right. Accent marks it would fill in
+// (the dots of u-umlaut, the tilde, the circumflex, the ring) are drawn as designed instead; in
+// sharp s and o slash a one-pixel gap moves right instead of closing; everything else is exactly
+// the overprint.
+
+static bool ink(const Canvas *c, int x, int y) { return c->px[y * c->stride + x] < 128; }
+
+// A canvas for one glyph at px, white.
+static bool blank(Canvas *c, float px) { return canvas_init(c, (int)(6 * px), (int)(4 * px)) == 0; }
+
+// One string, black, its pen at x = px + dx and its baseline at y = 2 px.
+static void draw1(Canvas *c, FontFace f, float px, int dx, const char *s) {
+    font_draw(c, f, px, (int)px + dx, (int)(2 * px), s, 0);
+}
+
+static int top_row(const Canvas *c) {
+    for (int y = 0; y < c->h; y++)
+        for (int x = 0; x < c->w; x++)
+            if (ink(c, x, y)) return y;
+    return -1;
+}
+
+// Separate (8-connected) dark shapes in the rows above y_end.
+static int components_above(const Canvas *c, int y_end) {
+    int n = 0, w = c->w;
+    int *stack = malloc((size_t)w * (size_t)y_end * sizeof *stack);
+    uint8_t *seen = calloc((size_t)w * (size_t)y_end, 1);
+    for (int i = 0; stack && seen && i < w * y_end; i++) {
+        if (seen[i] || !ink(c, i % w, i / w)) continue;
+        n++;
+        int sp = 0;
+        seen[i] = 1;
+        stack[sp++] = i;
+        while (sp) {
+            int p = stack[--sp], px = p % w, py = p / w;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int qx = px + dx, qy = py + dy;
+                    if (qx < 0 || qy < 0 || qx >= w || qy >= y_end || seen[qy * w + qx] || !ink(c, qx, qy)) continue;
+                    seen[qy * w + qx] = 1;
+                    stack[sp++] = qy * w + qx;
+                }
+        }
+    }
+    free(stack);
+    free(seen);
+    return n;
+}
+
+// The most separate dark runs in any one row above y_end.
+static int max_runs_above(const Canvas *c, int y_end) {
+    int best = 0;
+    for (int y = 0; y < y_end; y++) {
+        int runs = 0;
+        for (int x = 0; x < c->w; x++) runs += ink(c, x, y) && (x == 0 || !ink(c, x - 1, y));
+        if (runs > best) best = runs;
+    }
+    return best;
+}
+
+static bool same_rows(const Canvas *a, const Canvas *b, int y0, int y1) {
+    for (int y = y0; y < y1; y++)
+        for (int x = 0; x < a->w; x++)
+            if (ink(a, x, y) != ink(b, x, y)) return false;
+    return true;
+}
+
+// The UI's bold sizes: small (34), toasts and menus (44), single-glyph keyboard keys (64),
+// button labels (FONT_CAPS, 30 and 44), and the smallest step (k = 1).
+static const struct {
+    FontFace f;
+    float px;
+} k_bold[] = {{FONT_BOLD, 20.f}, {FONT_BOLD, 34.f}, {FONT_BOLD, 44.f}, {FONT_BOLD, 64.f},
+              {FONT_CAPS, 30.f}, {FONT_CAPS, 44.f}};
+#define NBOLD (int)(sizeof k_bold / sizeof k_bold[0])
+
+TEST(bold_umlauts_keep_two_dots) {
+    ui_set_theme(THEME_GOTHIC);
+    // Each base letter and the same letter with a diaeresis (the body is the same glyph).
+    static const char *pairs[][2] = {{"u", "\xc3\xbc"}, {"U", "\xc3\x9c"}, {"o", "\xc3\xb6"}, {"O", "\xc3\x96"},
+                                     {"a", "\xc3\xa4"}, {"A", "\xc3\x84"}, {"e", "\xc3\xab"}};
+    for (int z = 0; z < NBOLD; z++)
+        for (int i = 0; i < (int)(sizeof pairs / sizeof pairs[0]); i++) {
+            Canvas base, acc;
+            if (!blank(&base, k_bold[z].px) || !blank(&acc, k_bold[z].px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&base, k_bold[z].f, k_bold[z].px, 0, pairs[i][0]);
+            draw1(&acc, k_bold[z].f, k_bold[z].px, 0, pairs[i][1]);
+            int top = top_row(&base), n = top > 0 ? components_above(&acc, top) : -1;
+            if (n != 2) fprintf(stderr, "  %s at %.0f px: %d dark shapes above the letter\n", pairs[i][1], k_bold[z].px, n);
+            CHECK(n == 2);
+            canvas_free(&base);
+            canvas_free(&acc);
+        }
+}
+
+TEST(bold_tildes_and_hats_keep_their_gaps) {
+    ui_set_theme(THEME_GOTHIC);
+    // n/N/a/o tilde, the circumflexes, a/A ring, carons and the double acute: the mark is
+    // drawn exactly as in the regular weight and still has a gap in it.
+    static const char *pairs[][2] = {
+        {"n", "\xc3\xb1"}, {"N", "\xc3\x91"}, {"a", "\xc3\xa3"}, {"o", "\xc3\xb5"}, {"a", "\xc3\xa2"},
+        {"e", "\xc3\xaa"}, {"o", "\xc3\xb4"}, {"u", "\xc3\xbb"}, {"a", "\xc3\xa5"}, {"A", "\xc3\x85"},
+        {"c", "\xc4\x8d"}, {"S", "\xc5\xa0"}, {"o", "\xc5\x91"}};
+    for (int z = 0; z < NBOLD; z++)
+        for (int i = 0; i < (int)(sizeof pairs / sizeof pairs[0]); i++) {
+            Canvas base, bold, reg;
+            if (!blank(&base, k_bold[z].px) || !blank(&bold, k_bold[z].px) || !blank(&reg, k_bold[z].px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&base, k_bold[z].f, k_bold[z].px, 0, pairs[i][0]);
+            draw1(&bold, k_bold[z].f, k_bold[z].px, 0, pairs[i][1]);
+            draw1(&reg, FONT_REGULAR, k_bold[z].px, 0, pairs[i][1]);
+            int top = top_row(&base);
+            bool same = top > 0 && same_rows(&bold, &reg, 0, top);
+            int runs = top > 0 ? max_runs_above(&bold, top) : 0;
+            if (!same || runs < 2)
+                fprintf(stderr, "  %s at %.0f px: mark %s, %d runs\n", pairs[i][1], k_bold[z].px,
+                        same ? "as designed" : "changed", runs);
+            CHECK(same && runs >= 2);
+            canvas_free(&base);
+            canvas_free(&bold);
+            canvas_free(&reg);
+        }
+}
+
+// Every glyph of the face from U+0021 to U+017F: the bold covers the regular weight (but in
+// sharp s and o slash, whose gaps move right) and never more than the plain overprint; ASCII
+// and letters without such marks are exactly the plain overprint, letters with them are not.
+TEST(bold_differs_only_at_marks) {
+    ui_set_theme(THEME_GOTHIC);
+    static const uint32_t harmless[] = {0xE7, 0xC7, 0xE6, 0x153, 0xAB, 0xBB, 0xE9, 0xE1, 0xED, 0xF3,
+                                        0xFA, 0xE0, 0xF9, 0xBF, 0xA1, 0xFF, 0xEF, 0x142, 0xB7};
+    // (i circumflex is not here: its hat's gap is two pixels wide, so the overprint keeps it.)
+    static const uint32_t spared[] = {0xFC, 0xF6, 0xE4, 0xEB, 0xDC, 0xD6, 0xC4, 0xF1, 0xD1, 0xE3,
+                                      0xF5, 0xE2, 0xEA, 0xF4, 0xFB, 0xE5, 0xC5, 0x10D, 0x151};
+    static const uint32_t moved[] = {0xDF, 0xF8, 0xD8};
+    static const float sizes[] = {20.f, 44.f, 64.f};
+    int checked = 0;
+    for (int z = 0; z < 3; z++) {
+        float px = sizes[z];
+        for (uint32_t cp = 0x21; cp <= 0x17F; cp++) {
+            if ((cp > 0x7E && cp < 0xA1) || !font_has_glyph(FONT_BOLD, cp)) continue;
+            char s[4] = {0};
+            if (cp < 0x80) s[0] = (char)cp;
+            else s[0] = (char)(0xC0 | cp >> 6), s[1] = (char)(0x80 | (cp & 0x3F));
+            int k = font_measure(FONT_BOLD, px, s) - font_measure(FONT_REGULAR, px, s);
+            Canvas a, r, b;
+            if (!blank(&a, px) || !blank(&r, px) || !blank(&b, px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&a, FONT_BOLD, px, 0, s);
+            draw1(&r, FONT_REGULAR, px, 0, s);
+            for (int d = 0; d <= k; d++) draw1(&b, FONT_REGULAR, px, d, s);
+            bool covers = true, within = true, equal = true;
+            for (int y = 0; y < a.h; y++)
+                for (int x = 0; x < a.w; x++) {
+                    covers &= !ink(&r, x, y) || ink(&a, x, y);
+                    within &= !ink(&a, x, y) || ink(&b, x, y);
+                    equal &= ink(&a, x, y) == ink(&b, x, y);
+                }
+            bool want_equal = cp < 0x80, want_spared = false, want_moved = false;
+            for (int i = 0; i < (int)(sizeof harmless / sizeof harmless[0]); i++) want_equal |= harmless[i] == cp;
+            for (int i = 0; i < (int)(sizeof spared / sizeof spared[0]); i++) want_spared |= spared[i] == cp;
+            for (int i = 0; i < (int)(sizeof moved / sizeof moved[0]); i++) want_moved |= moved[i] == cp;
+            bool ok = k > 0 && (covers || want_moved) && within && (!want_equal || equal) &&
+                      (!(want_spared || want_moved) || !equal);
+            if (!ok) fprintf(stderr, "  U+%04X at %.0f px: k %d covers %d within %d equal %d\n", cp, px, k, covers, within, equal);
+            CHECK(ok);
+            checked++;
+            canvas_free(&a);
+            canvas_free(&r);
+            canvas_free(&b);
+        }
+    }
+    CHECK(checked > 3 * 250);
+}
+
+// Gaps in row y: runs of paper with ink on both sides.
+static int gaps_in_row(const Canvas *c, int y) {
+    int first = -1, last = -1, gaps = 0;
+    for (int x = 0; x < c->w; x++)
+        if (ink(c, x, y)) {
+            if (first < 0) first = x;
+            last = x;
+        }
+    for (int x = first + 1; first >= 0 && x <= last; x++) gaps += !ink(c, x, y) && ink(c, x - 1, y);
+    return gaps;
+}
+
+// The first run of ink in row y, in pixels (0 if the row has none).
+static int first_run(const Canvas *c, int y) {
+    int x = 0, n = 0;
+    while (x < c->w && !ink(c, x, y)) x++;
+    while (x < c->w && ink(c, x++, y)) n++;
+    return n;
+}
+
+// Sharp s and o slash in bold: every gap of the regular weight survives in each row (the
+// plain overprint closes the notch that sets sharp s apart from B, and fills the counter of
+// o slash on both sides of the slash), while the stroke on the left of each row still takes
+// the overprint (one design pixel wider: a stem of even weight), and sharp s stays several
+// design pixels away from a bold B and a bold 8.
+TEST(bold_letters_keep_their_gaps) {
+    ui_set_theme(THEME_GOTHIC);
+    static const char *const letters[] = {"\xc3\x9f", "\xc3\xb8", "\xc3\x98"};
+    for (int z = 0; z < NBOLD; z++) {
+        FontFace f = k_bold[z].f;
+        float px = k_bold[z].px;
+        int k = font_measure(FONT_BOLD, px, "B") - font_measure(FONT_REGULAR, px, "B");
+        for (int i = 0; i < 3; i++) {
+            Canvas r, b;
+            if (!blank(&r, px) || !blank(&b, px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&r, FONT_REGULAR, px, 0, letters[i]);
+            draw1(&b, f, px, 0, letters[i]);
+            int lost = 0, rows = 0, thin = 0;
+            for (int y = 0; y < r.h; y++) {
+                int g = gaps_in_row(&r, y);
+                rows += g > 0;
+                lost += gaps_in_row(&b, y) < g;
+                thin += first_run(&r, y) && first_run(&b, y) != first_run(&r, y) + k;
+            }
+            if (lost || thin || !rows)
+                fprintf(stderr, "  %s at %.0f px: %d of %d rows lost a gap, %d rows not emboldened\n", letters[i], px,
+                        lost, rows, thin);
+            CHECK(k > 0 && rows > 0 && lost == 0 && thin == 0);
+            for (int j = 0; i == 0 && j < 2; j++) {
+                Canvas o;
+                if (!blank(&o, px)) {
+                    CHECK(!"canvas");
+                    return;
+                }
+                draw1(&o, f, px, 0, j ? "8" : "B");
+                int differ = 0;
+                for (int y = 0; y < b.h; y++)
+                    for (int x = 0; x < b.w; x++) differ += ink(&b, x, y) != ink(&o, x, y);
+                if (differ < 4 * k * k) fprintf(stderr, "  sharp s at %.0f px: %d pixels from a %s\n", px, differ, j ? "8" : "B");
+                CHECK(k > 0 && differ >= 4 * k * k);
+                canvas_free(&o);
+            }
+            canvas_free(&r);
+            canvas_free(&b);
+        }
+    }
+}
+
+static int bottom_row(const Canvas *c) {
+    for (int y = c->h - 1; y >= 0; y--)
+        for (int x = 0; x < c->w; x++)
+            if (ink(c, x, y)) return y;
+    return -1;
+}
+
+// Jersey 10 draws the inverted exclamation mark exactly as its i. Its own pixels are kept, set
+// two design pixels lower: the stem hangs below the baseline (within the face's descent), so a
+// Spanish exclamation no longer opens with an i. Jacquard 24 and Terminess have their own shape
+// for it, left where it was. In every face, at the UI's sizes, it is not an i.
+TEST(inverted_exclamation_is_not_an_i) {
+    static const struct {
+        FontFace f;
+        float px;
+    } k[] = {{FONT_REGULAR, 20.f}, {FONT_REGULAR, 34.f}, {FONT_REGULAR, 48.4f}, {FONT_BOLD, 34.f}, {FONT_BOLD, 44.f},
+             {FONT_BOLD, 64.f},    {FONT_CAPS, 30.f},    {FONT_CAPS, 44.f},     {FONT_TITLE, 64.f}, {FONT_TITLE, 115.2f},
+             {FONT_FIXED, 44.f},   {FONT_FIXED_BOLD, 44.f}};
+    for (int theme = THEME_GOTHIC; theme <= THEME_CLASSIC; theme++) {
+        ui_set_theme((UiTheme)theme);
+        for (int z = 0; z < (int)(sizeof k / sizeof k[0]); z++) {
+            FontFace f = k[z].f;
+            float px = k[z].px;
+            Canvas i, inv;
+            if (!blank(&i, px) || !blank(&inv, px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&i, f, px, 0, "i");
+            draw1(&inv, f, px, 0, "\xc2\xa1");
+            bool same = true;
+            for (int y = 0; y < i.h; y++)
+                for (int x = 0; x < i.w; x++) same &= ink(&i, x, y) == ink(&inv, x, y);
+            int base = (int)(2 * px), low = bottom_row(&inv);
+            bool jersey = theme == THEME_GOTHIC && (f == FONT_REGULAR || f == FONT_BOLD || f == FONT_CAPS);
+            bool ok = !same && low >= 0;
+            if (jersey) {
+                // An i's pixels, moved down by two design pixels (d screen pixels).
+                int d = 2 * (font_measure(FONT_BOLD, px, "i") - font_measure(FONT_REGULAR, px, "i"));
+                bool lowered = d > 0;
+                for (int y = 0; y < i.h; y++)
+                    for (int x = 0; x < i.w; x++) lowered &= ink(&inv, x, y) == (y >= d && ink(&i, x, y - d));
+                ok &= lowered && low >= base && low < base + font_descent(f, px);
+            } else {
+                ok &= low < base;  // as the font has it: standing on the baseline
+            }
+            if (!ok)
+                fprintf(stderr, "  %s face %d at %.1f px: %s, lowest ink %d (baseline %d)\n",
+                        theme == THEME_GOTHIC ? "gothic" : "classic", f, px, same ? "drawn as an i" : "not an i", low, base);
+            CHECK(ok);
+            canvas_free(&i);
+            canvas_free(&inv);
+        }
+    }
+    ui_set_theme(THEME_GOTHIC);
+}
+
+int main(void) {
+    for (int i = 0; i < 95; i++) g_ascii[i] = (char)(32 + i);
+    crc_init();
+    ui_init(300.f);
+    if (font_init() != 0) return 1;
+    RUN(ascii_unchanged);
+    RUN(bold_umlauts_keep_two_dots);
+    RUN(bold_tildes_and_hats_keep_their_gaps);
+    RUN(bold_differs_only_at_marks);
+    RUN(bold_letters_keep_their_gaps);
+    RUN(inverted_exclamation_is_not_an_i);
+    return tl_done();
+}

@@ -70,6 +70,7 @@ typedef struct {
     int w, h, xoff, yoff;
     int advance;        // unscaled advance (font units)
     uint8_t *bmp;
+    uint8_t *bold;      // pixel glyphs above U+007F: the bold weight, w + k wide (see pixel_bold)
 } Glyph;
 
 #define CACHE_SLOTS 1024
@@ -78,7 +79,10 @@ static int g_cache_used;
 
 static void cache_flush(void) {
     for (int i = 0; i < CACHE_SLOTS; i++) {
-        if (g_cache[i].used) stbtt_FreeBitmap(g_cache[i].bmp, NULL);
+        if (g_cache[i].used) {
+            stbtt_FreeBitmap(g_cache[i].bmp, NULL);
+            free(g_cache[i].bold);
+        }
         g_cache[i] = (Glyph){0};
     }
     g_cache_used = 0;
@@ -110,16 +114,23 @@ void font_shutdown(void) {
     g_ready = false;
 }
 
+// Design pixels a pixel face's glyph is set below where the font has it. Jersey 10 draws the
+// inverted exclamation mark exactly as its i, a dot over a stem standing on the baseline, so a
+// Spanish exclamation would open with what reads as an i ("iHola!"). Lowered by the depth of
+// the face's descenders (g j p q y reach two design pixels below the baseline), it hangs as type
+// usually sets it: the dot at the x-height, the stem below the baseline.
+static int pixel_drop(int ttf, uint32_t cp) { return ttf == TTF_JERSEY && cp == 0xA1 ? 2 : 0; }
+
 // A pixel face's glyph at k screen pixels per design pixel: hard-edged k x k blocks.
-static void make_pixel_glyph(Glyph *g, const stbtt_fontinfo *fi, int unit, int k, uint32_t cp) {
-    float s = 1.f / (float)unit;
+static void make_pixel_glyph(Glyph *g, int ttf, int k, uint32_t cp) {
+    float s = 1.f / (float)k_unit[ttf];
     int w, h, xo, yo;
-    uint8_t *small = stbtt_GetCodepointBitmap(fi, s, s, (int)cp, &w, &h, &xo, &yo);
+    uint8_t *small = stbtt_GetCodepointBitmap(&g_font[ttf], s, s, (int)cp, &w, &h, &xo, &yo);
     g->bmp = NULL;
     g->w = w * k;
     g->h = h * k;
     g->xoff = xo * k;
-    g->yoff = yo * k;
+    g->yoff = (yo + pixel_drop(ttf, cp)) * k;
     if (small && w > 0 && h > 0) {
         g->bmp = malloc((size_t)g->w * (size_t)g->h);  // freed with stbtt_FreeBitmap (free)
         if (g->bmp)
@@ -129,7 +140,7 @@ static void make_pixel_glyph(Glyph *g, const stbtt_fontinfo *fi, int unit, int k
     if (small) stbtt_FreeBitmap(small, NULL);
 }
 
-static const Glyph *glyph_get(int ttf, float px, uint32_t cp) {
+static Glyph *glyph_get(int ttf, float px, uint32_t cp) {
     int size4 = k_unit[ttf] ? -pixel_k(ttf, px) : (int)lrintf(px * 4.f);
     uint32_t hsh = (cp * 2654435761u) ^ ((uint32_t)size4 * 40503u) ^ ((uint32_t)ttf * 977u);
     for (int probe = 0; probe < 16; probe++) {
@@ -144,7 +155,7 @@ static const Glyph *glyph_get(int ttf, float px, uint32_t cp) {
             int adv, lsb;
             stbtt_GetCodepointHMetrics(fi, (int)cp, &adv, &lsb);
             if (size4 < 0) {
-                make_pixel_glyph(g, fi, k_unit[ttf], -size4, cp);
+                make_pixel_glyph(g, ttf, -size4, cp);
             } else {
                 float scale = stbtt_ScaleForPixelHeight(fi, size4 / 4.f);
                 g->bmp = stbtt_GetCodepointBitmap(fi, scale, scale, (int)cp, &g->w, &g->h, &g->xoff, &g->yoff);
@@ -196,16 +207,103 @@ static uint32_t utf8_next(const char **s) {
     return c;
 }
 
-static void blit_glyph(Canvas *c, const Glyph *g, int gx, int gy, uint8_t gray) {
-    Rect gr = rect_intersect((Rect){gx, gy, g->w, g->h}, c->clip);
+static void blit(Canvas *c, const uint8_t *bmp, int w, int h, int gx, int gy, uint8_t gray) {
+    Rect gr = rect_intersect((Rect){gx, gy, w, h}, c->clip);
     for (int yy = gr.y; yy < gr.y + gr.h; yy++) {
-        const uint8_t *src = &g->bmp[(yy - gy) * g->w];
+        const uint8_t *src = &bmp[(yy - gy) * w];
         uint8_t *dst = &c->px[yy * c->stride];
         for (int xx = gr.x; xx < gr.x + gr.w; xx++) {
             int a = src[xx - gx];
             if (a) dst[xx] = (uint8_t)(dst[xx] + ((gray - dst[xx]) * a + 127) / 255);
         }
     }
+}
+
+static void blit_glyph(Canvas *c, const Glyph *g, int gx, int gy, uint8_t gray) { blit(c, g->bmp, g->w, g->h, gx, gy, gray); }
+
+// Letters the overprint would turn into others: sharp s (U+00DF) closes into a B, the notch
+// between its stem and its bowls being all that tells them apart, and o slash (U+00F8, U+00D8)
+// fills its counter around the slash until it reads as a theta.
+static bool bold_keeps_gaps(uint32_t cp) { return cp == 0xDF || cp == 0xF8 || cp == 0xD8; }
+
+// The bold weight of a pixel glyph above U+007F, made on first use. Bold is the glyph printed
+// again one design pixel to the right, which closes every one-pixel gap: the dots of u-umlaut
+// run together into a macron, the tilde and the circumflex fill in. So here the letter takes the
+// overprint as before, but a detached mark (a component wholly above or below the letter's
+// largest part: an accent, a cedilla that does not touch) is drawn as designed when the
+// overprint would close a one-pixel gap in it. Marks it cannot harm (an acute, the dot of an
+// inverted exclamation mark) keep the overprint. In the letters of bold_keeps_gaps a one-pixel
+// gap moves one design pixel right instead of closing: the stroke on its left takes the
+// overprint, the one on its right keeps its width. ASCII never comes here: it draws exactly as
+// it always has. Returns NULL (plain overprint) if memory runs out.
+static const uint8_t *pixel_bold(Glyph *g) {
+    if (g->bold || !g->bmp || g->size4 >= 0) return g->bold;
+    int k = -g->size4, w = g->w / k, h = g->h / k, n = w * h;
+    // Per design pixel: its component (0 = paper), then a flood-fill stack; per component: its
+    // first and last row, its size and its zone (0 the letter, 1 a mark above, 2 a mark below).
+    int *mem = calloc((size_t)n * 6, sizeof *mem);
+    uint8_t *out = calloc((size_t)(w + 1) * (size_t)h, 1);
+    if (!mem || !out) {
+        free(mem);
+        free(out);
+        return NULL;
+    }
+    int *lab = mem, *stack = mem + n, *top = mem + 2 * n, *bot = mem + 3 * n, *size = mem + 4 * n,
+        *zone = mem + 5 * n;
+    int nc = 0, big = 0;
+    for (int i = 0; i < n; i++) {
+        if (lab[i] || !g->bmp[(i / w) * k * g->w + (i % w) * k]) continue;
+        int id = nc++, sp = 0;
+        top[id] = h;
+        bot[id] = -1;
+        lab[i] = id + 1;
+        stack[sp++] = i;
+        while (sp) {
+            int p = stack[--sp], px = p % w, py = p / w;
+            size[id]++;
+            if (py < top[id]) top[id] = py;
+            if (py > bot[id]) bot[id] = py;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int qx = px + dx, qy = py + dy;
+                    if (qx < 0 || qy < 0 || qx >= w || qy >= h) continue;
+                    int q = qy * w + qx;
+                    if (!lab[q] && g->bmp[qy * k * g->w + qx * k]) {
+                        lab[q] = id + 1;
+                        stack[sp++] = q;
+                    }
+                }
+        }
+        if (size[id] > size[big]) big = id;
+    }
+    for (int i = 0; i < nc; i++) zone[i] = bot[i] < top[big] ? 1 : top[i] > bot[big] ? 2 : 0;
+    // Marks (above, below) keep their designed shape if the overprint would fill a gap one
+    // design pixel wide in them: paper between two inked pixels of a row.
+    bool plain[3] = {false, false, false};
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x + 2 < w; x++) {
+            int l = lab[y * w + x];
+            if (l && zone[l - 1] && !lab[y * w + x + 1] && lab[y * w + x + 2]) plain[zone[l - 1]] = true;
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            int l = lab[y * w + x];
+            if (!l) continue;
+            out[y * (w + 1) + x] = 1;
+            if (!plain[zone[l - 1]]) out[y * (w + 1) + x + 1] = 1;
+        }
+    if (bold_keeps_gaps(g->cp))
+        for (int y = 0; y < h; y++)
+            for (int x = 1; x + 1 < w; x++)
+                if (!lab[y * w + x] && lab[y * w + x - 1] && lab[y * w + x + 1]) out[y * (w + 1) + x + 1] = 0;
+    int bw = (w + 1) * k;
+    g->bold = malloc((size_t)bw * (size_t)g->h);  // freed with the cache
+    if (g->bold)
+        for (int y = 0; y < g->h; y++)
+            for (int x = 0; x < bw; x++) g->bold[y * bw + x] = out[(y / k) * (w + 1) + x / k] ? 255 : 0;
+    free(mem);
+    free(out);
+    return g->bold;
 }
 
 // Horizontal font units -> screen pixels for a face at a size (pixel faces: whole design
@@ -236,11 +334,18 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
         }
         const stbtt_fontinfo *fi = &g_font[ttf];
         if (prev && prev_ttf == ttf) pen += units_to_px(ttf, gpx, stbtt_GetCodepointKernAdvance(fi, (int)prev, (int)cp));
-        const Glyph *g = glyph_get(ttf, gpx, cp);
+        Glyph *g = glyph_get(ttf, gpx, cp);
         if (c && g->bmp) {
             int gx = (int)lrintf(pen) + g->xoff, gy = baseline + g->yoff;
-            blit_glyph(c, g, gx, gy, gray);
-            for (int b = 1; b <= bold; b++) blit_glyph(c, g, gx + b, gy, gray);
+            // Accented letters in a pixel face's bold spare their marks (pixel_bold); that
+            // bitmap already holds the overprint of one design pixel (bold == k px).
+            const uint8_t *bb = bold && cp > 0x7F && k_unit[ttf] && bold == -g->size4 ? pixel_bold(g) : NULL;
+            if (bb) {
+                blit(c, bb, g->w + bold, g->h, gx, gy, gray);
+            } else {
+                blit_glyph(c, g, gx, gy, gray);
+                for (int b = 1; b <= bold; b++) blit_glyph(c, g, gx + b, gy, gray);
+            }
         }
         pen += units_to_px(ttf, gpx, g->advance) + (float)bold;
         prev = cp;
@@ -254,6 +359,10 @@ int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char
 }
 
 int font_measure(FontFace f, float px, const char *utf8) { return layout(NULL, f, px, 0, 0, utf8, 0); }
+
+bool font_has_glyph(FontFace f, uint32_t cp) {
+    return g_ready && stbtt_FindGlyphIndex(&g_font[face_of(f).ttf], (int)cp) != 0;
+}
 
 int font_ascent(FontFace f, float px) {
     if (!g_ready) return (int)px;

@@ -4,8 +4,9 @@
 #include "canvas.h"
 
 // What the text is for; the theme picks the typeface. Classic: all Terminess. Gothic: pixel
-// faces, Jersey 10 for text and labels (overprinted one design pixel for bold), Jacquard 24
-// (pixel blackletter) for titles. FIXED faces are Terminess in every theme: paper labels.
+// faces, Jersey 10 for text and labels (overprinted one design pixel for bold, except where
+// that would fill in an accent or turn a letter into another), Jacquard 24 (pixel blackletter)
+// for titles. FIXED faces are Terminess in every theme: paper labels.
 typedef enum {
     FONT_REGULAR = 0,
     FONT_BOLD = 1,
@@ -24,6 +25,8 @@ bool font_gothic(void);
 // Draws UTF-8 text with its baseline at y. Returns advance width in px.
 int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char *utf8, uint8_t gray);
 int font_measure(FontFace f, float px, const char *utf8);
+// Whether the face (as the current theme maps it) has its own glyph for cp, not Terminess's.
+bool font_has_glyph(FontFace f, uint32_t cp);
 int font_ascent(FontFace f, float px);   // px above baseline
 int font_descent(FontFace f, float px);  // px below baseline (positive)
 // Centered in r both ways; text longer than r is truncated with an ellipsis.
