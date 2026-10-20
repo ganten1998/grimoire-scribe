@@ -6,6 +6,7 @@
 #include "power.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // The app's own repaints (toast show/hide) are kept apart from the screens' so a toast
@@ -69,9 +70,17 @@ int app_init(App *a, int w, int h, float dpi) {
     const InputCaps *caps = input_caps();
     if (caps && caps->has_orientation && a->settings.follow_rotation && caps->orientation != 0)
         app_set_rotation(a, caps->orientation);
+    // The launcher pauses the Kindle's passcode while Grimoire runs (kindle/app/grimoire.sh says
+    // why) and says so here; "left-off": an earlier session ended without putting it back.
+    const char *passcode = getenv("GRIMOIRE_PASSCODE");
     if (caps && !caps->has_pen)
         app_toast(a, "No pen found. " APP_NAME " is made for the Kindle Scribe; writing needs its pen.", 10000);
-    else if (!a->settings.pen_calib.valid)
+    else if (passcode && !strcmp(passcode, "left-off"))
+        app_toast(a, "The Kindle passcode was left off. Turn it back on in Kindle Settings.", 10000);
+    else if (passcode && !strcmp(passcode, "paused") && !a->settings.passcode_told) {
+        a->settings.passcode_told = true;
+        app_toast(a, "Your Kindle passcode is paused while " APP_NAME " is open.", 8000);
+    } else if (!a->settings.pen_calib.valid)
         app_toast(a, "Tip: Settings > Calibrate pen if strokes land off the tip", 6000);
     return 0;
 }

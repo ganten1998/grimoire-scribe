@@ -43,6 +43,7 @@ typedef struct {
     int theme;                    // UiTheme: 0 gothic, 1 classic (settings.ini: theme=gothic|classic)
     InputCalib pen_calib, touch_calib;
     int http_port;                // share server, default 8765
+    bool passcode_told;           // the "passcode paused while Grimoire is open" notice was shown once
 } Settings;
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/

@@ -104,6 +104,4 @@ expect asleep is 0
 pen line 300 1000 1400 1020 40 0.6 0.6
 powerhold
 wait 300
-# Never reached: if it were, this fails (the editor is open).
-expect screen is library
-shot 99-not-reached
+expect running is 0

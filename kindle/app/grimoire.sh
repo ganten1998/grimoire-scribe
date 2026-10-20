@@ -9,6 +9,7 @@
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
+# A Device Passcode is paused while Grimoire runs and put back when it ends (as KOReader does).
 # Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does. The Capabilities
 # line above says what this file supports (guard: that refusal), for a tool that must not run it
 # to find out; it always describes this very file, while app/CAPABILITIES can outlive a
@@ -98,6 +99,11 @@ VOLUMD_STOPPED=no
 IPTABLES_ADDED=no
 STOPPED_JOBS=""
 RESTORED=no
+# The Kindle's passcode, paused while Grimoire runs (see "device passcode" below).
+PASSCODE=$SYS/var/local/system/userpasswdenabled
+PASSCODE_MARK=$ROOT/.passcode-paused
+PASSCODE_PAUSED=no
+PASSCODE_NOTE=""
 
 # The Kindle is locked: its screensaver (or the passcode prompt over it) is up, or it is about
 # to suspend. Sets STATE to what the power service says.
@@ -107,6 +113,19 @@ kindle_locked() {
     screenSaver | readyToSuspend | suspended) return 0 ;;
     esac
     return 1
+}
+
+# Puts the passcode back, once. The marker goes only when that worked, so a failure is told at
+# the next start.
+restore_passcode() {
+    [ "$PASSCODE_PAUSED" = yes ] || return
+    PASSCODE_PAUSED=no
+    if touch "$PASSCODE" 2>/dev/null; then
+        rm -f "$PASSCODE_MARK"
+        log "device passcode: back on"
+    else
+        log "device passcode: could not put it back"
+    fi
 }
 
 restore() {
@@ -121,10 +140,12 @@ restore() {
     fi
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
     # Grimoire's power-service watcher, should a crash have left it behind.
-    pkill -f "lipc-wait-event com.lab126.powerd goingToScreenSaver" 2>/dev/null
+    pkill -f "lipc-wait-event .*com.lab126.powerd goingToScreenSaver,outOfScreenSaver" 2>/dev/null
     if [ "$STOP_FRAMEWORK" = yes ]; then
         kindle_locked
         log "power state at exit: ${STATE:-unknown}"
+        # Before the framework starts: it reads whether a passcode is set when it does.
+        restore_passcode
         cd / && start lab126_gui 2>/dev/null
         return
     fi
@@ -151,6 +172,8 @@ restore() {
         lipc-set-prop com.lab126.pillow disableEnablePillow enable 2>/dev/null
         lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
     fi
+    # Last, once the Kindle UI is back (as KOReader does).
+    restore_passcode
 }
 QPID=""
 stop_grimoire() {
@@ -188,6 +211,32 @@ else
     log "KOReader: not installed"
 fi
 log "user id: $(id -u 2>/dev/null)"
+
+# The Kindle's passcode holds back the wake announcement until the passcode is typed, but Grimoire
+# keeps the touch screen to itself: a locked Kindle could not be unlocked, and on leaving, the
+# screen saved at the start went back over the passcode prompt. Like KOReader, pause the passcode
+# while Grimoire runs; restore() puts it back. A marker remembers the pause. Found with no
+# passcode, it means a session ended without restore() (the Kindle restarted under Grimoire):
+# the passcode is NOT turned back on then, since it may have been changed or turned off since and
+# a flag without its passcode could lock the Kindle; Grimoire tells the user instead.
+# (1.1's session hosted inside KOReader must leave all this alone: KOReader paused it already.)
+if [ -e "$PASSCODE_MARK" ] && [ ! -e "$PASSCODE" ]; then
+    log "device passcode: left off by a session that did not end (a restart?); not turned back on here"
+    PASSCODE_NOTE=left-off
+fi
+rm -f "$PASSCODE_MARK"
+if [ -e "$PASSCODE" ]; then
+    : >"$PASSCODE_MARK"
+    rm -f "$PASSCODE"
+    if [ -e "$PASSCODE" ]; then
+        rm -f "$PASSCODE_MARK"
+        log "device passcode: could not pause it"
+    else
+        PASSCODE_PAUSED=yes
+        PASSCODE_NOTE=paused
+        log "device passcode: paused while Grimoire runs"
+    fi
+fi
 
 # Launchers can start us niced; go back to normal priority for pen latency.
 [ "$(nice)" -gt 0 ] 2>/dev/null && renice -n "-$(nice)" $$ >/dev/null 2>&1
@@ -233,7 +282,8 @@ usleep 900000 2>/dev/null || sleep 1
 
 cd "$DIR" || exit 1
 rm -f "$BEAT"
-GRIMOIRE_AWESOME_STOPPED="$AWESOME_STOPPED" GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
+GRIMOIRE_AWESOME_STOPPED="$AWESOME_STOPPED" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_ROOT="$ROOT" \
+    "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
 # Watchdog: Grimoire touches its heartbeat file every 2 s once its first frame is up. No first

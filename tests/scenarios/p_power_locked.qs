@@ -30,6 +30,4 @@ shot 02-after-a-wake-one-press-stays-asleep
 # The second press in a row that brings no wake: Grimoire saves and leaves, and the run ends here.
 power
 wait 3300
-# Never reached: if it were, this fails (the editor is open).
-expect screen is library
-shot 99-not-reached
+expect running is 0

@@ -1203,6 +1203,7 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
+    else if (!strcmp(k, "passcode_told")) s->passcode_told = atoi(v) != 0;
     else return false;
     return true;
 }
@@ -1293,6 +1294,7 @@ int settings_save(const Settings *s) {
     put_int(&b, "sleep_mode", s->sleep_mode);
     put_int(&b, "sleep_minutes", s->sleep_minutes);
     put_int(&b, "http_port", s->http_port);
+    put_int(&b, "passcode_told", s->passcode_told);
     snprintf(t, sizeof t, "%u", (unsigned)s->music_layout);
     put(&b, "music_layout", t);
     put(&b, "theme", s->theme == 1 ? "classic" : "gothic");

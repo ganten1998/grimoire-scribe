@@ -115,6 +115,15 @@ finish() {  # finish PID TENTHS: waits for a launcher run in the background, its
     return 1
 }
 lines_in() { wc -l <"$1" | tr -d ' '; }
+log_order() {  # log_order TEXT...: each line is in grimoire.log, in this order
+    prev=0
+    for c in "$@"; do
+        n=$(grep -nF -- "$c" "$LOGF" | head -n 1 | cut -d: -f1)
+        [ -n "$n" ] && [ "$n" -gt "$prev" ] || return 1
+        prev=$n
+    done
+}
+PASSCODE_REL=sys/var/local/system/userpasswdenabled
 settings_reset() {  # the calibration is gone, the other settings are kept
     S=$US/grimoire/settings.ini
     lacks "$S" "pen." && lacks "$S" "touch." && has "$S" "theme=gothic" && has "$S" "http_port=18763" &&
@@ -168,6 +177,8 @@ suite() {
     check "$s the heartbeat file is cleaned up" [ ! -e "$GRIMOIRE_TMP/grimoire.alive" ]
     check "$s log: locale" has "$LOGF" "grimoire.sh: locale: LANG=es_ES.UTF-8"
     check "$s log: passcode" has "$LOGF" "grimoire.sh: device passcode: off"
+    check "$s no passcode: nothing to tell the binary" has "$SHIM_LOG" "grimoire passcode note= flag=off"
+    check "$s no passcode: no marker" [ ! -e "$US/grimoire/.passcode-paused" ]
     check "$s log: power state" has "$LOGF" "grimoire.sh: power state: active"
     check "$s log: blanket modules" has "$LOGF" "grimoire.sh: blanket modules: screensaver splash"
     check "$s log: KOReader" has "$LOGF" "grimoire.sh: KOReader: not installed"
@@ -305,14 +316,55 @@ suite() {
         check "$s log: KOReader installed, not running" has "$LOGF" "grimoire.sh: KOReader: installed, version v2026.07.1"
     done
 
+    # A Device Passcode: paused while Grimoire runs (the binary is told), back on once the Kindle UI
+    # is back, a marker meanwhile.
+    tree passcode
+    sh "$DOC" --unpack-only
+    fake
+    : >"$T/$PASSCODE_REL"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    check "$s passcode: paused while Grimoire runs, the binary told" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
+    check "$s passcode: back on after" [ -e "$T/$PASSCODE_REL" ]
+    check "$s passcode: no marker left" [ ! -e "$US/grimoire/.passcode-paused" ]
+    check "$s passcode: paused before the start, back on after the restore" log_order \
+        "grimoire.sh: device passcode: paused while Grimoire runs" "grimoire.sh: Grimoire running as pid" \
+        "grimoire.sh: restoring the Kindle UI" "grimoire.sh: device passcode: back on"
+    # A session that never ended (the Kindle restarted under Grimoire: the marker stayed, no
+    # passcode): it is not turned back on, the binary is told, the marker goes.
+    tree passcode-left-off
+    sh "$DOC" --unpack-only
+    fake
+    : >"$US/grimoire/.passcode-paused"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    check "$s passcode left off: the binary told" has "$SHIM_LOG" "grimoire passcode note=left-off flag=off"
+    check "$s passcode left off: not turned back on" [ ! -e "$T/$PASSCODE_REL" ]
+    check "$s passcode left off: the marker goes" [ ! -e "$US/grimoire/.passcode-paused" ]
+    check "$s passcode left off: logged" has "$LOGF" "grimoire.sh: device passcode: left off by a session that did not end"
+    # Turned back on since by the user (marker and passcode both there): an ordinary pause.
+    tree passcode-turned-on-again
+    sh "$DOC" --unpack-only
+    fake
+    : >"$US/grimoire/.passcode-paused"
+    : >"$T/$PASSCODE_REL"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    check "$s passcode turned on again: an ordinary pause" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
+    check "$s passcode turned on again: back on after" [ -e "$T/$PASSCODE_REL" ]
+    check "$s passcode turned on again: no left-off line" lacks "$LOGF" "left off by a session"
+
     # Stop-framework mode: lab126_gui stopped and started; locked at exit only shows in the log.
     tree stopfw
     sh "$DOC" --unpack-only
     fake
     : >"$US/grimoire/stop-framework"
+    : >"$T/$PASSCODE_REL"
     : >"$SHIM_LOG"
     FAKE_EXIT_STATE=readyToSuspend GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
     check "$s stop-framework: lab126_gui stopped, then started" in_order "stop lab126_gui" "$STARTED" "start lab126_gui"
+    check "$s stop-framework: the passcode paused meanwhile" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
+    check "$s stop-framework: the passcode back before the framework starts" has "$SHIM_LOG" "start lab126_gui (passcode on)"
     check "$s stop-framework: pillow and awesome left alone" sh -c '! grep -qE "disableEnablePillow|killall -(STOP|CONT) awesome" "$1"' sh "$SHIM_LOG"
     check "$s stop-framework: power state at exit logged" has "$LOGF" "grimoire.sh: power state at exit: readyToSuspend"
 
@@ -325,6 +377,7 @@ suite() {
         sh "$DOC" --unpack-only
         fake
         : >"$SHIM_LOG"
+        : >"$T/$PASSCODE_REL"
         if [ "$mode" = hang ]; then
             why="no first frame after 1s, killing Grimoire"
             FAKE_MODE=hang GRIMOIRE_WD_TICK=0.2 GRIMOIRE_WD_FIRST=1 sh "$APP/grimoire.sh" 2>"$T/stderr" &
@@ -340,6 +393,7 @@ suite() {
         check "$l: then KILL" has "$LOGF" "grimoire.sh: Grimoire exited with status 137"
         check "$l: Grimoire is gone" fake_gone
         check "$l: the Kindle UI restored after" in_order "$STARTED" "$PILLOW_ON" "$HOME_UP"
+        check "$l: the passcode back on" [ -e "$T/$PASSCODE_REL" ]
     done
 
     # From Quire: the data moves once, never under a refused start or while the old app runs.

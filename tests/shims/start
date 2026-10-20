@@ -1,3 +1,9 @@
 #!/bin/sh
-# Stand-in for a Kindle tool in tests/launcher_check.sh: records the call and succeeds.
-echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+# Stand-in for upstart's start in tests/launcher_check.sh: records the call and succeeds. Starting
+# the framework also notes whether the Kindle's passcode is set at that moment (it must be back).
+if [ "$1" = lab126_gui ]; then
+    if [ -e "${GRIMOIRE_SYSROOT:?}/var/local/system/userpasswdenabled" ]; then p=on; else p=off; fi
+    echo "${0##*/} $* (passcode $p)" >>"${SHIM_LOG:?}"
+else
+    echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+fi
