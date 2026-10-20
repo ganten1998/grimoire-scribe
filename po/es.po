@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
 "POT-Creation-Date: 2026-10-20 07:00-0500\n"
-"PO-Revision-Date: 2026-10-20 07:36-0500\n"
+"PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -24,7 +24,7 @@ msgstr ""
 msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
 msgstr ""
 "La contraseña del Kindle quedó desactivada. Vuelve a activarla en la "
-"configuración del Kindle."
+"Configuración del Kindle."
 
 #. TRANSLATORS: %s is the app's name, Grimoire.
 #: src/app.c
@@ -38,7 +38,7 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "Your Kindle passcode is paused while %s is open."
-msgstr "La contraseña del Kindle queda en pausa mientras %s está abierto."
+msgstr "La contraseña del Kindle queda suspendida mientras %s está abierto."
 
 #. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
 #. sheet that says "Calibrate pen and touch": name them as they are translated.
@@ -206,7 +206,7 @@ msgstr "Calibrar la pantalla táctil"
 
 #: src/calibrate.c
 msgid "Check it"
-msgstr "Comprobar"
+msgstr "Comprobar la calibración"
 
 #. TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
 #. tap five targets, one after another, with the pen, then with a finger; then draw to check.
@@ -260,7 +260,7 @@ msgstr "Esos toques no tienen sentido. Probemos otra vez."
 #: src/calibrate.c
 #, c-format
 msgid "The center was off by %.1f mm. Let's try again."
-msgstr "El centro se desvió %.1f mm. Probemos otra vez."
+msgstr "El toque del centro se desvió %.1f mm. Probemos otra vez."
 
 #: src/calibrate.c
 msgid "Pen done."
@@ -1665,8 +1665,8 @@ msgid ""
 "or Linux terminal. Download the layers into one folder and run it there:"
 msgstr ""
 "La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en "
-"una terminal de macOS o Linux. Descarga las capas en una carpeta y ejecútalo "
-"allí:"
+"una terminal de macOS o Linux. Descarga las capas en una misma carpeta y "
+"ejecuta allí el comando:"
 
 #: web/studio.js
 msgctxt "studio"
@@ -1677,7 +1677,7 @@ msgstr "Reintentar"
 #, javascript-format
 msgctxt "studio"
 msgid "%d × %d px, transparent, no ink to trim to"
-msgstr "%d × %d px, transparente, sin tinta que recortar"
+msgstr "%d × %d px, transparente, sin tinta a la que ajustar"
 
 #: web/studio.js
 #, javascript-format
@@ -1689,7 +1689,7 @@ msgstr "%d × %d px, transparente"
 #, javascript-format
 msgctxt "studio"
 msgid "%d × %d px, no ink to trim to"
-msgstr "%d × %d px, sin tinta que recortar"
+msgstr "%d × %d px, sin tinta a la que ajustar"
 
 #: web/studio.js
 #, javascript-format
