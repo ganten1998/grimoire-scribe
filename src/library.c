@@ -139,6 +139,7 @@ static void unique_name(App *a, const char *base, char *out, size_t cap) {
 
 static const Canvas *paper_preview(App *a, PaperKind k) {
     Canvas *c;
+    if (!paper_is_known(k)) k = PAPER_BLANK;  // a newer version's paper (also as a card's fallback)
     if (paper_is_custom(k)) {
         c = &S->custom_prev;
         if (c->px && S->custom_prev_k != k) canvas_free(c);
