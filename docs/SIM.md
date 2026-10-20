@@ -139,8 +139,10 @@ the script). `# env: K=V` lines set the environment of that one scenario (values
 r_passcode, s_passcode_once and t_passcode_left_off set `GRIMOIRE_PASSCODE`, as the launcher does
 on the Kindle). With `GRIMOIRE_TEST_PORT` set, the rule writes `http_port=` that port into
 every scenario's settings.ini before the run (over a copied root's too), so the share servers of
-checks running in several worktrees never collide on 8765. Both header lines are read by the
-Makefile rule only: running `grimoire-headless` by hand skips them like any comment. A run that
+checks running in several worktrees never collide on 8765. `# settings: key=value` lines are
+appended to the scenario's settings.ini before the run (after the port), for settings that have
+no control on screen yet. These header lines are read by the Makefile rule only: running
+`grimoire-headless` by hand skips them like any comment. A run that
 leaves a file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those
 that did not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every
 check (exit 0) with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the

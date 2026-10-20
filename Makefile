@@ -18,7 +18,8 @@ WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 COMMON  := -std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -I$(BUILD)/gen -DGRIMOIRE_VERSION='"$(VERSION)"'
 
 CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.c \
-            src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c
+            src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c \
+            src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
@@ -89,6 +90,7 @@ scenarios: $(BUILD)/host/grimoire-headless
 	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
 	    { grep -v '^http_port=' $$r/settings.ini 2>/dev/null; echo "http_port=$$GRIMOIRE_TEST_PORT"; } > $$r/settings.ini.port; \
 	    mv $$r/settings.ini.port $$r/settings.ini; fi; \
+	  if grep -q '^# settings: ' $$s; then r=$(BUILD)/scen/$$n; mkdir -p $$r; sed -n 's/^# settings: *//p' $$s >> $$r/settings.ini; fi; \
 	  envs=$$(sed -n 's/^# env: *//p' $$s | tr '\n' ' '); \
 	  env $$envs GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \

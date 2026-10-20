@@ -18,18 +18,22 @@
 #define BG_QUEUE 16
 
 typedef struct {
+    BgKind kind;
     char id[STORE_ID_LEN];
-    char dir[600];
+    char dir[600];  // BG_MIRROR_PDF: the mirror folder; the others: their path argument
     float dpi;
     bool notify;
 } Job;
+
+static const char *const k_kind_names[] = {"export", "compaction", "template", "import"};
 
 static Job g_q[BG_QUEUE];
 static int g_n;
 static pid_t g_pid = -1;
 static bool g_running_notify;
+static Job g_running;  // the job the child is running (valid while g_pid > 0)
 
-static int run_job(const Job *j) {
+static int run_mirror(const Job *j) {
     NotebookInfo *nb = malloc(sizeof *nb);
     if (!nb) return -1;
     int li = store_load_info(j->id, nb);
@@ -37,6 +41,16 @@ static int run_job(const Job *j) {
     if (rc) qlog("bg: export of %s failed (load %d, export %d)", j->id, li, rc);
     free(nb);
     return rc;
+}
+
+static int run_job(const Job *j) {
+    switch (j->kind) {
+    case BG_MIRROR_PDF: return run_mirror(j);
+    case BG_COMPACT_PAGES: return bg_compact_pages(j->id, j->dpi);
+    case BG_TEMPLATE: return bg_template(j->id, j->dir, j->dpi);
+    case BG_IMPORT_FOLDER: return bg_import_folder(j->dir, j->dpi);
+    }
+    return -1;
 }
 
 // In a forked child: let go of everything inherited from Grimoire (input devices, possibly
@@ -59,6 +73,10 @@ static void start_next(void) {
     g_n--;
     pid_t pid = fork();
     if (pid < 0) {
+        if (j.kind != BG_MIRROR_PDF) {  // only the PDF is worth a stall of the UI
+            qlog("bg: cannot fork; %s of %s skipped", k_kind_names[j.kind], j.id[0] ? j.id : "a folder");
+            return;
+        }
         qlog("bg: cannot fork; exporting %s in the foreground", j.id);
         run_job(&j);
         return;
@@ -74,13 +92,17 @@ static void start_next(void) {
         _exit(run_job(&j) == 0 ? 0 : 1);
     }
     g_pid = pid;
+    g_running = j;
     g_running_notify = j.notify;
-    qlog("bg: exporting %s (pid %d)", j.id, (int)pid);
+    if (j.kind == BG_MIRROR_PDF) qlog("bg: exporting %s (pid %d)", j.id, (int)pid);
+    else qlog("bg: %s of %s (pid %d)", k_kind_names[j.kind], j.id[0] ? j.id : "a folder", (int)pid);
 }
 
-void bg_mirror_pdf(const char *id, float dpi, const char *mirror_dir, bool notify) {
+void bg_queue(BgKind kind, const char *id, const char *path, float dpi, bool notify) {
+    if (!id) id = "";
+    if (!path) path = "";
     for (int i = 0; i < g_n; i++)
-        if (!strcmp(g_q[i].id, id)) {
+        if (g_q[i].kind == kind && !strcmp(g_q[i].id, id) && !strcmp(g_q[i].dir, path)) {
             g_q[i].notify |= notify;
             start_next();
             return;
@@ -92,22 +114,47 @@ void bg_mirror_pdf(const char *id, float dpi, const char *mirror_dir, bool notif
     }
     Job *j = &g_q[g_n++];
     memset(j, 0, sizeof *j);
+    j->kind = kind;
     strlcpy_q(j->id, id, sizeof j->id);
-    strlcpy_q(j->dir, mirror_dir, sizeof j->dir);
+    strlcpy_q(j->dir, path, sizeof j->dir);
     j->dpi = dpi;
     j->notify = notify;
     start_next();
 }
 
-int bg_poll(void) {
+void bg_mirror_pdf(const char *id, float dpi, const char *mirror_dir, bool notify) {
+    bg_queue(BG_MIRROR_PDF, id, mirror_dir, dpi, notify);
+}
+
+void bg_cancel_notebook(const char *id) {
+    for (int i = 0; i < g_n;) {
+        if (g_q[i].kind == BG_COMPACT_PAGES && !strcmp(g_q[i].id, id)) {
+            memmove(g_q + i, g_q + i + 1, sizeof g_q[0] * (size_t)(g_n - i - 1));
+            g_n--;
+            qlog("bg: compaction of %s dropped (the notebook opens)", id);
+        } else
+            i++;
+    }
+    if (g_pid > 0 && g_running.kind == BG_COMPACT_PAGES && !strcmp(g_running.id, id)) {
+        kill(g_pid, SIGTERM);
+        int st;
+        waitpid(g_pid, &st, 0);
+        qlog("bg: compaction of %s stopped (the notebook opens)", id);
+        g_pid = -1;
+    }
+}
+
+int bg_poll_kind(int *done_kind) {
     int result = 0;
+    if (done_kind) *done_kind = -1;
     if (g_pid > 0) {
         int st = 0;
         pid_t r = waitpid(g_pid, &st, WNOHANG);
         if (r == g_pid || (r < 0)) {
             bool ok = r == g_pid && WIFEXITED(st) && WEXITSTATUS(st) == 0;
-            qlog("bg: export pid %d %s", (int)g_pid, ok ? "done" : "FAILED");
+            qlog("bg: %s pid %d %s", k_kind_names[g_running.kind], (int)g_pid, ok ? "done" : "FAILED");
             if (g_running_notify) result = ok ? 1 : -1;
+            if (done_kind) *done_kind = (int)g_running.kind;
             g_pid = -1;
         }
     }
@@ -115,9 +162,21 @@ int bg_poll(void) {
     return result;
 }
 
+int bg_poll(void) { return bg_poll_kind(NULL); }
+
 bool bg_busy(void) { return g_pid > 0 || g_n > 0; }
 
 void bg_detach_rest(void) {
+    // Compaction waits for the next run: in a detached child it could still be rewriting pages
+    // when the notebook is opened again, out of bg_cancel_notebook's reach.
+    for (int i = 0; i < g_n;) {
+        if (g_q[i].kind == BG_COMPACT_PAGES) {
+            qlog("bg: compaction of %s left for the next run", g_q[i].id);
+            memmove(g_q + i, g_q + i + 1, sizeof g_q[0] * (size_t)(g_n - i - 1));
+            g_n--;
+        } else
+            i++;
+    }
     if (g_n == 0) return;
     pid_t pid = fork();
     if (pid == 0) {
@@ -128,6 +187,6 @@ void bg_detach_rest(void) {
         for (int i = 0; i < g_n; i++) run_job(&g_q[i]);
         _exit(0);
     }
-    qlog("bg: %d export(s) left to a detached child (pid %d)", g_n, (int)pid);
+    qlog("bg: %d export(s) left to a detached child (pid %d)", g_n, (int)pid);  // (exports and the other jobs)
     g_n = 0;
 }
