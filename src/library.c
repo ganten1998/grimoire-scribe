@@ -250,11 +250,17 @@ static void draw_base(App *a) {
         int id;
         bool show;
     } btns[] = {
-        {ICON_EXIT, "Exit", H_EXIT, true},
-        {ICON_GEAR, "Settings", H_SETTINGS, true},
-        {ICON_SHARE, "Share", H_SHARE, true},
-        {ICON_FOLDER_PLUS, "Folder", H_NEWFOLDER, !S->cur_folder[0]},
-        {ICON_PLUS, "New", H_NEW, true},
+        // TRANSLATORS: the Library's top bar, a word under each icon: 154 px at 34 px, in both
+        // styles. Exit leaves Grimoire.
+        {ICON_EXIT, _("Exit"), H_EXIT, true},
+        // TRANSLATORS: the Library's top bar (154 px at 34 px).
+        {ICON_GEAR, _("Settings"), H_SETTINGS, true},
+        // TRANSLATORS: the Library's top bar (154 px at 34 px): to the Share screen (over Wi-Fi).
+        {ICON_SHARE, _("Share"), H_SHARE, true},
+        // TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new folder.
+        {ICON_FOLDER_PLUS, _("Folder"), H_NEWFOLDER, !S->cur_folder[0]},
+        // TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new notebook.
+        {ICON_PLUS, _("New"), H_NEW, true},
     };
     int rx = a->w - m;
     for (size_t i = 0; i < sizeof btns / sizeof btns[0]; i++) {
@@ -283,10 +289,12 @@ static void draw_base(App *a) {
     int pp = cols * rows;
     if (S->nitems == 0) {
         Rect er = {m, th + ui_px(300), a->w - 2 * m, ui_px(100)};
-        font_draw_centered(c, FONT_BOLD, ui_title_size(), er,
-                           S->cur_folder[0] ? "This folder is empty" : "No notebooks yet", 0);
+        // TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
+        const char *empty = S->cur_folder[0] ? _("This folder is empty") : _("No notebooks yet");
+        font_draw_centered(c, FONT_BOLD, ui_title_size(), er, empty, 0);
         er.y += ui_px(110);
-        font_draw_centered(c, FONT_REGULAR, ui_text_size(), er, "Tap New to start one.", 60);
+        // TRANSLATORS: New is the top bar's button (as translated there).
+        font_draw_centered(c, FONT_REGULAR, ui_text_size(), er, _("Tap New to start one."), 60);
     }
     for (int i = 0; i < pp; i++) {
         int idx = S->page * pp + i;
@@ -305,8 +313,9 @@ static void draw_base(App *a) {
     ui_button(c, nr, ICON_NEXT, NULL, S->page < pages - 1 ? BTN_PLAIN : BTN_DISABLED);
     if (S->page > 0) hits_add(&S->hits, pr, H_PREV, 0);
     if (S->page < pages - 1) hits_add(&S->hits, nr, H_NEXT, 0);
-    char pl[48];
-    snprintf(pl, sizeof pl, "Page %d of %d", S->page + 1, pages);
+    char pl[96];
+    // TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
+    snprintf(pl, sizeof pl, _("Page %d of %d"), S->page + 1, pages);
     font_draw_centered(c, FONT_BOLD, ui_text_size(), (Rect){pr.x + pr.w, pr.y, nr.x - pr.x - pr.w, pr.h}, pl, 0);
 }
 
@@ -321,8 +330,9 @@ static Rect sheet_rect(App *a, int h) {
 static void draw_new(App *a) {
     Canvas *c = &a->screen;
     Rect card = sheet_rect(a, ui_px(2300));
-    Rect in = ui_sheet(c, card, "New notebook");
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, in.y, in.w, ui_px(70)}, "Paper", 0);
+    // TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
+    Rect in = ui_sheet(c, card, _("New notebook"));
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, in.y, in.w, ui_px(70)}, _("Paper"), 0);
     const int ntiles = PAPER_PICKER_COUNT;
     int gap = ui_px(30), cols = ntiles > 15 ? 6 : ntiles > 8 ? 5 : 4, rows = (ntiles + cols - 1) / cols;
     int tw = (in.w - gap * (cols - 1)) / cols;
@@ -346,7 +356,9 @@ static void draw_new(App *a) {
         bool sel = custom ? new_custom : S->new_paper == k;
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
         Rect lr = {tr.x - gap / 2, tr.y + tht + ui_px(18), tw + gap, ui_px(64)};
-        const char *label = custom ? "Custom music..." : paper_name(k);
+        // TRANSLATORS: the last paper's tile, which opens a sheet that builds a music paper from
+        // parts (about 278 px at 31 px, or two lines of that).
+        const char *label = custom ? _("Custom music...") : paper_label(k);
         FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
         float ls = ui_small_size() * 0.9f;
         int lw = font_measure(lf, ls, label);
@@ -361,20 +373,23 @@ static void draw_new(App *a) {
         hits_add(&S->hits, (Rect){tr.x, tr.y, tr.w, tht + ui_px(90)}, custom ? H_PAPER_CUSTOM : H_PAPER, (int)k);
     }
     int y = ty + rows * cell_h + ui_px(20);
-    char line[200];
-    snprintf(line, sizeof line, "Name: %s", S->new_name);
+    char line[320];
+    // TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
+    // icon), then the folder it goes in, or the Library itself.
+    snprintf(line, sizeof line, _("Name: %s"), S->new_name);
     Rect rn = {in.x + in.w - ui_px(300), y, ui_px(300), ui_px(120)};
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){in.x, y, in.w - ui_px(330), ui_px(120)}, line, 0);
-    ui_button(c, rn, ICON_RENAME, "Rename", BTN_PLAIN);
+    ui_button(c, rn, ICON_RENAME, _("Rename"), BTN_PLAIN);
     hits_add(&S->hits, rn, H_NEW_RENAME, 0);
     y += ui_px(140);
-    snprintf(line, sizeof line, "In: %s", S->cur_folder[0] ? S->cur_folder : "Library (top level)");
+    snprintf(line, sizeof line, _("In: %s"), S->cur_folder[0] ? S->cur_folder : _("Library (top level)"));
     font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)}, line, 60);
     int bh = ui_px(140), bw = ui_px(380);
     Rect cancel = {in.x, in.y + in.h - bh, bw, bh};
     Rect create = {in.x + in.w - bw, in.y + in.h - bh, bw, bh};
-    ui_button(c, cancel, ICON_NONE, "Cancel", BTN_PLAIN);
-    ui_button(c, create, ICON_NONE, "Create", BTN_PRIMARY);
+    // TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+    ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
+    ui_button(c, create, ICON_NONE, _("Create"), BTN_PRIMARY);
     hits_add(&S->hits, cancel, H_CANCEL, 0);
     hits_add(&S->hits, create, H_NEW_CREATE, 0);
 }
@@ -421,57 +436,69 @@ static void language_auto_label(char *out, size_t cap) {
 static void draw_settings(App *a) {
     Canvas *c = &a->screen;
     Rect card = sheet_rect(a, ui_px(1820));
-    Rect in = ui_sheet(c, card, "Settings");
+    Rect in = ui_sheet(c, card, _("Settings"));
     int rh = ui_px(140), gap = ui_px(24), y = in.y;
     Rect r1 = {in.x, y, in.w, rh};
     ui_button(c, r1, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_TUNE, (Rect){r1.x + ui_px(20), r1.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r1.x + rh + ui_px(10), r1.y, r1.w - rh - ui_px(30), rh},
-                   "Pen sensitivity (pressure + tilt per tool)", 0);
+    // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
+    // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
+    // 34 px). Sideways they are 80 px wider.
+    const char *pens = _("Pen sensitivity (pressure + tilt per tool)");
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r1.x + rh + ui_px(10), r1.y, r1.w - rh - ui_px(30), rh}, pens, 0);
     hits_add(&S->hits, r1, H_SET_PENS, 0);
     y += rh + gap;
     Rect r2 = {in.x, y, in.w, rh};
     ui_button(c, r2, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_TARGET, (Rect){r2.x + ui_px(20), r2.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2.x + rh + ui_px(10), r2.y, r2.w - rh - ui_px(30), rh},
-                   "Calibrate pen and touch", 0);
+                   _("Calibrate pen and touch"), 0);
     hits_add(&S->hits, r2, H_SET_CALIB, 0);
     y += rh + gap;
     Rect r2b = {in.x, y, in.w, rh};
     ui_button(c, r2b, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_BRIGHTNESS, (Rect){r2b.x + ui_px(20), r2b.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
     font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2b.x + rh + ui_px(10), r2b.y, r2b.w - rh - ui_px(30), rh},
-                   "Display: brightness, warmth, invert", 0);
+                   _("Display: brightness, warmth, invert"), 0);
     hits_add(&S->hits, r2b, H_SET_DISPLAY, 0);
     y += rh + gap;
     Rect rt = {in.x, y, in.w, ui_px(110)};
     canvas_fill(c, rt, 255);
     ui_icon(c, ICON_CASTLE, (Rect){rt.x, rt.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
-    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){rt.x + ui_px(110), rt.y, rt.w - ui_px(110), rt.h},
-                   ui_theme() == THEME_GOTHIC ? "Style: Gothic (tap for Classic)" : "Style: Classic (tap for Gothic)", 0);
+    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
+    const char *style = _("Style: Gothic (tap for Classic)");
+    if (ui_theme() == THEME_CLASSIC) style = _("Style: Classic (tap for Gothic)");
+    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){rt.x + ui_px(110), rt.y, rt.w - ui_px(110), rt.h}, style, 0);
     hits_add(&S->hits, rt, H_SET_THEME, 0);
     y += ui_px(130);
     Rect r3 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r3, "Mirror PDFs to grimoire/PDFs (USB)", a->settings.mirror_pdf);
+    char row[256];
+    // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
+    // every notebook.
+    snprintf(row, sizeof row, _("Mirror PDFs to %s (USB)"), "grimoire/PDFs");
+    ui_checkbox(c, r3, row, a->settings.mirror_pdf);
     hits_add(&S->hits, r3, H_SET_MIRROR, 0);
     y += ui_px(130);
     Rect r4 = {in.x, y, in.w, ui_px(110)};
-    static const char *btn_names[3] = {"does nothing", "erases", "highlights"};
-    char btn_line[96];
-    snprintf(btn_line, sizeof btn_line, "Holding the pen button %s (tap to change)",
-             btn_names[clampi(a->settings.side_button, 0, 2)]);
+    // What holding the pen's side button does while writing (settings.ini side_button 0, 1, 2).
+    static const char *const btn_rows[3] = {
+        // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+        N_("Holding the pen button does nothing (tap to change)"),
+        N_("Holding the pen button erases (tap to change)"),
+        N_("Holding the pen button highlights (tap to change)"),
+    };
     canvas_fill(c, r4, 255);
     ui_icon(c, ICON_HIGHLIGHTER, (Rect){r4.x, r4.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
     font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){r4.x + ui_px(110), r4.y, r4.w - ui_px(110), r4.h},
-                   btn_line, 0);
+                   _(btn_rows[clampi(a->settings.side_button, 0, 2)]), 0);
     hits_add(&S->hits, r4, H_SET_SIDE, 0);
     y += ui_px(130);
     Rect r5 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r5, "Turn with the Kindle (portrait and landscape)", a->settings.follow_rotation);
+    ui_checkbox(c, r5, _("Turn with the Kindle (portrait and landscape)"), a->settings.follow_rotation);
     hits_add(&S->hits, r5, H_SET_ROTATE, 0);
     y += ui_px(130);
     Rect r6 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r6, "Pinch with two fingers to zoom", a->settings.pinch_zoom);
+    ui_checkbox(c, r6, _("Pinch with two fingers to zoom"), a->settings.pinch_zoom);
     hits_add(&S->hits, r6, H_SET_PINCH, 0);
     y += ui_px(130);
     // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
@@ -488,14 +515,21 @@ static void draw_settings(App *a) {
     hits_add(&S->hits, rl, H_SET_LANGUAGE, 0);
     y += ui_px(150);
     const InputCaps *caps = input_caps();
-    char about[256];
-    snprintf(about, sizeof about, "Grimoire %s  pen: %s%s%s", GRIMOIRE_VERSION, caps && caps->has_pen ? caps->pen_name : "none",
-             caps && caps->has_pressure ? ", pressure" : "", caps && caps->has_tilt ? ", tilt" : "");
+    char pen[160], about[320];
+    bool pressure = caps && caps->has_pressure, tilt = caps && caps->has_tilt;
+    // TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
+    // device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
+    if (!caps || !caps->has_pen) snprintf(pen, sizeof pen, "%s", _("pen: none"));
+    else if (pressure && tilt) snprintf(pen, sizeof pen, _("pen: %s, pressure, tilt"), caps->pen_name);
+    else if (pressure) snprintf(pen, sizeof pen, _("pen: %s, pressure"), caps->pen_name);
+    else if (tilt) snprintf(pen, sizeof pen, _("pen: %s, tilt"), caps->pen_name);
+    else snprintf(pen, sizeof pen, _("pen: %s"), caps->pen_name);
+    snprintf(about, sizeof about, "Grimoire %s  %s", GRIMOIRE_VERSION, pen);
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)}, about, 60);
-    snprintf(about, sizeof about, "Data: %s", store_root());
+    snprintf(about, sizeof about, _("Data: %s"), store_root());
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y + ui_px(60), in.w, ui_px(60)}, about, 60);
     Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
-    ui_button(c, done, ICON_NONE, "Done", BTN_PRIMARY);
+    ui_button(c, done, ICON_NONE, _("Done"), BTN_PRIMARY);
     hits_add(&S->hits, done, H_CANCEL, 0);
 }
 
@@ -506,24 +540,29 @@ static void draw_modal(App *a) {
     case MOD_SETTINGS: draw_settings(a); break;
     case MOD_MORE: {
         if (!it) break;
+        char pdf[256];
+        // TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
+        // Kindle's storage the PDF goes in.
+        snprintf(pdf, sizeof pdf, _("Save PDF to %s now"), "grimoire/PDFs");
         MenuRow rows[] = {
-            {ICON_NOTEBOOK, "Open", H_MORE_OPEN, 0, BTN_PLAIN},
-            {ICON_RENAME, "Rename", H_MORE_RENAME, 0, BTN_PLAIN},
-            {ICON_FOLDER_MOVE, "Move to folder", H_MORE_MOVE, 0, BTN_PLAIN},
-            {ICON_DOWNLOAD, "Save PDF to grimoire/PDFs now", H_MORE_PDF, 0, BTN_PLAIN},
-            {ICON_TRASH, "Delete", H_MORE_DELETE, 0, BTN_PLAIN},
-            {ICON_CLOSE, "Cancel", H_CANCEL, 0, BTN_PLAIN},
+            {ICON_NOTEBOOK, _("Open"), H_MORE_OPEN, 0, BTN_PLAIN},
+            {ICON_RENAME, _("Rename"), H_MORE_RENAME, 0, BTN_PLAIN},
+            {ICON_FOLDER_MOVE, _("Move to folder"), H_MORE_MOVE, 0, BTN_PLAIN},
+            {ICON_DOWNLOAD, pdf, H_MORE_PDF, 0, BTN_PLAIN},
+            {ICON_TRASH, _("Delete"), H_MORE_DELETE, 0, BTN_PLAIN},
+            {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
         };
         draw_menu(a, S->books[it->nb].name, rows, 6);
         break;
     }
     case MOD_FOLDER_MORE: {
         if (!it) break;
+        // TRANSLATORS: a folder's menu (1470 px at 44 px in bold); only an empty folder can go.
         MenuRow rows[] = {
-            {ICON_RENAME, "Rename folder", H_FMORE_RENAME, 0, BTN_PLAIN},
-            {ICON_TRASH, it->count ? "Remove folder (move its notebooks out first)" : "Remove folder", H_FMORE_REMOVE, 0,
+            {ICON_RENAME, _("Rename folder"), H_FMORE_RENAME, 0, BTN_PLAIN},
+            {ICON_TRASH, it->count ? _("Remove folder (move its notebooks out first)") : _("Remove folder"), H_FMORE_REMOVE, 0,
              it->count ? BTN_DISABLED : BTN_PLAIN},
-            {ICON_CLOSE, "Cancel", H_CANCEL, 0, BTN_PLAIN},
+            {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
         };
         draw_menu(a, it->folder, rows, 3);
         break;
@@ -533,21 +572,28 @@ static void draw_modal(App *a) {
         MenuRow rows[14];
         int n = 0;
         const char *curf = S->books[it->nb].folder;
-        rows[n++] = (MenuRow){ICON_LIBRARY, "Library (top level)", H_MOVE_TOP, 0, curf[0] ? BTN_PLAIN : BTN_SELECTED};
+        // TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
+        // notebook: "In: Library (top level)").
+        rows[n++] = (MenuRow){ICON_LIBRARY, _("Library (top level)"), H_MOVE_TOP, 0, curf[0] ? BTN_PLAIN : BTN_SELECTED};
         for (int f = 0; f < S->nfolders && n < 12; f++)
             rows[n++] = (MenuRow){ICON_FOLDER, S->folders[f], H_MOVE_TO, f, strcmp(curf, S->folders[f]) ? BTN_PLAIN : BTN_SELECTED};
-        rows[n++] = (MenuRow){ICON_FOLDER_PLUS, "New folder...", H_MOVE_NEW, 0, BTN_PLAIN};
-        rows[n++] = (MenuRow){ICON_CLOSE, "Cancel", H_CANCEL, 0, BTN_PLAIN};
-        draw_menu(a, "Move to", rows, n);
+        rows[n++] = (MenuRow){ICON_FOLDER_PLUS, _("New folder..."), H_MOVE_NEW, 0, BTN_PLAIN};
+        rows[n++] = (MenuRow){ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN};
+        // TRANSLATORS: the title of the list of folders a notebook can be moved to.
+        draw_menu(a, _("Move to"), rows, n);
         break;
     }
     case MOD_DELETE: {
         if (!it) break;
-        char title[160];
-        snprintf(title, sizeof title, "Delete \"%s\"?", S->books[it->nb].name);
+        char title[256], del[256];
+        // TRANSLATORS: the title of the question before a notebook is deleted, with its name.
+        snprintf(title, sizeof title, _("Delete \"%s\"?"), S->books[it->nb].name);
+        // TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
+        // Kindle's storage (%s), or keep the notebook.
+        snprintf(del, sizeof del, _("Delete (moves it to %s)"), "grimoire/trash");
         MenuRow rows[] = {
-            {ICON_TRASH, "Delete (moves it to grimoire/trash)", H_DELETE_YES, 0, BTN_PRIMARY},
-            {ICON_CLOSE, "Keep it", H_CANCEL, 0, BTN_PLAIN},
+            {ICON_TRASH, del, H_DELETE_YES, 0, BTN_PRIMARY},
+            {ICON_CLOSE, _("Keep it"), H_CANCEL, 0, BTN_PLAIN},
         };
         draw_menu(a, title, rows, 2);
         break;
@@ -671,7 +717,7 @@ static void create_notebook(App *a) {
         return;
     }
     free(nb);
-    app_toast(a, "Could not create the notebook (storage full?)", 3000);
+    app_toast(a, _("Could not create the notebook (storage full?)"), 3000);
 }
 
 static void kb_finished(App *a, bool ok) {
@@ -735,7 +781,8 @@ static void act(App *a, const Hit *h) {
         open_modal(a, MOD_NEW);
         break;
     }
-    case H_NEWFOLDER: open_kb(a, KBP_NEW_FOLDER, "Folder", ""); break;
+    // TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
+    case H_NEWFOLDER: open_kb(a, KBP_NEW_FOLDER, C_("keyboard", "Folder"), ""); break;
     case H_SHARE: share_open(a); break;
     case H_SETTINGS: open_modal(a, MOD_SETTINGS); break;
     case H_EXIT: a->running = false; break;
@@ -771,7 +818,7 @@ static void act(App *a, const Hit *h) {
         musicbuild_open(&S->mb, a, S->new_paper);
         open_modal(a, MOD_MUSIC);
         break;
-    case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, "Name", S->new_name); break;
+    case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, C_("keyboard", "Name"), S->new_name); break;
     case H_NEW_CREATE: create_notebook(a); break;
     case H_CANCEL: close_modal(a); break;
     case H_SET_PENS: S->modal = MOD_NONE; pensettings_open(a, a->settings.current_tool); break;
@@ -838,7 +885,7 @@ static void act(App *a, const Hit *h) {
         }
         break;
     case H_MORE_RENAME:
-        if (it) open_kb(a, KBP_RENAME, "Name", S->books[it->nb].name);
+        if (it) open_kb(a, KBP_RENAME, C_("keyboard", "Name"), S->books[it->nb].name);
         break;
     case H_MORE_MOVE: open_modal(a, MOD_MOVE); break;
     case H_MORE_PDF:
@@ -846,11 +893,11 @@ static void act(App *a, const Hit *h) {
             bg_mirror_pdf(S->books[it->nb].id, a->dpi, app_mirror_dir(), true);
             S->modal = MOD_NONE;
             redraw(a, REFRESH_UI);
-            app_toast(a, "Saving the PDF in the background...", 2500);
+            app_toast(a, _("Saving the PDF in the background..."), 2500);
         }
         break;
     case H_MORE_DELETE: open_modal(a, MOD_DELETE); break;
-    case H_DELETE_YES:
+    case H_DELETE_YES: {
         if (it && !it->is_folder) {
             char nb_path[1200];
             export_mirror_path(&S->books[it->nb], app_mirror_dir(), nb_path, sizeof nb_path);
@@ -860,10 +907,14 @@ static void act(App *a, const Hit *h) {
         S->modal = MOD_NONE;
         reload(a);
         redraw(a, REFRESH_FULL);
-        app_toast(a, "Moved to grimoire/trash", 2500);
+        char msg[256];
+        // TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
+        snprintf(msg, sizeof msg, _("Moved to %s"), "grimoire/trash");
+        app_toast(a, msg, 2500);
         break;
+    }
     case H_FMORE_RENAME:
-        if (it) open_kb(a, KBP_RENAME_FOLDER, "Folder", it->folder);
+        if (it) open_kb(a, KBP_RENAME_FOLDER, C_("keyboard", "Folder"), it->folder);
         break;
     case H_FMORE_REMOVE:
         if (it) store_remove_folder(it->folder);
@@ -881,7 +932,7 @@ static void act(App *a, const Hit *h) {
         reload(a);
         redraw(a, REFRESH_UI);
         break;
-    case H_MOVE_NEW: open_kb(a, KBP_MOVE_NEW_FOLDER, "Folder", ""); break;
+    case H_MOVE_NEW: open_kb(a, KBP_MOVE_NEW_FOLDER, C_("keyboard", "Folder"), ""); break;
     default: break;
     }
 }

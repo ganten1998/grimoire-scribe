@@ -53,6 +53,7 @@ PaperKind paper_sanitize(uint32_t v, PaperKind fallback);
 PaperKind music_encode(const MusicLayout *m);
 bool music_decode(PaperKind k, MusicLayout *m);   // false if k is not a custom layout
 const char *music_part_name(MusicPart p);         // "Treble staff", "Tab, 6 lines", ...
+const char *part_label(MusicPart p);              // the same in the language in use, for the screens
 // The most systems that fit on a page with staff spaces still big enough to write in.
 int music_max_systems(const MusicLayout *m);
 PaperKind music_default(void);                    // treble staff over 6-line tab, 5 systems
@@ -61,6 +62,9 @@ PaperKind music_default(void);                    // treble staff over 6-line ta
 #define PAPER_PICKER_COUNT (PAPER_COUNT + 1)
 
 const char *paper_name(PaperKind k);   // e.g. "Narrow rule", "Narrow, no margin", "Newer paper"
+// paper_name in the language in use: what the screens show (paper_name stays English, an
+// identifier for /api/list.json).
+const char *paper_label(PaperKind k);
 // The order papers are offered in pickers (index 0..PAPER_COUNT-1 -> kind).
 PaperKind paper_at(int index);
 

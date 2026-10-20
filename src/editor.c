@@ -288,14 +288,11 @@ static void draw_panel(App *a) {
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6), ui_px(3), 160);
     y += div_h();
+    // Paper, Display, Pen feel, Library (icons only, like the rest of the panel).
     struct {
         IconKind icon;
-        const char *label;
         int id;
-    } rest[] = {{ICON_PAPER, "Paper", P_PAPER},
-                {ICON_BRIGHTNESS, "Display", P_DISPLAY},
-                {ICON_TUNE, "Pen feel", P_PENSET},
-                {ICON_LIBRARY, "Library", P_LIBRARY}};
+    } rest[] = {{ICON_PAPER, P_PAPER}, {ICON_BRIGHTNESS, P_DISPLAY}, {ICON_TUNE, P_PENSET}, {ICON_LIBRARY, P_LIBRARY}};
     for (int i = 0; i < 4; i++) {
         Rect r = {x, y, w, btn_h()};
         ui_button(c, r, rest[i].icon, NULL, BTN_PLAIN);
@@ -337,7 +334,8 @@ static void draw_paper_sheet(App *a) {
     int gridw = cols * tw + (cols - 1) * gap_;
     int sheet_h = ui_px(120) + ui_px(72) + rows * cell_h + ui_px(190);
     S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
-    Rect in = ui_sheet(c, S->paper_rect, "Paper for this page");
+    // TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
+    Rect in = ui_sheet(c, S->paper_rect, _("Paper for this page"));
     for (int i = 0; i < ntiles; i++) {
         // The last tile is Custom music: it shows this page's layout, or the last one built (also
         // for a newer layout this build cannot draw, which is then not selected either).
@@ -350,13 +348,19 @@ static void draw_paper_sheet(App *a) {
         if (pv) canvas_blit_fit(c, pv, tr);
         bool sel = custom ? page_custom : (S->page && S->page->paper == k);
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
-        font_draw_centered(c, sel ? FONT_BOLD : FONT_REGULAR, ui_small_size() * 0.9f,
-                           (Rect){tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)},
-                           custom ? "Custom music..." : paper_name(k), 0);
+        // A label too wide for its column goes on two lines under the tile, as in New notebook.
+        const char *label = custom ? _("Custom music...") : paper_label(k);
+        FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
+        float ls = ui_small_size() * 0.9f;
+        Rect lr = {tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)};
+        if (font_measure(lf, ls, label) > lr.w)
+            font_draw_wrapped(c, lf, ls, (Rect){tr.x, tr.y + th + ui_px(8), tw, ui_px(80)}, label, 2, ui_px(40), true, 0);
+        else
+            font_draw_centered(c, lf, ls, lr, label, 0);
         hits_add(&S->modal_hits, (Rect){tr.x, tr.y, tw, th + ui_px(90)}, custom ? P_PICK_CUSTOM : P_PICK_PAPER, (int)k);
     }
     Rect cancel = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
-    ui_button(c, cancel, ICON_NONE, "Cancel", BTN_PLAIN);
+    ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
     hits_add(&S->modal_hits, cancel, P_PICK_CANCEL, 0);
 }
 
@@ -402,7 +406,22 @@ static Rect page_to_screen(App *a, Rect p) {
     return rect_intersect(r, (Rect){0, 0, a->w, a->h});
 }
 
-static Rect zoom_chip(App *a) { return (Rect){a->w / 2 - ui_px(190), ui_px(24), ui_px(380), ui_px(100)}; }
+// The zoom chip's text: the zoom, and what a tap on the chip does.
+static void zoom_text(App *a, char *out, size_t cap) {
+    // TRANSLATORS: the chip at the top of a zoomed page: the zoom, then that a tap on the chip takes
+    // the page back to its usual size. In bold at 34 px; the chip grows with its text.
+    snprintf(out, cap, _("%d%%   tap to reset"), (int)lrintf(S->zoom / S->zoom_default * 100.f));
+}
+
+// Centered at the top, 380 px wide, or as wide as a longer text needs with this much room at each
+// end (the English always fits the 380).
+enum { ZOOM_CHIP_PAD = 24 };
+static Rect zoom_chip(App *a) {
+    char z[96];
+    zoom_text(a, z, sizeof z);
+    int w = ui_text_box_w(FONT_BOLD, ui_small_size(), z, ui_px(ZOOM_CHIP_PAD), ui_px(380), a->w - ui_px(80));
+    return (Rect){a->w / 2 - w / 2, ui_px(24), w, ui_px(100)};
+}
 static bool zoomed(App *a) { return fabsf(S->zoom - S->zoom_default) > 0.01f || S->ox != 0.f || S->oy > 0.5f; }
 
 // Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page.
@@ -457,11 +476,16 @@ static void draw_tools(App *a) {
     S->tools_rect = (Rect){x, y, w, h};
     ui_frame(c, S->tools_rect, ui_px(22), 255, true, 0);
     ui_frame(c, S->tools_rect, ui_px(22), 0, false, ui_px(6));
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){x + ui_px(30), y, w - ui_px(60), ui_px(100)}, "Tools", 0);
+    // TRANSLATORS: the title of the editor's tool picker.
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){x + ui_px(30), y, w - ui_px(60), ui_px(100)}, _("Tools"), 0);
     for (int i = 0; i < N_DRAW_TOOLS; i++) {
         ToolKind t = k_draw_tools[i];
         Rect r = {x + ui_px(30) + (i % cols) * (bw + g), y + ui_px(100) + (i / cols) * (bh + g), bw, bh};
-        const char *name = t == TOOL_MECH_PENCIL ? "Mechanical" : t == TOOL_CALLIGRAPHY ? "Calligraphy" : tool_name(t);
+        // TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
+        // Calligraphy pen (284 px at 34 px, as the other tools' names).
+        const char *name = t == TOOL_MECH_PENCIL   ? C_("tool", "Mechanical")
+                           : t == TOOL_CALLIGRAPHY ? C_("tool", "Calligraphy")
+                                                   : tool_label(t);
         ui_button(c, r, ui_tool_icon(t), name, a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN);
         hits_add(&S->tools_hits, r, P_PICK_TOOL, t);
     }
@@ -540,17 +564,22 @@ static void pages_draw(App *a) {
     ui_button(c, back, ICON_BACK, NULL, BTN_PLAIN);
     hits_add(&S->pages_hits, back, PG_BACK, 0);
     int k = pages_selected(a);
-    char del[48];
-    snprintf(del, sizeof del, k ? "Delete (%d)" : "Delete", k);
+    char del[64];
+    // TRANSLATORS: the Pages view's buttons, each under its icon (344 px at 34 px): Delete, with
+    // how many pages are ticked; tick all of them, or none.
+    if (k) snprintf(del, sizeof del, _("Delete (%d)"), k);
+    else snprintf(del, sizeof del, "%s", _("Delete"));
     Rect rdel = {a->w - m - ui_px(360), by, ui_px(360), bh};
     ui_button(c, rdel, ICON_TRASH, del, k ? BTN_PRIMARY : BTN_DISABLED);
     if (k) hits_add(&S->pages_hits, rdel, PG_DELETE, 0);
     Rect rall = {rdel.x - ui_px(20) - ui_px(360), by, ui_px(360), bh};
     bool all = k == S->nb.npages;
-    ui_button(c, rall, ICON_CHECK, all ? "Select none" : "Select all", BTN_PLAIN);
+    // TRANSLATORS: the Pages view's button that ticks every page, or none (344 px at 34 px).
+    ui_button(c, rall, ICON_CHECK, all ? _("Select none") : _("Select all"), BTN_PLAIN);
     hits_add(&S->pages_hits, rall, PG_ALL, 0);
-    char title[48];
-    snprintf(title, sizeof title, "Pages (%d)", S->nb.npages);
+    char title[64];
+    // TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
+    snprintf(title, sizeof title, _("Pages (%d)"), S->nb.npages);
     font_draw_left(c, FONT_BOLD, ui_title_size() * 1.15f,
                    (Rect){back.x + bh + ui_px(30), 0, rall.x - back.x - bh - ui_px(50), th0}, title, 0);
     ui_rule(c, 0, a->w, th0, ui_px(4), 0);
@@ -579,8 +608,10 @@ static void pages_draw(App *a) {
         ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
         ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
         if (sel) ui_icon(c, ICON_CHECK, cb, 255);
-        char lab[32];
-        snprintf(lab, sizeof lab, cur ? "Page %d (open)" : "Page %d", i + 1);
+        char lab[64];
+        // TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
+        // open page in bold.
+        snprintf(lab, sizeof lab, cur ? _("Page %d (open)") : _("Page %d"), i + 1);
         font_draw_centered(c, cur ? FONT_BOLD : FONT_REGULAR, ui_text_size(),
                            (Rect){tr.x, tr.y + th + ui_px(12), tr.w, ui_px(70)}, lab, 0);
         hits_add(&S->pages_hits, tr, PG_OPEN, i);
@@ -593,8 +624,10 @@ static void pages_draw(App *a) {
     ui_button(c, nr, ICON_NEXT, NULL, S->pages_screen < screens - 1 ? BTN_PLAIN : BTN_DISABLED);
     if (S->pages_screen > 0) hits_add(&S->pages_hits, pr, PG_PREV, 0);
     if (S->pages_screen < screens - 1) hits_add(&S->pages_hits, nr, PG_NEXT, 0);
-    char pl[64];
-    snprintf(pl, sizeof pl, "Tick pages, then Delete.   %d of %d", S->pages_screen + 1, screens);
+    char pl[128];
+    // TRANSLATORS: at the bottom of the Pages view: how to delete pages (Delete is the button's
+    // name), then which screenful of them this is (1320 px at 34 px).
+    snprintf(pl, sizeof pl, _("Tick pages, then Delete.   %d of %d"), S->pages_screen + 1, screens);
     font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){pr.x + pr.w, pr.y, nr.x - pr.x - pr.w, pr.h}, pl, 60);
 }
 
@@ -609,8 +642,8 @@ static void compose(App *a, Rect r) {
     if (view_identity(a)) canvas_blit(&a->screen, &S->page_canvas, r, r.x, r.y);
     else blit_view(a, r);
     if (zoomed(a) && rect_overlaps(r, zoom_chip(a))) {
-        char z[48];
-        snprintf(z, sizeof z, "%d%%   tap to reset", (int)lrintf(S->zoom / S->zoom_default * 100.f));
+        char z[96];
+        zoom_text(a, z, sizeof z);
         Rect c = zoom_chip(a);
         ui_frame(&a->screen, c, c.h / 2, 0, true, 0);
         font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), c, z, 255);
@@ -660,7 +693,7 @@ static bool save_page(App *a) {
     if (S->page_dirty) {
         // A read-only page (from a newer Grimoire) is never written: its file stays as it is.
         if (S->page && !S->page->readonly && store_save_page(&S->nb, S->index, S->page) != 0) {
-            app_toast(a, "Could not save this page. Is the storage full?", 5000);
+            app_toast(a, _("Could not save this page. Is the storage full?"), 5000);
             return false;
         }
         if (S->index == 0) S->thumb_dirty = true;  // written when leaving the page (it is slow)
@@ -681,18 +714,19 @@ static void render_page_full(App *a) {
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
 // be and never changed: writing, erasing, clearing and paper changes are refused with this.
-static const char k_readonly_msg[] = "This page was made by a newer Grimoire. It is read-only here.";
+// TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
+static const char *const k_readonly_msg = N_("This page was made by a newer Grimoire. It is read-only here.");
 
 static bool refuse_readonly(App *a) {
     if (!S->page || !S->page->readonly) return false;
-    app_toast(a, k_readonly_msg, 3000);
+    app_toast(a, _(k_readonly_msg), 3000);
     return true;
 }
 
 // On arriving at a page: a read-only page says so, and any other page takes that message down if
 // it is still up from the page before, so it never seems to be about this one.
 static void arrive_readonly(App *a) {
-    if (refuse_readonly(a) || !a->toast_visible || strcmp(a->toast, k_readonly_msg)) return;
+    if (refuse_readonly(a) || !a->toast_visible || strcmp(a->toast, _(k_readonly_msg))) return;
     a->toast_visible = false;
     app_invalidate(a, a->toast_rect, REFRESH_UI);  // (already inside the arriving page's full repaint)
 }
@@ -705,7 +739,7 @@ static void go_to_page(App *a, int index) {
     index = clampi(index, 0, S->nb.npages - 1);
     Page *np = page_at(a, index);
     if (!np) {
-        app_toast(a, "Could not open that page", 3000);
+        app_toast(a, _("Could not open that page"), 3000);
         return;
     }
     S->page = np;
@@ -747,7 +781,7 @@ static void close_notebook(App *a) {
 void editor_open_notebook(App *a, const char *id) {
     close_notebook(a);
     if (store_load_info(id, &S->nb) != 0) {
-        app_toast(a, "Could not open that notebook", 3000);
+        app_toast(a, _("Could not open that notebook"), 3000);
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
@@ -755,7 +789,7 @@ void editor_open_notebook(App *a, const char *id) {
     S->page = page_at(a, S->index);
     if (!S->page) {
         free_histories(a);
-        app_toast(a, "Could not open that notebook", 3000);
+        app_toast(a, _("Could not open that notebook"), 3000);
         return;
     }
     S->open = true;
@@ -935,7 +969,7 @@ static void erase_end(App *a) {
 static void clear_page(App *a) {
     if (refuse_readonly(a)) return;
     if (!S->page || S->page->n == 0) {
-        app_toast(a, "This page is already empty", 1500);
+        app_toast(a, _("This page is already empty"), 1500);
         return;
     }
     History *h = cur_hist(a);
@@ -945,7 +979,7 @@ static void clear_page(App *a) {
     compose_all(a, REFRESH_FULL);
     mark_changed(a);
     repaint_panel(a, REFRESH_FULL);
-    app_toast(a, "Page cleared", 1500);
+    app_toast(a, _("Page cleared"), 1500);
 }
 
 // Side button: clicks and holds that happen while not drawing.
@@ -1034,7 +1068,7 @@ static void pages_delete(App *a) {
     if (k == n) {
         // A notebook keeps at least one page: add a fresh blank one to stay behind.
         if (store_add_page(&S->nb, n, S->page ? S->page->paper : S->nb.paper) != 0) {
-            app_toast(a, "Could not delete those pages", 2500);
+            app_toast(a, _("Could not delete those pages"), 2500);
             return;
         }
     }
@@ -1056,8 +1090,9 @@ static void pages_delete(App *a) {
     S->page_dirty = S->index == 0;  // refreshes the library thumbnail when page 1 changed
     S->info_dirty = true;
     save_page(a);
-    char msg[64];
-    snprintf(msg, sizeof msg, k == 1 ? "Deleted 1 page (kept in grimoire/trash)" : "Deleted %d pages (kept in grimoire/trash)", k);
+    char msg[256];
+    // TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
+    snprintf(msg, sizeof msg, NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", k), k, "grimoire/trash");
     compose_all(a, REFRESH_FULL);
     app_toast(a, msg, 2500);
 }
@@ -1151,7 +1186,7 @@ static void panel_act(App *a, const Hit *h) {
         if (S->index >= S->nb.npages - 1) {
             if (!save_page(a)) return;
             if (store_add_page(&S->nb, S->nb.npages, S->page->paper) != 0) {
-                app_toast(a, "Could not add a page", 3000);
+                app_toast(a, _("Could not add a page"), 3000);
                 return;
             }
             S->changed = true;
@@ -1172,12 +1207,12 @@ static void panel_act(App *a, const Hit *h) {
         break;
     case P_PENSET: pensettings_open(a, a->settings.current_tool); break;
     case P_LIBRARY:
-        app_toast(a, "Saving...", 8000);
+        app_toast(a, _("Saving..."), 8000);
         app_flush(a);
         if (!save_page(a)) return;  // stay with the unsaved page rather than drop it
         close_notebook(a);
         app_switch(a, SCR_LIBRARY);
-        app_toast(a, "Saved", 1200);
+        app_toast(a, _("Saved"), 1200);
         break;
     case P_COLLAPSE: set_collapsed(a, true); break;
     case P_EXPAND: set_collapsed(a, false); break;

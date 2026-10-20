@@ -42,15 +42,23 @@ static void draw(App *a) {
     hits_clear(&S->hits);
     canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
     int m = ui_px(60);
-    const char *title = S->phase == PH_PEN ? "Calibrate the pen" : S->phase == PH_TOUCH ? "Calibrate touch" : "Check it";
+    // TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+    const char *title = S->phase == PH_PEN     ? _("Calibrate the pen")
+                        : S->phase == PH_TOUCH ? _("Calibrate touch")
+                                               : _("Check it");
     Rect tr = {m, a->h / 2 - ui_px(420), a->w - 2 * m, ui_px(110)};
     font_draw_centered(c, FONT_BOLD, ui_title_size() * 1.2f, tr, title, 0);
-    char sub[160];
-    if (S->phase == PH_VERIFY)
-        snprintf(sub, sizeof sub, "Draw in the box: the line should sit right under the tip.");
-    else
-        snprintf(sub, sizeof sub, "%s the center of the target (%d of %d).",
-                 S->phase == PH_PEN ? "Tap with the pen tip on" : "Tap with a finger on", S->target + 1, NT);
+    char sub[256];
+    if (S->phase == PH_VERIFY) {
+        // TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
+        // tap five targets, one after another, with the pen, then with a finger; then draw to check.
+        snprintf(sub, sizeof sub, "%s", _("Draw in the box: the line should sit right under the tip."));
+    } else if (S->phase == PH_PEN) {
+        // TRANSLATORS: the target is the circle with a cross on it; the second number is how many.
+        snprintf(sub, sizeof sub, _("Tap with the pen tip on the center of the target (%d of %d)."), S->target + 1, NT);
+    } else {
+        snprintf(sub, sizeof sub, _("Tap with a finger on the center of the target (%d of %d)."), S->target + 1, NT);
+    }
     tr.y += ui_px(120);
     font_draw_centered(c, FONT_REGULAR, ui_text_size(), tr, sub, 0);
     if (S->msg[0]) {
@@ -66,11 +74,13 @@ static void draw(App *a) {
         canvas_line_aa(c, cx - r * 1.6f, cy, cx + r * 1.6f, cy, (float)ui_px(4), 0);
         canvas_line_aa(c, cx, cy - r * 1.6f, cx, cy + r * 1.6f, (float)ui_px(4), 0);
         Rect cancel = bar(a, 0);
-        ui_button(c, cancel, ICON_NONE, S->phase == PH_PEN ? "Cancel (tap with a finger)" : "Cancel", BTN_PLAIN);
+        // TRANSLATORS: calibration's buttons, bars across the screen (1724 px at 44 px). While the
+        // pen is calibrated, a finger works them, and the pen while touch is.
+        ui_button(c, cancel, ICON_NONE, S->phase == PH_PEN ? _("Cancel (tap with a finger)") : _("Cancel"), BTN_PLAIN);
         hits_add(&S->hits, cancel, B_CANCEL, 0);
         if (S->phase == PH_TOUCH) {
             Rect skip = bar(a, 1);
-            ui_button(c, skip, ICON_NONE, "Touch was fine: skip (tap with the pen)", BTN_PLAIN);
+            ui_button(c, skip, ICON_NONE, _("Touch was fine: skip (tap with the pen)"), BTN_PLAIN);
             hits_add(&S->hits, skip, B_SKIP, 0);
         }
     } else {
@@ -78,9 +88,9 @@ static void draw(App *a) {
         ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
         int slot = 0;
         Rect save = bar(a, slot++), redo = bar(a, slot++), cancel = bar(a, slot++);
-        ui_button(c, save, ICON_CHECK, "Save", BTN_PRIMARY);
-        ui_button(c, redo, ICON_NONE, "Start over", BTN_PLAIN);
-        ui_button(c, cancel, ICON_NONE, "Cancel (keep the old calibration)", BTN_PLAIN);
+        ui_button(c, save, ICON_CHECK, _("Save"), BTN_PRIMARY);
+        ui_button(c, redo, ICON_NONE, _("Start over"), BTN_PLAIN);
+        ui_button(c, cancel, ICON_NONE, _("Cancel (keep the old calibration)"), BTN_PLAIN);
         hits_add(&S->hits, save, B_SAVE, 0);
         hits_add(&S->hits, redo, B_REDO, 0);
         hits_add(&S->hits, cancel, B_CANCEL, 0);
@@ -100,7 +110,8 @@ static void finish_pass(App *a) {
     bool pen = S->phase == PH_PEN;
     // Fit on the 4 corners, then check the center.
     if (!calib_fit(S->pts, 4, &c)) {
-        restart(a, S->phase, "Those taps did not make sense. Let's try again.");
+        // TRANSLATORS: calibration's notes, in bold under what to do (1740 px at 44 px).
+        restart(a, S->phase, _("Those taps did not make sense. Let's try again."));
         return;
     }
     float sx, sy;
@@ -108,14 +119,14 @@ static void finish_pass(App *a) {
     float err = hypotf(sx - S->pts[4].sx, sy - S->pts[4].sy);
     if (err > mm_to_px(4.f, a->dpi)) {
         char m[128];
-        snprintf(m, sizeof m, "The center was off by %.1f mm. Let's try again.", err * 25.4f / a->dpi);
+        snprintf(m, sizeof m, _("The center was off by %.1f mm. Let's try again."), err * 25.4f / a->dpi);
         restart(a, S->phase, m);
         return;
     }
     if (pen) {
         S->new_pen = c;
         input_set_calib(&S->new_pen, NULL);
-        restart(a, PH_TOUCH, "Pen done.");
+        restart(a, PH_TOUCH, _("Pen done."));
     } else {
         S->new_touch = c;
         input_set_calib(NULL, &S->new_touch);
@@ -186,7 +197,7 @@ void calibrate_event(App *a, const InEvent *ev) {
             settings_save(&a->settings);
             input_set_calib(&a->settings.pen_calib, a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);
             leave_to(a);
-            app_toast(a, "Calibration saved", 2000);
+            app_toast(a, _("Calibration saved"), 2000);
             break;
         case B_REDO: restore_old(a); restart(a, PH_PEN, ""); break;
         case B_CANCEL: restore_old(a); leave_to(a); break;

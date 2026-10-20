@@ -66,22 +66,26 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     Canvas *c = &a->screen;
     hits_clear(&b->hits);
     b->rect = card_rect(a);
-    Rect in = ui_sheet(c, b->rect, "Custom music");
+    // TRANSLATORS: the title of the sheet that builds a music paper from parts.
+    Rect in = ui_sheet(c, b->rect, _("Custom music"));
     int rh = row_h(a), pad = ui_px(12);
     int lw = in.w * 58 / 100;
     float ts = ui_text_size();
     int y = in.y;
-    font_draw_left(c, FONT_BOLD, ts, (Rect){in.x, y, lw, ui_px(70)}, "Each system, top to bottom", 0);
+    // TRANSLATORS: the Custom music sheet's headings, over the layout's parts and over the parts to
+    // add (962 px at 44 px).
+    font_draw_left(c, FONT_BOLD, ts, (Rect){in.x, y, lw, ui_px(70)}, _("Each system, top to bottom"), 0);
     y += ui_px(70);
     for (int i = 0; i < MUSIC_MAX_PARTS; i++, y += rh) {
         Rect row = {in.x, y + pad / 2, lw, rh - pad};
         if (i >= b->m.n) {
-            if (i == b->m.n) font_draw_left(c, FONT_REGULAR, ui_small_size(), rect_inflate(row, -ui_px(20)), "(add a part below)", 150);
+            if (i == b->m.n)
+                font_draw_left(c, FONT_REGULAR, ui_small_size(), rect_inflate(row, -ui_px(20)), _("(add a part below)"), 150);
             continue;
         }
         ui_frame(c, row, ui_px(12), 0, false, ui_px(3));
-        char lab[48];
-        snprintf(lab, sizeof lab, "%d  %s", i + 1, music_part_name(b->m.part[i]));
+        char lab[96];
+        snprintf(lab, sizeof lab, "%d  %s", i + 1, part_label(b->m.part[i]));
         font_draw_left(c, FONT_REGULAR, ts, (Rect){row.x + ui_px(24), row.y, row.w, row.h}, lab, 0);
         int bs = row.h - 2 * pad, bx = row.x + row.w - pad - bs;
         struct { int id; IconKind ic; bool ok; } btn[3] = {
@@ -93,20 +97,21 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
         }
     }
     y += ui_px(20);
-    font_draw_left(c, FONT_BOLD, ts, (Rect){in.x, y, lw, ui_px(70)}, "Add a part", 0);
+    font_draw_left(c, FONT_BOLD, ts, (Rect){in.x, y, lw, ui_px(70)}, _("Add a part"), 0);
     y += ui_px(70);
     bool full = b->m.n >= MUSIC_MAX_PARTS;
     int bw = (lw - (ADD_COLS - 1) * pad) / ADD_COLS;
     for (int i = 0; i < N_PARTS; i++) {
         Rect r = {in.x + (i % ADD_COLS) * (bw + pad), y + (i / ADD_COLS) * rh + pad / 2, bw, rh - pad};
-        ui_button(c, r, ICON_NONE, music_part_name(k_parts[i]), full ? BTN_DISABLED : BTN_PLAIN);
+        ui_button(c, r, ICON_NONE, part_label(k_parts[i]), full ? BTN_DISABLED : BTN_PLAIN);
         if (!full) hits_add(&b->hits, r, B_ADD, (int)k_parts[i]);
     }
     y += ADD_ROWS * rh + ui_px(20);
     // Systems per page: [-] N [+]
     int mx = music_max_systems(&b->m);
     Rect srow = {in.x, y, lw, rh};
-    font_draw_left(c, FONT_BOLD, ts, (Rect){srow.x, srow.y, lw / 2, rh}, "Systems per page", 0);
+    // TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
+    font_draw_left(c, FONT_BOLD, ts, (Rect){srow.x, srow.y, lw / 2, rh}, _("Systems per page"), 0);
     int bs = rh - pad;
     Rect less = {in.x + lw / 2, y + pad / 2, bs, bs};
     Rect more = {in.x + lw - bs, y + pad / 2, bs, bs};
@@ -115,7 +120,8 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     if (b->m.systems > 1) hits_add(&b->hits, less, B_LESS, 0);
     if (b->m.systems < mx) hits_add(&b->hits, more, B_MORE, 0);
     char val[32];
-    snprintf(val, sizeof val, "%d of %d", b->m.systems, mx);
+    // TRANSLATORS: the systems per page, of the most that fit (275 px at 44 px).
+    snprintf(val, sizeof val, _("%d of %d"), b->m.systems, mx);
     font_draw_centered(c, FONT_BOLD, ts, (Rect){less.x + bs, y, more.x - less.x - bs, rh}, val, 0);
     // The page as it will look.
     Rect pv = {in.x + lw + ui_px(50), in.y, in.w - lw - ui_px(50), in.h - ui_px(190)};
@@ -132,8 +138,9 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     int bh = ui_px(140), bw2 = ui_px(380);
     Rect cancel = {in.x, in.y + in.h - bh, bw2, bh};
     Rect done = {in.x + in.w - bw2, in.y + in.h - bh, bw2, bh};
-    ui_button(c, cancel, ICON_NONE, "Cancel", BTN_PLAIN);
-    ui_button(c, done, ICON_CHECK, "Use layout", BTN_PRIMARY);
+    ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
+    // TRANSLATORS: takes the layout built on the Custom music sheet (364 px at 34 px).
+    ui_button(c, done, ICON_CHECK, _("Use layout"), BTN_PRIMARY);
     hits_add(&b->hits, cancel, B_CANCEL, 0);
     hits_add(&b->hits, done, B_DONE, 0);
     return b->rect;

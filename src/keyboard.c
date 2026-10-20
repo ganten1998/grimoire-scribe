@@ -194,12 +194,14 @@ void keyboard_close(Keyboard *kb) { kb->open = false; }
 // ch, room for 5 bytes).
 static const char *key_label(const Keyboard *kb, uint32_t code, char *ch) {
     switch (code) {
-    case KB_KEY_SHIFT: return "shift";
-    case KB_KEY_BKSP: return "del";
-    case KB_KEY_DONE: return "Done";
-    case KB_KEY_CANCEL: return "Cancel";
+    // TRANSLATORS: the keyboard's named keys, in bold at 44 px: shift (250 px wide), delete
+    // (261), the space bar, and Cancel and Done (334).
+    case KB_KEY_SHIFT: return C_("key", "shift");
+    case KB_KEY_BKSP: return C_("key", "del");
+    case KB_KEY_DONE: return _("Done");
+    case KB_KEY_CANCEL: return _("Cancel");
     case KB_KEY_PAGE: return kb->page ? "abc" : "\xc3\xa1\xc3\xa9";  // a and e acute
-    case ' ': return "space";
+    case ' ': return C_("key", "space");
     default:
         ch[utf8_put(kb->shift ? keyboard_upper(code) : code, ch)] = 0;
         return ch;

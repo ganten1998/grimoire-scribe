@@ -263,7 +263,8 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
         if (out->page_ids[i] > maxid) maxid = out->page_ids[i];
     if (out->next_page_id <= maxid) out->next_page_id = maxid + 1;
     out->last_page = clampi(out->last_page, 0, out->npages - 1);
-    if (!out->name[0]) strlcpy_q(out->name, "Untitled", sizeof out->name);
+    // TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+    if (!out->name[0]) strlcpy_q(out->name, _("Untitled"), sizeof out->name);
     return 0;
 }
 
@@ -332,7 +333,7 @@ int store_create(const char *name, const char *folder, PaperKind paper, Notebook
     random_hex(rnd, 4);
     snprintf(nb->id, sizeof nb->id, "%04d%02d%02d-%02d%02d%02d-%s", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
              tm.tm_hour, tm.tm_min, tm.tm_sec, rnd);
-    clean_line(nb->name, name && *name ? name : "Untitled", sizeof nb->name);
+    clean_line(nb->name, name && *name ? name : _("Untitled"), sizeof nb->name);
     clean_line(nb->folder, folder ? folder : "", sizeof nb->folder);
     nb->paper = paper_sanitize((uint32_t)paper, PAPER_MEDIUM);
     nb->created = nb->modified = (int64_t)t;
