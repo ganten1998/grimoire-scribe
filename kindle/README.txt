@@ -8,6 +8,8 @@ INSTALL
 
 UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are kept.
 FROM QUIRE: install as above and tap Grimoire once; your notebooks move over by themselves.
+KOREADER: Grimoire is a separate app. Quit KOReader first, then tap Grimoire in the Library.
+It will not start from KOReader's file browser, because KOReader keeps the pen and the screen.
 
 Your notebooks live in the "grimoire" folder on the Kindle. Closed notebooks are also saved as
 PDFs in grimoire/PDFs. Library > Share serves everything over Wi-Fi to any browser.

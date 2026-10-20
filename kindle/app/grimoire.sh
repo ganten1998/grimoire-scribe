@@ -8,6 +8,7 @@
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
+# Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does.
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
@@ -34,6 +35,24 @@ if [ "$1" = "--reset-calibration" ]; then
     rm -f "$S.reset"
     log "could not reset the calibration in $S"
     exit 1
+fi
+
+# KOReader keeps the pen and the touch screen to itself while it runs: Grimoire would get neither,
+# and the restore below would wake the Kindle UI underneath KOReader. See documents/Grimoire.sh.
+MSG=""
+if [ -n "$KOREADER_DIR" ]; then
+    MSG="not starting inside KOReader, which holds the pen and the touch screen: quit KOReader, then tap Grimoire in the Library."
+elif KO_PID=$(pidof reader.lua 2>/dev/null); then
+    MSG="not starting: KOReader is still running (reader.lua, pid $KO_PID) and holds the pen and the touch screen. Quit it, or restart the Kindle if it is not open, then tap Grimoire in the Library."
+fi
+if [ -n "$MSG" ]; then
+    log "$MSG"
+    echo "Grimoire: $MSG" >&2
+    if [ -z "$KOREADER_DIR" ] && command -v eips >/dev/null 2>&1; then
+        (usleep 2000000 2>/dev/null || sleep 2; eips 1 3 "Grimoire did not start: KOReader is running.") \
+            </dev/null >/dev/null 2>&1 &
+    fi
+    exit 3
 fi
 
 # The share server's port (Settings may change it; the firewall hole must match).

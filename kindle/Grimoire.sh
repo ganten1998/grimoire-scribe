@@ -3,9 +3,22 @@
 # Author: Ganten
 # Icon: @ICON@
 # DontUseFBInk
+# Capabilities: guard unpack-only
 #
 # Scriptlet launcher (Vera / WinterBreak-era jailbreaks index .sh files in documents/ as books).
 # Self-contained: the app is appended below and unpacked to /mnt/us/grimoire/app; see docs/KINDLE.md.
+# SH_Integration reads its keys (Name, Author, Icon, DontUseFBInk) from the first six lines only,
+# so those four stay on lines 2 to 5.
+#
+#   Grimoire.sh                      unpack the app if this file is newer, then start Grimoire
+#   Grimoire.sh --unpack-only        only unpack, start nothing
+#   Grimoire.sh --reset-calibration  forget the pen and touch calibration
+#   Other arguments go on to app/grimoire.sh (--stop-framework).
+#
+# Capabilities lists what this launcher supports, for a tool (the KOReader plugin) that must
+# never run a launcher to find out: an older one ignores a flag it does not know and starts
+# Grimoire. guard: it refuses to start inside KOReader (exit 3); unpack-only: --unpack-only.
+# The payload carries the same words in app/CAPABILITIES.
 
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
 # never set.
@@ -14,7 +27,38 @@ TMP=${GRIMOIRE_TMP:-/tmp}
 LOG=$US/grimoire/grimoire.log
 APP=$US/grimoire/app
 BUILD_ID=@BUILD_ID@
-log() { echo "$(date '+%F %T') Grimoire.sh: $*" >>"$LOG"; }
+# Never creates the grimoire folder: the move from Quire below needs it missing.
+log() { [ -d "$US/grimoire" ] && echo "$(date '+%F %T') Grimoire.sh: $*" >>"$LOG"; }
+
+# KOReader keeps the pen and the touch screen to itself while it runs (an exclusive grab), so a
+# Grimoire started under it gets neither, and its exit would bring the Kindle UI back underneath
+# KOReader. Everything KOReader starts inherits KOREADER_DIR (its file browser's Execute shell
+# script runs this file); a reader.lua still running is how koreader.sh itself tells that
+# KOReader is up. Unpacking and the calibration reset touch neither the screen nor the input, so
+# they are allowed. app/grimoire.sh has the same check.
+case "$1" in
+--unpack-only | --reset-calibration) ;;
+*)
+    MSG=""
+    if [ -n "$KOREADER_DIR" ]; then
+        MSG="not starting inside KOReader, which holds the pen and the touch screen: quit KOReader, then tap Grimoire in the Library."
+    elif KO_PID=$(pidof reader.lua 2>/dev/null); then
+        MSG="not starting: KOReader is still running (reader.lua, pid $KO_PID) and holds the pen and the touch screen. Quit it, or restart the Kindle if it is not open, then tap Grimoire in the Library."
+    fi
+    if [ -n "$MSG" ]; then
+        log "$MSG"
+        echo "Grimoire: $MSG" >&2
+        # Tapped in the Library while KOReader lingers: say it on the screen too, once the
+        # Library has repainted (the scriptlet host refreshes the screen when this script ends).
+        # Inside KOReader, KOReader shows the exit status itself.
+        if [ -z "$KOREADER_DIR" ] && command -v eips >/dev/null 2>&1; then
+            (usleep 2000000 2>/dev/null || sleep 2; eips 1 3 "Grimoire did not start: KOReader is running.") \
+                </dev/null >/dev/null 2>&1 &
+        fi
+        exit 3
+    fi
+    ;;
+esac
 
 # Grimoire used to be called Quire. Its notebooks and settings move over once, before anything
 # creates the new folder; the old launcher (which would start the old app) is retired.
@@ -49,6 +93,11 @@ if [ ! -f "$APP/grimoire" ] || [ "$(cat "$APP/BUILD_ID" 2>/dev/null)" != "$BUILD
     log "unpacked build $BUILD_ID into $APP"
 fi
 chmod +x "$APP/grimoire" "$APP/grimoire.sh" 2>/dev/null
+case "$1" in
+--unpack-only) exit 0 ;;
+# Quick, and its status is the caller's answer: no need to detach.
+--reset-calibration) exec sh "$APP/grimoire.sh" --reset-calibration ;;
+esac
 # Detach, so Grimoire keeps running whatever the scriptlet host does with this process.
 if command -v setsid >/dev/null 2>&1; then
     setsid sh "$APP/grimoire.sh" "$@" </dev/null >/dev/null 2>&1 &
