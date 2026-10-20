@@ -1288,9 +1288,12 @@ static bool touches_visible_ink(App *a, int i, float x0, float y0, float x1, flo
     Rect R = rect_intersect(rect_intersect(rect_from_points(x0, y0, x1, y1, r + 1.f), s->bbox),
                             (Rect){0, 0, pc->w, pc->h});
     if (rect_is_empty(R)) return false;
+    // A pixel the eraser touches anywhere has its centre within half its diagonal more (so even the
+    // smallest eraser, zoomed in, touches a pixel wherever it is set down).
+    float rp = r + 0.71f;
     const Canvas *paper = page_paper(a);
-    if (paper && paper->w == pc->w && paper->h == pc->h && !dark_near(a, s, paper, R, x0, y0, x1, y1, r)) return false;
-    return own_ink_shows(a, i, R, x0, y0, x1, y1, r) != 0;  // (out of memory: as before)
+    if (paper && paper->w == pc->w && paper->h == pc->h && !dark_near(a, s, paper, R, x0, y0, x1, y1, rp)) return false;
+    return own_ink_shows(a, i, R, x0, y0, x1, y1, rp) != 0;  // (out of memory: as before)
 }
 
 static void erase_segment(App *a, float sx, float sy, float pressure) {
@@ -1811,6 +1814,7 @@ void editor_init(App *a) {
     if (!a->ed) return;
     store_page_size(&S->pgw, &S->pgh);
     S->zoom = S->zoom_default = S->zoom_min = 1.f;
+    S->tool_button_shows = TB_NONE;  // (no panel drawn yet)
     // Erased ink an earlier run left in page files (it left with the notebook open, or a compaction
     // was stopped): taken out now, in the background, unless the notebook is opened first.
     compact_queue_listed(a->dpi);
