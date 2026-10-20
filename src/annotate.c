@@ -750,7 +750,9 @@ static void handle(const AnnotateRequest *r, AnnotateResult *out) {
     request_dir(dir, sizeof dir);
     snprintf(src, sizeof src, "%s/%s", dir, r->picture);
     size_t len = 0;
-    uint8_t *png = bgimage_read(src, PICTURE_MAX, &len);
+    struct stat st;
+    // (A file of its own, as the plugin writes it: never a link to one elsewhere, moved into bg/.)
+    uint8_t *png = lstat(src, &st) == 0 && S_ISREG(st.st_mode) ? bgimage_read(src, PICTURE_MAX, &len) : NULL;
     int w = 0, h = 0;
     const char *why = errno == EFBIG ? "bigger than a page picture can be" : "missing or unreadable";
     if (!png || annotate_png_check(png, len, &w, &h, &why) != 0) {

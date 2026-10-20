@@ -516,6 +516,15 @@ TEST(starts_with_requests) {
     put_request(60, 96, "paged", NULL, 0, NULL);
     r = take(true);
     CHECK(r.outcome == ANNOTATE_FAILED && r.why == ANNOTATE_WHY_PICTURE && !exists(dir));
+    // A picture that is a link to a file elsewhere (the plugin writes a file of its own): not taken.
+    put_request(60, 96, "paged", NULL, 0, NULL);
+    snprintf(file, sizeof file, "%s/elsewhere.png", root);
+    put_file(file, png12, len12);
+    request_path("page.png", path, sizeof path);
+    CHECK(symlink(file, path) == 0);
+    r = take(true);
+    CHECK(r.outcome == ANNOTATE_FAILED && r.why == ANNOTATE_WHY_PICTURE && !exists(dir) && exists(file));
+    unlink(file);
     // A request that does not read.
     request_path("request.ini", path, sizeof path);
     put_file(path, "book=\n", 6);

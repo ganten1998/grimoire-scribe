@@ -529,8 +529,9 @@ it) whatever it does with what it finds:
   started from the Library, or by Open Grimoire, after a hand-over that never reached it), or a
   request whose time is more than 5 minutes away (before, or after: the clock was set back), is
   deleted unopened, with one log line.
-- The picture must read whole: a PNG with all its chunks, its critical ones (IHDR, PLTE, IDAT,
-  IEND) matching their CRCs, and a picture Grimoire takes (Image papers), of at most 16 MB.
+- The picture must read whole: a file of its own (a link is not followed), a PNG with all its
+  chunks, its critical ones (IHDR, PLTE, IDAT, IEND) matching their CRCs, and a picture Grimoire
+  takes (Image papers), of at most 16 MB.
   Otherwise nothing is made, and a toast says so.
 - The book's notebook is the newest one whose `notebook.ini` has its key as `source`, else the
   newest one with no `source` line whose `source.ini` names the book (one whose `source` line an
