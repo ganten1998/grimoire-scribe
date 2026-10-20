@@ -44,8 +44,20 @@ IconKind ui_tool_icon(int tool);
 void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray);
 
 typedef enum { BTN_PLAIN = 0, BTN_SELECTED = 1, BTN_DISABLED = 2, BTN_PRIMARY = 3 } ButtonStyle;
-// Icon above label if both given; selected = inverted (black fill, white glyph).
+// Icon above label if both given; selected = inverted (black fill, white glyph). The label keeps
+// inside the button's edge, and in Gothic inside the carved inner line of a button at least 90 px
+// each way, 4 px clear of it. A label alone that is too long for its button (a translation) takes
+// a smaller size, down to the small one, then two lines (ui_text).
 void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st);
+// The size ui_button draws a label alone at in r (the small size where it takes two lines), and
+// such a button with its label at px instead (one line at px, else two): a grid of buttons draws
+// every label at the smallest size any of them needs, rather than each at its own.
+float ui_button_text_px(Rect r, const char *label, ButtonStyle st);
+void ui_button_text_at(Canvas *c, Rect r, const char *label, ButtonStyle st, float px);
+// The width a button h px tall (and at least 90 px wide) needs to show its label whole at its
+// usual size, under its icon or alone: a row of buttons widens to the widest need, so that a
+// longer translation fits.
+int ui_button_need_w(int h, IconKind icon, const char *label, ButtonStyle st);
 
 // Horizontal slider: label + value text on the left, track on the right.
 // value_text may be NULL (then "%.2f unit" is shown).
@@ -91,6 +103,9 @@ void ui_text(Canvas *c, FontFace f, float px, float min_px, Rect r, const char *
 // The width a box needs for its text: the text at px with pad on each side, kept within
 // [min_w, max_w], for a chip or a button that grows with its label instead of cutting it.
 int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, int max_w);
+// The same for a chip h px tall with ends as round as it can be (ui_frame with radius h / 2):
+// the text keeps clear of Gothic's pointed ends, which are h / 2 deep.
+int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w);
 
 // Tap tracking shared by screens: a press that starts and ends in the same rect within
 // slop = tap. Long press = held > 600 ms without moving.

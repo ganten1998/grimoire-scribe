@@ -1,6 +1,7 @@
 // musicbuild.c: the Custom music sheet (see musicbuild.h).
 #include "musicbuild.h"
 
+#include <math.h>
 #include <stdio.h>
 
 #include "store.h"
@@ -101,9 +102,14 @@ Rect musicbuild_draw(MusicBuild *b, App *a) {
     y += ui_px(70);
     bool full = b->m.n >= MUSIC_MAX_PARTS;
     int bw = (lw - (ADD_COLS - 1) * pad) / ADD_COLS;
+    // One size for every part's name, the smallest any of them needs (a longer translation takes a
+    // smaller size, or two lines): a grid of sizes would read as parts of different weight.
+    float ps = ui_text_size();
+    for (int i = 0; i < N_PARTS; i++)
+        ps = fminf(ps, ui_button_text_px((Rect){0, 0, bw, rh - pad}, part_label(k_parts[i]), BTN_PLAIN));
     for (int i = 0; i < N_PARTS; i++) {
         Rect r = {in.x + (i % ADD_COLS) * (bw + pad), y + (i / ADD_COLS) * rh + pad / 2, bw, rh - pad};
-        ui_button(c, r, ICON_NONE, part_label(k_parts[i]), full ? BTN_DISABLED : BTN_PLAIN);
+        ui_button_text_at(c, r, part_label(k_parts[i]), full ? BTN_DISABLED : BTN_PLAIN, ps);
         if (!full) hits_add(&b->hits, r, B_ADD, (int)k_parts[i]);
     }
     y += ADD_ROWS * rh + ui_px(20);

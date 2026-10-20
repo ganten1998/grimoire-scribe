@@ -71,8 +71,8 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 | English | Draft | Alternatives, notes |
 | --- | --- | --- |
-| Settings | **Ajustes** | *Configuración* does not fit the top bar (154 px at 34 px). |
-| Share | **Compartir** | It fits the top bar with 4 px to spare in Gothic. |
+| Settings | **Ajustes** | *Configuración* is 208 px at 34 px, more than the top bar's buttons can grow to hold (188 px in Gothic). |
+| Share | **Compartir** | The top bar's buttons widen to hold it in Gothic (150 px; 138 px fit inside a button's carved line). |
 | Exit / New / Folder | **Salir / Nuevo / Carpeta** | |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |

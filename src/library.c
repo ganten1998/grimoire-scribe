@@ -250,20 +250,28 @@ static void draw_base(App *a) {
         int id;
         bool show;
     } btns[] = {
-        // TRANSLATORS: the Library's top bar, a word under each icon: 154 px at 34 px, in both
-        // styles. Exit leaves Grimoire.
+        // TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
+        // (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
+        // 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
         {ICON_EXIT, _("Exit"), H_EXIT, true},
-        // TRANSLATORS: the Library's top bar (154 px at 34 px).
+        // TRANSLATORS: the Library's top bar (see Exit).
         {ICON_GEAR, _("Settings"), H_SETTINGS, true},
-        // TRANSLATORS: the Library's top bar (154 px at 34 px): to the Share screen (over Wi-Fi).
+        // TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
         {ICON_SHARE, _("Share"), H_SHARE, true},
-        // TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new folder.
+        // TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
         {ICON_FOLDER_PLUS, _("Folder"), H_NEWFOLDER, !S->cur_folder[0]},
-        // TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new notebook.
+        // TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
         {ICON_PLUS, _("New"), H_NEW, true},
     };
+    enum { NBTNS = sizeof btns / sizeof btns[0] };
+    // A word too long for its button (a translation) widens all five alike, as far as leaves the
+    // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
+    for (int i = 0; i < NBTNS; i++) {
+        int need = ui_button_need_w(bh, btns[i].icon, btns[i].label, i == 4 ? BTN_PRIMARY : BTN_PLAIN);
+        if (btns[i].show) bw = clampi(need, bw, ui_px(220));
+    }
     int rx = a->w - m;
-    for (size_t i = 0; i < sizeof btns / sizeof btns[0]; i++) {
+    for (int i = 0; i < NBTNS; i++) {
         if (!btns[i].show) continue;
         rx -= bw;
         Rect r = {rx, by, bw, bh};

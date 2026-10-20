@@ -162,35 +162,76 @@ void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray) {
 
 static int radius(void) { return ui_px(16); }
 
-void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st) {
+// In Gothic a button big enough for one has the inner line of a carved panel, 2 px wide, this far
+// inside its edge.
+static bool carved(int w, int h) { return gothic() && h >= ui_px(90) && w >= ui_px(90); }
+static int carve_in(ButtonStyle st) { return st == BTN_PRIMARY ? ui_px(13) : ui_px(10); }
+// How far a label stays from each side of its button: inside the edge, and inside the carved line
+// where there is one, clear of it by 4 px (a word up to the edge's inset would run into it).
+static int label_inset(bool carve, ButtonStyle st) {
+    return carve ? carve_in(st) + ui_px(2) + ui_px(4) : ui_px(8);
+}
+// A label's size under an icon, and a label's alone (before a long one shrinks), for a button
+// whose inside (its rect less 8 px all round) is in_h tall.
+static float icon_label_px(int in_h) { return fminf(ui_small_size(), (float)in_h * 0.28f); }
+static float text_label_px(int in_h) { return fminf(ui_text_size(), (float)in_h * 0.6f); }
+
+// ui_button, with a label alone drawn at text_px when that is not 0 (one line at that size, else
+// two), not at the size of its own that fits.
+static void button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st, float text_px) {
     uint8_t bg = st == BTN_SELECTED ? 0 : 255;
     uint8_t fg = st == BTN_SELECTED ? 255 : (st == BTN_DISABLED ? 170 : 0);
     uint8_t edge = st == BTN_DISABLED ? 170 : 0;
     ui_frame(c, r, radius(), bg, true, 0);
     ui_frame(c, r, radius(), edge, false, st == BTN_PRIMARY ? ui_px(6) : ui_px(3));
-    if (gothic() && r.h >= ui_px(90) && r.w >= ui_px(90)) {
+    bool carve = carved(r.w, r.h);
+    if (carve) {
         // The inner line of a carved panel.
-        int in = st == BTN_PRIMARY ? ui_px(13) : ui_px(10);
+        int in = carve_in(st);
         canvas_chamfer_rect(c, rect_inflate(r, -in), radius() - in / 3, st == BTN_SELECTED ? 255 : edge, false,
                             ui_px(2));
     }
     bool has_label = label && *label;
     Rect in = rect_inflate(r, -ui_px(8));
+    int li = label_inset(carve, st), lx = r.x + li, lw = r.w - 2 * li;  // the label's columns
     if (icon && has_label) {
-        float ts = fminf(ui_small_size(), (float)in.h * 0.28f);
+        float ts = icon_label_px(in.h);
         int lh = (int)(ts * 1.15f);
         Rect ir = {in.x, in.y, in.w, in.h - lh};
         ui_icon(c, icon, ir, fg);
-        Rect lr = {in.x, in.y + in.h - lh, in.w, lh};
-        if (gothic()) lr = (Rect){in.x, in.y + in.h - lh - ui_px(6), in.w, lh};
+        Rect lr = {lx, in.y + in.h - lh, lw, lh};
+        if (gothic()) lr = (Rect){lx, in.y + in.h - lh - ui_px(6), lw, lh};
         font_draw_centered(c, FONT_CAPS, ts, lr, label, fg);
     } else if (icon) {
         ui_icon(c, icon, rect_inflate(in, -ui_px(6)), fg);
     } else if (has_label) {
         // A label too long for the button (a translation) takes the small size, then two lines.
-        float ts = fminf(ui_text_size(), (float)in.h * 0.6f);
-        ui_text(c, FONT_CAPS, ts, fminf(ts, ui_small_size()), in, label, 2, true, fg);
+        float ts = text_px > 0.f ? text_px : text_label_px(in.h);
+        ui_text(c, FONT_CAPS, ts, text_px > 0.f ? ts : fminf(ts, ui_small_size()), (Rect){lx, in.y, lw, in.h}, label, 2,
+                true, fg);
     }
+}
+
+void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st) {
+    button(c, r, icon, label, st, 0.f);
+}
+
+float ui_button_text_px(Rect r, const char *label, ButtonStyle st) {
+    if (!label || !*label) return 0.f;
+    float ts = text_label_px(r.h - 2 * ui_px(8)), min = fminf(ts, ui_small_size());
+    float s = font_fit_px(FONT_CAPS, ts, min, label, r.w - 2 * label_inset(carved(r.w, r.h), st));
+    return s > 0.f ? s : min;
+}
+
+void ui_button_text_at(Canvas *c, Rect r, const char *label, ButtonStyle st, float px) {
+    button(c, r, ICON_NONE, label, st, px);
+}
+
+int ui_button_need_w(int h, IconKind icon, const char *label, ButtonStyle st) {
+    if (!label || !*label) return 0;
+    int in_h = h - 2 * ui_px(8);
+    float ts = icon ? icon_label_px(in_h) : text_label_px(in_h);
+    return font_measure(FONT_CAPS, ts, label) + 2 * label_inset(carved(ui_px(90), h), st);
 }
 
 void ui_slider_layout(Slider *s, Rect row) {
@@ -351,6 +392,13 @@ void ui_text(Canvas *c, FontFace f, float px, float min_px, Rect r, const char *
 
 int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, int max_w) {
     return clampi(font_measure(f, px, text) + 2 * pad, min_w, max_w);
+}
+
+int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w) {
+    // Gothic's ends are points as deep as half the chip (ui_frame's cut corners): the text keeps
+    // all but 7 px of that from each tip, as the zoom chip's widest English ("222%   tap to
+    // reset") does in its 380 px. Classic's round ends leave the text room closer in.
+    return ui_text_box_w(f, px, text, gothic() ? h / 2 - ui_px(7) : ui_px(24), min_w, max_w);
 }
 
 void press_begin(Press *p, float x, float y, uint32_t t) {

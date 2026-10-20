@@ -413,14 +413,13 @@ static void zoom_text(App *a, char *out, size_t cap) {
     snprintf(out, cap, _("%d%%   tap to reset"), (int)lrintf(S->zoom / S->zoom_default * 100.f));
 }
 
-// Centered at the top, 380 px wide, or as wide as a longer text needs with this much room at each
-// end (the English always fits the 380).
-enum { ZOOM_CHIP_PAD = 24 };
+// Centered at the top, 380 px wide, or as wide as a longer text needs (ui_chip_w: the English
+// always fits the 380).
 static Rect zoom_chip(App *a) {
     char z[96];
     zoom_text(a, z, sizeof z);
-    int w = ui_text_box_w(FONT_BOLD, ui_small_size(), z, ui_px(ZOOM_CHIP_PAD), ui_px(380), a->w - ui_px(80));
-    return (Rect){a->w / 2 - w / 2, ui_px(24), w, ui_px(100)};
+    int h = ui_px(100), w = ui_chip_w(FONT_BOLD, ui_small_size(), z, h, ui_px(380), a->w - ui_px(80));
+    return (Rect){a->w / 2 - w / 2, ui_px(24), w, h};
 }
 static bool zoomed(App *a) { return fabsf(S->zoom - S->zoom_default) > 0.01f || S->ox != 0.f || S->oy > 0.5f; }
 

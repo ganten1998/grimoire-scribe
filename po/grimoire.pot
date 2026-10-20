@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 04:21-0500\n"
+"POT-Creation-Date: 2026-10-20 06:11-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -591,28 +591,29 @@ msgid_plural "%d pages, %s"
 msgstr[0] ""
 msgstr[1] ""
 
-#. TRANSLATORS: the Library's top bar, a word under each icon: 154 px at 34 px, in both
-#. styles. Exit leaves Grimoire.
+#. TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
+#. (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
+#. 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
 #: src/library.c
 msgid "Exit"
 msgstr ""
 
-#. TRANSLATORS: the Library's top bar (154 px at 34 px).
+#. TRANSLATORS: the Library's top bar (see Exit).
 #: src/library.c
 msgid "Settings"
 msgstr ""
 
-#. TRANSLATORS: the Library's top bar (154 px at 34 px): to the Share screen (over Wi-Fi).
+#. TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
 #: src/library.c
 msgid "Share"
 msgstr ""
 
-#. TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new folder.
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
 #: src/library.c
 msgid "Folder"
 msgstr ""
 
-#. TRANSLATORS: the Library's top bar (154 px at 34 px): makes a new notebook.
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
 #: src/library.c
 msgid "New"
 msgstr ""

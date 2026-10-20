@@ -774,6 +774,147 @@ TEST(fit_sizes) {
     CHECK(ui_text_box_w(FONT_BOLD, 34.f, "A label far longer than any box could ever want to be", 40, 380, 500) == 500);
 }
 
+// The columns where two drawings of a button differ within rows [y0, y1): its label's ink, when
+// the one is drawn with the label and the other with " " (the same layout, nothing to see).
+static void ink_cols(const Canvas *a, const Canvas *b, int y0, int y1, int *x0, int *x1) {
+    *x0 = a->w;
+    *x1 = -1;
+    for (int y = y0; y < y1; y++)
+        for (int x = 0; x < a->w; x++)
+            if (a->px[(size_t)y * a->stride + x] != b->px[(size_t)y * b->stride + x]) {
+                if (x < *x0) *x0 = x;
+                if (x > *x1) *x1 = x;
+            }
+}
+
+// A label in a Gothic button 90 px or more each way keeps inside the carved inner line (2 px wide,
+// 10 px in, 13 px in a primary button's), 4 px clear of it: a word up to the edge's inset ran into
+// the line ("Compartir" under the Share icon did). Classic has no such line. A row of buttons that
+// widens for its longest word (the Library's top bar) asks ui_button_need_w.
+TEST(button_labels_clear_the_carved_line) {
+    Canvas a, b;
+    CHECK(canvas_init(&a, 400, 150) == 0 && canvas_init(&b, 400, 150) == 0);
+    font_set_overflow_hook(hook);
+    const char *word = "Compartir";  // 150 px under an icon in Gothic, 140 in Classic
+    for (int th = THEME_GOTHIC; th <= THEME_CLASSIC; th++) {
+        ui_set_theme((UiTheme)th);
+        for (int primary = 0; primary < 2; primary++) {
+            ButtonStyle st = primary ? BTN_PRIMARY : BTN_PLAIN;
+            int in = th == THEME_GOTHIC ? (primary ? 13 : 10) + 2 + 4 : 8;  // the label's inset
+            for (int icon = 0; icon < 2; icon++) {
+                IconKind ik = icon ? ICON_SHARE : ICON_NONE;
+                float px = icon ? 34.f : 44.f;
+                int need = ui_button_need_w(150, ik, word, st);
+                CHECK(need == font_measure(FONT_CAPS, px, word) + 2 * in);
+                // As wide as it needs: whole, inside the line (or Classic's edge) with room to spare.
+                Rect r = {0, 0, need, 150};
+                canvas_fill(&a, (Rect){0, 0, 400, 150}, 255);
+                canvas_fill(&b, (Rect){0, 0, 400, 150}, 255);
+                g_hook_calls = 0;
+                ui_button(&a, r, ik, word, st);
+                ui_button(&b, r, ik, " ", st);
+                CHECK(g_hook_calls == 0);
+                int x0, x1;
+                ink_cols(&a, &b, icon ? 90 : 8, 142, &x0, &x1);
+                if (x0 < in || x1 >= need - in) fprintf(stderr, "  ink %d..%d in %d px (inset %d)\n", x0, x1, need, in);
+                CHECK(x0 >= in && x1 < need - in && x1 > x0);
+                if (icon) {
+                    // A pixel narrower: cut short, and the fit check hears of it.
+                    ui_button(&a, (Rect){0, 0, need - 1, 150}, ik, word, st);
+                    CHECK(g_hook_calls == 1);
+                }
+            }
+        }
+        // The top bar holds every language's words: none needs more than its buttons can grow to.
+        static const char *const bar[] = {"Exit", "Settings", "Share", "Folder", "New"};
+        static const IconKind bar_icon[] = {ICON_EXIT, ICON_GEAR, ICON_SHARE, ICON_FOLDER_PLUS, ICON_PLUS};
+        for (int l = 0; l < i18n_language_count(); l++) {
+            i18n_set(i18n_language_code(l));
+            for (int i = 0; i < 5; i++) {
+                int need = ui_button_need_w(150, bar_icon[i], _(bar[i]), i == 4 ? BTN_PRIMARY : BTN_PLAIN);
+                if (need > 220) fprintf(stderr, "  %s: \"%s\" needs a %d px button\n", i18n_current(), _(bar[i]), need);
+                CHECK(need <= 220);
+            }
+        }
+        i18n_set("en");
+    }
+    font_set_overflow_hook(NULL);
+    canvas_free(&a);
+    canvas_free(&b);
+    ui_set_theme(THEME_GOTHIC);
+}
+
+// The rows of a box the label's ink spans (as ink_cols, by rows): how tall it is drawn.
+static int ink_rows(const Canvas *a, const Canvas *b) {
+    int y0 = a->h, y1 = -1;
+    for (int y = 0; y < a->h; y++)
+        if (memcmp(a->px + (size_t)y * a->stride, b->px + (size_t)y * b->stride, (size_t)a->w)) {
+            if (y < y0) y0 = y;
+            y1 = y;
+        }
+    return y1 >= y0 ? y1 - y0 + 1 : 0;
+}
+
+// Buttons in a grid (Custom music's parts) draw their labels at one size, the smallest any of
+// them needs: ui_button_text_px is the size ui_button gives a label of its own, and
+// ui_button_text_at draws one at a given size.
+TEST(button_grid_sizes) {
+    Canvas a, b;
+    CHECK(canvas_init(&a, 312, 103) == 0 && canvas_init(&b, 312, 103) == 0);
+    Rect r = {0, 0, 312, 103};  // a part's button, upright
+    const char *small = "Bass staff", *longer = "Tablatura, 4 l\xc3\xadneas", *far = "A name far too long for one line";
+    for (int th = THEME_GOTHIC; th <= THEME_CLASSIC; th++) {
+        ui_set_theme((UiTheme)th);
+        float ts = ui_text_size(), ss = ui_small_size();
+        CHECK(ui_button_text_px(r, small, BTN_PLAIN) == ts);
+        float s = ui_button_text_px(r, longer, BTN_PLAIN);
+        CHECK(s >= ss && s < ts);
+        CHECK(ui_button_text_px(r, far, BTN_PLAIN) == ss);  // two lines at the small size
+        // At its own size a label is drawn as ui_button draws it.
+        const char *labels[] = {small, longer, far};
+        for (int i = 0; i < 3; i++) {
+            canvas_fill(&a, r, 255);
+            canvas_fill(&b, r, 255);
+            ui_button(&a, r, ICON_NONE, labels[i], BTN_PLAIN);
+            ui_button_text_at(&b, r, labels[i], BTN_PLAIN, ui_button_text_px(r, labels[i], BTN_PLAIN));
+            CHECK(same_pixels(&a, &b));
+        }
+        // At the grid's size, a short label is drawn smaller than it would be on its own.
+        canvas_fill(&b, r, 255);
+        ui_button(&b, r, ICON_NONE, " ", BTN_PLAIN);
+        canvas_fill(&a, r, 255);
+        ui_button(&a, r, ICON_NONE, small, BTN_PLAIN);
+        int own = ink_rows(&a, &b);
+        canvas_fill(&a, r, 255);
+        ui_button_text_at(&a, r, small, BTN_PLAIN, s);
+        CHECK(ink_rows(&a, &b) < own && ink_rows(&a, &b) > 0);
+    }
+    canvas_free(&a);
+    canvas_free(&b);
+    ui_set_theme(THEME_GOTHIC);
+}
+
+// The zoom chip: 380 px for the English at every zoom, in both styles. A longer text keeps as far
+// from Gothic's pointed ends (each 50 px deep) as the widest English does from them, 43 px;
+// Classic's round ends leave it room closer in.
+TEST(chips) {
+    char z[96];
+    for (int th = THEME_GOTHIC; th <= THEME_CLASSIC; th++) {
+        ui_set_theme((UiTheme)th);
+        i18n_set("en");
+        for (int pct = 50; pct <= 400; pct++) {
+            snprintf(z, sizeof z, _("%d%%   tap to reset"), pct);
+            CHECK(ui_chip_w(FONT_BOLD, ui_small_size(), z, 100, 380, 2400) == 380);
+        }
+        const char *longer = "191 %   toca para restablecer";
+        int tw = font_measure(FONT_BOLD, ui_small_size(), longer), pad = th == THEME_GOTHIC ? 43 : 24;
+        CHECK(tw + 2 * pad > 380);
+        CHECK(ui_chip_w(FONT_BOLD, ui_small_size(), longer, 100, 380, 2400) == tw + 2 * pad);
+        CHECK(ui_chip_w(FONT_BOLD, ui_small_size(), longer, 100, 380, 500) == 500);
+    }
+    ui_set_theme(THEME_GOTHIC);
+}
+
 // Toasts: one line where it fits, in the very box they always had (tests/scenarios/
 // t_toast_over_sheets.qs checks where it goes); two, in a taller box, where one would be cut.
 TEST(toasts) {
@@ -837,6 +978,9 @@ int main(void) {
     RUN(overflow_hook);
     RUN(wrapping);
     RUN(fit_sizes);
+    RUN(button_labels_clear_the_carved_line);
+    RUN(button_grid_sizes);
+    RUN(chips);
     RUN(toasts);
     int rc = tl_done();
     system(cmd);
