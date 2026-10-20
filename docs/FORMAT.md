@@ -630,7 +630,7 @@ row.
 | a critical chunk | ignored; dropped on a re-save | the page opens read-only |
 | bytes after the strokes that are not chunks | ignored; dropped on a re-save | the page opens read-only |
 | a paper it does not know | blank paper; a re-save turns it into version 1 Blank | blank paper, "Newer paper"; kept (version 2) |
-| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, a document page's too, so in 1.1 that new page shows the page's picture |
+| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, except after a document page (`0x51......`): then the notebook's paper, as in 1.1 (store_new_page_paper, the one image-paper rule it knows) |
 | a notebook's `bg/` folder | never read or written; its raw zips leave it out | the same |
 | an image paper as a notebook's `paper` | read as Medium rule: its new pages get Medium | kept; new pages get it (drawn blank there) |
 | `templates/`, `import/` in the data root (and `import/.attempts`) | never read | the same |
