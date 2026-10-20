@@ -84,6 +84,7 @@ static int run_line(const char *cmd, char *out, size_t cap, int timeout_ms) {
         execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
         _exit(127);
     }
+    setpgid(pid, pid);  // here too, so the group exists even if the child has not run yet
     close(p[1]);
     char buf[128];
     size_t len = 0;
@@ -103,6 +104,7 @@ static int run_line(const char *cmd, char *out, size_t cap, int timeout_ms) {
     close(p[0]);
     if (waitpid(pid, NULL, WNOHANG) == 0) {  // still running (too slow, or more to say): stop it
         kill(-pid, SIGKILL);
+        kill(pid, SIGKILL);
         waitpid(pid, NULL, 0);
     }
     buf[len] = 0;

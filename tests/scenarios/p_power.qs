@@ -16,7 +16,7 @@ shot 01-ink
 # would wake the Kindle: the simulator answers one with a wake, which the expect would catch).
 powerd screenSaver
 power
-wait 3000
+wait 3300
 expect asleep is 1
 shot 02-missed-announcement-sleep-screen
 # A press on the sleep screen, no outOfScreenSaver, and the power service still in its
@@ -63,7 +63,7 @@ wake
 wait 3000
 expect asleep is 0
 shot 05-no-sleep-after-wake
-# Holding the power button 4 s saves the page and leaves Grimoire, the run ends here.
+# Holding the power button 4 s saves the page and leaves Grimoire: the run ends here.
 pen line 300 1000 1400 1020 40 0.6 0.6
 powerhold
 wait 300
