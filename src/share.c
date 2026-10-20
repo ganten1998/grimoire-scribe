@@ -1,5 +1,6 @@
-// share.c: "Share over Wi-Fi". Runs the HTTP server only while this screen is open. A phone scans
-// the QR code of the Wi-Fi address; a computer types the address under it.
+// share.c: "Share over Wi-Fi". Runs the HTTP server only while this screen is open; turning the
+// Kindle or waking it only lays the screen out again, and the server (with any download) carries
+// on. A phone scans the QR code of the Wi-Fi address; a computer types the address under it.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -168,11 +169,14 @@ void share_free(App *a) {
 }
 
 void share_enter(App *a) {
-    start(a);
+    start(a);  // a server kept across a relayout goes on as it is
     draw(a);
 }
 
 void share_leave(App *a) {
+    // Turning the Kindle and waking it lay this screen out again: keep the server (and its
+    // downloads, connections and queue) for the enter that follows.
+    if (a->relayout) return;
     input_watch_fd(-1);
     httpd_stop();
 }
