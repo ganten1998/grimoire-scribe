@@ -1,12 +1,15 @@
-// share.c: "Share over Wi-Fi". Runs the HTTP server only while this screen is open.
+// share.c: "Share over Wi-Fi". Runs the HTTP server only while this screen is open. A phone scans
+// the QR code of the Wi-Fi address; a computer types the address under it.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "app.h"
 #include "httpd.h"
+#include "qr.h"
 
 enum { H_DONE = 1, H_RETRY };
+enum { MAX_SHOWN = 3 };  // addresses listed: the first in big type, each other one on a small line
 
 struct ShareState {
     ScreenId ret;
@@ -19,11 +22,96 @@ struct ShareState {
 
 #define S (a->share)
 
+static const char *const k_help[] = {
+    "Pages as PNG, notebooks as PDF or zip, folders and everything as zip.",
+    "Effects: transparent, recolored or filtered copies of any page.",
+    "Same Wi-Fi network only. Keep this screen open while downloading.",
+    "From a terminal: tools/grimoire-pull --http <address above>",
+};
+enum { N_HELP = sizeof k_help / sizeof k_help[0] };
+
 static void draw_counter(App *a) {
     char line[96];
     snprintf(line, sizeof line, "Downloads served: %d", httpd_requests_served());
     canvas_fill(&a->screen, S->counter, 255);
     font_draw_centered(&a->screen, FONT_REGULAR, ui_text_size(), S->counter, line, 0);
+}
+
+// Whether a phone can reach this address: the launcher opens the share port on wlan0 only. In the
+// simulator the computer's own Wi-Fi or Ethernet (en*) stands in for it.
+static bool phone_reachable(const char *ifname) {
+#ifdef GRIMOIRE_SIM
+    if (!strncmp(ifname, "en", 2)) return true;
+#endif
+    return !strncmp(ifname, "wlan", 4);
+}
+
+static void url_of(const App *a, const NetAddr *ad, char *out, size_t cap) {
+    snprintf(out, cap, "http://%s:%d", ad->ip, a->settings.http_port);
+}
+
+// The text block for n addresses: caption, the first address, a line per other one, the help.
+static int text_height(int n) {
+    return ui_px(110) + ui_px(150) + (n - 1) * ui_px(70) + ui_px(30) + N_HELP * ui_px(70);
+}
+
+// The text block from y down, centered in the column [x, x + w).
+static void draw_text(App *a, int x, int w, int y, const NetAddr *ad, int n, bool qr) {
+    Canvas *c = &a->screen;
+    char url[64], line[128];
+    font_draw_centered(c, FONT_REGULAR, ui_text_size(), (Rect){x, y, w, ui_px(80)},
+                       qr ? "Scan with your phone, or open this in a browser:"
+                          : "On your computer, open this in a browser:",
+                       0);
+    y += ui_px(110);
+    url_of(a, &ad[0], url, sizeof url);
+    font_draw_centered(c, FONT_BOLD, ui_title_size() * 1.5f, (Rect){x, y, w, ui_px(140)}, url, 0);
+    y += ui_px(150);
+    for (int i = 1; i < n; i++) {
+        url_of(a, &ad[i], url, sizeof url);
+        snprintf(line, sizeof line, "Also: %s (%s)", url, ad[i].ifname);
+        font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){x, y, w, ui_px(64)}, line, 0);
+        y += ui_px(70);
+    }
+    y += ui_px(30);
+    for (int i = 0; i < N_HELP; i++) {
+        font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){x, y, w, ui_px(64)}, k_help[i], 60);
+        y += ui_px(70);
+    }
+}
+
+// The QR code of the first address when a phone can reach it (the Wi-Fi icon when none can, say
+// over USBNetwork only), then the text. Portrait stacks them above the counter; landscape puts
+// the code on the left and the text, counter and buttons on the right.
+static void draw_addresses(App *a, Rect in, const NetAddr *ad, int n) {
+    Canvas *c = &a->screen;
+    char url[64];
+    url_of(a, &ad[0], url, sizeof url);
+    int qn = phone_reachable(ad[0].ifname) ? ui_qr_modules(url) : 0;  // modules across, 0: no code
+    if (qn) qlog("share: QR code for %s (%s)", url, ad[0].ifname);
+    else qlog("share: no Wi-Fi address, so no QR code; showing %s (%s)", url, ad[0].ifname);
+    // The quiet zone is part of the code's box: with Invert on it shows as a light square, so the
+    // box keeps clear of the title, the frame and the caption.
+    int top = in.y + ui_px(20), gap = ui_px(30), text_h = text_height(n), bottom = S->counter.y - ui_px(30);
+    bool negative = a->settings.invert;  // inverted on the panel: dark modules on light
+    if (a->w <= a->h) {
+        int y = in.y + ui_px(360);
+        if (qn) {
+            int mod = clampi((bottom - top - gap - text_h) / qn, ui_px(10), ui_px(16));
+            Rect sym = ui_qr(c, (Rect){in.x, top, in.w, qn * mod}, url, negative);
+            if (!rect_is_empty(sym)) y = sym.y + sym.h + gap;
+        } else {
+            ui_icon(c, ICON_SHARE, (Rect){in.x + in.w / 2 - ui_px(130), in.y + ui_px(40), ui_px(260), ui_px(260)}, 0);
+        }
+        draw_text(a, in.x, in.w, y, ad, n, qn > 0);
+        return;
+    }
+    int lx = in.x + ui_px(30), mod = qn ? clampi((bottom - top) / qn, ui_px(10), ui_px(16)) : 0;
+    int left = qn ? qn * mod : ui_px(260), col = lx + left + ui_px(60), col_w = in.x + in.w - col;
+    if (qn) ui_qr(c, (Rect){lx, top, left, left}, url, negative);
+    else ui_icon(c, ICON_SHARE, (Rect){lx, in.y + ui_px(40), left, left}, 0);
+    S->counter = (Rect){col, S->counter.y, col_w, S->counter.h};
+    draw_text(a, col, col_w, top, ad, n, qn > 0);
 }
 
 static void draw(App *a) {
@@ -33,52 +121,27 @@ static void draw(App *a) {
     int m = ui_px(70);
     Rect card = {m, ui_px(260), a->w - 2 * m, a->h - ui_px(520)};
     Rect in = ui_sheet(c, card, "Share over Wi-Fi");
-    int y = in.y + ui_px(40);
-    ui_icon(c, ICON_SHARE, (Rect){in.x + in.w / 2 - ui_px(130), y, ui_px(260), ui_px(260)}, 0);
-    y += ui_px(320);
-    char ips[8][16];
-    int n = S->started ? net_ipv4_addrs(ips, 8) : 0;
-    if (!S->started) {
-        font_draw_centered(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)},
-                           "Could not start the server", 0);
-        y += ui_px(110);
-        font_draw_centered(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)},
-                           "Is another app using the port? Try again.", 60);
-    } else if (n == 0) {
-        font_draw_centered(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)},
-                           "Turn on Wi-Fi on the Kindle first", 0);
-        y += ui_px(110);
-        font_draw_centered(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)},
-                           "Then tap Retry.", 60);
-    } else {
-        font_draw_centered(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)},
-                           "On your computer, open this in a browser:", 0);
-        y += ui_px(110);
-        for (int i = 0; i < n && i < 3; i++) {
-            char url[64];
-            snprintf(url, sizeof url, "http://%s:%d", ips[i], a->settings.http_port);
-            font_draw_centered(c, FONT_BOLD, ui_title_size() * 1.5f, (Rect){in.x, y, in.w, ui_px(140)}, url, 0);
-            y += ui_px(150);
-        }
-        y += ui_px(30);
-        const char *lines[] = {
-            "Pages as PNG, notebooks as PDF or zip, folders and everything as zip.",
-            "Effects: transparent, recolored or filtered copies of any page.",
-            "Same Wi-Fi network only. Keep this screen open while downloading.",
-            "From a terminal: tools/grimoire-pull --http <address above>",
-        };
-        for (int i = 0; i < 4; i++) {
-            font_draw_centered(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(64)}, lines[i], 60);
-            y += ui_px(70);
-        }
-    }
     S->counter = (Rect){in.x, in.y + in.h - ui_px(330), in.w, ui_px(80)};
+    NetAddr ad[MAX_SHOWN];
+    int n = S->started ? net_ipv4_list(ad, MAX_SHOWN) : 0;
+    if (n > 0) {
+        draw_addresses(a, in, ad, n);
+    } else {
+        int y = in.y + ui_px(40);
+        ui_icon(c, ICON_SHARE, (Rect){in.x + in.w / 2 - ui_px(130), y, ui_px(260), ui_px(260)}, 0);
+        y += ui_px(320);
+        font_draw_centered(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)},
+                           S->started ? "Turn on Wi-Fi on the Kindle first" : "Could not start the server", 0);
+        y += ui_px(110);
+        font_draw_centered(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)},
+                           S->started ? "Then tap Retry." : "Is another app using the port? Try again.", 60);
+    }
     if (S->started) draw_counter(a);
     int bw = ui_px(420), bh = ui_px(150);
     Rect done = {in.x + in.w - bw, in.y + in.h - bh, bw, bh};
     ui_button(c, done, ICON_CHECK, "Done", BTN_PRIMARY);
     hits_add(&S->hits, done, H_DONE, 0);
-    if (!S->started || n == 0) {
+    if (n == 0) {
         Rect retry = {in.x, in.y + in.h - bh, bw, bh};
         ui_button(c, retry, ICON_NONE, "Retry", BTN_PLAIN);
         hits_add(&S->hits, retry, H_RETRY, 0);
