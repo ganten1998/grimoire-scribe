@@ -882,10 +882,10 @@ int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     Page *p = page_new(w, h, paper);
     if (!p) return -1;
     strlcpy_q(p->nb, nb->id, sizeof p->nb);
-    side_note(nb, pid, paper);
     int rc = write_page_file(nb, pid, p);
     page_free(p);
     if (rc != 0) return -1;
+    side_note(nb, pid, paper);  // (once the page is there: a list entry for no page could go stale)
     memmove(&nb->page_ids[at + 1], &nb->page_ids[at], (size_t)(nb->npages - at) * sizeof nb->page_ids[0]);
     nb->page_ids[at] = pid;
     nb->npages++;

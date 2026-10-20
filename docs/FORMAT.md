@@ -373,7 +373,9 @@ It undoes what 1.0.0-beta does to such a page: 1.0.0-beta draws an image paper a
 writes a page it saves as version 1 Blank (also a page it only re-saves, as page 1 after a page
 delete). A page that reads as Blank but that `pages.ini` lists with an image paper gets that paper
 back when it is opened or exported: a page someone set to Blank in a version that keeps the list
-is off it. A page 1.0.0-beta gave another paper (from its own picker) keeps that paper.
+is off it. One set to Blank from the picker of a version before 1.1 cannot be told apart, and gets
+its picture back too. A page an older version gave another paper (from its own picker) keeps that
+paper.
 
 Raw notebook zips carry the notebook's `bg/` (`raw/bg/...`).
 

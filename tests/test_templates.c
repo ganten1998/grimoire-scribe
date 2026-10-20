@@ -659,6 +659,16 @@ TEST(document_role_not_inherited) {
     page_free(p);
     CHECK(store_load_page(&nb, 2, PW, PH, &p) == 0 && p && p->paper == tpl && !strcmp(p->nb, nb.id));
     page_free(p);
+    // The added template page is in bg/pages.ini, the music one is not.
+    char side[700], want[64];
+    snprintf(side, sizeof side, "%s/notebooks/%s/bg/pages.ini", root, nb.id);
+    size_t len;
+    char *txt = (char *)slurp(side, &len);
+    snprintf(want, sizeof want, "p%u=%u\n", nb.page_ids[2], (unsigned)tpl);
+    CHECK(txt && strstr(txt, want));
+    snprintf(want, sizeof want, "p%u=", nb.page_ids[1]);
+    CHECK(txt && !strstr(txt, want));
+    free(txt);
     // A notebook whose own paper is a document page's: blank.
     nb.paper = doc;
     CHECK(store_new_page_paper(&nb, doc) == PAPER_BLANK);
