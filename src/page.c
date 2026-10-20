@@ -29,8 +29,27 @@ void stroke_append(Stroke *s, const PenSample *pt, float dpi) {
         s->cap = nc;
     }
     s->pts[s->n++] = *pt;
-    float pad = brush_max_radius(s->tool, &s->params, dpi) + 2.f;
+    // An erase stroke reaches as far as its texture's tool does (white charcoal's specks).
+    float pad = brush_max_radius(stroke_render_tool(s), &s->params, dpi) + 2.f;
     s->bbox = rect_union(s->bbox, rect_from_points(pt->x, pt->y, pt->x, pt->y, pad));
+}
+
+ToolKind stroke_render_tool(const Stroke *s) {
+    if (s->tool != TOOL_ERASER) return s->tool;
+    int t = (int)(s->seed >> 24);  // the texture: a drawing tool + 1, or 0 for the round tip
+    return t >= 1 && t <= TOOL_COUNT && t - 1 != TOOL_ERASER ? (ToolKind)(t - 1) : TOOL_ERASER;
+}
+
+uint32_t erase_seed(ToolKind texture, uint32_t hash) {
+    int t = (int)texture;
+    uint32_t top = t >= 0 && t < TOOL_COUNT && t != TOOL_ERASER ? (uint32_t)t + 1u : 0u;
+    return top << 24 | (hash & 0xFFFFFFu);
+}
+
+void stroke_brush_begin(BrushState *b, const Stroke *s, float dpi, const uint8_t *paper, int x0, int y0, int stride) {
+    bool erase = stroke_is_erase(s);
+    brush_begin(b, stroke_render_tool(s), &s->params, erase ? s->seed & 0xFFFFFFu : s->seed, dpi);
+    if (erase) brush_set_erase(b, paper, x0, y0, stride);
 }
 
 static float seg_point_dist2(float px, float py, float ax, float ay, float bx, float by) {
@@ -135,21 +154,64 @@ void page_render(Canvas *c, const Page *p, Rect region, float dpi) {
     page_render_layers(c, p, region, dpi, PAGE_LAYER_ALL);
 }
 
-void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers) {
+// Whether stroke i is drawn: it is not `left_out`, nor marked in skip (NULL = none marked).
+static bool drawn(const bool *skip, int left_out, int i) { return i != left_out && !(skip && skip[i]); }
+
+// page_render_layers, leaving out the strokes marked in skip and stroke left_out (compaction).
+static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers, const bool *skip,
+                          int left_out) {
     Rect saved = c->clip;
     Rect r = rect_intersect(region, saved);
     if (rect_is_empty(r)) return;
+    // Erase strokes restore the paper under them: with the paper layer, a copy of the paper drawn
+    // here, of the part of r their bboxes reach (u); without it, white.
+    Rect u = RECT_EMPTY;
+    if ((layers & PAGE_LAYER_PAPER) && (layers & PAGE_LAYER_INK))
+        for (int i = 0; i < p->n; i++)
+            if (drawn(skip, left_out, i) && stroke_is_erase(p->strokes[i]))
+                u = rect_union(u, rect_intersect(p->strokes[i]->bbox, r));
+    uint8_t *copy = NULL;
+    if (!rect_is_empty(u) && !(copy = malloc((size_t)u.w * (size_t)u.h))) {
+        if (r.w > 1 || r.h > 1) {
+            // Out of memory: the same pixels in two halves, each with a smaller copy.
+            Rect a = r, b = r;
+            if (r.h >= r.w) {
+                a.h = r.h / 2;
+                b.y += a.h;
+                b.h -= a.h;
+            } else {
+                a.w = r.w / 2;
+                b.x += a.w;
+                b.w -= a.w;
+            }
+            render_layers(c, p, a, dpi, layers, skip, left_out);
+            render_layers(c, p, b, dpi, layers, skip, left_out);
+            return;
+        }
+        static bool logged;
+        if (!logged) qlog("page: out of memory, erase strokes restore toward white");
+        logged = true;
+    }
     if (layers & PAGE_LAYER_PAPER) paper_render(c, p->paper, r, dpi);
     if (!(layers & PAGE_LAYER_INK)) return;
-    canvas_set_clip(c, r);
+    for (int y = 0; copy && y < u.h; y++)
+        memcpy(copy + (size_t)y * (size_t)u.w, &c->px[(u.y + y) * c->stride + u.x], (size_t)u.w);
     BrushState b;
     for (int i = 0; i < p->n; i++) {
         const Stroke *s = p->strokes[i];
-        if ((unsigned)s->tool >= TOOL_COUNT || !rect_overlaps(s->bbox, r)) continue;
-        brush_begin(&b, s->tool, &s->params, s->seed, dpi);
+        if (!drawn(skip, left_out, i) || (unsigned)s->tool >= TOOL_COUNT || !rect_overlaps(s->bbox, r)) continue;
+        // An erase stroke stays inside its bbox, which u covers where it meets r: clipped to u it
+        // draws the same pixels, and it never reads past the copy.
+        canvas_set_clip(c, copy && stroke_is_erase(s) ? u : r);
+        stroke_brush_begin(&b, s, dpi, copy, u.x, u.y, u.w);
         for (int k = 0; k < s->n; k++) brush_add(&b, c, &s->pts[k]);
     }
+    free(copy);
     c->clip = saved;
+}
+
+void page_render_layers(Canvas *c, const Page *p, Rect region, float dpi, int layers) {
+    render_layers(c, p, region, dpi, layers, NULL, -1);
 }
 
 void page_render_thumb(Canvas *thumb, const Page *p, float dpi) {
@@ -158,4 +220,68 @@ void page_render_thumb(Canvas *thumb, const Page *p, float dpi) {
     page_render(&full, p, (Rect){0, 0, p->w, p->h}, dpi);
     canvas_downsample(thumb, &full);
     canvas_free(&full);
+}
+
+// ---- compaction ----
+
+// Whether drawing r without stroke i (and the strokes marked in drop) gives the pixels cur holds
+// there, drawn with it. Every pixel's value depends only on what was drawn over that pixel, and a
+// stroke draws inside its bbox, so r = its bbox settles it for the whole page. tmp is scratch.
+static bool same_without(Canvas *tmp, const Canvas *cur, const Page *p, Rect r, float dpi, int layers,
+                         const bool *drop, int i) {
+    if (!(layers & PAGE_LAYER_PAPER)) canvas_fill(tmp, r, 255);  // the ink layer starts white
+    render_layers(tmp, p, r, dpi, layers, drop, i);
+    for (int y = r.y; y < r.y + r.h; y++)
+        if (memcmp(&tmp->px[y * tmp->stride + r.x], &cur->px[y * cur->stride + r.x], (size_t)r.w)) return false;
+    return true;
+}
+
+// Whether an erase stroke after stroke i reaches into its bbox (only such ink can be erased).
+static bool erased_later(const Page *p, int i) {
+    for (int j = i + 1; j < p->n; j++)
+        if (stroke_is_erase(p->strokes[j]) && rect_overlaps(p->strokes[j]->bbox, p->strokes[i]->bbox)) return true;
+    return false;
+}
+
+int page_droppable(const Page *p, float dpi, bool *drop) {
+    bool any = false;
+    for (int i = 0; i < p->n; i++) {
+        drop[i] = false;
+        any = any || stroke_is_erase(p->strokes[i]);
+    }
+    if (!any) return 0;
+    Canvas all, ink, tmp;
+    if (canvas_init(&all, p->w, p->h) != 0) return -1;
+    if (canvas_init(&ink, p->w, p->h) != 0) {
+        canvas_free(&all);
+        return -1;
+    }
+    if (canvas_init(&tmp, p->w, p->h) != 0) {
+        canvas_free(&all);
+        canvas_free(&ink);
+        return -1;
+    }
+    Rect page = {0, 0, p->w, p->h};
+    render_layers(&all, p, page, dpi, PAGE_LAYER_ALL, NULL, -1);
+    render_layers(&ink, p, page, dpi, PAGE_LAYER_INK, NULL, -1);
+    // A stroke whose leaving out changes neither render is marked. all and ink then still hold
+    // the page as drawn without everything marked, so each check sees the ones before it. Ink
+    // goes first: once it is out, the erase strokes over it may have nothing left to change.
+    int n = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < p->n; i++) {
+            const Stroke *s = p->strokes[i];
+            if ((unsigned)s->tool >= TOOL_COUNT || stroke_is_erase(s) != (pass == 1)) continue;
+            if (pass == 0 && !erased_later(p, i)) continue;
+            Rect r = rect_intersect(s->bbox, page);
+            if (rect_is_empty(r) || !same_without(&tmp, &all, p, r, dpi, PAGE_LAYER_ALL, drop, i) ||
+                !same_without(&tmp, &ink, p, r, dpi, PAGE_LAYER_INK, drop, i))
+                continue;
+            drop[i] = true;
+            n++;
+        }
+    canvas_free(&all);
+    canvas_free(&ink);
+    canvas_free(&tmp);
+    return n;
 }
