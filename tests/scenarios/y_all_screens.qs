@@ -1,4 +1,5 @@
 # env: GRIMOIRE_CHECK_FIT=1
+# env: GRIMOIRE_SIM_ADDRS=wlan0=192.168.0.20
 # Every screen and sheet, for the fit check: make l10n-check runs this in every language, in
 # Gothic and in Classic, with GRIMOIRE_CHECK_FIT=1, and a run that cuts any text short to fit
 # fails (its shots, build/shots/l10n/<lang>-<style>/, show translators every screen); make
@@ -365,7 +366,7 @@ wait 100
 expect library.sheet is none
 expect library.items is 1
 # Sideways: the Library, Settings, New notebook (its labels on two lines), the notebook's card (its
-# date line), its Pages.
+# date line), the paper sheet, its Pages.
 rotate 1
 wait 200
 expect rotation is 1
@@ -392,6 +393,13 @@ tap 267 530
 wait 200
 expect screen is editor
 shot 48-editor-landscape
+pentap 2388 1244
+wait 150
+expect editor.modal is paper
+shot 48-paper-landscape
+tap 2182 1696
+wait 100
+expect editor.modal is none
 pentap 2388 1028
 wait 150
 expect editor.modal is pages
