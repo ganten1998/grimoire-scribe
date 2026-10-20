@@ -1288,6 +1288,196 @@ TEST(erasing_over_a_picture) {
     bgpicture_free(&n);
 }
 
+// Every page bg/pages.ini lists that an older version saved on blank paper gets its picture back as
+// the notebook opens in the editor, also the pages nobody visits: the notebook's thumbnail and PDF,
+// which the older version drew blank, are drawn again when it closes (store_take_restored_count).
+TEST(listed_pages_restored_at_open) {
+    NotebookInfo nb;
+    CHECK(store_create("Restored", "", PAPER_MEDIUM, &nb) == 0);
+    for (int i = 1; i < 4; i++) CHECK(store_add_page(&nb, i, PAPER_MEDIUM) == 0);
+    BgPicture g = solid(PW, PH, 1, 90);
+    put_picture(&nb, 0x0000D1u, &g);
+    PaperKind k = paper_image(PAPER_ROLE_DOCUMENT, 0x0000D1u);
+    for (int i = 1; i < 4; i++) {  // pages 2 to 4 on the picture, page 2 written on
+        Page *p = NULL;
+        CHECK(store_load_page(&nb, i, PW, PH, &p) == 0 && p);
+        p->paper = k;
+        if (i == 1) page_add(p, line_stroke(TOOL_PENCIL, 200.f, 5u));
+        CHECK(store_save_page(&nb, i, p) == 0);
+        page_free(p);
+    }
+    // 1.0.0-beta opened pages 2 and 3 and saved them (version 1 Blank); page 4 it left alone.
+    beta_resaves(&nb, nb.page_ids[1]);
+    beta_resaves(&nb, nb.page_ids[2]);
+    // Listed too: a page no longer in the notebook (its file there all the same), and a read-only
+    // page (a chunk this version does not know) that reads as Blank. Both stay as they are.
+    uint32_t gone = nb.next_page_id + 7, ro = nb.page_ids[3];
+    Page *b = page_new(PW, PH, PAPER_BLANK);
+    uint8_t *d;
+    size_t dl;
+    CHECK(page_serialize(b, &d, &dl) == 0);
+    char path[700];
+    snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", root, nb.id, gone);
+    put_file(path, d, dl);
+    uint8_t *crit = malloc(dl + 8);
+    memcpy(crit, d, dl);
+    memcpy(crit + dl, "ABCD\0\0\0\0", 8);
+    snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", root, nb.id, ro);
+    put_file(path, crit, dl + 8);
+    free(d);
+    page_free(b);
+    char side[700], line[64];
+    snprintf(side, sizeof side, "%s/notebooks/%s/bg/pages.ini", root, nb.id);
+    size_t len;
+    char *txt = (char *)slurp(side, &len);
+    size_t cap = (txt ? len : 0) + 64;
+    char *more = malloc(cap);
+    snprintf(line, sizeof line, "p%u=%u\n", gone, (unsigned)k);
+    snprintf(more, cap, "%s%s", txt ? txt : "", line);
+    put_file(side, more, strlen(more));
+    free(more);
+    free(txt);
+    store_take_restored_count();
+    CHECK(store_restore_listed_pages(&nb) == 2 && store_take_restored_count() == 2);
+    uint16_t p16;
+    CHECK(file_version(&nb, nb.page_ids[1], &p16) == 2 && p16 == PAPER_BLANK && file_version(&nb, nb.page_ids[2], NULL) == 2);
+    Page *p = NULL;
+    CHECK(store_read_page(&nb, 1, &p) == 0 && p && p->paper == k && p->n == 1);  // (its ink kept)
+    page_free(p);
+    size_t rl;
+    uint8_t *rod = slurp(path, &rl);
+    CHECK(rod && rl == dl + 8 && !memcmp(rod, crit, rl));  // the read-only page as it was
+    free(rod);
+    free(crit);
+    snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", root, nb.id, gone);
+    CHECK(file_version(&nb, gone, NULL) == 1);
+    // Nothing left to bring back: a second opening writes nothing.
+    CHECK(store_restore_listed_pages(&nb) == 0 && store_take_restored_count() == 0);
+    bgpicture_free(&g);
+}
+
+// A notebook made on a template (New notebook's More papers...): its own paper and its first page
+// are the template's image paper, which notebook.ini keeps and new pages get; 1.0.0-beta reads that
+// paper as Medium rule (its pages keep theirs, and bg/pages.ini lists the first).
+TEST(notebook_on_a_template) {
+    NotebookInfo nb;
+    CHECK(store_create("On a template", "", PAPER_GRID, &nb) == 0);
+    BgPicture lines = solid(300, 400, 1, 255);
+    for (int y = 20; y < 400; y += 25) memset(lines.px + (size_t)y * 300, 140, 300);
+    char path[700];
+    template_file("Planner week.png", &lines, path, sizeof path);
+    PaperKind k = PAPER_BLANK;
+    const char *why = "";
+    CHECK(template_install(&nb, path, &k, &why) == 0 && store_start_on(&nb, k) == 0 && nb.paper == k);
+    NotebookInfo back;
+    CHECK(store_load_info(nb.id, &back) == 0 && back.paper == k);
+    CHECK(beta_paper_sanitize((uint32_t)k, 1u) == 1u);  // (1.0.0-beta: Medium rule)
+    Page *p = NULL;
+    CHECK(store_load_page(&nb, 0, PW, PH, &p) == 0 && p && p->paper == k);
+    page_free(p);
+    char side[700], want[64];
+    snprintf(side, sizeof side, "%s/notebooks/%s/bg/pages.ini", root, nb.id);
+    size_t len;
+    char *txt = (char *)slurp(side, &len);
+    snprintf(want, sizeof want, "p%u=%u\n", nb.page_ids[0], (unsigned)k);
+    CHECK(txt && strstr(txt, want));
+    free(txt);
+    // The next page gets it, and so does a page whose file is missing (the notebook's paper).
+    CHECK(store_add_page(&nb, 1, k) == 0);
+    CHECK(store_load_page(&nb, 1, PW, PH, &p) == 0 && p && p->paper == k);
+    page_free(p);
+    snprintf(path, sizeof path, "%s/notebooks/%s/p%u.qpg", root, nb.id, nb.page_ids[1]);
+    unlink(path);
+    CHECK(store_read_page(&nb, 1, &p) == 0 && p && p->paper == k);
+    // Its picture, once the background has made it, is what the page draws.
+    drain_jobs(NULL);
+    bgimage_retry_missing();
+    BgPicture want_pic;
+    CHECK(bgimage_normalize(&lines, PW, PH, &want_pic) == 0);
+    Canvas c;
+    canvas_init(&c, PW, PH);
+    page_render(&c, p, (Rect){0, 0, PW, PH}, DPI);
+    CHECK(!memcmp(c.px, want_pic.px, (size_t)PW * PH) && !bgimage_take_missing());
+    canvas_free(&c);
+    page_free(p);
+    bgpicture_free(&want_pic);
+    bgpicture_free(&lines);
+}
+
+// bg/index.ini there but not readable (a card error, a permission): it is never saved over, which
+// would lose the ids it names, so no template goes into the notebook until it reads again, neither
+// on the UI thread nor in the background job. (Root reads it anyway.)
+TEST(unreadable_index_kept) {
+    if (geteuid() == 0) return;
+    NotebookInfo nb;
+    CHECK(store_create("Index", "", PAPER_MEDIUM, &nb) == 0);
+    BgPicture a = solid(300, 400, 1, 210), b = solid(300, 400, 1, 120);
+    char pa[700], pb[700];
+    template_file("Index a.png", &a, pa, sizeof pa);
+    template_file("Index b.png", &b, pb, sizeof pb);
+    PaperKind ka = PAPER_BLANK, kb = PAPER_BLANK, again = PAPER_BLANK;
+    const char *why = "";
+    CHECK(template_install(&nb, pa, &ka, &why) == 0);
+    drain_jobs(NULL);
+    char bgdir[700], ix[760];
+    CHECK(bgimage_dir(nb.id, bgdir, sizeof bgdir) == 0);
+    snprintf(ix, sizeof ix, "%s/index.ini", bgdir);
+    size_t len;
+    char *before = (char *)slurp(ix, &len);
+    CHECK(before && strstr(before, "=") && chmod(ix, 0) == 0);
+    BgIndex idx;
+    CHECK(bgindex_load(bgdir, &idx) == -1 && idx.n == 0 && !idx.e);
+    CHECK(template_install(&nb, pb, &kb, &why) == -1 && strstr(why, "cannot be written") && !bg_busy());
+    CHECK(template_install(&nb, pa, &again, &why) == -1);  // (even the one it names)
+    CHECK(bg_template(nb.id, pb, DPI) != 0);               // the job's side refuses it too
+    CHECK(chmod(ix, 0644) == 0);
+    char *after = (char *)slurp(ix, &len);
+    CHECK(after && !strcmp(before, after));
+    free(before);
+    free(after);
+    // Readable again: the first keeps its paper, the second gets one of its own.
+    CHECK(template_install(&nb, pa, &again, &why) == 0 && again == ka);
+    CHECK(template_install(&nb, pb, &kb, &why) == 0 && kb != ka && index_entries(&nb) == 2);
+    drain_jobs(NULL);
+    unlink(pa);
+    unlink(pb);
+    bgpicture_free(&a);
+    bgpicture_free(&b);
+}
+
+// A template that does not read when the previews are made (no memory for it, a read error; here
+// no permission) is not marked bad: the next scan tries it again, and once it reads it is offered.
+TEST(unreadable_template_tried_later) {
+    if (geteuid() == 0) return;
+    BgPicture g = solid(300, 400, 1, 180);
+    char path[700];
+    template_file("Later.png", &g, path, sizeof path);
+    CHECK(chmod(path, 0) == 0);
+    Template *t;
+    int n;
+    CHECK(template_scan(&t, &n, DPI) == 0);
+    template_list_free(t, n);
+    drain_jobs(NULL);
+    for (int pass = 0; pass < 2; pass++) {
+        CHECK(template_scan(&t, &n, DPI) == 0);
+        int i = -1;
+        for (int k = 0; k < n; k++)
+            if (!strcmp(t[k].name, "Later")) i = k;
+        if (pass == 0) CHECK(i >= 0 && !t[i].ready && !t[i].bad && bg_busy());  // (asked for again)
+        else CHECK(i >= 0 && t[i].ready && !t[i].bad);
+        template_list_free(t, n);
+        if (pass == 0) {
+            drain_jobs(NULL);
+            CHECK(chmod(path, 0644) == 0);
+            CHECK(template_scan(&t, &n, DPI) == 0);  // its preview made now
+            template_list_free(t, n);
+            drain_jobs(NULL);
+        }
+    }
+    unlink(path);
+    bgpicture_free(&g);
+}
+
 // ---- imports ----
 
 TEST(natural_order) {
@@ -1745,6 +1935,10 @@ int main(void) {
     RUN(sidecar_restores_beta_resave);
     RUN(beta_reads_image_pages);
     RUN(erasing_over_a_picture);
+    RUN(listed_pages_restored_at_open);
+    RUN(notebook_on_a_template);
+    RUN(unreadable_index_kept);
+    RUN(unreadable_template_tried_later);
     RUN(natural_order);
     RUN(import_makes_a_notebook);
     RUN(import_same_picture_twice);

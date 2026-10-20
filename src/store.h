@@ -125,6 +125,17 @@ int store_load_page(const NotebookInfo *nb, int index, int w, int h, Page **out)
 // How many pages store_load_page gave their image paper back since the last call: the thumbnail
 // and PDF an older version made of them show blank paper, to be drawn again.
 int store_take_restored_count(void);
+// When a notebook is opened in the editor: every page bg/pages.ini lists that reads as version 1
+// Blank (an older version saved it so) gets its image paper back now and is written so, as
+// store_load_page does for one page as it opens: then the notebook's thumbnail and PDF, which the
+// older version drew on blank paper, are drawn again when it closes, also for pages not visited.
+// Each counts in store_take_restored_count. Returns how many.
+int store_restore_listed_pages(const NotebookInfo *nb);
+// A notebook store_create just made (its one empty page) goes onto `paper`, which may be an image
+// paper of its own pictures: store_create takes only a paper the pickers offer, and a template's
+// picture can go into a notebook's bg/ only once the notebook exists (templates.h). Its own paper
+// (notebook.ini, what new pages get) and its first page's (listed in bg/pages.ini) are written.
+int store_start_on(NotebookInfo *nb, PaperKind paper);
 // The same for exports, always at the notebook's page size, and nothing on disk changes: a page
 // that is missing or does not read is a blank page of nb->paper, and its file stays as it is.
 int store_read_page(const NotebookInfo *nb, int index, Page **out);

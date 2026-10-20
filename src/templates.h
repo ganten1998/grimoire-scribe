@@ -5,6 +5,7 @@
 // The slow work (decoding, fitting a picture to the page, writing it) runs in a forked child
 // through bgjob.h (BG_TEMPLATE, BG_IMPORT_FOLDER; src/bgwork_template.c), never on the UI thread.
 #pragma once
+#include "bgimage.h"
 #include "store.h"
 
 // At startup: grimoire/templates/ and grimoire/import/, each with a README.txt, when missing.
@@ -32,6 +33,14 @@ int template_scan(Template **out, int *n, float dpi);
 // Template t's preview (read once, then kept in t), or NULL while it is not made (or t is bad).
 const Canvas *template_thumb(Template *t);
 void template_list_free(Template *t, int n);
+// What template_scan found of each of the n templates brought up to date (a preview made since,
+// a file found bad), from the cache's files alone, queueing nothing: a sheet fills in its tiles
+// with it while the previews job runs. How many of them changed.
+int template_refresh(Template *t, int n);
+// The paper template t already is in notebook nb, by the notebook's bg/index.ini (ix, from
+// bgindex_load): 0 with *kind, or -1 when it was never put there, or its preview is not made yet
+// (its key comes from the hash the preview keeps). Reads nothing big, installs nothing.
+int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind);
 
 // Puts the template at path into notebook nb, to be a page's paper: *kind is the paper a page takes
 // for it, known at once. Its picture is made for the notebook's page size in the background

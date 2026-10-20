@@ -535,6 +535,54 @@ int store_take_restored_count(void) {
     return n;
 }
 
+static int page_parse(const uint8_t *buf, size_t len, Page **out, bool quiet);
+
+// Whether a page file starts as version 1 Blank (its first 8 bytes, the rest unread): how 1.0.0-beta
+// writes a page whose image paper it does not know.
+static bool page_file_v1_blank(const char *path) {
+    uint8_t b[8];
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return false;
+    bool got = read(fd, b, sizeof b) == (ssize_t)sizeof b;
+    close(fd);
+    return got && !memcmp(b, "QPG1", 4) && b[4] == 1 && b[5] == 0 && b[6] == PAPER_BLANK && b[7] == 0;
+}
+
+int store_restore_listed_pages(const NotebookInfo *nb) {
+    char bgdir[700], path[760];
+    if (bgimage_dir(nb->id, bgdir, sizeof bgdir) != 0) return 0;
+    side_path(bgdir, path, sizeof path);
+    if (access(path, F_OK) != 0) return 0;
+    Side s;
+    if (side_load(bgdir, &s) != 0) return 0;  // (left as it is: store_load_page says so)
+    int restored = 0;
+    for (int i = 0; i < s.n; i++) {
+        bool listed = false;
+        for (int k = 0; k < nb->npages && !listed; k++) listed = nb->page_ids[k] == s.e[i].pid;
+        char pp[700];
+        page_path(nb, s.e[i].pid, pp, sizeof pp);
+        // Only a page of the notebook that reads as Blank by its first bytes is read whole: a big
+        // notebook of imported pages lists every page, and opens without reading each one.
+        if (!listed || !page_file_v1_blank(pp)) continue;
+        size_t len;
+        uint8_t *data = read_file(pp, &len);
+        Page *p = NULL;
+        if (data && page_parse(data, len, &p, true) == 0 && !p->readonly && p->paper == PAPER_BLANK) {
+            p->paper = (PaperKind)s.e[i].kind;
+            if (write_page_file(nb, s.e[i].pid, p) == 0) restored++;
+            else qlog("store: %s: could not write p%u.qpg's paper back", nb->id, s.e[i].pid);
+        }
+        page_free(p);
+        free(data);
+    }
+    free(s.e);
+    if (restored)
+        qlog("store: %s: %d page(s) an older version saved with blank paper get their pictures back from bg/pages.ini",
+             nb->id, restored);
+    g_restored_pages += restored;
+    return restored;
+}
+
 int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n) {
     Side s = {0};
     int rc = 0;
@@ -548,6 +596,19 @@ int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const Pap
 PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after) {
     if (!paper_is_document(after)) return after;
     return paper_is_document(nb->paper) ? PAPER_BLANK : nb->paper;
+}
+
+int store_start_on(NotebookInfo *nb, PaperKind paper) {
+    int w, h;
+    store_notebook_page_size(nb, &w, &h);
+    Page *p = NULL;
+    if (store_load_page(nb, 0, w, h, &p) != 0) return -1;
+    p->paper = paper;
+    int rc = store_save_page(nb, 0, p);  // (listed in bg/pages.ini, as every image paper's page)
+    page_free(p);
+    if (rc != 0) return -1;
+    nb->paper = paper;
+    return store_save_info(nb);
 }
 
 static void random_hex(char *out, int n) {

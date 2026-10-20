@@ -620,6 +620,9 @@ int app_probe(const char *key, char *out, size_t cap) {
     if (!strncmp(key, "editor.", 7)) return editor_probe(a, key + 7, out, cap);
     if (!strncmp(key, "library.", 8)) return library_probe(a, key + 8, out, cap);
     if (!strncmp(key, "penset.", 7)) return pensettings_probe(a, key + 7, out, cap);
+    // The Templates sheet (tplsheet.h): New notebook's on the Library, else the editor's.
+    if (!strncmp(key, "templates.", 10))
+        return a->scr == SCR_LIBRARY ? library_probe(a, key, out, cap) : editor_probe(a, key, out, cap);
     // Settings, under their settings.ini names.
     const Settings *st = &a->settings;
     const struct {

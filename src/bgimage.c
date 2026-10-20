@@ -763,7 +763,14 @@ void bgimage_forget(const char *nb) {
     g_failed_next = m % BG_FAILED;
 }
 
-void bgimage_retry_missing(void) { g_nfailed = g_failed_next = 0; }
+static unsigned g_generation;
+
+void bgimage_retry_missing(void) {
+    g_nfailed = g_failed_next = 0;
+    g_generation++;
+}
+
+unsigned bgimage_generation(void) { return g_generation; }
 
 static void remember_failure(const char *nb, uint32_t id) {
     strlcpy_q(g_failed[g_failed_next].nb, nb, PAGE_NB_LEN);

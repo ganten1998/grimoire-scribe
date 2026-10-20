@@ -377,6 +377,27 @@ void template_list_free(Template *t, int n) {
     free(t);
 }
 
+int template_refresh(Template *t, int n) {
+    int changed = 0;
+    for (int i = 0; i < n && t; i++) {
+        Template *tp = &t[i];
+        char pv[PATH_BUF], other[PATH_BUF];
+        if (tp->ready || tp->bad || !preview_of(tp->path, "pgm", pv, sizeof pv)) continue;
+        size_t ext = strlen(pv) - 3;  // the three letters after the dot: the other files' too
+        if (access(pv, F_OK) == 0) {
+            tp->ready = true;  // (as template_scan has it: the preview's key is written first)
+            changed++;
+            continue;
+        }
+        snprintf(other, sizeof other, "%.*sbad", (int)ext, pv);
+        if (access(other, F_OK) == 0) {
+            tp->bad = true;
+            changed++;
+        }
+    }
+    return changed;
+}
+
 // In the child: the previews the templates folder lacks, made at the page size of this Kindle, with
 // the hash of each file's bytes beside its preview (a template's key comes from it, and so the UI
 // never reads a big file to know it); previews of files no longer there are removed.
@@ -402,10 +423,14 @@ static int make_previews(const char *dir) {
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         size_t len = 0;
         uint8_t *data = read_source(path, TEMPLATE_MAX_BYTES, &len);
-        const char *why = data ? "out of memory" : errno == EFBIG ? "a file over 16 MB" : "the file does not read";
+        // A file too big is no template, and neither is one whose bytes are no picture Grimoire
+        // takes. One that does not read now (no memory for it, a read error) may read at a later
+        // scan: it is not marked bad.
+        bool too_big = !data && errno == EFBIG;
+        const char *why = data ? "out of memory" : too_big ? "a file over 16 MB" : "the file does not read";
         BgPicture src = {0}, fit = {0};
         Canvas full = {0}, small = {0};
-        int dec = data ? bgimage_decode(data, len, &src, &why) : -1;
+        int dec = data ? bgimage_decode(data, len, &src, &why) : too_big ? -1 : -2;
         bool ok = dec == 0 && bgimage_normalize(&src, pw, ph, &fit) == 0 && bgimage_luma(&fit, &full) == 0 &&
                   canvas_init(&small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
         if (ok) {
@@ -419,7 +444,7 @@ static int make_previews(const char *dir) {
             write_quiet(bp, "");
             bad++;
         } else {
-            later++;  // out of memory: the next scan tries again
+            later++;  // out of memory, or the file did not read: the next scan tries again
         }
         free(data);
         bgpicture_free(&src);
@@ -441,7 +466,8 @@ static int make_previews(const char *dir) {
     if (d) closedir(d);
     free(keep);
     free_names(names, nn);
-    qlog("templates: %d preview(s) made, %d file(s) that do not read, %d left for lack of memory", made, bad, later);
+    qlog("templates: %d preview(s) made, %d file(s) that are no picture Grimoire can use, %d left for a later scan "
+         "(out of memory, or a file that did not read)", made, bad, later);
     return keep ? 0 : -1;
 }
 
@@ -459,6 +485,19 @@ static int cached_key(const char *path, uint64_t *hash, int *w, int *h) {
     free(t);
     if (ok) *hash = (uint64_t)v;
     return ok ? 0 : -1;
+}
+
+int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind) {
+    struct stat st;
+    uint64_t content;
+    int w, h, pw, ph;
+    uint32_t id;
+    // The key template_install gives it (the same hash, length and page size), looked up.
+    if (stat(t->path, &st) != 0 || !S_ISREG(st.st_mode) || cached_key(t->path, &content, &w, &h) != 0) return -1;
+    store_notebook_page_size(nb, &pw, &ph);
+    if (!bgindex_find(ix, bgimage_template_key(content, (size_t)st.st_size, pw, ph), &id)) return -1;
+    *kind = paper_image(PAPER_ROLE_TEMPLATE, id);
+    return 0;
 }
 
 int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why) {

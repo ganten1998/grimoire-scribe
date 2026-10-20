@@ -20,14 +20,17 @@
 #include "inkmode.h"
 #include "musicbuild.h"
 #include "history.h"
+#include "tplsheet.h"
 
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
     PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, P_TOOLPICK, P_PICK_TOOL,
+    P_PICK_MORE,
 };
 
-typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD } Owner;
+typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD,
+               OWN_TEMPLATES } Owner;
 
 // Every page visited while a notebook is open stays in memory with its history: undo
 // actions point at the page's live Stroke objects, so a page must never be freed and
@@ -145,6 +148,12 @@ struct EditorState {
     PaperKind image_prev_k;
     char image_prev_nb[STORE_ID_LEN];
     MusicBuild mb;              // the Custom music sheet
+    TplSheet ts;                // the Templates sheet (More papers...), in the Paper sheet's place
+    // The open page's picture (an image paper's) was not there when the page canvas was drawn (a
+    // template's, made in the background): it drew white, and is drawn again once a job has ended
+    // since (picture_gen: bgimage_generation then).
+    bool picture_missing;
+    unsigned picture_gen;
 };
 
 #define S (a->ed)
@@ -356,40 +365,33 @@ static const Canvas *paper_preview(App *a, PaperKind k) {
 static void draw_paper_sheet(App *a) {
     Canvas *c = &a->screen;
     hits_clear(&S->modal_hits);
-    const int ntiles = PAPER_PICKER_COUNT;
-    int m = ui_px(70), gap_ = ui_px(30), cols = ntiles > 15 ? 6 : ntiles > 8 ? 5 : 4, rows = (ntiles + cols - 1) / cols;
-    int tw = (a->w - 2 * m - ui_px(72) - (cols - 1) * gap_) / cols;
-    if (tw > a->w / 6) tw = a->w / 6;
-    int max_th = (a->h - ui_px(120) - ui_px(72) - ui_px(190) - ui_px(80)) / rows - ui_px(100);
-    if (tw * 4 / 3 > max_th) tw = max_th * 3 / 4;
-    int th = tw * 4 / 3, cell_h = th + ui_px(100);
-    int gridw = cols * tw + (cols - 1) * gap_;
-    int sheet_h = ui_px(120) + ui_px(72) + rows * cell_h + ui_px(190);
-    S->paper_rect = (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
+    PaperGrid g;
+    S->paper_rect = paper_sheet_rect(a, &g);
+    int gap_ = ui_px(30), gridw = g.cols * g.tw + (g.cols - 1) * gap_;
     // TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
     Rect in = ui_sheet(c, S->paper_rect, _("Paper for this page"));
-    for (int i = 0; i < ntiles; i++) {
-        // The last tile is Custom music: it shows this page's layout, or the last one built (also
-        // for a newer layout this build cannot draw, which is then not selected either).
-        bool custom = i == PAPER_COUNT;
-        bool page_custom = S->page && paper_is_known(S->page->paper) && paper_is_custom(S->page->paper);
-        PaperKind k = custom ? (page_custom ? S->page->paper : a->settings.music_layout) : paper_at(i);
-        Rect tr = {in.x + (in.w - gridw) / 2 + (i % cols) * (tw + gap_), in.y + (i / cols) * cell_h, tw, th};
+    bool page_custom = S->page && paper_is_known(S->page->paper) && paper_is_custom(S->page->paper);
+    bool page_picture = S->page && paper_is_image(S->page->paper);
+    for (int i = 0; i < PAPER_SHEET_TILES; i++) {
+        // The last two tiles. Custom music shows this page's layout, or the last one built (also
+        // for a newer layout this build cannot draw, which is then not selected either). More
+        // papers opens the Templates sheet: it shows this page's picture when the page is on one.
+        bool custom = i == PAPER_COUNT, more = i == PAPER_COUNT + 1;
+        PaperKind k = more     ? (page_picture ? S->page->paper : PAPER_BLANK)
+                      : custom ? (page_custom ? S->page->paper : a->settings.music_layout)
+                               : paper_at(i);
+        Rect tr = {in.x + (in.w - gridw) / 2 + (i % g.cols) * (g.tw + gap_), in.y + (i / g.cols) * g.cell_h, g.tw, g.th};
         canvas_fill(c, tr, 255);
-        const Canvas *pv = paper_preview(a, k);
+        const Canvas *pv = more && !page_picture ? NULL : paper_preview(a, k);
         if (pv) canvas_blit_fit(c, pv, tr);
-        bool sel = custom ? page_custom : (S->page && S->page->paper == k);
+        else if (more) paper_tile_more(c, tr);
+        bool sel = more ? page_picture : custom ? page_custom : (S->page && S->page->paper == k);
         ui_frame(c, rect_inflate(tr, sel ? ui_px(10) : 0), ui_px(12), 0, false, sel ? ui_px(9) : ui_px(3));
-        // A label too wide for its column goes on two lines under the tile, as in New notebook.
-        const char *label = custom ? _("Custom music...") : paper_label(k);
-        FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
-        float ls = ui_small_size() * 0.9f;
-        Rect lr = {tr.x - gap_ / 2, tr.y + th + ui_px(16), tw + gap_, ui_px(64)};
-        if (font_measure(lf, ls, label) > lr.w)
-            font_draw_wrapped(c, lf, ls, (Rect){tr.x, tr.y + th + ui_px(8), tw, ui_px(80)}, label, 2, ui_px(40), true, 0);
-        else
-            font_draw_centered(c, lf, ls, lr, label, 0);
-        hits_add(&S->modal_hits, (Rect){tr.x, tr.y, tw, th + ui_px(90)}, custom ? P_PICK_CUSTOM : P_PICK_PAPER, (int)k);
+        // (Custom music... and More papers... as in New notebook, which says their room.)
+        const char *label = more ? _("More papers...") : custom ? _("Custom music...") : paper_label(k);
+        paper_tile_label(c, tr, gap_, label, sel);
+        hits_add(&S->modal_hits, (Rect){tr.x, tr.y, g.tw, g.th + ui_px(90)},
+                 more ? P_PICK_MORE : custom ? P_PICK_CUSTOM : P_PICK_PAPER, (int)k);
     }
     Rect cancel = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
     ui_button(c, cancel, ICON_NONE, _("Cancel"), BTN_PLAIN);
@@ -687,6 +689,7 @@ static void compose(App *a, Rect r) {
     }
     if (rect_overlaps(r, S->panel)) draw_panel(a);
     if (S->paper_open && rect_overlaps(r, S->paper_rect)) draw_paper_sheet(a);
+    if (S->ts.open && rect_overlaps(r, S->ts.rect)) tplsheet_draw(&S->ts, a);
     if (S->dm.open && rect_overlaps(r, S->dm.rect)) dispmenu_draw(&S->dm, a);
     if (S->mb.open && rect_overlaps(r, S->mb.rect)) musicbuild_draw(&S->mb, a);
     if (S->tools_open && rect_overlaps(r, S->tools_rect)) draw_tools(a);
@@ -774,8 +777,22 @@ static bool save_page(App *a) {
     return true;
 }
 
+// Draws r of the open page into the page canvas. An image paper's picture that is not there (a
+// template's, made in the background) draws white: noted, to be drawn once it is (editor_tick).
+static void draw_page(App *a, Rect r) {
+    bgimage_take_missing();  // (what drew white before)
+    page_render(&S->page_canvas, S->page, r, a->dpi);
+    bool whole = r.x <= 0 && r.y <= 0 && r.x + r.w >= S->pgw && r.y + r.h >= S->pgh;
+    if (bgimage_take_missing()) {
+        S->picture_missing = true;
+        S->picture_gen = bgimage_generation();
+    } else if (whole) {
+        S->picture_missing = false;
+    }
+}
+
 static void render_page_full(App *a) {
-    page_render(&S->page_canvas, S->page, (Rect){0, 0, S->pgw, S->pgh}, a->dpi);
+    draw_page(a, (Rect){0, 0, S->pgw, S->pgh});
     S->canvas_page = S->page;
 }
 
@@ -919,6 +936,8 @@ static void close_notebook(App *a) {
     free_histories(a);
     pthumbs_clear(a);
     canvas_free(&S->paper);
+    tplsheet_close(&S->ts);
+    S->picture_missing = false;
     S->nnoted = 0;
     S->pages_open = false;
     S->open = false;
@@ -937,6 +956,9 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     store_recover_pages(&S->nb);  // pages an older version set aside that open now
+    // Pages an older version saved on blank paper get their pictures back (bg/pages.ini), all of
+    // them now: the thumbnail and PDF it drew are drawn again when the notebook closes.
+    store_restore_listed_pages(&S->nb);
     bgimage_retry_missing();      // (a picture the Library found missing may be there now)
     use_page_size(a);
     S->index = clampi(S->nb.last_page, 0, S->nb.npages - 1);
@@ -980,7 +1002,7 @@ static const Canvas *page_paper(App *a) {
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
     if (fresh || S->paper_k != S->page->paper) {
         S->paper_k = S->page->paper;
-        paper_render(c, S->paper_k, (Rect){0, 0, c->w, c->h}, a->dpi);
+        page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);  // (an image paper's picture too)
     }
     return c;
 }
@@ -1105,7 +1127,7 @@ static void erase_segment(App *a, float sx, float sy, float pressure) {
     S->ex = x;
     S->ey = y;
     if (!rect_is_empty(d)) {
-        page_render(&S->page_canvas, S->page, d, a->dpi);
+        draw_page(a, d);
         show(a, d, REFRESH_FAST);
         S->erase_dirty = rect_union(S->erase_dirty, d);
     }
@@ -1194,7 +1216,7 @@ static void pen_button(App *a, const InEvent *ev) {
     S->clicks[S->nclicks++] = t;
     if (S->nclicks == 3 && S->clicks[2] - S->clicks[0] <= 1200) {
         S->nclicks = 0;
-        if (S->owner == OWN_NONE && !S->paper_open && !S->mb.open && !S->pages_open) clear_page(a);
+        if (S->owner == OWN_NONE && !S->paper_open && !S->mb.open && !S->pages_open && !S->ts.open) clear_page(a);
     }
 }
 
@@ -1204,7 +1226,7 @@ static void undo_redo(App *a, bool undo) {
     History *h = cur_hist(a);
     Rect d;
     if (!h || !(undo ? history_undo(h, S->page, &d) : history_redo(h, S->page, &d))) return;
-    page_render(&S->page_canvas, S->page, d, a->dpi);
+    draw_page(a, d);  // (back to a template whose picture is still being made: white until it is)
     bool full = d.w >= S->pgw && d.h >= S->pgh;
     show(a, d, full ? REFRESH_FULL : REFRESH_UI);
     mark_changed(a);
@@ -1421,11 +1443,37 @@ static void apply_paper(App *a, PaperKind k) {
     mark_changed(a);
 }
 
+// A template picked on the Templates sheet becomes this page's paper, as any paper does (one undo
+// step): template_install gives its paper value at once, and the page draws white until the
+// background job has made its picture for this notebook (editor_tick then draws it). One that
+// cannot be installed changes nothing.
+static void apply_template(App *a, const char *path) {
+    PaperKind k;
+    const char *why = "";
+    if (template_install(&S->nb, path, &k, &why) != 0) {
+        qlog("editor: %s: a template could not be used: %s", S->nb.id, why);
+        char msg[256];
+        // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
+        // on the Templates sheet could not become the page's paper (or the new notebook's); %s is
+        // the log file that says why.
+        snprintf(msg, sizeof msg, _("Could not use that template (see %s)."), "grimoire.log");
+        app_toast(a, msg, 4000);
+        return;
+    }
+    if (S->page->paper != k) apply_paper(a, k);
+}
+
 static void modal_act(App *a, const Hit *h) {
     Rect sheet = S->paper_rect;
     S->paper_open = false;
     if (h->id == P_PICK_PAPER && S->page->paper != (PaperKind)h->arg) {
         apply_paper(a, (PaperKind)h->arg);
+        return;
+    }
+    if (h->id == P_PICK_MORE) {
+        compose(a, sheet);  // (the Templates sheet takes the Paper sheet's place)
+        tplsheet_open(&S->ts, a, &S->nb, S->page->paper, NULL);
+        app_invalidate(a, rect_union(sheet, tplsheet_draw(&S->ts, a)), REFRESH_UI);
         return;
     }
     if (h->id == P_PICK_CUSTOM) {
@@ -1519,6 +1567,7 @@ void editor_free(App *a) {
     canvas_free(&S->paper);
     free(S->noted);
     musicbuild_free(&S->mb);
+    tplsheet_close(&S->ts);
     free(S);
     a->ed = NULL;
 }
@@ -1541,6 +1590,7 @@ void editor_enter(App *a) {
     S->dm.open = false;
     S->mb.open = false;
     S->tools_open = false;
+    if (!a->relayout) tplsheet_close(&S->ts);  // (a turn or a wake keeps it, on its page of tiles)
     compose(a, (Rect){0, 0, a->w, a->h});
 }
 
@@ -1570,7 +1620,7 @@ static void pinch(App *a, const InEvent *ev) {
             S->dragging = false;
             S->owner = OWN_NONE;
         }
-        if (S->owner != OWN_NONE || S->paper_open || S->mb.open || !a->settings.pinch_zoom) return;
+        if (S->owner != OWN_NONE || S->paper_open || S->mb.open || S->ts.open || !a->settings.pinch_zoom) return;
         S->pinching = true;
         S->pinch_committed = false;
         S->pinch_mx0 = mx;
@@ -1659,6 +1709,12 @@ void editor_event(App *a, const InEvent *ev) {
             dispmenu_pointer(&S->dm, a, 0, ev->x, ev->y, ev->t_ms, &d);
             return;
         }
+        if (S->ts.open) {
+            S->owner = OWN_TEMPLATES;
+            Rect d;
+            tplsheet_pointer(&S->ts, a, 0, ev->x, ev->y, ev->t_ms, &d);
+            return;
+        }
         if (zoomed(a) && rect_contains(zoom_chip(a), (int)ev->x, (int)ev->y) && !S->paper_open &&
             !rect_contains(S->panel, (int)ev->x, (int)ev->y)) {
             view_reset(a);
@@ -1739,6 +1795,32 @@ void editor_event(App *a, const InEvent *ev) {
         if (ph == 2) S->owner = OWN_NONE;
         break;
     }
+    case OWN_TEMPLATES: {
+        Rect d;
+        TsResult r = tplsheet_pointer(&S->ts, a, ph, ev->x, ev->y, ev->t_ms, &d);
+        if (r == TS_PICKED) {
+            char path[TEMPLATE_PATH_MAX];
+            const char *p = tplsheet_path(&S->ts);
+            strlcpy_q(path, p ? p : "", sizeof path);
+            tplsheet_close(&S->ts);
+            compose(a, d);
+            app_invalidate(a, d, REFRESH_UI);
+            if (path[0]) apply_template(a, path);
+        } else if (r == TS_BACK) {
+            // Back to the Paper sheet, in the same place.
+            compose(a, d);
+            S->paper_open = true;
+            draw_paper_sheet(a);
+            app_invalidate(a, rect_union(d, S->paper_rect), REFRESH_UI);
+        } else if (r == TS_CANCEL) {
+            compose(a, d);
+            app_invalidate(a, d, REFRESH_UI);
+        } else if (!rect_is_empty(d)) {
+            app_invalidate(a, d, REFRESH_UI);
+        }
+        if (ph == 2) S->owner = OWN_NONE;
+        break;
+    }
     case OWN_DISPLAY: {
         Rect d;
         DmResult r = dispmenu_pointer(&S->dm, a, ph, ev->x, ev->y, ev->t_ms, &d);
@@ -1776,13 +1858,30 @@ static void write_thumb_if_needed(App *a) {
     S->thumb_dirty = false;
 }
 
+// A background job ended since the open page drew its picture white (a template's, being made for
+// this notebook): the page is drawn again, with the picture if it is there now, and so is what
+// was drawn of it while it was missing (the paper erase strokes restore toward, the previews).
+static void picture_arrived(App *a) {
+    canvas_free(&S->paper);
+    canvas_free(&S->image_prev);
+    pthumbs_clear(a);
+    render_page_full(a);
+    if (S->picture_missing) return;  // (another job: this picture is still to come)
+    if (S->index == 0) S->thumb_dirty = true;  // the Library's card of the notebook
+    compose_all(a, REFRESH_FULL);
+}
+
 void editor_tick(App *a, uint32_t now) {
     if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) &&
         (int32_t)(now - S->settle_at) >= 0)
         settle_now(a);
+    if (S->open && S->picture_missing && S->picture_gen != bgimage_generation() && S->owner == OWN_NONE && !S->pinching)
+        picture_arrived(a);
+    Rect d;
+    if (S->open && S->owner == OWN_NONE && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once.
     if (S->open && S->btn_down && !S->btn_used_for_ink && !S->btn_hold_fired && S->owner == OWN_NONE &&
-        !S->paper_open && !S->mb.open && !S->pages_open && now - S->btn_down_at >= 1200) {
+        !S->paper_open && !S->mb.open && !S->pages_open && !S->ts.open && now - S->btn_down_at >= 1200) {
         S->btn_hold_fired = true;
         S->nclicks = 0;
         clear_page(a);
@@ -1832,6 +1931,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
                         : S->tools_open ? "tools"
                         : S->mb.open    ? "music"
                         : S->dm.open    ? "display"
+                        : S->ts.open    ? "templates"
                         : S->paper_open ? "paper"
                                         : "none";
         snprintf(out, cap, "%s", m);
@@ -1907,6 +2007,18 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         if (!has_page) snprintf(out, cap, "none");
         else if (paper_is_custom(S->page->paper)) snprintf(out, cap, "custom");
         else snprintf(out, cap, "%d", (int)S->page->paper);
+    } else if (!strcmp(key, "paper_hex")) {
+        // The page's paper value as 8 hex digits (an image paper: 0x50 for a template, 0x51 for an
+        // imported page, then its picture's id), empty with no notebook open.
+        if (has_page) snprintf(out, cap, "0x%08x", (unsigned)S->page->paper);
+        else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "picture")) {
+        // Whether the page's picture (an image paper's) shows: "shown", or "missing" while the page
+        // draws white for it (a template's picture not made yet); empty for any other paper.
+        if (has_page && paper_is_image(S->page->paper)) snprintf(out, cap, "%s", S->picture_missing ? "missing" : "shown");
+        else snprintf(out, cap, "%s", "");
+    } else if (!strncmp(key, "templates.", 10)) {
+        return tplsheet_probe(&S->ts, key + 10, out, cap);  // the Templates sheet over the page
     } else if (!strcmp(key, "panel")) {
         snprintf(out, cap, "%s", S->collapsed ? "collapsed" : "expanded");
     } else if (!strcmp(key, "music")) {

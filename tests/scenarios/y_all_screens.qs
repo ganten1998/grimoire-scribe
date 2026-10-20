@@ -175,8 +175,9 @@ shot 18-share
 tap 1540 2105
 wait 100
 expect screen is library
-# New notebook, Custom music and its Cancel, the name's keyboard with its accents page and its
-# Cancel, then Create.
+# New notebook, Custom music and its Cancel, More papers (the Templates sheet with no templates
+# yet: how to add some) and its Back, the name's keyboard with its accents page and its Cancel,
+# then Create.
 tap 965 95
 wait 50
 expect library.sheet is new
@@ -188,7 +189,15 @@ shot 20-music
 tap 290 1935
 wait 50
 expect library.sheet is new
-tap 1600 1676
+tap 300 1650
+wait 100
+expect library.sheet is templates
+expect templates.count is 0
+shot 20-templates-empty-new
+tap 300 2123
+wait 50
+expect library.sheet is new
+tap 1600 1975
 wait 50
 expect library.sheet is keyboard
 expect library.hint is 1
@@ -204,9 +213,9 @@ expect library.sheet is new
 tap 1564 2254
 wait 150
 expect screen is editor
-# The editor: the panel, the tool picker, the paper sheet, the Display sheet (Pin this page, then
-# the sleep screen back as it was), two more pages, the Pages view with Select all and Delete (3),
-# the zoom chip after a pinch, Clear.
+# The editor: the panel, the tool picker, the paper sheet and its Templates sheet (with no
+# templates yet), the Display sheet (Pin this page, then the sleep screen back as it was), two more
+# pages, the Pages view with Select all and Delete (3), the zoom chip after a pinch, Clear.
 pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
@@ -221,7 +230,15 @@ pentap 1768 1242
 wait 100
 expect editor.modal is paper
 shot 25-paper
-tap 1562 1837
+tap 232 1750
+wait 100
+expect editor.modal is templates
+expect templates.count is 0
+shot 25-templates-empty
+tap 300 2123
+wait 100
+expect editor.modal is paper
+tap 1562 2125
 wait 100
 expect editor.modal is none
 pentap 1768 1350
@@ -370,8 +387,9 @@ tap 930 995
 wait 100
 expect library.sheet is none
 expect library.items is 1
-# Sideways: the Library, Settings, New notebook (its labels on two lines), the notebook's card (its
-# date line), the tool picker, the paper sheet, its Pages.
+# Sideways: the Library, Settings, New notebook (its labels on two lines) and its Templates sheet,
+# the notebook's card (its date line), the tool picker, the paper sheet and its Templates sheet, its
+# Pages.
 rotate 1
 wait 200
 expect rotation is 1
@@ -387,6 +405,13 @@ tap 1585 95
 wait 100
 expect library.sheet is new
 shot 46-new-landscape
+tap 1462 1116
+wait 100
+expect library.sheet is templates
+shot 46-templates-empty-new-landscape
+tap 300 1694
+wait 50
+expect library.sheet is new
 tap 570 1700
 wait 50
 expect library.sheet is none
@@ -409,6 +434,13 @@ pentap 2388 1244
 wait 150
 expect editor.modal is paper
 shot 48-paper-landscape
+tap 1544 1300
+wait 100
+expect editor.modal is templates
+shot 48-templates-empty-landscape
+tap 300 1694
+wait 100
+expect editor.modal is paper
 tap 2182 1696
 wait 100
 expect editor.modal is none
@@ -550,7 +582,7 @@ wait 50
 tap 279 1745
 wait 50
 expect library.sheet is new
-tap 1800 1115
+tap 1240 1116
 wait 100
 expect library.sheet is music
 shot 65-music-landscape
