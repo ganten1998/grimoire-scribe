@@ -77,13 +77,22 @@ int main(int argc, char **argv) {
     // The Kindle UI may repaint once more after we start (the scriptlet "book" closing, a
     // late home-screen refresh). Check the panel still shows us; if not, repaint everything.
     uint32_t started = now_ms(), last_guard = started;
-    int guards = 0, startup_repaints = 0;
+    int guards = 0, guard_streak = 0, startup_repaints = 0, status = 0;
+    bool guard_on = true;
 #ifdef GRIMOIRE_KINDLE
     heartbeat();
     uint32_t last_beat = now_ms();
 #endif
 
     while (app.running) {
+        // A panel that took none of the first five refreshes is not Grimoire's to drive (a device
+        // FBInk does not know, say): leave, so the launcher gives the Kindle back its screen, pen
+        // and touch, instead of a device that looks frozen. (app_shutdown below saves.)
+        if (display_broken()) {
+            qlog("display: the first frame and the next 4 refreshes all failed; leaving so the Kindle UI comes back");
+            status = 1;
+            break;
+        }
         InEvent ev;
         // Block briefly (timers and the share server need regular ticks), then drain
         // everything queued so a burst of pen samples becomes one refresh.
@@ -95,13 +104,14 @@ int main(int argc, char **argv) {
         app_flush(&app);
         uint32_t t = now_ms();
         uint32_t every = (t - started) < 15000 ? 700 : 1500;
-        if (t - last_guard >= every && !app.asleep) {
+        if (t - last_guard >= every && !app.asleep && guard_on) {
             last_guard = t;
             // The Kindle's status bar strip (clock, battery) lives at the top of the panel: check
             // that band densely, and repaint just it (no flash) when something drew there.
             Rect skip = app.toast_visible ? app.toast_rect : RECT_EMPTY;
             Rect top = {0, 0, app.w, ui_px(150)};
             Rect where;
+            int before = guards;
             if (display_find_overwrite(&app.screen, skip, &where)) {
                 guards++;
                 // Most of the screen: a clean full refresh. A patch: repaint just it, no flash.
@@ -115,6 +125,14 @@ int main(int argc, char **argv) {
                 qlog("screen guard: repainting the top band (#%d)", guards);
                 app_invalidate(&app, top, REFRESH_UI);
                 app_flush(&app);
+            }
+            // A repaint puts the panel right, so a mismatch at every check means the framebuffer
+            // does not read back as drawn (a panel nobody here has tested): rather than repaint
+            // forever, the guard stops.
+            guard_streak = guards > before ? guard_streak + 1 : 0;
+            if (guard_streak >= 10) {
+                guard_on = false;
+                qlog("screen guard: off after 10 repaints in a row (the framebuffer does not read back as drawn)");
             }
         }
         // Two unconditional repaints shortly after launch catch the Kindle UI's last frame (the
@@ -136,5 +154,5 @@ int main(int argc, char **argv) {
     display_wait();
     input_close();
     display_close();
-    return 0;
+    return status;
 }

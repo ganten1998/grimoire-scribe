@@ -19,7 +19,7 @@ COMMON  := -std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -I$(BUILD)/gen -DGRIMOIR
 
 CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.c \
             src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c
-CORE_SRC += src/power.c
+CORE_SRC += src/power.c src/fbcheck.c
 UI_SRC   := src/ui.c src/keyboard.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c

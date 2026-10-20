@@ -20,9 +20,11 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include "display.h"
+#include "fbcheck.h"
 #include "fbink.h"
 
 static int g_fd = -1;
@@ -30,6 +32,7 @@ static FBInkConfig g_cfg;
 static FBInkState g_st;
 static uint8_t *g_fb;
 static size_t g_fblen;
+static bool g_readback;       // the mapping covers the whole panel at 8 or 32 bpp: the guards can read it
 static bool g_pen_mode;
 static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
 // MTK pen mode is opt-in (empty file /mnt/us/grimoire/pen-mode): FBInk notes that on Bellatrix3
@@ -37,10 +40,10 @@ static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
 // the Scribe 2 runs at fb rotate 1, so live ink could land nowhere visible. Plain DU partial
 // updates are what KOReader uses for its pen input too.
 static bool g_pen_wanted;
-static RefreshMode g_last_mode = REFRESH_FULL;
-static int g_count[3], g_fail;
+static int g_count[3], g_fail, g_ok;
 static uint32_t g_stats_at;
-static int g_presents;        // the first few refreshes are logged in full (device bring-up)
+static uint32_t g_last_refresh;  // when the last refresh went out (paces the first-frame retries)
+static int g_presents;        // refreshes sent; the first few are logged in full (device bring-up)
 static bool g_flip;           // framebuffer is 180 degrees from the panel's touch orientation
 static int g_rot;             // device rotation, quarter turns clockwise
 static int PW, PH;            // panel (framebuffer view) size
@@ -63,10 +66,37 @@ static void to_fb(int lx, int ly, int *fx, int *fy) {
     *fy = py;
 }
 
+// Byte offset of logical pixel (lx, ly) in the framebuffer: one byte per pixel at 8 bpp, four at
+// 32 bpp (the Scribe Colorsoft).
 static size_t fb_index(int lx, int ly) {
     int fx, fy;
     to_fb(lx, ly, &fx, &fy);
-    return (size_t)fy * g_st.scanline_stride + (size_t)fx;
+    return fbcheck_offset(fx, fy, g_st.scanline_stride, (int)g_st.bpp);
+}
+
+static bool g_invert;  // Grimoire's colors inverted (user setting), on top of the fb's own flag
+
+// The gray the panel's memory holds at logical (lx, ly), Grimoire's own inversion undone: what the
+// canvas has there unless another process drew. Only while g_readback.
+static uint8_t fb_gray(int lx, int ly) {
+    bool flip = g_st.bpp == 8 ? g_st.inverted_grayscale != g_invert : g_invert;  // as copy_rect writes
+    return fbcheck_gray(g_fb + fb_index(lx, ly), (int)g_st.bpp, flip);
+}
+
+static const char *pixel_format_name(unsigned f) {
+    switch (f) {
+    case FBINK_PXFMT_Y4: return "Y4";
+    case FBINK_PXFMT_Y8: return "Y8";
+    case FBINK_PXFMT_BGR565: return "BGR565";
+    case FBINK_PXFMT_RGB565: return "RGB565";
+    case FBINK_PXFMT_BGR24: return "BGR24";
+    case FBINK_PXFMT_RGB24: return "RGB24";
+    case FBINK_PXFMT_BGRA: return "BGRA";
+    case FBINK_PXFMT_RGBA: return "RGBA";
+    case FBINK_PXFMT_BGR32: return "BGR32";
+    case FBINK_PXFMT_RGB32: return "RGB32";
+    default: return "unknown";
+    }
 }
 
 // Logical rect -> the framebuffer rect it covers.
@@ -122,6 +152,28 @@ int display_open(int *w, int *h, float *dpi) {
     qlog("display: %s (%s) %ux%u %ubpp stride %u rota %u dpi %u mtk %d inverted %d", g_st.device_name,
          g_st.device_codename, g_st.screen_width, g_st.screen_height, g_st.bpp, g_st.scanline_stride, g_st.current_rota,
          g_st.screen_dpi, g_st.is_mtk, g_st.inverted_grayscale);
+    qlog("display: FBInk device id 0x%X, platform %s, pixel format %s (%u), color panel %d, eclipse waveforms %d, "
+         "hw invert %d", (unsigned)g_st.device_id, g_st.device_platform, pixel_format_name(g_st.pixel_format),
+         (unsigned)g_st.pixel_format, g_st.has_color_panel, g_st.has_eclipse_wfm, g_st.can_hw_invert);
+    // The driver's own description, untouched, for devices nobody here has seen (channel order,
+    // a second buffer, the physical size).
+    struct fb_var_screeninfo v;
+    struct fb_fix_screeninfo f;
+    memset(&v, 0, sizeof v);
+    memset(&f, 0, sizeof f);
+    bool have_v = ioctl(g_fd, FBIOGET_VSCREENINFO, &v) == 0;
+    if (have_v)
+        qlog("display: vinfo %ux%u virtual %ux%u offset %u,%u bpp %u grayscale %u red %u/%u green %u/%u blue %u/%u "
+             "transp %u/%u rotate %u size %ux%u mm", v.xres, v.yres, v.xres_virtual, v.yres_virtual, v.xoffset,
+             v.yoffset, v.bits_per_pixel, v.grayscale, v.red.offset, v.red.length, v.green.offset, v.green.length,
+             v.blue.offset, v.blue.length, v.transp.offset, v.transp.length, v.rotate, v.width, v.height);
+    else
+        qlog("display: FBIOGET_VSCREENINFO failed: %s", strerror(errno));
+    if (ioctl(g_fd, FBIOGET_FSCREENINFO, &f) == 0)
+        qlog("display: finfo id \"%.16s\" line_length %u smem_len %u, mapped %zu bytes", f.id, f.line_length,
+             f.smem_len, g_fblen);
+    else
+        qlog("display: FBIOGET_FSCREENINFO failed: %s", strerror(errno));
     if (!g_fb || (g_st.bpp != 8 && g_st.bpp != 32)) {
         qlog("display: unsupported framebuffer (bpp %u)", g_st.bpp);
         fbink_close(g_fd);
@@ -139,7 +191,26 @@ int display_open(int *w, int *h, float *dpi) {
     PH = LH = (int)g_st.screen_height;
     *w = PW;
     *h = PH;
-    *dpi = g_st.screen_dpi ? (float)g_st.screen_dpi : 300.f;
+    // The screen guard reads the panel back; it must stay inside the mapping.
+    g_readback = PW > 0 && PH > 0 &&
+                 fbcheck_offset(PW - 1, PH - 1, g_st.scanline_stride, (int)g_st.bpp) + fbcheck_px_bytes((int)g_st.bpp) <=
+                     g_fblen;
+    if (!g_readback)
+        qlog("display: the framebuffer mapping (%zu bytes) does not cover the panel: no readback, no screen guard",
+             g_fblen);
+    float d = (float)g_st.screen_dpi;
+    if (d <= 0.f) {
+        // FBInk does not know this panel's density: work it out from the size the driver reports.
+        if (have_v && v.xres > 0 && v.width > 0 && v.width < 1000) {
+            d = (float)v.xres * 25.4f / (float)v.width;
+            qlog("display: FBInk reports 0 dpi; %u px across %u mm makes %.0f dpi", v.xres, v.width, d);
+        }
+        if (d < 100.f || d > 600.f) {
+            qlog("display: no usable dpi from FBInk or the driver; using 300");
+            d = 300.f;
+        }
+    }
+    *dpi = d;
     return 0;
 }
 
@@ -151,7 +222,6 @@ static bool g_live;
 // Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
 // there legitimately differs from the canvas, so the overwrite checks skip it.
 static Rect g_live_area;
-static bool g_invert;  // Grimoire's colors inverted (user setting), on top of the fb's own flag
 void display_set_invert(bool on) { g_invert = on; }
 static const uint8_t k_bayer8[64] = {
     0,  32, 8,  40, 2,  34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4,  36, 14, 46,
@@ -201,6 +271,23 @@ static void copy_rect(const Canvas *s, Rect r) {
     }
 }
 
+// Sends the refresh of framebuffer rect r and keeps the books: counts, failures, and whether the
+// panel has taken any refresh at all (display_broken).
+static int send_refresh(Rect r, RefreshMode mode, const FBInkConfig *rc) {
+    int ret = fbink_refresh(g_fd, (uint32_t)r.y, (uint32_t)r.x, (uint32_t)r.w, (uint32_t)r.h, rc);
+    g_count[mode]++;
+    if (ret < 0) g_fail++;
+    else g_ok++;
+    g_last_refresh = now_ms();
+    if (now_ms() - g_stats_at > 30000) {
+        g_stats_at = now_ms();
+        qlog("display: refreshes so far: fast %d, ui %d, full %d, failed %d", g_count[0], g_count[1], g_count[2], g_fail);
+    }
+    if (ret < 0)
+        qlog("display: refresh %d,%d %dx%d mode %d failed (%d): %s", r.x, r.y, r.w, r.h, mode, ret, strerror(errno));
+    return ret;
+}
+
 void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     if (g_fd < 0) return;
     r = rect_intersect(r, (Rect){0, 0, LW, LH});
@@ -214,58 +301,49 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     g_live = mode == REFRESH_FAST;
     copy_rect(screen, r);
     g_live = false;
-    g_last_mode = mode;
     if (mode == REFRESH_FAST) g_live_area = rect_union(g_live_area, r);
     else if (mode == REFRESH_FULL || rect_contains_rect(r, g_live_area)) g_live_area = RECT_EMPTY;
     FBInkConfig rc = g_cfg;
     rc.is_flashing = mode == REFRESH_FULL;
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
-    int ret = fbink_refresh(g_fd, (uint32_t)r.y, (uint32_t)r.x, (uint32_t)r.w, (uint32_t)r.h, &rc);
-    g_count[mode]++;
-    if (ret < 0) g_fail++;
-    if (now_ms() - g_stats_at > 30000) {
-        g_stats_at = now_ms();
-        qlog("display: refreshes so far: fast %d, ui %d, full %d, failed %d", g_count[0], g_count[1], g_count[2], g_fail);
-    }
-    if (ret < 0)
-        qlog("display: refresh %d,%d %dx%d mode %d failed (%d): %s", r.x, r.y, r.w, r.h, mode, ret, strerror(errno));
-    else if (g_presents < 40)
+    int ret = send_refresh(r, mode, &rc);
+    if (ret >= 0 && g_presents < 40)
         qlog("display: refresh #%d %d,%d %dx%d mode %d pen %d -> ok, marker %u, fb[center]=%u", g_presents, r.x, r.y,
-             r.w, r.h, mode, g_pen_mode, fbink_get_last_marker(),
-             g_fb[fb_index(LW / 2, LH / 2)]);
-    if (g_presents == 0)
-        qlog("display: readback after first frame: fb(100,191)=%u (expect ~0, the top rule) fb(100,600)=%u",
-             g_fb[fb_index(100, 191)], g_fb[fb_index(100, 600)]);
+             r.w, r.h, mode, g_pen_mode, fbink_get_last_marker(), g_readback ? fb_gray(LW / 2, LH / 2) : 0u);
+    if (g_presents == 0 && g_readback) {
+        if (g_st.bpp == 32) {
+            // The raw bytes too: they show the channel order the driver really uses.
+            const uint8_t *p = g_fb + fb_index(100, 191), *q = g_fb + fb_index(100, 600);
+            qlog("display: readback after first frame: fb(100,191)=%u (expect ~0, the top rule) fb(100,600)=%u, bytes "
+                 "%02x %02x %02x %02x and %02x %02x %02x %02x (Grimoire writes v v v ff)", fb_gray(100, 191),
+                 fb_gray(100, 600), p[0], p[1], p[2], p[3], q[0], q[1], q[2], q[3]);
+        } else {
+            qlog("display: readback after first frame: fb(100,191)=%u (expect ~0, the top rule) fb(100,600)=%u",
+                 fb_gray(100, 191), fb_gray(100, 600));
+        }
+    }
     g_presents++;
 }
 
-bool display_overwritten(const Canvas *screen) {
-    if (g_fd < 0 || g_st.bpp != 8 || g_last_mode == REFRESH_FAST) return false;
-    int w = screen->w < LW ? screen->w : LW;
-    int h = screen->h < LH ? screen->h : LH;
-    int differ = 0, total = 0;
-    for (int gy = 1; gy < 48; gy++)
-        for (int gx = 1; gx < 36; gx++) {
-            int x = w * gx / 36, y = h * gy / 48;
-            uint8_t want = screen->px[(size_t)y * screen->stride + x];
-            uint8_t have = g_fb[fb_index(x, y)];
-            if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);
-            total++;
-            if (abs((int)want - (int)have) > 8) differ++;
-        }
-    // A handful of mismatches can be ink in flight; a real overwrite changes a lot.
-    // (The toast is overlaid only on the panel, never in the canvas: a few percent at most.)
-    if (differ > total / 8) {
-        qlog("display: framebuffer differs from Grimoire's screen at %d of %d samples (another process drew)", differ, total);
-        return true;
-    }
-    return false;
+bool display_broken(void) {
+    if (g_fd < 0 || g_ok > 0 || g_presents == 0) return false;
+    if (fbcheck_broken(g_presents, g_ok)) return true;
+    // Nothing has shown yet: refresh the whole panel again once a second (the framebuffer already
+    // holds the frame), so a panel that takes nothing is known within seconds.
+    if (now_ms() - g_last_refresh < 1000) return false;
+    qlog("display: nothing has shown yet; refreshing the whole panel again (refresh %d of 5)", g_presents + 1);
+    FBInkConfig rc = g_cfg;
+    rc.is_flashing = true;
+    rc.wfm_mode = WFM_GC16;
+    send_refresh((Rect){0, 0, PW, PH}, REFRESH_FULL, &rc);
+    g_presents++;
+    return fbcheck_broken(g_presents, g_ok);
 }
 
 bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
     *where = RECT_EMPTY;
-    if (g_fd < 0 || g_st.bpp != 8) return false;
+    if (g_fd < 0 || !g_readback) return false;
     int w = screen->w < LW ? screen->w : LW;
     int h = screen->h < LH ? screen->h : LH;
     const int step = 24;
@@ -274,8 +352,7 @@ bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
         for (int x = step / 2; x < w; x += step) {
             if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
             uint8_t want = screen->px[(size_t)y * screen->stride + x];
-            uint8_t have = g_fb[fb_index(x, y)];
-            if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);
+            uint8_t have = fb_gray(x, y);
             if (abs((int)want - (int)have) <= 24) continue;
             differ++;
             if (x < x0) x0 = x;
@@ -291,15 +368,14 @@ bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
 }
 
 bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
-    if (g_fd < 0 || g_st.bpp != 8) return false;
+    if (g_fd < 0 || !g_readback) return false;
     band = rect_intersect(band, (Rect){0, 0, screen->w < LW ? screen->w : LW, screen->h < LH ? screen->h : LH});
     int differ = 0, total = 0;
     for (int y = band.y + 2; y < band.y + band.h; y += 6)
         for (int x = band.x + 2; x < band.x + band.w; x += 6) {
             if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
             uint8_t want = screen->px[(size_t)y * screen->stride + x];
-            uint8_t have = g_fb[fb_index(x, y)];
-            if (g_st.inverted_grayscale != g_invert) have = (uint8_t)(255 - have);
+            uint8_t have = fb_gray(x, y);
             total++;
             if (abs((int)want - (int)have) > 24) differ++;
         }
