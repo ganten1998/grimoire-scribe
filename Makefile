@@ -168,14 +168,19 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # licenses, and one for each third-party part of the binary. Every third_party/<dir> ships its
 # LICENSE* / COPYING* as <dir>-LICENSE.txt (and CREDITS* as <dir>-CREDITS.txt); the stb headers
 # carry their license inside, shipped once as stb-LICENSE.txt; the binary is linked static
-# against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt.
+# against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt, and zig cc links its own
+# compiler-rt into it (64-bit division, float conversions, memcpy and more), so zig's LICENSE
+# ships as zig-compiler-rt-LICENSE.txt. FBInk compiles in two parts of its own tree with their
+# own notices: cutef8 (cutef8/utf8.c) and Bjoern Hoehrmann's UTF-8 decoder (cutef8/dfa.c). Their
+# notices are only in the sources' heads and FBInk's CREDITS, so cutef8-LICENSE.txt and
+# dfa-LICENSE.txt carry both, as the tree has them.
 PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
                            assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
-                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES)
+                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC)
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
 	sed -n 's/^# Capabilities: //p' kindle/Grimoire.sh > $(PKG)/app/CAPABILITIES
@@ -194,7 +199,27 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	  cat $(PKG)/stb.all; } > $(PKG)/app/licenses/stb-LICENSE.txt; rm -f $(PKG)/stb.one $(PKG)/stb.all
 	lib=$$($(ZIG) env 2>/dev/null | sed -n 's/.*lib_dir"* *[=:] *"\([^"]*\)".*/\1/p'); \
 	  if [ -f "$$lib/libc/musl/COPYRIGHT" ]; then cat "$$lib/libc/musl/COPYRIGHT" > $(PKG)/app/licenses/musl-COPYRIGHT.txt; \
-	  else echo "package: musl's COPYRIGHT is not in zig's lib dir ($$lib)"; exit 1; fi
+	  else echo "package: musl's COPYRIGHT is not in zig's lib dir ($$lib)"; exit 1; fi; \
+	  lic=; for f in "$$lib/compiler_rt/LICENSE" "$$lib/../LICENSE" "$$lib/../../LICENSE"; do \
+	    if grep -qs 'Zig contributors' "$$f"; then lic=$$f; break; fi; done; \
+	  if [ -z "$$lic" ]; then echo "package: zig's LICENSE (for compiler-rt) is not beside zig's lib dir ($$lib)"; exit 1; fi; \
+	  { echo "From zig (https://ziglang.org): compiler-rt and the rest of the Zig code that zig cc links into"; \
+	    echo "the Kindle binary. Zig's license:"; echo; cat "$$lic"; } > $(PKG)/app/licenses/zig-compiler-rt-LICENSE.txt
+	set -e; c=$(FBINK_DIR)/cutef8; out=$(PKG)/app/licenses; \
+	  awk 'NR == 1 && !/^\/\*/ { exit } { print } /\*\// { exit }' $$c/utf8.c > $(PKG)/utf8.head; \
+	  awk '!/^\/\// || /NOTE:/ { exit } { print }' $$c/dfa.c > $(PKG)/dfa.head; \
+	  awk '/^\t\* cutef8\/utf8\./ { p = 1 } p && /^$$/ { exit } p' $(FBINK_DIR)/CREDITS > $(PKG)/utf8.credits; \
+	  awk '/^\t\* cutef8\/dfa\./ { p = 1 } p && /^$$/ { exit } p' $(FBINK_DIR)/CREDITS > $(PKG)/dfa.credits; \
+	  for f in utf8.head dfa.head utf8.credits dfa.credits; do \
+	    [ -s $(PKG)/$$f ] || { echo "package: no notice found for $$f in $(FBINK_DIR)"; exit 1; }; done; \
+	  { echo "cutef8 (cutef8/utf8.c and utf8.h in FBInk's tree), compiled into the Kindle binary with FBInk."; \
+	    echo; echo "The head of cutef8/utf8.c:"; echo; cat $(PKG)/utf8.head; \
+	    echo; echo "FBInk's CREDITS:"; echo; cat $(PKG)/utf8.credits; } > $$out/cutef8-LICENSE.txt; \
+	  { echo "dfa (cutef8/dfa.c and dfa.h in FBInk's tree, Bjoern Hoehrmann's UTF-8 decoder), compiled into"; \
+	    echo "the Kindle binary with FBInk."; \
+	    echo; echo "The head of cutef8/dfa.c:"; echo; cat $(PKG)/dfa.head; \
+	    echo; echo "FBInk's CREDITS:"; echo; cat $(PKG)/dfa.credits; } > $$out/dfa-LICENSE.txt; \
+	  rm -f $(PKG)/utf8.head $(PKG)/dfa.head $(PKG)/utf8.credits $(PKG)/dfa.credits
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
 	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64

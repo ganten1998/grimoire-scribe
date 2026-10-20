@@ -4,14 +4,23 @@
 
 - **Hold the power button to leave**: hold it 4 seconds to save and leave Grimoire from any
   screen, asleep or awake, and get the Kindle back. On a Kindle that stays locked after a press, a
-  second press does the same.
+  second press does the same. When the page cannot be saved (the Kindle's storage is full), the
+  hold never says "Saved.": awake, the first hold stays in Grimoire with "Could not save this page.
+  Hold power 4 s again to leave anyway.", and a second within a minute leaves with "Leaving
+  Grimoire without this page." From the sleep screen, and on a Kindle that stays locked, Grimoire
+  leaves at once, and grimoire.log says the page could not be saved. Leaving straight from a
+  notebook this way while another notebook's PDF is still being written no longer skips the open
+  notebook's PDF.
 - **Kindles with a passcode**: a Device Passcode is now paused while Grimoire is open and turned
   back on when you leave, as KOReader does. With a passcode, the Kindle holds back its wake until
   the passcode is typed, but its keypad cannot take a touch while Grimoire holds the touch screen:
   Grimoire's page came back over a Kindle that stayed locked, and leaving painted the old screen
   over the passcode keypad (a tester on 5.20.1 could only get out by restarting). Grimoire says so
-  the first time ("Your Kindle passcode is paused while Grimoire is open."), and if a restart while
-  it was open left the passcode off, it says that at its next start.
+  the first time ("Your Kindle passcode is paused while Grimoire is open."). If the Kindle restarts
+  while Grimoire is open, the passcode stays off: Grimoire then shows "Your Kindle passcode was
+  left off. Turn it back on in Kindle Settings." (in place of its other start notices) at that
+  start and the next two while the passcode is still off. When the launcher cannot note the pause
+  (the Kindle's storage is full or read-only), it does not pause the passcode.
 - **Sleep and wake fixes**: the Kindle no longer falls asleep again right after waking. Three pen
   side-button clicks while asleep no longer clear the page, and a pinch while asleep no longer
   zooms it. A press right after another no longer requests sleep halfway through a long press.
@@ -28,19 +37,30 @@
   list. Papers from a newer version show blank as "Newer paper" and are kept. A setting value from
   a newer version that this one lacks (for example `side_button=3`) works here as the nearest value
   it has. It stays in the file until a save finds the setting changed; from then on the setting is
-  saved as you set it, even if you set it back. `docs/FORMAT.md` documents the file format, and the
-  README's "Moving between versions" says what older versions do with newer notebooks.
+  saved as you set it, even if you set it back. A switch holding another value than 0 or 1 (a
+  newer version's third state, such as `invert=2`) is used as on or off and stays in
+  `settings.ini` as it was until the setting is changed. A notebook or folder name longer than 95
+  bytes is cut before the character that would cross the limit, never inside an accented letter.
+  `docs/FORMAT.md` documents the file format, and the README's "Moving between versions" says what
+  older versions do with newer notebooks.
 - **A QR code on the Share screen**: point a phone's camera at it to open the share page without
   typing the address. It holds the Kindle's Wi-Fi address; other addresses (USBNetwork's, say) are
   listed under it. Share also has a landscape layout, so the downloads counter no longer covers a
   help line or the third address and text no longer runs past the card. Turning the Kindle or
   waking it on the Share screen no longer restarts the share server, so queued downloads and pages
   being sent are no longer dropped.
+- **Share fixes**: asleep on the Share screen, a phone or computer trying to connect no longer
+  keeps Grimoire's processor busy until the wake; the connection waits and is answered after the
+  wake. With no page to show, the Share screen's sleep screen no longer shows the QR code and the
+  address: it shows the "Share over Wi-Fi" card with "Asleep" and "Wake the Kindle to share
+  again." The share page's link to a folder's zip works for names up to the 95-byte limit (a long
+  accented name got "not found").
 - **Accents on the keyboard**: a new **áé** key beside the space bar opens a page with á é í ó ú,
   à è ì ò ù, â ê î ô û, ä ë ï ö ü, ñ ç ã õ ß œ æ ø å and ¿ ¡ « », and the middle dot of Catalan
   l·l. Shift gives the capitals and **abc** goes back; backspace removes a whole character.
   Renaming keeps accents: the keyboard used to drop every non-ASCII byte from the name it opened,
-  so "Música" came back as "Msica".
+  so "Música" came back as "Msica". Folders whose names begin with an accented letter now sort
+  with that letter (Álgebra among the A's), not after Z.
 - **Gothic bold keeps accents legible**: bold labels, toasts, menus, Settings rows and keyboard keys
   keep the two dots of ü ö ä ë, the tilde of ñ ã õ, the hat of â ê ô û and the ring of å, and the
   carons, double acutes and ring of Czech, Slovak and Hungarian (č š ž ř ň ě ď ť ő ű ů) keep their
@@ -55,9 +75,14 @@
   `Grimoire.sh` and `grimoire/app/grimoire.sh` (also `grimoire/app/CAPABILITIES`).
 - **Smaller fixes**: a tap on Undo or Clear right after a stroke now works at once (it was ignored
   for about half a second). Turning the Kindle, or waking it, no longer closes an open Library
-  sheet (Settings, New notebook, the keyboard...). The paper pickers and Library cards no longer
-  show a paper they do not know as the 7-string bass tab. `settings.ini` is no longer written
-  through a fixed 8 KB buffer that was never checked.
+  sheet (Settings, New notebook, the keyboard...). In the Library, a notice that is up when the
+  keyboard or a tall sheet opens (New notebook; Settings and Custom music sideways) moves above
+  its keys or buttons instead of covering them. Sideways, the New notebook sheet shows "Narrow, no
+  margin" and its neighbours on two lines instead of cutting them short. The paper pickers and
+  Library cards no longer show a paper they do not know as the 7-string bass tab. A page that
+  cannot be saved (the storage is full) is tried again every 2 s instead of at every turn of the
+  main loop. The notice for a damaged page set aside now fits the screen in the Gothic style.
+  `settings.ini` is no longer written through a fixed 8 KB buffer that was never checked.
 - **Effects preview**: the transparency checkerboard covers only the page, which now has a thin
   outline on a gray surround, so you can see where the page ends.
 - **Other Kindles**: the screen guard works on 32 bpp panels (Scribe Colorsoft); Grimoire closes
@@ -66,18 +91,24 @@
 - **A more useful grimoire.log**: it starts with diagnostics for bug reports (the model code, never
   the serial number; memory, display and input details; the sleep settings; the Kindle's language,
   whether a passcode is set, the power state, Special Offers and KOReader's version) and ends with
-  the power state at exit. None of these lines identify the Kindle or its network. A
-  `watcher-multi` switch (an empty file in the `grimoire` folder) listens to the power service the
-  way KOReader does, for a device test.
-- **Licenses**: the app ships the licenses of FBInk, stb, musl and the QR code generator with the
-  GPL and the font licenses, in `grimoire/app/licenses`.
+  the power state at exit. None of these lines identify the Kindle or its network. The Share
+  screen logs which interface its address is on and the port, never the address itself, and a
+  folder's zip download is logged without the folder's name. A `watcher-multi` switch (an empty
+  file in the `grimoire` folder) listens to the power service the way KOReader does, for a device
+  test.
+- **Licenses**: the app ships the licenses of FBInk, stb, musl, zig's compiler-rt and the QR code
+  generator, and the notices of cutef8 and Bjoern Hoehrmann's UTF-8 decoder (both compiled in with
+  FBInk), with the GPL and the font licenses, in `grimoire/app/licenses`.
 - **For developers**: `make check` builds and inspects the zip and runs both launchers against
   stand-ins for the Kindle's tools. The scripted scenarios check what the app holds after each
   step (`expect` lines) and fail the build when a check fails or a script line is misspelt. After
   the Kindle turns, the simulator maps input through the calibration the way the Kindle does, so
   script taps land where they say on calibrated data too. `tests/test_golden.c` holds renders
   recorded from 1.0.0-beta that every later version must reproduce, and `tests/test_format.c`
-  checks pages against a frozen copy of 1.0.0-beta's page reader.
+  checks pages against a frozen copy of 1.0.0-beta's page reader. The runner's `power held` and
+  `storage full`, its `watching`, `toast.rect` and `editor.unsaved` checks and a scenario's
+  `# pdfs: N` line cover the hold, a full storage, Share asleep, notices over sheets and the PDFs
+  written at exit (docs/SIM.md).
 
 ## 1.0.0-beta (2026-10-18)
 
