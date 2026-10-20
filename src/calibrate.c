@@ -150,7 +150,10 @@ void calibrate_enter(App *a) {
     restart(a, PH_PEN, "");
 }
 
-void calibrate_leave(App *a) {}
+void calibrate_leave(App *a) {
+    if (S->drawing) display_pen_mode(false);  // left in the middle of a check stroke (a finger on Save)
+    S->drawing = false;
+}
 
 // A calibration is saved with the panel it was made on, upright (the mapping is in its pixels), so
 // it follows the data to a panel of another size: app_init scales it there.
@@ -174,6 +177,7 @@ void calibrate_event(App *a, const InEvent *ev) {
             tool_params_default(TOOL_BALLPOINT, &p);
             brush_begin(&S->bs, TOOL_BALLPOINT, &p, 7, a->dpi);
             S->drawing = true;
+            display_pen_mode(true);  // live ink, as in the editor
         }
         if (S->drawing && pen) {
             PenSample s = {ev->x, ev->y, fmaxf(ev->pressure, 0.5f), 0, 0, ev->t_ms};
@@ -182,7 +186,10 @@ void calibrate_event(App *a, const InEvent *ev) {
             Rect d = brush_add(&S->bs, &a->screen, &s);
             a->screen.clip = saved;
             app_invalidate(a, rect_intersect(d, S->pad), REFRESH_FAST);
-            if (ph == 2) S->drawing = false;
+            if (ph == 2) {
+                S->drawing = false;
+                display_pen_mode(false);
+            }
             return;
         }
         if (ph != 2) return;
