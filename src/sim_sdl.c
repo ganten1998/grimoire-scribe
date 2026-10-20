@@ -331,8 +331,9 @@ static bool g_side, g_eraser;
 //
 // "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
 // value is the rest of the line after one space; nothing there means the empty string. KEY is
-// anything app_probe() answers (docs/SIM.md lists them), or "running": 1 while the app runs, 0
-// once it has quit. A check sees the app once everything queued before it was handled, ticked
+// anything app_probe() answers (docs/SIM.md lists them), "running": 1 while the app runs, 0
+// once it has quit, or "watching": 1 while input_poll also watches a file descriptor (the share
+// server's), else 0. A check sees the app once everything queued before it was handled, ticked
 // and flushed: at once after a line that ends a batch (a tap, wait or shot; that is one main-loop
 // pass before a shot in its place would be taken), else at the next poll, like a shot. A failed
 // check is printed and the run goes on; at the end the run exits with status 3 (display_close).
@@ -384,15 +385,16 @@ static void expect_check_as(bool gone) {
     g_expect.pending = false;
     g_expect_total++;
     char got[512] = "";
-    bool running = !strcmp(g_expect.key, "running");
+    bool running = !strcmp(g_expect.key, "running"), watching = !strcmp(g_expect.key, "watching");
     if (g_expect.bad) {
         fprintf(stderr, "expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", g_expect.line);
     } else if (gone && !running) {
         fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", g_expect.line);
-    } else if (!running && app_probe(g_expect.key, got, sizeof got) != 0) {
+    } else if (!running && !watching && app_probe(g_expect.key, got, sizeof got) != 0) {
         fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
     } else {
         if (running) snprintf(got, sizeof got, "%d", gone ? 0 : 1);
+        if (watching) snprintf(got, sizeof got, "%d", g_watch_fd >= 0 ? 1 : 0);
         bool ok = g_expect.op == EXPECT_IS    ? !strcmp(got, g_expect.value)
                   : g_expect.op == EXPECT_HAS ? strstr(got, g_expect.value) != NULL
                                               : strcmp(got, g_expect.value) != 0;
@@ -602,12 +604,16 @@ static void script_step(void) {
             q_push(e);
             return;
         } else if (!strcmp(a, "power")) {
-            // power: a short press and its release; power down / power up: one half at a time
+            // power: a short press and its release; power down / power up: one half at a time;
+            // power held: the 4 s mark of a press that is still down (what input_evdev.c sends
+            // then), so "power down", "power held" leaves while the key is down
             if (!strcmp(b, "down")) {
                 power_key(IN_POWER, 0);
                 g_power_down_at = now_ms();
             } else if (!strcmp(b, "up")) {
                 power_key(IN_POWER_UP, (int)(now_ms() - g_power_down_at));
+            } else if (!strcmp(b, "held")) {
+                power_key(IN_POWER_HELD, INPUT_POWER_HOLD_MS);
             } else {
                 power_key(IN_POWER, 0);
                 power_key(IN_POWER_UP, 150);
@@ -618,6 +624,10 @@ static void script_step(void) {
             power_key(IN_POWER_HELD, INPUT_POWER_HOLD_MS);
             power_key(IN_POWER_UP, INPUT_POWER_HOLD_MS + 200);
             return;
+        } else if (!strcmp(a, "storage")) {
+            // storage full: every file write fails from now on (a full userstore); storage ok
+            g_sim_storage_full = !strcmp(b, "full");
+            if (strcmp(b, "full") && strcmp(b, "ok")) expect_unknown_line();
         } else if (!strcmp(a, "powerd")) {
             // powerd STATE: what the power service reports from now on (active, screenSaver, ...)
             strlcpy_q(g_powerd_state, b, sizeof g_powerd_state);

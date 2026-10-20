@@ -66,6 +66,11 @@ static void start_next(void) {
     if (pid == 0) {
         // The child only renders and writes files: no display, no input, no atexit handlers.
         child_setup();
+#ifdef GRIMOIRE_SIM
+        // Tests: an export as slow as a big notebook's on the Kindle, so the next one queues.
+        const char *slow = getenv("GRIMOIRE_BG_DELAY_MS");
+        if (slow) sleep_ms(atoi(slow));
+#endif
         _exit(run_job(&j) == 0 ? 0 : 1);
     }
     g_pid = pid;

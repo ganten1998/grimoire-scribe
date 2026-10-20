@@ -1,3 +1,10 @@
 #!/bin/sh
-# Stand-in for a Kindle tool in tests/launcher_check.sh: records the call and succeeds.
-echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+# Stand-in for a Kindle tool in tests/launcher_check.sh: records the call and succeeds. Starting an
+# app (com.lab126.appmgrd start) also notes whether the Kindle's passcode is set at that moment:
+# the home booklet comes back before the passcode does.
+if [ "$1" = com.lab126.appmgrd ]; then
+    if [ -e "${GRIMOIRE_SYSROOT:?}/var/local/system/userpasswdenabled" ]; then p=on; else p=off; fi
+    echo "${0##*/} $* (passcode $p)" >>"${SHIM_LOG:?}"
+else
+    echo "${0##*/} $*" >>"${SHIM_LOG:?}"
+fi

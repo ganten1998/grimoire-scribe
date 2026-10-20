@@ -44,10 +44,15 @@ enum { N_HELP = sizeof k_help / sizeof k_help[0] };
 // does not fit (tests/share_check.sh fails on any): a line too wide for its column (which
 // font_draw_centered would cut short), or a part of the screen outside the card or over another.
 
-// One line of text centered in r. Returns the bottom of r.
+// One line of text centered in r. Returns the bottom of r. (On the Kindle the log leaves the
+// line's text out: it may be the address, and grimoire.log goes to public bug reports.)
 static int draw_line(Canvas *c, FontFace f, float px, Rect r, const char *s, uint8_t gray) {
     int w = font_measure(f, px, s);
+#ifdef GRIMOIRE_SIM
     if (w > r.w) qlog("share: layout: '%s' is cut to fit (%d px wide, room for %d)", s, w, r.w);
+#else
+    if (w > r.w) qlog("share: layout: a line is cut to fit (%d px wide, room for %d)", w, r.w);
+#endif
     font_draw_centered(c, f, px, r, s, gray);
     return r.y + r.h;
 }
@@ -132,8 +137,15 @@ static void draw_addresses(App *a, Rect in, const NetAddr *ad, int n) {
     char url[64];
     url_of(a, &ad[0], url, sizeof url);
     int qn = phone_reachable(ad[0].ifname) ? ui_qr_modules(url) : 0;  // modules across, 0: no code
-    if (qn) qlog("share: QR code for %s (%s)", url, ad[0].ifname);
-    else qlog("share: no Wi-Fi address, so no QR code; showing %s (%s)", url, ad[0].ifname);
+    // grimoire.log goes to public bug reports (kindle/README.txt asks for it): it names the
+    // interface and the port, never the address. Only the simulator logs the address too, for
+    // tests/share_check.sh, which reads the code back from a screenshot and compares.
+    if (qn) qlog("share: QR code for the %s address, port %d", ad[0].ifname, a->settings.http_port);
+    else qlog("share: no Wi-Fi address, so no QR code; showing the %s address, port %d", ad[0].ifname,
+              a->settings.http_port);
+#ifdef GRIMOIRE_SIM
+    qlog("share: (simulator) %s %s (%s)", qn ? "the code holds" : "the address shown is", url, ad[0].ifname);
+#endif
     // The quiet zone is part of the code's box: with Invert on it shows as a light square, so the
     // box keeps clear of the title, the frame and the caption.
     int top = in.y + ui_px(20), gap = ui_px(30), text_h = text_height(n), bottom = S->counter.y - ui_px(30);
@@ -236,6 +248,31 @@ void share_enter(App *a) {
     if (a->relayout && httpd_running()) qlog("share: laid out again (turned or woken); the server carries on");
     start(a);  // a server kept across a relayout goes on as it is
     draw(a);
+}
+
+// Asleep on this screen nothing accepts a connection (app_tick runs no screen's tick while
+// asleep), so one waiting at the server would wake input_poll at once, again and again, and the
+// main loop would spin at full speed until the wake. It waits in the server's queue instead, and
+// the wake's relayout watches the server again (start, from share_enter).
+void share_sleep(App *a) {
+    (void)a;
+    input_watch_fd(-1);
+}
+
+// The sleep screen while this screen is up and no page is shown in its place: the card without
+// the code and the addresses, since nothing answers while the Kindle sleeps (share_sleep), and a
+// sleeping Kindle need not show its address. The wake lays the screen out again (share_enter).
+void share_draw_asleep(App *a) {
+    Canvas *c = &a->screen;
+    canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
+    int m = ui_px(70);
+    Rect card = {m, ui_px(260), a->w - 2 * m, a->h - ui_px(520)};
+    Rect in = ui_sheet(c, card, "Share over Wi-Fi");
+    ui_icon(c, ICON_SHARE, (Rect){in.x + in.w / 2 - ui_px(130), in.y + ui_px(40), ui_px(260), ui_px(260)}, 0);
+    int y = in.y + ui_px(360);
+    draw_line(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)}, "Asleep", 0);
+    draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y + ui_px(110), in.w, ui_px(80)},
+              "Wake the Kindle to share again.", 60);
 }
 
 void share_leave(App *a) {

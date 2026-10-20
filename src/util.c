@@ -125,9 +125,19 @@ int mkdir_p(const char *path) {
     return 0;
 }
 
+#ifdef GRIMOIRE_SIM
+bool g_sim_storage_full;
+#endif
+
 int write_file_atomic(const char *path, const void *data, size_t len) {
     char tmp[1100];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
+#ifdef GRIMOIRE_SIM
+    if (g_sim_storage_full) {
+        qlog("write %s: %s (simulated: storage full)", tmp, strerror(ENOSPC));
+        return -1;
+    }
+#endif
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
         qlog("write %s: %s", tmp, strerror(errno));

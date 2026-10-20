@@ -81,14 +81,16 @@ TEST(notebooks) {
         size_t o1 = strtoul(row, NULL, 10);
         CHECK(!memcmp(b.data + o1, "1 0 obj", 7));
     }
-    char path[700];
-    snprintf(path, sizeof path, "%s/../out/sample.pdf", tl_tmp());
+    char path[700], out[700];
+    snprintf(out, sizeof out, "%s/../out", tl_tmp());
+    CHECK(mkdir_p(out) == 0);  // (other tests make it too; this one must not depend on running after them)
+    snprintf(path, sizeof path, "%s/sample.pdf", out);
     write_file_atomic(path, b.data, b.len);
     buf_free(&b);
     CHECK(export_page_png(&nb, 1, 300.f, &b) == 0 && !memcmp(b.data + 1, "PNG", 3));
     buf_free(&b);
     CHECK(export_folder_zip("", 300.f, &b) == 0);
-    snprintf(path, sizeof path, "%s/../out/all.zip", tl_tmp());
+    snprintf(path, sizeof path, "%s/all.zip", out);
     write_file_atomic(path, b.data, b.len);
     buf_free(&b);
     char cmd[900];
@@ -98,7 +100,7 @@ TEST(notebooks) {
     zip_begin(&z, &b);
     CHECK(export_notebook_zip(&nb, 300.f, &z, "") == 0);
     zip_end(&z);
-    snprintf(path, sizeof path, "%s/../out/notebook.zip", tl_tmp());
+    snprintf(path, sizeof path, "%s/notebook.zip", out);
     write_file_atomic(path, b.data, b.len);
     buf_free(&b);
     snprintf(cmd, sizeof cmd, "unzip -tq '%s' >/dev/null && unzip -l '%s' | grep -q 'Physics/page-002.png'", path, path);
@@ -113,8 +115,11 @@ TEST(notebooks) {
     bg_mirror_pdf(nb.id, 300.f, docs, true);
     bg_mirror_pdf(nb.id, 300.f, docs, false);  // queued behind the running one (it may be stale)
     bg_mirror_pdf(nb.id, 300.f, docs, false);  // a duplicate of a queued job merges into it
+    // Two exports by children built with the sanitizers and niced: on a loaded machine (several
+    // gates at once) that takes far longer than on an idle one, so wait for them by the clock.
     int got = 0;
-    for (int i = 0; i < 600 && (bg_busy() || !got); i++) {
+    uint32_t until = now_ms() + 60000;
+    while ((bg_busy() || !got) && (int32_t)(now_ms() - until) < 0) {
         int r = bg_poll();
         if (r) got = r;
         usleep(10000);
@@ -261,6 +266,30 @@ TEST(damage_is_kept) {
     CHECK(back.npages == 2 && back.page_ids[0] == 1 && back.page_ids[1] == 3);  // p2 is set aside
 }
 
+// Folders sort by their letters, accents or not: an accented first letter sorts with its base
+// letter, not after Z (the keyboard types accents).
+TEST(folders_sort_with_accents) {
+    const char *names[] = {"Zoolog\xc3\xad" "a", "\xc3\x81lgebra", "Arte", "\xc3\x89tudes", "school", "Stra\xc3\x9f" "e",
+                           "Strasse", "\xc5\x81\xc3\xb3" "d\xc5\xba", "Lapiz", "e\xcc\x81poca"};
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) CHECK(store_add_folder(names[i]) == 0);
+    char (*fs)[STORE_NAME_LEN] = NULL;
+    int n = 0;
+    CHECK(store_list_folders(&fs, &n) == 0);
+    // (ß sorts as ss; equal letters, the bytes decide: "Strasse" before "Straße"; a decomposed
+    // e-acute sorts as e.)
+    const char *want[] = {"\xc3\x81lgebra", "Arte", "e\xcc\x81poca", "\xc3\x89tudes", "Lapiz", "\xc5\x81\xc3\xb3" "d\xc5\xba",
+                          "school", "Strasse", "Stra\xc3\x9f" "e", "Zoolog\xc3\xad" "a"};
+    int at = 0;
+    for (int i = 0; i < n && at < (int)(sizeof want / sizeof want[0]); i++)
+        if (!strcmp(fs[i], want[at])) at++;
+        else
+            for (size_t k = 0; k < sizeof want / sizeof want[0]; k++)
+                if (!strcmp(fs[i], want[k])) fprintf(stderr, "  folder %d: %s (wanted %s)\n", i, fs[i], want[at]);
+    CHECK(at == (int)(sizeof want / sizeof want[0]));  // all of them, in this order
+    free(fs);
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) store_remove_folder(names[i]);
+}
+
 TEST(folder_named_like_a_comment) {
     CHECK(store_add_folder("#1") == 0);
     char (*fs)[STORE_NAME_LEN] = NULL;
@@ -294,6 +323,7 @@ int main(void) {
     RUN(safe_names);
     RUN(damage_is_kept);
     RUN(folder_named_like_a_comment);
+    RUN(folders_sort_with_accents);
     int rc = tl_done();
     system(cmd);
     return rc;

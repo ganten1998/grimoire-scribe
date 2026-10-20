@@ -22,11 +22,14 @@ expcet screen is library
 Expect screen is library
 expects screen is library
 tpa 965 95
-# the app is running
+storage sideways
+# the app is running, and nothing is watched (the share server is not running)
 expect running is 0
+expect watching is 1
 # Library > Exit: the app quits here, so a check after it cannot see the app (that fails too),
 # and "running" is 0 from now on
 tap 1725 95
 expect screen is library
+expect watching is 0
 expect running is 1
 expect running not 0

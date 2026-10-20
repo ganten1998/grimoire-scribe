@@ -10,6 +10,10 @@ UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are ke
 FROM QUIRE: install as above and tap Grimoire once; your notebooks move over by themselves.
 KOREADER: Grimoire is a separate app. Quit KOReader first, then tap Grimoire in the Library.
 It will not start from KOReader's file browser, because KOReader keeps the pen and the screen.
+PASSCODE: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open (as
+KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the Kindle
+restarts while Grimoire is open, the passcode stays off until you turn it back on in the Kindle's
+Settings; Grimoire reminds you when it next starts.
 
 Your notebooks live in the "grimoire" folder on the Kindle. Closed notebooks are also saved as
 PDFs in grimoire/PDFs. Library > Share serves everything over Wi-Fi to any browser.

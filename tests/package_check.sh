@@ -37,6 +37,7 @@ check "LICENSE.txt is the GPL" cmp -s "$B/zip/LICENSE.txt" LICENSE
 check "the reset scriptlet is kindle's" cmp -s "$B/zip/$RESET" "kindle/Grimoire - reset pen calibration.sh"
 check "README.txt names version $VERSION" has "$B/zip/README.txt" "Grimoire $VERSION"
 check "README.txt has no placeholder left" lacks "$B/zip/README.txt" "@VERSION@"
+check "README.txt says the passcode is paused while Grimoire is open" has "$B/zip/README.txt" "PASSCODE: "
 
 # The scriptlet: a shell script, a marker line, then the app as a tar archive.
 S=$B/zip/documents/Grimoire.sh
@@ -66,6 +67,11 @@ check "Capabilities line in the header ($CAPS)" [ -n "$CAPS" ]
 for c in guard unpack-only; do
     check "Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$CAPS" "$c"
 done
+# A tool reads that line from the first 10 lines (Grimoire.sh says how), never by searching the
+# whole file: the archive holds app/grimoire.sh, whose own Capabilities line is about that file.
+# Still, the header's line comes first, so a tool that takes the first match gets it right.
+first=$(grep -an '^# Capabilities:' "$S" | head -n 1 | cut -d: -f1)
+check "the header's Capabilities line is the first in the file (line $first)" is "$first" 6
 ID=$(sed -n 's/^BUILD_ID=//p' "$B/script.sh")
 check "BUILD_ID is 12 hex digits ($ID)" sh -c 'printf "%s\n" "$1" | grep -qxE "[0-9a-f]{12}"' sh "$ID"
 check "BUILD_ID is the archive's checksum" is "$(shasum "$B/app.tar" | cut -c1-12)" "$ID"
@@ -117,6 +123,11 @@ for d in third_party/*/; do
     for f in "$d"/LICENSE* "$d"/COPYING*; do [ -f "$f" ] && found=yes; done
     check "third_party/$n has a license file" is "$found" yes
     check "payload has licenses/$n-LICENSE.txt" [ -s "$B/app/licenses/$n-LICENSE.txt" ]
+    # Its CREDITS too (FBInk's names the code it bundles into the binary: cutef8, dfa, font8x8).
+    for f in "$d"/CREDITS*; do
+        [ -f "$f" ] || continue
+        check "payload has licenses/$n-CREDITS.txt" cmp -s "$f" "$B/app/licenses/$n-CREDITS.txt"
+    done
 done
 for h in third_party/*.h; do
     [ -f "$h" ] || continue
@@ -146,6 +157,16 @@ pins "the reset scriptlet" "$B/zip/$RESET" 'S=${GRIMOIRE_US:-/mnt/us}/grimoire/s
 # The watchdog looks for the heartbeat where the binary writes it (TMP is /tmp on the device).
 check "app/grimoire.sh watches \$TMP/grimoire.alive" grep -qE '^BEAT=\$TMP/grimoire\.alive( |$)' "$B/app/grimoire.sh"
 check "the binary beats in /tmp/grimoire.alive" grep -qF /tmp/grimoire.alive "$B/app/grimoire"
+# restore()'s backstop for a power-service watcher a crash left behind (pkill -f) must match the
+# watcher's command line, both kinds of it (src/input_evdev.c, WATCH_EVENTS): the two drifted once.
+PAT=$(sed -n 's/^ *pkill -f "\(.*\)" 2>.*/\1/p' "$B/app/grimoire.sh")
+EVENTS=$(sed -n 's/^#define WATCH_EVENTS "\(.*\)"$/\1/p' src/input_evdev.c)
+check "restore() has a pkill pattern ($PAT)" [ -n "$PAT" ]
+check "src/input_evdev.c names the watched events ($EVENTS)" [ -n "$EVENTS" ]
+for w in "lipc-wait-event -s 0 $EVENTS" "lipc-wait-event -m -s 0 $EVENTS"; do
+    check "the binary runs '$w'" sh -c 'tr "\000" "\n" <"$1" | grep -qF -- "$2"' sh "$B/app/grimoire" "$w"
+    check "restore()'s pkill pattern matches '$w'" sh -c 'printf "%s\n" "$2" | grep -qE -- "$1"' sh "$PAT" "$w"
+done
 
 if [ $fail = 0 ]; then
     rm -rf "$B"

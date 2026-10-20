@@ -51,6 +51,8 @@ wait 400
 expect asleep is 0
 expect screen is editor
 shot 04-awake-ink-kept
+expect editor.zoom is 1.00
+expect editor.strokes is 2
 # Grimoire thinks it is awake (it missed the Kindle going to sleep), the button goes down, and the
 # wake is announced while it is still down: its release must not ask for sleep 2.5 s later.
 power down
@@ -100,8 +102,11 @@ wait 300
 wake
 wait 400
 expect asleep is 0
-# Holding the power button 4 s saves the page and leaves Grimoire: the run ends here.
+# Holding the power button 4 s saves the page and leaves Grimoire at the 4 s mark, with the key
+# still down: the run ends here. (A release held 4 s whose hold never came: p_power_released_late.)
 pen line 300 1000 1400 1020 40 0.6 0.6
-powerhold
+power down
+wait 100
+power held
 wait 300
 expect running is 0

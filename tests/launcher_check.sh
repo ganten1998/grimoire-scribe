@@ -330,8 +330,11 @@ suite() {
     check "$s passcode: paused before the start, back on after the restore" log_order \
         "grimoire.sh: device passcode: paused while Grimoire runs" "grimoire.sh: Grimoire running as pid" \
         "grimoire.sh: restoring the Kindle UI" "grimoire.sh: device passcode: back on"
+    # The home booklet starts with the passcode still paused: it comes back last (as KOReader does).
+    check "$s passcode: still paused when the home booklet starts" has "$SHIM_LOG" "$HOME_UP (passcode off)"
     # A session that never ended (the Kindle restarted under Grimoire: the marker stayed, no
-    # passcode): it is not turned back on, the binary is told, the marker goes.
+    # passcode): it is not turned back on, and the binary is told, at this start and the next two
+    # while the passcode stays off, then no more. The pause marker goes at once.
     tree passcode-left-off
     sh "$DOC" --unpack-only
     fake
@@ -342,6 +345,44 @@ suite() {
     check "$s passcode left off: not turned back on" [ ! -e "$T/$PASSCODE_REL" ]
     check "$s passcode left off: the marker goes" [ ! -e "$US/grimoire/.passcode-paused" ]
     check "$s passcode left off: logged" has "$LOGF" "grimoire.sh: device passcode: left off by a session that did not end"
+    check "$s passcode left off: told once so far" is "$(content "$US/grimoire/.passcode-left-off")" 1
+    for k in 2 3 4; do
+        : >"$SHIM_LOG"
+        GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+        if [ "$k" -le 3 ]; then
+            check "$s passcode left off: told again at start $k" has "$SHIM_LOG" "grimoire passcode note=left-off flag=off"
+            check "$s passcode left off: logged at start $k" has "$LOGF" "telling the user ($k of 3)"
+        else
+            check "$s passcode left off: not told a fourth time" has "$SHIM_LOG" "grimoire passcode note= flag=off"
+            check "$s passcode left off: nothing left to count" [ ! -e "$US/grimoire/.passcode-left-off" ]
+        fi
+    done
+    # Turned back on by the user after such a start: no more telling, an ordinary pause.
+    tree passcode-left-off-then-on
+    sh "$DOC" --unpack-only
+    fake
+    : >"$US/grimoire/.passcode-paused"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    : >"$T/$PASSCODE_REL"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    check "$s passcode back on after a left-off start: an ordinary pause" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
+    check "$s passcode back on after a left-off start: nothing left to count" [ ! -e "$US/grimoire/.passcode-left-off" ]
+    check "$s passcode back on after a left-off start: back on after" [ -e "$T/$PASSCODE_REL" ]
+    # The marker cannot be written (here a directory is in its way; on the Kindle, a full or
+    # read-only userstore): no marker, no pause, since a restart could not tell it was paused.
+    tree passcode-no-marker
+    sh "$DOC" --unpack-only
+    fake
+    mkdir -p "$US/grimoire/.passcode-paused"
+    : >"$T/$PASSCODE_REL"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" 2>"$T/stderr"
+    check "$s passcode, no marker: not paused" has "$SHIM_LOG" "grimoire passcode note= flag=on"
+    check "$s passcode, no marker: the passcode stays" [ -e "$T/$PASSCODE_REL" ]
+    check "$s passcode, no marker: logged" has "$LOGF" "grimoire.sh: device passcode: not paused (could not write"
+    check "$s passcode, no marker: Grimoire still runs" has "$SHIM_LOG" "grimoire exits"
+    check "$s passcode, no marker: nothing on stderr" [ ! -s "$T/stderr" ]
     # Turned back on since by the user (marker and passcode both there): an ordinary pause.
     tree passcode-turned-on-again
     sh "$DOC" --unpack-only

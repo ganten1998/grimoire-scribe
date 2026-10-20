@@ -22,10 +22,13 @@
 # Capabilities lists what this launcher supports, for a tool (the KOReader plugin) that must
 # never run a launcher to find out: an older one ignores a flag it does not know and starts
 # Grimoire. guard: it refuses to start inside KOReader (exit 3); unpack-only: --unpack-only.
-# A tool reads the line in the very documents/Grimoire.sh it is going to run, and runs
-# --unpack-only only when the line lists unpack-only. The payload carries the same words in
-# app/CAPABILITIES, but that file is to be trusted only after such an --unpack-only succeeded:
-# an older launcher's unpack (1.0.0-beta has no such file) leaves a newer one behind.
+# A tool reads the line in the very documents/Grimoire.sh it is going to run, from its first
+# ten lines and never by searching the whole file (the app appended below holds
+# app/grimoire.sh, whose own Capabilities line is about that file):
+#   head -n 10 documents/Grimoire.sh | sed -n 's/^# Capabilities: //p'
+# and runs --unpack-only only when the line lists unpack-only. The payload carries the same
+# words in app/CAPABILITIES, but that file is to be trusted only after such an --unpack-only
+# succeeded: an older launcher's unpack (1.0.0-beta has no such file) leaves a newer one behind.
 # app/grimoire.sh names its own capabilities in its header.
 
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are

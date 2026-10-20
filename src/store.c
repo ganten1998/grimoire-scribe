@@ -154,9 +154,16 @@ static int ini_parse_file(const char *path, IniCb cb, IniUnknown unknown, void *
     return 0;
 }
 
-// Names are single-line in the ini.
+// Names are single-line in the ini. One longer than the field is cut short at a character's
+// start, never inside a UTF-8 character: a name cut in the middle of one would be written back
+// so, and its mirror PDF's path and the share pages would carry a broken character.
 static void clean_line(char *dst, const char *src, size_t cap) {
     size_t n = strlcpy_q(dst, src, cap);
+    if (src && ((uint8_t)src[n] & 0xC0) == 0x80) {  // cut inside a character: drop its first bytes
+        while (n > 0 && ((uint8_t)dst[n - 1] & 0xC0) == 0x80) n--;
+        if (n > 0 && ((uint8_t)dst[n - 1] & 0xC0) == 0xC0) n--;
+        dst[n] = 0;
+    }
     for (size_t i = 0; i < n; i++)
         if (dst[i] == '\n' || dst[i] == '\r') dst[i] = ' ';
 }
@@ -507,7 +514,78 @@ int store_remove_folder(const char *name) {
     return rc;
 }
 
-static int cmp_name(const void *a, const void *b) { return strcasecmp(a, b); }
+// Folder names in the order a reader expects, accents or not: each letter compared as its base
+// letter (lowercase, accents dropped; ß as ss, æ as ae, œ as oe, ĳ as ij, þ as th), so Álgebra
+// and Études sort among the A's and E's instead of after Z. Other characters compare as their
+// bytes. Equal that way, the names' own bytes decide, so the order never depends on the input's.
+typedef struct {
+    uint16_t lo, hi;
+    char base[3];
+} Fold;
+static const Fold k_fold[] = {
+    {0xC0, 0xC5, "a"},   {0xC6, 0xC6, "ae"},  {0xC7, 0xC7, "c"},   {0xC8, 0xCB, "e"},   {0xCC, 0xCF, "i"},
+    {0xD0, 0xD0, "d"},   {0xD1, 0xD1, "n"},   {0xD2, 0xD6, "o"},   {0xD8, 0xD8, "o"},   {0xD9, 0xDC, "u"},
+    {0xDD, 0xDD, "y"},   {0xDE, 0xDE, "th"},  {0xDF, 0xDF, "ss"},  {0xE0, 0xE5, "a"},   {0xE6, 0xE6, "ae"},
+    {0xE7, 0xE7, "c"},   {0xE8, 0xEB, "e"},   {0xEC, 0xEF, "i"},   {0xF0, 0xF0, "d"},   {0xF1, 0xF1, "n"},
+    {0xF2, 0xF6, "o"},   {0xF8, 0xF8, "o"},   {0xF9, 0xFC, "u"},   {0xFD, 0xFD, "y"},   {0xFE, 0xFE, "th"},
+    {0xFF, 0xFF, "y"},   {0x100, 0x105, "a"}, {0x106, 0x10D, "c"}, {0x10E, 0x111, "d"}, {0x112, 0x11B, "e"},
+    {0x11C, 0x123, "g"}, {0x124, 0x127, "h"}, {0x128, 0x131, "i"}, {0x132, 0x133, "ij"}, {0x134, 0x135, "j"},
+    {0x136, 0x138, "k"}, {0x139, 0x142, "l"}, {0x143, 0x14B, "n"}, {0x14C, 0x151, "o"}, {0x152, 0x153, "oe"},
+    {0x154, 0x159, "r"}, {0x15A, 0x161, "s"}, {0x162, 0x167, "t"}, {0x168, 0x173, "u"}, {0x174, 0x175, "w"},
+    {0x176, 0x178, "y"}, {0x179, 0x17E, "z"}, {0x17F, 0x17F, "s"},
+};
+
+// The next character of s folded for sorting into out (up to 4 bytes); returns its length in s.
+static size_t fold_next(const char *s, char out[5]) {
+    const uint8_t *u = (const uint8_t *)s;
+    if (u[0] < 0x80) {
+        out[0] = (char)(u[0] >= 'A' && u[0] <= 'Z' ? u[0] + 32 : u[0]);
+        out[1] = 0;
+        return 1;
+    }
+    size_t len = (u[0] & 0xE0) == 0xC0 ? 2 : (u[0] & 0xF0) == 0xE0 ? 3 : (u[0] & 0xF8) == 0xF0 ? 4 : 1;
+    for (size_t i = 1; i < len; i++)
+        if ((u[i] & 0xC0) != 0x80) len = 1;  // broken: the lead byte alone, as it is
+    if (len == 2) {
+        uint32_t cp = (uint32_t)(u[0] & 0x1F) << 6 | (u[1] & 0x3F);
+        if (cp >= 0x300 && cp <= 0x36F) {  // a combining accent (a decomposed é): dropped
+            out[0] = 0;
+            return 2;
+        }
+        for (size_t i = 0; i < sizeof k_fold / sizeof k_fold[0]; i++)
+            if (cp >= k_fold[i].lo && cp <= k_fold[i].hi) {
+                strlcpy_q(out, k_fold[i].base, 5);
+                return 2;
+            }
+    }
+    memcpy(out, s, len);
+    out[len] = 0;
+    return len;
+}
+
+static int cmp_name(const void *a, const void *b) {
+    const char *x = a, *y = b;
+    char fx[5] = "", fy[5] = "";
+    const char *px = fx, *py = fy;  // what is left of each name's current folded character
+    for (;;) {
+        while (!*px && *x) {
+            x += fold_next(x, fx);
+            px = fx;
+        }
+        while (!*py && *y) {
+            y += fold_next(y, fy);
+            py = fy;
+        }
+        if (!*px || !*py) {
+            if (*px != *py) return *px ? 1 : -1;  // one ran out first: it goes first
+            break;
+        }
+        if (*px != *py) return (uint8_t)*px < (uint8_t)*py ? -1 : 1;
+        px++;
+        py++;
+    }
+    return strcmp(a, b);
+}
 
 int store_list_folders(char (**out)[STORE_NAME_LEN], int *n) {
     FolderName *f;
@@ -1078,9 +1156,11 @@ void settings_default(Settings *s) {
     s->http_port = 8765;
 }
 
-static bool calib_kv(InputCalib *c, const char *k, const char *v) {
-    if (!strcmp(k, "valid")) c->valid = atoi(v) != 0;
-    else if (!strcmp(k, "swap")) c->swap_xy = atoi(v) != 0;
+// key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
+static bool keep_bool(const char *k, const char *v);
+static bool calib_kv(InputCalib *c, const char *key, const char *k, const char *v) {
+    if (!strcmp(k, "valid")) c->valid = keep_bool(key, v);
+    else if (!strcmp(k, "swap")) c->swap_xy = keep_bool(key, v);
     else if (!strcmp(k, "ax")) c->ax = strtof(v, NULL);
     else if (!strcmp(k, "bx")) c->bx = strtof(v, NULL);
     else if (!strcmp(k, "ay")) c->ay = strtof(v, NULL);
@@ -1147,6 +1227,14 @@ static int keep_int(const char *k, const char *v, int lo, int hi) {
     return c;
 }
 
+// A 0/1 setting: any other value (a newer version's third state, invert=2) is used as on or off
+// (atoi, as 1.0.0-beta reads it) and written back as it was until the setting changes.
+static bool keep_bool(const char *k, const char *v) {
+    bool on = atoi(v) != 0;
+    keep_value(k, v, strcmp(v, "0") && strcmp(v, "1") ? (on ? "1" : "0") : NULL);
+    return on;
+}
+
 static bool settings_cb(void *ctx, const char *k, const char *v) {
     Settings *s = ctx;
     const char *dot = strchr(k, '.');
@@ -1157,8 +1245,8 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
         memcpy(head, k, hl);
         head[hl] = 0;
         const char *field = dot + 1;
-        if (!strcmp(head, "pen")) return calib_kv(&s->pen_calib, field, v);
-        if (!strcmp(head, "touch")) return calib_kv(&s->touch_calib, field, v);
+        if (!strcmp(head, "pen")) return calib_kv(&s->pen_calib, k, field, v);
+        if (!strcmp(head, "touch")) return calib_kv(&s->touch_calib, k, field, v);
         for (int t = 0; t < TOOL_COUNT; t++) {
             if (strcmp(head, k_tool_keys[t])) continue;
             int n;
@@ -1189,12 +1277,12 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     } else if (!strcmp(k, "draw_tool")) s->draw_tool = (ToolKind)keep_int(k, v, 0, TOOL_COUNT - 1);
     else if (!strcmp(k, "panel_x")) s->panel_x = atoi(v);
     else if (!strcmp(k, "panel_y")) s->panel_y = atoi(v);
-    else if (!strcmp(k, "panel_collapsed")) s->panel_collapsed = atoi(v) != 0;
+    else if (!strcmp(k, "panel_collapsed")) s->panel_collapsed = keep_bool(k, v);
     else if (!strcmp(k, "side_button")) s->side_button = keep_int(k, v, 0, 2);
-    else if (!strcmp(k, "mirror_pdf")) s->mirror_pdf = atoi(v) != 0;
-    else if (!strcmp(k, "follow_rotation")) s->follow_rotation = atoi(v) != 0;
-    else if (!strcmp(k, "invert")) s->invert = atoi(v) != 0;
-    else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = atoi(v) != 0;
+    else if (!strcmp(k, "mirror_pdf")) s->mirror_pdf = keep_bool(k, v);
+    else if (!strcmp(k, "follow_rotation")) s->follow_rotation = keep_bool(k, v);
+    else if (!strcmp(k, "invert")) s->invert = keep_bool(k, v);
+    else if (!strcmp(k, "pinch_zoom")) s->pinch_zoom = keep_bool(k, v);
     else if (!strcmp(k, "theme")) {
         s->theme = !strcmp(v, "classic") ? 1 : 0;
         keep_value(k, v, s->theme == 1 || !strcmp(v, "gothic") ? NULL : "gothic");
@@ -1203,7 +1291,7 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
-    else if (!strcmp(k, "passcode_told")) s->passcode_told = atoi(v) != 0;
+    else if (!strcmp(k, "passcode_told")) s->passcode_told = keep_bool(k, v);
     else return false;
     return true;
 }
@@ -1302,9 +1390,15 @@ int settings_save(const Settings *s) {
     put_int(&b, "settings_version", s->version > SETTINGS_VERSION ? s->version : SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
-    for (int i = 0; i < 2; i++)
-        sb_printf(&b, "%s.valid=%d\n%s.swap=%d\n%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n", cn[i], cs[i]->valid,
-                  cn[i], cs[i]->swap_xy, cn[i], cs[i]->ax, cn[i], cs[i]->bx, cn[i], cs[i]->ay, cn[i], cs[i]->by);
+    for (int i = 0; i < 2; i++) {
+        char key[16];
+        snprintf(key, sizeof key, "%s.valid", cn[i]);
+        put_int(&b, key, cs[i]->valid);
+        snprintf(key, sizeof key, "%s.swap", cn[i]);
+        put_int(&b, key, cs[i]->swap_xy);
+        sb_printf(&b, "%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n", cn[i], cs[i]->ax, cn[i], cs[i]->bx, cn[i],
+                  cs[i]->ay, cn[i], cs[i]->by);
+    }
     int np;
     const ParamInfo *pi = tool_param_table(&np);
     for (int tk = 0; tk < TOOL_COUNT; tk++)

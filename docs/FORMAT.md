@@ -218,6 +218,7 @@ from 1.0.0-beta.2 on, and the page keeps the value and writes it back (version 2
   Registry first) or in a critical chunk (a safe chunk cannot name strokes).
 - Tool ids, fixed paper kinds and music parts are never renumbered or reordered.
 - A page with no new data is written byte for byte as 1.0.0-beta writes it.
+- The limits of `settings.ini` and `notebook.ini` given in their own sections below.
 
 ## What a reader does with a page (1.0.0-beta.2 on)
 
@@ -263,6 +264,7 @@ line. Values are clamped to their ranges when read.
 | `sleep_mode` | the sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own |
 | `sleep_minutes` | sleep after this long without input, 0 to 240 (0 = never) |
 | `http_port` | the share server's port, 1024 to 65535 (the launcher reads it too, the last such line) |
+| `passcode_told` | 0 or 1: Grimoire has said once that the launcher pauses the Kindle's passcode (1.0.0-beta.2 on) |
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
 | `settings_version` | 2: which default-changing upgrades have run |
@@ -282,8 +284,19 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   is the exception: it is saved as used, because the launcher opens the firewall for the port it
   finds in the file.
 - A `settings_version` above its own is written back as it is.
+- The 0/1 keys (`panel_collapsed`, `mirror_pdf`, `follow_rotation`, `invert`, `pinch_zoom`,
+  `passcode_told`, and the calibration's `valid` and `swap`) read any other value as on when it
+  starts with a nonzero number and as off otherwise, and write it back as it was under the rule
+  above.
 
 1.0.0-beta drops all of this on its next settings save (and writes its clamped values).
+
+Frozen while 1.0.0-beta is in use:
+
+- The 0/1 keys stay 0 or 1: 1.0.0-beta saves any other value as 1 (or as 0, if it does not
+  start with a nonzero number). A new state needs a new key.
+- Tool settings are written with 4 decimals and calibration values with 6, by every version: a
+  finer value comes back rounded on the next save.
 
 ## `notebook.ini`
 
@@ -302,6 +315,15 @@ whole lines up to 2 KB in all (a line that does not fit is left out and logged),
 it does not know is kept: new pages get it. A new notebook always starts on a paper the version
 offers. 1.0.0-beta drops unknown lines on its next save and reads an unknown `paper` as Medium
 rule.
+
+Frozen while 1.0.0-beta is in use:
+
+- A notebook's `name` and `folder`, and each line of `folders.ini`, hold at most 95 bytes of
+  UTF-8. 1.0.0-beta cuts a longer one at byte 95, inside a character if one falls there, and
+  writes it back cut; 1.0.0-beta.2 cuts it before the character that would cross byte 95, so
+  what it writes stays valid UTF-8 (a name becomes the mirror PDF's file name).
+- A notebook has at most 2000 pages: both versions keep only the first 2000 ids of `pages` and
+  drop the rest from the list on their next save (those page files stay, in no page list).
 
 ## Where new data goes
 
@@ -335,5 +357,8 @@ row.
 | an unknown `notebook.ini` paper | read as Medium rule | kept; new pages get it |
 | an unknown `settings.ini` key | dropped on the next save | kept |
 | a `settings.ini` value it cannot use | clamped, and saved clamped | used as the nearest value, written back as it was |
+| a 0/1 `settings.ini` key holding another value | saved as 1 (or 0) | used as on or off, written back as it was |
+| a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
+| more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

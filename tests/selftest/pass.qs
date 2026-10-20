@@ -3,6 +3,7 @@
 # (docs/SIM.md lists them).
 wait 200
 expect running is 1
+expect watching is 0
 expect screen is library
 expect screen not editor
 expect screen has lib
@@ -10,6 +11,7 @@ expect asleep is 0
 expect rotation is 0
 expect size is 1860x2480
 expect toast has Calibrate pen
+expect toast.rect not
 expect settings.theme is gothic
 expect settings.invert is 0
 expect settings.mirror_pdf is 1
@@ -38,6 +40,7 @@ expect editor.strokes is 0
 expect editor.paper is none
 expect editor.music is
 expect editor.ticked is 0
+expect editor.unsaved is 0
 # New notebook (medium rule is preselected), then Create
 tap 965 95
 expect library.sheet is new
@@ -56,6 +59,7 @@ expect editor.ticked is 0
 expect editor.music is
 pen line 300 700 1200 700 40 0.5 0.5
 expect editor.strokes is 1
+expect editor.unsaved is 1
 # The tool picker, then the mechanical pencil from it
 pentap 1768 358
 expect editor.modal is tools

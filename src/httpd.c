@@ -455,11 +455,12 @@ static void route(char *path) {
         return;
     }
     if (!strncmp(path, "/folder/", 8)) {
-        char folder[STORE_NAME_LEN];
+        char folder[STORE_NAME_LEN + 8];  // the longest folder name, and ".zip" after it
         strlcpy_q(folder, path + 8, sizeof folder);
         size_t l = strlen(folder);
         if (l < 5 || strcmp(folder + l - 4, ".zip")) return respond_text(404, "not found");
         folder[l - 4] = 0;
+        if (l - 4 >= STORE_NAME_LEN) return respond_text(404, "not found");  // longer than any folder
         Buf b = {0};
         char fname[STORE_NAME_LEN + 8], safe[STORE_NAME_LEN];
         export_safe_name(folder, safe, sizeof safe);
@@ -627,7 +628,8 @@ static void handle_request(Client *c) {
         qlog("httpd: refused a request for another host");
         return respond_text(400, "use the address shown on the Kindle");
     }
-    qlog("httpd: %s %s", method, path);
+    // grimoire.log goes to public bug reports: a folder's name (the user's own words) stays out.
+    qlog("httpd: %s %s", method, !strncmp(path, "/folder/", 8) ? "/folder/<name>.zip" : path);
     if (heavy(path)) {
         c->st = C_QUEUED;  // start_renders() takes it from here; t0 = when the request came in
         return;

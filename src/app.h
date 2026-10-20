@@ -46,6 +46,8 @@ typedef struct App {
     Rect toast_rect;
     bool toast_visible;
     Canvas toast_under;     // pixels the toast covers, restored when it hides
+    int toast_floor;        // toasts stay above this y (the keyboard, a sheet's buttons); 0 none.
+                            // The screen sets it as it draws; app_switch clears it.
 
     struct LibraryState *lib;
     struct EditorState *ed;
@@ -58,6 +60,7 @@ typedef struct App {
     bool power_down_asleep;        // it went down while Grimoire showed its sleep screen
     bool power_answered;           // the power service announced a sleep or a wake since then
     int locked_wakes;              // wake fallbacks in a row that found the Kindle still locked
+    uint32_t leave_unsaved_at;     // when leaving stayed once because the page could not be saved (0 never)
 } App;
 
 int app_init(App *a, int w, int h, float dpi);
@@ -102,7 +105,7 @@ DECLARE_SCREEN(share)
 
 // Cross-screen entry points.
 void editor_open_notebook(App *a, const char *id);   // loads, switches to SCR_EDITOR
-void editor_save_now(App *a);                        // flush pending page/info saves
+bool editor_save_now(App *a);                        // flush pending page/info saves; false if they failed
 bool editor_busy(App *a);                            // a stroke / drag / pinch is in progress
 const Canvas *editor_page_canvas(App *a);            // the open page (paper + ink), or NULL
 bool editor_pin_sleep_page(App *a);                  // saves the open page as the sleep screen
@@ -115,6 +118,8 @@ void app_apply_sleep_policy(App *a);
 void pensettings_open(App *a, ToolKind tab);         // switch to SCR_PENSET (returns to prev_scr)
 void calibrate_open(App *a);                         // switch to SCR_CALIB (returns to prev_scr)
 void share_open(App *a);                             // switch to SCR_SHARE (returns to prev_scr)
+void share_sleep(App *a);                            // asleep on Share: the server waits unwatched
+void share_draw_asleep(App *a);                      // Share's sleep screen when no page is shown
 
 // The headless runner's `expect` checks read the app's state through this (tests only; cheap).
 // Keys: "screen" (library|editor|penset|calib|share), "toast" (the visible toast, "" if none),
