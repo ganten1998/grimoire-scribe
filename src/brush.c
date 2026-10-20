@@ -119,6 +119,8 @@ static ToolLook look_of(ToolKind t) {
     case TOOL_FINELINER: lk = (ToolLook){5, 0.08f, 0.f, 0.f, false}; break;
     case TOOL_MARKER: lk = (ToolLook){22, 0.14f, 0.f, 0.f, false}; break;
     case TOOL_CHARCOAL: lk = (ToolLook){14, 0.f, 0.f, 0.12f, true, NIB_NONE, true, 0.95f, 0.32f, 0.50f, 0.05f, 0.24f}; break;
+    // The precise eraser's round hard tip, for erase strokes only (it never deposits ink).
+    case TOOL_ERASER: lk = (ToolLook){255, 0.08f, 0.f, 0.f, false}; break;
     default: lk = (ToolLook){38, 0.35f, 0.f, 0.10f, true}; break;
     }
     if (lk.graphite && !lk.coarse) {  // the pencils
@@ -272,9 +274,75 @@ void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, 
     b->dpi = (dpi > 50.f && dpi < 2000.f) ? dpi : 300.f;
 }
 
+void brush_set_erase(BrushState *b, const uint8_t *paper, int x0, int y0, int stride) {
+    b->erase = true;
+    b->restored = false;
+    b->paper = paper;
+    b->paper_x0 = x0;
+    b->paper_y0 = y0;
+    b->paper_stride = stride;
+}
+
+bool g_brush_erase_spans = true;
+
 static float spacing_for(float r) { return fmaxf(0.5f, 0.15f * r); }
 
-static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
+// Where a dab's pixels go: ink deposited, or for an erase stroke the paper restored.
+typedef struct {
+    uint8_t ink;
+    const uint8_t *paper;  // erase: NULL = white
+    int x0, y0, stride;
+    bool restored;         // erase: set once a pixel is lightened
+} DabTarget;
+
+// One pixel of a dab, the only place a dab writes one: a is the dab's own coverage, ad its share
+// once the spacing is compensated (what the deposit uses).
+static inline void put_px(DabTarget *t, Canvas *c, int x, int y, float ad, float a, bool erase) {
+    if (!erase) {
+        canvas_deposit_px(c, x, y, t->ink, ad);
+        return;
+    }
+    // (x, y) is inside the clip (stamp() clips its box to it), so the paper covers it.
+    uint8_t paper = t->paper ? t->paper[(ptrdiff_t)(y - t->y0) * t->stride + (x - t->x0)] : 255;
+    const uint8_t *p = &c->px[y * c->stride + x];
+    uint8_t was = *p;
+    // Full coverage lands exactly on the paper: the spacing-compensated share alone would leave
+    // the pixel one level short of it.
+    canvas_restore_px(c, x, y, paper, a >= 0.999f ? 1.f : ad);
+    if (*p != was) t->restored = true;
+}
+
+// The erase fast path's part of a row: pixels x0..x1 of row y become the lighter of themselves
+// and the paper, which is what put_px makes of a pixel the dab covers fully.
+static void restore_span(DabTarget *t, Canvas *c, int y, int x0, int x1) {
+    uint8_t *row = &c->px[y * c->stride + x0];
+    int n = x1 - x0 + 1;
+    uint8_t changed = 0;
+    if (!t->paper) {
+        for (int i = 0; i < n; i++) {
+            changed |= (uint8_t)~row[i];
+            row[i] = 255;
+        }
+    } else {
+        const uint8_t *pp = &t->paper[(ptrdiff_t)(y - t->y0) * t->stride + (x0 - t->x0)];
+        for (int i = 0; i < n; i++) {
+            uint8_t v = row[i] > pp[i] ? row[i] : pp[i];
+            changed |= (uint8_t)(v ^ row[i]);
+            row[i] = v;
+        }
+    }
+    if (changed) t->restored = true;
+}
+
+// The fast path covers dabs up to this core radius: there the margin it leaves (below) is over
+// twenty times the float rounding of the per-pixel distance. The largest dab the parameter ranges
+// allow at 300 dpi has a radius of 354 px.
+#define SPAN_MAX_R 512.f
+
+// One dab. `erase` is a constant at both calls (stamp), so each gets a copy of its own: the ink
+// copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
+static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas *c, const PenSample *s,
+                                                           bool erase) {
     float r, op;
     brush_dab(b->tool, &b->params, s, b->dpi, &r, &op);
     uint32_t idx = b->dab_index++;
@@ -330,9 +398,36 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
     float dust_w = lk.dust > 0.f ? r * 0.40f : 0.f;
     float reach = lk.graphite ? fmaxf(rough * 0.5f, dust_w) : 0.f;
     Rect box = rect_intersect(rect_from_points(s->x, s->y, s->x, s->y, r + 1.f + reach), c->clip);
+    DabTarget tg = {lk.ink, b->paper, b->paper_x0, b->paper_y0, b->paper_stride, false};
+    // Erase fast path: a round dab (no nib, not graphite) with no grain at full opacity gives
+    // every pixel of its core full coverage, so a row's core is restored in one pass (restore_span)
+    // and the per-pixel loop skips it. The span stops a pixel short of the core's edge at both
+    // ends, on rows whose core is wider than 4 px: its pixels are then at squared distance below
+    // r_in^2 - 3, more than 1.4 / r_in inside the core, where the per-pixel path's float distance
+    // cannot reach r_in, so it would have given each of them alpha 1 too. Byte for byte the same
+    // (tests/test_erase.c compares the two).
+    bool spans = erase && g_brush_erase_spans && !lk.graphite && lk.nib == NIB_NONE && g_eff <= 0.f &&
+                 op >= 0.999f && r_in <= SPAN_MAX_R;
     for (int y = box.y; y < box.y + box.h; y++) {
         float dy = (float)y + 0.5f - s->y;
+        int sx0 = box.x + box.w, sx1 = sx0;  // the row's core span (none: x never gets there)
+        float q = spans ? r_in * r_in - dy * dy : 0.f;
+        if (q > 4.f) {
+            float hw = sqrtf(q);
+            int a0 = (int)ceilf(s->x - 0.5f - hw) + 1, a1 = (int)floorf(s->x - 0.5f + hw) - 1;
+            if (a0 < box.x) a0 = box.x;
+            if (a1 > box.x + box.w - 1) a1 = box.x + box.w - 1;
+            if (a0 <= a1) {
+                restore_span(&tg, c, y, a0, a1);
+                sx0 = a0;
+                sx1 = a1;
+            }
+        }
         for (int x = box.x; x < box.x + box.w; x++) {
+            if (erase && x == sx0) {
+                x = sx1;
+                continue;
+            }
             float dx = (float)x + 0.5f - s->x;
             float d = sqrtf(dx * dx + dy * dy);
             float a;
@@ -347,7 +442,7 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
                     if (h >= chance) continue;
                     a = op * 0.75f * (0.5f + 0.5f * t);
                     float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
-                    canvas_deposit_px(c, x, y, lk.ink, ad);
+                    put_px(&tg, c, x, y, ad, a, erase);
                     continue;
                 }
                 float prof = clampf((r_out - de) / edge_w, 0.f, 1.f);
@@ -378,10 +473,15 @@ static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
             }
             if (a <= 0.002f) continue;
             float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
-            canvas_deposit_px(c, x, y, lk.ink, ad);
+            put_px(&tg, c, x, y, ad, a, erase);
         }
     }
+    if (tg.restored) b->restored = true;
     return box;
+}
+
+static Rect stamp(BrushState *b, Canvas *c, const PenSample *s) {
+    return b->erase ? stamp_as(b, c, s, true) : stamp_as(b, c, s, false);
 }
 
 static PenSample interp(const PenSample *a, const PenSample *b, float t) {
@@ -397,7 +497,7 @@ static PenSample interp(const PenSample *a, const PenSample *b, float t) {
 }
 
 Rect brush_add(BrushState *b, Canvas *c, const PenSample *s) {
-    if (b->tool == TOOL_ERASER) {
+    if (b->tool == TOOL_ERASER && !b->erase) {
         b->prev = *s;
         b->have_prev = true;
         return RECT_EMPTY;
