@@ -62,8 +62,14 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 const InputCaps *input_caps(void) { return &g_caps; }
 void input_watch_fd(int fd) { g_watch_fd = fd; }
 // The simulated panel is the logical screen itself: mouse and script coordinates are already
-// in rotated screen space, so these are identities.
-void input_set_orientation(int quarter_turns) { (void)quarter_turns; }
+// in rotated screen space, so these are identities. An uncalibrated mapping follows the turned
+// screen's size (display_set_orientation ran first), or after a turn every coordinate would land
+// scaled by the old size (x by 0.75, y by 1.33).
+void input_set_orientation(int quarter_turns) {
+    (void)quarter_turns;
+    if (!g_pen.valid) input_default_calib(&g_pen, NULL);
+    if (!g_touch.valid) input_default_calib(NULL, &g_touch);
+}
 void input_logical_to_panel(float lx, float ly, float *px, float *py) {
     *px = lx;
     *py = ly;
