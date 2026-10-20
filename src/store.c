@@ -1273,6 +1273,8 @@ void settings_default(Settings *s) {
     s->sleep_mode = 0;
     s->sleep_minutes = 10;
     s->http_port = 8765;
+    s->eraser_mode = 0;  // whole strokes, as before 1.1
+    s->white = false;
 }
 
 // key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
@@ -1306,7 +1308,7 @@ static bool calib_kv(InputCalib *c, int *pw, int *ph, const char *key, const cha
 
 // What settings.ini holds that this build does not understand goes back into the file as it
 // was: lines with keys it does not know (written after the ones it knows), and values of known
-// keys it cannot use as written (side_button=3, a theme it lacks, a slider past its range). Such a
+// keys it cannot use as written (side_button=4, a theme it lacks, a slider past its range). Such a
 // value is used as the nearest one this build has, and written back unchanged until the setting is
 // saved with another value. Kept here, not in Settings (which is copied by value), for the file
 // settings_load read last.
@@ -1414,7 +1416,7 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "panel_x")) s->panel_x = atoi(v);
     else if (!strcmp(k, "panel_y")) s->panel_y = atoi(v);
     else if (!strcmp(k, "panel_collapsed")) s->panel_collapsed = keep_bool(k, v);
-    else if (!strcmp(k, "side_button")) s->side_button = keep_int(k, v, 0, 2);
+    else if (!strcmp(k, "side_button")) s->side_button = keep_int(k, v, 0, 3);
     else if (!strcmp(k, "mirror_pdf")) s->mirror_pdf = keep_bool(k, v);
     else if (!strcmp(k, "follow_rotation")) s->follow_rotation = keep_bool(k, v);
     else if (!strcmp(k, "invert")) s->invert = keep_bool(k, v);
@@ -1428,6 +1430,8 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
     else if (!strcmp(k, "http_port")) s->http_port = clampi(atoi(v), 1024, 65535);
     else if (!strcmp(k, "passcode_told")) s->passcode_told = keep_bool(k, v);
+    else if (!strcmp(k, "eraser_mode")) s->eraser_mode = keep_int(k, v, 0, 1);
+    else if (!strcmp(k, "white")) s->white = keep_bool(k, v);
     else return false;
     return true;
 }
@@ -1519,6 +1523,8 @@ int settings_save(const Settings *s) {
     put_int(&b, "sleep_minutes", s->sleep_minutes);
     put_int(&b, "http_port", s->http_port);
     put_int(&b, "passcode_told", s->passcode_told);
+    put_int(&b, "eraser_mode", s->eraser_mode);
+    put_int(&b, "white", s->white);
     snprintf(t, sizeof t, "%u", (unsigned)s->music_layout);
     put(&b, "music_layout", t);
     put(&b, "theme", s->theme == 1 ? "classic" : "gothic");

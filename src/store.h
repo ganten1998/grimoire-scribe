@@ -35,7 +35,8 @@ typedef struct {
     PaperKind music_layout;       // the last custom music layout built (offered on the Custom tile)
     int panel_x, panel_y;         // floating panel top-left
     bool panel_collapsed;
-    int side_button;              // holding the pen button: 0 nothing, 1 eraser, 2 highlighter
+    int side_button;              // holding the pen button: 0 nothing, 1 eraser, 2 highlighter,
+                                  // 3 white ink with the pen's own drawing tool
     bool mirror_pdf;              // write grimoire/PDFs/<folder>/<name>.pdf on close
     bool follow_rotation;         // turn the UI with the Kindle (otherwise stay as is)
     bool invert;                  // white on black
@@ -50,6 +51,9 @@ typedef struct {
     int pen_panel_w, pen_panel_h, touch_panel_w, touch_panel_h;
     int http_port;                // share server, default 8765
     bool passcode_told;           // the "passcode paused while Grimoire is open" notice was shown once
+    int eraser_mode;              // the eraser (its button, the eraser end, side_button 1): 0 takes
+                                  // whole strokes away, 1 the precise eraser (erase strokes)
+    bool white;                   // the drawing tools draw white ink (erase strokes, own texture)
 } Settings;
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/
