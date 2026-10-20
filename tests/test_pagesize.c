@@ -407,6 +407,35 @@ static CalibMove to_panel(InputCalib *c, int from_w, int from_h, int w, int h) {
     return calib_to_panel(c, &from_w, &from_h, w, h);
 }
 
+// A listing records the size it had to work out (notebooks from before 1.1), once: as written,
+// with the notebook's modified time unchanged, so the Library's order stays as it was.
+TEST(listing_records_a_found_size) {
+    store_set_device(DPI, W2, H2);
+    NotebookInfo nb;
+    CHECK(store_create("Listed before 1.1", "", PAPER_MEDIUM, &nb) == 0);
+    CHECK(store_add_page(&nb, 1, PAPER_MEDIUM) == 0);
+    drop_lines(&nb, "page_w=", "page_h=");
+    NotebookInfo before;
+    CHECK(store_load_info(nb.id, &before) == 0);
+    char path[800];
+    info_file(&nb, path, sizeof path);
+    char *t = text_of(path);
+    CHECK(t && has_line(t, "page_w=1860") == 0);
+    free(t);
+    store_set_device(DPI, W3, H3);  // listed on a Colorsoft: the pages still say 1860x2480
+    NotebookInfo *all = NULL;
+    int n = 0;
+    CHECK(store_list(&all, &n) == 0 && n > 0);
+    free(all);
+    t = text_of(path);
+    CHECK(t && has_line(t, "page_w=1860") == 1 && has_line(t, "page_h=2480") == 1);
+    free(t);
+    NotebookInfo after;
+    CHECK(store_load_info(nb.id, &after) == 0 && after.page_w == W2 && after.page_h == H2);
+    CHECK(after.modified == before.modified && !strcmp(after.name, before.name) && after.npages == before.npages);
+    store_set_device(DPI, W2, H2);
+}
+
 TEST(calibration_scaling_math) {
     // The default mapping scales exactly.
     InputCalib d = {true, false, (float)W2, 0.f, (float)H2, 0.f};
@@ -690,6 +719,7 @@ int main(void) {
     RUN(rescaled_pages_come_back);
     RUN(size_found_without_the_keys);
     RUN(most_pages_give_the_size);
+    RUN(listing_records_a_found_size);
     RUN(calibration_scaling_math);
     RUN(calibration_panel_in_settings);
     RUN(music_layouts_at_both_heights);

@@ -283,6 +283,9 @@ static void notebook_size_from_pages(const char *dir, NotebookInfo *nb) {
     nb->page_h = sh[best];
 }
 
+// Set by store_load_info when it had to work the page size out from the page files.
+static bool g_size_derived;
+
 int store_load_info(const char *id_in, NotebookInfo *out) {
     char dir[600], path[700], id[STORE_ID_LEN];
     strlcpy_q(id, id_in, sizeof id);  // id_in may be out->id itself: copy it before the memset
@@ -313,6 +316,7 @@ int store_load_info(const char *id_in, NotebookInfo *out) {
         out->page_w = g_w;
         out->page_h = g_h;
         notebook_size_from_pages(dir, out);
+        g_size_derived = true;
     }
     uint32_t maxid = 0;
     for (int i = 0; i < out->npages; i++)
@@ -489,8 +493,14 @@ int store_list(NotebookInfo **out, int *n) {
             arr = na;
             cap = nc;
         }
-        if (store_load_info(e->d_name, &arr[*n]) == 0) (*n)++;
-        else qlog("store: skipping unreadable notebook %s", e->d_name);
+        g_size_derived = false;
+        if (store_load_info(e->d_name, &arr[*n]) == 0) {
+            // A notebook from before 1.1: its size was worked out from its page files. Record it
+            // now (as written, its modified time unchanged) so later listings read one file, not
+            // half its pages.
+            if (g_size_derived && write_info(&arr[*n]) != 0) qlog_once("store: could not record the page size of %s", e->d_name);
+            (*n)++;
+        } else qlog("store: skipping unreadable notebook %s", e->d_name);
     }
     closedir(d);
     if (*n) qsort(arr, (size_t)*n, sizeof *arr, cmp_modified);

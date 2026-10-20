@@ -56,7 +56,7 @@ $(WEB_GEN): $(addprefix web/,$(WEB))
 	( cd web && for f in $(WEB); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
 
 # ---- simulator ----
-SIM_FLAGS := -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer
+SIM_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
 sim: $(BUILD)/host/grimoire-sim
 $(BUILD)/host/grimoire-sim: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) $(HDRS)
 	@mkdir -p $(BUILD)/host
@@ -139,7 +139,7 @@ $(BUILD)/host/mklogo: tools/mklogo.c tools/bat.h $(CORE_SRC) $(GEN_SRC) $(HDRS)
 TESTS := $(patsubst tests/%.c,$(BUILD)/test/%,$(wildcard tests/test_*.c))
 # Contraction (fused multiply-add) on, as clang does by default: tests/test_golden.c's renders
 # were recorded so, and turning it off changes them.
-TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -ffp-contract=on
+TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
 test: $(TESTS)
 	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(BUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
 $(BUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
