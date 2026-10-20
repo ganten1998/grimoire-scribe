@@ -86,3 +86,28 @@ bool calib_fit(const CalPoint *p, int n, InputCalib *out) {
     *out = c;
     return true;
 }
+
+void calib_scale(InputCalib *c, int from_w, int from_h, int w, int h) {
+    if (from_w <= 0 || from_h <= 0) return;
+    // Multiplied first: the default mapping (ax = from_w) scales to exactly w.
+    c->ax = c->ax * (float)w / (float)from_w;
+    c->bx = c->bx * (float)w / (float)from_w;
+    c->ay = c->ay * (float)h / (float)from_h;
+    c->by = c->by * (float)h / (float)from_h;
+}
+
+bool calib_spans(const InputCalib *c, int w, int h) {
+    return w > 0 && h > 0 && fabsf(fabsf(c->ax) - (float)w) <= 0.025f * (float)w &&
+           fabsf(fabsf(c->ay) - (float)h) <= 0.025f * (float)h;
+}
+
+CalibMove calib_to_panel(InputCalib *c, int from_w, int from_h, int w, int h) {
+    if (from_w <= 0 || from_h <= 0) {
+        from_w = 1860;
+        from_h = 2480;
+    }
+    if (!c->valid || (from_w == w && from_h == h)) return CALIB_SAME;
+    if (calib_spans(c, w, h) && !calib_spans(c, from_w, from_h)) return CALIB_MADE_HERE;
+    calib_scale(c, from_w, from_h, w, h);
+    return CALIB_SCALED;
+}

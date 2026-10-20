@@ -291,8 +291,27 @@ line. Values are clamped to their ranges when read.
 | `theme` | `gothic` or `classic` |
 | `settings_version` | 2: which default-changing upgrades have run |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
+| `pen.panel` | `WxH`: the panel the pen calibration was made on, upright (since 1.1; below) |
 | `touch.valid`, `touch.swap`, `touch.ax`, `touch.bx`, `touch.ay`, `touch.by` | touch calibration |
+| `touch.panel` | `WxH`: the panel the touch calibration was made on (since 1.1) |
 | `<tool>.<param>` | a tool's setting: `<tool>` is `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy`; `<param>` is one of the 13 parameter names above |
+
+A calibration maps the digitizer's axes (u and v, each 0 to 1, swapped when `swap` is 1) to the
+pixels of the panel it was made on: x = ax * u + bx, y = ay * v + by. From 1.1 on, `panel`
+records that panel, upright, and at startup Grimoire scales a calibration made on a panel of
+another size (a grimoire folder copied from one Scribe to another) to its own: ax and bx by the
+ratio of the widths, ay and by by the ratio of the heights. It logs that, and the next settings
+save writes the new values with this panel's `panel`.
+
+- A calibration with no `panel` (made before 1.1, or saved by 1.0.0-beta, which drops the key)
+  counts as made on an 1860x2480 Scribe, where the calibrations before 1.1 were made.
+- Its own scale has the last word. A calibration only corrects the default mapping, which spans
+  the panel exactly, so one whose |ax| and |ay| are within 2.5% of this panel's width and height,
+  and not within 2.5% of the recorded (or assumed) panel's, was made here and is kept as it is.
+  That covers a calibration made on a 1986x2648 Scribe before 1.1, and a `panel` line gone stale
+  (1.0.0-beta.2 carries the line through a calibration of its own).
+- A `panel` value that does not read as `WxH` (100 to 6000 each) is a line this version does not
+  understand: kept, and the calibration's panel is not recorded.
 
 From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 
@@ -361,8 +380,8 @@ Frozen while 1.0.0-beta is in use:
 - Data about a whole notebook: files of its own in the notebook's folder, which older versions
   never touch.
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
-  unknown keys on its next save. (The page size is such a key: what a version does without it is in
-  its own section.)
+  unknown keys on its next save. (The page size and the calibration's panel are such keys: what a
+  version does without them is in their own sections.)
 
 ## Moving between versions
 
@@ -392,4 +411,5 @@ row.
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
 | `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size from the first page file); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
+| `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

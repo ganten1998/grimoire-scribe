@@ -152,6 +152,13 @@ void calibrate_enter(App *a) {
 
 void calibrate_leave(App *a) {}
 
+// A calibration is saved with the panel it was made on, upright (the mapping is in its pixels), so
+// it follows the data to a panel of another size: app_init scales it there.
+static void made_on(App *a, int *w, int *h) {
+    *w = a->rotation & 1 ? a->h : a->w;
+    *h = a->rotation & 1 ? a->w : a->h;
+}
+
 static int button_at(App *a, float x, float y) {
     const Hit *h = hits_find(&S->hits, x, y);
     return h ? h->id : B_NONE;
@@ -182,7 +189,11 @@ void calibrate_event(App *a, const InEvent *ev) {
         switch (button_at(a, ev->x, ev->y)) {
         case B_SAVE:
             a->settings.pen_calib = S->new_pen;
-            if (S->new_touch.valid) a->settings.touch_calib = S->new_touch;
+            made_on(a, &a->settings.pen_panel_w, &a->settings.pen_panel_h);
+            if (S->new_touch.valid) {
+                a->settings.touch_calib = S->new_touch;
+                made_on(a, &a->settings.touch_panel_w, &a->settings.touch_panel_h);
+            }
             settings_save(&a->settings);
             input_set_calib(&a->settings.pen_calib, a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);
             leave_to(a);

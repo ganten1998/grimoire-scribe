@@ -1,6 +1,7 @@
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 #include "app.h"
 #include "bgjob.h"
+#include "calib_fit.h"
 
 #include "light.h"
 #include "power.h"
@@ -39,6 +40,28 @@ const char *app_mirror_dir(void) {
     return buf;
 }
 
+// A calibration maps to the pixels of the panel it was made on. One made on a panel of another size
+// (the grimoire folder copied over from another Scribe) is scaled to this one, w x h upright, before
+// it is used, and recorded as this panel's (pen.panel, touch.panel) from the next settings save on.
+static void calib_follow_panel(InputCalib *c, int *pw, int *ph, int w, int h, const char *what) {
+    if (!c->valid) return;
+    int fw = *pw > 0 ? *pw : 1860, fh = *ph > 0 ? *ph : 2480;
+    const char *rec = *pw > 0 ? "" : " (not recorded: taken as an 1860x2480 Scribe's)";
+    switch (calib_to_panel(c, *pw, *ph, w, h)) {
+    case CALIB_SCALED:
+        qlog("calibration: the %s calibration was made on a %dx%d panel%s; scaled to this %dx%d one", what, fw, fh, rec,
+             w, h);
+        break;
+    case CALIB_MADE_HERE:
+        qlog("calibration: the %s calibration was made on a %dx%d panel%s, but its scale fits this %dx%d one: made "
+             "here, kept as it is", what, fw, fh, rec, w, h);
+        break;
+    default: break;
+    }
+    *pw = w;
+    *ph = h;
+}
+
 int app_init(App *a, int w, int h, float dpi) {
     memset(a, 0, sizeof *a);
     g_probe_app = a;
@@ -51,6 +74,9 @@ int app_init(App *a, int w, int h, float dpi) {
     settings_load(&a->settings);
     qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
          a->settings.side_button);
+    Settings *st = &a->settings;
+    calib_follow_panel(&st->pen_calib, &st->pen_panel_w, &st->pen_panel_h, w, h, "pen");
+    calib_follow_panel(&st->touch_calib, &st->touch_panel_w, &st->touch_panel_h, w, h, "touch");
     if (a->settings.pen_calib.valid || a->settings.touch_calib.valid)
         input_set_calib(a->settings.pen_calib.valid ? &a->settings.pen_calib : NULL,
                         a->settings.touch_calib.valid ? &a->settings.touch_calib : NULL);
@@ -558,6 +584,12 @@ int app_probe(const char *key, char *out, size_t cap) {
     else if (!strcmp(key, "asleep")) snprintf(out, cap, "%d", a->asleep ? 1 : 0);
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
+    else if (!strcmp(key, "settings.pen.panel") || !strcmp(key, "settings.touch.panel")) {
+        bool pen = !strcmp(key, "settings.pen.panel");
+        int pw = pen ? st->pen_panel_w : st->touch_panel_w, ph = pen ? st->pen_panel_h : st->touch_panel_h;
+        if (pw > 0) snprintf(out, cap, "%dx%d", pw, ph);
+        else snprintf(out, cap, "%s", "");
+    }
     else if (!strcmp(key, "settings.theme")) snprintf(out, cap, "%s", st->theme == THEME_CLASSIC ? "classic" : "gothic");
     else return -1;
     return 0;

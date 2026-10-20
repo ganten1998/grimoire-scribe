@@ -1238,13 +1238,29 @@ void settings_default(Settings *s) {
 
 // key: the whole settings.ini key ("pen.valid"), field: what follows the dot.
 static bool keep_bool(const char *k, const char *v);
-static bool calib_kv(InputCalib *c, const char *key, const char *k, const char *v) {
+static void keep_value(const char *k, const char *raw, const char *used);
+// pen.panel / touch.panel: the panel the calibration was made on, "WxH" (1.1 on). A value that does
+// not read as a panel's size is a line this version does not understand: kept as it is, and the
+// calibration's panel is not recorded.
+static bool panel_kv(int *pw, int *ph, const char *key, const char *v) {
+    char *x;
+    int w = size_value(v, &x), h = *x == 'x' ? size_value(x + 1, NULL) : 0;
+    if (!page_size_ok(w, h)) return false;
+    *pw = w;
+    *ph = h;
+    char used[24];
+    snprintf(used, sizeof used, "%dx%d", w, h);
+    keep_value(key, v, strcmp(v, used) ? used : NULL);
+    return true;
+}
+static bool calib_kv(InputCalib *c, int *pw, int *ph, const char *key, const char *k, const char *v) {
     if (!strcmp(k, "valid")) c->valid = keep_bool(key, v);
     else if (!strcmp(k, "swap")) c->swap_xy = keep_bool(key, v);
     else if (!strcmp(k, "ax")) c->ax = strtof(v, NULL);
     else if (!strcmp(k, "bx")) c->bx = strtof(v, NULL);
     else if (!strcmp(k, "ay")) c->ay = strtof(v, NULL);
     else if (!strcmp(k, "by")) c->by = strtof(v, NULL);
+    else if (!strcmp(k, "panel")) return panel_kv(pw, ph, key, v);
     else return false;
     return true;
 }
@@ -1325,8 +1341,9 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
         memcpy(head, k, hl);
         head[hl] = 0;
         const char *field = dot + 1;
-        if (!strcmp(head, "pen")) return calib_kv(&s->pen_calib, k, field, v);
-        if (!strcmp(head, "touch")) return calib_kv(&s->touch_calib, k, field, v);
+        if (!strcmp(head, "pen")) return calib_kv(&s->pen_calib, &s->pen_panel_w, &s->pen_panel_h, k, field, v);
+        if (!strcmp(head, "touch"))
+            return calib_kv(&s->touch_calib, &s->touch_panel_w, &s->touch_panel_h, k, field, v);
         for (int t = 0; t < TOOL_COUNT; t++) {
             if (strcmp(head, k_tool_keys[t])) continue;
             int n;
@@ -1470,6 +1487,7 @@ int settings_save(const Settings *s) {
     put_int(&b, "settings_version", s->version > SETTINGS_VERSION ? s->version : SETTINGS_VERSION);
     const InputCalib *cs[2] = {&s->pen_calib, &s->touch_calib};
     const char *cn[2] = {"pen", "touch"};
+    const int panel[2][2] = {{s->pen_panel_w, s->pen_panel_h}, {s->touch_panel_w, s->touch_panel_h}};
     for (int i = 0; i < 2; i++) {
         char key[16];
         snprintf(key, sizeof key, "%s.valid", cn[i]);
@@ -1478,6 +1496,11 @@ int settings_save(const Settings *s) {
         put_int(&b, key, cs[i]->swap_xy);
         sb_printf(&b, "%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n", cn[i], cs[i]->ax, cn[i], cs[i]->bx, cn[i],
                   cs[i]->ay, cn[i], cs[i]->by);
+        if (panel[i][0] > 0) {  // the panel it was made on, once known
+            snprintf(key, sizeof key, "%s.panel", cn[i]);
+            snprintf(t, sizeof t, "%dx%d", panel[i][0], panel[i][1]);
+            put(&b, key, t);
+        }
     }
     int np;
     const ParamInfo *pi = tool_param_table(&np);

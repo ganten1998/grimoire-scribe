@@ -44,6 +44,10 @@ typedef struct {
     int sleep_minutes;            // sleep after this long without input (0 = never)
     int theme;                    // UiTheme: 0 gothic, 1 classic (settings.ini: theme=gothic|classic)
     InputCalib pen_calib, touch_calib;
+    // The panel each calibration was made on (settings.ini pen.panel, touch.panel: WxH). A
+    // calibration maps to panel pixels, so on a panel of another size it is scaled (app_init).
+    // 0 x 0: not recorded (a calibration from before 1.1, or one a version without the key saved).
+    int pen_panel_w, pen_panel_h, touch_panel_w, touch_panel_h;
     int http_port;                // share server, default 8765
     bool passcode_told;           // the "passcode paused while Grimoire is open" notice was shown once
 } Settings;
