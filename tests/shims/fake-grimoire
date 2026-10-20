@@ -11,6 +11,8 @@
 # the test go wrong).
 # FAKE_EXIT_STATE: the power state to leave behind (the Kindle locked while Grimoire ran).
 echo "grimoire root=$GRIMOIRE_ROOT awesome_stopped=$GRIMOIRE_AWESOME_STOPPED" >>"${SHIM_LOG:?}"
+# The host a hosted launcher named (koreader), or nothing.
+echo "grimoire host=${GRIMOIRE_HOST:-}" >>"$SHIM_LOG"
 # The passcode note the launcher passed, and whether the passcode is set while Grimoire runs.
 if [ -e "${GRIMOIRE_SYSROOT:?}/var/local/system/userpasswdenabled" ]; then flag=on; else flag=off; fi
 echo "grimoire passcode note=${GRIMOIRE_PASSCODE:-} flag=$flag" >>"$SHIM_LOG"

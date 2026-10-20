@@ -3,7 +3,7 @@
 # Author: Ganten
 # Icon: @ICON@
 # DontUseFBInk
-# Capabilities: guard unpack-only
+# Capabilities: guard unpack-only hosted
 #
 # Scriptlet launcher (Vera / WinterBreak-era jailbreaks index .sh files in documents/ as books).
 # Self-contained: the app is appended below and unpacked to /mnt/us/grimoire/app; see docs/KINDLE.md.
@@ -13,23 +13,30 @@
 #   Grimoire.sh                      unpack the app if this file is newer, then start Grimoire
 #   Grimoire.sh --unpack-only        only unpack, start nothing
 #   Grimoire.sh --reset-calibration  forget the pen and touch calibration
+#   Grimoire.sh --hosted koreader    unpack, then run Grimoire inside KOReader's session, in the
+#                                    foreground (app/grimoire.sh says how); only inside KOReader
 #   Other arguments go on to app/grimoire.sh (--stop-framework).
 # Exit status: 0 done (for a start: Grimoire is on its way, or the old Quire app is still running
 # and nothing happens); 1 the app could not be unpacked (or the calibration not reset); 2
 # --unpack-only or --reset-calibration did nothing because the old Quire app is still running;
-# 3 refused inside KOReader.
+# 3 refused inside KOReader, or --hosted outside it. Past the unpack, --hosted answers with
+# app/grimoire.sh's status.
 #
 # Capabilities lists what this launcher supports, for a tool (the KOReader plugin) that must
 # never run a launcher to find out: an older one ignores a flag it does not know and starts
-# Grimoire. guard: it refuses to start inside KOReader (exit 3); unpack-only: --unpack-only.
-# A tool reads the line in the very documents/Grimoire.sh it is going to run, from its first
-# ten lines and never by searching the whole file (the app appended below holds
-# app/grimoire.sh, whose own Capabilities line is about that file):
+# Grimoire. guard: it refuses to start inside KOReader (exit 3); unpack-only: --unpack-only;
+# hosted: --hosted koreader. A tool reads the line in the very documents/Grimoire.sh it is going
+# to run, from its first ten lines and never by searching the whole file (the app appended below
+# holds app/grimoire.sh, whose own Capabilities line is about that file):
 #   head -n 10 documents/Grimoire.sh | sed -n 's/^# Capabilities: //p'
 # and runs --unpack-only only when the line lists unpack-only. The payload carries the same
 # words in app/CAPABILITIES, but that file is to be trusted only after such an --unpack-only
 # succeeded: an older launcher's unpack (1.0.0-beta has no such file) leaves a newer one behind.
 # app/grimoire.sh names its own capabilities in its header.
+#
+# The app carries KOReader's Grimoire plugin (app/koreader/grimoire.koplugin). A start from the
+# Library installs it into KOReader, when KOReader is there, and keeps it up to date; see
+# koplugin below.
 
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
 # never set.
@@ -46,9 +53,20 @@ log() { [ -d "$US/grimoire" ] && echo "$(date '+%F %T') Grimoire.sh: $*" >>"$LOG
 # KOReader. Everything KOReader starts inherits KOREADER_DIR (its file browser's Execute shell
 # script runs this file); a reader.lua still running is how koreader.sh itself tells that
 # KOReader is up. Unpacking and the calibration reset touch neither the screen nor the input, so
-# they are allowed. app/grimoire.sh has the same check.
+# they are allowed. app/grimoire.sh has the same check. --hosted is the other way round: KOReader's
+# Grimoire plugin runs it from KOReader's exit path, after KOReader let go of the screen and the
+# input, so it runs only inside KOReader (app/grimoire.sh checks the rest: that koreader.sh
+# started this KOReader and paused the Kindle UI).
 case "$1" in
 --unpack-only | --reset-calibration) ;;
+--hosted)
+    if [ -z "$KOREADER_DIR" ]; then
+        MSG="not starting: --hosted is for KOReader's Grimoire plugin, inside KOReader."
+        log "$MSG"
+        echo "Grimoire: $MSG" >&2
+        exit 3
+    fi
+    ;;
 *)
     MSG=""
     if [ -n "$KOREADER_DIR" ]; then
@@ -80,7 +98,7 @@ if [ -d "$OLD" ] && [ ! -e "$US/grimoire" ]; then
         # The old app is still running: try again after leaving it. There is no grimoire folder
         # to log to yet, so a flag's caller learns it from the status.
         case "$1" in
-        --unpack-only | --reset-calibration)
+        --unpack-only | --reset-calibration | --hosted)
             echo "Grimoire: the old Quire app is still running. Leave it, then try again." >&2
             exit 2
             ;;
@@ -116,7 +134,53 @@ case "$1" in
 --unpack-only) exit 0 ;;
 # Quick, and its status is the caller's answer: no need to detach.
 --reset-calibration) exec sh "$APP/grimoire.sh" --reset-calibration ;;
+# In the foreground: KOReader's exit path waits for Grimoire to end, then starts KOReader again.
+--hosted) exec sh "$APP/grimoire.sh" "$@" ;;
 esac
+
+# KOReader's Grimoire plugin (Tools > Grimoire in KOReader), from app/koreader. With KOReader
+# installed, a start from the Library copies it into KOReader's plugins folder once, then keeps
+# that copy up to date: grimoire/.koplugin-installed holds the build it came from. A plugin folder
+# the user deleted stays deleted (the marker then reads "removed"); one copied back by hand, from
+# the zip's "KOReader plugin (optional)" folder, is kept up to date again. KOReader is not running
+# here (the guard above), so it never loads a half-copied plugin, and each file goes in whole
+# (a copy, then a rename).
+koplugin() {
+    src=$APP/koreader/grimoire.koplugin
+    dst=$US/koreader/plugins/grimoire.koplugin
+    mark=$US/grimoire/.koplugin-installed
+    { [ -f "$US/koreader/reader.lua" ] && [ -d "$src" ]; } || return 0
+    was=$(cat "$mark" 2>/dev/null)
+    if [ -e "$mark" ] && [ ! -d "$dst" ]; then
+        if [ "$was" != removed ]; then
+            echo removed >"$mark"
+            log "KOReader's Grimoire plugin was removed from $dst: not installing it again"
+        fi
+        return 0
+    fi
+    [ "$was" = "$BUILD_ID" ] && return 0
+    if ! mkdir -p "$dst" 2>/dev/null; then
+        log "could not create $dst for KOReader's Grimoire plugin"
+        return 1
+    fi
+    for f in "$src"/*; do
+        [ -f "$f" ] || continue
+        n=${f##*/}
+        if ! { cp -f "$f" "$dst/.$n.tmp" && mv -f "$dst/.$n.tmp" "$dst/$n"; } 2>/dev/null; then
+            rm -f "$dst/.$n.tmp"
+            log "could not copy $n of KOReader's Grimoire plugin into $dst"
+            return 1
+        fi
+    done
+    echo "$BUILD_ID" >"$mark"
+    if [ -z "$was" ]; then
+        log "installed KOReader's Grimoire plugin into $dst (Tools > Grimoire in KOReader)"
+    else
+        log "updated KOReader's Grimoire plugin in $dst"
+    fi
+}
+koplugin
+
 # Detach, so Grimoire keeps running whatever the scriptlet host does with this process.
 if command -v setsid >/dev/null 2>&1; then
     setsid sh "$APP/grimoire.sh" "$@" </dev/null >/dev/null 2>&1 &

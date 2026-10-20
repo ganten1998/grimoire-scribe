@@ -1,9 +1,10 @@
 #!/bin/sh
-# Checks the zip people install (make package): its four files; documents/Grimoire.sh, the
-# self-unpacking scriptlet (SH_Integration's keys, BUILD_ID, the icon, the Capabilities line, the
-# archive); the app inside it (the binary, the launcher, CAPABILITIES, and a license for every
-# embedded font and every third-party part of the binary); and that the launchers' test hooks
-# fall back to the device's own paths and timings.
+# Checks the zip people install (make package): its four files and the optional KOReader plugin
+# folder; documents/Grimoire.sh, the self-unpacking scriptlet (SH_Integration's keys, BUILD_ID,
+# the icon, the Capabilities line, the archive); the app inside it (the binary, the launcher,
+# CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font and every
+# third-party part of the binary); and that the launchers' test hooks fall back to the device's
+# own paths and timings. The plugin the app carries also goes through tests/koplugin_check.sh.
 # usage: tests/package_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -31,7 +32,19 @@ RESET="documents/Grimoire - reset pen calibration.sh"
 for f in documents/Grimoire.sh "$RESET" README.txt LICENSE.txt; do
     check "zip has $f" grep -qxF -- "$f" "$B/zip.list"
 done
-grep -vxF -e documents/ -e documents/Grimoire.sh -e "$RESET" -e README.txt -e LICENSE.txt "$B/zip.list" >"$B/extra.list"
+# KOReader's Grimoire plugin, for a hand install into koreader/plugins: in a folder of its own,
+# never a top-level koreader folder (copied over MTP, that could replace someone's KOReader).
+KOZ="KOReader plugin (optional)/grimoire.koplugin"
+KOPLUGIN=kindle/koreader/grimoire.koplugin
+printf '%s\n' "KOReader plugin (optional)/" "$KOZ/" >"$B/allowed.list"
+for f in "$KOPLUGIN"/*; do
+    n=${f##*/}
+    printf '%s\n' "$KOZ/$n" >>"$B/allowed.list"
+    check "zip has $KOZ/$n, kindle's" cmp -s "$f" "$B/zip/$KOZ/$n"
+done
+check "zip has no top-level koreader folder" sh -c '! grep -qiE "^koreader(/|$)" "$1"' sh "$B/zip.list"
+grep -vxF -e documents/ -e documents/Grimoire.sh -e "$RESET" -e README.txt -e LICENSE.txt -f "$B/allowed.list" \
+    "$B/zip.list" >"$B/extra.list"
 check "zip has nothing else" [ ! -s "$B/extra.list" ]
 check "LICENSE.txt is the GPL" cmp -s "$B/zip/LICENSE.txt" LICENSE
 check "the reset scriptlet is kindle's" cmp -s "$B/zip/$RESET" "kindle/Grimoire - reset pen calibration.sh"
@@ -64,7 +77,7 @@ sed -n 's/^# Icon: data:image\/png;base64,//p' "$B/head6" >"$B/icon.b64"
 check "the icon is assets/icon.png" cmp -s "$B/icon.png" assets/icon.png
 CAPS=$(head -n 10 "$B/script.sh" | sed -n 's/^# Capabilities: //p')
 check "Capabilities line in the header ($CAPS)" [ -n "$CAPS" ]
-for c in guard unpack-only; do
+for c in guard unpack-only hosted; do
     check "Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$CAPS" "$c"
 done
 # A tool reads that line from the first 10 lines (Grimoire.sh says how), never by searching the
@@ -84,11 +97,26 @@ for f in grimoire grimoire.sh CAPABILITIES licenses/GPL-3.0.txt; do
 done
 check "payload's grimoire.sh is kindle's" cmp -s "$B/app/grimoire.sh" kindle/app/grimoire.sh
 check "payload's CAPABILITIES match the header" is "$(cat "$B/app/CAPABILITIES" 2>/dev/null)" "$CAPS"
-# app/grimoire.sh names what it supports itself: the guard, and no unpacking (that is Grimoire.sh's).
+# app/grimoire.sh names what it supports itself: the guard and --hosted, and no unpacking (that is
+# Grimoire.sh's).
 APP_CAPS=$(head -n 10 "$B/app/grimoire.sh" 2>/dev/null | sed -n 's/^# Capabilities: //p')
 check "payload's grimoire.sh has its own Capabilities line ($APP_CAPS)" [ -n "$APP_CAPS" ]
-check "payload's grimoire.sh Capabilities include guard" sh -c 'case " $1 " in *" guard "*) exit 0 ;; esac; exit 1' sh "$APP_CAPS"
+for c in guard hosted; do
+    check "payload's grimoire.sh Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$APP_CAPS" "$c"
+done
 check "payload's grimoire.sh Capabilities leave out unpack-only" sh -c 'case " $1 " in *" unpack-only "*) exit 1 ;; esac' sh "$APP_CAPS"
+# KOReader's Grimoire plugin, which Grimoire.sh installs into KOReader from app/koreader.
+for f in "$KOPLUGIN"/*; do
+    check "payload has koreader/grimoire.koplugin/${f##*/}, kindle's" cmp -s "$f" "$B/app/koreader/grimoire.koplugin/${f##*/}"
+done
+if tests/koplugin_check.sh "$B/app/koreader/grimoire.koplugin" "$B/koplugin-check" >"$B/koplugin.log" 2>&1; then
+    echo "ok   the plugin the app carries passes tests/koplugin_check.sh"
+    grep -E '^(skip|koplugin test:)' "$B/koplugin.log"
+else
+    cat "$B/koplugin.log"
+    echo "FAIL the plugin the app carries passes tests/koplugin_check.sh"
+    fail=1
+fi
 check "payload has no Mac metadata" sh -c '! grep -qE "(^|/)(\._|\.DS_Store)" "$1"' sh "$B/app.list"
 if command -v file >/dev/null 2>&1; then
     check "grimoire is a static ARM binary" sh -c 'file "$1" | grep -q "ARM.*statically linked"' sh "$B/app/grimoire"

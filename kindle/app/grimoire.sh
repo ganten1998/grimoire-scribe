@@ -1,19 +1,33 @@
 #!/bin/sh
-# Capabilities: guard
+# Capabilities: guard hosted
 # Grimoire launcher, started by the documents/Grimoire.sh scriptlet. Pauses the Kindle UI the way
 # KOReader does on upstart firmware (5.x, incl. 5.16+ hard-float and 5.19), runs Grimoire, and
 # ALWAYS restores everything on exit.
 #
 #   grimoire.sh                      pause the UI (pillow off, awesome + statusbar stopped)
 #   grimoire.sh --stop-framework     stop lab126_gui entirely, restart it afterwards
+#   grimoire.sh --hosted koreader    run inside KOReader's session, for its Grimoire plugin (below)
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
 # A Device Passcode is paused while Grimoire runs and put back when it ends (as KOReader does).
-# Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does. The Capabilities
-# line above says what this file supports (guard: that refusal), for a tool that must not run it
-# to find out; it always describes this very file, while app/CAPABILITIES can outlive a
-# downgrade (see documents/Grimoire.sh).
+# Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does: --hosted is the one
+# start allowed there. The Capabilities line above says what this file supports (guard: that
+# refusal; hosted: --hosted koreader), for a tool that must not run it to find out; it always
+# describes this very file, while app/CAPABILITIES can outlive a downgrade (see
+# documents/Grimoire.sh).
+#
+# --hosted koreader: KOReader's Grimoire plugin (Tools > Grimoire) runs this from KOReader's exit
+# path, once KOReader has let go of the screen and the input, and waits for it; then koreader.sh
+# starts KOReader again in the same session. koreader.sh keeps the Kindle UI paused all along and
+# puts it back, with the passcode, when KOReader quits, so this mode never touches the screen
+# dump, pillow, the home booklet, volumd, lab126_gui or the passcode. It keeps the lock, the
+# priority, the share port's firewall hole, the watchdog and the log, saves and puts back the
+# power service's preventScreenSaver, and stops the status jobs while Grimoire runs (the KOReader
+# that KPM installs leaves the 5.17+ status bar running). It skips the settle wait and runs
+# Grimoire in the foreground. Exit status: 0 Grimoire ran; 1 another Grimoire is running; 3
+# refused: not inside a KOReader that koreader.sh started and that paused the Kindle UI, or not
+# from its exit path (its reader.lua still holds an input device).
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
@@ -42,22 +56,92 @@ if [ "$1" = "--reset-calibration" ]; then
     exit 1
 fi
 
-# KOReader keeps the pen and the touch screen to itself while it runs: Grimoire would get neither,
-# and the restore below would wake the Kindle UI underneath KOReader. See documents/Grimoire.sh.
-MSG=""
-if [ -n "$KOREADER_DIR" ]; then
-    MSG="not starting inside KOReader, which holds the pen and the touch screen: quit KOReader, then tap Grimoire in the Library."
-elif KO_PID=$(pidof reader.lua 2>/dev/null); then
-    MSG="not starting: KOReader is still running (reader.lua, pid $KO_PID) and holds the pen and the touch screen. Quit it, or restart the Kindle if it is not open, then tap Grimoire in the Library."
-fi
-if [ -n "$MSG" ]; then
-    log "$MSG"
-    echo "Grimoire: $MSG" >&2
-    if [ -z "$KOREADER_DIR" ] && command -v eips >/dev/null 2>&1; then
-        (usleep 2000000 2>/dev/null || sleep 2; eips 1 3 "Grimoire did not start: KOReader is running.") \
-            </dev/null >/dev/null 2>&1 &
+# A process's name and parent from /proc/<pid>/stat ("pid (name) state ppid ..."): sets P_NAME
+# and P_PARENT, fails when there is no such process.
+proc_parent() {
+    P_LINE=""
+    { read -r P_LINE <"$SYS/proc/$1/stat"; } 2>/dev/null
+    [ -n "$P_LINE" ] || return 1
+    P_NAME=${P_LINE#*"("}
+    P_NAME=${P_NAME%")"*}
+    P_PARENT=${P_LINE##*") "}
+    P_PARENT=${P_PARENT#* }
+    P_PARENT=${P_PARENT%% *}
+}
+# For --hosted: KOReader's reader.lua is among this launcher's parents (its os.execute starts us,
+# through a sh -c), and koreader.sh is reader.lua's own parent. A /var/tmp/koreader.sh that a
+# crashed session left behind proves neither. Sets KO_READER, or KO_WHY when it fails.
+ko_parents() {
+    p=$PPID
+    n=0
+    while [ "$n" -lt 8 ] && proc_parent "$p"; do
+        if [ "$P_NAME" = reader.lua ] || tr '\000' ' ' <"$SYS/proc/$p/cmdline" 2>/dev/null | grep -q 'reader\.lua'; then
+            KO_READER=$p
+            tr '\000' ' ' <"$SYS/proc/$P_PARENT/cmdline" 2>/dev/null | grep -q 'koreader\.sh' && return 0
+            KO_WHY="KOReader's reader.lua (pid $p) was not started by koreader.sh"
+            return 1
+        fi
+        [ "$P_PARENT" -gt 1 ] 2>/dev/null || break
+        p=$P_PARENT
+        n=$((n + 1))
+    done
+    KO_WHY="KOReader's reader.lua is not among this launcher's parents"
+    return 1
+}
+# For --hosted: KOReader's exit has let go of the input. An exclusive grab belongs to the open
+# device, so while reader.lua still has one open (this run did not come from KOReader's exit path:
+# from its terminal, say), Grimoire would get no pen or touch. Sets KO_HELD to the first one; a
+# list that cannot be read lets this through.
+ko_let_go() {
+    KO_HELD=$(ls -l "$SYS/proc/$KO_READER/fd" 2>/dev/null | awk '$NF ~ /^\/dev\/input\// { print $NF; exit }')
+    [ -z "$KO_HELD" ]
+}
+
+HOSTED=""
+if [ "$1" = "--hosted" ]; then
+    # KOReader's own variables (koreader.sh exports them), read before this script reuses the
+    # names STOP_FRAMEWORK and AWESOME_STOPPED for its own pause below.
+    KO_STOP_FRAMEWORK=$STOP_FRAMEWORK
+    KO_AWESOME_STOPPED=$AWESOME_STOPPED
+    MSG=""
+    if [ "$2" != koreader ]; then
+        MSG="not starting: --hosted ${2:-without a name} is no host Grimoire knows (the one host is koreader)."
+    elif [ -z "$KOREADER_DIR" ]; then
+        MSG="not starting: --hosted koreader runs only inside KOReader, from its Grimoire plugin."
+    elif ! ko_parents; then
+        MSG="not starting hosted: $KO_WHY."
+    elif ! ko_let_go; then
+        MSG="not starting hosted: KOReader still has $KO_HELD open (this is not its exit path), so Grimoire would get no pen or touch."
+    elif [ "$KO_STOP_FRAMEWORK" != yes ] && [ "$PILLOW_HARD_DISABLED" != yes ] && [ "$KO_AWESOME_STOPPED" != yes ]; then
+        # A KPVBooklet start, say: koreader.sh pauses nothing then, and the Kindle UI would draw
+        # over Grimoire.
+        MSG="not starting hosted: KOReader left the Kindle UI running (koreader.sh paused nothing)."
     fi
-    exit 3
+    if [ -n "$MSG" ]; then
+        log "$MSG"
+        echo "Grimoire: $MSG" >&2
+        exit 3
+    fi
+    HOSTED=koreader
+else
+    # KOReader keeps the pen and the touch screen to itself while it runs: Grimoire would get
+    # neither, and the restore below would wake the Kindle UI underneath KOReader. See
+    # documents/Grimoire.sh.
+    MSG=""
+    if [ -n "$KOREADER_DIR" ]; then
+        MSG="not starting inside KOReader, which holds the pen and the touch screen: quit KOReader, then tap Grimoire in the Library."
+    elif KO_PID=$(pidof reader.lua 2>/dev/null); then
+        MSG="not starting: KOReader is still running (reader.lua, pid $KO_PID) and holds the pen and the touch screen. Quit it, or restart the Kindle if it is not open, then tap Grimoire in the Library."
+    fi
+    if [ -n "$MSG" ]; then
+        log "$MSG"
+        echo "Grimoire: $MSG" >&2
+        if [ -z "$KOREADER_DIR" ] && command -v eips >/dev/null 2>&1; then
+            (usleep 2000000 2>/dev/null || sleep 2; eips 1 3 "Grimoire did not start: KOReader is running.") \
+                </dev/null >/dev/null 2>&1 &
+        fi
+        exit 3
+    fi
 fi
 
 # The share server's port (Settings may change it; the firewall hole must match).
@@ -77,6 +161,8 @@ while HOLDER=$(lock_holder) && [ -n "$HOLDER" ]; do
     TRIES=$((TRIES + 1))
     if [ "$TRIES" -gt 20 ]; then
         log "already running (launcher pid $HOLDER), not starting another"
+        # KOReader's plugin tells its user that Grimoire did not start.
+        [ -n "$HOSTED" ] && exit 1
         exit 0
     fi
     usleep 500000 2>/dev/null || sleep 1
@@ -91,7 +177,13 @@ fi
 
 STOP_FRAMEWORK=no
 [ "$1" = "--stop-framework" ] && STOP_FRAMEWORK=yes
-[ -f "$ROOT/stop-framework" ] && STOP_FRAMEWORK=yes
+if [ -f "$ROOT/stop-framework" ]; then
+    if [ -n "$HOSTED" ]; then
+        log "the stop-framework flag does not apply inside KOReader, which paused the Kindle UI itself"
+    else
+        STOP_FRAMEWORK=yes
+    fi
+fi
 
 AWESOME_STOPPED=no
 PILLOW_DISABLED=no
@@ -99,6 +191,7 @@ VOLUMD_STOPPED=no
 IPTABLES_ADDED=no
 STOPPED_JOBS=""
 RESTORED=no
+PREVENT_BEFORE=0  # preventScreenSaver to put back: off, or hosted, what KOReader had
 # The Kindle's passcode, paused while Grimoire runs (see "device passcode" below).
 PASSCODE=$SYS/var/local/system/userpasswdenabled
 PASSCODE_MARK=$ROOT/.passcode-paused
@@ -132,16 +225,30 @@ restore_passcode() {
 restore() {
     [ "$RESTORED" = yes ] && return
     RESTORED=yes
-    log "restoring the Kindle UI"
+    if [ -n "$HOSTED" ]; then
+        log "handing the screen back to KOReader"
+    else
+        log "restoring the Kindle UI"
+    fi
     if [ "$IPTABLES_ADDED" = yes ]; then
         iptables -D INPUT -i wlan0 -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null
     fi
     if [ "$VOLUMD_STOPPED" = yes ]; then
         killall -CONT volumd 2>/dev/null
     fi
-    lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
+    lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_BEFORE" 2>/dev/null
     # Grimoire's power-service watcher, should a crash have left it behind.
     pkill -f "lipc-wait-event .*com.lab126.powerd goingToScreenSaver,outOfScreenSaver" 2>/dev/null
+    if [ -n "$HOSTED" ]; then
+        # KOReader comes back over the screen, and puts the Kindle UI back when it quits: only the
+        # status jobs stopped here are this launcher's to start.
+        for job in $STOPPED_JOBS; do
+            start "$job" 2>/dev/null
+        done
+        kindle_locked
+        log "power state at exit: ${STATE:-unknown}"
+        return
+    fi
     if [ "$STOP_FRAMEWORK" = yes ]; then
         kindle_locked
         log "power state at exit: ${STATE:-unknown}"
@@ -188,7 +295,14 @@ trap 'restore; release' EXIT
 # Never hand the screen back to the Kindle while Grimoire still has it.
 trap 'stop_grimoire; restore; exit 1' INT TERM HUP
 
-log "starting Grimoire (stop framework: $STOP_FRAMEWORK) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"
+if [ -n "$HOSTED" ]; then
+    log "starting Grimoire hosted by KOReader (reader.lua pid $KO_READER; KOReader stopped the framework: ${KO_STOP_FRAMEWORK:-no}, awesome: ${KO_AWESOME_STOPPED:-no}) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"
+    # KOReader drops its stand-in for the framework (which the power service wants before it
+    # takes the power button) at its exit.
+    [ "$KO_STOP_FRAMEWORK" = yes ] && log "KOReader stopped the Kindle framework: the power button may not put the Kindle to sleep in Grimoire"
+else
+    log "starting Grimoire (stop framework: $STOP_FRAMEWORK) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"
+fi
 # What tells setups apart in a bug report. grimoire.log gets attached to public issues, so nothing
 # here may identify the device or its network (no serial number, address or network name).
 LANG_LINE=$(grep '^LANG=' "$SYS/var/local/system/locale" 2>/dev/null | head -n 1)
@@ -223,38 +337,43 @@ log "user id: $(id -u 2>/dev/null)"
 # start and the next two while the passcode is still off (a toast is easily missed), and no more
 # after that: by then it may be off on purpose. The pause needs its marker, so no marker (a full
 # or read-only userstore), no pause.
-# (1.1's session hosted inside KOReader must leave all this alone: KOReader paused it already.)
-if [ -e "$PASSCODE_MARK" ] && [ ! -e "$PASSCODE" ]; then
-    log "device passcode: left off by a session that did not end (a restart?); not turned back on here"
-    echo 0 2>/dev/null >"$PASSCODE_LEFT"
-    PASSCODE_NOTE=left-off
-fi
-rm -f "$PASSCODE_MARK" 2>/dev/null
-if [ -e "$PASSCODE_LEFT" ]; then
-    if [ -e "$PASSCODE" ]; then
-        rm -f "$PASSCODE_LEFT"  # back on: nothing more to tell
-    else
-        TOLD=$(cat "$PASSCODE_LEFT" 2>/dev/null)
-        case "$TOLD" in '' | *[!0-9]*) TOLD=0 ;; esac
-        TOLD=$((TOLD + 1))
-        if [ "$TOLD" -ge 3 ]; then rm -f "$PASSCODE_LEFT"; else echo "$TOLD" 2>/dev/null >"$PASSCODE_LEFT"; fi
+# Hosted inside KOReader, all of this is left alone: koreader.sh paused the passcode for its
+# session already and puts it back when KOReader quits.
+if [ -n "$HOSTED" ]; then
+    log "device passcode: left to KOReader, which pauses it for its session"
+else
+    if [ -e "$PASSCODE_MARK" ] && [ ! -e "$PASSCODE" ]; then
+        log "device passcode: left off by a session that did not end (a restart?); not turned back on here"
+        echo 0 2>/dev/null >"$PASSCODE_LEFT"
         PASSCODE_NOTE=left-off
-        log "device passcode: still off since a session that did not end; telling the user ($TOLD of 3)"
     fi
-fi
-if [ -e "$PASSCODE" ]; then
-    # (echo, not ":": a failed redirection on a special built-in would end the script.)
-    if ! echo paused 2>/dev/null >"$PASSCODE_MARK"; then
-        log "device passcode: not paused (could not write $PASSCODE_MARK, which a restart would need)"
-    else
-        rm -f "$PASSCODE"
+    rm -f "$PASSCODE_MARK" 2>/dev/null
+    if [ -e "$PASSCODE_LEFT" ]; then
         if [ -e "$PASSCODE" ]; then
-            rm -f "$PASSCODE_MARK" 2>/dev/null
-            log "device passcode: could not pause it"
+            rm -f "$PASSCODE_LEFT"  # back on: nothing more to tell
         else
-            PASSCODE_PAUSED=yes
-            PASSCODE_NOTE=paused
-            log "device passcode: paused while Grimoire runs"
+            TOLD=$(cat "$PASSCODE_LEFT" 2>/dev/null)
+            case "$TOLD" in '' | *[!0-9]*) TOLD=0 ;; esac
+            TOLD=$((TOLD + 1))
+            if [ "$TOLD" -ge 3 ]; then rm -f "$PASSCODE_LEFT"; else echo "$TOLD" 2>/dev/null >"$PASSCODE_LEFT"; fi
+            PASSCODE_NOTE=left-off
+            log "device passcode: still off since a session that did not end; telling the user ($TOLD of 3)"
+        fi
+    fi
+    if [ -e "$PASSCODE" ]; then
+        # (echo, not ":": a failed redirection on a special built-in would end the script.)
+        if ! echo paused 2>/dev/null >"$PASSCODE_MARK"; then
+            log "device passcode: not paused (could not write $PASSCODE_MARK, which a restart would need)"
+        else
+            rm -f "$PASSCODE"
+            if [ -e "$PASSCODE" ]; then
+                rm -f "$PASSCODE_MARK" 2>/dev/null
+                log "device passcode: could not pause it"
+            else
+                PASSCODE_PAUSED=yes
+                PASSCODE_NOTE=paused
+                log "device passcode: paused while Grimoire runs"
+            fi
         fi
     fi
 fi
@@ -262,7 +381,30 @@ fi
 # Launchers can start us niced; go back to normal priority for pen latency.
 [ "$(nice)" -gt 0 ] 2>/dev/null && renice -n "-$(nice)" $$ >/dev/null 2>&1
 
-if [ "$STOP_FRAMEWORK" = yes ]; then
+# On 5.17+ the status bar (clock, battery) is its own upstart job and draws over everything. Its
+# name varies by device/firmware, so stop every job that looks like one; restore() starts again
+# exactly those that were running.
+stop_status_jobs() {
+    for conf in "$SYS"/etc/upstart/*status*.conf "$SYS"/etc/upstart/*chrome*.conf; do
+        [ -f "$conf" ] || continue
+        job=$(basename "$conf" .conf)
+        if stop "$job" >/dev/null 2>&1; then
+            STOPPED_JOBS="$STOPPED_JOBS $job"
+            log "stopped job $job"
+        fi
+    done
+}
+
+if [ -n "$HOSTED" ]; then
+    # KOReader paused the Kindle UI. Its exit wakes awesome on Special Offers Kindles (KOReader
+    # quitting for good wants the Kindle UI back): stop it again. koreader.sh continues it when
+    # KOReader quits; this launcher never does.
+    if [ "$KO_AWESOME_STOPPED" = yes ] && killall -STOP awesome 2>/dev/null; then
+        log "awesome stopped again, as KOReader had it"
+    fi
+    stop_status_jobs
+    log "upstart jobs running: $(initctl list 2>/dev/null | grep -i 'start/running' | cut -d' ' -f1 | tr '\n' ' ')"
+elif [ "$STOP_FRAMEWORK" = yes ]; then
     # The framework job sends SIGTERM on stop; do not let it take us down with it.
     trap "" TERM
     stop lab126_gui 2>/dev/null
@@ -273,16 +415,7 @@ else
     lipc-set-prop com.lab126.pillow disableEnablePillow disable 2>/dev/null && PILLOW_DISABLED=yes
     # Pillow off is not enough to stop the clock / window manager repainting on 5.7.2+.
     if killall -STOP awesome 2>/dev/null; then AWESOME_STOPPED=yes; fi
-    # On 5.17+ the status bar (clock, battery) is its own upstart job and draws over everything.
-    # Its name varies by device/firmware, so stop every job that looks like one.
-    for conf in "$SYS"/etc/upstart/*status*.conf "$SYS"/etc/upstart/*chrome*.conf; do
-        [ -f "$conf" ] || continue
-        job=$(basename "$conf" .conf)
-        if stop "$job" >/dev/null 2>&1; then
-            STOPPED_JOBS="$STOPPED_JOBS $job"
-            log "stopped job $job"
-        fi
-    done
+    stop_status_jobs
     # For diagnosis: what is still running that could draw (logged once per launch).
     log "pillow disabled: $PILLOW_DISABLED, awesome stopped: $AWESOME_STOPPED"
     log "upstart jobs running: $(initctl list 2>/dev/null | grep -i 'start/running' | cut -d' ' -f1 | tr '\n' ' ')"
@@ -290,21 +423,34 @@ fi
 
 # Keep the Kindle awake while Grimoire starts. Grimoire turns this off again unless Sleep after
 # is set to never (the power service ignores the button while it is on); then a press of the
-# power button sleeps on the page, and holding it leaves Grimoire.
+# power button sleeps on the page, and holding it leaves Grimoire. Hosted, KOReader's own value
+# goes back at the end (its Keep alive, say), not off.
+if [ -n "$HOSTED" ]; then
+    PREVENT_BEFORE=$(lipc-get-prop -i com.lab126.powerd preventScreenSaver 2>/dev/null)
+    case "$PREVENT_BEFORE" in 0 | 1) ;; *) PREVENT_BEFORE=0 ;; esac
+fi
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
-# Keep USB mass storage from yanking /mnt/us out from under us.
-if [ -e "$SYS/etc/upstart/volumd.conf" ] && killall -STOP volumd 2>/dev/null; then VOLUMD_STOPPED=yes; fi
+# Keep USB mass storage from yanking /mnt/us out from under us (hosted, KOReader has volumd
+# stopped already).
+if [ -z "$HOSTED" ] && [ -e "$SYS/etc/upstart/volumd.conf" ] && killall -STOP volumd 2>/dev/null; then
+    VOLUMD_STOPPED=yes
+fi
 # Let the Wi-Fi share screen be reached (the stock firewall drops incoming connections).
 if iptables -A INPUT -i wlan0 -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then IPTABLES_ADDED=yes; fi
 
 # Give the Kindle UI a moment to finish repainting after the scriptlet returned, so its last
 # frame lands before ours (Grimoire also re-checks the panel and repaints if it was drawn over).
-usleep 900000 2>/dev/null || sleep 1
+# Hosted, nothing repaints: KOReader has closed its screen.
+if [ -z "$HOSTED" ]; then
+    usleep 900000 2>/dev/null || sleep 1
+fi
 
 cd "$DIR" || exit 1
 rm -f "$BEAT"
-GRIMOIRE_AWESOME_STOPPED="$AWESOME_STOPPED" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_ROOT="$ROOT" \
-    "$DIR/grimoire" >>"$LOG" 2>&1 &
+# Hosted, Grimoire learns its host (its Exit goes back to KOReader), and AWESOME_STOPPED stayed
+# no above: it never wakes awesome, which KOReader's session keeps stopped.
+GRIMOIRE_AWESOME_STOPPED="$AWESOME_STOPPED" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
+    GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
 # Watchdog: Grimoire touches its heartbeat file every 2 s once its first frame is up. No first
