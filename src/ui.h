@@ -3,9 +3,11 @@
 // below 128 except ink, so everything stays crisp under GL16/DU refresh.
 // Sizes scale with dpi via ui_px(); at 300 dpi a standard touch target is ~ 10 mm.
 // Icons come from Terminess Nerd Font (its Material Design glyphs); type follows the theme.
+// Text goes through i18n.h's _() and friends (included here for every screen).
 #pragma once
 #include "canvas.h"
 #include "font.h"
+#include "i18n.h"
 
 typedef enum {
     ICON_NONE = 0,
@@ -17,7 +19,7 @@ typedef enum {
     ICON_TRASH, ICON_CHECK, ICON_BACK, ICON_TARGET, ICON_EXIT,
     ICON_TUNE, ICON_RENAME, ICON_FOLDER_MOVE, ICON_FOLDER_PLUS, ICON_DOWNLOAD, ICON_HIGHLIGHTER,
     ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT, ICON_FOUNTAIN, ICON_FINELINER, ICON_MARKER,
-    ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE, ICON_CHARCOAL, ICON_CALLIGRAPHY,
+    ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE, ICON_CHARCOAL, ICON_CALLIGRAPHY, ICON_LANGUAGE,
     ICON_COUNT
 } IconKind;
 
@@ -70,11 +72,25 @@ void ui_emblem(Canvas *c, float cx, float cy, float r, uint8_t ink, uint8_t bg);
 // Modal sheet: dims nothing (e-ink), draws a white card with a thick border + title bar.
 // Returns the content rect inside the card.
 Rect ui_sheet(Canvas *c, Rect card, const char *title);
-// Toast-style one-line message box centered near the bottom of the screen.
+// Toast-style message box centered near the bottom of the screen: one line, or two (taller) for
+// text that needs them; what two lines cannot hold ends in "...".
 Rect ui_toast_rect(Rect screen, const char *msg);
 void ui_toast(Canvas *c, Rect screen, const char *msg);
 void ui_toast_at(Canvas *c, Rect r, const char *msg);  // r: ui_toast_rect's, moved as the app needs
+int ui_toast_room(Rect screen);  // the widest a toast's line can be on that screen (px)
 void ui_checkbox(Canvas *c, Rect r, const char *label, bool checked);
+
+// Text that fits r, for labels a translation may make longer: on one line at px if it can; else
+// at the largest size down to min_px that holds it on one line (font_fit_px: Gothic's pixel face
+// has only whole steps, 44 px to 34 px being the one that counts); else on up to max_lines lines
+// at min_px, as many as r's height holds; only then cut short (which the overflow hook hears of).
+// Centered both ways, or left-aligned and centered vertically. Text that fits is drawn exactly as
+// font_draw_centered or font_draw_left draws it.
+void ui_text(Canvas *c, FontFace f, float px, float min_px, Rect r, const char *text, int max_lines, bool center,
+             uint8_t gray);
+// The width a box needs for its text: the text at px with pad on each side, kept within
+// [min_w, max_w], for a chip or a button that grows with its label instead of cutting it.
+int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, int max_w);
 
 // Tap tracking shared by screens: a press that starts and ends in the same rect within
 // slop = tap. Long press = held > 600 ms without moving.

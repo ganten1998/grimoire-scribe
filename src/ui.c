@@ -144,6 +144,7 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_CASTLE] = 0xF011A,       // md-castle
     [ICON_CHARCOAL] = 0xF00B5,     // md-blur (grainy dots)
     [ICON_CALLIGRAPHY] = 0xF06D3,  // md-feather (a quill)
+    [ICON_LANGUAGE] = 0xF05CA,     // md-translate
 };
 
 IconKind ui_tool_icon(int tool) {
@@ -186,8 +187,9 @@ void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle 
     } else if (icon) {
         ui_icon(c, icon, rect_inflate(in, -ui_px(6)), fg);
     } else if (has_label) {
+        // A label too long for the button (a translation) takes the small size, then two lines.
         float ts = fminf(ui_text_size(), (float)in.h * 0.6f);
-        font_draw_centered(c, FONT_CAPS, ts, in, label, fg);
+        ui_text(c, FONT_CAPS, ts, fminf(ts, ui_small_size()), in, label, 2, true, fg);
     }
 }
 
@@ -273,10 +275,24 @@ Rect ui_sheet(Canvas *c, Rect card, const char *title) {
     return rect_inflate(card, -ui_px(36));
 }
 
+// A toast is one line of text, or two at the same size when it needs them: the box grows by a
+// line, as wide as the longer line needs, and keeps the ends of a one-line box (Gothic's points,
+// Classic's round ends), which the text stays clear of.
+static int toast_one_h(void) { return ui_px(110); }
+static int toast_inset(void) { return gothic() ? ui_px(50) : ui_px(30); }
+
+int ui_toast_room(Rect screen) { return screen.w - ui_px(60) - 2 * toast_inset(); }
+
 Rect ui_toast_rect(Rect screen, const char *msg) {
-    int w = font_measure(FONT_BOLD, ui_text_size(), msg) + ui_px(100);
-    if (w > screen.w - ui_px(60)) w = screen.w - ui_px(60);
-    int h = ui_px(110);
+    float ts = ui_text_size();
+    int max_w = screen.w - ui_px(60);
+    int w = font_measure(FONT_BOLD, ts, msg) + ui_px(100), h = toast_one_h();
+    if (w > max_w) {
+        w = max_w;
+        int widest, lines = font_wrap_lines(FONT_BOLD, ts, msg, ui_toast_room(screen), &widest);
+        if (lines > 1) h += font_ascent(FONT_BOLD, ts) + font_descent(FONT_BOLD, ts);
+        if (lines == 2 && widest + ui_px(100) < max_w) w = widest + ui_px(100);
+    }
     return (Rect){screen.x + (screen.w - w) / 2, screen.y + screen.h - h - ui_px(120), w, h};
 }
 
@@ -284,16 +300,17 @@ void ui_toast(Canvas *c, Rect screen, const char *msg) { ui_toast_at(c, ui_toast
 
 void ui_toast_at(Canvas *c, Rect r, const char *msg) {
     float ts = ui_text_size();
-    int h = r.h;
+    int ends = toast_one_h() / 2;  // the ends' depth (or radius): half a one-line box
+    Rect tr = rect_inflate(r, -toast_inset());
     if (gothic()) {
         // A black banner with pointed ends and a white inner line.
-        canvas_chamfer_rect(c, r, h / 2, 0, true, 0);
-        canvas_chamfer_rect(c, rect_inflate(r, -ui_px(9)), h / 2 - ui_px(9), 255, false, ui_px(2));
-        font_draw_centered(c, FONT_BOLD, ts, rect_inflate(r, -ui_px(50)), msg, 255);
-        return;
+        canvas_chamfer_rect(c, r, ends, 0, true, 0);
+        canvas_chamfer_rect(c, rect_inflate(r, -ui_px(9)), ends - ui_px(9), 255, false, ui_px(2));
+    } else {
+        canvas_round_rect(c, r, ends, 0, true, 0);
     }
-    canvas_round_rect(c, r, h / 2, 0, true, 0);
-    font_draw_centered(c, FONT_BOLD, ts, rect_inflate(r, -ui_px(30)), msg, 255);
+    if (r.h > toast_one_h()) font_draw_wrapped(c, FONT_BOLD, ts, tr, msg, 2, 0, true, 255);
+    else font_draw_centered(c, FONT_BOLD, ts, tr, msg, 255);
 }
 
 void ui_checkbox(Canvas *c, Rect r, const char *label, bool checked) {
@@ -306,15 +323,34 @@ void ui_checkbox(Canvas *c, Rect r, const char *label, bool checked) {
         canvas_lozenge(c, cx, cy, rr, 0);
         canvas_lozenge(c, cx, cy, rr - ui_px(5), 255);
         if (checked) canvas_lozenge(c, cx, cy, rr - ui_px(14), 0);
-        font_draw_left(c, FONT_REGULAR, ui_text_size(),
-                       (Rect){r.x + bs + ui_px(28), r.y, r.w - bs - ui_px(28), r.h}, label, 0);
-        return;
+    } else {
+        canvas_round_rect(c, b, ui_px(10), checked ? 0 : 255, true, 0);
+        canvas_round_rect(c, b, ui_px(10), 0, false, ui_px(4));
+        if (checked) ui_icon(c, ICON_CHECK, b, 255);
     }
-    canvas_round_rect(c, b, ui_px(10), checked ? 0 : 255, true, 0);
-    canvas_round_rect(c, b, ui_px(10), 0, false, ui_px(4));
-    if (checked) ui_icon(c, ICON_CHECK, b, 255);
-    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){r.x + bs + ui_px(28), r.y, r.w - bs - ui_px(28), r.h},
-                   label, 0);
+    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){r.x + bs + ui_px(28), r.y, r.w - bs - ui_px(28), r.h},
+            label, 2, false, 0);
+}
+
+void ui_text(Canvas *c, FontFace f, float px, float min_px, Rect r, const char *text, int max_lines, bool center,
+             uint8_t gray) {
+    if (min_px > px) min_px = px;
+    if (font_measure(f, px, text) > r.w) {
+        float s = font_fit_px(f, px, min_px, text, r.w);
+        if (s > 0.f) {
+            px = s;
+        } else {
+            int lh = font_ascent(f, min_px) + font_descent(f, min_px), room = lh > 0 ? r.h / lh : 1;
+            font_draw_wrapped(c, f, min_px, r, text, max_lines < room ? max_lines : room < 1 ? 1 : room, 0, center, gray);
+            return;
+        }
+    }
+    if (center) font_draw_centered(c, f, px, r, text, gray);
+    else font_draw_left(c, f, px, r, text, gray);
+}
+
+int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, int max_w) {
+    return clampi(font_measure(f, px, text) + 2 * pad, min_w, max_w);
 }
 
 void press_begin(Press *p, float x, float y, uint32_t t) {
