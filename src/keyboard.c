@@ -20,14 +20,15 @@ static const uint16_t k_rows[2][4][11] = {
      {'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'},
      {'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'},
      {'z', 'x', 'c', 'v', 'b', 'n', 'm'}},
-    // Accents, enough for Spanish, Portuguese, French, Italian, German, Dutch, Catalan and the
-    // Nordic languages (shift gives the capitals): a e i o u with an acute, then a grave; with
-    // a circumflex, then a diaeresis; n tilde, c cedilla, a and o tilde, sharp s, oe, ae,
-    // o slash, a ring; the inverted question and exclamation marks, the angle quotes.
+    // Accents, enough for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish,
+    // Norwegian, Swedish and Finnish (shift gives the capitals): a e i o u with an acute, then
+    // a grave; with a circumflex, then a diaeresis; n tilde, c cedilla, a and o tilde, sharp s,
+    // oe, ae, o slash, a ring; the inverted question and exclamation marks, the angle quotes and
+    // the middle dot Catalan puts between two l's.
     {{0xE1, 0xE9, 0xED, 0xF3, 0xFA, 0xE0, 0xE8, 0xEC, 0xF2, 0xF9},
      {0xE2, 0xEA, 0xEE, 0xF4, 0xFB, 0xE4, 0xEB, 0xEF, 0xF6, 0xFC},
      {0xF1, 0xE7, 0xE3, 0xF5, 0xDF, 0x153, 0xE6, 0xF8, 0xE5},
-     {0xBF, 0xA1, 0xAB, 0xBB}},
+     {0xBF, 0xA1, 0xAB, 0xBB, 0xB7}},
 };
 
 static int row_len(const uint16_t *row) {

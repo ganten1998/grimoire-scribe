@@ -3,7 +3,7 @@
 # a and e acute on the letters page, abc on the accents page), space 1060 2365, Done 1643 2365.
 # Accents page rows: y 1725 a e i o u acute then grave, x = 133 + 177 n; y 1885 circumflex then
 # diaeresis, same x; y 2045 n tilde, c cedilla, a o tilde, sharp s, oe, ae, o slash, a ring,
-# x = 221 + 177 n; y 2205 inverted ? and !, angle quotes, x = 658 + 177 n.
+# x = 221 + 177 n; y 2205 inverted ? and !, angle quotes, middle dot, x = 570 + 177 n.
 wait 200
 tap 965 95
 wait 100
@@ -89,7 +89,7 @@ tap 1060 2365
 tap 696 2365
 wait 100
 shot 05-accents-page-classic
-tap 835 2205
+tap 747 2205
 tap 696 2365
 tap 175 2205
 tap 1549 1885
