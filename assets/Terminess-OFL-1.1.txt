@@ -1,8 +1,8 @@
 Copyright (C) 2020 Dimitar Toshkov Zhekov
 Copyright (C) 2023 Tilman Blumenbach
 
-Terminess Nerd Font Mono — a Nerd Fonts patched build of Terminus TTF.
-Bundled with Ivory as an optional UI typeface.
+Terminess Nerd Font Mono, a Nerd Fonts patched build of Terminus TTF, embedded in Grimoire as its
+Classic typeface.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

@@ -102,6 +102,7 @@ RESTORED=no
 # The Kindle's passcode, paused while Grimoire runs (see "device passcode" below).
 PASSCODE=$SYS/var/local/system/userpasswdenabled
 PASSCODE_MARK=$ROOT/.passcode-paused
+PASSCODE_LEFT=$ROOT/.passcode-left-off  # how many starts have told the user it was left off
 PASSCODE_PAUSED=no
 PASSCODE_NOTE=""
 
@@ -121,7 +122,7 @@ restore_passcode() {
     [ "$PASSCODE_PAUSED" = yes ] || return
     PASSCODE_PAUSED=no
     if touch "$PASSCODE" 2>/dev/null; then
-        rm -f "$PASSCODE_MARK"
+        rm -f "$PASSCODE_MARK" 2>/dev/null
         log "device passcode: back on"
     else
         log "device passcode: could not put it back"
@@ -218,23 +219,43 @@ log "user id: $(id -u 2>/dev/null)"
 # while Grimoire runs; restore() puts it back. A marker remembers the pause. Found with no
 # passcode, it means a session ended without restore() (the Kindle restarted under Grimoire):
 # the passcode is NOT turned back on then, since it may have been changed or turned off since and
-# a flag without its passcode could lock the Kindle; Grimoire tells the user instead.
+# a flag without its passcode could lock the Kindle; Grimoire tells the user instead, at this
+# start and the next two while the passcode is still off (a toast is easily missed), and no more
+# after that: by then it may be off on purpose. The pause needs its marker, so no marker (a full
+# or read-only userstore), no pause.
 # (1.1's session hosted inside KOReader must leave all this alone: KOReader paused it already.)
 if [ -e "$PASSCODE_MARK" ] && [ ! -e "$PASSCODE" ]; then
     log "device passcode: left off by a session that did not end (a restart?); not turned back on here"
+    echo 0 2>/dev/null >"$PASSCODE_LEFT"
     PASSCODE_NOTE=left-off
 fi
-rm -f "$PASSCODE_MARK"
-if [ -e "$PASSCODE" ]; then
-    : >"$PASSCODE_MARK"
-    rm -f "$PASSCODE"
+rm -f "$PASSCODE_MARK" 2>/dev/null
+if [ -e "$PASSCODE_LEFT" ]; then
     if [ -e "$PASSCODE" ]; then
-        rm -f "$PASSCODE_MARK"
-        log "device passcode: could not pause it"
+        rm -f "$PASSCODE_LEFT"  # back on: nothing more to tell
     else
-        PASSCODE_PAUSED=yes
-        PASSCODE_NOTE=paused
-        log "device passcode: paused while Grimoire runs"
+        TOLD=$(cat "$PASSCODE_LEFT" 2>/dev/null)
+        case "$TOLD" in '' | *[!0-9]*) TOLD=0 ;; esac
+        TOLD=$((TOLD + 1))
+        if [ "$TOLD" -ge 3 ]; then rm -f "$PASSCODE_LEFT"; else echo "$TOLD" 2>/dev/null >"$PASSCODE_LEFT"; fi
+        PASSCODE_NOTE=left-off
+        log "device passcode: still off since a session that did not end; telling the user ($TOLD of 3)"
+    fi
+fi
+if [ -e "$PASSCODE" ]; then
+    # (echo, not ":": a failed redirection on a special built-in would end the script.)
+    if ! echo paused 2>/dev/null >"$PASSCODE_MARK"; then
+        log "device passcode: not paused (could not write $PASSCODE_MARK, which a restart would need)"
+    else
+        rm -f "$PASSCODE"
+        if [ -e "$PASSCODE" ]; then
+            rm -f "$PASSCODE_MARK" 2>/dev/null
+            log "device passcode: could not pause it"
+        else
+            PASSCODE_PAUSED=yes
+            PASSCODE_NOTE=paused
+            log "device passcode: paused while Grimoire runs"
+        fi
     fi
 fi
 
