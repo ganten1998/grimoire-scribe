@@ -65,10 +65,47 @@ TEST(broken_panel) {
     CHECK(!fbcheck_broken(1, 1));
 }
 
+TEST(dpi_choice) {
+    DpiSource from;
+    // A device FBInk knows: its own value, whatever the driver says (old 167 dpi panels included).
+    CHECK(fbcheck_dpi("Scribe 2", 300, 1860, 2480, 0, 0, &from) == 300.f);
+    CHECK(from == DPI_FBINK);
+    CHECK(fbcheck_dpi("Scribe ColorSoft", 300, 1986, 2648, 999, 999, &from) == 300.f);
+    CHECK(from == DPI_FBINK);
+    CHECK(fbcheck_dpi("Basic", 167, 600, 800, 0, 0, &from) == 167.f);
+    CHECK(from == DPI_FBINK);
+    // A device it does not know: FBInk's 167 is a guess, so the panel's size decides. A 1860x2480
+    // panel of 158 x 210 mm is about 300 dpi; with the sides swapped (a rotated framebuffer) too.
+    CHECK_NEAR(fbcheck_dpi("Unidentified!", 167, 1860, 2480, 158, 210, &from), 300.0, 2.0);
+    CHECK(from == DPI_PANEL_SIZE);
+    CHECK_NEAR(fbcheck_dpi("Unidentified!", 167, 2480, 1860, 158, 210, &from), 300.0, 2.0);
+    CHECK(from == DPI_PANEL_SIZE);
+    CHECK_NEAR(fbcheck_dpi("Unknown!", 167, 1860, 2480, 158, 0, &from), 299.0, 2.0);  // one side only
+    CHECK(from == DPI_PANEL_SIZE);
+    CHECK_NEAR(fbcheck_dpi("", 167, 1860, 2480, 158, 210, &from), 300.0, 2.0);  // FBInk named nothing
+    CHECK(from == DPI_PANEL_SIZE);
+    CHECK_NEAR(fbcheck_dpi(NULL, 0, 1860, 2480, 158, 210, &from), 300.0, 2.0);
+    // No usable size: 0 mm, -1 mm (all bits set), or a density no e-reader has: 300.
+    CHECK(fbcheck_dpi("Unidentified!", 167, 1860, 2480, 0, 0, &from) == 300.f);
+    CHECK(from == DPI_DEFAULT);
+    CHECK(fbcheck_dpi("Unidentified!", 167, 1860, 2480, 0xFFFFFFFFu, 0xFFFFFFFFu, &from) == 300.f);
+    CHECK(from == DPI_DEFAULT);
+    CHECK(fbcheck_dpi("Unknown!", 167, 1860, 2480, 2, 3, &from) == 300.f);  // 18000 dpi
+    CHECK(from == DPI_DEFAULT);
+    CHECK(fbcheck_dpi("Unknown!", 167, 1860, 2480, 900, 999, &from) == 300.f);  // 60 dpi
+    CHECK(from == DPI_DEFAULT);
+    CHECK(fbcheck_dpi("Unknown!", 167, 0, 0, 158, 210, &from) == 300.f);
+    CHECK(from == DPI_DEFAULT);
+    // Known by name but with no density: treated as unknown.
+    CHECK_NEAR(fbcheck_dpi("Scribe 2", 0, 1860, 2480, 158, 210, &from), 300.0, 2.0);
+    CHECK(from == DPI_PANEL_SIZE);
+}
+
 int main(void) {
     RUN(gray_8bpp);
     RUN(gray_32bpp);
     RUN(roundtrip_padded);
     RUN(broken_panel);
+    RUN(dpi_choice);
     return tl_done();
 }

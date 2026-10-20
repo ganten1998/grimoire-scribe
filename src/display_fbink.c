@@ -198,18 +198,17 @@ int display_open(int *w, int *h, float *dpi) {
     if (!g_readback)
         qlog("display: the framebuffer mapping (%zu bytes) does not cover the panel: no readback, no screen guard",
              g_fblen);
-    float d = (float)g_st.screen_dpi;
-    if (d <= 0.f) {
-        // FBInk does not know this panel's density: work it out from the size the driver reports.
-        if (have_v && v.xres > 0 && v.width > 0 && v.width < 1000) {
-            d = (float)v.xres * 25.4f / (float)v.width;
-            qlog("display: FBInk reports 0 dpi; %u px across %u mm makes %.0f dpi", v.xres, v.width, d);
-        }
-        if (d < 100.f || d > 600.f) {
-            qlog("display: no usable dpi from FBInk or the driver; using 300");
-            d = 300.f;
-        }
-    }
+    // FBInk never reports 0 dpi: for a device it does not know it guesses 167 (fbink.c), which would
+    // lay a Scribe's UI out at about half size. Then the driver's physical size decides.
+    DpiSource from;
+    float d = fbcheck_dpi(g_st.device_name, g_st.screen_dpi, have_v ? v.xres : 0, have_v ? v.yres : 0,
+                          have_v ? v.width : 0, have_v ? v.height : 0, &from);
+    if (from == DPI_PANEL_SIZE)
+        qlog("display: FBInk does not know this device (\"%s\", it guesses %u dpi); %ux%u px over %ux%u mm makes "
+             "%.0f dpi", g_st.device_name, g_st.screen_dpi, v.xres, v.yres, v.width, v.height, d);
+    else if (from == DPI_DEFAULT)
+        qlog("display: FBInk does not know this device (\"%s\", it guesses %u dpi) and the driver gives no usable "
+             "size (%ux%u mm); using %.0f dpi", g_st.device_name, g_st.screen_dpi, v.width, v.height, d);
     *dpi = d;
     return 0;
 }
