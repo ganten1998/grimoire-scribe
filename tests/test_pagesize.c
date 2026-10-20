@@ -70,8 +70,8 @@ static int has_line(const char *text, const char *line) {
     return n;
 }
 
-// notebook.ini without the lines starting with `prefix` (what 1.0.0-beta's save leaves of the keys
-// it does not know).
+// notebook.ini without the lines that start with prefix1 or prefix2 (what 1.0.0-beta's save leaves
+// of the keys it does not know).
 static void drop_lines(const NotebookInfo *nb, const char *prefix1, const char *prefix2) {
     char path[800];
     info_file(nb, path, sizeof path);
@@ -127,8 +127,8 @@ static void older_version_rescales(const NotebookInfo *nb, int index, int w, int
 
 // ---- notebooks keep their size ----
 
-// A notebook made on a 1860x2480 Scribe, opened with the device at 1986x2648: it keeps its size, its
-// pages render byte for byte as they did, and new pages get its size, not the screen's.
+// A notebook made on an 1860x2480 Scribe, opened with the device at 1986x2648: it keeps its size,
+// its pages render byte for byte as they did, and new pages get its size, not the screen's.
 TEST(notebook_keeps_its_size) {
     store_set_device(DPI, W2, H2);
     NotebookInfo nb;
@@ -493,7 +493,7 @@ TEST(music_layouts_at_both_heights) {
     MusicLayout d;
     CHECK(music_decode(music_default(), &d));
     CHECK(music_max_systems(&d, H2, DPI) == 6 && music_max_systems(&d, H3, DPI) == 7);
-    // Rendering stays a pure function of the page: any region of a 1986x2648 or a 1860x2480 page
+    // Rendering stays a pure function of the page: any region of a 1986x2648 or an 1860x2480 page
     // renders as the same region of the whole page does.
     MusicLayout big = {.systems = 7, .n = 2, .part = {PART_TREBLE, PART_TAB6}};
     const PaperKind kinds[] = {PAPER_MUSIC, PAPER_GRAND, PAPER_TAB, PAPER_BASS5, music_encode(&big), music_default()};
