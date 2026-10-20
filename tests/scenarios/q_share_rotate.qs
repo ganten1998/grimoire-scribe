@@ -32,8 +32,8 @@ wait 700
 expect screen is library
 shot 05-library
 wait 1500
-# Share again, from the portrait Library: the runner's taps land off target in landscape (they
-# are scaled for portrait), so the landscape header's Share button (x 1880-2050) is out of reach.
+# Share again, opened in portrait and turned while it is open: this visit starts the server
+# again and the turn keeps it (tests/share_check.sh counts one start per visit).
 tap 1345 95
 wait 700
 expect screen is share
