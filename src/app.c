@@ -559,6 +559,8 @@ int app_probe(const char *key, char *out, size_t cap) {
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
     else if (!strcmp(key, "settings.theme")) snprintf(out, cap, "%s", st->theme == THEME_CLASSIC ? "classic" : "gothic");
+    else if (!strcmp(key, "settings.language")) snprintf(out, cap, "%s", st->language);  // "auto" for one it lacks
+    else if (!strcmp(key, "language")) snprintf(out, cap, "%s", i18n_current());  // the language in use
     else return -1;
     return 0;
 }

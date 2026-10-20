@@ -13,7 +13,7 @@
 #include "musicbuild.h"
 #include "keyboard.h"
 
-typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC } Modal;
+typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -21,6 +21,7 @@ enum {
     H_CARD, H_CARD_MORE,
     H_PAPER, H_PAPER_CUSTOM, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
     H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH, H_SET_THEME,
+    H_SET_LANGUAGE, H_LANG_PICK, H_LANG_BACK,
     H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_MORE_PDF, H_MORE_DELETE,
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
@@ -187,25 +188,43 @@ static void draw_card(App *a, Rect r, int idx) {
         cc->clip = saved;
     }
     ui_frame(c, tb, ui_px(16), 0, false, ui_px(4));
-    char line2[96];
+    char line2[128];
     const char *title;
     if (it->is_folder) {
         title = it->folder;
-        snprintf(line2, sizeof line2, "%d notebook%s", it->count, it->count == 1 ? "" : "s");
+        // TRANSLATORS: under a folder's card in the Library.
+        snprintf(line2, sizeof line2, NG_("%d notebook", "%d notebooks", it->count), it->count);
     } else {
         const NotebookInfo *nb = &S->books[it->nb];
         title = nb->name;
-        char when[32];
+        char when[64];
         format_time_short(nb->modified, when, sizeof when);
-        snprintf(line2, sizeof line2, "%d page%s, %s", nb->npages, nb->npages == 1 ? "" : "s", when);
+        // TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
+        // date and time, "Oct 10, 14:32"). Sideways the line has 316 px at 34 px; when it is longer,
+        // the time is left out.
+        snprintf(line2, sizeof line2, NG_("%d page, %s", "%d pages, %s", nb->npages), nb->npages, when);
     }
     int more = ui_px(110);
     Rect tr = {r.x, r.y + th + ui_px(14), r.w - more - ui_px(10), ui_px(70)};
     // Gothic names use the pixel face's regular weight: its overprinted bold turns a name in
     // capitals into a solid black bar.
-    font_draw_left(c, ui_theme() == THEME_GOTHIC ? FONT_REGULAR : FONT_BOLD, ui_text_size(), tr, title, 0);
-    font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){r.x, tr.y + tr.h, r.w - more - ui_px(10), ui_px(56)}, line2,
-                   60);
+    font_draw_left_name(c, ui_theme() == THEME_GOTHIC ? FONT_REGULAR : FONT_BOLD, ui_text_size(), tr, title, 0);
+    Rect lr = {r.x, tr.y + tr.h, r.w - more - ui_px(10), ui_px(56)};
+    float ls = ui_small_size();
+    if (font_measure(FONT_REGULAR, ls, line2) > lr.w) {
+        // Too long for the card (sideways in Classic, or in a longer language): a size smaller by
+        // up to a fifth where the face has one (Classic's), else the date without its time.
+        float fs = font_fit_px(FONT_REGULAR, ls, ls * 0.8f, line2, lr.w);
+        if (fs > 0.f) {
+            ls = fs;
+        } else if (!it->is_folder) {
+            const NotebookInfo *nb = &S->books[it->nb];
+            char day[64];
+            format_date_short(nb->modified, day, sizeof day);
+            snprintf(line2, sizeof line2, NG_("%d page, %s", "%d pages, %s", nb->npages), nb->npages, day);
+        }
+    }
+    font_draw_left(c, FONT_REGULAR, ls, lr, line2, 60);
     Rect mr = {r.x + r.w - more, r.y + th + ui_px(20), more, ui_px(110)};
     ui_button(c, mr, ICON_MORE, NULL, BTN_PLAIN);
     hits_add(&S->hits, tb, H_CARD, idx);
@@ -253,9 +272,9 @@ static void draw_base(App *a) {
         ui_emblem(c, (float)(x + ui_px(55)), (float)th / 2.f, (float)ui_px(52), 0, 255);
         x += ui_px(140);
     }
-    font_draw_left(c, FONT_TITLE, ui_title_size() * (ui_theme() == THEME_GOTHIC ? 1.8f : 1.25f),
-                   (Rect){x, 0, rx - x - ui_px(20), th},
-                   S->cur_folder[0] ? S->cur_folder : APP_NAME, 0);
+    // (A folder's name, cut short if it must be; else the app's.)
+    font_draw_left_name(c, FONT_TITLE, ui_title_size() * (ui_theme() == THEME_GOTHIC ? 1.8f : 1.25f),
+                        (Rect){x, 0, rx - x - ui_px(20), th}, S->cur_folder[0] ? S->cur_folder : APP_NAME, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
     ui_frieze(c, 0, a->w, th + ui_px(9), ui_px(28), 0);
 
@@ -330,14 +349,12 @@ static void draw_new(App *a) {
         const char *label = custom ? "Custom music..." : paper_name(k);
         FontFace lf = sel ? FONT_BOLD : FONT_REGULAR;
         float ls = ui_small_size() * 0.9f;
-        const char *comma = strstr(label, ", ");
-        if (font_measure(lf, ls, label) > tw && comma && (size_t)(comma - label) < 40) {
-            // Sideways the tiles are narrow: "Narrow, no margin" goes on two lines, split after
-            // its comma, rather than being cut short.
-            char first[48];
-            snprintf(first, sizeof first, "%.*s", (int)(comma - label) + 1, label);
-            font_draw_centered(c, lf, ls, (Rect){lr.x, tr.y + tht + ui_px(8), lr.w, ui_px(40)}, first, 0);
-            font_draw_centered(c, lf, ls, (Rect){lr.x, tr.y + tht + ui_px(48), lr.w, ui_px(40)}, comma + 2, 0);
+        int lw = font_measure(lf, ls, label);
+        if (lw > lr.w || (lw > tw && strstr(label, ", "))) {
+            // Sideways the tiles are narrow: a label wider than its column goes on two lines under
+            // its tile rather than being cut short, and so does one with a comma that is wider
+            // than the tile ("Narrow," over "no margin": a break after a comma is preferred).
+            font_draw_wrapped(c, lf, ls, (Rect){tr.x, tr.y + tht + ui_px(8), tw, ui_px(80)}, label, 2, ui_px(40), true, 0);
         } else {
             font_draw_centered(c, lf, ls, lr, label, 0);
         }
@@ -388,6 +405,19 @@ static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     }
 }
 
+// The language Settings > Language has picked: its index, or -1 for automatic (language=auto,
+// or a language this version does not speak).
+static int language_picked(App *a) {
+    return i18n_setting_known(a->settings.language) ? i18n_find(a->settings.language) : -1;
+}
+
+// "Automatic (English)": the choice that follows the Kindle, with what it stands for here.
+static void language_auto_label(char *out, size_t cap) {
+    // TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
+    // that language's name (each language is named in itself: "English", "Español").
+    snprintf(out, cap, _("Automatic (%s)"), i18n_language_name(i18n_find(i18n_auto())));
+}
+
 static void draw_settings(App *a) {
     Canvas *c = &a->screen;
     Rect card = sheet_rect(a, ui_px(1820));
@@ -396,21 +426,21 @@ static void draw_settings(App *a) {
     Rect r1 = {in.x, y, in.w, rh};
     ui_button(c, r1, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_TUNE, (Rect){r1.x + ui_px(20), r1.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r1.x + rh + ui_px(10), r1.y, r1.w, rh},
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r1.x + rh + ui_px(10), r1.y, r1.w - rh - ui_px(30), rh},
                    "Pen sensitivity (pressure + tilt per tool)", 0);
     hits_add(&S->hits, r1, H_SET_PENS, 0);
     y += rh + gap;
     Rect r2 = {in.x, y, in.w, rh};
     ui_button(c, r2, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_TARGET, (Rect){r2.x + ui_px(20), r2.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2.x + rh + ui_px(10), r2.y, r2.w, rh}, "Calibrate pen and touch",
-                   0);
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2.x + rh + ui_px(10), r2.y, r2.w - rh - ui_px(30), rh},
+                   "Calibrate pen and touch", 0);
     hits_add(&S->hits, r2, H_SET_CALIB, 0);
     y += rh + gap;
     Rect r2b = {in.x, y, in.w, rh};
     ui_button(c, r2b, ICON_NONE, "", BTN_PLAIN);
     ui_icon(c, ICON_BRIGHTNESS, (Rect){r2b.x + ui_px(20), r2b.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2b.x + rh + ui_px(10), r2b.y, r2b.w, rh},
+    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2b.x + rh + ui_px(10), r2b.y, r2b.w - rh - ui_px(30), rh},
                    "Display: brightness, warmth, invert", 0);
     hits_add(&S->hits, r2b, H_SET_DISPLAY, 0);
     y += rh + gap;
@@ -443,6 +473,19 @@ static void draw_settings(App *a) {
     Rect r6 = {in.x, y, in.w, ui_px(110)};
     ui_checkbox(c, r6, "Pinch with two fingers to zoom", a->settings.pinch_zoom);
     hits_add(&S->hits, r6, H_SET_PINCH, 0);
+    y += ui_px(130);
+    // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
+    Rect rl = {in.x, y, in.w, ui_px(110)};
+    char lang[96], lang_line[160];
+    if (language_picked(a) < 0) language_auto_label(lang, sizeof lang);
+    else snprintf(lang, sizeof lang, "%s", i18n_language_name(language_picked(a)));
+    // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+    snprintf(lang_line, sizeof lang_line, _("Language: %s"), lang);
+    canvas_fill(c, rl, 255);
+    ui_icon(c, ICON_LANGUAGE, (Rect){rl.x, rl.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
+    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){rl.x + ui_px(110), rl.y, rl.w - ui_px(110), rl.h},
+            lang_line, 2, false, 0);
+    hits_add(&S->hits, rl, H_SET_LANGUAGE, 0);
     y += ui_px(150);
     const InputCaps *caps = input_caps();
     char about[256];
@@ -509,6 +552,20 @@ static void draw_modal(App *a) {
         draw_menu(a, title, rows, 2);
         break;
     }
+    case MOD_LANGUAGE: {
+        // Automatic, then every language by its own name; a pick applies at once.
+        MenuRow rows[12];
+        int n = 0, cur = language_picked(a);
+        char auto_label[96];
+        language_auto_label(auto_label, sizeof auto_label);
+        rows[n++] = (MenuRow){ICON_LANGUAGE, auto_label, H_LANG_PICK, -1, cur < 0 ? BTN_SELECTED : BTN_PLAIN};
+        for (int i = 0; i < i18n_language_count() && n < 11; i++)
+            rows[n++] = (MenuRow){ICON_NONE, i18n_language_name(i), H_LANG_PICK, i, cur == i ? BTN_SELECTED : BTN_PLAIN};
+        rows[n++] = (MenuRow){ICON_CLOSE, _("Cancel"), H_LANG_BACK, 0, BTN_PLAIN};
+        // TRANSLATORS: the title of the list of languages (Settings > Language).
+        draw_menu(a, _("Language"), rows, n);
+        break;
+    }
     case MOD_KB: keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h}); break;
     case MOD_DISPLAY: dispmenu_draw(&S->dm, a); break;
     case MOD_MUSIC: draw_new(a); musicbuild_draw(&S->mb, a); break;
@@ -525,7 +582,8 @@ static int toast_floor(App *a) {
     if (S->modal == MOD_KB) return S->kb.area.y;
     // (The Custom music sheet lies over the New notebook sheet: only its own controls count.)
     const HitList *l = S->modal == MOD_MUSIC ? &S->mb.hits : &S->hits;
-    Rect t = ui_toast_rect((Rect){0, 0, a->w, a->h}, "");  // (its height does not depend on the text)
+    // (A toast of two lines is taller: the band is as tall as the toast up now, else one line.)
+    Rect t = ui_toast_rect((Rect){0, 0, a->w, a->h}, a->toast_visible ? a->toast : "");
     int gap = ui_px(20), y = t.y, below = 0;  // below: the control the toast must stay above
     for (bool moved = true; moved && y >= gap;) {
         moved = false;
@@ -668,11 +726,10 @@ static void act(App *a, const Hit *h) {
         redraw(a, REFRESH_FULL);
         break;
     case H_NEW: {
-        char base[64], when[32];
-        format_time_short(wall_time(), when, sizeof when);
-        char *comma = strchr(when, ',');
-        if (comma) *comma = 0;  // "Oct 10"
-        snprintf(base, sizeof base, "Notebook %s", when);
+        char base[STORE_NAME_LEN], day[64];
+        format_date_short(wall_time(), day, sizeof day);
+        // TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
+        snprintf(base, sizeof base, _("Notebook %s"), day);
         unique_name(a, base, S->new_name, sizeof S->new_name);
         S->new_paper = PAPER_MEDIUM;
         open_modal(a, MOD_NEW);
@@ -753,6 +810,23 @@ static void act(App *a, const Hit *h) {
     case H_SET_SIDE:
         a->settings.side_button = (a->settings.side_button + 1) % 3;
         settings_save(&a->settings);
+        redraw(a, REFRESH_UI);
+        break;
+    case H_SET_LANGUAGE: open_modal(a, MOD_LANGUAGE); break;
+    case H_LANG_PICK: {
+        // Saved and applied at once: the Settings sheet comes back in the language picked.
+        const char *code = h->arg >= 0 ? i18n_language_code(h->arg) : "auto";
+        if (code && strcmp(code, a->settings.language)) {
+            strlcpy_q(a->settings.language, code, sizeof a->settings.language);
+            settings_save(&a->settings);
+            i18n_apply(code);
+        }
+        S->modal = MOD_SETTINGS;
+        redraw(a, REFRESH_FULL);
+        break;
+    }
+    case H_LANG_BACK:
+        S->modal = MOD_SETTINGS;
         redraw(a, REFRESH_UI);
         break;
     case H_MORE_OPEN:
@@ -933,6 +1007,7 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_KB] = "keyboard",
         [MOD_DISPLAY] = "display",
         [MOD_MUSIC] = "music",
+        [MOD_LANGUAGE] = "language",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {
