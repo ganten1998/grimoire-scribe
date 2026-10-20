@@ -20,7 +20,6 @@ Settings; Grimoire reminds you when it next starts.
 LEAVING: Library > Exit, or hold the power button 4 seconds (the way out when stuck, too):
 Grimoire saves and closes. Never use the passcode reset code 111222777 to get out of anything:
 it erases the Kindle, notebooks included.
-PASSCODE: a Device Passcode is paused while Grimoire is open and put back when you leave.
 
 Your notebooks live in the "grimoire" folder on the Kindle. Closed notebooks are also saved as
 PDFs in grimoire/PDFs (Grimoire writes them again, so mark up copies, not these). Library > Share
