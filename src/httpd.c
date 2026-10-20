@@ -751,7 +751,36 @@ void httpd_poll(void) {
     start_renders();
 }
 
-int net_ipv4_addrs(char out[][16], int max) {
+#define MAX_ADDRS 32
+
+#ifdef GRIMOIRE_SIM
+// Tests: GRIMOIRE_SIM_ADDRS="wlan0=192.168.0.20,usb0=192.168.15.244" stands in for the machine's
+// own interfaces ("" for none), so the Share screen can be laid out with any set of addresses.
+static int sim_addrs(const char *spec, NetAddr *out, int max) {
+    char buf[512];
+    strlcpy_q(buf, spec, sizeof buf);
+    int n = 0;
+    char *save = NULL;
+    for (char *t = strtok_r(buf, ", ", &save); t && n < max; t = strtok_r(NULL, ", ", &save)) {
+        char *eq = strchr(t, '=');
+        struct in_addr ia;
+        if (!eq || eq == t) continue;
+        *eq = 0;
+        if (inet_pton(AF_INET, eq + 1, &ia) != 1) continue;
+        strlcpy_q(out[n].ifname, t, sizeof out[n].ifname);
+        strlcpy_q(out[n].ip, eq + 1, sizeof out[n].ip);
+        n++;
+    }
+    return n;
+}
+#endif
+
+// Every UP, non-loopback IPv4 address, in the order the system lists its interfaces.
+static int collect_addrs(NetAddr *out, int max) {
+#ifdef GRIMOIRE_SIM
+    const char *spec = getenv("GRIMOIRE_SIM_ADDRS");
+    if (spec) return sim_addrs(spec, out, max);
+#endif
     struct ifaddrs *ifs, *i;
     int n = 0;
     if (getifaddrs(&ifs) != 0) return 0;
@@ -759,10 +788,40 @@ int net_ipv4_addrs(char out[][16], int max) {
         if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET) continue;
         if (!(i->ifa_flags & IFF_UP) || (i->ifa_flags & IFF_LOOPBACK)) continue;
         struct sockaddr_in *sa = (struct sockaddr_in *)i->ifa_addr;
-        if (!inet_ntop(AF_INET, &sa->sin_addr, out[n], 16)) continue;
+        if (!inet_ntop(AF_INET, &sa->sin_addr, out[n].ip, sizeof out[n].ip)) continue;
+        strlcpy_q(out[n].ifname, i->ifa_name ? i->ifa_name : "", sizeof out[n].ifname);
         // usb0 on a Kindle is the USBNetwork link (192.168.15.x); still useful, keep it.
         n++;
     }
     freeifaddrs(ifs);
+    return n;
+}
+
+int net_ipv4_addrs(char out[][16], int max) {
+    NetAddr all[MAX_ADDRS];
+    int n = collect_addrs(all, max < MAX_ADDRS ? max : MAX_ADDRS);
+    for (int i = 0; i < n; i++) strlcpy_q(out[i], all[i].ip, 16);
+    return n;
+}
+
+// Wi-Fi is what a phone can reach (and the only interface the launcher opens the port on).
+static int if_rank(const char *name) {
+    if (!strncmp(name, "wlan", 4)) return 0;
+    if (!strncmp(name, "en", 2) || !strncmp(name, "eth", 3)) return 1;
+    if (!strncmp(name, "usb", 3)) return 3;
+    return 2;
+}
+
+int net_ipv4_list(NetAddr *out, int max) {
+    NetAddr all[MAX_ADDRS];
+    int n = collect_addrs(all, MAX_ADDRS);  // all of them: the wlan0 one may come last
+    for (int i = 1; i < n; i++) {           // stable: the system's order within a rank
+        NetAddr t = all[i];
+        int j = i;
+        for (; j > 0 && if_rank(all[j - 1].ifname) > if_rank(t.ifname); j--) all[j] = all[j - 1];
+        all[j] = t;
+    }
+    if (n > max) n = max < 0 ? 0 : max;
+    for (int i = 0; i < n; i++) out[i] = all[i];
     return n;
 }
