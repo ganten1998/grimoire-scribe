@@ -70,7 +70,8 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # from a copy of scenario NAME's data, so NAME must sort before it); screenshots in
 # build/shots/<name>/. A failed expect makes a run exit with status 3: every scenario still runs,
 # then the rule fails naming them. Last, the runner checks itself: tests/selftest/pass.qs must exit
-# 0, and fail.qs 3 with each of its expect lines reported as failed.
+# 0, and in fail.qs every line but the comments, waits and taps must be reported as failed, with
+# exit status 3.
 scenarios: $(BUILD)/host/grimoire-headless
 	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
 	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
@@ -80,12 +81,13 @@ scenarios: $(BUILD)/host/grimoire-headless
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
 	echo "== selftest pass (every expect holds: exit 0)"; GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs \
 	  GRIMOIRE_SHOTS=$$d/shots $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
-	echo "== selftest fail (every expect fails: exit 3, all reported; log in $$d/fail.log)"; rc=0; \
+	echo "== selftest fail (each line meant to fail is reported: exit 3; log in $$d/fail.log)"; rc=0; \
 	GRIMOIRE_ROOT=$$d/fail GRIMOIRE_SCRIPT=tests/selftest/fail.qs GRIMOIRE_SHOTS=$$d/shots \
 	  $(BUILD)/host/grimoire-headless 2>$$d/fail.log || rc=$$?; \
-	want=$$(grep -c '^expect ' tests/selftest/fail.qs); got=$$(grep -c '^expect failed' $$d/fail.log); \
+	want=$$(awk '!/^[[:space:]]*(#|$$)/ && $$1 != "wait" && $$1 != "tap" { printf " %d", NR }' tests/selftest/fail.qs); \
+	got=$$(sed -n 's/^expect failed (line \([0-9]*\)).*/ \1/p' $$d/fail.log | tr -d '\n'); \
 	if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail.log; \
-	  echo "selftest fail: exit $$rc with $$got checks failed, wanted exit 3 with $$want"; failed="$$failed selftest/fail"; fi; \
+	  echo "selftest fail: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail"; fi; \
 	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
 
 # ---- host tools ----

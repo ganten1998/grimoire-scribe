@@ -1,6 +1,7 @@
 # The runner's own check: every expect line below holds, so the run must exit with status 0 (see
 # the scenarios rule in the Makefile). It asks every probe key once (docs/SIM.md lists them).
 wait 200
+expect running is 1
 expect screen is library
 expect screen not editor
 expect screen has lib
@@ -76,3 +77,6 @@ expect screen is library
 expect toast is Saved
 expect library.items is 1
 quit
+# The app has quit: "running" is the one key with an answer now
+expect running is 0
+expect running not 1

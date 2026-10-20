@@ -296,40 +296,16 @@ static bool g_script_done;
 static float g_px, g_py;  // last pen position
 static bool g_side, g_eraser;
 
-static void shot(const char *name) {
-    if (!g_last_screen) return;
-    const char *dir = getenv("GRIMOIRE_SHOTS");
-    char path[700];
-    snprintf(path, sizeof path, "%s/%s.png", dir && *dir ? dir : "shots", name);
-    mkdir_p(dir && *dir ? dir : "shots");
-    // The panel state (with DU thresholding where it applies) is what a user would see.
-    stbi_write_png(path, g_w, g_h, 1, g_eink, g_w);
-    fprintf(stderr, "shot: %s\n", path);
-}
-
-static void pen_ev(InType t, float x, float y, float p, float tx, float ty, uint32_t dt) {
-    InEvent e = make_ev(t, x, y, true);
-    e.pressure = p;
-    e.tilt_x = tx;
-    e.tilt_y = ty;
-    e.eraser = g_eraser;
-    e.side_button = g_side;
-    e.t_ms += dt;
-    q_push(e);
-    g_px = x;
-    g_py = y;
-}
-
-static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false)); }
-
 // ---- expect: checks in a script ----
 //
 // "expect KEY is VALUE" (exact), "expect KEY has TEXT" (substring), "expect KEY not VALUE". The
 // value is the rest of the line after one space; nothing there means the empty string. KEY is
-// anything app_probe() answers (docs/SIM.md lists them). A check sees the app once everything
-// queued before it was handled and the screen flushed: right away after a line that ends a batch
-// (a tap, wait or shot), else at the next poll, like a shot. A failed check is printed and the
-// run goes on; at the end the run exits with status 3 (display_close).
+// anything app_probe() answers (docs/SIM.md lists them), or "running": 1 while the app runs, 0
+// once it has quit. A check sees the app once everything queued before it was handled, ticked
+// and flushed: at once after a line that ends a batch (a tap, wait or shot; that is one main-loop
+// pass before a shot in its place would be taken), else at the next poll, like a shot. A failed
+// check is printed and the run goes on; at the end the run exits with status 3 (display_close).
+// A line the runner does not know fails the same way, or a misspelt check would pass unseen.
 
 typedef enum { EXPECT_IS, EXPECT_HAS, EXPECT_NOT } ExpectOp;
 static const char *const k_expect_ops[] = {"is", "has", "not"};
@@ -371,15 +347,21 @@ static void expect_read(const char *s) {
     g_expect.op = (ExpectOp)op;
 }
 
-static void expect_check(void) {
+// Checks the expect just read. gone: the app quit before the script got to it, so only "running"
+// has an answer (0); any other key fails as not run.
+static void expect_check_as(bool gone) {
     g_expect.pending = false;
     g_expect_total++;
     char got[512] = "";
+    bool running = !strcmp(g_expect.key, "running");
     if (g_expect.bad) {
         fprintf(stderr, "expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", g_expect.line);
-    } else if (app_probe(g_expect.key, got, sizeof got) != 0) {
+    } else if (gone && !running) {
+        fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", g_expect.line);
+    } else if (!running && app_probe(g_expect.key, got, sizeof got) != 0) {
         fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
     } else {
+        if (running) snprintf(got, sizeof got, "%d", gone ? 0 : 1);
         bool ok = g_expect.op == EXPECT_IS    ? !strcmp(got, g_expect.value)
                   : g_expect.op == EXPECT_HAS ? strstr(got, g_expect.value) != NULL
                                               : strcmp(got, g_expect.value) != 0;
@@ -390,25 +372,30 @@ static void expect_check(void) {
     g_expect_failed++;
 }
 
-static void expect_not_run(int line) {
-    fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", line);
+static void expect_check(void) { expect_check_as(false); }
+
+// A line script_step does not know ("expcet", "Expect"): it fails like a check, since a misspelt
+// check is a check never made.
+static void expect_unknown_line(void) {
+    fprintf(stderr, "expect failed (line %d): unknown command\n", g_line_no);
     g_expect_total++;
     g_expect_failed++;
 }
 
 // The app quit before the script ended (Library > Exit, say): the checks it never got to fail
-// too, or a tap that lands on Exit by mistake would let the rest of a script pass unseen.
+// too, or a tap that lands on Exit by mistake would let the rest of a script pass unseen. Where
+// a script means the app to quit, "expect running is 0" says so.
 static void expect_unrun(void) {
-    if (g_expect.pending) {
-        g_expect.pending = false;
-        expect_not_run(g_expect.line);
-    }
+    if (g_expect.pending) expect_check_as(true);
     char line[512];
     while (g_script && fgets(line, sizeof line, g_script)) {
         g_line_no++;
         const char *s = line;
         while (isspace((unsigned char)*s)) s++;
-        if (!strncmp(s, "expect", 6) && (!s[6] || isspace((unsigned char)s[6]))) expect_not_run(g_line_no);
+        if (!strncmp(s, "expect", 6) && (!s[6] || isspace((unsigned char)s[6]))) {
+            expect_read(s);
+            expect_check_as(true);
+        }
     }
 }
 
@@ -421,6 +408,32 @@ static void expect_finish(void) {
     fprintf(stderr, "expect: %d of %d checks failed\n", g_expect_failed, g_expect_total);
     exit(3);
 }
+
+static void shot(const char *name) {
+    if (!g_last_screen) return;
+    const char *dir = getenv("GRIMOIRE_SHOTS");
+    char path[700];
+    snprintf(path, sizeof path, "%s/%s.png", dir && *dir ? dir : "shots", name);
+    mkdir_p(dir && *dir ? dir : "shots");
+    // The panel state (with DU thresholding where it applies) is what a user would see.
+    stbi_write_png(path, g_w, g_h, 1, g_eink, g_w);
+    fprintf(stderr, "shot: %s\n", path);
+}
+
+static void pen_ev(InType t, float x, float y, float p, float tx, float ty, uint32_t dt) {
+    InEvent e = make_ev(t, x, y, true);
+    e.pressure = p;
+    e.tilt_x = tx;
+    e.tilt_y = ty;
+    e.eraser = g_eraser;
+    e.side_button = g_side;
+    e.t_ms += dt;
+    q_push(e);
+    g_px = x;
+    g_py = y;
+}
+
+static void touch_ev(InType t, float x, float y) { q_push(make_ev(t, x, y, false)); }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
 static void script_step(void) {
@@ -556,6 +569,7 @@ static void script_step(void) {
             return;
         } else {
             fprintf(stderr, "script: unknown command: %s", s);
+            expect_unknown_line();
         }
     }
     if (!g_script_done) {
