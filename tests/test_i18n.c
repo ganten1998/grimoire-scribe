@@ -620,6 +620,11 @@ TEST(rare_notices_fit) {
             char also[160];
             snprintf(also, sizeof also, _("Also: %s (%s)"), "http://192.168.15.244:8080", "usb0");
             CHECK(font_measure(FONT_REGULAR, ui_small_size(), also) <= 1400);
+            // Settings' Data line with the Kindle's own path: the label fits the sheet (the path is
+            // a name, which a longer one is cut short as, unreported: tests/l10n/long_root.qs).
+            char data[160];
+            snprintf(data, sizeof data, _("Data: %s"), "/mnt/us/grimoire");
+            CHECK(font_measure(FONT_REGULAR, ui_small_size(), data) <= (th == THEME_GOTHIC ? 1640 : 1648));
         }
     }
     ui_set_theme(THEME_GOTHIC);

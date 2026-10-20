@@ -8,6 +8,7 @@
 wait 100
 expect screen is library
 expect library.items is 0
+expect library.hint is 1
 shot 01-library-empty
 # Settings: every row. The style row twice (the other style's sheet in between), the mirror,
 # turning and pinching rows twice, the pen button row through its three texts.
@@ -45,10 +46,12 @@ expect settings.side_button is 2
 expect settings.mirror_pdf is 1
 expect settings.follow_rotation is 1
 expect settings.pinch_zoom is 1
-# Language: the list, Automatic (which changes nothing here), the list again, Cancel.
+# Language: the list, Automatic (which changes nothing here), the list again, Cancel. The list is
+# shorter than Settings: the empty Library's lines are not drawn under it, where it would cut them.
 tap 930 1580
 wait 50
 expect library.sheet is language
+expect library.hint is 0
 shot 06-language
 tap 930 785
 wait 100
@@ -188,6 +191,7 @@ expect library.sheet is new
 tap 1600 1676
 wait 50
 expect library.sheet is keyboard
+expect library.hint is 1
 shot 21-keyboard
 tap 696 2365
 wait 50
@@ -345,6 +349,7 @@ tap 929 608
 wait 100
 expect library.folder is B
 expect library.items is 0
+expect library.hint is 1
 shot 41-empty-folder
 tap 125 95
 wait 100

@@ -90,6 +90,10 @@ static int per_page(App *a) {
     return c * r;
 }
 
+// Whether an empty Library (or folder) says so, and what to do: not under a sheet (a short one,
+// the language list, would cut through the lines), but above the keyboard, which leaves them be.
+static bool empty_hint_shown(App *a) { return S->nitems == 0 && (S->modal == MOD_NONE || S->modal == MOD_KB); }
+
 // ---- data ----
 
 static void free_lists(App *a) {
@@ -295,7 +299,7 @@ static void draw_base(App *a) {
     int cols, rows, cw, ch;
     grid_geom(a, &cols, &rows, &cw, &ch);
     int pp = cols * rows;
-    if (S->nitems == 0) {
+    if (empty_hint_shown(a)) {
         Rect er = {m, th + ui_px(300), a->w - 2 * m, ui_px(100)};
         // TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
         const char *empty = S->cur_folder[0] ? _("This folder is empty") : _("No notebooks yet");
@@ -534,8 +538,10 @@ static void draw_settings(App *a) {
     else snprintf(pen, sizeof pen, _("pen: %s"), caps->pen_name);
     snprintf(about, sizeof about, "Grimoire %s  %s", GRIMOIRE_VERSION, pen);
     font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)}, about, 60);
+    // (The data's path is a name: a long one is cut short, as names are. tests/test_i18n.c checks
+    // that the label fits with the Kindle's path.)
     snprintf(about, sizeof about, _("Data: %s"), store_root());
-    font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y + ui_px(60), in.w, ui_px(60)}, about, 60);
+    font_draw_left_name(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y + ui_px(60), in.w, ui_px(60)}, about, 60);
     Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
     ui_button(c, done, ICON_NONE, _("Done"), BTN_PRIMARY);
     hits_add(&S->hits, done, H_CANCEL, 0);
@@ -1084,6 +1090,8 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%d", pages > 0 ? pages : 1);
     } else if (!strcmp(key, "text")) {
         snprintf(out, cap, "%s", S->modal == MOD_KB ? S->kb.text : "");
+    } else if (!strcmp(key, "hint")) {
+        snprintf(out, cap, "%d", empty_hint_shown(a) ? 1 : 0);
     } else if (!strcmp(key, "paper")) {
         if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
         else snprintf(out, cap, "%d", (int)S->new_paper);
