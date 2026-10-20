@@ -727,7 +727,6 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                    test_bit(keyb, BTN_TOOL_PEN);
         bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
         bool power = !pen && !touch && has_key && test_bit(keyb, KEY_POWER);
-        if (has_key && test_bit(keyb, KEY_POWER)) power_keys++;
         // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
         if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
             struct input_absinfo ai = {0};
@@ -798,19 +797,23 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         } else if (power && g_power_fd < 0) {
             g_power_fd = fd;
             g_caps.has_power = true;
+            power_keys++;
             strlcpy_q(power_path, path, sizeof power_path);
             qlog("input: power key %s (%s)", path, name);
         } else {
-            if (power) qlog("input: %s (%s) is another power key, not watched", path, name);
+            if (power) {
+                power_keys++;
+                qlog("input: %s (%s) is another power key, not watched", path, name);
+            }
             close(fd);
         }
     }
     closedir(d);
     // The first power key found is the only one watched: if another device (a virtual one, say)
-    // is the one that reports presses, Grimoire never sees the button.
+    // is the one that reports presses, Grimoire never sees the button. (The pen and the touch
+    // panel are never taken for one, so a KEY_POWER they advertise does not count here.)
     if (power_keys > 1)
-        qlog("input: WARNING %d devices report a power key; watching only %s", power_keys,
-             power_path[0] ? power_path : "none of them");
+        qlog("input: WARNING %d devices report a power key; watching only %s", power_keys, power_path);
     if (g_power_fd < 0) qlog("input: WARNING no power key found: no fallbacks, and no 4 s hold to leave");
     if (!g_caps.has_orientation) qlog("input: no orientation sensor found");
     if (g_pen.fd < 0 && g_wacom.fd >= 0) {
