@@ -259,11 +259,193 @@ TEST(ascii_unchanged) {
     CHECK(bad == 0);
 }
 
+// ---- the Gothic bold and accents ----
+// The bold overprints the glyph one design pixel to the right. Accent marks it would fill in
+// (the dots of u-umlaut, the tilde, the circumflex, the ring) are drawn as designed instead;
+// everything else is exactly the overprint.
+
+static bool ink(const Canvas *c, int x, int y) { return c->px[y * c->stride + x] < 128; }
+
+// A canvas for one glyph at px, white.
+static bool blank(Canvas *c, float px) { return canvas_init(c, (int)(6 * px), (int)(4 * px)) == 0; }
+
+// One string, black, its pen at x = px + dx and its baseline at y = 2 px.
+static void draw1(Canvas *c, FontFace f, float px, int dx, const char *s) {
+    font_draw(c, f, px, (int)px + dx, (int)(2 * px), s, 0);
+}
+
+static int top_row(const Canvas *c) {
+    for (int y = 0; y < c->h; y++)
+        for (int x = 0; x < c->w; x++)
+            if (ink(c, x, y)) return y;
+    return -1;
+}
+
+// Separate (8-connected) dark shapes in the rows above y_end.
+static int components_above(const Canvas *c, int y_end) {
+    int n = 0, w = c->w;
+    int *stack = malloc((size_t)w * (size_t)y_end * sizeof *stack);
+    uint8_t *seen = calloc((size_t)w * (size_t)y_end, 1);
+    for (int i = 0; stack && seen && i < w * y_end; i++) {
+        if (seen[i] || !ink(c, i % w, i / w)) continue;
+        n++;
+        int sp = 0;
+        seen[i] = 1;
+        stack[sp++] = i;
+        while (sp) {
+            int p = stack[--sp], px = p % w, py = p / w;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int qx = px + dx, qy = py + dy;
+                    if (qx < 0 || qy < 0 || qx >= w || qy >= y_end || seen[qy * w + qx] || !ink(c, qx, qy)) continue;
+                    seen[qy * w + qx] = 1;
+                    stack[sp++] = qy * w + qx;
+                }
+        }
+    }
+    free(stack);
+    free(seen);
+    return n;
+}
+
+// The most separate dark runs in any one row above y_end.
+static int max_runs_above(const Canvas *c, int y_end) {
+    int best = 0;
+    for (int y = 0; y < y_end; y++) {
+        int runs = 0;
+        for (int x = 0; x < c->w; x++) runs += ink(c, x, y) && (x == 0 || !ink(c, x - 1, y));
+        if (runs > best) best = runs;
+    }
+    return best;
+}
+
+static bool same_rows(const Canvas *a, const Canvas *b, int y0, int y1) {
+    for (int y = y0; y < y1; y++)
+        for (int x = 0; x < a->w; x++)
+            if (ink(a, x, y) != ink(b, x, y)) return false;
+    return true;
+}
+
+// The UI's bold sizes: small (34), toasts and menus (44), single-glyph keyboard keys (64),
+// button labels (FONT_CAPS, 30 and 44), and the smallest step (k = 1).
+static const struct {
+    FontFace f;
+    float px;
+} k_bold[] = {{FONT_BOLD, 20.f}, {FONT_BOLD, 34.f}, {FONT_BOLD, 44.f}, {FONT_BOLD, 64.f},
+              {FONT_CAPS, 30.f}, {FONT_CAPS, 44.f}};
+#define NBOLD (int)(sizeof k_bold / sizeof k_bold[0])
+
+TEST(bold_umlauts_keep_two_dots) {
+    ui_set_theme(THEME_GOTHIC);
+    // Each base letter and the same letter with a diaeresis (the body is the same glyph).
+    static const char *pairs[][2] = {{"u", "\xc3\xbc"}, {"U", "\xc3\x9c"}, {"o", "\xc3\xb6"}, {"O", "\xc3\x96"},
+                                     {"a", "\xc3\xa4"}, {"A", "\xc3\x84"}, {"e", "\xc3\xab"}};
+    for (int z = 0; z < NBOLD; z++)
+        for (int i = 0; i < (int)(sizeof pairs / sizeof pairs[0]); i++) {
+            Canvas base, acc;
+            if (!blank(&base, k_bold[z].px) || !blank(&acc, k_bold[z].px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&base, k_bold[z].f, k_bold[z].px, 0, pairs[i][0]);
+            draw1(&acc, k_bold[z].f, k_bold[z].px, 0, pairs[i][1]);
+            int top = top_row(&base), n = top > 0 ? components_above(&acc, top) : -1;
+            if (n != 2) fprintf(stderr, "  %s at %.0f px: %d dark shapes above the letter\n", pairs[i][1], k_bold[z].px, n);
+            CHECK(n == 2);
+            canvas_free(&base);
+            canvas_free(&acc);
+        }
+}
+
+TEST(bold_tildes_and_hats_keep_their_gaps) {
+    ui_set_theme(THEME_GOTHIC);
+    // n/N/a/o tilde, the circumflexes, a/A ring, carons and the double acute: the mark is
+    // drawn exactly as in the regular weight and still has a gap in it.
+    static const char *pairs[][2] = {
+        {"n", "\xc3\xb1"}, {"N", "\xc3\x91"}, {"a", "\xc3\xa3"}, {"o", "\xc3\xb5"}, {"a", "\xc3\xa2"},
+        {"e", "\xc3\xaa"}, {"o", "\xc3\xb4"}, {"u", "\xc3\xbb"}, {"a", "\xc3\xa5"}, {"A", "\xc3\x85"},
+        {"c", "\xc4\x8d"}, {"S", "\xc5\xa0"}, {"o", "\xc5\x91"}};
+    for (int z = 0; z < NBOLD; z++)
+        for (int i = 0; i < (int)(sizeof pairs / sizeof pairs[0]); i++) {
+            Canvas base, bold, reg;
+            if (!blank(&base, k_bold[z].px) || !blank(&bold, k_bold[z].px) || !blank(&reg, k_bold[z].px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&base, k_bold[z].f, k_bold[z].px, 0, pairs[i][0]);
+            draw1(&bold, k_bold[z].f, k_bold[z].px, 0, pairs[i][1]);
+            draw1(&reg, FONT_REGULAR, k_bold[z].px, 0, pairs[i][1]);
+            int top = top_row(&base);
+            bool same = top > 0 && same_rows(&bold, &reg, 0, top);
+            int runs = top > 0 ? max_runs_above(&bold, top) : 0;
+            if (!same || runs < 2)
+                fprintf(stderr, "  %s at %.0f px: mark %s, %d runs\n", pairs[i][1], k_bold[z].px,
+                        same ? "as designed" : "changed", runs);
+            CHECK(same && runs >= 2);
+            canvas_free(&base);
+            canvas_free(&bold);
+            canvas_free(&reg);
+        }
+}
+
+// Every glyph of the face from U+0021 to U+017F: the bold covers the regular weight and never
+// more than the plain overprint; ASCII and letters without such marks are exactly the plain
+// overprint, letters with them are not.
+TEST(bold_differs_only_at_marks) {
+    ui_set_theme(THEME_GOTHIC);
+    static const uint32_t harmless[] = {0xE7, 0xC7, 0xDF, 0xE6, 0x153, 0xAB, 0xBB, 0xE9, 0xE1, 0xED,
+                                        0xF3, 0xFA, 0xE0, 0xF9, 0xBF, 0xA1, 0xFF, 0xEF, 0xF8, 0x142};
+    // (i circumflex is not here: its hat's gap is two pixels wide, so the overprint keeps it.)
+    static const uint32_t spared[] = {0xFC, 0xF6, 0xE4, 0xEB, 0xDC, 0xD6, 0xC4, 0xF1, 0xD1, 0xE3,
+                                      0xF5, 0xE2, 0xEA, 0xF4, 0xFB, 0xE5, 0xC5, 0x10D, 0x151};
+    static const float sizes[] = {20.f, 44.f, 64.f};
+    int checked = 0;
+    for (int z = 0; z < 3; z++) {
+        float px = sizes[z];
+        for (uint32_t cp = 0x21; cp <= 0x17F; cp++) {
+            if ((cp > 0x7E && cp < 0xA1) || !font_has_glyph(FONT_BOLD, cp)) continue;
+            char s[4] = {0};
+            if (cp < 0x80) s[0] = (char)cp;
+            else s[0] = (char)(0xC0 | cp >> 6), s[1] = (char)(0x80 | (cp & 0x3F));
+            int k = font_measure(FONT_BOLD, px, s) - font_measure(FONT_REGULAR, px, s);
+            Canvas a, r, b;
+            if (!blank(&a, px) || !blank(&r, px) || !blank(&b, px)) {
+                CHECK(!"canvas");
+                return;
+            }
+            draw1(&a, FONT_BOLD, px, 0, s);
+            draw1(&r, FONT_REGULAR, px, 0, s);
+            for (int d = 0; d <= k; d++) draw1(&b, FONT_REGULAR, px, d, s);
+            bool covers = true, within = true, equal = true;
+            for (int y = 0; y < a.h; y++)
+                for (int x = 0; x < a.w; x++) {
+                    covers &= !ink(&r, x, y) || ink(&a, x, y);
+                    within &= !ink(&a, x, y) || ink(&b, x, y);
+                    equal &= ink(&a, x, y) == ink(&b, x, y);
+                }
+            bool want_equal = cp < 0x80, want_spared = false;
+            for (int i = 0; i < (int)(sizeof harmless / sizeof harmless[0]); i++) want_equal |= harmless[i] == cp;
+            for (int i = 0; i < (int)(sizeof spared / sizeof spared[0]); i++) want_spared |= spared[i] == cp;
+            bool ok = k > 0 && covers && within && (!want_equal || equal) && (!want_spared || !equal);
+            if (!ok) fprintf(stderr, "  U+%04X at %.0f px: k %d covers %d within %d equal %d\n", cp, px, k, covers, within, equal);
+            CHECK(ok);
+            checked++;
+            canvas_free(&a);
+            canvas_free(&r);
+            canvas_free(&b);
+        }
+    }
+    CHECK(checked > 3 * 250);
+}
+
 int main(void) {
     for (int i = 0; i < 95; i++) g_ascii[i] = (char)(32 + i);
     crc_init();
     ui_init(300.f);
     if (font_init() != 0) return 1;
     RUN(ascii_unchanged);
+    RUN(bold_umlauts_keep_two_dots);
+    RUN(bold_tildes_and_hats_keep_their_gaps);
+    RUN(bold_differs_only_at_marks);
     return tl_done();
 }
