@@ -4,38 +4,48 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include "i18n.h"
+
+// The English names go to grimoire.log too; tool_label is what the screens show.
 const char *tool_name(ToolKind t) {
     switch (t) {
-    case TOOL_PENCIL: return "Pencil";
-    case TOOL_MECH_PENCIL: return "Mechanical pencil";
-    case TOOL_BALLPOINT: return "Ballpoint";
-    case TOOL_ERASER: return "Eraser";
-    case TOOL_HIGHLIGHTER: return "Highlighter";
-    case TOOL_FOUNTAIN: return "Fountain pen";
-    case TOOL_FINELINER: return "Fineliner";
-    case TOOL_MARKER: return "Marker";
-    case TOOL_CHARCOAL: return "Charcoal";
-    case TOOL_CALLIGRAPHY: return "Calligraphy pen";
-    default: return "Tool";
+    // TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
+    // Mechanical pencil and the Calligraphy pen go by shorter names) and after "Pen feel:".
+    case TOOL_PENCIL: return NC_("tool", "Pencil");
+    case TOOL_MECH_PENCIL: return NC_("tool", "Mechanical pencil");
+    case TOOL_BALLPOINT: return NC_("tool", "Ballpoint");
+    case TOOL_ERASER: return NC_("tool", "Eraser");
+    case TOOL_HIGHLIGHTER: return NC_("tool", "Highlighter");
+    case TOOL_FOUNTAIN: return NC_("tool", "Fountain pen");
+    case TOOL_FINELINER: return NC_("tool", "Fineliner");
+    case TOOL_MARKER: return NC_("tool", "Marker");
+    case TOOL_CHARCOAL: return NC_("tool", "Charcoal");
+    case TOOL_CALLIGRAPHY: return NC_("tool", "Calligraphy pen");
+    default: return NC_("tool", "Tool");
     }
 }
 
+const char *tool_label(ToolKind t) { return C_("tool", tool_name(t)); }
+
 #define P(field, key, label, unit, lo, hi, st, er) \
     {key, label, unit, offsetof(ToolParams, field), lo, hi, st, er}
+// The labels are looked up where Pen feel draws them (pensettings.c); keys and units stay English.
 static const ParamInfo k_params[] = {
-    P(size_min_mm, "size_min_mm", "Min width", "mm", 0.10f, 12.f, 0.01f, true),
-    P(size_max_mm, "size_max_mm", "Max width", "mm", 0.10f, 12.f, 0.01f, true),
-    P(opacity_min, "opacity_min", "Light darkness", "", 0.f, 1.f, 0.01f, false),
-    P(opacity_max, "opacity_max", "Full darkness", "", 0.f, 1.f, 0.01f, false),
-    P(pressure_floor, "pressure_floor", "Pressure deadzone", "", 0.f, 0.5f, 0.01f, false),
-    P(pressure_ceiling, "pressure_ceiling", "Pressure full at", "", 0.05f, 1.f, 0.01f, false),
-    P(pressure_gamma, "pressure_gamma", "Pressure curve", "", 0.25f, 4.f, 0.05f, false),
-    P(tilt_min_deg, "tilt_min_deg", "Tilt starts at", "deg", 0.f, 85.f, 1.f, false),
-    P(tilt_max_deg, "tilt_max_deg", "Tilt full at", "deg", 5.f, 90.f, 1.f, false),
-    P(tilt_size, "tilt_size", "Tilt widens", "x", 0.f, 4.f, 0.05f, false),
-    P(tilt_opacity, "tilt_opacity", "Tilt lightens", "", 0.f, 1.f, 0.01f, false),
-    P(grain, "grain", "Grain", "", 0.f, 1.f, 0.01f, false),
-    P(smoothing, "smoothing", "Smoothing", "", 0.f, 1.f, 0.01f, false),
+    // TRANSLATORS: Pen feel's sliders, each label left of its value: about 550 px at 44 px beside
+    // a width ("0.30 mm"), 580 beside an angle, 600 beside a plain number ("1.25").
+    P(size_min_mm, "size_min_mm", N_("Min width"), "mm", 0.10f, 12.f, 0.01f, true),
+    P(size_max_mm, "size_max_mm", N_("Max width"), "mm", 0.10f, 12.f, 0.01f, true),
+    P(opacity_min, "opacity_min", N_("Light darkness"), "", 0.f, 1.f, 0.01f, false),
+    P(opacity_max, "opacity_max", N_("Full darkness"), "", 0.f, 1.f, 0.01f, false),
+    P(pressure_floor, "pressure_floor", N_("Pressure deadzone"), "", 0.f, 0.5f, 0.01f, false),
+    P(pressure_ceiling, "pressure_ceiling", N_("Pressure full at"), "", 0.05f, 1.f, 0.01f, false),
+    P(pressure_gamma, "pressure_gamma", N_("Pressure curve"), "", 0.25f, 4.f, 0.05f, false),
+    P(tilt_min_deg, "tilt_min_deg", N_("Tilt starts at"), "deg", 0.f, 85.f, 1.f, false),
+    P(tilt_max_deg, "tilt_max_deg", N_("Tilt full at"), "deg", 5.f, 90.f, 1.f, false),
+    P(tilt_size, "tilt_size", N_("Tilt widens"), "x", 0.f, 4.f, 0.05f, false),
+    P(tilt_opacity, "tilt_opacity", N_("Tilt lightens"), "", 0.f, 1.f, 0.01f, false),
+    P(grain, "grain", N_("Grain"), "", 0.f, 1.f, 0.01f, false),
+    P(smoothing, "smoothing", N_("Smoothing"), "", 0.f, 1.f, 0.01f, false),
 };
 #undef P
 _Static_assert(sizeof k_params / sizeof k_params[0] * sizeof(float) == sizeof(ToolParams),

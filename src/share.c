@@ -32,13 +32,16 @@ struct ShareState {
 
 #define S (a->share)
 
+// The help under the address, a line each, and last the command line of a script that pulls
+// everything (k_pull).
 static const char *const k_help[] = {
-    "Pages as PNG, notebooks as PDF or zip, folders and everything as zip.",
-    "Effects: transparent, recolored or filtered copies of any page.",
-    "Same Wi-Fi network only. Keep this screen open while downloading.",
-    "From a terminal: tools/grimoire-pull --http <address above>",
+    // TRANSLATORS: the Share screen's help, under the address: a line each, 1640 px at 34 px.
+    N_("Pages as PNG, notebooks as PDF or zip, folders and everything as zip."),
+    N_("Effects: transparent, recolored or filtered copies of any page."),
+    N_("Same Wi-Fi network only. Keep this screen open while downloading."),
 };
-enum { N_HELP = sizeof k_help / sizeof k_help[0] };
+static const char k_pull[] = "tools/grimoire-pull --http";
+enum { N_HELP = sizeof k_help / sizeof k_help[0] + 1 };
 
 // The screen checks its own layout as it draws, and logs a "share: layout:" line for anything that
 // does not fit (tests/share_check.sh fails on any): a line too wide for its column (which
@@ -78,7 +81,8 @@ static void check_layout(App *a, Rect in) {
 
 static void draw_counter(App *a) {
     char text[96];
-    snprintf(text, sizeof text, "Downloads served: %d", httpd_requests_served());
+    // TRANSLATORS: how many downloads the Share screen has answered since it opened.
+    snprintf(text, sizeof text, _("Downloads served: %d"), httpd_requests_served());
     canvas_fill(&a->screen, S->counter, 255);
     draw_line(&a->screen, FONT_REGULAR, ui_text_size(), S->counter, text, 0);
 }
@@ -106,24 +110,28 @@ static int text_height(int n) {
 // the bottom of its last line.
 static int draw_text(App *a, int x, int w, int y, const char *url, const NetAddr *ad, int n, bool qr) {
     Canvas *c = &a->screen;
-    char other[64], text[128];
-    draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){x, y, w, ui_px(80)},
-              qr ? "Scan with your phone, or open this in a browser:"
-                 : "On your computer, open this in a browser:",
-              0);
+    char other[64], text[160];
+    // TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, about 1500 sideways),
+    // with its QR code, or without one (no Wi-Fi address).
+    const char *caption = _("Scan with your phone, or open this in a browser:");
+    if (!qr) caption = _("On your computer, open this in a browser:");
+    draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){x, y, w, ui_px(80)}, caption, 0);
     y += ui_px(110);
     draw_line(c, FONT_BOLD, ui_title_size() * 1.5f, (Rect){x, y, w, ui_px(140)}, url, 0);
     y += ui_px(150);
     for (int i = 1; i < n; i++) {
         url_of(a, &ad[i], other, sizeof other);
-        snprintf(text, sizeof text, "Also: %s (%s)", other, ad[i].ifname);
+        // TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
+        snprintf(text, sizeof text, _("Also: %s (%s)"), other, ad[i].ifname);
         draw_line(c, FONT_REGULAR, ui_small_size(), (Rect){x, y, w, ui_px(64)}, text, 0);
         y += ui_px(70);
     }
     y += ui_px(30);
     int end = y;
     for (int i = 0; i < N_HELP; i++) {
-        end = draw_line(c, FONT_REGULAR, ui_small_size(), (Rect){x, y, w, ui_px(64)}, k_help[i], 60);
+        // TRANSLATORS: the last help line, with the command a computer pulls everything with.
+        if (i == N_HELP - 1) snprintf(text, sizeof text, _("From a terminal: %s <address above>"), k_pull);
+        end = draw_line(c, FONT_REGULAR, ui_small_size(), (Rect){x, y, w, ui_px(64)}, i < N_HELP - 1 ? _(k_help[i]) : text, 60);
         y += ui_px(70);
     }
     return end;
@@ -187,7 +195,8 @@ static void draw(App *a) {
     canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
     int m = ui_px(70);
     Rect card = {m, ui_px(260), a->w - 2 * m, a->h - ui_px(520)};
-    Rect in = ui_sheet(c, card, "Share over Wi-Fi");
+    // TRANSLATORS: the Share screen's title.
+    Rect in = ui_sheet(c, card, _("Share over Wi-Fi"));
     S->counter = (Rect){in.x, in.y + in.h - ui_px(330), in.w, ui_px(80)};
     NetAddr ad[MAX_SHOWN];
     int n = S->started ? net_ipv4_list(ad, MAX_SHOWN) : 0;
@@ -200,11 +209,13 @@ static void draw(App *a) {
         placed(a, "the icon", icon);
         y += ui_px(320);
         int y0 = y;
-        draw_line(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)},
-                  S->started ? "Turn on Wi-Fi on the Kindle first" : "Could not start the server", 0);
+        // TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
+        // 44 px); Retry is the button's name.
+        const char *what = S->started ? _("Turn on Wi-Fi on the Kindle first") : _("Could not start the server");
+        const char *then = S->started ? _("Then tap Retry.") : _("Is another app using the port? Try again.");
+        draw_line(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)}, what, 0);
         y += ui_px(110);
-        int end = draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)},
-                            S->started ? "Then tap Retry." : "Is another app using the port? Try again.", 60);
+        int end = draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y, in.w, ui_px(80)}, then, 60);
         placed(a, "the text", (Rect){in.x, y0, in.w, end - y0});
     }
     if (S->started) {
@@ -213,12 +224,13 @@ static void draw(App *a) {
     }
     int bw = ui_px(420), bh = ui_px(150);
     Rect done = {in.x + in.w - bw, in.y + in.h - bh, bw, bh};
-    ui_button(c, done, ICON_CHECK, "Done", BTN_PRIMARY);
+    ui_button(c, done, ICON_CHECK, _("Done"), BTN_PRIMARY);
     hits_add(&S->hits, done, H_DONE, 0);
     placed(a, "Done", done);
     if (n == 0) {
         Rect retry = {in.x, in.y + in.h - bh, bw, bh};
-        ui_button(c, retry, ICON_NONE, "Retry", BTN_PLAIN);
+        // TRANSLATORS: starts the share server again (404 px at 44 px, or 34 px).
+        ui_button(c, retry, ICON_NONE, _("Retry"), BTN_PLAIN);
         hits_add(&S->hits, retry, H_RETRY, 0);
         placed(a, "Retry", retry);
     }
@@ -267,12 +279,13 @@ void share_draw_asleep(App *a) {
     canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
     int m = ui_px(70);
     Rect card = {m, ui_px(260), a->w - 2 * m, a->h - ui_px(520)};
-    Rect in = ui_sheet(c, card, "Share over Wi-Fi");
+    Rect in = ui_sheet(c, card, _("Share over Wi-Fi"));
     ui_icon(c, ICON_SHARE, (Rect){in.x + in.w / 2 - ui_px(130), in.y + ui_px(40), ui_px(260), ui_px(260)}, 0);
     int y = in.y + ui_px(360);
-    draw_line(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)}, "Asleep", 0);
+    // TRANSLATORS: the Share screen as the Kindle's sleep screen.
+    draw_line(c, FONT_BOLD, ui_title_size(), (Rect){in.x, y, in.w, ui_px(100)}, _("Asleep"), 0);
     draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){in.x, y + ui_px(110), in.w, ui_px(80)},
-              "Wake the Kindle to share again.", 60);
+              _("Wake the Kindle to share again."), 60);
 }
 
 void share_leave(App *a) {

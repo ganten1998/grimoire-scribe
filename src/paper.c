@@ -3,31 +3,42 @@
 #include "paper.h"
 
 #include "font.h"
+#include "i18n.h"
 
 #include <math.h>
 
+// The English names are identifiers too: /api/list.json gives them to scripts (httpd.c), so they
+// never change with the language; paper_label is what the screens and the share pages show.
 const char *paper_name(PaperKind k) {
     switch (k) {
-    case PAPER_NARROW: return "Narrow rule";
-    case PAPER_MEDIUM: return "Medium rule";
-    case PAPER_WIDE: return "Wide rule";
-    case PAPER_MUSIC: return "Sheet music";
-    case PAPER_BLANK: return "Blank";
-    case PAPER_NARROW_NM: return "Narrow, no margin";
-    case PAPER_MEDIUM_NM: return "Medium, no margin";
-    case PAPER_WIDE_NM: return "Wide, no margin";
-    case PAPER_GRAND: return "Grand staff";
-    case PAPER_TAB: return "Guitar tab";
-    case PAPER_DOTS: return "Dot grid";
-    case PAPER_GRID: return "Graph paper";
-    case PAPER_CORNELL: return "Cornell notes";
-    case PAPER_BASS4: return "4-string bass";
-    case PAPER_BASS5: return "5-string bass";
-    case PAPER_BASS6: return "6-string bass";
-    case PAPER_BASS7: return "7-string bass";
-    default: return paper_is_known(k) ? "Custom music" : "Newer paper";
+    // TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
+    // paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
+    // is preferred: "Narrow," over "no margin"), in both styles. Also on the share pages.
+    case PAPER_NARROW: return NC_("paper", "Narrow rule");
+    case PAPER_MEDIUM: return NC_("paper", "Medium rule");
+    case PAPER_WIDE: return NC_("paper", "Wide rule");
+    case PAPER_MUSIC: return NC_("paper", "Sheet music");
+    case PAPER_BLANK: return NC_("paper", "Blank");
+    case PAPER_NARROW_NM: return NC_("paper", "Narrow, no margin");
+    case PAPER_MEDIUM_NM: return NC_("paper", "Medium, no margin");
+    case PAPER_WIDE_NM: return NC_("paper", "Wide, no margin");
+    case PAPER_GRAND: return NC_("paper", "Grand staff");
+    case PAPER_TAB: return NC_("paper", "Guitar tab");
+    case PAPER_DOTS: return NC_("paper", "Dot grid");
+    case PAPER_GRID: return NC_("paper", "Graph paper");
+    case PAPER_CORNELL: return NC_("paper", "Cornell notes");
+    case PAPER_BASS4: return NC_("paper", "4-string bass");
+    case PAPER_BASS5: return NC_("paper", "5-string bass");
+    case PAPER_BASS6: return NC_("paper", "6-string bass");
+    case PAPER_BASS7: return NC_("paper", "7-string bass");
+    default:
+        if (paper_is_known(k)) return NC_("paper", "Custom music");
+        // TRANSLATORS: a paper made by a newer Grimoire, which this one draws blank.
+        return NC_("paper", "Newer paper");
     }
 }
+
+const char *paper_label(PaperKind k) { return C_("paper", paper_name(k)); }
 
 PaperKind paper_at(int index) {
     static const PaperKind order[PAPER_COUNT] = {
@@ -177,20 +188,24 @@ PaperKind music_default(void) {
 
 const char *music_part_name(MusicPart p) {
     switch (p) {
-    case PART_TREBLE: return "Treble staff";
-    case PART_BASS: return "Bass staff";
-    case PART_ALTO: return "Alto staff";
-    case PART_TENOR: return "Tenor staff";
-    case PART_PERC: return "Drum staff";
-    case PART_STAFF: return "Plain staff";
-    case PART_TAB4: return "Tab, 4 lines";
-    case PART_TAB5: return "Tab, 5 lines";
-    case PART_TAB6: return "Tab, 6 lines";
-    case PART_TAB7: return "Tab, 7 lines";
-    case PART_LYRICS: return "Lyric line";
+    // TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
+    // (296 px at 44 px, or two lines at 34 px) and in its list of the layout's parts.
+    case PART_TREBLE: return NC_("music part", "Treble staff");
+    case PART_BASS: return NC_("music part", "Bass staff");
+    case PART_ALTO: return NC_("music part", "Alto staff");
+    case PART_TENOR: return NC_("music part", "Tenor staff");
+    case PART_PERC: return NC_("music part", "Drum staff");
+    case PART_STAFF: return NC_("music part", "Plain staff");
+    case PART_TAB4: return NC_("music part", "Tab, 4 lines");
+    case PART_TAB5: return NC_("music part", "Tab, 5 lines");
+    case PART_TAB6: return NC_("music part", "Tab, 6 lines");
+    case PART_TAB7: return NC_("music part", "Tab, 7 lines");
+    case PART_LYRICS: return NC_("music part", "Lyric line");
     default: return "";
     }
 }
+
+const char *part_label(MusicPart p) { return C_("music part", music_part_name(p)); }
 
 static int part_lines(MusicPart p) {
     if (p >= PART_TAB4 && p <= PART_TAB7) return 4 + (p - PART_TAB4);

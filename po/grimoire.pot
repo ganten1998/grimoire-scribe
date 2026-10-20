@@ -1,0 +1,1711 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Grimoire package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Grimoire 1.0.0-beta\n"
+"Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
+"POT-Creation-Date: 2026-10-20 06:11-0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
+#. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
+#: src/app.c
+msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
+msgstr ""
+
+#. TRANSLATORS: %s is the app's name, Grimoire.
+#: src/app.c
+#, c-format
+msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
+msgstr ""
+
+#. TRANSLATORS: %s is the app's name, Grimoire.
+#: src/app.c
+#, c-format
+msgid "Your Kindle passcode is paused while %s is open."
+msgstr ""
+
+#. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
+#. sheet that says "Calibrate pen and touch": name them as they are translated.
+#: src/app.c
+msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
+msgstr ""
+
+#. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
+#. saved (a full storage), so it stays once.
+#: src/app.c
+msgid "Could not save this page. Hold power 4 s again to leave anyway."
+msgstr ""
+
+#. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
+#. %s is the app's name, Grimoire.
+#: src/app.c
+#, c-format
+msgid "Saved. Leaving %s."
+msgstr ""
+
+#: src/app.c
+#, c-format
+msgid "Leaving %s without this page."
+msgstr ""
+
+#. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
+#: src/app.c
+#, c-format
+msgid "PDF saved to %s"
+msgstr ""
+
+#: src/app.c
+msgid "Could not save the PDF"
+msgstr ""
+
+#. TRANSLATORS: a page that could not be read; %s is the log file that says which.
+#: src/app.c
+#, c-format
+msgid "A damaged page was set aside; a blank one took its place (see %s)"
+msgstr ""
+
+#. TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
+#. Mechanical pencil and the Calligraphy pen go by shorter names) and after "Pen feel:".
+#: src/brush.c
+msgctxt "tool"
+msgid "Pencil"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Mechanical pencil"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Ballpoint"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Eraser"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Highlighter"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Fountain pen"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Fineliner"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Marker"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Charcoal"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Calligraphy pen"
+msgstr ""
+
+#: src/brush.c
+msgctxt "tool"
+msgid "Tool"
+msgstr ""
+
+#. TRANSLATORS: Pen feel's sliders, each label left of its value: about 550 px at 44 px beside
+#. a width ("0.30 mm"), 580 beside an angle, 600 beside a plain number ("1.25").
+#: src/brush.c
+msgid "Min width"
+msgstr ""
+
+#: src/brush.c
+msgid "Max width"
+msgstr ""
+
+#: src/brush.c
+msgid "Light darkness"
+msgstr ""
+
+#: src/brush.c
+msgid "Full darkness"
+msgstr ""
+
+#: src/brush.c
+msgid "Pressure deadzone"
+msgstr ""
+
+#: src/brush.c
+msgid "Pressure full at"
+msgstr ""
+
+#: src/brush.c
+msgid "Pressure curve"
+msgstr ""
+
+#: src/brush.c
+msgid "Tilt starts at"
+msgstr ""
+
+#: src/brush.c
+msgid "Tilt full at"
+msgstr ""
+
+#: src/brush.c
+msgid "Tilt widens"
+msgstr ""
+
+#: src/brush.c
+msgid "Tilt lightens"
+msgstr ""
+
+#: src/brush.c
+msgid "Grain"
+msgstr ""
+
+#: src/brush.c
+msgid "Smoothing"
+msgstr ""
+
+#. TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+#: src/calibrate.c
+msgid "Calibrate the pen"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Calibrate touch"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Check it"
+msgstr ""
+
+#. TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
+#. tap five targets, one after another, with the pen, then with a finger; then draw to check.
+#: src/calibrate.c
+msgid "Draw in the box: the line should sit right under the tip."
+msgstr ""
+
+#. TRANSLATORS: the target is the circle with a cross on it; the second number is how many.
+#: src/calibrate.c
+#, c-format
+msgid "Tap with the pen tip on the center of the target (%d of %d)."
+msgstr ""
+
+#: src/calibrate.c
+#, c-format
+msgid "Tap with a finger on the center of the target (%d of %d)."
+msgstr ""
+
+#. TRANSLATORS: calibration's buttons, bars across the screen (1724 px at 44 px). While the
+#. pen is calibrated, a finger works them, and the pen while touch is.
+#: src/calibrate.c
+msgid "Cancel (tap with a finger)"
+msgstr ""
+
+#. TRANSLATORS: the sheets' buttons: 364 px at 44 px, or at 34 px, or two lines of that.
+#: src/calibrate.c src/editor.c src/keyboard.c src/library.c src/musicbuild.c
+msgid "Cancel"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Touch was fine: skip (tap with the pen)"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Save"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Start over"
+msgstr ""
+
+#: src/calibrate.c
+msgid "Cancel (keep the old calibration)"
+msgstr ""
+
+#. TRANSLATORS: calibration's notes, in bold under what to do (1740 px at 44 px).
+#: src/calibrate.c
+msgid "Those taps did not make sense. Let's try again."
+msgstr ""
+
+#: src/calibrate.c
+#, c-format
+msgid "The center was off by %.1f mm. Let's try again."
+msgstr ""
+
+#: src/calibrate.c
+msgid "Pen done."
+msgstr ""
+
+#: src/calibrate.c
+msgid "Calibration saved"
+msgstr ""
+
+#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
+#. the Kindle shows while it sleeps. About 1280 px at 44 px upright, more sideways.
+#: src/dispmenu.c
+msgid "Sleep screen: the page I'm on (tap to change)"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Sleep screen: a pinned page (tap to change)"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
+msgstr ""
+
+#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. about 460 px at 44 px.
+#: src/dispmenu.c
+msgid "Sleep after"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Brightness"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Warmth"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Display"
+msgstr ""
+
+#. TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
+#: src/dispmenu.c
+msgid "Front light controls are not available here."
+msgstr ""
+
+#: src/dispmenu.c
+msgid "This Kindle has no warmth control."
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Invert colors in Grimoire (white on black)"
+msgstr ""
+
+#. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
+#: src/dispmenu.c
+msgid "Sleep"
+msgstr ""
+
+#. TRANSLATORS: makes the open page the sleep screen (544 px at 44 px, or 34 px).
+#: src/dispmenu.c
+msgid "Pin this page"
+msgstr ""
+
+#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
+#: src/dispmenu.c
+#, c-format
+msgid "%d min"
+msgstr ""
+
+#: src/dispmenu.c
+msgctxt "sleep after"
+msgid "never"
+msgstr ""
+
+#. TRANSLATORS: closes a sheet: under its check mark here (344 px at 34 px), on Settings 364 px
+#. at 44 px, on the keyboard 334 px at 44 px in bold.
+#: src/dispmenu.c src/keyboard.c src/library.c src/share.c
+msgid "Done"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "This page is now the sleep screen"
+msgstr ""
+
+#: src/dispmenu.c
+msgid "Could not save the sleep screen"
+msgstr ""
+
+#. TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
+#: src/editor.c
+msgid "Paper for this page"
+msgstr ""
+
+#. TRANSLATORS: the last paper's tile, which opens a sheet that builds a music paper from
+#. parts (about 278 px at 31 px, or two lines of that).
+#: src/editor.c src/library.c
+msgid "Custom music..."
+msgstr ""
+
+#. TRANSLATORS: the chip at the top of a zoomed page: the zoom, then that a tap on the chip takes
+#. the page back to its usual size. In bold at 34 px; the chip grows with its text.
+#: src/editor.c
+#, c-format
+msgid "%d%%   tap to reset"
+msgstr ""
+
+#. TRANSLATORS: the title of the editor's tool picker.
+#: src/editor.c
+msgid "Tools"
+msgstr ""
+
+#. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
+#. Calligraphy pen (284 px at 34 px, as the other tools' names).
+#: src/editor.c
+msgctxt "tool"
+msgid "Mechanical"
+msgstr ""
+
+#: src/editor.c
+msgctxt "tool"
+msgid "Calligraphy"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's buttons, each under its icon (344 px at 34 px): Delete, with
+#. how many pages are ticked; tick all of them, or none.
+#: src/editor.c
+#, c-format
+msgid "Delete (%d)"
+msgstr ""
+
+#: src/editor.c src/library.c
+msgid "Delete"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's button that ticks every page, or none (344 px at 34 px).
+#: src/editor.c
+msgid "Select none"
+msgstr ""
+
+#: src/editor.c
+msgid "Select all"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
+#: src/editor.c
+#, c-format
+msgid "Pages (%d)"
+msgstr ""
+
+#. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
+#. open page in bold.
+#: src/editor.c
+#, c-format
+msgid "Page %d (open)"
+msgstr ""
+
+#: src/editor.c src/httpd.c
+#, c-format
+msgid "Page %d"
+msgstr ""
+
+#. TRANSLATORS: at the bottom of the Pages view: how to delete pages (Delete is the button's
+#. name), then which screenful of them this is (1320 px at 34 px).
+#: src/editor.c
+#, c-format
+msgid "Tick pages, then Delete.   %d of %d"
+msgstr ""
+
+#: src/editor.c
+msgid "Could not save this page. Is the storage full?"
+msgstr ""
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
+#: src/editor.c
+msgid "This page was made by a newer Grimoire. It is read-only here."
+msgstr ""
+
+#: src/editor.c
+msgid "Could not open that page"
+msgstr ""
+
+#: src/editor.c
+msgid "Could not open that notebook"
+msgstr ""
+
+#: src/editor.c
+msgid "This page is already empty"
+msgstr ""
+
+#: src/editor.c
+msgid "Page cleared"
+msgstr ""
+
+#: src/editor.c
+msgid "Could not delete those pages"
+msgstr ""
+
+#. TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
+#: src/editor.c
+#, c-format
+msgid "Deleted %d page (kept in %s)"
+msgid_plural "Deleted %d pages (kept in %s)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/editor.c
+msgid "Could not add a page"
+msgstr ""
+
+#: src/editor.c
+msgid "Saving..."
+msgstr ""
+
+#: src/editor.c
+msgid "Saved"
+msgstr ""
+
+#. TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.
+#: src/httpd.c
+msgid "not found"
+msgstr ""
+
+#. TRANSLATORS: on the share index, under a notebook: its pages, when it last changed and its
+#. paper, then links to it as a page of pictures and to the studio (Effects).
+#: src/httpd.c
+#, c-format
+msgid "%d page"
+msgid_plural "%d pages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/httpd.c
+msgctxt "share link"
+msgid "pages"
+msgstr ""
+
+#: src/httpd.c
+msgctxt "share link"
+msgid "effects"
+msgstr ""
+
+#. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
+#: src/httpd.c
+#, c-format
+msgid "%d notebook on your Kindle"
+msgid_plural "%d notebooks on your Kindle"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the share index's big link to a zip of every notebook.
+#: src/httpd.c
+msgid "Download everything (zip)"
+msgstr ""
+
+#. TRANSLATORS: the share index's heading over the notebooks in no folder.
+#: src/httpd.c
+msgid "Library"
+msgstr ""
+
+#. TRANSLATORS: on the share index, under a folder with no notebooks.
+#: src/httpd.c
+msgctxt "folder"
+msgid "empty"
+msgstr ""
+
+#. TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
+#. the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
+#: src/httpd.c
+msgid "all notebooks"
+msgstr ""
+
+#: src/httpd.c
+msgid "ZIP (PDF + PNG pages + raw)"
+msgstr ""
+
+#: src/httpd.c
+msgid "Effects (transparent, colors, gradients, filters)"
+msgstr ""
+
+#. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
+#: src/httpd.c
+msgid "Loading the studio..."
+msgstr ""
+
+#: src/httpd.c
+msgid "The studio needs JavaScript."
+msgstr ""
+
+#: src/httpd.c
+msgid "export failed"
+msgstr ""
+
+#: src/httpd.c
+msgid "no such notebook"
+msgstr ""
+
+#. TRANSLATORS: the answer to a browser that asked for the Kindle by another name than its
+#. address (as a page on another site would).
+#: src/httpd.c
+msgid "use the address shown on the Kindle"
+msgstr ""
+
+#. TRANSLATORS: the keyboard's named keys, in bold at 44 px: shift (250 px wide), delete
+#. (261), the space bar, and Cancel and Done (334).
+#: src/keyboard.c
+msgctxt "key"
+msgid "shift"
+msgstr ""
+
+#: src/keyboard.c
+msgctxt "key"
+msgid "del"
+msgstr ""
+
+#: src/keyboard.c
+msgctxt "key"
+msgid "space"
+msgstr ""
+
+#. TRANSLATORS: under a folder's card in the Library.
+#: src/library.c
+#, c-format
+msgid "%d notebook"
+msgid_plural "%d notebooks"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
+#. date and time, "Oct 10, 14:32"). Sideways the line has 316 px at 34 px; when it is longer,
+#. the time is left out.
+#: src/library.c
+#, c-format
+msgid "%d page, %s"
+msgid_plural "%d pages, %s"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
+#. (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
+#. 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
+#: src/library.c
+msgid "Exit"
+msgstr ""
+
+#. TRANSLATORS: the Library's top bar (see Exit).
+#: src/library.c
+msgid "Settings"
+msgstr ""
+
+#. TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
+#: src/library.c
+msgid "Share"
+msgstr ""
+
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
+#: src/library.c
+msgid "Folder"
+msgstr ""
+
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
+#: src/library.c
+msgid "New"
+msgstr ""
+
+#. TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
+#: src/library.c
+msgid "This folder is empty"
+msgstr ""
+
+#: src/library.c
+msgid "No notebooks yet"
+msgstr ""
+
+#. TRANSLATORS: New is the top bar's button (as translated there).
+#: src/library.c
+msgid "Tap New to start one."
+msgstr ""
+
+#. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
+#: src/library.c
+#, c-format
+msgid "Page %d of %d"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
+#: src/library.c
+msgid "New notebook"
+msgstr ""
+
+#: src/library.c
+msgid "Paper"
+msgstr ""
+
+#. TRANSLATORS: the new notebook's name, then its Rename button (284 px at 29 px, under its
+#. icon), then the folder it goes in, or the Library itself.
+#: src/library.c
+#, c-format
+msgid "Name: %s"
+msgstr ""
+
+#: src/library.c
+msgid "Rename"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "In: %s"
+msgstr ""
+
+#. TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
+#. notebook: "In: Library (top level)").
+#: src/library.c
+msgid "Library (top level)"
+msgstr ""
+
+#: src/library.c
+msgid "Create"
+msgstr ""
+
+#. TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
+#. that language's name (each language is named in itself: "English", "Español").
+#: src/library.c
+#, c-format
+msgid "Automatic (%s)"
+msgstr ""
+
+#. TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
+#. lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
+#. 34 px). Sideways they are 80 px wider.
+#: src/library.c
+msgid "Pen sensitivity (pressure + tilt per tool)"
+msgstr ""
+
+#: src/library.c
+msgid "Calibrate pen and touch"
+msgstr ""
+
+#: src/library.c
+msgid "Display: brightness, warmth, invert"
+msgstr ""
+
+#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
+#: src/library.c
+msgid "Style: Gothic (tap for Classic)"
+msgstr ""
+
+#: src/library.c
+msgid "Style: Classic (tap for Gothic)"
+msgstr ""
+
+#. TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
+#. every notebook.
+#: src/library.c
+#, c-format
+msgid "Mirror PDFs to %s (USB)"
+msgstr ""
+
+#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+#: src/library.c
+msgid "Holding the pen button does nothing (tap to change)"
+msgstr ""
+
+#: src/library.c
+msgid "Holding the pen button erases (tap to change)"
+msgstr ""
+
+#: src/library.c
+msgid "Holding the pen button highlights (tap to change)"
+msgstr ""
+
+#: src/library.c
+msgid "Turn with the Kindle (portrait and landscape)"
+msgstr ""
+
+#: src/library.c
+msgid "Pinch with two fingers to zoom"
+msgstr ""
+
+#. TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+#: src/library.c
+#, c-format
+msgid "Language: %s"
+msgstr ""
+
+#. TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
+#. device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
+#: src/library.c
+msgid "pen: none"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "pen: %s, pressure, tilt"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "pen: %s, pressure"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "pen: %s, tilt"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "pen: %s"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "Data: %s"
+msgstr ""
+
+#. TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
+#. Kindle's storage the PDF goes in.
+#: src/library.c
+#, c-format
+msgid "Save PDF to %s now"
+msgstr ""
+
+#: src/library.c
+msgid "Open"
+msgstr ""
+
+#: src/library.c
+msgid "Move to folder"
+msgstr ""
+
+#: src/library.c
+msgid "Rename folder"
+msgstr ""
+
+#: src/library.c
+msgid "Remove folder (move its notebooks out first)"
+msgstr ""
+
+#: src/library.c
+msgid "Remove folder"
+msgstr ""
+
+#: src/library.c
+msgid "New folder..."
+msgstr ""
+
+#. TRANSLATORS: the title of the list of folders a notebook can be moved to.
+#: src/library.c
+msgid "Move to"
+msgstr ""
+
+#. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
+#: src/library.c
+#, c-format
+msgid "Delete \"%s\"?"
+msgstr ""
+
+#. TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
+#. Kindle's storage (%s), or keep the notebook.
+#: src/library.c
+#, c-format
+msgid "Delete (moves it to %s)"
+msgstr ""
+
+#: src/library.c
+msgid "Keep it"
+msgstr ""
+
+#. TRANSLATORS: the title of the list of languages (Settings > Language).
+#: src/library.c
+msgid "Language"
+msgstr ""
+
+#: src/library.c
+msgid "Could not create the notebook (storage full?)"
+msgstr ""
+
+#. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
+#: src/library.c
+#, c-format
+msgid "Notebook %s"
+msgstr ""
+
+#. TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
+#: src/library.c
+msgctxt "keyboard"
+msgid "Folder"
+msgstr ""
+
+#: src/library.c
+msgctxt "keyboard"
+msgid "Name"
+msgstr ""
+
+#: src/library.c
+msgid "Saving the PDF in the background..."
+msgstr ""
+
+#. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
+#: src/library.c
+#, c-format
+msgid "Moved to %s"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet that builds a music paper from parts.
+#: src/musicbuild.c
+msgid "Custom music"
+msgstr ""
+
+#. TRANSLATORS: the Custom music sheet's headings, over the layout's parts and over the parts to
+#. add (962 px at 44 px).
+#: src/musicbuild.c
+msgid "Each system, top to bottom"
+msgstr ""
+
+#: src/musicbuild.c
+msgid "(add a part below)"
+msgstr ""
+
+#: src/musicbuild.c
+msgid "Add a part"
+msgstr ""
+
+#. TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
+#: src/musicbuild.c
+msgid "Systems per page"
+msgstr ""
+
+#. TRANSLATORS: the systems per page, of the most that fit (275 px at 44 px).
+#: src/musicbuild.c
+#, c-format
+msgid "%d of %d"
+msgstr ""
+
+#. TRANSLATORS: takes the layout built on the Custom music sheet (364 px at 34 px).
+#: src/musicbuild.c
+msgid "Use layout"
+msgstr ""
+
+#. TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
+#. paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
+#. is preferred: "Narrow," over "no margin"), in both styles. Also on the share pages.
+#: src/paper.c
+msgctxt "paper"
+msgid "Narrow rule"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Medium rule"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Wide rule"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Sheet music"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Blank"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Narrow, no margin"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Medium, no margin"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Wide, no margin"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Grand staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Guitar tab"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Dot grid"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Graph paper"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Cornell notes"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "4-string bass"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "5-string bass"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "6-string bass"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "7-string bass"
+msgstr ""
+
+#: src/paper.c
+msgctxt "paper"
+msgid "Custom music"
+msgstr ""
+
+#. TRANSLATORS: a paper made by a newer Grimoire, which this one draws blank.
+#: src/paper.c
+msgctxt "paper"
+msgid "Newer paper"
+msgstr ""
+
+#. TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
+#. (296 px at 44 px, or two lines at 34 px) and in its list of the layout's parts.
+#: src/paper.c
+msgctxt "music part"
+msgid "Treble staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Bass staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Alto staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Tenor staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Drum staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Plain staff"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Tab, 4 lines"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Tab, 5 lines"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Tab, 6 lines"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Tab, 7 lines"
+msgstr ""
+
+#: src/paper.c
+msgctxt "music part"
+msgid "Lyric line"
+msgstr ""
+
+#. TRANSLATORS: an angle on Pen feel's sliders and in its readout ("45 deg"); "%d°" is fine.
+#: src/pensettings.c
+#, c-format
+msgid "%d deg"
+msgstr ""
+
+#. TRANSLATORS: the axes of Pen feel's pressure graph: under it, how hard the pen presses; over
+#. it, how much ink that puts down. Up to 570 px at 34 px (the test pad starts there).
+#: src/pensettings.c
+msgid "pen pressure"
+msgstr ""
+
+#. TRANSLATORS: over Pen feel's pressure graph (see pen pressure): how much ink.
+#: src/pensettings.c
+msgid "ink"
+msgstr ""
+
+#. TRANSLATORS: Pen feel's readout line, until the pen draws on the test pad (1760 px at
+#. 34 px; the readings below take that room too).
+#: src/pensettings.c
+msgid "Draw on the pad to see live pressure and tilt."
+msgstr ""
+
+#. TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
+#: src/pensettings.c
+msgid "tilt: not reported"
+msgstr ""
+
+#. TRANSLATORS: the tilt in Pen feel's readout (below): the pen's lean, and what it counts
+#. for (0 to 1).
+#: src/pensettings.c
+#, c-format
+msgid "tilt %d deg -> %.2f"
+msgstr ""
+
+#. TRANSLATORS: Pen feel's readout while the calligraphy pen draws on the test pad, two
+#. spaces apart: the raw pressure and what the curve makes of it, the tilt (above), the
+#. nib's width and angle (1760 px at 34 px).
+#: src/pensettings.c
+#, c-format
+msgid "pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg"
+msgstr ""
+
+#. TRANSLATORS: Pen feel's readout while a tool draws on the test pad, two spaces apart:
+#. the raw pressure and what the curve makes of it, the tilt (above), the line's width
+#. and its ink (0 to 1) (1760 px at 34 px).
+#: src/pensettings.c
+#, c-format
+msgid "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f"
+msgstr ""
+
+#. TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (580 px at
+#. 44 px, beside an angle).
+#: src/pensettings.c
+msgid "Nib follows lean from"
+msgstr ""
+
+#: src/pensettings.c
+msgid "Nib fully follows at"
+msgstr ""
+
+#. TRANSLATORS: the button that wipes Pen feel's test pad (190 px at 44 px, or 34 px).
+#: src/pensettings.c
+msgid "Clear"
+msgstr ""
+
+#. TRANSLATORS: puts the tool's pen feel back as it came (344 px at 44 px, or 34 px).
+#: src/pensettings.c
+msgid "Reset tool"
+msgstr ""
+
+#. TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
+#. tool's name (1200 px at 70 px).
+#: src/pensettings.c
+#, c-format
+msgid "Pen feel: %s"
+msgstr ""
+
+#. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
+#: src/pensettings.c
+msgid "test pad (the eraser clears it)"
+msgstr ""
+
+#: src/pensettings.c
+msgid "test pad"
+msgstr ""
+
+#: src/pensettings.c
+msgid "The eraser removes whole strokes; harder pressure = bigger reach."
+msgstr ""
+
+#: src/pensettings.c
+msgid "Reset to defaults"
+msgstr ""
+
+#. TRANSLATORS: the Share screen's help, under the address: a line each, 1640 px at 34 px.
+#: src/share.c
+msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+msgstr ""
+
+#: src/share.c
+msgid "Effects: transparent, recolored or filtered copies of any page."
+msgstr ""
+
+#: src/share.c
+msgid "Same Wi-Fi network only. Keep this screen open while downloading."
+msgstr ""
+
+#. TRANSLATORS: how many downloads the Share screen has answered since it opened.
+#: src/share.c
+#, c-format
+msgid "Downloads served: %d"
+msgstr ""
+
+#. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, about 1500 sideways),
+#. with its QR code, or without one (no Wi-Fi address).
+#: src/share.c
+msgid "Scan with your phone, or open this in a browser:"
+msgstr ""
+
+#: src/share.c
+msgid "On your computer, open this in a browser:"
+msgstr ""
+
+#. TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
+#: src/share.c
+#, c-format
+msgid "Also: %s (%s)"
+msgstr ""
+
+#. TRANSLATORS: the last help line, with the command a computer pulls everything with.
+#: src/share.c
+#, c-format
+msgid "From a terminal: %s <address above>"
+msgstr ""
+
+#. TRANSLATORS: the Share screen's title.
+#: src/share.c
+msgid "Share over Wi-Fi"
+msgstr ""
+
+#. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
+#. 44 px); Retry is the button's name.
+#: src/share.c
+msgid "Turn on Wi-Fi on the Kindle first"
+msgstr ""
+
+#: src/share.c
+msgid "Could not start the server"
+msgstr ""
+
+#: src/share.c
+msgid "Then tap Retry."
+msgstr ""
+
+#: src/share.c
+msgid "Is another app using the port? Try again."
+msgstr ""
+
+#. TRANSLATORS: starts the share server again (404 px at 44 px, or 34 px).
+#: src/share.c
+msgid "Retry"
+msgstr ""
+
+#. TRANSLATORS: the Share screen as the Kindle's sleep screen.
+#: src/share.c
+msgid "Asleep"
+msgstr ""
+
+#: src/share.c
+msgid "Wake the Kindle to share again."
+msgstr ""
+
+#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+#: src/store.c
+msgid "Untitled"
+msgstr ""
+
+#. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
+#. Library's cards, which are narrow when the Kindle is sideways.
+#: src/util.c
+msgctxt "month"
+msgid "Jan"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Feb"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Mar"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Apr"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "May"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Jun"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Jul"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Aug"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Sep"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Oct"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Nov"
+msgstr ""
+
+#: src/util.c
+msgctxt "month"
+msgid "Dec"
+msgstr ""
+
+#. TRANSLATORS: a date and time, "Oct 10, 14:32": the month (as above), the day, then hours and
+#. minutes on the 24-hour clock. Reorder them with %1$s, %2$d, %3$02d and %4$02d ("%2$d %1$s,
+#. %3$02d:%4$02d" is "10 Oct, 14:32"), using that form for all four.
+#: src/util.c
+#, c-format
+msgctxt "date"
+msgid "%s %d, %02d:%02d"
+msgstr ""
+
+#. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as
+#. above), then the day. "%2$d %1$s" is "10 Oct".
+#: src/util.c
+#, c-format
+msgctxt "date"
+msgid "%s %d"
+msgstr ""
+
+#. TRANSLATORS: the studio's presets, each a whole look, on buttons.
+#: web/studio.js
+msgctxt "studio"
+msgid "Original"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Transparent"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Signature"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Warm"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Sepia"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Parchment"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Blueprint"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Chalkboard"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Night"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Sunset ink"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Aurora"
+msgstr ""
+
+#. TRANSLATORS: the studio could not get a page from the Kindle: its answer (an
+#. HTTP status, 404) for that address.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "The Kindle answered %d for %s"
+msgstr ""
+
+#. TRANSLATORS: %s is what went wrong, in the browser's words.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "The Kindle stopped answering (%s). Is the Share screen still open?"
+msgstr ""
+
+#. TRANSLATORS: the Warmth slider's value: cooler (blue) or warmer (orange), by how much.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "cool %d"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "warm %d"
+msgstr ""
+
+#. TRANSLATORS: the studio's controls: a heading per section, then the labels of its rows and
+#. of the choices on its buttons. Ink is the writing; the paper lines are the page's ruling.
+#: web/studio.js
+msgctxt "studio"
+msgid "Background"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "White"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Color"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Gradient"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "From"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "To"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Angle"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Paper lines"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Show"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Hide"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Strength"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Ink (your writing)"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "As written"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Across"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "The writing"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "The page"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Look"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tone"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "None"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Gray"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Duotone"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Invert"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Shadows"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Highlights"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Warmth"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tint"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tint amount"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Brightness"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Contrast"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Crop and size"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Crop"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Whole page"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Trim to ink"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Margin"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Size"
+msgstr ""
+
+#. TRANSLATORS: names for a screen reader: the picture, the page number's box, the arrows.
+#: web/studio.js
+msgctxt "studio"
+msgid "Preview"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Page"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Previous page"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Next page"
+msgstr ""
+
+#. TRANSLATORS: over the studio's picture: %s is the box with the page's number, %d the pages.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Page %s of %d"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Presets"
+msgstr ""
+
+#. TRANSLATORS: the studio's downloads: this page as a PNG, every page as PNGs in a zip, or as
+#. one PDF (%d is how many pages the notebook has).
+#: web/studio.js
+msgctxt "studio"
+msgid "Export"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "PNG, this page"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "PNGs, all %d page (zip)"
+msgid_plural "PNGs, all %d pages (zip)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "PDF, all %d page"
+msgid_plural "PDF, all %d pages"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: copies the ImageMagick command below the picture's settings.
+#: web/studio.js
+msgctxt "studio"
+msgid "Copy command"
+msgstr ""
+
+#. TRANSLATORS: over the command that makes the same picture with ImageMagick, and the links
+#. to the page's two layers (its ink, its paper) it is made from.
+#: web/studio.js
+msgctxt "studio"
+msgid ""
+"The same picture from the page’s two layers, with ImageMagick 7 in a macOS "
+"or Linux terminal. Download the layers into one folder and run it there:"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Try again"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, transparent, no ink to trim to"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, transparent"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, no ink to trim to"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px"
+msgstr ""
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Loading page %d..."
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Not loaded"
+msgstr ""
+
+#. TRANSLATORS: an export's progress, page by page.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Page %d of %d..."
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Working..."
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Done."
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Selected: press Cmd/Ctrl+C"
+msgstr ""
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Copied"
+msgstr ""

@@ -18,6 +18,7 @@ typedef enum {
 } ToolKind;
 
 const char *tool_name(ToolKind t);   // "Pencil", "Mechanical pencil", "Ballpoint", "Eraser", "Highlighter"...
+const char *tool_label(ToolKind t);  // the same in the language in use, for the screens
 
 // Every field is user-tweakable per tool (pensettings.c draws one slider per entry of
 // tool_param_table). Stored in settings.ini and snapshotted into each stroke.

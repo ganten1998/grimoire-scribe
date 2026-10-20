@@ -1,6 +1,8 @@
 // util.c: implementation of common.h.
 #include "common.h"
 
+#include "i18n.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
@@ -103,13 +105,34 @@ size_t strlcpy_q(char *dst, const char *src, size_t cap) {
     return n;
 }
 
+// Dates in the language in use: the month's short name and the order come from the catalog.
+static const char *month_short(const struct tm *tm) {
+    // TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
+    // Library's cards, which are narrow when the Kindle is sideways.
+    static const char *const mon[] = {NC_("month", "Jan"), NC_("month", "Feb"), NC_("month", "Mar"),
+                                      NC_("month", "Apr"), NC_("month", "May"), NC_("month", "Jun"),
+                                      NC_("month", "Jul"), NC_("month", "Aug"), NC_("month", "Sep"),
+                                      NC_("month", "Oct"), NC_("month", "Nov"), NC_("month", "Dec")};
+    return C_("month", mon[(tm->tm_mon % 12 + 12) % 12]);
+}
+
 void format_time_short(int64_t t, char *buf, size_t cap) {
-    static const char *mon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     struct tm tm;
     time_t tt = (time_t)t;
     localtime_r(&tt, &tm);
-    snprintf(buf, cap, "%s %d, %02d:%02d", mon[tm.tm_mon % 12], tm.tm_mday, tm.tm_hour, tm.tm_min);
+    // TRANSLATORS: a date and time, "Oct 10, 14:32": the month (as above), the day, then hours and
+    // minutes on the 24-hour clock. Reorder them with %1$s, %2$d, %3$02d and %4$02d ("%2$d %1$s,
+    // %3$02d:%4$02d" is "10 Oct, 14:32"), using that form for all four.
+    snprintf(buf, cap, C_("date", "%s %d, %02d:%02d"), month_short(&tm), tm.tm_mday, tm.tm_hour, tm.tm_min);
+}
+
+void format_date_short(int64_t t, char *buf, size_t cap) {
+    struct tm tm;
+    time_t tt = (time_t)t;
+    localtime_r(&tt, &tm);
+    // TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as
+    // above), then the day. "%2$d %1$s" is "10 Oct".
+    snprintf(buf, cap, C_("date", "%s %d"), month_short(&tm), tm.tm_mday);
 }
 
 int mkdir_p(const char *path) {

@@ -3,9 +3,11 @@
 // below 128 except ink, so everything stays crisp under GL16/DU refresh.
 // Sizes scale with dpi via ui_px(); at 300 dpi a standard touch target is ~ 10 mm.
 // Icons come from Terminess Nerd Font (its Material Design glyphs); type follows the theme.
+// Text goes through i18n.h's _() and friends (included here for every screen).
 #pragma once
 #include "canvas.h"
 #include "font.h"
+#include "i18n.h"
 
 typedef enum {
     ICON_NONE = 0,
@@ -17,7 +19,7 @@ typedef enum {
     ICON_TRASH, ICON_CHECK, ICON_BACK, ICON_TARGET, ICON_EXIT,
     ICON_TUNE, ICON_RENAME, ICON_FOLDER_MOVE, ICON_FOLDER_PLUS, ICON_DOWNLOAD, ICON_HIGHLIGHTER,
     ICON_BROOM, ICON_BRIGHTNESS, ICON_INVERT, ICON_FOUNTAIN, ICON_FINELINER, ICON_MARKER,
-    ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE, ICON_CHARCOAL, ICON_CALLIGRAPHY,
+    ICON_UP, ICON_DOWN, ICON_MUSIC, ICON_CASTLE, ICON_CHARCOAL, ICON_CALLIGRAPHY, ICON_LANGUAGE,
     ICON_COUNT
 } IconKind;
 
@@ -42,8 +44,20 @@ IconKind ui_tool_icon(int tool);
 void ui_icon(Canvas *c, IconKind k, Rect r, uint8_t gray);
 
 typedef enum { BTN_PLAIN = 0, BTN_SELECTED = 1, BTN_DISABLED = 2, BTN_PRIMARY = 3 } ButtonStyle;
-// Icon above label if both given; selected = inverted (black fill, white glyph).
+// Icon above label if both given; selected = inverted (black fill, white glyph). The label keeps
+// inside the button's edge, and in Gothic inside the carved inner line of a button at least 90 px
+// each way, 4 px clear of it. A label alone that is too long for its button (a translation) takes
+// a smaller size, down to the small one, then two lines (ui_text).
 void ui_button(Canvas *c, Rect r, IconKind icon, const char *label, ButtonStyle st);
+// The size ui_button draws a label alone at in r (the small size where it takes two lines), and
+// such a button with its label at px instead (one line at px, else two): a grid of buttons draws
+// every label at the smallest size any of them needs, rather than each at its own.
+float ui_button_text_px(Rect r, const char *label, ButtonStyle st);
+void ui_button_text_at(Canvas *c, Rect r, const char *label, ButtonStyle st, float px);
+// The width a button h px tall (and at least 90 px wide) needs to show its label whole at its
+// usual size, under its icon or alone: a row of buttons widens to the widest need, so that a
+// longer translation fits.
+int ui_button_need_w(int h, IconKind icon, const char *label, ButtonStyle st);
 
 // Horizontal slider: label + value text on the left, track on the right.
 // value_text may be NULL (then "%.2f unit" is shown).
@@ -70,11 +84,28 @@ void ui_emblem(Canvas *c, float cx, float cy, float r, uint8_t ink, uint8_t bg);
 // Modal sheet: dims nothing (e-ink), draws a white card with a thick border + title bar.
 // Returns the content rect inside the card.
 Rect ui_sheet(Canvas *c, Rect card, const char *title);
-// Toast-style one-line message box centered near the bottom of the screen.
+// Toast-style message box centered near the bottom of the screen: one line, or two (taller) for
+// text that needs them; what two lines cannot hold ends in "...".
 Rect ui_toast_rect(Rect screen, const char *msg);
 void ui_toast(Canvas *c, Rect screen, const char *msg);
 void ui_toast_at(Canvas *c, Rect r, const char *msg);  // r: ui_toast_rect's, moved as the app needs
+int ui_toast_room(Rect screen);  // the widest a toast's line can be on that screen (px)
 void ui_checkbox(Canvas *c, Rect r, const char *label, bool checked);
+
+// Text that fits r, for labels a translation may make longer: on one line at px if it can; else
+// at the largest size down to min_px that holds it on one line (font_fit_px: Gothic's pixel face
+// has only whole steps, 44 px to 34 px being the one that counts); else on up to max_lines lines
+// at min_px, as many as r's height holds; only then cut short (which the overflow hook hears of).
+// Centered both ways, or left-aligned and centered vertically. Text that fits is drawn exactly as
+// font_draw_centered or font_draw_left draws it.
+void ui_text(Canvas *c, FontFace f, float px, float min_px, Rect r, const char *text, int max_lines, bool center,
+             uint8_t gray);
+// The width a box needs for its text: the text at px with pad on each side, kept within
+// [min_w, max_w], for a chip or a button that grows with its label instead of cutting it.
+int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, int max_w);
+// The same for a chip h px tall with ends as round as it can be (ui_frame with radius h / 2):
+// the text keeps clear of Gothic's pointed ends, which are h / 2 deep.
+int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w);
 
 // Tap tracking shared by screens: a press that starts and ends in the same rect within
 // slop = tap. Long press = held > 600 ms without moving.

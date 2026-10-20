@@ -50,6 +50,7 @@ typedef struct {
     int pen_panel_w, pen_panel_h, touch_panel_w, touch_panel_h;
     int http_port;                // share server, default 8765
     bool passcode_told;           // the "passcode paused while Grimoire is open" notice was shown once
+    char language[8];             // settings.ini language=: "auto" (the Kindle's), or a code of i18n.h's list
 } Settings;
 
 int store_init(const char *root);   // creates root/, notebooks/, trash/
@@ -69,6 +70,9 @@ void settings_default(Settings *s);
 // and written back by settings_save (docs/FORMAT.md).
 int settings_load(Settings *s);
 int settings_save(const Settings *s);
+// settings.ini's language= as the file has it, last line counting ("" without the file or the
+// key), read on its own: main.c sets the language before the app, and its settings, start.
+void settings_language(char *out, size_t cap);
 
 // Library. store_list allocates *out (free()); sorted by modified, newest first.
 int store_list(NotebookInfo **out, int *n);

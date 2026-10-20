@@ -106,16 +106,26 @@ int app_init(App *a, int w, int h, float dpi) {
     // why) and says so here; "left-off": an earlier session ended without putting it back (told
     // at up to three starts while it stays off). That one goes first: the Kindle is unprotected.
     const char *passcode = getenv("GRIMOIRE_PASSCODE");
+    char msg[256];
     if (passcode && !strcmp(passcode, "left-off")) {
         qlog("device passcode: left off by an earlier session; telling the user");
-        app_toast(a, "Your Kindle passcode was left off. Turn it back on in Kindle Settings.", 10000);
-    } else if (caps && !caps->has_pen)
-        app_toast(a, "No pen found. " APP_NAME " is made for the Kindle Scribe; writing needs its pen.", 10000);
-    else if (passcode && !strcmp(passcode, "paused") && !a->settings.passcode_told) {
+        // TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
+        // or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
+        app_toast(a, _("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000);
+    } else if (caps && !caps->has_pen) {
+        // TRANSLATORS: %s is the app's name, Grimoire.
+        snprintf(msg, sizeof msg, _("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
+        app_toast(a, msg, 10000);
+    } else if (passcode && !strcmp(passcode, "paused") && !a->settings.passcode_told) {
         a->settings.passcode_told = true;
-        app_toast(a, "Your Kindle passcode is paused while " APP_NAME " is open.", 8000);
-    } else if (!a->settings.pen_calib.valid)
-        app_toast(a, "Tip: Settings > Calibrate pen if strokes land off the tip", 6000);
+        // TRANSLATORS: %s is the app's name, Grimoire.
+        snprintf(msg, sizeof msg, _("Your Kindle passcode is paused while %s is open."), APP_NAME);
+        app_toast(a, msg, 8000);
+    } else if (!a->settings.pen_calib.valid) {
+        // TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
+        // sheet that says "Calibrate pen and touch": name them as they are translated.
+        app_toast(a, _("Tip: Settings > Calibrate pen if strokes land off the tip"), 6000);
+    }
     return 0;
 }
 
@@ -266,7 +276,7 @@ static void toast_follow(App *a) {
 
 void app_toast(App *a, const char *msg, int ms) {
     toast_hide(a);
-    strlcpy_q(a->toast, msg, sizeof a->toast);
+    i18n_copy(a->toast, msg ? msg : "", sizeof a->toast);  // (too long: cut between two characters)
     a->toast_until = now_ms() + (uint32_t)ms;
     toast_draw(a);
 }
@@ -353,11 +363,15 @@ static void app_leave(App *a) {
         if (!saved && !warned) {
             a->leave_unsaved_at = now | 1;
             qlog("leaving: staying this once (holding the power button 4 s again within a minute leaves without the page)");
-            app_toast(a, "Could not save this page. Hold power 4 s again to leave anyway.", 10000);
+            // TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
+            // saved (a full storage), so it stays once.
+            app_toast(a, _("Could not save this page. Hold power 4 s again to leave anyway."), 10000);
             return;
         }
-        char msg[64];
-        snprintf(msg, sizeof msg, saved ? "Saved. Leaving %s." : "Leaving %s without this page.", APP_NAME);
+        char msg[256];
+        // TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
+        // %s is the app's name, Grimoire.
+        snprintf(msg, sizeof msg, saved ? _("Saved. Leaving %s.") : _("Leaving %s without this page."), APP_NAME);
         app_toast(a, msg, 3000);  // shown by the last flush
     }
     a->running = false;
@@ -413,9 +427,18 @@ static PowerdState powerd_state_now(char *name, size_t cap) {
 
 void app_tick(App *a, uint32_t now) {
     int bg = bg_poll();
-    if (bg) app_toast(a, bg > 0 ? "PDF saved to grimoire/PDFs" : "Could not save the PDF", 2500);
-    if (store_take_corrupt_count() > 0)
-        app_toast(a, "A damaged page was set aside; a blank one took its place (see grimoire.log)", 6000);
+    if (bg) {
+        char msg[256];
+        // TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
+        if (bg > 0) snprintf(msg, sizeof msg, _("PDF saved to %s"), "grimoire/PDFs");
+        app_toast(a, bg > 0 ? msg : _("Could not save the PDF"), 2500);
+    }
+    if (store_take_corrupt_count() > 0) {
+        char msg[256];
+        // TRANSLATORS: a page that could not be read; %s is the log file that says which.
+        snprintf(msg, sizeof msg, _("A damaged page was set aside; a blank one took its place (see %s)"), "grimoire.log");
+        app_toast(a, msg, 6000);
+    }
     // A short power press the power service did not follow with a sleep announcement. If it is in
     // its screensaver already, Grimoire missed the announcement: show the sleep screen and send
     // nothing (a powerButton now would wake the Kindle again). Otherwise ask it to sleep.
@@ -597,6 +620,8 @@ int app_probe(const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     }
     else if (!strcmp(key, "settings.theme")) snprintf(out, cap, "%s", st->theme == THEME_CLASSIC ? "classic" : "gothic");
+    else if (!strcmp(key, "settings.language")) snprintf(out, cap, "%s", st->language);  // "auto" for one it lacks
+    else if (!strcmp(key, "language")) snprintf(out, cap, "%s", i18n_current());  // the language in use
     else return -1;
     return 0;
 }

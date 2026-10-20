@@ -313,7 +313,9 @@ static float units_to_px(int ttf, float gpx, int units) {
     return stbtt_ScaleForPixelHeight(&g_font[ttf], gpx) * (float)units;
 }
 
-static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const char *s, uint8_t gray) {
+// Lays out (and with a canvas, draws) the text from s up to end (NULL: its terminator). Measuring
+// (no canvas) reads the advances straight from the font: no glyph is rendered or cached for it.
+static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const char *s, const char *end, uint8_t gray) {
     if (!g_ready || !s) return 0;
     FaceMap m = face_of(f);
     float fpx = px * m.scale;
@@ -323,7 +325,7 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
     float pen = (float)x;
     uint32_t prev = 0;
     int prev_ttf = -1;
-    while (*s) {
+    while (*s && (!end || s < end)) {
         uint32_t cp = utf8_next(&s);
         // Glyphs a theme face lacks (symbols, arrows) come from Terminess at the asked size.
         int ttf = m.ttf;
@@ -334,20 +336,26 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
         }
         const stbtt_fontinfo *fi = &g_font[ttf];
         if (prev && prev_ttf == ttf) pen += units_to_px(ttf, gpx, stbtt_GetCodepointKernAdvance(fi, (int)prev, (int)cp));
-        Glyph *g = glyph_get(ttf, gpx, cp);
-        if (c && g->bmp) {
-            int gx = (int)lrintf(pen) + g->xoff, gy = baseline + g->yoff;
-            // Accented letters in a pixel face's bold spare their marks (pixel_bold); that
-            // bitmap already holds the overprint of one design pixel (bold == k px).
-            const uint8_t *bb = bold && cp > 0x7F && k_unit[ttf] && bold == -g->size4 ? pixel_bold(g) : NULL;
-            if (bb) {
-                blit(c, bb, g->w + bold, g->h, gx, gy, gray);
-            } else {
-                blit_glyph(c, g, gx, gy, gray);
-                for (int b = 1; b <= bold; b++) blit_glyph(c, g, gx + b, gy, gray);
+        int advance;
+        if (c) {
+            Glyph *g = glyph_get(ttf, gpx, cp);
+            advance = g->advance;
+            if (g->bmp) {
+                int gx = (int)lrintf(pen) + g->xoff, gy = baseline + g->yoff;
+                // Accented letters in a pixel face's bold spare their marks (pixel_bold); that
+                // bitmap already holds the overprint of one design pixel (bold == k px).
+                const uint8_t *bb = bold && cp > 0x7F && k_unit[ttf] && bold == -g->size4 ? pixel_bold(g) : NULL;
+                if (bb) {
+                    blit(c, bb, g->w + bold, g->h, gx, gy, gray);
+                } else {
+                    blit_glyph(c, g, gx, gy, gray);
+                    for (int b = 1; b <= bold; b++) blit_glyph(c, g, gx + b, gy, gray);
+                }
             }
+        } else {
+            stbtt_GetCodepointHMetrics(fi, (int)cp, &advance, NULL);
         }
-        pen += units_to_px(ttf, gpx, g->advance) + (float)bold;
+        pen += units_to_px(ttf, gpx, advance) + (float)bold;
         prev = cp;
         prev_ttf = ttf;
     }
@@ -355,10 +363,10 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
 }
 
 int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char *utf8, uint8_t gray) {
-    return layout(c, f, px, x, baseline_y, utf8, gray);
+    return layout(c, f, px, x, baseline_y, utf8, NULL, gray);
 }
 
-int font_measure(FontFace f, float px, const char *utf8) { return layout(NULL, f, px, 0, 0, utf8, 0); }
+int font_measure(FontFace f, float px, const char *utf8) { return layout(NULL, f, px, 0, 0, utf8, NULL, 0); }
 
 bool font_has_glyph(FontFace f, uint32_t cp) {
     return g_ready && stbtt_FindGlyphIndex(&g_font[face_of(f).ttf], (int)cp) != 0;
@@ -382,9 +390,15 @@ int font_descent(FontFace f, float px) {
     return (int)lrintf(-d * stbtt_ScaleForPixelHeight(&g_font[m.ttf], px * m.scale));
 }
 
-// Copies text into buf, truncated with "..." so it measures <= maxw.
-static const char *fit(FontFace f, float px, const char *s, int maxw, char *buf, size_t cap) {
-    if (font_measure(f, px, s) <= maxw) return s;
+static FontOverflowHook g_overflow;
+void font_set_overflow_hook(FontOverflowHook hook) { g_overflow = hook; }
+
+// Copies text into buf, truncated with "..." so it measures <= maxw (and, with report, tells the
+// overflow hook).
+static const char *fit(FontFace f, float px, const char *s, int maxw, char *buf, size_t cap, bool report) {
+    int w = font_measure(f, px, s);
+    if (w <= maxw) return s;
+    if (report && g_overflow) g_overflow(s, w, maxw);
     size_t n = strlcpy_q(buf, s, cap - 4);
     while (n > 0) {
         // Step back over a whole UTF-8 sequence.
@@ -398,19 +412,185 @@ static const char *fit(FontFace f, float px, const char *s, int maxw, char *buf,
 
 void font_draw_centered(Canvas *c, FontFace f, float px, Rect r, const char *utf8, uint8_t gray) {
     char buf[256];
-    const char *s = fit(f, px, utf8, r.w, buf, sizeof buf);
+    const char *s = fit(f, px, utf8, r.w, buf, sizeof buf, true);
     int w = font_measure(f, px, s);
     int asc = font_ascent(f, px), desc = font_descent(f, px);
     int base = r.y + (r.h - (asc + desc)) / 2 + asc;
     font_draw(c, f, px, r.x + (r.w - w) / 2, base, s, gray);
 }
 
-void font_draw_left(Canvas *c, FontFace f, float px, Rect r, const char *utf8, uint8_t gray) {
+static void draw_left(Canvas *c, FontFace f, float px, Rect r, const char *utf8, uint8_t gray, bool report) {
     char buf[256];
-    const char *s = fit(f, px, utf8, r.w, buf, sizeof buf);
+    const char *s = fit(f, px, utf8, r.w, buf, sizeof buf, report);
     int asc = font_ascent(f, px), desc = font_descent(f, px);
     int base = r.y + (r.h - (asc + desc)) / 2 + asc;
     font_draw(c, f, px, r.x, base, s, gray);
+}
+
+void font_draw_left(Canvas *c, FontFace f, float px, Rect r, const char *utf8, uint8_t gray) {
+    draw_left(c, f, px, r, utf8, gray, true);
+}
+
+void font_draw_left_name(Canvas *c, FontFace f, float px, Rect r, const char *utf8, uint8_t gray) {
+    draw_left(c, f, px, r, utf8, gray, false);
+}
+
+// ---- several lines ----
+
+#define WRAP_MAX 16
+typedef struct {
+    const char *s, *e;  // a line: the bytes [s, e)
+} Span;
+
+static int measure_n(FontFace f, float px, const char *s, const char *e) { return layout(NULL, f, px, 0, 0, s, e, 0); }
+static const char *skip_spaces(const char *s) {
+    while (*s == ' ') s++;
+    return s;
+}
+static const char *next_char(const char *s) {
+    if (*s) s++;
+    while (((unsigned char)*s & 0xC0) == 0x80) s++;
+    return s;
+}
+
+// As many whole words on each line as fit w; a word wider than w on its own is broken between its
+// characters (at least one to a line), and *broken gets the widest such word's width (else 0).
+// Keeps up to max lines; returns how many the text needs.
+static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, int max, int *broken) {
+    int n = 0;
+    *broken = 0;
+    for (s = skip_spaces(s); *s; s = skip_spaces(s)) {
+        const char *fits = NULL;  // the end of the longest run of words that fits
+        for (const char *e = s; *skip_spaces(e);) {
+            const char *we = skip_spaces(e);
+            while (*we && *we != ' ') we++;
+            if (measure_n(f, px, s, we) > w) break;
+            fits = e = we;
+        }
+        if (!fits) {
+            const char *we = s;
+            while (*we && *we != ' ') we++;
+            int ww = measure_n(f, px, s, we);
+            if (ww > *broken) *broken = ww;
+            fits = next_char(s);
+            while (*fits && *fits != ' ' && measure_n(f, px, s, next_char(fits)) <= w) fits = next_char(fits);
+        }
+        if (n < max) out[n] = (Span){s, fits};
+        n++;
+        s = fits;
+    }
+    return n;
+}
+
+// The two-line break that keeps the longer line shortest, or one right after punctuation, where a
+// clause ends ("Narrow," over "no margin"), whose longer line is at most half again as long: a
+// first clause much shorter than the rest stays on the line with it. False if no break makes two
+// lines that fit.
+static bool wrap_two(FontFace f, float px, const char *s, int w, Span out[2]) {
+    s = skip_spaces(s);
+    const char *end = s + strlen(s);
+    while (end > s && end[-1] == ' ') end--;
+    float best = 0.f;
+    bool found = false;
+    for (const char *b = s; b < end; b++) {
+        if (*b != ' ' || b[-1] == ' ') continue;
+        const char *s2 = skip_spaces(b);
+        int w1 = measure_n(f, px, s, b), w2 = measure_n(f, px, s2, end);
+        if (w1 > w || w2 > w) continue;
+        float score = (float)(w1 > w2 ? w1 : w2) * (strchr(",.;:!?)", b[-1]) ? 2.f / 3.f : 1.f);
+        if (!found || score < best) {
+            best = score;
+            out[0] = (Span){s, b};
+            out[1] = (Span){s2, end};
+            found = true;
+        }
+    }
+    return found;
+}
+
+// The lines font_draw_wrapped breaks text into for width w: how many it needs, up to max kept;
+// *broken as for wrap_greedy (two lines broken at a space never break a word: each fits w).
+static int wrap(FontFace f, float px, const char *s, int w, Span *out, int max, int *broken) {
+    int n = wrap_greedy(f, px, s, w, out, max, broken);
+    if (n == 2 && max >= 2) wrap_two(f, px, s, w, out);
+    return n;
+}
+
+int font_wrap_lines(FontFace f, float px, const char *utf8, int w, int *widest) {
+    if (widest) *widest = 0;
+    if (!g_ready || !utf8) return 0;
+    int one = font_measure(f, px, utf8);
+    if (one <= w) {
+        if (widest) *widest = one;
+        return *skip_spaces(utf8) ? 1 : 0;
+    }
+    Span ln[WRAP_MAX];
+    int broken, n = wrap(f, px, utf8, w, ln, WRAP_MAX, &broken);
+    for (int i = 0; widest && i < n && i < WRAP_MAX; i++) {
+        int lw = measure_n(f, px, ln[i].s, ln[i].e);
+        if (lw > *widest) *widest = lw;
+    }
+    return n;
+}
+
+int font_draw_wrapped(Canvas *c, FontFace f, float px, Rect r, const char *utf8, int max_lines, int line_h,
+                      bool center, uint8_t gray) {
+    if (!g_ready || !utf8) return 0;
+    if (max_lines <= 1 || font_measure(f, px, utf8) <= r.w) {
+        if (center) font_draw_centered(c, f, px, r, utf8, gray);
+        else font_draw_left(c, f, px, r, utf8, gray);
+        return 1;
+    }
+    if (max_lines > WRAP_MAX) max_lines = WRAP_MAX;
+    Span ln[WRAP_MAX];
+    int broken, n = wrap(f, px, utf8, r.w, ln, WRAP_MAX, &broken), shown = n < max_lines ? n : max_lines;
+    // A word wider than the line, split between two of its letters with no hyphen: the hook hears
+    // of it as of a cut (a translation should take a shorter word, or two).
+    if (broken && g_overflow) g_overflow(utf8, broken, r.w);
+    int asc = font_ascent(f, px), desc = font_descent(f, px), lh = line_h > 0 ? line_h : asc + desc;
+    int top = r.y + (r.h - shown * lh) / 2;
+    for (int i = 0; i < shown; i++) {
+        int base = top + i * lh + (lh - (asc + desc)) / 2 + asc;
+        const char *s = ln[i].s, *e = ln[i].e;
+        char buf[256];
+        if (n > max_lines && i == shown - 1) {
+            // The last line holds the rest of the text, cut short: the hook hears of the whole.
+            if (g_overflow) g_overflow(utf8, font_measure(f, px, s), r.w);
+            s = fit(f, px, s, r.w, buf, sizeof buf, false);
+            e = NULL;
+        }
+        int w = measure_n(f, px, s, e);
+        layout(c, f, px, center ? r.x + (r.w - w) / 2 : r.x, base, s, e, gray);
+    }
+    return shown;
+}
+
+float font_fit_px(FontFace f, float px, float min_px, const char *utf8, int maxw) {
+    if (font_measure(f, px, utf8) <= maxw) return px;
+    if (!g_ready || min_px >= px) return 0.f;
+    FaceMap m = face_of(f);
+    if (k_unit[m.ttf]) {
+        // Each smaller whole step, at the size it is drawn for, or at min_px inside it.
+        int a, d, l;
+        stbtt_GetFontVMetrics(&g_font[m.ttf], &a, &d, &l);
+        float line = (float)(a - d) / (float)k_unit[m.ttf];
+        for (int k = pixel_k(m.ttf, px * m.scale) - 1; k >= 1; k--) {
+            float size = fmaxf((float)k * line / m.scale, min_px);
+            if (pixel_k(m.ttf, size * m.scale) != k) break;  // min_px lies above this step
+            if (font_measure(f, size, utf8) <= maxw) return size;
+        }
+        return 0.f;
+    }
+    // An outline face: the largest quarter pixel that fits.
+    float lo = ceilf(min_px * 4.f) / 4.f, hi = px;
+    if (lo >= hi || font_measure(f, lo, utf8) > maxw) return 0.f;
+    for (;;) {
+        float mid = floorf((lo + hi) * 2.f) / 4.f;
+        if (mid <= lo || mid >= hi) break;
+        if (font_measure(f, mid, utf8) <= maxw) lo = mid;
+        else hi = mid;
+    }
+    return lo;
 }
 
 void font_draw_icon(Canvas *c, FontFace f, uint32_t cp, Rect r, uint8_t gray) {

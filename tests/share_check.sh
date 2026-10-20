@@ -1,7 +1,9 @@
 #!/bin/sh
 # Runs the headless app on the Share screen against an existing data root and checks every route,
-# then once more in the Classic style for the page fonts. Then the screen itself: its QR code read
-# back (Apple's Vision, on macOS), the server across turns and a wake, Invert, made-up addresses.
+# then once more in the Classic style for the page fonts, once in Spanish, and once from a catalog
+# of markup (every translation must reach the pages as text). Then the screen itself: its QR code
+# read back (Apple's Vision, on macOS), the server across turns and a wake, Invert, made-up
+# addresses. Last, the studio: its picture against ImageMagick's, and its Copy command button.
 # usage: [BUILD=build] tests/share_check.sh <grimoire-root>
 # GRIMOIRE_TEST_PORT (default 8765) moves the server, so checks in several worktrees can run at once.
 # BUILD (default build) is the Makefile's build directory: the app, the decoder and the shots.
@@ -11,7 +13,7 @@ PORT=${GRIMOIRE_TEST_PORT:-8765}
 BUILD=${BUILD:-build}
 # The app's test hooks come from each run below, never from the caller's environment.
 unset GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_SIM_PRESSURE GRIMOIRE_SIM_STATS \
-    GRIMOIRE_SIM_SIZE GRIMOIRE_BG_DELAY_MS
+    GRIMOIRE_SIM_SIZE GRIMOIRE_BG_DELAY_MS GRIMOIRE_CHECK_FIT GRIMOIRE_L10N_DIR
 B=$BUILD/share-check
 HEADLESS=$BUILD/host/grimoire-headless
 rm -rf "$B" && mkdir -p "$B"
@@ -84,6 +86,7 @@ print(zlib.decompressobj().decompress(z, 2)[1])" "$1" 2>/dev/null || echo none
 }
 curl -fsS "$URL/" -o "$B/index.html"
 check "index html" "grep -q '<h1>Grimoire</h1>' $B/index.html"
+check "index html in English" "grep -q '<html lang=en>' $B/index.html && grep -q ' on your Kindle</p>' $B/index.html"
 curl -fsS "$URL/api/list.json" -o "$B/list.json"
 check "list.json parses" "python3 -I -m json.tool $B/list.json >/dev/null"
 ID=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['id'])")
@@ -188,6 +191,51 @@ check "classic page fonts" "grep -q '/font/terminess.ttf' $B/index-classic.html 
 curl -fsS "$URL/font/terminess-bold.ttf" -o "$B/terminess-bold.ttf"
 check "classic bold font" "cmp -s $B/terminess-bold.ttf assets/TerminessNerdFontMono-Bold.ttf"
 await "$B/app-classic.log" 01-share  # the Classic Share screen's shot, for review
+stop_app
+# In Spanish (as on a Kindle set to Spanish): the pages say so in their lang attribute and speak it,
+# Gothic's bold links keep their accents legible (letters past ASCII in spans without the shadow),
+# and the studio gets its words as window.GRIMOIRE_L10N while its code stays the same.
+E=$B/es-root
+rm -rf "$E" && cp -R "$ROOT" "$E"
+GRIMOIRE_LANG=es GRIMOIRE_ROOT="$E" GRIMOIRE_SCRIPT="$B/c_share_long.qs" GRIMOIRE_SHOTS=$BUILD/shots/c_share_es \
+    "$HEADLESS" 2>"$B/app-es.log" &
+APP=$!
+up "$B/app-es.log"
+curl -fsS "$URL/" -o "$B/index-es.html"
+check "index html in Spanish" "grep -q '<html lang=es>' $B/index-es.html && grep -q ' en tu Kindle</p>' $B/index-es.html"
+curl -fsS "$URL/nb/$ID" -o "$B/nb-es.html"
+check "notebook html in Spanish, accents spared in bold" \
+    "grep -q 'todos los cuadernos' $B/nb-es.html && grep -q 'p<span class=na>á</span>ginas en PNG' $B/nb-es.html"
+curl -fsS "$URL/nb/$ID/studio" -o "$B/studio-es.html"
+check "studio words in Spanish" "grep -q 'window.GRIMOIRE_L10N={' $B/studio-es.html && \
+    grep -q '\"Background\":\"Fondo\"' $B/studio-es.html && grep -q 'function imCommand' $B/studio-es.html"
+code=$(curl -s -o "$B/missing-es.txt" -w '%{http_code}' "$URL/nb/nope")
+check "a missing notebook, in Spanish ($code)" "[ $code = 404 ] && grep -q 'no existe ese cuaderno' $B/missing-es.txt"
+await "$B/app-es.log" 01-share  # the Spanish Share screen's shot, for review
+stop_app
+# A catalog is third-party input: none may add markup to a page. Every Spanish translation with
+# tags, quotes and an entity before it (tests/l10n_markup.py, read through the simulator's
+# GRIMOIRE_L10N_DIR in place of the built-in catalog): the index, a notebook's page and the studio
+# show each one as text, in elements, in attributes (the pages' alt='...') and in the studio's
+# script, and never as markup.
+X=$B/markup-root
+rm -rf "$X" "$B/markup-l10n" && cp -R "$ROOT" "$X" && mkdir -p "$B/markup-l10n"
+python3 -I tests/l10n_markup.py make po/es.mo "$B/markup-l10n/es.mo"
+# (Every word is long here, so the Library's top bar has its buttons as wide as they grow: the
+# middle of Share is at 1220.)
+printf 'wait 300\ntap 1220 95\nwait 400\nexpect screen is share\nwait 30000\nquit\n' > "$B/markup.qs"
+GRIMOIRE_LANG=es GRIMOIRE_L10N_DIR="$B/markup-l10n" GRIMOIRE_ROOT="$X" GRIMOIRE_SCRIPT="$B/markup.qs" \
+    GRIMOIRE_SHOTS="$B/markup-shots" "$HEADLESS" 2>"$B/app-markup.log" &
+APP=$!
+up "$B/app-markup.log"
+check "the markup catalog is the one read" "grep -qF 'i18n: (simulator) the catalog for es comes from' $B/app-markup.log"
+curl -fsS "$URL/" -o "$B/index-markup.html"
+check "a catalog of markup: the index shows it as text" "python3 -I tests/l10n_markup.py check $B/index-markup.html"
+curl -fsS "$URL/nb/$ID" -o "$B/nb-markup.html"
+check "a catalog of markup: a notebook's page shows it as text" "python3 -I tests/l10n_markup.py check $B/nb-markup.html"
+curl -fsS "$URL/nb/$ID/studio" -o "$B/studio-markup.html"
+check "a catalog of markup: the studio shows it as text, in its script too" \
+    "python3 -I tests/l10n_markup.py check $B/studio-markup.html --script"
 stop_app
 # Turned sideways and back, asleep and awake, on the Share screen (scenario q_share_rotate): one
 # server for the whole visit, so a download still waiting for its render while the Kindle turns
@@ -306,11 +354,18 @@ done
 # be none in any run above, in either style or orientation. (Each log must exist: grep exits 2.)
 no_layout_lines() { grep -H 'share: layout:' "$@"; [ $? = 1 ]; }
 check "the Share screen lays out clear in every run above" \
-    "no_layout_lines $B/app.log $B/app-classic.log $B/app-rotate.log $B/app-invert.log $B/layout-*.log"
-# Offline: the studio's picture from the layers fetched above against ImageMagick's.
+    "no_layout_lines $B/app.log $B/app-classic.log $B/app-es.log $B/app-rotate.log $B/app-invert.log $B/layout-*.log"
+# Offline: the studio's picture from the layers fetched above against ImageMagick's, and its Copy
+# command button on a page with no clipboard (plain http), where the browser copies and where it
+# will not.
 if command -v node >/dev/null 2>&1 && command -v magick >/dev/null 2>&1; then
     check "studio picture = ImageMagick's" "node tests/studio_check.js $B/ink.png $B/paper.png $B/studio '$INKBOX' >$B/studio.log 2>&1"
 else
     echo "skip studio vs ImageMagick (needs node and magick)"
+fi
+if command -v node >/dev/null 2>&1; then
+    check "studio Copy command, copied or selected" "node tests/studio_copy_check.js >$B/studio-copy.log 2>&1"
+else
+    echo "skip the studio's Copy command button (needs node)"
 fi
 [ $fail = 0 ] && echo "SHARE CHECK PASSED" || { echo "SHARE CHECK FAILED"; exit 1; }

@@ -41,7 +41,7 @@ typedef struct App {
                                    // a redraw after sleep): screens keep what they run (the share server)
 
     // Toast (drawn by app over any screen, auto-hidden after toast_until).
-    char toast[128];
+    char toast[256];        // room for two lines, in any language
     uint32_t toast_until;
     Rect toast_rect;
     bool toast_visible;

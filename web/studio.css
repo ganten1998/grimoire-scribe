@@ -1,5 +1,6 @@
 /* studio.css: the share studio's layout (served inline with studio.js). Type comes from the
-   page's theme (httpd.c page_head): Gothic labels are overprinted like the Kindle's bold. */
+   page's theme (httpd.c page_head): Gothic labels are overprinted like the Kindle's bold, but for
+   the letters past ASCII, whose accents it would fill in (class na: studio.js, httpd.c). */
 .st{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start;margin-top:16px}
 @media (max-width:900px){.st{grid-template-columns:minmax(0,1fr)}}
 .st-view{position:sticky;top:12px}

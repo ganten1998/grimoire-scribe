@@ -40,7 +40,8 @@ struct PenSetState {
 static bool visible_param(const ParamInfo *pi, ToolKind t) { return t != TOOL_ERASER || pi->eraser_uses; }
 
 static void value_text(const ParamInfo *pi, float v, char *buf, size_t cap) {
-    if (!strcmp(pi->unit, "deg")) snprintf(buf, cap, "%d deg", (int)lrintf(v));
+    // TRANSLATORS: an angle on Pen feel's sliders and in its readout ("45 deg"); "%d°" is fine.
+    if (!strcmp(pi->unit, "deg")) snprintf(buf, cap, _("%d deg"), (int)lrintf(v));
     else if (!strcmp(pi->unit, "mm")) snprintf(buf, cap, "%.2f mm", v);
     else if (!strcmp(pi->unit, "x")) snprintf(buf, cap, "+%.0f%%", v * 100.f);
     else snprintf(buf, cap, "%.2f", v);
@@ -79,8 +80,11 @@ static void draw_graph(App *a) {
         canvas_disc_aa(c, g.x + S->live_raw * g.w, g.y + g.h - y * g.h, (float)ui_px(8), 255, 1.f);
     }
     float ss = ui_small_size();
-    font_draw(c, FONT_REGULAR, ss, g.x, g.y + g.h + ui_px(44), "pen pressure", 60);
-    font_draw(c, FONT_REGULAR, ss, g.x, g.y - ui_px(14), "ink", 60);
+    // TRANSLATORS: the axes of Pen feel's pressure graph: under it, how hard the pen presses; over
+    // it, how much ink that puts down. Up to 570 px at 34 px (the test pad starts there).
+    font_draw(c, FONT_REGULAR, ss, g.x, g.y + g.h + ui_px(44), _("pen pressure"), 60);
+    // TRANSLATORS: over Pen feel's pressure graph (see pen pressure): how much ink.
+    font_draw(c, FONT_REGULAR, ss, g.x, g.y - ui_px(14), _("ink"), 60);
 }
 
 static void draw_readout(App *a) {
@@ -89,7 +93,9 @@ static void draw_readout(App *a) {
     const ToolParams *p = &a->settings.tools[S->tab];
     char line[200];
     if (S->live_raw < 0.f) {
-        snprintf(line, sizeof line, "Draw on the pad to see live pressure and tilt.");
+        // TRANSLATORS: Pen feel's readout line, until the pen draws on the test pad (1760 px at
+        // 34 px; the readings below take that room too).
+        snprintf(line, sizeof line, "%s", _("Draw on the pad to see live pressure and tilt."));
     } else {
         PenSample s = {0, 0, S->live_raw, S->live_tx, S->live_ty, 0};
         float r, op;
@@ -97,16 +103,29 @@ static void draw_readout(App *a) {
         float tilt_deg = atanf(sqrtf(powf(tanf(S->live_tx * (float)M_PI / 180.f), 2) +
                                      powf(tanf(S->live_ty * (float)M_PI / 180.f), 2))) * 180.f / (float)M_PI;
         const InputCaps *caps = input_caps();
-        char tilt[64];
-        if (caps && !caps->has_tilt) snprintf(tilt, sizeof tilt, "tilt: not reported");
-        else snprintf(tilt, sizeof tilt, "tilt %d deg -> %.2f", (int)lrintf(tilt_deg), brush_tilt(p, S->live_tx, S->live_ty));
-        if (S->tab == TOOL_CALLIGRAPHY)
-            snprintf(line, sizeof line, "pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg", S->live_raw,
+        char tilt[96];
+        if (caps && !caps->has_tilt) {
+            // TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
+            snprintf(tilt, sizeof tilt, "%s", _("tilt: not reported"));
+        } else {
+            // TRANSLATORS: the tilt in Pen feel's readout (below): the pen's lean, and what it counts
+            // for (0 to 1).
+            snprintf(tilt, sizeof tilt, _("tilt %d deg -> %.2f"), (int)lrintf(tilt_deg), brush_tilt(p, S->live_tx, S->live_ty));
+        }
+        if (S->tab == TOOL_CALLIGRAPHY) {
+            // TRANSLATORS: Pen feel's readout while the calligraphy pen draws on the test pad, two
+            // spaces apart: the raw pressure and what the curve makes of it, the tilt (above), the
+            // nib's width and angle (1760 px at 34 px).
+            snprintf(line, sizeof line, _("pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg"), S->live_raw,
                      brush_pressure(p, S->live_raw), tilt, r * 2.f * 25.4f / a->dpi,
                      (int)lrintf(brush_nib_angle(p, S->live_tx, S->live_ty)));
-        else
-            snprintf(line, sizeof line, "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f", S->live_raw,
+        } else {
+            // TRANSLATORS: Pen feel's readout while a tool draws on the test pad, two spaces apart:
+            // the raw pressure and what the curve makes of it, the tilt (above), the line's width
+            // and its ink (0 to 1) (1760 px at 34 px).
+            snprintf(line, sizeof line, _("pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f"), S->live_raw,
                      brush_pressure(p, S->live_raw), tilt, r * 2.f * 25.4f / a->dpi, op);
+        }
     }
     font_draw_left(c, FONT_REGULAR, ui_small_size(), S->readout, line, 0);
 }
@@ -115,10 +134,12 @@ static void draw_slider_row(App *a, int i) {
     int n;
     const ParamInfo *pi = tool_param_table(&n);
     const ParamInfo *p = &pi[S->slider_param[i]];
-    Slider sl = {.min = p->min, .max = p->max, .step = p->step, .label = p->label, .unit = p->unit};
+    Slider sl = {.min = p->min, .max = p->max, .step = p->step, .label = _(p->label), .unit = p->unit};
     // The calligraphy nib turns with the pen's lean once the pen tilts this far.
-    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_min_deg")) sl.label = "Nib follows lean from";
-    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_max_deg")) sl.label = "Nib fully follows at";
+    // TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (580 px at
+    // 44 px, beside an angle).
+    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_min_deg")) sl.label = _("Nib follows lean from");
+    if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_max_deg")) sl.label = _("Nib fully follows at");
     sl.value = *tool_param_ptr(&a->settings.tools[S->tab], p);
     ui_slider_layout(&sl, S->slider_rows[i]);
     char vt[32];
@@ -138,7 +159,8 @@ static void draw_pad_frame(App *a) {
     for (float y = S->pad.y + pitch; y < S->pad.y + S->pad.h - 4; y += pitch)
         canvas_hline(c, S->pad.x, S->pad.x + S->pad.w, (int)y, ui_px(2), 185);
     ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
-    ui_button(c, clear_rect(a), ICON_NONE, "Clear", BTN_PLAIN);
+    // TRANSLATORS: the button that wipes Pen feel's test pad (190 px at 44 px, or 34 px).
+    ui_button(c, clear_rect(a), ICON_NONE, _("Clear"), BTN_PLAIN);
 }
 
 static void draw_all(App *a) {
@@ -151,10 +173,13 @@ static void draw_all(App *a) {
     ui_button(c, back, ICON_BACK, NULL, BTN_PLAIN);
     hits_add(&S->hits, back, H_BACK, 0);
     Rect reset = {a->w - m - ui_px(360), by, ui_px(360), bh};
-    ui_button(c, reset, ICON_NONE, "Reset tool", BTN_PLAIN);
+    // TRANSLATORS: puts the tool's pen feel back as it came (344 px at 44 px, or 34 px).
+    ui_button(c, reset, ICON_NONE, _("Reset tool"), BTN_PLAIN);
     hits_add(&S->hits, reset, H_RESET, 0);
-    char title[64];
-    snprintf(title, sizeof title, "Pen feel: %s", tool_name(S->tab));
+    char title[128];
+    // TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
+    // tool's name (1200 px at 70 px).
+    snprintf(title, sizeof title, _("Pen feel: %s"), tool_label(S->tab));
     font_draw_left(c, FONT_BOLD, ui_title_size() * 1.1f, (Rect){back.x + bh + ui_px(30), 0, reset.x - back.x - bh - ui_px(50), th},
                    title, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
@@ -179,8 +204,9 @@ static void draw_all(App *a) {
     draw_pad_frame(a);
     hits_add(&S->hits, S->pad, H_PAD, 0);
     hits_add(&S->hits, clear_rect(a), H_CLEAR, 0);
-    font_draw(c, FONT_REGULAR, ui_small_size(), S->pad.x, S->pad.y - ui_px(14),
-              S->tab == TOOL_ERASER ? "test pad (the eraser clears it)" : "test pad", 60);
+    // TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
+    const char *pad = S->tab == TOOL_ERASER ? _("test pad (the eraser clears it)") : _("test pad");
+    font_draw(c, FONT_REGULAR, ui_small_size(), S->pad.x, S->pad.y - ui_px(14), pad, 60);
     draw_readout(a);
     // Sliders.
     int n;
@@ -205,7 +231,7 @@ static void draw_all(App *a) {
     }
     if (S->tab == TOOL_ERASER)
         font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){m, y + ui_px(30), a->w - 2 * m, ui_px(80)},
-                       "The eraser removes whole strokes; harder pressure = bigger reach.", 60);
+                       _("The eraser removes whole strokes; harder pressure = bigger reach."), 60);
 }
 
 void pensettings_open(App *a, ToolKind tab) {
@@ -374,7 +400,7 @@ void pensettings_event(App *a, const InEvent *ev) {
         settings_save(&a->settings);
         draw_all(a);
         app_invalidate_all(a, REFRESH_UI);
-        app_toast(a, "Reset to defaults", 1500);
+        app_toast(a, _("Reset to defaults"), 1500);
         break;
     case H_CLEAR:
         draw_pad_frame(a);
