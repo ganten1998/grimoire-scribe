@@ -1005,7 +1005,7 @@ static const Canvas *page_paper(App *a) {
     if (fresh && canvas_init(c, S->pgw, S->pgh) != 0) return NULL;
     if (fresh || S->paper_k != S->page->paper) {
         S->paper_k = S->page->paper;
-        paper_render(c, S->paper_k, (Rect){0, 0, c->w, c->h}, a->dpi);
+        page_paper_render(c, S->page, (Rect){0, 0, c->w, c->h}, a->dpi);  // (an image paper: its picture)
     }
     return c;
 }
