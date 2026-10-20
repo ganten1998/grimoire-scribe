@@ -67,20 +67,26 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) -o $@ -lm
 
 # Every tests/scenarios/*.qs against a fresh data root (a script with a "# root: NAME" line starts
-# from a copy of scenario NAME's data, so NAME must sort before it); screenshots in
-# build/shots/<name>/. A failed expect makes a run exit with status 3: every scenario still runs,
-# then the rule fails naming them. Last, the runner checks itself: tests/selftest/pass.qs must exit
-# 0, and in fail.qs every line but the comments, waits and taps must be reported as failed, with
-# exit status 3.
+# from a copy of scenario NAME's data, so NAME must sort before it; a run ends only once the PDF
+# exports it started are written, so that data is whole); screenshots in build/shots/<name>/. A
+# failed expect makes a run exit with status 3, and a run that leaves a file half-written (*.tmp)
+# fails too: every scenario still runs, then the rule fails naming them. Last, the runner checks
+# itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written, and in fail.qs every
+# line but the comments, waits and taps must be reported as failed, with exit status 3.
 scenarios: $(BUILD)/host/grimoire-headless
 	@failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
 	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
 	  GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
-	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; done; \
+	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
+	  if [ -n "$$(find $(BUILD)/scen/$$n -name '*.tmp' 2>/dev/null)" ]; then \
+	    echo "$$n left a file half-written"; failed="$$failed $$n"; fi; done; \
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
-	echo "== selftest pass (every expect holds: exit 0)"; GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs \
-	  GRIMOIRE_SHOTS=$$d/shots $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
+	echo "== selftest pass (every expect holds: exit 0, and the PDF export is done)"; \
+	GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs GRIMOIRE_SHOTS=$$d/shots \
+	  $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
+	if ! ls $$d/pass/PDFs/*.pdf >/dev/null 2>&1; then \
+	  echo "selftest pass: the run ended before its PDF export"; failed="$$failed selftest/pass"; fi; \
 	echo "== selftest fail (each line meant to fail is reported: exit 3; log in $$d/fail.log)"; rc=0; \
 	GRIMOIRE_ROOT=$$d/fail GRIMOIRE_SCRIPT=tests/selftest/fail.qs GRIMOIRE_SHOTS=$$d/shots \
 	  $(BUILD)/host/grimoire-headless 2>$$d/fail.log || rc=$$?; \

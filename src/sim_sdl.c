@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 
 #include "app.h"  // app_probe, for the script's expect checks
 #include "calib_fit.h"
@@ -272,6 +273,23 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     return false;
 }
 
+// A headless run ends once the PDF exports it started are written (bgjob.c leaves them to child
+// processes that outlive Grimoire), so what reads its data next (a scenario's "# root:" copy,
+// share_check.sh, the exporter) never meets a file half-written. A minute at most.
+static void wait_for_exports(void) {
+    bool said = false;
+    for (int ms = 0; ms < 60000;) {
+        pid_t r = waitpid(-1, NULL, WNOHANG);
+        if (r < 0) return;     // no child left
+        if (r > 0) continue;   // one ended: any more?
+        if (!said) fprintf(stderr, "headless: waiting for the PDF exports to finish\n");
+        said = true;
+        sleep_ms(20);
+        ms += 20;
+    }
+    fprintf(stderr, "headless: an export still runs after a minute; not waiting for it\n");
+}
+
 static void expect_finish(void);
 void display_close(void) {
     if (g_headless || getenv("GRIMOIRE_SIM_STATS"))
@@ -284,6 +302,7 @@ void display_close(void) {
     if (!g_headless) SDL_Quit();
 #endif
     free(g_eink);
+    if (g_headless) wait_for_exports();
     expect_finish();  // exits with status 3 if a check failed
 }
 
