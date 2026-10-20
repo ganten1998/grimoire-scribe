@@ -3,7 +3,9 @@
 // capitals, the accents page is one key away, and a name opened for renaming keeps its accents
 // and is never cut inside a character.
 #include <string.h>
+#include <unistd.h>
 
+#include "export.h"
 #include "keyboard.h"
 #include "testlib.h"
 
@@ -25,6 +27,28 @@ static bool press(Keyboard *kb, uint32_t code) {
 static void open_kb(Keyboard *kb, const char *initial) {
     keyboard_open(kb, "Name", initial);
     keyboard_draw(kb, &g_c, k_screen);
+}
+
+// Types valid UTF-8 key by key, as a person would: a capital with shift and its small letter's
+// key, an accented letter from the accents page. False if a character has no key.
+static bool type_text(Keyboard *kb, const char *s) {
+    while (*s) {
+        uint32_t cp = (unsigned char)*s++;
+        if (cp >= 0xC0) {
+            int extra = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : 1;
+            cp &= 0x3Fu >> extra;
+            while (extra--) cp = cp << 6 | ((unsigned char)*s++ & 0x3Fu);
+        }
+        uint32_t key = cp;
+        for (uint32_t c = 0x20; c < 0x180 && key == cp; c++)
+            if (c != cp && keyboard_upper(c) == cp) key = c;
+        Rect r;
+        if (!keyboard_key_rect(kb, key, &r)) press(kb, KB_KEY_PAGE);
+        if (!keyboard_key_rect(kb, key, &r)) return false;
+        if (key != cp && !kb->shift) press(kb, KB_KEY_SHIFT);
+        press(kb, key);
+    }
+    return true;
 }
 
 // Whether s is well-formed UTF-8 (no stray, missing or overlong bytes).
@@ -262,6 +286,40 @@ TEST(one_character_keys_at_title_size) {
     ui_set_theme(THEME_GOTHIC);
 }
 
+// What the keyboard types is what the Library keeps. Rename hands the keyboard's text to
+// store_rename (kb_finished in library.c), and the mirror PDF takes the name and the folder,
+// accents and all, as its path (export_mirror_path; mirror_follow moves the PDF there). Renaming
+// again opens the keyboard on the stored name, whole.
+TEST(typed_name_is_stored_whole) {
+    char root[600], cmd[700], mirror[700], path[1400], want[1400];
+    snprintf(root, sizeof root, "%s/keyboard-%d", tl_tmp(), (int)getpid());
+    snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
+    snprintf(mirror, sizeof mirror, "%s/PDFs", root);
+    system(cmd);
+    static NotebookInfo nb, back;
+    if (store_init(root) != 0 || store_create("Notebook Oct 19", "", PAPER_MEDIUM, &nb) != 0) {
+        CHECK(!"store");
+        return;
+    }
+    static const char name[] = "M\xc3\xbasica espa\xc3\xb1ola \xc2\xa1Ol\xc3\xa9", folder[] = "Matem\xc3\xa1ticas";
+    Keyboard kb;
+    open_kb(&kb, nb.name);
+    for (int i = 0; i < 40 && kb.text[0]; i++) press(&kb, KB_KEY_BKSP);
+    CHECK(type_text(&kb, name) && !strcmp(kb.text, name));
+    CHECK(store_rename(nb.id, kb.text) == 0 && store_load_info(nb.id, &back) == 0 && !strcmp(back.name, name));
+    open_kb(&kb, "");
+    CHECK(type_text(&kb, folder) && !strcmp(kb.text, folder));
+    CHECK(store_set_folder(nb.id, kb.text) == 0 && store_load_info(nb.id, &back) == 0);
+    export_mirror_path(&back, mirror, path, sizeof path);
+    snprintf(want, sizeof want, "%s/%s/%s.pdf", mirror, folder, name);
+    if (strcmp(path, want)) fprintf(stderr, "  mirror PDF at \"%s\"\n", path);
+    CHECK(!strcmp(path, want));
+    CHECK(export_mirror_pdf(&back, 300.f, mirror) == 0 && access(want, F_OK) == 0);
+    open_kb(&kb, back.name);
+    CHECK(!strcmp(kb.text, name));
+    system(cmd);
+}
+
 int main(void) {
     ui_init(300.f);
     if (font_init() != 0 || canvas_init(&g_c, k_screen.w, k_screen.h) != 0) return 1;
@@ -275,6 +333,7 @@ int main(void) {
     RUN(letters_layout_kept);
     RUN(accents_in_every_face);
     RUN(one_character_keys_at_title_size);
+    RUN(typed_name_is_stored_whole);
     canvas_free(&g_c);
     return tl_done();
 }
