@@ -19,8 +19,9 @@
 //     /mnt/us/grimoire/screen-noflip.
 //
 // Colour panels (the Scribe Colorsoft: FBInk's has_color_panel, 32 bpp): the driver reads the
-// framebuffer for an update some time after it was sent (about 23 ms, measured on a Scribe
-// Colorsoft), in tiles. Pixels changed again before that show half old, striped. So after a fast
+// framebuffer for an update some time after it was sent (about 23 ms, as KOReader's developers
+// measured it on a Scribe Colorsoft; Grimoire has not run on one), in tiles. Pixels changed again
+// before that show half old, striped. So after a fast
 // refresh that is not live ink (a pressed button, the panel being dragged, a pinch, a slider)
 // Grimoire waits until the driver has read the frame (MXCFB_WAIT_FOR_MDP_COMPLETION), as KOReader
 // does. Live ink (display_live_ink: a pen stroke, erasing included) never waits, so pen reading
@@ -58,7 +59,7 @@ static int g_rot;             // device rotation, quarter turns clockwise
 static int PW, PH;            // panel (framebuffer view) size
 static int LW, LH;            // logical screen size (swapped when turned sideways)
 // Not in FBInk's eink/mtk-kindle.h: blocks until the driver has read the framebuffer for the
-// update with this marker (the FW 5.19.6 Colorsoft kernels have it).
+// update with this marker (KOReader uses it on the Scribe Colorsoft's FW 5.19.6 kernels).
 #define MXCFB_WAIT_FOR_MDP_COMPLETION _IOW('F', 0x4D, uint32_t)
 static bool g_mdp_wait;       // a colour panel: fast refreshes outside live ink wait for the driver's read
 static int g_mdp_logged;      // waits logged (the first few, for a tester's log)
