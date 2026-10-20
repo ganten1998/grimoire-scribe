@@ -99,6 +99,41 @@ and written at the new size after an edit. Rendering replays each stroke from it
 how a page looks depends on these bytes alone: `tests/test_golden.c` holds renders recorded from
 1.0.0-beta that every later version must reproduce.
 
+### Erase strokes
+
+From 1.1 on, a stroke with tool 3 is an erase stroke: white ink, or the precise eraser. It is
+drawn in its place in the stroke order like any other stroke, but instead of putting ink down it
+lightens each pixel it covers toward the paper under that pixel, never past it. So it takes away
+the ink drawn before it, keeps the paper's own lines (rules, staves, a grid, dots), and leaves ink
+drawn after it alone.
+
+- **Texture.** Seed bits 24 to 31 name the drawing tool whose look the stroke has, plus 1:
+  1 pencil, 2 mechanical pencil, 3 ballpoint, 5 highlighter, 6 fountain pen, 7 fineliner,
+  8 marker, 9 charcoal, 10 calligraphy pen. 0 is the precise eraser's round hard tip. Any other
+  value (4, which would be the eraser itself, or a tool a later version adds) draws the round tip.
+  White ink keeps everything of its tool but the colour (width, nib, grain, pressure and tilt), so
+  white pencil leaves the paper's tooth.
+- **Seed.** The brush hashes seed bits 0 to 23 only (per-dab jitter, charcoal's specks).
+- **Parameters.** The texture tool's settings as the stroke was drawn: for white ink that pen's,
+  for the round tip the eraser's. How far past its points the stroke can draw (which sets the area
+  a version redraws around it) is that tool's reach with those settings.
+- **Blend.** A dab lightens each pixel it covers by its share, the way a dab of ink darkens one:
+  its coverage spread over the n dabs that overlap on the stroke's spine (share = 1 - (1 -
+  coverage)^(1/n), with coverage capped at 0.999), so that the stroke as a whole moves the pixel
+  toward the paper by its coverage. The pixel becomes value + (paper - value) x share, rounded,
+  only if that is lighter, and never lighter than the paper. Where the dab's own coverage is 0.999
+  or more, the pixel becomes exactly the paper. Coverage, dab spacing and n are the texture tool's,
+  as for its ink.
+- **Paper.** The page's paper under the pixel, as the version draws it (a paper it does not know is
+  blank: white). Drawn without its paper (the share studio's ink layer, `?layer=ink`), a page's
+  erase strokes lighten toward white.
+
+What an erase stroke takes away stays in the file, in the strokes before it. So a writer may leave
+out of a page the strokes that do not change how it looks: ink that later erase strokes restore
+entirely, and erase strokes that change no pixel, both checked on the page drawn with its paper
+and on its ink layer (`page_droppable` in `src/page.h`). A stroke erased only in part stays whole,
+with the erase strokes over it.
+
 ### Chunks
 
 After the last stroke record, a page may carry chunks, one after another, to the end of the file:
@@ -151,13 +186,14 @@ digits, a length that runs past the end of the file) make the page read-only, ne
 | 3 | eraser: an erase stroke (draws nothing up to 1.0.0-beta.2) | | 8 | charcoal |
 | 4 | highlighter | | 9 | calligraphy pen |
 
-No released version has written a tool 3 stroke (the eraser removes whole strokes), so tool 3 is
-free to mean an erase stroke: white ink, or a precise eraser, that restores the paper.
+No version before 1.1 writes a tool 3 stroke (their eraser removes whole strokes), so giving tool 3
+its meaning in 1.1 changed no existing page: an erase stroke, white ink or a precise eraser that
+restores the paper (see Erase strokes).
 
 **Seed.** For tools 0 to 9 except 3, the seed feeds the brush (per-dab jitter, charcoal dust). For
 an erase stroke (tool 3), bits 24 to 31 hold its texture: the drawing tool whose texture it uses,
-plus 1 (0 = a round tip), and a version that draws erase strokes hashes only the low 24 bits.
-1.0.0-beta keeps the seed byte for byte and never reads it for tool 3.
+plus 1 (0 = a round tip), and a version that draws erase strokes hashes only the low 24 bits
+(see Erase strokes). 1.0.0-beta keeps the seed byte for byte and never reads it for tool 3.
 
 **ext[3]** (the three spare bytes of the stroke record). No version up to 1.0.0-beta.2 interprets
 them; 1.0.0-beta.2 reads, keeps and writes them back.
@@ -217,6 +253,8 @@ from 1.0.0-beta.2 on, and the page keeps the value and writes it back (version 2
   parameters in range and carries the rest elsewhere: in its ext bytes (a flag assigned in the
   Registry first) or in a critical chunk (a safe chunk cannot name strokes).
 - Tool ids, fixed paper kinds and music parts are never renumbered or reordered.
+- How an erase stroke draws (Erase strokes: the texture byte, the hash bits, the blend), from 1.1
+  on: a page with erase strokes must look the same in every later version, as any page does.
 - A page with no new data is written byte for byte as 1.0.0-beta writes it.
 - The limits of `settings.ini` and `notebook.ini` given in their own sections below.
 
@@ -344,8 +382,8 @@ row.
 | new data | 1.0.0-beta, 1.0.0-rc.1 | 1.0.0-beta.2 |
 |---|---|---|
 | ext bytes (colour, layer, flags) | opens the page and ignores them; a re-save writes 0 0 0 | keeps them and writes them back |
-| an erase stroke (tool 3) | opens the page and draws nothing for it, so erased ink shows again; keeps the stroke on a re-save; its eraser can delete it | the same, with its ext bytes kept |
-| an erase stroke's texture (seed bits 24 to 31) | kept | kept |
+| an erase stroke (tool 3) | opens the page and draws nothing for it, so erased ink shows again (all but the ink the writer left out) and white ink does not show; keeps the stroke on a re-save; its eraser can delete it | the same, with its ext bytes kept |
+| an erase stroke's texture (seed bits 24 to 31) | kept, so white ink comes back unchanged in 1.1 after a re-save here | kept |
 | a safe-to-copy chunk | ignored; dropped on a re-save | written back as it was |
 | a critical chunk | ignored; dropped on a re-save | the page opens read-only |
 | bytes after the strokes that are not chunks | ignored; dropped on a re-save | the page opens read-only |

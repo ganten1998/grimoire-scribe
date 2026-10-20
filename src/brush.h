@@ -85,11 +85,35 @@ typedef struct {
     uint32_t dab_index;
     bool nib_init;       // calligraphy: smoothed nib orientation as (cos, sin) of twice the
     float nib_c, nib_s;  // edge angle, so an edge and its reverse are the same orientation
+    // Erase mode (brush_set_erase): the dabs restore the paper instead of depositing ink.
+    bool erase;
+    bool restored;           // erase mode: a dab has lightened a pixel of the canvas drawn on so far.
+                             // That canvas only: over ink the page's darker lines hide, an erase
+                             // stroke can leave the page as it was and still change the ink layer,
+                             // so whether a stroke may be left out is page_droppable's to say
+    const uint8_t *paper;    // the paper under the canvas, one byte per pixel; NULL = white
+    int paper_x0, paper_y0;  // the canvas pixel that paper[0] lies under
+    int paper_stride;
+    // Dry (set by hand after begin): brush_add draws nothing and touches no pixel (the canvas may
+    // have none), but returns the rect each dab would draw into, clipped as ever, and the brush
+    // moves on exactly as when it draws. page_droppable measures strokes so.
+    bool dry;
 } BrushState;
 
 void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, float dpi);
+// Puts b (just begun) in erase mode, for an erase stroke: white ink with the tool's texture, or
+// the precise eraser's round hard tip (TOOL_ERASER). Its dabs lighten each pixel toward the paper
+// under it, never past it, and a pixel the dab covers fully lands exactly on the paper. The paper
+// under canvas pixel (x, y) is paper[(y - y0) * stride + (x - x0)], and it must cover every pixel
+// of the canvas's clip while b draws (the dabs stay inside the clip). NULL restores toward white:
+// right for a canvas of ink alone, wrong over paper with lines (it would wipe them).
+void brush_set_erase(BrushState *b, const uint8_t *paper, int x0, int y0, int stride);
+// The erase fast path (on unless cleared): a round dab with no grain at full opacity restores the
+// core of each row it covers in one pass. Its pixels are the per-pixel path's, byte for byte;
+// tests clear it to prove that, and measurements to time both.
+extern bool g_brush_erase_spans;
 // Renders dabs from the previous sample to s (the first call stamps one dab at s).
-// Returns the dirty rect touched (may be empty).
+// Returns the dirty rect touched (may be empty). A TOOL_ERASER brush draws only in erase mode.
 Rect brush_add(BrushState *b, Canvas *c, const PenSample *s);
 
 // Input smoothing (exponential, distance-aware). amount = ToolParams.smoothing.

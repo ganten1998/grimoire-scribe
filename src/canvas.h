@@ -40,6 +40,21 @@ static inline void canvas_deposit_px(Canvas *c, int x, int y, uint8_t ink, float
     if (v < *p) *p = (uint8_t)v;
 }
 
+// Paper restore, the deposit's mirror (erase strokes): lighten-only toward the paper value under
+// the pixel, never past it. dst = dst + (paper - dst) * a, only if that is lighter; a >= 0.999
+// lands exactly on the paper.
+static inline void canvas_restore_px(Canvas *c, int x, int y, uint8_t paper, float a) {
+    if (x < c->clip.x || y < c->clip.y || x >= c->clip.x + c->clip.w || y >= c->clip.y + c->clip.h) return;
+    uint8_t *p = &c->px[y * c->stride + x];
+    if (*p >= paper) return;
+    if (a >= 0.999f) {
+        *p = paper;
+        return;
+    }
+    int v = (int)(*p + (paper - *p) * a + 0.5f);
+    if (v > *p) *p = (uint8_t)(v < paper ? v : paper);
+}
+
 // Copy src rect to dst at (dx,dy), clipped by dst clip.
 void canvas_blit(Canvas *dst, const Canvas *src, Rect srect, int dx, int dy);
 // Box-filter downsample whole src into dst (dst size defines the scale).
