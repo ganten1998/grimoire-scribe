@@ -676,7 +676,7 @@ static bool block_is(const BgPicture *p, int x0, int y0, int x1, int y1, uint8_t
 }
 
 TEST(normalization) {
-    // Exact 3:4 (reMarkable and Supernote templates are 1404x1872): it fills the page.
+    // Exact 3:4 (templates made for other tablets are often 1404x1872): it fills the page.
     BgPicture s = solid(1404, 1872, 1, 0), f;
     CHECK(bgimage_normalize(&s, 1860, 2480, &f) == 0 && block_is(&f, 0, 0, 1860, 2480, 0));
     bgpicture_free(&s);
