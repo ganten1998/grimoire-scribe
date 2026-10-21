@@ -109,6 +109,28 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   KOReader, Grimoire leaves the passcode to KOReader, which keeps it paused until KOReader quits.
 - **Language**: English or Spanish, following the Kindle's own language (see Language).
 
+## White ink, pinned pens and templates
+
+- **White ink**: tap the pen button on the panel; the picker's bottom row is **Black | White**.
+  With White, every pen draws white with its own texture, taking ink away while the paper's lines
+  stay. The pen in use shows a hollow icon while white is on.
+- **The eraser**: **Pen feel > the eraser's tab > Eraser** is **Whole strokes** (a touch takes the
+  whole stroke) or **Precise** (it takes away only what it touches). Tapping the eraser again goes
+  back to the pen you used before it. Library > Settings' pen-button row can also make holding the
+  pen button draw white.
+- **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the panel (up to four),
+  then Done. Each gets its own button under the pen button.
+- **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
+  closed (upright, 3:4, 1860 x 2480 is best, light lines on white work best on e-ink). In a
+  notebook, Paper > **More papers...** shows them; New notebook has the same tile. Each notebook
+  keeps its own copy of a template it uses.
+- **Pages you already have**: put a folder of page pictures (PNG or JPG, one per page, such as a
+  PDF exported as pictures with `pdftoppm -gray -png -r 200 file.pdf page`) in
+  `grimoire/import/<Name>/` and start Grimoire: it becomes the notebook <Name>, and the folder
+  moves to `grimoire/import/done/`.
+- **Erased ink leaves the files**: when a notebook closes, ink erased entirely is taken out of its
+  page files in the background. A stroke erased only in part stays whole in the file.
+
 ## Language
 
 Grimoire speaks English and Spanish. **Settings > Language** offers **Automatic**, **English** and
@@ -184,6 +206,14 @@ PDF again whenever you close the notebook after a change, and renames, moves or 
 the notebook, so highlights or notes KOReader writes into that file are lost: to mark one up, copy
 it out of `grimoire/PDFs` and open the copy.
 
+**Annotate this page.** In a book in KOReader, Tools > Grimoire > **Annotate this page in
+Grimoire** (also a gesture action) opens the page you are reading in Grimoire, ready to write on.
+Grimoire keeps one notebook per book, named after its title (leaving out characters it cannot
+show), with the pages you annotate in the book's order; annotating the same page again opens it
+with what you wrote. Library > Back to KOReader returns to the same book and page. A PDF's page is
+the whole page; an EPUB's is the screen as KOReader lays it out, so after a change of font size a
+page may come in again as a new one.
+
 ## Moving between versions
 
 Updating is one file, and so is going back. From 1.0.0-beta.2 on, Grimoire keeps what a newer
@@ -232,6 +262,11 @@ stays in KOReader, Notebook PDFs and Reset pen calibration still work, and Open 
 from KOReader. Back in 1.1, Open Grimoire works again. To take the plugin out in the meantime,
 delete `koreader/plugins/grimoire.koplugin`; to have it again in 1.1, copy it in by hand (see Does
 it work in KOReader?).
+
+**Pictures as paper.** In 1.0.0-beta a page on a template, an imported page or an annotated
+page shows blank paper, with its ink. Back in 1.1, those pages get their pictures back when the
+notebook opens. Older versions also show erased ink again, as they do not know white ink or the
+precise eraser, and they drop pinned pens from `settings.ini`.
 
 ## Privacy
 

@@ -1,7 +1,43 @@
 # Changelog
 
-## Unreleased (1.1)
+## 1.1.0-beta.1 (2026-10-20)
 
+- **White ink and a precise eraser**: the tool picker (tap the pen button on the panel) has a new
+  bottom row, **Black | White**. With White, every pen draws white with its own texture and
+  settings, taking ink away while the paper's lines, staves, grid and dots stay; the pen in use
+  shows a hollow icon on the panel (collapsed too) so it never looks broken on white paper.
+  **Pen feel > the eraser's tab > Eraser: Whole strokes | Precise** picks the eraser that takes
+  whole strokes, as before, or a precise one that takes away only what it touches. Library >
+  Settings' pen-button row has a fourth choice: holding the pen button draws white. The
+  whole-strokes eraser no longer takes a stroke when it touches only a part that white ink or the
+  precise eraser already took away. When a notebook closes, ink erased entirely (every pixel of
+  it) is taken out of its page files in the background, so zips and grimoire-pull copies no longer
+  carry it; a stroke erased only in part stays whole in the file. Opening the notebook stops that
+  at once.
+- **Pinned pens**: pin up to four pens to the panel: tap the pen button, then **Pin** at the top
+  right of the picker, tap pens to pin or unpin them, then Done. Each gets its own button under the
+  pen button, and the panel still fits sideways at full size. Tapping the eraser again goes back
+  to the pen used just before it, a pinned one too.
+- **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
+  closed (upright, 3:4, 1860 x 2480 is best, light lines on white), then pick one with **More
+  papers...**, the last tile of the editor's Paper sheet and of New notebook. Each notebook keeps
+  its own copy, so changing or deleting a file there never changes pages already written. The page
+  shows white paper for a few seconds while that copy is made.
+- **A folder of page pictures becomes a notebook**: put a folder of PNG or JPG pages in
+  `grimoire/import/<Name>/` (a PDF saved as pictures, for example with
+  `pdftoppm -gray -png -r 200 file.pdf page`) and start Grimoire. It makes the notebook <Name> in
+  the background, each picture a page's paper, says "Imported a notebook of N pages.", and moves
+  the folder to `grimoire/import/done/`. PDFs are not read on the Kindle.
+- **Annotate this page, from KOReader**: in a book, Tools > Grimoire > **Annotate this page in
+  Grimoire** (also a gesture action) opens the page you are reading in Grimoire, ready to write
+  on. Grimoire keeps one notebook per book, named after its title, with the pages you annotate in
+  the book's order; annotating the same page again opens it with what you wrote. Library > Back
+  to KOReader returns to the same book and page. A PDF's page is the whole page; an EPUB's is the
+  screen as KOReader lays it out.
+- **Sheets stay open when the Kindle turns or wakes** in a notebook too (the tool picker, Paper,
+  Custom music, Display, Templates), as they do in the Library.
+- **What you wait on comes first**: a PDF you asked for and a template's picture are made before
+  background compaction and mirror PDFs.
 - **Grimoire in Spanish**: every screen, the share pages and the Effects studio now come in
   Spanish too. A new **Settings > Language** row offers Automatic (named with the language it gives:
   "Automatic (English)"), English and Español. Automatic, the default, follows the language of the
@@ -86,7 +122,7 @@
   refusals and installs the plugin; `tests/koplugin_check.sh` runs the plugin against stand-ins for
   KOReader (with luajit). The test builds stop at the first undefined behaviour.
 
-## Unreleased (1.0.0-beta.2)
+## 1.0.0-beta.2 (not released on its own: all of it is in 1.1.0-beta.1)
 
 - **Hold the power button to leave**: hold it 4 seconds to save and leave Grimoire from any
   screen, asleep or awake, and get the Kindle back. On a Kindle that stays locked after a press, a
