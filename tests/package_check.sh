@@ -99,11 +99,11 @@ for f in grimoire grimoire.sh CAPABILITIES licenses/GPL-3.0.txt; do
 done
 check "payload's grimoire.sh is kindle's" cmp -s "$B/app/grimoire.sh" kindle/app/grimoire.sh
 check "payload's CAPABILITIES match the header" is "$(cat "$B/app/CAPABILITIES" 2>/dev/null)" "$CAPS"
-# app/grimoire.sh names what it supports itself: the guard and --hosted, and no unpacking (that is
-# Grimoire.sh's).
+# app/grimoire.sh names what it supports itself: the guard, --hosted and --annotate (a page KOReader
+# sends), and no unpacking (that is Grimoire.sh's).
 APP_CAPS=$(head -n 10 "$B/app/grimoire.sh" 2>/dev/null | sed -n 's/^# Capabilities: //p')
 check "payload's grimoire.sh has its own Capabilities line ($APP_CAPS)" [ -n "$APP_CAPS" ]
-for c in guard hosted; do
+for c in guard hosted annotate; do
     check "payload's grimoire.sh Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$APP_CAPS" "$c"
 done
 check "payload's grimoire.sh Capabilities leave out unpack-only" sh -c 'case " $1 " in *" unpack-only "*) exit 1 ;; esac' sh "$APP_CAPS"
