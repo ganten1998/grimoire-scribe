@@ -54,7 +54,7 @@ static void value_text(const ParamInfo *pi, float v, char *buf, size_t cap) {
     // TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
     // pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
     // to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
-    // what it needs (about 120 px for "+400 %") and the name the rest.
+    // what it needs (about 150 px for "+400 %" in Gothic, 120 in Classic) and the name the rest.
     else if (!strcmp(pi->unit, "x")) snprintf(buf, cap, _("+%.0f%%"), v * 100.f);
     else snprintf(buf, cap, "%.2f", v);
 }
@@ -148,8 +148,8 @@ static void draw_slider_row(App *a, int i) {
     const ParamInfo *p = &pi[S->slider_param[i]];
     Slider sl = {.min = p->min, .max = p->max, .step = p->step, .label = _(p->label), .unit = p->unit};
     // The calligraphy nib turns with the pen's lean once the pen tilts this far.
-    // TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (580 px at
-    // 44 px, beside an angle).
+    // TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (570 px at
+    // 44 px in Gothic, 600 in Classic, beside an angle).
     if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_min_deg")) sl.label = _("Nib follows lean from");
     if (S->tab == TOOL_CALLIGRAPHY && !strcmp(p->key, "tilt_max_deg")) sl.label = _("Nib fully follows at");
     sl.value = *tool_param_ptr(&a->settings.tools[S->tab], p);

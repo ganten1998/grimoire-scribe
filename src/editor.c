@@ -738,8 +738,8 @@ static void pages_draw(App *a) {
     hits_add(&S->pages_hits, back, PG_BACK, 0);
     int k = pages_selected(a);
     char del[64];
-    // TRANSLATORS: the Pages view's buttons, each under its icon (344 px at 34 px): Delete, with
-    // how many pages are ticked; tick all of them, or none.
+    // TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
+    // Classic): Delete, with how many pages are ticked; tick all of them, or none.
     if (k) snprintf(del, sizeof del, _("Delete (%d)"), k);
     else snprintf(del, sizeof del, "%s", _("Delete"));
     Rect rdel = {a->w - m - ui_px(360), by, ui_px(360), bh};
@@ -747,7 +747,8 @@ static void pages_draw(App *a) {
     if (k) hits_add(&S->pages_hits, rdel, PG_DELETE, 0);
     Rect rall = {rdel.x - ui_px(20) - ui_px(360), by, ui_px(360), bh};
     bool all = k == S->nb.npages;
-    // TRANSLATORS: the Pages view's button that ticks every page, or none (344 px at 34 px).
+    // TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
+    // Gothic, 344 in Classic).
     ui_button(c, rall, ICON_CHECK, all ? _("Select none") : _("Select all"), BTN_PLAIN);
     hits_add(&S->pages_hits, rall, PG_ALL, 0);
     char title[64];

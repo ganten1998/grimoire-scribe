@@ -9,8 +9,9 @@
 // The English names go to grimoire.log too; tool_label is what the screens show.
 const char *tool_name(ToolKind t) {
     switch (t) {
-    // TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
-    // Mechanical pencil and the Calligraphy pen go by shorter names) and after "Pen feel:".
+    // TRANSLATORS: the drawing tools: in the editor's tool picker (268 px at 34 px in Gothic, 284 in
+    // Classic, where the Mechanical pencil and the Calligraphy pen go by shorter names) and after
+    // "Pen feel:".
     case TOOL_PENCIL: return NC_("tool", "Pencil");
     case TOOL_MECH_PENCIL: return NC_("tool", "Mechanical pencil");
     case TOOL_BALLPOINT: return NC_("tool", "Ballpoint");
@@ -31,8 +32,9 @@ const char *tool_label(ToolKind t) { return C_("tool", tool_name(t)); }
     {key, label, unit, offsetof(ToolParams, field), lo, hi, st, er}
 // The labels are looked up where Pen feel draws them (pensettings.c); keys and units stay English.
 static const ParamInfo k_params[] = {
-    // TRANSLATORS: Pen feel's sliders, each label left of its value: about 550 px at 44 px beside
-    // a width ("0.30 mm"), 580 beside an angle, 600 beside a plain number ("1.25").
+    // TRANSLATORS: Pen feel's sliders, each label left of its value, at 44 px: in Gothic about 530 px
+    // beside a width (up to "12.00 mm"), 570 beside an angle, 630 beside a plain number ("1.25"); in
+    // Classic 560, 600 and 640.
     P(size_min_mm, "size_min_mm", N_("Min width"), "mm", 0.10f, 12.f, 0.01f, true),
     P(size_max_mm, "size_max_mm", N_("Max width"), "mm", 0.10f, 12.f, 0.01f, true),
     P(opacity_min, "opacity_min", N_("Light darkness"), "", 0.f, 1.f, 0.01f, false),

@@ -16,8 +16,9 @@ const char *paper_name(PaperKind k) {
     if (paper_is_image(k)) return paper_is_document(k) ? NC_("paper", "Imported page") : NC_("paper", "Template");
     switch (k) {
     // TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
-    // paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
-    // is preferred: "Narrow," over "no margin"), in both styles. Also on the share pages.
+    // paper sheet: 192 px at 31 px in New notebook sideways (222 upright; Classic 4 px more), on
+    // one line or two (a break after a comma is preferred: "Narrow," over "no margin"). Also on the
+    // share pages.
     case PAPER_NARROW: return NC_("paper", "Narrow rule");
     case PAPER_MEDIUM: return NC_("paper", "Medium rule");
     case PAPER_WIDE: return NC_("paper", "Wide rule");
@@ -211,7 +212,8 @@ PaperKind music_default(void) {
 const char *music_part_name(MusicPart p) {
     switch (p) {
     // TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
-    // (296 px at 44 px, or two lines at 34 px) and in its list of the layout's parts.
+    // (280 px at 44 px in Gothic, 298 in Classic, or two lines at 34 px) and in its list of the
+    // layout's parts.
     case PART_TREBLE: return NC_("music part", "Treble staff");
     case PART_BASS: return NC_("music part", "Bass staff");
     case PART_ALTO: return NC_("music part", "Alto staff");

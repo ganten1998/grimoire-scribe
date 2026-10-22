@@ -14,7 +14,7 @@ static const int k_sleep_steps[] = {0, 1, 2, 5, 10, 15, 30, 60};
 // The sleep screen row, one sentence per choice (settings.ini sleep_mode 0, 1, 2).
 static const char *const k_mode_rows[3] = {
     // TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-    // the Kindle shows while it sleeps. About 1280 px at 44 px upright, more sideways.
+    // the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
     N_("Sleep screen: the page I'm on (tap to change)"),
     N_("Sleep screen: a pinned page (tap to change)"),
     N_("Sleep screen: the Kindle's own screensaver (tap to change)"),
@@ -55,7 +55,7 @@ static void slider_for(DispMenu *m, App *a, int which, Rect row, Slider *s) {
         s->min = 0;
         s->max = N_SLEEP_STEPS - 1;
         // TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
-        // about 460 px at 44 px.
+        // about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
         s->label = _("Sleep after");
         s->value = (float)step_of(a->settings.sleep_minutes);
     } else {

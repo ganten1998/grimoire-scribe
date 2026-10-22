@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 1.0.0-beta.2\n"
+"Project-Id-Version: Grimoire 1.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-20 13:58-0500\n"
+"POT-Creation-Date: 2026-10-22 12:54-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -153,8 +153,9 @@ msgid ""
 "done folder. Copy folders in over USB while Grimoire is closed."
 msgstr ""
 
-#. TRANSLATORS: the drawing tools: in the editor's tool picker (284 px at 34 px, where the
-#. Mechanical pencil and the Calligraphy pen go by shorter names) and after "Pen feel:".
+#. TRANSLATORS: the drawing tools: in the editor's tool picker (268 px at 34 px in Gothic, 284 in
+#. Classic, where the Mechanical pencil and the Calligraphy pen go by shorter names) and after
+#. "Pen feel:".
 #: src/brush.c
 msgctxt "tool"
 msgid "Pencil"
@@ -210,8 +211,9 @@ msgctxt "tool"
 msgid "Tool"
 msgstr ""
 
-#. TRANSLATORS: Pen feel's sliders, each label left of its value: about 550 px at 44 px beside
-#. a width ("0.30 mm"), 580 beside an angle, 600 beside a plain number ("1.25").
+#. TRANSLATORS: Pen feel's sliders, each label left of its value, at 44 px: in Gothic about 530 px
+#. beside a width (up to "12.00 mm"), 570 beside an angle, 630 beside a plain number ("1.25"); in
+#. Classic 560, 600 and 640.
 #: src/brush.c
 msgid "Min width"
 msgstr ""
@@ -341,7 +343,7 @@ msgid "Calibration saved"
 msgstr ""
 
 #. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-#. the Kindle shows while it sleeps. About 1280 px at 44 px upright, more sideways.
+#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
 #: src/dispmenu.c
 msgid "Sleep screen: the page I'm on (tap to change)"
 msgstr ""
@@ -355,7 +357,7 @@ msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
 msgstr ""
 
 #. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
-#. about 460 px at 44 px.
+#. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: src/dispmenu.c
 msgid "Sleep after"
 msgstr ""
@@ -494,8 +496,8 @@ msgctxt "tool"
 msgid "Calligraphy"
 msgstr ""
 
-#. TRANSLATORS: the Pages view's buttons, each under its icon (344 px at 34 px): Delete, with
-#. how many pages are ticked; tick all of them, or none.
+#. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
+#. Classic): Delete, with how many pages are ticked; tick all of them, or none.
 #: src/editor.c
 #, c-format
 msgid "Delete (%d)"
@@ -505,7 +507,8 @@ msgstr ""
 msgid "Delete"
 msgstr ""
 
-#. TRANSLATORS: the Pages view's button that ticks every page, or none (344 px at 34 px).
+#. TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
+#. Gothic, 344 in Classic).
 #: src/editor.c
 msgid "Select none"
 msgstr ""
@@ -1055,8 +1058,9 @@ msgid "Template"
 msgstr ""
 
 #. TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
-#. paper sheet: about 278 px at 31 px on one line, or two lines of that (a break after a comma
-#. is preferred: "Narrow," over "no margin"), in both styles. Also on the share pages.
+#. paper sheet: 192 px at 31 px in New notebook sideways (222 upright; Classic 4 px more), on
+#. one line or two (a break after a comma is preferred: "Narrow," over "no margin"). Also on the
+#. share pages.
 #: src/paper.c
 msgctxt "paper"
 msgid "Narrow rule"
@@ -1154,7 +1158,8 @@ msgid "Newer paper"
 msgstr ""
 
 #. TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
-#. (296 px at 44 px, or two lines at 34 px) and in its list of the layout's parts.
+#. (280 px at 44 px in Gothic, 298 in Classic, or two lines at 34 px) and in its list of the
+#. layout's parts.
 #: src/paper.c
 msgctxt "music part"
 msgid "Treble staff"
@@ -1219,7 +1224,7 @@ msgstr ""
 #. TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
 #. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
 #. to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
-#. what it needs (about 120 px for "+400 %") and the name the rest.
+#. what it needs (about 150 px for "+400 %" in Gothic, 120 in Classic) and the name the rest.
 #: src/pensettings.c
 #, c-format
 msgid "+%.0f%%"
@@ -1270,8 +1275,8 @@ msgstr ""
 msgid "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f"
 msgstr ""
 
-#. TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (580 px at
-#. 44 px, beside an angle).
+#. TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (570 px at
+#. 44 px in Gothic, 600 in Classic, beside an angle).
 #: src/pensettings.c
 msgid "Nib follows lean from"
 msgstr ""
@@ -1346,7 +1351,8 @@ msgstr ""
 msgid "Reset to defaults"
 msgstr ""
 
-#. TRANSLATORS: the Share screen's help, under the address: a line each, 1640 px at 34 px.
+#. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
+#. sideways (beside the QR code), 1640 upright.
 #: src/share.c
 msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
 msgstr ""
@@ -1365,8 +1371,8 @@ msgstr ""
 msgid "Downloads served: %d"
 msgstr ""
 
-#. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, about 1500 sideways),
-#. with its QR code, or without one (no Wi-Fi address).
+#. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, 1578 sideways beside
+#. the QR code), with its QR code, or without one (no Wi-Fi address).
 #: src/share.c
 msgid "Scan with your phone, or open this in a browser:"
 msgstr ""

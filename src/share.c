@@ -35,7 +35,8 @@ struct ShareState {
 // The help under the address, a line each, and last the command line of a script that pulls
 // everything (k_pull).
 static const char *const k_help[] = {
-    // TRANSLATORS: the Share screen's help, under the address: a line each, 1640 px at 34 px.
+    // TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
+    // sideways (beside the QR code), 1640 upright.
     N_("Pages as PNG, notebooks as PDF or zip, folders and everything as zip."),
     N_("Effects: transparent, recolored or filtered copies of any page."),
     N_("Same Wi-Fi network only. Keep this screen open while downloading."),
@@ -111,8 +112,8 @@ static int text_height(int n) {
 static int draw_text(App *a, int x, int w, int y, const char *url, const NetAddr *ad, int n, bool qr) {
     Canvas *c = &a->screen;
     char other[64], text[160];
-    // TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, about 1500 sideways),
-    // with its QR code, or without one (no Wi-Fi address).
+    // TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, 1578 sideways beside
+    // the QR code), with its QR code, or without one (no Wi-Fi address).
     const char *caption = _("Scan with your phone, or open this in a browser:");
     if (!qr) caption = _("On your computer, open this in a browser:");
     draw_line(c, FONT_REGULAR, ui_text_size(), (Rect){x, y, w, ui_px(80)}, caption, 0);
