@@ -124,13 +124,16 @@ void share_sleep(App *a);                            // asleep on Share: the ser
 void share_draw_asleep(App *a);                      // Share's sleep screen when no page is shown
 
 // The headless runner's `expect` checks read the app's state through this (tests only; cheap).
-// Keys: "screen" (library|editor|penset|calib|share), "toast" (the visible toast, "" if none),
-// "asleep" (0|1), "rotation" (0..3), "size" (WxH), "settings.<settings.ini key>" for a few and
-// for every tool's pen feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth",
-// and "editor.*" / "library.*" (below); docs/SIM.md has them all. 0 and the value in out, -1 for
-// an unknown key.
+// Keys: "screen" (library|editor|penset|calib|share), "toast" and "toast.rect" (the visible toast
+// and its rect, "" if none), "asleep" (0|1), "asleep.mode", "host", "rotation" (0..3), "size"
+// (WxH), "language", "bg.busy", "settings.<settings.ini key>" for a few and for every tool's pen
+// feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth", and "editor.*",
+// "library.*", "penset.*" (below), "annotate.*" (app.c) and "templates.*" (the open Templates
+// sheet: New notebook's on the Library, else the editor's); docs/SIM.md has them all. 0 and the
+// value in out, -1 for an unknown key.
 int app_probe(const char *key, char *out, size_t cap);
-// The screens' own keys, asked without their "editor." / "library." prefix (same contract).
+// The screens' own keys, asked without their "editor." / "library." / "penset." prefix (same
+// contract); "templates.*" keys reach editor_probe or library_probe whole.
 int editor_probe(App *a, const char *key, char *out, size_t cap);
 int library_probe(App *a, const char *key, char *out, size_t cap);
 int pensettings_probe(App *a, const char *key, char *out, size_t cap);  // "penset.*": the pen feel pad
