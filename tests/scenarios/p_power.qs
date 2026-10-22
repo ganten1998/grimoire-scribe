@@ -75,25 +75,27 @@ wake
 wait 3000
 expect asleep is 0
 shot 05-no-sleep-after-wake
-# The button held 3 s, short of the 4 s hold: nothing while it is down (no sleep request halfway
-# through a hold)...
+# The button held 2.6 s: past the 2.5 s a short press waits for its announcement, and far enough
+# short of the 4 s hold that a busy machine, which can only stretch a wait, does not reach it.
+# Nothing while it is down (no sleep request halfway through a hold)...
 power down
-wait 3000
+wait 2600
 expect asleep is 0
-shot 06-held-3s-still-awake
 # ...and its release is a short press: no announcement follows, so Grimoire asks for sleep.
 power up
+shot 06-released-short-of-4s-still-awake
 wait 3000
 expect asleep is 1
 wake
 wait 400
 expect asleep is 0
 # A short press, then the button held (press, see nothing, then hold: what a stuck user does):
-# the first press's sleep request must not go out while the second is down.
+# the first press's sleep request must not go out while the second is down (held past the 2.5 s
+# that request waits, and 2 s short of the hold).
 power
 wait 1000
 power down
-wait 2500
+wait 2000
 expect asleep is 0
 shot 07-second-press-held-still-awake
 power up
