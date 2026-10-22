@@ -1743,13 +1743,23 @@ static void tools_tap(App *a) {
 
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
-    case P_TOOLPICK:
+    case P_TOOLPICK: {
+        // With a pinned pen in use, the tool button's own pen is one tap away, as a pin's is; a tap
+        // while that pen is in use opens the picker. So does every tap on the grid (its pen pinned).
+        ToolKind cur = a->settings.current_tool, dt = button_tool(a);
+        if (cur != dt && settings_pinned(&a->settings, cur) && !settings_pinned(&a->settings, dt)) {
+            a->settings.current_tool = dt;
+            settings_save(&a->settings);
+            repaint_panel(a, REFRESH_UI);
+            break;
+        }
         S->tools_open = true;
         S->pin_mode = false;
         S->tools_y = S->panel.y;
         draw_tools(a);
         app_invalidate(a, S->tools_rect, REFRESH_UI);
         break;
+    }
     case P_TOOL: {
         ToolKind t = (ToolKind)h->arg, cur = a->settings.current_tool;
         if (t == cur && t != TOOL_ERASER) break;  // the pen in use already

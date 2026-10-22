@@ -20,10 +20,8 @@ expect editor.draw_tool is pencil
 pentap 1768 574
 wait 100
 expect editor.tool is marker
-# A pencil line (the tool button's pencil, from the picker)
+# A pencil line (the tool button's pencil: with a pin in use, one tap on the tool button picks it)
 pentap 1768 358
-wait 200
-pentap 872 395
 wait 200
 expect editor.tool is pencil
 pen line 300 1000 1500 1000 60 0.7 0.7
@@ -51,8 +49,6 @@ pentap 1768 574
 wait 100
 expect editor.tool is marker
 pentap 1768 358
-wait 200
-pentap 872 395
 wait 200
 pentap 1768 574
 wait 100

@@ -2,11 +2,13 @@
 # a tap pins one under the tool button or unpins it, the picker staying open; Done ends that. Each
 # pin is a panel button, selected while in use, and the buttons below move down by one each. A tap
 # on a pin picks it and leaves the tool button's pen; so does a pinned pen picked in the picker.
-# The eraser, tapped on and off, goes back to the pen used just before it (a pin), or to the tool
-# button's pen once that pin is gone. Collapsed and expanded; turned sideways, where four pins fit
-# with the panel's margins and full-size buttons; a fifth pin is refused with a toast; the tool
-# button's own pen pinned, the tool button shows a grid; unpinning the pen in use moves it to the
-# tool button. Last, every pin taken off: the panel is as it was.
+# While a pin is in use, the tool button's first tap picks its own pen back, and the next opens the
+# picker. The eraser, tapped on and off, goes back to the pen used just before it (a pin), or to
+# the tool button's pen once that pin is gone. Collapsed and expanded; turned sideways, where four
+# pins fit with the panel's margins and full-size buttons; a fifth pin is refused with a toast; the
+# tool button's own pen pinned, the tool button shows a grid, which always opens the picker;
+# unpinning the pen in use moves it to the tool button. Last, every pin taken off: the panel is as
+# it was.
 # settings: mirror_pdf=0
 wait 300
 tap 965 95
@@ -63,16 +65,30 @@ pen line 300 700 1300 700 60 0.7 0.7
 wait 300
 expect editor.strokes is 1
 expect editor.stroke_look is highlighter
-# White with the pin in use: the pin shows the white mark (the tool button's pencil is not in use);
-# Black again
+# With a pin in use, a tap on the tool button picks its pencil, and the next opens the picker.
+# White there, then the highlighter's pin: the pin shows the white mark (the tool button's pencil
+# is not in use); Black again, and the highlighter's pin
+pentap 1768 358
+wait 200
+expect editor.tool is pencil
+expect editor.modal is none
 pentap 1768 358
 wait 200
 pentap 1425 878
 wait 200
 expect settings.white is 1
+pentap 300 1800
+wait 200
+expect editor.modal is none
+pentap 1768 466
+wait 100
 expect editor.tool is highlighter
 expect editor.white_mark is 1
 shot 03b-white-on-the-pin
+pentap 1768 358
+wait 200
+pentap 1768 358
+wait 200
 pentap 951 878
 wait 200
 expect settings.white is 0
@@ -80,6 +96,9 @@ expect editor.white_mark is 0
 pentap 300 1800
 wait 200
 expect editor.modal is none
+pentap 1768 466
+wait 100
+expect editor.tool is highlighter
 # The eraser, now under both pins, on then off: back to the highlighter
 pentap 1768 682
 wait 100
@@ -122,7 +141,11 @@ expect editor.panel_rect is 1704 220 128 1626
 expect editor.panel_button is 100
 shot 04-sideways-two-pins
 # Two more pinned sideways (Marker, Calligraphy): the panel moves up to keep its 12 px margins,
-# its buttons at full size; the picker stays where it opened
+# its buttons at full size; the picker stays where it opened (the fineliner's pin is in use: the
+# tool button's first tap picks its pencil)
+pentap 1768 358
+wait 200
+expect editor.tool is pencil
 pentap 1768 358
 wait 200
 pentap 1600 273
@@ -168,7 +191,11 @@ expect size is 1860x2480
 expect editor.panel_rect is 1704 220 128 1842
 expect editor.panel_button is 100
 shot 07-upright-four-pins
-# The tool button's own pen pinned (Fineliner out, Pencil in): the tool button shows a grid
+# The tool button's own pen pinned (Fineliner out, Pencil in): the tool button shows a grid (the
+# calligraphy pen's pin is in use: the first tap picks the pencil)
+pentap 1768 358
+wait 200
+expect editor.tool is pencil
 pentap 1768 358
 wait 200
 pentap 1600 273
@@ -185,8 +212,19 @@ pentap 300 1800
 wait 200
 expect editor.modal is none
 shot 08-grid-tool-button
-# The pencil's pin (the fourth) picks it; the highlighter picked in the picker (the grid opens it)
-# is the one in use, and the tool button keeps its pen
+# With the highlighter's pin in use, the grid opens the picker (its pencil is a pin of its own);
+# closed again. The pencil's pin (the fourth) picks it; the highlighter picked in the picker (the
+# grid opens it) is the one in use, and the tool button keeps its pen
+pentap 1768 466
+wait 100
+expect editor.tool is highlighter
+pentap 1768 358
+wait 200
+expect editor.modal is tools
+expect editor.tool is highlighter
+pentap 300 1800
+wait 200
+expect editor.modal is none
 pentap 1768 790
 wait 100
 expect editor.tool is pencil
