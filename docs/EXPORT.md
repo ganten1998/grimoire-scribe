@@ -37,7 +37,8 @@ plain-text answers a person can meet in a browser: not found, no such notebook, 
 English. The download file names, the endpoints and `/api/list.json` (whose `paper` stays the
 English name) are the same in every language.
 
-The raw files in a zip are the notebook's `notebook.ini` and its `p<id>.qpg` pages, whose format
+The raw files in a zip are the notebook's `notebook.ini`, its `source.ini` when it annotates a book
+(KOReader's Annotate this page), its `p<id>.qpg` pages and its pictures (`bg/`), whose format
 is in [FORMAT.md](FORMAT.md). PNG, PDF and Share renders show a page from a newer Grimoire (one
 that opens read-only on the Kindle) as far as they can: a newer page format shows blank, and
 strokes with tools this version does not know are left out.

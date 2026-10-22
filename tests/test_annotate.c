@@ -12,6 +12,7 @@
 #include "annotate.h"
 #include "bgimage.h"
 #include "bgjob.h"
+#include "export.h"
 #include "font.h"
 #include "i18n.h"
 #include "testlib.h"
@@ -676,6 +677,38 @@ TEST(pictures_of_another_size) {
     free(png);
 }
 
+// A notebook's raw zip carries its source.ini, so one put back from the zip keeps which of its pages
+// is which book page: the same page sent again opens it, rather than adding a second one.
+TEST(raw_zip_keeps_the_map) {
+    size_t len;
+    uint8_t *png = text_png(PW, PH, 7, &len);
+    char text[700], path[900];
+    snprintf(text, sizeof text, "version=1\nbook=feedc0de\ntitle=Zipped Book\npage=7\npages=20\nkind=paged\npicture=page.png\n"
+                                "time=%lld\n", (long long)wall_time());
+    request_path("request.ini", path, sizeof path);
+    put_file(path, text, strlen(text));
+    request_path("page.png", path, sizeof path);
+    put_file(path, png, len);
+    AnnotateResult r = take(true);
+    CHECK(r.outcome == ANNOTATE_MADE);
+    NotebookInfo *nb = calloc(1, sizeof *nb);
+    CHECK(load(r.nb, nb));
+    Buf b = {0};
+    ZipWriter z;
+    zip_begin(&z, &b);
+    CHECK(export_notebook_zip(nb, DPI, &z, "") == 0 && zip_end(&z) == 0);
+    char zp[700], nbdir[600], cmd[2000];
+    snprintf(zp, sizeof zp, "%s/zipped.zip", root);
+    put_file(zp, b.data, b.len);
+    buf_free(&b);
+    store_notebook_dir(r.nb, nbdir, sizeof nbdir);
+    snprintf(cmd, sizeof cmd, "unzip -p '%s' 'Zipped Book/raw/source.ini' | cmp -s - '%s/source.ini'", zp, nbdir);
+    CHECK(system(cmd) == 0);
+    unlink(zp);
+    free(nb);
+    free(png);
+}
+
 TEST(failures_leave_nothing) {
     char text[700], path[900], nbdir[600];
     size_t len;
@@ -863,6 +896,7 @@ int main(void) {
     RUN(png_checks);
     RUN(starts_with_requests);
     RUN(pictures_of_another_size);
+    RUN(raw_zip_keeps_the_map);
     RUN(failures_leave_nothing);
     RUN(notices_fit);
     free(g_log);

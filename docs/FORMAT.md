@@ -616,7 +616,8 @@ all.
 1.0.0-beta and 1.0.0-beta.2 never read or write `source.ini` or `import/.annotate/`: they stay as
 they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands over with
 `--annotate` only to a launcher whose `# Capabilities:` line says `annotate`, so an older Grimoire
-never gets a request. Raw notebook zips leave `source.ini` and `bg/<pic>.source.png` out.
+never gets a request. Raw notebook zips carry `source.ini` as `raw/source.ini` (1.1.0-beta.2 on), so
+a notebook put back from one keeps its book pages; they leave `bg/<pic>.source.png` out.
 
 ## `settings.ini`
 
