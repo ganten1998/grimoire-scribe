@@ -34,15 +34,33 @@ local W
 
 -- Every file the plugin writes, by the path it writes it at (W.wrote: io.open in a mode that
 -- writes, writePNG, Screen:shot), and every rename, "from -> to" (W.renamed): a request and its
--- picture are held to "written into a temporary file, then renamed into place". A rename to a path
--- that ends in W.rename_fails fails, as on a full disk.
+-- picture are held to "written into a temporary file, then renamed into place". W.events has the
+-- same in the order they came: "open P", "write P" and "close P" for a file io.open opened to
+-- write (writePNG and Screen:shot write theirs whole: "open P", "close P"), and "rename F -> T", so
+-- a rename that came before its file was written and closed is seen. A rename to a path that ends
+-- in W.rename_fails fails, as on a full disk.
+local function logged_file(f, path) -- f, with its writes and its close in W.events
+    return setmetatable({}, { __index = function(_, k)
+        local method = f[k]
+        if type(method) ~= "function" then return method end
+        return function(_, ...)
+            if k == "write" or k == "close" then table.insert(W.events, k .. " " .. path) end
+            return method(f, ...)
+        end
+    end })
+end
 io.open = function(path, mode) -- luacheck: ignore
-    if W and mode and mode:find("[wa+]") then table.insert(W.wrote, path) end
-    return real_open(path, mode)
+    if not (W and mode and mode:find("[wa+]")) then return real_open(path, mode) end
+    table.insert(W.wrote, path)
+    table.insert(W.events, "open " .. path)
+    local f, err = real_open(path, mode)
+    if not f then return f, err end
+    return logged_file(f, path)
 end
 os.rename = function(from, to) -- luacheck: ignore
     if W then
         table.insert(W.renamed, from .. " -> " .. to)
+        table.insert(W.events, "rename " .. from .. " -> " .. to)
         if W.rename_fails and to:sub(-#W.rename_fails) == W.rename_fails then return nil, "No space left on device" end
     end
     return real_rename(from, to)
@@ -62,6 +80,8 @@ Device.isKindle = function() return W.kindle end
 -- answers as the screen's writePNG does (W.png_answers, below).
 local function png_answer(path, text)
     table.insert(W.wrote, path)
+    table.insert(W.events, "open " .. path)
+    table.insert(W.events, "close " .. path)
     if W.png_answers == "false" then -- a newer KOReader, the disk full part way
         write(path, text:sub(1, 3))
         return false, "failed to write"
@@ -280,6 +300,7 @@ local function world(name)
         logs = {},
         wrote = {},
         renamed = {},
+        events = {},
         screen = { w = 1860, h = 2480 },
         -- The book a book's screen has open (new_ui): kind "paged" (a PDF), "reflowable" (an
         -- EPUB) or "old" (a PDF in a KOReader that cannot draw a page by itself).
@@ -840,6 +861,29 @@ local function written_whole(s)
         return false
     end
     check(s .. ": the picture and the request renamed into place", renamed("page.png") and renamed("request.ini"))
+    -- Each renamed only once written and closed: its temporary file opened and closed before the
+    -- rename, and neither opened, written nor closed after it (else the name Grimoire reads would
+    -- show half a file for a moment).
+    local function in_order(name)
+        local tmp = W.annotate .. "/" .. name .. ".tmp"
+        local rename = "rename " .. tmp .. " -> " .. W.annotate .. "/" .. name
+        local opened, closed, at = false, false, nil
+        for i, e in ipairs(W.events) do
+            if e == rename then
+                at = i
+                break
+            end
+            if e == "open " .. tmp then opened, closed = true, false end
+            if e == "close " .. tmp then closed = opened end
+        end
+        if not (at and opened and closed) then return false end
+        for i = at + 1, #W.events do
+            local e = W.events[i]
+            if e == "open " .. tmp or e == "write " .. tmp or e == "close " .. tmp then return false end
+        end
+        return true
+    end
+    check(s .. ": each written and closed before it is renamed into place", in_order("page.png") and in_order("request.ini"))
 end
 -- A page that could not be sent: the message says so, nothing is left in the requests' folder (no
 -- picture, no request, nothing half-written), and there is no hand-over.
