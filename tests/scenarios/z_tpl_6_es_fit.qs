@@ -2,8 +2,9 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # The Templates sheet with templates in it, in Spanish with the fit check (a run that cuts any
 # text short fails), in Gothic and then Classic, upright and sideways: over New notebook and over
-# the editor's page, with its pages of tiles and their buttons. (make l10n-check runs y_all_screens,
-# whose data root has no templates: the sheet's other state.) Its taps land in both styles.
+# the editor's page, with its pages of tiles and their buttons. (make l10n-check runs the same taps,
+# tests/l10n/templates.qs, in every language and style; this keeps a Spanish run in make scenarios,
+# with the style changed while Grimoire runs.) Its taps land in both styles.
 # copy: tests/fixtures/tpl-many templates
 wait 300
 tap 965 95

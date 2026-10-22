@@ -503,7 +503,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   tests/scenarios/y_all_screens.qs runs in every language (English and each po/*.mo) and both
   styles with the fit check, then tests/l10n/long_root.qs (Settings from a data root longer than
   the sheet is wide) in each language, then tests/l10n/hosted.qs (the top bar as KOReader opens
-  it) in each language and style. docs/TRANSLATING.md and docs/SIM.md have the rest.
+  it) and tests/l10n/templates.qs (the Templates sheet with templates in it, its `# copy:` line
+  honoured) in each language and style. docs/TRANSLATING.md and docs/SIM.md have the rest.
 - Dependencies: HDRS holds the Makefile, VERSION and third_party/qrcodegen/qrcodegen.h besides
   src/*.h, so a change of flags rebuilds every program (FBInk's objects follow only their own
   .c files); the test binaries also depend on tests/*.h (beta_format.h among them), and the zip on

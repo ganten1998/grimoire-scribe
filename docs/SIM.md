@@ -259,6 +259,10 @@ comments, waits and taps must fail and be reported by its line number (exit 3).
 - tests/l10n/hosted.qs, in every language and style with `GRIMOIRE_HOST=koreader`: the Library's
   top bar as KOReader opens it, Back to KOReader in Exit's place, upright and sideways (shots in
   `build/shots/l10n/hosted-<lang>-<style>/`).
+- tests/l10n/templates.qs, in every language and style: the Templates sheet with templates in it
+  (its `# copy:` line copies tests/fixtures/tpl-many into the data root first, as make scenarios
+  does), over New notebook and over the editor's page, upright and sideways, with its pages of
+  tiles (shots in `build/shots/l10n/templates-<lang>-<style>/`).
 
 Under make check it runs after the scenarios, since both open the share server on the same port.
 The scenarios y_language (with `GRIMOIRE_LANG=es`: Automatic is Spanish, a pick applies at once

@@ -39,8 +39,9 @@ confirm, with the alternatives weighed: start there.
    translation whose printf conversions differ from its English.
 3. `make l10n-check` runs every screen in Spanish, in both styles, and lists each text that does
    not fit as `fit[es]: "..." needs W px, has R`. Its shots show every screen in context:
-   `build/shots/l10n/es-gothic/` and `es-classic/`, and `hosted-es-gothic/` and
-   `hosted-es-classic/` for the Library opened from KOReader.
+   `build/shots/l10n/es-gothic/` and `es-classic/`, `hosted-es-gothic/` and
+   `hosted-es-classic/` for the Library opened from KOReader, and `templates-es-gothic/` and
+   `templates-es-classic/` for the Templates sheet with templates in it.
 4. `make test` runs tests/test_i18n.c, which checks the catalog as well (What the checks catch,
    below).
 5. Commit `po/es.po` and `po/es.mo` together, with `po/grimoire.pot` if it changed: make

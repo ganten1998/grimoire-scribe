@@ -181,9 +181,12 @@ l10n:
 # sheet is wide: its Data line, a path, is cut short as names are, which the check must not count
 # (else make check would fail in a deep build directory). Last, tests/l10n/hosted.qs, in every
 # language and style: the Library's top bar as KOReader opens it (Back to KOReader in Exit's place,
-# the one button that takes the width it needs). Under make check it waits for the scenarios: both
-# open the share server on the same port.
+# the one button that takes the width it needs). Then tests/l10n/templates.qs, in every language and
+# style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
+# data root its "# copy:" line fills first, as make scenarios does. Under make check it waits for
+# the scenarios: both open the share server on the same port.
 L10N_SCENARIO := tests/scenarios/y_all_screens.qs
+L10N_TEMPLATES := tests/l10n/templates.qs
 L10N_LANGS := en $(basename $(notdir $(L10N_MO)))
 l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS)),scenarios)
 	@unset $(SIM_HOOKS); failed=; \
@@ -216,6 +219,16 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_HOST=koreader GRIMOIRE_ROOT=$$r \
 	    GRIMOIRE_SCRIPT=tests/l10n/hosted.qs GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
+	done; done; \
+	for lang in $(L10N_LANGS); do for style in gothic classic; do n=templates-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
+	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n, with templates"; \
+	  echo "theme=$$style" > $$r/settings.ini; \
+	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" >> $$r/settings.ini; fi; \
+	  if ! sed -n 's/^# copy: *//p' $(L10N_TEMPLATES) | while read -r src dst; do \
+	    mkdir -p "$$r/$$dst" && cp -R "$$src/." "$$r/$$dst/" || exit 1; done; then \
+	    echo "$$n: a # copy: line failed"; failed="$$failed $$n"; continue; fi; \
+	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=$(L10N_TEMPLATES) \
+	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
 	done; done; \
 	if [ -n "$$failed" ]; then echo "L10N CHECK FAILED:$$failed"; exit 1; fi; \
 	echo "l10n-check: every language fits ($(L10N_LANGS))"
