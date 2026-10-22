@@ -17,8 +17,9 @@ expect editor.modal is templates
 expect templates.page is 1
 expect templates.ready is 0
 shot 01-waiting
-# (50 previews made in the background: a few seconds here, up to 15 on a busy machine)
-wait 15000
+# (50 previews made in the background: waitbg waits for them, however long the machine takes)
+waitbg
+wait 300
 expect templates.count is 50
 expect templates.ready is 50
 expect templates.pages is 3
@@ -61,7 +62,8 @@ pentap 232 1748
 wait 300
 expect editor.modal is none
 expect editor.paper_hex has 0x50
-wait 7000
+waitbg
+wait 300
 expect editor.picture is shown
 shot 08-on-grid-43
 pentap 1768 1242

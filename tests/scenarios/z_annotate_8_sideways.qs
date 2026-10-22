@@ -14,7 +14,8 @@ expect annotate.result is made
 expect annotate.role is document
 expect annotate.book_page is 31/340
 expect annotate.luma is 255
-wait 6000
+waitbg
+wait 300
 shot 02-fitted
 expect annotate.luma not 255
 expect screen is editor

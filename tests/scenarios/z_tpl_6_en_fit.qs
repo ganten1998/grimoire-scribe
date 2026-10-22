@@ -13,8 +13,9 @@ shot 01-new-gothic
 tap 300 1650
 wait 200
 expect library.sheet is templates
-# (50 previews made in the background: up to 15 s on a busy machine)
-wait 15000
+# (50 previews made in the background: waitbg waits for them, however long the machine takes)
+waitbg
+wait 300
 expect templates.ready is 50
 shot 02-templates-gothic
 tap 1640 2123

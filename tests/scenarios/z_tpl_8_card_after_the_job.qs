@@ -11,8 +11,9 @@ wait 100
 tap 300 1650
 wait 200
 expect library.sheet is templates
-# (the previews: a slowed job, up to 10 s on a busy machine)
-wait 10000
+# (the previews: a slowed job, waited for)
+waitbg
+wait 300
 expect templates.ready is 2
 tap 511 452
 wait 200
@@ -31,8 +32,9 @@ expect library.card.1 is thumb
 expect library.card.1.luma is 255
 shot 01-card-white-paper
 expect library.cards_redrawn is 0
-# (the template's picture: a slowed job, up to 10 s)
-wait 10000
+# (the template's picture: a slowed job, waited for)
+waitbg
+wait 300
 expect library.card.1 is thumb
 expect library.card.1.luma is 247
 expect library.cards_redrawn is 1

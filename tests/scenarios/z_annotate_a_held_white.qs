@@ -19,7 +19,8 @@ pen line 300 1000 1000 1000 30 0.8 0.8
 side on
 pen down 300 1000 0.8
 pen move 320 1000 0.8
-wait 6000
+waitbg
+wait 300
 expect editor.live_matches_render is 0
 pen move 600 1000 0.8
 pen move 1000 1000 0.8

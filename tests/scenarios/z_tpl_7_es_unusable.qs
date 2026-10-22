@@ -10,8 +10,9 @@ wait 100
 tap 300 1650
 wait 200
 expect library.sheet is templates
-# (the previews job finds them unusable, and the sheet takes them out: up to 7 s on a busy machine)
-wait 7000
+# (the previews job finds them unusable, and the sheet takes them out once it ends)
+waitbg
+wait 300
 expect templates.count is 0
 shot 01-unusable-gothic
 rotate 1

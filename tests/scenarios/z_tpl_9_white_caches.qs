@@ -21,7 +21,8 @@ expect editor.page is 1
 pentap 1768 1242
 wait 200
 pentap 232 1750
-wait 10000
+waitbg
+wait 300
 expect templates.ready is 2
 # Page 1 onto Lined, erased over while its picture is still to come (an erase over blank paper
 # changes nothing and is not kept, but it draws the paper cache, white).
@@ -37,7 +38,8 @@ expect editor.erase_strokes is 0
 pentap 1768 1114
 wait 400
 expect editor.page is 2
-wait 10000
+waitbg
+wait 300
 expect editor.paper_cache is 0
 pentap 1768 938
 wait 400
@@ -70,7 +72,8 @@ wait 500
 pentap 1768 594
 wait 300
 expect editor.paper is 1
-wait 10000
+waitbg
+wait 300
 expect editor.paper_cache is 0
 pentap 1768 702
 wait 300

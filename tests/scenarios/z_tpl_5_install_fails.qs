@@ -12,7 +12,8 @@ expect editor.paper is 1
 pentap 1768 1242
 wait 200
 pentap 232 1750
-wait 7000
+waitbg
+wait 300
 expect editor.modal is templates
 expect templates.ready is 2
 pentap 511 452

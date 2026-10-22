@@ -23,16 +23,18 @@ wait 300
 expect editor.modal is templates
 expect templates.count is 2
 expect templates.selected is
-# (the previews of the two, made in the background meanwhile; the waits hold for background jobs
-# that take up to 7 s on a busy machine)
-wait 7000
+# (the previews of the two, made in the background meanwhile: waitbg waits for background jobs as
+# long as the machine takes)
+waitbg
+wait 300
 expect templates.ready is 2
 shot 01-templates
 pentap 511 452
 wait 300
 expect editor.modal is none
 expect editor.paper_hex is 0x50f4d83c
-wait 7000
+waitbg
+wait 300
 expect editor.picture is shown
 expect editor.live_matches_render is 1
 shot 02-on-lined

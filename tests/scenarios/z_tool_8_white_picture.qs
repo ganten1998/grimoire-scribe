@@ -10,8 +10,9 @@
 # settings: marker.grain=0
 # settings: eraser.size_min_mm=1
 # settings: eraser.size_max_mm=1
-# The import takes about a second here; its toast shows for 8 s.
-wait 7500
+# The import takes about a second here (waitbg waits for it); its toast shows for 8 s.
+waitbg
+wait 300
 expect library.items is 1
 tap 326 608
 wait 600

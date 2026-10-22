@@ -22,8 +22,9 @@ tap 300 2250
 wait 100
 expect library.sheet is none
 expect bg.busy is 1
-# (the previews: a slowed job, up to 10 s on a busy machine)
-wait 10000
+# (the previews: a slowed job, waited for)
+waitbg
+wait 300
 expect bg.busy is 0
 expect library.cards_redrawn is 0
 expect library.card.1 is thumb

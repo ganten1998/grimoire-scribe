@@ -14,7 +14,8 @@ tap 300 1650
 wait 200
 expect library.sheet is templates
 expect templates.count is 2
-wait 10000
+waitbg
+wait 300
 expect templates.ready is 2
 tap 511 452
 wait 200
@@ -46,7 +47,8 @@ expect screen is editor
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is missing
 shot 02-first-page-white
-wait 10000
+waitbg
+wait 300
 expect editor.picture is shown
 expect editor.live_matches_render is 1
 shot 03-first-page-on-it
