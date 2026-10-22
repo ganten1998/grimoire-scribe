@@ -49,6 +49,12 @@ confirm, with the alternatives weighed: start there.
 
 Without gettext you can still edit `po/es.po` and send it; whoever builds runs `make l10n`.
 
+Merge with `make l10n`, not with msgmerge by hand. It keeps `po/grimoire.pot` and each
+`po/<lang>.po` in gettext's own line wrapping (a long entry broken into lines of about 80
+columns), as they are committed, so its diff shows only the entries that changed.
+`msgmerge --no-wrap` puts every long entry on one line, and the next `make l10n` breaks them all
+again.
+
 To try a change in the desktop simulator (docs/SIM.md) without building it again, compile the
 catalog by hand and point the simulator at it:
 
