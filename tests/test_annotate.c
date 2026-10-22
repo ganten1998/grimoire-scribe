@@ -660,6 +660,10 @@ TEST(pictures_of_another_size) {
     CHECK(canvas_init(&c, PW, PH) == 0);
     bgimage_render(&c, id, k, (Rect){0, 0, PW, PH});
     CHECK(c.px[(size_t)(PH / 2) * (size_t)c.stride + PW / 2] == 255 && !bgimage_undrawn(id, pic));  // (no file yet)
+    // The page left before its picture is made: the editor wrote the Library's card from the page
+    // drawn white. The job that makes the picture draws the card again, the page on its picture.
+    Canvas white;
+    CHECK(canvas_init(&white, PW / 3, PH / 3) == 0 && store_save_thumb(id, &white) == 0);
     request_path("request.ini", path, sizeof path);
     put_file(path, text, strlen(text));
     request_path("page.png", path, sizeof path);
@@ -669,6 +673,18 @@ TEST(pictures_of_another_size) {
     drain_jobs();
     CHECK(exists(file) && !exists(source));
     bgimage_retry_missing();  // (as poll_jobs does once a picture job is done)
+    Canvas card, want;
+    Page *first = NULL;
+    CHECK(store_load_thumb(id, &card) == 0 && store_read_page(nb, 0, &first) == 0 && first);
+    CHECK(canvas_init(&want, PW / 3, PH / 3) == 0);
+    if (first) page_render_thumb(&want, first, DPI);
+    CHECK(card.w == want.w && card.h == want.h && !memcmp(card.px, want.px, (size_t)want.w * (size_t)want.h));
+    CHECK(card.px && memcmp(card.px, white.px, (size_t)white.w * (size_t)white.h) != 0);
+    page_free(first);
+    canvas_free(&card);
+    canvas_free(&want);
+    canvas_free(&white);
+    bgimage_forget(NULL);
     CHECK(bgimage_undrawn(id, pic) && !bgimage_undrawn(id, (pic + 1) & 0xFFFFFFu));
     bgimage_render(&c, id, k, (Rect){0, 0, PW, PH});
     CHECK(!bgimage_undrawn(id, pic));

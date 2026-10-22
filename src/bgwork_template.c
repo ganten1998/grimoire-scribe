@@ -562,12 +562,17 @@ int template_start_notebook(NotebookInfo *nb, const char *path, const char **why
 
 // The notebook's card (thumb.pgm, of its first page) when that page is on picture pic, drawn again
 // once the picture is made: the editor drew it on white paper if the notebook was left before (a
-// first page written on in the seconds a picture takes on the Kindle). The editor may have the
-// notebook open still, and write the card itself as this draws it (leaving page 1, which it saves
-// first, or closing): then the card is drawn again from page 1 as it is now, up to three times.
+// first page written on in the seconds a picture takes on the Kindle, or a page KOReader sent,
+// looked at and left while its picture was fitted: a document page, whose picture is made here
+// as a template's is). The editor may have the notebook open still, and write the card itself as
+// this draws it (leaving page 1, which it saves first, or closing): then the card is drawn again
+// from page 1 as it is now, up to three times.
 static void redraw_card(const NotebookInfo *nb, uint32_t pic, float dpi) {
     int pw, ph;
     store_notebook_page_size(nb, &pw, &ph);
+    // A job queued behind another is forked after the editor drew the page white: what it found
+    // missing then is remembered here too (bgimage.h), and would draw the card white again.
+    bgimage_forget(nb->id);
     for (int tries = 0; tries < 3; tries++) {
         size_t was_len;
         uint8_t *was = store_read_thumb_file(nb->id, &was_len);
@@ -576,7 +581,7 @@ static void redraw_card(const NotebookInfo *nb, uint32_t pic, float dpi) {
         int rc = 0;  // (page 1 not on the picture: nothing to draw)
         if (store_read_page(nb, 0, &p) != 0) {
             rc = -1;
-        } else if (paper_is_image(p->paper) && !paper_is_document(p->paper) && paper_image_id(p->paper) == pic) {
+        } else if (paper_is_image(p->paper) && paper_image_id(p->paper) == pic) {
             rc = canvas_init(&t, pw / 3, ph / 3) == 0 ? 0 : -1;
             if (rc == 0) {
                 page_render_thumb(&t, p, dpi);

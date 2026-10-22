@@ -588,7 +588,9 @@ notebook's page size and one Grimoire draws as it is (a PNG of at most 32 MB, 60
 decodes within 96 MB); the page shows it at once. Any other (a notebook made on a Scribe of the other
 size, a screenshot taken sideways) waits as `bg/<pic>.source.png` and is made into `bg/<pic>.png` in
 the background, as a template's picture is (fitted, Image papers), after which the source is
-removed, made or not; the page draws white until then, and is drawn again once it is made. A page
+removed, made or not; the page draws white until then, and is drawn again once it is made. When it
+is the notebook's first page, the job also draws the card again, as a template's does (Image
+papers: the editor made the card white if the page was left before the picture was made). A page
 whose picture went missing (its fitting never ran) gets it again from a request for that page that
 sends the same picture.
 
