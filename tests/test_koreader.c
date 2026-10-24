@@ -34,11 +34,7 @@ TEST(discovery_and_owned_files) {
     size_t len; char *data = read_file(p, &len);
     CHECK(data && len == 20 && !memcmp(data, "someone else's patch", 20));
     free(data);
-    CHECK(koreader_item_set(-1, true) != 0 && koreader_item_set(5, true) != 0);
-    snprintf(src, sizeof src, "%s/app/koreader/patches/%s", root, koreader_item_name(4));
-    CHECK(write_file_atomic(src, "dpi patch", 9) == 0);
-    CHECK(koreader_item_set(4, true) == 0 && koreader_item_installed(4));
-    CHECK(koreader_item_set(4, false) == 0 && !koreader_item_installed(4));
+    CHECK(koreader_item_set(-1, true) != 0 && koreader_item_set(4, true) != 0);
     snprintf(src, sizeof src, "%s/app/koreader/patches/%s", root, koreader_item_name(3));
     CHECK(write_file_atomic(src, "new font patch", 14) == 0);
     snprintf(p, sizeof p, "%s/app/koreader/legacy", root); CHECK(mkdir_p(p) == 0);

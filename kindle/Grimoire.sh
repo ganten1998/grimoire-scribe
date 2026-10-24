@@ -129,6 +129,13 @@ if [ ! -f "$APP/grimoire" ] || [ "$(cat "$APP/BUILD_ID" 2>/dev/null)" != "$BUILD
     echo "$BUILD_ID" >"$APP/BUILD_ID"
     log "unpacked build $BUILD_ID into $APP"
 fi
+# RC1's retired DPI experiment could survive tar's merge into an existing app cache.
+# Remove only its exact shipped bytes, even when BUILD_ID is already current. Never touch
+# KOReader's active patches or a locally modified cache file.
+retired=$APP/koreader/patches/1-grimoire-scribe-dpi.lua
+if [ -f "$retired" ] && [ "$(cksum < "$retired" 2>/dev/null)" = "59561885 1067" ]; then
+    rm -f "$retired" && log "removed the retired DPI experiment from the app cache"
+fi
 chmod +x "$APP/grimoire" "$APP/grimoire.sh" 2>/dev/null
 case "$1" in
 --unpack-only) exit 0 ;;

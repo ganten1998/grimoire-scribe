@@ -41,7 +41,7 @@ tap 500 1930
 wait 50
 expect library.sheet is koreader
 shot 02-koreader-controls
-tap 930 1600
+tap 930 1450
 wait 50
 expect library.sheet is none
 tap 1535 95

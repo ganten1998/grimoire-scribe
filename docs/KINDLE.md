@@ -154,7 +154,7 @@ English and Spanish, picked by KOReader's language setting, English for any othe
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
 `KOReader plugin (optional)/grimoire.koplugin` into KOReader's `plugins` directory. Restart KOReader.
-The four user patches are separate, optional choices. They are never installed by the launcher.
+The three user patches are separate, optional choices. They are never installed by the launcher.
 
 The app carries the plugin (`grimoire/app/koreader`). Once explicitly installed, a plain Library
 start keeps that copy up to date with the app, copying each file then renaming it whole.
@@ -480,17 +480,14 @@ tells the story):
 
 ## Optional KOReader controls and wallpaper (1.1.0-beta.2)
 
-Library > Settings > KOReader manages the plugin and the four scripts under
+Library > Settings > KOReader manages the plugin and the three scripts under
 `app/koreader/patches`. Discovery checks the hosted `KOREADER_DIR`, then `/mnt/us/koreader`,
 `/mnt/us/extensions/koreader` and `/mnt/us/documents/koreader`. Installing a plugin is explicit in
 this sheet; patch toggles apply/remove only matching bundled files and preserve different files.
 The Terminess toggle writes the embedded regular/bold fonts into KOReader's `fonts/Grimoire`.
 Restart KOReader after any change. Font files can remain after disabling the patch; without it
 KOReader uses its original UI font. The RC updates Terminess font matching and dropdown battery
-spacing. `1-grimoire-scribe-dpi.lua` is a separate opt-in policy: preserve the 320 layout, scale
-proportionally with the effective DPI, and use the hardware DPI for Auto. Its early priority runs
-before widgets cache dimensions. Other devices retain KOReader's sizing. DPI selection still
-requires a restart. Exact old Grimoire Terminess bytes are carried under `app/koreader/legacy`
+spacing. KOReader keeps its native DPI scaling. Exact old Grimoire Terminess bytes are carried under `app/koreader/legacy`
 only for explicit migration; different user edits remain protected.
 
 Before each handover the plugin removes an old `grimoire/koreader-sleep.png`, asks KOReader's

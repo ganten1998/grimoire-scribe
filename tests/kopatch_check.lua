@@ -5,45 +5,6 @@ local function check(value, message)
     checks = checks + 1
     assert(value, message or ("check " .. checks))
 end
-local fb = {}
-function fb:scaleBySize(px)
-    local size = math.min(self:getWidth(), self:getHeight()) / 600
-    return math.ceil(px * (size + (self.dpi_override and self.dpi / 160 or size)) / 2)
-end
-function fb:getDPI() return self.dpi end
-function fb:getWidth() return self.w end
-function fb:getHeight() return self.h end
-package.loaded["ffi/framebuffer"] = fb
-local original = fb.scaleBySize
-local screen = setmetatable({device = {model = "KindleScribe"}, w = 1860, h = 2480, dpi = 320, dpi_override = true}, {__index=fb})
-dofile(root .. "/kindle/koreader/patches/1-grimoire-scribe-dpi.lua")
-for px = 1, 100 do check(screen:scaleBySize(px) == original(screen, px), "320 layout must remain identical") end
-for _, size in ipairs({12, 18, 24, 32, 48}) do
-    local previous = 0
-    for dpi = 90, 900, 10 do
-        screen.dpi = dpi
-        local result = screen:scaleBySize(size)
-        check(result >= previous, "DPI must never reverse")
-        previous = result
-    end
-    screen.dpi = 300; screen.dpi_override = nil
-    local auto = screen:scaleBySize(size)
-    screen.dpi = 320; screen.dpi_override = true
-    local working = screen:scaleBySize(size)
-    screen.dpi = 480; local larger = screen:scaleBySize(size)
-    screen.dpi = 640; local largest = screen:scaleBySize(size)
-    check(auto < working and working < larger and larger < largest, "Auto/320/480/640 distinct and ordered")
-end
-screen.dpi = 320; screen.w, screen.h = 2480, 1860
-check(screen:scaleBySize(24) == 62, "rotation preserves scale")
-screen.device.model = "KindlePaperWhite"
-check(screen:scaleBySize(24) == original(screen, 24), "other devices unchanged")
-screen.device = nil
-check(screen:scaleBySize(24) == original(screen, 24), "no device yet falls through")
-local patched = fb.scaleBySize
-dofile(root .. "/kindle/koreader/patches/1-grimoire-scribe-dpi.lua")
-check(patched == fb.scaleBySize, "DPI patch idempotent")
-
 local Font = {fontmap = {cfont="NotoSans-Regular.ttf", tfont="NotoSans-Bold.ttf", other="DroidSansMono.ttf"},
               bold_font_variant={}, regular_font_variant={}}
 function Font:getFace(name) return {orig_font=name} end

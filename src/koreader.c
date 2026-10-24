@@ -9,7 +9,7 @@
 extern unsigned char TerminessNerdFontMono_Regular_ttf[], TerminessNerdFontMono_Bold_ttf[];
 extern unsigned int TerminessNerdFontMono_Regular_ttf_len, TerminessNerdFontMono_Bold_ttf_len;
 static const char *const files[] = {
-    "grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua", "1-grimoire-scribe-dpi.lua"
+    "grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua"
 };
 static bool installed_at(const char *dir) {
     char p[1024];
@@ -32,10 +32,10 @@ bool koreader_find(char *out, size_t cap) {
     *out = 0;
     return false;
 }
-const char *koreader_item_name(int item) { return item >= 0 && item < 5 ? files[item] : ""; }
+const char *koreader_item_name(int item) { return item >= 0 && item < 4 ? files[item] : ""; }
 static bool paths(int item, char *src, char *dst) {
     char ko[800];
-    if (item < 0 || item > 4 || !koreader_find(ko, sizeof ko)) return false;
+    if (item < 0 || item > 3 || !koreader_find(ko, sizeof ko)) return false;
     snprintf(src, 1024, "%s/app/koreader/%s/%s", store_root(), item ? "patches" : "", files[item]);
     snprintf(dst, 1024, "%s/%s/%s", ko, item ? "patches" : "plugins", files[item]);
     return true;

@@ -184,6 +184,19 @@ suite() {
     FAKE_MODE=slow sh "$APP/grimoire.sh" &
     timings_pid=$!
 
+    # An existing RC1 cache retains files absent from the new tar. Prune only the known retired
+    # script, including when the current build is already unpacked; keep unknown local edits.
+    tree retired-dpi
+    sh "$DOC" --unpack-only
+    retired=$APP/koreader/patches/1-grimoire-scribe-dpi.lua
+    mkdir -p "$(dirname "$retired")"
+    cp "$REPO/tests/fixtures/rc1-dpi-cache.txt" "$retired"
+    sh "$DOC" --unpack-only
+    check "$s retired DPI cache: exact RC1 file removed" [ ! -e "$retired" ]
+    echo '-- local modification' > "$retired"
+    sh "$DOC" --unpack-only
+    check "$s retired DPI cache: local edit kept" has "$retired" '-- local modification'
+
     # First run on a fresh Kindle: unpacks, then starts app/grimoire.sh detached. The setsid
     # stand-in holds the launch until the fake binary is in place.
     tree first

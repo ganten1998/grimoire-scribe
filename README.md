@@ -196,14 +196,13 @@ instead. The plugin keeps KOReader's framework service alive during Grimoire on 
 so the power service can still handle sleep.
 
 **Library > Settings > KOReader** installs or updates the plugin, removes it, or toggles each
-of the four optional patches: diagonal screenshot gestures off, square folder corners,
-Terminess menu fonts, and proportional Scribe DPI scaling. The font patch includes the font. Restart KOReader after changing a patch
+of the three optional patches: diagonal screenshot gestures off, square folder corners,
+and Terminess menu fonts. The font patch includes the font. Restart KOReader after changing a patch
 or the plugin. A different patch at the same filename is preserved; no patches are applied just
 by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
 from beta.1: screenshot gestures and corners stay unchanged; Terminess now matches regular/bold
-fonts and separates the dropdown battery icon from its percentage. A fourth, separate DPI patch
-keeps the familiar 320 layout while scaling Auto and other DPI choices consistently. Restart
-KOReader after each DPI change. Fonts and manual instructions are included.
+fonts and separates the dropdown battery icon from its percentage. Fonts and manual instructions
+are included. KOReader keeps its native DPI behavior.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
 image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works

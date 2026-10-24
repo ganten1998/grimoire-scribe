@@ -1,5 +1,8 @@
 # 1.1.0-rc.1 validation
 
+Historical evidence for RC1. RC2 removes the DPI experiment at the owner’s request; see
+[TESTING-rc2.md](TESTING-rc2.md) for the current candidate.
+
 ## Physical device: October 24, 2026
 
 Kindle Scribe 2024, firmware 5.19.6, ARMv7, KOReader v2026.07.2 and KPM 0.2.2 / CLI 1.0.0

@@ -28,11 +28,10 @@ PASSCODE: from the Kindle Library, Grimoire keeps the native PIN enabled. Sleep 
 and screen to the Kindle's keypad; unlock to return to your notebook. Native PIN takes priority
 over custom sleep pictures and stop-framework mode. KOReader normally disables the PIN before
 Grimoire can run; start Grimoire from the Library if you need native PIN protection.
-PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles four
+PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles three
 optional KOReader patches. Restart KOReader after a change. The manual patches folder includes
 fonts and instructions. Terminess now separates the battery icon and percentage in the dropdown
-menu. Optional Scribe DPI scaling keeps the 320 layout and scales Auto/custom choices consistently.
-Restart after DPI changes too. Different patches with the same filename are kept.
+menu. KOReader keeps its own DPI behavior. Different patches with the same filename are kept.
 WALLPAPER: Display > Sleep screen: KOReader wallpaper uses KOReader's custom image/cover, copied
 at each Tools > Grimoire handover. Without one, it shows your page. Native PIN takes priority.
 PAGES: the numbered grid reads no previews; Go to page... opens a number pad. In the web reader,

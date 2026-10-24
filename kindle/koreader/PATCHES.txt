@@ -9,14 +9,9 @@ apply them. Existing different patches at the same filename are kept.
 - 2-terminess-ui-font.lua: Terminess / Terminus menus, a matched regular/bold font family,
   and spacing between the dropdown menu's battery icon and percentage. Grimoire supplies
   Terminess and its OFL. This updates the earlier beta script.
-- 1-grimoire-scribe-dpi.lua: optional Scribe-only proportional UI scaling. Keeps the current
-  320 appearance, makes Auto use the hardware DPI (300 on Scribe), and makes 480/640/custom
-  values scale consistently. Restart after every DPI change as KOReader requests. Other
-  devices keep KOReader's normal sizing. Delete this file and restart to undo.
 
 Manual installation: copy only the .lua files you want into your KOReader installation's patches/
 folder. Copy fonts/Grimoire/ into its fonts/ folder. Restart KOReader. Remove a .lua file and
 restart to undo that patch. The font files can stay; without the patch they change no menus.
 The screenshot and square-corner scripts are unchanged from the beta. The Terminess script
-has been updated; DPI scaling is new and separately optional. A byte-exact earlier Grimoire
-Terminess patch can be upgraded from Settings; a locally modified copy is preserved.
+has been updated. A byte-exact earlier Grimoire Terminess patch can be upgraded from Settings; a locally modified copy is preserved.

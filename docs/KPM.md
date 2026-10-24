@@ -7,7 +7,7 @@ models; other kindlehf Kindles do not gain pen support by installing it.
 Download the `.kpkg` from the release and copy it to the Kindle. From an existing Kindle shell:
 
 ```sh
-/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5001_kindlehf.kpkg
+/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5002_kindlehf.kpkg
 /var/local/kmc/bin/kpm launch grimoire
 ```
 
@@ -40,7 +40,7 @@ close Grimoire, then use:
 
 ```sh
 /var/local/kmc/bin/kpm -y uninstall grimoire
-/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5001_kindlehf.kpkg
+/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5002_kindlehf.kpkg
 ```
 
 The hooks retain `grimoire/` through both commands. This uninstall/reinstall fallback was tested
@@ -72,7 +72,7 @@ The channel is written only after release assets are uploaded successfully.
 
 KPM v2 only compares three integers. Grimoire encodes `major.minor.patch` as
 `[major, minor, patch*10000+stage]`: beta.N=1000+N, rc.N=5000+N, final=9999 (N=1..999).
-Thus 1.1.0-rc.1 appears as KPM 1.1.5001; Grimoire still displays 1.1.0-rc.1.
+Thus 1.1.0-rc.2 appears as KPM 1.1.5002; Grimoire still displays 1.1.0-rc.2.
 This keeps beta < RC < final < next patch without relying on unsupported version suffixes.
 
 ## Contract and validation
@@ -81,4 +81,4 @@ The package follows the [official KPM hook contract](https://kindlemodding.org/k
 and [KPM source](https://github.com/KindleModding/KPM): root manifest, POSIX shell hooks, kindlehf
 filter, no root filesystem writes. Tests cover deterministic output, platform checks, launcher
 ownership, staged failure, install/upgrade/remove, argument forwarding, notebook preservation and
-channel ordering. Device evidence for this candidate is recorded in TESTING-rc1.md.
+channel ordering. Device evidence is recorded in TESTING-rc1.md and TESTING-rc2.md.

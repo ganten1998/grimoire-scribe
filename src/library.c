@@ -657,11 +657,9 @@ static void draw_modal(App *a) {
                 found ? BTN_PLAIN : BTN_DISABLED},
             {koreader_item_installed(3) ? ICON_CHECK : ICON_NONE, _("Terminess menu font"), H_KO_ITEM, 3,
                 found ? BTN_PLAIN : BTN_DISABLED},
-            {koreader_item_installed(4) ? ICON_CHECK : ICON_NONE, _("Scribe DPI: proportional scaling"), H_KO_ITEM, 4,
-                found ? BTN_PLAIN : BTN_DISABLED},
             {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
         };
-        draw_menu(a, "KOReader", rows, 7);
+        draw_menu(a, "KOReader", rows, 6);
         break;
     }
     case MOD_MORE: {

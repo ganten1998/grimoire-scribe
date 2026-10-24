@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.1.0-rc.1 (candidate)
+## 1.1.0-rc.2 (candidate)
+
+- Remove the experimental KOReader DPI patch and its Settings control. KOReader keeps its native
+  scaling policy and the owner’s DPI preference. The Terminess font/battery-spacing fix remains.
+- Retain the corrected KPM installer for the real Documents folder and the driver-owned Share
+  test lifetime. KPM version 1.1.5002 upgrades the installed RC1 (1.1.5001).
+
+
+## 1.1.0-rc.1 (local candidate, superseded)
 
 - **KPM:** a kindlehf package built from the same installer as the ZIP, with Library launchers,
   install/upgrade/remove hooks and notebook/settings preservation. Fresh installs change no
