@@ -27,6 +27,26 @@ That cache may still serve an explicitly installed KOReader plugin or manual ins
 Remove the data folder yourself only when you intend to delete it. KPM installation/removal never
 installs or removes KOReader plugins, patches, fonts, PIN flags or root filesystem files.
 
+## Updating
+
+Once the preview/stable feed is live, add the chosen manifest URL with `kpm add-repo URL` and use
+`kpm -y install grimoire` to install or update Grimoire specifically. Repository-based beta → RC
+upgrades were tested on the actual KPM 0.2.2 device.
+
+**KPM 0.2.2 local-file limitation:** installing a second `file://...kpkg` over an already installed
+package can fail in KPM's dependency resolver before Grimoire's hooks run. Its `upgrade` command
+also skips locally installed packages. For a manual-file update, download the new package first,
+close Grimoire, then use:
+
+```sh
+/var/local/kmc/bin/kpm -y uninstall grimoire
+/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5001_kindlehf.kpkg
+```
+
+The hooks retain `grimoire/` through both commands. This uninstall/reinstall fallback was tested
+against the same notebook/settings sentinels left by the beta app. A normal repository update
+uses KPM's upgrade hooks and does not need that workaround.
+
 ## Build and publication
 
 `make kpm-package` builds the ZIP first, then `tools/kpm-package.py` produces the deterministic

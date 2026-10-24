@@ -44,6 +44,24 @@ files with the Kindle's LuaJIT. The original font patch is backed up under
 files apply on its next restart. Remove `1-grimoire-scribe-dpi.lua` and restore the backed-up
 Terminess file, then restart, to revert these two requested changes.
 
+## Additional KPM upgrade checks
+
+Wrapped the already published beta.2 installer in a test-only KPM package (1.1.1002), using the
+new hooks. Directly installing the RC local file over it reproduced a KPM 0.2.2 dependency graph
+failure before the hooks. Cleanup removed the test package while preserving its data.
+
+Then registered a temporary local manifest with the same v2 schema as the generated feeds.
+Installed beta by package ID, updated the manifest to include the RC, and installed `grimoire`
+again: KPM correctly selected 1.1.5001 and ran the upgrade hooks. The actual cached ARM binary
+changed from beta.2 to RC, notebook/settings sentinels survived, and no KOReader integration was
+automatically installed. Test package/repository were removed and original repository listing
+and KOReader process IDs stayed unchanged. The local-file uninstall/reinstall fallback then
+loaded the RC into the original beta test root and preserved its sentinels too.
+
+This validates a generated repository feed and real upgrade hooks with local artifact URLs;
+public HTTPS feed installation remains to be checked once those URLs exist. It does not imply
+a beta KPM artifact was previously published. See KPM.md for the local-file limitation.
+
 ## Candidate check results
 
 - 24 baseline ASan/UBSan unit executables: 46,779 checks, zero failures.
@@ -66,6 +84,6 @@ Terminess file, then restart, to revert these two requested changes.
   disconnect recovery. Analog axes/hats are unsupported.
 - Native PIN unlock with the physical keypad and a controller attached.
 - KOReader handover/wallpaper on the tester setups where beta integration failed.
-- KPM upgrade from a published prior KPM package and Library indexing with KOReader closed.
+- Public HTTPS KPM feed installation after publication, and Library indexing with KOReader closed.
 
 These remain explicit candidate checks. Host simulation and unpacking do not establish them.

@@ -21,7 +21,9 @@
   and retains KOReader's restart requirement. This changes KOReader's sizing policy only when
   the separate patch is enabled.
 - **Validation:** real Scribe/KPM 0.2.2 isolated install, unpack, ARM version and uninstall passed;
-  original launchers and the running KOReader process stayed unchanged. Lua patch tests and the
+  repository beta-app → RC upgrade and the local-file uninstall/reinstall fallback also passed.
+  KPM 0.2.2 rejects a direct local-file upgrade; see docs/KPM.md. Original launchers and the
+  running KOReader process stayed unchanged. Lua patch tests and the
   installed KOReader DPI menu code passed on the Kindle. Visual battery spacing, a restarted DPI
   interface, physical controller input and multi-device handover remain candidate checks.
 
