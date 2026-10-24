@@ -24,8 +24,9 @@
   repository beta-app → RC upgrade and the local-file uninstall/reinstall fallback also passed.
   KPM 0.2.2 rejects a direct local-file upgrade; see docs/KPM.md. Original launchers and the
   running KOReader process stayed unchanged. Lua patch tests and the
-  installed KOReader DPI menu code passed on the Kindle. Visual battery spacing, a restarted DPI
-  interface, physical controller input and multi-device handover remain candidate checks.
+  installed KOReader DPI menu code passed on the Kindle. The owner confirmed battery spacing
+  and DPI behavior look right. Physical controller input and multi-device handover remain
+  candidate checks.
 
 
 ## 1.1.0-beta.2 (2026-10-24)

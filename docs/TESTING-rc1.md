@@ -40,8 +40,10 @@ KPM hook staging/data preservation and preview/stable feed ordering.
 The requested Terminess and DPI fixes were then placed in the active KOReader patches folder,
 after byte-comparing the old font patch to the known beta version and syntax-checking both new
 files with the Kindle's LuaJIT. The original font patch is backed up under
-`/mnt/us/kindle-lab/grimoire-patch-check/backup-20261024/`. The reader was not restarted; the new
-files apply on its next restart. Remove `1-grimoire-scribe-dpi.lua` and restore the backed-up
+`/mnt/us/kindle-lab/grimoire-patch-check/backup-20261024/`. The reader was not forcibly restarted by the test; the new
+files apply on its next restart. The owner subsequently reported that both the battery spacing
+and DPI controls look right after the restart prompt. This is owner visual confirmation on this
+Scribe, not an automated pixel measurement. Remove `1-grimoire-scribe-dpi.lua` and restore the backed-up
 Terminess file, then restart, to revert these two requested changes.
 
 ## Additional KPM upgrade checks
@@ -79,7 +81,6 @@ a beta KPM artifact was previously published. See KPM.md for the local-file limi
 
 ## Remaining hardware checks
 
-- Visual Terminess battery spacing and DPI changes after a full KOReader restart.
 - USB/Bluetooth keyboard and actual 8BitDo enumeration, button numbers, hotplug, modifiers and
   disconnect recovery. Analog axes/hats are unsupported.
 - Native PIN unlock with the physical keypad and a controller attached.
