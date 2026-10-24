@@ -10,8 +10,8 @@ expect screen has lib
 expect asleep is 0
 expect rotation is 0
 expect size is 1860x2480
-expect toast has Calibrate pen
-expect toast.rect not
+expect toast is
+expect toast.rect is
 expect settings.theme is gothic
 expect settings.invert is 0
 expect settings.mirror_pdf is 1

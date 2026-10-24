@@ -4,6 +4,12 @@ RC2 removes the experimental KOReader DPI patch, its Settings control and runtim
 KOReader keeps its native sizing policy and the owner's existing DPI preference. The updated
 Terminess font-family selection and dropdown battery spacing remain. The calibration startup
 tip is removed; startup scenarios now expect no toast in the normal case.
+The runner's positive selftest also expects an empty startup toast and toast rectangle; its old
+expectation was the failure in cloud run 40109165066, corrected during the hardening pass.
+
+The Gothic Library adds 24 design pixels beneath its header ornament; its grid position and row
+capacity use the same offset. Classic spacing stays unchanged. Portrait and landscape simulator
+screenshots check the resulting gap and existing Library interaction scenarios cover card hits.
 
 ## Package and migration checks
 
@@ -12,6 +18,11 @@ patches. No DPI script is shipped. The launcher removes the byte-exact RC1 DPI s
 own app cache, where tar's merge could otherwise leave it behind. Cleanup also runs when the
 current build is already unpacked. Modified cache files and KOReader's active patches are not
 removed automatically. A historical text fixture supports the regression test; it is not bundled.
+
+Manual scriptlets now check the live launcher PID before unpacking a replacement. Both direct
+calibration-reset paths also refuse while Grimoire runs. Launcher regression cases force a stale
+build ID with a live session, then verify the cached binary, build marker, settings and PID stay
+unchanged. An invalid stale PID does not prevent unpacking. KPM already has the live-session gate.
 
 KPM tests cover Documents' same-directory rename requirement, staged failure, rollback, data
 preservation and preview/stable version ordering. Launcher tests check retirement of the old

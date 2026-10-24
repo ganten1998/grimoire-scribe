@@ -18,7 +18,7 @@
 #   Other arguments go on to app/grimoire.sh (--stop-framework).
 # Exit status: 0 done (for a start: Grimoire is on its way, or the old Quire app is still running
 # and nothing happens); 1 the app could not be unpacked (or the calibration not reset); 2
-# --unpack-only or --reset-calibration did nothing because the old Quire app is still running;
+# --unpack-only, --reset-calibration or --hosted did nothing because Grimoire/Quire is running;
 # 3 refused inside KOReader, or --hosted outside it. Past the unpack, --hosted answers with
 # app/grimoire.sh's status.
 #
@@ -35,7 +35,7 @@
 # app/grimoire.sh names its own capabilities in its header.
 #
 # The app carries KOReader's Grimoire plugin (app/koreader/grimoire.koplugin). A start from the
-# Library installs it into KOReader, when KOReader is there, and keeps it up to date; see
+# Library keeps an explicitly installed copy up to date; fresh installs leave KOReader alone. See
 # koplugin below.
 
 # Device paths. tests/launcher_check.sh moves them into a scratch tree; on the Kindle they are
@@ -85,6 +85,24 @@ case "$1" in
                 </dev/null >/dev/null 2>&1 &
         fi
         exit 3
+    fi
+    ;;
+esac
+
+# Check before unpacking: app/grimoire.sh's normal single-instance check is too late to protect
+# a live executable or its settings from an updated scriptlet. Background PDF workers do not
+# hold this launcher PID. Be conservative about a reused PID, as the KPM hooks are.
+p=$(cat "$TMP/grimoire.launcher.pid" 2>/dev/null)
+case "$p" in
+'' | *[!0-9]*) ;;
+*)
+    if kill -0 "$p" 2>/dev/null; then
+        MSG="Grimoire is running. Close it before updating or resetting calibration."
+        log "$MSG"
+        case "$1" in
+        --unpack-only | --reset-calibration | --hosted) echo "Grimoire: $MSG" >&2; exit 2 ;;
+        esac
+        exit 0
     fi
     ;;
 esac

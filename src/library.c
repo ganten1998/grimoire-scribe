@@ -88,13 +88,17 @@ struct LibraryState {
 static int top_h(void) { return ui_px(190); }
 static int bottom_h(void) { return ui_px(170); }
 static int margin(void) { return ui_px(50); }
+static int grid_top(void) {
+    // The Gothic frieze hangs below the header rule; leave air under its drops.
+    return top_h() + margin() + (ui_theme() == THEME_GOTHIC ? ui_px(24) : 0);
+}
 
 static void grid_geom(App *a, int *cols, int *rows, int *cw, int *ch) {
     *cols = a->w > a->h ? 5 : 3;  // more, smaller cards when the Kindle is sideways
     *cw = (a->w - margin() * (*cols + 1)) / *cols;
     int th = *cw * 4 / 3;
     *ch = th + ui_px(150);
-    int avail = a->h - top_h() - bottom_h() - margin();
+    int avail = a->h - grid_top() - bottom_h();
     *rows = avail / (*ch + margin());
     if (*rows < 1) *rows = 1;
 }
@@ -374,7 +378,7 @@ static void draw_base(App *a) {
         int idx = S->page * pp + i;
         if (idx >= S->nitems) break;
         int col = i % cols, row = i / cols;
-        draw_card(a, (Rect){m + col * (cw + m), th + m + row * (ch + m), cw, ch}, idx);
+        draw_card(a, (Rect){m + col * (cw + m), grid_top() + row * (ch + m), cw, ch}, idx);
     }
     // Pager.
     int pages = (S->nitems + pp - 1) / pp;

@@ -262,6 +262,40 @@ suite() {
     check "$s another build unpacks again" sh -c '! grep -q changed "$1" && [ "$(cat "$2")" = "$3" ]' sh \
         "$APP/CAPABILITIES" "$APP/BUILD_ID" "$BUILD_ID"
 
+    # Updating a scriptlet while Grimoire runs must not unpack over the live app or reset its
+    # settings. This check precedes the inner launcher's single-instance lock.
+    tree live-update
+    sh "$DOC" --unpack-only
+    fake
+    cp "$APP/grimoire" "$T/old-binary"
+    echo old-build >"$APP/BUILD_ID"
+    printf 'pen.valid=1\ntouch.valid=1\ntheme=gothic\n' >"$US/grimoire/settings.ini"
+    cp "$US/grimoire/settings.ini" "$T/old-settings"
+    echo $$ >"$GRIMOIRE_TMP/grimoire.launcher.pid"
+    for flag in '' --unpack-only --reset-calibration --hosted; do
+        want=2; [ -z "$flag" ] && want=0
+        # Hosted needs its ordinary KOReader environment before the live-app guard.
+        if [ "$flag" = --hosted ]; then
+            KOREADER_DIR=$US/koreader sh "$DOC" --hosted koreader 2>"$T/stderr"
+        else
+            KOREADER_DIR= sh "$DOC" $flag 2>"$T/stderr"
+        fi
+        rc=$?
+        check "$s live update ($flag): refused without unpacking ($rc)" is "$rc" "$want"
+        check "$s live update ($flag): binary kept" cmp -s "$APP/grimoire" "$T/old-binary"
+        check "$s live update ($flag): old build kept" is "$(content "$APP/BUILD_ID")" old-build
+    done
+    for launcher in "$APP/grimoire.sh" "$RESET"; do
+        sh "$launcher" --reset-calibration >"$T/stdout" 2>"$T/stderr"
+        rc=$?
+        check "$s live calibration reset: refused ($rc)" is "$rc" 2
+    done
+    check "$s live update/reset: settings kept" cmp -s "$US/grimoire/settings.ini" "$T/old-settings"
+    check "$s live update/reset: lock kept" is "$(content "$GRIMOIRE_TMP/grimoire.launcher.pid")" "$$"
+    echo invalid >"$GRIMOIRE_TMP/grimoire.launcher.pid"
+    sh "$DOC" --unpack-only
+    check "$s invalid old lock: update allowed" is "$(content "$APP/BUILD_ID")" "$BUILD_ID"
+
     # Inside KOReader (it exports KOREADER_DIR to what it runs): refuse with 3, unpack-only allowed.
     tree koreader
     KOREADER_DIR=$US/koreader sh "$DOC" 2>"$T/stderr"

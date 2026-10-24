@@ -52,6 +52,14 @@ mkdir -p "$ROOT"
 log() { echo "$(date '+%F %T') grimoire.sh: $*" >>"$LOG"; }
 
 if [ "$1" = "--reset-calibration" ]; then
+    p=$(cat "$TMP/grimoire.launcher.pid" 2>/dev/null)
+    case "$p" in
+    '' | *[!0-9]*) ;;
+    *) if kill -0 "$p" 2>/dev/null; then
+        echo 'Grimoire: close Grimoire before resetting calibration.' >&2
+        exit 2
+    fi ;;
+    esac
     # A copy and a rename rather than sed -i, which busybox and BSD sed read differently.
     S=$ROOT/settings.ini
     [ -f "$S" ] || exit 0

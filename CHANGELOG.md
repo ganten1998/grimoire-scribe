@@ -3,7 +3,9 @@
 ## 1.1.0-rc.2 (candidate)
 
 - Remove the calibration startup tip. Grimoire opens without that reminder.
-
+- Add a small gap between the Gothic header ornament and Library thumbnails, in both orientations.
+- Refuse manual unpack/update and calibration resets while Grimoire is running, before touching
+  its cached executable or settings. Background PDF exports do not block later starts.
 - Remove the experimental KOReader DPI patch and its Settings control. KOReader keeps its native
   scaling policy and the owner’s DPI preference. The Terminess font/battery-spacing fix remains.
 - Retain the corrected KPM installer for the real Documents folder and the driver-owned Share
