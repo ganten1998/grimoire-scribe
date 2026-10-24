@@ -236,15 +236,15 @@ static void draw_card(App *a, Rect r, int idx) {
         cc->clip = saved;
     }
     ui_frame(c, tb, ui_px(16), 0, false, ui_px(4));
-    char line2[128];
+    char line2[128], label[STORE_NAME_LEN + 32];
     const char *title;
     if (it->is_folder) {
-        title = it->folder;
+        title = ui_name_label(it->folder, label, sizeof label);
         // TRANSLATORS: under a folder's card in the Library.
         snprintf(line2, sizeof line2, NG_("%d notebook", "%d notebooks", it->count), it->count);
     } else {
         const NotebookInfo *nb = &S->books[it->nb];
-        title = nb->name;
+        title = ui_name_label(nb->name, label, sizeof label);
         char when[64];
         format_time_short(nb->modified, when, sizeof when);
         // TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
@@ -348,8 +348,10 @@ static void draw_base(App *a) {
         x += ui_px(140);
     }
     // (A folder's name, cut short if it must be; else the app's.)
+    char label[STORE_NAME_LEN + 32];
     font_draw_left_name(c, FONT_TITLE, ui_title_size() * (ui_theme() == THEME_GOTHIC ? 1.8f : 1.25f),
-                        (Rect){x, 0, rx - x - ui_px(20), th}, S->cur_folder[0] ? S->cur_folder : APP_NAME, 0);
+                        (Rect){x, 0, rx - x - ui_px(20), th},
+                        S->cur_folder[0] ? ui_name_label(S->cur_folder, label, sizeof label) : APP_NAME, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
     ui_frieze(c, 0, a->w, th + ui_px(9), ui_px(28), 0);
 
@@ -608,6 +610,7 @@ static void draw_settings(App *a) {
 
 static void draw_modal(App *a) {
     Item *it = (S->target >= 0 && S->target < S->nitems) ? &S->items[S->target] : NULL;
+    char label[STORE_NAME_LEN + 32];  // (a name as the screens show it: ui_name_label)
     switch (S->modal) {
     case MOD_NEW: draw_new(a); break;
     case MOD_SETTINGS: draw_settings(a); break;
@@ -625,7 +628,7 @@ static void draw_modal(App *a) {
             {ICON_TRASH, _("Delete"), H_MORE_DELETE, 0, BTN_PLAIN},
             {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
         };
-        draw_menu(a, S->books[it->nb].name, rows, 6);
+        draw_menu(a, ui_name_label(S->books[it->nb].name, label, sizeof label), rows, 6);
         break;
     }
     case MOD_FOLDER_MORE: {
@@ -637,7 +640,7 @@ static void draw_modal(App *a) {
              it->count ? BTN_DISABLED : BTN_PLAIN},
             {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
         };
-        draw_menu(a, it->folder, rows, 3);
+        draw_menu(a, ui_name_label(it->folder, label, sizeof label), rows, 3);
         break;
     }
     case MOD_MOVE: {
@@ -660,7 +663,7 @@ static void draw_modal(App *a) {
         if (!it) break;
         char title[256], del[256];
         // TRANSLATORS: the title of the question before a notebook is deleted, with its name.
-        snprintf(title, sizeof title, _("Delete \"%s\"?"), S->books[it->nb].name);
+        snprintf(title, sizeof title, _("Delete \"%s\"?"), ui_name_label(S->books[it->nb].name, label, sizeof label));
         // TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
         // Kindle's storage (%s), or keep the notebook.
         snprintf(del, sizeof del, _("Delete (moves it to %s)"), "grimoire/trash");
@@ -1197,13 +1200,19 @@ void library_tick(App *a, uint32_t now) {
 
 // card.N (from 1, as library.items counts them): what card N shows, "folder", "thumb" (its
 // thumb.pgm), "picture" (its own picture paper, picture_card) or "paper K" (the preview of paper
-// K); card.N.luma: the mean of the pixels it shows, 0 to 255 ("none" for a folder).
+// K); card.N.luma: the mean of the pixels it shows, 0 to 255 ("none" for a folder); card.N.name: the
+// name under it, as drawn (ui_name_label).
 static int card_probe(App *a, const char *key, char *out, size_t cap) {
     char *end;
     long n = strtol(key, &end, 10);
-    bool luma = !strcmp(end, ".luma");
-    if (n < 1 || n > S->nitems || (*end && !luma)) return -1;
+    bool luma = !strcmp(end, ".luma"), name = !strcmp(end, ".name");
+    if (n < 1 || n > S->nitems || (*end && !luma && !name)) return -1;
     const Item *it = &S->items[n - 1];
+    if (name) {  // the name under the card, as drawn (ui_name_label)
+        char label[STORE_NAME_LEN + 32];
+        snprintf(out, cap, "%s", ui_name_label(it->is_folder ? it->folder : S->books[it->nb].name, label, sizeof label));
+        return 0;
+    }
     if (it->is_folder) {
         snprintf(out, cap, "%s", luma ? "none" : "folder");
         return 0;

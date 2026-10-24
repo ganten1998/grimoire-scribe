@@ -113,6 +113,11 @@ int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, in
 // The same for a chip h px tall with ends as round as it can be (ui_frame with radius h / 2):
 // the text keeps clear of Gothic's pointed ends, which are h / 2 deep.
 int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w);
+// A notebook's or folder's name as the screens show it: name itself when the fonts draw all of it,
+// else without what they cannot (font_drawable_copy), and Untitled when no letter is left ("Untitled
+// 2" for a book's title in Japanese and its " 2"). The name stays whole in the files. Returns name
+// or buf (cap bytes).
+const char *ui_name_label(const char *name, char *buf, size_t cap);
 
 // Tap tracking shared by screens: a press that starts and ends in the same rect within
 // slop = tap. Long press = held > 600 ms without moving.

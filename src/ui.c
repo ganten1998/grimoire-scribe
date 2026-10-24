@@ -418,6 +418,17 @@ int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_
     return ui_text_box_w(f, px, text, gothic() ? h / 2 - ui_px(7) : ui_px(24), min_w, max_w);
 }
 
+const char *ui_name_label(const char *name, char *buf, size_t cap) {
+    if (!name) name = "";
+    if (!cap || !font_drawable_copy(name, buf, cap)) return name;
+    for (const unsigned char *p = (const unsigned char *)buf; *p; p++)
+        if (*p >= 0x80 || (unsigned)((*p | 0x20) - 'a') < 26u) return buf;  // a letter is left
+    char rest[256];
+    strlcpy_q(rest, buf, sizeof rest);
+    snprintf(buf, cap, "%s%s%s", _("Untitled"), rest[0] ? " " : "", rest);
+    return buf;
+}
+
 void press_begin(Press *p, float x, float y, uint32_t t) {
     *p = (Press){.down = true, .x0 = x, .y0 = y, .x = x, .y = y, .t0 = t};
 }

@@ -372,6 +372,28 @@ bool font_has_glyph(FontFace f, uint32_t cp) {
     return g_ready && stbtt_FindGlyphIndex(&g_font[face_of(f).ttf], (int)cp) != 0;
 }
 
+int font_drawable_copy(const char *utf8, char *out, size_t cap) {
+    if (!cap) return 0;
+    size_t k = 0;
+    int left_out = 0;
+    for (const char *s = utf8 ? utf8 : ""; *s;) {
+        const char *c = s;
+        uint32_t cp = utf8_next(&s);
+        size_t n = (size_t)(s - c);
+        if (g_ready && cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[TTF_TERM], (int)cp)) {
+            left_out++;
+            continue;
+        }
+        if (left_out && *c == ' ' && (k == 0 || out[k - 1] == ' ')) continue;
+        if (k + n >= cap) break;  // the next character would not fit whole
+        memcpy(out + k, c, n);
+        k += n;
+    }
+    while (left_out && k > 0 && out[k - 1] == ' ') k--;
+    out[k] = 0;
+    return left_out;
+}
+
 int font_ascent(FontFace f, float px) {
     if (!g_ready) return (int)px;
     FaceMap m = face_of(f);

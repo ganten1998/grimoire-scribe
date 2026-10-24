@@ -15,7 +15,6 @@
 
 #include "bgimage.h"
 #include "bgjob.h"
-#include "font.h"
 #include "i18n.h"
 
 #define REQUEST_MAX 4096                // a request is a few lines
@@ -299,25 +298,17 @@ static size_t utf8_len(const uint8_t *s) {
     return n;
 }
 
-// Whether Grimoire's fonts draw the character at s (n bytes, a whole one). Every theme's face takes
-// what it lacks from Terminess, so a character Terminess lacks too (Chinese, Japanese, Korean) shows
-// as a box wherever the name is drawn. Any character while no font is loaded.
-static bool drawable(const uint8_t *s, size_t n) {
-    if (n == 1) return true;
-    uint32_t cp = n == 2   ? (s[0] & 0x1Fu) << 6 | (s[1] & 0x3Fu)
-                  : n == 3 ? (s[0] & 0x0Fu) << 12 | (s[1] & 0x3Fu) << 6 | (s[2] & 0x3Fu)
-                           : (s[0] & 0x07u) << 18 | (s[1] & 0x3Fu) << 12 | (s[2] & 0x3Fu) << 6 | (s[3] & 0x3Fu);
-    return font_has_glyph(FONT_FIXED, cp) || !font_has_glyph(FONT_FIXED, 'a');
-}
-
+// Every character of the title is kept, also those Grimoire's fonts cannot draw (Chinese, Japanese,
+// Korean, most Vietnamese letters): the name is also the notebook's PDF's in grimoire/PDFs, which
+// KOReader lists. Only the screens leave those out as they draw it (ui_name_label).
 void annotate_name(const char *title, char *out, size_t cap) {
     if (!cap) return;
     size_t k = 0;
     const uint8_t *s = (const uint8_t *)(title ? title : "");
     while (*s) {
         size_t n = utf8_len(s);
-        if (n == 0 || !drawable(s, n)) {  // broken, or one no font here draws: left out
-            s += n ? n : 1;
+        if (n == 0) {  // broken: left out
+            s++;
             continue;
         }
         // Spaces and control characters: one space between two words (none first or last).
@@ -739,8 +730,8 @@ static void new_notebook(const AnnotateRequest *r, const NotebookInfo *all, int 
         annotate_map_free(&m);
     }
     if (rc == 0) {
-        // Named after the book, as far as Grimoire's fonts draw its title (one they draw none of, or
-        // with no title: Untitled, numbered as any name). Its own paper is Blank, as an imported
+        // Named after the book, its title whole (with no title: Untitled, numbered as any name;
+        // the screens leave out what the fonts cannot draw). Its own paper is Blank, as an imported
         // notebook's: what a page added to it gets, and what a page that does not read shows.
         char name[STORE_NAME_LEN];
         annotate_name(r->title, name, sizeof name);

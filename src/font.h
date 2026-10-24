@@ -27,6 +27,11 @@ int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char
 int font_measure(FontFace f, float px, const char *utf8);
 // Whether the face (as the current theme maps it) has its own glyph for cp, not Terminess's.
 bool font_has_glyph(FontFace f, uint32_t cp);
+// utf8 without the characters no face draws (every face takes what it lacks from Terminess, so one
+// Terminess lacks too would show as a box: Chinese, Japanese, Korean, most Vietnamese letters), and
+// without the spaces that leaves doubled, first or last. Returns how many characters it left out:
+// 0, and out is utf8 as it is (cut to cap between characters). Before font_init, none.
+int font_drawable_copy(const char *utf8, char *out, size_t cap);
 int font_ascent(FontFace f, float px);   // px above baseline
 int font_descent(FontFace f, float px);  // px below baseline (positive)
 // Centered in r both ways; text longer than r is truncated with an ellipsis.

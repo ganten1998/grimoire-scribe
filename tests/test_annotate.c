@@ -325,14 +325,16 @@ TEST(names) {
     char ends[8];
     annotate_name("ab\xe2\x82\xac", ends, 5);  // "ab" + a 3-byte character: it does not fit whole
     CHECK(!strcmp(ends, "ab"));
-    // What Grimoire's fonts cannot draw (it would show as boxes) is left out, with the space it
-    // leaves: Greek and Cyrillic stay, Japanese goes.
+    // Every letter stays, also what Grimoire's fonts cannot draw (the name is the PDF's too; only the
+    // screens leave that out, ui_name_label): Greek, Cyrillic, Japanese, Vietnamese.
     annotate_name("\xd0\x92\xd0\xbe\xd0\xb9\xd0\xbd\xd0\xb0 \xce\xb1\xce\xb2 \xe6\x88\xa6\xe4\xba\x89", out, sizeof out);
-    CHECK(!strcmp(out, "\xd0\x92\xd0\xbe\xd0\xb9\xd0\xbd\xd0\xb0 \xce\xb1\xce\xb2"));
+    CHECK(!strcmp(out, "\xd0\x92\xd0\xbe\xd0\xb9\xd0\xbd\xd0\xb0 \xce\xb1\xce\xb2 \xe6\x88\xa6\xe4\xba\x89"));
     annotate_name("Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3", out, sizeof out);
-    CHECK(!strcmp(out, "Pok\xc3\xa9mon Vol. 3"));
+    CHECK(!strcmp(out, "Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3"));
     annotate_name("\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82\xe3\x82\x8b", out, sizeof out);
-    CHECK(!out[0]);
+    CHECK(!strcmp(out, "\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82\xe3\x82\x8b"));
+    annotate_name("Ti\xe1\xba\xbfng Vi\xe1\xbb\x87t", out, sizeof out);  // (Tieng Viet, its marks whole)
+    CHECK(!strcmp(out, "Ti\xe1\xba\xbfng Vi\xe1\xbb\x87t"));
     annotate_name("Le   Petit \t Prince", out, sizeof out);  // (one space between two words)
     CHECK(!strcmp(out, "Le Petit Prince"));
 }
@@ -585,8 +587,10 @@ TEST(starts_with_requests) {
     NotebookInfo *other = calloc(1, sizeof *other);
     CHECK(load(r.nb, other) && !strcmp(other->source, "ffff0000"));
     CHECK(!strcmp(other->name, "Le Petit Prince : \xc3\xa9" "dition illustr\xc3\xa9" "e 2"));  // (its PDF's name apart)
-    // Books whose titles Grimoire's fonts draw none of (Japanese): Untitled, then Untitled 2, as any
-    // two notebooks of one name would share a PDF.
+    // Books whose titles Grimoire's fonts draw none of (Japanese): named after their titles all the
+    // same, the second with " 2", as any two notebooks of one name would share a PDF; that PDF has
+    // the title as its name. The screens show them as Untitled and Untitled 2 (ui_name_label).
+    const char *ja = "\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82\xe3\x82\x8b";
     for (int i = 0; i < 2; i++) {
         snprintf(text, sizeof text,
                  "version=1\nbook=abcd1234%d\ntitle=\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82"
@@ -597,7 +601,13 @@ TEST(starts_with_requests) {
         request_path("page.png", path, sizeof path);
         put_file(path, png12, len12);
         r = take(true);
-        CHECK(r.outcome == ANNOTATE_MADE && load(r.nb, other) && !strcmp(other->name, i ? "Untitled 2" : "Untitled"));
+        char want[64], pdf[700], label[64];
+        snprintf(want, sizeof want, "%s%s", ja, i ? " 2" : "");
+        CHECK(r.outcome == ANNOTATE_MADE && load(r.nb, other) && !strcmp(other->name, want));
+        export_mirror_path(other, "PDFs", pdf, sizeof pdf);
+        snprintf(want, sizeof want, "PDFs/%s%s.pdf", ja, i ? " 2" : "");
+        CHECK(!strcmp(pdf, want));
+        CHECK(!strcmp(ui_name_label(other->name, label, sizeof label), i ? "Untitled 2" : "Untitled"));
     }
     free(other);
 
