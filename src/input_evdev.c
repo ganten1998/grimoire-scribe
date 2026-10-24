@@ -36,6 +36,7 @@
 #include "calib_fit.h"
 #include "input.h"
 #include "power.h"
+#include "shortcuts.h"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
@@ -691,6 +692,91 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 const InputCaps *input_caps(void) { return &g_caps; }
 void input_watch_fd(int fd) { g_watch = fd; }
 
+// Optional external inputs are watched without exclusive grabs. Native PIN input is discarded
+// at the same boundary as pen/touch, and key values are never written to the log.
+#define KEY_DEVS 4
+typedef struct { int fd; char path[300]; bool pad, dropped; unsigned held; } KeyDev;
+static KeyDev g_keys[KEY_DEVS];
+static bool g_keys_enabled, g_keys_init;
+static uint32_t g_keys_scan;
+static KeyDev *g_key_read;
+static const int modifier_codes[] = {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT,
+                                    KEY_LEFTALT, KEY_RIGHTALT, KEY_LEFTMETA, KEY_RIGHTMETA};
+static void key_resync(KeyDev *k) {
+    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
+    k->held = 0;
+    if (ioctl(k->fd, EVIOCGKEY(sizeof keys), keys) < 0) return;
+    for (unsigned i = 0; i < 8; i++) if (test_bit(keys, modifier_codes[i])) k->held |= 1u << i;
+}
+static bool external_keys(const unsigned long *keys) {
+    return (test_bit(keys, KEY_A) && test_bit(keys, KEY_Z) && test_bit(keys, KEY_SPACE)) ||
+           test_bit(keys, BTN_GAMEPAD) || test_bit(keys, BTN_JOYSTICK);
+}
+static void key_scan(void) {
+    g_keys_scan = now_ms();
+    DIR *d = opendir("/dev/input");
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (strncmp(e->d_name, "event", 5)) continue;
+        char path[300]; snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
+        int slot = -1; bool seen = false;
+        for (int i = 0; i < KEY_DEVS; i++) {
+            if (g_keys[i].fd < 0) slot = i;
+            else if (!strcmp(g_keys[i].path, path)) seen = true;
+        }
+        if (seen || slot < 0) continue;
+        int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) continue;
+        unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
+        ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keys), keys);
+        ioctl(fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
+        if (!external_keys(keys) || test_bit(keys, BTN_TOOL_PEN) || test_bit(axes, ABS_MT_POSITION_X)) {
+            close(fd); continue;
+        }
+        KeyDev *k = &g_keys[slot];
+        *k = (KeyDev){.fd = fd, .pad = test_bit(keys, BTN_GAMEPAD) || test_bit(keys, BTN_JOYSTICK)};
+        strlcpy_q(k->path, path, sizeof k->path);
+        key_resync(k);
+        qlog("input: optional %s attached at %s", k->pad ? "controller" : "keyboard", path);
+    }
+    closedir(d);
+}
+void input_shortcuts_enable(bool enabled) {
+    if (!g_keys_init) {
+        for (int i = 0; i < KEY_DEVS; i++) g_keys[i].fd = -1;
+        g_keys_init = true;
+    }
+    g_keys_enabled = enabled;
+    if (enabled) key_scan();
+    else for (int i = 0; i < KEY_DEVS; i++) {
+        if (g_keys[i].fd >= 0) close(g_keys[i].fd);
+        g_keys[i].fd = -1;
+    }
+}
+static void handle_key(const struct input_event *ev) {
+    KeyDev *k = g_key_read;
+    if (!g_input_grabbed) { k->held = 0; return; }
+    if (ev->type == EV_SYN && ev->code == SYN_DROPPED) { k->dropped = true; k->held = 0; return; }
+    if (k->dropped) {
+        if (ev->type == EV_SYN && ev->code == SYN_REPORT) { key_resync(k); k->dropped = false; }
+        return;
+    }
+    if (ev->type != EV_KEY || ev->code == KEY_POWER) return;
+    for (unsigned i = 0; i < 8; i++) if (ev->code == modifier_codes[i]) {
+        if (ev->value == 1) k->held |= 1u << i;
+        else if (!ev->value) k->held &= ~(1u << i);
+        return;
+    }
+    if (ev->value != 1) return; // release and auto-repeat never perform actions
+    unsigned mods = 0;
+    if (k->held & 3) mods |= KEYMOD_CTRL;
+    if (k->held & 12) mods |= KEYMOD_SHIFT;
+    if (k->held & 48) mods |= KEYMOD_ALT;
+    if (k->held & 192) mods |= KEYMOD_META;
+    q_push((InEvent){.type = IN_KEY, .value = ev->code, .key_mods = mods, .gamepad = k->pad, .t_ms = now_ms()});
+}
+
 int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
     g_w = screen_w;
     g_h = screen_h;
@@ -744,7 +830,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         bool pen = has_abs && has_key && test_bit(absb, ABS_X) && test_bit(absb, ABS_PRESSURE) &&
                    test_bit(keyb, BTN_TOOL_PEN);
         bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
-        bool power = !pen && !touch && has_key && test_bit(keyb, KEY_POWER);
+        bool power = !pen && !touch && has_key && !external_keys(keyb) && test_bit(keyb, KEY_POWER);
         // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
         if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
             struct input_absinfo ai = {0};
@@ -888,7 +974,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         return 1;
     }
     if (q_pop(ev)) return 1;
-    struct pollfd pf[8];
+    if (g_keys_enabled && (uint32_t)(now_ms() - g_keys_scan) >= 5000) key_scan();
+    struct pollfd pf[8 + KEY_DEVS];
+    int ikey[KEY_DEVS];
     int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1, ipwd = -1;
     if (g_powerd_fd >= 0) ipwd = n, pf[n++] = (struct pollfd){g_powerd_fd, POLLIN, 0};
     if (g_orient_fd >= 0) iori = n, pf[n++] = (struct pollfd){g_orient_fd, POLLIN, 0};
@@ -898,8 +986,17 @@ int input_poll(InEvent *ev, int timeout_ms) {
     if (g_power_fd >= 0) ipow = n, pf[n++] = (struct pollfd){g_power_fd, POLLIN, 0};
     if (g_sigpipe[0] >= 0) isig = n, pf[n++] = (struct pollfd){g_sigpipe[0], POLLIN, 0};
     if (g_watch >= 0) pf[n++] = (struct pollfd){g_watch, POLLIN, 0};
+    for (int i = 0; i < KEY_DEVS; i++) {
+        ikey[i] = -1;
+        if (g_keys_enabled && g_keys[i].fd >= 0) ikey[i] = n, pf[n++] = (struct pollfd){g_keys[i].fd, POLLIN, 0};
+    }
     int r = poll(pf, (nfds_t)n, timeout_ms);
     if (r > 0) {
+        for (int i = 0; i < KEY_DEVS; i++) if (ikey[i] >= 0) {
+            short re = pf[ikey[i]].revents;
+            if (re & POLLIN) { g_key_read = &g_keys[i]; drain(g_keys[i].fd, handle_key); }
+            if (re & (POLLHUP | POLLERR | POLLNVAL)) { close(g_keys[i].fd); g_keys[i].fd = -1; }
+        }
         // Raw digitizer first, so a pen frame uses this sample's pressure.
         if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
         if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, g_input_grabbed ? handle_pen : discard_input);
@@ -940,6 +1037,12 @@ static void discard_input(const struct input_event *ev) { (void)ev; }
 
 bool input_set_grab(bool grab) {
     bool ok = true;
+    for (int i = 0; g_keys_init && i < KEY_DEVS; i++) if (g_keys[i].fd >= 0) {
+        drain(g_keys[i].fd, discard_input);
+        g_keys[i].held = 0;
+        g_keys[i].dropped = false;
+        if (grab) key_resync(&g_keys[i]);
+    }
     // Forget touches that were used to type the PIN, including the final finger lift.
     if (grab) {
         if (g_pen.fd >= 0) drain(g_pen.fd, discard_input);
@@ -988,6 +1091,7 @@ bool input_set_grab(bool grab) {
 }
 
 void input_close(void) {
+    input_shortcuts_enable(false);
     if (g_pen.fd >= 0) {
         ioctl(g_pen.fd, EVIOCGRAB, 0);
         close(g_pen.fd);

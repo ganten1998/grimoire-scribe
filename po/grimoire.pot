@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 1.1.0-beta.2\n"
+"Project-Id-Version: Grimoire 1.1.0-rc.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-24 01:53-0500\n"
+"POT-Creation-Date: 2026-10-24 09:29-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -664,6 +664,14 @@ msgctxt "folder"
 msgid "empty"
 msgstr ""
 
+#: src/httpd.c
+msgid "Page"
+msgstr ""
+
+#: src/httpd.c
+msgid "Go"
+msgstr ""
+
 #. TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
 #. the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
 #: src/httpd.c
@@ -676,14 +684,6 @@ msgstr ""
 
 #: src/httpd.c
 msgid "Effects (transparent, colors, gradients, filters)"
-msgstr ""
-
-#: src/httpd.c
-msgid "Page"
-msgstr ""
-
-#: src/httpd.c
-msgid "Go"
 msgstr ""
 
 #. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
@@ -937,6 +937,32 @@ msgid "Data: %s"
 msgstr ""
 
 #: src/library.c
+msgid "Shortcuts"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "Mappings: %d; rejected: %d"
+msgstr ""
+
+#: src/library.c
+#, c-format
+msgid "Last input: %s %d; modifiers: %d"
+msgstr ""
+
+#: src/library.c
+msgid "Press a connected key or controller button"
+msgstr ""
+
+#: src/library.c
+msgid "Enable shortcuts"
+msgstr ""
+
+#: src/library.c
+msgid "Reload shortcuts.ini"
+msgstr ""
+
+#: src/library.c
 msgid "Install / update Grimoire plugin"
 msgstr ""
 
@@ -958,6 +984,10 @@ msgstr ""
 
 #: src/library.c
 msgid "Terminess menu font"
+msgstr ""
+
+#: src/library.c
+msgid "Scribe DPI: proportional scaling"
 msgstr ""
 
 #. TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
@@ -1037,6 +1067,10 @@ msgstr ""
 #: src/library.c
 msgctxt "keyboard"
 msgid "Name"
+msgstr ""
+
+#: src/library.c
+msgid "Could not save shortcuts.ini"
 msgstr ""
 
 #: src/library.c

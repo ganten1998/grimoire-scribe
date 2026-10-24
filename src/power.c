@@ -79,6 +79,7 @@ WakeFallback power_wake_fallback(PowerdState st, int *locked) {
 
 bool power_asleep_drops(const InEvent *ev) {
     switch (ev->type) {
+    case IN_KEY:
     case IN_PEN_DOWN:
     case IN_PEN_MOVE:
     case IN_PEN_UP:

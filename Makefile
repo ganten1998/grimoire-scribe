@@ -25,7 +25,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
             src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
 CORE_SRC += src/bgimage.c
-CORE_SRC += src/annotate.c src/koreader.c
+CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -304,17 +304,20 @@ RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
 KOPLUGIN_SRC := $(wildcard kindle/koreader/grimoire.koplugin/*.lua)
 KOPATCH_SRC := $(wildcard kindle/koreader/patches/*.lua)
+KOLEGACY_SRC := $(wildcard kindle/koreader/legacy/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
                            assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
-                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) kindle/koreader/PATCHES.txt
+                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
 	mkdir -p $(PKG)/app/koreader/grimoire.koplugin "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin"
 	cp $(KOPLUGIN_SRC) $(PKG)/app/koreader/grimoire.koplugin/
 	mkdir -p $(PKG)/app/koreader/patches "$(PKG)/KOReader patches (optional)"
 	cp $(KOPATCH_SRC) $(PKG)/app/koreader/patches/
+	mkdir -p $(PKG)/app/koreader/legacy
+	cp $(KOLEGACY_SRC) $(PKG)/app/koreader/legacy/
 	cp $(KOPATCH_SRC) "$(PKG)/KOReader patches (optional)/"
 	mkdir -p "$(PKG)/KOReader patches (optional)/fonts/Grimoire"
 	cp assets/TerminessNerdFontMono-*.ttf "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
@@ -379,6 +382,18 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	( cd $(BUILD)/dist/patchstage && rm -f ../KOReader-patches.zip && COPYFILE_DISABLE=1 zip -qrX ../KOReader-patches.zip KOReader-patches )
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
+# KPM v2 accepts only numeric version triples; the builder preserves prerelease ordering.
+KPM_BASE_URL ?= https://github.com/ganten1998/grimoire-scribe/releases/download/v$(VERSION)
+.PHONY: kpm-package kpm-check kopatch-check
+kpm-package: package
+	python3 tools/kpm-package.py --zip $(BUILD)/dist/Grimoire.zip --version $(VERSION) \
+	  --output $(BUILD)/kpm --base-url "$(KPM_BASE_URL)"
+kopatch-check:
+	luajit tests/kopatch_check.lua
+
+kpm-check: kpm-package
+	python3 -m unittest discover -s tests -p 'test_kpm.py' -v
+
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,
 # the share server against a real HTTP client, the host exporter, the ARM build, and the zip
 # people install: what it holds, and its launchers run against stand-ins for the Kindle's tools.
@@ -387,7 +402,7 @@ package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: test scenarios tools kindle package-check launcher-check l10n-check
+check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"

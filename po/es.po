@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-24 01:53-0500\n"
+"POT-Creation-Date: 2026-10-24 09:29-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -694,6 +694,14 @@ msgctxt "folder"
 msgid "empty"
 msgstr "vacía"
 
+#: src/httpd.c
+msgid "Page"
+msgstr "Página"
+
+#: src/httpd.c
+msgid "Go"
+msgstr "Ir"
+
 #. TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
 #. the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
 #: src/httpd.c
@@ -707,14 +715,6 @@ msgstr "ZIP (PDF + páginas en PNG + archivos originales)"
 #: src/httpd.c
 msgid "Effects (transparent, colors, gradients, filters)"
 msgstr "Efectos (transparencia, colores, degradados, filtros)"
-
-#: src/httpd.c
-msgid "Page"
-msgstr "Página"
-
-#: src/httpd.c
-msgid "Go"
-msgstr "Ir"
 
 #. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
 #: src/httpd.c
@@ -969,6 +969,32 @@ msgid "Data: %s"
 msgstr "Datos: %s"
 
 #: src/library.c
+msgid "Shortcuts"
+msgstr "Atajos"
+
+#: src/library.c
+#, c-format
+msgid "Mappings: %d; rejected: %d"
+msgstr "Asignaciones: %d; rechazadas: %d"
+
+#: src/library.c
+#, c-format
+msgid "Last input: %s %d; modifiers: %d"
+msgstr "Última entrada: %s %d; modificadores: %d"
+
+#: src/library.c
+msgid "Press a connected key or controller button"
+msgstr "Pulsa una tecla o un botón del mando"
+
+#: src/library.c
+msgid "Enable shortcuts"
+msgstr "Activar atajos"
+
+#: src/library.c
+msgid "Reload shortcuts.ini"
+msgstr "Recargar shortcuts.ini"
+
+#: src/library.c
 msgid "Install / update Grimoire plugin"
 msgstr "Instalar / actualizar el complemento Grimoire"
 
@@ -991,6 +1017,10 @@ msgstr "Esquinas cuadradas en las carpetas"
 #: src/library.c
 msgid "Terminess menu font"
 msgstr "Fuente Terminess en los menús"
+
+#: src/library.c
+msgid "Scribe DPI: proportional scaling"
+msgstr "DPI de Scribe: escala proporcional"
 
 #. TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
 #. Kindle's storage the PDF goes in.
@@ -1072,12 +1102,19 @@ msgid "Name"
 msgstr "Nombre"
 
 #: src/library.c
+#, fuzzy
+msgid "Could not save shortcuts.ini"
+msgstr "No se pudo guardar el PDF"
+
+#: src/library.c
 msgid "Updated. Restart KOReader to apply."
 msgstr "Actualizado. Reinicia KOReader para aplicar los cambios."
 
 #: src/library.c
 msgid "Could not update KOReader. A different patch or a storage error?"
-msgstr "No se pudo actualizar KOReader. ¿Hay otro parche o un error de almacenamiento?"
+msgstr ""
+"No se pudo actualizar KOReader. ¿Hay otro parche o un error de "
+"almacenamiento?"
 
 #: src/library.c
 msgid "Saving the PDF in the background..."

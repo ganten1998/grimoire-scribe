@@ -151,28 +151,19 @@ note that Grimoire rewrites those files) and Reset pen calibration (after a conf
 action (`grimoire_open`). Its words are its own, since KOReader's catalogs do not have them:
 English and Spanish, picked by KOReader's language setting, English for any other.
 
-**How it gets into KOReader.** The app carries the plugin (`grimoire/app/koreader`). A plain start
-of `Grimoire.sh` from the Library (not `--unpack-only`, `--hosted` or `--reset-calibration`)
-copies it into `koreader/plugins/grimoire.koplugin` when `koreader/reader.lua` exists, each file
-whole (a copy, then a rename; KOReader is not running then, the guard saw to that), and writes the
-build it came from into `grimoire/.koplugin-installed`, so later starts copy it again only for a
-new build.
+**How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
+Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
+`KOReader plugin (optional)/grimoire.koplugin` into KOReader's `plugins` directory. Restart KOReader.
+The four user patches are separate, optional choices. They are never installed by the launcher.
 
-- A plugin folder gone while the marker is there counts as deleted by the user: the marker then
-  reads `removed`, and the plugin never goes back in by itself. A folder copied back by hand is kept
-  up to date again.
-- A Library start that finds no `koreader/reader.lua` deletes the marker, so a KOReader installed
-  (or reinstalled) later gets the plugin. A removal is thus a plugin deleted while KOReader stayed
-  installed, as far as Grimoire can tell: a KPM uninstall and reinstall with no Grimoire start in
-  between looks the same, and copying the zip's folder puts the plugin back.
-- `Grimoire.sh` logs `installed KOReader's Grimoire plugin into <dir> (Tools > Grimoire in
-  KOReader)`, `updated KOReader's Grimoire plugin in <dir>`, once `KOReader's Grimoire plugin was
-  removed from <dir>: not installing it again`, once `KOReader is no longer installed: a KOReader
-  installed later gets the Grimoire plugin`, and `could not create <dir> ...` or `could not copy
-  <file> ...` when the copy fails (Grimoire starts anyway).
-- The zip carries the same files as `KOReader plugin (optional)/grimoire.koplugin`, for KOReader
-  without Library scriptlets; never as a top-level `koreader` folder, which, copied over MTP, could
-  replace someone's KOReader (package_check pins both).
+The app carries the plugin (`grimoire/app/koreader`). Once explicitly installed, a plain Library
+start keeps that copy up to date with the app, copying each file then renaming it whole.
+`grimoire/.koplugin-installed` records the build. Deleting the plugin marks it `removed`; it stays
+removed until explicitly installed again. A start with KOReader absent forgets the marker, so a
+later KOReader reinstall needs consent again. An existing plugin from beta.2 continues receiving
+updates. No top-level KOReader folder is shipped over MTP.
+
+KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KPM.md).
 
 **Open Grimoire, step by step.**
 
@@ -489,13 +480,18 @@ tells the story):
 
 ## Optional KOReader controls and wallpaper (1.1.0-beta.2)
 
-Library > Settings > KOReader manages the plugin and the three scripts under
+Library > Settings > KOReader manages the plugin and the four scripts under
 `app/koreader/patches`. Discovery checks the hosted `KOREADER_DIR`, then `/mnt/us/koreader`,
 `/mnt/us/extensions/koreader` and `/mnt/us/documents/koreader`. Installing a plugin is explicit in
 this sheet; patch toggles apply/remove only matching bundled files and preserve different files.
 The Terminess toggle writes the embedded regular/bold fonts into KOReader's `fonts/Grimoire`.
 Restart KOReader after any change. Font files can remain after disabling the patch; without it
-KOReader uses its original UI font.
+KOReader uses its original UI font. The RC updates Terminess font matching and dropdown battery
+spacing. `1-grimoire-scribe-dpi.lua` is a separate opt-in policy: preserve the 320 layout, scale
+proportionally with the effective DPI, and use the hardware DPI for Auto. Its early priority runs
+before widgets cache dimensions. Other devices retain KOReader's sizing. DPI selection still
+requires a restart. Exact old Grimoire Terminess bytes are carried under `app/koreader/legacy`
+only for explicit migration; different user edits remain protected.
 
 Before each handover the plugin removes an old `grimoire/koreader-sleep.png`, asks KOReader's
 screensaver module to select its configured cover/custom image, paints it offscreen and commits

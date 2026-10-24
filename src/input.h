@@ -26,6 +26,7 @@ typedef enum {
     IN_SLEEP,                              // the Kindle is going to sleep (goingToScreenSaver)
     IN_WAKE,                               // and waking up (outOfScreenSaver)
     IN_POWER_UP,                           // power button released: value = ms it was held (-1 unknown)
+    IN_KEY,                               // external keyboard/gamepad press: value=evdev key code
     IN_POWER_HELD,                         // power button held INPUT_POWER_HOLD_MS: once per press
 } InType;
 
@@ -38,6 +39,8 @@ typedef struct {
     float nx, ny;          // device-normalized 0..1 before calibration (for calibrate.c)
     float pressure;        // 0..1 normalized raw
     float tilt_x, tilt_y;  // degrees from vertical, 0 if unsupported
+    unsigned key_mods;
+    bool gamepad;
     bool eraser;           // eraser end in use (BTN_TOOL_RUBBER)
     bool side_button;      // BTN_STYLUS held
     int value;             // IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
@@ -63,6 +66,7 @@ int input_poll(InEvent *ev, int timeout_ms);
 // Extra fd to wake input_poll (e.g. the HTTP share server socket); -1 to clear.
 // When it becomes readable, input_poll returns 0 early.
 void input_watch_fd(int fd);
+void input_shortcuts_enable(bool enabled);
 // Logical screen rotation (quarter turns clockwise of the device): events are reported in the
 // rotated screen's coordinates from now on. Calibration stays in panel coordinates.
 void input_set_orientation(int quarter_turns);

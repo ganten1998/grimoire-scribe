@@ -138,15 +138,9 @@ case "$1" in
 --hosted) exec sh "$APP/grimoire.sh" "$@" ;;
 esac
 
-# KOReader's Grimoire plugin (Tools > Grimoire in KOReader), from app/koreader. With KOReader
-# installed, a start from the Library copies it into KOReader's plugins folder once, then keeps
-# that copy up to date: grimoire/.koplugin-installed holds the build it came from. A plugin folder
-# the user deleted stays deleted (the marker then reads "removed"); one copied back by hand, from
-# the zip's "KOReader plugin (optional)" folder, is kept up to date again. A start that finds no
-# KOReader forgets the marker, so a KOReader installed later (even the same one again, which comes
-# without the plugin) gets it: only a plugin deleted while KOReader stayed counts as removed.
-# KOReader is not running here (the guard above), so it never loads a half-copied plugin, and
-# each file goes in whole (a copy, then a rename).
+# Maintain an explicitly installed plugin. A fresh install leaves KOReader alone:
+# use Settings > KOReader, or copy the optional plugin manually. Removed plugins stay removed.
+# A KOReader reinstall needs consent again. Each file is copied then renamed whole.
 koplugin() {
     src=$APP/koreader/grimoire.koplugin
     ko=""
@@ -158,11 +152,14 @@ koplugin() {
     if [ -z "$ko" ]; then
         if [ -e "$mark" ]; then
             rm -f "$mark"
-            log "KOReader is no longer installed: a KOReader installed later gets the Grimoire plugin"
+            log "KOReader is no longer installed: plugin consent forgotten"
         fi
         return 0
     fi
     [ -d "$src" ] || return 0
+    # A fresh install changes no other application's files. Settings > KOReader opts in;
+    # a plugin manually copied into KOReader counts as consent to keep it up to date.
+    if [ ! -e "$mark" ] && [ ! -f "$dst/main.lua" ]; then return 0; fi
     was=$(cat "$mark" 2>/dev/null)
     if [ -e "$mark" ] && [ ! -f "$dst/main.lua" ]; then
         if [ "$was" != removed ]; then

@@ -9,7 +9,7 @@
 extern unsigned char TerminessNerdFontMono_Regular_ttf[], TerminessNerdFontMono_Bold_ttf[];
 extern unsigned int TerminessNerdFontMono_Regular_ttf_len, TerminessNerdFontMono_Bold_ttf_len;
 static const char *const files[] = {
-    "grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua"
+    "grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua", "1-grimoire-scribe-dpi.lua"
 };
 static bool installed_at(const char *dir) {
     char p[1024];
@@ -32,10 +32,10 @@ bool koreader_find(char *out, size_t cap) {
     *out = 0;
     return false;
 }
-const char *koreader_item_name(int item) { return item >= 0 && item < 4 ? files[item] : ""; }
+const char *koreader_item_name(int item) { return item >= 0 && item < 5 ? files[item] : ""; }
 static bool paths(int item, char *src, char *dst) {
     char ko[800];
-    if (item < 0 || item > 3 || !koreader_find(ko, sizeof ko)) return false;
+    if (item < 0 || item > 4 || !koreader_find(ko, sizeof ko)) return false;
     snprintf(src, 1024, "%s/app/koreader/%s/%s", store_root(), item ? "patches" : "", files[item]);
     snprintf(dst, 1024, "%s/%s/%s", ko, item ? "patches" : "plugins", files[item]);
     return true;
@@ -57,7 +57,14 @@ static bool same(const char *a, const char *b) {
     return yes;
 }
 static int copy_owned(const char *src, const char *dst, bool enabled) {
-    if (access(dst, F_OK) == 0 && !same(src, dst)) return -1;
+    if (access(dst, F_OK) == 0 && !same(src, dst)) {
+        // Allow an explicit upgrade/removal of our byte-exact beta.1/beta.2 Terminess patch.
+        // A modified copy or an unrelated patch stays untouched.
+        char legacy[1200];
+        snprintf(legacy, sizeof legacy, "%s/app/koreader/legacy/2-terminess-ui-font.lua", store_root());
+        const char *name = strrchr(src, '/');
+        if (!name || strcmp(name + 1, "2-terminess-ui-font.lua") || !same(legacy, dst)) return -1;
+    }
     if (!enabled) return unlink(dst) == 0 || access(dst, F_OK) != 0 ? 0 : -1;
     size_t len;
     void *data = read_file(src, &len);

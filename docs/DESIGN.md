@@ -385,10 +385,9 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
   binary, and on exit restores everything (SIGCONT, pillow, screensaver) and starts the
   home booklet. On a locked Kindle (power service state `screenSaver`, `readyToSuspend` or
   `suspended`) the restore does not write the screen saved at the start back: it would cover the
-  screensaver or the passcode prompt. A start from the Library also installs KOReader's Grimoire
-  plugin into `koreader/plugins` when KOReader is there, keeps it up to date
-  (`root/.koplugin-installed`) and does not bring back one the user deleted while KOReader stayed
-  installed.
+  screensaver or the passcode prompt. A start from the Library maintains an explicitly installed Grimoire plugin
+  (`root/.koplugin-installed`). Fresh installations leave KOReader untouched; Settings > KOReader
+  opts in. Deleted plugins stay deleted. A KOReader reinstall needs consent again.
 - Both launchers refuse a plain start inside KOReader (exit 3): `KOREADER_DIR` set, or `pidof
   reader.lua` succeeding. KOReader holds the pen and the touch screen, and Grimoire's exit would
   wake the Kindle UI underneath it. KOReader's way in is its Grimoire plugin

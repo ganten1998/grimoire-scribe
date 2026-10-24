@@ -1781,7 +1781,32 @@ static void panel_act(App *a, const Hit *h) {
     }
 }
 
-// Changes this page's paper (undoable) and repaints.
+// Optional external buttons act only in the idle editor, never through an open sheet.
+bool editor_shortcut(App *a, int action) {
+    if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || sheet_open(a) || !action) return false;
+    if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) {
+        int index = -1;
+        for (int i = 0; i < N_DRAW_TOOLS; i++) if (k_draw_tools[i] == a->settings.current_tool) index = i;
+        index = action == SHORTCUT_NEXT_TOOL ? (index + 1) % N_DRAW_TOOLS : (index < 0 ? N_DRAW_TOOLS - 1 : (index + N_DRAW_TOOLS - 1) % N_DRAW_TOOLS);
+        action = SHORTCUT_TOOL_BASE + k_draw_tools[index];
+    }
+    if (action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT) {
+        ToolKind t = (ToolKind)(action - SHORTCUT_TOOL_BASE);
+        if (t != TOOL_ERASER && !settings_pinned(&a->settings, t)) a->settings.draw_tool = t;
+        panel_act(a, &(Hit){.id = P_TOOL, .arg = t});
+    } else if (action == SHORTCUT_UNDO || action == SHORTCUT_REDO) {
+        panel_act(a, &(Hit){.id = action == SHORTCUT_UNDO ? P_UNDO : P_REDO});
+    } else if (action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE) {
+        // A controller page button never creates an unrequested new page at the end.
+        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1));
+    } else if (action == SHORTCUT_WHITE) {
+        a->settings.white = !a->settings.white;
+        settings_save(&a->settings);
+        repaint_panel(a, REFRESH_UI);
+    } else return false;
+    return true;
+}
+
 static void apply_paper(App *a, PaperKind k) {
     if (refuse_readonly(a)) return;
     History *hi = cur_hist(a);

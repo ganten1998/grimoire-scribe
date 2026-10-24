@@ -72,6 +72,8 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 }
 
 const InputCaps *input_caps(void) { return &g_caps; }
+static bool g_shortcuts_enabled;
+void input_shortcuts_enable(bool enabled) { g_shortcuts_enabled = enabled; }
 void input_watch_fd(int fd) { g_watch_fd = fd; }
 // Panel <-> screen for a Kindle turned g_rot quarter turns clockwise, as in input_evdev.c.
 // display_set_orientation has already swapped g_w and g_h when this is set.
@@ -549,6 +551,10 @@ static void script_step(void) {
                 pen_ev(IN_PEN_UP, g_px, g_py, 0, 0, 0, (uint32_t)(steps + 1) * 5);
             }
             g_eraser = false;
+        } else if (!strcmp(a, "key")) {
+            int code = 0, mods = 0, pad = 0;
+            sscanf(s, "%*s %d %d %d", &code, &mods, &pad);
+            q_push((InEvent){.type = IN_KEY, .value = code, .key_mods = (unsigned)mods, .gamepad = pad != 0, .t_ms = now_ms()});
         } else if (!strcmp(a, "side")) {
             g_side = !strcmp(b, "on");
             InEvent e = make_ev(IN_PEN_BUTTON, g_px, g_py, true);
@@ -732,6 +738,15 @@ static void sdl_pump(void) {
         case SDL_EVENT_KEY_DOWN: {
             SDL_Keycode k = e.key.key;
             if (k == SDLK_ESCAPE || (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI))) q_push(make_ev(IN_QUIT, 0, 0, true));
+            else if (g_shortcuts_enabled && k != SDLK_P && k != SDLK_S) {
+                int code = shortcut_keycode(SDL_GetKeyName(k));
+                unsigned mods = 0;
+                if (e.key.mod & SDL_KMOD_CTRL) mods |= KEYMOD_CTRL;
+                if (e.key.mod & SDL_KMOD_SHIFT) mods |= KEYMOD_SHIFT;
+                if (e.key.mod & SDL_KMOD_ALT) mods |= KEYMOD_ALT;
+                if (e.key.mod & SDL_KMOD_GUI) mods |= KEYMOD_META;
+                if (code > 0 && !e.key.repeat) q_push((InEvent){.type = IN_KEY, .value = code, .key_mods = mods, .t_ms = now_ms()});
+            }
             else if (k >= SDLK_1 && k <= SDLK_9) g_pressure = (float)(k - SDLK_0) / 10.f;
             else if (k == SDLK_0) g_pressure = 1.f;
             else if (k == SDLK_LEFT) g_tx -= 5;
@@ -814,7 +829,7 @@ static void sdl_pump(void) {
                 ev.pressure = (t == IN_PEN_UP || t == IN_PEN_HOVER) ? 0.f : g_pressure;
                 ev.tilt_x = g_tx;
                 ev.tilt_y = g_ty;
-                ev.eraser = keys[SDL_SCANCODE_E];
+                ev.eraser = !g_shortcuts_enabled && keys[SDL_SCANCODE_E];
                 ev.side_button = keys[SDL_SCANCODE_S];
             }
             q_push(ev);

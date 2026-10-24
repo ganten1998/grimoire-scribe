@@ -2,3 +2,5 @@ build
 grimoire-data/
 *.o
 .DS_Store
+
+__pycache__/

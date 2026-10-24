@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 bool koreader_find(char *out, size_t cap);
-// 0 plugin, 1 screenshot gestures, 2 square corners, 3 Terminess menus.
+// 0 plugin, 1 screenshot gestures, 2 square corners, 3 Terminess menus, 4 Scribe DPI.
 const char *koreader_item_name(int item);
 bool koreader_item_installed(int item);
 // Installs only our files. A different file at the same path is kept (returns -1).

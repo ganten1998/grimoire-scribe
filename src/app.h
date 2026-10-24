@@ -5,6 +5,7 @@
 #include "input.h"
 #include "store.h"
 #include "ui.h"
+#include "shortcuts.h"
 
 typedef enum { SCR_LIBRARY = 0, SCR_EDITOR, SCR_PENSET, SCR_CALIB, SCR_SHARE, SCR_COUNT } ScreenId;
 
@@ -20,6 +21,9 @@ typedef struct App {
     float dpi;
     Canvas screen;          // mirrors the panel
     Settings settings;
+    Shortcuts shortcuts;
+    int last_shortcut_code, last_shortcut_mods;
+    bool last_shortcut_gamepad;
     ScreenId scr, prev_scr;
     bool running;
 
@@ -110,7 +114,8 @@ void editor_open_notebook(App *a, const char *id);   // loads, switches to SCR_E
 void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool added);  // the same, at that page
 void editor_picture_made(App *a);                    // a picture job is done: the open page drawn again
 bool editor_save_now(App *a);
-bool editor_suspend(App *a);                        // flush pending page/info saves; false if they failed
+bool editor_suspend(App *a);                         // flush pending page/info saves; false if they failed
+bool editor_shortcut(App *a, int action);             // optional key/button action, idle editor only
 bool editor_busy(App *a);                            // a stroke / drag / pinch is in progress
 const Canvas *editor_page_canvas(App *a);            // the open page (paper + ink), or NULL
 bool editor_pin_sleep_page(App *a);                  // saves the open page as the sleep screen

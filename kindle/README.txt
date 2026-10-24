@@ -12,24 +12,27 @@ UPDATE: copy the new Grimoire.sh over the old one. Notebooks and settings are ke
 GOING BACK to 1.0.0-beta or 1.0.0-rc.1: they set aside pages in a newer format and drop data
 they do not know. Read "Moving between versions" in the README (source code link below) first.
 FROM QUIRE: install as above and tap Grimoire once; your notebooks move over by themselves.
-KOREADER: Grimoire is a separate app; tap it in the Library. If KOReader is installed, tapping
-Grimoire once also adds Tools > Grimoire to KOReader, which opens Grimoire and comes back to your
-book. (Without the plugin, quit KOReader first: Grimoire.sh does not run from KOReader's file
-browser.) After an update, tap Grimoire in the Library once: that updates the plugin too. For
-setups without Library scriptlets, or to install the plugin again, copy the folder "KOReader
-plugin (optional)" from this zip: its grimoire.koplugin folder goes into koreader/plugins on the
-Kindle. You can also manage it in Library > Settings > KOReader. To remove it by hand, delete
-koreader/plugins/grimoire.koplugin; while KOReader stays
-installed, Grimoire does not put it back (copying the folder again does).
+KOREADER: installing Grimoire leaves KOReader untouched. To add Tools > Grimoire, open
+Library > Settings > KOReader > Install / update Grimoire plugin, then restart KOReader.
+The plugin opens Grimoire and returns to your book. Quit KOReader before a Library launch.
+A Library start maintains a plugin you explicitly installed; a deleted plugin stays deleted.
+You can also copy the optional grimoire.koplugin folder into koreader/plugins manually.
+KPM: the separate .kpkg release asset installs through Kindle Package Manager. It uses the
+same app as this zip, preserves notebooks/settings, and installs no KOReader plugin or patches.
+SHORTCUTS: Library > Settings > Shortcuts enables optional keyboard/controller button mappings.
+Edit grimoire/shortcuts.ini, then Reload shortcuts.ini there. Bluetooth pairing is external;
+8BitDo hardware compatibility is not yet confirmed. Analog sticks and hats are not mapped.
 LANGUAGE: English or Spanish (a draft), in Settings > Language (Ajustes > Idioma in Spanish).
 Automatic, the default, follows the Kindle's own language; pick English there to switch back.
 PASSCODE: from the Kindle Library, Grimoire keeps the native PIN enabled. Sleep hands input
 and screen to the Kindle's keypad; unlock to return to your notebook. Native PIN takes priority
 over custom sleep pictures and stop-framework mode. KOReader normally disables the PIN before
 Grimoire can run; start Grimoire from the Library if you need native PIN protection.
-PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles the three
+PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles four
 optional KOReader patches. Restart KOReader after a change. The manual patches folder includes
-fonts and instructions. Different patches with the same filename are kept.
+fonts and instructions. Terminess now separates the battery icon and percentage in the dropdown
+menu. Optional Scribe DPI scaling keeps the 320 layout and scales Auto/custom choices consistently.
+Restart after DPI changes too. Different patches with the same filename are kept.
 WALLPAPER: Display > Sleep screen: KOReader wallpaper uses KOReader's custom image/cover, copied
 at each Tools > Grimoire handover. Without one, it shows your page. Native PIN takes priority.
 PAGES: the numbered grid reads no previews; Go to page... opens a number pad. In the web reader,

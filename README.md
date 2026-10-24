@@ -46,6 +46,8 @@ updating; most people keep OTA updates blocked.
 
 ## Install
 
+The release also includes a KPM package for `kindlehf` Scribes. See [KPM installation and release pipeline](docs/KPM.md) for local installation, data preservation and preview/stable feeds.
+
 1. Download `Grimoire-<version>.zip` from the
    [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files
    (optional KOReader plugin and patches folders for manual installation: see Does
@@ -170,8 +172,9 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 ## Does it work in KOReader?
 
 Yes: KOReader can open Grimoire and get you back to your book. With KOReader installed (the
-Kindle's `koreader`, `extensions/koreader` or `documents/koreader` folder), tap **Grimoire** in the Library once. That adds Grimoire to KOReader's
-menu as **Tools > Grimoire**:
+Kindle's `koreader`, `extensions/koreader` or `documents/koreader` folder), open
+**Grimoire > Settings > KOReader > Install / update Grimoire plugin**, then restart KOReader.
+That adds **Tools > Grimoire** to its menu. A fresh Grimoire installation leaves KOReader untouched:
 
 - **Open Grimoire**: KOReader closes and Grimoire opens in its place, without the Kindle's home
   screen in between. In Grimoire, Library > Exit reads **Back to KOReader** (**Volver a KOReader**
@@ -193,11 +196,14 @@ instead. The plugin keeps KOReader's framework service alive during Grimoire on 
 so the power service can still handle sleep.
 
 **Library > Settings > KOReader** installs or updates the plugin, removes it, or toggles each
-of the three optional patches: diagonal screenshot gestures off, square folder corners, and
-Terminess menu fonts. The font patch includes the font. Restart KOReader after changing a patch
+of the four optional patches: diagonal screenshot gestures off, square folder corners,
+Terminess menu fonts, and proportional Scribe DPI scaling. The font patch includes the font. Restart KOReader after changing a patch
 or the plugin. A different patch at the same filename is preserved; no patches are applied just
 by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
-you could download with beta.1, unchanged, with fonts and manual instructions added.
+from beta.1: screenshot gestures and corners stay unchanged; Terminess now matches regular/bold
+fonts and separates the dropdown battery icon from its percentage. A fourth, separate DPI patch
+keeps the familiar 320 layout while scaling Auto and other DPI choices consistently. Restart
+KOReader after each DPI change. Fonts and manual instructions are included.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
 image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works
@@ -329,6 +335,13 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 - **Nothing happens when you tap Grimoire**: look at `grimoire/grimoire.log`. Please attach it
   to any bug report.
 
+## Keyboard and controller shortcuts
+
+In **Library > Settings > Shortcuts**, enable shortcuts to create `grimoire/shortcuts.ini`.
+Edit that file and select **Reload shortcuts.ini** to customize tool switching, undo/redo, white ink
+and page navigation. The sheet shows the last key/button code to help map a controller. Shortcuts
+start disabled. See [the mappings and hardware limits](docs/SHORTCUTS.md).
+
 ## Uninstall
 
 Delete `Grimoire.sh` and `Grimoire - reset pen calibration.sh` from `documents`, then the
@@ -337,7 +350,9 @@ keep your pages). With KOReader, delete `koreader/plugins/grimoire.koplugin` too
 
 ## Building from source
 
-Needs `zig` (the Kindle cross build), `clang`, and SDL3 for the desktop simulator.
+Needs Zig 0.16.0 (the Kindle cross build), `clang`, Python 3.12+, and LuaJIT for patch checks.
+SDL3 is needed for the desktop simulator; gettext updates translations. The release workflow
+records the build/test setup.
 
 ```
 make check     # unit tests, scripted UI scenarios with state checks, share server, exporter,
@@ -346,6 +361,7 @@ make check     # unit tests, scripted UI scenarios with state checks, share serv
 make sim       # desktop simulator window (docs/SIM.md)
 make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
 make package   # build/dist/Grimoire.zip
+make kpm-package # build/kpm/*.kpkg and preview/stable repository manifests
 make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
 make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
 ```

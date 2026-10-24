@@ -141,6 +141,10 @@ int app_init(App *a, int w, int h, float dpi) {
     if (canvas_init(&a->screen, w, h) != 0) return -1;
     store_set_device(dpi, w, h);
     settings_load(&a->settings);
+    char shortcuts_path[600];
+    snprintf(shortcuts_path, sizeof shortcuts_path, "%s/shortcuts.ini", store_root());
+    shortcuts_load(&a->shortcuts, shortcuts_path);
+    input_shortcuts_enable(a->settings.shortcuts_enabled);
     qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
          a->settings.side_button);
     Settings *st = &a->settings;
@@ -225,6 +229,16 @@ int app_pointer_phase(const InEvent *ev) {
 void app_event(App *a, const InEvent *ev) {
     if (ev->type == IN_QUIT) {
         a->running = false;
+        return;
+    }
+    if (ev->type == IN_KEY) {
+        if (!a->asleep && a->settings.shortcuts_enabled) {
+            a->last_shortcut_code = ev->value;
+            a->last_shortcut_mods = (int)ev->key_mods;
+            a->last_shortcut_gamepad = ev->gamepad;
+            if (a->scr == SCR_EDITOR)
+                editor_shortcut(a, shortcuts_lookup(&a->shortcuts, ev->gamepad, ev->value, (int)ev->key_mods));
+        }
         return;
     }
     if (ev->type == IN_ORIENTATION) {
@@ -730,6 +744,8 @@ int app_probe(const char *key, char *out, size_t cap) {
         {"settings.touch.valid", st->touch_calib.valid},
         {"settings.eraser_mode", st->eraser_mode},
         {"settings.white", st->white},
+        {"settings.shortcuts_enabled", st->shortcuts_enabled},
+        {"shortcuts.code", a->last_shortcut_code},
         {"native_pin", a->native_pin},
         {"input.yielded", a->input_yielded},
         {"sleep.wallpaper", a->koreader_wallpaper.px != NULL},

@@ -1820,7 +1820,8 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "theme")) {
         s->theme = !strcmp(v, "classic") ? 1 : 0;
         keep_value(k, v, s->theme == 1 || !strcmp(v, "gothic") ? NULL : "gothic");
-    } else if (!strcmp(k, "sleep_mode")) s->sleep_mode = keep_int(k, v, 0, 3);
+    } else if (!strcmp(k, "shortcuts_enabled")) s->shortcuts_enabled = keep_bool(k, v);
+    else if (!strcmp(k, "sleep_mode")) s->sleep_mode = keep_int(k, v, 0, 3);
     else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = keep_int(k, v, 0, 240);
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.
@@ -1943,6 +1944,7 @@ int settings_save(const Settings *s) {
     put_int(&b, "follow_rotation", s->follow_rotation);
     put_int(&b, "invert", s->invert);
     put_int(&b, "pinch_zoom", s->pinch_zoom);
+    put_int(&b, "shortcuts_enabled", s->shortcuts_enabled);
     put_int(&b, "sleep_mode", s->sleep_mode);
     put_int(&b, "sleep_minutes", s->sleep_minutes);
     put_int(&b, "http_port", s->http_port);

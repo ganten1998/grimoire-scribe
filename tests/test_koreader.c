@@ -34,7 +34,21 @@ TEST(discovery_and_owned_files) {
     size_t len; char *data = read_file(p, &len);
     CHECK(data && len == 20 && !memcmp(data, "someone else's patch", 20));
     free(data);
-    CHECK(koreader_item_set(-1, true) != 0 && koreader_item_set(4, true) != 0);
+    CHECK(koreader_item_set(-1, true) != 0 && koreader_item_set(5, true) != 0);
+    snprintf(src, sizeof src, "%s/app/koreader/patches/%s", root, koreader_item_name(4));
+    CHECK(write_file_atomic(src, "dpi patch", 9) == 0);
+    CHECK(koreader_item_set(4, true) == 0 && koreader_item_installed(4));
+    CHECK(koreader_item_set(4, false) == 0 && !koreader_item_installed(4));
+    snprintf(src, sizeof src, "%s/app/koreader/patches/%s", root, koreader_item_name(3));
+    CHECK(write_file_atomic(src, "new font patch", 14) == 0);
+    snprintf(p, sizeof p, "%s/app/koreader/legacy", root); CHECK(mkdir_p(p) == 0);
+    snprintf(p, sizeof p, "%s/app/koreader/legacy/%s", root, koreader_item_name(3));
+    CHECK(write_file_atomic(p, "old font patch", 14) == 0);
+    snprintf(p, sizeof p, "%s/patches/%s", ko, koreader_item_name(3));
+    CHECK(write_file_atomic(p, "old font patch", 14) == 0);
+    CHECK(koreader_item_set(3, true) == 0); // known previous version can upgrade explicitly
+    data = read_file(p, &len); CHECK(data && len == 14 && !memcmp(data, "new font patch", 14)); free(data);
+    CHECK(koreader_item_set(3, false) == 0);
     snprintf(src, sizeof src, "%s/app/koreader/grimoire.koplugin", root);
     CHECK(mkdir_p(src) == 0);
     snprintf(src, sizeof src, "%s/app/koreader/grimoire.koplugin/main.lua", root);

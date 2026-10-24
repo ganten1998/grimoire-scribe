@@ -16,11 +16,32 @@ tap 1535 95
 wait 50
 expect library.sheet is settings
 shot 02-settings
+tap 1000 1930
+wait 50
+expect library.sheet is shortcuts
+shot 02-shortcuts-disabled
+tap 930 700
+wait 50
+expect settings.shortcuts_enabled is 1
+key 305 0 1
+wait 50
+shot 02-shortcuts-input
+tap 930 850
+wait 50
+tap 930 700
+wait 50
+expect settings.shortcuts_enabled is 0
+tap 930 1450
+wait 50
+expect library.sheet is none
+tap 1535 95
+wait 50
+expect library.sheet is settings
 tap 500 1930
 wait 50
 expect library.sheet is koreader
 shot 02-koreader-controls
-tap 930 1450
+tap 930 1600
 wait 50
 expect library.sheet is none
 tap 1535 95

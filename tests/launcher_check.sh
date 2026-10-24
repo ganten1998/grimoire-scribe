@@ -706,7 +706,12 @@ suite() {
     sh "$DOC" --unpack-only
     check "$s plugin: --unpack-only installs nothing" [ ! -e "$US/$PLUGIN_REL" ]
     start_doc
-    check "$s plugin: installed at a start from the Library" plugin_is_payload
+    check "$s plugin: fresh install leaves KOReader alone" [ ! -e "$US/$PLUGIN_REL" ]
+    check "$s plugin: fresh install has no consent marker" [ ! -e "$MARK" ]
+    mkdir -p "$US/$PLUGIN_REL"
+    cp "$APP/koreader/grimoire.koplugin/main.lua" "$US/$PLUGIN_REL/main.lua"
+    start_doc
+    check "$s plugin: explicitly copied plugin is maintained" plugin_is_payload
     check "$s plugin: the marker holds the build" is "$(content "$MARK")" "$BUILD_ID"
     check "$s plugin: installed (logged)" has "$LOGF" "Grimoire.sh: installed KOReader's Grimoire plugin into $US/$PLUGIN_REL"
     check "$s plugin: no copy left half-done" sh -c '! ls -A "$1" | grep -q "tmp$"' sh "$US/$PLUGIN_REL"
@@ -748,17 +753,15 @@ suite() {
     start_doc
     check "$s KOReader uninstalled: the marker forgotten" [ ! -e "$MARK" ]
     check "$s KOReader uninstalled: logged" has "$LOGF" \
-        "Grimoire.sh: KOReader is no longer installed: a KOReader installed later gets the Grimoire plugin"
+        "Grimoire.sh: KOReader is no longer installed: plugin consent forgotten"
     check "$s KOReader uninstalled: Grimoire still starts" has "$SHIM_LOG" "grimoire exits"
     start_doc
     check "$s KOReader uninstalled: logged once only" lacks "$LOGF" "KOReader is no longer installed"
     mkdir -p "$US/koreader/plugins"
     : >"$US/koreader/reader.lua"
     start_doc
-    check "$s KOReader installed again: the plugin goes in" plugin_is_payload
-    check "$s KOReader installed again: installed (logged)" has "$LOGF" \
-        "Grimoire.sh: installed KOReader's Grimoire plugin into $US/$PLUGIN_REL"
-    check "$s KOReader installed again: the marker holds the build" is "$(content "$MARK")" "$BUILD_ID"
+    check "$s KOReader installed again: needs consent again" [ ! -e "$US/$PLUGIN_REL/main.lua" ]
+    check "$s KOReader installed again: no marker" [ ! -e "$MARK" ]
     # Copied in by hand before Grimoire ever started (no marker yet): brought up to date.
     tree koplugin-by-hand
     sh "$DOC" --unpack-only

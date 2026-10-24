@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+. "$(dirname "$0")/common.sh"
+platform
+require_closed
+mkdir -p "$DOCS" "$ROOT"
+WORK=$ROOT/.kpm-install
+if ! mkdir "$WORK"; then echo 'Another Grimoire installation is pending.' >&2; exit 1; fi
+ok=no
+changed=no
+cleanup() {
+    if [ "$ok" != yes ] && [ "$changed" = yes ]; then
+        for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
+            if [ -f "$WORK/old/$name" ]; then cp -f "$WORK/old/$name" "$DOCS/$name"; else rm -f "$DOCS/$name"; fi
+        done
+    fi
+    rm -rf "$WORK"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+mkdir "$WORK/old"
+for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
+    if [ -e "$DOCS/$name" ]; then
+        # An existing manual Grimoire install can migrate. Unrelated documents are never replaced.
+        if ! head -n 10 "$DOCS/$name" | grep -q '^# Author: Ganten$' ||
+           ! head -n 10 "$DOCS/$name" | grep -q '^# Name: Grimoire'; then
+            echo "Existing $name is not a Grimoire launcher; keeping it." >&2
+            exit 1
+        fi
+        cp "$DOCS/$name" "$WORK/old/$name"
+    fi
+    cp "$DIR/scriptlets/$name" "$WORK/$name"
+    chmod 755 "$WORK/$name"
+done
+# All staging succeeded before either installed launcher changes.
+changed=yes
+for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
+    mv -f "$WORK/$name" "$DOCS/$name"
+done
+ok=yes
+echo 'Grimoire installed. Notebooks were kept; no KOReader plugin or patches were installed.'

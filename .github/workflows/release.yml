@@ -1,0 +1,111 @@
+name: Validate and package Grimoire
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: grimoire-release-${{ github.event_name == 'release' && 'publish' || github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install build and test tools
+        run: |
+          brew install gettext luajit imagemagick
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          curl --fail --location --retry 3 https://ziglang.org/download/index.json -o "$RUNNER_TEMP/zig-index.json"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, tarfile, urllib.request
+          entry = json.load(open(os.environ['RUNNER_TEMP'] + '/zig-index.json'))['0.16.0'][('aarch64' if platform.machine() == 'arm64' else 'x86_64') + '-macos']
+          archive = pathlib.Path(os.environ['RUNNER_TEMP']) / 'zig.tar.xz'
+          urllib.request.urlretrieve(entry['tarball'], archive)
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == entry['shasum']
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'zig'
+          target.mkdir()
+          with tarfile.open(archive) as tar:
+              tar.extractall(target, filter='data')
+          with open(os.environ['GITHUB_PATH'], 'a') as path:
+              path.write(str(next(target.iterdir())) + '\n')
+          PY
+      - name: Check release identity
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          test "$TAG" = "v$(cat VERSION)"
+          case "$TAG" in *-*) test "$PRERELEASE" = true ;; *) test "$PRERELEASE" = false ;; esac
+      - name: Run release checks and build KPM package
+        run: make -j4 check
+      - name: Collect release files
+        run: |
+          cp build/dist/Grimoire-"$(cat VERSION)".zip build/dist/KOReader-patches.zip build/kpm/
+          (cd build/kpm && shasum -a 256 *.zip *.kpkg > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: grimoire-release
+          path: build/kpm/
+          if-no-files-found: error
+  publish:
+    needs: package
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: grimoire-release
+          path: build/kpm/
+      - name: Upload release files and publish KPM channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          # Idempotent when rerunning publication: existing assets must have identical bytes.
+          for file in build/kpm/*.zip build/kpm/*.kpkg build/kpm/SHA256SUMS.txt; do
+            name=$(basename "$file")
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$name"; then
+              mkdir -p "$RUNNER_TEMP/existing-assets"
+              gh release download "$TAG" --pattern "$name" --dir "$RUNNER_TEMP/existing-assets" --clobber
+              cmp "$file" "$RUNNER_TEMP/existing-assets/$name"
+            else
+              gh release upload "$TAG" "$file"
+            fi
+          done
+          # Feed publication happens only after the referenced release assets exist.
+          if git ls-remote --exit-code --heads origin kpm >/dev/null; then
+            git fetch origin kpm
+            git worktree add "$RUNNER_TEMP/grimoire-feed" FETCH_HEAD
+          else
+            git worktree add --detach "$RUNNER_TEMP/grimoire-feed" HEAD
+            git -C "$RUNNER_TEMP/grimoire-feed" checkout --orphan kpm
+            git -C "$RUNNER_TEMP/grimoire-feed" rm -rf .
+          fi
+          python3 tools/kpm-feed.py build/kpm/manifest.json "$RUNNER_TEMP/grimoire-feed"
+          cd "$RUNNER_TEMP/grimoire-feed"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Grimoire $TAG to KPM"
+            git push origin HEAD:refs/heads/kpm
+          fi

@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.0-rc.1 (candidate)
+
+- **KPM:** a kindlehf package built from the same installer as the ZIP, with Library launchers,
+  install/upgrade/remove hooks and notebook/settings preservation. Fresh installs change no
+  KOReader files. The release workflow validates artifacts before publication and maintains
+  separate preview/stable feeds. KPM's numeric version 1.1.5001 represents this RC.
+- **Explicit KOReader integration:** fresh Library starts no longer install the Grimoire plugin.
+  Enable it in Settings > KOReader or copy it manually. An already installed plugin stays updated;
+  deleting it or reinstalling KOReader requires opting in again. User patches remain separate.
+- **Keyboard/controller shortcuts:** opt-in mappings for tools, undo/redo, white ink and existing
+  pages, edited in `grimoire/shortcuts.ini` and reloaded in Settings > Shortcuts. The sheet shows
+  the last button code. Drawing, open sheets and sleep/native PIN block shortcut actions. No
+  Bluetooth pairing or analog-axis mapping is added; physical 8BitDo compatibility is unconfirmed.
+- **Terminess menus:** deterministic regular/bold font-family selection, real bold registration
+  and an explicit gap between dropdown battery symbols and percentages. A byte-exact prior
+  Grimoire patch can be explicitly upgraded; modified patches stay untouched.
+- **Optional Scribe DPI patch:** preserves the existing 320 layout and scales Auto/other presets/
+  custom values proportionally. Loads before widgets cache sizes, leaves other devices alone,
+  and retains KOReader's restart requirement. This changes KOReader's sizing policy only when
+  the separate patch is enabled.
+- **Validation:** real Scribe/KPM 0.2.2 isolated install, unpack, ARM version and uninstall passed;
+  original launchers and the running KOReader process stayed unchanged. Lua patch tests and the
+  installed KOReader DPI menu code passed on the Kindle. Visual battery spacing, a restarted DPI
+  interface, physical controller input and multi-device handover remain candidate checks.
+
+
 ## 1.1.0-beta.2 (2026-10-24)
 
 - **KOReader compatibility:** discovery includes `extensions/koreader` and `documents/koreader`,

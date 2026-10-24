@@ -18,7 +18,7 @@
 #include "koreader.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
-               MOD_TEMPLATES, MOD_KOREADER } Modal;
+               MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -31,7 +31,7 @@ enum {
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
-    H_PAPER_MORE, H_KOREADER, H_KO_ITEM,
+    H_PAPER_MORE, H_KOREADER, H_KO_ITEM, H_SHORTCUTS, H_SHORTCUT_ENABLE, H_SHORTCUT_RELOAD,
 };
 
 typedef struct {
@@ -64,6 +64,8 @@ struct LibraryState {
     uint64_t *card_stamp; // per notebook: what thumbs[i] was read from (store_thumb_stamp), or CARD_STALE
     int cards_redrawn;    // times a background job changed a card on screen (the probe's)
 
+    int shown_shortcut_code, shown_shortcut_mods;
+    bool shown_shortcut_gamepad;
     Modal modal;
     KbPurpose kbp;
     Keyboard kb;
@@ -607,9 +609,12 @@ static void draw_settings(App *a) {
     Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
     ui_button(c, done, ICON_NONE, _("Done"), BTN_PRIMARY);
     hits_add(&S->hits, done, H_CANCEL, 0);
-    Rect ko = {in.x, done.y, ui_px(650), done.h};
+    Rect ko = {in.x, done.y, ui_px(420), done.h};
     ui_button(c, ko, ICON_NOTEBOOK, "KOReader", BTN_PLAIN);
     hits_add(&S->hits, ko, H_KOREADER, 0);
+    Rect keys = {ko.x + ko.w + ui_px(30), done.y, done.x - ko.x - ko.w - ui_px(60), done.h};
+    ui_button(c, keys, ICON_NONE, _("Shortcuts"), BTN_PLAIN);
+    hits_add(&S->hits, keys, H_SHORTCUTS, 0);
 }
 
 static void draw_modal(App *a) {
@@ -618,6 +623,27 @@ static void draw_modal(App *a) {
     switch (S->modal) {
     case MOD_NEW: draw_new(a); break;
     case MOD_SETTINGS: draw_settings(a); break;
+    case MOD_SHORTCUTS: {
+        char count[160], last[160];
+        snprintf(count, sizeof count, _("Mappings: %d; rejected: %d"), a->shortcuts.count, a->shortcuts.rejected);
+        if (a->last_shortcut_code)
+            snprintf(last, sizeof last, _("Last input: %s %d; modifiers: %d"), a->last_shortcut_gamepad ? "pad" : "key",
+                     a->last_shortcut_code, a->last_shortcut_mods);
+        else snprintf(last, sizeof last, "%s", _("Press a connected key or controller button"));
+        S->shown_shortcut_code = a->last_shortcut_code;
+        S->shown_shortcut_mods = a->last_shortcut_mods;
+        S->shown_shortcut_gamepad = a->last_shortcut_gamepad;
+        MenuRow rows[] = {
+            {a->settings.shortcuts_enabled ? ICON_CHECK : ICON_NONE, _("Enable shortcuts"), H_SHORTCUT_ENABLE, 0, BTN_PLAIN},
+            {ICON_NONE, _("Reload shortcuts.ini"), H_SHORTCUT_RELOAD, 0, BTN_PLAIN},
+            {ICON_NONE, "grimoire/shortcuts.ini", H_NONE, 0, BTN_DISABLED},
+            {ICON_NONE, count, H_NONE, 0, BTN_DISABLED},
+            {ICON_NONE, last, H_NONE, 0, BTN_DISABLED},
+            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
+        };
+        draw_menu(a, _("Shortcuts"), rows, 6);
+        break;
+    }
     case MOD_KOREADER: {
         char ko[800];
         bool found = koreader_find(ko, sizeof ko), installed = koreader_item_installed(0);
@@ -631,9 +657,11 @@ static void draw_modal(App *a) {
                 found ? BTN_PLAIN : BTN_DISABLED},
             {koreader_item_installed(3) ? ICON_CHECK : ICON_NONE, _("Terminess menu font"), H_KO_ITEM, 3,
                 found ? BTN_PLAIN : BTN_DISABLED},
+            {koreader_item_installed(4) ? ICON_CHECK : ICON_NONE, _("Scribe DPI: proportional scaling"), H_KO_ITEM, 4,
+                found ? BTN_PLAIN : BTN_DISABLED},
             {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
         };
-        draw_menu(a, "KOReader", rows, 6);
+        draw_menu(a, "KOReader", rows, 7);
         break;
     }
     case MOD_MORE: {
@@ -946,6 +974,22 @@ static void act(App *a, const Hit *h) {
     case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, C_("keyboard", "Name"), S->new_name); break;
     case H_NEW_CREATE: create_notebook(a); break;
     case H_CANCEL: close_modal(a); break;
+    case H_SHORTCUTS: open_modal(a, MOD_SHORTCUTS); break;
+    case H_SHORTCUT_ENABLE:
+    case H_SHORTCUT_RELOAD: {
+        char path[1024]; snprintf(path, sizeof path, "%s/shortcuts.ini", store_root());
+        if (h->id == H_SHORTCUT_ENABLE) {
+            if (!a->settings.shortcuts_enabled && shortcuts_write_defaults(path) != 0) {
+                app_toast(a, _("Could not save shortcuts.ini"), 5000); break;
+            }
+            a->settings.shortcuts_enabled = !a->settings.shortcuts_enabled;
+            settings_save(&a->settings);
+            input_shortcuts_enable(a->settings.shortcuts_enabled);
+        }
+        shortcuts_load(&a->shortcuts, path);
+        redraw(a, REFRESH_UI);
+        break;
+    }
     case H_KOREADER: open_modal(a, MOD_KOREADER); break;
     case H_KO_ITEM: {
         int item = h->arg < 0 ? 0 : h->arg;
@@ -1202,6 +1246,9 @@ void library_event(App *a, const InEvent *ev) {
 }
 
 void library_tick(App *a, uint32_t now) {
+    if (S->modal == MOD_SHORTCUTS && (S->shown_shortcut_code != a->last_shortcut_code ||
+        S->shown_shortcut_mods != a->last_shortcut_mods || S->shown_shortcut_gamepad != a->last_shortcut_gamepad))
+        redraw(a, REFRESH_UI);
     if (S->kb_settle_at && (int32_t)(now - S->kb_settle_at) >= 0) {
         S->kb_settle_at = 0;
         if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
@@ -1282,6 +1329,7 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_LANGUAGE] = "language",
         [MOD_TEMPLATES] = "templates",
         [MOD_KOREADER] = "koreader",
+        [MOD_SHORTCUTS] = "shortcuts",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {

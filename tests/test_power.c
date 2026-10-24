@@ -187,7 +187,7 @@ TEST(asleep_drops) {
     // Pen and touch, the side button's press and a pinch's start and moves are ignored on the
     // sleep screen (three clicks cleared the page, a pinch zoomed it behind the sleep screen).
     static const InType dropped[] = {IN_PEN_DOWN,   IN_PEN_MOVE,   IN_PEN_UP,      IN_TOUCH_DOWN,
-                                     IN_TOUCH_MOVE, IN_TOUCH_UP,   IN_PINCH_BEGIN, IN_PINCH_MOVE};
+                                     IN_TOUCH_MOVE, IN_TOUCH_UP,   IN_PINCH_BEGIN, IN_PINCH_MOVE, IN_KEY};
     for (size_t i = 0; i < sizeof dropped / sizeof dropped[0]; i++) {
         InEvent e = ev_of(dropped[i], false);
         CHECK(power_asleep_drops(&e));
