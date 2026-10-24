@@ -15,9 +15,10 @@
 #include "keyboard.h"
 #include "i18n.h"
 #include "tplsheet.h"
+#include "koreader.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
-               MOD_TEMPLATES } Modal;
+               MOD_TEMPLATES, MOD_KOREADER } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -30,7 +31,7 @@ enum {
     H_FMORE_RENAME, H_FMORE_REMOVE,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
-    H_PAPER_MORE,
+    H_PAPER_MORE, H_KOREADER, H_KO_ITEM,
 };
 
 typedef struct {
@@ -606,6 +607,9 @@ static void draw_settings(App *a) {
     Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
     ui_button(c, done, ICON_NONE, _("Done"), BTN_PRIMARY);
     hits_add(&S->hits, done, H_CANCEL, 0);
+    Rect ko = {in.x, done.y, ui_px(650), done.h};
+    ui_button(c, ko, ICON_NOTEBOOK, "KOReader", BTN_PLAIN);
+    hits_add(&S->hits, ko, H_KOREADER, 0);
 }
 
 static void draw_modal(App *a) {
@@ -614,6 +618,24 @@ static void draw_modal(App *a) {
     switch (S->modal) {
     case MOD_NEW: draw_new(a); break;
     case MOD_SETTINGS: draw_settings(a); break;
+    case MOD_KOREADER: {
+        char ko[800];
+        bool found = koreader_find(ko, sizeof ko), installed = koreader_item_installed(0);
+        MenuRow rows[] = {
+            {ICON_NOTEBOOK, found ? _("Install / update Grimoire plugin") : _("KOReader not found"), H_KO_ITEM, 0,
+                found ? BTN_PLAIN : BTN_DISABLED},
+            {ICON_TRASH, _("Remove Grimoire plugin"), H_KO_ITEM, -1, installed ? BTN_PLAIN : BTN_DISABLED},
+            {koreader_item_installed(1) ? ICON_CHECK : ICON_NONE, _("Disable diagonal screenshot gestures"), H_KO_ITEM, 1,
+                found ? BTN_PLAIN : BTN_DISABLED},
+            {koreader_item_installed(2) ? ICON_CHECK : ICON_NONE, _("Square folder corners"), H_KO_ITEM, 2,
+                found ? BTN_PLAIN : BTN_DISABLED},
+            {koreader_item_installed(3) ? ICON_CHECK : ICON_NONE, _("Terminess menu font"), H_KO_ITEM, 3,
+                found ? BTN_PLAIN : BTN_DISABLED},
+            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
+        };
+        draw_menu(a, "KOReader", rows, 6);
+        break;
+    }
     case MOD_MORE: {
         if (!it) break;
         char pdf[256];
@@ -924,6 +946,17 @@ static void act(App *a, const Hit *h) {
     case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, C_("keyboard", "Name"), S->new_name); break;
     case H_NEW_CREATE: create_notebook(a); break;
     case H_CANCEL: close_modal(a); break;
+    case H_KOREADER: open_modal(a, MOD_KOREADER); break;
+    case H_KO_ITEM: {
+        int item = h->arg < 0 ? 0 : h->arg;
+        bool enabled = h->arg < 0 ? false : item == 0 || !koreader_item_installed(item);
+        if (koreader_item_set(item, enabled) == 0)
+            app_toast(a, _("Updated. Restart KOReader to apply."), 5000);
+        else
+            app_toast(a, _("Could not update KOReader. A different patch or a storage error?"), 7000);
+        redraw(a, REFRESH_UI);
+        break;
+    }
     case H_SET_PENS: S->modal = MOD_NONE; pensettings_open(a, a->settings.current_tool); break;
     case H_SET_CALIB: S->modal = MOD_NONE; calibrate_open(a); break;
     case H_SET_MIRROR:
@@ -1248,6 +1281,7 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_MUSIC] = "music",
         [MOD_LANGUAGE] = "language",
         [MOD_TEMPLATES] = "templates",
+        [MOD_KOREADER] = "koreader",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {

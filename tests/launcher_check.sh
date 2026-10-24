@@ -356,96 +356,52 @@ suite() {
         check "$s log: KOReader installed, not running" has "$LOGF" "grimoire.sh: KOReader: installed, version v2026.07.1"
     done
 
-    # A Device Passcode: paused while Grimoire runs (the binary is told), back on once the Kindle UI
-    # is back, a marker meanwhile.
+    # PIN remains enabled for the entire session. Older beta crash notices still migrate safely.
     tree passcode
     sh "$DOC" --unpack-only
     fake
     : >"$T/$PASSCODE_REL"
     : >"$SHIM_LOG"
     GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-    check "$s passcode: paused while Grimoire runs, the binary told" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
-    check "$s passcode: back on after" [ -e "$T/$PASSCODE_REL" ]
-    check "$s passcode: no marker left" [ ! -e "$US/grimoire/.passcode-paused" ]
-    check "$s passcode: paused before the start, back on after the restore" log_order \
-        "grimoire.sh: device passcode: paused while Grimoire runs" "grimoire.sh: Grimoire running as pid" \
-        "grimoire.sh: restoring the Kindle UI" "grimoire.sh: device passcode: back on"
-    # The home booklet starts with the passcode still paused: it comes back last (as KOReader does).
-    check "$s passcode: still paused when the home booklet starts" has "$SHIM_LOG" "$HOME_UP (passcode off)"
-    # A session that never ended (the Kindle restarted under Grimoire: the marker stayed, no
-    # passcode): it is not turned back on, and the binary is told, at this start and the next two
-    # while the passcode stays off, then no more. The pause marker goes at once.
+    check "$s passcode: native unlock requested, flag stays on" has "$SHIM_LOG" "grimoire passcode note=enabled flag=on"
+    check "$s passcode: still on after" [ -e "$T/$PASSCODE_REL" ]
+    check "$s passcode: no pause marker" [ ! -e "$US/grimoire/.passcode-paused" ]
+    check "$s passcode: on when home resumes" has "$SHIM_LOG" "$HOME_UP (passcode on)"
+    check "$s passcode: never paused" lacks "$LOGF" "device passcode: paused"
+    : >"$US/grimoire/stop-framework"
+    : >"$SHIM_LOG"
+    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
+    check "$s PIN plus stop-framework: framework stays available" lacks "$SHIM_LOG" "stop lab126_gui"
+    check "$s PIN plus stop-framework: PIN never disabled" has "$SHIM_LOG" "grimoire passcode note=enabled flag=on"
     tree passcode-left-off
     sh "$DOC" --unpack-only
     fake
     : >"$US/grimoire/.passcode-paused"
-    : >"$SHIM_LOG"
     GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-    check "$s passcode left off: the binary told" has "$SHIM_LOG" "grimoire passcode note=left-off flag=off"
-    check "$s passcode left off: not turned back on" [ ! -e "$T/$PASSCODE_REL" ]
-    check "$s passcode left off: the marker goes" [ ! -e "$US/grimoire/.passcode-paused" ]
-    check "$s passcode left off: logged" has "$LOGF" "grimoire.sh: device passcode: left off by a session that did not end"
-    check "$s passcode left off: told once so far" is "$(content "$US/grimoire/.passcode-left-off")" 1
-    for k in 2 3 4; do
-        : >"$SHIM_LOG"
-        GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-        if [ "$k" -le 3 ]; then
-            check "$s passcode left off: told again at start $k" has "$SHIM_LOG" "grimoire passcode note=left-off flag=off"
-            check "$s passcode left off: logged at start $k" has "$LOGF" "telling the user ($k of 3)"
-        else
-            check "$s passcode left off: not told a fourth time" has "$SHIM_LOG" "grimoire passcode note= flag=off"
-            check "$s passcode left off: nothing left to count" [ ! -e "$US/grimoire/.passcode-left-off" ]
-        fi
-    done
-    # Turned back on by the user after such a start: no more telling, an ordinary pause.
-    tree passcode-left-off-then-on
+    check "$s old beta crash: left-off notice" has "$SHIM_LOG" "grimoire passcode note=left-off flag=off"
+    check "$s old beta crash: no unknown PIN flag created" [ ! -e "$T/$PASSCODE_REL" ]
+    check "$s old beta crash: marker consumed" [ ! -e "$US/grimoire/.passcode-paused" ]
+    tree passcode-locked-start
     sh "$DOC" --unpack-only
     fake
-    : >"$US/grimoire/.passcode-paused"
-    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
     : >"$T/$PASSCODE_REL"
-    : >"$SHIM_LOG"
+    echo screenSaver >"$SHIM_STATE/lipc/com.lab126.powerd.state"
     GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-    check "$s passcode back on after a left-off start: an ordinary pause" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
-    check "$s passcode back on after a left-off start: nothing left to count" [ ! -e "$US/grimoire/.passcode-left-off" ]
-    check "$s passcode back on after a left-off start: back on after" [ -e "$T/$PASSCODE_REL" ]
-    # The marker cannot be written (here a directory is in its way; on the Kindle, a full or
-    # read-only userstore): no marker, no pause, since a restart could not tell it was paused.
-    tree passcode-no-marker
-    sh "$DOC" --unpack-only
-    fake
-    mkdir -p "$US/grimoire/.passcode-paused"
-    : >"$T/$PASSCODE_REL"
-    : >"$SHIM_LOG"
-    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" 2>"$T/stderr"
-    check "$s passcode, no marker: not paused" has "$SHIM_LOG" "grimoire passcode note= flag=on"
-    check "$s passcode, no marker: the passcode stays" [ -e "$T/$PASSCODE_REL" ]
-    check "$s passcode, no marker: logged" has "$LOGF" "grimoire.sh: device passcode: not paused (could not write"
-    check "$s passcode, no marker: Grimoire still runs" has "$SHIM_LOG" "grimoire exits"
-    check "$s passcode, no marker: nothing on stderr" [ ! -s "$T/stderr" ]
-    # Turned back on since by the user (marker and passcode both there): an ordinary pause.
-    tree passcode-turned-on-again
-    sh "$DOC" --unpack-only
-    fake
-    : >"$US/grimoire/.passcode-paused"
-    : >"$T/$PASSCODE_REL"
-    : >"$SHIM_LOG"
-    GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
-    check "$s passcode turned on again: an ordinary pause" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
-    check "$s passcode turned on again: back on after" [ -e "$T/$PASSCODE_REL" ]
-    check "$s passcode turned on again: no left-off line" lacks "$LOGF" "left off by a session"
+    rc=$?
+    check "$s locked start: refuses until native unlock ($rc)" is "$rc" 3
+    check "$s locked start: never opens the app" lacks "$SHIM_LOG" "$STARTED"
+    check "$s locked start: PIN stays enabled" [ -e "$T/$PASSCODE_REL" ]
 
     # Stop-framework mode: lab126_gui stopped and started; locked at exit only shows in the log.
     tree stopfw
     sh "$DOC" --unpack-only
     fake
     : >"$US/grimoire/stop-framework"
-    : >"$T/$PASSCODE_REL"
     : >"$SHIM_LOG"
     FAKE_EXIT_STATE=readyToSuspend GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh"
     check "$s stop-framework: lab126_gui stopped, then started" in_order "stop lab126_gui" "$STARTED" "start lab126_gui"
-    check "$s stop-framework: the passcode paused meanwhile" has "$SHIM_LOG" "grimoire passcode note=paused flag=off"
-    check "$s stop-framework: the passcode back before the framework starts" has "$SHIM_LOG" "start lab126_gui (passcode on)"
+    check "$s stop-framework: no PIN present" has "$SHIM_LOG" "grimoire passcode note= flag=off"
+    check "$s stop-framework: the passcode back before the framework starts" has "$SHIM_LOG" "start lab126_gui (passcode off)"
     check "$s stop-framework: pillow and awesome left alone" sh -c '! grep -qE "disableEnablePillow|killall -(STOP|CONT) awesome" "$1"' sh "$SHIM_LOG"
     check "$s stop-framework: power state at exit logged" has "$LOGF" "grimoire.sh: power state at exit: readyToSuspend"
 
@@ -468,7 +424,7 @@ suite() {
         fi
         l="$s watchdog ($mode)"
         check "$l: the launcher finishes" finish $! 150
-        check "$l: returns 0 ($rc)" is "$rc" 0
+        check "$l: reports the failure ($rc)" is "$rc" 137
         check "$l: logged" has "$LOGF" "grimoire.sh: watchdog: $why"
         check "$l: TERM first" has "$SHIM_LOG" "grimoire caught TERM, runs on"
         check "$l: then KILL" has "$LOGF" "grimoire.sh: Grimoire exited with status 137"
@@ -532,13 +488,13 @@ suite() {
     check "$l: Grimoire told its host (GRIMOIRE_HOST)" has "$SHIM_LOG" "grimoire host=koreader"
     check "$l: KOReader's LC_ALL kept from Grimoire, LANG carried on" has "$SHIM_LOG" \
         "grimoire lc_all=(unset) lang=es_ES.UTF-8"
-    check "$l: Grimoire never wakes awesome" has "$SHIM_LOG" "$STARTED$US/grimoire awesome_stopped=no"
+    check "$l: native PIN can resume the host UI" has "$SHIM_LOG" "$STARTED$US/grimoire awesome_stopped=yes"
     check "$l: awesome stopped again (AWESOME_STOPPED=yes)" in_order "killall -STOP awesome" "$STARTED"
     check "$l: awesome stopped again first, before the lipc calls" in_order "killall -STOP awesome" \
         "lipc-get-prop -s com.lab126.powerd state"
     check "$l: awesome stopped again (logged)" has "$LOGF" "grimoire.sh: awesome stopped again, as KOReader had it"
     check "$l: awesome never continued" lacks "$SHIM_LOG" "killall -CONT awesome"
-    check "$l: pillow left alone" lacks "$SHIM_LOG" "disableEnablePillow"
+    check "$l: pillow returns to the host pause" has "$SHIM_LOG" "disableEnablePillow disable"
     check "$l: no home booklet" lacks "$SHIM_LOG" "com.lab126.appmgrd"
     check "$l: volumd left alone" lacks "$SHIM_LOG" "volumd"
     check "$l: the framework left alone" lacks "$SHIM_LOG" "lab126_gui"
@@ -546,7 +502,7 @@ suite() {
         "$T/sys/dev/fb0" "$T/sys/var/tmp/grimoire-fb.dump"
     check "$l: the passcode flag left alone" [ -e "$T/$PASSCODE_REL" ]
     check "$l: the passcode marker left alone" [ -e "$US/grimoire/.passcode-paused" ]
-    check "$l: no passcode note for Grimoire" has "$SHIM_LOG" "grimoire passcode note= flag=on"
+    check "$l: no passcode note for Grimoire" has "$SHIM_LOG" "grimoire passcode note=enabled flag=on"
     check "$l: the passcode left to KOReader (logged)" has "$LOGF" "grimoire.sh: device passcode: left to KOReader"
     check "$l: the status bar job stopped, then started" in_order "stop statusbar" "$STARTED" "start statusbar"
     check "$l: a status job that was not running is not started" sh -c \
@@ -579,6 +535,14 @@ suite() {
     check "$l: asked to open the page (GRIMOIRE_ANNOTATE=1)" sh -c 'grep -qxF "grimoire annotate=1" "$1"' sh "$SHIM_LOG"
     check "$l: logged" has "$LOGF" "grimoire.sh: KOReader sent a page to annotate (grimoire/import/.annotate)"
     check "$l: nothing on stderr" [ ! -s "$T/stderr" ]
+    hosted_tree hosted-unpaused
+    KOREADER_DIR=$US/koreader STOP_FRAMEWORK=no AWESOME_STOPPED=no PILLOW_HARD_DISABLED=no GRIMOIRE_WD_TICK=0.2 \
+        fake-koreader sh "$APP/grimoire.sh" --hosted koreader
+    rc=$?
+    check "$s unpaused KOReader launcher: works ($rc)" is "$rc" 0
+    check "$s unpaused KOReader launcher: own UI pause and restore" in_order "$PILLOW_OFF" "$STARTED" "$PILLOW_ON"
+    check "$s unpaused KOReader launcher: no home screen before KOReader" lacks "$SHIM_LOG" "$HOME_UP"
+
     # Only that start: a GRIMOIRE_ANNOTATE the launcher inherits never reaches the binary, hosted
     # without --annotate or started from the Library (where --annotate means nothing either).
     hosted_tree hosted-annotate-inherited
@@ -621,7 +585,7 @@ suite() {
     # holds an input device (run from KOReader's terminal, say, not its exit path); a KOReader that
     # paused nothing (a KPVBooklet start); no host, or one Grimoire does not know.
     hosted_tree hosted-refused
-    for why in no-koreader-dir wrong-parent no-reader-lua holds-input not-paused no-host other-host; do
+    for why in no-koreader-dir wrong-parent no-reader-lua holds-input no-host other-host; do
         : >"$SHIM_LOG"
         : >"$T/stderr"
         case $why in
@@ -766,6 +730,10 @@ suite() {
     check "$s plugin removed: logged once only" lacks "$LOGF" "Grimoire plugin"
     check "$s plugin removed: still not brought back" [ ! -e "$US/$PLUGIN_REL" ]
     mkdir -p "$US/$PLUGIN_REL"
+    echo keep >"$US/$PLUGIN_REL/README.user"
+    start_doc
+    check "$s plugin removed, extra file remains: not brought back" [ ! -e "$US/$PLUGIN_REL/main.lua" ]
+    check "$s plugin removed: extra user file kept" has "$US/$PLUGIN_REL/README.user" keep
     echo "-- an older plugin" >"$US/$PLUGIN_REL/main.lua"
     start_doc
     check "$s plugin copied back by hand: kept up to date again" plugin_is_payload

@@ -419,9 +419,25 @@ static void route_index(void) {
     free(folders);
 }
 
-static void route_notebook_html(const NotebookInfo *nb) {
+static void route_notebook_html(const NotebookInfo *nb, const char *query) {
+    char value[32], *end;
+    long wanted = query_get(query, "p", value, sizeof value) ? strtol(value, &end, 10) : 1;
+    int current = wanted < 1 ? 1 : wanted > nb->npages ? nb->npages : (int)wanted;
+    if (current < 1) current = 1;
     Buf b = {0};
     page_head(&b, nb->name);
+    buf_printf(&b, "<nav aria-label='Pages' style='position:sticky;top:0;background:var(--bg,#fff);padding:12px;z-index:1'>"
+                   "<form method=get style='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px'>");
+    if (current > 1) buf_printf(&b, "<a class=big href='?p=%d' rel=prev>&larr;</a>", current - 1);
+    buf_printf(&b, "<label for=page-number>");
+    html_esc(&b, _("Page"));
+    buf_printf(&b, "</label><input id=page-number name=p type=number inputmode=numeric min=1 max=%d value=%d "
+                   "style='width:6ch;font:inherit;padding:8px;text-align:center' required onchange='this.form.submit()'><span>/ %d</span><button type=submit>",
+                   nb->npages, current, nb->npages);
+    html_esc(&b, _("Go"));
+    buf_printf(&b, "</button>");
+    if (current < nb->npages) buf_printf(&b, "<a class=big href='?p=%d' rel=next>&rarr;</a>", current + 1);
+    buf_printf(&b, "</form></nav>");
     buf_printf(&b, "<p><a href='/'>&larr; ");
     // TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
     // the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
@@ -432,20 +448,17 @@ static void route_notebook_html(const NotebookInfo *nb) {
     html_esc_bold(&b, _("ZIP (PDF + PNG pages + raw)"));
     buf_printf(&b, "</a><a class=big href='/nb/%s/studio'>", nb->id);
     html_esc_bold(&b, _("Effects (transparent, colors, gradients, filters)"));
-    buf_printf(&b, "</a></p><div class=pages>");
-    for (int i = 0; i < nb->npages; i++) {
-        char page[64];
-        snprintf(page, sizeof page, _("Page %d"), i + 1);
-        buf_printf(&b, "<figure><a href='/nb/%s/%d.png'><img loading=lazy src='/nb/%s/%d.png?f=3' alt='", nb->id, i + 1,
-                   nb->id, i + 1);
-        html_esc(&b, page);
-        buf_printf(&b, "'></a><figcaption class=meta>");
-        html_esc(&b, page);
-        buf_printf(&b, " &middot; <a href='/nb/%s/studio?p=%d'>", nb->id, i + 1);
-        html_esc(&b, C_("share link", "effects"));
-        buf_printf(&b, "</a></figcaption></figure>");
-    }
-    buf_printf(&b, "</div></body></html>");
+    buf_printf(&b, "</a></p>");
+    buf_printf(&b, "<figure style='margin:16px 0;text-align:center'><a href='/nb/%s/%d.png'>"
+                   "<img style='max-width:100%%;height:auto' src='/nb/%s/%d.png?f=2' alt='", nb->id, current, nb->id, current);
+    char page_label[64];
+    snprintf(page_label, sizeof page_label, _("Page %d"), current);
+    html_esc(&b, page_label);
+    buf_printf(&b, "'></a><figcaption>");
+    html_esc(&b, page_label);
+    buf_printf(&b, " &middot; <a href='/nb/%s/studio?p=%d'>", nb->id, current);
+    html_esc(&b, C_("share link", "effects"));
+    buf_printf(&b, "</a></figcaption></figure></body></html>");
     respond(200, "text/html; charset=utf-8", &b, NULL);
     buf_free(&b);
 }
@@ -597,7 +610,7 @@ static void route(char *path) {
     Buf b = {0};
     int page = 0, end = 0;
     if (!*rest || !strcmp(rest, "/")) {
-        route_notebook_html(nb);
+        route_notebook_html(nb, query);
     } else if (!strcmp(rest, "/studio")) {
         route_studio(nb);
     } else if (!strcmp(rest, ".pdf")) {

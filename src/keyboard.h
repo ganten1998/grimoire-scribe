@@ -19,7 +19,7 @@ typedef struct {
     char title[64];
     char text[KB_TEXT_MAX];
     bool shift;
-    int page;        // 0 letters, 1 accents
+    int page;        // 0 letters, 1 accents, 2 number pad
     Rect area;       // where it was last drawn (whole modal)
     Press press;
     int pressed_key; // -1 if none

@@ -166,6 +166,7 @@ int store_save_page(const NotebookInfo *nb, int index, const Page *p);
 // The pinned sleep screen (a full page, P5 PGM at root/sleep.pgm).
 int store_save_sleep_image(const Canvas *c);
 int store_load_sleep_image(Canvas *out);
+int store_load_koreader_sleep(Canvas *out);
 
 // Thumbnails (P5 PGM, ~ 1/8 page size).
 int store_save_thumb(const char *id, const Canvas *thumb);

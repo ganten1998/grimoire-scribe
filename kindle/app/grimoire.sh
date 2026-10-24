@@ -12,7 +12,7 @@
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
-# A Device Passcode is paused while Grimoire runs and put back when it ends (as KOReader does).
+# A Device Passcode stays enabled. Sleep releases input and resumes the native PIN screen.
 # Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does: --hosted is the one
 # start allowed there. The Capabilities line above says what this file supports (guard: that
 # refusal; hosted: --hosted koreader; annotate: its --annotate), for a tool that must not run it to
@@ -85,7 +85,15 @@ ko_parents() {
     while [ "$n" -lt 8 ] && proc_parent "$p"; do
         if [ "$P_NAME" = reader.lua ] || tr '\000' ' ' <"$SYS/proc/$p/cmdline" 2>/dev/null | grep -q 'reader\.lua'; then
             KO_READER=$p
-            tr '\000' ' ' <"$SYS/proc/$P_PARENT/cmdline" 2>/dev/null | grep -q 'koreader\.sh' && return 0
+            ancestor=$P_PARENT
+            depth=0
+            while [ "$depth" -lt 8 ]; do
+                tr '\000' ' ' <"$SYS/proc/$ancestor/cmdline" 2>/dev/null | grep -q 'koreader\.sh' && return 0
+                proc_parent "$ancestor" || break
+                [ "$P_PARENT" -gt 1 ] 2>/dev/null || break
+                ancestor=$P_PARENT
+                depth=$((depth + 1))
+            done
             KO_WHY="KOReader's reader.lua (pid $p) was not started by koreader.sh"
             return 1
         fi
@@ -106,6 +114,7 @@ ko_let_go() {
 }
 
 HOSTED=""
+KO_OWN_UI=no
 ANNOTATE=""
 if [ "$1" = "--hosted" ]; then
     # KOReader's own variables (koreader.sh exports them), read before this script reuses the
@@ -121,10 +130,7 @@ if [ "$1" = "--hosted" ]; then
         MSG="not starting hosted: $KO_WHY."
     elif ! ko_let_go; then
         MSG="not starting hosted: KOReader still has $KO_HELD open (this is not its exit path), so Grimoire would get no pen or touch."
-    elif [ "$KO_STOP_FRAMEWORK" != yes ] && [ "$PILLOW_HARD_DISABLED" != yes ] && [ "$KO_AWESOME_STOPPED" != yes ]; then
-        # A KPVBooklet start, say: koreader.sh pauses nothing then, and the Kindle UI would draw
-        # over Grimoire.
-        MSG="not starting hosted: KOReader left the Kindle UI running (koreader.sh paused nothing)."
+
     fi
     if [ -n "$MSG" ]; then
         log "$MSG"
@@ -132,6 +138,9 @@ if [ "$1" = "--hosted" ]; then
         exit 3
     fi
     HOSTED=koreader
+    if [ "$KO_STOP_FRAMEWORK" != yes ] && [ "$PILLOW_HARD_DISABLED" != yes ] && [ "$KO_AWESOME_STOPPED" != yes ]; then
+        KO_OWN_UI=yes
+    fi
     [ "$3" = --annotate ] && ANNOTATE=1
     # First of all: KOReader's exit has just woken awesome on Special Offers Kindles (a KOReader
     # quitting for good wants the Kindle UI back), so stop it again before the lock wait and the
@@ -212,11 +221,10 @@ IPTABLES_ADDED=no
 STOPPED_JOBS=""
 RESTORED=no
 PREVENT_BEFORE=0  # preventScreenSaver to put back: off, or hosted, what KOReader had
-# The Kindle's passcode, paused while Grimoire runs (see "device passcode" below).
+# Native PIN flag (never modified here) and legacy beta.1 recovery markers.
 PASSCODE=$SYS/var/local/system/userpasswdenabled
 PASSCODE_MARK=$ROOT/.passcode-paused
 PASSCODE_LEFT=$ROOT/.passcode-left-off  # how many starts have told the user it was left off
-PASSCODE_PAUSED=no
 PASSCODE_NOTE=""
 
 # The Kindle is locked: its screensaver (or the passcode prompt over it) is up, or it is about
@@ -229,18 +237,6 @@ kindle_locked() {
     return 1
 }
 
-# Puts the passcode back, once. The marker goes only when that worked, so a failure is told at
-# the next start.
-restore_passcode() {
-    [ "$PASSCODE_PAUSED" = yes ] || return
-    PASSCODE_PAUSED=no
-    if touch "$PASSCODE" 2>/dev/null; then
-        rm -f "$PASSCODE_MARK" 2>/dev/null
-        log "device passcode: back on"
-    else
-        log "device passcode: could not put it back"
-    fi
-}
 
 restore() {
     [ "$RESTORED" = yes ] && return
@@ -259,12 +255,16 @@ restore() {
     lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_BEFORE" 2>/dev/null
     # Grimoire's power-service watcher, should a crash have left it behind.
     pkill -f "lipc-wait-event .*com.lab126.powerd goingToScreenSaver,outOfScreenSaver" 2>/dev/null
-    if [ -n "$HOSTED" ]; then
+    if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ]; then
         # KOReader comes back over the screen, and puts the Kindle UI back when it quits: only the
         # status jobs stopped here are this launcher's to start.
         for job in $STOPPED_JOBS; do
             start "$job" 2>/dev/null
         done
+        if [ "$PASSCODE_NOTE" = enabled ]; then
+            [ "$PILLOW_HARD_DISABLED" = yes ] && lipc-set-prop com.lab126.pillow disableEnablePillow disable 2>/dev/null
+            [ "$KO_AWESOME_STOPPED" = yes ] && killall -STOP awesome 2>/dev/null
+        fi
         kindle_locked
         log "power state at exit: ${STATE:-unknown}"
         return
@@ -272,8 +272,7 @@ restore() {
     if [ "$STOP_FRAMEWORK" = yes ]; then
         kindle_locked
         log "power state at exit: ${STATE:-unknown}"
-        # Before the framework starts: it reads whether a passcode is set when it does.
-        restore_passcode
+
         cd / && start lab126_gui 2>/dev/null
         return
     fi
@@ -285,7 +284,7 @@ restore() {
     fi
     # Locked: the screen saved at the start must not go back over the Kindle's screensaver or
     # its passcode prompt (the Kindle draws its own screen once it is unlocked).
-    if kindle_locked; then
+    if kindle_locked || { [ "$PASSCODE_NOTE" = enabled ] && [ "$STATE" != active ]; }; then
         log "power state at exit: $STATE, so the saved screen is not put back"
         rm -f "$DUMP"
     else
@@ -298,10 +297,9 @@ restore() {
             rm -f "$DUMP"
         fi
         lipc-set-prop com.lab126.pillow disableEnablePillow enable 2>/dev/null
-        lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
+        [ -z "$HOSTED" ] && lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home 2>/dev/null
     fi
-    # Last, once the Kindle UI is back (as KOReader does).
-    restore_passcode
+
 }
 QPID=""
 stop_grimoire() {
@@ -348,20 +346,13 @@ else
 fi
 log "user id: $(id -u 2>/dev/null)"
 
-# The Kindle's passcode holds back the wake announcement until the passcode is typed, but Grimoire
-# keeps the touch screen to itself: a locked Kindle could not be unlocked, and on leaving, the
-# screen saved at the start went back over the passcode prompt. Like KOReader, pause the passcode
-# while Grimoire runs; restore() puts it back. A marker remembers the pause. Found with no
-# passcode, it means a session ended without restore() (the Kindle restarted under Grimoire):
-# the passcode is NOT turned back on then, since it may have been changed or turned off since and
-# a flag without its passcode could lock the Kindle; Grimoire tells the user instead, at this
-# start and the next two while the passcode is still off (a toast is easily missed), and no more
-# after that: by then it may be off on purpose. The pause needs its marker, so no marker (a full
-# or read-only userstore), no pause.
-# Hosted inside KOReader, all of this is left alone: koreader.sh paused the passcode for its
-# session already and puts it back when KOReader quits.
+# Keep the native PIN enabled. The binary yields input and the UI on sleep and only takes them
+# back after outOfScreenSaver (which Kindle sends after a successful PIN). Legacy markers from
+# beta.1 are still consumed, with the old recovery notice if that beta left the PIN disabled.
+# KOReader itself may already have disabled the PIN; never recreate a flag without proof of a PIN.
 if [ -n "$HOSTED" ]; then
     log "device passcode: left to KOReader, which pauses it for its session"
+    [ -e "$PASSCODE" ] && PASSCODE_NOTE=enabled
 else
     if [ -e "$PASSCODE_MARK" ] && [ ! -e "$PASSCODE" ]; then
         log "device passcode: left off by a session that did not end (a restart?); not turned back on here"
@@ -382,19 +373,17 @@ else
         fi
     fi
     if [ -e "$PASSCODE" ]; then
-        # (echo, not ":": a failed redirection on a special built-in would end the script.)
-        if ! echo paused 2>/dev/null >"$PASSCODE_MARK"; then
-            log "device passcode: not paused (could not write $PASSCODE_MARK, which a restart would need)"
+        PASSCODE_NOTE=enabled
+        log "device passcode: enabled throughout the session; native unlock on wake"
+        if [ "$STOP_FRAMEWORK" = yes ]; then
+            STOP_FRAMEWORK=no
+            log "device passcode: keeping the framework running for its PIN keypad"
+        fi
+        if ! kindle_locked && [ "$STATE" = active ]; then
+            :
         else
-            rm -f "$PASSCODE"
-            if [ -e "$PASSCODE" ]; then
-                rm -f "$PASSCODE_MARK" 2>/dev/null
-                log "device passcode: could not pause it"
-            else
-                PASSCODE_PAUSED=yes
-                PASSCODE_NOTE=paused
-                log "device passcode: paused while Grimoire runs"
-            fi
+            log "not starting: unlock the Kindle first (power state: ${STATE:-unknown})"
+            exit 3
         fi
     fi
 fi
@@ -416,7 +405,7 @@ stop_status_jobs() {
     done
 }
 
-if [ -n "$HOSTED" ]; then
+if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ]; then
     # KOReader paused the Kindle UI; awesome, which its exit woke, was stopped again first thing.
     [ "$AWESOME_RESTOPPED" = yes ] && log "awesome stopped again, as KOReader had it"
     stop_status_jobs
@@ -468,7 +457,13 @@ rm -f "$BEAT"
 # no above: it never wakes awesome, which KOReader's session keeps stopped. GRIMOIRE_ANNOTATE: a
 # page KOReader sent to annotate, set for that hosted start alone (empty otherwise, whatever this
 # launcher inherited).
-GRIMOIRE_AWESOME_STOPPED="$AWESOME_STOPPED" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
+APP_AWESOME=$AWESOME_STOPPED
+APP_PILLOW=$PILLOW_DISABLED
+if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; then
+    APP_AWESOME=$KO_AWESOME_STOPPED
+    APP_PILLOW=$PILLOW_HARD_DISABLED
+fi
+GRIMOIRE_AWESOME_STOPPED="$APP_AWESOME" GRIMOIRE_PILLOW_DISABLED="$APP_PILLOW" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
     GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
@@ -506,6 +501,7 @@ while kill -0 "$QPID" 2>/dev/null; do
     fi
 done
 wait "$QPID" 2>/dev/null
-log "Grimoire exited with status $?"
+RC=$?
+log "Grimoire exited with status $RC"
 rm -f "$BEAT"
-exit 0
+exit "$RC"

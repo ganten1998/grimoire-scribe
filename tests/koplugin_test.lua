@@ -493,13 +493,11 @@ do -- KOReader not started by koreader.sh (no /var/tmp/koreader.sh).
     untouched("no koreader.sh")
 end
 
-do -- koreader.sh paused nothing (a KPVBooklet start).
+do -- KPVBooklet and other launchers may leave the native UI running.
     world("not-paused")
     W.env = { KOREADER_DIR = "/mnt/us/koreader", STOP_FRAMEWORK = "no", AWESOME_STOPPED = "no" }
     local g = koreader(false)
-    g:onOpenGrimoire()
-    check("Kindle UI not paused: says why", told("This KOReader left the Kindle's own screens running, so Grimoire cannot open from it. Start KOReader from its Library item."))
-    untouched("Kindle UI not paused")
+    check("unpaused host: accepted for launcher-managed pause", g:refusal() == nil)
 end
 
 do -- A Grimoire.sh that does not know --hosted (1.0.0-beta.2), or no Capabilities at all in its
@@ -557,6 +555,21 @@ do -- STOP_FRAMEWORK=yes (KUAL's no-framework start) counts as paused.
     local g = koreader(false)
     g:onOpenGrimoire()
     check("framework stopped: Open goes ahead", wrapped() and at("restart") ~= nil)
+    local handle = {
+        set_string_property = function() table.insert(W.calls, "framework restore screensaver") end,
+        close = function() table.insert(W.calls, "framework close") end,
+    }
+    Device.framework_lipc_handle = handle
+    W.status.hosted = function()
+        check("framework stopped: power service still open throughout Grimoire", at("framework close") == nil)
+        return 0
+    end
+    W.calls = {}
+    Device:exit()
+    check("framework stopped: framework closed after hosted run",
+        at("execute sh ") and at("framework close") and at("execute sh ") < at("framework close"))
+    check("framework stopped: field restored", Device.framework_lipc_handle == handle)
+    Device.framework_lipc_handle = nil
 end
 
 do -- grimoire.sh refused (exit status 3): the marker stays, and the next start says so, once.
@@ -1146,6 +1159,40 @@ do -- No em dash (U+2014) anywhere in the plugin.
         f:close()
         check("no em dash in " .. name, not src:find("\226\128\148", 1, true))
     end
+end
+
+do -- A custom wallpaper is exported without ever showing KOReader's sleep screen.
+    world("wallpaper")
+    local g = koreader(false)
+    W.settings.screensaver_type = "random_image"
+    local cleaned, painted = false, false
+    package.loaded["ui/screensaver"] = {
+        setup = function(self)
+            self.image_file = "wallpaper.png"
+            self.screensaver_background = "white"
+        end,
+        cleanup = function() cleaned = true end,
+    }
+    package.loaded["ui/widget/imagewidget"] = { new = function(_, args)
+        check("wallpaper: rendered at the screen size", args.width == 1860 and args.height == 2480)
+        return {
+            paintTo = function(_, bb) painted = true; bb.what = "wallpaper" end,
+            free = function() end,
+        }
+    end }
+    g:sendWallpaper()
+    local path = W.us .. "/grimoire/koreader-sleep.png"
+    check("wallpaper: exported whole", is_file(path) and not is_file(path .. ".tmp"))
+    check("wallpaper: widget rendered and resources cleaned", painted and cleaned)
+    check("wallpaper: no visible sleep UI or restart", #W.shown == 0 and at("restart") == nil)
+    W.settings.screensaver_type = "disable"
+    g:sendWallpaper()
+    check("wallpaper: disabling it removes the old snapshot", not is_file(path))
+    W.settings.screensaver_type = "random_image"
+    W.png_answers = "false"
+    g:sendWallpaper()
+    check("wallpaper: failed write leaves no stale or partial snapshot", not is_file(path) and not is_file(path .. ".tmp"))
+    package.loaded["ui/screensaver"], package.loaded["ui/widget/imagewidget"] = nil, nil
 end
 
 print(string.format("koplugin test: %d of %d checks failed", fails, count))

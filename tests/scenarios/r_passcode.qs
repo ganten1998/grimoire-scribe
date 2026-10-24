@@ -1,7 +1,7 @@
-# env: GRIMOIRE_PASSCODE=paused
-# The launcher paused the Kindle's Device Passcode for the session (kindle/app/grimoire.sh): the
-# first time, Grimoire says so.
+# env: GRIMOIRE_PASSCODE=enabled
+# Native PIN is retained. There is no old "passcode paused" notice.
 wait 300
 expect screen is library
-expect toast has passcode is paused while Grimoire is open
+expect native_pin is 1
+expect toast not passcode is paused
 quit

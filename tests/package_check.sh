@@ -44,6 +44,21 @@ for f in "$KOPLUGIN"/*; do
     printf '%s\n' "$KOZ/$n" >>"$B/allowed.list"
     check "zip has $KOZ/$n, kindle's" cmp -s "$f" "$B/zip/$KOZ/$n"
 done
+PATCHZ="KOReader patches (optional)"
+printf '%s\n' "$PATCHZ/" "$PATCHZ/fonts/" "$PATCHZ/fonts/Grimoire/" "$PATCHZ/README.txt" >>"$B/allowed.list"
+for f in kindle/koreader/patches/*.lua; do
+    n=${f##*/}
+    printf '%s\n' "$PATCHZ/$n" >>"$B/allowed.list"
+    check "optional patch $n matches the source" cmp -s "$f" "$B/zip/$PATCHZ/$n"
+    if command -v luajit >/dev/null 2>&1; then
+        check "optional patch $n parses" sh -c 'luajit -bl "$1" >/dev/null' sh "$B/zip/$PATCHZ/$n"
+    fi
+done
+for f in assets/TerminessNerdFontMono-*.ttf assets/Terminess-OFL-1.1.txt; do
+    n=${f##*/}
+    printf '%s\n' "$PATCHZ/fonts/Grimoire/$n" >>"$B/allowed.list"
+    check "manual patches carry $n" cmp -s "$f" "$B/zip/$PATCHZ/fonts/Grimoire/$n"
+done
 check "zip has no top-level koreader folder" sh -c '! grep -qiE "^koreader(/|$)" "$1"' sh "$B/zip.list"
 grep -vxF -e documents/ -e documents/Grimoire.sh -e "$RESET" -e README.txt -e LICENSE.txt -f "$B/allowed.list" \
     "$B/zip.list" >"$B/extra.list"
@@ -52,7 +67,7 @@ check "LICENSE.txt is the GPL" cmp -s "$B/zip/LICENSE.txt" LICENSE
 check "the reset scriptlet is kindle's" cmp -s "$B/zip/$RESET" "kindle/Grimoire - reset pen calibration.sh"
 check "README.txt names version $VERSION" has "$B/zip/README.txt" "Grimoire $VERSION"
 check "README.txt has no placeholder left" lacks "$B/zip/README.txt" "@VERSION@"
-check "README.txt says the passcode is paused while Grimoire is open" has "$B/zip/README.txt" "PASSCODE: "
+check "README.txt describes native PIN support" has "$B/zip/README.txt" "PASSCODE: "
 
 # The scriptlet: a shell script, a marker line, then the app as a tar archive.
 S=$B/zip/documents/Grimoire.sh

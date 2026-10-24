@@ -3,6 +3,7 @@
 
 #include "bgimage.h"
 #include "i18n.h"
+#include "stb_image.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -1576,6 +1577,26 @@ int store_load_sleep_image(Canvas *out) {
     return load_pgm(path, out);
 }
 
+int store_load_koreader_sleep(Canvas *out) {
+    char path[600];
+    snprintf(path, sizeof path, "%s/koreader-sleep.png", g_root);
+    struct stat st;
+    if (stat(path, &st) != 0 || st.st_size <= 0 || st.st_size > 32 * 1024 * 1024) return -1;
+    size_t len;
+    unsigned char *encoded = read_file(path, &len);
+    if (!encoded) return -1;
+    int w, h, channels;
+    if (!stbi_info_from_memory(encoded, (int)len, &w, &h, &channels) || w < 1 || h < 1 || w > 6000 || h > 6000 ||
+        (size_t)w * h > 16000000) { free(encoded); return -1; }
+    unsigned char *data = stbi_load_from_memory(encoded, (int)len, &w, &h, &channels, 1);
+    free(encoded);
+    if (!data) return -1;
+    int rc = canvas_init(out, w, h);
+    if (rc == 0) memcpy(out->px, data, (size_t)w * h);
+    stbi_image_free(data);
+    return rc;
+}
+
 // ---- settings ----
 
 static const char *k_tool_keys[TOOL_COUNT] = {"pencil",   "mech",      "ballpoint", "eraser",   "highlighter",
@@ -1799,7 +1820,7 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
     else if (!strcmp(k, "theme")) {
         s->theme = !strcmp(v, "classic") ? 1 : 0;
         keep_value(k, v, s->theme == 1 || !strcmp(v, "gothic") ? NULL : "gothic");
-    } else if (!strcmp(k, "sleep_mode")) s->sleep_mode = keep_int(k, v, 0, 2);
+    } else if (!strcmp(k, "sleep_mode")) s->sleep_mode = keep_int(k, v, 0, 3);
     else if (!strcmp(k, "sleep_minutes")) s->sleep_minutes = keep_int(k, v, 0, 240);
     else if (!strcmp(k, "settings_version")) s->version = atoi(v);
     // The port is saved as used, never kept: the launcher reads it from the file to open the firewall.

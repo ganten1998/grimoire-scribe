@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-22 12:54-0500\n"
+"POT-Creation-Date: 2026-10-24 01:53-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -19,7 +19,7 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
-#: src/annotate.c src/store.c
+#: src/annotate.c src/store.c src/ui.c
 msgid "Untitled"
 msgstr "Sin título"
 
@@ -60,12 +60,6 @@ msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
 msgstr ""
 "No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir "
 "hace falta su lápiz."
-
-#. TRANSLATORS: %s is the app's name, Grimoire.
-#: src/app.c
-#, c-format
-msgid "Your Kindle passcode is paused while %s is open."
-msgstr "La contraseña del Kindle queda suspendida mientras %s está abierto."
 
 #. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
 #. sheet that says "Calibrate pen and touch": name them as they are translated.
@@ -384,6 +378,10 @@ msgstr "En reposo: una página fijada (toca para cambiar)"
 msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
 msgstr "En reposo: el salvapantallas del Kindle (toca para cambiar)"
 
+#: src/dispmenu.c
+msgid "Sleep screen: KOReader wallpaper (tap to change)"
+msgstr "Al dormir: imagen de KOReader (toca para cambiar)"
+
 #. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: src/dispmenu.c
@@ -419,6 +417,10 @@ msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
 #: src/dispmenu.c
 msgid "Sleep"
 msgstr "Reposo"
+
+#: src/dispmenu.c
+msgid "Sleep screen: Kindle PIN (native unlock)"
+msgstr "Al dormir: PIN del Kindle (desbloqueo nativo)"
 
 #. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: src/dispmenu.c
@@ -563,12 +565,9 @@ msgstr "Página %d (abierta)"
 msgid "Page %d"
 msgstr "Página %d"
 
-#. TRANSLATORS: at the bottom of the Pages view: how to delete pages (Delete is the button's
-#. name), then which screenful of them this is (1320 px at 34 px).
 #: src/editor.c
-#, c-format
-msgid "Tick pages, then Delete.   %d of %d"
-msgstr "Marca páginas y toca Borrar.   %d de %d"
+msgid "Go to page..."
+msgstr "Ir a la página..."
 
 #: src/editor.c
 msgid "Could not save this page. Is the storage full?"
@@ -608,6 +607,14 @@ msgid "Deleted %d page (kept in %s)"
 msgid_plural "Deleted %d pages (kept in %s)"
 msgstr[0] "Se borró %d página (guardada en %s)"
 msgstr[1] "Se borraron %d páginas (guardadas en %s)"
+
+#: src/editor.c
+msgid "Enter a page number in this notebook."
+msgstr "Introduce un número de página de este cuaderno."
+
+#: src/editor.c
+msgid "Go to page"
+msgstr "Ir a la página"
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
 #. panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
@@ -700,6 +707,14 @@ msgstr "ZIP (PDF + páginas en PNG + archivos originales)"
 #: src/httpd.c
 msgid "Effects (transparent, colors, gradients, filters)"
 msgstr "Efectos (transparencia, colores, degradados, filtros)"
+
+#: src/httpd.c
+msgid "Page"
+msgstr "Página"
+
+#: src/httpd.c
+msgid "Go"
+msgstr "Ir"
 
 #. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
 #: src/httpd.c
@@ -953,6 +968,30 @@ msgstr "lápiz: %s"
 msgid "Data: %s"
 msgstr "Datos: %s"
 
+#: src/library.c
+msgid "Install / update Grimoire plugin"
+msgstr "Instalar / actualizar el complemento Grimoire"
+
+#: src/library.c
+msgid "KOReader not found"
+msgstr "No se encontró KOReader"
+
+#: src/library.c
+msgid "Remove Grimoire plugin"
+msgstr "Quitar el complemento Grimoire"
+
+#: src/library.c
+msgid "Disable diagonal screenshot gestures"
+msgstr "Desactivar capturas con gestos diagonales"
+
+#: src/library.c
+msgid "Square folder corners"
+msgstr "Esquinas cuadradas en las carpetas"
+
+#: src/library.c
+msgid "Terminess menu font"
+msgstr "Fuente Terminess en los menús"
+
 #. TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
 #. Kindle's storage the PDF goes in.
 #: src/library.c
@@ -1031,6 +1070,14 @@ msgstr "Carpeta"
 msgctxt "keyboard"
 msgid "Name"
 msgstr "Nombre"
+
+#: src/library.c
+msgid "Updated. Restart KOReader to apply."
+msgstr "Actualizado. Reinicia KOReader para aplicar los cambios."
+
+#: src/library.c
+msgid "Could not update KOReader. A different patch or a storage error?"
+msgstr "No se pudo actualizar KOReader. ¿Hay otro parche o un error de almacenamiento?"
 
 #: src/library.c
 msgid "Saving the PDF in the background..."
@@ -2004,3 +2051,11 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#, c-format
+#~ msgid "Your Kindle passcode is paused while %s is open."
+#~ msgstr "La contraseña del Kindle queda suspendida mientras %s está abierto."
+
+#, c-format
+#~ msgid "Tick pages, then Delete.   %d of %d"
+#~ msgstr "Marca páginas y toca Borrar.   %d de %d"

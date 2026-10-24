@@ -1,8 +1,8 @@
 # root: z_annotate_g_paused
-# env: GRIMOIRE_PASSCODE=paused
-# The start after z_annotate_g_paused: the passcode's notice, which that start's toast went without,
-# is told now.
+# env: GRIMOIRE_PASSCODE=enabled
+# After the annotation failure, no obsolete "PIN paused" notice appears.
 wait 300
 expect annotate.result is none
-expect toast is Your Kindle passcode is paused while Grimoire is open.
+expect native_pin is 1
+expect toast not passcode is paused
 quit

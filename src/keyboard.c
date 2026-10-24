@@ -148,6 +148,18 @@ static Rect field_rect(Rect area) {
 }
 
 static int layout(Rect area, int page, Key *keys) {
+    if (page == 2) {
+        int n = 0, gap = ui_px(16), h = ui_px(150), w = (area.w - ui_px(60) - 2 * gap) / 3;
+        int x = area.x + ui_px(30), y = area.y + ui_px(170);
+        for (int i = 0; i < 9; i++)
+            keys[n++] = (Key){{x + (i % 3) * (w + gap), y + (i / 3) * (h + gap), w, h}, '1' + i};
+        y += 3 * (h + gap);
+        keys[n++] = (Key){{x, y, w, h}, KB_KEY_CANCEL};
+        keys[n++] = (Key){{x + w + gap, y, w, h}, '0'};
+        keys[n++] = (Key){{x + 2 * (w + gap), y, w, h}, KB_KEY_BKSP};
+        keys[n++] = (Key){{x, y + h + gap, area.w - ui_px(60), h}, KB_KEY_DONE};
+        return n;
+    }
     const uint16_t (*rows)[11] = k_rows[page ? 1 : 0];
     int n = 0;
     int kh = ui_px(150), gap = ui_px(10);

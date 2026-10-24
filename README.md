@@ -48,7 +48,7 @@ updating; most people keep OTA updates blocked.
 
 1. Download `Grimoire-<version>.zip` from the
    [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files
-   (and a `KOReader plugin (optional)` folder for installing the KOReader plugin by hand: see Does
+   (optional KOReader plugin and patches folders for manual installation: see Does
    it work in KOReader?).
 2. Connect the Kindle to your computer. The Scribe uses MTP: on a Mac, use
    [OpenMTP](https://openmtp.ganeshrvel.com) (or `brew install --cask openmtp`); on Windows and
@@ -92,7 +92,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **The floating panel** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
   it anywhere; tap the corner arrows to fold it into a small box.
 - **Pen button**: hold it to highlight (or erase; Settings), click it three times to clear the page.
-- **Pages**: tap the page counter for a grid of previews; jump, or tick pages and delete them.
+- **Pages**: tap the page counter for a fast numbered grid, or **Go to page...** for a number pad.
+  The grid reads no other pages. Tap a tile to open it, or tick pages and delete them.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
 - **Pinch** to zoom up to 4x. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
@@ -102,11 +103,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   saved (the Kindle's storage is full), a hold while awake says so and stays; hold again within a
   minute to leave without it. Opened from KOReader, Exit reads **Back to KOReader**, and both ways
   out take you back to KOReader.
-- **Passcode**: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open
-  (as KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the
-  Kindle restarts while Grimoire is open, the passcode stays off until you turn it back on in the
-  Kindle's Settings; Grimoire reminds you when it next starts (at up to three starts). Opened from
-  KOReader, Grimoire leaves the passcode to KOReader, which keeps it paused until KOReader quits.
+- **Passcode**: started from the Kindle Library, Grimoire keeps your Device Passcode enabled.
+  Sleep hands the screen and touch input to the Kindle's own keypad; unlocking returns to your
+  notebook. Native PIN takes priority over a custom sleep picture, and keeps the framework up.
+  KOReader normally disables the PIN for its whole session; opening Grimoire from that session
+  inherits KOReader's policy. Start Grimoire from the Library when you need native PIN protection.
 - **Language**: English or Spanish, following the Kindle's own language (see Language).
 
 ## White ink, pinned pens and templates
@@ -157,7 +158,8 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 
 1. **Wi-Fi**: turn on Wi-Fi and open **Library > Share**. Point your phone's camera at the QR code
    it shows, or type the address under it into any browser on the same network. Download a
-   notebook as PDF or zip, single pages as PNG, or everything at once. **Effects** makes
+   notebook as PDF or zip, single pages as PNG, or everything at once. The browser reader shows
+   one page at a time, with a page counter and number field at the top; type a number to jump. **Effects** makes
    transparent, recolored or filtered copies (gradient signatures, warm tones, sepia, blueprint
    and more) and shows the matching ImageMagick command. Only devices on your network can reach
    it, and only while the Share screen is open.
@@ -168,7 +170,7 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 ## Does it work in KOReader?
 
 Yes: KOReader can open Grimoire and get you back to your book. With KOReader installed (the
-Kindle's `koreader` folder), tap **Grimoire** in the Library once. That adds Grimoire to KOReader's
+Kindle's `koreader`, `extensions/koreader` or `documents/koreader` folder), tap **Grimoire** in the Library once. That adds Grimoire to KOReader's
 menu as **Tools > Grimoire**:
 
 - **Open Grimoire**: KOReader closes and Grimoire opens in its place, without the Kindle's home
@@ -184,11 +186,23 @@ speaks KOReader's language, English or Spanish (**Abrir Grimoire**, **PDF de los
 after you update Grimoire, tap it in the Library once.
 
 This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`
-start, which pauses the Kindle's own screens); a KOReader started another way says why Grimoire
-cannot open from it. Opened from KOReader, Grimoire cannot show the Kindle's own screensaver as its
+start). A KOReader launcher that leaves the Kindle interface running is supported too: Grimoire
+pauses it for its own session and restores it before returning. Opened from KOReader, Grimoire cannot show the Kindle's own screensaver as its
 sleep screen (that needs the Kindle's screens, which KOReader keeps paused), so it shows your page
-instead. With KOReader started from KUAL without the Kindle framework, the power button may not
-put the Kindle to sleep inside Grimoire.
+instead. The plugin keeps KOReader's framework service alive during Grimoire on a no-framework KUAL start,
+so the power service can still handle sleep.
+
+**Library > Settings > KOReader** installs or updates the plugin, removes it, or toggles each
+of the three optional patches: diagonal screenshot gestures off, square folder corners, and
+Terminess menu fonts. The font patch includes the font. Restart KOReader after changing a patch
+or the plugin. A different patch at the same filename is preserved; no patches are applied just
+by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
+you could download with beta.1, unchanged, with fonts and manual instructions added.
+
+**Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
+image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works
+on a later Library start. If no custom image is available, your page shows. A random folder picks
+one image per handover; KOReader's message/status widgets are not copied. Native PIN takes priority.
 
 *Execute shell script* on `Grimoire.sh` in KOReader's file browser still refuses, because
 KOReader keeps the pen and the touch screen to itself (KOReader reports status 3): use Tools >
@@ -270,12 +284,13 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 
 ## Privacy
 
-- **Your Kindle's passcode is paused while Grimoire is open** (see Passcode above). Anyone who
-  wakes the Kindle then sees your page without the passcode, and can leave Grimoire to the
-  Kindle's home screen.
-- **Erasing deletes.** The eraser removes whole strokes from the page file; nothing you erase is
-  kept in it. Pages and notebooks you delete are kept in `grimoire/trash` until you delete them
-  from a computer.
+- **Native PIN stays enabled on a Library start.** Grimoire does not read or store your PIN,
+  and does not log input while the native keypad owns it. KOReader's own session can still have
+  disabled the PIN; see Passcode above.
+- **Erased ink.** Fully erased strokes are removed by background compaction after a notebook
+  closes. A partially erased stroke remains whole in the raw page file; old exporters can show
+  its erased parts. Deleted pages and notebooks stay in `grimoire/trash` until you remove them.
+
 - **Share has no password.** Anyone on the same network can open it while the Share screen is
   open, and nobody once you leave it. Do not open Share on a network you do not trust.
 - **grimoire.log**, which a bug report asks for, holds no serial number, account, Wi-Fi name or
@@ -362,3 +377,6 @@ on the Kindle.
 
 Kindle and Kindle Scribe are trademarks of Amazon.com, Inc. or its affiliates. Grimoire is an
 independent project and is not affiliated with, endorsed by or supported by Amazon.
+
+For the proposed selection-annotation and wireless Emacs/org-roam bridge, see
+[the source investigation and integration design](docs/INTEGRATIONS.md). These are future work.

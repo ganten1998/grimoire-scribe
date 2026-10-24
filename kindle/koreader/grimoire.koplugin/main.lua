@@ -290,13 +290,12 @@ function Grimoire:refusal()
     if not Device:isKindle() then return "kindle_only" end
     -- koreader.sh runs from this copy for as long as KOReader is up, and its restart loop is
     -- what brings KOReader back after Grimoire. (grimoire.sh checks the processes themselves.)
-    if not is_file(self.koreader_sh) then return "not_koreader_sh" end
-    -- koreader.sh paused the Kindle UI, or stopped it; started from KPVBooklet, it pauses nothing,
-    -- and the Kindle's screens would draw over Grimoire.
-    if os.getenv("STOP_FRAMEWORK") ~= "yes" and os.getenv("PILLOW_HARD_DISABLED") ~= "yes"
-            and os.getenv("AWESOME_STOPPED") ~= "yes" then
-        return "not_paused"
+    local dir = os.getenv("KOREADER_DIR")
+    if not is_file(self.koreader_sh) and not (dir and is_file(dir .. "/koreader.sh")) then
+        return "not_koreader_sh"
     end
+    -- Launchers such as KPVBooklet leave the native UI running. grimoire.sh now pauses and
+    -- restores that UI itself, after it has verified ancestry and KOReader's input teardown.
     return nil
 end
 
@@ -555,7 +554,49 @@ end
 
 -- KOReader restarts, and its exit runs Grimoire once it has let go of the screen and the input.
 -- extra: more for grimoire.sh (" --annotate").
+-- Export the configured image/cover without ever showing KOReader's sleep UI. The file is a
+-- session snapshot: a random-image folder chooses once for this hand-over. Errors must never
+-- prevent opening Grimoire. Unsupported screensaver widgets fall back to Grimoire's page.
+function Grimoire:sendWallpaper()
+    local path = self.us .. "/grimoire/koreader-sleep.png"
+    os.remove(path)
+    os.remove(path .. ".tmp")
+    local mode = G_reader_settings:readSetting("screensaver_type")
+    if mode ~= "random_image" and mode ~= "document_cover" and mode ~= "cover" then return end
+    local bb, widget, screensaver
+    local ok, err = pcall(function()
+        screensaver = require("ui/screensaver")
+        screensaver:setup()
+        if not screensaver.image and not screensaver.image_file then return end
+        local Blitbuffer = require("ffi/blitbuffer")
+        local w, h = Device.screen:getWidth(), Device.screen:getHeight()
+        bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+        bb:fill(screensaver.screensaver_background == "black" and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE)
+        widget = require("ui/widget/imagewidget"):new{
+            image = screensaver.image, file = screensaver.image_file,
+            file_do_cache = false, image_disposable = true, width = w, height = h,
+            scale_factor = not G_reader_settings:readSetting("screensaver_stretch_images") and 0 or nil,
+            stretch_limit_percentage = G_reader_settings:readSetting("screensaver_stretch_limit_percentage"),
+            alpha = true,
+        }
+        widget:paintTo(bb, 0, 0)
+        local result = bb:writePNG(path .. ".tmp")
+        if result == false or not is_nonempty_file(path .. ".tmp") or not os.rename(path .. ".tmp", path) then
+            error("wallpaper could not be written")
+        end
+    end)
+    if widget then pcall(function() widget:free() end) end
+    if bb then bb:free() end
+    if screensaver then pcall(function() screensaver:cleanup() end) end
+    os.remove(path .. ".tmp")
+    if not ok then
+        os.remove(path)
+        logger.warn("Grimoire: wallpaper export unavailable:", err)
+    end
+end
+
 function Grimoire:handOver(launcher, busy, extra)
+    self:sendWallpaper()
     handing_over = true
     local marker = launch_marker()
     local f = io.open(marker, "w")
@@ -574,6 +615,11 @@ function Grimoire:handOver(launcher, busy, extra)
         -- A failure here must not take reader.lua down with it: it would exit with another code
         -- than 85, and koreader.sh would hand the Kindle back to its home screen. Caught, KOReader
         -- just starts again, and the marker left behind says so.
+        -- Keep KOReader's frameworkStarted service alive for powerd when KUAL stopped the
+        -- native framework. Its normal exit closes this handle too early for an external app.
+        local framework = Device.framework_lipc_handle
+        local own_framework = rawget(Device, "framework_lipc_handle")
+        if framework then Device.framework_lipc_handle = false end
         local ok, err = pcall(function(...)
             koreader_exit(...)
             collectgarbage()
@@ -583,6 +629,13 @@ function Grimoire:handOver(launcher, busy, extra)
             logger.info("Grimoire: back in KOReader, grimoire.sh status", status)
             if status == 0 then os.remove(marker) end
         end, ...)
+        if framework then
+            rawset(Device, "framework_lipc_handle", own_framework)
+            pcall(function()
+                framework:set_string_property("com.lab126.blanket", "load", "screensaver")
+                framework:close()
+            end)
+        end
         if not ok then logger.warn("Grimoire: the hand-over failed:", err) end
     end
     -- From the file browser, exitOrRestart closes it and asks for the restart at once, so a failure

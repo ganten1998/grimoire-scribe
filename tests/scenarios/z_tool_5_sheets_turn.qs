@@ -128,6 +128,8 @@ tap 1240 966
 wait 100
 tap 1240 966
 wait 100
+tap 1240 966
+wait 100
 expect settings.sleep_mode is 0
 rotate 0
 wait 300

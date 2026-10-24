@@ -16,6 +16,16 @@ tap 1535 95
 wait 50
 expect library.sheet is settings
 shot 02-settings
+tap 500 1930
+wait 50
+expect library.sheet is koreader
+shot 02-koreader-controls
+tap 930 1450
+wait 50
+expect library.sheet is none
+tap 1535 95
+wait 50
+expect library.sheet is settings
 tap 930 930
 wait 100
 shot 03-settings-other-style
@@ -66,7 +76,7 @@ expect library.sheet is language
 tap 930 1265
 wait 50
 expect library.sheet is settings
-# Display, with its sleep rows: each of the three sleep screens.
+# Display, with its sleep rows: each of the four sleep screens.
 tap 930 780
 wait 50
 expect library.sheet is display
@@ -77,6 +87,10 @@ shot 08-display-sleep-1
 tap 930 1215
 wait 50
 shot 09-display-sleep-2
+tap 930 1215
+wait 50
+expect settings.sleep_mode is 3
+shot display-koreader-wallpaper
 tap 930 1215
 wait 50
 expect settings.sleep_mode is 0
@@ -311,6 +325,10 @@ shot 27-display-pinned
 expect settings.sleep_mode is 1
 tap 930 1165
 wait 50
+tap 930 1165
+wait 50
+expect settings.sleep_mode is 3
+shot display-koreader-wallpaper
 tap 930 1165
 wait 50
 expect settings.sleep_mode is 0
@@ -579,6 +597,10 @@ wait 50
 tap 1240 1005
 wait 50
 shot 54-display-landscape
+tap 1240 1005
+wait 50
+expect settings.sleep_mode is 3
+shot display-koreader-wallpaper
 tap 1240 1005
 wait 50
 expect settings.sleep_mode is 0

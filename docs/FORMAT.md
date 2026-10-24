@@ -641,10 +641,10 @@ line. Values are clamped to their ranges when read.
 | `follow_rotation` | 0 or 1 |
 | `invert` | 0 or 1: white on black |
 | `pinch_zoom` | 0 or 1 |
-| `sleep_mode` | the sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own |
+| `sleep_mode` | the sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own, 3 KOReader wallpaper (since 1.1.0-beta.2); native PIN overrides the choice |
 | `sleep_minutes` | sleep after this long without input, 0 to 240 (0 = never) |
 | `http_port` | the share server's port, 1024 to 65535 (the launcher reads it too, the last such line) |
-| `passcode_told` | 0 or 1: the notice that the Kindle's passcode is paused while Grimoire is open was shown (since 1.0.0-beta.2; 1.0.0-beta drops it, and the notice shows once more) |
+| `passcode_told` | 0 or 1: legacy notice flag from releases that paused the Kindle passcode; no longer used by native PIN support (since 1.0.0-beta.2; 1.0.0-beta drops it, and the notice shows once more) |
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta.2 keeps the line and shows English; 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |

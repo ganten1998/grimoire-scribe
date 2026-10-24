@@ -158,12 +158,12 @@ shows what the app holds.
 | `toast` | the toast showing, empty if none |
 | `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |
 | `asleep` | `1` while the sleep screen is up, else `0` |
-| `asleep.mode` | while asleep, which sleep screen is up, numbered as `settings.sleep_mode` after the hosted fallback (hosted by KOReader, mode 2 reads `0`); empty while awake |
+| `asleep.mode` | while asleep, which sleep screen is up, numbered as `settings.sleep_mode` after fallback/override (native PIN forces `2`; unavailable wallpaper uses `0`) (hosted by KOReader, mode 2 reads `0`); empty while awake |
 | `host` | `koreader` when started as KOReader's Grimoire plugin starts it (`GRIMOIRE_HOST=koreader`), else empty |
 | `language` | the language in use, `en` or `es` |
 | `rotation` | the quarter turns applied, 0..3 |
 | `size` | the screen, `1860x2480` or `2480x1860` (`1986x2648` or `2648x1986` under `GRIMOIRE_SIM_SIZE=1986x2648`) |
-| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
+| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
 | `settings.TOOL.PARAM` | a tool's pen feel as settings.ini stores it, four decimals: TOOL as for `editor.tool`, PARAM a slider's settings.ini name (`size_min_mm`, `size_max_mm`, `opacity_min`, `opacity_max`, `pressure_floor`, `pressure_ceiling`, `pressure_gamma`, `tilt_min_deg`, `tilt_max_deg`, `tilt_size`, `tilt_opacity`, `grain`, `smoothing`), e.g. `settings.fountain.pressure_gamma` |
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
@@ -176,12 +176,16 @@ shows what the app holds.
 | `editor.modal` | what is in front of the page: `none`, `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
+| `editor.loaded_pages` | pages currently loaded in the editor; opening or paging the number grid must not increase this |
+| `native_pin` | native PIN ownership path is active (`GRIMOIRE_PASSCODE=enabled`) |
+| `input.yielded` | pen and touch have been handed to the native UI for sleep/unlock |
+| `sleep.wallpaper` | KOReader wallpaper is decoded and cached |
 | `editor.ticked` | pages ticked in the Pages view |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music` or `language` (Settings > Language's list) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader` or `language` (Settings > Language's list) |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
 | `library.folder` | the open folder, empty at the top level |
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |

@@ -322,7 +322,7 @@ root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
-root/.passcode-paused          holds "paused" while the passcode is paused (Kindle integration)
+root/.passcode-paused          legacy beta.1 recovery marker (new sessions never create it)
 root/.passcode-left-off        how many starts were told a restart left the passcode off
 root/.koplugin-installed       the build whose KOReader plugin went into koreader/plugins, or
                                "removed" (Kindle integration); a Library start that finds no
@@ -381,8 +381,8 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
   it unpacks it into `/mnt/us/grimoire/app` when its BUILD_ID differs, then detaches
   `app/grimoire.sh`, which: sets `preventScreenSaver 1` while Grimoire starts (Grimoire turns it
   off again unless Sleep after is never), hides pillow (status bar), SIGSTOPs the framework
-  processes so nothing else draws or eats input, pauses the Device Passcode (below), runs the
-  binary, and on exit restores everything (SIGCONT, pillow, screensaver, passcode) and starts the
+  processes so nothing else draws or eats input, preserves the Device Passcode (below), runs the
+  binary, and on exit restores everything (SIGCONT, pillow, screensaver) and starts the
   home booklet. On a locked Kindle (power service state `screenSaver`, `readyToSuspend` or
   `suspended`) the restore does not write the screen saved at the start back: it would cover the
   screensaver or the passcode prompt. A start from the Library also installs KOReader's Grimoire
@@ -401,30 +401,20 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
   home screen shows in between, and the passcode stays paused. It fails safe: the wrapper runs in a
   pcall, so a failure still ends in code 85, and a launch marker that outlives the hand-over tells
   the user at KOReader's next start. Hosted mode refuses unless reader.lua, started by koreader.sh,
-  is among the launcher's parents and has let go of `/dev/input`, and KOReader paused the Kindle
-  UI. It keeps the launcher's lock, priority, firewall hole, watchdog and log, and leaves the screen
+  is among the launcher's parents, with koreader.sh among its ancestors, and has let go of
+  `/dev/input`. If KOReader left the native UI running, Grimoire owns its pause/restore. It keeps the launcher's lock, priority, firewall hole, watchdog and log, and leaves the screen
   dump, pillow, the home booklet, volumd, lab126_gui and the passcode to KOReader. In the app,
   `GRIMOIRE_HOST=koreader` makes Exit read Back to KOReader and sleep mode 2 show the page.
   `Grimoire.sh --unpack-only` and the `# Capabilities:` lines (`hosted` among them) are for the
   plugin; docs/KINDLE.md has the flags, the exit statuses, the hand-over step by step, the
   plugin's install and how a tool reads the Capabilities lines.
-- The Device Passcode: with one set, the Kindle holds back `outOfScreenSaver` until the passcode
-  is typed, and its keypad cannot take a touch while Grimoire grabs the touch screen, so a locked
-  Kindle could not be unlocked. Like KOReader, `app/grimoire.sh` removes
-  `/var/local/system/userpasswdenabled` for the session and touches it back at the end of
-  `restore()`, after the home booklet starts (in stop-framework mode before `start lab126_gui`,
-  which reads it). The pause needs its marker, `grimoire/.passcode-paused` (holding `paused`): it
-  is written first, with echo (a failed redirection on `:`, a special built-in, would end the
-  script), and a marker that cannot be written means no pause. A marker found with no flag at the
-  next start means a session ended without `restore()` (the Kindle restarted under Grimoire): the
-  passcode is then not turned back on, since it may have been changed or turned off since.
-  `grimoire/.passcode-left-off` counts the starts that tell the user so (that one and the next two
-  while the flag is still missing) and goes as soon as the passcode is back, or after the third.
-  The binary learns which through `GRIMOIRE_PASSCODE` (`paused`, `left-off` or empty) and says so:
-  "Your Kindle passcode is paused while Grimoire is open." once (settings.ini `passcode_told`), or
-  "Your Kindle passcode was left off. Turn it back on in Kindle Settings." in place of any other
-  start notice. Hosted by KOReader, all of this is left to `koreader.sh`, which pauses the passcode
-  for KOReader's whole session.
+- The native Device Passcode remains enabled on a Library start. On sleep the app yields
+  pen/touch grabs and resumes the native UI; only `outOfScreenSaver` takes it back. Input received
+  while yielded is discarded before coordinate logging. Reacquisition drains stale events and
+  resets contacts, and the UI commands have an ordered three-second bound. Native PIN forces
+  the stock sleep/lock screen and prevents stop-framework mode. Old beta.1 recovery markers are
+  still consumed without guessing a missing PIN flag. A KOReader session normally already disabled
+  PIN; Grimoire inherits its host's policy. See KINDLE.md for the boundaries and device test status.
 - The binary EVIOCGRABs the pen and touch devices. The power button (not grabbed) is watched: a
   press saves, the power service sleeps and wakes the Kindle inside Grimoire (next section), and a
   4 s hold saves and exits. Signals SIGTERM/SIGINT/SIGHUP save and exit cleanly. Whichever way
@@ -660,3 +650,21 @@ Latin Extended-A letters compare as their base letters, ß as ss, æ as ae, œ a
 th, combining accents dropped), so Álgebra sorts among the A's; names that fold equal go by their
 bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character
 that would cross the limit (`clean_line`).
+
+## Fast navigation and optional KOReader integration (1.1.0-beta.2)
+
+The Pages screen draws a fixed screenful of numbered tiles, never `load_page` or `page_render`
+for a preview. There is no preview cache. Selection is still by page index; a number pad (keyboard
+page 2) validates a direct jump before the selected page is read. The browser reader similarly
+uses one image at a time and a GET page field at the top (`?p=N`), clamped to the notebook's range.
+
+`src/koreader.c` discovers the hosted directory or three common installations and manages the
+plugin and optional patches. Different patch contents at a managed filename are preserved.
+Terminess fonts are copied from the binary's embedded font data. No KOReader settings Lua is
+executed. The plugin's custom wallpaper export is a bounded PNG committed by write-then-rename,
+read by `store_load_koreader_sleep`; it is cached only when used and freed at shutdown.
+
+The handover wrapper retains KOReader's frameworkStarted LIPC service across Device:exit when
+its native framework was stopped. Input/screen teardown still occurs before Grimoire. The handle
+closes after Grimoire returns, before koreader.sh starts a new reader process. App exit statuses
+propagate to the plugin so failed launches keep the diagnostic marker.

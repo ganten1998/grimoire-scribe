@@ -73,6 +73,9 @@ static struct {
     bool seen;
     bool rubber, side;  // the raw digitizer also reports the eraser end and the side button
 } W;
+static bool g_input_grabbed = true;
+static bool g_initial_grab_failed;
+static bool g_pen_resume_block;
 static bool g_side_reported;  // last side-button state sent as IN_PEN_BUTTON
 static int g_power_fd = -1;
 static PowerKey g_pkey;       // the press being followed (release, or the 4 s hold)
@@ -91,6 +94,8 @@ static InEvent g_q[QN];
 static int g_qh, g_qt;
 static int g_logged_pen, g_logged_touch;
 static void q_push(InEvent e) {
+    // PIN touches belong only to Amazon. Do not even log their coordinates.
+    if (!g_input_grabbed && (power_asleep_drops(&e) || e.type == IN_PEN_HOVER || e.type == IN_PEN_LEAVE || e.type == IN_PEN_BUTTON)) return;
     // Device bring-up: the first events of each kind go to the log.
     bool pen = e.type >= IN_PEN_DOWN && e.type <= IN_PEN_LEAVE;
     bool touch = e.type >= IN_TOUCH_DOWN && e.type <= IN_TOUCH_UP;
@@ -242,6 +247,12 @@ static void emit_touch(InType t, float x, float y) {
 }
 
 static void pen_frame(void) {
+    // A pen still touching the final PIN key must lift before it can start new ink.
+    if (g_pen_resume_block) {
+        if (P.touching) return;
+        g_pen_resume_block = false;
+        P.was_touching = false;
+    }
     P.prox = P.tool_pen || P.tool_rubber;
     // The eraser end may only be visible on the raw digitizer (the virtual pen can drop it).
     P.eraser = P.tool_rubber || W.rubber;
@@ -785,7 +796,10 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                 ioctl(fd, EVIOCGABS(ABS_TILT_Y), &g_pen.aty);
             }
             g_pen.has_touch_btn = test_bit(keyb, BTN_TOUCH);
-            if (ioctl(fd, EVIOCGRAB, 1) != 0) qlog("input: could not grab the pen: %s", strerror(errno));
+            if (ioctl(fd, EVIOCGRAB, 1) != 0) {
+                g_initial_grab_failed = true;
+                qlog("input: could not grab the pen: %s", strerror(errno));
+            }
             g_caps.has_pen = true;
             g_caps.has_pressure = g_pen.ap.maximum > g_pen.ap.minimum;
             strlcpy_q(g_caps.pen_name, name, sizeof g_caps.pen_name);
@@ -796,7 +810,10 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             g_touch.fd = fd;
             ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &g_touch.ax);
             ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &g_touch.ay);
-            if (ioctl(fd, EVIOCGRAB, 1) != 0) qlog("input: could not grab touch: %s", strerror(errno));
+            if (ioctl(fd, EVIOCGRAB, 1) != 0) {
+                g_initial_grab_failed = true;
+                qlog("input: could not grab touch: %s", strerror(errno));
+            }
             g_caps.has_touch = true;
             strlcpy_q(g_caps.touch_name, name, sizeof g_caps.touch_name);
             qlog("input: touch %s (%s) x %d..%d y %d..%d", path, name, g_touch.ax.minimum, g_touch.ax.maximum,
@@ -833,7 +850,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         g_wacom.fd = -1;
         ioctl(g_pen.fd, EVIOCGABS(ABS_X), &g_pen.ax);
         ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &g_pen.ay);
-        ioctl(g_pen.fd, EVIOCGRAB, 1);
+        if (ioctl(g_pen.fd, EVIOCGRAB, 1) != 0) g_initial_grab_failed = true;
         g_caps.has_pen = g_caps.has_pressure = true;
         g_caps.has_tilt = g_pen.atx.maximum > g_pen.atx.minimum;
         qlog("input: using the raw digitizer as the pen");
@@ -858,8 +875,11 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
-    return (g_pen.fd >= 0 || g_touch.fd >= 0) ? 0 : -1;
+    if (g_initial_grab_failed) qlog("input: another app holds an input device; refusing to open an unresponsive UI");
+    return !g_initial_grab_failed && (g_pen.fd >= 0 || g_touch.fd >= 0) ? 0 : -1;
 }
+
+static void discard_input(const struct input_event *ev);
 
 int input_poll(InEvent *ev, int timeout_ms) {
     if (g_quit) {
@@ -881,9 +901,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
     int r = poll(pf, (nfds_t)n, timeout_ms);
     if (r > 0) {
         // Raw digitizer first, so a pen frame uses this sample's pressure.
-        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, handle_wacom);
-        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, handle_pen);
-        if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, handle_touch);
+        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
+        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, g_input_grabbed ? handle_pen : discard_input);
+        if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, g_input_grabbed ? handle_touch : discard_input);
         if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
         if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
         if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
@@ -914,6 +934,57 @@ int input_poll(InEvent *ev, int timeout_ms) {
         q_push(b);
     }
     return q_pop(ev) ? 1 : 0;
+}
+
+static void discard_input(const struct input_event *ev) { (void)ev; }
+
+bool input_set_grab(bool grab) {
+    bool ok = true;
+    // Forget touches that were used to type the PIN, including the final finger lift.
+    if (grab) {
+        if (g_pen.fd >= 0) drain(g_pen.fd, discard_input);
+        if (g_touch.fd >= 0) drain(g_touch.fd, discard_input);
+        if (g_wacom.fd >= 0) drain(g_wacom.fd, discard_input);
+    }
+    if (g_pen.fd >= 0 && ioctl(g_pen.fd, EVIOCGRAB, grab ? 1 : 0) != 0) ok = false;
+    if (g_touch.fd >= 0 && ioctl(g_touch.fd, EVIOCGRAB, grab ? 1 : 0) != 0) ok = false;
+    if (!ok && grab) {
+        if (g_pen.fd >= 0) ioctl(g_pen.fd, EVIOCGRAB, 0);
+        if (g_touch.fd >= 0) ioctl(g_touch.fd, EVIOCGRAB, 0);
+    }
+    g_input_grabbed = grab && ok;
+    memset(&P, 0, sizeof P);
+    memset(&W, 0, sizeof W);
+    memset(&T, 0, sizeof T);
+    T.main = -1;
+    T.suppressed = true;
+    for (int i = 0; i < MAX_SLOTS; i++) T.id[i] = -1;
+    g_pinching = false;
+    g_side_reported = false;
+    g_pen_resume_block = false;
+    if (g_input_grabbed) {
+        if (g_pen.fd >= 0) {
+            pen_resync();
+            g_pen_resume_block = P.touching;
+            g_side_reported = P.side;
+        }
+        if (g_touch.fd >= 0) {
+            int slots[MAX_SLOTS + 1];
+            slots[0] = ABS_MT_TRACKING_ID;
+            for (int i = 1; i <= MAX_SLOTS; i++) slots[i] = -1;
+            if (ioctl(g_touch.fd, EVIOCGMTSLOTS(sizeof slots), slots) >= 0) {
+                T.suppressed = false;
+                for (int i = 0; i < MAX_SLOTS; i++) {
+                    T.id[i] = slots[i + 1];
+                    T.suppressed |= T.id[i] >= 0;
+                }
+            }
+            struct input_absinfo ai;
+            if (ioctl(g_touch.fd, EVIOCGABS(ABS_MT_SLOT), &ai) >= 0) T.slot = clampi(ai.value, 0, MAX_SLOTS - 1);
+        }
+    }
+    qlog("input: native lock: %s %s", grab ? "grab" : "release", ok ? "ok" : "failed");
+    return ok;
 }
 
 void input_close(void) {

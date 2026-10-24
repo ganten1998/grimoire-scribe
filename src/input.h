@@ -68,4 +68,6 @@ void input_watch_fd(int fd);
 void input_set_orientation(int quarter_turns);
 // Panel (unrotated) coordinates of a logical screen point, for calibration targets.
 void input_logical_to_panel(float lx, float ly, float *px, float *py);
+// Release pen and touch to the native PIN screen, then grab them after native unlock.
+bool input_set_grab(bool grab);
 void input_close(void);

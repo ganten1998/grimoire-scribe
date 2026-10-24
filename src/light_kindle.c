@@ -135,8 +135,17 @@ void sys_activity(void) {
     run_bg("lipc-set-prop -i com.lab126.powerd touchScreenSaverTimeout 1 >/dev/null 2>&1");
 }
 
-void sys_kindle_ui(bool run) {
+bool sys_kindle_ui(bool run) {
     const char *stopped = getenv("GRIMOIRE_AWESOME_STOPPED");
-    if (!stopped || strcmp(stopped, "yes")) return;  // the launcher did not pause it
-    run_bg(run ? "killall -CONT awesome 2>/dev/null" : "killall -STOP awesome 2>/dev/null");
+    const char *pillow = getenv("GRIMOIRE_PILLOW_DISABLED");
+    bool wm = stopped && !strcmp(stopped, "yes"), pi = pillow && !strcmp(pillow, "yes");
+    if (!wm && !pi) return true;
+    char cmd[512], answer[32];
+    // Synchronous at the lock boundary only: the UI must finish pausing before we draw again.
+    snprintf(cmd, sizeof cmd, "%s%s echo ready",
+             run ? (wm ? "killall -CONT awesome 2>/dev/null || exit 1; " : "")
+                 : (pi ? "lipc-set-prop com.lab126.pillow disableEnablePillow disable >/dev/null 2>&1 || exit 1; " : ""),
+             run ? (pi ? "lipc-set-prop com.lab126.pillow disableEnablePillow enable >/dev/null 2>&1 || exit 1; " : "")
+                 : (wm ? "killall -STOP awesome 2>/dev/null || exit 1; " : ""));
+    return run_line(cmd, answer, sizeof answer, 3000) == 0 && !strcmp(answer, "ready");
 }

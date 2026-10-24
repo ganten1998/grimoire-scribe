@@ -29,9 +29,9 @@ wait 400
 shot 01-pages-view
 expect editor.modal is pages
 expect editor.ticked is 0
-tap 1150 296
+tap 798 296
 expect editor.ticked is 1
-tap 547 1173
+tap 1700 296
 wait 200
 shot 02-ticked-2-and-4
 expect editor.ticked is 2
@@ -42,7 +42,7 @@ shot 03-after-delete
 expect editor.pages is 3
 expect editor.modal is pages
 expect editor.ticked is 0
-tap 326 608
+tap 200 380
 wait 400
 shot 04-opened-page-1
 expect editor.modal is none

@@ -97,6 +97,13 @@ ID=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks
 NAME=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['name'])")
 curl -fsS "$URL/nb/$ID" -o "$B/nb.html"
 check "notebook html" "grep -q '/nb/$ID/1.png' $B/nb.html"
+check "reader defaults to a page field, one image" "grep -q 'id=page-number name=p type=number' $B/nb.html && [ \"\$(grep -o '<img ' $B/nb.html | wc -l | tr -d ' ')\" = 1 ]"
+curl -fsS "$URL/nb/$ID?p=999999999" -o "$B/last.html"
+LAST=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['pages'])")
+check "reader clamps page entry to the last page" "grep -q 'max=$LAST value=$LAST' $B/last.html && grep -q '/nb/$ID/$LAST.png?f=2' $B/last.html"
+curl -fsS "$URL/nb/$ID?p=-9" -o "$B/first.html"
+check "reader clamps negative page entry" "grep -q 'value=1' $B/first.html"
+
 curl -fsS -D "$B/pdf.h" "$URL/nb/$ID.pdf" -o "$B/nb.pdf"
 check "pdf magic" "head -c 5 $B/nb.pdf | grep -q '%PDF-'"
 check "pdf attachment header" "grep -qi 'content-disposition: attachment' $B/pdf.h"

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0-beta.2 (2026-10-24)
+
+- **KOReader compatibility:** discovery includes `extensions/koreader` and `documents/koreader`,
+  handover accepts an intervening launcher process, and a KOReader launcher that leaves the Kindle
+  UI running gets a Grimoire-owned pause/restore. Grimoire failures now reach the plugin instead of
+  always reporting success. The plugin retains KOReader's framework service during Grimoire on
+  no-framework starts, so it does not discard the service needed for power events.
+- **Fast Pages:** a numbered grid loads no previews or other page files. **Go to page...** opens
+  a number pad. A regression scenario uses 120 pages and checks that only explicitly opened pages
+  enter memory. Selection and deletion still work.
+- **Browser reader:** one page at a time; a sticky page counter and number field at the top jump
+  directly to a page. Arrows, direct PNG links and Effects for that page remain available.
+- **Native Kindle PIN:** Library starts keep the passcode flag enabled throughout. Sleep releases
+  input and resumes the native keypad; only the unlock event returns input to Grimoire. Timers
+  cannot bypass it. The framework stays running for the keypad, and PIN takes priority over sleep
+  pictures. KOReader's own launcher still disables PIN for its session; hosted Grimoire inherits
+  that policy. This new native handover needs device confirmation across firmware versions.
+- **KOReader wallpaper:** Display's fourth sleep choice uses a custom image, random image or book
+  cover exported by the plugin at handover. A missing image falls back to the page. The native PIN
+  screen takes priority; KOReader's message/status widgets are not exported.
+- **Manage KOReader in Grimoire:** Library > Settings > KOReader installs/updates/removes the
+  plugin and toggles the three patches uploaded with beta.1. The three Lua scripts are reused
+  unchanged; Terminess fonts, their OFL and manual instructions are included. Different patches
+  at the same filename are preserved. Restart KOReader to apply changes. Both release zip assets
+  include the optional scripts.
+- **Carry-over fixes:** retain all book-title characters (show a box for glyphs the UI font lacks),
+  refresh a card when its annotation picture arrives, put `source.ini` in raw exports, return to
+  the tool button's own pen on its first tap, and wait for jobs rather than fixed delays in tests.
+  Populated Templates and KOReader controls join the language/layout checks.
+
 ## 1.1.0-beta.1 (2026-10-20)
 
 - **White ink and a precise eraser**: the tool picker (tap the pen button on the panel) has a new

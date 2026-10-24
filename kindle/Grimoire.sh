@@ -149,9 +149,13 @@ esac
 # each file goes in whole (a copy, then a rename).
 koplugin() {
     src=$APP/koreader/grimoire.koplugin
-    dst=$US/koreader/plugins/grimoire.koplugin
+    ko=""
+    for candidate in "$US/koreader" "$US/extensions/koreader" "$US/documents/koreader"; do
+        if [ -f "$candidate/reader.lua" ]; then ko=$candidate; break; fi
+    done
+    dst=$ko/plugins/grimoire.koplugin
     mark=$US/grimoire/.koplugin-installed
-    if [ ! -f "$US/koreader/reader.lua" ]; then
+    if [ -z "$ko" ]; then
         if [ -e "$mark" ]; then
             rm -f "$mark"
             log "KOReader is no longer installed: a KOReader installed later gets the Grimoire plugin"
@@ -160,7 +164,7 @@ koplugin() {
     fi
     [ -d "$src" ] || return 0
     was=$(cat "$mark" 2>/dev/null)
-    if [ -e "$mark" ] && [ ! -d "$dst" ]; then
+    if [ -e "$mark" ] && [ ! -f "$dst/main.lua" ]; then
         if [ "$was" != removed ]; then
             echo removed >"$mark"
             log "KOReader's Grimoire plugin was removed from $dst: not installing it again"

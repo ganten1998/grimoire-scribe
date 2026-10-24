@@ -11,7 +11,8 @@ or open the address in a browser on any computer or phone on the same network:
 
 - every folder and notebook with a thumbnail
 - per notebook: **PDF**, **ZIP** (PDF + one PNG per page + the raw files), **Effects** (below),
-  and a page view where each page is a full-resolution PNG
+  and a reader with one page at a time, a sticky page counter and direct number entry at the top
+  (half-size preview; tap it for the full-resolution PNG)
 - per folder: a zip; at the top: **Download everything**
 
 The code holds the Kindle's Wi-Fi (wlan0) address, the only one the launcher opens the share port

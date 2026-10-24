@@ -18,14 +18,22 @@ book. (Without the plugin, quit KOReader first: Grimoire.sh does not run from KO
 browser.) After an update, tap Grimoire in the Library once: that updates the plugin too. For
 setups without Library scriptlets, or to install the plugin again, copy the folder "KOReader
 plugin (optional)" from this zip: its grimoire.koplugin folder goes into koreader/plugins on the
-Kindle. To remove the plugin, delete koreader/plugins/grimoire.koplugin; while KOReader stays
+Kindle. You can also manage it in Library > Settings > KOReader. To remove it by hand, delete
+koreader/plugins/grimoire.koplugin; while KOReader stays
 installed, Grimoire does not put it back (copying the folder again does).
 LANGUAGE: English or Spanish (a draft), in Settings > Language (Ajustes > Idioma in Spanish).
 Automatic, the default, follows the Kindle's own language; pick English there to switch back.
-PASSCODE: if your Kindle has a Device Passcode, Grimoire pauses it while Grimoire is open (as
-KOReader does), so the Kindle does not lock, and turns it back on when you leave. If the Kindle
-restarts while Grimoire is open, the passcode stays off until you turn it back on in the Kindle's
-Settings; Grimoire reminds you when it next starts.
+PASSCODE: from the Kindle Library, Grimoire keeps the native PIN enabled. Sleep hands input
+and screen to the Kindle's keypad; unlock to return to your notebook. Native PIN takes priority
+over custom sleep pictures and stop-framework mode. KOReader normally disables the PIN before
+Grimoire can run; start Grimoire from the Library if you need native PIN protection.
+PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles the three
+optional KOReader patches. Restart KOReader after a change. The manual patches folder includes
+fonts and instructions. Different patches with the same filename are kept.
+WALLPAPER: Display > Sleep screen: KOReader wallpaper uses KOReader's custom image/cover, copied
+at each Tools > Grimoire handover. Without one, it shows your page. Native PIN takes priority.
+PAGES: the numbered grid reads no previews; Go to page... opens a number pad. In the web reader,
+the counter and number field at the top jump directly to any page, one page loaded at a time.
 
 LEAVING: Library > Exit, or hold the power button 4 seconds (the way out when stuck, too):
 Grimoire saves and closes (opened from KOReader, Exit reads Back to KOReader, and both go back

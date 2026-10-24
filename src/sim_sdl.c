@@ -279,7 +279,9 @@ void sys_request_sleep(void) {
     e.t_ms = now_ms();
     q_push(e);
 }
-void sys_kindle_ui(bool run) { (void)run; }
+bool sys_kindle_ui(bool run) { (void)run; return true; }
+static bool g_sim_grab = true;
+bool input_set_grab(bool grab) { g_sim_grab = grab; return true; }
 void sys_prevent_sleep(bool prevent) { (void)prevent; }
 void sys_activity(void) {}
 bool display_broken(void) { return false; }

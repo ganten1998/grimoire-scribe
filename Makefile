@@ -25,7 +25,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
             src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
 CORE_SRC += src/bgimage.c
-CORE_SRC += src/annotate.c
+CORE_SRC += src/annotate.c src/koreader.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -303,15 +303,23 @@ PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
 KOPLUGIN_SRC := $(wildcard kindle/koreader/grimoire.koplugin/*.lua)
+KOPATCH_SRC := $(wildcard kindle/koreader/patches/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
                            assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
-                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC)
+                           $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
 	mkdir -p $(PKG)/app/koreader/grimoire.koplugin "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin"
 	cp $(KOPLUGIN_SRC) $(PKG)/app/koreader/grimoire.koplugin/
+	mkdir -p $(PKG)/app/koreader/patches "$(PKG)/KOReader patches (optional)"
+	cp $(KOPATCH_SRC) $(PKG)/app/koreader/patches/
+	cp $(KOPATCH_SRC) "$(PKG)/KOReader patches (optional)/"
+	mkdir -p "$(PKG)/KOReader patches (optional)/fonts/Grimoire"
+	cp assets/TerminessNerdFontMono-*.ttf "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
+	cp assets/Terminess-OFL-1.1.txt "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
+	cp kindle/koreader/PATCHES.txt "$(PKG)/KOReader patches (optional)/README.txt"
 	cp $(KOPLUGIN_SRC) "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin/"
 	sed -n 's/^# Capabilities: //p' kindle/Grimoire.sh > $(PKG)/app/CAPABILITIES
 	cp LICENSE $(PKG)/app/licenses/GPL-3.0.txt
@@ -364,8 +372,11 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	chmod +x $(PKG)/documents/*.sh
 	sed 's/@VERSION@/$(VERSION)/' kindle/README.txt > $(PKG)/README.txt
 	cp LICENSE $(PKG)/LICENSE.txt
-	( cd $(PKG) && rm -f ../Grimoire.zip && COPYFILE_DISABLE=1 zip -qrX ../Grimoire.zip documents README.txt LICENSE.txt "$(KOPLUGIN_ZIP)" )
+	( cd $(PKG) && rm -f ../Grimoire.zip && COPYFILE_DISABLE=1 zip -qrX ../Grimoire.zip documents README.txt LICENSE.txt "$(KOPLUGIN_ZIP)" "KOReader patches (optional)" )
 	cp $@ $(BUILD)/dist/Grimoire-$(VERSION).zip
+	rm -rf $(BUILD)/dist/patchstage && mkdir -p $(BUILD)/dist/patchstage/KOReader-patches
+	cp -R "$(PKG)/KOReader patches (optional)/." $(BUILD)/dist/patchstage/KOReader-patches/
+	( cd $(BUILD)/dist/patchstage && rm -f ../KOReader-patches.zip && COPYFILE_DISABLE=1 zip -qrX ../KOReader-patches.zip KOReader-patches )
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,

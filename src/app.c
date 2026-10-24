@@ -52,6 +52,7 @@ static int g_sleep_shown;  // the sleep screen app_sleep last chose, for app_pro
 // the launcher never wakes it, so the Kindle's own screensaver (mode 2) cannot show: the page
 // does instead.
 static int sleep_mode(const App *a) {
+    if (a->native_pin) return 2;
     if (a->settings.sleep_mode != 2 || !*app_host()) return a->settings.sleep_mode;
     static bool told;
     if (!told) {
@@ -135,6 +136,8 @@ int app_init(App *a, int w, int h, float dpi) {
     a->h = h;
     a->dpi = dpi;
     a->running = true;
+    const char *pin = getenv("GRIMOIRE_PASSCODE");
+    a->native_pin = pin && !strcmp(pin, "enabled");
     if (canvas_init(&a->screen, w, h) != 0) return -1;
     store_set_device(dpi, w, h);
     settings_load(&a->settings);
@@ -170,10 +173,8 @@ int app_init(App *a, int w, int h, float dpi) {
     // could not be opened, why is that toast, unless the passcode was left off.
     char note[256];
     bool annotate_failed = annotate_at_start(a, note, sizeof note);
-    // The launcher pauses the Kindle's passcode while Grimoire runs (kindle/app/grimoire.sh says
-    // why) and says so here; "left-off": an earlier session ended without putting it back (told
-    // at up to three starts while it stays off). That one goes first: the Kindle is unprotected.
-    // Then what became of the page KOReader just sent; the others wait for a later start.
+    // Compatibility notice for beta.1, which could leave the passcode off after a restart.
+    // Current standalone sessions leave it enabled and yield to the native keypad on sleep.
     const char *passcode = getenv("GRIMOIRE_PASSCODE");
     char msg[256];
     if (passcode && !strcmp(passcode, "left-off")) {
@@ -187,11 +188,6 @@ int app_init(App *a, int w, int h, float dpi) {
         // TRANSLATORS: %s is the app's name, Grimoire.
         snprintf(msg, sizeof msg, _("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
         app_toast(a, msg, 10000);
-    } else if (passcode && !strcmp(passcode, "paused") && !a->settings.passcode_told) {
-        a->settings.passcode_told = true;
-        // TRANSLATORS: %s is the app's name, Grimoire.
-        snprintf(msg, sizeof msg, _("Your Kindle passcode is paused while %s is open."), APP_NAME);
-        app_toast(a, msg, 8000);
     } else if (!a->settings.pen_calib.valid) {
         // TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
         // sheet that says "Calibrate pen and touch": name them as they are translated.
@@ -208,6 +204,7 @@ void app_shutdown(App *a) {
     // Queued PDF exports finish on their own after Grimoire exits. After editor_free: closing the
     // open notebook (leaving straight from the editor) queues its mirror PDF.
     bg_detach_rest();
+    canvas_free(&a->koreader_wallpaper);
     canvas_free(&a->toast_under);
     canvas_free(&a->screen);
     font_shutdown();
@@ -376,18 +373,30 @@ static void app_sleep(App *a) {
     a->asleep = true;
     a->wake_redraw_at = 0;
     a->wake_fallback_at = 0;
-    if (a->scr == SCR_EDITOR) editor_save_now(a);
+    if (a->scr == SCR_EDITOR && !editor_suspend(a)) qlog("sleep: could not save the open page; keeping it in memory");
     if (a->scr == SCR_SHARE) share_sleep(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
     int mode = sleep_mode(a);
     g_sleep_shown = mode;
     if (mode == 2) {
-        sys_kindle_ui(true);
+        a->input_yielded = true;
+        if (!input_set_grab(false) || !sys_kindle_ui(true)) {
+            qlog("sleep: could not hand input and screen to the Kindle; leaving for native unlock");
+            a->running = false;
+        }
         return;
     }
     Canvas *c = &a->screen;
     Canvas pinned = {0};
     const Canvas *src = NULL;
+    if (mode == 3) {
+        if (!a->koreader_wallpaper.px) store_load_koreader_sleep(&a->koreader_wallpaper);
+        if (a->koreader_wallpaper.px) src = &a->koreader_wallpaper;
+        else {
+            qlog("sleep: no KOReader image wallpaper available; showing the page");
+            g_sleep_shown = 0;
+        }
+    }
     if (mode == 1 && store_load_sleep_image(&pinned) == 0) src = &pinned;
     if (!src) src = editor_page_canvas(a);
     if (src) {
@@ -405,6 +414,14 @@ static void app_sleep(App *a) {
 
 static void app_wake(App *a) {
     if (!a->asleep) return;
+    if (a->input_yielded) {
+        if (!sys_kindle_ui(false) || !input_set_grab(true)) {
+            qlog("wake: could not take the screen and input back; leaving");
+            a->running = false;
+            return;
+        }
+        a->input_yielded = false;
+    }
     a->asleep = false;
     a->wake_fallback_at = 0;
     a->power_pressed_at = 0;  // a press taken for a sleep press was this wake's: no sleep request after it
@@ -413,7 +430,7 @@ static void app_wake(App *a) {
     a->sleep_requested = false;
     qlog("wake");
     int mode = sleep_mode(a);
-    if (mode == 2) sys_kindle_ui(false);
+
     // A sleep request turned preventScreenSaver off: "Sleep after: never" wants it back on.
     app_apply_sleep_policy(a);
     // Back to work at once (no-flash refresh), then once more a moment later in case the Kindle
@@ -561,6 +578,10 @@ void app_tick(App *a, uint32_t now) {
     if (a->asleep && a->wake_fallback_at && (int32_t)(now - a->wake_fallback_at) >= 0) {
         a->wake_fallback_at = 0;
         char st[48];
+        if (a->native_pin) {
+            qlog("wake: waiting for the Kindle's native PIN unlock (outOfScreenSaver)");
+            return;
+        }
         switch (power_wake_fallback(powerd_state_now(st, sizeof st), &a->locked_wakes)) {
         case WAKE_FALLBACK_STAY:
             qlog("wake: no outOfScreenSaver within 3 s of the power button, and the power service is in %s: the "
@@ -709,6 +730,9 @@ int app_probe(const char *key, char *out, size_t cap) {
         {"settings.touch.valid", st->touch_calib.valid},
         {"settings.eraser_mode", st->eraser_mode},
         {"settings.white", st->white},
+        {"native_pin", a->native_pin},
+        {"input.yielded", a->input_yielded},
+        {"sleep.wallpaper", a->koreader_wallpaper.px != NULL},
         {"bg.busy", bg_busy()},  // a background job (an export, a compaction) runs or waits
     };
     for (size_t i = 0; i < sizeof nums / sizeof nums[0]; i++)

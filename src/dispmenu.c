@@ -12,12 +12,13 @@ static const int k_sleep_steps[] = {0, 1, 2, 5, 10, 15, 30, 60};
 #define N_SLEEP_STEPS ((int)(sizeof k_sleep_steps / sizeof k_sleep_steps[0]))
 
 // The sleep screen row, one sentence per choice (settings.ini sleep_mode 0, 1, 2).
-static const char *const k_mode_rows[3] = {
+static const char *const k_mode_rows[4] = {
     // TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
     // the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
     N_("Sleep screen: the page I'm on (tap to change)"),
     N_("Sleep screen: a pinned page (tap to change)"),
     N_("Sleep screen: the Kindle's own screensaver (tap to change)"),
+    N_("Sleep screen: KOReader wallpaper (tap to change)"),
 };
 
 static int step_of(int minutes) {
@@ -109,8 +110,8 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
     canvas_fill(c, mode, 255);
     ui_icon(c, ICON_NOTEBOOK, (Rect){mode.x, mode.y + rh / 8, rh * 3 / 4, rh * 3 / 4}, 0);
     font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){mode.x + rh, mode.y, mode.w - rh, rh},
-                   _(k_mode_rows[clampi(a->settings.sleep_mode, 0, 2)]), 0);
-    hits_add(&m->hits, mode, D_SLEEP_MODE, 0);
+                   a->native_pin ? _("Sleep screen: Kindle PIN (native unlock)") : _(k_mode_rows[clampi(a->settings.sleep_mode, 0, 3)]), 0);
+    if (!a->native_pin) hits_add(&m->hits, mode, D_SLEEP_MODE, 0);
     y += rh;
     if (editor_page_canvas(a)) {
         Rect pin = {in.x, y + ui_px(8), ui_px(560), rh - ui_px(16)};
@@ -200,7 +201,7 @@ DmResult dispmenu_pointer(DispMenu *m, App *a, int ph, float x, float y, uint32_
         dispmenu_draw(m, a);
         return DM_INVERTED;
     case D_SLEEP_MODE:
-        a->settings.sleep_mode = (a->settings.sleep_mode + 1) % 3;
+        a->settings.sleep_mode = (a->settings.sleep_mode + 1) % 4;
         settings_save(&a->settings);
         break;
     case D_PIN:

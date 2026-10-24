@@ -1,0 +1,14 @@
+KOReader patches supplied with Grimoire
+
+Use Grimoire > Library > Settings > KOReader to apply or remove each patch. Restart KOReader
+once after changing them. The patches are optional; installing the Grimoire plugin does not
+apply them. Existing different patches at the same filename are kept.
+
+- 2-no-diagonal-screenshot.lua: disables the two diagonal screenshot gestures.
+- 2-mosaic-square-corners.lua: square folder tiles in Cover browser's mosaic view.
+- 2-terminess-ui-font.lua: Terminess / Terminus menus. Grimoire supplies Terminess and its OFL.
+
+Manual installation: copy the three .lua files into your KOReader installation's patches/
+folder. Copy fonts/Grimoire/ into its fonts/ folder. Restart KOReader. Remove a .lua file and
+restart to undo that patch. The font files can stay; without the patch they change no menus.
+These are the owner's three scripts from the 1.1 beta release, reused unchanged.
