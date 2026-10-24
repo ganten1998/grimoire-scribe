@@ -32,8 +32,8 @@ wait 700
 shot 03-pens-on-music
 expect editor.strokes is 3
 # Custom music from the editor's paper sheet: start from the last layout, add a bass staff
-# (after the first-run calibration tip has gone: this shot is in the README)
-wait 5000
+# Let the ink settle before the README shot.
+wait 300
 expect toast is
 pentap 1768 1242
 wait 200

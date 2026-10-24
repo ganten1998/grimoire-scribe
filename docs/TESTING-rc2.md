@@ -2,7 +2,8 @@
 
 RC2 removes the experimental KOReader DPI patch, its Settings control and runtime tests.
 KOReader keeps its native sizing policy and the owner's existing DPI preference. The updated
-Terminess font-family selection and dropdown battery spacing remain.
+Terminess font-family selection and dropdown battery spacing remain. The calibration startup
+tip is removed; startup scenarios now expect no toast in the normal case.
 
 ## Package and migration checks
 
@@ -25,6 +26,11 @@ reinstalling the explicit package ID refreshed the RC2 payload and pruned the kn
 The installed ARM binary reports `1.1.0-rc.2`; DPI is absent from both the active KOReader patches
 folder and Grimoire's app cache, and Terminess remains installed. The settings hash matches the
 snapshot from before the upgrade. No Grimoire UI was launched by the deployment check.
+The owner then confirmed both opening Grimoire from KOReader and returning to KOReader work.
+After removing the startup tip, the package was refreshed again with a fresh settings snapshot;
+the installed ARM SHA256 matches the tested no-tip build and KOReader's process IDs stayed
+unchanged. Startup/passcode/stale-annotation cases, the scenario runner's intentional-failure
+check, translation notices, and the rebuilt package/launchers passed focused verification.
 
 The real package and `grimoirelocalrc` source are retained for the owner's testing. Earlier
 launchers remain backed up under `kindle-lab/grimoire-before-kpm-20261024/`. See TESTING-rc1.md for

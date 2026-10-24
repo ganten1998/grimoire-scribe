@@ -8,5 +8,5 @@ expect screen is library
 expect annotate.result is stale
 expect annotate.leftover is 0
 expect library.items is 0
-expect toast is Tip: Settings > Calibrate pen if strokes land off the tip
+expect toast is
 quit

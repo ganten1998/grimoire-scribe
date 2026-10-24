@@ -560,7 +560,6 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT("%s", _("Your Kindle passcode was left off. Turn it back on in Kindle Settings."));
     PUT(_("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
     PUT(_("Your Kindle passcode is paused while %s is open."), APP_NAME);
-    PUT("%s", _("Tip: Settings > Calibrate pen if strokes land off the tip"));
     PUT("%s", _("Could not save this page. Hold power 4 s again to leave anyway."));
     PUT(_("Saved. Leaving %s."), APP_NAME);
     PUT(_("Leaving %s without this page."), APP_NAME);

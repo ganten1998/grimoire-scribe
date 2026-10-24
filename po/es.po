@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-24 10:30-0500\n"
+"POT-Creation-Date: 2026-10-24 10:46-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -60,13 +60,6 @@ msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
 msgstr ""
 "No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir "
 "hace falta su lápiz."
-
-#. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
-#. sheet that says "Calibrate pen and touch": name them as they are translated.
-#: src/app.c
-msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
-msgstr ""
-"Consejo: si el trazo no queda bajo la punta, ve a Ajustes > Calibrar el lápiz"
 
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
 #. saved (a full storage), so it stays once.
@@ -2084,6 +2077,11 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
+#~ msgstr ""
+#~ "Consejo: si el trazo no queda bajo la punta, ve a Ajustes > Calibrar el "
+#~ "lápiz"
 
 #~ msgid "Scribe DPI: proportional scaling"
 #~ msgstr "DPI de Scribe: escala proporcional"

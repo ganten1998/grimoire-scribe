@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.1.0-rc.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-24 10:30-0500\n"
+"POT-Creation-Date: 2026-10-24 10:46-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -52,12 +52,6 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
-msgstr ""
-
-#. TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
-#. sheet that says "Calibrate pen and touch": name them as they are translated.
-#: src/app.c
-msgid "Tip: Settings > Calibrate pen if strokes land off the tip"
 msgstr ""
 
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be

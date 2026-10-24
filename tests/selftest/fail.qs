@@ -6,8 +6,8 @@ wait 200
 expect screen is editor
 expect screen has edit
 expect screen not library
-# the empty value is a value too: the first-run calibration tip is showing
-expect toast is
+# the empty value is a value too: the screen name is nonempty
+expect screen is
 # keys nobody answers
 expect nonsense is 1
 expect editor.nonsense is 1

@@ -37,8 +37,8 @@ pen curve 1000 1490 70 120 0.7 3 -40 46
 pen line 150 1800 330 1980 30 0.7 0.7 0 0
 pen line 330 1980 510 1800 30 0.7 0.7 0 0
 pen curve 1000 1890 70 120 0.7 3 0 0
-# Long enough for the first-run calibration tip to go (these shots go in the README).
-wait 6300
+# Let the ink settle before the README shot.
+wait 300
 expect toast is
 shot 01-charcoal-calligraphy
 expect editor.strokes is 15

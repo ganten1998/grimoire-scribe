@@ -192,10 +192,7 @@ int app_init(App *a, int w, int h, float dpi) {
         // TRANSLATORS: %s is the app's name, Grimoire.
         snprintf(msg, sizeof msg, _("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
         app_toast(a, msg, 10000);
-    } else if (!a->settings.pen_calib.valid) {
-        // TRANSLATORS: Settings is the Library's Settings button, and Calibrate pen the row of its
-        // sheet that says "Calibrate pen and touch": name them as they are translated.
-        app_toast(a, _("Tip: Settings > Calibrate pen if strokes land off the tip"), 6000);
+
     }
     return 0;
 }
