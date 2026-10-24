@@ -222,7 +222,8 @@ pins "Grimoire.sh" "$B/script.sh" 'US=${GRIMOIRE_US:-/mnt/us}' 'TMP=${GRIMOIRE_T
 pins "app/grimoire.sh" "$B/app/grimoire.sh" 'US=${GRIMOIRE_US:-/mnt/us}' 'TMP=${GRIMOIRE_TMP:-/tmp}' \
     'SYS=${GRIMOIRE_SYSROOT:-}' 'WD_TICK=${GRIMOIRE_WD_TICK:-2}' 'WD_FIRST=${GRIMOIRE_WD_FIRST:-25}' \
     'WD_STALE=${GRIMOIRE_WD_STALE:-15}'
-pins "the reset scriptlet" "$B/zip/$RESET" 'S=${GRIMOIRE_US:-/mnt/us}/grimoire/settings.ini'
+pins "the reset scriptlet" "$B/zip/$RESET" 'S=${GRIMOIRE_US:-/mnt/us}/grimoire/settings.ini' \
+    'p=$(cat "${GRIMOIRE_TMP:-/tmp}/grimoire.launcher.pid" 2>/dev/null)'
 # The watchdog looks for the heartbeat where the binary writes it (TMP is /tmp on the device).
 check "app/grimoire.sh watches \$TMP/grimoire.alive" grep -qE '^BEAT=\$TMP/grimoire\.alive( |$)' "$B/app/grimoire.sh"
 check "the binary beats in /tmp/grimoire.alive" grep -qF /tmp/grimoire.alive "$B/app/grimoire"
