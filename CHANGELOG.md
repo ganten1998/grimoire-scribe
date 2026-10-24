@@ -20,6 +20,10 @@
   custom values proportionally. Loads before widgets cache sizes, leaves other devices alone,
   and retains KOReader's restart requirement. This changes KOReader's sizing policy only when
   the separate patch is enabled.
+- **Installer follow-up:** stage Library wrappers inside Documents before the final rename.
+  The Kindle blocks cross-directory moves into that folder; the real migration from the owner's
+  beta.2 launchers now passes. Regression coverage includes rollback after a failed second move.
+  The share test keeps its server alive until downloads finish instead of racing a 25-second timer.
 - **Validation:** real Scribe/KPM 0.2.2 isolated install, unpack, ARM version and uninstall passed;
   repository beta-app → RC upgrade and the local-file uninstall/reinstall fallback also passed.
   KPM 0.2.2 rejects a direct local-file upgrade; see docs/KPM.md. Original launchers and the

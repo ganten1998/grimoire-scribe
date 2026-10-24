@@ -72,12 +72,31 @@ a beta KPM artifact was previously published. See KPM.md for the local-file limi
   and English/Spanish: all passed. An initial layout run used the old six-row binary with the
   updated seven-row test coordinates; rebuilding and rerunning resolved those test failures.
 - Final KOReader manager (40 checks), shortcuts (26), and power policy (104) tests: all passed.
-- Final ARM/SDL builds, ZIP contents, launcher simulations, KPM tests (8), Lua patch tests (530)
+- Final ARM/SDL builds, ZIP contents, launcher simulations, KPM tests (9), Lua patch tests (530)
   and workflow actionlint validation: all passed.
 - Final share/web checks, QR decoding, Effects comparison, Copy behavior and host export: passed;
   two fixture notebooks exported, zero failures.
 - Final KPM package repeated the successful physical lifecycle test; temporary package, registry
   entry and test root were removed. The explicitly requested patch fixes and backup remain.
+
+## Search-bar install follow-up
+
+The owner's real `;kpm install grimoire` attempt reached KPM and selected the RC, but failed at
+`mv` from `grimoire/.kpm-install` into the actual Documents folder. KPM rolled back and retained
+the beta.2 app. A probe confirmed fsp rejects moves into that folder from elsewhere, while
+same-directory rename/replace succeeds. Earlier isolated roots did not exercise that policy.
+
+The hook now stages hidden files directly beside the destination launchers. A regression test
+simulates fsp's boundary and a failed second rename, checking rollback and staging cleanup.
+Retried real installation through KPM after backing up the original Library launchers under
+`/mnt/us/kindle-lab/grimoire-before-kpm-20261024/`: installed entry is `grimoire|1|1|5001`, actual
+Library wrappers are KPM wrappers, and unpacked ARM `--version` reports `1.1.0-rc.1`. Settings
+hash and the running KOReader process IDs stayed unchanged. This actual installation and its
+local test source are intentionally retained for the owner, unlike earlier temporary test roots.
+
+The first cloud run also exposed a share-test timing race: its server exited after 25 seconds
+while the slower runner was still downloading. The test now holds the server until its driver
+stops it; the complete local share/QR/Effects/Copy checks passed with that lifetime control.
 
 ## Remaining hardware checks
 

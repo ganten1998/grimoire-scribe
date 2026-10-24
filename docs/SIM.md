@@ -60,6 +60,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `rotate N` | the Kindle now turned N quarter turns clockwise (0..3) |
 | `sleep`, `wake` | the power service announcing the sleep screen, and its end |
 | `wait MS` | let timers run (autosave, toasts, the share server) |
+| `hold` | keep timers and the server running until the external test driver stops the process |
 | `waitbg [MS]` | let timers run until no background job is queued or running (an import, a template's picture, a PDF), at most MS (60000 if not given): what it waited for took as long as the machine let it, so it ends with that job's toast up |
 | `shot NAME` | write what the panel shows to `$GRIMOIRE_SHOTS/NAME.png` |
 | `expect KEY is\|has\|not VALUE` | check the app's state (see Checks) |
@@ -282,7 +283,7 @@ none. Without it, the simulator's QR code takes the first wlan* or en* address (
 `tools/qrdecode.swift` is a macOS Vision decoder (`qrdecode [--polarity] image...`) that
 `tests/share_check.sh` builds into `build/host/qrdecode`. The check takes `BUILD` (default
 `build`, the Makefile passes its own) for the app, the decoder and the shots, and runs its own
-copy of `c_share` held open 25 s longer for its downloads (`make scenarios` runs the short one).
+copy of `c_share` held open by the test driver until downloads finish (`make scenarios` runs the short one).
 Besides `c_share`, it writes `build/shots/c_share_classic`, `q_share_rotate`, `q_share_invert` and
 `share_layouts/<style>-<case>`: the style is gothic or classic, the case one, two, three, usb-only
 or none, and each folder holds `portrait.png` and `landscape.png`. It keeps step with

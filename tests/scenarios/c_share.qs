@@ -1,5 +1,5 @@
-# Open Share (tests/share_check.sh runs a copy that stays 25 s longer before shot 02, while its
-# client downloads; make scenarios runs it as it is)
+# Open Share (tests/share_check.sh holds a copy open while its client downloads, then stops it;
+# make scenarios runs this script as it is)
 wait 300
 expect screen is library
 tap 1345 95

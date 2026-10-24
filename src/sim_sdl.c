@@ -337,6 +337,7 @@ void display_close(void) {
 
 static FILE *g_script;
 static uint32_t g_wait_until;
+static bool g_script_hold; // external test driver owns lifetime after the hold command
 static bool g_wait_bg;  // waitbg: the wait ends early once no background job is queued or running
 static char g_pending_shot[128];
 static bool g_script_done;
@@ -599,6 +600,9 @@ static void script_step(void) {
             g_wait_until = now_ms() + (uint32_t)atoi(b);
             g_wait_bg = false;
             return;
+        } else if (!strcmp(a, "hold")) {
+            g_script_hold = true;
+            return;
         } else if (!strcmp(a, "waitbg")) {
             // Background work (an import, a template's picture, a PDF) takes as long as the machine
             // lets it: wait for it to end, not a time that holds on a quiet machine only.
@@ -858,6 +862,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
             g_pending_shot[0] = 0;
         }
         if (g_expect.pending) expect_check();  // an expect waits for the same moment
+        if (g_script_hold) { sleep_ms(timeout_ms); return 0; }
         if (g_wait_bg && !bg_busy()) g_wait_bg = false, g_wait_until = now_ms();  // (reaped: its toast is up)
         if ((int32_t)(now_ms() - g_wait_until) < 0) {
             uint32_t left = g_wait_until - now_ms();

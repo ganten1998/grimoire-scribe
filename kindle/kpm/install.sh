@@ -6,6 +6,16 @@ require_closed
 mkdir -p "$DOCS" "$ROOT"
 WORK=$ROOT/.kpm-install
 if ! mkdir "$WORK"; then echo 'Another Grimoire installation is pending.' >&2; exit 1; fi
+# Kindle's fsp refuses cross-directory moves into the real documents/ folder.
+# Stage beside each destination so the final rename stays within that directory.
+STAGE=$DOCS/.grimoire-kpm-$$
+for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
+    if [ -e "$STAGE-$name" ]; then
+        rmdir "$WORK"
+        echo 'A launcher staging file already exists; keeping it.' >&2
+        exit 1
+    fi
+done
 ok=no
 changed=no
 cleanup() {
@@ -14,6 +24,7 @@ cleanup() {
             if [ -f "$WORK/old/$name" ]; then cp -f "$WORK/old/$name" "$DOCS/$name"; else rm -f "$DOCS/$name"; fi
         done
     fi
+    for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do rm -f "$STAGE-$name"; done
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -29,13 +40,13 @@ for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
         fi
         cp "$DOCS/$name" "$WORK/old/$name"
     fi
-    cp "$DIR/scriptlets/$name" "$WORK/$name"
-    chmod 755 "$WORK/$name"
+    cp "$DIR/scriptlets/$name" "$STAGE-$name"
+    chmod 755 "$STAGE-$name"
 done
 # All staging succeeded before either installed launcher changes.
 changed=yes
 for name in Grimoire.sh 'Grimoire - reset pen calibration.sh'; do
-    mv -f "$WORK/$name" "$DOCS/$name"
+    mv -f "$STAGE-$name" "$DOCS/$name"
 done
 ok=yes
 echo 'Grimoire installed. Notebooks were kept; no KOReader plugin or patches were installed.'

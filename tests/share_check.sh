@@ -29,8 +29,9 @@ stop_app() {
     wait "$APP" 2>/dev/null || true
     APP=
 }
-# c_share.qs, held open 25 s longer before its last shot: the downloads below need the server.
-awk '/^shot 02-share-after$/ { print "wait 25000" } { print }' tests/scenarios/c_share.qs >"$B/c_share_long.qs"
+# Keep the server alive until stop_app: cloud downloads may take longer than 25 seconds.
+# The driver's EXIT trap also stops it on failure; no arbitrary lifetime races the requests.
+awk '/^shot 02-share-after$/ { print "hold" } { print }' tests/scenarios/c_share.qs >"$B/c_share_long.qs"
 # The app reads its port from the data root's settings (the root is a scratch copy of a scenario).
 if [ -f "$ROOT/settings.ini" ]; then
     grep -v '^http_port=' "$ROOT/settings.ini" > "$B/settings.ini" || true

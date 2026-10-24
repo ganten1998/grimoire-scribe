@@ -16,8 +16,8 @@ grimoire`; the complete app stays in KPM's package directory and unpacks into `g
 first launch. A reset-calibration Library item is included. Close Grimoire before installing,
 upgrading or removing it. Quit KOReader before a normal Library launch.
 
-Installation can migrate the two official manual Grimoire launchers. It stages both before
-replacing either, restores them if a hook fails, and refuses unrelated documents with those
+Installation can migrate the two official manual Grimoire launchers. It stages both beside their destinations before
+replacing either (the Kindle blocks cross-directory moves into Documents), restores them if a hook fails, and refuses unrelated documents with those
 names. An existing running Grimoire blocks the hook. KPM itself controls package extraction and
 upgrade rollback; the hook cannot make KPM's own package replacement transactional.
 

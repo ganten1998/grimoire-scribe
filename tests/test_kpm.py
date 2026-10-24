@@ -90,6 +90,40 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(ko.read_bytes(), b'user patch')
         self.assertFalse((self.us / 'grimoire/.kpm-install').exists())
 
+    def test_kindles_documents_rename_boundary_and_rollback(self):
+        # fsp permits same-directory rename/replace in actual documents/, but rejects moving
+        # a staged launcher from grimoire/.kpm-install into documents/. Reproduce that policy.
+        shims = self.root / 'shims'
+        shims.mkdir()
+        mv = shims / 'mv'
+        mv.write_text("""#!/usr/bin/env python3
+import os, pathlib, sys
+args = [x for x in sys.argv[1:] if x != '-f']
+src, dst = map(pathlib.Path, args)
+if src.parent != dst.parent:
+    print('fsp: cross-directory move denied', file=sys.stderr)
+    sys.exit(1)
+if os.environ.get('FAIL_RESET_MOVE') and dst.name.startswith('Grimoire - reset'):
+    sys.exit(1)
+os.replace(src, dst)
+""")
+        mv.chmod(0o755)
+        self.env['PATH'] = str(shims) + os.pathsep + self.env['PATH']
+        docs = self.us / 'documents'
+        docs.mkdir()
+        original = '#!/bin/sh\n# Name: Grimoire\n# Author: Ganten\n# old manual launcher\n'
+        (docs / 'Grimoire.sh').write_text(original)
+        self.env['FAIL_RESET_MOVE'] = '1'
+        self.hook('install.sh', ok=False)
+        self.assertEqual((docs / 'Grimoire.sh').read_text(), original)
+        self.assertFalse((docs / 'Grimoire - reset pen calibration.sh').exists())
+        self.assertFalse(list(docs.glob('.grimoire-kpm-*')))
+        del self.env['FAIL_RESET_MOVE']
+        self.hook('install.sh')
+        self.assertIn('kpm', (docs / 'Grimoire.sh').read_text())
+        self.assertFalse(list(docs.glob('.grimoire-kpm-*')))
+        self.hook('uninstall.sh')
+
     def test_modified_and_unrelated_launchers_are_preserved(self):
         self.hook('install.sh')
         launcher = self.us / 'documents/Grimoire.sh'
