@@ -39,7 +39,9 @@ else
     echo "skip the KOReader plugin check (neither luajit nor luac is installed)"
 fi
 if command -v luacheck >/dev/null 2>&1; then
-    check "luacheck" luacheck --no-color -q --std luajit --globals G_reader_settings -- "$DIR"
+    # KOReader methods receive implicit self even when unused; translation literals stay whole.
+    check "luacheck" luacheck --no-color -q --std luajit --no-self --max-line-length 200 \
+        --globals G_reader_settings -- "$DIR"
 else
     echo "skip luacheck (not installed)"
 fi

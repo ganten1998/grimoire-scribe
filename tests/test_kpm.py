@@ -89,6 +89,18 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(notebook.read_bytes(), b'private notebook')
         self.assertEqual(ko.read_bytes(), b'user patch')
         self.assertFalse((self.us / 'grimoire/.kpm-install').exists())
+        self.assertFalse((self.tmp / 'grimoire.kpm-install').exists())
+
+    def test_install_leaves_legacy_migration_for_first_launch(self):
+        legacy = self.us / 'quire/notebooks/old.qpg'
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b'legacy notebook')
+        self.hook('install.sh')
+        # Grimoire.sh migrates quire/ only when grimoire/ does not exist yet. Hook bookkeeping
+        # must not create that directory and silently make legacy notebooks disappear from view.
+        self.assertFalse((self.us / 'grimoire').exists())
+        self.assertEqual(legacy.read_bytes(), b'legacy notebook')
+        self.assertFalse((self.tmp / 'grimoire.kpm-install').exists())
 
     def test_kindles_documents_rename_boundary_and_rollback(self):
         # fsp permits same-directory rename/replace in actual documents/, but rejects moving

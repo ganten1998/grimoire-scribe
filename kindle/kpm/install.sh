@@ -3,8 +3,10 @@ set -eu
 . "$(dirname "$0")/common.sh"
 platform
 require_closed
-mkdir -p "$DOCS" "$ROOT"
-WORK=$ROOT/.kpm-install
+# Do not create grimoire/ here: the payload must be able to migrate an existing quire/ on first
+# launch. Installer backups/lock are temporary; final launcher staging stays beside Documents.
+mkdir -p "$DOCS" "$TMP"
+WORK=$TMP/grimoire.kpm-install
 if ! mkdir "$WORK"; then echo 'Another Grimoire installation is pending.' >&2; exit 1; fi
 # Kindle's fsp refuses cross-directory moves into the real documents/ folder.
 # Stage beside each destination so the final rename stays within that directory.

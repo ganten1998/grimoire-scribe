@@ -1,8 +1,9 @@
 #!/bin/sh
 # Sourced by the KPM hooks. Never changes rootfs, PIN flags, KOReader or notebook data.
+# Hook scripts use these shared paths after sourcing this file.
+# shellcheck disable=SC2034
 US=${GRIMOIRE_US:-/mnt/us}
 TMP=${GRIMOIRE_TMP:-/tmp}
-ROOT=$US/grimoire
 DOCS=$US/documents
 DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 busy() {

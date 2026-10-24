@@ -24,7 +24,7 @@ jobs:
           python-version: '3.12'
       - name: Install build and test tools
         run: |
-          brew install gettext luajit imagemagick
+          brew install gettext luajit imagemagick shellcheck luacheck
           echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
           curl --fail --location --retry 3 https://ziglang.org/download/index.json -o "$RUNNER_TEMP/zig-index.json"
           python3 - <<'PY'
@@ -53,7 +53,7 @@ jobs:
       - name: Collect release files
         run: |
           cp build/dist/Grimoire-"$(cat VERSION)".zip build/dist/KOReader-patches.zip build/kpm/
-          (cd build/kpm && shasum -a 256 *.zip *.kpkg > SHA256SUMS.txt)
+          (cd build/kpm && shasum -a 256 ./*.zip ./*.kpkg > SHA256SUMS.txt)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: grimoire-release

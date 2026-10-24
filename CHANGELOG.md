@@ -6,6 +6,8 @@
 - Add a small gap between the Gothic header ornament and Library thumbnails, in both orientations.
 - Refuse manual unpack/update and calibration resets while Grimoire is running, before touching
   its cached executable or settings. Background PDF exports do not block later starts.
+- Keep KPM's temporary installer bookkeeping out of `grimoire/`, so a first launch can still
+  migrate notebooks from the old Quire name. Require shell/Lua linters in the release workflow.
 - Remove the experimental KOReader DPI patch and its Settings control. KOReader keeps its native
   scaling policy and the owner’s DPI preference. The Terminess font/battery-spacing fix remains.
 - Retain the corrected KPM installer for the real Documents folder and the driver-owned Share

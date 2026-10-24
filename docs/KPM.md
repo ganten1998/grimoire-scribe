@@ -20,6 +20,8 @@ Installation can migrate the two official manual Grimoire launchers. It stages b
 replacing either (the Kindle blocks cross-directory moves into Documents), restores them if a hook fails, and refuses unrelated documents with those
 names. An existing running Grimoire blocks the hook. KPM itself controls package extraction and
 upgrade rollback; the hook cannot make KPM's own package replacement transactional.
+Temporary installer bookkeeping lives in `/tmp`, leaving an older `quire/` data directory
+eligible for the payload's normal first-launch migration instead of creating an empty `grimoire/`.
 
 Uninstall with `kpm -y uninstall grimoire`. Only unchanged KPM Library launchers are removed.
 **All `grimoire/` data remains**, including notebooks, settings, PDFs, mappings and unpack cache.

@@ -42,13 +42,13 @@ wait_until() {  # wait_until TENTHS COMMAND...: polls the command until it succe
 
 # Every script parses, with each shell at hand.
 for f in kindle/Grimoire.sh kindle/app/grimoire.sh "kindle/Grimoire - reset pen calibration.sh" \
-    tests/launcher_check.sh tests/package_check.sh tests/koplugin_check.sh tests/shims/*; do
+    kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh tests/koplugin_check.sh tests/shims/*; do
     check "sh -n $f" sh -n "$f"
     if command -v dash >/dev/null 2>&1; then check "dash -n $f" dash -n "$f"; fi
 done
 if command -v shellcheck >/dev/null 2>&1; then
     check "shellcheck" shellcheck -s sh -S warning kindle/Grimoire.sh kindle/app/grimoire.sh \
-        "kindle/Grimoire - reset pen calibration.sh" tests/launcher_check.sh tests/package_check.sh \
+        "kindle/Grimoire - reset pen calibration.sh" kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh \
         tests/koplugin_check.sh tests/shims/*
 else
     echo "skip shellcheck (not installed)"
@@ -277,8 +277,10 @@ suite() {
         # Hosted needs its ordinary KOReader environment before the live-app guard.
         if [ "$flag" = --hosted ]; then
             KOREADER_DIR=$US/koreader sh "$DOC" --hosted koreader 2>"$T/stderr"
+        elif [ -z "$flag" ]; then
+            KOREADER_DIR='' sh "$DOC" 2>"$T/stderr"
         else
-            KOREADER_DIR= sh "$DOC" $flag 2>"$T/stderr"
+            KOREADER_DIR='' sh "$DOC" "$flag" 2>"$T/stderr"
         fi
         rc=$?
         check "$s live update ($flag): refused without unpacking ($rc)" is "$rc" "$want"

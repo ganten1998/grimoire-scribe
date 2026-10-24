@@ -28,6 +28,9 @@ KPM tests cover Documents' same-directory rename requirement, staged failure, ro
 preservation and preview/stable version ordering. Launcher tests check retirement of the old
 cache file and preservation of local changes. Terminess Lua checks cover font matching, real
 bold, main/aux battery spacing, bidi wrappers, idempotency and isolation to the menu status line.
+Installer bookkeeping uses the temporary filesystem rather than creating `grimoire/` before
+first launch: a regression checks that an existing `quire/` notebook remains available for the
+payload's migration. KPM has ten host tests after adding this case.
 
 ## Actual Kindle
 
@@ -42,6 +45,16 @@ After removing the startup tip, the package was refreshed again with a fresh set
 the installed ARM SHA256 matches the tested no-tip build and KOReader's process IDs stayed
 unchanged. Startup/passcode/stale-annotation cases, the scenario runner's intentional-failure
 check, translation notices, and the rebuilt package/launchers passed focused verification.
+The Gothic spacing/session-guard build was also reinstalled through KPM. Its ARM SHA256 is
+`e6ea6cddaa8294890022446579835b50b1d53ad8cb1cf7dd48295a24bbc85877`; settings hashes and
+KOReader process IDs again stayed unchanged. ZIP and KPM carry the same launcher and ARM payload.
+
+An isolated Bluetooth HID bridge (upstream v3.18.0) discovered the owner's 8BitDo Arcade Stick
+over Classic Bluetooth, but authentication/connection failed before an input node became ready.
+Its "paired" response was not accepted as proof of usable input. The owner deferred further
+testing. The temporary process was stopped; the original Bluetooth services and off state were
+restored. No HID startup service, udev rules, button mapper or KOReader plugin was installed.
+Bluetooth pairing is not bundled with Grimoire, and Arcade Stick compatibility remains unverified.
 
 The real package and `grimoirelocalrc` source are retained for the owner's testing. Earlier
 launchers remain backed up under `kindle-lab/grimoire-before-kpm-20261024/`. See TESTING-rc1.md for
@@ -53,6 +66,11 @@ Run `make -j4 check`: sanitizer units, headless scenarios, both themes/languages
 launcher checks, KPM/Lua tests, share/QR/Effects/Copy checks and host export. PR checks record the
 result for the current source. The share-test driver owns its server's lifetime; it no longer
 exits on the old 25-second timer while slower cloud downloads are still running.
+The complete local gate passed during this hardening pass, including the positive 71-check
+runner selftest. The final installer/linter changes receive focused package/launcher/KPM checks.
+CI now installs ShellCheck and Luacheck explicitly, including the KPM hooks in shell checks.
+The Lua check ignores only framework methods' implicit self and allows whole translation strings
+up to 200 columns; other warnings remain failures. PR checks establish the final cloud result.
 
 Physical keyboard/controller behavior and multi-firmware KOReader/native-PIN handover remain
 hardware checks. Public HTTPS feed installation follows publication; the local repository path
