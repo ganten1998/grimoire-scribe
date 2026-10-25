@@ -359,11 +359,18 @@ make check     # unit tests, scripted UI scenarios with state checks, share serv
                # on every screen (make l10n-check)
 make sim       # desktop simulator window (docs/SIM.md)
 make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
+make dist      # complete installable bundle in dist/Grimoire-VERSION-COMMIT/
 make package   # build/dist/Grimoire.zip
 make kpm-package # build/kpm/*.kpkg and preview/stable repository manifests
 make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
 make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
 ```
+
+Use `make dist` for builds to keep or install. It collects the installer ZIP, optional KOReader
+patch ZIP, KPM package and manifests, checksums, and source revision in `dist/`. Version/commit
+folders keep different builds separate, and the collector refuses to overwrite different files.
+`DIST=/path/to/dist` selects a shared output folder across worktrees. Build intermediates remain
+under `build/`; Downloads is not a build destination. Collecting a build does not publish it.
 
 The compiled languages (`po/*.mo`) are committed, so building needs no gettext; only `make l10n`
 needs GNU gettext. [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh
