@@ -66,7 +66,9 @@ The first published release through this workflow creates these feeds:
 - Stable: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/stable/manifest.json`
 
 **These URLs are planned until that first publication.** Add only the channel you want using
-KPM's repository settings. A stable release updates stable only; beta/RC updates preview only.
+KPM's repository settings. A stable release updates stable and also goes into preview, so preview
+subscribers are offered it too. A beta or RC updates preview only. Neither channel ever moves to
+an older version: a stable release older than the preview's current beta leaves preview as it is.
 Publication refuses to overwrite release assets with different bytes, refuses to replace a version
 with different metadata, and ignores older versions. Rerunning only the publish job reuses the
 checked artifact; rebuilding the same published version with different bytes requires a new version.
