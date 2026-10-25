@@ -8,10 +8,11 @@ apply them. Existing different patches at the same filename are kept.
 - 2-mosaic-square-corners.lua: square folder tiles in Cover browser's mosaic view.
 - 2-terminess-ui-font.lua: Terminess / Terminus menus, a matched regular/bold font family,
   and spacing between the dropdown menu's battery icon and percentage. Grimoire supplies
-  Terminess and its OFL. This updates the earlier beta script.
+  Terminess and its OFL. This updates the script shipped with 1.1.0-beta.1 and 1.1.0-beta.2.
 
 Manual installation: copy only the .lua files you want into your KOReader installation's patches/
 folder. Copy fonts/Grimoire/ into its fonts/ folder. Restart KOReader. Remove a .lua file and
 restart to undo that patch. The font files can stay; without the patch they change no menus.
-The screenshot and square-corner scripts are unchanged from the beta. The Terminess script
-has been updated. A byte-exact earlier Grimoire Terminess patch can be upgraded from Settings; a locally modified copy is preserved.
+The screenshot and square-corner scripts are unchanged since 1.1.0-beta.1. The Terminess script
+has been updated. A byte-exact earlier Grimoire Terminess patch can be upgraded from Settings;
+a locally modified copy is preserved.

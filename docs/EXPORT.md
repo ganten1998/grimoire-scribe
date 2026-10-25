@@ -101,7 +101,7 @@ Scriptable endpoints:
 | `/all.zip` | everything, grouped by folder (PDF + raw) |
 
 ```json
-{"device": "Grimoire", "version": "1.0.0-beta.2",
+{"device": "Grimoire", "version": "2.0.0-beta.1",
  "notebooks": [{"id": "20261010-183859-1fdf", "name": "Lecture notes", "folder": "School",
                 "pages": 3, "paper": "Medium rule", "modified": 1791672139,
                 "pdf": "/nb/20261010-183859-1fdf.pdf", "zip": "/nb/20261010-183859-1fdf.zip",

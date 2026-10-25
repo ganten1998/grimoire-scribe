@@ -12,6 +12,12 @@ and can never be fixed, so the rules below keep them in mind forever. From 1.0.0
 version keeps whatever it does not understand and writes it back unchanged, and it opens a page it
 cannot fully read as read-only instead of setting it aside.
 
+This file names these carry-forward rules after **1.0.0-beta.2**, the version they were written
+for, and the last column of Moving between versions lists them under that name. 1.0.0-beta.2 was
+never released on its own: the rules first shipped inside 1.1.0-beta.1, together with the 1.1
+features. So every released version with these rules also knows the data 1.1 added: it draws
+image papers, for example, and never calls them "Newer paper".
+
 ## Files
 
 ```
@@ -27,6 +33,7 @@ root/notebooks/<id>/bg/<pic>.png        a picture the notebook's image papers us
 root/notebooks/<id>/bg/index.ini        which content each picture holds (Image papers)
 root/notebooks/<id>/bg/pages.ini        the image paper of each page that has one (Image papers)
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
+root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
@@ -124,7 +131,7 @@ the bottom of the page.
   scaled back to the notebook's size when it is opened, which puts the ink written on the
   notebook's own screen back on its lines, and is written at that size after an edit. Exports
   scale it back the same way and leave its file as it is.
-- **Before 1.1** (1.0.0-beta, rc.1, beta.2): every page opens at the screen's size, its points
+- **Before 1.1** (1.0.0-beta, rc.1): every page opens at the screen's size, its points
   scaled when the stored size differs, and a page edited there is written at the screen's size.
   Back in 1.1 such a page goes back to its notebook's size: the ink it had moves back onto its
   lines, and ink the older version added on the other Scribe moves by the ratio of the sizes.
@@ -209,7 +216,7 @@ zip, a `grimoire-pull` copy or an older version.
   whether it is written before or after; the two never run at the same time, and a reader of a
   page file sees it before compaction or after, never between.
 
-1.0.0-beta and 1.0.0-beta.2 never read or write `erased.txt`: it stays as it is (and goes along
+1.0.0-beta and 1.0.0-rc.1 never read or write `erased.txt`: it stays as it is (and goes along
 with the folder to `trash/`). A listed page one of them saves is compacted from what it wrote.
 Pages deleted to `trash/` are not compacted.
 
@@ -262,7 +269,7 @@ digits, a length that runs past the end of the file) make the page read-only, ne
 | 0 | pencil | | 5 | fountain pen |
 | 1 | mechanical pencil | | 6 | fineliner |
 | 2 | ballpoint | | 7 | marker |
-| 3 | eraser: an erase stroke (draws nothing up to 1.0.0-beta.2) | | 8 | charcoal |
+| 3 | eraser: an erase stroke (draws nothing in 1.0.0-beta and rc.1) | | 8 | charcoal |
 | 4 | highlighter | | 9 | calligraphy pen |
 
 No version before 1.1 writes a tool 3 stroke (their eraser removes whole strokes), so giving tool 3
@@ -274,8 +281,8 @@ an erase stroke (tool 3), bits 24 to 31 hold its texture: the drawing tool whose
 plus 1 (0 = a round tip), and a version that draws erase strokes hashes only the low 24 bits
 (see Erase strokes). 1.0.0-beta keeps the seed byte for byte and never reads it for tool 3.
 
-**ext[3]** (the three spare bytes of the stroke record). No version up to 1.0.0-beta.2 interprets
-them; 1.0.0-beta.2 reads, keeps and writes them back.
+**ext[3]** (the three spare bytes of the stroke record). No version interprets them yet: 1.0.0-beta
+writes 0 0 0 on a re-save, and from 1.0.0-beta.2 on a version reads, keeps and writes them back.
 
 | byte | meaning | 0 means |
 |---|---|---|
@@ -617,7 +624,7 @@ its picture. A paged document's count never changes. A line whose page is no lon
 this version does not know are written back as they were: whole lines of up to 255 bytes, 1 KB in
 all.
 
-1.0.0-beta and 1.0.0-beta.2 never read or write `source.ini` or `import/.annotate/`: they stay as
+1.0.0-beta and 1.0.0-rc.1 never read or write `source.ini` or `import/.annotate/`: they stay as
 they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands over with
 `--annotate` only to a launcher whose `# Capabilities:` line says `annotate`, so an older Grimoire
 never gets a request. Raw notebook zips carry `source.ini` as `raw/source.ini` (1.1.0-beta.2 on), so
@@ -634,11 +641,11 @@ line. Values are clamped to their ranges when read.
 | `draw_tool` | the drawing tool the toolbar's tool button shows: 0 to 9 |
 | `panel_x`, `panel_y` | the floating panel's top-left, screen pixels (-1 = the default place) |
 | `panel_collapsed` | 0 or 1 |
-| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter (ink, even with `white`), 3 white ink with the pen's drawing tool (with the eraser picked, the pen a tap on the eraser goes back to: `before_eraser`; since 1.1). Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2: it reads 3 as 2, the highlighter, and saves 2; 1.0.0-beta.2 uses 3 as 2 and writes back 3) |
-| `eraser_mode` | the eraser (its button, the pen's eraser end, `side_button` 1): 0 takes whole strokes away (never an erase stroke: that would bring back the ink it covers), 1 is the precise eraser, which draws erase strokes with the round tip (Erase strokes) and the eraser's settings, its widths divided by the zoom (at least 0.10 mm) so that it keeps its size on the screen. Numeric and append-only (since 1.1; 1.0.0-beta drops it and its eraser takes whole strokes away; 1.0.0-beta.2 keeps it) |
-| `white` | 0 or 1: the drawing tools draw white ink, erase strokes with each tool's own settings and texture (since 1.1; 1.0.0-beta drops it, 1.0.0-beta.2 keeps it) |
-| `panel_tools` | the pens pinned to the editor's panel under its tool button, in pin order: their names as `<tool>.<param>` has them (below), comma-separated, e.g. `highlighter,fineliner`; empty for none, spaces around a name allowed. A reader keeps the drawing tools it has, each once, in the order given, at most 4: a name it does not have (a later version's pen), `eraser` (the eraser has its own button) and a repeat are left out, and the line is written back as it was until the pins change (below). The pen in use (`current_tool`) always has a button: one that is neither `draw_tool` nor pinned (its pin dropped) becomes `draw_tool` as a notebook opens. Since 1.1; 1.0.0-beta drops it on its next save, 1.0.0-beta.2 keeps the line (neither has pins) |
-| `before_eraser` | the pen in use when the eraser was last picked on the panel: a tool id, 0 to 9 but the eraser's 3, or -1 for none (the default; any other value is read as -1 and written back as it was, below). A tap on the eraser in use goes back to it while it is on the panel (`draw_tool`, or pinned), else to `draw_tool`; while the eraser is in use the pen's button draws white (`side_button` 3) with that pen too. The pen's eraser end and its button never set it. Since 1.1; 1.0.0-beta drops it on its next save, 1.0.0-beta.2 keeps the line (the eraser of either goes back to `draw_tool`) |
+| `side_button` | holding the pen's button: 0 nothing, 1 eraser, 2 highlighter (ink, even with `white`), 3 white ink with the pen's drawing tool (with the eraser picked, the pen a tap on the eraser goes back to: `before_eraser`; since 1.1). Numeric and append-only: a new behaviour takes the next number (1.0.0-beta clamps the value to 0..2: it reads 3 as 2, the highlighter, and saves 2) |
+| `eraser_mode` | the eraser (its button, the pen's eraser end, `side_button` 1): 0 takes whole strokes away (never an erase stroke: that would bring back the ink it covers), 1 is the precise eraser, which draws erase strokes with the round tip (Erase strokes) and the eraser's settings, its widths divided by the zoom (at least 0.10 mm) so that it keeps its size on the screen. Numeric and append-only (since 1.1; 1.0.0-beta drops it and its eraser takes whole strokes away) |
+| `white` | 0 or 1: the drawing tools draw white ink, erase strokes with each tool's own settings and texture (since 1.1; 1.0.0-beta drops it) |
+| `panel_tools` | the pens pinned to the editor's panel under its tool button, in pin order: their names as `<tool>.<param>` has them (below), comma-separated, e.g. `highlighter,fineliner`; empty for none, spaces around a name allowed. A reader keeps the drawing tools it has, each once, in the order given, at most 4: a name it does not have (a later version's pen), `eraser` (the eraser has its own button) and a repeat are left out, and the line is written back as it was until the pins change (below). The pen in use (`current_tool`) always has a button: one that is neither `draw_tool` nor pinned (its pin dropped) becomes `draw_tool` as a notebook opens. Since 1.1; 1.0.0-beta drops it on its next save (it has no pins) |
+| `before_eraser` | the pen in use when the eraser was last picked on the panel: a tool id, 0 to 9 but the eraser's 3, or -1 for none (the default; any other value is read as -1 and written back as it was, below). A tap on the eraser in use goes back to it while it is on the panel (`draw_tool`, or pinned), else to `draw_tool`; while the eraser is in use the pen's button draws white (`side_button` 3) with that pen too. The pen's eraser end and its button never set it. Since 1.1; 1.0.0-beta drops it on its next save (its eraser goes back to `draw_tool`) |
 | `mirror_pdf` | 0 or 1: write `PDFs/<folder>/<name>.pdf` when a notebook closes |
 | `follow_rotation` | 0 or 1 |
 | `invert` | 0 or 1: white on black |
@@ -646,10 +653,11 @@ line. Values are clamped to their ranges when read.
 | `sleep_mode` | the sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own, 3 KOReader wallpaper (since 1.1.0-beta.2); native PIN overrides the choice |
 | `sleep_minutes` | sleep after this long without input, 0 to 240 (0 = never) |
 | `http_port` | the share server's port, 1024 to 65535 (the launcher reads it too, the last such line) |
-| `passcode_told` | 0 or 1: legacy notice flag from releases that paused the Kindle passcode; no longer used by native PIN support (since 1.0.0-beta.2; 1.0.0-beta drops it, and the notice shows once more) |
+| `passcode_told` | 0 or 1: legacy notice flag from releases that paused the Kindle passcode; no longer used by native PIN support (since 1.1.0-beta.1; 1.0.0-beta drops it, and the notice shows once more) |
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
-| `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta.2 keeps the line and shows English; 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
+| `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
+| `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `settings_version` | 2: which default-changing upgrades have run |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
 | `pen.panel` | `WxH`: the panel the pen calibration was made on, upright (since 1.1; below) |
@@ -674,8 +682,8 @@ save writes the new values with this panel's `panel`.
   the recorded one. So one recorded as another panel's that spans this one was made here and is
   kept as it is (a calibration made on a 1986x2648 Scribe before 1.1), and one recorded as this
   panel's that spans a Scribe's of the other size instead was made there and is scaled from it.
-  Both catch a `panel` line gone stale, whichever way: 1.0.0-beta.2 carries the line through a
-  calibration of its own, on a Scribe of either size.
+  Both catch a `panel` line gone stale, whichever way, such as one a version kept without knowing
+  the key through a calibration of its own, on a Scribe of either size.
 - A `panel` value that does not read as `WxH` (100 to 6000 each) is a line this version does not
   understand: kept while the calibration's panel is not recorded. At startup a valid calibration
   gets this panel's (it counts as not recorded until then, as above), and the next save writes
@@ -686,7 +694,7 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 - A line whose key it does not know (a new key, an unknown dotted key such as a tool or a tool
   setting it lacks, a calibration field it lacks) is written back as it was read, after the keys
   it knows (up to 64 KB of such lines).
-- A known key whose value it cannot use as written (`side_button=3` in 1.0.0-beta.2, a theme it
+- A known key whose value it cannot use as written (a `side_button` number added later, a theme it
   lacks, a setting beyond its range, a music layout with a part it lacks, a language it does not
   speak) is used as the nearest value it has (for a language, `auto`), and written back as it was
   until a save finds the setting at another value. That save writes the new value, and from then
@@ -694,11 +702,17 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   saved as used, because the launcher opens the firewall for the port it finds in the file.
 - A `settings_version` above its own is written back as it is.
 - The 0/1 keys (`panel_collapsed`, `mirror_pdf`, `follow_rotation`, `invert`, `pinch_zoom`,
-  `passcode_told`, and the calibration's `valid` and `swap`) read any other value as on when it
-  starts with a nonzero number and as off otherwise, and write it back as it was under the rule
-  above.
+  `passcode_told`, `white`, `shortcuts_enabled`, and the calibration's `valid` and `swap`) read any
+  other value as on when it starts with a nonzero number and as off otherwise, and write it back
+  as it was under the rule above.
 
 1.0.0-beta drops all of this on its next settings save (and writes its clamped values).
+
+`shortcuts.ini`, beside `settings.ini`, holds the keyboard and controller mappings, and the owner
+edits it (its lines are in docs/SHORTCUTS.md). Grimoire writes starter mappings to it only when
+shortcuts are turned on and the file does not exist, and never changes it after that; while the
+file is missing the starter mappings apply, and an empty file means no mappings. Versions before
+2.0.0-beta.1 ignore it.
 
 Frozen while 1.0.0-beta is in use:
 
@@ -719,7 +733,7 @@ Frozen while 1.0.0-beta is in use:
 | `next_page_id` | the id the next new page gets |
 | `pages` | the page ids in order, comma-separated |
 | `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
-| `source` | the book the notebook annotates: KOReader's partial MD5 of the book's file, 1 to 63 letters, digits, `-` or `_` (since 1.1; Annotated pages). A value of another form is a line this version does not know (kept, as below). 1.0.0-beta drops the line on its next save; `source.ini` names the book too, and 1.1 writes the line back when it next adds or opens a page for that book. 1.0.0-beta.2 keeps it |
+| `source` | the book the notebook annotates: KOReader's partial MD5 of the book's file, 1 to 63 letters, digits, `-` or `_` (since 1.1; Annotated pages). A value of another form is a line this version does not know (kept, as below). 1.0.0-beta drops the line on its next save; `source.ini` names the book too, and 1.1 writes the line back when it next adds or opens a page for that book |
 
 A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
 keys), or with a value outside 100 to 6000, takes the size most of its page files have, by their
@@ -757,29 +771,31 @@ Frozen while 1.0.0-beta is in use:
   an annotated notebook's book pages).
 - `notebook.ini` and `settings.ini`: only what 1.0.0-beta may safely forget, since it drops
   unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode`,
-  `white`, `panel_tools` and `before_eraser` are such keys: what a version does without them is in
-  their own sections.)
+  `white`, `panel_tools`, `before_eraser` and `shortcuts_enabled` are such keys: what a version
+  does without them is in their own sections.)
 
 ## Moving between versions
 
-What 1.0.0-beta and 1.0.0-rc.1 (identical here) and 1.0.0-beta.2 do with each kind of data a
-newer version may write. `tests/test_format.c` checks the page rows against a frozen copy of
-1.0.0-beta's page reader and writer (`tests/beta_format.h`), and what 1.0.0-beta.2 does in every
-row.
+What 1.0.0-beta and 1.0.0-rc.1 (identical here) do with each kind of data a newer version may
+write, and what the carry-forward rules (1.0.0-beta.2, at the top of this file) do with it. Data
+marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last column says what
+1.1 does. Data marked 2.0 is newer than 1.1: there the last column says what 1.1.0-beta.1 and
+1.1.0-beta.2 do with it. `tests/test_format.c` checks the page rows against a frozen copy of
+1.0.0-beta's page reader and writer (`tests/beta_format.h`), and the carry-forward rules.
 
 | new data | 1.0.0-beta, 1.0.0-rc.1 | 1.0.0-beta.2 |
 |---|---|---|
 | ext bytes (colour, layer, flags) | opens the page and ignores them; a re-save writes 0 0 0 | keeps them and writes them back |
-| an erase stroke (tool 3) | opens the page and draws nothing for it, so erased ink shows again (all but the ink the writer left out) and white ink does not show; keeps the stroke on a re-save; its eraser can delete it | the same, with its ext bytes kept |
-| an erase stroke's texture (seed bits 24 to 31) | kept, so white ink comes back unchanged in 1.1 after a re-save here | kept |
+| an erase stroke (tool 3, 1.1) | opens the page and draws nothing for it, so erased ink shows again (all but the ink the writer left out) and white ink does not show; keeps the stroke on a re-save; its eraser can delete it | drawn (Erase strokes) |
+| an erase stroke's texture (seed bits 24 to 31, 1.1) | kept, so white ink comes back unchanged in 1.1 after a re-save here | drawn |
 | a safe-to-copy chunk | ignored; dropped on a re-save | written back as it was |
 | a critical chunk | ignored; dropped on a re-save | the page opens read-only |
 | bytes after the strokes that are not chunks | ignored; dropped on a re-save | the page opens read-only |
 | a paper it does not know | blank paper; a re-save turns it into version 1 Blank | blank paper, "Newer paper"; kept (version 2) |
-| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | blank paper, "Newer paper"; kept (version 2). A page it adds after a page on one gets the same paper value, except after a document page (`0x51......`): then the notebook's paper, as in 1.1 (store_new_page_paper, the one image-paper rule it knows) |
-| a notebook's `bg/` folder | never read or written; its raw zips leave it out | the same |
-| an image paper as a notebook's `paper` (1.1: a notebook made on a template) | read as Medium rule, and saved so on its next save of `notebook.ini`: its new pages get Medium. Its pages keep their own papers (1.1 brings back from `bg/pages.ini` those it re-saved), so back in 1.1 only a page added after an imported page, or one whose file is missing, gets Medium | kept; new pages get it (drawn blank there) |
-| `templates/`, `import/` in the data root (and `import/.attempts`) | never read | the same |
+| an image paper (1.1) | blank paper, ink kept; a re-save turns it into version 1 Blank, and 1.1 brings it back from `bg/pages.ini` (Image papers), redrawing the thumbnail and PDF it made | its picture drawn (Image papers) |
+| a notebook's `bg/` folder (1.1) | never read or written; its raw zips leave it out | read and kept up to date; raw zips carry it |
+| an image paper as a notebook's `paper` (1.1: a notebook made on a template) | read as Medium rule, and saved so on its next save of `notebook.ini`: its new pages get Medium. Its pages keep their own papers (1.1 brings back from `bg/pages.ini` those it re-saved), so back in 1.1 only a page added after an imported page, or one whose file is missing, gets Medium | kept; new pages get it |
+| `templates/`, `import/` in the data root (and `import/.attempts`, 1.1) | never read | read |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
 | a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |
@@ -788,19 +804,21 @@ row.
 | an unknown `settings.ini` key | dropped on the next save | kept |
 | a `settings.ini` value it cannot use | clamped, and saved clamped | used as the nearest value, written back as it was |
 | a 0/1 `settings.ini` key holding another value | saved as 1 (or 0) | used as on or off, written back as it was |
-| `language=` (1.1) | dropped on the next save: 1.1 follows the Kindle's language again | kept (the screens are English) |
+| `language=` (1.1) | dropped on the next save: 1.1 follows the Kindle's language again | used |
 | a name or folder longer than 95 bytes | cut at byte 95, inside a character if one falls there | cut before the character that crosses byte 95 |
 | more than 2000 pages | the ids past 2000 dropped from `pages` on the next save | the same |
 | a newer `settings_version` | saved as 2 | kept |
-| `page_w`, `page_h` (a notebook's page size) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | kept; the pages open, and edited ones are written, as with 1.0.0-beta |
-| `pen.panel`, `touch.panel` | dropped on the next save; the calibration is used as it is, on any panel | kept, also through a calibration of its own (1.1 catches that by its scale, on a Scribe of either size) |
-| `eraser_mode`, `white` | dropped on the next save; its eraser takes whole strokes away and its pens draw ink | kept; it does as 1.0.0-beta does |
-| `panel_tools` (pens pinned to the panel) | dropped on the next save (its panel has no pins): back in 1.1 the pens are pinned again by hand. A pinned pen in use stays the pen in use there, on no button of its panel; back in 1.1 it goes to the tool button (`draw_tool`) | kept (its panel has no pins; a pinned pen in use is on none of its buttons): back in 1.1 they are still pinned |
-| `before_eraser` (the pen the eraser goes back to) | dropped on the next save: its eraser, tapped again, goes back to `draw_tool`, as 1.1's does without the key | kept; its eraser goes back to `draw_tool`. Back in 1.1 the key names the pen used before the eraser was last picked in 1.1 |
-| `side_button=3` (white ink on the pen's button) | read as 2, the highlighter, and saved as 2 | used as 2, written back as 3 |
-| `erased.txt` (pages left to compact) | never read or written: it stays as it is | the same |
-| `source=` in `notebook.ini` (an annotated notebook's book) | dropped on the next save; 1.1 finds the notebook through `source.ini` and writes the line back | kept |
-| `source.ini` (its book pages) | never read or written: it stays as it is. A page it deletes leaves a line there that 1.1 drops, and that book page becomes a new page when it is sent again | the same |
-| `import/.annotate/` (a request from KOReader) | never read | the same; KOReader's plugin never sends one to a launcher without the `annotate` capability |
-| `bg/<pic>.source.png` (a page picture waiting to be fitted) | never read or written; raw zips leave it out | the same |
+| `page_w`, `page_h` (a notebook's page size, 1.1) | dropped on the next save (1.1 then takes the size most of its page files have); every page opens at the screen's size, its points scaled, and one it edits is written at that size | used (Page size) |
+| `pen.panel`, `touch.panel` (1.1) | dropped on the next save; the calibration is used as it is, on any panel | used |
+| `eraser_mode`, `white` (1.1) | dropped on the next save; its eraser takes whole strokes away and its pens draw ink | used |
+| `panel_tools` (pens pinned to the panel, 1.1) | dropped on the next save (its panel has no pins): back in 1.1 the pens are pinned again by hand. A pinned pen in use stays the pen in use there, on no button of its panel; back in 1.1 it goes to the tool button (`draw_tool`) | used |
+| `before_eraser` (the pen the eraser goes back to, 1.1) | dropped on the next save: its eraser, tapped again, goes back to `draw_tool`, as 1.1's does without the key | used |
+| `side_button=3` (white ink on the pen's button, 1.1) | read as 2, the highlighter, and saved as 2 | used |
+| `erased.txt` (pages left to compact, 1.1) | never read or written: it stays as it is | read and written (Compaction) |
+| `source=` in `notebook.ini` (an annotated notebook's book, 1.1) | dropped on the next save; 1.1 finds the notebook through `source.ini` and writes the line back | used |
+| `source.ini` (its book pages, 1.1) | never read or written: it stays as it is. A page it deletes leaves a line there that 1.1 drops, and that book page becomes a new page when it is sent again | read and written (Annotated pages) |
+| `import/.annotate/` (a request from KOReader, 1.1) | never read; KOReader's plugin never sends one to a launcher without the `annotate` capability | read |
+| `bg/<pic>.source.png` (a page picture waiting to be fitted, 1.1) | never read or written; raw zips leave it out | fitted in the background; raw zips leave it out |
+| `shortcuts_enabled` (2.0) | dropped on the next save | kept; there are no shortcuts there |
+| `shortcuts.ini` (2.0) | never read | never read |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |

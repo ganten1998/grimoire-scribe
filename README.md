@@ -22,9 +22,10 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release.** Grimoire is in daily use on one Kindle Scribe (2024), and testers run it on
-> theirs. It autosaves every stroke and keeps damaged files instead of overwriting them, but
-> treat it as a beta: copy your notebooks off now and then (Library > Share makes that one click).
+> **Pre-release.** 2.0.0-beta.1 is a pre-release of Grimoire 2.0. Grimoire is in daily use on
+> one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
+> damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
+> and then (Library > Share makes that one click).
 
 ## Will it run on my Kindle?
 
@@ -35,7 +36,7 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 
 | Kindle | Status |
 |---|---|
-| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.19.6 (Vera); a tester runs it on 5.20.1 (Vera). |
+| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.20.1.0.2; a tester runs it on 5.20.1 (Vera). |
 | Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Reported working**: a tester runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
@@ -83,8 +84,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   many systems fit on a page. Each page can have its own paper.
 - **Pens**: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
   calligraphy pen, highlighter. Every pen's pressure and tilt response can be tuned
-  (Settings > Pen sensitivity). The eraser removes whole strokes; the eraser end of the Premium
-  Pen works too.
+  (Settings > Pen sensitivity). The eraser takes away whole strokes, or set to **Precise** only
+  what it touches (see White ink, pinned pens and templates); the eraser end of the Premium Pen
+  works too.
   - **Charcoal** is grainy and crumbly, darker the harder you press; lay the pen low and it
     shades broad and soft with the side of the stick.
   - **The calligraphy pen** is a broad-edge nib that sits at 90 degrees to the way the pen
@@ -105,11 +107,14 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   saved (the Kindle's storage is full), a hold while awake says so and stays; hold again within a
   minute to leave without it. Opened from KOReader, Exit reads **Back to KOReader**, and both ways
   out take you back to KOReader.
-- **Passcode**: started from the Kindle Library, Grimoire keeps your Device Passcode enabled.
-  Sleep hands the screen and touch input to the Kindle's own keypad; unlocking returns to your
-  notebook. Native PIN takes priority over a custom sleep picture, and keeps the framework up.
-  KOReader normally disables the PIN for its whole session; opening Grimoire from that session
-  inherits KOReader's policy. Start Grimoire from the Library when you need native PIN protection.
+- **Passcode**: started from the Kindle Library, Grimoire leaves your Device Passcode on. When
+  the Kindle goes to sleep, Grimoire saves your page and hands the screen and touch input to the
+  Kindle, so its own keypad can ask for the passcode; when the Kindle reports the unlock, Grimoire
+  takes them back and shows your notebook. With a passcode set, the keypad comes before a custom
+  sleep picture, and the Kindle interface keeps running for it. This hand-over has not been
+  confirmed on a Kindle yet: it needs confirmation on each firmware. KOReader normally turns the
+  passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
+  Grimoire from the Library when you need the passcode.
 - **Language**: English or Spanish, following the Kindle's own language (see Language).
 
 ## White ink, pinned pens and templates
@@ -200,14 +205,15 @@ of the three optional patches: diagonal screenshot gestures off, square folder c
 and Terminess menu fonts. The font patch includes the font. Restart KOReader after changing a patch
 or the plugin. A different patch at the same filename is preserved; no patches are applied just
 by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
-from beta.1: screenshot gestures and corners stay unchanged; Terminess now matches regular/bold
-fonts and separates the dropdown battery icon from its percentage. Fonts and manual instructions
-are included. KOReader keeps its native DPI behavior.
+from 1.1.0-beta.1: screenshot gestures and corners stay unchanged; Terminess now matches
+regular/bold fonts and separates the dropdown battery icon from its percentage. Fonts and manual
+instructions are included.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
 image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works
 on a later Library start. If no custom image is available, your page shows. A random folder picks
-one image per handover; KOReader's message/status widgets are not copied. Native PIN takes priority.
+one image per handover; KOReader's message/status widgets are not copied. With a Device Passcode
+set, the passcode keypad comes first.
 
 *Execute shell script* on `Grimoire.sh` in KOReader's file browser still refuses, because
 KOReader keeps the pen and the touch screen to itself (KOReader reports status 3): use Tools >
@@ -236,7 +242,7 @@ annotating it would make a notebook of a notebook: open that notebook in Grimoir
 
 ## Moving between versions
 
-Updating is one file, and so is going back. From 1.0.0-beta.2 on, Grimoire keeps what a newer
+Updating is one file, and so is going back. From 1.1.0-beta.1 on, Grimoire keeps what a newer
 version writes and does not understand (ink data, newer papers, extra page data, unknown lines
 in `settings.ini` and `notebook.ini`) and writes it back unchanged:
 
@@ -254,9 +260,9 @@ in `settings.ini` and `notebook.ini`) and writes it back unchanged:
 1.0.0-beta and 1.0.0-rc.1 cannot do this. Open a notebook there after a newer version wrote to
 it, and data can be lost: they set a page in a newer format aside as
 `p<id>.qpg.damaged-<time>` and show it blank (just looking at it in Pages does this), and they
-drop newer data when they save. 1.0.0-beta.2 brings such pages back when you open the notebook
-again, and keeps both copies if the page was written again in the meantime; a page you deleted
-in the older version stays set aside. The file format and its rules are in
+drop newer data when they save. 1.1.0-beta.1 and later bring such pages back when you open the
+notebook again, and keep both copies if the page was written again in the meantime; a page you
+deleted in the older version stays set aside. The file format and its rules are in
 [docs/FORMAT.md](docs/FORMAT.md).
 
 **Scribes of two sizes.** The 2022 and 2024 Scribes have a 1860x2480 screen, the Scribe 3 and the
@@ -272,9 +278,8 @@ writing done in 1.1 back on its lines (ink added in the older version moves by t
 going back to an older version on a Scribe of the other size moves the ink on every page it edits
 there.
 
-**Language.** 1.0.0-beta.2 keeps the Settings > Language choice in `settings.ini` (and shows
-English). 1.0.0-beta and 1.0.0-rc.1 forget it the next time they save their settings, so back in
-1.1 the language is Automatic again.
+**Language.** 1.0.0-beta and 1.0.0-rc.1 forget the Settings > Language choice the next time they
+save their settings, so back in 1.1 or later the language is Automatic again.
 
 **KOReader.** An older version leaves KOReader's Grimoire plugin where it is: Tools > Grimoire
 stays in KOReader, Notebook PDFs and Reset pen calibration still work, and Open Grimoire says
@@ -290,9 +295,10 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 
 ## Privacy
 
-- **Native PIN stays enabled on a Library start.** Grimoire does not read or store your PIN,
-  and does not log input while the native keypad owns it. KOReader's own session can still have
-  disabled the PIN; see Passcode above.
+- **The Device Passcode stays on for a Library start.** Grimoire never reads or stores your
+  passcode: the Kindle's own keypad takes it, and Grimoire logs no input while the keypad has the
+  screen. This hand-over still needs confirmation on each firmware, and KOReader's own session can
+  have turned the passcode off; see Passcode above.
 - **Erased ink.** Fully erased strokes are removed by background compaction after a notebook
   closes. A partially erased stroke remains whole in the raw page file; old exporters can show
   its erased parts. Deleted pages and notebooks stay in `grimoire/trash` until you remove them.
@@ -301,6 +307,13 @@ precise eraser, and they drop pinned pens from `settings.ini`.
   open, and nobody once you leave it. Do not open Share on a network you do not trust.
 - **grimoire.log**, which a bug report asks for, holds no serial number, account, Wi-Fi name or
   network address, and Share notes downloads without notebook or folder names.
+
+## Known issues
+
+- **KOReader's first screen can be incomplete on firmware 5.20.1.** KOReader can draw its first
+  screen with parts missing, also when it comes back from Grimoire. This is a KOReader issue
+  ([koreader issue 16283](https://github.com/koreader/koreader/issues/16283)), and Grimoire does
+  not fix it.
 
 ## Troubleshooting
 
