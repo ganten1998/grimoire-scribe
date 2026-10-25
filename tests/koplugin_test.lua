@@ -147,13 +147,25 @@ local function file_size(path)
     f:close()
     return n
 end
+-- lfs.attributes(path) as a table has the device and the inode too, as stat has them after links
+-- (GNU stat, else BSD's), so two names of one folder are seen as one.
+local function first_line(cmd)
+    local p = io.popen(cmd)
+    local line = p:read("*l")
+    p:close()
+    return line
+end
 package.loaded["libs/libkoreader-lfs"] = {
     attributes = function(path, what)
         local mode = sh("test -d " .. q(path)) and "directory" or (sh("test -f " .. q(path)) and "file") or nil
         if what == "mode" then return mode end
         if what == "size" then return mode == "file" and file_size(path) or nil end
-        return mode and { mode = mode } or nil
+        if not mode then return nil end
+        local dev, ino = (first_line("stat -L -c '%d %i' " .. q(path) .. " 2>/dev/null || stat -L -f '%d %i' "
+            .. q(path) .. " 2>/dev/null") or ""):match("^(%d+) (%d+)$")
+        return { mode = mode, dev = tonumber(dev), ino = tonumber(ino) }
     end,
+    currentdir = function() return first_line("pwd") end,
     mkdir = function(path)
         if sh("mkdir " .. q(path) .. " 2>/dev/null") then return true end
         return nil, "cannot"
@@ -1126,6 +1138,85 @@ do -- The gesture in the file browser: no book to annotate.
     koreader(false):onAnnotateInGrimoire()
     check("annotate without a book: says so", told("Open a book first: Grimoire annotates the page you are reading."))
     untouched("annotate without a book")
+end
+
+do -- A notebook's own PDF, in Grimoire's mirror (grimoire/PDFs): refused from the menu and by the
+    -- gesture, however its path is written or reached, before anything is run, drawn or written. A
+    -- book anywhere else is annotated, in a folder named like the mirror too.
+    local OWN = "This PDF is a Grimoire notebook: open that notebook in Grimoire to write on it."
+    local function book_at(name, path_of) -- a world whose book is the PDF at path_of()
+        world(name)
+        assert(sh("mkdir -p " .. q(W.pdfs)))
+        local path = path_of()
+        assert(sh("mkdir -p " .. q(path:match("^(.*)/"))))
+        write(path, "%PDF-1.7\n")
+        W.book.file = path
+        return koreader(true)
+    end
+    local function refused(s)
+        check(s .. ": says why", told(OWN))
+        check(s .. ": nothing drawn or written", #W.drawn == 0 and annotate_files() == "")
+        untouched(s)
+        logs_name_no_book(s)
+    end
+    local function annotated(s)
+        check(s .. ": annotated", not told(OWN) and annotate_files() == "page.png request.ini"
+            and wrapped() and at("exitOrRestart") ~= nil)
+    end
+    local g = book_at("own-pdf-menu", function() return W.pdfs .. "/Secret Lecture.pdf" end)
+    local items = {}
+    g:addToMainMenu(items)
+    items.grimoire.sub_item_table[2].callback({ closeMenu = function() end })
+    refused("own PDF, from the menu")
+    g = book_at("own-pdf-gesture", function() return W.pdfs .. "/Secret Lecture.pdf" end)
+    g["on" .. W.actions.grimoire_annotate.event](g)
+    refused("own PDF, by the gesture")
+    book_at("own-pdf-folder", function() return W.pdfs .. "/Work/Secret Lecture.pdf" end):onAnnotateInGrimoire()
+    refused("own PDF, in a folder of the mirror")
+    -- Doubled slashes, "." and ".." in the book's path, a trailing slash on the plugin's.
+    g = book_at("own-pdf-written-oddly", function() return W.us .. "//grimoire/./import/../PDFs/Secret Lecture.pdf" end)
+    g.us = W.us .. "/"
+    g:onAnnotateInGrimoire()
+    refused("own PDF, its path written oddly")
+    -- The scratch Kindle's path is relative (from the working folder): the book's made absolute.
+    local here = first_line("pwd")
+    book_at("own-pdf-absolute", function()
+        return (W.pdfs:sub(1, 1) == "/" and "" or here .. "/") .. W.pdfs .. "/Secret Lecture.pdf"
+    end):onAnnotateInGrimoire()
+    refused("own PDF, by its absolute path")
+    book_at("own-pdf-link", function()
+        assert(sh("ln -s ../grimoire/PDFs " .. q(W.us .. "/documents/Notebooks")))
+        return W.us .. "/documents/Notebooks/Secret Lecture.pdf"
+    end):onAnnotateInGrimoire()
+    refused("own PDF, through a link to the mirror")
+    -- Letter case as the filesystem has it: grimoire/pdfs is the mirror where names ignore case,
+    -- else another folder.
+    local folds
+    book_at("own-pdf-case", function()
+        folds = sh("test -d " .. q(W.us .. "/grimoire/pdfs"))
+        return W.us .. "/grimoire/pdfs/Secret Lecture.pdf"
+    end):onAnnotateInGrimoire()
+    if folds then refused("own PDF, by a name in other case on this filesystem")
+    else annotated("a folder named pdfs beside the mirror, on a filesystem that keeps case") end
+    -- Elsewhere: annotated.
+    book_at("own-pdf-elsewhere", function() return W.us .. "/documents/Secret Lecture.pdf" end):onAnnotateInGrimoire()
+    annotated("a PDF in documents")
+    book_at("own-pdf-named-like", function() return W.us .. "/documents/grimoire/PDFs/Secret Lecture.pdf" end)
+        :onAnnotateInGrimoire()
+    annotated("a PDF in a grimoire/PDFs folder outside Grimoire's")
+    book_at("own-pdf-beside", function() return W.dir .. "/grimoire/PDFs/Secret Lecture.pdf" end):onAnnotateInGrimoire()
+    annotated("a PDF in a grimoire/PDFs folder beside the Kindle's")
+    book_at("own-pdf-prefix", function() return W.us .. "/grimoire/PDFs old/Secret Lecture.pdf" end):onAnnotateInGrimoire()
+    annotated("a PDF in a folder whose name starts like the mirror's")
+    book_at("own-pdf-file-named-like", function() return W.us .. "/grimoire/PDFs.pdf" end):onAnnotateInGrimoire()
+    annotated("a PDF named like the mirror")
+    -- In Spanish.
+    book_at("own-pdf-es", function()
+        W.settings.language = "es"
+        return W.pdfs .. "/Secret Lecture.pdf"
+    end):onAnnotateInGrimoire()
+    check("own PDF in Spanish: says why", told("Este PDF es un cuaderno de Grimoire: abre ese cuaderno en Grimoire para escribir en él."))
+    untouched("own PDF in Spanish")
 end
 
 do -- In Spanish.

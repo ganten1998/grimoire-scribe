@@ -525,7 +525,9 @@ KOReader without the calls for that writes a screenshot of the reader instead (t
 shape, menus closed). It writes, into `import/.annotate/` (a dot-folder: the folder import skips it),
 emptied first, the picture as a PNG and a request, each into a temporary file renamed into place, and
 hands over to Grimoire as Open Grimoire does, with `--annotate` after `--hosted koreader`: the
-launcher sets `GRIMOIRE_ANNOTATE=1` for that start only.
+launcher sets `GRIMOIRE_ANNOTATE=1` for that start only. A book whose file lies in the PDF mirror
+(`root/PDFs/` or a folder in it, by any path that leads there) is refused before anything is
+written: a notebook's own PDF would become a notebook of a notebook.
 
 `request.ini`, one `key=value` a line (`#` lines are comments, a carriage return at a line's end is
 dropped, keys it does not know are left alone):

@@ -19,7 +19,9 @@ Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`).
 Colorsoft's); `GRIMOIRE_SIM_STATS=1` prints refresh counts.
 Two more slow the simulator down like a Kindle (simulator only): `GRIMOIRE_HTTPD_DELAY_MS` makes
 each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each background PDF
-export, so the next one queues behind it.
+export, so the next one queues behind it. `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
+minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
+timer run out.
 
 Four more:
 
@@ -155,6 +157,7 @@ shows what the app holds.
 |---|---|
 | `running` | `1` while the app runs, `0` for a check after it quit (the runner answers this one) |
 | `watching` | `1` while input_poll also watches the share server's socket, else `0` (the runner answers this one too) |
+| `power.pokes` | how many times the app told the power service someone is here: at most once a minute, for pen, touch, or a key while shortcuts are on (the runner answers this one too) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
 | `toast` | the toast showing, empty if none |
 | `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |
@@ -222,16 +225,18 @@ or a digit, not only by punctuation or length (hence y_pagesize_1_ksc and y_page
 `# env: K=V` lines set the environment of that one scenario (values without spaces;
 r_passcode, s_passcode_once, t_passcode_left_off and t_toast_over_sheets set `GRIMOIRE_PASSCODE`,
 as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`,
+v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`,
 y_koreader_hosted sets `GRIMOIRE_HOST` as the KOReader plugin's start does and
 y_koreader_not_hosted sets it empty, y_language and z_language_kept set `GRIMOIRE_LANG`,
 y_pagesize_1_ksc sets `GRIMOIRE_SIM_SIZE=1986x2648`, and y_all_screens sets `GRIMOIRE_CHECK_FIT`
 and a made-up `GRIMOIRE_SIM_ADDRS`). The rule first unsets `GRIMOIRE_HOST`, `GRIMOIRE_PASSCODE`,
 `GRIMOIRE_SIM_ADDRS`, `GRIMOIRE_HTTPD_DELAY_MS`, `GRIMOIRE_BG_DELAY_MS`, `GRIMOIRE_SIM_PRESSURE`,
-`GRIMOIRE_SIM_STATS`, `GRIMOIRE_SIM_SIZE`, `GRIMOIRE_CHECK_FIT`, `GRIMOIRE_LANG` and
-`GRIMOIRE_L10N_DIR` (tests/share_check.sh does too), so only `# env:` lines set them, and runs
-every scenario in English (`GRIMOIRE_LANG=en`) unless its `# env:` line names another language:
-the scenarios tap by coordinates and check English text. A `# pdfs: N` line wants the run to
-leave exactly N PDFs in its root's PDFs/ folder (v_leave_from_editor: 2, y_koreader_hosted: 1).
+`GRIMOIRE_SIM_STATS`, `GRIMOIRE_SIM_SIZE`, `GRIMOIRE_CHECK_FIT`, `GRIMOIRE_LANG`,
+`GRIMOIRE_L10N_DIR` and `GRIMOIRE_SLEEP_MINUTE_MS` (tests/share_check.sh does too), so only
+`# env:` lines set them, and runs every scenario in English (`GRIMOIRE_LANG=en`) unless its
+`# env:` line names another language: the scenarios tap by coordinates and check English text. A
+`# pdfs: N` line wants the run to leave exactly N PDFs in its root's PDFs/ folder
+(v_leave_from_editor: 2, y_koreader_hosted: 1).
 With `GRIMOIRE_TEST_PORT` set, the rule writes
 `http_port=` that port into every scenario's settings.ini before the run (over a copied root's
 too), so the share servers of checks running in several worktrees never collide on 8765.
