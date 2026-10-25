@@ -456,9 +456,10 @@ How Grimoire uses that:
 - `kindle/Grimoire.sh` is the scriptlet (Library entry, cover embedded as base64 per the
   kindlemodding.org scriptlet docs, `# DontUseFBInk` so its output does not draw over the
   screen); it detaches `kindle/app/grimoire.sh`, which does the KOReader-style pause/restore above,
-  plus `preventScreenSaver` and the passcode pause, and opens the share port (8765, or
-  `http_port` from settings.ini) on wlan0 only. That is why the Share screen's QR code holds the
-  wlan0 address, and USBNetwork addresses are listed under it but not encoded.
+  plus `preventScreenSaver` (the Device Passcode stays on: The Device Passcode, above), and opens
+  the share port (8765, or `http_port` from settings.ini) on wlan0 only. That is why the Share
+  screen's QR code holds the wlan0 address, and USBNetwork addresses are listed under it but not
+  encoded.
 - kindlemodding.org: on hdnext jailbreaks KUAL "is now obsolete and does not work"; scriptlets
   and KPM replace it.
 
