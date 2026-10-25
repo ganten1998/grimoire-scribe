@@ -236,7 +236,8 @@ Grimoire keeps one notebook per book, named after its title (leaving out charact
 show), with the pages you annotate in the book's order; annotating the same page again opens it
 with what you wrote. Library > Back to KOReader returns to the same book and page. A PDF's page is
 the whole page; an EPUB's is the screen as KOReader lays it out, so after a change of font size a
-page may come in again as a new one.
+page may come in again as a new one. It refuses Grimoire's own notebook PDFs, which would make a
+notebook of a notebook.
 
 ## Moving between versions
 
