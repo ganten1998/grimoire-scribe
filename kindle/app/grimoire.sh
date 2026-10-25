@@ -112,13 +112,23 @@ ko_parents() {
     KO_WHY="KOReader's reader.lua is not among this launcher's parents"
     return 1
 }
-# For --hosted: KOReader's exit has let go of the input. An exclusive grab belongs to the open
-# device, so while reader.lua still has one open (this run did not come from KOReader's exit path:
-# from its terminal, say), Grimoire would get no pen or touch. Sets KO_HELD to the first one; a
-# list that cannot be read lets this through.
+# For --hosted: KOReader's exit has let go of pen/touch input. A retained key-only device (such
+# as kindle-input-pt on newer setups) cannot hold either digitizer. Permit it only when sysfs
+# positively reports no absolute axes; unknown/malformed capabilities remain a refusal. Check
+# every open device, so a keyboard never hides a retained pen or touch screen later in the list.
+# Sets KO_HELD to the first blocking device; an unreadable fd list keeps the previous behavior.
 ko_let_go() {
-    KO_HELD=$(ls -l "$SYS/proc/$KO_READER/fd" 2>/dev/null | awk '$NF ~ /^\/dev\/input\// { print $NF; exit }')
-    [ -z "$KO_HELD" ]
+    KO_HELD=""
+    for KO_INPUT in $(ls -l "$SYS/proc/$KO_READER/fd" 2>/dev/null | awk '$NF ~ /^\/dev\/input\// { print $NF }'); do
+        KO_ABS=$(cat "$SYS/sys/class/input/${KO_INPUT##*/}/device/capabilities/abs" 2>/dev/null)
+        case "$KO_ABS" in
+        '' | *[!0\ ]*) ;;  # Missing, nonzero or malformed: still potentially pen/touch.
+        *0*) continue ;;
+        esac
+        KO_HELD=$KO_INPUT
+        return 1
+    done
+    return 0
 }
 
 HOSTED=""

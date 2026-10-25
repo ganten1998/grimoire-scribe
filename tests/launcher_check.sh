@@ -629,6 +629,39 @@ suite() {
     check "$s hosted, framework stopped: lab126_gui left alone" lacks "$SHIM_LOG" "lab126_gui"
     check "$s hosted, framework stopped: the power button note" has "$LOGF" \
         "grimoire.sh: KOReader stopped the Kindle framework: the power button may not put the Kindle to sleep in Grimoire"
+    # Post-update setups can retain a virtual keyboard after releasing pen/touch. Its zero
+    # absolute-axis bitmap permits the handover, but must not hide a later pen/touch fd.
+    for mode in keys keys-spaces keys-pen keys-touch missing empty whitespace malformed; do
+        hosted_tree "hosted-input-$mode"
+        caps=$T/sys/sys/class/input
+        mkdir -p "$caps/event5/device/capabilities" "$caps/event6/device/capabilities"
+        echo 0 >"$caps/event5/device/capabilities/abs"
+        holds=/dev/input/event5
+        expected=3
+        case $mode in
+        keys) expected=0 ;;
+        keys-spaces) echo '0 0' >"$caps/event5/device/capabilities/abs"; expected=0 ;;
+        keys-pen) echo f000003 >"$caps/event6/device/capabilities/abs"; holds="$holds /dev/input/event6" ;;
+        keys-touch) echo 'ee18000 0' >"$caps/event6/device/capabilities/abs"; holds="$holds /dev/input/event6" ;;
+        missing) rm "$caps/event5/device/capabilities/abs" ;;
+        empty) : >"$caps/event5/device/capabilities/abs" ;;
+        whitespace) echo '   ' >"$caps/event5/device/capabilities/abs" ;;
+        malformed) echo unknown >"$caps/event5/device/capabilities/abs" ;;
+        esac
+        ko_paused FAKE_KO_HOLDS="$holds" fake-koreader sh "$APP/grimoire.sh" --hosted koreader 2>"$T/stderr"
+        rc=$?
+        check "$s hosted $mode: status $expected ($rc)" is "$rc" "$expected"
+        if [ "$expected" = 0 ]; then
+            check "$s hosted $mode: Grimoire ran" has "$SHIM_LOG" "grimoire exits"
+        else
+            check "$s hosted $mode: no UI or input takeover" sh -c '! grep -qE "^grimoire |lipc-|killall|iptables|^stop |^start " "$1"' sh "$SHIM_LOG"
+            case $mode in
+            keys-pen|keys-touch) check "$s hosted $mode: retained digitizer identified" has "$LOGF" "still has /dev/input/event6 open" ;;
+            esac
+        fi
+        check "$s hosted $mode: no lock left" [ ! -e "$GRIMOIRE_TMP/grimoire.launcher.pid" ]
+    done
+
     # Refusals (exit 3, logged, on stderr, nothing touched): no KOREADER_DIR; reader.lua started by
     # something else than koreader.sh; no reader.lua among the parents; a reader.lua that still
     # holds an input device (run from KOReader's terminal, say, not its exit path); a KOReader that

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0-rc.3 (candidate)
+
+- Fix KOReader handover on firmware 5.20.1.0.2: a retained key-only input device no longer
+  prevents Grimoire from starting. Retained pen/touch devices and unknown input capabilities
+  still block the handover; input device numbers are not hardcoded.
+- Request one complete KOReader repaint after returning from Grimoire, once the new reader UI
+  has had time to initialize. Keep normal page/menu refresh preferences unchanged.
+- Collect installable builds under `dist/` with version, source commit and checksums. Preserve
+  existing different builds and keep Downloads out of the build delivery path.
+
 ## 1.1.0-rc.2 (candidate)
 
 - Remove the calibration startup tip. Grimoire opens without that reminder.
