@@ -23,8 +23,9 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 </p>
 
 > **Pre-release.** 2.0.0-beta.1 is a pre-release of Grimoire 2.0. Grimoire is in daily use on
-> one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps damaged files instead of overwriting them, but
-> treat it as a beta: copy your notebooks off now and then (Library > Share makes that one click).
+> one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
+> damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
+> and then (Library > Share makes that one click).
 
 ## Will it run on my Kindle?
 
@@ -260,8 +261,8 @@ in `settings.ini` and `notebook.ini`) and writes it back unchanged:
 it, and data can be lost: they set a page in a newer format aside as
 `p<id>.qpg.damaged-<time>` and show it blank (just looking at it in Pages does this), and they
 drop newer data when they save. 1.1.0-beta.1 and later bring such pages back when you open the
-notebook again, and keep both copies if the page was written again in the meantime; a page you deleted
-in the older version stays set aside. The file format and its rules are in
+notebook again, and keep both copies if the page was written again in the meantime; a page you
+deleted in the older version stays set aside. The file format and its rules are in
 [docs/FORMAT.md](docs/FORMAT.md).
 
 **Scribes of two sizes.** The 2022 and 2024 Scribes have a 1860x2480 screen, the Scribe 3 and the
