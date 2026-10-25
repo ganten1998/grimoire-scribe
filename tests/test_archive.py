@@ -100,6 +100,11 @@ class ArchiveTests(unittest.TestCase):
             want = 315532800
         with tarfile.open(out) as tar:
             self.assertEqual(tar.getmember('README.txt').mtime, want)
+        # The Makefile's $(BUILD)/dist/source-date, which remakes the zip when this time changes.
+        for environ, time_ in ((env, want), (dict(env, SOURCE_DATE_EPOCH=str(EPOCH)), EPOCH)):
+            printed = subprocess.run([sys.executable, str(TOOL), 'source-date'], env=environ,
+                                     capture_output=True, text=True, check=True).stdout
+            self.assertEqual(printed, f'{time_}\n')
 
     def test_refuses_links_and_paths_outside(self):
         base = self.tree('r', True, 0o644, 0o755, 1700000000)

@@ -7,6 +7,7 @@ mode 755 and other files 644, and nothing else of the builder's (no extra zip fi
 attributes) goes in. The NAMEs go in the order given, and each directory's contents in name
 order. So the same files make the same archive on any host, under any umask or time zone.
 usage: archive.py tar|zip OUTPUT -C DIR NAME...
+       archive.py source-date    prints that time (the Makefile remakes the zip when it changes)
 """
 import argparse
 import io
@@ -14,6 +15,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tarfile
 import time
 import zipfile
@@ -87,6 +89,9 @@ def write_zip(stream, root, names, mtime):
 
 
 def main():
+    if sys.argv[1:] == ['source-date']:
+        print(source_date_epoch())
+        return
     parser = argparse.ArgumentParser(description=__doc__.split('\n', 1)[0])
     parser.add_argument('format', choices=('tar', 'zip'))
     parser.add_argument('output', type=Path)

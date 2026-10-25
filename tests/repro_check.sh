@@ -12,7 +12,8 @@ cd "$(dirname "$0")/.." || exit 1
 BUILD=${1:-build}
 R=$BUILD/repro
 VERSION=$(cat VERSION)
-# Each build is a make of its own, not a part of the caller's (whose -j and variables are in these).
+# Each build is a make of its own, not a part of the caller's (whose -j and variables are in these);
+# ZIG comes from the caller (make package-check passes its own), so both use the same compiler.
 unset MAKEFLAGS MFLAGS MAKELEVEL
 rm -rf "$R" && mkdir -p "$R"
 fail=0
@@ -22,7 +23,7 @@ check() {  # check NAME COMMAND...: ok when the command succeeds
     if "$@"; then echo "ok   $name"; else echo "FAIL $name"; fail=1; fi
 }
 build() {  # build NAME: make kpm-package into $R/NAME, its log in $R/NAME.log
-    if make BUILD="$R/$1" kpm-package >"$R/$1.log" 2>&1; then
+    if make BUILD="$R/$1" ZIG="${ZIG:-zig}" kpm-package >"$R/$1.log" 2>&1; then
         echo "ok   clean build $1"
     else
         tail -n 20 "$R/$1.log"

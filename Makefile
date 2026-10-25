@@ -308,7 +308,9 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # depend on the builder either: the stb notice names the headers in $(sort) order, not the
 # locale's. With the same zig version, the same commit makes the same bytes on any Mac, so
 # BUILD_ID and every release file can be compared with a local build (tests/repro_check.sh, part
-# of make package-check, builds twice from clean and compares).
+# of make package-check, builds twice from clean and compares). $(BUILD)/dist/source-date holds
+# that time and changes only when it does: a new commit makes the zip again even when no file in
+# it changed, so the zip never keeps an older commit's time.
 PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
@@ -318,7 +320,7 @@ KOLEGACY_SRC := $(wildcard kindle/koreader/legacy/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
-                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(wildcard assets/*-OFL-1.1.txt) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
@@ -391,6 +393,10 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	cp -R "$(PKG)/KOReader patches (optional)/." $(BUILD)/dist/patchstage/KOReader-patches/
 	python3 tools/archive.py zip $(BUILD)/dist/KOReader-patches.zip -C $(BUILD)/dist/patchstage KOReader-patches
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
+$(BUILD)/dist/source-date: FORCE
+	@mkdir -p $(BUILD)/dist
+	@python3 tools/archive.py source-date > $@.new; if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
+FORCE:
 
 # KPM v2 accepts only numeric version triples; the builder preserves prerelease ordering.
 KPM_BASE_URL ?= https://github.com/ganten1998/grimoire-scribe/releases/download/v$(VERSION)
@@ -416,7 +422,7 @@ kpm-check: kpm-package
 package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 	python3 -m unittest discover -s tests -p 'test_archive.py' -v
-	tests/repro_check.sh $(BUILD)
+	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
 check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check dist
