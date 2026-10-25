@@ -36,6 +36,10 @@ act once; releases and repeats do not trigger actions. Native PIN input is disca
 logged. The app logs attachment paths, not key presses. The visible last-input display belongs
 to the current unlocked Grimoire session.
 
+A key or controller press keeps the Kindle awake as the pen does: it starts the Display > Sleep
+after time again. This is a fix in 2.0.0-beta.1: the 1.1.0 release candidates let the Kindle
+fall asleep while only a keyboard or controller was in use.
+
 The Kindle must already expose the keyboard/controller through `/dev/input/event*`. Grimoire
 adds no Bluetooth pairing service or device drivers. It watches up to four external keyboard/
 controller devices and checks for hotplug every five seconds without exclusive grabs. Analog
