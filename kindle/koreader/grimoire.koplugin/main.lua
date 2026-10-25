@@ -41,7 +41,8 @@ naming the book (KOReader's partial MD5 of its file), its title, the page and th
 grimoire/import/.annotate/, each written whole (a temporary file, then a rename), and the hand-over
 runs grimoire.sh --hosted koreader --annotate, which tells Grimoire to open that page (its notebook
 for the book, the page in it: docs/FORMAT.md, Annotated pages). Coming back is as from Open: the same
-book, at the same page. Only app/grimoire.sh's "annotate" capability allows it.
+book, at the same page. Only app/grimoire.sh's "annotate" capability allows it. A book in Grimoire's
+PDF mirror (grimoire/PDFs) is refused: a notebook's own PDF would become a notebook of a notebook.
 
 What this plugin logs (KOReader's crash.log goes into bug reports too) never names a book, its title
 or its file: page numbers and counts only.
@@ -83,6 +84,7 @@ local STRINGS = {
         annotate_no_book = "Open a book first: Grimoire annotates the page you are reading.",
         annotate_too_old = "This Grimoire cannot annotate pages: copy a newer Grimoire.sh into the Kindle's documents folder.",
         annotate_failed = "Could not save this page for Grimoire. See koreader/crash.log.",
+        annotate_own_pdf = "This PDF is a Grimoire notebook: open that notebook in Grimoire to write on it.",
     },
     -- The words of Grimoire's own Spanish (po/es.po, po/es-glossary.md) where they are the same:
     -- la pantalla táctil, Ajustes, cuaderno, and "detalles en" for where the log says more.
@@ -109,6 +111,7 @@ local STRINGS = {
         annotate_no_book = "Primero abre un libro: Grimoire anota la página que estás leyendo.",
         annotate_too_old = "Este Grimoire no puede anotar páginas: copia un Grimoire.sh más reciente en la carpeta documents del Kindle.",
         annotate_failed = "No se pudo guardar esta página para Grimoire. Detalles en koreader/crash.log.",
+        annotate_own_pdf = "Este PDF es un cuaderno de Grimoire: abre ese cuaderno en Grimoire para escribir en él.",
     },
 }
 
@@ -209,6 +212,21 @@ end
 -- A book key as Grimoire takes one (notebook.ini's source=): letters and digits, under 64.
 local function key_ok(key)
     return type(key) == "string" and #key > 0 and #key < 64 and key:match("^%w+$") ~= nil
+end
+
+-- path made absolute (from KOReader's working folder) and plain: no "." or ".." parts, no doubled
+-- or trailing slash. Its letters stay as they are.
+local function plain_path(path)
+    if path:sub(1, 1) ~= "/" then path = (lfs.currentdir and lfs.currentdir() or "") .. "/" .. path end
+    local parts = {}
+    for part in path:gmatch("[^/]+") do
+        if part == ".." then
+            table.remove(parts)
+        elseif part ~= "." then
+            table.insert(parts, part)
+        end
+    end
+    return "/" .. table.concat(parts, "/")
 end
 
 local Grimoire = WidgetContainer:extend{
@@ -365,6 +383,11 @@ function Grimoire:onAnnotateInGrimoire()
         self:tell("annotate_no_book")
         return true
     end
+    if self:inMirror(self.ui.document.file) then
+        logger.info("Grimoire: this book is a notebook's own PDF, from grimoire/PDFs: not annotated")
+        self:tell("annotate_own_pdf")
+        return true
+    end
     logger.info("Grimoire: annotate the page the reader is on")
     local launcher, busy = self:prepare("annotate")
     if not launcher then return true end
@@ -381,6 +404,26 @@ function Grimoire:onAnnotateInGrimoire()
     -- "Preparing Grimoire..." stays up until Grimoire draws.
     self:handOver(launcher, busy, " --annotate")
     return true
+end
+
+-- Whether file lies in Grimoire's PDF mirror, grimoire/PDFs, or in a folder in it: annotating a
+-- notebook's own PDF would make a notebook of a notebook. The two paths are compared made plain;
+-- then each folder the file lies in is compared with the mirror as the filesystem has them (by
+-- device and inode), which finds the mirror reached another way: through a link, or by a name in
+-- other letter case on a filesystem that ignores case.
+function Grimoire:inMirror(file)
+    if type(file) ~= "string" or file == "" then return false end
+    local mirror, path = plain_path(self.us .. "/grimoire/PDFs"), plain_path(file)
+    if path:sub(1, #mirror + 1) == mirror .. "/" then return true end
+    local m = lfs.attributes(mirror)
+    if not (m and m.mode == "directory" and m.ino) then return false end
+    local dir = path:match("^(.+)/[^/]*$")
+    while dir do
+        local d = lfs.attributes(dir)
+        if d and d.dev == m.dev and d.ino == m.ino then return true end
+        dir = dir:match("^(.+)/[^/]*$")
+    end
+    return false
 end
 
 -- The page the reader is on.
