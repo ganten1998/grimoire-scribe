@@ -175,13 +175,14 @@ KPM (9) and Lua patch (530) tests, the share and export checks and actionlint al
 
 Keep a notebook backup, and use Library > Exit or hold power for 4 seconds to leave.
 
-1. **KOReader hand-over.** Install the new Grimoire.sh and open it from the Kindle Library once,
-   or use Library > Settings > KOReader > Install / update Grimoire plugin. Restart KOReader. From
-   an open PDF and an EPUB, try Tools > Grimoire > Open Grimoire, then Annotate this page in
-   Grimoire. Write, return, and check you are back at the same book and position. Annotate the
-   same page again and check the ink is still there. Try an ordinary start and KUAL's start
-   without the framework if you have it. KOReader in `extensions/koreader` or `documents/koreader`
-   is found too.
+1. **KOReader hand-over.** Install the new Grimoire.sh. Add the plugin with Library > Settings >
+   KOReader > Install / update Grimoire plugin, or copy it in by hand; a Library start alone does
+   not add it. If the plugin is already installed, open Grimoire once from the Kindle Library so
+   it is refreshed. Restart KOReader. From an open PDF and an EPUB, try Tools > Grimoire > Open
+   Grimoire, then Annotate this page in Grimoire. Write, return, and check you are back at the same
+   book and position. Annotate the same page again and check the ink is still there. Try an
+   ordinary start and KUAL's start without the framework if you have it. KOReader in
+   `extensions/koreader` or `documents/koreader` is found too.
 2. **Passcode.** Turn on Device Passcode in the Kindle's Settings and open Grimoire from the
    Library, with KOReader closed. Write in a notebook, sleep and wake. The Kindle's keypad should
    appear; waiting or touching it must never open the notebook. After the right passcode, the
