@@ -4,7 +4,8 @@ What was checked on a real Kindle, on which Kindle and firmware, and what still 
 `make check` covers the logic, the package, the launchers and their failures. It cannot prove what
 only a Kindle shows: the screen, the pen, the passcode keypad, KOReader and KPM on the device.
 
-2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation and two fixes: while shortcuts
+2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation, release packaging that builds
+the same bytes from the same commit, and two fixes: while shortcuts
 are enabled, key and controller presses keep the Kindle awake; and "Annotate this page in
 Grimoire" refuses a notebook's own PDF from `grimoire/PDFs`. Those two fixes have not been checked
 on a Kindle yet. The candidates 1.1.0-rc.1 to rc.3 were never published; their results are below,

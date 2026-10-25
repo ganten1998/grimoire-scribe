@@ -78,8 +78,8 @@ or RC writes only that one. The stable feed appears with the first stable releas
 - Preview: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json`
 - Stable: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/stable/manifest.json`
 
-**These URLs are planned until that first publication.** Add only the channel you want using
-KPM's repository settings. A stable release updates stable and also goes into preview, so preview
+**The preview feed starts with 2.0.0-beta.1, the first published release; the stable feed starts
+with 2.0.0.** Add only the channel you want (see Updating for how). A stable release updates stable and also goes into preview, so preview
 subscribers are offered it too. A beta or RC updates preview only. Neither channel ever moves to
 an older version: a stable release older than the preview's current beta leaves preview as it is.
 Publication refuses to overwrite release assets with different bytes, refuses to replace a version
