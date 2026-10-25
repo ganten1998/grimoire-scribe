@@ -268,9 +268,11 @@ it takes the power button, at its exit.
   another Grimoire is running, 3 refused.
 - Exit statuses: 0 done (for a plain start, Grimoire is on its way); 1 the app could not be
   unpacked, or the calibration could not be reset; 2 `--unpack-only`, `--reset-calibration` or
-  `--hosted` did nothing because the old Quire app is still running (a plain start returns 0
-  then); 3 refused inside KOReader, or `--hosted` outside it. Past the unpack, `--hosted` answers
-  with `app/grimoire.sh`'s status.
+  `--hosted` did nothing because Grimoire, or the old Quire app, is still running (a plain start
+  returns 0 then); 3 refused inside KOReader, or `--hosted` outside it. Past the unpack, `--hosted`
+  answers with `app/grimoire.sh`'s status. A running Grimoire is found by the launcher's PID before
+  anything is unpacked, and logged as `Grimoire is running. Close it before updating or resetting
+  calibration.`; a background PDF export does not count.
 - The KOReader guard: when `KOREADER_DIR` is set or `pidof reader.lua` succeeds, the launcher
   logs a line, prints the same text on stderr and exits 3. Only outside KOReader (a Library tap
   while a KOReader lingers) does it also show "Grimoire did not start: KOReader is running." with
