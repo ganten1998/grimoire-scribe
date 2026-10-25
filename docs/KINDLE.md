@@ -109,8 +109,9 @@ KOReader's own `koreader.sh` normally removes the passcode flag before its plugi
 Hosted Grimoire inherits that policy and does not guess whether a missing flag should be restored.
 Use a Library start for native PIN protection. If a host preserves the flag, Grimoire supports
 native unlock using that host's paused UI. The native keypad hand-over and reacquisition came in
-1.1.0-beta.2 and have not been confirmed on a Kindle yet: the host tests verify ownership, order,
-failure and timeout, and each firmware still needs a device check ([TESTING.md](TESTING.md)).
+1.1.0-beta.2. The maintainer confirmed the native keypad and writing after unlock upright and
+sideways on a Scribe 2024 with firmware 5.20.1.0.2. The host tests verify ownership, order,
+failure and timeout; other firmware still needs a device check ([TESTING.md](TESTING.md)).
 
 ## The language
 
@@ -253,6 +254,18 @@ screen back to KOReader` and `power state at exit: X`. After KUAL's start withou
 it adds `KOReader stopped the Kindle framework: the power button may not put the Kindle to sleep
 in Grimoire`: KOReader drops its stand-in for the framework, which the power service wants before
 it takes the power button, at its exit.
+
+### SSH during a hosted session
+
+An SSH server already started in KOReader can stay available while Grimoire runs. On the Scribe
+2024 with firmware 5.20.1.0.2, KOReader v2026.07.2 and Grimoire 2.0.0-beta.1, fresh connections
+to KOReader's port 2222 succeeded before the handover, throughout the Grimoire session and after
+returning to KOReader. Its listener process stayed the same. A separate development listener on
+port 2223 passed the same test. This lets a developer read logs or stage an update while writing.
+
+Grimoire does not start an SSH server or keep Wi-Fi awake. The app must close before an update is
+installed; its installer refuses to replace a running app. The test above covers the hosted
+session with networking awake, not a reboot or deep sleep.
 
 ## The launcher
 
@@ -475,7 +488,8 @@ tells the story):
   show it); the two-press exit from a locked Kindle does not need the hold.
 - With the Device Passcode on, the Kindle holds back `outOfScreenSaver` until the passcode is
   typed on its own keypad, on 5.19 and 5.20 too, and the native hand-over (The Device Passcode)
-  relies on that. No Kindle has confirmed the hand-over yet ([TESTING.md](TESTING.md)). The power
+  relies on that. The hand-over passed upright and sideways on the Scribe 2024 with firmware
+  5.20.1.0.2 ([TESTING.md](TESTING.md)). The power
   service's state names (`active`, `screenSaver`, `readyToSuspend`, `suspended`) are the same on
   both.
 - Accented notebook and folder names become UTF-8 file names under `grimoire/PDFs`; whether the

@@ -111,8 +111,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   the Kindle goes to sleep, Grimoire saves your page and hands the screen and touch input to the
   Kindle, so its own keypad can ask for the passcode; when the Kindle reports the unlock, Grimoire
   takes them back and shows your notebook. With a passcode set, the keypad comes before a custom
-  sleep picture, and the Kindle interface keeps running for it. This hand-over has not been
-  confirmed on a Kindle yet: it needs confirmation on each firmware. KOReader normally turns the
+  sleep picture, and the Kindle interface keeps running for it. Confirmed upright and sideways on
+  the Scribe 2024 with firmware 5.20.1.0.2; other firmware still needs a check. KOReader normally turns the
   passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
   Grimoire from the Library when you need the passcode.
 - **Language**: English or Spanish, following the Kindle's own language (see Language).
