@@ -28,6 +28,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
 CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
 CORE_SRC += src/bgimage.c
 CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
+CORE_SRC += src/pair.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
