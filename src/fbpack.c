@@ -34,3 +34,17 @@ void fbpack_row(uint8_t *dst, ptrdiff_t step, uint8_t *previous, ptrdiff_t previ
         if (bpp == 32) { p[1] = p[2] = v; p[3] = 255; }
     }
 }
+
+Rect fbpack_pen_region(Rect r, int width, int height) {
+    if (width <= 0 || height <= 0) return RECT_EMPTY;
+    r = rect_intersect(r, (Rect){0, 0, width, height});
+    if (rect_is_empty(r) || (int64_t)r.w * r.h >= 6400) return r;
+    int w = r.h >= 80 ? (6400 + r.h - 1) / r.h : 80;
+    w = clampi(w, r.w, width);
+    int h = clampi((6400 + w - 1) / w, r.h, height);
+    // Narrow panels may need more width after the height reaches their edge.
+    if ((int64_t)w * h < 6400) w = clampi((6400 + h - 1) / h, w, width);
+    int x = clampi(r.x - (w - r.w) / 2, 0, width - w);
+    int y = clampi(r.y - (h - r.h) / 2, 0, height - h);
+    return (Rect){x, y, w, h};
+}
