@@ -107,6 +107,20 @@ establish usable input. A Bluetooth helper's "paired" message alone is not proof
 connection, HID descriptor setup, an input node, or working app controls. Controller and firmware
 coverage need physical tests; no universal 8BitDo claim is made.
 
+### Actual Arcade Stick test, October 25, 2026
+
+The owner's 8BitDo Arcade Stick 80FE connected using **S + BT**, identifying as **Pro Controller**
+(`E4:17:D8:85:67:1A`). The isolated upstream kindle-hid-passthrough v3.18.0 runtime exposed
+`/dev/input/event6` with a 170-byte HID descriptor. Raw face-button events were received.
+With its LS/DP/RS selector on **DP**, a read-only ARM probe compiled against this branch's
+`src/hidkeys.c` decoded all four directions (544, 545, 546, 547) and a face button (306).
+This tests the production decoder on real input without replacing the installed RC2 or touching
+a notebook. It does not establish end-to-end app control or KOReader gamepad support. The
+optional digital mapping profile alone does not add KOReader gamepad discovery or axis routing.
+After restarting the isolated transport, tapping Home reconnected the saved pairing and recreated
+the input device without pairing again. The transport was isolated under `/mnt/us/kindle-lab`; its broad installer, boot service, udev
+rules, mapper and KOReader plugin were not installed.
+
 ## Validation
 
 `make bridge-check` runs the shell lifecycle and optional KOReader profile checks. Portable
