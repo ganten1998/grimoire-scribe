@@ -1,4 +1,5 @@
 build
+dist/
 grimoire-data/
 *.o
 .DS_Store

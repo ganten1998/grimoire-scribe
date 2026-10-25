@@ -5,13 +5,15 @@
 #   make tools     host CLI grimoire-export             -> build/host/grimoire-export
 #   make kindle    static armhf binary (zig cc)      -> build/kindle/grimoire
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
+#   make dist      complete installable bundle       -> dist/Grimoire-VERSION-COMMIT/
 #   make check     tests + scenarios + share server + exporter + ARM build + the zip + its launchers
 #                  + the languages (make l10n-check)
-#   make all       sim + test + tools + kindle + package
+#   make all       sim + test + tools + kindle + dist
 #   make l10n      (maintainer, needs GNU gettext) po/grimoire.pot from the sources, then every
 #                  po/<lang>.po merged with it and compiled to po/<lang>.mo
 
 BUILD   ?= build
+DIST    ?= dist
 HOSTCC  ?= clang
 ZIG     ?= zig
 KCC     := $(ZIG) cc -target arm-linux-musleabihf -mcpu=cortex_a7
@@ -46,7 +48,7 @@ SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
 .PHONY: all sim headless test tools kindle package scenarios check clean icon logo l10n l10n-check
-all: sim headless test tools kindle package
+all: sim headless test tools kindle dist
 
 # ---- generated: embedded fonts ----
 FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacquard24-Regular.ttf \
@@ -385,6 +387,10 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 # KPM v2 accepts only numeric version triples; the builder preserves prerelease ordering.
 KPM_BASE_URL ?= https://github.com/ganten1998/grimoire-scribe/releases/download/v$(VERSION)
 .PHONY: kpm-package kpm-check kopatch-check
+.PHONY: dist
+dist: kpm-package
+	python3 tools/dist.py --build "$(BUILD)" --output "$(DIST)"
+
 kpm-package: package
 	python3 tools/kpm-package.py --zip $(BUILD)/dist/Grimoire.zip --version $(VERSION) \
 	  --output $(BUILD)/kpm --base-url "$(KPM_BASE_URL)"
@@ -408,7 +414,7 @@ bridge-check:
 	python3 -m unittest discover -s tests -p 'test_ssh_bridge.py' -v
 	luajit tests/labhid_check.lua
 	luacheck --no-color -q --std luajit --no-self --max-line-length 200 --globals G_reader_settings -- kindle/lab/kindlelabhid.koplugin
-check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check bridge-check
+check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check bridge-check dist
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"
