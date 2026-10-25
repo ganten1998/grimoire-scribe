@@ -16,6 +16,9 @@ KOREADER: installing Grimoire leaves KOReader untouched. To add Tools > Grimoire
 Library > Settings > KOReader > Install / update Grimoire plugin, then restart KOReader.
 The plugin opens Grimoire and returns to your book. Quit KOReader before a Library launch.
 A Library start maintains a plugin you explicitly installed; a deleted plugin stays deleted.
+After an update, open Grimoire once from the Library before using Tools > Grimoire.
+On firmware 5.20.1, KOReader can draw an incomplete first screen, also after Grimoire. That is
+a KOReader issue (koreader issue 16283), not fixed by Grimoire.
 You can also copy the optional grimoire.koplugin folder into koreader/plugins manually.
 KPM: the separate .kpkg release asset installs through Kindle Package Manager. It uses the
 same app as this zip, preserves notebooks/settings, and installs no KOReader plugin or patches.
@@ -24,16 +27,19 @@ Edit grimoire/shortcuts.ini, then Reload shortcuts.ini there. Bluetooth pairing 
 8BitDo hardware compatibility is not yet confirmed. Analog sticks and hats are not mapped.
 LANGUAGE: English or Spanish (a draft), in Settings > Language (Ajustes > Idioma in Spanish).
 Automatic, the default, follows the Kindle's own language; pick English there to switch back.
-PASSCODE: from the Kindle Library, Grimoire keeps the native PIN enabled. Sleep hands input
-and screen to the Kindle's keypad; unlock to return to your notebook. Native PIN takes priority
-over custom sleep pictures and stop-framework mode. KOReader normally disables the PIN before
-Grimoire can run; start Grimoire from the Library if you need native PIN protection.
+PASSCODE: from the Kindle Library, Grimoire leaves the Device Passcode on. When the Kindle
+sleeps, Grimoire hands the screen and touch input to the Kindle's own keypad, and takes them back
+after the Kindle reports the unlock. This hand-over still needs confirmation on each firmware.
+With a passcode set, the keypad comes before custom sleep pictures and stop-framework mode.
+KOReader normally turns the passcode off before Grimoire can run; start Grimoire from the Library
+if you need it.
 PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles three
 optional KOReader patches. Restart KOReader after a change. The manual patches folder includes
 fonts and instructions. Terminess now separates the battery icon and percentage in the dropdown
-menu. KOReader keeps its own DPI behavior. Different patches with the same filename are kept.
+menu. Different patches with the same filename are kept.
 WALLPAPER: Display > Sleep screen: KOReader wallpaper uses KOReader's custom image/cover, copied
-at each Tools > Grimoire handover. Without one, it shows your page. Native PIN takes priority.
+at each Tools > Grimoire handover. Without one, it shows your page. With a passcode set, the
+keypad comes first.
 PAGES: the numbered grid reads no previews; Go to page... opens a number pad. In the web reader,
 the counter and number field at the top jump directly to any page, one page loaded at a time.
 
