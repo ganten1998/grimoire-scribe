@@ -36,16 +36,20 @@ build_id() {  # build_id ZIP: the BUILD_ID line of the zip's documents/Grimoire.
     unzip -p "$1" documents/Grimoire.sh 2>/dev/null | LC_ALL=C sed -n 's/^BUILD_ID=//p' | head -n 1
 }
 
+# Build b's zig cache is in $R (an absolute path whether BUILD is one or not), so the reset above
+# empties it and the cleanup below removes it.
+case $R in /*) cache=$R/zig-cache ;; *) cache=$(pwd)/$R/zig-cache ;; esac
 (
     export LC_ALL=en_US.UTF-8 TZ=UTC
     build a
 ) || exit 1
+check "build b starts from an empty zig cache" [ ! -e "$cache" ]
 (
     umask 077
-    cache=$(pwd)/$R/zig-cache
     export ZIG_GLOBAL_CACHE_DIR="$cache" ZIG_LOCAL_CACHE_DIR="$cache" LC_ALL=C TZ=Asia/Kathmandu
     build b
 ) || exit 1
+check "build b's zig cache is in $R, which the cleanup removes" [ -d "$R/zig-cache" ]
 
 kpkg=$(cd "$R/a/kpm" && ls grimoire_*_kindlehf.kpkg 2>/dev/null)
 check "build a made one KPM package ($kpkg)" [ "$(printf '%s\n' "$kpkg" | grep -c .)" = 1 ]
