@@ -1,6 +1,56 @@
 # Changelog
 
-## 1.1.0-rc.3 (candidate)
+## 2.0.0-beta.1 (unreleased)
+
+The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.0-rc.1 to rc.3
+(below) are folded into it; there is no 1.1.0. docs/TESTING.md says what was checked on a Kindle.
+
+- **Install with KPM**: the release has a `.kpkg` for Kindle Package Manager on `kindlehf`
+  Scribes, built from the same app as the zip. It adds the two Library items, keeps your
+  notebooks and settings through install, update and removal, and installs no KOReader plugin or
+  patches. KPM numbers this release 2.0.1001. The preview and stable feeds start with the first
+  release published through the new workflow; docs/KPM.md says how to add one.
+- **KOReader integration is your choice**: a new install, or a start from the Library, no longer
+  adds Grimoire's plugin to KOReader. Add it with Library > Settings > KOReader > Install / update
+  Grimoire plugin, or copy it in by hand. A plugin already installed keeps being updated; once you
+  delete it, or install KOReader again, it stays out until you add it again. The plugin is
+  refreshed when Grimoire is opened from the Kindle Library, so after updating, open Grimoire once
+  from the Library before using Tools > Grimoire.
+- **Opening Grimoire from KOReader works on firmware 5.20.1.0.2**: KOReader keeps a key-only input
+  device open there, and Grimoire refused to start. A held device with no pen or touch axes no
+  longer stops it; a held pen or touch screen, or a device whose kind cannot be read, still does.
+- **Keyboard and controller shortcuts**: Library > Settings > Shortcuts > Enable shortcuts writes
+  starter mappings to `grimoire/shortcuts.ini` (only when the file does not exist): tools,
+  undo/redo, white ink and moving between pages. Edit the file, then Reload shortcuts.ini. The
+  sheet shows the last key or button code, to help map a controller. Shortcuts act only in a
+  notebook that is idle: not while drawing, with a sheet open, asleep or at the passcode keypad.
+  Key and controller presses keep the Kindle awake, as the pen does. Grimoire adds no Bluetooth
+  pairing and maps no analog sticks; 8BitDo controllers are not confirmed yet. docs/SHORTCUTS.md
+  has the details.
+- **Terminess menus in KOReader**: the optional patch picks a matching regular and bold font,
+  uses a real bold, and leaves a gap between the dropdown menu's battery icon and its percentage.
+  Library > Settings > KOReader updates an unchanged earlier Grimoire patch; a patch you changed
+  is left alone.
+- **Updates wait for Grimoire to close**: while Grimoire is open, unpacking a new `Grimoire.sh`
+  and resetting the pen calibration are refused before they touch the app or your settings. A
+  notebook PDF still being written in the background does not block a later start.
+- **"Annotate this page in Grimoire" refuses Grimoire's own notebook PDFs**, so a notebook can no
+  longer become a notebook of a notebook.
+- **Gothic Library**: a small gap between the header ornament and the notebook cards, upright and
+  sideways.
+- **No calibration tip at startup**: Grimoire opens without that reminder.
+- **No KOReader DPI patch**: the DPI experiment tried in the release candidates is gone, and
+  KOReader keeps its own scaling.
+- **Known issue**: on firmware 5.20.1, KOReader can draw an incomplete first screen, also when it
+  comes back from Grimoire. This is a KOReader issue
+  ([koreader issue 16283](https://github.com/koreader/koreader/issues/16283)), not fixed by
+  Grimoire.
+- **For developers**: `make dist` collects the installer zip, the optional patches zip, the KPM
+  package and its feeds, checksums and the source revision in `dist/Grimoire-VERSION-COMMIT/`,
+  and never overwrites a different build. The release workflow runs the full checks, needs
+  ShellCheck and Luacheck, and publishes only from a published GitHub release.
+
+## 1.1.0-rc.3 (candidate, folded into 2.0.0-beta.1)
 
 - Fix KOReader handover on firmware 5.20.1.0.2: a retained key-only input device no longer
   prevents Grimoire from starting. Retained pen/touch devices and unknown input capabilities
@@ -8,7 +58,7 @@
 - Collect installable builds under `dist/` with version, source commit and checksums. Preserve
   existing different builds and keep Downloads out of the build delivery path.
 
-## 1.1.0-rc.2 (candidate)
+## 1.1.0-rc.2 (candidate, folded into 2.0.0-beta.1)
 
 - Remove the calibration startup tip. Grimoire opens without that reminder.
 - Add a small gap between the Gothic header ornament and Library thumbnails, in both orientations.
@@ -17,12 +67,12 @@
 - Keep KPM's temporary installer bookkeeping out of `grimoire/`, so a first launch can still
   migrate notebooks from the old Quire name. Require shell/Lua linters in the release workflow.
 - Remove the experimental KOReader DPI patch and its Settings control. KOReader keeps its native
-  scaling policy and the owner’s DPI preference. The Terminess font/battery-spacing fix remains.
+  scaling policy and the DPI setting already chosen in it. The Terminess font/battery-spacing fix
+  remains.
 - Retain the corrected KPM installer for the real Documents folder and the driver-owned Share
-  test lifetime. KPM version 1.1.5002 upgrades the installed RC1 (1.1.5001).
+  test lifetime. KPM version 1.1.5002 sorts after 1.1.0-rc.1 (1.1.5001).
 
-
-## 1.1.0-rc.1 (local candidate, superseded)
+## 1.1.0-rc.1 (local candidate, folded into 2.0.0-beta.1)
 
 - **KPM:** a kindlehf package built from the same installer as the ZIP, with Library launchers,
   install/upgrade/remove hooks and notebook/settings preservation. Fresh installs change no
@@ -43,17 +93,16 @@
   and retains KOReader's restart requirement. This changes KOReader's sizing policy only when
   the separate patch is enabled.
 - **Installer follow-up:** stage Library wrappers inside Documents before the final rename.
-  The Kindle blocks cross-directory moves into that folder; the real migration from the owner's
-  beta.2 launchers now passes. Regression coverage includes rollback after a failed second move.
+  The Kindle blocks cross-directory moves into that folder; the real migration from the
+  1.1.0-beta.2 launchers now passes. Regression coverage includes rollback after a failed second move.
   The share test keeps its server alive until downloads finish instead of racing a 25-second timer.
 - **Validation:** real Scribe/KPM 0.2.2 isolated install, unpack, ARM version and uninstall passed;
   repository beta-app → RC upgrade and the local-file uninstall/reinstall fallback also passed.
-  KPM 0.2.2 rejects a direct local-file upgrade; see docs/KPM.md. Original launchers and the
+  KPM 0.2.2 rejects a direct local-file upgrade; see docs/KPM.md and docs/TESTING.md. Original launchers and the
   running KOReader process stayed unchanged. Lua patch tests and the
-  installed KOReader DPI menu code passed on the Kindle. The owner confirmed battery spacing
-  and DPI behavior look right. Physical controller input and multi-device handover remain
+  installed KOReader DPI menu code passed on the Kindle. The battery spacing and DPI behavior
+  were confirmed by eye on that Kindle. Physical controller input and multi-device handover remain
   candidate checks.
-
 
 ## 1.1.0-beta.2 (2026-10-24)
 
