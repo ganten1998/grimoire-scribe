@@ -30,6 +30,7 @@ CORE_SRC += src/fbpack.c src/latency.c
 CORE_SRC += src/nav.c
 CORE_SRC += src/bgimage.c
 CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
+CORE_SRC += src/pair.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
