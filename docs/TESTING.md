@@ -1,0 +1,215 @@
+# Device testing
+
+What was checked on a real Kindle, on which Kindle and firmware, and what still needs a device.
+`make check` covers the logic, the package, the launchers and their failures. It cannot prove what
+only a Kindle shows: the screen, the pen, the passcode keypad, KOReader and KPM on the device.
+
+2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation and two fixes: key and controller
+presses keep the Kindle awake, and "Annotate this page in Grimoire" refuses Grimoire's own
+notebook PDFs. Those two fixes have not been checked on a Kindle yet. The candidates 1.1.0-rc.1
+to rc.3 were never published; their results are below, newest first.
+
+## The Kindles
+
+| Date | Kindle | Firmware | KOReader | KPM | Build |
+|---|---|---|---|---|---|
+| 2026-10-24 | Kindle Scribe 2024 | 5.19.6 | v2026.07.2 | 0.2.2 (CLI 1.0.0), `kindlehf` | 1.1.0-rc.1, 1.1.0-rc.2 |
+| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 1.1.0-rc.3 |
+
+## 1.1.0-rc.3 on firmware 5.20.1.0.2
+
+**The hand-over from KOReader.** Firmware 5.20.1.0.2 adds a virtual input device,
+`kindle-input-pt`, with keyboard keys and no absolute axes. KOReader keeps it open through its
+exit, after it has let go of the pen and the touch screen. The 1.1.0-rc.2 launcher refused any
+input device KOReader still held, so Grimoire never started from KOReader.
+
+The launcher now lets a held input device through only when sysfs reports an absolute-axis
+bitmap of zeros. It checks every held device, so a keyboard cannot hide a held pen or touch
+screen later in the list. A missing, empty, blank or malformed bitmap is still a refusal.
+`tests/launcher_check.sh` runs these cases under sh and dash, next to the existing ancestry,
+session, passcode, installer and recovery cases.
+
+- The launcher fix was installed on its own first, with the original kept in
+  `kindle-lab/fw520-launch-fix/` on the Kindle. The maintainer confirmed opening Grimoire from
+  KOReader and returning to KOReader.
+- grimoire.log records the first frame, the pen and touch grabs and a clean status 0 return on
+  5.20.1.0.2. It also shows the pen moved from event5 to event6. Grimoire finds its devices by
+  capability, not by number, so that changes nothing.
+- 1.1.0-rc.3 was then installed through KPM 0.2.4 (package version 1.1.5003). The notebook file
+  hashes, the settings and the running KOReader's process IDs were unchanged.
+
+**KOReader's incomplete first screen.** After a restart on 5.20.1.0.2, KOReader drew its very
+first screen with parts missing, with or without Grimoire. KOReader takes the virtual device for
+an external keyboard. Its externalkeyboard plugin then sends PhysicalKeyboardConnected, and the
+file browser sets itself up again after its first paint. This is the known upstream issue
+https://github.com/koreader/koreader/issues/16283.
+
+- A repair made on this Kindle only leaves `kindle-input-pt` out of KOReader's keyboard discovery
+  and hotplug, and closes its unused descriptor. Real external keyboards keep their discovery,
+  mappings and capabilities.
+- With it, the maintainer confirmed a complete first screen after restarting KOReader, and a
+  complete screen when coming back from Grimoire without opening and closing a menu.
+- Fourteen isolated checks ran the patched plugin's discovery and hotplug paths, its native
+  capability handling, real keyboards, mixed devices and the discarded descriptor. The Kindle's
+  LuaJIT parsed the patch. The original and the patch are kept in the maintainer's KindleLab kit.
+- Grimoire does not ship or install this repair. An earlier repaint workaround in Grimoire's
+  hand-over did not help a fresh start and was removed. KOReader's page and menu refresh settings
+  are unchanged.
+
+**Build delivery.** `make dist` collects the installer ZIP, the optional patches ZIP, the KPM
+package and manifests, the source revision and checksums. The 1.1.0-rc.2 build tested on the
+device is kept separately. Source-only HID work from PR #2 is not in this release.
+
+## 1.1.0-rc.2 on firmware 5.19.6
+
+1.1.0-rc.2 removed the experimental KOReader DPI patch, its Settings control and its tests, and the
+calibration startup tip. The Terminess font matching and dropdown battery spacing stayed.
+
+On the device:
+
+- KPM 0.2.2 upgraded the installed 1.1.0-rc.1 (1.1.5001) to 1.1.0-rc.2 (1.1.5002) from a local
+  test feed (`grimoirelocalrc`). After the cache cleanup was added, installing the package ID again
+  refreshed the payload and removed the old DPI script from Grimoire's app cache.
+- The installed ARM binary reported `1.1.0-rc.2`. The DPI script was absent from KOReader's active
+  patches folder and from the app cache, and Terminess stayed installed. The settings hash matched
+  the snapshot taken before the upgrade. The deployment check opened no Grimoire screen.
+- The maintainer confirmed opening Grimoire from KOReader and returning to KOReader.
+- After the startup tip was removed, the package was installed again with a fresh settings
+  snapshot. The installed ARM SHA256 matched the tested build, and KOReader's process IDs stayed
+  unchanged.
+- The Gothic spacing and session guard build was installed through KPM as well. Its ARM SHA256 is
+  `e6ea6cddaa8294890022446579835b50b1d53ad8cb1cf7dd48295a24bbc85877`. The settings hashes and
+  KOReader's process IDs stayed unchanged. The ZIP and the KPM package carry the same launcher and
+  ARM payload.
+- An isolated Bluetooth HID bridge (upstream v3.18.0) found the maintainer's 8BitDo Arcade Stick
+  over Classic Bluetooth, but authentication failed before an input node was ready. Its "paired"
+  answer was not taken as proof of usable input. The bridge was stopped, and the Bluetooth
+  services and their off state were restored. No service, udev rule, button mapper or KOReader
+  plugin was installed. Grimoire ships no Bluetooth pairing, and the Arcade Stick is unconfirmed.
+- The launchers from before KPM stay backed up in `kindle-lab/grimoire-before-kpm-20261024/`.
+
+On the host:
+
+- The Gothic Library has 24 design pixels under its header ornament, and its grid position and
+  row count use the same offset. Classic is unchanged. Simulator screenshots in portrait and
+  landscape check the gap, and the Library scenarios check card taps.
+- The ZIP, the embedded app archive and the KPM payload hold only the three supported patches. The
+  launcher removes the byte-exact 1.1.0-rc.1 DPI script from its own app cache, also when the
+  build is already unpacked. Changed cache files and KOReader's active patches are left alone.
+- The manual scriptlets check for a running Grimoire before they unpack, and both calibration
+  resets refuse while Grimoire runs. Launcher cases force a stale build with a live session and
+  check that the cached binary, build marker, settings and PID stay unchanged. A stale PID that is
+  not running does not block an unpack.
+- KPM's installer bookkeeping lives in `/tmp`, so a first launch can still move an old `quire/`
+  folder; a regression case checks it. KPM has ten host tests.
+- The scenario runner's selftest now expects no startup toast. Its old expectation was the
+  failure in cloud run 40109165066.
+- The share test keeps its server until its driver stops it, instead of a 25-second timer that
+  slower cloud runs outlasted.
+- CI installs ShellCheck and Luacheck and checks the KPM hooks too. The Lua check ignores only
+  framework methods' implicit self and allows translation strings up to 200 columns.
+
+## 1.1.0-rc.1 on firmware 5.19.6
+
+**The KPM lifecycle, isolated.** A temporary userstore root held sentinel notebook and settings
+files. No Grimoire screen was opened, no pen or touch was grabbed, and no KOReader hand-over ran.
+Through the real KPM registry and hooks:
+
+- The generated local `.kpkg` installed with `file://`.
+- Both Library launchers appeared only in the isolated documents folder.
+- `kpm launch grimoire --unpack-only` unpacked the embedded ARM payload.
+- The ARM binary's `--version` reported `1.1.0-rc.1` without opening the framebuffer or input.
+- Uninstall removed the package registry entry and the unchanged test launchers.
+- The notebook sentinel, the settings and the unpacked app stayed.
+- The hashes of the installed Library launchers stayed the same, and so did KOReader's process
+  IDs.
+
+KPM printed a harmless `doFullScan` unavailable message during install and removal while KOReader
+ran; both returned success.
+
+**The KOReader patches.** The 530 Lua patch checks passed on the Kindle's own LuaJIT. The updated
+Terminess patch went into KOReader's active patches folder after the old file was compared byte
+for byte with the one the 1.1.0 betas shipped. The original is backed up in
+`/mnt/us/kindle-lab/grimoire-patch-check/backup-20261024/`. After a KOReader restart the
+maintainer confirmed the battery spacing looks right. This candidate also carried a DPI patch,
+measured on the device and removed again in 1.1.0-rc.2.
+
+**Upgrades.** The published 1.1.0-beta.2 installer, wrapped in a test-only KPM package (1.1.1002),
+could not be upgraded by installing the 1.1.0-rc.1 file over it: KPM 0.2.2 failed in its
+dependency graph before the hooks ran. From a temporary local feed with the same schema as the
+generated ones, installing `grimoire` again selected 1.1.5001 and ran the upgrade hooks. The
+unpacked ARM binary changed to the candidate, the sentinels survived, and no KOReader plugin was
+installed. The uninstall and reinstall fallback in [KPM.md](KPM.md) also kept the sentinels.
+
+**The first real install.** `;kpm install grimoire` from the search bar reached KPM and picked the
+candidate, but failed moving the launchers from `grimoire/.kpm-install` into Documents. KPM rolled
+back and kept the 1.1.0-beta.2 app. A probe showed the Kindle refuses moves into Documents from
+another folder, while a rename inside it works. The hook now stages its files beside the
+launchers, and a regression case covers that boundary and a failed second rename. The retried
+install, with the old launchers backed up in `/mnt/us/kindle-lab/grimoire-before-kpm-20261024/`,
+registered `grimoire|1|1|5001`. The Library launchers were KPM's, the unpacked binary reported
+`1.1.0-rc.1`, and the settings hash and KOReader's process IDs were unchanged.
+
+**On the host.** 24 sanitizer unit test programs (46,779 checks), every scenario, the language and
+fit checks in both styles and languages, the KOReader manager (40), shortcuts (26), power (104),
+KPM (9) and Lua patch (530) tests, the share and export checks and actionlint all passed.
+
+## Still needs a device
+
+- **The passcode hand-over.** Grimoire keeps the Device Passcode on for a Library start and hands
+  the screen and touch input to the Kindle's keypad on sleep. This has not been confirmed on a
+  Kindle on any firmware (step 2 below).
+- **Keyboards and controllers.** A USB or Bluetooth keyboard, 8BitDo enumeration, button numbers,
+  hotplug, modifiers and recovery after a disconnect; the passcode keypad with a controller
+  attached; and key and controller presses keeping the Kindle awake. Analog sticks and hats are
+  not supported.
+- **The KOReader hand-over elsewhere.** The testers' setups where the 1.1.0-beta integration
+  failed, other firmware versions, KUAL's start without the framework, and the KOReader wallpaper.
+- **Annotate this page** refusing Grimoire's own notebook PDFs.
+- **KPM feeds.** Installing from the public HTTPS feed once a release is published, and Library
+  indexing with KOReader closed.
+
+## Checks on a Kindle
+
+Keep a notebook backup, and use Library > Exit or hold power for 4 seconds to leave.
+
+1. **KOReader hand-over.** Install the new Grimoire.sh and open it from the Kindle Library once,
+   or use Library > Settings > KOReader > Install / update Grimoire plugin. Restart KOReader. From
+   an open PDF and an EPUB, try Tools > Grimoire > Open Grimoire, then Annotate this page in
+   Grimoire. Write, return, and check you are back at the same book and position. Annotate the
+   same page again and check the ink is still there. Try an ordinary start and KUAL's start
+   without the framework if you have it. KOReader in `extensions/koreader` or `documents/koreader`
+   is found too.
+2. **Passcode.** Turn on Device Passcode in the Kindle's Settings and open Grimoire from the
+   Library, with KOReader closed. Write in a notebook, sleep and wake. The Kindle's keypad should
+   appear; waiting or touching it must never open the notebook. After the right passcode, the
+   notebook and its ink should come back. Try portrait and landscape, a second sleep, and sleeping
+   with the pen still down. The next stroke and the first finger tap after the unlock should work
+   without stray ink. Leave from the lock screen with a 4-second hold and check the Kindle's own
+   screens and passcode still work. A Grimoire opened from KOReader normally runs with the passcode
+   off, as KOReader turns it off; it is not this test.
+3. **Many pages.** Open a large notebook with heavily inked pages. Open Pages, move between grid
+   screens, tick and untick pages, cancel, and use Go to page... for an early and a late page. The
+   numbered grid should appear without drawing previews. Delete only disposable test pages.
+4. **Browser.** Share a large notebook to a phone and a computer. The field at the top should show
+   the page and the total, take a number with Enter, and load only that page. Check Previous, Next,
+   the browser's Back, a full-size PNG, the PDF, the zip and Effects. Try a narrow phone screen.
+5. **Patches.** In Library > Settings > KOReader, turn each patch on and restart KOReader. Check
+   the screenshot gestures, the square folder corners and the menu fonts. Turn them off and
+   restart: KOReader's defaults should come back, and book fonts should not change. Remove the
+   Grimoire plugin from this sheet and check it stays removed after another Library start, then
+   install it again from the sheet.
+6. **Wallpaper.** Set a custom picture, a random image folder or the book cover in KOReader. Open
+   Grimoire through its plugin and pick Display > Sleep screen: KOReader wallpaper. Sleep in
+   portrait and landscape. Check the picture, and that the page comes back on wake. Turn off the
+   custom picture in KOReader and hand over again: Grimoire should show the current page. The
+   picture is a snapshot taken at each hand-over, not KOReader's live sleep screen.
+7. **Keyboards and controllers.** Turn on Library > Settings > Shortcuts > Enable shortcuts with a
+   keyboard or controller attached. Check the last key or button code on the sheet, each mapped
+   action in a notebook, and that pressing keys or buttons for longer than Display > Sleep after
+   keeps the Kindle awake.
+
+For a failure, write down the Scribe model, firmware, jailbreak, KOReader version, where KOReader
+is installed and how Grimoire was started. Attach `grimoire/grimoire.log`, and for a hand-over
+failure `koreader/crash.log`. Read the logs before sharing them; never include a passcode, a
+serial number or a book file.
