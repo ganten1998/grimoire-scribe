@@ -111,10 +111,12 @@ TEST(pin_grid_and_hollow_icons) {
     canvas_fill(&c, (Rect){0, 0, 600, 300}, 255);
     ui_icon(&c, ICON_PIN, (Rect){0, 0, 100, 100}, 0);
     ui_icon(&c, ICON_GRID, (Rect){100, 0, 100, 100}, 0);
-    int dark[2] = {0, 0};
+    // (and the Pages view's Copy page)
+    ui_icon(&c, ICON_COPY, (Rect){200, 0, 100, 100}, 0);
+    int dark[3] = {0, 0, 0};
     for (int y = 0; y < 100; y++)
-        for (int x = 0; x < 200; x++) dark[x / 100] += c.px[y * c.stride + x] < 128;
-    CHECK(dark[0] > 500 && dark[1] > 500);
+        for (int x = 0; x < 300; x++) dark[x / 100] += c.px[y * c.stride + x] < 128;
+    CHECK(dark[0] > 500 && dark[1] > 500 && dark[2] > 500);
     // Solid, then hollow, the same icon in the same place: the solid's full pixels are the hollow's
     // inside, and the hollow's ring reaches past the solid's edge.
     Rect r = {0, 100, 120, 120};

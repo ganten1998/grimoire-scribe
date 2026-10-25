@@ -657,6 +657,7 @@ static void compose(App *a, Rect r) {
         pagesview_draw(&S->pv, a);
         return;
     }
+    a->toast_floor = 0;
     r = rect_intersect(r, (Rect){0, 0, a->w, a->h});
     if (rect_is_empty(r)) return;
     if (view_identity(a)) canvas_blit(&a->screen, &S->page_canvas, r, r.x, r.y);
@@ -1428,11 +1429,58 @@ static void pages_delete(App *a) {
     app_toast(a, msg, 2500);
 }
 
+// A page added (or copied) at index `at` this session: the open page moves along if it was there or
+// after, and the new page opens (the Pages view closes).
+static void pages_added(App *a, int at) {
+    if (at <= S->index) S->index++;
+    S->nb.last_page = S->index;
+    S->pv.current = S->index;
+    S->changed = true;
+    pages_hide(a, at);
+}
+
+// New page: the notebook's own paper (Blank in a book's notebook: annotate.h), at the index the
+// Pages view gives, never the first, so the Library's card stays the same page. A page that holds
+// no book page (in no line of source.ini) is a note page: a book page annotated later still goes
+// before the first page that holds a later book page, after the notes on the one before.
+static void pages_new(App *a, int at) {
+    if (!save_page(a)) return;
+    if (at < 1 || store_add_page(&S->nb, at, S->nb.paper) != 0) {
+        app_toast(a, _("Could not add a page"), 3000);
+        return;
+    }
+    pages_added(a, at);
+}
+
+// Copy page: page `index` copied right after it (store_duplicate_page: its ink and its paper, a
+// picture shared), which opens. The copy is a note page; one with erase strokes is listed for
+// compaction, as the page it copies may be.
+static void pages_copy(App *a, int index) {
+    if (!save_page(a)) return;
+    if (store_duplicate_page(&S->nb, index, index + 1) != 0) {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
+        // Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
+        app_toast(a, _("Could not copy that page"), 3000);
+        return;
+    }
+    pages_added(a, index + 1);
+    bool erased = false;
+    for (int i = 0; S->page && i < S->page->n && !erased; i++) erased = stroke_is_erase(S->page->strokes[i]);
+    if (erased && S->index == index + 1) note_for_compaction(a, S->nb.page_ids[S->index]);
+    char msg[160];
+    // TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+    // lines): %d is the page it copies.
+    snprintf(msg, sizeof msg, _("This page is a copy of page %d."), index + 1);
+    app_toast(a, msg, 2500);
+}
+
 static void pages_event(App *a, int ph, const InEvent *ev) {
     switch (pagesview_pointer(&S->pv, a, ph, ev)) {
     case PV_CLOSE: pages_hide(a, -1); break;
     case PV_OPEN: pages_hide(a, S->pv.target); break;
     case PV_DELETE: pages_delete(a); break;
+    case PV_NEW: pages_new(a, S->pv.target); break;
+    case PV_COPY: pages_copy(a, S->pv.target); break;
     default: break;
     }
 }
@@ -2276,6 +2324,8 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         // draws white for it (a template's picture not made yet); empty for any other paper.
         if (has_page && paper_is_image(S->page->paper)) snprintf(out, cap, "%s", S->picture_missing ? "missing" : "shown");
         else snprintf(out, cap, "%s", "");
+    } else if (!strncmp(key, "tile.", 5)) {
+        return pagesview_probe(&S->pv, key, out, cap);  // the Pages view's
     } else if (!strncmp(key, "templates.", 10)) {
         return tplsheet_probe(&S->ts, key + 10, out, cap);  // the Templates sheet over the page
     } else if (!strcmp(key, "panel")) {

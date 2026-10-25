@@ -156,6 +156,103 @@ TEST(notebooks) {
     free(list);
 }
 
+TEST(copy_pages_keeps_bytes_and_order) {
+    NotebookInfo nb, back;
+    CHECK(store_create("Copies", "", PAPER_NARROW, &nb) == 0);
+    Page *p = NULL;
+    CHECK(store_load_page(&nb, 0, 1860, 2480, &p) == 0);
+    p->paper = (PaperKind)0x51000123u;
+    page_add(p, squiggle(TOOL_PENCIL, 500));
+    CHECK(store_save_page(&nb, 0, p) == 0);
+    page_free(p);
+    char dir[700], source[800], dest[800];
+    CHECK(store_notebook_dir(nb.id, dir, sizeof dir) == 0);
+    snprintf(source, sizeof source, "%s/p1.qpg", dir);
+    size_t n = 0, m = 0;
+    uint8_t *before = read_file(source, &n);
+    CHECK(before != NULL);
+    CHECK(store_duplicate_page(&nb, 0, 1) == 0);
+    CHECK(nb.npages == 2 && nb.page_ids[0] == 1 && nb.page_ids[1] == 2);
+    snprintf(dest, sizeof dest, "%s/p2.qpg", dir);
+    uint8_t *after = read_file(dest, &m);
+    CHECK(before && after && n == m && !memcmp(before, after, n));
+    free(after);
+    CHECK(store_load_page(&nb, 1, 1860, 2480, &p) == 0);
+    CHECK(p && p->n == 1 && p->paper == (PaperKind)0x51000123u);
+    page_free(p);
+    CHECK(store_load_info(nb.id, &back) == 0 && back.npages == 2 && back.page_ids[1] == 2);
+
+    // A page from a future header version is read-only here. Copy retains its original bytes.
+    CHECK(n > 6);
+    if (before && n > 6) {
+        before[4] = 3;
+        before[5] = 0;
+        CHECK(write_file_atomic(source, before, n) == 0);
+        CHECK(store_duplicate_page(&nb, 0, 1) == 0);
+        snprintf(dest, sizeof dest, "%s/p3.qpg", dir);
+        after = read_file(dest, &m);
+        CHECK(after && n == m && !memcmp(before, after, n));
+        free(after);
+        CHECK(store_load_page(&nb, 1, 1860, 2480, &p) == 0 && p && p->readonly);
+        page_free(p);
+    }
+    free(before);
+    CHECK(nb.npages == 3 && nb.page_ids[0] == 1 && nb.page_ids[1] == 3 && nb.page_ids[2] == 2);
+
+    // Only a genuinely missing file is a blank page. It copies the notebook's paper.
+    CHECK(unlink(source) == 0);
+    CHECK(store_duplicate_page(&nb, 0, nb.npages) == 0);
+    CHECK(store_load_page(&nb, nb.npages - 1, 1860, 2480, &p) == 0);
+    CHECK(p && !p->n && p->paper == PAPER_NARROW);
+    page_free(p);
+}
+
+TEST(copy_and_insert_fail_without_changing_the_page_list) {
+    NotebookInfo nb, back;
+    CHECK(store_create("Copy errors", "", PAPER_MEDIUM, &nb) == 0);
+    char dir[700], source[800], info[800], blocked[810], dest[800];
+    CHECK(store_notebook_dir(nb.id, dir, sizeof dir) == 0);
+    snprintf(source, sizeof source, "%s/p1.qpg", dir);
+    snprintf(info, sizeof info, "%s/notebook.ini", dir);
+    snprintf(blocked, sizeof blocked, "%s.tmp", info);
+    snprintf(dest, sizeof dest, "%s/p2.qpg", dir);
+    size_t n = 0, m = 0;
+    uint8_t *original = read_file(source, &n);
+    CHECK(original != NULL);
+    CHECK(write_file_atomic(source, "not a page", 10) == 0);
+    CHECK(store_duplicate_page(&nb, 0, 1) != 0);
+    CHECK(nb.npages == 1 && nb.next_page_id == 2 && access(dest, F_OK) != 0);
+    uint8_t *data = read_file(source, &m);
+    CHECK(data && m == 10 && !memcmp(data, "not a page", 10));
+    free(data);
+    CHECK(unlink(source) == 0 && mkdir(source, 0755) == 0);
+    CHECK(store_duplicate_page(&nb, 0, 1) != 0);
+    CHECK(nb.npages == 1 && nb.next_page_id == 2);
+    CHECK(rmdir(source) == 0);
+    CHECK(original && write_file_atomic(source, original, n) == 0);
+    free(original);
+
+    // Writing the page succeeds, but saving notebook.ini fails. The new file is removed,
+    // the old notebook.ini stays intact and the in-memory list is safe to save again.
+    uint8_t *old_info = read_file(info, &n);
+    CHECK(old_info != NULL && mkdir(blocked, 0755) == 0);
+    uint32_t next = nb.next_page_id;
+    int64_t modified = nb.modified;
+    CHECK(store_duplicate_page(&nb, 0, 1) != 0);
+    CHECK(nb.npages == 1 && nb.page_ids[0] == 1 && nb.next_page_id == next && nb.modified == modified);
+    CHECK(access(dest, F_OK) != 0);
+    CHECK(store_add_page(&nb, 1, PAPER_GRID) != 0);
+    CHECK(nb.npages == 1 && nb.page_ids[0] == 1 && nb.next_page_id == next && nb.modified == modified);
+    CHECK(access(dest, F_OK) != 0);
+    data = read_file(info, &m);
+    CHECK(old_info && data && n == m && !memcmp(old_info, data, n));
+    free(old_info);
+    free(data);
+    CHECK(rmdir(blocked) == 0 && store_save_info(&nb) == 0);
+    CHECK(store_load_info(nb.id, &back) == 0 && back.npages == 1 && back.page_ids[0] == 1);
+    CHECK(store_duplicate_page(&nb, 0, 1) == 0 && nb.page_ids[1] == next);
+}
+
 TEST(fuzz_deserialize) {
     Page *p = page_new(1860, 2480, PAPER_MEDIUM);
     for (int i = 0; i < 5; i++) page_add(p, squiggle(i % 3, 200.f + i * 100));
@@ -427,6 +524,8 @@ int main(void) {
     CHECK(store_init(root) == 0);
     RUN(notebooks);
     RUN(new_page_after_a_document_page);
+    RUN(copy_pages_keeps_bytes_and_order);
+    RUN(copy_and_insert_fail_without_changing_the_page_list);
     RUN(fuzz_deserialize);
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);

@@ -652,9 +652,14 @@ that would cross the limit (`clean_line`).
 
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 
-The Pages screen draws a fixed screenful of numbered tiles, never `load_page` or `page_render`
-for a preview. There is no preview cache. Selection is still by page index; a number pad (keyboard
-page 2) validates a direct jump before the selected page is read. The browser reader similarly
+The Pages screen (`pagesview.c`) draws a fixed screenful of numbered tiles, never `load_page` or
+`page_render` for a preview. There is no preview cache. Selection is still by page index; a number
+pad (keyboard page 2) validates a direct jump before the selected page is read. New page inserts
+after the open page or the last selected page, using the notebook's paper. Copy page duplicates
+the one selected page after itself, with a new page id and the original bytes. Image-paper copies
+share their picture. Both keep the first page in place. A failed notebook-list save rolls the
+insertion back and removes the new file. Book-page labels come from `source.ini`; a copy is a note
+page and does not get the original's book-page mapping. The browser reader similarly
 uses one image at a time and a GET page field at the top (`?p=N`), clamped to the notebook's range.
 
 `src/koreader.c` discovers the hosted directory or three common installations and manages the

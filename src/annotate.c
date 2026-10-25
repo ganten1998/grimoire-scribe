@@ -272,6 +272,13 @@ static int map_load(const char *nbdir, AnnotateMap *m) {
     return rc;
 }
 
+int annotate_map_load(const char *id, AnnotateMap *m) {
+    char dir[600];
+    memset(m, 0, sizeof *m);
+    if (store_notebook_dir(id, dir, sizeof dir) != 0) return -1;
+    return map_load(dir, m);
+}
+
 static int map_save(const char *nbdir, const AnnotateMap *m, const NotebookInfo *nb) {
     char path[800];
     map_path(nbdir, path, sizeof path);

@@ -135,6 +135,13 @@ int store_add_page(NotebookInfo *nb, int at_index, PaperKind paper);
 // then the notebook's own paper (Blank if that is a document page's too). A template stays.
 PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after);
 int store_delete_page(NotebookInfo *nb, int index);  // keeps >= 1 page; file moved to trash/
+// A copy of page `index` as a new page at `at` (an id as store_add_page takes one): the page file's
+// bytes as they are, ink and paper (a read-only page's too), or for a page whose file is missing,
+// an empty page of the notebook's paper, as it shows. An unreadable or damaged file refuses the
+// copy. A copy of a page on an image
+// paper shares its picture (listed in bg/pages.ini under the copy's id too). -1 at STORE_MAX_PAGES,
+// or when a file cannot be written.
+int store_duplicate_page(NotebookInfo *nb, int index, int at);
 // The page at w x h, the notebook's page size (store_notebook_page_size): a page file of another
 // size, one an older version scaled to its own screen, has its points scaled back. Missing page
 // file -> empty page of nb->paper. A damaged file is set aside (p<id>.qpg.damaged-<time>). A page

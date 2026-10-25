@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 1.1.0-rc.2\n"
+"Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-24 10:46-0500\n"
+"POT-Creation-Date: 2026-10-25 15:36-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -492,49 +492,6 @@ msgctxt "tool"
 msgid "Calligraphy"
 msgstr ""
 
-#. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
-#. Classic): Delete, with how many pages are ticked; tick all of them, or none.
-#: src/editor.c
-#, c-format
-msgid "Delete (%d)"
-msgstr ""
-
-#: src/editor.c src/library.c
-msgid "Delete"
-msgstr ""
-
-#. TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
-#. Gothic, 344 in Classic).
-#: src/editor.c
-msgid "Select none"
-msgstr ""
-
-#: src/editor.c
-msgid "Select all"
-msgstr ""
-
-#. TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
-#: src/editor.c
-#, c-format
-msgid "Pages (%d)"
-msgstr ""
-
-#. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
-#. open page in bold.
-#: src/editor.c
-#, c-format
-msgid "Page %d (open)"
-msgstr ""
-
-#: src/editor.c src/httpd.c
-#, c-format
-msgid "Page %d"
-msgstr ""
-
-#: src/editor.c
-msgid "Go to page..."
-msgstr ""
-
 #: src/editor.c
 msgid "Could not save this page. Is the storage full?"
 msgstr ""
@@ -573,11 +530,20 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: src/editor.c
-msgid "Enter a page number in this notebook."
+msgid "Could not add a page"
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
+#. Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
 #: src/editor.c
-msgid "Go to page"
+msgid "Could not copy that page"
+msgstr ""
+
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): %d is the page it copies.
+#: src/editor.c
+#, c-format
+msgid "This page is a copy of page %d."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
@@ -589,10 +555,6 @@ msgid "The panel holds up to %d pen. Unpin one first."
 msgid_plural "The panel holds up to %d pens. Unpin one first."
 msgstr[0] ""
 msgstr[1] ""
-
-#: src/editor.c
-msgid "Could not add a page"
-msgstr ""
 
 #: src/editor.c
 msgid "Saving..."
@@ -678,6 +640,11 @@ msgstr ""
 
 #: src/httpd.c
 msgid "Effects (transparent, colors, gradients, filters)"
+msgstr ""
+
+#: src/httpd.c src/pagesview.c
+#, c-format
+msgid "Page %d"
 msgstr ""
 
 #. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
@@ -995,6 +962,10 @@ msgstr ""
 msgid "Move to folder"
 msgstr ""
 
+#: src/library.c src/pagesview.c
+msgid "Delete"
+msgstr ""
+
 #: src/library.c
 msgid "Rename folder"
 msgstr ""
@@ -1114,6 +1085,66 @@ msgstr ""
 #. TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).
 #: src/musicbuild.c
 msgid "Use layout"
+msgstr ""
+
+#. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
+#. open page in bold.
+#: src/pagesview.c
+#, c-format
+msgid "Page %d (open)"
+msgstr ""
+
+#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
+#. annotated from KOReader): "p. 12". 355 px at 34 px.
+#: src/pagesview.c
+#, c-format
+msgid "p. %d"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
+#. Classic): Delete, with how many pages are ticked; tick all of them, or none.
+#: src/pagesview.c
+#, c-format
+msgid "Delete (%d)"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
+#. Gothic, 344 in Classic).
+#: src/pagesview.c
+msgid "Select none"
+msgstr ""
+
+#: src/pagesview.c
+msgid "Select all"
+msgstr ""
+
+#. TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
+#: src/pagesview.c
+#, c-format
+msgid "Pages (%d)"
+msgstr ""
+
+#: src/pagesview.c
+msgid "Go to page..."
+msgstr ""
+
+#. TRANSLATORS: the Pages view's bottom buttons, each under its icon (290 px at 34 px): a new
+#. blank page after the open page (or after the last page ticked), and a copy of the one page
+#. ticked, right after it.
+#: src/pagesview.c
+msgid "New page"
+msgstr ""
+
+#: src/pagesview.c
+msgid "Copy page"
+msgstr ""
+
+#: src/pagesview.c
+msgid "Enter a page number in this notebook."
+msgstr ""
+
+#: src/pagesview.c
+msgid "Go to page"
 msgstr ""
 
 #. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page

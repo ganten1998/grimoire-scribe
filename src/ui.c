@@ -147,6 +147,7 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_LANGUAGE] = 0xF05CA,     // md-translate
     [ICON_PIN] = 0xF0403,          // md-pin
     [ICON_GRID] = 0xF0570,         // md-view_grid
+    [ICON_COPY] = 0xF018F,         // md-content_copy
 };
 
 IconKind ui_tool_icon(int tool) {

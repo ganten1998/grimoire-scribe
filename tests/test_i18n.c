@@ -574,6 +574,8 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT("%s", _("This page is already empty"));
     PUT("%s", _("Could not delete those pages"));
     PUT("%s", _("Could not add a page"));
+    PUT("%s", _("Could not copy that page"));
+    PUT(_("This page is a copy of page %d."), 2000);
     PUT("%s", _("Could not save the sleep screen"));
     PUT("%s", _("Calibration saved"));
     PUT(_("Moved to %s"), "grimoire/trash");

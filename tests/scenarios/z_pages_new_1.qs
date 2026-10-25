@@ -1,0 +1,136 @@
+# New page and Copy page in the Pages view. New page adds a blank page of the notebook's own paper
+# after the open page, or after the last page ticked, and opens it; Copy page copies the one page
+# ticked, its ink and its paper, right after it, and opens the copy. Neither ever makes a page the
+# first. Then the same sideways, and all of it still there once the notebook opens again.
+wait 200
+tap 965 95
+wait 100
+tap 510 460
+tap 1564 2254
+wait 300
+expect screen is editor
+expect editor.paper is 1
+pen curve 300 500 40 60 0.7 1
+pentap 1768 1114
+wait 200
+pen curve 300 500 40 60 0.7 2
+pentap 1768 1114
+wait 200
+pen curve 300 500 40 60 0.7 3
+wait 200
+expect editor.pages is 3
+expect editor.page is 3
+# Page 2 goes onto sheet music: New page after it is page 3, on the notebook's medium rule.
+pentap 1768 1026
+wait 300
+expect editor.modal is pages
+tap 703 340
+wait 300
+expect editor.page is 2
+pentap 1768 1242
+wait 200
+pentap 1066 1027
+wait 300
+expect editor.paper is 3
+pentap 1768 1026
+wait 300
+expect editor.tile.2 is Page 2 (open)
+shot 01-pages-new-copy-off
+tap 450 2395
+wait 300
+expect editor.modal is none
+expect editor.page is 3
+expect editor.pages is 4
+expect editor.strokes is 0
+expect editor.paper is 1
+# The page that was third is fourth now, with its ink.
+pentap 1768 1114
+wait 200
+expect editor.page is 4
+expect editor.strokes is 1
+# Pages 1 and 2 ticked: Copy page is off, and New page goes after page 2, the last ticked.
+pentap 1768 1026
+wait 300
+tap 396 296
+tap 848 296
+wait 100
+expect editor.ticked is 2
+shot 02-two-ticked
+tap 1410 2395
+wait 100
+expect editor.modal is pages
+expect editor.pages is 4
+tap 450 2395
+wait 300
+expect editor.modal is none
+expect editor.page is 3
+expect editor.pages is 5
+expect editor.strokes is 0
+# Copy page: page 2 (ink on sheet music) ticked alone is copied right after it, as page 3.
+pentap 1768 1026
+wait 300
+tap 848 296
+wait 100
+expect editor.ticked is 1
+shot 03-one-ticked-copy-on
+tap 1410 2395
+wait 300
+expect editor.modal is none
+expect editor.page is 3
+expect editor.pages is 6
+expect editor.strokes is 1
+expect editor.paper is 3
+expect toast has a copy of page 2
+# Ink on the copy stays on the copy.
+pen curve 900 1500 40 60 0.7 2
+wait 300
+expect editor.strokes is 2
+pentap 1768 938
+wait 200
+expect editor.page is 2
+expect editor.strokes is 1
+expect editor.paper is 3
+# Page 1 is still the first: the Library's card.
+pentap 1768 1026
+wait 300
+expect editor.tile.1 is Page 1
+tap 251 340
+wait 300
+expect editor.page is 1
+expect editor.strokes is 1
+# Sideways: New page after page 1, then a copy of page 1.
+rotate 1
+wait 300
+pentap 2388 1028
+wait 300
+expect editor.modal is pages
+shot 04-pages-landscape
+tap 720 1775
+wait 300
+expect editor.modal is none
+expect editor.page is 2
+expect editor.pages is 7
+expect editor.strokes is 0
+pentap 2388 1028
+wait 300
+tap 340 296
+wait 100
+expect editor.ticked is 1
+tap 1760 1775
+wait 300
+expect editor.page is 2
+expect editor.pages is 8
+expect editor.strokes is 1
+rotate 0
+wait 300
+# All of it there once the notebook opens again.
+pentap 1768 1566
+wait 300
+expect screen is library
+tap 200 400
+wait 300
+expect screen is editor
+expect editor.pages is 8
+expect editor.page is 2
+expect editor.strokes is 1
+quit

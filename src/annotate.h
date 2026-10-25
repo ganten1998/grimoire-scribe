@@ -55,6 +55,9 @@ int annotate_map_parse(const char *text, AnnotateMap *m);
 // The text to write: entries for pages no longer in nb (deleted) are left out. Caller frees.
 char *annotate_map_text(const AnnotateMap *m, const NotebookInfo *nb, size_t *len);
 void annotate_map_free(AnnotateMap *m);
+// Notebook id's source.ini into m (none: an empty map). -1 when it is there but does not read, or
+// out of memory (m is then empty too).
+int annotate_map_load(const char *id, AnnotateMap *m);
 // The page that holds book page `page` of `pages` (an id in nb's page list), or 0.
 uint32_t annotate_map_find(const AnnotateMap *m, const NotebookInfo *nb, int page, int pages);
 int annotate_map_add(AnnotateMap *m, int page, int pages, uint32_t pid);

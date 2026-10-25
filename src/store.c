@@ -905,20 +905,46 @@ int store_list_folders(char (**out)[STORE_NAME_LEN], int *n) {
 
 // ---- pages ----
 
+// A new page's id: the next one, but never one whose page file is there already (one the page list
+// does not name, as after a page list was rebuilt): the next free id instead. 0 when none is found.
+static uint32_t take_page_id(const NotebookInfo *nb) {
+    uint32_t pid = nb->next_page_id;
+    for (int tries = 0;; tries++, pid++) {
+        if (!pid || pid == UINT32_MAX) return 0;
+        char path[700];
+        page_path(nb, pid, path, sizeof path);
+        struct stat st;
+        if (lstat(path, &st) != 0) return errno == ENOENT ? pid : 0;
+        if (tries == 64) return 0;
+        qlog_once("store: %s: p%u.qpg is not in the page list; left as it is", nb->id, pid);
+    }
+}
+
+// Page pid, its file written, goes into the page list at index at. If the list cannot be saved,
+// roll back the insertion and remove only the new file, so a later save cannot add it by accident.
+static int list_page(NotebookInfo *nb, int at, uint32_t pid) {
+    uint32_t next = nb->next_page_id;
+    int64_t modified = nb->modified;
+    memmove(&nb->page_ids[at + 1], &nb->page_ids[at], (size_t)(nb->npages - at) * sizeof nb->page_ids[0]);
+    nb->page_ids[at] = pid;
+    nb->npages++;
+    nb->next_page_id = pid + 1;
+    if (store_save_info(nb) == 0) return 0;
+    nb->npages--;
+    memmove(&nb->page_ids[at], &nb->page_ids[at + 1], (size_t)(nb->npages - at) * sizeof nb->page_ids[0]);
+    nb->next_page_id = next;
+    nb->modified = modified;
+    char path[700];
+    page_path(nb, pid, path, sizeof path);
+    unlink(path);
+    return -1;
+}
+
 int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     if (nb->npages >= STORE_MAX_PAGES) return -1;
     at = clampi(at, 0, nb->npages);
-    // Never over a page file that is there already (one the page list does not name, as after a
-    // page list was rebuilt): the new page takes the next free id instead.
-    uint32_t pid = nb->next_page_id;
-    for (int tries = 0;; tries++, pid++) {
-        char path[700];
-        page_path(nb, pid, path, sizeof path);
-        if (access(path, F_OK) != 0) break;
-        if (tries == 64) return -1;
-        qlog_once("store: %s: p%u.qpg is not in the page list; left as it is", nb->id, pid);
-    }
-    nb->next_page_id = pid + 1;
+    uint32_t pid = take_page_id(nb);
+    if (!pid) return -1;
     int w, h;
     store_notebook_page_size(nb, &w, &h);
     paper = store_new_page_paper(nb, paper);  // never another page's document picture
@@ -928,11 +954,52 @@ int store_add_page(NotebookInfo *nb, int at, PaperKind paper) {
     int rc = write_page_file(nb, pid, p);
     page_free(p);
     if (rc != 0) return -1;
-    side_note(nb, pid, paper);  // (once the page is there: a list entry for no page could go stale)
-    memmove(&nb->page_ids[at + 1], &nb->page_ids[at], (size_t)(nb->npages - at) * sizeof nb->page_ids[0]);
-    nb->page_ids[at] = pid;
-    nb->npages++;
-    return store_save_info(nb);
+    if (list_page(nb, at, pid) != 0) return -1;
+    side_note(nb, pid, paper);
+    return 0;
+}
+
+int store_duplicate_page(NotebookInfo *nb, int index, int at) {
+    if (nb->npages >= STORE_MAX_PAGES || index < 0 || index >= nb->npages) return -1;
+    at = clampi(at, 0, nb->npages);
+    char path[700];
+    page_path(nb, nb->page_ids[index], path, sizeof path);
+    struct stat st;
+    bool missing = stat(path, &st) != 0;
+    if (missing && errno != ENOENT) return -1;
+    if (!missing && !S_ISREG(st.st_mode)) return -1;
+    size_t len = 0;
+    uint8_t *data = missing ? NULL : read_file(path, &len);
+    Page *p = NULL;
+    // Only an absent page means blank. A read error or damaged file must not look like a
+    // successful blank copy; a newer page that reads as read-only is copied byte for byte.
+    if (!missing && (!data || st.st_size < 0 || (uint64_t)st.st_size != len || page_deserialize(data, len, &p) != 0)) {
+        page_free(p);
+        free(data);
+        return -1;
+    }
+    if (!data) {
+        int w, h;
+        store_notebook_page_size(nb, &w, &h);
+        if (!(p = page_new(w, h, store_new_page_paper(nb, nb->paper)))) return -1;
+    } else if (side_restore(nb, nb->page_ids[index], p)) {
+        free(data);  // its picture, which an older version's save left out: the copy written with it
+        data = NULL;
+    }
+    uint32_t pid = take_page_id(nb);
+    int rc = -1;
+    if (pid) {
+        char copy[700];
+        page_path(nb, pid, copy, sizeof copy);
+        rc = data ? write_file_atomic(copy, data, len) : write_page_at(copy, p);
+    }
+    PaperKind paper = p->paper;
+    page_free(p);
+    free(data);
+    if (rc != 0) return -1;
+    if (list_page(nb, at, pid) != 0) return -1;
+    side_note(nb, pid, paper);  // a copy of a picture's page has the same picture
+    return 0;
 }
 
 int store_delete_page(NotebookInfo *nb, int index) {
