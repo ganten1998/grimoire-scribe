@@ -24,9 +24,9 @@ The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.
   undo/redo, white ink and moving between pages. Edit the file, then Reload shortcuts.ini. The
   sheet shows the last key or button code, to help map a controller. Shortcuts act only in a
   notebook that is idle: not while drawing, with a sheet open, asleep or at the passcode keypad.
-  Key and controller presses keep the Kindle awake, as the pen does. Grimoire adds no Bluetooth
-  pairing and maps no analog sticks; 8BitDo controllers are not confirmed yet. docs/SHORTCUTS.md
-  has the details.
+  While shortcuts are enabled, key and controller presses keep the Kindle awake, as the pen does.
+  Grimoire adds no Bluetooth pairing and maps no analog sticks; 8BitDo controllers are not
+  confirmed yet. docs/SHORTCUTS.md has the details.
 - **Terminess menus in KOReader**: the optional patch picks a matching regular and bold font,
   uses a real bold, and leaves a gap between the dropdown menu's battery icon and its percentage.
   Library > Settings > KOReader updates an unchanged earlier Grimoire patch; a patch you changed
