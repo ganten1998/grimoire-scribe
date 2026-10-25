@@ -171,26 +171,103 @@ os.replace(src, dst)
 
 
 class FeedTests(unittest.TestCase):
-    def test_channels_never_downgrade_or_cross(self):
+    def setUp(self):
         spec = importlib.util.spec_from_file_location('kpm_feed', REPO / 'tools/kpm-feed.py')
-        feed = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(feed)
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            source = root / 'source.json'
-            dest = root / 'feed'
-            def publish(version, digest='test'):
-                source.write_text(json.dumps({'manifest_version': 2, 'id': 'grimoire' + ('preview' if '-' in version else 'stable'),
-                    'packages': {'grimoire': {'artifacts': [{'grimoire_version': version,
-                        'version': kpm.package_version(version), 'sha256': digest}]}}}))
-                return feed.update(source, dest)
-            self.assertTrue(publish('1.1.0-rc.2'))
-            self.assertFalse(publish('1.1.0-rc.1'))
-            self.assertTrue(publish('1.1.0'))
-            self.assertTrue(publish('1.2.0-beta.1'))
-            self.assertEqual(json.loads((dest / 'stable/manifest.json').read_text())['packages']['grimoire']['artifacts'][0]['grimoire_version'], '1.1.0')
-            with self.assertRaises(ValueError):
-                publish('1.2.0-beta.1', 'different bytes')
+        self.feed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.feed)
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.source = self.root / 'source.json'
+        # The feed folder starts empty, as the kpm branch does before the first publication.
+        self.dest = self.root / 'feed'
+
+    def publish(self, version, digest='test'):
+        self.source.write_text(json.dumps({'manifest_version': 2, 'id': 'grimoire' + ('preview' if '-' in version else 'stable'),
+            'packages': {'grimoire': {'artifacts': [{'grimoire_version': version,
+                'version': kpm.package_version(version), 'sha256': digest}]}}}))
+        return self.feed.update(self.source, self.dest)
+
+    def channel(self, name):
+        data = (self.dest / name / 'manifest.json').read_text()
+        self.assertEqual(data, (self.dest / name / 'manifest.v2.json').read_text())
+        return json.loads(data)
+
+    def offered(self, name):
+        return self.channel(name)['packages']['grimoire']['artifacts'][0]['grimoire_version']
+
+    def snapshot(self):
+        return {p.relative_to(self.dest): p.read_bytes() for p in sorted(self.dest.rglob('*')) if p.is_file()}
+
+    def test_channels_never_downgrade(self):
+        self.assertEqual(self.publish('1.1.0-rc.2'), {'preview': 'updated'})
+        self.assertFalse((self.dest / 'stable').exists())
+        self.assertEqual(self.publish('1.1.0-rc.1'), {'preview': 'kept newer'})
+        self.assertEqual(self.offered('preview'), '1.1.0-rc.2')
+        self.assertEqual(self.publish('1.1.0'), {'stable': 'updated', 'preview': 'updated'})
+        self.assertEqual(self.publish('1.2.0-beta.1'), {'preview': 'updated'})
+        self.assertEqual(self.offered('stable'), '1.1.0')
+        self.assertEqual(self.offered('preview'), '1.2.0-beta.1')
+        with self.assertRaises(ValueError):
+            self.publish('1.2.0-beta.1', 'different bytes')
+
+    def test_stable_release_is_mirrored_into_preview(self):
+        self.assertEqual(self.publish('2.0.0-beta.1'), {'preview': 'updated'})
+        # The first publication of a stable version also creates the stable folder.
+        self.assertEqual(self.publish('2.0.0'), {'stable': 'updated', 'preview': 'updated'})
+        stable, preview = self.channel('stable'), self.channel('preview')
+        self.assertEqual(stable['id'], 'grimoirestable')
+        self.assertEqual(preview['id'], 'grimoirepreview')
+        self.assertEqual(preview['packages'], stable['packages'])
+        self.assertEqual(self.offered('preview'), '2.0.0')
+        # A prerelease still goes to preview only.
+        self.assertEqual(self.publish('2.1.0-beta.1'), {'preview': 'updated'})
+        self.assertEqual(self.offered('stable'), '2.0.0')
+        self.assertEqual(self.offered('preview'), '2.1.0-beta.1')
+
+    def test_older_stable_never_replaces_newer_preview(self):
+        self.publish('2.1.0-beta.1')
+        self.assertEqual(self.publish('2.0.1'), {'stable': 'updated', 'preview': 'kept newer'})
+        self.assertEqual(self.offered('stable'), '2.0.1')
+        self.assertEqual(self.offered('preview'), '2.1.0-beta.1')
+        self.assertEqual(self.channel('preview')['id'], 'grimoirepreview')
+
+    def test_rerun_is_idempotent_and_refusal_changes_nothing(self):
+        self.publish('2.0.0-rc.1')
+        self.assertEqual(self.publish('2.0.0'), {'stable': 'updated', 'preview': 'updated'})
+        before = self.snapshot()
+        self.assertEqual(self.publish('2.0.0'), {'stable': 'unchanged', 'preview': 'unchanged'})
+        self.assertEqual(self.snapshot(), before)
+        with self.assertRaises(ValueError):
+            self.publish('2.0.0', 'different bytes')
+        self.assertEqual(self.snapshot(), before)
+        # Preview already offering this stable version with other bytes refuses stable too.
+        self.dest.joinpath('stable/manifest.json').unlink()
+        with self.assertRaises(ValueError):
+            self.publish('2.0.0', 'different bytes')
+        self.assertFalse((self.dest / 'stable/manifest.json').exists())
+
+    def test_mirrored_preview_matches_a_preview_build(self):
+        # The channel fields kpm-feed.py gives the mirror are the ones kpm-package.py writes.
+        built = {}
+        for version in ('2.0.0', '2.0.0-rc.1'):
+            installer = self.root / (version + '.zip')
+            with zipfile.ZipFile(installer, 'w') as z:
+                z.writestr('documents/Grimoire.sh', '#!/bin/sh\n# Name: Grimoire\n# Icon: data:image/png;base64,test\n'
+                           'exit 0\n__GRIMOIRE_APP_ARCHIVE__\narchive\n')
+                z.writestr('documents/Grimoire - reset pen calibration.sh', '#!/bin/sh\n')
+                z.writestr('LICENSE.txt', 'GPL-3.0-or-later\n')
+                z.writestr('README.txt', 'Grimoire ' + version + '\n')
+            out = self.root / ('out-' + version)
+            kpm.build(installer, version, out, 'https://example.org/v' + version, REPO)
+            built[version] = json.loads((out / 'manifest.json').read_text())
+        self.assertEqual(self.feed.update(self.root / 'out-2.0.0/manifest.json', self.dest),
+                         {'stable': 'updated', 'preview': 'updated'})
+        self.assertEqual(self.channel('stable'), built['2.0.0'])
+        preview = self.channel('preview')
+        for key in ('manifest_version', 'id', 'name', 'description'):
+            self.assertEqual(preview[key], built['2.0.0-rc.1'][key], key)
+        self.assertEqual(preview['packages'], built['2.0.0']['packages'])
 
 
 if __name__ == '__main__':
