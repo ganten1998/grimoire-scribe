@@ -25,7 +25,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
             src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
 CORE_SRC += src/bgimage.c
-CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
+CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c src/hidkeys.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -402,7 +402,13 @@ package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check
+.PHONY: bridge-check
+bridge-check:
+	shellcheck -s sh -S warning kindle/lab/ssh-bridge.sh "kindle/lab/KindleLab SSH.sh"
+	python3 -m unittest discover -s tests -p 'test_ssh_bridge.py' -v
+	luajit tests/labhid_check.lua
+	luacheck --no-color -q --std luajit --no-self --max-line-length 200 --globals G_reader_settings -- kindle/lab/kindlelabhid.koplugin
+check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check bridge-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"
