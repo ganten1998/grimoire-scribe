@@ -1,6 +1,6 @@
 # Kindle development bridge and HID follow-up
 
-This development branch builds on RC3, including the firmware 5.20 launch guard and return repaint repair. The release candidate remains separate; these additions
+This development branch builds on RC3, including the firmware 5.20 launch-guard repair. The release candidate remains separate; these additions
 are not installed by a normal Grimoire ZIP/KPM installation.
 
 ## Independent SSH
