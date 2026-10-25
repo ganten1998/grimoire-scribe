@@ -107,7 +107,6 @@ local UIManager = {
     end,
     close = function(_, widget) table.insert(W.closed, widget) end,
     forceRePaint = function() table.insert(W.calls, "repaint") end,
-    setDirty = function(_, widget, mode) table.insert(W.calls, "dirty " .. widget .. " " .. mode) end,
     nextTick = function(_, f) table.insert(W.ticks, f) end,
     scheduleIn = function(_, _, f) table.insert(W.scheduled, f) end,
     restartKOReader = function() table.insert(W.calls, "restart") end,
@@ -547,13 +546,7 @@ do -- The hand-over, from the file browser.
     -- koreader.sh starts KOReader again.
     W.shown, W.scheduled = {}, {}
     koreader(false)
-    check("back: no error message", #W.shown == 0)
-    check("back: one deferred full repaint", #W.scheduled == 1)
-    if W.scheduled[1] then W.scheduled[1]() end
-    check("back: all widgets and the full screen repainted", at("dirty all full") ~= nil)
-    W.scheduled = {}
-    koreader(false)
-    check("back: repaint consumed, ordinary starts unchanged", #W.scheduled == 0)
+    check("back: nothing to tell", #W.scheduled == 0 and #W.shown == 0)
 end
 
 do -- STOP_FRAMEWORK=yes (KUAL's no-framework start) counts as paused.

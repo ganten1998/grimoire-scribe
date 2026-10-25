@@ -166,10 +166,6 @@ local function launch_marker()
     return DataStorage:getSettingsDir() .. "/grimoire_launch.txt"
 end
 
-local function return_marker()
-    return DataStorage:getSettingsDir() .. "/grimoire_returned.txt"
-end
-
 local function is_nonempty_file(path)
     return is_file(path) and (lfs.attributes(path, "size") or 0) > 0
 end
@@ -603,7 +599,6 @@ function Grimoire:handOver(launcher, busy, extra)
     self:sendWallpaper()
     handing_over = true
     local marker = launch_marker()
-    os.remove(return_marker())
     local f = io.open(marker, "w")
     if f then
         f:write(os.date("%Y-%m-%d %H:%M:%S"), "\n")
@@ -632,13 +627,7 @@ function Grimoire:handOver(launcher, busy, extra)
             logger.info("Grimoire: running", command)
             local status = exit_status(os.execute(command))
             logger.info("Grimoire: back in KOReader, grimoire.sh status", status)
-            if status == 0 then
-                os.remove(marker)
-                -- reader.lua is exiting: its successor consumes this once its own UI is ready.
-                if not write_whole(return_marker(), "repaint\n") then
-                    logger.warn("Grimoire: could not request the return repaint")
-                end
-            end
+            if status == 0 then os.remove(marker) end
         end, ...)
         if framework then
             rawset(Device, "framework_lipc_handle", own_framework)
@@ -688,17 +677,6 @@ end
 -- KOReader's start after a hand-over: start_with goes back to what it was, and a launch marker
 -- still there (Grimoire never ran) is told once.
 function Grimoire:afterHandOver()
-    local returned = return_marker()
-    if is_file(returned) then
-        os.remove(returned)
-        -- Let the new file browser/book finish its first layout before repainting the entire
-        -- screen. Firmware 5.20 can leave a stale strip after the initial partial updates.
-        -- Use KOReader's repaint/refresh queue, without changing its ordinary refresh policy.
-        UIManager:scheduleIn(0.25, function()
-            UIManager:setDirty("all", "full")
-            logger.info("Grimoire: full repaint after returning from Grimoire")
-        end)
-    end
     local saved = G_reader_settings:readSetting("grimoire_start_with")
     if saved ~= nil then
         if saved == "" then
