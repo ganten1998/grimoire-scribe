@@ -5,9 +5,9 @@ What was checked on a real Kindle, on which Kindle and firmware, and what still 
 only a Kindle shows: the screen, the pen, the passcode keypad, KOReader and KPM on the device.
 
 2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation and two fixes: key and controller
-presses keep the Kindle awake, and "Annotate this page in Grimoire" refuses Grimoire's own
-notebook PDFs. Those two fixes have not been checked on a Kindle yet. The candidates 1.1.0-rc.1
-to rc.3 were never published; their results are below, newest first.
+presses keep the Kindle awake, and "Annotate this page in Grimoire" refuses a notebook's own PDF
+from `grimoire/PDFs`. Those two fixes have not been checked on a Kindle yet. The candidates
+1.1.0-rc.1 to rc.3 were never published; their results are below, newest first.
 
 ## The Kindles
 
@@ -165,7 +165,8 @@ KPM (9) and Lua patch (530) tests, the share and export checks and actionlint al
   not supported.
 - **The KOReader hand-over elsewhere.** The testers' setups where the 1.1.0-beta integration
   failed, other firmware versions, KUAL's start without the framework, and the KOReader wallpaper.
-- **Annotate this page** refusing Grimoire's own notebook PDFs.
+- **Annotate this page** refusing a notebook's own PDF from `grimoire/PDFs`, while a copy of it
+  elsewhere is still annotated.
 - **KPM feeds.** Installing from the public HTTPS feed once a release is published, and Library
   indexing with KOReader closed.
 

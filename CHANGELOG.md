@@ -34,8 +34,9 @@ The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.
 - **Updates wait for Grimoire to close**: while Grimoire is open, unpacking a new `Grimoire.sh`
   and resetting the pen calibration are refused before they touch the app or your settings. A
   notebook PDF still being written in the background does not block a later start.
-- **"Annotate this page in Grimoire" refuses Grimoire's own notebook PDFs**, so a notebook can no
-  longer become a notebook of a notebook.
+- **"Annotate this page in Grimoire" refuses a notebook's own PDF** from `grimoire/PDFs`, which
+  would make a notebook of a notebook: open that notebook in Grimoire instead. A copy of the PDF
+  kept somewhere else is annotated like any other book.
 - **Gothic Library**: a small gap between the header ornament and the notebook cards, upright and
   sideways.
 - **No calibration tip at startup**: Grimoire opens without that reminder.
