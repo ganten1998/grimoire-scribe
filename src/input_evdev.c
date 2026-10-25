@@ -37,6 +37,7 @@
 #include "input.h"
 #include "power.h"
 #include "shortcuts.h"
+#include "hidkeys.h"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
@@ -695,22 +696,31 @@ void input_watch_fd(int fd) { g_watch = fd; }
 // Optional external inputs are watched without exclusive grabs. Native PIN input is discarded
 // at the same boundary as pen/touch, and key values are never written to the log.
 #define KEY_DEVS 4
-typedef struct { int fd; char path[300]; bool pad, dropped; unsigned held; } KeyDev;
+typedef struct { int fd; char path[300]; HidKind kind; unsigned hatmask; HidKeys keys; } KeyDev;
 static KeyDev g_keys[KEY_DEVS];
 static bool g_keys_enabled, g_keys_init;
 static uint32_t g_keys_scan;
 static KeyDev *g_key_read;
-static const int modifier_codes[] = {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT,
-                                    KEY_LEFTALT, KEY_RIGHTALT, KEY_LEFTMETA, KEY_RIGHTMETA};
-static void key_resync(KeyDev *k) {
-    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
-    k->held = 0;
-    if (ioctl(k->fd, EVIOCGKEY(sizeof keys), keys) < 0) return;
-    for (unsigned i = 0; i < 8; i++) if (test_bit(keys, modifier_codes[i])) k->held |= 1u << i;
+static bool key_resync(KeyDev *k) {
+    uint8_t keys[HID_KEY_BYTES] = {0};
+    if (ioctl(k->fd, EVIOCGKEY(sizeof keys), keys) < 0) return false;
+    int hats[2] = {0};
+    k->hatmask = 0;
+    for (int axis = 0; axis < 2; axis++) {
+        struct input_absinfo info = {0};
+        if (ioctl(k->fd, EVIOCGABS(ABS_HAT0X + axis), &info) >= 0 && info.minimum == -1 && info.maximum == 1) {
+            hats[axis] = info.value;
+            k->hatmask |= 1u << axis;
+        }
+    }
+    hidkeys_sync(&k->keys, keys, hats[0], hats[1]);
+    return true;
 }
-static bool external_keys(const unsigned long *keys) {
-    return (test_bit(keys, KEY_A) && test_bit(keys, KEY_Z) && test_bit(keys, KEY_SPACE)) ||
-           test_bit(keys, BTN_GAMEPAD) || test_bit(keys, BTN_JOYSTICK);
+static HidKind external_kind(const unsigned long *keys, const unsigned long *axes) {
+    // Linux's native bitmap byte layout matches this decoder on our little-endian armhf target.
+    _Static_assert(KEY_MAX + 1 <= HID_KEY_BYTES * 8, "external key bitmap too small");
+    _Static_assert(ABS_MAX + 1 <= HID_ABS_BYTES * 8, "external axis bitmap too small");
+    return hidkeys_kind((const uint8_t *)keys, (const uint8_t *)axes);
 }
 static void key_scan(void) {
     g_keys_scan = now_ms();
@@ -731,14 +741,15 @@ static void key_scan(void) {
         unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
         ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keys), keys);
         ioctl(fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
-        if (!external_keys(keys) || test_bit(keys, BTN_TOOL_PEN) || test_bit(axes, ABS_MT_POSITION_X)) {
+        HidKind kind = external_kind(keys, axes);
+        if (kind == HID_NONE) {
             close(fd); continue;
         }
         KeyDev *k = &g_keys[slot];
-        *k = (KeyDev){.fd = fd, .pad = test_bit(keys, BTN_GAMEPAD) || test_bit(keys, BTN_JOYSTICK)};
+        *k = (KeyDev){.fd = fd, .kind = kind};
         strlcpy_q(k->path, path, sizeof k->path);
-        key_resync(k);
-        qlog("input: optional %s attached at %s", k->pad ? "controller" : "keyboard", path);
+        if (!key_resync(k)) { close(fd); k->fd = -1; continue; }
+        qlog("input: optional %s attached at %s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path);
     }
     closedir(d);
 }
@@ -756,25 +767,20 @@ void input_shortcuts_enable(bool enabled) {
 }
 static void handle_key(const struct input_event *ev) {
     KeyDev *k = g_key_read;
-    if (!g_input_grabbed) { k->held = 0; return; }
-    if (ev->type == EV_SYN && ev->code == SYN_DROPPED) { k->dropped = true; k->held = 0; return; }
-    if (k->dropped) {
-        if (ev->type == EV_SYN && ev->code == SYN_REPORT) { key_resync(k); k->dropped = false; }
+    if (!g_input_grabbed) { hidkeys_sync(&k->keys, NULL, 0, 0); return; }
+    if (k->keys.dropped) {
+        if (ev->type == EV_SYN && ev->code == SYN_REPORT && !key_resync(k)) {
+            close(k->fd);
+            k->fd = -1;
+        }
         return;
     }
-    if (ev->type != EV_KEY || ev->code == KEY_POWER) return;
-    for (unsigned i = 0; i < 8; i++) if (ev->code == modifier_codes[i]) {
-        if (ev->value == 1) k->held |= 1u << i;
-        else if (!ev->value) k->held &= ~(1u << i);
-        return;
-    }
-    if (ev->value != 1) return; // release and auto-repeat never perform actions
-    unsigned mods = 0;
-    if (k->held & 3) mods |= KEYMOD_CTRL;
-    if (k->held & 12) mods |= KEYMOD_SHIFT;
-    if (k->held & 48) mods |= KEYMOD_ALT;
-    if (k->held & 192) mods |= KEYMOD_META;
-    q_push((InEvent){.type = IN_KEY, .value = ev->code, .key_mods = mods, .gamepad = k->pad, .t_ms = now_ms()});
+    if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y) &&
+        !(k->hatmask & (1u << (ev->code - ABS_HAT0X)))) return;
+    HidPress press;
+    if (hidkeys_event(&k->keys, k->kind, ev->type, ev->code, ev->value, &press))
+        q_push((InEvent){.type = IN_KEY, .value = press.code, .key_mods = (unsigned)press.mods,
+                         .gamepad = press.gamepad, .t_ms = now_ms()});
 }
 
 int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
@@ -830,7 +836,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         bool pen = has_abs && has_key && test_bit(absb, ABS_X) && test_bit(absb, ABS_PRESSURE) &&
                    test_bit(keyb, BTN_TOOL_PEN);
         bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
-        bool power = !pen && !touch && has_key && !external_keys(keyb) && test_bit(keyb, KEY_POWER);
+        bool power = !pen && !touch && has_key && external_kind(keyb, absb) == HID_NONE && test_bit(keyb, KEY_POWER);
         // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
         if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
             struct input_absinfo ai = {0};
@@ -992,11 +998,6 @@ int input_poll(InEvent *ev, int timeout_ms) {
     }
     int r = poll(pf, (nfds_t)n, timeout_ms);
     if (r > 0) {
-        for (int i = 0; i < KEY_DEVS; i++) if (ikey[i] >= 0) {
-            short re = pf[ikey[i]].revents;
-            if (re & POLLIN) { g_key_read = &g_keys[i]; drain(g_keys[i].fd, handle_key); }
-            if (re & (POLLHUP | POLLERR | POLLNVAL)) { close(g_keys[i].fd); g_keys[i].fd = -1; }
-        }
         // Raw digitizer first, so a pen frame uses this sample's pressure.
         if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
         if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, g_input_grabbed ? handle_pen : discard_input);
@@ -1004,6 +1005,12 @@ int input_poll(InEvent *ev, int timeout_ms) {
         if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
         if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
         if (ipwd >= 0 && (pf[ipwd].revents & (POLLIN | POLLHUP))) handle_powerd_fd();
+        // A simultaneous pen-down or native sleep event takes ownership before external keys.
+        for (int i = 0; i < KEY_DEVS; i++) if (ikey[i] >= 0) {
+            short re = pf[ikey[i]].revents;
+            if (re & POLLIN) { g_key_read = &g_keys[i]; drain(g_keys[i].fd, handle_key); }
+            if (re & (POLLHUP | POLLERR | POLLNVAL)) { close(g_keys[i].fd); g_keys[i].fd = -1; }
+        }
         if (isig >= 0 && (pf[isig].revents & POLLIN)) {
             char buf[16];
             while (read(g_sigpipe[0], buf, sizeof buf) > 0) {
@@ -1039,9 +1046,8 @@ bool input_set_grab(bool grab) {
     bool ok = true;
     for (int i = 0; g_keys_init && i < KEY_DEVS; i++) if (g_keys[i].fd >= 0) {
         drain(g_keys[i].fd, discard_input);
-        g_keys[i].held = 0;
-        g_keys[i].dropped = false;
-        if (grab) key_resync(&g_keys[i]);
+        hidkeys_sync(&g_keys[i].keys, NULL, 0, 0);
+        if (grab && !key_resync(&g_keys[i])) { close(g_keys[i].fd); g_keys[i].fd = -1; }
     }
     // Forget touches that were used to type the PIN, including the final finger lift.
     if (grab) {
