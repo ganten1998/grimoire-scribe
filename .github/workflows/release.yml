@@ -53,7 +53,12 @@ jobs:
       - name: Collect release files
         run: |
           cp build/dist/Grimoire-"$(cat VERSION)".zip build/dist/KOReader-patches.zip build/kpm/
-          (cd build/kpm && shasum -a 256 ./*.zip ./*.kpkg > SHA256SUMS.txt)
+          cd build/kpm
+          # "<sha256>  <name>" in byte order, no ./ prefix, as tools/dist.py writes them:
+          # "shasum -a 256 -c SHA256SUMS.txt" checks the downloads in the folder that holds them.
+          printf '%s\n' *.zip *.kpkg | LC_ALL=C sort | while IFS= read -r name; do shasum -a 256 "$name"; done > SHA256SUMS.txt
+          test "$(wc -l < SHA256SUMS.txt)" -eq 3
+          shasum -a 256 -c SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: grimoire-release
