@@ -8,16 +8,31 @@ static void set(uint8_t *bytes, int code, bool value) {
     else bytes[code / 8] &= (uint8_t)~(1u << (code % 8));
 }
 static bool power(int code) { return code == 116 || code == 142 || code == 143; }
+// BTN_TOOL_PEN, BTN_TOOL_RUBBER, BTN_TOOL_FINGER, BTN_TOUCH or ABS_MT_POSITION_X.
+static bool digitizer(const uint8_t *keys, const uint8_t *axes) {
+    return bit(keys, 320) || bit(keys, 321) || bit(keys, 325) || bit(keys, 330) || bit(axes, 53);
+}
 HidKind hidkeys_kind(const uint8_t *keys, const uint8_t *axes) {
     // Reject pen/touch interfaces before inspecting their buttons. An accelerometer's ABS_X/Y
     // is not a joystick; a mouse's BTN_LEFT/RIGHT is not a controller either.
-    if (bit(keys, 320) || bit(keys, 321) || bit(keys, 325) || bit(keys, 330) || bit(axes, 53)) return HID_NONE;
+    if (digitizer(keys, axes)) return HID_NONE;
     for (int code = 288; code <= 319; code++) if (bit(keys, code)) return HID_GAMEPAD;
     for (int code = 544; code <= 547; code++) if (bit(keys, code)) return HID_GAMEPAD;
     if (bit(axes, 16) || bit(axes, 17)) return HID_GAMEPAD;
     // Includes sparse page turners and media remotes, not just full A/Z/Space keyboards.
     for (int code = 1; code < 256; code++) if (!power(code) && bit(keys, code)) return HID_KEYBOARD;
     return HID_NONE;
+}
+bool hidkeys_proxy(const char *name) { return name && !strcmp(name, "kindle-input-pt"); }
+HidKind hidkeys_optional(const char *name, const uint8_t *keys, const uint8_t *axes) {
+    return hidkeys_proxy(name) ? HID_NONE : hidkeys_kind(keys, axes);
+}
+int hidkeys_power(const char *name, const uint8_t *keys, const uint8_t *axes) {
+    // The Scribe's own key (bd71828-pwrkey) has KEY_POWER alone; the proxy has all 767 codes.
+    if (hidkeys_proxy(name) || !bit(keys, 116) || digitizer(keys, axes)) return -1;
+    int n = 0;
+    for (int code = 1; code < HID_KEY_BYTES * 8; code++) n += bit(keys, code);
+    return n <= 16 ? n : -1;
 }
 void hidkeys_sync(HidKeys *state, const uint8_t *held, int hat_x, int hat_y) {
     memset(state, 0, sizeof *state);

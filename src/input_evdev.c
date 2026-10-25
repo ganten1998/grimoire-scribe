@@ -9,7 +9,8 @@
 //           and buttons from the scaled pen (grabbed) and pressure + tilt from the raw one (read
 //           without a grab, so the pen service keeps feeding the scaled pen).
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
-//   power = EV_KEY KEY_POWER
+//   power = EV_KEY KEY_POWER on a device with few keys, never Amazon's every-key proxy
+//           "kindle-input-pt" (firmware 5.20+); the Scribe 2's is "bd71828-pwrkey" (hidkeys_power)
 // Pen and touch are EVIOCGRAB'ed so the (paused) framework never sees them; the power key is
 // only watched, so the system keeps handling it if we die. Its press and release are both read:
 // holding it INPUT_POWER_HOLD_MS (4 s) is Grimoire's guaranteed way out.
@@ -749,16 +750,10 @@ static bool key_resync(KeyDev *k) {
     hidkeys_sync(&k->keys, keys, hats[0], hats[1]);
     return true;
 }
-static bool external_keys(const unsigned long *keys) {
-    return (test_bit(keys, KEY_A) && test_bit(keys, KEY_Z) && test_bit(keys, KEY_SPACE)) ||
-           test_bit(keys, BTN_GAMEPAD) || test_bit(keys, BTN_JOYSTICK);
-}
-static HidKind external_kind(const unsigned long *keys, const unsigned long *axes) {
-    // Linux's native bitmap byte layout matches this decoder on our little-endian armhf target.
-    _Static_assert(KEY_MAX + 1 <= HID_KEY_BYTES * 8, "external key bitmap too small");
-    _Static_assert(ABS_MAX + 1 <= HID_ABS_BYTES * 8, "external axis bitmap too small");
-    return hidkeys_kind((const uint8_t *)keys, (const uint8_t *)axes);
-}
+// Linux's native bitmap byte layout matches the decoder's on our little-endian armhf target.
+_Static_assert(KEY_MAX + 1 <= HID_KEY_BYTES * 8, "external key bitmap too small");
+_Static_assert(ABS_MAX + 1 <= HID_ABS_BYTES * 8, "external axis bitmap too small");
+#define BYTES(bits) ((const uint8_t *)(bits))
 static void key_scan(void) {
     g_keys_scan = now_ms();
     DIR *d = opendir("/dev/input");
@@ -776,9 +771,11 @@ static void key_scan(void) {
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
         unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
+        char name[64] = "";
+        ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
         ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keys), keys);
         ioctl(fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
-        HidKind kind = external_kind(keys, axes);
+        HidKind kind = hidkeys_optional(name, BYTES(keys), BYTES(axes));
         if (kind == HID_NONE) {
             close(fd); continue;
         }
@@ -833,7 +830,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         return -1;
     }
     struct dirent *e;
-    int power_keys = 0;
+    int power_keys = 0, power_rank = 0;
     char power_path[300] = "";
     while ((e = readdir(d))) {
         if (strncmp(e->d_name, "event", 5)) continue;
@@ -873,7 +870,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         bool pen = has_abs && has_key && test_bit(absb, ABS_X) && test_bit(absb, ABS_PRESSURE) &&
                    test_bit(keyb, BTN_TOOL_PEN);
         bool touch = !pen && has_abs && test_bit(absb, ABS_MT_POSITION_X);
-        bool power = !pen && !touch && has_key && !external_keys(keyb) && test_bit(keyb, KEY_POWER);
+        // The power key is decided by its own rule (hidkeys_power), not by what makes a keyboard.
+        int power = !pen && !touch && has_key ? hidkeys_power(name, BYTES(keyb), BYTES(absb)) : -1;
         // Orientation: ABS_PRESSURE with the accelerometer's tiny code range (15..22), not a pen.
         if (!pen && !touch && has_abs && test_bit(absb, ABS_PRESSURE) && !test_bit(absb, ABS_X) && g_orient_fd < 0) {
             struct input_absinfo ai = {0};
@@ -949,8 +947,13 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             strlcpy_q(g_caps.touch_name, name, sizeof g_caps.touch_name);
             qlog("input: touch %s (%s) x %d..%d y %d..%d", path, name, g_touch.ax.minimum, g_touch.ax.maximum,
                  g_touch.ay.minimum, g_touch.ay.maximum);
-        } else if (power && g_power_fd < 0) {
+        } else if (power >= 0 && (g_power_fd < 0 || power < power_rank)) {
+            if (g_power_fd >= 0) {
+                qlog("input: %s is another power key with more keys, not watched", power_path);
+                close(g_power_fd);
+            }
             g_power_fd = fd;
+            power_rank = power;
             g_caps.has_power = true;
             power_keys++;
             strlcpy_q(power_path, path, sizeof power_path);
@@ -960,7 +963,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             qlog("input: power key %s (%s)%s", path, name,
                  g_power_mono ? "" : ", timed when read (EVIOCSCLOCKID failed)");
         } else {
-            if (power) {
+            if (power >= 0) {
                 power_keys++;
                 qlog("input: %s (%s) is another power key, not watched", path, name);
             }
@@ -968,9 +971,10 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         }
     }
     closedir(d);
-    // The first power key found is the only one watched: if another device (a virtual one, say)
-    // is the one that reports presses, Grimoire never sees the button. (The pen and the touch
-    // panel are never taken for one, so a KEY_POWER they advertise does not count here.)
+    // One power key is watched, the one with the fewest keys (the first found of those): if another
+    // device is the one that reports presses, Grimoire never sees the button. (The pen, the touch
+    // panel, keyboards and Amazon's every-key proxy are never taken for one, so a KEY_POWER they
+    // advertise does not count here: hidkeys_power, pinned by tests/test_hidkeys.c.)
     if (power_keys > 1)
         qlog("input: WARNING %d devices report a power key; watching only %s", power_keys, power_path);
     if (g_power_fd < 0) qlog("input: WARNING no power key found: no fallbacks, and no 4 s hold to leave");
