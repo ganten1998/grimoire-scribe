@@ -223,6 +223,17 @@ int app_pointer_phase(const InEvent *ev) {
     }
 }
 
+// Someone is here: "Sleep after" starts counting again, and the power service is told so, at most
+// once a minute (Grimoire grabs the pen and touch, so the power service does not see them itself).
+static void note_input(App *a) {
+    a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
+    a->sleep_requested = false;
+    if (a->last_input - a->last_activity_poke > 60000) {
+        a->last_activity_poke = a->last_input;
+        sys_activity();
+    }
+}
+
 void app_event(App *a, const InEvent *ev) {
     if (ev->type == IN_QUIT) {
         a->running = false;
@@ -230,6 +241,9 @@ void app_event(App *a, const InEvent *ev) {
     }
     if (ev->type == IN_KEY) {
         if (!a->asleep && a->settings.shortcuts_enabled) {
+            // A key or a controller button counts as pen and touch do: paging with them alone
+            // must not let "Sleep after" run out.
+            note_input(a);
             a->last_shortcut_code = ev->value;
             a->last_shortcut_mods = (int)ev->key_mods;
             a->last_shortcut_gamepad = ev->gamepad;
@@ -306,15 +320,8 @@ void app_event(App *a, const InEvent *ev) {
     // button and pinches start nothing either (three clicks cleared the page); only their ends get
     // through, so one that began before the sleep still finishes.
     if (a->asleep && power_asleep_drops(ev)) return;
-    if (!a->asleep && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON)) {
-        a->last_input = now_ms();  // (event times can run slightly ahead of now_ms)
-        a->sleep_requested = false;
-        // Grimoire grabs the pen and touch: tell the power service someone is here.
-        if (a->last_input - a->last_activity_poke > 60000) {
-            a->last_activity_poke = a->last_input;
-            sys_activity();
-        }
-    }
+    if (!a->asleep && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON))
+        note_input(a);
     k_screens[a->scr].event(a, ev);
 }
 
@@ -553,6 +560,21 @@ static int poll_jobs(App *a) {
     return 0;
 }
 
+// A minute of "Sleep after". In the simulator a scenario can make it shorter
+// (GRIMOIRE_SLEEP_MINUTE_MS), to see the timer run out without waiting minutes for it.
+static int32_t sleep_minute_ms(void) {
+#ifdef GRIMOIRE_SIM
+    static int32_t ms;
+    if (!ms) {
+        const char *s = getenv("GRIMOIRE_SLEEP_MINUTE_MS");
+        ms = s && atoi(s) > 0 ? atoi(s) : 60000;
+    }
+    return ms;
+#else
+    return 60000;
+#endif
+}
+
 void app_tick(App *a, uint32_t now) {
     int bg = poll_jobs(a);
     if (bg) {
@@ -617,7 +639,7 @@ void app_tick(App *a, uint32_t now) {
     }
     // Sleep after a while without input, the same way the power button does.
     if (!a->asleep && !a->sleep_requested && a->settings.sleep_minutes > 0 &&
-        (int32_t)(now - a->last_input) >= a->settings.sleep_minutes * 60000 &&
+        (int32_t)(now - a->last_input) >= a->settings.sleep_minutes * sleep_minute_ms() &&
         !(a->scr == SCR_EDITOR && editor_busy(a)) && a->scr != SCR_SHARE) {
         a->sleep_requested = true;
         request_sleep(a);

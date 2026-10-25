@@ -285,7 +285,9 @@ bool sys_kindle_ui(bool run) { (void)run; return true; }
 static bool g_sim_grab = true;
 bool input_set_grab(bool grab) { g_sim_grab = grab; return true; }
 void sys_prevent_sleep(bool prevent) { (void)prevent; }
-void sys_activity(void) {}
+// How often the app told the power service someone is here: the runner's "power.pokes".
+static int g_pokes;
+void sys_activity(void) { g_pokes++; }
 bool display_broken(void) { return false; }
 bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
     (void)screen;
@@ -410,6 +412,14 @@ static bool display_probe(const char *key, char *out, size_t cap) {
     return true;
 }
 
+// "power.pokes": how many times the app told the simulated power service someone is here
+// (sys_activity), which it does at most once a minute.
+static bool power_probe(const char *key, char *out, size_t cap) {
+    if (strcmp(key, "power.pokes")) return false;
+    snprintf(out, cap, "%d", g_pokes);
+    return true;
+}
+
 // Checks the expect just read. gone: the app quit before the script got to it, so only "running"
 // has an answer (0); any other key fails as not run.
 static void expect_check_as(bool gone) {
@@ -422,7 +432,7 @@ static void expect_check_as(bool gone) {
     } else if (gone && !running) {
         fprintf(stderr, "expect failed (line %d): not run (the app quit before the script got here)\n", g_expect.line);
     } else if (!running && !watching && !display_probe(g_expect.key, got, sizeof got) &&
-               app_probe(g_expect.key, got, sizeof got) != 0) {
+               !power_probe(g_expect.key, got, sizeof got) && app_probe(g_expect.key, got, sizeof got) != 0) {
         fprintf(stderr, "expect failed (line %d): unknown key \"%s\"\n", g_expect.line, g_expect.key);
     } else {
         if (running) snprintf(got, sizeof got, "%d", gone ? 0 : 1);

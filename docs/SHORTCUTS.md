@@ -32,9 +32,11 @@ and 64 KiB of configuration are accepted. An existing empty file deliberately di
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
 sleeping or displaying a sheet. Page navigation never creates a new page at the end. Presses
-act once; releases and repeats do not trigger actions. Native PIN input is discarded and never
-logged. The app logs attachment paths, not key presses. The visible last-input display belongs
-to the current unlocked Grimoire session.
+act once; releases and repeats do not trigger actions. While shortcuts are enabled, a key or
+button press keeps the Kindle awake as the pen and touch do: "Sleep after" counts from the last
+one, on any screen. Native PIN input is discarded and never logged. The app logs attachment
+paths, not key presses. The visible last-input display belongs to the current unlocked Grimoire
+session.
 
 The Kindle must already expose the keyboard/controller through `/dev/input/event*`. Grimoire
 adds no Bluetooth pairing service or device drivers. It watches up to four external keyboard/
