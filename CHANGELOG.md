@@ -8,8 +8,8 @@ The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.
 - **Install with KPM**: the release has a `.kpkg` for Kindle Package Manager on `kindlehf`
   Scribes, built from the same app as the zip. It adds the two Library items, keeps your
   notebooks and settings through install, update and removal, and installs no KOReader plugin or
-  patches. KPM numbers this release 2.0.1001. The preview and stable feeds start with the first
-  release published through the new workflow; docs/KPM.md says how to add one.
+  patches. KPM numbers this release 2.0.1001. The preview feed starts with this release, and the
+  stable feed with the first stable release, 2.0.0; docs/KPM.md says how to add a feed.
 - **KOReader integration is your choice**: a new install, or a start from the Library, no longer
   adds Grimoire's plugin to KOReader. Add it with Library > Settings > KOReader > Install / update
   Grimoire plugin, or copy it in by hand. A plugin already installed keeps being updated; once you

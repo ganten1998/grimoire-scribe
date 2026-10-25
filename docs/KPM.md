@@ -32,9 +32,10 @@ installs or removes KOReader plugins, patches, fonts, PIN flags or root filesyst
 ## Updating
 
 Once a release has been published through the workflow (Build and publication, below), add the
-feed of the channel you want, then install or update Grimoire by name. On the Kindle, the search
-bar did not accept the punctuation of a feed URL, so add the feed from a shell on the Kindle (over
-SSH, for example) with the `kpm` command:
+feed of the channel you want, then install or update Grimoire by name. Until the first stable
+release, only the preview feed exists. On the Kindle, the search bar did not accept the punctuation
+of a feed URL, so add the feed from a shell on the Kindle (over SSH, for example) with the `kpm`
+command:
 
 ```sh
 /var/local/kmc/bin/kpm add-repo https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json
@@ -71,7 +72,8 @@ the ZIP, optional patches, KPM package and checksums, then updates the repositor
 Pull requests, pushes and manual workflow runs validate/build without publishing. Tag and VERSION
 must match, and GitHub prerelease status must match the version suffix.
 
-The first published release through this workflow creates these feeds:
+The first published release through this workflow, 2.0.0-beta.1, creates the preview feed: a beta
+or RC writes only that one. The stable feed appears with the first stable release, 2.0.0:
 
 - Preview: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json`
 - Stable: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/stable/manifest.json`
