@@ -7,7 +7,7 @@ models; other kindlehf Kindles do not gain pen support by installing it.
 Download the `.kpkg` from the release and copy it to the Kindle. From an existing Kindle shell:
 
 ```sh
-/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5002_kindlehf.kpkg
+/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_2.0.1001_kindlehf.kpkg
 /var/local/kmc/bin/kpm launch grimoire
 ```
 
@@ -31,18 +31,29 @@ installs or removes KOReader plugins, patches, fonts, PIN flags or root filesyst
 
 ## Updating
 
-Once the preview/stable feed is live, add the chosen manifest URL with `kpm add-repo URL` and use
-`kpm -y install grimoire` to install or update Grimoire specifically. Repository-based beta → RC
-upgrades were tested on the actual KPM 0.2.2 device.
+Once a release has been published through the workflow (Build and publication, below), add the
+feed of the channel you want, then install or update Grimoire by name. On the Kindle, the search
+bar did not accept the punctuation of a feed URL, so add the feed from a shell on the Kindle (over
+SSH, for example) with the `kpm` command:
+
+```sh
+/var/local/kmc/bin/kpm add-repo https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json
+/var/local/kmc/bin/kpm -y install grimoire
+```
+
+Updates from a feed run Grimoire's upgrade hooks. They were tested with KPM 0.2.2, from local test
+feeds (1.1.0-beta.2 to 1.1.0-rc.1, then 1.1.0-rc.1 to 1.1.0-rc.2), and 1.1.0-rc.3 was installed
+with KPM 0.2.4. 2.0.0-beta.1 (KPM 2.0.1001) sorts after those candidates (KPM 1.1.5001 to
+1.1.5003).
 
 **KPM 0.2.2 local-file limitation:** installing a second `file://...kpkg` over an already installed
 package can fail in KPM's dependency resolver before Grimoire's hooks run. Its `upgrade` command
-also skips locally installed packages. For a manual-file update, download the new package first,
-close Grimoire, then use:
+also skips locally installed packages. This was seen with KPM 0.2.2 and has not been checked again
+with 0.2.4. For a manual-file update, download the new package first, close Grimoire, then use:
 
 ```sh
 /var/local/kmc/bin/kpm -y uninstall grimoire
-/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_1.1.5002_kindlehf.kpkg
+/var/local/kmc/bin/kpm -y install file:///mnt/us/Downloads/grimoire_2.0.1001_kindlehf.kpkg
 ```
 
 The hooks retain `grimoire/` through both commands. This uninstall/reinstall fallback was tested
@@ -74,7 +85,8 @@ The channel is written only after release assets are uploaded successfully.
 
 KPM v2 only compares three integers. Grimoire encodes `major.minor.patch` as
 `[major, minor, patch*10000+stage]`: beta.N=1000+N, rc.N=5000+N, final=9999 (N=1..999).
-Thus 1.1.0-rc.2 appears as KPM 1.1.5002; Grimoire still displays 1.1.0-rc.2.
+So 2.0.0-beta.N appears as KPM 2.0.(1000+N), 2.0.0-rc.N as 2.0.(5000+N) and 2.0.0 as 2.0.9999:
+2.0.0-beta.1 is KPM 2.0.1001, and Grimoire still displays 2.0.0-beta.1.
 This keeps beta < RC < final < next patch without relying on unsupported version suffixes.
 
 ## Contract and validation
@@ -83,4 +95,4 @@ The package follows the [official KPM hook contract](https://kindlemodding.org/k
 and [KPM source](https://github.com/KindleModding/KPM): root manifest, POSIX shell hooks, kindlehf
 filter, no root filesystem writes. Tests cover deterministic output, platform checks, launcher
 ownership, staged failure, install/upgrade/remove, argument forwarding, notebook preservation and
-channel ordering. Device evidence is recorded in TESTING-rc1.md and TESTING-rc2.md.
+channel ordering. Device evidence is recorded in [TESTING.md](TESTING.md).
