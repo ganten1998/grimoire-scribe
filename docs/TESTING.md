@@ -42,8 +42,10 @@ Writing over gray parts of a PDF page showed a temporary shadow in normal and in
 The framebuffer path dithered the whole dirty rectangle, including unchanged image paper. A
 candidate change keeps the previous logical frame and dithers only changed pixels. Its packing
 tests cover both pixel formats, rotation, inversion, overlapping updates and grayscale settling;
-removing paper preservation makes those tests fail. Physical verification of this change is
-pending.
+removing paper preservation makes those tests fail. On the repaired build at `9c10591`, the
+maintainer reported the shadow was much better in the same PDF page. Pen lag was unchanged and
+was more noticeable over gray images than over black-and-white content. This is an improvement
+to the paper artifact, not a claim that PDF handwriting latency is resolved.
 
 An unexpected restart reported after a long sleep was investigated separately. The retained
 system log records Amazon's feature-flag manager requesting a restart on suspend, followed by
