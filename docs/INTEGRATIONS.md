@@ -1,9 +1,10 @@
 # Grimoire Enhanced and an Emacs / org-roam bridge
 
-Source investigation, 2026-10-24. This is a follow-up design, not features claimed by beta.2.
-The beta.2 work implements the launcher, PIN, navigation, optional patches and wallpaper changes
-in CHANGELOG.md. KOReader was inspected through its open source and Grimoire's executable plugin
-harness; a full KOReader session on additional Kindle firmware was not available for this run.
+Source investigation, 2026-10-24. This is a follow-up design, not features claimed by any
+release. The 1.1.0-beta.2 work implements the launcher, PIN, navigation, optional patches and
+wallpaper changes in CHANGELOG.md. KOReader was inspected through its open source and Grimoire's
+executable plugin harness; a full KOReader session on additional Kindle firmware was not available
+for this run.
 
 ## What KOReader already provides
 
@@ -97,4 +98,4 @@ Test the selection hook against real KOReader modules and a Kindle, not only moc
 EPUB anchors, changed fonts/layouts, repeated annotations, missing books, restart/return position,
 failed writes, process exits, ownership of input and private logging. For the Emacs bridge, add
 round-trip tests for UTF-8 Org text, IDs/property drawers, revision conflicts, reconnect/retry
-idempotency and attachments. Keep these features separate from the beta.2 release claim.
+idempotency and attachments. Keep these features out of release claims until they are tested.

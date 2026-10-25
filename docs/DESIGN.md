@@ -1,8 +1,8 @@
 # Grimoire: a homebrew notebook for the Kindle Scribe 2
 
 Grimoire is a standalone notebook app for a jailbroken Kindle Scribe 2 (2024, "Pisco",
-MTK Bellatrix3, 1860x2480 @ 300 ppi, firmware 5.19.x, hard-float userland). The 2022 Scribe has
-the same panel; the Scribe 3 and the Scribe Colorsoft have a 1986x2648 one, also at 300 ppi, and
+MTK Bellatrix3, 1860x2480 @ 300 ppi, firmware 5.19 and 5.20, hard-float userland). The 2022
+Scribe has the same panel; the Scribe 3 and the Scribe Colorsoft have a 1986x2648 one, also at 300 ppi, and
 notebooks keep their page size between the two.
 Launched from a Library scriptlet (documents/Grimoire.sh), or from KOReader through its Grimoire
 plugin. One static binary (musl, armhf), no runtime dependencies.
@@ -135,15 +135,15 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   and softer edge, less valley filling at full pressure, and loose specks up to 0.4 r past the
   edge, hashed on page position and the stroke seed. brush_max_radius accounts for all of it.
 - Blend: "deposit" darkens only: dst = dst - (dst - ink) * a, applied per dab.
-- Eraser is a stroke eraser (removes whole strokes it touches); one pen-down..up is ONE
-  undo step. The eraser end of the pen (BTN_TOOL_RUBBER) and holding the side button
-  (BTN_STYLUS) erase regardless of the selected tool.
+- The eraser removes whole strokes it touches, or with `eraser_mode` 1 (Precise) draws erase
+  strokes (below); one pen-down..up is ONE undo step. The eraser end of the pen
+  (BTN_TOOL_RUBBER) and holding the side button (BTN_STYLUS) erase regardless of the selected
+  tool.
 
 ## Erase strokes (the engine for white ink)
 
 The page format has erase strokes from 1.1 on (docs/FORMAT.md, Erase strokes), and the renderer
-draws them; no control makes one yet (the eraser above removes whole strokes). They are the base
-for white ink and a precise eraser.
+draws them. White ink and the precise eraser make them.
 
 - Stored like any stroke, with tool 3 (`TOOL_ERASER`, `stroke_is_erase`). The seed's top byte
   holds the texture, the drawing tool whose look it has + 1; 0 is the round hard tip, and so is any
@@ -372,7 +372,7 @@ back to an older Grimoire is a one-file copy, and 1.0.0-beta and rc.1 can never 
   pages have, without `pen.panel`/`touch.panel` a calibration counts as an 1860x2480 Scribe's
   (and its own scale has the last word), and without `language` the language is automatic.
 - The stroke parameter ranges (`k_params`) are frozen in both directions while 1.0.0-beta or
-  1.0.0-beta.2 is in use: a wider value travels in the ext bytes or a critical chunk. A safe
+  1.1 is in use: a wider value travels in the ext bytes or a critical chunk. A safe
   (lowercase) chunk must never depend on page coordinates or the page size.
 
 ## Kindle integration
