@@ -71,6 +71,13 @@ expect editor.page is 1
 key 315 0 1
 wait 80
 expect editor.page is 2
+# Native D-pad and decoded HAT directions share the default pad bindings.
+key 546 0 1
+wait 80
+expect editor.page is 1
+key 547 0 1
+wait 80
+expect editor.page is 2
 # An open tools sheet owns input; keyboard shortcuts cannot act through it.
 pentap 1768 358
 wait 80
@@ -86,6 +93,9 @@ wait 80
 key 2 0
 wait 80
 expect asleep is 1
+key 546 0 1
+wait 60
+expect editor.page is 2
 expect asleep.mode is 2
 expect input.yielded is 1
 expect editor.tool is marker

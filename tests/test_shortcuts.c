@@ -6,7 +6,7 @@
 TEST(defaults_and_exact_modifiers) {
     Shortcuts m;
     shortcuts_load(&m, "/nonexistent/grimoire-shortcuts.ini");
-    CHECK(m.count == 25 && m.rejected == 0);
+    CHECK(m.count == 29 && m.rejected == 0);
     CHECK(shortcuts_lookup(&m, false, 2, 0) == SHORTCUT_TOOL_BASE + TOOL_PENCIL);
     CHECK(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
     CHECK(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL | KEYMOD_SHIFT) == SHORTCUT_NONE);
@@ -14,6 +14,9 @@ TEST(defaults_and_exact_modifiers) {
     CHECK(shortcuts_lookup(&m, false, 304, 0) == SHORTCUT_NONE);
     CHECK(shortcut_keycode("code767") == 767 && shortcut_keycode("code768") == -1);
     CHECK(shortcut_keycode("KEY_A") == -1);
+    CHECK(shortcuts_lookup(&m, true, 546, 0) == SHORTCUT_PREV_PAGE);
+    CHECK(shortcuts_lookup(&m, true, 545, 0) == SHORTCUT_NEXT_TOOL);
+    CHECK(shortcut_keycode("VolumeDown") == 114);
 }
 TEST(custom_mappings_and_limits) {
     char path[800]; snprintf(path, sizeof path, "%s/shortcuts.ini", tl_tmp());
@@ -34,7 +37,7 @@ TEST(custom_mappings_and_limits) {
     shortcuts_load(&m, path); CHECK(m.count == 0 && m.rejected == 1);
     unlink(path);
     CHECK(shortcuts_write_defaults(path) == 0);
-    shortcuts_load(&m, path); CHECK(m.count == 25);
+    shortcuts_load(&m, path); CHECK(m.count == 29);
     unlink(path);
 }
 TEST(settings_are_opt_in) {

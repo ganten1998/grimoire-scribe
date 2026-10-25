@@ -17,7 +17,9 @@ static const char defaults[] =
     "key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-tool\nkey.PageDown=next-tool\n"
     "# Generic evdev gamepad defaults; controllers may report different codes.\n"
     "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n"
-    "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n";
+    "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n"
+    "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n"
+    "pad.Up=previous-tool\npad.Down=next-tool\npad.Left=previous-page\npad.Right=next-page\n";
 
 int shortcut_keycode(const char *name) {
     // Linux input-event-codes.h, not SDL's unrelated USB scan code numbering.
@@ -28,6 +30,8 @@ int shortcut_keycode(const char *name) {
         {"z",44},{"x",45},{"c",46},{"v",47},{"b",48},{"n",49},{"m",50},
         {"Left",105},{"Right",106},{"Up",103},{"Down",108},{"PageUp",104},{"PageDown",109},
         {"Space",57},{"Enter",28},{"Tab",15},{"Escape",1},
+        {"VolumeUp",115},{"VolumeDown",114},{"PlayPause",164},{"NextSong",163},{"PreviousSong",165},
+        {"Home",102},{"End",107},{"Back",158},
     };
     for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) if (!strcasecmp(name, keys[i].name)) return keys[i].code;
     if (!strncasecmp(name, "code", 4)) {
@@ -55,8 +59,15 @@ static bool binding(void *ctx, const char *key, const char *value) {
     Shortcuts *m = ctx;
     ShortcutBinding b = {.code = -1, .action = shortcut_action(value)};
     if (!strncmp(key, "pad.", 4)) {
+        static const struct { const char *name; int code; } buttons[] = {
+            {"Up",544},{"Down",545},{"Left",546},{"Right",547},
+            {"South",304},{"East",305},{"North",307},{"West",308},
+            {"L1",310},{"R1",311},{"L2",312},{"R2",313},{"Select",314},{"Start",315},
+        };
         char *end; long n = strtol(key + 4, &end, 10);
         if (end != key + 4 && !*end && n >= 256 && n <= 767) b.code = (int)n;
+        for (size_t i = 0; i < sizeof buttons / sizeof *buttons; i++)
+            if (!strcasecmp(key + 4, buttons[i].name)) b.code = buttons[i].code;
         b.gamepad = true;
     } else if (!strncmp(key, "key.", 4)) {
         const char *p = key + 4, *plus;
