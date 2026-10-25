@@ -4,12 +4,12 @@ What was checked on a real Kindle, on which Kindle and firmware, and what still 
 `make check` covers the logic, the package, the launchers and their failures. It cannot prove what
 only a Kindle shows: the screen, the pen, the passcode keypad, KOReader and KPM on the device.
 
-2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation, release packaging that builds
-the same bytes from the same commit, and two fixes: while shortcuts
-are enabled, key and controller presses keep the Kindle awake; and "Annotate this page in
-Grimoire" refuses a notebook's own PDF from `grimoire/PDFs`. Those two fixes have not been checked
-on a Kindle yet. The candidates 1.1.0-rc.1 to rc.3 were never published; their results are below,
-newest first.
+2.0.0-beta.1 includes release candidate 1.1.0-rc.3, updated documentation, reproducible release
+packaging, retuned pen defaults and the gray-paper repair described below. While shortcuts are
+enabled, key and controller presses now keep the Kindle awake; "Annotate this page in Grimoire"
+refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have automated coverage
+but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
+their results are below, newest first.
 
 ## The Kindles
 
@@ -46,6 +46,12 @@ removing paper preservation makes those tests fail. On the repaired build at `9c
 maintainer reported the shadow was much better in the same PDF page. Pen lag was unchanged and
 was more noticeable over gray images than over black-and-white content. This is an improvement
 to the paper artifact, not a claim that PDF handwriting latency is resolved.
+
+The maintainer's current pen settings were read from the Kindle before the checkpoint. All 130
+values across the ten tools are the fresh-install and Pen feel > Reset tool defaults. A pen-only
+snapshot in `tests/fixtures/pen-defaults.ini` checks those values independently of the compiled
+defaults, and checks that a saved version-2 profile keeps its own values. The settings version
+and the frozen original handwriting-render tests are unchanged.
 
 An unexpected restart reported after a long sleep was investigated separately. The retained
 system log records Amazon's feature-flag manager requesting a restart on suspend, followed by

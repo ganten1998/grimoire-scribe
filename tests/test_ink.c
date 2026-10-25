@@ -142,7 +142,13 @@ TEST(pressure_tilt_mapping) {
             prev = v;
         }
         CHECK(brush_tilt(&p, 0, 0) == 0.f);
-        CHECK_NEAR(brush_tilt(&p, 89, 0), 1.f, 1e-4);
+        // Input caps tilt at 89 degrees; a 90-degree full-tilt setting approaches its maximum.
+        float flat = brush_tilt(&p, 89, 0);
+        CHECK(flat > 0.999f && flat <= 1.f);
+        if (p.tilt_max_deg <= 89.f) CHECK_NEAR(flat, 1.f, 1e-6);
+        ToolParams reachable = p;
+        reachable.tilt_max_deg = fminf(p.tilt_max_deg, 88.f);
+        CHECK_NEAR(brush_tilt(&reachable, 89, 0), 1.f, 1e-6);
         int n;
         const ParamInfo *pi = tool_param_table(&n);
         for (int i = 0; i < n; i++) {
