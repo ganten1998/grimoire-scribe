@@ -35,6 +35,7 @@
 
 #include "display.h"
 #include "fbcheck.h"
+#include "fbpack.h"
 #include "fbink.h"
 
 static int g_fd = -1;
@@ -42,6 +43,8 @@ static FBInkConfig g_cfg;
 static FBInkState g_st;
 static uint8_t *g_fb;
 static size_t g_fblen;
+static Canvas g_previous;     // last logical frame, in physical order: +4.6 MB on the 2024 Scribe
+static bool g_frame_known;
 static bool g_readback;       // the mapping covers the whole panel at 8 or 32 bpp: the guards can read it
 static bool g_pen_mode;
 static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
@@ -125,6 +128,7 @@ static Rect fb_rect(Rect r) {
 }
 
 void display_set_orientation(int turns, int *w, int *h) {
+    g_frame_known = false;
     g_rot = turns & 3;
     LW = (g_rot & 1) ? PH : PW;
     LH = (g_rot & 1) ? PW : PH;
@@ -233,6 +237,9 @@ int display_open(int *w, int *h, float *dpi) {
         qlog("display: colour panel: fast refreshes other than live ink wait until the driver has read the frame");
     PW = LW = (int)g_st.screen_width;
     PH = LH = (int)g_st.screen_height;
+    g_frame_known = false;
+    if (canvas_init(&g_previous, PW, PH) != 0)
+        qlog("display: no memory for the live pixel cache; dithering whole fast rectangles");
     *w = PW;
     *h = PH;
     // The screen guard reads the panel back; it must stay inside the mapping.
@@ -257,7 +264,7 @@ int display_open(int *w, int *h, float *dpi) {
     return 0;
 }
 
-// DU is 1-bit. Live (FAST) frames are ordered-dithered (8x8 Bayer) so a gray shows as the same
+// DU is 1-bit. Changed pixels in live (FAST) frames are ordered-dithered (8x8 Bayer), so a gray shows as the same
 // overall darkness in black and white dots: the stroke looks as wide and as dark while drawing
 // as after the GL16 settle on pen-up. (Thresholding made light pencil vanish; forcing every inked
 // pixel black made live strokes look thick and dark, then "fade" when they settled.)
@@ -265,16 +272,9 @@ static bool g_live;
 // Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
 // there legitimately differs from the canvas, so the overwrite checks skip it.
 static Rect g_live_area;
-void display_set_invert(bool on) { g_invert = on; }
-static const uint8_t k_bayer8[64] = {
-    0,  32, 8,  40, 2,  34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4,  36, 14, 46,
-    6,  38, 60, 28, 52, 20, 62, 30, 54, 22, 3,  35, 11, 43, 1,  33, 9,  41, 51, 19, 59, 27,
-    49, 17, 57, 25, 15, 47, 7,  39, 13, 45, 5,  37, 63, 31, 55, 23, 61, 29, 53, 21};
-static inline uint8_t live(uint8_t v, int x, int y) {
-    if (!g_live || v == 0 || v == 255) return v;
-    // Threshold in (2..254): a gray v lights up v/255 of the dots.
-    int t = k_bayer8[((y & 7) << 3) | (x & 7)] * 4 + 2;
-    return v > t ? 255 : 0;
+void display_set_invert(bool on) {
+    if (on != g_invert) g_frame_known = false;
+    g_invert = on;
 }
 
 static void copy_rect(const Canvas *s, Rect r) {
@@ -291,26 +291,11 @@ static void copy_rect(const Canvas *s, Rect r) {
         ptrdiff_t off = (ptrdiff_t)fy0 * (ptrdiff_t)stride + (ptrdiff_t)fx0 * (ptrdiff_t)px_bytes;
         ptrdiff_t last = off + step * (r.w - 1);
         if (off < 0 || last < 0 || (size_t)(off > last ? off : last) + px_bytes > g_fblen) return;
-        if (g_st.bpp == 8) {
-            bool flip_px = g_st.inverted_grayscale != g_invert;
-            if (step == 1 && !g_live && !flip_px) {
-                memcpy(g_fb + off, src, (size_t)r.w);
-                continue;
-            }
-            for (int x = 0; x < r.w; x++, off += step) {
-                uint8_t v = live(src[x], r.x + x, y);
-                g_fb[off] = flip_px ? (uint8_t)(255 - v) : v;
-            }
-        } else {
-            for (int x = 0; x < r.w; x++, off += step) {
-                uint8_t v = live(src[x], r.x + x, y);
-                if (g_invert) v = (uint8_t)(255 - v);
-                g_fb[off] = v;
-                g_fb[off + 1] = v;
-                g_fb[off + 2] = v;
-                g_fb[off + 3] = 0xFF;
-            }
-        }
+        uint8_t *previous = g_previous.px ? g_previous.px + (size_t)fy0 * g_previous.stride + fx0 : NULL;
+        ptrdiff_t previous_step = (ptrdiff_t)(fy1 - fy0) * g_previous.stride + fx1 - fx0;
+        bool flip_px = g_st.bpp == 8 ? g_st.inverted_grayscale != g_invert : g_invert;
+        fbpack_row(g_fb + off, step, previous, previous_step, src, r.w, r.x, y, (int)g_st.bpp,
+                    flip_px, g_live, g_frame_known);
     }
 }
 
@@ -349,8 +334,11 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     FBInkConfig rc = g_cfg;
     rc.is_flashing = mode == REFRESH_FULL;
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
+    bool whole_frame = rect_contains_rect(r, (Rect){0, 0, LW, LH});
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
     int ret = send_refresh(r, mode, &rc);
+    if (ret < 0) g_frame_known = false;
+    else if (mode != REFRESH_FAST && whole_frame && g_previous.px) g_frame_known = true;
     bool ink = live_ink_frame(&g_ink, mode, now_ms());
     if (ret >= 0 && mode == REFRESH_FAST && g_mdp_wait && !ink) mdp_wait();
     if (ret >= 0 && g_presents < 40)
@@ -442,4 +430,6 @@ void display_close(void) {
     if (g_st.is_mtk) fbink_mtk_toggle_auto_reagl(g_fd, true);
     fbink_close(g_fd);
     g_fd = -1;
+    canvas_free(&g_previous);
+    g_frame_known = false;
 }
