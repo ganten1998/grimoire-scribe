@@ -31,6 +31,7 @@ CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
+APP_SRC  += src/pagesview.c
 GEN_SRC  := $(BUILD)/gen/fonts.c $(BUILD)/gen/l10n.c
 WEB_GEN  := $(BUILD)/gen/web.c
 KINDLE_PLAT := src/display_fbink.c src/input_evdev.c src/light_kindle.c

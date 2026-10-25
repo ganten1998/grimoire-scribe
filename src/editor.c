@@ -23,12 +23,12 @@
 #include "panel.h"
 #include "tplsheet.h"
 #include "keyboard.h"
+#include "pagesview.h"
 
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
-    PG_BACK, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, PG_JUMP, P_TOOLPICK, P_PICK_TOOL,
-    P_PIN_MODE, P_PICK_INK, P_PICK_MORE,
+    P_TOOLPICK, P_PICK_TOOL, P_PIN_MODE, P_PICK_INK, P_PICK_MORE,
 };
 
 typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD,
@@ -135,15 +135,7 @@ struct EditorState {
     HitList tools_hits;
     Press tools_press;
 
-    // Pages view: numbered tiles; never render other pages on this screen.
-    bool pages_open;
-    Keyboard page_number;
-    int pages_screen;           // which screenful of previews
-    bool *pages_sel;            // per page index
-    int pages_sel_cap;
-    HitList pages_hits;
-    Press pages_press;
-
+    PagesView pv;               // the Pages view (pagesview.h)
 
     // Paper sheet
     bool paper_open;
@@ -659,97 +651,10 @@ static void draw_tools(App *a) {
     }
 }
 
-// ---- pages view ----
-
-static void pages_geom(App *a, int *cols, int *rows, int *cw, int *ch, int *th) {
-    *cols = a->w > a->h ? 6 : 4;
-    int m = ui_px(50);
-    *cw = (a->w - m * (*cols + 1)) / *cols;
-    *th = ui_px(200);
-    *ch = *th + ui_px(90);
-    *rows = (a->h - ui_px(190) - ui_px(170) - m) / (*ch + m);
-    if (*rows < 1) *rows = 1;
-}
-
-static int pages_selected(App *a) {
-    int k = 0;
-    for (int i = 0; i < S->nb.npages && i < S->pages_sel_cap; i++) k += S->pages_sel[i];
-    return k;
-}
-
-static void pages_draw(App *a) {
-    Canvas *c = &a->screen;
-    hits_clear(&S->pages_hits);
-    canvas_fill(c, (Rect){0, 0, a->w, a->h}, 255);
-    int m = ui_px(50), th0 = ui_px(190), bh = ui_px(150), by = (th0 - bh) / 2;
-    Rect back = {m, by, bh, bh};
-    ui_button(c, back, ICON_BACK, NULL, BTN_PLAIN);
-    hits_add(&S->pages_hits, back, PG_BACK, 0);
-    int k = pages_selected(a);
-    char del[64];
-    // TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
-    // Classic): Delete, with how many pages are ticked; tick all of them, or none.
-    if (k) snprintf(del, sizeof del, _("Delete (%d)"), k);
-    else snprintf(del, sizeof del, "%s", _("Delete"));
-    Rect rdel = {a->w - m - ui_px(360), by, ui_px(360), bh};
-    ui_button(c, rdel, ICON_TRASH, del, k ? BTN_PRIMARY : BTN_DISABLED);
-    if (k) hits_add(&S->pages_hits, rdel, PG_DELETE, 0);
-    Rect rall = {rdel.x - ui_px(20) - ui_px(360), by, ui_px(360), bh};
-    bool all = k == S->nb.npages;
-    // TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
-    // Gothic, 344 in Classic).
-    ui_button(c, rall, ICON_CHECK, all ? _("Select none") : _("Select all"), BTN_PLAIN);
-    hits_add(&S->pages_hits, rall, PG_ALL, 0);
-    char title[64];
-    // TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
-    snprintf(title, sizeof title, _("Pages (%d)"), S->nb.npages);
-    font_draw_left(c, FONT_BOLD, ui_title_size() * 1.15f,
-                   (Rect){back.x + bh + ui_px(30), 0, rall.x - back.x - bh - ui_px(50), th0}, title, 0);
-    ui_rule(c, 0, a->w, th0, ui_px(4), 0);
-    int cols, rows, cw, ch, th;
-    pages_geom(a, &cols, &rows, &cw, &ch, &th);
-    int per = cols * rows, screens = (S->nb.npages + per - 1) / per;
-    if (screens < 1) screens = 1;
-    S->pages_screen = clampi(S->pages_screen, 0, screens - 1);
-    for (int n = 0; n < per; n++) {
-        int i = S->pages_screen * per + n;
-        if (i >= S->nb.npages) break;
-        Rect tr = {m + (n % cols) * (cw + m), th0 + m + (n / cols) * (ch + m), cw, th};
-        char number[24];
-        snprintf(number, sizeof number, "%d", i + 1);
-        font_draw_centered(c, FONT_BOLD, ui_title_size() * 1.4f, tr, number, 0);
-        bool cur = i == S->index, sel = i < S->pages_sel_cap && S->pages_sel[i];
-        ui_frame(c, rect_inflate(tr, cur ? ui_px(8) : 0), ui_px(12), 0, false, cur ? ui_px(8) : ui_px(3));
-        Rect cb = {tr.x + tr.w - ui_px(96), tr.y + ui_px(16), ui_px(80), ui_px(80)};
-        ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
-        ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
-        if (sel) ui_icon(c, ICON_CHECK, cb, 255);
-        char lab[64];
-        // TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
-        // open page in bold.
-        snprintf(lab, sizeof lab, cur ? _("Page %d (open)") : _("Page %d"), i + 1);
-        ui_text(c, cur ? FONT_BOLD : FONT_REGULAR, ui_text_size(), ui_small_size(),
-                (Rect){tr.x, tr.y + th + ui_px(12), tr.w, ui_px(70)}, lab, 2, true, 0);
-        hits_add(&S->pages_hits, tr, PG_OPEN, i);
-        hits_add(&S->pages_hits, rect_inflate(cb, ui_px(30)), PG_TOGGLE, i);
-    }
-    int y = a->h - ui_px(170);
-    canvas_hline(c, 0, a->w, y, ui_px(3), 0);
-    Rect pr = {m, y + ui_px(15), ui_px(220), ui_px(140)}, nr = {a->w - m - ui_px(220), y + ui_px(15), ui_px(220), ui_px(140)};
-    ui_button(c, pr, ICON_PREV, NULL, S->pages_screen > 0 ? BTN_PLAIN : BTN_DISABLED);
-    ui_button(c, nr, ICON_NEXT, NULL, S->pages_screen < screens - 1 ? BTN_PLAIN : BTN_DISABLED);
-    if (S->pages_screen > 0) hits_add(&S->pages_hits, pr, PG_PREV, 0);
-    if (S->pages_screen < screens - 1) hits_add(&S->pages_hits, nr, PG_NEXT, 0);
-    Rect jump = {a->w / 2 - ui_px(300), pr.y, ui_px(600), pr.h};
-    ui_button(c, jump, ICON_NONE, _("Go to page..."), BTN_PLAIN);
-    hits_add(&S->pages_hits, jump, PG_JUMP, 0);
-    if (S->page_number.open) keyboard_draw(&S->page_number, c, (Rect){0, 0, a->w, a->h});
-}
-
 // Rebuild a screen rect from the layers.
 static void compose(App *a, Rect r) {
-    if (S->pages_open) {  // the Pages view covers everything
-        pages_draw(a);
+    if (S->pv.open) {  // the Pages view covers everything
+        pagesview_draw(&S->pv, a);
         return;
     }
     r = rect_intersect(r, (Rect){0, 0, a->w, a->h});
@@ -1018,8 +923,7 @@ static void close_notebook(App *a) {
     tplsheet_close(&S->ts);
     S->picture_missing = S->white_caches = false;
     S->nnoted = 0;
-    S->pages_open = false;
-    keyboard_close(&S->page_number);
+    pagesview_close(&S->pv);
     S->open = false;
     store_take_restored_count();  // (page 1, read for the thumbnail above, was drawn as it is now)
     bgimage_forget(NULL);         // the notebook's pictures (up to 3 pages' worth) and its failures
@@ -1418,7 +1322,7 @@ static void clear_page(App *a) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 static bool sheet_open(App *a) {
-    return S->pages_open || S->tools_open || S->mb.open || S->dm.open || S->paper_open || S->ts.open;
+    return S->pv.open || S->tools_open || S->mb.open || S->dm.open || S->paper_open || S->ts.open;
 }
 
 // Side button: clicks and holds that happen while not drawing. A press used for something else (a
@@ -1467,24 +1371,12 @@ static void undo_redo(App *a, bool undo) {
 
 static void pages_show(App *a) {
     save_page(a);
-    if (S->pages_sel_cap < S->nb.npages) {
-        bool *n = realloc(S->pages_sel, (size_t)S->nb.npages * sizeof *n);
-        if (!n) return;
-        S->pages_sel = n;
-        S->pages_sel_cap = S->nb.npages;
-    }
-    memset(S->pages_sel, 0, (size_t)S->pages_sel_cap * sizeof *S->pages_sel);
-    keyboard_close(&S->page_number);
-    S->pages_open = true;
-    int cols, rows, cw, ch, th;
-    pages_geom(a, &cols, &rows, &cw, &ch, &th);
-    S->pages_screen = S->index / (cols * rows);
+    if (!pagesview_open(&S->pv, a, &S->nb, S->index)) return;
     compose_all(a, REFRESH_FULL);
 }
 
 static void pages_hide(App *a, int open_index) {
-    S->pages_open = false;
-    keyboard_close(&S->page_number);
+    pagesview_close(&S->pv);
     if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index);
     else compose_all(a, REFRESH_FULL);
 }
@@ -1502,7 +1394,7 @@ static void forget_page(App *a, uint32_t pid) {
 }
 
 static void pages_delete(App *a) {
-    int n = S->nb.npages, k = pages_selected(a);
+    int n = S->nb.npages, k = pagesview_ticked_count(&S->pv);
     if (k == 0) return;
     if (k == n) {
         // A notebook keeps at least one page: add a fresh blank one to stay behind.
@@ -1513,14 +1405,15 @@ static void pages_delete(App *a) {
     }
     int cur = S->index, deleted_before = 0;
     for (int i = n - 1; i >= 0; i--) {
-        if (i >= S->pages_sel_cap || !S->pages_sel[i]) continue;
+        if (!pagesview_ticked(&S->pv, i)) continue;
         uint32_t pid = S->nb.page_ids[i];
         if (store_delete_page(&S->nb, i) != 0) continue;  // the file goes to grimoire/trash
         forget_page(a, pid);
         if (i < cur) deleted_before++;
     }
-    memset(S->pages_sel, 0, (size_t)S->pages_sel_cap * sizeof *S->pages_sel);
+    pagesview_untick(&S->pv);
     S->index = clampi(cur - deleted_before, 0, S->nb.npages - 1);
+    S->pv.current = S->index;
     S->nb.last_page = S->index;
     S->page = page_at(a, S->index);
     if (S->page) render_page_full(a);
@@ -1536,61 +1429,10 @@ static void pages_delete(App *a) {
 }
 
 static void pages_event(App *a, int ph, const InEvent *ev) {
-    if (S->page_number.open) {
-        Rect dirty;
-        KbResult r = keyboard_pointer(&S->page_number, ph, ev->x, ev->y, ev->t_ms, &dirty);
-        if (r == KB_DONE) {
-            char *end;
-            long page = strtol(S->page_number.text, &end, 10);
-            if (*S->page_number.text && !*end && page >= 1 && page <= S->nb.npages) {
-                pages_hide(a, (int)page - 1);
-                return;
-            }
-            S->page_number.open = true;
-            app_toast(a, _("Enter a page number in this notebook."), 2500);
-        }
-        if (r == KB_CANCEL) compose_all(a, REFRESH_UI);
-        else {
-            keyboard_draw(&S->page_number, &a->screen, (Rect){0, 0, a->w, a->h});
-            app_invalidate(a, rect_union(dirty, S->page_number.field_dirty), REFRESH_FAST);
-        }
-        return;
-    }
-    if (ph == 0) {
-        press_begin(&S->pages_press, ev->x, ev->y, ev->t_ms);
-        return;
-    }
-    press_move(&S->pages_press, ev->x, ev->y);
-    if (ph == 1) return;
-    const Hit *h = hits_find(&S->pages_hits, S->pages_press.x0, S->pages_press.y0);
-    if (!h || !press_is_tap(&S->pages_press, h->r)) return;
-    Hit hit = *h;
-    switch (hit.id) {
-    case PG_JUMP:
-        keyboard_open(&S->page_number, _("Go to page"), "");
-        S->page_number.page = 2;
-        compose_all(a, REFRESH_UI);
-        break;
-    case PG_BACK: pages_hide(a, -1); break;
-    case PG_OPEN: pages_hide(a, hit.arg); break;
-    case PG_TOGGLE:
-        if (hit.arg < S->pages_sel_cap) S->pages_sel[hit.arg] = !S->pages_sel[hit.arg];
-        pages_draw(a);
-        app_invalidate_all(a, REFRESH_UI);
-        break;
-    case PG_ALL: {
-        bool all = pages_selected(a) == S->nb.npages;
-        for (int i = 0; i < S->nb.npages && i < S->pages_sel_cap; i++) S->pages_sel[i] = !all;
-        pages_draw(a);
-        app_invalidate_all(a, REFRESH_UI);
-        break;
-    }
-    case PG_DELETE: pages_delete(a); break;
-    case PG_PREV:
-    case PG_NEXT:
-        S->pages_screen += hit.id == PG_NEXT ? 1 : -1;
-        compose_all(a, REFRESH_FULL);
-        break;
+    switch (pagesview_pointer(&S->pv, a, ph, ev)) {
+    case PV_CLOSE: pages_hide(a, -1); break;
+    case PV_OPEN: pages_hide(a, S->pv.target); break;
+    case PV_DELETE: pages_delete(a); break;
     default: break;
     }
 }
@@ -1933,7 +1775,7 @@ void editor_free(App *a) {
     free(S->snap);
     for (int k = 0; k < S->nremoved; k++) stroke_free(S->removed[k]);
     free(S->removed);
-    free(S->pages_sel);
+    pagesview_free(&S->pv);
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
@@ -2081,7 +1923,7 @@ void editor_event(App *a, const InEvent *ev) {
         return;
     }
     if (ev->type == IN_PINCH_BEGIN || ev->type == IN_PINCH_MOVE || ev->type == IN_PINCH_END) {
-        if (!S->pages_open) pinch(a, ev);
+        if (!S->pv.open) pinch(a, ev);
         return;
     }
     bool pen = ev->type == IN_PEN_DOWN || ev->type == IN_PEN_MOVE || ev->type == IN_PEN_UP ||
@@ -2094,7 +1936,7 @@ void editor_event(App *a, const InEvent *ev) {
         if (pen && S->btn_down) S->btn_used_for_ink = true;  // (pen_button: no click, no hold)
         if (S->owner != OWN_NONE || S->pinching) return;  // one gesture at a time
         S->owner_is_pen = pen;
-        if (S->pages_open) {
+        if (S->pv.open) {
             S->owner = OWN_PAGES;
             pages_event(a, 0, ev);
             return;
@@ -2267,7 +2109,7 @@ static void pictures_arrived(App *a, bool page, bool caches) {
     if (page && !S->picture_missing) {  // (still missing: another job ended, this one is to come)
         if (S->index == 0) S->thumb_dirty = true;  // the Library's card of the notebook
         compose_all(a, REFRESH_FULL);
-    } else if (caches && S->pages_open) {
+    } else if (caches && S->pv.open) {
         compose_all(a, REFRESH_UI);
     } else if (caches && S->paper_open) {
         draw_paper_sheet(a);
@@ -2344,7 +2186,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "modal")) {
         // What is in front (input goes to the first one open, in this order).
-        const char *m = S->pages_open   ? "pages"
+        const char *m = S->pv.open      ? "pages"
                         : S->tools_open ? "tools"
                         : S->mb.open    ? "music"
                         : S->dm.open    ? "display"
@@ -2419,7 +2261,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
     } else if (!strcmp(key, "unsaved")) {
         snprintf(out, cap, "%d", S->open && (S->page_dirty || S->info_dirty) ? 1 : 0);
     } else if (!strcmp(key, "ticked")) {
-        snprintf(out, cap, "%d", S->pages_open ? pages_selected(a) : 0);
+        snprintf(out, cap, "%d", S->pv.open ? pagesview_ticked_count(&S->pv) : 0);
     } else if (!strcmp(key, "paper")) {
         if (!has_page) snprintf(out, cap, "none");
         else if (paper_is_custom(S->page->paper)) snprintf(out, cap, "custom");
