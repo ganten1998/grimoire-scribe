@@ -108,9 +108,9 @@ marker and never recreate a passcode flag.
 KOReader's own `koreader.sh` normally removes the passcode flag before its plugin can run.
 Hosted Grimoire inherits that policy and does not guess whether a missing flag should be restored.
 Use a Library start for native PIN protection. If a host preserves the flag, Grimoire supports
-native unlock using that host's paused UI. Native keypad drawing and reacquisition are newly
-implemented in beta.2; the host tests verify ownership, order, failure and timeout, but firmware
-coverage still requires Kindle tests.
+native unlock using that host's paused UI. The native keypad hand-over and reacquisition came in
+1.1.0-beta.2 and have not been confirmed on a Kindle yet: the host tests verify ownership, order,
+failure and timeout, and each firmware still needs a device check ([TESTING.md](TESTING.md)).
 
 ## The language
 
@@ -160,8 +160,8 @@ The app carries the plugin (`grimoire/app/koreader`). Once explicitly installed,
 start keeps that copy up to date with the app, copying each file then renaming it whole.
 `grimoire/.koplugin-installed` records the build. Deleting the plugin marks it `removed`; it stays
 removed until explicitly installed again. A start with KOReader absent forgets the marker, so a
-later KOReader reinstall needs consent again. An existing plugin from beta.2 continues receiving
-updates. No top-level KOReader folder is shipped over MTP.
+later KOReader reinstall needs consent again. A plugin an earlier version installed keeps
+receiving updates. No top-level KOReader folder is shipped over MTP.
 
 KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KPM.md).
 
@@ -216,10 +216,14 @@ Grimoire`.
   koreader.sh is an ancestor of reader.lua (up to eight launcher processes): a `/var/tmp/koreader.sh` left by a crashed session proves
   neither (`not starting hosted: KOReader's reader.lua (pid N) was not started by koreader.sh.`, or
   `... KOReader's reader.lua is not among this launcher's parents.`);
-- none of reader.lua's `/proc/<pid>/fd` entries points into `/dev/input/`, as an exclusive grab
-  belongs to the open device (`not starting hosted: KOReader still has /dev/input/eventN open (this
-  is not its exit path), so Grimoire would get no pen or touch.`); a list that cannot be read lets
-  this through.
+- every `/dev/input/` device among reader.lua's `/proc/<pid>/fd` entries reports no absolute axes:
+  its `/sys/class/input/eventN/device/capabilities/abs` holds only zeros. An exclusive grab belongs
+  to the open device, and a pen or touch screen has absolute axes. A key-only device may stay open:
+  firmware 5.20.1.0.2 adds a virtual `kindle-input-pt` device with keyboard keys and no absolute
+  axes, which KOReader keeps open through its exit. A missing, empty or malformed bitmap counts as
+  a pen or touch screen, and every device is checked, so a keyboard cannot hide one later in the
+  list (`not starting hosted: KOReader still has /dev/input/eventN open (this is not its exit
+  path), so Grimoire would get no pen or touch.`). A list that cannot be read lets this through.
 
 A KOReader launcher that did not pause the native UI is supported: hosted Grimoire pauses it
 itself, restores it after the app ends, and returns without starting the home booklet. Otherwise
@@ -466,9 +470,11 @@ tells the story):
 - The power key reports its press and its release apart; the 4 s hold needs both. A key that
   reports them together makes every press look short (the `power button: up after N ms` lines
   show it); the two-press exit from a locked Kindle does not need the hold.
-- Removing `/var/local/system/userpasswdenabled` pauses the passcode on 5.19 and 5.20 as it does
-  for KOReader, and the power service's state names (`active`, `screenSaver`, `readyToSuspend`,
-  `suspended`) are the same there.
+- With the Device Passcode on, the Kindle holds back `outOfScreenSaver` until the passcode is
+  typed on its own keypad, on 5.19 and 5.20 too, and the native hand-over (The Device Passcode)
+  relies on that. No Kindle has confirmed the hand-over yet ([TESTING.md](TESTING.md)). The power
+  service's state names (`active`, `screenSaver`, `readyToSuspend`, `suspended`) are the same on
+  both.
 - Accented notebook and folder names become UTF-8 file names under `grimoire/PDFs`; whether the
   Scribe shows them correctly over MTP is not checked yet.
 - The Scribe 3 and the Scribe Colorsoft have no public jailbreak: the checks cover their
@@ -486,9 +492,10 @@ Library > Settings > KOReader manages the plugin and the three scripts under
 this sheet; patch toggles apply/remove only matching bundled files and preserve different files.
 The Terminess toggle writes the embedded regular/bold fonts into KOReader's `fonts/Grimoire`.
 Restart KOReader after any change. Font files can remain after disabling the patch; without it
-KOReader uses its original UI font. The RC updates Terminess font matching and dropdown battery
-spacing. KOReader keeps its native DPI scaling. Exact old Grimoire Terminess bytes are carried under `app/koreader/legacy`
-only for explicit migration; different user edits remain protected.
+KOReader uses its original UI font. Since 2.0.0-beta.1 the Terminess patch matches regular and bold
+fonts and spaces the dropdown battery icon from its percentage. Exact old Grimoire Terminess bytes
+are carried under `app/koreader/legacy` only for explicit migration; different user edits remain
+protected.
 
 Before each handover the plugin removes an old `grimoire/koreader-sleep.png`, asks KOReader's
 screensaver module to select its configured cover/custom image, paints it offscreen and commits
