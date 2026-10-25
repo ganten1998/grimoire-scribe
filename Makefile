@@ -276,9 +276,11 @@ FBINK_OBJ := $(patsubst $(FBINK_DIR)/%.c,$(BUILD)/kindle/fbink/%.o,$(FBINK_SRC))
 $(BUILD)/kindle/fbink/%.o: $(FBINK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(KCC) -std=gnu11 -D_GNU_SOURCE -O2 -w $(FBINK_DEF) -I$(FBINK_DIR) -c $< -o $@
-$(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) $(HDRS)
+# kindle/no-comment.ld leaves out the toolchain's name, so any build of the same zig version makes
+# the same binary (a local zig and the release workflow's).
+$(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) $(HDRS) kindle/no-comment.ld
 	@mkdir -p $(BUILD)/kindle
-	$(KCC) $(COMMON) $(WARN) -O2 -I$(FBINK_DIR) $(FBINK_DEF) -DGRIMOIRE_KINDLE -static -s \
+	$(KCC) $(COMMON) $(WARN) -O2 -I$(FBINK_DIR) $(FBINK_DEF) -DGRIMOIRE_KINDLE -static -s -Wl,-T,kindle/no-comment.ld \
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) -o $@ -lm
 
 # ---- Kindle package (scriptlet for Vera / KPM-era jailbreaks) ----
@@ -301,6 +303,12 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # in the zip as "KOReader plugin (optional)/grimoire.koplugin", for a hand install into the
 # Kindle's koreader/plugins. Never as a top-level koreader folder: copied over MTP, that could
 # replace someone's KOReader.
+# tools/archive.py writes the app's tar and both zips: one time for every entry (the HEAD commit's,
+# or SOURCE_DATE_EPOCH), owner root, modes 755 and 644, names in order. Nothing else here may
+# depend on the builder either: the stb notice names the headers in $(sort) order, not the
+# locale's. With the same zig version, the same commit makes the same bytes on any Mac, so
+# BUILD_ID and every release file can be compared with a local build (tests/repro_check.sh, part
+# of make package-check, builds twice from clean and compares).
 PKG := $(BUILD)/dist/stage
 RESET_SH := kindle/Grimoire\ -\ reset\ pen\ calibration.sh
 VENDOR_LICENSES := $(wildcard third_party/*/LICENSE* third_party/*/COPYING* third_party/*/CREDITS*)
@@ -310,7 +318,7 @@ KOLEGACY_SRC := $(wildcard kindle/koreader/legacy/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh $(RESET_SH) \
-                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile $(wildcard assets/*-OFL-1.1.txt) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(wildcard assets/*-OFL-1.1.txt) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh $(PKG)/app/
@@ -334,7 +342,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	    [ -s $$out ] && printf '\n\n' >> $$out; cat "$$f" >> $$out; done; \
 	  for f in $$d/CREDITS*; do [ -f "$$f" ] && cp "$$f" $(PKG)/app/licenses/$$n-CREDITS.txt; done; \
 	done; true
-	names=; : > $(PKG)/stb.all; for h in third_party/stb_*.h; do \
+	names=; : > $(PKG)/stb.all; for h in $(sort $(wildcard third_party/stb_*.h)); do \
 	  awk '/^This software is available under 2 licenses/ { p = 1 } p && /^\*\// { exit } p' $$h > $(PKG)/stb.one; \
 	  [ -s $(PKG)/stb.one ] || { echo "package: no license text found in $$h"; exit 1; }; \
 	  names="$${names:+$$names, }$${h##*/}"; cmp -s $(PKG)/stb.one $(PKG)/stb.all || cat $(PKG)/stb.one >> $(PKG)/stb.all; \
@@ -364,7 +372,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	    echo; echo "FBInk's CREDITS:"; echo; cat $(PKG)/dfa.credits; } > $$out/dfa-LICENSE.txt; \
 	  rm -f $(PKG)/utf8.head $(PKG)/dfa.head $(PKG)/utf8.credits $(PKG)/dfa.credits
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
-	COPYFILE_DISABLE=1 tar -cf $(BUILD)/dist/app.tar --format ustar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses koreader
+	python3 tools/archive.py tar $(BUILD)/dist/app.tar -C $(PKG)/app grimoire grimoire.sh CAPABILITIES licenses koreader
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
 	id=$$(shasum $(BUILD)/dist/app.tar | cut -c1-12); \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
@@ -377,11 +385,11 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	chmod +x $(PKG)/documents/*.sh
 	sed 's/@VERSION@/$(VERSION)/' kindle/README.txt > $(PKG)/README.txt
 	cp LICENSE $(PKG)/LICENSE.txt
-	( cd $(PKG) && rm -f ../Grimoire.zip && COPYFILE_DISABLE=1 zip -qrX ../Grimoire.zip documents README.txt LICENSE.txt "$(KOPLUGIN_ZIP)" "KOReader patches (optional)" )
+	python3 tools/archive.py zip $@ -C $(PKG) documents README.txt LICENSE.txt "$(KOPLUGIN_ZIP)" "KOReader patches (optional)"
 	cp $@ $(BUILD)/dist/Grimoire-$(VERSION).zip
 	rm -rf $(BUILD)/dist/patchstage && mkdir -p $(BUILD)/dist/patchstage/KOReader-patches
 	cp -R "$(PKG)/KOReader patches (optional)/." $(BUILD)/dist/patchstage/KOReader-patches/
-	( cd $(BUILD)/dist/patchstage && rm -f ../KOReader-patches.zip && COPYFILE_DISABLE=1 zip -qrX ../KOReader-patches.zip KOReader-patches )
+	python3 tools/archive.py zip $(BUILD)/dist/KOReader-patches.zip -C $(BUILD)/dist/patchstage KOReader-patches
 	@echo "package: $@ (and Grimoire-$(VERSION).zip)"
 
 # KPM v2 accepts only numeric version triples; the builder preserves prerelease ordering.
@@ -402,10 +410,13 @@ kpm-check: kpm-package
 
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,
 # the share server against a real HTTP client, the host exporter, the ARM build, and the zip
-# people install: what it holds, and its launchers run against stand-ins for the Kindle's tools.
+# people install: what it holds, that two clean builds make the same bytes, and its launchers run
+# against stand-ins for the Kindle's tools.
 .PHONY: package-check launcher-check
 package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
+	python3 -m unittest discover -s tests -p 'test_archive.py' -v
+	tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
 check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check dist
