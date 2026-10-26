@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 02:22-0500\n"
+"POT-Creation-Date: 2026-10-26 02:49-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -594,7 +594,7 @@ msgid "effects"
 msgstr ""
 
 #. TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
-#. {percent} is the percentage sent to the browser, not saved to its disk.
+#. {percent} includes the percent sign: sent to the browser, not saved to its disk.
 #: src/httpd.c
 msgid "Preparing PDF..."
 msgstr ""
@@ -604,7 +604,7 @@ msgid "Preparing PDF: {done} / {total} pages"
 msgstr ""
 
 #: src/httpd.c
-msgid "Sending PDF: {percent}%"
+msgid "Sending PDF: {percent}"
 msgstr ""
 
 #: src/httpd.c

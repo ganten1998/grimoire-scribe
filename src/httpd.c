@@ -476,9 +476,9 @@ static void nb_card(Buf *b, const NotebookInfo *nb) {
 
 static void download_footer(Buf *b) {
     // TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
-    // {percent} is the percentage sent to the browser, not saved to its disk.
+    // {percent} includes the percent sign: sent to the browser, not saved to its disk.
     const char *words[] = {_("Preparing PDF..."), _("Preparing PDF: {done} / {total} pages"),
-        _("Sending PDF: {percent}%"), _("Sent to your browser. Check Downloads."),
+        _("Sending PDF: {percent}"), _("Sent to your browser. Check Downloads."),
         _("PDF download failed. Please try again."),
         _("Download status unavailable. Check your browser's Downloads and the Kindle's Wi-Fi."),
         _("Dismiss"), _("Waiting for an export slot...")};

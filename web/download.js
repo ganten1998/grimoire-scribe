@@ -73,7 +73,7 @@
                 if (d.state === 3) {
                     bar.max = Math.max(1, d.bytes);
                     bar.value = d.sent;
-                    text.textContent = words[2].replace('{percent}', Math.min(100, Math.floor(d.sent * 100 / bar.max)));
+                    text.textContent = words[2].replace('{percent}', Math.min(100, Math.floor(d.sent * 100 / bar.max)) + '%');
                 } else if (d.state === 2 && d.total > 0) {
                     bar.max = d.total;
                     bar.value = d.pages;

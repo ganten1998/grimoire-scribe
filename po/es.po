@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 02:22-0500\n"
+"POT-Creation-Date: 2026-10-26 02:49-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -623,7 +623,7 @@ msgid "effects"
 msgstr "efectos"
 
 #. TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
-#. {percent} is the percentage sent to the browser, not saved to its disk.
+#. {percent} includes the percent sign: sent to the browser, not saved to its disk.
 #: src/httpd.c
 msgid "Preparing PDF..."
 msgstr "Preparando PDF..."
@@ -633,8 +633,8 @@ msgid "Preparing PDF: {done} / {total} pages"
 msgstr "Preparando PDF: {done} / {total} páginas"
 
 #: src/httpd.c
-msgid "Sending PDF: {percent}%"
-msgstr "Enviando PDF: {percent}%"
+msgid "Sending PDF: {percent}"
+msgstr "Enviando PDF: {percent}"
 
 #: src/httpd.c
 msgid "Sent to your browser. Check Downloads."
@@ -648,7 +648,9 @@ msgstr "No se pudo descargar el PDF. Inténtalo de nuevo."
 msgid ""
 "Download status unavailable. Check your browser's Downloads and the Kindle's "
 "Wi-Fi."
-msgstr "No se puede consultar el estado. Revisa las descargas del navegador y la conexión wifi del Kindle."
+msgstr ""
+"No se puede consultar el estado. Revisa las descargas del navegador y la "
+"conexión wifi del Kindle."
 
 #: src/httpd.c
 msgid "Dismiss"

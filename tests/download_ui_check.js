@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const {webcrypto} = require('node:crypto');
 const source = fs.readFileSync('web/download.js', 'utf8');
-const words = ['preparing', '{done}/{total}', '{percent}%', 'sent', 'failed', 'unavailable', 'dismiss', 'queued'];
+const words = ['preparing', '{done}/{total}', '{percent}', 'sent', 'failed', 'unavailable', 'dismiss', 'queued'];
 
 function setup({card = true, supported = true} = {}) {
     const elements = [], timers = new Map(), responses = [];
