@@ -8,7 +8,8 @@
 #include "bgimage.h"
 #include "store.h"
 
-// At startup: grimoire/templates/ and grimoire/import/, each with a README.txt, when missing.
+// At startup: grimoire/templates/, grimoire/photos/ and grimoire/import/, each with a README.txt,
+// when missing.
 void templates_init(void);
 
 // ---- templates ----
@@ -58,6 +59,22 @@ int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, 
 // and *why (for the log) when that could not be done: then the notebook stays on the paper it was
 // made on.
 int template_start_notebook(NotebookInfo *nb, const char *path, const char **why);
+
+// ---- photos ----
+//
+// grimoire/photos/*.png|jpg|jpeg|pgm: photos the owner copies onto the Kindle over USB, each to be a
+// page's paper: the page's own picture (a document page, Image papers: a new page after it gets the
+// notebook's paper), fitted to the page and turned upright by its EXIF orientation, previews too.
+// The same scan, previews and sheet as templates.
+
+// As template_scan, for grimoire/photos/.
+int photos_scan(Template **out, int *n, float dpi);
+// Whether path names a file in grimoire/photos/ (a background job tells a photo by it).
+bool photo_path(const char *path);
+// As template_install, for a photo: *kind a document page's paper on its picture, made upright.
+int photo_install(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why);
+// As template_paper, for a photo.
+int photo_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind);
 
 // ---- imports ----
 

@@ -111,6 +111,18 @@ int bgimage_content_hash_file(const char *path, uint64_t *hash, size_t *len);
 uint64_t bgimage_template_key(uint64_t content, size_t len, int pw, int ph);
 // The same from the file's bytes.
 uint64_t bgimage_source_key(const uint8_t *data, size_t len, int pw, int ph);
+// A photo's key (templates.h, photos), as a template's but of its own kind: a photo is turned
+// upright before it is fitted, so the same file as a template and as a photo makes two pictures.
+uint64_t bgimage_photo_key(uint64_t content, size_t len, int pw, int ph);
+
+// The EXIF orientation of a JPEG photo (tag 0x0112 of its APP1 Exif block, as a phone writes it): 1 to
+// 8, or 1 when it has none (no JPEG, no Exif block, a damaged one, a value out of range). The parser
+// reads only within the file's first 64 KB and the block's own length.
+int bgimage_exif_orientation(const uint8_t *data, size_t len);
+// p turned and mirrored as EXIF orientation o (2 to 8) says, so that it shows upright: 3 turns it a
+// half turn, 6 a quarter turn clockwise, 8 a quarter turn the other way, 2, 4, 5 and 7 mirror it
+// first. 0 (1 and values out of range change nothing), or -1 out of memory (p as it was).
+int bgimage_orient(BgPicture *p, int o);
 
 // ---- bg/index.ini: which id holds which key in a notebook's bg folder ----
 

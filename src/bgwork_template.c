@@ -267,6 +267,21 @@ void templates_init(void) {
               "its previews of these files in the .cache folder.")};
         write_readme(dir, parts, 3, "templates");
     }
+    root_path("photos", dir, sizeof dir);
+    if (mkdir_p(dir) == 0) {
+        // TRANSLATORS: grimoire/photos/README.txt, written like the templates one: its title, then its
+        // two paragraphs. "Paper", "Photos..." and "Pages" name Grimoire's own sheets and buttons:
+        // as they are translated there.
+        const char *parts[] = {
+            _("Photos for Grimoire"),
+            _("Copy photos here to write on them: JPG or PNG files, as your phone or camera saved them. In a "
+              "notebook, open Paper and pick Photos...: the photo becomes the open page's paper, fitted to the "
+              "page and turned upright. For a page of its own, add a new page in Pages first."),
+            _("Copy them in over USB while Grimoire is closed. A notebook keeps its own copy of each photo it "
+              "uses, so changing or deleting a file here never changes pages already written on it. Grimoire keeps "
+              "its previews of these files in the .cache folder.")};
+        write_readme(dir, parts, 3, "photos");
+    }
     root_path("import", dir, sizeof dir);
     if (mkdir_p(dir) == 0) {
         // TRANSLATORS: grimoire/import/README.txt, written like the templates one: its title, then
@@ -314,11 +329,19 @@ static bool preview_of(const char *path, const char *ext, char *buf, size_t cap)
     return preview_path(dir, slash + 1, ext, buf, cap);
 }
 
-int template_scan(Template **out, int *n, float dpi) {
+bool photo_path(const char *path) {
+    char dir[600];
+    root_path("photos", dir, sizeof dir);
+    size_t n = strlen(dir);
+    return !strncmp(path, dir, n) && path[n] == '/' && path[n + 1] && !strchr(path + n + 1, '/');
+}
+
+// The pictures of folder `which` (templates or photos) in the data root, for template_scan.
+static int scan_folder(const char *which, Template **out, int *n, float dpi) {
     *out = NULL;
     *n = 0;
     char dir[600];
-    root_path("templates", dir, sizeof dir);
+    root_path(which, dir, sizeof dir);
     char **names;
     int nn;
     if (list_names(dir, true, MAX_TEMPLATES, &names, &nn) != 0) return -1;
@@ -354,12 +377,16 @@ int template_scan(Template **out, int *n, float dpi) {
         else missing = true;
     }
     free_names(names, nn);
-    if (toolong) qlog("templates: %d template(s) with too long a name left out", toolong);
+    if (toolong) qlog("%s: %d file(s) with too long a name left out", which, toolong);
     if (missing) bg_queue(BG_TEMPLATE, "", dir, dpi, false);
     *out = t;
     *n = m;
     return 0;
 }
+
+int template_scan(Template **out, int *n, float dpi) { return scan_folder("templates", out, n, dpi); }
+
+int photos_scan(Template **out, int *n, float dpi) { return scan_folder("photos", out, n, dpi); }
 
 const Canvas *template_thumb(Template *t) {
     if (t->thumb.px) return &t->thumb;
@@ -398,10 +425,14 @@ int template_refresh(Template *t, int n) {
     return changed;
 }
 
-// In the child: the previews the templates folder lacks, made at the page size of this Kindle, with
-// the hash of each file's bytes beside its preview (a template's key comes from it, and so the UI
-// never reads a big file to know it); previews of files no longer there are removed.
+// In the child: the previews the templates folder (or the photos folder) lacks, made at the page size
+// of this Kindle, with the hash of each file's bytes beside its preview (a template's key comes from
+// it, and so the UI never reads a big file to know it); previews of files no longer there are
+// removed. A photo's preview is turned upright, as its picture will be.
 static int make_previews(const char *dir) {
+    char photos[600];
+    root_path("photos", photos, sizeof photos);
+    bool photo = !strcmp(dir, photos);
     char cache[700];
     snprintf(cache, sizeof cache, "%s/.cache", dir);
     if (mkdir_p(cache) != 0) return -1;
@@ -431,6 +462,7 @@ static int make_previews(const char *dir) {
         BgPicture src = {0}, fit = {0};
         Canvas full = {0}, small = {0};
         int dec = data ? bgimage_decode(data, len, &src, &why) : too_big ? -1 : -2;
+        if (dec == 0 && photo && bgimage_orient(&src, bgimage_exif_orientation(data, len)) != 0) dec = -2;
         bool ok = dec == 0 && bgimage_normalize(&src, pw, ph, &fit) == 0 && bgimage_luma(&fit, &full) == 0 &&
                   canvas_init(&small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
         if (ok) {
@@ -440,7 +472,7 @@ static int make_previews(const char *dir) {
             ok = write_quiet(kp, key) == 0 && store_write_pgm(pv, &small) == 0;  // (the key first: a preview has one)
             made += ok;
         } else if (dec == -1) {
-            qlog("templates: template %d of %d is not a picture Grimoire can use (%s)", i + 1, nn, why);
+            qlog("%s: file %d of %d is not a picture Grimoire can use (%s)", photo ? "photos" : "templates", i + 1, nn, why);
             write_quiet(bp, "");
             bad++;
         } else {
@@ -466,8 +498,8 @@ static int make_previews(const char *dir) {
     if (d) closedir(d);
     free(keep);
     free_names(names, nn);
-    qlog("templates: %d preview(s) made, %d file(s) that are no picture Grimoire can use, %d left for a later scan "
-         "(out of memory, or a file that did not read)", made, bad, later);
+    qlog("%s: %d preview(s) made, %d file(s) that are no picture Grimoire can use, %d left for a later scan "
+         "(out of memory, or a file that did not read)", photo ? "photos" : "templates", made, bad, later);
     return keep ? 0 : -1;
 }
 
@@ -487,7 +519,12 @@ static int cached_key(const char *path, uint64_t *hash, int *w, int *h) {
     return ok ? 0 : -1;
 }
 
-int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind) {
+// A template's key, or a photo's (its own kind: bgimage.h).
+static uint64_t picture_key(bool photo, uint64_t content, size_t len, int pw, int ph) {
+    return photo ? bgimage_photo_key(content, len, pw, ph) : bgimage_template_key(content, len, pw, ph);
+}
+
+static int picture_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind, bool photo) {
     struct stat st;
     uint64_t content;
     int w, h, pw, ph;
@@ -495,12 +532,30 @@ int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix,
     // The key template_install gives it (the same hash, length and page size), looked up.
     if (stat(t->path, &st) != 0 || !S_ISREG(st.st_mode) || cached_key(t->path, &content, &w, &h) != 0) return -1;
     store_notebook_page_size(nb, &pw, &ph);
-    if (!bgindex_find(ix, bgimage_template_key(content, (size_t)st.st_size, pw, ph), &id)) return -1;
-    *kind = paper_image(PAPER_ROLE_TEMPLATE, id);
+    if (!bgindex_find(ix, picture_key(photo, content, (size_t)st.st_size, pw, ph), &id)) return -1;
+    *kind = paper_image(photo ? PAPER_ROLE_DOCUMENT : PAPER_ROLE_TEMPLATE, id);
     return 0;
 }
 
+int template_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind) {
+    return picture_paper(t, nb, ix, kind, false);
+}
+
+int photo_paper(const Template *t, const NotebookInfo *nb, const BgIndex *ix, PaperKind *kind) {
+    return picture_paper(t, nb, ix, kind, true);
+}
+
+static int install_picture(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why, bool photo);
+
 int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why) {
+    return install_picture(nb, path, kind, why, false);
+}
+
+int photo_install(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why) {
+    return install_picture(nb, path, kind, why, true);
+}
+
+static int install_picture(const NotebookInfo *nb, const char *path, PaperKind *kind, const char **why, bool photo) {
     *why = "the file does not read";
     // On the UI thread: its key, from the hash of its bytes and the page size; the picture is made
     // in the background. The previews job, which reads every template whole anyway, keeps the hash
@@ -531,7 +586,7 @@ int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, 
         if (!ok) return -1;
     }
     store_notebook_page_size(nb, &pw, &ph);
-    uint64_t key = bgimage_template_key(content, len, pw, ph);
+    uint64_t key = picture_key(photo, content, len, pw, ph);
     char dir[700], file[800];
     *why = "the notebook cannot be written";
     if (bgimage_dir(nb->id, dir, sizeof dir) != 0 || mkdir_p(dir) != 0) return -1;
@@ -543,10 +598,11 @@ int template_install(const NotebookInfo *nb, const char *path, PaperKind *kind, 
     if (rc == 0 && added) rc = bgindex_save(dir, &ix);
     bgindex_free(&ix);
     if (rc != 0) return -1;
-    *kind = paper_image(PAPER_ROLE_TEMPLATE, id);
+    *kind = paper_image(photo ? PAPER_ROLE_DOCUMENT : PAPER_ROLE_TEMPLATE, id);
     bgimage_file(dir, id, file, sizeof file);
     if (access(file, F_OK) != 0) {
-        qlog("templates: %s: bg/%06x.png to be made (%dx%d picture for a %dx%d page)", nb->id, (unsigned)id, w, h, pw, ph);
+        qlog("%s: %s: bg/%06x.png to be made (%dx%d picture for a %dx%d page)", photo ? "photos" : "templates", nb->id,
+             (unsigned)id, w, h, pw, ph);
         bg_queue(BG_TEMPLATE, nb->id, path, store_dpi(), false);
     }
     return 0;
@@ -617,7 +673,8 @@ static int make_template(const char *id, const char *src, float dpi) {
     char dir[700], file[800];
     BgIndex ix = {0};
     uint32_t pic = 0;
-    uint64_t key = bgimage_source_key(data, len, pw, ph);
+    bool photo = photo_path(src);  // (upright first, and a key of its own kind)
+    uint64_t key = picture_key(photo, bgimage_content_hash(data, len), len, pw, ph);
     bool known = bgimage_dir(id, dir, sizeof dir) == 0 && bgindex_load(dir, &ix) == 0 && bgindex_find(&ix, key, &pic);
     bgindex_free(&ix);
     if (!known) {
@@ -631,8 +688,9 @@ static int make_template(const char *id, const char *src, float dpi) {
     if (access(file, F_OK) != 0) {
         BgPicture p = {0}, fit = {0};
         const char *why = "out of memory";
-        rc = bgimage_decode(data, len, &p, &why) == 0 && bgimage_normalize(&p, pw, ph, &fit) == 0 &&
-                     bgimage_write_png(file, &fit) == 0 ? 0 : -1;
+        rc = bgimage_decode(data, len, &p, &why) == 0 &&
+                     (!photo || bgimage_orient(&p, bgimage_exif_orientation(data, len)) == 0) &&
+                     bgimage_normalize(&p, pw, ph, &fit) == 0 && bgimage_write_png(file, &fit) == 0 ? 0 : -1;
         if (rc) qlog("templates: %s: bg/%06x.png could not be made (%s)", id, (unsigned)pic, why);
         else qlog("templates: %s: bg/%06x.png made (%dx%d, %s)", id, (unsigned)pic, pw, ph, fit.ch == 3 ? "colour" : "gray");
         bgpicture_free(&p);

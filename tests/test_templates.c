@@ -2087,6 +2087,187 @@ TEST(long_paths_left_out) {
     bgpicture_free(&g);
 }
 
+// ---- photos ----
+
+// A JPEG's start with an APP1 Exif block whose IFD0 holds Orientation = v (le: little-endian TIFF).
+static size_t exif_jpeg(uint8_t *out, int v, bool le, bool more_tags) {
+    size_t n = 0;
+    out[n++] = 0xFF;
+    out[n++] = 0xD8;
+    out[n++] = 0xFF;  // an APP0 first, as many cameras write
+    out[n++] = 0xE0;
+    out[n++] = 0;
+    out[n++] = 4;
+    out[n++] = 'J';
+    out[n++] = 'F';
+    size_t app1 = n;
+    out[n++] = 0xFF;
+    out[n++] = 0xE1;
+    n += 2;  // (its length, below)
+    memcpy(out + n, "Exif\0\0", 6);
+    n += 6;
+    size_t t = n;
+    out[n++] = le ? 'I' : 'M';
+    out[n++] = le ? 'I' : 'M';
+#define P16(x) (le ? (out[n++] = (uint8_t)(x), out[n++] = (uint8_t)((x) >> 8)) : (out[n++] = (uint8_t)((x) >> 8), out[n++] = (uint8_t)(x)))
+#define P32(x) (le ? (P16((x) & 0xFFFF), P16((uint32_t)(x) >> 16)) : (P16((uint32_t)(x) >> 16), P16((x) & 0xFFFF)))
+    P16(42);
+    P32(8);
+    int count = more_tags ? 3 : 1;
+    P16(count);
+    if (more_tags) {  // ImageWidth and ImageLength first, as a camera writes them
+        P16(0x0100); P16(4); P32(1); P32(4000);
+        P16(0x0101); P16(4); P32(1); P32(3000);
+    }
+    P16(0x0112); P16(3); P32(1); P16(v); P16(0);
+    P32(0);
+#undef P16
+#undef P32
+    size_t len = n - app1 - 2;
+    out[app1 + 2] = (uint8_t)(len >> 8);
+    out[app1 + 3] = (uint8_t)len;
+    (void)t;
+    out[n++] = 0xFF;  // then the frame (no more needed: the parser stops at Exif)
+    out[n++] = 0xDA;
+    out[n++] = 0;
+    out[n++] = 2;
+    return n;
+}
+
+TEST(exif_orientation) {
+    uint8_t j[256];
+    for (int le = 0; le < 2; le++)
+        for (int more = 0; more < 2; more++)
+            for (int v = 1; v <= 8; v++) {
+                size_t n = exif_jpeg(j, v, le, more);
+                CHECK(bgimage_exif_orientation(j, n) == v);
+            }
+    // Values out of range, no Exif, damaged blocks, other files: 1, nothing turned.
+    size_t n = exif_jpeg(j, 9, false, false);
+    CHECK(bgimage_exif_orientation(j, n) == 1);
+    n = exif_jpeg(j, 0, true, true);
+    CHECK(bgimage_exif_orientation(j, n) == 1);
+    n = exif_jpeg(j, 6, false, true);
+    for (size_t cut = 0; cut < n - 4; cut++) CHECK(bgimage_exif_orientation(j, cut) == 1 || cut >= n - 4);
+    uint8_t bad[256];
+    memcpy(bad, j, n);
+    bad[13] = 'X';  // "Exif" no more
+    CHECK(bgimage_exif_orientation(bad, n) == 1);
+    memcpy(bad, j, n);
+    bad[20] = 0x7F;  // IFD0 offset past the block
+    CHECK(bgimage_exif_orientation(bad, n) == 1);
+    memcpy(bad, j, n);
+    bad[9] = 0xFF;  // APP1's length past the file
+    CHECK(bgimage_exif_orientation(bad, n) == 1);
+    static const uint8_t png[] = {0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13};
+    CHECK(bgimage_exif_orientation(png, sizeof png) == 1);
+    CHECK(bgimage_exif_orientation(j, 0) == 1);
+    // The fixture a phone would write: stored sideways, orientation 6.
+    char path[700];
+    snprintf(path, sizeof path, "tests/fixtures/photos/IMG_0001.jpg");
+    size_t len;
+    uint8_t *d = slurp(path, &len);
+    CHECK(d && bgimage_exif_orientation(d, len) == 6);
+    free(d);
+}
+
+// Each EXIF orientation, on a 3x2 picture a b c / d e f (in both gray and RGB): what shows upright.
+TEST(orientations) {
+    static const char *want[9] = {"", "abc def", "cba fed", "fed cba", "def abc", "ad be cf", "da eb fc", "fc eb da",
+                                  "cf be ad"};
+    for (int ch = 1; ch <= 3; ch += 2)
+        for (int o = 1; o <= 8; o++) {
+            BgPicture p = picture(3, 2, ch);
+            for (int i = 0; i < 6; i++) memset(p.px + (size_t)i * (size_t)ch, 'a' + i, (size_t)ch);
+            CHECK(bgimage_orient(&p, o) == 0);
+            char got[16];
+            int k = 0;
+            for (int y = 0; y < p.h; y++) {
+                if (y) got[k++] = ' ';
+                for (int x = 0; x < p.w; x++) got[k++] = (char)p.px[((size_t)y * (size_t)p.w + (size_t)x) * (size_t)ch];
+            }
+            got[k] = 0;
+            if (strcmp(got, want[o])) fprintf(stderr, "  orientation %d, %d channel(s): %s, wanted %s\n", o, ch, got, want[o]);
+            CHECK(!strcmp(got, want[o]));
+            CHECK((o >= 5) ? (p.w == 2 && p.h == 3) : (p.w == 3 && p.h == 2));
+            bgpicture_free(&p);
+        }
+}
+
+// A photo from grimoire/photos: a page's own picture (a document page), upright (the fixture's black
+// block at its top left, its gray bar at the bottom), of a key of its own kind: the same file as a
+// template is another picture, as it is stored (sideways).
+TEST(photo_upright_and_its_own) {
+    NotebookInfo nb;
+    CHECK(store_create("Photos", "", PAPER_MEDIUM, &nb) == 0);
+    char path[700];
+    snprintf(path, sizeof path, "%s/photos/IMG_0001.jpg", root);
+    size_t len;
+    uint8_t *d = slurp("tests/fixtures/photos/IMG_0001.jpg", &len);
+    CHECK(d != NULL);
+    if (d) put_file(path, d, len);
+    free(d);
+    CHECK(photo_path(path));
+    char tpl[700];
+    snprintf(tpl, sizeof tpl, "%s/templates/IMG_0001.jpg", root);
+    CHECK(!photo_path(tpl));
+    PaperKind k = PAPER_BLANK, kt = PAPER_BLANK;
+    const char *why = "";
+    CHECK(photo_install(&nb, path, &k, &why) == 0 && paper_is_image(k) && paper_is_document(k));
+    d = slurp(path, &len);
+    if (d) put_file(tpl, d, len);
+    free(d);
+    CHECK(template_install(&nb, tpl, &kt, &why) == 0 && paper_is_image(kt) && !paper_is_document(kt));
+    CHECK(paper_image_id(kt) != paper_image_id(k));
+    drain_jobs(NULL);
+    char dir[700], file[800];
+    bgimage_dir(nb.id, dir, sizeof dir);
+    bgimage_file(dir, paper_image_id(k), file, sizeof file);
+    d = slurp(file, &len);
+    BgPicture made = {0};
+    CHECK(d && bgimage_decode(d, len, &made, &why) == 0 && made.w == PW && made.h == PH);
+    free(d);
+    // Fitted upright, it fills the page (3:4 both): the block covers the top left 30% of its width and
+    // 22% of its height, the bar its bottom 10%.
+#define AT(pic, x, y) (pic).px[((size_t)(y) * (size_t)(pic).w + (size_t)(x)) * (size_t)(pic).ch]
+    if (made.px) {
+        uint8_t tl = AT(made, PW / 10, PH / 10), tr = AT(made, PW - PW / 10, PH / 10), bottom = AT(made, PW / 2, PH - PH / 20);
+        if (!(tl < 40 && tr > 215 && bottom > 100 && bottom < 156))
+            fprintf(stderr, "  photo: top left %u, top right %u, bottom %u (ch %d)\n", tl, tr, bottom, made.ch);
+        CHECK(tl < 40 && tr > 215 && bottom > 100 && bottom < 156);
+    }
+    bgpicture_free(&made);
+    // As a template the same file is as stored, sideways: fitted into a band across the page's middle
+    // (400x300 at a scale of PW / 400), white above it, the block at the band's bottom left.
+    bgimage_file(dir, paper_image_id(kt), file, sizeof file);
+    d = slurp(file, &len);
+    CHECK(d && bgimage_decode(d, len, &made, &why) == 0);
+    free(d);
+    if (made.px) {
+        int band = PW * 300 / 400, top = (PH - band) / 2;
+        CHECK(AT(made, PW / 10, PH / 10) > 215 && AT(made, PW / 20, top + band - band / 10) < 40);
+    }
+#undef AT
+    bgpicture_free(&made);
+    // Its preview is upright too, and photo_paper finds it again from the preview's key.
+    Template *t = NULL;
+    int nt = 0;
+    CHECK(photos_scan(&t, &nt, DPI) == 0 && nt == 1);
+    drain_jobs(NULL);
+    template_list_free(t, nt);
+    CHECK(photos_scan(&t, &nt, DPI) == 0 && nt == 1 && t[0].ready);
+    const Canvas *pv = nt ? template_thumb(&t[0]) : NULL;
+    CHECK(pv && pv->w == PW / 6 && pv->px[(size_t)16 * (size_t)pv->stride + 16] < 40 &&
+          pv->px[(size_t)16 * (size_t)pv->stride + (size_t)(pv->w - 16)] > 215);
+    BgIndex ix;
+    PaperKind again = PAPER_BLANK;
+    CHECK(bgindex_load(dir, &ix) == 0 && nt && photo_paper(&t[0], &nb, &ix, &again) == 0 && again == k);
+    bgindex_free(&ix);
+    template_list_free(t, nt);
+    unlink(path);
+    unlink(tpl);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/templates-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -2103,6 +2284,9 @@ int main(void) {
     RUN(ui_picture_limits);
     RUN(normalization);
     RUN(templates_same_file_same_id);
+    RUN(exif_orientation);
+    RUN(orientations);
+    RUN(photo_upright_and_its_own);
     RUN(source_key_streamed);
     RUN(templates_collision_steps);
     RUN(same_id_two_notebooks);

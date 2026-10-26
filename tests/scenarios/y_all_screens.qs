@@ -333,6 +333,15 @@ shot 25-templates-empty
 tap 300 2123
 wait 100
 expect editor.modal is paper
+# photos: the Photos sheet with no photos yet, then Back to the Paper sheet
+tap 511 1750
+wait 100
+expect editor.modal is templates
+expect templates.count is 0
+shot 25-photos-empty
+tap 300 2123
+wait 100
+expect editor.modal is paper
 tap 1562 2125
 wait 100
 expect editor.modal is none
@@ -578,6 +587,15 @@ tap 1544 1300
 wait 100
 expect editor.modal is templates
 shot 48-templates-empty-landscape
+tap 300 1694
+wait 100
+expect editor.modal is paper
+# photos, sideways
+tap 1848 1300
+wait 100
+expect editor.modal is templates
+expect templates.count is 0
+shot 48-photos-empty-landscape
 tap 300 1694
 wait 100
 expect editor.modal is paper

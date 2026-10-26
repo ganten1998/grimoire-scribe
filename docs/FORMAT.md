@@ -35,6 +35,7 @@ root/notebooks/<id>/bg/pages.ini        the image paper of each page that has on
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
+root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
@@ -442,6 +443,9 @@ that one is taken by another key (0 is never given):
   again if its file went missing. The hash is the one the template's preview keeps (Templates).
 - for an annotated page, the same key of the PNG KOReader sent (its bytes and the notebook's page
   size): the same page sent twice is one picture.
+- for a photo (2.0), a key of the same inputs as a template's but of another kind (its own seed):
+  a photo is turned upright before it is fitted, so the same file used as a template and as a
+  photo makes two pictures.
 
 `index.ini` is `# ...`, then one `<pic>=<key, 16 hex digits>` line per picture. The keys are
 Grimoire's own; other writers can leave their pictures out of it.
@@ -493,6 +497,19 @@ still holds, byte for byte, what it held before the job read the first page (che
 the rename). The editor, which may have the notebook open, writes the card itself when it leaves
 the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
 the card again from the page as it is then, and after three tries leaves the editor's.
+
+### Photos: `root/photos/` (2.0.0-beta.5 on)
+
+Photos the owner copies in (over USB, while Grimoire is closed), named as templates are. Grimoire
+makes the folder at startup, with a `README.txt`, if it is missing, and keeps previews in
+`photos/.cache/` as for templates. The editor's paper sheet has a Photos... tile after More
+papers...: it offers the photos as tiles, and a page given one gets an image paper on it at once,
+a document page (role 1): the page's own picture, so a page added after it gets the notebook's
+`paper`, not the photo. Its picture is made in the background as a template's is, but first turned
+upright by the JPEG's EXIF orientation (tag 0x0112 of its APP1 Exif block, read within the file's
+first 64 KB; none, or a PNG, is taken as upright), and so is its preview. Ids: as above. Older
+versions draw such a page as any picture page (1.1 on), or blank (1.0.0-beta, which `bg/pages.ini`
+puts right again).
 
 ### Imports: `root/import/<Name>/`
 
@@ -872,6 +889,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | a notebook's `bg/` folder (1.1) | never read or written; its raw zips leave it out | read and kept up to date; raw zips carry it |
 | an image paper as a notebook's `paper` (1.1: a notebook made on a template) | read as Medium rule, and saved so on its next save of `notebook.ini`: its new pages get Medium. Its pages keep their own papers (1.1 brings back from `bg/pages.ini` those it re-saved), so back in 1.1 only a page added after an imported page, or one whose file is missing, gets Medium | kept; new pages get it |
 | `templates/`, `import/` in the data root (and `import/.attempts`, 1.1) | never read | read |
+| `photos/` in the data root (2.0) | never read | never read; a page on a photo is drawn as any picture page |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
 | a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |

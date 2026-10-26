@@ -33,7 +33,7 @@
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
-    P_TOOLPICK, P_PICK_TOOL, P_PIN_MODE, P_PICK_INK, P_PICK_MORE,
+    P_TOOLPICK, P_PICK_TOOL, P_PIN_MODE, P_PICK_INK, P_PICK_MORE, P_PICK_PHOTOS,
 };
 
 typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD,
@@ -450,11 +450,24 @@ static void draw_paper_sheet(App *a) {
     Rect in = ui_sheet(c, S->paper_rect, _("Paper for this page"));
     bool page_custom = S->page && paper_is_known(S->page->paper) && paper_is_custom(S->page->paper);
     bool page_picture = S->page && paper_is_image(S->page->paper);
-    for (int i = 0; i < PAPER_SHEET_TILES; i++) {
-        // The last two tiles. Custom music shows this page's layout, or the last one built (also
+    for (int i = 0; i < PAPER_SHEET_EDITOR_TILES; i++) {
+        // The last three tiles. Custom music shows this page's layout, or the last one built (also
         // for a newer layout this build cannot draw, which is then not selected either). More
         // papers opens the Templates sheet: it shows this page's picture when the page is on one.
-        bool custom = i == PAPER_COUNT, more = i == PAPER_COUNT + 1;
+        // Photos... opens it on the photos (the sign for more: a book page is a page's own picture
+        // too, so a photo's is never told from it here).
+        bool custom = i == PAPER_COUNT, more = i == PAPER_COUNT + 1, photos = i == PAPER_COUNT + 2;
+        if (photos) {
+            Rect tr = {in.x + (in.w - gridw) / 2 + (i % g.cols) * (g.tw + gap_), in.y + (i / g.cols) * g.cell_h, g.tw, g.th};
+            canvas_fill(c, tr, 255);
+            paper_tile_more(c, tr);
+            ui_frame(c, tr, ui_px(12), 0, false, ui_px(3));
+            // TRANSLATORS: the editor's Paper sheet's tile that opens the Photos sheet (photos copied into
+            // grimoire/photos), under its tile: as Custom music... and More papers... (their room).
+            paper_tile_label(c, tr, gap_, _("Photos..."), false);
+            hits_add(&S->modal_hits, (Rect){tr.x, tr.y, g.tw, g.th + ui_px(90)}, P_PICK_PHOTOS, 0);
+            continue;
+        }
         PaperKind k = more     ? (page_picture ? S->page->paper : PAPER_BLANK)
                       : custom ? (page_custom ? S->page->paper : a->settings.music_layout)
                                : paper_at(i);
@@ -1746,6 +1759,23 @@ static void apply_template(App *a, const char *path) {
     if (S->page->paper != k) apply_paper(a, k);
 }
 
+// A photo picked on the Photos sheet becomes the open page's paper, as a template does (templates.h:
+// a document page on its own picture, made upright in the background; Undo puts the old paper back).
+static void apply_photo(App *a, const char *path) {
+    PaperKind k;
+    const char *why = "";
+    if (photo_install(&S->nb, path, &k, &why) != 0) {
+        qlog("editor: %s: a photo could not be used: %s", S->nb.id, why);
+        char msg[256];
+        // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
+        // Photos sheet could not become the page's paper; %s is the log file that says why.
+        snprintf(msg, sizeof msg, _("Could not use that photo (see %s)."), "grimoire.log");
+        app_toast(a, msg, 4000);
+        return;
+    }
+    if (S->page->paper != k) apply_paper(a, k);
+}
+
 static void modal_act(App *a, const Hit *h) {
     Rect sheet = S->paper_rect;
     S->paper_open = false;
@@ -1753,9 +1783,10 @@ static void modal_act(App *a, const Hit *h) {
         apply_paper(a, (PaperKind)h->arg);
         return;
     }
-    if (h->id == P_PICK_MORE) {
+    if (h->id == P_PICK_MORE || h->id == P_PICK_PHOTOS) {
         compose(a, sheet);  // (the Templates sheet takes the Paper sheet's place)
-        tplsheet_open(&S->ts, a, &S->nb, S->page->paper, NULL);
+        if (h->id == P_PICK_PHOTOS) tplsheet_open_photos(&S->ts, a, &S->nb, S->page->paper);
+        else tplsheet_open(&S->ts, a, &S->nb, S->page->paper, NULL);
         app_invalidate(a, rect_union(sheet, tplsheet_draw(&S->ts, a)), REFRESH_UI);
         return;
     }
@@ -2107,10 +2138,12 @@ void editor_event(App *a, const InEvent *ev) {
             char path[TEMPLATE_PATH_MAX];
             const char *p = tplsheet_path(&S->ts);
             strlcpy_q(path, p ? p : "", sizeof path);
+            bool photo = S->ts.photos;
             tplsheet_close(&S->ts);
             compose(a, d);
             app_invalidate(a, d, REFRESH_UI);
-            if (path[0]) apply_template(a, path);
+            if (path[0] && photo) apply_photo(a, path);
+            else if (path[0]) apply_template(a, path);
         } else if (r == TS_BACK) {
             // Back to the Paper sheet, in the same place.
             compose(a, d);

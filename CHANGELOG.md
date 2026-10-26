@@ -8,6 +8,10 @@
   and in exports, and new highlights keep the vertical tip. Highlights drawn with the vertical tip
   in 1.2.0 to 2.0.0-beta.4 recorded no tip and show round too. Later tip changes will never restyle
   old pages: docs/FORMAT.md, Tip variants.
+- **Photo pages**: copy JPG or PNG photos into `grimoire/photos` over USB, then in a notebook pick
+  Paper > Photos...: the photo becomes the page's paper, fitted to the page and turned upright the
+  way your phone or camera took it, ready to write on. A page added after it gets the notebook's
+  own paper.
 - **Open a whole book in Grimoire**: in a PDF, DjVu or comic book in KOReader, Tools > Grimoire >
   Open this book in Grimoire, or Open with... > Grimoire in KOReader's file browser, puts every page
   into the book's notebook at once (KOReader draws them first, with a progress message a tap stops)

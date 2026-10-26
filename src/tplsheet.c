@@ -34,7 +34,7 @@ Rect paper_sheet_rect(const App *a, PaperGrid *g) {
     int m = ui_px(70), gap = ui_px(30);
     // Beside the tiles: the title (120), the sheet's insets (72), its buttons (190), a margin (80).
     int avail_w = a->w - 2 * m - ui_px(72), avail_h = a->h - ui_px(120) - ui_px(72) - ui_px(190) - ui_px(80);
-    *g = paper_grid(PAPER_SHEET_TILES, avail_w, avail_h, gap, ui_px(100), a->w / 6, PAPER_GRID_MIN_COLS);
+    *g = paper_grid(PAPER_SHEET_EDITOR_TILES, avail_w, avail_h, gap, ui_px(100), a->w / 6, PAPER_GRID_MIN_COLS);
     int sheet_h = ui_px(120) + ui_px(72) + g->rows * g->cell_h + ui_px(190);
     return (Rect){m, (a->h - sheet_h) / 3, a->w - 2 * m, sheet_h};
 }
@@ -86,13 +86,12 @@ static bool waiting(const TplSheet *s) {
 
 // The offered template that is the paper now (an index into shown), or -1.
 static int find_selected(TplSheet *s) {
-    bool by_paper = !s->current_path[0] && s->nb && paper_is_image(s->current) && !paper_is_document(s->current);
+    bool by_paper = !s->current_path[0] && s->nb && paper_is_image(s->current) && paper_is_document(s->current) == s->photos;
     for (int k = 0; k < s->n; k++) {
         const Template *t = &s->t[s->shown[k]];
         PaperKind kind;
-        if (s->current_path[0] ? !strcmp(t->path, s->current_path)
-                               : by_paper && template_paper(t, s->nb, &s->ix, &kind) == 0 && kind == s->current)
-            return k;
+        int found = !by_paper ? -1 : s->photos ? photo_paper(t, s->nb, &s->ix, &kind) : template_paper(t, s->nb, &s->ix, &kind);
+        if (s->current_path[0] ? !strcmp(t->path, s->current_path) : found == 0 && kind == s->current) return k;
     }
     return -1;
 }
@@ -108,12 +107,14 @@ void tplsheet_close(TplSheet *s) {
     s->selected = s->picked = -1;
 }
 
-void tplsheet_open(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current, const char *current_path) {
+static void open_folder(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current, const char *current_path,
+                        bool photos) {
     tplsheet_close(s);
-    *s = (TplSheet){.open = true, .nb = nb, .current = current, .selected = -1, .picked = -1, .gen = bgimage_generation()};
+    *s = (TplSheet){.open = true, .photos = photos, .nb = nb, .current = current, .selected = -1, .picked = -1,
+                    .gen = bgimage_generation()};
     if (current_path) strlcpy_q(s->current_path, current_path, sizeof s->current_path);
-    if (template_scan(&s->t, &s->nt, a->dpi) != 0) {
-        s->t = NULL;  // (no templates folder: nothing to offer)
+    if ((photos ? photos_scan(&s->t, &s->nt, a->dpi) : template_scan(&s->t, &s->nt, a->dpi)) != 0) {
+        s->t = NULL;  // (no folder: nothing to offer)
         s->nt = 0;
     }
     s->shown = malloc((size_t)(s->nt ? s->nt : 1) * sizeof *s->shown);
@@ -131,6 +132,14 @@ void tplsheet_open(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind curren
     s->selected = find_selected(s);
     s->anchor = s->selected > 0 ? s->selected : 0;
     s->next_check = now_ms() + CHECK_MS;
+}
+
+void tplsheet_open(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current, const char *current_path) {
+    open_folder(s, a, nb, current, current_path, false);
+}
+
+void tplsheet_open_photos(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current) {
+    open_folder(s, a, nb, current, NULL, true);
 }
 
 // A template's name under its tile, on one line no wider than the tile: centred, or cut short as
@@ -172,13 +181,22 @@ static void draw_empty(TplSheet *s, App *a, Rect r) {
     Rect w = {r.x + pad, 0, r.w - 2 * pad, 0};
     // TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
     // offer (1560 px at 64 px in bold, sideways 2180).
-    font_draw_centered(c, FONT_BOLD, ui_title_size(), (Rect){w.x, y, w.w, ui_px(100)}, _("No templates yet"), 0);
+    const char *heading = _("No templates yet");
+    // TRANSLATORS: the same for the Photos sheet, when grimoire/photos has no photo (as above).
+    if (s->photos) heading = _("No photos yet");
+    font_draw_centered(c, FONT_BOLD, ui_title_size(), (Rect){w.x, y, w.w, ui_px(100)}, heading, 0);
     y += ui_px(150);
     char text[640];
-    // TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
-    // 2180); %s is the folder on the Kindle's storage.
-    snprintf(text, sizeof text, _("Copy PNG or JPG pictures into the %s folder over USB while Grimoire is closed."),
-             "grimoire/templates");
+    if (s->photos)
+        // TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+        // 2180); %s is the folder on the Kindle's storage.
+        snprintf(text, sizeof text, _("Copy JPG or PNG photos into the %s folder over USB while Grimoire is closed."),
+                 "grimoire/photos");
+    else
+        // TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+        // 2180); %s is the folder on the Kindle's storage.
+        snprintf(text, sizeof text, _("Copy PNG or JPG pictures into the %s folder over USB while Grimoire is closed."),
+                 "grimoire/templates");
     float ts = ui_text_size();
     int line = ui_px(62);
     y = paragraph(c, ts, w, y, text, 4, line) + ui_px(40);
@@ -186,6 +204,11 @@ static void draw_empty(TplSheet *s, App *a, Rect r) {
     // 2180); README.txt is the file Grimoire wrote in that folder.
     const char *more = _("Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 pixels. The "
                          "README.txt there says more.");
+    // TRANSLATORS: the same for the Photos sheet (as above): a photo picked becomes the open page's
+    // paper. "Pages" is the editor's Pages view, as translated there.
+    if (s->photos)
+        more = _("A photo becomes the open page's paper, upright and fitted to the page. For a page of its own, add "
+                 "a new page in Pages first.");
     y = paragraph(c, ts, w, y, more, 4, line) + ui_px(40);
     int bad = 0;
     for (int i = 0; i < s->nt; i++) bad += s->t[i].bad;
@@ -207,7 +230,11 @@ Rect tplsheet_draw(TplSheet *s, App *a) {
     s->rect = paper_sheet_rect(a, &g);
     // TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
     // write on as paper), which More papers... opens (1560 px at 64 px).
-    Rect in = ui_sheet(c, s->rect, _("Templates"));
+    const char *title = _("Templates");
+    // TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+    // opens (1560 px at 64 px).
+    if (s->photos) title = _("Photos");
+    Rect in = ui_sheet(c, s->rect, title);
     int gap = ui_px(30), bh = ui_px(140), offered = usable(s);
     s->per = g.cols * g.rows;
     s->pages = offered ? (s->n + s->per - 1) / s->per : 1;

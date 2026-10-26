@@ -13,8 +13,9 @@
 #include "templates.h"
 
 // The paper pickers' tiles: the fixed papers in paper_at() order, then Custom music..., then More
-// papers... (this sheet).
+// papers... (this sheet); the editor's Paper sheet also has Photos... (this sheet on the photos).
 #define PAPER_SHEET_TILES (PAPER_PICKER_COUNT + 1)
+#define PAPER_SHEET_EDITOR_TILES (PAPER_SHEET_TILES + 1)
 
 // A grid of n tiles (each 3:4 with label_h px for its label under it, gap px apart) in a box
 // avail_w wide and avail_h tall: the number of columns, at least min_cols, that makes the tiles
@@ -29,7 +30,7 @@ typedef struct {
 } PaperGrid;
 PaperGrid paper_grid(int n, int avail_w, int avail_h, int gap, int label_h, int max_w, int min_cols);
 #define PAPER_GRID_MIN_COLS 6
-// The editor's Paper sheet on this screen, and the grid of its PAPER_SHEET_TILES tiles (the
+// The editor's Paper sheet on this screen, and the grid of its PAPER_SHEET_EDITOR_TILES tiles (the
 // Templates sheet takes the same place and tiles).
 Rect paper_sheet_rect(const App *a, PaperGrid *g);
 // A paper tile's label, under the tile (tile: its rect; gap: the grid's): on one line, centred,
@@ -63,6 +64,7 @@ typedef struct {
     bool pending;             // some offered template has no preview yet
     unsigned gen;             // bgimage_generation when the list was last brought up to date
     uint32_t next_check;      // when to look again for previews made since
+    bool photos;              // the photos (templates.h), as a page's own picture: tplsheet_open_photos
     // What the paper now is: in the editor a picture of nb's (current), in New notebook a file.
     const NotebookInfo *nb;
     BgIndex ix;
@@ -75,6 +77,9 @@ typedef struct {
 // the open page's paper `current` (an image paper of notebook nb's); in New notebook (nb NULL) the
 // file current_path (NULL or "" for none).
 void tplsheet_open(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current, const char *current_path);
+// The same on the photos in grimoire/photos/ (the editor's Photos...): the one that is the open page's
+// paper now is selected; the host installs the one picked with photo_install.
+void tplsheet_open_photos(TplSheet *s, App *a, const NotebookInfo *nb, PaperKind current);
 Rect tplsheet_draw(TplSheet *s, App *a);   // draws into a->screen, returns its rect
 // Pointer phase 0 down / 1 move / 2 up. TS_PICKED (a template tapped), TS_BACK (its Back button)
 // and TS_CANCEL (a tap outside it) close it: the host recomposes *dirty, and after TS_PICKED reads

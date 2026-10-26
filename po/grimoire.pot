@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 07:26-0500\n"
+"POT-Creation-Date: 2026-10-26 07:49-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -157,6 +157,26 @@ msgstr ""
 msgid ""
 "Copy them in over USB while Grimoire is closed. A notebook keeps its own "
 "copy of each template it uses, so changing or deleting a file here never "
+"changes pages already written on it. Grimoire keeps its previews of these "
+"files in the .cache folder."
+msgstr ""
+
+#: src/bgwork_template.c
+msgid "Photos for Grimoire"
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"Copy photos here to write on them: JPG or PNG files, as your phone or camera "
+"saved them. In a notebook, open Paper and pick Photos...: the photo becomes "
+"the open page's paper, fitted to the page and turned upright. For a page of "
+"its own, add a new page in Pages first."
+msgstr ""
+
+#: src/bgwork_template.c
+msgid ""
+"Copy them in over USB while Grimoire is closed. A notebook keeps its own "
+"copy of each photo it uses, so changing or deleting a file here never "
 "changes pages already written on it. Grimoire keeps its previews of these "
 "files in the .cache folder."
 msgstr ""
@@ -464,6 +484,12 @@ msgstr ""
 msgid "Paper for this page"
 msgstr ""
 
+#. TRANSLATORS: the editor's Paper sheet's tile that opens the Photos sheet (photos copied into
+#. grimoire/photos), under its tile: as Custom music... and More papers... (their room).
+#: src/editor.c
+msgid "Photos..."
+msgstr ""
+
 #. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
 #. Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
 #. at 31 px in New notebook sideways, on one line or two).
@@ -606,6 +632,13 @@ msgstr ""
 #: src/editor.c src/library.c
 #, c-format
 msgid "Could not use that template (see %s)."
+msgstr ""
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
+#. Photos sheet could not become the page's paper; %s is the log file that says why.
+#: src/editor.c
+#, c-format
+msgid "Could not use that photo (see %s)."
 msgstr ""
 
 #. TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.
@@ -1636,6 +1669,19 @@ msgstr ""
 msgid "No templates yet"
 msgstr ""
 
+#. TRANSLATORS: the same for the Photos sheet, when grimoire/photos has no photo (as above).
+#: src/tplsheet.c
+msgid "No photos yet"
+msgstr ""
+
+#. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); %s is the folder on the Kindle's storage.
+#: src/tplsheet.c
+#, c-format
+msgid ""
+"Copy JPG or PNG photos into the %s folder over USB while Grimoire is closed."
+msgstr ""
+
 #. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
 #. 2180); %s is the folder on the Kindle's storage.
 #: src/tplsheet.c
@@ -1653,6 +1699,12 @@ msgid ""
 "pixels. The README.txt there says more."
 msgstr ""
 
+#: src/tplsheet.c
+msgid ""
+"A photo becomes the open page's paper, upright and fitted to the page. For a "
+"page of its own, add a new page in Pages first."
+msgstr ""
+
 #. TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
 #. does not read, or too big): how many; %s is the log file, which says which (by number). Up
 #. to 2 lines of 1560 px at 34 px, sideways 2180.
@@ -1667,6 +1719,12 @@ msgstr[1] ""
 #. write on as paper), which More papers... opens (1560 px at 64 px).
 #: src/tplsheet.c
 msgid "Templates"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: src/tplsheet.c
+msgid "Photos"
 msgstr ""
 
 #. TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at

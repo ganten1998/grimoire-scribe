@@ -621,6 +621,88 @@ uint64_t bgimage_source_key(const uint8_t *data, size_t len, int pw, int ph) {
     return bgimage_template_key(bgimage_content_hash(data, len), len, pw, ph);
 }
 
+uint64_t bgimage_photo_key(uint64_t content, size_t len, int pw, int ph) {
+    uint64_t h = seed("grimoire photo 1");
+    return finish(mix(mix(mix(mix(h, (uint64_t)pw), (uint64_t)ph), (uint64_t)len), content));
+}
+
+// ---- EXIF orientation ----
+
+static uint32_t rd16(const uint8_t *p, bool le) { return le ? (uint32_t)p[0] | (uint32_t)p[1] << 8 : (uint32_t)p[0] << 8 | p[1]; }
+static uint32_t rd32(const uint8_t *p, bool le) {
+    return le ? (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24
+              : (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+}
+
+// The orientation in an Exif block's TIFF data (t, n bytes): IFD0's tag 0x0112, a SHORT. 1 without it.
+static int tiff_orientation(const uint8_t *t, size_t n) {
+    if (n < 8) return 1;
+    bool le = t[0] == 'I' && t[1] == 'I';
+    if (!le && !(t[0] == 'M' && t[1] == 'M')) return 1;
+    if (rd16(t + 2, le) != 42) return 1;
+    uint32_t ifd = rd32(t + 4, le);
+    if (ifd > n - 2) return 1;
+    uint32_t count = rd16(t + ifd, le);
+    for (uint32_t i = 0; i < count && i < 512; i++) {
+        size_t e = (size_t)ifd + 2 + (size_t)i * 12;
+        if (e + 12 > n) return 1;
+        if (rd16(t + e, le) != 0x0112) continue;
+        if (rd16(t + e + 2, le) != 3 || rd32(t + e + 4, le) != 1) return 1;  // a SHORT, one of it
+        uint32_t v = rd16(t + e + 8, le);
+        return v >= 1 && v <= 8 ? (int)v : 1;
+    }
+    return 1;
+}
+
+int bgimage_exif_orientation(const uint8_t *d, size_t n) {
+    if (n > (64u << 10)) n = 64u << 10;  // (the Exif block comes first, after the start)
+    if (n < 4 || d[0] != 0xFF || d[1] != 0xD8) return 1;
+    size_t at = 2;
+    while (at + 4 <= n) {
+        if (d[at] != 0xFF) return 1;
+        uint8_t marker = d[at + 1];
+        if (marker == 0xFF) {  // (fill bytes)
+            at++;
+            continue;
+        }
+        if (marker == 0xDA || marker == 0xD9) return 1;  // the picture's data, or its end: no Exif
+        size_t len = rd16(d + at + 2, false);
+        if (len < 2 || at + 2 + len > n) return 1;
+        if (marker == 0xE1 && len >= 8 && !memcmp(d + at + 4, "Exif\0\0", 6))
+            return tiff_orientation(d + at + 10, len - 8);
+        at += 2 + len;
+    }
+    return 1;
+}
+
+int bgimage_orient(BgPicture *p, int o) {
+    if (o < 2 || o > 8 || !p->px) return 0;
+    bool swap = o >= 5;
+    int w = p->w, h = p->h, ow = swap ? h : w, oh = swap ? w : h, ch = p->ch;
+    uint8_t *out = malloc((size_t)ow * (size_t)oh * (size_t)ch);
+    if (!out) return -1;
+    for (int y = 0; y < oh; y++)
+        for (int x = 0; x < ow; x++) {
+            int sx, sy;  // the stored pixel that shows at (x, y) upright
+            switch (o) {
+            case 2: sx = w - 1 - x; sy = y; break;
+            case 3: sx = w - 1 - x; sy = h - 1 - y; break;
+            case 4: sx = x; sy = h - 1 - y; break;
+            case 5: sx = y; sy = x; break;
+            case 6: sx = y; sy = h - 1 - x; break;
+            case 7: sx = w - 1 - y; sy = h - 1 - x; break;
+            default: sx = w - 1 - y; sy = x; break;  // 8
+            }
+            memcpy(out + ((size_t)y * (size_t)ow + (size_t)x) * (size_t)ch, p->px + ((size_t)sy * (size_t)w + (size_t)sx) * (size_t)ch,
+                   (size_t)ch);
+        }
+    free(p->px);
+    p->px = out;
+    p->w = ow;
+    p->h = oh;
+    return 0;
+}
+
 // ---- bg/index.ini ----
 
 static void index_path(const char *bgdir, char *buf, size_t cap) { snprintf(buf, cap, "%s/index.ini", bgdir); }

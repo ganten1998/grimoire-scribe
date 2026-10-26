@@ -257,6 +257,11 @@ the whole page; an EPUB's is the screen as KOReader lays it out, so after a chan
 page may come in again as a new one. A notebook's own PDF from `grimoire/PDFs` is refused, since
 annotating it would make a notebook of a notebook: open that notebook in Grimoire instead.
 
+**Photos.** Copy JPG or PNG photos into `grimoire/photos` over USB. In a notebook, open Paper and
+pick **Photos...**: the photo becomes the page's paper, fitted to the page and turned upright the
+way your phone took it, and you write on it like any page (Undo puts the old paper back). For a
+page of its own, add a new page in Pages first.
+
 **Open this book in Grimoire.** In a PDF, DjVu or comic book, Tools > Grimoire > **Open this book in
 Grimoire** (also a gesture action) puts every page of the book into its Grimoire notebook at once,
 then opens the page you are reading. In KOReader's file browser, long-press such a file and choose
