@@ -26,12 +26,15 @@ def status(token):
     return json.loads(body) if code == 200 else None
 
 
-tokens = [uuid.uuid4().hex for _ in range(3)]
+# The server renders two PDFs at a time (httpd.c MAX_CHILDREN), so of 8 at once the last ones wait
+# at least three renders: queued long enough to be seen even where one render is quick (a small
+# notebook on a fast CI machine missed a single waiting download between two polls).
+tokens = [uuid.uuid4().hex for _ in range(8)]
 seen = set()
-with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+with concurrent.futures.ThreadPoolExecutor(max_workers=len(tokens)) as pool:
     jobs = [pool.submit(get, f'/nb/{notebook}.pdf?progress={t}') for t in tokens]
     until = time.monotonic() + 40
-    previous = [0] * 3
+    previous = [0] * len(tokens)
     while not all(j.done() for j in jobs):
         assert time.monotonic() < until, 'downloads stalled'
         for i, t in enumerate(tokens):
@@ -41,7 +44,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
                 assert 0 <= d['pages'] <= d['total']
                 assert d['pages'] >= previous[i], 'page progress moved backward'
                 previous[i] = d['pages']
-        time.sleep(.025)
+        if 1 in seen:
+            time.sleep(.025)  # until then, as often as the server answers
     for t, j in zip(tokens, jobs):
         code, body, headers = j.result()
         assert code == 200 and body == expected, 'progress changed PDF bytes'
