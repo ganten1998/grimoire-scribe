@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0-beta.4 (unreleased)
+
+- **PDF download progress**: Share shows completed pages while preparing a notebook PDF,
+  then the transfer percentage. Files still go through the browser's normal download
+  handling. Interrupted or failed downloads show a message instead of a stuck indicator.
+- **Less memory while sharing**: PDF, ZIP and image downloads send from their existing
+  export buffer, without building a second full copy for the HTTP response.
+- **Keep ink moving during a backlog**: input batches yield to the display and timers after
+  8 ms or 64 events. Queued pen samples stay in order; none are discarded by this limit.
+- **Less brush work**: skip pixels already darker than a pen's ink, reuse the opacity of
+  smooth dab interiors, and skip unused tilt calculations. Pen settings and rendered ink
+  are unchanged. Measured CPU improvements and their limits are in docs/INK-PERFORMANCE.md.
+- **Developer pen-mode experiment**: opt-in MTK pen refreshes keep small rectangles above
+  the documented odd-rotation processing threshold. The mode remains off by default;
+  optional timing logs measure framebuffer copying and refresh submission, without input data.
+
 ## 2.0.0-beta.3 (2026-10-26)
 
 - **Empty folders leave the PDF mirror too**: removing or renaming an empty Library folder
