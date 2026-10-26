@@ -26,9 +26,14 @@ void buf_free(Buf *b) {
 }
 
 int buf_append(Buf *b, const void *p, size_t n) {
+    if (b->err) return -1;
+    if (n > SIZE_MAX - b->len) { b->err = true; return -1; }
     if (b->len + n > b->cap) {
         size_t nc = b->cap ? b->cap : 4096;
-        while (nc < b->len + n) nc *= 2;
+        while (nc < b->len + n) {
+            if (nc > SIZE_MAX / 2) { nc = b->len + n; break; }
+            nc *= 2;
+        }
         uint8_t *nd = realloc(b->data, nc);
         if (!nd) {
             b->err = true;
@@ -48,10 +53,10 @@ int buf_printf(Buf *b, const char *fmt, ...) {
     va_start(ap, fmt);
     int n = vsnprintf(tmp, sizeof tmp, fmt, ap);
     va_end(ap);
-    if (n < 0) return -1;
+    if (n < 0) { b->err = true; return -1; }
     if ((size_t)n < sizeof tmp) return buf_append(b, tmp, (size_t)n);
     char *big = malloc((size_t)n + 1);
-    if (!big) return -1;
+    if (!big) { b->err = true; return -1; }
     va_start(ap, fmt);
     vsnprintf(big, (size_t)n + 1, fmt, ap);
     va_end(ap);
@@ -177,7 +182,13 @@ static void pdf_text(Buf *b, const char *s) {
 }
 
 int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out) {
+    return export_notebook_pdf_progress(nb, dpi, out, NULL, NULL);
+}
+
+int export_notebook_pdf_progress(const NotebookInfo *nb, float dpi, Buf *out,
+                                 void (*progress)(int, int, void *), void *ctx) {
     int np = nb->npages;
+    if (progress) progress(0, np, ctx);
     // Objects: 1 catalog, 2 pages, 3 info, then 3 per page (page, content, image).
     int nobj = 3 + 3 * np;
     size_t *off = calloc((size_t)nobj + 1, sizeof *off);
@@ -228,6 +239,8 @@ int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out) {
         buf_append(out, z, (size_t)zl);
         buf_printf(out, "\nendstream\nendobj\n");
         free(z);
+        if (out->err) rc = -1;
+        if (rc == 0 && progress) progress(i + 1, np, ctx);
     }
 #undef OBJ
     if (rc == 0) {

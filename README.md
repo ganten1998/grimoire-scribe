@@ -181,7 +181,8 @@ Details in [docs/EXPORT.md](docs/EXPORT.md).
 
 1. **Wi-Fi**: turn on Wi-Fi and open **Library > Share**. Point your phone's camera at the QR code
    it shows, or type the address under it into any browser on the same network. Download a
-   notebook as PDF or zip, single pages as PNG, or everything at once. The browser reader shows
+   notebook as PDF or zip, single pages as PNG, or everything at once. Notebook PDFs show page
+   preparation and transfer progress, then arrive in your browser's Downloads. The browser reader shows
    one page at a time, with a page counter and number field at the top; type a number to jump. **Effects** makes
    transparent, recolored or filtered copies (gradient signatures, warm tones, sepia, blueprint
    and more) and shows the matching ImageMagick command. Only devices on your network can reach

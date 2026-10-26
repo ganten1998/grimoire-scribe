@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 00:34-0500\n"
+"POT-Creation-Date: 2026-10-26 02:22-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -621,6 +621,42 @@ msgstr "páginas"
 msgctxt "share link"
 msgid "effects"
 msgstr "efectos"
+
+#. TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
+#. {percent} is the percentage sent to the browser, not saved to its disk.
+#: src/httpd.c
+msgid "Preparing PDF..."
+msgstr "Preparando PDF..."
+
+#: src/httpd.c
+msgid "Preparing PDF: {done} / {total} pages"
+msgstr "Preparando PDF: {done} / {total} páginas"
+
+#: src/httpd.c
+msgid "Sending PDF: {percent}%"
+msgstr "Enviando PDF: {percent}%"
+
+#: src/httpd.c
+msgid "Sent to your browser. Check Downloads."
+msgstr "Enviado al navegador. Revisa Descargas."
+
+#: src/httpd.c
+msgid "PDF download failed. Please try again."
+msgstr "No se pudo descargar el PDF. Inténtalo de nuevo."
+
+#: src/httpd.c
+msgid ""
+"Download status unavailable. Check your browser's Downloads and the Kindle's "
+"Wi-Fi."
+msgstr "No se puede consultar el estado. Revisa las descargas del navegador y la conexión wifi del Kindle."
+
+#: src/httpd.c
+msgid "Dismiss"
+msgstr "Cerrar"
+
+#: src/httpd.c
+msgid "Waiting for an export slot..."
+msgstr "Esperando a que termine otra exportación..."
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
 #: src/httpd.c

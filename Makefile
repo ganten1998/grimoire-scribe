@@ -81,7 +81,7 @@ $(BUILD)/gen/l10n.c: $(L10N_MO) Makefile
 	  echo '    {0, 0, 0},'; echo '};' ) > $@.tmp && mv $@.tmp $@
 
 # ---- generated: the share studio's page (served inline by httpd.c) ----
-WEB := studio.js studio.css
+WEB := studio.js studio.css download.js
 $(WEB_GEN): $(addprefix web/,$(WEB))
 	@mkdir -p $(BUILD)/gen
 	( cd web && for f in $(WEB); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@

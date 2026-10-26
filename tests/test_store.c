@@ -12,6 +12,23 @@
 
 static char root[600];
 
+static void count_pdf_pages(int done, int total, void *ctx) {
+    int *count = ctx;
+    CHECK(done == *count && done <= total);
+    (*count)++;
+}
+
+TEST(buffer_failure_stays_failed) {
+    Buf b = {.len = SIZE_MAX - 1};
+    CHECK(buf_append(&b, "xx", 2) == -1 && b.err);
+    CHECK(b.len == SIZE_MAX - 1 && b.data == NULL);
+    b.len = 0;
+    CHECK(buf_append(&b, "x", 1) == -1 && b.len == 0);
+    buf_free(&b);
+    CHECK(buf_append(&b, "abc", 3) == 0 && b.len == 3 && !b.err);
+    buf_free(&b);
+}
+
 static Stroke *squiggle(ToolKind t, float y) {
     ToolParams p;
     tool_params_default(t, &p);
@@ -93,6 +110,12 @@ TEST(notebooks) {
     CHECK(store_load_info(nb.id, &nb) == 0);
     CHECK(export_notebook_pdf(&nb, 300.f, &b) == 0);
     CHECK(b.len > 1000 && !memcmp(b.data, "%PDF-1.4", 8));
+    Buf with_progress = {0};
+    int completed = 0;
+    CHECK(export_notebook_pdf_progress(&nb, 300.f, &with_progress, count_pdf_pages, &completed) == 0);
+    CHECK(completed == nb.npages + 1);
+    CHECK(with_progress.len == b.len && !memcmp(with_progress.data, b.data, b.len));
+    buf_free(&with_progress);
     // xref offsets must point at "N 0 obj"
     char *x = strstr((char *)b.data + b.len - 200, "startxref");
     CHECK(x != NULL);
@@ -607,6 +630,7 @@ int main(void) {
     system(cmd);
     CHECK(store_init(root) == 0);
     RUN(notebooks);
+    RUN(buffer_failure_stays_failed);
     RUN(new_page_after_a_document_page);
     RUN(copy_pages_keeps_bytes_and_order);
     RUN(copy_and_insert_fail_without_changing_the_page_list);

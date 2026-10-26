@@ -28,6 +28,10 @@ int export_page_png_ex(const NotebookInfo *nb, int index, float dpi, int layers,
 // Whole notebook as a PDF: one page per notebook page, each a Flate-compressed DeviceGray
 // image at the page's physical size (w/dpi inches). Title = notebook name.
 int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out);
+// Optional page-completion callback, including (0, total) before rendering. No global state;
+// the Share child uses it to report preparation without changing the PDF bytes.
+int export_notebook_pdf_progress(const NotebookInfo *nb, float dpi, Buf *out,
+                                 void (*progress)(int done, int total, void *ctx), void *ctx);
 // A zip (stored or deflated entries, CRC32, no zip64) streaming builder.
 typedef struct {
     Buf *out;
