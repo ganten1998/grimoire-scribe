@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release.** 2.0.0-beta.1 is a pre-release of Grimoire 2.0. Grimoire is in daily use on
+> **Development build.** This branch is preparing 2.0.0-beta.2. Grimoire is in daily use on
 > one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -98,6 +98,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Pen button**: hold it to highlight (or erase; Settings), click it three times to clear the page.
 - **Pages**: tap the page counter for a fast numbered grid, or **Go to page...** for a number pad.
   The grid reads no other pages. Tap a tile to open it, or tick pages and delete them.
+  **New page** inserts a blank note after the open page or the last ticked page. Tick one page
+  and choose **Copy page** to duplicate its ink and paper right after it. Annotated book pages
+  show their source page number under the tile.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
 - **Pinch** to zoom up to 4x. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned

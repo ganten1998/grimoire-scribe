@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0-beta.2 (in development)
+
+- **New page inside a notebook**: in Pages, add a blank note after the open page, or after the
+  last ticked page. It uses the notebook's paper, including when the preceding page is an
+  imported PDF page. The first page stays the notebook's cover.
+- **Copy page**: tick one page in Pages and copy it right after the original, with its ink and
+  paper intact. An image page keeps its picture. Later edits to either page stay on that page.
+- **Book-page labels**: pages annotated from KOReader show their source page number in Pages,
+  so inserted notes do not make the book's page numbers ambiguous.
+
 ## 2.0.0-beta.1 (2026-10-25)
 
 The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.0-rc.1 to rc.3
