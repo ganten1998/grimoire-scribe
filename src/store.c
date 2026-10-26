@@ -1916,23 +1916,29 @@ static bool settings_cb(void *ctx, const char *k, const char *v) {
 }
 
 // Defaults that changed between versions. A saved value still equal to the old default was never
-// tuned by the owner, so it moves to the new default; anything they changed stays as it is.
+// tuned by the owner, so it moves to the new default; anything they changed stays as it is. Each
+// change applies once, to files from before the version that brought it.
 static void settings_upgrade(Settings *s) {
     static const struct {
+        int since;  // the settings_version with the new default
         ToolKind tool;
         size_t off;
         float old_v;
     } changed[] = {
-        {TOOL_PENCIL, offsetof(ToolParams, size_min_mm), 0.30f},
-        {TOOL_PENCIL, offsetof(ToolParams, size_max_mm), 0.85f},
-        {TOOL_PENCIL, offsetof(ToolParams, tilt_size), 2.6f},
-        {TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.25f},
-        {TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.12f},
-        {TOOL_MECH_PENCIL, offsetof(ToolParams, grain), 0.35f},
-        {TOOL_MECH_PENCIL, offsetof(ToolParams, smoothing), 0.20f},
+        {2, TOOL_PENCIL, offsetof(ToolParams, size_min_mm), 0.30f},
+        {2, TOOL_PENCIL, offsetof(ToolParams, size_max_mm), 0.85f},
+        {2, TOOL_PENCIL, offsetof(ToolParams, tilt_size), 2.6f},
+        {2, TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.25f},
+        {2, TOOL_PENCIL, offsetof(ToolParams, smoothing), 0.12f},
+        {2, TOOL_MECH_PENCIL, offsetof(ToolParams, grain), 0.35f},
+        {2, TOOL_MECH_PENCIL, offsetof(ToolParams, smoothing), 0.20f},
+        // At 1.00 the ballpoint's line trailed the nib by 6 to 13 ms at writing speed, at 0.50 by
+        // about 2 (docs/INK-PERFORMANCE.md, "Input smoothing").
+        {3, TOOL_BALLPOINT, offsetof(ToolParams, smoothing), 1.0f},
     };
     if (s->version >= SETTINGS_VERSION) return;
     for (size_t i = 0; i < sizeof changed / sizeof changed[0]; i++) {
+        if (s->version >= changed[i].since) continue;
         float *v = (float *)((char *)&s->tools[changed[i].tool] + changed[i].off);
         ToolParams d;
         tool_params_default(changed[i].tool, &d);

@@ -172,6 +172,23 @@ of plain DU strokes, the others most likely because the grayscale settle, then s
 a stroke, was still on the panel when the next word began. The settle now waits until the pen
 leaves the page (150 ms gone), or 1.5 s with it still near, so writing does not meet it.
 
+## Input smoothing
+
+A pen's Smoothing (brush.c, `smoother_apply`) eases each sample toward the last smoothed one, a
+little more for slow, careful motion. The drawn line trails the nib by a steady distance, which
+reads as lag. With samples every 3 ms (about 330 a second, as the Scribe 2 reports them) the
+line trails by, at smoothing 1.00 / 0.50 / 0.25:
+
+| Writing speed | 1.00 | 0.50 | 0.25 |
+| --- | ---: | ---: | ---: |
+| 10 mm/s | 13 ms | 2.0 ms | 0.7 ms |
+| 30 mm/s | 10 ms | 1.8 ms | 0.7 ms |
+| 60 mm/s | 7.5 ms | 1.7 ms | 0.6 ms |
+| 100 mm/s | 6 ms | 1.4 ms | 0.5 ms |
+
+The ballpoint's default is 0.50 since 2.0.0-beta.4 (it was 1.00). The fineliner keeps 1.00, the
+marker and calligraphy pen 0.50.
+
 ## The latency report
 
 The optional empty `grimoire/ink-metrics` file enables aggregate average/max framebuffer

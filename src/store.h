@@ -28,7 +28,7 @@ typedef struct {
                                   // each), written back as they were
 } NotebookInfo;
 
-#define SETTINGS_VERSION 2
+#define SETTINGS_VERSION 3
 #define PANEL_PINS_MAX 4          // pens pinned to the editor's panel, at most
 
 typedef struct {

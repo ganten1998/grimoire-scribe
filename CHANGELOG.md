@@ -22,6 +22,9 @@
   overlap ink still being drawn waited in the driver for up to 300 ms, so quick circles and note
   heads fell behind the pen. A stroke takes pen mode only when no other refresh can still be on
   the panel, as the driver requires. A `pen-mode` file with `off` turns it off.
+- **Ballpoint follows the nib closer**: its default smoothing is 0.50 instead of 1.00, which
+  made the line trail the pen by 6 to 13 ms at writing speed (now about 2). A ballpoint still at
+  the old default moves to the new one; a smoothing you set yourself stays.
 - **Grays settle when the pen leaves**: the grayscale cleanup of fresh ink waits until the pen
   leaves the page (or 1.5 s with it hovering), so the next word no longer runs into it.
 - **Developer latency report**: optional timing logs measure framebuffer copying and refresh

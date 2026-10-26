@@ -373,6 +373,35 @@ TEST(settings_upgrade_keeps_tweaks) {
     CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
 }
 
+TEST(settings_upgrade_ballpoint_smoothing) {
+    // A version-2 file: the ballpoint's smoothing still at its old default moves to the new one.
+    // A pencil smoothing equal to a version-1 default stays: version 2's upgrades ran already.
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    const char *v2 = "settings_version=2\nballpoint.smoothing=1.0000\npencil.smoothing=0.2500\n"
+                     "fineliner.smoothing=1.0000\n";
+    write_file_atomic(path, v2, strlen(v2));
+    Settings s;
+    settings_load(&s);
+    CHECK_NEAR(s.tools[TOOL_BALLPOINT].smoothing, 0.50f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].smoothing, 0.25f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_FINELINER].smoothing, 1.00f, 1e-3);  // its default did not change
+    CHECK(s.version == SETTINGS_VERSION);
+    // Tuned by hand: stays.
+    const char *tuned = "settings_version=2\nballpoint.smoothing=0.8000\n";
+    write_file_atomic(path, tuned, strlen(tuned));
+    Settings t;
+    settings_load(&t);
+    CHECK_NEAR(t.tools[TOOL_BALLPOINT].smoothing, 0.80f, 1e-3);
+    // A version-1 file gets every change.
+    const char *v1 = "settings_version=1\nballpoint.smoothing=1.0000\npencil.smoothing=0.2500\n";
+    write_file_atomic(path, v1, strlen(v1));
+    Settings u;
+    settings_load(&u);
+    CHECK_NEAR(u.tools[TOOL_BALLPOINT].smoothing, 0.50f, 1e-3);
+    CHECK_NEAR(u.tools[TOOL_PENCIL].smoothing, 0.00f, 1e-3);
+}
+
 TEST(pen_defaults_from_device) {
     // Pen-only snapshot chosen on the Kindle, independent of the compiled defaults.
     char path[700];
@@ -397,7 +426,7 @@ TEST(pen_defaults_from_device) {
             CHECK_NEAR(*tool_param_ptr(&fresh.tools[t], &pi[i]), want, 1e-6);
             CHECK_NEAR(*tool_param_ptr(&reset, &pi[i]), want, 1e-6);
         }
-        // A saved version-2 profile is not migrated to these defaults.
+        // A saved profile (the current version) is not migrated to these defaults.
         chosen.tools[t].size_min_mm = 0.26f;
         chosen.tools[t].size_max_mm = 0.36f;
         chosen.tools[t].smoothing = 0.15f;
@@ -638,6 +667,7 @@ int main(void) {
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
+    RUN(settings_upgrade_ballpoint_smoothing);
     RUN(pen_defaults_from_device);
     RUN(panel_tools);
     RUN(before_eraser);
