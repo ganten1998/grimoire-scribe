@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 10:31-0500\n"
+"POT-Creation-Date: 2026-10-26 12:35-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -936,6 +936,16 @@ msgstr ""
 
 #: src/httpd.c
 msgid "Transparent paper"
+msgstr ""
+
+#. TRANSLATORS: Live view's switch in the browser: the picture white on black. It follows
+#. Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
+#: src/httpd.c
+msgid "Invert colors"
+msgstr ""
+
+#: src/httpd.c
+msgid "As on the Kindle"
 msgstr ""
 
 #: src/httpd.c

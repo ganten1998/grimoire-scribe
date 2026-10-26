@@ -652,7 +652,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the viewer checks the
    state again after copying each run, and the app sets the state before the card is drawn). Asleep
    it is LIVE_ASLEEP (the sleep screen is never pushed); a turn bumps the epoch, and each viewer
-   sends a new hello and every tile. Viewers end with a bye when Live view stops (Stop on the
+   sends a new hello and every tile. The state frame also says whether Grimoire's colors are
+   inverted (`live_set_invert`, from settings.invert at every tick: the frame holds the screen as
+   drawn, since the inversion is applied as it presents); every stream starts with one, and the
+   browser's picture follows it until its own Invert colors switch says otherwise. Viewers end with a bye when Live view stops (Stop on the
    card, 10 minutes without a viewer, Grimoire leaving: `app_shutdown` stops them before anything
    else, so no export child inherits a socket and the headless runner never waits for one); on
    Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.

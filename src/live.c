@@ -35,7 +35,7 @@ _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the tile marks must work across fork"
 // w * h bytes (the same in either orientation), rows w apart. Each viewer slot has marks of its
 // own: a viewer takes its marks as it sends, which must leave the other's.
 typedef struct {
-    atomic_uint epoch, state, seq;
+    atomic_uint epoch, state, seq, invert;
     atomic_uint w, h;
     atomic_uint dirty[LIVE_VIEWERS][LIVE_WORDS];
     uint8_t px[];
@@ -200,6 +200,11 @@ void live_set_state(int state) {
     wake_all();
 }
 
+void live_set_invert(bool on) {
+    if (!g_sh || atomic_exchange(&g_sh->invert, on ? 1u : 0u) == (on ? 1u : 0u)) return;
+    wake_all();
+}
+
 int live_poll(uint32_t now, bool *idle_off) {
     if (idle_off) *idle_off = false;
     if (!g_sh) return 0;
@@ -242,9 +247,9 @@ static bool send_hello(int fd, int w, int h, uint32_t epoch) {
     return send_frame(fd, LIVE_HELLO, p, sizeof p, NULL, 0);
 }
 
-static bool send_state(int fd, unsigned state) {
-    uint8_t s = (uint8_t)state;
-    return send_frame(fd, LIVE_STATE, &s, 1, NULL, 0);
+static bool send_state(int fd, unsigned state, unsigned invert) {
+    uint8_t s[2] = {(uint8_t)state, (uint8_t)(invert ? 1 : 0)};
+    return send_frame(fd, LIVE_STATE, s, sizeof s, NULL, 0);
 }
 
 static void viewer_main(int slot, int fd, int wake) {
@@ -278,17 +283,18 @@ static void viewer_main(int slot, int fd, int wake) {
     uint8_t *sent = malloc(cap), *tile = malloc((size_t)LIVE_TILE * 4096);
     if (!sent || !tile || !send_all(fd, head, sizeof head - 1)) _exit(0);
     uint32_t epoch = 0, last_batch = 0, last_sent = now_ms();
-    unsigned told = LIVE_AWAKE;
+    unsigned told = ~0u, told_invert = ~0u;  // (neither yet: the state goes first)
     int w = 0, h = 0;
     for (;;) {
-        unsigned state = atomic_load(&g_sh->state);
+        unsigned state = atomic_load(&g_sh->state), invert = atomic_load(&g_sh->invert);
         if (state == LIVE_BYE) {
-            send_state(fd, LIVE_BYE);
+            send_state(fd, LIVE_BYE, invert);
             break;
         }
-        if (state != told) {
-            if (!send_state(fd, state)) break;
+        if (state != told || invert != told_invert) {
+            if (!send_state(fd, state, invert)) break;
             told = state;
+            told_invert = invert;
             last_sent = now_ms();
         }
         uint32_t e = atomic_load(&g_sh->epoch);

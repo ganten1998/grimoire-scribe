@@ -767,6 +767,10 @@ static void route_live_page(const char *query) {
         live_word(&b, &n, "fit", _("Fit"));
         live_word(&b, &n, "actual", _("Actual size"));
         live_word(&b, &n, "clear", _("Transparent paper"));
+        // TRANSLATORS: Live view's switch in the browser: the picture white on black. It follows
+        // Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
+        live_word(&b, &n, "invert", _("Invert colors"));
+        live_word(&b, &n, "follow", _("As on the Kindle"));
         live_word(&b, &n, "record", _("Record"));
         live_word(&b, &n, "stop", _("Stop recording"));
         live_word(&b, &n, "full", _("Full screen"));

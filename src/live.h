@@ -14,7 +14,9 @@
 //   2 tile       u16 x, y, w, h, then the PNG of that rect
 //   3 batch end  u32 seq, u32 the Kindle's ms: draw what came since the last one
 //   4 ping       nothing: sent after 15 s without a batch
-//   5 state      u8 LIVE_AWAKE, LIVE_ASLEEP, LIVE_PAIRING or LIVE_BYE
+//   5 state      u8 LIVE_AWAKE, LIVE_ASLEEP, LIVE_PAIRING or LIVE_BYE; u8 1 when Grimoire shows its
+//                colors inverted (white on black: the frame never is), else 0. First thing on every
+//                stream, then whenever either changes.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -46,6 +48,9 @@ void live_push(const Canvas *screen, Rect r);
 void live_resize(int w, int h);
 // LIVE_AWAKE, LIVE_ASLEEP or LIVE_PAIRING (the pairing card is up: nothing is sent while it is).
 void live_set_state(int state);
+// Grimoire's colors inverted on the Kindle or not (settings.invert, applied as it presents: the
+// frame holds them as drawn): the viewers tell their browsers, which follow it unless told not to.
+void live_set_invert(bool on);
 // Reaps viewers that ended. Returns how many viewers there are now. *idle_off is set when Live
 // view has had no viewer for LIVE_IDLE_OFF_MS (the caller turns it off and says so).
 int live_poll(uint32_t now, bool *idle_off);

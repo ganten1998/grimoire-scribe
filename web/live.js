@@ -3,7 +3,8 @@
 // connected. Frames are little-endian: u32 length (of the type byte and the payload), u8 type,
 // payload. 1 hello (u16 version, w, h, tile; u32 epoch), 2 tile (u16 x, y, w, h; the PNG),
 // 3 batch end (u32 seq, u32 the Kindle's ms), 4 ping, 5 state (u8 0 awake, 1 asleep, 2 pairing,
-// 3 bye). Under node (tests/live_check.js) it only exports the frame reader.
+// 3 bye; u8 1 when Grimoire shows its colors inverted, which the picture follows unless the Invert
+// switch here says otherwise). Under node (tests/live_check.js) it only exports the frame reader.
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -59,7 +60,8 @@
         return b;
     }
     bar.append(pill);
-    let fit = true, clear = false, recorder = null, chunks = [];
+    // invertChoice: null while the picture follows the Kindle's Invert colors, else this page's own.
+    let fit = true, clear = false, recorder = null, chunks = [], kindleInvert = false, invertChoice = null;
     const fitButton = button(words.actual, () => { fit = !fit; layout(); });
     const clearButton = button(words.clear, () => {
         clear = !clear;
@@ -68,6 +70,18 @@
         repaint(0, 0, raw.width, raw.height);
     });
     clearButton.setAttribute('aria-pressed', 'false');
+    const invertSwitch = button(words.invert, () => {
+        const want = !inverted();
+        invertChoice = want === kindleInvert ? null : want;  // (back to the Kindle's: following it again)
+        look();
+    });
+    invertSwitch.setAttribute('role', 'switch');
+    invertSwitch.className = 'switch';
+    const followButton = button(words.follow, () => {
+        invertChoice = null;
+        look();
+    });
+    look();
     const recordButton = button(words.record, record);
     if (!window.MediaRecorder || !shown.captureStream) recordButton.hidden = true;
     button(words.full, full);
@@ -77,6 +91,15 @@
     });
     addEventListener('resize', layout);
 
+    function inverted() { return invertChoice === null ? kindleInvert : invertChoice; }
+    // The Invert switch as it stands, "As on the Kindle" only while it says otherwise, the picture.
+    function look() {
+        const on = inverted();
+        invertSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+        followButton.hidden = invertChoice === null || invertChoice === kindleInvert;
+        document.body.classList.toggle('inverted', on);
+        repaint(0, 0, raw.width, raw.height);
+    }
     function status(text, live) {
         pill.textContent = text;
         pill.classList.toggle('on', !!live);
@@ -127,20 +150,26 @@
         recorder.start(1000);
         recordButton.textContent = words.stop;
     }
-    // The rect of raw drawn again on the page: as it is, or with the paper made clear (each
-    // pixel black, as opaque as it is dark), for a video over another picture.
+    // The rect of raw drawn again on the page: as it is, inverted, or with the paper made clear
+    // (each pixel the ink's color, black or inverted white, as opaque as it is dark), for a video
+    // over another picture. In the pixels themselves, so a recording has them as they show.
     function repaint(x, y, w, h) {
         if (!w || !h) return;
-        if (!clear) {
+        const inv = inverted();
+        if (!clear && !inv) {
             shownCtx.clearRect(x, y, w, h);
             shownCtx.drawImage(raw, x, y, w, h, x, y, w, h);
             return;
         }
-        const img = rawCtx.getImageData(x, y, w, h), p = img.data;
+        const img = rawCtx.getImageData(x, y, w, h), p = img.data, ink = inv ? 255 : 0;
         for (let i = 0; i < p.length; i += 4) {
             const dark = 255 - p[i];
-            p[i] = p[i + 1] = p[i + 2] = 0;
-            p[i + 3] = dark;
+            if (clear) {
+                p[i] = p[i + 1] = p[i + 2] = ink;
+                p[i + 3] = dark;
+            } else {
+                p[i] = p[i + 1] = p[i + 2] = dark;
+            }
         }
         shownCtx.putImageData(img, x, y);
     }
@@ -185,6 +214,10 @@
                     status(words.live, true);
                 } else if (type === 5 && body.length >= 1) {
                     const s = body[0];
+                    if (body.length >= 2 && (body[1] === 1) !== kindleInvert) {
+                        kindleInvert = body[1] === 1;
+                        look();
+                    }
                     if (s === 0) status(words.live, true);
                     else if (s === 1) status(words.asleep);
                     else if (s === 2) status(words.pairing);

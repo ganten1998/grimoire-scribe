@@ -112,10 +112,12 @@ check('/live with the session is the viewer', st == 200 and b'GRIMOIRE_LIVE_WORD
 # The stream.
 conn, r = get('/live/stream', session, keep=True)
 check('the stream answers', r.status == 200 and r.getheader('Content-Type') == 'application/octet-stream')
-screen, size, hellos, batches, tiles = None, None, 0, 0, 0
+screen, size, hellos, batches, tiles, states = None, None, 0, 0, 0, []
 t0 = time.time()
 for kind, body in frames(r):
-    if kind == 1:
+    if kind == 5:
+        states.append(bytes(body))
+    elif kind == 1:
         ver, w, h, tile = struct.unpack('<HHHH', body[:8])
         size, screen, hellos = (w, h), [bytearray(b'\xff' * w) for _ in range(h)], hellos + 1
     elif kind == 2:
@@ -131,6 +133,8 @@ for kind, body in frames(r):
     if time.time() - t0 > 20:
         break
 check('a hello, then the screen as tiles in a batch', hellos == 1 and tiles > 0 and batches == 1 and size is not None)
+check('the state first: awake, the colors inverted (settings.ini invert=1)', bool(seen) and seen[0] == (5, 2)
+      and states[:1] == [bytes([0, 1])])
 if screen:
     w, h = size
     dark = sum(1 for row in screen for v in row[::8] if v < 128)

@@ -16,8 +16,9 @@ B=$BUILD/live-check
 HEADLESS=$BUILD/host/grimoire-headless
 rm -rf "$B" && mkdir -p "$B/root"
 cp -R tests/fixtures/index/. "$B/root/"
-grep -v '^http_port=' "$B/root/settings.ini" > "$B/settings.ini" 2>/dev/null || true
-echo "http_port=$PORT" >> "$B/settings.ini"
+grep -v -e '^http_port=' -e '^invert=' "$B/root/settings.ini" > "$B/settings.ini" 2>/dev/null || true
+# (Grimoire's colors inverted: the stream says so, for the browser to follow; its frame never is.)
+printf 'http_port=%s\ninvert=1\n' "$PORT" >> "$B/settings.ini"
 mv "$B/settings.ini" "$B/root/settings.ini"
 # The pairing card held open: everything after it is the browser's.
 sed -n "/^# live_check holds here/q;p" tests/scenarios/live_1_card.qs > "$B/card.qs"

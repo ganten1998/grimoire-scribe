@@ -131,6 +131,12 @@ TEST(a_viewer_sends_the_screen_then_what_changed) {
     close(sv[0]);
     CHECK(live_viewers() == 1);
     CHECK(skip_head(sv[1]));
+    uint8_t type, *body;
+    uint32_t len;
+    // The state first (awake, the colors as drawn), then the hello and the screen.
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_AWAKE &&
+          body[1] == 0);
+    free(body);
     uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
     int hellos = 0;
     int first = read_batch(sv[1], seen, w, h, &hellos);
@@ -161,11 +167,9 @@ TEST(a_viewer_sends_the_screen_then_what_changed) {
     CHECK(hellos == 2);
     // Bye: the viewer says so and ends; nothing is left running.
     live_stop();
-    uint8_t type, *body;
-    uint32_t len;
     bool bye = false;
     while (read_frame(sv[1], &type, &body, &len)) {
-        if (type == LIVE_STATE && len == 1 && body[0] == LIVE_BYE) bye = true;
+        if (type == LIVE_STATE && len == 2 && body[0] == LIVE_BYE) bye = true;
         free(body);
     }
     CHECK(bye && !live_on() && live_viewers() == 0);
@@ -194,14 +198,14 @@ TEST(nothing_is_sent_while_the_pairing_card_is_up) {
     live_set_state(LIVE_PAIRING);
     uint8_t type, *body;
     uint32_t len;
-    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 1 && body[0] == LIVE_PAIRING);
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_PAIRING);
     free(body);
     canvas_fill(&c, (Rect){0, 0, 64, 64}, 0);  // the code on the card
     live_push(&c, (Rect){0, 0, 64, 64});
     canvas_fill(&c, (Rect){0, 0, 64, 64}, 200);  // the card gone, the screen as it was
     live_push(&c, (Rect){0, 0, 64, 64});
     live_set_state(LIVE_AWAKE);
-    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 1 && body[0] == LIVE_AWAKE);
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_AWAKE);
     free(body);
     // Every tile looked at again, none of the card's sent: the next batch holds the one real change.
     canvas_fill(&c, (Rect){100, 100, 10, 10}, 0);
@@ -209,6 +213,57 @@ TEST(nothing_is_sent_while_the_pairing_card_is_up) {
     CHECK(read_batch(sv[1], seen, w, h, &hellos) == 1);
     CHECK(seen[0] == 200 && seen[105 * w + 105] == 0);
     live_stop();
+    close(sv[1]);
+    free(seen);
+    canvas_free(&c);
+}
+
+// The next frame that is not a tile or a batch end.
+static bool next_state(int fd, uint8_t out[2]) {
+    uint8_t type, *body;
+    uint32_t len;
+    while (read_frame(fd, &type, &body, &len)) {
+        bool state = type == LIVE_STATE && len == 2;
+        if (state) memcpy(out, body, 2);
+        free(body);
+        if (state) return true;
+    }
+    return false;
+}
+
+TEST(the_browser_is_told_when_the_colors_invert) {
+    const int w = 128, h = 128;
+    Canvas c;
+    CHECK(canvas_init(&c, w, h) == 0);
+    canvas_fill(&c, (Rect){0, 0, w, h}, 230);
+    CHECK(live_start(w, h) == 0);
+    live_push(&c, (Rect){0, 0, w, h});
+    live_set_invert(true);  // inverted before the browser came: its first frame says so
+    int sv[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    CHECK(live_take_viewer(sv[0]));
+    close(sv[0]);
+    CHECK(skip_head(sv[1]));
+    uint8_t st[2];
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE && st[1] == 1);
+    uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
+    int hellos = 0;
+    CHECK(read_batch(sv[1], seen, w, h, &hellos) > 0 && seen[0] == 230);  // (the frame as drawn)
+    live_set_invert(false);
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE && st[1] == 0);
+    live_set_invert(false);  // no change, nothing told: the next frames are the next change's
+    canvas_fill(&c, (Rect){10, 10, 10, 10}, 0);
+    live_push(&c, (Rect){10, 10, 10, 10});
+    uint8_t type, *body;
+    uint32_t len;
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_TILE_FRAME);
+    free(body);
+    live_set_invert(true);
+    live_stop();  // bye, with the colors as they are (told apart first, or only with it)
+    bool bye = false;
+    while (next_state(sv[1], st))
+        if (st[0] == LIVE_BYE) bye = st[1] == 1;
+    CHECK(bye);
     close(sv[1]);
     free(seen);
     canvas_free(&c);
@@ -231,6 +286,7 @@ int main(void) {
     RUN(frame_headers_are_little_endian);
     RUN(a_viewer_sends_the_screen_then_what_changed);
     RUN(nothing_is_sent_while_the_pairing_card_is_up);
+    RUN(the_browser_is_told_when_the_colors_invert);
     RUN(no_viewer_for_ten_minutes_turns_it_off);
     return tl_done();
 }
