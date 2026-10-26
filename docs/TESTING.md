@@ -11,6 +11,19 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.3
+
+A fresh SSH snapshot captured all 130 current pen settings from the Kindle on 2026-10-25.
+The pen-only fixture checks new-install defaults and Reset tool independently of the compiled
+values; saved version-2 profiles keep their own values. The settings/page versions and stored
+stroke parameters are unchanged. Whole-stroke erasing remains the default.
+
+The eraser test pad uses four sample letter strokes on the left and a solid block on the right.
+Whole-stroke erasing uses the editor's swept stroke-hit test for the letters. Precise erasing
+restores the bare ruled pad beneath either target. Reset pad refills the targets; Reset tool
+also restores whole-stroke mode. Automated checks cover empty areas, individual and swept hits,
+partial erasing, reset, and portrait/landscape layout. Device confirmation is pending.
+
 ## The Kindles
 
 | Date | Kindle | Firmware | KOReader | KPM | Build |

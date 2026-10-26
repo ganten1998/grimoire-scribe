@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Release 1.2.0.** Grimoire is in daily use on
+> **Pre-release 2.0.0-beta.3.** Grimoire is in daily use on
 > one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -133,6 +133,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   whole stroke) or **Precise** (it takes away only what it touches). Tapping the eraser again goes
   back to the pen you used before it. Library > Settings' pen-button row can also make holding the
   pen button draw white.
+  Its Pen feel test pad has TEST letters and a solid block to erase. **Reset pad** restores
+  them; **Reset tool** restores the tuned widths and Whole strokes mode.
+
 - **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the panel (up to four),
   then Done. Each gets its own button under the pen button.
 - **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is

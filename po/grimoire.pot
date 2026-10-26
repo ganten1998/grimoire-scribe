@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-beta.2\n"
+"Project-Id-Version: Grimoire 2.0.0-beta.3\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-25 21:56-0500\n"
+"POT-Creation-Date: 2026-10-25 23:15-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1410,6 +1410,11 @@ msgid "Nib fully follows at"
 msgstr ""
 
 #. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
+#. TRANSLATORS: on the eraser tab, refill TEST and the black block (174 px at 34 px).
+#: src/pensettings.c
+msgid "Reset pad"
+msgstr ""
+
 #: src/pensettings.c
 msgid "Clear"
 msgstr ""
@@ -1427,10 +1432,6 @@ msgid "Pen feel: %s"
 msgstr ""
 
 #. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
-#: src/pensettings.c
-msgid "test pad (the eraser clears it)"
-msgstr ""
-
 #: src/pensettings.c
 msgid "test pad"
 msgstr ""

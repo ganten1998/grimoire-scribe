@@ -363,6 +363,7 @@ TEST(pen_defaults_from_device) {
     Settings chosen, fresh, saved;
     CHECK(settings_load(&chosen) == 0);
     settings_default(&fresh);
+    CHECK(fresh.eraser_mode == 0);  // whole strokes remain the fresh-install default
     int n;
     const ParamInfo *pi = tool_param_table(&n);
     for (int t = 0; t < TOOL_COUNT; t++) {

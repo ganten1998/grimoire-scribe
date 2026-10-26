@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-beta.3 (2026-10-25)
+
+- **Retuned pen defaults**: use the latest settings tuned on the Kindle for new installs and
+  Pen feel > Reset tool. Existing saved profiles and old stroke parameters are kept.
+- **An eraser pad you can actually try**: the eraser tab starts with TEST on the left and a
+  solid block on the right. Whole strokes removes the letters it touches; Precise erases only
+  the part under the tip. Reset pad restores both targets. Whole strokes remains the default,
+  and Reset tool on the eraser tab restores that mode too.
+
 ## 1.2.0 (2026-10-25)
 
 This release includes the changes previously tested as 2.0.0-beta.1 and beta.2. The 2.0 beta

@@ -44,16 +44,16 @@ wait 500
 shot 02-pad-clear-button-kept
 expect penset.pad_lighter is 0
 expect penset.pad_ink is 1
-# The eraser's tab (the pad drawn bare again): the tip is the precise eraser there, and the pad's
+# The eraser's tab (TEST and the block seeded as ink): the tip is the precise eraser there, and the pad's
 # lines stay under it
 tap 1723 289
 wait 300
-expect penset.pad_ink is 0
+expect penset.pad_ink is 1
 pen line 700 500 1500 800 40 0.6 0.6
 wait 500
 shot 03-eraser-tab-tip
 expect screen is penset
-expect penset.pad_ink is 0
+expect penset.pad_ink is 1
 expect penset.pad_lighter is 0
 tap 125 95
 wait 300

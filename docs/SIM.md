@@ -312,3 +312,9 @@ notebook's page and the studio (its script too) must show it escaped, never as m
 taps Share at 1220 95, where the widened top bar puts it. Last, with node,
 tests/studio_copy_check.js tries the studio's Copy command on a page without a clipboard (plain
 http), where the browser copies and where it will not.
+
+The eraser practice targets have probes `penset.pad_letters` (remaining whole-letter targets)
+and `penset.pad_block_rect` (`x y w h`). Precise erasing is measured with the existing
+`pad_ink_near.X.Y`, `pad_white` and `pad_lighter` pixel probes. `z_8_eraser_targets.qs` checks
+letter hits, fast swept hits, block hits and misses, partial erasing, both reset controls and
+both orientations.
