@@ -49,13 +49,19 @@ static void set_prop(const char *prop, int v) {
 
 bool light_available(void) { return access("/usr/bin/lipc-set-prop", X_OK) == 0 || access("/bin/lipc-set-prop", X_OK) == 0; }
 
+static int g_warmth = -1;  // light_warmth: as last read or set
+
 void light_get(int *intensity, int *warmth) {
     *intensity = get_prop("flIntensity");
-    *warmth = get_prop("currentAmberLevel");
+    *warmth = g_warmth = get_prop("currentAmberLevel");
 }
 
 void light_set_intensity(int level) { set_prop("flIntensity", level); }
-void light_set_warmth(int level) { set_prop("currentAmberLevel", level); }
+void light_set_warmth(int level) {
+    set_prop("currentAmberLevel", level);
+    g_warmth = clampi(level, 0, LIGHT_MAX);
+}
+int light_warmth(void) { return g_warmth; }
 
 void sys_request_sleep(void) {
     qlog("sleep: asking the power service to sleep (preventScreenSaver 0, then powerButton 1)");

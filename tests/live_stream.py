@@ -133,8 +133,8 @@ for kind, body in frames(r):
     if time.time() - t0 > 20:
         break
 check('a hello, then the screen as tiles in a batch', hellos == 1 and tiles > 0 and batches == 1 and size is not None)
-check('the state first: awake, the colors inverted (settings.ini invert=1)', bool(seen) and seen[0] == (5, 2)
-      and states[:1] == [bytes([0, 1])])
+check('the state first: awake, the colors inverted (settings.ini invert=1), the simulator\'s warmth (8)',
+      bool(seen) and seen[0] == (5, 3) and states[:1] == [bytes([0, 1, 8])])
 if screen:
     w, h = size
     dark = sum(1 for row in screen for v in row[::8] if v < 128)

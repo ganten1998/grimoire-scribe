@@ -273,6 +273,7 @@ void light_get(int *i, int *w) {
 }
 void light_set_intensity(int v) { g_light_i = clampi(v, 0, LIGHT_MAX); }
 void light_set_warmth(int v) { g_light_w = clampi(v, 0, LIGHT_MAX); }
+int light_warmth(void) { return g_light_w; }
 // The simulated power service's state, what sys_powerd_state reports: set by the script's
 // `powerd <state>` ("unknown" reads as unreadable). It never changes on its own.
 static char g_powerd_state[32] = "active";

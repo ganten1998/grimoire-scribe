@@ -12,6 +12,9 @@ bool light_available(void);
 void light_get(int *intensity, int *warmth);
 void light_set_intensity(int level);
 void light_set_warmth(int level);
+// The warmth as last read (light_get) or set, without asking the power service: -1 before either,
+// or on a Kindle without warm light.
+int light_warmth(void);
 
 // Other bits of the Kindle system Grimoire drives.
 // Ask the power service to go to sleep, exactly as a power button press would. It turns

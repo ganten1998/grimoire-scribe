@@ -15,8 +15,9 @@
 //   3 batch end  u32 seq, u32 the Kindle's ms: draw what came since the last one
 //   4 ping       nothing: sent after 15 s without a batch
 //   5 state      u8 LIVE_AWAKE, LIVE_ASLEEP, LIVE_PAIRING or LIVE_BYE; u8 1 when Grimoire shows its
-//                colors inverted (white on black: the frame never is), else 0. First thing on every
-//                stream, then whenever either changes.
+//                colors inverted (white on black: the frame never is), else 0; u8 the front light's
+//                warmth, 0..LIGHT_MAX, or LIVE_NO_WARMTH (no warm light, or not known). First thing
+//                on every stream, then whenever any of them changes.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -29,6 +30,7 @@
 #define LIVE_WORDS 64        // tile marks: 2048 tiles, more than either Scribe's screen has
 #define LIVE_VIEWERS 2
 #define LIVE_IDLE_OFF_MS (10 * 60 * 1000)  // no viewer for this long: Live view turns itself off
+#define LIVE_NO_WARMTH 255                 // the state frame's warmth when there is none to follow
 
 enum { LIVE_AWAKE = 0, LIVE_ASLEEP = 1, LIVE_PAIRING = 2, LIVE_BYE = 3 };
 enum { LIVE_HELLO = 1, LIVE_TILE_FRAME = 2, LIVE_BATCH = 3, LIVE_PING = 4, LIVE_STATE = 5 };
@@ -51,6 +53,9 @@ void live_set_state(int state);
 // Grimoire's colors inverted on the Kindle or not (settings.invert, applied as it presents: the
 // frame holds them as drawn): the viewers tell their browsers, which follow it unless told not to.
 void live_set_invert(bool on);
+// The Kindle's front light warmth (0..LIGHT_MAX; -1: no warm light, or not known): the browsers
+// tint the picture's light with it, unless told otherwise.
+void live_set_warmth(int level);
 // Reaps viewers that ended. Returns how many viewers there are now. *idle_off is set when Live
 // view has had no viewer for LIVE_IDLE_OFF_MS (the caller turns it off and says so).
 int live_poll(uint32_t now, bool *idle_off);

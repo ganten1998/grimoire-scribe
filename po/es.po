@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 12:35-0500\n"
+"POT-Creation-Date: 2026-10-26 18:53-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -508,7 +508,9 @@ msgstr "Reposo tras"
 msgid "Brightness"
 msgstr "Brillo"
 
-#: src/dispmenu.c
+#. TRANSLATORS: Live view's slider in the browser: the picture's light from white to warm,
+#. following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
+#: src/dispmenu.c src/httpd.c
 msgid "Warmth"
 msgstr "Calidez"
 

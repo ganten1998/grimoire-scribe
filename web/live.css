@@ -1,13 +1,18 @@
+#live{--ink:#111;--paper:#fff;--soft:#999;--quiet:#555}
+body.inverted{color:#eee;background:#000}
+body.inverted #live{--ink:#eee;--paper:#000;--soft:#666;--quiet:#aaa}
 #live .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
-#live .bar button{font:inherit;color:#111;background:#fff;border:2px solid #111;border-radius:8px;padding:6px 12px;cursor:pointer}
-#live .bar button[aria-pressed=true]{color:#fff;background:#111}
+#live .bar button{font:inherit;color:var(--ink);background:var(--paper);border:2px solid var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+#live .bar button[aria-pressed=true]{color:var(--paper);background:var(--ink)}
 #live .bar .switch{display:inline-flex;align-items:center;gap:8px}
-#live .bar .switch::before{content:"";box-sizing:border-box;width:36px;height:20px;border:2px solid #111;border-radius:999px;background:#fff radial-gradient(circle at 8px 50%,#111 5px,transparent 6px)}
-#live .bar .switch[aria-checked=true]::before{background:#111 radial-gradient(circle at 24px 50%,#fff 5px,transparent 6px)}
+#live .bar .switch::before{content:"";box-sizing:border-box;width:36px;height:20px;border:2px solid var(--ink);border-radius:999px;background:var(--paper) radial-gradient(circle at 8px 50%,var(--ink) 5px,transparent 6px)}
+#live .bar .switch[aria-checked=true]::before{background:var(--ink) radial-gradient(circle at 24px 50%,var(--paper) 5px,transparent 6px)}
 #live .bar button[hidden]{display:none}
-#live .pill{margin-right:auto;border:2px solid #999;color:#555;border-radius:999px;padding:4px 14px}
-#live .pill.on{border-color:#111;color:#fff;background:#111}
-#live .screen{display:block;margin:0 auto;border:1px solid #999;background:#fff}
+#live .bar .warmth{display:inline-flex;align-items:center;gap:8px}
+#live .bar .warmth input{width:120px;margin:0;accent-color:var(--ink)}
+#live .pill{margin-right:auto;border:2px solid var(--soft);color:var(--quiet);border-radius:999px;padding:4px 14px}
+#live .pill.on{border-color:var(--ink);color:var(--paper);background:var(--ink)}
+#live .screen{display:block;margin:0 auto;border:1px solid var(--soft);background:var(--light,#fff)}
 body.inverted #live .screen{background:#000}
 body.clear,body.clear #live .screen{background:transparent}
 .code input{font:inherit;font-size:1.6em;letter-spacing:.3em;width:7.5em;padding:6px 10px;border:2px solid #111;border-radius:8px}

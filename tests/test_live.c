@@ -133,9 +133,9 @@ TEST(a_viewer_sends_the_screen_then_what_changed) {
     CHECK(skip_head(sv[1]));
     uint8_t type, *body;
     uint32_t len;
-    // The state first (awake, the colors as drawn), then the hello and the screen.
-    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_AWAKE &&
-          body[1] == 0);
+    // The state first (awake, the colors as drawn, no warmth known), then the hello and the screen.
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 3 && body[0] == LIVE_AWAKE &&
+          body[1] == 0 && body[2] == LIVE_NO_WARMTH);
     free(body);
     uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
     int hellos = 0;
@@ -169,7 +169,7 @@ TEST(a_viewer_sends_the_screen_then_what_changed) {
     live_stop();
     bool bye = false;
     while (read_frame(sv[1], &type, &body, &len)) {
-        if (type == LIVE_STATE && len == 2 && body[0] == LIVE_BYE) bye = true;
+        if (type == LIVE_STATE && len == 3 && body[0] == LIVE_BYE) bye = true;
         free(body);
     }
     CHECK(bye && !live_on() && live_viewers() == 0);
@@ -198,14 +198,14 @@ TEST(nothing_is_sent_while_the_pairing_card_is_up) {
     live_set_state(LIVE_PAIRING);
     uint8_t type, *body;
     uint32_t len;
-    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_PAIRING);
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 3 && body[0] == LIVE_PAIRING);
     free(body);
     canvas_fill(&c, (Rect){0, 0, 64, 64}, 0);  // the code on the card
     live_push(&c, (Rect){0, 0, 64, 64});
     canvas_fill(&c, (Rect){0, 0, 64, 64}, 200);  // the card gone, the screen as it was
     live_push(&c, (Rect){0, 0, 64, 64});
     live_set_state(LIVE_AWAKE);
-    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 2 && body[0] == LIVE_AWAKE);
+    CHECK(read_frame(sv[1], &type, &body, &len) && type == LIVE_STATE && len == 3 && body[0] == LIVE_AWAKE);
     free(body);
     // Every tile looked at again, none of the card's sent: the next batch holds the one real change.
     canvas_fill(&c, (Rect){100, 100, 10, 10}, 0);
@@ -219,12 +219,12 @@ TEST(nothing_is_sent_while_the_pairing_card_is_up) {
 }
 
 // The next frame that is not a tile or a batch end.
-static bool next_state(int fd, uint8_t out[2]) {
+static bool next_state(int fd, uint8_t out[3]) {
     uint8_t type, *body;
     uint32_t len;
     while (read_frame(fd, &type, &body, &len)) {
-        bool state = type == LIVE_STATE && len == 2;
-        if (state) memcpy(out, body, 2);
+        bool state = type == LIVE_STATE && len == 3;
+        if (state) memcpy(out, body, 3);
         free(body);
         if (state) return true;
     }
@@ -244,7 +244,7 @@ TEST(the_browser_is_told_when_the_colors_invert) {
     CHECK(live_take_viewer(sv[0]));
     close(sv[0]);
     CHECK(skip_head(sv[1]));
-    uint8_t st[2];
+    uint8_t st[3];
     CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE && st[1] == 1);
     uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
     int hellos = 0;
@@ -269,6 +269,42 @@ TEST(the_browser_is_told_when_the_colors_invert) {
     canvas_free(&c);
 }
 
+TEST(the_browser_is_told_the_front_light_warmth) {
+    const int w = 64, h = 64;
+    Canvas c;
+    CHECK(canvas_init(&c, w, h) == 0);
+    canvas_fill(&c, (Rect){0, 0, w, h}, 230);
+    CHECK(live_start(w, h) == 0);
+    live_push(&c, (Rect){0, 0, w, h});
+    live_set_warmth(10);  // set before the browser came: its first frame says so
+    int sv[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    CHECK(live_take_viewer(sv[0]));
+    close(sv[0]);
+    CHECK(skip_head(sv[1]));
+    uint8_t st[3];
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE && st[1] == 0 && st[2] == 10);
+    uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
+    int hellos = 0;
+    CHECK(read_batch(sv[1], seen, w, h, &hellos) > 0);
+    live_set_warmth(10);  // no change: nothing told
+    live_set_warmth(24);
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE && st[2] == 24);
+    live_set_warmth(300);  // past what a byte holds: the most the frame can say short of none
+    CHECK(next_state(sv[1], st) && st[2] == LIVE_NO_WARMTH - 1);
+    live_set_warmth(-1);  // no warm light (or not known)
+    CHECK(next_state(sv[1], st) && st[2] == LIVE_NO_WARMTH);
+    live_set_warmth(3);
+    live_stop();  // bye, with the warmth as it is
+    bool bye = false;
+    while (next_state(sv[1], st))
+        if (st[0] == LIVE_BYE) bye = st[2] == 3;
+    CHECK(bye);
+    close(sv[1]);
+    free(seen);
+    canvas_free(&c);
+}
+
 TEST(no_viewer_for_ten_minutes_turns_it_off) {
     CHECK(live_start(64, 64) == 0);
     bool idle = true;
@@ -287,6 +323,7 @@ int main(void) {
     RUN(a_viewer_sends_the_screen_then_what_changed);
     RUN(nothing_is_sent_while_the_pairing_card_is_up);
     RUN(the_browser_is_told_when_the_colors_invert);
+    RUN(the_browser_is_told_the_front_light_warmth);
     RUN(no_viewer_for_ten_minutes_turns_it_off);
     return tl_done();
 }

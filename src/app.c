@@ -520,6 +520,9 @@ void live_view_open(App *a) {
         }
         g_live_viewers = 0;
         live_set_invert(a->settings.invert);
+        int intensity, warmth;
+        light_get(&intensity, &warmth);  // (once: then light_warmth has it, as the Display sheet sets it)
+        live_set_warmth(warmth);
         display_skip_overlay(live_chip(a));
         app_invalidate(a, live_chip(a), REFRESH_UI);
         qlog("live: on");
@@ -544,6 +547,7 @@ void live_view_stop(App *a, bool say) {
 static void live_tick(App *a, uint32_t now) {
     if (!live_on()) return;
     live_set_invert(a->settings.invert);  // (however it changed: the browsers follow it)
+    live_set_warmth(light_warmth());
     if (a->scr != SCR_SHARE) httpd_poll();  // (Share's own tick polls it there)
     bool idle = false;
     int n = live_poll(now, &idle);

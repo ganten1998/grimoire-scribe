@@ -771,6 +771,9 @@ static void route_live_page(const char *query) {
         // Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
         live_word(&b, &n, "invert", _("Invert colors"));
         live_word(&b, &n, "follow", _("As on the Kindle"));
+        // TRANSLATORS: Live view's slider in the browser: the picture's light from white to warm,
+        // following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
+        live_word(&b, &n, "warmth", _("Warmth"));
         live_word(&b, &n, "record", _("Record"));
         live_word(&b, &n, "stop", _("Stop recording"));
         live_word(&b, &n, "full", _("Full screen"));

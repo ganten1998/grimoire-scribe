@@ -6,7 +6,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { Frames } = require(path.join(__dirname, '..', 'web', 'live.js'));
+const { Frames, lightColor } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
 const [bin, txt] = process.argv.slice(2);
 const bytes = new Uint8Array(fs.readFileSync(bin));
@@ -37,4 +37,19 @@ try {
 } catch (e) {
     console.log('ok   a frame of length 0 is refused');
 }
+// The front light's color: white at warmth 0, warmer (less blue, then less green) at every step up
+// to the warmest, never past it, red whole throughout.
+function light(name, ok) {
+    console.log((ok ? 'ok   ' : 'FAIL ') + name);
+    if (!ok) fail = 1;
+}
+const steps = Array.from({length: 25}, (_, i) => lightColor(i));
+light('light: white at warmth 0', steps[0].join() === '255,255,255');
+light('light: red whole at every warmth', steps.every(c => c[0] === 255));
+light('light: each step warmer than the last', steps.every((c, i) => !i ||
+    (c[2] < steps[i - 1][2] && c[1] <= steps[i - 1][1])));
+light('light: the warmest is amber (' + steps[24] + ')', steps[24][1] > 140 && steps[24][1] < 170 &&
+    steps[24][2] > 45 && steps[24][2] < 80);
+light('light: past the warmest is the warmest', lightColor(99).join() === steps[24].join() &&
+    lightColor(-5).join() === steps[0].join());
 process.exit(fail);
