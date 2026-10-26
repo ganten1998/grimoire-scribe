@@ -337,8 +337,8 @@ TEST(settings_upgrade_keeps_tweaks) {
     write_file_atomic(path, old, strlen(old));
     Settings s;
     settings_load(&s);
-    CHECK_NEAR(s.tools[TOOL_PENCIL].size_min_mm, 0.20f, 1e-3);
-    CHECK_NEAR(s.tools[TOOL_PENCIL].size_max_mm, 0.45f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].size_min_mm, 0.12f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].size_max_mm, 0.32f, 1e-3);
     CHECK_NEAR(s.tools[TOOL_PENCIL].tilt_size, 3.10f, 1e-3);  // the owner's own value stays
     CHECK_NEAR(s.tools[TOOL_MECH_PENCIL].grain, 0.50f, 1e-3);
     CHECK(s.version == SETTINGS_VERSION);
@@ -348,6 +348,41 @@ TEST(settings_upgrade_keeps_tweaks) {
     Settings t;
     settings_load(&t);
     CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
+}
+
+TEST(pen_defaults_from_device) {
+    // Pen-only snapshot chosen on the Kindle, independent of the compiled defaults.
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    size_t len = 0;
+    char *snapshot = read_file("tests/fixtures/pen-defaults.ini", &len);
+    CHECK(snapshot != NULL);
+    if (!snapshot) return;
+    CHECK(write_file_atomic(path, snapshot, len) == 0);
+    free(snapshot);
+    Settings chosen, fresh, saved;
+    CHECK(settings_load(&chosen) == 0);
+    settings_default(&fresh);
+    int n;
+    const ParamInfo *pi = tool_param_table(&n);
+    for (int t = 0; t < TOOL_COUNT; t++) {
+        ToolParams reset;
+        tool_params_default(t, &reset);  // the Pen feel reset action uses this function too
+        for (int i = 0; i < n; i++) {
+            float want = *tool_param_ptr(&chosen.tools[t], &pi[i]);
+            CHECK_NEAR(*tool_param_ptr(&fresh.tools[t], &pi[i]), want, 1e-6);
+            CHECK_NEAR(*tool_param_ptr(&reset, &pi[i]), want, 1e-6);
+        }
+        // A saved version-2 profile is not migrated to these defaults.
+        chosen.tools[t].size_min_mm = 0.26f;
+        chosen.tools[t].size_max_mm = 0.36f;
+        chosen.tools[t].smoothing = 0.15f;
+    }
+    CHECK(settings_save(&chosen) == 0 && settings_load(&saved) == 0);
+    for (int t = 0; t < TOOL_COUNT; t++)
+        for (int i = 0; i < n; i++)
+            CHECK_NEAR(*tool_param_ptr(&saved.tools[t], &pi[i]),
+                       *tool_param_ptr(&chosen.tools[t], &pi[i]), 1e-6);
 }
 
 // settings.ini's panel_tools: the pens pinned to the editor's panel, in pin order. A line written
@@ -530,6 +565,7 @@ int main(void) {
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
+    RUN(pen_defaults_from_device);
     RUN(panel_tools);
     RUN(before_eraser);
     RUN(safe_names);

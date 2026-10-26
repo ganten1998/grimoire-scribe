@@ -4,12 +4,12 @@ What was checked on a real Kindle, on which Kindle and firmware, and what still 
 `make check` covers the logic, the package, the launchers and their failures. It cannot prove what
 only a Kindle shows: the screen, the pen, the passcode keypad, KOReader and KPM on the device.
 
-2.0.0-beta.1 is release candidate 1.1.0-rc.3 plus documentation, release packaging that builds
-the same bytes from the same commit, and two fixes: while shortcuts
-are enabled, key and controller presses keep the Kindle awake; and "Annotate this page in
-Grimoire" refuses a notebook's own PDF from `grimoire/PDFs`. Those two fixes have not been checked
-on a Kindle yet. The candidates 1.1.0-rc.1 to rc.3 were never published; their results are below,
-newest first.
+2.0.0-beta.1 includes release candidate 1.1.0-rc.3, updated documentation, reproducible release
+packaging, retuned pen defaults and the gray-paper repair described below. While shortcuts are
+enabled, key and controller presses now keep the Kindle awake; "Annotate this page in Grimoire"
+refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have automated coverage
+but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
+their results are below, newest first.
 
 ## The Kindles
 
@@ -17,6 +17,48 @@ newest first.
 |---|---|---|---|---|---|
 | 2026-10-24 | Kindle Scribe 2024 | 5.19.6 | v2026.07.2 | 0.2.2 (CLI 1.0.0), `kindlehf` | 1.1.0-rc.1, 1.1.0-rc.2 |
 | 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 1.1.0-rc.3 |
+| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 2.0.0-beta.1 |
+
+## 2.0.0-beta.1 on firmware 5.20.1.0.2
+
+The candidate at `d4e0afd` was installed through the local KPM test feed as package 2.0.1001.
+A fresh backup was taken first. Notebook-page and settings hashes, and KOReader's process IDs,
+were unchanged after installation. The installed ARM executable matched the checked build.
+
+- The maintainer opened Grimoire from Tools > Grimoire, wrote in it and returned to KOReader.
+  Grimoire exited with status 0.
+- Fresh SSH connections to KOReader's port 2222 and the independent development listener on
+  port 2223 succeeded in all 90 samples before and during that session. Both listeners kept
+  their original process IDs. Fresh connections to both also passed after the return.
+- The maintainer quit KOReader and opened Grimoire from the Kindle Library. The installed
+  Grimoire plugin was updated. Two short power-button sleep/wake cycles appear in the log; the
+  maintainer confirmed writing resumed and the Kindle home screen returned correctly on Exit.
+- With Device Passcode enabled, the maintainer confirmed the native PIN screen, successful
+  unlock and writing afterwards, both upright and sideways, from a Kindle Library launch.
+- Share served a PDF successfully. Preparing a 99-page notebook took a long time; visible export
+  progress is requested. Returning to an annotated PDF page preserved the writing.
+
+Writing over gray parts of a PDF page showed a temporary shadow in normal and inverted view.
+The framebuffer path dithered the whole dirty rectangle, including unchanged image paper. A
+candidate change keeps the previous logical frame and dithers only changed pixels. Its packing
+tests cover both pixel formats, rotation, inversion, overlapping updates and grayscale settling;
+removing paper preservation makes those tests fail. On the repaired build at `9c10591`, the
+maintainer reported the shadow was much better in the same PDF page. Pen lag was unchanged and
+was more noticeable over gray images than over black-and-white content. This is an improvement
+to the paper artifact, not a claim that PDF handwriting latency is resolved.
+
+The maintainer's current pen settings were read from the Kindle before the checkpoint. All 130
+values across the ten tools are the fresh-install and Pen feel > Reset tool defaults. A pen-only
+snapshot in `tests/fixtures/pen-defaults.ini` checks those values independently of the compiled
+defaults, and checks that a saved version-2 profile keeps its own values. The settings version
+and the frozen original handwriting-render tests are unchanged.
+
+An unexpected restart reported after a long sleep was investigated separately. The retained
+system log records Amazon's feature-flag manager requesting a restart on suspend, followed by
+system shutdown. Grimoire exited during that shutdown. The kernel records a software restart;
+no Grimoire crash trace or watchdog kill was found for that event. The recorded restart was at
+11:19; the maintainer reported seeing a restart screen on waking later. These logs do not prove
+the cause of every possible sleep failure.
 
 ## 1.1.0-rc.3 on firmware 5.20.1.0.2
 

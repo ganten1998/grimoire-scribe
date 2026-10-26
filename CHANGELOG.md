@@ -1,9 +1,18 @@
 # Changelog
 
-## 2.0.0-beta.1 (unreleased)
+## 2.0.0-beta.1 (2026-10-25)
 
 The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.0-rc.1 to rc.3
 (below) are folded into it; there is no 1.1.0. docs/TESTING.md says what was checked on a Kindle.
+
+- **Writing over PDF and image paper**: fast pen updates keep unchanged gray paper intact,
+  reducing the temporary shadow around a stroke. Writing over gray images can still feel slower
+  than writing over black-and-white paper; further pen-latency work is ongoing.
+- **Native PIN checked on firmware 5.20.1.0.2**: from a Kindle Library launch, the Scribe 2024
+  showed its own keypad and returned to writing after unlock, upright and sideways.
+- **Retuned pen defaults**: the pencil, mechanical pencil, ballpoint, highlighter, fountain pen
+  and calligraphy pen start with the settings tuned on the Kindle. Pen feel > Reset tool uses
+  the same values. Existing saved pen settings and the ink already on your pages stay as they are.
 
 - **Install with KPM**: the release has a `.kpkg` for Kindle Package Manager on `kindlehf`
   Scribes, built from the same app as the zip. It adds the two Library items, keeps your

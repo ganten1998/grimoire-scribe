@@ -61,17 +61,17 @@ const ParamInfo *tool_param_table(int *count) {
 void tool_params_default(ToolKind t, ToolParams *o) {
     switch (t) {
     case TOOL_MECH_PENCIL:
-        *o = (ToolParams){0.26f, 0.36f, 0.38f, 0.85f, 0.03f, 0.80f, 1.10f, 25.f, 70.f, 0.35f, 0.10f, 0.50f, 0.15f};
+        *o = (ToolParams){0.30f, 0.30f, 0.50f, 0.95f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.50f, 0.f};
         break;
     case TOOL_BALLPOINT:
-        *o = (ToolParams){0.30f, 0.48f, 0.85f, 1.00f, 0.02f, 0.55f, 0.60f, 30.f, 75.f, 0.10f, 0.00f, 0.06f, 0.35f};
+        *o = (ToolParams){0.30f, 0.48f, 0.85f, 1.00f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.f, 1.00f};
         break;
     case TOOL_ERASER:
         *o = (ToolParams){2.5f, 7.0f, 1.f, 1.f, 0.0f, 0.60f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.f};
         break;
     case TOOL_FOUNTAIN:
-        // Nib width 0.35..1.1 mm with pressure; the angled nib makes it calligraphic.
-        *o = (ToolParams){0.35f, 1.10f, 0.90f, 1.00f, 0.02f, 0.60f, 0.80f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
+        // Nib width 0.24..0.60 mm with pressure; the angled nib makes it calligraphic.
+        *o = (ToolParams){0.24f, 0.60f, 0.90f, 1.00f, 0.02f, 1.00f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
         break;
     case TOOL_FINELINER:
         *o = (ToolParams){0.28f, 0.34f, 1.00f, 1.00f, 0.01f, 0.30f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
@@ -85,18 +85,18 @@ void tool_params_default(ToolKind t, ToolParams *o) {
         *o = (ToolParams){0.80f, 2.40f, 0.30f, 1.00f, 0.03f, 0.85f, 1.00f, 45.f, 75.f, 2.0f, 0.35f, 0.85f, 0.15f};
         break;
     case TOOL_CALLIGRAPHY:
-        // The fountain pen's ink on a broader, flatter nib (0.7..1.4 mm, little flex). The tilt
+        // A broad, flat nib with a constant 1.86 mm width. The tilt
         // range here says when the nib starts to follow the pen's lean (see brush_nib_angle).
-        *o = (ToolParams){0.70f, 1.40f, 0.92f, 1.00f, 0.02f, 0.60f, 0.80f, 10.f, 25.f, 0.f, 0.f, 0.f, 0.30f};
+        *o = (ToolParams){1.86f, 1.86f, 0.75f, 1.00f, 0.00f, 1.00f, 1.60f, 10.f, 25.f, 0.f, 0.f, 0.f, 1.00f};
         break;
     case TOOL_HIGHLIGHTER:
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
-        *o = (ToolParams){4.0f, 5.0f, 0.55f, 0.65f, 0.02f, 0.50f, 0.80f, 30.f, 70.f, 0.2f, 0.f, 0.f, 0.40f};
+        *o = (ToolParams){5.50f, 5.50f, 0.25f, 0.50f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.f, 0.f};
         break;
     case TOOL_PENCIL:
     default:
-        // 0.20..0.45 mm: a sharp HB, close to the other tools' widths; tilt still shades wider.
-        *o = (ToolParams){0.20f, 0.45f, 0.30f, 0.95f, 0.03f, 0.85f, 1.25f, 15.f, 60.f, 1.6f, 0.45f, 0.65f, 0.10f};
+        // 0.12..0.32 mm: a sharp pencil; tilt still shades wider.
+        *o = (ToolParams){0.12f, 0.32f, 0.75f, 0.95f, 0.00f, 0.85f, 0.40f, 15.f, 60.f, 1.8f, 0.45f, 1.00f, 0.00f};
         break;
     }
 }

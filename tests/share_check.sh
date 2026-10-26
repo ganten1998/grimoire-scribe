@@ -93,8 +93,11 @@ print(zlib.decompressobj().decompress(z, 2)[1])" "$1" 2>/dev/null || echo none
 curl -fsS "$URL/" -o "$B/index.html"
 check "index html" "grep -q '<h1>Grimoire</h1>' $B/index.html"
 check "index html in English" "grep -q '<html lang=en>' $B/index.html && grep -q ' on your Kindle</p>' $B/index.html"
+VERSION_SHOWN=$("$HEADLESS" --version)
+check "index footer has the running app's version" "grep -qF 'Grimoire $VERSION_SHOWN</p>' $B/index.html"
 curl -fsS "$URL/api/list.json" -o "$B/list.json"
 check "list.json parses" "python3 -I -m json.tool $B/list.json >/dev/null"
+check "API version matches the footer and running app" "python3 -I -c \"import json; assert json.load(open('$B/list.json'))['version'] == '$VERSION_SHOWN'\""
 ID=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['id'])")
 NAME=$(python3 -I -c "import json;print(json.load(open('$B/list.json'))['notebooks'][0]['name'])")
 curl -fsS "$URL/nb/$ID" -o "$B/nb.html"

@@ -84,6 +84,12 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 - Live stroke: each pen sample batch renders new dabs into page_canvas, recomposes the dirty
   rect, FAST refresh. On pen-up: UI refresh of the stroke bbox so pencil grays come back. A
   press on the panel before that settle settles first, so Undo and Clear answer at once.
+- The Kindle display keeps the previous logical frame in physical order (+4.6 MB at 1860x2480).
+  `fbpack_row` dithers only changed pixels for a FAST refresh. Unchanged gray image paper stays
+  gray in the framebuffer, which DU leaves alone; earlier dithered ink stays as it was until the
+  grayscale settle. This avoids turning the paper around a stroke into black and white dots.
+  Inversion or rotation invalidates the cache until a whole grayscale frame is copied. If the
+  cache allocation fails, live drawing falls back to dithering the whole rectangle.
 - Live ink and color panels: a color panel's driver reads the framebuffer for an update some time
   after it was sent, in tiles, so pixels changed again before then show half old, striped. On a
   color panel at 32 bpp (FBInk's `has_color_panel`) display_fbink.c therefore waits after every

@@ -29,7 +29,8 @@ LANGUAGE: English or Spanish (a draft), in Settings > Language (Ajustes > Idioma
 Automatic, the default, follows the Kindle's own language; pick English there to switch back.
 PASSCODE: from the Kindle Library, Grimoire leaves the Device Passcode on. When the Kindle
 sleeps, Grimoire hands the screen and touch input to the Kindle's own keypad, and takes them back
-after the Kindle reports the unlock. This hand-over still needs confirmation on each firmware.
+after the Kindle reports the unlock. Confirmed upright and sideways on the Scribe 2024 with
+firmware 5.20.1.0.2; other firmware still needs a check.
 With a passcode set, the keypad comes before custom sleep pictures and stop-framework mode.
 KOReader normally turns the passcode off before Grimoire can run; start Grimoire from the Library
 if you need it.
