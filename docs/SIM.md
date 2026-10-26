@@ -172,8 +172,8 @@ shows what the app holds.
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
 | `editor.tool` | the pen's tool by its settings.ini name: `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy` |
-| `editor.zoom` | the zoom as the zoom chip shows it, with two decimals: `1.00` is the usual view (the page's width fitting the screen's: 100% upright for a notebook of this screen's size) |
-| `editor.zoomed` | `1` while the zoom chip shows, else `0` |
+| `editor.zoom` | the zoom with two decimals: `1.00` is the usual view (the page's width fitting the screen's: 100% upright for a notebook of this screen's size) |
+| `editor.zoomed` | `1` while the view is zoomed or panned, else `0` |
 | `editor.scale` | screen px per page px, two decimals: `1.00` for a notebook of this screen's size upright, `1.07` for an 1860x2480 notebook on a 1986x2648 screen, `0.94` the other way; `0.00` with no notebook open |
 | `editor.page_size` | the open page's own size, `WxH`: its notebook's, so a page that came at the screen's size instead would show here; empty with no notebook open |
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
@@ -187,7 +187,6 @@ shows what the app holds.
 | `editor.ticked` | pages ticked in the Pages view |
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
-| `editor.back`, `editor.back_chip` | Back's destination page number, 0 when absent; whether its chip is available (0 or 1) |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |

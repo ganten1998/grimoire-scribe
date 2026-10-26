@@ -466,6 +466,29 @@ TEST(tool_sampler) {
     page_free(p2);
 }
 
+TEST(highlighter_vertical_tip) {
+    Canvas a, b;
+    CHECK(canvas_init(&a, 200, 200) == 0 && canvas_init(&b, 200, 200) == 0);
+    ToolParams p; tool_params_default(TOOL_HIGHLIGHTER, &p);
+    BrushState brush;
+    PenSample q = {100, 100, 0.8f, 0, 0, 0};
+    brush_begin(&brush, TOOL_HIGHLIGHTER, &p, 1, DPI);
+    brush_add(&brush, &a, &q);
+    int x0 = 200, y0 = 200, x1 = -1, y1 = -1;
+    for (int y = 0; y < 200; y++) for (int x = 0; x < 200; x++)
+        if (a.px[y * a.stride + x] < 255) {
+            x0 = x < x0 ? x : x0; x1 = x > x1 ? x : x1;
+            y0 = y < y0 ? y : y0; y1 = y > y1 ? y : y1;
+        }
+    CHECK(y1 - y0 > 6 * (x1 - x0) && x1 > x0);
+    CHECK(a.px[76 * a.stride + 100] < 255 && a.px[100 * a.stride + 76] == 255);
+    q.tilt_x = 60; q.tilt_y = -20;
+    brush_begin(&brush, TOOL_HIGHLIGHTER, &p, 1, DPI);
+    brush_add(&brush, &b, &q);
+    CHECK(!memcmp(a.px, b.px, (size_t)a.stride * a.h));
+    canvas_free(&a); canvas_free(&b);
+}
+
 int main(void) {
     font_init();  // some papers draw labels and clefs
     RUN(rects);
@@ -481,5 +504,6 @@ int main(void) {
     RUN(charcoal_texture);
     RUN(ink_inside_bbox);
     RUN(new_pens_live_equals_rerender);
+    RUN(highlighter_vertical_tip);
     return tl_done();
 }

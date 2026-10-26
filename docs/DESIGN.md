@@ -285,7 +285,7 @@ draws them. White ink and the precise eraser make them.
   largest size that fits, among the sizes the face really has (Jersey 10 has whole steps only, 44
   px to 34 px being the one that counts). `ui_text`: one line, else smaller, else lines. Toasts
   take two lines where one would be cut (`ui_toast_rect`). `ui_chip_w`: a chip grows with its text
-  and keeps it 43 px from Gothic's pointed ends (the zoom chip). `ui_button_need_w`: a row of
+  and keeps it 43 px from Gothic's pointed ends (for a chip 100 px high). `ui_button_need_w`: a row of
   buttons widens to its widest need (the Library's top bar, up to 220 px; hosted, Back to KOReader
   takes only its own room). `ui_button_text_px` and `ui_button_text_at`: a grid of buttons draws
   every label at the smallest size any of them needs (Custom music's parts). In Gothic a label

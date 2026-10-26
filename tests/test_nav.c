@@ -120,21 +120,6 @@ TEST(unreadable_files_stay_untouched) {
     nav_free(&n);
 }
 
-TEST(back_history_uses_ids) {
-    NavHistory h = {0};
-    NotebookInfo order = nb; order.npages = 3;
-    order.page_ids[0] = 12; order.page_ids[1] = 40; order.page_ids[2] = 7;
-    nav_history_push(&h, 12); nav_history_push(&h, 12); nav_history_push(&h, 40);
-    CHECK(h.count == 2);
-    order.page_ids[0] = 7; order.page_ids[2] = 12;
-    CHECK(nav_history_pop(&h, &order, 40) == 2);
-    CHECK(nav_history_pop(&h, &order, 12) == -1);
-    for (int i = 1; i <= 40; i++) nav_history_push(&h, (uint32_t)i);
-    CHECK(h.count == NAV_HISTORY_MAX && h.ids[0] == 25 && h.ids[15] == 40);
-    CHECK(nav_history_pop(&h, &order, 12) == 1);  // skip ids of pages not in the notebook
-    CHECK(nav_history_pop(&h, &order, 40) == -1);
-}
-
 TEST(raw_zip_keeps_index) {
     Nav n; nav_init(&n);
     CHECK(nav_set_name(&n, nb.page_ids[0], "Notes & recipes") == 0);
@@ -170,7 +155,6 @@ int main(void) {
     RUN(future_lines_and_last_name_win);
     RUN(failed_save_does_not_prune);
     RUN(unreadable_files_stay_untouched);
-    RUN(back_history_uses_ids);
     RUN(raw_zip_keeps_index);
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
     CHECK(system(cmd) == 0);

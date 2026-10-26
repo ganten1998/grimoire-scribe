@@ -3,7 +3,8 @@
 // from the 1.0.0-beta sources (this table was made at the base of 1.0.0-beta.2, whose src/ was
 // the released 1.0.0-beta's). A page someone already wrote must look exactly the same in every
 // later version: if one of these fails, old pages changed. Never re-record the table to make a
-// change pass; fix the change.
+// change pass; fix the change. The maintainer explicitly accepted one exception for the
+// vertical highlighter in 2.0.0-beta.2 (issue #5), listed separately below.
 //
 // GRIMOIRE_GOLDEN_PRINT=1 prints the table instead of checking it (that is how it was made).
 // The values hold for the host build this suite runs on (clang on arm64 macOS): another
@@ -169,6 +170,22 @@ static uint32_t crc_canvas(const Canvas *c) {
     return crc;
 }
 
+// Explicit 2.0.0-beta.2 exception requested by the maintainer: highlighter dabs now have a
+// fixed vertical edge, including old strokes. Original CRCs above remain as the historical
+// record; only renders containing highlighter ink change. Preservation is tracked in issue #5.
+static const struct { const char *name; uint32_t crc; } k_vertical_highlighter[] = {
+    {"medium rule, highlighter", 0xe1df8dfcu},
+    {"medium rule, highlighter, ink", 0xe83cb220u},
+    {"grand staff, highlighter", 0xb2bc9b09u},
+    {"grand staff, highlighter, ink", 0xe83cb220u},
+    {"medium rule, every tool", 0x7d57e6d5u},
+    {"medium rule, every tool, ink", 0xbca45798u},
+    {"medium rule, every tool, read back", 0x191c9e25u},
+    {"grand staff, every tool", 0x9a5c1275u},
+    {"grand staff, every tool, ink", 0xbca45798u},
+    {"grand staff, every tool, read back", 0x61c56d3fu},
+};
+
 static bool g_print;
 
 static void golden(const char *name, uint32_t crc) {
@@ -179,8 +196,11 @@ static void golden(const char *name, uint32_t crc) {
     if (!GOLDEN_HOST) return;
     for (size_t i = 0; i < sizeof k_golden / sizeof k_golden[0]; i++)
         if (!strcmp(k_golden[i].name, name)) {
-            CHECK(k_golden[i].crc == crc);
-            if (k_golden[i].crc != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, k_golden[i].crc);
+            uint32_t expected = k_golden[i].crc;
+            for (size_t j = 0; j < sizeof k_vertical_highlighter / sizeof k_vertical_highlighter[0]; j++)
+                if (!strcmp(k_vertical_highlighter[j].name, name)) expected = k_vertical_highlighter[j].crc;
+            CHECK(expected == crc);
+            if (expected != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, expected);
             return;
         }
     fprintf(stderr, "  %s: not in the table\n", name);

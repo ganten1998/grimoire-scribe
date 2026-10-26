@@ -2,10 +2,16 @@
 
 ## 2.0.0-beta.2 (in development)
 
+- **Vertical highlighter**: a fixed vertical tip replaces the round tip. This also changes how
+  older highlights render when a notebook is opened or exported; preserving the old shape is
+  tracked in [issue #5](https://github.com/ganten1998/grimoire-scribe/issues/5).
+- **Clear writing area**: Index jumps and pinch zoom add no floating Back or reset-zoom buttons.
+  Pinch inward to return to the fitted page view.
+
 - **Journal index**: name pages as section starts from the new Index tab beside Pages. Tap a
-  section to open it and use Back to return. Names follow their pages through insertions and
-  deletions, survive reopening, and travel in the raw notebook ZIP. Optional shortcut actions
-  `index` and `back` work with custom keyboard or controller mappings.
+  section to open it. Names follow their pages through insertions and deletions, survive
+  reopening, and travel in the raw notebook ZIP. The optional `index` shortcut works with custom
+  keyboard or controller mappings.
 - **New page inside a notebook**: in Pages, add a blank note after the open page, or after the
   last ticked page. It uses the notebook's paper, including when the preceding page is an
   imported PDF page. The first page stays the notebook's cover.

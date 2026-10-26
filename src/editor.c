@@ -137,7 +137,6 @@ struct EditorState {
 
     PagesView pv;               // the Pages view (pagesview.h)
     Nav nav;
-    NavHistory back;
 
     // Paper sheet
     bool paper_open;
@@ -478,7 +477,7 @@ static void view_clamp(App *a) {
     S->zoom = clampf(S->zoom, S->zoom_min, S->zoom_default * 4.f);
     float vw = (float)a->w / S->zoom, vh = (float)a->h / S->zoom;  // visible page area
     // A page fitted to a screen of another size (a notebook from another Scribe) spans it but for
-    // float rounding: exactly, so the fitted view sits at no offset (and shows no zoom chip).
+    // float rounding: exactly, so the fitted view sits at no offset (the fitted view).
     if (fabsf(vw - (float)S->pgw) < 0.01f) vw = (float)S->pgw;
     if (fabsf(vh - (float)S->pgh) < 0.01f) vh = (float)S->pgh;
     S->ox = vw >= (float)S->pgw ? -(vw - (float)S->pgw) / 2.f : clampf(S->ox, 0.f, (float)S->pgw - vw);
@@ -516,49 +515,7 @@ static Rect page_to_screen(App *a, Rect p) {
     return rect_intersect(r, (Rect){0, 0, a->w, a->h});
 }
 
-// The zoom chip's text: the zoom, and what a tap on the chip does.
-static void zoom_text(App *a, char *out, size_t cap) {
-    // TRANSLATORS: the chip at the top of a zoomed page: the zoom, then that a tap on the chip takes
-    // the page back to its usual size. In bold at 34 px; the chip grows with its text.
-    snprintf(out, cap, _("%d%%   tap to reset"), (int)lrintf(S->zoom / S->zoom_default * 100.f));
-}
-
-// Centered at the top, 380 px wide, or as wide as a longer text needs (ui_chip_w: the English
-// always fits the 380).
-static Rect zoom_chip(App *a) {
-    char z[96];
-    zoom_text(a, z, sizeof z);
-    int h = ui_px(100), w = ui_chip_w(FONT_BOLD, ui_small_size(), z, h, ui_px(380), a->w - ui_px(80));
-    return (Rect){a->w / 2 - w / 2, ui_px(24), w, h};
-}
 static bool zoomed(App *a) { return fabsf(S->zoom - S->zoom_default) > 0.01f || S->ox != 0.f || S->oy > 0.5f; }
-
-static int back_target(App *a) {
-    if (!S->open || !S->nb.npages) return -1;
-    NavHistory copy = S->back;
-    return nav_history_pop(&copy, &S->nb, S->nb.page_ids[S->index]);
-}
-
-static void back_text(App *a, char *out, size_t cap) {
-    // TRANSLATORS: a tappable chip at the top of a page after an Index or Pages jump; it grows
-    // with its text, like the zoom chip. %d is the origin page's current number.
-    snprintf(out, cap, _("Back to page %d"), back_target(a) + 1);
-}
-
-static Rect back_chip(App *a) {
-    if (back_target(a) < 0) return RECT_EMPTY;
-    char text[96]; back_text(a, text, sizeof text);
-    int x = ui_px(24), y = ui_px(24), h = ui_px(100);
-    if (zoomed(a)) y += ui_px(120);  // both chips stay reachable
-    int w = ui_chip_w(FONT_BOLD, ui_small_size(), text, h, ui_px(420), a->w - ui_px(48));
-    Rect r = {x, y, w, h};
-    if (rect_overlaps(r, S->panel)) {
-        x = S->panel.x + S->panel.w + ui_px(20);
-        if (x + w > a->w - ui_px(24)) x = S->panel.x - w - ui_px(20);
-        r.x = clampi(x, ui_px(24), a->w - w - ui_px(24));
-    }
-    return r;
-}
 
 // Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page.
 static void blit_view(App *a, Rect r) {
@@ -691,19 +648,6 @@ static void compose(App *a, Rect r) {
     if (rect_is_empty(r)) return;
     if (view_identity(a)) canvas_blit(&a->screen, &S->page_canvas, r, r.x, r.y);
     else blit_view(a, r);
-    if (zoomed(a) && rect_overlaps(r, zoom_chip(a))) {
-        char z[96];
-        zoom_text(a, z, sizeof z);
-        Rect c = zoom_chip(a);
-        ui_frame(&a->screen, c, c.h / 2, 0, true, 0);
-        font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), c, z, 255);
-    }
-    Rect bc = back_chip(a);
-    if (!rect_is_empty(bc) && rect_overlaps(r, bc)) {
-        char text[96]; back_text(a, text, sizeof text);
-        ui_frame(&a->screen, bc, bc.h / 2, 0, true, 0);
-        font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), bc, text, 255);
-    }
     if (rect_overlaps(r, S->panel)) draw_panel(a);
     if (S->paper_open && rect_overlaps(r, S->paper_rect)) draw_paper_sheet(a);
     if (S->ts.open && rect_overlaps(r, S->ts.rect)) tplsheet_draw(&S->ts, a);
@@ -835,7 +779,7 @@ static void arrive_readonly(App *a) {
     app_invalidate(a, a->toast_rect, REFRESH_UI);  // (already inside the arriving page's full repaint)
 }
 
-static bool go_to_page(App *a, int index, bool remember) {
+static bool go_to_page(App *a, int index) {
     S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
     S->panel_stale = false;
     if (!save_page(a)) { compose_all(a, REFRESH_FULL); return false; }
@@ -847,7 +791,6 @@ static bool go_to_page(App *a, int index, bool remember) {
         app_toast(a, _("Could not open that page"), 3000);
         return false;
     }
-    if (remember && index != S->index) nav_history_push(&S->back, S->nb.page_ids[S->index]);
     S->page = np;
     S->index = index;
     S->nb.last_page = index;
@@ -857,17 +800,6 @@ static bool go_to_page(App *a, int index, bool remember) {
     compose_all(a, REFRESH_FULL);
     arrive_readonly(a);
     return true;
-}
-
-static bool go_back(App *a) {
-    int dest = back_target(a);
-    if (dest < 0 || !save_page(a)) return false;
-    NavHistory old = S->back;
-    nav_history_pop(&S->back, &S->nb, S->nb.page_ids[S->index]);
-    if (go_to_page(a, dest, false)) return true;
-    S->back = old;
-    compose_all(a, REFRESH_UI);
-    return false;
 }
 
 // The open notebook's page size (it keeps the one it was made with, whatever the screen). The page
@@ -977,7 +909,6 @@ static void close_notebook(App *a) {
     S->pv.tab_initialized = false;
     nav_free(&S->nav);
     nav_init(&S->nav);
-    S->back = (NavHistory){0};
     S->open = false;
     store_take_restored_count();  // (page 1, read for the thumbnail above, was drawn as it is now)
     bgimage_forget(NULL);         // the notebook's pictures (up to 3 pages' worth) and its failures
@@ -1025,7 +956,7 @@ void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool adde
     if (!S->open || strcmp(S->nb.id, id)) return;
     for (int i = 0; i < S->nb.npages; i++)
         if (S->nb.page_ids[i] == page_id) {
-            if (i != S->index) go_to_page(a, i, false);
+            if (i != S->index) go_to_page(a, i);
             break;
         }
     if (!added) return;
@@ -1430,9 +1361,9 @@ static void pages_show(App *a) {
     compose_all(a, REFRESH_FULL);
 }
 
-static void pages_hide(App *a, int open_index, bool remember) {
+static void pages_hide(App *a, int open_index) {
     pagesview_close(&S->pv);
-    if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index, remember);
+    if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index);
     else compose_all(a, REFRESH_FULL);
 }
 
@@ -1492,7 +1423,7 @@ static void pages_added(App *a, int at) {
     S->nb.last_page = S->index;
     S->pv.current = S->index;
     S->changed = true;
-    pages_hide(a, at, false);
+    pages_hide(a, at);
 }
 
 // New page: the notebook's own paper (Blank in a book's notebook: annotate.h), at the index the
@@ -1532,8 +1463,8 @@ static void pages_copy(App *a, int index) {
 
 static void pages_event(App *a, int ph, const InEvent *ev) {
     switch (pagesview_pointer(&S->pv, a, ph, ev)) {
-    case PV_CLOSE: pages_hide(a, -1, false); break;
-    case PV_OPEN: pages_hide(a, S->pv.target, true); break;
+    case PV_CLOSE: pages_hide(a, -1); break;
+    case PV_OPEN: pages_hide(a, S->pv.target); break;
     case PV_DELETE: pages_delete(a); break;
     case PV_NEW: pages_new(a, S->pv.target); break;
     case PV_COPY: pages_copy(a, S->pv.target); break;
@@ -1698,7 +1629,7 @@ static void panel_act(App *a, const Hit *h) {
     }
     case P_UNDO: undo_redo(a, true); break;
     case P_REDO: undo_redo(a, false); break;
-    case P_PREV: go_to_page(a, S->index - 1, false); break;
+    case P_PREV: go_to_page(a, S->index - 1); break;
     case P_NEXT:
         if (S->index >= S->nb.npages - 1) {
             if (!save_page(a)) return;
@@ -1708,7 +1639,7 @@ static void panel_act(App *a, const Hit *h) {
             }
             S->changed = true;
         }
-        go_to_page(a, S->index + 1, false);
+        go_to_page(a, S->index + 1);
         break;
     case P_PAPER:
         if (refuse_readonly(a)) break;
@@ -1741,7 +1672,7 @@ static void panel_act(App *a, const Hit *h) {
 bool editor_shortcut(App *a, int action) {
     if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || !action) return false;
     if (action == SHORTCUT_INDEX && S->pv.open && !S->pv.kb.open) {
-        if (S->pv.index_tab) pages_hide(a, -1, false);
+        if (S->pv.index_tab) pages_hide(a, -1);
         else { S->pv.index_tab = true; pagesview_untick(&S->pv); compose_all(a, REFRESH_FULL); }
         return true;
     }
@@ -1752,7 +1683,6 @@ bool editor_shortcut(App *a, int action) {
         pages_show(a);
         return S->pv.open;
     }
-    if (action == SHORTCUT_BACK) return go_back(a);
     if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) {
         int index = -1;
         for (int i = 0; i < N_DRAW_TOOLS; i++) if (k_draw_tools[i] == a->settings.current_tool) index = i;
@@ -1767,7 +1697,7 @@ bool editor_shortcut(App *a, int action) {
         panel_act(a, &(Hit){.id = action == SHORTCUT_UNDO ? P_UNDO : P_REDO});
     } else if (action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE) {
         // A controller page button never creates an unrequested new page at the end.
-        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1), false);
+        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1));
     } else if (action == SHORTCUT_WHITE) {
         a->settings.white = !a->settings.white;
         settings_save(&a->settings);
@@ -2093,21 +2023,6 @@ void editor_event(App *a, const InEvent *ev) {
             tplsheet_pointer(&S->ts, a, 0, ev->x, ev->y, ev->t_ms, &d);
             return;
         }
-        if (!S->paper_open && rect_contains(back_chip(a), (int)ev->x, (int)ev->y) &&
-            !rect_contains(S->panel, (int)ev->x, (int)ev->y)) {
-            go_back(a);
-            S->owner = OWN_MODAL;
-            S->has_pressed = false;
-            return;
-        }
-        if (zoomed(a) && rect_contains(zoom_chip(a), (int)ev->x, (int)ev->y) && !S->paper_open &&
-            !rect_contains(S->panel, (int)ev->x, (int)ev->y)) {
-            view_reset(a);
-            compose_all(a, REFRESH_FULL);
-            S->owner = OWN_MODAL;  // swallow the rest of this tap
-            S->has_pressed = false;
-            return;
-        }
         if (S->paper_open) {
             if (!rect_contains(S->paper_rect, (int)ev->x, (int)ev->y)) {
                 // Tapping outside the sheet dismisses it.
@@ -2300,16 +2215,12 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", has_page ? nav_name(&S->nav, S->nb.page_ids[S->index]) : "");
     } else if (!strcmp(key, "index_rows")) {
         snprintf(out, cap, "%d", has_page ? nav_index(&S->nav, &S->nb, NULL, 0) : 0);
-    } else if (!strcmp(key, "back")) {
-        snprintf(out, cap, "%d", back_target(a) + 1);
-    } else if (!strcmp(key, "back_chip")) {
-        snprintf(out, cap, "%d", back_target(a) >= 0);
     } else if (!strcmp(key, "tool")) {
         const char *name = app_probe_tool(a->settings.current_tool);  // a tool it lacks: its number
         if (name) snprintf(out, cap, "%s", name);
         else snprintf(out, cap, "%d", (int)a->settings.current_tool);
     } else if (!strcmp(key, "zoom")) {
-        snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // as the zoom chip shows it: 1.00 = not zoomed
+        snprintf(out, cap, "%.2f", S->zoom / S->zoom_default);  // 1.00 = fitted page view
     } else if (!strcmp(key, "page_size")) {
         // The open page's own size: its notebook's, whatever the screen (a page that came at the
         // screen's size instead would show here).
@@ -2318,7 +2229,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
     } else if (!strcmp(key, "scale")) {
         snprintf(out, cap, "%.2f", S->open ? S->zoom : 0.f);  // screen px per page px
     } else if (!strcmp(key, "zoomed")) {
-        snprintf(out, cap, "%d", S->open && zoomed(a) ? 1 : 0);  // the zoom chip shows
+        snprintf(out, cap, "%d", S->open && zoomed(a) ? 1 : 0);
     } else if (!strcmp(key, "stroke_start")) {
         // Where the page's newest stroke starts, in page px: ink lands under the pen through the view.
         const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;

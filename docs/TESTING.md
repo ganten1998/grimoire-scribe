@@ -17,7 +17,26 @@ their results are below, newest first.
 |---|---|---|---|---|---|
 | 2026-10-24 | Kindle Scribe 2024 | 5.19.6 | v2026.07.2 | 0.2.2 (CLI 1.0.0), `kindlehf` | 1.1.0-rc.1, 1.1.0-rc.2 |
 | 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 1.1.0-rc.3 |
-| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 2.0.0-beta.1 |
+| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 2.0.0-beta.1, 2.0.0-beta.2 |
+
+## 2.0.0-beta.2 on firmware 5.20.1.0.2
+
+The Index/page-control candidate at `295f811` passed the full Mac and cloud checks; all three
+cloud packages matched the Mac build byte for byte. It was installed through KPM 0.2.4 after a
+fresh backup. All notebook, template and settings hashes and KOReader process IDs were unchanged.
+The maintainer confirmed New page, Copy page with independent ink, Index jumps, naming pages and
+names surviving reopening.
+
+The maintainer then requested removal of the floating Back and reset-zoom controls. Index jumps
+and pinch zoom now leave the page clear; pinch inward returns to the fitted view. The focused
+interaction checks cover jumps with unsaved ink, failed saves and the former button positions.
+
+The highlighter now has a fixed vertical tip. The maintainer explicitly accepted that old
+highlights render with the new shape, tracked in issue #5. Tests check the tip's proportions and
+fixed orientation, live/saved agreement and erasing/compaction. The original render-reference
+tables stay in place with explicit exceptions only for highlighter-containing renders; other
+tools, paper and serialized file bytes keep their old references. Device checks of this revision
+are recorded separately from the earlier candidate's results.
 
 ## 2.0.0-beta.1 on firmware 5.20.1.0.2
 

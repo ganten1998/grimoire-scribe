@@ -7,7 +7,7 @@ enum {
     SHORTCUT_NONE = 0, SHORTCUT_TOOL_BASE = 1, // plus ToolKind (0..9)
     SHORTCUT_UNDO = 20, SHORTCUT_REDO, SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE,
     SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL, SHORTCUT_WHITE,
-    SHORTCUT_INDEX, SHORTCUT_BACK,
+    SHORTCUT_INDEX,
 };
 typedef struct { int code, mods, action; bool gamepad; } ShortcutBinding;
 typedef struct { ShortcutBinding bindings[SHORTCUT_MAX]; int count, rejected; } Shortcuts;

@@ -52,7 +52,7 @@ static void value_text(const ParamInfo *pi, float v, char *buf, size_t cap) {
     if (!strcmp(pi->unit, "deg")) snprintf(buf, cap, _("%d deg"), (int)lrintf(v));
     else if (!strcmp(pi->unit, "mm")) snprintf(buf, cap, "%.2f mm", v);
     // TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
-    // pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
+    // pen on its side, a percentage ("+35%"; in Spanish "+35 %", the usual spacing), up
     // to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
     // what it needs (about 150 px for "+400 %" in Gothic, 120 in Classic) and the name the rest.
     else if (!strcmp(pi->unit, "x")) snprintf(buf, cap, _("+%.0f%%"), v * 100.f);

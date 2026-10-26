@@ -261,7 +261,7 @@ expect screen is editor
 # The editor: the panel, the tool picker (White, then Pin mode: four pens pinned, a fifth refused,
 # all unpinned; Pen feel with white ink; Black), the paper sheet and its Templates sheet (with no
 # templates yet), the Display sheet (Pin this page, then the sleep screen back as it was), two more
-# pages, the Pages view with Select all and Delete (3), the zoom chip after a pinch, Clear.
+# pages, the Pages view with Select all and Delete (3), the unobstructed page after a pinch, Clear.
 pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
@@ -377,9 +377,8 @@ tap 125 95
 pentap 1768 938
 pentap 1768 1026
 tap 900 300
-expect editor.back_chip is 1
-shot 28-index-back
-tap 200 74
+shot 28-index-jump
+pentap 1768 938
 pentap 1768 1114
 pentap 1768 1026
 tap 1400 95
@@ -404,6 +403,8 @@ wait 100
 expect editor.zoom not 1.00
 shot 31-zoom
 tap 930 74
+expect editor.zoom not 1.00
+pinch 900 900 700 200 6
 wait 100
 expect editor.zoom is 1.00
 pentap 1768 810

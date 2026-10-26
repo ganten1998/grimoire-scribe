@@ -182,21 +182,3 @@ int nav_section_of(const Nav *n, const NotebookInfo *nb, int index) {
         if (*nav_name(n, nb->page_ids[i])) return i;
     return -1;
 }
-
-void nav_history_push(NavHistory *h, uint32_t pid) {
-    if (!pid || (h->count && h->ids[h->count - 1] == pid)) return;
-    if (h->count == NAV_HISTORY_MAX) {
-        memmove(h->ids, h->ids + 1, (NAV_HISTORY_MAX - 1) * sizeof h->ids[0]);
-        h->count--;
-    }
-    h->ids[h->count++] = pid;
-}
-
-int nav_history_pop(NavHistory *h, const NotebookInfo *nb, uint32_t current) {
-    while (h->count) {
-        uint32_t pid = h->ids[--h->count];
-        if (pid == current) continue;
-        for (int i = 0; i < nb->npages; i++) if (nb->page_ids[i] == pid) return i;
-    }
-    return -1;
-}

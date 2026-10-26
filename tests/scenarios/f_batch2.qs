@@ -44,7 +44,7 @@ pentap 1768 594
 wait 400
 shot 05-undo-clear
 expect editor.strokes is 1
-# pinch zoom in around the writing, write small, then reset with the chip
+# pinch zoom in around the writing, write small, then pinch back out
 pinch 600 600 300 750 6
 wait 300
 shot 06-zoomed
@@ -54,6 +54,8 @@ wait 300
 shot 07-zoomed-writing
 expect editor.strokes is 2
 tap 930 74
+expect editor.zoom not 1.00
+pinch 600 600 750 200 6
 wait 300
 shot 08-zoom-reset
 expect editor.zoom is 1.00

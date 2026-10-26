@@ -1,12 +1,11 @@
 // nav.h: notebook section names, kept apart from page ink in nav.ini. Page ids, not page
-// positions, keep names and the session's Back history attached when pages move or notes are added.
+// positions, keep names attached when pages move or notes are added.
 #pragma once
 #include "store.h"
 
 #define NAV_NAME_LEN 96
 #define NAV_FILE_MAX (256 * 1024)
 #define NAV_UNKNOWN_MAX (16 * 1024)
-#define NAV_HISTORY_MAX 16
 
 typedef struct { uint32_t pid; char text[NAV_NAME_LEN]; } NavName;
 typedef struct {
@@ -16,7 +15,6 @@ typedef struct {
     size_t unknown_len;
     bool writable;  // false after an unreadable or oversized file: never overwrite it
 } Nav;
-typedef struct { uint32_t ids[NAV_HISTORY_MAX]; int count; } NavHistory;
 
 void nav_init(Nav *nav);
 void nav_free(Nav *nav);
@@ -31,6 +29,3 @@ int nav_save(const char *id, Nav *nav, const NotebookInfo *nb);
 // Named pages in notebook order; returns the full count, writes at most cap page indices.
 int nav_index(const Nav *nav, const NotebookInfo *nb, int *indices, int cap);
 int nav_section_of(const Nav *nav, const NotebookInfo *nb, int index);  // page index, or -1
-void nav_history_push(NavHistory *h, uint32_t pid);
-// Pops past removed pages and the current page, returning a page index, or -1 when empty.
-int nav_history_pop(NavHistory *h, const NotebookInfo *nb, uint32_t current);

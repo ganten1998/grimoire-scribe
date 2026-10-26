@@ -414,8 +414,7 @@ int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, in
 
 int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w) {
     // Gothic's ends are points as deep as half the chip (ui_frame's cut corners): the text keeps
-    // all but 7 px of that from each tip, as the zoom chip's widest English ("222%   tap to
-    // reset") does in its 380 px. Classic's round ends leave the text room closer in.
+    // all but 7 px of that from each tip. Classic's round ends leave the text room closer in.
     return ui_text_box_w(f, px, text, gothic() ? h / 2 - ui_px(7) : ui_px(24), min_w, max_w);
 }
 

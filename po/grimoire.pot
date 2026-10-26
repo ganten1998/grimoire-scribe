@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-25 21:18-0500\n"
+"POT-Creation-Date: 2026-10-25 21:56-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -437,20 +437,6 @@ msgstr ""
 #. one line or two).
 #: src/editor.c src/library.c
 msgid "Custom music..."
-msgstr ""
-
-#. TRANSLATORS: the chip at the top of a zoomed page: the zoom, then that a tap on the chip takes
-#. the page back to its usual size. In bold at 34 px; the chip grows with its text.
-#: src/editor.c
-#, c-format
-msgid "%d%%   tap to reset"
-msgstr ""
-
-#. TRANSLATORS: a tappable chip at the top of a page after an Index or Pages jump; it grows
-#. with its text, like the zoom chip. %d is the origin page's current number.
-#: src/editor.c
-#, c-format
-msgid "Back to page %d"
 msgstr ""
 
 #. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
@@ -1360,7 +1346,7 @@ msgid "%d deg"
 msgstr ""
 
 #. TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
-#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the space as on the zoom chip), up
+#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the usual spacing), up
 #. to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
 #. what it needs (about 150 px for "+400 %" in Gothic, 120 in Classic) and the name the rest.
 #: src/pensettings.c

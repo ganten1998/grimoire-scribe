@@ -25,9 +25,8 @@ pad.311=next-tool
 
 Actions: `tool:pencil`, `tool:mech`, `tool:ballpoint`, `tool:fountain`, `tool:fineliner`,
 `tool:marker`, `tool:charcoal`, `tool:calligraphy`, `tool:highlighter`, `tool:eraser`, `undo`,
-`redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`, `index`, `back`.
-The last two are optional custom mappings: Index opens the section list (and closes it when it
-is already open); Back returns from a jump. Existing shortcut files are never rewritten.
+`redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`, `index`.
+The optional custom Index mapping opens the section list (and closes it when it is already open). Existing shortcut files are never rewritten.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape and `codeNN` (Linux evdev number 1–767). Modifiers Ctrl, Shift, Alt, Meta match exactly.

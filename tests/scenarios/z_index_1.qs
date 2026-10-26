@@ -1,5 +1,5 @@
 # Section names stay with page ids through insert/delete, Index opens no other page files,
-# jumps offer Back, and names survive closing/reopening the notebook. Both orientations.
+# jumps leave the writing area clear, and names survive closing/reopening the notebook. Both orientations.
 # env: GRIMOIRE_CHECK_FIT=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index .
@@ -63,20 +63,20 @@ shot 02-two-sections
 tap 900 435
 expect editor.page is 3
 expect editor.page_name is Notes
-expect editor.back is 1
-expect editor.back_chip is 1
 pen line 300 900 1000 950 40 0.5 0.9
 expect editor.live_matches_render is 1
-shot 03-jump-back
-storage full
-key 105 4
+tap 200 74
 expect editor.page is 3
-expect editor.back is 1
+shot 03-jump-clear-page
+storage full
+key 23 1
+tap 900 300
+expect editor.page is 3
 expect editor.unsaved is 1
 storage ok
-key 105 4
+key 23 1
+tap 900 300
 expect editor.page is 1
-expect editor.back_chip is 0
 # Insert a blank note between sections.
 pentap 1768 1026
 tap 430 95
@@ -91,8 +91,10 @@ shot 04-inserted-note
 tap 900 435
 expect editor.page is 4
 expect editor.page_name is Notes
-expect editor.back is 2
 tap 200 74
+expect editor.page is 4
+pentap 1768 938
+pentap 1768 938
 expect editor.page is 2
 # Delete the Start section. Notes still names the same physical page.
 pentap 1768 1026

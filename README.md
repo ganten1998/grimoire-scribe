@@ -103,10 +103,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   show their source page number under the tile.
   The **Index** tab lists named sections in page order. Choose **Name this page** to add the
   open page, or rename it; an empty name removes it from the Index. Tap a section to jump there,
-  then use **Back to page...** to return. Names stay attached when pages are inserted or deleted.
+  without adding controls over your writing. Names stay attached when pages are inserted or deleted.
   A notebook ZIP keeps the section names too.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
-- **Pinch** to zoom up to 4x. Grimoire turns with the Kindle (switchable).
+- **Pinch** to zoom up to 4x, or inward to return to the fitted page view. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
   page, or the Kindle's own screensaver). Waking brings you straight back.
 - **Leaving**: **Library > Exit**, or hold the power button 4 seconds on any screen, asleep or

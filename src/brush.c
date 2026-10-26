@@ -102,7 +102,7 @@ void tool_params_default(ToolKind t, ToolParams *o) {
 }
 
 // Per-tool look that is not user-tweakable.
-typedef enum { NIB_NONE = 0, NIB_ITALIC, NIB_BROAD_EDGE } NibKind;
+typedef enum { NIB_NONE = 0, NIB_ITALIC, NIB_BROAD_EDGE, NIB_VERTICAL } NibKind;
 typedef struct {
     uint8_t ink;
     float rim;     // fraction of the radius that fades out
@@ -125,7 +125,7 @@ static ToolLook look_of(ToolKind t) {
     switch (t) {
     case TOOL_MECH_PENCIL: lk = (ToolLook){32, 0.20f, 0.f, 0.06f, true}; break;
     case TOOL_BALLPOINT: lk = (ToolLook){12, 0.10f, 0.35f, 0.f, false}; break;
-    case TOOL_HIGHLIGHTER: lk = (ToolLook){110, 0.06f, 0.f, 0.f, false}; break;
+    case TOOL_HIGHLIGHTER: lk = (ToolLook){110, 0.06f, 0.f, 0.f, false, NIB_VERTICAL}; break;
     case TOOL_FOUNTAIN: lk = (ToolLook){8, 0.10f, 0.f, 0.f, false, NIB_ITALIC}; break;
     case TOOL_CALLIGRAPHY: lk = (ToolLook){6, 0.08f, 0.f, 0.f, false, NIB_BROAD_EDGE}; break;
     case TOOL_FINELINER: lk = (ToolLook){5, 0.08f, 0.f, 0.f, false}; break;
@@ -361,7 +361,10 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     // Calligraphy: the nib follows the pen's lean, lightly smoothed along the stroke (about
     // 1.5 mm), so sensor noise does not wobble the edge. Updated for every dab, inked or not.
     float nca = 0.7660444f, nsa = 0.6427876f;  // italic nib at 40 degrees (fountain pen)
-    if (lk.nib == NIB_BROAD_EDGE) {
+    if (lk.nib == NIB_VERTICAL) {
+        nca = 0.f;
+        nsa = 1.f;  // fixed vertical edge, independent of the pen's lean
+    } else if (lk.nib == NIB_BROAD_EDGE) {
         float c2, s2;
         nib_target(&b->params, s->tilt_x, s->tilt_y, &c2, &s2);
         if (!b->nib_init) {
@@ -479,7 +482,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
                     // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
                     float u = dx * nca + dy * nsa, v = (-dx * nsa + dy * nca) / ITALIC_RATIO;
                     d = sqrtf(u * u + v * v);
-                } else if (lk.nib == NIB_BROAD_EDGE) {
+                } else if (lk.nib == NIB_BROAD_EDGE || lk.nib == NIB_VERTICAL) {
                     // A flat, square-cut nib (a superellipse): crisp angled ends like a real
                     // broad-edge pen, hairlines along the edge, full width across it.
                     float u = dx * nca + dy * nsa, v = (-dx * nsa + dy * nca) / BROAD_RATIO;

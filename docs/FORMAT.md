@@ -637,7 +637,7 @@ start; ids refer to `notebook.ini`'s page ids, not their current positions. The 
 in notebook order. A name is a trimmed single line of at most 95 bytes, cut between UTF-8
 characters; controls become spaces. An empty name removes it, and the last line for an id wins.
 Names whose page was deleted are omitted on the next successful atomic save. A failed save
-does not prune the in-memory names. Back history is session-only and also uses stable page ids.
+does not prune the in-memory names.
 
 Unknown non-comment lines are carried in order, up to 255 bytes each and 16 KiB together, so
 future navigation records survive. A file larger than 256 KiB, containing NUL, exceeding those
@@ -838,3 +838,11 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `shortcuts_enabled` (2.0) | dropped on the next save | kept; there are no shortcuts there |
 | `shortcuts.ini` (2.0) | never read | never read |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
+
+## Highlighter rendering in 2.0.0-beta.2
+
+The highlighter now uses a fixed vertical broad edge. Its stored tool id and 13-float parameter
+snapshot are unchanged, so this shape also applies when older highlighter strokes are rendered
+or exported. Points and pressure samples are kept; the visible coverage differs. Returning to
+beta.1 renders those strokes with its round tip. Preserving the old nib shape per stroke is
+tracked in [issue #5](https://github.com/ganten1998/grimoire-scribe/issues/5).
