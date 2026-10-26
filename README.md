@@ -104,7 +104,12 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   The **Index** tab lists named sections in page order. Choose **Name this page** to add the
   open page, or rename it; an empty name removes it from the Index. Tap a section to jump there,
   without adding controls over your writing. Names stay attached when pages are inserted or deleted.
-  A notebook ZIP keeps the section names too.
+  A notebook ZIP keeps the section names too, and the notebook's PDF lists them as its table of
+  contents.
+- **Links**: in the Index tab choose **Add a link**, draw around what should link (a box, a ring,
+  an underline), then tap the page it goes to, or **The Index**. A finger's tap on it later turns to
+  that page; hold a finger on it to change where it goes or remove it (the ink stays). Erasing or
+  undoing the ink takes the link away. In the notebook's PDF the links work too.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
 - **Pinch** to zoom up to 4x, or inward to return to the fitted page view. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned

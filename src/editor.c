@@ -29,6 +29,11 @@
 // or once the pen has been gone this long.
 #define SETTLE_NEAR_MS 1500
 #define SETTLE_LEFT_MS 150
+// A finger held this long on a link (without moving) opens it to change or remove; a shorter tap
+// follows it.
+#define LINK_HOLD_MS 600
+// A link's box drawn smaller than this both ways is no box: it is taken back.
+#define LINK_BOX_MIN_MM 5.f
 
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
@@ -37,7 +42,7 @@ enum {
 };
 
 typedef enum { OWN_NONE, OWN_DRAW, OWN_ERASE, OWN_PANEL, OWN_MODAL, OWN_DISPLAY, OWN_PAGES, OWN_TOOLS, OWN_BUILD,
-               OWN_TEMPLATES } Owner;
+               OWN_TEMPLATES, OWN_LINK } Owner;
 
 // Every page visited while a notebook is open stays in memory with its history: undo
 // actions point at the page's live Stroke objects, so a page must never be freed and
@@ -146,6 +151,14 @@ struct EditorState {
 
     PagesView pv;               // the Pages view (pagesview.h)
     Nav nav;
+    // Links (nav.h). Add a link (the Index) waits for the next ink stroke on the open page, its box
+    // (link_mode); then the Pages view picks where it goes. A finger's tap on a link follows it; one
+    // held on it (LINK_HOLD_MS) opens the Pages view to change where it goes, or remove it.
+    bool link_mode;
+    uint32_t link_seed;         // the link the Pages view picks for: its box's seed
+    Press link_press;           // a finger on the page (OWN_LINK)
+    uint32_t link_down_at;
+    bool link_held;
 
     // Paper sheet
     bool paper_open;
@@ -802,6 +815,7 @@ static void arrive_readonly(App *a) {
 }
 
 static bool go_to_page(App *a, int index) {
+    S->link_mode = false;    // (a link's box is drawn on the page Add a link was asked on)
     S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
     S->panel_stale = false;
     if (!save_page(a)) { compose_all(a, REFRESH_FULL); return false; }
@@ -880,6 +894,7 @@ static void closed_record(App *a) {}
 
 static void close_notebook(App *a) {
     if (!S->open) return;
+    S->link_mode = false;
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
     // thumbnail and the PDF it drew of them are drawn again.
     if (store_take_restored_count() > 0) {
@@ -1037,6 +1052,19 @@ static const Canvas *page_paper(App *a) {
     return c;
 }
 
+// Whether stroke s, drawn after Add a link, is too small to be the link's box both ways.
+static bool link_box_too_small(App *a, const Stroke *s) {
+    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+    for (int i = 0; i < s->n; i++) {
+        x0 = fminf(x0, s->pts[i].x); x1 = fmaxf(x1, s->pts[i].x);
+        y0 = fminf(y0, s->pts[i].y); y1 = fmaxf(y1, s->pts[i].y);
+    }
+    float min_px = LINK_BOX_MIN_MM * a->dpi / 25.4f;
+    return x1 - x0 < min_px && y1 - y0 < min_px;
+}
+
+static void link_box_drawn(App *a, const Stroke *s);
+
 static void draw_begin(App *a, const InEvent *ev) {
     if (refuse_readonly(a)) {  // neither ink nor the eraser (tool, eraser end or side button)
         if (S->btn_down) S->btn_used_for_ink = true;
@@ -1077,6 +1105,8 @@ static void draw_begin(App *a, const InEvent *ev) {
     }
     ToolParams prm = ps.act == PEN_PRECISE ? eraser_at_zoom(&a->settings.tools[TOOL_ERASER], S->zoom)
                                            : a->settings.tools[ps.tool];
+    // Ink never shares a seed with a stroke or a link of the page: a link's box is its seed's strokes.
+    if (!erase) seed = nav_new_seed(&S->nav, S->page, S->nb.page_ids[S->index], seed);
     S->cur = erase ? stroke_new(TOOL_ERASER, &prm, erase_seed(ps.tool, seed)) : stroke_new(ps.tool, &prm, seed);
     if (!S->cur) {
         S->owner = OWN_NONE;
@@ -1119,6 +1149,17 @@ static void draw_end(App *a) {
         stroke_free(s);
         return;
     }
+    if (S->link_mode && !stroke_is_erase(s) && link_box_too_small(a, s)) {
+        // A dot or a tick for a link's box: taken back (no undo step), and the next stroke is tried.
+        Rect d = s->bbox;
+        stroke_free(s);
+        draw_page(a, d);
+        show(a, d, REFRESH_UI);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
+        // stroke drawn was too small to be the link's box.
+        app_toast(a, _("Too small for a link: draw around what links."), 3000);
+        return;
+    }
     History *h = cur_hist(a);
     bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
     bool was_empty = S->page->n == 0, erase = stroke_is_erase(s);
@@ -1130,6 +1171,7 @@ static void draw_end(App *a) {
     mark_changed(a);
     // Only touch the panel when Undo/Redo availability actually changed.
     if (!had_undo || had_redo || was_empty) S->panel_stale = true;
+    if (S->link_mode && !erase && kept) link_box_drawn(a, s);
 }
 
 static float dist2_to_segment(float px, float py, float ax, float ay, float bx, float by) {
@@ -1379,6 +1421,7 @@ static void undo_redo(App *a, bool undo) {
 // ---- pages view: open, act, delete ----
 
 static void pages_show(App *a) {
+    S->link_mode = false;
     save_page(a);
     if (!pagesview_open(&S->pv, a, &S->nb, &S->nav, S->index)) return;
     compose_all(a, REFRESH_FULL);
@@ -1432,6 +1475,8 @@ static void pages_delete(App *a) {
     save_page(a);
     if (S->nav.writable && nav_save(S->nb.id, &S->nav, &S->nb) != 0)
         qlog("index: deleted-page names left for a later save");
+    if (S->nav.links_writable && nav_save_links(S->nb.id, &S->nav, &S->nb) != 0)
+        qlog("index: deleted pages' links left for a later save");
     char msg[256];
     // TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
     snprintf(msg, sizeof msg, NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", k), k, "grimoire/trash");
@@ -1484,9 +1529,90 @@ static void pages_copy(App *a, int index) {
     app_toast(a, msg, 2500);
 }
 
+// After Add a link: stroke s, just drawn on the open page, is the link's box. The Pages view picks
+// where it goes.
+static void link_box_drawn(App *a, const Stroke *s) {
+    S->link_mode = false;
+    S->link_seed = s->seed;
+    save_page(a);
+    if (!pagesview_pick(&S->pv, a, &S->nb, &S->nav, S->index, false)) return;
+    compose_all(a, REFRESH_FULL);
+    // TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
+    // box of a new link is drawn; tap the page (or the Index) it goes to.
+    app_toast(a, _("Where does the link go? Tap its page."), 3000);
+}
+
+// The link the Pages view picked for goes to target ("index" or "p<page id>"), and the view closes on
+// the open page.
+static void link_to(App *a, const char *target, const char *done) {
+    uint32_t pid = S->nb.page_ids[S->index];
+    pages_hide(a, -1);
+    if (nav_link_set(&S->nav, pid, S->link_seed, target) != 0 || nav_save_links(S->nb.id, &S->nav, &S->nb) != 0) {
+        nav_load(S->nb.id, &S->nav);  // (back to the links as saved)
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
+        app_toast(a, _("Could not save the link."), 3000);
+        return;
+    }
+    S->changed = true;
+    app_toast(a, done, 2500);
+}
+
+// Back while the Pages view picks for a link drawn just now: its box is taken back (an undo step,
+// the box's own: nothing else happened since).
+static void link_cancel(App *a) {
+    bool had = S->pv.pick_had;
+    pages_hide(a, -1);
+    if (had) return;
+    History *h = cur_hist(a);
+    const Page *p = S->page;
+    if (h && history_can_undo(h) && p && p->n && p->strokes[p->n - 1]->seed == S->link_seed) undo_redo(a, true);
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
+    // new link goes took its box back.
+    app_toast(a, _("No link made."), 2500);
+}
+
 static void pages_event(App *a, int ph, const InEvent *ev) {
     switch (pagesview_pointer(&S->pv, a, ph, ev)) {
-    case PV_CLOSE: pages_hide(a, -1); break;
+    case PV_CLOSE:
+        if (S->pv.picking) link_cancel(a);
+        else pages_hide(a, -1);
+        break;
+    case PV_LINK:
+        pages_hide(a, -1);
+        if (refuse_readonly(a)) break;
+        S->link_mode = true;
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
+        // a box or a ring around what links with the pen; the Pages view then asks where it goes.
+        app_toast(a, _("Draw around what links. Then tap where it goes."), 4000);
+        break;
+    case PV_PICK: {
+        char target[NAV_TARGET_LEN], done[160];
+        int to = S->pv.target;
+        snprintf(target, sizeof target, "p%u", S->nb.page_ids[to]);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
+        // page now goes to page %d (a tap on it with a finger turns there).
+        snprintf(done, sizeof done, _("The link goes to page %d."), to + 1);
+        link_to(a, target, done);
+        break;
+    }
+    case PV_PICK_INDEX:
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
+        // page now opens the Index (the list of named pages).
+        link_to(a, "index", _("The link goes to the Index."));
+        break;
+    case PV_UNLINK:
+        pages_hide(a, -1);
+        nav_link_remove(&S->nav, S->nb.page_ids[S->index], S->link_seed);
+        if (nav_save_links(S->nb.id, &S->nav, &S->nb) != 0) {
+            nav_load(S->nb.id, &S->nav);
+            app_toast(a, _("Could not save the link."), 3000);
+            break;
+        }
+        S->changed = true;
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Remove link took the
+        // link away; the ink drawn around it is still on the page.
+        app_toast(a, _("Link removed. Its ink stays on the page."), 2500);
+        break;
     case PV_OPEN: pages_hide(a, S->pv.target); break;
     case PV_DELETE: pages_delete(a); break;
     case PV_NEW: pages_new(a, S->pv.target); break;
@@ -1503,6 +1629,56 @@ static void pages_event(App *a, int ph, const InEvent *ev) {
     }
     default: break;
     }
+}
+
+// The link under (x, y) on screen, on the open page: false for none.
+static bool link_under(App *a, float x, float y, NavLink *out) {
+    if (!S->page) return false;
+    float px, py;
+    to_page(a, x, y, &px, &py);
+    return nav_link_at(&S->nav, S->page, S->nb.page_ids[S->index], px, py, NAV_LINK_MIN_MM * a->dpi / 25.4f, out);
+}
+
+// A finger's tap at (x, y): a link there goes to its page, or opens the Index.
+static void link_follow(App *a, float x, float y) {
+    NavLink l;
+    if (!link_under(a, x, y, &l)) return;
+    int to = nav_link_page(&l, &S->nb);
+    if (to >= 0) {
+        go_to_page(a, to);
+    } else if (to == NAV_TO_INDEX) {
+        pages_show(a);
+        S->pv.index_tab = true;
+        compose_all(a, REFRESH_FULL);
+    } else {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
+        // whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
+        app_toast(a, _("That link's page is not in this notebook."), 3000);
+    }
+}
+
+// A finger held still on a link: the Pages view opens to change where it goes, or remove it.
+static void link_hold(App *a) {
+    S->link_held = true;
+    NavLink l;
+    if (!link_under(a, S->link_press.x0, S->link_press.y0, &l)) return;
+    if (refuse_readonly(a)) return;
+    if (!S->nav.links_writable) return;
+    S->link_seed = l.seed;
+    save_page(a);
+    S->link_mode = false;
+    if (!pagesview_pick(&S->pv, a, &S->nb, &S->nav, S->index, true)) return;
+    compose_all(a, REFRESH_FULL);
+    char msg[160];
+    int to = nav_link_page(&l, &S->nb);
+    // TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): a
+    // finger held on a link; it goes to page %d now, and a tap on another page changes that.
+    if (to >= 0) snprintf(msg, sizeof msg, _("The link goes to page %d. Tap another to change it."), to + 1);
+    // TRANSLATORS: the same toast for a link to the Index.
+    else if (to == NAV_TO_INDEX) snprintf(msg, sizeof msg, "%s", _("The link goes to the Index. Tap a page to change it."));
+    // TRANSLATORS: the same toast for a link whose page is gone.
+    else snprintf(msg, sizeof msg, "%s", _("The link's page is not in this notebook. Tap a page to change it."));
+    app_toast(a, msg, 3500);
 }
 
 static void move_panel_to(App *a, int x, int y, RefreshMode m) {
@@ -1946,6 +2122,7 @@ static void pinch(App *a, const InEvent *ev) {
     float mx = (ev->x + ev->x2) * 0.5f, my = (ev->y + ev->y2) * 0.5f;
     float d = hypotf(ev->x2 - ev->x, ev->y2 - ev->y);
     if (ev->type == IN_PINCH_BEGIN) {
+        if (S->owner == OWN_LINK) S->owner = OWN_NONE;  // the first finger turns into the pinch
         if (S->owner == OWN_PANEL && !S->owner_is_pen) {
             // The first finger had pressed a panel button: that press is cancelled.
             if (S->has_pressed && S->pressed.id != P_GRIP && S->pressed.id != P_EXPAND) {
@@ -2091,6 +2268,12 @@ void editor_event(App *a, const InEvent *ev) {
         } else if (pen) {
             draw_begin(a, ev);
             if (S->owner == OWN_DRAW) draw_sample(a, ev);
+        } else {
+            // A finger on the page: a tap follows a link there, a hold opens it (editor_tick).
+            S->owner = OWN_LINK;
+            press_begin(&S->link_press, ev->x, ev->y, ev->t_ms);
+            S->link_down_at = now_ms();
+            S->link_held = false;
         }
         return;
     }
@@ -2107,6 +2290,12 @@ void editor_event(App *a, const InEvent *ev) {
     case OWN_PAGES:
         pages_event(a, ph, ev);
         if (ph == 2) S->owner = OWN_NONE;
+        break;
+    case OWN_LINK:
+        press_move(&S->link_press, ev->x, ev->y);
+        if (ph != 2) break;
+        S->owner = OWN_NONE;
+        if (!S->link_held && !S->link_press.moved) link_follow(a, S->link_press.x0, S->link_press.y0);
         break;
     case OWN_TOOLS:
         press_move(&S->tools_press, ev->x, ev->y);
@@ -2230,6 +2419,8 @@ void editor_tick(App *a, uint32_t now) {
     }
     Rect d;
     if (S->open && S->owner == OWN_NONE && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
+    if (S->open && S->owner == OWN_LINK && !S->link_held && !S->link_press.moved && now - S->link_down_at >= LINK_HOLD_MS)
+        link_hold(a);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during
     // which a sheet was in front of the page, nor one the pen pressed anything during.
     if (S->btn_down && sheet_open(a)) S->btn_used_for_ink = true;
@@ -2265,6 +2456,16 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", has_page ? nav_name(&S->nav, S->nb.page_ids[S->index]) : "");
     } else if (!strcmp(key, "index_rows")) {
         snprintf(out, cap, "%d", has_page ? nav_index(&S->nav, &S->nb, NULL, 0) : 0);
+    } else if (!strcmp(key, "link_mode")) {
+        snprintf(out, cap, "%d", S->open && S->link_mode ? 1 : 0);
+    } else if (!strcmp(key, "links")) {
+        // The open page's links: how many it has, and how many of them have their box on it.
+        int boxed = has_page ? nav_link_areas(&S->nav, S->page, S->nb.page_ids[S->index], 1.f, NULL, NULL, NAV_LINKS_PER_PAGE) : 0;
+        snprintf(out, cap, "%d %d", has_page ? nav_links_of(&S->nav, S->nb.page_ids[S->index], NULL) : 0, boxed);
+    } else if (!strncmp(key, "link.", 5)) {
+        // The open page's link N (from 1, in the order links.ini has them): where it goes.
+        int first, n = has_page ? nav_links_of(&S->nav, S->nb.page_ids[S->index], &first) : 0, i = atoi(key + 5) - 1;
+        snprintf(out, cap, "%s", i >= 0 && i < n ? S->nav.links[first + i].target : "");
     } else if (!strcmp(key, "tool")) {
         const char *name = app_probe_tool(a->settings.current_tool);  // a tool it lacks: its number
         if (name) snprintf(out, cap, "%s", name);
@@ -2390,7 +2591,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         // draws white for it (a template's picture not made yet); empty for any other paper.
         if (has_page && paper_is_image(S->page->paper)) snprintf(out, cap, "%s", S->picture_missing ? "missing" : "shown");
         else snprintf(out, cap, "%s", "");
-    } else if (!strcmp(key, "pages_tab") || !strncmp(key, "tile.", 5)) {
+    } else if (!strcmp(key, "pages_tab") || !strcmp(key, "picking") || !strncmp(key, "tile.", 5)) {
         return pagesview_probe(&S->pv, key, out, cap);  // the Pages view's
     } else if (!strncmp(key, "templates.", 10)) {
         return tplsheet_probe(&S->ts, key + 10, out, cap);  // the Templates sheet over the page

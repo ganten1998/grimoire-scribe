@@ -26,7 +26,8 @@ typedef struct {
 int export_page_png_ex(const NotebookInfo *nb, int index, float dpi, int layers, int shrink, PageRender *info,
                        Buf *out);
 // Whole notebook as a PDF: one page per notebook page, each a Flate-compressed DeviceGray
-// image at the page's physical size (w/dpi inches). Title = notebook name.
+// image at the page's physical size (w/dpi inches). Title = notebook name. The section names
+// (nav.ini) are its outline, and the links drawn to pages (links.ini) are links on its pages.
 int export_notebook_pdf(const NotebookInfo *nb, float dpi, Buf *out);
 // Optional page-completion callback, including (0, total) before rendering. No global state;
 // the Share child uses it to report preparation without changing the PDF bytes.
@@ -42,7 +43,8 @@ void zip_begin(ZipWriter *z, Buf *out);
 int zip_add(ZipWriter *z, const char *name, const void *data, size_t len, bool deflate);
 int zip_end(ZipWriter *z);
 // Notebook zip: "<name>/<name>.pdf", "<name>/page-001.png"..., "<name>/raw/" (notebook.ini + .qpg,
-// nav.ini section names, and bg/ with the notebook's image papers: <id>.png, index.ini, pages.ini).
+// nav.ini section names, links.ini links, and bg/ with the notebook's image papers: <id>.png,
+// index.ini, pages.ini).
 int export_notebook_zip(const NotebookInfo *nb, float dpi, ZipWriter *z, const char *prefix);
 // Every notebook in folder ("" = all notebooks, grouped "<folder>/<name>/..."). To bound memory
 // on the device, folder/all zips carry each notebook's PDF + raw files, not per-page PNGs.

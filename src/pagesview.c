@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { PG_BACK = 1, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, PG_JUMP, PG_NEW, PG_COPY, PG_TAB, PG_NAME };
+enum { PG_BACK = 1, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, PG_JUMP, PG_NEW, PG_COPY, PG_TAB, PG_NAME,
+       PG_LINK, PG_TO_INDEX, PG_UNLINK };
 
 static void geom(App *a, int *cols, int *rows, int *cw, int *ch, int *th) {
     *cols = a->w > a->h ? 6 : 4;
@@ -38,6 +39,7 @@ bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
         v->tab_initialized = true;
     }
     v->current = current;
+    v->picking = v->pick_had = false;
     if (v->sel_cap < nb->npages) {
         bool *n = realloc(v->sel, (size_t)nb->npages * sizeof *n);
         if (!n) return false;
@@ -55,8 +57,17 @@ bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
     return true;
 }
 
+bool pagesview_pick(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current, bool had) {
+    if (!pagesview_open(v, a, nb, nav, current)) return false;
+    if (!nav_index(nav, nb, NULL, 0)) v->index_tab = false;  // an Index with nothing to pick
+    v->picking = true;
+    v->pick_had = had;
+    return true;
+}
+
 void pagesview_close(PagesView *v) {
     v->open = false;
+    v->picking = v->pick_had = false;
     keyboard_close(&v->kb);
     annotate_map_free(&v->book);
 }
@@ -150,7 +161,21 @@ void pagesview_draw(PagesView *v, App *a) {
     bool all = k == nb->npages;
     // TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
     // Gothic, 344 in Classic).
-    if (v->index_tab) {
+    if (v->picking) {
+        // Where a link goes: the Index, or (one the page had) nowhere any more.
+        Rect to = v->pick_had ? rall : (Rect){rall.x, by, rdel.x + rdel.w - rall.x, bh};
+        // TRANSLATORS: while picking where a link drawn on a page goes, the button that sends it to
+        // the notebook's Index (the list of named pages): 322 px at 34 px under its icon, or about
+        // 740 px when Remove link is not beside it.
+        ui_button(c, to, ICON_LINK, _("The Index"), BTN_PLAIN);
+        hits_add(&v->hits, to, PG_TO_INDEX, 0);
+        if (v->pick_had) {
+            // TRANSLATORS: while picking where a link goes, the button that removes the link (the
+            // ink drawn around it stays): 322 px at 34 px under its icon.
+            ui_button(c, rdel, ICON_TRASH, _("Remove link"), BTN_PLAIN);
+            hits_add(&v->hits, rdel, PG_UNLINK, 0);
+        }
+    } else if (v->index_tab) {
         Rect name = {rall.x, by, rdel.x + rdel.w - rall.x, bh};
         // TRANSLATORS: Index tab header button (about 740 px wide, 44 px text).
         ui_button(c, name, ICON_NONE, *nav_name(v->nav, nb->page_ids[v->current]) ?
@@ -196,9 +221,11 @@ void pagesview_draw(PagesView *v, App *a) {
         bool cur = i == v->current, sel = i < v->sel_cap && v->sel[i];
         ui_frame(c, rect_inflate(tr, cur ? ui_px(8) : 0), ui_px(12), 0, false, cur ? ui_px(8) : ui_px(3));
         Rect cb = {tr.x + tr.w - ui_px(96), tr.y + ui_px(16), ui_px(80), ui_px(80)};
-        ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
-        ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
-        if (sel) ui_icon(c, ICON_CHECK, cb, 255);
+        if (!v->picking) {
+            ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
+            ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
+            if (sel) ui_icon(c, ICON_CHECK, cb, 255);
+        }
         char lab[NAV_NAME_LEN], book[32];
         tile_label(v, i, lab, sizeof lab, book, sizeof book);
         const char *name = nav_name(v->nav, nb->page_ids[i]);
@@ -220,7 +247,7 @@ void pagesview_draw(PagesView *v, App *a) {
                     (Rect){tr.x, tr.y + th + ui_px(12), tr.w, ui_px(70)}, lab, 2, true, 0);
         }
         hits_add(&v->hits, tr, PG_OPEN, i);
-        hits_add(&v->hits, rect_inflate(cb, ui_px(30)), PG_TOGGLE, i);
+        if (!v->picking) hits_add(&v->hits, rect_inflate(cb, ui_px(30)), PG_TOGGLE, i);
     }
     int y = a->h - ui_px(170);
     a->toast_floor = y;  // keep a Copy page notice above the bottom controls when Pages reopens
@@ -241,10 +268,21 @@ void pagesview_draw(PagesView *v, App *a) {
     // TRANSLATORS: the Pages view's bottom buttons, each under its icon (290 px at 34 px): a new
     // blank page after the open page (or after the last page ticked), and a copy of the one page
     // ticked, right after it.
-    ui_button(c, rnew, ICON_PLUS, _("New page"), BTN_PLAIN);
-    hits_add(&v->hits, rnew, PG_NEW, 0);
-    ui_button(c, rcopy, ICON_COPY, _("Copy page"), k == 1 ? BTN_PLAIN : BTN_DISABLED);
-    if (k == 1) hits_add(&v->hits, rcopy, PG_COPY, 0);
+    if (!v->picking) {
+        ui_button(c, rnew, ICON_PLUS, _("New page"), BTN_PLAIN);
+        hits_add(&v->hits, rnew, PG_NEW, 0);
+        if (v->index_tab) {
+            // In the Index, where nothing is ticked: a link drawn on the open page.
+            bool can = v->nav->links_writable;
+            // TRANSLATORS: the Index tab's bottom button, under its icon (290 px at 34 px): draw a
+            // link on the open page to another page (or to the Index).
+            ui_button(c, rcopy, ICON_LINK, _("Add a link"), can ? BTN_PLAIN : BTN_DISABLED);
+            if (can) hits_add(&v->hits, rcopy, PG_LINK, 0);
+        } else {
+            ui_button(c, rcopy, ICON_COPY, _("Copy page"), k == 1 ? BTN_PLAIN : BTN_DISABLED);
+            if (k == 1) hits_add(&v->hits, rcopy, PG_COPY, 0);
+        }
+    }
     if (v->kb.open) keyboard_draw(&v->kb, c, (Rect){0, 0, a->w, a->h});
 }
 
@@ -264,7 +302,7 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
             long page = strtol(v->kb.text, &end, 10);
             if (*v->kb.text && !*end && page >= 1 && page <= v->nb->npages) {
                 v->target = (int)page - 1;
-                return PV_OPEN;
+                return v->picking ? PV_PICK : PV_OPEN;
             }
             v->kb.open = true;
             app_toast(a, _("Enter a page number in this notebook."), 2500);
@@ -306,7 +344,10 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
     case PG_BACK: return PV_CLOSE;
     case PG_OPEN:
         v->target = hit.arg;
-        return PV_OPEN;
+        return v->picking ? PV_PICK : PV_OPEN;
+    case PG_LINK: return PV_LINK;
+    case PG_TO_INDEX: return PV_PICK_INDEX;
+    case PG_UNLINK: return PV_UNLINK;
     case PG_TOGGLE:
         if (hit.arg < v->sel_cap) v->sel[hit.arg] = !v->sel[hit.arg];
         redraw(v, a, REFRESH_UI);
@@ -342,6 +383,8 @@ int pagesview_probe(const PagesView *v, const char *key, char *out, size_t cap) 
     out[0] = 0;
     if (!strcmp(key, "pages_tab")) {
         snprintf(out, cap, "%s", v->index_tab ? "index" : "pages");
+    } else if (!strcmp(key, "picking")) {
+        snprintf(out, cap, "%s", !v->open || !v->picking ? "" : v->pick_had ? "had" : "new");
     } else if (!strcmp(key, "index_rows")) {
         snprintf(out, cap, "%d", v->nav ? nav_index(v->nav, v->nb, NULL, 0) : 0);
     } else if (!strncmp(key, "tile.", 5)) {

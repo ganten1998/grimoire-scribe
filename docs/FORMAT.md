@@ -33,6 +33,8 @@ root/notebooks/<id>/bg/<pic>.png        a picture the notebook's image papers us
 root/notebooks/<id>/bg/index.ini        which content each picture holds (Image papers)
 root/notebooks/<id>/bg/pages.ini        the image paper of each page that has one (Image papers)
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
+root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named sections)
+root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
@@ -720,7 +722,37 @@ future navigation records survive. A file larger than 256 KiB, containing NUL, e
 limits or the 2000-name limit, or unreadable/non-regular, disables name editing and is never
 overwritten. Symlinks are also refused. Earlier Grimoire versions ignore this sidecar; page
 ink, tool ids, page versions and stroke bytes are unchanged. Raw notebook ZIPs include it as
-`raw/nav.ini`. This stage adds the in-app Index, not PDF outlines or links drawn on pages.
+`raw/nav.ini`. From 2.0.0-beta.5 the notebook's PDF has the names as its outline (the table of
+contents a PDF reader lists), in notebook order, each opening its page.
+
+## Links: `links.ini` (2.0.0-beta.5 on)
+
+An optional UTF-8 file inside the notebook directory: `# ...`, then one
+`link.<page id>=<seed>,<target>` line per link drawn on a page. The seed is 8 hex digits (a reader
+takes 1 to 8, either case); the target is `index` (the Index) or `p<page id>` (a page of the
+notebook, the id from 1, no leading zeros). The last line for a page id and seed wins.
+
+A link is the ink drawn around what links: the page's ink strokes (not erase strokes) whose seed is
+the link's. Its box is the box of their points, made at least 7 mm a side around its centre; where
+boxes overlap, the link whose last stroke comes later in the page wins. The strokes are ordinary
+ink, so a version that does not read links shows them as they were drawn, and erasing, undoing or
+compacting them away leaves the link with no box: it does nothing, and is kept (a redo brings its
+box back) until its page is deleted. Grimoire gives every new ink stroke a seed that no ink stroke on
+its page and no link of the page has, so a stroke never joins a link's box by chance. A link of a
+page that is no longer in the notebook, and a link to such a page, is left out of the next save of
+the file; a target this version does not know (any other run of 1 to 15 bytes from `!` to `~`) is
+kept and does nothing.
+
+Unknown lines are carried in order, up to 255 bytes each and 16 KiB together, as `nav.ini`'s are,
+and a file that does not read (the same rules) disables adding and changing links and is never
+overwritten; the section names go on working. There are at most 64 links on a page (a file may hold
+more for a page: they are kept) and 4000 in a notebook (a file with more does not read).
+
+Links are kept apart from `nav.ini` for the versions before: 1.2.0 to 2.0.0-beta.4 refuse a
+`nav.ini` with more than 16 KiB of lines they do not know, which then shows them an empty Index,
+and a notebook can have more links than that holds. They never read `links.ini`. Raw notebook ZIPs
+include it as `raw/links.ini`, and the notebook's PDF has each link to a page as a link on its page
+(a link to the Index has nowhere to go there).
 
 ## `settings.ini`
 
@@ -890,6 +922,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | an image paper as a notebook's `paper` (1.1: a notebook made on a template) | read as Medium rule, and saved so on its next save of `notebook.ini`: its new pages get Medium. Its pages keep their own papers (1.1 brings back from `bg/pages.ini` those it re-saved), so back in 1.1 only a page added after an imported page, or one whose file is missing, gets Medium | kept; new pages get it |
 | `templates/`, `import/` in the data root (and `import/.attempts`, 1.1) | never read | read |
 | `photos/` in the data root (2.0) | never read | never read; a page on a photo is drawn as any picture page |
+| `links.ini` (links drawn on pages, 2.0) | never read or written: the ink around a link shows as ink, and a tap on it does nothing; a page it deletes leaves its links for 2.0 to drop | the same; 1.2.0 to 2.0.0-beta.4 never read it either (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
 | a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |

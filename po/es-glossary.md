@@ -100,6 +100,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Sleep screen: ... | **En reposo: ...** (*En reposo: la página abierta*) | *Pantalla de reposo: ...* did not fit with the screensaver's line. |
 | screensaver | **salvapantallas** | *protector de pantalla* (Latin America). |
 | Pin this page | **Fijar esta página** | |
+| Link (drawn on a page), Add a link, Remove link | **enlace**, **Añadir enlace**, **Quitar enlace** (*El enlace lleva a la página 3*) | Where a link goes is where it **lleva** (*¿Adónde lleva el enlace?*); the ink drawn around what links: *rodea lo que enlaza*. *Vínculo*. |
 | Pin (pens to the panel), unpin | **Fijar** (*Fijar en el panel (hasta 4)*), **quitar** (*Quita una primero*) | As *Fijar esta página*; *Anclar*, *desanclar*. The pens pinned are *herramientas* (*En el panel caben hasta 4 herramientas*), as the tool picker's title calls them. |
 | Style: Gothic / Classic | **Estilo: Gótico / Clásico** (*Estilo: Gótico (toca para cambiar a Clásico)*) | *toca para Clásico* had no verb; the other rows a tap changes say *toca para cambiar*. |
 | Language, Automatic | **Idioma, Automático** | The languages' own names stay in themselves (*English*, *Español*). |

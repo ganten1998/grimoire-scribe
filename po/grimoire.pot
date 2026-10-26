@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 07:49-0500\n"
+"POT-Creation-Date: 2026-10-26 08:24-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -567,6 +567,12 @@ msgstr ""
 msgid "Could not open that notebook"
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
+#. stroke drawn was too small to be the link's box.
+#: src/editor.c
+msgid "Too small for a link: draw around what links."
+msgstr ""
+
 #: src/editor.c
 msgid "This page is already empty"
 msgstr ""
@@ -604,8 +610,73 @@ msgstr ""
 msgid "This page is a copy of page %d."
 msgstr ""
 
+#. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
+#. box of a new link is drawn; tap the page (or the Index) it goes to.
+#: src/editor.c
+msgid "Where does the link go? Tap its page."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
+#: src/editor.c
+msgid "Could not save the link."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
+#. new link goes took its box back.
+#: src/editor.c
+msgid "No link made."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
+#. a box or a ring around what links with the pen; the Pages view then asks where it goes.
+#: src/editor.c
+msgid "Draw around what links. Then tap where it goes."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
+#. page now goes to page %d (a tap on it with a finger turns there).
+#: src/editor.c
+#, c-format
+msgid "The link goes to page %d."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
+#. page now opens the Index (the list of named pages).
+#: src/editor.c
+msgid "The link goes to the Index."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Remove link took the
+#. link away; the ink drawn around it is still on the page.
+#: src/editor.c
+msgid "Link removed. Its ink stays on the page."
+msgstr ""
+
 #: src/editor.c
 msgid "Could not save the page name."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
+#. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
+#: src/editor.c
+msgid "That link's page is not in this notebook."
+msgstr ""
+
+#. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): a
+#. finger held on a link; it goes to page %d now, and a tap on another page changes that.
+#: src/editor.c
+#, c-format
+msgid "The link goes to page %d. Tap another to change it."
+msgstr ""
+
+#. TRANSLATORS: the same toast for a link to the Index.
+#: src/editor.c
+msgid "The link goes to the Index. Tap a page to change it."
+msgstr ""
+
+#. TRANSLATORS: the same toast for a link whose page is gone.
+#: src/editor.c
+msgid "The link's page is not in this notebook. Tap a page to change it."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
@@ -1221,6 +1292,19 @@ msgstr ""
 msgid "Delete (%d)"
 msgstr ""
 
+#. TRANSLATORS: while picking where a link drawn on a page goes, the button that sends it to
+#. the notebook's Index (the list of named pages): 322 px at 34 px under its icon, or about
+#. 740 px when Remove link is not beside it.
+#: src/pagesview.c
+msgid "The Index"
+msgstr ""
+
+#. TRANSLATORS: while picking where a link goes, the button that removes the link (the
+#. ink drawn around it stays): 322 px at 34 px under its icon.
+#: src/pagesview.c
+msgid "Remove link"
+msgstr ""
+
 #: src/pagesview.c
 msgid "Rename this page"
 msgstr ""
@@ -1253,11 +1337,14 @@ msgstr ""
 msgid "Go to page..."
 msgstr ""
 
-#. TRANSLATORS: the Pages view's bottom buttons, each under its icon (290 px at 34 px): a new
-#. blank page after the open page (or after the last page ticked), and a copy of the one page
-#. ticked, right after it.
 #: src/pagesview.c
 msgid "New page"
+msgstr ""
+
+#. TRANSLATORS: the Index tab's bottom button, under its icon (290 px at 34 px): draw a
+#. link on the open page to another page (or to the Index).
+#: src/pagesview.c
+msgid "Add a link"
 msgstr ""
 
 #: src/pagesview.c

@@ -387,6 +387,28 @@ pentap 1768 938
 pentap 1768 1026
 tap 900 300
 shot 28-index-jump
+# a link: Add a link, its box, where it goes picked (the Index), then a finger held on it
+pentap 1768 1026
+wait 150
+tap 1410 2395
+wait 50
+expect editor.link_mode is 1
+pen line 300 1000 900 1200 30 0.6 0.6
+wait 150
+expect editor.picking is new
+shot 28-link-pick-new
+tap 1400 95
+wait 100
+expect editor.link.1 is index
+touch down 600 1100
+wait 800
+touch up 600 1100
+wait 100
+expect editor.picking is had
+shot 28-link-pick-had
+tap 125 95
+wait 100
+expect editor.modal is none
 pentap 1768 938
 pentap 1768 1114
 pentap 1768 1026
@@ -612,6 +634,29 @@ tap 2100 95
 shot 49-index-keyboard-landscape
 tap 280 1745
 tap 500 95
+tap 125 95
+wait 100
+expect editor.modal is none
+# a link, sideways: Add a link, its box, its page picked, a finger held on it
+pentap 2388 1028
+wait 150
+tap 1300 95
+tap 1760 1775
+wait 50
+expect editor.link_mode is 1
+pen line 400 800 1000 1000 30 0.6 0.6
+wait 150
+expect editor.picking is new
+shot 49-link-pick-new-landscape
+tap 227 340
+wait 100
+expect editor.links is 1 1
+touch down 700 900
+wait 800
+touch up 700 900
+wait 100
+expect editor.picking is had
+shot 49-link-pick-had-landscape
 tap 125 95
 wait 100
 expect editor.modal is none

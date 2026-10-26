@@ -1,5 +1,6 @@
 // export.c: PNG / PDF / zip output for notebooks.
 #include "export.h"
+#include "nav.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -82,7 +83,16 @@ void export_safe_name(const char *in, char *out, size_t cap) {
 
 // ---- rendering helpers ----
 
-static int render_page(const NotebookInfo *nb, int index, float dpi, int layers, Canvas *c, uint32_t *paper) {
+// Link boxes found on a rendered page (render_page_links).
+typedef struct {
+    const Nav *nav;
+    NavLink links[NAV_LINKS_PER_PAGE];
+    Rect areas[NAV_LINKS_PER_PAGE];
+    int n;
+} PageLinks;
+
+static int render_page_links(const NotebookInfo *nb, int index, float dpi, int layers, Canvas *c, uint32_t *paper,
+                             PageLinks *links) {
     // Rendered at the notebook's page size, as the editor has the page: one an older version scaled
     // to another screen goes back to that size, and a missing or damaged page is blank paper of it.
     Page *p = NULL;
@@ -98,8 +108,15 @@ static int render_page(const NotebookInfo *nb, int index, float dpi, int layers,
     }
     page_render_layers(c, p, (Rect){0, 0, p->w, p->h}, dpi, layers);
     if (paper) *paper = (uint32_t)p->paper;
+    if (links)
+        links->n = nav_link_areas(links->nav, p, nb->page_ids[index], NAV_LINK_MIN_MM * dpi / 25.4f, links->links,
+                                  links->areas, NAV_LINKS_PER_PAGE);
     page_free(p);
     return 0;
+}
+
+static int render_page(const NotebookInfo *nb, int index, float dpi, int layers, Canvas *c, uint32_t *paper) {
+    return render_page_links(nb, index, dpi, layers, c, paper, NULL);
 }
 
 int export_page_png(const NotebookInfo *nb, int index, float dpi, Buf *out) {
@@ -189,16 +206,34 @@ int export_notebook_pdf_progress(const NotebookInfo *nb, float dpi, Buf *out,
                                  void (*progress)(int, int, void *), void *ctx) {
     int np = nb->npages;
     if (progress) progress(0, np, ctx);
-    // Objects: 1 catalog, 2 pages, 3 info, then 3 per page (page, content, image).
-    int nobj = 3 + 3 * np;
-    size_t *off = calloc((size_t)nobj + 1, sizeof *off);
-    if (!off) return -1;
+    // The section names make the outline (a viewer's table of contents), and the links drawn on the
+    // pages links to their pages (one to the Index has no place to go in the PDF).
+    PageLinks *pl = calloc(1, sizeof *pl);
+    int *named = calloc((size_t)(np > 0 ? np : 1), sizeof *named);
+    Nav nav;
+    nav_init(&nav);
+    if (!pl || !named) {
+        free(pl); free(named);
+        return -1;
+    }
+    nav_load(nb->id, &nav);  // what does not read is left out
+    pl->nav = &nav;
+    int nnamed = nav_index(&nav, nb, named, np);
+    // Objects: 1 catalog, 2 pages, 3 info, then 3 per page (page, content, image), then the outline
+    // (its root, then one per section) when there are names, then each link as its page comes.
+    int outline = 4 + 3 * np, nobj = 3 + 3 * np + (nnamed ? 1 + nnamed : 0), cap = nobj + 16;
+    size_t *off = calloc((size_t)cap + 1, sizeof *off);
+    if (!off) {
+        free(pl); free(named); nav_free(&nav);
+        return -1;
+    }
     size_t base = out->len;
     int rc = 0;
 #define OBJ(i) (off[i] = out->len - base, buf_printf(out, "%d 0 obj\n", (i)))
     buf_printf(out, "%%PDF-1.4\n%%\xE2\xE3\xCF\xD3\n");
     OBJ(1);
-    buf_printf(out, "<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+    if (nnamed) buf_printf(out, "<< /Type /Catalog /Pages 2 0 R /Outlines %d 0 R /PageMode /UseOutlines >>\nendobj\n", outline);
+    else buf_printf(out, "<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
     OBJ(2);
     buf_printf(out, "<< /Type /Pages /Count %d /Kids [", np);
     for (int i = 0; i < np; i++) buf_printf(out, " %d 0 R", 4 + 3 * i);
@@ -209,17 +244,55 @@ int export_notebook_pdf_progress(const NotebookInfo *nb, float dpi, Buf *out,
     buf_printf(out, " /Creator (Grimoire %s) /Producer (Grimoire) >>\nendobj\n", GRIMOIRE_VERSION);
     for (int i = 0; i < np && rc == 0; i++) {
         Canvas c;
-        if (render_page(nb, i, dpi, PAGE_LAYER_ALL, &c, NULL) != 0) {
+        if (render_page_links(nb, i, dpi, PAGE_LAYER_ALL, &c, NULL, pl) != 0) {
             rc = -1;
             break;
         }
         float pw = (float)c.w * 72.f / dpi, ph = (float)c.h * 72.f / dpi;
         int pobj = 4 + 3 * i, cobj = pobj + 1, iobj = pobj + 2;
+        // This page's links that go to a page: their objects come next.
+        int to[NAV_LINKS_PER_PAGE], nannot = 0, first_annot = nobj + 1;
+        for (int k = 0; k < pl->n; k++) {
+            int at = nav_link_page(&pl->links[k], nb);
+            if (at >= 0) {
+                pl->areas[nannot] = pl->areas[k];
+                to[nannot++] = at;
+            }
+        }
+        if (nobj + nannot > cap) {
+            int grown = (nobj + nannot) * 2;
+            size_t *more = realloc(off, ((size_t)grown + 1) * sizeof *off);
+            if (!more) {
+                canvas_free(&c);
+                rc = -1;
+                break;
+            }
+            memset(more + cap + 1, 0, (size_t)(grown - cap) * sizeof *more);
+            off = more;
+            cap = grown;
+        }
+        nobj += nannot;
         OBJ(pobj);
         buf_printf(out,
                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2f %.2f] /Contents %d 0 R "
-                   "/Resources << /XObject << /Im0 %d 0 R >> >> >>\nendobj\n",
+                   "/Resources << /XObject << /Im0 %d 0 R >> >>",
                    pw, ph, cobj, iobj);
+        if (nannot) {
+            buf_printf(out, " /Annots [");
+            for (int k = 0; k < nannot; k++) buf_printf(out, " %d 0 R", first_annot + k);
+            buf_printf(out, " ]");
+        }
+        buf_printf(out, " >>\nendobj\n");
+        for (int k = 0; k < nannot; k++) {
+            Rect r = pl->areas[k];
+            float s = 72.f / dpi;
+            OBJ(first_annot + k);
+            buf_printf(out,
+                       "<< /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] "
+                       "/Dest [%d 0 R /Fit] >>\nendobj\n",
+                       (float)r.x * s, ph - (float)(r.y + r.h) * s, (float)(r.x + r.w) * s, ph - (float)r.y * s,
+                       4 + 3 * to[k]);
+        }
         char content[128];
         int cl = snprintf(content, sizeof content, "q %.2f 0 0 %.2f 0 0 cm /Im0 Do Q\n", pw, ph);
         OBJ(cobj);
@@ -242,7 +315,24 @@ int export_notebook_pdf_progress(const NotebookInfo *nb, float dpi, Buf *out,
         if (out->err) rc = -1;
         if (rc == 0 && progress) progress(i + 1, np, ctx);
     }
+    if (rc == 0 && nnamed) {
+        OBJ(outline);
+        buf_printf(out, "<< /Type /Outlines /First %d 0 R /Last %d 0 R /Count %d >>\nendobj\n", outline + 1,
+                   outline + nnamed, nnamed);
+        for (int k = 0; k < nnamed; k++) {
+            OBJ(outline + 1 + k);
+            buf_printf(out, "<< /Title ");
+            pdf_text(out, nav_name(&nav, nb->page_ids[named[k]]));
+            buf_printf(out, " /Parent %d 0 R", outline);
+            if (k) buf_printf(out, " /Prev %d 0 R", outline + k);
+            if (k + 1 < nnamed) buf_printf(out, " /Next %d 0 R", outline + 2 + k);
+            buf_printf(out, " /Dest [%d 0 R /Fit] >>\nendobj\n", 4 + 3 * named[k]);
+        }
+    }
 #undef OBJ
+    free(pl);
+    free(named);
+    nav_free(&nav);
     if (rc == 0) {
         size_t xref = out->len - base;
         buf_printf(out, "xref\n0 %d\n0000000000 65535 f \n", nobj + 1);
@@ -420,7 +510,7 @@ static int add_raw_files(const NotebookInfo *nb, ZipWriter *z, const char *dirpr
     uint8_t *d;
     // Notebook metadata, the book-page map and named sections: a notebook put back from the zip
     // keeps its navigation as well as its ink and pictures.
-    static const char *const k_info[] = {"notebook.ini", "source.ini", "nav.ini"};
+    static const char *const k_info[] = {"notebook.ini", "source.ini", "nav.ini", "links.ini"};
     for (size_t k = 0; k < sizeof k_info / sizeof k_info[0]; k++) {
         snprintf(path, sizeof path, "%s/%s", dir, k_info[k]);
         if (!(d = read_file(path, &len))) continue;

@@ -17,6 +17,13 @@
   into the book's notebook at once (KOReader draws them first, with a progress message a tap stops)
   and opens the page you were reading. Pages already in the notebook keep what you wrote on them;
   Annotate this page uses the same notebook. Needs the KOReader plugin from this release.
+- **Links between pages**: in the Pages view's Index tab, Add a link, draw around what links, and
+  tap the page it goes to (or The Index). A finger's tap on the ink you drew follows it; holding a
+  finger on it changes where it goes or removes it. The links are your own ink, so erasing or
+  undoing it takes a link away, and older versions show the ink. They are kept in the notebook's
+  `links.ini`, apart from the pages: docs/FORMAT.md, Links.
+- **The notebook PDF has a table of contents and links**: named sections become the PDF's outline
+  (the bookmarks a PDF reader lists), and links drawn to pages are links in the PDF.
 
 ## 2.0.0-beta.4 (unreleased)
 
