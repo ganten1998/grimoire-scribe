@@ -101,6 +101,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   **New page** inserts a blank note after the open page or the last ticked page. Tick one page
   and choose **Copy page** to duplicate its ink and paper right after it. Annotated book pages
   show their source page number under the tile.
+  The **Index** tab lists named sections in page order. Choose **Name this page** to add the
+  open page, or rename it; an empty name removes it from the Index. Tap a section to jump there,
+  then use **Back to page...** to return. Names stay attached when pages are inserted or deleted.
+  A notebook ZIP keeps the section names too.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
 - **Pinch** to zoom up to 4x. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned

@@ -2,6 +2,10 @@
 
 ## 2.0.0-beta.2 (in development)
 
+- **Journal index**: name pages as section starts from the new Index tab beside Pages. Tap a
+  section to open it and use Back to return. Names follow their pages through insertions and
+  deletions, survive reopening, and travel in the raw notebook ZIP. Optional shortcut actions
+  `index` and `back` work with custom keyboard or controller mappings.
 - **New page inside a notebook**: in Pages, add a blank note after the open page, or after the
   last ticked page. It uses the notebook's paper, including when the preceding page is an
   imported PDF page. The first page stays the notebook's cover.

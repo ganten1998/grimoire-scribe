@@ -136,6 +136,8 @@ struct EditorState {
     Press tools_press;
 
     PagesView pv;               // the Pages view (pagesview.h)
+    Nav nav;
+    NavHistory back;
 
     // Paper sheet
     bool paper_open;
@@ -531,6 +533,33 @@ static Rect zoom_chip(App *a) {
 }
 static bool zoomed(App *a) { return fabsf(S->zoom - S->zoom_default) > 0.01f || S->ox != 0.f || S->oy > 0.5f; }
 
+static int back_target(App *a) {
+    if (!S->open || !S->nb.npages) return -1;
+    NavHistory copy = S->back;
+    return nav_history_pop(&copy, &S->nb, S->nb.page_ids[S->index]);
+}
+
+static void back_text(App *a, char *out, size_t cap) {
+    // TRANSLATORS: a tappable chip at the top of a page after an Index or Pages jump; it grows
+    // with its text, like the zoom chip. %d is the origin page's current number.
+    snprintf(out, cap, _("Back to page %d"), back_target(a) + 1);
+}
+
+static Rect back_chip(App *a) {
+    if (back_target(a) < 0) return RECT_EMPTY;
+    char text[96]; back_text(a, text, sizeof text);
+    int x = ui_px(24), y = ui_px(24), h = ui_px(100);
+    if (zoomed(a)) y += ui_px(120);  // both chips stay reachable
+    int w = ui_chip_w(FONT_BOLD, ui_small_size(), text, h, ui_px(420), a->w - ui_px(48));
+    Rect r = {x, y, w, h};
+    if (rect_overlaps(r, S->panel)) {
+        x = S->panel.x + S->panel.w + ui_px(20);
+        if (x + w > a->w - ui_px(24)) x = S->panel.x - w - ui_px(20);
+        r.x = clampi(x, ui_px(24), a->w - w - ui_px(24));
+    }
+    return r;
+}
+
 // Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page.
 static void blit_view(App *a, Rect r) {
     const Canvas *pc = &S->page_canvas;
@@ -669,6 +698,12 @@ static void compose(App *a, Rect r) {
         ui_frame(&a->screen, c, c.h / 2, 0, true, 0);
         font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), c, z, 255);
     }
+    Rect bc = back_chip(a);
+    if (!rect_is_empty(bc) && rect_overlaps(r, bc)) {
+        char text[96]; back_text(a, text, sizeof text);
+        ui_frame(&a->screen, bc, bc.h / 2, 0, true, 0);
+        font_draw_centered(&a->screen, FONT_BOLD, ui_small_size(), bc, text, 255);
+    }
     if (rect_overlaps(r, S->panel)) draw_panel(a);
     if (S->paper_open && rect_overlaps(r, S->paper_rect)) draw_paper_sheet(a);
     if (S->ts.open && rect_overlaps(r, S->ts.rect)) tplsheet_draw(&S->ts, a);
@@ -800,17 +835,19 @@ static void arrive_readonly(App *a) {
     app_invalidate(a, a->toast_rect, REFRESH_UI);  // (already inside the arriving page's full repaint)
 }
 
-static void go_to_page(App *a, int index) {
+static bool go_to_page(App *a, int index, bool remember) {
     S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
     S->panel_stale = false;
-    if (!save_page(a)) return;
+    if (!save_page(a)) { compose_all(a, REFRESH_FULL); return false; }
     write_thumb_if_needed(a);
     index = clampi(index, 0, S->nb.npages - 1);
     Page *np = page_at(a, index);
     if (!np) {
+        compose_all(a, REFRESH_FULL);
         app_toast(a, _("Could not open that page"), 3000);
-        return;
+        return false;
     }
+    if (remember && index != S->index) nav_history_push(&S->back, S->nb.page_ids[S->index]);
     S->page = np;
     S->index = index;
     S->nb.last_page = index;
@@ -819,6 +856,18 @@ static void go_to_page(App *a, int index) {
     view_reset(a);
     compose_all(a, REFRESH_FULL);
     arrive_readonly(a);
+    return true;
+}
+
+static bool go_back(App *a) {
+    int dest = back_target(a);
+    if (dest < 0 || !save_page(a)) return false;
+    NavHistory old = S->back;
+    nav_history_pop(&S->back, &S->nb, S->nb.page_ids[S->index]);
+    if (go_to_page(a, dest, false)) return true;
+    S->back = old;
+    compose_all(a, REFRESH_UI);
+    return false;
 }
 
 // The open notebook's page size (it keeps the one it was made with, whatever the screen). The page
@@ -925,6 +974,10 @@ static void close_notebook(App *a) {
     S->picture_missing = S->white_caches = false;
     S->nnoted = 0;
     pagesview_close(&S->pv);
+    S->pv.tab_initialized = false;
+    nav_free(&S->nav);
+    nav_init(&S->nav);
+    S->back = (NavHistory){0};
     S->open = false;
     store_take_restored_count();  // (page 1, read for the thumbnail above, was drawn as it is now)
     bgimage_forget(NULL);         // the notebook's pictures (up to 3 pages' worth) and its failures
@@ -954,6 +1007,7 @@ void editor_open_notebook(App *a, const char *id) {
         return;
     }
     S->open = true;
+    nav_load(S->nb.id, &S->nav);
     S->page_dirty = S->info_dirty = S->changed = false;
     if (!S->page_canvas.px && canvas_init(&S->page_canvas, S->pgw, S->pgh) != 0) return;
     render_page_full(a);
@@ -971,7 +1025,7 @@ void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool adde
     if (!S->open || strcmp(S->nb.id, id)) return;
     for (int i = 0; i < S->nb.npages; i++)
         if (S->nb.page_ids[i] == page_id) {
-            if (i != S->index) go_to_page(a, i);
+            if (i != S->index) go_to_page(a, i, false);
             break;
         }
     if (!added) return;
@@ -1372,13 +1426,13 @@ static void undo_redo(App *a, bool undo) {
 
 static void pages_show(App *a) {
     save_page(a);
-    if (!pagesview_open(&S->pv, a, &S->nb, S->index)) return;
+    if (!pagesview_open(&S->pv, a, &S->nb, &S->nav, S->index)) return;
     compose_all(a, REFRESH_FULL);
 }
 
-static void pages_hide(App *a, int open_index) {
+static void pages_hide(App *a, int open_index, bool remember) {
     pagesview_close(&S->pv);
-    if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index);
+    if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index, remember);
     else compose_all(a, REFRESH_FULL);
 }
 
@@ -1422,6 +1476,8 @@ static void pages_delete(App *a) {
     S->page_dirty = S->index == 0;  // refreshes the library thumbnail when page 1 changed
     S->info_dirty = true;
     save_page(a);
+    if (S->nav.writable && nav_save(S->nb.id, &S->nav, &S->nb) != 0)
+        qlog("index: deleted-page names left for a later save");
     char msg[256];
     // TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
     snprintf(msg, sizeof msg, NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", k), k, "grimoire/trash");
@@ -1436,7 +1492,7 @@ static void pages_added(App *a, int at) {
     S->nb.last_page = S->index;
     S->pv.current = S->index;
     S->changed = true;
-    pages_hide(a, at);
+    pages_hide(a, at, false);
 }
 
 // New page: the notebook's own paper (Blank in a book's notebook: annotate.h), at the index the
@@ -1476,11 +1532,21 @@ static void pages_copy(App *a, int index) {
 
 static void pages_event(App *a, int ph, const InEvent *ev) {
     switch (pagesview_pointer(&S->pv, a, ph, ev)) {
-    case PV_CLOSE: pages_hide(a, -1); break;
-    case PV_OPEN: pages_hide(a, S->pv.target); break;
+    case PV_CLOSE: pages_hide(a, -1, false); break;
+    case PV_OPEN: pages_hide(a, S->pv.target, true); break;
     case PV_DELETE: pages_delete(a); break;
     case PV_NEW: pages_new(a, S->pv.target); break;
     case PV_COPY: pages_copy(a, S->pv.target); break;
+    case PV_NAME: {
+        uint32_t pid = S->nb.page_ids[S->index];
+        char old[NAV_NAME_LEN]; i18n_copy(old, nav_name(&S->nav, pid), sizeof old);
+        if (nav_set_name(&S->nav, pid, S->pv.kb.text) != 0 || nav_save(S->nb.id, &S->nav, &S->nb) != 0) {
+            nav_set_name(&S->nav, pid, old);
+            app_toast(a, _("Could not save the page name."), 3000);
+        } else S->changed = true;
+        compose_all(a, REFRESH_UI);
+        break;
+    }
     default: break;
     }
 }
@@ -1632,7 +1698,7 @@ static void panel_act(App *a, const Hit *h) {
     }
     case P_UNDO: undo_redo(a, true); break;
     case P_REDO: undo_redo(a, false); break;
-    case P_PREV: go_to_page(a, S->index - 1); break;
+    case P_PREV: go_to_page(a, S->index - 1, false); break;
     case P_NEXT:
         if (S->index >= S->nb.npages - 1) {
             if (!save_page(a)) return;
@@ -1642,7 +1708,7 @@ static void panel_act(App *a, const Hit *h) {
             }
             S->changed = true;
         }
-        go_to_page(a, S->index + 1);
+        go_to_page(a, S->index + 1, false);
         break;
     case P_PAPER:
         if (refuse_readonly(a)) break;
@@ -1673,7 +1739,20 @@ static void panel_act(App *a, const Hit *h) {
 
 // Optional external buttons act only in the idle editor, never through an open sheet.
 bool editor_shortcut(App *a, int action) {
-    if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || sheet_open(a) || !action) return false;
+    if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || !action) return false;
+    if (action == SHORTCUT_INDEX && S->pv.open && !S->pv.kb.open) {
+        if (S->pv.index_tab) pages_hide(a, -1, false);
+        else { S->pv.index_tab = true; pagesview_untick(&S->pv); compose_all(a, REFRESH_FULL); }
+        return true;
+    }
+    if (sheet_open(a)) return false;
+    if (action == SHORTCUT_INDEX) {
+        S->pv.index_tab = true;
+        S->pv.tab_initialized = true;
+        pages_show(a);
+        return S->pv.open;
+    }
+    if (action == SHORTCUT_BACK) return go_back(a);
     if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) {
         int index = -1;
         for (int i = 0; i < N_DRAW_TOOLS; i++) if (k_draw_tools[i] == a->settings.current_tool) index = i;
@@ -1688,7 +1767,7 @@ bool editor_shortcut(App *a, int action) {
         panel_act(a, &(Hit){.id = action == SHORTCUT_UNDO ? P_UNDO : P_REDO});
     } else if (action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE) {
         // A controller page button never creates an unrequested new page at the end.
-        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1));
+        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1), false);
     } else if (action == SHORTCUT_WHITE) {
         a->settings.white = !a->settings.white;
         settings_save(&a->settings);
@@ -1808,6 +1887,7 @@ static void ui_pointer(App *a, HitList *hl, int ph, const InEvent *ev, bool moda
 void editor_init(App *a) {
     a->ed = calloc(1, sizeof *a->ed);
     if (!a->ed) return;
+    nav_init(&S->nav);
     store_page_size(&S->pgw, &S->pgh);
     S->zoom = S->zoom_default = S->zoom_min = 1.f;
     S->tool_button_shows = TB_NONE;  // (no panel drawn yet)
@@ -1824,6 +1904,7 @@ void editor_free(App *a) {
     for (int k = 0; k < S->nremoved; k++) stroke_free(S->removed[k]);
     free(S->removed);
     pagesview_free(&S->pv);
+    nav_free(&S->nav);
     canvas_free(&S->page_canvas);
     for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
     canvas_free(&S->custom_prev);
@@ -2010,6 +2091,13 @@ void editor_event(App *a, const InEvent *ev) {
             S->owner = OWN_TEMPLATES;
             Rect d;
             tplsheet_pointer(&S->ts, a, 0, ev->x, ev->y, ev->t_ms, &d);
+            return;
+        }
+        if (!S->paper_open && rect_contains(back_chip(a), (int)ev->x, (int)ev->y) &&
+            !rect_contains(S->panel, (int)ev->x, (int)ev->y)) {
+            go_back(a);
+            S->owner = OWN_MODAL;
+            S->has_pressed = false;
             return;
         }
         if (zoomed(a) && rect_contains(zoom_chip(a), (int)ev->x, (int)ev->y) && !S->paper_open &&
@@ -2208,6 +2296,14 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%d", S->open ? S->nhist : 0);
     } else if (!strcmp(key, "pages")) {
         snprintf(out, cap, "%d", S->open ? S->nb.npages : 0);
+    } else if (!strcmp(key, "page_name")) {
+        snprintf(out, cap, "%s", has_page ? nav_name(&S->nav, S->nb.page_ids[S->index]) : "");
+    } else if (!strcmp(key, "index_rows")) {
+        snprintf(out, cap, "%d", has_page ? nav_index(&S->nav, &S->nb, NULL, 0) : 0);
+    } else if (!strcmp(key, "back")) {
+        snprintf(out, cap, "%d", back_target(a) + 1);
+    } else if (!strcmp(key, "back_chip")) {
+        snprintf(out, cap, "%d", back_target(a) >= 0);
     } else if (!strcmp(key, "tool")) {
         const char *name = app_probe_tool(a->settings.current_tool);  // a tool it lacks: its number
         if (name) snprintf(out, cap, "%s", name);
@@ -2324,7 +2420,7 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         // draws white for it (a template's picture not made yet); empty for any other paper.
         if (has_page && paper_is_image(S->page->paper)) snprintf(out, cap, "%s", S->picture_missing ? "missing" : "shown");
         else snprintf(out, cap, "%s", "");
-    } else if (!strncmp(key, "tile.", 5)) {
+    } else if (!strcmp(key, "pages_tab") || !strncmp(key, "tile.", 5)) {
         return pagesview_probe(&S->pv, key, out, cap);  // the Pages view's
     } else if (!strncmp(key, "templates.", 10)) {
         return tplsheet_probe(&S->ts, key + 10, out, cap);  // the Templates sheet over the page

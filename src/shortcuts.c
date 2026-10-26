@@ -46,6 +46,7 @@ int shortcut_action(const char *name) {
     static const struct { const char *name; int action; } actions[] = {
         {"undo",SHORTCUT_UNDO},{"redo",SHORTCUT_REDO},{"previous-page",SHORTCUT_PREV_PAGE},
         {"next-page",SHORTCUT_NEXT_PAGE},{"previous-tool",SHORTCUT_PREV_TOOL},{"next-tool",SHORTCUT_NEXT_TOOL},{"white",SHORTCUT_WHITE},
+        {"index",SHORTCUT_INDEX},{"back",SHORTCUT_BACK},
     };
     for (size_t i = 0; i < sizeof actions / sizeof *actions; i++) if (!strcmp(name, actions[i].name)) return actions[i].action;
     return SHORTCUT_NONE;

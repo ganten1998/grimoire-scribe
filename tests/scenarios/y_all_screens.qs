@@ -365,6 +365,28 @@ pentap 1768 1026
 wait 150
 expect editor.modal is pages
 shot 28-pages
+tap 850 95
+shot 28-index-empty
+tap 1400 95
+shot 28-index-name-keyboard
+tap 133 1725
+tap 1643 2365
+expect editor.index_rows is 1
+shot 28-index-named
+tap 125 95
+pentap 1768 938
+pentap 1768 1026
+tap 900 300
+expect editor.back_chip is 1
+shot 28-index-back
+tap 200 74
+pentap 1768 1114
+pentap 1768 1026
+tap 1400 95
+tap 1679 2205
+tap 1643 2365
+expect editor.index_rows is 0
+tap 430 95
 tap 1250 95
 wait 50
 expect editor.ticked is 3
@@ -565,6 +587,12 @@ pentap 2388 1028
 wait 150
 expect editor.modal is pages
 shot 49-pages-landscape
+tap 1300 95
+shot 49-index-landscape
+tap 2100 95
+shot 49-index-keyboard-landscape
+tap 280 1745
+tap 500 95
 tap 125 95
 wait 100
 expect editor.modal is none

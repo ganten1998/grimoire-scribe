@@ -38,7 +38,7 @@ void zip_begin(ZipWriter *z, Buf *out);
 int zip_add(ZipWriter *z, const char *name, const void *data, size_t len, bool deflate);
 int zip_end(ZipWriter *z);
 // Notebook zip: "<name>/<name>.pdf", "<name>/page-001.png"..., "<name>/raw/" (notebook.ini + .qpg,
-// and bg/ with the notebook's image papers: <id>.png, index.ini, pages.ini).
+// nav.ini section names, and bg/ with the notebook's image papers: <id>.png, index.ini, pages.ini).
 int export_notebook_zip(const NotebookInfo *nb, float dpi, ZipWriter *z, const char *prefix);
 // Every notebook in folder ("" = all notebooks, grouped "<folder>/<name>/..."). To bound memory
 // on the device, folder/all zips carry each notebook's PDF + raw files, not per-page PNGs.

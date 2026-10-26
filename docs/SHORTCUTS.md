@@ -17,13 +17,17 @@ key.1=tool:pencil
 key.Ctrl+z=undo
 key.Shift+Left=previous-page
 key.code106=next-page
+key.Ctrl+i=index
+key.Alt+Left=back
 pad.305=tool:eraser
 pad.311=next-tool
 ```
 
 Actions: `tool:pencil`, `tool:mech`, `tool:ballpoint`, `tool:fountain`, `tool:fineliner`,
 `tool:marker`, `tool:charcoal`, `tool:calligraphy`, `tool:highlighter`, `tool:eraser`, `undo`,
-`redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`.
+`redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`, `index`, `back`.
+The last two are optional custom mappings: Index opens the section list (and closes it when it
+is already open); Back returns from a jump. Existing shortcut files are never rewritten.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape and `codeNN` (Linux evdev number 1–767). Modifiers Ctrl, Shift, Alt, Meta match exactly.
@@ -31,7 +35,8 @@ Gamepad numbers must be 256–767. Later duplicate bindings replace earlier ones
 and 64 KiB of configuration are accepted. An existing empty file deliberately disables mappings.
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
-sleeping or displaying a sheet. Page navigation never creates a new page at the end. Presses
+sleeping or displaying a sheet, except Index can toggle the Pages/Index view while its keyboard
+is closed. Page navigation never creates a new page at the end. Presses
 act once; releases and repeats do not trigger actions. While shortcuts are enabled, a key or
 button press keeps the Kindle awake as the pen and touch do: "Sleep after" counts from the last
 one, on any screen. Native PIN input is discarded and never logged. The app logs attachment

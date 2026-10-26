@@ -10,6 +10,7 @@
 #include "app.h"
 #include "annotate.h"
 #include "keyboard.h"
+#include "nav.h"
 
 typedef enum {
     PV_NONE = 0,
@@ -19,6 +20,7 @@ typedef enum {
     PV_NEW,     // New page: the editor adds a page at index `target` (after the last page ticked, or
                 // after the open page: never first) and opens it
     PV_COPY,    // Copy page (one page ticked): the editor copies page `target` right after it
+    PV_NAME,    // save kb.text as the open page's section name; empty removes it
 } PvResult;
 
 typedef struct {
@@ -33,11 +35,14 @@ typedef struct {
     Press press;
     int target;               // after PV_OPEN, PV_NEW, PV_COPY: a page index (see PvResult)
     AnnotateMap book;         // source.ini: which page holds which book page (empty for most)
+    const Nav *nav;
+    bool index_tab, tab_initialized, naming;
+    int index_screen;
 } PagesView;
 
 // Opens it on notebook nb, on the screenful with page `current`, nothing ticked. False when there
 // is no memory for its ticks (it stays closed).
-bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, int current);
+bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current);
 // Draws the whole screen into a->screen (the caller refreshes it).
 void pagesview_draw(PagesView *v, App *a);
 // Pointer phase 0 down / 1 move / 2 up. What it draws itself (a tick, another screenful, the

@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-beta.1\n"
+"Project-Id-Version: Grimoire 2.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-25 15:36-0500\n"
+"POT-Creation-Date: 2026-10-25 21:18-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -446,6 +446,13 @@ msgstr ""
 msgid "%d%%   tap to reset"
 msgstr ""
 
+#. TRANSLATORS: a tappable chip at the top of a page after an Index or Pages jump; it grows
+#. with its text, like the zoom chip. %d is the origin page's current number.
+#: src/editor.c
+#, c-format
+msgid "Back to page %d"
+msgstr ""
+
 #. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
 #. the pens draw black ink. 426 px at 44 px, or two lines at 34 px.
 #: src/editor.c
@@ -544,6 +551,10 @@ msgstr ""
 #: src/editor.c
 #, c-format
 msgid "This page is a copy of page %d."
+msgstr ""
+
+#: src/editor.c
+msgid "Could not save the page name."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
@@ -1101,6 +1112,14 @@ msgstr ""
 msgid "p. %d"
 msgstr ""
 
+#: src/pagesview.c
+msgid "Name a page to list it here."
+msgstr ""
+
+#: src/pagesview.c
+msgid "Page names could not be read."
+msgstr ""
+
 #. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
 #. Classic): Delete, with how many pages are ticked; tick all of them, or none.
 #: src/pagesview.c
@@ -1108,8 +1127,14 @@ msgstr ""
 msgid "Delete (%d)"
 msgstr ""
 
-#. TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
-#. Gothic, 344 in Classic).
+#: src/pagesview.c
+msgid "Rename this page"
+msgstr ""
+
+#: src/pagesview.c
+msgid "Name this page"
+msgstr ""
+
 #: src/pagesview.c
 msgid "Select none"
 msgstr ""
@@ -1118,10 +1143,16 @@ msgstr ""
 msgid "Select all"
 msgstr ""
 
-#. TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
+#. TRANSLATORS: Pages tab, with the notebook's page count (about 400 px wide, 44 px text).
 #: src/pagesview.c
 #, c-format
 msgid "Pages (%d)"
+msgstr ""
+
+#. TRANSLATORS: Index tab, with the number of named sections (about 400 px, 44 px text).
+#: src/pagesview.c
+#, c-format
+msgid "Index (%d)"
 msgstr ""
 
 #: src/pagesview.c
@@ -1141,6 +1172,11 @@ msgstr ""
 
 #: src/pagesview.c
 msgid "Enter a page number in this notebook."
+msgstr ""
+
+#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+#: src/pagesview.c
+msgid "Page name"
 msgstr ""
 
 #: src/pagesview.c

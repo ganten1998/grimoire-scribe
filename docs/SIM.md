@@ -185,6 +185,9 @@ shows what the app holds.
 | `input.yielded` | pen and touch have been handed to the native UI for sleep/unlock |
 | `sleep.wallpaper` | KOReader wallpaper is decoded and cached |
 | `editor.ticked` | pages ticked in the Pages view |
+| `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
+| `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
+| `editor.back`, `editor.back_chip` | Back's destination page number, 0 when absent; whether its chip is available (0 or 1) |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |

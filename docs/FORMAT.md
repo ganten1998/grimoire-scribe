@@ -630,6 +630,22 @@ they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands
 never gets a request. Raw notebook zips carry `source.ini` as `raw/source.ini` (1.1.0-beta.2 on), so
 a notebook put back from one keeps its book pages; they leave `bg/<pic>.source.png` out.
 
+## Named sections: `nav.ini` (2.0.0-beta.2 on)
+
+An optional UTF-8 file inside the notebook directory. `name.<page id>=<title>` names a section
+start; ids refer to `notebook.ini`'s page ids, not their current positions. The Index lists them
+in notebook order. A name is a trimmed single line of at most 95 bytes, cut between UTF-8
+characters; controls become spaces. An empty name removes it, and the last line for an id wins.
+Names whose page was deleted are omitted on the next successful atomic save. A failed save
+does not prune the in-memory names. Back history is session-only and also uses stable page ids.
+
+Unknown non-comment lines are carried in order, up to 255 bytes each and 16 KiB together, so
+future navigation records survive. A file larger than 256 KiB, containing NUL, exceeding those
+limits or the 2000-name limit, or unreadable/non-regular, disables name editing and is never
+overwritten. Symlinks are also refused. Earlier Grimoire versions ignore this sidecar; page
+ink, tool ids, page versions and stroke bytes are unchanged. Raw notebook ZIPs include it as
+`raw/nav.ini`. This stage adds the in-app Index, not PDF outlines or links drawn on pages.
+
 ## `settings.ini`
 
 `key=value` lines; `#` starts a comment line. Readers strip one carriage return at the end of a

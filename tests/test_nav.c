@@ -1,6 +1,8 @@
 #include "nav.h"
+#include "export.h"
 #include "testlib.h"
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static NotebookInfo nb;
@@ -133,6 +135,30 @@ TEST(back_history_uses_ids) {
     CHECK(nav_history_pop(&h, &order, 40) == -1);
 }
 
+TEST(raw_zip_keeps_index) {
+    Nav n; nav_init(&n);
+    CHECK(nav_set_name(&n, nb.page_ids[0], "Notes & recipes") == 0);
+    CHECK(nav_save(nb.id, &n, &nb) == 0);
+    Buf b = {0}; ZipWriter z;
+    zip_begin(&z, &b);
+    CHECK(export_notebook_zip(&nb, 300.f, &z, "") == 0 && zip_end(&z) == 0);
+    char archive[850]; snprintf(archive, sizeof archive, "%s.zip", path);
+    CHECK(write_file_atomic(archive, b.data, b.len) == 0);
+    buf_free(&b); nav_free(&n);
+    pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        execlp("python3", "python3", "-c",
+               "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); "
+               "ns=[n for n in z.namelist() if n.endswith('/raw/nav.ini')]; "
+               "assert len(ns)==1; assert z.read(ns[0])==open(sys.argv[2],'rb').read()",
+               archive, path, (char *)NULL);
+        _exit(127);
+    }
+    int status = -1;
+    CHECK(child > 0 && waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 int main(void) {
     char root[700], cmd[800], dir[700];
     snprintf(root, sizeof root, "%s/nav-%d", tl_tmp(), (int)getpid());
@@ -145,6 +171,7 @@ int main(void) {
     RUN(failed_save_does_not_prune);
     RUN(unreadable_files_stay_untouched);
     RUN(back_history_uses_ids);
+    RUN(raw_zip_keeps_index);
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
     CHECK(system(cmd) == 0);
     return tl_done();

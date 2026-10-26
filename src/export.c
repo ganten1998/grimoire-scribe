@@ -401,10 +401,10 @@ static int add_raw_files(const NotebookInfo *nb, ZipWriter *z, const char *dirpr
     store_notebook_dir(nb->id, dir, sizeof dir);
     size_t len;
     uint8_t *d;
-    // notebook.ini, and source.ini when it is there: the book a notebook annotates and which of its
-    // pages is which book page (annotate.h), so a notebook put back from the zip keeps that map.
-    static const char *const k_info[] = {"notebook.ini", "source.ini"};
-    for (int k = 0; k < 2; k++) {
+    // Notebook metadata, the book-page map and named sections: a notebook put back from the zip
+    // keeps its navigation as well as its ink and pictures.
+    static const char *const k_info[] = {"notebook.ini", "source.ini", "nav.ini"};
+    for (size_t k = 0; k < sizeof k_info / sizeof k_info[0]; k++) {
         snprintf(path, sizeof path, "%s/%s", dir, k_info[k]);
         if (!(d = read_file(path, &len))) continue;
         snprintf(name, sizeof name, "%sraw/%s", dirprefix, k_info[k]);

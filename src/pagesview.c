@@ -1,12 +1,13 @@
 // pagesview.c: the editor's Pages view (pagesview.h): numbered tiles; never render other pages on
 // this screen.
 #include "pagesview.h"
+#include "i18n.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum { PG_BACK = 1, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, PG_JUMP, PG_NEW, PG_COPY };
+enum { PG_BACK = 1, PG_DELETE, PG_ALL, PG_TOGGLE, PG_OPEN, PG_PREV, PG_NEXT, PG_JUMP, PG_NEW, PG_COPY, PG_TAB, PG_NAME };
 
 static void geom(App *a, int *cols, int *rows, int *cw, int *ch, int *th) {
     *cols = a->w > a->h ? 6 : 4;
@@ -28,8 +29,14 @@ bool pagesview_ticked(const PagesView *v, int index) { return index >= 0 && inde
 
 void pagesview_untick(PagesView *v) { memset(v->sel, 0, (size_t)v->sel_cap * sizeof *v->sel); }
 
-bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, int current) {
+bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current) {
     v->nb = nb;
+    v->nav = nav;
+    if (!v->tab_initialized) {
+        v->index_tab = nav_index(nav, nb, NULL, 0) > 0;
+        v->index_screen = 0;
+        v->tab_initialized = true;
+    }
     v->current = current;
     if (v->sel_cap < nb->npages) {
         bool *n = realloc(v->sel, (size_t)nb->npages * sizeof *n);
@@ -59,6 +66,8 @@ void pagesview_free(PagesView *v) {
     free(v->sel);
     v->sel = NULL;
     v->sel_cap = 0;
+    v->tab_initialized = false;
+    v->nav = NULL;
 }
 
 // The book page page pid holds, or 0.
@@ -74,6 +83,8 @@ static void tile_label(const PagesView *v, int i, char *lab, size_t cap, char *b
     // TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
     // open page in bold.
     snprintf(lab, cap, i == v->current ? _("Page %d (open)") : _("Page %d"), i + 1);
+    const char *name = nav_name(v->nav, v->nb->page_ids[i]);
+    if (*name) i18n_copy(lab, name, cap);
     int bp = book_page(v, v->nb->page_ids[i]);
     // TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
     // annotated from KOReader): "p. 12". 355 px at 34 px.
@@ -87,6 +98,36 @@ static int last_ticked(const PagesView *v) {
     for (int i = 0; i < v->nb->npages && i < v->sel_cap; i++)
         if (v->sel[i]) last = i;
     return last;
+}
+
+static int index_rows(App *a) { int rows = (a->h - ui_px(410)) / ui_px(140); return rows > 0 ? rows : 1; }
+
+static void draw_index(PagesView *v, App *a, int total) {
+    Canvas *c = &a->screen;
+    if (!total) {
+        // TRANSLATORS: empty Index tab, body text with nearly the screen's width.
+        ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(),
+                (Rect){ui_px(80), ui_px(350), a->w - ui_px(160), ui_px(200)},
+                v->nav->writable ? _("Name a page to list it here.") : _("Page names could not be read."), 3, true, 0);
+        return;
+    }
+    int indices[STORE_MAX_PAGES];
+    nav_index(v->nav, v->nb, indices, STORE_MAX_PAGES);
+    int per = index_rows(a), section = nav_section_of(v->nav, v->nb, v->current);
+    for (int row = 0; row < per && v->index_screen * per + row < total; row++) {
+        int i = indices[v->index_screen * per + row];
+        Rect r = {ui_px(50), ui_px(240) + row * ui_px(140), a->w - ui_px(100), ui_px(128)};
+        if (i == section) canvas_fill(c, (Rect){r.x, r.y + ui_px(12), ui_px(10), r.h - ui_px(24)}, 0);
+        char name[160], number[32];
+        const char *title = ui_name_label(nav_name(v->nav, v->nb->page_ids[i]), name, sizeof name);
+        font_draw_left_name(c, i == section ? FONT_BOLD : FONT_REGULAR, ui_text_size(),
+                            (Rect){r.x + ui_px(30), r.y, r.w - ui_px(250), r.h}, title, 0);
+        snprintf(number, sizeof number, "%d", i + 1);
+        font_draw_centered(c, FONT_BOLD, ui_text_size(),
+                           (Rect){r.x + r.w - ui_px(200), r.y, ui_px(180), r.h}, number, 0);
+        canvas_hline(c, r.x + ui_px(30), r.w - ui_px(30), r.y + r.h, ui_px(2), 160);
+        hits_add(&v->hits, r, PG_OPEN, i);
+    }
 }
 
 void pagesview_draw(PagesView *v, App *a) {
@@ -105,26 +146,47 @@ void pagesview_draw(PagesView *v, App *a) {
     if (k) snprintf(del, sizeof del, _("Delete (%d)"), k);
     else snprintf(del, sizeof del, "%s", _("Delete"));
     Rect rdel = {a->w - m - ui_px(360), by, ui_px(360), bh};
-    ui_button(c, rdel, ICON_TRASH, del, k ? BTN_PRIMARY : BTN_DISABLED);
-    if (k) hits_add(&v->hits, rdel, PG_DELETE, 0);
     Rect rall = {rdel.x - ui_px(20) - ui_px(360), by, ui_px(360), bh};
     bool all = k == nb->npages;
     // TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
     // Gothic, 344 in Classic).
-    ui_button(c, rall, ICON_CHECK, all ? _("Select none") : _("Select all"), BTN_PLAIN);
-    hits_add(&v->hits, rall, PG_ALL, 0);
+    if (v->index_tab) {
+        Rect name = {rall.x, by, rdel.x + rdel.w - rall.x, bh};
+        // TRANSLATORS: Index tab header button (about 740 px wide, 44 px text).
+        ui_button(c, name, ICON_NONE, *nav_name(v->nav, nb->page_ids[v->current]) ?
+                  _("Rename this page") : _("Name this page"), v->nav->writable ? BTN_PLAIN : BTN_DISABLED);
+        if (v->nav->writable) hits_add(&v->hits, name, PG_NAME, 0);
+    } else {
+        ui_button(c, rdel, ICON_TRASH, del, k ? BTN_PRIMARY : BTN_DISABLED);
+        if (k) hits_add(&v->hits, rdel, PG_DELETE, 0);
+        ui_button(c, rall, ICON_CHECK, all ? _("Select none") : _("Select all"), BTN_PLAIN);
+        hits_add(&v->hits, rall, PG_ALL, 0);
+    }
     char title[64];
-    // TRANSLATORS: the Pages view's title, with the notebook's pages (820 px at 74 px).
+    int tx = back.x + bh + ui_px(30), gap = ui_px(16), tw = (rall.x - tx - ui_px(20) - gap) / 2;
+    Rect pages_tab = {tx, by, tw, bh}, index_tab = {tx + tw + gap, by, tw, bh};
+    // TRANSLATORS: Pages tab, with the notebook's page count (about 400 px wide, 44 px text).
     snprintf(title, sizeof title, _("Pages (%d)"), nb->npages);
-    font_draw_left(c, FONT_BOLD, ui_title_size() * 1.15f,
-                   (Rect){back.x + bh + ui_px(30), 0, rall.x - back.x - bh - ui_px(50), th0}, title, 0);
+    ui_button(c, pages_tab, ICON_NONE, title, v->index_tab ? BTN_PLAIN : BTN_SELECTED);
+    int named = nav_index(v->nav, nb, NULL, 0);
+    // TRANSLATORS: Index tab, with the number of named sections (about 400 px, 44 px text).
+    snprintf(title, sizeof title, _("Index (%d)"), named);
+    ui_button(c, index_tab, ICON_NONE, title, v->index_tab ? BTN_SELECTED : BTN_PLAIN);
+    hits_add(&v->hits, pages_tab, PG_TAB, 0);
+    hits_add(&v->hits, index_tab, PG_TAB, 1);
     ui_rule(c, 0, a->w, th0, ui_px(4), 0);
     int cols, rows, cw, ch, th;
     geom(a, &cols, &rows, &cw, &ch, &th);
     int per = cols * rows, screens = (nb->npages + per - 1) / per;
+    if (v->index_tab) {
+        screens = (named + index_rows(a) - 1) / index_rows(a);
+        if (screens < 1) screens = 1;
+        v->index_screen = clampi(v->index_screen, 0, screens - 1);
+        draw_index(v, a, named);
+    }
     if (screens < 1) screens = 1;
-    v->screen = clampi(v->screen, 0, screens - 1);
-    for (int n = 0; n < per; n++) {
+    if (!v->index_tab) v->screen = clampi(v->screen, 0, screens - 1);
+    for (int n = 0; !v->index_tab && n < per; n++) {
         int i = v->screen * per + n;
         if (i >= nb->npages) break;
         Rect tr = {m + (n % cols) * (cw + m), th0 + m + (n / cols) * (ch + m), cw, th};
@@ -137,9 +199,17 @@ void pagesview_draw(PagesView *v, App *a) {
         ui_frame(c, cb, ui_px(12), sel ? 0 : 255, true, 0);
         ui_frame(c, cb, ui_px(12), 0, false, ui_px(5));
         if (sel) ui_icon(c, ICON_CHECK, cb, 255);
-        char lab[64], book[32];
+        char lab[NAV_NAME_LEN], book[32];
         tile_label(v, i, lab, sizeof lab, book, sizeof book);
-        if (book[0]) {
+        const char *name = nav_name(v->nav, nb->page_ids[i]);
+        if (*name) {
+            char display[160];
+            font_draw_left_name(c, cur ? FONT_BOLD : FONT_REGULAR, ui_text_size(),
+                                (Rect){tr.x, tr.y + th + ui_px(12), tr.w, ui_px(70)},
+                                ui_name_label(name, display, sizeof display), 0);
+            if (book[0]) font_draw_left(c, FONT_REGULAR, ui_small_size(),
+                                      (Rect){tr.x, tr.y + th + ui_px(64), tr.w, ui_px(44)}, book, 0);
+        } else if (book[0]) {
             // A book page's: under its label, on a line of its own, the book page it holds.
             ui_text(c, cur ? FONT_BOLD : FONT_REGULAR, ui_text_size(), ui_small_size(),
                     (Rect){tr.x, tr.y + th + ui_px(12), tr.w, ui_px(52)}, lab, 1, true, 0);
@@ -156,10 +226,11 @@ void pagesview_draw(PagesView *v, App *a) {
     a->toast_floor = y;  // keep a Copy page notice above the bottom controls when Pages reopens
     canvas_hline(c, 0, a->w, y, ui_px(3), 0);
     Rect pr = {m, y + ui_px(15), ui_px(220), ui_px(140)}, nr = {a->w - m - ui_px(220), y + ui_px(15), ui_px(220), ui_px(140)};
-    ui_button(c, pr, ICON_PREV, NULL, v->screen > 0 ? BTN_PLAIN : BTN_DISABLED);
-    ui_button(c, nr, ICON_NEXT, NULL, v->screen < screens - 1 ? BTN_PLAIN : BTN_DISABLED);
-    if (v->screen > 0) hits_add(&v->hits, pr, PG_PREV, 0);
-    if (v->screen < screens - 1) hits_add(&v->hits, nr, PG_NEXT, 0);
+    int screen = v->index_tab ? v->index_screen : v->screen;
+    ui_button(c, pr, ICON_PREV, NULL, screen > 0 ? BTN_PLAIN : BTN_DISABLED);
+    ui_button(c, nr, ICON_NEXT, NULL, screen < screens - 1 ? BTN_PLAIN : BTN_DISABLED);
+    if (screen > 0) hits_add(&v->hits, pr, PG_PREV, 0);
+    if (screen < screens - 1) hits_add(&v->hits, nr, PG_NEXT, 0);
     Rect jump = {a->w / 2 - ui_px(300), pr.y, ui_px(600), pr.h};
     ui_button(c, jump, ICON_NONE, _("Go to page..."), BTN_PLAIN);
     hits_add(&v->hits, jump, PG_JUMP, 0);
@@ -188,6 +259,7 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
         Rect dirty;
         KbResult r = keyboard_pointer(&v->kb, ph, ev->x, ev->y, ev->t_ms, &dirty);
         if (r == KB_DONE) {
+            if (v->naming) return PV_NAME;
             char *end;
             long page = strtol(v->kb.text, &end, 10);
             if (*v->kb.text && !*end && page >= 1 && page <= v->nb->npages) {
@@ -214,7 +286,19 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
     if (!h || !press_is_tap(&v->press, h->r)) return PV_NONE;
     Hit hit = *h;
     switch (hit.id) {
+    case PG_TAB:
+        v->index_tab = hit.arg != 0;
+        if (v->index_tab) pagesview_untick(v);
+        redraw(v, a, REFRESH_FULL);
+        break;
+    case PG_NAME:
+        v->naming = true;
+        // TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+        keyboard_open(&v->kb, _("Page name"), nav_name(v->nav, v->nb->page_ids[v->current]));
+        redraw(v, a, REFRESH_UI);
+        break;
     case PG_JUMP:
+        v->naming = false;
         keyboard_open(&v->kb, _("Go to page"), "");
         v->kb.page = 2;
         redraw(v, a, REFRESH_UI);
@@ -245,7 +329,8 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
         return PV_COPY;
     case PG_PREV:
     case PG_NEXT:
-        v->screen += hit.id == PG_NEXT ? 1 : -1;
+        if (v->index_tab) v->index_screen += hit.id == PG_NEXT ? 1 : -1;
+        else v->screen += hit.id == PG_NEXT ? 1 : -1;
         redraw(v, a, REFRESH_FULL);
         break;
     default: break;
@@ -255,9 +340,13 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
 
 int pagesview_probe(const PagesView *v, const char *key, char *out, size_t cap) {
     out[0] = 0;
-    if (!strncmp(key, "tile.", 5)) {
+    if (!strcmp(key, "pages_tab")) {
+        snprintf(out, cap, "%s", v->index_tab ? "index" : "pages");
+    } else if (!strcmp(key, "index_rows")) {
+        snprintf(out, cap, "%d", v->nav ? nav_index(v->nav, v->nb, NULL, 0) : 0);
+    } else if (!strncmp(key, "tile.", 5)) {
         int i = atoi(key + 5) - 1;
-        char lab[64], book[32];
+        char lab[NAV_NAME_LEN], book[32];
         if (!v->open || i < 0 || i >= v->nb->npages) return 0;
         tile_label(v, i, lab, sizeof lab, book, sizeof book);
         snprintf(out, cap, "%s%s%s", lab, book[0] ? " | " : "", book);
