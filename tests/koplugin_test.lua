@@ -240,6 +240,13 @@ package.loaded["ui/trapper"] = {
     end,
     clear = function() table.insert(W.calls, "trapper clear") end,
 }
+-- KOReader's renderPage puts the contrast and the last argument (the saturation, the render mode
+-- before 2024) into its cache key, and fails on a page drawn without either, as crash.log has it.
+local function draw_args_ok(gamma, last)
+    if gamma == nil or last == nil then
+        error("frontend/document/document.lua:398: attempt to concatenate local 'saturation' (a nil value)", 0)
+    end
+end
 -- A paged document of book b (W.files[path], or a reader's), any page drawn: W.drawn has each.
 local function paged_doc(b)
     local doc = { file = b.file, is_locked = b.locked }
@@ -254,6 +261,7 @@ local function paged_doc(b)
         return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
     end
     function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
+        draw_args_ok(gamma, last)
         table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
             page, zoom, rotation, tostring(gamma), tostring(last)))
         target.what = "page " .. page
@@ -283,6 +291,7 @@ package.loaded["docsettings"] = {
             if not b then return nil end
             if key == "partial_md5_checksum" then return b.md5 end
             if key == "last_page" then return b.last_page end
+            return b.settings and b.settings[key]
         end }
     end,
 }
@@ -315,6 +324,15 @@ G_reader_settings = { -- luacheck: ignore (KOReader's global)
         return self
     end,
 }
+G_defaults = { -- luacheck: ignore (KOReader's global: its defaults.lua, W.defaults over it)
+    readSetting = function(_, key) return W.defaults and W.defaults[key] end,
+}
+-- ReaderView, for the calls it has: onSaturationUpdate from KOReader 2024 on (W.old_view: before).
+package.preload["apps/reader/modules/readerview"] = function()
+    return setmetatable({}, { __index = function(_, k)
+        if k == "onSaturationUpdate" and not W.old_view then return function() end end
+    end })
+end
 -- KOReader's environment, as koreader.sh exports it.
 os.getenv = function(name) return W.env[name] end -- luacheck: ignore
 -- The launchers: Grimoire.sh --unpack-only (writes app/grimoire.sh, as an unpack would),
@@ -374,7 +392,7 @@ local function world(name)
         -- The book a book's screen has open (new_ui): kind "paged" (a PDF), "reflowable" (an
         -- EPUB) or "old" (a PDF in a KOReader that cannot draw a page by itself).
         book = { kind = "paged", page = 12, pages = 96, md5 = "0f3c6e2a9b1d4c7e8f5a2b3c4d5e6f70",
-            title = "Le Petit Prince", native = { w = 612, h = 792 }, gamma = 1.5, header = 0 },
+            title = "Le Petit Prince", native = { w = 612, h = 792 }, gamma = 1.5, saturation = 1, header = 0 },
     }
     W.us = W.dir .. "/us"
     W.book.file = W.us .. "/documents/book.epub"
@@ -459,6 +477,7 @@ local function new_ui(in_book)
                     return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
                 end
                 function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
+                    draw_args_ok(gamma, last)
                     table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
                         page, zoom, rotation, tostring(gamma), tostring(last)))
                     local c = doc.configurable
@@ -1008,7 +1027,7 @@ do -- From a PDF: the whole page fitted to the Scribe's page, the PNG and the re
     check(s .. ": unpacked first, Preparing Grimoire... up", at("execute sh '" .. W.doc .. "' --unpack-only") ~= nil
         and at("show Preparing Grimoire...") ~= nil)
     -- 612 x 792 points fitted to 1860 x 2480: the width decides (zoom 3.0392), centred down the page.
-    check(s .. ": the whole page drawn, fitted and centred", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 nil")
+    check(s .. ": the whole page drawn, fitted and centred", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 1")
     check(s .. ": as it is: not reflowed, cleaned up or inverted", drew("settings") == "settings 0 0 0 255 0")
     local c = g.ui.document.configurable
     check(s .. ": the book's own settings back after", c.text_wrap == 1 and c.page_opt == 1 and c.auto_straighten == 5
@@ -1041,7 +1060,7 @@ do -- From a PDF: the whole page fitted to the Scribe's page, the PNG and the re
     koreader(true):onAnnotateInGrimoire()
     check(s .. ", a KOReader with saturation: passed on", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 0.8")
     world("annotate-pdf-render-mode")
-    W.book.render_mode = 0
+    W.book.saturation, W.book.render_mode = nil, 0
     koreader(true):onAnnotateInGrimoire()
     check(s .. ", an older KOReader: its render mode passed on", drew("drawPage") == "drawPage 0 36 1860x2407 12 3.0392 0 1.5 0")
 end
@@ -1513,12 +1532,42 @@ do -- The file browser's Open with... > Grimoire: the files it takes, then a PDF
     check(s .. ": opened, both pages drawn, closed before the hand-over", at("openDocument")
         and drew("drawPage 0 36 1860x2407 1 ") and drew("drawPage 0 36 1860x2407 2 ") and at("closeDocument")
         and last_preparing and at("closeDocument") < last_preparing)
+    check(s .. ": at KOReader's contrast and saturation, a book never set (1, 1)",
+        drew("drawPage 0 36 1860x2407 1 ") == "drawPage 0 36 1860x2407 1 3.0392 0 1 1")
     local r = book_request() or {}
     check(s .. ": its key and the page it was left at", r.book == "0123456789abcdef0123456789abcdef" and r.page == "2"
         and r.pages == "2" and r.title == "School of Velocity" and table.concat(r.pictures, " ") == "1=page-1.png 2=page-2.png")
     check(s .. ": the hand-over from the file browser, back to it after", wrapped() and at("restart")
         and W.settings.start_with ~= "last")
     logs_name_no_book(s)
+end
+
+do -- Open with draws the pages as the reader would: the book's own contrast and saturation, else the
+    -- defaults set for books, else KOReader's (defaults.lua); an older KOReader's render mode.
+    local file
+    local function open_with(name, settings, set_up)
+        world(name)
+        W.unpack_writes = BOOK_CAPS
+        file = W.us .. "/documents/Czerny Op 299.pdf"
+        W.files = { [file] = { file = file, pages = 1, md5 = "0123456789abcdef0123456789abcdef",
+            native = { w = 612, h = 792 }, settings = settings } }
+        if set_up then set_up() end
+        koreader(false):openFile(file)
+        return drew("drawPage")
+    end
+    local s = "open with, the reader's look"
+    check(s .. ": the book's own", open_with("book-open-with-own", { kopt_contrast = 1.4, kopt_saturation = 0.6 })
+        == "drawPage 0 36 1860x2407 1 3.0392 0 1.4 0.6" and wrapped())
+    check(s .. ": the defaults set for books", open_with("book-open-with-defaults", nil, function()
+        W.settings.kopt_contrast, W.settings.kopt_saturation = 2, 0.5
+    end) == "drawPage 0 36 1860x2407 1 3.0392 0 2 0.5")
+    check(s .. ": KOReader's defaults.lua", open_with("book-open-with-defaults-lua", nil, function()
+        W.defaults = { DKOPTREADER_CONFIG_CONTRAST = 1.2, DKOPTREADER_CONFIG_SATURATION = 0.8 }
+    end) == "drawPage 0 36 1860x2407 1 3.0392 0 1.2 0.8")
+    check(s .. ": an older KOReader, the book's render mode", open_with("book-open-with-old", { render_mode = 2 },
+        function() W.old_view = true end) == "drawPage 0 36 1860x2407 1 3.0392 0 1 2")
+    check(s .. ": an older KOReader, its default render mode", open_with("book-open-with-old-default", nil,
+        function() W.old_view = true end) == "drawPage 0 36 1860x2407 1 3.0392 0 1 0")
 end
 
 do -- A PDF that needs a password: KOReader cannot draw it here; closed again, nothing sent.

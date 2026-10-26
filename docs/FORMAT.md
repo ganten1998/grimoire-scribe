@@ -670,7 +670,9 @@ In a paged document (PDF, DjVu, comics, XPS), KOReader's Grimoire plugin has Too
 this book in Grimoire (and a gesture), and the file browser's Open with... lists Grimoire for those
 files (never as a default). The plugin reads the book notebook's `source.ini` (above) for the book
 pages it holds already, draws every other page as Annotate draws its page (whole, fitted and centred
-on white, at the reader's contrast, not reflowed, cleaned up or inverted), each into
+on white, at the reader's contrast and saturation, not reflowed, cleaned up or inverted; from the
+file browser, at the ones the reader would open the book with: the book's own, else the defaults set
+for books, else KOReader's), each into
 `import/.book/page-<n>.png` (a dot-folder: the folder import skips it), emptied first, each written
 into a temporary file and renamed into place, under a progress message a tap stops. Then it writes
 the request and hands over with `--book` after `--hosted koreader` (`GRIMOIRE_BOOK=1` for that start

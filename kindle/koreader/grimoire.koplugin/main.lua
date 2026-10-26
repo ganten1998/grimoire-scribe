@@ -766,8 +766,26 @@ function Grimoire:openFile(file)
     local title = got and type(props) == "table" and props.title
     if type(title) ~= "string" or title == "" then title = (file:match("([^/]+)$") or ""):gsub("%.[^.]*$", "") end
     title = title:gsub("%c", " "):sub(1, 500)
+    -- The contrast and saturation the reader would draw its pages at, as KOReader loads them for a
+    -- book (the book's own, else the default set for books, else KOReader's); a KOReader before
+    -- 2024 takes its render mode where the saturation is now. (drawPage needs both: KOReader 2024
+    -- on fails on a page drawn without its saturation.)
+    local function kopt(name, default_key)
+        local v = setting("kopt_" .. name)
+        if type(v) ~= "number" then v = G_reader_settings:readSetting("kopt_" .. name) end
+        if type(v) ~= "number" and type(G_defaults) == "table" then
+            local read, d = pcall(G_defaults.readSetting, G_defaults, default_key)
+            if read then v = d end
+        end
+        return type(v) == "number" and v or 1
+    end
+    local gamma, last = kopt("contrast", "DKOPTREADER_CONFIG_CONTRAST"), kopt("saturation", "DKOPTREADER_CONFIG_SATURATION")
+    local has_view, ReaderView = pcall(require, "apps/reader/modules/readerview")
+    if has_view and type(ReaderView) == "table" and ReaderView.onSaturationUpdate == nil then
+        last = tonumber(setting("render_mode")) or 0
+    end
     logger.info("Grimoire: open a whole book from the file browser")
-    self:sendBook{ doc = doc, key = key, title = title, page = page, close = function()
+    self:sendBook{ doc = doc, key = key, title = title, page = page, gamma = gamma, last = last, close = function()
         DocumentRegistry:closeDocument(file)
     end }
 end

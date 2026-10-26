@@ -41,7 +41,7 @@ fi
 if command -v luacheck >/dev/null 2>&1; then
     # KOReader methods receive implicit self even when unused; translation literals stay whole.
     check "luacheck" luacheck --no-color -q --std luajit --no-self --max-line-length 200 \
-        --globals G_reader_settings -- "$DIR"
+        --globals G_reader_settings --read-globals G_defaults -- "$DIR"
 else
     echo "skip luacheck (not installed)"
 fi
