@@ -19,6 +19,12 @@ The input-backlog scenario verifies intermediate live refreshes, all stored samp
 unchanged rendering. Share checks exercise queued and simultaneous PDF downloads, completed
 page counts, sent-byte counts, unchanged PDF bytes, failed requests and HEAD responses.
 
+Live frames over gray paper now move each pixel once, toward its value (see "Gray paper" in
+INK-PERFORMANCE.md). `tests/test_fbpack.c` checks that on every paper gray, normal and
+inverted, at 8 and 32 bpp, and that black-and-white content keeps the old dither exactly.
+The device check: write on a white page and on a gray PDF page; the gray page should no longer
+lag behind the white one or show white specks around the stroke before it settles.
+
 Physical pen feel and the opt-in MTK pen-mode change still need a device comparison.
 No default pen-mode change has been made. The owner has not yet tested this candidate.
 

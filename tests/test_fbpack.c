@@ -51,11 +51,16 @@ TEST(gray_paper_survives_live_ink_and_overlap) {
                         int fx, fy;
                         position(i % w, i / w, rotation, flip, &fx, &fy);
                         int off = GUARD + fy * stride + fx * bytes;
+                        int was = invert ? 255 - before[off] : before[off], now = invert ? 255 - memory[off] : memory[off];
                         if (i != written && i != written + 1) {
                             CHECK(!memcmp(memory + off, before + off, (size_t)bytes));
                             CHECK(memory[off] != 0 && memory[off] != 255);
+                        } else if (i == written) {
+                            CHECK(now == 0);
                         } else {
-                            CHECK(memory[off] == 0 || memory[off] == 255);
+                            // Lighter than the paper it shows: white, or the paper until it is due.
+                            CHECK(now == 255 || !memcmp(memory + off, before + off, (size_t)bytes));
+                            CHECK(src[i] > was);
                         }
                         CHECK(previous[fy * PW + fx] == src[i]);
                     }
@@ -76,6 +81,104 @@ TEST(gray_paper_survives_live_ink_and_overlap) {
                     for (int y = 0; y < PH; y++)
                         for (int x = PW * bytes; x < stride; x++) CHECK(fb[y * stride + x] == 0xCD);
                     for (int i = GUARD + PH * stride; i < ROOM; i++) CHECK(memory[i] == 0xCD);
+                }
+}
+
+// Pixel at (x, y) of an 8x8 tile as fbpack_row leaves it, Grimoire's inversion undone.
+static int shown_at(const uint8_t *fb, int stride, int bytes, int x, int y, bool invert) {
+    int v = fb[y * stride + x * bytes];
+    return invert ? 255 - v : v;
+}
+
+// One fast frame of the whole tile at a uniform logical value. Returns pixels whose bytes changed.
+static int tile_frame(uint8_t *fb, uint8_t *previous, uint8_t *changes, int bpp, bool invert, int v) {
+    int bytes = bpp / 8, stride = 8 * bytes, changed = 0;
+    uint8_t src[8], before[8 * 8 * 4];
+    memcpy(before, fb, sizeof before);
+    memset(src, v, sizeof src);
+    for (int y = 0; y < 8; y++) fbpack_row(fb + y * stride, bytes, previous + y * 8, 1, src, 8, 0, y, bpp, invert, true, true);
+    for (int i = 0; i < 64; i++)
+        if (memcmp(fb + i * bytes, before + i * bytes, (size_t)bytes)) {
+            changes[i]++;
+            changed++;
+        }
+    return changed;
+}
+
+// A DU transition cannot be restarted until it ends. Ink going down on gray paper must not send a
+// pixel to white first and to black a waveform later: each pixel moves once, toward its value, and
+// the tile keeps the darkness of the logical gray (what the settle will show).
+TEST(live_ink_moves_each_pixel_once_toward_its_value) {
+    const int papers[] = {255, 254, 231, 200, 160, 128, 77, 20, 1, 0};
+    for (int bpp = 8; bpp <= 32; bpp += 24)
+        for (int invert = 0; invert < 2; invert++)
+            for (size_t k = 0; k < sizeof papers / sizeof *papers; k++)
+                for (int step = 1; step <= 37; step += 12) {
+                    int paper = papers[k], bytes = bpp / 8, stride = 8 * bytes;
+                    uint8_t fb[8 * 8 * 4], previous[64], src[8], changes[64] = {0};
+                    memset(src, paper, sizeof src);
+                    // The settle (or the page as opened) shows the paper's exact gray.
+                    for (int y = 0; y < 8; y++)
+                        fbpack_row(fb + y * stride, bytes, previous + y * 8, 1, src, 8, 0, y, bpp, invert, false, true);
+                    // Darker frame by frame, down to black ink.
+                    for (int v = paper - step; ; v -= step) {
+                        if (v < 0) v = 0;
+                        tile_frame(fb, previous, changes, bpp, invert, v);
+                        int sum = 0;
+                        for (int i = 0; i < 64; i++) {
+                            int s = shown_at(fb, stride, bytes, i % 8, i / 8, invert);
+                            CHECK(s == 0 || s == paper);
+                            sum += s;
+                            if (bpp == 32) {
+                                const uint8_t *p = fb + i * bytes;
+                                CHECK(p[1] == p[0] && p[2] == p[0] && p[3] == 255);
+                            }
+                        }
+                        CHECK(abs(sum / 64 - v) <= paper * 3 / 128 + 2);
+                        if (v == 0) break;
+                    }
+                    for (int i = 0; i < 64; i++) {
+                        CHECK(changes[i] <= 1);
+                        CHECK(shown_at(fb, stride, bytes, i % 8, i / 8, invert) == 0);
+                    }
+                    // Erasing back to the paper: lighter frame by frame, each pixel once again.
+                    memset(changes, 0, sizeof changes);
+                    for (int v = step; ; v += step) {
+                        if (v > paper) v = paper;
+                        tile_frame(fb, previous, changes, bpp, invert, v);
+                        int sum = 0;
+                        for (int i = 0; i < 64; i++) {
+                            int s = shown_at(fb, stride, bytes, i % 8, i / 8, invert);
+                            CHECK(s == 0 || s == 255);
+                            sum += s;
+                        }
+                        CHECK(abs(sum / 64 - v) <= 255 * 3 / 128 + 2);
+                        if (v == paper) break;
+                    }
+                    for (int i = 0; i < 64; i++) CHECK(changes[i] <= 1);
+                    // Nothing new: an overlapping frame changes nothing.
+                    memset(changes, 0, sizeof changes);
+                    CHECK(tile_frame(fb, previous, changes, bpp, invert, paper) == 0);
+                }
+}
+
+// Where the panel shows black or white, live frames are the plain 8x8 ordered dither, as before.
+TEST(black_and_white_pixels_keep_the_ordered_dither) {
+    for (int invert = 0; invert < 2; invert++)
+        for (int shown = 0; shown <= 255; shown += 255)
+            for (int v = 0; v <= 255; v++)
+                for (int y = 0; y < 8; y++) {
+                    uint8_t fb[8], previous[8], src[8], expect[8];
+                    memset(fb, invert ? 255 - shown : shown, sizeof fb);
+                    memset(previous, (uint8_t)(255 - v), sizeof previous);  // any other logical value
+                    memset(src, v, sizeof src);
+                    fbpack_row(fb, 1, previous, 1, src, 8, 0, y, 8, invert, true, true);
+                    uint8_t old_fb[8];
+                    memset(old_fb, 0x5A, sizeof old_fb);
+                    // The rule without the panel's state (no cache): what every fast frame did.
+                    fbpack_row(old_fb, 1, NULL, 0, src, 8, 0, y, 8, invert, true, false);
+                    memcpy(expect, old_fb, sizeof expect);
+                    CHECK(!memcmp(fb, expect, sizeof fb));
                 }
 }
 
@@ -118,6 +221,8 @@ TEST(pen_refreshes_keep_coordinate_processing_at_every_edge) {
 
 int main(void) {
     RUN(gray_paper_survives_live_ink_and_overlap);
+    RUN(live_ink_moves_each_pixel_once_toward_its_value);
+    RUN(black_and_white_pixels_keep_the_ordered_dither);
     RUN(no_cache_falls_back_and_invalidating_repaints);
     RUN(pen_refreshes_keep_coordinate_processing_at_every_edge);
     return tl_done();

@@ -2,6 +2,11 @@
 
 ## 2.0.0-beta.4 (unreleased)
 
+- **Live ink on gray pages goes straight to black**: on a gray PDF page or template, most
+  pixels under a new stroke used to flash white first and turn black a whole display waveform
+  later, a white halo and extra lag that white pages never had. Live frames now only move a
+  pixel toward its new value, with the same average darkness. Black-and-white pages are
+  refreshed exactly as before.
 - **PDF download progress**: Share shows completed pages while preparing a notebook PDF,
   then the transfer percentage. Files still go through the browser's normal download
   handling. Interrupted or failed downloads show a message instead of a stuck indicator.

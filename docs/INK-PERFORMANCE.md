@@ -53,6 +53,48 @@ For the Kindle, replace `clang` with `zig cc -target arm-linux-musleabihf -mcpu=
 -static`. Compare hashes against the previous brush compiled with the same toolchain before
 comparing timings. The inputs are synthetic; no notebook or captured handwriting is needed.
 
+## Gray paper: one transition per pixel
+
+DU can only drive a pixel to black or white, and a pixel cannot start a new transition until
+its current one has ended. Beta.3 dithered every changed pixel of a live frame to black or
+white. On white paper, ink going down turns a pixel black once. On gray paper, the first light
+deposit of a dab's edge sent most pixels to *white*, and the dab's center a few milliseconds
+later sent them to black. That black had to wait for the white transition to finish, so on gray
+PDF pages and templates a large share of a stroke appeared a whole waveform later than on white
+paper, inside a brief white halo.
+
+Live frames now move what the panel shows only toward each pixel's new value: a darkening pixel
+goes black or stays as shown, a lightening pixel goes white or stays as shown. The 8x8 ordered
+dither decides which, scaled to the shown gray so the average darkness stays right. The GL16
+settle on pen-up still shows the exact grays. Where the panel shows black or white this is the
+same dither as before, which `tests/test_fbpack.c` checks for every value and dither position.
+The same test fails 119,024 checks against the beta.3 rule (white over gray, second transitions).
+
+`tools/du-model.c` draws strokes with the real brush and default tools, one fast frame per pen
+sample, and packs them with `fbpack_row` both ways. In its panel model a transition takes T ms
+and waits for the pixel's previous one. With T = 150 ms and 240 samples a second (beta.3 rule /
+current rule; "black p90": 90% of the pixels that end black have finished turning black within
+this time of their first ink):
+
+| Tool, paper gray, speed | Transitions per inked pixel | Went white over gray | Black p90 |
+| --- | ---: | ---: | ---: |
+| Ballpoint, white 255, 20 mm/s | 0.59 / 0.59 | 0% / 0% | 162 / 162 ms |
+| Ballpoint, gray 195, 20 mm/s | 1.38 / 0.58 | 70% / 0% | 300 / 162 ms |
+| Ballpoint, gray 195, 60 mm/s | 1.23 / 0.58 | 55% / 0% | 300 / 154 ms |
+| Pencil, gray 225, 60 mm/s | 1.14 / 0.41 | 66% / 0% | 300 / 154 ms |
+| Marker, gray 195, 60 mm/s | 1.36 / 0.58 | 68% / 0% | 300 / 158 ms |
+
+Results are the same shape at 100 and 260 ms waveforms and at 120 to 360 samples a second.
+On white paper the two rules give identical frames. This is a model of the panel, not a
+measurement of it: the real waveform times and the driver's collision handling are unknown,
+so it says which way the change goes and roughly how far, and the Kindle has the final word.
+
+```sh
+clang -O2 -std=gnu11 -D_GNU_SOURCE -Isrc tools/du-model.c src/brush.c src/canvas.c \
+  src/fbpack.c src/util.c src/i18n.c build/gen/l10n.c -lm -o build/du-model
+build/du-model 150 240
+```
+
 ## Opt-in display experiment
 
 MTK pen mode remains off by default. FBInk documents a Bellatrix3 MDP bypass for DU/DUNM

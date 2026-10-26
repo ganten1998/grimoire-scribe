@@ -281,7 +281,9 @@ int display_open(int *w, int *h, float *dpi) {
 // DU is 1-bit. Changed pixels in live (FAST) frames are ordered-dithered (8x8 Bayer), so a gray shows as the same
 // overall darkness in black and white dots: the stroke looks as wide and as dark while drawing
 // as after the GL16 settle on pen-up. (Thresholding made light pencil vanish; forcing every inked
-// pixel black made live strokes look thick and dark, then "fade" when they settled.)
+// pixel black made live strokes look thick and dark, then "fade" when they settled.) Over gray
+// paper the dots are black and the paper itself: fbpack_row only moves a shown pixel toward its
+// new value, so no pixel goes white and then black a waveform later.
 static bool g_live;
 // Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
 // there legitimately differs from the canvas, so the overwrite checks skip it.
