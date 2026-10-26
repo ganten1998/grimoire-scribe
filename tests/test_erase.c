@@ -16,6 +16,21 @@ static const float DPI = 300.f;
 enum { W = 1860, H = 2480 };
 static const Rect FULL = {0, 0, W, H};
 
+// Profiles used to record the 1.1 erase renders. A stroke stores these values; current pen
+// defaults may change, but these profiles and the recorded CRCs must stay frozen.
+static const ToolParams k_legacy_params[TOOL_COUNT] = {
+    {0.20f, 0.45f, 0.30f, 0.95f, 0.03f, 0.85f, 1.25f, 15.f, 60.f, 1.6f, 0.45f, 0.65f, 0.10f},
+    {0.26f, 0.36f, 0.38f, 0.85f, 0.03f, 0.80f, 1.10f, 25.f, 70.f, 0.35f, 0.10f, 0.50f, 0.15f},
+    {0.30f, 0.48f, 0.85f, 1.00f, 0.02f, 0.55f, 0.60f, 30.f, 75.f, 0.10f, 0.00f, 0.06f, 0.35f},
+    {2.5f, 7.0f, 1.f, 1.f, 0.0f, 0.60f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.f},
+    {4.0f, 5.0f, 0.55f, 0.65f, 0.02f, 0.50f, 0.80f, 30.f, 70.f, 0.2f, 0.f, 0.f, 0.40f},
+    {0.35f, 1.10f, 0.90f, 1.00f, 0.02f, 0.60f, 0.80f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f},
+    {0.28f, 0.34f, 1.00f, 1.00f, 0.01f, 0.30f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f},
+    {1.50f, 2.00f, 0.92f, 1.00f, 0.01f, 0.40f, 0.70f, 30.f, 75.f, 0.3f, 0.f, 0.04f, 0.30f},
+    {0.80f, 2.40f, 0.30f, 1.00f, 0.03f, 0.85f, 1.00f, 45.f, 75.f, 2.0f, 0.35f, 0.85f, 0.15f},
+    {0.70f, 1.40f, 0.92f, 1.00f, 0.02f, 0.60f, 0.80f, 10.f, 25.f, 0.f, 0.f, 0.f, 0.30f},
+};
+
 // ---- building strokes ----
 
 // Fills s with a wavy line from (x0, y0) to (x1, y1): pressure p0..p1, tilt (tx, ty) wobbling.
@@ -862,9 +877,8 @@ TEST(compaction_checks_the_page_too) {
     int lt;
     float yc = staff_line(&a, &lt);
     CHECK(lt >= 2 && lt <= 4);
-    ToolParams pp, hp;
-    tool_params_default(TOOL_PENCIL, &pp);
-    tool_params_default(TOOL_HIGHLIGHTER, &hp);
+    // This contrast needs the original light pencil, not a later darker writing profile.
+    ToolParams pp = k_legacy_params[TOOL_PENCIL], hp = k_legacy_params[TOOL_HIGHLIGHTER];
     hp.opacity_min = hp.opacity_max = 1.f;
     Stroke *pencil = stroke_new(TOOL_PENCIL, &pp, 41u), *hl = stroke_new(TOOL_HIGHLIGHTER, &hp, 42u);
     for (int i = 0; i <= 50; i++) {
@@ -1018,7 +1032,8 @@ TEST(undo_and_redo_an_erase_stroke) {
     history_init(&h);
     for (int i = 0; i < 4; i++) {
         float y = 600 + i * 100.f;
-        Stroke *s = ink(TOOL_PENCIL, 300, y, 1500, y + 40, 30, 0.6f, 1.f, 30, 20, 1u + (uint32_t)i);
+        // Broad ink gives the erase/undo comparison plenty of changed pixels.
+        Stroke *s = ink(TOOL_MARKER, 300, y, 1500, y + 40, 30, 0.6f, 1.f, 30, 20, 1u + (uint32_t)i);
         page_add(p, s);
         history_push_add(&h, p->n - 1, s);
     }
@@ -1335,14 +1350,12 @@ TEST(erase_look_is_recorded) {
         for (int v = 0; v < LOOK_COUNT; v++) {
             Page *pg = page_new(W, H, papers[pi]);
             for (int u = 0; u < 5; u++) {
-                ToolParams ip;
-                tool_params_default(under[u], &ip);
+                ToolParams ip = k_legacy_params[under[u]];
                 page_add(pg, zigzag(under[u], &ip, 0x00A5F00Du + (uint32_t)u * 40503u, y0 - 60.f + 30.f * (float)u));
             }
             if (v == 0 && !g_print) page_render(&inked, pg, band, DPI);  // the ink before any erasing
             ToolKind tex = v < TOOL_COUNT ? (ToolKind)v : TOOL_ERASER;
-            ToolParams prm;
-            tool_params_default(tex, &prm);
+            ToolParams prm = k_legacy_params[tex];
             if (v == LOOK_SOFT) prm.opacity_min = prm.opacity_max = 0.5f;
             if (v == LOOK_FINE) prm.size_min_mm = prm.size_max_mm = 0.10f;
             page_add(pg, wave(&prm, erase_seed(tex, 0x00C0DE00u + (uint32_t)v), y0));
