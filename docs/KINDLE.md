@@ -191,6 +191,15 @@ KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KP
    the same session. It kept the Kindle UI paused all along, so none of the Kindle's own screens
    show in between, and the passcode stays paused. KOReader's own start reopens the book
    (`start_with`), and the plugin puts `start_with` back.
+   KOReader's Keep alive comes back too: grimoire.sh put back the preventScreenSaver KOReader had,
+   but the flag KOReader keeps in memory (`PluginShare.keepalive`) is gone with the old process.
+   With preventScreenSaver 1 and that flag off, KOReader's AutoSuspend spins once its suspend time
+   passes without a sleep: its Kindle timer schedules itself in the past, so KOReader never reads
+   input again and asks the power service `isCharging` in a loop (the KOReader hang of 2.0.0-beta.4,
+   found 2026-10-26). So at each KOReader start, on a Kindle the power service keeps awake, the
+   plugin turns the flag back on (`Grimoire: the Kindle is kept awake (preventScreenSaver 1):
+   KOReader's Keep alive is on again`), once per run, through KOReader's own lipc handle. Keep
+   alive then shows on, as it is, and its menu item turns it off.
 6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
    another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
    start. See grimoire/grimoire.log." over the book or the file browser.

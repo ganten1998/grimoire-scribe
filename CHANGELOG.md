@@ -27,6 +27,11 @@
   Paper > Photos...: the photo becomes the page's paper, fitted to the page and turned upright the
   way your phone or camera took it, ready to write on. A page added after it gets the notebook's
   own paper.
+- **KOReader no longer hangs after Grimoire with Keep alive on**: KOReader came back with the Kindle
+  still kept awake but its Keep alive shown off, and five idle minutes later its auto-suspend timer
+  spun without end, so KOReader stopped answering. The plugin now turns Keep alive back on when
+  KOReader starts on a Kindle that is kept awake (update the plugin: Library > Settings >
+  KOReader > Install / update Grimoire plugin).
 - **Open a whole book in Grimoire**: in a PDF, DjVu or comic book in KOReader, Tools > Grimoire >
   Open this book in Grimoire, or Open with... > Grimoire in KOReader's file browser, puts every page
   into the book's notebook at once (KOReader draws them first, with a progress message a tap stops)

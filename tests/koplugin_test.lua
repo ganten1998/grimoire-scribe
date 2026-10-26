@@ -76,6 +76,16 @@ local function device_exit(self)
     if W.exit_error then error("KOReader's exit failed") end
 end
 Device.isKindle = function() return W.kindle end
+-- KindlePowerD's lipc handle, for preventScreenSaver (W.prevent; W.lipc_error: the read fails),
+-- each read in W.lipc_reads. world() puts it back on Device.powerd, and a fresh PluginShare
+-- (W.share).
+local function lipc_handle()
+    return { get_int_property = function(_, service, property)
+        table.insert(W.lipc_reads, service .. " " .. property)
+        if W.lipc_error then error("lipc: timed out") end
+        return W.prevent
+    end }
+end
 -- The screen, of W.screen's size; its shot (KOReader's Screen:shot) writes what it shows, and
 -- answers as the screen's writePNG does (W.png_answers, below).
 local function png_answer(path, text)
@@ -402,6 +412,9 @@ local function world(name)
     W.koreader_sh = W.dir .. "/var/tmp/koreader.sh"
     W.marker = W.dir .. "/settings/grimoire_launch.txt"
     W.pdfs = W.us .. "/grimoire/PDFs"
+    W.prevent, W.lipc_reads, W.share = 0, {}, {}
+    Device.powerd = { lipc_handle = lipc_handle() }
+    package.loaded["pluginshare"] = W.share
     assert(sh("rm -rf " .. q(W.dir) .. " && mkdir -p " .. q(W.us .. "/documents") .. " " ..
         q(W.us .. "/grimoire/app") .. " " .. q(W.dir .. "/settings") .. " " .. q(W.dir .. "/var/tmp")))
     write(W.koreader_sh, "#!/bin/sh\n")
@@ -570,6 +583,50 @@ do -- Not a Kindle: no menu, no gesture, and Open refuses.
     g:onOpenGrimoire()
     check("not a Kindle: Open says why", told("Grimoire runs only on a Kindle."))
     untouched("not a Kindle")
+end
+
+do -- Keep alive as the Kindle has it: KOReader starts again with the power service keeping the
+    -- Kindle awake (its Keep alive from before Grimoire, put back by grimoire.sh) and its own flag
+    -- off, so AutoSuspend's Kindle timer would spin. The flag comes back, once per KOReader run.
+    world("keepalive")
+    W.prevent = 1
+    local g = koreader(false)
+    local s = "kept awake"
+    check(s .. ": Keep alive's flag on again", W.share.keepalive == true)
+    check(s .. ": read once, from the power service",
+        #W.lipc_reads == 1 and W.lipc_reads[1] == "com.lab126.powerd preventScreenSaver")
+    check(s .. ": logged", W.logs[#W.logs] == "Grimoire: the Kindle is kept awake (preventScreenSaver 1): KOReader's Keep alive is on again")
+    check(s .. ": the menu still registered", W.menus == 1)
+    g:new{ ui = new_ui(true) }
+    check(s .. ": a book's screen in the same run reads it no more", #W.lipc_reads == 1)
+    untouched(s)
+
+    world("keepalive-off")
+    koreader(false)
+    check("not kept awake: the flag left alone, nothing logged",
+        W.share.keepalive == nil and #W.lipc_reads == 1 and #W.logs == 0)
+
+    world("keepalive-already")
+    W.prevent, W.share.keepalive = 1, true
+    koreader(false)
+    check("Keep alive already on: not read", #W.lipc_reads == 0 and W.share.keepalive == true and #W.logs == 0)
+
+    world("keepalive-no-lipc")
+    W.prevent, Device.powerd = 1, {}
+    koreader(false)
+    check("no lipc handle: the flag left alone, no warning",
+        W.share.keepalive == nil and not at("warn") and W.menus == 1)
+
+    world("keepalive-lipc-fails")
+    W.prevent, W.lipc_error = 1, true
+    koreader(false)
+    check("the read fails: the flag left alone, a warning, the menu registered",
+        W.share.keepalive == nil and at("warn") and W.menus == 1)
+
+    world("keepalive-not-kindle")
+    W.kindle, W.prevent = false, 1
+    koreader(false)
+    check("not a Kindle: not read", #W.lipc_reads == 0 and W.share.keepalive == nil)
 end
 
 do -- KOReader not started by koreader.sh (no /var/tmp/koreader.sh).

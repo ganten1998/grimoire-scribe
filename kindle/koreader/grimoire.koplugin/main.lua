@@ -185,6 +185,30 @@ local function capabilities(path)
     return caps
 end
 
+-- KOReader's Keep alive, on a Kindle, is two things: the power service's preventScreenSaver, and
+-- a flag in KOReader's memory (PluginShare.keepalive) that AutoSuspend reads. The flag goes when
+-- KOReader starts again; the setting stays (grimoire.sh puts back the one KOReader had). With the
+-- setting on and the flag off, AutoSuspend's Kindle timer, once the suspend time has passed and
+-- the Kindle has not slept (the power service will not), schedules itself in the past, over and
+-- over: KOReader never reads input again and asks the power service whether it is charging in a
+-- loop. So at KOReader's start, a Kindle kept awake puts the flag back: Keep alive shows on, as it
+-- is, and its menu item turns it off. Once per KOReader run (the plugin is loaded once per run).
+local keep_alive_checked = false
+local function keep_alive_as_the_kindle_has_it()
+    if keep_alive_checked then return end
+    keep_alive_checked = true
+    local ok, err = pcall(function()
+        local PluginShare = require("pluginshare")
+        local lipc = Device.powerd and Device.powerd.lipc_handle
+        if PluginShare.keepalive or not lipc then return end
+        if lipc:get_int_property("com.lab126.powerd", "preventScreenSaver") == 1 then
+            PluginShare.keepalive = true
+            logger.info("Grimoire: the Kindle is kept awake (preventScreenSaver 1): KOReader's Keep alive is on again")
+        end
+    end)
+    if not ok then logger.warn("Grimoire: could not read the Kindle's preventScreenSaver:", err) end
+end
+
 -- Still there at KOReader's next start: the hand-over never ran Grimoire.
 local function launch_marker()
     return DataStorage:getSettingsDir() .. "/grimoire_launch.txt"
@@ -261,6 +285,7 @@ local Grimoire = WidgetContainer:extend{
 function Grimoire:init()
     -- Grimoire is a Kindle Scribe app: nothing to offer anywhere else.
     if not Device:isKindle() then return end
+    keep_alive_as_the_kindle_has_it()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):
