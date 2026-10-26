@@ -47,5 +47,8 @@ int export_folder_zip(const char *folder, float dpi, Buf *out);
 int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *mirror_dir);
 // Where export_mirror_pdf puts (or put) this notebook's PDF.
 void export_mirror_path(const NotebookInfo *nb, const char *mirror_dir, char *buf, size_t cap);
+// After removing/renaming a logical folder: remove only its empty mirror directory, without
+// following symlinks or removing a directory another folder uses. 1 removed, 0 kept, -1 error.
+int export_mirror_prune_folder(const char *folder, const char *mirror_dir);
 // File-name-safe version of a notebook/folder name ("/" ":" etc. replaced, never empty).
 void export_safe_name(const char *in, char *out, size_t cap);

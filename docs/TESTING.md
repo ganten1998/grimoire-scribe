@@ -18,6 +18,10 @@ The pen-only fixture checks new-install defaults and Reset tool independently of
 values; saved version-2 profiles keep their own values. The settings/page versions and stored
 stroke parameters are unchanged. Whole-stroke erasing remains the default.
 
+Empty PDF-mirror folder cleanup is checked through real Library Remove and Rename actions,
+including failed saves, nonempty directories and symlinks. The core check also covers sanitized
+name collisions and directory aliases. Cleanup removes only an empty directory.
+
 The eraser test pad uses four sample letter strokes on the left and a solid block on the right.
 Whole-stroke erasing uses the editor's swept stroke-hit test for the letters. Precise erasing
 restores the bare ruled pad beneath either target. Reset pad refills the targets; Reset tool

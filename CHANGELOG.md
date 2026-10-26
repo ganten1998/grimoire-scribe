@@ -2,6 +2,10 @@
 
 ## 2.0.0-beta.3 (2026-10-25)
 
+- **Empty folders leave the PDF mirror too**: removing or renaming an empty Library folder
+  also removes its empty directory under grimoire/PDFs. Directories with files, symlinks, and
+  directories another logical folder still uses are kept.
+
 - **Retuned pen defaults**: use the latest settings tuned on the Kindle for new installs and
   Pen feel > Reset tool. Existing saved profiles and old stroke parameters are kept.
 - **An eraser pad you can actually try**: the eraser tab starts with TEST on the left and a

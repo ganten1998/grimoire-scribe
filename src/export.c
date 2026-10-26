@@ -2,11 +2,15 @@
 #include "export.h"
 
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "stb_image_write.h"
 
@@ -497,6 +501,40 @@ void export_mirror_path(const NotebookInfo *nb, const char *mirror_dir, char *bu
         snprintf(buf, cap, "%s/%s/%s.pdf", mirror_dir, sf, sn);
     } else
         snprintf(buf, cap, "%s/%s.pdf", mirror_dir, sn);
+}
+
+int export_mirror_prune_folder(const char *folder, const char *mirror_dir) {
+    if (!folder || !*folder) return 0;  // never remove the mirror root
+    char name[STORE_NAME_LEN];
+    export_safe_name(folder, name, sizeof name);
+    int fd = open(mirror_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    struct stat target;
+    if (fstatat(fd, name, &target, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISDIR(target.st_mode)) {
+        close(fd);
+        return 0;
+    }
+    // Sanitized names may collide; case-folding filesystems and aliases may share an inode too.
+    // Keep the directory if any remaining logical folder still uses it.
+    char (*folders)[STORE_NAME_LEN] = NULL;
+    int count = 0;
+    if (store_list_folders(&folders, &count) != 0) { close(fd); return -1; }
+    bool used = false;
+    for (int i = 0; i < count && !used; i++) {
+        char safe[STORE_NAME_LEN]; struct stat other;
+        export_safe_name(folders[i], safe, sizeof safe);
+        used = !strcmp(name, safe) || (fstatat(fd, safe, &other, 0) == 0 &&
+               target.st_dev == other.st_dev && target.st_ino == other.st_ino);
+    }
+    free(folders);
+    int rc = 0;
+    if (!used) {
+        if (unlinkat(fd, name, AT_REMOVEDIR) == 0) rc = 1;
+        else if (errno != ENOENT && errno != ENOTEMPTY && errno != EEXIST) rc = -1;
+    }
+    // A nonempty directory, including one with KOReader sidecars, is deliberately left alone.
+    close(fd);
+    return rc;
 }
 
 int export_mirror_pdf(const NotebookInfo *nb, float dpi, const char *mirror_dir) {

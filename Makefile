@@ -422,14 +422,16 @@ kpm-check: kpm-package
 # the share server against a real HTTP client, the host exporter, the ARM build, and the zip
 # people install: what it holds, that two clean builds make the same bytes, and its launchers run
 # against stand-ins for the Kindle's tools.
-.PHONY: package-check launcher-check
+.PHONY: package-check launcher-check mirror-cleanup-check
+mirror-cleanup-check: $(BUILD)/host/grimoire-headless
+	BUILD=$(BUILD) python3 -m unittest discover -s tests -p 'test_mirror_cleanup.py' -v
 package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 	python3 -m unittest discover -s tests -p 'test_archive.py' -v
 	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check dist
+check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check mirror-cleanup-check dist
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"

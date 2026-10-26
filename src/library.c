@@ -895,7 +895,8 @@ static void kb_finished(App *a, bool ok) {
                         store_set_folder(S->books[i].id, txt);
                         mirror_follow(a, S->books[i].id, false);
                     }
-                store_remove_folder(it->folder);
+                if (store_remove_folder(it->folder) == 0)
+                    export_mirror_prune_folder(it->folder, app_mirror_dir());
                 store_add_folder(txt);
             }
             break;
@@ -1102,7 +1103,8 @@ static void act(App *a, const Hit *h) {
         if (it) open_kb(a, KBP_RENAME_FOLDER, C_("keyboard", "Folder"), it->folder);
         break;
     case H_FMORE_REMOVE:
-        if (it) store_remove_folder(it->folder);
+        if (it && store_remove_folder(it->folder) == 0)
+            export_mirror_prune_folder(it->folder, app_mirror_dir());
         S->modal = MOD_NONE;
         reload(a);
         redraw(a, REFRESH_UI);
