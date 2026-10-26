@@ -17,9 +17,15 @@
 - **Less brush work**: skip pixels already darker than a pen's ink, reuse the opacity of
   smooth dab interiors, and skip unused tilt calculations. Pen settings and rendered ink
   are unchanged. Measured CPU improvements and their limits are in docs/INK-PERFORMANCE.md.
-- **Developer pen-mode experiment**: opt-in MTK pen refreshes keep small rectangles above
-  the documented odd-rotation processing threshold. The mode remains off by default;
-  optional timing logs measure framebuffer copying and refresh submission, without input data.
+- **Developer pen-mode experiment**: opt-in MTK pen refreshes, padded above the documented
+  odd-rotation processing threshold or (with `direct`) sent as they are. A stroke only takes
+  pen mode when no ordinary refresh can still be on the panel, and an ordinary refresh waits
+  for the pen's last one, as the driver requires. The mode remains off by default.
+- **Developer latency report**: optional timing logs measure framebuffer copying and refresh
+  submission, and now each live ink frame from the pen's sample to the driver starting and
+  finishing it, without input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
+  waveform timing: on gray paper DU first drives a pixel toward white, so ink there starts up to
+  59 ms later than on white paper whatever Grimoire does.
 
 ## 2.0.0-beta.3 (2026-10-26)
 

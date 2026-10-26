@@ -95,21 +95,85 @@ clang -O2 -std=gnu11 -D_GNU_SOURCE -Isrc tools/du-model.c src/brush.c src/canvas
 build/du-model 150 240
 ```
 
-## Opt-in display experiment
+## The panel's own timing
+
+The Scribe 2 keeps its waveform on a small FAT partition (`wfm`, mmcblk0p2): a gzipped table of
+14 modes by 14 temperature ranges, each a list of 85 Hz frames (11.8 ms). Every frame says, for
+each pair of 32 levels, whether to drive the pixel toward black, toward white, or not at all.
+From the owner's device (`400_B212_HL4702_ED103KC1C6_TC`), at 24 to 27 °C (the driver's temp
+zone 8, `/proc/hwtcon/temp`):
+
+| Mode | Frames | Length |
+| --- | ---: | ---: |
+| DU | 16 | 188 ms |
+| A2 | 8 | 94 ms |
+| GL16 | 23 | 271 ms |
+| GC16 | 29 | 341 ms |
+
+The lengths grow as it gets colder: at 15 to 18 °C DU takes 25 frames (294 ms), below 3 °C 53.
+
+DU starts a white pixel toward black on its first frame. From a gray it first drives the pixel
+toward white, then to black:
+
+| Shown gray (8 bit) | Ink starts darkening after | Frames toward white first |
+| --- | ---: | ---: |
+| 240 to 255 | 0 ms | 0 |
+| 208 to 239 | 12 ms | 0 (one idle frame) |
+| 192 to 207 | 12 ms | 1 |
+| 176 to 191 | 24 ms | 2 |
+| 144 to 175 | 47 ms | 4 |
+| 128 to 143 | 59 ms | 4 (after an idle frame) |
+| 32 to 127 | 59 ms | 5 |
+| 16 to 31 | 71 ms | 5 (after an idle frame) |
+
+Inverted, ink goes to white: from the dark grays of an inverted light page it starts after 35
+to 59 ms, waiting rather than moving the wrong way first. Every other mode is slower from gray
+(GL16, GC16 and their relatives reverse for longer) and A2 does not drive a gray pixel at all,
+so DU stays the live waveform. On a page printed in mid gray (the cover of a book KOReader sent,
+157) ink cannot start before 47 ms on this panel, against 0 ms on white paper, and it first
+turns lighter: that difference is the panel's, and no update order removes it. A2 drives white
+to black with the same frames as the first 7 of DU and stops there, so ink would not appear
+sooner with it, only finish sooner.
+
+## Opt-in display experiment: pen mode
 
 MTK pen mode remains off by default. FBInk documents a Bellatrix3 MDP bypass for DU/DUNM
-updates smaller than 6000 pixels at framebuffer rotations 1 and 3. The optional `pen-mode`
-flag now pads those refresh rectangles to at least 6400 pixels, bounded by the panel.
-It does not repaint extra pixels or change the gray-paper preservation cache. Host checks
-cover containment and every edge in portrait and landscape, including smaller panels.
+updates smaller than 6000 pixels at framebuffer rotations 1 and 3 (the Scribe 2 runs at 1 or 3),
+and warns that pen-mode updates must never collide with standard ones. The `pen-mode` flag's
+first word picks the form: `direct` sends the updates as they are, which lets small ones take
+the driver's bypass; anything else, an empty file included, pads them to at least 6400 pixels,
+bounded by the panel, so the MDP takes them. Host checks cover the padding's containment and
+every edge in portrait and landscape, including smaller panels.
+
+A stroke enters pen mode only when no standard update can still be on the panel: a thread with
+its own framebuffer fd waits for every standard update's end (in order for grayscale ones, whose
+waveforms differ in length; the newest for DU ones). The driver then stays in pen mode until a
+grayscale refresh is due, and that refresh first waits for the pen's last update, which a settle
+after a pause finds long done. A stroke that finds the panel busy keeps plain DU.
 
 This is a hypothesis to test on hardware, not evidence of reduced visible latency. A
 comparison must cover gray PDF backgrounds, ordinary pages, normal/inverted display, all
 orientations, pen-up settling, sleep/wake and return to KOReader. Leave the flag absent on
 devices that have not passed that comparison.
 
+## The latency report
+
 The optional empty `grimoire/ink-metrics` file enables aggregate average/max framebuffer
-copy and refresh-submission timing, logged at most once every 10 seconds of fast refreshes.
-It records no pen coordinates or key values. Remove it and restart to disable measurement.
-These times still exclude the panel's physical response. Both flags are developer switches,
-not new controls in the writing interface.
+copy and refresh-submission timing, and the latency of live ink by how each frame went out
+(plain DU, pen mode, padded pen mode), logged at most once every 10 seconds of fast refreshes:
+
+- pen->submit: from the kernel time of the newest pen sample in the frame to the return of the
+  refresh ioctl (both pens' events are switched to CLOCK_MONOTONIC for this reader only);
+- oldest pen->submit: the same for the frame's oldest sample;
+- raw->submit and the relay hop: from the raw digitizer's sample (WacomDigitizer), which the
+  Kindle's pen service relays as the scaled pen Grimoire reads, matched to it by position;
+- for one frame at a time, followed by a second thread: submit->start (the driver took it to
+  the panel, MXCFB_WAIT_FOR_UPDATE_SUBMISSION) and submit->done (its waveform ended,
+  MXCFB_WAIT_FOR_UPDATE_COMPLETE), also for frames within 600 ms of a grayscale refresh, with
+  the panel temperature.
+
+With it, an empty `grimoire/latency-ab` makes ink strokes take turns in blocks of 12 at plain
+DU, direct and padded pen mode, so one session compares them on the same pages and hand. Both
+files are read again every 2 seconds, so a test needs no restart. The report records no pen
+coordinates or key values. Remove `ink-metrics` and restart to disable measurement. Both are
+developer switches, not new controls in the writing interface.

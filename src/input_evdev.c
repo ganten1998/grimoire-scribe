@@ -35,6 +35,7 @@
 
 #include "calib_fit.h"
 #include "input.h"
+#include "latency.h"
 #include "power.h"
 #include "shortcuts.h"
 
@@ -71,9 +72,16 @@ static int g_rot;             // logical screen rotation, quarter turns clockwis
 static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
 static struct {
     int p, tx, ty;
+    int x, y;  // position, only for timing the pen service's relay (latency.h)
     bool seen;
     bool rubber, side;  // the raw digitizer also reports the eraser end and the side button
 } W;
+// Ink timing (latency.h): both pens' events stamped in CLOCK_MONOTONIC, the raw samples kept to
+// match the relayed ones, and the samples emitted since display_fbink.c last asked.
+static bool g_ink_mono;
+static LatMatch g_match;
+static uint64_t g_pen_frame_us;  // kernel time of the relayed pen frame being read
+static uint64_t g_ink_newest, g_ink_oldest, g_ink_raw;
 static bool g_input_grabbed = true;
 static bool g_initial_grab_failed;
 static bool g_pen_resume_block;
@@ -189,7 +197,15 @@ static void map(const InputCalib *c, float nx, float ny, float *x, float *y) {
     panel_to_logical(px, py, x, y);
 }
 
+static uint64_t ev_us(const struct input_event *ev) {
+    return (uint64_t)ev->input_event_sec * 1000000u + (uint64_t)ev->input_event_usec;
+}
+
 static void handle_wacom(const struct input_event *ev) {
+    if (ev->type == EV_SYN && ev->code == SYN_REPORT) {
+        if (g_ink_mono) lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
+        return;
+    }
     if (ev->type == EV_KEY) {
         if (ev->code == BTN_TOOL_RUBBER) W.rubber = ev->value != 0;
         else if (ev->code == BTN_STYLUS) W.side = ev->value != 0;
@@ -198,6 +214,8 @@ static void handle_wacom(const struct input_event *ev) {
     if (ev->type != EV_ABS) return;
     switch (ev->code) {
     case ABS_PRESSURE: W.p = ev->value; W.seen = true; break;
+    case ABS_X: W.x = ev->value; break;
+    case ABS_Y: W.y = ev->value; break;
     case ABS_TILT_X: W.tx = ev->value; break;
     case ABS_TILT_Y: W.ty = ev->value; break;
     default: break;
@@ -234,7 +252,21 @@ static void emit_pen(InType t) {
     e.eraser = P.eraser;
     e.side_button = P.side || W.side;
     e.t_ms = now_ms();
+    if (g_ink_mono && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) {
+        g_ink_newest = g_pen_frame_us;
+        if (!g_ink_oldest) g_ink_oldest = g_pen_frame_us;
+        g_ink_raw = g_wacom.fd >= 0 ? lat_match_pen(&g_match, P.x, P.y, 3) : 0;
+    }
     q_push(e);
+}
+
+bool input_ink_times(uint64_t *newest, uint64_t *oldest, uint64_t *raw) {
+    if (!g_ink_newest) return false;
+    *newest = g_ink_newest;
+    *oldest = g_ink_oldest;
+    *raw = g_ink_raw;
+    g_ink_newest = g_ink_oldest = g_ink_raw = 0;
+    return true;
 }
 
 static void emit_touch(InType t, float x, float y) {
@@ -338,6 +370,7 @@ static void handle_pen(const struct input_event *ev) {
             g_drops++;
             qlog("input: pen events dropped by the kernel (%d so far); resyncing", g_drops);
         } else if (ev->code == SYN_REPORT) {
+            g_pen_frame_us = ev_us(ev);
             if (g_pen_dropping) {
                 g_pen_dropping = false;
                 pen_resync();
@@ -857,6 +890,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                      (abs(ax.maximum - g_h) <= 2 && abs(ay.maximum - g_w) <= 2);
             if (!scaled && g_wacom.fd < 0 && test_bit(absb, ABS_PRESSURE)) {
                 g_wacom.fd = fd;
+                ioctl(fd, EVIOCGABS(ABS_X), &g_wacom.ax);
+                ioctl(fd, EVIOCGABS(ABS_Y), &g_wacom.ay);
                 ioctl(fd, EVIOCGABS(ABS_PRESSURE), &g_wacom.ap);
                 ioctl(fd, EVIOCGABS(ABS_TILT_X), &g_wacom.atx);
                 ioctl(fd, EVIOCGABS(ABS_TILT_Y), &g_wacom.aty);
@@ -940,6 +975,17 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         g_caps.has_pen = g_caps.has_pressure = true;
         g_caps.has_tilt = g_pen.atx.maximum > g_pen.atx.minimum;
         qlog("input: using the raw digitizer as the pen");
+    }
+    // Ink timing (latency.h, with /mnt/us/grimoire/ink-metrics): the pens' events stamped in now_ms()'s
+    // clock. The clock is per reader, so the pen service and the Kindle's other readers keep theirs.
+    if (g_pen.fd >= 0 && access("/mnt/us/grimoire/ink-metrics", F_OK) == 0) {
+        int clk = CLOCK_MONOTONIC;
+        g_ink_mono = ioctl(g_pen.fd, EVIOCSCLOCKID, &clk) == 0 &&
+                     (g_wacom.fd < 0 || ioctl(g_wacom.fd, EVIOCSCLOCKID, &clk) == 0);
+        if (!g_ink_mono) qlog("input: EVIOCSCLOCKID failed: %s (no ink timing)", strerror(errno));
+        int rmin[2] = {g_wacom.ax.minimum, g_wacom.ay.minimum}, rmax[2] = {g_wacom.ax.maximum, g_wacom.ay.maximum};
+        int smin[2] = {g_pen.ax.minimum, g_pen.ay.minimum}, smax[2] = {g_pen.ax.maximum, g_pen.ay.maximum};
+        lat_match_init(&g_match, rmin, rmax, smin, smax);
     }
     if (g_wacom.fd >= 0) {
         g_caps.has_pressure = g_wacom.ap.maximum > g_wacom.ap.minimum;

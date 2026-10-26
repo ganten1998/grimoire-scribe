@@ -26,7 +26,7 @@ CORE_SRC := src/util.c src/canvas.c src/font.c src/paper.c src/brush.c src/page.
             src/history.c src/store.c src/export.c src/stb_impl.c src/calib_fit.c src/bgjob.c \
             src/bgwork_compact.c src/bgwork_template.c
 CORE_SRC += src/power.c src/fbcheck.c src/i18n.c
-CORE_SRC += src/fbpack.c
+CORE_SRC += src/fbpack.c src/latency.c
 CORE_SRC += src/nav.c
 CORE_SRC += src/bgimage.c
 CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c

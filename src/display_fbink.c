@@ -3,7 +3,7 @@
 // Pixels go straight into the mmap'ed framebuffer (FBInk's raw-data blitter is compiled out
 // of MINIMAL builds, and a direct copy is the fastest path anyway). FBInk then issues the
 // refresh ioctl with the waveform for the mode:
-//   FAST -> DU   (pen mode on MTK: the driver's low-latency path for handwriting)
+//   FAST -> DU   (opt-in pen mode on MTK: the driver's path for handwriting, see below)
 //   UI   -> GL16 (partial, no flash)
 //   FULL -> GC16 + flash
 // "Fast mode" (no automatic REAGL promotion) is enabled for the session like KOReader does on
@@ -28,6 +28,9 @@
 // never stalls: a stroke's frames only add ink the next one sends again, and erasing ends with a
 // grayscale refresh of all it erased, which repaints anything a frame's read caught half done.
 #include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -38,6 +41,7 @@
 #include "fbcheck.h"
 #include "fbpack.h"
 #include "fbink.h"
+#include "latency.h"
 
 static int g_fd = -1;
 static FBInkConfig g_cfg;
@@ -47,13 +51,31 @@ static size_t g_fblen;
 static Canvas g_previous;     // last logical frame, in physical order: +4.6 MB on the 2024 Scribe
 static bool g_frame_known;
 static bool g_readback;       // the mapping covers the whole panel at 8 or 32 bpp: the guards can read it
-static bool g_pen_mode;
-static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
-// MTK pen mode is opt-in (empty file /mnt/us/grimoire/pen-mode): FBInk notes that on Bellatrix3
-// small pen-mode DU updates skip the MDP (the rotation stage) at 90/270 degree rotations, and
-// the Scribe 2 has used fb rotate 1 and 3. Opt-in updates below pad small refreshes above
-// that threshold; physical behavior still needs testing on each model/firmware.
-static bool g_pen_wanted;
+// MTK pen mode, opt-in (/mnt/us/grimoire/pen-mode): the driver's path for handwriting. FBInk notes
+// that on Bellatrix3 small pen-mode DU updates skip the MDP (the image stage that also rotates) at
+// 90/270 degree rotations, and the Scribe 2 runs at fb rotate 1 or 3. The file's first word picks
+// the form: "direct" sends the updates as they are (the driver's own path for small ones); anything
+// else (an empty file too) pads small ones to 6400 px so the MDP still takes them. Physical behavior
+// of each needs testing on each model/firmware.
+// The driver requires that pen-mode updates never collide with standard ones (FBInk's note): so a
+// stroke enters pen mode only while no standard update can still be on the panel (the quiet thread
+// below follows them), the driver stays in it until a grayscale refresh is due, and that refresh
+// first waits for the pen's last update to end.
+typedef enum { PEN_OFF, PEN_PADDED, PEN_DIRECT } PenCfg;
+static const char *const k_pen_cfg[] = {"off", "padded", "direct"};
+static PenCfg g_pen_cfg;
+static bool g_pen_mode;           // the driver is in pen mode
+static bool g_pen_ok = true;      // cleared if the driver refuses pen mode
+static bool g_stroke_pen;         // the stroke being drawn asked for the pen path (display_pen_mode)
+static uint32_t g_pen_marker, g_pen_last_ms;  // the last update sent in pen mode
+static uint32_t g_pen_checked;    // with ink metrics both files are read again, every 2 s at most
+static unsigned g_pen_busy;       // strokes that kept plain DU: a standard update was still on the panel
+static bool g_pen_busy_noted;     // (this stroke counted)
+// /mnt/us/grimoire/latency-ab (a device test, with ink metrics): strokes take turns in blocks of
+// 12 at plain DU, direct pen mode and padded pen mode, so one session times all three (in the
+// same conditions: the same pages, the same hand).
+static bool g_ab;
+static unsigned g_strokes;
 static int g_count[3], g_fail, g_ok;
 static uint32_t g_stats_at;
 static uint32_t g_last_refresh;  // when the last refresh went out (paces the first-frame retries)
@@ -61,6 +83,12 @@ static uint64_t g_last_submit_us, g_copy_us, g_submit_us, g_copy_max_us, g_submi
 static unsigned g_perf_frames;
 static uint32_t g_perf_at;
 static bool g_perf_enabled;
+// Ink metrics (latency.h): live ink frames timed from the pen, by how they went out.
+enum { INK_DU, INK_PEN_DIRECT, INK_PEN_PADDED, INK_KINDS };
+static const char *const k_ink_kind[] = {"DU", "pen mode", "padded pen mode"};
+static LatHist g_lat_pen[INK_KINDS], g_lat_oldest[INK_KINDS], g_lat_raw[INK_KINDS], g_lat_hop[INK_KINDS];
+static unsigned g_raw_miss[INK_KINDS];
+static uint32_t g_gray_last_ms;   // when the last grayscale (UI or full) refresh went out
 static int g_presents;        // refreshes sent; the first few are logged in full (device bring-up)
 static bool g_flip;           // framebuffer is 180 degrees from the panel's touch orientation
 static int g_rot;             // device rotation, quarter turns clockwise
@@ -138,6 +166,230 @@ static Rect fb_rect(Rect r) {
     return (Rect){lx, ly, abs(x1 - x0) + 1, abs(y1 - y0) + 1};
 }
 
+// The driver's waits, on fds of their own (the threads below), in its marker protocol.
+struct grim_marker_data {
+    uint32_t update_marker, collision_test;
+};
+#define GRIM_WAIT_FOR_UPDATE_SUBMISSION _IOW('F', 0x37, uint32_t)
+#define GRIM_WAIT_FOR_UPDATE_COMPLETE _IOWR('F', 0x2F, struct grim_marker_data)
+static int wait_done(int fd, uint32_t marker) {
+    struct grim_marker_data d = {marker, 0};
+    return ioctl(fd, GRIM_WAIT_FOR_UPDATE_COMPLETE, &d);
+}
+static bool start_thread(void *(*fn)(void *)) {
+    pthread_t t;
+    if (pthread_create(&t, NULL, fn, NULL) != 0) return false;
+    pthread_detach(t);
+    return true;
+}
+
+// Standard updates still on the panel, for pen mode's no-collision rule. A thread waits for each
+// grayscale one to end, in order (their waveforms differ in length), and for the newest standard DU
+// one (DU updates all last as long, so the newest ends last). It only waits and keeps books: no
+// allocation, no log, nothing a bgjob fork could find half done.
+#define QUIET_GRAY 32
+static struct {
+    pthread_mutex_t mu;
+    pthread_cond_t cv;
+    bool on;
+    int fd, errors;
+    uint32_t gray[QUIET_GRAY];
+    int gray_head, gray_n;
+    uint32_t overflow_ms;  // the queue was full: unknown until 2 s later
+    uint32_t du_sent, du_wait, du_done;
+} Q = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1};
+
+static void *quiet_main(void *arg) {
+    (void)arg;
+    pthread_mutex_lock(&Q.mu);
+    for (;;) {
+        while (!Q.gray_n && !Q.du_wait) pthread_cond_wait(&Q.cv, &Q.mu);
+        bool gray = Q.gray_n > 0;
+        uint32_t m = gray ? Q.gray[Q.gray_head] : Q.du_wait;
+        if (!gray) Q.du_wait = 0;
+        pthread_mutex_unlock(&Q.mu);
+        int rc = wait_done(Q.fd, m);
+        if (rc < 0) usleep(1000 * 1000);  // no word from the driver: give the update its longest time
+        pthread_mutex_lock(&Q.mu);
+        if (rc < 0 && ++Q.errors >= 3) Q.on = false;  // pen mode off for the session (logged by the main thread)
+        if (gray) {
+            Q.gray_head = (Q.gray_head + 1) % QUIET_GRAY;
+            Q.gray_n--;
+        } else {
+            Q.du_done = m;
+        }
+    }
+    return NULL;
+}
+
+static void quiet_sent(uint32_t marker, bool gray) {
+    if (Q.fd < 0) return;
+    pthread_mutex_lock(&Q.mu);
+    if (!gray) {
+        Q.du_sent = Q.du_wait = marker;
+    } else if (Q.gray_n < QUIET_GRAY) {
+        Q.gray[(Q.gray_head + Q.gray_n) % QUIET_GRAY] = marker;
+        Q.gray_n++;
+    } else {
+        Q.overflow_ms = now_ms() | 1;
+    }
+    pthread_cond_signal(&Q.cv);
+    pthread_mutex_unlock(&Q.mu);
+}
+
+// No standard update can still be on the panel.
+static bool quiet_now(void) {
+    pthread_mutex_lock(&Q.mu);
+    bool quiet = Q.on && !Q.gray_n && Q.du_done == Q.du_sent && (!Q.overflow_ms || now_ms() - Q.overflow_ms > 2000);
+    pthread_mutex_unlock(&Q.mu);
+    return quiet;
+}
+
+// Ink metrics: one live ink frame at a time (one sent while the probe was idle) is followed through
+// the driver: when it reached the panel (submission) and when its waveform ended. Same rules as the
+// quiet thread: it only waits and keeps books.
+static struct {
+    pthread_mutex_t mu;
+    pthread_cond_t cv;
+    bool on, pending, busy;
+    int fd;
+    uint32_t marker;
+    uint64_t submit_us;
+    int kind;
+    bool after_gray;
+    LatHist start[INK_KINDS], done[INK_KINDS], start_gray;
+    unsigned late, errors;
+    int error_no;
+} R = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1};
+
+static uint64_t clock_us(void);
+
+static void *probe_main(void *arg) {
+    (void)arg;
+    pthread_mutex_lock(&R.mu);
+    for (;;) {
+        while (!R.pending) pthread_cond_wait(&R.cv, &R.mu);
+        R.pending = false;
+        R.busy = true;
+        uint32_t m = R.marker;
+        uint64_t submit = R.submit_us;
+        int kind = R.kind;
+        bool after_gray = R.after_gray;
+        pthread_mutex_unlock(&R.mu);
+        uint64_t picked = clock_us();
+        uint32_t mm = m;
+        int rc = ioctl(R.fd, GRIM_WAIT_FOR_UPDATE_SUBMISSION, &mm);
+        int e1 = errno;
+        uint64_t started = clock_us();
+        int rc2 = rc < 0 ? -1 : wait_done(R.fd, m);
+        int e2 = errno;
+        uint64_t ended = clock_us();
+        pthread_mutex_lock(&R.mu);
+        R.busy = false;
+        if (rc < 0 || rc2 < 0) {
+            R.errors++;
+            R.error_no = rc < 0 ? e1 : e2;
+        } else {
+            if (picked - submit <= 2000) {
+                lat_hist_add(&R.start[kind], (int64_t)(started - submit));
+                if (after_gray) lat_hist_add(&R.start_gray, (int64_t)(started - submit));
+            } else {
+                R.late++;  // picked up too late to time the submission; the end still counts
+            }
+            lat_hist_add(&R.done[kind], (int64_t)(ended - submit));
+        }
+    }
+    return NULL;
+}
+
+static void probe_sent(uint32_t marker, uint64_t submit_us, int kind, bool after_gray) {
+    if (R.fd < 0) return;
+    pthread_mutex_lock(&R.mu);
+    if (!R.pending && !R.busy) {
+        R.marker = marker;
+        R.submit_us = submit_us;
+        R.kind = kind;
+        R.after_gray = after_gray;
+        R.pending = true;
+        pthread_cond_signal(&R.cv);
+    }
+    pthread_mutex_unlock(&R.mu);
+}
+
+// A thread with its own fd on the framebuffer (FBInk's stays the main thread's); false if either fails.
+static bool open_watch(int *fd, bool *on, void *(*fn)(void *)) {
+    *fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
+    if (*fd < 0) return false;
+    *on = true;
+    if (start_thread(fn)) return true;
+    *on = false;
+    close(*fd);
+    *fd = -1;
+    return false;
+}
+
+static void lat_reset(void) {
+    for (int k = 0; k < INK_KINDS; k++) {
+        lat_hist_init(&g_lat_pen[k], 100);
+        lat_hist_init(&g_lat_oldest[k], 100);
+        lat_hist_init(&g_lat_raw[k], 100);
+        lat_hist_init(&g_lat_hop[k], 100);
+        g_raw_miss[k] = 0;
+        lat_hist_init(&R.start[k], 1000);
+        lat_hist_init(&R.done[k], 1000);
+    }
+    lat_hist_init(&R.start_gray, 1000);
+    R.late = 0;
+}
+
+// The panel's temperature as the driver reads it ("temp:25 temp_zone:8"): the waveforms' lengths
+// follow it.
+static void panel_temp(char *out, size_t cap) {
+    snprintf(out, cap, "?");
+    FILE *f = fopen("/proc/hwtcon/temp", "r");
+    if (!f) return;
+    if (fgets(out, (int)cap, f)) out[strcspn(out, "\r\n")] = 0;
+    fclose(f);
+}
+
+static void lat_log(void) {
+    char a[96], b[96], c[96], d[96];
+    for (int k = 0; k < INK_KINDS; k++) {
+        if (!g_lat_pen[k].n) continue;
+        lat_hist_format(&g_lat_pen[k], a, sizeof a);
+        lat_hist_format(&g_lat_oldest[k], b, sizeof b);
+        lat_hist_format(&g_lat_raw[k], c, sizeof c);
+        lat_hist_format(&g_lat_hop[k], d, sizeof d);
+        qlog("display: ink latency, %s: pen->submit %s; oldest pen->submit %s; raw->submit %s; relay hop %s; "
+             "unmatched %u", k_ink_kind[k], a, b, c, d, g_raw_miss[k]);
+    }
+    if (R.fd >= 0) {
+        pthread_mutex_lock(&R.mu);
+        for (int k = 0; k < INK_KINDS; k++) {
+            if (!R.done[k].n) continue;
+            lat_hist_format(&R.start[k], a, sizeof a);
+            lat_hist_format(&R.done[k], b, sizeof b);
+            qlog("display: driver, %s: submit->start %s; submit->done %s", k_ink_kind[k], a, b);
+        }
+        lat_hist_format(&R.start_gray, a, sizeof a);
+        unsigned late = R.late, errors = R.errors;
+        int error_no = R.error_no;
+        pthread_mutex_unlock(&R.mu);
+        char t[48];
+        panel_temp(t, sizeof t);
+        pthread_mutex_lock(&Q.mu);
+        int quiet_errors = Q.errors;
+        pthread_mutex_unlock(&Q.mu);
+        qlog("display: driver: submit->start within 600 ms of a grayscale refresh %s; late pickups %u; wait "
+             "errors %u%s%s; panel %s; strokes kept on plain DU %u; standard-update waits failed %d%s", a, late,
+             errors, errors ? ", last: " : "", errors ? strerror(error_no) : "", t, g_pen_busy, quiet_errors,
+             quiet_errors >= 3 ? " (no pen mode)" : "");
+    }
+    pthread_mutex_lock(&R.mu);
+    lat_reset();
+    pthread_mutex_unlock(&R.mu);
+}
+
 void display_set_orientation(int turns, int *w, int *h) {
     g_frame_known = false;
     g_rot = turns & 3;
@@ -149,7 +401,6 @@ void display_set_orientation(int turns, int *w, int *h) {
 }
 
 static void set_pen_mode(bool on) {
-    if (on && !g_pen_wanted) return;
     if (!g_st.is_mtk || !g_pen_ok || on == g_pen_mode) return;
     int rc = fbink_mtk_toggle_pen_mode(g_fd, on);
     if (g_presents < 400) qlog("display: pen mode %s -> %d", on ? "on" : "off", rc);
@@ -164,9 +415,48 @@ static void set_pen_mode(bool on) {
 
 void display_live_ink(bool on) { live_ink_mark(&g_ink, on, now_ms()); }
 
+static PenCfg read_pen_cfg(void) {
+    FILE *f = fopen("/mnt/us/grimoire/pen-mode", "r");
+    if (!f) return PEN_OFF;
+    char w[16] = "";
+    if (fscanf(f, "%15s", w) != 1) w[0] = 0;
+    fclose(f);
+    return !strcmp(w, "direct") ? PEN_DIRECT : PEN_PADDED;
+}
+
+// A stroke of ink starts (on) or ends. Its fast frames take pen mode when it is on and no standard
+// update can still be on the panel (display_present); the driver stays in pen mode past the stroke,
+// until a grayscale refresh is due (pen_leave).
 void display_pen_mode(bool on) {
     display_live_ink(on);
-    set_pen_mode(on);
+    g_stroke_pen = on;
+    if (!on) return;
+    g_strokes++;
+    g_pen_busy_noted = false;
+    PenCfg want = g_pen_cfg;
+    if (g_perf_enabled && now_ms() - g_pen_checked >= 2000) {
+        g_pen_checked = now_ms();
+        bool ab = access("/mnt/us/grimoire/latency-ab", F_OK) == 0;
+        if (ab != g_ab) qlog("display: latency-ab %s", ab ? "on: strokes take turns, 12 each" : "off");
+        g_ab = ab;
+        if (!g_ab) want = read_pen_cfg();
+    }
+    if (g_ab) {
+        static const PenCfg turns[3] = {PEN_OFF, PEN_DIRECT, PEN_PADDED};
+        want = turns[(g_strokes / 12) % 3];
+    }
+    if (want != g_pen_cfg) {
+        qlog("display: pen mode %s (stroke %u)", k_pen_cfg[want], g_strokes);
+        g_pen_cfg = want;
+    }
+}
+
+// Before a standard update: out of pen mode, once the panel has finished the pen's last update (a
+// standard one over it would collide). Grayscale refreshes come after a pause, so this rarely waits.
+static void pen_leave(void) {
+    if (!g_pen_mode) return;
+    if (now_ms() - g_pen_last_ms < 2000) fbink_wait_for_complete(g_fd, g_pen_marker);
+    set_pen_mode(false);
 }
 
 // After a fast refresh on a colour panel: wait until the driver has read the frame, so the next
@@ -241,11 +531,19 @@ int display_open(int *w, int *h, float *dpi) {
     if (access("/mnt/us/grimoire/screen-flip", F_OK) == 0) g_flip = true;
     if (access("/mnt/us/grimoire/screen-noflip", F_OK) == 0) g_flip = false;
     qlog("display: fb rotate %u -> %s", g_st.current_rota, g_flip ? "drawing rotated 180 degrees" : "drawing as is");
-    g_pen_wanted = access("/mnt/us/grimoire/pen-mode", F_OK) == 0;
+    g_pen_cfg = read_pen_cfg();
     g_perf_enabled = access("/mnt/us/grimoire/ink-metrics", F_OK) == 0;
-    qlog("display: MTK pen mode %s", g_pen_wanted ? "enabled (flag file)" : "off (plain DU for live ink)");
-    if (g_pen_wanted && (g_st.current_rota & 1))
-        qlog("display: odd-rotation pen updates keep at least 6400 pixels for coordinate processing");
+    g_ab = g_perf_enabled && access("/mnt/us/grimoire/latency-ab", F_OK) == 0;
+    qlog("display: MTK pen mode %s", g_ab ? "taking turns with plain DU (latency-ab)"
+                                   : g_pen_cfg == PEN_OFF ? "off (plain DU for live ink)"
+                                   : g_pen_cfg == PEN_DIRECT ? "on, direct (flag file)" : "on, padded (flag file)");
+    if (g_st.is_mtk && (g_pen_cfg != PEN_OFF || g_ab || g_perf_enabled) && !open_watch(&Q.fd, &Q.on, quiet_main))
+        qlog("display: no thread to follow standard updates (%s): no pen mode", strerror(errno));
+    if (g_perf_enabled) {
+        lat_reset();
+        if (!open_watch(&R.fd, &R.on, probe_main))
+            qlog("display: no thread to time the driver (%s)", strerror(errno));
+    }
     g_mdp_wait = g_st.has_color_panel && g_st.bpp == 32;
     if (g_mdp_wait)
         qlog("display: colour panel: fast refreshes other than live ink wait until the driver has read the frame");
@@ -339,11 +637,20 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     r = rect_intersect(r, (Rect){0, 0, LW, LH});
     r = rect_intersect(r, (Rect){0, 0, screen->w, screen->h});
     if (rect_is_empty(r)) return;
-    // Pen mode only tolerates DU updates; anything else must leave it first. And let pending DU
-    // updates finish before a grayscale update over them, so the settle is not merged away.
-    // (No wait for pending DU updates here: blocking stalls input reading, the kernel's evdev
-    // buffer overflows and strokes get cut. Grayscale settles now only run after a pause.)
-    if (mode != REFRESH_FAST) set_pen_mode(false);
+    // Pen mode only tolerates DU updates; anything else must leave it first (pen_leave: the only
+    // wait, for the pen's last update, which grayscale settles find long done since they run after
+    // a pause). No other wait for pending DU updates here: blocking stalls input reading, the
+    // kernel's evdev buffer overflows and strokes get cut.
+    if (mode != REFRESH_FAST) {
+        pen_leave();
+    } else if (g_stroke_pen && g_pen_cfg != PEN_OFF && !g_pen_mode && g_pen_ok) {
+        if (quiet_now()) {
+            set_pen_mode(true);
+        } else if (!g_pen_busy_noted) {
+            g_pen_busy++;
+            g_pen_busy_noted = true;
+        }
+    }
     g_live = mode == REFRESH_FAST;
     uint64_t t0 = g_perf_enabled ? clock_us() : 0;
     copy_rect(screen, r);
@@ -356,9 +663,37 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
     bool whole_frame = rect_contains_rect(r, (Rect){0, 0, LW, LH});
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
-    if (mode == REFRESH_FAST && g_pen_mode && (g_st.current_rota & 1)) r = fbpack_pen_region(r, PW, PH);
+    bool padded = g_pen_cfg != PEN_DIRECT;
+    if (mode == REFRESH_FAST && g_pen_mode && padded && (g_st.current_rota & 1)) r = fbpack_pen_region(r, PW, PH);
     int ret = send_refresh(r, mode, &rc);
+    uint32_t marker = fbink_get_last_marker();
+    if (ret >= 0) {
+        if (g_pen_mode) {
+            g_pen_marker = marker;
+            g_pen_last_ms = now_ms();
+        } else {
+            quiet_sent(marker, mode != REFRESH_FAST);
+        }
+        if (mode != REFRESH_FAST) g_gray_last_ms = now_ms();
+    }
+    bool ink = live_ink_frame(&g_ink, mode, now_ms());
     if (mode == REFRESH_FAST && g_perf_enabled) {
+        uint64_t sent_us = clock_us(), newest, oldest, raw;
+        bool timed = input_ink_times(&newest, &oldest, &raw);  // drained by every fast frame
+        if (ink && ret >= 0) {
+            int kind = !g_pen_mode ? INK_DU : padded ? INK_PEN_PADDED : INK_PEN_DIRECT;
+            if (timed) {
+                lat_hist_add(&g_lat_pen[kind], (int64_t)(sent_us - newest));
+                lat_hist_add(&g_lat_oldest[kind], (int64_t)(sent_us - oldest));
+                if (raw) {
+                    lat_hist_add(&g_lat_raw[kind], (int64_t)(sent_us - raw));
+                    lat_hist_add(&g_lat_hop[kind], (int64_t)(newest - raw));
+                } else {
+                    g_raw_miss[kind]++;
+                }
+            }
+            probe_sent(marker, sent_us, kind, now_ms() - g_gray_last_ms < 600);
+        }
         g_copy_us += copy_us;
         g_submit_us += g_last_submit_us;
         if (copy_us > g_copy_max_us) g_copy_max_us = copy_us;
@@ -369,6 +704,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
                  g_perf_frames, g_pen_mode, (unsigned long long)(g_copy_us / g_perf_frames),
                  (unsigned long long)g_copy_max_us, (unsigned long long)(g_submit_us / g_perf_frames),
                  (unsigned long long)g_submit_max_us);
+            lat_log();
             g_perf_at = now_ms();
             g_perf_frames = 0;
             g_copy_us = g_submit_us = g_copy_max_us = g_submit_max_us = 0;
@@ -376,7 +712,6 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     }
     if (ret < 0) g_frame_known = false;
     else if (mode != REFRESH_FAST && whole_frame && g_previous.px) g_frame_known = true;
-    bool ink = live_ink_frame(&g_ink, mode, now_ms());
     if (ret >= 0 && mode == REFRESH_FAST && g_mdp_wait && !ink) mdp_wait();
     if (ret >= 0 && g_presents < 40)
         qlog("display: refresh #%d %d,%d %dx%d mode %d pen %d -> ok, marker %u, fb[center]=%u", g_presents, r.x, r.y,
@@ -463,7 +798,7 @@ void display_wait(void) {
 
 void display_close(void) {
     if (g_fd < 0) return;
-    set_pen_mode(false);
+    pen_leave();
     if (g_st.is_mtk) fbink_mtk_toggle_auto_reagl(g_fd, true);
     fbink_close(g_fd);
     g_fd = -1;
