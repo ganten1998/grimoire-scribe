@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 02:49-0500\n"
+"POT-Creation-Date: 2026-10-26 07:26-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -40,6 +40,45 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "Could not open the page KOReader sent (see %s)."
+msgstr ""
+
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
+#. toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
+#. than a notebook holds; %d is that number (2000).
+#: src/app.c
+#, c-format
+msgid "The book has more pages than a notebook holds (%d)."
+msgstr ""
+
+#. TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
+#: src/app.c
+msgid "Could not open the book KOReader sent: a page's picture does not read."
+msgstr ""
+
+#. TRANSLATORS: (as above) the pages could not be added: a file could not be written.
+#: src/app.c
+msgid "Could not add the book's pages. Is the storage full?"
+msgstr ""
+
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+#: src/app.c
+#, c-format
+msgid "Could not open the book KOReader sent (see %s)."
+msgstr ""
+
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
+#: src/app.c
+#, c-format
+msgid "Added %d page of the book."
+msgid_plural "Added %d pages of the book."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+#. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
+#: src/app.c
+#, c-format
+msgid "Adding the book's pages: %d of %d"
 msgstr ""
 
 #. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,

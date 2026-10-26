@@ -44,6 +44,13 @@ for the book, the page in it: docs/FORMAT.md, Annotated pages). Coming back is a
 book, at the same page. Only app/grimoire.sh's "annotate" capability allows it. A book in Grimoire's
 PDF mirror (grimoire/PDFs) is refused: a notebook's own PDF would become a notebook of a notebook.
 
+Open this book in Grimoire (in a PDF, DjVu or comic book, and in the file browser's Open with... for
+those files) draws every page the book's notebook does not hold yet, each as Annotate draws its page,
+into grimoire/import/.book/page-<n>.png under a progress message that a tap stops, then a request
+naming them (docs/FORMAT.md, Whole books), and hands over with --book (the launcher's "book"
+capability). Grimoire adds them to the book's notebook in book order and opens the page the reader
+was on. The book's own notebook is found by reading Grimoire's files (source.ini), never written.
+
 What this plugin logs (KOReader's crash.log goes into bug reports too) never names a book, its title
 or its file: page numbers and counts only.
 ]]
@@ -85,6 +92,13 @@ local STRINGS = {
         annotate_too_old = "This Grimoire cannot annotate pages: copy a newer Grimoire.sh into the Kindle's documents folder.",
         annotate_failed = "Could not save this page for Grimoire. See koreader/crash.log.",
         annotate_own_pdf = "This PDF is a Grimoire notebook: open that notebook in Grimoire to write on it.",
+        book = "Open this book in Grimoire",
+        book_too_old = "This Grimoire cannot open whole books: copy a newer Grimoire.sh into the Kindle's documents folder.",
+        book_progress = "Preparing page %d of %d for Grimoire...\nTap to stop.",
+        book_stopped = "Stopped: nothing was sent to Grimoire.",
+        book_failed = "Could not save the book's pages for Grimoire. Is the storage full? See koreader/crash.log.",
+        book_too_big = "This book has more pages than a Grimoire notebook holds (2000).",
+        book_unreadable = "KOReader could not open this book for Grimoire. See koreader/crash.log.",
     },
     -- The words of Grimoire's own Spanish (po/es.po, po/es-glossary.md) where they are the same:
     -- la pantalla táctil, Ajustes, cuaderno, and "detalles en" for where the log says more.
@@ -112,6 +126,13 @@ local STRINGS = {
         annotate_too_old = "Este Grimoire no puede anotar páginas: copia un Grimoire.sh más reciente en la carpeta documents del Kindle.",
         annotate_failed = "No se pudo guardar esta página para Grimoire. Detalles en koreader/crash.log.",
         annotate_own_pdf = "Este PDF es un cuaderno de Grimoire: abre ese cuaderno en Grimoire para escribir en él.",
+        book = "Abrir este libro en Grimoire",
+        book_too_old = "Este Grimoire no puede abrir libros enteros: copia un Grimoire.sh más reciente en la carpeta documents del Kindle.",
+        book_progress = "Preparando la página %d de %d para Grimoire...\nToca para detener.",
+        book_stopped = "Detenido: no se envió nada a Grimoire.",
+        book_failed = "No se pudieron guardar las páginas del libro para Grimoire. ¿Está llena la memoria? Detalles en koreader/crash.log.",
+        book_too_big = "Este libro tiene más páginas de las que caben en un cuaderno de Grimoire (2000).",
+        book_unreadable = "KOReader no pudo abrir este libro para Grimoire. Detalles en koreader/crash.log.",
     },
 }
 
@@ -242,6 +263,13 @@ function Grimoire:init()
     if not Device:isKindle() then return end
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):
+    -- choosing it calls openFile. Never the default for a file or a type.
+    local ok, DocumentRegistry = pcall(require, "document/documentregistry")
+    if ok and DocumentRegistry and DocumentRegistry.addAuxProvider then
+        DocumentRegistry:addAuxProvider({ provider_name = "Grimoire", provider = self.name, order = 50,
+            disable_file = true, disable_type = true })
+    end
     self:afterHandOver()
 end
 
@@ -259,6 +287,12 @@ function Grimoire:onDispatcherRegisterActions()
         category = "none",
         event = "AnnotateInGrimoire",
         title = T("annotate"),
+        reader = true,
+    })
+    Dispatcher:registerAction("grimoire_book", {
+        category = "none",
+        event = "OpenBookInGrimoire",
+        title = T("book"),
         reader = true,
     })
 end
@@ -282,6 +316,16 @@ function Grimoire:addToMainMenu(menu_items)
             callback = function() self:askReset() end,
         },
     }
+    if self.ui.document and self.ui.paging then
+        table.insert(items, 2, {
+            text = T("book"),
+            keep_menu_open = true, -- closed first: its progress shows over the page alone
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                self:onOpenBookInGrimoire()
+            end,
+        })
+    end
     if self.ui.document then
         table.insert(items, 2, {
             text = T("annotate"),
@@ -350,7 +394,8 @@ function Grimoire:prepare(need)
     local caps = capabilities(launcher)
     if not caps.hosted or (need and not caps[need]) then
         if busy then UIManager:close(busy) end
-        self:tell(caps.hosted and need == "annotate" and "annotate_too_old" or "too_old")
+        local too_old = { annotate = "annotate_too_old", book = "book_too_old" }
+        self:tell(caps.hosted and too_old[need] or "too_old")
         return nil
     end
     return launcher, busy
@@ -459,6 +504,23 @@ function Grimoire:bookTitle()
     return title:sub(1, 500)
 end
 
+-- Page `page` of a paged document, the whole page fitted and centred into bb (w x h, filled white
+-- already), on none of a reader's zoom, crop or scroll: Annotate's page and every page of Open this
+-- book. gamma and last: the reader's contrast (drawPage's last argument is the colour saturation since
+-- KOReader 2024, the render mode before: each as the reader passes it).
+local function draw_whole_page(doc, bb, w, h, page, gamma, last)
+    local Geom = require("ui/geometry")
+    local native = doc:getNativePageDimensions(page)
+    local zoom = math.min(w / native.w, h / native.h)
+    local dim = doc:getPageDimensions(page, zoom, 0)
+    doc:drawPage(bb, math.floor((w - dim.w) / 2), math.floor((h - dim.h) / 2),
+        Geom:new{ x = 0, y = 0, w = dim.w, h = dim.h }, page, zoom, 0, gamma or 1, last)
+end
+
+-- A paged reader's settings that would draw its pages as they are not (reflowed, the scan cleaned up,
+-- inverted for night mode, whose screen inverts it back), for set_aside.
+local PAGED_AS_IS = { text_wrap = 0, page_opt = 0, auto_straighten = 0, white_threshold = 255, nightmode_document = 0 }
+
 -- The page the reader is on, drawn clean (the top of this file says how) into a Gray8 BlitBuffer
 -- of w x h, the Kindle's page upright. Raises an error where this KOReader lacks a call it needs.
 function Grimoire:drawPage(w, h)
@@ -471,26 +533,17 @@ function Grimoire:drawPage(w, h)
     -- back before anything else runs: the book keeps its own.
     local put_back
     if self.ui.paging then
-        put_back = set_aside(doc.configurable or {}, { text_wrap = 0, page_opt = 0, auto_straighten = 0,
-            white_threshold = 255, nightmode_document = 0 })
+        put_back = set_aside(doc.configurable or {}, PAGED_AS_IS)
     else
         put_back = set_aside(doc, { _nightmode_images = false })
     end
     local ok, err = pcall(function()
         bb:fill(Blitbuffer.COLOR_WHITE)
         if self.ui.paging then
-            -- The whole page fitted and centred, on none of the reader's zoom, crop or scroll.
-            local Geom = require("ui/geometry")
-            local native = doc:getNativePageDimensions(page)
-            local zoom = math.min(w / native.w, h / native.h)
-            local dim = doc:getPageDimensions(page, zoom, 0)
             local state = view.state or {}
-            -- The reader's contrast. (drawPage's last argument is the colour saturation since
-            -- KOReader 2024, the render mode before: each as the reader passes it.)
             local last = state.saturation
             if last == nil then last = view.render_mode end
-            doc:drawPage(bb, math.floor((w - dim.w) / 2), math.floor((h - dim.h) / 2),
-                Geom:new{ x = 0, y = 0, w = dim.w, h = dim.h }, page, zoom, 0, state.gamma or 1, last)
+            draw_whole_page(doc, bb, w, h, page, state.gamma, last)
             return
         end
         -- The text as the screen shows it, at the screen's size: crengine's own status bar at the
@@ -593,6 +646,233 @@ function Grimoire:sendPage(busy)
     end
     logger.info("Grimoire: page", page, "of", pages, "sent to annotate,", how)
     return true
+end
+
+-- ---- Open this book in Grimoire ----
+
+-- The files Grimoire takes whole: documents of pages (KOReader draws each page as it is). EPUB and the
+-- other reflowable books have no pages of their own (they change with the font), so not those.
+local WHOLE = { pdf = true, djvu = true, djv = true, cbz = true, cbt = true, xps = true, oxps = true }
+
+-- The book pages the notebook of this book holds already, for a book of `pages` pages (source.ini in
+-- the notebook's folder: book=<key>, then a page.<book page>.<pages>=<page id> line for each), as a
+-- set; empty when it has none. Only files are read: Grimoire does the rest.
+function Grimoire:pagesHeld(key, pages)
+    local held = {}
+    local root = self.us .. "/grimoire/notebooks"
+    local ok, iter, dir_obj = pcall(lfs.dir, root)
+    if not ok then return held end
+    for name in iter, dir_obj do
+        if name:sub(1, 1) ~= "." then
+            local f = io.open(root .. "/" .. name .. "/source.ini", "r")
+            local text = f and f:read("*a")
+            if f then f:close() end
+            if text and ("\n" .. text):find("\nbook=" .. key .. "\r?\n") then
+                for page, of in text:gmatch("\npage%.(%d+)%.(%d+)=%d+") do
+                    if tonumber(of) == pages then held[tonumber(page)] = true end
+                end
+            end
+        end
+    end
+    return held
+end
+
+-- Tools > Grimoire > Open this book in Grimoire (a paged book open), and its gesture.
+function Grimoire:onOpenBookInGrimoire()
+    if handing_over then return true end
+    local refusal = self:refusal()
+    if refusal then
+        self:tell(refusal)
+        return true
+    end
+    if not (self.ui.document and self.ui.paging and self.ui.view) then
+        self:tell("annotate_no_book")
+        return true
+    end
+    if self:inMirror(self.ui.document.file) then
+        logger.info("Grimoire: this book is a notebook's own PDF, from grimoire/PDFs: not opened")
+        self:tell("annotate_own_pdf")
+        return true
+    end
+    local key = self:bookKey()
+    if not key then
+        logger.warn("Grimoire: this book has no key to find its notebook by")
+        self:tell("book_unreadable")
+        return true
+    end
+    local state = self.ui.view.state or {}
+    local last = state.saturation
+    if last == nil then last = self.ui.view.render_mode end
+    logger.info("Grimoire: open the whole book")
+    self:sendBook{ doc = self.ui.document, key = key, title = self:bookTitle(), page = self:currentPage(),
+        gamma = state.gamma, last = last, reader = true }
+    return true
+end
+
+-- The file browser's Open with... > Grimoire, for the files isFileTypeSupported takes: KOReader opens
+-- the document here for its pages, and closes it after.
+function Grimoire:isFileTypeSupported(file)
+    local ext = type(file) == "string" and file:match("%.([^./]+)$")
+    return ext ~= nil and WHOLE[ext:lower()] == true and not self:inMirror(file)
+end
+
+function Grimoire:openFile(file)
+    if handing_over then return end
+    local refusal = self:refusal()
+    if refusal then
+        self:tell(refusal)
+        return
+    end
+    if self:inMirror(file) then
+        logger.info("Grimoire: this book is a notebook's own PDF, from grimoire/PDFs: not opened")
+        self:tell("annotate_own_pdf")
+        return
+    end
+    local DocumentRegistry = require("document/documentregistry")
+    local ok, doc = pcall(DocumentRegistry.openDocument, DocumentRegistry, file)
+    if not (ok and doc) or doc.is_locked then
+        if ok and doc then DocumentRegistry:closeDocument(file) end
+        logger.warn("Grimoire: the book could not be opened:", ok and (doc and "it needs a password" or "no document")
+            or tostring(doc))
+        self:tell("book_unreadable")
+        return
+    end
+    -- Its key and the page it was left at, as KOReader keeps them (the same key as in the reader),
+    -- else worked out from the file; its title from its metadata, else its file name.
+    local settings
+    local has_ds, DocSettings = pcall(require, "docsettings")
+    if has_ds and DocSettings and DocSettings.open then
+        local got, ds = pcall(DocSettings.open, DocSettings, file)
+        if got then settings = ds end
+    end
+    local function setting(name)
+        if not settings then return nil end
+        local got, v = pcall(settings.readSetting, settings, name)
+        return got and v or nil
+    end
+    local key = setting("partial_md5_checksum")
+    if not key_ok(key) then
+        local has_util, util = pcall(require, "util")
+        key = has_util and util.partialMD5 and util.partialMD5(file)
+    end
+    if not key_ok(key) then
+        DocumentRegistry:closeDocument(file)
+        logger.warn("Grimoire: this book has no key to find its notebook by")
+        self:tell("book_unreadable")
+        return
+    end
+    local page = tonumber(setting("last_page")) or 1
+    local got, props = pcall(doc.getProps, doc)
+    local title = got and type(props) == "table" and props.title
+    if type(title) ~= "string" or title == "" then title = (file:match("([^/]+)$") or ""):gsub("%.[^.]*$", "") end
+    title = title:gsub("%c", " "):sub(1, 500)
+    logger.info("Grimoire: open a whole book from the file browser")
+    self:sendBook{ doc = doc, key = key, title = title, page = page, close = function()
+        DocumentRegistry:closeDocument(file)
+    end }
+end
+
+-- Every page of book b (doc, key, title, page: the one to open; gamma, last: a reader's contrast;
+-- reader: doc is the reader's own, its settings set aside while it draws; close: done with doc) that
+-- its notebook does not hold, drawn into grimoire/import/.book/page-<n>.png under a progress message
+-- that a tap stops, then the request naming them, then the hand-over (--book). Each file is written
+-- whole (a temporary file, then a rename), and anything stopped or failed leaves the folder empty.
+function Grimoire:sendBook(b)
+    local function done() if b.close then pcall(b.close) end end
+    local pages = math.floor(b.doc:getPageCount())
+    if pages > 2000 then
+        done()
+        self:tell("book_too_big")
+        return
+    end
+    local launcher, busy = self:prepare("book")
+    if not launcher then
+        done()
+        return
+    end
+    if busy then UIManager:close(busy) end
+    local dir = self.us .. "/grimoire/import/.book"
+    if not (make_dir(self.us .. "/grimoire") and make_dir(self.us .. "/grimoire/import") and make_dir(dir)) then
+        done()
+        logger.warn("Grimoire: could not make grimoire/import/.book")
+        self:tell("book_failed")
+        return
+    end
+    empty_dir(dir)
+    local held = self:pagesHeld(b.key, pages)
+    local todo = {}
+    for p = 1, pages do
+        if not held[p] then table.insert(todo, p) end
+    end
+    local page = math.max(1, math.min(b.page or 1, pages))
+    local sw, sh = Device.screen:getWidth(), Device.screen:getHeight()
+    local w, h = math.min(sw, sh), math.max(sw, sh)
+    local Trapper = require("ui/trapper")
+    Trapper:wrap(function()
+        local put_back = b.reader and set_aside(b.doc.configurable or {}, PAGED_AS_IS) or function() end
+        local stopped, failed
+        for i, p in ipairs(todo) do
+            if not Trapper:info(string.format(T("book_progress"), i, #todo), true) then
+                stopped = true
+                break
+            end
+            local png, tmp = dir .. string.format("/page-%d.png", p), dir .. string.format("/page-%d.png.tmp", p)
+            local drew, err = pcall(function()
+                local Blitbuffer = require("ffi/blitbuffer")
+                local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+                local ran, wrote, why = pcall(function()
+                    bb:fill(Blitbuffer.COLOR_WHITE)
+                    draw_whole_page(b.doc, bb, w, h, p, b.gamma, b.last)
+                    return bb:writePNG(tmp)
+                end)
+                bb:free()
+                if not ran then error(wrote, 0) end
+                if wrote == false or not is_nonempty_file(tmp) then error(why or "no file, or an empty one", 0) end
+                if not os.rename(tmp, png) then error("it could not be renamed into place", 0) end
+            end)
+            if not drew then
+                os.remove(tmp)
+                failed = string.format("page %d of %d: %s", p, pages, tostring(err))
+                break
+            end
+        end
+        put_back()
+        Trapper:clear()
+        done()
+        local request
+        if not (stopped or failed) then
+            local lines = {
+                "# Grimoire: a whole book to open, from KOReader's Grimoire plugin (docs/FORMAT.md)",
+                "version=1",
+                "book=" .. b.key,
+                "title=" .. b.title,
+                string.format("pages=%d", pages),
+                string.format("page=%d", page),
+                "kind=paged",
+                string.format("time=%d", os.time()),
+            }
+            for _, p in ipairs(todo) do table.insert(lines, string.format("picture.%d=page-%d.png", p, p)) end
+            request = table.concat(lines, "\n") .. "\n"
+            if not write_whole(dir .. "/request.ini", request) then failed = "the request could not be written" end
+        end
+        if stopped or failed then
+            empty_dir(dir)
+            if stopped then
+                logger.info("Grimoire: the book's pages were stopped; nothing sent")
+                self:tell("book_stopped")
+            else
+                logger.warn("Grimoire: could not save the book's pages:", failed)
+                self:tell("book_failed")
+            end
+            return
+        end
+        logger.info("Grimoire:", #todo, "of", pages, "pages sent, to open at page", page)
+        busy = InfoMessage:new{ text = T("preparing") }
+        UIManager:show(busy)
+        UIManager:forceRePaint()
+        -- "Preparing Grimoire..." stays up until Grimoire draws.
+        self:handOver(launcher, busy, " --book")
+    end)
 end
 
 -- KOReader restarts, and its exit runs Grimoire once it has let go of the screen and the input.
@@ -733,8 +1013,9 @@ function Grimoire:afterHandOver()
     if is_file(marker) then
         os.remove(marker)
         logger.warn("Grimoire: the last hand-over did not run Grimoire")
-        -- A page it sent to annotate, if it was one: no Grimoire would open it now.
+        -- A page it sent to annotate, or a book, if it was one: no Grimoire would open it now.
         empty_dir(self.us .. "/grimoire/import/.annotate")
+        empty_dir(self.us .. "/grimoire/import/.book")
         -- Once the book or the file browser is up, over it.
         UIManager:scheduleIn(1, function() self:tell("could_not_start") end)
     end

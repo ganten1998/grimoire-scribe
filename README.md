@@ -257,6 +257,14 @@ the whole page; an EPUB's is the screen as KOReader lays it out, so after a chan
 page may come in again as a new one. A notebook's own PDF from `grimoire/PDFs` is refused, since
 annotating it would make a notebook of a notebook: open that notebook in Grimoire instead.
 
+**Open this book in Grimoire.** In a PDF, DjVu or comic book, Tools > Grimoire > **Open this book in
+Grimoire** (also a gesture action) puts every page of the book into its Grimoire notebook at once,
+then opens the page you are reading. In KOReader's file browser, long-press such a file and choose
+**Open with... > Grimoire** to do the same without opening it. KOReader draws each page first, about
+a second or two a page on a Scribe, with a message that a tap stops; pages the notebook already has,
+with what you wrote on them, are kept as they are, so opening the same book again only adds what is
+missing. It is the same notebook Annotate this page uses.
+
 ## Moving between versions
 
 Updating is one file, and so is going back. From 1.1.0-beta.1 on, Grimoire keeps what a newer

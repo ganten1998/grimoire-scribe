@@ -879,6 +879,43 @@ TEST(failures_leave_nothing) {
 
 // The notices a start with a request can end with (app.c), in every language and style, on the
 // narrow screen: a toast has two lines. Keep this list in step with the messages.
+// A whole book's request: its pictures named page-<n>.png and nothing else, each page once, none past
+// the last; sorted as they come.
+TEST(book_request_parsing) {
+    BookRequest r;
+    const char *why;
+    const char *good = "# a comment\r\nversion=1\r\nbook=0f3c6e2a9b1d4c7e8f5a2b3c4d5e6f70\r\ntitle=Hanon\r\n"
+                       "pages=96\r\npage=13\r\nkind=paged\r\ntime=1792500000\r\npicture.13=page-13.png\r\n"
+                       "picture.2=page-2.png\r\npicture.96=page-96.png\r\nfrom=a newer plugin\r\n";
+    CHECK(book_parse(good, &r, &why) == 0);
+    CHECK(r.version == 1 && !strcmp(r.book, BOOK) && !strcmp(r.title, "Hanon") && r.page == 13 && r.pages == 96);
+    CHECK(!strcmp(r.kind, "paged") && r.time == 1792500000 && r.n == 3);
+    CHECK(r.n == 3 && r.sent[0] == 2 && r.sent[1] == 13 && r.sent[2] == 96);
+    book_request_free(&r);
+    // No pictures at all: every page there already, only the page to open.
+    CHECK(book_parse("book=ab12\npages=3\npage=2\n", &r, &why) == 0 && r.n == 0);
+    book_request_free(&r);
+    const char *bad[] = {
+        "version=2\nbook=ab12\npages=3\npage=1\n",                          // a version it does not know
+        "pages=3\npage=1\n",                                                 // no book
+        "book=ab12\npage=1\n",                                               // no page count
+        "book=ab12\npages=3\npage=4\n",                                     // the page to open past the last
+        "book=ab12\npages=3\npage=1\npicture.4=page-4.png\n",               // a picture past the last page
+        "book=ab12\npages=3\npage=1\npicture.2=page-2.png\npicture.2=page-2.png\n",  // twice
+        "book=ab12\npages=3\npage=1\npicture.2=page-3.png\n",               // the wrong name
+        "book=ab12\npages=3\npage=1\npicture.2=../page-2.png\n",            // reaching elsewhere
+        "book=ab12\npages=3\npage=1\npicture.0=page-0.png\n",               // no page 0
+        "book=ab12\npages=3\npage=1\npicture.x=page-x.png\n",               // no number
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        int rc = book_parse(bad[i], &r, &why);
+        if (rc == 0) fprintf(stderr, "  taken: %s\n", bad[i]);
+        CHECK(rc != 0 && why[0]);
+        book_request_free(&r);
+    }
+    CHECK(book_parse(NULL, &r, &why) != 0);
+}
+
 TEST(notices_fit) {
     Rect screen = {0, 0, 1860, 2480};
     for (int l = 0; l < i18n_language_count(); l++) {
@@ -924,6 +961,7 @@ int main(void) {
     RUN(pictures_of_another_size);
     RUN(raw_zip_keeps_the_map);
     RUN(failures_leave_nothing);
+    RUN(book_request_parsing);
     RUN(notices_fit);
     free(g_log);
     int rc = tl_done();

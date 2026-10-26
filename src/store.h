@@ -203,6 +203,9 @@ int store_read_pgm(const char *path, Canvas *out);        // canvas_init'd by th
 int store_write_info_in(const char *dir, const NotebookInfo *nb);
 int store_write_page_in(const char *dir, uint32_t pid, const Page *p);
 int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n);
+// bg/pages.ini (bgdir is the notebook's bg) with the lines of pages pids[i] on papers[i] added or
+// replaced, the other lines kept, in one write: pages added at once (annotate.h, a whole book).
+int store_note_papers_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n);
 
 // Page file format "QPG1" (little-endian), byte by byte in docs/FORMAT.md:
 //   char magic[4]="QPG1"; u16 version; u16 paper; u32 w, h;   (these 16 bytes in every version)

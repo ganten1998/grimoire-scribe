@@ -115,6 +115,65 @@ typedef struct {
 // and the page draws white until then. Opens nothing itself: the caller opens the page given.
 void annotate_take(bool asked, AnnotateResult *out);
 
+// ---- a whole book: "Open this book in Grimoire" ----
+//
+// KOReader's plugin draws every page of a paged document (PDF, DjVu, comics) that the book's
+// notebook does not hold yet into grimoire/import/.book/page-<n>.png, writes a request naming them
+// (book.ini rules as request.ini's, docs/FORMAT.md, Whole books), and hands over with --book
+// (GRIMOIRE_BOOK=1). Grimoire then adds those pages to the book's notebook (one made for the book
+// when there is none), each in book order among the pages there (notes stay after their page), all
+// listed at once at the end: a failure on the way takes back every file it wrote. The work runs in
+// slices on the UI thread (book_step), each page a picture moved into place and a small page file,
+// so the launcher's heartbeat keeps going for a book of any size; the editor then opens on the page
+// the reader was on.
+
+#define BOOK_DIR "import/.book"       // the request's folder, in the data root
+#define BOOK_REQUEST "request.ini"    // the request, in it
+
+typedef struct {
+    int version;                     // 1
+    char book[STORE_SOURCE_LEN];     // as AnnotateRequest's
+    char title[ANNOTATE_TITLE_LEN];
+    int page, pages;                 // the page to open (the reader's), and how many the book has
+    char kind[16];
+    int64_t time;
+    int n;                           // pictures sent: page-<n>.png for each of these book pages,
+    int *sent;                       // ascending, each once (picture.<n>=page-<n>.png lines)
+} BookRequest;
+
+// Reads a request's text. 0, or -1 and why (never the title). book_request_free frees it either way.
+int book_parse(const char *text, BookRequest *r, const char **why);
+void book_request_free(BookRequest *r);
+
+typedef enum {
+    BOOK_NONE,     // no request
+    BOOK_STALE,    // not asked for, or too old: deleted unopened
+    BOOK_RUNNING,  // pages are being added: call book_step until it is DONE or FAILED
+    BOOK_DONE,     // the notebook holds the book's pages: open nb at pid
+    BOOK_FAILED,   // nothing changed (the notebook stays as it was); why says why
+} BookState;
+
+typedef struct {
+    BookState state;
+    char nb[STORE_ID_LEN];  // DONE: the notebook, and the page to open
+    uint32_t pid;
+    bool made;              // DONE: the notebook was made for the book
+    int added, total;       // pages added so far, of how many to add
+    AnnotateWhy why;        // FAILED
+    bool too_many;          // FAILED: the book has more pages than a notebook holds
+} BookStatus;
+
+// The request in grimoire/import/.book/, if any, at startup (after annotate_take). asked: KOReader's
+// plugin started Grimoire to open it (GRIMOIRE_BOOK=1, hosted); else, or too old, it is deleted
+// unopened. RUNNING: the book's notebook found (its compaction stopped) or a new one begun.
+void book_start(bool asked, BookStatus *st);
+// Adds pages for about budget_ms; then st says how far it got. At DONE or FAILED the request's
+// folder is emptied.
+void book_step(uint32_t budget_ms, BookStatus *st);
+// Pictures of another size than their notebook's pages (a notebook from the other Scribe size) are
+// fitted in the background, one queued at a time while the job queue is idle: call it often.
+void book_fits_tick(void);
+
 // The headless runner's annotate.* keys (app_probe forwards the ones it does not answer itself):
 // "result" (none, stale, opened, made, failed: what this start's request came to), "leftover"
 // (files left in the requests' folder), "book_page" ("12/300": the book page held by page index

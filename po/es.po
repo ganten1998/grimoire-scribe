@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 02:49-0500\n"
+"POT-Creation-Date: 2026-10-26 07:26-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -44,6 +44,48 @@ msgstr ""
 #, c-format
 msgid "Could not open the page KOReader sent (see %s)."
 msgstr "No se pudo abrir la página que envió KOReader (detalles en %s)."
+
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
+#. toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
+#. than a notebook holds; %d is that number (2000).
+#: src/app.c
+#, c-format
+msgid "The book has more pages than a notebook holds (%d)."
+msgstr "El libro tiene más páginas de las que caben en un cuaderno (%d)."
+
+#. TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
+#: src/app.c
+msgid "Could not open the book KOReader sent: a page's picture does not read."
+msgstr ""
+"No se pudo abrir el libro que envió KOReader: no se puede leer la imagen de "
+"una página."
+
+#. TRANSLATORS: (as above) the pages could not be added: a file could not be written.
+#: src/app.c
+msgid "Could not add the book's pages. Is the storage full?"
+msgstr ""
+"No se pudieron añadir las páginas del libro. ¿Está lleno el almacenamiento?"
+
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+#: src/app.c
+#, c-format
+msgid "Could not open the book KOReader sent (see %s)."
+msgstr "No se pudo abrir el libro que envió KOReader (detalles en %s)."
+
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
+#: src/app.c
+#, c-format
+msgid "Added %d page of the book."
+msgid_plural "Added %d pages of the book."
+msgstr[0] "Se añadió %d página del libro."
+msgstr[1] "Se añadieron %d páginas del libro."
+
+#. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+#. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
+#: src/app.c
+#, c-format
+msgid "Adding the book's pages: %d of %d"
+msgstr "Añadiendo las páginas del libro: %d de %d"
 
 #. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
 #. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
@@ -1097,9 +1139,8 @@ msgid "Name"
 msgstr "Nombre"
 
 #: src/library.c
-#, fuzzy
 msgid "Could not save shortcuts.ini"
-msgstr "No se pudo guardar el PDF"
+msgstr "No se pudo guardar shortcuts.ini"
 
 #: src/library.c
 msgid "Updated. Restart KOReader to apply."

@@ -225,9 +225,66 @@ package.loaded["util"] = { partialMD5 = function(file)
     table.insert(W.calls, "partialMD5")
     return W.md5_of_file
 end }
--- The plugin never opens a document itself (KOReader's own start does): this one would show it.
+-- The plugin never shows a document itself (KOReader's own start does): this one would show it.
 package.loaded["apps/reader/readerui"] = {
     showReader = function() table.insert(W.calls, "showReader") end,
+}
+-- KOReader's Trapper: wrap runs the work at once; each info is in W.calls ("trapper <text>", its line
+-- break as " | ") and answers true, or false from the W.stop_at'th on (a tap on it stopped the work).
+package.loaded["ui/trapper"] = {
+    wrap = function(_, f) return f() end,
+    info = function(_, text)
+        table.insert(W.calls, "trapper " .. text:gsub("\n", " | "))
+        W.infos = (W.infos or 0) + 1
+        return not (W.stop_at and W.infos >= W.stop_at)
+    end,
+    clear = function() table.insert(W.calls, "trapper clear") end,
+}
+-- A paged document of book b (W.files[path], or a reader's), any page drawn: W.drawn has each.
+local function paged_doc(b)
+    local doc = { file = b.file, is_locked = b.locked }
+    function doc.getPageCount() return b.pages end
+    function doc.getProps() return { title = b.title } end
+    function doc.getNativePageDimensions(_, page)
+        assert(page >= 1 and page <= b.pages, "a page of the book")
+        return { w = b.native.w, h = b.native.h }
+    end
+    function doc.getPageDimensions(_, page, zoom, rotation)
+        assert(page >= 1 and page <= b.pages and rotation == 0)
+        return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
+    end
+    function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
+        table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
+            page, zoom, rotation, tostring(gamma), tostring(last)))
+        target.what = "page " .. page
+    end
+    return doc
+end
+-- The file browser's document registry: the auxiliary provider registered (W.aux), and the books
+-- Open with opens (W.files), each opened and closed in W.calls.
+package.loaded["document/documentregistry"] = {
+    addAuxProvider = function(_, provider) W.aux = provider end,
+    openDocument = function(_, file)
+        table.insert(W.calls, "openDocument")
+        local b = W.files and W.files[file]
+        if not b then error("no such book") end
+        return paged_doc(b)
+    end,
+    closeDocument = function(_, file)
+        table.insert(W.calls, "closeDocument")
+        assert(W.files and W.files[file], "the book it opened")
+    end,
+}
+-- A book's settings, as KOReader keeps them (its key, the page it was left at).
+package.loaded["docsettings"] = {
+    open = function(_, file)
+        return { readSetting = function(_, key)
+            local b = W.files and W.files[file]
+            if not b then return nil end
+            if key == "partial_md5_checksum" then return b.md5 end
+            if key == "last_page" then return b.last_page end
+        end }
+    end,
 }
 -- Every line logged, as KOReader's crash.log would have it (W.logs), to hold it to what it may say.
 local function log_line(...)
@@ -394,11 +451,11 @@ local function new_ui(in_book)
                 ui.view.render_mode = 0
             else
                 function doc.getNativePageDimensions(_, page)
-                    assert(page == b.page, "the page the reader is on")
+                    assert(page == b.page or (b.whole and page >= 1 and page <= b.pages), "the page the reader is on")
                     return { w = b.native.w, h = b.native.h }
                 end
                 function doc.getPageDimensions(_, page, zoom, rotation)
-                    assert(page == b.page and rotation == 0)
+                    assert((page == b.page or (b.whole and page >= 1 and page <= b.pages)) and rotation == 0)
                     return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
                 end
                 function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
@@ -925,8 +982,9 @@ do -- In a book: Tools > Grimoire has Annotate this page in Grimoire, second; th
     local items = {}
     g:addToMainMenu(items)
     local sub = items.grimoire.sub_item_table
-    check("annotate: in a book, four entries, Annotate second", #sub == 4 and sub[1].text == "Open Grimoire"
-        and sub[2].text == "Annotate this page in Grimoire" and sub[3].text == "Notebook PDFs")
+    check("annotate: in a PDF, five entries, Annotate second, Open this book third", #sub == 5
+        and sub[1].text == "Open Grimoire" and sub[2].text == "Annotate this page in Grimoire"
+        and sub[3].text == "Open this book in Grimoire" and sub[4].text == "Notebook PDFs")
     check("annotate: the menu closes first (kept open by TouchMenu)", sub[2].keep_menu_open == true)
     local a = W.actions.grimoire_annotate
     check("annotate gesture: registered, in books only", a and a.event == "AnnotateInGrimoire"
@@ -1284,6 +1342,195 @@ do -- A custom wallpaper is exported without ever showing KOReader's sleep scree
     g:sendWallpaper()
     check("wallpaper: failed write leaves no stale or partial snapshot", not is_file(path) and not is_file(path .. ".tmp"))
     package.loaded["ui/screensaver"], package.loaded["ui/widget/imagewidget"] = nil, nil
+end
+
+-- ---- Open this book in Grimoire ----
+
+local BOOK_CMD = " --hosted koreader --book"
+local BOOK_CAPS = "#!/bin/sh\n# Capabilities: guard hosted annotate book\n"
+local function book_dir() return W.us .. "/grimoire/import/.book" end
+local function book_files() -- what the book's folder holds, sorted, joined by spaces
+    local p = io.popen("ls -A " .. q(book_dir()) .. " 2>/dev/null")
+    local names = {}
+    for name in p:lines() do table.insert(names, name) end
+    p:close()
+    table.sort(names)
+    return table.concat(names, " ")
+end
+local function book_request() -- the book's request, as key = value, with its pictures as a list
+    local text = read_all(book_dir() .. "/request.ini")
+    if not text then return nil end
+    local r = { pictures = {} }
+    for k, v in text:gmatch("([%w%.]+)=([^\n]*)") do
+        if k:sub(1, 8) == "picture." then table.insert(r.pictures, k:sub(9) .. "=" .. v) else r[k] = v end
+    end
+    return r
+end
+-- The book's notebook in Grimoire, holding book pages `held` of `pages` (source.ini only: all the
+-- plugin reads).
+local function notebook_of(key, pages, held)
+    local dir = W.us .. "/grimoire/notebooks/20261026-100000-abcd"
+    assert(sh("mkdir -p " .. q(dir)))
+    local lines = { "# Grimoire: the book this notebook annotates, from KOReader (docs/FORMAT.md)", "book=" .. key, "kind=paged" }
+    for i, p in ipairs(held) do table.insert(lines, string.format("page.%d.%d=%d", p, pages, i)) end
+    write(dir .. "/source.ini", table.concat(lines, "\n") .. "\n")
+    -- Another book's notebook, which must not count.
+    local other = W.us .. "/grimoire/notebooks/20261026-100001-ef01"
+    assert(sh("mkdir -p " .. q(other)))
+    write(other .. "/source.ini", "book=ffffffffffffffffffffffffffffffff\nkind=paged\npage.1." .. pages .. "=1\n")
+end
+
+do -- The menu: in a PDF, Open this book in Grimoire (above); in an EPUB not (its pages change with the font).
+    world("book-menu")
+    W.book.kind = "reflowable"
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    local sub = items.grimoire.sub_item_table
+    check("book: not in an EPUB's menu", #sub == 4 and sub[2].text == "Annotate this page in Grimoire"
+        and sub[3].text == "Notebook PDFs")
+    local a = W.actions.grimoire_book
+    check("book gesture: registered, in books only", a and a.event == "OpenBookInGrimoire"
+        and a.title == "Open this book in Grimoire" and a.reader == true and not a.general)
+    check("book: Open with... has Grimoire, never a default", W.aux and W.aux.provider == "grimoire"
+        and W.aux.provider_name == "Grimoire" and W.aux.disable_file and W.aux.disable_type)
+end
+
+do -- From the reader, in a 3-page PDF on page 2 whose notebook holds page 2 already: pages 1 and 3
+    -- drawn whole, each written whole, under a progress message; then the request and --book.
+    world("book-reader")
+    W.unpack_writes = BOOK_CAPS
+    W.book.pages, W.book.page, W.book.whole = 3, 2, true
+    W.book.file = W.us .. "/documents/Hanon.pdf"
+    notebook_of(W.book.md5, 3, { 2 })
+    assert(sh("mkdir -p " .. q(book_dir())))
+    write(book_dir() .. "/page-9.png", "an older request's picture")
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    local closed = false
+    items.grimoire.sub_item_table[3].callback({ closeMenu = function() closed = true end })
+    local s = "book from the reader"
+    check(s .. ": the menu closed", closed)
+    check(s .. ": progress for the 2 pages to draw", at("trapper Preparing page 1 of 2 for Grimoire... | Tap to stop.")
+        and at("trapper Preparing page 2 of 2 for Grimoire... | Tap to stop.") and calls_of("trapper Preparing") == 2)
+    check(s .. ": pages 1 and 3 drawn whole, not page 2", drew("drawPage 0 36 1860x2407 1 ") and drew("drawPage 0 36 1860x2407 3 ")
+        and not drew("drawPage 0 36 1860x2407 2 "))
+    check(s .. ": into page-size pictures", read_all(book_dir() .. "/page-1.png") == "PNG 1860x2480 page 1\n"
+        and read_all(book_dir() .. "/page-3.png") == "PNG 1860x2480 page 3\n")
+    check(s .. ": the folder emptied first, nothing half-written", book_files() == "page-1.png page-3.png request.ini")
+    local c = g.ui.document.configurable
+    check(s .. ": the book's own settings back after", c.text_wrap == 1 and c.page_opt == 1 and c.white_threshold == 200)
+    local r = book_request() or {}
+    check(s .. ": the request names the book, its pages and the page to open", r.version == "1" and r.book == W.book.md5
+        and r.pages == "3" and r.page == "2" and r.kind == "paged" and r.title == "Le Petit Prince")
+    check(s .. ": its pictures", table.concat(r.pictures, " ") == "1=page-1.png 3=page-3.png")
+    check(s .. ": when it was written", tonumber(r.time) and math.abs(tonumber(r.time) - os.time()) <= 5)
+    check(s .. ": the BlitBuffers freed", W.freed >= 2)
+    check(s .. ": Preparing Grimoire... up, the hand-over on the next tick", at("show Preparing Grimoire...")
+        and wrapped() and is_file(W.marker))
+    run_ticks()
+    W.calls = {}
+    Device:exit()
+    check(s .. ": KOReader's own exit, then grimoire.sh --hosted koreader --book",
+        at("exit") == 1 and at("execute sh '" .. W.app_sh .. "'" .. BOOK_CMD) == 2)
+    logs_name_no_book(s)
+end
+
+do -- Every page held already: nothing to draw, the request names none, Grimoire opens the page.
+    world("book-all-held")
+    W.unpack_writes = BOOK_CAPS
+    W.book.pages, W.book.page, W.book.whole = 2, 1, true
+    notebook_of(W.book.md5, 2, { 1, 2 })
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book all held"
+    check(s .. ": nothing drawn", calls_of("trapper Preparing") == 0 and not drew("drawPage"))
+    local r = book_request() or {}
+    check(s .. ": a request with no pictures, the page to open", r.page == "1" and #r.pictures == 0)
+    check(s .. ": the hand-over", wrapped())
+end
+
+do -- A tap on the progress message stops it: nothing left, nothing sent.
+    world("book-stopped")
+    W.unpack_writes = BOOK_CAPS
+    W.book.pages, W.book.page, W.book.whole = 5, 1, true
+    W.stop_at = 3
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book stopped"
+    check(s .. ": says so", told("Stopped: nothing was sent to Grimoire."))
+    check(s .. ": nothing left in the folder", book_files() == "")
+    check(s .. ": no hand-over", not wrapped() and not is_file(W.marker) and not at("exitOrRestart"))
+end
+
+do -- A picture that cannot be written (the disk full): says so, nothing left, no hand-over.
+    world("book-disk-full")
+    W.unpack_writes = BOOK_CAPS
+    W.book.pages, W.book.page, W.book.whole = 3, 1, true
+    W.png_answers = "false"
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book, the disk full"
+    check(s .. ": says so", told("Could not save the book's pages for Grimoire. Is the storage full? See koreader/crash.log."))
+    check(s .. ": nothing left in the folder", book_files() == "")
+    check(s .. ": no hand-over", not wrapped() and not at("exitOrRestart"))
+end
+
+do -- A Grimoire that cannot open whole books (its launcher lacks "book"): says so, draws nothing.
+    world("book-too-old")
+    W.book.pages, W.book.page, W.book.whole = 3, 1, true
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book, an older Grimoire"
+    check(s .. ": says so", told("This Grimoire cannot open whole books: copy a newer Grimoire.sh into the Kindle's documents folder."))
+    check(s .. ": nothing drawn or sent", not drew("drawPage") and book_files() == "" and not wrapped())
+end
+
+do -- More pages than a notebook holds: refused before anything is drawn.
+    world("book-too-big")
+    W.unpack_writes = BOOK_CAPS
+    W.book.pages, W.book.page, W.book.whole = 2001, 1, true
+    koreader(true):onOpenBookInGrimoire()
+    check("book of 2001 pages: refused", told("This book has more pages than a Grimoire notebook holds (2000).")
+        and not drew("drawPage") and not wrapped())
+end
+
+do -- The file browser's Open with... > Grimoire: the files it takes, then a PDF opened for its pages,
+    -- at the page it was left at, closed again, and the hand-over.
+    world("book-open-with")
+    W.unpack_writes = BOOK_CAPS
+    local file = W.us .. "/documents/Czerny Op 299.pdf"
+    W.files = { [file] = { file = file, pages = 2, md5 = "0123456789abcdef0123456789abcdef", last_page = 2,
+        title = "School of Velocity", native = { w = 612, h = 792 } } }
+    local g = koreader(false)
+    local s = "open with"
+    check(s .. ": PDF, DjVu and comics, in any case", g:isFileTypeSupported(file) and g:isFileTypeSupported("/x/a.DJVU")
+        and g:isFileTypeSupported("/x/b.cbz"))
+    check(s .. ": not an EPUB, nor a notebook's own PDF", not g:isFileTypeSupported("/x/c.epub")
+        and not g:isFileTypeSupported(W.pdfs .. "/Notebook.pdf"))
+    g:openFile(file)
+    local last_preparing -- (it shows while the app unpacks too, before anything is drawn)
+    for i, c in ipairs(W.calls) do
+        if c == "show Preparing Grimoire..." then last_preparing = i end
+    end
+    check(s .. ": opened, both pages drawn, closed before the hand-over", at("openDocument")
+        and drew("drawPage 0 36 1860x2407 1 ") and drew("drawPage 0 36 1860x2407 2 ") and at("closeDocument")
+        and last_preparing and at("closeDocument") < last_preparing)
+    local r = book_request() or {}
+    check(s .. ": its key and the page it was left at", r.book == "0123456789abcdef0123456789abcdef" and r.page == "2"
+        and r.pages == "2" and r.title == "School of Velocity" and table.concat(r.pictures, " ") == "1=page-1.png 2=page-2.png")
+    check(s .. ": the hand-over from the file browser, back to it after", wrapped() and at("restart")
+        and W.settings.start_with ~= "last")
+    logs_name_no_book(s)
+end
+
+do -- A PDF that needs a password: KOReader cannot draw it here; closed again, nothing sent.
+    world("book-open-with-locked")
+    W.unpack_writes = BOOK_CAPS
+    local file = W.us .. "/documents/Locked.pdf"
+    W.files = { [file] = { file = file, pages = 2, md5 = "0123456789abcdef0123456789abcdef", locked = true,
+        native = { w = 612, h = 792 } } }
+    koreader(false):openFile(file)
+    local s = "open with, a locked PDF"
+    check(s .. ": says so", told("KOReader could not open this book for Grimoire. See koreader/crash.log."))
+    check(s .. ": closed again, nothing drawn or sent", at("closeDocument") and not drew("drawPage") and not wrapped())
 end
 
 print(string.format("koplugin test: %d of %d checks failed", fails, count))

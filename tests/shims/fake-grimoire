@@ -15,6 +15,7 @@ echo "grimoire root=$GRIMOIRE_ROOT awesome_stopped=$GRIMOIRE_AWESOME_STOPPED" >>
 # annotate (1), or nothing.
 echo "grimoire host=${GRIMOIRE_HOST:-}" >>"$SHIM_LOG"
 echo "grimoire annotate=${GRIMOIRE_ANNOTATE:-}" >>"$SHIM_LOG"
+echo "grimoire book=${GRIMOIRE_BOOK:-}" >>"$SHIM_LOG"
 # The locale it inherits (KOReader's LC_ALL must not reach it).
 echo "grimoire lc_all=${LC_ALL-(unset)} lang=${LANG-(unset)}" >>"$SHIM_LOG"
 # The passcode note the launcher passed, and whether the passcode is set while Grimoire runs.

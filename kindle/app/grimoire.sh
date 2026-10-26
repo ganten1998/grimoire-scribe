@@ -1,5 +1,5 @@
 #!/bin/sh
-# Capabilities: guard hosted annotate
+# Capabilities: guard hosted annotate book
 # Grimoire launcher, started by the documents/Grimoire.sh scriptlet. Pauses the Kindle UI the way
 # KOReader does on upstart firmware (5.x, incl. 5.16+ hard-float and 5.19), runs Grimoire, and
 # ALWAYS restores everything on exit.
@@ -9,20 +9,23 @@
 #   grimoire.sh --hosted koreader    run inside KOReader's session, for its Grimoire plugin (below)
 #   grimoire.sh --hosted koreader --annotate
 #                                    the same, and open the page the plugin sent to annotate
+#   grimoire.sh --hosted koreader --book
+#                                    the same, and open the whole book the plugin sent
 #   grimoire.sh --reset-calibration  forget the pen/touch calibration
 #
 # A flag file makes --stop-framework the default: touch /mnt/us/grimoire/stop-framework
 # A Device Passcode stays enabled. Sleep releases input and resumes the native PIN screen.
 # Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does: --hosted is the one
 # start allowed there. The Capabilities line above says what this file supports (guard: that
-# refusal; hosted: --hosted koreader; annotate: its --annotate), for a tool that must not run it to
-# find out; it always describes this very file, while app/CAPABILITIES can outlive a downgrade (see
-# documents/Grimoire.sh).
+# refusal; hosted: --hosted koreader; annotate: its --annotate; book: its --book), for a tool that
+# must not run it to find out; it always describes this very file, while app/CAPABILITIES can
+# outlive a downgrade (see documents/Grimoire.sh).
 #
 # --annotate (after --hosted koreader only): KOReader's plugin wrote a page picture and a request
 # into grimoire/import/.annotate/ (Annotate this page in Grimoire), and Grimoire is to open it: it
 # gets GRIMOIRE_ANNOTATE=1. Every other start gets it empty, so a request found then (a hand-over
-# that never reached Grimoire) is deleted unopened.
+# that never reached Grimoire) is deleted unopened. --book, the same for a whole book (Open this book
+# in Grimoire: every page, in grimoire/import/.book/): GRIMOIRE_BOOK=1.
 #
 # --hosted koreader: KOReader's Grimoire plugin (Tools > Grimoire) runs this from KOReader's exit
 # path, once KOReader has let go of the screen and the input, and waits for it; then koreader.sh
@@ -134,6 +137,7 @@ ko_let_go() {
 HOSTED=""
 KO_OWN_UI=no
 ANNOTATE=""
+BOOK=""
 if [ "$1" = "--hosted" ]; then
     # KOReader's own variables (koreader.sh exports them), read before this script reuses the
     # names STOP_FRAMEWORK and AWESOME_STOPPED for its own pause below.
@@ -160,6 +164,7 @@ if [ "$1" = "--hosted" ]; then
         KO_OWN_UI=yes
     fi
     [ "$3" = --annotate ] && ANNOTATE=1
+    [ "$3" = --book ] && BOOK=1
     # First of all: KOReader's exit has just woken awesome on Special Offers Kindles (a KOReader
     # quitting for good wants the Kindle UI back), so stop it again before the lock wait and the
     # lipc calls below give it time to draw. koreader.sh continues it when KOReader quits; this
@@ -337,6 +342,7 @@ if [ -n "$HOSTED" ]; then
     # takes the power button) at its exit.
     [ "$KO_STOP_FRAMEWORK" = yes ] && log "KOReader stopped the Kindle framework: the power button may not put the Kindle to sleep in Grimoire"
     [ -n "$ANNOTATE" ] && log "KOReader sent a page to annotate (grimoire/import/.annotate)"
+    [ -n "$BOOK" ] && log "KOReader sent a whole book (grimoire/import/.book)"
 else
     log "starting Grimoire (stop framework: $STOP_FRAMEWORK) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"
 fi
@@ -472,9 +478,9 @@ fi
 cd "$DIR" || exit 1
 rm -f "$BEAT"
 # Hosted, Grimoire learns its host (its Exit goes back to KOReader), and AWESOME_STOPPED stayed
-# no above: it never wakes awesome, which KOReader's session keeps stopped. GRIMOIRE_ANNOTATE: a
-# page KOReader sent to annotate, set for that hosted start alone (empty otherwise, whatever this
-# launcher inherited).
+# no above: it never wakes awesome, which KOReader's session keeps stopped. GRIMOIRE_ANNOTATE and
+# GRIMOIRE_BOOK: a page or a book KOReader sent, set for that hosted start alone (empty otherwise,
+# whatever this launcher inherited).
 APP_AWESOME=$AWESOME_STOPPED
 APP_PILLOW=$PILLOW_DISABLED
 if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; then
@@ -482,7 +488,7 @@ if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; 
     APP_PILLOW=$PILLOW_HARD_DISABLED
 fi
 GRIMOIRE_AWESOME_STOPPED="$APP_AWESOME" GRIMOIRE_PILLOW_DISABLED="$APP_PILLOW" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
-    GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
+    GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_BOOK="$BOOK" GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
 # Watchdog: Grimoire touches its heartbeat file every 2 s once its first frame is up. No first

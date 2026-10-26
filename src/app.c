@@ -129,6 +129,56 @@ static bool annotate_at_start(App *a, char *msg, size_t cap) {
     return true;
 }
 
+// Why a whole book KOReader sent could not be opened, for the toast.
+static void book_failed(App *a) {
+    char msg[256];
+    if (a->book.too_many) {
+        // TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
+        // toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
+        // than a notebook holds; %d is that number (2000).
+        snprintf(msg, sizeof msg, _("The book has more pages than a notebook holds (%d)."), STORE_MAX_PAGES);
+    } else if (a->book.why == ANNOTATE_WHY_PICTURE) {
+        // TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
+        snprintf(msg, sizeof msg, "%s", _("Could not open the book KOReader sent: a page's picture does not read."));
+    } else if (a->book.why == ANNOTATE_WHY_STORAGE) {
+        // TRANSLATORS: (as above) the pages could not be added: a file could not be written.
+        snprintf(msg, sizeof msg, "%s", _("Could not add the book's pages. Is the storage full?"));
+    } else {
+        // TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+        snprintf(msg, sizeof msg, _("Could not open the book KOReader sent (see %s)."), "grimoire.log");
+    }
+    app_toast(a, msg, 8000);
+}
+
+// A whole book KOReader sent (annotate.h), its pages added a slice at a time: how far it got, in a
+// toast, then the editor opens on the reader's page.
+static void book_tick(App *a) {
+    book_fits_tick();
+    if (a->book.state != BOOK_RUNNING) return;
+    book_step(150, &a->book);
+    if (a->book.state == BOOK_DONE) {
+        editor_open_notebook_at(a, a->book.nb, a->book.pid, a->book.made || a->book.added > 0);
+        a->toast_until = now_ms();  // (the one saying how far it got, if it showed, goes)
+        if (a->book.added) {
+            char msg[256];
+            // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
+            snprintf(msg, sizeof msg, NG_("Added %d page of the book.", "Added %d pages of the book.", a->book.added),
+                     a->book.added);
+            app_toast(a, msg, 5000);
+        }
+    } else if (a->book.state == BOOK_FAILED) {
+        app_redraw_mode(a, REFRESH_UI);  // (the toast saying how far it got goes)
+        book_failed(a);
+    } else if (now_ms() - a->book_told >= 600) {
+        a->book_told = now_ms();
+        char msg[256];
+        // TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+        // notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
+        snprintf(msg, sizeof msg, _("Adding the book's pages: %d of %d"), a->book.added, a->book.total);
+        app_toast(a, msg, 60000);
+    }
+}
+
 int app_init(App *a, int w, int h, float dpi) {
     memset(a, 0, sizeof *a);
     g_probe_app = a;
@@ -177,6 +227,10 @@ int app_init(App *a, int w, int h, float dpi) {
     // could not be opened, why is that toast, unless the passcode was left off.
     char note[256];
     bool annotate_failed = annotate_at_start(a, note, sizeof note);
+    // A whole book KOReader sent: its pages are added over the next moments (book_tick), and the
+    // editor then opens on the reader's page.
+    const char *book = getenv("GRIMOIRE_BOOK");
+    book_start(book && !strcmp(book, "1") && *app_host(), &a->book);
     // Compatibility notice for beta.1, which could leave the passcode off after a restart.
     // Current standalone sessions leave it enabled and yield to the native keypad on sleep.
     const char *passcode = getenv("GRIMOIRE_PASSCODE");
@@ -188,6 +242,8 @@ int app_init(App *a, int w, int h, float dpi) {
         app_toast(a, _("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000);
     } else if (annotate_failed) {
         app_toast(a, note, 8000);
+    } else if (a->book.state == BOOK_FAILED) {
+        book_failed(a);
     } else if (caps && !caps->has_pen) {
         // TRANSLATORS: %s is the app's name, Grimoire.
         snprintf(msg, sizeof msg, _("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
@@ -320,6 +376,9 @@ void app_event(App *a, const InEvent *ev) {
     // button and pinches start nothing either (three clicks cleared the page); only their ends get
     // through, so one that began before the sleep still finishes.
     if (a->asleep && power_asleep_drops(ev)) return;
+    // While a book's pages are being added (a few seconds), nothing may open its notebook.
+    if (a->book.state == BOOK_RUNNING && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_KEY))
+        return;
     if (!a->asleep && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_PEN_BUTTON))
         note_input(a);
     k_screens[a->scr].event(a, ev);
@@ -576,6 +635,7 @@ static int32_t sleep_minute_ms(void) {
 }
 
 void app_tick(App *a, uint32_t now) {
+    book_tick(a);
     int bg = poll_jobs(a);
     if (bg) {
         char msg[256];

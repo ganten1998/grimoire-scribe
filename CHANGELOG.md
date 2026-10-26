@@ -8,6 +8,11 @@
   and in exports, and new highlights keep the vertical tip. Highlights drawn with the vertical tip
   in 1.2.0 to 2.0.0-beta.4 recorded no tip and show round too. Later tip changes will never restyle
   old pages: docs/FORMAT.md, Tip variants.
+- **Open a whole book in Grimoire**: in a PDF, DjVu or comic book in KOReader, Tools > Grimoire >
+  Open this book in Grimoire, or Open with... > Grimoire in KOReader's file browser, puts every page
+  into the book's notebook at once (KOReader draws them first, with a progress message a tap stops)
+  and opens the page you were reading. Pages already in the notebook keep what you wrote on them;
+  Annotate this page uses the same notebook. Needs the KOReader plugin from this release.
 
 ## 2.0.0-beta.4 (unreleased)
 

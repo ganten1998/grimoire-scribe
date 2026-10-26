@@ -559,6 +559,16 @@ int store_write_pages_list_in(const char *bgdir, const uint32_t *pids, const Pap
     return rc;
 }
 
+int store_note_papers_in(const char *bgdir, const uint32_t *pids, const PaperKind *papers, int n) {
+    Side s;
+    if (side_load(bgdir, &s) != 0) return -1;
+    int rc = 0;
+    for (int i = 0; i < n && rc == 0; i++) rc = side_set(&s, pids[i], paper_is_image(papers[i]) ? (uint32_t)papers[i] : 0);
+    if (rc == 0) rc = side_save(bgdir, &s);
+    free(s.e);
+    return rc;
+}
+
 PaperKind store_new_page_paper(const NotebookInfo *nb, PaperKind after) {
     if (!paper_is_document(after)) return after;
     return paper_is_document(nb->paper) ? PAPER_BLANK : nb->paper;

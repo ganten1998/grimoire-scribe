@@ -458,8 +458,10 @@ static int place_picture(const char *bgdir, uint32_t id, const char *src, const 
 
 // ---- the work ----
 
-static char g_last_nb[STORE_ID_LEN];       // the notebook this start's request opened
+static char g_last_nb[STORE_ID_LEN];       // the notebook this start's request (or book) opened
 static AnnotateOutcome g_outcome = ANNOTATE_NONE;
+static BookState g_book = BOOK_NONE;       // what this start's book came to (book_start, book_step)
+static int g_book_added;
 
 static void fail(AnnotateResult *out, AnnotateWhy why) {
     out->outcome = ANNOTATE_FAILED;
@@ -468,10 +470,8 @@ static void fail(AnnotateResult *out, AnnotateWhy why) {
 
 static void request_dir(char *buf, size_t cap) { snprintf(buf, cap, "%s/" ANNOTATE_DIR, store_root()); }
 
-// Empties the requests' folder (and removes it): everything in it was one request's. How many files went.
-static int empty_requests(void) {
-    char dir[700];
-    request_dir(dir, sizeof dir);
+// Empties a request's folder (and removes it): everything in it was one request's. How many files went.
+static int empty_folder(const char *dir) {
     DIR *d = opendir(dir);
     if (!d) return 0;
     int n = 0;
@@ -484,6 +484,12 @@ static int empty_requests(void) {
     closedir(d);
     rmdir(dir);
     return n;
+}
+
+static int empty_requests(void) {
+    char dir[700];
+    request_dir(dir, sizeof dir);
+    return empty_folder(dir);
 }
 
 // Removes a folder a new notebook was being made in (its files, its bg/ and source.ini).
@@ -873,12 +879,515 @@ void annotate_take(bool asked, AnnotateResult *out) {
               sizeof g_last_nb);
 }
 
+// ---- a whole book ----
+
+#define BOOK_REQUEST_MAX ((size_t)128 << 10)  // (the lines of up to 2000 pictures)
+
+static void book_dir(char *buf, size_t cap) { snprintf(buf, cap, "%s/" BOOK_DIR, store_root()); }
+
+static int int_cmp(const void *a, const void *b) {
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
+}
+
+void book_request_free(BookRequest *r) {
+    free(r->sent);
+    r->sent = NULL;
+    r->n = 0;
+}
+
+int book_parse(const char *text, BookRequest *r, const char **why) {
+    memset(r, 0, sizeof *r);
+    r->version = 1;
+    *why = "no request";
+    if (!text) return -1;
+    long long page = -1, pages = -1;
+    int cap = 0;
+    for (const char *p = text; *p;) {
+        const char *eol = strchr(p, '\n');
+        size_t n = eol ? (size_t)(eol - p) : strlen(p);
+        char line[ANNOTATE_TITLE_LEN + 16];
+        size_t k = n < sizeof line - 1 ? n : sizeof line - 1;
+        memcpy(line, p, k);
+        line[k] = 0;
+        if (k && line[k - 1] == '\r') line[--k] = 0;
+        p += n + (eol ? 1 : 0);
+        char *eq = strchr(line, '=');
+        if (line[0] == '#' || !eq) continue;
+        *eq = 0;
+        const char *key = line, *v = eq + 1;
+        if (!strcmp(key, "version")) {
+            r->version = (int)number(v, 0, 1000000);
+        } else if (!strcmp(key, "book")) {
+            if (!store_source_ok(v)) {
+                *why = "its book key is not one";
+                return -1;
+            }
+            strlcpy_q(r->book, v, sizeof r->book);
+        } else if (!strcmp(key, "title")) {
+            strlcpy_q(r->title, v, sizeof r->title);
+        } else if (!strcmp(key, "page")) {
+            page = number(v, 1, 10000000);
+        } else if (!strcmp(key, "pages")) {
+            pages = number(v, 1, 10000000);
+        } else if (!strcmp(key, "kind")) {
+            if (word_ok(v, sizeof r->kind)) strlcpy_q(r->kind, v, sizeof r->kind);
+        } else if (!strcmp(key, "time")) {
+            long long t = number(v, 0, 1LL << 40);
+            r->time = t > 0 ? t : 0;
+        } else if (!strncmp(key, "picture.", 8)) {
+            // picture.<n>=page-<n>.png: that name and no other, so it names a file in the folder.
+            long long b = number(key + 8, 1, STORE_MAX_PAGES);
+            char want[32];
+            snprintf(want, sizeof want, "page-%lld.png", b);
+            if (b < 1 || strcmp(v, want)) {
+                *why = "a picture line is not picture.<n>=page-<n>.png for a page of a notebook";
+                return -1;
+            }
+            if (r->n == cap) {
+                int nc = cap ? cap * 2 : 64;
+                int *ns = realloc(r->sent, (size_t)nc * sizeof *ns);
+                if (!ns) {
+                    *why = "out of memory";
+                    return -1;
+                }
+                r->sent = ns;
+                cap = nc;
+            }
+            r->sent[r->n++] = (int)b;
+        }  // (a key this version does not know: a newer plugin's, left to it)
+    }
+    if (r->version != 1) {
+        *why = "a version of request this Grimoire does not know (from a newer plugin)";
+        return -1;
+    }
+    if (!r->book[0]) {
+        *why = "no book key";
+        return -1;
+    }
+    if (pages < 1 || page < 1 || page > pages) {
+        *why = pages < 1 ? "no page count" : "no page to open, or one past the last page";
+        return -1;
+    }
+    r->page = (int)page;
+    r->pages = (int)pages;
+    if (r->n) qsort(r->sent, (size_t)r->n, sizeof *r->sent, int_cmp);
+    for (int i = 0; i < r->n; i++)
+        if (r->sent[i] > r->pages || (i && r->sent[i] == r->sent[i - 1])) {
+            *why = r->sent[i] > r->pages ? "a picture of a page past the last page" : "a page's picture named twice";
+            return -1;
+        }
+    *why = "";
+    return 0;
+}
+
+// The job: one at a time, from book_start to DONE or FAILED.
+static struct {
+    bool on;
+    BookRequest r;
+    NotebookInfo *nb;     // the book's notebook (a new one's info, until it is in place)
+    bool made;            // a new notebook, being built in work
+    char dir[600];        // its folder (a new one's work folder until the end), and its bg/
+    char final[600];      // a new one's folder to be
+    char bgdir[700];
+    int pw, ph;
+    AnnotateMap m;
+    BgIndex ix;
+    uint32_t next_id;     // the next page id to give (reserved in notebook.ini at the start)
+    int next;             // index into r.sent of the next page to add
+    uint32_t *ids;        // pages added so far: ids, papers
+    PaperKind *papers;
+    int nids;
+    char **placed;        // files put into bg/ so far, to take back on a failure (an existing notebook)
+    int nplaced;
+    uint32_t *fits;       // pictures to fit in the background, once the notebook is done
+    int nfits;
+} J;
+
+// Pictures left to fit after a job (book_fits_tick), in their notebook.
+static struct {
+    char nb[STORE_ID_LEN];
+    uint32_t *ids;
+    int n, next;
+} F;
+
+static void job_free(void) {
+    book_request_free(&J.r);
+    free(J.nb);
+    annotate_map_free(&J.m);
+    bgindex_free(&J.ix);
+    free(J.ids);
+    free(J.papers);
+    for (int i = 0; i < J.nplaced; i++) free(J.placed[i]);
+    free(J.placed);
+    free(J.fits);
+    memset(&J, 0, sizeof J);
+}
+
+static void job_end(BookStatus *st) {
+    g_book = st->state;
+    char dir[700];
+    book_dir(dir, sizeof dir);
+    int gone = empty_folder(dir);
+    if (gone > 2 && st->state != BOOK_DONE) qlog("book: %d files in " BOOK_DIR " deleted", gone);
+    job_free();
+}
+
+static void job_fail(BookStatus *st, AnnotateWhy why) {
+    if (J.made) {
+        remove_work(J.dir);
+    } else {
+        // The page files it wrote (never listed; their ids are not given again) and the pictures it
+        // put into bg/ go; notebook.ini, bg/pages.ini and source.ini were not written yet.
+        for (int i = 0; i < J.nids; i++) {
+            char path[800];
+            snprintf(path, sizeof path, "%s/p%u.qpg", J.dir, J.ids[i]);
+            unlink(path);
+        }
+        for (int i = 0; i < J.nplaced; i++) unlink(J.placed[i]);
+    }
+    st->state = BOOK_FAILED;
+    st->why = why;
+    job_end(st);
+}
+
+static bool note_placed(const char *file) {
+    char **np = realloc(J.placed, (size_t)(J.nplaced + 1) * sizeof *np);
+    if (!np) return false;
+    J.placed = np;
+    J.placed[J.nplaced] = strdup(file);
+    return J.placed[J.nplaced++] != NULL;
+}
+
+void book_start(bool asked, BookStatus *st) {
+    memset(st, 0, sizeof *st);
+    job_free();
+    char dir[700], path[800];
+    book_dir(dir, sizeof dir);
+    snprintf(path, sizeof path, "%s/" BOOK_REQUEST, dir);
+    struct stat rs;
+    bool have = stat(path, &rs) == 0 && S_ISREG(rs.st_mode);
+    if (!have) {
+        if (asked) {
+            qlog("book: KOReader asked to open a book, but there is no request in " BOOK_DIR);
+            st->state = BOOK_FAILED;
+            st->why = ANNOTATE_WHY_LOG;
+        }
+        empty_folder(dir);  // (pictures of a request that never came whole)
+        return;
+    }
+    const char *why = "it does not read";
+    size_t len;
+    char *text = (size_t)rs.st_size <= BOOK_REQUEST_MAX ? read_file(path, &len) : NULL;
+    bool parsed = text && book_parse(text, &J.r, &why) == 0;
+    free(text);
+    AnnotateRequest age = {.time = J.r.time};
+    if (!asked) {
+        qlog("book: a request from KOReader that this start was not asked to open; deleted unopened");
+        st->state = BOOK_STALE;
+    } else if (!parsed) {
+        qlog("book: the request does not read (%s); nothing opened", (size_t)rs.st_size > BOOK_REQUEST_MAX ? "too big" : why);
+        st->state = BOOK_FAILED;
+        st->why = ANNOTATE_WHY_LOG;
+    } else if (annotate_too_old(&age, wall_time(), (int64_t)rs.st_mtime)) {
+        qlog("book: a request too old (or from the future); deleted unopened");
+        st->state = BOOK_STALE;
+    }
+    if (st->state != BOOK_NONE) {
+        job_end(st);
+        return;
+    }
+    if (J.r.pages > STORE_MAX_PAGES) {
+        qlog("book: a book of %d pages, more than a notebook holds (%d); nothing opened", J.r.pages, STORE_MAX_PAGES);
+        st->too_many = true;
+        job_fail(st, ANNOTATE_WHY_LOG);
+        return;
+    }
+    NotebookInfo *all = NULL;
+    int n = 0;
+    if (store_list(&all, &n) != 0) {
+        qlog("book: the notebooks do not list; nothing opened");
+        job_fail(st, ANNOTATE_WHY_LOG);
+        return;
+    }
+    J.nb = calloc(1, sizeof *J.nb);
+    J.ids = calloc((size_t)J.r.n + 1, sizeof *J.ids);
+    J.papers = calloc((size_t)J.r.n + 1, sizeof *J.papers);
+    J.fits = calloc((size_t)J.r.n + 1, sizeof *J.fits);
+    if (!J.nb || !J.ids || !J.papers || !J.fits) {
+        free(all);
+        job_fail(st, ANNOTATE_WHY_LOG);
+        return;
+    }
+    int at = find_notebook(all, n, J.r.book);
+    if (at >= 0) {
+        bg_cancel_notebook(all[at].id);  // (its page list is about to change, as when it opens)
+        if (store_load_info(all[at].id, J.nb) != 0 || store_notebook_dir(J.nb->id, J.dir, sizeof J.dir) != 0 ||
+            bgimage_dir(J.nb->id, J.bgdir, sizeof J.bgdir) != 0) {
+            free(all);
+            job_fail(st, ANNOTATE_WHY_LOG);
+            return;
+        }
+        if (map_load(J.dir, &J.m) != 0) {
+            qlog("book: %s: its source.ini does not read; left as it is, nothing opened", J.nb->id);
+            free(all);
+            job_fail(st, ANNOTATE_WHY_LOG);
+            return;
+        }
+        store_notebook_page_size(J.nb, &J.pw, &J.ph);
+        // Ids for every page it may add, taken now (notebook.ini, nothing listed yet), so a start cut
+        // off on the way leaves page files no version gives an id to again.
+        uint32_t first = free_page_id(J.dir, J.nb);
+        J.next_id = first;
+        J.nb->next_page_id = first + (uint32_t)J.r.n;
+        int missing = 0;
+        for (int i = 0; i < J.r.n; i++) missing += annotate_map_find(&J.m, J.nb, J.r.sent[i], J.r.pages) == 0;
+        if (J.nb->npages + missing > STORE_MAX_PAGES) {
+            qlog("book: %s: %d pages to add to its %d, more than a notebook holds; nothing added", J.nb->id, missing,
+                 J.nb->npages);
+            st->too_many = true;
+            free(all);
+            job_fail(st, ANNOTATE_WHY_LOG);
+            return;
+        }
+        if (!first || (J.r.n && store_write_info_in(J.dir, J.nb) != 0) || mkdir_p(J.bgdir) != 0 ||
+            bgindex_load(J.bgdir, &J.ix) != 0) {
+            qlog("book: %s: its files cannot be written; nothing added", J.nb->id);
+            free(all);
+            job_fail(st, ANNOTATE_WHY_STORAGE);
+            return;
+        }
+        if (!J.nb->source[0]) qlog("book: %s: its link to the book was lost (an older version saved it); linked again", J.nb->id);
+    } else {
+        // A new notebook, built in notebooks/.annotate-<id>/ and renamed into place once whole.
+        J.made = true;
+        for (int tries = 0;; tries++) {
+            store_make_id(J.nb->id);
+            if (store_notebook_dir(J.nb->id, J.final, sizeof J.final) != 0 || tries == 8) {
+                free(all);
+                job_fail(st, ANNOTATE_WHY_LOG);
+                return;
+            }
+            if (access(J.final, F_OK) != 0) break;
+        }
+        snprintf(J.dir, sizeof J.dir, "%s/notebooks/" WORK_PREFIX "%s", store_root(), J.nb->id);
+        snprintf(J.bgdir, sizeof J.bgdir, "%s/bg", J.dir);
+        remove_work(J.dir);
+        store_page_size(&J.pw, &J.ph);
+        J.next_id = 1;
+        if (J.r.n == 0 || mkdir_p(J.bgdir) != 0) {
+            qlog("book: %s; nothing made", J.r.n ? "notebooks/ cannot be written" : "no pages came for a new notebook");
+            free(all);
+            job_fail(st, J.r.n ? ANNOTATE_WHY_STORAGE : ANNOTATE_WHY_LOG);
+            return;
+        }
+        char name[STORE_NAME_LEN];
+        annotate_name(J.r.title, name, sizeof name);
+        // TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+        unique_name(name[0] ? name : _("Untitled"), all, n, J.nb->name, sizeof J.nb->name);
+    }
+    free(all);
+    strlcpy_q(J.nb->source, J.r.book, sizeof J.nb->source);
+    if (!J.m.book[0]) strlcpy_q(J.m.book, J.r.book, sizeof J.m.book);
+    if (!J.m.kind[0]) strlcpy_q(J.m.kind, J.r.kind[0] ? J.r.kind : "paged", sizeof J.m.kind);
+    J.on = true;
+    strlcpy_q(st->nb, J.nb->id, sizeof st->nb);
+    st->made = J.made;
+    st->total = J.r.n;
+    st->state = BOOK_RUNNING;
+    qlog("book: %s: %d page(s) of %d to add, in a %s notebook", J.nb->id, J.r.n, J.r.pages, J.made ? "new" : "existing");
+}
+
+// One page: its picture into bg/, its page file, its place in the page list and source.ini (in
+// memory until the end). 0, or the AnnotateWhy to fail with.
+static int add_one(int bpage, bool *failed_picture) {
+    *failed_picture = false;
+    char dir[700], src[800];
+    book_dir(dir, sizeof dir);
+    snprintf(src, sizeof src, "%s/page-%d.png", dir, bpage);
+    if (!J.made && annotate_map_find(&J.m, J.nb, bpage, J.r.pages)) {
+        unlink(src);  // there already (a newer page there than the plugin knew of): kept as it is
+        return 0;
+    }
+    struct stat st;
+    size_t len = 0;
+    errno = 0;
+    uint8_t *png = lstat(src, &st) == 0 && S_ISREG(st.st_mode) ? bgimage_read(src, PICTURE_MAX, &len) : NULL;
+    int w = 0, h = 0;
+    const char *why = errno == EFBIG ? "bigger than a page picture can be" : "missing or unreadable";
+    if (!png || annotate_png_check(png, len, &w, &h, &why) != 0) {
+        qlog("book: page %d of %d: its picture is %s; nothing added", bpage, J.r.pages, why);
+        free(png);
+        *failed_picture = true;
+        return ANNOTATE_WHY_PICTURE;
+    }
+    uint64_t key = bgimage_source_key(png, len, J.pw, J.ph);
+    uint32_t pic = 0;
+    bool added = false, fit = false;
+    char placed[900] = "";
+    int rc = bgindex_claim(&J.ix, J.bgdir, key, &pic, &added);
+    if (rc == 0) rc = place_picture(J.bgdir, pic, src, png, len, w, h, J.pw, J.ph, &fit, placed, sizeof placed);
+    free(png);
+    if (rc != 0) return ANNOTATE_WHY_STORAGE;
+    if (placed[0] && !J.made && !note_placed(placed)) {
+        unlink(placed);
+        return ANNOTATE_WHY_LOG;
+    }
+    if (fit) {
+        bool queued = false;
+        for (int i = 0; i < J.nfits; i++) queued |= J.fits[i] == pic;
+        if (!queued) J.fits[J.nfits++] = pic;
+    }
+    uint32_t id = J.next_id;
+    if (!J.made) {  // stepping over a page file that is there already, as free_page_id does
+        while (id < J.nb->next_page_id) {
+            char path[800];
+            snprintf(path, sizeof path, "%s/p%u.qpg", J.dir, id);
+            if (access(path, F_OK) != 0) break;
+            id++;
+        }
+        if (id >= J.nb->next_page_id) return ANNOTATE_WHY_LOG;  // (none left of those it took)
+    }
+    J.next_id = id + 1;
+    PaperKind paper = paper_image(PAPER_ROLE_DOCUMENT, pic);
+    Page *p = page_new(J.pw, J.ph, paper);
+    if (!p || store_write_page_in(J.dir, id, p) != 0) {
+        page_free(p);
+        return ANNOTATE_WHY_STORAGE;
+    }
+    page_free(p);
+    J.ids[J.nids] = id;
+    J.papers[J.nids++] = paper;
+    int at = J.made ? J.nb->npages : annotate_insert_at(J.nb, &J.m, bpage, J.r.pages);
+    memmove(&J.nb->page_ids[at + 1], &J.nb->page_ids[at], (size_t)(J.nb->npages - at) * sizeof J.nb->page_ids[0]);
+    J.nb->page_ids[at] = id;
+    J.nb->npages++;
+    return annotate_map_add(&J.m, bpage, J.r.pages, id) == 0 ? 0 : ANNOTATE_WHY_LOG;
+}
+
+// Every page added: the lists written, notebook.ini last (then the pages are the notebook's).
+static int commit(BookStatus *st) {
+    if (J.nids && bgindex_save(J.bgdir, &J.ix) != 0) return -1;
+    uint32_t open = annotate_map_find(&J.m, J.nb, J.r.page, J.r.pages);
+    int open_at = 0;
+    if (!open && J.nids) open = J.ids[0];  // (the reader's page is not in the book's notebook: its first new one)
+    if (!open && J.nb->npages) open = J.nb->page_ids[J.nb->last_page < J.nb->npages ? J.nb->last_page : 0];
+    in_notebook(J.nb, open, &open_at);
+    J.nb->last_page = open_at;
+    if (J.made) {
+        char path[800];
+        size_t tl;
+        char *t = annotate_map_text(&J.m, J.nb, &tl);
+        snprintf(path, sizeof path, "%s/source.ini", J.dir);
+        int rc = t && write_file_atomic(path, t, tl) == 0 && store_write_pages_list_in(J.bgdir, J.ids, J.papers, J.nids) == 0
+                     ? 0
+                     : -1;
+        free(t);
+        if (rc) return -1;
+        J.nb->paper = PAPER_BLANK;  // (what a page added to it gets, as an imported notebook's)
+        J.nb->created = J.nb->modified = wall_time();
+        J.nb->next_page_id = J.next_id;
+        J.nb->page_w = J.pw;
+        J.nb->page_h = J.ph;
+        if (store_write_info_in(J.dir, J.nb) != 0) return -1;
+        sync_dir(J.bgdir);
+        sync_dir(J.dir);
+        if (rename(J.dir, J.final) != 0) return -1;
+        char notebooks[600];
+        snprintf(notebooks, sizeof notebooks, "%s/notebooks", store_root());
+        sync_dir(notebooks);
+    } else if (J.nids) {
+        bool first_new = false;
+        for (int i = 0; i < J.nids; i++) first_new |= J.nb->page_ids[0] == J.ids[i];
+        if (store_note_papers_in(J.bgdir, J.ids, J.papers, J.nids) != 0 || map_save(J.dir, &J.m, J.nb) != 0 ||
+            store_save_info(J.nb) != 0)
+            return -1;
+        if (first_new) {  // a new first page: the Library's card shows it once the editor drew it
+            char thumb[700];
+            snprintf(thumb, sizeof thumb, "%s/thumb.pgm", J.dir);
+            unlink(thumb);
+        }
+    } else if (store_write_info_in(J.dir, J.nb) != 0) {
+        return -1;  // (nothing added: only the page to open)
+    }
+    if (J.nfits) {  // fitted in the background, one at a time (book_fits_tick)
+        free(F.ids);
+        F.ids = malloc((size_t)J.nfits * sizeof *F.ids);
+        if (F.ids) {
+            memcpy(F.ids, J.fits, (size_t)J.nfits * sizeof *F.ids);
+            F.n = J.nfits;
+            F.next = 0;
+            strlcpy_q(F.nb, J.nb->id, sizeof F.nb);
+        }
+    }
+    strlcpy_q(st->nb, J.nb->id, sizeof st->nb);
+    st->pid = open;
+    st->made = J.made;
+    st->added = J.nids;
+    st->state = BOOK_DONE;
+    strlcpy_q(g_last_nb, J.nb->id, sizeof g_last_nb);
+    g_book_added = J.nids;
+    qlog("book: %s: %d page(s) added (%d now), opens at its page %d%s", J.nb->id, J.nids, J.nb->npages, open_at + 1,
+         J.nfits ? " (pictures fitted to its pages in the background)" : "");
+    return 0;
+}
+
+void book_step(uint32_t budget_ms, BookStatus *st) {
+    if (!J.on || st->state != BOOK_RUNNING) return;
+    uint32_t t0 = now_ms();
+    while (J.next < J.r.n && now_ms() - t0 < budget_ms) {
+        bool bad_picture;
+        int why = add_one(J.r.sent[J.next], &bad_picture);
+        if (why) {
+            if (!bad_picture) qlog("book: page %d of %d could not be added (%s); nothing added", J.r.sent[J.next],
+                                   J.r.pages, strerror(errno));
+            job_fail(st, (AnnotateWhy)why);
+            return;
+        }
+        J.next++;
+        st->added = J.nids;
+    }
+    if (J.next < J.r.n) return;
+    if (commit(st) != 0) {
+        qlog("book: %s: its page list could not be written (%s); nothing added", J.nb->id, strerror(errno));
+        job_fail(st, ANNOTATE_WHY_STORAGE);
+        return;
+    }
+    job_end(st);
+}
+
+void book_fits_tick(void) {
+    if (F.next >= F.n || bg_busy()) return;
+    char bgdir[700], file[900];
+    if (bgimage_dir(F.nb, bgdir, sizeof bgdir) == 0) {
+        source_file(bgdir, F.ids[F.next], file, sizeof file);
+        bg_queue(BG_TEMPLATE, F.nb, file, store_dpi(), false);
+    }
+    if (++F.next >= F.n) {
+        free(F.ids);
+        memset(&F, 0, sizeof F);
+    }
+}
+
 // ---- probes ----
 
 int annotate_probe(const char *key, int open_page, char *out, size_t cap) {
     static const char *const outcomes[] = {"none", "stale", "opened", "made", "failed"};
+    static const char *const books[] = {"none", "stale", "running", "done", "failed"};
     if (!strcmp(key, "result")) {
         snprintf(out, cap, "%s", outcomes[g_outcome]);
+    } else if (!strcmp(key, "book")) {
+        snprintf(out, cap, "%s", books[J.on ? BOOK_RUNNING : g_book]);
+    } else if (!strcmp(key, "book_added")) {
+        snprintf(out, cap, "%d", g_book_added);
+    } else if (!strcmp(key, "book_leftover")) {
+        char dir[700];
+        book_dir(dir, sizeof dir);
+        int n = 0;
+        DIR *d = opendir(dir);
+        for (struct dirent *e; d && (e = readdir(d));) n += strcmp(e->d_name, ".") && strcmp(e->d_name, "..");
+        if (d) closedir(d);
+        snprintf(out, cap, "%d", n);
     } else if (!strcmp(key, "leftover")) {
         char dir[700];
         request_dir(dir, sizeof dir);

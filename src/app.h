@@ -1,5 +1,6 @@
 // app.h: the App, screen switching, and the dirty-rect / refresh accumulator.
 #pragma once
+#include "annotate.h"
 #include "canvas.h"
 #include "display.h"
 #include "input.h"
@@ -67,6 +68,9 @@ typedef struct App {
     bool power_answered;           // the power service announced a sleep or a wake since then
     int locked_wakes;              // wake fallbacks in a row that found the Kindle still locked
     uint32_t leave_unsaved_at;     // when leaving stayed once because the page could not be saved (0 never)
+    BookStatus book;               // a whole book KOReader sent (annotate.h): while its pages are being
+                                   // added, pen and touch wait and a toast says how far it got
+    uint32_t book_told;            // when that toast last changed
 } App;
 
 int app_init(App *a, int w, int h, float dpi);

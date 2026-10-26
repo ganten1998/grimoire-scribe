@@ -642,6 +642,53 @@ they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands
 never gets a request. Raw notebook zips carry `source.ini` as `raw/source.ini` (1.1.0-beta.2 on), so
 a notebook put back from one keeps its book pages; they leave `bg/<pic>.source.png` out.
 
+### Whole books: `root/import/.book/` (2.0.0-beta.5 on)
+
+In a paged document (PDF, DjVu, comics, XPS), KOReader's Grimoire plugin has Tools > Grimoire > Open
+this book in Grimoire (and a gesture), and the file browser's Open with... lists Grimoire for those
+files (never as a default). The plugin reads the book notebook's `source.ini` (above) for the book
+pages it holds already, draws every other page as Annotate draws its page (whole, fitted and centred
+on white, at the reader's contrast, not reflowed, cleaned up or inverted), each into
+`import/.book/page-<n>.png` (a dot-folder: the folder import skips it), emptied first, each written
+into a temporary file and renamed into place, under a progress message a tap stops. Then it writes
+the request and hands over with `--book` after `--hosted koreader` (`GRIMOIRE_BOOK=1` for that start
+only), to a launcher whose `# Capabilities:` line says `book`. A stopped or failed run leaves the
+folder empty and hands nothing over. A book of more than 2000 pages, or one in the PDF mirror, is
+refused before anything is drawn.
+
+`request.ini` as Annotated pages' (the same rules for a line, `book`, `title`, `kind` and `time`),
+with:
+
+| key | value |
+|---|---|
+| `version` | 1 |
+| `pages` | the book's page count, at most 2000 |
+| `page` | the page to open, from 1, at most `pages`: the one the reader is on, or the one KOReader left the book at |
+| `picture.<n>` | `page-<n>.png`, that name and no other, once for each book page `n` sent (1 to `pages`) |
+
+At startup (after `import/.annotate/`) Grimoire takes `import/.book/request.ini` as it takes an
+annotated page's request: not asked to open it, or more than 5 minutes away, it is deleted
+unopened; the folder is emptied and removed once the request is done with, whatever came of it. The
+book's notebook is found as an annotated page's is, its compaction stopped, or one is made for the
+book as above (from the request's title), when at least one page came. Then every page sent that
+`source.ini` does not hold yet is added on its picture, as an annotated page's is: in book order
+among the pages there (just before the first page that holds a later book page, so notes stay after
+their page), a picture of the page size moved into place as it is, any other fitted in the
+background (one at a time while the background queue is idle). A page `source.ini` holds already is
+left as it is, and its picture is deleted.
+
+Pen and touch wait while the pages are added, a few at a time between screen updates (a toast says
+how many of how many), so a book of any size keeps the launcher's heartbeat going. The ids of every
+page it may add are taken first (`notebook.ini`'s `next_page_id` past them, nothing listed), then
+each page's picture and file are written, and at the end `bg/index.ini`, `bg/pages.ini`,
+`source.ini` and `notebook.ini` are each written once, the last listing the new pages (a new
+notebook: built in `notebooks/.annotate-<id>/` and renamed into place). A picture that does not
+read, a file that cannot be written, or more pages than a notebook holds, takes back every page file
+and picture it wrote (the ids stay given up): the notebook stays as it was, and a toast says why.
+The editor then opens on the page to open (else the first page added).
+
+1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them.
+
 ## Named sections: `nav.ini` (1.2.0 on)
 
 An optional UTF-8 file inside the notebook directory. `name.<page id>=<title>` names a section

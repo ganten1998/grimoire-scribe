@@ -584,6 +584,19 @@ suite() {
     check "$l: asked to open the page (GRIMOIRE_ANNOTATE=1)" sh -c 'grep -qxF "grimoire annotate=1" "$1"' sh "$SHIM_LOG"
     check "$l: logged" has "$LOGF" "grimoire.sh: KOReader sent a page to annotate (grimoire/import/.annotate)"
     check "$l: nothing on stderr" [ ! -s "$T/stderr" ]
+    check "$l: no book passed on" sh -c 'grep -qxF "grimoire book=" "$1"' sh "$SHIM_LOG"
+    # Open this book in Grimoire: --book after --hosted koreader, GRIMOIRE_BOOK=1, logged.
+    check "$s app/grimoire.sh's Capabilities include book" sh -c \
+        'head -n 10 "$1" | sed -n "s/^# Capabilities: //p" | grep -qw book' sh "$APP/grimoire.sh"
+    hosted_tree hosted-book
+    ko_paused fake-koreader sh "$APP/grimoire.sh" --hosted koreader --book 2>"$T/stderr"
+    rc=$?
+    l="$s hosted, a whole book"
+    check "$l: returns 0 ($rc)" is "$rc" 0
+    check "$l: asked to open the book (GRIMOIRE_BOOK=1)" sh -c 'grep -qxF "grimoire book=1" "$1"' sh "$SHIM_LOG"
+    check "$l: no page to annotate passed on" sh -c 'grep -qxF "grimoire annotate=" "$1"' sh "$SHIM_LOG"
+    check "$l: logged" has "$LOGF" "grimoire.sh: KOReader sent a whole book (grimoire/import/.book)"
+    check "$l: nothing on stderr" [ ! -s "$T/stderr" ]
     hosted_tree hosted-unpaused
     KOREADER_DIR=$US/koreader STOP_FRAMEWORK=no AWESOME_STOPPED=no PILLOW_HARD_DISABLED=no GRIMOIRE_WD_TICK=0.2 \
         fake-koreader sh "$APP/grimoire.sh" --hosted koreader
@@ -598,6 +611,10 @@ suite() {
     ko_paused GRIMOIRE_ANNOTATE=1 fake-koreader sh "$APP/grimoire.sh" --hosted koreader 2>/dev/null
     check "$s hosted without --annotate, GRIMOIRE_ANNOTATE=1 inherited: not passed on" sh -c \
         'grep -qxF "grimoire annotate=" "$1"' sh "$SHIM_LOG"
+    hosted_tree hosted-book-inherited
+    ko_paused GRIMOIRE_BOOK=1 fake-koreader sh "$APP/grimoire.sh" --hosted koreader 2>/dev/null
+    check "$s hosted without --book, GRIMOIRE_BOOK=1 inherited: not passed on" sh -c \
+        'grep -qxF "grimoire book=" "$1"' sh "$SHIM_LOG"
     hosted_tree library-annotate
     GRIMOIRE_ANNOTATE=1 GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" --annotate 2>/dev/null
     rc=$?
