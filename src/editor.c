@@ -2251,6 +2251,9 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         snprintf(out, cap, "%s", m);
     } else if (!strcmp(key, "strokes")) {
         snprintf(out, cap, "%d", has_page ? S->page->n : 0);
+    } else if (!strcmp(key, "stroke_points")) {
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        snprintf(out, cap, "%d", st ? st->n : 0);
     } else if (!strcmp(key, "erase_strokes")) {
         int n = 0;
         for (int i = 0; has_page && i < S->page->n; i++) n += stroke_is_erase(S->page->strokes[i]);

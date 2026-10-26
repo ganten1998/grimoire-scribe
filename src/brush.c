@@ -174,13 +174,14 @@ float brush_tilt(const ToolParams *p, float tx, float ty) {
 void brush_dab(ToolKind t, const ToolParams *p, const PenSample *s, float dpi, float *radius_px, float *opacity) {
     float floor_ = sane(p->pressure_floor, 0.f, 0.5f, 0.f);
     float pr = brush_pressure(p, s->pressure);
-    float tl = brush_tilt(p, s->tilt_x, s->tilt_y);
+    float ts = sane(p->tilt_size, 0.f, 4.f, 0.f), to = sane(p->tilt_opacity, 0.f, 1.f, 0.f);
+    float tl = ts > 0.f || to > 0.f ? brush_tilt(p, s->tilt_x, s->tilt_y) : 0.f;
     float w = lerpf(sane(p->size_min_mm, 0.1f, 12.f, 0.3f), sane(p->size_max_mm, 0.1f, 12.f, 0.5f), pr);
-    w *= 1.f + sane(p->tilt_size, 0.f, 4.f, 0.f) * tl;
+    w *= 1.f + ts * tl;
     float r = mm_to_px(w, dpi) * 0.5f;
     *radius_px = r < 0.5f ? 0.5f : r;
     float o = lerpf(sane(p->opacity_min, 0.f, 1.f, 0.5f), sane(p->opacity_max, 0.f, 1.f, 1.f), pr);
-    o *= 1.f - sane(p->tilt_opacity, 0.f, 1.f, 0.f) * tl;
+    o *= 1.f - to * tl;
     // Below the deadzone the pen is touching but does not mark.
     if (s->pressure < floor_) o = 0.f;
     *opacity = clampf(o, 0.f, 1.f);
@@ -388,7 +389,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     }
     if (op <= 0.f) return RECT_EMPTY;
     float grain = sane(b->params.grain, 0.f, 1.f, 0.f);
-    float pr = brush_pressure(&b->params, s->pressure);
+    float pr = grain > 0.f ? brush_pressure(&b->params, s->pressure) : 0.f;
     if (lk.jitter > 0.f) {
         float j = (float)(hash2(b->seed, idx) & 0xFFFF) / 65535.f - 0.5f;
         op = clampf(op * (1.f + 2.f * j * lk.jitter * grain), 0.f, 1.f);
@@ -413,6 +414,9 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     Rect box = rect_intersect(rect_from_points(s->x, s->y, s->x, s->y, r + 1.f + reach), c->clip);
     if (dry) return box;  // where it would draw, and nothing drawn (BrushState.dry)
     DabTarget tg = {lk.ink, b->paper, b->paper_x0, b->paper_y0, b->paper_stride, false};
+    // A smooth dab's fully covered pixels all have the same opacity. Work out their
+    // spacing compensation once; edges and textured pixels keep the exact formula below.
+    float core_ad = !lk.graphite && g_eff <= 0.f ? 1.f - powf(1.f - fminf(op, 0.999f), inv_n) : 0.f;
     // Erase fast path: a round dab (no nib, not graphite) with no grain at full opacity gives
     // every pixel of its core full coverage, so a row's core is restored in one pass (restore_span)
     // and the per-pixel loop skips it. The span stops a pixel short of the core's edge at both
@@ -453,6 +457,10 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
                 // dabs restored.
                 if (prow) paper = prow[x - tg.x0];
                 if (row[x] >= paper) continue;
+            } else if (row[x] <= tg.ink) {
+                // Deposit only darkens toward the tool's ink. Existing black PDF marks and
+                // fully inked pixels cannot change, whatever the dab's shape or texture.
+                continue;
             }
             float dx = (float)x + 0.5f - s->x;
             float d = sqrtf(dx * dx + dy * dy);
@@ -498,7 +506,8 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
                 }
             }
             if (a <= 0.002f) continue;
-            float ad = 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
+            float ad = !lk.graphite && g_eff <= 0.f && a == op ? core_ad
+                                                              : 1.f - powf(1.f - fminf(a, 0.999f), inv_n);
             put_px(&tg, c, x, y, ad, a, erase, paper);
         }
     }

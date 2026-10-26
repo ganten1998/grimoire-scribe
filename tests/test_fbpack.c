@@ -96,8 +96,29 @@ TEST(no_cache_falls_back_and_invalidating_repaints) {
     CHECK(!memcmp(before, dst, sizeof dst));
 }
 
+TEST(pen_refreshes_keep_coordinate_processing_at_every_edge) {
+    const int sizes[][2] = {{1860, 2480}, {2480, 1860}, {1986, 2648}, {2648, 1986}, {50, 200}, {20, 20}};
+    for (size_t p = 0; p < sizeof sizes / sizeof sizes[0]; p++) {
+        int w = sizes[p][0], h = sizes[p][1];
+        for (int rw = 1; rw <= 129; rw += 8)
+            for (int rh = 1; rh <= 129; rh += 8)
+                for (int corner = 0; corner < 4; corner++) {
+                    int cw = rw < w ? rw : w, ch = rh < h ? rh : h;
+                    Rect r = {corner & 1 ? w - cw : 0, corner & 2 ? h - ch : 0, cw, ch};
+                    Rect q = fbpack_pen_region(r, w, h);
+                    CHECK(rect_contains_rect((Rect){0, 0, w, h}, q));
+                    CHECK(rect_contains_rect(q, r));
+                    CHECK((int64_t)q.w * q.h >= ((int64_t)w * h < 6400 ? (int64_t)w * h : 6400));
+                    if (r.w * r.h >= 6400) CHECK(!memcmp(&q, &r, sizeof r));
+                }
+    }
+    CHECK(rect_is_empty(fbpack_pen_region(RECT_EMPTY, 1860, 2480)));
+    CHECK(rect_is_empty(fbpack_pen_region((Rect){0, 0, 1, 1}, 0, 0)));
+}
+
 int main(void) {
     RUN(gray_paper_survives_live_ink_and_overlap);
     RUN(no_cache_falls_back_and_invalidating_repaints);
+    RUN(pen_refreshes_keep_coordinate_processing_at_every_edge);
     return tl_done();
 }

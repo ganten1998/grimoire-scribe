@@ -125,6 +125,7 @@ static const Canvas *g_last_screen;
 static bool g_sim_invert;  // display_set_invert
 static uint8_t *g_eink;  // what the simulated panel shows
 static int g_stats[3];
+static int g_ink_frames;
 static long long g_area[3];
 // Live ink as display_fbink.c keeps it, for the script's display.* checks: whether a colour panel
 // would wait after the last fast refresh, and whether the app asks for the pen mode.
@@ -219,6 +220,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     if (rect_is_empty(r) || mode < 0 || mode > 2) return;
     if (mode == REFRESH_FAST) g_last_fast = live_ink_frame(&g_ink, mode, now_ms()) ? 1 : 0;
     g_stats[mode]++;
+    if (mode == REFRESH_FAST && g_ink.on) g_ink_frames++;
     g_area[mode] += (long long)r.w * r.h;
     for (int y = r.y; y < r.y + r.h; y++) {
         const uint8_t *s = screen->px + (size_t)y * screen->stride;
@@ -406,6 +408,7 @@ static void expect_read(const char *s) {
 static bool display_probe(const char *key, char *out, size_t cap) {
     if (!strcmp(key, "display.ink")) snprintf(out, cap, "%d", g_ink.on ? 1 : 0);
     else if (!strcmp(key, "display.pen_mode")) snprintf(out, cap, "%d", g_pen_mode ? 1 : 0);
+    else if (!strcmp(key, "display.ink_frames")) snprintf(out, cap, "%d", g_ink_frames);
     else if (!strcmp(key, "display.last_fast"))
         snprintf(out, cap, "%s", g_last_fast < 0 ? "" : g_last_fast ? "ink" : "wait");
     else return false;

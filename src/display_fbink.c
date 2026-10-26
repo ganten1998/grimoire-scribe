@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "display.h"
@@ -50,12 +51,16 @@ static bool g_pen_mode;
 static bool g_pen_ok = true;  // cleared if the driver refuses pen mode
 // MTK pen mode is opt-in (empty file /mnt/us/grimoire/pen-mode): FBInk notes that on Bellatrix3
 // small pen-mode DU updates skip the MDP (the rotation stage) at 90/270 degree rotations, and
-// the Scribe 2 runs at fb rotate 1, so live ink could land nowhere visible. Plain DU partial
-// updates are what KOReader uses for its pen input too.
+// the Scribe 2 has used fb rotate 1 and 3. Opt-in updates below pad small refreshes above
+// that threshold; physical behavior still needs testing on each model/firmware.
 static bool g_pen_wanted;
 static int g_count[3], g_fail, g_ok;
 static uint32_t g_stats_at;
 static uint32_t g_last_refresh;  // when the last refresh went out (paces the first-frame retries)
+static uint64_t g_last_submit_us, g_copy_us, g_submit_us, g_copy_max_us, g_submit_max_us;
+static unsigned g_perf_frames;
+static uint32_t g_perf_at;
+static bool g_perf_enabled;
 static int g_presents;        // refreshes sent; the first few are logged in full (device bring-up)
 static bool g_flip;           // framebuffer is 180 degrees from the panel's touch orientation
 static int g_rot;             // device rotation, quarter turns clockwise
@@ -94,6 +99,12 @@ static size_t fb_index(int lx, int ly) {
 }
 
 static bool g_invert;  // Grimoire's colors inverted (user setting), on top of the fb's own flag
+
+static uint64_t clock_us(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
 
 // The gray the panel's memory holds at logical (lx, ly), Grimoire's own inversion undone: what the
 // canvas has there unless another process drew. Only while g_readback.
@@ -231,7 +242,10 @@ int display_open(int *w, int *h, float *dpi) {
     if (access("/mnt/us/grimoire/screen-noflip", F_OK) == 0) g_flip = false;
     qlog("display: fb rotate %u -> %s", g_st.current_rota, g_flip ? "drawing rotated 180 degrees" : "drawing as is");
     g_pen_wanted = access("/mnt/us/grimoire/pen-mode", F_OK) == 0;
+    g_perf_enabled = access("/mnt/us/grimoire/ink-metrics", F_OK) == 0;
     qlog("display: MTK pen mode %s", g_pen_wanted ? "enabled (flag file)" : "off (plain DU for live ink)");
+    if (g_pen_wanted && (g_st.current_rota & 1))
+        qlog("display: odd-rotation pen updates keep at least 6400 pixels for coordinate processing");
     g_mdp_wait = g_st.has_color_panel && g_st.bpp == 32;
     if (g_mdp_wait)
         qlog("display: colour panel: fast refreshes other than live ink wait until the driver has read the frame");
@@ -302,7 +316,9 @@ static void copy_rect(const Canvas *s, Rect r) {
 // Sends the refresh of framebuffer rect r and keeps the books: counts, failures, and whether the
 // panel has taken any refresh at all (display_broken).
 static int send_refresh(Rect r, RefreshMode mode, const FBInkConfig *rc) {
+    uint64_t t0 = g_perf_enabled ? clock_us() : 0;
     int ret = fbink_refresh(g_fd, (uint32_t)r.y, (uint32_t)r.x, (uint32_t)r.w, (uint32_t)r.h, rc);
+    if (g_perf_enabled) g_last_submit_us = clock_us() - t0;
     g_count[mode]++;
     if (ret < 0) g_fail++;
     else g_ok++;
@@ -327,7 +343,9 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     // buffer overflows and strokes get cut. Grayscale settles now only run after a pause.)
     if (mode != REFRESH_FAST) set_pen_mode(false);
     g_live = mode == REFRESH_FAST;
+    uint64_t t0 = g_perf_enabled ? clock_us() : 0;
     copy_rect(screen, r);
+    uint64_t copy_us = g_perf_enabled ? clock_us() - t0 : 0;
     g_live = false;
     if (mode == REFRESH_FAST) g_live_area = rect_union(g_live_area, r);
     else if (mode == REFRESH_FULL || rect_contains_rect(r, g_live_area)) g_live_area = RECT_EMPTY;
@@ -336,7 +354,24 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     rc.wfm_mode = mode == REFRESH_FAST ? WFM_DU : mode == REFRESH_UI ? WFM_GL16 : WFM_GC16;
     bool whole_frame = rect_contains_rect(r, (Rect){0, 0, LW, LH});
     r = mode == REFRESH_FULL ? (Rect){0, 0, PW, PH} : fb_rect(r);
+    if (mode == REFRESH_FAST && g_pen_mode && (g_st.current_rota & 1)) r = fbpack_pen_region(r, PW, PH);
     int ret = send_refresh(r, mode, &rc);
+    if (mode == REFRESH_FAST && g_perf_enabled) {
+        g_copy_us += copy_us;
+        g_submit_us += g_last_submit_us;
+        if (copy_us > g_copy_max_us) g_copy_max_us = copy_us;
+        if (g_last_submit_us > g_submit_max_us) g_submit_max_us = g_last_submit_us;
+        g_perf_frames++;
+        if (now_ms() - g_perf_at >= 10000) {
+            qlog("display: fast timing (%u frames, pen %d): copy avg/max %llu/%llu us; submit avg/max %llu/%llu us",
+                 g_perf_frames, g_pen_mode, (unsigned long long)(g_copy_us / g_perf_frames),
+                 (unsigned long long)g_copy_max_us, (unsigned long long)(g_submit_us / g_perf_frames),
+                 (unsigned long long)g_submit_max_us);
+            g_perf_at = now_ms();
+            g_perf_frames = 0;
+            g_copy_us = g_submit_us = g_copy_max_us = g_submit_max_us = 0;
+        }
+    }
     if (ret < 0) g_frame_known = false;
     else if (mode != REFRESH_FAST && whole_frame && g_previous.px) g_frame_known = true;
     bool ink = live_ink_frame(&g_ink, mode, now_ms());
