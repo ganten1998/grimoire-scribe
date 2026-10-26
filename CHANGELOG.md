@@ -17,10 +17,13 @@
 - **Less brush work**: skip pixels already darker than a pen's ink, reuse the opacity of
   smooth dab interiors, and skip unused tilt calculations. Pen settings and rendered ink
   are unchanged. Measured CPU improvements and their limits are in docs/INK-PERFORMANCE.md.
-- **Developer pen-mode experiment**: opt-in MTK pen refreshes, padded above the documented
-  odd-rotation processing threshold or (with `direct`) sent as they are. A stroke only takes
-  pen mode when no ordinary refresh can still be on the panel, and an ordinary refresh waits
-  for the pen's last one, as the driver requires. The mode remains off by default.
+- **Faster ink with the driver's pen mode**: live ink now goes out in the Kindle display
+  driver's pen mode, which starts a frame on the panel within about 1 ms. Plain refreshes that
+  overlap ink still being drawn waited in the driver for up to 300 ms, so quick circles and note
+  heads fell behind the pen. A stroke takes pen mode only when no other refresh can still be on
+  the panel, as the driver requires. A `pen-mode` file with `off` turns it off.
+- **Grays settle when the pen leaves**: the grayscale cleanup of fresh ink waits until the pen
+  leaves the page (or 1.5 s with it hovering), so the next word no longer runs into it.
 - **Developer latency report**: optional timing logs measure framebuffer copying and refresh
   submission, and now each live ink frame from the pen's sample to the driver starting and
   finishing it, without input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own

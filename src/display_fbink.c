@@ -3,7 +3,7 @@
 // Pixels go straight into the mmap'ed framebuffer (FBInk's raw-data blitter is compiled out
 // of MINIMAL builds, and a direct copy is the fastest path anyway). FBInk then issues the
 // refresh ioctl with the waveform for the mode:
-//   FAST -> DU   (opt-in pen mode on MTK: the driver's path for handwriting, see below)
+//   FAST -> DU   (in pen mode on MTK: the driver's path for handwriting, see below)
 //   UI   -> GL16 (partial, no flash)
 //   FULL -> GC16 + flash
 // "Fast mode" (no automatic REAGL promotion) is enabled for the session like KOReader does on
@@ -51,12 +51,15 @@ static size_t g_fblen;
 static Canvas g_previous;     // last logical frame, in physical order: +4.6 MB on the 2024 Scribe
 static bool g_frame_known;
 static bool g_readback;       // the mapping covers the whole panel at 8 or 32 bpp: the guards can read it
-// MTK pen mode, opt-in (/mnt/us/grimoire/pen-mode): the driver's path for handwriting. FBInk notes
-// that on Bellatrix3 small pen-mode DU updates skip the MDP (the image stage that also rotates) at
-// 90/270 degree rotations, and the Scribe 2 runs at fb rotate 1 or 3. The file's first word picks
-// the form: "direct" sends the updates as they are (the driver's own path for small ones); anything
-// else (an empty file too) pads small ones to 6400 px so the MDP still takes them. Physical behavior
-// of each needs testing on each model/firmware.
+// MTK pen mode: the driver's path for handwriting. Measured on the owner's Scribe 2 (2026-10-26,
+// docs/INK-PERFORMANCE.md): a live ink frame starts on the panel within 1 ms in pen mode, while
+// plain DU frames over ink still on the panel queue in the driver, up to 300 ms with quick circles.
+// FBInk notes that on Bellatrix3 small pen-mode DU updates skip the MDP (the image stage that also
+// rotates) at 90/270 degree rotations, and the Scribe 2 runs at fb rotate 1 or 3: they still land
+// in the right place. On by default on grayscale panels; /mnt/us/grimoire/pen-mode's first word
+// overrides it: "off" for plain DU, "padded" to pad small updates to 6400 px so the MDP still takes
+// them (beta.4's first form), anything else (an empty file too) the direct form. Colour panels,
+// where Grimoire has never run, keep plain DU unless the file asks.
 // The driver requires that pen-mode updates never collide with standard ones (FBInk's note): so a
 // stroke enters pen mode only while no standard update can still be on the panel (the quiet thread
 // below follows them), the driver stays in it until a grayscale refresh is due, and that refresh
@@ -417,11 +420,11 @@ void display_live_ink(bool on) { live_ink_mark(&g_ink, on, now_ms()); }
 
 static PenCfg read_pen_cfg(void) {
     FILE *f = fopen("/mnt/us/grimoire/pen-mode", "r");
-    if (!f) return PEN_OFF;
+    if (!f) return g_st.has_color_panel ? PEN_OFF : PEN_DIRECT;
     char w[16] = "";
     if (fscanf(f, "%15s", w) != 1) w[0] = 0;
     fclose(f);
-    return !strcmp(w, "direct") ? PEN_DIRECT : PEN_PADDED;
+    return !strcmp(w, "off") ? PEN_OFF : !strcmp(w, "padded") ? PEN_PADDED : PEN_DIRECT;
 }
 
 // A stroke of ink starts (on) or ends. Its fast frames take pen mode when it is on and no standard
@@ -534,9 +537,10 @@ int display_open(int *w, int *h, float *dpi) {
     g_pen_cfg = read_pen_cfg();
     g_perf_enabled = access("/mnt/us/grimoire/ink-metrics", F_OK) == 0;
     g_ab = g_perf_enabled && access("/mnt/us/grimoire/latency-ab", F_OK) == 0;
-    qlog("display: MTK pen mode %s", g_ab ? "taking turns with plain DU (latency-ab)"
-                                   : g_pen_cfg == PEN_OFF ? "off (plain DU for live ink)"
-                                   : g_pen_cfg == PEN_DIRECT ? "on, direct (flag file)" : "on, padded (flag file)");
+    if (g_st.is_mtk)
+        qlog("display: MTK pen mode %s", g_ab ? "taking turns with plain DU (latency-ab)"
+                                       : g_pen_cfg == PEN_OFF ? "off (plain DU for live ink)"
+                                       : g_pen_cfg == PEN_DIRECT ? "on" : "on, padded");
     if (g_st.is_mtk && (g_pen_cfg != PEN_OFF || g_ab || g_perf_enabled) && !open_watch(&Q.fd, &Q.on, quiet_main))
         qlog("display: no thread to follow standard updates (%s): no pen mode", strerror(errno));
     if (g_perf_enabled) {

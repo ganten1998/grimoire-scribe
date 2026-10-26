@@ -135,26 +135,42 @@ turns lighter: that difference is the panel's, and no update order removes it. A
 to black with the same frames as the first 7 of DU and stops there, so ink would not appear
 sooner with it, only finish sooner.
 
-## Opt-in display experiment: pen mode
+## Pen mode
 
-MTK pen mode remains off by default. FBInk documents a Bellatrix3 MDP bypass for DU/DUNM
-updates smaller than 6000 pixels at framebuffer rotations 1 and 3 (the Scribe 2 runs at 1 or 3),
-and warns that pen-mode updates must never collide with standard ones. The `pen-mode` flag's
-first word picks the form: `direct` sends the updates as they are, which lets small ones take
-the driver's bypass; anything else, an empty file included, pads them to at least 6400 pixels,
-bounded by the panel, so the MDP takes them. Host checks cover the padding's containment and
-every edge in portrait and landscape, including smaller panels.
+MTK pen mode is the driver's path for handwriting. FBInk documents a Bellatrix3 MDP bypass for
+DU/DUNM updates smaller than 6000 pixels at framebuffer rotations 1 and 3 (the Scribe 2 runs at 1
+or 3), and warns that pen-mode updates must never collide with standard ones.
+
+Measured on the owner's Scribe 2 on 2026-10-26 with the latency report below and `latency-ab`
+(about 40 strokes over a notebook page, a gray book cover normal and inverted, and a white music
+page, panel at 25 °C):
+
+| Frames sent as | Pen sample to refresh ioctl | Refresh to start on the panel | Waveform done |
+| --- | ---: | ---: | ---: |
+| plain DU | p50 0.2-0.3 ms | p50 1-114 ms, p90 up to 302 ms | about 190 ms, often never reported |
+| pen mode, direct | p50 0.2-0.4 ms | p50 0.2-1.0 ms, max 6.7 ms | 184-190 ms |
+| pen mode, padded | p50 0.2-0.3 ms | p50 1.0 ms, max 7.7 ms | 188-190 ms |
+
+Plain DU frames that overlap ink still on the panel wait in the driver's queue: quick circles on
+the inverted cover queued up to 302 ms, and note heads on the music page half the sampled frames
+over 114 ms. Pen-mode frames never queued. Direct pen-mode ink landed in the right place at fb
+rotate 1. The pen service's relay from the raw digitizer took p50 0.1 ms, so reading the raw
+digitizer directly would gain nothing.
+
+So pen mode is on by default on grayscale panels, in the direct form. The `pen-mode` flag's
+first word overrides it: `off` for plain DU, `padded` to pad small updates to at least 6400
+pixels, bounded by the panel, so the MDP takes them; anything else (an empty file too) is the
+direct form. Colour panels, where Grimoire has never run, keep plain DU unless the flag asks.
+Host checks cover the padding's containment and every edge in portrait and landscape.
 
 A stroke enters pen mode only when no standard update can still be on the panel: a thread with
 its own framebuffer fd waits for every standard update's end (in order for grayscale ones, whose
 waveforms differ in length; the newest for DU ones). The driver then stays in pen mode until a
-grayscale refresh is due, and that refresh first waits for the pen's last update, which a settle
-after a pause finds long done. A stroke that finds the panel busy keeps plain DU.
-
-This is a hypothesis to test on hardware, not evidence of reduced visible latency. A
-comparison must cover gray PDF backgrounds, ordinary pages, normal/inverted display, all
-orientations, pen-up settling, sleep/wake and return to KOReader. Leave the flag absent on
-devices that have not passed that comparison.
+grayscale refresh is due, and that refresh first waits for the pen's last update. A stroke that
+finds the panel busy keeps plain DU. In the test 7 of 24 pen strokes did: 2 right after a block
+of plain DU strokes, the others most likely because the grayscale settle, then sent 450 ms after
+a stroke, was still on the panel when the next word began. The settle now waits until the pen
+leaves the page (150 ms gone), or 1.5 s with it still near, so writing does not meet it.
 
 ## The latency report
 

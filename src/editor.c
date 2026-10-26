@@ -25,6 +25,11 @@
 #include "keyboard.h"
 #include "pagesview.h"
 
+// The grayscale settle (see EditorState.settle): this long after a stroke with the pen still near,
+// or once the pen has been gone this long.
+#define SETTLE_NEAR_MS 1500
+#define SETTLE_LEFT_MS 150
+
 enum {
     P_NONE, P_TOOL, P_UNDO, P_REDO, P_PREV, P_NEXT, P_PAPER, P_PENSET, P_LIBRARY,
     P_COLLAPSE, P_GRIP, P_EXPAND, P_PICK_PAPER, P_PICK_CUSTOM, P_PICK_CANCEL, P_CLEAR, P_DISPLAY, P_PAGES,
@@ -58,10 +63,14 @@ struct EditorState {
     Canvas page_canvas;
     bool page_dirty, info_dirty, changed;
     bool thumb_dirty;           // page 1 changed: library thumbnail to write when leaving it
-    // Grays settle in one GL16 refresh once the writer pauses (not after every stroke): while
-    // strokes come in quick succession only fast DU updates go out, nothing blocks.
+    // Grays settle in one GL16 refresh once the writer stops (not after every stroke): when the pen
+    // leaves the page, or after SETTLE_NEAR_MS with it still near. While the pen stays near only
+    // fast DU updates go out, nothing blocks, and the next word never meets a settle still on the
+    // panel (a stroke that does keeps plain DU instead of the pen mode, display_fbink.c).
     Rect settle;                // page rect still showing dithered live ink
     uint32_t settle_at;
+    bool pen_near;              // the pen is near the page (hovering or touching)
+    uint32_t pen_left;          // when it last left
     bool panel_stale;           // Undo/Redo/Clear availability changed: repaint at the settle
     uint32_t last_up;
 
@@ -1086,9 +1095,9 @@ static void draw_end(App *a) {
         stroke_free(s);
         return;
     }
-    // Settle later, once the writer pauses (see settle_now).
+    // Settle later, once the writer stops (see settle_now).
     S->settle = rect_union(S->settle, s->bbox);
-    S->settle_at = now_ms() + 450;
+    S->settle_at = now_ms() + SETTLE_NEAR_MS;
     if (stroke_is_erase(s) && !S->bs.restored) {
         // An erase stroke that changed no pixel of the page (over blank paper, or ink the eraser
         // had taken already): not kept, and no undo step that would do nothing. Its fast frames
@@ -1977,6 +1986,12 @@ bool editor_suspend(App *a) {
 
 void editor_event(App *a, const InEvent *ev) {
     if (!S->open) return;
+    if (ev->type == IN_PEN_LEAVE) {
+        S->pen_near = false;
+        S->pen_left = ev->t_ms;
+    } else if (ev->type == IN_PEN_DOWN || ev->type == IN_PEN_MOVE || ev->type == IN_PEN_HOVER) {
+        S->pen_near = true;
+    }
     if (ev->type == IN_PEN_BUTTON) {
         pen_button(a, ev);
         return;
@@ -2169,8 +2184,9 @@ static void pictures_arrived(App *a, bool page, bool caches) {
 }
 
 void editor_tick(App *a, uint32_t now) {
-    if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) &&
-        (int32_t)(now - S->settle_at) >= 0)
+    // The pen gone for SETTLE_LEFT_MS (not just lifted high for a moment), or near for too long.
+    bool stopped = (int32_t)(now - S->settle_at) >= 0 || (!S->pen_near && (int32_t)(now - S->pen_left) >= SETTLE_LEFT_MS);
+    if (S->open && S->owner == OWN_NONE && (!rect_is_empty(S->settle) || S->panel_stale) && stopped)
         settle_now(a);
     // (Never under a stroke: an erase stroke restores toward S->paper as it goes.)
     if (S->open && S->owner == OWN_NONE && !S->pinching) {
