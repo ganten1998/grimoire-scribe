@@ -27,4 +27,6 @@ unsigned pair_cookie_scopes(const char *cookie);
 // A complete Set-Cookie value: HttpOnly; SameSite=Strict; Path=/ (covers /live and /send).
 int pair_cookie_header(const char *tok, char *out, size_t cap);
 void pair_forget(unsigned scopes);
+// Drops the invitation shown (the pairing card closed), keeping the sessions and any lockout.
+void pair_forget_invitation(void);
 void pair_reset(void);

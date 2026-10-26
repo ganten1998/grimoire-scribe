@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 08:24-0500\n"
+"POT-Creation-Date: 2026-10-26 09:04-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -91,6 +91,26 @@ msgstr ""
 #: src/app.c
 #, c-format
 msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
+msgstr ""
+
+#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen).
+#: src/app.c
+msgid "Could not start Live view"
+msgstr ""
+
+#. TRANSLATORS: a toast as Live view stops (the Stop button on its card).
+#: src/app.c
+msgid "Live view ended."
+msgstr ""
+
+#. TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
+#: src/app.c
+msgid "Live view turned off: no one watched for 10 minutes."
+msgstr ""
+
+#. TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
+#: src/app.c
+msgid "A computer is watching this screen."
 msgstr ""
 
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
@@ -830,6 +850,110 @@ msgstr ""
 
 #: src/httpd.c
 msgid "The studio needs JavaScript."
+msgstr ""
+
+#. TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
+#. browser page's title, and the pairing card's on the Kindle.
+#. TRANSLATORS: the Share screen's title.
+#. TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
+#. is on): 388 px at 44 px, or 34 px under its icon.
+#: src/httpd.c src/share.c
+msgid "Live view"
+msgstr ""
+
+#. TRANSLATORS: Live view's page in the browser while its script starts.
+#. TRANSLATORS: Live view's status in the browser, and its buttons (the browser's own words
+#. for these are fine: they are not on the Kindle).
+#: src/httpd.c
+msgid "Connecting..."
+msgstr ""
+
+#. TRANSLATORS: Live view's page in a browser without JavaScript.
+#: src/httpd.c
+msgid "Live view needs JavaScript."
+msgstr ""
+
+#: src/httpd.c
+msgid "Reconnecting..."
+msgstr ""
+
+#: src/httpd.c
+msgid "Live"
+msgstr ""
+
+#: src/httpd.c
+msgid "The Kindle is asleep"
+msgstr ""
+
+#: src/httpd.c
+msgid "Pairing on the Kindle..."
+msgstr ""
+
+#: src/httpd.c
+msgid "Live view is off on the Kindle"
+msgstr ""
+
+#: src/httpd.c
+msgid "Fit"
+msgstr ""
+
+#: src/httpd.c
+msgid "Actual size"
+msgstr ""
+
+#: src/httpd.c
+msgid "Transparent paper"
+msgstr ""
+
+#: src/httpd.c
+msgid "Record"
+msgstr ""
+
+#: src/httpd.c
+msgid "Stop recording"
+msgstr ""
+
+#: src/httpd.c
+msgid "Full screen"
+msgstr ""
+
+#: src/httpd.c
+msgid "This browser cannot show Live view."
+msgstr ""
+
+#. TRANSLATORS: Live view's page while it is off on the Kindle.
+#: src/httpd.c
+msgid "Live view is off. On the Kindle, open Share and tap Live view."
+msgstr ""
+
+#. TRANSLATORS: Live view's code form in the browser: the six digits the Kindle shows.
+#: src/httpd.c
+msgid "Type the code shown on the Kindle:"
+msgstr ""
+
+#. TRANSLATORS: the code form's button: start watching the Kindle's screen.
+#: src/httpd.c
+msgid "Watch"
+msgstr ""
+
+#. TRANSLATORS: the code form after a wrong code, and after five (the Kindle shows a new one).
+#: src/httpd.c
+msgid "That code is not the one on the Kindle."
+msgstr ""
+
+#: src/httpd.c
+msgid "Too many tries. Wait 30 seconds, then type the new code."
+msgstr ""
+
+#. TRANSLATORS: Live view's answer to a third computer (two can watch at once).
+#: src/httpd.c
+msgid "Two computers are watching already."
+msgstr ""
+
+#. TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
+#. keeps the server up: the Share screen must be open for those.
+#: src/httpd.c
+msgid "Open Share on the Kindle to download."
 msgstr ""
 
 #: src/httpd.c
@@ -1691,6 +1815,24 @@ msgstr ""
 msgid "Downloads served: %d"
 msgstr ""
 
+#. TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
+#: src/share.c
+#, c-format
+msgid "%d computer watching"
+msgid_plural "%d computers watching"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: Live view's pairing card, under the code: a line each, 1578 px at 34 px
+#. sideways (beside the QR code), 1640 upright.
+#: src/share.c
+msgid "Same Wi-Fi network only. The code works once."
+msgstr ""
+
+#: src/share.c
+msgid "The computer sees what this screen shows, not the code."
+msgstr ""
+
 #. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, 1578 sideways beside
 #. the QR code), with its QR code, or without one (no Wi-Fi address).
 #: src/share.c
@@ -1707,13 +1849,18 @@ msgstr ""
 msgid "Also: %s (%s)"
 msgstr ""
 
+#. TRANSLATORS: Live view's pairing card, over the code a computer types (1640 px at 44 px
+#. upright, 1578 sideways).
+#: src/share.c
+msgid "Then type this code:"
+msgstr ""
+
 #. TRANSLATORS: the last help line, with the command a computer pulls everything with.
 #: src/share.c
 #, c-format
 msgid "From a terminal: %s <address above>"
 msgstr ""
 
-#. TRANSLATORS: the Share screen's title.
 #: src/share.c
 msgid "Share over Wi-Fi"
 msgstr ""
@@ -1734,6 +1881,11 @@ msgstr ""
 
 #: src/share.c
 msgid "Is another app using the port? Try again."
+msgstr ""
+
+#. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
+#: src/share.c
+msgid "Stop"
 msgstr ""
 
 #. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).

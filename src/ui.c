@@ -149,6 +149,7 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_GRID] = 0xF0570,         // md-view_grid
     [ICON_COPY] = 0xF018F,         // md-content_copy
     [ICON_LINK] = 0xF0339,         // md-link_variant
+    [ICON_LIVE] = 0xF0119,         // md-cast_connected
 };
 
 IconKind ui_tool_icon(int tool) {

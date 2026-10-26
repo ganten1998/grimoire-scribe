@@ -212,14 +212,19 @@ tap 930 1985
 wait 100
 expect screen is library
 expect settings.pen.valid is 0
-# Share (a made-up address under make l10n-check), and Done.
+# Share (a made-up address under make l10n-check), then its Live view card and Stop.
 tap 1345 95
 wait 300
 expect screen is share
 shot 18-share
-tap 1540 2105
+tap 318 2100
+wait 300
+expect live.pairing is 1
+shot 18-live-card
+tap 318 2100
 wait 100
 expect screen is library
+expect live.on is 0
 # New notebook, Custom music and its Cancel, More papers (the Templates sheet with no templates
 # yet: how to add some) and its Back, the name's keyboard with its accents page and its Cancel,
 # then Create.
@@ -780,9 +785,14 @@ tap 1965 95
 wait 300
 expect screen is share
 shot 62-share-landscape
-tap 2160 1485
+tap 318 1485
+wait 300
+expect live.pairing is 1
+shot 62-live-card-landscape
+tap 318 1485
 wait 100
 expect screen is library
+expect live.on is 0
 tap 1585 95
 wait 50
 expect library.sheet is new

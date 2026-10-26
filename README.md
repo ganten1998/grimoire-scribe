@@ -106,6 +106,12 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   without adding controls over your writing. Names stay attached when pages are inserted or deleted.
   A notebook ZIP keeps the section names too, and the notebook's PDF lists them as its table of
   contents.
+- **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
+  browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
+  a phone). The browser can fit the screen, go full screen, make the paper transparent (for a video
+  over something else) and record. A small icon in the top right corner says it is on; **Stop** on
+  its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
+  use it on a network you trust.
 - **Links**: in the Index tab choose **Add a link**, draw around what should link (a box, a ring,
   an underline), then tap the page it goes to, or **The Index**. A finger's tap on it later turns to
   that page; hold a finger on it to change where it goes or remove it (the ink stays). Erasing or

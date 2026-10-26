@@ -26,6 +26,8 @@
 
 #include "export.h"
 #include "i18n.h"
+#include "live.h"
+#include "pair.h"
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -46,6 +48,10 @@ extern unsigned char studio_css[];
 extern unsigned int studio_css_len;
 extern unsigned char download_js[];
 extern unsigned int download_js_len;
+extern unsigned char live_js[];
+extern unsigned int live_js_len;
+extern unsigned char live_css[];
+extern unsigned int live_css_len;
 
 // Small, anonymous shared records let the parent answer progress while a child renders.
 // No notebook contents, temporary files, or second download are needed. Retain the last 32
@@ -119,6 +125,9 @@ static int g_listen = -1;
 static float g_dpi = 300.f;
 static bool g_gothic = true;
 static int g_served;
+static unsigned g_owners;    // HTTPD_SHARE, HTTPD_LIVE: who keeps the server up
+static int g_live_pairings;
+static bool g_head;          // the request being answered is a HEAD
 #define MAX_CLIENTS 16
 static Client g_cl[MAX_CLIENTS];
 static Client *g_cur;  // the connection a route is answering
@@ -145,7 +154,7 @@ static void reap_children(void) {
 
 static void set_nonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
 
-int httpd_start(int port, float dpi, bool gothic) {
+static int httpd_start(int port, float dpi, bool gothic) {
     httpd_stop();
     signal(SIGPIPE, SIG_IGN);
     g_dpi = dpi;
@@ -169,6 +178,20 @@ int httpd_start(int port, float dpi, bool gothic) {
     return 0;
 }
 
+int httpd_acquire(unsigned owner, int port, float dpi, bool gothic) {
+    if (g_listen < 0 && httpd_start(port, dpi, gothic) != 0) return -1;
+    g_owners |= owner;
+    return 0;
+}
+
+void httpd_release(unsigned owner) {
+    g_owners &= ~owner;
+    if (!g_owners) httpd_stop();
+}
+
+unsigned httpd_owners(void) { return g_owners; }
+int httpd_live_pairings(void) { return g_live_pairings; }
+
 bool httpd_running(void) { return g_listen >= 0; }
 int httpd_fd(void) { return g_listen; }
 int httpd_requests_served(void) { return g_served; }
@@ -190,6 +213,7 @@ void httpd_stop(void) {
     for (int i = 0; i < MAX_CLIENTS; i++) client_close(&g_cl[i]);
     if (g_listen >= 0) close(g_listen);
     g_listen = -1;
+    g_owners = 0;
 }
 
 // ---- helpers ----
@@ -322,7 +346,8 @@ static void respond_bytes(int code, const char *ctype, const void *data, size_t 
                           const char *cache, const char *extra) {
     const char *reason = code == 200 ? "OK" : code == 404 ? "Not Found" : code == 405 ? "Method Not Allowed"
                                           : code == 400 ? "Bad Request" : code == 503 ? "Service Unavailable"
-                                          : "Internal Server Error";
+                                          : code == 302 ? "Found" : code == 401 ? "Unauthorized"
+                                          : code == 403 ? "Forbidden" : "Internal Server Error";
     Buf *o = &g_cur->out;
     buf_printf(o, "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
                   "Cache-Control: %s\r\n%s", code, reason, ctype, len, cache ? cache : "no-store", extra ? extra : "");
@@ -678,6 +703,153 @@ static void route_list_json(void) {
     free(folders);
 }
 
+// ---- Live view ----
+
+// A request header's value (the first line naming it), or false.
+static bool header_get(const char *req, const char *name, char *out, size_t cap) {
+    size_t nl = strlen(name);
+    for (const char *h = strchr(req, '\n'); h; h = strchr(h, '\n')) {
+        h++;
+        if (strncasecmp(h, name, nl) || h[nl] != ':') continue;
+        h += nl + 1;
+        while (*h == ' ' || *h == '\t') h++;
+        size_t n = strcspn(h, "\r\n");
+        if (n >= cap) return false;
+        memcpy(out, h, n);
+        out[n] = 0;
+        return true;
+    }
+    return false;
+}
+
+static unsigned session_scopes(void) {
+    char cookie[1024];
+    return header_get(g_cur->req, "Cookie", cookie, sizeof cookie) ? pair_cookie_scopes(cookie) : 0;
+}
+
+static int64_t now_s(void) { return (int64_t)(now_ms() / 1000u); }
+
+static void redirect(const char *to, const char *cookie) {
+    char hdr[256];
+    snprintf(hdr, sizeof hdr, "Location: %s\r\n%s%s%s", to, cookie ? "Set-Cookie: " : "", cookie ? cookie : "",
+             cookie ? "\r\n" : "");
+    respond_bytes(302, "text/plain; charset=utf-8", NULL, 0, NULL, NULL, hdr);
+}
+
+static void live_word(Buf *b, int *n, const char *key, const char *text) {
+    buf_printf(b, "%s\"%s\":", (*n)++ ? "," : "", key);
+    json_str(b, text);
+}
+
+// The page: the code form until this browser has paired, then the viewer (web/live.{css,js}).
+static void route_live_page(const char *query) {
+    Buf b = {0};
+    // TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
+    // browser page's title, and the pairing card's on the Kindle.
+    page_head(&b, _("Live view"));
+    if (session_scopes() & PAIR_LIVE) {
+        buf_printf(&b, "<div id=live><p class=meta>");
+        // TRANSLATORS: Live view's page in the browser while its script starts.
+        html_esc(&b, _("Connecting..."));
+        buf_printf(&b, "</p></div><noscript><p>");
+        // TRANSLATORS: Live view's page in a browser without JavaScript.
+        html_esc(&b, _("Live view needs JavaScript."));
+        buf_printf(&b, "</p></noscript><script>window.GRIMOIRE_LIVE_WORDS={");
+        int n = 0;
+        // TRANSLATORS: Live view's status in the browser, and its buttons (the browser's own words
+        // for these are fine: they are not on the Kindle).
+        live_word(&b, &n, "connecting", _("Connecting..."));
+        live_word(&b, &n, "reconnecting", _("Reconnecting..."));
+        live_word(&b, &n, "live", _("Live"));
+        live_word(&b, &n, "asleep", _("The Kindle is asleep"));
+        live_word(&b, &n, "pairing", _("Pairing on the Kindle..."));
+        live_word(&b, &n, "ended", _("Live view is off on the Kindle"));
+        live_word(&b, &n, "fit", _("Fit"));
+        live_word(&b, &n, "actual", _("Actual size"));
+        live_word(&b, &n, "clear", _("Transparent paper"));
+        live_word(&b, &n, "record", _("Record"));
+        live_word(&b, &n, "stop", _("Stop recording"));
+        live_word(&b, &n, "full", _("Full screen"));
+        live_word(&b, &n, "old", _("This browser cannot show Live view."));
+        buf_printf(&b, "};</script><style>");
+        buf_append(&b, live_css, live_css_len);
+        buf_printf(&b, "</style><script>");
+        buf_append(&b, live_js, live_js_len);
+        buf_printf(&b, "</script></body></html>");
+        respond(200, "text/html; charset=utf-8", &b, NULL);
+        buf_free(&b);
+        return;
+    }
+    char e[16] = "";
+    if (query) query_get(query, "e", e, sizeof e);
+    buf_printf(&b, "<style>");
+    buf_append(&b, live_css, live_css_len);
+    buf_printf(&b, "</style><h1>");
+    html_esc(&b, _("Live view"));
+    buf_printf(&b, "</h1>");
+    if (!(g_owners & HTTPD_LIVE)) {
+        buf_printf(&b, "<p>");
+        // TRANSLATORS: Live view's page while it is off on the Kindle.
+        html_esc(&b, _("Live view is off. On the Kindle, open Share and tap Live view."));
+        buf_printf(&b, "</p></body></html>");
+        respond(200, "text/html; charset=utf-8", &b, NULL);
+        buf_free(&b);
+        return;
+    }
+    buf_printf(&b, "<form class=code action='/live/pair' method=get><p><label>");
+    // TRANSLATORS: Live view's code form in the browser: the six digits the Kindle shows.
+    html_esc(&b, _("Type the code shown on the Kindle:"));
+    buf_printf(&b, "<br><input name=code inputmode=numeric autocomplete=one-time-code maxlength=7 required "
+                   "autofocus></label><button>");
+    // TRANSLATORS: the code form's button: start watching the Kindle's screen.
+    html_esc(&b, _("Watch"));
+    buf_printf(&b, "</button></p>");
+    if (!strcmp(e, "wrong") || !strcmp(e, "locked")) {
+        buf_printf(&b, "<p class=err role=alert>");
+        // TRANSLATORS: the code form after a wrong code, and after five (the Kindle shows a new one).
+        html_esc(&b, !strcmp(e, "wrong") ? _("That code is not the one on the Kindle.")
+                                         : _("Too many tries. Wait 30 seconds, then type the new code."));
+        buf_printf(&b, "</p>");
+    }
+    buf_printf(&b, "</form></body></html>");
+    respond(200, "text/html; charset=utf-8", &b, NULL);
+    buf_free(&b);
+}
+
+static void route_live(const char *path, const char *query) {
+    if (!strcmp(path, "/live") || !strcmp(path, "/live/")) return route_live_page(query);
+    if (!(g_owners & HTTPD_LIVE)) return respond_text(404, _("not found"));
+    if (!strcmp(path, "/live/pair")) {
+        // The code as typed (spaces dropped: "482 913"), or the QR code's token.
+        char cred[48] = "", clean[48];
+        if (!query_get(query, "code", cred, sizeof cred)) query_get(query, "t", cred, sizeof cred);
+        size_t n = 0;
+        for (const char *p = cred; *p && n + 1 < sizeof clean; p++)
+            if (*p != ' ' && *p != '-') clean[n++] = *p;
+        clean[n] = 0;
+        char tok[PAIR_TOKEN_LEN + 1], cookie[128];
+        int rc = pair_redeem(clean, now_s(), tok);
+        if (rc == PAIR_OK && pair_cookie_header(tok, cookie, sizeof cookie) == 0) {
+            g_live_pairings++;
+            qlog("live: a browser paired");
+            return redirect("/live", cookie);
+        }
+        qlog("live: a pairing was refused (%s)", rc == PAIR_LOCKED ? "locked" : "wrong code");
+        return redirect(rc == PAIR_LOCKED ? "/live?e=locked" : "/live?e=wrong", NULL);
+    }
+    if (!strcmp(path, "/live/stream")) {
+        if (!(session_scopes() & PAIR_LIVE)) return respond_text(401, "pair first");
+        if (g_head || g_child_response) return respond_text(400, "GET only");
+        if (!live_on()) return respond_text(503, "live view is off");
+        // TRANSLATORS: Live view's answer to a third computer (two can watch at once).
+        if (!live_take_viewer(g_cur->fd)) return respond_text(503, _("Two computers are watching already."));
+        qlog("live: a viewer started (%d watching)", live_viewers());
+        client_close(g_cur);  // the viewer child owns the connection now
+        return;
+    }
+    respond_text(404, _("not found"));
+}
+
 static void route(char *path) {
     char query[128] = "";
     char *q = strchr(path, '?');
@@ -687,6 +859,11 @@ static void route(char *path) {
     }
     url_decode(path);
     if (strstr(path, "..")) return respond_text(400, "bad path");
+    if (!strncmp(path, "/live", 5) && (!path[5] || path[5] == '/')) return route_live(path, query);
+    if (!strncmp(path, "/font/", 6)) return route_font(path + 6);
+    // TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
+    // keeps the server up: the Share screen must be open for those.
+    if (!(g_owners & HTTPD_SHARE)) return respond_text(403, _("Open Share on the Kindle to download."));
     if (!strcmp(path, "/") || !strcmp(path, "/index.html")) return route_index();
     if (!strcmp(path, "/api/list.json")) return route_list_json();
     if (!strncmp(path, "/api/download/", 14)) {
@@ -700,7 +877,6 @@ static void route(char *path) {
         buf_free(&b);
         return;
     }
-    if (!strncmp(path, "/font/", 6)) return route_font(path + 6);
     if (!strcmp(path, "/all.zip")) {
         Buf b = {0};
         int rc = export_folder_zip("", g_dpi, &b);
@@ -872,7 +1048,9 @@ static void serve_in_child(Client *c, const char *method, char *path) {
 static void handle_request(Client *c) {
     char method[8] = {0}, path[600] = {0};
     g_cur = c;
+    g_head = false;
     if (sscanf(c->req, "%7s %599s", method, path) != 2) return respond_text(400, "bad request");
+    g_head = !strcmp(method, "HEAD");
     if (strcmp(method, "GET") && strcmp(method, "HEAD")) return respond_text(405, "GET only");
     if (!host_ok(c->req)) {
         qlog("httpd: refused a request for another host");
@@ -886,8 +1064,17 @@ static void handle_request(Client *c) {
     char shown[sizeof path];
     strlcpy_q(shown, path, sizeof shown);
     url_decode(shown);
+    // Nor does Live view's code or token, nor its query at all.
+    bool live = !strncmp(shown, "/live", 5) && (!shown[5] || shown[5] == '/' || shown[5] == '?');
+    char bare[sizeof path];
+    strlcpy_q(bare, path, sizeof bare);
+    bare[strcspn(bare, "?")] = 0;
     qlog("httpd: %s %s", method,
-         path[0] != '/' ? "(not a path)" : !strncmp(shown, "/folder/", 8) ? "/folder/<name>.zip" : path);
+         path[0] != '/' ? "(not a path)" : !strncmp(shown, "/folder/", 8) ? "/folder/<name>.zip" : live ? bare : path);
+    if (heavy(path) && !(g_owners & HTTPD_SHARE)) {
+        route(path);  // (refused: no render for it)
+        return;
+    }
     if (heavy(path)) {
         char token[64];
         const char *query = strchr(path, '?');

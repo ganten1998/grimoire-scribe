@@ -190,6 +190,8 @@ shows what the app holds.
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
+| `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
+| `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
 | `editor.link_mode` | `1` after Add a link until the next ink stroke (the link's box) or a page change, else `0` |
 | `editor.links` | the open page's links: how many it has, then how many of them have their ink on it (`2 1`) |

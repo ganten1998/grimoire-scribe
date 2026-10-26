@@ -22,6 +22,12 @@
   finger on it changes where it goes or removes it. The links are your own ink, so erasing or
   undoing it takes a link away, and older versions show the ink. They are kept in the notebook's
   `links.ini`, apart from the pages: docs/FORMAT.md, Links.
+- **Live view**: Library > Share > Live view mirrors Grimoire's screen in a computer's browser on
+  the same Wi-Fi, as it changes: open the address on the card and type its one-use code, or scan the
+  QR code with a phone. Fit or actual size, full screen, transparent paper and recording in the
+  browser. The pen never waits for it (each browser gets its own background process that sends only
+  what changed), the code never shows on the stream, downloads still need Share open, and it turns
+  off with Stop, after 10 minutes with nobody watching, or when Grimoire closes.
 - **The notebook PDF has a table of contents and links**: named sections become the PDF's outline
   (the bookmarks a PDF reader lists), and links drawn to pages are links in the PDF.
 

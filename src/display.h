@@ -54,6 +54,9 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip);
 // a strip of the Kindle home window is caught even when it covers little of the screen).
 // True with *where = the bounding box of the mismatching samples (padded).
 bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where);
+// A rect the panel shows over App.screen for good (Live view's chip, app.c): both checks leave it
+// out, as they do a toast. RECT_EMPTY for none.
+void display_skip_overlay(Rect r);
 // True once the first frame and the next 4 refreshes have all failed: the panel is not Grimoire's
 // to drive, and it should leave. A failure after any refresh worked never counts. Polled by the
 // main loop: until one refresh works it also refreshes the whole panel again once a second, so a

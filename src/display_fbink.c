@@ -590,6 +590,8 @@ static bool g_live;
 // Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
 // there legitimately differs from the canvas, so the overwrite checks skip it.
 static Rect g_live_area;
+static Rect g_overlay;  // display_skip_overlay
+void display_skip_overlay(Rect r) { g_overlay = r; }
 void display_set_invert(bool on) {
     if (on != g_invert) g_frame_known = false;
     g_invert = on;
@@ -759,7 +761,8 @@ bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
     int differ = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
     for (int y = step / 2; y < h; y += step)
         for (int x = step / 2; x < w; x += step) {
-            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
+            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y) || rect_contains(g_overlay, x, y))
+                continue;
             uint8_t want = screen->px[(size_t)y * screen->stride + x];
             uint8_t have = fb_gray(x, y);
             if (abs((int)want - (int)have) <= 24) continue;
@@ -782,7 +785,8 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     int differ = 0, total = 0;
     for (int y = band.y + 2; y < band.y + band.h; y += 6)
         for (int x = band.x + 2; x < band.x + band.w; x += 6) {
-            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y)) continue;
+            if (rect_contains(skip, x, y) || rect_contains(g_live_area, x, y) || rect_contains(g_overlay, x, y))
+                continue;
             uint8_t want = screen->px[(size_t)y * screen->stride + x];
             uint8_t have = fb_gray(x, y);
             total++;

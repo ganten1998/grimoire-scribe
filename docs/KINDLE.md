@@ -388,6 +388,11 @@ session with networking awake, not a reboot or deep sleep.
   none; if one appears, it is worth reporting with the orientation and style. Only the simulator
   also logs `share: (simulator) the code holds http://...`, which tests/share_check.sh compares
   with the decoded code.
+- **Live view** logs `live: on` and `live: off`, `live: a browser paired` or
+  `live: a pairing was refused (wrong code)` / `(locked)`, and `live: a viewer started (N
+  watching)`. Its requests are logged without their query (`httpd: GET /live/pair`): no code or
+  token ever reaches the log. On the Kindle each viewer is a process named `grimoire-live`; none
+  should be left once Grimoire has closed.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in

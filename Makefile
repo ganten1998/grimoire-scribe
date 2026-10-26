@@ -30,7 +30,7 @@ CORE_SRC += src/fbpack.c src/latency.c
 CORE_SRC += src/nav.c
 CORE_SRC += src/bgimage.c
 CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c
-CORE_SRC += src/pair.c
+CORE_SRC += src/pair.c src/live.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -82,7 +82,7 @@ $(BUILD)/gen/l10n.c: $(L10N_MO) Makefile
 	  echo '    {0, 0, 0},'; echo '};' ) > $@.tmp && mv $@.tmp $@
 
 # ---- generated: the share studio's page (served inline by httpd.c) ----
-WEB := studio.js studio.css download.js
+WEB := studio.js studio.css download.js live.js live.css
 $(WEB_GEN): $(addprefix web/,$(WEB))
 	@mkdir -p $(BUILD)/gen
 	( cd web && for f in $(WEB); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
@@ -439,6 +439,7 @@ launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
 check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check mirror-cleanup-check dist
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
+	BUILD=$(BUILD) tests/live_check.sh
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"
 

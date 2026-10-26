@@ -53,6 +53,7 @@ typedef struct App {
     Rect toast_rect;
     bool toast_visible;
     Canvas toast_under;     // pixels the toast covers, restored when it hides
+    Canvas chip_under;      // pixels Live view's chip covers, put back after each present
     int toast_floor;        // toasts stay above this y (the keyboard, a sheet's buttons); 0 none.
                             // The screen sets it as it draws; app_switch clears it.
 
@@ -132,6 +133,15 @@ void app_apply_sleep_policy(App *a);
 void pensettings_open(App *a, ToolKind tab);         // switch to SCR_PENSET (returns to prev_scr)
 void calibrate_open(App *a);                         // switch to SCR_CALIB (returns to prev_scr)
 void share_open(App *a);                             // switch to SCR_SHARE (returns to prev_scr)
+void share_open_live(App *a);                        // the same, as Live view's pairing card
+bool share_live_card_up(App *a);                     // Live view's pairing card is the screen
+// Live view (live.h): the Share screen's button turns it on and shows the pairing card (again,
+// while it is on);
+// live_view_stop turns it off (say: with a toast). app_watch_server keeps input_poll watching
+// the share server while it runs and the Kindle is awake.
+void live_view_open(App *a);
+void live_view_stop(App *a, bool say);
+void app_watch_server(App *a);
 void share_sleep(App *a);                            // asleep on Share: the server waits unwatched
 void share_draw_asleep(App *a);                      // Share's sleep screen when no page is shown
 

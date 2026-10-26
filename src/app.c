@@ -4,7 +4,10 @@
 #include "bgimage.h"
 #include "bgjob.h"
 #include "calib_fit.h"
+#include "httpd.h"
 #include "i18n.h"
+#include "live.h"
+#include "pair.h"
 
 #include "light.h"
 #include "power.h"
@@ -257,12 +260,16 @@ void app_shutdown(App *a) {
     if (a->scr == SCR_EDITOR) editor_save_now(a);
     k_screens[a->scr].leave(a);
     settings_save(&a->settings);
+    // The viewers stop before anything else is freed, and before bg_detach_rest: a detached export
+    // must not hold a viewer's socket, and the headless runner waits for every child at exit.
+    live_view_stop(a, false);
     for (int i = 0; i < SCR_COUNT; i++) k_screens[i].free_(a);
     // Queued PDF exports finish on their own after Grimoire exits. After editor_free: closing the
     // open notebook (leaving straight from the editor) queues its mirror PDF.
     bg_detach_rest();
     canvas_free(&a->koreader_wallpaper);
     canvas_free(&a->toast_under);
+    canvas_free(&a->chip_under);
     canvas_free(&a->screen);
     font_shutdown();
 }
@@ -438,6 +445,70 @@ void app_redraw_mode(App *a, RefreshMode m) {
 
 void app_redraw(App *a) { app_redraw_mode(a, REFRESH_FULL); }
 
+// ---- Live view ----
+
+static int g_live_viewers;  // as last told (a toast when the first comes)
+
+void app_watch_server(App *a) { input_watch_fd(httpd_running() && !a->asleep ? httpd_fd() : -1); }
+
+// Where the chip that says Live view is on sits: the top right corner, inside the screens' 50 px
+// margin (clear of the Library's buttons), never in the stream.
+static Rect live_chip(const App *a) {
+    int s = ui_px(42), m = ui_px(4);
+    return (Rect){a->w - s - m, m, s, s};
+}
+
+void live_view_open(App *a) {
+    if (!live_on()) {
+        bool ok = live_start(a->w, a->h) == 0;
+        if (ok && httpd_acquire(HTTPD_LIVE, a->settings.http_port, a->dpi, ui_theme() == THEME_GOTHIC) != 0) {
+            live_stop();
+            ok = false;
+        }
+        if (!ok) {
+            // TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
+            // or the server's port is taken).
+            app_toast(a, _("Could not start Live view"), 3000);
+            return;
+        }
+        g_live_viewers = 0;
+        display_skip_overlay(live_chip(a));
+        app_invalidate(a, live_chip(a), REFRESH_UI);
+        qlog("live: on");
+    }
+    share_open_live(a);
+}
+
+void live_view_stop(App *a, bool say) {
+    if (!live_on()) return;
+    live_stop();
+    pair_forget(PAIR_LIVE);  // the browsers that paired must pair again next time
+    httpd_release(HTTPD_LIVE);
+    app_watch_server(a);
+    display_skip_overlay(RECT_EMPTY);
+    app_invalidate(a, live_chip(a), REFRESH_UI);  // (the chip goes: what is under it comes back)
+    g_live_viewers = 0;
+    qlog("live: off");
+    // TRANSLATORS: a toast as Live view stops (the Stop button on its card).
+    if (say) app_toast(a, _("Live view ended."), 2500);
+}
+
+static void live_tick(App *a, uint32_t now) {
+    if (!live_on()) return;
+    if (a->scr != SCR_SHARE) httpd_poll();  // (Share's own tick polls it there)
+    bool idle = false;
+    int n = live_poll(now, &idle);
+    if (idle && !share_live_card_up(a)) {  // (the card keeps its code fresh: it waits there)
+        live_view_stop(a, false);
+        // TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
+        app_toast(a, _("Live view turned off: no one watched for 10 minutes."), 4000);
+        return;
+    }
+    // TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
+    if (n > 0 && g_live_viewers == 0) app_toast(a, _("A computer is watching this screen."), 3000);
+    g_live_viewers = n;
+}
+
 // The sleep screen: the page you were on (or the pinned page), so the Kindle "sleeps on" your
 // notebook and wakes straight back into it. Mode 2 hands over to the Kindle's own screensaver.
 static void app_sleep(App *a) {
@@ -450,6 +521,8 @@ static void app_sleep(App *a) {
     a->asleep = true;
     a->wake_redraw_at = 0;
     a->wake_fallback_at = 0;
+    live_set_state(LIVE_ASLEEP);  // (the sleep screen is never streamed: it is never pushed)
+    app_watch_server(a);
     if (a->scr == SCR_EDITOR && !editor_suspend(a)) qlog("sleep: could not save the open page; keeping it in memory");
     if (a->scr == SCR_SHARE) share_sleep(a);
     qlog("sleep: mode %d", a->settings.sleep_mode);
@@ -506,6 +579,9 @@ static void app_wake(App *a) {
     a->last_input = now_ms();
     a->sleep_requested = false;
     qlog("wake");
+    // (On the pairing card its own enter says so again before the code is drawn.)
+    if (!share_live_card_up(a)) live_set_state(LIVE_AWAKE);
+    app_watch_server(a);
     int mode = sleep_mode(a);
 
     // A sleep request turned preventScreenSaver off: "Sleep after: never" wants it back on.
@@ -560,6 +636,8 @@ void app_set_rotation(App *a, int r) {
         a->h = h;
     }
     a->dirty = RECT_EMPTY;
+    live_resize(w, h);
+    if (live_on()) display_skip_overlay(live_chip(a));
     // Re-lay out the current screen in the new shape.
     a->relayout = true;
     k_screens[a->scr].leave(a);
@@ -700,7 +778,7 @@ void app_tick(App *a, uint32_t now) {
     // Sleep after a while without input, the same way the power button does.
     if (!a->asleep && !a->sleep_requested && a->settings.sleep_minutes > 0 &&
         (int32_t)(now - a->last_input) >= a->settings.sleep_minutes * sleep_minute_ms() &&
-        !(a->scr == SCR_EDITOR && editor_busy(a)) && a->scr != SCR_SHARE) {
+        !(a->scr == SCR_EDITOR && editor_busy(a)) && a->scr != SCR_SHARE && !live_viewers()) {
         a->sleep_requested = true;
         request_sleep(a);
     }
@@ -713,6 +791,7 @@ void app_tick(App *a, uint32_t now) {
         a->pending_rotation = -1;
     }
     k_screens[a->scr].tick(a, now);
+    live_tick(a, now);
     if (a->toast_visible && (int32_t)(now - a->toast_until) >= 0) toast_hide(a);
 }
 
@@ -738,6 +817,20 @@ void app_flush(App *a) {
     }
     if (m == REFRESH_UI && ++a->ui_refreshes_since_full >= 30) m = REFRESH_FULL;
     if (m == REFRESH_FULL) a->ui_refreshes_since_full = 0;
+    live_push(&a->screen, a->dirty);  // (before the toast and the chip: neither is streamed)
+    // The chip over what it covers, put back after the present, as the toast is.
+    Rect chip = live_on() ? live_chip(a) : RECT_EMPTY;
+    bool chipped = !rect_is_empty(chip) && rect_overlaps(a->dirty, chip);
+    if (chipped) {
+        a->dirty = rect_union(a->dirty, chip);
+        canvas_free(&a->chip_under);
+        chipped = canvas_init(&a->chip_under, chip.w, chip.h) == 0;
+        if (chipped) {
+            canvas_blit(&a->chip_under, &a->screen, chip, 0, 0);
+            ui_frame(&a->screen, chip, ui_px(8), 0, true, 0);
+            ui_icon(&a->screen, ICON_LIVE, rect_inflate(chip, -ui_px(2)), 255);
+        }
+    }
     bool overlay = a->toast_visible && rect_overlaps(a->dirty, a->toast_rect);
     if (overlay) {
         a->dirty = rect_union(a->dirty, a->toast_rect);
@@ -752,6 +845,7 @@ void app_flush(App *a) {
     if (overlay)
         canvas_blit(&a->screen, &a->toast_under, (Rect){0, 0, a->toast_rect.w, a->toast_rect.h}, a->toast_rect.x,
                     a->toast_rect.y);
+    if (chipped) canvas_blit(&a->screen, &a->chip_under, (Rect){0, 0, chip.w, chip.h}, chip.x, chip.y);
     a->dirty = RECT_EMPTY;
     a->dirty_mode = REFRESH_FAST;
 }
@@ -768,6 +862,7 @@ void app_switch(App *a, ScreenId s) {
 
 void app_press_feedback(App *a, Rect r) {
     canvas_invert(&a->screen, r);
+    live_push(&a->screen, r);
     display_present(&a->screen, r, REFRESH_FAST);
 }
 
@@ -867,6 +962,14 @@ int app_probe(const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%s", "");
     }
     else if (!strcmp(key, "host")) snprintf(out, cap, "%s", app_host());
+    else if (!strcmp(key, "live.on")) snprintf(out, cap, "%d", live_on() ? 1 : 0);
+    else if (!strcmp(key, "live.viewers")) snprintf(out, cap, "%d", live_viewers());
+    else if (!strcmp(key, "live.pairing")) snprintf(out, cap, "%d", share_live_card_up(a) ? 1 : 0);
+    else if (!strcmp(key, "live.chip")) {
+        Rect r = live_chip(a);
+        if (live_on()) snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+        else snprintf(out, cap, "%s", "");
+    }
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);
     else if (!strcmp(key, "settings.pen.panel") || !strcmp(key, "settings.touch.panel")) {

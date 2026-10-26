@@ -158,4 +158,9 @@ void pair_forget(unsigned scopes) {
     }
 }
 
+void pair_forget_invitation(void) {
+    S.scopes = S.misses = 0;
+    S.code[0] = S.qr[0] = 0;
+}
+
 void pair_reset(void) { memset(&S, 0, sizeof S); }

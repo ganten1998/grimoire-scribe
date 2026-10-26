@@ -291,6 +291,8 @@ void sys_prevent_sleep(bool prevent) { (void)prevent; }
 static int g_pokes;
 void sys_activity(void) { g_pokes++; }
 bool display_broken(void) { return false; }
+void display_skip_overlay(Rect r) { (void)r; }
+
 bool display_find_overwrite(const Canvas *screen, Rect skip, Rect *where) {
     (void)screen;
     (void)skip;

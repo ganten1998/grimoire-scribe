@@ -51,7 +51,9 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | qr.h/.c | QR codes as whole-pixel modules (the Share screen's address), with third_party/qrcodegen | canvas |
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, toasts, power button and sleep | all screens |
 | httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
-| share.c | the Share screen: the QR code, the addresses, its own layout check; the server runs only while it is open | app, httpd, qr |
+| share.c | the Share screen: the QR code, the addresses, its own layout check; the server answers its routes only while it is open. Also Live view's pairing card | app, httpd, qr |
+| live.h/.c, web/live.* | Live view: the shared copy of the screen, its 64 px tile marks, the viewer children that stream the tiles as PNGs; the browser's viewer | canvas |
+| pair.h/.c | one-use pairing codes and QR tokens, and the browser sessions they give (memory only) | - |
 | library.h/.c | library screen, new-notebook sheet (paper picker), rename/delete, Settings (Language among them) | app, store, ui, keyboard |
 | editor.h/.c | the notebook editor, live ink, eraser, floating panel, page nav, autosave, read-only pages | app, page, history, store |
 | pensettings.h/.c | per-tool sensitivity screen: sliders, curve graph, live readout, test pad | app, brush, ui |
@@ -632,6 +634,35 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    the code holds http://...", which share_check compares with the code it reads back. For every
    made-up address list, in both styles, share_check also checks that no other line holds an
    address, and its download run checks that a folder zip's request leaves the folder's name out.
+   **Live view** (2.0.0-beta.5) is the same server's other owner (`httpd_acquire`/`httpd_release`:
+   the server runs while the Share screen or Live view keeps it; every route but `/live` and the
+   fonts needs Share, and answers 403 "Open Share on the Kindle to download." while only Live view
+   runs). Share's Live view button turns it on and shows the pairing card (the Share screen in its
+   live mode): the address of `/live`, a QR code of `/live/pair?t=<token>` that pairs the phone that
+   scans it, and a six-digit code a computer types (pair.c: single use, a new one after five wrong
+   tries and a 30 s lock, sessions of 128 random bits in an HttpOnly SameSite=Strict cookie, all
+   forgotten when Live view stops). The card closes by itself once a browser pairs.
+   While Live view is on, `app_flush` and `app_press_feedback` copy each rect they present into a
+   shared frame (`live_push`: a memcpy of the rect, before the toast is drawn, so neither the toast
+   nor the chip is ever streamed) and mark its 64 px tiles, for each viewer slot. A paired
+   `GET /live/stream` is handed to a viewer child (two at most; `live_take_viewer`), which owns the
+   socket: it takes its marks, compares the tiles with what it sent, sends the changed runs as gray
+   PNGs and a batch end, at most about 30 batches a second, a ping after 15 s idle. A slow browser
+   only lets the marks pile up; the pen loop never waits. While the pairing card is up the state is
+   LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the viewer checks the
+   state again after copying each run, and the app sets the state before the card is drawn). Asleep
+   it is LIVE_ASLEEP (the sleep screen is never pushed); a turn bumps the epoch, and each viewer
+   sends a new hello and every tile. Viewers end with a bye when Live view stops (Stop on the
+   card, 10 minutes without a viewer, Grimoire leaving: `app_shutdown` stops them before anything
+   else, so no export child inherits a socket and the headless runner never waits for one); on
+   Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.
+   An icon-only chip in the top right corner (inside the 50 px margin) says Live view is on; it is
+   overlaid at the present like the toast, and the screen guard skips it
+   (`display_skip_overlay`). Auto-sleep waits while a computer watches. The log names no code,
+   token or `/live` query; only the simulator logs the code and the viewers' pids, for
+   tests/live_check.sh, which pairs as a browser, reads the stream (tests/live_stream.py, which
+   decodes the PNGs itself), checks the browser's frame reader on the same bytes
+   (tests/live_check.js), refuses a third viewer, and checks that no viewer outlives the app.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce
