@@ -50,11 +50,19 @@ TEST(slider_fine_drag) {
         ui_slider_drag_to(&s, &d, x, y + 160, 520u + (uint32_t)i);
     }
     CHECK_NEAR(s.value, 0.31f, 1e-6);  // fractional motion accumulates rather than rounding away
-    CHECK(!ui_slider_drag_to(&s, &d, x, y, 600));
-    CHECK_NEAR(s.value, 0.31f, 1e-6);  // returning to the track does not jump either
-    ui_slider_drag_to(&s, &d, x + 10000, y, 610);
+    CHECK(ui_slider_drag_to(&s, &d, x, y + 10, 600));
+    CHECK_NEAR(s.value, 0.76f, 1e-6);  // entering the knob-height band catches up to the pointer
+    x = s.track.x + s.track.w * 0.4f;
+    ui_slider_drag_to(&s, &d, x, y - 10, 610);
+    CHECK_NEAR(s.value, 0.4f, 1e-6);  // staying in the band gives direct, large adjustments
+    CHECK(!ui_slider_drag_to(&s, &d, x, y - 160, 620));
+    CHECK_NEAR(s.value, 0.4f, 1e-6);  // leaving again alone does not change the value
+    x += s.track.w * 0.02f * 16.f;
+    ui_slider_drag_to(&s, &d, x, y - 160, 630);
+    CHECK_NEAR(s.value, 0.42f, 1e-6);  // fine motion resumes above as well as below
+    ui_slider_drag_to(&s, &d, x + 10000, y - 160, 640);
     CHECK_NEAR(s.value, 1.f, 1e-6);
-    ui_slider_drag_to(&s, &d, x + 10000 - s.track.w * 0.1f, y, 620);
+    ui_slider_drag_to(&s, &d, x + 10000 - s.track.w * 0.1f * 16.f, y - 160, 650);
     CHECK_NEAR(s.value, 0.9f, 1e-6);
     // A fresh press restores ordinary absolute tracking; holding is specific to each gesture.
     ui_slider_drag_begin(&s, &d, x, 1000);

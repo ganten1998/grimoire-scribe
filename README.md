@@ -137,7 +137,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   **Reset tool** restores the tuned widths and Whole strokes mode.
 - **Fine pen adjustments**: in Pen feel, hold a slider briefly, then move above or below its
   track while keeping contact. The farther away you move, the smaller each horizontal
-  adjustment becomes. Release to keep the value; the next press starts normally.
+  adjustment becomes. Move back within a knob-height band around the track for the knob to
+  catch up and follow directly again. Release to keep the value; the next press starts normally.
 
 - **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the panel (up to four),
   then Done. Each gets its own button under the pen button. From another tool, including the

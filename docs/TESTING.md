@@ -35,10 +35,14 @@ whole-stroke mode. Automated checks cover empty areas, partial and swept hits, p
 reset and both orientations.
 
 Pen feel's fine slider gesture is checked with both pen and touch, including exact values,
-fractional motion, moving away and back without a jump, repaint throttling, release, bounds,
+fractional motion, moving away without a jump, catch-up and direct tracking within the knob
+band, repaint throttling, release, bounds,
 a new gesture and saved values. Tool-picker checks cover the fixed eraser, pinned pens, the
 two-tap top pen button, the direct grid button and the remembered eraser fallback after restart.
-The handwritten pad, fine gesture and revised picker still need confirmation on the Kindle.
+On revision `4d7b593`, the maintainer confirmed the centered handwriting, both eraser modes,
+Reset pad and both two-tap picker paths. Fine control worked too; the maintainer then requested
+a knob-height band that catches up and tracks the pointer directly, with fine control outside
+it. That refinement still needs confirmation on the Kindle.
 
 ## The Kindles
 

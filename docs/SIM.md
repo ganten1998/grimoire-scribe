@@ -321,4 +321,5 @@ is the maintainer's embedded handwriting; the runtime does not open a user noteb
 
 `penset.param.PARAM` reads the current tab's value to four decimals; `penset.slider_pending`
 indicates a value waiting for the throttled repaint. `z_9_slider_fine.qs` uses pen and touch to
-hold, move away from the track, select 0.30, release without a jump and check the saved value.
+hold, move away from the track, select 0.30, catch up and track directly within the knob-height
+band, resume fine control on either side, release without a jump and check the saved value.

@@ -13,8 +13,8 @@
   Precise erases only the part under the tip. Reset pad restores the sample. Whole strokes
   remains the default, and Reset tool on the eraser tab restores that mode too.
 - **Fine slider control**: hold a Pen feel slider briefly, then move above or below its track
-  to reduce sensitivity. Small horizontal movements can reach exact values without a jump
-  when you release.
+  to reduce sensitivity. Return within a knob-height band around the track to catch up and
+  follow your finger or pen directly again. Release away from the track to keep a fine value.
 - **Consistent tool selection**: from the eraser or another pen, tapping the top pen button
   selects its pen; tapping it again opens the picker. A grid button still opens directly.
 
