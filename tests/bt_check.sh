@@ -5,13 +5,20 @@
 # usage: [BUILD=build] tests/bt_check.sh
 set -eu
 BUILD=${BUILD:-build}
-PORT=${GRIMOIRE_BT_TEST_PORT:-18777}
 HEADLESS=$BUILD/host/grimoire-headless
 B=$BUILD/bt-check
 rm -rf "$B" && mkdir -p "$B"
-python3 -I tests/fake_bthelper.py "$PORT" > "$B/helper.log" 2>&1 &
+python3 -I tests/fake_bthelper.py 0 "$B/helper.port" > "$B/helper.log" 2>&1 &
 FAKE=$!
 trap 'kill "$FAKE" 2>/dev/null' EXIT
+# (It names its port once it listens: a minute at most, on a loaded machine.)
+i=0
+while [ ! -s "$B/helper.port" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+if ! PORT=$(cat "$B/helper.port" 2>/dev/null); then
+    cat "$B/helper.log"
+    echo "BT CHECK FAILED: the stand-in did not start"
+    exit 1
+fi
 fail=0
 for s in tests/bt/*.qs; do
     n=$(basename "$s" .qs)

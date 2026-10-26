@@ -63,8 +63,10 @@ TEST(helper_answers_are_read_safely) {
           !btapi_address_ok("AA-bb-01-23-45-67") && !btapi_address_ok("AA:bb:01:23:45:6g"));
 }
 
+// (By the clock, not by turns: on a loaded machine the turns run long. A request's child ends within
+// 4 s, its own alarm.)
 static BtEvent wait_event(BtReply *r) {
-    for (int i = 0; i < 500; i++) {
+    for (uint32_t t0 = now_ms(); now_ms() - t0 < 20000;) {
         BtEvent e = bt_tick(r);
         if (e) return e;
         sleep_ms(10);
@@ -73,15 +75,25 @@ static BtEvent wait_event(BtReply *r) {
 }
 
 TEST(the_client_asks_one_question_at_a_time) {
-    int port = 18000 + (int)(getpid() % 2000);
-    char ps[16];
-    snprintf(ps, sizeof ps, "%d", port);
+    char named[512];
+    snprintf(named, sizeof named, "%s/grimoire-bthelper-%d.port", tl_tmp(), (int)getpid());
+    unlink(named);
     pid_t fake = fork();
     if (fake == 0) {
-        execlp("python3", "python3", "-I", "tests/fake_bthelper.py", ps, (char *)NULL);
+        execlp("python3", "python3", "-I", "tests/fake_bthelper.py", "0", named, (char *)NULL);
         _exit(127);
     }
     CHECK(fake > 0);
+    // The stand-in names its port once it listens (a minute at most, on a loaded machine).
+    int port = 0;
+    for (uint32_t t0 = now_ms(); !port && now_ms() - t0 < 60000; sleep_ms(50)) {
+        FILE *f = fopen(named, "r");
+        if (!f) continue;
+        if (fscanf(f, "%d", &port) != 1) port = 0;
+        fclose(f);
+    }
+    unlink(named);
+    CHECK(port > 0);
     char api[64];
     snprintf(api, sizeof api, "127.0.0.1:%d", port);
     bt_init(tl_tmp(), NULL, api);
@@ -89,14 +101,7 @@ TEST(the_client_asks_one_question_at_a_time) {
     CHECK(bt_present());
     bt_start();
     CHECK(bt_state() == BT_EXTERNAL);  // a stand-in that runs already: Grimoire's to use, not to stop
-    // (Wait for the stand-in to listen.)
-    BtEvent e = BT_EV_FAILED;
-    for (int i = 0; i < 50 && e == BT_EV_FAILED; i++) {
-        CHECK(bt_request("/status"));
-        e = wait_event(&r);
-        if (e == BT_EV_FAILED) sleep_ms(100);
-    }
-    CHECK(e == BT_EV_REPLY && r.ok && r.ndev == 0);
+    CHECK(bt_request("/status") && wait_event(&r) == BT_EV_REPLY && r.ok && r.ndev == 0);
     CHECK(bt_request("/scan") && !bt_request("/status") && bt_busy());  // one at a time
     CHECK(wait_event(&r) == BT_EV_REPLY && r.ok);
     sleep_ms(1100);

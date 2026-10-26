@@ -2,13 +2,16 @@
 """A stand-in for the Bluetooth helper's local API (kindle-hid-passthrough 3.18's, as far as Grimoire
 asks it), for tests/bt_check.sh: /health, /status, /scan and /scan-status (two controllers found
 after a moment, one with a name that is not printable), /pair and /pair-status (pairs the first,
-refuses the second), /remove. Every request is logged to stdout, one line each.
-usage: fake_bthelper.py <port>"""
+refuses the second), /remove. Every request is logged to stdout, one line each. With a file named, it
+writes the port it listens on there once it does (port 0: any free one).
+usage: fake_bthelper.py <port> [port-file]"""
 import json
+import os
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import TCPServer
 from urllib.parse import parse_qs, urlparse
 
 FOUND = [
@@ -83,5 +86,18 @@ class H(BaseHTTPRequestHandler):
         self.send({"ok": False, "error": "Not found"})
 
 
+class Server(HTTPServer):
+    def server_bind(self):
+        # (HTTPServer's own looks its address up in DNS between bind and listen: on macOS a connection
+        # made in between is not refused but left waiting.)
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = '127.0.0.1', self.server_address[1]
+
+
 if __name__ == '__main__':
-    HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
+    srv = Server(('127.0.0.1', int(sys.argv[1])), H)
+    if len(sys.argv) > 2:
+        with open(sys.argv[2] + '.tmp', 'w') as f:
+            f.write('%d\n' % srv.server_address[1])
+        os.replace(sys.argv[2] + '.tmp', sys.argv[2])
+    srv.serve_forever()

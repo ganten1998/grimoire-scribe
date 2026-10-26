@@ -136,8 +136,11 @@ void bt_stop(void) {
     run_script("stop-owned", BT_STOPPING);
 }
 
-// The child of a request: a GET over loopback, 3 s at most, its body to stdout.
+// The child of a request: a GET over loopback, its body to stdout. 4 s at most: the alarm ends it
+// (connect has no timeout of its own everywhere: on macOS a port bound but not yet listening leaves
+// it waiting, for as long as the helper takes to listen).
 static void request_child(const char *path) {
+    alarm(4);
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) _exit(1);
     struct timeval tv = {3, 0};
