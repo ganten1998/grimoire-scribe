@@ -17,9 +17,9 @@ their results are below, newest first.
 |---|---|---|---|---|---|
 | 2026-10-24 | Kindle Scribe 2024 | 5.19.6 | v2026.07.2 | 0.2.2 (CLI 1.0.0), `kindlehf` | 1.1.0-rc.1, 1.1.0-rc.2 |
 | 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 1.1.0-rc.3 |
-| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 2.0.0-beta.1, 2.0.0-beta.2 |
+| 2026-10-25 | the same Kindle Scribe 2024 | 5.20.1.0.2 | v2026.07.2 | 0.2.4 | 2.0.0-beta.1, 1.2.0 |
 
-## 2.0.0-beta.2 on firmware 5.20.1.0.2
+## 1.2.0 on firmware 5.20.1.0.2
 
 The Index/page-control candidate at `295f811` passed the full Mac and cloud checks; all three
 cloud packages matched the Mac build byte for byte. It was installed through KPM 0.2.4 after a
@@ -35,8 +35,8 @@ The highlighter now has a fixed vertical tip. The maintainer explicitly accepted
 highlights render with the new shape, tracked in issue #5. Tests check the tip's proportions and
 fixed orientation, live/saved agreement and erasing/compaction. The original render-reference
 tables stay in place with explicit exceptions only for highlighter-containing renders; other
-tools, paper and serialized file bytes keep their old references. Device checks of this revision
-are recorded separately from the earlier candidate's results.
+tools, paper and serialized file bytes keep their old references. On revision `d57c755`, the maintainer confirmed that both floating buttons were gone and the
+vertical highlighter looked right. Release 1.2.0 contains these tested changes with a new version label.
 
 ## 2.0.0-beta.1 on firmware 5.20.1.0.2
 

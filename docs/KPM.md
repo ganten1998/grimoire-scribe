@@ -100,3 +100,7 @@ and [KPM source](https://github.com/KindleModding/KPM): root manifest, POSIX she
 filter, no root filesystem writes. Tests cover deterministic output, platform checks, launcher
 ownership, staged failure, install/upgrade/remove, argument forwarding, notebook preservation and
 channel ordering. Device evidence is recorded in [TESTING.md](TESTING.md).
+
+Release 1.2.0 is available on the stable feed as package 1.2.9999. The preview feed keeps its
+numerically newer 2.0 beta; users switching from that beta should use the stable feed or install
+the 1.2.0 package directly. Notebook data is retained.

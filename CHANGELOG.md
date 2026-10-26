@@ -1,6 +1,9 @@
 # Changelog
 
-## 2.0.0-beta.2 (in development)
+## 1.2.0 (2026-10-25)
+
+This release includes the changes previously tested as 2.0.0-beta.1 and beta.2. The 2.0 beta
+remains a historical prerelease; this release continues the stable 1.x series.
 
 - **Vertical highlighter**: a fixed vertical tip replaces the round tip. This also changes how
   older highlights render when a notebook is opened or exported; preserving the old shape is

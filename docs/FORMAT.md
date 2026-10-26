@@ -630,7 +630,7 @@ they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands
 never gets a request. Raw notebook zips carry `source.ini` as `raw/source.ini` (1.1.0-beta.2 on), so
 a notebook put back from one keeps its book pages; they leave `bg/<pic>.source.png` out.
 
-## Named sections: `nav.ini` (2.0.0-beta.2 on)
+## Named sections: `nav.ini` (1.2.0 on)
 
 An optional UTF-8 file inside the notebook directory. `name.<page id>=<title>` names a section
 start; ids refer to `notebook.ini`'s page ids, not their current positions. The Index lists them
@@ -839,7 +839,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `shortcuts.ini` (2.0) | never read | never read |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
 
-## Highlighter rendering in 2.0.0-beta.2
+## Highlighter rendering in 1.2.0
 
 The highlighter now uses a fixed vertical broad edge. Its stored tool id and 13-float parameter
 snapshot are unchanged, so this shape also applies when older highlighter strokes are rendered
