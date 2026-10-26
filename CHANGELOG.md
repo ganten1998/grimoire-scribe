@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-beta.3 (2026-10-25)
+## 2.0.0-beta.3 (2026-10-26)
 
 - **Empty folders leave the PDF mirror too**: removing or renaming an empty Library folder
   also removes its empty directory under grimoire/PDFs. Directories with files, symlinks, and
@@ -8,10 +8,15 @@
 
 - **Retuned pen defaults**: use the latest settings tuned on the Kindle for new installs and
   Pen feel > Reset tool. Existing saved profiles and old stroke parameters are kept.
-- **An eraser pad you can actually try**: the eraser tab starts with TEST on the left and a
-  solid block on the right. Whole strokes removes the letters it touches; Precise erases only
-  the part under the tip. Reset pad restores both targets. Whole strokes remains the default,
-  and Reset tool on the eraser tab restores that mode too.
+- **Handwritten eraser practice**: the eraser tab starts with the maintainer's blackletter
+  “erase me!” sample, centered in the pad. Whole strokes removes the strokes it touches;
+  Precise erases only the part under the tip. Reset pad restores the sample. Whole strokes
+  remains the default, and Reset tool on the eraser tab restores that mode too.
+- **Fine slider control**: hold a Pen feel slider briefly, then move above or below its track
+  to reduce sensitivity. Small horizontal movements can reach exact values without a jump
+  when you release.
+- **Consistent tool selection**: from the eraser or another pen, tapping the top pen button
+  selects its pen; tapping it again opens the picker. A grid button still opens directly.
 
 ## 1.2.0 (2026-10-25)
 

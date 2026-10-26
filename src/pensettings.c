@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "erasersample.h"
 
 enum { H_BACK = 1, H_TAB, H_RESET, H_CLEAR, H_SLIDER, H_PAD, H_ERASER_MODE };
 
@@ -20,6 +21,8 @@ struct PenSetState {
     // slider drag
     int active;            // param table index being dragged, -1 none
     Slider sl;
+    SliderDrag slider_drag;
+    bool slider_dirty;
     uint32_t last_paint;
     // test pad
     Rect pad, graph, readout;
@@ -32,13 +35,12 @@ struct PenSetState {
     // when it is. White on that shows nothing: the pad then has a black swatch to try it on.
     Canvas paper;
     Rect swatch;           // empty when there is none
-    Stroke *letters[4];   // TEST: real polylines for the whole-stroke eraser to hit
-    Rect test_block;
-    bool block_present;
+    Page *sample;        // owned copy of the handwritten practice ink
+    Rect sample_box;
     float wipe_x, wipe_y;
     bool erasing;          // the stroke on the pad is the precise eraser's
     bool whiting;          // the stroke on the pad is white ink
-    bool wiping;           // whole-stroke eraser: hits targets on its tab, clears the other pads
+    bool wiping;           // whole-stroke eraser: hits practice ink on its tab, clears the other pads
     float live_raw;        // last pen pressure seen on the pad (-1 none)
     float live_tx, live_ty;
     uint32_t last_readout;
@@ -172,55 +174,58 @@ static Rect clear_rect(App *a) {
 static bool pad_white(App *a) { return a->settings.white && S->tab != TOOL_ERASER; }
 
 static void pad_targets_free(App *a) {
-    for (int i = 0; i < 4; i++) { stroke_free(S->letters[i]); S->letters[i] = NULL; }
-    S->test_block = RECT_EMPTY;
-    S->block_present = false;
+    page_free(S->sample);
+    S->sample = NULL;
+    S->sample_box = RECT_EMPTY;
 }
 
 static void pad_targets_draw(App *a) {
+    if (!S->sample) return;
     Rect saved = a->screen.clip;
     canvas_set_clip(&a->screen, S->pad);
-    for (int i = 0; i < 4; i++) if (S->letters[i]) {
-        Stroke *s = S->letters[i];
+    for (int i = 0; i < S->sample->n; i++) {
+        Stroke *s = S->sample->strokes[i];
         BrushState b;
-        stroke_brush_begin(&b, s, a->dpi, NULL, 0, 0, 0);
+        stroke_brush_begin(&b, s, a->dpi, S->paper.px, S->pad.x, S->pad.y, S->paper.stride);
         for (int j = 0; j < s->n; j++) brush_add(&b, &a->screen, &s->pts[j]);
     }
-    if (S->block_present) canvas_fill(&a->screen, S->test_block, 0);
     a->screen.clip = saved;
 }
 
 static void pad_targets_seed(App *a) {
-    int margin = ui_px(30), gap = ui_px(20), half = S->pad.w / 2;
-    int y = S->pad.y + ui_px(150), available = S->pad.h - ui_px(190);
-    S->test_block = (Rect){S->pad.x + half + margin, y, S->pad.w - half - 2 * margin, available};
-    S->block_present = true;
-    float h = fminf((float)ui_px(200), (float)available);
-    float w = fminf(h * 0.55f, (half - 2.f * margin - 3.f * gap) / 4.f);
-    float x = S->pad.x + margin + (half - 2.f * margin - 4.f * w - 3.f * gap) / 2.f;
-    float top = y + (available - h) / 2.f;
-    // One continuous polyline per letter. Retracing the T and E keeps their joins connected,
-    // so a whole-stroke hit removes that letter and leaves the other three in place.
-    static const float points[3][7][2] = {
-        {{0,0},{1,0},{0.5f,0},{0.5f,1}},
-        {{1,0},{0,0},{0,1},{1,1},{0,1},{0,0.5f},{0.8f,0.5f}},
-        {{1,0},{0,0},{0,0.5f},{1,0.5f},{1,1},{0,1}}
-    };
-    static const int count[] = {4,7,6}, shape[] = {0,1,2,0};
-    ToolParams p = {.size_min_mm = ui_px(12) * 25.4f / a->dpi,
-                    .size_max_mm = ui_px(12) * 25.4f / a->dpi,
-                    .opacity_min = 1, .opacity_max = 1, .pressure_ceiling = 1,
-                    .pressure_gamma = 1, .tilt_max_deg = 90};
-    for (int i = 0; i < 4; i++) {
-        Stroke *s = S->letters[i] = stroke_new(TOOL_FINELINER, &p, (uint32_t)i);
-        if (!s) continue;
-        int k = shape[i];
-        for (int j = 0; j < count[k]; j++) {
-            PenSample q = {x + i * (w + gap) + points[k][j][0] * w,
-                           top + points[k][j][1] * h, 1, 0, 0, (uint32_t)j * 10u};
+    Page *p = NULL;
+    if (page_deserialize(grimoire_eraser_sample, grimoire_eraser_sample_len, &p) != 0 || !p || p->readonly) {
+        page_free(p);
+        return;
+    }
+    // The source was written at 300 dpi. Fit its ink, without its page's empty margins or paper.
+    Rect ink = RECT_EMPTY;
+    for (int i = 0; i < p->n; i++) {
+        Stroke *s = p->strokes[i];
+        float r = brush_max_radius(stroke_render_tool(s), &s->params, 300.f) + 2.f;
+        for (int j = 0; j < s->n; j++)
+            ink = rect_union(ink, rect_from_points(s->pts[j].x, s->pts[j].y, s->pts[j].x, s->pts[j].y, r));
+    }
+    if (rect_is_empty(ink)) { page_free(p); return; }
+    Rect area = {S->pad.x + ui_px(30), S->pad.y + ui_px(130), S->pad.w - ui_px(60), S->pad.h - ui_px(260)};
+    float scale = fminf((float)area.w / ink.w, (float)area.h / ink.h);
+    float x = area.x + (area.w - ink.w * scale) / 2.f;
+    float y = area.y + (area.h - ink.h * scale) / 2.f;
+    S->sample_box = (Rect){(int)lrintf(x), (int)lrintf(y), (int)lrintf(ink.w * scale), (int)lrintf(ink.h * scale)};
+    for (int i = 0; i < p->n; i++) {
+        Stroke *s = p->strokes[i];
+        int n = s->n;
+        s->params.size_min_mm *= scale * 300.f / a->dpi;
+        s->params.size_max_mm *= scale * 300.f / a->dpi;
+        s->n = 0; s->bbox = RECT_EMPTY;
+        for (int j = 0; j < n; j++) {
+            PenSample q = s->pts[j];
+            q.x = x + (q.x - ink.x) * scale;
+            q.y = y + (q.y - ink.y) * scale;
             stroke_append(s, &q, a->dpi);
         }
     }
+    S->sample = p;
     pad_targets_draw(a);
 }
 
@@ -245,7 +250,7 @@ static void draw_pad_bare(App *a) {
         canvas_hline(c, S->pad.x, S->pad.x + S->pad.w, (int)y, ui_px(2), 185);
     ui_frame(c, rect_inflate(S->pad, ui_px(4)), ui_px(14), 0, false, ui_px(4));
     // TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
-    // TRANSLATORS: on the eraser tab, refill TEST and the black block (174 px at 34 px).
+    // TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
     ui_button(c, clear_rect(a), ICON_NONE, S->tab == TOOL_ERASER ? _("Reset pad") : _("Clear"), BTN_PLAIN);
 }
 
@@ -260,7 +265,6 @@ static void draw_pad_frame(App *a) {
     S->swatch = RECT_EMPTY;
     if (S->tab == TOOL_ERASER) {
         pad_targets_seed(a);
-        S->swatch = S->test_block;
     } else if (pad_white(a) && S->paper.px) {
         S->swatch = (Rect){S->pad.x + ui_px(30), S->pad.y + ui_px(130), S->pad.w - ui_px(60), S->pad.h - ui_px(160)};
         canvas_fill(&a->screen, S->swatch, 0);
@@ -385,6 +389,7 @@ void pensettings_free(App *a) {
 }
 void pensettings_enter(App *a) {
     S->active = -1;
+    S->slider_dirty = false;
     S->drawing = false;
     S->erasing = false;
     S->whiting = false;
@@ -405,14 +410,30 @@ void pensettings_leave(App *a) {
     settings_save(&a->settings);
 }
 
-static void set_slider(App *a, int row, float x, RefreshMode m) {
+static void repaint_sliders(App *a, RefreshMode m) {
+    for (int i = 0; i < S->nsliders; i++) draw_slider_row(a, i);
+    draw_graph(a);
+    draw_readout(a);
+    Rect dirty = rect_union(rect_union(S->slider_rows[0], S->slider_rows[S->nsliders - 1]),
+                            rect_inflate(S->graph, ui_px(70)));
+    app_invalidate(a, rect_union(dirty, S->readout), m);
+    S->slider_dirty = false;
+}
+
+static void set_slider(App *a, int row, const InEvent *ev, bool first, RefreshMode m) {
     int n;
     const ParamInfo *pi = tool_param_table(&n);
     const ParamInfo *p = &pi[S->slider_param[row]];
     Slider sl = {.min = p->min, .max = p->max, .step = p->step};
     sl.value = *tool_param_ptr(&a->settings.tools[S->tab], p);
     ui_slider_layout(&sl, S->slider_rows[row]);
-    if (!ui_slider_set_from_x(&sl, x) && m == REFRESH_FAST) return;
+    bool changed;
+    if (first) {
+        changed = ui_slider_set_from_x(&sl, ev->x);
+        ui_slider_drag_begin(&sl, &S->slider_drag, ev->x, ev->t_ms);
+    } else changed = ui_slider_drag_to(&sl, &S->slider_drag, ev->x, ev->y, ev->t_ms);
+    S->slider_dirty |= changed;
+    if (!changed && !S->slider_dirty && m == REFRESH_FAST) return;
     float *v = tool_param_ptr(&a->settings.tools[S->tab], p);
     *v = sl.value;
     // Keep min <= max pairs sensible.
@@ -429,43 +450,22 @@ static void set_slider(App *a, int row, float x, RefreshMode m) {
         if (v == &tp->tilt_min_deg) tp->tilt_max_deg = fminf(90.f, tp->tilt_min_deg + 1.f);
         else tp->tilt_min_deg = fmaxf(0.f, tp->tilt_max_deg - 1.f);
     }
+    // Process every motion for fractional accuracy, but keep the existing display throttle.
+    if (!first && m == REFRESH_FAST && ev->t_ms - S->last_paint < 80u) return;
+    S->last_paint = ev->t_ms;
     // Paired sliders may have moved too: repaint every row (cheap) + graph + readout.
-    for (int i = 0; i < S->nsliders; i++) draw_slider_row(a, i);
-    draw_graph(a);
-    draw_readout(a);
-    Rect dirty = rect_union(rect_union(S->slider_rows[0], S->slider_rows[S->nsliders - 1]),
-                            rect_inflate(S->graph, ui_px(70)));
-    dirty = rect_union(dirty, S->readout);
-    app_invalidate(a, dirty, m);
-}
-
-// Segment clipping against the block, inflated by the eraser's reach. Unlike a bounding-box
-// overlap, this does not remove it when a diagonal sweep passes beside it.
-static bool pad_block_hit(Rect r, float x0, float y0, float x1, float y1, float radius) {
-    float dx = x1 - x0, dy = y1 - y0, lo = 0, hi = 1;
-    float p[] = {-dx, dx, -dy, dy};
-    float q[] = {x0 - r.x + radius, r.x + r.w + radius - x0,
-                 y0 - r.y + radius, r.y + r.h + radius - y0};
-    for (int i = 0; i < 4; i++) {
-        if (fabsf(p[i]) < 1e-6f) { if (q[i] < 0) return false; continue; }
-        float t = q[i] / p[i];
-        if (p[i] < 0) lo = fmaxf(lo, t); else hi = fminf(hi, t);
-        if (lo > hi) return false;
-    }
-    return true;
+    repaint_sliders(a, m);
 }
 
 static void pad_erase_targets(App *a, const PenSample *s, bool first) {
     float x0 = first ? s->x : S->wipe_x, y0 = first ? s->y : S->wipe_y, r, opacity;
     brush_dab(TOOL_ERASER, &a->settings.tools[TOOL_ERASER], s, a->dpi, &r, &opacity);
     bool changed = false;
-    for (int i = 0; i < 4; i++) if (S->letters[i] &&
-        stroke_hit_segment(S->letters[i], x0, y0, s->x, s->y, r, a->dpi)) {
-        stroke_free(S->letters[i]); S->letters[i] = NULL; changed = true;
-    }
-    if (S->block_present && pad_block_hit(S->test_block, x0, y0, s->x, s->y, r)) {
-        S->block_present = false; changed = true;
-    }
+    if (S->sample) for (int i = S->sample->n - 1; i >= 0; i--)
+        if (stroke_hit_segment(S->sample->strokes[i], x0, y0, s->x, s->y, r, a->dpi)) {
+            stroke_free(page_remove(S->sample, i));
+            changed = true;
+        }
     S->wipe_x = s->x; S->wipe_y = s->y;
     if (changed) {
         draw_pad_bare(a);
@@ -523,7 +523,7 @@ void pensettings_event(App *a, const InEvent *ev) {
         if (h->id == H_PAD) {
             if (!pen) return;  // fingers do not draw
             // The eraser (its tab, or the pen's eraser end): the precise one erases what it
-            // touches; the stroke eraser hits TEST's letters and the block on its tab.
+            // touches; the stroke eraser hits the practice strokes on its tab.
             bool eraser = ev->eraser || S->tab == TOOL_ERASER;
             S->erasing = eraser && a->settings.eraser_mode == 1 && S->paper.px;
             S->whiting = !eraser && pad_white(a) && S->paper.px;
@@ -540,7 +540,7 @@ void pensettings_event(App *a, const InEvent *ev) {
         if (h->id == H_SLIDER) {
             S->active = h->arg;
             S->last_paint = ev->t_ms;
-            set_slider(a, h->arg, ev->x, REFRESH_FAST);
+            set_slider(a, h->arg, ev, true, REFRESH_FAST);
             return;
         }
         S->pressed = *h;
@@ -564,11 +564,10 @@ void pensettings_event(App *a, const InEvent *ev) {
         return;
     }
     if (S->active >= 0) {
-        if (ph == 1 && ev->t_ms - S->last_paint > 80) {
-            S->last_paint = ev->t_ms;
-            set_slider(a, S->active, ev->x, REFRESH_FAST);
+        if (ph == 1) {
+            set_slider(a, S->active, ev, false, REFRESH_FAST);
         } else if (ph == 2) {
-            set_slider(a, S->active, ev->x, REFRESH_UI);
+            set_slider(a, S->active, ev, false, REFRESH_UI);
             S->active = -1;
             settings_save(&a->settings);
         }
@@ -616,7 +615,12 @@ void pensettings_event(App *a, const InEvent *ev) {
     }
 }
 
-void pensettings_tick(App *a, uint32_t now) {}
+void pensettings_tick(App *a, uint32_t now) {
+    if (S->active >= 0 && S->slider_dirty && now - S->last_paint >= 80u) {
+        S->last_paint = now;
+        repaint_sliders(a, REFRESH_FAST);
+    }
+}
 
 // Tests (app_probe's "penset." keys), while the pad keeps its copy of itself drawn bare (the precise
 // eraser on, or white ink): "pad_ink" 1 while ink shows on the pad (a pixel darker than the bare
@@ -626,14 +630,23 @@ void pensettings_tick(App *a, uint32_t now) {}
 // (or the precise eraser) went through the swatch (a pixel of it lighter than black), empty
 // without a swatch.
 int pensettings_probe(App *a, const char *key, char *out, size_t cap) {
-    if (S && !strcmp(key, "pad_letters")) {
-        int n = 0;
-        for (int i = 0; i < 4; i++) n += S->letters[i] != NULL;
-        snprintf(out, cap, "%d", n);
+    if (S && !strcmp(key, "slider_pending")) {
+        snprintf(out, cap, "%d", S->slider_dirty);
         return 0;
     }
-    if (S && !strcmp(key, "pad_block_rect")) {
-        snprintf(out, cap, "%d %d %d %d", S->test_block.x, S->test_block.y, S->test_block.w, S->test_block.h);
+    if (S && !strncmp(key, "param.", 6)) {
+        int n; const ParamInfo *pi = tool_param_table(&n);
+        for (int i = 0; i < n; i++) if (!strcmp(key + 6, pi[i].key)) {
+            snprintf(out, cap, "%.4f", *tool_param_ptr(&a->settings.tools[S->tab], &pi[i]));
+            return 0;
+        }
+    }
+    if (S && !strcmp(key, "pad_strokes")) {
+        snprintf(out, cap, "%d", S->sample ? S->sample->n : 0);
+        return 0;
+    }
+    if (S && !strcmp(key, "pad_sample_rect")) {
+        snprintf(out, cap, "%d %d %d %d", S->sample_box.x, S->sample_box.y, S->sample_box.w, S->sample_box.h);
         return 0;
     }
     if (S && !strcmp(key, "pad_white")) {

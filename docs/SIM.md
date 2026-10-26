@@ -313,8 +313,12 @@ taps Share at 1220 95, where the widened top bar puts it. Last, with node,
 tests/studio_copy_check.js tries the studio's Copy command on a page without a clipboard (plain
 http), where the browser copies and where it will not.
 
-The eraser practice targets have probes `penset.pad_letters` (remaining whole-letter targets)
-and `penset.pad_block_rect` (`x y w h`). Precise erasing is measured with the existing
-`pad_ink_near.X.Y`, `pad_white` and `pad_lighter` pixel probes. `z_8_eraser_targets.qs` checks
-letter hits, fast swept hits, block hits and misses, partial erasing, both reset controls and
-both orientations.
+The eraser practice pad has probes `penset.pad_strokes` (remaining original sample strokes)
+and `penset.pad_sample_rect` (`x y w h` of the centered sample). Precise erasing is measured with
+`penset.pad_ink`, `pad_ink_near.X.Y` and `pad_lighter`. `z_8_eraser_targets.qs` checks hits and
+misses, fast swept hits, partial erasing, both reset controls and both orientations. The sample
+is the maintainer's embedded handwriting; the runtime does not open a user notebook for it.
+
+`penset.param.PARAM` reads the current tab's value to four decimals; `penset.slider_pending`
+indicates a value waiting for the throttled repaint. `z_9_slider_fine.qs` uses pen and touch to
+hold, move away from the track, select 0.30, release without a jump and check the saved value.

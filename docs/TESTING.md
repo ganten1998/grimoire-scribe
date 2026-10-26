@@ -22,11 +22,23 @@ Empty PDF-mirror folder cleanup is checked through real Library Remove and Renam
 including failed saves, nonempty directories and symlinks. The core check also covers sanitized
 name collisions and directory aliases. Cleanup removes only an empty directory.
 
-The eraser test pad uses four sample letter strokes on the left and a solid block on the right.
-Whole-stroke erasing uses the editor's swept stroke-hit test for the letters. Precise erasing
-restores the bare ruled pad beneath either target. Reset pad refills the targets; Reset tool
-also restores whole-stroke mode. Automated checks cover empty areas, individual and swept hits,
-partial erasing, reset, and portrait/landscape layout. Device confirmation is pending.
+The maintainer confirmed that writing and Reset tool matched the new tuning on the first
+candidate. The first TEST-and-block pad passed both eraser modes and both reset controls.
+At the maintainer's request, that pad has now been replaced with their blackletter “erase me!”
+from page 4 of October-2026-02. The embedded copy contains only ink and page data, with no notebook
+identifier or title. The source notebook is never read or changed by the practice pad.
+
+The sample retains all 32 original strokes, their pressure and tilt, and is fitted and centered
+in portrait and landscape. Whole-stroke erasing uses the editor's swept stroke-hit test;
+Precise restores the bare ruled pad. Reset pad restores the sample; Reset tool also restores
+whole-stroke mode. Automated checks cover empty areas, partial and swept hits, precise erasing,
+reset and both orientations.
+
+Pen feel's fine slider gesture is checked with both pen and touch, including exact values,
+fractional motion, moving away and back without a jump, repaint throttling, release, bounds,
+a new gesture and saved values. Tool-picker checks cover the fixed eraser, pinned pens, the
+two-tap top pen button, the direct grid button and the remembered eraser fallback after restart.
+The handwritten pad, fine gesture and revised picker still need confirmation on the Kindle.
 
 ## The Kindles
 

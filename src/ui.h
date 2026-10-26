@@ -79,6 +79,11 @@ void ui_slider_layout(Slider *s, Rect row);
 void ui_slider_draw(Canvas *c, const Slider *s, const char *value_text);
 // Maps an x coordinate to a snapped value; returns true if the value changed.
 bool ui_slider_set_from_x(Slider *s, float x);
+// After a short hold, dragging farther above/below the track reduces sensitivity. The
+// fractional value is retained between events so slow motion still reaches every step.
+typedef struct { float x, value; uint32_t started; bool held; } SliderDrag;
+void ui_slider_drag_begin(const Slider *s, SliderDrag *drag, float x, uint32_t now);
+bool ui_slider_drag_to(Slider *s, SliderDrag *drag, float x, float y, uint32_t now);
 
 // A box in the theme's shape (rounded, or cut corners), same arguments as canvas_round_rect.
 void ui_frame(Canvas *c, Rect r, int radius, uint8_t gray, bool filled, int t);

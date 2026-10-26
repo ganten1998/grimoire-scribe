@@ -35,10 +35,10 @@ pen line 700 640 1500 760 40 1.0 1.0
 wait 300
 expect penset.pad_white is 1
 shot 03-white-charcoal
-# The eraser's tab has a fresh black block; its row picks how it erases
+# The eraser's tab has fresh handwritten ink; its row picks how it erases
 tap 1723 289
 wait 200
-expect penset.pad_white is 0
+expect penset.pad_white is
 shot 04-eraser-row-whole
 tap 1559 1440
 wait 200

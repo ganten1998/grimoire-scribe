@@ -34,6 +34,35 @@ TEST(press_logic) {
     CHECK(!press_is_tap(&p, (Rect){50, 50, 400, 100}));
 }
 
+TEST(slider_fine_drag) {
+    Slider s = {.min = 0, .max = 1, .step = 0.01f, .value = 0.28f};
+    ui_slider_layout(&s, (Rect){0,0,1000,100});
+    SliderDrag d;
+    float x = s.track.x + s.track.w * 0.28f, y = s.track.y + s.track.h * 0.5f;
+    ui_slider_drag_begin(&s, &d, x, 100);
+    CHECK(!ui_slider_drag_to(&s, &d, x, y + 160, 500));
+    CHECK_NEAR(s.value, 0.28f, 1e-6);  // moving away alone never jumps
+    x += s.track.w * 0.02f * 16.f;
+    CHECK(ui_slider_drag_to(&s, &d, x, y + 160, 510));
+    CHECK_NEAR(s.value, 0.30f, 1e-6);
+    for (int i = 0; i < 10; i++) {
+        x += s.track.w * 0.001f * 16.f;
+        ui_slider_drag_to(&s, &d, x, y + 160, 520u + (uint32_t)i);
+    }
+    CHECK_NEAR(s.value, 0.31f, 1e-6);  // fractional motion accumulates rather than rounding away
+    CHECK(!ui_slider_drag_to(&s, &d, x, y, 600));
+    CHECK_NEAR(s.value, 0.31f, 1e-6);  // returning to the track does not jump either
+    ui_slider_drag_to(&s, &d, x + 10000, y, 610);
+    CHECK_NEAR(s.value, 1.f, 1e-6);
+    ui_slider_drag_to(&s, &d, x + 10000 - s.track.w * 0.1f, y, 620);
+    CHECK_NEAR(s.value, 0.9f, 1e-6);
+    // A fresh press restores ordinary absolute tracking; holding is specific to each gesture.
+    ui_slider_drag_begin(&s, &d, x, 1000);
+    ui_slider_drag_to(&s, &d, s.track.x + s.track.w * 0.2f, y, 1100);
+    CHECK_NEAR(s.value, 0.2f, 1e-6);
+    CHECK(!d.held);
+}
+
 TEST(keyboard_typing) {
     Canvas c;
     canvas_init(&c, 1860, 2480);
@@ -178,6 +207,7 @@ int main(void) {
     if (font_init() != 0) return 1;
     RUN(pin_grid_and_hollow_icons);
     RUN(slider_snap);
+    RUN(slider_fine_drag);
     RUN(press_logic);
     RUN(keyboard_typing);
     RUN(sheets);

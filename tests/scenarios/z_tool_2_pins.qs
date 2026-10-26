@@ -251,8 +251,8 @@ pentap 1600 273
 wait 200
 pentap 300 1800
 wait 200
-# The marker's pin, the eraser, then the marker unpinned while the eraser is in use: the eraser
-# goes back to the tool button's pen
+# The marker's pin, the eraser, then two top taps select the highlighter and open its picker.
+# Unpinning the marker leaves the highlighter selected.
 pentap 1768 466
 wait 100
 expect editor.tool is marker
@@ -260,6 +260,10 @@ pentap 1768 790
 wait 100
 expect editor.tool is eraser
 expect editor.before_eraser is marker
+pentap 1768 358
+wait 200
+expect editor.tool is highlighter
+expect editor.modal is none
 pentap 1768 358
 wait 200
 pentap 1600 273
@@ -271,6 +275,9 @@ pentap 1600 273
 wait 200
 pentap 300 1800
 wait 200
+expect editor.tool is highlighter
+pentap 1768 682
+expect editor.tool is eraser
 pentap 1768 682
 wait 100
 expect editor.tool is highlighter
