@@ -34,7 +34,7 @@ UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c s
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
 APP_SRC  += src/pagesview.c
-GEN_SRC  := $(BUILD)/gen/fonts.c $(BUILD)/gen/l10n.c
+GEN_SRC  := $(BUILD)/gen/fonts.c $(BUILD)/gen/l10n.c $(BUILD)/gen/eraser_sample.c
 WEB_GEN  := $(BUILD)/gen/web.c
 KINDLE_PLAT := src/display_fbink.c src/input_evdev.c src/light_kindle.c
 SIM_PLAT    := src/sim_sdl.c
@@ -59,6 +59,11 @@ FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacqua
 $(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
 	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
+
+# The maintainer's handwritten eraser practice, kept as strokes rather than a flat picture.
+$(BUILD)/gen/eraser_sample.c: assets/eraser-sample.qpg
+	@mkdir -p $(BUILD)/gen
+	( echo '#include "erasersample.h"'; xxd -i -n grimoire_eraser_sample $< | sed 's/^unsigned /const unsigned /' ) > $@.tmp && mv $@.tmp $@
 
 # ---- generated: the languages ----
 # po/<lang>.po is a language's translations, for translators; po/<lang>.mo is it compiled by
@@ -422,14 +427,16 @@ kpm-check: kpm-package
 # the share server against a real HTTP client, the host exporter, the ARM build, and the zip
 # people install: what it holds, that two clean builds make the same bytes, and its launchers run
 # against stand-ins for the Kindle's tools.
-.PHONY: package-check launcher-check
+.PHONY: package-check launcher-check mirror-cleanup-check
+mirror-cleanup-check: $(BUILD)/host/grimoire-headless
+	BUILD=$(BUILD) python3 -m unittest discover -s tests -p 'test_mirror_cleanup.py' -v
 package-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 	python3 -m unittest discover -s tests -p 'test_archive.py' -v
 	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check dist
+check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check mirror-cleanup-check dist
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
 	@echo "CHECK PASSED"

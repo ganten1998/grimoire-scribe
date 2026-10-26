@@ -205,11 +205,9 @@ TEST(live_equals_rerender) {
 }
 
 // A straight stroke straight onto a white canvas; returns how many pixels it inked (< 128).
-static int ink_line(Canvas *c, ToolKind t, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
-    ToolParams prm;
-    tool_params_default(t, &prm);
+static int ink_line(Canvas *c, ToolKind t, const ToolParams *prm, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
     BrushState b;
-    brush_begin(&b, t, &prm, 99u, DPI);
+    brush_begin(&b, t, prm, 99u, DPI);
     for (int i = 0; i <= 80; i++) {
         float f = (float)i / 80.f;
         PenSample s = {lerpf(x0, x1, f), lerpf(y0, y1, f), p, tx, ty, (uint32_t)i * 5};
@@ -220,10 +218,10 @@ static int ink_line(Canvas *c, ToolKind t, float x0, float y0, float x1, float y
     return n;
 }
 
-static int ink_on_fresh(ToolKind t, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
+static int ink_on_fresh(ToolKind t, const ToolParams *prm, float x0, float y0, float x1, float y1, float p, float tx, float ty) {
     Canvas c;
     canvas_init(&c, 1000, 1000);
-    int n = ink_line(&c, t, x0, y0, x1, y1, p, tx, ty);
+    int n = ink_line(&c, t, prm, x0, y0, x1, y1, p, tx, ty);
     canvas_free(&c);
     return n;
 }
@@ -234,29 +232,34 @@ static int ink_on_fresh(ToolKind t, float x0, float y0, float x1, float y1, floa
 TEST(calligraphy_nib) {
     ToolParams p;
     tool_params_default(TOOL_CALLIGRAPHY, &p);
+    // Test the fully-following nib geometry independently of the chosen default tilt range.
+    p.tilt_min_deg = 10; p.tilt_max_deg = 25;
     CHECK_NEAR(brush_nib_angle(&p, 0, 0), 45.f, 0.01);
     CHECK_NEAR(brush_nib_angle(&p, 40, 46), 39.02f, 0.05);   // edge rises right
     CHECK_NEAR(brush_nib_angle(&p, -40, 46), 140.98f, 0.05); // edge falls right
     CHECK_NEAR(brush_nib_angle(&p, 3, 3), 45.f, 0.01);       // too upright to trust the lean
-    int down_r = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, 40, 46);
-    int up_r = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, 40, 46);
+    int down_r = ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 300, 700, 700, 0.7f, 40, 46);
+    int up_r = ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 700, 700, 300, 0.7f, 40, 46);
     CHECK(down_r > 4 * up_r);
-    int down_l = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, -40, 46);
-    int up_l = ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, -40, 46);
+    int down_l = ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 300, 700, 700, 0.7f, -40, 46);
+    int up_l = ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 700, 700, 300, 0.7f, -40, 46);
     CHECK(up_l > 4 * down_l);
     CHECK(abs(down_r - up_l) < down_r / 10);  // the mirror image, near enough
-    CHECK(ink_on_fresh(TOOL_CALLIGRAPHY, 300, 300, 700, 700, 0.7f, 0, 0) > 4 * ink_on_fresh(TOOL_CALLIGRAPHY, 300, 700, 700, 300, 0.7f, 0, 0));
+    CHECK(ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 300, 700, 700, 0.7f, 0, 0) > 4 * ink_on_fresh(TOOL_CALLIGRAPHY, &p, 300, 700, 700, 300, 0.7f, 0, 0));
+    ToolParams fountain; tool_params_default(TOOL_FOUNTAIN, &fountain);
     // The fountain pen keeps its fixed 40 degree italic nib whatever the lean.
-    CHECK(ink_on_fresh(TOOL_FOUNTAIN, 300, 300, 700, 700, 0.7f, 40, 46) ==
-          ink_on_fresh(TOOL_FOUNTAIN, 300, 300, 700, 700, 0.7f, -40, 46));
+    CHECK(ink_on_fresh(TOOL_FOUNTAIN, &fountain, 300, 300, 700, 700, 0.7f, 40, 46) ==
+          ink_on_fresh(TOOL_FOUNTAIN, &fountain, 300, 300, 700, 700, 0.7f, -40, 46));
 }
 
 // Charcoal: paper shows through even when pressed, harder pressure is darker, and laid on its
 // side it is broader and lighter.
 TEST(charcoal_texture) {
+    // A fixed wide shading profile, so this renderer check does not depend on later tuning.
+    const ToolParams p = {0.80f, 2.40f, 0.30f, 1.00f, 0.03f, 0.85f, 1.00f, 45.f, 75.f, 2.0f, 0.35f, 0.85f, 0.15f};
     Canvas c;
     canvas_init(&c, 1000, 400);
-    ink_line(&c, TOOL_CHARCOAL, 100, 200, 900, 200, 0.6f, 0, 0);
+    ink_line(&c, TOOL_CHARCOAL, &p, 100, 200, 900, 200, 0.6f, 0, 0);
     int light = 0, total = 0;
     for (int y = 195; y <= 205; y++)
         for (int x = 300; x < 700; x++, total++) light += c.px[y * c.w + x] > 200;
@@ -266,7 +269,7 @@ TEST(charcoal_texture) {
     long soft = 0, hard = 0;
     for (int pass = 0; pass < 2; pass++) {
         canvas_init(&c, 1000, 400);
-        ink_line(&c, TOOL_CHARCOAL, 100, 200, 900, 200, pass ? 1.f : 0.35f, 0, 0);
+        ink_line(&c, TOOL_CHARCOAL, &p, 100, 200, 900, 200, pass ? 1.f : 0.35f, 0, 0);
         long sum = 0;
         for (int y = 190; y <= 210; y++)
             for (int x = 300; x < 700; x++) sum += 255 - c.px[y * c.w + x];
@@ -275,10 +278,10 @@ TEST(charcoal_texture) {
         canvas_free(&c);
     }
     CHECK(hard > soft * 3 / 2);
-    int upright = ink_on_fresh(TOOL_CHARCOAL, 100, 500, 900, 500, 0.8f, 0, 0);
+    int upright = ink_on_fresh(TOOL_CHARCOAL, &p, 100, 500, 900, 500, 0.8f, 0, 0);
     Canvas side;
     canvas_init(&side, 1000, 1000);
-    ink_line(&side, TOOL_CHARCOAL, 100, 500, 900, 500, 0.8f, 75, 0);
+    ink_line(&side, TOOL_CHARCOAL, &p, 100, 500, 900, 500, 0.8f, 75, 0);
     int rows = 0;  // rows touched by the side stroke vs the upright one
     for (int y = 0; y < side.h; y++) {
         int any = 0;
@@ -481,7 +484,7 @@ TEST(highlighter_vertical_tip) {
             y0 = y < y0 ? y : y0; y1 = y > y1 ? y : y1;
         }
     CHECK(y1 - y0 > 6 * (x1 - x0) && x1 > x0);
-    CHECK(a.px[76 * a.stride + 100] < 255 && a.px[100 * a.stride + 76] == 255);
+    CHECK(a.px[88 * a.stride + 100] < 255 && a.px[100 * a.stride + 88] == 255);
     q.tilt_x = 60; q.tilt_y = -20;
     brush_begin(&brush, TOOL_HIGHLIGHTER, &p, 1, DPI);
     brush_add(&brush, &b, &q);

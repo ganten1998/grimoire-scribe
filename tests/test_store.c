@@ -363,6 +363,7 @@ TEST(pen_defaults_from_device) {
     Settings chosen, fresh, saved;
     CHECK(settings_load(&chosen) == 0);
     settings_default(&fresh);
+    CHECK(fresh.eraser_mode == 0);  // whole strokes remain the fresh-install default
     int n;
     const ParamInfo *pi = tool_param_table(&n);
     for (int t = 0; t < TOOL_COUNT; t++) {
@@ -551,6 +552,54 @@ TEST(safe_names) {
     CHECK(!strcmp(out, "Untitled"));
 }
 
+TEST(empty_mirror_folder_cleanup) {
+    char mirror[700], path[850], outside[700], link[850];
+    snprintf(mirror, sizeof mirror, "%s/prune-mirror", root);
+    CHECK(mkdir_p(mirror) == 0);
+    snprintf(path, sizeof path, "%s/Gone", mirror);
+    CHECK(mkdir_p(path) == 0 && store_add_folder("Gone") == 0);
+    CHECK(export_mirror_prune_folder("Gone", mirror) == 0 && access(path, F_OK) == 0);
+    CHECK(store_remove_folder("Gone") == 0);
+    CHECK(export_mirror_prune_folder("Gone", mirror) == 1 && access(path, F_OK) != 0);
+    CHECK(export_mirror_prune_folder("", mirror) == 0 && access(mirror, F_OK) == 0);
+    // Different logical names can share the same sanitized directory.
+    snprintf(path, sizeof path, "%s/Shared_Name", mirror);
+    CHECK(mkdir_p(path) == 0 && store_add_folder("Shared:Name") == 0);
+    CHECK(export_mirror_prune_folder("Shared/Name", mirror) == 0 && access(path, F_OK) == 0);
+    CHECK(store_remove_folder("Shared:Name") == 0);
+    CHECK(export_mirror_prune_folder("Shared/Name", mirror) == 1);
+    // Files and KOReader's nested sidecars are never removed recursively.
+    snprintf(path, sizeof path, "%s/Kept/book.sdr", mirror);
+    CHECK(mkdir_p(path) == 0);
+    CHECK(export_mirror_prune_folder("Kept", mirror) == 0 && access(path, F_OK) == 0);
+    snprintf(path, sizeof path, "%s/Kept/notes.txt", mirror);
+    CHECK(write_file_atomic(path, "keep", 4) == 0);
+    CHECK(export_mirror_prune_folder("Kept", mirror) == 0 && access(path, F_OK) == 0);
+    // No following either a candidate directory symlink or a symlink mirror root.
+    snprintf(outside, sizeof outside, "%s/outside", root);
+    CHECK(mkdir_p(outside) == 0);
+    snprintf(link, sizeof link, "%s/Link", mirror);
+    char *absolute_outside = realpath(outside, NULL); CHECK(absolute_outside != NULL);
+    CHECK(absolute_outside && symlink(absolute_outside, link) == 0); free(absolute_outside);
+    CHECK(export_mirror_prune_folder("Link", mirror) == 0 && access(outside, F_OK) == 0);
+    struct stat st; CHECK(lstat(link, &st) == 0 && S_ISLNK(st.st_mode));
+    snprintf(path, sizeof path, "%s/Empty", mirror); CHECK(mkdir_p(path) == 0);
+    snprintf(link, sizeof link, "%s/mirror-link", root);
+    char *absolute_mirror = realpath(mirror, NULL); CHECK(absolute_mirror != NULL);
+    CHECK(absolute_mirror && symlink(absolute_mirror, link) == 0); free(absolute_mirror);
+    CHECK(export_mirror_prune_folder("Empty", link) == -1 && access(path, F_OK) == 0);
+    CHECK(export_mirror_prune_folder("../outside", mirror) == 0 && access(outside, F_OK) == 0);
+    // A remaining logical folder may refer to the candidate through an alias.
+    snprintf(path, sizeof path, "%s/AliasTarget", mirror); CHECK(mkdir_p(path) == 0);
+    char *absolute_target = realpath(path, NULL); CHECK(absolute_target != NULL);
+    snprintf(link, sizeof link, "%s/Alias", mirror);
+    CHECK(absolute_target && symlink(absolute_target, link) == 0); free(absolute_target);
+    CHECK(store_add_folder("Alias") == 0);
+    CHECK(export_mirror_prune_folder("AliasTarget", mirror) == 0 && access(path, F_OK) == 0);
+    CHECK(store_remove_folder("Alias") == 0);
+    CHECK(export_mirror_prune_folder("AliasTarget", mirror) == 1);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "%s/store-%d", tl_tmp(), (int)getpid());
     char cmd[700];
@@ -569,6 +618,7 @@ int main(void) {
     RUN(panel_tools);
     RUN(before_eraser);
     RUN(safe_names);
+    RUN(empty_mirror_folder_cleanup);
     RUN(damage_is_kept);
     RUN(folder_named_like_a_comment);
     RUN(folders_sort_with_accents);

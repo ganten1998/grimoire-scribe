@@ -59,13 +59,17 @@ side off
 wait 500
 expect editor.strokes is 3
 expect editor.stroke_look is white pencil
-# The marker unpinned while the eraser is in use: the button draws with the tool button's pencil,
-# and a tap on the eraser goes back to it
+# From the eraser, the first top tap selects its pencil; the next opens the picker.
+# Unpin the marker, then use the eraser: the side button draws with that pencil.
 pentap 1768 466
 wait 100
 pentap 1768 574
 wait 100
 expect editor.before_eraser is marker
+pentap 1768 358
+wait 200
+expect editor.tool is pencil
+expect editor.modal is none
 pentap 1768 358
 wait 200
 pentap 1600 273
@@ -77,7 +81,10 @@ pentap 1600 273
 wait 200
 pentap 300 1800
 wait 200
+expect editor.tool is pencil
+pentap 1768 466
 expect editor.tool is eraser
+expect editor.before_eraser is pencil
 side on
 pen line 600 900 600 1100 30 0.9 0.9
 side off

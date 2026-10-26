@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-25 21:56-0500\n"
+"POT-Creation-Date: 2026-10-26 00:34-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1446,6 +1446,11 @@ msgid "Nib fully follows at"
 msgstr "Gira del todo desde"
 
 #. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
+#. TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
+#: src/pensettings.c
+msgid "Reset pad"
+msgstr "Restaurar"
+
 #: src/pensettings.c
 msgid "Clear"
 msgstr "Limpiar"
@@ -1463,10 +1468,6 @@ msgid "Pen feel: %s"
 msgstr "Sensibilidad: %s"
 
 #. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
-#: src/pensettings.c
-msgid "test pad (the eraser clears it)"
-msgstr "zona de prueba (el borrador la limpia)"
-
 #: src/pensettings.c
 msgid "test pad"
 msgstr "zona de prueba"
@@ -2130,6 +2131,9 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "test pad (the eraser clears it)"
+#~ msgstr "zona de prueba (el borrador la limpia)"
 
 #, c-format
 #~ msgid "%d%%   tap to reset"

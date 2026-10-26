@@ -263,6 +263,8 @@ static float slider_t(const Slider *s) {
     return s->max > s->min ? clampf((s->value - s->min) / (s->max - s->min), 0.f, 1.f) : 0.f;
 }
 
+static int slider_knob_radius(void) { return ui_px(gothic() ? 32 : 26); }
+
 void ui_slider_draw(Canvas *c, const Slider *s, const char *value_text) {
     canvas_fill(c, s->r, 255);
     int label_w = s->r.w * 42 / 100;
@@ -285,25 +287,52 @@ void ui_slider_draw(Canvas *c, const Slider *s, const char *value_text) {
         canvas_hline(c, tr.x, tr.x + tr.w, tr.y, ui_px(2), 0);
         canvas_hline(c, tr.x, tr.x + tr.w, tr.y + tr.h - ui_px(2), ui_px(2), 0);
         canvas_fill(c, (Rect){tr.x, tr.y, fx - tr.x, tr.h}, 0);
-        canvas_lozenge(c, (float)fx, cy, (float)ui_px(32), 0);
+        canvas_lozenge(c, (float)fx, cy, (float)slider_knob_radius(), 0);
         canvas_lozenge(c, (float)fx, cy, (float)ui_px(20), 255);
         canvas_lozenge(c, (float)fx, cy, (float)ui_px(10), 0);
         return;
     }
     canvas_round_rect(c, tr, tr.h / 2, 190, true, 0);
     canvas_round_rect(c, (Rect){tr.x, tr.y, fx - tr.x + tr.h / 2, tr.h}, tr.h / 2, 0, true, 0);
-    canvas_disc_aa(c, (float)fx, cy, (float)ui_px(26), 0, 1.f);
+    canvas_disc_aa(c, (float)fx, cy, (float)slider_knob_radius(), 0, 1.f);
     canvas_disc_aa(c, (float)fx, cy, (float)ui_px(12), 255, 1.f);
 }
 
-bool ui_slider_set_from_x(Slider *s, float x) {
-    float t = s->track.w > 0 ? clampf((x - (float)s->track.x) / (float)s->track.w, 0.f, 1.f) : 0.f;
-    float v = s->min + t * (s->max - s->min);
+static bool slider_set_value(Slider *s, float v) {
     if (s->step > 0.f) v = s->min + roundf((v - s->min) / s->step) * s->step;
     v = clampf(v, s->min, s->max);
     if (fabsf(v - s->value) < 1e-6f) return false;
     s->value = v;
     return true;
+}
+
+bool ui_slider_set_from_x(Slider *s, float x) {
+    float t = s->track.w > 0 ? clampf((x - (float)s->track.x) / (float)s->track.w, 0.f, 1.f) : 0.f;
+    return slider_set_value(s, s->min + t * (s->max - s->min));
+}
+
+void ui_slider_drag_begin(const Slider *s, SliderDrag *d, float x, uint32_t now) {
+    *d = (SliderDrag){.x = x, .value = s->value, .started = now};
+}
+
+bool ui_slider_drag_to(Slider *s, SliderDrag *d, float x, float y, uint32_t now) {
+    if (now - d->started >= 350u) d->held = true;
+    float distance = fabsf(y - (s->track.y + s->track.h * 0.5f));
+    bool changed;
+    // In a band as tall as the visible knob, catch up to the pointer and track it directly.
+    // Leaving that band after a hold resumes fine motion from the current value.
+    if (!d->held || distance <= slider_knob_radius()) {
+        changed = ui_slider_set_from_x(s, x);
+        d->value = s->value;
+    } else {
+        float gain = fmaxf(0.01f, powf(0.25f, distance / (float)ui_px(80)));
+        if (s->track.w > 0)
+            d->value += (x - d->x) * (s->max - s->min) / s->track.w * gain;
+        d->value = clampf(d->value, s->min, s->max);
+        changed = slider_set_value(s, d->value);
+    }
+    d->x = x;
+    return changed;
 }
 
 Rect ui_sheet(Canvas *c, Rect card, const char *title) {

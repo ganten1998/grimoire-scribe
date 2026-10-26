@@ -1596,10 +1596,10 @@ static void tools_tap(App *a) {
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
     case P_TOOLPICK: {
-        // With a pinned pen in use, the tool button's own pen is one tap away, as a pin's is; a tap
+        // From any other tool, including the fixed eraser, the tool button's pen is one tap away; a tap
         // while that pen is in use opens the picker. So does every tap on the grid (its pen pinned).
         ToolKind cur = a->settings.current_tool, dt = button_tool(a);
-        if (cur != dt && settings_pinned(&a->settings, cur) && !settings_pinned(&a->settings, dt)) {
+        if (cur != dt && !settings_pinned(&a->settings, dt)) {
             a->settings.current_tool = dt;
             settings_save(&a->settings);
             repaint_panel(a, REFRESH_UI);

@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Release 1.2.0.** Grimoire is in daily use on
+> **Pre-release 2.0.0-beta.3.** Grimoire is in daily use on
 > one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -133,8 +133,17 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   whole stroke) or **Precise** (it takes away only what it touches). Tapping the eraser again goes
   back to the pen you used before it. Library > Settings' pen-button row can also make holding the
   pen button draw white.
+  Its Pen feel test pad starts with handwritten “erase me!” ink. **Reset pad** restores it;
+  **Reset tool** restores the tuned widths and Whole strokes mode.
+- **Fine pen adjustments**: in Pen feel, hold a slider briefly, then move above or below its
+  track while keeping contact. The farther away you move, the smaller each horizontal
+  adjustment becomes. Move back within a knob-height band around the track for the knob to
+  catch up and follow directly again. Release to keep the value; the next press starts normally.
+
 - **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the panel (up to four),
-  then Done. Each gets its own button under the pen button.
+  then Done. Each gets its own button under the pen button. From another tool, including the
+  eraser, tap the top pen button once to select its pen and again to open the picker. If the
+  button shows a grid, it opens the picker directly.
 - **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
   closed (upright, 3:4, 1860 x 2480 is best, light lines on white work best on e-ink). In a
   notebook, Paper > **More papers...** shows them; New notebook has the same tile. Each notebook

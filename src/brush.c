@@ -61,42 +61,41 @@ const ParamInfo *tool_param_table(int *count) {
 void tool_params_default(ToolKind t, ToolParams *o) {
     switch (t) {
     case TOOL_MECH_PENCIL:
-        *o = (ToolParams){0.30f, 0.30f, 0.50f, 0.95f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.50f, 0.f};
+        *o = (ToolParams){0.3000f, 0.3000f, 0.5000f, 0.9500f, 0.0000f, 1.0000f, 1.5000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.5000f, 0.0000f};
         break;
     case TOOL_BALLPOINT:
-        *o = (ToolParams){0.30f, 0.48f, 0.85f, 1.00f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.f, 1.00f};
+        *o = (ToolParams){0.3000f, 0.4800f, 0.8500f, 1.0000f, 0.0000f, 1.0000f, 1.5000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 1.0000f};
         break;
     case TOOL_ERASER:
-        *o = (ToolParams){2.5f, 7.0f, 1.f, 1.f, 0.0f, 0.60f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.f};
+        *o = (ToolParams){2.5000f, 7.0000f, 1.0000f, 1.0000f, 0.0000f, 0.6000f, 1.0000f, 30.0000f, 75.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_FOUNTAIN:
-        // Nib width 0.24..0.60 mm with pressure; the angled nib makes it calligraphic.
-        *o = (ToolParams){0.24f, 0.60f, 0.90f, 1.00f, 0.02f, 1.00f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
+        // Nib width 0.28..0.80 mm with pressure; the angled nib makes it calligraphic.
+        *o = (ToolParams){0.2800f, 0.8000f, 1.0000f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_FINELINER:
-        *o = (ToolParams){0.28f, 0.34f, 1.00f, 1.00f, 0.01f, 0.30f, 1.00f, 30.f, 75.f, 0.f, 0.f, 0.f, 0.30f};
+        *o = (ToolParams){0.2800f, 0.2800f, 1.0000f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 1.0000f};
         break;
     case TOOL_MARKER:
-        *o = (ToolParams){1.50f, 2.00f, 0.92f, 1.00f, 0.01f, 0.40f, 0.70f, 30.f, 75.f, 0.3f, 0.f, 0.04f, 0.30f};
+        *o = (ToolParams){1.0000f, 1.0000f, 0.9100f, 1.0000f, 0.0100f, 1.0000f, 1.0000f, 0.0000f, 75.0000f, 1.5000f, 0.0000f, 0.1500f, 0.5000f};
         break;
     case TOOL_CHARCOAL:
-        // 0.8..2.4 mm, strongly pressure-led; only a pen laid low (past normal writing tilt)
-        // turns it on its side: much broader and lighter. Heavy grain.
-        *o = (ToolParams){0.80f, 2.40f, 0.30f, 1.00f, 0.03f, 0.85f, 1.00f, 45.f, 75.f, 2.0f, 0.35f, 0.85f, 0.15f};
+        // 0.30..0.55 mm, pressure-led with broad shading as the pen leans.
+        *o = (ToolParams){0.3000f, 0.5500f, 0.7500f, 1.0000f, 0.0000f, 1.0000f, 0.5000f, 25.0000f, 90.0000f, 4.0000f, 0.3500f, 0.6500f, 0.0000f};
         break;
     case TOOL_CALLIGRAPHY:
-        // A broad, flat nib with a constant 1.86 mm width. The tilt
+        // A broad, flat nib with a constant 1.75 mm width. The tilt
         // range here says when the nib starts to follow the pen's lean (see brush_nib_angle).
-        *o = (ToolParams){1.86f, 1.86f, 0.75f, 1.00f, 0.00f, 1.00f, 1.60f, 10.f, 25.f, 0.f, 0.f, 0.f, 1.00f};
+        *o = (ToolParams){1.7500f, 1.7500f, 0.7500f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.5000f};
         break;
     case TOOL_HIGHLIGHTER:
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
-        *o = (ToolParams){5.50f, 5.50f, 0.25f, 0.50f, 0.00f, 1.00f, 1.50f, 0.f, 90.f, 0.f, 0.f, 0.f, 0.f};
+        *o = (ToolParams){3.0000f, 3.0000f, 0.5000f, 0.7500f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_PENCIL:
     default:
         // 0.12..0.32 mm: a sharp pencil; tilt still shades wider.
-        *o = (ToolParams){0.12f, 0.32f, 0.75f, 0.95f, 0.00f, 0.85f, 0.40f, 15.f, 60.f, 1.8f, 0.45f, 1.00f, 0.00f};
+        *o = (ToolParams){0.1200f, 0.3200f, 0.8500f, 0.9500f, 0.0000f, 1.0000f, 1.0000f, 25.0000f, 55.0000f, 4.0000f, 0.7500f, 0.7500f, 0.0000f};
         break;
     }
 }

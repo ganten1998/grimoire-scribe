@@ -1,7 +1,7 @@
 # Pen feel with white ink on (white=1, as the tool picker's ink row sets it) and its Eraser row.
 # A drawing tool's tab has a black swatch on its test pad, and the pen draws white there with the
 # tool's look (penset.pad_white: white went through the swatch); Clear lays it again. The eraser's
-# tab has no swatch, and its row, Whole strokes | Precise, sets settings.eraser_mode: with Precise
+# tab has TEST and a block, and its row, Whole strokes | Precise, sets settings.eraser_mode: with Precise
 # the pen's eraser end on the pad takes away only what it touches (of the swatch here, the pad's
 # own lines kept), with Whole strokes it clears the pad (and draws nothing).
 # settings: white=1
@@ -35,7 +35,7 @@ pen line 700 640 1500 760 40 1.0 1.0
 wait 300
 expect penset.pad_white is 1
 shot 03-white-charcoal
-# The eraser's tab: no swatch; its row picks how it erases
+# The eraser's tab has fresh handwritten ink; its row picks how it erases
 tap 1723 289
 wait 200
 expect penset.pad_white is

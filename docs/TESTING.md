@@ -11,6 +11,39 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.3
+
+A fresh SSH snapshot captured all 130 current pen settings from the Kindle on 2026-10-25.
+The pen-only fixture checks new-install defaults and Reset tool independently of the compiled
+values; saved version-2 profiles keep their own values. The settings/page versions and stored
+stroke parameters are unchanged. Whole-stroke erasing remains the default.
+
+Empty PDF-mirror folder cleanup is checked through real Library Remove and Rename actions,
+including failed saves, nonempty directories and symlinks. The core check also covers sanitized
+name collisions and directory aliases. Cleanup removes only an empty directory.
+
+The maintainer confirmed that writing and Reset tool matched the new tuning on the first
+candidate. The first TEST-and-block pad passed both eraser modes and both reset controls.
+At the maintainer's request, that pad has now been replaced with their blackletter “erase me!”
+from page 4 of October-2026-02. The embedded copy contains only ink and page data, with no notebook
+identifier or title. The source notebook is never read or changed by the practice pad.
+
+The sample retains all 32 original strokes, their pressure and tilt, and is fitted and centered
+in portrait and landscape. Whole-stroke erasing uses the editor's swept stroke-hit test;
+Precise restores the bare ruled pad. Reset pad restores the sample; Reset tool also restores
+whole-stroke mode. Automated checks cover empty areas, partial and swept hits, precise erasing,
+reset and both orientations.
+
+Pen feel's fine slider gesture is checked with both pen and touch, including exact values,
+fractional motion, moving away without a jump, catch-up and direct tracking within the knob
+band, repaint throttling, release, bounds,
+a new gesture and saved values. Tool-picker checks cover the fixed eraser, pinned pens, the
+two-tap top pen button, the direct grid button and the remembered eraser fallback after restart.
+On revision `4d7b593`, the maintainer confirmed the centered handwriting, both eraser modes,
+Reset pad and both two-tap picker paths. Fine control worked too; the maintainer then requested
+a knob-height band that catches up and tracks the pointer directly, with fine control outside
+it. That refinement still needs confirmation on the Kindle.
+
 ## The Kindles
 
 | Date | Kindle | Firmware | KOReader | KPM | Build |
