@@ -19,6 +19,7 @@
 #include "bgjob.h"  // bg_busy, for waitbg
 #include "calib_fit.h"
 #include "display.h"
+#include "hidkeys.h"
 #include "input.h"
 #include "power.h"
 #include "stb_image_write.h"
@@ -74,6 +75,15 @@ void input_set_calib(const InputCalib *pen, const InputCalib *touch) {
 const InputCaps *input_caps(void) { return &g_caps; }
 static bool g_shortcuts_enabled;
 void input_shortcuts_enable(bool enabled) { g_shortcuts_enabled = enabled; }
+// The script's keyboards and controllers ("hid attach", "hid detach"): connected whether or not
+// shortcuts are on, but watched, listed and announced only while they are, as on the Kindle.
+static InputHid g_hids[4];
+static int g_nhids;
+int input_hids(InputHid *out, int cap) {
+    int n = 0;
+    for (int i = 0; g_shortcuts_enabled && i < g_nhids && n < cap; i++) out[n++] = g_hids[i];
+    return n;
+}
 void input_watch_fd(int fd) { g_watch_fd = fd; }
 // Panel <-> screen for a Kindle turned g_rot quarter turns clockwise, as in input_evdev.c.
 // display_set_orientation has already swapped g_w and g_h when this is set.
@@ -571,6 +581,32 @@ static void script_step(void) {
             int code = 0, mods = 0, pad = 0;
             sscanf(s, "%*s %d %d %d", &code, &mods, &pad);
             q_push((InEvent){.type = IN_KEY, .value = code, .key_mods = (unsigned)mods, .gamepad = pad != 0, .t_ms = now_ms()});
+        } else if (!strcmp(a, "hid")) {
+            // hid attach pad|key|held NAME, hid detach NAME: a controller (held: one another app
+            // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it
+            char kind[16] = "", raw[256] = "";
+            bool attach = !strcmp(b, "attach");
+            if (attach) sscanf(s, "%*s %*s %15s %255[^\n]", kind, raw);
+            else sscanf(s, "%*s %*s %255[^\n]", raw);
+            InEvent e = {.type = attach ? IN_HID_ATTACH : IN_HID_DETACH, .t_ms = now_ms()};
+            hidkeys_name(e.hid_name, sizeof e.hid_name, raw);
+            int i = 0;
+            while (i < g_nhids && strcmp(g_hids[i].name, e.hid_name)) i++;
+            if (attach && g_nhids < 4 && (!strcmp(kind, "pad") || !strcmp(kind, "key") || !strcmp(kind, "held"))) {
+                InputHid h = {.gamepad = strcmp(kind, "key") != 0, .held = !strcmp(kind, "held")};
+                strlcpy_q(h.name, e.hid_name, sizeof h.name);
+                g_hids[g_nhids++] = h;
+                e.gamepad = h.gamepad;
+                e.value = h.held;
+            } else if (!attach && !strcmp(b, "detach") && i < g_nhids) {
+                e.gamepad = g_hids[i].gamepad;
+                g_hids[i] = g_hids[--g_nhids];
+            } else {
+                fprintf(stderr, "script: bad hid line: %s", s);
+                expect_unknown_line();
+                continue;
+            }
+            if (g_shortcuts_enabled) q_push(e);
         } else if (!strcmp(a, "side")) {
             g_side = !strcmp(b, "on");
             InEvent e = make_ev(IN_PEN_BUTTON, g_px, g_py, true);

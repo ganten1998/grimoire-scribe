@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 09:04-0500\n"
+"POT-Creation-Date: 2026-10-26 09:50-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -103,7 +103,23 @@ msgstr ""
 "No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir "
 "hace falta su lápiz."
 
-#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen).
+#. TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
+#. or page turner comes or goes. "Held by another app": another program (a button mapper)
+#. takes its presses, so Grimoire gets none.
+#: src/app.c
+msgid "Controller disconnected"
+msgstr "Mando desconectado"
+
+#: src/app.c
+msgid "Controller held by another app"
+msgstr "Otra aplicación retiene el mando"
+
+#: src/app.c
+msgid "Controller connected"
+msgstr "Mando conectado"
+
+#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
+#. or the server's port is taken).
 #: src/app.c
 msgid "Could not start Live view"
 msgstr "No se pudo iniciar la vista en directo"
@@ -593,7 +609,8 @@ msgid "Pin to the panel (up to %d)"
 msgstr "Fijar en el panel (hasta %d)"
 
 #. TRANSLATORS: the title of the editor's tool picker.
-#: src/editor.c
+#. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order.
+#: src/editor.c src/library.c
 msgid "Tools"
 msgstr "Herramientas"
 
@@ -969,7 +986,9 @@ msgstr "Este navegador no puede mostrar la vista en directo."
 #. TRANSLATORS: Live view's page while it is off on the Kindle.
 #: src/httpd.c
 msgid "Live view is off. On the Kindle, open Share and tap Live view."
-msgstr "La vista en directo está apagada. En el Kindle, abre Compartir y toca Vista en directo."
+msgstr ""
+"La vista en directo está apagada. En el Kindle, abre Compartir y toca Vista "
+"en directo."
 
 #. TRANSLATORS: Live view's code form in the browser: the six digits the Kindle shows.
 #: src/httpd.c
@@ -1139,6 +1158,109 @@ msgstr "Biblioteca (sin carpeta)"
 msgid "Create"
 msgstr "Crear"
 
+#. TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by the
+#. controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the names.
+#: src/library.c
+msgid "Undo"
+msgstr "Deshacer"
+
+#: src/library.c
+msgid "Redo"
+msgstr "Rehacer"
+
+#: src/library.c
+msgid "Eraser"
+msgstr "Borrador"
+
+#: src/library.c
+msgid "White ink"
+msgstr "Tinta blanca"
+
+#. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+#: src/library.c
+msgid "Pages"
+msgstr "Páginas"
+
+#: src/library.c
+msgid "Press a button for Undo"
+msgstr "Pulsa un botón para Deshacer"
+
+#: src/library.c
+msgid "Press a button for Redo"
+msgstr "Pulsa un botón para Rehacer"
+
+#: src/library.c
+msgid "Press a button for the eraser"
+msgstr "Pulsa un botón para el borrador"
+
+#: src/library.c
+msgid "Press a button for white ink"
+msgstr "Pulsa un botón para la tinta blanca"
+
+#: src/library.c
+msgid "Press a button for the previous page"
+msgstr "Pulsa un botón para la página anterior"
+
+#: src/library.c
+msgid "Press a button for the next page"
+msgstr "Pulsa un botón para la página siguiente"
+
+#: src/library.c
+msgid "Press a button for the previous tool"
+msgstr "Pulsa un botón para la herramienta anterior"
+
+#: src/library.c
+msgid "Press a button for the next tool"
+msgstr "Pulsa un botón para la herramienta siguiente"
+
+#. TRANSLATORS: (Buttons sheet) an action no controller button does.
+#: src/library.c
+msgctxt "buttons"
+msgid "none"
+msgstr "ninguno"
+
+#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+#: src/library.c
+msgid "Could not save controller.ini"
+msgstr "No se pudo guardar controller.ini"
+
+#. TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
+#. (about 1100 px at 44 px in bold, and the same for the two below).
+#: src/library.c
+msgid "No controller or keyboard connected"
+msgstr "Ningún mando ni teclado conectado"
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
+#. (a button mapper) holds it, so Grimoire gets none of its presses.
+#: src/library.c
+#, c-format
+msgid "%s: held by another app"
+msgstr "%s: lo retiene otra aplicación"
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's or keyboard's own name.
+#: src/library.c
+#, c-format
+msgid "%s connected"
+msgstr "%s conectado"
+
+#: src/library.c
+msgid "Could not pair that controller"
+msgstr "No se pudo emparejar ese mando"
+
+#. TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
+#: src/library.c
+msgid "Paired. The controller connects in a moment."
+msgstr "Emparejado. El mando se conecta en un momento."
+
+#. TRANSLATORS: a toast: the controller is no longer paired with the Kindle.
+#: src/library.c
+msgid "Forgotten."
+msgstr "Olvidado."
+
+#: src/library.c
+msgid "Could not forget that controller"
+msgstr "No se pudo olvidar ese mando"
+
 #. TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
 #. that language's name (each language is named in itself: "English", "Español").
 #: src/library.c
@@ -1244,10 +1366,55 @@ msgstr "lápiz: %s"
 msgid "Data: %s"
 msgstr "Datos: %s"
 
+#. TRANSLATORS: Settings' button to the Controller sheet (a controller's or keyboard's buttons as
+#. shortcuts): the room between KOReader and Done.
 #: src/library.c
-msgid "Shortcuts"
-msgstr "Atajos"
+msgid "Controller"
+msgstr "Mando"
 
+#. TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
+#. way: often a button held a few seconds).
+#: src/library.c
+msgid "Searching... Put the controller in pairing mode."
+msgstr "Buscando... Pon el mando en modo de emparejamiento."
+
+#: src/library.c
+msgid "Pairing..."
+msgstr "Emparejando..."
+
+#: src/library.c
+msgid "Tap a controller to pair it."
+msgstr "Toca un mando para emparejarlo."
+
+#. TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
+#: src/library.c
+#, c-format
+msgid "Forget %s"
+msgstr "Olvidar %s"
+
+#. TRANSLATORS: (Pair sheet) searches for controllers again.
+#: src/library.c
+msgid "Search again"
+msgstr "Buscar de nuevo"
+
+#. TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
+#: src/library.c
+msgid "Pair a controller"
+msgstr "Emparejar un mando"
+
+#. TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
+#: src/library.c
+msgid "Reset buttons"
+msgstr "Restablecer botones"
+
+#. TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a tap on a row,
+#. then a press on the controller, makes that button do it.
+#: src/library.c
+msgid "Controller buttons"
+msgstr "Botones del mando"
+
+#. TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
+#. hold, and how many of their lines were refused.
 #: src/library.c
 #, c-format
 msgid "Mappings: %d; rejected: %d"
@@ -1262,13 +1429,50 @@ msgstr "Última entrada: %s %d; modificadores: %d"
 msgid "Press a connected key or controller button"
 msgstr "Pulsa una tecla o un botón del mando"
 
+#. TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
+#. would not start.
+#: src/library.c
+msgid "Bluetooth: starting..."
+msgstr "Bluetooth: iniciando..."
+
+#: src/library.c
+msgid "Bluetooth did not start (see grimoire.log)"
+msgstr "Bluetooth no se inició (mira grimoire.log)"
+
+#. TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
+#. many shortcuts they hold, and how many of their lines were refused.
+#: src/library.c
+#, c-format
+msgid "Reload shortcuts.ini (%d, %d refused)"
+msgstr "Recargar shortcuts.ini (%d, %d rechazadas)"
+
 #: src/library.c
 msgid "Enable shortcuts"
 msgstr "Activar atajos"
 
 #: src/library.c
-msgid "Reload shortcuts.ini"
-msgstr "Recargar shortcuts.ini"
+msgid "Bluetooth controller"
+msgstr "Mando Bluetooth"
+
+#: src/library.c
+msgid "No Bluetooth helper in grimoire/bluetooth"
+msgstr "No hay asistente Bluetooth en grimoire/bluetooth"
+
+#. TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
+#: src/library.c
+msgid "Pair a controller..."
+msgstr "Emparejar un mando..."
+
+#. TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
+#: src/library.c
+msgid "Buttons..."
+msgstr "Botones..."
+
+#. TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
+#. keyboard's buttons as shortcuts.
+#: src/library.c
+msgid "Controller and keys"
+msgstr "Mando y teclas"
 
 #: src/library.c
 msgid "Install / update Grimoire plugin"
@@ -2520,6 +2724,9 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Shortcuts"
+#~ msgstr "Atajos"
 
 #~ msgid "test pad (the eraser clears it)"
 #~ msgstr "zona de prueba (el borrador la limpia)"

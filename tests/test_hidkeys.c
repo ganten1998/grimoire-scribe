@@ -1,6 +1,7 @@
 #include "hidkeys.h"
 #include "shortcuts.h"
 #include "testlib.h"
+#include <errno.h>
 #include <string.h>
 static void add(uint8_t *bits, int code) { bits[code / 8] |= (uint8_t)(1u << (code % 8)); }
 TEST(capabilities) {
@@ -108,7 +109,26 @@ TEST(power_key_on_firmware_5_20) {
     CHECK(hidkeys_optional("BT remote", keys, axes) == HID_KEYBOARD);
     CHECK(hidkeys_power(NULL, keys, axes) == 5 && hidkeys_optional(NULL, keys, axes) == HID_KEYBOARD);
 }
+TEST(held_names_and_rate) {
+    CHECK(hidkeys_held(-1, EBUSY));  // a button mapper's grab
+    CHECK(!hidkeys_held(0, EBUSY) && !hidkeys_held(-1, EINVAL) && !hidkeys_held(-1, ENODEV));
+    char n[41];
+    hidkeys_name(n, sizeof n, "Pro Controller"); CHECK(!strcmp(n, "Pro Controller"));
+    hidkeys_name(n, sizeof n, "  8BitDo\x01\x02\xc3\xa9 Stick\n "); CHECK(!strcmp(n, "8BitDo? Stick?"));
+    hidkeys_name(n, sizeof n, "0123456789012345678901234567890123456789012345");
+    CHECK(strlen(n) == 40 && !strncmp(n, "0123456789", 10));
+    hidkeys_name(n, sizeof n, ""); CHECK(!strcmp(n, "?"));
+    hidkeys_name(n, sizeof n, NULL); CHECK(!strcmp(n, "?"));
+    char small[5]; hidkeys_name(small, sizeof small, "Keyboard"); CHECK(!strcmp(small, "Keyb"));
+    uint32_t last = 0;
+    CHECK(hidkeys_due(&last, 1000, 30000)); // the first one
+    CHECK(!hidkeys_due(&last, 1500, 30000) && !hidkeys_due(&last, 30999, 30000));
+    CHECK(hidkeys_due(&last, 31000, 30000) && last == 31000);
+    last = 0; CHECK(hidkeys_due(&last, 0, 30000) && last != 0); // at time 0, still remembered
+    last = 0xfffff000u; CHECK(hidkeys_due(&last, 0x00010000u, 30000)); // across the clock's wrap
+}
 int main(void) {
     RUN(capabilities); RUN(presses_and_modifiers); RUN(hats_drop_and_pin_resync); RUN(power_key_on_firmware_5_20);
+    RUN(held_names_and_rate);
     return tl_done();
 }

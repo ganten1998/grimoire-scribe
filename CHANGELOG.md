@@ -2,6 +2,15 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+- **Controllers**: Settings > Controller (was Shortcuts) shows the controller or keyboard connected,
+  and Buttons... learns which controller button does what: tap a row, press the button
+  (grimoire/controller.ini). A short toast says when one connects or goes, and when another app
+  holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default.
+- **Bluetooth controllers**: with the kindle-hid-passthrough helper unpacked in grimoire/bluetooth
+  (only its files: its installer adds a boot-time button mapper that takes controllers away),
+  Bluetooth controller starts it with Grimoire and Pair a controller... finds and pairs one. It runs
+  only while Grimoire does: it stops when Grimoire leaves, and the Kindle's own Bluetooth comes back.
+
 - **Highlights keep the tip they were drawn with**
   ([#5](https://github.com/ganten1998/grimoire-scribe/issues/5)): each stroke now records its
   tip, so highlights drawn with the round tip before 1.2.0 look as they did again, in the editor

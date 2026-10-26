@@ -3,8 +3,10 @@
 #include "annotate.h"
 #include "bgimage.h"
 #include "bgjob.h"
+#include "bluetooth.h"
 #include "calib_fit.h"
 #include "httpd.h"
+#include "hidkeys.h"
 #include "i18n.h"
 #include "live.h"
 #include "pair.h"
@@ -195,9 +197,19 @@ int app_init(App *a, int w, int h, float dpi) {
     store_set_device(dpi, w, h);
     settings_load(&a->settings);
     char shortcuts_path[600];
+    char controller_path[1024];
     snprintf(shortcuts_path, sizeof shortcuts_path, "%s/shortcuts.ini", store_root());
-    shortcuts_load(&a->shortcuts, shortcuts_path);
+    snprintf(controller_path, sizeof controller_path, "%s/controller.ini", store_root());
+    shortcuts_load_all(&a->shortcuts, shortcuts_path, controller_path);
     input_shortcuts_enable(a->settings.shortcuts_enabled);
+    // The Bluetooth helper (bluetooth.h): the launcher says where its script is; in the simulator a
+    // test may stand a helper in. It starts a moment after the first frame, if it is wanted.
+    const char *standin = NULL;
+#ifdef GRIMOIRE_SIM
+    standin = getenv("GRIMOIRE_BT_API");
+#endif
+    bt_init(store_root(), getenv("GRIMOIRE_BT_SCRIPT"), standin);
+    a->bt_start_at = a->settings.controller && a->settings.shortcuts_enabled ? now_ms() + 1500 : 0;
     qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
          a->settings.side_button);
     Settings *st = &a->settings;
@@ -297,6 +309,21 @@ static void note_input(App *a) {
     }
 }
 
+// A keyboard or controller came or went (shortcuts on): the Controller and keys sheet's status line
+// follows, and a short toast says so, at most once a direction in 30 s, so a link that keeps
+// dropping does not flash the screen. None over the sleep screen or a stroke being drawn.
+static void hid_changed(App *a, const InEvent *ev) {
+    bool attach = ev->type == IN_HID_ATTACH;
+    a->hid_changes++;
+    if (a->asleep || editor_busy(a) || !hidkeys_due(&a->hid_toast_at[attach ? 0 : 1], now_ms(), 30000)) return;
+    // TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
+    // or page turner comes or goes. "Held by another app": another program (a button mapper)
+    // takes its presses, so Grimoire gets none.
+    const char *msg = !attach ? _("Controller disconnected") : ev->value ? _("Controller held by another app")
+                                                                         : _("Controller connected");
+    app_toast(a, msg, 1500);
+}
+
 void app_event(App *a, const InEvent *ev) {
     if (ev->type == IN_QUIT) {
         a->running = false;
@@ -310,9 +337,14 @@ void app_event(App *a, const InEvent *ev) {
             a->last_shortcut_code = ev->value;
             a->last_shortcut_mods = (int)ev->key_mods;
             a->last_shortcut_gamepad = ev->gamepad;
+            if (a->scr == SCR_LIBRARY && library_learn_key(a, ev->value, ev->gamepad)) return;
             if (a->scr == SCR_EDITOR)
                 editor_shortcut(a, shortcuts_lookup(&a->shortcuts, ev->gamepad, ev->value, (int)ev->key_mods));
         }
+        return;
+    }
+    if (ev->type == IN_HID_ATTACH || ev->type == IN_HID_DETACH) {
+        hid_changed(a, ev);
         return;
     }
     if (ev->type == IN_ORIENTATION) {
@@ -713,6 +745,17 @@ static int32_t sleep_minute_ms(void) {
 }
 
 void app_tick(App *a, uint32_t now) {
+    // The Bluetooth helper's script runs and requests are reaped even asleep.
+    if (a->bt_start_at && (int32_t)(now - a->bt_start_at) >= 0) {
+        a->bt_start_at = 0;
+        if (bt_present()) bt_start();
+    }
+    BtReply bt_reply;
+    BtEvent bt = bt_tick(&bt_reply);
+    if (bt) {
+        a->bt_changes++;
+        if (a->scr == SCR_LIBRARY) library_bt(a, bt, &bt_reply);
+    }
     book_tick(a);
     int bg = poll_jobs(a);
     if (bg) {
@@ -919,6 +962,7 @@ int app_probe(const char *key, char *out, size_t cap) {
         {"settings.eraser_mode", st->eraser_mode},
         {"settings.white", st->white},
         {"settings.shortcuts_enabled", st->shortcuts_enabled},
+        {"settings.controller", st->controller},
         {"shortcuts.code", a->last_shortcut_code},
         {"native_pin", a->native_pin},
         {"input.yielded", a->input_yielded},
@@ -969,6 +1013,17 @@ int app_probe(const char *key, char *out, size_t cap) {
         Rect r = live_chip(a);
         if (live_on()) snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
         else snprintf(out, cap, "%s", "");
+    }
+    else if (!strncmp(key, "pads.", 5)) {
+        // The controller buttons for an action, as the files name them: "pads.undo" -> "East" ("" none).
+        int codes[4], n = shortcuts_pads_for(&a->shortcuts, shortcut_action(key + 5), codes, 4);
+        out[0] = 0;
+        for (int i = 0; i < n && i < 4; i++) {
+            char name[16];
+            shortcut_pad_name(codes[i], name, sizeof name);
+            size_t len = strlen(out);
+            snprintf(out + len, cap - len, "%s%s", i ? "," : "", name);
+        }
     }
     else if (!strcmp(key, "rotation")) snprintf(out, cap, "%d", a->rotation);
     else if (!strcmp(key, "size")) snprintf(out, cap, "%dx%d", a->w, a->h);

@@ -391,10 +391,13 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 
 ## Keyboard and controller shortcuts
 
-In **Library > Settings > Shortcuts**, enable shortcuts to create `grimoire/shortcuts.ini`.
-Edit that file and select **Reload shortcuts.ini** to customize tool switching, undo/redo, white ink
-and page navigation. The sheet shows the last key/button code to help map a controller. Shortcuts
-start disabled. See [the mappings and hardware limits](docs/SHORTCUTS.md).
+In **Library > Settings > Controller**, enable shortcuts: a keyboard or a controller then switches
+tools, undoes and redoes, toggles white ink and turns pages in a notebook. **Buttons...** learns
+which controller button does what (tap a row, press the button). For a Bluetooth controller, unpack
+the kindle-hid-passthrough helper into `grimoire/bluetooth` (only its files, never its installer),
+turn on **Bluetooth controller** and **Pair a controller...**; Grimoire runs the helper only while
+it runs. `grimoire/shortcuts.ini` holds the keyboard's mappings. Shortcuts start disabled. See
+[the setup, the mappings and the limits](docs/SHORTCUTS.md).
 
 ## Uninstall
 

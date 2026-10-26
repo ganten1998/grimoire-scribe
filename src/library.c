@@ -18,7 +18,7 @@
 #include "koreader.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
-               MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS } Modal;
+               MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS, MOD_BUTTONS, MOD_PAIR } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -32,6 +32,8 @@ enum {
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
     H_PAPER_MORE, H_KOREADER, H_KO_ITEM, H_SHORTCUTS, H_SHORTCUT_ENABLE, H_SHORTCUT_RELOAD,
+    H_BUTTONS, H_BUTTON_ROW, H_BUTTONS_RESET, H_BUTTONS_DONE,
+    H_BT_TOGGLE, H_PAIR, H_PAIR_FOUND, H_PAIR_FORGET, H_PAIR_AGAIN,
 };
 
 typedef struct {
@@ -66,6 +68,20 @@ struct LibraryState {
 
     int shown_shortcut_code, shown_shortcut_mods;
     bool shown_shortcut_gamepad;
+    unsigned shown_hid_changes;  // App.hid_changes as the Controller sheet's status line last showed
+    // The Buttons sheet learning a row's buttons (k_learn): which row (-1 none), which of its
+    // actions, and since when (it gives up after LEARN_MS without a press).
+    int learn_row, learn_step;
+    uint32_t learn_at;
+    // The Pair sheet (Settings > Controller > Pair a controller): what it asked the Bluetooth helper
+    // last (ASK_*), what it asks next and when, the controllers found and those paired.
+    int bt_asked, bt_next;
+    uint32_t bt_next_at, scan_until, pair_until;
+    bool scanning, pairing;
+    char pair_addr[BT_ADDR_LEN];
+    BtDevice found[4], paired[2];
+    int nfound, npaired;
+    unsigned shown_bt_changes;
     Modal modal;
     KbPurpose kbp;
     Keyboard kb;
@@ -477,6 +493,216 @@ typedef struct {
     ButtonStyle st;
 } MenuRow;
 
+// ---- the controller's buttons (Settings > Controller > Buttons) ----
+
+#define LEARN_MS 10000
+
+static void redraw(App *a, RefreshMode m);
+
+// A row learns one action's button, or two in turn (the previous page's, then the next page's).
+static const struct {
+    const char *label;
+    int act[2];
+} k_learn[] = {
+    // TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by the
+    // controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the names.
+    {N_("Undo"), {SHORTCUT_UNDO, 0}},
+    {N_("Redo"), {SHORTCUT_REDO, 0}},
+    {N_("Eraser"), {SHORTCUT_TOOL_BASE + TOOL_ERASER, 0}},
+    {N_("White ink"), {SHORTCUT_WHITE, 0}},
+    // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+    {N_("Pages"), {SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE}},
+    // TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order.
+    {N_("Tools"), {SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL}},
+};
+enum { N_LEARN = sizeof k_learn / sizeof k_learn[0] };
+
+// What a row asks for while it learns.
+static const char *learn_prompt(int action) {
+    // TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): about 1100 px at 44 px
+    // in bold.
+    switch (action) {
+    case SHORTCUT_UNDO: return _("Press a button for Undo");
+    case SHORTCUT_REDO: return _("Press a button for Redo");
+    case SHORTCUT_TOOL_BASE + TOOL_ERASER: return _("Press a button for the eraser");
+    case SHORTCUT_WHITE: return _("Press a button for white ink");
+    case SHORTCUT_PREV_PAGE: return _("Press a button for the previous page");
+    case SHORTCUT_NEXT_PAGE: return _("Press a button for the next page");
+    case SHORTCUT_PREV_TOOL: return _("Press a button for the previous tool");
+    default: return _("Press a button for the next tool");
+    }
+}
+
+// "South, Up" for an action's buttons, "none" when it has none.
+static void pads_text(App *a, int action, char *out, size_t cap) {
+    int codes[4], n = shortcuts_pads_for(&a->shortcuts, action, codes, 4);
+    out[0] = 0;
+    for (int i = 0; i < n && i < 4; i++) {
+        char name[16];
+        shortcut_pad_name(codes[i], name, sizeof name);
+        size_t len = strlen(out);
+        snprintf(out + len, cap - len, "%s%s", i ? ", " : "", name);
+    }
+    // TRANSLATORS: (Buttons sheet) an action no controller button does.
+    if (!n) snprintf(out, cap, "%s", C_("buttons", "none"));
+}
+
+static void controller_path(char *out, size_t cap) { snprintf(out, cap, "%s/controller.ini", store_root()); }
+
+// The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini).
+static void reload_shortcuts(App *a) {
+    char sp[1024], cp[1024];
+    snprintf(sp, sizeof sp, "%s/shortcuts.ini", store_root());
+    controller_path(cp, sizeof cp);
+    shortcuts_load_all(&a->shortcuts, sp, cp);
+}
+
+// A controller's press while the Buttons sheet learns: true when it was taken (the row's action has
+// that button now, or the file could not be written: a toast says so).
+bool library_learn_key(App *a, int code, bool gamepad) {
+    if (!S || S->modal != MOD_BUTTONS || S->learn_row < 0) return false;
+    if (!gamepad) return true;  // (a keyboard's key is shortcuts.ini's: nothing to learn here)
+    char cp[1024];
+    controller_path(cp, sizeof cp);
+    int action = k_learn[S->learn_row].act[S->learn_step];
+    if (shortcuts_learn(&a->shortcuts, cp, code, action) != 0) {
+        // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+        app_toast(a, _("Could not save controller.ini"), 4000);
+        S->learn_row = -1;
+    } else if (S->learn_step == 0 && k_learn[S->learn_row].act[1]) {
+        S->learn_step = 1;
+        S->learn_at = now_ms();
+    } else {
+        S->learn_row = -1;
+    }
+    redraw(a, REFRESH_UI);
+    return true;
+}
+
+// The Controller sheet's status line: the controllers and keyboards Grimoire reads now.
+static void hid_status(App *a, char *out, size_t cap) {
+    InputHid h[4];
+    int n = input_hids(h, 4);
+    S->shown_hid_changes = a->hid_changes;
+    // TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
+    // (about 1100 px at 44 px in bold, and the same for the two below).
+    if (!n) snprintf(out, cap, "%s", a->settings.shortcuts_enabled ? _("No controller or keyboard connected") : "");
+    // TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
+    // (a button mapper) holds it, so Grimoire gets none of its presses.
+    else if (h[0].held) snprintf(out, cap, _("%s: held by another app"), h[0].name);
+    // TRANSLATORS: (Controller sheet) %s is the controller's or keyboard's own name.
+    else snprintf(out, cap, _("%s connected"), h[0].name);
+    if (n > 1) {
+        size_t len = strlen(out);
+        snprintf(out + len, cap - len, " (+%d)", n - 1);
+    }
+}
+
+// ---- pairing a controller (the Bluetooth helper's API, bluetooth.h) ----
+
+enum { ASK_NONE, ASK_STATUS, ASK_SCAN, ASK_SCAN_STATUS, ASK_PAIR, ASK_PAIR_STATUS, ASK_REMOVE };
+#define SCAN_MS 15000
+#define PAIR_MS 30000
+
+// Asks the helper what (an ASK_*) after `in` ms, or as soon as the one under way is answered.
+static void bt_ask(App *a, int what, uint32_t in) {
+    S->bt_next = what;
+    S->bt_next_at = now_ms() + in;
+}
+
+static void bt_send(App *a) {
+    if (!S->bt_next || bt_busy() || (int32_t)(now_ms() - S->bt_next_at) < 0) return;
+    char path[160];
+    int what = S->bt_next;
+    switch (what) {
+    case ASK_STATUS: snprintf(path, sizeof path, "/status"); break;
+    case ASK_SCAN: snprintf(path, sizeof path, "/scan"); break;
+    case ASK_SCAN_STATUS: snprintf(path, sizeof path, "/scan-status"); break;
+    case ASK_PAIR_STATUS: snprintf(path, sizeof path, "/pair-status"); break;
+    case ASK_PAIR: {
+        bool classic = false;
+        for (int i = 0; i < S->nfound; i++)
+            if (!strcmp(S->found[i].address, S->pair_addr)) classic = S->found[i].classic;
+        snprintf(path, sizeof path, "/pair?addr=%s&protocol=%s", S->pair_addr, classic ? "classic" : "ble");
+        break;
+    }
+    case ASK_REMOVE: snprintf(path, sizeof path, "/remove?addr=%s", S->pair_addr); break;
+    default: return;
+    }
+    if (!bt_request(path)) return;
+    S->bt_asked = what;
+    S->bt_next = ASK_NONE;
+}
+
+static void pair_open(App *a) {
+    S->nfound = S->npaired = 0;
+    S->scanning = true;
+    S->pairing = false;
+    S->scan_until = now_ms() + SCAN_MS;
+    S->bt_asked = ASK_NONE;
+    bt_ask(a, ASK_SCAN, 0);
+    S->modal = MOD_PAIR;
+}
+
+// The helper's answer (or none) to what the Pair sheet asked.
+void library_bt(App *a, BtEvent e, const BtReply *r) {
+    if (!S) return;
+    if (e == BT_EV_STATE) {
+        if (S->modal == MOD_SHORTCUTS || S->modal == MOD_PAIR) redraw(a, REFRESH_UI);
+        return;
+    }
+    int asked = S->bt_asked;
+    S->bt_asked = ASK_NONE;
+    if (S->modal != MOD_PAIR) return;
+    bool ok = e == BT_EV_REPLY && r->ok;
+    switch (asked) {
+    case ASK_SCAN:
+        if (ok) bt_ask(a, ASK_SCAN_STATUS, 1000);
+        else S->scanning = false;
+        break;
+    case ASK_SCAN_STATUS:
+        if (e == BT_EV_REPLY) {
+            S->nfound = 0;
+            for (int i = 0; i < r->ndev && S->nfound < 4; i++) S->found[S->nfound++] = r->dev[i];
+        }
+        if (ok && r->scanning && (int32_t)(now_ms() - S->scan_until) < 0) {
+            bt_ask(a, ASK_SCAN_STATUS, 1000);
+        } else {
+            S->scanning = false;
+            bt_ask(a, ASK_STATUS, 0);  // and which are paired
+        }
+        break;
+    case ASK_STATUS:
+        S->npaired = 0;
+        for (int i = 0; e == BT_EV_REPLY && i < r->ndev && S->npaired < 2; i++) S->paired[S->npaired++] = r->dev[i];
+        break;
+    case ASK_PAIR:
+        if (ok) bt_ask(a, ASK_PAIR_STATUS, 1000);
+        else {
+            S->pairing = false;
+            app_toast(a, _("Could not pair that controller"), 3000);
+        }
+        break;
+    case ASK_PAIR_STATUS:
+        if (ok && r->pairing && (int32_t)(now_ms() - S->pair_until) < 0) {
+            bt_ask(a, ASK_PAIR_STATUS, 1000);
+            break;
+        }
+        S->pairing = false;
+        // TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
+        app_toast(a, ok && !r->pairing ? _("Paired. The controller connects in a moment.") : _("Could not pair that controller"), 3000);
+        bt_ask(a, ASK_STATUS, 0);
+        break;
+    case ASK_REMOVE:
+        // TRANSLATORS: a toast: the controller is no longer paired with the Kindle.
+        app_toast(a, ok ? _("Forgotten.") : _("Could not forget that controller"), 2500);
+        bt_ask(a, ASK_STATUS, 0);
+        break;
+    default: break;
+    }
+    redraw(a, REFRESH_UI);
+}
+
 // A vertical list of full-width buttons inside a sheet.
 static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     int rh = ui_px(140), gap = ui_px(20);
@@ -617,7 +843,9 @@ static void draw_settings(App *a) {
     ui_button(c, ko, ICON_NOTEBOOK, "KOReader", BTN_PLAIN);
     hits_add(&S->hits, ko, H_KOREADER, 0);
     Rect keys = {ko.x + ko.w + ui_px(30), done.y, done.x - ko.x - ko.w - ui_px(60), done.h};
-    ui_button(c, keys, ICON_NONE, _("Shortcuts"), BTN_PLAIN);
+    // TRANSLATORS: Settings' button to the Controller sheet (a controller's or keyboard's buttons as
+    // shortcuts): the room between KOReader and Done.
+    ui_button(c, keys, ICON_NONE, _("Controller"), BTN_PLAIN);
     hits_add(&S->hits, keys, H_SHORTCUTS, 0);
 }
 
@@ -627,8 +855,70 @@ static void draw_modal(App *a) {
     switch (S->modal) {
     case MOD_NEW: draw_new(a); break;
     case MOD_SETTINGS: draw_settings(a); break;
+    case MOD_PAIR: {
+        MenuRow rows[8];
+        char names[6][BT_NAME_LEN + 40];
+        int n = 0;
+        // TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
+        // way: often a button held a few seconds).
+        rows[n++] = (MenuRow){ICON_NONE, S->scanning ? _("Searching... Put the controller in pairing mode.")
+                                       : S->pairing ? _("Pairing...") : _("Tap a controller to pair it."),
+                              H_NONE, 0, BTN_DISABLED};
+        for (int i = 0; i < S->nfound && n < 5; i++) {
+            const BtDevice *d = &S->found[i];
+            snprintf(names[n], sizeof names[n], "%s", d->name[0] ? d->name : d->address);
+            bool chosen = S->pairing && !strcmp(d->address, S->pair_addr);
+            rows[n] = (MenuRow){ICON_NONE, names[n], H_PAIR_FOUND, i,
+                                chosen ? BTN_SELECTED : S->pairing ? BTN_DISABLED : BTN_PLAIN};
+            n++;
+        }
+        for (int i = 0; i < S->npaired && n < 6; i++) {
+            // TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
+            snprintf(names[n], sizeof names[n], _("Forget %s"), S->paired[i].name[0] ? S->paired[i].name : S->paired[i].address);
+            rows[n] = (MenuRow){ICON_TRASH, names[n], H_PAIR_FORGET, i, S->pairing ? BTN_DISABLED : BTN_PLAIN};
+            n++;
+        }
+        // TRANSLATORS: (Pair sheet) searches for controllers again.
+        rows[n++] = (MenuRow){ICON_NONE, _("Search again"), H_PAIR_AGAIN, 0, S->scanning || S->pairing ? BTN_DISABLED : BTN_PLAIN};
+        rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
+        // TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
+        draw_menu(a, _("Pair a controller"), rows, n);
+        break;
+    }
+    case MOD_BUTTONS: {
+        char text[N_LEARN][200];
+        MenuRow rows[N_LEARN + 2];
+        for (int i = 0; i < N_LEARN; i++) {
+            bool learning = S->learn_row == i;
+            if (learning) {
+                snprintf(text[i], sizeof text[i], "%s", learn_prompt(k_learn[i].act[S->learn_step]));
+            } else {
+                char p1[64], p2[64];
+                pads_text(a, k_learn[i].act[0], p1, sizeof p1);
+                if (k_learn[i].act[1]) {
+                    pads_text(a, k_learn[i].act[1], p2, sizeof p2);
+                    snprintf(text[i], sizeof text[i], "%s: %s / %s", _(k_learn[i].label), p1, p2);
+                } else {
+                    snprintf(text[i], sizeof text[i], "%s: %s", _(k_learn[i].label), p1);
+                }
+            }
+            rows[i] = (MenuRow){ICON_NONE, text[i], H_BUTTON_ROW, i, learning ? BTN_SELECTED : BTN_PLAIN};
+        }
+        char cp[1024];
+        controller_path(cp, sizeof cp);
+        // TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
+        rows[N_LEARN] = (MenuRow){ICON_TRASH, _("Reset buttons"), H_BUTTONS_RESET, 0,
+                                  access(cp, F_OK) == 0 ? BTN_PLAIN : BTN_DISABLED};
+        rows[N_LEARN + 1] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
+        // TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a tap on a row,
+        // then a press on the controller, makes that button do it.
+        draw_menu(a, _("Controller buttons"), rows, N_LEARN + 2);
+        break;
+    }
     case MOD_SHORTCUTS: {
-        char count[160], last[160];
+        char count[160], last[160], status[160];
+        // TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
+        // hold, and how many of their lines were refused.
         snprintf(count, sizeof count, _("Mappings: %d; rejected: %d"), a->shortcuts.count, a->shortcuts.rejected);
         if (a->last_shortcut_code)
             snprintf(last, sizeof last, _("Last input: %s %d; modifiers: %d"), a->last_shortcut_gamepad ? "pad" : "key",
@@ -637,15 +927,39 @@ static void draw_modal(App *a) {
         S->shown_shortcut_code = a->last_shortcut_code;
         S->shown_shortcut_mods = a->last_shortcut_mods;
         S->shown_shortcut_gamepad = a->last_shortcut_gamepad;
+        hid_status(a, status, sizeof status);
+        S->shown_bt_changes = a->bt_changes;
+        BtState bs = bt_state();
+        // TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
+        // would not start.
+        if (bs == BT_STARTING) snprintf(status, sizeof status, "%s", _("Bluetooth: starting..."));
+        else if (bs == BT_FAILED) snprintf(status, sizeof status, "%s", _("Bluetooth did not start (see grimoire.log)"));
+        bool on = a->settings.shortcuts_enabled, present = bt_present();
+        bool bt_up = bs == BT_OWNED || bs == BT_EXTERNAL;
+        char reload[160];
+        // TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
+        // many shortcuts they hold, and how many of their lines were refused.
+        snprintf(reload, sizeof reload, _("Reload shortcuts.ini (%d, %d refused)"), a->shortcuts.count, a->shortcuts.rejected);
         MenuRow rows[] = {
-            {a->settings.shortcuts_enabled ? ICON_CHECK : ICON_NONE, _("Enable shortcuts"), H_SHORTCUT_ENABLE, 0, BTN_PLAIN},
-            {ICON_NONE, _("Reload shortcuts.ini"), H_SHORTCUT_RELOAD, 0, BTN_PLAIN},
-            {ICON_NONE, "grimoire/shortcuts.ini", H_NONE, 0, BTN_DISABLED},
-            {ICON_NONE, count, H_NONE, 0, BTN_DISABLED},
+            {on ? ICON_CHECK : ICON_NONE, _("Enable shortcuts"), H_SHORTCUT_ENABLE, 0, BTN_PLAIN},
+            // TRANSLATORS: (Controller sheet) starts the Bluetooth helper with Grimoire, for a
+            // Bluetooth controller; without the helper unpacked in grimoire/bluetooth, the second.
+            {a->settings.controller && present ? ICON_CHECK : ICON_NONE,
+             present ? _("Bluetooth controller") : _("No Bluetooth helper in grimoire/bluetooth"), H_BT_TOGGLE, 0,
+             present && on ? BTN_PLAIN : BTN_DISABLED},
+            // TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
+            {ICON_PLUS, _("Pair a controller..."), H_PAIR, 0, bt_up && on ? BTN_PLAIN : BTN_DISABLED},
+            {ICON_NONE, status, H_NONE, 0, BTN_DISABLED},
+            // TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
+            {ICON_NONE, _("Buttons..."), H_BUTTONS, 0, on ? BTN_PLAIN : BTN_DISABLED},
+            {ICON_NONE, reload, H_SHORTCUT_RELOAD, 0, BTN_PLAIN},
             {ICON_NONE, last, H_NONE, 0, BTN_DISABLED},
             {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
         };
-        draw_menu(a, _("Shortcuts"), rows, 6);
+        (void)count;
+        // TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
+        // keyboard's buttons as shortcuts.
+        draw_menu(a, _("Controller and keys"), rows, 8);
         break;
     }
     case MOD_KOREADER: {
@@ -988,11 +1302,68 @@ static void act(App *a, const Hit *h) {
             a->settings.shortcuts_enabled = !a->settings.shortcuts_enabled;
             settings_save(&a->settings);
             input_shortcuts_enable(a->settings.shortcuts_enabled);
+            // The Bluetooth helper serves shortcuts alone: it goes with them, and comes back with
+            // them while Bluetooth controller stays on.
+            if (!a->settings.shortcuts_enabled) bt_stop();
+            else if (a->settings.controller && bt_present()) bt_start();
         }
-        shortcuts_load(&a->shortcuts, path);
+        reload_shortcuts(a);
         redraw(a, REFRESH_UI);
         break;
     }
+    case H_BUTTONS:
+        S->learn_row = -1;
+        open_modal(a, MOD_BUTTONS);
+        break;
+    case H_BUTTON_ROW:
+        S->learn_row = S->learn_row == h->arg ? -1 : h->arg;  // (a second tap stops it)
+        S->learn_step = 0;
+        S->learn_at = now_ms();
+        redraw(a, REFRESH_UI);
+        break;
+    case H_BUTTONS_RESET: {
+        char cp[1024];
+        controller_path(cp, sizeof cp);
+        unlink(cp);
+        S->learn_row = -1;
+        reload_shortcuts(a);
+        redraw(a, REFRESH_UI);
+        break;
+    }
+    case H_BUTTONS_DONE:
+        S->learn_row = -1;
+        S->bt_next = ASK_NONE;
+        open_modal(a, MOD_SHORTCUTS);
+        break;
+    case H_BT_TOGGLE:
+        a->settings.controller = !a->settings.controller;
+        settings_save(&a->settings);
+        if (a->settings.controller) bt_start();
+        else bt_stop();
+        redraw(a, REFRESH_UI);
+        break;
+    case H_PAIR:
+        pair_open(a);
+        redraw(a, REFRESH_UI);
+        break;
+    case H_PAIR_AGAIN:
+        pair_open(a);
+        redraw(a, REFRESH_UI);
+        break;
+    case H_PAIR_FOUND:
+        if (S->pairing || h->arg < 0 || h->arg >= S->nfound) break;
+        snprintf(S->pair_addr, sizeof S->pair_addr, "%s", S->found[h->arg].address);
+        S->pairing = true;
+        S->scanning = false;
+        S->pair_until = now_ms() + PAIR_MS;
+        bt_ask(a, ASK_PAIR, 0);
+        redraw(a, REFRESH_UI);
+        break;
+    case H_PAIR_FORGET:
+        if (S->pairing || h->arg < 0 || h->arg >= S->npaired) break;
+        snprintf(S->pair_addr, sizeof S->pair_addr, "%s", S->paired[h->arg].address);
+        bt_ask(a, ASK_REMOVE, 0);
+        break;
     case H_KOREADER: open_modal(a, MOD_KOREADER); break;
     case H_KO_ITEM: {
         int item = h->arg < 0 ? 0 : h->arg;
@@ -1129,6 +1500,7 @@ static void act(App *a, const Hit *h) {
 void library_init(App *a) {
     a->lib = calloc(1, sizeof *a->lib);
     S->target = -1;
+    S->learn_row = -1;
 }
 
 void library_free(App *a) {
@@ -1251,8 +1623,15 @@ void library_event(App *a, const InEvent *ev) {
 
 void library_tick(App *a, uint32_t now) {
     if (S->modal == MOD_SHORTCUTS && (S->shown_shortcut_code != a->last_shortcut_code ||
-        S->shown_shortcut_mods != a->last_shortcut_mods || S->shown_shortcut_gamepad != a->last_shortcut_gamepad))
+        S->shown_shortcut_mods != a->last_shortcut_mods || S->shown_shortcut_gamepad != a->last_shortcut_gamepad ||
+        S->shown_hid_changes != a->hid_changes))
         redraw(a, REFRESH_UI);
+    if (S->modal == MOD_PAIR) bt_send(a);
+    if (S->modal == MOD_SHORTCUTS && S->shown_bt_changes != a->bt_changes) redraw(a, REFRESH_UI);
+    if (S->modal == MOD_BUTTONS && S->learn_row >= 0 && now - S->learn_at >= LEARN_MS) {
+        S->learn_row = -1;  // no press in 10 s: as it was
+        redraw(a, REFRESH_UI);
+    }
     if (S->kb_settle_at && (int32_t)(now - S->kb_settle_at) >= 0) {
         S->kb_settle_at = 0;
         if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
@@ -1334,12 +1713,25 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_TEMPLATES] = "templates",
         [MOD_KOREADER] = "koreader",
         [MOD_SHORTCUTS] = "shortcuts",
+        [MOD_BUTTONS] = "buttons",
+        [MOD_PAIR] = "pair",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {
         const char *m = (size_t)S->modal < sizeof sheets / sizeof sheets[0] ? sheets[S->modal] : NULL;
         if (m) snprintf(out, cap, "%s", m);
         else snprintf(out, cap, "%d", (int)S->modal);
+    } else if (!strcmp(key, "learning")) {
+        // The action the Buttons sheet waits for a press for ("undo", "next-page"), else empty.
+        const char *n = S->modal == MOD_BUTTONS && S->learn_row >= 0
+                            ? shortcut_action_name(k_learn[S->learn_row].act[S->learn_step]) : NULL;
+        snprintf(out, cap, "%s", n ? n : "");
+    } else if (!strcmp(key, "pair")) {
+        // The Pair sheet: "scanning", "pairing" or "idle", then the controllers found and paired.
+        snprintf(out, cap, "%s %d %d", S->scanning ? "scanning" : S->pairing ? "pairing" : "idle", S->nfound, S->npaired);
+    } else if (!strcmp(key, "bluetooth")) {
+        static const char *const names[] = {"stopped", "starting", "owned", "external", "failed", "stopping"};
+        snprintf(out, cap, "%s", names[bt_state()]);
     } else if (!strcmp(key, "folder")) {
         snprintf(out, cap, "%s", S->cur_folder);
     } else if (!strcmp(key, "items")) {

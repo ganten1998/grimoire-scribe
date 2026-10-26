@@ -36,6 +36,8 @@ root/notebooks/<id>/source.ini          the book a notebook annotates, page by p
 root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named sections)
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
+root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
+root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
@@ -782,6 +784,7 @@ line. Values are clamped to their ranges when read.
 | `theme` | `gothic` or `classic` |
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
+| `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
 | `settings_version` | 3: which default-changing upgrades have run (2: the pencil and mechanical pencil defaults; 3: the ballpoint's smoothing, since 2.0.0-beta.4). Each moves a value still at its old default, in files from before its version |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
 | `pen.panel` | `WxH`: the panel the pen calibration was made on, upright (since 1.1; below) |
@@ -837,6 +840,19 @@ edits it (its lines are in docs/SHORTCUTS.md). Grimoire writes starter mappings 
 shortcuts are turned on and the file does not exist, and never changes it after that; while the
 file is missing the starter mappings apply, and an empty file means no mappings. Versions before
 2.0.0-beta.1 ignore it.
+
+`controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
+Controller > Buttons: `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
+a button by name (`South`) or number (`316`). Grimoire writes it whole and atomically each time a
+button is learned, and deletes it on Reset buttons. While it is there, the controller's buttons come
+from it alone (`shortcuts.ini`'s `pad.` lines are set aside); a `key.` line in it is refused, as a
+line `shortcuts.ini` cannot read is. Versions before 2.0.0-beta.5 never read it.
+
+`bluetooth/` (2.0.0-beta.5 on) is not Grimoire's format: it is where the owner unpacks the
+Bluetooth helper (kindle-hid-passthrough), whose files, paired devices and their keys live there.
+Grimoire only reads whether its program is there, and on each start sets three lines of its
+`config.ini`: its two `[paths]` into this folder, and `[media_remote] enabled = false`
+(kindle/app/bluetooth.sh). Raw notebook ZIPs never include it.
 
 Frozen while 1.0.0-beta is in use:
 
@@ -948,6 +964,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `bg/<pic>.source.png` (a page picture waiting to be fitted, 1.1) | never read or written; raw zips leave it out | fitted in the background; raw zips leave it out |
 | `shortcuts_enabled` (2.0) | dropped on the next save | kept; there are no shortcuts there |
 | `shortcuts.ini` (2.0) | never read | never read |
+| `controller` (2.0) | dropped on the next save | kept; there is no Bluetooth helper there |
+| `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
 
 ## Highlighter rendering in 1.2.0

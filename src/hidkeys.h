@@ -1,6 +1,7 @@
 // Portable external-HID capability/press decoder. No device opens, grabs or key logging.
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #define HID_KEY_BYTES 96
 #define HID_ABS_BYTES 8
@@ -21,6 +22,14 @@ HidKind hidkeys_optional(const char *name, const uint8_t keys[HID_KEY_BYTES], co
 // other keys, so neither a keyboard nor the proxy can take its place. Decided apart from
 // hidkeys_kind. -1 when it is not one, else how many keys it has: input_open watches the fewest.
 int hidkeys_power(const char *name, const uint8_t keys[HID_KEY_BYTES], const uint8_t axes[HID_ABS_BYTES]);
+// The attach probe: EVIOCGRAB(1)'s result and errno. True when another app (a button mapper)
+// holds the device exclusively, so its presses never reach Grimoire.
+bool hidkeys_held(int grab_result, int grab_errno);
+// A device's name, which can come over the radio, made safe to show: printable ASCII only (a run of
+// other bytes becomes one '?'), spaces trimmed, at most 40 bytes, "?" for none.
+void hidkeys_name(char *out, size_t cap, const char *raw);
+// A rate limit: true, and *last set to now, when *last is 0 (never) or at least gap ms ago.
+bool hidkeys_due(uint32_t *last, uint32_t now, uint32_t gap);
 // Synchronize after attachment, native PIN return or SYN_DROPPED. Held controls do not fire.
 void hidkeys_sync(HidKeys *state, const uint8_t held[HID_KEY_BYTES], int hat_x, int hat_y);
 // Linux evdev event numbers. True only for a new actionable press; repeats/releases are ignored.

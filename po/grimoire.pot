@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 09:04-0500\n"
+"POT-Creation-Date: 2026-10-26 09:50-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -93,7 +93,23 @@ msgstr ""
 msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
 msgstr ""
 
-#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen).
+#. TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
+#. or page turner comes or goes. "Held by another app": another program (a button mapper)
+#. takes its presses, so Grimoire gets none.
+#: src/app.c
+msgid "Controller disconnected"
+msgstr ""
+
+#: src/app.c
+msgid "Controller held by another app"
+msgstr ""
+
+#: src/app.c
+msgid "Controller connected"
+msgstr ""
+
+#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
+#. or the server's port is taken).
 #: src/app.c
 msgid "Could not start Live view"
 msgstr ""
@@ -554,7 +570,8 @@ msgid "Pin to the panel (up to %d)"
 msgstr ""
 
 #. TRANSLATORS: the title of the editor's tool picker.
-#: src/editor.c
+#. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order.
+#: src/editor.c src/library.c
 msgid "Tools"
 msgstr ""
 
@@ -1094,6 +1111,109 @@ msgstr ""
 msgid "Create"
 msgstr ""
 
+#. TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by the
+#. controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the names.
+#: src/library.c
+msgid "Undo"
+msgstr ""
+
+#: src/library.c
+msgid "Redo"
+msgstr ""
+
+#: src/library.c
+msgid "Eraser"
+msgstr ""
+
+#: src/library.c
+msgid "White ink"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+#: src/library.c
+msgid "Pages"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for Undo"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for Redo"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for the eraser"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for white ink"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for the previous page"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for the next page"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for the previous tool"
+msgstr ""
+
+#: src/library.c
+msgid "Press a button for the next tool"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) an action no controller button does.
+#: src/library.c
+msgctxt "buttons"
+msgid "none"
+msgstr ""
+
+#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+#: src/library.c
+msgid "Could not save controller.ini"
+msgstr ""
+
+#. TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
+#. (about 1100 px at 44 px in bold, and the same for the two below).
+#: src/library.c
+msgid "No controller or keyboard connected"
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
+#. (a button mapper) holds it, so Grimoire gets none of its presses.
+#: src/library.c
+#, c-format
+msgid "%s: held by another app"
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's or keyboard's own name.
+#: src/library.c
+#, c-format
+msgid "%s connected"
+msgstr ""
+
+#: src/library.c
+msgid "Could not pair that controller"
+msgstr ""
+
+#. TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
+#: src/library.c
+msgid "Paired. The controller connects in a moment."
+msgstr ""
+
+#. TRANSLATORS: a toast: the controller is no longer paired with the Kindle.
+#: src/library.c
+msgid "Forgotten."
+msgstr ""
+
+#: src/library.c
+msgid "Could not forget that controller"
+msgstr ""
+
 #. TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
 #. that language's name (each language is named in itself: "English", "Español").
 #: src/library.c
@@ -1197,10 +1317,55 @@ msgstr ""
 msgid "Data: %s"
 msgstr ""
 
+#. TRANSLATORS: Settings' button to the Controller sheet (a controller's or keyboard's buttons as
+#. shortcuts): the room between KOReader and Done.
 #: src/library.c
-msgid "Shortcuts"
+msgid "Controller"
 msgstr ""
 
+#. TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
+#. way: often a button held a few seconds).
+#: src/library.c
+msgid "Searching... Put the controller in pairing mode."
+msgstr ""
+
+#: src/library.c
+msgid "Pairing..."
+msgstr ""
+
+#: src/library.c
+msgid "Tap a controller to pair it."
+msgstr ""
+
+#. TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
+#: src/library.c
+#, c-format
+msgid "Forget %s"
+msgstr ""
+
+#. TRANSLATORS: (Pair sheet) searches for controllers again.
+#: src/library.c
+msgid "Search again"
+msgstr ""
+
+#. TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
+#: src/library.c
+msgid "Pair a controller"
+msgstr ""
+
+#. TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
+#: src/library.c
+msgid "Reset buttons"
+msgstr ""
+
+#. TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a tap on a row,
+#. then a press on the controller, makes that button do it.
+#: src/library.c
+msgid "Controller buttons"
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
+#. hold, and how many of their lines were refused.
 #: src/library.c
 #, c-format
 msgid "Mappings: %d; rejected: %d"
@@ -1215,12 +1380,49 @@ msgstr ""
 msgid "Press a connected key or controller button"
 msgstr ""
 
+#. TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
+#. would not start.
+#: src/library.c
+msgid "Bluetooth: starting..."
+msgstr ""
+
+#: src/library.c
+msgid "Bluetooth did not start (see grimoire.log)"
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
+#. many shortcuts they hold, and how many of their lines were refused.
+#: src/library.c
+#, c-format
+msgid "Reload shortcuts.ini (%d, %d refused)"
+msgstr ""
+
 #: src/library.c
 msgid "Enable shortcuts"
 msgstr ""
 
 #: src/library.c
-msgid "Reload shortcuts.ini"
+msgid "Bluetooth controller"
+msgstr ""
+
+#: src/library.c
+msgid "No Bluetooth helper in grimoire/bluetooth"
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
+#: src/library.c
+msgid "Pair a controller..."
+msgstr ""
+
+#. TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
+#: src/library.c
+msgid "Buttons..."
+msgstr ""
+
+#. TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
+#. keyboard's buttons as shortcuts.
+#: src/library.c
+msgid "Controller and keys"
 msgstr ""
 
 #: src/library.c

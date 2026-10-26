@@ -55,6 +55,8 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `pen curve X Y R STEPS P [TURNS] [tx ty]` | cursive-like loops |
 | `eraser line X0 Y0 X1 Y1 STEPS` | the same with the eraser end |
 | `side on` / `side off` | hold the side button |
+| `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1 |
+| `hid attach pad\|key\|held NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on |
 | `pentap X Y`, `tap X Y` | pen tap / finger tap |
 | `touch down/move/up X Y` | raw finger events |
 | `drag pen\|touch X0 Y0 X1 Y1 STEPS` | a slow drag (100 ms per step) |
@@ -200,7 +202,12 @@ shows what the app holds.
 | `editor.panel` | `expanded` or `collapsed` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader` or `language` (Settings > Language's list) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet) or `pair` (its Pair sheet) |
+| `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
+| `library.pair` | the Pair sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
+| `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
+| `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
+| `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
 | `library.folder` | the open folder, empty at the top level |
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |

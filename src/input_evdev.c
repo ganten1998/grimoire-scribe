@@ -728,9 +728,16 @@ const InputCaps *input_caps(void) { return &g_caps; }
 void input_watch_fd(int fd) { g_watch = fd; }
 
 // Optional external inputs are watched without exclusive grabs. Native PIN input is discarded
-// at the same boundary as pen/touch, and key values are never written to the log.
+// at the same boundary as pen/touch, and key values and device names are never written to the log.
 #define KEY_DEVS 4
-typedef struct { int fd; char path[300]; HidKind kind; unsigned hatmask; HidKeys keys; } KeyDev;
+typedef struct {
+    int fd;
+    char path[300], name[41];  // name: hidkeys_name's, for IN_HID_* and input_hids
+    HidKind kind;
+    bool held;                 // another app held it exclusively when it came
+    unsigned hatmask;
+    HidKeys keys;
+} KeyDev;
 static KeyDev g_keys[KEY_DEVS];
 static bool g_keys_enabled, g_keys_init;
 static uint32_t g_keys_scan;
@@ -754,7 +761,20 @@ static bool key_resync(KeyDev *k) {
 _Static_assert(KEY_MAX + 1 <= HID_KEY_BYTES * 8, "external key bitmap too small");
 _Static_assert(ABS_MAX + 1 <= HID_ABS_BYTES * 8, "external axis bitmap too small");
 #define BYTES(bits) ((const uint8_t *)(bits))
-static void key_scan(void) {
+static void key_announce(const KeyDev *k, InType type) {
+    InEvent e = {.type = type, .gamepad = k->kind == HID_GAMEPAD, .value = k->held, .t_ms = now_ms()};
+    strlcpy_q(e.hid_name, k->name, sizeof e.hid_name);
+    q_push(e);
+}
+// A device that went away: unplugged, out of range, or unreadable after a resync.
+static void key_detach(KeyDev *k) {
+    close(k->fd);
+    k->fd = -1;
+    qlog("input: optional input at %s went away", k->path);
+    key_announce(k, IN_HID_DETACH);
+}
+// Devices found by the scan that starts watching are not announced: they did not just come.
+static void key_scan(bool announce) {
     g_keys_scan = now_ms();
     DIR *d = opendir("/dev/input");
     if (!d) return;
@@ -782,8 +802,16 @@ static void key_scan(void) {
         KeyDev *k = &g_keys[slot];
         *k = (KeyDev){.fd = fd, .kind = kind};
         strlcpy_q(k->path, path, sizeof k->path);
+        hidkeys_name(k->name, sizeof k->name, name);
+        // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
+        // for one ourselves, let go at once, and read without one as before.
+        int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
+        k->held = hidkeys_held(grabbed, err);
+        if (grabbed == 0) ioctl(fd, EVIOCGRAB, 0);
         if (!key_resync(k)) { close(fd); k->fd = -1; continue; }
-        qlog("input: optional %s attached at %s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path);
+        qlog("input: optional %s attached at %s%s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path,
+             k->held ? ", held by another app" : "");
+        if (announce) key_announce(k, IN_HID_ATTACH);
     }
     closedir(d);
 }
@@ -793,20 +821,27 @@ void input_shortcuts_enable(bool enabled) {
         g_keys_init = true;
     }
     g_keys_enabled = enabled;
-    if (enabled) key_scan();
+    if (enabled) key_scan(false);
     else for (int i = 0; i < KEY_DEVS; i++) {
         if (g_keys[i].fd >= 0) close(g_keys[i].fd);
         g_keys[i].fd = -1;
     }
 }
+int input_hids(InputHid *out, int cap) {
+    int n = 0;
+    for (int i = 0; g_keys_init && g_keys_enabled && i < KEY_DEVS && n < cap; i++) {
+        if (g_keys[i].fd < 0) continue;
+        out[n] = (InputHid){.gamepad = g_keys[i].kind == HID_GAMEPAD, .held = g_keys[i].held};
+        strlcpy_q(out[n++].name, g_keys[i].name, sizeof out->name);
+    }
+    return n;
+}
 static void handle_key(const struct input_event *ev) {
     KeyDev *k = g_key_read;
+    if (k->fd < 0) return;  // went away earlier in this read (key_detach)
     if (!g_input_grabbed) { hidkeys_sync(&k->keys, NULL, 0, 0); return; }
     if (k->keys.dropped) {
-        if (ev->type == EV_SYN && ev->code == SYN_REPORT && !key_resync(k)) {
-            close(k->fd);
-            k->fd = -1;
-        }
+        if (ev->type == EV_SYN && ev->code == SYN_REPORT && !key_resync(k)) key_detach(k);
         return;
     }
     if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y) &&
@@ -1034,7 +1069,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
         return 1;
     }
     if (q_pop(ev)) return 1;
-    if (g_keys_enabled && (uint32_t)(now_ms() - g_keys_scan) >= 5000) key_scan();
+    if (g_keys_enabled && (uint32_t)(now_ms() - g_keys_scan) >= 5000) key_scan(true);
     struct pollfd pf[8 + KEY_DEVS];
     int ikey[KEY_DEVS];
     int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1, ipwd = -1;
@@ -1063,7 +1098,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
         for (int i = 0; i < KEY_DEVS; i++) if (ikey[i] >= 0) {
             short re = pf[ikey[i]].revents;
             if (re & POLLIN) { g_key_read = &g_keys[i]; drain(g_keys[i].fd, handle_key); }
-            if (re & (POLLHUP | POLLERR | POLLNVAL)) { close(g_keys[i].fd); g_keys[i].fd = -1; }
+            if (g_keys[i].fd >= 0 && (re & (POLLHUP | POLLERR | POLLNVAL))) key_detach(&g_keys[i]);
         }
         if (isig >= 0 && (pf[isig].revents & POLLIN)) {
             char buf[16];
@@ -1101,7 +1136,7 @@ bool input_set_grab(bool grab) {
     for (int i = 0; g_keys_init && i < KEY_DEVS; i++) if (g_keys[i].fd >= 0) {
         drain(g_keys[i].fd, discard_input);
         hidkeys_sync(&g_keys[i].keys, NULL, 0, 0);
-        if (grab && !key_resync(&g_keys[i])) { close(g_keys[i].fd); g_keys[i].fd = -1; }
+        if (grab && !key_resync(&g_keys[i])) key_detach(&g_keys[i]);
     }
     // Forget touches that were used to type the PIN, including the final finger lift.
     if (grab) {

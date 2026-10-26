@@ -113,6 +113,7 @@ for f in grimoire grimoire.sh CAPABILITIES licenses/GPL-3.0.txt; do
     check "payload has $f" [ -s "$B/app/$f" ]
 done
 check "payload's grimoire.sh is kindle's" cmp -s "$B/app/grimoire.sh" kindle/app/grimoire.sh
+check "payload's bluetooth.sh is kindle's" cmp -s "$B/app/bluetooth.sh" kindle/app/bluetooth.sh
 check "payload's CAPABILITIES match the header" is "$(cat "$B/app/CAPABILITIES" 2>/dev/null)" "$CAPS"
 # app/grimoire.sh names what it supports itself: the guard, --hosted, --annotate (a page KOReader
 # sends) and --book (a whole book), and no unpacking (that is Grimoire.sh's).

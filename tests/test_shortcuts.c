@@ -50,9 +50,52 @@ TEST(settings_are_opt_in) {
     loaded.shortcuts_enabled = false; CHECK(settings_save(&loaded) == 0);
     CHECK(settings_load(&s) == 0 && !s.shortcuts_enabled);
 }
+TEST(controller_ini_learns_one_button_per_action) {
+    char sp[800], cp[800];
+    snprintf(sp, sizeof sp, "%s/shortcuts-c.ini", tl_tmp());
+    snprintf(cp, sizeof cp, "%s/controller.ini", tl_tmp());
+    unlink(sp); unlink(cp);
+    Shortcuts m;
+    shortcuts_load_all(&m, sp, cp);  // neither file: the defaults
+    CHECK(m.count == 29 && shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_UNDO);
+    int codes[4];
+    CHECK(shortcuts_pads_for(&m, SHORTCUT_PREV_PAGE, codes, 4) == 2);  // Select and the D-pad's Left
+    // Learn: East is Undo now; South loses it (it was Undo's), and the eraser loses East.
+    CHECK(shortcuts_learn(&m, cp, 305, SHORTCUT_UNDO) == 0);
+    CHECK(shortcuts_lookup(&m, true, 305, 0) == SHORTCUT_UNDO && shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_NONE);
+    CHECK(shortcuts_pads_for(&m, SHORTCUT_TOOL_BASE + TOOL_ERASER, NULL, 0) == 0);
+    CHECK(shortcuts_learn(&m, cp, 316, SHORTCUT_PREV_PAGE) == 0);  // a button with no name: its number
+    CHECK(shortcuts_pads_for(&m, SHORTCUT_PREV_PAGE, codes, 4) == 1 && codes[0] == 316);
+    CHECK(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);  // keys untouched
+    size_t len; char *text = read_file(cp, &len);
+    CHECK(text && strstr(text, "pad.East=undo\n") && strstr(text, "pad.316=previous-page\n") && !strstr(text, "key."));
+    free(text);
+    // Read back: the same gamepad buttons, from controller.ini alone; shortcuts.ini's pad. lines set aside.
+    const char *custom = "key.e=tool:marker\npad.South=redo\n";
+    CHECK(write_file_atomic(sp, custom, strlen(custom)) == 0);
+    Shortcuts back;
+    shortcuts_load_all(&back, sp, cp);
+    CHECK(shortcuts_lookup(&back, true, 304, 0) == SHORTCUT_NONE && shortcuts_lookup(&back, true, 305, 0) == SHORTCUT_UNDO);
+    CHECK(shortcuts_lookup(&back, false, 18, 0) == SHORTCUT_TOOL_BASE + TOOL_MARKER);
+    // A key line in controller.ini is not its to hold.
+    const char *odd = "pad.North=redo\nkey.z=undo\n";
+    CHECK(write_file_atomic(cp, odd, strlen(odd)) == 0);
+    shortcuts_load_all(&back, sp, cp);
+    CHECK(back.rejected == 1 && shortcuts_lookup(&back, false, 44, 0) == SHORTCUT_NONE && shortcuts_lookup(&back, true, 307, 0) == SHORTCUT_REDO);
+    // A file that cannot be written leaves the map as it was.
+    char bad[900]; snprintf(bad, sizeof bad, "%s/no-such-dir/controller.ini", tl_tmp());
+    Shortcuts before = back;
+    CHECK(shortcuts_learn(&back, bad, 308, SHORTCUT_UNDO) != 0 && back.count == before.count &&
+          shortcuts_lookup(&back, true, 308, 0) == shortcuts_lookup(&before, true, 308, 0));
+    char name[16];
+    shortcut_pad_name(544, name, sizeof name); CHECK(!strcmp(name, "Up"));
+    CHECK(!strcmp(shortcut_action_name(SHORTCUT_TOOL_BASE + TOOL_ERASER), "tool:eraser") && !shortcut_action_name(999));
+    unlink(sp); unlink(cp);
+}
 int main(void) {
     RUN(defaults_and_exact_modifiers);
     RUN(custom_mappings_and_limits);
     RUN(settings_are_opt_in);
+    RUN(controller_ini_learns_one_button_per_action);
     return tl_done();
 }

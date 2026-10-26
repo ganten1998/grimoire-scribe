@@ -1,5 +1,6 @@
 #include "hidkeys.h"
 #include "shortcuts.h"
+#include <errno.h>
 #include <string.h>
 
 static bool bit(const uint8_t *bytes, int code) { return (bytes[code / 8] >> (code % 8)) & 1; }
@@ -33,6 +34,27 @@ int hidkeys_power(const char *name, const uint8_t *keys, const uint8_t *axes) {
     int n = 0;
     for (int code = 1; code < HID_KEY_BYTES * 8; code++) n += bit(keys, code);
     return n <= 16 ? n : -1;
+}
+bool hidkeys_held(int grab_result, int grab_errno) { return grab_result != 0 && grab_errno == EBUSY; }
+void hidkeys_name(char *out, size_t cap, const char *raw) {
+    if (!cap) return;
+    size_t n = 0, max = cap - 1 < 40 ? cap - 1 : 40;
+    bool other = false;  // inside a run of bytes that are not printable ASCII
+    const char *p = raw ? raw : "";
+    while (*p == ' ') p++;
+    for (; *p && n < max; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c >= 0x20 && c < 0x7f) out[n++] = (char)c, other = false;
+        else if (!other) out[n++] = '?', other = true;
+    }
+    while (n && out[n - 1] == ' ') n--;
+    if (!n && max) out[n++] = '?';
+    out[n] = 0;
+}
+bool hidkeys_due(uint32_t *last, uint32_t now, uint32_t gap) {
+    if (*last && now - *last < gap) return false;
+    *last = now ? now : 1;
+    return true;
 }
 void hidkeys_sync(HidKeys *state, const uint8_t *held, int hat_x, int hat_y) {
     memset(state, 0, sizeof *state);

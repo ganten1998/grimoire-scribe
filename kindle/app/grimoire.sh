@@ -278,6 +278,11 @@ restore() {
     lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_BEFORE" 2>/dev/null
     # Grimoire's power-service watcher, should a crash have left it behind.
     pkill -f "lipc-wait-event .*com.lab126.powerd goingToScreenSaver,outOfScreenSaver" 2>/dev/null
+    # The Bluetooth helper, if Grimoire started it (Settings > Controller): stopped, and the Kindle's
+    # own Bluetooth jobs started again as they were. One that someone else started is left running.
+    if [ -f "$DIR/bluetooth.sh" ]; then
+        GRIMOIRE_ROOT="$ROOT" sh "$DIR/bluetooth.sh" stop-owned >/dev/null 2>>"$LOG"
+    fi
     if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ]; then
         # KOReader comes back over the screen, and puts the Kindle UI back when it quits: only the
         # status jobs stopped here are this launcher's to start.
@@ -488,7 +493,8 @@ if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; 
     APP_PILLOW=$PILLOW_HARD_DISABLED
 fi
 GRIMOIRE_AWESOME_STOPPED="$APP_AWESOME" GRIMOIRE_PILLOW_DISABLED="$APP_PILLOW" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
-    GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_BOOK="$BOOK" GRIMOIRE_ROOT="$ROOT" "$DIR/grimoire" >>"$LOG" 2>&1 &
+    GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_BOOK="$BOOK" GRIMOIRE_ROOT="$ROOT" GRIMOIRE_BT_SCRIPT="$DIR/bluetooth.sh" \
+    "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
 # Watchdog: Grimoire touches its heartbeat file every 2 s once its first frame is up. No first

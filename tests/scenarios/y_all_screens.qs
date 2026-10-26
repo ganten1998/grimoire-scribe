@@ -20,18 +20,36 @@ tap 1000 1930
 wait 50
 expect library.sheet is shortcuts
 shot 02-shortcuts-disabled
-tap 930 700
+tap 930 575
 wait 50
 expect settings.shortcuts_enabled is 1
 key 305 0 1
 wait 50
 shot 02-shortcuts-input
-tap 930 850
+hid attach held Mapper Pad
 wait 50
-tap 930 700
+shot 02-shortcuts-held
+hid detach Mapper Pad
+tap 930 1215
+wait 50
+expect library.sheet is buttons
+shot 02-buttons
+tap 930 1215
+wait 50
+expect library.learning is previous-page
+shot 02-buttons-learning
+tap 930 1215
+wait 50
+expect library.learning is
+tap 930 1695
+wait 50
+expect library.sheet is shortcuts
+tap 930 1375
+wait 50
+tap 930 575
 wait 50
 expect settings.shortcuts_enabled is 0
-tap 930 1450
+tap 930 1695
 wait 50
 expect library.sheet is none
 tap 1535 95
@@ -556,6 +574,29 @@ tap 2155 95
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
+tap 1257 1695
+wait 50
+expect library.sheet is shortcuts
+tap 1240 368
+wait 50
+expect settings.shortcuts_enabled is 1
+shot 45-controller-landscape
+tap 1240 1008
+wait 50
+expect library.sheet is buttons
+shot 45-buttons-landscape
+tap 1240 1488
+wait 50
+expect library.sheet is shortcuts
+tap 1240 368
+wait 50
+expect settings.shortcuts_enabled is 0
+tap 1240 1488
+wait 50
+expect library.sheet is none
+tap 2155 95
+wait 100
+expect library.sheet is settings
 tap 1240 1003
 wait 50
 expect settings.side_button is 3

@@ -41,33 +41,56 @@ int shortcut_keycode(const char *name) {
     return -1;
 }
 
+static const char *const k_tools[] = {"pencil","mech","ballpoint","eraser","highlighter","fountain","fineliner","marker","charcoal","calligraphy"};
+static const struct { const char *name; int action; } k_actions[] = {
+    {"undo",SHORTCUT_UNDO},{"redo",SHORTCUT_REDO},{"previous-page",SHORTCUT_PREV_PAGE},
+    {"next-page",SHORTCUT_NEXT_PAGE},{"previous-tool",SHORTCUT_PREV_TOOL},{"next-tool",SHORTCUT_NEXT_TOOL},{"white",SHORTCUT_WHITE},
+    {"index",SHORTCUT_INDEX},
+};
+// Gamepad buttons by name: the Linux gamepad convention's, and the D-pad (HAT0 decodes to these).
+static const struct { const char *name; int code; } k_buttons[] = {
+    {"Up",544},{"Down",545},{"Left",546},{"Right",547},
+    {"South",304},{"East",305},{"North",307},{"West",308},
+    {"L1",310},{"R1",311},{"L2",312},{"R2",313},{"Select",314},{"Start",315},
+};
+
+const char *shortcut_action_name(int action) {
+    static char tool[24];
+    if (action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT) {
+        snprintf(tool, sizeof tool, "tool:%s", k_tools[action - SHORTCUT_TOOL_BASE]);
+        return tool;
+    }
+    for (size_t i = 0; i < sizeof k_actions / sizeof *k_actions; i++)
+        if (k_actions[i].action == action) return k_actions[i].name;
+    return NULL;
+}
+
+void shortcut_pad_name(int code, char *out, size_t cap) {
+    for (size_t i = 0; i < sizeof k_buttons / sizeof *k_buttons; i++)
+        if (k_buttons[i].code == code) {
+            snprintf(out, cap, "%s", k_buttons[i].name);
+            return;
+        }
+    snprintf(out, cap, "%d", code);
+}
+
 int shortcut_action(const char *name) {
-    static const char *tools[] = {"pencil","mech","ballpoint","eraser","highlighter","fountain","fineliner","marker","charcoal","calligraphy"};
+    const char *const *tools = k_tools;
     if (!strncmp(name, "tool:", 5)) {
         for (int i = 0; i < TOOL_COUNT; i++) if (!strcmp(name + 5, tools[i])) return SHORTCUT_TOOL_BASE + i;
         return SHORTCUT_NONE;
     }
-    static const struct { const char *name; int action; } actions[] = {
-        {"undo",SHORTCUT_UNDO},{"redo",SHORTCUT_REDO},{"previous-page",SHORTCUT_PREV_PAGE},
-        {"next-page",SHORTCUT_NEXT_PAGE},{"previous-tool",SHORTCUT_PREV_TOOL},{"next-tool",SHORTCUT_NEXT_TOOL},{"white",SHORTCUT_WHITE},
-        {"index",SHORTCUT_INDEX},
-    };
-    for (size_t i = 0; i < sizeof actions / sizeof *actions; i++) if (!strcmp(name, actions[i].name)) return actions[i].action;
+    for (size_t i = 0; i < sizeof k_actions / sizeof *k_actions; i++) if (!strcmp(name, k_actions[i].name)) return k_actions[i].action;
     return SHORTCUT_NONE;
 }
 static bool binding(void *ctx, const char *key, const char *value) {
     Shortcuts *m = ctx;
     ShortcutBinding b = {.code = -1, .action = shortcut_action(value)};
     if (!strncmp(key, "pad.", 4)) {
-        static const struct { const char *name; int code; } buttons[] = {
-            {"Up",544},{"Down",545},{"Left",546},{"Right",547},
-            {"South",304},{"East",305},{"North",307},{"West",308},
-            {"L1",310},{"R1",311},{"L2",312},{"R2",313},{"Select",314},{"Start",315},
-        };
         char *end; long n = strtol(key + 4, &end, 10);
         if (end != key + 4 && !*end && n >= 256 && n <= 767) b.code = (int)n;
-        for (size_t i = 0; i < sizeof buttons / sizeof *buttons; i++)
-            if (!strcasecmp(key + 4, buttons[i].name)) b.code = buttons[i].code;
+        for (size_t i = 0; i < sizeof k_buttons / sizeof *k_buttons; i++)
+            if (!strcasecmp(key + 4, k_buttons[i].name)) b.code = k_buttons[i].code;
         b.gamepad = true;
     } else if (!strncmp(key, "key.", 4)) {
         const char *p = key + 4, *plus;
@@ -137,4 +160,65 @@ int shortcuts_lookup(const Shortcuts *map, bool gamepad, int code, int mods) {
 int shortcuts_write_defaults(const char *path) {
     if (access(path, F_OK) == 0) return 0;
     return write_file_atomic(path, defaults, sizeof defaults - 1);
+}
+
+void shortcuts_load_all(Shortcuts *map, const char *shortcuts_path, const char *controller_path) {
+    shortcuts_load(map, shortcuts_path);
+    if (!controller_path || access(controller_path, F_OK) != 0) return;
+    Shortcuts pads;
+    shortcuts_load(&pads, controller_path);
+    int kept = 0;
+    for (int i = 0; i < map->count; i++)
+        if (!map->bindings[i].gamepad) map->bindings[kept++] = map->bindings[i];
+    map->count = kept;
+    map->rejected += pads.rejected;
+    for (int i = 0; i < pads.count; i++) {
+        if (!pads.bindings[i].gamepad || map->count == SHORTCUT_MAX) {
+            map->rejected++;  // (a key there, or no room)
+            continue;
+        }
+        map->bindings[map->count++] = pads.bindings[i];
+    }
+}
+
+int shortcuts_learn(Shortcuts *map, const char *controller_path, int code, int action) {
+    const char *name = shortcut_action_name(action);
+    if (!name || code < 256 || code > 767) return -1;
+    Shortcuts next = *map;
+    int kept = 0;
+    for (int i = 0; i < next.count; i++) {
+        const ShortcutBinding *b = &next.bindings[i];
+        if (b->gamepad && (b->code == code || b->action == action)) continue;
+        next.bindings[kept++] = *b;
+    }
+    next.count = kept;
+    if (next.count == SHORTCUT_MAX) return -1;
+    next.bindings[next.count++] = (ShortcutBinding){.code = code, .action = action, .gamepad = true};
+    char text[4096];
+    size_t len = (size_t)snprintf(text, sizeof text,
+                                  "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n"
+                                  "# While this file is here, shortcuts.ini's pad. lines are set aside.\n");
+    for (int i = 0; i < next.count; i++) {
+        const ShortcutBinding *b = &next.bindings[i];
+        if (!b->gamepad) continue;
+        char pad[16];
+        shortcut_pad_name(b->code, pad, sizeof pad);
+        int n = snprintf(text + len, sizeof text - len, "pad.%s=%s\n", pad, shortcut_action_name(b->action));
+        if (n < 0 || (size_t)n >= sizeof text - len) return -1;
+        len += (size_t)n;
+    }
+    if (write_file_atomic(controller_path, text, len) != 0) return -1;
+    *map = next;
+    return 0;
+}
+
+int shortcuts_pads_for(const Shortcuts *map, int action, int *codes, int cap) {
+    int n = 0;
+    for (int i = 0; i < map->count; i++) {
+        const ShortcutBinding *b = &map->bindings[i];
+        if (!b->gamepad || b->action != action) continue;
+        if (codes && n < cap) codes[n] = b->code;
+        n++;
+    }
+    return n;
 }

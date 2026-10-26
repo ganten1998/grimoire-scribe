@@ -1,6 +1,7 @@
 // app.h: the App, screen switching, and the dirty-rect / refresh accumulator.
 #pragma once
 #include "annotate.h"
+#include "bluetooth.h"
 #include "canvas.h"
 #include "display.h"
 #include "input.h"
@@ -25,6 +26,10 @@ typedef struct App {
     Shortcuts shortcuts;
     int last_shortcut_code, last_shortcut_mods;
     bool last_shortcut_gamepad;
+    unsigned hid_changes;          // keyboards and controllers that came or went (IN_HID_*)
+    unsigned bt_changes;           // the Bluetooth helper's state changes and answers (bluetooth.h)
+    uint32_t bt_start_at;          // when to start the helper (after the first frame), 0 none
+    uint32_t hid_toast_at[2];      // their last toasts: came, went (0 never)
     ScreenId scr, prev_scr;
     bool running;
 
@@ -118,6 +123,10 @@ DECLARE_SCREEN(share)
 void editor_open_notebook(App *a, const char *id);   // loads, switches to SCR_EDITOR
 void editor_open_notebook_at(App *a, const char *id, uint32_t page_id, bool added);  // the same, at that page
 void editor_picture_made(App *a);                    // a picture job is done: the open page drawn again
+// The Bluetooth helper's news (bluetooth.h) while the library is the screen: its Pair sheet's.
+void library_bt(App *a, BtEvent event, const BtReply *reply);
+// A controller's press while Settings > Controller > Buttons learns one: true when it took it.
+bool library_learn_key(App *a, int code, bool gamepad);
 bool editor_save_now(App *a);
 bool editor_suspend(App *a);                         // flush pending page/info saves; false if they failed
 bool editor_shortcut(App *a, int action);             // optional key/button action, idle editor only

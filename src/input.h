@@ -28,6 +28,9 @@ typedef enum {
     IN_POWER_UP,                           // power button released: value = ms it was held (-1 unknown)
     IN_KEY,                               // external keyboard/gamepad press: value=evdev key code
     IN_POWER_HELD,                         // power button held INPUT_POWER_HOLD_MS: once per press
+    IN_HID_ATTACH,                         // an optional keyboard or controller came: hid_name,
+                                           // gamepad, value 1 when another app holds it (input_hids)
+    IN_HID_DETACH,                         // and went: hid_name, gamepad
 } InType;
 
 // Holding the power button this long saves and leaves Grimoire (below the Kindle's own ~7 s menu).
@@ -46,6 +49,7 @@ typedef struct {
     int value;             // IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
     float x2, y2;          // pinch: the second finger (screen px)
     uint32_t t_ms;
+    char hid_name[41];     // IN_HID_*: the device's name, printable ASCII (hidkeys_name)
 } InEvent;
 
 typedef struct {
@@ -67,6 +71,10 @@ int input_poll(InEvent *ev, int timeout_ms);
 // When it becomes readable, input_poll returns 0 early.
 void input_watch_fd(int fd);
 void input_shortcuts_enable(bool enabled);
+// The optional keyboards and controllers watched now, none while shortcuts are off: their names
+// (as hid_name), whether each is a controller, and whether another app holds it. Returns how many.
+typedef struct { char name[41]; bool gamepad, held; } InputHid;
+int input_hids(InputHid *out, int cap);
 // Logical screen rotation (quarter turns clockwise of the device): events are reported in the
 // rotated screen's coordinates from now on. Calibration stays in panel coordinates.
 void input_set_orientation(int quarter_turns);
