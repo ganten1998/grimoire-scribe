@@ -12,6 +12,23 @@
 
 static char root[600];
 
+static void count_pdf_pages(int done, int total, void *ctx) {
+    int *count = ctx;
+    CHECK(done == *count && done <= total);
+    (*count)++;
+}
+
+TEST(buffer_failure_stays_failed) {
+    Buf b = {.len = SIZE_MAX - 1};
+    CHECK(buf_append(&b, "xx", 2) == -1 && b.err);
+    CHECK(b.len == SIZE_MAX - 1 && b.data == NULL);
+    b.len = 0;
+    CHECK(buf_append(&b, "x", 1) == -1 && b.len == 0);
+    buf_free(&b);
+    CHECK(buf_append(&b, "abc", 3) == 0 && b.len == 3 && !b.err);
+    buf_free(&b);
+}
+
 static Stroke *squiggle(ToolKind t, float y) {
     ToolParams p;
     tool_params_default(t, &p);
@@ -93,6 +110,12 @@ TEST(notebooks) {
     CHECK(store_load_info(nb.id, &nb) == 0);
     CHECK(export_notebook_pdf(&nb, 300.f, &b) == 0);
     CHECK(b.len > 1000 && !memcmp(b.data, "%PDF-1.4", 8));
+    Buf with_progress = {0};
+    int completed = 0;
+    CHECK(export_notebook_pdf_progress(&nb, 300.f, &with_progress, count_pdf_pages, &completed) == 0);
+    CHECK(completed == nb.npages + 1);
+    CHECK(with_progress.len == b.len && !memcmp(with_progress.data, b.data, b.len));
+    buf_free(&with_progress);
     // xref offsets must point at "N 0 obj"
     char *x = strstr((char *)b.data + b.len - 200, "startxref");
     CHECK(x != NULL);
@@ -350,6 +373,35 @@ TEST(settings_upgrade_keeps_tweaks) {
     CHECK_NEAR(t.tools[TOOL_PENCIL].size_max_mm, 0.85f, 1e-3);
 }
 
+TEST(settings_upgrade_ballpoint_smoothing) {
+    // A version-2 file: the ballpoint's smoothing still at its old default moves to the new one.
+    // A pencil smoothing equal to a version-1 default stays: version 2's upgrades ran already.
+    char path[700];
+    snprintf(path, sizeof path, "%s/settings.ini", store_root());
+    const char *v2 = "settings_version=2\nballpoint.smoothing=1.0000\npencil.smoothing=0.2500\n"
+                     "fineliner.smoothing=1.0000\n";
+    write_file_atomic(path, v2, strlen(v2));
+    Settings s;
+    settings_load(&s);
+    CHECK_NEAR(s.tools[TOOL_BALLPOINT].smoothing, 0.50f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_PENCIL].smoothing, 0.25f, 1e-3);
+    CHECK_NEAR(s.tools[TOOL_FINELINER].smoothing, 1.00f, 1e-3);  // its default did not change
+    CHECK(s.version == SETTINGS_VERSION);
+    // Tuned by hand: stays.
+    const char *tuned = "settings_version=2\nballpoint.smoothing=0.8000\n";
+    write_file_atomic(path, tuned, strlen(tuned));
+    Settings t;
+    settings_load(&t);
+    CHECK_NEAR(t.tools[TOOL_BALLPOINT].smoothing, 0.80f, 1e-3);
+    // A version-1 file gets every change.
+    const char *v1 = "settings_version=1\nballpoint.smoothing=1.0000\npencil.smoothing=0.2500\n";
+    write_file_atomic(path, v1, strlen(v1));
+    Settings u;
+    settings_load(&u);
+    CHECK_NEAR(u.tools[TOOL_BALLPOINT].smoothing, 0.50f, 1e-3);
+    CHECK_NEAR(u.tools[TOOL_PENCIL].smoothing, 0.00f, 1e-3);
+}
+
 TEST(pen_defaults_from_device) {
     // Pen-only snapshot chosen on the Kindle, independent of the compiled defaults.
     char path[700];
@@ -374,7 +426,7 @@ TEST(pen_defaults_from_device) {
             CHECK_NEAR(*tool_param_ptr(&fresh.tools[t], &pi[i]), want, 1e-6);
             CHECK_NEAR(*tool_param_ptr(&reset, &pi[i]), want, 1e-6);
         }
-        // A saved version-2 profile is not migrated to these defaults.
+        // A saved profile (the current version) is not migrated to these defaults.
         chosen.tools[t].size_min_mm = 0.26f;
         chosen.tools[t].size_max_mm = 0.36f;
         chosen.tools[t].smoothing = 0.15f;
@@ -607,6 +659,7 @@ int main(void) {
     system(cmd);
     CHECK(store_init(root) == 0);
     RUN(notebooks);
+    RUN(buffer_failure_stays_failed);
     RUN(new_page_after_a_document_page);
     RUN(copy_pages_keeps_bytes_and_order);
     RUN(copy_and_insert_fail_without_changing_the_page_list);
@@ -614,6 +667,7 @@ int main(void) {
     RUN(custom_music_paper_roundtrip);
     RUN(settings_roundtrip);
     RUN(settings_upgrade_keeps_tweaks);
+    RUN(settings_upgrade_ballpoint_smoothing);
     RUN(pen_defaults_from_device);
     RUN(panel_tools);
     RUN(before_eraser);

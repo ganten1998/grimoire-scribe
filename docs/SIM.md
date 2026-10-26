@@ -177,6 +177,7 @@ shows what the app holds.
 | `editor.scale` | screen px per page px, two decimals: `1.00` for a notebook of this screen's size upright, `1.07` for an 1860x2480 notebook on a 1986x2648 screen, `0.94` the other way; `0.00` with no notebook open |
 | `editor.page_size` | the open page's own size, `WxH`: its notebook's, so a page that came at the screen's size instead would show here; empty with no notebook open |
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
+| `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.modal` | what is in front of the page: `none`, `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
@@ -201,6 +202,7 @@ shows what the app holds.
 | `library.paper` | the paper picked in New notebook, numbered as for `editor.paper` |
 | `library.music` | as `editor.music`, for New notebook's Custom music sheet and its picked paper |
 | `display.ink` | `1` while a pen stroke is marked live ink (`display_live_ink`), else `0` |
+| `display.ink_frames` | fast refreshes submitted while a stroke was still active; used to check input backlogs |
 | `display.pen_mode` | `1` while the app asks for MTK pen mode (the editor's ink strokes only), else `0` |
 | `display.last_fast` | `ink` if the last fast refresh was live ink, `wait` if a color panel would have waited for the driver's read after it (docs/DESIGN.md), empty before any |
 

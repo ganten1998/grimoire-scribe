@@ -168,11 +168,16 @@ int main(int argc, char **argv) {
             break;
         }
         InEvent ev;
-        // Block briefly (timers and the share server need regular ticks), then drain
-        // everything queued so a burst of pen samples becomes one refresh.
+        // Batch nearby samples, but keep showing ink during a backlog. A costly brush or
+        // a continuously readable device must not postpone refreshes and timers until the
+        // queue empties. Leave remaining events queued, in order, for the next iteration.
         if (input_poll(&ev, 30)) {
-            app_event(&app, &ev);
-            while (app.running && input_poll(&ev, 0)) app_event(&app, &ev);
+            uint32_t batch_at = now_ms();
+            unsigned count = 0;
+            do {
+                app_event(&app, &ev);
+                count++;
+            } while (app.running && count < 64 && now_ms() - batch_at < 8 && input_poll(&ev, 0));
         }
         app_tick(&app, now_ms());
         app_flush(&app);

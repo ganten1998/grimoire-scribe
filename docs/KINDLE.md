@@ -390,7 +390,10 @@ session with networking awake, not a reboot or deep sleep.
   with the decoded code.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
-  live ink (off by default: FBInk notes it skips the rotation stage at the Scribe's fb rotation),
+  live ink (off by default; small odd-rotation refreshes are padded as described in
+  [INK-PERFORMANCE.md](INK-PERFORMANCE.md)). `ink-metrics` logs aggregate framebuffer copy and
+  refresh-submission timings without pointer or key data. Both flags take effect at launch.
+  The remaining switches include
   `stop-framework` stops the Kindle UI instead of pausing it, `tilt-flip` reverses the pen's
   tilt direction (only needed if the calligraphy nib turns the wrong way on your Kindle: it
   should give thick strokes down to the right when a right hand leans the pen that way),

@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdatomic.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -42,6 +44,59 @@ extern unsigned char studio_js[];
 extern unsigned int studio_js_len;
 extern unsigned char studio_css[];
 extern unsigned int studio_css_len;
+extern unsigned char download_js[];
+extern unsigned int download_js_len;
+
+// Small, anonymous shared records let the parent answer progress while a child renders.
+// No notebook contents, temporary files, or second download are needed. Retain the last 32
+// records; queued/running jobs cannot be recycled, including a child not yet reaped.
+enum { DL_EMPTY, DL_QUEUED, DL_PREPARING, DL_SENDING, DL_DONE, DL_FAILED };
+typedef struct {
+    char id[33];
+    atomic_uint state, pages, total, sent, bytes;
+    bool busy; // parent only: the child still owns this record
+} Download;
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "download counters must work across fork");
+static Download *g_downloads;
+static unsigned g_download_next;
+static bool g_child_response, g_child_head;
+
+static bool download_id_ok(const char *id) {
+    if (strlen(id) != 32) return false;
+    for (int i = 0; i < 32; i++) if (!isxdigit((unsigned char)id[i])) return false;
+    return true;
+}
+
+static Download *download_find(const char *id) {
+    if (g_downloads && download_id_ok(id))
+        for (int i = 0; i < 32; i++) if (!strcmp(id, g_downloads[i].id)) return &g_downloads[i];
+    return NULL;
+}
+
+static Download *download_begin(const char *id) {
+    if (!download_id_ok(id) || download_find(id)) return NULL;
+    if (!g_downloads) {
+        void *p = mmap(NULL, 32 * sizeof(Download), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+        if (p == MAP_FAILED) return NULL;
+        g_downloads = p;
+        for (int i = 0; i < 32; i++) {
+            atomic_init(&g_downloads[i].state, DL_EMPTY);
+            atomic_init(&g_downloads[i].pages, 0); atomic_init(&g_downloads[i].total, 0);
+            atomic_init(&g_downloads[i].sent, 0); atomic_init(&g_downloads[i].bytes, 0);
+        }
+    }
+    for (int i = 0; i < 32; i++) {
+        Download *d = &g_downloads[g_download_next++ % 32];
+        unsigned state = atomic_load(&d->state);
+        if (d->busy || (state != DL_EMPTY && state != DL_DONE && state != DL_FAILED)) continue;
+        strlcpy_q(d->id, id, sizeof d->id);
+        atomic_store(&d->pages, 0); atomic_store(&d->total, 0);
+        atomic_store(&d->sent, 0); atomic_store(&d->bytes, 0);
+        atomic_store(&d->state, DL_QUEUED);
+        return d;
+    }
+    return NULL;
+}
 
 // One connection: it reads its request, then writes its answer, waits for a render slot, or is
 // handed to a forked child. Each has its own buffer, so a new connection is never answered from
@@ -57,6 +112,7 @@ typedef struct {
     size_t sent;
     uint32_t t0;   // last progress; for C_QUEUED, when it began waiting
     uint32_t seq;  // arrival order: queued renders start oldest first
+    Download *download;
 } Client;
 
 static int g_listen = -1;
@@ -72,10 +128,19 @@ static uint32_t g_seq;
 // previews asks for many at once.
 #define MAX_CHILDREN 2
 static pid_t g_children[MAX_CHILDREN];
+static Download *g_child_download[MAX_CHILDREN];
 
 static void reap_children(void) {
     for (int i = 0; i < MAX_CHILDREN; i++)
-        if (g_children[i] > 0 && waitpid(g_children[i], NULL, WNOHANG) != 0) g_children[i] = 0;
+        if (g_children[i] > 0 && waitpid(g_children[i], NULL, WNOHANG) > 0) {
+            Download *d = g_child_download[i];
+            if (d) {
+                if (atomic_load(&d->state) != DL_DONE) atomic_store(&d->state, DL_FAILED);
+                d->busy = false;
+            }
+            g_children[i] = 0;
+            g_child_download[i] = NULL;
+        }
 }
 
 static void set_nonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
@@ -109,6 +174,9 @@ int httpd_fd(void) { return g_listen; }
 int httpd_requests_served(void) { return g_served; }
 
 static void client_close(Client *c) {
+    if (c->download && atomic_load(&c->download->state) == DL_QUEUED)
+        atomic_store(&c->download->state, DL_FAILED);
+    c->download = NULL;
     if (c->st != C_FREE && c->fd >= 0) close(c->fd);
     c->fd = -1;
     c->st = C_FREE;
@@ -228,6 +296,28 @@ static void url_decode(char *s) {
 
 // The answer to g_cur. cache: a Cache-Control value, NULL for no-store (everything but the
 // fonts); extra: more header lines, each ending in \r\n, or NULL.
+static bool child_send(const void *data, size_t len, Download *d) {
+    const uint8_t *p = data;
+    size_t sent = 0;
+    while (sent < len) {
+        size_t n = len - sent;
+        if (n > 65536) n = 65536;
+        ssize_t w = send(g_cur->fd, p + sent, n, MSG_NOSIGNAL);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) return false;
+        sent += (size_t)w;
+        if (d) atomic_store(&d->sent, (unsigned)sent);
+    }
+    return true;
+}
+
+static void download_pages(int done, int total, void *ctx) {
+    Download *d = ctx;
+    if (!d) return;
+    atomic_store(&d->total, (unsigned)total);
+    atomic_store(&d->pages, (unsigned)done);
+}
+
 static void respond_bytes(int code, const char *ctype, const void *data, size_t len, const char *download_name,
                           const char *cache, const char *extra) {
     const char *reason = code == 200 ? "OK" : code == 404 ? "Not Found" : code == 405 ? "Method Not Allowed"
@@ -247,6 +337,20 @@ static void respond_bytes(int code, const char *ctype, const void *data, size_t 
         buf_printf(o, "\r\n");
     }
     buf_printf(o, "\r\n");
+    if (g_child_response) {
+        // The fork owns a blocking socket. Send directly from the export buffer instead
+        // of copying the whole PDF/ZIP into a second, equally large response buffer.
+        Download *d = g_cur->download;
+        if (d) {
+            atomic_store(&d->bytes, (unsigned)len);
+            atomic_store(&d->state, DL_SENDING);
+        }
+        bool ok = !o->err && child_send(o->data, o->len, NULL);
+        if (ok && !g_child_head) ok = child_send(data, len, d);
+        if (d) atomic_store(&d->state, ok && code == 200 ? DL_DONE : DL_FAILED);
+        buf_free(o);
+        return;
+    }
     if (len) buf_append(o, data, len);
     g_cur->st = C_WRITING;
     g_cur->sent = 0;
@@ -370,6 +474,24 @@ static void nb_card(Buf *b, const NotebookInfo *nb) {
     buf_printf(b, "</a></div></div>");
 }
 
+static void download_footer(Buf *b) {
+    // TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
+    // {percent} includes the percent sign: sent to the browser, not saved to its disk.
+    const char *words[] = {_("Preparing PDF..."), _("Preparing PDF: {done} / {total} pages"),
+        _("Sending PDF: {percent}"), _("Sent to your browser. Check Downloads."),
+        _("PDF download failed. Please try again."),
+        _("Download status unavailable. Check your browser's Downloads and the Kindle's Wi-Fi."),
+        _("Dismiss"), _("Waiting for an export slot...")};
+    buf_printf(b, "<div id=download-status></div><script>window.GRIMOIRE_DOWNLOAD_WORDS=[");
+    for (size_t i = 0; i < sizeof words / sizeof *words; i++) {
+        if (i) buf_printf(b, ",");
+        json_str(b, words[i]);
+    }
+    buf_printf(b, "];</script><script>");
+    buf_append(b, download_js, download_js_len);
+    buf_printf(b, "</script></body></html>");
+}
+
 static void route_index(void) {
     NotebookInfo *nbs;
     int n;
@@ -412,7 +534,8 @@ static void route_index(void) {
         }
         buf_printf(&b, "</div>");
     }
-    buf_printf(&b, "<p class=meta style='margin-top:40px'>Grimoire %s</p></body></html>", GRIMOIRE_VERSION);
+    buf_printf(&b, "<p class=meta style='margin-top:40px'>Grimoire %s</p>", GRIMOIRE_VERSION);
+    download_footer(&b);
     respond(200, "text/html; charset=utf-8", &b, NULL);
     buf_free(&b);
     free(nbs);
@@ -458,7 +581,8 @@ static void route_notebook_html(const NotebookInfo *nb, const char *query) {
     html_esc(&b, page_label);
     buf_printf(&b, " &middot; <a href='/nb/%s/studio?p=%d'>", nb->id, current);
     html_esc(&b, C_("share link", "effects"));
-    buf_printf(&b, "</a></figcaption></figure></body></html>");
+    buf_printf(&b, "</a></figcaption></figure>");
+    download_footer(&b);
     respond(200, "text/html; charset=utf-8", &b, NULL);
     buf_free(&b);
 }
@@ -565,6 +689,17 @@ static void route(char *path) {
     if (strstr(path, "..")) return respond_text(400, "bad path");
     if (!strcmp(path, "/") || !strcmp(path, "/index.html")) return route_index();
     if (!strcmp(path, "/api/list.json")) return route_list_json();
+    if (!strncmp(path, "/api/download/", 14)) {
+        Download *d = download_find(path + 14);
+        if (!d) return respond_text(404, "unknown download");
+        Buf b = {0};
+        buf_printf(&b, "{\"state\":%u,\"pages\":%u,\"total\":%u,\"sent\":%u,\"bytes\":%u}",
+                   atomic_load(&d->state), atomic_load(&d->pages), atomic_load(&d->total),
+                   atomic_load(&d->sent), atomic_load(&d->bytes));
+        respond(200, "application/json", &b, NULL);
+        buf_free(&b);
+        return;
+    }
     if (!strncmp(path, "/font/", 6)) return route_font(path + 6);
     if (!strcmp(path, "/all.zip")) {
         Buf b = {0};
@@ -615,7 +750,8 @@ static void route(char *path) {
         route_studio(nb);
     } else if (!strcmp(rest, ".pdf")) {
         snprintf(fname, sizeof fname, "%s.pdf", safe);
-        if (export_notebook_pdf(nb, g_dpi, &b) == 0) respond(200, "application/pdf", &b, fname);
+        if (export_notebook_pdf_progress(nb, g_dpi, &b, download_pages, g_cur->download) == 0)
+            respond(200, "application/pdf", &b, fname);
         else respond_text(500, _("export failed"));
     } else if (!strcmp(rest, ".zip")) {
         ZipWriter z;
@@ -726,15 +862,9 @@ static void serve_in_child(Client *c, const char *method, char *path) {
     struct timeval tv = {60, 0};  // a reader that stalls for a minute is gone
     setsockopt(keep, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     g_cur = c;
+    g_child_response = true;
+    g_child_head = !strcmp(method, "HEAD");
     route(path);
-    if (!strcmp(method, "HEAD")) keep_headers(&c->out);
-    size_t sent = 0;
-    while (sent < c->out.len) {
-        ssize_t w = send(keep, c->out.data + sent, c->out.len - sent, MSG_NOSIGNAL);
-        if (w < 0 && errno == EINTR) continue;
-        if (w <= 0) break;
-        sent += (size_t)w;
-    }
     shutdown(keep, SHUT_WR);
     _exit(0);
 }
@@ -759,6 +889,14 @@ static void handle_request(Client *c) {
     qlog("httpd: %s %s", method,
          path[0] != '/' ? "(not a path)" : !strncmp(shown, "/folder/", 8) ? "/folder/<name>.zip" : path);
     if (heavy(path)) {
+        char token[64];
+        const char *query = strchr(path, '?');
+        const char *ext = strstr(path, ".pdf");
+        if (!strcmp(method, "GET") && !strncmp(path, "/nb/", 4) && ext && (!ext[4] || ext[4] == '?') &&
+            query && query_get(query + 1, "progress", token, sizeof token)) {
+            c->download = download_begin(token);
+            if (!c->download) return respond_text(400, "invalid or busy download identifier");
+        }
         c->st = C_QUEUED;  // start_renders() takes it from here; t0 = when the request came in
         return;
     }
@@ -796,16 +934,20 @@ static void start_renders(void) {
         char method[8] = {0}, path[600] = {0};
         sscanf(next->req, "%7s %599s", method, path);
         g_served++;
+        Download *d = next->download;
+        if (d) { d->busy = true; atomic_store(&d->state, DL_PREPARING); }
         pid_t pid = fork();
         if (pid == 0) serve_in_child(next, method, path);
         if (pid > 0) {
             g_children[slot] = pid;
+            g_child_download[slot] = d;
             client_close(next);  // the child owns the connection now
             continue;
         }
         qlog("httpd: fork failed (%s), exporting in-process", strerror(errno));
         g_cur = next;
         route(path);
+        if (d) { d->busy = false; atomic_store(&d->state, DL_FAILED); }
         if (!strcmp(method, "HEAD")) keep_headers(&next->out);
     }
 }

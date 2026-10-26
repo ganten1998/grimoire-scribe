@@ -11,6 +11,23 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.4 candidate
+
+The offscreen CPU measurements and output-equivalence checks are in
+[INK-PERFORMANCE.md](INK-PERFORMANCE.md). They do not establish visible pen latency.
+The input-backlog scenario verifies intermediate live refreshes, all stored samples and
+unchanged rendering. Share checks exercise queued and simultaneous PDF downloads, completed
+page counts, sent-byte counts, unchanged PDF bytes, failed requests and HEAD responses.
+
+Live frames over gray paper now move each pixel once, toward its value (see "Gray paper" in
+INK-PERFORMANCE.md). `tests/test_fbpack.c` checks that on every paper gray, normal and
+inverted, at 8 and 32 bpp, and that black-and-white content keeps the old dither exactly.
+The device check: write on a white page and on a gray PDF page; the gray page should no longer
+lag behind the white one or show white specks around the stroke before it settles.
+
+Physical pen feel and the opt-in MTK pen-mode change still need a device comparison.
+No default pen-mode change has been made. The owner has not yet tested this candidate.
+
 ## 2.0.0-beta.3
 
 A fresh SSH snapshot captured all 130 current pen settings from the Kindle on 2026-10-25.

@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-beta.3\n"
+"Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 00:34-0500\n"
+"POT-Creation-Date: 2026-10-26 02:49-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -591,6 +591,42 @@ msgstr ""
 #: src/httpd.c
 msgctxt "share link"
 msgid "effects"
+msgstr ""
+
+#. TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
+#. {percent} includes the percent sign: sent to the browser, not saved to its disk.
+#: src/httpd.c
+msgid "Preparing PDF..."
+msgstr ""
+
+#: src/httpd.c
+msgid "Preparing PDF: {done} / {total} pages"
+msgstr ""
+
+#: src/httpd.c
+msgid "Sending PDF: {percent}"
+msgstr ""
+
+#: src/httpd.c
+msgid "Sent to your browser. Check Downloads."
+msgstr ""
+
+#: src/httpd.c
+msgid "PDF download failed. Please try again."
+msgstr ""
+
+#: src/httpd.c
+msgid ""
+"Download status unavailable. Check your browser's Downloads and the Kindle's "
+"Wi-Fi."
+msgstr ""
+
+#: src/httpd.c
+msgid "Dismiss"
+msgstr ""
+
+#: src/httpd.c
+msgid "Waiting for an export slot..."
 msgstr ""
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.

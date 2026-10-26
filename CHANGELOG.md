@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.0.0-beta.4 (unreleased)
+
+- **Live ink on gray pages goes straight to black**: on a gray PDF page or template, most
+  pixels under a new stroke used to flash white first and turn black a whole display waveform
+  later, a white halo and extra lag that white pages never had. Live frames now only move a
+  pixel toward its new value, with the same average darkness. Black-and-white pages are
+  refreshed exactly as before.
+- **PDF download progress**: Share shows completed pages while preparing a notebook PDF,
+  then the transfer percentage. Files still go through the browser's normal download
+  handling. Interrupted or failed downloads show a message instead of a stuck indicator.
+- **Less memory while sharing**: PDF, ZIP and image downloads send from their existing
+  export buffer, without building a second full copy for the HTTP response.
+- **Keep ink moving during a backlog**: input batches yield to the display and timers after
+  8 ms or 64 events. Queued pen samples stay in order; none are discarded by this limit.
+- **Less brush work**: skip pixels already darker than a pen's ink, reuse the opacity of
+  smooth dab interiors, and skip unused tilt calculations. Pen settings and rendered ink
+  are unchanged. Measured CPU improvements and their limits are in docs/INK-PERFORMANCE.md.
+- **Faster ink with the driver's pen mode**: live ink now goes out in the Kindle display
+  driver's pen mode, which starts a frame on the panel within about 1 ms. Plain refreshes that
+  overlap ink still being drawn waited in the driver for up to 300 ms, so quick circles and note
+  heads fell behind the pen. A stroke takes pen mode only when no other refresh can still be on
+  the panel, as the driver requires. A `pen-mode` file with `off` turns it off.
+- **Ballpoint follows the nib closer**: its default smoothing is 0.50 instead of 1.00, which
+  made the line trail the pen by 6 to 13 ms at writing speed (now about 2). A ballpoint still at
+  the old default moves to the new one; a smoothing you set yourself stays.
+- **Grays settle when the pen leaves**: the grayscale cleanup of fresh ink waits until the pen
+  leaves the page (or 1.5 s with it hovering), so the next word no longer runs into it.
+- **Developer latency report**: optional timing logs measure framebuffer copying and refresh
+  submission, and now each live ink frame from the pen's sample to the driver starting and
+  finishing it, without input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
+  waveform timing: on gray paper DU first drives a pixel toward white, so ink there starts up to
+  59 ms later than on white paper whatever Grimoire does.
+
 ## 2.0.0-beta.3 (2026-10-26)
 
 - **Empty folders leave the PDF mirror too**: removing or renaming an empty Library folder

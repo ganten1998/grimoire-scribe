@@ -20,17 +20,49 @@ void fbpack_row(uint8_t *dst, ptrdiff_t step, uint8_t *previous, ptrdiff_t previ
     }
     for (int i = 0; i < width; i++) {
         uint8_t v = src[i];
+        uint8_t *p = dst + i * step;
         // DU leaves gray target pixels alone. Keep unchanged gray paper gray, and keep earlier
         // dithered ink in its current state, instead of dithering the whole dirty rectangle.
         if (fast && known && previous && previous[i * previous_step] == v) continue;
         if (previous) previous[i * previous_step] = v;
-        if (fast && v != 0 && v != 255) {
+        if (fast) {
             int threshold = k_bayer8[((y & 7) << 3) | ((x + i) & 7)] * 4 + 2;
-            v = v > threshold ? 255 : 0;
+            if (known && previous) {
+                // A DU transition ends in black or white, and a pixel cannot start another until
+                // it has. So move what the panel shows only toward the new value: black or not
+                // yet when it darkens, white or not yet when it lightens, as often as keeps the
+                // average. Ink on gray paper then goes straight to black, instead of white first
+                // and black a whole waveform later. Over black and white this is the dither below.
+                int g = invert ? 255 - p[0] : p[0];
+                if (v < g) {
+                    if (v * 255 > threshold * g) continue;
+                    v = 0;
+                } else if (v > g) {
+                    if ((v - g) * 255 <= threshold * (255 - g)) continue;
+                    v = 255;
+                } else {
+                    continue;
+                }
+            } else if (v != 0 && v != 255) {
+                v = v > threshold ? 255 : 0;
+            }
         }
         if (invert) v = (uint8_t)(255 - v);
-        uint8_t *p = dst + i * step;
         p[0] = v;
         if (bpp == 32) { p[1] = p[2] = v; p[3] = 255; }
     }
+}
+
+Rect fbpack_pen_region(Rect r, int width, int height) {
+    if (width <= 0 || height <= 0) return RECT_EMPTY;
+    r = rect_intersect(r, (Rect){0, 0, width, height});
+    if (rect_is_empty(r) || (int64_t)r.w * r.h >= 6400) return r;
+    int w = r.h >= 80 ? (6400 + r.h - 1) / r.h : 80;
+    w = clampi(w, r.w, width);
+    int h = clampi((6400 + w - 1) / w, r.h, height);
+    // Narrow panels may need more width after the height reaches their edge.
+    if ((int64_t)w * h < 6400) w = clampi((6400 + h - 1) / h, w, width);
+    int x = clampi(r.x - (w - r.w) / 2, 0, width - w);
+    int y = clampi(r.y - (h - r.h) / 2, 0, height - h);
+    return (Rect){x, y, w, h};
 }
