@@ -1034,7 +1034,8 @@ TEST(undo_and_redo_an_erase_stroke) {
     for (int i = 0; i < 4; i++) {
         float y = 600 + i * 100.f;
         // Broad ink gives the erase/undo comparison plenty of changed pixels.
-        Stroke *s = ink(TOOL_MARKER, 300, y, 1500, y + 40, 30, 0.6f, 1.f, 30, 20, 1u + (uint32_t)i);
+        Stroke *s = stroke_new(TOOL_MARKER, &k_legacy_params[TOOL_MARKER], 1u + (uint32_t)i);
+        wave_points(s, 300, y, 1500, y + 40, 30, 0.6f, 1.f, 30, 20);
         page_add(p, s);
         history_push_add(&h, p->n - 1, s);
     }
@@ -1043,7 +1044,9 @@ TEST(undo_and_redo_an_erase_stroke) {
     canvas_init(&after, W, H);
     canvas_init(&cur, W, H);
     page_render(&before, p, FULL, DPI);
-    Stroke *e = white(TOOL_CHARCOAL, 600, 500, 1100, 1100, 80, 0.8f, 1.f, 30, 30, 5u);
+    // A fixed broad erase profile makes this an undo test independent of fresh defaults.
+    Stroke *e = stroke_new(TOOL_ERASER, &k_legacy_params[TOOL_CHARCOAL], erase_seed(TOOL_CHARCOAL, 5u));
+    wave_points(e, 600, 500, 1100, 1100, 80, 0.8f, 1.f, 30, 30);
     page_add(p, e);
     history_push_add(&h, p->n - 1, e);
     page_render(&after, p, FULL, DPI);
@@ -1130,7 +1133,10 @@ TEST(beta_opens_erase_strokes) {
 TEST(reader_and_rescale_know_the_texture) {
     Page *pg = page_new(W, H, PAPER_MEDIUM);
     for (int t = 0; t < TOOL_COUNT; t++) {
-        page_add(pg, white((ToolKind)t, 150 + t * 170, 300, 200 + t * 170, 2000, 30, 0.5f, 1.f, 80, 10, 9u + (uint32_t)t));
+        // Fixed historical widths establish that charcoal can reach beyond the round eraser.
+        Stroke *s = stroke_new(TOOL_ERASER, &k_legacy_params[t], erase_seed((ToolKind)t, 9u + (uint32_t)t));
+        wave_points(s, 150 + t * 170, 300, 200 + t * 170, 2000, 30, 0.5f, 1.f, 80, 10);
+        page_add(pg, s);
     }
     uint8_t *d = NULL;
     size_t len = 0;
