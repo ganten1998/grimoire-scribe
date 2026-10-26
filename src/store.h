@@ -46,6 +46,8 @@ typedef struct {
     bool invert;                  // white on black
     bool shortcuts_enabled;       // optional external keyboard/gamepad mappings
     bool controller;              // start the Bluetooth helper with Grimoire (bluetooth.h)
+    int updates;                  // Settings > Updates' channel: 0 by the version (a beta: preview),
+                                  // 1 releases only (stable), 2 betas too (preview); update.h
     bool pinch_zoom;              // two-finger zoom in the editor
     int sleep_mode;               // sleep screen: 0 the page I'm on, 1 a pinned page, 2 the Kindle's own
     int sleep_minutes;            // sleep after this long without input (0 = never)

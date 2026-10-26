@@ -10,6 +10,7 @@
 #include "i18n.h"
 #include "live.h"
 #include "pair.h"
+#include "update.h"
 
 #include "light.h"
 #include "power.h"
@@ -18,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // The app's own repaints (toast show/hide) are kept apart from the screens' so a toast
 // never mistakes its own pixels for fresh screen content underneath it.
@@ -209,6 +211,19 @@ int app_init(App *a, int w, int h, float dpi) {
     standin = getenv("GRIMOIRE_BT_API");
 #endif
     bt_init(store_root(), getenv("GRIMOIRE_BT_SCRIPT"), standin);
+    // Settings > Updates (update.h): the launcher says where update.sh and the request file are.
+    char request[700];
+    const char *asked = getenv("GRIMOIRE_UPDATE_REQUEST");
+    snprintf(request, sizeof request, "%s/.update-request", store_root());
+    update_init(getenv("GRIMOIRE_UPDATE_SCRIPT"), asked && *asked ? asked : request);
+    char failed[700];
+    snprintf(failed, sizeof failed, "%s/.update-failed", store_root());
+    if (access(failed, F_OK) == 0) {
+        unlink(failed);
+        qlog("update: the last update did not install (update.sh's lines above in this log say why)");
+        // TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
+        app_toast(a, _("The last update did not install. grimoire.log says why."), 6000);
+    }
     a->bt_start_at = a->settings.controller && a->settings.shortcuts_enabled ? now_ms() + 1500 : 0;
     qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
          a->settings.side_button);
@@ -653,6 +668,16 @@ static void app_leave(App *a) {
     a->running = false;
 }
 
+void app_leave_for_update(App *a) {
+    bool hosted = !strcmp(app_host(), "koreader");
+    // TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
+    // installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
+    // opens the new one next time.
+    app_toast(a, hosted ? _("Updating. Open Grimoire from KOReader again in a moment.")
+                        : _("Updating. Grimoire starts again by itself."), 3000);
+    a->running = false;
+}
+
 void app_set_rotation(App *a, int r) {
     r &= 3;
     int w, h;
@@ -963,6 +988,7 @@ int app_probe(const char *key, char *out, size_t cap) {
         {"settings.white", st->white},
         {"settings.shortcuts_enabled", st->shortcuts_enabled},
         {"settings.controller", st->controller},
+        {"settings.updates", st->updates},
         {"shortcuts.code", a->last_shortcut_code},
         {"native_pin", a->native_pin},
         {"input.yielded", a->input_yielded},
@@ -1013,6 +1039,15 @@ int app_probe(const char *key, char *out, size_t cap) {
         Rect r = live_chip(a);
         if (live_on()) snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
         else snprintf(out, cap, "%s", "");
+    }
+    else if (!strcmp(key, "update.requested")) {
+        // What "Update now" asked the launcher for ("preview" or "stable"), empty for nothing.
+        size_t len;
+        char *text = read_file(update_request_path(), &len);
+        snprintf(out, cap, "%s", text ? text : "");
+        size_t n = strlen(out);
+        while (n && out[n - 1] == '\n') out[--n] = 0;
+        free(text);
     }
     else if (!strncmp(key, "pads.", 5)) {
         // The controller buttons for an action, as the files name them: "pads.undo" -> "East" ("" none).

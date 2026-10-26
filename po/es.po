@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 09:50-0500\n"
+"POT-Creation-Date: 2026-10-26 10:31-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -87,6 +87,11 @@ msgstr[1] "Se añadieron %d páginas del libro."
 msgid "Adding the book's pages: %d of %d"
 msgstr "Añadiendo las páginas del libro: %d de %d"
 
+#. TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
+#: src/app.c
+msgid "The last update did not install. grimoire.log says why."
+msgstr "La última actualización no se instaló. grimoire.log dice por qué."
+
 #. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
 #. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
 #: src/app.c
@@ -158,6 +163,17 @@ msgstr "Guardado. Saliendo de %s."
 #, c-format
 msgid "Leaving %s without this page."
 msgstr "Saliendo de %s sin guardar esta página."
+
+#. TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
+#. installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
+#. opens the new one next time.
+#: src/app.c
+msgid "Updating. Open Grimoire from KOReader again in a moment."
+msgstr "Actualizando. Abre Grimoire desde KOReader de nuevo en un momento."
+
+#: src/app.c
+msgid "Updating. Grimoire starts again by itself."
+msgstr "Actualizando. Grimoire vuelve a abrirse solo."
 
 #. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
 #: src/app.c
@@ -1366,11 +1382,77 @@ msgstr "lápiz: %s"
 msgid "Data: %s"
 msgstr "Datos: %s"
 
-#. TRANSLATORS: Settings' button to the Controller sheet (a controller's or keyboard's buttons as
-#. shortcuts): the room between KOReader and Done.
+#. TRANSLATORS: Settings' bottom buttons, each a word under its icon (about 360 px at 34 px):
+#. to the Controller sheet (a controller's or keyboard's buttons as shortcuts), and to the
+#. Updates sheet (check for a newer Grimoire and install it).
 #: src/library.c
 msgid "Controller"
 msgstr "Mando"
+
+#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
+#: src/library.c
+msgid "Updates"
+msgstr "Actualizaciones"
+
+#. TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
+#. running; then while it checks; then what the check found: a newer one (%s), or that this
+#. one (%s) is the newest; or why it could not check.
+#: src/library.c
+msgid "Updates come through KPM, which is not here."
+msgstr "Las actualizaciones llegan por KPM, que no está aquí."
+
+#: src/library.c
+msgid "Checking for updates..."
+msgstr "Buscando actualizaciones..."
+
+#: src/library.c
+#, c-format
+msgid "Grimoire %s is available."
+msgstr "Grimoire %s está disponible."
+
+#: src/library.c
+#, c-format
+msgid "Grimoire %s is the newest."
+msgstr "Grimoire %s es la versión más reciente."
+
+#: src/library.c
+msgid "Could not check. Is Wi-Fi on?"
+msgstr "No se pudo comprobar. ¿Está activado el Wi-Fi?"
+
+#: src/library.c
+msgid "Could not check for updates."
+msgstr "No se pudo buscar actualizaciones."
+
+#: src/library.c
+#, c-format
+msgid "This is Grimoire %s."
+msgstr "Versión instalada: Grimoire %s."
+
+#. TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
+#. only (stable); a tap changes it.
+#: src/library.c
+msgid "Updates: betas and releases (tap for releases only)"
+msgstr "Actualizaciones: betas y versiones (toca para solo versiones)"
+
+#: src/library.c
+msgid "Updates: releases only (tap for betas too)"
+msgstr "Actualizaciones: solo versiones (toca para incluir betas)"
+
+#. TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
+#. installs it, and Grimoire starts again.
+#: src/library.c
+#, c-format
+msgid "Update to %s"
+msgstr "Actualizar a %s"
+
+#. TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
+#: src/library.c
+msgid "Check for updates"
+msgstr "Buscar actualizaciones"
+
+#: src/library.c
+msgid "Update"
+msgstr "Actualizar"
 
 #. TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
 #. way: often a button held a few seconds).
@@ -1584,6 +1666,11 @@ msgstr "Nombre"
 #: src/library.c
 msgid "Could not save shortcuts.ini"
 msgstr "No se pudo guardar shortcuts.ini"
+
+#. TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
+#: src/library.c
+msgid "Could not start the update"
+msgstr "No se pudo iniciar la actualización"
 
 #: src/library.c
 msgid "Updated. Restart KOReader to apply."

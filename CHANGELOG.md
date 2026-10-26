@@ -2,6 +2,12 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+- **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
+  and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:
+  Grimoire closes, KPM installs it with its progress on the screen, and Grimoire starts again. A
+  failed install is reported at the next start. Hotfixes go out the same way: docs/KPM.md,
+  Hotfixes. Settings' bottom row now has Controller and Updates side by side.
+
 - **Controllers**: Settings > Controller (was Shortcuts) shows the controller or keyboard connected,
   and Buttons... learns which controller button does what: tap a row, press the button
   (grimoire/controller.ini). A short toast says when one connects or goes, and when another app

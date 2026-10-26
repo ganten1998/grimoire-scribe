@@ -6,6 +6,8 @@
 #   slow              the first frame after 3 s, then a beat every 2 s; exits after about 7 s
 #   hang              never beats (no first frame)
 #   stale             beats once, then never again
+#   update            draws and beats as normal, then asks for an update (Settings > Updates' Update
+#                     now: the request file the launcher named) and exits
 # A hang or stale one is stuck the way a real Grimoire can be: its TERM handler only sets its
 # quit flag, so it notes the TERM and runs on until it is KILLed (or for a minute at most, should
 # the test go wrong).
@@ -45,6 +47,10 @@ esac
 printf 'GRIMOIRE' >"${GRIMOIRE_SYSROOT:?}/dev/fb0"
 beat
 [ -n "${FAKE_EXIT_STATE:-}" ] && echo "$FAKE_EXIT_STATE" >"${SHIM_STATE:?}/lipc/com.lab126.powerd.state"
+if [ "${FAKE_MODE:-}" = update ]; then
+    echo "grimoire update script=${GRIMOIRE_UPDATE_SCRIPT:-}" >>"$SHIM_LOG"
+    echo preview >"${GRIMOIRE_UPDATE_REQUEST:?}"
+fi
 sleep 0.3
 echo "grimoire exits" >>"$SHIM_LOG"
 exit 0

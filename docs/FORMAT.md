@@ -38,6 +38,7 @@ root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
+root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
@@ -785,6 +786,7 @@ line. Values are clamped to their ranges when read.
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
+| `updates` | `stable` (releases only) or `preview` (betas too): which of Grimoire's feeds Settings > Updates checks (docs/KPM.md, Updating). Absent: by the running version (a beta or RC: preview). Since 2.0.0-beta.5; versions before keep or drop it as above |
 | `settings_version` | 3: which default-changing upgrades have run (2: the pencil and mechanical pencil defaults; 3: the ballpoint's smoothing, since 2.0.0-beta.4). Each moves a value still at its old default, in files from before its version |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
 | `pen.panel` | `WxH`: the panel the pen calibration was made on, upright (since 1.1; below) |

@@ -148,6 +148,9 @@ bool share_live_card_up(App *a);                     // Live view's pairing card
 // while it is on);
 // live_view_stop turns it off (say: with a toast). app_watch_server keeps input_poll watching
 // the share server while it runs and the Kindle is awake.
+// Settings > Updates' Update now: the request is written; Grimoire leaves (the launcher hands the
+// update to update.sh).
+void app_leave_for_update(App *a);
 void live_view_open(App *a);
 void live_view_stop(App *a, bool say);
 void app_watch_server(App *a);

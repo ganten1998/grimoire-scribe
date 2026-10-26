@@ -16,7 +16,7 @@ wait 100
 expect toast is Controller disconnected
 tap 1535 95
 wait 200
-tap 945 1930
+tap 746 1930
 wait 200
 expect library.sheet is shortcuts
 shot 01-controller-sheet
@@ -88,7 +88,7 @@ pentap 1768 1566
 wait 300
 tap 1535 95
 wait 200
-tap 945 1930
+tap 746 1930
 wait 200
 tap 930 1215
 wait 200

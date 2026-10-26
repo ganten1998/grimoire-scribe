@@ -150,6 +150,8 @@ static const uint32_t k_icon_cp[ICON_COUNT] = {
     [ICON_COPY] = 0xF018F,         // md-content_copy
     [ICON_LINK] = 0xF0339,         // md-link_variant
     [ICON_LIVE] = 0xF0119,         // md-cast_connected
+    [ICON_GAMEPAD] = 0xF0297,      // md-gamepad_variant
+    [ICON_UPDATE] = 0xF06B0,       // md-update
 };
 
 IconKind ui_tool_icon(int tool) {

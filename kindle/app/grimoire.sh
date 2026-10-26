@@ -221,6 +221,8 @@ while HOLDER=$(lock_holder) && [ -n "$HOLDER" ]; do
 done
 echo "$$" >"$LOCK"
 release() { [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
+# (An update request from an earlier run that never left cleanly is not this run's.)
+rm -f "$TMP/grimoire-update"
 
 # Keep the log from growing forever.
 if [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 1048576 ]; then
@@ -494,6 +496,7 @@ if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; 
 fi
 GRIMOIRE_AWESOME_STOPPED="$APP_AWESOME" GRIMOIRE_PILLOW_DISABLED="$APP_PILLOW" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
     GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_BOOK="$BOOK" GRIMOIRE_ROOT="$ROOT" GRIMOIRE_BT_SCRIPT="$DIR/bluetooth.sh" \
+    GRIMOIRE_UPDATE_SCRIPT="$DIR/update.sh" GRIMOIRE_UPDATE_REQUEST="$TMP/grimoire-update" \
     "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
@@ -534,4 +537,20 @@ wait "$QPID" 2>/dev/null
 RC=$?
 log "Grimoire exited with status $RC"
 rm -f "$BEAT"
+# Settings > Updates asked for the newest Grimoire (it wrote the request and left): update.sh
+# installs it with KPM once this launcher is gone (KPM's hooks refuse while it runs), from a copy
+# in $TMP (the update replaces the app's own), and starts Grimoire again.
+if [ -f "$TMP/grimoire-update" ]; then
+    rm -f "$TMP/grimoire-update"
+    if cp "$DIR/update.sh" "$TMP/grimoire-update.sh" 2>/dev/null; then
+        log "an update was asked for: KPM installs it once this launcher has finished"
+        if command -v setsid >/dev/null 2>&1; then
+            GRIMOIRE_ROOT="$ROOT" setsid sh "$TMP/grimoire-update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
+        else
+            GRIMOIRE_ROOT="$ROOT" nohup sh "$TMP/grimoire-update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
+        fi
+    else
+        log "an update was asked for, but update.sh could not be copied to $TMP"
+    fi
+fi
 exit "$RC"

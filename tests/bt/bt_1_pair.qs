@@ -9,7 +9,7 @@ wait 2000
 expect library.bluetooth is external
 tap 1535 95
 wait 200
-tap 945 1930
+tap 746 1930
 wait 200
 expect library.sheet is shortcuts
 tap 930 895

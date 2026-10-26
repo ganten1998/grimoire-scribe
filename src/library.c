@@ -16,9 +16,10 @@
 #include "i18n.h"
 #include "tplsheet.h"
 #include "koreader.h"
+#include "update.h"
 
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
-               MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS, MOD_BUTTONS, MOD_PAIR } Modal;
+               MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS, MOD_BUTTONS, MOD_PAIR, MOD_UPDATES } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
 
 enum {
@@ -34,6 +35,7 @@ enum {
     H_PAPER_MORE, H_KOREADER, H_KO_ITEM, H_SHORTCUTS, H_SHORTCUT_ENABLE, H_SHORTCUT_RELOAD,
     H_BUTTONS, H_BUTTON_ROW, H_BUTTONS_RESET, H_BUTTONS_DONE,
     H_BT_TOGGLE, H_PAIR, H_PAIR_FOUND, H_PAIR_FORGET, H_PAIR_AGAIN,
+    H_UPDATES, H_UPD_CHANNEL, H_UPD_CHECK, H_UPD_NOW,
 };
 
 typedef struct {
@@ -82,6 +84,9 @@ struct LibraryState {
     BtDevice found[4], paired[2];
     int nfound, npaired;
     unsigned shown_bt_changes;
+    // The Updates sheet: its check (UPD_*), the newest version it found, why it failed.
+    int upd;
+    char upd_latest[UPDATE_VERSION_LEN], upd_why[16];
     Modal modal;
     KbPurpose kbp;
     Keyboard kb;
@@ -703,6 +708,26 @@ void library_bt(App *a, BtEvent e, const BtReply *r) {
     redraw(a, REFRESH_UI);
 }
 
+// ---- Settings > Updates (update.h) ----
+
+enum { UPD_IDLE, UPD_CHECKING, UPD_DONE, UPD_FAILED };
+
+// Which channel's updates: the setting, or by the version (a beta or an RC: preview).
+static bool upd_preview(App *a) {
+    return a->settings.updates == 2 || (a->settings.updates == 0 && update_is_prerelease(GRIMOIRE_VERSION));
+}
+
+static bool upd_newer(App *a) { return S->upd == UPD_DONE && update_version_cmp(S->upd_latest, GRIMOIRE_VERSION) > 0; }
+
+// The update check's news (from library_tick).
+static void upd_poll(App *a) {
+    if (S->upd != UPD_CHECKING) return;
+    UpdateEvent e = update_tick(S->upd_latest, S->upd_why, sizeof S->upd_why);
+    if (!e) return;
+    S->upd = e == UPDATE_EV_DONE ? UPD_DONE : UPD_FAILED;
+    if (S->modal == MOD_UPDATES) redraw(a, REFRESH_UI);
+}
+
 // A vertical list of full-width buttons inside a sheet.
 static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     int rh = ui_px(140), gap = ui_px(20);
@@ -842,11 +867,17 @@ static void draw_settings(App *a) {
     Rect ko = {in.x, done.y, ui_px(420), done.h};
     ui_button(c, ko, ICON_NOTEBOOK, "KOReader", BTN_PLAIN);
     hits_add(&S->hits, ko, H_KOREADER, 0);
-    Rect keys = {ko.x + ko.w + ui_px(30), done.y, done.x - ko.x - ko.w - ui_px(60), done.h};
-    // TRANSLATORS: Settings' button to the Controller sheet (a controller's or keyboard's buttons as
-    // shortcuts): the room between KOReader and Done.
-    ui_button(c, keys, ICON_NONE, _("Controller"), BTN_PLAIN);
+    // Between KOReader and Done: Controller and Updates, each half the room.
+    int mid = done.x - ko.x - ko.w - ui_px(90);
+    Rect keys = {ko.x + ko.w + ui_px(30), done.y, mid / 2, done.h};
+    Rect upd = {keys.x + keys.w + ui_px(30), done.y, mid - mid / 2, done.h};
+    // TRANSLATORS: Settings' bottom buttons, each a word under its icon (about 360 px at 34 px):
+    // to the Controller sheet (a controller's or keyboard's buttons as shortcuts), and to the
+    // Updates sheet (check for a newer Grimoire and install it).
+    ui_button(c, keys, ICON_GAMEPAD, _("Controller"), BTN_PLAIN);
     hits_add(&S->hits, keys, H_SHORTCUTS, 0);
+    ui_button(c, upd, ICON_UPDATE, _("Updates"), BTN_PLAIN);
+    hits_add(&S->hits, upd, H_UPDATES, 0);
 }
 
 static void draw_modal(App *a) {
@@ -855,6 +886,39 @@ static void draw_modal(App *a) {
     switch (S->modal) {
     case MOD_NEW: draw_new(a); break;
     case MOD_SETTINGS: draw_settings(a); break;
+    case MOD_UPDATES: {
+        char status[200], channel[200], now[160];
+        bool avail = update_available();
+        // TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
+        // running; then while it checks; then what the check found: a newer one (%s), or that this
+        // one (%s) is the newest; or why it could not check.
+        if (!avail) snprintf(status, sizeof status, "%s", _("Updates come through KPM, which is not here."));
+        else if (S->upd == UPD_CHECKING) snprintf(status, sizeof status, "%s", _("Checking for updates..."));
+        else if (S->upd == UPD_DONE && upd_newer(a)) snprintf(status, sizeof status, _("Grimoire %s is available."), S->upd_latest);
+        else if (S->upd == UPD_DONE) snprintf(status, sizeof status, _("Grimoire %s is the newest."), GRIMOIRE_VERSION);
+        else if (S->upd == UPD_FAILED && !strcmp(S->upd_why, "network")) snprintf(status, sizeof status, "%s", _("Could not check. Is Wi-Fi on?"));
+        else if (S->upd == UPD_FAILED && !strcmp(S->upd_why, "no-kpm")) snprintf(status, sizeof status, "%s", _("Updates come through KPM, which is not here."));
+        else if (S->upd == UPD_FAILED) snprintf(status, sizeof status, "%s", _("Could not check for updates."));
+        else snprintf(status, sizeof status, _("This is Grimoire %s."), GRIMOIRE_VERSION);
+        // TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
+        // only (stable); a tap changes it.
+        snprintf(channel, sizeof channel, "%s", upd_preview(a) ? _("Updates: betas and releases (tap for releases only)")
+                                                              : _("Updates: releases only (tap for betas too)"));
+        // TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
+        // installs it, and Grimoire starts again.
+        snprintf(now, sizeof now, _("Update to %s"), S->upd_latest);
+        MenuRow rows[] = {
+            {ICON_NONE, status, H_NONE, 0, BTN_DISABLED},
+            {ICON_NONE, channel, H_UPD_CHANNEL, 0, avail && S->upd != UPD_CHECKING ? BTN_PLAIN : BTN_DISABLED},
+            // TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
+            {ICON_UPDATE, _("Check for updates"), H_UPD_CHECK, 0, avail && S->upd != UPD_CHECKING ? BTN_PLAIN : BTN_DISABLED},
+            {ICON_DOWNLOAD, upd_newer(a) ? now : _("Update"), H_UPD_NOW, 0, upd_newer(a) ? BTN_PRIMARY : BTN_DISABLED},
+            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
+        };
+        // TRANSLATORS: the Updates sheet's title (Settings > Updates).
+        draw_menu(a, _("Updates"), rows, 5);
+        break;
+    }
     case MOD_PAIR: {
         MenuRow rows[8];
         char names[6][BT_NAME_LEN + 40];
@@ -1335,6 +1399,30 @@ static void act(App *a, const Hit *h) {
         S->bt_next = ASK_NONE;
         open_modal(a, MOD_SHORTCUTS);
         break;
+    case H_UPDATES:
+        if (S->upd != UPD_CHECKING) S->upd = UPD_IDLE;
+        open_modal(a, MOD_UPDATES);
+        break;
+    case H_UPD_CHANNEL:
+        a->settings.updates = upd_preview(a) ? 1 : 2;
+        settings_save(&a->settings);
+        S->upd = UPD_IDLE;  // (what a check found was the other channel's)
+        redraw(a, REFRESH_UI);
+        break;
+    case H_UPD_CHECK:
+        if (update_check(upd_preview(a))) S->upd = UPD_CHECKING;
+        redraw(a, REFRESH_UI);
+        break;
+    case H_UPD_NOW:
+        if (!upd_newer(a)) break;
+        if (update_request(upd_preview(a)) != 0) {
+            // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
+            app_toast(a, _("Could not start the update"), 3000);
+            break;
+        }
+        qlog("update: leaving so KPM can install %s", S->upd_latest);
+        app_leave_for_update(a);
+        break;
     case H_BT_TOGGLE:
         a->settings.controller = !a->settings.controller;
         settings_save(&a->settings);
@@ -1627,6 +1715,7 @@ void library_tick(App *a, uint32_t now) {
         S->shown_hid_changes != a->hid_changes))
         redraw(a, REFRESH_UI);
     if (S->modal == MOD_PAIR) bt_send(a);
+    upd_poll(a);
     if (S->modal == MOD_SHORTCUTS && S->shown_bt_changes != a->bt_changes) redraw(a, REFRESH_UI);
     if (S->modal == MOD_BUTTONS && S->learn_row >= 0 && now - S->learn_at >= LEARN_MS) {
         S->learn_row = -1;  // no press in 10 s: as it was
@@ -1715,6 +1804,7 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         [MOD_SHORTCUTS] = "shortcuts",
         [MOD_BUTTONS] = "buttons",
         [MOD_PAIR] = "pair",
+        [MOD_UPDATES] = "updates",
     };
     if (!S) return -1;
     if (!strcmp(key, "sheet")) {
@@ -1726,6 +1816,13 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         const char *n = S->modal == MOD_BUTTONS && S->learn_row >= 0
                             ? shortcut_action_name(k_learn[S->learn_row].act[S->learn_step]) : NULL;
         snprintf(out, cap, "%s", n ? n : "");
+    } else if (!strcmp(key, "update")) {
+        // The Updates sheet's check: "idle", "checking", "newer <version>", "newest <version>" or
+        // "failed <why>".
+        if (S->upd == UPD_CHECKING) snprintf(out, cap, "checking");
+        else if (S->upd == UPD_DONE) snprintf(out, cap, "%s %s", upd_newer(a) ? "newer" : "newest", S->upd_latest);
+        else if (S->upd == UPD_FAILED) snprintf(out, cap, "failed %s", S->upd_why);
+        else snprintf(out, cap, "idle");
     } else if (!strcmp(key, "pair")) {
         // The Pair sheet: "scanning", "pairing" or "idle", then the controllers found and paired.
         snprintf(out, cap, "%s %d %d", S->scanning ? "scanning" : S->pairing ? "pairing" : "idle", S->nfound, S->npaired);

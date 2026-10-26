@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stands in for KPM's CLI in tests/launcher_check.sh (update.sh's install: GRIMOIRE_KPM points
+# here): records each call and whether the launcher was still running when it came.
+if [ -e "${GRIMOIRE_TMP:?}/grimoire.launcher.pid" ] && kill -0 "$(cat "$GRIMOIRE_TMP/grimoire.launcher.pid")" 2>/dev/null; then
+    l=running
+else
+    l=gone
+fi
+echo "kpm $* (launcher $l)" >>"${SHIM_LOG:?}"

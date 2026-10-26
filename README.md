@@ -389,6 +389,13 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 - **Nothing happens when you tap Grimoire**: look at `grimoire/grimoire.log`. Please attach it
   to any bug report.
 
+## Updates
+
+**Library > Settings > Updates** checks Grimoire's own feed through KPM and installs a newer
+Grimoire: Grimoire closes, KPM installs it (its progress on the screen), and Grimoire starts again.
+Betas get betas and releases; a tap there switches to releases only. It needs KPM and Wi-Fi. See
+[KPM installation and updates](docs/KPM.md).
+
 ## Keyboard and controller shortcuts
 
 In **Library > Settings > Controller**, enable shortcuts: a keyboard or a controller then switches

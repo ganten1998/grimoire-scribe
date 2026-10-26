@@ -208,6 +208,9 @@ shows what the app holds.
 | `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
 | `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
+| `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
+| `library.update` | the Updates sheet's check: `idle`, `checking`, `newer VERSION`, `newest VERSION` or `failed WHY` (`network`, `no-kpm`, `feed`, `failed`) |
+| `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
 | `library.folder` | the open folder, empty at the top level |
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |

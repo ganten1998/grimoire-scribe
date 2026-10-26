@@ -17,7 +17,7 @@ case "$ZIP" in /*) ;; *) ZIP=$REPO/$ZIP ;; esac
 W=$(cd "$(dirname "$ZIP")/.." && pwd)/launcher-check
 SHIMS=$REPO/tests/shims
 export LC_ALL=C  # Grimoire.sh ends in a binary archive
-unset KOREADER_DIR FAKE_MODE FAKE_EXIT_STATE SHIM_HOLD SHIM_NICE GRIMOIRE_WD_TICK GRIMOIRE_WD_FIRST GRIMOIRE_WD_STALE \
+unset KOREADER_DIR FAKE_MODE FAKE_EXIT_STATE SHIM_HOLD SHIM_NICE GRIMOIRE_WD_TICK GRIMOIRE_WD_FIRST GRIMOIRE_WD_STALE GRIMOIRE_KPM \
     STOP_FRAMEWORK AWESOME_STOPPED PILLOW_HARD_DISABLED FAKE_KO_PARENT FAKE_KO_HOLDS GRIMOIRE_ANNOTATE
 rm -rf "$W" && mkdir -p "$W"
 fail=0
@@ -41,13 +41,13 @@ wait_until() {  # wait_until TENTHS COMMAND...: polls the command until it succe
 }
 
 # Every script parses, with each shell at hand.
-for f in kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh "kindle/Grimoire - reset pen calibration.sh" \
+for f in kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh "kindle/Grimoire - reset pen calibration.sh" \
     kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh tests/koplugin_check.sh tests/shims/*; do
     check "sh -n $f" sh -n "$f"
     if command -v dash >/dev/null 2>&1; then check "dash -n $f" dash -n "$f"; fi
 done
 if command -v shellcheck >/dev/null 2>&1; then
-    check "shellcheck" shellcheck -s sh -S warning kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh \
+    check "shellcheck" shellcheck -s sh -S warning kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh \
         "kindle/Grimoire - reset pen calibration.sh" kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh \
         tests/koplugin_check.sh tests/shims/*
 else
@@ -196,6 +196,31 @@ suite() {
     echo '-- local modification' > "$retired"
     sh "$DOC" --unpack-only
     check "$s retired DPI cache: local edit kept" has "$retired" '-- local modification'
+
+    # Settings > Updates' Update now: Grimoire asks (the request file the launcher named) and leaves.
+    # The launcher restores the Kindle UI, then hands the update to a copy of update.sh, which waits
+    # for it to be gone (KPM's hooks refuse while it runs), installs with KPM, and starts Grimoire again.
+    tree update
+    sh "$DOC" --unpack-only
+    fake
+    : >"$SHIM_LOG"
+    FAKE_MODE=update GRIMOIRE_KPM="$SHIMS/fake-kpm" GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" &
+    check "$s update: the launcher finishes" finish $! 150
+    check "$s update: Grimoire was told where update.sh is" has "$SHIM_LOG" "grimoire update script=$APP/update.sh"
+    check "$s update: the launcher hands it on" has "$LOGF" "an update was asked for"
+    # (Polled with has: in_order and wait_until share their counter.)
+    check "$s update: KPM is done" wait_until 100 has "$SHIM_LOG" "kpm launch grimoire"
+    check "$s update: KPM installs once the launcher is gone, then starts Grimoire" \
+        in_order "kpm --fbink -y install grimoire (launcher gone)" "kpm launch grimoire (launcher gone)"
+    check "$s update: the request is used up" [ ! -e "$GRIMOIRE_TMP/grimoire-update" ]
+    check "$s update: nothing failed" [ ! -e "$US/grimoire/.update-failed" ]
+    # A start with no request starts no update, even with an old request left behind.
+    : >"$SHIM_LOG"
+    echo stable >"$GRIMOIRE_TMP/grimoire-update"
+    GRIMOIRE_KPM="$SHIMS/fake-kpm" GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" &
+    check "$s update: a plain run finishes" finish $! 150
+    sleep 0.5
+    check "$s update: an old request starts nothing" lacks "$SHIM_LOG" "kpm "
 
     # First run on a fresh Kindle: unpacks, then starts app/grimoire.sh detached. The setsid
     # stand-in holds the launch until the fake binary is in place.

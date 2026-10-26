@@ -31,11 +31,29 @@ installs or removes KOReader plugins, patches, fonts, PIN flags or root filesyst
 
 ## Updating
 
-Once a release has been published through the workflow (Build and publication, below), add the
-feed of the channel you want, then install or update Grimoire by name. Until the first stable
-release, only the preview feed exists. On the Kindle, the search bar did not accept the punctuation
-of a feed URL, so add the feed from a shell on the Kindle (over SSH, for example) with the `kpm`
-command:
+**From Grimoire (2.0.0-beta.5 on): Library > Settings > Updates.** It needs KPM (installed with the
+jailbreak) and Wi-Fi, and nothing typed:
+
+- **Check for updates** puts Grimoire's feed for the chosen channel into KPM (once), refreshes KPM's
+  index and says whether a newer Grimoire is there. KPM does the downloading: Grimoire has no
+  HTTPS of its own. The channel is a beta's own (betas and releases: the preview feed) or a
+  release's (releases only: the stable feed); a tap changes it. Choosing releases only also takes
+  the preview feed out of KPM, because KPM installs the newest Grimoire any feed it knows lists.
+- **Update to ...** writes a request and leaves Grimoire: KPM's hooks refuse to replace a running
+  Grimoire. The launcher, as it finishes, starts `update.sh install` from a copy in `/tmp`; once the
+  launcher is gone it runs `kpm --fbink -y install grimoire` (its progress on the screen) and starts
+  Grimoire again. Started from KOReader, KOReader comes back instead, and opens the new Grimoire
+  next time. An install KPM refuses leaves `grimoire/.update-failed`, and Grimoire says so at its
+  next start (the details are in `grimoire.log`). Notebooks are never touched: the hooks keep
+  `grimoire/` through every install.
+
+kindle/app/update.sh does the KPM side (`check preview|stable`, `install PID [hosted]`);
+tests/test_update_sh.py runs it against a stand-in `kpm`.
+
+**By hand.** Once a release has been published through the workflow (Build and publication, below),
+add the feed of the channel you want, then install or update Grimoire by name. On the Kindle, the
+search bar did not accept the punctuation of a feed URL, so add the feed from a shell on the Kindle
+(over SSH, for example) with the `kpm` command:
 
 ```sh
 /var/local/kmc/bin/kpm add-repo https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json
@@ -92,6 +110,32 @@ KPM v2 only compares three integers. Grimoire encodes `major.minor.patch` as
 So 2.0.0-beta.N appears as KPM 2.0.(1000+N), 2.0.0-rc.N as 2.0.(5000+N) and 2.0.0 as 2.0.9999:
 2.0.0-beta.1 is KPM 2.0.1001, and Grimoire still displays 2.0.0-beta.1.
 This keeps beta < RC < final < next patch without relying on unsupported version suffixes.
+
+## Hotfixes
+
+A hotfix goes out as the next version on its channel, through the same workflow, and reaches every
+Kindle at its next **Check for updates**:
+
+1. Branch from the release's tag: `git switch -c hotfix/2.0.1 v2.0.0` (or from the beta's tag for a
+   beta: the fix is the next beta).
+2. Fix it, with the targeted tests that cover it, and run the full `make check` once.
+3. Bump `VERSION`: a release's hotfix is the next patch (2.0.0 to 2.0.1, KPM 2.0.19999); a beta's is
+   the next beta (2.0.0-beta.5 to beta.6, KPM 2.0.1006). Add its CHANGELOG entry.
+4. Tag, push both remotes, and publish the GitHub release (a beta as a prerelease). The workflow
+   checks, uploads, and writes the channel; preview subscribers get a stable hotfix too.
+5. Merge the fix back into the branch the next version comes from.
+
+A version is never reused: KPM compares only the numbers, so a rebuilt package with the same version
+is never offered as an update.
+
+## The official KMC repository
+
+KPM comes with one feed, the official KMC repository (`https://repo.kindlemodding.org/manifest.v2.json`,
+id `kindlemodding`), curated by the KindleModding maintainers through pull requests to
+github.com/KindleModding/repo, and holding its packages' files itself. A Grimoire listed there would
+install with `;kpm install grimoire` and nothing else on any jailbroken Kindle; each version would
+be another pull request to it. That suits stable releases (from 2.0.0), not betas or hotfixes,
+which stay on Grimoire's own feeds.
 
 ## Contract and validation
 

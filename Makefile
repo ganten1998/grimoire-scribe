@@ -30,7 +30,7 @@ CORE_SRC += src/fbpack.c src/latency.c
 CORE_SRC += src/nav.c
 CORE_SRC += src/bgimage.c
 CORE_SRC += src/annotate.c src/koreader.c src/shortcuts.c src/hidkeys.c
-CORE_SRC += src/pair.c src/live.c src/json_min.c src/btapi.c src/bluetooth.c
+CORE_SRC += src/pair.c src/live.c src/json_min.c src/btapi.c src/bluetooth.c src/update.c
 UI_SRC   := src/ui.c src/keyboard.c src/qr.c third_party/qrcodegen/qrcodegen.c src/tplsheet.c
 APP_SRC  := src/app.c src/library.c src/editor.c src/pensettings.c src/calibrate.c \
             src/share.c src/httpd.c src/dispmenu.c src/musicbuild.c src/main.c
@@ -114,6 +114,7 @@ $(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(
 # and in fail.qs every line but the comments, waits and taps must be reported as failed, with
 # exit status 3.
 SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
+             GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS
 # The scenarios tap by coordinates and check English text: they run in English whatever the
@@ -329,11 +330,11 @@ KOPATCH_SRC := $(wildcard kindle/koreader/patches/*.lua)
 KOLEGACY_SRC := $(wildcard kindle/koreader/legacy/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
 package: $(BUILD)/dist/Grimoire.zip
-$(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh $(RESET_SH) \
+$(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh $(RESET_SH) \
                            assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
-	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh kindle/app/bluetooth.sh $(PKG)/app/
+	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh $(PKG)/app/
 	mkdir -p $(PKG)/app/koreader/grimoire.koplugin "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin"
 	cp $(KOPLUGIN_SRC) $(PKG)/app/koreader/grimoire.koplugin/
 	mkdir -p $(PKG)/app/koreader/patches "$(PKG)/KOReader patches (optional)"
@@ -384,7 +385,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	    echo; echo "FBInk's CREDITS:"; echo; cat $(PKG)/dfa.credits; } > $$out/dfa-LICENSE.txt; \
 	  rm -f $(PKG)/utf8.head $(PKG)/dfa.head $(PKG)/utf8.credits $(PKG)/dfa.credits
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
-	python3 tools/archive.py tar $(BUILD)/dist/app.tar -C $(PKG)/app grimoire grimoire.sh bluetooth.sh CAPABILITIES licenses koreader
+	python3 tools/archive.py tar $(BUILD)/dist/app.tar -C $(PKG)/app grimoire grimoire.sh bluetooth.sh update.sh CAPABILITIES licenses koreader
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
 	id=$$(shasum $(BUILD)/dist/app.tar | cut -c1-12); \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
@@ -423,6 +424,7 @@ kopatch-check:
 
 kpm-check: kpm-package
 	python3 -m unittest discover -s tests -p 'test_kpm.py' -v
+	python3 -I tests/test_update_sh.py
 
 # Everything that can be verified without the Kindle: unit tests, every scripted scenario,
 # the share server against a real HTTP client, the host exporter, the ARM build, and the zip

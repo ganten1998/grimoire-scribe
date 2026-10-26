@@ -16,7 +16,7 @@ tap 1535 95
 wait 50
 expect library.sheet is settings
 shot 02-settings
-tap 1000 1930
+tap 746 1930
 wait 50
 expect library.sheet is shortcuts
 shot 02-shortcuts-disabled
@@ -50,6 +50,15 @@ tap 930 575
 wait 50
 expect settings.shortcuts_enabled is 0
 tap 930 1695
+wait 50
+expect library.sheet is none
+tap 1535 95
+wait 50
+tap 1152 1930
+wait 50
+expect library.sheet is updates
+shot 02-updates-no-kpm
+tap 930 1375
 wait 50
 expect library.sheet is none
 tap 1535 95
@@ -574,7 +583,7 @@ tap 2155 95
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
-tap 1257 1695
+tap 1062 1695
 wait 50
 expect library.sheet is shortcuts
 tap 1240 368
