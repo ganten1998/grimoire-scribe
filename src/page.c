@@ -48,9 +48,14 @@ uint32_t erase_seed(ToolKind texture, uint32_t hash) {
     return top << 24 | (hash & 0xFFFFFFu);
 }
 
+void stroke_mark_tip(Stroke *s) { s->ext[2] = (uint8_t)((s->ext[2] & 0xF0) | brush_tip_current(stroke_render_tool(s))); }
+
 void stroke_brush_begin(BrushState *b, const Stroke *s, float dpi, const uint8_t *paper, int x0, int y0, int stride) {
     bool erase = stroke_is_erase(s);
-    brush_begin(b, stroke_render_tool(s), &s->params, erase ? s->seed & 0xFFFFFFu : s->seed, dpi);
+    ToolKind t = stroke_render_tool(s);
+    brush_begin(b, t, &s->params, erase ? s->seed & 0xFFFFFFu : s->seed, dpi);
+    // The tip it was drawn with; one this version does not know is drawn with the current one.
+    if (brush_tip_known(t, stroke_tip(s))) b->tip = stroke_tip(s);
     if (erase) brush_set_erase(b, paper, x0, y0, stride);
 }
 

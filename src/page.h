@@ -7,8 +7,9 @@ typedef struct {
     ToolKind tool;
     ToolParams params;   // snapshot at draw time
     uint32_t seed;       // fixed from stroke_new on: an erase stroke's texture is its top byte
-    uint8_t ext[3];      // the record's spare bytes, carried as read: colour, layer, flags in a
-                         // newer version (docs/FORMAT.md); this one reads none of them
+    uint8_t ext[3];      // the record's spare bytes, carried as read: colour, layer, flags
+                         // (docs/FORMAT.md); this version reads only ext[2]'s low 4 bits, the
+                         // tip variant (brush.h)
     int n, cap;
     PenSample *pts;
     Rect bbox;           // covers every rendered pixel (points + the render tool's max radius + 2)
@@ -26,6 +27,11 @@ ToolKind stroke_render_tool(const Stroke *s);
 // The seed for a new erase stroke: the texture (a drawing tool, or TOOL_ERASER for the round tip;
 // anything else is the round tip too) in the top byte, the low 24 bits of hash below it.
 uint32_t erase_seed(ToolKind texture, uint32_t hash);
+// The tip variant s was drawn with (brush.h): ext[2]'s low 4 bits.
+static inline uint8_t stroke_tip(const Stroke *s) { return s->ext[2] & 0x0F; }
+// A stroke being drawn now: records the tip this version draws its tool with (the render tool's,
+// so white ink in the highlighter's texture gets the highlighter's).
+void stroke_mark_tip(Stroke *s);
 // Starts b to draw s, live or replayed: one start for both, so they give the same pixels. An
 // erase stroke's brush restores toward the paper given (as in brush_set_erase, NULL = white),
 // which must cover the canvas's clip while it draws; an ink stroke's ignores it.

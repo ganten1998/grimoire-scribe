@@ -119,12 +119,21 @@ typedef struct {
     float band;    // half-width of the tooth threshold's soft step (wider = grayer, less speckle)
 } ToolLook;
 
-static ToolLook look_of(ToolKind t) {
+uint8_t brush_tip_current(ToolKind t) { return t == TOOL_HIGHLIGHTER ? TIP_HIGHLIGHTER_VERTICAL : TIP_FIRST; }
+
+bool brush_tip_known(ToolKind t, uint8_t v) {
+    return v == TIP_FIRST || (t == TOOL_HIGHLIGHTER && v == TIP_HIGHLIGHTER_VERTICAL);
+}
+
+static ToolLook look_of(ToolKind t, uint8_t tip) {
     ToolLook lk;
     switch (t) {
     case TOOL_MECH_PENCIL: lk = (ToolLook){32, 0.20f, 0.f, 0.06f, true}; break;
     case TOOL_BALLPOINT: lk = (ToolLook){12, 0.10f, 0.35f, 0.f, false}; break;
-    case TOOL_HIGHLIGHTER: lk = (ToolLook){110, 0.06f, 0.f, 0.f, false, NIB_VERTICAL}; break;
+    // Round (its first tip, through 1.1) or a fixed vertical edge (since 1.2.0).
+    case TOOL_HIGHLIGHTER:
+        lk = (ToolLook){110, 0.06f, 0.f, 0.f, false, tip == TIP_HIGHLIGHTER_VERTICAL ? NIB_VERTICAL : NIB_NONE};
+        break;
     case TOOL_FOUNTAIN: lk = (ToolLook){8, 0.10f, 0.f, 0.f, false, NIB_ITALIC}; break;
     case TOOL_CALLIGRAPHY: lk = (ToolLook){6, 0.08f, 0.f, 0.f, false, NIB_BROAD_EDGE}; break;
     case TOOL_FINELINER: lk = (ToolLook){5, 0.08f, 0.f, 0.f, false}; break;
@@ -284,6 +293,7 @@ void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, 
     b->params = *p;
     b->seed = seed;
     b->dpi = (dpi > 50.f && dpi < 2000.f) ? dpi : 300.f;
+    b->tip = brush_tip_current(t);
 }
 
 void brush_set_erase(BrushState *b, const uint8_t *paper, int x0, int y0, int stride) {
@@ -357,7 +367,7 @@ static inline __attribute__((always_inline)) Rect stamp_as(BrushState *b, Canvas
     float r, op;
     brush_dab(b->tool, &b->params, s, b->dpi, &r, &op);
     uint32_t idx = b->dab_index++;
-    ToolLook lk = look_of(b->tool);
+    ToolLook lk = look_of(b->tool, b->tip);
     // Calligraphy: the nib follows the pen's lean, lightly smoothed along the stroke (about
     // 1.5 mm), so sensor noise does not wobble the edge. Updated for every dab, inked or not.
     float nca = 0.7660444f, nsa = 0.6427876f;  // italic nib at 40 degrees (fountain pen)

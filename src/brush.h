@@ -99,7 +99,21 @@ typedef struct {
     // have none), but returns the rect each dab would draw into, clipped as ever, and the brush
     // moves on exactly as when it draws. page_droppable measures strokes so.
     bool dry;
+    uint8_t tip;  // the tip variant (below): brush_begin sets the tool's current one,
+                  // stroke_brush_begin the one its stroke was drawn with
 } BrushState;
+
+// Tip variants (a stroke's ext[2], low 4 bits; docs/FORMAT.md): 0 is a tool's first tip, the one
+// every version drew it with before variants existed. A tool's tip changes only by a new variant,
+// recorded on the strokes drawn with it, so a page already written keeps its look.
+enum {
+    TIP_FIRST = 0,
+    TIP_HIGHLIGHTER_VERTICAL = 1,  // the highlighter's fixed vertical edge (1.2.0; its first tip is round)
+};
+// The tip this version gives new strokes of tool t.
+uint8_t brush_tip_current(ToolKind t);
+// Whether this version knows tip variant v of tool t (it draws an unknown one with the current tip).
+bool brush_tip_known(ToolKind t, uint8_t v);
 
 void brush_begin(BrushState *b, ToolKind t, const ToolParams *p, uint32_t seed, float dpi);
 // Puts b (just begun) in erase mode, for an erase stroke: white ink with the tool's texture, or

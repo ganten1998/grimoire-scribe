@@ -290,7 +290,8 @@ static int replace_if_same(const char *dir, const char *path, const uint8_t *was
 }
 
 // Whether page p holds data this version reads past (docs/FORMAT.md, Compaction): ext bytes on a
-// stroke (a newer version's colour, layer or flags), an erase stroke whose texture this version
+// stroke (a newer version's colour, layer or flags, or a tip variant this version lacks; one it
+// knows is fine), an erase stroke whose texture this version
 // lacks (drawn here as the round tip), chunks after the strokes, or a paper it does not know (drawn
 // here blank). The version that wrote it may draw the page otherwise, so how it looks here cannot
 // tell what may be left out of it.
@@ -298,7 +299,9 @@ static bool holds_newer_data(const Page *p) {
     if (p->tail_len || !paper_is_known(p->paper)) return true;
     for (int i = 0; i < p->n; i++) {
         const Stroke *s = p->strokes[i];
-        if (s->ext[0] || s->ext[1] || s->ext[2]) return true;
+        // A tip variant this version knows (ext[2]'s low bits) is no newer data; any other ext bit is.
+        if (s->ext[0] || s->ext[1] || (s->ext[2] & 0xF0) || !brush_tip_known(stroke_render_tool(s), stroke_tip(s)))
+            return true;
         // A texture this version has: 0 (the round tip) or a drawing tool + 1, what erase_seed
         // writes for the tool stroke_render_tool reads out of it.
         uint32_t top = s->seed >> 24;

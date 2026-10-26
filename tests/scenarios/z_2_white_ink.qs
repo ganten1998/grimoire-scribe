@@ -36,6 +36,7 @@ shot 02-white-charcoal
 expect editor.strokes is 11
 expect editor.erase_strokes is 7
 expect editor.stroke_look is white charcoal
+expect editor.stroke_tip is 0
 expect editor.stroke_settings is charcoal
 expect editor.live_matches_render is 1
 # White over blank paper: nothing changes, nothing is kept
@@ -52,6 +53,7 @@ expect editor.strokes is 12
 expect editor.erase_strokes is 7
 expect editor.stroke_look is highlighter
 expect editor.stroke_settings is highlighter
+expect editor.stroke_tip is 1
 expect editor.live_matches_render is 1
 # Undo the highlighter and the white charcoal, then redo the white charcoal
 pentap 1768 594

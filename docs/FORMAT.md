@@ -195,12 +195,12 @@ zip, a `grimoire-pull` copy or an older version.
   from a computer may have written it since). The other strokes and the paper are written as any
   save of the page writes them, and the page looks exactly as it did.
 - A page holding data this version reads past is left as it is: one that opens read-only (What a
-  reader does with a page, below), or one with ext bytes on any stroke, an erase stroke whose
-  texture byte is neither 0 nor a drawing tool + 1, a chunk of any kind after the strokes, or a
-  paper it does not know. The version that wrote that data may draw the page otherwise (a colour,
-  a layer, a texture that covers less than the round tip), so how 1.1 draws the page cannot tell
-  what may be left out of it. A version that adds such data can count on 1.1 never rewriting a
-  page that carries it.
+  reader does with a page, below), or one with ext bytes on any stroke (other than a tip variant it
+  knows, Tip variants below), an erase stroke whose texture byte is neither 0 nor a drawing tool
+  + 1, a chunk of any kind after the strokes, or a paper it does not know. The version that wrote
+  that data may draw the page otherwise (a colour, a layer, a texture that covers less than the
+  round tip), so how 1.1 draws the page cannot tell what may be left out of it. A version that
+  adds such data can count on 1.1 never rewriting a page that carries it.
 - A page that is done goes off the list: compacted, with nothing to leave out, missing (there is
   no ink in it), or no longer in the notebook. A page compaction cannot judge stays listed, for a
   later pass or for the version that can: one that does not read, one of another size than its
@@ -281,14 +281,26 @@ an erase stroke (tool 3), bits 24 to 31 hold its texture: the drawing tool whose
 plus 1 (0 = a round tip), and a version that draws erase strokes hashes only the low 24 bits
 (see Erase strokes). 1.0.0-beta keeps the seed byte for byte and never reads it for tool 3.
 
-**ext[3]** (the three spare bytes of the stroke record). No version interprets them yet: 1.0.0-beta
-writes 0 0 0 on a re-save, and from 1.0.0-beta.2 on a version reads, keeps and writes them back.
+**ext[3]** (the three spare bytes of the stroke record). 1.0.0-beta writes 0 0 0 on a re-save, and
+from 1.0.0-beta.2 on a version reads, keeps and writes them back. Since 2.0.0-beta.5 a version
+reads ext[2]'s low 4 bits, the tip variant; nothing else in them is interpreted yet.
 
 | byte | meaning | 0 means |
 |---|---|---|
 | ext[0] | colour: an index into one append-only palette (never reordered) | the tool's own gray |
 | ext[1] | layer | the base layer |
-| ext[2] | flags; every bit's meaning is reserved | nothing |
+| ext[2] | bits 0 to 3: the tip variant (below); bits 4 to 7: flags, every bit's meaning reserved | the tool's first tip; nothing |
+
+**Tip variants.** A tool's tip, the shape of its dabs, changes only by a new variant, which strokes
+drawn with it record. A page already written keeps its look in every later version, and tool ids
+stay 0 to 9 (above). Variants are numbered per tool (the tool a stroke draws with: its own, or an
+erase stroke's texture), append-only; a variant's look never changes. A version draws a variant it
+does not know with the tip it gives that tool's new strokes.
+
+| tool | variant | tip | |
+|---|---|---|---|
+| any | 0 | the tool's first tip, as every version drew it before variants | |
+| highlighter (4) | 1 | a fixed vertical broad edge | 1.2.0 to 2.0.0-beta.4 drew every highlighter stroke with it, old ones too; recorded on strokes since 2.0.0-beta.5, which draws variant 0 round again |
 
 **Paper values** (u32). The top four bits name the namespace.
 
@@ -802,6 +814,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | new data | 1.0.0-beta, 1.0.0-rc.1 | 1.0.0-beta.2 |
 |---|---|---|
 | ext bytes (colour, layer, flags) | opens the page and ignores them; a re-save writes 0 0 0 | keeps them and writes them back |
+| a highlighter stroke's vertical tip (ext[2] = 1, 2.0) | draws it round; a re-save writes 0, so it is round from then on, also in 2.0 | keeps the byte; 1.1 draws it round, 1.2.0 to 2.0.0-beta.4 draw every highlighter stroke vertical |
 | an erase stroke (tool 3, 1.1) | opens the page and draws nothing for it, so erased ink shows again (all but the ink the writer left out) and white ink does not show; keeps the stroke on a re-save; its eraser can delete it | drawn (Erase strokes) |
 | an erase stroke's texture (seed bits 24 to 31, 1.1) | kept, so white ink comes back unchanged in 1.1 after a re-save here | drawn |
 | a safe-to-copy chunk | ignored; dropped on a re-save | written back as it was |
@@ -841,8 +854,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 
 ## Highlighter rendering in 1.2.0
 
-The highlighter now uses a fixed vertical broad edge. Its stored tool id and 13-float parameter
-snapshot are unchanged, so this shape also applies when older highlighter strokes are rendered
-or exported. Points and pressure samples are kept; the visible coverage differs. Returning to
-beta.1 renders those strokes with its round tip. Preserving the old nib shape per stroke is
-tracked in [issue #5](https://github.com/ganten1998/grimoire-scribe/issues/5).
+1.2.0 gave the highlighter a fixed vertical broad edge for every stroke, old ones too: the stroke
+record named no tip. Since 2.0.0-beta.5 each stroke records the tip it is drawn with (Tip
+variants, above; [issue #5](https://github.com/ganten1998/grimoire-scribe/issues/5)). Strokes
+from before it name none and draw with the round tip they were drawn with through 1.1, including
+the ones drawn vertical in 1.2.0 to 2.0.0-beta.4, which cannot be told apart from them.

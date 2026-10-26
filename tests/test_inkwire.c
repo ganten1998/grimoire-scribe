@@ -446,6 +446,41 @@ TEST(compaction_leaves_what_it_cannot_write) {
     CHECK(store_delete(nb.id) == 0);
 }
 
+// A tip variant this version knows (the vertical highlighter's, ext[2] = 1) is no newer data: such
+// a page is compacted like any other, and its strokes keep their tip. A variant it does not know
+// (2 on the highlighter) leaves the page as it is.
+TEST(known_tips_are_compacted) {
+    for (int unknown = 0; unknown < 2; unknown++) {
+        NotebookInfo nb;
+        CHECK(store_create("Tips", "", PAPER_MEDIUM, &nb) == 0);
+        Page *p = erased_page(PAPER_MEDIUM);
+        Stroke *hl = line(TOOL_HIGHLIGHTER, 300, 1900, 1400, 1920, 0.8f, 19u);
+        stroke_mark_tip(hl);
+        CHECK(stroke_tip(hl) == TIP_HIGHLIGHTER_VERTICAL);
+        if (unknown) hl->ext[2] = 2;
+        page_add(p, hl);
+        CHECK(store_save_page(&nb, 0, p) == 0);
+        char path[800];
+        page_path(&nb, 0, path, sizeof path);
+        size_t was_len, l;
+        uint8_t *was = file_bytes(path, &was_len);
+        CHECK(compact_note_page(nb.id, nb.page_ids[0]) == 0);
+        CHECK(bg_compact_pages(nb.id, DPI) == 0);
+        uint8_t *now = file_bytes(path, &l);
+        bool same = was && now && l == was_len && !memcmp(now, was, l);
+        CHECK(unknown ? same : !same && l < was_len);
+        Page *back = NULL;
+        CHECK(store_read_page(&nb, 0, &back) == 0 && back && back->n > 0);
+        if (back) CHECK(back->strokes[back->n - 1]->tool == TOOL_HIGHLIGHTER &&
+                        back->strokes[back->n - 1]->ext[2] == (unknown ? 2 : TIP_HIGHLIGHTER_VERTICAL));
+        page_free(back);
+        free(was);
+        free(now);
+        page_free(p);
+        CHECK(store_delete(nb.id) == 0);
+    }
+}
+
 // Data this version reads past (docs/FORMAT.md, Registry): ext bytes on ink or on an erase stroke,
 // an erase stroke's texture it lacks (a later tool's, or 4, the eraser's own), a chunk, a paper it
 // does not know. The version that wrote it may draw the page otherwise (a colour, a layer, a
@@ -808,6 +843,7 @@ int main(void) {
     RUN(compaction_takes_erased_ink_out);
     RUN(compaction_leaves_what_it_cannot_write);
     RUN(newer_data_is_left_as_it_is);
+    RUN(known_tips_are_compacted);
     RUN(a_page_written_meanwhile_stays);
     RUN(a_stop_waits_for_the_rename);
     RUN(a_list_that_does_not_read_is_kept);

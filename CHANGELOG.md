@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-beta.5 (unreleased)
+
+- **Highlights keep the tip they were drawn with**
+  ([#5](https://github.com/ganten1998/grimoire-scribe/issues/5)): each stroke now records its
+  tip, so highlights drawn with the round tip before 1.2.0 look as they did again, in the editor
+  and in exports, and new highlights keep the vertical tip. Highlights drawn with the vertical tip
+  in 1.2.0 to 2.0.0-beta.4 recorded no tip and show round too. Later tip changes will never restyle
+  old pages: docs/FORMAT.md, Tip variants.
+
 ## 2.0.0-beta.4 (unreleased)
 
 - **Live ink on gray pages goes straight to black**: on a gray PDF page or template, most

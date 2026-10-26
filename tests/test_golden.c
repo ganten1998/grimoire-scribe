@@ -3,8 +3,9 @@
 // from the 1.0.0-beta sources (this table was made at the base of 1.0.0-beta.2, whose src/ was
 // the released 1.0.0-beta's). A page someone already wrote must look exactly the same in every
 // later version: if one of these fails, old pages changed. Never re-record the table to make a
-// change pass; fix the change. The maintainer explicitly accepted one exception for the
-// vertical highlighter in 2.0.0-beta.2 (issue #5), listed separately below.
+// change pass; fix the change. (1.2.0's vertical highlighter tip drew old strokes with the new tip
+// until 2.0.0-beta.5 recorded the tip on each stroke, issue #5: old strokes match this table
+// again, and the vertical tip's own renders are listed separately below.)
 //
 // GRIMOIRE_GOLDEN_PRINT=1 prints the table instead of checking it (that is how it was made).
 // The values hold for the host build this suite runs on (clang on arm64 macOS): another
@@ -170,20 +171,16 @@ static uint32_t crc_canvas(const Canvas *c) {
     return crc;
 }
 
-// Explicit 2.0.0-beta.2 exception requested by the maintainer: highlighter dabs now have a
-// fixed vertical edge, including old strokes. Original CRCs above remain as the historical
-// record; only renders containing highlighter ink change. Preservation is tracked in issue #5.
-static const struct { const char *name; uint32_t crc; } k_vertical_highlighter[] = {
-    {"medium rule, highlighter", 0xe1df8dfcu},
-    {"medium rule, highlighter, ink", 0xe83cb220u},
-    {"grand staff, highlighter", 0xb2bc9b09u},
-    {"grand staff, highlighter, ink", 0xe83cb220u},
-    {"medium rule, every tool", 0x7d57e6d5u},
-    {"medium rule, every tool, ink", 0xbca45798u},
-    {"medium rule, every tool, read back", 0x191c9e25u},
-    {"grand staff, every tool", 0x9a5c1275u},
-    {"grand staff, every tool, ink", 0xbca45798u},
-    {"grand staff, every tool, read back", 0x61c56d3fu},
+// The highlighter stroke above drawn with the vertical tip (TIP_HIGHLIGHTER_VERTICAL, since 1.2.0),
+// as strokes drawn since 2.0.0-beta.5 record it. These are the renders 2.0.0-beta.2 to beta.4
+// gave every highlighter stroke, old ones too.
+static const struct { const char *name; uint32_t crc; } k_vertical_tip[] = {
+    {"medium rule, highlighter, vertical tip", 0xe1df8dfcu},
+    {"medium rule, highlighter, vertical tip, ink", 0xe83cb220u},
+    {"medium rule, highlighter, vertical tip, paper", 0x98cd1286u},
+    {"grand staff, highlighter, vertical tip", 0xb2bc9b09u},
+    {"grand staff, highlighter, vertical tip, ink", 0xe83cb220u},
+    {"grand staff, highlighter, vertical tip, paper", 0x0531cc67u},
 };
 
 static bool g_print;
@@ -194,15 +191,15 @@ static void golden(const char *name, uint32_t crc) {
         return;
     }
     if (!GOLDEN_HOST) return;
-    for (size_t i = 0; i < sizeof k_golden / sizeof k_golden[0]; i++)
-        if (!strcmp(k_golden[i].name, name)) {
-            uint32_t expected = k_golden[i].crc;
-            for (size_t j = 0; j < sizeof k_vertical_highlighter / sizeof k_vertical_highlighter[0]; j++)
-                if (!strcmp(k_vertical_highlighter[j].name, name)) expected = k_vertical_highlighter[j].crc;
-            CHECK(expected == crc);
-            if (expected != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, expected);
-            return;
-        }
+    for (size_t i = 0; i < sizeof k_golden / sizeof k_golden[0] + sizeof k_vertical_tip / sizeof k_vertical_tip[0]; i++) {
+        size_t ng = sizeof k_golden / sizeof k_golden[0];
+        const char *n = i < ng ? k_golden[i].name : k_vertical_tip[i - ng].name;
+        if (strcmp(n, name)) continue;
+        uint32_t expected = i < ng ? k_golden[i].crc : k_vertical_tip[i - ng].crc;
+        CHECK(expected == crc);
+        if (expected != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, expected);
+        return;
+    }
     fprintf(stderr, "  %s: not in the table\n", name);
     CHECK(!"every render has a recorded value");
 }
@@ -287,6 +284,12 @@ TEST(one_stroke_of_every_tool) {
             page_add(pg, golden_stroke(t, 1240.f, seed_for(t)));
             snprintf(key, sizeof key, "%s, %s", paper_key(papers[pi]), k_tool_key[t]);
             golden_page(&c, pg, key);
+            if (t == TOOL_HIGHLIGHTER) {  // the same stroke as drawn since 2.0.0-beta.5: vertical tip
+                stroke_mark_tip(pg->strokes[0]);
+                CHECK(stroke_tip(pg->strokes[0]) == TIP_HIGHLIGHTER_VERTICAL);
+                snprintf(key, sizeof key, "%s, highlighter, vertical tip", paper_key(papers[pi]));
+                golden_page(&c, pg, key);
+            }
             page_free(pg);
         }
     canvas_free(&c);

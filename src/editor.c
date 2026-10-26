@@ -1069,6 +1069,7 @@ static void draw_begin(App *a, const InEvent *ev) {
         S->owner = OWN_NONE;
         return;
     }
+    stroke_mark_tip(S->cur);  // live and replayed, it keeps the tip it is drawn with now
     stroke_brush_begin(&S->bs, S->cur, a->dpi, paper ? paper->px : NULL, 0, 0, paper ? paper->stride : 0);
     smoother_reset(&S->sm);
     // Ink asks for the pen mode (where it is on); an erase stroke is live ink without it, as the
@@ -2302,6 +2303,12 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         else if (!stroke_is_erase(st)) snprintf(out, cap, "%s", name ? name : "?");
         else if (t == TOOL_ERASER) snprintf(out, cap, "%s", "round tip");
         else snprintf(out, cap, "white %s", name ? name : "?");
+    } else if (!strcmp(key, "stroke_tip")) {
+        // The newest stroke's tip variant (brush.h: 0 a tool's first tip, 1 the vertical highlighter);
+        // empty with no stroke.
+        const Stroke *st = has_page && S->page->n ? S->page->strokes[S->page->n - 1] : NULL;
+        if (st) snprintf(out, cap, "%d", stroke_tip(st));
+        else snprintf(out, cap, "%s", "");
     } else if (!strcmp(key, "stroke_settings")) {
         // Whose pen feel the newest stroke was drawn with: the tool whose settings its parameters
         // are (its look's tool tried first), "eraser" also for the eraser's at the zoom now (the

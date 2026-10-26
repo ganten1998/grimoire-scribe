@@ -1293,13 +1293,24 @@ static void look(const char *name, uint32_t crc) {
         return;
     }
     if (!GOLDEN_HOST) return;
+    // White ink in the highlighter's texture drawn with the vertical tip (TIP_HIGHLIGHTER_VERTICAL), as
+    // strokes drawn since 2.0.0-beta.5 record it: what 2.0.0-beta.2 to beta.4 drew for every such
+    // stroke (issue #5). The table above is the round tip, which older strokes (no tip recorded) get.
+    static const struct { const char *name; uint32_t crc; } vertical[] = {
+        {"medium rule, white highlighter, vertical tip", 0x1d8309cau},
+        {"medium rule, white highlighter, vertical tip, ink", 0x14d61db0u},
+        {"grand staff, white highlighter, vertical tip", 0x0a4bc45du},
+        {"grand staff, white highlighter, vertical tip, ink", 0x14d61db0u},
+    };
+    for (size_t i = 0; i < sizeof vertical / sizeof vertical[0]; i++)
+        if (!strcmp(vertical[i].name, name)) {
+            CHECK(vertical[i].crc == crc);
+            if (vertical[i].crc != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, vertical[i].crc);
+            return;
+        }
     for (size_t i = 0; i < sizeof k_look / sizeof k_look[0]; i++)
         if (!strcmp(k_look[i].name, name)) {
-            // The user accepted the new vertical highlighter for old white strokes too (#5).
             uint32_t expected = k_look[i].crc;
-            if (!strcmp(name, "medium rule, white highlighter")) expected = 0x1d8309cau;
-            else if (!strcmp(name, "grand staff, white highlighter")) expected = 0x0a4bc45du;
-            else if (strstr(name, "white highlighter, ink")) expected = 0x14d61db0u;
             CHECK(expected == crc);
             if (expected != crc) fprintf(stderr, "  %s: 0x%08x, recorded 0x%08x\n", name, crc, expected);
             return;
@@ -1380,6 +1391,17 @@ TEST(erase_look_is_recorded) {
             page_render_layers(&c, pg, band, DPI, PAGE_LAYER_INK);
             snprintf(key, sizeof key, "%s, %s, ink", paper, k_look_key[v]);
             look(key, crc_rect(&c, band));
+            if (tex == TOOL_HIGHLIGHTER && !g_print) {  // the same white stroke drawn since 2.0.0-beta.5
+                stroke_mark_tip(pg->strokes[pg->n - 1]);
+                CHECK(stroke_tip(pg->strokes[pg->n - 1]) == TIP_HIGHLIGHTER_VERTICAL);
+                page_render(&c, pg, band, DPI);
+                snprintf(key, sizeof key, "%s, white highlighter, vertical tip", paper);
+                look(key, crc_rect(&c, band));
+                canvas_fill(&c, band, 255);
+                page_render_layers(&c, pg, band, DPI, PAGE_LAYER_INK);
+                snprintf(key, sizeof key, "%s, white highlighter, vertical tip, ink", paper);
+                look(key, crc_rect(&c, band));
+            }
             page_free(pg);
         }
     canvas_free(&c);
