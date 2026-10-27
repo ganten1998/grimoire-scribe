@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Live view's end-to-end check, against the headless app holding its pairing card open
 # (tests/live_check.sh starts it): the routes before pairing, wrong codes, pairing with the code,
-# the stream (its hello, the screen as PNG tiles, composed), a third viewer refused, and the log
-# free of codes and tokens. Standard library only.
+# the stream (its hello, the screen as PNG tiles, composed, then the pen the script left hovering
+# over the card), a third viewer refused, and the log free of codes and tokens. Standard library only.
 # usage: live_stream.py <port> <app log> <out dir>
 import http.client, os, re, struct, sys, time, zlib
 
@@ -125,7 +125,7 @@ check('/live with the session is the viewer', st == 200 and b'GRIMOIRE_LIVE_WORD
 # The stream.
 conn, r = get('/live/stream', session, keep=True)
 check('the stream answers', r.status == 200 and r.getheader('Content-Type') == 'application/octet-stream')
-screen, size, hellos, batches, tiles, states = None, None, 0, 0, 0, []
+screen, size, hellos, batches, tiles, states, pen = None, None, 0, 0, 0, [], None
 t0 = time.time()
 for kind, body in frames(r):
     if kind == 5:
@@ -142,10 +142,15 @@ for kind, body in frames(r):
         tiles += 1
     elif kind == 3:
         batches += 1
+    elif kind == 6:
+        pen = struct.unpack('<HHB', body[:5]) if len(body) >= 5 else ()
         break
     if time.time() - t0 > 20:
         break
 check('a hello, then the screen as tiles in a batch', hellos == 1 and tiles > 0 and batches == 1 and size is not None)
+# (tests/live_check.sh's script hovers the pen at 900,1500 over the card, before the browser pairs.)
+check('then the pen, hovering where the script left it (900,1500)', pen == (900, 1500, 1) and seen[-1] == (6, 5) and
+      seen[-2][0] == 3)
 check('the state first: awake, the colors inverted (settings.ini invert=1), the simulator\'s warmth (8)',
       bool(seen) and seen[0] == (5, 3) and states[:1] == [bytes([0, 1, 8])])
 if screen:
@@ -162,6 +167,8 @@ with open(os.path.join(OUT, 'stream.bin'), 'wb') as f:
     f.write(bytes(raw[:whole]))
 with open(os.path.join(OUT, 'stream.txt'), 'w') as f:
     f.write(''.join('%d %d\n' % s for s in seen))
+with open(os.path.join(OUT, 'pen.txt'), 'w') as f:
+    f.write('%d %d %d\n' % pen if pen else '')
 c2, r2 = get('/live/stream', session, keep=True)
 st3, hd3, body3 = get('/live/stream', session)
 check('two viewers at once, not three (503)', r2.status == 200 and st3 == 503)

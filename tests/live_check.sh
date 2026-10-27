@@ -22,7 +22,8 @@ printf 'http_port=%s\ninvert=1\n' "$PORT" >> "$B/settings.ini"
 mv "$B/settings.ini" "$B/root/settings.ini"
 # The pairing card held open: everything after it is the browser's.
 sed -n "/^# live_check holds here/q;p" tests/scenarios/live_1_card.qs > "$B/card.qs"
-echo hold >> "$B/card.qs"
+# The pen left hovering over the card: the stream tells it after its first batch (live_stream.py).
+printf 'pen hover 900 1500\nhold\n' >> "$B/card.qs"
 APP=
 trap 'if [ -n "$APP" ]; then kill "$APP" 2>/dev/null; fi' EXIT
 GRIMOIRE_ROOT="$B/root" GRIMOIRE_SCRIPT="$B/card.qs" GRIMOIRE_SHOTS="$B/shots" "$HEADLESS" 2>"$B/app.log" &
@@ -35,8 +36,8 @@ fail=0
 python3 -I tests/live_stream.py "$PORT" "$B/app.log" "$B" || fail=1
 # The browser's frame reader on the same stream (node 18+; skipped without it).
 if command -v node >/dev/null 2>&1; then
-    if node tests/live_check.js "$B/stream.bin" "$B/stream.txt" >"$B/node.log" 2>&1; then
-        echo "ok   web/live.js reads the stream, cut anywhere"
+    if node tests/live_check.js "$B/stream.bin" "$B/stream.txt" "$B/pen.txt" >"$B/node.log" 2>&1; then
+        echo "ok   web/live.js reads the stream, cut anywhere; its pen, recording and film math"
     else
         cat "$B/node.log"
         fail=1

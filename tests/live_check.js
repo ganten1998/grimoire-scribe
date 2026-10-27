@@ -2,15 +2,15 @@
 // live_check.js: the browser's frame reader (web/live.js, Frames) on a stream the Kindle sent
 // (tests/live_stream.py keeps its bytes and the frames it read): cut into pieces of every size,
 // from one byte up, the frames must come out the same, in order. Then the page's pure parts: the
-// front light's color, the pen frame and its mark, where a turned screen goes in a recording, and
-// Record's format for what a browser records.
-//   usage: node tests/live_check.js <stream.bin> <stream.txt>
+// front light's color, the pen frame (the stream's own, against pen.txt) and its mark, where a turned
+// screen goes in a recording, and Record's format for what a browser records.
+//   usage: node tests/live_check.js <stream.bin> <stream.txt> [pen.txt]
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { Frames, lightColor, readPen, penMark, filmFit, recordType } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
-const [bin, txt] = process.argv.slice(2);
+const [bin, txt, pentxt] = process.argv.slice(2);
 const bytes = new Uint8Array(fs.readFileSync(bin));
 const want = fs.readFileSync(txt, 'utf8').trim().split('\n').map(l => l.split(' ').map(Number));
 let fail = 0;
@@ -55,7 +55,13 @@ light('light: the warmest is amber (' + steps[24] + ')', steps[24][1] > 140 && s
 light('light: past the warmest is the warmest', lightColor(99).join() === steps[24].join() &&
     lightColor(-5).join() === steps[0].join());
 const ok = light;
-// The pen frame, little-endian, and away as null.
+// The pen frame: the stream's own (the pen live_stream.py read), little-endian, and away as null.
+if (pentxt && fs.existsSync(pentxt) && fs.readFileSync(pentxt, 'utf8').trim()) {
+    const want = fs.readFileSync(pentxt, 'utf8').trim().split(' ').map(Number);
+    const pens = new Frames().push(bytes).filter(f => f.type === 6).map(f => readPen(f.body));
+    ok('pen: the stream\'s pen frame reads as ' + want.join(','), pens.length === 1 && pens[0] &&
+       [pens[0].x, pens[0].y, pens[0].state].join() === want.join());
+}
 const far = readPen(new Uint8Array([0x43, 0x07, 0xAF, 0x09, 2]));
 ok('pen: both bytes of each place (1859,2479 touching)', far.x === 1859 && far.y === 2479 && far.state === 2);
 ok('pen: away, or too short, is no pen', readPen(new Uint8Array([5, 0, 6, 0, 0])) === null &&
