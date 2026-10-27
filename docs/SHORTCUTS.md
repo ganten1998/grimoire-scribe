@@ -26,7 +26,18 @@ next and first / last rows learn two presses, the first one's and then the secon
 without a press leave the row as it was; a second tap on it stops it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically,
 every time). While that file is there, the controller's buttons come from it alone and the `pad.`
 lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from `shortcuts.ini`.
-**Reset buttons** deletes `controller.ini`.
+Hold a row (0.6 s) to take its buttons away, that row's alone (both actions of a previous / next
+or first / last row): it reads "none", a toast says so, and `controller.ini` is written without
+them, so it stays that way. **Reset buttons** deletes `controller.ini`, every row at once.
+
+An Xbox-layout controller's triggers (8BitDo's Xbox mode, which the Kindle reads through Linux's
+generic driver as "Xbox Bluetooth Gamepad") are no buttons there but axes, ABS_Z and ABS_RZ beside
+a right stick on RX and RY, or ABS_BRAKE and ABS_GAS. Grimoire reads them as buttons named LT and
+RT (`pad.LT`, `pad.RT`): pressed past half their travel, let go at a quarter or under. A right
+stick is never taken for them: Z and RZ count only beside RX and RY, when they are narrower than
+the sticks or rest at an end while the sticks rest in the middle. The generic driver numbers a
+controller's buttons from BTN_A, so L2 and R2 (312 and 313) are its ninth and tenth buttons, not
+its triggers: on that 8BitDo most likely its stick presses, on a Switch-mode one - and +.
 
 The sheet names the buttons as the controller connected labels them. A Switch-mode controller
 (8BitDo's Switch mode, or a Pro Controller, which the Kindle reads through Linux's generic driver
@@ -102,8 +113,8 @@ still work.
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux
 evdev number 1–767). Modifiers Ctrl, Shift, Alt, Meta match exactly. Gamepad buttons are named
-South, East, North, West, L1, R1, L2, R2, Select, Start, Up, Down, Left, Right, or numbered
-256–767. Later duplicate bindings replace earlier ones. Up to 64 bindings and 64 KiB of
+South, East, North, West, L1, R1, L2, R2, Select, Start, Up, Down, Left, Right, LT, RT (analog
+triggers, above), or numbered 256–767. Later duplicate bindings replace earlier ones. Up to 64 bindings and 64 KiB of
 configuration are accepted. An existing empty file deliberately disables mappings.
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
@@ -123,9 +134,14 @@ Grimoire watches up to four keyboards and controllers that the Kindle shows as
 screen or a finger is on it: one that connects while you write is noticed once the pen has been
 away 1.5 seconds), and never grabs them. A short toast
 says when one connects or disconnects, at most once each way in 30 seconds, so a link that keeps
-dropping does not flash the screen. When another app holds a controller exclusively (a button
-mapper), Grimoire cannot get its presses: the toast and the Controller sheet say so. Analog sticks
-are not read.
+dropping does not flash the screen. A controller that is switched off is noticed only when
+Bluetooth gives up on its link, and on a link the controller started (as it does when it comes
+back), the controller decides how long that takes: an 8BitDo in Xbox mode was let go only when it
+was switched on again, so its disconnect toast came just before the connect one. Grimoire hears of
+it within tens of milliseconds of the Bluetooth helper (below), and neither can tell sooner: an
+idle controller sends nothing, so it looks the same as one switched off. When another app holds a
+controller exclusively (a button mapper), Grimoire cannot get its presses: the toast and the
+Controller sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
 
 ## Bluetooth
 
@@ -162,7 +178,8 @@ releases change often; this was written against 3.18. Tested setup: none yet on 
 
 In the SDL simulator, enabling shortcuts repurposes the number/arrows/E keys from pressure/tilt/
 eraser simulation. P and S remain reserved for simulated power/pen-side-button; Escape quits.
-Scripts inject presses (`key CODE MODS PAD`), releases (`keyup CODE MODS PAD`) and devices (`hid attach pad|key|held NAME`,
+Scripts inject presses (`key CODE MODS PAD`), releases (`keyup CODE MODS PAD`), an Xbox-layout
+controller's axes (`axis CODE VALUE`, its triggers read as LT and RT) and devices (`hid attach pad|key|held NAME`,
 `hid detach NAME`), and `tests/bt_check.sh` runs the pairing sheet against a stand-in for the
 helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controller discovery or
 real button numbering on a Kindle.

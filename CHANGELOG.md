@@ -43,6 +43,13 @@
   (only its files: its installer adds a boot-time button mapper that takes controllers away),
   Bluetooth controller starts it with Grimoire and Pair a controller... finds and pairs one. It runs
   only while Grimoire does: it stops when Grimoire leaves, and the Kindle's own Bluetooth comes back.
+- **LT and RT on Xbox-layout controllers**: on 8BitDo's Xbox mode (and other controllers whose
+  triggers are analog) LT and RT did nothing, because Linux reads them as axes, not buttons.
+  Grimoire now reads each as a button: pressed past half its travel, let go near its rest, once each
+  way however the hand wavers. Buttons... learns them and names them LT and RT. A right stick is
+  never taken for one.
+- **Hold a row in Buttons... to clear it**: holding a row for a moment takes its buttons away, that
+  row's alone; it reads none and a toast says so. Reset buttons still clears every row.
 
 - **Highlights keep the tip they were drawn with**
   ([#5](https://github.com/ganten1998/grimoire-scribe/issues/5)): each stroke now records its
