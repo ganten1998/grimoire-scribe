@@ -57,6 +57,7 @@ static int run_job(const Job *j) {
 // grabbed; the framebuffer; the power-service pipe), and take a name of its own so nobody
 // mistakes it for Grimoire. stdout/stderr stay: they are the log.
 static void child_setup(void) {
+    work_pump_set(NULL);  // the pens are Grimoire's to read (common.h), never a child's
 #ifdef __linux__
     prctl(PR_SET_NAME, "grimoire-bg", 0, 0, 0);
 #endif

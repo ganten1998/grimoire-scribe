@@ -42,8 +42,19 @@ size_t strlcpy_q(char *dst, const char *src, size_t cap);
 void format_time_short(int64_t t, char *buf, size_t cap);
 // Path helpers (POSIX). mkdir -p; returns 0 on success.
 int mkdir_p(const char *path);
-// Atomic file write: path.tmp, fsync, rename. Returns 0 on success.
+// Atomic file write: path.tmp, fsync, rename. Returns 0 on success. It pumps (work_pump) between
+// its steps, so each wait on the storage is one fsync at most.
 int write_file_atomic(const char *path, const void *data, size_t len);
+
+// Long work on the main thread (a page's render, a full-screen copy, a save) calls work_pump()
+// every few milliseconds of it. On the Kindle the hook reads the two pens (input_evdev.c), whose
+// kernel buffers hold only 50-175 ms: without it a render of 1.2 s lost the pressure and tilt of
+// the raw digitizer, and could cut a stroke (docs/INK-PERFORMANCE.md, Reader stalls). Elsewhere
+// (host tools, tests) no hook is set and it does nothing. Only the process that set the hook runs
+// it: a forked child (an export, a share server render) shares Grimoire's open input devices, and
+// reading them would take Grimoire's pen events, or read a file that came to reuse their number.
+void work_pump_set(void (*fn)(void));
+void work_pump(void);
 #ifdef GRIMOIRE_SIM
 // The simulator's "storage full" (a script command): every write_file_atomic fails, as on a full
 // userstore, so a scenario can see what a failed save does.

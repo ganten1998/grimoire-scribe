@@ -152,6 +152,18 @@ int mkdir_p(const char *path) {
 bool g_sim_storage_full;
 #endif
 
+static void (*g_pump)(void);
+static pid_t g_pump_pid;  // the process that set it
+
+void work_pump_set(void (*fn)(void)) {
+    g_pump = fn;
+    g_pump_pid = fn ? getpid() : 0;
+}
+
+void work_pump(void) {
+    if (g_pump && getpid() == g_pump_pid) g_pump();
+}
+
 int write_file_atomic(const char *path, const void *data, size_t len) {
     char tmp[1100];
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
@@ -180,6 +192,9 @@ int write_file_atomic(const char *path, const void *data, size_t len) {
         p += w;
         left -= (size_t)w;
     }
+    // Between the steps the pens are read (work_pump): on the Kindle each fsync waits 15-25 ms, and
+    // a page's save (the page, then notebook.ini) took 65-104 ms in one go.
+    work_pump();
     // A late error (disk full, I/O) must not let a short file replace a good one.
     if (fsync(fd) != 0) {
         qlog("fsync %s: %s", tmp, strerror(errno));
@@ -187,6 +202,7 @@ int write_file_atomic(const char *path, const void *data, size_t len) {
         unlink(tmp);
         return -1;
     }
+    work_pump();
     if (close(fd) != 0) {
         qlog("close %s: %s", tmp, strerror(errno));
         unlink(tmp);
@@ -197,6 +213,7 @@ int write_file_atomic(const char *path, const void *data, size_t len) {
         unlink(tmp);
         return -1;
     }
+    work_pump();
     // Best effort: make the rename itself durable.
     char dir[1100];
     strlcpy_q(dir, path, sizeof dir);
@@ -205,6 +222,7 @@ int write_file_atomic(const char *path, const void *data, size_t len) {
         fsync(dfd);
         close(dfd);
     }
+    work_pump();
     return 0;
 }
 

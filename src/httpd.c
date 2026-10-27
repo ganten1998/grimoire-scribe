@@ -1099,6 +1099,7 @@ static void keep_headers(Buf *out) {  // HEAD: the answer without its body
 
 // Child side of a heavy request: render, send everything (blocking), exit.
 static void serve_in_child(Client *c, const char *method, char *path) {
+    work_pump_set(NULL);  // the pens are Grimoire's to read (common.h), never a child's
     int keep = c->fd;
     for (int fd = 3; fd < 1024; fd++)
         if (fd != keep) close(fd);
