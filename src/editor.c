@@ -1829,9 +1829,10 @@ static void panel_act(App *a, const Hit *h) {
     case P_REDO: undo_redo(a, false); break;
     case P_PREV: go_to_page(a, S->index - 1); break;
     case P_NEXT:
+        // On the last page (its button a +), a new page on this page's paper (store_new_page_paper).
         if (S->index >= S->nb.npages - 1) {
             if (!save_page(a)) return;
-            if (store_add_page(&S->nb, S->nb.npages, S->page->paper) != 0) {
+            if (store_add_page(&S->nb, S->nb.npages, S->page ? S->page->paper : S->nb.paper) != 0) {
                 app_toast(a, _("Could not add a page"), 3000);
                 return;
             }
@@ -1913,8 +1914,8 @@ bool editor_shortcut(App *a, int action) {
     } else if (action == SHORTCUT_UNDO || action == SHORTCUT_REDO) {
         panel_act(a, &(Hit){.id = action == SHORTCUT_UNDO ? P_UNDO : P_REDO});
     } else if (action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE) {
-        // A controller page button never creates an unrequested new page at the end.
-        go_to_page(a, clampi(S->index + (action == SHORTCUT_NEXT_PAGE ? 1 : -1), 0, S->nb.npages - 1));
+        // The panel's arrows: next page on the last page adds one, as its + does.
+        panel_act(a, &(Hit){.id = action == SHORTCUT_NEXT_PAGE ? P_NEXT : P_PREV});
     } else if (action == SHORTCUT_WHITE) {
         a->settings.white = !a->settings.white;
         settings_save(&a->settings);

@@ -11,7 +11,8 @@
 - **Controllers**: Settings > Controller (was Shortcuts) shows the controller or keyboard connected,
   and Buttons... learns which controller button does what: tap a row, press the button
   (grimoire/controller.ini). A short toast says when one connects or goes, and when another app
-  holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default.
+  holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default. Next
+  page on the last page adds a page, as the editor's + button does (it used to stop there).
 - **Next and previous tool keep their place after the eraser**: they step through the tool picker's
   nine pens in its order, and from the eraser they now go on from the pen it goes back to, instead
   of starting again at the pencil or the highlighter. With the tool picker open they move its

@@ -64,25 +64,35 @@ expect settings.white is 1
 key 308 0 1
 wait 60
 expect settings.white is 0
-# Next page on the last page creates nothing.
+# Next page on the last page adds a page, as the panel's + does; previous on the first stays.
 key 106 0
-wait 80
-expect editor.pages is 1
-expect editor.page is 1
-pentap 1768 1114
 wait 120
 expect editor.pages is 2
+expect editor.page is 2
 key 314 0 1
 wait 80
 expect editor.page is 1
+key 314 0 1
+wait 80
+expect editor.page is 1
+expect editor.pages is 2
 key 315 0 1
 wait 80
 expect editor.page is 2
+expect editor.pages is 2
 # Native D-pad and decoded HAT directions share the default pad bindings.
 key 546 0 1
 wait 80
 expect editor.page is 1
 key 547 0 1
+wait 80
+expect editor.page is 2
+# The controller's next page (Start) at the end adds one too.
+key 315 0 1
+wait 120
+expect editor.pages is 3
+expect editor.page is 3
+key 546 0 1
 wait 80
 expect editor.page is 2
 # An open tools sheet owns input; keyboard shortcuts cannot act through it.

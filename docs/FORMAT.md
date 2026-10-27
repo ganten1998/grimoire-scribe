@@ -398,8 +398,9 @@ An image paper is a picture as a page's paper: a template the owner copied in, o
 document they imported as pictures. Its paper value (Registry) names the picture by an id of 24
 bits, and a role:
 
-- **0, a template.** A page added after a page on it (the editor's next-page button at the end of
-  the notebook, the page left when every page is deleted) gets it too.
+- **0, a template.** A page added after a page on it (the editor's next-page button, or a next-page
+  key or controller button, at the end of the notebook, the page left when every page is deleted)
+  gets it too.
 - **1, a document page** (an imported page picture). The picture belongs to its own page: a page
   added after it gets the notebook's own paper instead (Blank if that is a document page's too).
 

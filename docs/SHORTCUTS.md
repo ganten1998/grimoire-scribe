@@ -26,7 +26,7 @@ lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from
 The default keyboard uses 1–9 for the nine drawing tools in the tool picker's order (left to right,
 then down: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
 calligraphy pen, highlighter), E for eraser, W for white ink,
-Ctrl+Z / Ctrl+Y for undo/redo, left/right for existing pages, and PageUp/PageDown for tool cycling.
+Ctrl+Z / Ctrl+Y for undo/redo, left/right for pages, and PageUp/PageDown for tool cycling.
 Gamepad defaults use the Linux gamepad convention: South undo, East eraser, North redo, West white,
 L1/R1 previous/next tool, Select/Start previous/next page, and the D-pad (a hat or four buttons,
 both read the same) Left/Right for pages and Up/Down for tools. These are starting points:
@@ -66,8 +66,10 @@ configuration are accepted. An existing empty file deliberately disables mapping
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
 sleeping or displaying a sheet, except Index can toggle the Pages/Index view while its keyboard
-is closed, and previous and next tool move the open tool picker's choice. Page navigation never creates a new page at the end. Presses
-act once; releases and repeats do not trigger actions. While shortcuts are enabled, a key or
+is closed, and previous and next tool move the open tool picker's choice. Next page on the last
+page adds a page, as the editor's + button there does: on the open page's paper, or the notebook's
+own after an imported, book or photo page. Presses act once; releases and repeats do not trigger
+actions. While shortcuts are enabled, a key or
 button press keeps the Kindle awake as the pen and touch do: "Sleep after" counts from the last
 one, on any screen. Native PIN input is discarded and never logged. The app logs attachment
 paths, not key presses or device names. The visible last-input display belongs to the current
