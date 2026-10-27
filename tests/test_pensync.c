@@ -1,5 +1,5 @@
-// test_pensync.c: the pen after the kernel dropped its events (SYN_DROPPED), and the kernel's sample
-// times in now_ms()'s clock. The shapes are the ones the Scribe 2's pen service sends: frames of X
+// test_pensync.c: the pen after the kernel dropped its events (SYN_DROPPED), the kernel's sample
+// times in now_ms()'s clock, and the raw digitizer's frame each pen frame takes pressure and tilt from. The shapes are the ones the Scribe 2's pen service sends: frames of X
 // and Y alone (an axis that did not change is left out), about 2.8 ms apart, and the buttons only
 // when they change. p28 (2026-10-26) lost 220-270 ms of path to a 330-370 ms stall, and the stroke
 // jumped to the device's present position, then traced the 40 frames left in the queue back.
@@ -344,6 +344,82 @@ TEST(kernel_times_in_now_ms_clock) {
     CHECK(pensync_ms(1793000000ull * 1000000u, true, 7857330) == 7857330);
 }
 
+// The raw digitizer's frames, about 3 ms apart, each relayed as a pen frame a little later. The
+// pressure and tilt rise frame by frame, so a pen frame that took another frame's values shows.
+#define RAW_T0 7857000000ull
+static PenRaw raw_frame(int i) { return (PenRaw){RAW_T0 + 3000u * (uint64_t)i, 100 + 10 * i, i, -i}; }
+
+TEST(each_pen_frame_takes_the_pressure_and_tilt_of_its_own_moment) {
+    static PenRawRing g;
+    pensync_raw_clear(&g);
+    PenRaw got;
+    CHECK(!pensync_raw_at(&g, RAW_T0, &got));  // nothing read yet: the newest values, as before
+    // Read in turns, a frame of each: the relay's hop from 0.1 ms up to just under a frame.
+    static const uint64_t hops[] = {0, 100, 1000, 2900};
+    for (int i = 0; i < 20; i++) {
+        PenRaw r = raw_frame(i);
+        pensync_raw_push(&g, r.t_us, r.p, r.tx, r.ty);
+        for (int h = 0; h < 4; h++) {
+            CHECK(pensync_raw_at(&g, r.t_us + hops[h], &got));
+            CHECK(got.p == r.p && got.tx == r.tx && got.ty == r.ty && got.t_us == r.t_us);
+        }
+    }
+    // A wait of 100 ms (the main loop held up): 34 frames of each are read at once, the raw ones
+    // first. Each pen frame still takes its own, not the newest: no flat stretch.
+    pensync_raw_clear(&g);
+    for (int i = 0; i < 34; i++) {
+        PenRaw r = raw_frame(i);
+        pensync_raw_push(&g, r.t_us, r.p, r.tx, r.ty);
+    }
+    int distinct = 0, last = -1;
+    for (int i = 0; i < 34; i++) {
+        CHECK(pensync_raw_at(&g, raw_frame(i).t_us + 100, &got));
+        CHECK(got.p == raw_frame(i).p && got.tx == i && got.ty == -i);
+        distinct += got.p != last;
+        last = got.p;
+    }
+    CHECK(distinct == 34);
+    // Older than the oldest kept: none (the caller takes the newest values).
+    CHECK(!pensync_raw_at(&g, RAW_T0 - 1, &got));
+    // A pen frame newer than every raw frame (the pen held still: the input core sends no unchanged
+    // values) takes the newest, which is what the digitizer still holds.
+    CHECK(pensync_raw_at(&g, RAW_T0 + 10000000u, &got) && got.p == raw_frame(33).p);
+    // Equal times: the later pushed (a resync's values over the frame it came with).
+    pensync_raw_push(&g, raw_frame(33).t_us + 3000, 999, 9, 9);
+    pensync_raw_push(&g, raw_frame(33).t_us + 3000, 1000, 10, 10);
+    CHECK(pensync_raw_at(&g, raw_frame(33).t_us + 3000, &got) && got.p == 1000);
+}
+
+// A drop of the raw digitizer's events forgets what was kept: the frames after the gap no longer meet
+// it. Its resync asks the device and pushes that at the time it asked; pen frames from the lost
+// stretch, older than that, take the newest values (the resync's), as before there was a ring.
+TEST(a_raw_drop_forgets_and_the_resync_starts_again) {
+    static PenRawRing g;
+    pensync_raw_clear(&g);
+    for (int i = 0; i < 10; i++) pensync_raw_push(&g, raw_frame(i).t_us, raw_frame(i).p, i, -i);
+    pensync_raw_clear(&g);  // SYN_DROPPED
+    PenRaw got;
+    CHECK(!pensync_raw_at(&g, raw_frame(5).t_us, &got));
+    uint64_t asked = raw_frame(40).t_us;
+    pensync_raw_push(&g, asked, 777, 7, -7);
+    CHECK(!pensync_raw_at(&g, raw_frame(30).t_us, &got));  // in the lost stretch
+    CHECK(pensync_raw_at(&g, asked + 500, &got) && got.p == 777 && got.tx == 7 && got.ty == -7);
+    pensync_raw_push(&g, raw_frame(41).t_us, raw_frame(41).p, 41, -41);
+    CHECK(pensync_raw_at(&g, raw_frame(41).t_us + 100, &got) && got.p == raw_frame(41).p);
+}
+
+// The ring keeps the last PENSYNC_RAW_N frames (about 0.8 s): a pen frame older than those finds none.
+TEST(the_ring_keeps_the_newest_frames) {
+    static PenRawRing g;
+    pensync_raw_clear(&g);
+    for (int i = 0; i < PENSYNC_RAW_N + 44; i++) pensync_raw_push(&g, raw_frame(i).t_us, raw_frame(i).p, i, -i);
+    PenRaw got;
+    CHECK(g.count == PENSYNC_RAW_N);
+    CHECK(!pensync_raw_at(&g, raw_frame(43).t_us + 100, &got));
+    CHECK(pensync_raw_at(&g, raw_frame(44).t_us + 100, &got) && got.p == raw_frame(44).p);
+    CHECK(pensync_raw_at(&g, raw_frame(PENSYNC_RAW_N + 43).t_us, &got) && got.tx == PENSYNC_RAW_N + 43);
+}
+
 int main(void) {
     RUN(the_p28_shape_reports_the_tail_in_order_and_never_jumps_ahead);
     RUN(an_axis_missing_from_the_first_frame_takes_its_first_value_in_the_tail);
@@ -358,5 +434,8 @@ int main(void) {
     RUN(a_second_drop_and_an_unfinished_frame);
     RUN(contact_without_a_touch_button);
     RUN(kernel_times_in_now_ms_clock);
+    RUN(each_pen_frame_takes_the_pressure_and_tilt_of_its_own_moment);
+    RUN(a_raw_drop_forgets_and_the_resync_starts_again);
+    RUN(the_ring_keeps_the_newest_frames);
     return tl_done();
 }

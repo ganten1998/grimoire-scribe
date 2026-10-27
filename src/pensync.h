@@ -1,6 +1,6 @@
 // pensync.h: the pure parts of reading the pen (input_evdev.c), unit-tested on the host: how a
-// stroke goes on after the kernel dropped pen events, and the kernel's sample times in now_ms()'s
-// clock.
+// stroke goes on after the kernel dropped pen events, the kernel's sample times in now_ms()'s clock,
+// and which of the raw digitizer's samples a pen frame takes its pressure and tilt from.
 //
 // Each reader of an evdev device has its own buffer in the kernel. Grimoire's for the scaled pen
 // (stylus-custom) holds 128 events, and its frames carry only X and Y (2 or 3 events each), so it
@@ -95,3 +95,32 @@ int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info);
 // real CLOCK_MONOTONIC stamp can be), now: when it was read.
 #define PENSYNC_K_MAX_AGE_MS 10000u
 uint32_t pensync_ms(uint64_t t_us, bool mono, uint32_t now);
+
+// The pen Grimoire follows (stylus-custom) carries position and buttons only; pressure and tilt come
+// from the raw digitizer (WacomDigitizer), which the Kindle's pen service relays it from, a frame
+// for a frame, about 0.1 ms later. Both are read in turns, the raw one first, and a read takes
+// everything queued: after a wait of 100 ms that is some 30 frames of each. Each pen frame used to
+// take the newest raw values, so such a stretch of a stroke was drawn with one flat pressure and
+// tilt. The raw frames are kept instead (about 0.8 s of them), and each pen frame takes the raw
+// frame of its moment: the newest one stamped at or before it, by the kernel's times (both nodes'
+// readers are switched to CLOCK_MONOTONIC).
+#define PENSYNC_RAW_N 256
+typedef struct {
+    uint64_t t_us;  // the raw frame's SYN_REPORT time (or when a resync asked)
+    int p, tx, ty;
+} PenRaw;
+typedef struct {
+    PenRaw r[PENSYNC_RAW_N];
+    int next, count;
+} PenRawRing;
+
+// Forgets every frame kept: the raw digitizer dropped events (what is kept no longer meets what
+// comes next), or the pens went to the native PIN screen and back.
+void pensync_raw_clear(PenRawRing *g);
+// A raw frame read (pressure and tilt as the digitizer reports them), at its kernel time. Frames come
+// in time order: a resync after a drop pushes what it asked at the time it asked.
+void pensync_raw_push(PenRawRing *g, uint64_t t_us, int p, int tx, int ty);
+// The raw frame a pen frame of time t_us goes with: the newest kept at or before t_us. False when
+// none is that old (nothing kept, a drop forgot them, or it is older than the oldest kept): the
+// caller takes the raw digitizer's newest values, as before there was a ring.
+bool pensync_raw_at(const PenRawRing *g, uint64_t t_us, PenRaw *out);

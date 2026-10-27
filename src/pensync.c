@@ -1,4 +1,5 @@
-// pensync.c: the pen after a SYN_DROPPED, and its samples' kernel times (pensync.h).
+// pensync.c: the pen after a SYN_DROPPED, its samples' kernel times, and the raw digitizer's frames
+// it takes pressure and tilt from (pensync.h).
 #include "pensync.h"
 
 bool pensync_contact(const PenState *s, bool touch_btn, int p_min) {
@@ -167,4 +168,24 @@ uint32_t pensync_ms(uint64_t t_us, bool mono, uint32_t now) {
     uint32_t age = now - k;
     if ((int32_t)age < 0 || age > PENSYNC_K_MAX_AGE_MS) return now;
     return k;
+}
+
+void pensync_raw_clear(PenRawRing *g) { g->next = g->count = 0; }
+
+void pensync_raw_push(PenRawRing *g, uint64_t t_us, int p, int tx, int ty) {
+    g->r[g->next] = (PenRaw){t_us, p, tx, ty};
+    g->next = (g->next + 1) % PENSYNC_RAW_N;
+    if (g->count < PENSYNC_RAW_N) g->count++;
+}
+
+bool pensync_raw_at(const PenRawRing *g, uint64_t t_us, PenRaw *out) {
+    // From the newest back: the pen frame being read is nearly always within the last few.
+    for (int i = 1; i <= g->count; i++) {
+        const PenRaw *r = &g->r[(g->next - i + PENSYNC_RAW_N) % PENSYNC_RAW_N];
+        if (r->t_us <= t_us) {
+            *out = *r;
+            return true;
+        }
+    }
+    return false;
 }

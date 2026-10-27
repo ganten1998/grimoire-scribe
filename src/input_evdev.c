@@ -237,6 +237,10 @@ static uint64_t mono_us(void) {
 // relay timing for it); once its queue is read, wacom_resync asks for pressure, tilt and buttons.
 static bool g_wacom_dropping, g_wacom_resync;
 static int g_wacom_drops;
+// Its frames kept, so each pen frame takes the pressure and tilt of its own moment (pensync.h), not
+// the newest values: a read after a wait takes some 30 frames of each at once. Only when both nodes'
+// events are in CLOCK_MONOTONIC (g_pen_mono, g_wacom_mono), which the resync's time is in too.
+static PenRawRing g_raw;
 // When input_poll last read it (input_open starts it when it is done), and the time before that;
 // whether it has been read since input_open, and whether this read is the first.
 static uint32_t g_wacom_read_ms, g_wacom_read_gap;
@@ -245,6 +249,7 @@ static bool g_wacom_read, g_wacom_first_read;
 static void handle_wacom(const struct input_event *ev) {
     if (ev->type == EV_SYN && ev->code == SYN_DROPPED) {
         g_wacom_dropping = true;
+        pensync_raw_clear(&g_raw);  // what was kept no longer meets what comes after the gap
         if (g_wacom_first_read) {
             // While Grimoire was starting, as for the pen (pen_resync): no stall, not counted.
             qlog("input: pressure/tilt events dropped by the kernel before Grimoire first read them (not counted; "
@@ -260,9 +265,10 @@ static void handle_wacom(const struct input_event *ev) {
         if (g_wacom_dropping) {
             g_wacom_dropping = false;
             g_wacom_resync = true;
-        } else if (g_ink_mono) {
-            lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
+            return;
         }
+        if (g_wacom_mono) pensync_raw_push(&g_raw, ev_us(ev), W.p, W.tx, W.ty);
+        if (g_ink_mono) lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
         return;
     }
     if (g_wacom_dropping) return;
@@ -297,6 +303,8 @@ static void wacom_resync(void) {
         W.rubber = test_bit(keys, BTN_TOOL_RUBBER);
         W.side = test_bit(keys, BTN_STYLUS);
     }
+    // Pen frames from the lost stretch are older than this, and take these newest values.
+    if (g_wacom_mono) pensync_raw_push(&g_raw, mono_us(), W.p, W.tx, W.ty);
 }
 
 // The frame being reported is the first after a pen drop (pen_resync): its sample says so (gap).
@@ -308,8 +316,13 @@ static void emit_pen(InType t) {
     e.nx = norm(P.x, &g_pen.ax);
     e.ny = norm(P.y, &g_pen.ay);
     map(&g_pen_cal, e.nx, e.ny, &e.x, &e.y);
+    // The raw digitizer's pressure and tilt of this frame's moment (g_raw), else its newest.
+    int wp = W.p, wtx = W.tx, wty = W.ty;
+    PenRaw raw;
+    if (g_wacom.fd >= 0 && g_pen_mono && g_wacom_mono && pensync_raw_at(&g_raw, g_pen_frame_us, &raw))
+        wp = raw.p, wtx = raw.tx, wty = raw.ty;
     e.pressure = t == IN_PEN_UP || t == IN_PEN_HOVER || t == IN_PEN_LEAVE ? 0.f : norm(P.p, &g_pen.ap);
-    if (g_wacom.fd >= 0 && W.seen && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) e.pressure = norm(W.p, &g_wacom.ap);
+    if (g_wacom.fd >= 0 && W.seen && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) e.pressure = norm(wp, &g_wacom.ap);
     if ((t == IN_PEN_DOWN || t == IN_PEN_MOVE)) {
         if (e.pressure > 0.f || W.seen) g_pressure_seen = true;
         if (!g_pressure_seen && ++g_contact_frames > 40 && !g_pressure_missing) {
@@ -319,8 +332,8 @@ static void emit_pen(InType t) {
         if (g_pressure_missing && !g_pressure_seen) e.pressure = 0.6f;
     }
     if (g_wacom.fd >= 0) {
-        e.tilt_x = tilt_deg(W.tx, &g_wacom.atx);
-        e.tilt_y = tilt_deg(W.ty, &g_wacom.aty);
+        e.tilt_x = tilt_deg(wtx, &g_wacom.atx);
+        e.tilt_y = tilt_deg(wty, &g_wacom.aty);
     } else {
         e.tilt_x = g_caps.has_tilt ? tilt_deg(P.tx, &g_pen.atx) : 0.f;
         e.tilt_y = g_caps.has_tilt ? tilt_deg(P.ty, &g_pen.aty) : 0.f;
@@ -1518,6 +1531,7 @@ bool input_set_grab(bool grab) {
     memset(&P, 0, sizeof P);
     g_pen_good = (PenState){0};
     memset(&W, 0, sizeof W);
+    pensync_raw_clear(&g_raw);
     memset(&T, 0, sizeof T);
     T.main = -1;
     T.suppressed = true;
