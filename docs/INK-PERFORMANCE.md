@@ -258,6 +258,12 @@ host's full-screen copy against the log's 89-102 ms), gives the same figures. Si
   process. A light slider being dragged redraws only its own row, at most every 80 ms; the release
   draws the whole card.
 
+Left as they were: the PDF export's fork as a notebook closes; notebook.ini written at every page
+turn (putting it off would let a notebook reopen at an older page after a crash); and the autosave
+2 s after a stroke whatever the pen does (the simulator never reports the pen leaving, so waiting
+for it would change when the Mac saves, and with the pump a save holds the thread one fsync at a
+time).
+
 What tells a stall in grimoire.log: `input: key scan took N ms` (a scan over 20 ms, with how many
 nodes it opened and the slowest), `main: <phase> took N ms` (any part of the main loop over 50 ms
 beyond its own wait; the event batch's line names its slowest event and the screen it came to,
