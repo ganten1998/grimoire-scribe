@@ -2,12 +2,15 @@
 //
 // Devices are classified by capability, not by path:
 //   pen   = EV_ABS ABS_X + ABS_PRESSURE and EV_KEY BTN_TOOL_PEN. The Scribe 2 has two:
-//           "stylus-custom" (event5), a virtual pen fed by Amazon's pen service, scaled to the
-//           screen and aligned with touch, but it only reports position + buttons; and
-//           "WacomDigitizer" (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure
-//           0..4095 and tilt in 1/100 degree (seen on device 2026-10-10). Grimoire takes position
-//           and buttons from the scaled pen (grabbed) and pressure + tilt from the raw one (read
-//           without a grab, so the pen service keeps feeding the scaled pen).
+//           "stylus-custom" (event6 since firmware 5.20.1, event5 before), a virtual pen that a
+//           pen service on the Kindle feeds from the raw digitizer, scaled to the screen and
+//           aligned with touch, but it only reports position + buttons (BTN_TOOL_PEN, BTN_TOUCH,
+//           ABS_X, ABS_Y: 2 or 3 events a frame). Which process makes it is not known; not
+//           input_manager, whose device is only "kindle-input-pt". And "WacomDigitizer"
+//           (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure 0..4095 and tilt
+//           in 1/100 degree (seen on device 2026-10-10). Grimoire takes position and buttons
+//           from the scaled pen (grabbed) and pressure + tilt from the raw one (read without a
+//           grab, so the pen service keeps feeding the scaled pen).
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
 //   power = EV_KEY KEY_POWER on a device with few keys, never Amazon's every-key proxy
 //           "kindle-input-pt" (firmware 5.20+); the Scribe 2's is "bd71828-pwrkey" (hidkeys_power)
@@ -18,6 +21,11 @@
 // Pen events follow the Wacom tool protocol (BTN_TOOL_PEN / BTN_TOOL_RUBBER bracket the
 // proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
 // the same model KOReader uses on the Scribe (input.wacom_protocol).
+//
+// The kernel keeps 128 events of the scaled pen for Grimoire: 120-175 ms of writing. Nothing on
+// the main thread may hold it longer while the pen is in use, or the kernel drops pen events and
+// the stroke loses that stretch (docs/INK-PERFORMANCE.md, Reader stalls). That is why key_scan
+// never opens a node Grimoire holds and never runs while the pen or a finger is in use.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -29,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -201,6 +210,12 @@ static void map(const InputCalib *c, float nx, float ny, float *x, float *y) {
 
 static uint64_t ev_us(const struct input_event *ev) {
     return (uint64_t)ev->input_event_sec * 1000000u + (uint64_t)ev->input_event_usec;
+}
+
+static uint64_t mono_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
 }
 
 static void handle_wacom(const struct input_event *ev) {
@@ -773,14 +788,46 @@ static void key_detach(KeyDev *k) {
     qlog("input: optional input at %s went away", k->path);
     key_announce(k, IN_HID_DETACH);
 }
+// Nodes found to be no keyboard or controller, by input_open or a scan: never opened again while
+// they stay the same node (hidkeys_node).
+static HidNoneCache g_key_none;
+static HidNode node_of(const struct stat *st) {
+    return (HidNode){(uint64_t)st->st_rdev, (uint64_t)st->st_ino, (int64_t)st->st_ctim.tv_sec, (long)st->st_ctim.tv_nsec};
+}
+// A node input_open looked at and leaves that is no keyboard or controller either.
+static void key_none_note(int fd, const char *path, const char *name, const unsigned long *keys, const unsigned long *axes) {
+    struct stat st;
+    if (hidkeys_optional(name, BYTES(keys), BYTES(axes)) == HID_NONE && fstat(fd, &st) == 0) {
+        HidNode n = node_of(&st);
+        hidkeys_node_none(&g_key_none, path, &n);
+    }
+}
+// The device numbers of every node Grimoire holds open.
+static int held_nodes(uint64_t *out, int cap) {
+    int fds[5 + KEY_DEVS] = {g_pen.fd, g_wacom.fd, g_touch.fd, g_power_fd, g_orient_fd}, nfds = 5, n = 0;
+    for (int i = 0; g_keys_init && i < KEY_DEVS; i++) fds[nfds++] = g_keys[i].fd;
+    struct stat st;
+    for (int i = 0; i < nfds && n < cap; i++)
+        if (fds[i] >= 0 && fstat(fds[i], &st) == 0) out[n++] = (uint64_t)st.st_rdev;
+    return n;
+}
 // Devices found by the scan that starts watching are not announced: they did not just come.
+// Every node is stat()ed, and opened only if it may be a keyboard or controller that came: closing
+// an evdev node waits out an RCU grace period (22-96 ms on the Scribe), and opening Grimoire's own
+// seven took the thread 320-370 ms, long enough for the kernel to drop pen events.
 static void key_scan(bool announce) {
     g_keys_scan = now_ms();
+    uint64_t t0 = mono_us(), slowest_us = 0;
+    char slowest[300] = "";
+    int nodes = 0, opened = 0;
+    uint64_t held[5 + KEY_DEVS];
+    int nheld = held_nodes(held, 5 + KEY_DEVS);
     DIR *d = opendir("/dev/input");
     if (!d) return;
     struct dirent *e;
     while ((e = readdir(d))) {
         if (strncmp(e->d_name, "event", 5)) continue;
+        nodes++;
         char path[300]; snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
         int slot = -1; bool seen = false;
         for (int i = 0; i < KEY_DEVS; i++) {
@@ -788,8 +835,14 @@ static void key_scan(bool announce) {
             else if (!strcmp(g_keys[i].path, path)) seen = true;
         }
         if (seen || slot < 0) continue;
+        struct stat st;
+        if (stat(path, &st) != 0 || !S_ISCHR(st.st_mode)) continue;
+        HidNode node = node_of(&st);
+        if (hidkeys_node(&g_key_none, held, nheld, path, &node) != HIDNODE_PROBE) continue;
+        uint64_t n0 = mono_us();
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
+        opened++;
         unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
         char name[64] = "";
         ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
@@ -797,23 +850,35 @@ static void key_scan(bool announce) {
         ioctl(fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
         HidKind kind = hidkeys_optional(name, BYTES(keys), BYTES(axes));
         if (kind == HID_NONE) {
-            close(fd); continue;
+            close(fd);
+            hidkeys_node_none(&g_key_none, path, &node);
+        } else {
+            KeyDev *k = &g_keys[slot];
+            *k = (KeyDev){.fd = fd, .kind = kind};
+            strlcpy_q(k->path, path, sizeof k->path);
+            hidkeys_name(k->name, sizeof k->name, name);
+            // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
+            // for one ourselves, let go at once, and read without one as before.
+            int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
+            k->held = hidkeys_held(grabbed, err);
+            if (grabbed == 0) ioctl(fd, EVIOCGRAB, 0);
+            if (!key_resync(k)) {
+                close(fd);
+                k->fd = -1;
+            } else {
+                qlog("input: optional %s attached at %s%s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path,
+                     k->held ? ", held by another app" : "");
+                if (announce) key_announce(k, IN_HID_ATTACH);
+            }
         }
-        KeyDev *k = &g_keys[slot];
-        *k = (KeyDev){.fd = fd, .kind = kind};
-        strlcpy_q(k->path, path, sizeof k->path);
-        hidkeys_name(k->name, sizeof k->name, name);
-        // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
-        // for one ourselves, let go at once, and read without one as before.
-        int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
-        k->held = hidkeys_held(grabbed, err);
-        if (grabbed == 0) ioctl(fd, EVIOCGRAB, 0);
-        if (!key_resync(k)) { close(fd); k->fd = -1; continue; }
-        qlog("input: optional %s attached at %s%s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path,
-             k->held ? ", held by another app" : "");
-        if (announce) key_announce(k, IN_HID_ATTACH);
+        uint64_t took = mono_us() - n0;
+        if (took > slowest_us) slowest_us = took, strlcpy_q(slowest, path, sizeof slowest);
     }
     closedir(d);
+    uint64_t took = mono_us() - t0;
+    if (took > 20000)
+        qlog("input: key scan took %llu ms over %d nodes (opened %d, slowest %s %llu ms)", (unsigned long long)(took / 1000),
+             nodes, opened, slowest[0] ? slowest : "none", (unsigned long long)(slowest_us / 1000));
 }
 void input_shortcuts_enable(bool enabled) {
     if (!g_keys_init) {
@@ -877,7 +942,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             continue;
         }
         char name[64] = "?";
-        ioctl(fd, EVIOCGNAME(sizeof name), name);
+        ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
         unsigned long evb[NLONGS(EV_MAX + 1)] = {0}, keyb[NLONGS(KEY_MAX + 1)] = {0}, absb[NLONGS(ABS_MAX + 1)] = {0};
         ioctl(fd, EVIOCGBIT(0, sizeof evb), evb);
         ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keyb), keyb);
@@ -945,6 +1010,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         }
         if (pen && g_pen.fd >= 0 && scaled) {
             // A scaled pen found after a raw one: the raw one becomes the pressure source.
+            key_none_note(fd, path, name, keyb, absb);
             close(fd);
             continue;
         }
@@ -1002,6 +1068,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                 power_keys++;
                 qlog("input: %s (%s) is another power key, not watched", path, name);
             }
+            key_none_note(fd, path, name, keyb, absb);
             close(fd);
         }
     }
@@ -1069,7 +1136,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         return 1;
     }
     if (q_pop(ev)) return 1;
-    if (g_keys_enabled && (uint32_t)(now_ms() - g_keys_scan) >= 5000) key_scan(true);
+    // Never while the pen or a finger is in use: nothing reads the pen while the scan runs.
+    bool busy = P.prox || P.touching || T.active || g_pinching;
+    if (g_keys_enabled && hidkeys_scan_due(now_ms(), g_keys_scan, busy, g_pen_left_ms)) key_scan(true);
     struct pollfd pf[8 + KEY_DEVS];
     int ikey[KEY_DEVS];
     int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1, ipwd = -1;
