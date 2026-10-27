@@ -21,8 +21,9 @@ const char *tool_name(ToolKind t);   // "Pencil", "Mechanical pencil", "Ballpoin
 const char *tool_label(ToolKind t);  // the same in the language in use, for the screens
 
 // The tool picker's pens in its order, three to a row (dry media, then pens, then the nibs and the
-// highlighter), then the eraser: the order of next and previous tool (the first TOOL_PENS), Pen
-// feel's tabs and the controller's Buttons sheet.
+// highlighter), then the eraser: the order of next and previous in the picker (the first
+// TOOL_PENS; next and previous tool too, with fewer than two pens on the panel), Pen feel's tabs and
+// the controller's Buttons sheet.
 #define TOOL_PENS (TOOL_COUNT - 1)
 extern const ToolKind tool_order[TOOL_COUNT];
 

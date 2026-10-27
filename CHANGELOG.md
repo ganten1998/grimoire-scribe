@@ -49,11 +49,17 @@
   front for its own. Buttons... groups them under Editing, Tools, Pages and Menus, and a toast says
   when a button learned there leaves another action. Older versions refuse the new names in
   shortcuts.ini and count them; their other lines still work.
-- **Next and previous tool keep their place after the eraser**: they step through the tool picker's
-  nine pens in its order, and from the eraser they now go on from the pen it goes back to, instead
-  of starting again at the pencil or the highlighter. With the tool picker open they move its
-  choice and leave it open. A new shortcuts.ini numbers keys 1 to 9 in the picker's order too (3
-  charcoal, 4 ballpoint, 7 fountain pen); an existing one is never changed.
+- **Next and previous tool stay on the panel**: they now go through the pens on the panel only, the
+  tool button's pen and the pinned ones, top to bottom and round again, so pressing next over and
+  over never sends the highlight into the tool picker and back. With fewer than two pens on the
+  panel they go through the tool picker's nine pens in its order. From the eraser they go on from
+  the pen it goes back to, instead of starting again at the top or the bottom. A new shortcuts.ini
+  numbers keys 1 to 9 in the picker's order too (3 charcoal, 4 ballpoint, 7 fountain pen); an
+  existing one is never changed.
+- **Next and previous in the tool picker**: two new actions for a button or a key (picker-previous
+  and picker-next, a row of their own in Buttons... under Tools) move the open tool picker's choice
+  and leave it open; with it closed they switch tools through all nine pens. Next and previous tool
+  leave the open picker alone.
 - **Bluetooth controllers**: with the kindle-hid-passthrough helper unpacked in grimoire/bluetooth
   (only its files: its installer adds a boot-time button mapper that takes controllers away),
   Bluetooth controller starts it with Grimoire and Pair a controller... finds and pairs one. It runs

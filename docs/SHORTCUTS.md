@@ -2,8 +2,8 @@
 
 A controller (or a keyboard) is express keys for the hand that does not hold the pen: pages,
 tools, undo and redo, the eraser and white ink, in the notebook editor. It opens and closes the
-editor's menus, but does not move around inside them (but for next and previous tool in the tool
-picker): tap there.
+editor's menus, but does not move around inside them (but for next and previous in the tool picker,
+below): tap there.
 
 Enable **Library > Settings > Controller > Enable shortcuts**. This writes starter mappings to
 `/mnt/us/grimoire/shortcuts.ini` only if that file does not exist. Edit it over USB/SSH and choose
@@ -17,7 +17,7 @@ optional input devices again.
 **Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
 has four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser,
 Erase while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in
-the tool picker's order, and previous / next tool), **Pages** (previous / next page, first / last
+the tool picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next page, first / last
 page, new page, fit page, Pages, Index) and **Menus** (the tool picker, Paper, Display, Pen feel,
 fold the panel, the Library, close menu). Open a group, tap a row, then press the button; Done goes
 back up to the list. One button per action: a button that did something else does this now (a
@@ -73,6 +73,7 @@ key.Ctrl+i=index
 pad.East=tool:eraser
 pad.311=next-tool
 pad.Up=previous-tool
+pad.R2=picker-next
 ```
 
 Actions, in the Buttons sheet's groups:
@@ -84,7 +85,7 @@ Actions, in the Buttons sheet's groups:
   ink on and off), `clear-page` (as the panel's broom: no question, one undo step).
 - **Tools**: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
   `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
-  `next-tool`.
+  `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker).
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
   notebook's own paper right after the open one, which opens, as the Pages view's New page does),
   `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
@@ -92,12 +93,21 @@ Actions, in the Buttons sheet's groups:
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`.
 
-`previous-tool` and `next-tool` step through the tool picker's nine pens in that order, from the
-highlighter round to the pencil and back. A pinned pen is picked as a tap on its pin picks it (the
-tool button keeps its pen). The eraser is not among them: from the eraser they step from the pen it
-goes back to (marker, eraser, next tool: the fountain pen); the eraser's own button goes back to
-that pen itself. While the tool picker is open (not while it pins pens) they move its choice and
-leave it open.
+`previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool
+button's pen and the pinned pens, top to bottom as the panel shows them, from the last round to the
+first and back. Pressed again and again they keep to the panel, so the highlight never jumps into
+the tool picker and back. With fewer than two pens on the panel (none pinned, or only the tool
+button's own pen) they step through the tool picker's nine pens in its order instead, from the
+highlighter round to the pencil and back. The eraser is not among them: from the eraser they step
+from the pen it goes back to (with the fountain pen on the tool button and the highlighter and the
+fineliner pinned: highlighter, eraser, next tool: the fineliner); the eraser's own button goes back
+to that pen itself. They do nothing while the tool picker is open.
+
+`picker-previous` and `picker-next` step through the tool picker's nine pens in its order. While
+the picker is open (not while it pins pens) they move its choice and leave it open. With it closed
+they switch tools through all nine, from the eraser as above (marker, eraser, next in the picker:
+the fountain pen): a pinned pen is picked as a tap on its pin picks it (the tool button keeps its
+pen), another goes to the tool button. The starter mappings give them no key or button.
 A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
 another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
 view to their tab, and close it on their own. `close-menu` closes whatever menu is in front: a link
@@ -107,7 +117,7 @@ paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-
 never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
-`fold-panel`, `library`, `close-menu`) and count them in Reload shortcuts.ini; their other lines
+`fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`) and count them in Reload shortcuts.ini; their other lines
 still work.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
@@ -119,8 +129,8 @@ configuration are accepted. An existing empty file deliberately disables mapping
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
 sleeping or displaying a sheet, except the menus' buttons and Close menu (above), Erase while held,
-whose press counts even during a stroke (from the next one), and previous and next tool, which
-move the open tool picker's choice. Next page on the last
+whose press counts even during a stroke (from the next one), and next and previous in the picker,
+which move the open tool picker's choice. Next page on the last
 page adds a page, as the editor's + button there does: on the open page's paper, or the notebook's
 own after an imported, book or photo page. Presses act once; repeats do not trigger actions, and
 a release only ends Erase while held (so does the controller going, or the Kindle going to sleep). While shortcuts are enabled, a key or
