@@ -252,10 +252,14 @@ copy and refresh-submission timing, and the latency of live ink by how each fram
   as the next stroke begins, so they are never counted against it);
 - raw->submit and the relay hop: from the raw digitizer's sample (WacomDigitizer), which the
   Kindle's pen service relays as the scaled pen Grimoire reads, matched to it by position;
-- for one frame at a time, followed by a second thread: submit->start (the driver took it to
-  the panel, MXCFB_WAIT_FOR_UPDATE_SUBMISSION) and submit->done (its waveform ended,
-  MXCFB_WAIT_FOR_UPDATE_COMPLETE), also for frames within 600 ms of a grayscale refresh, with
-  the panel temperature.
+- the panel temperature, which the waveforms' lengths follow.
+
+Earlier builds also followed one frame at a time through the driver, from submission to the end
+of its waveform, from a second thread. Those waits could crash the Kindle's display driver: it
+ends an update by signalling its marker twice, submitted then complete, and a submission waiter
+woken by the first signal frees the marker before the second (a kernel panic, then a watchdog
+reboot). Grimoire never waits for a submission now, and never has two waits on one marker: each
+signal wakes only one waiter, so a second would sit out the driver's 5 second timeout.
 
 With it, an empty `grimoire/latency-ab` makes ink strokes take turns in blocks of 12 at plain
 DU, direct and padded pen mode, so one session compares them on the same pages and hand. Both

@@ -91,7 +91,6 @@ enum { INK_DU, INK_PEN_DIRECT, INK_PEN_PADDED, INK_KINDS };
 static const char *const k_ink_kind[] = {"DU", "pen mode", "padded pen mode"};
 static LatHist g_lat_pen[INK_KINDS], g_lat_oldest[INK_KINDS], g_lat_raw[INK_KINDS], g_lat_hop[INK_KINDS];
 static unsigned g_raw_miss[INK_KINDS];
-static uint32_t g_gray_last_ms;   // when the last grayscale (UI or full) refresh went out
 static int g_presents;        // refreshes sent; the first few are logged in full (device bring-up)
 static bool g_flip;           // framebuffer is 180 degrees from the panel's touch orientation
 static int g_rot;             // device rotation, quarter turns clockwise
@@ -169,11 +168,16 @@ static Rect fb_rect(Rect r) {
     return (Rect){lx, ly, abs(x1 - x0) + 1, abs(y1 - y0) + 1};
 }
 
-// The driver's waits, on fds of their own (the threads below), in its marker protocol.
+// The driver's waits, on an fd of their own (the thread below), in its marker protocol. Only the
+// update-complete wait, and never two waiters on one marker. The driver (hwtcon_v2) ends an update
+// by signalling each of its markers twice, submitted and then complete, and a marker that still
+// has waiters is freed by the last one to leave: a submission waiter woken by the first signal
+// can free it before the second, and the kernel panics (the Kindle reboots on its watchdog; the
+// latency report's submission wait did this). Each signal wakes one waiter, so a second waiter on
+// a marker sits out the driver's 5 s timeout.
 struct grim_marker_data {
     uint32_t update_marker, collision_test;
 };
-#define GRIM_WAIT_FOR_UPDATE_SUBMISSION _IOW('F', 0x37, uint32_t)
 #define GRIM_WAIT_FOR_UPDATE_COMPLETE _IOWR('F', 0x2F, struct grim_marker_data)
 static int wait_done(int fd, uint32_t marker) {
     struct grim_marker_data d = {marker, 0};
@@ -193,14 +197,15 @@ static bool start_thread(void *(*fn)(void *)) {
 #define QUIET_GRAY 32
 static struct {
     pthread_mutex_t mu;
-    pthread_cond_t cv;
+    pthread_cond_t cv, idle;  // work for the thread; it finished some (display_wait)
     bool on;
     int fd, errors;
     uint32_t gray[QUIET_GRAY];
     int gray_head, gray_n;
     uint32_t overflow_ms;  // the queue was full: unknown until 2 s later
     uint32_t du_sent, du_wait, du_done;
-} Q = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1};
+    uint32_t handed;  // the newest marker it took on
+} Q = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .idle = PTHREAD_COND_INITIALIZER, .fd = -1};
 
 static void *quiet_main(void *arg) {
     (void)arg;
@@ -221,6 +226,7 @@ static void *quiet_main(void *arg) {
         } else {
             Q.du_done = m;
         }
+        pthread_cond_broadcast(&Q.idle);
     }
     return NULL;
 }
@@ -229,9 +235,9 @@ static void quiet_sent(uint32_t marker, bool gray) {
     if (Q.fd < 0) return;
     pthread_mutex_lock(&Q.mu);
     if (!gray) {
-        Q.du_sent = Q.du_wait = marker;
+        Q.du_sent = Q.du_wait = Q.handed = marker;
     } else if (Q.gray_n < QUIET_GRAY) {
-        Q.gray[(Q.gray_head + Q.gray_n) % QUIET_GRAY] = marker;
+        Q.gray[(Q.gray_head + Q.gray_n) % QUIET_GRAY] = Q.handed = marker;
         Q.gray_n++;
     } else {
         Q.overflow_ms = now_ms() | 1;
@@ -246,77 +252,6 @@ static bool quiet_now(void) {
     bool quiet = Q.on && !Q.gray_n && Q.du_done == Q.du_sent && (!Q.overflow_ms || now_ms() - Q.overflow_ms > 2000);
     pthread_mutex_unlock(&Q.mu);
     return quiet;
-}
-
-// Ink metrics: one live ink frame at a time (one sent while the probe was idle) is followed through
-// the driver: when it reached the panel (submission) and when its waveform ended. Same rules as the
-// quiet thread: it only waits and keeps books.
-static struct {
-    pthread_mutex_t mu;
-    pthread_cond_t cv;
-    bool on, pending, busy;
-    int fd;
-    uint32_t marker;
-    uint64_t submit_us;
-    int kind;
-    bool after_gray;
-    LatHist start[INK_KINDS], done[INK_KINDS], start_gray;
-    unsigned late, errors;
-    int error_no;
-} R = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1};
-
-static uint64_t clock_us(void);
-
-static void *probe_main(void *arg) {
-    (void)arg;
-    pthread_mutex_lock(&R.mu);
-    for (;;) {
-        while (!R.pending) pthread_cond_wait(&R.cv, &R.mu);
-        R.pending = false;
-        R.busy = true;
-        uint32_t m = R.marker;
-        uint64_t submit = R.submit_us;
-        int kind = R.kind;
-        bool after_gray = R.after_gray;
-        pthread_mutex_unlock(&R.mu);
-        uint64_t picked = clock_us();
-        uint32_t mm = m;
-        int rc = ioctl(R.fd, GRIM_WAIT_FOR_UPDATE_SUBMISSION, &mm);
-        int e1 = errno;
-        uint64_t started = clock_us();
-        int rc2 = rc < 0 ? -1 : wait_done(R.fd, m);
-        int e2 = errno;
-        uint64_t ended = clock_us();
-        pthread_mutex_lock(&R.mu);
-        R.busy = false;
-        if (rc < 0 || rc2 < 0) {
-            R.errors++;
-            R.error_no = rc < 0 ? e1 : e2;
-        } else {
-            if (picked - submit <= 2000) {
-                lat_hist_add(&R.start[kind], (int64_t)(started - submit));
-                if (after_gray) lat_hist_add(&R.start_gray, (int64_t)(started - submit));
-            } else {
-                R.late++;  // picked up too late to time the submission; the end still counts
-            }
-            lat_hist_add(&R.done[kind], (int64_t)(ended - submit));
-        }
-    }
-    return NULL;
-}
-
-static void probe_sent(uint32_t marker, uint64_t submit_us, int kind, bool after_gray) {
-    if (R.fd < 0) return;
-    pthread_mutex_lock(&R.mu);
-    if (!R.pending && !R.busy) {
-        R.marker = marker;
-        R.submit_us = submit_us;
-        R.kind = kind;
-        R.after_gray = after_gray;
-        R.pending = true;
-        pthread_cond_signal(&R.cv);
-    }
-    pthread_mutex_unlock(&R.mu);
 }
 
 // A thread with its own fd on the framebuffer (FBInk's stays the main thread's); false if either fails.
@@ -338,11 +273,7 @@ static void lat_reset(void) {
         lat_hist_init(&g_lat_raw[k], 100);
         lat_hist_init(&g_lat_hop[k], 100);
         g_raw_miss[k] = 0;
-        lat_hist_init(&R.start[k], 1000);
-        lat_hist_init(&R.done[k], 1000);
     }
-    lat_hist_init(&R.start_gray, 1000);
-    R.late = 0;
 }
 
 // The panel's temperature as the driver reads it ("temp:25 temp_zone:8"): the waveforms' lengths
@@ -366,31 +297,14 @@ static void lat_log(void) {
         qlog("display: ink latency, %s: pen->submit %s; oldest pen->submit %s; raw->submit %s; relay hop %s; "
              "unmatched %u", k_ink_kind[k], a, b, c, d, g_raw_miss[k]);
     }
-    if (R.fd >= 0) {
-        pthread_mutex_lock(&R.mu);
-        for (int k = 0; k < INK_KINDS; k++) {
-            if (!R.done[k].n) continue;
-            lat_hist_format(&R.start[k], a, sizeof a);
-            lat_hist_format(&R.done[k], b, sizeof b);
-            qlog("display: driver, %s: submit->start %s; submit->done %s", k_ink_kind[k], a, b);
-        }
-        lat_hist_format(&R.start_gray, a, sizeof a);
-        unsigned late = R.late, errors = R.errors;
-        int error_no = R.error_no;
-        pthread_mutex_unlock(&R.mu);
-        char t[48];
-        panel_temp(t, sizeof t);
-        pthread_mutex_lock(&Q.mu);
-        int quiet_errors = Q.errors;
-        pthread_mutex_unlock(&Q.mu);
-        qlog("display: driver: submit->start within 600 ms of a grayscale refresh %s; late pickups %u; wait "
-             "errors %u%s%s; panel %s; strokes kept on plain DU %u; standard-update waits failed %d%s", a, late,
-             errors, errors ? ", last: " : "", errors ? strerror(error_no) : "", t, g_pen_busy, quiet_errors,
-             quiet_errors >= 3 ? " (no pen mode)" : "");
-    }
-    pthread_mutex_lock(&R.mu);
+    char t[48];
+    panel_temp(t, sizeof t);
+    pthread_mutex_lock(&Q.mu);
+    int quiet_errors = Q.errors;
+    pthread_mutex_unlock(&Q.mu);
+    qlog("display: driver: panel %s; strokes kept on plain DU %u; standard-update waits failed %d%s", t, g_pen_busy,
+         quiet_errors, quiet_errors >= 3 ? " (no pen mode)" : "");
     lat_reset();
-    pthread_mutex_unlock(&R.mu);
 }
 
 void display_set_orientation(int turns, int *w, int *h) {
@@ -543,11 +457,7 @@ int display_open(int *w, int *h, float *dpi) {
                                        : g_pen_cfg == PEN_DIRECT ? "on" : "on, padded");
     if (g_st.is_mtk && (g_pen_cfg != PEN_OFF || g_ab || g_perf_enabled) && !open_watch(&Q.fd, &Q.on, quiet_main))
         qlog("display: no thread to follow standard updates (%s): no pen mode", strerror(errno));
-    if (g_perf_enabled) {
-        lat_reset();
-        if (!open_watch(&R.fd, &R.on, probe_main))
-            qlog("display: no thread to time the driver (%s)", strerror(errno));
-    }
+    if (g_perf_enabled) lat_reset();
     g_mdp_wait = g_st.has_color_panel && g_st.bpp == 32;
     if (g_mdp_wait)
         qlog("display: colour panel: fast refreshes other than live ink wait until the driver has read the frame");
@@ -680,7 +590,6 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
         } else {
             quiet_sent(marker, mode != REFRESH_FAST);
         }
-        if (mode != REFRESH_FAST) g_gray_last_ms = now_ms();
     }
     bool ink = live_ink_frame(&g_ink, mode, now_ms());
     if (mode != REFRESH_FAST && g_perf_enabled) {
@@ -704,7 +613,6 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
                     g_raw_miss[kind]++;
                 }
             }
-            probe_sent(marker, sent_us, kind, now_ms() - g_gray_last_ms < 600);
         }
         g_copy_us += copy_us;
         g_submit_us += g_last_submit_us;
@@ -806,8 +714,21 @@ bool display_band_overwritten(const Canvas *screen, Rect band, Rect skip) {
     return false;
 }
 
+// Until the last update has ended (before sleep and exit). One the quiet thread took on is waited
+// for in its books, not at the driver: a second waiter on its marker would sit out the driver's 5 s.
 void display_wait(void) {
-    if (g_fd >= 0) fbink_wait_for_complete(g_fd, LAST_MARKER);
+    if (g_fd < 0) return;
+    pthread_mutex_lock(&Q.mu);
+    bool theirs = Q.fd >= 0 && fbink_get_last_marker() == Q.handed;
+    if (theirs) {
+        struct timespec until;
+        clock_gettime(CLOCK_REALTIME, &until);
+        until.tv_sec += 6;  // past the driver's own timeout
+        while ((Q.gray_n || Q.du_done != Q.du_sent) && pthread_cond_timedwait(&Q.idle, &Q.mu, &until) == 0) {
+        }
+    }
+    pthread_mutex_unlock(&Q.mu);
+    if (!theirs) fbink_wait_for_complete(g_fd, LAST_MARKER);
 }
 
 void display_close(void) {

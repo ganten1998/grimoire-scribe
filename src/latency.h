@@ -6,9 +6,9 @@
 //   raw     the digitizer's own sample (WacomDigitizer), stamped by the kernel
 //   pen     the same sample relayed by the Kindle's pen service (stylus-custom), which Grimoire reads
 //   submit  Grimoire's refresh ioctl returned
-//   start   the driver took the update to the panel (MXCFB_WAIT_FOR_UPDATE_SUBMISSION)
-//   done    its waveform ended (MXCFB_WAIT_FOR_UPDATE_COMPLETE)
-// All in CLOCK_MONOTONIC: the input devices are switched to it with EVIOCSCLOCKID.
+// Nothing past the ioctl: timing the update in the driver needs waits on its markers that can
+// panic the kernel (display_fbink.c, at the waits). All in CLOCK_MONOTONIC: the input devices are
+// switched to it with EVIOCSCLOCKID.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
