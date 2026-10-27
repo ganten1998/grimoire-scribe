@@ -59,7 +59,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | pensettings.h/.c | per-tool sensitivity screen: sliders, curve graph, live readout, test pad | app, brush, ui |
 | calibrate.h/.c, calib_fit.h/.c | pen + touch calibration (tap crosshairs); the fit, and scaling a calibration to another panel (`calib_to_panel`) | app, input |
 | display.h + display_fbink.c | Kindle e-ink output through FBInk, the screen guard's readback, refresh health, live ink and the color panel's wait | FBInk, fbcheck |
-| input.h + input_evdev.c | Kindle pen/touch/power evdev input, EVIOCGRAB, calibration mapping, the power service watcher | linux, power |
+| input.h + input_evdev.c | Kindle pen/touch/power evdev input, EVIOCGRAB, calibration mapping, the power service watcher | linux, power, pensync |
+| pensync.h/.c | the pen after the kernel dropped its events (the tail's frames in order, never the present position first) and samples' kernel times, as pure logic | - |
 | light.h + light_kindle.c | front light and the power service through lipc (sleep request, state, preventScreenSaver) | lipc |
 | sim_sdl.c | desktop simulator implementing display.h + input.h (+ headless script mode with expect checks) | SDL3 (window build only) |
 | main.c | parse env/args, startup diagnostics, open display+input, app loop, screen guard | everything |

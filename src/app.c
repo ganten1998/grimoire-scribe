@@ -225,8 +225,10 @@ int app_init(App *a, int w, int h, float dpi) {
         app_toast(a, _("The last update did not install. grimoire.log says why."), 6000);
     }
     a->bt_start_at = a->settings.controller && a->settings.shortcuts_enabled ? now_ms() + 1500 : 0;
-    qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d", a->settings.sleep_mode, a->settings.sleep_minutes,
-         a->settings.side_button);
+    // Shortcuts on means a scan for keyboards and controllers every 5 s, controller the Bluetooth
+    // helper with it: both worth knowing when a log is read for the pen's sake.
+    qlog("settings: sleep_mode %d, sleep_minutes %d, side_button %d, shortcuts %d, controller %d", a->settings.sleep_mode,
+         a->settings.sleep_minutes, a->settings.side_button, a->settings.shortcuts_enabled, a->settings.controller);
     Settings *st = &a->settings;
     calib_follow_panel(&st->pen_calib, &st->pen_panel_w, &st->pen_panel_h, w, h, "pen");
     calib_follow_panel(&st->touch_calib, &st->touch_panel_w, &st->touch_panel_h, w, h, "touch");

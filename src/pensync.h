@@ -1,0 +1,97 @@
+// pensync.h: the pure parts of reading the pen (input_evdev.c), unit-tested on the host: how a
+// stroke goes on after the kernel dropped pen events, and the kernel's sample times in now_ms()'s
+// clock.
+//
+// Each reader of an evdev device has its own buffer in the kernel. Grimoire's for the scaled pen
+// (stylus-custom) holds 128 events, and its frames carry only X and Y (2 or 3 events each), so it
+// holds 42-63 frames: 120-175 ms of writing. When Grimoire's thread stalls longer than that, the
+// kernel throws away everything unread and queues SYN_DROPPED and the newest event. What the next
+// read finds is a partial frame (the rest of the frame that newest event belongs to), then every
+// frame that came after it, in order: the tail. Buttons and axes the tail does not carry stayed as
+// they were, and only the device can say what that is (EVIOCGKEY, EVIOCGABS: what it holds now).
+// EVIOCGKEY also takes the queued button events out of the reader's queue, so it is asked only
+// once the tail has been read.
+#pragma once
+#include <stdbool.h>
+#include <stdint.h>
+
+// Linux evdev numbers (linux/input.h, which the host does not have; input_evdev.c checks them).
+enum {
+    PS_EV_SYN = 0x00, PS_EV_KEY = 0x01, PS_EV_ABS = 0x03,
+    PS_SYN_REPORT = 0, PS_SYN_DROPPED = 3,
+    PS_ABS_X = 0x00, PS_ABS_Y = 0x01, PS_ABS_PRESSURE = 0x18, PS_ABS_TILT_X = 0x1a, PS_ABS_TILT_Y = 0x1b,
+    PS_BTN_TOOL_PEN = 0x140, PS_BTN_TOOL_RUBBER = 0x141, PS_BTN_TOUCH = 0x14a, PS_BTN_STYLUS = 0x14b,
+};
+
+// One event as read (input_event's fields; the time in microseconds of the reader's clock).
+typedef struct {
+    uint64_t t_us;
+    uint16_t type, code;
+    int32_t value;
+} PenEv;
+
+// The pen's buttons and axes as its frames report them (ABS_MT_PRESSURE already scaled into p).
+typedef struct {
+    bool tool_pen, tool_rubber, touching, side;
+    int x, y, p, tx, ty;
+} PenState;
+
+// PenState's fields as bits: which ones a query of the device read.
+enum {
+    PS_F_TOOL_PEN = 1 << 0, PS_F_TOOL_RUBBER = 1 << 1, PS_F_TOUCH = 1 << 2, PS_F_SIDE = 1 << 3,
+    PS_F_X = 1 << 4, PS_F_Y = 1 << 5, PS_F_P = 1 << 6, PS_F_TX = 1 << 7, PS_F_TY = 1 << 8,
+    PS_F_KEYS = PS_F_TOOL_PEN | PS_F_TOOL_RUBBER | PS_F_TOUCH | PS_F_SIDE,
+    PS_F_ALL = (1 << 9) - 1,
+};
+
+// Whether the pen touches the screen: BTN_TOUCH, or for a pen without it, pressure above p_min
+// while it is near (BTN_TOOL_PEN or BTN_TOOL_RUBBER).
+bool pensync_contact(const PenState *s, bool touch_btn, int p_min);
+
+// What a resync starts from.
+typedef struct {
+    PenState good;          // the pen at the last complete frame read before the drop
+    const PenEv *ev;        // what was read from the SYN_DROPPED on (it included), in order
+    int n;
+    PenState now;           // the device's state, asked once all of ev was read
+    unsigned now_ok;        // PS_F_* of now that the device answered (0: the ioctls failed)
+    bool touch_btn;         // pensync_contact's
+    int p_min;
+} PenTail;
+
+// A frame to report, as a SYN_REPORT would have it.
+typedef struct {
+    PenState s;
+    uint64_t t_us;          // its SYN_REPORT's time
+    bool moved;             // it carried an axis: a move (or hover) to report
+    bool gap;               // the first after the lost stretch: joined straight from the last good point
+} PenFrame;
+
+typedef struct {
+    int frames;             // complete frames in the tail
+    int skipped;            // events of the partial frame left out (its SYN_REPORT not counted)
+    int used;               // ev[used..n) is an unfinished last frame, for the caller to read on as usual
+    uint64_t first_us, last_us;  // the first and last tail frames' times (0 with no tail)
+    bool keys;              // the tail carried a button event
+    bool lifted;            // the pen was found lifted: a lift at the last good point went first
+    int x, y;               // where the reported frames end
+} PenTailInfo;
+
+// The frames to report after a SYN_DROPPED, in order, into out (cap n + 3 is always enough); their
+// count. The tail's frames, each as it was: a button before its first event in the tail was the
+// other way (the input core passes only changes), an axis before its first event is taken at that
+// first value (the nearest known), and what the tail never carries is as the device says now (else
+// as it was). Never the device's present position ahead of older frames. The first frame is the
+// gap; if the pen touched at the last good point and the tail shows that stroke ended (no contact
+// at the first frame or just before it, or the other end by then), a lift at the last good point
+// goes before it, and the first frame starts a stroke of its own. A button that changed after the
+// tail was read (its event taken by EVIOCGKEY) comes last, at the last frame's place. With no frame
+// after the partial one, one frame of the device's present state.
+int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info);
+
+// A sample's time for the stroke (InEvent.k_ms): the kernel's time of its frame in now_ms()'s
+// uint32 milliseconds, when the reader's clock is CLOCK_MONOTONIC (mono: EVIOCSCLOCKID took). Else,
+// or for a time of 0, one after now, or one over PENSYNC_K_MAX_AGE_MS before now (none of which a
+// real CLOCK_MONOTONIC stamp can be), now: when it was read.
+#define PENSYNC_K_MAX_AGE_MS 10000u
+uint32_t pensync_ms(uint64_t t_us, bool mono, uint32_t now);

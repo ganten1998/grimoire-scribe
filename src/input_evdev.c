@@ -2,12 +2,15 @@
 //
 // Devices are classified by capability, not by path:
 //   pen   = EV_ABS ABS_X + ABS_PRESSURE and EV_KEY BTN_TOOL_PEN. The Scribe 2 has two:
-//           "stylus-custom" (event5), a virtual pen fed by Amazon's pen service, scaled to the
-//           screen and aligned with touch, but it only reports position + buttons; and
-//           "WacomDigitizer" (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure
-//           0..4095 and tilt in 1/100 degree (seen on device 2026-10-10). Grimoire takes position
-//           and buttons from the scaled pen (grabbed) and pressure + tilt from the raw one (read
-//           without a grab, so the pen service keeps feeding the scaled pen).
+//           "stylus-custom" (event6 since firmware 5.20.1, event5 before), a virtual pen that a
+//           pen service on the Kindle feeds from the raw digitizer, scaled to the screen and
+//           aligned with touch, but it only reports position + buttons (BTN_TOOL_PEN, BTN_TOUCH,
+//           ABS_X, ABS_Y: 2 or 3 events a frame). Which process makes it is not known; not
+//           input_manager, whose device is only "kindle-input-pt". And "WacomDigitizer"
+//           (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure 0..4095 and tilt
+//           in 1/100 degree (seen on device 2026-10-10). Grimoire takes position and buttons
+//           from the scaled pen (grabbed) and pressure + tilt from the raw one (read without a
+//           grab, so the pen service keeps feeding the scaled pen).
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
 //   power = EV_KEY KEY_POWER on a device with few keys, never Amazon's every-key proxy
 //           "kindle-input-pt" (firmware 5.20+); the Scribe 2's is "bd71828-pwrkey" (hidkeys_power)
@@ -18,6 +21,11 @@
 // Pen events follow the Wacom tool protocol (BTN_TOOL_PEN / BTN_TOOL_RUBBER bracket the
 // proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
 // the same model KOReader uses on the Scribe (input.wacom_protocol).
+//
+// The kernel keeps 128 events of the scaled pen for Grimoire: 120-175 ms of writing. Nothing on
+// the main thread may hold it longer while the pen is in use, or the kernel drops pen events and
+// the stroke loses that stretch (docs/INK-PERFORMANCE.md, Reader stalls). That is why key_scan
+// never opens a node Grimoire holds and never runs while the pen or a finger is in use.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -29,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -37,9 +46,18 @@
 #include "calib_fit.h"
 #include "input.h"
 #include "latency.h"
+#include "pensync.h"
 #include "power.h"
 #include "shortcuts.h"
 #include "hidkeys.h"
+
+// pensync.h's copy of the evdev numbers it needs.
+_Static_assert(PS_EV_SYN == EV_SYN && PS_EV_KEY == EV_KEY && PS_EV_ABS == EV_ABS, "pensync event types");
+_Static_assert(PS_SYN_REPORT == SYN_REPORT && PS_SYN_DROPPED == SYN_DROPPED, "pensync SYN codes");
+_Static_assert(PS_ABS_X == ABS_X && PS_ABS_Y == ABS_Y && PS_ABS_PRESSURE == ABS_PRESSURE &&
+               PS_ABS_TILT_X == ABS_TILT_X && PS_ABS_TILT_Y == ABS_TILT_Y, "pensync axes");
+_Static_assert(PS_BTN_TOOL_PEN == BTN_TOOL_PEN && PS_BTN_TOOL_RUBBER == BTN_TOOL_RUBBER && PS_BTN_TOUCH == BTN_TOUCH &&
+               PS_BTN_STYLUS == BTN_STYLUS, "pensync buttons");
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
@@ -78,6 +96,10 @@ static struct {
     bool seen;
     bool rubber, side;  // the raw digitizer also reports the eraser end and the side button
 } W;
+// Both pens' events are stamped in CLOCK_MONOTONIC for this reader (clock_mono, as input_open opens
+// each node, before any other ioctl): stroke samples carry the kernel's time of their frame
+// (InEvent.k_ms), and the pen's drops say how old their tail is.
+static bool g_pen_mono, g_wacom_mono;
 // Ink timing (latency.h): both pens' events stamped in CLOCK_MONOTONIC, the raw samples kept to
 // match the relayed ones, and the samples emitted since display_fbink.c last asked.
 static bool g_ink_mono;
@@ -203,11 +225,46 @@ static uint64_t ev_us(const struct input_event *ev) {
     return (uint64_t)ev->input_event_sec * 1000000u + (uint64_t)ev->input_event_usec;
 }
 
+static uint64_t mono_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
+
+// The raw digitizer's own drops: its frames are bigger than the scaled pen's (pressure and tilt
+// too), so its 128 events overflow sooner. Up to the next SYN_REPORT is partial and skipped (no
+// relay timing for it); once its queue is read, wacom_resync asks for pressure, tilt and buttons.
+static bool g_wacom_dropping, g_wacom_resync;
+static int g_wacom_drops;
+// When input_poll last read it (input_open starts it when it is done), and the time before that;
+// whether it has been read since input_open, and whether this read is the first.
+static uint32_t g_wacom_read_ms, g_wacom_read_gap;
+static bool g_wacom_read, g_wacom_first_read;
+
 static void handle_wacom(const struct input_event *ev) {
-    if (ev->type == EV_SYN && ev->code == SYN_REPORT) {
-        if (g_ink_mono) lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
+    if (ev->type == EV_SYN && ev->code == SYN_DROPPED) {
+        g_wacom_dropping = true;
+        if (g_wacom_first_read) {
+            // While Grimoire was starting, as for the pen (pen_resync): no stall, not counted.
+            qlog("input: pressure/tilt events dropped by the kernel before Grimoire first read them (not counted; "
+                 "%u ms since input_open)", (unsigned)g_wacom_read_gap);
+            return;
+        }
+        g_wacom_drops++;
+        qlog("input: pressure/tilt events dropped by the kernel (%d so far; %u ms since it was read before)",
+             g_wacom_drops, (unsigned)g_wacom_read_gap);
         return;
     }
+    if (ev->type == EV_SYN && ev->code == SYN_REPORT) {
+        if (g_wacom_dropping) {
+            g_wacom_dropping = false;
+            g_wacom_resync = true;
+        } else if (g_ink_mono) {
+            lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
+        }
+        return;
+    }
+    if (g_wacom_dropping) return;
     if (ev->type == EV_KEY) {
         if (ev->code == BTN_TOOL_RUBBER) W.rubber = ev->value != 0;
         else if (ev->code == BTN_STYLUS) W.side = ev->value != 0;
@@ -223,6 +280,26 @@ static void handle_wacom(const struct input_event *ev) {
     default: break;
     }
 }
+
+// After a drop, once its queue is read: what the raw digitizer holds now. (EVIOCGKEY takes queued
+// button events out of the queue, so not before; W only ever keeps the newest values anyway.)
+static void wacom_resync(void) {
+    g_wacom_resync = false;
+    struct input_absinfo ai;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_PRESSURE), &ai) >= 0) W.p = ai.value, W.seen = true;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_X), &ai) >= 0) W.x = ai.value;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_Y), &ai) >= 0) W.y = ai.value;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_TILT_X), &ai) >= 0) W.tx = ai.value;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_TILT_Y), &ai) >= 0) W.ty = ai.value;
+    unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
+    if (ioctl(g_wacom.fd, EVIOCGKEY(sizeof keys), keys) >= 0) {
+        W.rubber = test_bit(keys, BTN_TOOL_RUBBER);
+        W.side = test_bit(keys, BTN_STYLUS);
+    }
+}
+
+// The frame being reported is the first after a pen drop (pen_resync): its sample says so (gap).
+static bool g_pen_gap;
 
 static void emit_pen(InType t) {
     InEvent e = {0};
@@ -254,7 +331,14 @@ static void emit_pen(InType t) {
     e.eraser = P.eraser;
     e.side_button = P.side || W.side;
     e.t_ms = now_ms();
+    e.k_ms = pensync_ms(g_pen_frame_us, g_pen_mono, e.t_ms);
+    e.gap = g_pen_gap;
     if (g_ink_mono && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) {
+        // A stroke's samples start the oldest afresh: one left from the stroke before (its last
+        // sample never got a fast frame of its own) would time this stroke's first frame from it.
+        // (Not at the lift: the lift is emitted as it is read, with the stroke's last samples, before
+        // the frame that draws them.)
+        if (t == IN_PEN_DOWN) g_ink_oldest = 0;
         g_ink_newest = g_pen_frame_us;
         if (!g_ink_oldest) g_ink_oldest = g_pen_frame_us;
         g_ink_raw = g_wacom.fd >= 0 ? lat_match_pen(&g_match, P.x, P.y, 3) : 0;
@@ -281,7 +365,16 @@ static void emit_touch(InType t, float x, float y) {
     q_push(e);
 }
 
+// The pen as its frames report it, for pensync.h.
+static PenState pen_state(void) {
+    return (PenState){P.tool_pen, P.tool_rubber, P.touching, P.side, P.x, P.y, P.p, P.tx, P.ty};
+}
+
+// The pen at the last complete frame read: where a resync after a drop goes on from.
+static PenState g_pen_good;
+
 static void pen_frame(void) {
+    g_pen_good = pen_state();
     // A pen still touching the final PIN key must lift before it can start new ink.
     if (g_pen_resume_block) {
         if (P.touching) return;
@@ -291,8 +384,8 @@ static void pen_frame(void) {
     P.prox = P.tool_pen || P.tool_rubber;
     // The eraser end may only be visible on the raw digitizer (the virtual pen can drop it).
     P.eraser = P.tool_rubber || W.rubber;
-    bool touching = P.touching;
-    if (!g_pen.has_touch_btn) touching = P.prox && P.p > g_pen.ap.minimum;
+    PenState s = pen_state();
+    bool touching = pensync_contact(&s, g_pen.has_touch_btn, g_pen.ap.minimum);
     if (P.prox && !P.was_prox && T.active) {
         // The pen arrived while a finger (likely the palm) was down: end that touch.
         emit_touch(IN_TOUCH_UP, T.last_x, T.last_y);
@@ -312,27 +405,115 @@ static void pen_frame(void) {
     P.dirty = false;
 }
 
-static bool g_pen_dropping;
 static int g_drops;
+static uint32_t g_pen_read_ms;  // when the pen was last read (input_open starts it when it is done)
+static bool g_pen_read;         // the pen has been read since input_open
 
-// Reads the pen's current buttons and axes straight from the device (after a SYN_DROPPED).
-static void pen_resync(void) {
+// The pen's current buttons and axes straight from the device, into s; which of them it answered
+// (PS_F_*). EVIOCGKEY last: it takes the queued button events out of the queue.
+static unsigned pen_query(PenState *s) {
+    unsigned ok = 0;
+    struct input_absinfo ai;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_X), &ai) >= 0) s->x = ai.value, ok |= PS_F_X;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &ai) >= 0) s->y = ai.value, ok |= PS_F_Y;
+    if (ioctl(g_pen.fd, EVIOCGABS(ABS_PRESSURE), &ai) >= 0) s->p = ai.value, ok |= PS_F_P;
+    if (g_caps.has_tilt && ioctl(g_pen.fd, EVIOCGABS(ABS_TILT_X), &ai) >= 0) s->tx = ai.value, ok |= PS_F_TX;
+    if (g_caps.has_tilt && ioctl(g_pen.fd, EVIOCGABS(ABS_TILT_Y), &ai) >= 0) s->ty = ai.value, ok |= PS_F_TY;
     unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
     if (ioctl(g_pen.fd, EVIOCGKEY(sizeof keys), keys) >= 0) {
-        P.tool_pen = test_bit(keys, BTN_TOOL_PEN);
-        P.tool_rubber = test_bit(keys, BTN_TOOL_RUBBER);
-        P.touching = test_bit(keys, BTN_TOUCH);
-        P.side = test_bit(keys, BTN_STYLUS);
+        s->tool_pen = test_bit(keys, BTN_TOOL_PEN);
+        s->tool_rubber = test_bit(keys, BTN_TOOL_RUBBER);
+        s->touching = test_bit(keys, BTN_TOUCH);
+        s->side = test_bit(keys, BTN_STYLUS);
+        ok |= PS_F_KEYS;
     }
-    struct input_absinfo ai;
-    if (ioctl(g_pen.fd, EVIOCGABS(ABS_X), &ai) >= 0) P.x = ai.value;
-    if (ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &ai) >= 0) P.y = ai.value;
-    if (ioctl(g_pen.fd, EVIOCGABS(ABS_PRESSURE), &ai) >= 0) P.p = ai.value;
+    return ok;
+}
+
+// The pen as the device holds it now, into P (the native PIN screen handed it back).
+static void pen_read_state(void) {
+    PenState s = pen_state();
+    pen_query(&s);
+    P.tool_pen = s.tool_pen, P.tool_rubber = s.tool_rubber, P.touching = s.touching, P.side = s.side;
+    P.x = s.x, P.y = s.y, P.p = s.p, P.tx = s.tx, P.ty = s.ty;
     P.dirty = true;
 }
 
+// A pen event as pensync.h takes it: an ABS_MT_PRESSURE (some digitizers only report the MT
+// flavour) scaled into ABS_PRESSURE's range, as handle_pen does.
+static PenEv pen_ev(const struct input_event *ev) {
+    PenEv e = {ev_us(ev), ev->type, ev->code, ev->value};
+    if (ev->type != EV_ABS || ev->code != ABS_MT_PRESSURE) return e;
+    if (g_pen.amp.maximum <= g_pen.amp.minimum) {
+        e.type = EV_MSC;  // no range to scale it by: nothing to take from it (pensync follows no EV_MSC)
+        return e;
+    }
+    e.code = ABS_PRESSURE;
+    e.value = g_pen.ap.minimum + (int)((int64_t)(ev->value - g_pen.amp.minimum) * (g_pen.ap.maximum - g_pen.ap.minimum) /
+                                       (g_pen.amp.maximum - g_pen.amp.minimum));
+    return e;
+}
+
+static void handle_pen(const struct input_event *ev);
+
+// The kernel dropped pen events (its buffer overflowed: Grimoire's thread was held up). rest is
+// what the read held from the SYN_DROPPED on. The rest of the queue is read first, reporting
+// nothing; then the device is asked what it holds now; then pensync_tail says what to report:
+// the tail's frames in order, joined straight from the last good point, never the device's present
+// position ahead of older frames (that drew a jump forward and a spur traced back).
+#define PEN_TAIL_MAX 512  // the kernel keeps 128 events, and this is read in microseconds
+static void pen_resync(const struct input_event *rest, size_t nrest, uint32_t read_gap, bool first_read) {
+    static struct input_event raw[PEN_TAIL_MAX];
+    static PenEv ev[PEN_TAIL_MAX];
+    static PenFrame frames[PEN_TAIL_MAX + 3];
+    size_t n = 0;
+    for (; n < nrest && n < PEN_TAIL_MAX; n++) raw[n] = rest[n];
+    while (n < PEN_TAIL_MAX) {
+        ssize_t r = read(g_pen.fd, raw + n, (PEN_TAIL_MAX - n) * sizeof raw[0]);
+        if (r <= 0) break;
+        n += (size_t)r / sizeof raw[0];
+    }
+    for (size_t i = 0; i < n; i++) ev[i] = pen_ev(&raw[i]);
+    PenTail t = {.good = g_pen_good, .ev = ev, .n = (int)n, .touch_btn = g_pen.has_touch_btn, .p_min = g_pen.ap.minimum};
+    t.now = g_pen_good;
+    t.now_ok = pen_query(&t.now);
+    PenTailInfo info;
+    int nf = pensync_tail(&t, frames, PEN_TAIL_MAX + 3, &info);
+    // One found at the first read came before Grimoire read the pen at all: a pen hovering at launch
+    // fills the queue while the rest of the start runs (each node input_open closes again waits out
+    // an RCU grace period). No stroke had begun, and it is not one of the stalls the count is for.
+    char what[112];
+    if (first_read) {
+        snprintf(what, sizeof what, "before Grimoire first read the pen (not counted): %u ms since input_open",
+                 (unsigned)read_gap);
+    } else {
+        g_drops++;
+        snprintf(what, sizeof what, "(%d so far): %u ms since the pen was read before", g_drops, (unsigned)read_gap);
+    }
+    // A tail spaced like the pen's samples (about 3 ms) that ends just now: Grimoire was not reading.
+    // One bunched at a single time: the pen service sent a burst.
+    uint32_t now = now_ms();
+    qlog("input: pen events dropped by the kernel %s; tail %d frames, "
+         "kernel times %u..%u ms (now %u%s)%s, partial frame %d events; device now at %d,%d, the tail ends at %d,%d%s",
+         what, info.frames, (unsigned)pensync_ms(info.first_us, g_pen_mono, now),
+         (unsigned)pensync_ms(info.last_us, g_pen_mono, now), (unsigned)now, g_pen_mono ? "" : ", not CLOCK_MONOTONIC",
+         info.keys ? " with buttons" : "", info.skipped, t.now.x, t.now.y, info.x, info.y,
+         info.lifted ? "; the pen lifted in the lost stretch" : "");
+    for (int i = 0; i < nf; i++) {
+        const PenFrame *f = &frames[i];
+        P.tool_pen = f->s.tool_pen, P.tool_rubber = f->s.tool_rubber, P.touching = f->s.touching, P.side = f->s.side;
+        P.x = f->s.x, P.y = f->s.y, P.p = f->s.p, P.tx = f->s.tx, P.ty = f->s.ty;
+        P.dirty = f->moved;
+        g_pen_frame_us = f->t_us;
+        g_pen_gap = f->gap;
+        pen_frame();
+        g_pen_gap = false;
+    }
+    // An unfinished last frame (only if PEN_TAIL_MAX ran out) goes on as usual.
+    for (size_t i = (size_t)info.used; i < n; i++) handle_pen(&raw[i]);
+}
+
 static void handle_pen(const struct input_event *ev) {
-    if (g_pen_dropping && !(ev->type == EV_SYN && ev->code == SYN_REPORT)) return;
     if (g_raw_logged < 160 && ev->type != EV_SYN) {
         g_raw_logged++;
         qlog("input: raw pen type %u code %u value %d", ev->type, ev->code, ev->value);
@@ -365,22 +546,33 @@ static void handle_pen(const struct input_event *ev) {
         P.dirty = true;
         break;
     case EV_SYN:
-        if (ev->code == SYN_DROPPED) {
-            // The kernel's buffer overflowed: everything up to the next SYN_REPORT is partial.
-            // Ignore it, then re-read the pen's real state so a stroke ends or continues cleanly.
-            g_pen_dropping = true;
-            g_drops++;
-            qlog("input: pen events dropped by the kernel (%d so far); resyncing", g_drops);
-        } else if (ev->code == SYN_REPORT) {
+        // (A SYN_DROPPED never gets here: drain_pen hands it to pen_resync.)
+        if (ev->code == SYN_REPORT) {
             g_pen_frame_us = ev_us(ev);
-            if (g_pen_dropping) {
-                g_pen_dropping = false;
-                pen_resync();
-            }
             pen_frame();
         }
         break;
     default: break;
+    }
+}
+
+// Reads the pen like drain, but a SYN_DROPPED and everything after it go to pen_resync.
+static void drain_pen(void) {
+    struct input_event evs[64];
+    for (;;) {
+        ssize_t r = read(g_pen.fd, evs, sizeof evs);
+        if (r <= 0) break;
+        uint32_t now = now_ms(), gap = now - g_pen_read_ms;
+        bool first = !g_pen_read;
+        g_pen_read_ms = now;
+        g_pen_read = true;
+        size_t n = (size_t)r / sizeof evs[0], i = 0;
+        while (i < n && !(evs[i].type == EV_SYN && evs[i].code == SYN_DROPPED)) handle_pen(&evs[i++]);
+        if (i < n) {
+            pen_resync(&evs[i], n - i, gap, first);
+            continue;  // (it read the queue to its end: the next read finds it empty, or what came since)
+        }
+        if ((size_t)r < sizeof evs) break;
     }
 }
 
@@ -784,14 +976,46 @@ static void key_detach(KeyDev *k) {
     qlog("input: optional input at %s went away", k->path);
     key_announce(k, IN_HID_DETACH);
 }
+// Nodes found to be no keyboard or controller, by input_open or a scan: never opened again while
+// they stay the same node (hidkeys_node).
+static HidNoneCache g_key_none;
+static HidNode node_of(const struct stat *st) {
+    return (HidNode){(uint64_t)st->st_rdev, (uint64_t)st->st_ino, (int64_t)st->st_ctim.tv_sec, (long)st->st_ctim.tv_nsec};
+}
+// A node input_open looked at and leaves that is no keyboard or controller either.
+static void key_none_note(int fd, const char *path, const char *name, const unsigned long *keys, const unsigned long *axes) {
+    struct stat st;
+    if (hidkeys_optional(name, BYTES(keys), BYTES(axes)) == HID_NONE && fstat(fd, &st) == 0) {
+        HidNode n = node_of(&st);
+        hidkeys_node_none(&g_key_none, path, &n);
+    }
+}
+// The device numbers of every node Grimoire holds open.
+static int held_nodes(uint64_t *out, int cap) {
+    int fds[5 + KEY_DEVS] = {g_pen.fd, g_wacom.fd, g_touch.fd, g_power_fd, g_orient_fd}, nfds = 5, n = 0;
+    for (int i = 0; g_keys_init && i < KEY_DEVS; i++) fds[nfds++] = g_keys[i].fd;
+    struct stat st;
+    for (int i = 0; i < nfds && n < cap; i++)
+        if (fds[i] >= 0 && fstat(fds[i], &st) == 0) out[n++] = (uint64_t)st.st_rdev;
+    return n;
+}
 // Devices found by the scan that starts watching are not announced: they did not just come.
+// Every node is stat()ed, and opened only if it may be a keyboard or controller that came: closing
+// an evdev node waits out an RCU grace period (22-96 ms on the Scribe), and opening Grimoire's own
+// seven took the thread 320-370 ms, long enough for the kernel to drop pen events.
 static void key_scan(bool announce) {
     g_keys_scan = now_ms();
+    uint64_t t0 = mono_us(), slowest_us = 0;
+    char slowest[300] = "";
+    int nodes = 0, opened = 0;
+    uint64_t held[5 + KEY_DEVS];
+    int nheld = held_nodes(held, 5 + KEY_DEVS);
     DIR *d = opendir("/dev/input");
     if (!d) return;
     struct dirent *e;
     while ((e = readdir(d))) {
         if (strncmp(e->d_name, "event", 5)) continue;
+        nodes++;
         char path[300]; snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
         int slot = -1; bool seen = false;
         for (int i = 0; i < KEY_DEVS; i++) {
@@ -799,8 +1023,14 @@ static void key_scan(bool announce) {
             else if (!strcmp(g_keys[i].path, path)) seen = true;
         }
         if (seen || slot < 0) continue;
+        struct stat st;
+        if (stat(path, &st) != 0 || !S_ISCHR(st.st_mode)) continue;
+        HidNode node = node_of(&st);
+        if (hidkeys_node(&g_key_none, held, nheld, path, &node) != HIDNODE_PROBE) continue;
+        uint64_t n0 = mono_us();
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
+        opened++;
         unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
         char name[64] = "";
         ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
@@ -808,23 +1038,35 @@ static void key_scan(bool announce) {
         ioctl(fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
         HidKind kind = hidkeys_optional(name, BYTES(keys), BYTES(axes));
         if (kind == HID_NONE) {
-            close(fd); continue;
+            close(fd);
+            hidkeys_node_none(&g_key_none, path, &node);
+        } else {
+            KeyDev *k = &g_keys[slot];
+            *k = (KeyDev){.fd = fd, .kind = kind, .switch_layout = kind == HID_GAMEPAD && hidkeys_switch(name, BYTES(keys))};
+            strlcpy_q(k->path, path, sizeof k->path);
+            hidkeys_name(k->name, sizeof k->name, name);
+            // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
+            // for one ourselves, let go at once, and read without one as before.
+            int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
+            k->held = hidkeys_held(grabbed, err);
+            if (grabbed == 0) ioctl(fd, EVIOCGRAB, 0);
+            if (!key_resync(k)) {
+                close(fd);
+                k->fd = -1;
+            } else {
+                qlog("input: optional %s attached at %s%s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path,
+                     k->held ? ", held by another app" : "");
+                if (announce) key_announce(k, IN_HID_ATTACH);
+            }
         }
-        KeyDev *k = &g_keys[slot];
-        *k = (KeyDev){.fd = fd, .kind = kind, .switch_layout = kind == HID_GAMEPAD && hidkeys_switch(name, BYTES(keys))};
-        strlcpy_q(k->path, path, sizeof k->path);
-        hidkeys_name(k->name, sizeof k->name, name);
-        // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
-        // for one ourselves, let go at once, and read without one as before.
-        int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
-        k->held = hidkeys_held(grabbed, err);
-        if (grabbed == 0) ioctl(fd, EVIOCGRAB, 0);
-        if (!key_resync(k)) { close(fd); k->fd = -1; continue; }
-        qlog("input: optional %s attached at %s%s", kind == HID_GAMEPAD ? "controller" : "keyboard/remote", path,
-             k->held ? ", held by another app" : "");
-        if (announce) key_announce(k, IN_HID_ATTACH);
+        uint64_t took = mono_us() - n0;
+        if (took > slowest_us) slowest_us = took, strlcpy_q(slowest, path, sizeof slowest);
     }
     closedir(d);
+    uint64_t took = mono_us() - t0;
+    if (took > 20000)
+        qlog("input: key scan took %llu ms over %d nodes (opened %d, slowest %s %llu ms)", (unsigned long long)(took / 1000),
+             nodes, opened, slowest[0] ? slowest : "none", (unsigned long long)(slowest_us / 1000));
 }
 void input_shortcuts_enable(bool enabled) {
     if (!g_keys_init) {
@@ -863,6 +1105,16 @@ static void handle_key(const struct input_event *ev) {
     for (int i = 0; i < n; i++) key_push(&out[i]);
 }
 
+// Stamps fd's events in now_ms()'s clock, for this reader only (the pen service and the Kindle's
+// other readers keep theirs); false if the driver refuses. Called right after open(), before any
+// other ioctl: switched once an event is queued (a hovering pen sends one every 3 ms), the reader's
+// queue is thrown away and a SYN_DROPPED queued (Linux 4.9's evdev_set_clk_type), a drop at the
+// first read that no stall caused.
+static bool clock_mono(int fd) {
+    int clk = CLOCK_MONOTONIC;
+    return ioctl(fd, EVIOCSCLOCKID, &clk) == 0;
+}
+
 int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
     g_w = screen_w;
     g_h = screen_h;
@@ -887,8 +1139,12 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             qlog("input: cannot open %s: %s", path, strerror(errno));
             continue;
         }
+        // Every node at once: which are kept is known only after the ioctls and the log line below,
+        // and by then a hovering pen may have queued events. The clock is this reader's only, so it
+        // does nothing to the nodes closed again, and touch and orientation never read event times.
+        bool mono = clock_mono(fd);
         char name[64] = "?";
-        ioctl(fd, EVIOCGNAME(sizeof name), name);
+        ioctl(fd, EVIOCGNAME(sizeof name - 1), name);
         unsigned long evb[NLONGS(EV_MAX + 1)] = {0}, keyb[NLONGS(KEY_MAX + 1)] = {0}, absb[NLONGS(ABS_MAX + 1)] = {0};
         ioctl(fd, EVIOCGBIT(0, sizeof evb), evb);
         ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keyb), keyb);
@@ -944,6 +1200,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                      (abs(ax.maximum - g_h) <= 2 && abs(ay.maximum - g_w) <= 2);
             if (!scaled && g_wacom.fd < 0 && test_bit(absb, ABS_PRESSURE)) {
                 g_wacom.fd = fd;
+                g_wacom_mono = mono;
                 ioctl(fd, EVIOCGABS(ABS_X), &g_wacom.ax);
                 ioctl(fd, EVIOCGABS(ABS_Y), &g_wacom.ay);
                 ioctl(fd, EVIOCGABS(ABS_PRESSURE), &g_wacom.ap);
@@ -956,11 +1213,13 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         }
         if (pen && g_pen.fd >= 0 && scaled) {
             // A scaled pen found after a raw one: the raw one becomes the pressure source.
+            key_none_note(fd, path, name, keyb, absb);
             close(fd);
             continue;
         }
         if (pen && g_pen.fd < 0) {
             g_pen.fd = fd;
+            g_pen_mono = mono;
             ioctl(fd, EVIOCGABS(ABS_X), &g_pen.ax);
             ioctl(fd, EVIOCGABS(ABS_Y), &g_pen.ay);
             ioctl(fd, EVIOCGABS(ABS_PRESSURE), &g_pen.ap);
@@ -1003,9 +1262,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
             g_caps.has_power = true;
             power_keys++;
             strlcpy_q(power_path, path, sizeof power_path);
-            // Its events stamped in now_ms()'s clock (only for this reader), to time a hold exactly.
-            int clk = CLOCK_MONOTONIC;
-            g_power_mono = ioctl(fd, EVIOCSCLOCKID, &clk) == 0;
+            // Its events in now_ms()'s clock (switched as it was opened), to time a hold exactly.
+            g_power_mono = mono;
             qlog("input: power key %s (%s)%s", path, name,
                  g_power_mono ? "" : ", timed when read (EVIOCSCLOCKID failed)");
         } else {
@@ -1013,6 +1271,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
                 power_keys++;
                 qlog("input: %s (%s) is another power key, not watched", path, name);
             }
+            key_none_note(fd, path, name, keyb, absb);
             close(fd);
         }
     }
@@ -1028,6 +1287,7 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
     if (g_pen.fd < 0 && g_wacom.fd >= 0) {
         // Only a raw digitizer: use it for everything (calibration maps its axes).
         g_pen = g_wacom;
+        g_pen_mono = g_wacom_mono;
         g_wacom.fd = -1;
         ioctl(g_pen.fd, EVIOCGABS(ABS_X), &g_pen.ax);
         ioctl(g_pen.fd, EVIOCGABS(ABS_Y), &g_pen.ay);
@@ -1036,13 +1296,13 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         g_caps.has_tilt = g_pen.atx.maximum > g_pen.atx.minimum;
         qlog("input: using the raw digitizer as the pen");
     }
+    if (g_pen.fd >= 0 && !g_pen_mono) qlog("input: the pen's EVIOCSCLOCKID failed: stroke samples are timed when read");
     // Ink timing (latency.h, with /mnt/us/grimoire/ink-metrics): the pens' events stamped in now_ms()'s
-    // clock. The clock is per reader, so the pen service and the Kindle's other readers keep theirs.
+    // clock (set as they were opened). The clock is per reader, so the pen service and the Kindle's
+    // other readers keep theirs.
     if (g_pen.fd >= 0 && access("/mnt/us/grimoire/ink-metrics", F_OK) == 0) {
-        int clk = CLOCK_MONOTONIC;
-        g_ink_mono = ioctl(g_pen.fd, EVIOCSCLOCKID, &clk) == 0 &&
-                     (g_wacom.fd < 0 || ioctl(g_wacom.fd, EVIOCSCLOCKID, &clk) == 0);
-        if (!g_ink_mono) qlog("input: EVIOCSCLOCKID failed: %s (no ink timing)", strerror(errno));
+        g_ink_mono = g_pen_mono && (g_wacom.fd < 0 || g_wacom_mono);
+        if (!g_ink_mono) qlog("input: EVIOCSCLOCKID failed (no ink timing)");
         int rmin[2] = {g_wacom.ax.minimum, g_wacom.ay.minimum}, rmax[2] = {g_wacom.ax.maximum, g_wacom.ay.maximum};
         int smin[2] = {g_pen.ax.minimum, g_pen.ay.minimum}, smax[2] = {g_pen.ax.maximum, g_pen.ay.maximum};
         lat_match_init(&g_match, rmin, rmax, smin, smax);
@@ -1056,6 +1316,8 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
     input_default_calib(&g_pen_cal, &g_touch_cal);
     if (pen && pen->valid) g_pen_cal = *pen;
     if (touch && touch->valid) g_touch_cal = *touch;
+    // The pens' read gaps start here: a drop at the first read says how long the start took.
+    g_pen_read_ms = g_wacom_read_ms = now_ms();
 
     powerd_start();
     if (pipe(g_sigpipe) == 0) {
@@ -1080,7 +1342,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         return 1;
     }
     if (q_pop(ev)) return 1;
-    if (g_keys_enabled && (uint32_t)(now_ms() - g_keys_scan) >= 5000) key_scan(true);
+    // Never while the pen or a finger is in use: nothing reads the pen while the scan runs.
+    bool busy = P.prox || P.touching || T.active || g_pinching;
+    if (g_keys_enabled && hidkeys_scan_due(now_ms(), g_keys_scan, busy, g_pen_left_ms)) key_scan(true);
     struct pollfd pf[8 + KEY_DEVS];
     int ikey[KEY_DEVS];
     int n = 0, ipen = -1, itouch = -1, ipow = -1, isig = -1, iwac = -1, iori = -1, ipwd = -1;
@@ -1099,8 +1363,19 @@ int input_poll(InEvent *ev, int timeout_ms) {
     int r = poll(pf, (nfds_t)n, timeout_ms);
     if (r > 0) {
         // Raw digitizer first, so a pen frame uses this sample's pressure.
-        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
-        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) drain(g_pen.fd, g_input_grabbed ? handle_pen : discard_input);
+        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) {
+            uint32_t now = now_ms();
+            g_wacom_read_gap = now - g_wacom_read_ms;
+            g_wacom_read_ms = now;
+            g_wacom_first_read = !g_wacom_read;
+            g_wacom_read = true;
+            drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
+            if (g_wacom_resync) wacom_resync();
+        }
+        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) {
+            if (g_input_grabbed) drain_pen();
+            else drain(g_pen.fd, discard_input);
+        }
         if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, g_input_grabbed ? handle_touch : discard_input);
         if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
         if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
@@ -1163,6 +1438,7 @@ bool input_set_grab(bool grab) {
     }
     g_input_grabbed = grab && ok;
     memset(&P, 0, sizeof P);
+    g_pen_good = (PenState){0};
     memset(&W, 0, sizeof W);
     memset(&T, 0, sizeof T);
     T.main = -1;
@@ -1173,7 +1449,8 @@ bool input_set_grab(bool grab) {
     g_pen_resume_block = false;
     if (g_input_grabbed) {
         if (g_pen.fd >= 0) {
-            pen_resync();
+            pen_read_state();
+            g_pen_good = pen_state();
             g_pen_resume_block = P.touching;
             g_side_reported = P.side;
         }
