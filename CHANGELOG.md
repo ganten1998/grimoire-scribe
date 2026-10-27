@@ -12,6 +12,11 @@
   and Buttons... learns which controller button does what: tap a row, press the button
   (grimoire/controller.ini). A short toast says when one connects or goes, and when another app
   holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default.
+- **Next and previous tool keep their place after the eraser**: they step through the tool picker's
+  nine pens in its order, and from the eraser they now go on from the pen it goes back to, instead
+  of starting again at the pencil or the highlighter. With the tool picker open they move its
+  choice and leave it open. A new shortcuts.ini numbers keys 1 to 9 in the picker's order too (3
+  charcoal, 4 ballpoint, 7 fountain pen); an existing one is never changed.
 - **Bluetooth controllers**: with the kindle-hid-passthrough helper unpacked in grimoire/bluetooth
   (only its files: its installer adds a boot-time button mapper that takes controllers away),
   Bluetooth controller starts it with Grimoire and Pair a controller... finds and pairs one. It runs

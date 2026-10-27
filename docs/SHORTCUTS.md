@@ -23,7 +23,9 @@ lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from
 
 ## shortcuts.ini
 
-The default keyboard uses 1–9 for the nine drawing tools, E for eraser, W for white ink,
+The default keyboard uses 1–9 for the nine drawing tools in the tool picker's order (left to right,
+then down: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
+calligraphy pen, highlighter), E for eraser, W for white ink,
 Ctrl+Z / Ctrl+Y for undo/redo, left/right for existing pages, and PageUp/PageDown for tool cycling.
 Gamepad defaults use the Linux gamepad convention: South undo, East eraser, North redo, West white,
 L1/R1 previous/next tool, Select/Start previous/next page, and the D-pad (a hat or four buttons,
@@ -43,9 +45,15 @@ pad.311=next-tool
 pad.Up=previous-tool
 ```
 
-Actions: `tool:pencil`, `tool:mech`, `tool:ballpoint`, `tool:fountain`, `tool:fineliner`,
-`tool:marker`, `tool:charcoal`, `tool:calligraphy`, `tool:highlighter`, `tool:eraser`, `undo`,
+Actions: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
+`tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `tool:eraser`, `undo`,
 `redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`, `index`.
+`previous-tool` and `next-tool` step through the tool picker's nine pens in that order, from the
+highlighter round to the pencil and back. A pinned pen is picked as a tap on its pin picks it (the
+tool button keeps its pen). The eraser is not among them: from the eraser they step from the pen it
+goes back to (marker, eraser, next tool: the fountain pen); the eraser's own button goes back to
+that pen itself. While the tool picker is open (not while it pins pens) they move its choice and
+leave it open.
 The optional custom Index mapping opens the section list (and closes it when it is already open).
 Existing shortcut files are never rewritten.
 
@@ -58,7 +66,7 @@ configuration are accepted. An existing empty file deliberately disables mapping
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
 sleeping or displaying a sheet, except Index can toggle the Pages/Index view while its keyboard
-is closed. Page navigation never creates a new page at the end. Presses
+is closed, and previous and next tool move the open tool picker's choice. Page navigation never creates a new page at the end. Presses
 act once; releases and repeats do not trigger actions. While shortcuts are enabled, a key or
 button press keeps the Kindle awake as the pen and touch do: "Sleep after" counts from the last
 one, on any screen. Native PIN input is discarded and never logged. The app logs attachment

@@ -588,10 +588,9 @@ static void blit_view(App *a, Rect r) {
 
 // ---- tool picker ----
 
-// Dry media, then pens, then the nibs and the highlighter (three to a row).
-static const ToolKind k_draw_tools[] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_CHARCOAL,   TOOL_BALLPOINT, TOOL_FINELINER,
-                                        TOOL_MARKER,    TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER};
-#define N_DRAW_TOOLS ((int)(sizeof k_draw_tools / sizeof k_draw_tools[0]))
+// Its pens: tool_order's first TOOL_PENS (brush.h), three to a row, which next and previous tool go
+// through in the same order, 1 to 9.
+#define N_DRAW_TOOLS TOOL_PENS
 
 // The ink row under the pens: one choice each, the pens drawing black ink or white (erase strokes:
 // docs/FORMAT.md). A later colour adds its choices to this control.
@@ -650,7 +649,7 @@ static void draw_tools(App *a) {
     ui_text(c, FONT_BOLD, ui_text_size(), ui_small_size(), (Rect){x + ui_px(30), y, hb.x - x - ui_px(50), ui_px(100)},
             title, 2, false, 0);
     for (int i = 0; i < N_DRAW_TOOLS; i++) {
-        ToolKind t = k_draw_tools[i];
+        ToolKind t = tool_order[i];
         Rect r = {x + ui_px(30) + (i % cols) * (bw + g), y + ui_px(100) + (i / cols) * (bh + g), bw, bh};
         // TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
         // Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
@@ -1867,12 +1866,35 @@ static void panel_act(App *a, const Hit *h) {
     }
 }
 
-// Optional external buttons act only in the idle editor, never through an open sheet.
+// Next or previous tool's pen: the tool picker's next or previous one, round from the ninth to the
+// first. The eraser is not one of them: from it the step is from the pen it goes back to, so erasing
+// keeps the place.
+static ToolKind step_tool(App *a, bool next) {
+    ToolKind cur = a->settings.current_tool == TOOL_ERASER ? eraser_back(a) : a->settings.current_tool;
+    int index = 0;
+    for (int i = 0; i < N_DRAW_TOOLS; i++) if (tool_order[i] == cur) index = i;
+    return tool_order[(index + (next ? 1 : N_DRAW_TOOLS - 1)) % N_DRAW_TOOLS];
+}
+
+// Optional external buttons act only in the idle editor, never through an open sheet, but next and
+// previous tool in the open tool picker.
 bool editor_shortcut(App *a, int action) {
     if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || !action) return false;
     if (action == SHORTCUT_INDEX && S->pv.open && !S->pv.kb.open) {
         if (S->pv.index_tab) pages_hide(a, -1);
         else { S->pv.index_tab = true; pagesview_untick(&S->pv); compose_all(a, REFRESH_FULL); }
+        return true;
+    }
+    if ((action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) && S->tools_open && !S->pv.open) {
+        // In the open picker the step is its choice, as a tap on the pen is but for closing it.
+        if (S->pin_mode) return false;
+        ToolKind t = step_tool(a, action == SHORTCUT_NEXT_TOOL);
+        a->settings.current_tool = t;
+        if (!settings_pinned(&a->settings, t)) a->settings.draw_tool = t;
+        settings_save(&a->settings);
+        draw_panel(a);
+        draw_tools(a);  // (over the panel where it covers it)
+        app_invalidate(a, rect_union(S->panel, S->tools_rect), REFRESH_UI);
         return true;
     }
     if (sheet_open(a)) return false;
@@ -1882,12 +1904,8 @@ bool editor_shortcut(App *a, int action) {
         pages_show(a);
         return S->pv.open;
     }
-    if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) {
-        int index = -1;
-        for (int i = 0; i < N_DRAW_TOOLS; i++) if (k_draw_tools[i] == a->settings.current_tool) index = i;
-        index = action == SHORTCUT_NEXT_TOOL ? (index + 1) % N_DRAW_TOOLS : (index < 0 ? N_DRAW_TOOLS - 1 : (index + N_DRAW_TOOLS - 1) % N_DRAW_TOOLS);
-        action = SHORTCUT_TOOL_BASE + k_draw_tools[index];
-    }
+    if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL)
+        action = SHORTCUT_TOOL_BASE + step_tool(a, action == SHORTCUT_NEXT_TOOL);
     if (action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT) {
         ToolKind t = (ToolKind)(action - SHORTCUT_TOOL_BASE);
         if (t != TOOL_ERASER && !settings_pinned(&a->settings, t)) a->settings.draw_tool = t;

@@ -292,11 +292,9 @@ static void draw_all(App *a) {
                    title, 0);
     ui_rule(c, 0, a->w, th, ui_px(4), 0);
     // Tabs.
-    static const ToolKind order[TOOL_COUNT] = {TOOL_PENCIL,    TOOL_MECH_PENCIL, TOOL_CHARCOAL,    TOOL_BALLPOINT,   TOOL_FINELINER,
-                                               TOOL_MARKER,    TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER, TOOL_ERASER};
     int tw = (a->w - 2 * m - (TOOL_COUNT - 1) * ui_px(16)) / TOOL_COUNT, ty = th + ui_px(24), tabh = ui_px(150);
     for (int i = 0; i < TOOL_COUNT; i++) {
-        ToolKind t = order[i];
+        ToolKind t = tool_order[i];
         Rect r = {m + i * (tw + ui_px(16)), ty, tw, tabh};
         // With this many tools the tabs are icons only; the title names the selected one.
         ui_button(c, r, ui_tool_icon(t), NULL, S->tab == (ToolKind)t ? BTN_SELECTED : BTN_PLAIN);

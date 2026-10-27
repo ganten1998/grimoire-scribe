@@ -35,9 +35,16 @@ expect editor.tool is marker
 key 18 0
 wait 60
 expect editor.tool is eraser
+# From the eraser, previous and next tool step from the pen it goes back to (the marker).
 key 310 0 1
 wait 60
-expect editor.tool is highlighter
+expect editor.tool is fineliner
+key 305 0 1
+key 311 0 1
+wait 60
+expect editor.tool is marker
+# Past the picker's ninth pen (the highlighter, key 9) next tool is its first again.
+key 10 0
 key 311 0 1
 wait 60
 expect editor.tool is pencil

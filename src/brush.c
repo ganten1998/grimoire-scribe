@@ -28,6 +28,9 @@ const char *tool_name(ToolKind t) {
 
 const char *tool_label(ToolKind t) { return C_("tool", tool_name(t)); }
 
+const ToolKind tool_order[TOOL_COUNT] = {TOOL_PENCIL,  TOOL_MECH_PENCIL, TOOL_CHARCOAL,    TOOL_BALLPOINT,   TOOL_FINELINER,
+                                         TOOL_MARKER,  TOOL_FOUNTAIN,    TOOL_CALLIGRAPHY, TOOL_HIGHLIGHTER, TOOL_ERASER};
+
 #define P(field, key, label, unit, lo, hi, st, er) \
     {key, label, unit, offsetof(ToolParams, field), lo, hi, st, er}
 // The labels are looked up where Pen feel draws them (pensettings.c); keys and units stay English.

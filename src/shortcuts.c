@@ -9,10 +9,11 @@
 #include <ctype.h>
 
 static const char defaults[] =
-    "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n"
+    "# Grimoire shortcuts. Enable in Settings > Controller. Reload there after editing.\n"
     "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n"
-    "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:ballpoint\nkey.4=tool:fountain\n"
-    "key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:charcoal\nkey.8=tool:calligraphy\n"
+    "# 1 to 9: the tool picker's pens in its order, left to right and down.\n"
+    "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:charcoal\nkey.4=tool:ballpoint\n"
+    "key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:fountain\nkey.8=tool:calligraphy\n"
     "key.9=tool:highlighter\nkey.e=tool:eraser\nkey.w=white\nkey.Ctrl+z=undo\nkey.Ctrl+y=redo\n"
     "key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-tool\nkey.PageDown=next-tool\n"
     "# Generic evdev gamepad defaults; controllers may report different codes.\n"

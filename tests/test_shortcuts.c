@@ -8,6 +8,10 @@ TEST(defaults_and_exact_modifiers) {
     shortcuts_load(&m, "/nonexistent/grimoire-shortcuts.ini");
     CHECK(m.count == 29 && m.rejected == 0);
     CHECK(shortcuts_lookup(&m, false, 2, 0) == SHORTCUT_TOOL_BASE + TOOL_PENCIL);
+    // 1 to 9 in the tool picker's order: 3 the charcoal, 4 the ballpoint, 7 the fountain pen.
+    for (int i = 0; i < TOOL_PENS; i++) CHECK(shortcuts_lookup(&m, false, 2 + i, 0) == SHORTCUT_TOOL_BASE + (int)tool_order[i]);
+    CHECK(shortcuts_lookup(&m, false, 4, 0) == SHORTCUT_TOOL_BASE + TOOL_CHARCOAL);
+    CHECK(shortcuts_lookup(&m, false, 8, 0) == SHORTCUT_TOOL_BASE + TOOL_FOUNTAIN);
     CHECK(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
     CHECK(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL | KEYMOD_SHIFT) == SHORTCUT_NONE);
     CHECK(shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_UNDO);
