@@ -413,7 +413,12 @@ session with networking awake, not a reboot or deep sleep.
   `live: a pairing was refused (wrong code)` / `(locked)`, and `live: a viewer started (N
   watching)`. Its requests are logged without their query (`httpd: GET /live/pair`): no code or
   token ever reaches the log. On the Kindle each viewer is a process named `grimoire-live`; none
-  should be left once Grimoire has closed.
+  should be left once Grimoire has closed. The pen's hover in the browser comes from the raw
+  digitizer (the pen service relays no hover): after the first strokes with Live view on,
+  `input: Live view's hovering pen comes from the raw digitizer, x as is, y as is (1.2 px from the
+  pen on average over 32 contact frames)` says how its axes lie on the pen's, or
+  `input: the raw digitizer's place is N px from the pen's at best (...): Live view shows no
+  hovering pen` that they did not match, and the ring then only shows where the pen lifted.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in

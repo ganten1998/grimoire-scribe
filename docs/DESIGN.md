@@ -667,19 +667,46 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    each pixel the alpha-weighted mean of the area of the full-size picture it covers, for the rect
    that changed): the browser's own scaling, CSS or drawImage at any quality, picks pixels, and
    1 px ruled lines came out bright, dim or gone (measured in Chrome at 567 x 757: each line's ink
-   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). Picture in picture plays
-   the full-size picture (what Record takes) in a video from its captureStream, so it goes on
-   while the tab is hidden. Viewers end with a bye when Live view stops (Stop on the
-   card, 10 minutes without a viewer, Grimoire leaving: `app_shutdown` stops them before anything
-   else, so no export child inherits a socket and the headless runner never waits for one); on
-   Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.
+   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). The pen is drawn over the
+   picture, never in it: `app_event` tells `live_pen` each pen event's place (away, hovering,
+   touching; never asleep), one atomic word in the shared frame (state in 2 bits, y and x in 15
+   each), so a sample costs a store; only the pen coming into range writes to the viewers' wake
+   pipes, and while it is in range each viewer looks again every 33 ms itself. On the Kindle the pen
+   service relays the pen coming and going, and where it touches, but not where it hovers (no X or Y
+   between the lift and the leaving, in the raw pen log of 2026-10-26), so while Live view is on
+   `input_hover_hook` hands it the raw digitizer's place at each of its frames while the pen is near
+   and not touching: the raw axes scaled onto the screen as the pen service scales them (8.4 units
+   to a pixel), each as it is until contact frames of the same moment (within 4 ms) show it
+   reversed, and none while even the best orientation is more than 8 px from the pen on average
+   (pensync.h); grimoire.log names the orientation once it is decided. A viewer reads the word with
+   the state, before the marks, and sends it after the tiles (frame 6: u16 x, y, u8 state), only
+   when it changed and at most every 33 ms, so a place is never ahead of a push before it; a hello
+   or any state but awake takes it away (asleep, the pairing card, a turn). The page draws a ring
+   while it hovers and a dot while it touches, red with a light halo, on a canvas over the averaged
+   one (Show pen, on by default; the Mac simulator never says the pen left, as its mouse leaving the
+   window is no IN_PEN_LEAVE, so there the ring stays where it was last). Record and Picture in
+   picture take a third canvas, film: the full-size picture with the pen's mark drawn on it, kept as
+   tiles and pen frames come (not by animation frames), so both go on while the tab is hidden.
+   Record makes an MP4 (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that
+   MediaRecorder.isTypeSupported takes; Chrome raises the level itself, 5.0 at 1860x2480, measured
+   in Chrome 156), and WebM where the browser records no MP4 (Firefox 156: VP8 only), the button
+   saying "Record (WebM)" and why. Transparent paper records as WebM where it can: an MP4 has no
+   alpha (its clear paper came out black), VP8 in WebM keeps it. An MP4 that shows Transparent paper
+   all the same (a browser with no WebM, or the paper made clear after the recording started) has
+   the paper drawn in. film keeps its first size for the whole recording, a turned screen fit whole
+   inside it: Chrome's MP4 frames after a size change came out corrupt (its WebM changed size
+   mid-file). Viewers end with a bye when Live view stops (Stop on the card, 10 minutes without a
+   viewer, Grimoire leaving: `app_shutdown` stops them before anything else, so no export child
+   inherits a socket and the headless runner never waits for one); on Linux they also have
+   PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.
    An icon-only chip in the top right corner (inside the 50 px margin) says Live view is on; it is
    overlaid at the present like the toast, and the screen guard skips it
    (`display_skip_overlay`). Auto-sleep waits while a computer watches. The log names no code,
    token or `/live` query; only the simulator logs the code and the viewers' pids, for
    tests/live_check.sh, which pairs as a browser, reads the stream (tests/live_stream.py, which
-   decodes the PNGs itself), checks the browser's frame reader on the same bytes
-   (tests/live_check.js), refuses a third viewer, and checks that no viewer outlives the app.
+   decodes the PNGs itself, and the pen frame for the place its script left the pen hovering),
+   checks the browser's frame reader on the same bytes (tests/live_check.js, with the page's pen,
+   film and format math), refuses a third viewer, and checks that no viewer outlives the app.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce
