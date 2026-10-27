@@ -48,9 +48,17 @@ typedef struct {
     bool side_button;      // BTN_STYLUS held
     int value;             // IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
     float x2, y2;          // pinch: the second finger (screen px)
-    uint32_t t_ms;
+    uint32_t t_ms;         // when it was read (now_ms()): what the UI times gestures by
+    // Pen samples: when the kernel saw the frame, in now_ms()'s clock (pensync_ms), 0 where nobody
+    // says (the simulator). Only a stroke's samples take it (in_sample_ms): after a stall the read
+    // times bunch up, the kernel's keep the stroke's real spacing.
+    uint32_t k_ms;
+    bool gap;              // the first sample after pen events the kernel dropped: joined straight
     char hid_name[41];     // IN_HID_*: the device's name, printable ASCII (hidkeys_name)
 } InEvent;
+
+// The time a stroke records for a pen sample: the kernel's when known, else when it was read.
+static inline uint32_t in_sample_ms(const InEvent *e) { return e->k_ms ? e->k_ms : e->t_ms; }
 
 typedef struct {
     bool has_pen, has_pressure, has_tilt, has_touch, has_power, has_orientation;

@@ -1028,7 +1028,7 @@ static void mark_changed(App *a) {
 }
 
 static PenSample sample_of(App *a, const InEvent *ev) {
-    PenSample s = {0, 0, ev->pressure, ev->tilt_x, ev->tilt_y, ev->t_ms};
+    PenSample s = {0, 0, ev->pressure, ev->tilt_x, ev->tilt_y, in_sample_ms(ev)};
     to_page(a, ev->x, ev->y, &s.x, &s.y);
     return s;
 }
@@ -1123,6 +1123,9 @@ static void draw_begin(App *a, const InEvent *ev) {
 
 static void draw_sample(App *a, const InEvent *ev) {
     PenSample s = sample_of(a, ev);
+    // The pen's samples between the last one and this were lost (the kernel dropped them): a straight
+    // line to where the pen is, not one eased from where the smoothing had got to.
+    if (ev->gap) smoother_reset(&S->sm);
     smoother_apply(&S->sm, S->cur->params.smoothing, &s);
     stroke_append(S->cur, &s, a->dpi);
     Rect d = brush_add(&S->bs, &S->page_canvas, &s);
