@@ -65,7 +65,8 @@ static void log_device(void) {
 }
 
 // The loop's watchdog: a phase that held the thread over 50 ms (beyond the wait it is allowed) gets
-// a line. Nothing reads the pen meanwhile, and the kernel keeps only 120-175 ms of its writing
+// a line. Outside the work pump's reach (common.h: a popen, a fork, an fsync, code that does not pump)
+// nothing reads the pens meanwhile, and the kernel keeps only 50-175 ms of them
 // (docs/INK-PERFORMANCE.md, Reader stalls).
 static void phase_done(const char *name, uint32_t *since, uint32_t wait_ms) {
     uint32_t t = now_ms(), took = t - *since;
@@ -73,8 +74,51 @@ static void phase_done(const char *name, uint32_t *since, uint32_t wait_ms) {
     *since = t;
 }
 #define PHASE(name, since, wait_ms) phase_done(name, since, wait_ms)
+
+// What the watchdog calls an event (InType's order) and a screen (ScreenId's): a slow batch names its
+// slowest event, which tells a page turn from a sheet opening. Never a key's value or a place.
+static const char *event_name(int t) {
+    static const char *const k[] = {"none", "pen down", "pen move", "pen up", "pen hover", "pen leave", "touch down",
+                                    "touch move", "touch up", "power", "quit", "pen button", "orientation",
+                                    "pinch begin", "pinch move", "pinch end", "sleep", "wake", "power up", "key",
+                                    "power held", "controller or keyboard came", "controller or keyboard went",
+                                    "key up"};
+    _Static_assert(sizeof k / sizeof k[0] == IN_KEY_UP + 1, "an event name for each InType");
+    return t >= 0 && t <= IN_KEY_UP ? k[t] : "?";
+}
+static const char *screen_name(int s) {
+    static const char *const k[SCR_COUNT] = {"library", "editor", "pen feel", "calibration", "share"};
+    return s >= 0 && s < SCR_COUNT ? k[s] : "?";
+}
+#endif
+
+// The event batch's slowest event: how long, which, and the screen it came to.
+typedef struct {
+    uint32_t ms;
+    int type, scr;
+    unsigned n;
+} Slowest;
+
+static void event_timed(App *a, const InEvent *ev, Slowest *slow) {
+    uint32_t t0 = now_ms();
+    int scr = (int)a->scr;
+    app_event(a, ev);
+    uint32_t took = now_ms() - t0;
+    if (!slow->n++ || took > slow->ms) *slow = (Slowest){took, (int)ev->type, scr, slow->n};
+}
+
+#ifdef GRIMOIRE_KINDLE
+static void batch_done(uint32_t *since, const Slowest *slow) {
+    uint32_t t = now_ms(), took = t - *since;
+    if (took > 50)
+        qlog("main: the event batch took %u ms (slowest: %s on the %s screen, %u ms, of %u events)", (unsigned)took,
+             event_name(slow->type), screen_name(slow->scr), (unsigned)slow->ms, slow->n);
+    *since = t;
+}
+#define BATCH_DONE(since, slow) batch_done(since, slow)
 #else
 #define PHASE(name, since, wait_ms) ((void)(since))
+#define BATCH_DONE(since, slow) ((void)(since), (void)(slow))
 #endif
 
 #ifdef GRIMOIRE_SIM
@@ -192,11 +236,12 @@ int main(int argc, char **argv) {
             PHASE("reading input", &phase, 30);
             uint32_t batch_at = now_ms();
             unsigned count = 0;
+            Slowest slow = {0};
             do {
-                app_event(&app, &ev);
+                event_timed(&app, &ev, &slow);
                 count++;
             } while (app.running && count < 64 && now_ms() - batch_at < 8 && input_poll(&ev, 0));
-            PHASE("the event batch", &phase, 0);
+            BATCH_DONE(&phase, &slow);
         } else {
             PHASE("reading input", &phase, 30);
         }
