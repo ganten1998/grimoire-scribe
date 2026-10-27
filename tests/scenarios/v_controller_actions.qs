@@ -2,7 +2,8 @@
 # copy: tests/fixtures/controller-actions .
 # The controller's actions in the editor (controller.ini gives each a button): a single pen and the
 # eraser, the menus (each button opens its own menu and closes it again, swaps the one in front for
-# its own, Close menu closes any; nothing else acts through one), the panel folded, the page
+# its own, Close menu closes any; nothing else acts through one, next tool neither, but the picker's
+# next and previous move the open tool picker's choice), the panel folded, the page
 # cleared, pages added, first and last, the whole page again after a pinch, the eraser's mode, and
 # Erase while held (from its press to its release, or the controller going).
 wait 150
@@ -37,8 +38,18 @@ wait 100
 expect editor.modal is tools
 key 311 0 1
 wait 60
+expect editor.tool is fountain
+expect editor.modal is tools
+key 616 0 1
+wait 60
 expect editor.tool is calligraphy
 expect editor.modal is tools
+key 615 0 1
+wait 60
+expect editor.tool is fountain
+key 616 0 1
+wait 60
+expect editor.tool is calligraphy
 key 614 0 1
 wait 60
 expect editor.tool is calligraphy

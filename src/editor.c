@@ -265,21 +265,10 @@ static ButtonStyle tool_style(App *a, ToolKind t) {
     return a->settings.current_tool == t ? BTN_SELECTED : BTN_PLAIN;
 }
 
-// The drawing tool the tool button shows (the pencil if settings.ini names the eraser there).
-static ToolKind button_tool(App *a) {
-    ToolKind t = a->settings.draw_tool;
-    return (unsigned)t < TOOL_COUNT && t != TOOL_ERASER ? t : TOOL_PENCIL;
-}
-
-// Where a tap on the eraser in use goes back to, and what the pen's button draws white with while
-// the eraser is in use: the pen used just before it (settings.ini before_eraser) while that is
-// still on the panel, a pin or the tool button's; else the tool button's.
-static ToolKind eraser_back(App *a) {
-    int b = a->settings.before_eraser;
-    bool shown = b >= 0 && b < TOOL_COUNT && b != TOOL_ERASER &&
-                 ((ToolKind)b == button_tool(a) || settings_pinned(&a->settings, (ToolKind)b));
-    return shown ? (ToolKind)b : button_tool(a);
-}
+// The drawing tool the tool button shows, and where a tap on the eraser in use goes back to
+// (panel.h, beside the steps of next and previous tool that use them).
+static ToolKind button_tool(App *a) { return panel_button_pen(&a->settings); }
+static ToolKind eraser_back(App *a) { return panel_eraser_back(&a->settings); }
 
 // What the tool button showed as the panel was last drawn (editor.tool_button): its pen, or these.
 enum { TB_GRID = -1, TB_NONE = -2 };
@@ -594,8 +583,8 @@ static void blit_view(App *a, Rect r) {
 
 // ---- tool picker ----
 
-// Its pens: tool_order's first TOOL_PENS (brush.h), three to a row, which next and previous tool go
-// through in the same order, 1 to 9.
+// Its pens: tool_order's first TOOL_PENS (brush.h), three to a row, which the picker's next and
+// previous go through in the same order, 1 to 9 (panel.h, picker_step).
 #define N_DRAW_TOOLS TOOL_PENS
 
 // The ink row under the pens: one choice each, the pens drawing black ink or white (erase strokes:
@@ -1946,16 +1935,6 @@ static void open_menu(App *a, int action) {
     }
 }
 
-// Next or previous tool's pen: the tool picker's next or previous one, round from the ninth to the
-// first. The eraser is not one of them: from it the step is from the pen it goes back to, so erasing
-// keeps the place.
-static ToolKind step_tool(App *a, bool next) {
-    ToolKind cur = a->settings.current_tool == TOOL_ERASER ? eraser_back(a) : a->settings.current_tool;
-    int index = 0;
-    for (int i = 0; i < N_DRAW_TOOLS; i++) if (tool_order[i] == cur) index = i;
-    return tool_order[(index + (next ? 1 : N_DRAW_TOOLS - 1)) % N_DRAW_TOOLS];
-}
-
 void editor_hold_eraser(App *a, bool held) {
     if (S) S->hold_eraser = held;  // (a stroke under way keeps what it does)
 }
@@ -1963,8 +1942,10 @@ void editor_hold_eraser(App *a, bool held) {
 // Optional external buttons act only in the idle editor, never through an open sheet, but for
 // these: Erase while held counts from its press, whenever it comes (from the next stroke); a menu's
 // button closes its own menu, or the one in front and opens its own (never over the Pages view's
-// keyboard: typing is never thrown away), and Close menu closes any; next and previous tool move
-// the open tool picker's choice.
+// keyboard: typing is never thrown away), and Close menu closes any; the picker's next and previous
+// move the open tool picker's choice. Next and previous tool go through the panel's pens alone, so
+// they leave the picker as it is: pressed again and again they never move the highlight from the
+// panel to the picker and back.
 bool editor_shortcut(App *a, int action) {
     if (!S || !S->open || a->asleep || !action) return false;
     if (action == SHORTCUT_HOLD_ERASER) {
@@ -1988,10 +1969,11 @@ bool editor_shortcut(App *a, int action) {
         if (leaves && a->scr == SCR_EDITOR) compose_all(a, REFRESH_FULL);
         return true;
     }
-    if ((action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) && S->tools_open && !S->pv.open) {
+    bool picker_move = action == SHORTCUT_PICKER_NEXT || action == SHORTCUT_PICKER_PREV;
+    if (picker_move && S->tools_open && !S->pv.open) {
         // In the open picker the step is its choice, as a tap on the pen is but for closing it.
         if (S->pin_mode) return false;
-        ToolKind t = step_tool(a, action == SHORTCUT_NEXT_TOOL);
+        ToolKind t = picker_step(&a->settings, action == SHORTCUT_PICKER_NEXT);
         a->settings.current_tool = t;
         if (!settings_pinned(&a->settings, t)) a->settings.draw_tool = t;
         settings_save(&a->settings);
@@ -2005,8 +1987,13 @@ bool editor_shortcut(App *a, int action) {
         open_menu(a, action);
         return true;
     }
+    // With the picker closed its next and previous switch through its nine pens, and next and
+    // previous tool through the panel's (or the nine, with fewer than two there): either picks as
+    // its pen's button would, a pinned pen lighting its pin, another going to the tool button.
     if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL)
-        action = SHORTCUT_TOOL_BASE + step_tool(a, action == SHORTCUT_NEXT_TOOL);
+        action = SHORTCUT_TOOL_BASE + panel_step(&a->settings, action == SHORTCUT_NEXT_TOOL);
+    else if (picker_move)
+        action = SHORTCUT_TOOL_BASE + picker_step(&a->settings, action == SHORTCUT_PICKER_NEXT);
     if (action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT) {
         ToolKind t = (ToolKind)(action - SHORTCUT_TOOL_BASE);
         if (t != TOOL_ERASER && !settings_pinned(&a->settings, t)) a->settings.draw_tool = t;

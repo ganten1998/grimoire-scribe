@@ -55,7 +55,8 @@ static const struct { const char *name; int action; } k_actions[] = {
     {"new-page",SHORTCUT_NEW_PAGE},{"fit-page",SHORTCUT_FIT_PAGE},{"pages",SHORTCUT_PAGES},
     {"tool-picker",SHORTCUT_TOOL_PICKER},{"paper",SHORTCUT_PAPER},{"display",SHORTCUT_DISPLAY},
     {"pen-feel",SHORTCUT_PEN_FEEL},{"fold-panel",SHORTCUT_FOLD_PANEL},{"library",SHORTCUT_LIBRARY},
-    {"close-menu",SHORTCUT_CLOSE_MENU},
+    {"close-menu",SHORTCUT_CLOSE_MENU},{"picker-previous",SHORTCUT_PICKER_PREV},
+    {"picker-next",SHORTCUT_PICKER_NEXT},
 };
 // Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
 // the analog triggers (hidkeys_trigger_event reports them as these).
