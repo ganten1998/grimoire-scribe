@@ -8,6 +8,10 @@
 // marks pile up, and the next batch carries what is newest. Two viewers at most. Nothing is
 // written to disk.
 //
+// The pen's place is one word in the shared frame (live_pen): a sample stores it, which is all the
+// pen path pays; only its coming into range wakes the viewers (a byte down each wake pipe), and
+// while it is in range each viewer looks at it again every LIVE_PEN_MS by itself.
+//
 // The stream's frames are little-endian: u32 length (of the type byte and the payload), u8 type,
 // payload:
 //   1 hello      u16 version (1), w, h, tile; u32 epoch: the screen's size, after a start or a turn
@@ -18,6 +22,12 @@
 //                colors inverted (white on black: the frame never is), else 0; u8 the front light's
 //                warmth, 0..LIGHT_MAX, or LIVE_NO_WARMTH (no warm light, or not known). First thing
 //                on every stream, then whenever any of them changes.
+//   6 pen        u16 x, y in the screen's pixels (the tiles'), u8 LIVE_PEN_AWAY, LIVE_PEN_HOVER or
+//                LIVE_PEN_TOUCH: where the Kindle's pen is, for the browser to draw over the picture.
+//                After the tiles of the same batch, at most every LIVE_PEN_MS and only when it
+//                changed: the newest place, so a browser that falls behind skips the ones between.
+//                Only while the state is LIVE_AWAKE; a hello or any other state takes the pen away
+//                (the browser forgets it), and the next pen frame says where it is again.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -31,9 +41,11 @@
 #define LIVE_VIEWERS 2
 #define LIVE_IDLE_OFF_MS (10 * 60 * 1000)  // no viewer for this long: Live view turns itself off
 #define LIVE_NO_WARMTH 255                 // the state frame's warmth when there is none to follow
+#define LIVE_PEN_MS 33                     // pen frames at most this often (about 30 a second)
 
 enum { LIVE_AWAKE = 0, LIVE_ASLEEP = 1, LIVE_PAIRING = 2, LIVE_BYE = 3 };
-enum { LIVE_HELLO = 1, LIVE_TILE_FRAME = 2, LIVE_BATCH = 3, LIVE_PING = 4, LIVE_STATE = 5 };
+enum { LIVE_HELLO = 1, LIVE_TILE_FRAME = 2, LIVE_BATCH = 3, LIVE_PING = 4, LIVE_STATE = 5, LIVE_PEN_FRAME = 6 };
+enum { LIVE_PEN_AWAY = 0, LIVE_PEN_HOVER = 1, LIVE_PEN_TOUCH = 2 };
 
 // ---- the main loop ----
 
@@ -46,9 +58,14 @@ bool live_on(void);
 int live_viewers(void);
 // A rect of the screen presented: copied into the frame, its tiles marked, the viewers woken.
 void live_push(const Canvas *screen, Rect r);
-// The screen turned (w x h now): a new hello, every tile again.
+// The screen turned (w x h now): a new hello, every tile again, the pen away until it is told again.
 void live_resize(int w, int h);
+// The pen: LIVE_PEN_AWAY, LIVE_PEN_HOVER or LIVE_PEN_TOUCH at (x, y), the screen's pixels as the
+// events have them (after the turn). One atomic store; a write to the viewers' wake pipes only when
+// it comes into range. The caller never tells it while the Kindle sleeps (live_set_state clears it).
+void live_pen(int state, float x, float y);
 // LIVE_AWAKE, LIVE_ASLEEP or LIVE_PAIRING (the pairing card is up: nothing is sent while it is).
+// Any but LIVE_AWAKE takes the pen away.
 void live_set_state(int state);
 // Grimoire's colors inverted on the Kindle or not (settings.invert, applied as it presents: the
 // frame holds them as drawn): the viewers tell their browsers, which follow it unless told not to.
@@ -76,3 +93,8 @@ void live_mark(uint32_t *words, int w, int h, Rect r);
 int live_runs(const uint32_t *words, int w, int h, Rect *out, int cap);
 // A frame's 5-byte header for a payload of len bytes.
 void live_frame_header(uint8_t out[5], uint32_t len, uint8_t type);
+// The pen as the shared word holds it: the state in the top 2 bits, y and x in 15 bits each, cut
+// to the w x h screen (rounded to the nearest pixel); 0 while it is away (or the state is not one).
+uint32_t live_pen_word(int state, float x, float y, int w, int h);
+// A pen frame's payload for that word: u16 x, y, u8 state.
+void live_pen_payload(uint8_t out[5], uint32_t word);

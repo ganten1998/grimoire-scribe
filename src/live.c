@@ -33,9 +33,9 @@ _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the tile marks must work across fork"
 
 // The frame both sides map. w and h change only on a turn, written before epoch moves on; px holds
 // w * h bytes (the same in either orientation), rows w apart. Each viewer slot has marks of its
-// own: a viewer takes its marks as it sends, which must leave the other's.
+// own: a viewer takes its marks as it sends, which must leave the other's. pen is live_pen_word's.
 typedef struct {
-    atomic_uint epoch, state, seq, invert, warmth;
+    atomic_uint epoch, state, seq, invert, warmth, pen;
     atomic_uint w, h;
     atomic_uint dirty[LIVE_VIEWERS][LIVE_WORDS];
     uint8_t px[];
@@ -91,6 +91,26 @@ void live_frame_header(uint8_t out[5], uint32_t len, uint8_t type) {
     out[2] = (uint8_t)(total >> 16);
     out[3] = (uint8_t)(total >> 24);
     out[4] = type;
+}
+
+// A coordinate as a whole pixel of a screen n wide: cut as a float first (NaN to 0), so a pen
+// calibrated past the edge never overflows the int.
+static unsigned pen_px(float v, int n) {
+    return !(v > 0.f) ? 0u : v >= (float)(n - 1) ? (unsigned)(n - 1) : (unsigned)(v + 0.5f);
+}
+
+uint32_t live_pen_word(int state, float x, float y, int w, int h) {
+    if ((state != LIVE_PEN_HOVER && state != LIVE_PEN_TOUCH) || w <= 0 || h <= 0 || w > 0x7FFF || h > 0x7FFF) return 0;
+    return (uint32_t)state << 30 | pen_px(y, h) << 15 | pen_px(x, w);
+}
+
+void live_pen_payload(uint8_t out[5], uint32_t word) {
+    unsigned x = word & 0x7FFF, y = word >> 15 & 0x7FFF;
+    out[0] = (uint8_t)x;
+    out[1] = (uint8_t)(x >> 8);
+    out[2] = (uint8_t)y;
+    out[3] = (uint8_t)(y >> 8);
+    out[4] = (uint8_t)(word >> 30);
 }
 
 // ---- the main loop ----
@@ -185,6 +205,7 @@ void live_resize(int w, int h) {
     if (!g_sh || (size_t)w * (size_t)h + sizeof(Shared) != g_sh_size) return;
     atomic_store(&g_sh->w, (unsigned)w);
     atomic_store(&g_sh->h, (unsigned)h);
+    atomic_store(&g_sh->pen, 0);  // (its place was on the screen before the turn)
     memset(g_sh->px, 255, (size_t)w * (size_t)h);
     atomic_fetch_add(&g_sh->epoch, 1);
     mark_all();
@@ -196,9 +217,18 @@ void live_set_state(int state) {
     // The state first, then (for the pairing card) its pixels: a viewer that reads them sees the
     // state after its own fence, and sends nothing.
     atomic_store(&g_sh->state, (unsigned)state);
+    if (state != LIVE_AWAKE) atomic_store(&g_sh->pen, 0);  // (the browsers take it away with the state)
     atomic_thread_fence(memory_order_seq_cst);
     if (state == LIVE_AWAKE) mark_all();  // whatever showed meanwhile comes again
     wake_all();
+}
+
+void live_pen(int state, float x, float y) {
+    if (!g_sh) return;
+    uint32_t word = live_pen_word(state, x, y, (int)atomic_load(&g_sh->w), (int)atomic_load(&g_sh->h));
+    // A sample is this store and nothing more. Only the pen coming into range wakes the viewers:
+    // while it is in range they look at it again every LIVE_PEN_MS themselves (viewer_main).
+    if (!atomic_exchange(&g_sh->pen, word) && word) wake_all();
 }
 
 void live_set_invert(bool on) {
@@ -259,6 +289,12 @@ static bool send_state(int fd, unsigned state, unsigned invert, unsigned warmth)
     return send_frame(fd, LIVE_STATE, s, sizeof s, NULL, 0);
 }
 
+static bool send_pen(int fd, uint32_t word) {
+    uint8_t p[5];
+    live_pen_payload(p, word);
+    return send_frame(fd, LIVE_PEN_FRAME, p, sizeof p, NULL, 0);
+}
+
 static void viewer_main(int slot, int fd, int wake) {
     atomic_uint *dirty = g_sh->dirty[slot];
     for (int i = 3; i < 1024; i++)
@@ -289,12 +325,16 @@ static void viewer_main(int slot, int fd, int wake) {
     size_t cap = g_sh_size - sizeof(Shared);
     uint8_t *sent = malloc(cap), *tile = malloc((size_t)LIVE_TILE * 4096);
     if (!sent || !tile || !send_all(fd, head, sizeof head - 1)) _exit(0);
-    uint32_t epoch = 0, last_batch = 0, last_sent = now_ms();
+    uint32_t epoch = 0, last_batch = 0, last_sent = now_ms(), last_pen = 0;
     unsigned told = ~0u, told_invert = ~0u, told_warmth = ~0u;  // (none yet: the state goes first)
+    uint32_t told_pen = 0;  // the pen as the browser has it: away, until a pen frame says otherwise
     int w = 0, h = 0;
     for (;;) {
         unsigned state = atomic_load(&g_sh->state), invert = atomic_load(&g_sh->invert);
         unsigned warmth = atomic_load(&g_sh->warmth);
+        // The pen read here, before the marks, and sent after the tiles: a place it reached after a
+        // push is never sent ahead of that push's tiles (live_push marks them before live_pen stores).
+        uint32_t pen = atomic_load(&g_sh->pen);
         if (state == LIVE_BYE) {
             send_state(fd, LIVE_BYE, invert, warmth);
             break;
@@ -305,6 +345,7 @@ static void viewer_main(int slot, int fd, int wake) {
             told_invert = invert;
             told_warmth = warmth;
             last_sent = now_ms();
+            if (state != LIVE_AWAKE) told_pen = 0;  // (the browser takes the pen away with it)
         }
         uint32_t e = atomic_load(&g_sh->epoch);
         if (state == LIVE_AWAKE && e != epoch) {
@@ -314,6 +355,10 @@ static void viewer_main(int slot, int fd, int wake) {
             memset(sent, 255, cap);  // the browser starts from white: send every tile that is not
             for (int i = 0; i < LIVE_WORDS; i++) atomic_store(&dirty[i], 0xFFFFFFFFu);
             if (!send_hello(fd, w, h, epoch)) break;
+            // A hello takes the pen away too. Read again: live_resize cleared it before the epoch
+            // moved on, so a place read above may be one on the screen before the turn.
+            told_pen = 0;
+            pen = atomic_load(&g_sh->pen);
         }
         bool any = false;
         if (state == LIVE_AWAKE) {
@@ -367,13 +412,26 @@ static void viewer_main(int slot, int fd, int wake) {
                 if (!ok) continue;  // (the state moved on: told at the top)
             }
         }
+        // The pen, after the tiles: its newest place, only when it changed, at most every LIVE_PEN_MS.
+        if (state != LIVE_AWAKE) pen = told_pen;
+        uint32_t since_pen = now_ms() - last_pen;
+        if (pen != told_pen && since_pen >= LIVE_PEN_MS) {
+            if (!send_pen(fd, pen)) break;
+            told_pen = pen;
+            last_pen = last_sent = now_ms();
+            since_pen = 0;
+        }
         if (now_ms() - last_sent >= 15000) {
             if (!send_frame(fd, LIVE_PING, NULL, 0, NULL, 0)) break;
             last_sent = now_ms();
         }
-        // Wait for a mark, the browser hanging up, or a second (the parent gone ends it here too).
+        // Wait for a mark, the browser hanging up, or a second (the parent gone ends it here too);
+        // while the pen is in range, or a place of it is still to send, only until it is due.
+        int timeout = 1000;
+        if (pen != told_pen) timeout = since_pen < LIVE_PEN_MS ? (int)(LIVE_PEN_MS - since_pen) : 0;
+        else if (pen) timeout = LIVE_PEN_MS;
         struct pollfd pf[2] = {{wake, POLLIN, 0}, {fd, POLLIN, 0}};
-        int got = poll(pf, 2, 1000);
+        int got = poll(pf, 2, timeout);
         if (got < 0 && errno != EINTR) break;
         if (pf[1].revents & (POLLHUP | POLLERR | POLLIN)) {
             char b;

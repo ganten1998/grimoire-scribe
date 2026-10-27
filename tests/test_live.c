@@ -1,8 +1,11 @@
 // test_live.c: Live view's tile marks and runs, its frames, and a viewer child end to end over a
-// socket pair: the hello, the tiles (PNGs read back against the screen), only what changed after.
+// socket pair: the hello, the tiles (PNGs read back against the screen), only what changed after,
+// and the pen's place after them.
 #include "live.h"
 #include "testlib.h"
 
+#include <math.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -305,6 +308,170 @@ TEST(the_browser_is_told_the_front_light_warmth) {
     canvas_free(&c);
 }
 
+TEST(the_pen_word_packs_cuts_and_reads_back) {
+    CHECK(live_pen_word(LIVE_PEN_HOVER, 10.4f, 20.6f, 300, 200) == (1u << 30 | 21u << 15 | 10u));
+    CHECK(live_pen_word(LIVE_PEN_AWAY, 10.f, 20.f, 300, 200) == 0);
+    CHECK(live_pen_word(7, 10.f, 20.f, 300, 200) == 0);  // (not a state: away)
+    // Past the edges (a pen calibrated a little past the glass), and a NaN: cut to the screen.
+    CHECK(live_pen_word(LIVE_PEN_TOUCH, -40.f, 9999.f, 300, 200) == (2u << 30 | 199u << 15));
+    CHECK(live_pen_word(LIVE_PEN_TOUCH, NAN, 5.f, 300, 200) == (2u << 30 | 5u << 15));
+    uint8_t p[5];
+    live_pen_payload(p, live_pen_word(LIVE_PEN_TOUCH, 1859.f, 2479.f, 1860, 2480));  // the far corner
+    CHECK(p[0] == 0x43 && p[1] == 0x07 && p[2] == 0xAF && p[3] == 0x09 && p[4] == LIVE_PEN_TOUCH);
+    live_pen_payload(p, 0);
+    CHECK(!p[0] && !p[1] && !p[2] && !p[3] && p[4] == LIVE_PEN_AWAY);
+}
+
+// Nothing to read on fd for ms.
+static bool quiet(int fd, int ms) {
+    struct pollfd p = {fd, POLLIN, 0};
+    return poll(&p, 1, ms) == 0;
+}
+
+// The next pen frame (x, y, state into out), the frames before it skipped: the tiles and batch ends
+// among them counted where asked.
+static bool next_pen(int fd, unsigned out[3], int *tiles, int *batches) {
+    uint8_t type, *body;
+    uint32_t len;
+    while (read_frame(fd, &type, &body, &len)) {
+        bool pen = type == LIVE_PEN_FRAME && len == 5;
+        if (pen) out[0] = u16(body), out[1] = u16(body + 2), out[2] = body[4];
+        if (tiles && type == LIVE_TILE_FRAME) (*tiles)++;
+        if (batches && type == LIVE_BATCH) (*batches)++;
+        free(body);
+        if (pen) return true;
+    }
+    return false;
+}
+
+TEST(a_viewer_sends_the_pen_after_the_tiles_and_only_its_newest_place) {
+    const int w = 300, h = 200;
+    Canvas c;
+    CHECK(canvas_init(&c, w, h) == 0);
+    canvas_fill(&c, (Rect){0, 0, w, h}, 230);
+    CHECK(live_start(w, h) == 0);
+    live_push(&c, (Rect){0, 0, w, h});
+    int sv[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    CHECK(live_take_viewer(sv[0]));
+    close(sv[0]);
+    CHECK(skip_head(sv[1]));
+    uint8_t st[3];
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE);
+    uint8_t *seen = calloc((size_t)w * (size_t)h, 1);
+    int hellos = 0;
+    CHECK(read_batch(sv[1], seen, w, h, &hellos) > 0);
+    CHECK(quiet(sv[1], 300));  // no pen yet: nothing (the browser starts with none)
+    // Coming into range wakes the viewer, idle in its one-second wait, at once.
+    uint32_t t0 = now_ms();
+    live_pen(LIVE_PEN_HOVER, 10.f, 20.f);
+    unsigned pen[3];
+    CHECK(next_pen(sv[1], pen, NULL, NULL) && pen[0] == 10 && pen[1] == 20 && pen[2] == LIVE_PEN_HOVER);
+    CHECK(now_ms() - t0 < 600);
+    // A stroke's tile and the pen's place after it: the tile's batch first, then the pen.
+    canvas_fill(&c, (Rect){70, 70, 20, 20}, 0);
+    live_push(&c, (Rect){70, 70, 20, 20});
+    live_pen(LIVE_PEN_TOUCH, 80.f, 80.f);
+    int tiles = 0, batches = 0;
+    CHECK(next_pen(sv[1], pen, &tiles, &batches) && pen[0] == 80 && pen[1] == 80 && pen[2] == LIVE_PEN_TOUCH);
+    CHECK(tiles == 1 && batches == 1);
+    // Fifty places at once: the newest comes, with at most one between.
+    for (int i = 0; i < 50; i++) live_pen(LIVE_PEN_HOVER, 100.f + (float)i, 50.f);
+    int frames = 0;
+    do CHECK(next_pen(sv[1], pen, NULL, NULL) && ++frames <= 2);
+    while (pen[0] != 149 && frames <= 2);
+    CHECK(pen[0] == 149 && pen[1] == 50 && pen[2] == LIVE_PEN_HOVER);
+    // Moving for 300 ms, a place every 5 ms: about 30 a second, never more, the last one last. The
+    // bound is from the time it took, not the 300 ms asked for: under a loaded make -j the sleeps
+    // run long, and every frame was sent between t0 and the moment the last one was read.
+    t0 = now_ms();
+    for (int i = 0; i < 60; i++) {
+        live_pen(LIVE_PEN_HOVER, 10.f + (float)i, 150.f);
+        sleep_ms(5);
+    }
+    frames = 0;
+    uint32_t last_read = t0;
+    while (!quiet(sv[1], 150) && next_pen(sv[1], pen, NULL, NULL)) {
+        frames++;
+        last_read = now_ms();
+    }
+    CHECK(frames >= 2 && frames <= (int)((last_read - t0) / LIVE_PEN_MS) + 2);
+    CHECK(frames < 60);  // (60 places: fewer frames than that, whatever the load)
+    CHECK(pen[0] == 69 && pen[1] == 150);
+    // A pen that stays where it is is not told again; gone, it is told once.
+    live_pen(LIVE_PEN_HOVER, 69.f, 150.f);
+    CHECK(quiet(sv[1], 200));
+    live_pen(LIVE_PEN_AWAY, 0.f, 0.f);
+    CHECK(next_pen(sv[1], pen, NULL, NULL) && pen[2] == LIVE_PEN_AWAY);
+    CHECK(quiet(sv[1], 300));
+    live_stop();
+    close(sv[1]);
+    free(seen);
+    canvas_free(&c);
+}
+
+TEST(the_pen_is_never_sent_asleep_and_a_turn_takes_it_away) {
+    const int w = 128, h = 96;
+    Canvas c;
+    CHECK(canvas_init(&c, w, h) == 0);
+    canvas_fill(&c, (Rect){0, 0, w, h}, 230);
+    CHECK(live_start(w, h) == 0);
+    live_push(&c, (Rect){0, 0, w, h});
+    live_pen(LIVE_PEN_HOVER, 5.f, 6.f);  // in range as the browser comes: told after its first batch
+    int sv[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    CHECK(live_take_viewer(sv[0]));
+    close(sv[0]);
+    CHECK(skip_head(sv[1]));
+    unsigned pen[3];
+    int tiles = 0, batches = 0;
+    CHECK(next_pen(sv[1], pen, &tiles, &batches) && pen[0] == 5 && pen[1] == 6 && pen[2] == LIVE_PEN_HOVER);
+    CHECK(tiles > 0 && batches == 1);
+    // Asleep: the state, and the pen is gone with it (the browser takes it away); awake again, it
+    // is not told until it moves.
+    live_set_state(LIVE_ASLEEP);
+    uint8_t st[3];
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_ASLEEP);
+    CHECK(quiet(sv[1], 200));
+    live_set_state(LIVE_AWAKE);
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE);
+    CHECK(quiet(sv[1], 200));
+    live_pen(LIVE_PEN_HOVER, 7.f, 8.f);
+    CHECK(next_pen(sv[1], pen, NULL, NULL) && pen[0] == 7 && pen[1] == 8);
+    // The pairing card takes it away the same way.
+    live_set_state(LIVE_PAIRING);
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_PAIRING);
+    live_set_state(LIVE_AWAKE);
+    CHECK(next_state(sv[1], st) && st[0] == LIVE_AWAKE);
+    CHECK(quiet(sv[1], 200));
+    // Turned: the hello, and no pen until it is told on the turned screen (96 wide now).
+    live_pen(LIVE_PEN_HOVER, 100.f, 10.f);
+    CHECK(next_pen(sv[1], pen, NULL, NULL) && pen[0] == 100);
+    live_resize(h, w);
+    Canvas t;
+    CHECK(canvas_init(&t, h, w) == 0);
+    canvas_fill(&t, (Rect){0, 0, h, w}, 40);
+    live_push(&t, (Rect){0, 0, h, w});
+    // Every frame until the turned screen is all sent: one batch, or two when the viewer took its
+    // snapshot while live_push was still copying (seen with a dozen of these tests at once). One
+    // hello among them and no pen.
+    int hellos = 0, pens = 0;
+    uint8_t type, *body;
+    uint32_t len;
+    while (!quiet(sv[1], 200) && read_frame(sv[1], &type, &body, &len)) {
+        hellos += type == LIVE_HELLO;
+        pens += type == LIVE_PEN_FRAME;
+        free(body);
+    }
+    CHECK(hellos == 1 && pens == 0);
+    live_pen(LIVE_PEN_HOVER, 100.f, 120.f);
+    CHECK(next_pen(sv[1], pen, NULL, NULL) && pen[0] == 95 && pen[1] == 120);  // (x cut to the new width)
+    live_stop();
+    close(sv[1]);
+    canvas_free(&t);
+    canvas_free(&c);
+}
+
 TEST(no_viewer_for_ten_minutes_turns_it_off) {
     CHECK(live_start(64, 64) == 0);
     bool idle = true;
@@ -324,6 +491,9 @@ int main(void) {
     RUN(nothing_is_sent_while_the_pairing_card_is_up);
     RUN(the_browser_is_told_when_the_colors_invert);
     RUN(the_browser_is_told_the_front_light_warmth);
+    RUN(the_pen_word_packs_cuts_and_reads_back);
+    RUN(a_viewer_sends_the_pen_after_the_tiles_and_only_its_newest_place);
+    RUN(the_pen_is_never_sent_asleep_and_a_turn_takes_it_away);
     RUN(no_viewer_for_ten_minutes_turns_it_off);
     return tl_done();
 }
