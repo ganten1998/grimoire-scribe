@@ -25,6 +25,14 @@ shot 03-display-sheet
 expect editor.modal is display
 expect settings.invert is 0
 expect light.intensity is 12
+# A slider being dragged redraws its own row alone (the whole card was a 1.8 Mpx copy at every step),
+# at most every 80 ms; the release draws the whole card.
+touch down 1000 598
+wait 100
+touch move 1100 598
+expect display.last_fast_rect is 220 542 1420 140
+touch up 1100 598
+wait 300
 drag touch 1000 598 1500 598 5
 wait 300
 expect light.intensity not 12

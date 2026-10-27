@@ -7,6 +7,9 @@
 
 enum { D_BRIGHT = 1, D_WARM, D_INVERT, D_SLEEP_MODE, D_PIN, D_SLEEP_AFTER, D_DONE };
 
+// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
+#define DRAG_DRAW_MS 80u
+
 // "Sleep after" choices (minutes, 0 = never); the slider moves along this list.
 static const int k_sleep_steps[] = {0, 1, 2, 5, 10, 15, 30, 60};
 #define N_SLEEP_STEPS ((int)(sizeof k_sleep_steps / sizeof k_sleep_steps[0]))
@@ -69,6 +72,23 @@ static void slider_for(DispMenu *m, App *a, int which, Rect row, Slider *s) {
     ui_slider_layout(s, row);
 }
 
+// A slider's row, all of it (ui_slider_draw fills the row first): what dispmenu_draw draws there,
+// and what a drag redraws alone.
+static void draw_slider_row(DispMenu *m, App *a, int which, Rect row) {
+    Slider s;
+    slider_for(m, a, which, row, &s);
+    char vt[24];
+    if (which == D_SLEEP_AFTER) {
+        int mins = k_sleep_steps[clampi((int)s.value, 0, N_SLEEP_STEPS - 1)];
+        // TRANSLATORS: the Sleep after slider's value: minutes, or never.
+        if (mins) snprintf(vt, sizeof vt, _("%d min"), mins);
+        else snprintf(vt, sizeof vt, "%s", C_("sleep after", "never"));
+    } else {
+        snprintf(vt, sizeof vt, "%d", (int)s.value);
+    }
+    ui_slider_draw(&a->screen, &s, vt);
+}
+
 Rect dispmenu_draw(DispMenu *m, App *a) {
     Canvas *c = &a->screen;
     hits_clear(&m->hits);
@@ -90,11 +110,7 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
             font_draw_left(c, FONT_REGULAR, ui_text_size(), row, _("This Kindle has no warmth control."), 60);
             continue;
         }
-        Slider s;
-        slider_for(m, a, i == 0 ? D_BRIGHT : D_WARM, row, &s);
-        char vt[16];
-        snprintf(vt, sizeof vt, "%d", (int)s.value);
-        ui_slider_draw(c, &s, vt);
+        draw_slider_row(m, a, i == 0 ? D_BRIGHT : D_WARM, row);
         hits_add(&m->hits, row, i == 0 ? D_BRIGHT : D_WARM, 0);
     }
     Rect inv = {in.x, y, in.w, rh};
@@ -121,14 +137,7 @@ Rect dispmenu_draw(DispMenu *m, App *a) {
         y += rh;
     }
     Rect after = {in.x, y, in.w, rh};
-    Slider s;
-    slider_for(m, a, D_SLEEP_AFTER, after, &s);
-    char vt[24];
-    int mins = k_sleep_steps[(int)s.value];
-    // TRANSLATORS: the Sleep after slider's value: minutes, or never.
-    if (mins) snprintf(vt, sizeof vt, _("%d min"), mins);
-    else snprintf(vt, sizeof vt, "%s", C_("sleep after", "never"));
-    ui_slider_draw(c, &s, vt);
+    draw_slider_row(m, a, D_SLEEP_AFTER, after);
     hits_add(&m->hits, after, D_SLEEP_AFTER, 0);
     Rect done = {in.x + in.w - ui_px(360), in.y + in.h - ui_px(140), ui_px(360), ui_px(140)};
     // TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
@@ -173,11 +182,22 @@ DmResult dispmenu_pointer(DispMenu *m, App *a, int ph, float x, float y, uint32_
                 m->last_apply = t;
             }
         }
-        if (changed || ph == 2) {
+        // While it is dragged only its row is drawn, at most every DRAG_DRAW_MS: each step used to
+        // redraw the whole card and copy its 1.8 Mpx to the panel (90-100 ms on the Kindle, and
+        // the raw digitizer under the hovering pen overflowed at 23 of them). The whole card at the
+        // release.
+        m->row_stale |= changed;
+        if (ph == 2) {
             dispmenu_draw(m, a);
             *dirty = m->rect;
+            m->active = 0;
+            m->row_stale = false;
+        } else if (m->row_stale && (ph == 0 || t - m->last_draw >= DRAG_DRAW_MS)) {
+            draw_slider_row(m, a, m->active, m->active_row);
+            *dirty = m->active_row;
+            m->last_draw = t;
+            m->row_stale = false;
         }
-        if (ph == 2) m->active = 0;
         return changed ? DM_CHANGED : DM_NONE;
     }
     if (ph != 2) return DM_NONE;

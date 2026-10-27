@@ -14,6 +14,8 @@ typedef struct {
     int intensity, warmth;   // 0..LIGHT_MAX, -1 unknown
     int active;              // slider being dragged (its D_* id), 0 none
     Rect active_row;         // that slider's row
+    bool row_stale;          // its value changed since its row was last drawn
+    uint32_t last_draw;      // when its row was last drawn
     uint32_t last_apply;
     Press press;
 } DispMenu;

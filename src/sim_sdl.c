@@ -141,6 +141,7 @@ static long long g_area[3];
 // would wait after the last fast refresh, and whether the app asks for the pen mode.
 static LiveInk g_ink;
 static int g_last_fast = -1;  // the last fast refresh: 1 live ink, 0 one to wait after, -1 none yet
+static Rect g_last_fast_rect;  // and where it was
 static bool g_pen_mode;       // display_pen_mode
 #ifdef GRIMOIRE_SIM_SDL
 static SDL_Window *g_win;
@@ -229,6 +230,7 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     r = rect_intersect(r, (Rect){0, 0, g_w, g_h});
     if (rect_is_empty(r) || mode < 0 || mode > 2) return;
     if (mode == REFRESH_FAST) g_last_fast = live_ink_frame(&g_ink, mode, now_ms()) ? 1 : 0;
+    if (mode == REFRESH_FAST) g_last_fast_rect = r;
     g_stats[mode]++;
     if (mode == REFRESH_FAST && g_ink.on) g_ink_frames++;
     g_area[mode] += (long long)r.w * r.h;
@@ -418,9 +420,14 @@ static void expect_read(const char *s) {
 // The display.* keys, which the simulated panel answers: "display.ink" 1 while a stroke is drawn
 // (display_live_ink), "display.pen_mode" 1 while the app asks for the pen mode (display_pen_mode),
 // "display.last_fast" "ink" when the last fast refresh was live ink, "wait" when a colour panel
-// would have waited for the driver's read after it (display_fbink.c), empty before any.
+// would have waited for the driver's read after it (display_fbink.c), empty before any;
+// "display.last_fast_rect" where that refresh was, "x y w h", empty before any.
 static bool display_probe(const char *key, char *out, size_t cap) {
-    if (!strcmp(key, "display.ink")) snprintf(out, cap, "%d", g_ink.on ? 1 : 0);
+    if (!strcmp(key, "display.last_fast_rect")) {
+        Rect r = g_last_fast_rect;
+        if (g_last_fast < 0) snprintf(out, cap, "%s", "");
+        else snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+    } else if (!strcmp(key, "display.ink")) snprintf(out, cap, "%d", g_ink.on ? 1 : 0);
     else if (!strcmp(key, "display.pen_mode")) snprintf(out, cap, "%d", g_pen_mode ? 1 : 0);
     else if (!strcmp(key, "display.ink_frames")) snprintf(out, cap, "%d", g_ink_frames);
     else if (!strcmp(key, "display.last_fast"))

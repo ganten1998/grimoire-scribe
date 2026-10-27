@@ -228,6 +228,7 @@ shows what the app holds.
 | `display.ink_frames` | fast refreshes submitted while a stroke was still active; used to check input backlogs |
 | `display.pen_mode` | `1` while the app asks for MTK pen mode (the editor's ink strokes only), else `0` |
 | `display.last_fast` | `ink` if the last fast refresh was live ink, `wait` if a color panel would have waited for the driver's read after it (docs/DESIGN.md), empty before any |
+| `display.last_fast_rect` | where the last fast refresh was, `x y w h` in screen pixels, empty before any |
 
 The `editor.` and `library.` keys answer on any screen: the editor's describe the open notebook,
 also while pen feel is in front. The `display.` keys are the simulated panel's (the runner answers
