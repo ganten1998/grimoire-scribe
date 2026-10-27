@@ -5,3 +5,4 @@ grimoire-data/
 .DS_Store
 
 __pycache__/
+rust/target/

@@ -11,6 +11,8 @@
 #   make all       sim + test + tools + kindle + dist
 #   make l10n      (maintainer, needs GNU gettext) po/grimoire.pot from the sources, then every
 #                  po/<lang>.po merged with it and compiled to po/<lang>.mo
+#   make rust-*    the Rust port (rust/, rust/PORTING.md): its binaries and the same checks
+#                  against them (rust-headless, rust-kindle, rust-test, rust-scenarios, rust-check)
 
 BUILD   ?= build
 DIST    ?= dist
@@ -448,3 +450,82 @@ check: test scenarios tools kindle package-check launcher-check l10n-check kpm-c
 
 clean:
 	rm -rf $(BUILD)/host $(BUILD)/test $(BUILD)/kindle $(BUILD)/dist $(BUILD)/gen
+
+# ---- the Rust port (rust/: one crate; rust/PORTING.md has the rules) ----
+# The same app, module for module, built with cargo. Its binaries go where the C's go, under
+# $(RBUILD) instead of $(BUILD): $(RBUILD)/host/grimoire-headless, $(RBUILD)/host/grimoire-export,
+# $(RBUILD)/kindle/grimoire. The checks then run against them unchanged: every rule below that
+# runs a C rule runs it with BUILD=$(RBUILD), and with -o naming the Rust binary, which make takes
+# as up to date (never rebuilt from the C sources), so tests/*.sh and the scenario runner find the
+# Rust build where they look for the C one.
+#   make rust-headless   the scripted runner          -> $(RBUILD)/host/grimoire-headless
+#   make rust-tools      host CLI grimoire-export     -> $(RBUILD)/host/grimoire-export
+#   make rust-kindle     static armhf binary          -> $(RBUILD)/kindle/grimoire
+#   make rust-test       cargo test (the C unit tests' ports, golden renders included)
+#   make rust-scenarios  make scenarios against the Rust runner
+#   make rust-check      the gate against the Rust binaries: unit tests, scenarios, the languages,
+#                        the share server, Live view, Bluetooth, the exporter, the ARM build
+#   make rust-package    the Kindle zip with the Rust binary in it, in $(RBUILD)/dist (make package
+#                        and make dist keep the C binary until the switch: rust/PORTING.md)
+# Homebrew's rustc shadows rustup's on this Mac: RUST_BIN puts rustup's stable toolchain first.
+# cargo runs inside rust/ (its .cargo/config.toml, the Kindle target's flags, is found from there),
+# with its target dir under $(BUILD) (out of Dropbox, as build/ is: a cargo target inside Dropbox
+# breaks).
+CARGO     ?= cargo
+RUST_BIN  ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin
+RBUILD    ?= $(BUILD)/rust
+RTARGET   ?= $(abspath $(BUILD))/cargo
+RKINDLE   := armv7-unknown-linux-musleabihf
+RCARGO    = cd rust && $(1) PATH="$(RUST_BIN):$$PATH" CARGO_TARGET_DIR="$(RTARGET)" $(CARGO)
+# The Kindle binary names no path of the machine that built it (panic locations name sources):
+# a build at another place or on another Mac makes the same bytes, as kindle/no-comment.ld does for
+# the toolchain's names. (cargo joins this to .cargo/config.toml's rustflags.)
+RKFLAGS   := --config 'target.$(RKINDLE).rustflags=["--remap-path-prefix=$(HOME)=/home","--remap-path-prefix=$(CURDIR)=/grimoire"]'
+
+.PHONY: rust-headless rust-tools rust-kindle rust-test rust-scenarios rust-l10n-check rust-check rust-package
+rust-headless:
+	$(call RCARGO) build --features sim --bin grimoire-headless
+	@mkdir -p $(RBUILD)/host
+	cp $(RTARGET)/debug/grimoire-headless $(RBUILD)/host/grimoire-headless
+
+rust-tools:
+	$(call RCARGO) build --bin grimoire-export
+	@mkdir -p $(RBUILD)/host
+	cp $(RTARGET)/debug/grimoire-export $(RBUILD)/host/grimoire-export
+
+rust-kindle:
+	$(call RCARGO) zigbuild --release --target $(RKINDLE) --features kindle --bin grimoire $(RKFLAGS)
+	@mkdir -p $(RBUILD)/kindle
+	cp $(RTARGET)/$(RKINDLE)/release/grimoire $(RBUILD)/kindle/grimoire
+
+# One test at a time: the ported tests keep the C's process-wide state (the store's root, the
+# language), as each C test binary runs its tests in order.
+rust-test:
+	@mkdir -p $(RBUILD)/test/tmp
+	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(RBUILD))/test/tmp") test -- --test-threads=1
+	@echo "RUST TESTS PASSED"
+
+rust-scenarios: rust-headless
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless scenarios
+
+rust-l10n-check: rust-headless
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless l10n-check
+
+# make check's checks of the app, in its order, one after another (the scenarios, the languages
+# and the share checks open the share server on the same port), against the Rust binaries. The
+# package, launcher and KPM checks test the zip and the scripts, not the binary: they join here at
+# the switch, when make package takes the Rust binary (rust/PORTING.md, Packaging).
+rust-check: rust-test rust-headless rust-tools rust-kindle
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless scenarios
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless l10n-check
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless mirror-cleanup-check
+	BUILD=$(RBUILD) $(SCEN_LANG) tests/share_check.sh $(RBUILD)/scen/b_library
+	BUILD=$(RBUILD) tests/live_check.sh
+	BUILD=$(RBUILD) tests/bt_check.sh
+	$(RBUILD)/host/grimoire-export --force $(RBUILD)/scen/b_library $(RBUILD)/export-check
+	@echo "RUST CHECK PASSED"
+
+# The zip people install, with the Rust binary: make package run with BUILD=$(RBUILD), where
+# rust-kindle left the binary at the path the package rule copies from. Not part of make dist yet.
+rust-package: rust-kindle
+	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/kindle/grimoire package
