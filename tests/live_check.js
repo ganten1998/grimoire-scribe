@@ -93,13 +93,10 @@ ok('film: the bigger Scribe turned back the other way fits too', big.y === 0 && 
 // Record's format. What each browser said (Chrome 156, Safari: MP4 only, Firefox 156: VP8 only).
 const chrome = () => true, safari = t => t === 'video/mp4', firefox = t => t === 'video/webm;codecs=vp8' || t === 'video/webm';
 const thrower = () => { throw new Error('no'); };
-const as = (f, clear) => { const r = recordType(f, clear); return [r.mime, r.ext, r.why].join('|'); };
-ok('record: Chrome, an MP4 of H.264', as(chrome) === 'video/mp4;codecs=avc1.42E01E|mp4|');
+const as = f => { const r = recordType(f); return [r.mime, r.ext, r.why].join('|'); };
+ok('record: Chrome, an MP4 of H.264 (Transparent paper too: the page draws the paper in)', as(chrome) === 'video/mp4;codecs=avc1.42E01E|mp4|');
 ok('record: Safari, its plain MP4', as(safari) === 'video/mp4|mp4|');
 ok('record: Firefox, WebM, and the button says why', as(firefox) === 'video/webm;codecs=vp8|webm|browser');
-ok('record: Transparent paper, WebM where it can (it keeps the paper clear)', as(chrome, true) === 'video/webm;codecs=vp8|webm|clear' &&
-   as(firefox, true) === 'video/webm;codecs=vp8|webm|clear');
-ok('record: Transparent paper without WebM, an MP4 (the page draws the paper in)', as(safari, true) === 'video/mp4|mp4|');
 ok('record: a browser that says nothing (or throws), its own choice, no reason claimed', as(() => false) === '||' &&
    as(thrower) === '||');
 process.exit(fail);

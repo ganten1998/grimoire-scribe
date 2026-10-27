@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 04:10-0500\n"
+"POT-Creation-Date: 2026-10-27 05:04-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -980,20 +980,14 @@ msgstr ""
 msgid "Record"
 msgstr ""
 
-#. TRANSLATORS: Live view's Record button where the video cannot be an MP4 (WebM is the other
-#. video format), and its tooltips saying why: the browser (Firefox), or Transparent paper,
-#. which an MP4 cannot keep transparent.
+#. TRANSLATORS: Live view's Record button where the browser can make no MP4 at all (WebM is the
+#. other video format), and its tooltip saying why.
 #: src/httpd.c
 msgid "Record (WebM)"
 msgstr ""
 
 #: src/httpd.c
 msgid "This browser cannot record MP4, so the video is WebM."
-msgstr ""
-
-#: src/httpd.c
-msgid ""
-"Transparent paper records as WebM: an MP4 cannot keep the paper transparent."
 msgstr ""
 
 #: src/httpd.c

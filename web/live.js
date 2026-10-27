@@ -72,15 +72,14 @@
         return {k, x: Math.floor((fw - w * k) / 2), y: Math.floor((fh - h * k) / 2)};
     }
     // Record's format, from what supported(type) says (MediaRecorder.isTypeSupported): MP4 (H.264)
-    // wherever the browser records it; WebM where it cannot (Firefox: why 'browser'), or for
-    // Transparent paper, which only WebM keeps (why 'clear': an MP4 has no transparency, its paper came
-    // out black). A browser that names neither records its own choice, which nothing here can name.
+    // wherever the browser records it, Transparent paper too (an MP4 has no transparency, so the
+    // paper is drawn in); WebM only where it cannot (Firefox: why 'browser'). A browser that names
+    // neither records its own choice, which nothing here can name.
     const MP4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
-    const WEBM = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];  // (VP8 keeps the alpha)
-    function recordType(supported, clear) {
+    const WEBM = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];
+    function recordType(supported) {
         const first = list => list.find(t => { try { return !!supported(t); } catch (e) { return false; } });
         const mp4 = first(MP4), webm = first(WEBM);
-        if (clear && webm) return {mime: webm, ext: 'webm', why: 'clear'};
         if (mp4) return {mime: mp4, ext: 'mp4', why: ''};
         if (webm) return {mime: webm, ext: 'webm', why: 'browser'};
         return {mime: '', ext: '', why: ''};  // (the file named by the type the recorder says it made)
@@ -114,8 +113,8 @@
     const filmCtx = film.getContext('2d');
     // pen: where the Kindle's pen is (readPen), null while away; penShown, filmPen: its marks drawn on
     // the page and in film now, to take away; fitIn: shown's place in film (filmFit); flat: a
-    // recording that is no WebM, which has no transparency, so film has the paper drawn in while
-    // Transparent paper is on (a browser with no WebM, or the paper made clear mid-recording).
+    // recording that is no WebM (an MP4), which has no transparency, so film has the paper drawn in
+    // while Transparent paper is on.
     let pen = null, showPen = true, penShown = null, penQueued = false, filmPen = null;
     let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null;
     let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
@@ -146,7 +145,6 @@
         clearButton.setAttribute('aria-pressed', clear ? 'true' : 'false');
         document.body.classList.toggle('clear', clear);
         repaint(0, 0, raw.width, raw.height);
-        recordLabel();  // (Transparent paper records as WebM where it can)
     });
     clearButton.setAttribute('aria-pressed', 'false');
     const invertSwitch = button(words.invert, () => {
@@ -336,9 +334,9 @@
             recordButton.textContent = words.stop;
             return;
         }
-        recordAs = recordType(t => MediaRecorder.isTypeSupported(t), clear);
+        recordAs = recordType(t => MediaRecorder.isTypeSupported(t));
         recordButton.textContent = recordAs.ext === 'webm' ? words.recordWebm : words.record;
-        recordButton.title = recordAs.why === 'clear' ? words.webmClear : recordAs.why ? words.webmBrowser : '';
+        recordButton.title = recordAs.why ? words.webmBrowser : '';
     }
     // shown drawn into view, which has a pixel for each of the screen's. The browser's own scaling (of
     // a canvas, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone
