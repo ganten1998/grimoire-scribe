@@ -68,26 +68,55 @@ static int mods(const HidKeys *state) {
            ((bit(state->held, 56) || bit(state->held, 100)) ? KEYMOD_ALT : 0) |
            ((bit(state->held, 125) || bit(state->held, 126)) ? KEYMOD_META : 0);
 }
-bool hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress *press) {
+static bool modifier(int code) {
+    return code == 29 || code == 97 || code == 42 || code == 54 || code == 56 || code == 100 || code == 125 || code == 126;
+}
+static HidPress key(const HidKeys *state, HidKind kind, int code, bool up) {
+    return (HidPress){.code = code, .mods = mods(state), .gamepad = kind == HID_GAMEPAD && code >= 256, .up = up};
+}
+// A hat direction as the digital D-pads' evdev codes: UP/DOWN/LEFT/RIGHT.
+static HidPress hat(int axis, int value, bool up) {
+    return (HidPress){.code = axis ? (value < 0 ? 544 : 545) : (value < 0 ? 546 : 547), .gamepad = true, .up = up};
+}
+int hidkeys_resync(HidKeys *state, HidKind kind, const uint8_t *held, int hat_x, int hat_y, HidPress *ups, int cap) {
+    int n = 0, now[2] = {hat_x, hat_y};
+    for (int code = 1; code < HID_KEY_BYTES * 8 && n < cap; code++)
+        if (bit(state->held, code) && !(held && bit(held, code)) && !modifier(code) && !power(code))
+            ups[n++] = key(state, kind, code, true);
+    for (int axis = 0; axis < 2; axis++) {
+        int v = now[axis] >= -1 && now[axis] <= 1 ? now[axis] : 0;
+        if (kind == HID_GAMEPAD && state->hat[axis] && state->hat[axis] != v && n < cap)
+            ups[n++] = hat(axis, state->hat[axis], true);
+    }
+    hidkeys_sync(state, held, hat_x, hat_y);
+    return n;
+}
+int hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress out[2]) {
     if (type == 0 && code == 3) { // EV_SYN / SYN_DROPPED: caller must obtain a fresh device state
         state->dropped = true;
-        return false;
+        return 0;
     }
-    if (state->dropped || kind == HID_NONE) return false;
+    if (state->dropped || kind == HID_NONE) return 0;
     if (type == 3 && kind == HID_GAMEPAD && (code == 16 || code == 17)) {
-        if (value < -1 || value > 1) return false;
-        int axis = code - 16, previous = state->hat[axis];
+        if (value < -1 || value > 1) return 0;
+        int axis = code - 16, previous = state->hat[axis], n = 0;
         state->hat[axis] = value;
-        if (!value || value == previous) return false;
-        // Use the same evdev codes as digital D-pads: UP/DOWN/LEFT/RIGHT.
-        *press = (HidPress){.code = axis ? (value < 0 ? 544 : 545) : (value < 0 ? 546 : 547), .gamepad = true};
-        return true;
+        if (value == previous) return 0;
+        if (previous) out[n++] = hat(axis, previous, true);
+        if (value) out[n++] = hat(axis, value, false);
+        return n;
     }
-    if (type != 1 || code <= 0 || code >= HID_KEY_BYTES * 8 || power(code)) return false;
-    if (!value) { set(state->held, code, false); return false; }
-    if (value != 1 || bit(state->held, code)) return false;
+    if (type != 1 || code <= 0 || code >= HID_KEY_BYTES * 8 || power(code)) return 0;
+    if (!value) {
+        bool was = bit(state->held, code);
+        set(state->held, code, false);
+        if (!was || modifier(code)) return 0;
+        out[0] = key(state, kind, code, true);
+        return 1;
+    }
+    if (value != 1 || bit(state->held, code)) return 0;
     set(state->held, code, true);
-    if (code == 29 || code == 97 || code == 42 || code == 54 || code == 56 || code == 100 || code == 125 || code == 126) return false;
-    *press = (HidPress){.code = code, .mods = mods(state), .gamepad = kind == HID_GAMEPAD && code >= 256};
-    return true;
+    if (modifier(code)) return 0;
+    out[0] = key(state, kind, code, false);
+    return 1;
 }

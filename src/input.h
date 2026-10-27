@@ -31,6 +31,7 @@ typedef enum {
     IN_HID_ATTACH,                         // an optional keyboard or controller came: hid_name,
                                            // gamepad, value 1 when another app holds it (input_hids)
     IN_HID_DETACH,                         // and went: hid_name, gamepad
+    IN_KEY_UP,                             // an IN_KEY's key or button let go: value, gamepad
 } InType;
 
 // Holding the power button this long saves and leaves Grimoire (below the Kindle's own ~7 s menu).

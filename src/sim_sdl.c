@@ -578,10 +578,11 @@ static void script_step(void) {
                 pen_ev(IN_PEN_UP, g_px, g_py, 0, 0, 0, (uint32_t)(steps + 1) * 5);
             }
             g_eraser = false;
-        } else if (!strcmp(a, "key")) {
+        } else if (!strcmp(a, "key") || !strcmp(a, "keyup")) {
             int code = 0, mods = 0, pad = 0;
             sscanf(s, "%*s %d %d %d", &code, &mods, &pad);
-            q_push((InEvent){.type = IN_KEY, .value = code, .key_mods = (unsigned)mods, .gamepad = pad != 0, .t_ms = now_ms()});
+            q_push((InEvent){.type = a[3] ? IN_KEY_UP : IN_KEY, .value = code, .key_mods = (unsigned)mods,
+                             .gamepad = pad != 0, .t_ms = now_ms()});
         } else if (!strcmp(a, "hid")) {
             // hid attach pad|key|held NAME, hid detach NAME: a controller (held: one another app
             // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it
@@ -840,7 +841,10 @@ static void sdl_pump(void) {
             break;
         }
         case SDL_EVENT_KEY_UP:
-            if (e.key.key == SDLK_S) {
+            if (g_shortcuts_enabled && e.key.key != SDLK_P && e.key.key != SDLK_S) {
+                int code = shortcut_keycode(SDL_GetKeyName(e.key.key));
+                if (code > 0) q_push((InEvent){.type = IN_KEY_UP, .value = code, .t_ms = now_ms()});
+            } else if (e.key.key == SDLK_S) {
                 InEvent b = make_ev(IN_PEN_BUTTON, 0, 0, true);
                 b.side_button = false;
                 q_push(b);

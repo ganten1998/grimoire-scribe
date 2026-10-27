@@ -18,40 +18,69 @@ TEST(capabilities) {
     add(axes, 16); CHECK(hidkeys_kind(keys, axes) == HID_GAMEPAD);
 }
 TEST(presses_and_modifiers) {
-    HidKeys s; HidPress p; hidkeys_sync(&s, NULL, 0, 0);
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 29, 1, &p));
-    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, &p) && p.code == 44 && p.mods == KEYMOD_CTRL);
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, &p)); // duplicate down
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 2, &p)); // auto-repeat
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 0, &p));
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 97, 1, &p));
-    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 29, 0, &p)); // right Ctrl remains held
-    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, &p) && p.mods == KEYMOD_CTRL);
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 116, 1, &p)); // external power never quits
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 768, 1, &p));
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 114, 1, &p) && !p.gamepad); // mixed HID media key
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, &p) && p.gamepad);
+    HidKeys s; HidPress p[2]; hidkeys_sync(&s, NULL, 0, 0);
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 29, 1, p));
+    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, p) == 1 && p[0].code == 44 && p[0].mods == KEYMOD_CTRL && !p[0].up);
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, p)); // duplicate down
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 2, p)); // auto-repeat
+    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 44, 0, p) == 1 && p[0].code == 44 && p[0].up); // its release
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 44, 0, p)); // released again: nothing
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 97, 1, p));
+    CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 29, 0, p)); // right Ctrl remains held; no modifier's release
+    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 44, 1, p) == 1 && p[0].mods == KEYMOD_CTRL);
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 116, 1, p)); // external power never quits
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 116, 0, p));
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 768, 1, p));
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 114, 1, p) == 1 && !p[0].gamepad); // mixed HID media key
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, p) == 1 && p[0].gamepad && !p[0].up);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 0, p) == 1 && p[0].code == 304 && p[0].gamepad && p[0].up);
 }
 TEST(hats_drop_and_pin_resync) {
-    HidKeys s; HidPress p; hidkeys_sync(&s, NULL, 0, 0);
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, -1, &p) && p.code == 546);
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, -1, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 0, &p));
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, &p) && p.code == 547);
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 17, -1, &p) && p.code == 544);
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 0, 200, &p)); // sticks are not hats
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 2, &p)); // invalid hat value
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 0, 3, 0, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 0, 0, 0, &p)); // SYN_REPORT alone cannot trust stale state
+    HidKeys s; HidPress p[2]; hidkeys_sync(&s, NULL, 0, 0);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, -1, p) == 1 && p[0].code == 546 && !p[0].up);
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, -1, p));
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 0, p) == 1 && p[0].code == 546 && p[0].up); // back to the middle
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, p) == 1 && p[0].code == 547);
+    // Straight across, with no middle between: the release of the one, then the press of the other.
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, -1, p) == 2 && p[0].code == 547 && p[0].up && p[1].code == 546 && !p[1].up);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 17, -1, p) == 1 && p[0].code == 544);
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 0, 200, p)); // sticks are not hats
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 2, p)); // invalid hat value
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 0, 3, 0, p));
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, p));
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 0, 0, 0, p)); // SYN_REPORT alone cannot trust stale state
     uint8_t held[HID_KEY_BYTES] = {0}; add(held, 304);
     hidkeys_sync(&s, held, 1, 0); // held while PIN was up, or after a lost frame
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 304, 0, &p));
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, &p));
-    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 0, &p));
-    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, &p));
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, p));
+    CHECK(!hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, p));
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 0, p) == 1 && p[0].up); // its release is one (nothing waits for it)
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, p) == 1 && !p[0].up);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 0, p) == 1 && p[0].code == 547 && p[0].up);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 16, 1, p) == 1 && !p[0].up);
+}
+TEST(resync_releases_what_went) {
+    HidKeys s; HidPress p[2], ups[8]; hidkeys_sync(&s, NULL, 0, 0);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 312, 1, p) == 1);  // L2 held (Erase while held, say)
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 1, p) == 1);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 29, 1, p) == 0);   // a modifier: never released into ups
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 3, 17, 1, p) == 1 && p[0].code == 545);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 0, 3, 0, p) == 0);   // SYN_DROPPED: the frames in between are lost
+    // A fresh state with South still held, L2 and the hat let go: their releases, South's later.
+    uint8_t held[HID_KEY_BYTES] = {0}; add(held, 304);
+    int n = hidkeys_resync(&s, HID_GAMEPAD, held, 0, 0, ups, 8);
+    CHECK(n == 2 && ups[0].code == 312 && ups[0].up && ups[0].gamepad && ups[1].code == 545 && ups[1].up);
+    CHECK(!s.dropped);
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 312, 0, p) == 0);  // gone already
+    CHECK(hidkeys_event(&s, HID_GAMEPAD, 1, 304, 0, p) == 1 && p[0].code == 304 && p[0].up);
+    // Native PIN input up (held NULL): everything held is let go; cap bounds how many.
+    CHECK(hidkeys_event(&s, HID_KEYBOARD, 1, 30, 1, p) == 1 && hidkeys_event(&s, HID_KEYBOARD, 1, 31, 1, p) == 1);
+    n = hidkeys_resync(&s, HID_KEYBOARD, NULL, 0, 0, ups, 1);
+    CHECK(n == 1 && ups[0].code == 30 && ups[0].up && !ups[0].gamepad);
+    CHECK(hidkeys_resync(&s, HID_KEYBOARD, NULL, 0, 0, ups, 8) == 0);  // (state already empty)
+    // Held at attach (the first sync): no release on that sync.
+    hidkeys_sync(&s, NULL, 0, 0);
+    CHECK(hidkeys_resync(&s, HID_GAMEPAD, held, -1, 0, ups, 8) == 0);
+    CHECK(hidkeys_resync(&s, HID_GAMEPAD, held, 7, 0, ups, 8) == 1 && ups[0].code == 546);  // (7 reads as 0)
 }
 // A sysfs capability bitmap (/sys/class/input/eventN/device/capabilities/key or abs) as the
 // Kindle prints it: hex words of 32 bits (an armhf long), the highest first.
@@ -128,7 +157,8 @@ TEST(held_names_and_rate) {
     last = 0xfffff000u; CHECK(hidkeys_due(&last, 0x00010000u, 30000)); // across the clock's wrap
 }
 int main(void) {
-    RUN(capabilities); RUN(presses_and_modifiers); RUN(hats_drop_and_pin_resync); RUN(power_key_on_firmware_5_20);
+    RUN(capabilities); RUN(presses_and_modifiers); RUN(hats_drop_and_pin_resync); RUN(resync_releases_what_went);
+    RUN(power_key_on_firmware_5_20);
     RUN(held_names_and_rate);
     return tl_done();
 }

@@ -11,7 +11,7 @@ typedef struct {
     int hat[2];
     bool dropped;
 } HidKeys;
-typedef struct { int code, mods; bool gamepad; } HidPress;
+typedef struct { int code, mods; bool gamepad, up; } HidPress;  // up: a release
 HidKind hidkeys_kind(const uint8_t keys[HID_KEY_BYTES], const uint8_t axes[HID_ABS_BYTES]);
 // Amazon's virtual input proxy (kindle-input-pt, firmware 5.20+) advertises every key code and
 // delivers no presses of its own: never a keyboard, a controller or the power key.
@@ -32,5 +32,12 @@ void hidkeys_name(char *out, size_t cap, const char *raw);
 bool hidkeys_due(uint32_t *last, uint32_t now, uint32_t gap);
 // Synchronize after attachment, native PIN return or SYN_DROPPED. Held controls do not fire.
 void hidkeys_sync(HidKeys *state, const uint8_t held[HID_KEY_BYTES], int hat_x, int hat_y);
-// Linux evdev event numbers. True only for a new actionable press; repeats/releases are ignored.
-bool hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress *press);
+// The same after a lost frame, or with native PIN input up (held NULL: nothing held now): the keys,
+// buttons and hat directions held before and not now are released into ups, at most cap of them;
+// how many. One still held is released later, as any is.
+int hidkeys_resync(HidKeys *state, HidKind kind, const uint8_t held[HID_KEY_BYTES], int hat_x, int hat_y,
+                   HidPress *ups, int cap);
+// Linux evdev event numbers: what one event does, in out, 0 to 2 of them. A new actionable press,
+// or the release of a key or button held (a hat back to its middle releases its direction; turned
+// straight across it releases it, then presses the other). Repeats, modifiers and power do nothing.
+int hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress out[2]);

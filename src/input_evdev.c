@@ -742,6 +742,16 @@ static KeyDev g_keys[KEY_DEVS];
 static bool g_keys_enabled, g_keys_init;
 static uint32_t g_keys_scan;
 static KeyDev *g_key_read;
+static void key_push(const HidPress *p) {
+    q_push((InEvent){.type = p->up ? IN_KEY_UP : IN_KEY, .value = p->code, .key_mods = (unsigned)p->mods,
+                     .gamepad = p->gamepad, .t_ms = now_ms()});
+}
+// A resync's releases: what was held before and is not now (a hold ends with them, app.c).
+static void key_ups(KeyDev *k, const uint8_t *held, int hat_x, int hat_y) {
+    HidPress ups[16];
+    int n = hidkeys_resync(&k->keys, k->kind, held, hat_x, hat_y, ups, 16);
+    for (int i = 0; i < n; i++) key_push(&ups[i]);
+}
 static bool key_resync(KeyDev *k) {
     uint8_t keys[HID_KEY_BYTES] = {0};
     if (ioctl(k->fd, EVIOCGKEY(sizeof keys), keys) < 0) return false;
@@ -754,7 +764,7 @@ static bool key_resync(KeyDev *k) {
             k->hatmask |= 1u << axis;
         }
     }
-    hidkeys_sync(&k->keys, keys, hats[0], hats[1]);
+    key_ups(k, keys, hats[0], hats[1]);
     return true;
 }
 // Linux's native bitmap byte layout matches the decoder's on our little-endian armhf target.
@@ -839,17 +849,16 @@ int input_hids(InputHid *out, int cap) {
 static void handle_key(const struct input_event *ev) {
     KeyDev *k = g_key_read;
     if (k->fd < 0) return;  // went away earlier in this read (key_detach)
-    if (!g_input_grabbed) { hidkeys_sync(&k->keys, NULL, 0, 0); return; }
+    if (!g_input_grabbed) { key_ups(k, NULL, 0, 0); return; }
     if (k->keys.dropped) {
         if (ev->type == EV_SYN && ev->code == SYN_REPORT && !key_resync(k)) key_detach(k);
         return;
     }
     if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y) &&
         !(k->hatmask & (1u << (ev->code - ABS_HAT0X)))) return;
-    HidPress press;
-    if (hidkeys_event(&k->keys, k->kind, ev->type, ev->code, ev->value, &press))
-        q_push((InEvent){.type = IN_KEY, .value = press.code, .key_mods = (unsigned)press.mods,
-                         .gamepad = press.gamepad, .t_ms = now_ms()});
+    HidPress out[2];
+    int n = hidkeys_event(&k->keys, k->kind, ev->type, ev->code, ev->value, out);
+    for (int i = 0; i < n; i++) key_push(&out[i]);
 }
 
 int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCalib *touch) {
@@ -1135,7 +1144,7 @@ bool input_set_grab(bool grab) {
     bool ok = true;
     for (int i = 0; g_keys_init && i < KEY_DEVS; i++) if (g_keys[i].fd >= 0) {
         drain(g_keys[i].fd, discard_input);
-        hidkeys_sync(&g_keys[i].keys, NULL, 0, 0);
+        key_ups(&g_keys[i], NULL, 0, 0);  // (what was held is let go: a hold ends)
         if (grab && !key_resync(&g_keys[i])) key_detach(&g_keys[i]);
     }
     // Forget touches that were used to type the PIN, including the final finger lift.

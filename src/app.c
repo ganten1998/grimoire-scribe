@@ -358,6 +358,7 @@ void app_event(App *a, const InEvent *ev) {
         }
         return;
     }
+    if (ev->type == IN_KEY_UP) return;  // (no action waits for a release)
     if (ev->type == IN_HID_ATTACH || ev->type == IN_HID_DETACH) {
         hid_changed(a, ev);
         return;
