@@ -429,8 +429,16 @@ static bool display_probe(const char *key, char *out, size_t cap) {
 }
 
 // "power.pokes": how many times the app told the simulated power service someone is here
-// (sys_activity), which it does at most once a minute.
+// (sys_activity), which it does at most once a minute. "pump.calls": how many times long work called
+// the work pump (work_pump, common.h) since this key was last checked, so a check counts what the
+// lines before it did.
+static int g_pumps;
 static bool power_probe(const char *key, char *out, size_t cap) {
+    if (!strcmp(key, "pump.calls")) {
+        snprintf(out, cap, "%d", g_pumps);
+        g_pumps = 0;
+        return true;
+    }
     if (strcmp(key, "power.pokes")) return false;
     snprintf(out, cap, "%d", g_pokes);
     return true;
@@ -787,7 +795,12 @@ static bool g_mouse_down, g_finger_down;
 static bool g_power_held;  // P held long enough: IN_POWER_HELD sent
 #endif
 
+// The work pump (common.h): the simulator has no input devices to read during long work, so its hook
+// only counts the calls, for the runner's "pump.calls" (the app's own long paths reach it).
+static void sim_pump(void) { g_pumps++; }
+
 int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
+    work_pump_set(sim_pump);
     input_default_calib(&g_pen, &g_touch);
     if (pen) g_pen = *pen;
     if (touch) g_touch = *touch;
@@ -805,6 +818,7 @@ int input_open(int w, int h, const InputCalib *pen, const InputCalib *touch) {
 }
 
 void input_close(void) {
+    work_pump_set(NULL);
     expect_unrun();
     if (g_script) fclose(g_script);
     g_script = NULL;

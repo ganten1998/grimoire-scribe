@@ -1142,6 +1142,9 @@ static void handle_key(const struct input_event *ev) {
     for (int i = 0; i < n; i++) key_push(&out[i]);
 }
 
+static uint32_t g_pens_read_ms;  // when the pens were last looked at, by input_poll or input_pump
+static void input_pump(void);
+
 // Stamps fd's events in now_ms()'s clock, for this reader only (the pen service and the Kindle's
 // other readers keep theirs); false if the driver refuses. Called right after open(), before any
 // other ioctl: switched once an event is queued (a hovering pen sends one every 3 ms), the reader's
@@ -1367,10 +1370,70 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
     if (g_initial_grab_failed) qlog("input: another app holds an input device; refusing to open an unresponsive UI");
-    return !g_initial_grab_failed && (g_pen.fd >= 0 || g_touch.fd >= 0) ? 0 : -1;
+    bool ok = !g_initial_grab_failed && (g_pen.fd >= 0 || g_touch.fd >= 0);
+    g_pens_read_ms = now_ms();
+    if (ok) work_pump_set(input_pump);
+    return ok ? 0 : -1;
 }
 
 static void discard_input(const struct input_event *ev);
+
+// Reads what the two pens hold, the raw digitizer first so a pen frame finds its sample: wacom and
+// pen say which a poll found readable. input_poll's step, and input_pump's.
+static void read_pens(bool wacom, bool pen) {
+    if (wacom) {
+        uint32_t now = now_ms();
+        g_wacom_read_gap = now - g_wacom_read_ms;
+        g_wacom_read_ms = now;
+        g_wacom_first_read = !g_wacom_read;
+        g_wacom_read = true;
+        drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
+        if (g_wacom_resync) wacom_resync();
+    }
+    if (pen) {
+        if (g_input_grabbed) drain_pen();
+        else drain(g_pen.fd, discard_input);
+    }
+}
+
+// Side button presses/releases, from whichever pen device reports them.
+static void side_check(void) {
+    bool side = P.side || W.side;
+    if (side == g_side_reported) return;
+    g_side_reported = side;
+    InEvent b = {0};
+    b.type = IN_PEN_BUTTON;
+    b.side_button = side;
+    b.nx = norm(P.x, &g_pen.ax);
+    b.ny = norm(P.y, &g_pen.ay);
+    map(&g_pen_cal, b.nx, b.ny, &b.x, &b.y);
+    b.t_ms = now_ms();
+    qlog("input: pen button %s", side ? "down" : "up");
+    q_push(b);
+}
+
+// The work pump (common.h), set by input_open: long work on the main thread calls it every few
+// milliseconds, and at most every PUMP_MS it reads the two pens as input_poll does, without waiting.
+// The raw digitizer's buffer overflows after about 100 ms of hover (its frames are 5-7 events), the
+// scaled pen's after 120-175 ms of writing, and a page's render took 1.2 s. What it reads goes into
+// the queue behind what is there, in order, for the main loop. Keys, touch, power and orientation
+// wait for input_poll: they keep their own order, and nothing of theirs is lost meanwhile.
+#define PUMP_MS 8
+static void input_pump(void) {
+    static bool in;
+    uint32_t now = now_ms();
+    if (in || now - g_pens_read_ms < PUMP_MS) return;
+    in = true;
+    g_pens_read_ms = now;
+    struct pollfd pf[2];
+    int n = 0, iwac = -1, ipen = -1;
+    if (g_wacom.fd >= 0) iwac = n, pf[n++] = (struct pollfd){g_wacom.fd, POLLIN, 0};
+    if (g_pen.fd >= 0) ipen = n, pf[n++] = (struct pollfd){g_pen.fd, POLLIN, 0};
+    if (n && poll(pf, (nfds_t)n, 0) > 0)
+        read_pens(iwac >= 0 && (pf[iwac].revents & POLLIN), ipen >= 0 && (pf[ipen].revents & POLLIN));
+    side_check();
+    in = false;
+}
 
 int input_poll(InEvent *ev, int timeout_ms) {
     if (g_quit) {
@@ -1378,6 +1441,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         g_quit = 0;
         return 1;
     }
+    // A queue the main loop takes its time over (each batch runs at most 8 ms, but one event can take
+    // longer) still has the pens read every PUMP_MS.
+    input_pump();
     if (q_pop(ev)) return 1;
     // Never while the pen or a finger is in use: nothing reads the pen while the scan runs.
     bool busy = P.prox || P.touching || T.active || g_pinching;
@@ -1398,21 +1464,9 @@ int input_poll(InEvent *ev, int timeout_ms) {
         if (g_keys_enabled && g_keys[i].fd >= 0) ikey[i] = n, pf[n++] = (struct pollfd){g_keys[i].fd, POLLIN, 0};
     }
     int r = poll(pf, (nfds_t)n, timeout_ms);
+    g_pens_read_ms = now_ms();
     if (r > 0) {
-        // Raw digitizer first, so a pen frame uses this sample's pressure.
-        if (iwac >= 0 && (pf[iwac].revents & POLLIN)) {
-            uint32_t now = now_ms();
-            g_wacom_read_gap = now - g_wacom_read_ms;
-            g_wacom_read_ms = now;
-            g_wacom_first_read = !g_wacom_read;
-            g_wacom_read = true;
-            drain(g_wacom.fd, g_input_grabbed ? handle_wacom : discard_input);
-            if (g_wacom_resync) wacom_resync();
-        }
-        if (ipen >= 0 && (pf[ipen].revents & POLLIN)) {
-            if (g_input_grabbed) drain_pen();
-            else drain(g_pen.fd, discard_input);
-        }
+        read_pens(iwac >= 0 && (pf[iwac].revents & POLLIN), ipen >= 0 && (pf[ipen].revents & POLLIN));
         if (itouch >= 0 && (pf[itouch].revents & POLLIN)) drain(g_touch.fd, g_input_grabbed ? handle_touch : discard_input);
         if (ipow >= 0 && (pf[ipow].revents & POLLIN)) handle_power_fd();
         if (iori >= 0 && (pf[iori].revents & POLLIN)) handle_orient_fd();
@@ -1435,20 +1489,7 @@ int input_poll(InEvent *ev, int timeout_ms) {
         g_quit = 0;
         return 1;
     }
-    // Side button presses/releases, from whichever pen device reports them.
-    bool side = P.side || W.side;
-    if (side != g_side_reported) {
-        g_side_reported = side;
-        InEvent b = {0};
-        b.type = IN_PEN_BUTTON;
-        b.side_button = side;
-        b.nx = norm(P.x, &g_pen.ax);
-        b.ny = norm(P.y, &g_pen.ay);
-        map(&g_pen_cal, b.nx, b.ny, &b.x, &b.y);
-        b.t_ms = now_ms();
-        qlog("input: pen button %s", side ? "down" : "up");
-        q_push(b);
-    }
+    side_check();
     return q_pop(ev) ? 1 : 0;
 }
 
@@ -1511,6 +1552,7 @@ bool input_set_grab(bool grab) {
 }
 
 void input_close(void) {
+    work_pump_set(NULL);
     input_shortcuts_enable(false);
     if (g_pen.fd >= 0) {
         ioctl(g_pen.fd, EVIOCGRAB, 0);

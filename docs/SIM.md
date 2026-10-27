@@ -162,6 +162,7 @@ shows what the app holds.
 | `running` | `1` while the app runs, `0` for a check after it quit (the runner answers this one) |
 | `watching` | `1` while input_poll also watches the share server's socket, else `0` (the runner answers this one too) |
 | `power.pokes` | how many times the app told the power service someone is here: at most once a minute, for pen, touch, or a key while shortcuts are on (the runner answers this one too) |
+| `pump.calls` | how many times long work called the work pump (`work_pump`, common.h: on the Kindle it reads the pens meanwhile) since this key was last checked, so `expect pump.calls not -1` only starts the count (the runner answers this one too) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
 | `toast` | the toast showing, empty if none |
 | `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |

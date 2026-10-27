@@ -555,7 +555,9 @@ static Rect page_to_screen(App *a, Rect p) {
 
 static bool zoomed(App *a) { return fabsf(S->zoom - S->zoom_default) > 0.01f || S->ox != 0.f || S->oy > 0.5f; }
 
-// Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page.
+// Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page. The
+// whole screen of it (a pinch, a zoomed page) is about 100 ms on the Kindle: the pens are read every
+// 64 rows (work_pump, common.h).
 static void blit_view(App *a, Rect r) {
     const Canvas *pc = &S->page_canvas;
     static int ix[8192];
@@ -586,6 +588,7 @@ static void blit_view(App *a, Rect r) {
             unsigned top = r0[x0] * (255 - w) + r0[x1] * w, bot = r1[x0] * (255 - w) + r1[x1] * w;
             dst[r.x + i] = (uint8_t)((top * (255 - wy) + bot * wy + 32512) / 65025);
         }
+        if (((y - r.y) & 63) == 63) work_pump();
     }
 }
 

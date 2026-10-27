@@ -597,6 +597,8 @@ void display_set_invert(bool on) {
     g_invert = on;
 }
 
+// A full-screen copy takes 45-100 ms on the Kindle (fbpack_row, 20-40 ns a pixel): the pens are read
+// every 64 rows of it (work_pump, common.h), which a stroke's small frames never reach.
 static void copy_rect(const Canvas *s, Rect r) {
     size_t stride = g_st.scanline_stride;
     size_t px_bytes = g_st.bpp == 8 ? 1 : 4;
@@ -616,6 +618,7 @@ static void copy_rect(const Canvas *s, Rect r) {
         bool flip_px = g_st.bpp == 8 ? g_st.inverted_grayscale != g_invert : g_invert;
         fbpack_row(g_fb + off, step, previous, previous_step, src, r.w, r.x, y, (int)g_st.bpp,
                     flip_px, g_live, g_frame_known);
+        if (((y - r.y) & 63) == 63) work_pump();
     }
 }
 
@@ -657,6 +660,10 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
             g_pen_busy_noted = true;
         }
     }
+    // The pen samples this frame draws are the ones emitted until now: taken before the copy, since
+    // the copy pumps (copy_rect), and what it reads is drawn by the next frame.
+    uint64_t newest = 0, oldest = 0, raw = 0;
+    bool timed = g_perf_enabled && input_ink_times(&newest, &oldest, &raw);
     g_live = mode == REFRESH_FAST;
     uint64_t t0 = g_perf_enabled ? clock_us() : 0;
     copy_rect(screen, r);
@@ -683,15 +690,10 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
         if (mode != REFRESH_FAST) g_gray_last_ms = now_ms();
     }
     bool ink = live_ink_frame(&g_ink, mode, now_ms());
-    if (mode != REFRESH_FAST && g_perf_enabled) {
-        // A present with no ink takes the pen samples emitted since, untimed: a stroke's last ones
-        // that never got a fast frame would otherwise wait to be the next stroke's "oldest".
-        uint64_t newest, oldest, raw;
-        input_ink_times(&newest, &oldest, &raw);
-    }
+    // (A present with no ink took the pen samples emitted before it all the same, untimed: a stroke's
+    // last ones that never got a fast frame would otherwise wait to be the next stroke's "oldest".)
     if (mode == REFRESH_FAST && g_perf_enabled) {
-        uint64_t sent_us = clock_us(), newest, oldest, raw;
-        bool timed = input_ink_times(&newest, &oldest, &raw);  // drained by every fast frame
+        uint64_t sent_us = clock_us();
         if (ink && ret >= 0) {
             int kind = !g_pen_mode ? INK_DU : padded ? INK_PEN_PADDED : INK_PEN_DIRECT;
             if (timed) {
