@@ -1,0 +1,123 @@
+NAT  0 =<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+NAT  1 >=><<<<<<<<<<>>>>>>><<<<<<<<<<<<<<><<<>>>>><<<<
+NAT  2 ><=<<<<<<<<<<>>>>>>><<<<<<<<<<<<<<><<<>>>>><<<<
+NAT  3 >>>=>>>>>>>>>>>>>>>><<<<<<<<<<<<<<>>>>>>>>>>>>>
+NAT  4 >>><=>>>>>>>>>>>>>>><<<<<<<<<<<<<<>>>>>>>>>>>>>
+NAT  5 >>><<=>><<<<<>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT  6 >>><<<=><<<<<>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT  7 >>><<<<=<<<<<>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT  8 >>><<>>>=<>>>>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT  9 >>><<>>>>=>>>>>>>>>><<<<<<<<<<<<<<>>><>>>>><>><
+NAT 10 >>><<>>><<=>>>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT 11 >>><<>>><<<=>>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT 12 >>><<>>><<<<=>>>>>>><<<<<<<<<<<<<<>>><>>>>><><<
+NAT 13 ><<<<<<<<<<<<=>>>><<<<<<<<<<<<<<<<><<<<<><<<<<<
+NAT 14 ><<<<<<<<<<<<<=>>><<<<<<<<<<<<<<<<><<<<<><<<<<<
+NAT 15 ><<<<<<<<<<<<<<=>><<<<<<<<<<<<<<<<><<<<<><<<<<<
+NAT 16 ><<<<<<<<<<<<<<<=<<<<<<<<<<<<<<<<<><<<<<<<<<<<<
+NAT 17 ><<<<<<<<<<<<<<<>=<<<<<<<<<<<<<<<<><<<<<<<<<<<<
+NAT 18 ><<<<<<<<<<<<>>>>>=<<<<<<<<<<<<<<<><<<<<>>><<<<
+NAT 19 ><<<<<<<<<<<<>>>>>>=<<<<<<<<<<<<<<><<<<<>>><<<<
+NAT 20 >>>>>>>>>>>>>>>>>>>>=<<<>>>>>>><<<>>>>>>>>>>>>>
+NAT 21 >>>>>>>>>>>>>>>>>>>>>=<<>>>>>>><<<>>>>>>>>>>>>>
+NAT 22 >>>>>>>>>>>>>>>>>>>>>>=<>>>>>>><<<>>>>>>>>>>>>>
+NAT 23 >>>>>>>>>>>>>>>>>>>>>>>=>>>>>>><<<>>>>>>>>>>>>>
+NAT 24 >>>>>>>>>>>>>>>>>>>><<<<=<<><<<<<<>>>>>>>>>>>>>
+NAT 25 >>>>>>>>>>>>>>>>>>>><<<<>=>>><<<<<>>>>>>>>>>>>>
+NAT 26 >>>>>>>>>>>>>>>>>>>><<<<><=><<<<<<>>>>>>>>>>>>>
+NAT 27 >>>>>>>>>>>>>>>>>>>><<<<<<<=<<<<<<>>>>>>>>>>>>>
+NAT 28 >>>>>>>>>>>>>>>>>>>><<<<><>>=<<<<<>>>>>>>>>>>>>
+NAT 29 >>>>>>>>>>>>>>>>>>>><<<<>>>>>=<<<<>>>>>>>>>>>>>
+NAT 30 >>>>>>>>>>>>>>>>>>>><<<<>>>>>>=<<<>>>>>>>>>>>>>
+NAT 31 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>=><>>>>>>>>>>>>>
+NAT 32 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><=<>>>>>>>>>>>>>
+NAT 33 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>=>>>>>>>>>>>>>
+NAT 34 ><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<=<<<<<<<<<<<<
+NAT 35 >>><<<<<<<<<<>>>>>>><<<<<<<<<<<<<<>=><>>>>><<<<
+NAT 36 >>><<<<<<<<<<>>>>>>><<<<<<<<<<<<<<><=<>>>>><<<<
+NAT 37 >>><<>>>>>>>>>>>>>>><<<<<<<<<<<<<<>>>=>>>>>>>>>
+NAT 38 ><<<<<<<<<<<<>>>>>>><<<<<<<<<<<<<<><<<=<>>><<<<
+NAT 39 ><<<<<<<<<<<<>>>>>>><<<<<<<<<<<<<<><<<>=>>><<<<
+NAT 40 ><<<<<<<<<<<<<<<>><<<<<<<<<<<<<<<<><<<<<=<<<<<<
+NAT 41 ><<<<<<<<<<<<>>>>><<<<<<<<<<<<<<<<><<<<<>=<<<<<
+NAT 42 ><<<<<<<<<<<<>>>>><<<<<<<<<<<<<<<<><<<<<>>=<<<<
+NAT 43 >>><<>>>>>>>>>>>>>>><<<<<<<<<<<<<<>>><>>>>>=>><
+NAT 44 >>><<<<<<<<<<>>>>>>><<<<<<<<<<<<<<>>><>>>>><=<<
+NAT 45 >>><<>>>><>>>>>>>>>><<<<<<<<<<<<<<>>><>>>>><>=<
+NAT 46 >>><<>>>>>>>>>>>>>>><<<<<<<<<<<<<<>>><>>>>>>>>=
+PICNAME [a.png] 1
+PICNAME [a.PNG] 1
+PICNAME [a.jpg] 1
+PICNAME [a.JPEG] 1
+PICNAME [a.jpeg] 1
+PICNAME [a.pgm] 1
+PICNAME [a.Pgm] 1
+PICNAME [.a.png] 0
+PICNAME [a] 0
+PICNAME [a.gif] 0
+PICNAME [a.png.txt] 0
+PICNAME [.png] 0
+PICNAME [png] 0
+PICNAME [a.b.jpeg] 1
+PICNAME [x.tiff] 0
+PICNAME [a.jpg ] 0
+PICNAME [A.JpG] 1
+PICNAME [dir.png/] 0
+PICNAME [a.pn] 0
+PICNAME [a.pngg] 0
+PICNAME [] 0
+FNAME [/x/y/Name] ef49aec68fd1dc66
+FNAME [Name] ef49aec68fd1dc66
+FNAME [/x/y/] cbf29ce484222325
+FNAME [/] cbf29ce484222325
+FNAME [] cbf29ce484222325
+FNAME [/a/b c/é] 0ac21707b7181e01
+FNAME [/mnt/us/grimoire/import/Score] 7d684b6257284e55
+FNV cbf29ce484222325 e71fa2190541574b
+COPYNAME 94
+COPYNAME [short]
+COPYNAME 95
+PREVIEW [t-10.png] 1 /templates/.cache/67e385a76bdf035b.pgm /templates/.cache/67e385a76bdf035b.key /templates/.cache/67e385a76bdf035b.bad of=1 1
+PREVIEW [T-3.JPG] 1 /templates/.cache/7a8b1de70e75511f.pgm /templates/.cache/7a8b1de70e75511f.key /templates/.cache/7a8b1de70e75511f.bad of=1 1
+PREVIEW [b.jpeg] 1 /templates/.cache/cf340f5ad23b470a.pgm /templates/.cache/cf340f5ad23b470a.key /templates/.cache/cf340f5ad23b470a.bad of=1 1
+PREVIEW [café.png] 1 /templates/.cache/0e98afa78ef5c571.pgm /templates/.cache/0e98afa78ef5c571.key /templates/.cache/0e98afa78ef5c571.bad of=1 1
+PREVIEW [a b.pgm] 1 /templates/.cache/b8e3a2cfd67ff959.pgm /templates/.cache/b8e3a2cfd67ff959.key /templates/.cache/b8e3a2cfd67ff959.bad of=1 1
+PREVIEW [x] 1 /templates/.cache/588c6e0a85958222.pgm /templates/.cache/588c6e0a85958222.key /templates/.cache/588c6e0a85958222.bad of=1 1
+PREVIEW missing 0
+PREVIEW noslash 0
+PREVIEW long 0
+KEY 0 rc=0 hash=00000000000000ff w=600 h=800
+KEY 1 rc=0 hash=00000000000000ff w=1 h=2
+KEY 2 rc=0 hash=00000000000000ff w=-5 h=7
+KEY 3 rc=0 hash=000000000000001f w=3 h=4
+KEY 4 rc=0 hash=123456789abcdef0 w=1 h=5
+KEY 5 rc=-1
+KEY 6 rc=-1
+KEY 7 rc=-1
+KEY 8 rc=0 hash=00000000000000ff w=1 h=2
+KEY 9 rc=0 hash=00000000000000ff w=1 h=2
+KEY 10 rc=0 hash=0000000000000001 w=-1 h=1
+KEY 11 rc=0 hash=ffffffffffffffff w=1 h=1
+KEY 12 rc=0 hash=000000000000000a w=1 h=1
+KEY 13 rc=0 hash=ffffffffffffffff w=1 h=1
+KEY 14 rc=0 hash=0000000000000abc w=0 h=0
+KEY 15 rc=0 hash=0000000000000abc w=7 h=-8
+KEY 16 rc=0 hash=0000000000000abc w=1 h=2
+KEY 17 rc=0 hash=deadbeefdeadbeef w=1280 h=1707
+KEY 18 rc=0 hash=0000000000000000 w=0 h=0
+KEY 19 rc=0 hash=0000000000000001 w=2 h=3
+KEY 20 rc=-1
+KEY 21 rc=0 hash=00000000000000ff w=600 h=800
+KEY 22 rc=-1
+KEY nofile rc=-1
+KEY noslash rc=-1
+LIST pics rc=0
+ p0.png p1.png p2.png p3.png p4.png p5.png
+PICSHASH 5cde4188bdb1104a
+LIST dirs rc=0
+ d1 d2.png
+LIST max rc=0
+LIST max n=3
+FOLDERHASH 5cde4188bdb1104a
+LIST missing rc=-1
+FOLDERHASH missing 0000000000000000
