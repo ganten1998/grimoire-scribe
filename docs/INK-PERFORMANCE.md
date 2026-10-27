@@ -155,7 +155,8 @@ Plain DU frames that overlap ink still on the panel wait in the driver's queue: 
 the inverted cover queued up to 302 ms, and note heads on the music page half the sampled frames
 over 114 ms. Pen-mode frames never queued. Direct pen-mode ink landed in the right place at fb
 rotate 1. The pen service's relay from the raw digitizer took p50 0.1 ms, so reading the raw
-digitizer directly would gain nothing.
+digitizer directly would gain nothing. For latency the relay is fine; its one risk is headroom
+while Grimoire is not reading (Reader stalls, below).
 
 So pen mode is on by default on grayscale panels, in the direct form. The `pen-mode` flag's
 first word overrides it: `off` for plain DU, `padded` to pad small updates to at least 6400
@@ -171,6 +172,52 @@ finds the panel busy keeps plain DU. In the test 7 of 24 pen strokes did: 2 righ
 of plain DU strokes, the others most likely because the grayscale settle, then sent 450 ms after
 a stroke, was still on the panel when the next word began. The settle now waits until the pen
 leaves the page (150 ms gone), or 1.5 s with it still near, so writing does not meet it.
+
+## Reader stalls
+
+The kernel keeps each reader's events of an input device in a buffer of its own. Grimoire's for
+the scaled pen (stylus-custom, event6) holds 128 events on the Scribe 2's Linux 4.9, and the pen
+service's frames carry only X and Y with their SYN_REPORT (2 or 3 events; an axis that did not
+change is left out), so it holds 42 to 63 frames: 120 to 175 ms of writing. The raw digitizer's
+frames are bigger, so its buffer covers less. When Grimoire's main thread is held up longer than
+that while the pen writes, the kernel throws away everything unread and queues SYN_DROPPED and the
+newest event, and that stretch of the stroke is gone.
+
+On 2026-10-26 the owner's pages skipped every 5 s of unbroken writing with shortcuts on. The scan
+for keyboards and controllers that come ran every 5 s on the main thread, and it opened and
+closed every `/dev/input/event*` node not already a keyboard: Grimoire's own pen, digitizer,
+touch, power key and orientation sensor too. On Linux 4.9 every close of an evdev node waits out
+an RCU grace period (22 to 55 ms here, 58 to 96 ms for a node's last reader), so one scan held the
+thread 320 to 370 ms and lost 220 to 270 ms of pen path. Since 2.0.0-beta.5:
+
+- The scan never runs while the pen is near or touching, a finger is down, or until the pen has
+  been gone 1.5 s; one put off runs at the first idle poll after.
+- The scan `stat()`s each node and opens only one that may be a keyboard or controller that came:
+  never a node Grimoire holds (by device number), nor one already found to be none (kept by path,
+  device number, inode and change time, so a node made again is looked at again). input_open
+  tells it which of the nodes it looked at are none. On the Scribe 2 a scan now opens nothing.
+- A drop no longer draws a jump and a spur. Grimoire used to ask the device for the pen's present
+  position (the end of what was left in the queue) and report it first, then replay the 40 or so
+  older frames still queued, all stamped with one time and one pressure: a jump forward, then a
+  line traced back. Now the rest of the queue is read first, reporting nothing; the device is
+  asked only then (EVIOCGKEY takes queued button events out of the queue), and only for what the
+  tail never carries; and the tail's frames go out in order (pensync.c). The first is joined to
+  the last good point by a straight line (the smoothing starts afresh there), and a pen found
+  lifted in the lost stretch lifts at the last good point.
+- Stroke samples carry the kernel's time of their frame (both pens' readers are switched to
+  CLOCK_MONOTONIC as they are opened, before anything is read: switched later, the queue would
+  be thrown away), so a
+  saved page keeps the samples' real spacing, and a lost stretch shows as one long step in time.
+  UI timing keeps the time each event was read.
+
+What tells a stall in grimoire.log: `input: key scan took N ms` (a scan over 20 ms, with how many
+nodes it opened and the slowest), `main: <phase> took N ms` (any part of the main loop over 50 ms
+beyond its own wait), and each drop's line: the time since the pen was read before, the tail's
+frames and their kernel times (spaced about 3 ms apart and ending just now: Grimoire was not
+reading; bunched at one time: the pen service sent a burst), and where the device and the tail
+say the pen is. The raw digitizer's drops have a line of their own. A dedicated reader thread
+would take every other stall out of the pen's way too; it waits until a drop that is not a scan
+turns up.
 
 ## Input smoothing
 
@@ -197,7 +244,9 @@ copy and refresh-submission timing, and the latency of live ink by how each fram
 
 - pen->submit: from the kernel time of the newest pen sample in the frame to the return of the
   refresh ioctl (both pens' events are switched to CLOCK_MONOTONIC for this reader only);
-- oldest pen->submit: the same for the frame's oldest sample;
+- oldest pen->submit: the same for the frame's oldest sample (of its stroke: a stroke's last
+  samples that got no fast frame of their own are dropped at the next present without ink, or
+  as the next stroke begins, so they are never counted against it);
 - raw->submit and the relay hop: from the raw digitizer's sample (WacomDigitizer), which the
   Kindle's pen service relays as the scaled pen Grimoire reads, matched to it by position;
 - for one frame at a time, followed by a second thread: submit->start (the driver took it to

@@ -66,7 +66,9 @@ paths, not key presses or device names. The visible last-input display belongs t
 unlocked Grimoire session.
 
 Grimoire watches up to four keyboards and controllers that the Kindle shows as
-`/dev/input/event*`, checks for new ones every five seconds, and never grabs them. A short toast
+`/dev/input/event*`, checks for new ones every five seconds (never while the pen is near the
+screen or a finger is on it: one that connects while you write is noticed once the pen has been
+away 1.5 seconds), and never grabs them. A short toast
 says when one connects or disconnects, at most once each way in 30 seconds, so a link that keeps
 dropping does not flash the screen. When another app holds a controller exclusively (a button
 mapper), Grimoire cannot get its presses: the toast and the Controller sheet say so. Analog sticks

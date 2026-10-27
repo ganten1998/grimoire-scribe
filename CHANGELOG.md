@@ -2,6 +2,16 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+- **No more skips while writing with shortcuts or a controller on**: with Settings > Controller's
+  shortcuts on, every 5 seconds of unbroken writing a line could skip: it jumped ahead, then drew
+  a short piece backwards, and a stretch of it was lost. Grimoire's check for keyboards and
+  controllers that connect held everything up for about a third of a second, long enough for the
+  Kindle to throw pen movement away. The check now waits until the pen has left the screen, and
+  no longer opens the pen, touch and other devices Grimoire already uses, so it takes next to no
+  time. If the Kindle ever does drop pen movement, the line now goes on straight from where it was,
+  without the backwards spur, and saved pages keep each point's real time. grimoire.log says how
+  long any hold-up took.
+
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:
   Grimoire closes, KPM installs it with its progress on the screen, and Grimoire starts again. A
