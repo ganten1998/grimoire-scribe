@@ -242,9 +242,11 @@ fn catalog_find<'a>(c: &Catalog<'a>, ctx: Option<&str>, id: &str) -> Option<&'a 
 // catalog is read from <dir>/<code>.mo instead of the binary, once, and kept for the run. None
 // when the variable is not set (the embedded catalogs, as on the Kindle) or that file is missing.
 #[cfg(feature = "sim")]
+type KRead = (String, Option<&'static [u8]>);
+#[cfg(feature = "sim")]
 thread_local! {
     // The C's k_read[8]: the code, and the file's bytes (kept for the run, so leaked) if it was there.
-    static K_READ: RefCell<Vec<(String, Option<&'static [u8]>)>> = const { RefCell::new(Vec::new()) };
+    static K_READ: RefCell<Vec<KRead>> = const { RefCell::new(Vec::new()) };
 }
 #[cfg(feature = "sim")]
 fn sim_catalog(code: &str) -> Option<&'static [u8]> {

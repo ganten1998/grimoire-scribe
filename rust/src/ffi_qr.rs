@@ -11,7 +11,7 @@ pub const qrcodegen_Mask_AUTO: c_int = -1;
 
 /// qrcodegen_BUFFER_LEN_FOR_VERSION(n): the bytes a symbol of version n takes.
 pub const fn qrcodegen_buffer_len_for_version(n: usize) -> usize {
-    ((n * 4 + 17) * (n * 4 + 17) + 7) / 8 + 1
+    ((n * 4 + 17) * (n * 4 + 17)).div_ceil(8) + 1
 }
 
 extern "C" {

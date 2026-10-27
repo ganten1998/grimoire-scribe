@@ -307,10 +307,7 @@ fn c_strtol(s: &[u8]) -> (i64, usize) {
     let lmin = libc::c_long::MIN as i64;
     let mut mag: u64 = 0;
     for &d in &s[ds..end] {
-        mag = match mag.checked_mul(10).and_then(|x| x.checked_add((d - b'0') as u64)) {
-            Some(x) => x,
-            None => u64::MAX,
-        };
+        mag = mag.checked_mul(10).and_then(|x| x.checked_add((d - b'0') as u64)).unwrap_or(u64::MAX);
     }
     let v = if neg {
         if mag > lmax as u64 + 1 {
@@ -497,10 +494,7 @@ fn c_strtoll(s: &[u8]) -> (i64, usize) {
     }
     let mut mag: u64 = 0;
     for &d in &s[ds..end] {
-        mag = match mag.checked_mul(10).and_then(|x| x.checked_add((d - b'0') as u64)) {
-            Some(x) => x,
-            None => u64::MAX,
-        };
+        mag = mag.checked_mul(10).and_then(|x| x.checked_add((d - b'0') as u64)).unwrap_or(u64::MAX);
     }
     let v = if neg {
         if mag > i64::MAX as u64 + 1 {
@@ -2219,13 +2213,15 @@ fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool) -> i32 {
             s.ext.copy_from_slice(e);
         }
         for _ in 0..np {
-            let mut q = PenSample::default();
-            q.x = clampf(r_f32(&mut r), -10000.0, 30000.0);
-            q.y = clampf(r_f32(&mut r), -10000.0, 30000.0);
-            q.pressure = r_u16(&mut r) as f32 / 65535.0;
-            q.tilt_x = (r_u16(&mut r) as i16) as f32 / 100.0;
-            q.tilt_y = (r_u16(&mut r) as i16) as f32 / 100.0;
-            q.t_ms = r_u32(&mut r);
+            // (the fields in the file's order: a struct expression reads them in the order written)
+            let q = PenSample {
+                x: clampf(r_f32(&mut r), -10000.0, 30000.0),
+                y: clampf(r_f32(&mut r), -10000.0, 30000.0),
+                pressure: r_u16(&mut r) as f32 / 65535.0,
+                tilt_x: (r_u16(&mut r) as i16) as f32 / 100.0,
+                tilt_y: (r_u16(&mut r) as i16) as f32 / 100.0,
+                t_ms: r_u32(&mut r),
+            };
             stroke_append(&mut s, &q, dpi);
         }
         page_add(&mut p, s);

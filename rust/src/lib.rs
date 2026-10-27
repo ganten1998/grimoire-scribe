@@ -10,10 +10,12 @@
 //! functions reach the rest through display.rs, input.rs and light.rs, as display.h, input.h and
 //! light.h are implemented by one platform file per build in the C.
 
-// The skeleton stage: bodies are todo!(), so arguments and helpers are unused until each module is
-// translated. These allows go when the port is done (PORTING.md, Finishing).
-#![allow(unused_variables, unused_imports, dead_code, unused_mut, unreachable_code)]
-#![allow(clippy::too_many_arguments, clippy::needless_return)]
+// Three of clippy's lints would change what the port keeps: functions take the C's arguments,
+// however many (the signatures are the contract between the modules, PORTING.md); loops over an
+// index stay loops over the index the C writes; and a cast to a libc type's width stays where that
+// width differs by target (time_t, off_t and c_long are 32 bits on the Kindle, 64 on the host,
+// where clippy sees the cast do nothing).
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop, clippy::unnecessary_cast)]
 
 #[cfg(all(feature = "kindle", feature = "sim"))]
 compile_error!("the kindle and sim features are two builds of the app: enable one");
@@ -98,7 +100,9 @@ pub mod display_fbink;
 pub mod input_evdev;
 #[cfg(feature = "sim")]
 pub mod sim_sdl; // the headless runner (the SDL window simulator is not ported: PORTING.md)
+// (its stubs take the platform's arguments, as the platform modules declare them, and use none)
 #[cfg(not(any(feature = "kindle", feature = "sim")))]
+#[allow(unused_variables, clippy::ptr_arg)]
 pub mod platform_none; // host builds: tools and cargo test link no platform
 
 /// Every header's surface, as the C's one namespace: `use crate::prelude::*;` in each module.

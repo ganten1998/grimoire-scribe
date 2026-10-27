@@ -263,9 +263,10 @@ fn exists(path: &CStr) -> bool {
     unsafe { libc::access(path.as_ptr(), libc::F_OK) == 0 }
 }
 
-/// A C char array's text up to its NUL (FBInk's names, the driver's id), for the log.
+/// A C char array's text up to its NUL (FBInk's names, the driver's id), for the log. (c_char is
+/// u8 on the Kindle's ARM.)
 fn c_text(a: &[libc::c_char]) -> String {
-    let b: Vec<u8> = a.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let b: Vec<u8> = a.iter().take_while(|&&c| c != 0).copied().collect();
     String::from_utf8_lossy(&b).into_owned()
 }
 

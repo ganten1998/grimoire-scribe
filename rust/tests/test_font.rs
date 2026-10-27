@@ -4,6 +4,8 @@
 // never overprinted (accents included, all but the inverted exclamation mark, which Jersey 10
 // now sets lower) and the symbols the pixel faces borrow from Terminess.
 // GRIMOIRE_FONT_CRC=print prints a fresh table instead of checking (after a deliberate change).
+// (the C's index loops, kept: rust/src/lib.rs says why)
+#![allow(clippy::needless_range_loop)]
 mod testlib;
 
 use grimoire::prelude::*;
@@ -253,7 +255,7 @@ static K_CRC: [u32; NCRC] = [
 fn ascii_unchanged() {
     let ascii: String = (0..95u8).map(|i| (32 + i) as char).collect();
     let table = crc_table();
-    let print = std::env::var("GRIMOIRE_FONT_CRC").map_or(false, |v| v == "print");
+    let print = std::env::var("GRIMOIRE_FONT_CRC").is_ok_and(|v| v == "print");
     let (mut i, mut compared, mut bad) = (0usize, 0usize, 0usize);
     if print {
         println!("static K_CRC: [u32; NCRC] = [");
