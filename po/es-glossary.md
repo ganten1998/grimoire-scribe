@@ -128,6 +128,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Share over Wi-Fi | **Compartir por Wi-Fi** | *wifi* is the RAE's spelling; the Kindle writes Wi-Fi. |
 | phone, computer | **teléfono, computadora** | *móvil*, *ordenador* (Spain); *celular* (Latin America). |
 | browser | **navegador** | |
+| video; Record (WebM) | **video**; **Grabar (WebM)** | *vídeo* (Spain). MP4 and WebM are format names, never translated. |
 | download, served | **descargar, Descargas realizadas** | The counter is the downloads made; *Descargas servidas* read as a calque (food is served). *Descargas atendidas*. |
 | Effects, studio | **Efectos, estudio** | |
 | Presets | **Preajustes** | *Estilos*. |

@@ -5,7 +5,7 @@
 // 3 batch end (u32 seq, u32 the Kindle's ms), 4 ping, 5 state (u8 0 awake, 1 asleep, 2 pairing,
 // 3 bye; u8 1 when Grimoire shows its colors inverted; u8 the front light's warmth, 0..24, 255 for
 // none: the picture follows both unless the Invert switch or the Warmth slider here says otherwise).
-// Under node (tests/live_check.js) it only exports the frame reader and lightColor.
+// Under node (tests/live_check.js) it only exports the frame reader and the pure parts below.
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -43,8 +43,30 @@
         const c = rgb(1e6 / (1e6 / 6500 + (1e6 / 2400 - 1e6 / 6500) * w)), white = rgb(6500);
         return c.map((v, i) => Math.round(Math.min(255, Math.max(0, v * 255 / white[i]))));
     }
+    // Where a w x h picture goes in a fw x fh film: whole, centered, scale k. A recording keeps the
+    // size it started with (an MP4's track cannot change it: Chrome's frames after a turn came out
+    // corrupt), so the turned screen goes in it smaller.
+    function filmFit(w, h, fw, fh) {
+        if (w === fw && h === fh) return {k: 1, x: 0, y: 0};
+        const k = Math.min(fw / w, fh / h);
+        return {k, x: Math.floor((fw - w * k) / 2), y: Math.floor((fh - h * k) / 2)};
+    }
+    // Record's format, from what supported(type) says (MediaRecorder.isTypeSupported): MP4 (H.264)
+    // wherever the browser records it; WebM where it cannot (Firefox: why 'browser'), or for
+    // Transparent paper, which only WebM keeps (why 'clear': an MP4 has no transparency, its paper came
+    // out black). A browser that names neither records its own choice, which nothing here can name.
+    const MP4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+    const WEBM = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];  // (VP8 keeps the alpha)
+    function recordType(supported, clear) {
+        const first = list => list.find(t => { try { return !!supported(t); } catch (e) { return false; } });
+        const mp4 = first(MP4), webm = first(WEBM);
+        if (clear && webm) return {mime: webm, ext: 'webm', why: 'clear'};
+        if (mp4) return {mime: mp4, ext: 'mp4', why: ''};
+        if (webm) return {mime: webm, ext: 'webm', why: 'browser'};
+        return {mime: '', ext: '', why: ''};  // (the file named by the type the recorder says it made)
+    }
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = {Frames, lightColor};
+        module.exports = {Frames, lightColor, filmFit, recordType};
         return;
     }
 
@@ -62,6 +84,12 @@
     const view = document.createElement('canvas');     // shown at the size it takes on this screen
     const viewCtx = view.getContext('2d');
     view.className = 'screen';
+    const film = document.createElement('canvas');     // what Record and PiP take: shown, one size a recording
+    const filmCtx = film.getContext('2d');
+    // fitIn: shown's place in film (filmFit); flat: a recording that is no WebM, which has no
+    // transparency, so film has the paper drawn in while Transparent paper is on (a browser with no
+    // WebM, or the paper made clear mid-recording).
+    let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null;
     let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
     const bar = document.createElement('div');
     bar.className = 'bar';
@@ -90,6 +118,7 @@
         clearButton.setAttribute('aria-pressed', clear ? 'true' : 'false');
         document.body.classList.toggle('clear', clear);
         repaint(0, 0, raw.width, raw.height);
+        recordLabel();  // (Transparent paper records as WebM where it can)
     });
     clearButton.setAttribute('aria-pressed', 'false');
     const invertSwitch = button(words.invert, () => {
@@ -119,13 +148,14 @@
     });
     look();
     const recordButton = button(words.record, record);
-    if (!window.MediaRecorder || !shown.captureStream) recordButton.hidden = true;
+    const canRecord = !!(window.MediaRecorder && film.captureStream);
+    if (!canRecord) recordButton.hidden = true;
     const pipButton = button(words.pip, pip);
     pipButton.setAttribute('aria-pressed', 'false');
-    if (!document.pictureInPictureEnabled || !shown.captureStream ||
+    if (!document.pictureInPictureEnabled || !film.captureStream ||
         !HTMLVideoElement.prototype.requestPictureInPicture) pipButton.hidden = true;
-    let pipVideo = null;
     button(words.full, full);
+    recordLabel();
     host.replaceChildren(bar, view);
     addEventListener('keydown', e => {
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
@@ -167,6 +197,57 @@
         view.width = Math.max(1, Math.round(w * ratio));
         view.height = Math.max(1, Math.round(h * ratio));
         presentSoon(0, 0, raw.width, raw.height);
+    }
+    // film is kept only while something takes it: a recording, or Picture in picture showing.
+    function filming() { return !!recorder || (!!pipVideo && document.pictureInPictureElement === pipVideo); }
+    // A rect of film (its own pixels) drawn again: shown there (the paper first while it is clear in
+    // a recording with no transparency). Only while filming, unless forced (a first frame for the
+    // video).
+    function filmDraw(x, y, w, h, force) {
+        if (!force && !filming()) return;
+        const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
+        const x1 = Math.min(film.width, Math.ceil(x + w)), y1 = Math.min(film.height, Math.ceil(y + h));
+        if (x1 <= x0 || y1 <= y0) return;
+        filmCtx.save();
+        filmCtx.beginPath();
+        filmCtx.rect(x0, y0, x1 - x0, y1 - y0);
+        filmCtx.clip();
+        filmCtx.clearRect(x0, y0, x1 - x0, y1 - y0);
+        const pw = shown.width * fitIn.k, ph = shown.height * fitIn.k;
+        if (flat && clear) {
+            filmCtx.fillStyle = inverted() ? '#000' : 'rgb(' + light.join(',') + ')';
+            filmCtx.fillRect(fitIn.x, fitIn.y, pw, ph);
+        }
+        const cw = x1 - x0, ch = y1 - y0;
+        if (fitIn.k === 1) filmCtx.drawImage(shown, x0 - fitIn.x, y0 - fitIn.y, cw, ch, x0, y0, cw, ch);
+        else filmCtx.drawImage(shown, fitIn.x, fitIn.y, pw, ph);
+        filmCtx.restore();
+    }
+    // All of film again, at the size it keeps (a recording's) or shown's.
+    function filmAll(force) {
+        if (!recorder && (film.width !== shown.width || film.height !== shown.height)) {
+            film.width = shown.width;
+            film.height = shown.height;
+        }
+        fitIn = filmFit(shown.width, shown.height, film.width, film.height);
+        filmDraw(0, 0, film.width, film.height, force);
+    }
+    // A rect of shown (its pixels) changed: the same in film.
+    function filmShown(x, y, w, h) {
+        if (!filming()) return;
+        if (fitIn.k !== 1) filmDraw(0, 0, film.width, film.height);  // (scaled: all of it, no seams)
+        else filmDraw(x + fitIn.x, y + fitIn.y, w, h);
+    }
+    // Record's button: Record, or Record (WebM) with why in its tooltip where it cannot be an MP4.
+    function recordLabel() {
+        if (!canRecord) return;
+        if (recorder) {
+            recordButton.textContent = words.stop;
+            return;
+        }
+        recordAs = recordType(t => MediaRecorder.isTypeSupported(t), clear);
+        recordButton.textContent = recordAs.ext === 'webm' ? words.recordWebm : words.record;
+        recordButton.title = recordAs.why === 'clear' ? words.webmClear : recordAs.why ? words.webmBrowser : '';
     }
     // shown drawn into view, which has a pixel for each of the screen's. The browser's own scaling (of
     // a canvas, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone
@@ -259,8 +340,9 @@
         if (document.fullscreenElement) document.exitFullscreen();
         else if (el.requestFullscreen) el.requestFullscreen();
     }
-    // Picture in picture: shown, as Record takes it, played in a video the browser floats over other
-    // windows. It goes on while this tab is hidden: shown is drawn as tiles come, not by frames.
+    // Picture in picture: film, as Record takes it, played in a video the browser floats over other
+    // windows. It goes on while this tab is hidden: film is drawn as tiles come, not by animation
+    // frames.
     async function pip() {
         if (document.pictureInPictureElement) {
             document.exitPictureInPicture().catch(() => {});
@@ -271,43 +353,59 @@
             pipVideo.muted = true;
             pipVideo.playsInline = true;
             pipVideo.className = 'pip';  // (in the page, out of sight: some browsers float only those)
-            pipVideo.srcObject = shown.captureStream();
-            pipVideo.addEventListener('enterpictureinpicture', () => pipButton.setAttribute('aria-pressed', 'true'));
+            pipVideo.srcObject = film.captureStream();
+            pipVideo.addEventListener('enterpictureinpicture', () => {
+                pipButton.setAttribute('aria-pressed', 'true');
+                filmAll();  // (what came while it opened)
+            });
             pipVideo.addEventListener('leavepictureinpicture', () => pipButton.setAttribute('aria-pressed', 'false'));
             document.body.append(pipVideo);
-            repaint(0, 0, raw.width, raw.height);  // a first frame, so the video knows its size
+            filmAll(true);  // a first frame, so the video knows its size
         }
         try {
             await pipVideo.play();
             await pipVideo.requestPictureInPicture();
         } catch (e) { /* refused (no picture yet, or not from a tap): the button stays as it was */ }
     }
+    // Record: film at 15 frames a second, as an MP4 where the browser records one
+    // (recordType). film keeps its size until the recording stops (filmFit).
     function record() {
         if (recorder) {
             recorder.stop();
             return;
         }
+        if (!raw.width) return;
+        recordLabel();
+        const as = recordAs;
+        film.width = shown.width;
+        film.height = shown.height;
+        flat = as.ext !== 'webm';
         chunks = [];
         try {
-            recorder = new MediaRecorder(shown.captureStream(15));
+            recorder = new MediaRecorder(film.captureStream(15), as.mime ? {mimeType: as.mime} : undefined);
         } catch (e) {
             recorder = null;
+            flat = false;
             return;
         }
+        filmAll();
         recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
         recorder.onstop = () => {
-            const blob = new Blob(chunks, {type: recorder.mimeType || 'video/webm'});
+            const type = recorder.mimeType || as.mime || 'video/webm';
+            const blob = new Blob(chunks, {type});
             recorder = null;
-            recordButton.textContent = words.record;
+            flat = false;
+            recordLabel();
+            if (filming()) filmAll();  // (Picture in picture goes on at shown's size)
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'Grimoire live view.' + (blob.type.indexOf('mp4') >= 0 ? 'mp4' : 'webm');
+            a.download = 'Grimoire live view.' + (as.ext || (type.indexOf('mp4') >= 0 ? 'mp4' : 'webm'));
             document.body.append(a);
             a.click();
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
         };
         recorder.start(1000);
-        recordButton.textContent = words.stop;
+        recordLabel();
     }
     // The rect of raw drawn again on the page: as it is, inverted, or with the paper made clear
     // (each pixel the ink's color, black or inverted white, as opaque as it is dark), for a video
@@ -320,6 +418,7 @@
             shownCtx.clearRect(x, y, w, h);
             shownCtx.drawImage(raw, x, y, w, h, x, y, w, h);
             presentSoon(x, y, w, h);
+            filmShown(x, y, w, h);
             return;
         }
         const img = rawCtx.getImageData(x, y, w, h), p = img.data;
@@ -342,6 +441,7 @@
         }
         shownCtx.putImageData(img, x, y);
         presentSoon(x, y, w, h);
+        filmShown(x, y, w, h);
     }
     function union(a, b) {
         const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
@@ -365,6 +465,7 @@
                     rawCtx.fillRect(0, 0, w, h);
                     pending = [];
                     layout();
+                    if (filming()) filmAll();
                 } else if (type === 2 && body.length > 8) {
                     const x = d.getUint16(0, true), y = d.getUint16(2, true);
                     const w = d.getUint16(4, true), h = d.getUint16(6, true);

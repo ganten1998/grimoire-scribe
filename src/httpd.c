@@ -804,6 +804,12 @@ static void route_live_page(const char *query) {
         // following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
         live_word(&b, &n, "warmth", _("Warmth"));
         live_word(&b, &n, "record", _("Record"));
+        // TRANSLATORS: Live view's Record button where the video cannot be an MP4 (WebM is the other
+        // video format), and its tooltips saying why: the browser (Firefox), or Transparent paper,
+        // which an MP4 cannot keep transparent.
+        live_word(&b, &n, "recordWebm", _("Record (WebM)"));
+        live_word(&b, &n, "webmBrowser", _("This browser cannot record MP4, so the video is WebM."));
+        live_word(&b, &n, "webmClear", _("Transparent paper records as WebM: an MP4 cannot keep the paper transparent."));
         live_word(&b, &n, "stop", _("Stop recording"));
         live_word(&b, &n, "full", _("Full screen"));
         // TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over

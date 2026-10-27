@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // live_check.js: the browser's frame reader (web/live.js, Frames) on a stream the Kindle sent
 // (tests/live_stream.py keeps its bytes and the frames it read): cut into pieces of every size,
-// from one byte up, the frames must come out the same, in order.
+// from one byte up, the frames must come out the same, in order. Then the page's pure parts: the
+// front light's color, where a turned screen goes in a recording, and Record's format for what a
+// browser records.
 //   usage: node tests/live_check.js <stream.bin> <stream.txt>
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { Frames, lightColor } = require(path.join(__dirname, '..', 'web', 'live.js'));
+const { Frames, lightColor, filmFit, recordType } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
 const [bin, txt] = process.argv.slice(2);
 const bytes = new Uint8Array(fs.readFileSync(bin));
@@ -52,4 +54,25 @@ light('light: the warmest is amber (' + steps[24] + ')', steps[24][1] > 140 && s
     steps[24][2] > 45 && steps[24][2] < 80);
 light('light: past the warmest is the warmest', lightColor(99).join() === steps[24].join() &&
     lightColor(-5).join() === steps[0].join());
+const ok = light;
+// A recording keeps its size: the same screen fills it, a turned one goes in whole, centered.
+const same = filmFit(1860, 2480, 1860, 2480), side = filmFit(2480, 1860, 1860, 2480);
+ok('film: the same size, as it is', same.k === 1 && same.x === 0 && same.y === 0);
+ok('film: turned, whole and centered (0.75, at 0,542)', side.k === 0.75 && side.x === 0 && side.y === 542 &&
+   2480 * side.k <= 1860 && side.y + 1860 * side.k <= 2480);
+const big = filmFit(1986, 2648, 2648, 1986);
+ok('film: the bigger Scribe turned back the other way fits too', big.y === 0 && big.x >= 0 &&
+   big.x + 1986 * big.k <= 2648 && 2648 * big.k <= 1986 + 1e-9);
+// Record's format. What each browser said (Chrome 156, Safari: MP4 only, Firefox 156: VP8 only).
+const chrome = () => true, safari = t => t === 'video/mp4', firefox = t => t === 'video/webm;codecs=vp8' || t === 'video/webm';
+const thrower = () => { throw new Error('no'); };
+const as = (f, clear) => { const r = recordType(f, clear); return [r.mime, r.ext, r.why].join('|'); };
+ok('record: Chrome, an MP4 of H.264', as(chrome) === 'video/mp4;codecs=avc1.42E01E|mp4|');
+ok('record: Safari, its plain MP4', as(safari) === 'video/mp4|mp4|');
+ok('record: Firefox, WebM, and the button says why', as(firefox) === 'video/webm;codecs=vp8|webm|browser');
+ok('record: Transparent paper, WebM where it can (it keeps the paper clear)', as(chrome, true) === 'video/webm;codecs=vp8|webm|clear' &&
+   as(firefox, true) === 'video/webm;codecs=vp8|webm|clear');
+ok('record: Transparent paper without WebM, an MP4 (the page draws the paper in)', as(safari, true) === 'video/mp4|mp4|');
+ok('record: a browser that says nothing (or throws), its own choice, no reason claimed', as(() => false) === '||' &&
+   as(thrower) === '||');
 process.exit(fail);
