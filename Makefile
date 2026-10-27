@@ -1,20 +1,24 @@
 # Grimoire build. `build/` is a symlink out of Dropbox (~/.cache/grimoire-build).
-#   make sim       desktop simulator (SDL3 window)   -> build/host/grimoire-sim
+# The app is the Rust port (rust/: one crate, rust/PORTING.md), built with cargo; the C tree it was
+# ported from (src/) still builds, under c-* names, until it is retired.
 #   make headless  scripted runner, no SDL           -> build/host/grimoire-headless
-#   make test      unit tests, ASan+UBSan            -> runs build/test/*
-#   make tools     host CLI grimoire-export             -> build/host/grimoire-export
-#   make kindle    static armhf binary (zig cc)      -> build/kindle/grimoire
+#   make test      unit tests (cargo test)           -> the host build's, then the headless build's
+#   make tools     host CLI grimoire-export          -> build/host/grimoire-export
+#   make kindle    static armhf binary (cargo zigbuild) -> build/kindle/grimoire
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
 #   make dist      complete installable bundle       -> dist/Grimoire-VERSION-COMMIT/
-#   make check     tests + scenarios + share server + exporter + ARM build + the zip + its launchers
-#                  + the languages (make l10n-check)
+#   make check     make rust-check (tests + scenarios + the languages + share server + exporter +
+#                  ARM build) + the zip, its launchers, the KPM package and the KOReader patches
 #   make all       sim + test + tools + kindle + dist
 #   make l10n      (maintainer, needs GNU gettext) po/grimoire.pot from the sources, then every
 #                  po/<lang>.po merged with it and compiled to po/<lang>.mo
-#   make rust-*    the Rust port (rust/, rust/PORTING.md): its binaries and the same checks
-#                  against them (rust-headless, rust-kindle, rust-test, rust-scenarios, rust-check)
+#   make sim       desktop simulator (SDL3 window): the C tree's, not ported -> build/host/grimoire-sim
+#   make c-*       the C tree, in build/c: c-headless, c-test (ASan+UBSan), c-tools, c-kindle (zig
+#                  cc), c-check (make rust-check's checks against them), c-package (the zip with it)
 
 BUILD   ?= build
+# The C tree's binaries (the c-* rules), apart from the app's.
+CBUILD  ?= $(BUILD)/c
 DIST    ?= dist
 HOSTCC  ?= clang
 ZIG     ?= zig
@@ -54,6 +58,7 @@ SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
 .PHONY: all sim headless test tools kindle package scenarios check clean icon logo l10n l10n-check
+.PHONY: c-headless c-test c-tools c-kindle c-check c-package c-icon c-logo
 all: sim headless test tools kindle dist
 
 # ---- generated: embedded fonts ----
@@ -89,7 +94,34 @@ $(WEB_GEN): $(addprefix web/,$(WEB))
 	@mkdir -p $(BUILD)/gen
 	( cd web && for f in $(WEB); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
 
-# ---- simulator ----
+# ---- the app: the Rust port (rust/: one crate; rust/PORTING.md has the rules) ----
+# The same app as the C tree, module for module, built with cargo, its binaries where the C's went:
+# $(BUILD)/host/grimoire-headless, $(BUILD)/host/grimoire-export, $(BUILD)/kindle/grimoire.
+# Homebrew's rustc shadows rustup's on this Mac: RUST_BIN puts rustup's stable toolchain first.
+# cargo runs inside rust/ (its .cargo/config.toml, the Kindle target's flags, is found from there),
+# with its target dir under $(BUILD) (out of Dropbox, as build/ is: a cargo target inside Dropbox
+# breaks). cargo decides what to rebuild, so each binary's rule runs it every time (FORCE) and
+# copies the binary only when its bytes changed: an unchanged one keeps its time, and what is made
+# from it (the zip) is not made again for nothing.
+CARGO     ?= cargo
+RUST_BIN  ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin
+RTARGET   ?= $(abspath $(BUILD))/cargo
+RKINDLE   := armv7-unknown-linux-musleabihf
+RCARGO    = cd rust && $(1) PATH="$(RUST_BIN):$$PATH" CARGO_TARGET_DIR="$(RTARGET)" $(CARGO)
+RCOPY     = mkdir -p $(dir $(2)) && { cmp -s $(1) $(2) || cp $(1) $(2); }
+# The Kindle binary names no path of the machine that built it (panic locations name sources):
+# a build at another place or on another Mac makes the same bytes, as kindle/no-comment.ld does for
+# the toolchain's names. (cargo joins this to .cargo/config.toml's rustflags.) cargo-zigbuild links
+# with $(ZIG), the compiler the C build used, as it compiles the vendored C (FBInk, stb, qrcodegen).
+RKFLAGS   := --config 'target.$(RKINDLE).rustflags=["--remap-path-prefix=$(HOME)=/home","--remap-path-prefix=$(CURDIR)=/grimoire"]'
+RKENV     = CARGO_ZIGBUILD_ZIG_PATH="$(ZIG)"
+
+headless: $(BUILD)/host/grimoire-headless
+$(BUILD)/host/grimoire-headless: FORCE
+	$(call RCARGO) build --features sim --bin grimoire-headless
+	@$(call RCOPY,$(RTARGET)/debug/grimoire-headless,$@)
+
+# ---- simulator (the C tree's SDL3 window: a development aid, not ported) ----
 SIM_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
 sim: $(BUILD)/host/grimoire-sim
 $(BUILD)/host/grimoire-sim: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) $(HDRS)
@@ -97,9 +129,10 @@ $(BUILD)/host/grimoire-sim: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_S
 	$(HOSTCC) $(COMMON) $(WARN) $(SIM_FLAGS) $(SDL_CFLAGS) -DGRIMOIRE_SIM -DGRIMOIRE_SIM_SDL \
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) -o $@ $(SDL_LIBS) -lm
 
-headless: $(BUILD)/host/grimoire-headless
-$(BUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) $(HDRS)
-	@mkdir -p $(BUILD)/host
+# The C tree's scripted runner.
+c-headless: $(CBUILD)/host/grimoire-headless
+$(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) $(HDRS)
+	@mkdir -p $(CBUILD)/host
 	$(HOSTCC) $(COMMON) $(WARN) $(SIM_FLAGS) -DGRIMOIRE_SIM \
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) -o $@ -lm
 
@@ -160,17 +193,23 @@ scenarios: $(BUILD)/host/grimoire-headless
 	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
 
 # ---- languages ----
-# For the maintainer, with GNU gettext installed: xgettext collects every marked string of src/
-# (with the TRANSLATORS comment above it) into po/grimoire.pot, and the share studio's (web/
-# studio.js: t, tPages and N_) under the context "studio", which httpd.c sends the studio as
+# For the maintainer, with GNU gettext installed: xgettext collects every marked string of
+# rust/src (with the TRANSLATORS comment above it) into po/grimoire.pot, and the share studio's
+# (web/studio.js: t, tPages and N_) under the context "studio", which httpd.rs sends the studio as
 # window.GRIMOIRE_L10N. msgmerge brings each po/<lang>.po up to date with it, and msgfmt --check
 # compiles each to po/<lang>.mo, failing on a translation whose printf conversions (positional
 # ones too) differ from its English. Commit what changed. A new language is a new po/<lang>.po
-# (msginit) plus its line in src/i18n.c.
+# (msginit) plus its line in rust/src/i18n.rs.
+# The Rust sources mark their strings with calls the C parser reads as it read src/*.c's macros
+# (tr for _, n_ for N_, c_ for C_, nc_ for NC_, ng_ for NG_), and it is the parser that reads them:
+# the Rust one (gettext 0.24 and later) leaves the printf formats unmarked (it knows only Rust's own
+# {} formats), and without "c-format" msgfmt --check would no longer compare a translation's
+# conversions with the English. (It warns of unterminated character constants: Rust's lifetimes,
+# which it reads as C's quotes, to the end of their line.)
 XGETTEXT_FLAGS := --from-code=UTF-8 --language=C --add-comments=TRANSLATORS --add-location=file \
-                  -k_ -kN_ -kC_:1c,2 -kNC_:1c,2 -kNG_:1,2 \
-                  --flag=_:1:pass-c-format --flag=C_:2:pass-c-format \
-                  --flag=NG_:1:pass-c-format --flag=NG_:2:pass-c-format \
+                  -ktr -kn_ -kc_:1c,2 -knc_:1c,2 -kng_:1,2 \
+                  --flag=tr:1:pass-c-format --flag=c_:2:pass-c-format \
+                  --flag=ng_:1:pass-c-format --flag=ng_:2:pass-c-format \
                   --package-name=Grimoire --package-version=$(VERSION) \
                   --msgid-bugs-address=https://github.com/ganten1998/grimoire-scribe/issues
 XGETTEXT_JS_FLAGS := --from-code=UTF-8 --language=JavaScript --add-comments=TRANSLATORS --add-location=file \
@@ -179,10 +218,10 @@ XGETTEXT_JS_FLAGS := --from-code=UTF-8 --language=JavaScript --add-comments=TRAN
 MSGFMT_FLAGS := --check --no-hash --endianness=little
 l10n:
 	@mkdir -p $(BUILD)/l10n
-	xgettext $(XGETTEXT_FLAGS) -o $(BUILD)/l10n/c.pot $(sort $(wildcard src/*.c))
+	xgettext $(XGETTEXT_FLAGS) -o $(BUILD)/l10n/app.pot $(sort $(wildcard rust/src/*.rs))
 	xgettext $(XGETTEXT_JS_FLAGS) -o $(BUILD)/l10n/studio.pot web/studio.js
 	awk '/^msgid / { if (n++) print "msgctxt \"studio\"" } { print }' $(BUILD)/l10n/studio.pot > $(BUILD)/l10n/studio-ctx.pot
-	msgcat --use-first -o po/grimoire.pot $(BUILD)/l10n/c.pot $(BUILD)/l10n/studio-ctx.pot
+	msgcat --use-first -o po/grimoire.pot $(BUILD)/l10n/app.pot $(BUILD)/l10n/studio-ctx.pot
 	for p in $(wildcard po/*.po); do msgmerge --quiet --update --backup=none $$p po/grimoire.pot || exit 1; done
 	for p in $(wildcard po/*.po); do msgfmt $(MSGFMT_FLAGS) -o $${p%.po}.mo $$p || exit 1; done
 
@@ -248,51 +287,88 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	if [ -n "$$failed" ]; then echo "L10N CHECK FAILED:$$failed"; exit 1; fi; \
 	echo "l10n-check: every language fits ($(L10N_LANGS))"
 
-# ---- host tools ----
+# ---- host tools (rust/src/bin: tools/*.c's ports) ----
 tools: $(BUILD)/host/grimoire-export
-$(BUILD)/host/grimoire-export: tools/grimoire-export.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
-	@mkdir -p $(BUILD)/host
-	$(HOSTCC) $(COMMON) $(WARN) -O2 tools/grimoire-export.c $(CORE_SRC) $(GEN_SRC) -o $@ -lm
+$(BUILD)/host/grimoire-export: FORCE
+	$(call RCARGO) build --bin grimoire-export
+	@$(call RCOPY,$(RTARGET)/debug/grimoire-export,$@)
 
 # The Library cover, drawn with the gothic widgets (committed; run by hand after a design change).
 icon: $(BUILD)/host/mkicon
 	$(BUILD)/host/mkicon assets/icon.png
-$(BUILD)/host/mkicon: tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) $(HDRS)
-	@mkdir -p $(BUILD)/host
-	$(HOSTCC) $(COMMON) $(WARN) -Itools -O2 tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) -o $@ -lm
+$(BUILD)/host/mkicon: FORCE
+	$(call RCARGO) build --bin mkicon
+	@$(call RCOPY,$(RTARGET)/debug/mkicon,$@)
 
 # The logo for the README and releases, black and white on transparent (committed, like the icon).
 # Pixel blocks of 8: shown at half size they land on whole pixels on ordinary and Retina screens.
 logo: $(BUILD)/host/mklogo
 	$(BUILD)/host/mklogo crest 8 docs/logo.png
 	$(BUILD)/host/mklogo crest 8 docs/logo-dark.png white
-$(BUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
-	@mkdir -p $(BUILD)/host
+$(BUILD)/host/mklogo: FORCE
+	$(call RCARGO) build --bin mklogo
+	@$(call RCOPY,$(RTARGET)/debug/mklogo,$@)
+
+# The C tree's: tools/grimoire-export.c, mkicon.c and mklogo.c (the same bytes as the Rust ones).
+c-tools: $(CBUILD)/host/grimoire-export
+$(CBUILD)/host/grimoire-export: tools/grimoire-export.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
+	@mkdir -p $(CBUILD)/host
+	$(HOSTCC) $(COMMON) $(WARN) -O2 tools/grimoire-export.c $(CORE_SRC) $(GEN_SRC) -o $@ -lm
+c-icon: $(CBUILD)/host/mkicon
+	$(CBUILD)/host/mkicon assets/icon.png
+$(CBUILD)/host/mkicon: tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) $(HDRS)
+	@mkdir -p $(CBUILD)/host
+	$(HOSTCC) $(COMMON) $(WARN) -Itools -O2 tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) -o $@ -lm
+c-logo: $(CBUILD)/host/mklogo
+	$(CBUILD)/host/mklogo crest 8 docs/logo.png
+	$(CBUILD)/host/mklogo crest 8 docs/logo-dark.png white
+$(CBUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
+	@mkdir -p $(CBUILD)/host
 	$(HOSTCC) $(COMMON) $(WARN) -Itools -O2 tools/mklogo.c $(CORE_SRC) $(GEN_SRC) -o $@ -lm
 
-# ---- unit tests (core + ui only; no platform) ----
-TESTS := $(patsubst tests/%.c,$(BUILD)/test/%,$(wildcard tests/test_*.c))
+# ---- unit tests (rust/tests: tests/test_*.c's ports, golden renders included) ----
+# One test at a time: the ported tests keep the C's process-wide state (the store's root, the
+# language), as each C test binary runs its tests in order. Twice: on the host's platform, then in
+# the headless build (--features sim), whose tests check the runner itself, the Share screen and
+# the pen that reports tilt.
+test:
+	@mkdir -p $(BUILD)/test/tmp
+	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
+	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
+	@echo "ALL TESTS PASSED"
+
+# The C tree's unit tests (core + ui only; no platform).
+TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
 # Contraction (fused multiply-add) on, as clang does by default: tests/test_golden.c's renders
 # were recorded so, and turning it off changes them.
 TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
-test: $(TESTS)
-	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(BUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
-$(BUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
-	@mkdir -p $(BUILD)/test/tmp
+c-test: $(TESTS)
+	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(CBUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
+$(CBUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
+	@mkdir -p $(CBUILD)/test/tmp
 	$(HOSTCC) $(COMMON) $(WARN) $(TEST_FLAGS) -Itests $< $(CORE_SRC) $(UI_SRC) $(GEN_SRC) -o $@ -lm
 
 # ---- kindle ----
+# The static armhf binary: cargo zigbuild, with rust/.cargo/config.toml's flags (cortex-a7, static,
+# kindle/no-comment.ld, which leaves out the toolchain's name, so any build of the same zig and
+# rustc makes the same binary: a local one and the release workflow's) and RKFLAGS.
 kindle: $(BUILD)/kindle/grimoire
+$(BUILD)/kindle/grimoire: FORCE
+	$(call RCARGO,$(RKENV)) zigbuild --release --target $(RKINDLE) --features kindle --bin grimoire $(RKFLAGS)
+	@$(call RCOPY,$(RTARGET)/$(RKINDLE)/release/grimoire,$@)
+
+# The C tree's (zig cc).
+c-kindle: $(CBUILD)/kindle/grimoire
 # FBInk is third-party: built on its own with warnings muted (an upstream format-string bug in
 # fbink_state_dump, which Grimoire never calls); our sources stay warning-clean.
-FBINK_OBJ := $(patsubst $(FBINK_DIR)/%.c,$(BUILD)/kindle/fbink/%.o,$(FBINK_SRC))
-$(BUILD)/kindle/fbink/%.o: $(FBINK_DIR)/%.c
+FBINK_OBJ := $(patsubst $(FBINK_DIR)/%.c,$(CBUILD)/kindle/fbink/%.o,$(FBINK_SRC))
+$(CBUILD)/kindle/fbink/%.o: $(FBINK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(KCC) -std=gnu11 -D_GNU_SOURCE -O2 -w $(FBINK_DEF) -I$(FBINK_DIR) -c $< -o $@
 # kindle/no-comment.ld leaves out the toolchain's name, so any build of the same zig version makes
 # the same binary (a local zig and the release workflow's).
-$(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) $(HDRS) kindle/no-comment.ld
-	@mkdir -p $(BUILD)/kindle
+$(CBUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) $(HDRS) kindle/no-comment.ld
+	@mkdir -p $(CBUILD)/kindle
 	$(KCC) $(COMMON) $(WARN) -O2 -I$(FBINK_DIR) $(FBINK_DEF) -DGRIMOIRE_KINDLE -static -s -Wl,-T,kindle/no-comment.ld \
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_SRC) $(WEB_GEN) $(FBINK_OBJ) -o $@ -lm
 
@@ -307,7 +383,10 @@ $(BUILD)/kindle/grimoire: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(KINDLE_PLAT) $(GEN_
 # carry their license inside, shipped once as stb-LICENSE.txt; the binary is linked static
 # against zig's musl, whose COPYRIGHT ships as musl-COPYRIGHT.txt, and zig cc links its own
 # compiler-rt into it (64-bit division, float conversions, memcpy and more), so zig's LICENSE
-# ships as zig-compiler-rt-LICENSE.txt. FBInk compiles in two parts of its own tree with their
+# ships as zig-compiler-rt-LICENSE.txt. The binary is Rust's: rustc links the Rust standard library
+# into it (MIT and Apache-2.0, and the crates it is built from, each under its own terms), whose
+# notices ship as rust-std-LICENSE.txt (the toolchain's share/doc/rust/COPYRIGHT-library.html,
+# as text), and the libc crate, rust-libc-LICENSE.txt. FBInk compiles in two parts of its own tree with their
 # own notices: cutef8 (cutef8/utf8.c) and Bjoern Hoehrmann's UTF-8 decoder (cutef8/dfa.c). Their
 # notices are only in the sources' heads and FBInk's CREDITS, so cutef8-LICENSE.txt and
 # dfa-LICENSE.txt carry both, as the tree has them.
@@ -371,6 +450,22 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	  if [ -z "$$lic" ]; then echo "package: zig's LICENSE (for compiler-rt) is not beside zig's lib dir ($$lib)"; exit 1; fi; \
 	  { echo "From zig (https://ziglang.org): compiler-rt and the rest of the Zig code that zig cc links into"; \
 	    echo "the Kindle binary. Zig's license:"; echo; cat "$$lic"; } > $(PKG)/app/licenses/zig-compiler-rt-LICENSE.txt
+	set -e; sysroot=$$(PATH="$(RUST_BIN):$$PATH" rustc --print sysroot); doc=$$sysroot/share/doc/rust/COPYRIGHT-library.html; \
+	  if [ ! -s "$$doc" ]; then echo "package: the Rust standard library's notices are not in the toolchain ($$doc)"; exit 1; fi; \
+	  { echo "From Rust (https://www.rust-lang.org): its standard library (core, alloc, std and the crates they are"; \
+	    echo "built from), which rustc links into the Kindle binary. Its notices, as the toolchain ships them"; \
+	    echo "(share/doc/rust/COPYRIGHT-library.html, here as text):"; echo; \
+	    python3 -I -c 'import html, re, sys; t = open(sys.argv[1], encoding="utf-8").read(); t = re.sub(r"(?is)<(script|style)\b.*?</\1>", "", t); t = html.unescape(re.sub(r"<[^>]+>", "", t)); t = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+\n", "\n", t)); sys.stdout.buffer.write((t.strip() + "\n").encode("utf-8"))' "$$doc"; \
+	  } > $(PKG)/app/licenses/rust-std-LICENSE.txt
+	set -e; libc=$$(cd rust && PATH="$(RUST_BIN):$$PATH" $(CARGO) metadata --format-version 1 --frozen | \
+	    python3 -I -c 'import json, os, sys; p = [p for p in json.load(sys.stdin)["packages"] if p["name"] == "libc"]; print(len(p) == 1 and os.path.dirname(p[0]["manifest_path"]) + " " + p[0]["version"] or "")'); \
+	  dir=$${libc% *}; ver=$${libc##* }; \
+	  if [ -z "$$libc" ] || [ ! -s "$$dir/LICENSE-MIT" ] || [ ! -s "$$dir/LICENSE-APACHE" ]; then \
+	    echo "package: the libc crate's licenses are not where cargo keeps it ($$libc)"; exit 1; fi; \
+	  { echo "From the libc crate $$ver (https://github.com/rust-lang/libc): Rust's declarations of the C library's"; \
+	    echo "functions and types, compiled into the Kindle binary. It is dual-licensed under the MIT and"; \
+	    echo "Apache-2.0 licenses:"; echo; cat "$$dir/LICENSE-MIT"; printf '\n\n'; cat "$$dir/LICENSE-APACHE"; \
+	  } > $(PKG)/app/licenses/rust-libc-LICENSE.txt
 	set -e; c=$(FBINK_DIR)/cutef8; out=$(PKG)/app/licenses; \
 	  awk 'NR == 1 && !/^\/\*/ { exit } { print } /\*\// { exit }' $$c/utf8.c > $(PKG)/utf8.head; \
 	  awk '!/^\/\// || /NOTE:/ { exit } { print }' $$c/dfa.c > $(PKG)/dfa.head; \
@@ -428,10 +523,11 @@ kpm-check: kpm-package
 	python3 -m unittest discover -s tests -p 'test_kpm.py' -v
 	python3 -I tests/test_update_sh.py
 
-# Everything that can be verified without the Kindle: unit tests, every scripted scenario,
-# the share server against a real HTTP client, the host exporter, the ARM build, and the zip
-# people install: what it holds, that two clean builds make the same bytes, and its launchers run
-# against stand-ins for the Kindle's tools.
+# Everything that can be verified without the Kindle: make rust-check (unit tests, every scripted
+# scenario, the languages, the share server against a real HTTP client, Live view, Bluetooth, the
+# host exporter, the ARM build), and the zip people install: what it holds, that two clean builds
+# make the same bytes, and its launchers run against stand-ins for the Kindle's tools; then the KPM
+# package and the KOReader patches.
 .PHONY: package-check launcher-check mirror-cleanup-check
 mirror-cleanup-check: $(BUILD)/host/grimoire-headless
 	BUILD=$(BUILD) python3 -m unittest discover -s tests -p 'test_mirror_cleanup.py' -v
@@ -441,94 +537,54 @@ package-check: package
 	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: test scenarios tools kindle package-check launcher-check l10n-check kpm-check kopatch-check mirror-cleanup-check dist
+check: rust-check package-check launcher-check kpm-check kopatch-check dist
+	@echo "CHECK PASSED"
+
+clean:
+	rm -rf $(BUILD)/host $(BUILD)/test $(BUILD)/kindle $(BUILD)/dist $(BUILD)/gen $(CBUILD)
+
+# ---- the app's gate, and the C tree's ----
+# make check's checks of the app, one after another (the scenarios, the languages and the share
+# checks open the share server on the same port), against the binaries test, headless, tools and
+# kindle made (the sub-makes take the runner as it is: -o).
+#   make rust-check   unit tests, scenarios, the languages, mirror cleanup, the share server, Live
+#                     view, Bluetooth, the exporter, the ARM build
+# The port's first rule names stay: rust-headless, rust-tools, rust-kindle, rust-test,
+# rust-scenarios, rust-l10n-check and rust-package are headless, tools, kindle, test, scenarios,
+# l10n-check and package.
+.PHONY: rust-headless rust-tools rust-kindle rust-test rust-scenarios rust-l10n-check rust-check rust-package
+rust-check: test headless tools kindle
+	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios
+	$(MAKE) -o $(BUILD)/host/grimoire-headless l10n-check
+	$(MAKE) -o $(BUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	BUILD=$(BUILD) tests/live_check.sh
 	BUILD=$(BUILD) tests/bt_check.sh
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
-	@echo "CHECK PASSED"
-
-clean:
-	rm -rf $(BUILD)/host $(BUILD)/test $(BUILD)/kindle $(BUILD)/dist $(BUILD)/gen
-
-# ---- the Rust port (rust/: one crate; rust/PORTING.md has the rules) ----
-# The same app, module for module, built with cargo. Its binaries go where the C's go, under
-# $(RBUILD) instead of $(BUILD): $(RBUILD)/host/grimoire-headless, $(RBUILD)/host/grimoire-export,
-# $(RBUILD)/kindle/grimoire. The checks then run against them unchanged: every rule below that
-# runs a C rule runs it with BUILD=$(RBUILD), and with -o naming the Rust binary, which make takes
-# as up to date (never rebuilt from the C sources), so tests/*.sh and the scenario runner find the
-# Rust build where they look for the C one.
-#   make rust-headless   the scripted runner          -> $(RBUILD)/host/grimoire-headless
-#   make rust-tools      host CLI grimoire-export     -> $(RBUILD)/host/grimoire-export
-#   make rust-kindle     static armhf binary          -> $(RBUILD)/kindle/grimoire
-#   make rust-test       cargo test (the C unit tests' ports, golden renders included)
-#   make rust-scenarios  make scenarios against the Rust runner
-#   make rust-check      the gate against the Rust binaries: unit tests, scenarios, the languages,
-#                        the share server, Live view, Bluetooth, the exporter, the ARM build
-#   make rust-package    the Kindle zip with the Rust binary in it, in $(RBUILD)/dist (make package
-#                        and make dist keep the C binary until the switch: rust/PORTING.md)
-# Homebrew's rustc shadows rustup's on this Mac: RUST_BIN puts rustup's stable toolchain first.
-# cargo runs inside rust/ (its .cargo/config.toml, the Kindle target's flags, is found from there),
-# with its target dir under $(BUILD) (out of Dropbox, as build/ is: a cargo target inside Dropbox
-# breaks).
-CARGO     ?= cargo
-RUST_BIN  ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin
-RBUILD    ?= $(BUILD)/rust
-RTARGET   ?= $(abspath $(BUILD))/cargo
-RKINDLE   := armv7-unknown-linux-musleabihf
-RCARGO    = cd rust && $(1) PATH="$(RUST_BIN):$$PATH" CARGO_TARGET_DIR="$(RTARGET)" $(CARGO)
-# The Kindle binary names no path of the machine that built it (panic locations name sources):
-# a build at another place or on another Mac makes the same bytes, as kindle/no-comment.ld does for
-# the toolchain's names. (cargo joins this to .cargo/config.toml's rustflags.)
-RKFLAGS   := --config 'target.$(RKINDLE).rustflags=["--remap-path-prefix=$(HOME)=/home","--remap-path-prefix=$(CURDIR)=/grimoire"]'
-
-.PHONY: rust-headless rust-tools rust-kindle rust-test rust-scenarios rust-l10n-check rust-check rust-package
-rust-headless:
-	$(call RCARGO) build --features sim --bin grimoire-headless
-	@mkdir -p $(RBUILD)/host
-	cp $(RTARGET)/debug/grimoire-headless $(RBUILD)/host/grimoire-headless
-
-rust-tools:
-	$(call RCARGO) build --bin grimoire-export
-	@mkdir -p $(RBUILD)/host
-	cp $(RTARGET)/debug/grimoire-export $(RBUILD)/host/grimoire-export
-
-rust-kindle:
-	$(call RCARGO) zigbuild --release --target $(RKINDLE) --features kindle --bin grimoire $(RKFLAGS)
-	@mkdir -p $(RBUILD)/kindle
-	cp $(RTARGET)/$(RKINDLE)/release/grimoire $(RBUILD)/kindle/grimoire
-
-# One test at a time: the ported tests keep the C's process-wide state (the store's root, the
-# language), as each C test binary runs its tests in order. Twice: on the host's platform, then in
-# the headless build (--features sim), whose tests check the runner itself, the Share screen and
-# the pen that reports tilt.
-rust-test:
-	@mkdir -p $(RBUILD)/test/tmp
-	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(RBUILD))/test/tmp") test -- --test-threads=1
-	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(RBUILD))/test/tmp") test --features sim -- --test-threads=1
-	@echo "RUST TESTS PASSED"
-
-rust-scenarios: rust-headless
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless scenarios
-
-rust-l10n-check: rust-headless
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless l10n-check
-
-# make check's checks of the app, in its order, one after another (the scenarios, the languages
-# and the share checks open the share server on the same port), against the Rust binaries. The
-# package, launcher and KPM checks test the zip and the scripts, not the binary: they join here at
-# the switch, when make package takes the Rust binary (rust/PORTING.md, Packaging).
-rust-check: rust-test rust-headless rust-tools rust-kindle
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless scenarios
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless l10n-check
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/host/grimoire-headless mirror-cleanup-check
-	BUILD=$(RBUILD) $(SCEN_LANG) tests/share_check.sh $(RBUILD)/scen/b_library
-	BUILD=$(RBUILD) tests/live_check.sh
-	BUILD=$(RBUILD) tests/bt_check.sh
-	$(RBUILD)/host/grimoire-export --force $(RBUILD)/scen/b_library $(RBUILD)/export-check
 	@echo "RUST CHECK PASSED"
+rust-headless: headless
+rust-tools: tools
+rust-kindle: kindle
+rust-test: test
+rust-scenarios: scenarios
+rust-l10n-check: l10n-check
+rust-package: package
 
-# The zip people install, with the Rust binary: make package run with BUILD=$(RBUILD), where
-# rust-kindle left the binary at the path the package rule copies from. Not part of make dist yet.
-rust-package: rust-kindle
-	$(MAKE) BUILD=$(RBUILD) -o $(RBUILD)/kindle/grimoire package
+# The C tree's binaries go where the app's go, under $(CBUILD) instead of $(BUILD), and the same
+# checks run against them: each rule below runs the app's rule with BUILD=$(CBUILD), and with -o
+# naming the C binary, which make then takes as up to date (never built with cargo), so tests/*.sh
+# and the scenario runner find the C build where they look for the app.
+#   make c-check     rust-check's checks against the C binaries (c-test for the unit tests)
+#   make c-package   the Kindle zip with the C binary in it, in $(CBUILD)/dist (its licenses/ still
+#                    names the Rust parts)
+c-check: c-test c-headless c-tools c-kindle
+	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless scenarios
+	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless l10n-check
+	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless mirror-cleanup-check
+	BUILD=$(CBUILD) $(SCEN_LANG) tests/share_check.sh $(CBUILD)/scen/b_library
+	BUILD=$(CBUILD) tests/live_check.sh
+	BUILD=$(CBUILD) tests/bt_check.sh
+	$(CBUILD)/host/grimoire-export --force $(CBUILD)/scen/b_library $(CBUILD)/export-check
+	@echo "C CHECK PASSED"
+c-package: c-kindle
+	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/kindle/grimoire package
