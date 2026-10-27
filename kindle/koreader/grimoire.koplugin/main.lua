@@ -209,6 +209,37 @@ local function keep_alive_as_the_kindle_has_it()
     if not ok then logger.warn("Grimoire: could not read the Kindle's preventScreenSaver:", err) end
 end
 
+-- KOReader on a Kindle Scribe draws at its rotation less a "native" one it takes as it starts, from
+-- the window manager (KindleScribe:init: com.lab126.winmgr's accelerometer, D or R for upside
+-- down), but turns touches by its rotation alone. Drawing and touch agree only while that native
+-- rotation is the system's, which the framebuffer's rotation says: at 1 the framebuffer is upside
+-- down to the touch panel (Grimoire's display code goes by the same rule). The window manager stays
+-- stopped through a KOReader and a Grimoire session; with the Kindle turned meanwhile, it can answer
+-- with a turn it saw but never applied, and KOReader comes back upside down with every tap landing
+-- opposite. So at KOReader's start on a Scribe the native rotation follows the framebuffer's, and
+-- the rotation is set again over it (the same rotation, drawn as the last run drew it). Once per run.
+local native_rotation_checked = false
+local function native_rotation_as_the_framebuffer_has_it()
+    if native_rotation_checked then return end
+    native_rotation_checked = true
+    local ok, err = pcall(function()
+        local screen = Device.screen
+        if Device.model ~= "KindleScribe" or not (screen and screen.getHWRotation and screen.setRotationMode) then return end
+        local up, down = screen.DEVICE_ROTATED_UPRIGHT, screen.DEVICE_ROTATED_UPSIDE_DOWN
+        local was = screen.native_rotation_mode
+        if was ~= up and was ~= down then return end -- (only these two are KOReader's own picks here)
+        local hw = screen:getHWRotation()
+        local native = hw == 1 and down or up
+        if was == native then return end
+        local mode = screen:getRotationMode()
+        screen.native_rotation_mode = native
+        screen:setRotationMode(mode)
+        logger.info("Grimoire: KOReader's native rotation", was, "against the framebuffer's", hw,
+            "(drawing and touch apart): native rotation", native, "and rotation", mode, "again")
+    end)
+    if not ok then logger.warn("Grimoire: could not check KOReader's native rotation:", err) end
+end
+
 -- Still there at KOReader's next start: the hand-over never ran Grimoire.
 local function launch_marker()
     return DataStorage:getSettingsDir() .. "/grimoire_launch.txt"
@@ -286,6 +317,7 @@ function Grimoire:init()
     -- Grimoire is a Kindle Scribe app: nothing to offer anywhere else.
     if not Device:isKindle() then return end
     keep_alive_as_the_kindle_has_it()
+    native_rotation_as_the_framebuffer_has_it()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):

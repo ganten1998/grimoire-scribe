@@ -100,7 +100,22 @@ local function png_answer(path, text)
     if W.png_answers == "nothing" or W.png_answers == "empty" then return end -- (an older KOReader's)
     return true
 end
+-- Its rotation, as KOReader's framebuffer has it on a Scribe (software rotation): the native rotation
+-- KindleScribe:init picked (world() makes it upright, as the framebuffer's 3 says), the framebuffer's
+-- own (W.hw_rotation; W.hw_error: the ioctl fails) and the rotation (W.rotation), each setRotationMode
+-- in W.rotations as "<mode>@<native>".
 Device.screen = {
+    DEVICE_ROTATED_UPRIGHT = 0, DEVICE_ROTATED_CLOCKWISE = 1, DEVICE_ROTATED_UPSIDE_DOWN = 2,
+    DEVICE_ROTATED_COUNTER_CLOCKWISE = 3,
+    getHWRotation = function()
+        if W.hw_error then error("cannot get variable screen info") end
+        return W.hw_rotation
+    end,
+    getRotationMode = function() return W.rotation end,
+    setRotationMode = function(self, mode)
+        table.insert(W.rotations, mode .. "@" .. tostring(self.native_rotation_mode))
+        W.rotation = mode
+    end,
     getWidth = function() return W.screen.w end,
     getHeight = function() return W.screen.h end,
     shot = function(_, path)
@@ -413,6 +428,8 @@ local function world(name)
     W.marker = W.dir .. "/settings/grimoire_launch.txt"
     W.pdfs = W.us .. "/grimoire/PDFs"
     W.prevent, W.lipc_reads, W.share = 0, {}, {}
+    Device.model, Device.screen.native_rotation_mode = "KindleScribe", 0
+    W.hw_rotation, W.rotation, W.rotations = 3, 0, {}
     Device.powerd = { lipc_handle = lipc_handle() }
     package.loaded["pluginshare"] = W.share
     assert(sh("rm -rf " .. q(W.dir) .. " && mkdir -p " .. q(W.us .. "/documents") .. " " ..
@@ -627,6 +644,62 @@ do -- Keep alive as the Kindle has it: KOReader starts again with the power serv
     W.kindle, W.prevent = false, 1
     koreader(false)
     check("not a Kindle: not read", #W.lipc_reads == 0 and W.share.keepalive == nil)
+end
+
+do -- KOReader's native rotation as the framebuffer has it: back from Grimoire, the window manager
+    -- answered with a turn it never applied (D, so native upside down) while the framebuffer is as
+    -- upright (3): drawing and touch 180 degrees apart. The native rotation follows the framebuffer,
+    -- and the rotation the last run closed with (2) is set again over it. Once per KOReader run.
+    world("rotation-apart")
+    Device.screen.native_rotation_mode, W.rotation = 2, 2
+    local g = koreader(false)
+    local s = "rotation apart"
+    check(s .. ": the native rotation the framebuffer's (upright)", Device.screen.native_rotation_mode == 0)
+    check(s .. ": the same rotation set again over it, once", #W.rotations == 1 and W.rotations[1] == "2@0")
+    check(s .. ": logged", W.logs[#W.logs] == "Grimoire: KOReader's native rotation 2 against the framebuffer's 3 "
+        .. "(drawing and touch apart): native rotation 0 and rotation 2 again")
+    Device.screen.native_rotation_mode = 2
+    g:new{ ui = new_ui(true) }
+    check(s .. ": a book's screen in the same run looks no more", #W.rotations == 1)
+    untouched(s)
+
+    world("rotation-apart-other-way")
+    Device.screen.native_rotation_mode, W.hw_rotation = 0, 1
+    koreader(false)
+    check("the framebuffer upside down (1), KOReader upright: native upside down, rotation 0 again",
+        Device.screen.native_rotation_mode == 2 and #W.rotations == 1 and W.rotations[1] == "0@2")
+
+    for _, c in ipairs({ { "upright", 0, 3 }, { "upside-down", 2, 1 }, { "upright-0", 0, 0 } }) do
+        world("rotation-agree-" .. c[1])
+        Device.screen.native_rotation_mode, W.hw_rotation, W.rotation = c[2], c[3], 2
+        koreader(false)
+        check("rotation agreeing (native " .. c[2] .. ", framebuffer " .. c[3] .. "): left alone, nothing logged",
+            Device.screen.native_rotation_mode == c[2] and #W.rotations == 0 and #W.logs == 0)
+    end
+
+    for _, m in ipairs({ "KindleScribe3", "KindleScribeColorSoft", "KindlePaperWhite5" }) do
+        world("rotation-" .. m)
+        Device.model, Device.screen.native_rotation_mode = m, 2
+        koreader(false)
+        check("another Kindle (" .. m .. "): left alone", Device.screen.native_rotation_mode == 2 and #W.rotations == 0)
+    end
+
+    world("rotation-sideways-native")
+    Device.screen.native_rotation_mode = 1
+    koreader(false)
+    check("a native rotation KOReader's Scribe code never picks: left alone",
+        Device.screen.native_rotation_mode == 1 and #W.rotations == 0)
+
+    world("rotation-ioctl-fails")
+    Device.screen.native_rotation_mode, W.hw_error = 2, true
+    koreader(false)
+    check("the framebuffer's rotation does not read: left alone, a warning, the menu registered",
+        Device.screen.native_rotation_mode == 2 and #W.rotations == 0 and at("warn") and W.menus == 1)
+
+    world("rotation-not-kindle")
+    W.kindle, Device.screen.native_rotation_mode = false, 2
+    koreader(false)
+    check("not a Kindle: left alone", Device.screen.native_rotation_mode == 2 and #W.rotations == 0)
 end
 
 do -- KOReader not started by koreader.sh (no /var/tmp/koreader.sh).

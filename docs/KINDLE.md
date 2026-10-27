@@ -200,6 +200,18 @@ KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KP
    plugin turns the flag back on (`Grimoire: the Kindle is kept awake (preventScreenSaver 1):
    KOReader's Keep alive is on again`), once per run, through KOReader's own lipc handle. Keep
    alive then shows on, as it is, and its menu item turns it off.
+   KOReader's rotation is set right too. On a Scribe it draws at its rotation less a native one it
+   asks the window manager for as it starts (`com.lab126.winmgr` `accelerometer`: D or R make it
+   upside down), but turns touches by its rotation alone, so the two agree only while that native
+   rotation is the system's: the framebuffer's rotation (1: the framebuffer upside down to the
+   touch panel, the rule Grimoire's display code follows). The window manager stays stopped through
+   KOReader's session and Grimoire's; with the Kindle turned meanwhile (Grimoire follows the turn),
+   it answers with a turn it never applied, and KOReader came back upside down with every tap
+   landing opposite (seen 2026-10-26 19:37). So at each KOReader start on a Kindle Scribe
+   (KOReader's `KindleScribe`), when the native rotation and the framebuffer's disagree, the plugin
+   makes the native rotation the framebuffer's and sets KOReader's rotation again over it, the one
+   it closed with (`Grimoire: KOReader's native rotation 2 against the framebuffer's 3 (drawing and
+   touch apart): native rotation 0 and rotation 2 again`). Once per run.
 6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
    another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
    start. See grimoire/grimoire.log." over the book or the file browser.
