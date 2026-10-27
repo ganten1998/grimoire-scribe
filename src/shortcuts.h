@@ -8,6 +8,13 @@ enum {
     SHORTCUT_UNDO = 20, SHORTCUT_REDO, SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE,
     SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL, SHORTCUT_WHITE,
     SHORTCUT_INDEX,
+    // 2.0.0-beta.5 (the files name actions; these numbers stay in memory). Erase while held acts
+    // from its press to its release; a menu's own button closes it again (docs/SHORTCUTS.md).
+    SHORTCUT_HOLD_ERASER, SHORTCUT_ERASER_MODE, SHORTCUT_CLEAR_PAGE,
+    SHORTCUT_FIRST_PAGE, SHORTCUT_LAST_PAGE, SHORTCUT_NEW_PAGE, SHORTCUT_FIT_PAGE, SHORTCUT_PAGES,
+    SHORTCUT_TOOL_PICKER, SHORTCUT_PAPER, SHORTCUT_DISPLAY, SHORTCUT_PEN_FEEL, SHORTCUT_FOLD_PANEL,
+    SHORTCUT_LIBRARY, SHORTCUT_CLOSE_MENU,
+    SHORTCUT_LAST = SHORTCUT_CLOSE_MENU
 };
 typedef struct { int code, mods, action; bool gamepad; } ShortcutBinding;
 typedef struct { ShortcutBinding bindings[SHORTCUT_MAX]; int count, rejected; } Shortcuts;

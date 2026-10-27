@@ -844,14 +844,17 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 edits it (its lines are in docs/SHORTCUTS.md). Grimoire writes starter mappings to it only when
 shortcuts are turned on and the file does not exist, and never changes it after that; while the
 file is missing the starter mappings apply, and an empty file means no mappings. Versions before
-2.0.0-beta.1 ignore it.
+2.0.0-beta.1 ignore it. A line naming an action a version does not know (2.0.0-beta.5 added fifteen)
+is refused and counted there, and the other lines still load.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Controller > Buttons: `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
 a button by name (`South`) or number (`316`). Grimoire writes it whole and atomically each time a
 button is learned, and deletes it on Reset buttons. While it is there, the controller's buttons come
 from it alone (`shortcuts.ini`'s `pad.` lines are set aside); a `key.` line in it is refused, as a
-line `shortcuts.ini` cannot read is. Versions before 2.0.0-beta.5 never read it.
+line `shortcuts.ini` cannot read is, and so is an action this version does not know. A learn writes
+the file again from the lines that were read, so such a line goes then. Versions before
+2.0.0-beta.5 never read it.
 
 `bluetooth/` (2.0.0-beta.5 on) is not Grimoire's format: it is where the owner unpacks the
 Bluetooth helper (kindle-hid-passthrough), whose files, paired devices and their keys live there.

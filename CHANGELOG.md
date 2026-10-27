@@ -13,6 +13,12 @@
   (grimoire/controller.ini). A short toast says when one connects or goes, and when another app
   holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default. Next
   page on the last page adds a page, as the editor's + button does (it used to stop there).
+- **More for a controller's buttons**: every tool on its own, Erase while held (the pen erases
+  while the button is down), the eraser's mode, clear page, first, last and new page, fit page,
+  and the editor's menus: the tool picker, Paper, Pages, Index, Display, Pen feel, fold the panel,
+  the Library and Close menu. A menu's button opens it and closes it again, or swaps the menu in
+  front for its own. Older versions refuse the new names in shortcuts.ini and count them; their
+  other lines still work.
 - **Next and previous tool keep their place after the eraser**: they step through the tool picker's
   nine pens in its order, and from the eraser they now go on from the pen it goes back to, instead
   of starting again at the pencil or the highlighter. With the tool picker open they move its

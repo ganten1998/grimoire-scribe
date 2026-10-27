@@ -96,10 +96,54 @@ TEST(controller_ini_learns_one_button_per_action) {
     CHECK(!strcmp(shortcut_action_name(SHORTCUT_TOOL_BASE + TOOL_ERASER), "tool:eraser") && !shortcut_action_name(999));
     unlink(sp); unlink(cp);
 }
+// Every action has a name the files keep, which reads back as it; one no version knows yet is
+// refused and counted while the other lines load (as older versions treat the names added later).
+TEST(every_action_by_name) {
+    int named = 0;
+    for (int a = 1; a <= SHORTCUT_LAST; a++) {
+        const char *name = shortcut_action_name(a);
+        if (!name) continue;
+        named++;
+        CHECK(shortcut_action(name) == a);
+    }
+    CHECK(named == 10 + 8 + 15);  // the tools, the first actions, and 2.0.0-beta.5's
+    char path[800]; snprintf(path, sizeof path, "%s/shortcuts-new.ini", tl_tmp());
+    const char *text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n"
+                       "pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n"
+                       "pad.606=tool-picker\npad.607=paper\npad.608=display\npad.609=pen-feel\n"
+                       "pad.610=fold-panel\npad.611=library\npad.612=close-menu\nkey.z=undo\n"
+                       "pad.North=menu:frobnicate\nkey.x=hold-pen\npad.613=tool:crayon\n";
+    CHECK(write_file_atomic(path, text, strlen(text)) == 0);
+    Shortcuts m; shortcuts_load(&m, path);
+    CHECK(m.count == 16 && m.rejected == 3);
+    CHECK(shortcuts_lookup(&m, true, 312, 0) == SHORTCUT_HOLD_ERASER && shortcuts_lookup(&m, true, 612, 0) == SHORTCUT_CLOSE_MENU);
+    CHECK(shortcuts_lookup(&m, false, 44, 0) == SHORTCUT_UNDO && shortcuts_lookup(&m, true, 307, 0) == SHORTCUT_NONE);
+    unlink(path);
+    // Learned into controller.ini by name: every action a button, which read back, with room to spare.
+    char sp[800], cp[800];
+    snprintf(sp, sizeof sp, "%s/shortcuts-all.ini", tl_tmp());
+    snprintf(cp, sizeof cp, "%s/controller-all.ini", tl_tmp());
+    unlink(sp); unlink(cp);
+    shortcuts_load_all(&m, sp, cp);
+    int code = 600;
+    for (int a = 1; a <= SHORTCUT_LAST; a++)
+        if (shortcut_action_name(a)) CHECK(shortcuts_learn(&m, cp, code++, a) == 0);
+    CHECK(shortcuts_learn(&m, cp, 312, SHORTCUT_HOLD_ERASER) == 0 && shortcuts_learn(&m, cp, 316, SHORTCUT_CLOSE_MENU) == 0);
+    size_t len; char *saved = read_file(cp, &len);
+    CHECK(saved && strstr(saved, "pad.L2=hold-eraser\n") && strstr(saved, "pad.316=close-menu\n") && strstr(saved, "=tool:calligraphy\n"));
+    free(saved);
+    Shortcuts back; shortcuts_load_all(&back, sp, cp);
+    CHECK(back.rejected == 0 && back.count == 17 + named);  // the default keys, and a button each
+    for (int a = 1; a <= SHORTCUT_LAST; a++)
+        if (shortcut_action_name(a)) CHECK(shortcuts_pads_for(&back, a, NULL, 0) == 1);
+    CHECK(shortcuts_lookup(&back, true, 312, 0) == SHORTCUT_HOLD_ERASER);
+    unlink(sp); unlink(cp);
+}
 int main(void) {
     RUN(defaults_and_exact_modifiers);
     RUN(custom_mappings_and_limits);
     RUN(settings_are_opt_in);
     RUN(controller_ini_learns_one_button_per_action);
+    RUN(every_action_by_name);
     return tl_done();
 }

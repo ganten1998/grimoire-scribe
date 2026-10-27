@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 20:05-0500\n"
+"POT-Creation-Date: 2026-10-26 22:02-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -794,6 +794,27 @@ msgstr "Guardando..."
 #: src/editor.c
 msgid "Saved"
 msgstr "Guardado"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
+#. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
+#: src/editor.c
+#, c-format
+msgid "Eraser: %s"
+msgstr "Borrador: %s"
+
+#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
+#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
+#: src/editor.c src/pensettings.c
+msgctxt "eraser"
+msgid "Precise"
+msgstr "Preciso"
+
+#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
+#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
+#: src/editor.c src/pensettings.c
+msgctxt "eraser"
+msgid "Whole strokes"
+msgstr "Trazos enteros"
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
 #. on the Templates sheet could not become the page's paper (or the new notebook's); %s is
@@ -2126,20 +2147,6 @@ msgstr "zona de prueba (tinta blanca: pruébala sobre el negro)"
 #: src/pensettings.c
 msgid "Eraser:"
 msgstr "Borrador:"
-
-#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
-#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
-#: src/pensettings.c
-msgctxt "eraser"
-msgid "Whole strokes"
-msgstr "Trazos enteros"
-
-#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
-#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
-#: src/pensettings.c
-msgctxt "eraser"
-msgid "Precise"
-msgstr "Preciso"
 
 #: src/pensettings.c
 msgid "The eraser removes whole strokes; harder pressure = bigger reach."

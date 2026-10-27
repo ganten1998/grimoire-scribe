@@ -581,6 +581,7 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT(_("Moved to %s"), "grimoire/trash");
     PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 1), 1, "grimoire/trash");
     PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 2000), 2000, "grimoire/trash");
+    PUT(_("Eraser: %s"), C_("eraser", "Whole strokes"));  // (a controller's Eraser mode)
 #undef PUT
     return n;
 }

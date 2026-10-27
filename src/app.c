@@ -353,13 +353,30 @@ void app_event(App *a, const InEvent *ev) {
             a->last_shortcut_mods = (int)ev->key_mods;
             a->last_shortcut_gamepad = ev->gamepad;
             if (a->scr == SCR_LIBRARY && library_learn_key(a, ev->value, ev->gamepad)) return;
-            if (a->scr == SCR_EDITOR)
-                editor_shortcut(a, shortcuts_lookup(&a->shortcuts, ev->gamepad, ev->value, (int)ev->key_mods));
+            int action = shortcuts_lookup(&a->shortcuts, ev->gamepad, ev->value, (int)ev->key_mods);
+            if (a->scr == SCR_PENSET) {
+                pensettings_shortcut(a, action);
+            } else if (a->scr == SCR_EDITOR && editor_shortcut(a, action) && action == SHORTCUT_HOLD_ERASER) {
+                a->hold_code = ev->value;
+                a->hold_pad = ev->gamepad;
+            }
         }
         return;
     }
-    if (ev->type == IN_KEY_UP) return;  // (no action waits for a release)
+    if (ev->type == IN_KEY_UP) {
+        // Erase while held ends at its button's release, on any screen, asleep or not (no other
+        // action waits for a release). A release never counts as input.
+        if (a->hold_code && ev->value == a->hold_code && ev->gamepad == a->hold_pad) {
+            a->hold_code = 0;
+            editor_hold_eraser(a, false);
+        }
+        return;
+    }
     if (ev->type == IN_HID_ATTACH || ev->type == IN_HID_DETACH) {
+        if (ev->type == IN_HID_DETACH && a->hold_code) {  // (whichever went, its release cannot come)
+            a->hold_code = 0;
+            editor_hold_eraser(a, false);
+        }
         hid_changed(a, ev);
         return;
     }

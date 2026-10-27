@@ -1,7 +1,9 @@
 # Keyboard and controller shortcuts
 
 A controller (or a keyboard) is express keys for the hand that does not hold the pen: pages,
-tools, undo and redo, the eraser and white ink, in the notebook editor. It does not drive menus.
+tools, undo and redo, the eraser and white ink, in the notebook editor. It opens and closes the
+editor's menus, but does not move around inside them (but for next and previous tool in the tool
+picker): tap there.
 
 Enable **Library > Settings > Controller > Enable shortcuts**. This writes starter mappings to
 `/mnt/us/grimoire/shortcuts.ini` only if that file does not exist. Edit it over USB/SSH and choose
@@ -45,17 +47,40 @@ pad.311=next-tool
 pad.Up=previous-tool
 ```
 
-Actions: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
-`tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `tool:eraser`, `undo`,
-`redo`, `white`, `previous-page`, `next-page`, `previous-tool`, `next-tool`, `index`.
+Actions, in the Buttons sheet's groups:
+
+- **Editing**: `undo`, `redo`, `tool:eraser` (pressed again, it goes back to the pen used before
+  it), `hold-eraser` (Erase while held: while its key or button is down, a stroke the pen starts
+  erases as its eraser end does, by the eraser's mode; one under way when it is let go keeps
+  erasing), `eraser-mode` (Whole strokes and Precise in turn, which a toast says), `white` (white
+  ink on and off), `clear-page` (as the panel's broom: no question, one undo step).
+- **Tools**: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
+  `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
+  `next-tool`.
+- **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
+  notebook's own paper right after the open one, which opens, as the Pages view's New page does),
+  `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
+  its Pages or its Index tab).
+- **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
+  unfolds it), `library` (saves and closes the notebook), `close-menu`.
+
 `previous-tool` and `next-tool` step through the tool picker's nine pens in that order, from the
 highlighter round to the pencil and back. A pinned pen is picked as a tap on its pin picks it (the
 tool button keeps its pen). The eraser is not among them: from the eraser they step from the pen it
 goes back to (marker, eraser, next tool: the fountain pen); the eraser's own button goes back to
 that pen itself. While the tool picker is open (not while it pins pens) they move its choice and
 leave it open.
-The optional custom Index mapping opens the section list (and closes it when it is already open).
-Existing shortcut files are never rewritten.
+A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
+another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
+view to their tab, and close it on their own. `close-menu` closes whatever menu is in front: a link
+being placed is not made, as Back there does, nor one still waiting for its box. `paper` owns the
+paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-feel` and
+`close-menu` go back. No menu button acts while the Pages view's keyboard is open, so typing is
+never lost. Existing shortcut files are never rewritten. Versions 2.0.0-beta.1 to beta.4 refuse
+the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
+`last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
+`fold-panel`, `library`, `close-menu`) and count them in Reload shortcuts.ini; their other lines
+still work.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux
@@ -65,11 +90,12 @@ South, East, North, West, L1, R1, L2, R2, Select, Start, Up, Down, Left, Right, 
 configuration are accepted. An existing empty file deliberately disables mappings.
 
 Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
-sleeping or displaying a sheet, except Index can toggle the Pages/Index view while its keyboard
-is closed, and previous and next tool move the open tool picker's choice. Next page on the last
+sleeping or displaying a sheet, except the menus' buttons and Close menu (above), Erase while held,
+whose press counts even during a stroke (from the next one), and previous and next tool, which
+move the open tool picker's choice. Next page on the last
 page adds a page, as the editor's + button there does: on the open page's paper, or the notebook's
-own after an imported, book or photo page. Presses act once; releases and repeats do not trigger
-actions. While shortcuts are enabled, a key or
+own after an imported, book or photo page. Presses act once; repeats do not trigger actions, and
+a release only ends Erase while held (so does the controller going, or the Kindle going to sleep). While shortcuts are enabled, a key or
 button press keeps the Kindle awake as the pen and touch do: "Sleep after" counts from the last
 one, on any screen. Native PIN input is discarded and never logged. The app logs attachment
 paths, not key presses or device names. The visible last-input display belongs to the current

@@ -508,6 +508,14 @@ static void pad_sample(App *a, const InEvent *ev, bool first) {
     }
 }
 
+// A controller's Pen feel button (the editor's opened it) or Close menu: Back, while nothing is held.
+bool pensettings_shortcut(App *a, int action) {
+    if (action != SHORTCUT_PEN_FEEL && action != SHORTCUT_CLOSE_MENU) return false;
+    if (S->has_pressed || S->drawing || S->erasing || S->whiting || S->wiping || S->active >= 0) return false;
+    app_switch(a, S->ret == SCR_PENSET ? SCR_LIBRARY : S->ret);
+    return true;
+}
+
 void pensettings_event(App *a, const InEvent *ev) {
     bool pen = ev->type == IN_PEN_DOWN || ev->type == IN_PEN_MOVE || ev->type == IN_PEN_UP;
     int ph = app_pointer_phase(ev);

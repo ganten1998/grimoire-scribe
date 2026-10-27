@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 20:05-0500\n"
+"POT-Creation-Date: 2026-10-26 22:02-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -750,6 +750,27 @@ msgstr ""
 
 #: src/editor.c
 msgid "Saved"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
+#. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
+#: src/editor.c
+#, c-format
+msgid "Eraser: %s"
+msgstr ""
+
+#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
+#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
+#: src/editor.c src/pensettings.c
+msgctxt "eraser"
+msgid "Precise"
+msgstr ""
+
+#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
+#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
+#: src/editor.c src/pensettings.c
+msgctxt "eraser"
+msgid "Whole strokes"
 msgstr ""
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
@@ -2072,20 +2093,6 @@ msgstr ""
 #. of its two choices, as a slider's name is left of it (720 px at 44 px, or two lines at 34 px).
 #: src/pensettings.c
 msgid "Eraser:"
-msgstr ""
-
-#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
-#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
-#: src/pensettings.c
-msgctxt "eraser"
-msgid "Whole strokes"
-msgstr ""
-
-#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
-#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
-#: src/pensettings.c
-msgctxt "eraser"
-msgid "Precise"
 msgstr ""
 
 #: src/pensettings.c

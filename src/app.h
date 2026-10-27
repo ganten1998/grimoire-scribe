@@ -26,6 +26,8 @@ typedef struct App {
     Shortcuts shortcuts;
     int last_shortcut_code, last_shortcut_mods;
     bool last_shortcut_gamepad;
+    int hold_code;                 // Erase while held's key or button, held now (0 none), and
+    bool hold_pad;                 // whether it is a controller's: its release ends it
     unsigned hid_changes;          // keyboards and controllers that came or went (IN_HID_*)
     unsigned bt_changes;           // the Bluetooth helper's state changes and answers (bluetooth.h)
     uint32_t bt_start_at;          // when to start the helper (after the first frame), 0 none
@@ -130,6 +132,8 @@ bool library_learn_key(App *a, int code, bool gamepad);
 bool editor_save_now(App *a);
 bool editor_suspend(App *a);                         // flush pending page/info saves; false if they failed
 bool editor_shortcut(App *a, int action);             // optional key/button action, idle editor only
+void editor_hold_eraser(App *a, bool held);           // Erase while held's button let go (false)
+bool pensettings_shortcut(App *a, int action);        // Pen feel's own button and Close menu: Back
 bool editor_busy(App *a);                            // a stroke / drag / pinch is in progress
 const Canvas *editor_page_canvas(App *a);            // the open page (paper + ink), or NULL
 bool editor_pin_sleep_page(App *a);                  // saves the open page as the sleep screen

@@ -60,6 +60,9 @@ struct EditorState {
     // hovering, clears the page (undoable). Holding it while drawing picks the button's tool.
     bool btn_down, btn_used_for_ink, btn_hold_fired;
     uint32_t btn_down_at;
+    // A controller's Erase while held is down (app.c ends it at the release): a stroke that starts
+    // now erases as the pen's eraser end does.
+    bool hold_eraser;
     uint32_t clicks[3];
     int nclicks;
     NotebookInfo nb;
@@ -892,6 +895,7 @@ static void closed_record(App *a) {}
 #endif
 
 static void close_notebook(App *a) {
+    S->hold_eraser = false;
     if (!S->open) return;
     S->link_mode = false;
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
@@ -1071,7 +1075,7 @@ static void draw_begin(App *a, const InEvent *ev) {
         S->has_pressed = false;
         return;
     }
-    PenStroke ps = pen_stroke(&a->settings, ev->eraser, ev->side_button);
+    PenStroke ps = pen_stroke(&a->settings, ev->eraser || S->hold_eraser, ev->side_button);
     // The pen's button drawing white while the eraser is in use: with the pen a tap on the eraser
     // goes back to, a pin too (pen_drawing_tool knows only the tool button's).
     if (ps.act == PEN_WHITE && a->settings.current_tool == TOOL_ERASER) ps.tool = eraser_back(a);
@@ -1791,6 +1795,15 @@ static void tools_tap(App *a) {
     }
 }
 
+// The tool picker opens beside the panel, out of Pin mode.
+static void open_tools(App *a) {
+    S->tools_open = true;
+    S->pin_mode = false;
+    S->tools_y = S->panel.y;
+    draw_tools(a);
+    app_invalidate(a, S->tools_rect, REFRESH_UI);
+}
+
 static void panel_act(App *a, const Hit *h) {
     switch (h->id) {
     case P_TOOLPICK: {
@@ -1803,11 +1816,7 @@ static void panel_act(App *a, const Hit *h) {
             repaint_panel(a, REFRESH_UI);
             break;
         }
-        S->tools_open = true;
-        S->pin_mode = false;
-        S->tools_y = S->panel.y;
-        draw_tools(a);
-        app_invalidate(a, S->tools_rect, REFRESH_UI);
+        open_tools(a);
         break;
     }
     case P_TOOL: {
@@ -1867,6 +1876,70 @@ static void panel_act(App *a, const Hit *h) {
     }
 }
 
+static void close_sheets(App *a);
+
+// The menu in front of the page, as the action of its button: the tool picker, Paper (the paper
+// sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
+// tab); 0 with none.
+static int front_menu(App *a) {
+    if (S->pv.open) return S->pv.index_tab ? SHORTCUT_INDEX : SHORTCUT_PAGES;
+    if (S->tools_open) return SHORTCUT_TOOL_PICKER;
+    if (S->mb.open || S->ts.open || S->paper_open) return SHORTCUT_PAPER;
+    if (S->dm.open) return SHORTCUT_DISPLAY;
+    return 0;
+}
+
+// A menu's button (Pen feel and the Library leave the editor for their screens), or Close menu.
+static bool menu_action(int action) {
+    return action == SHORTCUT_PAGES || action == SHORTCUT_INDEX || action == SHORTCUT_TOOL_PICKER ||
+           action == SHORTCUT_PAPER || action == SHORTCUT_DISPLAY || action == SHORTCUT_PEN_FEEL ||
+           action == SHORTCUT_LIBRARY || action == SHORTCUT_CLOSE_MENU;
+}
+
+// The menu in front closes, as its Back or a tap outside it closes it (a link being placed is taken
+// back); with draw false the screen is about to be drawn whole anyway.
+static void close_front(App *a, bool draw) {
+    if (S->pv.open) {
+        if (S->pv.picking) link_cancel(a);
+        else if (draw) pages_hide(a, -1);
+        else pagesview_close(&S->pv);
+        return;
+    }
+    Rect r = S->tools_open ? rect_union(S->tools_rect, S->panel) : RECT_EMPTY;
+    if (S->paper_open) r = rect_union(r, S->paper_rect);
+    if (S->ts.open) r = rect_union(r, S->ts.rect);
+    if (S->dm.open) r = rect_union(r, S->dm.rect);
+    if (S->mb.open) r = rect_union(r, S->mb.rect);
+    close_sheets(a);
+    if (!draw) return;
+    compose(a, r);
+    app_invalidate(a, r, REFRESH_UI);
+}
+
+// A menu's button with nothing in front: its menu opens, as the panel's button for it opens it.
+static void open_menu(App *a, int action) {
+    switch (action) {
+    case SHORTCUT_PAGES:
+    case SHORTCUT_INDEX:
+        S->pv.index_tab = action == SHORTCUT_INDEX;
+        S->pv.tab_initialized = true;
+        pages_show(a);
+        break;
+    case SHORTCUT_TOOL_PICKER: open_tools(a); break;
+    case SHORTCUT_PAPER: panel_act(a, &(Hit){.id = P_PAPER}); break;
+    case SHORTCUT_DISPLAY: panel_act(a, &(Hit){.id = P_DISPLAY}); break;
+    case SHORTCUT_PEN_FEEL: panel_act(a, &(Hit){.id = P_PENSET}); break;
+    case SHORTCUT_LIBRARY: panel_act(a, &(Hit){.id = P_LIBRARY}); break;
+    case SHORTCUT_CLOSE_MENU:
+        // Nothing in front: a link waiting for its box is not made.
+        if (!S->link_mode) break;
+        S->link_mode = false;
+        app_toast(a, _("No link made."), 2500);
+        break;
+    default: break;
+    }
+}
+
 // Next or previous tool's pen: the tool picker's next or previous one, round from the ninth to the
 // first. The eraser is not one of them: from it the step is from the pen it goes back to, so erasing
 // keeps the place.
@@ -1877,13 +1950,33 @@ static ToolKind step_tool(App *a, bool next) {
     return tool_order[(index + (next ? 1 : N_DRAW_TOOLS - 1)) % N_DRAW_TOOLS];
 }
 
-// Optional external buttons act only in the idle editor, never through an open sheet, but next and
-// previous tool in the open tool picker.
+void editor_hold_eraser(App *a, bool held) {
+    if (S) S->hold_eraser = held;  // (a stroke under way keeps what it does)
+}
+
+// Optional external buttons act only in the idle editor, never through an open sheet, but for
+// these: Erase while held counts from its press, whenever it comes (from the next stroke); a menu's
+// button closes its own menu, or the one in front and opens its own (never over the Pages view's
+// keyboard: typing is never thrown away), and Close menu closes any; next and previous tool move
+// the open tool picker's choice.
 bool editor_shortcut(App *a, int action) {
-    if (!S || !S->open || a->asleep || S->owner != OWN_NONE || S->pinching || !action) return false;
-    if (action == SHORTCUT_INDEX && S->pv.open && !S->pv.kb.open) {
-        if (S->pv.index_tab) pages_hide(a, -1);
-        else { S->pv.index_tab = true; pagesview_untick(&S->pv); compose_all(a, REFRESH_FULL); }
+    if (!S || !S->open || a->asleep || !action) return false;
+    if (action == SHORTCUT_HOLD_ERASER) {
+        S->hold_eraser = true;
+        return true;
+    }
+    if (S->owner != OWN_NONE || S->pinching) return false;
+    int front = front_menu(a);
+    if (front && menu_action(action)) {
+        if (S->pv.open && S->pv.kb.open) return false;
+        if ((action == SHORTCUT_PAGES || action == SHORTCUT_INDEX) && action != front && S->pv.open) {
+            S->pv.index_tab = action == SHORTCUT_INDEX;  // the other tab, as a tap on it
+            if (S->pv.index_tab) pagesview_untick(&S->pv);
+            compose_all(a, REFRESH_FULL);
+            return true;
+        }
+        close_front(a, action != SHORTCUT_PEN_FEEL && action != SHORTCUT_LIBRARY);
+        if (action != front && action != SHORTCUT_CLOSE_MENU) open_menu(a, action);
         return true;
     }
     if ((action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) && S->tools_open && !S->pv.open) {
@@ -1899,11 +1992,9 @@ bool editor_shortcut(App *a, int action) {
         return true;
     }
     if (sheet_open(a)) return false;
-    if (action == SHORTCUT_INDEX) {
-        S->pv.index_tab = true;
-        S->pv.tab_initialized = true;
-        pages_show(a);
-        return S->pv.open;
+    if (menu_action(action)) {
+        open_menu(a, action);
+        return true;
     }
     if (action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL)
         action = SHORTCUT_TOOL_BASE + step_tool(a, action == SHORTCUT_NEXT_TOOL);
@@ -1916,6 +2007,28 @@ bool editor_shortcut(App *a, int action) {
     } else if (action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE) {
         // The panel's arrows: next page on the last page adds one, as its + does.
         panel_act(a, &(Hit){.id = action == SHORTCUT_NEXT_PAGE ? P_NEXT : P_PREV});
+    } else if (action == SHORTCUT_FIRST_PAGE || action == SHORTCUT_LAST_PAGE) {
+        int to = action == SHORTCUT_FIRST_PAGE ? 0 : S->nb.npages - 1;
+        if (to != S->index) go_to_page(a, to);
+    } else if (action == SHORTCUT_NEW_PAGE) {
+        pages_new(a, S->index + 1);  // the Pages view's New page, after the open one
+    } else if (action == SHORTCUT_CLEAR_PAGE) {
+        clear_page(a);  // the panel's broom: no question, one undo step
+    } else if (action == SHORTCUT_FIT_PAGE) {
+        if (!zoomed(a)) return true;
+        view_reset(a);
+        compose_all(a, REFRESH_FULL);
+    } else if (action == SHORTCUT_FOLD_PANEL) {
+        set_collapsed(a, !S->collapsed);
+    } else if (action == SHORTCUT_ERASER_MODE) {
+        a->settings.eraser_mode = a->settings.eraser_mode == 1 ? 0 : 1;
+        settings_save(&a->settings);
+        char msg[160];
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
+        // changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
+        snprintf(msg, sizeof msg, _("Eraser: %s"),
+                 a->settings.eraser_mode == 1 ? C_("eraser", "Precise") : C_("eraser", "Whole strokes"));
+        app_toast(a, msg, 1500);
     } else if (action == SHORTCUT_WHITE) {
         a->settings.white = !a->settings.white;
         settings_save(&a->settings);
@@ -2209,6 +2322,7 @@ bool editor_suspend(App *a) {
     S->has_pressed = S->dragging = S->pinching = false;
     S->btn_down = false;
     S->nclicks = 0;
+    S->hold_eraser = false;  // (its release may never come: the Kindle sleeps, native PIN input takes the keys)
     return save_page(a);
 }
 
@@ -2509,6 +2623,8 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         // The most systems the Custom music sheet's layout fits on the page it is for.
         if (S->mb.open) snprintf(out, cap, "%d", music_max_systems(&S->mb.m, S->mb.page_h, a->dpi));
         else snprintf(out, cap, "%s", "");
+    } else if (!strcmp(key, "hold_eraser")) {
+        snprintf(out, cap, "%d", S->hold_eraser ? 1 : 0);  // Erase while held is down
     } else if (!strcmp(key, "modal")) {
         // What is in front (input goes to the first one open, in this order).
         const char *m = S->pv.open      ? "pages"

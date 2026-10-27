@@ -46,7 +46,12 @@ static const char *const k_tools[] = {"pencil","mech","ballpoint","eraser","high
 static const struct { const char *name; int action; } k_actions[] = {
     {"undo",SHORTCUT_UNDO},{"redo",SHORTCUT_REDO},{"previous-page",SHORTCUT_PREV_PAGE},
     {"next-page",SHORTCUT_NEXT_PAGE},{"previous-tool",SHORTCUT_PREV_TOOL},{"next-tool",SHORTCUT_NEXT_TOOL},{"white",SHORTCUT_WHITE},
-    {"index",SHORTCUT_INDEX},
+    {"index",SHORTCUT_INDEX},{"hold-eraser",SHORTCUT_HOLD_ERASER},{"eraser-mode",SHORTCUT_ERASER_MODE},
+    {"clear-page",SHORTCUT_CLEAR_PAGE},{"first-page",SHORTCUT_FIRST_PAGE},{"last-page",SHORTCUT_LAST_PAGE},
+    {"new-page",SHORTCUT_NEW_PAGE},{"fit-page",SHORTCUT_FIT_PAGE},{"pages",SHORTCUT_PAGES},
+    {"tool-picker",SHORTCUT_TOOL_PICKER},{"paper",SHORTCUT_PAPER},{"display",SHORTCUT_DISPLAY},
+    {"pen-feel",SHORTCUT_PEN_FEEL},{"fold-panel",SHORTCUT_FOLD_PANEL},{"library",SHORTCUT_LIBRARY},
+    {"close-menu",SHORTCUT_CLOSE_MENU},
 };
 // Gamepad buttons by name: the Linux gamepad convention's, and the D-pad (HAT0 decodes to these).
 static const struct { const char *name; int code; } k_buttons[] = {

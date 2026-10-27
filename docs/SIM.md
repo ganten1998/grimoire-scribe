@@ -201,6 +201,7 @@ shows what the app holds.
 | `editor.link.N` | where the open page's link N goes (from 1, in `links.ini`'s order): `index`, `p<page id>`, or another version's target; empty past the last |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |
+| `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
 | `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet) or `pair` (its Pair sheet) |
