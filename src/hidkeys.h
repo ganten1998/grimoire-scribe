@@ -48,6 +48,41 @@ int hidkeys_resync(HidKeys *state, HidKind kind, const uint8_t held[HID_KEY_BYTE
 // straight across it releases it, then presses the other). Repeats, modifiers and power do nothing.
 int hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress out[2]);
 
+// Analog triggers. Every controller the Kindle's Bluetooth helper makes comes through Linux's
+// generic HID driver (vendor and product 0), where an Xbox-layout one's LT and RT are axes, not
+// buttons: ABS_Z and ABS_RZ beside a right stick on ABS_RX/RY (an Xbox One S's first Bluetooth
+// report, which 8BitDo's Xbox mode copies), or ABS_BRAKE and ABS_GAS (its later report, and pads
+// whose right stick is on Z/RZ). Each is read as a button with hysteresis: pressed past half its
+// range, released at a quarter or under. They are reported as HIDKEYS_LT and HIDKEYS_RT, the last
+// two key codes, which Linux leaves unassigned (its last, BTN_TRIGGER_HAPPY40, is 0x2e7): the
+// generic driver numbers a pad's buttons from BTN_A, so its BTN_TL2 and BTN_TR2 are its ninth and
+// tenth buttons, never its triggers (that 8BitDo's stick presses, a Switch-mode pad's - and +).
+#define HIDKEYS_LT 0x2fe
+#define HIDKEYS_RT 0x2ff
+// ABS_X (0) to ABS_BRAKE (10): the axes the verdict reads.
+#define HIDKEYS_AXES 11
+typedef struct { int minimum, maximum, value; } HidAxis;  // EVIOCGABS's
+// LT's and RT's axes (0, ABS_X, which never is one: none) and the values past which each is
+// pressed, and at or under which it is released.
+typedef struct { int axis[2], press[2], release[2]; } HidTriggers;
+// A controller's triggers, from the axes it has and their ranges and values now (info, by ABS code;
+// only those it has are read): BRAKE and GAS when it has both; else Z and RZ when it has X, Y, RX
+// and RY too and they are no right stick: narrower than RX and RY, which match X and Y (an Xbox One
+// S: 10-bit triggers beside 16-bit sticks), unless both rest in their middle half; or, the ranges
+// alike, resting outside their middle half while RX and RY rest inside theirs. A trigger whose code
+// is among the controller's own keys is none. False when the values cannot tell yet (the ranges
+// alike, and no report has come: every axis reads 0 until one does, a range's minimum when it
+// starts at 0): ask again after the controller's first report.
+bool hidkeys_triggers(HidTriggers *t, const uint8_t keys[HID_KEY_BYTES], const uint8_t axes[HID_ABS_BYTES],
+                      const HidAxis info[HIDKEYS_AXES]);
+// A resync's fresh state (held: EVIOCGKEY's), with the triggers held now marked in it, as their
+// axes read now (value: LT's, RT's): past the press point, or past the release point while state
+// held them. hidkeys_resync then releases one let go, and holds one pulled without a press.
+void hidkeys_trigger_sync(const HidKeys *state, const HidTriggers *t, const int value[2], uint8_t held[HID_KEY_BYTES]);
+// An EV_ABS event: a trigger's press or release in out (0 or 1 of them), as hidkeys_event reports
+// a button's. Any other axis does nothing.
+int hidkeys_trigger_event(HidKeys *state, const HidTriggers *t, int code, int value, HidPress *out);
+
 // The scan for keyboards and controllers that come (input_evdev.c's key_scan) runs while shortcuts
 // are on, every HIDKEYS_SCAN_MS, but never while the pen or a finger is in use (busy: the pen near
 // or touching, a finger down) nor until the pen has been gone HIDKEYS_SCAN_QUIET_MS: nothing reads

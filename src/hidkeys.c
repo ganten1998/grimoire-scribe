@@ -123,6 +123,56 @@ int hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, H
     out[0] = key(state, kind, code, false);
     return 1;
 }
+static int64_t span(const HidAxis *a) { return (int64_t)a->maximum - a->minimum; }
+// In the middle half of its range: where a stick rests, and a trigger never does.
+static bool middle(const HidAxis *a) {
+    int64_t s = span(a), v = (int64_t)a->value - a->minimum;
+    return s > 0 && v >= s / 4 && v <= s - s / 4;
+}
+bool hidkeys_triggers(HidTriggers *t, const uint8_t *keys, const uint8_t *axes, const HidAxis *info) {
+    memset(t, 0, sizeof *t);
+    int codes[2] = {0, 0};
+    bool decided = true;
+    if (bit(axes, 10) && bit(axes, 9)) {  // ABS_BRAKE (LT), ABS_GAS (RT)
+        codes[0] = 10, codes[1] = 9;
+    } else if (bit(axes, 0) && bit(axes, 1) && bit(axes, 2) && bit(axes, 3) && bit(axes, 4) && bit(axes, 5)) {
+        const HidAxis *x = &info[0], *y = &info[1], *z = &info[2], *rx = &info[3], *ry = &info[4], *rz = &info[5];
+        bool reported = x->value != x->minimum || y->value != y->minimum;
+        bool narrower = span(z) < span(rx) && span(rz) < span(ry) && span(rx) == span(x) && span(ry) == span(y);
+        bool triggers = narrower ? !(reported && middle(z) && middle(rz))
+                                 : reported && middle(rx) && middle(ry) && !middle(z) && !middle(rz);
+        if (triggers) codes[0] = 2, codes[1] = 5;  // ABS_Z (LT), ABS_RZ (RT)
+        decided = narrower || reported;
+    }
+    for (int i = 0; i < 2; i++) {
+        const HidAxis *a = &info[codes[i]];
+        if (!codes[i] || span(a) <= 0 || bit(keys, HIDKEYS_LT + i)) continue;
+        t->axis[i] = codes[i];
+        t->press[i] = (int)(a->minimum + span(a) / 2);
+        t->release[i] = (int)(a->minimum + span(a) / 4);
+    }
+    return decided;
+}
+static bool trigger_held(const HidTriggers *t, int i, int value, bool was) {
+    return value > (was ? t->release[i] : t->press[i]);
+}
+void hidkeys_trigger_sync(const HidKeys *state, const HidTriggers *t, const int value[2], uint8_t *held) {
+    for (int i = 0; i < 2; i++)
+        if (t->axis[i] && trigger_held(t, i, value[i], bit(state->held, HIDKEYS_LT + i))) set(held, HIDKEYS_LT + i, true);
+}
+int hidkeys_trigger_event(HidKeys *state, const HidTriggers *t, int code, int value, HidPress *out) {
+    if (state->dropped) return 0;
+    for (int i = 0; i < 2; i++) {
+        if (!t->axis[i] || code != t->axis[i]) continue;
+        int c = HIDKEYS_LT + i;
+        bool was = bit(state->held, c), now = trigger_held(t, i, value, was);
+        if (now == was) return 0;
+        set(state->held, c, now);
+        out[0] = key(state, HID_GAMEPAD, c, !now);
+        return 1;
+    }
+    return 0;
+}
 bool hidkeys_scan_due(uint32_t now, uint32_t last_scan, bool busy, uint32_t pen_left) {
     return now - last_scan >= HIDKEYS_SCAN_MS && !busy && now - pen_left >= HIDKEYS_SCAN_QUIET_MS;
 }

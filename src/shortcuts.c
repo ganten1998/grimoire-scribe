@@ -1,4 +1,5 @@
 #include "shortcuts.h"
+#include "hidkeys.h"
 #include "page.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,11 +57,13 @@ static const struct { const char *name; int action; } k_actions[] = {
     {"pen-feel",SHORTCUT_PEN_FEEL},{"fold-panel",SHORTCUT_FOLD_PANEL},{"library",SHORTCUT_LIBRARY},
     {"close-menu",SHORTCUT_CLOSE_MENU},
 };
-// Gamepad buttons by name: the Linux gamepad convention's, and the D-pad (HAT0 decodes to these).
+// Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
+// the analog triggers (hidkeys_trigger_event reports them as these).
 static const struct { const char *name; int code; } k_buttons[] = {
     {"Up",544},{"Down",545},{"Left",546},{"Right",547},
     {"South",304},{"East",305},{"North",307},{"West",308},
     {"L1",310},{"R1",311},{"L2",312},{"R2",313},{"Select",314},{"Start",315},
+    {"LT",HIDKEYS_LT},{"RT",HIDKEYS_RT},
 };
 
 const char *shortcut_action_name(int action) {
