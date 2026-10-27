@@ -7,7 +7,15 @@
 // The last two tests of the C (beta_opens_erase_strokes, reader_and_rescale_know_the_texture) read
 // and write pages through store.rs, which is not translated yet in this wave: they are the second
 // #[test], ignored until it is.
-#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+// (the C literal 6.28f and its `% 3 == 0` tests are kept as they are)
+#![allow(
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::approx_constant,
+    clippy::manual_is_multiple_of,
+    clippy::if_same_then_else,
+    clippy::vec_init_then_push
+)]
 mod beta_format;
 mod testlib;
 use grimoire::prelude::*;

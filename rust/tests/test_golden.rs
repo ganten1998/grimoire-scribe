@@ -13,6 +13,7 @@
 //
 // The Rust build is checked against the C's recorded values: these are the arbiter of the render
 // path (PORTING.md, Tests). Rust's arm64 macOS build contracts a * b + c as clang does (fmla).
+#![allow(clippy::needless_range_loop)]
 mod testlib;
 use grimoire::prelude::*;
 use std::sync::OnceLock;

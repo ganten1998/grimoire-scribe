@@ -723,8 +723,8 @@ fn compact_start(x: &mut Compact) -> i32 {
 pub fn page_droppable(p: &Page, dpi: f32, drop: &mut [bool]) -> i32 {
     let ns = p.strokes.len();
     let mut any = false;
-    for i in 0..ns {
-        drop[i] = false;
+    for (i, d) in drop.iter_mut().enumerate().take(ns) {
+        *d = false;
         any = any || stroke_is_erase(&p.strokes[i]);
     }
     if !any || p.w <= 0 || p.h <= 0 {

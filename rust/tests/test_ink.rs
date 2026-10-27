@@ -1,5 +1,6 @@
 // test_ink.c: canvas, paper, brush, page, history.
-#![allow(clippy::needless_range_loop)]
+// (the C literals, 6.2831853f and 3.14f, are kept as they are: they are part of the recorded input)
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments, clippy::approx_constant)]
 mod testlib;
 use grimoire::prelude::*;
 use testlib::*;

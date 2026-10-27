@@ -3,6 +3,7 @@
 // hover, and on 2026-10-27 a 1.2 s page render, a 1.3 s Paper sheet and the Display sheet's slider
 // steps of 90-100 ms lost its pressure and tilt 26 times. These check that the long loops call it,
 // that what they draw does not change for it, and that only the process that set the hook runs it.
+#![allow(clippy::int_plus_one)]
 mod testlib;
 use grimoire::prelude::*;
 use std::sync::atomic::{AtomicI32, Ordering};

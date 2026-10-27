@@ -3,7 +3,7 @@
 // The C's one binary is two #[test]s here, both ignored until store.rs (store_init, store_create,
 // store_notebook_dir, store_add_page, store_load_page, store_save_page) and export.rs (the zip and
 // the PDF) are translated, as the C main sets up a store first; each makes its own notebook.
-#![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_range_loop, clippy::field_reassign_with_default)]
 mod testlib;
 use grimoire::prelude::*;
 use std::cell::RefCell;

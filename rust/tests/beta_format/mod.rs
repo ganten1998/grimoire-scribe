@@ -8,7 +8,7 @@
 // music decoding it needs) and src/brush.c (the parameter ranges the reader clamps to), renamed
 // beta_* and working on plain bytes and structs of their own, with no dependency on the current
 // sources. Never update this file: 1.0.0-beta is in people's hands as it is.
-#![allow(dead_code)]
+#![allow(dead_code, clippy::manual_range_contains)]
 
 pub const BETA_PAPER_MUSIC: u32 = 3;
 pub const BETA_PAPER_BLANK: u32 = 4;

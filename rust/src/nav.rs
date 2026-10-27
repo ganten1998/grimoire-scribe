@@ -415,7 +415,7 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
 }
 
 fn has_page(nb: &NotebookInfo, pid: u32) -> bool {
-    nb.page_ids.iter().any(|&p| p == pid)
+    nb.page_ids.contains(&pid)
 }
 
 /// Atomic. Names of deleted pages are pruned only after a successful save; unknown lines stay.
