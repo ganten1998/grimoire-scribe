@@ -5,15 +5,6 @@ use std::f32::consts::PI;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
 
-// util.rs's lerpf is `a + (b - a) * t` as plain f32 operations, but common.h's is one expression
-// that clang compiles to a fused multiply-add (-ffp-contract=on: PORTING.md, Floating point), and
-// every interpolation here depends on it for the golden renders to match. This private twin shadows
-// the glob import until util.rs's is fixed the same way (INTERFACE CHANGE in this group's report).
-#[inline]
-fn lerpf(a: f32, b: f32, t: f32) -> f32 {
-    (b - a).mul_add(t, a)
-}
-
 /// Stored on disk: never reorder. A newtype, not an enum: a stroke keeps a tool this build does not
 /// know (it is never drawn), and settings.ini can name any number.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -274,14 +265,14 @@ pub fn brush_tilt(p: &ToolParams, tx: f32, ty: f32) -> f32 {
     let ty = sane(ty, -89.0, 89.0, 0.0) * PI / 180.0;
     let a = tx.tan();
     let b = ty.tan();
-    let deg = a.mul_add(a, b * b).sqrt().atan() * 180.0 / PI;
+    let deg = fmla(a, a, b * b).sqrt().atan() * 180.0 / PI;
     let lo = sane(p.tilt_min_deg, 0.0, 85.0, 30.0);
     let mut hi = sane(p.tilt_max_deg, 5.0, 90.0, 70.0);
     if hi <= lo + 1.0 {
         hi = lo + 1.0;
     }
     let x = clampf((deg - lo) / (hi - lo), 0.0, 1.0);
-    (x * x) * (-2.0f32).mul_add(x, 3.0) // smoothstep
+    (x * x) * fmla(-2.0f32, x, 3.0) // smoothstep
 }
 /// Dab radius (px) and opacity (0..1) for a sample.
 pub fn brush_dab(t: ToolKind, p: &ToolParams, s: &PenSample, dpi: f32, radius_px: &mut f32, opacity: &mut f32) {
@@ -291,11 +282,11 @@ pub fn brush_dab(t: ToolKind, p: &ToolParams, s: &PenSample, dpi: f32, radius_px
     let to = sane(p.tilt_opacity, 0.0, 1.0, 0.0);
     let tl = if ts > 0.0 || to > 0.0 { brush_tilt(p, s.tilt_x, s.tilt_y) } else { 0.0 };
     let mut w = lerpf(sane(p.size_min_mm, 0.1, 12.0, 0.3), sane(p.size_max_mm, 0.1, 12.0, 0.5), pr);
-    w *= ts.mul_add(tl, 1.0);
+    w *= fmla(ts, tl, 1.0);
     let r = mm_to_px(w, dpi) * 0.5;
     *radius_px = if r < 0.5 { 0.5 } else { r };
     let mut o = lerpf(sane(p.opacity_min, 0.0, 1.0, 0.5), sane(p.opacity_max, 0.0, 1.0, 1.0), pr);
-    o *= (-to).mul_add(tl, 1.0);
+    o *= fmla(-to, tl, 1.0);
     // Below the deadzone the pen is touching but does not mark.
     if s.pressure < floor_ {
         o = 0.0;
@@ -310,8 +301,8 @@ pub fn brush_max_radius(t: ToolKind, p: &ToolParams, dpi: f32) -> f32 {
     // + 30%: graphite edges follow the paper tooth slightly past the nominal radius. Charcoal
     // reaches further: a rougher edge, and loose specks beyond it.
     let grain = sane(p.grain, 0.0, 1.0, 0.0);
-    let k = if t == TOOL_CHARCOAL { 1.0 + (0.5f32 * 0.95 * grain).max(0.40) } else { 0.3f32.mul_add(grain, 1.0) };
-    let r = (mm_to_px(w, dpi) * 0.5).mul_add(k, if t == TOOL_CHARCOAL { 1.0 } else { 0.0 });
+    let k = if t == TOOL_CHARCOAL { 1.0 + (0.5f32 * 0.95 * grain).max(0.40) } else { fmla(0.3f32, grain, 1.0) };
+    let r = fmla(mm_to_px(w, dpi) * 0.5, k, if t == TOOL_CHARCOAL { 1.0 } else { 0.0 });
     if r < 0.5 {
         0.5
     } else {
@@ -331,7 +322,7 @@ fn nib_target(p: &ToolParams, tx: f32, ty: f32) -> (f32, f32) {
     let mut a2 = def2;
     if w > 0.0 && (lx != 0.0 || ly != 0.0) {
         // Edge angle = lean + 90 deg, so twice it = 2 * lean + 180 deg.
-        let lean2 = 2.0f32.mul_add(ly.atan2(lx), PI);
+        let lean2 = fmla(2.0f32, ly.atan2(lx), PI);
         let mut d = lean2 - def2;
         while d > PI {
             d -= 2.0 * PI;
@@ -339,7 +330,7 @@ fn nib_target(p: &ToolParams, tx: f32, ty: f32) -> (f32, f32) {
         while d <= -PI {
             d += 2.0 * PI;
         }
-        a2 = w.mul_add(d, def2); // along the shorter way round, so the blend never jumps
+        a2 = fmla(w, d, def2); // along the shorter way round, so the blend never jumps
     }
     (a2.cos(), a2.sin())
 }
@@ -555,9 +546,9 @@ fn tooth_init() -> Box<[u8]> {
             let grains = vnoise(x, y, 3, 2, 0x9E37);
             let fibers = vnoise(x, y, 16, 2, 0x51ED);
             // (0.42f * white + 0.33f * grains + 0.25f * fibers: two fused multiply-adds)
-            let mut n = 0.25f32.mul_add(fibers, 0.42f32.mul_add(white, 0.33 * grains));
+            let mut n = fmla(0.25f32, fibers, fmla(0.42f32, white, 0.33 * grains));
             n = clampf((n - 0.18) / 0.64, 0.0, 1.0);
-            n = (n * n) * (-2.0f32).mul_add(n, 3.0);
+            n = (n * n) * fmla(-2.0f32, n, 3.0);
             tooth[y as usize * TOOTH_N + x as usize] = (n * 255.0).round_ties_even() as u8; // lrintf
         }
     }
@@ -619,7 +610,7 @@ pub fn brush_add(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
     }
     let dx = s.x - b.prev.x;
     let dy = s.y - b.prev.y;
-    let len = dx.mul_add(dx, dy * dy).sqrt();
+    let len = fmla(dx, dx, dy * dy).sqrt();
     if len > 20000.0 {
         // corrupt data: do not bridge with ink
         b.prev = *s;
@@ -710,8 +701,8 @@ const SPAN_MAX_R: f32 = 512.0;
 
 // One dab. `erase` and `dry` are constants at each call (stamp), so each gets a copy of its own: the
 // ink copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
-// (Every `a * b + c` of the C is the fused mul_add that clang makes of it: PORTING.md, Floating
-// point. The sites were read off the C build's IR, one by one.)
+// (Every `a * b + c` of the C that clang contracts is an fmla: PORTING.md, Floating point. The sites
+// were read off the C build's IR, one by one.)
 #[inline(always)]
 fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
     let mut r = 0.0f32;
@@ -735,9 +726,9 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
             b.nib_s = s2;
         } else {
             let k = 1.0 - (-spacing_for(r) / mm_to_px(1.5, b.dpi)).exp();
-            let nc = (c2 - b.nib_c).mul_add(k, b.nib_c);
-            let ns = (s2 - b.nib_s).mul_add(k, b.nib_s);
-            let l = nc.mul_add(nc, ns * ns).sqrt();
+            let nc = fmla(c2 - b.nib_c, k, b.nib_c);
+            let ns = fmla(s2 - b.nib_s, k, b.nib_s);
+            let l = fmla(nc, nc, ns * ns).sqrt();
             if l > 1e-3 {
                 b.nib_c = nc / l;
                 b.nib_s = ns / l;
@@ -757,7 +748,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
     let pr = if grain > 0.0 { brush_pressure(&b.params, s.pressure) } else { 0.0 };
     if lk.jitter > 0.0 {
         let j = (hash2(b.seed, idx) & 0xFFFF) as f32 / 65535.0 - 0.5;
-        op = clampf(op * (2.0 * j * lk.jitter).mul_add(grain, 1.0), 0.0, 1.0);
+        op = clampf(op * fmla(2.0 * j * lk.jitter, grain, 1.0), 0.0, 1.0);
     }
     // Spacing compensation: about 2r/spacing dabs cover a pixel on the stroke's spine, so
     // each dab deposits the fraction that composes to `op` overall.
@@ -765,12 +756,12 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
     let nib_ratio = if lk.nib == NibKind::Italic { ITALIC_RATIO } else { BROAD_RATIO };
     let n = (2.0 * r * (if lk.nib != NibKind::None { nib_ratio } else { 1.0 }) / spacing_for(r)).max(1.0);
     let inv_n = 1.0 / n;
-    let g_eff = grain * (-0.5f32).mul_add(pr, 1.0);
-    let r_in = r.mul_add(1.0 - lk.rim, -0.5).max(0.0);
+    let g_eff = grain * fmla(-0.5f32, pr, 1.0);
+    let r_in = fmla(r, 1.0 - lk.rim, -0.5).max(0.0);
     let r_out = r + 0.5;
     // Graphite: light pressure only reaches the peaks of the tooth, pressing harder fills the
     // valleys; the stroke edge follows the tooth too, so it is ragged instead of a smooth tube.
-    let thr = grain * (-lk.fill).mul_add(pr, 0.80);
+    let thr = grain * fmla(-lk.fill, pr, 0.80);
     let edge_w = (r * lk.edge).max(0.9);
     let rough = r * lk.rough * grain;
     // Charcoal dust: loose specks up to this far past the edge, fixed to the paper.
@@ -810,7 +801,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
         let dy = y as f32 + 0.5 - s.y;
         let mut sx0 = box_.x + box_.w; // the row's core span (none: x never gets there)
         let mut sx1 = sx0;
-        let q = if spans { r_in.mul_add(r_in, -(dy * dy)) } else { 0.0 };
+        let q = if spans { fmla(r_in, r_in, -(dy * dy)) } else { 0.0 };
         if q > 4.0 {
             let hw = q.sqrt();
             let mut a0 = (s.x - 0.5 - hw).ceil() as i32 + 1;
@@ -854,15 +845,15 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
                 continue;
             }
             let dx = x as f32 + 0.5 - s.x;
-            let mut d = dx.mul_add(dx, dy * dy).sqrt();
+            let mut d = fmla(dx, dx, dy * dy).sqrt();
             let a: f32;
             if lk.graphite {
                 let t = if lk.coarse {
-                    0.78f32.mul_add(tooth_at(tooth, x >> 1, y >> 1), 0.22 * tooth_at(tooth, x, y))
+                    fmla(0.78f32, tooth_at(tooth, x >> 1, y >> 1), 0.22 * tooth_at(tooth, x, y))
                 } else {
                     tooth_at(tooth, x, y)
                 };
-                let de = (0.5 - t).mul_add(rough, d); // peaks pick up graphite a little further out
+                let de = fmla(0.5 - t, rough, d); // peaks pick up graphite a little further out
                 if de >= r_out {
                     if dust_w <= 0.0 || de >= r_out + dust_w {
                         continue;
@@ -873,7 +864,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
                     if h >= chance {
                         continue;
                     }
-                    let a = op * 0.75 * 0.5f32.mul_add(t, 0.5);
+                    let a = op * 0.75 * fmla(0.5f32, t, 0.5);
                     let ad = 1.0 - (1.0 - a.min(0.999)).powf(inv_n);
                     put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
                     continue;
@@ -882,34 +873,34 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
                 let lo = thr - lk.band;
                 let hi = thr + lk.band;
                 let mut k = clampf((t - lo) / (hi - lo), 0.0, 1.0);
-                k = (k * k) * (-2.0f32).mul_add(k, 3.0);
+                k = (k * k) * fmla(-2.0f32, k, 3.0);
                 a = op * prof * lerpf(1.0, k, grain);
             } else {
                 if lk.nib == NibKind::Italic {
                     // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
-                    let u = dx.mul_add(nca, dy * nsa);
-                    let v = (-dx).mul_add(nsa, dy * nca) / ITALIC_RATIO;
-                    d = u.mul_add(u, v * v).sqrt();
+                    let u = fmla(dx, nca, dy * nsa);
+                    let v = fmla(-dx, nsa, dy * nca) / ITALIC_RATIO;
+                    d = fmla(u, u, v * v).sqrt();
                 } else if lk.nib == NibKind::BroadEdge || lk.nib == NibKind::Vertical {
                     // A flat, square-cut nib (a superellipse): crisp angled ends like a real
                     // broad-edge pen, hairlines along the edge, full width across it.
-                    let u = dx.mul_add(nca, dy * nsa);
-                    let v = (-dx).mul_add(nsa, dy * nca) / BROAD_RATIO;
+                    let u = fmla(dx, nca, dy * nsa);
+                    let v = fmla(-dx, nsa, dy * nca) / BROAD_RATIO;
                     let u2 = u * u;
                     let v2 = v * v;
-                    d = u2.mul_add(u2, v2 * v2).sqrt().sqrt();
+                    d = fmla(u2, u2, v2 * v2).sqrt().sqrt();
                 }
                 if d >= r_out {
                     continue;
                 }
                 let mut prof = if d <= r_in { 1.0 } else { (r_out - d) / (r_out - r_in) };
                 if lk.core > 0.0 {
-                    prof = (prof * lk.core.mul_add(1.0 - d / r_out, 1.0)).min(1.0);
+                    prof = (prof * fmla(lk.core, 1.0 - d / r_out, 1.0)).min(1.0);
                 }
                 let mut aa = op * prof;
                 if g_eff > 0.0 {
                     let v = 1.0 - tooth_at(tooth, x, y);
-                    aa *= clampf((-(g_eff * 1.4 * v)).mul_add(v, 1.0), 0.0, 1.0);
+                    aa *= clampf(fmla(-(g_eff * 1.4 * v), v, 1.0), 0.0, 1.0);
                 }
                 a = aa;
             }
@@ -972,12 +963,12 @@ pub fn smoother_apply(s: &mut Smoother, amount: f32, io: &mut PenSample) {
     }
     let dx = io.x - s.x;
     let dy = io.y - s.y;
-    let dist = dx.mul_add(dx, dy * dy).sqrt();
+    let dist = fmla(dx, dx, dy * dy).sqrt();
     // Strong smoothing for slow, careful motion; quick strokes follow closely.
-    let alpha = clampf((-0.85f32).mul_add(amount, 1.0) + dist / 60.0, 0.08, 1.0);
-    s.x = dx.mul_add(alpha, s.x);
-    s.y = dy.mul_add(alpha, s.y);
-    s.pressure = (io.pressure - s.pressure).mul_add(alpha.max(0.5), s.pressure);
+    let alpha = clampf(fmla(-0.85f32, amount, 1.0) + dist / 60.0, 0.08, 1.0);
+    s.x = fmla(dx, alpha, s.x);
+    s.y = fmla(dy, alpha, s.y);
+    s.pressure = fmla(io.pressure - s.pressure, alpha.max(0.5), s.pressure);
     io.x = s.x;
     io.y = s.y;
     io.pressure = s.pressure;

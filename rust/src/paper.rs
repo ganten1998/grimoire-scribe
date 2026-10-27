@@ -237,7 +237,7 @@ pub fn music_max_systems(m: &MusicLayout, page_h: i32, dpi: f32) -> i32 {
     let mut best = 1;
     for s in 1..=MUSIC_MAX_SYSTEMS {
         // (clang fuses the first product of a sum of two: the C's -ffp-contract=on, PORTING.md)
-        if avail / (s as f32).mul_add(su, ((s - 1) as f32) * SYSTEM_GAP) >= MIN_SPACE_MM {
+        if avail / fmla(s as f32, su, ((s - 1) as f32) * SYSTEM_GAP) >= MIN_SPACE_MM {
             best = s;
         }
     }
@@ -348,9 +348,9 @@ fn thick(px300: f32, dpi: f32) -> i32 {
     }
 }
 
-// (Where the C has `a * b + c` in one expression, clang's default -ffp-contract=on makes it one
-// fused multiply-add and so does `a.mul_add(b, c)` here: PORTING.md, Floating point. Of a sum of two
-// products clang fuses the left one; a difference `c - a * b` is `(-a).mul_add(b, c)`.)
+// (Where the C has `a * b + c` in one expression, clang's default -ffp-contract=on contracts it,
+// and `fmla(a, b, c)` here rounds it as the C build does on each target: PORTING.md, Floating point.
+// Of a sum of two products clang fuses the left one; a difference `c - a * b` is `fmla(-a, b, c)`.)
 
 fn ruled(c: &mut Canvas, pitch_mm: f32, dpi: f32, margin: bool) {
     let w = c.w;
@@ -363,7 +363,7 @@ fn ruled(c: &mut Canvas, pitch_mm: f32, dpi: f32, margin: bool) {
     canvas_hline(c, 0, w, lrintf(first), thick(3.0, dpi), 150);
     let mut i = 1;
     loop {
-        let y = lrintf(pitch.mul_add(i as f32, first));
+        let y = lrintf(fmla(pitch, i as f32, first));
         if y > bottom {
             break;
         }
@@ -388,16 +388,16 @@ fn music(c: &mut Canvas, dpi: f32) {
     let h = c.h;
     let top = mm_to_px(14.0, dpi);
     let bot = mm_to_px(12.0, dpi);
-    let space = (h as f32 - top - bot) / (STAVES as f32).mul_add(4.0, ((STAVES - 1) as f32) * GAP_SPACES);
+    let space = (h as f32 - top - bot) / fmla(STAVES as f32, 4.0, ((STAVES - 1) as f32) * GAP_SPACES);
     let lt = thick(2.0, dpi);
     let x0 = px_mm(10.0, dpi);
     let x1 = w - px_mm(10.0, dpi);
     for s in 0..STAVES {
-        let y0 = ((s as f32) * space).mul_add(4.0 + GAP_SPACES, top);
+        let y0 = fmla((s as f32) * space, 4.0 + GAP_SPACES, top);
         let ytop = lrintf(y0);
-        let ybot = lrintf(4.0f32.mul_add(space, y0));
+        let ybot = lrintf(fmla(4.0f32, space, y0));
         for l in 0..5 {
-            canvas_hline(c, x0, x1, lrintf((l as f32).mul_add(space, y0)), lt, 90);
+            canvas_hline(c, x0, x1, lrintf(fmla(l as f32, space, y0)), lt, 90);
         }
         canvas_vline(c, x0, ytop, ybot + lt, lt, 90);
         canvas_vline(c, x1 - lt, ytop, ybot + lt, lt, 90);
@@ -415,23 +415,23 @@ fn grand(c: &mut Canvas, dpi: f32) {
     let h = c.h;
     let top = mm_to_px(16.0, dpi);
     let bot = mm_to_px(12.0, dpi);
-    let space = (h as f32 - top - bot) / (SYSTEMS as f32).mul_add(8.0 + INNER, ((SYSTEMS - 1) as f32) * BETWEEN);
+    let space = (h as f32 - top - bot) / fmla(SYSTEMS as f32, 8.0 + INNER, ((SYSTEMS - 1) as f32) * BETWEEN);
     let lt = thick(2.0, dpi);
     let x0 = px_mm(16.0, dpi);
     let x1 = w - px_mm(10.0, dpi);
     for sys in 0..SYSTEMS {
-        let y0 = ((sys as f32) * space).mul_add(8.0 + INNER + BETWEEN, top);
+        let y0 = fmla((sys as f32) * space, 8.0 + INNER + BETWEEN, top);
         // bass staff top line
-        let yb = space.mul_add(4.0 + INNER, y0);
+        let yb = fmla(space, 4.0 + INNER, y0);
         for l in 0..5 {
-            canvas_hline(c, x0, x1, lrintf((l as f32).mul_add(space, y0)), lt, 90);
-            canvas_hline(c, x0, x1, lrintf((l as f32).mul_add(space, yb)), lt, 90);
+            canvas_hline(c, x0, x1, lrintf(fmla(l as f32, space, y0)), lt, 90);
+            canvas_hline(c, x0, x1, lrintf(fmla(l as f32, space, yb)), lt, 90);
         }
         let ytop = lrintf(y0);
-        let ybot = lrintf(4.0f32.mul_add(space, yb));
+        let ybot = lrintf(fmla(4.0f32, space, yb));
         // system line joins both staves
         canvas_vline(c, x0, ytop, ybot + lt, thick(3.0, dpi), 70);
-        canvas_vline(c, x1 - lt, ytop, lrintf(4.0f32.mul_add(space, y0)) + lt, lt, 90);
+        canvas_vline(c, x1 - lt, ytop, lrintf(fmla(4.0f32, space, y0)) + lt, lt, 90);
         canvas_vline(c, x1 - lt, lrintf(yb), ybot + lt, lt, 90);
         // Brace: a bold bracket with curled ends left of the system line.
         let bx = x0 as f32 - mm_to_px(3.0, dpi);
@@ -440,8 +440,8 @@ fn grand(c: &mut Canvas, dpi: f32) {
         canvas_line_aa(c, bx, ybot as f32 - space, bx + mm_to_px(2.0, dpi), ybot as f32, thick(4.0, dpi) as f32, 60);
         // Clefs (Material Design music glyphs from the UI font).
         let cw = lrintf(space * 3.2);
-        font_draw_icon(c, FontFace::Regular, 0xF0F70, Rect { x: x0 + space as i32, y: lrintf((-space).mul_add(1.6, y0)), w: cw, h: lrintf(space * 7.2) }, 110);
-        font_draw_icon(c, FontFace::Regular, 0xF0F6F, Rect { x: x0 + space as i32, y: lrintf((-space).mul_add(0.2, yb)), w: cw, h: lrintf(space * 3.6) }, 110);
+        font_draw_icon(c, FontFace::Regular, 0xF0F70, Rect { x: x0 + space as i32, y: lrintf(fmla(-space, 1.6, y0)), w: cw, h: lrintf(space * 7.2) }, 110);
+        font_draw_icon(c, FontFace::Regular, 0xF0F6F, Rect { x: x0 + space as i32, y: lrintf(fmla(-space, 0.2, yb)), w: cw, h: lrintf(space * 3.6) }, 110);
     }
 }
 
@@ -453,21 +453,21 @@ fn tab(c: &mut Canvas, dpi: f32) {
     let h = c.h;
     let top = mm_to_px(14.0, dpi);
     let bot = mm_to_px(12.0, dpi);
-    let space = (h as f32 - top - bot) / (STAVES as f32).mul_add(5.0, ((STAVES - 1) as f32) * GAP);
+    let space = (h as f32 - top - bot) / fmla(STAVES as f32, 5.0, ((STAVES - 1) as f32) * GAP);
     let lt = thick(2.0, dpi);
     let x0 = px_mm(10.0, dpi);
     let x1 = w - px_mm(10.0, dpi);
     for s in 0..STAVES {
-        let y0 = ((s as f32) * space).mul_add(5.0 + GAP, top);
+        let y0 = fmla((s as f32) * space, 5.0 + GAP, top);
         for l in 0..6 {
-            canvas_hline(c, x0, x1, lrintf((l as f32).mul_add(space, y0)), lt, 100);
+            canvas_hline(c, x0, x1, lrintf(fmla(l as f32, space, y0)), lt, 100);
         }
-        canvas_vline(c, x0, lrintf(y0), lrintf(5.0f32.mul_add(space, y0)) + lt, lt, 100);
-        canvas_vline(c, x1 - lt, lrintf(y0), lrintf(5.0f32.mul_add(space, y0)) + lt, lt, 100);
+        canvas_vline(c, x0, lrintf(y0), lrintf(fmla(5.0f32, space, y0)) + lt, lt, 100);
+        canvas_vline(c, x1 - lt, lrintf(y0), lrintf(fmla(5.0f32, space, y0)) + lt, lt, 100);
         let fs = space * 1.75;
         const LETTERS: [&str; 3] = ["T", "A", "B"];
         for (i, letter) in LETTERS.iter().enumerate() {
-            font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(space.mul_add(1.6f32.mul_add(i as f32, 1.6), y0)), letter, 60);
+            font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(fmla(space, fmla(1.6f32, i as f32, 1.6), y0)), letter, 60);
         }
     }
 }
@@ -489,24 +489,24 @@ fn draw_part(c: &mut Canvas, p: MusicPart, y0: f32, space: f32, x0: i32, x1: i32
     let g: u8 = if tab { 100 } else { 90 };
     let h = space * (lines - 1) as f32;
     for l in 0..lines {
-        canvas_hline(c, x0, x1, lrintf((l as f32).mul_add(space, y0)), lt, g);
+        canvas_hline(c, x0, x1, lrintf(fmla(l as f32, space, y0)), lt, g);
     }
     canvas_vline(c, x0, lrintf(y0), lrintf(y0 + h) + lt, lt, g);
     canvas_vline(c, x1 - lt, lrintf(y0), lrintf(y0 + h) + lt, lt, g);
     let cx = x0 + space as i32;
     match p {
-        PART_TREBLE => clef_glyph(c, 0xF0F70, cx, (-space).mul_add(1.6, y0), space * 3.2, space * 7.2),
-        PART_BASS => clef_glyph(c, 0xF0F6F, cx, (-space).mul_add(0.2, y0), space * 3.2, space * 3.6),
+        PART_TREBLE => clef_glyph(c, 0xF0F70, cx, fmla(-space, 1.6, y0), space * 3.2, space * 7.2),
+        PART_BASS => clef_glyph(c, 0xF0F6F, cx, fmla(-space, 0.2, y0), space * 3.2, space * 3.6),
         // The C clef centers on its line: the middle line (alto), the second from the top (tenor).
-        PART_ALTO => clef_glyph(c, 0xF0F6E, cx, (-space).mul_add(0.2, y0), space * 4.4, space * 4.4),
-        PART_TENOR => clef_glyph(c, 0xF0F6E, cx, (-space).mul_add(1.2, y0), space * 4.4, space * 4.4),
+        PART_ALTO => clef_glyph(c, 0xF0F6E, cx, fmla(-space, 0.2, y0), space * 4.4, space * 4.4),
+        PART_TENOR => clef_glyph(c, 0xF0F6E, cx, fmla(-space, 1.2, y0), space * 4.4, space * 4.4),
         PART_PERC => {
             // The neutral clef: two thick bars across the middle spaces.
             let bw = lrintf(space * 0.4);
             for b in 0..2 {
                 canvas_fill(
                     c,
-                    Rect { x: cx + lrintf(space * 0.9f32.mul_add(b as f32, 0.6)), y: lrintf(y0 + space), w: bw, h: lrintf(space * 2.0) },
+                    Rect { x: cx + lrintf(space * fmla(0.9f32, b as f32, 0.6)), y: lrintf(y0 + space), w: bw, h: lrintf(space * 2.0) },
                     80,
                 );
             }
@@ -518,7 +518,7 @@ fn draw_part(c: &mut Canvas, p: MusicPart, y0: f32, space: f32, x0: i32, x1: i32
                 const LETTERS: [&str; 3] = ["T", "A", "B"];
                 for (i, letter) in LETTERS.iter().enumerate() {
                     let cy = y0 + h * (i as f32 + 0.5) / 3.0;
-                    font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(fs.mul_add(0.34, cy)), letter, 60);
+                    font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(fmla(fs, 0.34, cy)), letter, 60);
                 }
             }
         }
@@ -530,14 +530,14 @@ fn music_custom(c: &mut Canvas, m: &MusicLayout, dpi: f32) {
     let bot = mm_to_px(MUSIC_BOT_MM, dpi);
     let avail = c.h as f32 - top - bot;
     let su = system_units(m);
-    let mut space = avail / (m.systems as f32).mul_add(su, ((m.systems - 1) as f32) * SYSTEM_GAP);
+    let mut space = avail / fmla(m.systems as f32, su, ((m.systems - 1) as f32) * SYSTEM_GAP);
     let mut sgap = SYSTEM_GAP;
     let maxs = mm_to_px(MAX_SPACE_MM, dpi);
     if space > maxs {
         // Few systems: keep the staff size sane and spread the systems down the page instead.
         space = maxs;
         if m.systems > 1 {
-            sgap = (-(m.systems as f32)).mul_add(su, avail / space) / (m.systems - 1) as f32;
+            sgap = fmla(-(m.systems as f32), su, avail / space) / (m.systems - 1) as f32;
         }
     }
     let mut staffy = 0;
@@ -553,16 +553,16 @@ fn music_custom(c: &mut Canvas, m: &MusicLayout, dpi: f32) {
         let mut last = -1.0f32;
         let mut py = [0.0f32; MUSIC_MAX_PARTS];
         for (i, pyi) in py.iter_mut().enumerate().take(m.n as usize) {
-            y = gap_above(m, i).mul_add(space, y);
+            y = fmla(gap_above(m, i), space, y);
             *pyi = y;
             if m.part[i] != PART_LYRICS {
                 if first < 0.0 {
                     first = y;
                 }
-                last = part_height(m.part[i]).mul_add(space, y);
+                last = fmla(part_height(m.part[i]), space, y);
             }
             draw_part(c, m.part[i], y, space, x0, x1, dpi);
-            y = part_height(m.part[i]).mul_add(space, y);
+            y = fmla(part_height(m.part[i]), space, y);
         }
         if joined {
             // The system line joins every staff and tab of the system.
@@ -573,14 +573,14 @@ fn music_custom(c: &mut Canvas, m: &MusicLayout, dpi: f32) {
                     continue;
                 }
                 let yt = py[i];
-                let yb = 4.0f32.mul_add(space, py[i + 1]);
+                let yb = fmla(4.0f32, space, py[i + 1]);
                 let bx = x0 as f32 - mm_to_px(3.0, dpi);
                 canvas_line_aa(c, bx, yt + space, bx, yb - space, thick(5.0, dpi) as f32, 60);
                 canvas_line_aa(c, bx, yt + space, bx + mm_to_px(2.0, dpi), yt, thick(4.0, dpi) as f32, 60);
                 canvas_line_aa(c, bx, yb - space, bx + mm_to_px(2.0, dpi), yb, thick(4.0, dpi) as f32, 60);
             }
         }
-        y = sgap.mul_add(space, y);
+        y = fmla(sgap, space, y);
     }
 }
 
@@ -607,12 +607,12 @@ fn dots(c: &mut Canvas, dpi: f32) {
     let i0 = i0.max(0);
     let j0 = j0.max(0);
     for j in j0..=j1 {
-        let y = (j as f32).mul_add(pitch, oy);
+        let y = fmla(j as f32, pitch, oy);
         if y > c.h as f32 - mm_to_px(8.0, dpi) {
             break;
         }
         for i in i0..=i1 {
-            let x = (i as f32).mul_add(pitch, ox);
+            let x = fmla(i as f32, pitch, ox);
             if x > c.w as f32 - pitch / 2.0 {
                 break;
             }

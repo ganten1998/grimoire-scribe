@@ -13,6 +13,8 @@
 //! EVIOCGKEY also takes the queued button events out of the reader's queue, so it is asked only
 //! once the tail has been read.
 
+use crate::util::fmla;
+
 /// Linux evdev numbers (linux/input.h, which the host does not have; input_evdev.c checks them).
 // (u16, as input_event's type and code are.)
 pub const PS_EV_SYN: u16 = 0x00;
@@ -465,7 +467,7 @@ fn hover_axis(h: &PenHover, a: usize, v: i32, reversed: bool) -> f32 {
         f = 1.0 - f;
     }
     // smin + f * (smax - smin) in one expression: clang fuses it (PORTING.md, Floating point).
-    f.mul_add((h.smax[a] - h.smin[a]) as f32, h.smin[a] as f32)
+    fmla(f, (h.smax[a] - h.smin[a]) as f32, h.smin[a] as f32)
 }
 /// A contact frame: the raw digitizer's place (rx, ry) and the scaled pen's (sx, sy) at the same moment.
 pub fn pensync_hover_learn(h: &mut PenHover, rx: i32, ry: i32, sx: i32, sy: i32) {

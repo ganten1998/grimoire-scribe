@@ -17,8 +17,8 @@ pub fn calib_apply(c: &InputCalib, nx: f32, ny: f32, sx: &mut f32, sy: &mut f32)
     let u = if c.swap_xy { ny } else { nx };
     let v = if c.swap_xy { nx } else { ny };
     // ax*u + bx in one expression: clang fuses it (PORTING.md, Floating point).
-    *sx = c.ax.mul_add(u, c.bx);
-    *sy = c.ay.mul_add(v, c.by);
+    *sx = fmla(c.ax, u, c.bx);
+    *sy = fmla(c.ay, v, c.by);
 }
 /// Puts a pen tilt (degrees per axis, from the digitizer) into the logical screen's frame: the
 /// calibration's axis swap and mirrors, then `rot` quarter turns clockwise, exactly as positions
@@ -78,9 +78,9 @@ fn corr(a: &[f32], b: &[f32]) -> f32 {
     for i in 0..n {
         let da = a[i] as f64 - ma;
         let db = b[i] as f64 - mb;
-        sab = da.mul_add(db, sab);
-        saa = da.mul_add(da, saa);
-        sbb = db.mul_add(db, sbb);
+        sab = fmla(da, db, sab);
+        saa = fmla(da, da, saa);
+        sbb = fmla(db, db, sbb);
     }
     if saa <= 1e-12 || sbb <= 1e-12 {
         return 0.0;
@@ -103,15 +103,15 @@ fn fit_line(x: &[f32], y: &[f32], a: &mut f32, b: &mut f32) -> bool {
     let mut sxx = 0f64;
     for i in 0..n {
         let dx = x[i] as f64 - mx;
-        sxy = dx.mul_add(y[i] as f64 - my, sxy);
-        sxx = dx.mul_add(dx, sxx);
+        sxy = fmla(dx, y[i] as f64 - my, sxy);
+        sxx = fmla(dx, dx, sxx);
     }
     if sxx < 1e-6 {
         return false;
     }
     *a = (sxy / sxx) as f32;
     // my - a*mx: fused too (a is a float promoted to double).
-    *b = (-(*a as f64)).mul_add(mx, my) as f32;
+    *b = fmla(-(*a as f64), mx, my) as f32;
     true
 }
 /// Decides axis swap from the data, then least-squares fits scale + offset per axis.

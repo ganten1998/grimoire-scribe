@@ -531,8 +531,8 @@ fn hover_frame(i: i32, o: i32) -> (i32, i32, i32, i32) {
     let ux = if o & 1 != 0 { 1860 - sx } else { sx };
     let uy = if o & 2 != 0 { 2480 - sy } else { sy };
     // (ux * 8.4f + 0.5f: one fused multiply-add in the C, as clang compiles it)
-    let mut rx = (ux as f32).mul_add(8.4, 0.5) as i32 + (i % 3 - 1) * 9; // (about a pixel either way)
-    let mut ry = (uy as f32).mul_add(8.4, 0.5) as i32 - (i % 5 - 2) * 6;
+    let mut rx = fmla(ux as f32, 8.4, 0.5) as i32 + (i % 3 - 1) * 9; // (about a pixel either way)
+    let mut ry = fmla(uy as f32, 8.4, 0.5) as i32 - (i % 5 - 2) * 6;
     if rx < 0 {
         rx = 0;
     }

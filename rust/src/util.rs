@@ -124,9 +124,50 @@ pub fn clampi(v: i32, lo: i32, hi: i32) -> i32 {
         v
     }
 }
+/// `a * b + c` as the C build rounds it (PORTING.md, Floating point). clang's default
+/// -ffp-contract=on contracts the expression, and the backend makes one fused multiply-add of it
+/// only where it judges the fused instruction faster: on arm64, the host the unit tests and the
+/// golden renders run on, it does (fmadd), so there this is `mul_add`. The Kindle's build (zig cc
+/// for the Cortex-A7) does not: its ARM backend lowers the contracted form to a separate multiply
+/// and add (vmul, vadd; there is no vfma in the C binary), and neither does x86-64 without -mfma.
+/// There this is the plain form, which Rust never fuses. For `c - a * b` pass `-a`, for
+/// `a * b - c` pass `-c`: negating is exact, so the unfused form is the same number. Of a sum of
+/// two products (`a * b + c * d`) clang fuses the left one: `fmla(a, b, c * d)`.
+#[inline(always)]
+pub fn fmla<T: Contracted>(a: T, b: T, c: T) -> T {
+    T::fmla(a, b, c)
+}
+
+/// The float types fmla takes: `float` and `double` contract alike.
+pub trait Contracted: Copy {
+    fn fmla(a: Self, b: Self, c: Self) -> Self;
+}
+impl Contracted for f32 {
+    #[inline(always)]
+    fn fmla(a: f32, b: f32, c: f32) -> f32 {
+        if cfg!(target_arch = "aarch64") {
+            a.mul_add(b, c)
+        } else {
+            a * b + c
+        }
+    }
+}
+impl Contracted for f64 {
+    #[inline(always)]
+    fn fmla(a: f64, b: f64, c: f64) -> f64 {
+        if cfg!(target_arch = "aarch64") {
+            a.mul_add(b, c)
+        } else {
+            a * b + c
+        }
+    }
+}
+
+/// `a + (b - a) * t` is one contracted multiply-add in the C build (common.h's lerpf is a single
+/// expression): see fmla.
 #[inline]
 pub fn lerpf(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
+    fmla(b - a, t, a)
 }
 #[inline]
 pub fn mm_to_px(mm: f32, dpi: f32) -> f32 {
@@ -596,5 +637,22 @@ mod tests {
         assert_eq!(dirname("x.ini"), ".");
         assert_eq!(dirname("/x"), "/");
         assert_eq!(dirname("a//b//"), "a");
+    }
+
+    #[test]
+    fn contracted_multiply_add_is_the_c_builds() {
+        // 0.1 * 0.1 + (-0.01) keeps the product's rounding error only when fused
+        let (a, b, c) = (0.1f32, 0.1f32, -0.01f32);
+        let (x, y, z) = (0.1f64, 0.1f64, -0.01f64);
+        if cfg!(target_arch = "aarch64") {
+            assert_eq!(fmla(a, b, c), a.mul_add(b, c));
+            assert_ne!(fmla(a, b, c), a * b + c);
+            assert_eq!(fmla(x, y, z), x.mul_add(y, z));
+            assert_ne!(fmla(x, y, z), x * y + z);
+        } else {
+            assert_eq!(fmla(a, b, c), a * b + c);
+            assert_eq!(fmla(x, y, z), x * y + z);
+        }
+        assert_eq!(lerpf(2.0, 10.0, 0.25), 4.0);
     }
 }

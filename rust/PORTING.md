@@ -68,7 +68,7 @@ Every C file has a module of the same name; a header and its .c are one module.
 
 | C | Rust | notes |
 |---|---|---|
-| common.h + util.c | util.rs (also `crate::common`) | fully implemented: Rect, clamps, clocks, qlog!, files, FixedStr, strerror |
+| common.h + util.c | util.rs (also `crate::common`) | fully implemented: Rect, clamps, fmla, clocks, qlog!, files, FixedStr, strerror |
 | main.c | mainloop.rs | `main.rs` would read as a binary to every Rust tool; src/bin/*.rs call it |
 | sim_sdl.c | sim_sdl.rs | the headless runner only (see "Not ported") |
 | templates.h + bgwork_template.c | templates.rs (types) + bgwork_template.rs (functions) | templates.rs re-exports them |
@@ -308,11 +308,17 @@ Golden renders, PDF images and thumbnails depend on every float operation. Three
    double forms are the `f64` methods. Both call the same libm as the C on each target.
 2. **Contraction**: clang compiles the C with `-ffp-contract=on` (its default, and the Makefile's
    test flags say so: tests/test_golden.c's renders were recorded so): `a * b + c` within one
-   expression becomes one fused multiply-add on ARM64 and on the Cortex-A7 (VFPv4). Rust never
-   fuses. Where the C has `a * b + c` (or `c + a * b`, `a * b - c`, `c - a * b`) in one expression
-   of float code that a render or a file depends on, write `a.mul_add(b, c)` (`(-a).mul_add(b, c)`
-   for `c - a * b`). canvas_deposit_px and canvas_restore_px show it. When two products meet
-   (`a * b + c * d`), clang fuses one of them: check against the golden tests (test_golden,
+   expression is contracted (`llvm.fmuladd`), and the backend makes one fused multiply-add of it
+   where it judges that faster. On ARM64, the host the tests and golden renders run on, it does
+   (fmadd). On the Kindle's Cortex-A7 (zig cc, `-mcpu=cortex_a7`) it does not: the ARM backend
+   lowers it to a separate vmul and vadd, and the C Kindle binary has no vfma (checked in the
+   assembly of brush, canvas, calib_fit, font, paper, pensync and ui). Rust never contracts, and
+   `mul_add` always fuses (vfma on the Cortex-A7). So never write `mul_add`: where the C has
+   `a * b + c` (or `c + a * b`, `a * b - c`, `c - a * b`) in one expression of float code, write
+   `fmla(a, b, c)` (util.rs: `mul_add` on aarch64, the plain form elsewhere; f32 and f64), with
+   `fmla(-a, b, c)` for `c - a * b` and `fmla(a, b, -c)` for `a * b - c`. util::lerpf is one.
+   canvas_deposit_px and canvas_restore_px show it. When two products meet (`a * b + c * d`),
+   clang fuses the left one (`fmla(a, b, c * d)`): check against the golden tests (test_golden,
    test_ink, test_erase, test_pagesize) and the disassembly of the C build when they differ.
 3. **Formatting**: Rust's `{:.N}` rounds exactly as printf's `%.Nf`; cformat! handles `%g` and `%e`
    as printf does.

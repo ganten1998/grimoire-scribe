@@ -35,10 +35,10 @@ const ICONS: [IconKind; IconKind::COUNT - 1] = [
 fn slider_snap() {
     let mut s = Slider { min: 0.0, max: 1.0, step: 0.05, value: 0.0, ..Default::default() };
     ui_slider_layout(&mut s, Rect { x: 0, y: 0, w: 1000, h: 100 });
-    let x = (s.track.w as f32).mul_add(0.512, s.track.x as f32);
+    let x = fmla(s.track.w as f32, 0.512, s.track.x as f32);
     check!(ui_slider_set_from_x(&mut s, x));
     check_near!(s.value, 0.5f32, 1e-5);
-    let x = (s.track.w as f32).mul_add(0.51, s.track.x as f32);
+    let x = fmla(s.track.w as f32, 0.51, s.track.x as f32);
     check!(!ui_slider_set_from_x(&mut s, x));
     ui_slider_set_from_x(&mut s, -100.0);
     check!(s.value == 0.0);
@@ -60,37 +60,37 @@ fn slider_fine_drag() {
     ui_slider_layout(&mut s, Rect { x: 0, y: 0, w: 1000, h: 100 });
     let mut d = SliderDrag::default();
     // (a + b * c is one fused multiply-add in the C build: PORTING.md, Floating point)
-    let mut x = (s.track.w as f32).mul_add(0.28, s.track.x as f32);
-    let y = (s.track.h as f32).mul_add(0.5, s.track.y as f32);
+    let mut x = fmla(s.track.w as f32, 0.28, s.track.x as f32);
+    let y = fmla(s.track.h as f32, 0.5, s.track.y as f32);
     ui_slider_drag_begin(&s, &mut d, x, 100);
     check!(!ui_slider_drag_to(&mut s, &mut d, x, y + 160.0, 500));
     check_near!(s.value, 0.28f32, 1e-6); // moving away alone never jumps
-    x = (s.track.w as f32 * 0.02).mul_add(16.0, x);
+    x = fmla(s.track.w as f32 * 0.02, 16.0, x);
     check!(ui_slider_drag_to(&mut s, &mut d, x, y + 160.0, 510));
     check_near!(s.value, 0.30f32, 1e-6);
     for i in 0..10 {
-        x = (s.track.w as f32 * 0.001).mul_add(16.0, x);
+        x = fmla(s.track.w as f32 * 0.001, 16.0, x);
         ui_slider_drag_to(&mut s, &mut d, x, y + 160.0, 520u32 + i);
     }
     check_near!(s.value, 0.31f32, 1e-6); // fractional motion accumulates rather than rounding away
     check!(ui_slider_drag_to(&mut s, &mut d, x, y + 10.0, 600));
     check_near!(s.value, 0.76f32, 1e-6); // entering the knob-height band catches up to the pointer
-    x = (s.track.w as f32).mul_add(0.4, s.track.x as f32);
+    x = fmla(s.track.w as f32, 0.4, s.track.x as f32);
     ui_slider_drag_to(&mut s, &mut d, x, y - 10.0, 610);
     check_near!(s.value, 0.4f32, 1e-6); // staying in the band gives direct, large adjustments
     check!(!ui_slider_drag_to(&mut s, &mut d, x, y - 160.0, 620));
     check_near!(s.value, 0.4f32, 1e-6); // leaving again alone does not change the value
-    x = (s.track.w as f32 * 0.02).mul_add(16.0, x);
+    x = fmla(s.track.w as f32 * 0.02, 16.0, x);
     ui_slider_drag_to(&mut s, &mut d, x, y - 160.0, 630);
     check_near!(s.value, 0.42f32, 1e-6); // fine motion resumes above as well as below
     ui_slider_drag_to(&mut s, &mut d, x + 10000.0, y - 160.0, 640);
     check_near!(s.value, 1.0f32, 1e-6);
-    let to = (-(s.track.w as f32 * 0.1)).mul_add(16.0, x + 10000.0);
+    let to = fmla(-(s.track.w as f32 * 0.1), 16.0, x + 10000.0);
     ui_slider_drag_to(&mut s, &mut d, to, y - 160.0, 650);
     check_near!(s.value, 0.9f32, 1e-6);
     // A fresh press restores ordinary absolute tracking; holding is specific to each gesture.
     ui_slider_drag_begin(&s, &mut d, x, 1000);
-    let to = (s.track.w as f32).mul_add(0.2, s.track.x as f32);
+    let to = fmla(s.track.w as f32, 0.2, s.track.x as f32);
     ui_slider_drag_to(&mut s, &mut d, to, y, 1100);
     check_near!(s.value, 0.2f32, 1e-6);
     check!(!d.held);
@@ -265,10 +265,7 @@ fn name_labels() {
     check!(font_drawable_copy("ab\u{20ac}\u{20ac}", &mut small, 6) == 0 && small == "ab\u{20ac}");
 }
 
-// The C's main: widgets, fonts and the Keyboard's drawing all need ui.rs, font.rs and canvas.rs
-// (their bodies are still todo!() in this wave), so the whole binary waits for them.
 #[test]
-#[ignore = "needs ui.rs, font.rs and canvas.rs, whose bodies are todo!() until the later waves land"]
 fn test_ui() {
     ui_init(300.0);
     if font_init() != 0 {

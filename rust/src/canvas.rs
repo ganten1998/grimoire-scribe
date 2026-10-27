@@ -2,22 +2,6 @@
 
 use crate::prelude::*;
 
-/// `a * b + c` as the C build rounds it. clang's default -ffp-contract=on turns it into one fused
-/// multiply-add on arm64, which is the host build the unit tests and the golden renders run on, so
-/// there it is `mul_add`. The Kindle's build (zig cc for the Cortex-A7) does not fuse: its ARM
-/// backend lowers the contracted form to a separate multiply and add (vmul.f32, vadd.f32; there is
-/// no vfma anywhere in the C binary), so on arm it is the plain form, which Rust never fuses. For
-/// `c - a * b` pass `-a`, for `a * b - c` pass `-c`: negating is exact, so the unfused form is the
-/// same number. (PORTING.md, Floating point, says the Cortex-A7 fuses too; it does not.)
-#[inline(always)]
-pub(crate) fn fmla(a: f32, b: f32, c: f32) -> f32 {
-    if cfg!(target_arch = "arm") {
-        a * b + c
-    } else {
-        a.mul_add(b, c)
-    }
-}
-
 /// The C's `owned` flag is the Vec: a canvas always owns its pixels. A canvas with no pixels (px
 /// empty, w and h set) is page.c's dry canvas, which a dry brush measures on and never touches.
 #[derive(Clone, Debug, Default)]
@@ -418,8 +402,7 @@ pub fn canvas_downsample_keep_lines(dst: &mut Canvas, src: &Canvas, weight: f32)
                 yy += 1;
             }
             let avg = if n != 0 { sum as f32 / n as f32 } else { 255.0 };
-            // lerpf(avg, mn, weight) is `a + (b - a) * t`: one contracted multiply-add in the C build.
-            let v = fmla(mn as f32 - avg, weight, avg);
+            let v = lerpf(avg, mn as f32, weight);
             dst.px[(y * dst.stride + x) as usize] = v.round_ties_even() as i32 as u8;
         }
     }
@@ -593,17 +576,5 @@ mod tests {
         assert_eq!(at(&c, 5, 0), 8);
         assert_eq!(at(&c, 5, 4), 8);
         assert_eq!(at(&c, 5, 5), 255);
-    }
-
-    #[test]
-    fn contracted_multiply_add_is_the_c_builds() {
-        // 0.1 * 0.1 + (-0.01) keeps the product's rounding error only when fused
-        let (a, b, c) = (0.1f32, 0.1f32, -0.01f32);
-        if cfg!(target_arch = "arm") {
-            assert_eq!(fmla(a, b, c), a * b + c);
-        } else {
-            assert_eq!(fmla(a, b, c), a.mul_add(b, c));
-            assert_ne!(fmla(a, b, c), a * b + c);
-        }
     }
 }

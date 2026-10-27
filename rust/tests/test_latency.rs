@@ -57,7 +57,7 @@ fn relay(rx: i32, ry: i32, o: i32) -> (i32, i32) {
     }
     // (`fx * 1860.f + .5f` is a fused multiply-add in the C test, built with clang's default
     // -ffp-contract=on)
-    (fx.mul_add(1860.0, 0.5) as i32, fy.mul_add(2480.0, 0.5) as i32)
+    (fmla(fx, 1860.0, 0.5) as i32, fmla(fy, 2480.0, 0.5) as i32)
 }
 
 fn a_relayed_stroke_matches_its_raw_samples_in_any_orientation() {

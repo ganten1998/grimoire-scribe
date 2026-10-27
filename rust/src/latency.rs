@@ -145,7 +145,7 @@ fn scaled(m: &LatMatch, a: usize, v: i32, reversed: bool) -> f32 {
     if reversed {
         f = 1.0 - f;
     }
-    f.mul_add((m.smax[a] - m.smin[a]) as f32, m.smin[a] as f32)
+    fmla(f, (m.smax[a] - m.smin[a]) as f32, m.smin[a] as f32)
 }
 
 /// The kernel time of the raw sample a relayed one at (x, y) came from: of the recent raw samples, the
