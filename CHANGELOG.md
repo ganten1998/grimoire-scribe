@@ -27,6 +27,12 @@
   sheet, and a light slider redraws only its own row while it moves. Each point of a stroke also
   takes the pressure and tilt of its own moment, where a stretch read at once used to share one.
   grimoire.log names what held it up.
+- **The Index's keyboard types as fast as the Library's**: naming a page (and Go to page's number
+  pad) lagged further behind with every key. Each key refreshed most of the keyboard at once, so
+  the next key waited on the screen for it, and the pen resting on a key drew the whole keyboard
+  again many times over. Now only the text and the key refresh, the keyboard is drawn once a key,
+  and a moment after typing stops the keys are cleaned up, exactly as on the Library's keyboard.
+  Naming a page right after writing on it no longer leaves the toolbar drawn over the keyboard.
 
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:
