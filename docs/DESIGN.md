@@ -656,7 +656,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    sends a new hello and every tile. The state frame also says whether Grimoire's colors are
    inverted (`live_set_invert`, from settings.invert at every tick: the frame holds the screen as
    drawn, since the inversion is applied as it presents) and the front light's warmth
-   (`live_set_warmth`: read once as Live view starts, then `light_warmth()`, as the Display sheet
+   (`live_set_warmth`: `light_warmth()`, as read once at Grimoire's start or as the Display sheet
    last set it, at every tick, so the main loop never waits on lipc for it; 255 without warm light);
    every stream starts with one. The browser's picture follows both until its own Invert colors
    switch or Warmth slider says otherwise: inverted, the whole page is black; warmth tints the

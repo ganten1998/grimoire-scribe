@@ -22,10 +22,13 @@
 // proximity, BTN_TOUCH marks contact, pressure/tilt arrive as EV_ABS, SYN_REPORT ends a frame),
 // the same model KOReader uses on the Scribe (input.wacom_protocol).
 //
-// The kernel keeps 128 events of the scaled pen for Grimoire: 120-175 ms of writing. Nothing on
-// the main thread may hold it longer while the pen is in use, or the kernel drops pen events and
-// the stroke loses that stretch (docs/INK-PERFORMANCE.md, Reader stalls). That is why key_scan
-// never opens a node Grimoire holds and never runs while the pen or a finger is in use.
+// The kernel keeps 128 events of the scaled pen for Grimoire: 120-175 ms of writing, and of the raw
+// digitizer about 100 ms, hover too. Nothing on the main thread may hold it longer while the pen is
+// near, or the kernel drops pen events and the stroke loses that stretch, or its pressure and tilt
+// (docs/INK-PERFORMANCE.md, Reader stalls). Long CPU work pumps (input_pump, through common.h's
+// work_pump), which reads the pens as it goes. A wait cannot pump: that is why key_scan never opens
+// a node Grimoire holds (each close waits out an RCU grace period) and never runs while the pen or
+// a finger is in use.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>

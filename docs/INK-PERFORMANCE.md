@@ -178,10 +178,13 @@ leaves the page (150 ms gone), or 1.5 s with it still near, so writing does not 
 The kernel keeps each reader's events of an input device in a buffer of its own. Grimoire's for
 the scaled pen (stylus-custom, event6) holds 128 events on the Scribe 2's Linux 4.9, and the pen
 service's frames carry only X and Y with their SYN_REPORT (2 or 3 events; an axis that did not
-change is left out), so it holds 42 to 63 frames: 120 to 175 ms of writing. The raw digitizer's
-frames are bigger, so its buffer covers less. When Grimoire's main thread is held up longer than
-that while the pen writes, the kernel throws away everything unread and queues SYN_DROPPED and the
-newest event, and that stretch of the stroke is gone.
+change is left out), so it holds 42 to 63 frames: 120 to 175 ms of writing. The pen service
+relays no hover, so that buffer fills only while the pen writes. The raw digitizer (WacomDigitizer),
+which Grimoire reads for pressure and tilt only, streams its frames of 5 to 7 events while the pen
+hovers as well: its 128 events last about 18 frames, 50 to 100 ms. When Grimoire's main thread is
+held up longer than that, the kernel throws away everything unread and queues SYN_DROPPED and the
+newest event: on the scaled pen that stretch of the stroke is gone, on the raw digitizer its
+pressure and tilt.
 
 On 2026-10-26 the owner's pages skipped every 5 s of unbroken writing with shortcuts on. The scan
 for keyboards and controllers that come ran every 5 s on the main thread, and it opened and
@@ -212,15 +215,63 @@ thread 320 to 370 ms and lost 220 to 270 ms of pen path. Since 2.0.0-beta.5:
   keeps the samples' real spacing, and a lost stretch shows as one long step in time. UI timing
   keeps the time each event was read.
 
+On 2026-10-27, with the scan fixed, the main loop still held the thread 105 to 191 ms often and up
+to 1.4 s, and the raw digitizer dropped 26 times in one session (the scaled pen never did: all of
+them while the pen hovered, 23 while the Display sheet's light sliders were dragged with it). The
+slow batches, matched against the Bluetooth helper's timestamps of the controller's presses, were
+all UI work, none in the middle of a stroke:
+
+| What | Main thread held | Where the time went |
+| --- | ---: | --- |
+| Library button (close the notebook) | 1390-1435 ms | page 1's thumbnail, the save's fsyncs, the PDF export's fork |
+| The Paper sheet, first time in a notebook | 1303 ms | every paper drawn at page size, then shrunk |
+| A page turn to a dense page | 1194-1250 ms | every point of every stroke drawn again |
+| The Display sheet opens, Live view starts | 132-191 ms | two synchronous `lipc-get-prop` runs |
+| A page turn to a light page | 147-156 ms | the render, and notebook.ini's write with 2 fsyncs |
+| A light slider step | 90-100 ms | the whole card redrawn and copied (1.8 Mpx), a double fork every 200 ms |
+
+A host profile of the same work, scaled by about 20 (bench-ink against the table above, and the
+host's full-screen copy against the log's 89-102 ms), gives the same figures. Since 2.0.0-beta.5:
+
+- Long work pumps (`work_pump`, common.h). Every few milliseconds of it, input_pump (input_evdev.c)
+  polls the two pens without waiting and reads them as input_poll does, at most every 8 ms, into
+  the queue behind what is there; keys, touch, power and orientation wait for input_poll. The
+  calls are in the loops all the CPU-bound stalls go through: render_layers after each stroke and
+  every 128 points in one (3 to 15 ms on the Kindle, by tool), paper_render after a page of paper,
+  bgimage_render, both downsamples (thumbnails, paper previews), the screen copy and the editor's
+  zoomed view every 64 rows, and write_file_atomic between its write, fsync, rename and folder
+  fsync, so a save waits one fsync at a time. input_poll pumps first too, so a queue the main loop
+  takes its time over still has the pens read. Only the process that set the hook runs it: a forked
+  child (an export, a share server render) shares Grimoire's input devices, and reading them would
+  take its pen events. tests/test_pump.c checks the calls and that the pixels do not change;
+  tests/scenarios/y_pump.qs that a new page and a page turn reach it in the app.
+- Each pen frame takes the pressure and tilt of its own moment. The raw digitizer is read first in
+  each turn, and a read after a wait takes some 30 frames of each pen; every pen frame used to take
+  the newest raw values, so that stretch was drawn with one flat pressure and tilt, dropped or not.
+  The raw frames are kept now (256, about 0.8 s) and each pen frame takes the newest raw frame
+  stamped at or before it, by the kernel's times (pensync.h; the relay's hop is 0.1 ms). A raw drop
+  forgets them; its resync starts again from the values it asks for.
+- The front light's levels are read once, before the pens are opened, and kept as Grimoire sets
+  them: the Display sheet and Live view no longer run `lipc-get-prop`. The shells that set them
+  (and tell the power service someone is here, once a minute even mid-stroke) start with
+  `posix_spawn`, which shares the memory until the exec, instead of a double fork of the whole
+  process. A light slider being dragged redraws only its own row, at most every 80 ms; the release
+  draws the whole card.
+
 What tells a stall in grimoire.log: `input: key scan took N ms` (a scan over 20 ms, with how many
 nodes it opened and the slowest), `main: <phase> took N ms` (any part of the main loop over 50 ms
-beyond its own wait), and each drop's line: the time since the pen was read before, the tail's
+beyond its own wait; the event batch's line names its slowest event and the screen it came to,
+`slowest: key on the editor screen, 1194 ms, of 3 events`), and each drop's line: the time since the pen was read before, the tail's
 frames and their kernel times (spaced about 3 ms apart and ending just now: Grimoire was not
 reading; bunched at one time: the pen service sent a burst), and where the device and the tail
 say the pen is. The raw digitizer's drops have a line of their own. A drop found at the first
 read after launch (the pen hovered while Grimoire started) says so and is not counted: no stroke
-had begun, and no stall in writing caused it. A dedicated reader thread would take every other
-stall out of the pen's way too; it waits until a drop that is not a scan turns up.
+had begun, and no stall in writing caused it.
+
+A pump cannot run inside a wait: a popen, a fork, one fsync, the driver's wait for the pen mode's
+last update. A dedicated reader thread would take those out of the pen's way too, but it replaces
+the path every pen event takes. It waits until the watchdog, now naming its events, shows such a
+wait over about 80 ms with the pen near.
 
 ## Input smoothing
 

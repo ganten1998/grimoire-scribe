@@ -12,6 +12,16 @@
   without the backwards spur; a stroke that ended in the dropped moment (the pen lifted, or turned
   to its eraser end) is not joined to the next by a stray line; and saved pages keep each point's
   real time. grimoire.log says how long any hold-up took.
+- **The pen's pressure and tilt kept through slow moments**: turning to a page with a lot of
+  writing, opening Paper for the first time in a notebook, going back to the Library, opening the
+  Display sheet and dragging its light sliders held Grimoire up for a tenth of a second to more than
+  a second, long enough for the Kindle to throw away the pen's pressure and tilt while it hovered
+  (26 times in one session), and a stroke begun in such a moment could lose its start. Grimoire now
+  keeps reading the pen while it draws a page, a paper, a thumbnail or the screen, and while it
+  saves. The front light's levels are read once when Grimoire starts instead of at every Display
+  sheet, and a light slider redraws only its own row while it moves. Each point of a stroke also
+  takes the pressure and tilt of its own moment, where a stretch read at once used to share one.
+  grimoire.log names what held it up.
 
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:

@@ -494,9 +494,10 @@ How Grimoire uses that:
 - `src/input_evdev.c` finds devices by capability (not path), grabs pen + touch, watches the
   power key (its press, its release and a 4 s hold, timed by the kernel's event stamps), and maps
   axes through a calibration (default: straight onto the upright screen, swapped only if the axis
-  ranges say so). The kernel keeps only 120-175 ms of the pen's writing for it, so nothing on its
-  thread may block that long while the pen is in use; its scan for keyboards and controllers
-  never opens a node it holds (docs/INK-PERFORMANCE.md, Reader stalls).
+  ranges say so). The kernel keeps only 120-175 ms of the pen's writing for it (the raw
+  digitizer's pressure and tilt about 100 ms, hover too), so nothing on its thread may block that
+  long while the pen is near: long work reads the pens as it goes (the work pump), and its scan for
+  keyboards and controllers never opens a node it holds (docs/INK-PERFORMANCE.md, Reader stalls).
 - `kindle/Grimoire.sh` is the scriptlet (Library entry, cover embedded as base64 per the
   kindlemodding.org scriptlet docs, `# DontUseFBInk` so its output does not draw over the
   screen); it detaches `kindle/app/grimoire.sh`, which does the KOReader-style pause/restore above,
