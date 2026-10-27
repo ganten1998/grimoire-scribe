@@ -681,12 +681,13 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    (pensync.h); grimoire.log names the orientation once it is decided. A viewer reads the word with
    the state, before the marks, and sends it after the tiles (frame 6: u16 x, y, u8 state), only
    when it changed and at most every 33 ms, so a place is never ahead of a push before it; a hello
-   or any state but awake takes it away (asleep, the pairing card, a turn). The page draws a ring
-   while it hovers and a dot while it touches, red with a light halo, on a canvas over the averaged
-   one (Show pen, on by default; the Mac simulator never says the pen left, as its mouse leaving the
-   window is no IN_PEN_LEAVE, so there the ring stays where it was last). Record and Picture in
-   picture take a third canvas, film: the full-size picture with the pen's mark drawn on it, kept as
-   tiles and pen frames come (not by animation frames), so both go on while the tab is hidden.
+   or any state but awake takes it away (asleep, the pairing card, a turn). The page draws a red
+   dot, see-through (55%) while it hovers and smaller and solid while it touches, inside a light
+   edge and a dark one so it shows on white, gray, black and inverted pages, on a canvas over the
+   averaged one (Show pen, on by default; the Mac simulator never says the pen left, as its mouse
+   leaving the window is no IN_PEN_LEAVE, so there the dot stays where it was last). Record and
+   Picture in picture take a third canvas, film: the full-size picture with the pen's mark drawn on
+   it, kept as tiles and pen frames come (not by animation frames), so both go on in a hidden tab.
    Record makes an MP4 wherever the browser can (the owner: "absolutely an mp4"). MediaRecorder's
    own first (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that isTypeSupported takes;
    Chrome raises the level itself, 5.0 at 1860x2480, measured in Chrome 156; Safari takes plain

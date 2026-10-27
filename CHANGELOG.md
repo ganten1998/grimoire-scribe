@@ -109,11 +109,11 @@
   the same Wi-Fi, as it changes: open the address on the card and type its one-use code, or scan the
   QR code with a phone. Fit or actual size, full screen, transparent paper and recording in the
   browser (an MP4 in Chrome, Edge and Safari; WebM in Firefox, which records no MP4, and for
-  transparent paper, which an MP4 cannot keep clear), the pen shown where it is (a ring while it
-  hovers, a dot while it touches; Show pen turns it off), an Invert colors switch and a Warmth
-  slider: the picture follows Invert colors (the whole page goes black) and the front light's warmth
-  (its light turns amber) on the Kindle until you change them, and As on the Kindle goes back to
-  following. Picture in picture floats it over your other windows, still live while you work
+  transparent paper, which an MP4 cannot keep clear), the pen shown where it is (a see-through dot
+  while it hovers, solid while it touches; Show pen turns it off), an Invert colors switch and a
+  Warmth slider: the picture follows Invert colors (the whole page goes black) and the front light's
+  warmth (its light turns amber) on the Kindle until you change them, and As on the Kindle goes back
+  to following. Picture in picture floats it over your other windows, still live while you work
   elsewhere. Ruled lines and thin strokes keep an even weight at any window size (the browser's own
   scaling made some vanish). The pen never waits for it (each browser gets its own background
   process that sends only what changed), the code never shows on the stream, downloads still need
