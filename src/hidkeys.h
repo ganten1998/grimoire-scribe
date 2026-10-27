@@ -34,3 +34,28 @@ bool hidkeys_due(uint32_t *last, uint32_t now, uint32_t gap);
 void hidkeys_sync(HidKeys *state, const uint8_t held[HID_KEY_BYTES], int hat_x, int hat_y);
 // Linux evdev event numbers. True only for a new actionable press; repeats/releases are ignored.
 bool hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, HidPress *press);
+
+// The scan for keyboards and controllers that come (input_evdev.c's key_scan) runs while shortcuts
+// are on, every HIDKEYS_SCAN_MS, but never while the pen or a finger is in use (busy: the pen near
+// or touching, a finger down) nor until the pen has been gone HIDKEYS_SCAN_QUIET_MS: nothing reads
+// the pen while it runs. A scan put off runs at the first idle poll after.
+#define HIDKEYS_SCAN_MS 5000u
+#define HIDKEYS_SCAN_QUIET_MS 1500u
+bool hidkeys_scan_due(uint32_t now, uint32_t last_scan, bool busy, uint32_t pen_left);
+// A /dev/input node as stat() sees it, without opening it: closing an evdev node waits out an RCU
+// grace period (22-96 ms on the Scribe's Linux 4.9), so the scan opens only nodes it has to.
+typedef struct { uint64_t rdev, ino; int64_t ctime_s; long ctime_ns; } HidNode;
+// Nodes the scan (or input_open) found to be no keyboard or controller, by path and identity: a
+// node made again (a new inode or change time) is looked at again. The oldest goes when it is full.
+#define HIDKEYS_NONE_MAX 32
+typedef struct {
+    struct { char path[40]; HidNode node; } e[HIDKEYS_NONE_MAX];
+    int n, next;
+} HidNoneCache;
+typedef enum { HIDNODE_PROBE, HIDNODE_HELD, HIDNODE_NONE } HidNodeVerdict;
+// Whether the scan opens the node at path: never one Grimoire holds open (its device number is in
+// held: the pen, the pressure source, touch, power, orientation, the keyboards; 0s are ignored), nor
+// one found no keyboard as it is now.
+HidNodeVerdict hidkeys_node(const HidNoneCache *c, const uint64_t *held, int nheld, const char *path, const HidNode *n);
+// Remembers that the node at path is no keyboard or controller (a path too long to keep is not kept).
+void hidkeys_node_none(HidNoneCache *c, const char *path, const HidNode *n);

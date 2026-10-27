@@ -2,6 +2,7 @@
 #include "shortcuts.h"
 #include "testlib.h"
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 static void add(uint8_t *bits, int code) { bits[code / 8] |= (uint8_t)(1u << (code % 8)); }
 TEST(capabilities) {
@@ -127,8 +128,93 @@ TEST(held_names_and_rate) {
     last = 0; CHECK(hidkeys_due(&last, 0, 30000) && last != 0); // at time 0, still remembered
     last = 0xfffff000u; CHECK(hidkeys_due(&last, 0x00010000u, 30000)); // across the clock's wrap
 }
+// The scan for keyboards and controllers that come held the thread 320-370 ms, every 5 s: long
+// enough for the kernel to drop pen events mid-stroke (p28, 2026-10-26).
+TEST(the_scan_waits_for_the_pen_and_fingers) {
+    CHECK(hidkeys_scan_due(6000, 1000, false, 0));
+    CHECK(!hidkeys_scan_due(5999, 1000, false, 0));  // every 5 s, as before
+    CHECK(!hidkeys_scan_due(60000, 1000, true, 0));   // never while the pen or a finger is in use
+    CHECK(!hidkeys_scan_due(6000, 1000, false, 5000)); // nor until the pen has been gone 1.5 s
+    CHECK(hidkeys_scan_due(6500, 1000, false, 5000));
+    // Writing from 5.9 s to 9.2 s with polls every 30 ms: no scan mid-stroke, nor while the pen is
+    // near; the scan put off runs at the first idle poll, 1.5 s after the pen left.
+    uint32_t last = 1000, left = 0, first = 0;
+    int during = 0;
+    for (uint32_t now = 5900; now < 20000; now += 30) {
+        bool busy = now < 9200;
+        if (now == 9200) left = now;
+        if (!hidkeys_scan_due(now, last, busy, left)) continue;
+        if (busy || now - left < 1500) during++;
+        if (!first) first = now;
+        last = now;
+    }
+    CHECK(during == 0 && first == 10700);
+    // Across the clock's wrap.
+    CHECK(hidkeys_scan_due(0x00001000u, 0xfffff000u, false, 0xffff0000u));
+    CHECK(!hidkeys_scan_due(0x00000100u, 0xfffff000u, false, 0xffff0000u));
+}
+// The Scribe 2 on firmware 5.20.1: event0 the power key, 1 the accelerometer, 2 its orientation
+// codes, 3 the raw digitizer, 4 touch, 5 kindle-input-pt, 6 the scaled pen (major 13, minors 64..70).
+static HidNode scribe_node(int i) { return (HidNode){(13u << 8) | (unsigned)(64 + i), 100u + (unsigned)i, 1761500000, 5}; }
+TEST(the_scan_never_opens_what_grimoire_holds_or_knows) {
+    static HidNoneCache c;
+    memset(&c, 0, sizeof c);
+    uint64_t held[] = {scribe_node(6).rdev, scribe_node(3).rdev, scribe_node(4).rdev, scribe_node(0).rdev,
+                       scribe_node(2).rdev, 0};  // pen, pressure source, touch, power, orientation, a closed fd
+    int nheld = (int)(sizeof held / sizeof held[0]);
+    char path[40];
+    // input_open looked at the accelerometer and kindle-input-pt, and left them: no keyboards.
+    HidNode acc = scribe_node(1), proxy = scribe_node(5);
+    hidkeys_node_none(&c, "/dev/input/event1", &acc);
+    hidkeys_node_none(&c, "/dev/input/event5", &proxy);
+    int opened = 0;
+    for (int i = 0; i < 7; i++) {
+        snprintf(path, sizeof path, "/dev/input/event%d", i);
+        HidNode n = scribe_node(i);
+        HidNodeVerdict v = hidkeys_node(&c, held, nheld, path, &n);
+        opened += v == HIDNODE_PROBE;
+        CHECK(v == (i == 1 || i == 5 ? HIDNODE_NONE : HIDNODE_HELD));
+    }
+    CHECK(opened == 0);  // the old scan opened all seven, every 5 s
+    // A controller that comes is opened once; found to be none, it is not opened again.
+    HidNode pad = {(13u << 8) | 71u, 200, 1761500100, 7};
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event7", &pad) == HIDNODE_PROBE);
+    hidkeys_node_none(&c, "/dev/input/event7", &pad);
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event7", &pad) == HIDNODE_NONE);
+    // The node made again (a new device at the same path): a new inode, or a new change time.
+    HidNode again = pad;
+    again.ino = 201;
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event7", &again) == HIDNODE_PROBE);
+    again = pad;
+    again.ctime_ns = 8;
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event7", &again) == HIDNODE_PROBE);
+    int had = c.n;
+    hidkeys_node_none(&c, "/dev/input/event7", &again);
+    CHECK(c.n == had && hidkeys_node(&c, held, nheld, "/dev/input/event7", &again) == HIDNODE_NONE);
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event7", &pad) == HIDNODE_PROBE);
+    // A device number of 0 (a closed fd's place) holds nothing.
+    HidNode zero = {0, 300, 0, 0};
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event9", &zero) == HIDNODE_PROBE);
+    // A path too long to keep is never kept: always opened.
+    char longp[80];
+    snprintf(longp, sizeof longp, "/dev/input/by-a-name-longer-than-a-node-path/event%d", 12);
+    hidkeys_node_none(&c, longp, &pad);
+    CHECK(hidkeys_node(&c, held, nheld, longp, &pad) == HIDNODE_PROBE);
+    // Full: the oldest goes.
+    for (int i = 0; i < HIDKEYS_NONE_MAX; i++) {
+        snprintf(path, sizeof path, "/dev/input/event%d", 20 + i);
+        HidNode n = {(uint64_t)(1000 + i), (uint64_t)i, 0, 0};
+        hidkeys_node_none(&c, path, &n);
+    }
+    CHECK(c.n == HIDKEYS_NONE_MAX);
+    CHECK(hidkeys_node(&c, held, nheld, "/dev/input/event1", &acc) == HIDNODE_PROBE);
+    HidNode last = {1000 + HIDKEYS_NONE_MAX - 1, HIDKEYS_NONE_MAX - 1, 0, 0};
+    snprintf(path, sizeof path, "/dev/input/event%d", 20 + HIDKEYS_NONE_MAX - 1);
+    CHECK(hidkeys_node(&c, held, nheld, path, &last) == HIDNODE_NONE);
+}
 int main(void) {
     RUN(capabilities); RUN(presses_and_modifiers); RUN(hats_drop_and_pin_resync); RUN(power_key_on_firmware_5_20);
-    RUN(held_names_and_rate);
+    RUN(held_names_and_rate); RUN(the_scan_waits_for_the_pen_and_fingers);
+    RUN(the_scan_never_opens_what_grimoire_holds_or_knows);
     return tl_done();
 }

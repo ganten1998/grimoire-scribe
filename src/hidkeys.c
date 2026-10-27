@@ -91,3 +91,26 @@ bool hidkeys_event(HidKeys *state, HidKind kind, int type, int code, int value, 
     *press = (HidPress){.code = code, .mods = mods(state), .gamepad = kind == HID_GAMEPAD && code >= 256};
     return true;
 }
+bool hidkeys_scan_due(uint32_t now, uint32_t last_scan, bool busy, uint32_t pen_left) {
+    return now - last_scan >= HIDKEYS_SCAN_MS && !busy && now - pen_left >= HIDKEYS_SCAN_QUIET_MS;
+}
+static bool same_node(const HidNode *a, const HidNode *b) {
+    return a->rdev == b->rdev && a->ino == b->ino && a->ctime_s == b->ctime_s && a->ctime_ns == b->ctime_ns;
+}
+HidNodeVerdict hidkeys_node(const HidNoneCache *c, const uint64_t *held, int nheld, const char *path, const HidNode *n) {
+    for (int i = 0; i < nheld; i++) if (held[i] && held[i] == n->rdev) return HIDNODE_HELD;
+    for (int i = 0; i < c->n; i++)
+        if (!strcmp(c->e[i].path, path)) return same_node(&c->e[i].node, n) ? HIDNODE_NONE : HIDNODE_PROBE;
+    return HIDNODE_PROBE;
+}
+void hidkeys_node_none(HidNoneCache *c, const char *path, const HidNode *n) {
+    if (strlen(path) >= sizeof c->e[0].path) return;
+    int i = 0;
+    while (i < c->n && strcmp(c->e[i].path, path)) i++;  // a node made again replaces its entry
+    if (i == c->n) {
+        if (c->n < HIDKEYS_NONE_MAX) i = c->n++;
+        else i = c->next, c->next = (c->next + 1) % HIDKEYS_NONE_MAX;
+    }
+    memcpy(c->e[i].path, path, strlen(path) + 1);
+    c->e[i].node = *n;
+}
