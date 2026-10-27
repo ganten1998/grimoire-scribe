@@ -78,19 +78,9 @@ extern "C" {
     pub fn grimoire_stbtt_fontinfo_size() -> size_t;
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn fontinfo_room() {
-        // SAFETY: a sizeof, no arguments.
-        let n = unsafe { super::grimoire_stbtt_fontinfo_size() };
-        assert!(n <= std::mem::size_of::<super::stbtt_fontinfo>(), "stbtt_fontinfo is {n} bytes");
-    }
-}
-
 // stb_image's allocator (STBI_MALLOC, STBI_REALLOC, STBI_FREE in csrc/stb_image_impl.c): bgimage.c's
 // stb_malloc, stb_realloc and stb_free, which count a decode's blocks against its budget. The
-// accounting is bgimage.rs's (bgimage_stb_malloc and friends); these only cross the boundary.
+// accounting is bgimage.rs's (bgimage::stb_malloc and friends); these only cross the boundary.
 
 #[no_mangle]
 pub extern "C" fn grimoire_stb_malloc(n: size_t) -> *mut c_void {
@@ -105,4 +95,14 @@ pub extern "C" fn grimoire_stb_realloc(p: *mut c_void, n: size_t) -> *mut c_void
 #[no_mangle]
 pub extern "C" fn grimoire_stb_free(p: *mut c_void) {
     crate::bgimage::stb_free(p)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fontinfo_room() {
+        // SAFETY: a sizeof, no arguments.
+        let n = unsafe { super::grimoire_stbtt_fontinfo_size() };
+        assert!(n <= std::mem::size_of::<super::stbtt_fontinfo>(), "stbtt_fontinfo is {n} bytes");
+    }
 }
