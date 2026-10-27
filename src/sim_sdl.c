@@ -583,6 +583,34 @@ static void script_step(void) {
             sscanf(s, "%*s %d %d %d", &code, &mods, &pad);
             q_push((InEvent){.type = a[3] ? IN_KEY_UP : IN_KEY, .value = code, .key_mods = (unsigned)mods,
                              .gamepad = pad != 0, .t_ms = now_ms()});
+        } else if (!strcmp(a, "axis")) {
+            // axis CODE VALUE: an axis of a controller as Linux's generic driver reports an Xbox One
+            // S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z and ABS_RZ 0 to 1023, the hat),
+            // decided and decoded as input_evdev.c does: a trigger pulled past half is LT's (or RT's)
+            // press, let back to a quarter its release. Its other axes do nothing.
+            static HidKeys keys;
+            static HidTriggers trig;
+            if (!trig.axis[0]) {
+                uint8_t none[HID_KEY_BYTES] = {0}, axes[HID_ABS_BYTES] = {0};
+                HidAxis info[HIDKEYS_AXES] = {{0}};
+                for (int c = 0; c <= 5; c++) {
+                    axes[0] |= (uint8_t)(1u << c);
+                    info[c] = c == 2 || c == 5 ? (HidAxis){0, 1023, 0} : (HidAxis){0, 65535, 32768};
+                }
+                axes[2] |= 3;  // ABS_HAT0X, ABS_HAT0Y
+                hidkeys_triggers(&trig, none, axes, info);
+                hidkeys_sync(&keys, NULL, 0, 0);
+            }
+            int code = -1, value = 0;
+            HidPress p;
+            if (sscanf(s, "%*s %d %d", &code, &value) != 2) {
+                fprintf(stderr, "script: bad axis line: %s", s);
+                expect_unknown_line();
+                continue;
+            }
+            if (hidkeys_trigger_event(&keys, &trig, code, value, &p))
+                q_push((InEvent){.type = p.up ? IN_KEY_UP : IN_KEY, .value = p.code, .key_mods = (unsigned)p.mods,
+                                 .gamepad = p.gamepad, .t_ms = now_ms()});
         } else if (!strcmp(a, "hid")) {
             // hid attach pad|key|held NAME, hid detach NAME: a controller (held: one another app
             // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it. A

@@ -57,6 +57,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `side on` / `side off` | hold the side button |
 | `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1 |
 | `keyup CODE MODS [PAD]` | its release, as input_evdev.c reports one (a key or button let go, or no longer held after a resync) |
+| `axis CODE VALUE` | an axis of a controller as Linux's generic driver reports an Xbox One S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z 2 and ABS_RZ 5 0 to 1023), decided and decoded as input_evdev.c does: a trigger pulled past half its travel is a press of LT (or RT), let back to a quarter or under its release, once each way; the sticks do nothing |
 | `hid attach pad\|key\|held NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on. A controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so one named `Pro Controller` is a Switch-mode one (the Buttons sheet names its buttons B, A, ZL...) |
 | `pentap X Y`, `tap X Y` | pen tap / finger tap |
 | `touch down/move/up X Y` | raw finger events |
