@@ -238,10 +238,12 @@ draws them. White ink and the precise eraser make them.
   at every digitizer frame) draws nothing; a key that types draws the keyboard once and refreshes
   the text line on the fast waveform, flushed on its own, then the key; 900 ms after the last key
   (`Keyboard.settle_at`) one GL16 of the keyboard cleans up the dithered keys. Nothing under the
-  keyboard is drawn until it closes. The Pages view used to refresh the text line and the key as one
-  fast rectangle from the text down to the key and to draw the whole keyboard at every sample: on
-  the Kindle each key's refreshes then overlapped the one before and waited in the driver's queue
-  for it (docs/INK-PERFORMANCE.md), and the text fell further behind with every key.
+  keyboard is drawn until it closes, and a settle the editor had due on the page (a stroke's GL16,
+  the panel's) is dropped while the Pages view covers it: the view's opening refreshed the whole
+  screen and its closing composes it again. The Pages view used to refresh the text line and the key
+  as one fast rectangle from the text down to the key and to draw the whole keyboard at every
+  sample: on the Kindle each key's refreshes then overlapped the one before and waited in the
+  driver's queue for it (docs/INK-PERFORMANCE.md), and the text fell further behind with every key.
 
 ## Languages
 

@@ -2534,6 +2534,14 @@ void editor_event(App *a, const InEvent *ev) {
 
 // The deferred settle: one GL16 refresh for everything written since the last pause.
 static void settle_now(App *a) {
+    // Under the Pages view the page is not on screen: the view's opening refreshed the whole screen
+    // and its closing composes it all again, so nothing is due. Settling now would draw the whole view
+    // again (compose) under its keyboard, and the panel over both.
+    if (S->pv.open) {
+        S->settle = RECT_EMPTY;
+        S->panel_stale = false;
+        return;
+    }
     if (!rect_is_empty(S->settle)) show(a, S->settle, REFRESH_UI);
     S->settle = RECT_EMPTY;
     if (S->panel_stale) repaint_panel(a, REFRESH_UI);
