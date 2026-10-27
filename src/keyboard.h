@@ -35,6 +35,10 @@ void keyboard_close(Keyboard *kb);
 // Draws the modal (text field at top, keys below) anchored to the bottom of screen.
 // Returns the rect it covered (to invalidate).
 Rect keyboard_draw(Keyboard *kb, Canvas *c, Rect screen);
+// How many times keyboard_draw drew a keyboard since this was last called (the headless runner's
+// keyboard.draws check, docs/SIM.md): every draw of the whole modal is work on the main thread, and a
+// key press should cost one.
+unsigned keyboard_draws_take(void);
 // Pointer events only (pen or touch, already unified by the caller as down/move/up).
 // *dirty receives the rect needing redraw (may be empty). Characters and backspace type on
 // touch-down (no waiting for the lift); Shift, the page key, Cancel and Done act on release.

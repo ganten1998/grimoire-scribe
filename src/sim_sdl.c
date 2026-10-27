@@ -21,6 +21,7 @@
 #include "display.h"
 #include "hidkeys.h"
 #include "input.h"
+#include "keyboard.h"  // keyboard_draws_take, for the keyboard.draws check
 #include "power.h"
 #include "stb_image_write.h"
 
@@ -143,6 +144,15 @@ static LiveInk g_ink;
 static int g_last_fast = -1;  // the last fast refresh: 1 live ink, 0 one to wait after, -1 none yet
 static Rect g_last_fast_rect;  // and where it was
 static bool g_pen_mode;       // display_pen_mode
+// The refreshes sent since the script last checked "display.presents" (display_probe): what one
+// input put on the panel, in order, the first few of them where and how, and how many in all.
+#define SIM_PRESENTS_KEPT 8
+typedef struct {
+    RefreshMode mode;
+    Rect r;
+} SimPresent;
+static SimPresent g_presents[SIM_PRESENTS_KEPT];
+static int g_npresents;
 #ifdef GRIMOIRE_SIM_SDL
 static SDL_Window *g_win;
 static SDL_Renderer *g_ren;
@@ -231,6 +241,8 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
     if (rect_is_empty(r) || mode < 0 || mode > 2) return;
     if (mode == REFRESH_FAST) g_last_fast = live_ink_frame(&g_ink, mode, now_ms()) ? 1 : 0;
     if (mode == REFRESH_FAST) g_last_fast_rect = r;
+    if (g_npresents < SIM_PRESENTS_KEPT) g_presents[g_npresents] = (SimPresent){mode, r};
+    g_npresents++;
     g_stats[mode]++;
     if (mode == REFRESH_FAST && g_ink.on) g_ink_frames++;
     g_area[mode] += (long long)r.w * r.h;
@@ -423,9 +435,24 @@ static void expect_read(const char *s) {
 // (display_live_ink), "display.pen_mode" 1 while the app asks for the pen mode (display_pen_mode),
 // "display.last_fast" "ink" when the last fast refresh was live ink, "wait" when a colour panel
 // would have waited for the driver's read after it (display_fbink.c), empty before any;
-// "display.last_fast_rect" where that refresh was, "x y w h", empty before any.
+// "display.last_fast_rect" where that refresh was, "x y w h", empty before any; "display.presents"
+// the refreshes sent since this key was last checked, each "fast", "ui" or "full" and its "x y w h",
+// joined by ", " ("fast 50 1510 1760 120, fast 138 1970 167 150"), with ", and N more" past the
+// eighth, empty for none; the check starts the count again, so a first one only clears it.
 static bool display_probe(const char *key, char *out, size_t cap) {
-    if (!strcmp(key, "display.last_fast_rect")) {
+    if (!strcmp(key, "display.presents")) {
+        static const char *const names[3] = {"fast", "ui", "full"};
+        size_t n = 0;
+        out[0] = 0;
+        for (int i = 0; i < g_npresents && i < SIM_PRESENTS_KEPT && n < cap; i++) {
+            Rect r = g_presents[i].r;
+            n += (size_t)snprintf(out + n, cap - n, "%s%s %d %d %d %d", i ? ", " : "", names[g_presents[i].mode], r.x,
+                                  r.y, r.w, r.h);
+        }
+        if (g_npresents > SIM_PRESENTS_KEPT && n < cap)
+            snprintf(out + n, cap - n, ", and %d more", g_npresents - SIM_PRESENTS_KEPT);
+        g_npresents = 0;
+    } else if (!strcmp(key, "display.last_fast_rect")) {
         Rect r = g_last_fast_rect;
         if (g_last_fast < 0) snprintf(out, cap, "%s", "");
         else snprintf(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
@@ -441,12 +468,17 @@ static bool display_probe(const char *key, char *out, size_t cap) {
 // "power.pokes": how many times the app told the simulated power service someone is here
 // (sys_activity), which it does at most once a minute. "pump.calls": how many times long work called
 // the work pump (work_pump, common.h) since this key was last checked, so a check counts what the
-// lines before it did.
+// lines before it did. "keyboard.draws": how many times an on-screen keyboard was drawn
+// (keyboard_draw, keyboard.h) since this key was last checked, the same way.
 static int g_pumps;
 static bool power_probe(const char *key, char *out, size_t cap) {
     if (!strcmp(key, "pump.calls")) {
         snprintf(out, cap, "%d", g_pumps);
         g_pumps = 0;
+        return true;
+    }
+    if (!strcmp(key, "keyboard.draws")) {
+        snprintf(out, cap, "%u", keyboard_draws_take());
         return true;
     }
     if (strcmp(key, "power.pokes")) return false;

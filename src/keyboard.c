@@ -226,7 +226,16 @@ static const char *key_label(const Keyboard *kb, uint32_t code, char *ch) {
     }
 }
 
+static unsigned g_draws;  // keyboard_draws_take
+
+unsigned keyboard_draws_take(void) {
+    unsigned n = g_draws;
+    g_draws = 0;
+    return n;
+}
+
 Rect keyboard_draw(Keyboard *kb, Canvas *c, Rect screen) {
+    g_draws++;
     Rect area = modal_rect(screen);
     kb->area = area;
     ui_frame(c, area, ui_px(24), 255, true, 0);
