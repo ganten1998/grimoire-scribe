@@ -3,8 +3,8 @@
 # most one a direction in 30 s, so a link that keeps dropping does not flash the screen), the
 # Controller sheet listing what is connected, and the Buttons sheet learning buttons into
 # controller.ini in its groups (one button per action, a toast when a button leaves another action,
-# previous / next page and tool in two presses, 10 s without a press gives up, Reset goes back to
-# shortcuts.ini's), which the editor then uses.
+# previous / next page, tool and in the tool picker in two presses, 10 s without a press gives up,
+# Reset goes back to shortcuts.ini's), which the editor then uses.
 wait 150
 hid attach held Mapper Pad
 wait 100
@@ -67,13 +67,13 @@ tap 930 842
 wait 100
 expect library.buttons_group is tools
 shot 04-tools
-tap 930 1536
+tap 930 1475
 wait 100
 expect library.learning is tool:calligraphy
 key 318 0 1
 wait 100
 expect pads.tool:calligraphy is 318
-tap 930 1856
+tap 930 1795
 wait 100
 expect library.learning is previous-tool
 key 318 0 1
@@ -82,10 +82,23 @@ expect toast is That button is no longer for Calligraphy pen.
 expect library.learning is next-tool
 expect pads.tool:calligraphy is
 expect pads.previous-tool is 318
-tap 930 1856
+tap 930 1795
 wait 100
 expect library.learning is
-tap 930 2016
+tap 930 1955
+wait 100
+expect library.learning is picker-previous
+key 319 0 1
+wait 100
+expect library.learning is picker-next
+key 320 0 1
+wait 100
+expect library.learning is
+expect pads.picker-previous is 319
+expect pads.picker-next is 320
+expect library.buttons.picker-next is 320
+shot 04-tools-picker
+tap 930 2115
 wait 100
 tap 930 682
 wait 100
@@ -131,6 +144,9 @@ expect editor.tool is pencil
 key 318 0 1
 wait 80
 expect editor.tool is highlighter
+key 320 0 1
+wait 80
+expect editor.tool is pencil
 # Reset: shortcuts.ini's buttons again
 pentap 1768 1566
 wait 300

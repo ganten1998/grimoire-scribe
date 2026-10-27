@@ -553,7 +553,7 @@ TEST(dates) {
 // Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
 // in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
 // formatted as the code formats it (keep this list in step with the messages); out holds them.
-enum { RARE_MAX = 32, RARE_LEN = 256 };
+enum { RARE_MAX = 40, RARE_LEN = 256 };
 static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     int n = 0;
 #define PUT(...) snprintf(out[n++], RARE_LEN, __VA_ARGS__)
@@ -586,8 +586,10 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT(_("That button is no longer for %s."), C_("tool", "Mechanical pencil"));
     PUT(_("That button is no longer for %s."), _("Erase while held"));
     PUT(_("That button is no longer for %s."), _("Tool picker"));
+    PUT(_("That button is no longer for %s."), _("Previous in the picker"));
     // A Buttons row held, with the longest names (a row's and an action's).
     PUT(_("No buttons for %s now."), _("Previous / next tool"));
+    PUT(_("No buttons for %s now."), _("Previous / next in the picker"));
     PUT(_("No buttons for %s now."), _("Erase while held"));
 #undef PUT
     return n;

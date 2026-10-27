@@ -530,8 +530,12 @@ static const LearnRow k_editing[] = {
 // The Tools group: tool_order's pens first (learn_row_at), then this.
 static const LearnRow k_tools[] = {
     // TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
-    // other rows, about 1100 px at 44 px in bold, with the buttons' names).
-    {N_("Previous / next tool"), {SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL}, ICON_GRID},
+    // other rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens
+    // on the panel (the tool button's and the pinned ones): a pin beside it.
+    {N_("Previous / next tool"), {SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL}, ICON_PIN},
+    // TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its
+    // previous and its next pen (with it closed, they switch tools through all nine), in that order.
+    {N_("Previous / next in the picker"), {SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT}, ICON_GRID},
 };
 static const LearnRow k_pages[] = {
     // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
@@ -607,6 +611,10 @@ static const char *action_label(int action) {
         {SHORTCUT_CLEAR_PAGE, N_("Clear page")},
         {SHORTCUT_PREV_TOOL, N_("Previous tool")},
         {SHORTCUT_NEXT_TOOL, N_("Next tool")},
+        // TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen ("Press a button for
+        // Next in the picker").
+        {SHORTCUT_PICKER_PREV, N_("Previous in the picker")},
+        {SHORTCUT_PICKER_NEXT, N_("Next in the picker")},
         {SHORTCUT_PREV_PAGE, N_("Previous page")},
         {SHORTCUT_NEXT_PAGE, N_("Next page")},
         {SHORTCUT_FIRST_PAGE, N_("First page")},
@@ -871,10 +879,11 @@ static void upd_poll(App *a) {
 // A vertical list of full-width buttons inside a sheet.
 static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     int rh = ui_px(140), gap = ui_px(20);
-    // A list longer than the screen has room for gets shorter rows, never below a 10 mm touch target
-    // (sideways the Buttons sheet's Tools: 11 rows).
+    // A list longer than the screen has room for gets shorter rows, never below a 10 mm touch target,
+    // then narrower gaps between them (sideways the Buttons sheet's Tools: 12 rows).
     int room = a->h - 2 * ui_px(40) - ui_px(120) - ui_px(72);
     if (n * (rh + gap) > room) rh = clampi(room / n - gap, ui_px(118), rh);
+    if (n * (rh + gap) > room) gap = clampi(room / n - rh, ui_px(10), gap);
     Rect card = sheet_rect(a, ui_px(120) + ui_px(72) + n * (rh + gap));
     Rect in = ui_sheet(&a->screen, card, title);
     for (int i = 0; i < n; i++) {

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 05:04-0500\n"
+"POT-Creation-Date: 2026-10-27 05:46-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1182,9 +1182,16 @@ msgid "Create"
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
-#. other rows, about 1100 px at 44 px in bold, with the buttons' names).
+#. other rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens
+#. on the panel (the tool button's and the pinned ones): a pin beside it.
 #: src/library.c
 msgid "Previous / next tool"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its
+#. previous and its next pen (with it closed, they switch tools through all nine), in that order.
+#: src/library.c
+msgid "Previous / next in the picker"
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
@@ -1268,6 +1275,16 @@ msgstr ""
 
 #: src/library.c
 msgid "Next tool"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen ("Press a button for
+#. Next in the picker").
+#: src/library.c
+msgid "Previous in the picker"
+msgstr ""
+
+#: src/library.c
+msgid "Next in the picker"
 msgstr ""
 
 #: src/library.c

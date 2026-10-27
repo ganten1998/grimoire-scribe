@@ -50,15 +50,23 @@ tap 930 842
 wait 50
 expect library.buttons_group is tools
 shot 02-buttons-tools
-tap 930 1536
+tap 930 1475
 wait 50
 expect library.learning is tool:calligraphy
 shot 02-buttons-learning
-tap 930 1536
+tap 930 1475
 wait 50
 expect library.learning is
-tap 930 2016
+tap 930 1955
 wait 50
+expect library.learning is picker-previous
+shot 02-buttons-learning-picker
+tap 930 1955
+wait 50
+expect library.learning is
+tap 930 2115
+wait 50
+expect library.buttons_group is
 tap 930 1002
 wait 50
 expect library.buttons_group is pages
