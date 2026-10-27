@@ -17,10 +17,10 @@ optional input devices again.
 **Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
 has four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser,
 Erase while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in
-the tool picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next page, first / last
-page, new page, fit page, Pages, Index) and **Menus** (the tool picker, Paper, Display, Pen feel,
-fold the panel, the Library, close menu). Open a group, tap a row, then press the button; Done goes
-back up to the list. One button per action: a button that did something else does this now (a
+the tool picker's order, previous / next tool, and previous / next in the picker), **Pages**
+(previous / next page, first / last page, new page, fit page, Pages, Index) and **Menus** (the tool
+picker, Paper, Display, Pen feel, fold the panel, the Library, close menu). Open a group, tap a
+row, then press the button; Done goes back up to the list. One button per action: a button that did something else does this now (a
 toast says which action lost it), and the action's other buttons stop doing it. The previous /
 next and first / last rows learn two presses, the first one's and then the second's. Ten seconds
 without a press leave the row as it was; a second tap on it stops it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically,
@@ -108,6 +108,7 @@ the picker is open (not while it pins pens) they move its choice and leave it op
 they switch tools through all nine, from the eraser as above (marker, eraser, next in the picker:
 the fountain pen): a pinned pen is picked as a tap on its pin picks it (the tool button keeps its
 pen), another goes to the tool button. The starter mappings give them no key or button.
+
 A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
 another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
 view to their tab, and close it on their own. `close-menu` closes whatever menu is in front: a link
@@ -117,8 +118,8 @@ paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-
 never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
-`fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`) and count them in Reload shortcuts.ini; their other lines
-still work.
+`fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`) and count them in Reload
+shortcuts.ini; their other lines still work.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux
