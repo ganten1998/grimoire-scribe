@@ -959,7 +959,9 @@ enum Step {
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
 // (In Rust: an expect to check at once returns Check, and script_step checks it, outside the
-// state, as app_probe needs the App, then reads on from the next line, as the C's `continue` does.)
+// state, as app_probe needs the App, then reads on from the next line, as the C's `continue` does.
+// The curve's 6.2831853f and 3.14159f are the C's own constants, kept: they place its samples.)
+#[allow(clippy::approx_constant)]
 fn script_step_in(st: &mut State) -> Step {
     while let Some(line) = st.script_line() {
         let s = skip_space(c_str(&line));
@@ -1058,9 +1060,9 @@ fn script_step_in(st: &mut State) -> Step {
                 let none = [0u8; HID_KEY_BYTES];
                 let mut axes = [0u8; HID_ABS_BYTES];
                 let mut info = [HidAxis::default(); HIDKEYS_AXES];
-                for c in 0..=5usize {
+                for (c, axis) in info.iter_mut().enumerate().take(6) {
                     axes[0] |= 1u8 << c;
-                    info[c] = if c == 2 || c == 5 {
+                    *axis = if c == 2 || c == 5 {
                         HidAxis { minimum: 0, maximum: 1023, value: 0 }
                     } else {
                         HidAxis { minimum: 0, maximum: 65535, value: 32768 }
