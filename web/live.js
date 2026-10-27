@@ -51,17 +51,42 @@
         return {x: body[0] | body[1] << 8, y: body[2] | body[3] << 8, state: body[4]};
     }
     // The pen's mark in a canvas with k of its pixels to each of the screen's, the screen's corner at
-    // (ox, oy), and u of its pixels to a unit (a CSS pixel on the page): a ring while the pen hovers, a
-    // dot while it touches, each with a light halo so it shows on paper, ink, the warm light and
-    // inverted alike. box: the whole pixels it covers, to take it away again. null without a pen.
-    const PEN_RING = 9, PEN_DOT = 4.5, PEN_LINE = 2, PEN_HALO = 1.5;
+    // (ox, oy), and u of its pixels to a unit (a CSS pixel on the page): a red dot, see-through while
+    // the pen hovers (alpha, the red's opacity: the writing under it shows) and smaller and solid while
+    // it touches (less of the line it draws hidden), inside a light edge and a dark one so it shows on
+    // paper, ink, mid gray, the warm light and inverted alike. box: the whole pixels it covers, to take
+    // it away again. null without a pen.
+    const PEN_HOVER = 7, PEN_TOUCH = 5, PEN_EDGE = 1, PEN_SEE = 0.55;
     function penMark(pen, k, u, ox = 0, oy = 0) {
         if (!pen || !pen.state) return null;
-        const ring = pen.state === 1, x = ox + (pen.x + 0.5) * k, y = oy + (pen.y + 0.5) * k;
-        const r = (ring ? PEN_RING : PEN_DOT) * u, line = PEN_LINE * u, halo = PEN_HALO * u;
-        const out = r + (ring ? line / 2 : 0) + halo + 1;  // (1 more for the antialiased edge)
+        const hover = pen.state === 1, x = ox + (pen.x + 0.5) * k, y = oy + (pen.y + 0.5) * k;
+        const r = (hover ? PEN_HOVER : PEN_TOUCH) * u, edge = PEN_EDGE * u;
+        const out = r + 2 * edge + 1;  // (1 more for the antialiased edge)
         const x0 = Math.floor(x - out), y0 = Math.floor(y - out);
-        return {x, y, r, line, halo, ring, box: {x: x0, y: y0, w: Math.ceil(x + out) - x0, h: Math.ceil(y + out) - y0}};
+        return {x, y, r, edge, alpha: hover ? PEN_SEE : 1,
+                box: {x: x0, y: y0, w: Math.ceil(x + out) - x0, h: Math.ceil(y + out) - y0}};
+    }
+    // The mark drawn: the dark edge outermost, the light one inside it, then the red. Only the red is
+    // see-through while hovering: a faint edge would lose the dot on a page of its own shade. (Here
+    // with the pure parts so tests/live_check.js can draw it on a stand-in context.)
+    const PEN_COLOR = '#f03c28', PEN_LIGHT = 'rgba(255,255,255,0.9)', PEN_DARK = 'rgba(0,0,0,0.45)';
+    function drawMark(ctx, m) {
+        ctx.save();
+        ctx.lineWidth = m.edge;
+        ctx.strokeStyle = PEN_DARK;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r + 1.5 * m.edge, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.strokeStyle = PEN_LIGHT;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r + 0.5 * m.edge, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.globalAlpha = m.alpha;
+        ctx.fillStyle = PEN_COLOR;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
     }
     // Where a w x h picture goes in a fw x fh film: whole, centered, scale k. A recording keeps the
     // size it started with (an MP4's track cannot change it: Chrome's frames after a turn came out
@@ -279,8 +304,8 @@
         else finish();
     };
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = {Frames, lightColor, readPen, penMark, filmFit, recordType, H264, filmConfig, mp4Boxes,
-            MP4_SCALE, CodecRecorder};
+        module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
+            mp4Boxes, MP4_SCALE, CodecRecorder};
         return;
     }
 
@@ -447,23 +472,7 @@
         if (penShown) penCtx.clearRect(penShown.x, penShown.y, penShown.w, penShown.h);
         const m = showPen && raw.width ? penMark(pen, view.width / raw.width, window.devicePixelRatio || 1) : null;
         penShown = m && m.box;
-        if (m) mark(penCtx, m);
-    }
-    const PEN_COLOR = '#f03c28', PEN_HALO_COLOR = 'rgba(255,255,255,0.9)';
-    function mark(ctx, m) {
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, m.r, 0, 2 * Math.PI);
-        ctx.strokeStyle = PEN_HALO_COLOR;
-        ctx.lineWidth = m.ring ? m.line + 2 * m.halo : 2 * m.halo;
-        ctx.stroke();
-        if (m.ring) {
-            ctx.strokeStyle = PEN_COLOR;
-            ctx.lineWidth = m.line;
-            ctx.stroke();
-        } else {
-            ctx.fillStyle = PEN_COLOR;
-            ctx.fill();
-        }
+        if (m) drawMark(penCtx, m);
     }
     // The pen moved, came, went, or was switched off: on the page at the next frame, in film now (it
     // is drawn as frames come, so a recording and Picture in picture go on while the tab is hidden).
@@ -504,7 +513,7 @@
         const cw = x1 - x0, ch = y1 - y0;
         if (fitIn.k === 1) filmCtx.drawImage(shown, x0 - fitIn.x, y0 - fitIn.y, cw, ch, x0, y0, cw, ch);
         else filmCtx.drawImage(shown, fitIn.x, fitIn.y, pw, ph);
-        if (filmPen) mark(filmCtx, filmPen);
+        if (filmPen) drawMark(filmCtx, filmPen);
         filmCtx.restore();
         if (recorder && recorder.frame) recorder.frame();  // (CodecRecorder: film changed)
     }

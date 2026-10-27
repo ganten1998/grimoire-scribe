@@ -12,8 +12,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { Frames, lightColor, readPen, penMark, filmFit, recordType, H264, filmConfig, mp4Boxes, MP4_SCALE,
-        CodecRecorder } = require(path.join(__dirname, '..', 'web', 'live.js'));
+const { Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig, mp4Boxes,
+        MP4_SCALE, CodecRecorder } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
 const [bin, txt, pentxt] = process.argv.slice(2);
 const bytes = new Uint8Array(fs.readFileSync(bin));
@@ -71,19 +71,49 @@ const far = readPen(new Uint8Array([0x43, 0x07, 0xAF, 0x09, 2]));
 ok('pen: both bytes of each place (1859,2479 touching)', far.x === 1859 && far.y === 2479 && far.state === 2);
 ok('pen: away, or too short, is no pen', readPen(new Uint8Array([5, 0, 6, 0, 0])) === null &&
    readPen(new Uint8Array([5, 0, 6, 0])) === null);
-// Its mark: at the pixel's center, scaled; a ring hovering, a smaller dot touching; the box whole
-// pixels around all of it (the halo and the antialiased edge too), so taking it away leaves nothing.
+// Its mark: at the pixel's center, scaled; a see-through dot hovering, a smaller solid one touching.
+// drawMark on a stand-in context: the red filled at the mark's alpha, inside a light edge and a dark
+// one drawn whole; the box whole pixels around all it drew (and the antialiased edge), so taking it
+// away leaves nothing; and the context left as it was (film's picture is drawn after it, never
+// see-through).
+function drawn(m) {
+    const ops = [], kept = [];
+    const ctx = {globalAlpha: 1, lineWidth: 1, fillStyle: '#000', strokeStyle: '#000', at: null,
+        save() { kept.push([this.globalAlpha, this.lineWidth, this.fillStyle, this.strokeStyle]); },
+        restore() { [this.globalAlpha, this.lineWidth, this.fillStyle, this.strokeStyle] = kept.pop(); },
+        beginPath() { this.at = null; },
+        arc(x, y, r) { this.at = {x, y, r}; },
+        fill() { ops.push({fill: this.fillStyle, alpha: this.globalAlpha, ...this.at, reach: this.at.r}); },
+        stroke() {
+            ops.push({stroke: this.strokeStyle, alpha: this.globalAlpha, ...this.at, reach: this.at.r + this.lineWidth / 2});
+        }};
+    drawMark(ctx, m);
+    const fills = ops.filter(o => o.fill), edges = ops.filter(o => o.stroke);
+    return {ops, fills, edges, left: !kept.length && ctx.globalAlpha === 1 && ctx.lineWidth === 1 &&
+        ctx.fillStyle === '#000' && ctx.strokeStyle === '#000'};
+}
 function covers(m) {
-    const reach = m.r + (m.ring ? m.line / 2 : 0) + m.halo;
+    const reach = Math.max(...drawn(m).ops.map(o => o.reach));
     return Number.isInteger(m.box.x) && Number.isInteger(m.box.y) && Number.isInteger(m.box.w) &&
         Number.isInteger(m.box.h) && m.box.x <= m.x - reach - 1 && m.box.y <= m.y - reach - 1 &&
         m.box.x + m.box.w >= m.x + reach + 1 && m.box.y + m.box.h >= m.y + reach + 1;
 }
 const hover = penMark({x: 100, y: 200, state: 1}, 0.25, 2), touch = penMark({x: 100, y: 200, state: 2}, 0.25, 2);
 ok('mark: at the pixel\'s center, scaled (25.125, 50.125)', hover.x === 25.125 && hover.y === 50.125);
-ok('mark: a ring hovering, a smaller dot touching', hover.ring && !touch.ring && touch.r < hover.r);
-ok('mark: its unit scales it (2 CSS px to the pixel: twice the size)', hover.r === 2 * penMark({x: 0, y: 0, state: 1}, 1, 1).r);
-ok('mark: the box covers all of it, in whole pixels', [hover, touch, penMark({x: 1859, y: 2479, state: 1}, 1, 3),
+ok('mark: a see-through dot hovering, a smaller solid one touching', hover.alpha > 0.3 && hover.alpha < 0.8 &&
+   touch.alpha === 1 && touch.r < hover.r);
+const unit = penMark({x: 0, y: 0, state: 1}, 1, 1);
+ok('mark: its unit scales it (2 CSS px to the pixel: twice the size)', hover.r === 2 * unit.r && hover.edge === 2 * unit.edge);
+ok('mark: drawn as a dot, the red at its alpha, a light edge and a dark one whole, all around its place',
+   [hover, touch].every(m => {
+       const d = drawn(m);
+       return d.fills.length === 1 && d.fills[0].fill === '#f03c28' && d.fills[0].alpha === m.alpha &&
+           d.fills[0].r === m.r && d.edges.length === 2 && d.edges.every(e => e.alpha === 1 && e.r > m.r) &&
+           d.edges.some(e => /255, *255, *255/.test(e.stroke)) && d.edges.some(e => /\(0, *0, *0,/.test(e.stroke)) &&
+           d.ops.every(o => o.x === m.x && o.y === m.y);
+   }));
+ok('mark: the context left as it was', drawn(hover).left && drawn(touch).left);
+ok('mark: the box covers all it draws, in whole pixels', [hover, touch, penMark({x: 1859, y: 2479, state: 1}, 1, 3),
     penMark({x: 3, y: 7, state: 2}, 0.3071, 1.5, 0, 542)].every(covers));
 ok('mark: placed in a film at its offset', penMark({x: 0, y: 0, state: 2}, 0.75, 1, 0, 542).y === 542.375);
 ok('mark: none while away', penMark(null, 1, 1) === null && penMark({x: 1, y: 1, state: 0}, 1, 1) === null);
