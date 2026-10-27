@@ -1,0 +1,14 @@
+# The Kindle target, as ../Makefile's KCC (zig cc -target arm-linux-musleabihf -mcpu=cortex_a7):
+# static musl, tuned for the Scribe's Cortex-A7. Build with
+#   cargo zigbuild --release --target armv7-unknown-linux-musleabihf --features kindle --bin grimoire
+# kindle/no-comment.ld drops .comment, where the toolchain names itself, so two machines with the
+# same zig and rustc make the same bytes (../Makefile, the kindle rule). The path is relative to
+# the directory cargo runs the linker in, the package root (rust/).
+[target.armv7-unknown-linux-musleabihf]
+rustflags = [
+    "-C", "target-cpu=cortex-a7",
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=-Wl,-T,../kindle/no-comment.ld",
+    # zig's linker notes that it ignores the -O1 rustc passes it: noise, not a problem.
+    "-A", "linker_messages",
+]

@@ -1,0 +1,77 @@
+# Grimoire in Rust: the same app as the C tree (../src), module for module. rust/PORTING.md has the
+# rules; ../Makefile's rust-* targets build and check it.
+#
+# The app's version is ../VERSION (build.rs passes it in as GRIMOIRE_VERSION), never this file's.
+[package]
+name = "grimoire"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.97"
+publish = false
+license = "GPL-3.0-only"
+build = "build.rs"
+autobins = false
+autotests = true
+
+# The C build's variants (../Makefile):
+#   kindle  GRIMOIRE_KINDLE: FBInk display, evdev input, the Kindle's light and power service.
+#           Linux on ARM only (cargo zigbuild --target armv7-unknown-linux-musleabihf).
+#   sim     GRIMOIRE_SIM: the headless runner (tests/scenarios/*.qs, docs/SIM.md).
+#   neither the host build: the library, the host tools and cargo test (the C unit tests'
+#           build, which links no platform; here the platform calls go to platform_none.rs).
+[features]
+default = []
+kindle = []
+sim = []
+
+[lib]
+name = "grimoire"
+path = "src/lib.rs"
+
+# The Kindle app: the same binary as ../Makefile's build/kindle/grimoire.
+[[bin]]
+name = "grimoire"
+path = "src/bin/grimoire.rs"
+required-features = ["kindle"]
+
+# The scripted runner: the same command line and script protocol as build/host/grimoire-headless.
+[[bin]]
+name = "grimoire-headless"
+path = "src/bin/grimoire-headless.rs"
+required-features = ["sim"]
+
+# tools/grimoire-export.c: a data root to PDFs and PNGs on a computer (the gate runs it).
+[[bin]]
+name = "grimoire-export"
+path = "src/bin/grimoire-export.rs"
+
+# tools/mkicon.c and tools/mklogo.c: the committed Library cover and logo, run by hand.
+[[bin]]
+name = "mkicon"
+path = "src/bin/mkicon.rs"
+
+[[bin]]
+name = "mklogo"
+path = "src/bin/mklogo.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"
+
+# The C builds: host -O1 with sanitizers (Rust checks bounds and overflow in debug instead), Kindle
+# -O2 stripped. Overflow checks stay on in the dev profile so a C wraparound the port must keep is
+# written as wrapping_* on purpose, never by accident.
+[profile.dev]
+opt-level = 1
+overflow-checks = true
+
+[profile.release]
+opt-level = 2
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+incremental = false

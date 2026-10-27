@@ -1,0 +1,155 @@
+//! Grimoire, a handwriting notebook for the Kindle Scribe: the Rust port of the C tree in ../src,
+//! one module per C file, under the same names (rust/PORTING.md has the rules and the map). The
+//! design record is the C's comments, carried over: docs/DESIGN.md and docs/FORMAT.md are the
+//! architecture and the byte-exact formats.
+//!
+//! The C has one namespace, its headers included where needed; here `prelude` re-exports every
+//! header's module, and each module starts with `use crate::prelude::*;`, so a call reads as the C
+//! call it translates (`canvas_fill(c, r, 0)`, `qlog!("...")`). The platform modules
+//! (display_fbink, input_evdev, light_kindle; sim_sdl; platform_none) are not in the prelude: their
+//! functions reach the rest through display.rs, input.rs and light.rs, as display.h, input.h and
+//! light.h are implemented by one platform file per build in the C.
+
+// The skeleton stage: bodies are todo!(), so arguments and helpers are unused until each module is
+// translated. These allows go when the port is done (PORTING.md, Finishing).
+#![allow(unused_variables, unused_imports, dead_code, unused_mut, unreachable_code)]
+#![allow(clippy::too_many_arguments, clippy::needless_return)]
+
+#[cfg(all(feature = "kindle", feature = "sim"))]
+compile_error!("the kindle and sim features are two builds of the app: enable one");
+
+// ---- infrastructure (no C file of its own) ----
+pub mod assets; // build/gen/*.c: fonts, eraser sample, web pages, catalogs
+pub mod cfmt; // printf, for log lines, translations and every byte-exact text
+pub mod ffi_fbink; // third_party/FBInk via csrc/fbink_shim.c (the Kindle)
+pub mod ffi_qr; // third_party/qrcodegen
+pub mod ffi_stb; // third_party/stb_*.h
+
+// ---- wave 1: foundations ----
+pub mod bluetooth;
+pub mod btapi;
+pub mod calib_fit;
+pub mod canvas;
+pub mod fbcheck;
+pub mod fbpack;
+pub mod font;
+pub mod hidkeys;
+pub mod i18n;
+pub mod json_min;
+pub mod koreader;
+pub mod latency;
+pub mod pair;
+pub mod pensync;
+pub mod power;
+pub mod qr;
+pub mod shortcuts;
+pub mod update;
+pub mod util; // common.h (util.c)
+pub use util as common;
+
+// ---- wave 2: the model ----
+pub mod annotate;
+pub mod bgimage;
+pub mod bgjob;
+pub mod bgwork_compact; // compact.h + bg_compact_pages
+pub mod bgwork_template; // templates.h + bg_template, bg_import_folder
+pub mod brush;
+pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
+pub mod export;
+pub mod history;
+pub mod musicbuild;
+pub mod nav;
+pub mod page;
+pub mod paper;
+pub mod store;
+pub mod templates; // templates.h's surface (bodies in bgwork_template.rs)
+pub mod tplsheet;
+
+// ---- wave 3: the UI and the app ----
+pub mod app;
+pub mod bat; // header only
+pub mod calibrate;
+pub mod dispmenu;
+pub mod editor;
+pub mod erasersample; // header only (the bytes are in assets.rs)
+pub mod httpd;
+pub mod inkmode; // header only
+pub mod keyboard;
+pub mod library;
+pub mod live;
+pub mod pagesview;
+pub mod panel; // header only
+pub mod pensettings;
+pub mod share;
+pub mod ui;
+
+// ---- wave 4: the platform and the main loop ----
+pub mod display; // display.h: the types; the functions are the build's platform's
+// light_kindle.c is plain POSIX (lipc through the shell): it builds everywhere, as tests/test_lockui.c
+// compiles it on the host; light.rs takes it as the platform on the Kindle only.
+pub mod light_kindle;
+pub mod input; // input.h: the same
+pub mod light; // light.h: the same
+pub mod mainloop; // main.c
+
+#[cfg(feature = "kindle")]
+pub mod display_fbink;
+#[cfg(feature = "kindle")]
+pub mod input_evdev;
+#[cfg(feature = "sim")]
+pub mod sim_sdl; // the headless runner (the SDL window simulator is not ported: PORTING.md)
+#[cfg(not(any(feature = "kindle", feature = "sim")))]
+pub mod platform_none; // host builds: tools and cargo test link no platform
+
+/// Every header's surface, as the C's one namespace: `use crate::prelude::*;` in each module.
+pub mod prelude {
+    pub use crate::annotate::*;
+    pub use crate::app::*;
+    pub use crate::bat::*;
+    pub use crate::bgimage::*;
+    pub use crate::bgjob::*;
+    pub use crate::bluetooth::*;
+    pub use crate::brush::*;
+    pub use crate::btapi::*;
+    pub use crate::calib_fit::*;
+    pub use crate::canvas::*;
+    pub use crate::cfmt::Arg;
+    pub use crate::compact::*;
+    pub use crate::display::*;
+    pub use crate::dispmenu::*;
+    pub use crate::erasersample::*;
+    pub use crate::export::*;
+    pub use crate::fbcheck::*;
+    pub use crate::fbpack::*;
+    pub use crate::font::*;
+    pub use crate::hidkeys::*;
+    pub use crate::history::*;
+    pub use crate::httpd::*;
+    pub use crate::i18n::*;
+    pub use crate::inkmode::*;
+    pub use crate::input::*;
+    pub use crate::json_min::*;
+    pub use crate::keyboard::*;
+    pub use crate::koreader::*;
+    pub use crate::latency::*;
+    pub use crate::light::*;
+    pub use crate::live::*;
+    pub use crate::musicbuild::*;
+    pub use crate::nav::*;
+    pub use crate::page::*;
+    pub use crate::pagesview::*;
+    pub use crate::pair::*;
+    pub use crate::panel::*;
+    pub use crate::paper::*;
+    pub use crate::pensync::*;
+    pub use crate::power::*;
+    pub use crate::qr::*;
+    pub use crate::shortcuts::*;
+    pub use crate::store::*;
+    pub use crate::templates::*;
+    pub use crate::tplsheet::*;
+    pub use crate::ui::*;
+    pub use crate::update::*;
+    pub use crate::util::*;
+    pub use crate::{cformat, csnprintf, qlog};
+}
