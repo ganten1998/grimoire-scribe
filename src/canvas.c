@@ -207,10 +207,13 @@ void canvas_blit(Canvas *dst, const Canvas *src, Rect s, int dx, int dy) {
     }
 }
 
+// The two downsamples read a whole page for a thumbnail or a paper's preview: the pens are read
+// every 64 rows of it (work_pump, common.h).
 void canvas_downsample(Canvas *dst, const Canvas *src) {
     for (int y = 0; y < dst->h; y++) {
         int sy0 = (int)((int64_t)y * src->h / dst->h), sy1 = (int)((int64_t)(y + 1) * src->h / dst->h);
         if (sy1 <= sy0) sy1 = sy0 + 1;
+        if ((sy0 >> 6) != (sy1 >> 6)) work_pump();
         for (int x = 0; x < dst->w; x++) {
             int sx0 = (int)((int64_t)x * src->w / dst->w), sx1 = (int)((int64_t)(x + 1) * src->w / dst->w);
             if (sx1 <= sx0) sx1 = sx0 + 1;
@@ -229,6 +232,7 @@ void canvas_downsample_keep_lines(Canvas *dst, const Canvas *src, float weight) 
     for (int y = 0; y < dst->h; y++) {
         int sy0 = (int)((int64_t)y * src->h / dst->h), sy1 = (int)((int64_t)(y + 1) * src->h / dst->h);
         if (sy1 <= sy0) sy1 = sy0 + 1;
+        if ((sy0 >> 6) != (sy1 >> 6)) work_pump();
         for (int x = 0; x < dst->w; x++) {
             int sx0 = (int)((int64_t)x * src->w / dst->w), sx1 = (int)((int64_t)(x + 1) * src->w / dst->w);
             if (sx1 <= sx0) sx1 = sx0 + 1;

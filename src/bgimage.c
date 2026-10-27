@@ -957,14 +957,19 @@ void bgimage_render(Canvas *c, const char *nb, PaperKind k, Rect region) {
         g_missing = true;
         return;
     }
+    // The pens are read every 64 rows of a whole page's picture, and after a fitted one (work_pump,
+    // common.h).
     if (img->w == c->w && img->h == c->h) {
-        for (int y = r.y; y < r.y + r.h; y++)
+        for (int y = r.y; y < r.y + r.h; y++) {
             memcpy(&c->px[(size_t)y * (size_t)c->stride + (size_t)r.x], &img->px[(size_t)y * (size_t)img->stride + (size_t)r.x],
                    (size_t)r.w);
+            if (((y - r.y) & 63) == 63) work_pump();
+        }
         return;
     }
     // A picture made for a page of another size (a notebook an older version moved to another
     // screen): fitted as it was made, from page coordinates; white if there is no memory for it.
     if (fit_draw(img->px, img->w, img->h, (size_t)img->stride, 1, 0, c->px, (size_t)c->stride, 1, c->w, c->h, r) != 0)
         canvas_fill(c, r, 255);
+    work_pump();
 }

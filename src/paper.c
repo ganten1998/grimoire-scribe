@@ -464,4 +464,7 @@ void paper_render(Canvas *c, PaperKind k, Rect region, float dpi) {
     }
     }
     c->clip = saved;
+    // A whole page of paper is 10-40 ms on the Kindle, and the Paper sheet draws a dozen: the pens
+    // are read after each (work_pump, common.h).
+    work_pump();
 }
