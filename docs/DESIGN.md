@@ -244,6 +244,7 @@ draws them. White ink and the precise eraser make them.
   as one fast rectangle from the text down to the key and to draw the whole keyboard at every
   sample: on the Kindle each key's refreshes then overlapped the one before and waited in the
   driver's queue for it (docs/INK-PERFORMANCE.md), and the text fell further behind with every key.
+  tests/scenarios/j_pages_keyboard.qs holds both keyboards to the same refreshes and draws.
 
 ## Languages
 

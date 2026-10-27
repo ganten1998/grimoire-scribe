@@ -238,7 +238,12 @@ The `editor.` and `library.` keys answer on any screen: the editor's describe th
 also while pen feel is in front. The `display.` keys are the simulated panel's (the runner answers
 them, like `running` and `watching`); tests/scenarios/y_live_ink.qs uses them, on a fresh root at
 1860x2480: ink and the eraser in the editor, the pen feel pad and the calibration's check stroke
-are live ink, and a pressed button or a dragged slider is not.
+are live ink, and a pressed button or a dragged slider is not. tests/scenarios/j_pages_keyboard.qs
+holds the Pages view's keyboard to the Library's with `display.presents` and `keyboard.draws`: a
+key's press refreshes the text line and then the key, each on its own (`fast 50 1510 1760 120,
+fast 138 1970 167 150` for a), and draws the keyboard once, the pen's samples while it rests on the
+key draw nothing, the release refreshes the key alone, and a pause gets one GL16 of the keyboard
+(`ui 20 1480 1820 980`); a settle due on the page draws nothing under the view.
 
 y_pagesize_1_ksc opens b_library's data on a 1986x2648 screen (fitted notebooks, new pages at the
 notebook's size, Custom music for its page, a scaled calibration, a notebook made there), and
