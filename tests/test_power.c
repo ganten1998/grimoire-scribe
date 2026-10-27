@@ -199,6 +199,8 @@ TEST(asleep_drops) {
     CHECK(!power_asleep_drops(&release));
     InEvent end = ev_of(IN_PINCH_END, false);
     CHECK(!power_asleep_drops(&end));
+    InEvent key_up = ev_of(IN_KEY_UP, false);  // (a controller's Erase while held ends with it)
+    CHECK(!power_asleep_drops(&key_up));
     // So does everything the sleep and wake logic itself needs.
     static const InType kept[] = {IN_POWER, IN_POWER_UP, IN_POWER_HELD, IN_SLEEP, IN_WAKE,
                                   IN_QUIT,  IN_ORIENTATION, IN_PEN_HOVER, IN_PEN_LEAVE};

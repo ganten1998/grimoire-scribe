@@ -148,7 +148,7 @@ releases change often; this was written against 3.18. Tested setup: none yet on 
 
 In the SDL simulator, enabling shortcuts repurposes the number/arrows/E keys from pressure/tilt/
 eraser simulation. P and S remain reserved for simulated power/pen-side-button; Escape quits.
-Scripts inject presses (`key CODE MODS PAD`) and devices (`hid attach pad|key|held NAME`,
+Scripts inject presses (`key CODE MODS PAD`), releases (`keyup CODE MODS PAD`) and devices (`hid attach pad|key|held NAME`,
 `hid detach NAME`), and `tests/bt_check.sh` runs the pairing sheet against a stand-in for the
 helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controller discovery or
 real button numbering on a Kindle.
