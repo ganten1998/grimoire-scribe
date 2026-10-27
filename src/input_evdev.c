@@ -29,6 +29,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <linux/input.h>
 #include <math.h>
 #include <poll.h>
@@ -928,8 +929,10 @@ typedef struct {
     HidKind kind;
     bool held;                 // another app held it exclusively when it came
     bool switch_layout;        // a Switch-mode controller (hidkeys_switch)
+    bool trig_wait;            // its triggers are decided at its first report (hidkeys_triggers)
     unsigned hatmask;
     HidKeys keys;
+    HidTriggers trig;          // its analog triggers, read as LT and RT (none: zeroed)
 } KeyDev;
 static KeyDev g_keys[KEY_DEVS];
 static bool g_keys_enabled, g_keys_init;
@@ -948,7 +951,7 @@ static void key_ups(KeyDev *k, const uint8_t *held, int hat_x, int hat_y) {
 static bool key_resync(KeyDev *k) {
     uint8_t keys[HID_KEY_BYTES] = {0};
     if (ioctl(k->fd, EVIOCGKEY(sizeof keys), keys) < 0) return false;
-    int hats[2] = {0};
+    int hats[2] = {0}, trig[2] = {INT_MIN, INT_MIN};
     k->hatmask = 0;
     for (int axis = 0; axis < 2; axis++) {
         struct input_absinfo info = {0};
@@ -957,6 +960,12 @@ static bool key_resync(KeyDev *k) {
             k->hatmask |= 1u << axis;
         }
     }
+    // The analog triggers as they read now: one pulled is held as a button is (hidkeys_trigger_sync).
+    for (int i = 0; i < 2; i++) {
+        struct input_absinfo info = {0};
+        if (k->trig.axis[i] && ioctl(k->fd, EVIOCGABS(k->trig.axis[i]), &info) >= 0) trig[i] = info.value;
+    }
+    hidkeys_trigger_sync(&k->keys, &k->trig, trig, keys);
     key_ups(k, keys, hats[0], hats[1]);
     return true;
 }
@@ -964,6 +973,21 @@ static bool key_resync(KeyDev *k) {
 _Static_assert(KEY_MAX + 1 <= HID_KEY_BYTES * 8, "external key bitmap too small");
 _Static_assert(ABS_MAX + 1 <= HID_ABS_BYTES * 8, "external axis bitmap too small");
 #define BYTES(bits) ((const uint8_t *)(bits))
+// A controller's analog triggers (hidkeys_triggers), from its axes' ranges and where they rest now;
+// until its first report, when that cannot tell (trig_wait), it has none. Axis numbers and ranges go
+// to the log, as attachment paths do: never a press or a name.
+static void key_triggers(KeyDev *k, const unsigned long *keys, const unsigned long *axes) {
+    HidAxis info[HIDKEYS_AXES] = {{0}};
+    for (int code = 0; code < HIDKEYS_AXES; code++) {
+        struct input_absinfo ai = {0};
+        if (test_bit(axes, code) && ioctl(k->fd, EVIOCGABS(code), &ai) >= 0) info[code] = (HidAxis){ai.minimum, ai.maximum, ai.value};
+    }
+    k->trig_wait = !hidkeys_triggers(&k->trig, BYTES(keys), BYTES(axes), info);
+    for (int i = 0; i < 2; i++)
+        if (k->trig.axis[i])
+            qlog("input: %s at %s is axis %d (%d to %d)", i ? "RT" : "LT", k->path, k->trig.axis[i],
+                 info[k->trig.axis[i]].minimum, info[k->trig.axis[i]].maximum);
+}
 static void key_announce(const KeyDev *k, InType type) {
     InEvent e = {.type = type, .gamepad = k->kind == HID_GAMEPAD, .value = k->held, .t_ms = now_ms()};
     strlcpy_q(e.hid_name, k->name, sizeof e.hid_name);
@@ -1045,6 +1069,7 @@ static void key_scan(bool announce) {
             *k = (KeyDev){.fd = fd, .kind = kind, .switch_layout = kind == HID_GAMEPAD && hidkeys_switch(name, BYTES(keys))};
             strlcpy_q(k->path, path, sizeof k->path);
             hidkeys_name(k->name, sizeof k->name, name);
+            if (kind == HID_GAMEPAD) key_triggers(k, keys, axes);
             // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
             // for one ourselves, let go at once, and read without one as before.
             int grabbed = ioctl(fd, EVIOCGRAB, 1), err = errno;
@@ -1098,10 +1123,22 @@ static void handle_key(const struct input_event *ev) {
         if (ev->type == EV_SYN && ev->code == SYN_REPORT && !key_resync(k)) key_detach(k);
         return;
     }
+    // Its first report: where its axes rest now tells which are its triggers (one pulled in it is held,
+    // as at attach).
+    if (k->trig_wait && ev->type == EV_SYN && ev->code == SYN_REPORT) {
+        unsigned long keys[NLONGS(KEY_MAX + 1)] = {0}, axes[NLONGS(ABS_MAX + 1)] = {0};
+        ioctl(k->fd, EVIOCGBIT(EV_KEY, sizeof keys), keys);
+        ioctl(k->fd, EVIOCGBIT(EV_ABS, sizeof axes), axes);
+        key_triggers(k, keys, axes);
+        k->trig_wait = false;  // (decided now, either way)
+        if (!key_resync(k)) key_detach(k);
+        return;
+    }
     if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y) &&
         !(k->hatmask & (1u << (ev->code - ABS_HAT0X)))) return;
     HidPress out[2];
-    int n = hidkeys_event(&k->keys, k->kind, ev->type, ev->code, ev->value, out);
+    int n = ev->type == EV_ABS ? hidkeys_trigger_event(&k->keys, &k->trig, ev->code, ev->value, out) : 0;
+    if (!n) n = hidkeys_event(&k->keys, k->kind, ev->type, ev->code, ev->value, out);
     for (int i = 0; i < n; i++) key_push(&out[i]);
 }
 
