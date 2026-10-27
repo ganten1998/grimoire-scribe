@@ -1,0 +1,542 @@
+## keys
+hash 0 344df47ad92c3982 src 2f2a80c0feeadd7e tpl 2dccacb4f058aa12 photo 0a0cbb6528d51e6c
+hash 1 d53ba346448b2375 src 0e37cf918c8aa3b6 tpl 5cb03bf69e518ee7 photo 21a630524807b95d
+hash 7 aa0d95939916753a src 0d4f9d67fa05e4aa tpl 14beb0a72d935165 photo 9774279572cd0d1e
+hash 8 790e85d75a8f7eea src 3691c2df77104e73 tpl cd621a99aab9d026 photo 508b80a46048f038
+hash 9 c0cf21e9216cc8d3 src a7875e0196575a56 tpl c1dd193c0111559f photo 7f3bd8e41c2b753f
+hash 15 cf1c85f7b6ad396d src 892c63f76b670539 tpl 89a3bf62e086b6c3 photo 6857d6cb6e16d9e8
+hash 16 a0423de29987e054 src c0f49192ac644d0b tpl 7290e9e31df66c27 photo 485048e72e25096f
+hash 17 37e8c8fc1a6ef4b2 src b4968bc4380ab160 tpl 281793235e1dbc1c photo 4f838063890b0227
+hash 63 bea4ad17b3488a9b src a28097388843d5ed tpl e245368bc0467a93 photo f0a34338ddaab167
+hash 64 f8264d6f8a74ecf8 src aa216f4d0e033958 tpl 6e6a3afbd09950e7 photo 70b3e4b0c357096a
+hash 65 6c38e635730bd082 src b611c0e27ea0f544 tpl 3aff1e0a54c3df22 photo e8984aaef6652feb
+hash 1000 9d6b66fd403ad1d7 src 3e13d1294c453f99 tpl da78a0d1815958af photo e86a9f54a8017d2a
+hash 65539 f9a980d33bf0e8db src 40cd2bc42b978a81 tpl ce497e8cb55fca6e photo 9c2acc51d3af34da
+key 5x3 ch3 7741c5e08fe69f72
+key 4x4 ch1 a6827cd05af9524c
+key 1x1 ch3 80e4fc52319ada70
+key 17x9 ch1 f6d1f075c2a656e1
+## normalize
+normalize 0
+  out 20x20 ch1 fnv 201d213ee07981e5
+normalize bad -1 -1 -1
+  luma 7x5 stride 7 fnv 07e558bdac6232d4
+normalize 0
+  out 31x47 ch3 fnv b062e6b238aa1968
+normalize bad -1 -1 -1
+  luma 100x60 stride 100 fnv 17be53d48ba295e0
+normalize 0
+  out 64x64 ch3 fnv b859d55b0fa7d363
+normalize bad -1 -1 -1
+  luma 64x64 stride 64 fnv 8caf6d5cbee759d5
+normalize 0
+  out 100x100 ch1 fnv 8699d772e9c7e377
+normalize bad -1 -1 -1
+  luma 3x200 stride 3 fnv 1650a198db88ca6a
+normalize 0
+  out 120x160 ch3 fnv fae98de3337d881e
+normalize bad -1 -1 -1
+  luma 500x333 stride 500 fnv 68f5044a5b4ee6bf
+normalize 0
+  out 9x9 ch3 fnv c2679239368d27b0
+normalize bad -1 -1 -1
+  luma 1x1 stride 1 fnv 44bcf0d473cc9358
+normalize 0
+  out 50x10 ch1 fnv 623a490f2f2f8a21
+normalize bad -1 -1 -1
+  luma 300x300 stride 300 fnv 3bb0e1c098b4e4eb
+normalize 0
+  out 200x100 ch3 fnv 8108394003e5a71f
+normalize bad -1 -1 -1
+  luma 20x10 stride 20 fnv 4b6acd5f51cbf4ff
+normalize 0
+  out 17x31 ch1 fnv 53da4cb083a1a281
+normalize bad -1 -1 -1
+  luma 17x31 stride 17 fnv 53da4cb083a1a281
+normalize 0
+  out 33x40 ch1 fnv 2ee4740a2e634aa8
+normalize bad -1 -1 -1
+  luma 1000x3 stride 1000 fnv 47beac6cf291ba5e
+normalize 0
+  out 61x99 ch3 fnv 24d8d42a674c10c5
+normalize bad -1 -1 -1
+  luma 123x456 stride 123 fnv 56e82f2034933311
+## orient
+orient 0 rc 0 5x3 ch3 fnv 609458b4c6c3b97d
+orient 1 rc 0 5x3 ch3 fnv 609458b4c6c3b97d
+orient 2 rc 0 5x3 ch3 fnv bf3a2c6d1b6b53f1
+orient 3 rc 0 5x3 ch3 fnv 393856295fa92281
+orient 4 rc 0 5x3 ch3 fnv 3108f765063be2a5
+orient 5 rc 0 3x5 ch3 fnv 42b8309b79593a61
+orient 6 rc 0 3x5 ch3 fnv 29d826e2c2a45d05
+orient 7 rc 0 3x5 ch3 fnv 6f8cce556bf8a0ed
+orient 8 rc 0 3x5 ch3 fnv 707769ef53bc0309
+orient 9 rc 0 5x3 ch3 fnv 609458b4c6c3b97d
+orient 0 rc 0 4x7 ch1 fnv 9f821fcc9f16f7bf
+orient 1 rc 0 4x7 ch1 fnv 9f821fcc9f16f7bf
+orient 2 rc 0 4x7 ch1 fnv 4c858cf4da5a59fb
+orient 3 rc 0 4x7 ch1 fnv 2a864d4e3db45593
+orient 4 rc 0 4x7 ch1 fnv 9a5582989467e44f
+orient 5 rc 0 7x4 ch1 fnv fa76569553981369
+orient 6 rc 0 7x4 ch1 fnv 92cb5c7a93e91b61
+orient 7 rc 0 7x4 ch1 fnv 01ae7a70ecfe57e1
+orient 8 rc 0 7x4 ch1 fnv 035ae782de5c0889
+orient 9 rc 0 4x7 ch1 fnv 9f821fcc9f16f7bf
+orient 0 rc 0 1x6 ch3 fnv 53d4b8f7866aa4ef
+orient 1 rc 0 1x6 ch3 fnv 53d4b8f7866aa4ef
+orient 2 rc 0 1x6 ch3 fnv 53d4b8f7866aa4ef
+orient 3 rc 0 1x6 ch3 fnv 7924c8ea8fe71937
+orient 4 rc 0 1x6 ch3 fnv 7924c8ea8fe71937
+orient 5 rc 0 6x1 ch3 fnv 53d4b8f7866aa4ef
+orient 6 rc 0 6x1 ch3 fnv 7924c8ea8fe71937
+orient 7 rc 0 6x1 ch3 fnv 7924c8ea8fe71937
+orient 8 rc 0 6x1 ch3 fnv 53d4b8f7866aa4ef
+orient 9 rc 0 1x6 ch3 fnv 53d4b8f7866aa4ef
+orient empty 0
+## exif
+exif exif_le_1.jpg 1
+exif exif_le_2.jpg 2
+exif exif_le_3.jpg 3
+exif exif_le_4.jpg 4
+exif exif_le_5.jpg 5
+exif exif_le_6.jpg 6
+exif exif_le_7.jpg 7
+exif exif_le_8.jpg 8
+exif exif_be_1.jpg 1
+exif exif_be_2.jpg 2
+exif exif_be_3.jpg 3
+exif exif_be_4.jpg 4
+exif exif_be_5.jpg 5
+exif exif_be_6.jpg 6
+exif exif_be_7.jpg 7
+exif exif_be_8.jpg 8
+exif exif_0.jpg 1
+exif exif_9.jpg 1
+exif exif_pad.jpg 1
+exif base_420.jpg 1
+exif gray8.png 1
+exif tiny.bin 1
+exif empty.bin 1
+exif junk.bin 1
+exif fuzz dced93837f2d4b86 0 11353 1 0 1 1 8639 4 1 0
+## decode
+gray8.png: check 0 32 24 []
+  cost 68048
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 32 24 []
+  decode 0 [] 32x24 ch1 fnv 53083edf863b1289 peak 4888
+  fit41x53 41x53 ch1 fnv 5f38b826103531e3
+rgb8.png: check 0 30 22 []
+  cost 71678
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 30 22 []
+  decode 0 [] 30x22 ch3 fnv 816ceeca2bc64610 peak 6098
+  fit41x53 41x53 ch3 fnv 1aa9caef2a467ef7
+rgba8.png: check 0 25 20 []
+  cost 71732
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 25 20 []
+  decode 0 [] 25x20 ch3 fnv 6dee0d50cbaca2d0 peak 6116
+  fit41x53 41x53 ch3 fnv ee6ccb55e03ae0d4
+ga8.png: check 0 17 11 []
+  cost 66827
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 17 11 []
+  decode 0 [] 17x11 ch1 fnv e97e977ae0b1ede3 peak 4481
+  fit41x53 41x53 ch1 fnv 42a8b994f6c78262
+grayrgb.png: check 0 20 15 []
+  cost 67657
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 20 15 []
+  decode 0 [] 20x15 ch1 fnv 88f486d072ca2e43 peak 5011
+  fit41x53 41x53 ch1 fnv c413d4364213a3f3
+grayrgb1.png: check 0 20 15 []
+  cost 67657
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 20 15 []
+  decode 0 [] 20x15 ch3 fnv 3141daaf6ac26c40 peak 5011
+  fit41x53 41x53 ch3 fnv 31fcb1958998ffb7
+rgb16.png: check 0 20 15 []
+  cost 71117
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 20 15 []
+  decode 0 [] 20x15 ch3 fnv a3e11f56caa97dc0 peak 5911
+  fit41x53 41x53 ch3 fnv 2ff6b5f0a312df4f
+gray16.png: check 0 19 14 []
+  cost 67310
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 19 14 []
+  decode 0 [] 19x14 ch1 fnv eb204ecc98d40909 peak 4642
+  fit41x53 41x53 ch1 fnv 59ce9eec3eedeaf6
+rgba16.png: check 0 10 9 []
+  cost 67859
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 10 9 []
+  decode 0 [] 10x9 ch3 fnv 018f266d555cf6fb peak 4825
+  fit41x53 41x53 ch3 fnv 485fa361f6ca72dc
+pal4.png: check 0 25 20 []
+  cost 67816
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 25 20 []
+  decode 0 [] 25x20 ch3 fnv d24b3376a8642876 peak 4376
+  fit41x53 41x53 ch3 fnv 56817c9751e4efd7
+pal8trns.png: check 0 16 12 []
+  cost 66700
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 16 12 []
+  decode 0 [] 16x12 ch3 fnv 683e0683f3126b0c peak 4300
+  fit41x53 41x53 ch3 fnv 8db5edb47f10044b
+gray1.png: check 0 35 10 []
+  cost 65956
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 35 10 []
+  decode 0 [] 35x10 ch1 fnv 60fdcb52301f174a peak 4156
+  fit41x53 41x53 ch1 fnv 89d9b185add8c6a5
+interlaced_bad.png: check 0 15 10 []
+  cost 67512
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 15 10 []
+  decode -1 [a damaged or unsupported picture] peak 4556
+adam7.png: check 0 19 15 []
+  cost 69180
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 19 15 []
+  decode 0 [] 19x15 ch3 fnv aa15cbb57ba4a251 peak 5836
+  fit41x53 41x53 ch3 fnv a0d4dfd407f664fc
+cgbi.png: check 0 20 20 []
+  cost 68076
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 20 20 []
+  decode -1 [a damaged or unsupported picture] peak 5316
+fake_9000.png: check -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  cost 0
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  decode -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side] peak 18568
+fake_7000sq.png: check -1 -1 -1 [more than 40 megapixels]
+  cost 98086536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [more than 40 megapixels]
+  decode -1 [more than 40 megapixels] peak 18568
+fake_5000x4000.png: check 0 5000 4000 []
+  cost 40079536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 5000 4000 []
+  decode -1 [a damaged or unsupported picture] peak 40004000
+fake_rgb16_6000x3000.png: check 0 6000 3000 []
+  cost 216140536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  decode -1 [a damaged or unsupported picture] peak 216003000
+fake_rgb16_3000x3000.png: check 0 3000 3000 []
+  cost 108104536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  decode -1 [a damaged or unsupported picture] peak 108003000
+fake_pal_6000x5000.png: check 0 6000 5000 []
+  cost 150070536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  decode -1 [a damaged or unsupported picture] peak 60005000
+fake_inter_4000x4000.png: check 0 4000 4000 []
+  cost 192097536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  decode -1 [a damaged or unsupported picture] peak 96754000
+fake_rgba_6000x6000.png: check -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  cost 288119536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)]
+  decode -1 [too big to decode in the memory Grimoire gives a picture (a 16-bit or progressive one this size)] peak 18568
+fake_6000.png: check 0 6000 6000 []
+  cost 72083536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 6000 6000 []
+  decode -1 [a damaged or unsupported picture] peak 72006000
+fake_6001.png: check 0 6001 100 []
+  cost 1277838
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 6001 100 [bigger than any page]
+  decode -1 [a damaged or unsupported picture] peak 1200300
+fake_1bit_8000.png: check 0 8000 4000 []
+  cost 36071536
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 8000 4000 [bigger than any page]
+  decode -1 [a damaged or unsupported picture] peak 36004000
+bomb.png: check 0 8 8 []
+  cost 73894
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 8 8 []
+  decode -1 [a damaged picture (it takes more memory to decode than its size says)] peak 1183744
+short.png: check 0 40 40 []
+  cost 68856
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 40 40 []
+  decode -1 [a damaged or unsupported picture] peak 5736
+trunc.png: check 0 30 22 []
+  cost 69698
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable 0 30 22 []
+  decode -1 [a damaged or unsupported picture] peak 4096
+junk.bin: check -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  cost 0
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side] peak 18568
+tiny.bin: check -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  cost 0
+  drawable -1 -1 -1 [not a PNG]
+  decode -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side] peak 18568
+empty.bin: check -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  cost 0
+  drawable -1 -1 -1 [not a PNG]
+  decode -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side] peak 18568
+p5.pgm: check 0 15 9 []
+  cost 65671
+  head20 0 15 9 []
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 15x9 ch1 fnv 61b8539770302008 peak 18568
+  fit41x53 41x53 ch1 fnv c993ded032bdaee8
+p6.ppm: check 0 14 10 []
+  cost 65956
+  head20 0 14 10 []
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 14x10 ch3 fnv b325981d8bff1f5e peak 18568
+  fit41x53 41x53 ch3 fnv 282da7197d609039
+p6_16.ppm: check 0 13 11 []
+  cost 66823
+  head20 0 13 11 []
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 13x11 ch3 fnv 12136cab672e4109 peak 18568
+  fit41x53 41x53 ch3 fnv 40edcbbeae9396f6
+p5_16.pgm: check 0 17 9 []
+  cost 65995
+  head20 0 17 9 []
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 17x9 ch1 fnv 5871fd9130d05aac peak 18568
+  fit41x53 41x53 ch1 fnv aa2dffed972eb471
+p6_short.ppm: check 0 14 10 []
+  cost 65956
+  head20 0 14 10 []
+  drawable -1 -1 -1 [not a PNG]
+  decode -1 [a damaged or unsupported picture] peak 18568
+p6_100.ppm: check 0 14 10 []
+  cost 65956
+  head20 0 14 10 []
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 14x10 ch3 fnv d803f5cf5d676474 peak 18568
+  fit41x53 41x53 ch3 fnv d216267885652ab4
+base_420.jpg: check 0 67 39 []
+  cost 97958
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch3 fnv 9b77a8dfb1b57128 peak 32423
+  fit41x53 41x53 ch3 fnv b5c6eab8ec5c2943
+base_444.jpg: check 0 67 39 []
+  cost 100838
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch3 fnv 235da737bb575e48 peak 35303
+  fit41x53 41x53 ch3 fnv 12c60403e653e56f
+base_422.jpg: check 0 67 39 []
+  cost 98598
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch3 fnv 04da107453b3169e peak 33063
+  fit41x53 41x53 ch3 fnv ccb1e28bebab21a5
+base_gray.jpg: check 0 67 39 []
+  cost 89682
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch1 fnv c74b83f6d690e2dc peak 24147
+  fit41x53 41x53 ch1 fnv 5bdf253f023ebac1
+prog_420.jpg: check 0 67 39 []
+  cost 109568
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch3 fnv 9b77a8dfb1b57128 peak 43988
+  fit41x53 41x53 ch3 fnv b5c6eab8ec5c2943
+prog_444.jpg: check 0 67 39 []
+  cost 118208
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch3 fnv 235da737bb575e48 peak 52628
+  fit41x53 41x53 ch3 fnv 12c60403e653e56f
+prog_gray.jpg: check 0 67 39 []
+  cost 95472
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 67x39 ch1 fnv 6cd4fd5668bce0b6 peak 29922
+  fit41x53 41x53 ch1 fnv 5db524f7b5b902d8
+exif_le_6.jpg: check 0 24 16 []
+  cost 86150
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode 0 [] 24x16 ch3 fnv 1ccb4275c3500483 peak 20615
+  fit41x53 41x53 ch3 fnv 93d2b75952aeb705
+exif_pad.jpg: check -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  cost 0
+  head20 -1 -1 -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side]
+  drawable -1 -1 -1 [not a PNG]
+  decode -1 [not a PNG, JPEG or PNM picture of at most 8192 pixels a side] peak 18568
+## index
+load none 0
+  n=0
+load text 0 rc 0
+  n=2 000010=00000000000000aa 000002=00000000000000bb
+  save 0 bytes 104 fnv 6d86abde2878d4ec
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000002=00000000000000bb
+000010=00000000000000aa
+load text 1 rc 0
+  n=3 000005=0000000000000003 00001f=0000000000000abc 000020=0000000000abcdef
+  save 0 bytes 128 fnv 7c6518838734930a
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000005=0000000000000003
+00001f=0000000000000abc
+000020=0000000000abcdef
+load text 2 rc 0
+  n=2 000001=0000000000000010 000003=0000000000000020
+  save 0 bytes 104 fnv 2ba527d88a6aafa6
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000001=0000000000000010
+000003=0000000000000020
+load text 3 rc 0
+  n=1 ffffff=0000000000000003
+  save 0 bytes 80 fnv 877c317da22dc9fd
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+ffffff=0000000000000003
+load text 4 rc 0
+  n=3 000007=0000000000000006 000008=ffffffffffffffff 00000a=0000000000000001
+  save 0 bytes 128 fnv a38391ada1025c97
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000007=0000000000000006
+000008=ffffffffffffffff
+00000a=0000000000000001
+load text 5 rc 0
+  n=2 000001=0000000000000005 000002=0000000000000006
+  save 0 bytes 104 fnv 526a78bbc937df17
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000001=0000000000000005
+000002=0000000000000006
+load text 6 rc 0
+  n=3 000001=ffffffffffffffff 000003=0000000000000000 000004=0000000000000001
+  save 0 bytes 128 fnv 1c3c6edcd5841715
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000001=ffffffffffffffff
+000003=0000000000000000
+000004=0000000000000001
+load text 7 rc 0
+  n=1 000001=0000000000000002
+  save 0 bytes 80 fnv 0eadf6782b16a2d3
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+000001=0000000000000002
+load text 8 rc 0
+  n=0
+  save 0 bytes 56 fnv bf491879da7f4f31
+# Grimoire background pictures: id=key (docs/FORMAT.md)
+claim 0000000000000000 rc 0 id 000004 added 1
+claim 1000000000000001 rc 0 id 000005 added 1
+claim 0000000000000000 rc 0 id 000004 added 0
+claim 00000000000000ff rc 0 id 0000ff added 1
+claim abcdef0123456789 rc 0 id 456789 added 1
+claim 0000000000000020 rc 0 id 000021 added 1
+claim 0000000000000021 rc 0 id 000022 added 1
+claim 0000000000fffffe rc 0 id fffffe added 1
+claim 0000000000ffffff rc 0 id ffffff added 1
+claim 00000000ffffffff rc 0 id 000006 added 1
+claim abcdef0123456789 rc 0 id 456789 added 0
+  n=9 000004=0000000000000000 000005=1000000000000001 0000ff=00000000000000ff 456789=abcdef0123456789 000021=0000000000000020 000022=0000000000000021 fffffe=0000000000fffffe ffffff=0000000000ffffff 000006=00000000ffffffff
+save 0
+find 1 0
+load unreadable -1 n=0
+load readable 0 n=9
+## files
+hashfile 0 rc 0 len 0 same 1
+  read max=size 1 0 same 1
+hashfile 1 rc 0 len 1 same 1
+  read max=size 1 1 same 1
+  read max=size-1 0 errno 27
+hashfile 7 rc 0 len 7 same 1
+  read max=size 1 7 same 1
+  read max=size-1 0 errno 27
+hashfile 8 rc 0 len 8 same 1
+  read max=size 1 8 same 1
+  read max=size-1 0 errno 27
+hashfile 9 rc 0 len 9 same 1
+  read max=size 1 9 same 1
+  read max=size-1 0 errno 27
+hashfile 65535 rc 0 len 65535 same 1
+  read max=size 1 65535 same 1
+  read max=size-1 0 errno 27
+hashfile 65536 rc 0 len 65536 same 1
+  read max=size 1 65536 same 1
+  read max=size-1 0 errno 27
+hashfile 65537 rc 0 len 65537 same 1
+  read max=size 1 65537 same 1
+  read max=size-1 0 errno 27
+hashfile 131072 rc 0 len 131072 same 1
+  read max=size 1 131072 same 1
+  read max=size-1 0 errno 27
+hashfile 200003 rc 0 len 200003 same 1
+  read max=size 1 200003 same 1
+  read max=size-1 0 errno 27
+hashfile missing -1
+hashfile dir -1
+read missing 0 errno 2
+read dir 0 errno 2
+## render
+write png 000123 0
+  file 1298 fnv e09b0e3fd50292de
+write png 000124 0
+  file 1298 fnv 86f877592acbe562
+write png 000201 0
+  file 122 fnv b890eed3bab1773a
+write png 000202 0
+  file 121 fnv 982e942e2041edf2
+write png 000203 0
+  file 122 fnv 6153838e43d6d368
+write png 000204 0
+  file 122 fnv ef9f8b623ee705e9
+write png 000205 0
+  file 122 fnv 9e77fead97be5ea8
+write png 000400 0
+  file 3868 fnv 842e30c4f860610e
+undrawn 123 1 (before)
+render same size 40x30 fnv d930acd82f71f45c
+undrawn 123 0 (after) missing 0
+render region 40x30 fnv 007a6e6ee7a76a46
+render clipped 40x30 fnv 590cffc46aed0d1b
+render fitted 60x90 60x90 fnv 09df751f1a31a10f
+  region 60x90 fnv ccbff010474b223c
+  region agrees 1
+render fitted 100x40 100x40 fnv 85c04f8fe138ed27
+  region 100x40 fnv 8ddf384ac352da00
+  region agrees 1
+render fitted 40x31 40x31 fnv e231f301c16efc34
+  region 40x31 fnv cac4cf3e6a234121
+  region agrees 1
+render fitted 13x9 13x9 fnv 315bf77143ed1bf5
+  region 13x9 fnv a9b7f6445d209ef5
+  region agrees 1
+render rgb 25x50 fnv 412db7341d34e2d5
+render missing 40x30 fnv 584de6960c8b2b13
+take missing 1 then 0
+again missing 1
+bad pngs missing 1
+empty nb missing 1
+not an image paper missing 1
+other notebook missing 1
+empty region missing 0
+generation +1
+take 1
+still missing 1
+after retry missing 0
+render made 40x30 fnv 8dc95b7762f19ae9
+drew 201 undrawn: 0 1 1 1 1
+drew 202 undrawn: 0 0 1 1 1
+drew 203 undrawn: 0 0 0 1 1
+drew 204 undrawn: 0 1 0 0 1
+drew 205 undrawn: 0 1 1 0 0
+forgot: 1 1 1 1 1
+undrawn missing file 0, bad nb 0
