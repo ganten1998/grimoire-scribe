@@ -466,16 +466,8 @@ fn tab(c: &mut Canvas, dpi: f32) {
         canvas_vline(c, x1 - lt, lrintf(y0), lrintf(5.0f32.mul_add(space, y0)) + lt, lt, 100);
         let fs = space * 1.75;
         const LETTERS: [&str; 3] = ["T", "A", "B"];
-        for i in 0..3 {
-            font_draw(
-                c,
-                FontFace::FixedBold,
-                fs,
-                x0 + lrintf(space * 0.6),
-                lrintf(space.mul_add(1.6f32.mul_add(i as f32, 1.6), y0)),
-                LETTERS[i],
-                60,
-            );
+        for (i, letter) in LETTERS.iter().enumerate() {
+            font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(space.mul_add(1.6f32.mul_add(i as f32, 1.6), y0)), letter, 60);
         }
     }
 }
@@ -524,9 +516,9 @@ fn draw_part(c: &mut Canvas, p: MusicPart, y0: f32, space: f32, x0: i32, x1: i32
                 // "TAB" spread down the lines, shrinking to fit a 4-line tab.
                 let fs = (space * 1.75).min(h / 3.0 * 1.05);
                 const LETTERS: [&str; 3] = ["T", "A", "B"];
-                for i in 0..3 {
+                for (i, letter) in LETTERS.iter().enumerate() {
                     let cy = y0 + h * (i as f32 + 0.5) / 3.0;
-                    font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(fs.mul_add(0.34, cy)), LETTERS[i], 60);
+                    font_draw(c, FontFace::FixedBold, fs, x0 + lrintf(space * 0.6), lrintf(fs.mul_add(0.34, cy)), letter, 60);
                 }
             }
         }
@@ -560,9 +552,9 @@ fn music_custom(c: &mut Canvas, m: &MusicLayout, dpi: f32) {
         let mut first = -1.0f32;
         let mut last = -1.0f32;
         let mut py = [0.0f32; MUSIC_MAX_PARTS];
-        for i in 0..m.n as usize {
+        for (i, pyi) in py.iter_mut().enumerate().take(m.n as usize) {
             y = gap_above(m, i).mul_add(space, y);
-            py[i] = y;
+            *pyi = y;
             if m.part[i] != PART_LYRICS {
                 if first < 0.0 {
                     first = y;

@@ -47,7 +47,7 @@ pub fn c_(ctx: &str, msgid: &'static str) -> &'static str {
 }
 /// NC_(): marks a string with its context in a static table (look it up with c_() and the same
 /// context).
-pub const fn nc_(ctx: &str, s: &'static str) -> &'static str {
+pub const fn nc_(_ctx: &str, s: &'static str) -> &'static str {
     s
 }
 /// NG_(): the plural form for n, looked up now.
