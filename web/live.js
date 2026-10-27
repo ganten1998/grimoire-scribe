@@ -7,7 +7,7 @@
 // none: the picture follows both unless the Invert switch or the Warmth slider here says otherwise),
 // 6 pen (u16 x, y; u8 0 away, 1 hovering, 2 touching: drawn over the picture, never in it; a hello
 // or any state but awake takes it away). Under node (tests/live_check.js) it only exports the frame
-// reader and the pure parts below.
+// reader, the pure parts below and CodecRecorder (which the check runs on a stand-in encoder).
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -71,21 +71,216 @@
         const k = Math.min(fw / w, fh / h);
         return {k, x: Math.floor((fw - w * k) / 2), y: Math.floor((fh - h * k) / 2)};
     }
-    // Record's format, from what supported(type) says (MediaRecorder.isTypeSupported): MP4 (H.264)
-    // wherever the browser records it, Transparent paper too (an MP4 has no transparency, so the
-    // paper is drawn in); WebM only where it cannot (Firefox: why 'browser'). A browser that names
-    // neither records its own choice, which nothing here can name.
+    // Record's format: an MP4 wherever the browser can make one, Transparent paper too (an MP4 has
+    // no transparency, so the paper is drawn in). supported(type) is MediaRecorder.isTypeSupported;
+    // h264, the H.264 codec WebCodecs' VideoEncoder takes at the screen's size ('' for none). First
+    // MediaRecorder's own MP4 (Chrome, Safari: via 'recorder'), else the page's own (via 'codecs':
+    // Firefox's MediaRecorder writes only WebM and Ogg, but its VideoEncoder makes H.264, which
+    // CodecRecorder puts in an MP4), and WebM only where neither can (why 'browser'). A browser that
+    // names none records its own choice, which nothing here can name.
     const MP4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
     const WEBM = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];
-    function recordType(supported) {
+    function recordType(supported, h264) {
         const first = list => list.find(t => { try { return !!supported(t); } catch (e) { return false; } });
         const mp4 = first(MP4), webm = first(WEBM);
-        if (mp4) return {mime: mp4, ext: 'mp4', why: ''};
-        if (webm) return {mime: webm, ext: 'webm', why: 'browser'};
-        return {mime: '', ext: '', why: ''};  // (the file named by the type the recorder says it made)
+        if (mp4) return {mime: mp4, ext: 'mp4', why: '', via: 'recorder'};
+        if (h264) return {mime: 'video/mp4', ext: 'mp4', why: '', via: 'codecs', codec: h264};
+        if (webm) return {mime: webm, ext: 'webm', why: 'browser', via: 'recorder'};
+        return {mime: '', ext: '', why: '', via: 'recorder'};  // (the file named by the type the recorder says it made)
     }
+    // The H.264 asked of VideoEncoder, in order: Baseline, which has no B frames, so the frames come
+    // in the order they show and mp4Boxes needs no reordering table. Level 5.1 holds both Scribes'
+    // screens (1986 x 2648 is 20,750 macroblocks, 3.1's limit is 3,600); 3.1 last, for an encoder
+    // that takes only it (Firefox's raises the level itself).
+    const H264 = ['avc1.420033', 'avc1.42E033', 'avc1.42001f'];
+    const FILM_FPS = 15, FILM_BITRATE = 4e6;
+    function filmConfig(codec, width, height) {
+        return {codec, width, height, bitrate: FILM_BITRATE, framerate: FILM_FPS, avc: {format: 'avc'}};
+    }
+    // An MP4 of one H.264 track from WebCodecs' chunks, as its boxes: {ftyp, mdat (its header),
+    // moov}; the file is ftyp, mdat, every sample's bytes in order, then moov, which says where each
+    // one is (each sample its own chunk). samples: [{size, ts (us), key}] in the order they came;
+    // avcC: the decoder config's description (the SPS and PPS); endUs: when the last one stops
+    // showing. A frame comes only when the picture changed, each lasting until the next (a still
+    // screen is one long frame). Past 4 GB the offsets and mdat's size take 64 bits.
+    const MP4_SCALE = 30000;  // the track's ticks a second (its u32 duration holds 39 hours of them)
+    function mp4Boxes(samples, avcC, width, height, endUs) {
+        function be(n, size) {
+            const b = new Uint8Array(size);
+            for (let i = size - 1; i >= 0 && n > 0; i--, n = Math.floor(n / 256)) b[i] = n % 256;
+            return b;
+        }
+        function cat(parts) {
+            let n = 0;
+            for (const p of parts) n += p.length;
+            const out = new Uint8Array(n);
+            for (let i = 0, at = 0; i < parts.length; at += parts[i].length, i++) out.set(parts[i], at);
+            return out;
+        }
+        const text = s => Uint8Array.from(s, c => c.charCodeAt(0));
+        const box = (type, ...parts) => { const body = cat(parts); return cat([be(body.length + 8, 4), text(type), body]); };
+        const full = (type, version, flags, ...parts) => box(type, be(version, 1), be(flags, 3), ...parts);
+        function table(values, size) {
+            const out = new Uint8Array(values.length * size), d = new DataView(out.buffer);
+            values.forEach((v, i) => {
+                if (size === 8) d.setUint32(i * 8, Math.floor(v / 4294967296));
+                d.setUint32(i * size + size - 4, v % 4294967296);
+            });
+            return out;
+        }
+        const ticks = us => Math.round(us * MP4_SCALE / 1e6);
+        const n = samples.length, deltas = [], stts = [], keys = [], offsets = [];
+        for (let i = 0; i < n; i++) {
+            const next = i + 1 < n ? samples[i + 1].ts : endUs;
+            const d = Math.max(1, ticks(next) - ticks(samples[i].ts));
+            deltas.push(d);
+            if (stts.length && stts[stts.length - 1][1] === d) stts[stts.length - 1][0]++;
+            else stts.push([1, d]);
+            if (samples[i].key) keys.push(i + 1);
+        }
+        const ftyp = box('ftyp', text('isom'), be(512, 4), text('isomiso2avc1mp41'));
+        let bytes = 0;
+        for (const s of samples) bytes += s.size;
+        const mdat = bytes + 8 > 0xFFFFFFFF ? cat([be(1, 4), text('mdat'), be(bytes + 16, 8)])
+                                            : cat([be(bytes + 8, 4), text('mdat')]);
+        let at = ftyp.length + mdat.length;
+        for (const s of samples) {
+            offsets.push(at);
+            at += s.size;
+        }
+        const dur = deltas.reduce((a, b) => a + b, 0), movie = Math.round(dur * 1000 / MP4_SCALE);
+        const matrix = table([0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000], 4);
+        const avc1 = box('avc1', be(0, 6), be(1, 2), be(0, 16), be(width, 2), be(height, 2),
+            be(0x480000, 4), be(0x480000, 4), be(0, 4), be(1, 2), be(0, 32), be(0x18, 2), be(0xFFFF, 2),
+            box('avcC', avcC));
+        const stbl = box('stbl',
+            full('stsd', 0, 0, be(1, 4), avc1),
+            full('stts', 0, 0, be(stts.length, 4), table([].concat(...stts), 4)),
+            full('stss', 0, 0, be(keys.length, 4), table(keys, 4)),
+            full('stsc', 0, 0, be(1, 4), be(1, 4), be(1, 4), be(1, 4)),
+            full('stsz', 0, 0, be(0, 4), be(n, 4), table(samples.map(s => s.size), 4)),
+            at > 0xFFFFFFFF ? full('co64', 0, 0, be(n, 4), table(offsets, 8))
+                            : full('stco', 0, 0, be(n, 4), table(offsets, 4)));
+        const moov = box('moov',
+            full('mvhd', 0, 0, be(0, 8), be(1000, 4), be(movie, 4), be(0x10000, 4), be(0x100, 2), be(0, 10),
+                matrix, be(0, 24), be(2, 4)),
+            box('trak',
+                full('tkhd', 0, 3, be(0, 8), be(1, 4), be(0, 4), be(movie, 4), be(0, 16), matrix,
+                    be(width * 65536, 4), be(height * 65536, 4)),
+                box('mdia',
+                    full('mdhd', 0, 0, be(0, 8), be(MP4_SCALE, 4), be(dur, 4), be(0x55C4, 2), be(0, 2)),  // ('und')
+                    full('hdlr', 0, 0, be(0, 4), text('vide'), be(0, 12), text('VideoHandler\0')),
+                    box('minf',
+                        full('vmhd', 0, 1, be(0, 8)),
+                        box('dinf', full('dref', 0, 0, be(1, 4), full('url ', 0, 1))),
+                        stbl))));
+        return {ftyp, mdat, moov};
+    }
+    // Record's MP4 where MediaRecorder writes none (recordType's 'codecs'): canvas's frames encoded
+    // as H.264 by WebCodecs and put in an MP4 by mp4Boxes. frame() says the canvas changed: the frame
+    // is taken once the code that changed it has run to its end (the pen's mark is drawn away and
+    // back in two steps), in a microtask rather than at an animation frame, so a recording goes on
+    // while the tab is hidden; at most FILM_FPS a second (one asked sooner waits on a timer), a key
+    // frame when 2 s have passed since the last, so the file seeks. stop() takes the picture still
+    // waiting, finishes the encoding and gives done the MP4 as a Blob, or null when nothing came
+    // (the encoder refused the size, or failed before its first frame).
+    function CodecRecorder(canvas, codec, done) {
+        this.canvas = canvas;
+        this.width = canvas.width;
+        this.height = canvas.height;
+        this.done = done;
+        this.samples = [];  // {size, ts, key}
+        this.datas = [];    // their bytes
+        this.avcC = null;
+        this.t0 = -1;       // performance.now() at the first frame, whose timestamp is 0
+        this.last = -Infinity;    // performance.now() at the last frame taken
+        this.lastTs = -Infinity;  // and its timestamp
+        this.lastKey = -Infinity;
+        this.soon = false;
+        this.timer = 0;
+        this.stopped = false;
+        this.encoder = new VideoEncoder({
+            output: (chunk, meta) => this.took(chunk, meta),
+            error: () => this.stop(),  // (what came before it is kept)
+        });
+        this.encoder.configure(filmConfig(codec, this.width, this.height));
+    }
+    CodecRecorder.prototype.frame = function () {
+        if (this.stopped || this.soon) return;
+        const wait = this.last + 1000 / FILM_FPS - performance.now();
+        if (wait > 0) {
+            if (!this.timer) this.timer = setTimeout(() => { this.timer = 0; this.frame(); }, wait);
+            return;
+        }
+        this.soon = true;
+        queueMicrotask(() => {
+            if (!this.soon) return;  // (taken already, by stop)
+            this.soon = false;
+            this.take();
+        });
+    };
+    CodecRecorder.prototype.take = function () {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = 0;
+        }
+        if (this.encoder.state !== 'configured') return;
+        if (this.encoder.encodeQueueSize > 3 && !this.stopped) {  // (behind: this picture once it caught up)
+            this.timer = setTimeout(() => { this.timer = 0; this.frame(); }, 1000 / FILM_FPS);
+            return;
+        }
+        const now = performance.now();
+        if (this.t0 < 0) this.t0 = now;
+        // (Stop's picture may come sooner than 1/15 s after the last: it takes the next slot.)
+        const ts = Math.max(Math.round((now - this.t0) * 1000), this.lastTs + Math.round(1e6 / FILM_FPS));
+        const key = ts - this.lastKey >= 2e6;
+        let frame = null;
+        try {
+            frame = new VideoFrame(this.canvas, {timestamp: ts});
+            this.encoder.encode(frame, {keyFrame: key});
+            this.last = now;
+            this.lastTs = ts;
+            if (key) this.lastKey = ts;
+        } catch (e) { /* this picture is lost; the next change brings another */ }
+        if (frame) frame.close();
+    };
+    CodecRecorder.prototype.took = function (chunk, meta) {
+        const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+        if (d && !this.avcC)
+            this.avcC = new Uint8Array(ArrayBuffer.isView(d) ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d.slice(0));
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data);
+        this.datas.push(data);
+        this.samples.push({size: data.length, ts: chunk.timestamp, key: chunk.type === 'key'});
+    };
+    CodecRecorder.prototype.stop = function () {
+        if (this.stopped) return;
+        this.stopped = true;
+        if (this.timer || this.soon) {  // (the last change, still waiting for its turn)
+            this.soon = false;
+            this.take();
+        }
+        const end = performance.now();
+        const finish = () => {
+            try { this.encoder.close(); } catch (e) { /* closed already, by its error */ }
+            let blob = null;
+            const n = this.samples.length;
+            if (n && this.avcC) {
+                // The last picture shows until Stop, and for a frame's time at least.
+                const endUs = Math.max(Math.round((end - this.t0) * 1000), this.samples[n - 1].ts + Math.round(1e6 / FILM_FPS));
+                const b = mp4Boxes(this.samples, this.avcC, this.width, this.height, endUs);
+                blob = new Blob([b.ftyp, b.mdat].concat(this.datas, [b.moov]), {type: 'video/mp4'});
+            }
+            this.samples = [];
+            this.datas = [];
+            this.done(blob);
+        };
+        if (this.encoder.state === 'configured') this.encoder.flush().then(finish, finish);
+        else finish();
+    };
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = {Frames, lightColor, readPen, penMark, filmFit, recordType};
+        module.exports = {Frames, lightColor, readPen, penMark, filmFit, recordType, H264, filmConfig, mp4Boxes,
+            MP4_SCALE, CodecRecorder};
         return;
     }
 
@@ -114,9 +309,10 @@
     // pen: where the Kindle's pen is (readPen), null while away; penShown, filmPen: its marks drawn on
     // the page and in film now, to take away; fitIn: shown's place in film (filmFit); flat: a
     // recording that is no WebM (an MP4), which has no transparency, so film has the paper drawn in
-    // while Transparent paper is on.
+    // while Transparent paper is on; h264: the codec VideoEncoder takes at the screen's size
+    // (probeH264), '' for none or not known yet.
     let pen = null, showPen = true, penShown = null, penQueued = false, filmPen = null;
-    let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null;
+    let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null, h264 = '', probing = '';
     let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
     const bar = document.createElement('div');
     bar.className = 'bar';
@@ -182,7 +378,7 @@
     penSwitch.className = 'switch';
     penSwitch.setAttribute('aria-checked', 'true');
     const recordButton = button(words.record, record);
-    const canRecord = !!(window.MediaRecorder && film.captureStream);
+    const canRecord = !!(window.MediaRecorder && film.captureStream) || !!(window.VideoEncoder && window.VideoFrame);
     if (!canRecord) recordButton.hidden = true;
     const pipButton = button(words.pip, pip);
     pipButton.setAttribute('aria-pressed', 'false');
@@ -310,6 +506,7 @@
         else filmCtx.drawImage(shown, fitIn.x, fitIn.y, pw, ph);
         if (filmPen) mark(filmCtx, filmPen);
         filmCtx.restore();
+        if (recorder && recorder.frame) recorder.frame();  // (CodecRecorder: film changed)
     }
     // All of film again, at the size it keeps (a recording's) or shown's: its mark worked out anew.
     function filmAll(force) {
@@ -334,9 +531,32 @@
             recordButton.textContent = words.stop;
             return;
         }
-        recordAs = recordType(t => MediaRecorder.isTypeSupported(t));
+        recordAs = recordType(window.MediaRecorder ? t => MediaRecorder.isTypeSupported(t) : () => false, h264);
         recordButton.textContent = recordAs.ext === 'webm' ? words.recordWebm : words.record;
         recordButton.title = recordAs.why ? words.webmBrowser : '';
+    }
+    // The first of H264 that VideoEncoder takes at w x h, asked when a hello gives the size. The
+    // answer is a promise, so until it comes Record's button says what it would do without it (in
+    // Firefox, WebM, for the moment it takes).
+    function probeH264(w, h) {
+        const size = w + 'x' + h;
+        if (probing === size || !window.VideoEncoder || !window.VideoFrame || !VideoEncoder.isConfigSupported) return;
+        probing = size;
+        (async () => {
+            let found = '';
+            for (const codec of H264) {
+                try {
+                    const r = await VideoEncoder.isConfigSupported(filmConfig(codec, w, h));
+                    if (r && r.supported) {
+                        found = codec;
+                        break;
+                    }
+                } catch (e) { /* not this one */ }
+            }
+            if (probing !== size) return;  // (another size was asked meanwhile: its answer counts)
+            h264 = found;
+            recordLabel();
+        })();
     }
     // shown drawn into view, which has a pixel for each of the screen's. The browser's own scaling (of
     // a canvas, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone
@@ -456,8 +676,9 @@
             await pipVideo.requestPictureInPicture();
         } catch (e) { /* refused (no picture yet, or not from a tap): the button stays as it was */ }
     }
-    // Record: film (shown and the pen) at 15 frames a second, as an MP4 where the browser records one
-    // (recordType). film keeps its size until the recording stops (filmFit).
+    // Record: film (shown and the pen) at 15 frames a second, as an MP4 wherever the browser can make
+    // one (recordType): by MediaRecorder, or by CodecRecorder where MediaRecorder writes no MP4. film
+    // keeps its size until the recording stops (filmFit).
     function record() {
         if (recorder) {
             recorder.stop();
@@ -471,30 +692,47 @@
         flat = as.ext !== 'webm';
         chunks = [];
         try {
-            recorder = new MediaRecorder(film.captureStream(15), as.mime ? {mimeType: as.mime} : undefined);
+            if (as.via === 'codecs') {
+                recorder = new CodecRecorder(film, as.codec, blob => {
+                    stopped();
+                    if (blob) save(blob, 'mp4');
+                    else {  // (the encoder refused, or failed at once: WebM next time, where there is one)
+                        h264 = '';
+                        recordLabel();
+                    }
+                });
+            } else {
+                const rec = new MediaRecorder(film.captureStream(15), as.mime ? {mimeType: as.mime} : undefined);
+                rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+                rec.onstop = () => {
+                    const type = rec.mimeType || as.mime || 'video/webm';
+                    stopped();
+                    save(new Blob(chunks, {type}), as.ext || (type.indexOf('mp4') >= 0 ? 'mp4' : 'webm'));
+                };
+                recorder = rec;
+            }
         } catch (e) {
             recorder = null;
             flat = false;
             return;
         }
-        filmAll();
-        recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-        recorder.onstop = () => {
-            const type = recorder.mimeType || as.mime || 'video/webm';
-            const blob = new Blob(chunks, {type});
-            recorder = null;
-            flat = false;
-            recordLabel();
-            if (filming()) filmAll();  // (Picture in picture goes on at shown's size)
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'Grimoire live view.' + (as.ext || (type.indexOf('mp4') >= 0 ? 'mp4' : 'webm'));
-            document.body.append(a);
-            a.click();
-            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-        };
-        recorder.start(1000);
+        filmAll();  // (CodecRecorder's first frame)
+        if (recorder.start) recorder.start(1000);
         recordLabel();
+    }
+    function stopped() {
+        recorder = null;
+        flat = false;
+        recordLabel();
+        if (filming()) filmAll();  // (Picture in picture goes on at shown's size)
+    }
+    function save(blob, ext) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Grimoire live view.' + ext;
+        document.body.append(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
     // The rect of raw drawn again on the page: as it is, inverted, or with the paper made clear
     // (each pixel the ink's color, black or inverted white, as opaque as it is dark), for a video
@@ -554,6 +792,7 @@
                     rawCtx.fillRect(0, 0, w, h);
                     pending = [];
                     pen = null;  // (a hello takes the pen away: the next pen frame is on the new screen)
+                    probeH264(w, h);
                     layout();
                     if (filming()) filmAll();
                 } else if (type === 2 && body.length > 8) {
