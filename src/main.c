@@ -5,6 +5,7 @@
 
 #include "app.h"
 #include "i18n.h"
+#include "light.h"
 
 #ifdef GRIMOIRE_KINDLE
 #include <ctype.h>
@@ -146,6 +147,9 @@ int main(int argc, char **argv) {
         return 1;
     }
     qlog("display %dx%d @ %.0f dpi", w, h, dpi);
+    // The front light's levels, once: asking takes 95-191 ms on the Kindle, nothing can read the pens
+    // meanwhile, and they are not open yet (light.h).
+    light_refresh();
     if (input_open(w, h, NULL, NULL) != 0) {
         qlog("input_open failed");
         display_close();

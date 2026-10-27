@@ -8,7 +8,10 @@
 #define LIGHT_MAX 24
 
 bool light_available(void);
-// Current levels (0..LIGHT_MAX); -1 where unknown.
+// Asks the power service for the levels (blocks: two lipc runs, 95-191 ms on the Scribe 2). Once, at
+// the start, before the pens are opened; light_get asks again only while the brightness is unknown.
+void light_refresh(void);
+// Current levels (0..LIGHT_MAX) as last read or set; -1 where unknown.
 void light_get(int *intensity, int *warmth);
 void light_set_intensity(int level);
 void light_set_warmth(int level);

@@ -267,6 +267,7 @@ void display_set_invert(bool on) { g_sim_invert = on; }
 #include "light.h"
 static int g_light_i = 12, g_light_w = 8;
 bool light_available(void) { return true; }
+void light_refresh(void) {}
 void light_get(int *i, int *w) {
     *i = g_light_i;
     *w = g_light_w;

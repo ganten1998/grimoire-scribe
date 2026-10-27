@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,9 +24,36 @@ static int get_prop(const char *prop) {
     return v;
 }
 
-// Runs a shell command without waiting for it (double fork: no zombie, no stall). Writing to the
-// power service takes tens of ms; doing that on the input path made the first touches laggy.
+extern char **environ;
+
+// The shells run_bg started and has not reaped yet. Each is reaped by its pid as it ends (never
+// waitpid(-1): the background worker and Live view reap their own children).
+#define BG_SHELLS 8
+static pid_t g_shells[BG_SHELLS];
+
+static void reap_shells(void) {
+    for (int i = 0; i < BG_SHELLS; i++)
+        if (g_shells[i] > 0 && waitpid(g_shells[i], NULL, WNOHANG) != 0) g_shells[i] = 0;  // ended (or not ours now)
+}
+
+// Runs a shell command without waiting for it. Writing to the power service takes tens of ms; doing
+// that on the input path made the first touches laggy. posix_spawn starts it without copying
+// Grimoire (musl's shares the memory until the exec): the double fork used before copied the page
+// tables of a 60-100 MB process twice, on every light slider step (each 200 ms) and once a minute
+// in the middle of a stroke (sys_activity). A shell that ended is reaped at the next call, so at
+// most a few wait as zombies. When it cannot spawn, or eight are still running, the double fork.
 static void run_bg(const char *cmd) {
+    reap_shells();
+    for (int i = 0; i < BG_SHELLS; i++) {
+        if (g_shells[i] > 0) continue;
+        char *argv[] = {"sh", "-c", (char *)cmd, NULL};
+        pid_t pid;
+        if (posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ) == 0) {
+            g_shells[i] = pid;
+            return;
+        }
+        break;
+    }
     pid_t pid = fork();
     if (pid < 0) {
         qlog("sys: cannot fork for: %s", cmd);
@@ -49,14 +77,28 @@ static void set_prop(const char *prop, int v) {
 
 bool light_available(void) { return access("/usr/bin/lipc-set-prop", X_OK) == 0 || access("/bin/lipc-set-prop", X_OK) == 0; }
 
-static int g_warmth = -1;  // light_warmth: as last read or set
+// The levels as last read or set. Each read is two synchronous lipc-get-prop runs (95-191 ms on the
+// Scribe 2, at every Display sheet open and Live view start until 2.0.0-beta.5), and while they run
+// nothing reads the pens (no work pump can run inside a popen). Nothing else changes the light while
+// Grimoire runs (the Kindle UI and KOReader are paused, and the power service gives the same level
+// back after its screensaver), so it is read once, before the pens are opened (main.c).
+static int g_intensity = -1, g_warmth = -1;
 
-void light_get(int *intensity, int *warmth) {
-    *intensity = get_prop("flIntensity");
-    *warmth = g_warmth = get_prop("currentAmberLevel");
+void light_refresh(void) {
+    g_intensity = get_prop("flIntensity");
+    g_warmth = get_prop("currentAmberLevel");
 }
 
-void light_set_intensity(int level) { set_prop("flIntensity", level); }
+void light_get(int *intensity, int *warmth) {
+    if (g_intensity < 0) light_refresh();  // never read, or the power service did not answer then
+    *intensity = g_intensity;
+    *warmth = g_warmth;
+}
+
+void light_set_intensity(int level) {
+    set_prop("flIntensity", level);
+    g_intensity = clampi(level, 0, LIGHT_MAX);
+}
 void light_set_warmth(int level) {
     set_prop("currentAmberLevel", level);
     g_warmth = clampi(level, 0, LIGHT_MAX);
