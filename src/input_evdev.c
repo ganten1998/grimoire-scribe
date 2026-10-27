@@ -325,6 +325,11 @@ static void emit_pen(InType t) {
     e.k_ms = pensync_ms(g_pen_frame_us, g_pen_mono, e.t_ms);
     e.gap = g_pen_gap;
     if (g_ink_mono && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) {
+        // A stroke's samples start the oldest afresh: one left from the stroke before (its last
+        // sample never got a fast frame of its own) would time this stroke's first frame from it.
+        // (Not at the lift: the lift is emitted as it is read, with the stroke's last samples, before
+        // the frame that draws them.)
+        if (t == IN_PEN_DOWN) g_ink_oldest = 0;
         g_ink_newest = g_pen_frame_us;
         if (!g_ink_oldest) g_ink_oldest = g_pen_frame_us;
         g_ink_raw = g_wacom.fd >= 0 ? lat_match_pen(&g_match, P.x, P.y, 3) : 0;

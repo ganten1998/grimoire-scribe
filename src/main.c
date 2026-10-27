@@ -62,6 +62,18 @@ static void log_device(void) {
     qlog("device: model code %s (the first 6 characters of /proc/usid)", code[0] ? code : "?");
     qlog("device: memory %s total, %s available; CPU part %s, hardware %s", total, avail, part, hw);
 }
+
+// The loop's watchdog: a phase that held the thread over 50 ms (beyond the wait it is allowed) gets
+// a line. Nothing reads the pen meanwhile, and the kernel keeps only 120-175 ms of its writing
+// (docs/INK-PERFORMANCE.md, Reader stalls).
+static void phase_done(const char *name, uint32_t *since, uint32_t wait_ms) {
+    uint32_t t = now_ms(), took = t - *since;
+    if (took > wait_ms + 50) qlog("main: %s took %u ms", name, (unsigned)took);
+    *since = t;
+}
+#define PHASE(name, since, wait_ms) phase_done(name, since, wait_ms)
+#else
+#define PHASE(name, since, wait_ms) ((void)(since))
 #endif
 
 #ifdef GRIMOIRE_SIM
@@ -168,19 +180,26 @@ int main(int argc, char **argv) {
             break;
         }
         InEvent ev;
+        uint32_t phase = now_ms();
         // Batch nearby samples, but keep showing ink during a backlog. A costly brush or
         // a continuously readable device must not postpone refreshes and timers until the
         // queue empties. Leave remaining events queued, in order, for the next iteration.
         if (input_poll(&ev, 30)) {
+            PHASE("reading input", &phase, 30);
             uint32_t batch_at = now_ms();
             unsigned count = 0;
             do {
                 app_event(&app, &ev);
                 count++;
             } while (app.running && count < 64 && now_ms() - batch_at < 8 && input_poll(&ev, 0));
+            PHASE("the event batch", &phase, 0);
+        } else {
+            PHASE("reading input", &phase, 30);
         }
         app_tick(&app, now_ms());
+        PHASE("app_tick", &phase, 0);
         app_flush(&app);
+        PHASE("app_flush", &phase, 0);
         uint32_t t = now_ms();
         uint32_t every = (t - started) < 15000 ? 700 : 1500;
         if (t - last_guard >= every && !app.asleep && guard_on) {
@@ -213,6 +232,7 @@ int main(int argc, char **argv) {
                 guard_on = false;
                 qlog("screen guard: off after 10 repaints in a row (the framebuffer does not read back as drawn)");
             }
+            PHASE("the screen guard", &phase, 0);
         }
         // Two unconditional repaints shortly after launch catch the Kindle UI's last frame (the
         // home screen strip that could land on top of Grimoire's first frame).

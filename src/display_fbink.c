@@ -683,6 +683,12 @@ void display_present(const Canvas *screen, Rect r, RefreshMode mode) {
         if (mode != REFRESH_FAST) g_gray_last_ms = now_ms();
     }
     bool ink = live_ink_frame(&g_ink, mode, now_ms());
+    if (mode != REFRESH_FAST && g_perf_enabled) {
+        // A present with no ink takes the pen samples emitted since, untimed: a stroke's last ones
+        // that never got a fast frame would otherwise wait to be the next stroke's "oldest".
+        uint64_t newest, oldest, raw;
+        input_ink_times(&newest, &oldest, &raw);
+    }
     if (mode == REFRESH_FAST && g_perf_enabled) {
         uint64_t sent_us = clock_us(), newest, oldest, raw;
         bool timed = input_ink_times(&newest, &oldest, &raw);  // drained by every fast frame

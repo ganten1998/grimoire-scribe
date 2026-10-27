@@ -1365,6 +1365,7 @@ static void act(App *a, const Hit *h) {
             }
             a->settings.shortcuts_enabled = !a->settings.shortcuts_enabled;
             settings_save(&a->settings);
+            qlog("settings: shortcuts %d, controller %d", a->settings.shortcuts_enabled, a->settings.controller);
             input_shortcuts_enable(a->settings.shortcuts_enabled);
             // The Bluetooth helper serves shortcuts alone: it goes with them, and comes back with
             // them while Bluetooth controller stays on.
@@ -1426,6 +1427,7 @@ static void act(App *a, const Hit *h) {
     case H_BT_TOGGLE:
         a->settings.controller = !a->settings.controller;
         settings_save(&a->settings);
+        qlog("settings: shortcuts %d, controller %d", a->settings.shortcuts_enabled, a->settings.controller);
         if (a->settings.controller) bt_start();
         else bt_stop();
         redraw(a, REFRESH_UI);
