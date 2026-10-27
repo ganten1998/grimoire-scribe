@@ -523,6 +523,13 @@ void app_redraw(App *a) { app_redraw_mode(a, REFRESH_FULL); }
 // ---- Live view ----
 
 static int g_live_viewers;  // as last told (a toast when the first comes)
+static const App *g_live_app;  // for live_hover: Live view is on, from this app
+
+// The pen hovering, from input_hover_hook while Live view is on (on the Kindle the pen's own events
+// never say where it hovers). Never asleep, as for app_event's pen events.
+static void live_hover(float x, float y) {
+    if (g_live_app && !g_live_app->asleep) live_pen(LIVE_PEN_HOVER, x, y);
+}
 
 void app_watch_server(App *a) { input_watch_fd(httpd_running() && !a->asleep ? httpd_fd() : -1); }
 
@@ -551,6 +558,8 @@ void live_view_open(App *a) {
         int intensity, warmth;
         light_get(&intensity, &warmth);  // (once: then light_warmth has it, as the Display sheet sets it)
         live_set_warmth(warmth);
+        g_live_app = a;
+        input_hover_hook(live_hover);
         display_skip_overlay(live_chip(a));
         app_invalidate(a, live_chip(a), REFRESH_UI);
         qlog("live: on");
@@ -560,6 +569,8 @@ void live_view_open(App *a) {
 
 void live_view_stop(App *a, bool say) {
     if (!live_on()) return;
+    input_hover_hook(NULL);
+    g_live_app = NULL;
     live_stop();
     pair_forget(PAIR_LIVE);  // the browsers that paired must pair again next time
     httpd_release(HTTPD_LIVE);

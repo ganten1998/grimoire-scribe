@@ -92,4 +92,10 @@ void input_set_orientation(int quarter_turns);
 void input_logical_to_panel(float lx, float ly, float *px, float *py);
 // Release pen and touch to the native PIN screen, then grab them after native unlock.
 bool input_set_grab(bool grab);
+// Where the pen hovers, for Live view: fn gets the screen px (after the turn) at each of the raw
+// digitizer's frames while the pen is near and not touching; NULL stops it. On the Kindle the pen
+// service relays the pen coming and going but not where it hovers, so this is the only way to know
+// (pensync.h); never while input_set_grab(false) has given the pen to the Kindle. The simulator's
+// hovering mouse comes as IN_PEN_HOVER events, so there it does nothing.
+void input_hover_hook(void (*fn)(float x, float y));
 void input_close(void);

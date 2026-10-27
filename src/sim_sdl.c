@@ -300,6 +300,8 @@ void sys_request_sleep(void) {
 bool sys_kindle_ui(bool run) { (void)run; return true; }
 static bool g_sim_grab = true;
 bool input_set_grab(bool grab) { g_sim_grab = grab; return true; }
+// (Its hover is the mouse's, as IN_PEN_HOVER events: Live view takes it from app_event.)
+void input_hover_hook(void (*fn)(float x, float y)) { (void)fn; }
 void sys_prevent_sleep(bool prevent) { (void)prevent; }
 // How often the app told the power service someone is here: the runner's "power.pokes".
 static int g_pokes;

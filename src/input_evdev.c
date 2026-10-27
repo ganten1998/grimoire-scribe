@@ -10,7 +10,9 @@
 //           (event3), the raw EMR digitizer (0..15624 x 0..20832) with pressure 0..4095 and tilt
 //           in 1/100 degree (seen on device 2026-10-10). Grimoire takes position and buttons
 //           from the scaled pen (grabbed) and pressure + tilt from the raw one (read without a
-//           grab, so the pen service keeps feeding the scaled pen).
+//           grab, so the pen service keeps feeding the scaled pen). The scaled pen says when the
+//           pen comes and goes but not where it hovers: Live view's hovering pen is the raw
+//           one's place (input_hover_hook).
 //   touch = EV_ABS ABS_MT_POSITION_X (the capacitive panel, usually /dev/input/touch)
 //   power = EV_KEY KEY_POWER on a device with few keys, never Amazon's every-key proxy
 //           "kindle-input-pt" (firmware 5.20+); the Scribe 2's is "bd71828-pwrkey" (hidkeys_power)
@@ -96,8 +98,8 @@ static int g_rot;             // logical screen rotation, quarter turns clockwis
 static Dev g_wacom = {.fd = -1};  // raw digitizer used only for pressure + tilt (see top)
 static struct {
     int p, tx, ty;
-    int x, y;  // position, only for timing the pen service's relay (latency.h)
-    bool seen;
+    int x, y;  // position: for timing the pen service's relay (latency.h), and Live view's hover
+    bool seen, placed;  // (placed: x and y read since input was last taken back)
     bool rubber, side;  // the raw digitizer also reports the eraser end and the side button
 } W;
 // Both pens' events are stamped in CLOCK_MONOTONIC for this reader (clock_mono, as input_open opens
@@ -248,6 +250,16 @@ static PenRawRing g_raw;
 // whether it has been read since input_open, and whether this read is the first.
 static uint32_t g_wacom_read_ms, g_wacom_read_gap;
 static bool g_wacom_read, g_wacom_first_read;
+// Live view's hovering pen (input_hover_hook): the pen service relays the pen coming and going but
+// not where it hovers, so while a hook is set each raw frame of a pen near and not touching says
+// where it is, in the scaled pen's units (pensync.h), as contact frames have shown the raw place to
+// lie on the scaled one. g_wacom_frame_us: the newest raw frame's kernel time; g_hover_said: the
+// orientation grimoire.log last named (-2 none yet).
+static void (*g_hover_fn)(float x, float y);
+static PenHover g_hover;
+static uint64_t g_wacom_frame_us;
+static int g_hover_said = -2;
+static void hover_from_raw(void);
 
 static void handle_wacom(const struct input_event *ev) {
     if (ev->type == EV_SYN && ev->code == SYN_DROPPED) {
@@ -272,6 +284,8 @@ static void handle_wacom(const struct input_event *ev) {
         }
         if (g_wacom_mono) pensync_raw_push(&g_raw, ev_us(ev), W.p, W.tx, W.ty);
         if (g_ink_mono) lat_match_raw(&g_match, ev_us(ev), W.x, W.y);
+        g_wacom_frame_us = ev_us(ev);
+        if (g_hover_fn) hover_from_raw();
         return;
     }
     if (g_wacom_dropping) return;
@@ -283,8 +297,8 @@ static void handle_wacom(const struct input_event *ev) {
     if (ev->type != EV_ABS) return;
     switch (ev->code) {
     case ABS_PRESSURE: W.p = ev->value; W.seen = true; break;
-    case ABS_X: W.x = ev->value; break;
-    case ABS_Y: W.y = ev->value; break;
+    case ABS_X: W.x = ev->value; W.placed = true; break;
+    case ABS_Y: W.y = ev->value; W.placed = true; break;
     case ABS_TILT_X: W.tx = ev->value; break;
     case ABS_TILT_Y: W.ty = ev->value; break;
     default: break;
@@ -297,8 +311,8 @@ static void wacom_resync(void) {
     g_wacom_resync = false;
     struct input_absinfo ai;
     if (ioctl(g_wacom.fd, EVIOCGABS(ABS_PRESSURE), &ai) >= 0) W.p = ai.value, W.seen = true;
-    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_X), &ai) >= 0) W.x = ai.value;
-    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_Y), &ai) >= 0) W.y = ai.value;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_X), &ai) >= 0) W.x = ai.value, W.placed = true;
+    if (ioctl(g_wacom.fd, EVIOCGABS(ABS_Y), &ai) >= 0) W.y = ai.value, W.placed = true;
     if (ioctl(g_wacom.fd, EVIOCGABS(ABS_TILT_X), &ai) >= 0) W.tx = ai.value;
     if (ioctl(g_wacom.fd, EVIOCGABS(ABS_TILT_Y), &ai) >= 0) W.ty = ai.value;
     unsigned long keys[NLONGS(KEY_MAX + 1)] = {0};
@@ -308,7 +322,61 @@ static void wacom_resync(void) {
     }
     // Pen frames from the lost stretch are older than this, and take these newest values.
     if (g_wacom_mono) pensync_raw_push(&g_raw, mono_us(), W.p, W.tx, W.ty);
+    g_wacom_frame_us = g_wacom_mono ? mono_us() : 0;
 }
+
+// Where the pen hovers, from the raw digitizer's newest frame (pensync.h): the scaled pen's place,
+// normalized as emit_pen's. False while either pen says it touches, before the raw digitizer has said
+// where it is, or while its place is not trusted (pensync_hover_orientation -1).
+static bool raw_hover(float *nx, float *ny) {
+    float sx, sy;
+    if (!W.placed || W.p > g_wacom.ap.minimum || P.touching || P.was_touching ||
+        !pensync_hover_place(&g_hover, W.x, W.y, &sx, &sy))
+        return false;
+    *nx = norm((int)(sx + 0.5f), &g_pen.ax);
+    *ny = norm((int)(sy + 0.5f), &g_pen.ay);
+    return true;
+}
+
+// A raw frame read while Live view follows the hover: the pen near (the scaled pen's proximity) and
+// not touching goes to the hook, in screen px as emit_pen maps them. Never while the pen and touch
+// are the Kindle's (the native PIN screen, or the Kindle's own sleep screen).
+static void hover_from_raw(void) {
+    float nx, ny, x, y;
+    if (!g_input_grabbed || !P.prox || !raw_hover(&nx, &ny)) return;
+    map(&g_pen_cal, nx, ny, &x, &y);
+    g_hover_fn(x, y);
+}
+
+// A contact frame while Live view follows the hover: the raw digitizer's place against the scaled
+// pen's, to learn how one lies on the other (pensync_hover_learn). Only a raw frame of the same moment
+// counts (within 4 ms, by both nodes' CLOCK_MONOTONIC times): after a wait the newest raw frame is
+// ahead of the pen frames still being read. grimoire.log names the orientation once it is decided,
+// and again only if it changes.
+static void hover_learn(void) {
+    if (g_wacom.fd < 0 || !g_pen_mono || !g_wacom_mono || !W.placed || W.p <= g_wacom.ap.minimum) return;
+    uint64_t a = g_wacom_frame_us, b = g_pen_frame_us;
+    if (!a || (a > b ? a - b : b - a) > 4000) return;
+    pensync_hover_learn(&g_hover, W.x, W.y, P.x, P.y);
+    int o = pensync_hover_orientation(&g_hover);
+    if (g_hover.n < PENSYNC_HOVER_FRAMES || o == g_hover_said) return;
+    g_hover_said = o;
+    if (o >= 0) {
+        qlog("input: Live view's hovering pen comes from the raw digitizer, x %s, y %s (%.1f px from the pen on "
+             "average over %u contact frames)",
+             o & 1 ? "reversed" : "as is", o & 2 ? "reversed" : "as is", (double)pensync_hover_mean(&g_hover, o),
+             (unsigned)g_hover.n);
+        return;
+    }
+    float best = pensync_hover_mean(&g_hover, 0);
+    for (int i = 1; i < 4; i++)
+        if (pensync_hover_mean(&g_hover, i) < best) best = pensync_hover_mean(&g_hover, i);
+    qlog("input: the raw digitizer's place is %.1f px from the pen's at best (%u contact frames): Live view shows "
+         "no hovering pen",
+         (double)best, (unsigned)g_hover.n);
+}
+
+void input_hover_hook(void (*fn)(float x, float y)) { g_hover_fn = fn; }
 
 // The frame being reported is the first after a pen drop (pen_resync): its sample says so (gap).
 static bool g_pen_gap;
@@ -347,6 +415,7 @@ static void emit_pen(InType t) {
     calib_tilt(&g_pen_cal, g_rot, g_tilt_flip, &e.tilt_x, &e.tilt_y);
     e.eraser = P.eraser;
     e.side_button = P.side || W.side;
+    if (g_hover_fn && (t == IN_PEN_DOWN || t == IN_PEN_MOVE)) hover_learn();
     e.t_ms = now_ms();
     e.k_ms = pensync_ms(g_pen_frame_us, g_pen_mono, e.t_ms);
     e.gap = g_pen_gap;
@@ -1367,6 +1436,12 @@ int input_open(int screen_w, int screen_h, const InputCalib *pen, const InputCal
         g_caps.has_pressure = g_wacom.ap.maximum > g_wacom.ap.minimum;
         g_caps.has_tilt = g_wacom.atx.maximum > g_wacom.atx.minimum;
     }
+    if (g_pen.fd >= 0 && g_wacom.fd >= 0) {
+        // (With only a raw digitizer it is the pen, and its own hover frames say where it hovers.)
+        int rmin[2] = {g_wacom.ax.minimum, g_wacom.ay.minimum}, rmax[2] = {g_wacom.ax.maximum, g_wacom.ay.maximum};
+        int smin[2] = {g_pen.ax.minimum, g_pen.ay.minimum}, smax[2] = {g_pen.ax.maximum, g_pen.ay.maximum};
+        pensync_hover_init(&g_hover, rmin, rmax, smin, smax);
+    }
     if (g_pen.fd < 0) qlog("input: WARNING no pen digitizer found");
     if (g_touch.fd < 0) qlog("input: WARNING no touch panel found");
     input_default_calib(&g_pen_cal, &g_touch_cal);
@@ -1570,6 +1645,7 @@ bool input_set_grab(bool grab) {
 
 void input_close(void) {
     work_pump_set(NULL);
+    g_hover_fn = NULL;
     input_shortcuts_enable(false);
     if (g_pen.fd >= 0) {
         ioctl(g_pen.fd, EVIOCGRAB, 0);
