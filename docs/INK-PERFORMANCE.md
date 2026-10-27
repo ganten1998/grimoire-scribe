@@ -202,22 +202,25 @@ thread 320 to 370 ms and lost 220 to 270 ms of pen path. Since 2.0.0-beta.5:
   line traced back. Now the rest of the queue is read first, reporting nothing; the device is
   asked only then (EVIOCGKEY takes queued button events out of the queue), and only for what the
   tail never carries; and the tail's frames go out in order (pensync.c). The first is joined to
-  the last good point by a straight line (the smoothing starts afresh there), and a pen found
-  lifted in the lost stretch lifts at the last good point.
-- Stroke samples carry the kernel's time of their frame (both pens' readers are switched to
-  CLOCK_MONOTONIC as they are opened, before anything is read: switched later, the queue would
-  be thrown away), so a
-  saved page keeps the samples' real spacing, and a lost stretch shows as one long step in time.
-  UI timing keeps the time each event was read.
+  the last good point by a straight line (the smoothing starts afresh there). A pen found lifted
+  in the lost stretch lifts at the last good point: out of contact at the tail's first frame, or
+  just before it (that frame brings BTN_TOUCH 1, and the input core passes only changes), or with
+  the eraser end by then. The first frame then starts a stroke of its own.
+- Stroke samples carry the kernel's time of their frame (every node's reader is switched to
+  CLOCK_MONOTONIC right after `open()`, before any other ioctl: switched once an event is queued,
+  the queue would be thrown away and a SYN_DROPPED queued that no stall caused), so a saved page
+  keeps the samples' real spacing, and a lost stretch shows as one long step in time. UI timing
+  keeps the time each event was read.
 
 What tells a stall in grimoire.log: `input: key scan took N ms` (a scan over 20 ms, with how many
 nodes it opened and the slowest), `main: <phase> took N ms` (any part of the main loop over 50 ms
 beyond its own wait), and each drop's line: the time since the pen was read before, the tail's
 frames and their kernel times (spaced about 3 ms apart and ending just now: Grimoire was not
 reading; bunched at one time: the pen service sent a burst), and where the device and the tail
-say the pen is. The raw digitizer's drops have a line of their own. A dedicated reader thread
-would take every other stall out of the pen's way too; it waits until a drop that is not a scan
-turns up.
+say the pen is. The raw digitizer's drops have a line of their own. A drop found at the first
+read after launch (the pen hovered while Grimoire started) says so and is not counted: no stroke
+had begun, and no stall in writing caused it. A dedicated reader thread would take every other
+stall out of the pen's way too; it waits until a drop that is not a scan turns up.
 
 ## Input smoothing
 
