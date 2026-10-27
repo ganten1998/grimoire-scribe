@@ -221,7 +221,7 @@ fn make_rule(rule: &str) {
 // make rust-scenarios: every tests/scenarios/*.qs (each from a fresh or copied data root, its
 // checks, no file left half-written, its PDFs), then the self-test.
 #[test]
-#[ignore = "needs every screen: app.rs, library.rs, editor.rs, pensettings.rs, calibrate.rs, share.rs, httpd.rs, live.rs, ui.rs, keyboard.rs, pagesview.rs, dispmenu.rs (wave 3)"]
+#[ignore = "make rust-check runs make scenarios itself, after make rust-test; run this with --include-ignored"]
 fn scenarios() {
     make_rule("scenarios");
 }
@@ -229,7 +229,7 @@ fn scenarios() {
 // make rust-l10n-check: the catalogs as msgfmt makes them, then y_all_screens.qs in every language
 // and style with GRIMOIRE_CHECK_FIT=1, a long data root, hosted by KOReader, and with templates.
 #[test]
-#[ignore = "needs every screen: app.rs, library.rs, editor.rs, pensettings.rs, calibrate.rs, share.rs, ui.rs, keyboard.rs (wave 3)"]
+#[ignore = "make rust-check runs make l10n-check itself, after make rust-test; run this with --include-ignored"]
 fn l10n_check() {
     make_rule("l10n-check");
 }
