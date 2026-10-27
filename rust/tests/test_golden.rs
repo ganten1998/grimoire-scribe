@@ -333,9 +333,8 @@ fn one_stroke_of_every_tool() {
 
 // Every drawing tool on one page, overlapping its neighbours (no eraser: no released build
 // ever wrote one). The same pages also go through the file format: the bytes 1.0.0-beta wrote
-// for them, and the page read back from those bytes, must not change either. (with_file is false
-// until store.rs is translated: page_serialize and page_deserialize are its.)
-fn all_tools_on_one_page_with(with_file: bool) {
+// for them, and the page read back from those bytes, must not change either.
+fn all_tools_on_one_page() {
     const PAPERS: [PaperKind; 2] = [PAPER_MEDIUM, PAPER_GRAND];
     let mut c = Canvas::default();
     check!(canvas_init(&mut c, W, H) == 0);
@@ -351,10 +350,6 @@ fn all_tools_on_one_page_with(with_file: bool) {
         }
         let key = cformat!("%s, every tool", paper_key(PAPERS[pi]));
         golden_page(&mut c, &pg, &key);
-        if !with_file {
-            page_free(pg);
-            continue;
-        }
         let mut bytes: Vec<u8> = Vec::new();
         check!(page_serialize(&pg, &mut bytes) == 0);
         let key = cformat!("%s, every tool, file of %zu bytes", paper_key(PAPERS[pi]), bytes.len());
@@ -373,15 +368,8 @@ fn all_tools_on_one_page_with(with_file: bool) {
     canvas_free(&mut c);
 }
 
-fn all_tools_on_one_page() {
-    all_tools_on_one_page_with(true)
-}
-// (the same without the file format)
-fn all_tools_on_one_page_renders() {
-    all_tools_on_one_page_with(false)
-}
-
-fn begin() {
+#[test]
+fn test_golden() {
     check!(font_init() == 0); // papers draw labels and clefs
     check!(PAPER_COUNT >= BETA_PAPER_COUNT && TOOL_COUNT >= BETA_TOOL_COUNT);
     if !GOLDEN_HOST && !g_print() {
@@ -390,26 +378,11 @@ fn begin() {
     if g_print() {
         println!("const K_GOLDEN: [(&str, u32); N] = [");
     }
-}
-
-#[test]
-fn test_golden() {
-    begin();
     run!(papers);
     run!(one_stroke_of_every_tool);
-    run!(all_tools_on_one_page_renders);
+    run!(all_tools_on_one_page);
     if g_print() {
         println!("];");
     }
-    done();
-}
-
-// The whole of test_golden.c's last test, file format included: store.rs (page_serialize,
-// page_deserialize) is not translated yet in this wave.
-#[test]
-#[ignore = "store.rs: page_serialize, page_deserialize (wave 2, store)"]
-fn test_golden_file_format() {
-    begin();
-    run!(all_tools_on_one_page);
     done();
 }

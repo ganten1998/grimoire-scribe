@@ -151,5 +151,5 @@ pub mod prelude {
     pub use crate::ui::*;
     pub use crate::update::*;
     pub use crate::util::*;
-    pub use crate::{cformat, csnprintf, qlog};
+    pub use crate::{buf_printf, cformat, csnprintf, qlog};
 }

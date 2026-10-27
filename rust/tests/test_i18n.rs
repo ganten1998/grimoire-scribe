@@ -1211,16 +1211,15 @@ fn toasts() {
     ui_set_theme(UiTheme::Gothic);
 }
 
-fn setup() {
+#[test]
+fn test_i18n() {
+    let root = format!("{}/i18n-{}", tl_tmp(), std::process::id());
+    let _ = std::fs::remove_dir_all(&root);
+    check!(store_init(&root) == 0);
     ui_init(300.0);
     if font_init() != 0 {
         panic!("font_init failed");
     }
-}
-
-#[test]
-fn test_i18n() {
-    setup();
     run!(format_reader);
     run!(format_compatibility);
     run!(catalogs_hold_together);
@@ -1232,7 +1231,7 @@ fn test_i18n() {
     run!(locale_names);
     run!(detection_order);
     run!(applying_a_setting);
-    // language_setting is in test_i18n_language_setting: it needs the store
+    run!(language_setting);
     run!(dates);
     run!(rare_notices_fit);
     run!(copies_cut_between_characters);
@@ -1245,20 +1244,7 @@ fn test_i18n() {
     run!(button_grid_sizes);
     run!(chips);
     run!(toasts);
-    done();
-}
-
-// The C runs this one between applying_a_setting and dates, after main's store_init(root); it needs
-// the store (store.rs, wave 2), so it runs on its own once that module is translated:
-// cargo test --test test_i18n -- --ignored
-#[test]
-#[ignore = "needs store.rs (wave 2): store_init, store_root, settings_load, settings_save, settings_language"]
-fn test_i18n_language_setting() {
-    setup();
-    let root = format!("{}/i18n-{}", tl_tmp(), std::process::id());
-    let _ = std::fs::remove_dir_all(&root);
-    check!(store_init(&root) == 0);
-    run!(language_setting);
+    // (the C removes the root whatever tl_done says)
     let _ = std::fs::remove_dir_all(&root);
     done();
 }

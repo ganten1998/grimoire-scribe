@@ -543,79 +543,18 @@ fn no_viewer_for_ten_minutes_turns_it_off() {
     check!(live_poll(t.wrapping_add(LIVE_IDLE_OFF_MS + 1000), &mut idle) == 0 && !idle); // off: nothing to turn off
 }
 
-// The viewer's stream without stb_image: the frames in order, and a tile's PNG read as far as its
-// header. (Not in the C test: the tests above that read the tiles back decode them with
-// stb_image, whose allocator is bgimage.rs's, a later wave's; this keeps the viewer under test
-// meanwhile.)
-fn a_viewer_streams_state_hello_tiles_and_pen_in_order() {
-    let (w, h) = (130, 70);
-    let mut c = Canvas::default();
-    check!(canvas_init(&mut c, w, h) == 0);
-    canvas_fill(&mut c, Rect { x: 0, y: 0, w, h }, 230);
-    check!(live_start(w, h) == 0);
-    live_push(&c, Rect { x: 0, y: 0, w, h });
-    live_pen(LIVE_PEN_TOUCH, 12.0, 34.0);
-    let sv = socket_pair();
-    check!(live_take_viewer(sv[0]));
-    close(sv[0]);
-    check!(skip_head(sv[1]));
-    let f = read_frame(sv[1]);
-    check!(matches!(&f, Some((t, b)) if *t == LIVE_STATE as u8 && b.len() == 3 && b[0] == LIVE_AWAKE as u8 && b[1] == 0 && b[2] == LIVE_NO_WARMTH as u8));
-    let f = read_frame(sv[1]);
-    check!(matches!(&f, Some((t, b)) if *t == LIVE_HELLO as u8 && b.len() == 12 && u16(b) == 1 && u16(&b[2..]) == w as u32 && u16(&b[4..]) == h as u32 && u16(&b[6..]) == 64));
-    // The screen is 3 x 2 tiles, all marked: two runs (one per tile row), cut to the screen.
-    let mut seen = [(0, 0, 0, 0); 2];
-    for t in seen.iter_mut() {
-        let Some((type_, body)) = read_frame(sv[1]) else { break };
-        check!(type_ == LIVE_TILE_FRAME as u8 && body.len() > 8 + 33);
-        *t = (u16(&body) as i32, u16(&body[2..]) as i32, u16(&body[4..]) as i32, u16(&body[6..]) as i32);
-        // the PNG: its signature, then IHDR's width and height, big-endian
-        let png = &body[8..];
-        check!(png[..8] == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] && &png[12..16] == b"IHDR");
-        check!(u32::from_be_bytes([png[16], png[17], png[18], png[19]]) as i32 == t.2 && u32::from_be_bytes([png[20], png[21], png[22], png[23]]) as i32 == t.3);
-        check!(png[24] == 8 && png[25] == 0); // 8 bits, gray
-    }
-    check!(seen == [(0, 0, 130, 64), (0, 64, 130, 6)]);
-    let f = read_frame(sv[1]);
-    check!(matches!(&f, Some((t, b)) if *t == LIVE_BATCH as u8 && b.len() == 8));
-    // The pen comes after the batch, as it was when the viewer started.
-    let mut pen = [0u32; 3];
-    check!(next_pen(sv[1], &mut pen, None, None) && pen[0] == 12 && pen[1] == 34 && pen[2] == LIVE_PEN_TOUCH as u32);
-    // Nothing changes: nothing is sent (the first ping is 15 s away).
-    check!(quiet(sv[1], 200));
-    live_stop();
-    let mut bye = false;
-    while let Some((type_, body)) = read_frame(sv[1]) {
-        if type_ == LIVE_STATE as u8 && body.len() == 3 && body[0] == LIVE_BYE as u8 {
-            bye = true;
-        }
-    }
-    check!(bye && !live_on() && live_viewers() == 0);
-    close(sv[1]);
-    canvas_free(&mut c);
-}
-
 #[test]
 fn test_live() {
     run!(marks_cover_exactly_the_tiles_a_rect_touches);
     run!(runs_join_neighbours_in_a_row_and_stay_on_screen);
     run!(frame_headers_are_little_endian);
-    run!(a_viewer_streams_state_hello_tiles_and_pen_in_order);
-    run!(the_pen_word_packs_cuts_and_reads_back);
-    run!(the_pen_is_never_sent_asleep_and_a_turn_takes_it_away);
-    run!(no_viewer_for_ten_minutes_turns_it_off);
-    done();
-}
-
-// The tests that read the viewer's tiles back decode them with stb_image, whose allocator is
-// bgimage::stb_malloc (todo!() until the wave that translates bgimage.rs). Remove the ignore then.
-#[test]
-#[ignore = "bgimage: stb_image allocates through bgimage::stb_malloc, still todo!()"]
-fn test_live_tiles_decoded() {
     run!(a_viewer_sends_the_screen_then_what_changed);
     run!(nothing_is_sent_while_the_pairing_card_is_up);
     run!(the_browser_is_told_when_the_colors_invert);
     run!(the_browser_is_told_the_front_light_warmth);
+    run!(the_pen_word_packs_cuts_and_reads_back);
     run!(a_viewer_sends_the_pen_after_the_tiles_and_only_its_newest_place);
+    run!(the_pen_is_never_sent_asleep_and_a_turn_takes_it_away);
+    run!(no_viewer_for_ten_minutes_turns_it_off);
     done();
 }

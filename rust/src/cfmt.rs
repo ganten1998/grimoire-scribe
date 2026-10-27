@@ -300,9 +300,14 @@ fn pad(t: String, s: &Spec) -> String {
 
 fn float_text(v: f64, conv: u8, s: &Spec) -> String {
     let upper = conv.is_ascii_uppercase();
-    // C prints the sign of -0.0 too ("-0.0"), never one for a NaN here.
-    let neg = v.is_sign_negative() && !v.is_nan();
-    let sign = if neg {
+    // C prints the sign of -0.0 too ("-0.0"). A NaN's sign is the C library's to decide: musl (the
+    // Kindle) and glibc print it as any number's ("-nan", "+nan" with the + flag), Apple's libc
+    // (the host the tests run on) never prints one, whatever the flags.
+    let nan_unsigned = cfg!(target_vendor = "apple") && v.is_nan();
+    let neg = v.is_sign_negative();
+    let sign = if nan_unsigned {
+        ""
+    } else if neg {
         "-"
     } else if s.plus {
         "+"
@@ -419,6 +424,18 @@ mod tests {
         assert_eq!(cformat!("%e", 12345.678), "1.234568e+04");
         assert_eq!(cformat!("100%% %c", 'x'), "100% x");
         assert_eq!(cformat!("%zu %lld %ld", 7usize, -3i64, 9i64), "7 -3 9");
+    }
+
+    #[test]
+    fn nan_and_inf_as_the_c_library_prints_them() {
+        let (n, p) = (-f64::NAN, f64::NAN);
+        let got = cformat!("[%f][%+f][% f][%g][%5.1f][%-6f|][%F][%+f][%05f]", n, n, n, n, n, n, n, p, -f64::INFINITY);
+        // (what this Mac's clang build of printf and musl's fmt_fp print)
+        if cfg!(target_vendor = "apple") {
+            assert_eq!(got, "[nan][nan][nan][nan][  nan][nan   |][NAN][nan][ -inf]");
+        } else {
+            assert_eq!(got, "[-nan][-nan][-nan][-nan][ -nan][-nan  |][-NAN][+nan][ -inf]");
+        }
     }
 
     #[test]

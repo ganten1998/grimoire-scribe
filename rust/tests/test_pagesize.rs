@@ -795,21 +795,8 @@ fn live_ink_frames() {
     check!(live_ink_frame(&mut l, RefreshMode::Fast, 5));
 }
 
-// The calibration, music and live ink tests touch no file: they run as they are.
 #[test]
 fn test_pagesize() {
-    run!(calibration_scaling_math);
-    run!(music_layouts_at_both_heights);
-    run!(live_ink_frames);
-    done();
-}
-
-// The C's other tests, in its order (calibration_scaling_math and the rest above are independent
-// of them); they read and write notebooks, so they run once the store, pages and notebooks are
-// translated (store.rs and page.rs, wave 2): cargo test --test test_pagesize -- --ignored
-#[test]
-#[ignore = "needs store.rs and page.rs (wave 2): notebooks, pages, settings and the page renders"]
-fn test_pagesize_notebooks() {
     let r = root();
     let _ = std::fs::remove_dir_all(&r);
     check!(store_init(&r) == 0);
@@ -818,7 +805,11 @@ fn test_pagesize_notebooks() {
     run!(size_found_without_the_keys);
     run!(most_pages_give_the_size);
     run!(listing_records_a_found_size);
+    run!(calibration_scaling_math);
     run!(calibration_panel_in_settings);
+    run!(music_layouts_at_both_heights);
+    run!(live_ink_frames);
+    // (the C removes the root whatever tl_done says)
     let _ = std::fs::remove_dir_all(&r);
     done();
 }

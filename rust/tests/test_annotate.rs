@@ -2,12 +2,9 @@
 // pages): reading requests and source.ini, the order a book's pages go in, names, the checks a
 // page picture gets, and what a start does with a request, on a scratch data root.
 //
-// The C file is one binary that runs its tests in order. Here the ones that need no module of
-// wave 2 (request_age, page_order, names, notices_fit) run now; the others call store.rs,
-// bgimage.rs, bgjob.rs, page.rs or export.rs, which were still todo!() when this was ported, so
-// they run as two #[ignore]d tests, in the C's order within each (cargo test -- --ignored
-// annotate). Once those modules are translated, make it the one #[test] the C has: run! them all
-// in the C's RUN order.
+// The C file is one binary that runs its tests in order: test_annotate is that, in the C's RUN
+// order. test_annotate_book is not in the C unit test (tests/scenarios/z_book_*.qs cover the flow
+// there): it drives book_start and book_step on tests/fixtures/book/*.
 mod testlib;
 
 use grimoire::ffi_stb;
@@ -45,12 +42,8 @@ fn setup_ui() {
     }
 }
 
-/// main()'s setup of the store: a fresh root of its own for each of the tests below (the C has one
-/// binary, one root), with the tests' device.
-fn setup_store(tag: &str) {
-    setup_store_device(tag, PW, PH);
-}
-
+/// main()'s setup of the store for test_annotate_book: a fresh root of its own for each of its
+/// flows, with the Scribe's page size.
 fn setup_store_device(tag: &str, w: i32, h: i32) {
     let r = format!("{}/annotate-{}-{}", tl_tmp(), std::process::id(), tag);
     ROOT.with(|root| *root.borrow_mut() = r.clone());
@@ -333,9 +326,8 @@ fn map_round_trip() {
     check!(annotate_map_find(&m, &nb, 5, 96) == 0); // its page (99) is gone from the notebook
     check!(annotate_map_find(&m, &nb, 12, 300) == 0); // another layout's page 12
     let out = annotate_map_text(&m, &nb);
-    check!(out.is_some());
+    check!(out.as_ref().is_some_and(|o| !o.contains(&0))); // (the C's out && len == strlen(out))
     let out = out.unwrap_or_default();
-    check!(!out.contains(&0));
     let out = String::from_utf8_lossy(&out).into_owned();
     // In book order, the deleted page's line gone, the lines it does not know kept.
     let (p12, p40) = (out.find("page.12.96=10\n"), out.find("page.40.96=12\n"));
@@ -359,7 +351,7 @@ fn page_order() {
     check!(annotate_insert_at(&nb, &m, 5, 96) == 0); // before page 12
     check!(annotate_insert_at(&nb, &m, 20, 96) == 2); // after page 12 and its notes, before page 40
     check!(annotate_insert_at(&nb, &m, 50, 96) == 4); // at the end, after page 40's notes
-                                                      // A reflowable book read at two font sizes: by the place in the book (page - 1 of pages).
+    // A reflowable book read at two font sizes: by the place in the book (page - 1 of pages).
     annotate_map_free(&mut m);
     m = AnnotateMap::default();
     check!(annotate_map_add(&mut m, 12, 300, 10) == 0); // 11/300 into the book
@@ -582,7 +574,7 @@ fn starts_with_requests() {
     r = take(true);
     check!(r.outcome == AnnotateOutcome::Made && load(&id, &mut nb) && nb.npages() == 4 && nb.page_ids[3] == r.pid && nb.last_page == 3);
     check!(nb.paper == PAPER_BLANK && nb.page_ids[0] == pid5); // (the first page stays page 5)
-                                                               // Page 20: after page 12 and its notes, before page 40.
+    // Page 20: after page 12 and its notes, before page 40.
     let png20 = text_png(PW, PH, 20);
     put_request(20, 96, "paged", Some(&png20), None);
     r = take(true);
@@ -646,9 +638,9 @@ fn starts_with_requests() {
     let mut other = NotebookInfo::default();
     check!(load(r.nb.as_str(), &mut other) && other.source == "ffff0000");
     check!(other.name == "Le Petit Prince : édition illustrée 2"); // (its PDF's name apart)
-                                                                   // Books whose titles Grimoire's fonts draw none of (Japanese): named after their titles all the
-                                                                   // same, the second with " 2", as any two notebooks of one name would share a PDF; that PDF has
-                                                                   // the title as its name. The screens show them as Untitled and Untitled 2 (ui_name_label).
+    // Books whose titles Grimoire's fonts draw none of (Japanese): named after their titles all the
+    // same, the second with " 2", as any two notebooks of one name would share a PDF; that PDF has
+    // the title as its name. The screens show them as Untitled and Untitled 2 (ui_name_label).
     let ja = "吾輩は猫である";
     for i in 0..2 {
         let text = format!(
@@ -712,9 +704,9 @@ fn pictures_of_another_size() {
     let (mut w, mut h) = (0, 0);
     let mut why: &'static str = "";
     check!(made.as_deref().is_some_and(|m| bgimage_drawable(m, &mut w, &mut h, &mut why) == 0) && w == PW && h == PH); // the page's size
-                                                                                                                       // Its picture gone missing (its job never ran): the same page sent again makes it again. Drawn
-                                                                                                                       // meanwhile, the page is white; once the picture is there it is "undrawn" (for the editor: draw
-                                                                                                                       // that page again), and once drawn, no longer.
+    // Its picture gone missing (its job never ran): the same page sent again makes it again. Drawn
+    // meanwhile, the page is white; once the picture is there it is "undrawn" (for the editor: draw
+    // that page again), and once drawn, no longer.
     let id = r.nb.as_str().to_string();
     let pic = paper_image_id(k);
     let _ = std::fs::remove_file(&file);
@@ -723,8 +715,8 @@ fn pictures_of_another_size() {
     check!(canvas_init(&mut c, PW, PH) == 0);
     bgimage_render(&mut c, &id, k, Rect { x: 0, y: 0, w: PW, h: PH });
     check!(c.px[(PH / 2) as usize * c.stride as usize + (PW / 2) as usize] == 255 && !bgimage_undrawn(&id, pic)); // (no file yet)
-                                                                                                                  // The page left before its picture is made: the editor wrote the Library's card from the page
-                                                                                                                  // drawn white. The job that makes the picture draws the card again, the page on its picture.
+    // The page left before its picture is made: the editor wrote the Library's card from the page
+    // drawn white. The job that makes the picture draws the card again, the page on its picture.
     let mut white = Canvas::default();
     check!(canvas_init(&mut white, PW / 3, PH / 3) == 0 && store_save_thumb(&id, &white) == 0);
     path = request_path("request.ini");
@@ -1119,46 +1111,34 @@ fn book_broken_and_not_asked() {
     check!(st.state == BookState::Failed && st.too_many && !exists(&dir));
 }
 
-// The tests that need no module of wave 2.
+// main() of the C: one scratch root, its device, the tests in its RUN order; the root goes when every
+// check passed.
 #[test]
 fn test_annotate() {
+    let r = format!("{}/annotate-{}", tl_tmp(), std::process::id());
+    ROOT.with(|root| *root.borrow_mut() = r.clone());
+    let _ = std::fs::remove_dir_all(&r);
+    check!(store_init(&r) == 0);
+    store_set_device(DPI, PW, PH);
     setup_ui();
+    run!(request_parsing);
     run!(request_age);
+    run!(map_round_trip);
     run!(page_order);
     run!(names);
-    run!(notices_fit);
-    done();
-}
-
-#[test]
-#[ignore = "store.rs (store_source_ok, store_init, store_create, ...) is a wave-2 module, still todo!() here"]
-fn test_annotate_with_store() {
-    setup_store("store");
-    run!(request_parsing);
-    run!(map_round_trip);
     run!(notebook_source_line);
-    run!(book_request_parsing);
-    done();
-    // (the C removes its scratch root when every check passed)
-    let _ = std::fs::remove_dir_all(root());
-}
-
-#[test]
-#[ignore = "store.rs, bgimage.rs, bgjob.rs, page.rs and export.rs are wave-2 modules, still todo!() here"]
-fn test_annotate_starts() {
-    setup_store("starts");
     run!(png_checks);
     run!(starts_with_requests);
     run!(pictures_of_another_size);
     run!(raw_zip_keeps_the_map);
     run!(failures_leave_nothing);
+    run!(book_request_parsing);
+    run!(notices_fit);
     done();
-    // (the C removes its scratch root when every check passed)
-    let _ = std::fs::remove_dir_all(root());
+    let _ = std::fs::remove_dir_all(&r);
 }
 
 #[test]
-#[ignore = "store.rs, bgimage.rs, bgjob.rs, page.rs and export.rs are wave-2 modules, still todo!() here"]
 fn test_annotate_book() {
     // (the scenarios' fixtures are pictures at the Scribe's page size)
     setup_store_device("book", 1860, 2480);
@@ -1168,5 +1148,7 @@ fn test_annotate_book() {
     setup_store_device("book3", 1860, 2480);
     run!(book_broken_and_not_asked);
     done();
-    let _ = std::fs::remove_dir_all(root());
+    for tag in ["book", "book2", "book3"] {
+        let _ = std::fs::remove_dir_all(format!("{}/annotate-{}-{}", tl_tmp(), std::process::id(), tag));
+    }
 }

@@ -82,8 +82,6 @@ fn a_full_queue_lets_a_compaction_go_first() {
 }
 
 #[test]
-// (store_init is store.rs's, the same wave's store group: until it is merged this stops at its todo!().)
-#[ignore = "needs store.rs (store_init); passes with store_init stubbed"]
 fn test_bgjob() {
     let root = format!("{}/bgjob-{}", tl_tmp(), std::process::id());
     let _ = std::fs::remove_dir_all(&root);

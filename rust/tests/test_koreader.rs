@@ -1,8 +1,5 @@
 // test_koreader.c: KOReader discovery and the files Grimoire installs there; the sleep wallpaper
 // KOReader leaves and the setting that picks it.
-//
-// Both tests are ignored until store.rs (store_init, store_root, settings_*, store_load_koreader_sleep)
-// and bgimage.rs (bgimage_write_png) are translated.
 mod testlib;
 use grimoire::prelude::*;
 use testlib::*;
@@ -85,15 +82,8 @@ fn wallpaper_and_setting() {
 }
 
 #[test]
-#[ignore = "store.rs: store_init, store_root (wave 2, store)"]
 fn test_koreader() {
     run!(discovery_and_owned_files);
-    done();
-}
-
-#[test]
-#[ignore = "store.rs: settings_*, store_load_koreader_sleep; bgimage.rs: bgimage_write_png (wave 2, store and pictures)"]
-fn test_koreader_wallpaper() {
     run!(wallpaper_and_setting);
     done();
 }

@@ -391,6 +391,32 @@ dropped, a borrow that cannot work):
 Do not "fix" another module's signature to suit yours, and do not add `pub` items another module
 should have: report them.
 
+### Calling conventions settled in wave 2
+
+Where a C caller passes NULL, a count-only call or a pointer comparison, the translated callee
+expects this (editor, export, pagesview, pensettings, library and the other later modules follow it):
+
+- `nav_index(nav, nb, indices)`: the C's `(NULL, 0)` counting call is `&mut []`; the cap is
+  `indices.len()`. `nav_link_areas(.., links, areas)`: the cap is the shorter slice; the C's
+  count-only call (`NULL, NULL, NAV_LINKS_PER_PAGE`, editor.c) passes two local arrays of
+  `NAV_LINKS_PER_PAGE`. `nav_links_of`'s `first` and `nav_link_at`'s `out`: a throwaway local for
+  the C's NULL.
+- `history_push_add(h, index, &s)`: a stroke's identity is its Box's address, which survives the
+  move into the page. Where the C compares `page->strokes[page->n - 1] == s` (editor.c), take
+  `stroke_id(&s)` before `page_add` moves the Box and compare it with the last stroke's.
+  `history_push_erase`: `indices.len() == removed.len()`. `History::default()` has no limit; only
+  `history_init` sets 500, as the C's memset and init.
+- `page_remove` panics on an index out of range (every C caller passes a valid one).
+  `page_droppable(p, dpi, drop)`: `drop.len() >= p.strokes.len()`.
+- `page_serialize(p, out)` replaces `out` on success and leaves it as it was on the read-only
+  refusal (-1). `store_load_info(id, out)`: the C let `id` alias `out->id`; copy the id first.
+  `store_replace_thumb_if_same(.., was)`: an empty `was` is the C's NULL (no card was read).
+- `bgimage_read` returns `None` with the C's errno set (ENOENT, EFBIG, EIO, ENOMEM, or open's or
+  read's own): read `util::errno()` right after it, as the C callers do.
+- `buf_printf!` is in the prelude with the other printf macros (httpd.rs formats into a Buf).
+- Module state is thread-local: a `#[test]` sets up ui, fonts, the language and the store on its
+  own thread (one `#[test]` per C binary does it once).
+
 ## Decided differences
 
 The only known ways the Rust build may differ, each deliberate:

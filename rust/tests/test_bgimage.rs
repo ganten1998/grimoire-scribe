@@ -642,10 +642,8 @@ fn test_bgimage() {
     done();
 }
 
-// Drawing finds a picture through store_notebook_dir: this needs store.rs (store_init and
-// store_notebook_dir are todo!() until the store group is merged).
+// Drawing finds a picture through store_notebook_dir: this one has a store root.
 #[test]
-#[ignore = "needs store.rs (store_init, store_notebook_dir)"]
 fn test_bgimage_render() {
     let _ = std::fs::remove_dir_all(root());
     check!(store_init(&root()) == 0);

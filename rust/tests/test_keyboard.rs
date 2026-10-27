@@ -464,15 +464,7 @@ fn test_keyboard() {
     run!(spanish_letters_have_enye);
     run!(accents_in_every_face);
     run!(one_character_keys_at_title_size);
-    done();
-}
-
-// The C's last test; it needs the store (store.rs, wave 2), so it runs on its own once that module
-// is translated: cargo test --test test_keyboard -- --ignored
-#[test]
-#[ignore = "needs store.rs (wave 2): store_init, store_create, store_rename, store_set_folder, store_load_info"]
-fn test_keyboard_typed_name_is_stored_whole() {
-    setup();
     run!(typed_name_is_stored_whole);
+    G_C.with(|c| canvas_free(&mut c.borrow_mut()));
     done();
 }

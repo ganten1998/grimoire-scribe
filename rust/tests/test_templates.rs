@@ -1,10 +1,6 @@
 // test_templates.rs: image papers (pictures as page backgrounds), templates and imports
 // (src/bgimage.h, src/templates.h, docs/FORMAT.md, Image papers). The port of tests/test_templates.c:
 // the same tests, in the C's order, with the same checks.
-//
-// It runs against the whole model (store, bgimage, bgjob, page, paper, export): the one #[test] that
-// runs them all stays #[ignore]d until every module of that wave has its bodies (they were todo!()
-// when this was ported). natural_order, which needs none of them, runs on its own.
 #![allow(clippy::needless_range_loop)] // (the C's index loops, kept)
 mod beta_format;
 mod testlib;
@@ -2069,8 +2065,11 @@ fn import_same_picture_twice() {
     let mut nb = NotebookInfo::default();
     check!(store_load_info(id, &mut nb) == 0 && nb.npages() == 2 && index_entries(&nb) == 1);
     let (mut a, mut b): (Option<Box<Page>>, Option<Box<Page>>) = (None, None);
-    check!(store_read_page(&nb, 0, &mut a) == 0 && store_read_page(&nb, 1, &mut b) == 0);
-    check!(matches!((&a, &b), (Some(a), Some(b)) if a.paper == b.paper));
+    check!(
+        store_read_page(&nb, 0, &mut a) == 0
+            && store_read_page(&nb, 1, &mut b) == 0
+            && matches!((&a, &b), (Some(a), Some(b)) if a.paper == b.paper)
+    );
     if let Some(pg) = a {
         page_free(pg);
     }
@@ -2585,18 +2584,8 @@ fn photo_upright_and_its_own() {
     unlink(&tpl);
 }
 
-// natural_order needs none of the model: it runs on its own, whatever the other modules' state.
-#[test]
-fn test_templates_natural_order() {
-    run!(natural_order);
-    done();
-}
-
 // Everything, in the C's order (the tests share the store and the folders the ones before them made).
-// Ignored until store, bgimage, bgjob, page, paper and export are translated (todo!() bodies when
-// this was ported): the first call into one of them ends the run.
 #[test]
-#[ignore = "needs the wave-2 modules: store, bgimage, bgjob, page, paper, export"]
 fn test_templates() {
     let top = format!("{}/templates-{}", tl_tmp(), std::process::id());
     let _ = ROOT.set(top.clone());

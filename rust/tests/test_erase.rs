@@ -3,10 +3,6 @@
 // eraser's core lands exactly on the paper with its lines, ink drawn later is untouched, the fast
 // path is the per-pixel path byte for byte, compaction drops only what changes nothing, and
 // 1.0.0-beta still opens every page with erase strokes.
-//
-// The last two tests of the C (beta_opens_erase_strokes, reader_and_rescale_know_the_texture) read
-// and write pages through store.rs, which is not translated yet in this wave: they are the second
-// #[test], ignored until it is.
 // (the C literal 6.28f and its `% 3 == 0` tests are kept as they are)
 #![allow(
     clippy::needless_range_loop,
@@ -1428,7 +1424,8 @@ fn reader_and_rescale_know_the_texture() {
     page_free(pg);
 
     let root = cformat!("%s/erase-%d", tl_tmp().as_str(), std::process::id() as i32);
-    let _ = std::fs::remove_dir_all(&root);
+    // (the C's rm -rf, which succeeds when there is nothing to remove)
+    check!(std::fs::remove_dir_all(&root).is_ok() || std::fs::symlink_metadata(&root).is_err());
     check!(store_init(&root) == 0);
     store_set_device(DPI, W, H);
     let mut nb = NotebookInfo::default();
@@ -1757,16 +1754,6 @@ fn test_erase() {
     run!(one_call_keeps_the_lines);
     run!(restored_tells_a_no_op);
     run!(undo_and_redo_an_erase_stroke);
-    done();
-}
-
-// The last two tests of the C main: they read and write pages (store.rs: page_serialize,
-// page_deserialize, store_init, store_create, store_save_page, store_load_page), and
-// beta_opens_erase_strokes needs them in the frozen 1.0.0-beta reader's company (beta_format).
-#[test]
-#[ignore = "store.rs: page_serialize, page_deserialize, store_init, store_create, store_save_page, store_load_page (wave 2, store)"]
-fn test_erase_store() {
-    font_init();
     run!(beta_opens_erase_strokes);
     run!(reader_and_rescale_know_the_texture);
     done();

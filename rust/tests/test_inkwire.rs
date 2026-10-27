@@ -886,11 +886,7 @@ fn a_stop_right_after_the_fork() {
     check!(store_delete(nb.id.as_str()) == 0);
 }
 
-// Everything in this file reads and writes through the store, pages, history-free page renders and
-// the job queue (store.rs, page.rs, bgjob.rs, brush.rs's stroke_brush_begin: wave 2), so it runs
-// once those are translated: cargo test --test test_inkwire -- --ignored
 #[test]
-#[ignore = "needs store.rs (settings, notebooks, pages), page.rs (strokes, renders, page_droppable) and bgjob.rs (wave 2)"]
 fn test_inkwire() {
     let r = root();
     let _ = std::fs::remove_dir_all(&r);

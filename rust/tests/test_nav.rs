@@ -1,8 +1,4 @@
 // test_nav.c: section names (nav.ini) and links (links.ini).
-//
-// The C's one binary is two #[test]s here, both ignored until store.rs (store_init, store_create,
-// store_notebook_dir, store_add_page, store_load_page, store_save_page) and export.rs (the zip and
-// the PDF) are translated, as the C main sets up a store first; each makes its own notebook.
 #![allow(clippy::needless_range_loop, clippy::field_reassign_with_default)]
 mod testlib;
 use grimoire::prelude::*;
@@ -138,7 +134,9 @@ fn unreadable_files_stay_untouched() {
     let nb = nb();
     let binary = b"name.1=Hidden\0tail\0";
     refuses(binary);
-    let mut huge = vec![b'x'; NAV_FILE_MAX + 1];
+    let mut huge: Vec<u8> = Vec::new();
+    check!(huge.try_reserve_exact(NAV_FILE_MAX + 1).is_ok());
+    huge.resize(NAV_FILE_MAX + 1, b'x');
     refuses(&huge);
     huge[..256].fill(b'x');
     huge[256] = b'\n';
@@ -340,6 +338,7 @@ fn raw_zip_keeps_index() {
         .arg(&archive)
         .arg(path())
         .status();
+    check!(status.is_ok()); // (the C's fork)
     check!(status.is_ok_and(|s| s.code() == Some(0)));
 }
 
@@ -437,7 +436,8 @@ fn pdf_has_the_outline_and_links() {
 }
 
 // The C main: a store in a directory of its own and a notebook in it.
-fn setup() -> String {
+#[test]
+fn test_nav() {
     let root = cformat!("%s/nav-%d", tl_tmp().as_str(), std::process::id() as i32);
     let mut nb = NotebookInfo::default();
     check!(store_init(&root) == 0 && store_create("Sections", "", PAPER_MEDIUM, &mut nb) == 0);
@@ -448,44 +448,16 @@ fn setup() -> String {
     let mut links_path = String::new();
     csnprintf!(&mut links_path, 800, "%s/links.ini", &dir);
     CTX.with(|c| *c.borrow_mut() = Some(Ctx { nb, path, links_path }));
-    root
-}
-
-fn teardown(root: &str) {
-    check!(std::fs::remove_dir_all(root).is_ok());
-}
-
-// The names and the links: store.rs only.
-#[test]
-#[ignore = "store.rs: store_init, store_create, store_notebook_dir (wave 2, store)"]
-fn test_nav() {
-    let root = setup();
     run!(names_follow_page_ids);
     run!(names_keep_unicode);
     run!(future_lines_and_last_name_win);
     run!(failed_save_does_not_prune);
     run!(unreadable_files_stay_untouched);
+    run!(raw_zip_keeps_index);
     run!(links_follow_their_boxes);
     run!(links_save_prune_and_carry);
     run!(links_limits_and_unreadable);
-    teardown(&root);
-    done();
-}
-
-// The C's other two: the zip and the PDF of a notebook with names and links.
-#[test]
-#[ignore = "store.rs: store_add_page, store_load_page, store_save_page; export.rs: zip, PDF (wave 2, store and export)"]
-fn test_nav_export() {
-    let root = setup();
-    run!(raw_zip_keeps_index);
     run!(pdf_has_the_outline_and_links);
-    teardown(&root);
-    done();
-}
-
-// names_keep_unicode needs no store: it runs everywhere.
-#[test]
-fn test_nav_names_in_memory() {
-    run!(names_keep_unicode);
+    check!(std::fs::remove_dir_all(&root).is_ok());
     done();
 }
