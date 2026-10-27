@@ -1,4 +1,5 @@
 #include "shortcuts.h"
+#include "hidkeys.h"
 #include "store.h"
 #include "testlib.h"
 #include <unistd.h>
@@ -199,6 +200,56 @@ TEST(switch_labels) {
     shortcut_pad_label(304, false, name, sizeof name); CHECK(!strcmp(name, "South"));
     shortcut_pad_label(306, false, name, sizeof name); CHECK(!strcmp(name, "306"));
 }
+// A Buttons sheet row held: its actions' buttons go, one row at a time. controller.ini keeps every
+// other gamepad binding (shortcuts.ini's pad. lines and the D-pad's starter lines among them, set
+// aside from then on), so the row stays as it is after a reload; keys are untouched.
+TEST(a_row_held_forgets_its_buttons) {
+    char sp[800], cp[800];
+    snprintf(sp, sizeof sp, "%s/shortcuts-f.ini", tl_tmp());
+    snprintf(cp, sizeof cp, "%s/controller-f.ini", tl_tmp());
+    unlink(sp); unlink(cp);
+    const char *old = "key.Ctrl+z=undo\npad.304=undo\npad.314=previous-page\npad.315=next-page\npad.307=redo\n";
+    CHECK(write_file_atomic(sp, old, strlen(old)) == 0);
+    Shortcuts m;
+    shortcuts_load_all(&m, sp, cp);  // with the D-pad's starter lines (Left/Right turn pages too)
+    CHECK(shortcuts_pads_for(&m, SHORTCUT_PREV_PAGE, NULL, 0) == 2 && shortcuts_pads_for(&m, SHORTCUT_NEXT_PAGE, NULL, 0) == 2);
+    // A row with no button: nothing written, no controller.ini yet.
+    CHECK(shortcuts_forget(&m, cp, SHORTCUT_CLEAR_PAGE, 0) == 0 && access(cp, F_OK) != 0);
+    // Undo's row: South goes; the keyboard's Ctrl+Z stays.
+    CHECK(shortcuts_forget(&m, cp, SHORTCUT_UNDO, 0) == 0);
+    CHECK(shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_NONE && shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
+    CHECK(shortcuts_lookup(&m, true, 307, 0) == SHORTCUT_REDO);
+    // Previous / next page's row: both actions, Select, Start and the D-pad's Left and Right.
+    CHECK(shortcuts_forget(&m, cp, SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE) == 0);
+    CHECK(shortcuts_pads_for(&m, SHORTCUT_PREV_PAGE, NULL, 0) == 0 && shortcuts_pads_for(&m, SHORTCUT_NEXT_PAGE, NULL, 0) == 0);
+    CHECK(shortcuts_lookup(&m, true, 544, 0) == SHORTCUT_PREV_TOOL);  // other rows keep theirs
+    size_t len; char *text = read_file(cp, &len);
+    CHECK(text && !strstr(text, "=undo") && !strstr(text, "page") && strstr(text, "pad.North=redo\n") &&
+          strstr(text, "pad.Up=previous-tool\n") && !strstr(text, "key."));
+    free(text);
+    // Read back: as it was left (shortcuts.ini's pad. lines set aside, no D-pad starter lines).
+    Shortcuts back;
+    shortcuts_load_all(&back, sp, cp);
+    CHECK(back.rejected == 0 && shortcuts_lookup(&back, true, 304, 0) == SHORTCUT_NONE);
+    CHECK(shortcuts_pads_for(&back, SHORTCUT_PREV_PAGE, NULL, 0) == 0 && shortcuts_lookup(&back, true, 546, 0) == SHORTCUT_NONE);
+    CHECK(shortcuts_lookup(&back, true, 307, 0) == SHORTCUT_REDO && shortcuts_lookup(&back, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
+    // The last ones: controller.ini with none, which stays (Reset buttons deletes it).
+    CHECK(shortcuts_forget(&back, cp, SHORTCUT_REDO, 0) == 0 && shortcuts_forget(&back, cp, SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL) == 0);
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.rejected == 0 && m.count == 1 && shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
+    // A trigger learned and forgotten by its name.
+    CHECK(shortcuts_learn(&m, cp, HIDKEYS_LT, SHORTCUT_HOLD_ERASER) == 0);
+    text = read_file(cp, &len);
+    CHECK(text && strstr(text, "pad.LT=hold-eraser\n"));
+    free(text);
+    shortcuts_load_all(&back, sp, cp);
+    CHECK(shortcuts_lookup(&back, true, HIDKEYS_LT, 0) == SHORTCUT_HOLD_ERASER);
+    // A file that cannot be written leaves the map as it was.
+    char bad[900]; snprintf(bad, sizeof bad, "%s/no-such-dir/controller.ini", tl_tmp());
+    CHECK(shortcuts_forget(&back, bad, SHORTCUT_HOLD_ERASER, 0) != 0 &&
+          shortcuts_lookup(&back, true, HIDKEYS_LT, 0) == SHORTCUT_HOLD_ERASER);
+    unlink(sp); unlink(cp);
+}
 int main(void) {
     RUN(defaults_and_exact_modifiers);
     RUN(custom_mappings_and_limits);
@@ -207,5 +258,6 @@ int main(void) {
     RUN(every_action_by_name);
     RUN(dpad_for_files_written_before);
     RUN(switch_labels);
+    RUN(a_row_held_forgets_its_buttons);
     return tl_done();
 }

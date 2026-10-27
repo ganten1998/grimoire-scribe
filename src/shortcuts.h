@@ -34,6 +34,11 @@ void shortcuts_load_all(Shortcuts *map, const char *shortcuts_path, const char *
 // action's other buttons lose theirs. Writes controller.ini with every gamepad binding; -1 when it
 // could not (map unchanged).
 int shortcuts_learn(Shortcuts *map, const char *controller_path, int code, int action);
+// The gamepad buttons for action, and for action2 (0: none), do nothing from now on (a Buttons sheet
+// row held): controller.ini is written with every other gamepad binding, as shortcuts_learn writes
+// it, so shortcuts.ini's pad. lines (and the D-pad's starter lines) stay set aside. Nothing is
+// written when neither had a button. -1 when it could not be written (map unchanged).
+int shortcuts_forget(Shortcuts *map, const char *controller_path, int action, int action2);
 // The gamepad buttons for action: how many there are, the first cap of them in codes.
 int shortcuts_pads_for(const Shortcuts *map, int action, int *codes, int cap);
 // A gamepad button as the files name it: "South", "Up", or its number ("316").

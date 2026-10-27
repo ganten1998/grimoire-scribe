@@ -215,6 +215,24 @@ void shortcuts_load_all(Shortcuts *map, const char *shortcuts_path, const char *
     }
 }
 
+// controller.ini with every gamepad binding of map, written whole (atomically); -1 when it could not be.
+static int write_pads(const Shortcuts *next, const char *controller_path) {
+    char text[4096];
+    size_t len = (size_t)snprintf(text, sizeof text,
+                                  "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n"
+                                  "# While this file is here, shortcuts.ini's pad. lines are set aside.\n");
+    for (int i = 0; i < next->count; i++) {
+        const ShortcutBinding *b = &next->bindings[i];
+        if (!b->gamepad) continue;
+        char pad[16];
+        shortcut_pad_name(b->code, pad, sizeof pad);
+        int n = snprintf(text + len, sizeof text - len, "pad.%s=%s\n", pad, shortcut_action_name(b->action));
+        if (n < 0 || (size_t)n >= sizeof text - len) return -1;
+        len += (size_t)n;
+    }
+    return write_file_atomic(controller_path, text, len) != 0 ? -1 : 0;
+}
+
 int shortcuts_learn(Shortcuts *map, const char *controller_path, int code, int action) {
     const char *name = shortcut_action_name(action);
     if (!name || code < 256 || code > 767) return -1;
@@ -228,20 +246,22 @@ int shortcuts_learn(Shortcuts *map, const char *controller_path, int code, int a
     next.count = kept;
     if (next.count == SHORTCUT_MAX) return -1;
     next.bindings[next.count++] = (ShortcutBinding){.code = code, .action = action, .gamepad = true};
-    char text[4096];
-    size_t len = (size_t)snprintf(text, sizeof text,
-                                  "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n"
-                                  "# While this file is here, shortcuts.ini's pad. lines are set aside.\n");
+    if (write_pads(&next, controller_path) != 0) return -1;
+    *map = next;
+    return 0;
+}
+
+int shortcuts_forget(Shortcuts *map, const char *controller_path, int action, int action2) {
+    Shortcuts next = *map;
+    int kept = 0;
     for (int i = 0; i < next.count; i++) {
         const ShortcutBinding *b = &next.bindings[i];
-        if (!b->gamepad) continue;
-        char pad[16];
-        shortcut_pad_name(b->code, pad, sizeof pad);
-        int n = snprintf(text + len, sizeof text - len, "pad.%s=%s\n", pad, shortcut_action_name(b->action));
-        if (n < 0 || (size_t)n >= sizeof text - len) return -1;
-        len += (size_t)n;
+        if (b->gamepad && (b->action == action || (action2 && b->action == action2))) continue;
+        next.bindings[kept++] = *b;
     }
-    if (write_file_atomic(controller_path, text, len) != 0) return -1;
+    if (kept == next.count) return 0;  // (neither had a button: nothing to write)
+    next.count = kept;
+    if (write_pads(&next, controller_path) != 0) return -1;
     *map = next;
     return 0;
 }
