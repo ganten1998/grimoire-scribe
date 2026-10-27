@@ -18,6 +18,12 @@ HidKind hidkeys_kind(const uint8_t keys[HID_KEY_BYTES], const uint8_t axes[HID_A
 bool hidkeys_proxy(const char *name);
 // An optional keyboard or controller (hidkeys_kind), never the proxy.
 HidKind hidkeys_optional(const char *name, const uint8_t keys[HID_KEY_BYTES], const uint8_t axes[HID_ABS_BYTES]);
+// A Switch-mode controller read through Linux's generic HID driver, as 8BitDo's Switch mode and a Pro
+// Controller come over Bluetooth ("Pro Controller"): its buttons are numbered in the Pro Controller's
+// simple report order from BTN_A (B, A, Y, X, L, R, ZL, ZR, -, +, the sticks, Home, Capture), so
+// BTN_C and BTN_Z are among them. Nintendo's own driver numbers them by the convention instead, and
+// advertises neither.
+bool hidkeys_switch(const char *name, const uint8_t keys[HID_KEY_BYTES]);
 // The power key: KEY_POWER on a device that is no pen or touch panel and not the proxy, with few
 // other keys, so neither a keyboard nor the proxy can take its place. Decided apart from
 // hidkeys_kind. -1 when it is not one, else how many keys it has: input_open watches the fewest.

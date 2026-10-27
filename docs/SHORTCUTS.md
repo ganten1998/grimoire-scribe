@@ -28,6 +28,16 @@ every time). While that file is there, the controller's buttons come from it alo
 lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from `shortcuts.ini`.
 **Reset buttons** deletes `controller.ini`.
 
+The sheet names the buttons as the controller connected labels them. A Switch-mode controller
+(8BitDo's Switch mode, or a Pro Controller, which the Kindle reads through Linux's generic driver
+as "Pro Controller") numbers its buttons in the Pro Controller's own order: B 304, A 305, Y 306,
+X 307, L 308, R 309, ZL 310, ZR 311, - 312, + 313, the stick presses LS 314 and RS 315, Home 316
+and Capture 317. The sheet shows those labels; the files keep the numbers, or the convention's
+names for the ones that have one (`pad.South` is its B). With the starter mappings B is undo, A
+the eraser, X redo, L white ink, ZL / ZR previous / next tool, the stick presses previous / next
+page, and the D-pad (an arcade stick's lever) pages and tools; Y, R, - and + do nothing until a
+row learns them.
+
 ## shortcuts.ini
 
 The default keyboard uses 1–9 for the nine drawing tools in the tool picker's order (left to right,
@@ -39,7 +49,9 @@ L1/R1 previous/next tool, Select/Start previous/next page, and the D-pad (a hat 
 both read the same) Left/Right for pages and Up/Down for tools. These are starting points:
 controller modes number their buttons differently (a Switch-mode controller's A and B are not where
 the convention puts them), which the Buttons sheet is for. An 8BitDo in keyboard mode uses `key.`
-bindings.
+bindings. A `shortcuts.ini` that binds none of the D-pad's four directions (every one written
+before 2.0.0-beta.5, which read no D-pad) gets the D-pad's starter lines as well, in memory: the
+file is not changed, and Reload counts them among its mappings.
 
 ```ini
 key.1=tool:pencil

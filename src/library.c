@@ -70,7 +70,7 @@ struct LibraryState {
 
     int shown_shortcut_code, shown_shortcut_mods;
     bool shown_shortcut_gamepad;
-    unsigned shown_hid_changes;  // App.hid_changes as the Controller sheet's status line last showed
+    unsigned shown_hid_changes;  // App.hid_changes as the Controller sheet's status line (or Buttons' rows) last showed
     // The Buttons sheet: its group open (k_groups; -1 the list of them), the row learning its
     // buttons (-1 none), which of its actions, and since when (it gives up after LEARN_MS without a
     // press).
@@ -635,13 +635,22 @@ static int learning_action(App *a) {
     return learn_row_at(S->buttons_group, S->learn_row).act[S->learn_step];
 }
 
-// "South, Up" for an action's buttons, "none" when it has none.
+// "South, Up" for an action's buttons, "none" when it has none; "B, Up" while the first controller
+// connected is a Switch-mode one, as its buttons are printed.
 static void pads_text(App *a, int action, char *out, size_t cap) {
     int codes[4], n = shortcuts_pads_for(&a->shortcuts, action, codes, 4);
+    InputHid h[4];
+    int nh = input_hids(h, 4);
+    bool switch_layout = false;
+    for (int i = 0; i < nh; i++)
+        if (h[i].gamepad) {
+            switch_layout = h[i].switch_layout;
+            break;
+        }
     out[0] = 0;
     for (int i = 0; i < n && i < 4; i++) {
         char name[16];
-        shortcut_pad_name(codes[i], name, sizeof name);
+        shortcut_pad_label(codes[i], switch_layout, name, sizeof name);
         size_t len = strlen(out);
         snprintf(out + len, cap - len, "%s%s", i ? ", " : "", name);
     }
@@ -1079,6 +1088,7 @@ static void draw_modal(App *a) {
             draw_menu(a, _("Controller buttons"), rows, n);
             break;
         }
+        S->shown_hid_changes = a->hid_changes;  // (pads_text names the buttons for the controller connected)
         for (int i = 0; i < group_rows(g); i++) {
             LearnRow r = learn_row_at(g, i);
             bool learning = S->learn_row == i;
@@ -1850,6 +1860,9 @@ void library_tick(App *a, uint32_t now) {
         S->shown_shortcut_mods != a->last_shortcut_mods || S->shown_shortcut_gamepad != a->last_shortcut_gamepad ||
         S->shown_hid_changes != a->hid_changes))
         redraw(a, REFRESH_UI);
+    // A group's rows name the buttons as the controller connected labels them.
+    if (S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->shown_hid_changes != a->hid_changes)
+        redraw(a, REFRESH_UI);
     if (S->modal == MOD_PAIR) bt_send(a);
     upd_poll(a);
     if (S->modal == MOD_SHORTCUTS && S->shown_bt_changes != a->bt_changes) redraw(a, REFRESH_UI);
@@ -1952,6 +1965,9 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         const char *n = S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->learn_row >= 0
                             ? shortcut_action_name(learning_action(a)) : NULL;
         snprintf(out, cap, "%s", n ? n : "");
+    } else if (!strncmp(key, "buttons.", 8)) {
+        // The Buttons sheet's buttons for an action ("buttons.undo"): "B, Up", "none".
+        pads_text(a, shortcut_action(key + 8), out, cap);
     } else if (!strcmp(key, "buttons_group")) {
         // The Buttons sheet's group open ("editing", "tools", "pages", "menus"), else empty.
         bool open = S->modal == MOD_BUTTONS && S->buttons_group >= 0;

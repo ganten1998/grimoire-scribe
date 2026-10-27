@@ -11,8 +11,11 @@
 - **Controllers**: Settings > Controller (was Shortcuts) shows the controller or keyboard connected,
   and Buttons... learns which controller button does what: tap a row, press the button
   (grimoire/controller.ini). A short toast says when one connects or goes, and when another app
-  holds it so Grimoire gets nothing. The D-pad (or a hat) turns pages and tools by default. Next
-  page on the last page adds a page, as the editor's + button does (it used to stop there).
+  holds it so Grimoire gets nothing. The D-pad (or a hat, as an arcade stick's lever) turns pages
+  and tools by default, also with a shortcuts.ini from an earlier version, which binds no D-pad (the
+  file is not changed). Buttons... names a Switch-mode controller's buttons as printed on it (B, A,
+  Y, X, L, R, ZL, ZR, -, +) instead of by number or the Linux names. Next page on the last page adds
+  a page, as the editor's + button does (it used to stop there).
 - **More for a controller's buttons**: every tool on its own, Erase while held (the pen erases
   while the button is down), the eraser's mode, clear page, first, last and new page, fit page,
   and the editor's menus: the tool picker, Paper, Pages, Index, Display, Pen feel, fold the panel,

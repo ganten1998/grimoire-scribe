@@ -27,7 +27,8 @@ int shortcuts_write_defaults(const char *path); // creates only if absent
 // controller.ini (Settings > Controller > Buttons): the gamepad buttons learned there. While it is
 // there they come from it alone (shortcuts.ini's pad.* lines are set aside); key.* lines are
 // always shortcuts.ini's. Grimoire writes it whole, atomically; a line it cannot read is rejected
-// and counted, as in shortcuts.ini.
+// and counted, as in shortcuts.ini. A shortcuts.ini that binds no D-pad direction (one written
+// before 2.0.0-beta.5) gets the D-pad's starter lines in memory; the file is not changed.
 void shortcuts_load_all(Shortcuts *map, const char *shortcuts_path, const char *controller_path);
 // Gamepad button code does action from now on, as its only button: the button's old action and the
 // action's other buttons lose theirs. Writes controller.ini with every gamepad binding; -1 when it
@@ -37,5 +38,8 @@ int shortcuts_learn(Shortcuts *map, const char *controller_path, int code, int a
 int shortcuts_pads_for(const Shortcuts *map, int action, int *codes, int cap);
 // A gamepad button as the files name it: "South", "Up", or its number ("316").
 void shortcut_pad_name(int code, char *out, size_t cap);
+// A gamepad button as the controller labels it, for the Buttons sheet: a Switch-mode one's (B, A, Y,
+// X, L, R, ZL, ZR, -, +, LS, RS, Home, Capture: hidkeys_switch), else as the files name it.
+void shortcut_pad_label(int code, bool switch_layout, char *out, size_t cap);
 // An action's name in the files ("undo", "tool:eraser"), or NULL.
 const char *shortcut_action_name(int action);

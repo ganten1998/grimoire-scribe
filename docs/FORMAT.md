@@ -845,7 +845,10 @@ edits it (its lines are in docs/SHORTCUTS.md). Grimoire writes starter mappings 
 shortcuts are turned on and the file does not exist, and never changes it after that; while the
 file is missing the starter mappings apply, and an empty file means no mappings. 1.1.0-beta.2 and
 earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a version does not know
-(2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load.
+(2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
+2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
+`Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
+memory; the file is not changed.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Controller > Buttons: `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,

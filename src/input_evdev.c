@@ -735,6 +735,7 @@ typedef struct {
     char path[300], name[41];  // name: hidkeys_name's, for IN_HID_* and input_hids
     HidKind kind;
     bool held;                 // another app held it exclusively when it came
+    bool switch_layout;        // a Switch-mode controller (hidkeys_switch)
     unsigned hatmask;
     HidKeys keys;
 } KeyDev;
@@ -810,7 +811,7 @@ static void key_scan(bool announce) {
             close(fd); continue;
         }
         KeyDev *k = &g_keys[slot];
-        *k = (KeyDev){.fd = fd, .kind = kind};
+        *k = (KeyDev){.fd = fd, .kind = kind, .switch_layout = kind == HID_GAMEPAD && hidkeys_switch(name, BYTES(keys))};
         strlcpy_q(k->path, path, sizeof k->path);
         hidkeys_name(k->name, sizeof k->name, name);
         // Another app's exclusive grab (a button mapper) would starve Grimoire of its presses: ask
@@ -841,7 +842,8 @@ int input_hids(InputHid *out, int cap) {
     int n = 0;
     for (int i = 0; g_keys_init && g_keys_enabled && i < KEY_DEVS && n < cap; i++) {
         if (g_keys[i].fd < 0) continue;
-        out[n] = (InputHid){.gamepad = g_keys[i].kind == HID_GAMEPAD, .held = g_keys[i].held};
+        out[n] = (InputHid){.gamepad = g_keys[i].kind == HID_GAMEPAD, .held = g_keys[i].held,
+                            .switch_layout = g_keys[i].switch_layout};
         strlcpy_q(out[n++].name, g_keys[i].name, sizeof out->name);
     }
     return n;

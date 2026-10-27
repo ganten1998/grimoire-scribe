@@ -17,6 +17,18 @@ TEST(capabilities) {
     add(keys, 272); CHECK(hidkeys_kind(keys, axes) == HID_NONE); // mouse
     add(axes, 16); CHECK(hidkeys_kind(keys, axes) == HID_GAMEPAD);
 }
+// A Switch-mode controller through Linux's generic driver: "Pro Controller", sixteen buttons from
+// BTN_A (BTN_C and BTN_Z among them). Another pad with the same buttons, or a Pro Controller under
+// Nintendo's driver (the convention's buttons, no BTN_C or BTN_Z), is not one.
+TEST(switch_layout) {
+    uint8_t generic[HID_KEY_BYTES] = {0}, nintendo[HID_KEY_BYTES] = {0};
+    for (int code = 304; code <= 319; code++) add(generic, code);
+    CHECK(hidkeys_switch("Pro Controller", generic));
+    CHECK(!hidkeys_switch("Xbox Wireless Controller", generic));
+    CHECK(!hidkeys_switch(NULL, generic));
+    for (int code = 304; code <= 317; code++) if (code != 306 && code != 309) add(nintendo, code);
+    CHECK(!hidkeys_switch("Nintendo Switch Pro Controller", nintendo));
+}
 TEST(presses_and_modifiers) {
     HidKeys s; HidPress p[2]; hidkeys_sync(&s, NULL, 0, 0);
     CHECK(!hidkeys_event(&s, HID_KEYBOARD, 1, 29, 1, p));
@@ -160,5 +172,6 @@ int main(void) {
     RUN(capabilities); RUN(presses_and_modifiers); RUN(hats_drop_and_pin_resync); RUN(resync_releases_what_went);
     RUN(power_key_on_firmware_5_20);
     RUN(held_names_and_rate);
+    RUN(switch_layout);
     return tl_done();
 }

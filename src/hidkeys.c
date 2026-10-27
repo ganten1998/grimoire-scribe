@@ -28,6 +28,9 @@ bool hidkeys_proxy(const char *name) { return name && !strcmp(name, "kindle-inpu
 HidKind hidkeys_optional(const char *name, const uint8_t *keys, const uint8_t *axes) {
     return hidkeys_proxy(name) ? HID_NONE : hidkeys_kind(keys, axes);
 }
+bool hidkeys_switch(const char *name, const uint8_t *keys) {
+    return name && strstr(name, "Pro Controller") && bit(keys, 306) && bit(keys, 309);
+}
 int hidkeys_power(const char *name, const uint8_t *keys, const uint8_t *axes) {
     // The Scribe's own key (bd71828-pwrkey) has KEY_POWER alone; the proxy has all 767 codes.
     if (hidkeys_proxy(name) || !bit(keys, 116) || digitizer(keys, axes)) return -1;

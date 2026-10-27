@@ -585,7 +585,9 @@ static void script_step(void) {
                              .gamepad = pad != 0, .t_ms = now_ms()});
         } else if (!strcmp(a, "hid")) {
             // hid attach pad|key|held NAME, hid detach NAME: a controller (held: one another app
-            // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it
+            // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it. A
+            // controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so its
+            // name alone makes it a Switch-mode one ("Pro Controller", hidkeys_switch).
             char kind[16] = "", raw[256] = "";
             bool attach = !strcmp(b, "attach");
             if (attach) sscanf(s, "%*s %*s %15s %255[^\n]", kind, raw);
@@ -597,6 +599,9 @@ static void script_step(void) {
             if (attach && g_nhids < 4 && (!strcmp(kind, "pad") || !strcmp(kind, "key") || !strcmp(kind, "held"))) {
                 InputHid h = {.gamepad = strcmp(kind, "key") != 0, .held = !strcmp(kind, "held")};
                 strlcpy_q(h.name, e.hid_name, sizeof h.name);
+                uint8_t buttons[HID_KEY_BYTES] = {0};
+                for (int code = 304; code <= 319; code++) buttons[code / 8] |= (uint8_t)(1u << (code % 8));
+                h.switch_layout = h.gamepad && hidkeys_switch(h.name, buttons);
                 g_hids[g_nhids++] = h;
                 e.gamepad = h.gamepad;
                 e.value = h.held;

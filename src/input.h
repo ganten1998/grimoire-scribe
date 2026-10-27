@@ -73,8 +73,9 @@ int input_poll(InEvent *ev, int timeout_ms);
 void input_watch_fd(int fd);
 void input_shortcuts_enable(bool enabled);
 // The optional keyboards and controllers watched now, none while shortcuts are off: their names
-// (as hid_name), whether each is a controller, and whether another app holds it. Returns how many.
-typedef struct { char name[41]; bool gamepad, held; } InputHid;
+// (as hid_name), whether each is a controller, whether another app holds it, and whether it is a
+// Switch-mode one (hidkeys_switch: the Buttons sheet names its buttons as printed). Returns how many.
+typedef struct { char name[41]; bool gamepad, held, switch_layout; } InputHid;
 int input_hids(InputHid *out, int cap);
 // Logical screen rotation (quarter turns clockwise of the device): events are reported in the
 // rotated screen's coordinates from now on. Calibration stays in panel coordinates.

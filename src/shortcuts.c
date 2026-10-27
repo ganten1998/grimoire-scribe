@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <ctype.h>
 
+// The D-pad's starter lines: in a new shortcuts.ini, and in memory for one that binds none of its
+// directions (shortcuts_load_all).
+#define DPAD_LINES "pad.Up=previous-tool\npad.Down=next-tool\npad.Left=previous-page\npad.Right=next-page\n"
 static const char defaults[] =
     "# Grimoire shortcuts. Enable in Settings > Controller. Reload there after editing.\n"
     "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n"
@@ -20,7 +23,7 @@ static const char defaults[] =
     "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n"
     "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n"
     "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n"
-    "pad.Up=previous-tool\npad.Down=next-tool\npad.Left=previous-page\npad.Right=next-page\n";
+    DPAD_LINES;
 
 int shortcut_keycode(const char *name) {
     // Linux input-event-codes.h, not SDL's unrelated USB scan code numbering.
@@ -78,6 +81,15 @@ void shortcut_pad_name(int code, char *out, size_t cap) {
             return;
         }
     snprintf(out, cap, "%d", code);
+}
+
+void shortcut_pad_label(int code, bool switch_layout, char *out, size_t cap) {
+    // The Pro Controller's simple report, in its order from BTN_A (hidkeys_switch).
+    static const char *const k_switch[] = {"B", "A", "Y", "X", "L", "R", "ZL", "ZR", "-", "+",
+                                           "LS", "RS", "Home", "Capture"};
+    if (switch_layout && code >= 304 && code < 304 + (int)(sizeof k_switch / sizeof *k_switch))
+        snprintf(out, cap, "%s", k_switch[code - 304]);
+    else shortcut_pad_name(code, out, cap);
 }
 
 int shortcut_action(const char *name) {
@@ -168,8 +180,21 @@ int shortcuts_write_defaults(const char *path) {
     return write_file_atomic(path, defaults, sizeof defaults - 1);
 }
 
+// No version before 2.0.0-beta.5 read a D-pad or a hat, so a shortcuts.ini written then binds none of
+// its directions: such a file gets the D-pad's starter lines too, in memory (as many as there is room
+// for, none counted as refused). An empty file keeps no mappings.
+static void add_dpad(Shortcuts *map) {
+    for (int i = 0; i < map->count; i++)
+        if (map->bindings[i].gamepad && map->bindings[i].code >= 544 && map->bindings[i].code <= 547) return;
+    Shortcuts dpad = {0};
+    char text[] = DPAD_LINES;
+    parse(&dpad, text);
+    for (int i = 0; i < dpad.count && map->count < SHORTCUT_MAX; i++) map->bindings[map->count++] = dpad.bindings[i];
+}
+
 void shortcuts_load_all(Shortcuts *map, const char *shortcuts_path, const char *controller_path) {
     shortcuts_load(map, shortcuts_path);
+    if (map->count) add_dpad(map);
     if (!controller_path || access(controller_path, F_OK) != 0) return;
     Shortcuts pads;
     shortcuts_load(&pads, controller_path);

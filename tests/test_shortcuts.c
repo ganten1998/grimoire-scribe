@@ -139,11 +139,73 @@ TEST(every_action_by_name) {
     CHECK(shortcuts_lookup(&back, true, 312, 0) == SHORTCUT_HOLD_ERASER);
     unlink(sp); unlink(cp);
 }
+// No version before 2.0.0-beta.5 read a D-pad, so a shortcuts.ini it wrote binds none of its
+// directions: the D-pad's starter lines come with it, in memory alone. Not for a file that binds one,
+// an empty file, or controller.ini (whose buttons were learned: a learn from the map writes them there).
+TEST(dpad_for_files_written_before) {
+    char sp[800], cp[800];
+    snprintf(sp, sizeof sp, "%s/shortcuts-old.ini", tl_tmp());
+    snprintf(cp, sizeof cp, "%s/controller-old.ini", tl_tmp());
+    unlink(sp); unlink(cp);
+    const char *old = "key.Left=previous-page\npad.304=undo\npad.314=previous-page\n";
+    CHECK(write_file_atomic(sp, old, strlen(old)) == 0);
+    Shortcuts m;
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.count == 3 + 4 && m.rejected == 0);
+    CHECK(shortcuts_lookup(&m, true, 544, 0) == SHORTCUT_PREV_TOOL && shortcuts_lookup(&m, true, 545, 0) == SHORTCUT_NEXT_TOOL);
+    CHECK(shortcuts_lookup(&m, true, 546, 0) == SHORTCUT_PREV_PAGE && shortcuts_lookup(&m, true, 547, 0) == SHORTCUT_NEXT_PAGE);
+    size_t len; char *text = read_file(sp, &len);
+    CHECK(text && !strcmp(text, old));  // the file as it was
+    free(text);
+    CHECK(shortcuts_learn(&m, cp, 305, SHORTCUT_REDO) == 0);
+    text = read_file(cp, &len);
+    CHECK(text && strstr(text, "pad.Up=previous-tool\n") && strstr(text, "pad.Right=next-page\n"));
+    free(text);
+    const char *learned = "pad.South=redo\n";  // controller.ini without the D-pad: as it says
+    CHECK(write_file_atomic(cp, learned, strlen(learned)) == 0);
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.count == 2 && shortcuts_lookup(&m, true, 544, 0) == SHORTCUT_NONE && shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_REDO);
+    unlink(cp);
+    const char *one = "pad.Left=undo\n";
+    CHECK(write_file_atomic(sp, one, strlen(one)) == 0);
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.count == 1 && shortcuts_lookup(&m, true, 546, 0) == SHORTCUT_UNDO && shortcuts_lookup(&m, true, 544, 0) == SHORTCUT_NONE);
+    CHECK(write_file_atomic(sp, "", 0) == 0);
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.count == 0);
+    // Nearly full: what there is room for, none refused.
+    char many[2048] = "";
+    for (int i = 1; i <= SHORTCUT_MAX - 2; i++) {
+        size_t n = strlen(many);
+        snprintf(many + n, sizeof many - n, "key.code%d=undo\n", i);
+    }
+    CHECK(write_file_atomic(sp, many, strlen(many)) == 0);
+    shortcuts_load_all(&m, sp, cp);
+    CHECK(m.count == SHORTCUT_MAX && m.rejected == 0 && shortcuts_lookup(&m, true, 545, 0) == SHORTCUT_NEXT_TOOL &&
+          shortcuts_lookup(&m, true, 546, 0) == SHORTCUT_NONE);
+    unlink(sp);
+}
+// A Switch-mode controller's buttons as printed on it; others, and buttons it does not have, as the
+// files name them.
+TEST(switch_labels) {
+    char name[16];
+    shortcut_pad_label(304, true, name, sizeof name); CHECK(!strcmp(name, "B"));
+    shortcut_pad_label(306, true, name, sizeof name); CHECK(!strcmp(name, "Y"));
+    shortcut_pad_label(310, true, name, sizeof name); CHECK(!strcmp(name, "ZL"));
+    shortcut_pad_label(312, true, name, sizeof name); CHECK(!strcmp(name, "-"));
+    shortcut_pad_label(317, true, name, sizeof name); CHECK(!strcmp(name, "Capture"));
+    shortcut_pad_label(318, true, name, sizeof name); CHECK(!strcmp(name, "318"));
+    shortcut_pad_label(544, true, name, sizeof name); CHECK(!strcmp(name, "Up"));
+    shortcut_pad_label(304, false, name, sizeof name); CHECK(!strcmp(name, "South"));
+    shortcut_pad_label(306, false, name, sizeof name); CHECK(!strcmp(name, "306"));
+}
 int main(void) {
     RUN(defaults_and_exact_modifiers);
     RUN(custom_mappings_and_limits);
     RUN(settings_are_opt_in);
     RUN(controller_ini_learns_one_button_per_action);
     RUN(every_action_by_name);
+    RUN(dpad_for_files_written_before);
+    RUN(switch_labels);
     return tl_done();
 }
