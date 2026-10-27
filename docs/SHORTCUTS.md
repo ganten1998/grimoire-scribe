@@ -1,9 +1,9 @@
 # Keyboard and controller shortcuts
 
 A controller (or a keyboard) is express keys for the hand that does not hold the pen: pages,
-tools, undo and redo, the eraser and white ink, in the notebook editor. It opens and closes the
-editor's menus, but does not move around inside them (but for next and previous in the tool picker,
-below): tap there.
+tools, undo and redo, the eraser and white ink, links and page names, in the notebook editor. It
+opens and closes the editor's menus, but does not move around inside them (but for next and
+previous in the tool picker, below): tap there.
 
 Enable **Library > Settings > Controller > Enable shortcuts**. This writes starter mappings to
 `/mnt/us/grimoire/shortcuts.ini` only if that file does not exist. Edit it over USB/SSH and choose
@@ -14,21 +14,22 @@ optional input devices again.
 
 ## Controller buttons
 
-**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
-has four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser,
-Erase while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in
-the tool picker's order, previous / next tool, and previous / next in the picker), **Pages**
-(previous / next page, first / last page, new page, fit page, Pages, Index) and **Menus** (the tool
-picker, Paper, Display, Pen feel, fold the panel, the Library, close menu). Open a group, tap a
-row, then press the button; Done goes back up to the list. One button per action: a button that did something else does this now (a
-toast says which action lost it), and the action's other buttons stop doing it. The previous /
-next and first / last rows learn two presses, the first one's and then the second's. Ten seconds
-without a press leave the row as it was; a second tap on it stops it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically,
-every time). While that file is there, the controller's buttons come from it alone and the `pad.`
-lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from `shortcuts.ini`.
-Hold a row (0.6 s) to take its buttons away, that row's alone (both actions of a previous / next
-or first / last row): it reads "none", a toast says so, and `controller.ini` is written without
-them, so it stays that way. **Reset buttons** deletes `controller.ini`, every row at once.
+**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list has
+four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser, Erase
+while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in the tool
+picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next
+page, first / last page, new page, fit page, Pages, Index, add a link, name the page) and **Menus**
+(the tool picker, Paper, Display, Pen feel, fold the panel, the Library, close menu). Open a group,
+tap a row, then press the button; Done goes back up to the list. One button per action: a button
+that did something else does this now (a toast says which action lost it), and the action's other
+buttons stop doing it. The previous / next and first / last rows learn two presses, the first one's
+and then the second's. Ten seconds without a press leave the row as it was; a second tap on it stops
+it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically, every
+time). While that file is there, the controller's buttons come from it alone and the `pad.` lines of
+`shortcuts.ini` are set aside; keyboard (`key.`) lines always come from `shortcuts.ini`. Hold a row
+(0.6 s) to take its buttons away, that row's alone (both actions of a previous / next or first /
+last row): it reads "none", a toast says so, and `controller.ini` is written without them, so it
+stays that way. **Reset buttons** deletes `controller.ini`, every row at once.
 
 An Xbox-layout controller's triggers (8BitDo's Xbox mode, which the Kindle reads through Linux's
 generic driver as "Xbox Bluetooth Gamepad") are no buttons there but axes, ABS_Z and ABS_RZ beside
@@ -89,7 +90,7 @@ Actions, in the Buttons sheet's groups:
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
   notebook's own paper right after the open one, which opens, as the Pages view's New page does),
   `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
-  its Pages or its Index tab).
+  its Pages or its Index tab), `add-link` (Add a link) and `name-page` (Name the page), both below.
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`.
 
@@ -109,6 +110,17 @@ they switch tools through all nine, from the eraser as above (marker, eraser, ne
 the fountain pen): a pinned pen is picked as a tap on its pin picks it (the tool button keeps its
 pen), another goes to the tool button. The starter mappings give them no key or button.
 
+`add-link` starts a link on the open page in one press, as the Index's Add a link does, without
+going through the Pages view: a toast asks you to draw around what links, the next ink stroke is the
+link's box, and the Pages view then asks where it goes (tap a page, or The Index). Pressed again
+while the link waits for its box, it is not made (a toast says so), as Close menu does. On a
+read-only page it does nothing but say so, and where the notebook's `links.ini` does not read it
+does nothing (the Index's Add a link is greyed out then). `name-page` opens the Index's naming
+keyboard for the open page, holding its name: Done saves it (an empty name takes it out of the
+Index), Cancel keeps the old one, and either goes back to the page, not to the Index. Where the
+notebook's `nav.ini` does not read it does nothing (Name this page is greyed out then). Neither
+acts while a menu is open, and the starter mappings give them no key or button.
+
 A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
 another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
 view to their tab, and close it on their own. `close-menu` closes whatever menu is in front: a link
@@ -118,8 +130,8 @@ paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-
 never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
-`fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`) and count them in Reload
-shortcuts.ini; their other lines still work.
+`fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
+`name-page`) and count them in Reload shortcuts.ini; their other lines still work.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux

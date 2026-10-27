@@ -60,6 +60,11 @@
   and picker-next, a row of their own in Buttons... under Tools) move the open tool picker's choice
   and leave it open; with it closed they switch tools through all nine pens. Next and previous tool
   leave the open picker alone.
+- **Links and page names from a button**: two new actions for a button or a key (add-link and
+  name-page, rows of their own in Buttons... under Pages). Add a link starts a link on the open page
+  in one press, without going through the Pages view and its Index: draw around what links, then
+  tap where it goes. Pressed again before you draw, the link is not made. Name the page opens the
+  keyboard for the open page's name and goes back to the page after Done or Cancel.
 - **Bluetooth controllers**: with the kindle-hid-passthrough helper unpacked in grimoire/bluetooth
   (only its files: its installer adds a boot-time button mapper that takes controllers away),
   Bluetooth controller starts it with Grimoire and Pair a controller... finds and pairs one. It runs
