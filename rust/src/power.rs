@@ -22,14 +22,40 @@ pub struct PowerKey {
 /// release of a press it saw (*held_ms = how long the key was down), else IN_NONE (autorepeat, or a
 /// release whose press it never saw).
 pub fn powerkey_event(k: &mut PowerKey, value: i32, t: u32, held_ms: &mut i32) -> InType {
-    todo!()
+    *held_ms = 0;
+    if value == 1 {
+        // A press, even over one whose release never came: follow the new one.
+        k.down = true;
+        k.held_sent = false;
+        k.down_at = t;
+        return InType::Power;
+    }
+    if value == 0 && k.down {
+        k.down = false;
+        *held_ms = t.wrapping_sub(k.down_at) as i32;
+        return InType::PowerUp;
+    }
+    InType::None
 }
 /// Called at every input poll. Once the key has been down INPUT_POWER_HOLD_MS it asks still_down()
 /// (EVIOCGKEY: 1 down, 0 up, -1 cannot tell) and returns IN_POWER_HELD, once per press, unless the
 /// key is found up: then its release was lost, and it returns IN_POWER_UP with *held_ms = -1.
 /// Otherwise IN_NONE; still_down is only called at that moment.
 pub fn powerkey_tick(k: &mut PowerKey, now: u32, still_down: &mut dyn FnMut() -> i32, held_ms: &mut i32) -> InType {
-    todo!()
+    *held_ms = 0;
+    if !k.down || k.held_sent || (now.wrapping_sub(k.down_at) as i32) < INPUT_POWER_HOLD_MS {
+        return InType::None;
+    }
+    // The events say it is still down: make sure before leaving Grimoire on it. If the device
+    // cannot tell, trust the events (a key device does not drop them).
+    if still_down() == 0 {
+        k.down = false;
+        *held_ms = -1;
+        return InType::PowerUp;
+    }
+    k.held_sent = true;
+    *held_ms = now.wrapping_sub(k.down_at) as i32;
+    InType::PowerHeld
 }
 
 /// The power service's state (`lipc-get-prop -s com.lab126.powerd state`).
@@ -51,12 +77,43 @@ pub enum PowerdState {
 /// Parses the property's text: case, surrounding spaces and quotes are ignored; NULL, an empty
 /// string or any other name give POWERD_UNKNOWN.
 pub fn powerd_parse_state(s: Option<&str>) -> PowerdState {
-    todo!()
+    const K_NAMES: [(&str, PowerdState); 4] = [
+        ("active", PowerdState::Active),
+        ("screenSaver", PowerdState::Screensaver),
+        ("readyToSuspend", PowerdState::ReadyToSuspend),
+        ("suspended", PowerdState::Suspended),
+    ];
+    let Some(s) = s else {
+        return PowerdState::Unknown;
+    };
+    // (a C string ends at its first NUL)
+    let b = s.as_bytes();
+    let b = &b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())];
+    let mut start = 0;
+    while start < b.len() && (isspace(b[start]) || b[start] == b'"') {
+        start += 1;
+    }
+    let mut n = b.len();
+    while n > start && (isspace(b[n - 1]) || b[n - 1] == b'"') {
+        n -= 1;
+    }
+    let s = &b[start..n];
+    for (name, state) in K_NAMES {
+        if name.len() == s.len() && name.as_bytes().eq_ignore_ascii_case(s) {
+            return state;
+        }
+    }
+    PowerdState::Unknown
+}
+
+/// isspace() in the C locale: space, \t, \n, \v, \f, \r (u8::is_ascii_whitespace leaves out \v).
+fn isspace(c: u8) -> bool {
+    c == b' ' || (b'\t'..=b'\r').contains(&c)
 }
 /// The screensaver or deeper: the Kindle is not awake and may be waiting for its passcode, so
 /// Grimoire must neither draw over it nor send it a power button (that would wake it).
 pub fn powerd_dozing(s: PowerdState) -> bool {
-    todo!()
+    s == PowerdState::Screensaver || s == PowerdState::ReadyToSuspend || s == PowerdState::Suspended
 }
 
 /// What the release of a power button press asks of Grimoire (app.c arms the matching fallback).
@@ -77,7 +134,24 @@ pub enum PowerUpAction {
     Leave = 3,  // POWER_UP_LEAVE
 }
 pub fn power_up_action(followed: bool, answered: bool, down_asleep: bool, asleep: bool, held_ms: i32) -> PowerUpAction {
-    todo!()
+    if !followed {
+        return PowerUpAction::Nothing;
+    }
+    // Held past the 4 s mark while Grimoire was busy (its IN_POWER_HELD never came): the release is
+    // the hold, answered or not, as the hold itself would have been.
+    if held_ms >= INPUT_POWER_HOLD_MS {
+        return PowerUpAction::Leave;
+    }
+    // The power service answered (a wake announced while the key was down must not turn the release
+    // into a sleep request), or Grimoire slept or woke on its own while the key was down.
+    if answered || down_asleep != asleep {
+        return PowerUpAction::Nothing;
+    }
+    if asleep {
+        PowerUpAction::WakeWait
+    } else {
+        PowerUpAction::SleepWait
+    }
 }
 
 /// The wake fallback: a short press on the sleep screen, and no outOfScreenSaver 3 s later. With the
@@ -94,7 +168,16 @@ pub enum WakeFallback {
     Leave = 2,  // WAKE_FALLBACK_LEAVE
 }
 pub fn power_wake_fallback(st: PowerdState, locked: &mut i32) -> WakeFallback {
-    todo!()
+    if !powerd_dozing(st) {
+        *locked = 0;
+        return WakeFallback::Wake;
+    }
+    *locked += 1;
+    if *locked >= 2 {
+        WakeFallback::Leave
+    } else {
+        WakeFallback::Stay
+    }
 }
 
 /// Input Grimoire ignores while it shows its sleep screen (or the Kindle's): pen and touch, and the
@@ -102,5 +185,17 @@ pub fn power_wake_fallback(st: PowerdState, locked: &mut i32) -> WakeFallback {
 /// Their ends still get through, so one that began before the sleep finishes: a button left down
 /// would clear the page by its hold right after the wake.
 pub fn power_asleep_drops(ev: &InEvent) -> bool {
-    todo!()
+    match ev.type_ {
+        InType::Key
+        | InType::PenDown
+        | InType::PenMove
+        | InType::PenUp
+        | InType::TouchDown
+        | InType::TouchMove
+        | InType::TouchUp
+        | InType::PinchBegin
+        | InType::PinchMove => true,
+        InType::PenButton => ev.side_button, // the press; its release gets through
+        _ => false,
+    }
 }
