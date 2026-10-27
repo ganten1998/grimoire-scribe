@@ -687,18 +687,28 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    window is no IN_PEN_LEAVE, so there the ring stays where it was last). Record and Picture in
    picture take a third canvas, film: the full-size picture with the pen's mark drawn on it, kept as
    tiles and pen frames come (not by animation frames), so both go on while the tab is hidden.
-   Record makes an MP4 (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that
-   MediaRecorder.isTypeSupported takes; Chrome raises the level itself, 5.0 at 1860x2480, measured
-   in Chrome 156), and WebM where the browser records no MP4 (Firefox 156: VP8 only), the button
-   saying "Record (WebM)" and why. Transparent paper records as WebM where it can: an MP4 has no
-   alpha (its clear paper came out black), VP8 in WebM keeps it. An MP4 that shows Transparent paper
-   all the same (a browser with no WebM, or the paper made clear after the recording started) has
-   the paper drawn in. film keeps its first size for the whole recording, a turned screen fit whole
-   inside it: Chrome's MP4 frames after a size change came out corrupt (its WebM changed size
-   mid-file). Viewers end with a bye when Live view stops (Stop on the card, 10 minutes without a
-   viewer, Grimoire leaving: `app_shutdown` stops them before anything else, so no export child
-   inherits a socket and the headless runner never waits for one); on Linux they also have
-   PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.
+   Record makes an MP4 wherever the browser can (the owner: "absolutely an mp4"). MediaRecorder's
+   own first (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that isTypeSupported takes;
+   Chrome raises the level itself, 5.0 at 1860x2480, measured in Chrome 156; Safari takes plain
+   video/mp4). Firefox's MediaRecorder writes only WebM and Ogg (Nightly 161's XUL has no MP4
+   writer), but its WebCodecs VideoEncoder makes H.264 (macOS: VideoToolbox), so there the page
+   makes the MP4 itself (CodecRecorder): Baseline H.264 (no B frames, so no reordering table),
+   level 5.1, asked of VideoEncoder.isConfigSupported at each hello's size; a frame taken from film
+   once the code that changed it has run (a microtask, not an animation frame, so it goes on while
+   the tab is hidden), at most 15 a second, a key frame when 2 s have passed since the last; at Stop
+   the encoder is flushed and mp4Boxes writes ftyp, mdat (the chunks as they came) and moov (stts
+   from the frames' own times, 30000 ticks a second, each frame lasting until the next, stss, stsz,
+   stco, co64 past 4 GB). Only a frame per change, so a still screen is one long frame. Measured in
+   Firefox 158 headless at 1860x2480: Constrained Baseline at level 5.0, every frame decoded by
+   ffmpeg and by AVFoundation (what QuickTime plays with). WebM only where neither can (the button
+   says "Record (WebM)" and why). Transparent paper records as an MP4 too, its paper drawn in: an
+   MP4 has no alpha (Chrome's clear paper came out black without it). film keeps its first size for
+   the whole recording, a turned screen fit whole inside it: Chrome's MP4 frames after a size change
+   came out corrupt (its WebM changed size mid-file). Viewers end with a bye when Live view stops
+   (Stop on the card, 10 minutes without a viewer, Grimoire leaving: `app_shutdown` stops them
+   before anything else, so no export child inherits a socket and the headless runner never waits
+   for one); on Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent
+   has gone.
    An icon-only chip in the top right corner (inside the 50 px margin) says Live view is on; it is
    overlaid at the present like the toast, and the screen guard skips it
    (`display_skip_overlay`). Auto-sleep waits while a computer watches. The log names no code,
@@ -706,7 +716,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    tests/live_check.sh, which pairs as a browser, reads the stream (tests/live_stream.py, which
    decodes the PNGs itself, and the pen frame for the place its script left the pen hovering),
    checks the browser's frame reader on the same bytes (tests/live_check.js, with the page's pen,
-   film and format math), refuses a third viewer, and checks that no viewer outlives the app.
+   film and format math, mp4Boxes read back, CodecRecorder on a stand-in encoder, and, where ffmpeg
+   has libx264, a real H.264 stream put in an MP4 that ffmpeg must decode to the stream's own frames
+   at their times), refuses a third viewer, and checks that no viewer outlives the app.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce
