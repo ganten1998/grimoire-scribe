@@ -4005,3 +4005,174 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     0
 }
 
+// Checks of the helpers that need no screen but this module's: the view's arithmetic, the bilinear
+// blit, the panel's layout against panel.h's height, and the session cache's lookups. (The editor
+// as a whole is the scenarios' to check: tests/scenarios/*.qs, make rust-scenarios.)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // An App with the editor's state on a w x h screen, for a page of pw x ph, at 300 dpi.
+    fn app(w: i32, h: i32, pw: i32, ph: i32) -> App {
+        ui_init(300.0);
+        assert_eq!(font_init(), 0);
+        let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+        a.ed = Some(Box::default());
+        let s = ed(&mut a);
+        s.pgw = pw;
+        s.pgh = ph;
+        a
+    }
+
+    #[test]
+    fn the_view_fits_the_pages_width() {
+        // Upright, a page of the screen's size: 100% and no offset, the identity.
+        let mut a = app(1860, 2480, 1860, 2480);
+        view_reset(&mut a);
+        assert!(view_identity(&a) && !zoomed(&a));
+        let (mut x, mut y) = (0.0, 0.0);
+        to_page(ed_ref(&a), 100.5, 200.25, &mut x, &mut y);
+        assert_eq!((x, y), (100.5, 200.25));
+        assert_eq!(page_to_screen(&a, Rect::new(10, 10, 5, 5)), Rect::new(8, 8, 10, 10));
+        assert_eq!(page_to_screen(&a, RECT_EMPTY), RECT_EMPTY);
+        // Sideways: the page's width across the screen, from its top; the whole page at the least.
+        let mut a = app(2480, 1860, 1860, 2480);
+        view_reset(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!(s.zoom, 2480.0 / 1860.0);
+        assert_eq!(s.zoom_min, 1860.0 / 2480.0);
+        assert_eq!((s.ox, s.oy), (0.0, 0.0));
+        assert!(!view_identity(&a) && !zoomed(&a));
+        // Pinched out past the whole page: held to it, centred across.
+        let s = ed(&mut a);
+        s.zoom = 0.1;
+        s.oy = 300.0;
+        view_clamp(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!(s.zoom, 0.75);
+        assert_eq!(s.oy, 0.0);
+        assert_eq!(s.ox, -(2480.0f32 / 0.75 - 1860.0) / 2.0);
+        assert!(zoomed(&a));
+        // A notebook from a larger Scribe: its whole page fits this screen's width.
+        let mut a = app(1860, 2480, 1986, 2648);
+        view_reset(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!(s.zoom, 1860.0 / 1986.0);
+        assert_eq!((s.ox, s.oy), (0.0, 0.0));
+        assert!(!zoomed(&a));
+        // Nearly 100% upright snaps to the identity.
+        let mut a = app(1860, 2480, 1860, 2480);
+        view_reset(&mut a);
+        ed(&mut a).zoom = 1.005;
+        view_clamp(&mut a);
+        assert!(view_identity(&a));
+    }
+
+    #[test]
+    fn the_blit_at_100_percent_is_the_page() {
+        let mut a = app(64, 48, 64, 48);
+        let s = ed(&mut a);
+        assert_eq!(canvas_init(&mut s.page_canvas, 64, 48), 0);
+        for (i, p) in s.page_canvas.px.iter_mut().enumerate() {
+            *p = (i * 37 % 251) as u8;
+        }
+        view_reset(&mut a);
+        blit_view(&mut a, Rect::new(0, 0, 64, 48));
+        assert_eq!(a.screen.px, ed_ref(&a).page_canvas.px);
+        // Zoomed out to half: the desk around the page, the page sampled between its pixels.
+        let s = ed(&mut a);
+        s.zoom = 0.5;
+        s.ox = -32.0;
+        s.oy = -24.0;
+        blit_view(&mut a, Rect::new(0, 0, 64, 48));
+        assert_eq!(a.screen.px[0], 205);
+        let pc = &ed_ref(&a).page_canvas;
+        // Screen (32, 24) samples page (32.5, 24.5): its four pixels, half each way.
+        let w = (0.5f32 * 255.0) as u32;
+        let at = |x: usize, y: usize| pc.px[y * 64 + x] as u32;
+        let top = at(32, 24) * (255 - w) + at(33, 24) * w;
+        let bot = at(32, 25) * (255 - w) + at(33, 25) * w;
+        assert_eq!(a.screen.px[24 * 64 + 32] as u32, (top * (255 - w) + bot * w + 32512) / 65025);
+    }
+
+    #[test]
+    fn the_panel_is_as_tall_as_panel_h_says() {
+        for (w, h, pins) in [(1860, 2480, 0), (2480, 1860, 0), (2480, 1860, 4), (1860, 2480, 4)] {
+            let mut a = app(w, h, 1860, 2480);
+            for i in 0..pins {
+                a.settings.pins[i] = TOOL_ORDER[i + 1];
+            }
+            a.settings.npins = pins as i32;
+            fit_panel_to(&a.settings, a.h);
+            let p = panel_rect_at(&a, a.w - pw() - ui_px(28.0), ui_px(220.0));
+            ed(&mut a).panel = p;
+            draw_panel(&mut a);
+            let s = ed_ref(&a);
+            // Inside the screen, its margins free.
+            let m = ui_px(PANEL_MARGIN as f32);
+            assert!(p.x >= 0 && p.x + p.w <= w && p.y >= m && p.y + p.h <= h - m);
+            assert_eq!(p.h, panel_height(g_fit(), pins as i32));
+            // The buttons from the top: grip, collapse, the tool button, the pins, the eraser, (undo,
+            // redo, clear and previous greyed out), the page chip, next, paper, display, pen feel,
+            // the library, whose gap under it ends the panel but for its last 6 px.
+            let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
+            let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
+            want.extend(std::iter::repeat_n(P_TOOL, pins));
+            want.extend([P_TOOL, P_PAGES, P_NEXT, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
+            assert_eq!(ids, want);
+            let last = s.hits.h.last().unwrap().r;
+            assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
+            assert_eq!(s.tool_button_shows, TOOL_PENCIL.0);
+            assert!(!s.white_mark);
+        }
+        // Collapsed: the square is the one button.
+        let mut a = app(1860, 2480, 1860, 2480);
+        ed(&mut a).collapsed = true;
+        let p = panel_rect_at(&a, 5000, -50);
+        assert_eq!(p, Rect::new(1860 - panel_box(), ui_px(PANEL_MARGIN as f32), panel_box(), panel_box()));
+        ed(&mut a).panel = p;
+        draw_panel(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!(s.hits.h.len(), 1);
+        assert_eq!((s.hits.h[0].id, s.hits.h[0].r), (P_EXPAND, p));
+        assert_eq!(s.tool_button_shows, TB_NONE);
+    }
+
+    #[test]
+    fn the_session_cache_finds_the_open_page() {
+        let mut s = EditorState::default();
+        for pid in [7u32, 9, 11] {
+            let i = s.entry_for(pid).unwrap();
+            assert_eq!(s.hist[i].h.limit, 500);
+            s.hist[i].page = Some(page_new(10, 10, PAPER_BLANK));
+        }
+        assert_eq!(s.entry_for(9), Some(1));
+        assert_eq!(s.open_page_ref(), 0);
+        assert!(!s.is_open_page(1) && s.open_page().is_none());
+        s.page = Some(9);
+        assert_eq!(s.page_ix(), Some(1));
+        assert_eq!(s.open_page_ref(), page_ref(s.hist[1].page.as_deref().unwrap()));
+        assert!(s.is_open_page(1) && !s.is_open_page(0));
+        // A page deleted: the last entry takes its place, as in the C; the open one is forgotten.
+        forget_page(&mut s, 7);
+        assert_eq!(s.hist.iter().map(|e| e.page_id).collect::<Vec<_>>(), [11, 9]);
+        assert_eq!(s.page_ix(), Some(1));
+        forget_page(&mut s, 9);
+        assert_eq!(s.page, None);
+        // The history of one entry and the page of another, at once.
+        s.entry_for(5).unwrap();
+        let (h, p) = hist_page(&mut s.hist, 1, 0);
+        assert_eq!((h.limit, p.w), (500, 10));
+        let (h, p) = hist_page(&mut s.hist, 0, 0);
+        assert_eq!((h.limit, p.w), (500, 10));
+    }
+
+    #[test]
+    fn probes_read_atoi_as_c_does() {
+        assert_eq!(atoi("12"), 12);
+        assert_eq!(atoi(" -3x"), -3);
+        assert_eq!(atoi("x"), 0);
+        assert_eq!(atoi(""), 0);
+    }
+}
