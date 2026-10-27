@@ -81,8 +81,8 @@ view to their tab, and close it on their own. `close-menu` closes whatever menu 
 being placed is not made, as Back there does, nor one still waiting for its box. `paper` owns the
 paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-feel` and
 `close-menu` go back. No menu button acts while the Pages view's keyboard is open, so typing is
-never lost. Existing shortcut files are never rewritten. Versions 2.0.0-beta.1 to beta.4 refuse
-the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
+never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
+refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`) and count them in Reload shortcuts.ini; their other lines
 still work.

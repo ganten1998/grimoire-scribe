@@ -843,9 +843,9 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
 `shortcuts.ini`, beside `settings.ini`, holds the keyboard and controller mappings, and the owner
 edits it (its lines are in docs/SHORTCUTS.md). Grimoire writes starter mappings to it only when
 shortcuts are turned on and the file does not exist, and never changes it after that; while the
-file is missing the starter mappings apply, and an empty file means no mappings. Versions before
-2.0.0-beta.1 ignore it. A line naming an action a version does not know (2.0.0-beta.5 added fifteen)
-is refused and counted there, and the other lines still load.
+file is missing the starter mappings apply, and an empty file means no mappings. 1.1.0-beta.2 and
+earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a version does not know
+(2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Controller > Buttons: `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
@@ -973,7 +973,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `shortcuts_enabled` (2.0) | dropped on the next save | kept; there are no shortcuts there |
 | `shortcuts.ini` (2.0) | never read | never read |
 | `controller` (2.0) | dropped on the next save | kept; there is no Bluetooth helper there |
-| `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
+| `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 1.2.0 and 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
 
 ## Highlighter rendering in 1.2.0
