@@ -2,6 +2,7 @@
 // UTF-8: keys type whole characters, backspace removes whole characters, shift gives accented
 // capitals, the accents page is one key away, and a name opened for renaming keeps its accents
 // and is never cut inside a character.
+#![allow(clippy::needless_range_loop, clippy::manual_range_contains, clippy::neg_cmp_op_on_partial_ord, clippy::int_plus_one, clippy::missing_const_for_thread_local)]
 mod testlib;
 
 use grimoire::prelude::*;

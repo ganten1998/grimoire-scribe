@@ -3,6 +3,7 @@
 // the choice of language (settings.ini, the Kindle's locale file, the environment); dates; and
 // the widths of text the every-screen scenario (tests/scenarios/y_all_screens.qs, which make
 // l10n-check runs in every language) cannot reach: rare notices, and text drawn without a fit.
+#![allow(clippy::needless_range_loop, clippy::manual_range_contains, clippy::neg_cmp_op_on_partial_ord, clippy::int_plus_one)]
 mod testlib;
 
 use grimoire::prelude::*;
@@ -134,10 +135,8 @@ fn fmt_args(f: &str, types: &mut [u8; 17]) -> i32 {
     if numbered && plain {
         return -1;
     }
-    for i in 1..=max {
-        if types[i] == 0 {
-            return -1;
-        }
+    if types[1..=max].contains(&0) {
+        return -1;
     }
     max as i32
 }
@@ -184,7 +183,10 @@ fn forms_of(e: &I18nEntry) -> Vec<&'static str> {
 
 fn each_entry_formats(code: &str, e: &I18nEntry, bad: &mut i32) {
     for (k, s) in forms_of(e).into_iter().enumerate() {
-        let english = if k == 0 || e.id_plural.is_none() { e.id } else { e.id_plural.unwrap() };
+        let english = match (k, e.id_plural) {
+            (0, _) | (_, None) => e.id,
+            (_, Some(plural)) => plural,
+        };
         if !fmt_compatible(english, s) {
             eprintln!("  {}: \"{}\" does not read the arguments of \"{}\"", code, s, english);
             *bad += 1;
@@ -326,7 +328,7 @@ fn lookups() {
     // English for what a catalog lacks: the very string the code passed.
     let none = "A sentence no catalog has";
     check!(std::ptr::eq(tr(none), none));
-    check!(tr("") == ""); // never the catalog's header
+    check!(tr("").is_empty()); // never the catalog's header
     // Contexts: the same English in two contexts are two strings; a context it lacks is English.
     check!(c_("month", "May") == "may");
     check!(c_("month", "Sep") == "sept");
@@ -846,7 +848,7 @@ struct Hook {
     text: String,
 }
 thread_local! {
-    static G_HOOK: RefCell<Hook> = RefCell::new(Hook { calls: 0, need: 0, have: 0, text: String::new() });
+    static G_HOOK: RefCell<Hook> = const { RefCell::new(Hook { calls: 0, need: 0, have: 0, text: String::new() }) };
 }
 fn hook(text: &str, need: i32, have: i32) {
     G_HOOK.with(|h| {

@@ -3,7 +3,7 @@
 // (src/compact.h, src/bgwork_compact.c): a page file loses the strokes that change nothing, looks
 // exactly as before, and only pages the list names are touched.
 // Index loops and range comparisons are written as the C test writes them.
-#![allow(clippy::needless_range_loop, clippy::manual_range_contains)]
+#![allow(clippy::needless_range_loop, clippy::manual_range_contains, clippy::neg_cmp_op_on_partial_ord, clippy::too_many_arguments)]
 mod testlib;
 
 use grimoire::prelude::*;
@@ -692,7 +692,7 @@ fn a_list_that_does_not_read_is_kept() {
     let lp = list_path(&nb);
     let t = "# a list\n3\n4\n";
     check!(write_file_atomic(&lp, t.as_bytes()) == 0);
-    check!(std::fs::set_permissions(&lp, std::fs::Permissions::from_mode(0)).is_ok());
+    check!(std::fs::set_permissions(&lp, std::fs::Permissions::from_mode(0o000)).is_ok());
     if std::fs::File::open(&lp).is_ok() {
         // (run as root, which reads it anyway: nothing to see here)
     } else {

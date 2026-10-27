@@ -746,7 +746,7 @@ pub fn export_folder_zip(folder: &str, dpi: f32, out: &mut Buf) -> i32 {
         loop {
             let mut key = String::new();
             csnprintf!(&mut key, 400, "%s%s", &prefix, &dir);
-            if !used.iter().any(|u| *u == key) {
+            if !used.contains(&key) {
                 let mut u = String::new();
                 strlcpy_q(&mut u, &key, 400);
                 used.push(u);

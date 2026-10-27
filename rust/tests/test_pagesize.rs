@@ -4,7 +4,7 @@
 // panel; how many music systems fit is worked out for the page's own height; and which fast
 // refreshes a colour panel waits after (all but live ink).
 // Index loops and range comparisons are written as the C test writes them.
-#![allow(clippy::needless_range_loop, clippy::manual_range_contains)]
+#![allow(clippy::needless_range_loop, clippy::manual_range_contains, clippy::neg_cmp_op_on_partial_ord)]
 mod testlib;
 
 use grimoire::prelude::*;
