@@ -2,13 +2,13 @@
 // live_check.js: the browser's frame reader (web/live.js, Frames) on a stream the Kindle sent
 // (tests/live_stream.py keeps its bytes and the frames it read): cut into pieces of every size,
 // from one byte up, the frames must come out the same, in order. Then the page's pure parts: the
-// front light's color, where a turned screen goes in a recording, and Record's format for what a
-// browser records.
+// front light's color, the pen frame and its mark, where a turned screen goes in a recording, and
+// Record's format for what a browser records.
 //   usage: node tests/live_check.js <stream.bin> <stream.txt>
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { Frames, lightColor, filmFit, recordType } = require(path.join(__dirname, '..', 'web', 'live.js'));
+const { Frames, lightColor, readPen, penMark, filmFit, recordType } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
 const [bin, txt] = process.argv.slice(2);
 const bytes = new Uint8Array(fs.readFileSync(bin));
@@ -55,6 +55,27 @@ light('light: the warmest is amber (' + steps[24] + ')', steps[24][1] > 140 && s
 light('light: past the warmest is the warmest', lightColor(99).join() === steps[24].join() &&
     lightColor(-5).join() === steps[0].join());
 const ok = light;
+// The pen frame, little-endian, and away as null.
+const far = readPen(new Uint8Array([0x43, 0x07, 0xAF, 0x09, 2]));
+ok('pen: both bytes of each place (1859,2479 touching)', far.x === 1859 && far.y === 2479 && far.state === 2);
+ok('pen: away, or too short, is no pen', readPen(new Uint8Array([5, 0, 6, 0, 0])) === null &&
+   readPen(new Uint8Array([5, 0, 6, 0])) === null);
+// Its mark: at the pixel's center, scaled; a ring hovering, a smaller dot touching; the box whole
+// pixels around all of it (the halo and the antialiased edge too), so taking it away leaves nothing.
+function covers(m) {
+    const reach = m.r + (m.ring ? m.line / 2 : 0) + m.halo;
+    return Number.isInteger(m.box.x) && Number.isInteger(m.box.y) && Number.isInteger(m.box.w) &&
+        Number.isInteger(m.box.h) && m.box.x <= m.x - reach - 1 && m.box.y <= m.y - reach - 1 &&
+        m.box.x + m.box.w >= m.x + reach + 1 && m.box.y + m.box.h >= m.y + reach + 1;
+}
+const hover = penMark({x: 100, y: 200, state: 1}, 0.25, 2), touch = penMark({x: 100, y: 200, state: 2}, 0.25, 2);
+ok('mark: at the pixel\'s center, scaled (25.125, 50.125)', hover.x === 25.125 && hover.y === 50.125);
+ok('mark: a ring hovering, a smaller dot touching', hover.ring && !touch.ring && touch.r < hover.r);
+ok('mark: its unit scales it (2 CSS px to the pixel: twice the size)', hover.r === 2 * penMark({x: 0, y: 0, state: 1}, 1, 1).r);
+ok('mark: the box covers all of it, in whole pixels', [hover, touch, penMark({x: 1859, y: 2479, state: 1}, 1, 3),
+    penMark({x: 3, y: 7, state: 2}, 0.3071, 1.5, 0, 542)].every(covers));
+ok('mark: placed in a film at its offset', penMark({x: 0, y: 0, state: 2}, 0.75, 1, 0, 542).y === 542.375);
+ok('mark: none while away', penMark(null, 1, 1) === null && penMark({x: 1, y: 1, state: 0}, 1, 1) === null);
 // A recording keeps its size: the same screen fills it, a turned one goes in whole, centered.
 const same = filmFit(1860, 2480, 1860, 2480), side = filmFit(2480, 1860, 1860, 2480);
 ok('film: the same size, as it is', same.k === 1 && same.x === 0 && same.y === 0);

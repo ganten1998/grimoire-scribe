@@ -4,8 +4,10 @@
 // payload. 1 hello (u16 version, w, h, tile; u32 epoch), 2 tile (u16 x, y, w, h; the PNG),
 // 3 batch end (u32 seq, u32 the Kindle's ms), 4 ping, 5 state (u8 0 awake, 1 asleep, 2 pairing,
 // 3 bye; u8 1 when Grimoire shows its colors inverted; u8 the front light's warmth, 0..24, 255 for
-// none: the picture follows both unless the Invert switch or the Warmth slider here says otherwise).
-// Under node (tests/live_check.js) it only exports the frame reader and the pure parts below.
+// none: the picture follows both unless the Invert switch or the Warmth slider here says otherwise),
+// 6 pen (u16 x, y; u8 0 away, 1 hovering, 2 touching: drawn over the picture, never in it; a hello
+// or any state but awake takes it away). Under node (tests/live_check.js) it only exports the frame
+// reader and the pure parts below.
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -43,6 +45,24 @@
         const c = rgb(1e6 / (1e6 / 6500 + (1e6 / 2400 - 1e6 / 6500) * w)), white = rgb(6500);
         return c.map((v, i) => Math.round(Math.min(255, Math.max(0, v * 255 / white[i]))));
     }
+    // A pen frame's place: {x, y, state} (1 hovering, 2 touching), or null while the pen is away.
+    function readPen(body) {
+        if (body.length < 5 || !body[4]) return null;
+        return {x: body[0] | body[1] << 8, y: body[2] | body[3] << 8, state: body[4]};
+    }
+    // The pen's mark in a canvas with k of its pixels to each of the screen's, the screen's corner at
+    // (ox, oy), and u of its pixels to a unit (a CSS pixel on the page): a ring while the pen hovers, a
+    // dot while it touches, each with a light halo so it shows on paper, ink, the warm light and
+    // inverted alike. box: the whole pixels it covers, to take it away again. null without a pen.
+    const PEN_RING = 9, PEN_DOT = 4.5, PEN_LINE = 2, PEN_HALO = 1.5;
+    function penMark(pen, k, u, ox = 0, oy = 0) {
+        if (!pen || !pen.state) return null;
+        const ring = pen.state === 1, x = ox + (pen.x + 0.5) * k, y = oy + (pen.y + 0.5) * k;
+        const r = (ring ? PEN_RING : PEN_DOT) * u, line = PEN_LINE * u, halo = PEN_HALO * u;
+        const out = r + (ring ? line / 2 : 0) + halo + 1;  // (1 more for the antialiased edge)
+        const x0 = Math.floor(x - out), y0 = Math.floor(y - out);
+        return {x, y, r, line, halo, ring, box: {x: x0, y: y0, w: Math.ceil(x + out) - x0, h: Math.ceil(y + out) - y0}};
+    }
     // Where a w x h picture goes in a fw x fh film: whole, centered, scale k. A recording keeps the
     // size it started with (an MP4's track cannot change it: Chrome's frames after a turn came out
     // corrupt), so the turned screen goes in it smaller.
@@ -66,7 +86,7 @@
         return {mime: '', ext: '', why: ''};  // (the file named by the type the recorder says it made)
     }
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = {Frames, lightColor, filmFit, recordType};
+        module.exports = {Frames, lightColor, readPen, penMark, filmFit, recordType};
         return;
     }
 
@@ -84,11 +104,19 @@
     const view = document.createElement('canvas');     // shown at the size it takes on this screen
     const viewCtx = view.getContext('2d');
     view.className = 'screen';
-    const film = document.createElement('canvas');     // what Record and PiP take: shown, one size a recording
+    const penLayer = document.createElement('canvas'); // the pen over view: never in its averaged pixels
+    const penCtx = penLayer.getContext('2d');
+    penLayer.className = 'pen';
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+    stage.append(view, penLayer);
+    const film = document.createElement('canvas');     // shown with the pen on it: what Record and PiP take
     const filmCtx = film.getContext('2d');
-    // fitIn: shown's place in film (filmFit); flat: a recording that is no WebM, which has no
-    // transparency, so film has the paper drawn in while Transparent paper is on (a browser with no
-    // WebM, or the paper made clear mid-recording).
+    // pen: where the Kindle's pen is (readPen), null while away; penShown, filmPen: its marks drawn on
+    // the page and in film now, to take away; fitIn: shown's place in film (filmFit); flat: a
+    // recording that is no WebM, which has no transparency, so film has the paper drawn in while
+    // Transparent paper is on (a browser with no WebM, or the paper made clear mid-recording).
+    let pen = null, showPen = true, penShown = null, penQueued = false, filmPen = null;
     let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null;
     let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
     const bar = document.createElement('div');
@@ -147,6 +175,14 @@
         look();
     });
     look();
+    const penSwitch = button(words.pen, () => {
+        showPen = !showPen;
+        penSwitch.setAttribute('aria-checked', showPen ? 'true' : 'false');
+        movePen(pen);
+    });
+    penSwitch.setAttribute('role', 'switch');
+    penSwitch.className = 'switch';
+    penSwitch.setAttribute('aria-checked', 'true');
     const recordButton = button(words.record, record);
     const canRecord = !!(window.MediaRecorder && film.captureStream);
     if (!canRecord) recordButton.hidden = true;
@@ -156,7 +192,7 @@
         !HTMLVideoElement.prototype.requestPictureInPicture) pipButton.hidden = true;
     button(words.full, full);
     recordLabel();
-    host.replaceChildren(bar, view);
+    host.replaceChildren(bar, stage);
     addEventListener('keydown', e => {
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
     });
@@ -196,13 +232,66 @@
         view.style.height = h + 'px';
         view.width = Math.max(1, Math.round(w * ratio));
         view.height = Math.max(1, Math.round(h * ratio));
+        penLayer.style.left = view.offsetLeft + view.clientLeft + 'px';  // (inside view's border)
+        penLayer.style.top = view.offsetTop + view.clientTop + 'px';
+        penLayer.style.width = w + 'px';
+        penLayer.style.height = h + 'px';
+        penLayer.width = view.width;  // (which clears it)
+        penLayer.height = view.height;
+        penShown = null;
+        penSoon();
         presentSoon(0, 0, raw.width, raw.height);
+    }
+    // The pen on the page, at the next frame: its mark on penLayer, over view, in view's pixels.
+    function penSoon() {
+        if (penQueued) return;
+        penQueued = true;
+        requestAnimationFrame(drawPen);
+    }
+    function drawPen() {
+        penQueued = false;
+        if (penShown) penCtx.clearRect(penShown.x, penShown.y, penShown.w, penShown.h);
+        const m = showPen && raw.width ? penMark(pen, view.width / raw.width, window.devicePixelRatio || 1) : null;
+        penShown = m && m.box;
+        if (m) mark(penCtx, m);
+    }
+    const PEN_COLOR = '#f03c28', PEN_HALO_COLOR = 'rgba(255,255,255,0.9)';
+    function mark(ctx, m) {
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, 2 * Math.PI);
+        ctx.strokeStyle = PEN_HALO_COLOR;
+        ctx.lineWidth = m.ring ? m.line + 2 * m.halo : 2 * m.halo;
+        ctx.stroke();
+        if (m.ring) {
+            ctx.strokeStyle = PEN_COLOR;
+            ctx.lineWidth = m.line;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = PEN_COLOR;
+            ctx.fill();
+        }
+    }
+    // The pen moved, came, went, or was switched off: on the page at the next frame, in film now (it
+    // is drawn as frames come, so a recording and Picture in picture go on while the tab is hidden).
+    function movePen(next) {
+        pen = next;
+        const was = filmPen;
+        filmPen = filmMark();
+        if (was) filmDraw(was.box.x, was.box.y, was.box.w, was.box.h);
+        if (filmPen) filmDraw(filmPen.box.x, filmPen.box.y, filmPen.box.w, filmPen.box.h);
+        penSoon();
     }
     // film is kept only while something takes it: a recording, or Picture in picture showing.
     function filming() { return !!recorder || (!!pipVideo && document.pictureInPictureElement === pipVideo); }
+    // The mark's unit in film, which has the screen's own pixels: about as big as on a laptop at Fit.
+    function filmMark() {
+        if (!filming() || !showPen) return null;
+        const unit = Math.max(1, Math.round(Math.min(film.width, film.height) / 620));
+        return penMark(pen, fitIn.k, unit, fitIn.x, fitIn.y);
+    }
     // A rect of film (its own pixels) drawn again: shown there (the paper first while it is clear in
-    // a recording with no transparency). Only while filming, unless forced (a first frame for the
-    // video).
+    // a recording with no transparency), then the pen's mark where it falls. Only while filming,
+    // unless forced (a first frame for the video).
     function filmDraw(x, y, w, h, force) {
         if (!force && !filming()) return;
         const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
@@ -221,15 +310,17 @@
         const cw = x1 - x0, ch = y1 - y0;
         if (fitIn.k === 1) filmCtx.drawImage(shown, x0 - fitIn.x, y0 - fitIn.y, cw, ch, x0, y0, cw, ch);
         else filmCtx.drawImage(shown, fitIn.x, fitIn.y, pw, ph);
+        if (filmPen) mark(filmCtx, filmPen);
         filmCtx.restore();
     }
-    // All of film again, at the size it keeps (a recording's) or shown's.
+    // All of film again, at the size it keeps (a recording's) or shown's: its mark worked out anew.
     function filmAll(force) {
         if (!recorder && (film.width !== shown.width || film.height !== shown.height)) {
             film.width = shown.width;
             film.height = shown.height;
         }
         fitIn = filmFit(shown.width, shown.height, film.width, film.height);
+        filmPen = filmMark();
         filmDraw(0, 0, film.width, film.height, force);
     }
     // A rect of shown (its pixels) changed: the same in film.
@@ -340,9 +431,9 @@
         if (document.fullscreenElement) document.exitFullscreen();
         else if (el.requestFullscreen) el.requestFullscreen();
     }
-    // Picture in picture: film, as Record takes it, played in a video the browser floats over other
-    // windows. It goes on while this tab is hidden: film is drawn as tiles come, not by animation
-    // frames.
+    // Picture in picture: film, as Record takes it (shown with the pen), played in a video the browser
+    // floats over other windows. It goes on while this tab is hidden: film is drawn as tiles and pen
+    // frames come, not by animation frames.
     async function pip() {
         if (document.pictureInPictureElement) {
             document.exitPictureInPicture().catch(() => {});
@@ -367,7 +458,7 @@
             await pipVideo.requestPictureInPicture();
         } catch (e) { /* refused (no picture yet, or not from a tap): the button stays as it was */ }
     }
-    // Record: film at 15 frames a second, as an MP4 where the browser records one
+    // Record: film (shown and the pen) at 15 frames a second, as an MP4 where the browser records one
     // (recordType). film keeps its size until the recording stops (filmFit).
     function record() {
         if (recorder) {
@@ -464,6 +555,7 @@
                     rawCtx.fillStyle = '#fff';
                     rawCtx.fillRect(0, 0, w, h);
                     pending = [];
+                    pen = null;  // (a hello takes the pen away: the next pen frame is on the new screen)
                     layout();
                     if (filming()) filmAll();
                 } else if (type === 2 && body.length > 8) {
@@ -483,6 +575,8 @@
                     }
                     if (dirty) repaint(dirty.x, dirty.y, dirty.w, dirty.h);
                     status(words.live, true);
+                } else if (type === 6 && body.length >= 5) {
+                    movePen(readPen(body));
                 } else if (type === 5 && body.length >= 1) {
                     const s = body[0];
                     const inv = body.length >= 2 ? body[1] === 1 : kindleInvert;
@@ -492,6 +586,7 @@
                         kindleWarmth = warm;
                         look();
                     }
+                    if (s !== 0 && pen) movePen(null);  // (any state but awake takes the pen away)
                     if (s === 0) status(words.live, true);
                     else if (s === 1) status(words.asleep);
                     else if (s === 2) status(words.pairing);
@@ -519,6 +614,7 @@
                     how = await read(r.body.getReader());
                 }
             } catch (e) { /* the Kindle went to sleep, or out of reach: try again */ }
+            if (pen) movePen(null);  // (a new stream starts without one)
             if (how === 'bye') {
                 // Live view turned off on the Kindle: see now and then whether it is back.
                 await sleep(5000);

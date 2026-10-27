@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 04:09-0500\n"
+"POT-Creation-Date: 2026-10-27 03:43-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1014,6 +1014,12 @@ msgstr "Invertir colores"
 #: src/httpd.c
 msgid "As on the Kindle"
 msgstr "Como en el Kindle"
+
+#. TRANSLATORS: Live view's switch in the browser: where the Kindle's pen is, drawn over the
+#. picture (a ring while it hovers over the screen, a dot while it touches), in recordings too.
+#: src/httpd.c
+msgid "Show pen"
+msgstr "Mostrar el lápiz"
 
 #: src/httpd.c
 msgid "Record"

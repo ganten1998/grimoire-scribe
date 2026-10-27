@@ -11,7 +11,9 @@ body.inverted{--bg:#000;--soft:#444}
 #live .bar .warmth input{width:120px;margin:0;accent-color:var(--ink)}
 #live .pill{margin-right:auto;border:2px solid var(--soft);color:var(--quiet);border-radius:999px;padding:4px 14px}
 #live .pill.on{border-color:var(--ink);color:var(--paper);background:var(--ink)}
+#live .stage{position:relative;width:max-content;margin:0 auto}
 #live .screen{display:block;margin:0 auto;border:1px solid var(--soft);background:var(--light,#fff)}
+#live .pen{position:absolute;pointer-events:none}
 body.inverted #live .screen{background:#000}
 body.clear,body.clear #live .screen{background:transparent}
 video.pip{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none}

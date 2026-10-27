@@ -803,6 +803,9 @@ static void route_live_page(const char *query) {
         // TRANSLATORS: Live view's slider in the browser: the picture's light from white to warm,
         // following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
         live_word(&b, &n, "warmth", _("Warmth"));
+        // TRANSLATORS: Live view's switch in the browser: where the Kindle's pen is, drawn over the
+        // picture (a ring while it hovers over the screen, a dot while it touches), in recordings too.
+        live_word(&b, &n, "pen", _("Show pen"));
         live_word(&b, &n, "record", _("Record"));
         // TRANSLATORS: Live view's Record button where the video cannot be an MP4 (WebM is the other
         // video format), and its tooltips saying why: the browser (Firefox), or Transparent paper,
