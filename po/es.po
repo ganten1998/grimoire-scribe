@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 22:10-0500\n"
+"POT-Creation-Date: 2026-10-27 02:00-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1369,6 +1369,14 @@ msgstr "No se pudo guardar controller.ini"
 #, c-format
 msgid "That button is no longer for %s."
 msgstr "Ese botón ya no es para %s."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
+#. Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
+#. sheet shows it ("Undo", "Previous / next page").
+#: src/library.c
+#, c-format
+msgid "No buttons for %s now."
+msgstr "Ya no hay botones para %s."
 
 #. TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
 #. (about 1100 px at 44 px in bold, and the same for the two below).

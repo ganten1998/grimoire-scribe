@@ -102,6 +102,7 @@ struct LibraryState {
     Press press;
     const Hit *pressed;
     Hit pressed_copy;
+    uint32_t pressed_at;  // when the finger went down on it (a Buttons row held ROW_HOLD_MS: forget_row)
 };
 
 #define S (a->lib)
@@ -502,6 +503,9 @@ typedef struct {
 // ---- the controller's buttons (Settings > Controller > Buttons) ----
 
 #define LEARN_MS 10000
+// A Buttons row held this long without moving loses its buttons (forget_row), as a link held in the
+// editor opens (LINK_HOLD_MS).
+#define ROW_HOLD_MS 600
 
 static void redraw(App *a, RefreshMode m);
 
@@ -699,6 +703,25 @@ bool library_learn_key(App *a, int code, bool gamepad) {
     }
     redraw(a, REFRESH_UI);
     return true;
+}
+
+// A Buttons row held (ROW_HOLD_MS): its actions lose their buttons, this row's alone, and it reads
+// "none"; a toast says so. Its release starts no learning.
+static void forget_row(App *a, int row) {
+    LearnRow r = learn_row_at(S->buttons_group, row);
+    char cp[1024], msg[200];
+    controller_path(cp, sizeof cp);
+    S->learn_row = -1;
+    if (shortcuts_forget(&a->shortcuts, cp, r.act[0], r.act[1]) != 0) {
+        app_toast(a, _("Could not save controller.ini"), 4000);
+    } else {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
+        // Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
+        // sheet shows it ("Undo", "Previous / next page").
+        snprintf(msg, sizeof msg, _("No buttons for %s now."), r.label ? _(r.label) : action_label(r.act[0]));
+        app_toast(a, msg, 2000);
+    }
+    redraw(a, REFRESH_UI);
 }
 
 // The Controller sheet's status line: the controllers and keyboards Grimoire reads now.
@@ -1838,6 +1861,7 @@ void library_event(App *a, const InEvent *ev) {
     }
     if (ph == 0) {
         press_begin(&S->press, ev->x, ev->y, ev->t_ms);
+        S->pressed_at = now_ms();
         const Hit *h = hits_find(&S->hits, ev->x, ev->y);
         S->pressed = NULL;
         if (h) {
@@ -1871,6 +1895,14 @@ void library_tick(App *a, uint32_t now) {
     if (S->modal == MOD_BUTTONS && S->learn_row >= 0 && now - S->learn_at >= LEARN_MS) {
         S->learn_row = -1;  // no press in 10 s: as it was
         redraw(a, REFRESH_UI);
+    }
+    // A finger held still on a Buttons row: its buttons go, and nothing is pressed any more (the
+    // release does nothing; the redraw took the pressed look away).
+    if (S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->pressed && S->pressed->id == H_BUTTON_ROW &&
+        !S->press.moved && now - S->pressed_at >= ROW_HOLD_MS) {
+        int row = S->pressed->arg;
+        S->pressed = NULL;
+        forget_row(a, row);
     }
     if (S->kb_settle_at && (int32_t)(now - S->kb_settle_at) >= 0) {
         S->kb_settle_at = 0;

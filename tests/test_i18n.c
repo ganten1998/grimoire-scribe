@@ -586,6 +586,9 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT(_("That button is no longer for %s."), C_("tool", "Mechanical pencil"));
     PUT(_("That button is no longer for %s."), _("Erase while held"));
     PUT(_("That button is no longer for %s."), _("Tool picker"));
+    // A Buttons row held, with the longest names (a row's and an action's).
+    PUT(_("No buttons for %s now."), _("Previous / next tool"));
+    PUT(_("No buttons for %s now."), _("Erase while held"));
 #undef PUT
     return n;
 }
