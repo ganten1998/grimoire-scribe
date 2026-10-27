@@ -1,0 +1,1702 @@
+== labels
+grid 0 cols 6 rows 4 tw 249 th 332 cell 432
+grid 1 cols 7 rows 3 tw 274 th 365 cell 465
+grid 2 cols 6 rows 4 tw 222 th 296 cell 396
+grid 3 cols 6 rows 4 tw 226 th 301 cell 401
+grid 4 cols 7 rows 3 tw 192 th 256 cell 356
+grid 5 cols 7 rows 3 tw 196 th 261 cell 361
+labels en gothic 25e3764d3e110bd1
+labels en classic bc5f84db59e9d64f
+labels es gothic 3e8ff8483ce8c152
+labels es classic 66600aa2456e482e
+== music
+music pg L0 rect 60 217 1740 1827 systems 5 hash b5ff6989dd4dd21e
+music pg L1 rect 60 217 1740 1827 systems 2 hash 5579cdd5d50e7473
+music pg L2 rect 60 217 1740 1827 systems 1 hash 464f933d45cebb9b
+music pg L3 rect 60 217 1740 1827 systems 4 hash 9a8445fd7f7e75c5
+music pc L0 rect 60 217 1740 1827 systems 5 hash dc65efd16d97d6f2
+music pc L1 rect 60 217 1740 1827 systems 2 hash 2992aef5bd556398
+music pc L2 rect 60 217 1740 1827 systems 1 hash cfff62eead3685ad
+music pc L3 rect 60 217 1740 1827 systems 4 hash 0a3b7e25456bed76
+music lg L0 rect 370 29 1740 1772 systems 5 hash 52d206de25793071
+music lg L1 rect 370 29 1740 1772 systems 2 hash 40bf5090831a5e34
+music lg L2 rect 370 29 1740 1772 systems 1 hash 1d54381589361f81
+music lg L3 rect 370 29 1740 1772 systems 4 hash 0e1f4c1d3bb1b849
+music lc L0 rect 370 29 1740 1772 systems 5 hash 710c1c3ad2233cd8
+music lc L1 rect 370 29 1740 1772 systems 2 hash 3b0a8514383d1a56
+music lc L2 rect 370 29 1740 1772 systems 1 hash df49be0d503ec2ac
+music lc L3 rect 370 29 1740 1772 systems 4 hash 84db93468ea6f418
+music tap 4 2 -> 1 dirty 60 217 1740 1827 systems 4 n 3 kind 1140851345 hash b410cf15c4a63482
+music tap 4 11 -> 1 dirty 60 217 1740 1827 systems 4 n 4 kind 1140896401 hash 9f84514dfdab80ff
+music tap 2 0 -> 1 dirty 60 217 1740 1827 systems 4 n 4 kind 1140896281 hash 12d866b0e8b68c1c
+music tap 1 3 -> 1 dirty 60 217 1740 1827 systems 4 n 4 kind 1140861721 hash 0ebc3995afd5c506
+music tap 3 1 -> 1 dirty 60 217 1740 1827 systems 5 n 3 kind 1157628601 hash 6b53c8f57f4cd2a5
+music tap 6 0 -> -1 dirty 0 0 0 0 systems 5 n 3 kind 1157628601 hash 6b53c8f57f4cd2a5
+music tap 6 0 -> -1 dirty 0 0 0 0 systems 5 n 3 kind 1157628601 hash 6b53c8f57f4cd2a5
+music tap 5 0 -> 1 dirty 60 217 1740 1827 systems 4 n 3 kind 1140851385 hash 8e4297685eebf844
+music tap 4 9 -> 1 dirty 60 217 1740 1827 systems 4 n 4 kind 1140888249 hash 8142a3e1ebb4eea6
+music tap 4 3 -> 1 dirty 60 217 1740 1827 systems 3 n 5 kind 1124307641 hash 1b3e95b2b6c11bd0
+music tap 4 4 -> 1 dirty 60 217 1740 1827 systems 2 n 6 kind 1111724729 hash bbc1b2bf9a31f8b8
+music tap 4 5 -> -1 dirty 0 0 0 0 systems 2 n 6 kind 1111724729 hash bbc1b2bf9a31f8b8
+music tap 3 0 -> 1 dirty 60 217 1740 1827 systems 3 n 5 kind 1124350251 hash 85247c731b082d1c
+music tap 1 0 -> -1 dirty 0 0 0 0 systems 3 n 5 kind 1124350251 hash 85247c731b082d1c
+music tap 5 0 -> 1 dirty 60 217 1740 1827 systems 2 n 5 kind 1107573035 hash 36f11317b394ced8
+music tap 5 0 -> 1 dirty 60 217 1740 1827 systems 1 n 5 kind 1090795819 hash f346abaf3a14acd9
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090795819 hash f346abaf3a14acd9
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090795819 hash f346abaf3a14acd9
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090795819 hash f346abaf3a14acd9
+music tap 6 0 -> 1 dirty 60 217 1740 1827 systems 2 n 5 kind 1107573035 hash 36f11317b394ced8
+music done -> 3 open 0 kind 1107573035 saved 1107573035
+music again systems 2 n 5 kind 1107573035
+music outside -> 2 open 0 dirty 60 217 1740 1827
+music cancel -> 2 open 0
+== templates
+tplsheet empty0 en pg templates ba67a13903b3cc30
+tplsheet empty0 en pg photos 9788d58c9d06384a
+tplsheet empty0 en pc templates cff7199777e89441
+tplsheet empty0 en pc photos 5d20fcecafe52499
+tplsheet empty0 en lg templates 1a0427f4276ab574
+tplsheet empty0 en lg photos f1e0e011971fd74e
+tplsheet empty0 en lc templates 8ed13dc3e3defcf7
+tplsheet empty0 en lc photos 2307a7b429b81fe7
+tplsheet empty0 es pg templates a60c7de9968f4176
+tplsheet empty0 es pg photos 33834e2c5286725a
+tplsheet empty0 es pc templates c32e3576f6ef3e69
+tplsheet empty0 es pc photos 4a00e3c1a59d4299
+tplsheet empty0 es lg templates d173ea0c1a034b96
+tplsheet empty0 es lg photos 997388f830a3b576
+tplsheet empty0 es lc templates 292085622afc98f1
+tplsheet empty0 es lc photos 9e44f0879650a465
+tplsheet empty1 en pg templates 8ecc1ca07a3f7630
+tplsheet empty1 en pg photos 9788d58c9d06384a
+tplsheet empty1 en pc templates 706edb3629c3d4be
+tplsheet empty1 en pc photos 5d20fcecafe52499
+tplsheet empty1 en lg templates 466441f5145da374
+tplsheet empty1 en lg photos f1e0e011971fd74e
+tplsheet empty1 en lc templates b3a65bbc84d6f3c4
+tplsheet empty1 en lc photos 2307a7b429b81fe7
+tplsheet empty1 es pg templates d9be7f269c043b76
+tplsheet empty1 es pg photos 33834e2c5286725a
+tplsheet empty1 es pc templates 4429b7138173f45b
+tplsheet empty1 es pc photos 4a00e3c1a59d4299
+tplsheet empty1 es lg templates c1ee8436e859a196
+tplsheet empty1 es lg photos 997388f830a3b576
+tplsheet empty1 es lc templates 255a10a89a8df74f
+tplsheet empty1 es lc photos 9e44f0879650a465
+tplsheet pg waiting page 1 of 2 selected 16 hash 216a43b4fc9b711b
+tplsheet pg ready tick 1 dirty 70 123 1720 2110 page 1 of 2 hash c4c7929a36aee38c
+tplsheet pg turn 1 -> 1 page 2 e854388bdd22871f
+tplsheet pc waiting page 1 of 2 selected 16 hash d6d105de3ab0cfd9
+tplsheet pc ready tick 0 dirty 0 0 0 0 page 1 of 2 hash d6d105de3ab0cfd9
+tplsheet pc turn 1 -> 1 page 2 93b106157863c545
+tplsheet lg waiting page 1 of 2 selected 16 hash b7661d813a532e2b
+tplsheet lg ready tick 0 dirty 0 0 0 0 page 1 of 2 hash b7661d813a532e2b
+tplsheet lg turn 1 -> 1 page 2 b877df57f2aa6e8b
+tplsheet lc waiting page 1 of 2 selected 16 hash eeb725999bcadcfb
+tplsheet lc ready tick 0 dirty 0 0 0 0 page 1 of 2 hash eeb725999bcadcfb
+tplsheet lc turn 1 -> 1 page 2 82f304a2f5efdb2f
+== pages views
+pages pg tab0 screen 0 412c861d88a15ff4
+pages pg tab17 ticked 3 screen 0 eeb99ce80d225d8c
+pages pg all ticked 30 screen 1 8d0502cf0e5e24c0
+pages pg one ticked 1 40691cb35f2fd8ab
+pages pg probe pages_tab rc 0 'pages'
+pages pg probe picking rc 0 ''
+pages pg probe keyboard rc 0 ''
+pages pg probe text rc 0 ''
+pages pg probe index_rows rc 0 '5'
+pages pg probe tile.1 rc 0 'Page 1'
+pages pg probe tile.3 rc 0 'Page 3 | p. 12'
+pages pg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pg probe tile.10 rc 0 'Page 10 | p. 5'
+pages pg probe tile.13 rc 0 '日本語'
+pages pg probe tile.18 rc 0 'Page 18 (open) | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg index 47f19efcb2386445
+pages pg many index 0 (screen 0) 901c7b58bca0796b
+pages pg many index 1 (screen 1) f3ed26e6e6d5b750
+pages pg many index 2 (screen 1) f3ed26e6e6d5b750
+pages pg probe pages_tab rc 0 'index'
+pages pg probe picking rc 0 ''
+pages pg probe keyboard rc 0 ''
+pages pg probe text rc 0 ''
+pages pg probe index_rows rc 0 '20'
+pages pg probe tile.1 rc 0 'Section 1'
+pages pg probe tile.3 rc 0 'Section 3 | p. 12'
+pages pg probe tile.7 rc 0 'Section 7 | p. 13'
+pages pg probe tile.10 rc 0 'Section 10 | p. 5'
+pages pg probe tile.13 rc 0 'Page 13'
+pages pg probe tile.18 rc 0 'Section 15 | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg pick had 0 tab 1 6acb05773bae5657
+pages pg probe pages_tab rc 0 'index'
+pages pg probe picking rc 0 'new'
+pages pg probe keyboard rc 0 ''
+pages pg probe text rc 0 ''
+pages pg probe index_rows rc 0 '5'
+pages pg probe tile.1 rc 0 'Page 1'
+pages pg probe tile.3 rc 0 'Page 3 | p. 12'
+pages pg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pg probe tile.10 rc 0 'Page 10 | p. 5'
+pages pg probe tile.13 rc 0 '日本語'
+pages pg probe tile.18 rc 0 'Page 18 | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg pick had 1 tab 1 c6b9296d0a8939b3
+pages pg probe pages_tab rc 0 'index'
+pages pg probe picking rc 0 'had'
+pages pg probe keyboard rc 0 ''
+pages pg probe text rc 0 ''
+pages pg probe index_rows rc 0 '5'
+pages pg probe tile.1 rc 0 'Page 1'
+pages pg probe tile.3 rc 0 'Page 3 | p. 12'
+pages pg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pg probe tile.10 rc 0 'Page 10 | p. 5'
+pages pg probe tile.13 rc 0 '日本語'
+pages pg probe tile.18 rc 0 'Page 18 | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg pick none tab 0 e9c43b925210b83d
+pages pg name only 1 3c04bd7807a07299
+pages pg probe pages_tab rc 0 'index'
+pages pg probe picking rc 0 ''
+pages pg probe keyboard rc 0 'Page name'
+pages pg probe text rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile'
+pages pg probe index_rows rc 0 '5'
+pages pg probe tile.1 rc 0 'Page 1'
+pages pg probe tile.3 rc 0 'Page 3 | p. 12'
+pages pg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pg probe tile.10 rc 0 'Page 10 | p. 5'
+pages pg probe tile.13 rc 0 '日本語'
+pages pg probe tile.18 rc 0 'Page 18 | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg after name: tab 0 init 0
+pages pg jump c353babc5b28e1ba
+pages pg probe pages_tab rc 0 'pages'
+pages pg probe picking rc 0 ''
+pages pg probe keyboard rc 0 'Go to page'
+pages pg probe text rc 0 ''
+pages pg probe index_rows rc 0 '5'
+pages pg probe tile.1 rc 0 'Page 1'
+pages pg probe tile.3 rc 0 'Page 3 | p. 12'
+pages pg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pg probe tile.10 rc 0 'Page 10 (open) | p. 5'
+pages pg probe tile.13 rc 0 '日本語'
+pages pg probe tile.18 rc 0 'Page 18 | p. 44'
+pages pg probe tile.27 rc 0 'Page 27 | p. 7'
+pages pg probe tile.30 rc 0 'Page 30'
+pages pg probe tile.31 rc 0 ''
+pages pg probe tile.0 rc 0 ''
+pages pg probe tile.x rc 0 ''
+pages pg probe bogus rc -1 ''
+pages pg readonly index ef9d76a2d7c7083f
+pages pg unreadable index 51162b52ed661216
+pages pc tab0 screen 0 77c208579fcf482c
+pages pc tab17 ticked 3 screen 0 6c9f7e1b7c14a2d5
+pages pc all ticked 30 screen 1 a1dabdc8fd52039c
+pages pc one ticked 1 372a3ca94655ef19
+pages pc probe pages_tab rc 0 'pages'
+pages pc probe picking rc 0 ''
+pages pc probe keyboard rc 0 ''
+pages pc probe text rc 0 ''
+pages pc probe index_rows rc 0 '5'
+pages pc probe tile.1 rc 0 'Page 1'
+pages pc probe tile.3 rc 0 'Page 3 | p. 12'
+pages pc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pc probe tile.10 rc 0 'Page 10 | p. 5'
+pages pc probe tile.13 rc 0 '日本語'
+pages pc probe tile.18 rc 0 'Page 18 (open) | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc index 0518714e07df3c56
+pages pc many index 0 (screen 0) 47db18b855f58125
+pages pc many index 1 (screen 1) 863d81c4030c6b30
+pages pc many index 2 (screen 1) 863d81c4030c6b30
+pages pc probe pages_tab rc 0 'index'
+pages pc probe picking rc 0 ''
+pages pc probe keyboard rc 0 ''
+pages pc probe text rc 0 ''
+pages pc probe index_rows rc 0 '20'
+pages pc probe tile.1 rc 0 'Section 1'
+pages pc probe tile.3 rc 0 'Section 3 | p. 12'
+pages pc probe tile.7 rc 0 'Section 7 | p. 13'
+pages pc probe tile.10 rc 0 'Section 10 | p. 5'
+pages pc probe tile.13 rc 0 'Page 13'
+pages pc probe tile.18 rc 0 'Section 15 | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc pick had 0 tab 1 941365de3cf0e9f8
+pages pc probe pages_tab rc 0 'index'
+pages pc probe picking rc 0 'new'
+pages pc probe keyboard rc 0 ''
+pages pc probe text rc 0 ''
+pages pc probe index_rows rc 0 '5'
+pages pc probe tile.1 rc 0 'Page 1'
+pages pc probe tile.3 rc 0 'Page 3 | p. 12'
+pages pc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pc probe tile.10 rc 0 'Page 10 | p. 5'
+pages pc probe tile.13 rc 0 '日本語'
+pages pc probe tile.18 rc 0 'Page 18 | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc pick had 1 tab 1 711b64a77c216513
+pages pc probe pages_tab rc 0 'index'
+pages pc probe picking rc 0 'had'
+pages pc probe keyboard rc 0 ''
+pages pc probe text rc 0 ''
+pages pc probe index_rows rc 0 '5'
+pages pc probe tile.1 rc 0 'Page 1'
+pages pc probe tile.3 rc 0 'Page 3 | p. 12'
+pages pc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pc probe tile.10 rc 0 'Page 10 | p. 5'
+pages pc probe tile.13 rc 0 '日本語'
+pages pc probe tile.18 rc 0 'Page 18 | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc pick none tab 0 2696be67a2ec26bb
+pages pc name only 1 9d13f6716a9f6982
+pages pc probe pages_tab rc 0 'index'
+pages pc probe picking rc 0 ''
+pages pc probe keyboard rc 0 'Page name'
+pages pc probe text rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile'
+pages pc probe index_rows rc 0 '5'
+pages pc probe tile.1 rc 0 'Page 1'
+pages pc probe tile.3 rc 0 'Page 3 | p. 12'
+pages pc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pc probe tile.10 rc 0 'Page 10 | p. 5'
+pages pc probe tile.13 rc 0 '日本語'
+pages pc probe tile.18 rc 0 'Page 18 | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc after name: tab 0 init 0
+pages pc jump be42e37e1dac89af
+pages pc probe pages_tab rc 0 'pages'
+pages pc probe picking rc 0 ''
+pages pc probe keyboard rc 0 'Go to page'
+pages pc probe text rc 0 ''
+pages pc probe index_rows rc 0 '5'
+pages pc probe tile.1 rc 0 'Page 1'
+pages pc probe tile.3 rc 0 'Page 3 | p. 12'
+pages pc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages pc probe tile.10 rc 0 'Page 10 (open) | p. 5'
+pages pc probe tile.13 rc 0 '日本語'
+pages pc probe tile.18 rc 0 'Page 18 | p. 44'
+pages pc probe tile.27 rc 0 'Page 27 | p. 7'
+pages pc probe tile.30 rc 0 'Page 30'
+pages pc probe tile.31 rc 0 ''
+pages pc probe tile.0 rc 0 ''
+pages pc probe tile.x rc 0 ''
+pages pc probe bogus rc -1 ''
+pages pc readonly index 39d7e360ca5b90d5
+pages pc unreadable index c9e30f8c0cbae465
+pages lg tab0 screen 0 e30d801e4740537e
+pages lg tab17 ticked 3 screen 0 5bd67ababce78bea
+pages lg all ticked 30 screen 1 28f035073732bf96
+pages lg one ticked 1 92ac674a45d940af
+pages lg probe pages_tab rc 0 'pages'
+pages lg probe picking rc 0 ''
+pages lg probe keyboard rc 0 ''
+pages lg probe text rc 0 ''
+pages lg probe index_rows rc 0 '5'
+pages lg probe tile.1 rc 0 'Page 1'
+pages lg probe tile.3 rc 0 'Page 3 | p. 12'
+pages lg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lg probe tile.10 rc 0 'Page 10 | p. 5'
+pages lg probe tile.13 rc 0 '日本語'
+pages lg probe tile.18 rc 0 'Page 18 (open) | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg index 03c5c45934c5784b
+pages lg many index 0 (screen 0) d89fcfdfbb9436d3
+pages lg many index 1 (screen 1) e57264211299bdb0
+pages lg many index 2 (screen 1) e57264211299bdb0
+pages lg probe pages_tab rc 0 'index'
+pages lg probe picking rc 0 ''
+pages lg probe keyboard rc 0 ''
+pages lg probe text rc 0 ''
+pages lg probe index_rows rc 0 '20'
+pages lg probe tile.1 rc 0 'Section 1'
+pages lg probe tile.3 rc 0 'Section 3 | p. 12'
+pages lg probe tile.7 rc 0 'Section 7 | p. 13'
+pages lg probe tile.10 rc 0 'Section 10 | p. 5'
+pages lg probe tile.13 rc 0 'Page 13'
+pages lg probe tile.18 rc 0 'Section 15 | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg pick had 0 tab 1 c1c8b6b181f14065
+pages lg probe pages_tab rc 0 'index'
+pages lg probe picking rc 0 'new'
+pages lg probe keyboard rc 0 ''
+pages lg probe text rc 0 ''
+pages lg probe index_rows rc 0 '5'
+pages lg probe tile.1 rc 0 'Page 1'
+pages lg probe tile.3 rc 0 'Page 3 | p. 12'
+pages lg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lg probe tile.10 rc 0 'Page 10 | p. 5'
+pages lg probe tile.13 rc 0 '日本語'
+pages lg probe tile.18 rc 0 'Page 18 | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg pick had 1 tab 1 a8bf840bdeb24eb5
+pages lg probe pages_tab rc 0 'index'
+pages lg probe picking rc 0 'had'
+pages lg probe keyboard rc 0 ''
+pages lg probe text rc 0 ''
+pages lg probe index_rows rc 0 '5'
+pages lg probe tile.1 rc 0 'Page 1'
+pages lg probe tile.3 rc 0 'Page 3 | p. 12'
+pages lg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lg probe tile.10 rc 0 'Page 10 | p. 5'
+pages lg probe tile.13 rc 0 '日本語'
+pages lg probe tile.18 rc 0 'Page 18 | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg pick none tab 0 79ac2fc5dfab1d75
+pages lg name only 1 935adabc0b663b47
+pages lg probe pages_tab rc 0 'index'
+pages lg probe picking rc 0 ''
+pages lg probe keyboard rc 0 'Page name'
+pages lg probe text rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile'
+pages lg probe index_rows rc 0 '5'
+pages lg probe tile.1 rc 0 'Page 1'
+pages lg probe tile.3 rc 0 'Page 3 | p. 12'
+pages lg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lg probe tile.10 rc 0 'Page 10 | p. 5'
+pages lg probe tile.13 rc 0 '日本語'
+pages lg probe tile.18 rc 0 'Page 18 | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg after name: tab 0 init 0
+pages lg jump 4b04e68c418c5c7e
+pages lg probe pages_tab rc 0 'pages'
+pages lg probe picking rc 0 ''
+pages lg probe keyboard rc 0 'Go to page'
+pages lg probe text rc 0 ''
+pages lg probe index_rows rc 0 '5'
+pages lg probe tile.1 rc 0 'Page 1'
+pages lg probe tile.3 rc 0 'Page 3 | p. 12'
+pages lg probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lg probe tile.10 rc 0 'Page 10 (open) | p. 5'
+pages lg probe tile.13 rc 0 '日本語'
+pages lg probe tile.18 rc 0 'Page 18 | p. 44'
+pages lg probe tile.27 rc 0 'Page 27 | p. 7'
+pages lg probe tile.30 rc 0 'Page 30'
+pages lg probe tile.31 rc 0 ''
+pages lg probe tile.0 rc 0 ''
+pages lg probe tile.x rc 0 ''
+pages lg probe bogus rc -1 ''
+pages lg readonly index 4fdf5f4c274fbaf1
+pages lg unreadable index bfc5d72044e576ee
+pages lc tab0 screen 0 49dace7dc47e0975
+pages lc tab17 ticked 3 screen 0 47d5ad3baaac0138
+pages lc all ticked 30 screen 1 3340e0ec890884d2
+pages lc one ticked 1 2491213e0a4e075d
+pages lc probe pages_tab rc 0 'pages'
+pages lc probe picking rc 0 ''
+pages lc probe keyboard rc 0 ''
+pages lc probe text rc 0 ''
+pages lc probe index_rows rc 0 '5'
+pages lc probe tile.1 rc 0 'Page 1'
+pages lc probe tile.3 rc 0 'Page 3 | p. 12'
+pages lc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lc probe tile.10 rc 0 'Page 10 | p. 5'
+pages lc probe tile.13 rc 0 '日本語'
+pages lc probe tile.18 rc 0 'Page 18 (open) | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc index 95f02898a9d27f87
+pages lc many index 0 (screen 0) 81e7a7ec27b60c21
+pages lc many index 1 (screen 1) c22a3bb26fefbb0c
+pages lc many index 2 (screen 1) c22a3bb26fefbb0c
+pages lc probe pages_tab rc 0 'index'
+pages lc probe picking rc 0 ''
+pages lc probe keyboard rc 0 ''
+pages lc probe text rc 0 ''
+pages lc probe index_rows rc 0 '20'
+pages lc probe tile.1 rc 0 'Section 1'
+pages lc probe tile.3 rc 0 'Section 3 | p. 12'
+pages lc probe tile.7 rc 0 'Section 7 | p. 13'
+pages lc probe tile.10 rc 0 'Section 10 | p. 5'
+pages lc probe tile.13 rc 0 'Page 13'
+pages lc probe tile.18 rc 0 'Section 15 | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc pick had 0 tab 1 b902e33fb13c8299
+pages lc probe pages_tab rc 0 'index'
+pages lc probe picking rc 0 'new'
+pages lc probe keyboard rc 0 ''
+pages lc probe text rc 0 ''
+pages lc probe index_rows rc 0 '5'
+pages lc probe tile.1 rc 0 'Page 1'
+pages lc probe tile.3 rc 0 'Page 3 | p. 12'
+pages lc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lc probe tile.10 rc 0 'Page 10 | p. 5'
+pages lc probe tile.13 rc 0 '日本語'
+pages lc probe tile.18 rc 0 'Page 18 | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc pick had 1 tab 1 2a1702000f199136
+pages lc probe pages_tab rc 0 'index'
+pages lc probe picking rc 0 'had'
+pages lc probe keyboard rc 0 ''
+pages lc probe text rc 0 ''
+pages lc probe index_rows rc 0 '5'
+pages lc probe tile.1 rc 0 'Page 1'
+pages lc probe tile.3 rc 0 'Page 3 | p. 12'
+pages lc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lc probe tile.10 rc 0 'Page 10 | p. 5'
+pages lc probe tile.13 rc 0 '日本語'
+pages lc probe tile.18 rc 0 'Page 18 | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc pick none tab 0 db0db706c4cbcd2f
+pages lc name only 1 3c629fa2f5a15683
+pages lc probe pages_tab rc 0 'index'
+pages lc probe picking rc 0 ''
+pages lc probe keyboard rc 0 'Page name'
+pages lc probe text rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile'
+pages lc probe index_rows rc 0 '5'
+pages lc probe tile.1 rc 0 'Page 1'
+pages lc probe tile.3 rc 0 'Page 3 | p. 12'
+pages lc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lc probe tile.10 rc 0 'Page 10 | p. 5'
+pages lc probe tile.13 rc 0 '日本語'
+pages lc probe tile.18 rc 0 'Page 18 | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc after name: tab 0 init 0
+pages lc jump ba1d1472566f6e7e
+pages lc probe pages_tab rc 0 'pages'
+pages lc probe picking rc 0 ''
+pages lc probe keyboard rc 0 'Go to page'
+pages lc probe text rc 0 ''
+pages lc probe index_rows rc 0 '5'
+pages lc probe tile.1 rc 0 'Page 1'
+pages lc probe tile.3 rc 0 'Page 3 | p. 12'
+pages lc probe tile.7 rc 0 'Chapter two, a rather long name that must be cut short somewhere in the tile | p. 13'
+pages lc probe tile.10 rc 0 'Page 10 (open) | p. 5'
+pages lc probe tile.13 rc 0 '日本語'
+pages lc probe tile.18 rc 0 'Page 18 | p. 44'
+pages lc probe tile.27 rc 0 'Page 27 | p. 7'
+pages lc probe tile.30 rc 0 'Page 30'
+pages lc probe tile.31 rc 0 ''
+pages lc probe tile.0 rc 0 ''
+pages lc probe tile.x rc 0 ''
+pages lc probe bogus rc -1 ''
+pages lc readonly index 90c1afef61f4e1fc
+pages lc unreadable index d5ff7f69a540d063
+pages lang en pg 0aa786fec2dcee0d
+pages lang en pc 7850e1bb663f3172
+pages lang en lg 71e9eeb9b30553bb
+pages lang en lc 27e5ea1426670688
+pages lang es pg 06b468896525dd7c
+pages lang es pc f0baf365e537fd53
+pages lang es lg a650f5ecf5d92bad
+pages lang es lc 5e4f3fb7242d972f
+== pages taps
+pages tap 4 3 -> 0 target 0 tab 0 screen 0 idx 0 ticked 1 kb 0 23af82b04a010d7b
+pages tap 4 5 -> 0 target 0 tab 0 screen 0 idx 0 ticked 2 kb 0 a2659a9e94390e1b
+pages tap 4 3 -> 0 target 0 tab 0 screen 0 idx 0 ticked 1 kb 0 2362a7784e5d037f
+pages tap 3 0 -> 0 target 0 tab 0 screen 0 idx 0 ticked 30 kb 0 cf99108740606f6b
+pages tap 3 0 -> 0 target 0 tab 0 screen 0 idx 0 ticked 0 kb 0 7ef7c05729bdf8dc
+pages tap 7 0 -> 0 target 0 tab 0 screen 1 idx 0 ticked 0 kb 0 72557061b99f08ab
+pages tap 4 29 -> 0 target 0 tab 0 screen 1 idx 0 ticked 1 kb 0 f51949f0838dc424
+pages tap 10 0 -> 5 target 29 tab 0 screen 1 idx 0 ticked 1 kb 0 f51949f0838dc424
+pages tap 9 0 -> 4 target 30 tab 0 screen 1 idx 0 ticked 1 kb 0 f51949f0838dc424
+pages tap 2 0 -> 3 target 30 tab 0 screen 1 idx 0 ticked 1 kb 0 f51949f0838dc424
+pages tap 6 0 -> 0 target 30 tab 0 screen 0 idx 0 ticked 1 kb 0 1e4f8e117146ae74
+pages tap 6 0 -> -1 target 30 tab 0 screen 0 idx 0 ticked 1 kb 0 1e4f8e117146ae74
+pages tap 4 12 -> 0 target 30 tab 0 screen 0 idx 0 ticked 2 kb 0 066a8df659033520
+pages tap 10 0 -> -1 target 30 tab 0 screen 0 idx 0 ticked 2 kb 0 066a8df659033520
+pages tap 9 0 -> 4 target 30 tab 0 screen 0 idx 0 ticked 2 kb 0 066a8df659033520
+pages tap 11 1 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 0 47f19efcb2386445
+pages tap 12 0 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 1 acc58f26a5dfb98d
+pages typed '12' -> 2 target 11 kb 0 text '12' a6b9d9378313f870
+pages typed '31' -> 0 target 11 kb 1 text '31' b005c6d98b13d35e
+pages typed '0' -> 0 target 11 kb 1 text '0' 0c8c817b9552cd6e
+pages key x: none
+pages typed '7x' -> 2 target 6 kb 0 text '7' 79d9926aa2c47cf4
+== penset draws
+penset pg tab 0 mode 0 8a236100392075a6
+penset pg tab 0 mode 1 8a236100392075a6
+penset pg tab 0 mode 2 3dac9f73d9b91cb6
+penset pg tab 1 mode 0 00b542733668339d
+penset pg tab 1 mode 1 00b542733668339d
+penset pg tab 1 mode 2 98ec6afa004860d5
+penset pg tab 8 mode 0 99f6f81d2643cd6d
+penset pg tab 8 mode 1 99f6f81d2643cd6d
+penset pg tab 8 mode 2 bcd1f57571b3d165
+penset pg tab 2 mode 0 f776b56cc424da06
+penset pg tab 2 mode 1 f776b56cc424da06
+penset pg tab 2 mode 2 5ed3f95ee14c60b6
+penset pg tab 6 mode 0 092ca6befbfe39bf
+penset pg tab 6 mode 1 092ca6befbfe39bf
+penset pg tab 6 mode 2 23f6ee07f6789c17
+penset pg tab 7 mode 0 c1aa46538b8ef574
+penset pg tab 7 mode 1 c1aa46538b8ef574
+penset pg tab 7 mode 2 a98951df17c64ebc
+penset pg tab 5 mode 0 55d152ab0feda60e
+penset pg tab 5 mode 1 55d152ab0feda60e
+penset pg tab 5 mode 2 eb2c035a80d6879e
+penset pg tab 9 mode 0 9bad0aca0bd78a71
+penset pg tab 9 mode 1 9bad0aca0bd78a71
+penset pg tab 9 mode 2 d0a74ddfec948259
+penset pg tab 4 mode 0 70c1939938c0baf1
+penset pg tab 4 mode 1 70c1939938c0baf1
+penset pg tab 4 mode 2 d74560757ede85d9
+penset pg tab 3 mode 0 3261f87df4483617
+penset pg tab 3 mode 1 b029924c6393f853
+penset pg tab 3 mode 2 3261f87df4483617
+penset pc tab 0 mode 0 e067d0c98ccf97a4
+penset pc tab 0 mode 1 e067d0c98ccf97a4
+penset pc tab 0 mode 2 37d92a3fb97c303e
+penset pc tab 1 mode 0 0e8e423c07819e50
+penset pc tab 1 mode 1 0e8e423c07819e50
+penset pc tab 1 mode 2 feb0b308cdacd0fa
+penset pc tab 8 mode 0 96a5e7d8cd2c0c90
+penset pc tab 8 mode 1 96a5e7d8cd2c0c90
+penset pc tab 8 mode 2 874057d9901c8ace
+penset pc tab 2 mode 0 10a584a91be91504
+penset pc tab 2 mode 1 10a584a91be91504
+penset pc tab 2 mode 2 40498c39ef078ff2
+penset pc tab 6 mode 0 a5203a42313f0aab
+penset pc tab 6 mode 1 a5203a42313f0aab
+penset pc tab 6 mode 2 f2cd6cd33189e521
+penset pc tab 7 mode 0 378089bae9b4e704
+penset pc tab 7 mode 1 378089bae9b4e704
+penset pc tab 7 mode 2 4d6fe3c5ff70c5ae
+penset pc tab 5 mode 0 90f14027850969f0
+penset pc tab 5 mode 1 90f14027850969f0
+penset pc tab 5 mode 2 ba6fd8f22e345842
+penset pc tab 9 mode 0 5ce651b701e77435
+penset pc tab 9 mode 1 5ce651b701e77435
+penset pc tab 9 mode 2 8f0c56573c201c2b
+penset pc tab 4 mode 0 273c39a521c99eaf
+penset pc tab 4 mode 1 273c39a521c99eaf
+penset pc tab 4 mode 2 57d7ab7a5823c5b1
+penset pc tab 3 mode 0 c89bf5e1c8172877
+penset pc tab 3 mode 1 b3be7494e3d7e35e
+penset pc tab 3 mode 2 c89bf5e1c8172877
+penset lg tab 0 mode 0 c2294f6775a22ce2
+penset lg tab 0 mode 1 c2294f6775a22ce2
+penset lg tab 0 mode 2 c16618b764d72182
+penset lg tab 1 mode 0 548e739a2191fdf5
+penset lg tab 1 mode 1 548e739a2191fdf5
+penset lg tab 1 mode 2 9e86abeeb5dca405
+penset lg tab 8 mode 0 64bfdc1d47e9f9bf
+penset lg tab 8 mode 1 64bfdc1d47e9f9bf
+penset lg tab 8 mode 2 c83388c04e56f887
+penset lg tab 2 mode 0 c9251e20c190fca0
+penset lg tab 2 mode 1 c9251e20c190fca0
+penset lg tab 2 mode 2 75dbc961a713cd58
+penset lg tab 6 mode 0 150ef040f0beedcf
+penset lg tab 6 mode 1 150ef040f0beedcf
+penset lg tab 6 mode 2 a59e9dc8a31d5ff7
+penset lg tab 7 mode 0 5c91738b58581972
+penset lg tab 7 mode 1 5c91738b58581972
+penset lg tab 7 mode 2 a878eff9f085086a
+penset lg tab 5 mode 0 31d2c48c9201e8b4
+penset lg tab 5 mode 1 31d2c48c9201e8b4
+penset lg tab 5 mode 2 84aa0308a25bce34
+penset lg tab 9 mode 0 598cae903c3419bb
+penset lg tab 9 mode 1 598cae903c3419bb
+penset lg tab 9 mode 2 535c01d25ad83673
+penset lg tab 4 mode 0 3e8cdcb88056ac6c
+penset lg tab 4 mode 1 3e8cdcb88056ac6c
+penset lg tab 4 mode 2 0e0e3ac77a033e0c
+penset lg tab 3 mode 0 7ff291fa121cf1c7
+penset lg tab 3 mode 1 dec7a6e8a6d705ab
+penset lg tab 3 mode 2 7ff291fa121cf1c7
+penset lc tab 0 mode 0 def9552be878893a
+penset lc tab 0 mode 1 def9552be878893a
+penset lc tab 0 mode 2 c0b750f41de4af4c
+penset lc tab 1 mode 0 b108b91126898090
+penset lc tab 1 mode 1 b108b91126898090
+penset lc tab 1 mode 2 54fb6179839daf9a
+penset lc tab 8 mode 0 94a66d5159045734
+penset lc tab 8 mode 1 94a66d5159045734
+penset lc tab 8 mode 2 81c09bf3e0044b5a
+penset lc tab 2 mode 0 f53c55c5259be976
+penset lc tab 2 mode 1 f53c55c5259be976
+penset lc tab 2 mode 2 544615068fb90774
+penset lc tab 6 mode 0 a0b51141621d4bff
+penset lc tab 6 mode 1 a0b51141621d4bff
+penset lc tab 6 mode 2 1b69b2fb9320c07d
+penset lc tab 7 mode 0 848d55207312b2a0
+penset lc tab 7 mode 1 848d55207312b2a0
+penset lc tab 7 mode 2 f764390f4e3aa49a
+penset lc tab 5 mode 0 7bc7a11c9fab4a06
+penset lc tab 5 mode 1 7bc7a11c9fab4a06
+penset lc tab 5 mode 2 78827a04b9a4aaa0
+penset lc tab 9 mode 0 8a0608bd594bcb69
+penset lc tab 9 mode 1 8a0608bd594bcb69
+penset lc tab 9 mode 2 5ff577f280d81c0f
+penset lc tab 4 mode 0 ee72970a7d854a3a
+penset lc tab 4 mode 1 ee72970a7d854a3a
+penset lc tab 4 mode 2 691f9f9c478cb7e0
+penset lc tab 3 mode 0 ce157dcb2401a8fb
+penset lc tab 3 mode 1 ce1a48163b1d08b2
+penset lc tab 3 mode 2 ce157dcb2401a8fb
+penset lang en d6f5c021ba39a2f7
+penset lang es 745327701bea11c2
+== penset events
+penset pad tool 0 930beefadda64f6b
+penset pad tool 0 again 5cdd16b7a51199f8
+penset pad tool 0 again probe slider_pending rc 0 '0'
+penset pad tool 0 again probe param.size_min_mm rc 0 '0.1200'
+penset pad tool 0 again probe param.size_max_mm rc 0 '0.3200'
+penset pad tool 0 again probe param.opacity_max rc 0 '0.9500'
+penset pad tool 0 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 0 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 0 again probe param.tilt_min_deg rc 0 '25.0000'
+penset pad tool 0 again probe param.tilt_max_deg rc 0 '55.0000'
+penset pad tool 0 again probe param.grain rc 0 '0.7500'
+penset pad tool 0 again probe param.nonesuch rc -1 ''
+penset pad tool 0 again probe pad_strokes rc 0 '0'
+penset pad tool 0 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 0 again probe pad_white rc 0 ''
+penset pad tool 0 again probe pad_ink rc 0 ''
+penset pad tool 0 again probe pad_lighter rc 0 ''
+penset pad tool 0 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 0 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 0 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 0 again probe bogus rc -1 ''
+penset pad tool 1 7e28fda4f4c90c9e
+penset pad tool 1 again f7c74271d8a92d2e
+penset pad tool 1 again probe slider_pending rc 0 '0'
+penset pad tool 1 again probe param.size_min_mm rc 0 '0.3000'
+penset pad tool 1 again probe param.size_max_mm rc 0 '0.3000'
+penset pad tool 1 again probe param.opacity_max rc 0 '0.9500'
+penset pad tool 1 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 1 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 1 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 1 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 1 again probe param.grain rc 0 '0.5000'
+penset pad tool 1 again probe param.nonesuch rc -1 ''
+penset pad tool 1 again probe pad_strokes rc 0 '0'
+penset pad tool 1 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 1 again probe pad_white rc 0 ''
+penset pad tool 1 again probe pad_ink rc 0 ''
+penset pad tool 1 again probe pad_lighter rc 0 ''
+penset pad tool 1 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 1 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 1 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 1 again probe bogus rc -1 ''
+penset pad tool 8 4a881c31639b8ae6
+penset pad tool 8 again c535055429f9c3b5
+penset pad tool 8 again probe slider_pending rc 0 '0'
+penset pad tool 8 again probe param.size_min_mm rc 0 '0.3000'
+penset pad tool 8 again probe param.size_max_mm rc 0 '0.5500'
+penset pad tool 8 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 8 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 8 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 8 again probe param.tilt_min_deg rc 0 '25.0000'
+penset pad tool 8 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 8 again probe param.grain rc 0 '0.6500'
+penset pad tool 8 again probe param.nonesuch rc -1 ''
+penset pad tool 8 again probe pad_strokes rc 0 '0'
+penset pad tool 8 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 8 again probe pad_white rc 0 ''
+penset pad tool 8 again probe pad_ink rc 0 ''
+penset pad tool 8 again probe pad_lighter rc 0 ''
+penset pad tool 8 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 8 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 8 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 8 again probe bogus rc -1 ''
+penset pad tool 2 61b3ee8b8c96b5bb
+penset pad tool 2 again 0bd216ad67673669
+penset pad tool 2 again probe slider_pending rc 0 '0'
+penset pad tool 2 again probe param.size_min_mm rc 0 '0.3000'
+penset pad tool 2 again probe param.size_max_mm rc 0 '0.4800'
+penset pad tool 2 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 2 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 2 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 2 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 2 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 2 again probe param.grain rc 0 '0.0000'
+penset pad tool 2 again probe param.nonesuch rc -1 ''
+penset pad tool 2 again probe pad_strokes rc 0 '0'
+penset pad tool 2 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 2 again probe pad_white rc 0 ''
+penset pad tool 2 again probe pad_ink rc 0 ''
+penset pad tool 2 again probe pad_lighter rc 0 ''
+penset pad tool 2 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 2 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 2 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 2 again probe bogus rc -1 ''
+penset pad tool 6 0314b1ab3f22d3bc
+penset pad tool 6 again 53b55a8b56dfe540
+penset pad tool 6 again probe slider_pending rc 0 '0'
+penset pad tool 6 again probe param.size_min_mm rc 0 '0.2800'
+penset pad tool 6 again probe param.size_max_mm rc 0 '0.2800'
+penset pad tool 6 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 6 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 6 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 6 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 6 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 6 again probe param.grain rc 0 '0.0000'
+penset pad tool 6 again probe param.nonesuch rc -1 ''
+penset pad tool 6 again probe pad_strokes rc 0 '0'
+penset pad tool 6 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 6 again probe pad_white rc 0 ''
+penset pad tool 6 again probe pad_ink rc 0 ''
+penset pad tool 6 again probe pad_lighter rc 0 ''
+penset pad tool 6 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 6 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 6 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 6 again probe bogus rc -1 ''
+penset pad tool 7 3335ea287f02b1c2
+penset pad tool 7 again 319eff7c3ff7d21a
+penset pad tool 7 again probe slider_pending rc 0 '0'
+penset pad tool 7 again probe param.size_min_mm rc 0 '1.0000'
+penset pad tool 7 again probe param.size_max_mm rc 0 '1.0000'
+penset pad tool 7 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 7 again probe param.pressure_floor rc 0 '0.0100'
+penset pad tool 7 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 7 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 7 again probe param.tilt_max_deg rc 0 '75.0000'
+penset pad tool 7 again probe param.grain rc 0 '0.1500'
+penset pad tool 7 again probe param.nonesuch rc -1 ''
+penset pad tool 7 again probe pad_strokes rc 0 '0'
+penset pad tool 7 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 7 again probe pad_white rc 0 ''
+penset pad tool 7 again probe pad_ink rc 0 ''
+penset pad tool 7 again probe pad_lighter rc 0 ''
+penset pad tool 7 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 7 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 7 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 7 again probe bogus rc -1 ''
+penset pad tool 5 118b7c4ea1a4a3ab
+penset pad tool 5 again bbcc2f7e242d8c07
+penset pad tool 5 again probe slider_pending rc 0 '0'
+penset pad tool 5 again probe param.size_min_mm rc 0 '0.2800'
+penset pad tool 5 again probe param.size_max_mm rc 0 '0.8000'
+penset pad tool 5 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 5 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 5 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 5 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 5 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 5 again probe param.grain rc 0 '0.0000'
+penset pad tool 5 again probe param.nonesuch rc -1 ''
+penset pad tool 5 again probe pad_strokes rc 0 '0'
+penset pad tool 5 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 5 again probe pad_white rc 0 ''
+penset pad tool 5 again probe pad_ink rc 0 ''
+penset pad tool 5 again probe pad_lighter rc 0 ''
+penset pad tool 5 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 5 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 5 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 5 again probe bogus rc -1 ''
+penset pad tool 9 3893ba92248d127b
+penset pad tool 9 again b420b8261695d5cf
+penset pad tool 9 again probe slider_pending rc 0 '0'
+penset pad tool 9 again probe param.size_min_mm rc 0 '1.7500'
+penset pad tool 9 again probe param.size_max_mm rc 0 '1.7500'
+penset pad tool 9 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 9 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 9 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 9 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 9 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 9 again probe param.grain rc 0 '0.0000'
+penset pad tool 9 again probe param.nonesuch rc -1 ''
+penset pad tool 9 again probe pad_strokes rc 0 '0'
+penset pad tool 9 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 9 again probe pad_white rc 0 ''
+penset pad tool 9 again probe pad_ink rc 0 ''
+penset pad tool 9 again probe pad_lighter rc 0 ''
+penset pad tool 9 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 9 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 9 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 9 again probe bogus rc -1 ''
+penset pad tool 4 a4e0580e245fdf33
+penset pad tool 4 again 357e29c00a9ff579
+penset pad tool 4 again probe slider_pending rc 0 '0'
+penset pad tool 4 again probe param.size_min_mm rc 0 '3.0000'
+penset pad tool 4 again probe param.size_max_mm rc 0 '3.0000'
+penset pad tool 4 again probe param.opacity_max rc 0 '0.7500'
+penset pad tool 4 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 4 again probe param.pressure_ceiling rc 0 '1.0000'
+penset pad tool 4 again probe param.tilt_min_deg rc 0 '0.0000'
+penset pad tool 4 again probe param.tilt_max_deg rc 0 '90.0000'
+penset pad tool 4 again probe param.grain rc 0 '0.0000'
+penset pad tool 4 again probe param.nonesuch rc -1 ''
+penset pad tool 4 again probe pad_strokes rc 0 '0'
+penset pad tool 4 again probe pad_sample_rect rc 0 '0 0 0 0'
+penset pad tool 4 again probe pad_white rc 0 ''
+penset pad tool 4 again probe pad_ink rc 0 ''
+penset pad tool 4 again probe pad_lighter rc 0 ''
+penset pad tool 4 again probe pad_ink_near.1000.1000 rc 0 ''
+penset pad tool 4 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 4 again probe pad_ink_near.700.900 rc 0 ''
+penset pad tool 4 again probe bogus rc -1 ''
+penset pad tool 3 23e39cf2c2634bf6
+penset pad tool 3 again 23e39cf2c2634bf6
+penset pad tool 3 again probe slider_pending rc 0 '0'
+penset pad tool 3 again probe param.size_min_mm rc 0 '2.5000'
+penset pad tool 3 again probe param.size_max_mm rc 0 '7.0000'
+penset pad tool 3 again probe param.opacity_max rc 0 '1.0000'
+penset pad tool 3 again probe param.pressure_floor rc 0 '0.0000'
+penset pad tool 3 again probe param.pressure_ceiling rc 0 '0.6000'
+penset pad tool 3 again probe param.tilt_min_deg rc 0 '30.0000'
+penset pad tool 3 again probe param.tilt_max_deg rc 0 '75.0000'
+penset pad tool 3 again probe param.grain rc 0 '0.0000'
+penset pad tool 3 again probe param.nonesuch rc -1 ''
+penset pad tool 3 again probe pad_strokes rc 0 '1'
+penset pad tool 3 again probe pad_sample_rect rc 0 '696 564 1047 240'
+penset pad tool 3 again probe pad_white rc 0 ''
+penset pad tool 3 again probe pad_ink rc 0 '1'
+penset pad tool 3 again probe pad_lighter rc 0 '0'
+penset pad tool 3 again probe pad_ink_near.1000.1000 rc 0 '0'
+penset pad tool 3 again probe pad_ink_near.-5.x rc -1 ''
+penset pad tool 3 again probe pad_ink_near.700.900 rc 0 '0'
+penset pad tool 3 again probe bogus rc -1 ''
+penset pad pg tool 9 3893ba92248d127b
+penset pad pg tool 4 a4e0580e245fdf33
+penset pad pc tool 9 fe3d1190e8c72b7a
+penset pad pc tool 4 f9f5030892f54e46
+penset pad lg tool 9 5636593e82fff924
+penset pad lg tool 4 e480a0bb65cd5bca
+penset pad lc tool 9 a6e11b00543b053b
+penset pad lc tool 4 b083626ef2ce60ab
+penset white tab 3dac9f73d9b91cb6
+penset white stroke 5d048a35b2c471b5
+penset white probe slider_pending rc 0 '0'
+penset white probe param.size_min_mm rc 0 '0.1200'
+penset white probe param.size_max_mm rc 0 '0.3200'
+penset white probe param.opacity_max rc 0 '0.9500'
+penset white probe param.pressure_floor rc 0 '0.0000'
+penset white probe param.pressure_ceiling rc 0 '1.0000'
+penset white probe param.tilt_min_deg rc 0 '25.0000'
+penset white probe param.tilt_max_deg rc 0 '55.0000'
+penset white probe param.grain rc 0 '0.7500'
+penset white probe param.nonesuch rc -1 ''
+penset white probe pad_strokes rc 0 '0'
+penset white probe pad_sample_rect rc 0 '0 0 0 0'
+penset white probe pad_white rc 0 '1'
+penset white probe pad_ink rc 0 '1'
+penset white probe pad_lighter rc 0 '0'
+penset white probe pad_ink_near.1000.1000 rc 0 '0'
+penset white probe pad_ink_near.-5.x rc -1 ''
+penset white probe pad_ink_near.700.900 rc 0 '1'
+penset white probe bogus rc -1 ''
+penset ballpoint ink 61b3ee8b8c96b5bb
+penset ballpoint erased (end) 61fe77ca64511c12
+penset end probe slider_pending rc 0 '0'
+penset end probe param.size_min_mm rc 0 '0.3000'
+penset end probe param.size_max_mm rc 0 '0.4800'
+penset end probe param.opacity_max rc 0 '1.0000'
+penset end probe param.pressure_floor rc 0 '0.0000'
+penset end probe param.pressure_ceiling rc 0 '1.0000'
+penset end probe param.tilt_min_deg rc 0 '0.0000'
+penset end probe param.tilt_max_deg rc 0 '90.0000'
+penset end probe param.grain rc 0 '0.0000'
+penset end probe param.nonesuch rc -1 ''
+penset end probe pad_strokes rc 0 '0'
+penset end probe pad_sample_rect rc 0 '0 0 0 0'
+penset end probe pad_white rc 0 ''
+penset end probe pad_ink rc 0 '0'
+penset end probe pad_lighter rc 0 '0'
+penset end probe pad_ink_near.1000.1000 rc 0 '0'
+penset end probe pad_ink_near.-5.x rc -1 ''
+penset end probe pad_ink_near.700.900 rc 0 '0'
+penset end probe bogus rc -1 ''
+penset fountain wiped (end) 8b05e61328dd37c2
+penset wiped probe slider_pending rc 0 '0'
+penset wiped probe param.size_min_mm rc 0 '0.2800'
+penset wiped probe param.size_max_mm rc 0 '0.8000'
+penset wiped probe param.opacity_max rc 0 '1.0000'
+penset wiped probe param.pressure_floor rc 0 '0.0000'
+penset wiped probe param.pressure_ceiling rc 0 '1.0000'
+penset wiped probe param.tilt_min_deg rc 0 '0.0000'
+penset wiped probe param.tilt_max_deg rc 0 '90.0000'
+penset wiped probe param.grain rc 0 '0.0000'
+penset wiped probe param.nonesuch rc -1 ''
+penset wiped probe pad_strokes rc 0 '0'
+penset wiped probe pad_sample_rect rc 0 '0 0 0 0'
+penset wiped probe pad_white rc 0 ''
+penset wiped probe pad_ink rc 0 ''
+penset wiped probe pad_lighter rc 0 ''
+penset wiped probe pad_ink_near.1000.1000 rc 0 ''
+penset wiped probe pad_ink_near.-5.x rc -1 ''
+penset wiped probe pad_ink_near.700.900 rc 0 ''
+penset wiped probe bogus rc -1 ''
+penset eraser mode 0 3261f87df4483617
+penset eraser mode 0 probe slider_pending rc 0 '0'
+penset eraser mode 0 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 0 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 0 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 0 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 0 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 0 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 0 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 0 probe param.grain rc 0 '0.0000'
+penset eraser mode 0 probe param.nonesuch rc -1 ''
+penset eraser mode 0 probe pad_strokes rc 0 '32'
+penset eraser mode 0 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 0 probe pad_white rc 0 ''
+penset eraser mode 0 probe pad_ink rc 0 '1'
+penset eraser mode 0 probe pad_lighter rc 0 '0'
+penset eraser mode 0 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 0 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 0 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 0 probe bogus rc -1 ''
+penset eraser mode 0 stroke 0 d0d31864b3532ef1
+penset eraser mode 0 stroke 0 probe slider_pending rc 0 '0'
+penset eraser mode 0 stroke 0 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 0 stroke 0 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 0 stroke 0 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 0 stroke 0 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 0 stroke 0 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 0 stroke 0 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 0 stroke 0 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 0 stroke 0 probe param.grain rc 0 '0.0000'
+penset eraser mode 0 stroke 0 probe param.nonesuch rc -1 ''
+penset eraser mode 0 stroke 0 probe pad_strokes rc 0 '5'
+penset eraser mode 0 stroke 0 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 0 stroke 0 probe pad_white rc 0 ''
+penset eraser mode 0 stroke 0 probe pad_ink rc 0 '1'
+penset eraser mode 0 stroke 0 probe pad_lighter rc 0 '0'
+penset eraser mode 0 stroke 0 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 0 stroke 0 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 0 stroke 0 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 0 stroke 0 probe bogus rc -1 ''
+penset eraser mode 0 stroke 1 23e39cf2c2634bf6
+penset eraser mode 0 stroke 1 probe slider_pending rc 0 '0'
+penset eraser mode 0 stroke 1 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 0 stroke 1 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 0 stroke 1 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 0 stroke 1 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 0 stroke 1 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 0 stroke 1 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 0 stroke 1 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 0 stroke 1 probe param.grain rc 0 '0.0000'
+penset eraser mode 0 stroke 1 probe param.nonesuch rc -1 ''
+penset eraser mode 0 stroke 1 probe pad_strokes rc 0 '1'
+penset eraser mode 0 stroke 1 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 0 stroke 1 probe pad_white rc 0 ''
+penset eraser mode 0 stroke 1 probe pad_ink rc 0 '1'
+penset eraser mode 0 stroke 1 probe pad_lighter rc 0 '0'
+penset eraser mode 0 stroke 1 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 0 stroke 1 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 0 stroke 1 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 0 stroke 1 probe bogus rc -1 ''
+penset eraser mode 0 stroke 2 23e39cf2c2634bf6
+penset eraser mode 0 stroke 2 probe slider_pending rc 0 '0'
+penset eraser mode 0 stroke 2 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 0 stroke 2 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 0 stroke 2 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 0 stroke 2 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 0 stroke 2 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 0 stroke 2 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 0 stroke 2 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 0 stroke 2 probe param.grain rc 0 '0.0000'
+penset eraser mode 0 stroke 2 probe param.nonesuch rc -1 ''
+penset eraser mode 0 stroke 2 probe pad_strokes rc 0 '1'
+penset eraser mode 0 stroke 2 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 0 stroke 2 probe pad_white rc 0 ''
+penset eraser mode 0 stroke 2 probe pad_ink rc 0 '1'
+penset eraser mode 0 stroke 2 probe pad_lighter rc 0 '0'
+penset eraser mode 0 stroke 2 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 0 stroke 2 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 0 stroke 2 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 0 stroke 2 probe bogus rc -1 ''
+penset eraser mode 1 b029924c6393f853
+penset eraser mode 1 probe slider_pending rc 0 '0'
+penset eraser mode 1 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 1 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 1 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 1 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 1 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 1 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 1 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 1 probe param.grain rc 0 '0.0000'
+penset eraser mode 1 probe param.nonesuch rc -1 ''
+penset eraser mode 1 probe pad_strokes rc 0 '32'
+penset eraser mode 1 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 1 probe pad_white rc 0 ''
+penset eraser mode 1 probe pad_ink rc 0 '1'
+penset eraser mode 1 probe pad_lighter rc 0 '0'
+penset eraser mode 1 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 1 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 1 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 1 probe bogus rc -1 ''
+penset eraser mode 1 stroke 0 8c26e377f5fbd195
+penset eraser mode 1 stroke 0 probe slider_pending rc 0 '0'
+penset eraser mode 1 stroke 0 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 1 stroke 0 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 1 stroke 0 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 1 stroke 0 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 1 stroke 0 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 1 stroke 0 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 1 stroke 0 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 1 stroke 0 probe param.grain rc 0 '0.0000'
+penset eraser mode 1 stroke 0 probe param.nonesuch rc -1 ''
+penset eraser mode 1 stroke 0 probe pad_strokes rc 0 '32'
+penset eraser mode 1 stroke 0 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 1 stroke 0 probe pad_white rc 0 ''
+penset eraser mode 1 stroke 0 probe pad_ink rc 0 '1'
+penset eraser mode 1 stroke 0 probe pad_lighter rc 0 '0'
+penset eraser mode 1 stroke 0 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 1 stroke 0 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 1 stroke 0 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 1 stroke 0 probe bogus rc -1 ''
+penset eraser mode 1 stroke 1 d6fa89aa6b5ada63
+penset eraser mode 1 stroke 1 probe slider_pending rc 0 '0'
+penset eraser mode 1 stroke 1 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 1 stroke 1 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 1 stroke 1 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 1 stroke 1 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 1 stroke 1 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 1 stroke 1 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 1 stroke 1 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 1 stroke 1 probe param.grain rc 0 '0.0000'
+penset eraser mode 1 stroke 1 probe param.nonesuch rc -1 ''
+penset eraser mode 1 stroke 1 probe pad_strokes rc 0 '32'
+penset eraser mode 1 stroke 1 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 1 stroke 1 probe pad_white rc 0 ''
+penset eraser mode 1 stroke 1 probe pad_ink rc 0 '1'
+penset eraser mode 1 stroke 1 probe pad_lighter rc 0 '0'
+penset eraser mode 1 stroke 1 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 1 stroke 1 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 1 stroke 1 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 1 stroke 1 probe bogus rc -1 ''
+penset eraser mode 1 stroke 2 201070e5e889742d
+penset eraser mode 1 stroke 2 probe slider_pending rc 0 '0'
+penset eraser mode 1 stroke 2 probe param.size_min_mm rc 0 '2.5000'
+penset eraser mode 1 stroke 2 probe param.size_max_mm rc 0 '7.0000'
+penset eraser mode 1 stroke 2 probe param.opacity_max rc 0 '1.0000'
+penset eraser mode 1 stroke 2 probe param.pressure_floor rc 0 '0.0000'
+penset eraser mode 1 stroke 2 probe param.pressure_ceiling rc 0 '0.6000'
+penset eraser mode 1 stroke 2 probe param.tilt_min_deg rc 0 '30.0000'
+penset eraser mode 1 stroke 2 probe param.tilt_max_deg rc 0 '75.0000'
+penset eraser mode 1 stroke 2 probe param.grain rc 0 '0.0000'
+penset eraser mode 1 stroke 2 probe param.nonesuch rc -1 ''
+penset eraser mode 1 stroke 2 probe pad_strokes rc 0 '32'
+penset eraser mode 1 stroke 2 probe pad_sample_rect rc 0 '696 564 1047 240'
+penset eraser mode 1 stroke 2 probe pad_white rc 0 ''
+penset eraser mode 1 stroke 2 probe pad_ink rc 0 '1'
+penset eraser mode 1 stroke 2 probe pad_lighter rc 0 '0'
+penset eraser mode 1 stroke 2 probe pad_ink_near.1000.1000 rc 0 '0'
+penset eraser mode 1 stroke 2 probe pad_ink_near.-5.x rc -1 ''
+penset eraser mode 1 stroke 2 probe pad_ink_near.700.900 rc 0 '0'
+penset eraser mode 1 stroke 2 probe bogus rc -1 ''
+penset slider tab 0 row 0 params ab6bd9e57eef87fb eaee5849405107d6
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '10.6800'
+penset slider probe param.size_max_mm rc 0 '12.0000'
+penset slider probe param.opacity_max rc 0 '0.9500'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 1 params f5ca34bf5cebe0e4 1394638c5df36c22
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.9500'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 2 params 432a995b8dde7c58 94c80b6ced8d0e1c
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.9500'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 3 params 1d0066a045628725 5aa3f956fdf80c2a
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 4 params 7b2ba3b673a210b1 70e74ed624a362a4
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.4400'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 5 params 310c65fe36bdbaa4 24399f3ca5c85486
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 6 params 026089d1e4081612 9d8d7c4b92bd0762
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '25.0000'
+penset slider probe param.tilt_max_deg rc 0 '55.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 7 params d34c1c7c2e475b6f e3fb8a0e13ca9af6
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '76.0000'
+penset slider probe param.tilt_max_deg rc 0 '86.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 8 params 24248f99572934f3 45e02dfe593af44c
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 9 params bff3fa800987893a f775b34cec127e78
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 10 params 52384c9de1709036 37d27cdb513c1078
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.7500'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 11 params aa09485623c8a892 37fe0443d7d208c0
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.8900'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 0 row 12 params b350ae84ecfbe3ef c28bf38c9ff4dc74
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.8900'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset tick pending 1
+penset tick pending 0
+penset slider held 7069c73bc9c6167c
+penset slider tab 9 row 0 params a1c40c759ab10a84 2e3b5a9e8813c1f5
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '10.6800'
+penset slider probe param.size_max_mm rc 0 '12.0000'
+penset slider probe param.opacity_max rc 0 '1.0000'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 1 params 280b375b9d5c8e03 84019df79fb56f8d
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '1.0000'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 2 params a487c812b93d645b 4b827b43d4fce7dd
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '1.0000'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 3 params 75c45c813ef8040b 9a72b00273d321b1
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0000'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 4 params acbc49b7c9b025ff f8c5774236bcd2f7
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.4400'
+penset slider probe param.pressure_ceiling rc 0 '1.0000'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 5 params 54044118292300ee 163735d9c027a815
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 6 params 76ef2e22a3bc9e38 460f3b99137c3fe9
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '0.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 7 params 0944deb544f98e66 cdd166fef9b3a7ff
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '76.0000'
+penset slider probe param.tilt_max_deg rc 0 '90.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 8 params f516b4b1cbba0e0a d7cef4dfc7af8095
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 9 params 8f0f1c6f84d4c283 d2af4a7c4d8d5ae9
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 10 params 8310fa5d9c5ed626 2732aab453098c1d
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.0000'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 11 params aa093b5623c8927b a7eee65676c59f31
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.8900'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset slider tab 9 row 12 params b350ae84ecfbe3ef 14565d7a4d75252f
+penset slider probe slider_pending rc 0 '0'
+penset slider probe param.size_min_mm rc 0 '0.4300'
+penset slider probe param.size_max_mm rc 0 '10.6800'
+penset slider probe param.opacity_max rc 0 '0.8900'
+penset slider probe param.pressure_floor rc 0 '0.0300'
+penset slider probe param.pressure_ceiling rc 0 '0.8900'
+penset slider probe param.tilt_min_deg rc 0 '6.0000'
+penset slider probe param.tilt_max_deg rc 0 '81.0000'
+penset slider probe param.grain rc 0 '0.8900'
+penset slider probe param.nonesuch rc -1 ''
+penset slider probe pad_strokes rc 0 '0'
+penset slider probe pad_sample_rect rc 0 '0 0 0 0'
+penset slider probe pad_white rc 0 ''
+penset slider probe pad_ink rc 0 ''
+penset slider probe pad_lighter rc 0 ''
+penset slider probe pad_ink_near.1000.1000 rc 0 ''
+penset slider probe pad_ink_near.-5.x rc -1 ''
+penset slider probe pad_ink_near.700.900 rc 0 ''
+penset slider probe bogus rc -1 ''
+penset tick pending 1
+penset tick pending 0
+penset slider held 80f742a4b1d6beef
+penset pairs 0 row 4 to 50 params 28d455d8fca7de58 62a05d0cf9fca78b
+penset pairs 1 row 5 to 0 params 77f98ca80dc790f8 1a74e3199f9380dd
+penset pairs 2 row 4 to 100 params 02d7b75d7eaf15f3 c5e73390575d9c84
+penset pairs 3 row 8 to 0 params 9146b7b16d8b948b 76adfd3d27c4285a
+penset pairs 4 row 7 to 100 params 0551c93754a04e01 17e09b4145c3946a
+penset pairs 5 row 1 to 0 params cd5b653a3054994d c42026ea0f67efbe
+penset pairs 6 row 0 to 100 params efa00392281e9481 a6baabf5c755ce12
+penset pairs 7 row 5 to 100 params 1ab0e6a921b28e1d 453c6d81c30db066
+penset pairs 8 row 4 to 0 params 1c58787e86d7aa59 848e7ceb891a76f9
+penset pairs 9 row 7 to 0 params 85d4c7bf1f7a2e39 424d25694fd79fcb
+penset pairs 10 row 8 to 100 params 16cf4b3e196eac71 327ad70c3cc3c607
