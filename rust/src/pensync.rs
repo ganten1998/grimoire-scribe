@@ -13,8 +13,6 @@
 //! EVIOCGKEY also takes the queued button events out of the reader's queue, so it is asked only
 //! once the tail has been read.
 
-use crate::prelude::*;
-
 /// Linux evdev numbers (linux/input.h, which the host does not have; input_evdev.c checks them).
 // (u16, as input_event's type and code are.)
 pub const PS_EV_SYN: u16 = 0x00;
@@ -71,7 +69,110 @@ pub const PS_F_ALL: u32 = (1 << 9) - 1;
 /// Whether the pen touches the screen: BTN_TOUCH, or for a pen without it, pressure above p_min
 /// while it is near (BTN_TOOL_PEN or BTN_TOOL_RUBBER).
 pub fn pensync_contact(s: &PenState, touch_btn: bool, p_min: i32) -> bool {
-    todo!()
+    if touch_btn {
+        return s.touching;
+    }
+    (s.tool_pen || s.tool_rubber) && s.p > p_min
+}
+
+/// The PenState field an event sets (a PS_F_* bit), 0 for one the pen's reader does not follow.
+fn field_of(e: &PenEv) -> u32 {
+    if e.type_ == PS_EV_KEY {
+        return match e.code {
+            PS_BTN_TOOL_PEN => PS_F_TOOL_PEN,
+            PS_BTN_TOOL_RUBBER => PS_F_TOOL_RUBBER,
+            PS_BTN_TOUCH => PS_F_TOUCH,
+            PS_BTN_STYLUS => PS_F_SIDE,
+            _ => 0,
+        };
+    }
+    if e.type_ == PS_EV_ABS {
+        return match e.code {
+            PS_ABS_X => PS_F_X,
+            PS_ABS_Y => PS_F_Y,
+            PS_ABS_PRESSURE => PS_F_P,
+            PS_ABS_TILT_X => PS_F_TX,
+            PS_ABS_TILT_Y => PS_F_TY,
+            _ => 0,
+        };
+    }
+    0
+}
+
+fn set_field(s: &mut PenState, f: u32, v: i32) {
+    match f {
+        PS_F_TOOL_PEN => s.tool_pen = v != 0,
+        PS_F_TOOL_RUBBER => s.tool_rubber = v != 0,
+        PS_F_TOUCH => s.touching = v != 0,
+        PS_F_SIDE => s.side = v != 0,
+        PS_F_X => s.x = v,
+        PS_F_Y => s.y = v,
+        PS_F_P => s.p = v,
+        PS_F_TX => s.tx = v,
+        PS_F_TY => s.ty = v,
+        _ => {}
+    }
+}
+
+fn get_field(s: &PenState, f: u32) -> i32 {
+    match f {
+        PS_F_TOOL_PEN => s.tool_pen as i32,
+        PS_F_TOOL_RUBBER => s.tool_rubber as i32,
+        PS_F_TOUCH => s.touching as i32,
+        PS_F_SIDE => s.side as i32,
+        PS_F_X => s.x,
+        PS_F_Y => s.y,
+        PS_F_P => s.p,
+        PS_F_TX => s.tx,
+        PS_F_TY => s.ty,
+        _ => 0,
+    }
+}
+
+fn is_syn(e: &PenEv, code: u16) -> bool {
+    e.type_ == PS_EV_SYN && e.code == code
+}
+
+// (cap is out's length: the caller's room.)
+fn push(out: &mut [PenFrame], n: &mut usize, f: PenFrame) {
+    if *n < out.len() {
+        out[*n] = f;
+        *n += 1;
+    }
+}
+
+/// The lift that goes first when the pen touched at the last good point and the tail shows that
+/// stroke ended in the lost stretch: no contact at the first frame, or none just before it (pre: a
+/// BTN_TOUCH 1 in the first frame means the pen was up until then, as the input core passes only
+/// changes), or the other end by then (the eraser came down). The stroke ends where it was last
+/// seen, not wherever the tail (or the device now) finds the pen, and the first frame starts anew.
+fn lift_first(
+    t: &PenTail,
+    pre: &PenState,
+    first: &PenState,
+    t_us: u64,
+    out: &mut [PenFrame],
+    n: &mut usize,
+    in_: &mut PenTailInfo,
+) {
+    let g = &t.good;
+    if !pensync_contact(g, t.touch_btn, t.p_min) {
+        return;
+    }
+    if pensync_contact(pre, t.touch_btn, t.p_min)
+        && pensync_contact(first, t.touch_btn, t.p_min)
+        && pre.tool_pen == g.tool_pen
+        && pre.tool_rubber == g.tool_rubber
+    {
+        return;
+    }
+    let mut up = t.good;
+    up.touching = false;
+    if !t.touch_btn {
+        up.p = t.p_min;
+    }
+    push(out, n, PenFrame { s: up, t_us, ..Default::default() });
+    in_.lifted = true;
 }
 
 /// What a resync starts from. (ev: the C's ev and n.)
@@ -133,7 +234,115 @@ pub struct PenTailInfo {
 /// tail was read (its event taken by EVIOCGKEY) comes last, at the last frame's place. With no frame
 /// after the partial one, one frame of the device's present state.
 pub fn pensync_tail(t: &PenTail, out: &mut [PenFrame], info: &mut PenTailInfo) -> i32 {
-    todo!()
+    let mut in_ = PenTailInfo::default();
+    let mut n = 0usize;
+    let tn = t.ev.len();
+    // A second drop in what was read throws away everything before it too: start after the last.
+    let mut start = 0usize;
+    for i in 0..tn {
+        if is_syn(&t.ev[i], PS_SYN_DROPPED) {
+            start = i + 1;
+        }
+    }
+    // The partial frame, up to its SYN_REPORT: left out (the rest of it was thrown away).
+    let mut k = start;
+    while k < tn && !is_syn(&t.ev[k], PS_SYN_REPORT) {
+        k += 1;
+    }
+    in_.skipped = (k - start) as i32;
+    let tail = if k < tn { k + 1 } else { tn };
+    let mut end = tail;
+    for i in tail..tn {
+        if is_syn(&t.ev[i], PS_SYN_REPORT) {
+            end = i + 1;
+        }
+    }
+    in_.used = (if k < tn { end } else { tn }) as i32;
+
+    // The state before the tail's first frame. What the tail carries is known from it; what it
+    // never carries did not change in it, and the device's present state says what that is.
+    let mut s = t.good;
+    let mut carried = 0u32;
+    for i in tail..end {
+        let f = field_of(&t.ev[i]);
+        if f == 0 || (carried & f) != 0 {
+            continue;
+        }
+        carried |= f;
+        set_field(&mut s, f, if (f & PS_F_KEYS) != 0 { (t.ev[i].value == 0) as i32 } else { t.ev[i].value });
+    }
+    let mut f = 1u32;
+    while (f & PS_F_ALL) != 0 {
+        if (carried & f) == 0 && (t.now_ok & f) != 0 {
+            set_field(&mut s, f, get_field(&t.now, f));
+        }
+        f <<= 1;
+    }
+    let pre = s;
+
+    let mut moved = false;
+    for i in tail..end {
+        let e = &t.ev[i];
+        let f = field_of(e);
+        if f != 0 {
+            set_field(&mut s, f, e.value);
+            if (f & PS_F_KEYS) != 0 {
+                in_.keys = true;
+            } else {
+                moved = true;
+            }
+        }
+        if !is_syn(e, PS_SYN_REPORT) {
+            continue;
+        }
+        if in_.frames == 0 {
+            lift_first(t, &pre, &s, e.t_us, out, &mut n, &mut in_);
+            push(out, &mut n, PenFrame { s, t_us: e.t_us, moved: true, gap: true });
+            in_.first_us = e.t_us;
+        } else {
+            push(out, &mut n, PenFrame { s, t_us: e.t_us, moved, gap: false });
+        }
+        in_.last_us = e.t_us;
+        in_.frames += 1;
+        moved = false;
+    }
+
+    if in_.frames == 0 {
+        // Nothing complete after the partial frame: the pen is as the device says now, at the time
+        // of the partial frame's SYN_REPORT (or of the last event read).
+        let at = if k < tn {
+            t.ev[k].t_us
+        } else if tn != 0 {
+            t.ev[tn - 1].t_us
+        } else {
+            0
+        };
+        lift_first(t, &s, &s, at, out, &mut n, &mut in_);
+        push(out, &mut n, PenFrame { s, t_us: at, moved: true, gap: true });
+    } else if (t.now_ok & PS_F_KEYS) != 0 {
+        // A button the tail carried that the device says has changed since: that event came after
+        // the tail was read, and EVIOCGKEY took it out of the queue. It happens here.
+        let mut after = s;
+        let mut f = PS_F_TOOL_PEN;
+        while (f & PS_F_KEYS) != 0 {
+            if (t.now_ok & f) != 0 {
+                set_field(&mut after, f, get_field(&t.now, f));
+            }
+            f <<= 1;
+        }
+        if after.tool_pen != s.tool_pen
+            || after.tool_rubber != s.tool_rubber
+            || after.touching != s.touching
+            || after.side != s.side
+        {
+            s = after;
+            push(out, &mut n, PenFrame { s, t_us: in_.last_us, ..Default::default() });
+        }
+    }
+    in_.x = s.x;
+    in_.y = s.y;
+    *info = in_;
+    n as i32
 }
 
 /// A sample's time for the stroke (InEvent.k_ms): the kernel's time of its frame in now_ms()'s
@@ -142,7 +351,15 @@ pub fn pensync_tail(t: &PenTail, out: &mut [PenFrame], info: &mut PenTailInfo) -
 /// real CLOCK_MONOTONIC stamp can be), now: when it was read.
 pub const PENSYNC_K_MAX_AGE_MS: u32 = 10000;
 pub fn pensync_ms(t_us: u64, mono: bool, now: u32) -> u32 {
-    todo!()
+    if !mono || t_us == 0 {
+        return now;
+    }
+    let k = (t_us / 1000) as u32; // as now_ms() truncates: sec * 1000 + usec / 1000
+    let age = now.wrapping_sub(k);
+    if (age as i32) < 0 || age > PENSYNC_K_MAX_AGE_MS {
+        return now;
+    }
+    k
 }
 
 /// The pen Grimoire follows (stylus-custom) carries position and buttons only; pressure and tilt come
@@ -177,18 +394,32 @@ impl Default for PenRawRing {
 /// Forgets every frame kept: the raw digitizer dropped events (what is kept no longer meets what
 /// comes next), or the pens went to the native PIN screen and back.
 pub fn pensync_raw_clear(g: &mut PenRawRing) {
-    todo!()
+    g.next = 0;
+    g.count = 0;
 }
 /// A raw frame read (pressure and tilt as the digitizer reports them), at its kernel time. Frames come
 /// in time order: a resync after a drop pushes what it asked at the time it asked.
 pub fn pensync_raw_push(g: &mut PenRawRing, t_us: u64, p: i32, tx: i32, ty: i32) {
-    todo!()
+    g.r[g.next as usize] = PenRaw { t_us, p, tx, ty };
+    g.next = (g.next + 1) % PENSYNC_RAW_N as i32;
+    if g.count < PENSYNC_RAW_N as i32 {
+        g.count += 1;
+    }
 }
 /// The raw frame a pen frame of time t_us goes with: the newest kept at or before t_us. False when
 /// none is that old (nothing kept, a drop forgot them, or it is older than the oldest kept): the
 /// caller takes the raw digitizer's newest values, as before there was a ring.
 pub fn pensync_raw_at(g: &PenRawRing, t_us: u64, out: &mut PenRaw) -> bool {
-    todo!()
+    // From the newest back: the pen frame being read is nearly always within the last few.
+    let n = PENSYNC_RAW_N as i32;
+    for i in 1..=g.count {
+        let r = &g.r[((g.next - i + n) % n) as usize];
+        if r.t_us <= t_us {
+            *out = *r;
+            return true;
+        }
+    }
+    false
 }
 
 /// The pen service relays the pen coming and going, and where it touches, but not where it hovers
@@ -220,22 +451,71 @@ pub struct PenHover {
 }
 
 pub fn pensync_hover_init(h: &mut PenHover, rmin: &[i32; 2], rmax: &[i32; 2], smin: &[i32; 2], smax: &[i32; 2]) {
-    todo!()
+    *h = PenHover { rmin: *rmin, rmax: *rmax, smin: *smin, smax: *smax, err: [0; 4], n: 0 };
+}
+
+/// A raw coordinate on axis a in the scaled pen's units, reversed or not.
+fn hover_axis(h: &PenHover, a: usize, v: i32, reversed: bool) -> f32 {
+    let span = h.rmax[a] - h.rmin[a];
+    if span <= 0 {
+        return h.smin[a] as f32;
+    }
+    let mut f = ((v - h.rmin[a]) as f32 / span as f32).clamp(0.0, 1.0);
+    if reversed {
+        f = 1.0 - f;
+    }
+    // smin + f * (smax - smin) in one expression: clang fuses it (PORTING.md, Floating point).
+    f.mul_add((h.smax[a] - h.smin[a]) as f32, h.smin[a] as f32)
 }
 /// A contact frame: the raw digitizer's place (rx, ry) and the scaled pen's (sx, sy) at the same moment.
 pub fn pensync_hover_learn(h: &mut PenHover, rx: i32, ry: i32, sx: i32, sy: i32) {
-    todo!()
+    for o in 0..4usize {
+        let dx = hover_axis(h, 0, rx, (o & 1) != 0) - sx as f32;
+        let dy = hover_axis(h, 1, ry, (o & 2) != 0) - sy as f32;
+        let d = (if dx < 0.0 { -dx } else { dx }) + (if dy < 0.0 { -dy } else { dy });
+        h.err[o] += if d < PENSYNC_HOVER_CAP as f32 { (d + 0.5) as u32 } else { PENSYNC_HOVER_CAP as u32 };
+    }
+    h.n += 1;
+    if h.n >= 4096 {
+        for o in 0..4 {
+            h.err[o] /= 2;
+        }
+        h.n /= 2;
+    }
 }
 /// The orientation in use: 0 (both axes as they are) until PENSYNC_HOVER_FRAMES frames are compared,
 /// then the nearest of the four; -1 when its mean distance is over PENSYNC_HOVER_TOL px (no hover).
 pub fn pensync_hover_orientation(h: &PenHover) -> i32 {
-    todo!()
+    if h.n < PENSYNC_HOVER_FRAMES as u32 {
+        return 0;
+    }
+    let mut best = 0usize;
+    for o in 1..4usize {
+        if h.err[o] < h.err[best] {
+            best = o;
+        }
+    }
+    if h.err[best] <= PENSYNC_HOVER_TOL as u32 * h.n {
+        best as i32
+    } else {
+        -1
+    }
 }
 /// Orientation o's mean distance from the scaled pen so far, in px (0 before any frame).
 pub fn pensync_hover_mean(h: &PenHover, o: i32) -> f32 {
-    todo!()
+    if h.n != 0 && (0..4).contains(&o) {
+        h.err[o as usize] as f32 / h.n as f32
+    } else {
+        0.0
+    }
 }
 /// A raw place in the scaled pen's units, under the orientation in use; false when there is none.
 pub fn pensync_hover_place(h: &PenHover, rx: i32, ry: i32, sx: &mut f32, sy: &mut f32) -> bool {
-    todo!()
+    let o = pensync_hover_orientation(h);
+    if o < 0 || h.rmax[0] <= h.rmin[0] || h.rmax[1] <= h.rmin[1] {
+        return false;
+    }
+    *sx = hover_axis(h, 0, rx, (o & 1) != 0);
+    *sy = hover_axis(h, 1, ry, (o & 2) != 0);
+    true
 }
