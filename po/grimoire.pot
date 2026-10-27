@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 02:28-0500\n"
+"POT-Creation-Date: 2026-10-27 03:19-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -475,6 +475,17 @@ msgstr ""
 msgid "Warmth"
 msgstr ""
 
+#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
+#: src/dispmenu.c
+#, c-format
+msgid "%d min"
+msgstr ""
+
+#: src/dispmenu.c
+msgctxt "sleep after"
+msgid "never"
+msgstr ""
+
 #: src/dispmenu.c src/library.c
 msgid "Display"
 msgstr ""
@@ -504,17 +515,6 @@ msgstr ""
 #. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: src/dispmenu.c
 msgid "Pin this page"
-msgstr ""
-
-#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
-#: src/dispmenu.c
-#, c-format
-msgid "%d min"
-msgstr ""
-
-#: src/dispmenu.c
-msgctxt "sleep after"
-msgid "never"
 msgstr ""
 
 #. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 02:00-0500\n"
+"POT-Creation-Date: 2026-10-27 03:19-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -514,6 +514,17 @@ msgstr "Brillo"
 msgid "Warmth"
 msgstr "Calidez"
 
+#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
+#: src/dispmenu.c
+#, c-format
+msgid "%d min"
+msgstr "%d min"
+
+#: src/dispmenu.c
+msgctxt "sleep after"
+msgid "never"
+msgstr "nunca"
+
 #: src/dispmenu.c src/library.c
 msgid "Display"
 msgstr "Pantalla"
@@ -544,17 +555,6 @@ msgstr "Al dormir: PIN del Kindle (desbloqueo nativo)"
 #: src/dispmenu.c
 msgid "Pin this page"
 msgstr "Fijar esta página"
-
-#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
-#: src/dispmenu.c
-#, c-format
-msgid "%d min"
-msgstr "%d min"
-
-#: src/dispmenu.c
-msgctxt "sleep after"
-msgid "never"
-msgstr "nunca"
 
 #. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
 #. at 44 px, on the keyboard 334 px at 44 px in bold.
