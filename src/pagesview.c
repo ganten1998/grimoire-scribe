@@ -325,8 +325,10 @@ static void redraw(PagesView *v, App *a, RefreshMode m) {
 
 PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
     if (v->kb.open) {
-        Rect dirty;
-        KbResult r = keyboard_pointer(&v->kb, ph, ev->x, ev->y, ev->t_ms, &dirty);
+        // A key costs what it does on the Library's keyboard (app_keyboard_pointer): what it changed,
+        // the text line and then the key, each on its own fast refresh, and nothing for a sample that
+        // changed nothing. The view under the keys is not drawn again until the keyboard closes.
+        KbResult r = app_keyboard_pointer(a, &v->kb, ph, ev);
         if (r == KB_DONE) {
             if (v->naming) return PV_NAME;
             char *end;
@@ -335,15 +337,14 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
                 v->target = (int)page - 1;
                 return v->picking ? PV_PICK : PV_OPEN;
             }
+            // Not a page of this notebook: the number pad stays, its Done let go.
             v->kb.open = true;
             app_toast(a, _("Enter a page number in this notebook."), 2500);
+            keyboard_draw(&v->kb, &a->screen, (Rect){0, 0, a->w, a->h});
+            app_invalidate(a, v->kb.area, REFRESH_FAST);
         }
         if (r == KB_CANCEL && v->name_only) return PV_CLOSE;  // (back to the page it was asked on)
         if (r == KB_CANCEL) redraw(v, a, REFRESH_UI);
-        else {
-            keyboard_draw(&v->kb, &a->screen, (Rect){0, 0, a->w, a->h});
-            app_invalidate(a, rect_union(dirty, v->kb.field_dirty), REFRESH_FAST);
-        }
         return PV_NONE;
     }
     if (ph == 0) {
@@ -407,6 +408,10 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
     default: break;
     }
     return PV_NONE;
+}
+
+void pagesview_tick(PagesView *v, App *a, uint32_t now) {
+    if (v->open && v->kb.open) app_keyboard_tick(a, &v->kb, now);
 }
 
 int pagesview_probe(const PagesView *v, const char *key, char *out, size_t cap) {

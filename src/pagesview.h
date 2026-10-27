@@ -68,8 +68,12 @@ bool pagesview_name(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
 // Draws the whole screen into a->screen (the caller refreshes it).
 void pagesview_draw(PagesView *v, App *a);
 // Pointer phase 0 down / 1 move / 2 up. What it draws itself (a tick, another screenful, the
-// number pad) it refreshes itself; for the rest, see PvResult.
+// number pad) it refreshes itself; for the rest, see PvResult. While its keyboard is up a key draws
+// and refreshes only the keyboard, as the Library's does (app_keyboard_pointer).
 PvResult pagesview_pointer(PagesView *v, App *a, int phase, const InEvent *ev);
+// From the editor's tick: once typing on its keyboard pauses, the keyboard's grayscale refresh
+// (app_keyboard_tick). Nothing else.
+void pagesview_tick(PagesView *v, App *a, uint32_t now);
 int pagesview_ticked_count(const PagesView *v);
 bool pagesview_ticked(const PagesView *v, int index);
 void pagesview_untick(PagesView *v);

@@ -96,7 +96,6 @@ struct LibraryState {
     PaperKind new_paper;
     char new_name[STORE_NAME_LEN];
     int move_page;
-    uint32_t kb_settle_at;  // when to clean the keyboard up with one GL16 (0 = none)
 
     HitList hits;
     Press press;
@@ -1858,24 +1857,8 @@ void library_event(App *a, const InEvent *ev) {
         return;
     }
     if (S->modal == MOD_KB) {
-        Rect d;
-        KbResult r = keyboard_pointer(&S->kb, ph, ev->x, ev->y, ev->t_ms, &d);
-        if (r == KB_DONE || r == KB_CANCEL) {
-            kb_finished(a, r == KB_DONE);
-            return;
-        }
-        if (!rect_is_empty(d) || !rect_is_empty(S->kb.field_dirty)) {
-            // Typing stays on the fast waveform: the text first (what the eye is on), then
-            // the key. One clean GL16 of the keyboard follows once typing pauses.
-            keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h});
-            if (!rect_is_empty(S->kb.field_dirty)) {
-                app_invalidate(a, S->kb.field_dirty, REFRESH_FAST);
-                app_flush(a);
-            }
-            app_invalidate(a, d, REFRESH_FAST);
-            S->kb_settle_at = now_ms() + 900;
-            if (!S->kb_settle_at) S->kb_settle_at = 1;
-        }
+        KbResult r = app_keyboard_pointer(a, &S->kb, ph, ev);  // (what a key changed, drawn and refreshed)
+        if (r == KB_DONE || r == KB_CANCEL) kb_finished(a, r == KB_DONE);
         return;
     }
     if (ph == 0) {
@@ -1923,10 +1906,7 @@ void library_tick(App *a, uint32_t now) {
         S->pressed = NULL;
         forget_row(a, row);
     }
-    if (S->kb_settle_at && (int32_t)(now - S->kb_settle_at) >= 0) {
-        S->kb_settle_at = 0;
-        if (S->modal == MOD_KB && S->kb.pressed_key < 0) app_invalidate(a, S->kb.area, REFRESH_UI);
-    }
+    if (S->modal == MOD_KB) app_keyboard_tick(a, &S->kb, now);
     Rect d;
     if (S->modal == MOD_TEMPLATES && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
     // A background job ended (bgimage.h): the cards it may have changed are read again. A

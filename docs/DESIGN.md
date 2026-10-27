@@ -232,6 +232,16 @@ draws them. White ink and the precise eraser make them.
   characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
   the letters page's middle row ends with ñ after l (`k_row_es`), as Spanish keyboards have it, and
   is then as wide as the row above; the accents page keeps ñ in every language.
+- Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
+  and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
+  costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one
+  at every digitizer frame) draws nothing; a key that types draws the keyboard once and refreshes
+  the text line on the fast waveform, flushed on its own, then the key; 900 ms after the last key
+  (`Keyboard.settle_at`) one GL16 of the keyboard cleans up the dithered keys. Nothing under the
+  keyboard is drawn until it closes. The Pages view used to refresh the text line and the key as one
+  fast rectangle from the text down to the key and to draw the whole keyboard at every sample: on
+  the Kindle each key's refreshes then overlapped the one before and waited in the driver's queue
+  for it (docs/INK-PERFORMANCE.md), and the text fell further behind with every key.
 
 ## Languages
 

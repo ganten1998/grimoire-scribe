@@ -2580,6 +2580,7 @@ void editor_tick(App *a, uint32_t now) {
     }
     Rect d;
     if (S->open && S->owner == OWN_NONE && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
+    if (S->open) pagesview_tick(&S->pv, a, now);
     if (S->open && S->owner == OWN_LINK && !S->link_held && !S->link_press.moved && now - S->link_down_at >= LINK_HOLD_MS)
         link_hold(a);
     // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during

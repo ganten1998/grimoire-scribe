@@ -5,6 +5,7 @@
 #include "canvas.h"
 #include "display.h"
 #include "input.h"
+#include "keyboard.h"
 #include "store.h"
 #include "ui.h"
 #include "shortcuts.h"
@@ -99,6 +100,15 @@ void app_set_rotation(App *a, int quarter_turns);
 const char *app_mirror_dir(void);
 // Pressed-state feedback for a tapped control: invert + FAST refresh now.
 void app_press_feedback(App *a, Rect r);
+// A pen or finger event on an on-screen keyboard (keyboard.h), drawn and refreshed the one way every
+// keyboard is, so a key costs the same over any screen: only when the key changed something, only
+// the keyboard (never what is under it), and on the fast waveform, the text line first and on its
+// own, then the key. Returns keyboard_pointer's result; on KB_DONE and KB_CANCEL nothing is drawn
+// (the caller closes it and draws what it covered).
+KbResult app_keyboard_pointer(App *a, Keyboard *kb, int phase, const InEvent *ev);
+// From the screen's tick while its keyboard is up: once typing pauses, one grayscale refresh of the
+// keyboard cleans up what the fast ones left.
+void app_keyboard_tick(App *a, Keyboard *kb, uint32_t now);
 // Unified pointer phase for UI screens: pen and finger both act as a pointer.
 // Returns -1 if the event is not a pointer event, else 0 down / 1 move / 2 up.
 int app_pointer_phase(const InEvent *ev);

@@ -979,6 +979,37 @@ void app_press_feedback(App *a, Rect r) {
     display_present(&a->screen, r, REFRESH_FAST);
 }
 
+#define KB_SETTLE_MS 900  // typing paused this long: the keyboard's grayscale refresh
+
+KbResult app_keyboard_pointer(App *a, Keyboard *kb, int phase, const InEvent *ev) {
+    Rect d;
+    KbResult r = keyboard_pointer(kb, phase, ev->x, ev->y, ev->t_ms, &d);
+    if (r == KB_DONE || r == KB_CANCEL) return r;
+    // A sample that changed nothing draws nothing: the pen resting on a key sends one at every
+    // digitizer frame, and each whole keyboard drawn again is main-thread work the next key waits for.
+    if (rect_is_empty(d) && rect_is_empty(kb->field_dirty)) return r;
+    // Typing stays on the fast waveform: the text first (what the eye is on), then the key, each a
+    // refresh of its own. One over both would span the keyboard from the text line down to the key:
+    // on the Kindle several times the pixels to copy, and the next key's refreshes would overlap it
+    // and wait in the driver's queue for it to end (docs/INK-PERFORMANCE.md), every key behind the
+    // one before. One clean GL16 of the keyboard follows once typing pauses (app_keyboard_tick).
+    keyboard_draw(kb, &a->screen, (Rect){0, 0, a->w, a->h});
+    if (!rect_is_empty(kb->field_dirty)) {
+        app_invalidate(a, kb->field_dirty, REFRESH_FAST);
+        app_flush(a);
+    }
+    app_invalidate(a, d, REFRESH_FAST);
+    kb->settle_at = now_ms() + KB_SETTLE_MS;
+    if (!kb->settle_at) kb->settle_at = 1;
+    return r;
+}
+
+void app_keyboard_tick(App *a, Keyboard *kb, uint32_t now) {
+    if (!kb->settle_at || (int32_t)(now - kb->settle_at) < 0) return;
+    kb->settle_at = 0;
+    if (kb->open && kb->pressed_key < 0) app_invalidate(a, kb->area, REFRESH_UI);  // (not under a press)
+}
+
 // The runner's annotate.* keys: "role", the open page's paper ("document" for a page KOReader sent
 // or an imported one, "template", "" for any other); "luma", the open page as the editor holds it
 // now, its mean (255: white, as a picture still being made draws); the rest are annotate_probe's,

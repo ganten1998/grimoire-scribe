@@ -25,6 +25,8 @@ typedef struct {
     int pressed_key; // -1 if none
     bool typed;      // the pressed key already typed on touch-down
     Rect field_dirty;// set by keyboard_pointer when the text field changed (refresh it first)
+    uint32_t settle_at;  // when a pause in typing gets the keys their grayscale refresh
+                         // (app_keyboard_tick), 0 for none due
 } Keyboard;
 
 // Starts on the letters page with initial as the text: every valid character is kept (accents
