@@ -1681,7 +1681,7 @@ fn route(path_in: &[u8]) {
         };
         let f = atoi(&fs);
         let mut pr = PageRender::default();
-        if layers == 0 || f < 1 || f > 8 {
+        if layers == 0 || !(1..=8).contains(&f) {
             respond_text(400, "layer is ink, paper or all; f is 1 to 8");
         } else if export_page_png_ex(nb, page - 1, dpi, layers, f, Some(&mut pr), &mut b) == 0 {
             let mut hdr = String::new();
@@ -2275,9 +2275,7 @@ pub fn net_ipv4_list(out: &mut [NetAddr]) -> i32 {
     if n > max {
         n = if max < 0 { 0 } else { max };
     }
-    for i in 0..n as usize {
-        out[i] = all[i];
-    }
+    out[..n as usize].copy_from_slice(&all[..n as usize]);
     n
 }
 

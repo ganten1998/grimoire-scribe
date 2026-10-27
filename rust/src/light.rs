@@ -2,8 +2,6 @@
 //! the stock UI stays in sync (same lipc properties KOReader uses: com.lab126.powerd flIntensity
 //! and currentAmberLevel). Implemented by light_kindle.c and the simulator.
 
-use crate::prelude::*;
-
 // light.h is implemented by light_kindle.c on the Kindle and by the simulator (sim_sdl.c); host
 // builds link none (platform_none.rs). These forward to it.
 #[cfg(feature = "kindle")]

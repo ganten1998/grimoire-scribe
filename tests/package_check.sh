@@ -3,10 +3,10 @@
 # folder; documents/Grimoire.sh, the self-unpacking scriptlet (SH_Integration's keys, BUILD_ID,
 # the icon, the Capabilities line, the archive); the app inside it (the binary, the launcher,
 # CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font and every
-# third-party part of the binary: the vendored code, musl and zig's compiler-rt, and the parts of
-# FBInk's tree with notices of their own); and that the launchers' test hooks fall back to the
-# device's own paths and timings. The plugin the app carries also goes through
-# tests/koplugin_check.sh.
+# third-party part of the binary: the vendored code, musl and zig's compiler-rt, the parts of
+# FBInk's tree with notices of their own, the Rust standard library and the libc crate); and that
+# the launchers' test hooks fall back to the device's own paths and timings. The plugin the app
+# carries also goes through tests/koplugin_check.sh.
 # usage: tests/package_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -187,6 +187,15 @@ check "payload has licenses/musl-COPYRIGHT.txt" has "$B/app/licenses/musl-COPYRI
 L=$B/app/licenses
 check "payload has licenses/zig-compiler-rt-LICENSE.txt, zig's MIT license" sh -c \
     'grep -qF "Zig contributors" "$1" && grep -qF "Permission is hereby granted" "$1"' sh "$L/zig-compiler-rt-LICENSE.txt"
+# The binary is Rust's: rustc links the Rust standard library into it, whose notices (its own MIT
+# and Apache-2.0 terms, and those of each crate it is built from) the toolchain ships, and the libc
+# crate, dual-licensed the same way.
+check "payload has licenses/rust-std-LICENSE.txt, the Rust standard library's notices" sh -c \
+    'grep -qF "The Rust Standard Library is dual-licensed under Apache 2.0 and MIT terms" "$1" &&
+     grep -qF "Permission is hereby granted" "$1" && grep -qF "Apache License" "$1"' sh "$L/rust-std-LICENSE.txt"
+check "payload has licenses/rust-libc-LICENSE.txt, the libc crate's MIT and Apache-2.0 licenses" sh -c \
+    'grep -qF "From the libc crate" "$1" && grep -qF "The Rust Project Developers" "$1" &&
+     grep -qF "Permission is hereby granted" "$1" && grep -qF "Apache License" "$1"' sh "$L/rust-libc-LICENSE.txt"
 # FBInk compiles two parts of its tree with notices of their own into the binary: cutef8
 # (cutef8/utf8.c) and Bjoern Hoehrmann's UTF-8 decoder (cutef8/dfa.c). Each ships the notice at the
 # head of its source and its entry in FBInk's CREDITS, the only text the tree has for them. A new

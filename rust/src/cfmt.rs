@@ -411,6 +411,7 @@ macro_rules! csnprintf {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[allow(clippy::approx_constant)] // (3.14159 is a number to print, not pi)
     fn like_printf() {
         assert_eq!(cformat!("%s %d, %02d:%02d", "Oct", 10, 4, 5), "Oct 10, 04:05");
         assert_eq!(cformat!("%2$d %1$s", "Oct", 10), "10 Oct");

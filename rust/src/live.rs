@@ -581,7 +581,7 @@ fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32) -> ! {
     #[cfg(target_os = "linux")]
     // SAFETY: prctl with a NUL-terminated name and the signal number, no pointers kept.
     unsafe {
-        libc::prctl(libc::PR_SET_NAME, b"grimoire-live\0".as_ptr() as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong);
+        libc::prctl(libc::PR_SET_NAME, c"grimoire-live".as_ptr() as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong);
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong);
     }
     // SAFETY: getppid, nice and fcntl on our own descriptor take no pointers. (nice: best effort.)

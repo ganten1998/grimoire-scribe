@@ -1,4 +1,6 @@
 // test_pair.c: invitations, browser sessions, the lockout and the Cookie header.
+// (the C's index loops, kept: rust/src/lib.rs says why)
+#![allow(clippy::needless_range_loop)]
 mod testlib;
 use grimoire::prelude::*;
 use testlib::*;

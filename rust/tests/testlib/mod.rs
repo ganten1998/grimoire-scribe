@@ -22,7 +22,9 @@ pub static FAILURES: AtomicU32 = AtomicU32::new(0);
 macro_rules! check {
     ($cond:expr) => {{
         $crate::testlib::CHECKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if !($cond) {
+        // (the condition as a bool first: a comparison with a NaN is false, and fails the check)
+        let ok: bool = $cond;
+        if !ok {
             $crate::testlib::FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             eprintln!("  FAIL {}:{}: {}", file!(), line!(), stringify!($cond));
         }

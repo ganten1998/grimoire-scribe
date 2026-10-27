@@ -1,11 +1,13 @@
 #!/bin/sh
-# Builds every release file twice from clean and checks that the bytes are the same: the zip people
-# install (and its copy named for the version), the KOReader patches zip, the app's tar inside
-# Grimoire.sh and its BUILD_ID, the KPM package, its manifests and its checksum. Each build has an
-# empty build folder of its own; the second also starts from an empty zig cache, under umask 077,
-# another time zone and the C locale, so nothing of the builder's setup can reach the files. Both
-# must also match what make package left in BUILD, the zip the other checks test. tools/archive.py
-# and kindle/no-comment.ld are what make the bytes the same; this check holds them to it.
+# Builds every release file twice from clean and checks that the bytes are the same: the Kindle
+# binary (Rust's, from cargo zigbuild), the zip people install (and its copy named for the
+# version), the KOReader patches zip, the app's tar inside Grimoire.sh and its BUILD_ID, the KPM
+# package, its manifests and its checksum. Each build has an empty build folder of its own, and so
+# its own cargo target dir in it (the binary is compiled from nothing both times); the second also
+# starts from an empty zig cache, under umask 077, another time zone and the C locale, so nothing
+# of the builder's setup can reach the files. Both must also match what make package left in
+# BUILD, the zip the other checks test. tools/archive.py, kindle/no-comment.ld and the Makefile's
+# path remapping for rustc (RKFLAGS) are what make the bytes the same; this check holds them to it.
 # usage: tests/repro_check.sh [build]
 set -u
 cd "$(dirname "$0")/.." || exit 1

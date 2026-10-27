@@ -520,6 +520,8 @@ impl<const N: usize> FixedStr<N> {
     pub fn new() -> Self {
         Self::default()
     }
+    // (not std's FromStr: this one cannot fail, it cuts as the C's strlcpy does)
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         let mut f = Self::default();
         f.set(s);

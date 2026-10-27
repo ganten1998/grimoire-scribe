@@ -272,7 +272,7 @@ fn child_setup() {
     unsafe {
         libc::prctl(
             libc::PR_SET_NAME,
-            b"grimoire-bg\0".as_ptr() as libc::c_ulong,
+            c"grimoire-bg".as_ptr() as libc::c_ulong,
             0 as libc::c_ulong,
             0 as libc::c_ulong,
             0 as libc::c_ulong,

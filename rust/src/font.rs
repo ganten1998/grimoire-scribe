@@ -1234,7 +1234,7 @@ mod tests {
         let full = font_measure(FontFace::Regular, 44.0, text);
         assert_eq!(font_fit_px(FontFace::Regular, 44.0, 20.0, text, full), 44.0);
         let px = font_fit_px(FontFace::Regular, 44.0, 20.0, text, full - 40);
-        assert!(px < 44.0 && px >= 20.0);
+        assert!((20.0..44.0).contains(&px));
         assert!(font_measure(FontFace::Regular, px, text) <= full - 40);
         // quarter pixels in an outline face
         assert_eq!(px * 4.0, (px * 4.0).floor());
