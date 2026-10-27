@@ -7,7 +7,5 @@
 //! changes nothing on the page: ink erased entirely, and erase strokes left with nothing to do. A
 //! stroke erased only in part stays whole in the file, with the erase strokes over it.
 
-use crate::prelude::*;
-
 // The functions are bgwork_compact.c's, documented at their definitions in bgwork_compact.rs.
 pub use crate::bgwork_compact::{compact_listed, compact_note_page, compact_queue_listed, COMPACT_TEST_BEFORE_REPLACE};
