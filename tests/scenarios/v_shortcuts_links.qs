@@ -5,7 +5,8 @@
 # picks where it goes (a page, the Index). Pressed again while the link waits for its box, it is not
 # made. Name the page (N, a controller's North) opens the Index's naming keyboard for the open page,
 # holding its name; its Done saves the name and its Cancel keeps the old one, and either goes back to
-# the page; one that cannot be saved says so, back on the page. Neither acts through the keyboard.
+# the page; one that cannot be saved says so, back on the page. Neither acts through the keyboard,
+# and the Pages view opens again on the tab it was left on, not the Index shown under the keys.
 wait 150
 tap 965 95
 wait 100
@@ -145,4 +146,31 @@ tap 398 2045
 tap 1643 2365
 expect editor.page_name is Notes
 expect editor.index_rows is 2
+# Left on its Pages tab, the Pages view opens there again after naming, by Cancel or by Done
+pentap 1768 1026
+expect editor.modal is pages
+tap 430 95
+expect editor.pages_tab is pages
+tap 125 95
+expect editor.modal is none
+key 49 0
+wait 60
+expect editor.pages_tab is index
+expect editor.keyboard is Page name
+tap 217 2365
+expect editor.modal is none
+pentap 1768 1026
+expect editor.modal is pages
+expect editor.pages_tab is pages
+tap 125 95
+key 49 0
+wait 60
+expect editor.text is Notes
+tap 1643 2365
+expect editor.modal is none
+expect editor.page_name is Notes
+pentap 1768 1026
+expect editor.pages_tab is pages
+tap 125 95
+expect editor.modal is none
 quit

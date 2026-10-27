@@ -30,16 +30,27 @@ bool pagesview_ticked(const PagesView *v, int index) { return index >= 0 && inde
 
 void pagesview_untick(PagesView *v) { memset(v->sel, 0, (size_t)v->sel_cap * sizeof *v->sel); }
 
+// A view opened to name the open page (name_only) gives back the tab it found: the Index under its
+// keys was not picked there, so the Pages button and the pages shortcut open where they did before.
+static void end_name_only(PagesView *v) {
+    if (v->name_only) {
+        v->index_tab = v->name_back_tab;
+        v->tab_initialized = v->name_back_init;
+    }
+    v->name_only = false;
+}
+
 bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current) {
     v->nb = nb;
     v->nav = nav;
+    end_name_only(v);
     if (!v->tab_initialized) {
         v->index_tab = nav_index(nav, nb, NULL, 0) > 0;
         v->index_screen = 0;
         v->tab_initialized = true;
     }
     v->current = current;
-    v->picking = v->pick_had = v->name_only = false;
+    v->picking = v->pick_had = false;
     if (v->sel_cap < nb->npages) {
         bool *n = realloc(v->sel, (size_t)nb->npages * sizeof *n);
         if (!n) return false;
@@ -73,7 +84,11 @@ static void open_naming(PagesView *v) {
 }
 
 bool pagesview_name(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current) {
-    if (!nav->writable || !pagesview_open(v, a, nb, nav, current)) return false;
+    if (!nav->writable) return false;
+    bool back_tab = v->index_tab, back_init = v->tab_initialized;  // (before an opening picks one)
+    if (!pagesview_open(v, a, nb, nav, current)) return false;
+    v->name_back_tab = back_tab;
+    v->name_back_init = back_init;
     v->index_tab = v->tab_initialized = true;  // (Name this page's tab: its names above the keys)
     v->name_only = true;
     open_naming(v);
@@ -82,7 +97,8 @@ bool pagesview_name(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
 
 void pagesview_close(PagesView *v) {
     v->open = false;
-    v->picking = v->pick_had = v->name_only = false;
+    v->picking = v->pick_had = false;
+    end_name_only(v);
     keyboard_close(&v->kb);
     annotate_map_free(&v->book);
 }

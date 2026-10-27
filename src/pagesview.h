@@ -52,6 +52,8 @@ typedef struct {
     bool pick_had;            // ... a link the page had (it can be removed), not one drawn just now
     bool name_only;           // opened to name the open page (pagesview_name): its keyboard's
                               // Cancel says PV_CLOSE, and after its Done the editor closes the view
+    bool name_back_tab, name_back_init;  // ... index_tab and tab_initialized as it found them,
+                                         // given back as it closes
 } PagesView;
 
 // Opens it on notebook nb, on the screenful with page `current`, nothing ticked. False when there

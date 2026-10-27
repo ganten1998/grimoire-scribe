@@ -117,9 +117,10 @@ while the link waits for its box, it is not made (a toast says so), as Close men
 read-only page it does nothing but say so, and where the notebook's `links.ini` does not read it
 does nothing (the Index's Add a link is greyed out then). `name-page` opens the Index's naming
 keyboard for the open page, holding its name: Done saves it (an empty name takes it out of the
-Index), Cancel keeps the old one, and either goes back to the page, not to the Index. Where the
-notebook's `nav.ini` does not read it does nothing (Name this page is greyed out then). Neither
-acts while a menu is open, and the starter mappings give them no key or button.
+Index), Cancel keeps the old one, and either goes back to the page, not to the Index; the Pages
+view then opens again on the tab it was left on. Where the notebook's `nav.ini` does not read it
+does nothing (Name this page is greyed out then). Neither acts while a menu is open, and the
+starter mappings give them no key or button.
 
 A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
 another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
