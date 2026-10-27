@@ -28,23 +28,33 @@ static, kindle/no-comment.ld) is found from the working directory, not from the 
 
 From the top level, `make` does the same with the target dir out of the tree (`build/cargo`;
 build/ is a symlink out of Dropbox in the owner's checkout, and a cargo target inside Dropbox
-breaks):
+breaks). Since the switch (wave 4) the app's rules build the Rust binaries, where the C ones went:
 
 | target | does |
 |---|---|
-| `make rust-headless` | `build/rust/host/grimoire-headless` |
-| `make rust-tools` | `build/rust/host/grimoire-export` |
-| `make rust-kindle` | `build/rust/kindle/grimoire` (static armhf, no machine paths in it) |
-| `make rust-test` | cargo test, one test at a time, `GRIMOIRE_TEST_TMP` set: on the host, then with `--features sim` |
-| `make rust-scenarios` | `make scenarios` against the Rust runner |
-| `make rust-l10n-check` | `make l10n-check` against the Rust runner |
-| `make rust-check` | the gate: unit tests, scenarios, languages, mirror cleanup, share, Live view, Bluetooth, the exporter, the ARM build |
-| `make rust-package` | the Kindle zip with the Rust binary, in `build/rust/dist` |
+| `make headless` | `build/host/grimoire-headless` |
+| `make tools` | `build/host/grimoire-export` |
+| `make kindle` | `build/kindle/grimoire` (static armhf, no machine paths in it) |
+| `make test` | cargo test, one test at a time, `GRIMOIRE_TEST_TMP` set: on the host, then with `--features sim` |
+| `make scenarios` | every tests/scenarios/*.qs and the runner's self-test |
+| `make l10n-check` | every screen in every language, with the fit check |
+| `make rust-check` | the app's gate: unit tests, scenarios, languages, mirror cleanup, share, Live view, Bluetooth, the exporter, the ARM build |
+| `make package` | the Kindle zip, in `build/dist` |
+| `make check` | `rust-check` plus the package, launcher, KPM and patch checks |
 
-The Rust rules run the C rules with `BUILD=build/rust` and `-o` naming the Rust binary, so
-`tests/*.sh`, the scenario runner and the Python and JS checks run unchanged and find the Rust
-build where they look for the C one. Never run a GUI binary as a check, and never touch the
-device from a check.
+The port's first names (`rust-headless`, `rust-tools`, `rust-kindle`, `rust-test`,
+`rust-scenarios`, `rust-l10n-check`, `rust-package`) still work as aliases. Each binary's rule runs
+cargo every time and copies the binary only when its bytes changed. `tests/*.sh`, the scenario
+runner and the Python and JS checks run unchanged.
+
+The C tree builds into `build/c` under `c-headless`, `c-test`, `c-tools`, `c-kindle`, `c-icon` and
+`c-logo`; `make c-check` and `make c-package` run the same checks and packaging against the C
+binaries (`BUILD=build/c`). Never run a GUI binary as a check, and never touch the device from a
+check.
+
+The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`): a bare
+`cargo test` without it fails test_store's export checks in both languages. Run them through
+`make test`, or set it to a writable directory whose parent is writable too.
 
 ## Variants
 
@@ -374,7 +384,8 @@ Grimoire's own logic goes into C.
   otherwise (see Floating point).
 - **Scenarios**: `make rust-scenarios` runs all of tests/scenarios/*.qs and the runner's self-test
   through the C's rule; `make rust-l10n-check` every screen in every language with the fit check.
-- **The gate**: `make rust-check`. The C's `make check` keeps working throughout.
+- **The gate**: `make rust-check` (and `make check` for the release). The C's checks keep working
+  as `make c-check` until the owner retires the C tree.
 
 ## Interface changes
 
@@ -437,25 +448,39 @@ otherwise.
 
 ## Packaging and the switch
 
-Until the switch, `make package`, `make dist` and the KPM rules ship the C binary;
-`make rust-package` builds the same zip with the Rust binary (BUILD=build/rust). The switch, at the
-end of the port:
+The switch was made in wave 4: `make package`, `make dist` and the KPM rules ship the Rust binary
+(`make c-package` builds the zip with the C one, in `build/c/dist`).
 
-1. `make kindle` builds the Rust binary (the rust-kindle recipe) into `$(BUILD)/kindle/grimoire`, and
-   `headless`/`tools` the Rust ones; the C rules move to `c-*` names until the C tree is retired.
-2. The package's licenses/ add the Rust standard library's notice (MIT and Apache-2.0, as
-   `rust-std-LICENSE.txt`) and the libc crate's; FBInk's, stb's, qrcodegen's, musl's and zig's
-   compiler-rt notices stay (they are still linked). tests/package_check.sh learns the new file.
-3. tests/repro_check.sh builds the Rust binary twice from clean (the remap flags in the Makefile
-   and kindle/no-comment.ld keep the bytes independent of the machine) and compares.
-4. The l10n rule extracts the msgids from rust/src/*.rs instead of src/*.c: xgettext with the
-   keywords `-ktr -kn_ -kc_:1c,2 -knc_:1c,2 -kng_:1,2` (gettext 0.24+ reads Rust with
-   `--language=Rust`; else its C parser reads these calls), and po/grimoire.pot must come out the
-   same, apart from the source references.
-5. `make check` is `make rust-check` plus the package, launcher, KPM and patch checks.
+1. `make kindle` builds the Rust binary into `$(BUILD)/kindle/grimoire`, and `headless`/`tools`
+   (and `icon`/`logo`) the Rust ones; the C rules have `c-*` names until the C tree is retired.
+2. The package's licenses/ add the Rust standard library's notice (`rust-std-LICENSE.txt`, the
+   toolchain's COPYRIGHT-library.html as text) and the libc crate's (`rust-libc-LICENSE.txt`);
+   FBInk's, stb's, qrcodegen's, musl's and zig's compiler-rt notices stay (they are still linked).
+   tests/package_check.sh checks both. It still reads WATCH_EVENTS from src/input_evdev.c (the
+   Rust's `macro_rules! WATCH_EVENTS` in input_evdev.rs holds the same text); point it at the
+   Rust when the C tree is retired.
+3. tests/repro_check.sh builds the Rust binary twice from clean, each with its own cargo target
+   (the remap flags in the Makefile and kindle/no-comment.ld keep the bytes independent of the
+   machine), and compares.
+4. The l10n rule extracts the msgids from rust/src/*.rs with the keywords
+   `-ktr -kn_ -kc_:1c,2 -knc_:1c,2 -kng_:1,2`, through xgettext's C parser (`--language=C`):
+   gettext 1.0's Rust parser drops the `#, c-format` marks msgfmt --check needs. po/grimoire.pot
+   must come out the same, apart from the source references; it does not yet (see the wave 4
+   report: i18n.rs's own tests get extracted, some TRANSLATORS comments sit a line too high after
+   rustfmt, and two groups of strings come in another order), so `make l10n`'s output is not
+   committed until it does.
+5. `make check` is `make rust-check` plus the package, launcher, KPM and patch checks. The release
+   workflow (.github/workflows/release.yml, `make -j4 check`) now needs rustup's stable toolchain,
+   the armv7-unknown-linux-musleabihf target and cargo-zigbuild on its runner.
 
 ## Finishing
 
 When every module is translated: remove the skeleton's crate-level `allow`s (lib.rs, src/bin/*),
 fix every warning, and make `make rust-check` and `cargo clippy` pass. Delete nothing of the C
 tree in the port's branch: the owner retires it.
+
+Wave 4 translated the last modules (input_evdev, display_fbink, the host tools) and removed the
+skeleton's allows. lib.rs keeps three clippy allows on purpose, each with its reason there
+(too_many_arguments, needless_range_loop, unnecessary_cast), and platform_none keeps
+unused_variables and ptr_arg for its stubs. The host, sim and Kindle builds and their clippy runs
+are warning-free.
