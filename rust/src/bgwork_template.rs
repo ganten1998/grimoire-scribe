@@ -1880,6 +1880,133 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // The probe of the C build (tests/fixtures/bgwork_template_probe.c), told in Rust: the natural order,
+    // the names of previews (a hash of a file's name, size and time), the reading of a preview's key and
+    // the hash of a folder's pictures are what the Kindle's caches already hold.
+    fn probe_text(dir: &str) -> String {
+        use std::fmt::Write as _;
+        let mut o = String::new();
+        let sign = |c: i32| if c < 0 { '<' } else if c > 0 { '>' } else { '=' };
+        let l = [
+            "", "a", "A", "b", "B", "a1", "a01", "a001", "a2", "a10", "a1b", "a1B", "a01b", "1", "01", "001", "0", "00", "9", "10", "x", "x1", "x1y2", "x1y10",
+            "page-2", "page-10", "Page-3", "page-002", "page-3", "scan 1 of 12", "scan 12 of 12", "z\u{e9}", "z\u{c9}", "\u{e9}", ".a", "a.", "a-b", "a_b",
+            "99999999999999999999", "100000000000000000000", "0000000000000000000001", "1.5", "1.10", "a:", "a/", "a9", "a:9",
+        ];
+        for (i, a) in l.iter().enumerate() {
+            let line: String = l.iter().map(|b| sign(natural_cmp(a, b))).collect();
+            let _ = writeln!(o, "NAT {i:2} {line}");
+        }
+        let names = [
+            "a.png", "a.PNG", "a.jpg", "a.JPEG", "a.jpeg", "a.pgm", "a.Pgm", ".a.png", "a", "a.gif", "a.png.txt", ".png", "png", "a.b.jpeg", "x.tiff", "a.jpg ",
+            "A.JpG", "dir.png/", "a.pn", "a.pngg", "",
+        ];
+        for n in names {
+            let _ = writeln!(o, "PICNAME [{n}] {}", picture_name(n) as i32);
+        }
+        for f in ["/x/y/Name", "Name", "/x/y/", "/", "", "/a/b c/\u{e9}", "/mnt/us/grimoire/import/Score"] {
+            let _ = writeln!(o, "FNAME [{f}] {:016x}", folder_name_hash(f));
+        }
+        let _ = writeln!(o, "FNV {:016x} {:016x}", fnv(FNV0, b""), fnv(FNV0, b"abc"));
+        let mut name = FixedStr::<STORE_NAME_LEN>::new();
+        copy_name(&mut name, &"\u{e9}".repeat(70));
+        let _ = writeln!(o, "COPYNAME {}", name.len());
+        copy_name(&mut name, "short");
+        let _ = writeln!(o, "COPYNAME [{name}]");
+        copy_name(&mut name, &format!("a{}\u{e9}", "b".repeat(94)));
+        let _ = writeln!(o, "COPYNAME {}", name.len());
+
+        let put = |rel: &str, n: usize, t: i64| {
+            let path = format!("{dir}/{rel}");
+            if let Some(s) = path.rfind('/') {
+                std::fs::create_dir_all(&path[..s]).unwrap();
+            }
+            std::fs::write(&path, &b"0123456789abcdefghij"[..n.min(20)]).unwrap();
+            let c = std::ffi::CString::new(path).unwrap();
+            let tv = [libc::timeval { tv_sec: t as _, tv_usec: 0 }, libc::timeval { tv_sec: t as _, tv_usec: 0 }];
+            // SAFETY: utimes reads the NUL-terminated path and two timevals we own.
+            unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) };
+        };
+        let rel = |p: &str| p.strip_prefix(dir).unwrap_or(p).to_string();
+        let when = 1700000000i64;
+        let t = ["t-10.png", "T-3.JPG", "b.jpeg", "caf\u{e9}.png", "a b.pgm", "x"];
+        for (i, f) in t.iter().enumerate() {
+            put(&format!("templates/{f}"), 10 + i, when + i as i64 * 1000);
+        }
+        let tdir = format!("{dir}/templates");
+        for f in t {
+            let (mut a, mut b, mut c, mut d) = (String::new(), String::new(), String::new(), String::new());
+            let ok = preview_path(&tdir, f, "pgm", &mut a, PATH_BUF) && preview_path(&tdir, f, "key", &mut b, PATH_BUF) && preview_path(&tdir, f, "bad", &mut c, PATH_BUF);
+            let of = preview_of(&format!("{tdir}/{f}"), "pgm", &mut d, PATH_BUF);
+            let _ = writeln!(o, "PREVIEW [{f}] {} {} {} {} of={} {}", ok as i32, rel(&a), rel(&b), rel(&c), of as i32, (of && a == d) as i32);
+        }
+        let mut a = String::new();
+        let _ = writeln!(o, "PREVIEW missing {}", preview_path(&tdir, "nope.png", "pgm", &mut a, PATH_BUF) as i32);
+        let _ = writeln!(o, "PREVIEW noslash {}", preview_of("no-slash.png", "pgm", &mut a, PATH_BUF) as i32);
+        let _ = writeln!(o, "PREVIEW long {}", preview_of(&format!("/{}", "x".repeat(649)), "pgm", &mut a, PATH_BUF) as i32);
+
+        put("keys/k.png", 4, when + 5000);
+        let k: [&[u8]; 23] = [
+            b"00000000000000ff 600 800\n", b"ff 1 2", b"  FF  -5  7", b"0x1F 3 4", b"123456789abcdef01 5 6", b"xyz", b"", b"ff 1", b"ff 1 2 3 4",
+            b"ff\n1\n2\n", b"1 -1 1", b"-1 1 1", b"+a 1 1", b"ffffffffffffffff 1 1", b"abc 0 0", b"abc +7 -8x", b"abc\t1\t2",
+            b"deadbeefdeadbeef 1280 1707\nextra line\n", b"0 0 0", b"   \n  1 2 3", b"1,2,3", b"00ff 600 800", b"0000000000000000ff 1 2",
+        ];
+        let pth = format!("{dir}/keys/k.png");
+        for (i, text) in k.iter().enumerate() {
+            let mut kp = String::new();
+            preview_of(&pth, "key", &mut kp, PATH_BUF);
+            std::fs::create_dir_all(&kp[..kp.rfind('/').unwrap_or(0)]).unwrap();
+            std::fs::write(&kp, text).unwrap();
+            let (mut h, mut w, mut hh) = (7u64, -9, -9);
+            let rc = cached_key(&pth, &mut h, &mut w, &mut hh);
+            if rc == 0 {
+                let _ = writeln!(o, "KEY {i} rc=0 hash={h:016x} w={w} h={hh}");
+            } else {
+                let _ = writeln!(o, "KEY {i} rc={rc}");
+            }
+        }
+        let (mut h, mut w, mut hh) = (7u64, 0, 0);
+        let _ = writeln!(o, "KEY nofile rc={}", cached_key(&format!("{dir}/keys/nofile.png"), &mut h, &mut w, &mut hh));
+        let _ = writeln!(o, "KEY noslash rc={}", cached_key("k.png", &mut h, &mut w, &mut hh));
+
+        for i in 0..6 {
+            put(&format!("l/p{i}.png"), 1 + i, when + 3000 + i as i64 * 7);
+        }
+        for f in ["l/q.txt", "l/.h.png", "l/d1/x", "l/d2.png/x"] {
+            put(f, 1, when);
+        }
+        let ldir = format!("{dir}/l");
+        let mut names = Vec::new();
+        let _ = writeln!(o, "LIST pics rc={}", list_names(&ldir, true, 100, &mut names));
+        for n in &names {
+            let _ = write!(o, " {n}");
+        }
+        let _ = writeln!(o, "\nPICSHASH {:016x}", pictures_hash(&ldir, &names));
+        let _ = writeln!(o, "LIST dirs rc={}", list_names(&ldir, false, 100, &mut names));
+        for n in &names {
+            let _ = write!(o, " {n}");
+        }
+        let _ = writeln!(o);
+        let _ = writeln!(o, "LIST max rc={}", list_names(&ldir, true, 3, &mut names));
+        let _ = writeln!(o, "LIST max n={}", names.len());
+        let _ = writeln!(o, "FOLDERHASH {:016x}", folder_pictures_hash(&ldir));
+        let missing = format!("{dir}/l/missing");
+        let _ = writeln!(o, "LIST missing rc={}", list_names(&missing, true, 3, &mut names));
+        let _ = writeln!(o, "FOLDERHASH missing {:016x}", folder_pictures_hash(&missing));
+        o
+    }
+
+    #[test]
+    fn matches_the_c_probe() {
+        let dir = scratch("probe");
+        let got = probe_text(&dir);
+        let want = include_str!("../tests/fixtures/bgwork_template_probe_c.txt");
+        for (n, (g, w)) in got.lines().zip(want.lines()).enumerate() {
+            assert_eq!(g, w, "line {} of the probe", n + 1);
+        }
+        assert_eq!(got.lines().count(), want.lines().count());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn hashes_of_names() {
         // FNV-1a of "Name", the last part of the path
