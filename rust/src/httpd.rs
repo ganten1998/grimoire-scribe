@@ -34,6 +34,8 @@
 // (The C reads its strings as bytes, and so does this: a request, a path and a header are
 // `&[u8]`/`Vec<u8>` here, and a C string ends at its first NUL, as `cbytes` reads one.)
 
+// The fonts and the web pages are embedded at build time: build/gen/fonts.c and build/gen/web.c in the
+// C (xxd -i), assets.rs here (include_bytes!, the same bytes).
 use crate::assets::*;
 use crate::prelude::*;
 use std::cell::RefCell;
