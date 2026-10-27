@@ -250,10 +250,10 @@ class FakeFrame {
 async function codecChecks() {
     globalThis.VideoEncoder = FakeEncoder;
     globalThis.VideoFrame = FakeFrame;
-    const realNow = performance.now.bind(performance);
-    let skew = 0;
-    performance.now = () => realNow() + skew;
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // A clock of its own, moved by hand: the 1/15 s wait and the 2 s between key frames are then
+    // exact however busy the machine is (only the wait's timer is real).
+    let clock = 1000;
+    performance.now = () => clock;
     const turn = () => new Promise(r => setImmediate(r));  // (the microtasks of this one have run)
     const canvas = {width: 1860, height: 2480};
     let finished;
@@ -266,23 +266,25 @@ async function codecChecks() {
     await turn();
     ok('codecs: three changes in one turn, one frame, a key frame at 0', enc.encoded.length === 1 &&
        enc.encoded[0].ts === 0 && enc.encoded[0].key && enc.encoded[0].from === canvas);
+    clock += 10;
     rec.frame();
     await turn();
-    ok('codecs: a change sooner than 1/15 s later waits', enc.encoded.length === 1);
-    await sleep(150);
-    ok('codecs: and then comes by itself, no key frame', enc.encoded.length === 2 && enc.encoded[1].ts >= 66000 &&
+    ok('codecs: a change sooner than 1/15 s later waits', enc.encoded.length === 1 && !!rec.timer);
+    clock += 60;  // (70 ms on: due once its timer comes)
+    for (let i = 0; i < 500 && enc.encoded.length < 2; i++) await new Promise(r => setTimeout(r, 10));
+    ok('codecs: and then comes by itself, no key frame', enc.encoded.length === 2 && enc.encoded[1].ts === 70000 &&
        !enc.encoded[1].key);
-    skew += 2100;  // (2.1 s with nothing changing)
+    clock += 2100;  // (2.1 s with nothing changing)
     rec.frame();
     await turn();
     ok('codecs: a change 2 s after the last key frame is one', enc.encoded.length === 3 && enc.encoded[2].key &&
-       enc.encoded[2].ts >= 2100000);
+       enc.encoded[2].ts === 2170000);
     rec.frame();
     rec.stop();  // (the change still waiting is taken, not lost)
     rec.frame();
     const blob = await result;
-    ok('codecs: Stop takes the change still waiting, 1/15 s on at least, then nothing more', enc.encoded.length === 4 &&
-       !enc.encoded[3].key && enc.encoded[3].ts >= enc.encoded[2].ts + 66667 && enc.state === 'closed');
+    ok('codecs: Stop takes the change still waiting, 1/15 s on, then nothing more', enc.encoded.length === 4 &&
+       !enc.encoded[3].key && enc.encoded[3].ts === 2170000 + 66667 && enc.state === 'closed');
     if (!blob) return ok('codecs: an MP4 came', false);
     const file = new Uint8Array(await blob.arrayBuffer()), m = readMp4(file);
     ok('codecs: an MP4 (video/mp4) of the four chunks, in order', blob.type === 'video/mp4' && m &&
@@ -296,7 +298,7 @@ async function codecChecks() {
     new CodecRecorder(canvas, 'avc1.420033', refused);
     ok('codecs: an encoder that refuses gives nothing to save', await nothing === null);
     FakeEncoder.refuse = false;
-    performance.now = realNow;
+    delete performance.now;  // (the real one again)
     delete globalThis.VideoEncoder;
     delete globalThis.VideoFrame;
 }
