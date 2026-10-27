@@ -420,6 +420,93 @@ TEST(the_ring_keeps_the_newest_frames) {
     CHECK(pensync_raw_at(&g, raw_frame(PENSYNC_RAW_N + 43).t_us, &got) && got.tx == PENSYNC_RAW_N + 43);
 }
 
+// The Scribe 2's ranges (grimoire.log, 2026-10-26): the raw digitizer 8.4 units to each pixel.
+static const int HV_RMIN[2] = {0, 0}, HV_RMAX[2] = {15624, 20832}, HV_SMIN[2] = {0, 0}, HV_SMAX[2] = {1860, 2480};
+
+// Contact frame i of a stroke that wanders over the whole screen: where the scaled pen is, and the
+// raw digitizer's place for it under orientation o (bit 0: x reversed, bit 1: y reversed), a pixel or
+// two off as the pen service rounds.
+static void hover_frame(int i, int o, int *rx, int *ry, int *sx, int *sy) {
+    *sx = (i * 397) % 1861;
+    *sy = (i * 911) % 2481;
+    int ux = o & 1 ? 1860 - *sx : *sx, uy = o & 2 ? 2480 - *sy : *sy;
+    *rx = (int)((float)ux * 8.4f + 0.5f) + (i % 3 - 1) * 9;  // (about a pixel either way)
+    *ry = (int)((float)uy * 8.4f + 0.5f) - (i % 5 - 2) * 6;
+    if (*rx < 0) *rx = 0;
+    if (*ry < 0) *ry = 0;
+}
+
+static bool near(float a, float b, float tol) { return a - b <= tol && b - a <= tol; }
+
+TEST(the_hovering_pen_comes_from_the_raw_digitizer_in_the_scaled_pens_units) {
+    PenHover h;
+    pensync_hover_init(&h, HV_RMIN, HV_RMAX, HV_SMIN, HV_SMAX);
+    float x, y;
+    // Before any contact: both axes as they are, scaled onto the screen.
+    CHECK(pensync_hover_orientation(&h) == 0);
+    CHECK(pensync_hover_place(&h, 840, 1680, &x, &y) && near(x, 100.f, 0.01f) && near(y, 200.f, 0.01f));
+    CHECK(pensync_hover_place(&h, 15624, 20832, &x, &y) && near(x, 1860.f, 0.01f) && near(y, 2480.f, 0.01f));
+    CHECK(pensync_hover_place(&h, -50, 99999, &x, &y) && near(x, 0.f, 0.01f) && near(y, 2480.f, 0.01f));  // (cut)
+    // A pen service that keeps both axes as they are: so it stays, a pixel or so from the pen.
+    int rx, ry, sx, sy;
+    for (int i = 0; i < 200; i++) {
+        hover_frame(i, 0, &rx, &ry, &sx, &sy);
+        pensync_hover_learn(&h, rx, ry, sx, sy);
+    }
+    CHECK(pensync_hover_orientation(&h) == 0 && pensync_hover_mean(&h, 0) < 2.f);
+    CHECK(pensync_hover_mean(&h, 1) > 20.f && pensync_hover_mean(&h, 2) > 20.f && pensync_hover_mean(&h, 3) > 20.f);
+    // One frame far off (a stale raw place) weighs at most PENSYNC_HOVER_CAP: nothing changes.
+    pensync_hover_learn(&h, 0, 0, 1800, 2400);
+    CHECK(pensync_hover_orientation(&h) == 0);
+}
+
+TEST(a_reversed_axis_is_found_after_enough_contact_frames) {
+    for (int o = 1; o < 4; o++) {
+        PenHover h;
+        pensync_hover_init(&h, HV_RMIN, HV_RMAX, HV_SMIN, HV_SMAX);
+        int rx, ry, sx, sy;
+        for (int i = 0; i < PENSYNC_HOVER_FRAMES - 1; i++) {
+            hover_frame(i, o, &rx, &ry, &sx, &sy);
+            pensync_hover_learn(&h, rx, ry, sx, sy);
+        }
+        CHECK(pensync_hover_orientation(&h) == 0);  // (not yet: as it is until they decide)
+        hover_frame(PENSYNC_HOVER_FRAMES - 1, o, &rx, &ry, &sx, &sy);
+        pensync_hover_learn(&h, rx, ry, sx, sy);
+        CHECK(pensync_hover_orientation(&h) == o);
+        float x, y;
+        CHECK(pensync_hover_place(&h, 840, 1680, &x, &y));
+        CHECK(near(x, o & 1 ? 1760.f : 100.f, 0.01f) && near(y, o & 2 ? 2280.f : 200.f, 0.01f));
+    }
+}
+
+TEST(no_hover_when_the_raw_place_is_far_from_the_pen_in_every_orientation) {
+    PenHover h;
+    pensync_hover_init(&h, HV_RMIN, HV_RMAX, HV_SMIN, HV_SMAX);
+    int rx, ry, sx, sy;
+    for (int i = 0; i < PENSYNC_HOVER_FRAMES; i++) {
+        hover_frame(i, 0, &rx, &ry, &sx, &sy);
+        pensync_hover_learn(&h, rx, ry, sx > 930 ? sx - 40 : sx + 40, sy);  // 40 px off, whichever way
+    }
+    float x = -1.f, y = -1.f;
+    CHECK(pensync_hover_orientation(&h) == -1 && !pensync_hover_place(&h, 840, 1680, &x, &y) && x == -1.f);
+    // It keeps comparing: frames that agree bring it back once the mean is near again.
+    for (int i = 0; i < 400; i++) {
+        hover_frame(i, 0, &rx, &ry, &sx, &sy);
+        pensync_hover_learn(&h, rx, ry, sx, sy);
+    }
+    CHECK(pensync_hover_orientation(&h) == 0 && pensync_hover_place(&h, 840, 1680, &x, &y));
+    // A long session halves what it has compared, so it never overflows and still follows.
+    for (int i = 0; i < 9000; i++) {
+        hover_frame(i, 0, &rx, &ry, &sx, &sy);
+        pensync_hover_learn(&h, rx, ry, sx, sy);
+    }
+    CHECK(h.n < 4096 && h.n >= 2048 && pensync_hover_orientation(&h) == 0);
+    // A digitizer without ranges: no place at all.
+    const int zero[2] = {0, 0};
+    pensync_hover_init(&h, zero, zero, HV_SMIN, HV_SMAX);
+    CHECK(!pensync_hover_place(&h, 840, 1680, &x, &y));
+}
+
 int main(void) {
     RUN(the_p28_shape_reports_the_tail_in_order_and_never_jumps_ahead);
     RUN(an_axis_missing_from_the_first_frame_takes_its_first_value_in_the_tail);
@@ -437,5 +524,8 @@ int main(void) {
     RUN(each_pen_frame_takes_the_pressure_and_tilt_of_its_own_moment);
     RUN(a_raw_drop_forgets_and_the_resync_starts_again);
     RUN(the_ring_keeps_the_newest_frames);
+    RUN(the_hovering_pen_comes_from_the_raw_digitizer_in_the_scaled_pens_units);
+    RUN(a_reversed_axis_is_found_after_enough_contact_frames);
+    RUN(no_hover_when_the_raw_place_is_far_from_the_pen_in_every_orientation);
     return tl_done();
 }

@@ -1,5 +1,5 @@
-// pensync.c: the pen after a SYN_DROPPED, its samples' kernel times, and the raw digitizer's frames
-// it takes pressure and tilt from (pensync.h).
+// pensync.c: the pen after a SYN_DROPPED, its samples' kernel times, the raw digitizer's frames it
+// takes pressure and tilt from, and the hovering pen's place in them (pensync.h).
 #include "pensync.h"
 
 bool pensync_contact(const PenState *s, bool touch_btn, int p_min) {
@@ -188,4 +188,48 @@ bool pensync_raw_at(const PenRawRing *g, uint64_t t_us, PenRaw *out) {
         }
     }
     return false;
+}
+
+void pensync_hover_init(PenHover *h, const int rmin[2], const int rmax[2], const int smin[2], const int smax[2]) {
+    *h = (PenHover){{rmin[0], rmin[1]}, {rmax[0], rmax[1]}, {smin[0], smin[1]}, {smax[0], smax[1]}, {0}, 0};
+}
+
+// A raw coordinate on axis a in the scaled pen's units, reversed or not.
+static float hover_axis(const PenHover *h, int a, int v, bool reversed) {
+    int span = h->rmax[a] - h->rmin[a];
+    if (span <= 0) return (float)h->smin[a];
+    float f = (float)(v - h->rmin[a]) / (float)span;
+    f = f < 0.f ? 0.f : f > 1.f ? 1.f : f;
+    if (reversed) f = 1.f - f;
+    return (float)h->smin[a] + f * (float)(h->smax[a] - h->smin[a]);
+}
+
+void pensync_hover_learn(PenHover *h, int rx, int ry, int sx, int sy) {
+    for (int o = 0; o < 4; o++) {
+        float dx = hover_axis(h, 0, rx, o & 1) - (float)sx, dy = hover_axis(h, 1, ry, (o & 2) != 0) - (float)sy;
+        float d = (dx < 0.f ? -dx : dx) + (dy < 0.f ? -dy : dy);
+        h->err[o] += d < (float)PENSYNC_HOVER_CAP ? (uint32_t)(d + 0.5f) : PENSYNC_HOVER_CAP;
+    }
+    if (++h->n >= 4096) {
+        for (int o = 0; o < 4; o++) h->err[o] /= 2;
+        h->n /= 2;
+    }
+}
+
+int pensync_hover_orientation(const PenHover *h) {
+    if (h->n < PENSYNC_HOVER_FRAMES) return 0;
+    int best = 0;
+    for (int o = 1; o < 4; o++)
+        if (h->err[o] < h->err[best]) best = o;
+    return h->err[best] <= (uint32_t)PENSYNC_HOVER_TOL * h->n ? best : -1;
+}
+
+float pensync_hover_mean(const PenHover *h, int o) { return h->n && o >= 0 && o < 4 ? (float)h->err[o] / (float)h->n : 0.f; }
+
+bool pensync_hover_place(const PenHover *h, int rx, int ry, float *sx, float *sy) {
+    int o = pensync_hover_orientation(h);
+    if (o < 0 || h->rmax[0] <= h->rmin[0] || h->rmax[1] <= h->rmin[1]) return false;
+    *sx = hover_axis(h, 0, rx, o & 1);
+    *sy = hover_axis(h, 1, ry, (o & 2) != 0);
+    return true;
 }

@@ -1,6 +1,7 @@
 // pensync.h: the pure parts of reading the pen (input_evdev.c), unit-tested on the host: how a
 // stroke goes on after the kernel dropped pen events, the kernel's sample times in now_ms()'s clock,
-// and which of the raw digitizer's samples a pen frame takes its pressure and tilt from.
+// which of the raw digitizer's samples a pen frame takes its pressure and tilt from, and where the pen
+// hovers (from the raw digitizer: the scaled pen says only that it is near).
 //
 // Each reader of an evdev device has its own buffer in the kernel. Grimoire's for the scaled pen
 // (stylus-custom) holds 128 events, and its frames carry only X and Y (2 or 3 events each), so it
@@ -124,3 +125,32 @@ void pensync_raw_push(PenRawRing *g, uint64_t t_us, int p, int tx, int ty);
 // none is that old (nothing kept, a drop forgot them, or it is older than the oldest kept): the
 // caller takes the raw digitizer's newest values, as before there was a ring.
 bool pensync_raw_at(const PenRawRing *g, uint64_t t_us, PenRaw *out);
+
+// The pen service relays the pen coming and going, and where it touches, but not where it hovers
+// (proximity only: no X or Y between BTN_TOUCH 0 and BTN_TOOL_PEN 0, in the raw pen log of
+// 2026-10-26). The raw digitizer streams its hover frames, so Live view's hovering pen is taken from
+// it, in the scaled pen's units. The pen service scales each raw axis linearly onto the screen
+// (15624 / 1860 = 20832 / 2480 = 8.4 on the Scribe 2, within 3 px), each maybe reversed. Each axis
+// is taken as it is (as Grimoire's raw-only fallback and KOReader take the raw axes) until contact
+// frames, where both pens report the same moment, say otherwise; and not at all when even the best
+// orientation is far from the scaled pen, since a ring in the wrong place is worse than none.
+#define PENSYNC_HOVER_FRAMES 32  // contact frames compared before they decide
+#define PENSYNC_HOVER_TOL 8      // px: the best orientation's mean distance from the scaled pen, at most
+#define PENSYNC_HOVER_CAP 64     // px: one frame's distance counts at most this (a stray frame weighs little)
+typedef struct {
+    int rmin[2], rmax[2];  // the raw digitizer's x and y ranges
+    int smin[2], smax[2];  // the scaled pen's
+    uint32_t err[4];       // per orientation (bit 0: x reversed, bit 1: y reversed): distances summed
+    uint32_t n;            // contact frames compared (halved with err past 4096, so it keeps up)
+} PenHover;
+
+void pensync_hover_init(PenHover *h, const int rmin[2], const int rmax[2], const int smin[2], const int smax[2]);
+// A contact frame: the raw digitizer's place (rx, ry) and the scaled pen's (sx, sy) at the same moment.
+void pensync_hover_learn(PenHover *h, int rx, int ry, int sx, int sy);
+// The orientation in use: 0 (both axes as they are) until PENSYNC_HOVER_FRAMES frames are compared,
+// then the nearest of the four; -1 when its mean distance is over PENSYNC_HOVER_TOL px (no hover).
+int pensync_hover_orientation(const PenHover *h);
+// Orientation o's mean distance from the scaled pen so far, in px (0 before any frame).
+float pensync_hover_mean(const PenHover *h, int o);
+// A raw place in the scaled pen's units, under the orientation in use; false when there is none.
+bool pensync_hover_place(const PenHover *h, int rx, int ry, float *sx, float *sy);
