@@ -155,8 +155,9 @@ struct EditorState {
     PagesView pv;               // the Pages view (pagesview.h)
     Nav nav;
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) waits for the next ink stroke
-    // on the open page, its box (link_mode); then the Pages view picks where it goes. A finger's tap on a link follows it; one
-    // held on it (LINK_HOLD_MS) opens the Pages view to change where it goes, or remove it.
+    // on the open page, its box (link_mode); then the Pages view picks where it goes. A finger's
+    // tap on a link follows it; one held on it (LINK_HOLD_MS) opens the Pages view to change where
+    // it goes, or remove it.
     bool link_mode;
     uint32_t link_seed;         // the link the Pages view picks for: its box's seed
     Press link_press;           // a finger on the page (OWN_LINK)
