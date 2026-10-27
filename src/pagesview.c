@@ -314,7 +314,13 @@ void pagesview_draw(PagesView *v, App *a) {
             if (k == 1) hits_add(&v->hits, rcopy, PG_COPY, 0);
         }
     }
-    if (v->kb.open) keyboard_draw(&v->kb, c, (Rect){0, 0, a->w, a->h});
+    // A toast stays above the keys, as over the Library's keyboard: Go to page's "Enter a page number"
+    // used to cover its 0 and del just as the number was put right, and a key pressed under a toast
+    // refreshes the toast's width with it.
+    if (v->kb.open) {
+        keyboard_draw(&v->kb, c, (Rect){0, 0, a->w, a->h});
+        a->toast_floor = v->kb.area.y;
+    }
 }
 
 // The whole view drawn again and refreshed (what the editor's compose_all does while it is open).

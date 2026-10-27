@@ -112,7 +112,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   Library sets it in `redraw` for an open sheet: the keyboard's top, or else the top of the
   control just under the first band of a toast's height that is clear of the sheet's controls,
   found going up from the toast's usual place (for Custom music, only that sheet's own controls
-  count). `app_switch` clears the floor, and a toast already up moves at the next flush
+  count). The Pages view sets it to its bottom row of buttons, or to its keyboard's top while the
+  keyboard is up. `app_switch` clears the floor, and a toast already up moves at the next flush
   (`toast_follow`).
 - Display safety (main.c, display_fbink.c): the screen guard reads the framebuffer back (8 and
   32 bpp) and repaints what another process drew; after 10 repaints in a row it turns itself off.

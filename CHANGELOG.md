@@ -32,7 +32,8 @@
   the next key waited on the screen for it, and the pen resting on a key drew the whole keyboard
   again many times over. Now only the text and the key refresh, the keyboard is drawn once a key,
   and a moment after typing stops the keys are cleaned up, exactly as on the Library's keyboard.
-  Naming a page right after writing on it no longer leaves the toolbar drawn over the keyboard.
+  Naming a page right after writing on it no longer leaves the toolbar drawn over the keyboard,
+  and a notice stays above the keys (Go to page's "Enter a page number" covered its 0 and del).
 
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:

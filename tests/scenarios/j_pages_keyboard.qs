@@ -8,7 +8,8 @@
 # the driver's queue behind the key before it, and to draw the whole keyboard again at every sample.
 # A settle due on the page when the Pages view opened (Name the page, N, right after a stroke) no
 # longer draws the view again under the keyboard and the panel over both. Name the page and Go to
-# page still do what they did. (display.presents and keyboard.draws count from their last check:
+# page still do what they did, and a toast stays above the keys, as above the Library's (Go to
+# page's covered its 0 and del). (display.presents and keyboard.draws count from their last check:
 # a "not -1" check only starts the count.)
 # (past the two repaints just after the start, main.c, so the checks see only what the keys send)
 wait 3600
@@ -113,7 +114,13 @@ expect keyboard.draws is 1
 tap 930 2389
 expect editor.keyboard is Go to page
 expect toast is Enter a page number in this notebook.
-tap 1522 2223
+# The toast stays above the pad, as above the Library's keyboard (it used to cover 0 and del), so
+# del is still a refresh of its own
+expect toast.rect is 451 1350 958 110
+expect display.presents not -1
+touch down 1522 2223
+expect display.presents is fast 50 1510 1760 120, fast 1234 2148 576 150
+touch up 1522 2223
 tap 338 1725
 expect editor.text is 1
 tap 930 2389
