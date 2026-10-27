@@ -133,7 +133,6 @@ fn runner_cannot_open_its_script() {
 
 // The runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written.
 #[test]
-#[ignore = "needs the App: app.rs, library.rs, editor.rs (wave 3)"]
 fn selftest_pass() {
     let d = scratch("selftest");
     let root = d.join("pass");
@@ -170,7 +169,6 @@ fn lines_meant_to_fail(script: &str) -> Vec<usize> {
 // And in fail.qs every line but the comments, waits and taps must be reported as failed, with exit
 // status 3.
 #[test]
-#[ignore = "needs the App: app.rs, library.rs (wave 3)"]
 fn selftest_fail() {
     let d = scratch("selftest");
     let script = top().join("tests/selftest/fail.qs");

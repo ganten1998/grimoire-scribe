@@ -24,6 +24,11 @@
 //   ./a.out /tmp/sheets-root > rust/tests/fixtures/sheets_probe_c.txt
 // (src/pensettings.c is not in that list: the probe includes it.) The run is deterministic: twice
 // gives the same text. Its stderr is the app's log (the background jobs'), not part of the record.
+// rust/tests/fixtures/sheets_probe_c_tilt.txt is the "penset events" section of the same build with
+// -DPROBE_TILT added (a pen that reports tilt, as the headless runner's does: the Rust twin's sim
+// build), the only section the pen's tilt changes:
+//   ./a.out /tmp/sheets-root | awk '/^== /{on = ($0 == "== penset events")} on' \
+//     > rust/tests/fixtures/sheets_probe_c_tilt.txt
 #include "pensettings.c"
 
 #include <stdio.h>
@@ -98,7 +103,10 @@ KbResult app_keyboard_pointer(App *a, Keyboard *kb, int phase, const InEvent *ev
 void app_keyboard_tick(App *a, Keyboard *kb, uint32_t now) { (void)a; (void)kb; (void)now; }
 void display_live_ink(bool on) { (void)on; }
 const InputCaps *input_caps(void) {
-    static InputCaps c;  // (a pen that reports no tilt, as the Rust twin's platform says)
+    static InputCaps c;  // (a pen that reports no tilt, as the Rust twin's host platform says)
+#ifdef PROBE_TILT
+    c.has_tilt = true;  // (the headless runner's pen reports tilt: the Rust twin's sim build)
+#endif
     return &c;
 }
 

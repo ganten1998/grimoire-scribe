@@ -9,9 +9,9 @@
 // translations' fit, the fonts' placement, the pressure curve and readout, the brush on the test pad
 // and the slider drags are held to the C. (How to record it again is at the top of sheets_probe.c.)
 //
-// The taps and the pen on the Pages view and Pen feel go through app.rs (app_invalidate, app_toast,
-// app_keyboard_pointer, app_pointer_phase: another group's); those two sections run in
-// test_sheets_probe_events, which stays #[ignore]d until app.rs has bodies.
+// The taps and the pen on the Pages view and Pen feel go through app.rs's real app_invalidate,
+// app_toast, app_keyboard_pointer and app_pointer_phase (the C probe stubs them); those two sections
+// run in test_sheets_probe_events, with the panel open as the app has it.
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments)] // (the C probe's index loops and its pen helper, kept)
 mod testlib;
 use grimoire::prelude::*;
@@ -1011,9 +1011,16 @@ fn penset_events(p: &mut Probe) {
 
 // ---- the comparison ----
 
-// The recorded text of section name (the lines after its "== name" marker, up to the next).
+// The recorded text of section name (the lines after its "== name" marker, up to the next). The pen
+// on the pad shows its tilt in Pen feel's readout only when input_caps says the pen reports it: the
+// headless runner's does (the sim build), the host's platform does not, and the C probe was recorded
+// both ways (sheets_probe_c_tilt.txt holds the one section that differs).
 fn recorded(name: &str) -> String {
-    let all = include_str!("fixtures/sheets_probe_c.txt");
+    let all = if cfg!(feature = "sim") && name == "penset events" {
+        include_str!("fixtures/sheets_probe_c_tilt.txt")
+    } else {
+        include_str!("fixtures/sheets_probe_c.txt")
+    };
     let mut out = String::new();
     let mut on = false;
     for line in all.lines() {
@@ -1083,12 +1090,18 @@ fn test_sheets_probe() {
 }
 
 // The sections that tap and draw with the pen: they reach app.rs's app_invalidate, app_toast,
-// app_keyboard_pointer and app_pointer_phase, which have no bodies until that group merges.
+// app_keyboard_pointer and app_pointer_phase. app_keyboard_pointer flushes the text it typed
+// (app_flush, which the C probe stubs), and app_flush presents it: the panel is opened first, as
+// mainloop opens it before any screen runs. (The headless runner gives its panel only to a run
+// that names a script; nothing reads this one.)
 #[test]
-#[ignore = "needs app.rs (app_invalidate, app_invalidate_all, app_toast, app_keyboard_pointer, app_pointer_phase); run with --ignored once it has bodies"]
 fn test_sheets_probe_events() {
     let root = format!("{}/sheets-events-{}", tl_tmp(), std::process::id());
     setup(&root);
+    #[cfg(feature = "sim")]
+    std::env::set_var("GRIMOIRE_SCRIPT", "/dev/null");
+    let (mut w, mut h, mut dpi) = (0, 0, 0.0f32);
+    let _ = display_open(&mut w, &mut h, &mut dpi);
     let mut p = Probe::new(&root);
     settings_default(&mut p.app.settings);
     setup_notebook(&mut p);

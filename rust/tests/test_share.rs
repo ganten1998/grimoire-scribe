@@ -8,10 +8,10 @@
 // and a QR token are random): no address, and the sleep screen.
 //
 // The simulator's address hook is the only way to fix the addresses, so this is a sim-feature test.
-// It stays #[ignore]d until app.rs and sim_sdl.rs have bodies: share_enter calls app_watch_server, which
-// tells input_watch_fd (the headless runner's, in this build) which socket to watch, and the card's
-// refreshes go through app_invalidate_all. (Run with the three of them as no-ops, it passes: the 25
-// screens below are the C's, pixel for pixel.)
+// share_enter calls app_watch_server, which tells input_watch_fd (the headless runner's, in this
+// build) which socket to watch, and the card's refreshes go through app_invalidate_all: app.rs's and
+// sim_sdl.rs's own, which draw nothing else on the screen, so the 25 screens below are the C's,
+// pixel for pixel.
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::prelude::*;
@@ -147,7 +147,6 @@ fn the_card_knows_whether_it_is_live_view() {
 }
 
 #[test]
-#[ignore = "app.rs and sim_sdl.rs: app_watch_server, app_invalidate_all and the runner's input_watch_fd are todo!()"]
 fn test_share() {
     let root = format!("{}/share-{}", tl_tmp(), std::process::id());
     let _ = std::fs::remove_dir_all(&root);

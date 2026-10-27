@@ -499,10 +499,13 @@ rust-kindle:
 	cp $(RTARGET)/$(RKINDLE)/release/grimoire $(RBUILD)/kindle/grimoire
 
 # One test at a time: the ported tests keep the C's process-wide state (the store's root, the
-# language), as each C test binary runs its tests in order.
+# language), as each C test binary runs its tests in order. Twice: on the host's platform, then in
+# the headless build (--features sim), whose tests check the runner itself, the Share screen and
+# the pen that reports tilt.
 rust-test:
 	@mkdir -p $(RBUILD)/test/tmp
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(RBUILD))/test/tmp") test -- --test-threads=1
+	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(RBUILD))/test/tmp") test --features sim -- --test-threads=1
 	@echo "RUST TESTS PASSED"
 
 rust-scenarios: rust-headless

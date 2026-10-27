@@ -19,6 +19,7 @@ cd rust
 cargo build                                    # host: the library, grimoire-export, mkicon, mklogo
 cargo build --features sim                     # adds grimoire-headless, the scripted runner
 cargo test -- --test-threads=1                 # the ported unit tests (one at a time: see Tests)
+cargo test --features sim -- --test-threads=1  # again in the headless build: the runner's own tests too
 cargo zigbuild --release --target armv7-unknown-linux-musleabihf --features kindle --bin grimoire
 ```
 
@@ -34,7 +35,7 @@ breaks):
 | `make rust-headless` | `build/rust/host/grimoire-headless` |
 | `make rust-tools` | `build/rust/host/grimoire-export` |
 | `make rust-kindle` | `build/rust/kindle/grimoire` (static armhf, no machine paths in it) |
-| `make rust-test` | cargo test, one test at a time, `GRIMOIRE_TEST_TMP` set |
+| `make rust-test` | cargo test, one test at a time, `GRIMOIRE_TEST_TMP` set: on the host, then with `--features sim` |
 | `make rust-scenarios` | `make scenarios` against the Rust runner |
 | `make rust-l10n-check` | `make l10n-check` against the Rust runner |
 | `make rust-check` | the gate: unit tests, scenarios, languages, mirror cleanup, share, Live view, Bluetooth, the exporter, the ARM build |
