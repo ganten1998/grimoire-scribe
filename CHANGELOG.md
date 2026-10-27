@@ -2,6 +2,11 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+- **A Kindle reboot while writing, fixed**: with the developer switch `ink-metrics` on, Grimoire
+  followed some ink refreshes through the Kindle's display driver, and a race in the driver could
+  then crash the Kindle, which rebooted itself. Grimoire no longer asks the driver for those
+  timings. Going to sleep and closing Grimoire could also wait 5 seconds longer than needed for
+  the last refresh; they no longer do.
 - **No more skips while writing with shortcuts or a controller on**: with Settings > Controller's
   shortcuts on, every 5 seconds of unbroken writing a line could skip: it jumped ahead, then drew
   a short piece backwards, and a stretch of it was lost. Grimoire's check for keyboards and
@@ -137,8 +142,8 @@
 - **Grays settle when the pen leaves**: the grayscale cleanup of fresh ink waits until the pen
   leaves the page (or 1.5 s with it hovering), so the next word no longer runs into it.
 - **Developer latency report**: optional timing logs measure framebuffer copying and refresh
-  submission, and now each live ink frame from the pen's sample to the driver starting and
-  finishing it, without input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
+  submission, and now each live ink frame from the pen's sample to the refresh ioctl, without
+  input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
   waveform timing: on gray paper DU first drives a pixel toward white, so ink there starts up to
   59 ms later than on white paper whatever Grimoire does.
 
