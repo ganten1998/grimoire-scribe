@@ -1,13 +1,16 @@
-// beta_format: the page reader and writer of the released Grimoire 1.0.0-beta, frozen, so tests
-// can ask what 1.0.0-beta does with a file a later version writes. 1.0.0-rc.1 reads and writes
-// pages the same way (its store.c, paper.c and brush.c are identical to 1.0.0-beta's).
+// beta_format: tests/beta_format.h for the Rust ports of the C unit tests (test_templates, test_erase
+// and test_format use it). The page reader and writer of the released Grimoire 1.0.0-beta, frozen,
+// so tests can ask what 1.0.0-beta does with a file a later version writes. 1.0.0-rc.1 reads and
+// writes pages the same way (its store.c, paper.c and brush.c are identical to 1.0.0-beta's).
 //
 // Copied from `git show v1.0.0-beta:src/store.c` (page_serialize, page_deserialize and what
 // store_load_page does with a page it cannot read), src/paper.c (paper_sanitize and the custom
 // music decoding it needs) and src/brush.c (the parameter ranges the reader clamps to), renamed
 // beta_* and working on plain bytes and structs of their own, with no dependency on the current
 // sources. Never update this file: 1.0.0-beta is in people's hands as it is.
-// (tests/beta_format.h, in Rust: the reader and writer keep the C's names and its bytes.)
+//
+//   mod beta_format;
+//   use beta_format::*;
 #![allow(dead_code)]
 
 pub const BETA_PAPER_MUSIC: u32 = 3;
@@ -16,7 +19,7 @@ pub const BETA_PAPER_COUNT: u32 = 17;
 pub const BETA_PAPER_CUSTOM_FLAG: u32 = 0x40000000;
 pub const BETA_PART_NONE: i32 = 0;
 pub const BETA_PART_COUNT: i32 = 12;
-pub const BETA_MUSIC_MAX_PARTS: i32 = 6;
+pub const BETA_MUSIC_MAX_PARTS: usize = 6;
 pub const BETA_MUSIC_MAX_SYSTEMS: i32 = 12;
 pub const BETA_TOOL_COUNT: u32 = 10;
 
@@ -36,7 +39,8 @@ pub struct BetaStroke {
     pub seed: u32,
     /// ToolParams field order
     pub params: [f32; 13],
-    /// the points (the C's n and pts)
+    /// the points (the C's pts and n)
+    pub n: u32,
     pub pts: Vec<BetaPoint>,
 }
 
@@ -46,7 +50,8 @@ pub struct BetaPage {
     pub paper: u32,
     pub w: u32,
     pub h: u32,
-    /// the strokes (the C's n and strokes)
+    /// the strokes (the C's strokes and n)
+    pub n: u32,
     pub strokes: Vec<BetaStroke>,
 }
 
@@ -99,7 +104,7 @@ pub fn beta_music_decode(v: u32) -> bool {
         }
         n += 1;
     }
-    !(n == 0 || systems < 1 || systems > BETA_MUSIC_MAX_SYSTEMS)
+    !(n == 0 || !(1..=BETA_MUSIC_MAX_SYSTEMS).contains(&systems))
 }
 
 pub fn beta_paper_sanitize(v: u32, fallback: u32) -> u32 {
@@ -114,170 +119,195 @@ pub fn beta_paper_sanitize(v: u32, fallback: u32) -> u32 {
 
 // ---- src/store.c: page format ----
 
-fn beta_w_u16(w: &mut Vec<u8>, v: u16) {
-    w.extend_from_slice(&[v as u8, (v >> 8) as u8]);
+fn w_u16(w: &mut Vec<u8>, v: u16) {
+    w.extend_from_slice(&v.to_le_bytes());
 }
-fn beta_w_u32(w: &mut Vec<u8>, v: u32) {
-    w.extend_from_slice(&[v as u8, (v >> 8) as u8, (v >> 16) as u8, (v >> 24) as u8]);
+fn w_u32(w: &mut Vec<u8>, v: u32) {
+    w.extend_from_slice(&v.to_le_bytes());
 }
-fn beta_w_f32(w: &mut Vec<u8>, f: f32) {
-    beta_w_u32(w, f.to_bits());
+fn w_f32(w: &mut Vec<u8>, f: f32) {
+    w_u32(w, f.to_bits());
+}
+
+// lrintf: round to nearest, ties to even (the default rounding mode)
+fn lrintf(x: f32) -> i64 {
+    x.round_ties_even() as i64
 }
 
 /// page_serialize: version 2 only for custom music; the pad bytes are always written as 0, and
 /// nothing follows the last stroke.
-pub fn beta_page_serialize(p: &BetaPage) -> Option<Vec<u8>> {
+pub fn beta_page_serialize(p: &BetaPage, out: &mut Vec<u8>) -> i32 {
     let mut w: Vec<u8> = Vec::new();
     let custom = beta_paper_is_custom(p.paper);
     w.extend_from_slice(b"QPG1");
-    beta_w_u16(&mut w, if custom { 2 } else { 1 });
-    beta_w_u16(&mut w, if custom { BETA_PAPER_MUSIC as u16 } else { p.paper as u16 });
-    beta_w_u32(&mut w, p.w);
-    beta_w_u32(&mut w, p.h);
+    w_u16(&mut w, if custom { 2 } else { 1 });
+    w_u16(&mut w, if custom { BETA_PAPER_MUSIC as u16 } else { p.paper as u16 });
+    w_u32(&mut w, p.w);
+    w_u32(&mut w, p.h);
     if custom {
-        beta_w_u32(&mut w, p.paper);
+        w_u32(&mut w, p.paper);
     }
-    beta_w_u32(&mut w, p.strokes.len() as u32);
-    for s in p.strokes.iter() {
+    w_u32(&mut w, p.n);
+    for i in 0..p.n as usize {
+        let s = &p.strokes[i];
         w.push(s.tool);
         w.push(0);
         w.push(0);
         w.push(0);
-        beta_w_u32(&mut w, s.seed);
+        w_u32(&mut w, s.seed);
         for k in 0..13 {
-            beta_w_f32(&mut w, s.params[k]);
+            w_f32(&mut w, s.params[k]);
         }
-        beta_w_u32(&mut w, s.pts.len() as u32);
-        for q in s.pts.iter() {
-            beta_w_f32(&mut w, q.x);
-            beta_w_f32(&mut w, q.y);
-            beta_w_u16(&mut w, ((beta_clampf(q.pressure, 0.0, 1.0) * 65535.0).round_ties_even() as i64) as u16);
-            beta_w_u16(&mut w, (((beta_clampf(q.tilt_x, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16);
-            beta_w_u16(&mut w, (((beta_clampf(q.tilt_y, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16);
-            beta_w_u32(&mut w, q.t_ms);
+        w_u32(&mut w, s.n);
+        for k in 0..s.n as usize {
+            let q = &s.pts[k];
+            w_f32(&mut w, q.x);
+            w_f32(&mut w, q.y);
+            w_u16(&mut w, lrintf(beta_clampf(q.pressure, 0.0, 1.0) * 65535.0) as u16);
+            w_u16(&mut w, (lrintf(beta_clampf(q.tilt_x, -90.0, 90.0) * 100.0) as i16) as u16);
+            w_u16(&mut w, (lrintf(beta_clampf(q.tilt_y, -90.0, 90.0) * 100.0) as i16) as u16);
+            w_u32(&mut w, q.t_ms);
         }
     }
-    Some(w)
+    *out = w;
+    0
 }
 
 struct BetaR<'a> {
     d: &'a [u8],
-    n: usize,
     pos: usize,
     err: bool,
 }
 
-fn beta_r_take<'a>(r: &mut BetaR<'a>, n: usize) -> Option<&'a [u8]> {
-    if r.err || r.n - r.pos < n {
-        r.err = true;
-        return None;
+impl<'a> BetaR<'a> {
+    fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+        if self.err || self.d.len() - self.pos < n {
+            self.err = true;
+            return None;
+        }
+        let p = &self.d[self.pos..self.pos + n];
+        self.pos += n;
+        Some(p)
     }
-    let p = &r.d[r.pos..r.pos + n];
-    r.pos += n;
-    Some(p)
-}
-fn beta_r_u8(r: &mut BetaR) -> u8 {
-    beta_r_take(r, 1).map_or(0, |p| p[0])
-}
-fn beta_r_u16(r: &mut BetaR) -> u16 {
-    beta_r_take(r, 2).map_or(0, |p| (p[0] as u16) | (p[1] as u16) << 8)
-}
-fn beta_r_u32(r: &mut BetaR) -> u32 {
-    beta_r_take(r, 4).map_or(0, |p| (p[0] as u32) | (p[1] as u32) << 8 | (p[2] as u32) << 16 | (p[3] as u32) << 24)
-}
-fn beta_r_f32(r: &mut BetaR) -> f32 {
-    let f = f32::from_bits(beta_r_u32(r));
-    if f.is_finite() {
-        f
-    } else {
-        0.0
+    fn u8(&mut self) -> u8 {
+        self.take(1).map_or(0, |p| p[0])
+    }
+    fn u16(&mut self) -> u16 {
+        self.take(2).map_or(0, |p| u16::from_le_bytes([p[0], p[1]]))
+    }
+    fn u32(&mut self) -> u32 {
+        self.take(4).map_or(0, |p| u32::from_le_bytes([p[0], p[1], p[2], p[3]]))
+    }
+    fn f32(&mut self) -> f32 {
+        let f = f32::from_bits(self.u32());
+        if f.is_finite() {
+            f
+        } else {
+            0.0
+        }
     }
 }
 
-pub const BETA_STROKE_HEADER_BYTES: usize = 4 + 4 + 13 * 4 + 4;
-pub const BETA_POINT_BYTES: usize = 4 + 4 + 2 + 2 + 2 + 4;
+const BETA_STROKE_HEADER_BYTES: usize = 4 + 4 + 13 * 4 + 4;
+const BETA_POINT_BYTES: usize = 4 + 4 + 2 + 2 + 2 + 4;
 
-/// page_deserialize: the page, or None when it is rejected (bad magic, a version other than 1 or
-/// 2, impossible sizes, a tool id of 10 or more, or a cut-off file). The pad bytes and anything
-/// after the last stroke are not read; parameters are clamped to their ranges; the paper is
-/// sanitized.
-pub fn beta_page_deserialize(buf: &[u8]) -> Option<BetaPage> {
+pub fn beta_page_free(p: &mut BetaPage) {
+    *p = BetaPage::default();
+}
+
+/// page_deserialize: 0, or -1 when the page is rejected (bad magic, a version other than 1 or 2,
+/// impossible sizes, a tool id of 10 or more, or a cut-off file). The pad bytes and anything after
+/// the last stroke are not read; parameters are clamped to their ranges; the paper is sanitized.
+pub fn beta_page_deserialize(buf: &[u8], out: &mut BetaPage) -> i32 {
+    *out = BetaPage::default();
     let len = buf.len();
-    let mut r = BetaR { d: buf, n: len, pos: 0, err: false };
-    let m = beta_r_take(&mut r, 4)?;
-    if m != b"QPG1" {
-        return None;
+    let mut r = BetaR { d: buf, pos: 0, err: false };
+    match r.take(4) {
+        Some(m) if m == b"QPG1" => {}
+        _ => return -1,
     }
-    let ver = beta_r_u16(&mut r);
-    let mut paper = beta_r_u16(&mut r) as u32;
-    let w = beta_r_u32(&mut r);
-    let h = beta_r_u32(&mut r);
+    let ver = r.u16();
+    let mut paper = r.u16() as u32;
+    let w = r.u32();
+    let h = r.u32();
     if ver == 2 {
-        paper = beta_r_u32(&mut r);
+        paper = r.u32();
     }
-    let ns = beta_r_u32(&mut r);
+    let ns = r.u32();
     if r.err || (ver != 1 && ver != 2) || w == 0 || h == 0 || w > 20000 || h > 20000 {
-        return None;
+        return -1;
     }
     if ns as usize > (len - r.pos) / BETA_STROKE_HEADER_BYTES {
-        return None;
+        return -1;
     }
-    let mut p = BetaPage { paper: beta_paper_sanitize(paper, BETA_PAPER_BLANK), w, h, strokes: Vec::new() };
+    let mut p = BetaPage { paper: beta_paper_sanitize(paper, BETA_PAPER_BLANK), w, h, n: 0, strokes: Vec::new() };
     let mut i = 0;
     while i < ns && !r.err {
         i += 1;
-        let tool = beta_r_u8(&mut r);
-        beta_r_take(&mut r, 3);
-        let seed = beta_r_u32(&mut r);
+        let tool = r.u8();
+        r.take(3);
+        let seed = r.u32();
         let mut prm = [0f32; 13];
-        for k in 0..13 {
-            prm[k] = beta_r_f32(&mut r);
+        for v in prm.iter_mut() {
+            *v = r.f32();
         }
-        let np = beta_r_u32(&mut r) as usize;
-        if r.err || tool as u32 >= BETA_TOOL_COUNT || np > (len - r.pos) / BETA_POINT_BYTES {
+        let np = r.u32();
+        if r.err || tool as u32 >= BETA_TOOL_COUNT || np as usize > (len - r.pos) / BETA_POINT_BYTES {
             r.err = true;
             break;
         }
-        let mut s = BetaStroke { tool, seed, params: [0.0; 13], pts: Vec::new() };
+        let mut s = BetaStroke { tool, seed, ..BetaStroke::default() };
         for k in 0..13 {
             s.params[k] = beta_clampf(prm[k], BETA_PARAM_RANGE[k][0], BETA_PARAM_RANGE[k][1]);
         }
         for _ in 0..np {
-            let mut q = BetaPoint::default();
-            q.x = beta_clampf(beta_r_f32(&mut r), -10000.0, 30000.0);
-            q.y = beta_clampf(beta_r_f32(&mut r), -10000.0, 30000.0);
-            q.pressure = beta_r_u16(&mut r) as f32 / 65535.0;
-            q.tilt_x = (beta_r_u16(&mut r) as i16) as f32 / 100.0;
-            q.tilt_y = (beta_r_u16(&mut r) as i16) as f32 / 100.0;
-            q.t_ms = beta_r_u32(&mut r);
+            let q = BetaPoint {
+                x: beta_clampf(r.f32(), -10000.0, 30000.0),
+                y: beta_clampf(r.f32(), -10000.0, 30000.0),
+                pressure: r.u16() as f32 / 65535.0,
+                tilt_x: (r.u16() as i16) as f32 / 100.0,
+                tilt_y: (r.u16() as i16) as f32 / 100.0,
+                t_ms: r.u32(),
+            };
             s.pts.push(q);
+            s.n += 1;
         }
         p.strokes.push(s);
+        p.n += 1;
     }
     if r.err {
-        return None;
+        beta_page_free(&mut p);
+        return -1;
     }
-    Some(p)
+    *out = p;
+    0
 }
 
 /// What 1.0.0-beta writes back after opening a page and saving it (its autosave after any edit):
-/// read, then written. None if it rejects the page.
-pub fn beta_resave(buf: &[u8]) -> Option<Vec<u8>> {
-    let p = beta_page_deserialize(buf)?;
-    beta_page_serialize(&p)
+/// read, then written. -1 if it rejects the page.
+pub fn beta_resave(buf: &[u8], out: &mut Vec<u8>) -> i32 {
+    let mut p = BetaPage::default();
+    if beta_page_deserialize(buf, &mut p) != 0 {
+        return -1;
+    }
+    let rc = beta_page_serialize(&p, out);
+    beta_page_free(&mut p);
+    rc
 }
 
 /// What store_load_page does with a page file it cannot read: it renames it to
-/// <path>.damaged-<time> (and shows a blank page in its place). Returns the reader's result
-/// (0, or -1 for a page it rejects).
+/// <path>.damaged-<time> (and shows a blank page in its place). Returns the reader's result.
 pub fn beta_load_page_file(path: &str, now: i64) -> i32 {
-    // a missing page is a blank page, nothing set aside
-    let Ok(buf) = std::fs::read(path) else { return 0 };
-    if beta_page_deserialize(&buf).is_some() {
-        0
+    let Ok(buf) = std::fs::read(path) else {
+        return 0; // a missing page is a blank page, nothing set aside
+    };
+    let mut p = BetaPage::default();
+    let rc = beta_page_deserialize(&buf, &mut p);
+    if rc == 0 {
+        beta_page_free(&mut p);
     } else {
         let aside = format!("{path}.damaged-{now}");
         let _ = std::fs::rename(path, aside);
-        -1
     }
+    rc
 }

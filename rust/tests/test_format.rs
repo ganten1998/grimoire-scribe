@@ -253,21 +253,23 @@ fn beta_opens_what_we_write() {
             check!(rd16(&d[6..]) as u32 == if paper_is_custom(p.paper) { PAPER_MUSIC.0 } else { PAPER_BLANK.0 });
         }
         // (a)
-        let bp = beta_page_deserialize(&d);
-        check!(bp.is_some());
-        if let Some(bp) = bp {
-            check!(bp.strokes.len() == p.strokes.len());
+        let mut bp = BetaPage::default();
+        let rc = beta_page_deserialize(&d, &mut bp);
+        check!(rc == 0);
+        if rc == 0 {
+            check!(bp.n as usize == p.strokes.len());
             check!(bp.paper == if known { p.paper.0 } else { BETA_PAPER_BLANK });
-            for i in 0..bp.strokes.len().min(p.strokes.len()) {
+            for i in 0..(bp.n as usize).min(p.strokes.len()) {
                 check!(bp.strokes[i].tool == p.strokes[i].tool.0 as u8);
                 check!(bp.strokes[i].seed == p.strokes[i].seed);
-                check!(bp.strokes[i].pts.len() == p.strokes[i].pts.len());
+                check!(bp.strokes[i].n as usize == p.strokes[i].pts.len());
             }
+            beta_page_free(&mut bp);
         }
         // (b)
-        let b2 = beta_resave(&d);
-        check!(b2.is_some());
-        if let Some(b2) = b2 {
+        let mut b2 = Vec::new();
+        check!(beta_resave(&d, &mut b2) == 0);
+        if !b2.is_empty() {
             let l2 = b2.len();
             check!(rd16(&b2[4..]) == if known && p.paper.0 >= PAPER_COUNT as u32 { 2 } else { 1 });
             if !known {
@@ -324,9 +326,9 @@ fn plain_pages_match_beta_writer() {
         }
         let p = make_page(k);
         // The same page built for the frozen writer, field by field.
-        let mut bp = BetaPage { paper: p.paper.0, w: p.w as u32, h: p.h as u32, strokes: Vec::new() };
+        let mut bp = BetaPage { paper: p.paper.0, w: p.w as u32, h: p.h as u32, n: p.strokes.len() as u32, strokes: Vec::new() };
         for s in p.strokes.iter() {
-            let mut b = BetaStroke { tool: s.tool.0 as u8, seed: s.seed, params: [0.0; 13], pts: Vec::new() };
+            let mut b = BetaStroke { tool: s.tool.0 as u8, seed: s.seed, params: [0.0; 13], n: s.pts.len() as u32, pts: Vec::new() };
             for j in 0..13 {
                 b.params[j] = s.params.get(j);
             }
@@ -337,8 +339,10 @@ fn plain_pages_match_beta_writer() {
         }
         let mut mine = Vec::new();
         check!(page_serialize(&p, &mut mine) == 0);
-        let theirs = beta_page_serialize(&bp);
-        check!(theirs.as_ref().is_some_and(|t| *t == mine));
+        let mut theirs = Vec::new();
+        check!(beta_page_serialize(&bp, &mut theirs) == 0);
+        check!(!mine.is_empty() && mine == theirs);
+        beta_page_free(&mut bp);
     }
 }
 
@@ -1090,9 +1094,9 @@ fn params_past_their_ranges() {
             check!(page_serialize(q, &mut mine) == 0);
         }
     }
-    let theirs = beta_resave(&d);
-    check!(theirs.is_some());
-    check!(!mine.is_empty() && theirs.as_ref().is_some_and(|t| *t == mine));
+    let mut theirs = Vec::new();
+    check!(beta_resave(&d, &mut theirs) == 0);
+    check!(!mine.is_empty() && mine == theirs);
     check!(!mine.is_empty() && mine.len() == d.len() && mine != d); // narrowed for good
 }
 
