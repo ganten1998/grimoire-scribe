@@ -1,8 +1,5 @@
 // test_shortcuts.c: the shortcut maps (shortcuts.ini, controller.ini), their names and limits.
 //
-// settings_are_opt_in is not here: it needs the store's Settings (store.rs, a later wave), which
-// adds it back in this file, between custom_mappings_and_limits and
-// controller_ini_learns_one_button_per_action as the C has it.
 // Index loops and range comparisons are written as the C test writes them.
 #![allow(clippy::needless_range_loop, clippy::manual_range_contains)]
 mod testlib;
@@ -67,6 +64,20 @@ fn custom_mappings_and_limits() {
     shortcuts_load(&mut m, &path);
     check!(m.count == 29);
     unlink(&path);
+}
+fn settings_are_opt_in() {
+    let path = format!("{}/shortcuts-store", tl_tmp());
+    check!(store_init(&path) == 0);
+    let mut s = Settings::default();
+    settings_default(&mut s);
+    check!(!s.shortcuts_enabled);
+    s.shortcuts_enabled = true;
+    check!(settings_save(&s) == 0);
+    let mut loaded = Settings::default();
+    check!(settings_load(&mut loaded) == 0 && loaded.shortcuts_enabled);
+    loaded.shortcuts_enabled = false;
+    check!(settings_save(&loaded) == 0);
+    check!(settings_load(&mut s) == 0 && !s.shortcuts_enabled);
 }
 fn controller_ini_learns_one_button_per_action() {
     let sp = format!("{}/shortcuts-c.ini", tl_tmp());
@@ -303,6 +314,7 @@ fn a_row_held_forgets_its_buttons() {
 fn test_shortcuts() {
     run!(defaults_and_exact_modifiers);
     run!(custom_mappings_and_limits);
+    run!(settings_are_opt_in);
     run!(controller_ini_learns_one_button_per_action);
     run!(every_action_by_name);
     run!(dpad_for_files_written_before);
