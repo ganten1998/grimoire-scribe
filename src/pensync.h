@@ -82,10 +82,11 @@ typedef struct {
 // other way (the input core passes only changes), an axis before its first event is taken at that
 // first value (the nearest known), and what the tail never carries is as the device says now (else
 // as it was). Never the device's present position ahead of older frames. The first frame is the
-// gap; if the pen touched at the last good point and does not at the first frame, a lift at the
-// last good point goes before it. A button that changed after the tail was read (its event taken
-// by EVIOCGKEY) comes last, at the last frame's place. With no frame after the partial one, one
-// frame of the device's present state.
+// gap; if the pen touched at the last good point and the tail shows that stroke ended (no contact
+// at the first frame or just before it, or the other end by then), a lift at the last good point
+// goes before it, and the first frame starts a stroke of its own. A button that changed after the
+// tail was read (its event taken by EVIOCGKEY) comes last, at the last frame's place. With no frame
+// after the partial one, one frame of the device's present state.
 int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info);
 
 // A sample's time for the stroke (InEvent.k_ms): the kernel's time of its frame in now_ms()'s

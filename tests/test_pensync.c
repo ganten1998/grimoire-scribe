@@ -168,6 +168,59 @@ TEST(a_lift_in_the_lost_stretch_ends_the_stroke_at_the_last_good_point) {
     CHECK(!out[6].s.tool_pen && out[6].s.x == 804);
 }
 
+TEST(a_touch_at_the_first_frame_means_a_lift_in_the_lost_stretch) {
+    // The first frame brings BTN_TOUCH 1: the input core passes only changes, so the pen was up just
+    // before it, and the stroke at the last good point ended in the lost stretch. One word's end is
+    // not joined to the next word's start.
+    static Stream s;
+    cut(&s, 438);
+    key(&s, PS_BTN_TOUCH, 1);
+    xy(&s, 900, 500);
+    for (int i = 1; i < 5; i++) xy(&s, 900 + i, 500);
+    PenState now = WRITING;
+    now.x = 904, now.y = 500;
+    PenTail t = tail_of(&s, WRITING, now);
+    PenFrame out[16];
+    PenTailInfo info;
+    int n = pensync_tail(&t, out, 16, &info);
+    CHECK(n == 6 && info.lifted && info.frames == 5);
+    CHECK(!contact(&out[0]) && out[0].s.x == WRITING.x && out[0].s.y == WRITING.y && !out[0].gap);
+    CHECK(contact(&out[1]) && out[1].gap && out[1].s.x == 900 && out[1].s.y == 500);
+    for (int i = 2; i < n; i++) CHECK(contact(&out[i]) && out[i].s.x == 899 + i);
+}
+
+TEST(an_eraser_flip_at_the_first_frame_or_in_the_lost_stretch_ends_the_pen_stroke) {
+    // The eraser end touches down in the tail's first frame: the pen's stroke ended before it, and
+    // the eraser starts its own (the editor picks ink or eraser where a stroke begins).
+    static Stream s;
+    cut(&s, 438);
+    key(&s, PS_BTN_TOOL_PEN, 0);
+    key(&s, PS_BTN_TOOL_RUBBER, 1);
+    key(&s, PS_BTN_TOUCH, 1);
+    xy(&s, 900, 500);
+    for (int i = 1; i < 5; i++) xy(&s, 900 + i, 500);
+    PenState now = {.tool_rubber = true, .touching = true, .x = 904, .y = 500};
+    PenTail t = tail_of(&s, WRITING, now);
+    PenFrame out[16];
+    PenTailInfo info;
+    int n = pensync_tail(&t, out, 16, &info);
+    CHECK(n == 6 && info.lifted);
+    CHECK(!contact(&out[0]) && out[0].s.tool_pen && !out[0].s.tool_rubber && out[0].s.x == WRITING.x);
+    CHECK(contact(&out[1]) && out[1].gap && out[1].s.tool_rubber && !out[1].s.tool_pen && out[1].s.x == 900);
+    for (int i = 1; i < n; i++) CHECK(contact(&out[i]) && out[i].s.tool_rubber);
+
+    // The whole flip in the lost stretch: the tail carries no buttons, only the eraser's moves, and
+    // the device says the eraser end touches. Still not the pen's stroke going on.
+    static Stream v;
+    cut(&v, 438);
+    for (int i = 0; i < 5; i++) xy(&v, 900 + i, 500);
+    t = tail_of(&v, WRITING, now);
+    n = pensync_tail(&t, out, 16, &info);
+    CHECK(n == 6 && info.lifted && !info.keys);
+    CHECK(!contact(&out[0]) && out[0].s.tool_pen && out[0].s.x == WRITING.x);
+    CHECK(contact(&out[1]) && out[1].gap && out[1].s.tool_rubber && out[1].s.x == 900);
+}
+
 TEST(an_eraser_flip_in_the_tail_flips_where_it_happened) {
     static Stream s;
     cut(&s, 100);
@@ -297,6 +350,8 @@ int main(void) {
     RUN(a_lift_inside_the_tail_lifts_there);
     RUN(a_lift_after_the_tails_writing_keeps_the_writing);
     RUN(a_lift_in_the_lost_stretch_ends_the_stroke_at_the_last_good_point);
+    RUN(a_touch_at_the_first_frame_means_a_lift_in_the_lost_stretch);
+    RUN(an_eraser_flip_at_the_first_frame_or_in_the_lost_stretch_ends_the_pen_stroke);
     RUN(an_eraser_flip_in_the_tail_flips_where_it_happened);
     RUN(a_button_changed_after_the_tail_was_read_comes_last);
     RUN(no_frame_after_the_partial_one_reports_the_device_now);

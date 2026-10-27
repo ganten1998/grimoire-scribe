@@ -66,11 +66,18 @@ static void push(PenFrame *out, int *n, int cap, PenFrame f) {
     if (*n < cap) out[(*n)++] = f;
 }
 
-// The lift that goes first when the pen touched at the last good point and no longer does: the
-// stroke ends where it was last seen, not wherever the tail (or the device now) finds the pen.
-static void lift_first(const PenTail *t, const PenState *first, uint64_t t_us, PenFrame *out, int *n, int cap,
-                       PenTailInfo *in) {
-    if (!pensync_contact(&t->good, t->touch_btn, t->p_min) || pensync_contact(first, t->touch_btn, t->p_min)) return;
+// The lift that goes first when the pen touched at the last good point and the tail shows that
+// stroke ended in the lost stretch: no contact at the first frame, or none just before it (pre: a
+// BTN_TOUCH 1 in the first frame means the pen was up until then, as the input core passes only
+// changes), or the other end by then (the eraser came down). The stroke ends where it was last
+// seen, not wherever the tail (or the device now) finds the pen, and the first frame starts anew.
+static void lift_first(const PenTail *t, const PenState *pre, const PenState *first, uint64_t t_us, PenFrame *out,
+                       int *n, int cap, PenTailInfo *in) {
+    const PenState *g = &t->good;
+    if (!pensync_contact(g, t->touch_btn, t->p_min)) return;
+    if (pensync_contact(pre, t->touch_btn, t->p_min) && pensync_contact(first, t->touch_btn, t->p_min) &&
+        pre->tool_pen == g->tool_pen && pre->tool_rubber == g->tool_rubber)
+        return;
     PenState up = t->good;
     up.touching = false;
     if (!t->touch_btn) up.p = t->p_min;
@@ -106,6 +113,7 @@ int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info) {
     }
     for (unsigned f = 1; f & PS_F_ALL; f <<= 1)
         if (!(carried & f) && (t->now_ok & f)) set_field(&s, f, get_field(&t->now, f));
+    const PenState pre = s;
 
     bool moved = false;
     for (int i = tail; i < end; i++) {
@@ -118,7 +126,7 @@ int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info) {
         }
         if (!is_syn(e, PS_SYN_REPORT)) continue;
         if (!in.frames) {
-            lift_first(t, &s, e->t_us, out, &n, cap, &in);
+            lift_first(t, &pre, &s, e->t_us, out, &n, cap, &in);
             push(out, &n, cap, (PenFrame){.s = s, .t_us = e->t_us, .moved = true, .gap = true});
             in.first_us = e->t_us;
         } else {
@@ -133,7 +141,7 @@ int pensync_tail(const PenTail *t, PenFrame *out, int cap, PenTailInfo *info) {
         // Nothing complete after the partial frame: the pen is as the device says now, at the time
         // of the partial frame's SYN_REPORT (or of the last event read).
         uint64_t at = k < t->n ? t->ev[k].t_us : t->n ? t->ev[t->n - 1].t_us : 0;
-        lift_first(t, &s, at, out, &n, cap, &in);
+        lift_first(t, &s, &s, at, out, &n, cap, &in);
         push(out, &n, cap, (PenFrame){.s = s, .t_us = at, .moved = true, .gap = true});
     } else if (t->now_ok & PS_F_KEYS) {
         // A button the tail carried that the device says has changed since: that event came after
