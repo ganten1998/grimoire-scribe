@@ -570,6 +570,8 @@ static void script_step(void) {
             if (!strcmp(b, "down")) pen_ev(IN_PEN_DOWN, v[0], v[1], k > 2 ? v[2] : 0.6f, v[3], v[4], 0);
             else if (!strcmp(b, "move")) pen_ev(IN_PEN_MOVE, v[0], v[1], k > 2 ? v[2] : 0.6f, v[3], v[4], 0);
             else if (!strcmp(b, "up")) pen_ev(IN_PEN_UP, v[0], v[1], 0.f, 0, 0, 0);
+            else if (!strcmp(b, "hover")) pen_ev(IN_PEN_HOVER, v[0], v[1], 0.f, 0, 0, 0);
+            else if (!strcmp(b, "leave")) pen_ev(IN_PEN_LEAVE, g_px, g_py, 0.f, 0, 0, 0);
             else if (!strcmp(b, "line")) {
                 // x0 y0 x1 y1 steps p0 p1 [tx ty]
                 int steps = k > 4 ? (int)v[4] : 20;

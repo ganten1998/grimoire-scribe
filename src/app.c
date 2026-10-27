@@ -450,6 +450,14 @@ void app_event(App *a, const InEvent *ev) {
     // button and pinches start nothing either (three clicks cleared the page); only their ends get
     // through, so one that began before the sleep still finishes.
     if (a->asleep && power_asleep_drops(ev)) return;
+    // Live view's pen: where it is, for the browsers to draw over the picture (live_pen: one store
+    // per sample, nothing while Live view is off). Never asleep: the sleep screen, and the Kindle's
+    // own passcode over it, are not Grimoire's to show.
+    if (!a->asleep && ev->type >= IN_PEN_DOWN && ev->type <= IN_PEN_LEAVE)
+        live_pen(ev->type == IN_PEN_LEAVE                             ? LIVE_PEN_AWAY
+                 : ev->type == IN_PEN_HOVER || ev->type == IN_PEN_UP ? LIVE_PEN_HOVER
+                                                                      : LIVE_PEN_TOUCH,
+                 ev->x, ev->y);
     // While a book's pages are being added (a few seconds), nothing may open its notebook.
     if (a->book.state == BOOK_RUNNING && (app_pointer_phase(ev) >= 0 || ev->type == IN_PINCH_BEGIN || ev->type == IN_KEY))
         return;

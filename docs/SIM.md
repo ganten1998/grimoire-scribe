@@ -51,6 +51,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | command | meaning |
 |---|---|
 | `pen down X Y [p] [tx] [ty]`, `pen move ...`, `pen up X Y` | raw pen events |
+| `pen hover X Y`, `pen leave` | the pen hovering over (X, Y), not touching, and leaving the screen's range (tests/live_check.sh leaves it hovering for Live view's pen frame) |
 | `pen line X0 Y0 X1 Y1 STEPS P0 P1 [tx ty]` | a stroke with a pressure ramp |
 | `pen curve X Y R STEPS P [TURNS] [tx ty]` | cursive-like loops |
 | `eraser line X0 Y0 X1 Y1 STEPS` | the same with the eraser end |
