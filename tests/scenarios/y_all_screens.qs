@@ -71,13 +71,13 @@ tap 930 1002
 wait 50
 expect library.buttons_group is pages
 shot 02-buttons-pages
-tap 930 629
+tap 930 523
 wait 50
 expect library.learning is previous-page
 shot 02-buttons-learning-pages
-tap 930 629
+tap 930 523
 wait 50
-tap 930 1589
+tap 930 1803
 wait 50
 tap 930 1162
 wait 50
@@ -644,6 +644,13 @@ wait 50
 expect library.buttons_group is tools
 shot 45-buttons-tools-landscape
 tap 1240 1699
+wait 50
+expect library.buttons_group is
+tap 1240 796
+wait 50
+expect library.buttons_group is pages
+shot 45-buttons-pages-landscape
+tap 1240 1596
 wait 50
 expect library.buttons_group is
 tap 1240 1276

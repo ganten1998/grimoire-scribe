@@ -4,7 +4,8 @@
 # Controller sheet listing what is connected, and the Buttons sheet learning buttons into
 # controller.ini in its groups (one button per action, a toast when a button leaves another action,
 # previous / next page, tool and in the tool picker in two presses, 10 s without a press gives up,
-# Reset goes back to shortcuts.ini's), which the editor then uses.
+# Reset goes back to shortcuts.ini's), which the editor then uses (Add a link and Name the page
+# too, learned in the Pages group).
 wait 150
 hid attach held Mapper Pad
 wait 100
@@ -46,7 +47,7 @@ expect library.buttons_group is
 tap 930 1002
 wait 100
 expect library.buttons_group is pages
-tap 930 629
+tap 930 523
 wait 100
 expect library.learning is previous-page
 key 2 0
@@ -60,7 +61,22 @@ wait 100
 expect library.learning is
 expect pads.previous-page is 316
 expect pads.next-page is 317
-tap 930 1589
+# Add a link and Name the page, under the Index
+tap 930 1483
+wait 100
+expect library.learning is add-link
+key 321 0 1
+wait 100
+tap 930 1643
+wait 100
+expect library.learning is name-page
+key 322 0 1
+wait 100
+expect library.learning is
+expect pads.add-link is 321
+expect pads.name-page is 322
+shot 04-pages-links
+tap 930 1803
 wait 100
 # Tools: each pen on its own (the picker's order), and previous / next tool
 tap 930 842
@@ -147,6 +163,18 @@ expect editor.tool is highlighter
 key 320 0 1
 wait 80
 expect editor.tool is pencil
+key 321 0 1
+wait 80
+expect editor.link_mode is 1
+key 321 0 1
+wait 80
+expect editor.link_mode is 0
+key 322 0 1
+wait 80
+expect editor.keyboard is Page name
+tap 217 2365
+wait 80
+expect editor.modal is none
 # Reset: shortcuts.ini's buttons again
 pentap 1768 1566
 wait 300
@@ -161,4 +189,5 @@ wait 100
 expect pads.undo is South
 expect pads.previous-page is Select,Left
 expect pads.previous-tool is L1,Up
+expect pads.add-link is
 quit

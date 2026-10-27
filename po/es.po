@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 05:46-0500\n"
+"POT-Creation-Date: 2026-10-27 06:22-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -705,6 +705,18 @@ msgstr "No se pudo copiar la página"
 msgid "This page is a copy of page %d."
 msgstr "Esta página es una copia de la página %d."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
+#. a box or a ring around what links with the pen; the Pages view then asks where it goes.
+#: src/editor.c
+msgid "Draw around what links. Then tap where it goes."
+msgstr "Rodea lo que enlaza. Luego toca adónde lleva."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
+#. new link goes took its box back.
+#: src/editor.c
+msgid "No link made."
+msgstr "No se creó el enlace."
+
 #. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
 #. box of a new link is drawn; tap the page (or the Index) it goes to.
 #: src/editor.c
@@ -715,18 +727,6 @@ msgstr "¿Adónde lleva el enlace? Toca su página."
 #: src/editor.c
 msgid "Could not save the link."
 msgstr "No se pudo guardar el enlace."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
-#. new link goes took its box back.
-#: src/editor.c
-msgid "No link made."
-msgstr "No se creó el enlace."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
-#. a box or a ring around what links with the pen; the Pages view then asks where it goes.
-#: src/editor.c
-msgid "Draw around what links. Then tap where it goes."
-msgstr "Rodea lo que enlaza. Luego toca adónde lleva."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
 #. page now goes to page %d (a tap on it with a finger turns there).
@@ -1267,7 +1267,8 @@ msgstr "Edición"
 msgid "Tools..."
 msgstr "Herramientas..."
 
-#. TRANSLATORS: (Buttons sheet) its group of page turning, new pages and the Pages view.
+#. TRANSLATORS: (Buttons sheet) its group of page turning, new pages, the Pages view and the
+#. Index, and links and page names.
 #: src/library.c
 msgid "Pages..."
 msgstr "Páginas..."
@@ -1363,6 +1364,20 @@ msgstr "Ajustar la página"
 #: src/library.c
 msgid "Index"
 msgstr "Índice"
+
+#. TRANSLATORS: (Buttons sheet) starts a link on the open page, as the Index's Add a link
+#. does: what the pen draws next is its box, then a tap picks where it goes ("Press a button
+#. for Add a link").
+#: src/library.c
+msgctxt "buttons"
+msgid "Add a link"
+msgstr "Añadir un enlace"
+
+#. TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name
+#. this page opens it.
+#: src/library.c
+msgid "Name the page"
+msgstr "Nombrar la página"
 
 #. TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
 #: src/library.c
@@ -1906,6 +1921,11 @@ msgstr "%d de %d"
 msgid "Use layout"
 msgstr "Usar este diseño"
 
+#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+#: src/pagesview.c
+msgid "Page name"
+msgstr "Nombre de página"
+
 #. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
 #. open page in bold.
 #: src/pagesview.c
@@ -1993,11 +2013,6 @@ msgstr "Copiar página"
 #: src/pagesview.c
 msgid "Enter a page number in this notebook."
 msgstr "Introduce un número de página de este cuaderno."
-
-#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
-#: src/pagesview.c
-msgid "Page name"
-msgstr "Nombre de página"
 
 #: src/pagesview.c
 msgid "Go to page"

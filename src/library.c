@@ -546,6 +546,8 @@ static const LearnRow k_pages[] = {
     {NULL, {SHORTCUT_FIT_PAGE, 0}, ICON_EXPAND},
     {NULL, {SHORTCUT_PAGES, 0}, ICON_NOTEBOOK},
     {NULL, {SHORTCUT_INDEX, 0}, ICON_NONE},
+    {NULL, {SHORTCUT_ADD_LINK, 0}, ICON_LINK},
+    {NULL, {SHORTCUT_NAME_PAGE, 0}, ICON_RENAME},
 };
 static const LearnRow k_menus[] = {
     {NULL, {SHORTCUT_TOOL_PICKER, 0}, ICON_GRID},
@@ -570,7 +572,8 @@ static const struct {
     {N_("Editing..."), N_("Editing"), ICON_UNDO, "editing", ROWS(k_editing)},
     // TRANSLATORS: (Buttons sheet) its group of the drawing tools, one by one.
     {N_("Tools..."), N_("Tools"), ICON_GRID, "tools", ROWS(k_tools)},
-    // TRANSLATORS: (Buttons sheet) its group of page turning, new pages and the Pages view.
+    // TRANSLATORS: (Buttons sheet) its group of page turning, new pages, the Pages view and the
+    // Index, and links and page names.
     {N_("Pages..."), N_("Pages"), ICON_NEXT, "pages", ROWS(k_pages)},
     // TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
     // it again).
@@ -595,7 +598,7 @@ static const char *action_label(int action) {
         return tool_label((ToolKind)(action - SHORTCUT_TOOL_BASE));
     static const struct {
         int action;
-        const char *label;
+        const char *label, *ctx;  // ctx: its msgctxt, for a name the Index shares in English
     } names[] = {
         // TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by
         // the controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the
@@ -625,6 +628,13 @@ static const char *action_label(int action) {
         {SHORTCUT_PAGES, N_("Pages")},
         // TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
         {SHORTCUT_INDEX, N_("Index")},
+        // TRANSLATORS: (Buttons sheet) starts a link on the open page, as the Index's Add a link
+        // does: what the pen draws next is its box, then a tap picks where it goes ("Press a button
+        // for Add a link").
+        {SHORTCUT_ADD_LINK, NC_("buttons", "Add a link"), "buttons"},
+        // TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name
+        // this page opens it.
+        {SHORTCUT_NAME_PAGE, N_("Name the page")},
         // TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
         {SHORTCUT_TOOL_PICKER, N_("Tool picker")},
         {SHORTCUT_PAPER, N_("Paper")},
@@ -638,7 +648,7 @@ static const char *action_label(int action) {
         {SHORTCUT_CLOSE_MENU, N_("Close menu")},
     };
     for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
-        if (names[i].action == action) return _(names[i].label);
+        if (names[i].action == action) return names[i].ctx ? C_(names[i].ctx, names[i].label) : _(names[i].label);
     return "?";
 }
 
