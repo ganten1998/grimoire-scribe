@@ -168,13 +168,14 @@ static Rect fb_rect(Rect r) {
     return (Rect){lx, ly, abs(x1 - x0) + 1, abs(y1 - y0) + 1};
 }
 
-// The driver's waits, on an fd of their own (the thread below), in its marker protocol. Only the
-// update-complete wait, and never two waiters on one marker. The driver (hwtcon_v2) ends an update
-// by signalling each of its markers twice, submitted and then complete, and a marker that still
-// has waiters is freed by the last one to leave: a submission waiter woken by the first signal
-// can free it before the second, and the kernel panics (the Kindle reboots on its watchdog; the
-// latency report's submission wait did this). Each signal wakes one waiter, so a second waiter on
-// a marker sits out the driver's 5 s timeout.
+// The driver's waits, on an fd of their own (the thread below), in its marker protocol. Never the
+// submission wait, and never two waits on one of a marker's signals. The driver (hwtcon_v2) ends an
+// update by signalling each of its markers twice, submitted and then complete, and a marker that
+// still has waiters is freed by the last one to leave: a submission waiter woken by the first
+// signal can free it before the second, and the kernel panics (the Kindle reboots on its watchdog;
+// the latency report's submission wait did this). Each signal wakes one waiter, so a second waiter
+// on one sits out the driver's 5 s timeout. (mdp_wait, on colour panels, waits on a signal of its
+// own.)
 struct grim_marker_data {
     uint32_t update_marker, collision_test;
 };
@@ -205,7 +206,7 @@ static struct {
     uint32_t overflow_ms;  // the queue was full: unknown until 2 s later
     uint32_t du_sent, du_wait, du_done;
     uint32_t handed;  // the newest marker it took on
-} Q = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .idle = PTHREAD_COND_INITIALIZER, .fd = -1};
+} Q = {.mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, .fd = -1};
 
 static void *quiet_main(void *arg) {
     (void)arg;
@@ -455,8 +456,17 @@ int display_open(int *w, int *h, float *dpi) {
         qlog("display: MTK pen mode %s", g_ab ? "taking turns with plain DU (latency-ab)"
                                        : g_pen_cfg == PEN_OFF ? "off (plain DU for live ink)"
                                        : g_pen_cfg == PEN_DIRECT ? "on" : "on, padded");
-    if (g_st.is_mtk && (g_pen_cfg != PEN_OFF || g_ab || g_perf_enabled) && !open_watch(&Q.fd, &Q.on, quiet_main))
-        qlog("display: no thread to follow standard updates (%s): no pen mode", strerror(errno));
+    if (g_st.is_mtk && (g_pen_cfg != PEN_OFF || g_ab || g_perf_enabled)) {
+        // display_wait's deadline on the monotonic clock: a step of the wall clock (the Kindle's
+        // time sync) must not end it early.
+        pthread_condattr_t ca;
+        pthread_condattr_init(&ca);
+        pthread_condattr_setclock(&ca, CLOCK_MONOTONIC);
+        pthread_cond_init(&Q.idle, &ca);
+        pthread_condattr_destroy(&ca);
+        if (!open_watch(&Q.fd, &Q.on, quiet_main))
+            qlog("display: no thread to follow standard updates (%s): no pen mode", strerror(errno));
+    }
     if (g_perf_enabled) lat_reset();
     g_mdp_wait = g_st.has_color_panel && g_st.bpp == 32;
     if (g_mdp_wait)
@@ -722,7 +732,7 @@ void display_wait(void) {
     bool theirs = Q.fd >= 0 && fbink_get_last_marker() == Q.handed;
     if (theirs) {
         struct timespec until;
-        clock_gettime(CLOCK_REALTIME, &until);
+        clock_gettime(CLOCK_MONOTONIC, &until);
         until.tv_sec += 6;  // past the driver's own timeout
         while ((Q.gray_n || Q.du_done != Q.du_sent) && pthread_cond_timedwait(&Q.idle, &Q.mu, &until) == 0) {
         }

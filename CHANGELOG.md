@@ -122,8 +122,8 @@
 - **Grays settle when the pen leaves**: the grayscale cleanup of fresh ink waits until the pen
   leaves the page (or 1.5 s with it hovering), so the next word no longer runs into it.
 - **Developer latency report**: optional timing logs measure framebuffer copying and refresh
-  submission, and now each live ink frame from the pen's sample to the driver starting and
-  finishing it, without input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
+  submission, and now each live ink frame from the pen's sample to the refresh ioctl, without
+  input coordinates. docs/INK-PERFORMANCE.md also lists the panel's own
   waveform timing: on gray paper DU first drives a pixel toward white, so ink there starts up to
   59 ms later than on white paper whatever Grimoire does.
 

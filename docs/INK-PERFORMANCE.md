@@ -143,7 +143,8 @@ or 3), and warns that pen-mode updates must never collide with standard ones.
 
 Measured on the owner's Scribe 2 on 2026-10-26 with the latency report below and `latency-ab`
 (about 40 strokes over a notebook page, a gray book cover normal and inverted, and a white music
-page, panel at 25 °C):
+page, panel at 25 °C). The last two columns came from the report's driver waits, removed since
+(see the end of [The latency report](#the-latency-report)):
 
 | Frames sent as | Pen sample to refresh ioctl | Refresh to start on the panel | Waveform done |
 | --- | ---: | ---: | ---: |
@@ -258,8 +259,9 @@ Earlier builds also followed one frame at a time through the driver, from submis
 of its waveform, from a second thread. Those waits could crash the Kindle's display driver: it
 ends an update by signalling its marker twice, submitted then complete, and a submission waiter
 woken by the first signal frees the marker before the second (a kernel panic, then a watchdog
-reboot). Grimoire never waits for a submission now, and never has two waits on one marker: each
-signal wakes only one waiter, so a second would sit out the driver's 5 second timeout.
+reboot). Grimoire never waits for a submission now, and never has two waits on one of a
+marker's signals: each signal wakes only one waiter, so a second would sit out the driver's 5
+second timeout.
 
 With it, an empty `grimoire/latency-ab` makes ink strokes take turns in blocks of 12 at plain
 DU, direct and padded pen mode, so one session compares them on the same pages and hand. Both
