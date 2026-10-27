@@ -45,14 +45,19 @@ TEST(shrinks_to_fit_a_short_screen) {
 }
 
 // Pressed again and again from s's pen in use, each step taken as the editor takes it (the pen it
-// gives is the one in use): the n pens it goes through, into out.
+// gives is the one in use, and goes to the tool button unless it is pinned): the n pens it goes
+// through, into out.
 static void walk(Settings s, ToolKind (*step)(const Settings *, bool), bool next, ToolKind *out, int n) {
-    for (int i = 0; i < n; i++) s.current_tool = out[i] = step(&s, next);
+    for (int i = 0; i < n; i++) {
+        ToolKind t = s.current_tool = out[i] = step(&s, next);
+        if (t != TOOL_ERASER && !settings_pinned(&s, t)) s.draw_tool = t;
+    }
 }
 
 // Two pens or more on the panel: next and previous tool go through them alone, top to bottom (the
 // tool button's, then the pins in pin order) and round again; the eraser keeps the place of the pen
-// it goes back to. Fewer than two: the tool picker's nine, as before pins existed.
+// it goes back to. Fewer than two: the tool picker's next or previous pen, which takes the tool
+// button, so with none pinned its nine, as before pins existed.
 TEST(next_tool_walks_the_panels_pens) {
     Settings s;
     settings_default(&s);
@@ -83,16 +88,24 @@ TEST(next_tool_walks_the_panels_pens) {
     // A pen in use that is not on the panel (settings.ini changed by hand): the first, or the last.
     s.current_tool = TOOL_CHARCOAL;
     CHECK(panel_step(&s, true) == TOOL_HIGHLIGHTER && panel_step(&s, false) == TOOL_FINELINER);
-    // One pen on the panel: the picker's nine (pencil, mechanical, charcoal, ballpoint, fineliner,
-    // marker, fountain, calligraphy, highlighter), round from the highlighter to the pencil.
-    s.npins = 1;  // (the highlighter unpinned: the fineliner's pin alone, the tool button a grid)
+    // One pen on the panel, the tool button's own pinned (the button a grid): the first press takes
+    // the picker's next pen (pencil, mechanical, charcoal, ballpoint, fineliner, marker, fountain,
+    // calligraphy, highlighter) to the tool button, and then the panel holds two, gone between.
+    s.npins = 1;  // (the highlighter unpinned: the fineliner's pin alone)
     s.pins[0] = TOOL_FINELINER;
     s.current_tool = TOOL_FINELINER;
+    CHECK(panel_pens(&s, pens) == 1 && pens[0] == TOOL_FINELINER);
+    walk(s, panel_step, true, got, 3);
+    CHECK(got[0] == TOOL_MARKER && got[1] == TOOL_FINELINER && got[2] == TOOL_MARKER);
+    // None pinned: the picker's nine, each on the tool button, round from the highlighter to the
+    // pencil and back.
+    s.npins = 0;
     CHECK(panel_pens(&s, pens) == 1 && pens[0] == TOOL_FINELINER);
     ToolKind nine[TOOL_PENS];
     walk(s, panel_step, true, nine, TOOL_PENS);
     for (int i = 0; i < TOOL_PENS; i++) CHECK(nine[i] == tool_order[(5 + i) % TOOL_PENS]);
-    s.npins = 0;
+    walk(s, panel_step, false, nine, TOOL_PENS);
+    for (int i = 0; i < TOOL_PENS; i++) CHECK(nine[i] == tool_order[(3 - i + TOOL_PENS) % TOOL_PENS]);
     s.current_tool = TOOL_PENCIL;
     CHECK(panel_step(&s, false) == TOOL_HIGHLIGHTER && panel_step(&s, true) == TOOL_MECH_PENCIL);
     s.current_tool = TOOL_ERASER;

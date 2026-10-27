@@ -51,11 +51,12 @@
   shortcuts.ini and count them; their other lines still work.
 - **Next and previous tool stay on the panel**: they now go through the pens on the panel only, the
   tool button's pen and the pinned ones, top to bottom and round again, so pressing next over and
-  over never sends the highlight into the tool picker and back. With fewer than two pens on the
-  panel they go through the tool picker's nine pens in its order. From the eraser they go on from
-  the pen it goes back to, instead of starting again at the top or the bottom. A new shortcuts.ini
-  numbers keys 1 to 9 in the picker's order too (3 charcoal, 4 ballpoint, 7 fountain pen); an
-  existing one is never changed.
+  over never sends the highlight into the tool picker and back. With nothing pinned they go through
+  the tool picker's nine pens in its order; with only the tool button's own pen pinned, the first
+  press brings the picker's next pen onto the tool button, and from then on they go between those
+  two. From the eraser they go on from the pen it goes back to, instead of starting again at the top
+  or the bottom. A new shortcuts.ini numbers keys 1 to 9 in the picker's order too (3 charcoal, 4
+  ballpoint, 7 fountain pen); an existing one is never changed.
 - **Next and previous in the tool picker**: two new actions for a button or a key (picker-previous
   and picker-next, a row of their own in Buttons... under Tools) move the open tool picker's choice
   and leave it open; with it closed they switch tools through all nine pens. Next and previous tool

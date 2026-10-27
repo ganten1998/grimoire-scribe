@@ -94,15 +94,18 @@ Actions, in the Buttons sheet's groups:
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`.
 
-`previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool
-button's pen and the pinned pens, top to bottom as the panel shows them, from the last round to the
-first and back. Pressed again and again they keep to the panel, so the highlight never jumps into
-the tool picker and back. With fewer than two pens on the panel (none pinned, or only the tool
-button's own pen) they step through the tool picker's nine pens in its order instead, from the
-highlighter round to the pencil and back. The eraser is not among them: from the eraser they step
-from the pen it goes back to (with the fountain pen on the tool button and the highlighter and the
-fineliner pinned: highlighter, eraser, next tool: the fineliner); the eraser's own button goes back
-to that pen itself. They do nothing while the tool picker is open.
+`previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool button's
+pen and the pinned pens, top to bottom as the panel shows them, from the last round to the first and
+back. Pressed again and again they keep to the panel, so the highlight never jumps into the tool
+picker and back. With fewer than two pens on the panel they step to the tool picker's next or
+previous pen in its order instead, and that pen goes to the tool button. With none pinned that walks
+all nine, from the highlighter round to the pencil and back. With only the tool button's own pen
+pinned (the button shows a grid), the first press brings the picker's next or previous pen onto the
+tool button, and from then on they go between those two, as with any two pens on the panel. The
+eraser is not among them: from the eraser they step from the pen it goes back to (with the fountain
+pen on the tool button and the highlighter and the fineliner pinned: highlighter, eraser, next tool:
+the fineliner); the eraser's own button goes back to that pen itself. They do nothing while the tool
+picker is open.
 
 `picker-previous` and `picker-next` step through the tool picker's nine pens in its order. While
 the picker is open (not while it pins pens) they move its choice and leave it open. With it closed
