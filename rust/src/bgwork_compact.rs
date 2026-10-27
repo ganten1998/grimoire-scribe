@@ -143,7 +143,11 @@ fn list_write(id: &str, ids: &[u32]) -> i32 {
         return -1;
     }
     if ids.is_empty() {
-        return if std::fs::remove_file(&path).is_ok() || errno() == libc::ENOENT { 0 } else { -1 };
+        return match std::fs::remove_file(&path) {
+            Ok(()) => 0,
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => 0,
+            Err(_) => -1,
+        };
     }
     // (The C sizes its buffer as 128 + 12 per id and checks every append against it: the header is
     // 80 bytes and an id with its newline at most 11, so the checks cannot fail and are not here.)
