@@ -50,10 +50,15 @@
   QR code with a phone. Fit or actual size, full screen, transparent paper and recording in the
   browser, an Invert colors switch and a Warmth slider: the picture follows Invert colors (the whole
   page goes black) and the front light's warmth (its light turns amber) on the Kindle until you
-  change them, and As on the Kindle goes back to following. The pen never waits for it (each
+  change them, and As on the Kindle goes back to following. Picture in picture floats it over
+  your other windows, still live while you work elsewhere. Ruled lines and thin strokes keep an
+  even weight at any window size (the browser's own scaling made some vanish). The pen never waits for it (each
   browser gets its own background process that sends only what changed), the code never shows on
   the stream, downloads still need Share open, and it turns off with Stop, after 10 minutes with
   nobody watching, or when Grimoire closes.
+- **Dark share pages with Grimoire's bat**: the pages a browser opens from Share and Live view are
+  dark (your pages, thumbnails and Live view's screen show as the Kindle draws them), with the
+  pixel bat by the title and as the browser tab's and the phone's icon.
 - **The notebook PDF has a table of contents and links**: named sections become the PDF's outline
   (the bookmarks a PDF reader lists), and links drawn to pages are links in the PDF.
 

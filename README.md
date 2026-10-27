@@ -108,8 +108,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   contents.
 - **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
   browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
-  a phone). The browser can fit the screen, go full screen, make the paper transparent (for a video
-  over something else) and record. A small icon in the top right corner says it is on; **Stop** on
+  a phone). The browser can fit the screen, go full screen, float it over your other windows
+  (picture in picture), make the paper transparent (for a video over something else) and record.
+  A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
 - **Links**: in the Index tab choose **Add a link**, draw around what should link (a box, a ring,

@@ -91,7 +91,8 @@ while p < len(d):
 print(zlib.decompressobj().decompress(z, 2)[1])" "$1" 2>/dev/null || echo none
 }
 curl -fsS "$URL/" -o "$B/index.html"
-check "index html" "grep -q '<h1>Grimoire</h1>' $B/index.html"
+check "index html" "grep -q 'Grimoire</h1>' $B/index.html"
+check "index title has the bat and the icons" "grep -q '<h1 class=brand><svg class=bat' $B/index.html && grep -q 'rel=icon type=image/svg+xml' $B/index.html && grep -q 'rel=apple-touch-icon' $B/index.html"
 check "index html in English" "grep -q '<html lang=en>' $B/index.html && grep -q ' on your Kindle</p>' $B/index.html"
 VERSION_SHOWN=$("$HEADLESS" --version)
 check "index footer has the running app's version" "grep -qF 'Grimoire $VERSION_SHOWN</p>' $B/index.html"
@@ -202,7 +203,7 @@ else
     check "QR code reads back as the address shown ($QR)" \
         "echo '$QR' | grep -Eq '^http://[0-9.]+:[0-9]+\$' && grep -qF 'share: (simulator) the code holds $QR (' $B/app.log"
     curl -fsS "$QR/" -o "$B/index-qr.html" 2>/dev/null || true
-    check "the QR code's address answers" "grep -q '<h1>Grimoire</h1>' $B/index-qr.html"
+    check "the QR code's address answers" "grep -q 'Grimoire</h1>' $B/index-qr.html"
 fi
 stop_app
 # The Classic style: the pages switch to Terminess.
@@ -291,13 +292,13 @@ check "three downloads across the turn arrive ($how)" \
     "[ \$(file $B/turn-1.png $B/turn-2.png $B/turn-3.png | grep -c 'PNG image data, 1860 x 2480') = 3 ]"
 await "$B/app-rotate.log" 05-share-after-wake
 curl -fsS "$URL/" -o "$B/turn-index.html" 2>/dev/null || true
-check "answers after waking" "grep -q '<h1>Grimoire</h1>' $B/turn-index.html"
+check "answers after waking" "grep -q 'Grimoire</h1>' $B/turn-index.html"
 await "$B/app-rotate.log" 06-library
 code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/" 2>/dev/null || true)
 check "Done stops the server ($code)" "[ '$code' = 000 ]"
 await "$B/app-rotate.log" 07-share-landscape-again
 curl -fsS "$URL/" -o "$B/turn-index2.html" 2>/dev/null || true
-check "Share opened again answers" "grep -q '<h1>Grimoire</h1>' $B/turn-index2.html"
+check "Share opened again answers" "grep -q 'Grimoire</h1>' $B/turn-index2.html"
 await "$B/app-rotate.log" exiting
 stop_app
 check "one server start per visit, none for a turn or a wake" "[ \$(grep -c 'httpd: listening' $B/app-rotate.log) = 2 ]"

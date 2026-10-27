@@ -1,5 +1,6 @@
-// bat.h: Grimoire's pixel bat, shared by the logo (mklogo.c) and the Library cover (mkicon.c).
-// Drawn on the same design-pixel grid as the Jacquard 24 title it sits with: k x k blocks.
+// bat.h: Grimoire's pixel bat, shared by the logo (tools/mklogo.c), the Library cover
+// (tools/mkicon.c) and the browser pages (httpd.c: their icon and title). Drawn on the same
+// design-pixel grid as the Jacquard 24 title it sits with: k x k blocks.
 #pragma once
 #include "canvas.h"
 

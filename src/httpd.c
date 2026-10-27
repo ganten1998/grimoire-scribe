@@ -4,6 +4,7 @@
 // Kindle's style (its fonts are served from the copies built into the binary), and the studio
 // page recolors pages in the browser from the paper and ink layers (web/studio.js).
 #include "httpd.h"
+#include "bat.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -395,28 +396,53 @@ static void respond_text(int code, const char *msg) {
     buf_free(&b);
 }
 
+// Grimoire's pixel bat (bat.h) as an SVG path: a rect for each run of blocks in a row, a block one
+// unit, in a BAT_W x BAT_H box.
+static void bat_path(Buf *b) {
+    for (int r = 0; r < BAT_H; r++)
+        for (int c = 0; c < BAT_W; c++) {
+            if (k_bat[r][c] != 'X' || (c && k_bat[r][c - 1] == 'X')) continue;
+            int n = 1;
+            while (c + n < BAT_W && k_bat[r][c + n] == 'X') n++;
+            buf_printf(b, "M%d %dh%dv1h-%dz", c, r, n, n);
+        }
+}
+
+// The bat in a page, in the text's color (so it turns with a dark or inverted page), its blocks
+// whole design pixels (.bat, below). Decorative: the title beside it says the name.
+static void bat_svg(Buf *b) {
+    buf_printf(b, "<svg class=bat viewBox='0 0 %d %d' aria-hidden=true><path d='", BAT_W, BAT_H);
+    bat_path(b);
+    buf_puts(b, "'/></svg>");
+}
+
+// The pages are dark (the Kindle's own pictures in them stay as the Kindle draws them: thumbnails,
+// pages, Live view's screen), in the colors of :root, which web/live.css and web/studio.css use too.
 // The pages wear the Kindle's style. Classic is Terminess throughout. Gothic sets titles in
 // Jacquard 24 and text in Jersey 10, pixel faces whose outlines sit on a grid of design pixels
 // (30 and 75 font units): sized so one design pixel is a whole number of device pixels (--px
 // for text, --pxs for small print, --tp/--tp1 for titles, set from the screen's pixel ratio)
 // they stay sharp, and bold is the Kindle's overprint, one design pixel to the right.
 static const char k_css_common[] =
-    "body{margin:24px;color:#111;background:#fff}"
-    "h1{margin:0 0 4px}h2{margin:28px 0 10px;border-bottom:2px solid #111}"
-    "a{color:#111}.grid{display:flex;flex-wrap:wrap;gap:18px}"
-    ".card{width:200px;border:2px solid #111;border-radius:10px;padding:10px}"
-    ".card img{width:100%;border:1px solid #999;background:#fff}"
-    ".name{margin:6px 0 2px;word-break:break-word}.meta{color:#555}"
+    ":root{--fg:#eee;--bg:#181818;--soft:#555;--quiet:#aaa;--well:#242424;--field:#000;color-scheme:dark}"
+    "body{margin:24px;color:var(--fg);background:var(--bg)}"
+    "h1{margin:0 0 4px}h2{margin:28px 0 10px;border-bottom:2px solid var(--fg)}"
+    "a{color:var(--fg)}.grid{display:flex;flex-wrap:wrap;gap:18px}"
+    ".card{width:200px;border:2px solid var(--fg);border-radius:10px;padding:10px}"
+    ".card img{width:100%;border:1px solid var(--soft);background:#fff}"
+    ".name{margin:6px 0 2px;word-break:break-word}.meta{color:var(--quiet)}"
     ".links a{margin-right:10px}"
     ".pages{display:flex;flex-wrap:wrap;gap:12px}.pages figure{margin:0}"
-    ".pages img{width:280px;border:1px solid #999;display:block}.pages figcaption{margin-top:4px}"
-    ".big{display:inline-block;border:2px solid #111;border-radius:8px;padding:8px 14px;text-decoration:none;"
-    "margin:0 8px 8px 0}";
+    ".pages img{width:280px;border:1px solid var(--soft);background:#fff;display:block}.pages figcaption{margin-top:4px}"
+    ".big{display:inline-block;border:2px solid var(--fg);border-radius:8px;padding:8px 14px;text-decoration:none;"
+    "margin:0 8px 8px 0}"
+    ".bat{width:calc(var(--bp,2px)*43);height:calc(var(--bp,2px)*14);fill:currentColor;shape-rendering:crispEdges;"
+    "flex:none}h1.brand{display:flex;align-items:center;gap:.35em}";
 static const char k_css_classic[] =
     "body{font-family:'Grimoire Text','Terminess Nerd Font',ui-monospace,Menlo,monospace;font-size:16px}"
     "h1{font-size:28px}h2{font-size:20px}h1,h2,.name,.big,b,strong{font-weight:bold}.meta{font-size:13px}";
 static const char k_css_gothic[] =
-    ":root{--px:1.5px;--pxs:1px;--tp:1px;--tp1:1.5px}"
+    ":root{--px:1.5px;--pxs:1px;--tp:1px;--tp1:1.5px;--bp:var(--tp1)}"
     "body{font-family:'Grimoire Text',ui-monospace,monospace;font-size:calc(var(--px)*18.6667);"
     "line-height:calc(var(--px)*20);font-synthesis:none}"
     ".meta{font-size:calc(var(--pxs)*18.6667);line-height:calc(var(--pxs)*20)}"
@@ -436,7 +462,8 @@ static void page_head(Buf *b, const char *title) {
     buf_printf(b, "<!doctype html><html lang=%s><head><meta charset=utf-8>"
                   "<meta name=viewport content='width=device-width,initial-scale=1'><title>", i18n_current());
     html_esc(b, title);
-    buf_printf(b, "</title>");
+    buf_printf(b, "</title><link rel=icon type=image/svg+xml href='/icon.svg?v=%s'>"
+                  "<link rel=apple-touch-icon href='/apple-touch-icon.png?v=%s'>", GRIMOIRE_VERSION, GRIMOIRE_VERSION);
     if (g_gothic) {
         buf_puts(b, k_js_pixels);
         buf_printf(b, "<style>@font-face{font-family:'Grimoire Title';src:url(/font/jacquard24.ttf?v=%s) "
@@ -529,7 +556,9 @@ static void route_index(void) {
     char line[160];
     // TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
     snprintf(line, sizeof line, NG_("%d notebook on your Kindle", "%d notebooks on your Kindle", n), n);
-    buf_printf(&b, "<h1>Grimoire</h1><p class=meta>");
+    buf_puts(&b, "<h1 class=brand>");
+    bat_svg(&b);
+    buf_puts(&b, "Grimoire</h1><p class=meta>");
     html_esc(&b, line);
     buf_printf(&b, "</p><p><a class=big href='/all.zip'>");
     // TRANSLATORS: the share index's big link to a zip of every notebook.
@@ -777,8 +806,13 @@ static void route_live_page(const char *query) {
         live_word(&b, &n, "record", _("Record"));
         live_word(&b, &n, "stop", _("Stop recording"));
         live_word(&b, &n, "full", _("Full screen"));
+        // TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
+        // the computer's other windows (the browser's own name for it is fine).
+        live_word(&b, &n, "pip", _("Picture in picture"));
         live_word(&b, &n, "old", _("This browser cannot show Live view."));
-        buf_printf(&b, "};</script><style>");
+        buf_printf(&b, "};</script><template id=live-bat>");
+        bat_svg(&b);
+        buf_printf(&b, "</template><style>");
         buf_append(&b, live_css, live_css_len);
         buf_printf(&b, "</style><script>");
         buf_append(&b, live_js, live_js_len);
@@ -791,7 +825,8 @@ static void route_live_page(const char *query) {
     if (query) query_get(query, "e", e, sizeof e);
     buf_printf(&b, "<style>");
     buf_append(&b, live_css, live_css_len);
-    buf_printf(&b, "</style><h1>");
+    buf_printf(&b, "</style><h1 class=brand>");
+    bat_svg(&b);
     html_esc(&b, _("Live view"));
     buf_printf(&b, "</h1>");
     if (!(g_owners & HTTPD_LIVE)) {
@@ -857,6 +892,34 @@ static void route_live(const char *path, const char *query) {
     respond_text(404, _("not found"));
 }
 
+// The browser's icon for the pages: the bat in a square, black, or light where the browser is dark.
+static void route_icon_svg(void) {
+    Buf b = {0};
+    buf_printf(&b, "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 %g %d %d' shape-rendering='crispEdges'>"
+                   "<style>path{fill:#111}@media (prefers-color-scheme:dark){path{fill:#eee}}</style><path d='",
+               -(BAT_W - BAT_H) / 2.0, BAT_W, BAT_W);
+    bat_path(&b);
+    buf_puts(&b, "'/></svg>");
+    respond_bytes(200, "image/svg+xml", b.data, b.len, NULL, "public, max-age=31536000, immutable", NULL);
+    buf_free(&b);
+}
+
+// The icon a phone keeps for the pages (an iPhone's home screen or bookmarks): the bat in blocks of
+// 4 px, black on white, 180 px square.
+static void route_touch_icon(void) {
+    enum { S = 180, K = 4 };
+    Canvas c;
+    if (canvas_init(&c, S, S) != 0) return respond_text(500, "no memory");
+    draw_bat(&c, (S - BAT_W * K) / 2, (S - BAT_H * K) / 2, K);
+    int len = 0;
+    extern unsigned char *stbi_write_png_to_mem(const unsigned char *, int, int, int, int, int *);
+    unsigned char *png = stbi_write_png_to_mem(c.px, c.stride, c.w, c.h, 1, &len);
+    canvas_free(&c);
+    if (!png) return respond_text(500, "encode failed");
+    respond_bytes(200, "image/png", png, (size_t)len, NULL, "public, max-age=31536000, immutable", NULL);
+    free(png);
+}
+
 static void route(char *path) {
     char query[128] = "";
     char *q = strchr(path, '?');
@@ -868,6 +931,9 @@ static void route(char *path) {
     if (strstr(path, "..")) return respond_text(400, "bad path");
     if (!strncmp(path, "/live", 5) && (!path[5] || path[5] == '/')) return route_live(path, query);
     if (!strncmp(path, "/font/", 6)) return route_font(path + 6);
+    if (!strcmp(path, "/icon.svg")) return route_icon_svg();
+    if (!strcmp(path, "/apple-touch-icon.png") || !strcmp(path, "/apple-touch-icon-precomposed.png"))
+        return route_touch_icon();
     // TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
     // keeps the server up: the Share screen must be open for those.
     if (!(g_owners & HTTPD_SHARE)) return respond_text(403, _("Open Share on the Kindle to download."));

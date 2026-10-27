@@ -6,32 +6,32 @@
 .st-view{position:sticky;top:12px}
 @media (max-width:900px){.st-view{position:static}}
 .st-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.st-stage{position:relative;border:2px solid #111;background:#e9e9e9;display:flex;justify-content:center;align-items:center;min-height:240px;padding:12px}
-.st-veil{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.72)}
+.st-stage{position:relative;border:2px solid var(--fg);background:var(--well);display:flex;justify-content:center;align-items:center;min-height:240px;padding:12px}
+.st-veil{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
 .st-loading .st-veil{display:flex}
 .st-page{display:inline-flex;align-items:center;gap:6px}
-.st-pnum{width:4.2em;font:inherit;color:inherit;border:2px solid #111;background:#fff;padding:2px 4px;text-align:center}
+.st-pnum{width:4.2em;font:inherit;color:inherit;border:2px solid var(--fg);background:var(--field);padding:2px 4px;text-align:center}
 /* The page itself shows its edges (outline on a gray surround) and, where it is transparent, the
    checkerboard: only inside the page, so you can see where it ends. */
 .st-stage canvas{display:block;max-width:100%;max-height:80vh;width:auto;height:auto;background:#fff;box-shadow:0 0 0 1px #8a8a8a}
 .st-stage.alpha canvas{background-color:#fff;background-image:linear-gradient(45deg,#d6d6d6 25%,transparent 25%,transparent 75%,#d6d6d6 75%),linear-gradient(45deg,#d6d6d6 25%,transparent 25%,transparent 75%,#d6d6d6 75%);background-size:20px 20px;background-position:0 0,10px 10px}
-.st-panel fieldset{border:2px solid #111;margin:0 0 14px;padding:8px 12px 10px;min-width:0}
+.st-panel fieldset{border:2px solid var(--fg);margin:0 0 14px;padding:8px 12px 10px;min-width:0}
 .st-panel legend{padding:0 6px}
 .st-row{display:flex;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap}
 .st-row label{min-width:96px}
-.st-seg{display:inline-flex;flex-wrap:wrap;border:2px solid #111}
-.st-seg button{border:0;border-right:2px solid #111;background:#fff;padding:5px 10px}
+.st-seg{display:inline-flex;flex-wrap:wrap;border:2px solid var(--fg)}
+.st-seg button{border:0;border-right:2px solid var(--fg);background:var(--bg);padding:5px 10px}
 .st-seg button:last-child{border-right:0}
-.st-seg button[aria-pressed=true]{background:#111;color:#fff}
+.st-seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
 .st button{font:inherit;color:inherit;cursor:pointer}
-.st-btn{border:2px solid #111;background:#fff;padding:6px 12px}
-.st-btn.primary{background:#111;color:#fff}
+.st-btn{border:2px solid var(--fg);background:var(--bg);padding:6px 12px}
+.st-btn.primary{background:var(--fg);color:var(--bg)}
 .st-btn:active,.st-seg button:active{transform:translateY(1px)}
-.st input[type=range]{flex:1;min-width:120px;accent-color:#111}
-.st input[type=color]{width:46px;height:30px;border:2px solid #111;padding:0;background:#fff;cursor:pointer}
+.st input[type=range]{flex:1;min-width:120px;accent-color:var(--fg)}
+.st input[type=color]{width:46px;height:30px;border:2px solid var(--fg);padding:0;background:var(--field);cursor:pointer}
 .st-val{min-width:52px;text-align:right}
 .st-presets{display:flex;flex-wrap:wrap;gap:6px}
-.st-cmd{white-space:pre-wrap;word-break:break-all;background:#f3f3f3;border:2px solid #111;padding:10px;margin:8px 0;max-height:340px;overflow:auto;font-size:13px;line-height:1.45}
+.st-cmd{white-space:pre-wrap;word-break:break-all;background:var(--well);border:2px solid var(--fg);padding:10px;margin:8px 0;max-height:340px;overflow:auto;font-size:13px;line-height:1.45}
 .gothic .st-cmd{font-family:ui-monospace,Menlo,Consolas,monospace}
 .classic .st-cmd{font-family:inherit}
 .st-hide{display:none!important}

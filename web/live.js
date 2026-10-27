@@ -57,9 +57,12 @@
     }
     const raw = document.createElement('canvas');      // the screen as the Kindle has it
     const rawCtx = raw.getContext('2d');
-    const shown = document.createElement('canvas');    // what the page shows (paper made clear or not)
+    const shown = document.createElement('canvas');    // how the page shows it, at its size (what Record takes)
     const shownCtx = shown.getContext('2d');
-    shown.className = 'screen';
+    const view = document.createElement('canvas');     // shown at the size it takes on this screen
+    const viewCtx = view.getContext('2d');
+    view.className = 'screen';
+    let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
     const bar = document.createElement('div');
     bar.className = 'bar';
     const pill = document.createElement('span');
@@ -74,6 +77,8 @@
         bar.append(b);
         return b;
     }
+    const bat = document.getElementById('live-bat');  // Grimoire's pixel bat (httpd.c), first in the bar
+    if (bat && bat.content) bar.append(bat.content.cloneNode(true));
     bar.append(pill);
     // invertChoice, warmthChoice: null while the picture follows the Kindle's Invert colors and front
     // light warmth, else this page's own. kindleWarmth: null on a Kindle without warm light.
@@ -115,8 +120,13 @@
     look();
     const recordButton = button(words.record, record);
     if (!window.MediaRecorder || !shown.captureStream) recordButton.hidden = true;
+    const pipButton = button(words.pip, pip);
+    pipButton.setAttribute('aria-pressed', 'false');
+    if (!document.pictureInPictureEnabled || !shown.captureStream ||
+        !HTMLVideoElement.prototype.requestPictureInPicture) pipButton.hidden = true;
+    let pipVideo = null;
     button(words.full, full);
-    host.replaceChildren(bar, shown);
+    host.replaceChildren(bar, view);
     addEventListener('keydown', e => {
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
     });
@@ -145,20 +155,132 @@
         fitButton.textContent = fit ? words.actual : words.fit;
         if (!raw.width) return;
         const ratio = window.devicePixelRatio || 1;
+        let w = raw.width / ratio, h = raw.height / ratio;
         if (fit) {
             const room = host.clientWidth, tall = innerHeight - bar.offsetHeight - 24;
             const scale = Math.min(room / raw.width, tall / raw.height);
-            shown.style.width = Math.max(1, Math.floor(raw.width * scale)) + 'px';
-            shown.style.height = Math.max(1, Math.floor(raw.height * scale)) + 'px';
-        } else {
-            shown.style.width = raw.width / ratio + 'px';
-            shown.style.height = raw.height / ratio + 'px';
+            w = Math.max(1, Math.floor(raw.width * scale));
+            h = Math.max(1, Math.floor(raw.height * scale));
         }
+        view.style.width = w + 'px';
+        view.style.height = h + 'px';
+        view.width = Math.max(1, Math.round(w * ratio));
+        view.height = Math.max(1, Math.round(h * ratio));
+        presentSoon(0, 0, raw.width, raw.height);
+    }
+    // shown drawn into view, which has a pixel for each of the screen's. The browser's own scaling (of
+    // a canvas, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone
+    // by where they fell: here each view pixel is the mean of the area of shown it covers (alpha-
+    // weighted, for transparent paper), so every line keeps its weight. Only the rect that changed
+    // (in shown's pixels); at full size or larger, a plain draw.
+    function present() {
+        presentQueued = false;
+        const d = dirty;
+        dirty = null;
+        if (!raw.width || !d) return;
+        const kx = shown.width / view.width, ky = shown.height / view.height;
+        if (kx <= 1 && ky <= 1) {
+            viewCtx.imageSmoothingEnabled = true;
+            viewCtx.clearRect(0, 0, view.width, view.height);
+            viewCtx.drawImage(shown, 0, 0, view.width, view.height);
+            return;
+        }
+        const vx0 = Math.max(0, Math.floor(d.x / kx)), vy0 = Math.max(0, Math.floor(d.y / ky));
+        const vx1 = Math.min(view.width, Math.ceil((d.x + d.w) / kx));
+        const vy1 = Math.min(view.height, Math.ceil((d.y + d.h) / ky));
+        if (vx1 <= vx0 || vy1 <= vy0) return;
+        const sx0 = Math.floor(vx0 * kx), sy0 = Math.floor(vy0 * ky);
+        const sx1 = Math.min(shown.width, Math.ceil(vx1 * kx)), sy1 = Math.min(shown.height, Math.ceil(vy1 * ky));
+        const sw = sx1 - sx0, sh = sy1 - sy0, ow = vx1 - vx0, oh = vy1 - vy0;
+        const src = shownCtx.getImageData(sx0, sy0, sw, sh).data;
+        // Each output column (row) as source columns (rows) and how much of each it covers.
+        function spans(v0, n, k, s0, limit) {
+            const out = [];
+            for (let i = 0; i < n; i++) {
+                const a = (v0 + i) * k - s0, b = Math.min(a + k, limit), cols = [];
+                for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
+                out.push(cols);
+            }
+            return out;
+        }
+        const xs = spans(vx0, ow, kx, sx0, sw), ys = spans(vy0, oh, ky, sy0, sh);
+        // Across: sh rows of ow pixels, premultiplied.
+        const mid = new Float32Array(sh * ow * 4);
+        for (let r = 0; r < sh; r++)
+            for (let o = 0; o < ow; o++) {
+                const cols = xs[o];
+                let cr = 0, cg = 0, cb = 0, ca = 0;
+                for (let j = 0; j < cols.length; j += 2) {
+                    const i = (r * sw + cols[j]) * 4, wa = cols[j + 1] * src[i + 3];
+                    cr += src[i] * wa;
+                    cg += src[i + 1] * wa;
+                    cb += src[i + 2] * wa;
+                    ca += wa;
+                }
+                const m = (r * ow + o) * 4;
+                mid[m] = cr;
+                mid[m + 1] = cg;
+                mid[m + 2] = cb;
+                mid[m + 3] = ca;
+            }
+        // Down, then back from premultiplied.
+        const img = viewCtx.createImageData(ow, oh), p = img.data;
+        for (let o = 0; o < oh; o++) {
+            const rows = ys[o];
+            for (let c = 0; c < ow; c++) {
+                let cr = 0, cg = 0, cb = 0, ca = 0;
+                for (let j = 0; j < rows.length; j += 2) {
+                    const m = (rows[j] * ow + c) * 4, w = rows[j + 1];
+                    cr += mid[m] * w;
+                    cg += mid[m + 1] * w;
+                    cb += mid[m + 2] * w;
+                    ca += mid[m + 3] * w;
+                }
+                const q = (o * ow + c) * 4;
+                if (ca > 0) {
+                    p[q] = cr / ca;
+                    p[q + 1] = cg / ca;
+                    p[q + 2] = cb / ca;
+                }
+                p[q + 3] = ca;
+            }
+        }
+        viewCtx.putImageData(img, vx0, vy0);
+    }
+    function presentSoon(x, y, w, h) {
+        const r = {x, y, w, h};
+        dirty = dirty ? union(dirty, r) : r;
+        if (presentQueued) return;
+        presentQueued = true;
+        requestAnimationFrame(present);
     }
     function full() {
         const el = document.documentElement;
         if (document.fullscreenElement) document.exitFullscreen();
         else if (el.requestFullscreen) el.requestFullscreen();
+    }
+    // Picture in picture: shown, as Record takes it, played in a video the browser floats over other
+    // windows. It goes on while this tab is hidden: shown is drawn as tiles come, not by frames.
+    async function pip() {
+        if (document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {});
+            return;
+        }
+        if (!pipVideo) {
+            pipVideo = document.createElement('video');
+            pipVideo.muted = true;
+            pipVideo.playsInline = true;
+            pipVideo.className = 'pip';  // (in the page, out of sight: some browsers float only those)
+            pipVideo.srcObject = shown.captureStream();
+            pipVideo.addEventListener('enterpictureinpicture', () => pipButton.setAttribute('aria-pressed', 'true'));
+            pipVideo.addEventListener('leavepictureinpicture', () => pipButton.setAttribute('aria-pressed', 'false'));
+            document.body.append(pipVideo);
+            repaint(0, 0, raw.width, raw.height);  // a first frame, so the video knows its size
+        }
+        try {
+            await pipVideo.play();
+            await pipVideo.requestPictureInPicture();
+        } catch (e) { /* refused (no picture yet, or not from a tap): the button stays as it was */ }
     }
     function record() {
         if (recorder) {
@@ -197,6 +319,7 @@
         if (!clear && !inv && white) {
             shownCtx.clearRect(x, y, w, h);
             shownCtx.drawImage(raw, x, y, w, h, x, y, w, h);
+            presentSoon(x, y, w, h);
             return;
         }
         const img = rawCtx.getImageData(x, y, w, h), p = img.data;
@@ -218,6 +341,7 @@
             }
         }
         shownCtx.putImageData(img, x, y);
+        presentSoon(x, y, w, h);
     }
     function union(a, b) {
         const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);

@@ -660,7 +660,15 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    every stream starts with one. The browser's picture follows both until its own Invert colors
    switch or Warmth slider says otherwise: inverted, the whole page is black; warmth tints the
    picture's light (the paper, or the ink when inverted) from white at 0 to 2400 K at 24, in even
-   steps of mireds, in the pixels so a recording has it. Viewers end with a bye when Live view stops (Stop on the
+   steps of mireds, in the pixels so a recording has it. The page itself is dark, as every share
+   page is (httpd.c's :root colors), around a screen drawn as the Kindle draws it. The canvas on
+   the page has a pixel for each of the screen's and is filled by averaging (web/live.js present():
+   each pixel the alpha-weighted mean of the area of the full-size picture it covers, for the rect
+   that changed): the browser's own scaling, CSS or drawImage at any quality, picks pixels, and
+   1 px ruled lines came out bright, dim or gone (measured in Chrome at 567 x 757: each line's ink
+   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). Picture in picture plays
+   the full-size picture (what Record takes) in a video from its captureStream, so it goes on
+   while the tab is hidden. Viewers end with a bye when Live view stops (Stop on the
    card, 10 minutes without a viewer, Grimoire leaving: `app_shutdown` stops them before anything
    else, so no export child inherits a socket and the headless runner never waits for one); on
    Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent has gone.

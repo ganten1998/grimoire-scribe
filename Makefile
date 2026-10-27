@@ -255,7 +255,7 @@ $(BUILD)/host/grimoire-export: tools/grimoire-export.c $(CORE_SRC) $(GEN_SRC) $(
 # The Library cover, drawn with the gothic widgets (committed; run by hand after a design change).
 icon: $(BUILD)/host/mkicon
 	$(BUILD)/host/mkicon assets/icon.png
-$(BUILD)/host/mkicon: tools/mkicon.c tools/bat.h $(CORE_SRC) src/ui.c $(GEN_SRC) $(HDRS)
+$(BUILD)/host/mkicon: tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) $(HDRS)
 	@mkdir -p $(BUILD)/host
 	$(HOSTCC) $(COMMON) $(WARN) -Itools -O2 tools/mkicon.c $(CORE_SRC) src/ui.c $(GEN_SRC) -o $@ -lm
 
@@ -264,7 +264,7 @@ $(BUILD)/host/mkicon: tools/mkicon.c tools/bat.h $(CORE_SRC) src/ui.c $(GEN_SRC)
 logo: $(BUILD)/host/mklogo
 	$(BUILD)/host/mklogo crest 8 docs/logo.png
 	$(BUILD)/host/mklogo crest 8 docs/logo-dark.png white
-$(BUILD)/host/mklogo: tools/mklogo.c tools/bat.h $(CORE_SRC) $(GEN_SRC) $(HDRS)
+$(BUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
 	@mkdir -p $(BUILD)/host
 	$(HOSTCC) $(COMMON) $(WARN) -Itools -O2 tools/mklogo.c $(CORE_SRC) $(GEN_SRC) -o $@ -lm
 

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 18:53-0500\n"
+"POT-Creation-Date: 2026-10-26 20:05-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1006,6 +1006,12 @@ msgstr "Dejar de grabar"
 #: src/httpd.c
 msgid "Full screen"
 msgstr "Pantalla completa"
+
+#. TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
+#. the computer's other windows (the browser's own name for it is fine).
+#: src/httpd.c
+msgid "Picture in picture"
+msgstr "Imagen en imagen"
 
 #: src/httpd.c
 msgid "This browser cannot show Live view."

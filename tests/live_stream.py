@@ -96,6 +96,19 @@ st, hd, body = get('/nb/x.pdf')
 check('downloads need Share open (403)', st == 403)
 st, hd, body = get('/font/jersey10.ttf')
 check('the page fonts answer', st == 200)
+# The pages' icons, open without a session as the fonts are: the SVG's path is the bat of bat.h,
+# block for block; the phone's is a 180 px square PNG.
+rows = re.findall(r'^\s*"([.X]+)",', open(os.path.join(os.path.dirname(__file__), '..', 'src', 'bat.h')).read(), re.M)
+st, hd, body = get('/icon.svg?v=1')
+drawn = [['.'] * len(rows[0]) for _ in rows] if rows else []
+for x, y, n in re.findall(rb'M(\d+) (\d+)h(\d+)v1h-\d+z', body):
+    for i in range(int(n)):
+        drawn[int(y)][int(x) + i] = 'X'
+check('the icon is the bat, block for block (/icon.svg, no session)', st == 200 and bool(rows) and
+      dict(hd).get('Content-Type', '').startswith('image/svg+xml') and [''.join(r) for r in drawn] == rows)
+st, hd, body = get('/apple-touch-icon.png')
+check('the phone icon is a 180 px PNG (/apple-touch-icon.png, no session)', st == 200 and body[:8] == b'\x89PNG\r\n\x1a\n'
+      and struct.unpack('>II', body[16:24]) == (180, 180))
 wrong = '000000' if code != '000000' else '111111'
 st, hd, body = get('/live/pair?code=' + wrong)
 check('a wrong code goes back to the form', st == 302 and hd.get('Location') == '/live?e=wrong' and 'Set-Cookie' not in hd)
