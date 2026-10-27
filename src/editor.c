@@ -1975,8 +1975,11 @@ bool editor_shortcut(App *a, int action) {
             compose_all(a, REFRESH_FULL);
             return true;
         }
-        close_front(a, action != SHORTCUT_PEN_FEEL && action != SHORTCUT_LIBRARY);
+        bool leaves = action == SHORTCUT_PEN_FEEL || action == SHORTCUT_LIBRARY;
+        close_front(a, !leaves);
         if (action != front && action != SHORTCUT_CLOSE_MENU) open_menu(a, action);
+        // The Library stays with a page it could not save: the page again, where the menu was.
+        if (leaves && a->scr == SCR_EDITOR) compose_all(a, REFRESH_FULL);
         return true;
     }
     if ((action == SHORTCUT_NEXT_TOOL || action == SHORTCUT_PREV_TOOL) && S->tools_open && !S->pv.open) {

@@ -208,6 +208,20 @@ wait 200
 key 613 0 1
 wait 200
 expect screen is editor
+# The Library over a menu, with a page it cannot save: it stays, and the menu is gone (the page is
+# drawn again where it was)
+storage full
+pen line 300 1300 900 1320 10 0.6 0.7
+wait 100
+key 605 0 1
+wait 200
+expect editor.modal is pages
+key 612 0 1
+wait 300
+expect screen is editor
+expect editor.modal is none
+expect toast is Could not save this page. Is the storage full?
+storage ok
 # The Library
 key 612 0 1
 wait 400
