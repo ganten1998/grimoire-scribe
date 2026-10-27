@@ -17,6 +17,7 @@ pub enum PenAct {
     /// the precise eraser: an erase stroke, the round tip with the eraser's settings
     Precise = 2,  // PEN_PRECISE
     /// the stroke eraser: every stroke it touches goes, but erase strokes (taking one
+    /// away would bring back the ink it covers)
     Whole = 3,  // PEN_WHOLE
 }
 
@@ -75,6 +76,7 @@ pub const ERASER_MM_MAX: f32 = 12.0;
 /// The precise eraser's settings for a stroke drawn at `zoom` (screen pixels per page pixel): its
 /// widths divided by the zoom, so it covers as much of the screen at any zoom as the stroke eraser
 /// does, within the range a page file keeps (so the stroke reads back exactly as it was drawn).
+#[allow(clippy::neg_cmp_op_on_partial_ord)] // (the C's !(zoom > 0.f): NaN fails it too)
 pub fn eraser_at_zoom(e: &ToolParams, zoom: f32) -> ToolParams {
     let mut p = *e;
     let zoom = if !(zoom > 0.0) { 1.0 } else { zoom }; // NaN, 0 or less: as at 100%
