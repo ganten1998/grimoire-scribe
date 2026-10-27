@@ -39,7 +39,7 @@ bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
         v->tab_initialized = true;
     }
     v->current = current;
-    v->picking = v->pick_had = false;
+    v->picking = v->pick_had = v->name_only = false;
     if (v->sel_cap < nb->npages) {
         bool *n = realloc(v->sel, (size_t)nb->npages * sizeof *n);
         if (!n) return false;
@@ -65,9 +65,24 @@ bool pagesview_pick(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav
     return true;
 }
 
+// The naming keyboard for the open page, holding its name (Name this page, pagesview_name).
+static void open_naming(PagesView *v) {
+    v->naming = true;
+    // TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+    keyboard_open(&v->kb, _("Page name"), nav_name(v->nav, v->nb->page_ids[v->current]));
+}
+
+bool pagesview_name(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current) {
+    if (!nav->writable || !pagesview_open(v, a, nb, nav, current)) return false;
+    v->index_tab = v->tab_initialized = true;  // (Name this page's tab: its names above the keys)
+    v->name_only = true;
+    open_naming(v);
+    return true;
+}
+
 void pagesview_close(PagesView *v) {
     v->open = false;
-    v->picking = v->pick_had = false;
+    v->picking = v->pick_had = v->name_only = false;
     keyboard_close(&v->kb);
     annotate_map_free(&v->book);
 }
@@ -307,6 +322,7 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
             v->kb.open = true;
             app_toast(a, _("Enter a page number in this notebook."), 2500);
         }
+        if (r == KB_CANCEL && v->name_only) return PV_CLOSE;  // (back to the page it was asked on)
         if (r == KB_CANCEL) redraw(v, a, REFRESH_UI);
         else {
             keyboard_draw(&v->kb, &a->screen, (Rect){0, 0, a->w, a->h});
@@ -330,9 +346,7 @@ PvResult pagesview_pointer(PagesView *v, App *a, int ph, const InEvent *ev) {
         redraw(v, a, REFRESH_FULL);
         break;
     case PG_NAME:
-        v->naming = true;
-        // TRANSLATORS: the naming keyboard's title, 96 px text-field header.
-        keyboard_open(&v->kb, _("Page name"), nav_name(v->nav, v->nb->page_ids[v->current]));
+        open_naming(v);
         redraw(v, a, REFRESH_UI);
         break;
     case PG_JUMP:
@@ -385,6 +399,10 @@ int pagesview_probe(const PagesView *v, const char *key, char *out, size_t cap) 
         snprintf(out, cap, "%s", v->index_tab ? "index" : "pages");
     } else if (!strcmp(key, "picking")) {
         snprintf(out, cap, "%s", !v->open || !v->picking ? "" : v->pick_had ? "had" : "new");
+    } else if (!strcmp(key, "keyboard")) {
+        snprintf(out, cap, "%s", v->open && v->kb.open ? v->kb.title : "");
+    } else if (!strcmp(key, "text")) {
+        snprintf(out, cap, "%s", v->open && v->kb.open ? v->kb.text : "");
     } else if (!strcmp(key, "index_rows")) {
         snprintf(out, cap, "%d", v->nav ? nav_index(v->nav, v->nb, NULL, 0) : 0);
     } else if (!strncmp(key, "tile.", 5)) {

@@ -17,7 +17,11 @@ enum {
     // Next and previous in the tool picker: its choice while it is open, else the tool, through its
     // nine pens (next and previous tool go through the panel's).
     SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT,
-    SHORTCUT_LAST = SHORTCUT_PICKER_NEXT
+    // From the page itself: the Index's Add a link without the Pages view (the next ink stroke is its
+    // box, then the Pages view picks where it goes), and its naming keyboard for the open page, which
+    // goes back to the page.
+    SHORTCUT_ADD_LINK, SHORTCUT_NAME_PAGE,
+    SHORTCUT_LAST = SHORTCUT_NAME_PAGE
 };
 typedef struct { int code, mods, action; bool gamepad; } ShortcutBinding;
 typedef struct { ShortcutBinding bindings[SHORTCUT_MAX]; int count, rejected; } Shortcuts;

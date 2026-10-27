@@ -8,7 +8,8 @@
 // and says what was asked (PvResult); the editor does it (opens a page, deletes the ticked ones).
 //
 // It also picks where a link drawn on a page goes (pagesview_pick): then a tile, an Index row or a
-// page number picks that page, and there are no ticks, nor New page or Copy page.
+// page number picks that page, and there are no ticks, nor New page or Copy page. And it opens with
+// its naming keyboard up for the open page (pagesview_name), for a shortcut pressed on the page.
 #pragma once
 #include "app.h"
 #include "annotate.h"
@@ -23,7 +24,8 @@ typedef enum {
     PV_NEW,     // New page: the editor adds a page at index `target` (after the last page ticked, or
                 // after the open page: never first) and opens it
     PV_COPY,    // Copy page (one page ticked): the editor copies page `target` right after it
-    PV_NAME,    // save kb.text as the open page's section name; empty removes it
+    PV_NAME,    // save kb.text as the open page's section name; empty removes it (then, when
+                // name_only, the view closes on the page, as on PV_CLOSE)
     PV_LINK,    // Add a link (the Index tab): the editor waits for the link's box on the open page
     // While picking (pagesview_pick); its Back button says PV_CLOSE:
     PV_PICK,        // the link goes to page `target`
@@ -48,6 +50,8 @@ typedef struct {
     int index_screen;
     bool picking;             // picking where a link goes (pagesview_pick)
     bool pick_had;            // ... a link the page had (it can be removed), not one drawn just now
+    bool name_only;           // opened to name the open page (pagesview_name): its keyboard's
+                              // Cancel says PV_CLOSE, and after its Done the editor closes the view
 } PagesView;
 
 // Opens it on notebook nb, on the screenful with page `current`, nothing ticked. False when there
@@ -55,6 +59,10 @@ typedef struct {
 bool pagesview_open(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current);
 // The same to pick where a link on the open page goes: had, a link it had (else one drawn now).
 bool pagesview_pick(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current, bool had);
+// The same on its Index tab with the naming keyboard up for the open page, as Name this page opens
+// it, to go back to the page after it (name_only). False also when the names cannot be changed (a
+// nav.ini that does not read: that button is greyed out then).
+bool pagesview_name(PagesView *v, App *a, const NotebookInfo *nb, const Nav *nav, int current);
 // Draws the whole screen into a->screen (the caller refreshes it).
 void pagesview_draw(PagesView *v, App *a);
 // Pointer phase 0 down / 1 move / 2 up. What it draws itself (a tick, another screenful, the
@@ -68,6 +76,7 @@ void pagesview_close(PagesView *v);
 void pagesview_free(PagesView *v);
 // The headless runner's keys for it, without "editor." (docs/SIM.md): "tile.N", the label under
 // page N's tile (from 1) as drawn, its two lines joined by " | " ("Page 3 | p. 12"); empty while it
-// is closed. "picking": "new" or "had" while it picks where a link goes, else empty. 0, or -1 for a
-// key it does not know.
+// is closed. "picking": "new" or "had" while it picks where a link goes, else empty. "keyboard":
+// its keyboard's title while that is up ("Page name", "Go to page"), else empty; "text" what it
+// holds. 0, or -1 for a key it does not know.
 int pagesview_probe(const PagesView *v, const char *key, char *out, size_t cap);

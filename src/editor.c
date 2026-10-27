@@ -154,8 +154,8 @@ struct EditorState {
 
     PagesView pv;               // the Pages view (pagesview.h)
     Nav nav;
-    // Links (nav.h). Add a link (the Index) waits for the next ink stroke on the open page, its box
-    // (link_mode); then the Pages view picks where it goes. A finger's tap on a link follows it; one
+    // Links (nav.h). Add a link (the Index, or the add-link shortcut) waits for the next ink stroke
+    // on the open page, its box (link_mode); then the Pages view picks where it goes. A finger's tap on a link follows it; one
     // held on it (LINK_HOLD_MS) opens the Pages view to change where it goes, or remove it.
     bool link_mode;
     uint32_t link_seed;         // the link the Pages view picks for: its box's seed
@@ -1425,6 +1425,17 @@ static void pages_show(App *a) {
     compose_all(a, REFRESH_FULL);
 }
 
+// name-page: the Pages view's naming keyboard for the open page, over its Index, as Name this page
+// there opens it; its Done or Cancel goes back to the page (pages_event). Nothing while the names
+// cannot be changed (that button is greyed out then).
+static void pages_name(App *a) {
+    if (!S->nav.writable) return;
+    S->link_mode = false;
+    save_page(a);
+    if (!pagesview_name(&S->pv, a, &S->nb, &S->nav, S->index)) return;
+    compose_all(a, REFRESH_FULL);
+}
+
 static void pages_hide(App *a, int open_index) {
     pagesview_close(&S->pv);
     if (open_index >= 0 && open_index != S->index) go_to_page(a, open_index);
@@ -1527,6 +1538,23 @@ static void pages_copy(App *a, int index) {
     app_toast(a, msg, 2500);
 }
 
+// Add a link, from the Index or the add-link shortcut on the page: the next ink stroke on the open
+// page is the link's box (link_box_drawn). Neither on a read-only page nor while links.ini does not
+// read (the Index's button is greyed out then).
+static void link_start(App *a) {
+    if (refuse_readonly(a) || !S->nav.links_writable) return;
+    S->link_mode = true;
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
+    // a box or a ring around what links with the pen; the Pages view then asks where it goes.
+    app_toast(a, _("Draw around what links. Then tap where it goes."), 4000);
+}
+
+// A link still waiting for its box is not made (Close menu, or add-link pressed again).
+static void link_stop(App *a) {
+    S->link_mode = false;
+    app_toast(a, _("No link made."), 2500);
+}
+
 // After Add a link: stroke s, just drawn on the open page, is the link's box. The Pages view picks
 // where it goes.
 static void link_box_drawn(App *a, const Stroke *s) {
@@ -1577,11 +1605,7 @@ static void pages_event(App *a, int ph, const InEvent *ev) {
         break;
     case PV_LINK:
         pages_hide(a, -1);
-        if (refuse_readonly(a)) break;
-        S->link_mode = true;
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
-        // a box or a ring around what links with the pen; the Pages view then asks where it goes.
-        app_toast(a, _("Draw around what links. Then tap where it goes."), 4000);
+        link_start(a);
         break;
     case PV_PICK: {
         char target[NAV_TARGET_LEN], done[160];
@@ -1622,7 +1646,9 @@ static void pages_event(App *a, int ph, const InEvent *ev) {
             nav_set_name(&S->nav, pid, old);
             app_toast(a, _("Could not save the page name."), 3000);
         } else S->changed = true;
-        compose_all(a, REFRESH_UI);
+        // Named from the page (name-page): back to it, as its Cancel goes back; else the Index again.
+        if (S->pv.name_only) pages_hide(a, -1);
+        else compose_all(a, REFRESH_UI);
         break;
     }
     default: break;
@@ -1927,9 +1953,7 @@ static void open_menu(App *a, int action) {
     case SHORTCUT_LIBRARY: panel_act(a, &(Hit){.id = P_LIBRARY}); break;
     case SHORTCUT_CLOSE_MENU:
         // Nothing in front: a link waiting for its box is not made.
-        if (!S->link_mode) break;
-        S->link_mode = false;
-        app_toast(a, _("No link made."), 2500);
+        if (S->link_mode) link_stop(a);
         break;
     default: break;
     }
@@ -2006,6 +2030,13 @@ bool editor_shortcut(App *a, int action) {
     } else if (action == SHORTCUT_FIRST_PAGE || action == SHORTCUT_LAST_PAGE) {
         int to = action == SHORTCUT_FIRST_PAGE ? 0 : S->nb.npages - 1;
         if (to != S->index) go_to_page(a, to);
+    } else if (action == SHORTCUT_ADD_LINK) {
+        // The Index's Add a link from the page; pressed again while the link waits for its box, it
+        // is not made, as a menu's own button closes it.
+        if (S->link_mode) link_stop(a);
+        else link_start(a);
+    } else if (action == SHORTCUT_NAME_PAGE) {
+        pages_name(a);
     } else if (action == SHORTCUT_NEW_PAGE) {
         pages_new(a, S->index + 1);  // the Pages view's New page, after the open one
     } else if (action == SHORTCUT_CLEAR_PAGE) {
@@ -2722,7 +2753,8 @@ int editor_probe(App *a, const char *key, char *out, size_t cap) {
         // draws white for it (a template's picture not made yet); empty for any other paper.
         if (has_page && paper_is_image(S->page->paper)) snprintf(out, cap, "%s", S->picture_missing ? "missing" : "shown");
         else snprintf(out, cap, "%s", "");
-    } else if (!strcmp(key, "pages_tab") || !strcmp(key, "picking") || !strncmp(key, "tile.", 5)) {
+    } else if (!strcmp(key, "pages_tab") || !strcmp(key, "picking") || !strcmp(key, "keyboard") ||
+               !strcmp(key, "text") || !strncmp(key, "tile.", 5)) {
         return pagesview_probe(&S->pv, key, out, cap);  // the Pages view's
     } else if (!strncmp(key, "templates.", 10)) {
         return tplsheet_probe(&S->ts, key + 10, out, cap);  // the Templates sheet over the page

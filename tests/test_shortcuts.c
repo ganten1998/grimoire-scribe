@@ -107,23 +107,29 @@ TEST(every_action_by_name) {
         named++;
         CHECK(shortcut_action(name) == a);
     }
-    CHECK(named == 10 + 8 + 17);  // the tools, the first actions, and 2.0.0-beta.5's
+    CHECK(named == 10 + 8 + 19);  // the tools, the first actions, and 2.0.0-beta.5's
     char path[800]; snprintf(path, sizeof path, "%s/shortcuts-new.ini", tl_tmp());
     const char *text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n"
                        "pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n"
                        "pad.606=tool-picker\npad.607=paper\npad.608=display\npad.609=pen-feel\n"
                        "pad.610=fold-panel\npad.611=library\npad.612=close-menu\nkey.z=undo\n"
                        "pad.614=picker-previous\nkey.PageDown=picker-next\n"
+                       "pad.615=add-link\nkey.Ctrl+n=name-page\n"
                        "pad.North=menu:frobnicate\nkey.x=hold-pen\npad.613=tool:crayon\n";
     CHECK(write_file_atomic(path, text, strlen(text)) == 0);
     Shortcuts m; shortcuts_load(&m, path);
-    CHECK(m.count == 18 && m.rejected == 3);
+    CHECK(m.count == 20 && m.rejected == 3);
     CHECK(shortcuts_lookup(&m, true, 312, 0) == SHORTCUT_HOLD_ERASER && shortcuts_lookup(&m, true, 612, 0) == SHORTCUT_CLOSE_MENU);
     // The tool picker's next and previous, beside next and previous tool (the panel's pens).
     CHECK(shortcuts_lookup(&m, true, 614, 0) == SHORTCUT_PICKER_PREV && shortcuts_lookup(&m, false, 109, 0) == SHORTCUT_PICKER_NEXT);
     CHECK(!strcmp(shortcut_action_name(SHORTCUT_PICKER_NEXT), "picker-next") &&
           !strcmp(shortcut_action_name(SHORTCUT_PICKER_PREV), "picker-previous"));
     CHECK(shortcut_action("next-tool") == SHORTCUT_NEXT_TOOL && shortcut_action("picker-next") != SHORTCUT_NEXT_TOOL);
+    // Add a link and the open page's name, from the page.
+    CHECK(shortcuts_lookup(&m, true, 615, 0) == SHORTCUT_ADD_LINK &&
+          shortcuts_lookup(&m, false, 49, KEYMOD_CTRL) == SHORTCUT_NAME_PAGE && shortcuts_lookup(&m, false, 49, 0) == SHORTCUT_NONE);
+    CHECK(!strcmp(shortcut_action_name(SHORTCUT_ADD_LINK), "add-link") &&
+          !strcmp(shortcut_action_name(SHORTCUT_NAME_PAGE), "name-page"));
     CHECK(shortcuts_lookup(&m, false, 44, 0) == SHORTCUT_UNDO && shortcuts_lookup(&m, true, 307, 0) == SHORTCUT_NONE);
     unlink(path);
     // Learned into controller.ini by name: every action a button, which read back, with room to spare.
