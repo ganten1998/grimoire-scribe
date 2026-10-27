@@ -34,14 +34,51 @@ tap 930 1215
 wait 50
 expect library.sheet is buttons
 shot 02-buttons
-tap 930 1215
+tap 930 682
 wait 50
-expect library.learning is previous-page
+expect library.buttons_group is editing
+shot 02-buttons-editing
+tap 930 1056
+wait 50
+expect library.learning is hold-eraser
+shot 02-buttons-learning-editing
+tap 930 1056
+wait 50
+tap 930 1696
+wait 50
+tap 930 842
+wait 50
+expect library.buttons_group is tools
+shot 02-buttons-tools
+tap 930 1536
+wait 50
+expect library.learning is tool:calligraphy
 shot 02-buttons-learning
-tap 930 1215
+tap 930 1536
 wait 50
 expect library.learning is
-tap 930 1695
+tap 930 2016
+wait 50
+tap 930 1002
+wait 50
+expect library.buttons_group is pages
+shot 02-buttons-pages
+tap 930 629
+wait 50
+expect library.learning is previous-page
+shot 02-buttons-learning-pages
+tap 930 629
+wait 50
+tap 930 1589
+wait 50
+tap 930 1162
+wait 50
+expect library.buttons_group is menus
+shot 02-buttons-menus
+tap 930 1696
+wait 50
+expect library.buttons_group is
+tap 930 1482
 wait 50
 expect library.sheet is shortcuts
 tap 930 1375
@@ -594,7 +631,14 @@ tap 1240 1008
 wait 50
 expect library.sheet is buttons
 shot 45-buttons-landscape
-tap 1240 1488
+tap 1240 636
+wait 50
+expect library.buttons_group is tools
+shot 45-buttons-tools-landscape
+tap 1240 1699
+wait 50
+expect library.buttons_group is
+tap 1240 1276
 wait 50
 expect library.sheet is shortcuts
 tap 1240 368

@@ -17,8 +17,9 @@
   while the button is down), the eraser's mode, clear page, first, last and new page, fit page,
   and the editor's menus: the tool picker, Paper, Pages, Index, Display, Pen feel, fold the panel,
   the Library and Close menu. A menu's button opens it and closes it again, or swaps the menu in
-  front for its own. Older versions refuse the new names in shortcuts.ini and count them; their
-  other lines still work.
+  front for its own. Buttons... groups them under Editing, Tools, Pages and Menus, and a toast says
+  when a button learned there leaves another action. Older versions refuse the new names in
+  shortcuts.ini and count them; their other lines still work.
 - **Next and previous tool keep their place after the eraser**: they step through the tool picker's
   nine pens in its order, and from the eraser they now go on from the pen it goes back to, instead
   of starting again at the pencil or the highlighter. With the tool picker open they move its

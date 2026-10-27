@@ -582,6 +582,10 @@ static int rare_notices(char out[RARE_MAX][RARE_LEN]) {
     PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 1), 1, "grimoire/trash");
     PUT(NG_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 2000), 2000, "grimoire/trash");
     PUT(_("Eraser: %s"), C_("eraser", "Whole strokes"));  // (a controller's Eraser mode)
+    // The Buttons sheet's learn that takes a button from another action, with the longest names.
+    PUT(_("That button is no longer for %s."), C_("tool", "Mechanical pencil"));
+    PUT(_("That button is no longer for %s."), _("Erase while held"));
+    PUT(_("That button is no longer for %s."), _("Tool picker"));
 #undef PUT
     return n;
 }

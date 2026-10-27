@@ -33,7 +33,7 @@ enum {
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
     H_PAPER_MORE, H_KOREADER, H_KO_ITEM, H_SHORTCUTS, H_SHORTCUT_ENABLE, H_SHORTCUT_RELOAD,
-    H_BUTTONS, H_BUTTON_ROW, H_BUTTONS_RESET, H_BUTTONS_DONE,
+    H_BUTTONS, H_BUTTON_GROUP, H_BUTTON_ROW, H_BUTTONS_RESET, H_BUTTONS_DONE,
     H_BT_TOGGLE, H_PAIR, H_PAIR_FOUND, H_PAIR_FORGET, H_PAIR_AGAIN,
     H_UPDATES, H_UPD_CHANNEL, H_UPD_CHECK, H_UPD_NOW,
 };
@@ -71,9 +71,10 @@ struct LibraryState {
     int shown_shortcut_code, shown_shortcut_mods;
     bool shown_shortcut_gamepad;
     unsigned shown_hid_changes;  // App.hid_changes as the Controller sheet's status line last showed
-    // The Buttons sheet learning a row's buttons (k_learn): which row (-1 none), which of its
-    // actions, and since when (it gives up after LEARN_MS without a press).
-    int learn_row, learn_step;
+    // The Buttons sheet: its group open (k_groups; -1 the list of them), the row learning its
+    // buttons (-1 none), which of its actions, and since when (it gives up after LEARN_MS without a
+    // press).
+    int buttons_group, learn_row, learn_step;
     uint32_t learn_at;
     // The Pair sheet (Settings > Controller > Pair a controller): what it asked the Bluetooth helper
     // last (ASK_*), what it asks next and when, the controllers found and those paired.
@@ -505,37 +506,133 @@ typedef struct {
 static void redraw(App *a, RefreshMode m);
 
 // A row learns one action's button, or two in turn (the previous page's, then the next page's).
-static const struct {
+// label NULL: the action's own name (action_label).
+typedef struct {
     const char *label;
     int act[2];
-} k_learn[] = {
-    // TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by the
-    // controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the names.
-    {N_("Undo"), {SHORTCUT_UNDO, 0}},
-    {N_("Redo"), {SHORTCUT_REDO, 0}},
-    {N_("Eraser"), {SHORTCUT_TOOL_BASE + TOOL_ERASER, 0}},
-    {N_("White ink"), {SHORTCUT_WHITE, 0}},
-    // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
-    {N_("Pages"), {SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE}},
-    // TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order.
-    {N_("Tools"), {SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL}},
-};
-enum { N_LEARN = sizeof k_learn / sizeof k_learn[0] };
+    IconKind icon;
+} LearnRow;
 
-// What a row asks for while it learns.
-static const char *learn_prompt(int action) {
-    // TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): about 1100 px at 44 px
-    // in bold.
-    switch (action) {
-    case SHORTCUT_UNDO: return _("Press a button for Undo");
-    case SHORTCUT_REDO: return _("Press a button for Redo");
-    case SHORTCUT_TOOL_BASE + TOOL_ERASER: return _("Press a button for the eraser");
-    case SHORTCUT_WHITE: return _("Press a button for white ink");
-    case SHORTCUT_PREV_PAGE: return _("Press a button for the previous page");
-    case SHORTCUT_NEXT_PAGE: return _("Press a button for the next page");
-    case SHORTCUT_PREV_TOOL: return _("Press a button for the previous tool");
-    default: return _("Press a button for the next tool");
-    }
+// The Buttons sheet's groups, as the editor's panel groups its buttons: each a sheet of rows.
+static const LearnRow k_editing[] = {
+    {NULL, {SHORTCUT_UNDO, 0}, ICON_UNDO},
+    {NULL, {SHORTCUT_REDO, 0}, ICON_REDO},
+    {NULL, {SHORTCUT_TOOL_BASE + TOOL_ERASER, 0}, ICON_ERASER},
+    {NULL, {SHORTCUT_HOLD_ERASER, 0}, ICON_GAMEPAD},
+    {NULL, {SHORTCUT_ERASER_MODE, 0}, ICON_NONE},
+    {NULL, {SHORTCUT_WHITE, 0}, ICON_NONE},
+    {NULL, {SHORTCUT_CLEAR_PAGE, 0}, ICON_BROOM},
+};
+// The Tools group: tool_order's pens first (learn_row_at), then this.
+static const LearnRow k_tools[] = {
+    // TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
+    // other rows, about 1100 px at 44 px in bold, with the buttons' names).
+    {N_("Previous / next tool"), {SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL}, ICON_GRID},
+};
+static const LearnRow k_pages[] = {
+    // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+    {N_("Previous / next page"), {SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE}, ICON_NEXT},
+    // TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
+    {N_("First / last page"), {SHORTCUT_FIRST_PAGE, SHORTCUT_LAST_PAGE}, ICON_NONE},
+    {NULL, {SHORTCUT_NEW_PAGE, 0}, ICON_PLUS},
+    {NULL, {SHORTCUT_FIT_PAGE, 0}, ICON_EXPAND},
+    {NULL, {SHORTCUT_PAGES, 0}, ICON_NOTEBOOK},
+    {NULL, {SHORTCUT_INDEX, 0}, ICON_NONE},
+};
+static const LearnRow k_menus[] = {
+    {NULL, {SHORTCUT_TOOL_PICKER, 0}, ICON_GRID},
+    {NULL, {SHORTCUT_PAPER, 0}, ICON_PAPER},
+    {NULL, {SHORTCUT_DISPLAY, 0}, ICON_BRIGHTNESS},
+    {NULL, {SHORTCUT_PEN_FEEL, 0}, ICON_TUNE},
+    {NULL, {SHORTCUT_FOLD_PANEL, 0}, ICON_COLLAPSE},
+    {NULL, {SHORTCUT_LIBRARY, 0}, ICON_LIBRARY},
+    {NULL, {SHORTCUT_CLOSE_MENU, 0}, ICON_CLOSE},
+};
+#define ROWS(r) r, (int)(sizeof r / sizeof r[0])
+static const struct {
+    const char *label, *title;  // its row in the list, the title of its sheet
+    IconKind icon;
+    const char *probe;          // library.buttons_group
+    const LearnRow *rows;
+    int n;
+} k_groups[] = {
+    // TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
+    // each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
+    // undo, redo, the eraser, white ink, clearing the page.
+    {N_("Editing..."), N_("Editing"), ICON_UNDO, "editing", ROWS(k_editing)},
+    // TRANSLATORS: (Buttons sheet) its group of the drawing tools, one by one.
+    {N_("Tools..."), N_("Tools"), ICON_GRID, "tools", ROWS(k_tools)},
+    // TRANSLATORS: (Buttons sheet) its group of page turning, new pages and the Pages view.
+    {N_("Pages..."), N_("Pages"), ICON_NEXT, "pages", ROWS(k_pages)},
+    // TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
+    // it again).
+    {N_("Menus..."), N_("Menus"), ICON_MORE, "menus", ROWS(k_menus)},
+};
+#undef ROWS
+enum { N_GROUPS = sizeof k_groups / sizeof k_groups[0] };
+
+// How many rows group g has (the Tools group's pens too).
+static int group_rows(int g) { return k_groups[g].n + (k_groups[g].rows == k_tools ? TOOL_PENS : 0); }
+
+// Row i of group g: the Tools group's first rows are tool_order's pens, the picker's order.
+static LearnRow learn_row_at(int g, int i) {
+    if (k_groups[g].rows == k_tools && i < TOOL_PENS)
+        return (LearnRow){NULL, {SHORTCUT_TOOL_BASE + (int)tool_order[i], 0}, ui_tool_icon(tool_order[i])};
+    return k_groups[g].rows[k_groups[g].rows == k_tools ? i - TOOL_PENS : i];
+}
+
+// An action's name as the Buttons sheet shows it: its row's, and in what it asks while it learns.
+static const char *action_label(int action) {
+    if (action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT)
+        return tool_label((ToolKind)(action - SHORTCUT_TOOL_BASE));
+    static const struct {
+        int action;
+        const char *label;
+    } names[] = {
+        // TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by
+        // the controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the
+        // names. The same names fill "Press a button for %s" and "That button is no longer for %s.".
+        {SHORTCUT_UNDO, N_("Undo")},
+        {SHORTCUT_REDO, N_("Redo")},
+        // TRANSLATORS: (Buttons sheet) the pen erases while the controller's button is held down.
+        {SHORTCUT_HOLD_ERASER, N_("Erase while held")},
+        // TRANSLATORS: (Buttons sheet) the eraser takes whole strokes, or only what it touches, in turn.
+        {SHORTCUT_ERASER_MODE, N_("Eraser mode")},
+        {SHORTCUT_WHITE, N_("White ink")},
+        // TRANSLATORS: (Buttons sheet) takes every stroke off the page, as the panel's broom.
+        {SHORTCUT_CLEAR_PAGE, N_("Clear page")},
+        {SHORTCUT_PREV_TOOL, N_("Previous tool")},
+        {SHORTCUT_NEXT_TOOL, N_("Next tool")},
+        {SHORTCUT_PREV_PAGE, N_("Previous page")},
+        {SHORTCUT_NEXT_PAGE, N_("Next page")},
+        {SHORTCUT_FIRST_PAGE, N_("First page")},
+        {SHORTCUT_LAST_PAGE, N_("Last page")},
+        {SHORTCUT_NEW_PAGE, N_("New page")},
+        // TRANSLATORS: (Buttons sheet) the page's whole width again after a pinch zoomed it.
+        {SHORTCUT_FIT_PAGE, N_("Fit page")},
+        {SHORTCUT_PAGES, N_("Pages")},
+        // TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
+        {SHORTCUT_INDEX, N_("Index")},
+        // TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
+        {SHORTCUT_TOOL_PICKER, N_("Tool picker")},
+        {SHORTCUT_PAPER, N_("Paper")},
+        {SHORTCUT_DISPLAY, N_("Display")},
+        // TRANSLATORS: (Buttons sheet) the screen of each tool's pressure and tilt ("Pen feel: %s").
+        {SHORTCUT_PEN_FEEL, N_("Pen feel")},
+        // TRANSLATORS: (Buttons sheet) folds the editor's panel into its small box, or unfolds it.
+        {SHORTCUT_FOLD_PANEL, N_("Fold the panel")},
+        {SHORTCUT_LIBRARY, N_("Library")},
+        // TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
+        {SHORTCUT_CLOSE_MENU, N_("Close menu")},
+    };
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (names[i].action == action) return _(names[i].label);
+    return "?";
+}
+
+// The action the open row waits for a press for.
+static int learning_action(App *a) {
+    return learn_row_at(S->buttons_group, S->learn_row).act[S->learn_step];
 }
 
 // "South, Up" for an action's buttons, "none" when it has none.
@@ -565,16 +662,27 @@ static void reload_shortcuts(App *a) {
 // A controller's press while the Buttons sheet learns: true when it was taken (the row's action has
 // that button now, or the file could not be written: a toast says so).
 bool library_learn_key(App *a, int code, bool gamepad) {
-    if (!S || S->modal != MOD_BUTTONS || S->learn_row < 0) return false;
+    if (!S || S->modal != MOD_BUTTONS || S->buttons_group < 0 || S->learn_row < 0) return false;
     if (!gamepad) return true;  // (a keyboard's key is shortcuts.ini's: nothing to learn here)
     char cp[1024];
     controller_path(cp, sizeof cp);
-    int action = k_learn[S->learn_row].act[S->learn_step];
+    int action = learning_action(a), before = shortcuts_lookup(&a->shortcuts, true, code, 0);
     if (shortcuts_learn(&a->shortcuts, cp, code, action) != 0) {
         // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
         app_toast(a, _("Could not save controller.ini"), 4000);
         S->learn_row = -1;
-    } else if (S->learn_step == 0 && k_learn[S->learn_row].act[1]) {
+        redraw(a, REFRESH_UI);
+        return true;
+    }
+    if (before && before != action) {
+        char msg[200];
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the button just learned
+        // did something else, which it no longer does; %s is that action's name, as the Buttons sheet
+        // names it ("Undo", "Pencil").
+        snprintf(msg, sizeof msg, _("That button is no longer for %s."), action_label(before));
+        app_toast(a, msg, 2500);
+    }
+    if (S->learn_step == 0 && learn_row_at(S->buttons_group, S->learn_row).act[1]) {
         S->learn_step = 1;
         S->learn_at = now_ms();
     } else {
@@ -731,6 +839,10 @@ static void upd_poll(App *a) {
 // A vertical list of full-width buttons inside a sheet.
 static void draw_menu(App *a, const char *title, const MenuRow *rows, int n) {
     int rh = ui_px(140), gap = ui_px(20);
+    // A list longer than the screen has room for gets shorter rows, never below a 10 mm touch target
+    // (sideways the Buttons sheet's Tools: 11 rows).
+    int room = a->h - 2 * ui_px(40) - ui_px(120) - ui_px(72);
+    if (n * (rh + gap) > room) rh = clampi(room / n - gap, ui_px(118), rh);
     Rect card = sheet_rect(a, ui_px(120) + ui_px(72) + n * (rh + gap));
     Rect in = ui_sheet(&a->screen, card, title);
     for (int i = 0; i < n; i++) {
@@ -950,33 +1062,47 @@ static void draw_modal(App *a) {
         break;
     }
     case MOD_BUTTONS: {
-        char text[N_LEARN][200];
-        MenuRow rows[N_LEARN + 2];
-        for (int i = 0; i < N_LEARN; i++) {
+        char text[16][200];
+        MenuRow rows[16];
+        int n = 0, g = S->buttons_group;
+        if (g < 0) {
+            for (int i = 0; i < N_GROUPS; i++)
+                rows[n++] = (MenuRow){k_groups[i].icon, _(k_groups[i].label), H_BUTTON_GROUP, i, BTN_PLAIN};
+            char cp[1024];
+            controller_path(cp, sizeof cp);
+            // TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
+            rows[n++] = (MenuRow){ICON_TRASH, _("Reset buttons"), H_BUTTONS_RESET, 0,
+                                  access(cp, F_OK) == 0 ? BTN_PLAIN : BTN_DISABLED};
+            rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
+            // TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a group of
+            // actions, then a tap on a row and a press on the controller, makes that button do it.
+            draw_menu(a, _("Controller buttons"), rows, n);
+            break;
+        }
+        for (int i = 0; i < group_rows(g); i++) {
+            LearnRow r = learn_row_at(g, i);
             bool learning = S->learn_row == i;
             if (learning) {
-                snprintf(text[i], sizeof text[i], "%s", learn_prompt(k_learn[i].act[S->learn_step]));
+                // TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): %s is the
+                // action's name as the rows show it ("Undo", "Pencil", "Next page"). About 1100 px at
+                // 44 px in bold.
+                snprintf(text[n], sizeof text[n], _("Press a button for %s"), action_label(r.act[S->learn_step]));
             } else {
                 char p1[64], p2[64];
-                pads_text(a, k_learn[i].act[0], p1, sizeof p1);
-                if (k_learn[i].act[1]) {
-                    pads_text(a, k_learn[i].act[1], p2, sizeof p2);
-                    snprintf(text[i], sizeof text[i], "%s: %s / %s", _(k_learn[i].label), p1, p2);
+                pads_text(a, r.act[0], p1, sizeof p1);
+                const char *label = r.label ? _(r.label) : action_label(r.act[0]);
+                if (r.act[1]) {
+                    pads_text(a, r.act[1], p2, sizeof p2);
+                    snprintf(text[n], sizeof text[n], "%s: %s / %s", label, p1, p2);
                 } else {
-                    snprintf(text[i], sizeof text[i], "%s: %s", _(k_learn[i].label), p1);
+                    snprintf(text[n], sizeof text[n], "%s: %s", label, p1);
                 }
             }
-            rows[i] = (MenuRow){ICON_NONE, text[i], H_BUTTON_ROW, i, learning ? BTN_SELECTED : BTN_PLAIN};
+            rows[n] = (MenuRow){r.icon, text[n], H_BUTTON_ROW, i, learning ? BTN_SELECTED : BTN_PLAIN};
+            n++;
         }
-        char cp[1024];
-        controller_path(cp, sizeof cp);
-        // TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
-        rows[N_LEARN] = (MenuRow){ICON_TRASH, _("Reset buttons"), H_BUTTONS_RESET, 0,
-                                  access(cp, F_OK) == 0 ? BTN_PLAIN : BTN_DISABLED};
-        rows[N_LEARN + 1] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
-        // TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a tap on a row,
-        // then a press on the controller, makes that button do it.
-        draw_menu(a, _("Controller buttons"), rows, N_LEARN + 2);
+        rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
+        draw_menu(a, _(k_groups[g].title), rows, n);
         break;
     }
     case MOD_SHORTCUTS: {
@@ -1376,8 +1502,13 @@ static void act(App *a, const Hit *h) {
         break;
     }
     case H_BUTTONS:
-        S->learn_row = -1;
+        S->learn_row = S->buttons_group = -1;
         open_modal(a, MOD_BUTTONS);
+        break;
+    case H_BUTTON_GROUP:
+        S->buttons_group = clampi(h->arg, 0, N_GROUPS - 1);
+        S->learn_row = -1;
+        redraw(a, REFRESH_UI);
         break;
     case H_BUTTON_ROW:
         S->learn_row = S->learn_row == h->arg ? -1 : h->arg;  // (a second tap stops it)
@@ -1396,6 +1527,11 @@ static void act(App *a, const Hit *h) {
     }
     case H_BUTTONS_DONE:
         S->learn_row = -1;
+        if (S->modal == MOD_BUTTONS && S->buttons_group >= 0) {  // a group: back to the list
+            S->buttons_group = -1;
+            redraw(a, REFRESH_UI);
+            break;
+        }
         S->bt_next = ASK_NONE;
         open_modal(a, MOD_SHORTCUTS);
         break;
@@ -1588,7 +1724,7 @@ static void act(App *a, const Hit *h) {
 void library_init(App *a) {
     a->lib = calloc(1, sizeof *a->lib);
     S->target = -1;
-    S->learn_row = -1;
+    S->learn_row = S->buttons_group = -1;
 }
 
 void library_free(App *a) {
@@ -1813,9 +1949,13 @@ int library_probe(App *a, const char *key, char *out, size_t cap) {
         else snprintf(out, cap, "%d", (int)S->modal);
     } else if (!strcmp(key, "learning")) {
         // The action the Buttons sheet waits for a press for ("undo", "next-page"), else empty.
-        const char *n = S->modal == MOD_BUTTONS && S->learn_row >= 0
-                            ? shortcut_action_name(k_learn[S->learn_row].act[S->learn_step]) : NULL;
+        const char *n = S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->learn_row >= 0
+                            ? shortcut_action_name(learning_action(a)) : NULL;
         snprintf(out, cap, "%s", n ? n : "");
+    } else if (!strcmp(key, "buttons_group")) {
+        // The Buttons sheet's group open ("editing", "tools", "pages", "menus"), else empty.
+        bool open = S->modal == MOD_BUTTONS && S->buttons_group >= 0;
+        snprintf(out, cap, "%s", open ? k_groups[S->buttons_group].probe : "");
     } else if (!strcmp(key, "update")) {
         // The Updates sheet's check: "idle", "checking", "newer <version>", "newest <version>" or
         // "failed <why>".

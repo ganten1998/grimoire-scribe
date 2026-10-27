@@ -14,11 +14,16 @@ optional input devices again.
 
 ## Controller buttons
 
-**Settings > Controller > Buttons...** shows what each button does and learns new ones: tap a row,
-then press the button. One button per action: a button that did something else does this now, and
-the action's other buttons stop doing it. **Pages** and **Tools** learn two presses, the previous
-one's and then the next one's. Ten seconds without a press leave the row as it was; a second tap on
-it stops it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically,
+**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
+has four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser,
+Erase while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in
+the tool picker's order, and previous / next tool), **Pages** (previous / next page, first / last
+page, new page, fit page, Pages, Index) and **Menus** (the tool picker, Paper, Display, Pen feel,
+fold the panel, the Library, close menu). Open a group, tap a row, then press the button; Done goes
+back up to the list. One button per action: a button that did something else does this now (a
+toast says which action lost it), and the action's other buttons stop doing it. The previous /
+next and first / last rows learn two presses, the first one's and then the second's. Ten seconds
+without a press leave the row as it was; a second tap on it stops it too. The buttons learned are written to `/mnt/us/grimoire/controller.ini` (atomically,
 every time). While that file is there, the controller's buttons come from it alone and the `pad.`
 lines of `shortcuts.ini` are set aside; keyboard (`key.`) lines always come from `shortcuts.ini`.
 **Reset buttons** deletes `controller.ini`.

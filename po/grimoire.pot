@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-26 22:02-0500\n"
+"POT-Creation-Date: 2026-10-26 22:10-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -475,7 +475,7 @@ msgstr ""
 msgid "Warmth"
 msgstr ""
 
-#: src/dispmenu.c
+#: src/dispmenu.c src/library.c
 msgid "Display"
 msgstr ""
 
@@ -588,7 +588,6 @@ msgid "Pin to the panel (up to %d)"
 msgstr ""
 
 #. TRANSLATORS: the title of the editor's tool picker.
-#. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order.
 #: src/editor.c src/library.c
 msgid "Tools"
 msgstr ""
@@ -862,7 +861,7 @@ msgid "Download everything (zip)"
 msgstr ""
 
 #. TRANSLATORS: the share index's heading over the notebooks in no folder.
-#: src/httpd.c
+#: src/httpd.c src/library.c
 msgid "Library"
 msgstr ""
 
@@ -1166,8 +1165,60 @@ msgstr ""
 msgid "Create"
 msgstr ""
 
-#. TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by the
-#. controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the names.
+#. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
+#. other rows, about 1100 px at 44 px in bold, with the buttons' names).
+#: src/library.c
+msgid "Previous / next tool"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+#: src/library.c
+msgid "Previous / next page"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
+#: src/library.c
+msgid "First / last page"
+msgstr ""
+
+#. TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
+#. each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
+#. undo, redo, the eraser, white ink, clearing the page.
+#: src/library.c
+msgid "Editing..."
+msgstr ""
+
+#: src/library.c
+msgid "Editing"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) its group of the drawing tools, one by one.
+#: src/library.c
+msgid "Tools..."
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) its group of page turning, new pages and the Pages view.
+#: src/library.c
+msgid "Pages..."
+msgstr ""
+
+#: src/library.c
+msgid "Pages"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
+#. it again).
+#: src/library.c
+msgid "Menus..."
+msgstr ""
+
+#: src/library.c
+msgid "Menus"
+msgstr ""
+
+#. TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by
+#. the controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the
+#. names. The same names fill "Press a button for %s" and "That button is no longer for %s.".
 #: src/library.c
 msgid "Undo"
 msgstr ""
@@ -1176,49 +1227,81 @@ msgstr ""
 msgid "Redo"
 msgstr ""
 
+#. TRANSLATORS: (Buttons sheet) the pen erases while the controller's button is held down.
 #: src/library.c
-msgid "Eraser"
+msgid "Erase while held"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the eraser takes whole strokes, or only what it touches, in turn.
+#: src/library.c
+msgid "Eraser mode"
 msgstr ""
 
 #: src/library.c
 msgid "White ink"
 msgstr ""
 
-#. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
+#. TRANSLATORS: (Buttons sheet) takes every stroke off the page, as the panel's broom.
 #: src/library.c
-msgid "Pages"
+msgid "Clear page"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for Undo"
+msgid "Previous tool"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for Redo"
+msgid "Next tool"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for the eraser"
+msgid "Previous page"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for white ink"
+msgid "Next page"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for the previous page"
+msgid "First page"
 msgstr ""
 
 #: src/library.c
-msgid "Press a button for the next page"
+msgid "Last page"
 msgstr ""
 
-#: src/library.c
-msgid "Press a button for the previous tool"
+#: src/library.c src/pagesview.c
+msgid "New page"
 msgstr ""
 
+#. TRANSLATORS: (Buttons sheet) the page's whole width again after a pinch zoomed it.
 #: src/library.c
-msgid "Press a button for the next tool"
+msgid "Fit page"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
+#: src/library.c
+msgid "Index"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
+#: src/library.c
+msgid "Tool picker"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) the screen of each tool's pressure and tilt ("Pen feel: %s").
+#: src/library.c
+msgid "Pen feel"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) folds the editor's panel into its small box, or unfolds it.
+#: src/library.c
+msgid "Fold the panel"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
+#: src/library.c
+msgid "Close menu"
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
@@ -1230,6 +1313,14 @@ msgstr ""
 #. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
 #: src/library.c
 msgid "Could not save controller.ini"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the button just learned
+#. did something else, which it no longer does; %s is that action's name, as the Buttons sheet
+#. names it ("Undo", "Pencil").
+#: src/library.c
+#, c-format
+msgid "That button is no longer for %s."
 msgstr ""
 
 #. TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
@@ -1479,10 +1570,18 @@ msgstr ""
 msgid "Reset buttons"
 msgstr ""
 
-#. TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a tap on a row,
-#. then a press on the controller, makes that button do it.
+#. TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a group of
+#. actions, then a tap on a row and a press on the controller, makes that button do it.
 #: src/library.c
 msgid "Controller buttons"
+msgstr ""
+
+#. TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): %s is the
+#. action's name as the rows show it ("Undo", "Pencil", "Next page"). About 1100 px at
+#. 44 px in bold.
+#: src/library.c
+#, c-format
+msgid "Press a button for %s"
 msgstr ""
 
 #. TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
@@ -1787,10 +1886,6 @@ msgstr ""
 
 #: src/pagesview.c
 msgid "Go to page..."
-msgstr ""
-
-#: src/pagesview.c
-msgid "New page"
 msgstr ""
 
 #. TRANSLATORS: the Index tab's bottom button, under its icon (290 px at 34 px): draw a
