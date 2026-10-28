@@ -79,9 +79,11 @@ pub fn sys_activity() {
 }
 /// The battery for the clock and battery corner (status.rs): its percent (-1 when unknown) and
 /// whether it charges. On the Kindle: the kernel's power supply class, else the power service
-/// (`lipc-get-prop com.lab126.powerd battLevel`, `isCharging`), which blocks for a moment and is
-/// asked at most once a minute. Never on the drawing path or while the pen is near (status.rs
-/// asks only when it may refresh). The simulator answers what the script's `battery` command set.
+/// (`lipc-get-prop com.lab126.powerd battLevel`, `isCharging`), asked at most once a minute by a
+/// shell in the background: nothing waits for it, and a call answers what the last reading that
+/// ended said (unknown before the first). Never on the drawing path or while the pen is near
+/// (status.rs asks only when it may refresh). The simulator answers what the script's `battery`
+/// command set.
 #[inline]
 pub fn sys_battery() -> Battery {
     platform::sys_battery()

@@ -353,8 +353,9 @@ leave. It never waits for the display.
 The battery comes from the kernel: the power supply whose `type` is `Battery` in
 `/sys/class/power_supply/*` (its `capacity`, and `status` reading `Charging`), read every 10 seconds
 while the corner is on. Where there is none, from the power service (`lipc-get-prop com.lab126.powerd
-battLevel` and `isCharging`), at most once a minute, which waits for lipc for a moment (1 second
-each at most): it is asked only while the pen is away. With neither, the corner shows the time alone.
+battLevel` and `isCharging`), at most once a minute and only while the pen is away, by a shell in
+the background that Grimoire never waits for (one that takes over 2 seconds is stopped): its answer
+shows from the next reading on. With neither, the corner shows the time alone.
 The screen guard leaves the corner's box out of its checks, so it is not taken for something else
 drawing over Grimoire.
 

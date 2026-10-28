@@ -172,10 +172,83 @@ fn lipc_is_asked_through_the_shell() {
     std::env::set_var("PATH", saved);
 }
 
+// sys_battery's fallback, where the kernel has no battery (this machine, unless it has one: then
+// the kernel answers and there is nothing to check). The power service is asked in the background:
+// the call that starts a reading answers at once, a later one what the reading said, and nothing is
+// asked again within the minute.
+fn kernel_has_battery() -> bool {
+    battery_from_sysfs("/sys/class/power_supply").is_some()
+}
+
+fn the_battery_is_asked_without_waiting() {
+    if kernel_has_battery() {
+        return;
+    }
+    let dir = scratch("battery");
+    let log = format!("{}/calls", dir);
+    let saved = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string());
+    std::env::set_var("PATH", format!("{}:{}", dir, saved));
+    std::env::set_var("LIGHT_TEST_LOG", &log);
+    script(
+        &format!("{}/lipc-get-prop", dir),
+        "#!/bin/sh\necho \"$*\" >> \"$LIGHT_TEST_LOG\"\ncase \"$*\" in\n*battLevel*) sleep 0.3; echo 87;;\n*isCharging*) echo 1;;\nesac\n",
+    );
+    let t0 = now_ms();
+    let b = lk::sys_battery();
+    check!(now_ms().wrapping_sub(t0) < 250); // (the answer takes 300 ms: nothing waited for it)
+    check!(b.percent == -1 && !b.charging); // nothing known yet
+    check!(wait_for(|| lk::sys_battery() == Battery { percent: 87, charging: true }));
+    for _ in 0..5 {
+        check!(lk::sys_battery() == Battery { percent: 87, charging: true });
+    }
+    let calls = String::from_utf8_lossy(&read_file(&log).unwrap_or_default()).into_owned();
+    check!(calls == "-i com.lab126.powerd battLevel\n-i com.lab126.powerd isCharging\n");
+    std::env::set_var("PATH", saved);
+}
+
 #[test]
 fn test_helper_services() {
     run!(the_update_check_reports_what_the_script_says);
     run!(the_helper_script_runs_as_a_child);
     run!(lipc_is_asked_through_the_shell);
+    run!(the_battery_is_asked_without_waiting);
+    done();
+}
+
+// A power service that does not answer: the reading is stopped after 2 s, and the battery is
+// unknown, without a call that waited. (A test of its own: the light module's state is the
+// thread's, and the reading above was the minute's.)
+fn a_battery_reading_that_hangs_is_stopped() {
+    if kernel_has_battery() {
+        return;
+    }
+    let dir = scratch("battery-hangs");
+    let group = format!("{}/group", dir);
+    let saved = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string());
+    std::env::set_var("PATH", format!("{}:{}", dir, saved));
+    std::env::set_var("LIGHT_TEST_LOG", &group);
+    // (the stand-in says its process group: the reading's shell, which leads it)
+    script(&format!("{}/lipc-get-prop", dir), "#!/bin/sh\nps -o pgid= -p $$ > \"$LIGHT_TEST_LOG\"\nsleep 30\necho 50\n");
+    let started = now_ms();
+    check!(lk::sys_battery().percent == -1);
+    let mut longest = 0u32;
+    check!(wait_for(|| {
+        let t0 = now_ms();
+        let b = lk::sys_battery();
+        longest = longest.max(now_ms().wrapping_sub(t0));
+        b.percent == -1 && now_ms().wrapping_sub(started) > 2500
+    }));
+    check!(longest < 250);
+    // The shell was stopped and reaped: it is gone.
+    let shell: i32 = String::from_utf8_lossy(&read_file(&group).unwrap_or_default()).trim().parse().unwrap_or(0);
+    check!(shell > 0);
+    // SAFETY: kill with signal 0 only asks whether the process exists.
+    check!(unsafe { libc::kill(shell, 0) } == -1 && errno() == libc::ESRCH);
+    std::env::set_var("PATH", saved);
+}
+
+#[test]
+fn test_battery_reading_stopped() {
+    run!(a_battery_reading_that_hangs_is_stopped);
     done();
 }

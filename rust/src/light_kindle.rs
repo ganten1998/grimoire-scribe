@@ -81,10 +81,26 @@ struct State {
     shells: [libc::pid_t; BG_SHELLS],
     intensity: i32,
     warmth: i32,
-    /// the battery as the power service last said, and when (now_ms, 0 never): sys_battery's fallback
+    /// the battery as the power service last said, and when it was last asked (now_ms, 0 never):
+    /// sys_battery's fallback
     battery: Battery,
     battery_at: u32,
+    /// the reading under way, if one is (battery_ask_start)
+    ask: BatteryAsk,
 }
+
+/// A battery reading asked of the power service in the background: the shell's pid (0 for none),
+/// the read end of what it prints, that so far, and when it was started.
+#[derive(Clone, Copy)]
+struct BatteryAsk {
+    pid: libc::pid_t,
+    fd: i32,
+    out: [u8; 64],
+    len: usize,
+    at: u32,
+}
+
+const NO_ASK: BatteryAsk = BatteryAsk { pid: 0, fd: -1, out: [0; 64], len: 0, at: 0 };
 
 thread_local! {
     static S: RefCell<State> = const {
@@ -94,6 +110,7 @@ thread_local! {
             warmth: -1,
             battery: Battery { percent: -1, charging: false },
             battery_at: 0,
+            ask: NO_ASK,
         })
     };
 }
@@ -358,20 +375,118 @@ pub fn sys_kindle_ui(run: bool) -> bool {
 
 /// The kernel's power supplies, one directory each.
 const POWER_SUPPLY_DIR: &str = "/sys/class/power_supply";
-/// lipc is asked for the battery at most this often (it takes tens of ms, and the pens are not read
-/// meanwhile).
+/// lipc is asked for the battery at most this often.
 const BATTERY_LIPC_MS: u32 = 60000;
+/// A reading that has not ended in this long is stopped, and the battery is unknown until the next
+/// (a lipc run took 95-191 ms on the Scribe 2, State says; the synchronous reading this replaces
+/// gave each of its two 1 s).
+const BATTERY_ASK_MS: u32 = 2000;
+/// What the shell asks: the percent, then whether it charges, each on a line of its own even when
+/// lipc says nothing (an empty line then).
+const BATTERY_ASK: &std::ffi::CStr = c"echo \"$(lipc-get-prop -i com.lab126.powerd battLevel 2>/dev/null)\"; \
+echo \"$(lipc-get-prop -i com.lab126.powerd isCharging 2>/dev/null)\"";
 
-/// Asks the power service for the battery (two lipc runs, each waiting 1 s at most): -1 percent when
-/// it does not answer.
-fn battery_from_lipc() -> Battery {
-    let ask = |prop: &str| -> Option<i32> {
-        let line = run_line(&cformat!("lipc-get-prop -i com.lab126.powerd %s 2>/dev/null", prop), 16, 1000)?;
-        battery_parse_number(&line)
+/// Starts a reading in the background: a shell (posix_spawn, as run_bg: Grimoire is not copied)
+/// whose output is a pipe, in a process group of its own, so that stopping it stops lipc too.
+/// Nothing waits for it: battery_ask_end looks at it each time sys_battery is asked.
+fn battery_ask_start() {
+    let mut p = [0i32; 2];
+    // SAFETY: pipe writes the two descriptors into our array.
+    if unsafe { libc::pipe(p.as_mut_ptr()) } != 0 {
+        return;
+    }
+    let argv: [*mut libc::c_char; 4] =
+        [c"sh".as_ptr() as *mut _, c"-c".as_ptr() as *mut _, BATTERY_ASK.as_ptr() as *mut _, std::ptr::null_mut()];
+    let mut pid: libc::pid_t = 0;
+    // SAFETY: the file actions and attributes are initialized before use and destroyed after;
+    // posix_spawn gets NUL-terminated strings, a NULL-terminated argv (static strings) and the
+    // process's own environment, and writes pid on success. The child's stdout becomes the pipe's
+    // write end, and both of the pipe's descriptors are closed in it.
+    let rc = unsafe {
+        let mut fa: libc::posix_spawn_file_actions_t = std::mem::zeroed();
+        let mut attr: libc::posix_spawnattr_t = std::mem::zeroed();
+        libc::posix_spawn_file_actions_init(&mut fa);
+        libc::posix_spawnattr_init(&mut attr);
+        libc::posix_spawn_file_actions_adddup2(&mut fa, p[1], 1);
+        libc::posix_spawn_file_actions_addclose(&mut fa, p[0]);
+        libc::posix_spawn_file_actions_addclose(&mut fa, p[1]);
+        libc::posix_spawnattr_setflags(&mut attr, libc::POSIX_SPAWN_SETPGROUP as libc::c_short);
+        libc::posix_spawnattr_setpgroup(&mut attr, 0);
+        let rc = libc::posix_spawn(&mut pid, c"/bin/sh".as_ptr(), &fa, &attr, argv.as_ptr(), environ());
+        libc::posix_spawn_file_actions_destroy(&mut fa);
+        libc::posix_spawnattr_destroy(&mut attr);
+        rc
     };
-    let percent = ask("battLevel").filter(|p| (0..=100).contains(p)).unwrap_or(-1);
-    let charging = percent >= 0 && ask("isCharging").is_some_and(|c| c != 0);
-    Battery { percent, charging }
+    // SAFETY: closing the write end, which only the child uses; the read end, kept, reads without
+    // blocking and is not handed to anything run later.
+    unsafe {
+        libc::close(p[1]);
+        if rc != 0 {
+            libc::close(p[0]);
+            return;
+        }
+        libc::fcntl(p[0], libc::F_SETFL, libc::fcntl(p[0], libc::F_GETFL, 0) | libc::O_NONBLOCK);
+        libc::fcntl(p[0], libc::F_SETFD, libc::FD_CLOEXEC);
+    }
+    with(|s| s.ask = BatteryAsk { pid, fd: p[0], at: now_ms(), ..NO_ASK });
+}
+
+/// What the reading printed so far, read without waiting.
+fn battery_ask_read(s: &mut State) {
+    while s.ask.len < s.ask.out.len() {
+        let len = s.ask.len;
+        // SAFETY: read into out[len..], at most its remaining length, from the pipe's read end.
+        let n = unsafe { libc::read(s.ask.fd, s.ask.out[len..].as_mut_ptr() as *mut libc::c_void, s.ask.out.len() - len) };
+        if n <= 0 {
+            break;
+        }
+        s.ask.len += n as usize;
+    }
+}
+
+/// The reading under way, looked at without waiting: once it has ended, what it says (the percent
+/// -1 when lipc gave none, or when it took longer than BATTERY_ASK_MS and was stopped). None while it
+/// runs, or when none is under way.
+fn battery_ask_end() -> Option<Battery> {
+    let ask = with(|s| {
+        if s.ask.pid > 0 {
+            battery_ask_read(s);
+        }
+        s.ask
+    });
+    if ask.pid <= 0 {
+        return None;
+    }
+    // SAFETY: waitpid on the shell battery_ask_start spawned, by its pid, without waiting.
+    let ended = unsafe { libc::waitpid(ask.pid, std::ptr::null_mut(), libc::WNOHANG) } != 0; // (or not ours any more)
+    let late = !ended && now_ms().wrapping_sub(ask.at) >= BATTERY_ASK_MS;
+    if !ended && !late {
+        return None;
+    }
+    if late {
+        // SAFETY: SIGKILL to the shell's group and to the shell (its group is its pid), then the wait
+        // for it, which a killed process ends at once.
+        unsafe {
+            libc::kill(-ask.pid, libc::SIGKILL);
+            libc::kill(ask.pid, libc::SIGKILL);
+            libc::waitpid(ask.pid, std::ptr::null_mut(), 0);
+        }
+    }
+    let out = with(|s| {
+        battery_ask_read(s); // (what it printed before it ended)
+        // SAFETY: closing the read end this reading owns.
+        unsafe { libc::close(s.ask.fd) };
+        let out = s.ask.out[..s.ask.len].to_vec();
+        s.ask = NO_ASK;
+        out
+    });
+    if late {
+        return Some(Battery::default());
+    }
+    let mut lines = out.split(|&c| c == b'\n');
+    let percent = lines.next().and_then(battery_parse_number).filter(|p| (0..=100).contains(p)).unwrap_or(-1);
+    let charging = percent >= 0 && lines.next().and_then(battery_parse_number).is_some_and(|c| c != 0);
+    Some(Battery { percent, charging })
 }
 
 pub fn sys_battery() -> Battery {
@@ -379,14 +494,18 @@ pub fn sys_battery() -> Battery {
     if let Some(b) = battery_from_sysfs(POWER_SUPPLY_DIR) {
         return b;
     }
-    let due = with(|s| s.battery_at == 0 || now_ms().wrapping_sub(s.battery_at) >= BATTERY_LIPC_MS);
-    if !due {
-        return with(|s| s.battery);
+    // Else the power service, asked in the background (each lipc run takes tens of ms or more, and
+    // nothing reads the pens while the main thread waits): what it last said, until a new reading
+    // ends. One is started at most once a minute, and never while another is under way.
+    if let Some(b) = battery_ask_end() {
+        with(|s| s.battery = b);
     }
-    with(|s| s.battery_at = now_ms() | 1); // (before the call: a slow answer is not asked for again at once)
-    let b = battery_from_lipc();
-    with(|s| s.battery = b);
-    b
+    let due = with(|s| s.ask.pid <= 0 && (s.battery_at == 0 || now_ms().wrapping_sub(s.battery_at) >= BATTERY_LIPC_MS));
+    if due {
+        with(|s| s.battery_at = now_ms() | 1);
+        battery_ask_start();
+    }
+    with(|s| s.battery)
 }
 
 pub fn sys_wall_clock() -> i64 {
