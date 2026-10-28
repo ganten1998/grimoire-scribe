@@ -28,11 +28,11 @@ Each fix is its own commit.
 
 | # | Finding | Severity | Fix |
 |---|---|---|---|
-| 1 | **The detached exit child could write into a PDF or a page** (bgjob.rs bg_detach_rest). It kept Grimoire's SIGTERM/INT/HUP handler, which writes one byte to the signal pipe's write end. child_setup closes that fd, and the jobs' output files take the lowest free numbers next, so a stop sent to the child (a shutdown's TERM to everyone) wrote 0x01 into the file being written. Also in the C. | MINOR, data | The child ignores the three signals before anything can reuse the number. It already went on through a stop (the handler only set a flag nobody read), so its behavior is unchanged. |
+| 1 | **A forked child could write into a PDF or a page** (bgjob.rs bg_detach_rest's child, httpd.rs render children). They keep Grimoire's SIGTERM/INT/HUP handler, which writes one byte to the signal pipe's write end. The child closes that fd, and the files it opens take the lowest free numbers next, so a stop sent to the child (a shutdown's TERM to everyone) wrote 0x01 into the file being written. Also in the C. | MINOR, data | A new `input_forget_signal_pipe` (a no-op off the Kindle) takes the pipe's numbers out of G_SIGPIPE in every bgjob child and render child, before they close what they inherited. The handler and the signal dispositions stay as in the C. Recorded in PORTING.md's decided differences. (A first version set SIG_IGN instead; the review of the fixes caught that it changed the disposition.) |
 | 2 | **page_paper allocated and copied a whole page at an erase pen-down** (editor.rs). The first erase or white-ink stroke after every page turn on an image paper rebuilt the paper into a fresh page-size canvas (allocation plus a white fill), then Rc::from copied it into a second allocation. That is about 9 MB of allocation and two page-size passes the C does not make, with no pump, as the stroke begins, and the copy's allocation could not fail (an abort where the C refuses the stroke). | MINOR (latency at pen-down) | The shared paper is `Rc<Vec<u8>>`. page_paper takes the buffer back when nothing holds it and draws again in place, as the C does, and `Rc::new` moves a Vec without copying it. render_layers' copy of the erase strokes' paper is moved the same way, instead of being copied a second time. |
-| 3 | **read_file took one read call and one copy per 4 KB** (util.rs). That is on the page-load path, which does not pump. The C's fread into a doubling buffer makes a handful of calls. | MINOR (latency) | `read_to_end`, straight into the buffer (EINTR retried, and what was read is kept on an error, as before). |
+| 3 | **read_file took one read call and one copy per 4 KB** (util.rs). That is on the page-load path, which does not pump. The C's fread into a doubling buffer makes a handful of calls. | MINOR (latency) | `read_to_end`, straight into the buffer. EINTR is retried. No memory for the file returns None, as the C's NULL. After any other error, what was read is kept, as before. |
 | 4 | **A lipc battery reading could stay a zombie with an open pipe** (status.rs, light_kindle.rs; Rust-only code). Only status_tick reaped it, after its "corner off or busy" return. | MINOR | A new `sys_battery_reap` (a no-op on the host and in the simulator) runs first in every status_tick. It never waits, except on a shell it has just killed. |
-| 5 | **The corner showed the battery from before a sleep for up to 10 s after the wake** (status.rs). CLOCK_MONOTONIC stops in suspend, and status_reset left read_at alone. | MINOR | status_reset clears read_at. |
+| 5 | **The corner showed the battery from before a sleep for up to 10 s after the wake** (status.rs). CLOCK_MONOTONIC stops in suspend, and status_reset left read_at alone. | MINOR | status_reset clears read_at, so the kernel's battery is read at the first tick awake. Through lipc, the last reading shows until the next one is due (within a minute awake). |
 | 6 | **status_cover built a full layout on every fast ink frame** (status.rs): the wall clock, localtime_r, a format and a measure, even for a stroke at the bottom of the page. | MINOR (pen path cost) | The dirty rect is first tested against the band the indicator always stays in (its height depends only on the size), and against where it was drawn. |
 
 ## Not fixed: owner's decisions or no device effect
@@ -121,13 +121,21 @@ In brief (the reviewers' full lists are long):
   armv7-unknown-linux-musleabihf --features kindle`) and the host clippy (`--features sim --tests`)
   are clean.
 - `GRIMOIRE_TEST_PORT=8850 make rust-scenarios`: passes, every scenario and the runner's self-test.
-- `make rust-test`: fails here in test_annotate only (8 checks at lines 808 to 864). Those checks
-  make a folder or file unwritable with chmod 0555/0000 to stand for full storage, and root
-  ignores those modes. This is host-specific; the expectations are left as they are. Because
-  cargo stops at the first failing binary, the whole suite was also run with `--no-fail-fast`
-  (results below).
+- `make rust-test`: stops at test_annotate, the first binary that fails here, because cargo stops
+  at the first failure. The whole suite was therefore also run with `--no-fail-fast`.
 
-TEST-RESULTS
+With `--no-fail-fast` (both builds), these fail here, and fail identically at the base commit
+436aba1: the same checks, the same hash lines.
+
+| test | checks | why it differs on this host |
+|---|---|---|
+| test_annotate, test_annotate_book | 8 each | root ignores chmod 0555/0000. Run as `nobody`, test_annotate passes every check. |
+| test_brush (the brush probe) | 359 of 1059 per build | brush_probe_c.txt was recorded on arm64 with Apple's libm and fused multiply-adds (util::fmla fuses on aarch64 only) |
+| test_bgimage, test_bgimage_render | 1 each (of 494 and 552) | a recorded render hash: float rounding, the same cause |
+| test_sheets_probe, test_sheets_probe_events | 2 of 5 and 3 of 7 (the hash lines of the template sheet) | tplsheet render hashes: the same cause |
+| sim_sdl::tests::sim_probe_matches_the_c (sim build) | 1 | x/y floats differ in the last bit (44601f68 vs 44601f67): the same cause |
+
+Every other test passes. None of the expectations were changed; the Mac gate decides.
 
 ## What remains for the device
 
