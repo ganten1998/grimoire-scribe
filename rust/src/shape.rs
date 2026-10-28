@@ -104,6 +104,9 @@ const MAX_RESAMPLED: usize = 8 * 40 + 1;
 /// ShortStraw's window (Wolin, Eoff and Hammond 2008) and its corner threshold.
 const STRAW_W: usize = 3;
 const STRAW_MEDIAN: f64 = 0.95;
+/// How many resampled steps off its vertex a corner may sit and still merge with its twin (see
+/// straw_corners).
+const MERGE_SLACK: f64 = 1.5;
 /// The share of the path at one end that the closure may cut away (an overshoot past the start,
 /// or a lead-in before it; never both).
 const CLOSE_TRIM: f64 = 0.15;
@@ -483,7 +486,7 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     }
     r.features.straight = straight as f32;
     r.features.offset_mm = (offset / mm) as f32;
-    let allow = fmla(SHAPE_LINE_OFFSET_PAD_MM as f64, mm, (SHAPE_LINE_OFFSET_FRAC as f64 * chord).max(SHAPE_LINE_OFFSET_MM as f64 * mm)) * tol;
+    let allow = line_allow(chord, mm, tol);
     // (a tolerance is the distance from perfect: 1 - 0.97 for the straightness)
     if straight >= fmla(-(1.0 - SHAPE_LINE_STRAIGHT as f64), tol, 1.0) && offset <= allow {
         if chord < SHAPE_LINE_MIN_MM as f64 * mm {
@@ -574,7 +577,7 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     // error there is held to its largest (see ellipse()).
     let cut: Vec<P> = q[..i].iter().chain(&q[j + 1..]).copied().collect();
     let stray = SHAPE_CLOSE_GAP as f64 * diag * tol;
-    let poly = polygon(&cyc, seg_min, diag, &mut r.features).filter(|pg| cut.iter().all(|&c| outline_dist(c, &pg.1) <= stray));
+    let poly = polygon(&cyc, seg_min, diag, mm, tol, &mut r.features).filter(|pg| cut.iter().all(|&c| outline_dist(c, &pg.1) <= stray));
     let ell = ellipse(lp, &cut, diag, tol, &mut r.features);
     let first = raw[0];
     let pstep = page_step(prm);
@@ -638,6 +641,12 @@ fn smooth121(q: &[P]) -> Vec<P> {
     }
     out.push(q[n - 1]);
     out
+}
+
+/// The largest offset from its chord a line `chord` page px long may have (page px): max(4% of it,
+/// 1 mm) + 0.5 mm, in screen mm, `tol` as wide.
+fn line_allow(chord: f64, mm: f64, tol: f64) -> f64 {
+    fmla(SHAPE_LINE_OFFSET_PAD_MM as f64, mm, (SHAPE_LINE_OFFSET_FRAC as f64 * chord).max(SHAPE_LINE_OFFSET_MM as f64 * mm)) * tol
 }
 
 /// Page px between the snapped points (SHAPE_POINT_MM page mm).
@@ -844,15 +853,29 @@ fn seg_straight(c: &[P], cyclic: bool, a: usize, b: usize) -> f64 {
     }
 }
 
+/// A segment's largest distance from its chord.
+fn seg_offset(c: &[P], cyclic: bool, a: usize, b: usize) -> f64 {
+    let n = c.len();
+    let (pa, pb) = (c[a], c[b % n]);
+    (0..=span(n, cyclic, a, b)).map(|o| seg_dist(c[(a + o) % n], pa, pb)).fold(0.0, f64::max)
+}
+
 /// ShortStraw's corners (Wolin, Eoff and Hammond 2008) on the resampled path, closed or open (an
 /// open path's ends are corners). Its two passes test segments with the edge test, so they agree
 /// with it: a segment that is not straight gets a corner at its smallest straw in its middle
 /// half; a corner whose two segments make one straight one goes (the straightest such first).
-fn straw_corners(c: &[P], cyclic: bool, seg_min: f64) -> Vec<usize> {
+/// "One straight one" is also held to a line's offset from its chord (line_allow, `mm` and `tol`
+/// as the line gate's) plus MERGE_SLACK steps: a short edge turned square off a long one bows the
+/// pair by less than chord / path can see (4.5 mm on 60 is 0.933 straight), but its corner stands
+/// its whole length off the chord. The slack is how far off its vertex ShortStraw may put a
+/// corner: one found twice, a step or two each side of a vertex, leaves the chord to its twin
+/// that far off the edge, and must still go.
+fn straw_corners(c: &[P], cyclic: bool, seg_min: f64, mm: f64, tol: f64) -> Vec<usize> {
     let m = c.len();
     if m < 2 * STRAW_W + 3 {
         return Vec::new();
     }
+    let slack = MERGE_SLACK * path_len(c) / (m - 1) as f64;
     // An open path has no straw within the window of its ends: the median stands in.
     let raw_straw = |i: usize| -> Option<f64> {
         if cyclic {
@@ -931,8 +954,9 @@ fn straw_corners(c: &[P], cyclic: bool, seg_min: f64) -> Vec<usize> {
         let mut best: Option<(usize, f64)> = None;
         let ks = if cyclic { 0..nc } else { 1..nc - 1 };
         for k in ks {
-            let s = seg_straight(c, cyclic, corners[(k + nc - 1) % nc], corners[(k + 1) % nc]);
-            if s >= seg_min && best.is_none_or(|b| s > b.1) {
+            let (a, b) = (corners[(k + nc - 1) % nc], corners[(k + 1) % nc]);
+            let s = seg_straight(c, cyclic, a, b);
+            if s >= seg_min && best.is_none_or(|b| s > b.1) && seg_offset(c, cyclic, a, b) <= line_allow(dist(c[a], c[b % m]), mm, tol) + slack {
                 best = Some((k, s));
             }
         }
@@ -961,8 +985,8 @@ fn seg_line(c: &[P], cyclic: bool, a: usize, b: usize) -> Option<(P, P)> {
 /// ShortStraw on the closed loop, then the edges' lines: Some((Triangle or Quad, the vertices in
 /// the loop's order)) when it has 3 or 4 straight edges. (Rectangles and squares are told apart
 /// from quads afterwards, in snap_polygon.)
-fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
-    let corners = straw_corners(cyc, true, seg_min);
+fn polygon(cyc: &[P], seg_min: f64, diag: f64, mm: f64, tol: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
+    let corners = straw_corners(cyc, true, seg_min, mm, tol);
     f.corners = corners.len() as i32;
     let nc = corners.len();
     if nc != 3 && nc != 4 {
@@ -1344,8 +1368,8 @@ fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> O
     Some(Ellipse { c, th, a: ea, b: eb, rms_px })
 }
 
-/// The ellipse's (or circle's) N vertices, from the one at the eccentric angle of the stroke's
-/// first point, the stroke's way round, then the first again: N + 1 points.
+/// The ellipse's (or circle's) N vertices, from its point nearest the stroke's first point, the
+/// stroke's way round, then the first again: N + 1 points.
 fn ellipse_outline(e: &Ellipse, sign: f64, first: P) -> (ShapeKind, Vec<P>) {
     let circle = e.b / e.a >= SHAPE_CIRCLE_RATIO as f64;
     let (mut th, mut a, mut b) = (e.th, e.a, e.b);
@@ -1360,16 +1384,24 @@ fn ellipse_outline(e: &Ellipse, sign: f64, first: P) -> (ShapeKind, Vec<P>) {
         }
     }
     let (u, v) = (unit(th), unit(th + std::f64::consts::FRAC_PI_2));
+    let at = |t: f64| madd(madd(e.c, u, a * t.cos()), v, b * t.sin());
+    // The first point's eccentric angle is near the nearest point (on a circle it is it); a few
+    // Newton steps on the squared distance put the start there on a long ellipse too.
     let d = sub(first, e.c);
-    let t0 = (dot(d, v) / b).atan2(dot(d, u) / a);
+    let mut t0 = (dot(d, v) / b).atan2(dot(d, u) / a);
+    for _ in 0..4 {
+        let off = sub(at(t0), first);
+        let d1 = madd(scale(u, -a * t0.sin()), v, b * t0.cos());
+        // (the second derivative of the point is -(point - centre))
+        let h = fmla(-1.0, dot(off, sub(at(t0), e.c)), dot(d1, d1));
+        if h <= 0.0 {
+            break;
+        }
+        t0 -= dot(off, d1) / h;
+    }
     let n = shape_ellipse_vertices(a as f32) as usize;
     let dt = sign * 2.0 * std::f64::consts::PI / n as f64;
-    let mut out: Vec<P> = (0..n)
-        .map(|k| {
-            let t = fmla(k as f64, dt, t0);
-            madd(madd(e.c, u, a * t.cos()), v, b * t.sin())
-        })
-        .collect();
+    let mut out: Vec<P> = (0..n).map(|k| at(fmla(k as f64, dt, t0))).collect();
     out.push(out[0]);
     (if circle { ShapeKind::Circle } else { ShapeKind::Ellipse }, out)
 }
@@ -1392,14 +1424,18 @@ pub const SHAPE_ARC_MAX_DEG: f32 = 330.0;
 /// strokes are shorter) stays writing; a polyline and an arc that both fit go to the closer.
 fn open_shape(q: &[P], diag: f64, prm: &ShapeParams, mm: f64, tol: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
     let seg_min = fmla(-(1.0 - SHAPE_SEG_STRAIGHT as f64), tol, 1.0);
-    let corners = straw_corners(q, false, seg_min);
+    let corners = straw_corners(q, false, seg_min, mm, tol);
     f.corners = corners.len() as i32;
     let step = page_step(prm);
     let min_len = SHAPE_LINE_MIN_MM as f64 * mm;
     if let Some(chain) = arrow(q, &corners, seg_min, min_len, prm) {
         return Some((ShapeKind::Arrow, segments(&chain, false, step)));
     }
-    let poly = polyline(q, &corners, seg_min, min_len, diag, prm);
+    // A polyline's pieces are lines: as long as one and as straight (a closed polygon's edges may
+    // bow to SHAPE_SEG_STRAIGHT, but an open chain has no closure to vouch for it, and a round
+    // loop cut into 18 mm pieces passes that).
+    let line_min = fmla(-(1.0 - SHAPE_LINE_STRAIGHT as f64), tol, 1.0);
+    let poly = polyline(q, &corners, line_min, min_len, diag, prm);
     let arc = arc_fit(q, min_len, tol, f);
     let use_poly = match (&poly, &arc) {
         (Some(pl), Some(ar)) => open_rms(q, pl) <= ar.rms_px,
@@ -1489,9 +1525,10 @@ fn arrow(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, prm: &ShapePara
     Some(chain)
 }
 
-/// An open polyline: 2 to 7 straight segments, each at least min_len. Its first segment is snapped
-/// as a line is; each next one is made square to the one before when it turns within
-/// SHAPE_RECT_DEG of 90 degrees, else snapped as a line. Each keeps its length along its line.
+/// An open polyline: 2 to 7 segments, each at least min_len and at least seg_min straight (chord /
+/// path). Its first segment is snapped as a line is; each next one is made square to the one
+/// before when it turns within SHAPE_RECT_DEG of 90 degrees, else snapped as a line. Each keeps
+/// its length along its line.
 fn polyline(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, diag: f64, prm: &ShapeParams) -> Option<Vec<P>> {
     let nc = corners.len();
     if !(3..=8).contains(&nc) {
