@@ -44,7 +44,9 @@ pub const SHORTCUT_PICKER_NEXT: i32 = 44;
 /// goes back to the page.
 pub const SHORTCUT_ADD_LINK: i32 = 45;
 pub const SHORTCUT_NAME_PAGE: i32 = 46;
-pub const SHORTCUT_LAST: i32 = 46;
+/// The clock and battery corner on or off, on any screen (status.rs; not in the C tree).
+pub const SHORTCUT_STATUS: i32 = 47;
+pub const SHORTCUT_LAST: i32 = 47;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ShortcutBinding {
     pub code: i32,
@@ -159,7 +161,7 @@ const K_TOOL_ACTIONS: [&str; TOOL_COUNT] = [
     "tool:charcoal",
     "tool:calligraphy",
 ];
-const K_ACTIONS: [(&str, i32); 27] = [
+const K_ACTIONS: [(&str, i32); 28] = [
     ("undo", SHORTCUT_UNDO), ("redo", SHORTCUT_REDO), ("previous-page", SHORTCUT_PREV_PAGE),
     ("next-page", SHORTCUT_NEXT_PAGE), ("previous-tool", SHORTCUT_PREV_TOOL), ("next-tool", SHORTCUT_NEXT_TOOL),
     ("white", SHORTCUT_WHITE), ("index", SHORTCUT_INDEX), ("hold-eraser", SHORTCUT_HOLD_ERASER),
@@ -169,6 +171,7 @@ const K_ACTIONS: [(&str, i32); 27] = [
     ("display", SHORTCUT_DISPLAY), ("pen-feel", SHORTCUT_PEN_FEEL), ("fold-panel", SHORTCUT_FOLD_PANEL),
     ("library", SHORTCUT_LIBRARY), ("close-menu", SHORTCUT_CLOSE_MENU), ("picker-previous", SHORTCUT_PICKER_PREV),
     ("picker-next", SHORTCUT_PICKER_NEXT), ("add-link", SHORTCUT_ADD_LINK), ("name-page", SHORTCUT_NAME_PAGE),
+    ("status-toggle", SHORTCUT_STATUS),
 ];
 /// Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
 /// the analog triggers (hidkeys_trigger_event reports them as these).

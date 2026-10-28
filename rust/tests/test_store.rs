@@ -578,6 +578,38 @@ fn before_eraser() {
     unlink(&path);
 }
 
+// The clock and battery corner's keys (status.rs; Rust only): off and small without them, written
+// last of the known keys, clamped, and a value past the range or a third state written back as it
+// was until the setting changes.
+fn status_corner_keys() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let mut t = Settings::default();
+    settings_default(&mut s);
+    check!(!s.status_on && s.status_size == 0);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_on=0") && has_pins_line(&path, "status_size=0"));
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("language=") < at("status_on=") && at("status_on=") < at("status_size="));
+    s.status_on = true;
+    s.status_size = 2;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_on=1") && has_pins_line(&path, "status_size=2"));
+    check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
+    // a file with neither key: the defaults
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && !t.status_on && t.status_size == 0);
+    // a size past the range is the nearest, a third state is on; both go back as they were
+    check!(write_file_atomic(&path, b"status_on=2\nstatus_size=7\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "status_on=2") && has_pins_line(&path, "status_size=7"));
+    // changed, they are written as they are
+    t.status_size = 1;
+    t.status_on = false;
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "status_on=0") && has_pins_line(&path, "status_size=1"));
+    check!(settings_load(&mut s) == 0 && !s.status_on && s.status_size == 1);
+    unlink(&path);
+}
+
 // A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
 // notebook.ini gets its page list back from the page files.
 fn damage_is_kept() {
@@ -735,6 +767,7 @@ fn test_store() {
     run!(pen_defaults_from_device);
     run!(panel_tools);
     run!(before_eraser);
+    run!(status_corner_keys);
     run!(safe_names);
     run!(empty_mirror_folder_cleanup);
     run!(damage_is_kept);

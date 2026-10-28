@@ -2,6 +2,8 @@
 //! the stock UI stays in sync (same lipc properties KOReader uses: com.lab126.powerd flIntensity
 //! and currentAmberLevel). Implemented by light_kindle.c and the simulator.
 
+use crate::status::Battery;
+
 // light.h is implemented by light_kindle.c on the Kindle and by the simulator (sim_sdl.c); host
 // builds link none (platform_none.rs). These forward to it.
 #[cfg(feature = "kindle")]
@@ -74,4 +76,18 @@ pub fn sys_prevent_sleep(prevent: bool) {
 #[inline]
 pub fn sys_activity() {
     platform::sys_activity()
+}
+/// The battery for the clock and battery corner (status.rs): its percent (-1 when unknown) and
+/// whether it charges. On the Kindle: the kernel's power supply class, else the power service
+/// (`lipc-get-prop com.lab126.powerd battLevel`, `isCharging`), which blocks for a moment and is
+/// asked at most once a minute. Never on the drawing path or while the pen is near (status.rs
+/// asks only when it may refresh). The simulator answers what the script's `battery` command set.
+#[inline]
+pub fn sys_battery() -> Battery {
+    platform::sys_battery()
+}
+/// The wall clock, unix seconds: what the corner shows (the simulator's script can set it).
+#[inline]
+pub fn sys_wall_clock() -> i64 {
+    platform::sys_wall_clock()
 }

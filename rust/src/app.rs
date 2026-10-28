@@ -141,9 +141,11 @@ pub use crate::editor::{
     editor_busy, editor_hold_eraser, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
     editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut, editor_suspend,
 };
-pub use crate::library::{library_bt, library_learn_key, library_probe};
-pub use crate::pensettings::{pensettings_open, pensettings_probe, pensettings_shortcut};
-pub use crate::share::{share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep};
+pub use crate::calibrate::calibrate_control_at;
+pub use crate::editor::editor_control_at;
+pub use crate::library::{library_bt, library_control_at, library_learn_key, library_probe};
+pub use crate::pensettings::{pensettings_control_at, pensettings_open, pensettings_probe, pensettings_shortcut};
+pub use crate::share::{share_control_at, share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep};
 
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 
@@ -643,6 +645,10 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
                 return;
             }
             let action = shortcuts_lookup(&a.shortcuts, ev.gamepad, ev.value, ev.key_mods as i32);
+            if action == SHORTCUT_STATUS {
+                status_toggle(a); // (the clock and battery corner is on every screen)
+                return;
+            }
             if a.scr == ScreenId::Penset {
                 pensettings_shortcut(a, action);
             } else if a.scr == ScreenId::Editor && editor_shortcut(a, action) && action == SHORTCUT_HOLD_ERASER {
@@ -751,6 +757,10 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     if a.asleep && power_asleep_drops(ev) {
         return;
     }
+    // Whether the pen is near, for the clock and battery corner to hold its refreshes back.
+    if !a.asleep {
+        status_pen(ev);
+    }
     // Live view's pen: where it is, for the browsers to draw over the picture (live_pen: one store
     // per sample, nothing while Live view is off). Never asleep: the sleep screen, and the Kindle's
     // own passcode over it, are not Grimoire's to show.
@@ -777,7 +787,24 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     if !a.asleep && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::PenButton) {
         note_input(a);
     }
+    // A finger tap in the top left corner on no control turns the clock and battery on or off; the
+    // screen sees the touch as it always does.
+    if !a.asleep {
+        status_touch(a, ev);
+    }
     (ops(a.scr).event)(a, ev);
+}
+
+/// Whether the current screen has a control at (x, y): a button, a sheet or menu that is up, a
+/// link on the page, the editor's panel. The clock and battery corner leaves a tap there to it.
+pub fn app_control_at(a: &App, x: f32, y: f32) -> bool {
+    match a.scr {
+        ScreenId::Library => library_control_at(a, x, y),
+        ScreenId::Editor => editor_control_at(a, x, y),
+        ScreenId::Penset => pensettings_control_at(a, x, y),
+        ScreenId::Calib => calibrate_control_at(a, x, y),
+        ScreenId::Share => share_control_at(a, x, y),
+    }
 }
 
 // The toast is never stored in a.screen: it is overlaid just for the refresh and the pixels
@@ -957,6 +984,7 @@ fn app_sleep(a: &mut App) {
     }
     a.asleep = true;
     live_hover_sync(a);
+    status_reset(); // (the sleep screen is drawn without the corner)
     a.wake_redraw_at = 0;
     a.wake_fallback_at = 0;
     live_set_state(LIVE_ASLEEP); // (the sleep screen is never streamed: it is never pushed)
@@ -1038,6 +1066,7 @@ fn app_wake(a: &mut App) {
     }
     a.asleep = false;
     live_hover_sync(a);
+    status_reset();
     a.wake_fallback_at = 0;
     a.power_pressed_at = 0; // a press taken for a sleep press was this wake's: no sleep request after it
     a.locked_wakes = 0; // it woke, so it was not locked
@@ -1321,6 +1350,7 @@ pub fn app_tick(a: &mut App, now: u32) {
     }
     (ops(a.scr).tick)(a, now);
     live_tick(a, now);
+    status_tick(a, now);
     if a.toast_visible && now.wrapping_sub(a.toast_until) as i32 >= 0 {
         toast_hide(a);
     }
@@ -1348,6 +1378,7 @@ pub fn app_flush(a: &mut App) {
         return; // the sleep screen stays up until wake
     }
     if rect_is_empty(a.dirty) && rect_is_empty(with(|s| s.self_dirty)) {
+        status_flush(a); // (the clock and battery corner alone: its own small refresh, if one is due)
         return;
     }
     toast_follow(a); // (a screen that moves its floor redraws, so there is something to flush)
@@ -1369,7 +1400,7 @@ pub fn app_flush(a: &mut App) {
     if m == RefreshMode::Full {
         a.ui_refreshes_since_full = 0;
     }
-    live_push(&a.screen, a.dirty); // (before the toast and the chip: neither is streamed)
+    live_push(&a.screen, a.dirty); // (before the toast, the chip and the corner: none is streamed)
     // The chip over what it covers, put back after the present, as the toast is.
     let chip = if live_on() { live_chip(a) } else { RECT_EMPTY };
     let mut chipped = !rect_is_empty(chip) && rect_overlaps(a.dirty, chip);
@@ -1383,6 +1414,11 @@ pub fn app_flush(a: &mut App) {
             ui_icon(&mut a.screen, IconKind::Live, rect_inflate(chip, -ui_px(2.0)), 255);
         }
     }
+    // The corner's clock over what it covers, put back after the present like the others (the
+    // toast goes over it).
+    let mut dirty = a.dirty;
+    let corner = status_cover(a, &mut dirty);
+    a.dirty = dirty;
     let mut overlay = a.toast_visible && rect_overlaps(a.dirty, a.toast_rect);
     if overlay {
         a.dirty = rect_union(a.dirty, a.toast_rect);
@@ -1397,11 +1433,16 @@ pub fn app_flush(a: &mut App) {
     if overlay {
         canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h }, a.toast_rect.x, a.toast_rect.y);
     }
+    if let Some(c) = corner {
+        status_uncover(a, c);
+    }
     if chipped {
         canvas_blit(&mut a.screen, &a.chip_under, Rect { x: 0, y: 0, w: chip.w, h: chip.h }, chip.x, chip.y);
     }
+    status_presented(a, a.dirty);
     a.dirty = RECT_EMPTY;
     a.dirty_mode = RefreshMode::Fast;
+    status_flush(a); // (a refresh of the corner this one did not hold)
 }
 
 /// calls leave/enter and redraws fully (REFRESH_FULL)
@@ -1531,6 +1572,9 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("annotate.") {
         return annotate_app_probe(a, k, out, cap);
     }
+    if let Some(k) = key.strip_prefix("status.") {
+        return status_probe(a, k, out, cap);
+    }
     if let Some(k) = key.strip_prefix("editor.") {
         return editor_probe(a, k, out, cap);
     }
@@ -1546,7 +1590,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 19] = [
+    let nums: [(&str, i32); 21] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -1561,6 +1605,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.shortcuts_enabled", st.shortcuts_enabled as i32),
         ("settings.controller", st.controller as i32),
         ("settings.updates", st.updates),
+        ("settings.status_on", st.status_on as i32),
+        ("settings.status_size", st.status_size),
         ("shortcuts.code", a.last_shortcut_code),
         ("native_pin", a.native_pin as i32),
         ("input.yielded", a.input_yielded as i32),

@@ -118,6 +118,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   that page; hold a finger on it to change where it goes or remove it (the ink stays). Erasing or
   undoing the ink takes the link away. In the notebook's PDF the links work too.
   A page made by a newer Grimoire opens read-only (see Moving between versions).
+- **Clock and battery**: tap the top left corner with a finger to show the time, the battery's
+  percent and a bolt while it charges, in a small box over the screen; tap it again to hide it. It
+  never goes into a page, a PDF or Live view, and it waits while the pen is near. Settings > Display
+  sets its size (see docs/KINDLE.md).
 - **Pinch** to zoom up to 4x, or inward to return to the fitted page view. Grimoire turns with the Kindle (switchable).
 - **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
   page, or the Kindle's own screensaver). Waking brings you straight back.

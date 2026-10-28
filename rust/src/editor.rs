@@ -3342,6 +3342,21 @@ pub fn editor_suspend(a: &mut App) -> bool {
     save_page(a)
 }
 
+/// Whether the editor has a control at (x, y) for a finger: a sheet, a menu or the Pages view that is
+/// up (each takes every tap), the panel, or a link on the page. The page itself is not one. The
+/// clock and battery corner leaves a tap on a control to it.
+pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
+    let s = ed_ref(a);
+    if !s.open || s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.ts.open || s.paper_open {
+        return true;
+    }
+    if rect_contains(s.panel, x as i32, y as i32) {
+        return true;
+    }
+    let mut l = NavLink::default();
+    link_under(a, x, y, &mut l)
+}
+
 pub fn editor_event(a: &mut App, ev: &InEvent) {
     let s = ed(a);
     if !s.open {

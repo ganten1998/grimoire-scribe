@@ -24,6 +24,10 @@ pub fn display_find_overwrite(screen: &Canvas, skip: Rect, where_: &mut Rect) ->
     false
 }
 pub fn display_skip_overlay(r: Rect) {}
+pub fn display_skip_status(r: Rect) {}
+pub fn display_pen_mode_on() -> bool {
+    false
+}
 pub fn display_broken() -> bool {
     false
 }
@@ -85,3 +89,9 @@ pub fn sys_kindle_ui(run: bool) -> bool {
 }
 pub fn sys_prevent_sleep(prevent: bool) {}
 pub fn sys_activity() {}
+pub fn sys_battery() -> Battery {
+    Battery::default()
+}
+pub fn sys_wall_clock() -> i64 {
+    wall_time()
+}

@@ -76,8 +76,17 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `power held` | the 4 s mark of a press still down (IN_POWER_HELD alone, what input_evdev.c sends then), so `power down`, `power held` leaves while the key is down (check that with `expect running is 0`) |
 | `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
 | `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
+| `clock SECONDS` | the time the clock and battery corner shows, in unix seconds (`clock 1700000000` is 2023-11-14 22:13:20 UTC), kept where the script puts it: it does not run on; `clock real` is the machine's clock again |
+| `battery PERCENT [charging]` | the battery that corner shows, 0 to 100, with the bolt when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
 | `storage full`, `storage ok` | from now on every file write fails, as on a full userstore, or works again |
 | `quit` | quit (end of script also quits) |
+
+The clock and battery corner (docs/KINDLE.md; src status.rs, the Rust build only) reads the simulated
+battery every 100 ms in place of the Kindle's every 10 s, so a script sees a change after a short
+`wait`. Its time is local time: a script that checks its text sets `# env: TZ=UTC` (y_status_corner.qs does).
+The refreshes it sends show in `display.presents` as `ui` of its own rect, and are held back while the
+pen is near (`pen hover` until `pen leave`), a stroke is drawn or `display.pen_mode` is 1. A `pentap`
+leaves the pen near, as the runner never sends the pen's leaving by itself: follow it with `pen leave`.
 
 The simulated power service answers a sleep request (powerButton) with a sleep (goingToScreenSaver)
 while it is active or unreadable, and with a wake (outOfScreenSaver) while it is in
@@ -115,7 +124,8 @@ Settings 1535 95. Its five buttons widen together for a longer word, up to 220 p
 (the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
 Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
 are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
-pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. The Language list
+pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. Upright from the
+Library, the Display sheet's clock and battery size row is 735 1533, beside its Done at 1460 1533. The Language list
 has Automatic at 930 785, English 930 945, Español 930 1105 and Cancel 930 1265. Pen feel's tabs
 are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
 fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
@@ -218,6 +228,11 @@ shows what the app holds.
 | `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
+| `settings.status_on`, `settings.status_size` | the clock and battery corner as settings.ini stores it: `1` while it is on, and its size, 0 small, 1 medium, 2 large |
+| `status.shown` | `1` while the panel holds the clock and battery corner, else `0`. A tap in the corner or the `status-toggle` shortcut turns it on at once (`settings.status_on`), but it is shown only once its refresh has been sent: not while the pen is near, nor while asleep |
+| `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
+| `status.charging` | `1` while the corner shows its bolt, `0` while it does not; empty while it is not shown |
+| `status.zone` | the corner a finger's tap finds, `x y w h`: 12 mm square, and the indicator's box too while it is shown (`0 0 142 142` at 300 dpi) |
 | `library.update` | the Updates sheet's check: `idle`, `checking`, `newer VERSION`, `newest VERSION` or `failed WHY` (`network`, `no-kpm`, `feed`, `failed`) |
 | `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
@@ -263,7 +278,7 @@ or a digit, not only by punctuation or length (hence y_pagesize_1_ksc and y_page
 `# env: K=V` lines set the environment of that one scenario (values without spaces;
 r_passcode, s_passcode_once, t_passcode_left_off and t_toast_over_sheets set `GRIMOIRE_PASSCODE`,
 as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`,
-v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`,
+v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, y_status_corner sets `TZ=UTC`,
 y_koreader_hosted sets `GRIMOIRE_HOST` as the KOReader plugin's start does and
 y_koreader_not_hosted sets it empty, y_language and z_language_kept set `GRIMOIRE_LANG`,
 y_pagesize_1_ksc sets `GRIMOIRE_SIM_SIZE=1986x2648`, and y_all_screens sets `GRIMOIRE_CHECK_FIT`

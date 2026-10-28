@@ -225,6 +225,12 @@ fn button_at(a: &mut App, x: f32, y: f32) -> i32 {
     }
 }
 
+/// Whether the calibration has a button at (x, y). The clock and battery corner leaves a tap there
+/// to it; the targets are well clear of the corner.
+pub fn calibrate_control_at(a: &App, x: f32, y: f32) -> bool {
+    a.cal.as_deref().is_none_or(|s| hits_find(&s.hits, x, y).is_some())
+}
+
 pub fn calibrate_event(a: &mut App, ev: &InEvent) {
     let pen = ev.type_ == InType::PenDown || ev.type_ == InType::PenMove || ev.type_ == InType::PenUp;
     let ph = app_pointer_phase(ev);

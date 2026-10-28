@@ -51,6 +51,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | qr.h/.c | QR codes as whole-pixel modules (the Share screen's address), with third_party/qrcodegen | canvas |
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, toasts, power button and sleep | all screens |
 | httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
+| status.rs | (the Rust build only) the clock and battery corner: a small indicator in the top left, painted over the screen for each refresh like a toast; its tap zone, its refreshes at the minute and on a battery change, held back while the pen is near, its battery reading (the kernel's power supply, else the power service) | app, ui, light |
 | share.c | the Share screen: the QR code, the addresses, its own layout check; the server answers its routes only while it is open. Also Live view's pairing card | app, httpd, qr |
 | live.h/.c, web/live.* | Live view: the shared copy of the screen, its 64 px tile marks, the viewer children that stream the tiles as PNGs; the browser's viewer | canvas |
 | pair.h/.c | one-use pairing codes and QR tokens, and the browser sessions they give (memory only) | - |
@@ -115,6 +116,23 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   count). The Pages view sets it to its bottom row of buttons, or to its keyboard's top while the
   keyboard is up. `app_switch` clears the floor, and a toast already up moves at the next flush
   (`toast_follow`).
+- The clock and battery corner (status.rs, the Rust build only) is the third overlay, after the
+  Live view chip and before the toast: `app_flush` paints it over `App.screen` when a refresh reaches
+  its rect (widening the refresh to hold it whole), presents, and puts the pixels under it back, so
+  it is never in a page, an export, a thumbnail, a sleep screen (`app_sleep` presents `App.screen`
+  as it is) or a Live view frame (`live_push` comes before it). Its own refreshes are one small GL16
+  of its rect, and of what it covered when its box shrinks or it goes: at each minute and when the
+  battery or its charging changes (`status_tick`), and when it is turned on or off or resized. They
+  go through `display_present` with no wait of any kind, and a flush that has none of its own
+  carries them (`status_flush`). They are held back while the pen is near (any pen event until
+  `IN_PEN_LEAVE`), a stroke or another gesture is in progress (`editor_busy`), or the driver is in
+  pen mode (`display_pen_mode_on`: it stays so past a stroke until a grayscale refresh is due, and
+  that refresh waits for the pen's last frame, so a refresh of the corner must not be the one that
+  ends it). A finger tap in the 12 mm corner turns it on and off, if the screen has no control
+  there (`app_control_at`: each screen answers from the hit list it dispatches taps through; a
+  sheet or menu that is up takes every tap; on the page, a link or the panel is a control); the
+  screen sees the touch as ever, and the corner only watches. `display_skip_status` leaves its rect
+  out of the screen guard, as `display_skip_overlay` does the chip's.
 - Display safety (main.c, display_fbink.c): the screen guard reads the framebuffer back (8 and
   32 bpp) and repaints what another process drew; after 10 repaints in a row it turns itself off.
   If the first frame and the next 4 refreshes all fail (`display_broken`, retried once a second),

@@ -771,7 +771,7 @@ static K_PAGES: [LearnRow; 8] = [
     lr(None, [SHORTCUT_ADD_LINK, 0], IconKind::Link),
     lr(None, [SHORTCUT_NAME_PAGE, 0], IconKind::Rename),
 ];
-static K_MENUS: [LearnRow; 7] = [
+static K_MENUS: [LearnRow; 8] = [
     lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
     lr(None, [SHORTCUT_PAPER, 0], IconKind::Paper),
     lr(None, [SHORTCUT_DISPLAY, 0], IconKind::Brightness),
@@ -779,6 +779,7 @@ static K_MENUS: [LearnRow; 7] = [
     lr(None, [SHORTCUT_FOLD_PANEL, 0], IconKind::Collapse),
     lr(None, [SHORTCUT_LIBRARY, 0], IconKind::Library),
     lr(None, [SHORTCUT_CLOSE_MENU, 0], IconKind::Close),
+    lr(None, [SHORTCUT_STATUS, 0], IconKind::Clock),
 ];
 struct Group {
     /// its row in the list
@@ -886,6 +887,9 @@ fn action_label(action: i32) -> &'static str {
         nm(SHORTCUT_LIBRARY, n_("Library")),
         // TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
         nm(SHORTCUT_CLOSE_MENU, n_("Close menu")),
+        // TRANSLATORS: (Buttons sheet) turns the small clock and battery in the screen's top left
+        // corner on or off, on any screen.
+        nm(SHORTCUT_STATUS, n_("Clock and battery")),
     ];
     for n in NAMES {
         if n.action == action {
@@ -2400,6 +2404,12 @@ pub fn library_leave(a: &mut App) {
     lib(a).pressed = None;
 }
 
+/// Whether the Library has a control at (x, y): a button, a card, or any sheet that is up (a sheet
+/// takes every tap, a tap outside it included). The clock and battery corner leaves such a tap to it.
+pub fn library_control_at(a: &App, x: f32, y: f32) -> bool {
+    a.lib.as_deref().is_none_or(|s| s.modal != Modal::None || hits_find(&s.hits, x, y).is_some())
+}
+
 pub fn library_event(a: &mut App, ev: &InEvent) {
     let ph = app_pointer_phase(ev);
     if ph < 0 {
@@ -2796,7 +2806,10 @@ mod tests {
         assert_eq!(group_rows(0), 7);
         assert_eq!(group_rows(1), TOOL_PENS as i32 + 2);
         assert_eq!(group_rows(2), 8);
-        assert_eq!(group_rows(3), 7);
+        // Menus: the editor's menus, then the clock and battery corner (Rust only), last
+        assert_eq!(group_rows(3), 8);
+        assert_eq!(learn_row_at(3, 7).act, [SHORTCUT_STATUS, 0]);
+        assert_eq!(action_label(SHORTCUT_STATUS), "Clock and battery");
         let first = learn_row_at(1, 0);
         assert_eq!(first.act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
         assert_eq!(learn_row_at(1, TOOL_PENS as i32).act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);
