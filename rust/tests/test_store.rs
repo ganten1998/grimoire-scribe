@@ -696,6 +696,52 @@ fn damage_is_kept() {
     check!(back.npages() == 2 && back.page_ids[0] == 1 && back.page_ids[1] == 3); // p2 is set aside
 }
 
+static PUMPS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+fn pumped() {
+    PUMPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+// The editor's pumped reader (a peek reads a page while the pens are read): the same page as store_load_page
+// reads, stroke for stroke, calling work_pump() at least once per 256 strokes as it goes, where the plain
+// reader never does; a damaged file is set aside by either, and counted.
+fn a_pumped_load_is_the_same_page_and_pumps() {
+    let mut nb = NotebookInfo::default();
+    check!(store_create("Peek", "", PAPER_MEDIUM, &mut nb) == 0);
+    check!(store_add_page(&mut nb, 1, PAPER_MEDIUM) == 0);
+    let mut p = None;
+    check!(store_load_page(&nb, 0, 1860, 2480, &mut p) == 0);
+    let mut pg = p.unwrap();
+    for i in 0..700 {
+        page_add(&mut pg, squiggle(if i % 2 == 0 { TOOL_PENCIL } else { TOOL_BALLPOINT }, 100.0 + (i % 40) as f32 * 50.0));
+    }
+    check!(store_save_page(&nb, 0, &pg) == 0);
+    let (mut plain, mut pump) = (None, None);
+    PUMPS.store(0, std::sync::atomic::Ordering::Relaxed);
+    work_pump_set(Some(pumped));
+    check!(store_load_page(&nb, 0, 1860, 2480, &mut plain) == 0);
+    let after_plain = PUMPS.load(std::sync::atomic::Ordering::Relaxed);
+    check!(store_load_page_pumped(&nb, 0, 1860, 2480, &mut pump) == 0);
+    let after_pumped = PUMPS.load(std::sync::atomic::Ordering::Relaxed);
+    work_pump_set(None);
+    check!(after_plain == 0 && after_pumped - after_plain >= 700 / 256);
+    let (a, b) = (plain.unwrap(), pump.unwrap());
+    check!(a.strokes.len() == 700 && b.strokes.len() == 700 && a.paper == b.paper && a.w == b.w && a.h == b.h && a.readonly == b.readonly);
+    for i in 0..a.strokes.len() {
+        let (x, y) = (&a.strokes[i], &b.strokes[i]);
+        check!(x.tool == y.tool && x.seed == y.seed && x.pts.len() == y.pts.len() && x.bbox == y.bbox);
+        check!(x.pts[0].x == y.pts[0].x && x.pts[49].y == y.pts[49].y && x.pts[25].pressure == y.pts[25].pressure);
+    }
+    // a damaged file: the pumped reader sets it aside as an open does, and a blank page takes its place
+    let dir = format!("{}/notebooks/{}", root(), nb.id);
+    check!(std::fs::write(format!("{dir}/p2.qpg"), b"QPG1 this is not a page").is_ok());
+    store_take_corrupt_count();
+    let mut q = None;
+    check!(store_load_page_pumped(&nb, 1, 1860, 2480, &mut q) == 0 && q.as_ref().is_some_and(|q| q.strokes.is_empty()));
+    check!(store_take_corrupt_count() == 1 && std::fs::metadata(format!("{dir}/p2.qpg")).is_err());
+    // out of range: nothing, as store_load_page
+    check!(store_load_page_pumped(&nb, 9, 1860, 2480, &mut q) == -1 && q.is_none());
+}
+
 // Folders sort by their letters, accents or not: an accented first letter sorts with its base
 // letter, not after Z (the keyboard types accents).
 fn folders_sort_with_accents() {
@@ -825,6 +871,7 @@ fn test_store() {
     run!(safe_names);
     run!(empty_mirror_folder_cleanup);
     run!(damage_is_kept);
+    run!(a_pumped_load_is_the_same_page_and_pumps);
     run!(folder_named_like_a_comment);
     run!(folders_sort_with_accents);
     let _ = std::fs::remove_dir_all(&r);

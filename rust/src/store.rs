@@ -1744,6 +1744,17 @@ fn scale_page(p: &mut Page, w: i32, h: i32) {
 /// gets its image paper back, and is written so again (each such page counted, below). Every page
 /// comes with Page.nb set to the notebook's id.
 pub fn store_load_page(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>) -> i32 {
+    load_page_with(nb, index, w, h, out, false)
+}
+
+/// store_load_page for a read the pens must not wait for: the same page, set aside and written back as an
+/// open would, but work_pump() runs every 256 strokes as it is read. The editor's peek reads a page this way
+/// while the Links bar is up (a dense page is 1.2 s of reading and drawing on the Kindle).
+pub fn store_load_page_pumped(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>) -> i32 {
+    load_page_with(nb, index, w, h, out, true)
+}
+
+fn load_page_with(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>, pump: bool) -> i32 {
     *out = None;
     if index < 0 || index >= nb.npages() {
         return -1;
@@ -1752,7 +1763,7 @@ pub fn store_load_page(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut 
     let path = page_path(nb, pid);
     let mut p: Option<Box<Page>> = None;
     if let Some(data) = read_file(&path) {
-        if page_deserialize(&data, &mut p) != 0 {
+        if page_deserialize_with(&data, &mut p, pump) != 0 {
             // Keep the damaged file instead of letting the next autosave replace it with the
             // blank page shown in its place. (A page from a newer version is not damage: it
             // opens read-only.)
@@ -1852,7 +1863,7 @@ fn cmp_aside(x: &Aside, y: &Aside) -> Ordering {
 fn page_file_opens(path: &str) -> bool {
     let Some(data) = read_file(path) else { return false };
     let mut p: Option<Box<Page>> = None;
-    page_parse(&data, &mut p, true) == 0
+    page_parse(&data, &mut p, true, false) == 0
 }
 
 /// Whether a page file starts as version 1 Blank (its first 8 bytes, the rest unread): how 1.0.0-beta
@@ -1893,7 +1904,7 @@ pub fn store_restore_listed_pages(nb: &NotebookInfo) -> i32 {
         }
         let mut p: Option<Box<Page>> = None;
         if let Some(data) = read_file(&pp) {
-            if page_parse(&data, &mut p, true) == 0 {
+            if page_parse(&data, &mut p, true, false) == 0 {
                 if let Some(pg) = p.as_deref_mut() {
                     if !pg.readonly && pg.paper == PAPER_BLANK {
                         pg.paper = PaperKind(e.kind);
@@ -2160,8 +2171,10 @@ fn read_tail(r: &mut R, p: &mut Page) -> Option<String> {
 }
 
 /// The reader behind page_deserialize. `quiet` leaves the reason a page opens read-only out of the
-/// log (for a check of a file, when no page is being opened).
-fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool) -> i32 {
+/// log (for a check of a file, when no page is being opened). `pump` calls work_pump() every PUMP_STROKES
+/// strokes as it goes (the editor's pumped reader: a page of thousands of strokes is read while the pens
+/// are, on the Kindle).
+fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool, pump: bool) -> i32 {
     *out = None;
     let len = buf.len();
     let mut r = R { d: buf, n: len, pos: 0, err: false };
@@ -2196,7 +2209,10 @@ fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool) -> i32 {
     let mut p = page_new(w as i32, h as i32, PaperKind(paper));
     let dpi = g_dpi();
     let mut unknown_tools: u32 = 0;
-    for _ in 0..ns {
+    for si in 0..ns {
+        if pump && si % PUMP_STROKES == PUMP_STROKES - 1 {
+            work_pump();
+        }
         if r.err {
             break;
         }
@@ -2261,7 +2277,17 @@ fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool) -> i32 {
 }
 
 pub fn page_deserialize(buf: &[u8], out: &mut Option<Box<Page>>) -> i32 {
-    page_parse(buf, out, false)
+    page_deserialize_with(buf, out, false)
+}
+
+/// How many strokes the pumped reader reads between two calls of work_pump: 256 strokes of a dense page
+/// are a few milliseconds on the Kindle.
+pub const PUMP_STROKES: u32 = 256;
+
+/// page_deserialize, calling work_pump() every PUMP_STROKES strokes while it reads when `pump` (the editor's
+/// peek reads a page of its own while the pens are read).
+fn page_deserialize_with(buf: &[u8], out: &mut Option<Box<Page>>, pump: bool) -> i32 {
+    page_parse(buf, out, false, pump)
 }
 
 /// The size a page file says it has, from the 16 bytes every version starts with (magic, version,
