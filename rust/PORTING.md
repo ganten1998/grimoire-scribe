@@ -464,6 +464,14 @@ The only known ways the Rust build may differ, each deliberate:
   pen move or of a pen-down on the page (the events whose pumps may preview at all) changes the
   tool, the view or the panel and then pumps.
 
+- **The headless runner's wait clock** starts at now_ms() as input_open opens the script, and the
+  poll reads the clock once for the comparison and what is left. The C's g_wait_until starts at 0:
+  once CLOCK_MONOTONIC passes 2^31 ms (24.8 days up) every C headless run waits 2^32 ms less the
+  uptime.
+- **input_close** takes each end of the signal pipe out of G_SIGPIPE before it closes it (the C
+  closes both, then resets them): a signal that comes late never writes to a closed descriptor, or
+  to one a later open got the number of.
+
 Report any other difference you find yourself making; it is a bug until the owner decides
 otherwise.
 
