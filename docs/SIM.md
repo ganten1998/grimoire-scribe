@@ -230,6 +230,7 @@ shows what the app holds.
 | `editor.zoomed` | `1` while the view is zoomed or panned, else `0` |
 | `editor.back` | the back list (Back to the page before): `DEPTH TOP`, how many pages it holds and the page number of the newest (`2 3`), `0 0` when it is empty or no notebook is open. Pages deleted since are not counted |
 | `editor.scrolls` | `V H`: whether the page scrolls on the vertical and the horizontal axis now (`1 0`), what touchgest.rs reads to tell a two-finger pan from a swipe: `0 0` at the whole page, with a surface in front that does not pan (the Pages view, a sheet), or with no notebook open |
+| `editor.areas` | `0` while the eye (the link areas, `settings.link_areas`) is off, else how many dotted boxes it draws over the open page (one for every link whose ink is on it, up to 64) |
 | `editor.scale` | screen px per page px, two decimals: `1.00` for a notebook of this screen's size upright, `1.07` for an 1860x2480 notebook on a 1986x2648 screen, `0.94` the other way; `0.00` with no notebook open |
 | `editor.page_size` | the open page's own size, `WxH`: its notebook's, so a page that came at the screen's size instead would show here; empty with no notebook open |
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |

@@ -80,6 +80,7 @@ pub mod httpd;
 pub mod inkmode; // header only
 pub mod keyboard;
 pub mod library;
+pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only, the Index's phase 1)
 pub mod live;
 pub mod pagesview;
 pub mod panel; // header only
@@ -140,6 +141,7 @@ pub mod prelude {
     pub use crate::keyboard::*;
     pub use crate::koreader::*;
     pub use crate::latency::*;
+    pub use crate::linkbar::*;
     pub use crate::light::*;
     pub use crate::live::*;
     pub use crate::musicbuild::*;

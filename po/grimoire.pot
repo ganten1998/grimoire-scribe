@@ -1497,6 +1497,12 @@ msgstr ""
 msgid "Nothing to go back to."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
+#. eye draws dotted boxes over the page where a finger's tap follows a link.
+#: rust/src/editor.rs
+msgid "Dotted boxes show where a finger tap follows a link. They never print."
+msgstr ""
+
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: src/library.c
 msgctxt "buttons"

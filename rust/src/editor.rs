@@ -24,6 +24,8 @@ const LINK_HOLD_MS: u32 = 600;
 const LINK_BOX_MIN_MM: f32 = 5.0;
 
 // settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
+/// the eye was turned on: dotted boxes show where a finger tap follows a link
+const HINT_EYE: i32 = 1 << 2;
 /// two fingers dragged the page (a pan) while two fingers up and down are gestures
 const HINT_PAN: i32 = 1 << 6;
 /// the editor shows the whole page sideways now (landscape_fit), for an owner who had the width
@@ -88,6 +90,26 @@ struct PageHistory {
     page: Option<Box<Page>>,
     /// it got an erase stroke this session that erased.txt may not list yet (compact.h)
     to_list: bool,
+}
+
+/// The open page's link boxes for the eye and the bar: page px, padded to a finger's size (what a tap hits,
+/// nav_link_areas at link_under's minimum), each with the number of the bar's entry it belongs to
+/// (linkbar_group). Memory only. It is made when the eye draws or the bar opens, not at every change
+/// (nav_link_areas walks the strokes once per link), so it is stale from any change to the page, its ink or
+/// its links until then.
+struct LinkBoxes {
+    n: usize,
+    link: [NavLink; LB_MAX],
+    area: [Rect; LB_MAX],
+    /// its bar entry's number, from 1
+    entry: [u8; LB_MAX],
+    stale: bool,
+}
+// (arrays derive Default only up to 32 elements: EditorState keeps its derive)
+impl Default for LinkBoxes {
+    fn default() -> Self {
+        LinkBoxes { n: 0, link: [NavLink::default(); LB_MAX], area: [RECT_EMPTY; LB_MAX], entry: [0; LB_MAX], stale: true }
+    }
 }
 
 /// The page's paper alone, at page size (EditorState.paper): the C's Canvas, whose pixels the brush
@@ -243,6 +265,8 @@ pub struct EditorState {
     /// The pages the open notebook was left from by a link, the Pages view or Find, newest last, at most
     /// BACK_MAX (page ids): Back to the page before pops it. Memory only; a page turn does not push.
     back: Vec<u32>,
+    /// the open page's link boxes (the eye, the bar's numbers)
+    boxes: LinkBoxes,
 
     /// Display sheet (front light, invert)
     dm: DispMenu,
@@ -1251,6 +1275,136 @@ fn draw_tools(a: &mut App) {
     }
 }
 
+// ---- the eye: where a finger tap follows a link ----
+
+/// The open page's link boxes, made again if anything changed since they were made (LinkBoxes).
+fn boxes_get(a: &mut App) {
+    let dpi = a.dpi;
+    let s = ed(a);
+    if !s.boxes.stale {
+        return;
+    }
+    s.boxes.stale = false;
+    s.boxes.n = 0;
+    let pid = s.open_pid();
+    let mut links = [NavLink::default(); LB_MAX];
+    let mut areas = [RECT_EMPTY; LB_MAX];
+    // (exactly link_under's minimum: the eye promises what nav_link_at hits)
+    let n = match s.open_page() {
+        Some(page) if pid != 0 => nav_link_areas(&s.nav, page, pid, NAV_LINK_MIN_MM * dpi / 25.4, &mut links, &mut areas) as usize,
+        _ => 0,
+    };
+    let mut entries = [LbEntry::default(); LB_MAX];
+    let mut numbers = [0u8; LB_MAX];
+    linkbar_group(&s.nb, &links[..n], &areas[..n], dpi, &mut entries, &mut numbers);
+    s.boxes.link = links;
+    s.boxes.area = areas;
+    s.boxes.entry = numbers;
+    s.boxes.n = n;
+}
+
+/// A page rect on the screen as the view maps it, to the pixel (page_to_screen pads it for repaints).
+fn box_screen(s: &EditorState, p: Rect) -> Rect {
+    let x0 = ((p.x as f32 - s.ox) * s.zoom).round() as i32;
+    let y0 = ((p.y as f32 - s.oy) * s.zoom).round() as i32;
+    let x1 = (((p.x + p.w) as f32 - s.ox) * s.zoom).round() as i32;
+    let y1 = (((p.y + p.h) as f32 - s.oy) * s.zoom).round() as i32;
+    Rect { x: x0, y: y0, w: (x1 - x0).max(1), h: (y1 - y0).max(1) }
+}
+
+/// Where a box's number tag goes: at its top-left, kept on the screen, and right of the clock corner when
+/// it would fall in that.
+fn eye_tag(a: &App, sr: Rect) -> Rect {
+    let t = ui_px(52.0);
+    let mut r = Rect { x: clampi(sr.x, 0, (a.w - t).max(0)), y: clampi(sr.y, 0, (a.h - t).max(0)), w: t, h: t };
+    let z = corner_zone(a);
+    if rect_overlaps(r, z) {
+        r.x = clampi(z.x + z.w + ui_px(8.0), 0, (a.w - t).max(0));
+    }
+    r
+}
+
+/// Everything the eye draws for one box: its dashed outline with the halo, and its tag.
+fn eye_reach(a: &App, sr: Rect) -> Rect {
+    rect_union(rect_inflate(sr, ui_px(2.0) + 1), eye_tag(a, sr))
+}
+
+/// The eye, over the page and under the panel: a dashed box with a number tag where every link's ink is.
+/// Only on the screen (never in the page canvas, so never in a thumbnail, the PDF, the share page or the sleep
+/// image), 1-bit, so DU and GL16 show it alike. At most LB_MAX boxes, each tested against r.
+fn draw_areas(a: &mut App, r: Rect) {
+    if !a.settings.link_areas {
+        return;
+    }
+    boxes_get(a);
+    let (thick, on, off, halo) = (ui_px(4.0), ui_px(16.0), ui_px(12.0), ui_px(2.0));
+    let clip = a.screen.clip;
+    canvas_set_clip(&mut a.screen, r);
+    for i in 0..ed_ref(a).boxes.n {
+        let s = ed_ref(a);
+        let sr = box_screen(s, s.boxes.area[i]);
+        let num = s.boxes.entry[i];
+        if !rect_overlaps(r, eye_reach(a, sr)) {
+            continue;
+        }
+        canvas_dash_rect(&mut a.screen, sr, thick, on, off, halo);
+        let tag = eye_tag(a, sr);
+        let c = &mut a.screen;
+        canvas_fill(c, tag, 0);
+        canvas_fill(c, rect_inflate(tag, -ui_px(3.0)), 255);
+        let mut text = String::new();
+        csnprintf!(&mut text, 8, "%d", num as i32);
+        font_draw_centered(c, FontFace::Bold, ui_small_size(), tag, &text, 0);
+    }
+    a.screen.clip = clip;
+}
+
+/// Where the eye draws anything now (empty with none): the refresh of turning it on or off.
+fn eye_bounds(a: &mut App) -> Rect {
+    boxes_get(a);
+    let mut u = RECT_EMPTY;
+    for i in 0..ed_ref(a).boxes.n {
+        let s = ed_ref(a);
+        let sr = box_screen(s, s.boxes.area[i]);
+        u = rect_union(u, eye_reach(a, sr));
+    }
+    rect_intersect(u, Rect { x: 0, y: 0, w: a.w, h: a.h })
+}
+
+/// The eye turned on or off (the bar's Areas button, whose rect is `button`, or the link-areas action,
+/// with no button): remembered, the boxes drawn or taken away. The button goes out first on its own
+/// refresh, then the boxes' union; far apart (over 600 px between their centres) they are two presents
+/// anyway. No toast but the first time it comes on (hints bit 2).
+fn areas_toggle(a: &mut App, button: Rect) {
+    a.settings.link_areas = !a.settings.link_areas;
+    let tip = a.settings.link_areas && a.settings.hints & HINT_EYE == 0;
+    if tip {
+        a.settings.hints |= HINT_EYE;
+    }
+    settings_save(&a.settings);
+    let un = eye_bounds(a);
+    if !rect_is_empty(button) {
+        compose(a, button);
+        app_invalidate(a, button, RefreshMode::Ui);
+        app_flush(a);
+    }
+    if !rect_is_empty(un) {
+        compose(a, un);
+        app_invalidate(a, un, RefreshMode::Ui);
+        if !rect_is_empty(button) {
+            let (bc, uc) = ((button.x + button.w / 2, button.y + button.h / 2), (un.x + un.w / 2, un.y + un.h / 2));
+            if (bc.0 - uc.0).abs().max((bc.1 - uc.1).abs()) > ui_px(600.0) {
+                app_flush(a);
+            }
+        }
+    }
+    if tip {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
+        // eye draws dotted boxes over the page where a finger's tap follows a link.
+        app_toast(a, tr("Dotted boxes show where a finger tap follows a link. They never print."), 4000);
+    }
+}
+
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
     if ed(a).pv.open {
@@ -1269,6 +1423,7 @@ fn compose(a: &mut App, r: Rect) {
     } else {
         blit_view(a, r);
     }
+    draw_areas(a, r);
     if rect_overlaps(r, ed(a).panel) {
         draw_panel(a);
     }
@@ -1410,6 +1565,7 @@ fn draw_page(a: &mut App, r: Rect) {
 
 fn render_page_full(a: &mut App) {
     let s = ed(a);
+    s.boxes.stale = true; // (a page drawn whole is another page, or one that changed whole)
     let r = Rect { x: 0, y: 0, w: s.pgw, h: s.pgh };
     draw_page(a, r);
     let s = ed(a);
@@ -1590,6 +1746,7 @@ fn close_notebook(a: &mut App) {
     }
     s.link_mode = false;
     s.back = Vec::new();
+    s.boxes.stale = true;
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
     // thumbnail and the PDF it drew of them are drawn again.
     if store_take_restored_count() > 0 {
@@ -1918,6 +2075,7 @@ fn draw_end(a: &mut App) {
     let s = ed(a);
     let st = s.cur.take();
     s.owner = Owner::None;
+    s.boxes.stale = true; // (a link's ink may have been added to, or a link's box made)
     display_pen_mode(false);
     let Some(st) = st else { return };
     if st.pts.is_empty() {
@@ -2161,6 +2319,7 @@ fn erase_segment(a: &mut App, sx: f32, sy: f32, pressure: f32) {
     s.ex = x;
     s.ey = y;
     if !rect_is_empty(d) {
+        ed(a).boxes.stale = true; // (a link's ink may be gone)
         draw_page(a, d);
         show(a, d, RefreshMode::Fast);
         let s = ed(a);
@@ -2171,6 +2330,7 @@ fn erase_segment(a: &mut App, sx: f32, sy: f32, pressure: f32) {
 fn erase_end(a: &mut App) {
     let s = ed(a);
     s.owner = Owner::None;
+    s.boxes.stale = true;
     display_live_ink(false);
     if !s.removed.is_empty() {
         // History wants original indices ascending, paired with their strokes.
@@ -2216,6 +2376,7 @@ fn clear_page(a: &mut App) {
     let ip = s.page_ix().unwrap();
     let (hh, page) = hist_page(&mut s.hist, h, ip);
     history_push_clear(hh, page); // takes every stroke off the page, undoable
+    ed(a).boxes.stale = true;
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
     mark_changed(ed(a));
@@ -2313,6 +2474,7 @@ fn undo_redo(a: &mut App, undo: bool) {
     if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
         return;
     }
+    ed(a).boxes.stale = true;
     draw_page(a, d); // (back to a template whose picture is still being made: white until it is)
     let s = ed(a);
     let full = d.w >= s.pgw && d.h >= s.pgh;
@@ -2528,6 +2690,7 @@ fn link_to(a: &mut App, target: &str, done: &str) {
     pages_hide(a, -1);
     let s = ed(a);
     let seed = s.link_seed;
+    s.boxes.stale = true; // (a link changed or made, or put back as saved)
     if nav_link_set(&mut s.nav, pid, seed, target) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
         nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
@@ -2591,6 +2754,7 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             pages_hide(a, -1);
             let s = ed(a);
             let (pid, seed) = (s.nb.page_ids[s.index as usize], s.link_seed);
+            s.boxes.stale = true;
             nav_link_remove(&mut s.nav, pid, seed);
             if nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
                 nav_load(s.nb.id.as_str(), &mut s.nav);
@@ -3205,8 +3369,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         editor_fit_changed(a, true);
         editor_fit_toast(a);
     } else if action == SHORTCUT_LINK_AREAS {
-        a.settings.link_areas = !a.settings.link_areas;
-        settings_save(&a.settings);
+        areas_toggle(a, RECT_EMPTY);
     } else if action == SHORTCUT_NEW_PAGE {
         let i = ed(a).index;
         pages_new(a, i + 1); // the Pages view's New page, after the open one
@@ -4207,6 +4370,20 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let s = ed_ref(a);
         let name = if open { hits_find(&s.hits, x as f32, y as f32).map(panel_name).unwrap_or_default() } else { String::new() };
         csnprintf!(out, cap, "%s", &name);
+        return 0;
+    }
+    if key == "areas" {
+        // How many link boxes the eye draws now, 0 while it is off.
+        if a.ed.is_none() {
+            return -1;
+        }
+        let n = if a.settings.link_areas && ed_ref(a).open && a.scr == ScreenId::Editor {
+            boxes_get(a);
+            ed_ref(a).boxes.n as i32
+        } else {
+            0
+        };
+        csnprintf!(out, cap, "%d", n);
         return 0;
     }
     let dpi = a.dpi;
