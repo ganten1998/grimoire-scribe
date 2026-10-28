@@ -60,6 +60,14 @@ pub const FS_ROT_DEG: i32 = 10;
 pub const FS_FAR: i32 = FS_T_MAX + FS_MARGIN_MIN;
 /// The slip-bank check calls its pump this often (in bank paths): about 1-2 s on the Kindle in all.
 pub const FS_BANK_PUMP: usize = 64;
+/// The bank refuses a shape that any bank path comes within its threshold plus this of. The bank's
+/// paths are ideal and on a grid (20 degrees of orientation, 10 of turn, 15% of corner place),
+/// while a real slip lands between the grid's points and wobbles: either can bring it nearer than
+/// the nearest bank path. 10 is the least pad that refuses a C (a 270 degree arc, which the bank's
+/// 220 degree arcs reach only within T + 10) in every recording, as the design requires of every
+/// one-turn shape; longer bank arcs would refuse circles. A design tuning, to be confirmed with
+/// the device traces at the P4 freeze like the other bank constants.
+pub const FS_BANK_PAD: i32 = 10;
 /// fs_match calls its pump after this many comparisons of a recorded sample with one try of the
 /// candidate (the work_pump rhythm, section 4).
 pub const FS_MATCH_PUMP: usize = 4;
@@ -1240,27 +1248,38 @@ fn second_least(d: &[i32]) -> i32 {
 // Recording (sections 5 and 6.3)
 // ---------------------------------------------------------------------------------------------
 
-/// Slip-bank paths: one-turn slides (16 turns x 5 corner places x 18 orientations), then arcs
-/// (10 sweeps x 18 orientations).
+/// Slip-bank paths, each at 18 orientations: one-turn slides (16 turns x 5 corner places), arcs
+/// (10 sweeps), then hairpins (2 senses x 2 return lengths x 2 tip widths).
 const BANK_TURNS: [i32; 16] = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 175];
 const BANK_CORNER_PCT: [i32; 5] = [20, 35, 50, 65, 80];
 const BANK_ORIENTS: usize = 18;
 const BANK_ARCS: usize = 10;
+const BANK_PIN_BACK_PCT: [i64; 2] = [60, 100];
+const BANK_PIN_TIP_PCT: [i64; 2] = [6, 14];
+const BANK_PINS: usize = 2 * BANK_PIN_BACK_PCT.len() * BANK_PIN_TIP_PCT.len();
 const BANK_SLIDES: usize = BANK_TURNS.len() * BANK_CORNER_PCT.len() * BANK_ORIENTS;
+const BANK_ARCS_END: usize = BANK_SLIDES + BANK_ARCS * BANK_ORIENTS;
 /// The length of a bank path, in bank units (only its shape matters: matching ignores scale).
 const BANK_LEN: i64 = 4000;
 
-/// How many paths the slip bank holds (1620).
+/// How many paths the slip bank holds (1764).
 pub fn fs_bank_len() -> usize {
-    BANK_SLIDES + BANK_ARCS * BANK_ORIENTS
+    BANK_ARCS_END + BANK_PINS * BANK_ORIENTS
 }
 
 /// Bank path i as a polyline (out needs FS_BANK_PTS points); returns its point count, 0 past the
-/// end. What a single slip of the finger draws: a slide that turns once (30-175 degrees, the
-/// corner at 20-80% of the way), or an arc (40-220 degrees), every 20 degrees of orientation (the
-/// +-10 degree tolerance fills the gaps). Generated on the fly: there is no table. A slide's
-/// mirror image is the same cloud as another slide drawn backward (a corner at 1 - f), and an arc
-/// is its own mirror, so one turning sense covers both.
+/// end. What a single slip of the finger draws, every 20 degrees of orientation (the +-10 degree
+/// tries fill the gaps), generated on the fly: there is no table.
+/// - A slide that turns once: 30-175 degrees, the corner at 20-80% of the way. Its mirror image is
+///   the same cloud as another slide drawn backward (a corner at 1 - f), so one sense covers both.
+/// - An arc: 40-220 degrees, its own mirror.
+/// - A hairpin: out and back round a rounded tip (6% or 14% of the way out across), coming back
+///   60% or all of the way, the legs parallel; both senses, as the return lengths are not
+///   symmetric. A slide's sharpest turn has a pointed tip, and a finger that turns all the way
+///   round draws a round one: the design's "one-turn slide or hairpin". (Hairpins whose legs
+///   spread 15 degrees come within reach of most S recordings, a shape with two turns that the
+///   design keeps available and whose refusal would say "Give it two turns or a loop" to a shape
+///   that has them, so the bank holds the parallel ones.)
 pub fn fs_bank_path(i: usize, out: &mut [FsPt; FS_BANK_PTS]) -> usize {
     if i >= fs_bank_len() {
         return 0;
@@ -1272,20 +1291,20 @@ pub fn fs_bank_path(i: usize, out: &mut [FsPt; FS_BANK_PTS]) -> usize {
     let mut y = 0i64;
     let mut heading = orient;
     out[0] = FsPt::default();
+    let mut n = 1;
     let mut leg = |n: &mut usize, len: i64, heading: i32| {
         x += div_round(len * fs_cos_q14(heading) as i64, 16384);
         y += div_round(len * fs_sin_q14(heading) as i64, 16384);
         out[*n] = FsPt { x: x as i32, y: y as i32 };
         *n += 1;
     };
-    let mut n = 1;
     if i < BANK_SLIDES {
         let corner = BANK_CORNER_PCT[rest % BANK_CORNER_PCT.len()] as i64;
         let turn = BANK_TURNS[rest / BANK_CORNER_PCT.len()];
         leg(&mut n, BANK_LEN * corner / 100, heading);
         heading += turn;
         leg(&mut n, BANK_LEN * (100 - corner) / 100, heading);
-    } else {
+    } else if i < BANK_ARCS_END {
         let sweep = 40 + 20 * (rest - BANK_SLIDES / BANK_ORIENTS) as i32;
         let segs = sweep / 5;
         // (each leg turned half a step in, so the arc's chord lies along `orient`)
@@ -1294,22 +1313,53 @@ pub fn fs_bank_path(i: usize, out: &mut [FsPt; FS_BANK_PTS]) -> usize {
             leg(&mut n, BANK_LEN / segs as i64, heading);
             heading += 5;
         }
+    } else {
+        let k = rest - BANK_ARCS_END / BANK_ORIENTS;
+        let tip = BANK_PIN_TIP_PCT[k % BANK_PIN_TIP_PCT.len()];
+        let back = BANK_PIN_BACK_PCT[k / BANK_PIN_TIP_PCT.len() % BANK_PIN_BACK_PCT.len()];
+        let sense = if k / (BANK_PIN_TIP_PCT.len() * BANK_PIN_BACK_PCT.len()) == 0 { 1 } else { -1 };
+        // Out, round the tip (a half circle, 12 points on it, 15 degrees apart), and back: the
+        // circle's centre is a radius to the turning side of the way out's end.
+        let out_len = BANK_LEN / 2;
+        let r = out_len * tip / 200;
+        leg(&mut n, out_len, heading);
+        let (ex, ey) = (out[1].x as i64, out[1].y as i64);
+        let side = heading + sense * 90;
+        let (cx, cy) = (ex + div_round(r * fs_cos_q14(side) as i64, 16384), ey + div_round(r * fs_sin_q14(side) as i64, 16384));
+        for s in 1..=12 {
+            let a = side + 180 + sense * 15 * s;
+            out[n] = FsPt {
+                x: (cx + div_round(r * fs_cos_q14(a) as i64, 16384)) as i32,
+                y: (cy + div_round(r * fs_sin_q14(a) as i64, 16384)) as i32,
+            };
+            n += 1;
+        }
+        let (tx, ty) = (out[n - 1].x as i64, out[n - 1].y as i64);
+        let h2 = heading + sense * 180;
+        let back_len = out_len * back / 100;
+        out[n] = FsPt {
+            x: (tx + div_round(back_len * fs_cos_q14(h2) as i64, 16384)) as i32,
+            y: (ty + div_round(back_len * fs_sin_q14(h2) as i64, 16384)) as i32,
+        };
+        n += 1;
     }
     n
 }
 
-/// Whether any slip-bank path comes within thr of the gesture: the first such path's index.
-/// pump is called every FS_BANK_PUMP paths.
+/// Whether any slip-bank path comes within thr + FS_BANK_PAD of the gesture, by the very D_g the
+/// matcher ranks by (every turn tried): the first such path's index. pump is called every
+/// FS_BANK_PUMP paths.
 pub fn fs_bank_hit(g: &FsGesture, thr: i32, pump: &mut dyn FnMut()) -> Option<usize> {
     let mut path = [FsPt::default(); FS_BANK_PTS];
     let mut s = FsSample::default();
+    let reach = thr + FS_BANK_PAD;
     for i in 0..fs_bank_len() {
         if i > 0 && i % FS_BANK_PUMP == 0 {
             pump();
         }
         let n = fs_bank_path(i, &mut path);
         fs_sample_of(&path[..n], &mut s);
-        if gesture_dist(g, &cand_of(&s), thr) <= thr {
+        if gesture_dist(g, &cand_of(&s), reach) <= reach {
             return Some(i);
         }
     }
@@ -1317,7 +1367,9 @@ pub fn fs_bank_hit(g: &FsGesture, thr: i32, pump: &mut dyn FnMut()) -> Option<us
 }
 
 /// Sample 1's quick check (6.3): the gates have passed; refuses at once a shape a slip reaches at
-/// T_MIN, so a V is refused after one try instead of three.
+/// T_MIN (plus the bank's pad), so a V is refused after one try instead of three. It never
+/// refuses what the full check would pass: T_g >= T_MIN, and a gesture's D_g is at most its first
+/// sample's distance.
 pub fn fs_record_first(s: &FsSample, pump: &mut dyn FnMut()) -> Result<(), FsReason> {
     let mut g = FsGesture::default();
     fs_prepare(&mut g, std::slice::from_ref(s));
@@ -1419,7 +1471,7 @@ pub fn fs_record_separation(new: &FsGesture, others: &[FsGesture]) -> FsSeparati
     }
 }
 
-/// The full slip-bank check before Use (6.3b), at the gesture's own threshold.
+/// The full slip-bank check before Use (6.3b), at the gesture's own threshold (plus the pad).
 pub fn fs_record_bank(g: &FsGesture, pump: &mut dyn FnMut()) -> Result<(), FsReason> {
     match fs_bank_hit(g, g.thr, pump) {
         Some(_) => Err(FsReason::Slip),
