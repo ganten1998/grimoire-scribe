@@ -2514,6 +2514,7 @@ impl State {
         // an axis taken as it is might be reversed, and the ring's samples, the scaled pen's own, stay.)
         if self.wacom.fd < 0
             || !self.wacom_mono
+            || !self.pen_mono // (the main loop's events then take no kernel time: no identities in common)
             || !self.input_grabbed
             || self.hover.n < PENSYNC_HOVER_FRAMES as u32
             || pensync_hover_orientation(&self.hover) < 0

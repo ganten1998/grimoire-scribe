@@ -1016,8 +1016,9 @@ fn live_chip(a: &App) -> Rect {
     Rect { x: a.w - s - m, y: m, w: s, h: s }
 }
 
-// The raw digitizer's map for the pen viewers (input_raw_pen), as it stands: at each tick and as
-// Live view starts (a turn, the pen given to the Kindle, the place learned or lost).
+// The raw digitizer's map for the pen viewers (input_raw_pen), as it stands: at each tick, as Live
+// view starts and as the screen turns (what changes it: a turn, the pen given to the Kindle, the
+// place learned or lost).
 fn live_raw_sync() {
     let mut m = LiveRawMap::default();
     let ok = input_raw_pen(&mut m);
@@ -1307,6 +1308,7 @@ pub fn app_set_rotation(a: &mut App, quarter_turns: i32) {
         a.h = h;
     }
     a.dirty = RECT_EMPTY;
+    live_raw_sync(); // (the turned map before the new epoch: no frame of it placed the old way)
     live_resize(w, h);
     with(|s| s.live_panel = RECT_EMPTY); // (live_resize took the layers away)
     if live_on() {
