@@ -527,6 +527,14 @@ pinch 900 900 300 700 6
 wait 100
 expect editor.zoom not 1.00
 shot 31-zoom
+# two fingers dragging the zoomed page move it, and say once that Pages and Links are on the panel now
+pen leave
+wait 1100
+swipe 2 930 1200 0 400
+wait 300
+expect settings.hints is 64
+expect editor.zoom not 1.00
+shot 31-zoom-pan-hint
 tap 930 74
 expect editor.zoom not 1.00
 pinch 900 900 700 200 6
@@ -954,4 +962,202 @@ expect library.sheet is none
 rotate 0
 wait 200
 expect rotation is 0
+# The Links bar, Find and the Display sheet's sideways row, the last of the new screens: upright, then the same
+# turned with the bar or Find left open. The notebook folder A holds has three pages, and page 3 has the link
+# made sideways above (to page 1). The last page says so to two fingers left; the bar on page 2 is empty; page 3
+# gets a second link, to page 2 (nothing is named yet, so the Pages view picks from its Pages tab), then page 2
+# is named, so the bar's chips show a number and a name; a peek, the eye with its tip, and Go to (Find) with a
+# number, a page there is not, names that match nothing and names that do. It checks only what does not depend
+# on the language: the rows, not their words.
+tap 326 608
+wait 100
+expect library.folder is A
+tap 326 608
+wait 300
+expect screen is editor
+expect editor.pages is 3
+expect editor.page is 3
+expect editor.links is 1 1
+# the last page: two fingers left turn nowhere (no page is added) and say so
+wait 1100
+swipe 2 1500 900 -400 0
+wait 300
+expect editor.pages is 3
+shot 66-last-page
+wait 3000
+pentap panel previous
+wait 100
+expect editor.page is 2
+expect editor.links is 0 0
+pentap panel links
+wait 300
+expect editor.bar is open
+expect editor.bar.entries is 0
+shot 66-bar-empty
+pentap panel links
+wait 300
+expect editor.bar is 0
+pentap panel next
+wait 100
+pentap panel pages
+wait 150
+tap 850 95
+wait 100
+tap 1410 2395
+wait 50
+expect editor.link_mode is 1
+pen line 300 1500 900 1600 30 0.6 0.6
+wait 150
+expect editor.picking is new
+expect editor.pages_tab is pages
+tap 703 340
+wait 100
+expect editor.links is 2 2
+pentap panel previous
+wait 100
+expect editor.page is 2
+pentap panel pages
+wait 150
+tap 850 95
+wait 100
+tap 1400 95
+wait 100
+tap 175 2205
+tap 221 2045
+tap 664 1885
+tap 487 1885
+tap 1278 2205
+tap 221 2045
+expect editor.text is Arena
+tap 1643 2365
+wait 200
+tap 125 95
+wait 100
+expect editor.modal is none
+expect editor.index_rows is 1
+pentap panel next
+wait 100
+expect editor.page is 3
+pentap panel links
+wait 300
+expect editor.bar is open
+expect editor.bar.entries is 2
+expect editor.bar.1 is p1
+expect editor.bar.2 is p2
+shot 66-bar-entries
+# an entry tapped looks at its page above the bar: the way back to this one and what is on show
+tap 1381 2218
+wait 300
+expect editor.bar is peek
+expect editor.bar.peek is 2
+shot 66-bar-peek
+# X puts the page back and closes the bar
+tap 1761 2046
+wait 300
+expect editor.bar is 0
+expect editor.page is 3
+# the eye, from the bar's Areas: its tip, and the dotted boxes with the numbers of the rows
+pentap panel links
+wait 300
+tap 1155 2370
+wait 300
+expect settings.link_areas is 1
+expect editor.areas is 2
+shot 66-bar-areas
+wait 4300
+tap 1155 2370
+wait 300
+expect settings.link_areas is 0
+# Go to opens Find over the bar: a number, a page there is not, a name that matches nothing, names
+tap 255 2370
+wait 300
+expect editor.find is go
+shot 67-find-open
+tap 310 1725
+expect editor.find.rows is 1
+shot 67-find-number
+tap 1679 2205
+tap 1549 1725
+expect editor.find.rows is 1
+shot 67-find-no-page
+tap 1679 2205
+tap 221 2045
+tap 664 1885
+tap 570 2205
+expect editor.find.rows is 1
+shot 67-find-no-name
+tap 1679 2205
+expect editor.find.1 is Arena
+shot 67-find-names
+# the turn with Find open, then Cancel
+rotate 1
+wait 1200
+expect editor.find is go
+expect editor.find.1 is Arena
+shot 68-find-landscape
+tap 279 1745
+wait 300
+expect editor.find is 0
+# the bar sideways (three chips across), its peek, and on a page with no links
+pentap panel links
+wait 300
+expect editor.bar is open
+expect editor.bar.entries is 2
+shot 68-bar-landscape
+tap 432 1598
+wait 300
+expect editor.bar is peek
+expect editor.bar.peek is 1
+shot 68-bar-peek-landscape
+tap 2381 1486
+wait 300
+expect editor.bar is 0
+expect editor.page is 3
+pentap panel previous
+wait 100
+pentap panel links
+wait 300
+expect editor.bar is open
+expect editor.bar.entries is 0
+shot 68-bar-empty-landscape
+pentap panel links
+wait 300
+expect editor.bar is 0
+# the Display sheet's sideways row, sideways: off (the width fills again), then on
+pentap panel display
+wait 150
+expect editor.modal is display
+shot 69-display-fit-landscape
+tap 1240 779
+wait 300
+expect settings.landscape_fit is 0
+shot 69-display-fit-off-landscape
+tap 1240 779
+wait 300
+expect settings.landscape_fit is 1
+shot 69-display-fit-on-landscape
+tap 1768 1513
+wait 300
+expect editor.modal is none
+# upright, the same row says where it applies
+rotate 0
+wait 300
+pentap panel display
+wait 150
+expect editor.modal is display
+shot 69-display-fit
+tap 930 986
+wait 300
+expect settings.landscape_fit is 0
+shot 69-display-fit-toast
+tap 930 986
+wait 300
+expect settings.landscape_fit is 1
+tap 1462 1720
+wait 300
+expect editor.modal is none
+expect settings.link_areas is 0
+pentap panel library
+wait 300
+expect screen is library
 quit
