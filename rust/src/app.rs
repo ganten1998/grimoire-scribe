@@ -554,6 +554,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         input_touch_trace(Some(&cformat!("%s/touch-trace.txt", &store_root())));
     }
     input_shortcuts_enable(a.settings.shortcuts_enabled);
+    sys_wifi_awake(false); // (the radio's power save, if Live view held it off when Grimoire last ended)
     // The Bluetooth helper (bluetooth.h): the launcher says where its script is; in the simulator a
     // test may stand a helper in. It starts a moment after the first frame, if it is wanted.
     #[cfg(feature = "sim")]
@@ -1129,6 +1130,7 @@ pub fn live_view_open(a: &mut App) {
         input_sample_hook(Some(live_capture), Some(live_wake_samples));
         input_hover_hook(Some(live_hover));
         live_chip_sync(a);
+        sys_wifi_awake(true); // (a dozing radio sends the pen in bursts: light.rs)
         qlog!("live: on");
     }
     share_open_live(a);
@@ -1148,6 +1150,7 @@ pub fn live_view_stop(a: &mut App, say: bool) {
     app_watch_server(a);
     live_chip_sync(a); // (the chip goes: what is under it comes back)
     with(|s| s.live_viewers = 0);
+    sys_wifi_awake(false);
     qlog!("live: off");
     // TRANSLATORS: a toast as Live view stops (the Stop button on its card).
     if say { app_toast(a, tr("Live view ended."), 2500); }

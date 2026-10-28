@@ -507,8 +507,14 @@ notebook page:
   for the new page's image. The Latency button shows how late the pen and the page image show (p50,
   p90, maximum), each from when the Kindle read the pen, plus the clocks' uncertainty. It times the
   browser's drawing callback, not when a monitor physically lights a pixel. A 240 fps video showing
-  the pen and monitor together is the final check. USB mode and Wi-Fi power saving are not changed
-  by Live view.
+  the pen and monitor together is the final check. USB mode is not changed by Live view. Wi-Fi power
+  saving is: Live view turns it off as it starts (`wifi: power save off while Live view runs`) and
+  turns it back on as it stops, only if it was on (`/tmp/grimoire-wifi-ps` says it was; Grimoire's
+  next start gives it back after a crash; a reboot sets it anyway). A radio left to doze while
+  nobody watched once sent the pen in bursts afterwards, through restarts of the app, the browser
+  and the Kindle: the Latency readout's Playout delay stayed at its 20 ms cap and the dot skipped,
+  until power saving was set off by hand (`iw dev wlan0 set power_save off`). At actual size, full
+  screen and Monitor mode scroll.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in

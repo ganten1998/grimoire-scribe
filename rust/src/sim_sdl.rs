@@ -145,6 +145,8 @@ struct State {
     sim_grab: bool,
     // How often the app told the power service someone is here: the runner's "power.pokes".
     pokes: i32,
+    // Whether the app holds the Wi-Fi radio's power save off (sys_wifi_awake): "power.wifi_awake".
+    wifi_awake: bool,
     // The clock and battery corner's inputs (status.rs): the script's `clock` and `battery`. The
     // clock stays where the script put it (None: the real one); the battery starts full.
     clock: Option<i64>,
@@ -240,6 +242,7 @@ impl Default for State {
             powerd_state: FixedStr::from_str("active"),
             sim_grab: true,
             pokes: 0,
+            wifi_awake: false,
             clock: None,
             battery: Battery { percent: 100, charging: false },
             script: None,
@@ -861,6 +864,9 @@ pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) 
 pub fn sys_prevent_sleep(prevent: bool) {
     let _ = prevent;
 }
+pub fn sys_wifi_awake(awake: bool) {
+    with(|st| st.wifi_awake = awake);
+}
 pub fn sys_activity() {
     with(|st| st.pokes += 1);
 }
@@ -1058,7 +1064,8 @@ impl State {
 // (sys_activity), which it does at most once a minute. "pump.calls": how many times long work called
 // the work pump (work_pump, common.h) since this key was last checked, so a check counts what the
 // lines before it did. "keyboard.draws": how many times an on-screen keyboard was drawn
-// (keyboard_draw, keyboard.h) since this key was last checked, the same way.
+// (keyboard_draw, keyboard.h) since this key was last checked, the same way. "power.wifi_awake":
+// 1 while the app holds the Wi-Fi radio's power save off (Live view), else 0.
 fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     if key.starts_with(b"touch.") {
         // touchgest's: what the contact lines' fingers are doing (touchgest_probe)
@@ -1087,6 +1094,10 @@ fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     }
     if key == b"keyboard.draws" {
         csnprintf!(out, cap, "%u", keyboard_draws_take());
+        return true;
+    }
+    if key == b"power.wifi_awake" {
+        csnprintf!(out, cap, "%d", with(|st| st.wifi_awake) as i32);
         return true;
     }
     if key != b"power.pokes" {
