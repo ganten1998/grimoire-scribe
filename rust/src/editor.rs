@@ -3563,8 +3563,27 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     if rect_contains(s.panel, x as i32, y as i32) {
         return true;
     }
+    // (A link in the corner is not a control there: the corner's tap is the clock's, over a link too.)
+    if rect_contains(status_zone(a), x as i32, y as i32) {
+        return false;
+    }
     let mut l = NavLink::default();
     link_under(a, x, y, &mut l)
+}
+
+/// The clock and battery corner as a finger's tap finds it (status.rs): 12 mm square, and the
+/// indicator while it is up.
+fn corner_zone(a: &App) -> Rect {
+    status_zone(a)
+}
+
+/// Whether the finger lift being handled was a tap in the corner, which the clock took (status.rs
+/// decides at the lift, before the screen sees it, and toggles itself): one finger, unmoved, landed in
+/// the zone, a real lift. A cancel up (the off-screen point that ends a finger a gesture or the pen took)
+/// never is, and the pen is not a finger. Whatever tap a finger on the page would make, the corner's
+/// comes first and nothing else happens.
+fn corner_tap(a: &App, x0: f32, y0: f32, moved: bool, cancelled: bool) -> bool {
+    !cancelled && !moved && rect_contains(corner_zone(a), x0 as i32, y0 as i32) && status_tapped()
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
@@ -3661,6 +3680,11 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
     if ph == 0 {
         if pen && s.btn_down {
             s.btn_used_for_ink = true; // (pen_button: no click, no hold)
+        }
+        // The pen wins over a finger on the page: its stroke starts, and the finger's session ends with
+        // no follow. (A finger on anything else, or two fingers, still holds the gesture.)
+        if pen && s.owner == Owner::Link {
+            s.owner = Owner::None;
         }
         if s.owner != Owner::None || s.pinching {
             return; // one gesture at a time
@@ -3759,8 +3783,13 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 return;
             }
             s.owner = Owner::None;
-            if !s.link_held && !s.link_press.moved {
-                let (x0, y0) = (s.link_press.x0, s.link_press.y0);
+            // Decided at the lift, in this order: a cancel (the touch became a gesture, or the pen came)
+            // ends silently; the corner's tap is the clock's alone; an unmoved, unheld tap follows the link.
+            let (x0, y0, moved) = (s.link_press.x0, s.link_press.y0, s.link_press.moved);
+            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) {
+                return;
+            }
+            if !ed_ref(a).link_held && !moved {
                 link_follow(a, x0, y0);
             }
         }

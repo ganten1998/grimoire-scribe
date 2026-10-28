@@ -164,6 +164,9 @@ struct State {
     drawn_key: Option<(i64, Battery)>,
     /// a refresh asked for and not sent yet: the rect (empty for none)
     pending: Rect,
+    /// the touch event status_touch saw last was the lift of a tap in the corner, which turned the
+    /// indicator on or off (status_tapped: the screen that handles that same event asks)
+    tapped: bool,
 }
 
 thread_local! {
@@ -259,6 +262,13 @@ pub fn status_pen(ev: &InEvent) {
     }
 }
 
+/// Whether the touch event status_touch was given last was the lift of a corner tap, which turned the
+/// indicator on or off. app_event hands every touch to status_touch before the screen, so the screen
+/// that handles the same event asks here, and leaves that tap to the corner.
+pub fn status_tapped() -> bool {
+    with(|s| s.tapped)
+}
+
 /// Whether the corner must hold its refreshes back: the pen is near, a stroke or another gesture
 /// is in progress, or the driver is in pen mode.
 fn status_busy(a: &App) -> bool {
@@ -269,6 +279,7 @@ fn status_busy(a: &App) -> bool {
 /// watches): a tap in the zone with no control under it turns the indicator on or off. app_event
 /// calls it awake only.
 pub fn status_touch(a: &mut App, ev: &InEvent) {
+    with(|s| s.tapped = false);
     match ev.type_ {
         InType::TouchDown => {
             let zone = status_zone(a);
@@ -281,6 +292,7 @@ pub fn status_touch(a: &mut App, ev: &InEvent) {
             let zone = status_zone(a);
             if with(|s| s.tap.up(zone, ev.x, ev.y, ev.t_ms)) {
                 status_toggle(a);
+                with(|s| s.tapped = true);
             }
         }
         InType::PinchBegin | InType::PinchMove | InType::PinchEnd => with(|s| s.tap.cancel()),
