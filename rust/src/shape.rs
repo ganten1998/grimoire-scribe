@@ -672,7 +672,7 @@ fn line_ends(q: &[P], raw: &[P], prm: &ShapeParams, mm: f64) -> (P, P) {
     let dir = sub(b, a);
     let l = norm(dir);
     let ang = dir.y.atan2(dir.x);
-    let t = snap_angle(ang, prm);
+    let (t, square) = snap_angle(ang, prm);
     let (mut a, mut b) = (a, b);
     if t != ang {
         let m = lerp(a, b, 0.5);
@@ -682,24 +682,32 @@ fn line_ends(q: &[P], raw: &[P], prm: &ShapeParams, mm: f64) -> (P, P) {
     }
     if let Some(g) = Grid::of(prm) {
         let tolp = SHAPE_GRID_SNAP_MM as f64 * mm;
-        a = g.node(a, tolp);
-        b = g.node(b, tolp);
+        if square {
+            // A line the snap made level, upright or diagonal must stay so on the grid: one end
+            // put on its node by itself would tilt it against the printed lines.
+            (a, b) = g.line(a, b, tolp);
+        } else {
+            // (a slanted line has no direction to keep: each end goes to its own node)
+            a = g.node(a, tolp);
+            b = g.node(b, tolp);
+        }
     }
     (a, b)
 }
 
 /// A straight stroke's direction, turned onto 0, 45, 90 or 135 degrees within SHAPE_LINE_SNAP_DEG,
-/// or level within SHAPE_RULED_SNAP_DEG on ruled paper; otherwise as it is.
-fn snap_angle(ang: f64, prm: &ShapeParams) -> f64 {
+/// or level within SHAPE_RULED_SNAP_DEG on ruled paper; otherwise as it is. The flag says the
+/// direction is one of the four now (the grid snap keeps it).
+fn snap_angle(ang: f64, prm: &ShapeParams) -> (f64, bool) {
     let q45 = std::f64::consts::FRAC_PI_4;
     let target = (ang / q45).round() * q45;
     let level = (ang / std::f64::consts::PI).round() * std::f64::consts::PI;
     if shape_paper_ruled(prm.paper) && (ang - level).abs().to_degrees() <= SHAPE_RULED_SNAP_DEG as f64 {
-        level
+        (level, true)
     } else if (ang - target).abs().to_degrees() <= SHAPE_LINE_SNAP_DEG as f64 {
-        target
+        (target, true)
     } else {
-        ang
+        (ang, false)
     }
 }
 
@@ -743,22 +751,48 @@ impl Grid {
             g
         }
     }
-    /// x on the grid along one axis when it is within tol.
-    fn snap(&self, x: f64, o: f64, tol: f64) -> f64 {
-        let g = self.coord(x, o);
-        if (g - x).abs() <= tol {
-            g
-        } else {
-            x
-        }
+    /// The grid node nearest a.
+    fn nearest(&self, a: P) -> P {
+        p(self.coord(a.x, self.ox), self.coord(a.y, self.oy))
     }
     /// a on the nearest grid node when it is within tol of it.
     fn node(&self, a: P, tol: f64) -> P {
-        let g = p(self.coord(a.x, self.ox), self.coord(a.y, self.oy));
+        let g = self.nearest(a);
         if dist(g, a) <= tol {
             g
         } else {
             a
+        }
+    }
+    /// A line from a to b at 0, 45, 90 or 135 degrees, onto the grid without turning it. The end
+    /// nearer a node (within tol) carries the whole line onto that node; then the other end slides
+    /// along the line, and only along it, onto a node there within tol. On graph paper a node on a
+    /// diagonal can be a px off the exact 45 degrees (its lines are at whole px): the end then
+    /// stops level with that node on the line, so the angle stays exact.
+    fn line(&self, a: P, b: P, tol: f64) -> (P, P) {
+        let (na, nb) = (self.nearest(a), self.nearest(b));
+        let (da, db) = (dist(na, a), dist(nb, b));
+        if da > tol && db > tol {
+            return (a, b);
+        }
+        let (anchor, node, other) = if da <= db { (a, na, b) } else { (b, nb, a) };
+        let o = add(other, sub(node, anchor));
+        let along = sub(o, node);
+        let l = norm(along);
+        if l > 0.0 {
+            let u = scale(along, 1.0 / l);
+            let m = self.nearest(o);
+            let t = dot(sub(m, node), u);
+            let off = cross(u, sub(m, node)).abs();
+            if dist(m, o) <= tol && off <= 1.0 && t > 0.0 {
+                let o2 = madd(node, u, t);
+                return if da <= db { (node, o2) } else { (o2, node) };
+            }
+        }
+        if da <= db {
+            (node, o)
+        } else {
+            (o, node)
         }
     }
 }
@@ -1051,31 +1085,64 @@ fn rectangle(v: &[P], prm: &ShapeParams, mm: f64) -> (ShapeKind, Vec<P>) {
         wa = fmla(-0.5, s, cw);
         wb = fmla(0.5, s, cw);
     }
-    // On the grid: only a level rectangle, edge by edge (a corner lands on a node when both its
-    // edges were near grid lines). A square keeps its sides equal: its top left edges snap, and
-    // its side takes the first of its other two edges that is near a grid line.
+    // On the grid: only a level rectangle (then u and w are the page's x and y), corner by corner.
+    // A corner within SHAPE_GRID_SNAP_MM of a node goes onto it, and with it the two edges that
+    // meet there; a corner farther from every node moves only as its edges do. (Edge by edge, an
+    // edge near a grid line would move although no corner is near a node, and a corner a little
+    // off in both directions would land on a node from farther than the window.)
     if th == 0.0 {
         if let Some(g) = Grid::of(prm) {
             let tolp = SHAPE_GRID_SNAP_MM as f64 * mm;
-            if square {
-                let s = ub - ua;
-                ua = g.snap(ua, g.ox, tolp);
-                wa = g.snap(wa, g.oy, tolp);
-                let (ru, rw) = (g.snap(ua + s, g.ox, tolp), g.snap(wa + s, g.oy, tolp));
-                let s = if ru != ua + s {
-                    ru - ua
-                } else if rw != wa + s {
-                    rw - wa
+            let near = |x: f64, y: f64| -> Option<P> {
+                let c = p(x, y);
+                let n = g.nearest(c);
+                if dist(n, c) <= tolp {
+                    Some(n)
                 } else {
-                    s
-                };
-                ub = ua + s;
-                wb = wa + s;
+                    None
+                }
+            };
+            if square {
+                // A square keeps its sides equal: it moves whole onto the node its nearest corner
+                // is near; then its side becomes the one that also puts the corner beside that one
+                // (along its row or its column) on a node, when that corner is near one.
+                let cs = [(ua, wa, 1.0, 1.0), (ub, wa, -1.0, 1.0), (ub, wb, -1.0, -1.0), (ua, wb, 1.0, -1.0)];
+                let mut best: Option<(f64, usize, P)> = None;
+                for (k, &(x, y, _, _)) in cs.iter().enumerate() {
+                    if let Some(n) = near(x, y) {
+                        let d = dist(n, p(x, y));
+                        if best.is_none_or(|b| d < b.0) {
+                            best = Some((d, k, n));
+                        }
+                    }
+                }
+                if let Some((_, k, n)) = best {
+                    let (sx, sy) = (cs[k].2, cs[k].3);
+                    let mut s = ub - ua;
+                    let bx = near(fmla(sx, s, n.x), n.y).map(|m| ((m.x - n.x).abs(), dist(m, p(fmla(sx, s, n.x), n.y))));
+                    let by = near(n.x, fmla(sy, s, n.y)).map(|m| ((m.y - n.y).abs(), dist(m, p(n.x, fmla(sy, s, n.y)))));
+                    let side = match (bx, by) {
+                        (Some(a), Some(b)) => Some(if a.1 <= b.1 { a.0 } else { b.0 }),
+                        (a, b) => a.or(b).map(|v| v.0),
+                    };
+                    if let Some(v) = side.filter(|&v| v > 0.0) {
+                        s = v;
+                    }
+                    (ua, ub) = if sx > 0.0 { (n.x, n.x + s) } else { (n.x - s, n.x) };
+                    (wa, wb) = if sy > 0.0 { (n.y, n.y + s) } else { (n.y - s, n.y) };
+                }
             } else {
-                ua = g.snap(ua, g.ox, tolp);
-                ub = g.snap(ub, g.ox, tolp);
-                wa = g.snap(wa, g.oy, tolp);
-                wb = g.snap(wb, g.oy, tolp);
+                // (when both corners of an edge are near nodes they put it on the same grid line:
+                // they share the edge's coordinate, and the nearest grid line is the coordinate's)
+                let (mut nu, mut nw) = ([ua, ub], [wa, wb]);
+                for (iu, iw) in [(0, 0), (1, 0), (1, 1), (0, 1)] {
+                    if let Some(n) = near([ua, ub][iu], [wa, wb][iw]) {
+                        nu[iu] = n.x;
+                        nw[iw] = n.y;
+                    }
+                }
+                [ua, ub] = nu;
+                [wa, wb] = nw;
             }
         }
     }
@@ -1371,7 +1438,7 @@ fn arrow(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, prm: &ShapePara
         }
         barbs.push(b2);
     }
-    let ang = snap_angle((tip.y - tail.y).atan2(tip.x - tail.x), prm);
+    let (ang, _) = snap_angle((tip.y - tail.y).atan2(tip.x - tail.x), prm);
     let tip = madd(tail, unit(ang), shaft);
     let back_ang = ang + std::f64::consts::PI;
     let mut chain = vec![tail, tip];
@@ -1431,7 +1498,7 @@ fn polyline(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, diag: f64, p
                     pa - quarter
                 }
             }
-            _ => snap_angle(ang, prm),
+            _ => snap_angle(ang, prm).0,
         };
         let l = dot(d, unit(t));
         if l <= 0.0 {
