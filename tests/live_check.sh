@@ -16,9 +16,10 @@ B=$BUILD/live-check
 HEADLESS=$BUILD/host/grimoire-headless
 rm -rf "$B" && mkdir -p "$B/root"
 cp -R tests/fixtures/index/. "$B/root/"
-grep -v -e '^http_port=' -e '^invert=' "$B/root/settings.ini" > "$B/settings.ini" 2>/dev/null || true
-# (Grimoire's colors inverted: the stream says so, for the browser to follow; its frame never is.)
-printf 'http_port=%s\ninvert=1\n' "$PORT" >> "$B/settings.ini"
+grep -v -e '^http_port=' -e '^invert=' -e '^status_on=' "$B/root/settings.ini" > "$B/settings.ini" 2>/dev/null || true
+# (Grimoire's colors inverted: the stream says so, for the browser to follow; its frame never is.
+# The clock and battery corner on: it comes as a layer of its own.)
+printf 'http_port=%s\ninvert=1\nstatus_on=1\n' "$PORT" >> "$B/settings.ini"
 mv "$B/settings.ini" "$B/root/settings.ini"
 # The pairing card held open: everything after it is the browser's.
 sed -n "/^# live_check holds here/q;p" tests/scenarios/live_1_card.qs > "$B/card.qs"
@@ -62,5 +63,8 @@ done
 pids=$(grep -c 'live: (simulator) viewer pid' "$B/app.log" || true)
 if [ "$pids" -ge 2 ] && [ "$left" = 0 ]; then echo "ok   no viewer outlived the app ($pids viewers)"
 else echo "FAIL $left of $pids viewer(s) outlived the app"; fail=1; fi
+# Fast ink with the main loop busy: the ring's samples (before) against the pen viewer's own reader
+# of the raw digitizer (after), timed from each frame to the browser.
+python3 -I tests/live_pen_stall.py "$PORT" "$HEADLESS" "$B/pen-stall" || fail=1
 if [ $fail -ne 0 ]; then echo "LIVE CHECK FAILED (app log: $B/app.log)"; exit 1; fi
 echo "LIVE CHECK PASSED"

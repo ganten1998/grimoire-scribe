@@ -383,6 +383,12 @@ fn set_drawn(l: Option<&Layout>) {
 /// it (then nothing is painted, and the minute passes before it is tried again).
 fn paint(a: &mut App, l: &Layout) -> Option<StatusCover> {
     set_drawn(Some(l));
+    paint_into(a, l)
+}
+
+// The indicator into a.screen, and into Live view's layer (live_layer: the browser shows it over the
+// page, as the panel shows it over the screen); the cover holds what was there.
+fn paint_into(a: &mut App, l: &Layout) -> Option<StatusCover> {
     let mut under = Canvas::default();
     if canvas_init(&mut under, l.rect.w, l.rect.h) != 0 {
         return None;
@@ -392,6 +398,7 @@ fn paint(a: &mut App, l: &Layout) -> Option<StatusCover> {
     canvas_reset_clip(&mut a.screen);
     draw(&mut a.screen, l);
     a.screen.clip = clip;
+    live_layer(LIVE_LAYER_STATUS, &a.screen, l.rect);
     Some(StatusCover { rect: l.rect, under })
 }
 
@@ -432,6 +439,19 @@ pub fn status_presented(a: &App, r: Rect) {
     });
     if gone {
         set_drawn(None);
+        live_layer(LIVE_LAYER_STATUS, &a.screen, RECT_EMPTY);
+    }
+}
+
+/// Live view starts: the indicator's layer, when the panel shows it (painted into a.screen, copied,
+/// put back; nothing is presented).
+pub fn status_live(a: &mut App) {
+    if !a.settings.status_on || rect_is_empty(with(|s| s.drawn)) {
+        return;
+    }
+    let l = layout(a);
+    if let Some(c) = paint_into(a, &l) {
+        status_uncover(a, c);
     }
 }
 

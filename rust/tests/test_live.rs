@@ -131,7 +131,7 @@ fn read_batch(fd: i32, screen: &mut [u8], w: i32, h: i32, hellos: &mut i32) -> i
         let Some((type_, body)) = read_frame(fd) else { return -1 };
         let len = body.len();
         if type_ == LIVE_HELLO as u8 {
-            check!(len == 12 && u16(&body) == 2 && u16(&body[2..]) == w as u32 && u16(&body[4..]) == h as u32 && u16(&body[6..]) == LIVE_TILE as u32);
+            check!(len == 12 && u16(&body) == LIVE_VERSION && u16(&body[2..]) == w as u32 && u16(&body[4..]) == h as u32 && u16(&body[6..]) == LIVE_TILE as u32);
             *hellos += 1;
         } else if type_ == LIVE_TILE_FRAME as u8 {
             let x = u16(&body) as i32;
@@ -580,7 +580,7 @@ fn fast_samples_arrive_in_order_without_a_present() {
     close(sv[0]);
     check!(skip_head(sv[1]));
     let hello = next_kind(sv[1], LIVE_HELLO);
-    check!(matches!(&hello, Some(b) if b.len() == 12 && u16(b) == 2 && u16(&b[2..]) == 300 && u16(&b[4..]) == 200 && u32_(&b[8..]) == 1));
+    check!(matches!(&hello, Some(b) if b.len() == 12 && u16(b) == LIVE_VERSION && u16(&b[2..]) == 300 && u16(&b[4..]) == 200 && u32_(&b[8..]) == 1));
     let b = next_kind(sv[1], LIVE_SAMPLES);
     check!(matches!(&b, Some(b) if b.len() == 8 && u32_(b) == 1 && u32_(&b[4..]) == 1));
     let style = LiveStyle {
@@ -608,6 +608,7 @@ fn fast_samples_arrive_in_order_without_a_present() {
             side_button: true,
             t_ms: 500,
             k_ms: 200 + i as u32,
+            k_us: 200_000 + 250 * i as u32, // (four frames a millisecond: each its own identity)
             ..Default::default()
         };
         let seq = live_sample(&e, &style);
@@ -628,7 +629,7 @@ fn fast_samples_arrive_in_order_without_a_present() {
     for (i, (epoch, s)) in got.iter().enumerate() {
         let i = i as u32;
         check!(*epoch == 1);
-        check!(u32_(s) == first + i && u32_(&s[4..]) == 200 + i);
+        check!(first == 200_000 && u32_(s) == first + 250 * i && u32_(&s[4..]) == 200 + i);
         check!(u16(&s[8..]) == i && u16(&s[10..]) == 50 && u16(&s[12..]) == 32768);
         check!(s[14] as i8 == -30 && s[15] == 40 && s[16] == LIVE_PEN_TOUCH as u8);
         check!(s[17] == (LIVE_ERASER | LIVE_SIDE | LIVE_DRAW | if i != 0 { 0 } else { LIVE_DOWN }));
@@ -663,7 +664,7 @@ fn a_ring_overrun_is_explicit_and_keeps_the_newest_samples() {
     let style = LiveStyle::default();
     let mut last = 0;
     for i in 0..LIVE_RING + 10 {
-        let e = InEvent { type_: InType::PenMove, x: (i % 300) as f32, t_ms: i as u32, ..Default::default() };
+        let e = InEvent { type_: InType::PenMove, x: (i % 300) as f32, t_ms: i as u32, k_us: 1 + i as u32, ..Default::default() };
         last = live_sample(&e, &style);
     }
     live_wake_samples();
@@ -685,13 +686,14 @@ fn batch_acknowledges_only_presented_input_even_with_newer_samples() {
     check!(canvas_init(&mut c, 64, 64) == 0);
     canvas_fill(&mut c, Rect { x: 0, y: 0, w: 64, h: 64 }, 255);
     let style = LiveStyle { enabled: 1, ..Default::default() };
-    let mut e = InEvent { type_: InType::PenDown, x: 5.0, y: 6.0, t_ms: 123, ..Default::default() };
+    let mut e = InEvent { type_: InType::PenDown, x: 5.0, y: 6.0, t_ms: 123, k_us: 7000, ..Default::default() };
     let rendered = live_sample(&e, &style);
     canvas_fill(&mut c, Rect { x: 5, y: 6, w: 1, h: 1 }, 0);
     live_push(&c, Rect { x: 0, y: 0, w: 64, h: 64 });
     live_presented(rendered, 123);
     e.x = 7.0;
     e.t_ms = 124;
+    e.k_us = 7001;
     check!(live_sample(&e, &style) == rendered + 1); // pumped ahead, not dispatched to the editor
     let sv = socket_pair();
     check!(live_take_viewer(sv[0]));
@@ -784,7 +786,7 @@ fn a_pen_viewer_joining_mid_stroke_gets_no_pen_down() {
     let style = LiveStyle { enabled: 1, clip: Rect { x: 0, y: 0, w: 300, h: 200 }, ..Default::default() };
     let hover = InEvent { type_: InType::PenHover, x: 40.0, y: 40.0, ..Default::default() };
     live_sample(&hover, &style);
-    let down = InEvent { type_: InType::PenDown, x: 50.0, y: 50.0, pressure: 0.5, ..Default::default() };
+    let down = InEvent { type_: InType::PenDown, x: 50.0, y: 50.0, pressure: 0.5, k_us: 90_000, ..Default::default() };
     let seq = live_sample(&down, &style);
     let sv = socket_pair();
     check!(live_take_pen_viewer(sv[0]));
@@ -794,7 +796,7 @@ fn a_pen_viewer_joining_mid_stroke_gets_no_pen_down() {
     let got = next_samples(sv[1], 1, &mut frames);
     check!(got.len() == 1 && u32_(&got[0].1) == seq && got[0].1[16] == LIVE_PEN_TOUCH as u8);
     check!(got[0].1[17] & LIVE_DOWN == 0 && got[0].1[17] & LIVE_DRAW != 0);
-    let mv = InEvent { type_: InType::PenMove, x: 60.0, y: 50.0, pressure: 0.5, ..Default::default() };
+    let mv = InEvent { type_: InType::PenMove, x: 60.0, y: 50.0, pressure: 0.5, k_us: 90_001, ..Default::default() };
     live_sample(&mv, &style);
     live_wake_samples();
     let got = next_samples(sv[1], 1, &mut frames);
@@ -848,6 +850,295 @@ fn a_batch_cut_short_acknowledges_nothing() {
     canvas_free(&mut c);
 }
 
+// ---- the raw digitizer, read by the pen viewers themselves ----
+
+fn raw_ev(sec: u64, usec: u64, type_: u16, code: u16, value: i32) -> LiveInputEvent {
+    LiveInputEvent { sec: sec as libc::c_ulong, usec: usec as libc::c_ulong, type_, code, value }
+}
+const SYN: u16 = 0;
+const KEY: u16 = 1;
+const ABS: u16 = 3;
+
+// A recorded shape of the Scribe's raw digitizer (WacomDigitizer: x, y, pressure 0..4095, tilt in
+// hundredths of a degree, BTN_TOOL_PEN for proximity, BTN_TOUCH for contact), as frames.
+fn raw_frames(evs: &[LiveInputEvent]) -> (LiveRawPen, Vec<LiveRawFrame>) {
+    let mut st = LiveRawPen::default();
+    let mut out = Vec::new();
+    for e in evs {
+        let mut f = LiveRawFrame::default();
+        if live_raw_event(&mut st, 0, e, &mut f) {
+            out.push(f);
+        }
+    }
+    (st, out)
+}
+
+fn the_raw_digitizer_decodes_into_frames() {
+    let t = 1_000u64; // (seconds: the identity is the time's microseconds, wrapping)
+    let evs = [
+        // the pen comes near: no frame before it is placed
+        raw_ev(t, 0, KEY, 0x140, 1),
+        raw_ev(t, 0, SYN, 0, 0),
+        raw_ev(t, 4000, ABS, 0, 1000),
+        raw_ev(t, 4000, ABS, 1, 2000),
+        raw_ev(t, 4000, SYN, 0, 0),
+        // touches (pressure, and BTN_TOUCH)
+        raw_ev(t, 8000, KEY, 0x14a, 1),
+        raw_ev(t, 8000, ABS, 0x18, 900),
+        raw_ev(t, 8000, ABS, 0x1a, -4000),
+        raw_ev(t, 8000, SYN, 0, 0),
+        raw_ev(t, 8250, ABS, 0, 1010),
+        raw_ev(t, 8250, SYN, 0, 0),
+        // a drop: the half frame is not sent, the one after it is a gap
+        raw_ev(t, 9000, ABS, 0, 1500),
+        raw_ev(t, 9000, SYN, 3, 0),
+        raw_ev(t, 9500, ABS, 0, 1600),
+        raw_ev(t, 9500, SYN, 0, 0),
+        raw_ev(t, 10000, ABS, 0, 1700),
+        raw_ev(t, 10000, SYN, 0, 0),
+        // lifts, the side button held, then goes away
+        raw_ev(t, 12000, KEY, 0x14a, 0),
+        raw_ev(t, 12000, ABS, 0x18, 0),
+        raw_ev(t, 12000, KEY, 0x14b, 1),
+        raw_ev(t, 12000, SYN, 0, 0),
+        raw_ev(t, 16000, KEY, 0x140, 0),
+        raw_ev(t, 16000, SYN, 0, 0),
+        raw_ev(t, 20000, SYN, 0, 0),
+        // the eraser end comes
+        raw_ev(t, 30000, KEY, 0x141, 1),
+        raw_ev(t, 30000, ABS, 0, 5),
+        raw_ev(t, 30000, SYN, 0, 0),
+    ];
+    let (st, f) = raw_frames(&evs);
+    check!(f.len() == 7);
+    let us = |usec: u64| (t * 1_000_000 + usec) as u32;
+    check!(f[0].state == LIVE_PEN_HOVER && f[0].us == us(4000) && f[0].ms == (t * 1000 + 4) as u32 && f[0].x == 1000 && f[0].y == 2000 && !f[0].down);
+    check!(f[1].state == LIVE_PEN_TOUCH && f[1].down && f[1].us == us(8000) && f[1].p == 900 && f[1].tx == -4000);
+    check!(f[2].state == LIVE_PEN_TOUCH && !f[2].down && f[2].us == us(8250) && f[2].x == 1010 && f[2].ms == (t * 1000 + 8) as u32);
+    check!(f[3].us == us(10000) && f[3].gap && f[3].x == 1700 && !f[3].down); // (9500 closed the dropped frame)
+    check!(f[4].state == LIVE_PEN_HOVER && f[4].side && !f[4].gap);
+    check!(f[5].state == LIVE_PEN_AWAY && f[5].us == us(16000)); // (once: the empty frame after says nothing)
+    check!(f[6].state == LIVE_PEN_HOVER && f[6].eraser && f[6].x == 5);
+    check!(st.was_near && !st.was_touch);
+}
+
+fn raw_map(path: &str) -> LiveRawMap {
+    let mut m = LiveRawMap {
+        m: [0.5, 0.0, 10.0, 0.0, -0.25, 300.0],
+        rmin: [0, 0],
+        rmax: [1000, 1000],
+        pmin: 0,
+        pmax: 4095,
+        tilt_min: [-9000, -9000],
+        tilt_max: [9000, 9000],
+        tm: [0.0, -1.0, 1.0, 0.0],
+        ..Default::default()
+    };
+    m.path.set(path);
+    m
+}
+
+fn a_raw_frame_is_placed_and_weighed_by_the_map() {
+    let m = raw_map("");
+    let f = LiveRawFrame { us: 77, ms: 5, state: LIVE_PEN_TOUCH, down: true, side: true, x: 200, y: 400, p: 4095, tx: 4500, ty: -9000, ..Default::default() };
+    let mut s = [0u8; LIVE_SAMPLE_BYTES];
+    live_raw_sample(&m, 300, 400, &f, &mut s);
+    check!(u32_(&s) == 77 && u32_(&s[4..]) == 5);
+    check!(u16(&s[8..]) == 110 && u16(&s[10..]) == 200 && u16(&s[12..]) == 65535);
+    // tilt (45, -90) degrees turned a quarter: (90, 45)
+    check!(s[14] as i8 == 90 && s[15] as i8 == 45 && s[16] == LIVE_PEN_TOUCH as u8 && s[17] == (LIVE_SIDE | LIVE_DOWN));
+    // cut to the raw ranges, then to the screen; hovering weighs nothing
+    let far = LiveRawFrame { state: LIVE_PEN_HOVER, x: 5000, y: -50, p: 3000, ..f };
+    live_raw_sample(&m, 300, 400, &far, &mut s);
+    check!(u16(&s[8..]) == 299 && u16(&s[10..]) == 300 && u16(&s[12..]) == 0 && s[17] == LIVE_SIDE | LIVE_DOWN);
+}
+
+fn raw_style_follows_the_capture_state() {
+    let style = LiveStyle { enabled: 1, tool: 3, exclude: Rect { x: 250, y: 0, w: 50, h: 400 }, ..Default::default() };
+    let eraser = LiveStyle { enabled: 1, tool: 9, ..style };
+    let mut cap = LiveCapture { ok: true, editor: true, handled: 0, styles: [[style, style], [eraser, eraser]] };
+    let mut ui = 0u32;
+    let mut draw = 0u8;
+    let down = LiveRawFrame { us: 100, state: LIVE_PEN_TOUCH, down: true, ..Default::default() };
+    let mv = LiveRawFrame { us: 104, state: LIVE_PEN_TOUCH, ..Default::default() };
+    check!(live_raw_style(&cap, false, &mut ui, &down, 10, 10, &mut draw) == style && draw == LIVE_DRAW && ui == 0);
+    let er = LiveRawFrame { eraser: true, ..mv };
+    check!(live_raw_style(&cap, false, &mut ui, &er, 10, 10, &mut draw).tool == 9);
+    // UI work under way, or no editor, or not ok: nothing draws
+    check!(live_raw_style(&cap, true, &mut ui, &mv, 10, 10, &mut draw).enabled == 0 && draw == 0);
+    cap.editor = false;
+    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0);
+    cap.editor = true;
+    cap.ok = false;
+    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0);
+    cap.ok = true;
+    // a pen-down on the panel is UI: nothing until the main loop has handled it
+    let tap = LiveRawFrame { us: 200, ..down };
+    check!(live_raw_style(&cap, false, &mut ui, &tap, 260, 10, &mut draw).enabled == 0 && ui == 200);
+    let after = LiveRawFrame { us: 300, ..down };
+    check!(live_raw_style(&cap, false, &mut ui, &after, 10, 10, &mut draw).enabled == 0 && ui == 300); // (still pending: a UI pen-down again)
+    cap.handled = 250; // (the scaled pen's event of the tap: not this one's yet)
+    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0 && ui == 300);
+    cap.handled = 300;
+    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw) == style && ui == 0 && draw == LIVE_DRAW);
+}
+
+fn ev_bytes(e: &LiveInputEvent) -> Vec<u8> {
+    // SAFETY: LiveInputEvent is repr(C) plain integers with no padding read as anything but bytes;
+    // the slice covers exactly the one value, alive for the copy.
+    unsafe { std::slice::from_raw_parts(e as *const LiveInputEvent as *const u8, std::mem::size_of::<LiveInputEvent>()) }.to_vec()
+}
+
+fn write_events(fd: i32, evs: &[LiveInputEvent]) {
+    let mut b = Vec::new();
+    for e in evs {
+        b.extend(ev_bytes(e));
+    }
+    // SAFETY: write(2) of the local buffer to the FIFO.
+    let n = unsafe { libc::write(fd, b.as_ptr() as *const libc::c_void, b.len()) };
+    check!(n == b.len() as isize);
+}
+
+fn mono_now() -> (u64, u64) {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: clock_gettime writes one timespec into the local.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    (ts.tv_sec as u64, ts.tv_nsec as u64 / 1000)
+}
+
+// A pen viewer reads the raw node itself (here a FIFO standing in for it): its samples come while the
+// main loop does nothing at all (no live_sample, no wake: as stalled as it can be), placed by the
+// published map, drawn with the published style, known by the frame's microseconds; and the tiles'
+// watermark names the same identity once the main loop's own event of that frame is presented.
+fn a_pen_viewer_reads_the_raw_node_itself() {
+    let dir = tl_tmp();
+    let _ = std::fs::create_dir_all(&dir);
+    // SAFETY: getpid takes no arguments.
+    let path = cformat!("%s/rawpen-%d", &dir, unsafe { libc::getpid() });
+    let c = std::ffi::CString::new(path.clone()).unwrap();
+    // SAFETY: unlink and mkfifo read the NUL-terminated path.
+    unsafe { libc::unlink(c.as_ptr()) };
+    check!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) } == 0);
+    // SAFETY: open reads the path; O_RDWR keeps the FIFO open for the viewer's reads.
+    let w = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK) };
+    check!(w >= 0);
+    if w < 0 {
+        return; // (no FIFO here: nothing below could be read)
+    }
+    check!(live_start(300, 400) == 0);
+    let style = LiveStyle { enabled: 1, tool: 2, clip: Rect { x: 0, y: 0, w: 300, h: 400 }, exclude: Rect { x: 280, y: 0, w: 20, h: 400 }, ..Default::default() };
+    live_set_capture(&LiveCapture { ok: true, editor: true, handled: 0, styles: [[style; 2]; 2] });
+    live_set_raw_map(Some(&raw_map(&path)));
+    let sv = socket_pair();
+    check!(live_take_pen_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    check!(next_kind(sv[1], LIVE_HELLO).is_some());
+    check!(next_kind(sv[1], LIVE_SAMPLES).is_some());
+    sleep_ms(100); // (the viewer has opened the node)
+    let (sec, usec) = mono_now();
+    let mut evs = vec![raw_ev(sec, usec, KEY, 0x140, 1), raw_ev(sec, usec, ABS, 0, 100), raw_ev(sec, usec, ABS, 1, 800), raw_ev(sec, usec, SYN, 0, 0)];
+    evs.extend([raw_ev(sec, usec + 4000, KEY, 0x14a, 1), raw_ev(sec, usec + 4000, ABS, 0x18, 2048), raw_ev(sec, usec + 4000, SYN, 0, 0)]);
+    for i in 1..=10u64 {
+        evs.extend([raw_ev(sec, usec + 4000 + i * 3000, ABS, 0, 100 + 10 * i as i32), raw_ev(sec, usec + 4000 + i * 3000, SYN, 0, 0)]);
+    }
+    write_events(w, &evs);
+    let mut frames = Vec::new();
+    let got = next_samples(sv[1], 12, &mut frames);
+    check!(got.len() == 12);
+    let id = |du: u64| (sec * 1_000_000 + usec + du) as u32;
+    check!(got.len() == 12 && u32_(&got[0].1) == id(0) && got[0].1[16] == LIVE_PEN_HOVER as u8 && u16(&got[0].1[8..]) == 60 && u16(&got[0].1[10..]) == 100);
+    check!(got.len() == 12 && u32_(&got[1].1) == id(4000) && got[1].1[17] == LIVE_DOWN | LIVE_DRAW && u16(&got[1].1[12..]).abs_diff(32776) <= 1);
+    check!(got.len() == 12 && got[11].1[17] == LIVE_DRAW && u32_(&got[11].1) == id(34000) && u16(&got[11].1[8..]) == 110);
+    // The main loop's own event of the stroke's last frame, presented: the batch names that identity.
+    let mut c2 = Canvas::default();
+    check!(canvas_init(&mut c2, 300, 400) == 0);
+    canvas_fill(&mut c2, Rect { x: 0, y: 0, w: 300, h: 400 }, 255);
+    live_push(&c2, Rect { x: 0, y: 0, w: 300, h: 400 });
+    let e = InEvent { type_: InType::PenMove, x: 110.0, y: 100.0, k_us: id(34000), ..Default::default() };
+    let s = live_sample(&e, &style);
+    check!(s == id(34000));
+    live_presented(s, 9);
+    let tv = socket_pair();
+    check!(live_take_viewer(tv[0]));
+    close(tv[0]);
+    check!(skip_head(tv[1]));
+    let b = next_kind(tv[1], LIVE_BATCH);
+    check!(matches!(&b, Some(b) if u32_(&b[8..]) == id(34000)));
+    // A pen-down on the panel (the style's exclusion) draws nothing, and nothing after it does until
+    // the main loop says it handled that tap.
+    let (sec, usec) = mono_now();
+    write_events(w, &[raw_ev(sec, usec, KEY, 0x14a, 0), raw_ev(sec, usec, ABS, 0x18, 0), raw_ev(sec, usec, SYN, 0, 0),
+        raw_ev(sec, usec + 4000, ABS, 0, 590), raw_ev(sec, usec + 4000, KEY, 0x14a, 1), raw_ev(sec, usec + 4000, ABS, 0x18, 900), raw_ev(sec, usec + 4000, SYN, 0, 0)]);
+    let got = next_samples(sv[1], 2, &mut frames);
+    check!(got.len() == 2 && got[1].1[17] & LIVE_DOWN != 0 && got[1].1[17] & LIVE_DRAW == 0 && u16(&got[1].1[8..]) == 305 - 6);
+    // Asleep: the node is read, nothing is sent.
+    live_set_state(LIVE_ASLEEP);
+    let mut st = [0u8; 3];
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_ASLEEP as u8);
+    let (sec, usec) = mono_now();
+    write_events(w, &[raw_ev(sec, usec, ABS, 0, 300), raw_ev(sec, usec, SYN, 0, 0)]);
+    check!(quiet(sv[1], 100));
+    live_stop();
+    close(sv[1]);
+    close(tv[1]);
+    close(w);
+    // SAFETY: unlink reads the path.
+    unsafe { libc::unlink(c.as_ptr()) };
+    canvas_free(&mut c2);
+}
+
+// The editor's panel and the clock's corner as layers (frame 9): sent with the batch they changed in,
+// whole, as PNGs of their rect; gone as w = 0; sent again after a hello.
+fn a_layer_comes_with_the_tiles_and_goes() {
+    check!(live_start(128, 128) == 0);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, 128, 128) == 0);
+    canvas_fill(&mut c, Rect { x: 0, y: 0, w: 128, h: 128 }, 255);
+    canvas_fill(&mut c, Rect { x: 100, y: 10, w: 20, h: 30 }, 40);
+    live_push(&c, Rect { x: 0, y: 0, w: 128, h: 128 });
+    live_layer(LIVE_LAYER_PANEL, &c, Rect { x: 100, y: 10, w: 20, h: 30 });
+    let sv = socket_pair();
+    check!(live_take_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    let b = next_kind(sv[1], LIVE_LAYER);
+    let layer_ok = |b: &Option<Vec<u8>>, id: u8, r: (u32, u32, u32, u32), v: u8| -> bool {
+        let Some(b) = b else { return false };
+        if b.len() < 10 || b[0] != id || (u16(&b[2..]), u16(&b[4..]), u16(&b[6..]), u16(&b[8..])) != r {
+            return false;
+        }
+        if r.2 == 0 {
+            return b.len() == 10;
+        }
+        matches!(decode_png(&b[10..]), Some((px, w, h)) if w == r.2 as i32 && h == r.3 as i32 && px.iter().all(|&p| p == v))
+    };
+    check!(layer_ok(&b, 0, (100, 10, 20, 30), 40));
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    // the corner, then the panel gone
+    canvas_fill(&mut c, Rect { x: 0, y: 0, w: 30, h: 12 }, 0);
+    live_layer(LIVE_LAYER_STATUS, &c, Rect { x: 0, y: 0, w: 30, h: 12 });
+    check!(layer_ok(&next_kind(sv[1], LIVE_LAYER), 1, (0, 0, 30, 12), 0));
+    live_layer(LIVE_LAYER_PANEL, &c, RECT_EMPTY);
+    check!(layer_ok(&next_kind(sv[1], LIVE_LAYER), 0, (0, 0, 0, 0), 0));
+    live_layer(LIVE_LAYER_PANEL, &c, RECT_EMPTY); // (gone already: nothing)
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    check!(quiet(sv[1], 100));
+    // A turn takes them away (the turned screen's flush tells them again).
+    live_resize(128, 128);
+    let mut kinds = Vec::new();
+    while let Some((t, body)) = read_frame(sv[1]) {
+        kinds.push((t, body.len()));
+        if t == LIVE_BATCH as u8 {
+            break;
+        }
+    }
+    check!(kinds.iter().filter(|k| k.0 == LIVE_LAYER as u8 && k.1 == 10).count() == 2);
+    live_stop();
+    close(sv[1]);
+    canvas_free(&mut c);
+}
+
 #[test]
 fn test_live() {
     run!(marks_cover_exactly_the_tiles_a_rect_touches);
@@ -867,5 +1158,10 @@ fn test_live() {
     run!(a_reset_moves_the_ink_epoch_and_sends_no_tiles);
     run!(a_pen_viewer_joining_mid_stroke_gets_no_pen_down);
     run!(a_batch_cut_short_acknowledges_nothing);
+    run!(the_raw_digitizer_decodes_into_frames);
+    run!(a_raw_frame_is_placed_and_weighed_by_the_map);
+    run!(raw_style_follows_the_capture_state);
+    run!(a_pen_viewer_reads_the_raw_node_itself);
+    run!(a_layer_comes_with_the_tiles_and_goes);
     done();
 }

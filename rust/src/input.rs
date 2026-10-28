@@ -109,7 +109,11 @@ pub struct InEvent {
     /// says (the simulator). Only a stroke's samples take it (in_sample_ms): after a stall the read
     /// times bunch up, the kernel's keep the stroke's real spacing.
     pub k_ms: u32,
-    /// Live view sample already captured, 0 when off
+    /// Pen events: the kernel's time of the frame in microseconds (CLOCK_MONOTONIC, wrapping), the
+    /// identity Live view knows a sample by (live.rs): for the scaled pen its own frame's, which
+    /// covers the raw frame it was relayed from; 0 where nobody says (the simulator's script).
+    pub k_us: u32,
+    /// Live view sample already captured (its identity), 0 when off
     pub live_seq: u32,
     /// the first sample after pen events the kernel dropped: joined straight
     pub gap: bool,
@@ -223,6 +227,14 @@ pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
 #[inline]
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
     platform::input_sample_hook(sample, batch)
+}
+/// Live view's pen viewers read the raw digitizer themselves (live.rs): where its node is and how
+/// its frames map onto the screen, as this module places its own events. false while there is none
+/// to read: no raw digitizer, its place not trusted (pensync_hover_orientation -1), its times not
+/// in CLOCK_MONOTONIC, or the pen and touch not Grimoire's (input_set_grab).
+#[inline]
+pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
+    platform::input_raw_pen(out)
 }
 /// In a forked child, before it closes what it inherited: the stop handler (SIGTERM, SIGINT,
 /// SIGHUP) writes nowhere from now on. The handler stays as it was, but the signal pipe's numbers

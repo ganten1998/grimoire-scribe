@@ -133,6 +133,9 @@ check('clock returns monotonic milliseconds', st == 200 and isinstance(json.load
 conn, r = get('/live/stream', session, keep=True)
 check('the stream answers', r.status == 200 and r.getheader('Content-Type') == 'application/octet-stream')
 screen, size, hellos, batches, tiles, states, pen = None, None, 0, 0, 0, [], None
+# The layers (frame 9) as they come: (id, x, y, w, h, png bytes), on the stream before the pen, then
+# (with the tiles' bodies, for the page under the toolbar) in the reader thread below.
+layers, later_tiles = [], []
 t0 = time.time()
 for kind, body in frames(r):
     if kind == 5:
@@ -149,6 +152,8 @@ for kind, body in frames(r):
         tiles += 1
     elif kind == 3:
         batches += 1
+    elif kind == 9:
+        layers.append(struct.unpack('<BxHHHH', body[:10]) + (bytes(body[10:]),))
     elif kind == 6:
         pen = struct.unpack('<HHB', body[:5]) if len(body) >= 5 else ()
         break
@@ -191,6 +196,8 @@ def tile_ack_reader():
             n, kind = struct.unpack('<IB', hdr)
             payload = r.read(n - 1)
             if kind == 3 and len(payload) == 20: acks.append(struct.unpack('<IIIII', payload)[2::2])
+            if kind == 9: layers.append(struct.unpack('<BxHHHH', payload[:10]) + (bytes(payload[10:]),))
+            if kind == 2: later_tiles.append(bytes(payload))
     except (OSError, http.client.HTTPException): pass
 thread = threading.Thread(target=tile_ack_reader, daemon=True)
 thread.start()
@@ -210,8 +217,8 @@ while True:
     kind, payload = fast_frame()
     if kind == 1: pen_hellos.append(payload)
     if kind == 7: break
-check('the pen stream says hello (version 2, the screen, its ink epoch), then a reset with no samples',
-      len(pen_hellos) == 1 and len(pen_hellos[0]) == 12 and struct.unpack('<HHHH', pen_hellos[0][:8]) == (2, 1860, 2480, 64)
+check('the pen stream says hello (version 3, the screen, its ink epoch), then a reset with no samples',
+      len(pen_hellos) == 1 and len(pen_hellos[0]) == 12 and struct.unpack('<HHHH', pen_hellos[0][:8]) == (3, 1860, 2480, 64)
       and len(payload) == 8 and struct.unpack('<II', payload) == (struct.unpack('<I', pen_hellos[0][8:])[0], 1))
 pen_epoch = struct.unpack('<I', pen_hellos[0][8:])[0]
 open(os.path.join(OUT, 'fast-start'), 'w').close()
@@ -251,6 +258,33 @@ for _ in range(100):
     time.sleep(.02)
 check('tiles acknowledge the processed samples, in the ink epoch they came in',
       any(seq >= last_seq and ink == pen_epoch for seq, ink in acks))
+# The layers: the clock and battery corner (settings.ini status_on=1), never in the tiles, and the
+# editor's toolbar, whose tiles hold the page under it: down the middle of its left edge the layer
+# has its black frame, and the page there is paper.
+for _ in range(100):
+    if any(l[0] == 0 and l[3] for l in layers): break
+    time.sleep(.05)
+corner = [l for l in layers if l[0] == 1 and l[3]]
+check('the clock and battery corner comes as a layer of its own (%d)' % len(corner), len(corner) >= 1 and
+      corner[-1][5][:8] == b'\x89PNG\r\n\x1a\n' and png_gray(corner[-1][5])[:2] == corner[-1][3:5])
+bars = [l for l in layers if l[0] == 0 and l[3]]
+if bars:
+    _, bx, by, bw, bh, bpng = bars[-1]
+    lw, lh, lrows = png_gray(bpng)
+    px, mid = bx + 3, by + bh // 2
+    in_layer = sum(1 for y in range(mid - 10, mid + 10) if lrows[y - by][px - bx] < 128)
+    under = [row[:] for row in screen] if screen else None
+    for body in later_tiles:  # (only the runs that hold the column, decoded)
+        x, y, w, h = struct.unpack('<HHHH', body[:8])
+        if x <= px < x + w and y < mid + 10 and mid - 10 < y + h:
+            _, _, rows = png_gray(body[8:])
+            for i in range(h):
+                under[y + i][x:x + w] = rows[i]
+    in_page = sum(1 for y in range(mid - 10, mid + 10) if under[y][px] < 128) if under else 99
+    check('the toolbar comes as a layer, and the tiles under it hold the page (%d of 20 dark in the layer, %d in the page)'
+          % (in_layer, in_page), lw == bw and lh == bh and in_layer >= 18 and in_page <= 4)
+else:
+    check('the toolbar comes as a layer of its own', False)
 with open(os.path.join(OUT, 'fast.bin'), 'wb') as f: f.write(fast_raw)
 with open(os.path.join(OUT, 'fast.txt'), 'w') as f: f.write(''.join('%d %d\n' % item for item in fast_frames))
 cp.close()

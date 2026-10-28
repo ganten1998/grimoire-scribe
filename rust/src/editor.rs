@@ -98,6 +98,8 @@ struct SharedPaper {
 #[derive(Default)]
 pub struct EditorState {
     open: bool,
+    /// compose leaves the panel out (editor_live_under_panel: Live view's page under it)
+    live_no_panel: bool,
     // Pen side button gestures (when not drawing): 3 quick clicks, or a ~1.2 s hold while
     // hovering, clears the page (undoable). Holding it while drawing picks the button's tool.
     btn_down: bool,
@@ -1123,7 +1125,7 @@ fn compose(a: &mut App, r: Rect) {
     } else {
         blit_view(a, r);
     }
-    if rect_overlaps(r, ed(a).panel) {
+    if rect_overlaps(r, ed(a).panel) && !ed(a).live_no_panel {
         draw_panel(a);
     }
     let s = ed(a);
@@ -1146,6 +1148,34 @@ fn compose(a: &mut App, r: Rect) {
     if s.tools_open && rect_overlaps(r, s.tools_rect) {
         draw_tools(a);
     }
+}
+
+/// Live view: where the panel is, for its layer (RECT_EMPTY where none shows: no notebook, or the
+/// Pages view over everything).
+pub fn editor_live_panel(a: &App) -> Rect {
+    match a.ed.as_deref() {
+        Some(s) if !s.pv.open => s.panel,
+        _ => RECT_EMPTY,
+    }
+}
+
+/// Live view: r (inside the panel) of the screen as it is without the panel, into Live view's frame
+/// (live_push), a.screen left as it was: the browser has the page under the panel, and the panel as
+/// its own layer (app.rs, live_push_screen).
+pub fn editor_live_under_panel(a: &mut App, r: Rect) {
+    let mut keep = Canvas::default();
+    if canvas_init(&mut keep, r.w, r.h) != 0 {
+        return;
+    }
+    canvas_blit(&mut keep, &a.screen, r, 0, 0);
+    let floor = a.toast_floor;
+    ed(a).live_no_panel = true;
+    compose(a, r);
+    ed(a).live_no_panel = false;
+    a.toast_floor = floor;
+    live_push(&a.screen, r);
+    canvas_blit(&mut a.screen, &keep, Rect { x: 0, y: 0, w: r.w, h: r.h }, r.x, r.y);
+    canvas_free(&mut keep);
 }
 
 // A page-space change: recompose what it covers on screen and refresh it.

@@ -23,6 +23,16 @@ export, so the next one queues behind it. `GRIMOIRE_SLEEP_MINUTE_MS` (simulator 
 minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
 timer run out.
 
+Live view's raw digitizer has stand-ins (headless runner only; tests/live_pen_stall.py uses them):
+`GRIMOIRE_SIM_RAWPEN=PATH` names a FIFO of `struct input_event` records in the host's layout (x
+and y in screen pixels, pressure 0..4095, tilt in hundredths of a degree) that a pen viewer opens
+as its own reader of the node (`input_raw_pen`), and `GRIMOIRE_SIM_RAWPEN_MAIN=PATH` another that
+the main loop reads as the Kindle's main loop reads the node, its frames becoming pen events with
+their kernel times; `GRIMOIRE_SIM_STALL_MS=N` then holds the main loop N ms after each read that
+brought frames, as an expensive ink frame holds it on the Kindle. `GRIMOIRE_LIVE_PEN_SOURCE=ring`
+(any build) makes the pen viewers take the samples from the main loop's ring even where a raw
+digitizer is: the measurement's "before".
+
 Four more:
 
 - `GRIMOIRE_LANG=es` (or `en`, or a locale name such as `es_MX.UTF-8`) picks the language that

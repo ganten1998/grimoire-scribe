@@ -102,6 +102,15 @@ struct State {
     // into memory (app's and live's), so they never reach the runner.
     sample_fn: Option<fn(&mut InEvent)>,
     sample_batch: Option<fn()>,
+    // A stand-in for the raw digitizer's node as the main loop reads it (GRIMOIRE_SIM_RAWPEN_MAIN, a
+    // FIFO of input_event records in the host's layout, x and y in screen pixels, pressure 0..4095:
+    // tests/live_pen_stall.py writes it): its frames become pen events as the Kindle's would, each
+    // with its kernel time. raw_stall_ms (GRIMOIRE_SIM_STALL_MS): after each read that brought
+    // frames, the main loop is held that long, as an expensive ink frame holds it on the Kindle.
+    raw_fd: i32,
+    raw_pen: LiveRawPen,
+    raw_touching: bool,
+    raw_stall_ms: i32,
 
     // ---- display ----
     /// g_last_screen: whether anything was presented yet (a shot before that writes nothing)
@@ -194,6 +203,10 @@ impl Default for State {
             nhids: 0,
             sample_fn: None,
             sample_batch: None,
+            raw_fd: -1,
+            raw_pen: LiveRawPen::default(),
+            raw_touching: false,
+            raw_stall_ms: 0,
             presented: false,
             sim_invert: false,
             eink: Vec::new(),
@@ -635,6 +648,24 @@ pub fn input_set_grab(grab: bool) -> bool {
 // (Its hover is the mouse's, as IN_PEN_HOVER events: Live view takes it from app_event.)
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
     let _ = f;
+}
+// The raw digitizer a pen viewer reads (GRIMOIRE_SIM_RAWPEN: a FIFO of input_event records, x and y
+// in screen pixels, pressure 0..4095, tilt in hundredths of a degree), placed as it is.
+pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
+    let Some(path) = std::env::var_os("GRIMOIRE_SIM_RAWPEN") else { return false };
+    *out = LiveRawMap {
+        m: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        rmin: [0, 0],
+        rmax: [32767, 32767],
+        pmin: 0,
+        pmax: 4095,
+        tilt_min: [-9000, -9000],
+        tilt_max: [9000, 9000],
+        tm: [1.0, 0.0, 0.0, 1.0],
+        ..Default::default()
+    };
+    out.path.set_bytes(path.as_bytes());
+    !out.path.is_empty()
 }
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
     with(|st| {
@@ -1398,6 +1429,16 @@ pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch:
             st.touch = *touch;
         }
     });
+    if let Some(path) = std::env::var_os("GRIMOIRE_SIM_RAWPEN_MAIN") {
+        if let Ok(c) = CString::new(path.as_bytes()) {
+            // SAFETY: open reads the NUL-terminated path; the result is checked. (O_RDWR: a FIFO
+            // with no writer yet never reads as ended.)
+            let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+            with(|st| st.raw_fd = fd);
+        }
+        let stall = std::env::var_os("GRIMOIRE_SIM_STALL_MS").map_or(0, |v| atoi(v.as_bytes()));
+        with(|st| st.raw_stall_ms = stall.max(0));
+    }
     if let Some(sp) = std::env::var_os("GRIMOIRE_SIM_PRESSURE") {
         let p = clampf(atof(sp.as_bytes()) as f32, 0.0, 1.0);
         with(|st| st.pressure = p);
@@ -1478,8 +1519,60 @@ pub fn input_close() {
     with(|st| st.script = None);
 }
 
+impl State {
+    // The stand-in raw node's frames as pen events (raw_fd): true when any came.
+    fn raw_read(&mut self) -> bool {
+        if self.raw_fd < 0 {
+            return false;
+        }
+        let mut any = false;
+        let mut evs = [LiveInputEvent::default(); 64];
+        loop {
+            // SAFETY: read into the local array of records, at most its size in bytes.
+            let got = unsafe { libc::read(self.raw_fd, evs.as_mut_ptr() as *mut libc::c_void, std::mem::size_of_val(&evs)) };
+            if got <= 0 {
+                break;
+            }
+            for ev in evs[..got as usize / std::mem::size_of::<LiveInputEvent>()].iter() {
+                let mut f = LiveRawFrame::default();
+                if !live_raw_event(&mut self.raw_pen, 0, ev, &mut f) {
+                    continue;
+                }
+                let t = match f.state {
+                    LIVE_PEN_TOUCH if f.down => InType::PenDown,
+                    LIVE_PEN_TOUCH => InType::PenMove,
+                    LIVE_PEN_HOVER if self.raw_touching => InType::PenUp,
+                    LIVE_PEN_HOVER => InType::PenHover,
+                    _ => InType::PenLeave,
+                };
+                self.raw_touching = f.state == LIVE_PEN_TOUCH;
+                let mut e = self.make_ev(t, f.x as f32, f.y as f32, true);
+                e.pressure = if t == InType::PenDown || t == InType::PenMove { clampf(f.p as f32 / 4095.0, 0.0, 1.0) } else { 0.0 };
+                e.tilt_x = f.tx as f32 / 100.0;
+                e.tilt_y = f.ty as f32 / 100.0;
+                e.eraser = f.eraser;
+                e.side_button = f.side;
+                e.gap = f.gap;
+                e.k_us = f.us;
+                e.k_ms = f.ms;
+                self.q_push(e);
+                self.px = f.x as f32;
+                self.py = f.y as f32;
+                any = true;
+            }
+        }
+        any
+    }
+}
+
 // The poll itself, with the App where the main loop hands it one (input_poll_app).
 fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
+    if with(|st| st.raw_read()) {
+        let stall = with(|st| st.raw_stall_ms);
+        if stall > 0 {
+            sleep_ms(stall); // (the main loop busy: nothing of the pen is read meanwhile)
+        }
+    }
     if with(|st| st.q_pop(ev)) {
         return 1;
     }
@@ -1505,7 +1598,14 @@ fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
             }
         });
         if with(|st| st.script_hold) {
-            sleep_ms(timeout_ms);
+            let raw = with(|st| st.raw_fd);
+            if raw >= 0 {
+                let mut pf = libc::pollfd { fd: raw, events: libc::POLLIN, revents: 0 };
+                // SAFETY: poll reads and writes the one local pollfd.
+                unsafe { libc::poll(&mut pf, 1, timeout_ms) };
+            } else {
+                sleep_ms(timeout_ms);
+            }
             return 0;
         }
         if with(|st| st.wait_bg) && !bg_busy() {
