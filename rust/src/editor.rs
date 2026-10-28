@@ -3458,7 +3458,8 @@ fn cache_victim(s: &EditorState, evict: bool) -> Option<usize> {
     if !evict {
         return None;
     }
-    (0..s.ccache.len()).filter(|&i| !(s.peek.active && s.peek.slot == i)).min_by_key(|&i| s.ccache[i].used.wrapping_sub(s.cache_tick))
+    // (the oldest by how many shows ago it was shown, across the tick's wrap)
+    (0..s.ccache.len()).filter(|&i| !(s.peek.active && s.peek.slot == i)).max_by_key(|&i| s.cache_tick.wrapping_sub(s.ccache[i].used))
 }
 
 // A canvas and a page for page `index` in a slot (nothing drawn yet): the session cache's page if it has one,
@@ -5841,6 +5842,37 @@ mod tests {
         assert_eq!((h.limit, p.w), (500, 10));
         let (h, p) = hist_page(&mut s.hist, 0, 0);
         assert_eq!((h.limit, p.w), (500, 10));
+    }
+
+    // Two cache slots holding pages 11 and 12, shown at the ticks given (a canvas each, so neither is free).
+    fn two_cached(shown: [u32; 2], tick: u32) -> EditorState {
+        let mut s = EditorState::default();
+        for (i, pid) in [11u32, 12].into_iter().enumerate() {
+            let e = &mut s.ccache[i];
+            assert_eq!(canvas_init(&mut e.canvas, 4, 4), 0);
+            e.pid = pid;
+            e.used = shown[i];
+        }
+        s.cache_tick = tick;
+        s
+    }
+
+    #[test]
+    fn the_cache_gives_up_the_page_shown_longest_ago() {
+        // The page just shown stays; the older one goes.
+        assert_eq!(cache_victim(&two_cached([5, 3], 5), true), Some(1));
+        assert_eq!(cache_victim(&two_cached([2, 5], 5), true), Some(0));
+        // Across the tick's wrap: slot 0 was shown at u32::MAX, two shows before slot 1's tick 1.
+        assert_eq!(cache_victim(&two_cached([u32::MAX, 1], 1), true), Some(0));
+        // The page on show is never the one: even when it is the oldest.
+        let mut s = two_cached([1, 5], 5);
+        s.peek = Peek { active: true, slot: 0, ..Default::default() };
+        assert_eq!(cache_victim(&s, true), Some(1));
+        // Without leave to evict (the prefetch) a full cache gives nothing; a free slot goes first.
+        assert_eq!(cache_victim(&two_cached([1, 5], 5), false), None);
+        let mut s = two_cached([5, 3], 5);
+        s.ccache[0] = CacheEntry::default();
+        assert_eq!(cache_victim(&s, false), Some(0));
     }
 
     #[test]
