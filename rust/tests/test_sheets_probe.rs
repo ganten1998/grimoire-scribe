@@ -653,6 +653,7 @@ fn pages_taps(p: &mut Probe) {
     p.screen(1860, 2480);
     look(0);
     let mut v = PagesView::default();
+    v.jump_pad = true; // (the C build's Go to page... is a number pad: this holds the view to what it recorded)
     assert!(pagesview_open(&mut v, &mut p.app, &nb, &nav, 17));
     v.index_tab = false;
     pagesview_draw(&mut v, &mut p.app, &nb, &nav);

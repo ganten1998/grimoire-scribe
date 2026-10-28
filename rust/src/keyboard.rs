@@ -236,6 +236,12 @@ pub fn keyboard_upper(c: u32) -> u32 {
 
 // ---- layout ----
 
+/// Where keyboard_draw puts the keyboard on this screen: along the bottom, 20 px in from the sides and above the
+/// edge (a screen that lays out around it knows before it is drawn).
+pub fn keyboard_modal_rect(screen: Rect) -> Rect {
+    modal_rect(screen)
+}
+
 fn modal_rect(screen: Rect) -> Rect {
     let h = ui_px(170.0) + 5 * ui_px(150.0) + ui_px(60.0);
     Rect { x: screen.x + ui_px(20.0), y: screen.y + screen.h - h - ui_px(20.0), w: screen.w - ui_px(40.0), h }

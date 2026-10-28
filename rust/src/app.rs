@@ -1630,15 +1630,27 @@ const KB_SETTLE_MS: u32 = 900;
 /// (the caller closes it and draws what it covered). (kb is not inside a: a screen takes its
 /// keyboard out of its state for the call, PORTING.md, The App.)
 pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent) -> KbResult {
+    let (r, d) = app_keyboard_pointer_split(a, kb, phase, ev);
+    app_invalidate(a, d, RefreshMode::Fast);
+    r
+}
+
+/// app_keyboard_pointer up to and including the text line's own refresh and the pause's timer, but the key's
+/// rect is returned (empty when there is nothing to refresh) instead of invalidated: for a screen that draws
+/// and refreshes something of its own between the text and the key (Find's rows), which would otherwise
+/// present with the key's rect already in the accumulator, one union from its rows down to the key, the
+/// overlapping refresh this host exists to avoid. The caller invalidates the key's rect, on the fast waveform,
+/// after its own flush; app_keyboard_pointer is this and that, byte for byte what it was.
+pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent) -> (KbResult, Rect) {
     let mut d = RECT_EMPTY;
     let r = keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d);
     if r == KbResult::Done || r == KbResult::Cancel {
-        return r;
+        return (r, RECT_EMPTY);
     }
     // A sample that changed nothing draws nothing: the pen resting on a key sends one at every
     // digitizer frame, and each whole keyboard drawn again is main-thread work the next key waits for.
     if rect_is_empty(d) && rect_is_empty(kb.field_dirty) {
-        return r;
+        return (r, RECT_EMPTY);
     }
     // Typing stays on the fast waveform: the text first (what the eye is on), then the key, each a
     // refresh of its own. One over both would span the keyboard from the text line down to the key:
@@ -1650,12 +1662,11 @@ pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InE
         app_invalidate(a, kb.field_dirty, RefreshMode::Fast);
         app_flush(a);
     }
-    app_invalidate(a, d, RefreshMode::Fast);
     kb.settle_at = now_ms().wrapping_add(KB_SETTLE_MS);
     if kb.settle_at == 0 {
         kb.settle_at = 1;
     }
-    r
+    (r, d)
 }
 
 /// From the screen's tick while its keyboard is up: once typing pauses, one grayscale refresh of the

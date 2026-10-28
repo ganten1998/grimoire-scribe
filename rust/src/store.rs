@@ -1458,7 +1458,7 @@ const K_FOLD: [(u16, u16, &str); 48] = [
 
 /// The next character of s folded for sorting into out (up to 4 bytes, then a 0); returns its
 /// length in s.
-fn fold_next(s: &[u8], out: &mut [u8; 5]) -> usize {
+pub(crate) fn fold_next(s: &[u8], out: &mut [u8; 5]) -> usize {
     let u = |i: usize| s.get(i).copied().unwrap_or(0);
     if u(0) < 0x80 {
         out[0] = if u(0).is_ascii_uppercase() { u(0) + 32 } else { u(0) };

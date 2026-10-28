@@ -82,6 +82,7 @@ pub mod keyboard;
 pub mod library;
 pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only, the Index's phase 1)
 pub mod live;
+pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
 pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
@@ -129,6 +130,7 @@ pub mod prelude {
     pub use crate::export::*;
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
+    pub use crate::findsheet::*;
     pub use crate::font::*;
     pub use crate::gesturemap::*;
     pub use crate::hidkeys::*;

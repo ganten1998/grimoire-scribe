@@ -86,6 +86,8 @@ enum Owner {
     Bar = 11,
     /// a pointer that began outside the bar (or Find), the panel included: swallowed, decided at the lift
     Outside = 12,
+    /// a pointer that began on the Find sheet (its rows or its keyboard)
+    Find = 13,
 }
 
 // Every page visited while a notebook is open stays in memory with its history: undo
@@ -129,10 +131,6 @@ struct Peek {
     /// the peeked page's index and id
     index: i32,
     pid: u32,
-    /// where it rests on this screen (view_rest, centred as view_clamp would)
-    zoom: f32,
-    ox: f32,
-    oy: f32,
     /// the canvas cache slot it is shown from
     slot: usize,
     /// pages looked at since the bar opened: three or more leave GL16 ghosting, so a cancel then is a Full
@@ -320,6 +318,8 @@ pub struct EditorState {
     boxes: LinkBoxes,
     /// the Links bar (linkbar.rs), over the page while it is open
     lb: LinkBar,
+    /// the Find sheet (findsheet.rs), over the page while it is open
+    find: FindSheet,
     /// the page it shows above itself, if it does
     peek: Peek,
     /// two page canvases besides page_canvas for the peeks, and what they did since the bar opened
@@ -481,6 +481,20 @@ fn with_lb<R>(a: &mut App, f: impl FnOnce(&mut LinkBar, &mut App, &NotebookInfo,
     let r = f(&mut lb, a, &nb, &nav);
     let s = ed(a);
     s.lb = lb;
+    s.nb = nb;
+    s.nav = nav;
+    r
+}
+
+// The same for the Find sheet.
+fn with_find<R>(a: &mut App, f: impl FnOnce(&mut FindSheet, &mut App, &NotebookInfo, &Nav) -> R) -> R {
+    let s = ed(a);
+    let mut find = std::mem::take(&mut s.find);
+    let nb = std::mem::take(&mut s.nb);
+    let nav = std::mem::take(&mut s.nav);
+    let r = f(&mut find, a, &nb, &nav);
+    let s = ed(a);
+    s.find = find;
     s.nb = nb;
     s.nav = nav;
     r
@@ -1065,10 +1079,10 @@ fn touch_context(a: &App) {
     input_touch_context(TgView {
         scrolls_v: pans && a.h as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
-        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open),
+        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open),
         gestures_on: a.settings.gestures,
         record: false,
-        keyboard_open: s.pv.kb.open,
+        keyboard_open: s.pv.kb.open || s.find.open,
     });
 }
 
@@ -1532,8 +1546,9 @@ fn compose(a: &mut App, r: Rect) {
     }
     let s = ed_ref(a);
     if s.peek.active {
-        // The page the bar is looking at, at its own rest view; the open page is not touched.
-        let (zoom, ox, oy, slot) = (s.peek.zoom, s.peek.ox, s.peek.oy, s.peek.slot);
+        // The page the bar is looking at, at the view it rests in on this screen; the open page is not touched.
+        let slot = s.peek.slot;
+        let (zoom, ox, oy) = peek_view(a.w, a.h, s.pgw, s.pgh, a.settings.landscape_fit);
         let App { screen, ed, .. } = a;
         let pc = &ed.as_deref().unwrap().ccache[slot].canvas;
         if zoom == 1.0 && ox == 0.0 && oy == 0.0 && pc.w == screen.w && pc.h == screen.h {
@@ -1570,6 +1585,11 @@ fn compose(a: &mut App, r: Rect) {
     let s = ed(a);
     if s.tools_open && rect_overlaps(r, s.tools_rect) {
         draw_tools(a);
+    }
+    // The Find sheet's card of rows and keyboard, where r meets them.
+    let s = ed(a);
+    if s.find.open {
+        with_find(a, |f, a, nb, nav| findsheet_draw(f, a, nb, nav, r));
     }
     // The Links bar, over everything (laid out again as it is drawn: a turn changes the screen it is on).
     let s = ed(a);
@@ -1897,6 +1917,7 @@ fn close_notebook(a: &mut App) {
     s.back = Vec::new();
     s.boxes.stale = true;
     bar_drop(s);
+    find_drop(s);
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
     // thumbnail and the PDF it drew of them are drawn again.
     if store_take_restored_count() > 0 {
@@ -2537,13 +2558,13 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open
+    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open
 }
 
 /// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
 /// stays), or a pen contact outside it is being swallowed. Fast ink never previews such a contact.
 pub fn editor_pen_not_ink(a: &App) -> bool {
-    a.ed.as_deref().is_some_and(|s| s.lb.open || (s.owner == Owner::Outside && s.owner_is_pen))
+    a.ed.as_deref().is_some_and(|s| s.lb.open || s.find.open || (s.owner == Owner::Outside && s.owner_is_pen))
 }
 
 /// A cheap snapshot for the early input hook. UI gestures never paint provisional ink. The
@@ -2932,6 +2953,12 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
                 s.back_push(from);
             }
         }
+        PvResult::GoTo => {
+            // Go to page...: the view closes and the Find sheet opens over the page, in one Full.
+            pagesview_close(&mut ed(a).pv);
+            find_open(a);
+            compose_all(a, RefreshMode::Full);
+        }
         PvResult::Delete => pages_delete(a),
         PvResult::New => {
             let to = ed(a).pv.target;
@@ -3175,6 +3202,72 @@ fn open_tools(a: &mut App) {
     app_invalidate(a, r, RefreshMode::Ui);
 }
 
+// ---- the Find sheet ----
+
+// Go to page or name: the sheet opens over the page with an empty field (the sheet's own refresh: a Ui of the
+// keyboard, there are no rows yet). The page it is asked on stays the open one until a row is gone to.
+fn find_open(a: &mut App) {
+    ed(a).link_mode = false;
+    let mut f = std::mem::take(&mut ed(a).find);
+    findsheet_open(&mut f, a);
+    ed(a).find = f;
+}
+
+// Open and drawn at once: a Ui of what it covers.
+fn find_show(a: &mut App) {
+    find_open(a);
+    let r = with_find(a, |f, a, nb, nav| findsheet_draw(f, a, nb, nav, Rect { x: 0, y: 0, w: a.w, h: a.h }));
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+// The sheet is gone without a word (leaving the editor, a sleep, the notebook closing, a page drawn whole).
+fn find_drop(s: &mut EditorState) {
+    s.find.open = false;
+    s.find.has_pressed = false;
+    keyboard_close(&mut s.find.kb);
+    s.find.n = 0;
+    s.find.rect = RECT_EMPTY;
+}
+
+// Cancel: the page again where the card and the keyboard were, a Ui.
+fn find_close(a: &mut App) {
+    let s = ed(a);
+    if !s.find.open {
+        return;
+    }
+    let r = rect_union(s.find.rect, s.find.kb.area);
+    find_drop(s);
+    compose(a, r);
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+// A row, or Done on the first one: the sheet closes, the page it was asked on goes on the back list and the page
+// asked for opens (go_to_page's own Full).
+fn find_go(a: &mut App, index: i32) {
+    find_drop(ed(a));
+    go_to_page_pushing(a, index);
+}
+
+// What the Find sheet was asked, after the refreshes of what was typed: the text line (the keyboard host's),
+// then the card of rows, then the key, each its own fast refresh.
+fn find_result(a: &mut App, r: FsResult, d: Rect) {
+    match r {
+        FsResult::Go(i) => find_go(a, i),
+        FsResult::Close => find_close(a),
+        FsResult::Changed => {
+            let rd = ed_ref(a).find.rows_dirty;
+            if !rect_is_empty(rd) {
+                // The rows changed: the page where the old card was, the new card on it, a refresh of its own.
+                compose(a, rd);
+                app_invalidate(a, rd, RefreshMode::Fast);
+                app_flush(a);
+            }
+            app_invalidate(a, d, RefreshMode::Fast);
+        }
+        _ => app_invalidate(a, d, RefreshMode::Fast),
+    }
+}
+
 // ---- the Links bar ----
 
 // The bar opens on the open page: its entries, the second header line for the first three opens, the way
@@ -3415,7 +3508,7 @@ fn cache_render(a: &mut App, slot: usize, bands: i32) {
 // untouched. The page area above the bar and the bar go out as one GL16: no flash, never a GC16. `selected`
 // is the entry (-1 for the back list's page).
 fn peek_page(a: &mut App, t: i32, selected: i32, from_back: bool) {
-    let (aw, ah, fit) = (a.w, a.h, a.settings.landscape_fit);
+    let aw = a.w;
     let s = ed(a);
     if t < 0 || t >= s.nb.npages() {
         return;
@@ -3453,9 +3546,8 @@ fn peek_page(a: &mut App, t: i32, selected: i32, from_back: bool) {
     let s = ed(a);
     s.cache_tick = s.cache_tick.wrapping_add(1);
     s.ccache[slot].used = s.cache_tick;
-    let (zoom, ox, oy) = peek_view(aw, ah, s.pgw, s.pgh, fit);
     let count = s.peek.count + 1;
-    s.peek = Peek { active: true, index: t, pid, zoom, ox, oy, slot, count, from_back };
+    s.peek = Peek { active: true, index: t, pid, slot, count, from_back };
     s.lb.selected = selected;
     let area = Rect { x: 0, y: 0, w: aw, h: s.lb.rect.y };
     let bar = s.lb.rect;
@@ -3544,6 +3636,11 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         }
         LbResult::Commit => bar_commit(a),
         LbResult::Back => bar_back(a),
+        LbResult::GoTo => {
+            // Find acts on the page that shows: stay on it, then the sheet.
+            bar_stay(a);
+            find_show(a);
+        }
         LbResult::NewLink => {
             let s = ed(a);
             if s.lb.readonly {
@@ -3695,6 +3792,9 @@ fn panel_act(a: &mut App, h: Hit) {
 // sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
 // tab); 0 with none.
 fn front_menu(s: &EditorState) -> i32 {
+    if s.find.open {
+        return SHORTCUT_GO_TO_PAGE;
+    }
     if s.lb.open {
         return SHORTCUT_LINKS;
     }
@@ -3715,7 +3815,8 @@ fn front_menu(s: &EditorState) -> i32 {
 
 // A menu's button (Pen feel and the Library leave the editor for their screens), or Close menu.
 fn menu_action(action: i32) -> bool {
-    action == SHORTCUT_LINKS
+    action == SHORTCUT_GO_TO_PAGE
+        || action == SHORTCUT_LINKS
         || action == SHORTCUT_PAGES
         || action == SHORTCUT_INDEX
         || action == SHORTCUT_TOOL_PICKER
@@ -3730,6 +3831,14 @@ fn menu_action(action: i32) -> bool {
 // back); with draw false the screen is about to be drawn whole anyway.
 fn close_front(a: &mut App, draw: bool) {
     let s = ed(a);
+    if s.find.open {
+        if draw {
+            find_close(a);
+        } else {
+            find_drop(s);
+        }
+        return;
+    }
     if s.lb.open {
         if draw {
             bar_cancel(a);
@@ -3772,6 +3881,7 @@ fn close_front(a: &mut App, draw: bool) {
 // A menu's button with nothing in front: its menu opens, as the panel's button for it opens it.
 fn open_menu(a: &mut App, action: i32) {
     match action {
+        SHORTCUT_GO_TO_PAGE => find_show(a),
         SHORTCUT_LINKS => bar_open(a),
         SHORTCUT_PAGES | SHORTCUT_INDEX => {
             let s = ed(a);
@@ -4216,6 +4326,7 @@ pub fn editor_free(a: &mut App) {
 // closes with its notebook, and stays open through those too.)
 fn close_sheets(s: &mut EditorState) {
     bar_drop(s);
+    find_drop(s);
     s.paper_open = false;
     s.dm.open = false;
     s.mb.open = false;
@@ -4312,6 +4423,13 @@ fn pinch(a: &mut App, ev: &InEvent) {
         if s.owner == Owner::Link {
             s.owner = Owner::None; // the first finger turns into the pinch
         }
+        if s.owner == Owner::Find && !s.owner_is_pen {
+            // The first finger was on a row of the Find sheet (a keyboard key typed at its down): it is let go.
+            s.owner = Owner::None;
+            let r = with_find(a, |f, a, _nb, _nav| findsheet_cancel_press(f, a));
+            app_invalidate(a, r, RefreshMode::Fast);
+        }
+        let s = ed(a);
         if (s.owner == Owner::Bar || s.owner == Owner::Outside) && !s.owner_is_pen {
             // The first finger was on the bar, or outside it waiting to stay: a button it pressed is let go
             // (a Fast refresh) and nothing is decided.
@@ -4338,7 +4456,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
         // legacy one's, with the zoom setting).
         let classified = ev.value == 1;
         // (The bar does not pan or zoom the page behind it.)
-        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || (!classified && !pinch_zoom) {
+        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || (!classified && !pinch_zoom) {
             return;
         }
         s.pinching = true;
@@ -4443,7 +4561,12 @@ pub fn editor_leave(a: &mut App) {
     if ed(a).owner == Owner::Erase {
         erase_end(a);
     }
-    bar_drop(ed(a)); // (it goes with the screen: Pen feel or calibration comes up whole)
+    // (They go with the screen: Pen feel or calibration comes up whole. A turn or the redraw after waking lays
+    // this screen out again as it is, and they stay.)
+    if !a.relayout {
+        bar_drop(ed(a));
+        find_drop(ed(a));
+    }
     save_page(a);
     write_thumb_if_needed(a);
     // Out of the editor no page pans or zooms, and no gesture is its: only the master switch is told.
@@ -4465,6 +4588,7 @@ pub fn editor_suspend(a: &mut App) -> bool {
     }
     let s = ed(a);
     bar_drop(s); // (the Kindle sleeps: it is not there on waking)
+    find_drop(s);
     s.owner = Owner::None;
     s.has_pressed = false;
     s.dragging = false;
@@ -4521,7 +4645,7 @@ pub fn editor_event(a: &mut App, ev: &InEvent) {
 // front refuses or swaps for its own (editor_shortcut_at).
 fn editor_gesture(a: &mut App, ev: &InEvent) {
     let s = ed_ref(a);
-    if !s.open || s.pv.kb.open {
+    if !s.open || s.pv.kb.open || s.find.open {
         return;
     }
     let Some(key) = gesturemap_key_of_id(ev.value) else { return };
@@ -4617,6 +4741,24 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             return; // one gesture at a time
         }
         s.owner_is_pen = pen;
+        // The Find sheet: its rows and keyboard take the contact, a contact outside it is swallowed (a finger
+        // decides at the lift, a pen at its down) and closes it.
+        if s.find.open {
+            if rect_contains(s.find.kb.area, ev.x as i32, ev.y as i32) || rect_contains(s.find.rect, ev.x as i32, ev.y as i32) {
+                s.owner = Owner::Find;
+                let mut d = RECT_EMPTY;
+                let r = with_find(a, |f, a, nb, nav| findsheet_pointer(f, a, nb, nav, 0, ev, &mut d));
+                find_result(a, r, d);
+            } else {
+                s.owner = Owner::Outside;
+                if pen {
+                    find_close(a);
+                } else {
+                    press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
+                }
+            }
+            return;
+        }
         // The Links bar takes every contact first: on it (its buttons, chips, grip and header), or outside it,
         // which stays or closes at the lift (a pen outside acts at once and its stroke is swallowed).
         if s.lb.open {
@@ -4737,6 +4879,14 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 link_follow(a, x0, y0);
             }
         }
+        Owner::Find => {
+            let mut d = RECT_EMPTY;
+            let r = with_find(a, |f, a, nb, nav| findsheet_pointer(f, a, nb, nav, ph, ev, &mut d));
+            if ph == 2 {
+                ed(a).owner = Owner::None;
+            }
+            find_result(a, r, d);
+        }
         Owner::Bar => {
             let mut d = RECT_EMPTY;
             let r = with_lb(a, |lb, a, _nb, _nav| linkbar_pointer(lb, a, ph, ev, &mut d));
@@ -4762,7 +4912,14 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             // In this order: a cancel (the touch became a gesture, or the pen came) does nothing; the corner's
             // tap is the clock's alone; a lift on the panel's Links button is the button again, which cancels;
             // any other tap outside stays or closes, and presses nothing.
-            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) || moved || !ed_ref(a).lb.open {
+            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) || moved {
+                return;
+            }
+            if ed_ref(a).find.open {
+                find_close(a); // (a tap outside the Find sheet closes it, and is swallowed)
+                return;
+            }
+            if !ed_ref(a).lb.open {
                 return;
             }
             let links_button = ed_ref(a).hits.h.iter().any(|h| h.id == P_LINKS && rect_contains(h.r, x0 as i32, y0 as i32));
@@ -4951,6 +5108,11 @@ pub fn editor_tick(a: &mut App, now: u32) {
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && now.wrapping_sub(s.link_down_at) >= LINK_HOLD_MS {
         link_hold(a);
     }
+    // Typing on the Find sheet pauses: its keyboard's grayscale refresh, the card of rows with it.
+    let s = ed(a);
+    if s.open && s.find.open {
+        with_find(a, |f, a, _nb, _nav| findsheet_tick(f, a, now));
+    }
     // The Links bar gets the pages it goes to ready while nothing is touching: a page or a band a tick.
     let drained = a.input_drained;
     let s = ed(a);
@@ -5127,6 +5289,16 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let live: Vec<u32> = s.back.iter().copied().filter(|p| ids.contains(p)).collect();
         let top = live.last().and_then(|p| ids.iter().position(|q| q == p)).map_or(0, |i| i as i32 + 1);
         csnprintf!(out, cap, "%d %d", live.len() as i32, top);
+    } else if key == "find" {
+        // The Find sheet: closed (0) or open (go: a page by its number or name).
+        csnprintf!(out, cap, "%s", if s.find.open { "go" } else { "0" });
+    } else if let Some(k) = key.strip_prefix("find.") {
+        if !findsheet_probe(&s.find, k, out, cap) {
+            return -1;
+        }
+    } else if (key == "keyboard" || key == "text") && s.find.open {
+        // Its keyboard's title and what the field holds (the Pages view's, otherwise).
+        csnprintf!(out, cap, "%s", if key == "keyboard" { s.find.kb.title.as_str() } else { s.find.kb.text.as_str() });
     } else if key == "bar" {
         // The Links bar: closed (0), open, or looking at another page (peek).
         csnprintf!(out, cap, "%s", if !s.lb.open { "0" } else if s.peek.active { "peek" } else { "open" });
@@ -5166,7 +5338,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if s.lb.open {
+        let m = if s.find.open {
+            "find"
+        } else if s.lb.open {
             "links"
         } else if s.pv.open {
             "pages"

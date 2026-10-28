@@ -391,6 +391,56 @@ pub fn i18n_copy(dst: &mut String, src: &str, cap: usize) -> usize {
     strlcpy_q(dst, src, cap)
 }
 
+// ---- matching names ----
+
+/// The next character of s folded for matching: lowercase, accents dropped (a, e, i, o, u with any accent, n
+/// tilde, c cedilla, ss for the sharp s...), a combining accent nothing; into out (up to 4 bytes, then a 0).
+/// Returns how many bytes of s it took. The folding the Index's sort uses (store.rs's fold_next), so a name
+/// found by typing is the name sorted there.
+pub fn i18n_fold_next(s: &[u8], out: &mut [u8; 5]) -> usize {
+    crate::store::fold_next(s, out)
+}
+
+/// A whole string folded (i18n_fold_next at every character).
+fn fold_all(s: &[u8]) -> Vec<u8> {
+    let mut v = Vec::with_capacity(s.len() + 4);
+    let mut at = 0;
+    let mut f = [0u8; 5];
+    while at < s.len() && s[at] != 0 {
+        let n = i18n_fold_next(&s[at..], &mut f).max(1);
+        v.extend(f.iter().take_while(|&&b| b != 0));
+        at += n;
+    }
+    v
+}
+
+/// How well a typed `query` finds `name`, accents and capitals ignored: 3 when the name begins with it, 2 when a
+/// word of the name does ("La reunion" for "reu"), 1 when it is somewhere inside, 0 when it is not (and for an
+/// empty query, which finds nothing). The Find sheet lists the names by this, best first.
+pub fn i18n_name_match(name: &str, query: &str) -> i32 {
+    let q = fold_all(query.trim().as_bytes());
+    if q.is_empty() {
+        return 0;
+    }
+    let n = fold_all(name.as_bytes());
+    if n.len() < q.len() {
+        return 0;
+    }
+    let mut best = 0;
+    for p in 0..=n.len() - q.len() {
+        if n[p..p + q.len()] != q[..] {
+            continue;
+        }
+        if p == 0 {
+            return 3;
+        }
+        // (a word starts after anything that is not a letter or a digit)
+        let prev = n[p - 1];
+        best = best.max(if prev < 0x80 && !prev.is_ascii_alphanumeric() { 2 } else { 1 });
+    }
+    best
+}
+
 // ---- choosing ----
 
 // i18n_find on bytes: the environment and the Kindle's locale file need not be UTF-8.
@@ -820,6 +870,33 @@ mod tests {
         for k in ["GRIMOIRE_LANG", "LC_ALL", "LC_MESSAGES", "LANG"] {
             std::env::remove_var(k);
         }
+    }
+
+    #[test]
+    fn names_are_matched_without_accents_or_capitals() {
+        assert_eq!(i18n_name_match("\u{c1}rbol", "arb"), 3);
+        assert_eq!(i18n_name_match("La reuni\u{f3}n", "reu"), 2);
+        assert_eq!(i18n_name_match("Arena", "ren"), 1);
+        assert_eq!(i18n_name_match("Arena", "x"), 0);
+        // capitals, accents and the sharp s on either side
+        assert_eq!(i18n_name_match("ARBOL", "\u{e1}rb"), 3);
+        assert_eq!(i18n_name_match("Stra\u{df}e", "strasse"), 3);
+        assert_eq!(i18n_name_match("Ma\u{f1}ana", "mana"), 3);
+        assert_eq!(i18n_name_match("Ma\u{f1}ana", "nan"), 1);
+        // a word after a space, a hyphen or a digit's end; inside a word is only a substring
+        assert_eq!(i18n_name_match("Plan de vuelo", "vue"), 2);
+        assert_eq!(i18n_name_match("auto-escuela", "esc"), 2);
+        assert_eq!(i18n_name_match("Estudio", "dio"), 1);
+        // an empty or blank query finds nothing; a query longer than the name too; spaces around it do not count
+        assert_eq!(i18n_name_match("Arena", ""), 0);
+        assert_eq!(i18n_name_match("Arena", "   "), 0);
+        assert_eq!(i18n_name_match("Ar", "arena"), 0);
+        assert_eq!(i18n_name_match("Arena", " are "), 3);
+        // the best place wins: a prefix over a later word
+        assert_eq!(i18n_name_match("ana y ana", "ana"), 3);
+        let mut out = [0u8; 5];
+        assert_eq!(i18n_fold_next("\u{c9}x".as_bytes(), &mut out), 2);
+        assert_eq!(&out[..2], b"e\0");
     }
 
     #[test]

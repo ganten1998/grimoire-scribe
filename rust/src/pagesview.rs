@@ -57,6 +57,9 @@ pub enum PvResult {
     PickIndex = 9, // PV_PICK_INDEX
     /// Remove link (a link the page had)
     Unlink = 10, // PV_UNLINK
+    /// Go to page...: the view closes and the Find sheet opens over the page (Rust only: the number pad it used
+    /// to open is kept for picking a link's page, where Find has no mode yet)
+    GoTo = 11,
 }
 
 /// (The C keeps pointers to the editor's notebook and Nav, nb and nav; here the editor passes them
@@ -67,8 +70,11 @@ pub struct PagesView {
     pub open: bool,
     /// the open page's index; the editor keeps it up to date
     pub current: i32,
-    /// Go to page...'s number pad
+    /// Go to page...'s number pad (while a link's page is picked; else the Find sheet is Go to page...)
     pub kb: Keyboard,
+    /// Go to page... opens the number pad as the C build's does, instead of leaving for the Find sheet: the app
+    /// never sets it; the test that holds the view to the C build's recorded behaviour does
+    pub jump_pad: bool,
     /// which screenful of tiles
     pub screen: i32,
     /// ticked, per page index (the C's sel and sel_cap)
@@ -670,6 +676,9 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             open_naming(v, nb, nav);
             redraw(v, a, nb, nav, RefreshMode::Ui);
         }
+        // Go to page... leaves for the Find sheet (page number or name) while the view is for pages; a link's
+        // page being picked keeps the number pad, which is how it picks by number.
+        PG_JUMP if !v.picking && !v.jump_pad => return PvResult::GoTo,
         PG_JUMP => {
             v.naming = false;
             keyboard_open(&mut v.kb, tr("Go to page"), b"");

@@ -1637,6 +1637,34 @@ msgstr "Esta página es de solo lectura."
 msgid "Links could not be read."
 msgstr "No se pudieron leer los enlaces."
 
+#. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
+#. go to a page by typing its number or a name of the Index.
+#: rust/src/findsheet.rs
+msgid "Page number or name"
+msgstr "Número o nombre de página"
+
+#. TRANSLATORS: a row of the Find sheet for a page number typed, which a tap goes to (about 1300 px at 44 px):
+#. %d is the number.
+#: rust/src/findsheet.rs
+#, c-format
+msgid "Go to page %d"
+msgstr "Ir a la página %d"
+
+#. TRANSLATORS: a line of the Find sheet for a page number the notebook does not have (not a button, about
+#. 1300 px at 44 px): the first %d is the number typed, the second how many pages it has.
+#: rust/src/findsheet.rs
+#, c-format
+msgid "There is no page %d (%d page)."
+msgid_plural "There is no page %d (%d pages)."
+msgstr[0] "No hay página %d (%d página)."
+msgstr[1] "No hay página %d (%d páginas)."
+
+#. TRANSLATORS: a line of the Find sheet when no page name has what was typed (not a button, about
+#. 1300 px at 44 px).
+#: rust/src/findsheet.rs
+msgid "No page names match."
+msgstr "Ningún nombre coincide."
+
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: src/library.c
 msgctxt "buttons"

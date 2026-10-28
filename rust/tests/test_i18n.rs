@@ -832,6 +832,13 @@ fn the_links_bar_strings_fit() {
             // the peek header (a long name is cut by design; "Page 2000" is not)
             let showing = cformat!(tr("Showing %s. Tap the page to stay."), &cformat!(tr("Page %d"), 2000));
             check!(at("showing", font_measure(FontFace::Regular, ts, &showing), 1100));
+            // the Find sheet: its keyboard's title in the text line, its rows (one line at 44 px in the card: 1820 - 2 x 46 -
+            // the right column's 164), the line for a page that is not there with the biggest numbers
+            check!(at("find title", font_measure(FontFace::Bold, ts, tr("Page number or name")), 700));
+            check!(at("go to n", font_measure(FontFace::Regular, ts, &cformat!(tr("Go to page %d"), 2000)), 1500));
+            check!(at("no page", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 2000), 99999, 2000)), 1700));
+            check!(at("no page 1", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 1), 2, 1)), 1700));
+            check!(at("no names", font_measure(FontFace::Regular, ts, tr("No page names match.")), 1700));
             // the tool words, caps at 34 px under their icons, in a 430 px button (sideways 585) inside its edge
             for w in [tr("Go to"), tr("New link"), tr("Areas"), tr("Index")] {
                 check!(at(w, font_measure(FontFace::Caps, small, w), 390));

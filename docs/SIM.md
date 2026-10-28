@@ -231,6 +231,9 @@ shows what the app holds.
 | `editor.back` | the back list (Back to the page before): `DEPTH TOP`, how many pages it holds and the page number of the newest (`2 3`), `0 0` when it is empty or no notebook is open. Pages deleted since are not counted |
 | `editor.scrolls` | `V H`: whether the page scrolls on the vertical and the horizontal axis now (`1 0`), what touchgest.rs reads to tell a two-finger pan from a swipe: `0 0` at the whole page, with a surface in front that does not pan (the Pages view, a sheet), or with no notebook open |
 | `editor.areas` | `0` while the eye (the link areas, `settings.link_areas`) is off, else how many dotted boxes it draws over the open page (one for every link whose ink is on it, up to 64) |
+| `editor.find` | the Find sheet (Go to page or name; the bar's Go to, the `go-to-page` action and the Pages view's Go to page... open it): `0` while it is closed, `go` while it is open |
+| `editor.find.rows` | how many rows its card shows now (five upright at most, three sideways), 0 with nothing typed or while it is closed |
+| `editor.find.N` | row N of the card as drawn, from 1: `Go to page 3`, a name (`Árbol`), `There is no page 9 (5 pages).` or `No page names match.` (the last two are lines, not buttons); empty past the last |
 | `editor.bar` | the Links bar: `0` while it is closed, `open` while it is up, `peek` while it shows another page above itself (an entry tapped, or "Back to ..."): the open page, its history and `notebook.last_page` stay the page the bar began on until that page is stayed on |
 | `editor.bar.entries` | how many entries the bar lists (one per place the open page's links go; two to one page are one entry, counted), 0 while it is closed |
 | `editor.bar.N` | entry N of the bar (from 1, in reading order, as the eye numbers the boxes): `p3` for page 3, `p3 x2` when two links go there, `index` for the Index, `missing` for a page that is gone; empty past the last |
@@ -243,7 +246,7 @@ shows what the app holds.
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
-| `editor.modal` | what is in front of the page: `none`, `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above), empty for none, after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
@@ -255,7 +258,7 @@ shows what the app holds.
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
-| `editor.keyboard`, `editor.text` | the Pages view's keyboard while it is up: its title (`Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page`), and the text it holds; both empty while it is closed |
+| `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) or the Find sheet's (`Page number or name`) |
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |

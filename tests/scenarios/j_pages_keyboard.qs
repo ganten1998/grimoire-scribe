@@ -7,10 +7,10 @@
 # and the key as one fast refresh from the text line down to the key, which on the Kindle waits in
 # the driver's queue behind the key before it, and to draw the whole keyboard again at every sample.
 # A settle due on the page when the Pages view opened (Name the page, N, right after a stroke) no
-# longer draws the view again under the keyboard and the panel over both. Name the page and Go to
-# page still do what they did, and a toast stays above the keys, as above the Library's (Go to
-# page's covered its 0 and del). (display.presents and keyboard.draws count from their last check:
-# a "not -1" check only starts the count.)
+# longer draws the view again under the keyboard and the panel over both. Name the page still does what it
+# did. Go to page... is the Find sheet now: a key there costs the same, with the card of rows it offers
+# refreshed between the text line and the key (the split keyboard host). (display.presents and keyboard.draws
+# count from their last check: a "not -1" check only starts the count.)
 # (past the two repaints just after the start, main.c, so the checks see only what the keys send)
 # rust-only
 wait 3600
@@ -98,33 +98,40 @@ expect editor.modal is none
 expect editor.keyboard is
 expect editor.page_name is as
 expect editor.index_rows is 1
-# Go to page's number pad: 1 costs the same; a page the notebook does not have keeps the pad up
+# Go to page... is the Find sheet now (a page number or a name): the view closes and Find opens over the page; a
+# key costs what it does on every keyboard (the text line, then the key, each its own fast refresh) and, when the
+# rows it offers change, the card of rows between the two; a number the notebook does not have is a line that is
+# not a button, and Done leaves the sheet as it is
 pentap panel pages
 wait 400
 expect editor.modal is pages
 tap 930 2395
-expect editor.keyboard is Go to page
+wait 300
+expect editor.modal is find
+expect editor.keyboard is Page number or name
 expect display.presents not -1
 expect keyboard.draws not -1
-touch down 930 2223
-expect display.presents is fast 50 1510 1760 120, fast 642 2148 576 150
+touch down 841 1725
+expect display.presents is fast 50 1510 1760 120, fast 20 1312 1820 156, fast 758 1650 167 150
 expect keyboard.draws is 1
-touch up 930 2223
-expect display.presents is fast 642 2148 576 150
+touch up 841 1725
+expect display.presents is fast 758 1650 167 150
 expect keyboard.draws is 1
-tap 930 2389
-expect editor.keyboard is Go to page
-expect toast is Enter a page number in this notebook.
-# The toast stays above the pad, as above the Library's keyboard (it used to cover 0 and del), so
-# del is still a refresh of its own
-expect toast.rect is 451 1350 958 110
+expect editor.find.1 is There is no page 5 (1 page).
+tap 1643 2365
+expect editor.keyboard is Page number or name
+expect editor.text is 5
 expect display.presents not -1
-touch down 1522 2223
-expect display.presents is fast 50 1510 1760 120, fast 1234 2148 576 150
-touch up 1522 2223
-tap 338 1725
+touch down 1679 2205
+expect display.presents is fast 50 1510 1760 120, fast 20 1312 1820 156, fast 1549 2130 261 150
+touch up 1679 2205
+expect editor.text is
+expect editor.find.rows is 0
+tap 133 1725
 expect editor.text is 1
-tap 930 2389
+expect editor.find.1 is Go to page 1
+tap 1643 2365
+wait 300
 expect editor.modal is none
 expect editor.page is 1
 expect editor.keyboard is
