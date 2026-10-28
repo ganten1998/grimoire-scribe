@@ -91,14 +91,16 @@ the ZIP, optional patches, KPM package and checksums, then updates the repositor
 Pull requests, pushes and manual workflow runs validate/build without publishing. Tag and VERSION
 must match, and GitHub prerelease status must match the version suffix.
 
-The first published release through this workflow, 2.0.0-beta.1, creates the preview feed: a beta
-or RC writes only that one. The stable feed appears with the first stable release, 2.0.0:
+Both feeds exist. A beta or RC writes only the preview feed, which holds 2.0.0-beta.3 as KPM
+2.0.1003 today; publishing 2.0.0-beta.5 advances it to 2.0.1005. The stable feed already holds
+Grimoire 1.2.0 as KPM 1.2.9999, and publishing beta.5 leaves it unchanged:
 
 - Preview: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/preview/manifest.json`
 - Stable: `https://raw.githubusercontent.com/ganten1998/grimoire-scribe/kpm/stable/manifest.json`
 
-**The preview feed starts with 2.0.0-beta.1, the first published release; the stable feed starts
-with 2.0.0.** Add only the channel you want (see Updating for how). A stable release updates stable and also goes into preview, so preview
+**Preview is at 2.0.1003 and beta.5 moves it to 2.0.1005; stable is at 1.2.9999 and a beta does not
+touch it.** Add only the channel you want (see Updating for how). A future stable release updates
+stable and also goes into preview, unless preview already holds something newer, so preview
 subscribers are offered it too. A beta or RC updates preview only. Neither channel ever moves to
 an older version: a stable release older than the preview's current beta leaves preview as it is.
 Publication refuses to overwrite release assets with different bytes, refuses to replace a version
