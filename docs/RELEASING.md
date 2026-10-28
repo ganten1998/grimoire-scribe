@@ -41,6 +41,7 @@ them.
    rustup's `stable`, which moves: pass the pinned toolchain to every make of the release.
 
    ```sh
+   rustup toolchain install 1.97.1 --profile minimal --target armv7-unknown-linux-musleabihf
    export RUST_BIN=$HOME/.rustup/toolchains/1.97.1-aarch64-apple-darwin/bin
    $RUST_BIN/rustc --version      # rustc 1.97.1 (...)
    zig version                    # 0.16.0
