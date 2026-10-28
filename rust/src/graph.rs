@@ -131,6 +131,16 @@ const SALT_APART: u32 = 5;
 const SALT_SPOT: u32 = 6;
 const SALT_TURN: u32 = 7;
 
+// ---- graph.ini (plan.data_and_formats) ----
+
+/// graph.ini is read up to this size; a bigger file is not one this version wrote.
+pub const GRAPH_FILE_MAX: usize = 256 * 1024;
+/// Lines this version does not read are carried up to this length each, and this much in all.
+pub const GRAPH_LINE_MAX: usize = 255;
+pub const GRAPH_UNKNOWN_MAX: usize = 16 * 1024;
+
+const INI_HEADER: &[u8] = b"# Grimoire: the Index map's layout (a cache: deleting it loses nothing)\n";
+
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GraphTier {
@@ -153,6 +163,29 @@ pub enum GraphLaid {
     Seed = 1,
     /// graph_layout, or graph_place_new over kept positions
     Done = 2,
+}
+
+/// What graph_apply_ini found the kept layout good for.
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GraphPlan {
+    /// every kept page has its position: graph_place_new only adds the open page if it needs one
+    #[default]
+    Ready = 0,
+    /// a few pages are new: graph_place_new places them beside their neighbours
+    Incremental = 1,
+    /// nothing kept, or more than GRAPH_RELAYOUT_PCT new: lay the map out again (graph_layout,
+    /// or graph_seed and a bgjob child when graph_layout_in_process says no)
+    Full = 2,
+}
+
+/// The map's mode, remembered in graph.ini: the whole notebook, or the rings around one page.
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GraphMode {
+    #[default]
+    All = 0,
+    Around = 1,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -240,6 +273,65 @@ pub struct GraphRing {
     pub parent: i32,
     pub x: f32,
     pub y: f32,
+}
+
+/// A kept position (pos.<pid>=<x>,<y>).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphPos {
+    pub pid: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// graph.ini, the map's cache in the notebook's folder:
+///
+/// ```text
+/// # Grimoire: the Index map's layout (a cache: deleting it loses nothing)
+/// gen=5f3a9c21
+/// mode=all
+/// unlinked=show
+/// pos.12=-310,442
+/// pin.12=1
+/// ```
+///
+/// pin lines are reserved for dragging dots (v2): read and written back, never used. Lines this
+/// version does not read are carried. A file that does not read is refused: it is ignored, and
+/// `writable` stays false so that session never overwrites it (graph_ini_read_path says what does
+/// not read). GraphIni::default() is a fresh cache: mode all, unlinked shown, writable.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphIni {
+    /// graph_gen of the model the positions belong to
+    pub gen: u32,
+    pub has_gen: bool,
+    pub mode: GraphMode,
+    /// unlinked=show|hide: the satellites and the tray
+    pub show_unlinked: bool,
+    /// sorted by page id, one each (the last line for a page wins)
+    pub pos: Vec<GraphPos>,
+    /// sorted, one each
+    pub pins: Vec<u32>,
+    /// the lines this version does not read, each with its newline, as read
+    pub unknown: Vec<u8>,
+    /// false after a file that does not read: never overwrite it
+    pub writable: bool,
+    /// graph.ini is there (or was refused)
+    pub file: bool,
+}
+
+impl Default for GraphIni {
+    fn default() -> Self {
+        GraphIni {
+            gen: 0,
+            has_gen: false,
+            mode: GraphMode::All,
+            show_unlinked: true,
+            pos: Vec::new(),
+            pins: Vec::new(),
+            unknown: Vec::new(),
+            writable: true,
+            file: false,
+        }
+    }
 }
 
 // ---- the page-id hash: jitter and tie-breaking ----
@@ -1576,6 +1668,71 @@ pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
     fresh.len() as i32
 }
 
+/// Puts graph.ini's kept positions on the force nodes it keeps (graph_persisted), and says what
+/// is left to do. The gen is not needed for that: the positions say which pages are new. A gen
+/// that differs while no page is new means links changed between pages that kept their places,
+/// and those stay put (nothing moves between visits); graph_ini_store then writes the new gen.
+pub fn graph_apply_ini(g: &mut GraphModel, ini: &GraphIni) -> GraphPlan {
+    let mut kept = 0;
+    let mut fresh = 0;
+    for k in 0..g.force.len() {
+        let v = g.force[k] as usize;
+        if !graph_persisted(&g.nodes[v]) {
+            continue;
+        }
+        kept += 1;
+        let pid = g.nodes[v].pid;
+        match ini.pos.binary_search_by_key(&pid, |p| p.pid) {
+            Ok(at) => {
+                g.nodes[v].x = ini.pos[at].x as f32;
+                g.nodes[v].y = ini.pos[at].y as f32;
+                g.nodes[v].placed = true;
+            }
+            Err(_) => {
+                g.nodes[v].placed = false;
+                fresh += 1;
+            }
+        }
+    }
+    if fresh == 0 {
+        GraphPlan::Ready
+    } else if graph_relayout_needed(fresh, kept) {
+        GraphPlan::Full
+    } else {
+        GraphPlan::Incremental
+    }
+}
+
+/// The map's positions and gen into ini, to write: the placed nodes graph_persisted keeps, in
+/// whole units. Mode, unlinked, pins and unknown lines stay as they are. True when anything
+/// changed, so the caller writes only then.
+pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
+    let gen = graph_gen(g);
+    let mut pos: Vec<GraphPos> = Vec::with_capacity(g.force.len());
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if graph_persisted(nd) && nd.placed {
+            pos.push(GraphPos { pid: nd.pid, x: snap1(nd.x) as i32, y: snap1(nd.y) as i32 });
+        }
+    }
+    let changed = !ini.has_gen || ini.gen != gen || ini.pos != pos;
+    ini.gen = gen;
+    ini.has_gen = true;
+    ini.pos = pos;
+    changed
+}
+
+/// The work of a bgjob child for a big or Tidy-up layout, on a model the child built itself
+/// (store_load_info, nav_load, graph_build; the open page does not matter, as it is not kept) and
+/// the graph.ini it read (for its mode, unlinked choice, pins and carried lines, and to honour a
+/// refusal): the full layout, unpumped, then graph.ini written whole and atomically at path. 0, or
+/// -1 when the write failed or the file was refused.
+pub fn graph_layout_job(g: &mut GraphModel, ini: &mut GraphIni, path: &str) -> i32 {
+    graph_layout(g, &mut || {});
+    graph_ini_store(ini, g);
+    graph_ini_write_path(path, ini)
+}
+
 // ---- Around: the rings of one page (Navi's positions_radial) ----
 
 // The radius of a ring of nodes as big as `big` at most, beyond a ring (or the centre) at `inner`
@@ -1664,4 +1821,288 @@ pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<Graph
         });
     }
     out.len() as i32
+}
+
+// ---- graph.ini: reading and writing ----
+
+/// The path of notebook id's graph.ini (root/notebooks/<id>/graph.ini): 0, or -1 for an id that is
+/// no notebook's.
+pub fn graph_ini_path(id: &str, out: &mut String) -> i32 {
+    let mut dir = String::new();
+    if store_notebook_dir(id, &mut dir, 600) != 0 {
+        return -1;
+    }
+    let len = csnprintf!(out, 700, "%s/graph.ini", &dir);
+    if len < 0 || len as usize >= 700 {
+        return -1;
+    }
+    0
+}
+
+// The file's bytes: Ok(None) when there is no file; Err when it is there and does not read (it
+// cannot be opened or read, it is a symlink or not a regular file, it is over GRAPH_FILE_MAX, or it
+// holds a NUL), as nav.rs reads its sidecars.
+fn read_text(path: &str) -> Result<Option<Vec<u8>>, ()> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let f = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW).open(path);
+    let f = match f {
+        Ok(f) => f,
+        Err(e) => {
+            // Only a file that is not there is a missing cache (a dangling symlink is still a link).
+            let absent = e.kind() == std::io::ErrorKind::NotFound
+                && matches!(std::fs::symlink_metadata(path), Err(m) if m.kind() == std::io::ErrorKind::NotFound);
+            return if absent { Ok(None) } else { Err(()) };
+        }
+    };
+    let meta = f.metadata().map_err(|_| ())?;
+    if !meta.file_type().is_file() || meta.len() > GRAPH_FILE_MAX as u64 {
+        return Err(());
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    if buf.try_reserve_exact(meta.len() as usize + 1).is_err() {
+        return Err(());
+    }
+    f.take(GRAPH_FILE_MAX as u64 + 1).read_to_end(&mut buf).map_err(|_| ())?;
+    if buf.len() > GRAPH_FILE_MAX || buf.contains(&0) {
+        return Err(()); // never rewrite a file with a hidden binary tail
+    }
+    Ok(Some(buf))
+}
+
+// A decimal u32 at the start of s (at least one digit): its value and its length.
+fn dec_u32(s: &[u8]) -> Option<(u32, usize)> {
+    let mut v: u64 = 0;
+    let mut k = 0;
+    while k < s.len() && s[k].is_ascii_digit() {
+        v = v * 10 + (s[k] - b'0') as u64;
+        if v > u32::MAX as u64 {
+            return None;
+        }
+        k += 1;
+    }
+    if k == 0 {
+        None
+    } else {
+        Some((v as u32, k))
+    }
+}
+
+// A coordinate at the start of s: an optional '-', then digits, within +-GRAPH_POS_MAX.
+fn dec_coord(s: &[u8]) -> Option<(i32, usize)> {
+    let neg = s.first() == Some(&b'-');
+    let at = neg as usize;
+    let mut v: i64 = 0;
+    let mut k = at;
+    while k < s.len() && s[k].is_ascii_digit() {
+        v = v * 10 + (s[k] - b'0') as i64;
+        if v > GRAPH_POS_MAX as i64 {
+            return None;
+        }
+        k += 1;
+    }
+    if k == at {
+        return None;
+    }
+    Some((if neg { -v } else { v } as i32, k))
+}
+
+// gen=<exactly 8 hex digits, either case>
+fn hex8(v: &[u8]) -> Option<u32> {
+    if v.len() != 8 {
+        return None;
+    }
+    let mut h: u32 = 0;
+    for &c in v {
+        let d = match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => return None,
+        };
+        h = h << 4 | d as u32;
+    }
+    Some(h)
+}
+
+// pos.<pid>=<x>,<y>, nothing after
+fn pos_parse(line: &[u8]) -> Option<GraphPos> {
+    let rest = line.strip_prefix(b"pos.")?;
+    let (pid, used) = dec_u32(rest)?;
+    let rest = rest[used..].strip_prefix(b"=")?;
+    let (x, used) = dec_coord(rest)?;
+    let rest = rest[used..].strip_prefix(b",")?;
+    let (y, used) = dec_coord(rest)?;
+    if pid == 0 || used != rest.len() {
+        return None;
+    }
+    Some(GraphPos { pid, x, y })
+}
+
+// pin.<pid>=1
+fn pin_parse(line: &[u8]) -> Option<u32> {
+    let rest = line.strip_prefix(b"pin.")?;
+    let (pid, used) = dec_u32(rest)?;
+    (pid != 0 && &rest[used..] == b"=1").then_some(pid)
+}
+
+// Keeps a line this version does not read, to write back: -1 past the limits (the file is then
+// refused, as nav.ini is past its own).
+fn carry(buf: &mut Vec<u8>, line: &[u8]) -> i32 {
+    if line.len() > GRAPH_LINE_MAX || buf.len() + line.len() + 1 > GRAPH_UNKNOWN_MAX {
+        return -1;
+    }
+    buf.extend_from_slice(line);
+    buf.push(b'\n');
+    0
+}
+
+fn ini_line(ini: &mut GraphIni, line: &[u8], pos: &mut Vec<GraphPos>, pins: &mut Vec<u32>) -> i32 {
+    if line.is_empty() || line[0] == b'#' {
+        return 0; // (the header is written afresh; comments are not kept)
+    }
+    if let Some(h) = line.strip_prefix(b"gen=").and_then(hex8) {
+        ini.gen = h;
+        ini.has_gen = true;
+        return 0;
+    }
+    match line {
+        b"mode=all" => ini.mode = GraphMode::All,
+        b"mode=around" => ini.mode = GraphMode::Around,
+        b"unlinked=show" => ini.show_unlinked = true,
+        b"unlinked=hide" => ini.show_unlinked = false,
+        _ => {
+            if let Some(p) = pos_parse(line) {
+                pos.push(p);
+            } else if let Some(pid) = pin_parse(line) {
+                pins.push(pid);
+            } else {
+                return carry(&mut ini.unknown, line);
+            }
+        }
+    }
+    0
+}
+
+fn ini_parse(text: &[u8], ini: &mut GraphIni) -> i32 {
+    let mut pos: Vec<GraphPos> = Vec::new();
+    let mut pins: Vec<u32> = Vec::new();
+    let mut at = 0;
+    while at < text.len() {
+        let end = text[at..].iter().position(|&c| c == b'\n').map(|k| at + k);
+        let mut line = &text[at..end.unwrap_or(text.len())];
+        if line.last() == Some(&b'\r') {
+            line = &line[..line.len() - 1];
+        }
+        if ini_line(ini, line, &mut pos, &mut pins) != 0 {
+            return -1;
+        }
+        match end {
+            Some(e) => at = e + 1,
+            None => break,
+        }
+    }
+    // The last line for a page wins: a stable sort keeps the lines' order among equals.
+    pos.sort_by_key(|p| p.pid);
+    let mut one: Vec<GraphPos> = Vec::with_capacity(pos.len());
+    for p in pos {
+        match one.last_mut() {
+            Some(l) if l.pid == p.pid => *l = p,
+            _ => one.push(p),
+        }
+    }
+    pins.sort_unstable();
+    pins.dedup();
+    // More pages than a notebook can have: not a layout this version wrote.
+    if one.len() > STORE_MAX_PAGES || pins.len() > STORE_MAX_PAGES {
+        return -1;
+    }
+    ini.pos = one;
+    ini.pins = pins;
+    0
+}
+
+fn refuse(ini: &mut GraphIni) -> i32 {
+    *ini = GraphIni { writable: false, file: true, ..GraphIni::default() };
+    qlog!("index map: graph.ini could not be read; left unchanged");
+    -1
+}
+
+/// Reads graph.ini at path into ini. A missing file is a fresh cache: the defaults, writable, 0.
+/// A file that does not read is refused: ini gets the defaults with writable false (so this
+/// session never overwrites it), -1. It does not read when it cannot be opened or read, is a
+/// symlink or not a regular file, is over GRAPH_FILE_MAX or holds a NUL, when a line this version
+/// does not read is over GRAPH_LINE_MAX or the carried lines would pass GRAPH_UNKNOWN_MAX, or when
+/// it keeps more than STORE_MAX_PAGES positions or pins. A line that does not parse (a pos with
+/// letters, mode=local) is not damage: it is carried as an unknown line, a newer version's perhaps.
+/// The last line for a key wins. Lines may end in CRLF.
+pub fn graph_ini_read_path(path: &str, ini: &mut GraphIni) -> i32 {
+    match read_text(path) {
+        Ok(None) => {
+            *ini = GraphIni::default();
+            0
+        }
+        Ok(Some(text)) => {
+            let mut fresh = GraphIni { file: true, ..GraphIni::default() };
+            if ini_parse(&text, &mut fresh) != 0 {
+                return refuse(ini);
+            }
+            *ini = fresh;
+            0
+        }
+        Err(()) => refuse(ini),
+    }
+}
+
+// graph.ini's bytes: the header, gen (once there is one), mode, unlinked, the positions by page
+// id, the pins, then the carried lines as read. None past GRAPH_FILE_MAX.
+fn ini_text(ini: &GraphIni) -> Option<Vec<u8>> {
+    let mut t: Vec<u8> = Vec::new();
+    t.extend_from_slice(INI_HEADER);
+    if ini.has_gen {
+        t.extend_from_slice(cformat!("gen=%08x\n", ini.gen).as_bytes());
+    }
+    t.extend_from_slice(if ini.mode == GraphMode::Around { b"mode=around\n" } else { b"mode=all\n" });
+    t.extend_from_slice(if ini.show_unlinked { b"unlinked=show\n" } else { b"unlinked=hide\n" });
+    for p in &ini.pos {
+        t.extend_from_slice(cformat!("pos.%u=%d,%d\n", p.pid, p.x, p.y).as_bytes());
+    }
+    for &pid in &ini.pins {
+        t.extend_from_slice(cformat!("pin.%u=1\n", pid).as_bytes());
+    }
+    t.extend_from_slice(&ini.unknown);
+    (t.len() <= GRAPH_FILE_MAX).then_some(t)
+}
+
+/// Writes ini to path, whole and atomically (write_file_atomic). -1, writing nothing, when ini is
+/// not writable (its file was refused this session) or would pass GRAPH_FILE_MAX; -1 when the
+/// write fails.
+pub fn graph_ini_write_path(path: &str, ini: &mut GraphIni) -> i32 {
+    if !ini.writable {
+        return -1;
+    }
+    let Some(text) = ini_text(ini) else { return -1 };
+    let rc = write_file_atomic(path, &text);
+    if rc == 0 {
+        ini.file = true;
+    }
+    rc
+}
+
+/// graph_ini_read_path on notebook id's graph.ini (an id that is no notebook's is refused).
+pub fn graph_ini_read(id: &str, ini: &mut GraphIni) -> i32 {
+    let mut path = String::new();
+    if graph_ini_path(id, &mut path) != 0 {
+        return refuse(ini);
+    }
+    graph_ini_read_path(&path, ini)
+}
+
+/// graph_ini_write_path on notebook id's graph.ini.
+pub fn graph_ini_write(id: &str, ini: &mut GraphIni) -> i32 {
+    let mut path = String::new();
+    if graph_ini_path(id, &mut path) != 0 {
+        return -1;
+    }
+    graph_ini_write_path(&path, ini)
 }
