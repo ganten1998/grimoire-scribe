@@ -310,7 +310,8 @@ pub struct GraphIni {
     pub pos: Vec<GraphPos>,
     /// sorted, one each
     pub pins: Vec<u32>,
-    /// the lines this version does not read, each with its newline, as read
+    /// the lines this version does not read, as read, each ended by a newline (a carriage return
+    /// before it dropped)
     pub unknown: Vec<u8>,
     /// false after a file that does not read: never overwrite it
     pub writable: bool,
@@ -1959,7 +1960,7 @@ fn carry(buf: &mut Vec<u8>, line: &[u8]) -> i32 {
 
 fn ini_line(ini: &mut GraphIni, line: &[u8], pos: &mut Vec<GraphPos>, pins: &mut Vec<u32>) -> i32 {
     if line.is_empty() || line[0] == b'#' {
-        return 0; // (the header is written afresh; comments are not kept)
+        return 0; // (the header is written afresh; comments are not kept, as in nav.ini)
     }
     if let Some(h) = line.strip_prefix(b"gen=").and_then(hex8) {
         ini.gen = h;
@@ -2034,8 +2035,11 @@ fn refuse(ini: &mut GraphIni) -> i32 {
 /// symlink or not a regular file, is over GRAPH_FILE_MAX or holds a NUL, when a line this version
 /// does not read is over GRAPH_LINE_MAX or the carried lines would pass GRAPH_UNKNOWN_MAX, or when
 /// it keeps more than STORE_MAX_PAGES positions or pins. A line that does not parse (a pos with
-/// letters, mode=local) is not damage: it is carried as an unknown line, a newer version's perhaps.
-/// The last line for a key wins. Lines may end in CRLF.
+/// letters, mode=local) is not damage: it is carried as an unknown line, a newer version's perhaps
+/// (graph_ini_write_path does not write back one whose key it writes itself). The last line for a
+/// key wins. As nav.ini and links.ini are read: a line may end in CRLF, and is kept without its
+/// line end (graph_ini_write_path ends every line with a newline); comment lines and empty ones
+/// are not kept (the header is written afresh).
 pub fn graph_ini_read_path(path: &str, ini: &mut GraphIni) -> i32 {
     match read_text(path) {
         Ok(None) => {
@@ -2054,9 +2058,59 @@ pub fn graph_ini_read_path(path: &str, ini: &mut GraphIni) -> i32 {
     }
 }
 
-// graph.ini's bytes: the header, gen (once there is one), mode, unlinked, the positions by page
-// id, the pins, then the carried lines as read. None past GRAPH_FILE_MAX.
-fn ini_text(ini: &GraphIni) -> Option<Vec<u8>> {
+// Whether a carried line's key is one this version writes itself: gen, mode, unlinked, and pos and
+// pin for the pages it writes them for. A carried copy after this version's line would win for a
+// reader that takes the last line (mode=local after mode=around, an old pos.5 after the new one),
+// so it is not written back.
+fn shadowed(line: &[u8], ini: &GraphIni) -> bool {
+    let key = &line[..line.iter().position(|&c| c == b'=').unwrap_or(line.len())];
+    if key == b"gen" || key == b"mode" || key == b"unlinked" {
+        return true;
+    }
+    let pid_of = |prefix: &[u8]| -> Option<u32> {
+        let rest = key.strip_prefix(prefix)?;
+        let (pid, used) = dec_u32(rest)?;
+        (used == rest.len()).then_some(pid)
+    };
+    if let Some(pid) = pid_of(b"pos.") {
+        return ini.pos.iter().any(|p| p.pid == pid);
+    }
+    if let Some(pid) = pid_of(b"pin.") {
+        return ini.pins.contains(&pid);
+    }
+    false
+}
+
+// The carried lines to write back: ini.unknown without the shadowed ones. None when they are what
+// graph_ini_read_path would refuse, so a write never makes a file this version cannot read again: a
+// line over GRAPH_LINE_MAX (its newline and one carriage return before it aside), more than
+// GRAPH_UNKNOWN_MAX in all, a NUL, or no newline at the end.
+fn carried(ini: &GraphIni) -> Option<Vec<u8>> {
+    let u = &ini.unknown;
+    if u.is_empty() {
+        return Some(Vec::new());
+    }
+    if u.last() != Some(&b'\n') || u.contains(&0) {
+        return None;
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(u.len());
+    for line in u[..u.len() - 1].split(|&c| c == b'\n') {
+        let content = line.strip_suffix(b"\r").unwrap_or(line);
+        if content.len() > GRAPH_LINE_MAX {
+            return None;
+        }
+        if !shadowed(content, ini) {
+            out.extend_from_slice(line);
+            out.push(b'\n');
+        }
+    }
+    (out.len() <= GRAPH_UNKNOWN_MAX).then_some(out)
+}
+
+// graph.ini's bytes: the header, gen (once there is one), mode, unlinked, the positions in the
+// order given (graph_ini_store's is page-id order), the pins, then the carried lines. None past
+// GRAPH_FILE_MAX.
+fn ini_text(ini: &GraphIni, carry: &[u8]) -> Option<Vec<u8>> {
     let mut t: Vec<u8> = Vec::new();
     t.extend_from_slice(INI_HEADER);
     if ini.has_gen {
@@ -2070,21 +2124,27 @@ fn ini_text(ini: &GraphIni) -> Option<Vec<u8>> {
     for &pid in &ini.pins {
         t.extend_from_slice(cformat!("pin.%u=1\n", pid).as_bytes());
     }
-    t.extend_from_slice(&ini.unknown);
+    t.extend_from_slice(carry);
     (t.len() <= GRAPH_FILE_MAX).then_some(t)
 }
 
-/// Writes ini to path, whole and atomically (write_file_atomic). -1, writing nothing, when ini is
-/// not writable (its file was refused this session) or would pass GRAPH_FILE_MAX; -1 when the
-/// write fails.
+/// Writes ini to path, whole and atomically (write_file_atomic). The carried lines go back as they
+/// were read, but those whose key this version writes (gen, mode, unlinked, and pos and pin for the
+/// pages it writes): its own line is the one that holds. After a write, ini.unknown is what was
+/// written. -1, writing nothing, when ini is not writable (its file was refused this session), when
+/// its carried lines are what a read would refuse (a line over GRAPH_LINE_MAX, more than
+/// GRAPH_UNKNOWN_MAX, a NUL, no newline at the end) or the file would pass GRAPH_FILE_MAX; -1 when
+/// the write fails.
 pub fn graph_ini_write_path(path: &str, ini: &mut GraphIni) -> i32 {
     if !ini.writable {
         return -1;
     }
-    let Some(text) = ini_text(ini) else { return -1 };
+    let Some(carry) = carried(ini) else { return -1 };
+    let Some(text) = ini_text(ini, &carry) else { return -1 };
     let rc = write_file_atomic(path, &text);
     if rc == 0 {
         ini.file = true;
+        ini.unknown = carry;
     }
     rc
 }

@@ -617,13 +617,17 @@ fn ini_round_trip() {
     ini.show_unlinked = false;
     ini.pos = vec![GraphPos { pid: 7, x: -310, y: 442 }, GraphPos { pid: 12, x: 0, y: -1 }, GraphPos { pid: 4000000000, x: GRAPH_POS_MAX, y: -GRAPH_POS_MAX }];
     ini.pins = vec![7, 9];
-    ini.unknown = b"future.key=1\npos.12=1,2,3\nmode=local\n".to_vec();
+    // carried lines: kept byte for byte, but those whose key this version writes (mode, gen,
+    // unlinked, pos and pin of the pages it writes): its own line holds, and a reader taking the
+    // last line must not find the stale one after it
+    ini.unknown = b"future.key=1\npos.12=1,2,3\npos.99=1,2,3\nmode=local\ngen=xyz\nunlinked\npin.7=yes\npin.8=2\nk=a=b\n".to_vec();
     check!(graph_ini_write_path(&path, &mut ini) == 0 && ini.file);
     let text = read_bytes(&path);
     let want = b"# Grimoire: the Index map's layout (a cache: deleting it loses nothing)\n\
 gen=5f3a9c21\nmode=around\nunlinked=hide\npos.7=-310,442\npos.12=0,-1\npos.4000000000=1000000,-1000000\n\
-pin.7=1\npin.9=1\nfuture.key=1\npos.12=1,2,3\nmode=local\n";
+pin.7=1\npin.9=1\nfuture.key=1\npos.99=1,2,3\npin.8=2\nk=a=b\n";
     check!(text == want.to_vec());
+    check!(ini.unknown == b"future.key=1\npos.99=1,2,3\npin.8=2\nk=a=b\n".to_vec());
     check!(!std::path::Path::new(&format!("{path}.tmp")).exists());
     let mut back = GraphIni::default();
     check!(graph_ini_read_path(&path, &mut back) == 0);
@@ -640,6 +644,33 @@ pin.3=1\r\npin.3=1\r\npin.4=2\r\npos.0=1,1\r\npos.6=1\r\npos.7=01,-0\r\npos.8=10
     check!(back.pins == vec![3]);
     check!(back.unknown == b"pin.4=2\npos.0=1,1\npos.6=1\npos.8=1000001,0\ngen=xyz\nlast\n".to_vec());
     check!(back.writable && back.file);
+    // written back: LF line ends (as nav.ini is), no comment, the stale gen=xyz left out
+    check!(graph_ini_write_path(&path, &mut back) == 0);
+    let want2 = b"# Grimoire: the Index map's layout (a cache: deleting it loses nothing)\n\
+gen=0000abcd\nmode=all\nunlinked=hide\npos.3=-4,5\npos.5=7,8\npos.7=1,0\npin.3=1\n\
+pin.4=2\npos.0=1,1\npos.6=1\npos.8=1000001,0\nlast\n";
+    check!(read_bytes(&path) == want2.to_vec());
+    let mut again = GraphIni::default();
+    check!(graph_ini_read_path(&path, &mut again) == 0 && again == back);
+    // carried lines a read would refuse are never written: the file keeps its bytes
+    let long = [vec![b'x'; GRAPH_LINE_MAX + 1], b"\n".to_vec()].concat();
+    for bad in [long, b"no.newline=1".to_vec(), b"nul=\0\n".to_vec(), vec![b'y'; GRAPH_UNKNOWN_MAX + 1]] {
+        let mut w = back.clone();
+        w.unknown = bad;
+        check!(graph_ini_write_path(&path, &mut w) == -1 && read_bytes(&path) == want2.to_vec());
+    }
+    let mut w = back.clone();
+    w.unknown = [vec![b'x'; GRAPH_LINE_MAX], b"\r\n".to_vec()].concat();
+    check!(graph_ini_write_path(&path, &mut w) == 0);
+    check!(graph_ini_read_path(&path, &mut again) == 0 && again.writable && again.unknown.len() == GRAPH_LINE_MAX + 1);
+    let mut many: Vec<u8> = Vec::new();
+    while many.len() + 16 <= GRAPH_UNKNOWN_MAX {
+        many.extend_from_slice(b"carried=0123456\n");
+    }
+    w.unknown = many.clone();
+    check!(graph_ini_write_path(&path, &mut w) == 0 && graph_ini_read_path(&path, &mut again) == 0 && again.unknown == many);
+    w.unknown.extend_from_slice(b"carried=0123456\n");
+    check!(graph_ini_write_path(&path, &mut w) == -1);
     // a missing file: a fresh cache, writable
     let mut fresh = GraphIni::default();
     fresh.mode = GraphMode::Around;
@@ -723,7 +754,7 @@ fn ini_limits() {
     check!(graph_ini_read_path(&dangling, &mut ini) == -1);
     // a write that would pass the cap writes nothing
     let mut huge = GraphIni::default();
-    huge.unknown = vec![b'u'; GRAPH_FILE_MAX];
+    huge.pos = (1..=10_000u32).map(|pid| GraphPos { pid, x: -GRAPH_POS_MAX, y: -GRAPH_POS_MAX }).collect();
     let before = read_bytes(&good);
     check!(graph_ini_write_path(&good, &mut huge) == -1 && read_bytes(&good) == before);
 }
