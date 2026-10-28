@@ -641,6 +641,159 @@ fn each_gate_says_why() {
     check!(rec(&clean(&circle(20.0, 1.0))).reason == ShapeReason::Snapped);
 }
 
+fn with_extras() -> ShapeParams {
+    let mut p = prm();
+    p.extras = true;
+    p
+}
+
+/// v1.5's arrows, polylines and arcs (ShapeParams::extras): clean ones all, noisy ones at the
+/// rate, and none of them with the flag off (it is off by default).
+fn v15_arrows_polylines_and_arcs() {
+    let mut rng = Rng::new(seed(15));
+    for k in EXTRA_ALL {
+        let (mut clean_ok, mut ok, mut off) = (0, 0, 0);
+        let n = 200;
+        let mut wrong: Vec<String> = Vec::new();
+        for _ in 0..40 {
+            let s = extra_positive(k, &mut rng, false);
+            let r = shape_recognize(&s, &with_extras());
+            if r.kind == extra_expected(k) {
+                clean_ok += 1;
+            } else {
+                eprintln!("  clean {k:?}: {:?} {:?} c{} rms{:.3}", r.kind, r.reason, r.features.corners, r.features.rms);
+            }
+        }
+        for _ in 0..n {
+            let s = extra_positive(k, &mut rng, true);
+            let r = shape_recognize(&s, &with_extras());
+            if r.kind == extra_expected(k) {
+                ok += 1;
+            } else if wrong.len() < 6 {
+                wrong.push(format!("{:?} {:?} c{} rms{:.3}", r.kind, r.reason, r.features.corners, r.features.rms));
+            }
+            if matches!(rec(&s).kind, ShapeKind::Arrow | ShapeKind::Polyline | ShapeKind::Arc) {
+                off += 1;
+            }
+        }
+        let rate = ok as f64 / n as f64 * 100.0;
+        eprintln!("  v1.5 {k:?}: clean {clean_ok}/40, noisy {ok}/{n} = {rate:.1}%");
+        for w in &wrong {
+            eprintln!("    {w}");
+        }
+        check!(clean_ok == 40);
+        check!(rate >= 94.0);
+        check!(off == 0);
+    }
+    // the arrow's chain: tail, tip, barb, tip, barb, the shaft level (1 degree off)
+    let s = clean(&[(20.0, 50.0), (60.0, 50.7), (52.0, 45.0), (60.0, 50.7), (51.0, 56.0)]);
+    let r = shape_recognize(&s, &with_extras());
+    check!(r.kind == ShapeKind::Arrow);
+    if r.kind == ShapeKind::Arrow {
+        let tipx = r.pts.iter().fold(f32::MIN, |m, q| m.max(q.x));
+        let tip = r.pts.iter().find(|q| q.x == tipx).copied().unwrap_or_default();
+        check!(r.pts[0].y == tip.y);
+        check_near!(mm_of(r.pts[0].x), 20.0, 0.3);
+        // the barbs mirror each other about the shaft
+        let ends: Vec<PenSample> = r.pts.iter().filter(|q| mm_of(q.x) < 53.5 && mm_of(q.x) > 50.0 && (q.y - tip.y).abs() > px(4.0) as f32).copied().collect();
+        check!(ends.len() >= 2);
+    }
+    // a polyline turning 88 degrees is made square
+    let s = clean(&[(20.0, 20.0), (50.0, 20.5), (51.5, 50.0)]);
+    let r = shape_recognize(&s, &with_extras());
+    check!(r.kind == ShapeKind::Polyline);
+    if r.kind == ShapeKind::Polyline {
+        let c = corners_open(&r.pts);
+        check!(c.len() == 1);
+        if c.len() == 1 {
+            let (a, b, e) = (r.pts[0], r.pts[c[0]], r.pts[r.pts.len() - 1]);
+            check!(a.y == b.y && b.x == e.x);
+        }
+    }
+    // the arc's point count follows the vertex formula: half of 137 vertices, ceil(68.5) = 69
+    // pieces, 70 points
+    let arc: Vec<Pt> = (0..=200)
+        .map(|i| {
+            let t = std::f64::consts::PI * i as f64 / 200.0;
+            (60.0 + 20.0 * t.cos(), 60.0 + 20.0 * t.sin())
+        })
+        .collect();
+    let r = shape_recognize(&clean(&arc), &with_extras());
+    check!(r.kind == ShapeKind::Arc);
+    check!(r.pts.len() == 70);
+    check!(d_px(&r.pts[0], &clean(&arc)[0]) < px(0.2));
+}
+
+/// The indices where an open chain of points turns.
+fn corners_open(p: &[PenSample]) -> Vec<usize> {
+    let mut out = Vec::new();
+    for k in 1..p.len() - 1 {
+        let (a, b, c) = (p[k - 1], p[k], p[k + 1]);
+        let (ux, uy, wx, wy) = ((b.x - a.x) as f64, (b.y - a.y) as f64, (c.x - b.x) as f64, (c.y - b.y) as f64);
+        let cr = ux * wy - uy * wx;
+        if cr.abs() / ((ux * ux + uy * uy).sqrt() * (wx * wx + wy * wy).sqrt()) > 0.05 {
+            out.push(k);
+        }
+    }
+    out
+}
+
+/// With v1.5's kinds on, writing, scribbles and the owner's strokes still give no shape.
+fn v15_negatives_still_pass() {
+    let mut rng = Rng::new(seed(99));
+    let mut snapped = 0;
+    let mut total = 0;
+    let mut one = |s: &[PenSample], name: &str| {
+        let r = shape_recognize(s, &with_extras());
+        total += 1;
+        if r.kind != ShapeKind::None {
+            snapped += 1;
+            eprintln!("  v1.5 false snap: {name} -> {:?} {:?}", r.kind, r.features);
+        }
+    };
+    for _ in 0..300 {
+        one(&cursive_word(&mut rng), "cursive");
+    }
+    for _ in 0..300 {
+        one(&letter(&mut rng), "letter");
+    }
+    for d in 0..10 {
+        for _ in 0..40 {
+            one(&digit(d, &mut rng), "digit");
+        }
+    }
+    for _ in 0..300 {
+        one(&cjk_stroke(&mut rng), "cjk");
+    }
+    for _ in 0..300 {
+        one(&scribble(&mut rng), "scribble");
+    }
+    for _ in 0..300 {
+        one(&small_shape(&mut rng), "small");
+    }
+    let mut out = None;
+    check!(page_deserialize(GRIMOIRE_ERASER_SAMPLE, &mut out) == 0);
+    let mut other2 = 0;
+    if let Some(page) = out {
+        for s in &page.strokes {
+            one(&s.pts, "owner");
+        }
+        // at twice the size, still only lines
+        for s in &page.strokes {
+            let mut p2 = with_extras();
+            p2.zoom = 2.0;
+            let k = shape_recognize(&s.pts, &p2).kind;
+            if k != ShapeKind::None && k != ShapeKind::Line {
+                other2 += 1;
+                eprintln!("  v1.5 at 2x: {k:?}");
+            }
+        }
+    }
+    eprintln!("  v1.5 negatives: {snapped} false snaps of {total}; the owner's at 2x: {other2} other than lines");
+    check!(snapped == 0);
+    check!(other2 == 0);
+}
+
 #[test]
 fn test_shape() {
     run!(clean_positives_snap_to_their_kind);
@@ -660,6 +813,8 @@ fn test_shape() {
     run!(degenerate_input_is_refused);
     run!(every_kind_at_every_size_turn_and_direction);
     run!(each_gate_says_why);
+    run!(v15_arrows_polylines_and_arcs);
+    run!(v15_negatives_still_pass);
     done();
 }
 

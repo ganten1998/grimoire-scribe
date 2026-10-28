@@ -536,3 +536,102 @@ pub fn small_shape(rng: &mut Rng) -> Vec<PenSample> {
     let p = place(&path, rot, 60.0, 60.0);
     pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.3, wave: 20.0 }, rng)
 }
+
+// ---- v1.5's kinds (ShapeParams::extras) ----
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Extra {
+    Arrow,
+    Polyline,
+    Arc,
+}
+
+pub const EXTRA_ALL: [Extra; 3] = [Extra::Arrow, Extra::Polyline, Extra::Arc];
+
+pub fn extra_expected(k: Extra) -> ShapeKind {
+    match k {
+        Extra::Arrow => ShapeKind::Arrow,
+        Extra::Polyline => ShapeKind::Polyline,
+        Extra::Arc => ShapeKind::Arc,
+    }
+}
+
+/// One positive of a v1.5 kind: an arrow (a 20-80 mm shaft, one or two barbs 22-40% of it at
+/// 25-55 degrees, drawn tail, tip, barb, back to the tip, barb), an open polyline (2-4 pieces of
+/// 15-40 mm turning 90 degrees or 50-150, 50-105 for two pieces), or an arc (radius 10-50 mm, sweeping 90-270 degrees).
+pub fn extra_positive(k: Extra, rng: &mut Rng, noisy: bool) -> Vec<PenSample> {
+    let rot = rng.range(0.0, 2.0 * PI);
+    let (cx, cy) = (rng.range(60.0, 90.0), rng.range(60.0, 140.0));
+    let (path, minor, major): (Vec<Pt>, f64, f64) = match k {
+        Extra::Arrow => {
+            let l = rng.range(20.0, 80.0);
+            let tip = (l / 2.0, 0.0);
+            let barb = |side: f64, rng: &mut Rng| -> Pt {
+                let a = rng.range(25.0f64, 55.0).to_radians() * side;
+                let bl = l * rng.range(0.22, 0.4);
+                (tip.0 - bl * a.cos(), tip.1 - bl * a.sin())
+            };
+            let mut v = vec![(-l / 2.0, 0.0), tip, barb(1.0, rng)];
+            if rng.coin() {
+                v.push(tip);
+                v.push(barb(-1.0, rng));
+            }
+            (place(&v, rot, cx, cy), l * 0.2, l)
+        }
+        Extra::Polyline => {
+            // (drawn again until it is open: ends at least half its box's diagonal apart, or it
+            // is a closed shape and rightly recognized as one)
+            let v = loop {
+                let n = 2 + rng.int(3);
+                let mut v = vec![(0.0, 0.0)];
+                let mut a = 0.0f64;
+                let mut turn = if rng.coin() { 1.0 } else { -1.0 };
+                for i in 0..n {
+                    if i > 0 {
+                        // (two pieces turning sharply back are a one-barbed arrow: kept apart)
+                        let hi = if n == 2 { 105.0 } else { 150.0 };
+                        let t = if rng.coin() { 90.0f64 } else { rng.range(50.0, hi) };
+                        // a zigzag turns both ways, a staircase alternates
+                        if rng.coin() {
+                            turn = -turn;
+                        }
+                        a += turn * t.to_radians();
+                    }
+                    let l = rng.range(15.0, 40.0);
+                    let last = v[v.len() - 1];
+                    v.push((last.0 + l * a.cos(), last.1 + l * a.sin()));
+                }
+                let (x0, x1) = v.iter().fold((f64::MAX, f64::MIN), |m, q| (m.0.min(q.0), m.1.max(q.0)));
+                let (y0, y1) = v.iter().fold((f64::MAX, f64::MIN), |m, q| (m.0.min(q.1), m.1.max(q.1)));
+                let diag = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
+                // (no point of its first fifth near one of its last fifth either)
+                let d = densify(&v, 0.5);
+                let k = d.len() / 5;
+                let mut near = f64::MAX;
+                for a in &d[..=k] {
+                    for b in &d[d.len() - 1 - k..] {
+                        near = near.min(((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt());
+                    }
+                }
+                if near >= 0.4 * diag {
+                    break v;
+                }
+            };
+            (place(&v, rot, cx, cy), 15.0, 40.0)
+        }
+        Extra::Arc => {
+            let r = rng.range(10.0, 50.0);
+            let sweep = rng.range(90.0f64, 270.0).to_radians() * if rng.coin() { 1.0 } else { -1.0 };
+            let a0 = rng.range(0.0, 2.0 * PI);
+            let v: Vec<Pt> = (0..=200)
+                .map(|i| {
+                    let t = a0 + sweep * i as f64 / 200.0;
+                    (r * t.cos(), r * t.sin())
+                })
+                .collect();
+            (place(&v, rot, cx, cy), r, 2.0 * r)
+        }
+    };
+    let hand = if noisy { hand_for(minor, major, rng) } else { CLEAN };
+    pen(&path, hand, rng)
+}

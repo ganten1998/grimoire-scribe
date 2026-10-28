@@ -123,6 +123,12 @@ pub enum ShapeKind {
     Triangle = 5,
     Ellipse = 6,
     Circle = 7,
+    /// v1.5 (ShapeParams::extras): a shaft and one or two barbs at its tip, in one stroke
+    Arrow = 8,
+    /// v1.5: an open chain of straight segments, its near-square turns made square
+    Polyline = 9,
+    /// v1.5: an open piece of a circle
+    Arc = 10,
 }
 
 /// Why a stroke was not snapped, or Snapped. In the order the gates run.
@@ -164,11 +170,14 @@ pub struct ShapeParams {
     pub page_w: i32,
     /// the stroke started in a writing burst (shape_in_burst): tolerances SHAPE_BURST_TOL as wide
     pub burst: bool,
+    /// v1.5: also arrows, open polylines and arcs (plan step 22: off until the corpus gate passes
+    /// with them on)
+    pub extras: bool,
 }
 
-/// The parameters for a page drawn at `zoom`, outside a writing burst.
+/// The parameters for a page drawn at `zoom`, outside a writing burst, v1.5's kinds off.
 pub fn shape_params(dpi: f32, zoom: f32, paper: PaperKind, page_w: i32) -> ShapeParams {
-    ShapeParams { dpi, zoom, paper, page_w, burst: false }
+    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false }
 }
 
 /// What the gates measured, for the shape-log (no coordinates). Lengths are screen mm, angles are
@@ -486,6 +495,13 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     let (i, j, gap) = closure(&q, len);
     r.features.gap = (gap / diag) as f32;
     if gap > SHAPE_CLOSE_GAP as f64 * diag * tol {
+        if prm.extras {
+            if let Some((kind, out)) = open_shape(&q, diag, prm, mm, tol, &mut r.features) {
+                r.kind = kind;
+                r.pts = finish(pts, &out);
+                return r;
+            }
+        }
         r.reason = ShapeReason::NotClosed;
         return r;
     }
@@ -655,14 +671,9 @@ fn line_ends(q: &[P], raw: &[P], prm: &ShapeParams, mm: f64) -> (P, P) {
     let dir = sub(b, a);
     let l = norm(dir);
     let ang = dir.y.atan2(dir.x);
-    let q45 = std::f64::consts::FRAC_PI_4;
-    let target = (ang / q45).round() * q45;
-    let off = (ang - target).abs().to_degrees();
-    let level = (target / std::f64::consts::PI).round() * std::f64::consts::PI;
-    let ruled_ok = shape_paper_ruled(prm.paper) && (ang - level).abs().to_degrees() <= SHAPE_RULED_SNAP_DEG as f64;
+    let t = snap_angle(ang, prm);
     let (mut a, mut b) = (a, b);
-    if ruled_ok || off <= SHAPE_LINE_SNAP_DEG as f64 {
-        let t = if ruled_ok { level } else { target };
+    if t != ang {
         let m = lerp(a, b, 0.5);
         let h = scale(unit(t), 0.5 * l);
         a = sub(m, h);
@@ -674,6 +685,21 @@ fn line_ends(q: &[P], raw: &[P], prm: &ShapeParams, mm: f64) -> (P, P) {
         b = g.node(b, tolp);
     }
     (a, b)
+}
+
+/// A straight stroke's direction, turned onto 0, 45, 90 or 135 degrees within SHAPE_LINE_SNAP_DEG,
+/// or level within SHAPE_RULED_SNAP_DEG on ruled paper; otherwise as it is.
+fn snap_angle(ang: f64, prm: &ShapeParams) -> f64 {
+    let q45 = std::f64::consts::FRAC_PI_4;
+    let target = (ang / q45).round() * q45;
+    let level = (ang / std::f64::consts::PI).round() * std::f64::consts::PI;
+    if shape_paper_ruled(prm.paper) && (ang - level).abs().to_degrees() <= SHAPE_RULED_SNAP_DEG as f64 {
+        level
+    } else if (ang - target).abs().to_degrees() <= SHAPE_LINE_SNAP_DEG as f64 {
+        target
+    } else {
+        ang
+    }
 }
 
 // ---- the grid ----
@@ -738,21 +764,59 @@ impl Grid {
 
 // ---- polygons ----
 
-/// ShortStraw on the closed loop, then the edges' lines: Some((Triangle or Quad, the vertices in
-/// the loop's order)) when it has 3 or 4 straight edges. (Rectangles and squares are told apart
-/// from quads afterwards, in shape_polygon.)
-fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
-    let m = cyc.len();
-    if m < 2 * STRAW_W + 3 {
-        return None;
+/// The points from index a to b along the path (forward, around the end when it is closed: a
+/// closed path's segment from a corner back to itself is the whole loop).
+fn span(n: usize, cyclic: bool, a: usize, b: usize) -> usize {
+    if b > a || !cyclic {
+        b.saturating_sub(a)
+    } else {
+        b + n - a
     }
-    let straw: Vec<f64> = (0..m).map(|i| dist(cyc[(i + m - STRAW_W) % m], cyc[(i + STRAW_W) % m])).collect();
-    let mut sorted = straw.clone();
+}
+
+/// A segment's chord / path.
+fn seg_straight(c: &[P], cyclic: bool, a: usize, b: usize) -> f64 {
+    let n = c.len();
+    let k = span(n, cyclic, a, b);
+    let mut path = 0.0;
+    for o in 0..k {
+        path += dist(c[(a + o) % n], c[(a + o + 1) % n]);
+    }
+    if path > 0.0 {
+        dist(c[a], c[b % n]) / path
+    } else {
+        0.0
+    }
+}
+
+/// ShortStraw's corners (Wolin, Eoff and Hammond 2008) on the resampled path, closed or open (an
+/// open path's ends are corners). Its two passes test segments with the edge test, so they agree
+/// with it: a segment that is not straight gets a corner at its smallest straw in its middle
+/// half; a corner whose two segments make one straight one goes (the straightest such first).
+fn straw_corners(c: &[P], cyclic: bool, seg_min: f64) -> Vec<usize> {
+    let m = c.len();
+    if m < 2 * STRAW_W + 3 {
+        return Vec::new();
+    }
+    // An open path has no straw within the window of its ends: the median stands in.
+    let raw_straw = |i: usize| -> Option<f64> {
+        if cyclic {
+            Some(dist(c[(i + m - STRAW_W) % m], c[(i + STRAW_W) % m]))
+        } else if i >= STRAW_W && i + STRAW_W < m {
+            Some(dist(c[i - STRAW_W], c[i + STRAW_W]))
+        } else {
+            None
+        }
+    };
+    let known: Vec<f64> = (0..m).filter_map(raw_straw).collect();
+    let mut sorted = known.clone();
     sorted.sort_by(|a, b| a.total_cmp(b));
-    let thr = sorted[m / 2] * STRAW_MEDIAN;
-    // One corner per run of straws under the threshold: its smallest. The scan starts at the
-    // largest straw, so no run is cut in two by the wrap.
-    let start = (0..m).max_by(|&a, &b| straw[a].total_cmp(&straw[b])).unwrap_or(0);
+    let med = sorted[sorted.len() / 2];
+    let straw: Vec<f64> = (0..m).map(|i| raw_straw(i).unwrap_or(med)).collect();
+    let thr = med * STRAW_MEDIAN;
+    // One corner per run of straws under the threshold: its smallest. A closed path's scan starts
+    // at its largest straw, so no run is cut in two by the wrap.
+    let start = if cyclic { (0..m).max_by(|&a, &b| straw[a].total_cmp(&straw[b])).unwrap_or(0) } else { 0 };
     let mut corners: Vec<usize> = Vec::new();
     let mut run: Option<usize> = None;
     for k in 0..=m {
@@ -766,33 +830,24 @@ fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<
             corners.push(b);
         }
     }
+    if !cyclic {
+        corners.push(0);
+        corners.push(m - 1);
+    }
     corners.sort_unstable();
-    // ShortStraw's two passes, with the edge test as the line test so they agree with it: an
-    // edge that is not straight gets a corner at its smallest straw in its middle half; a corner
-    // whose two edges make one straight edge goes (the straightest such first).
-    let span = |a: usize, b: usize| -> usize { if b > a { b - a } else { b + m - a } };
-    let straight = |a: usize, b: usize| -> f64 {
-        let n = span(a, b);
-        let mut path = 0.0;
-        for k in 0..n {
-            path += dist(cyc[(a + k) % m], cyc[(a + k + 1) % m]);
-        }
-        if path > 0.0 {
-            dist(cyc[a], cyc[b % m]) / path
-        } else {
-            0.0
-        }
-    };
+    corners.dedup();
+    // (an open path's segments run between neighbours, without the wrap)
+    let pairs = |nc: usize| if cyclic { nc } else { nc - 1 };
     for _ in 0..12 {
         if corners.is_empty() || corners.len() > 8 {
             break;
         }
         let mut added = None;
         let nc = corners.len();
-        for k in 0..nc {
+        for k in 0..pairs(nc) {
             let (a, b) = (corners[k], corners[(k + 1) % nc]);
-            let n = span(a, b);
-            if straight(a, b) >= seg_min || n < 4 {
+            let n = span(m, cyclic, a, b);
+            if seg_straight(c, cyclic, a, b) >= seg_min || n < 4 {
                 continue;
             }
             let mut best = (a + n / 4) % m;
@@ -806,8 +861,8 @@ fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<
             break;
         }
         match added {
-            Some(c) if !corners.contains(&c) => {
-                corners.push(c);
+            Some(b) if !corners.contains(&b) => {
+                corners.push(b);
                 corners.sort_unstable();
             }
             _ => break,
@@ -815,12 +870,13 @@ fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<
     }
     loop {
         let nc = corners.len();
-        if nc <= 3 {
+        if nc <= if cyclic { 3 } else { 2 } {
             break;
         }
         let mut best: Option<(usize, f64)> = None;
-        for k in 0..nc {
-            let s = straight(corners[(k + nc - 1) % nc], corners[(k + 1) % nc]);
+        let ks = if cyclic { 0..nc } else { 1..nc - 1 };
+        for k in ks {
+            let s = seg_straight(c, cyclic, corners[(k + nc - 1) % nc], corners[(k + 1) % nc]);
             if s >= seg_min && best.is_none_or(|b| s > b.1) {
                 best = Some((k, s));
             }
@@ -832,25 +888,38 @@ fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<
             None => break,
         }
     }
+    corners
+}
+
+/// A segment's least-squares line, from its middle (the corners' rounding left out).
+fn seg_line(c: &[P], cyclic: bool, a: usize, b: usize) -> Option<(P, P)> {
+    let m = c.len();
+    let n = span(m, cyclic, a, b);
+    let cut = n / 5;
+    let pts: Vec<P> = (cut..=n - cut).map(|o| c[(a + o) % m]).collect();
+    if pts.len() < 2 {
+        return None;
+    }
+    Some(fit_line(&pts))
+}
+
+/// ShortStraw on the closed loop, then the edges' lines: Some((Triangle or Quad, the vertices in
+/// the loop's order)) when it has 3 or 4 straight edges. (Rectangles and squares are told apart
+/// from quads afterwards, in snap_polygon.)
+fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
+    let corners = straw_corners(cyc, true, seg_min);
     f.corners = corners.len() as i32;
     let nc = corners.len();
     if nc != 3 && nc != 4 {
         return None;
     }
-    // Each edge's least-squares line, from its middle (the corners' rounding left out).
     let mut lines = Vec::with_capacity(nc);
     for k in 0..nc {
         let (a, b) = (corners[k], corners[(k + 1) % nc]);
-        if straight(a, b) < seg_min {
+        if seg_straight(cyc, true, a, b) < seg_min {
             return None;
         }
-        let n = span(a, b);
-        let cut = n / 5;
-        let pts: Vec<P> = (cut..=n - cut).map(|o| cyc[(a + o) % m]).collect();
-        if pts.len() < 2 {
-            return None;
-        }
-        lines.push(fit_line(&pts));
+        lines.push(seg_line(cyc, true, a, b)?);
     }
     let mut verts = Vec::with_capacity(nc);
     for k in 0..nc {
@@ -1087,27 +1156,27 @@ struct Ellipse {
     rms_px: f64,
 }
 
-/// Solves the 4x4 system m x = r (Gaussian elimination with partial pivoting).
-fn solve4(mut m: [[f64; 4]; 4], mut r: [f64; 4]) -> Option<[f64; 4]> {
-    for col in 0..4 {
-        let piv = (col..4).max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs()))?;
+/// Solves the N x N system m x = r (Gaussian elimination with partial pivoting).
+fn solve<const N: usize>(mut m: [[f64; N]; N], mut r: [f64; N]) -> Option<[f64; N]> {
+    for col in 0..N {
+        let piv = (col..N).max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs()))?;
         if m[piv][col].abs() < 1e-12 {
             return None;
         }
         m.swap(col, piv);
         r.swap(col, piv);
-        for row in col + 1..4 {
+        for row in col + 1..N {
             let f = m[row][col] / m[col][col];
-            for k in col..4 {
+            for k in col..N {
                 m[row][k] = fmla(-f, m[col][k], m[row][k]);
             }
             r[row] = fmla(-f, r[col], r[row]);
         }
     }
-    let mut x = [0.0; 4];
-    for row in (0..4).rev() {
+    let mut x = [0.0; N];
+    for row in (0..N).rev() {
         let mut s = r[row];
-        for k in row + 1..4 {
+        for k in row + 1..N {
             s = fmla(-m[row][k], x[k], s);
         }
         x[row] = s / m[row][row];
@@ -1135,7 +1204,7 @@ fn ellipse(lp: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellip
             rhs[i] += phi[i];
         }
     }
-    let [aa, bb, cc, dd] = solve4(m, rhs)?;
+    let [aa, bb, cc, dd] = solve(m, rhs)?;
     if aa.is_nan() || bb.is_nan() || aa <= 0.0 || bb <= 0.0 {
         return None;
     }
@@ -1202,6 +1271,253 @@ fn ellipse_outline(e: &Ellipse, sign: f64, first: P) -> (ShapeKind, Vec<P>) {
         .collect();
     out.push(out[0]);
     (if circle { ShapeKind::Circle } else { ShapeKind::Ellipse }, out)
+}
+
+// ---- v1.5: arrows, open polylines, arcs (ShapeParams::extras) ----
+
+/// The thresholds of the v1.5 kinds (plan step 22). An arrow's barbs leave its tip at this many
+/// degrees from the shaft, each this fraction of the shaft long.
+pub const SHAPE_ARROW_MIN_DEG: f32 = 20.0;
+pub const SHAPE_ARROW_MAX_DEG: f32 = 70.0;
+pub const SHAPE_ARROW_MIN_FRAC: f32 = 0.15;
+pub const SHAPE_ARROW_MAX_FRAC: f32 = 0.45;
+/// An arc sweeps at least this many degrees (less is a sloppy line) and at most this many (more
+/// should have closed).
+pub const SHAPE_ARC_MIN_DEG: f32 = 75.0;
+pub const SHAPE_ARC_MAX_DEG: f32 = 330.0;
+
+/// An open stroke that is an arrow, a polyline or an arc: the kind and its outline. Each piece of
+/// an arrow's shaft or a polyline is at least SHAPE_LINE_MIN_MM, as a line is, so writing (whose
+/// strokes are shorter) stays writing; a polyline and an arc that both fit go to the closer.
+fn open_shape(q: &[P], diag: f64, prm: &ShapeParams, mm: f64, tol: f64, f: &mut ShapeFeatures) -> Option<(ShapeKind, Vec<P>)> {
+    let seg_min = fmla(-(1.0 - SHAPE_SEG_STRAIGHT as f64), tol, 1.0);
+    let corners = straw_corners(q, false, seg_min);
+    f.corners = corners.len() as i32;
+    let step = page_step(prm);
+    let min_len = SHAPE_LINE_MIN_MM as f64 * mm;
+    if let Some(chain) = arrow(q, &corners, seg_min, min_len, prm) {
+        return Some((ShapeKind::Arrow, segments(&chain, false, step)));
+    }
+    let poly = polyline(q, &corners, seg_min, min_len, diag, prm);
+    let arc = arc_fit(q, min_len, tol, f);
+    let use_poly = match (&poly, &arc) {
+        (Some(pl), Some(ar)) => open_rms(q, pl) <= ar.rms_px,
+        (Some(_), None) => true,
+        _ => false,
+    };
+    if let (true, Some(v)) = (use_poly, poly) {
+        return Some((ShapeKind::Polyline, segments(&v, false, step)));
+    }
+    arc.map(|a| (ShapeKind::Arc, arc_outline(&a)))
+}
+
+/// The RMS distance of the points from an open chain.
+fn open_rms(q: &[P], v: &[P]) -> f64 {
+    let mut s = 0.0;
+    for &a in q {
+        let mut d = f64::MAX;
+        for w in v.windows(2) {
+            d = d.min(seg_dist(a, w[0], w[1]));
+        }
+        s = fmla(d, d, s);
+    }
+    (s / q.len() as f64).sqrt()
+}
+
+/// The unsigned angle between two directions, in degrees.
+fn deg_between(a: P, b: P) -> f64 {
+    angle_between(a, b).abs().to_degrees()
+}
+
+/// An arrow drawn in one stroke: the shaft (tail to tip), a barb, and optionally back to the tip
+/// and the other barb. The shaft is snapped as a line is, from its tail; two barbs are made
+/// mirror images (their mean angle and length). The chain: tail, tip, barb[, tip, barb].
+fn arrow(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, prm: &ShapeParams) -> Option<Vec<P>> {
+    let nc = corners.len();
+    if nc != 3 && nc != 5 {
+        return None;
+    }
+    for k in 0..nc - 1 {
+        if seg_straight(q, false, corners[k], corners[k + 1]) < seg_min {
+            return None;
+        }
+    }
+    let at = |k: usize| q[corners[k]];
+    let (tail, tip) = (at(0), at(1));
+    let shaft = norm(sub(tip, tail));
+    if shaft < min_len {
+        return None;
+    }
+    let back = scale(sub(tail, tip), 1.0 / shaft);
+    let barb_ok = |b: P| -> bool {
+        let (l, a) = (norm(b), deg_between(back, b));
+        let lens = SHAPE_ARROW_MIN_FRAC as f64 * shaft..=SHAPE_ARROW_MAX_FRAC as f64 * shaft;
+        lens.contains(&l) && (SHAPE_ARROW_MIN_DEG as f64..=SHAPE_ARROW_MAX_DEG as f64).contains(&a)
+    };
+    let b1 = sub(at(2), tip);
+    if !barb_ok(b1) {
+        return None;
+    }
+    let mut barbs = vec![b1];
+    if nc == 5 {
+        // back to the tip, then the other barb, on the other side of the shaft
+        if dist(at(3), tip) > 0.35 * norm(b1) {
+            return None;
+        }
+        let b2 = sub(at(4), tip);
+        if !barb_ok(b2) || cross(back, b1) * cross(back, b2) >= 0.0 {
+            return None;
+        }
+        barbs.push(b2);
+    }
+    let ang = snap_angle((tip.y - tail.y).atan2(tip.x - tail.x), prm);
+    let tip = madd(tail, unit(ang), shaft);
+    let back_ang = ang + std::f64::consts::PI;
+    let mut chain = vec![tail, tip];
+    if barbs.len() == 2 {
+        let th = 0.5 * (angle_between(back, barbs[0]).abs() + angle_between(back, barbs[1]).abs());
+        let l = 0.5 * (norm(barbs[0]) + norm(barbs[1]));
+        let s = if cross(back, barbs[0]) < 0.0 { -1.0 } else { 1.0 };
+        chain.push(madd(tip, unit(fmla(s, th, back_ang)), l));
+        chain.push(tip);
+        chain.push(madd(tip, unit(fmla(-s, th, back_ang)), l));
+    } else {
+        let th = angle_between(back, barbs[0]);
+        chain.push(madd(tip, unit(back_ang + th), norm(barbs[0])));
+    }
+    Some(chain)
+}
+
+/// An open polyline: 2 to 7 straight segments, each at least min_len. Its first segment is snapped
+/// as a line is; each next one is made square to the one before when it turns within
+/// SHAPE_RECT_DEG of 90 degrees, else snapped as a line. Each keeps its length along its line.
+fn polyline(q: &[P], corners: &[usize], seg_min: f64, min_len: f64, diag: f64, prm: &ShapeParams) -> Option<Vec<P>> {
+    let nc = corners.len();
+    if !(3..=8).contains(&nc) {
+        return None;
+    }
+    let mut lines = Vec::with_capacity(nc - 1);
+    for k in 0..nc - 1 {
+        let (a, b) = (corners[k], corners[k + 1]);
+        if seg_straight(q, false, a, b) < seg_min || dist(q[a], q[b]) < min_len {
+            return None;
+        }
+        lines.push(seg_line(q, false, a, b)?);
+    }
+    // the vertices as drawn: the ends projected on the end lines, the corners where lines cross
+    let proj = |l: (P, P), a: P| madd(l.0, l.1, dot(sub(a, l.0), l.1));
+    let mut v = vec![proj(lines[0], q[0])];
+    for k in 1..nc - 1 {
+        let c = intersect(lines[k - 1], lines[k])?;
+        if dist(c, q[corners[k]]) > 0.25 * diag {
+            return None;
+        }
+        v.push(c);
+    }
+    v.push(proj(lines[nc - 2], q[q.len() - 1]));
+    // then rebuilt piece by piece from the start
+    let mut out = vec![v[0]];
+    let mut prev: Option<f64> = None;
+    for k in 0..nc - 1 {
+        let d = sub(v[k + 1], v[k]);
+        let ang = d.y.atan2(d.x);
+        let t = match prev {
+            Some(pa) if (deg_between(unit(pa), d) - 90.0).abs() <= SHAPE_RECT_DEG as f64 => {
+                let quarter = std::f64::consts::FRAC_PI_2;
+                if cross(unit(pa), d) >= 0.0 {
+                    pa + quarter
+                } else {
+                    pa - quarter
+                }
+            }
+            _ => snap_angle(ang, prm),
+        };
+        let l = dot(d, unit(t));
+        if l <= 0.0 {
+            return None;
+        }
+        let last = out[out.len() - 1];
+        out.push(madd(last, unit(t), l));
+        prev = Some(t);
+    }
+    Some(out)
+}
+
+struct ArcFit {
+    c: P,
+    r: f64,
+    /// the start's angle around c and the signed sweep (the stroke's way)
+    a0: f64,
+    sweep: f64,
+    rms_px: f64,
+}
+
+/// A circle through the open stroke (the algebraic least squares x^2 + y^2 + D x + E y + F = 0),
+/// its radial errors held to the ellipse's limits of its radius, sweeping SHAPE_ARC_MIN_DEG to
+/// SHAPE_ARC_MAX_DEG, at least min_len long.
+fn arc_fit(q: &[P], min_len: f64, tol: f64, f: &mut ShapeFeatures) -> Option<ArcFit> {
+    if path_len(q) < min_len {
+        return None;
+    }
+    let c0 = centroid(q);
+    let mut sc = 0.0f64;
+    for &a in q {
+        sc = sc.max(dist(a, c0));
+    }
+    if sc <= 0.0 {
+        return None;
+    }
+    // (in the centroid's frame, scaled to about 1, so the normal equations stay well conditioned)
+    let mut m = [[0.0; 3]; 3];
+    let mut rhs = [0.0; 3];
+    for &a in q {
+        let d = scale(sub(a, c0), 1.0 / sc);
+        let phi = [d.x, d.y, 1.0];
+        let z = -dot(d, d);
+        for i in 0..3 {
+            for j in 0..3 {
+                m[i][j] = fmla(phi[i], phi[j], m[i][j]);
+            }
+            rhs[i] = fmla(phi[i], z, rhs[i]);
+        }
+    }
+    let [dd, ee, ff] = solve(m, rhs)?;
+    let r2 = fmla(0.25 * dd, dd, fmla(0.25 * ee, ee, -ff));
+    if r2.is_nan() || r2 <= 0.0 {
+        return None;
+    }
+    let r = r2.sqrt() * sc;
+    let c = madd(c0, p(-0.5 * dd, -0.5 * ee), sc);
+    let (mut s2, mut emax) = (0.0, 0.0f64);
+    for &a in q {
+        let e = dist(a, c) - r;
+        s2 = fmla(e, e, s2);
+        emax = emax.max(e.abs());
+    }
+    let rms_px = (s2 / q.len() as f64).sqrt();
+    f.rms = (rms_px / r) as f32;
+    f.max_err = (emax / r) as f32;
+    if rms_px > SHAPE_ELLIPSE_RMS as f64 * r * tol || emax > SHAPE_ELLIPSE_MAX as f64 * r * tol {
+        return None;
+    }
+    let mut sweep = 0.0;
+    for w in q.windows(2) {
+        sweep += angle_between(sub(w[0], c), sub(w[1], c));
+    }
+    let sd = sweep.abs().to_degrees();
+    if !(SHAPE_ARC_MIN_DEG as f64..=SHAPE_ARC_MAX_DEG as f64).contains(&sd) {
+        return None;
+    }
+    let a0 = (q[0].y - c.y).atan2(q[0].x - c.x);
+    Some(ArcFit { c, r, a0, sweep, rms_px })
+}
+
+/// The arc's points: the circle's vertex spacing (shape_ellipse_vertices of its radius) over its
+/// sweep, from the stroke's start round its way: ceil(N x sweep / 2 pi) pieces, at least 2.
+fn arc_outline(a: &ArcFit) -> Vec<P> {
+    let n_full = shape_ellipse_vertices(a.r as f32) as f64;
+    let k = ((n_full * a.sweep.abs() / (2.0 * std::f64::consts::PI)).ceil() as usize).max(2);
+    (0..=k).map(|i| madd(a.c, unit(fmla(a.sweep, i as f64 / k as f64, a.a0)), a.r)).collect()
 }
 
 // ---- the samples' other fields ----
