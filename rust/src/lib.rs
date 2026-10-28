@@ -94,6 +94,11 @@ pub mod input; // input.h: the same
 pub mod light; // light.h: the same
 pub mod mainloop; // main.c
 
+// ---- the Index hook: pure, host-tested modules (docs/index-hook/PURE-MODULES.md) ----
+pub mod fingershape; // recorded one-finger shape gestures: the integer $P matcher and its gates
+pub mod graph; // the Index map's model, layout and graph.ini
+pub mod shape; // the smart-shape recognizer
+
 #[cfg(feature = "kindle")]
 pub mod display_fbink;
 #[cfg(feature = "kindle")]
@@ -125,7 +130,9 @@ pub mod prelude {
     pub use crate::export::*;
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
+    pub use crate::fingershape::*;
     pub use crate::font::*;
+    pub use crate::graph::*;
     pub use crate::hidkeys::*;
     pub use crate::history::*;
     pub use crate::httpd::*;
@@ -148,6 +155,7 @@ pub mod prelude {
     pub use crate::pensync::*;
     pub use crate::power::*;
     pub use crate::qr::*;
+    pub use crate::shape::*;
     pub use crate::shortcuts::*;
     pub use crate::store::*;
     pub use crate::templates::*;
