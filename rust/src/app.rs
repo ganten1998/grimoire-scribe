@@ -1731,6 +1731,10 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("editor.") {
         return editor_probe(a, k, out, cap);
     }
+    // The open notebook's last_page + 1: the page notebook.ini reopens it on (0 with none open).
+    if key == "notebook.last_page" {
+        return editor_probe(a, "notebook_last_page", out, cap);
+    }
     if let Some(k) = key.strip_prefix("library.") {
         return library_probe(a, k, out, cap);
     }
@@ -1743,7 +1747,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 21] = [
+    let nums: [(&str, i32); 25] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -1760,6 +1764,10 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.updates", st.updates),
         ("settings.status_on", st.status_on as i32),
         ("settings.status_size", st.status_size),
+        ("settings.gestures", st.gestures as i32),
+        ("settings.landscape_fit", st.landscape_fit as i32),
+        ("settings.hints", st.hints),
+        ("settings.link_areas", st.link_areas as i32),
         ("shortcuts.code", a.last_shortcut_code),
         ("native_pin", a.native_pin as i32),
         ("input.yielded", a.input_yielded as i32),

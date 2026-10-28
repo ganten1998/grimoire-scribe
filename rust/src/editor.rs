@@ -3802,6 +3802,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.open { s.hist.len() as i32 } else { 0 });
     } else if key == "pages" {
         csnprintf!(out, cap, "%d", if s.open { s.nb.npages() } else { 0 });
+    } else if key == "notebook_last_page" {
+        // (app_probe's "notebook.last_page": what a reopen lands on, kept apart from the open page)
+        csnprintf!(out, cap, "%d", if s.open { s.nb.last_page + 1 } else { 0 });
     } else if key == "page_name" {
         csnprintf!(out, cap, "%s", if has_page { nav_name(&s.nav, s.nb.page_ids[s.index as usize]) } else { "" });
     } else if key == "index_rows" {

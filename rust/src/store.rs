@@ -124,6 +124,19 @@ pub struct Settings {
     pub status_on: bool,
     /// and how large it is: 0 small, 1 medium, 2 large (settings.ini status_size)
     pub status_size: i32,
+    /// Two-finger gestures (the swipes and taps of gestures.ini; settings.ini gestures): off, a pinch
+    /// and a pan still work.
+    pub gestures: bool,
+    /// Sideways, the editor shows the whole page (settings.ini landscape_fit); off, the page's width
+    /// fills the screen as upright.
+    pub landscape_fit: bool,
+    /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
+    pub hints: i32,
+    /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
+    pub link_areas: bool,
+    /// Memory only, never saved: settings.ini was an existing version 3 file without a gestures key,
+    /// so this run is the owner's first with the gestures, and the one-time toasts of what changed show.
+    pub upgraded: bool,
 }
 
 // ---- state ----
@@ -2476,6 +2489,10 @@ pub fn settings_default(s: &mut Settings) {
     s.before_eraser = -1;
     s.status_on = false;
     s.status_size = 0;
+    s.gestures = true;
+    s.landscape_fit = true;
+    s.hints = 0;
+    s.link_areas = false;
 }
 
 /// pen.panel / touch.panel: the panel the calibration was made on, "WxH" (1.1 on). A value that does
@@ -2728,6 +2745,10 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"panel_tools" => pins_kv(s, "panel_tools", v),
         b"status_on" => s.status_on = keep_bool("status_on", v),
         b"status_size" => s.status_size = keep_int("status_size", v, 0, 2),
+        b"gestures" => s.gestures = keep_bool("gestures", v),
+        b"landscape_fit" => s.landscape_fit = keep_bool("landscape_fit", v),
+        b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
+        b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"before_eraser" => {
             // A pen this version does not have (a newer one's), the eraser or no number at all is none
             // here, and stays in the file.
@@ -2788,7 +2809,9 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     forget_unknown_settings();
     with(|st| st.g_set_dropped = 0);
     let path = cformat!("%s/settings.ini", &g_root());
+    let mut has_gestures = false;
     let rc = if ini_parse_file(&path, &mut |k, v| {
+        has_gestures |= k == b"gestures";
         if !settings_cb(s, k, v) {
             settings_unknown(k, v);
         }
@@ -2803,6 +2826,10 @@ pub fn settings_load(s: &mut Settings) -> i32 {
         qlog!("settings: %d unknown line(s) past %d bytes not kept", dropped, SETTINGS_UNKNOWN_MAX);
     }
     if rc == 0 {
+        // An owner upgrading from the build before the gestures: an existing file at version 3 that has
+        // no gestures key (a fresh install has no file; a file this build saved has the key). The
+        // one-time toasts of what changed (hints bits 0 and 8) are for this owner only.
+        s.upgraded = s.version == SETTINGS_VERSION && !has_gestures;
         settings_upgrade(s);
     } else {
         s.version = SETTINGS_VERSION;
@@ -2908,10 +2935,14 @@ pub fn settings_save(s: &Settings) -> i32 {
     }
     // (A language this build lacks goes back as it was.)
     put(&mut b, "language", if i18n_setting_known(s.language.as_str()) { s.language.as_str() } else { "auto" });
-    // The clock and battery corner's keys (status.rs) are the newest, so they come last of the known
-    // ones: a build without them keeps both lines as lines it does not know.
+    // The newest keys come last of the known ones: a build without them keeps their lines as lines it
+    // does not know. The clock and battery corner's (status.rs), then the gestures' (Index phase 1).
     put_int(&mut b, "status_on", s.status_on as i32);
     put_int(&mut b, "status_size", s.status_size);
+    put_int(&mut b, "gestures", s.gestures as i32);
+    put_int(&mut b, "landscape_fit", s.landscape_fit as i32);
+    put_int(&mut b, "hints", s.hints);
+    put_int(&mut b, "link_areas", s.link_areas as i32);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

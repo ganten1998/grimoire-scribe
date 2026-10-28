@@ -610,6 +610,59 @@ fn status_corner_keys() {
     unlink(&path);
 }
 
+// The gestures' keys (Index phase 1; Rust only): on, on, none and off without them, written after the
+// clock corner's, clamped, a third state or a value past the range written back as it was until the
+// setting changes. `upgraded` is memory only: an existing version 3 file without a gestures key.
+fn gesture_keys() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let mut t = Settings::default();
+    settings_default(&mut s);
+    check!(s.gestures && s.landscape_fit && s.hints == 0 && !s.link_areas && !s.upgraded);
+    check!(settings_save(&s) == 0);
+    for l in ["gestures=1", "landscape_fit=1", "hints=0", "link_areas=0"] {
+        check!(has_pins_line(&path, l));
+    }
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("language=") < at("status_size=") && at("status_size=") < at("gestures="));
+    check!(at("gestures=") < at("landscape_fit=") && at("landscape_fit=") < at("hints=") && at("hints=") < at("link_areas="));
+    check!(!text.windows(9).any(|w| w == b"upgraded="));
+    s.gestures = false;
+    s.landscape_fit = false;
+    s.hints = 0x1c5;
+    s.link_areas = true;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "gestures=0") && has_pins_line(&path, "hints=453"));
+    check!(settings_load(&mut t) == 0 && !t.gestures && !t.landscape_fit && t.hints == 453 && t.link_areas);
+    // a file with none of them: the defaults, and not an upgrade (it has no settings_version either)
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.gestures && t.landscape_fit && t.hints == 0 && !t.link_areas && !t.upgraded);
+    // hints is clamped to 0..i32::MAX; a third state of a switch is on; both go back as they were
+    check!(write_file_atomic(&path, b"gestures=2\nlandscape_fit=0\nhints=-5\nlink_areas=3\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.gestures && !t.landscape_fit && t.hints == 0 && t.link_areas);
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "gestures=2") && has_pins_line(&path, "hints=-5"));
+    check!(has_pins_line(&path, "link_areas=3") && has_pins_line(&path, "landscape_fit=0"));
+    // changed, they are written as they are
+    t.hints = 64;
+    t.gestures = false;
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "hints=64") && has_pins_line(&path, "gestures=0"));
+    // upgraded: version 3 exactly, a file that exists, no gestures key
+    check!(write_file_atomic(&path, b"settings_version=3\ninvert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.upgraded);
+    check!(write_file_atomic(&path, b"settings_version=3\ngestures=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && !t.upgraded);
+    check!(write_file_atomic(&path, b"settings_version=2\ninvert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && !t.upgraded);
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && !t.upgraded);
+    unlink(&path);
+    check!(settings_load(&mut t) != 0 && !t.upgraded);
+    // a file this build saved is not an upgrade the next time
+    settings_default(&mut s);
+    check!(settings_save(&s) == 0 && settings_load(&mut t) == 0 && !t.upgraded);
+    unlink(&path);
+}
+
 // A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
 // notebook.ini gets its page list back from the page files.
 fn damage_is_kept() {
@@ -768,6 +821,7 @@ fn test_store() {
     run!(panel_tools);
     run!(before_eraser);
     run!(status_corner_keys);
+    run!(gesture_keys);
     run!(safe_names);
     run!(empty_mirror_folder_cleanup);
     run!(damage_is_kept);

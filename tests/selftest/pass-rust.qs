@@ -8,6 +8,11 @@ expect status.shown is 0
 expect gestures.pages is touch.2.down
 expect gestures.next-page is touch.2.left
 expect gestures.undo is
+expect settings.gestures is 1
+expect settings.landscape_fit is 1
+expect settings.hints is 0
+expect settings.link_areas is 0
+expect notebook.last_page is 0
 expect main.longest_unpumped_ms not -1
 expect touch.contacts is 0
 expect touch.class is none

@@ -257,6 +257,8 @@ shows what the app holds.
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
 | `settings.status_on`, `settings.status_size` | the clock and battery corner as settings.ini stores it: `1` while it is on, and its size, 0 small, 1 medium, 2 large |
+| `settings.gestures`, `settings.landscape_fit`, `settings.hints`, `settings.link_areas` | the gestures' settings as settings.ini stores them: `1` while on, `landscape_fit` on by default, `hints` the one-time tips shown as a bitmask (FORMAT.md), `link_areas` `1` while the eye is on |
+| `notebook.last_page` | the open notebook's `last_page` plus 1: the page its notebook.ini reopens it on (a peek of another page never changes it); `0` with no notebook open |
 | `status.shown` | `1` while the panel holds the clock and battery corner, else `0`. A tap in the corner or the `status-toggle` shortcut turns it on at once (`settings.status_on`), but it is shown only once its refresh has been sent: not while the pen is near, nor while asleep |
 | `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
 | `status.charging` | `1` while the corner shows its bolt, `0` while it does not; empty while it is not shown |

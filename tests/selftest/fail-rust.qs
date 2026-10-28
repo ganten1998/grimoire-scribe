@@ -6,4 +6,7 @@ expect status.zone is 0 0 0 0
 expect status.shown is 1
 expect gestures.pages is touch.2.up
 expect touch.contacts is 9
+expect settings.gestures is 0
+expect settings.hints is 4
+expect notebook.last_page is 7
 expect main.longest_unpumped_ms is 99999
