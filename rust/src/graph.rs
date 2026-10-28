@@ -33,6 +33,7 @@
 //! `a * b + c` in the float code is written `fmla(a, b, c)` (PORTING.md, Floating point).
 
 use crate::prelude::*;
+use std::f32::consts::{PI, TAU};
 
 // ---- the model (plan.graph_view, DATA and NODES) ----
 
@@ -94,6 +95,41 @@ pub const GRAPH_INPROC_MAX: i32 = 300;
 pub const GRAPH_RELAYOUT_PCT: i32 = 10;
 /// Positions are whole world units within +-this (a map 2000 pages wide spans a few thousand).
 pub const GRAPH_POS_MAX: i32 = 1_000_000;
+
+// The space between packed components: a rest length, so two never read as one.
+const COMP_GAP: f32 = GRAPH_SPRING_L;
+// The collision pass leaves this much more than the knockout between two dots, so rounding both to
+// whole units for graph.ini (at most 0.71 each) cannot bring them back into each other.
+const SLACK: f32 = 2.0;
+// What the collision pass forgives: a pair it has just set apart must not count as touching again
+// because of a rounding error in the last bit.
+const SLACK_EPS: f32 = 0.01;
+// One step moves a node at most this far, so a close pair's repulsion cannot throw it across the map.
+const MAX_MOVE: f32 = 40.0;
+// Rounds of the collision pass, at most: a few are enough once spread has opened a dense component
+// (2000 nodes take 3); the cap only bounds the work in a case nobody has met.
+const COLLIDE_ROUNDS: i32 = 100;
+// relax: a component with at most this many moving nodes keeps one tree of the others.
+const FEW_MOVING: usize = 64;
+// spread: a component is spread when it has a touching pair for every this many members or fewer,
+// by at most this factor a pass, for at most this many passes.
+const SPREAD_FEW: usize = 20;
+const SPREAD_MAX: f32 = 1.5;
+const SPREAD_PASSES: i32 = 4;
+// The quadtree splits no deeper than this; bodies that still share a cell are summed one by one.
+const TREE_DEPTH: i32 = 24;
+// The golden angle, pi x (3 - sqrt 5): each satellite turns this far from the last, so none line
+// up whatever their count (Vogel's sunflower).
+const GOLDEN: f32 = 2.399_963;
+
+// The salts of the page-id hash, one per use, so the jitters are not tied to each other.
+const SALT_ANGLE: u32 = 1;
+const SALT_RADIUS: u32 = 2;
+const SALT_AROUND: u32 = 3;
+const SALT_SAT: u32 = 4;
+const SALT_APART: u32 = 5;
+const SALT_SPOT: u32 = 6;
+const SALT_TURN: u32 = 7;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -192,6 +228,42 @@ pub struct GraphModel {
     // Node i's neighbours are adj[adj_at[i]..adj_at[i + 1]], in page-id order.
     adj_at: Vec<u32>,
     adj: Vec<i32>,
+}
+
+/// A member of the Around rings (graph_around), placed around the centre page at (0, 0).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GraphRing {
+    pub node: i32,
+    /// 0 for the centre, 1 or 2 links away
+    pub depth: i32,
+    /// the node it was reached from (-1 for the centre)
+    pub parent: i32,
+    pub x: f32,
+    pub y: f32,
+}
+
+// ---- the page-id hash: jitter and tie-breaking ----
+
+// A page id mixed with a salt (the murmur3 finalizer). The seed's jitter, the free spots and the
+// spirals' turn come from it, so a page's place depends on its id and never on its index.
+fn pid_hash(pid: u32, salt: u32) -> u32 {
+    let mut h = pid ^ salt.wrapping_mul(0x9E37_79B9);
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x85EB_CA6B);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0xC2B2_AE35);
+    h ^= h >> 16;
+    h
+}
+
+// The hash as a fraction in [0, 1): its top 24 bits, which an f32 holds exactly.
+fn pid_unit(pid: u32, salt: u32) -> f32 {
+    (pid_hash(pid, salt) >> 8) as f32 / 16_777_216.0
+}
+
+// The hash as a jitter in [-0.5, 0.5).
+fn pid_jitter(pid: u32, salt: u32) -> f32 {
+    pid_unit(pid, salt) - 0.5
 }
 
 // ---- the page-id table ----
@@ -576,4 +648,1020 @@ pub fn graph_relayout_needed(fresh: i32, kept: i32) -> bool {
 /// Whether a full layout of g runs in the app's process (pumped) or in a bgjob child.
 pub fn graph_layout_in_process(g: &GraphModel) -> bool {
     g.force.len() as i32 <= GRAPH_INPROC_MAX
+}
+
+// ---- the satellites' spiral ----
+
+// The inner edge of a head's satellite spiral: clear of the head's dot, a satellite and both
+// knockouts.
+fn sat_r0(r_head: f32) -> f32 {
+    r_head + GRAPH_R_SAT + GRAPH_KNOCKOUT + SLACK
+}
+
+// The squared distance of satellite `rank` (of `count`) from its head's centre. Satellite k lies
+// at sqrt(r0^2 + pitch^2 (k + 0.5)): each takes the same area of the annulus, so the spiral is as
+// even at its first dot as at its last. The ones past GRAPH_SAT_DRAWN (drawn from 2x zoom, where
+// the dots grow with the zoom) go on at the same pitch, so they are as far apart; only a section
+// so long (some 650 satellites) that they would leave 3 rest lengths of the head has that outer
+// band squeezed to stay within them, and there the 2x view may show them touching.
+fn sat_rho2(r_head: f32, count: i32, rank: i32) -> f32 {
+    let r0 = sat_r0(r_head);
+    let c2 = GRAPH_SAT_PITCH * GRAPH_SAT_PITCH;
+    if rank < GRAPH_SAT_DRAWN {
+        return fmla(c2, rank as f32 + 0.5, r0 * r0);
+    }
+    let base = fmla(c2, GRAPH_SAT_DRAWN as f32, r0 * r0);
+    let hidden = (count - GRAPH_SAT_DRAWN).max(1) as f32;
+    let lim = fmla(3.0, GRAPH_SPRING_L, -GRAPH_R_SAT);
+    let mut h2 = c2;
+    if fmla(h2, hidden, base) > lim * lim {
+        h2 = (fmla(lim, lim, -base) / hidden).max(0.0);
+    }
+    fmla(h2, (rank - GRAPH_SAT_DRAWN) as f32 + 0.5, base)
+}
+
+// How far a head's satellites reach from its centre, their own radius included: the disc the
+// collision pass keeps clear around the head, so no satellite ever lies on another dot, at any
+// zoom.
+fn sat_extent(r_head: f32, count: i32) -> f32 {
+    if count <= 0 {
+        return r_head;
+    }
+    sat_rho2(r_head, count, count - 1).sqrt() + GRAPH_R_SAT
+}
+
+// Satellite `rank` of a head with `count` of them, from the head's centre.
+fn sat_offset(r_head: f32, count: i32, rank: i32, turn: f32) -> (f32, f32) {
+    let rho = sat_rho2(r_head, count, rank).sqrt();
+    let a = fmla(GOLDEN, rank as f32, turn);
+    (rho * a.cos(), rho * a.sin())
+}
+
+// Puts every satellite on its head's spiral, turned by the head's page id so two neighbouring
+// sections do not look alike. A head that is not placed leaves its satellites unplaced.
+fn place_satellites(g: &mut GraphModel) {
+    for i in 0..g.nodes.len() {
+        if g.nodes[i].tier != GraphTier::Satellite {
+            continue;
+        }
+        let s = g.nodes[i].section;
+        if s < 0 || !g.nodes[s as usize].placed {
+            g.nodes[i].placed = false;
+            continue;
+        }
+        let h = g.nodes[s as usize];
+        let (dx, dy) = sat_offset(h.r, h.sats, g.nodes[i].sat_rank, pid_unit(h.pid, SALT_SAT) * TAU);
+        g.nodes[i].x = h.x + dx;
+        g.nodes[i].y = h.y + dy;
+        g.nodes[i].placed = true;
+    }
+}
+
+// ---- the layout's working state ----
+
+// The components' members, in page-id order: list[at[c]..at[c + 1]]; and each one's hub (its
+// node with the highest degree, the lowest page id among equals).
+struct Comps {
+    at: Vec<u32>,
+    list: Vec<u32>,
+    hub: Vec<u32>,
+}
+
+impl Comps {
+    fn members(&self, c: usize) -> &[u32] {
+        &self.list[self.at[c] as usize..self.at[c + 1] as usize]
+    }
+}
+
+fn comps_of(g: &GraphModel) -> Comps {
+    let nc = g.ncomp.max(0) as usize;
+    let mut at = vec![0u32; nc + 1];
+    for &v in &g.force {
+        at[g.nodes[v as usize].comp as usize + 1] += 1;
+    }
+    for c in 0..nc {
+        at[c + 1] += at[c];
+    }
+    let mut fill: Vec<u32> = at[..nc].to_vec();
+    let mut list = vec![0u32; g.force.len()];
+    for &v in &g.force {
+        let c = g.nodes[v as usize].comp as usize;
+        list[fill[c] as usize] = v as u32;
+        fill[c] += 1;
+    }
+    let mut hub = vec![0u32; nc];
+    for c in 0..nc {
+        let m = &list[at[c] as usize..at[c + 1] as usize];
+        let mut best = m[0];
+        for &v in m {
+            if g.nodes[v as usize].degree > g.nodes[best as usize].degree {
+                best = v;
+            }
+        }
+        hub[c] = best;
+    }
+    Comps { at, list, hub }
+}
+
+// One cell of the Barnes-Hut quadtree.
+#[derive(Clone, Copy, Default)]
+struct Quad {
+    // the square: its corner and side
+    x0: f32,
+    y0: f32,
+    side: f32,
+    // the bodies under it: how many, and the sum of their positions
+    mass: f32,
+    sx: f32,
+    sy: f32,
+    // the four quarters' cells (0: none, as the root is never a child) once it has split
+    kids: [u32; 4],
+    split: bool,
+    // a leaf's body + 1 (0: none); bodies that share a leaf at the depth limit chain through next
+    first: u32,
+}
+
+#[derive(Default)]
+struct Tree {
+    q: Vec<Quad>,
+    next: Vec<u32>,
+    px: Vec<f32>,
+    py: Vec<f32>,
+    stack: Vec<u32>,
+}
+
+impl Tree {
+    fn build(&mut self, g: &GraphModel, members: &[u32]) {
+        let n = g.nodes.len();
+        if self.next.len() < n {
+            self.next.resize(n, 0);
+            self.px.resize(n, 0.0);
+            self.py.resize(n, 0.0);
+        }
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for &v in members {
+            let nd = &g.nodes[v as usize];
+            self.px[v as usize] = nd.x;
+            self.py[v as usize] = nd.y;
+            x0 = x0.min(nd.x);
+            y0 = y0.min(nd.y);
+            x1 = x1.max(nd.x);
+            y1 = y1.max(nd.y);
+        }
+        self.q.clear();
+        // (one unit wider than the bodies' box, so the last of them is inside the half-open square)
+        self.q.push(Quad { x0, y0, side: (x1 - x0).max(y1 - y0) + 1.0, ..Quad::default() });
+        for &v in members {
+            self.insert(v);
+        }
+    }
+
+    fn quarter(&self, at: usize, x: f32, y: f32) -> usize {
+        let q = &self.q[at];
+        let half = q.side * 0.5;
+        (x >= q.x0 + half) as usize + 2 * (y >= q.y0 + half) as usize
+    }
+
+    fn kid(&mut self, at: usize, k: usize) -> usize {
+        if self.q[at].kids[k] == 0 {
+            let q = self.q[at];
+            let half = q.side * 0.5;
+            let x0 = if k & 1 != 0 { q.x0 + half } else { q.x0 };
+            let y0 = if k & 2 != 0 { q.y0 + half } else { q.y0 };
+            self.q.push(Quad { x0, y0, side: half, ..Quad::default() });
+            let id = (self.q.len() - 1) as u32;
+            self.q[at].kids[k] = id;
+        }
+        self.q[at].kids[k] as usize
+    }
+
+    fn insert(&mut self, b: u32) {
+        let (x, y) = (self.px[b as usize], self.py[b as usize]);
+        let mut at = 0usize;
+        let mut depth = 0;
+        loop {
+            {
+                let q = &mut self.q[at];
+                q.mass += 1.0;
+                q.sx += x;
+                q.sy += y;
+            }
+            if self.q[at].split {
+                let k = self.quarter(at, x, y);
+                at = self.kid(at, k);
+                depth += 1;
+                continue;
+            }
+            if self.q[at].first == 0 {
+                self.q[at].first = b + 1;
+                self.next[b as usize] = 0;
+                return;
+            }
+            if depth >= TREE_DEPTH {
+                self.next[b as usize] = self.q[at].first;
+                self.q[at].first = b + 1;
+                return;
+            }
+            // A second body in a leaf: the first goes down a level, then b goes on from here.
+            let c = self.q[at].first - 1;
+            self.q[at].first = 0;
+            self.q[at].split = true;
+            let (cx, cy) = (self.px[c as usize], self.py[c as usize]);
+            let k = self.quarter(at, cx, cy);
+            let kid = self.kid(at, k);
+            self.q[kid] = Quad { mass: 1.0, sx: cx, sy: cy, first: c + 1, ..self.q[kid] };
+            self.next[c as usize] = 0;
+            let k = self.quarter(at, x, y);
+            at = self.kid(at, k);
+            depth += 1;
+        }
+    }
+
+    // The repulsion at (x, y) from the tree's bodies but `skip` (the body that is there itself, or
+    // u32::MAX for a point outside the tree).
+    fn push_at(&mut self, x: f32, y: f32, skip: u32) -> (f32, f32) {
+        let i = skip;
+        let (mut fx, mut fy) = (0.0f32, 0.0f32);
+        self.stack.clear();
+        self.stack.push(0);
+        while let Some(at) = self.stack.pop() {
+            let q = self.q[at as usize];
+            if q.mass <= 0.0 {
+                continue;
+            }
+            if !q.split {
+                let mut b = q.first;
+                while b != 0 {
+                    let j = b - 1;
+                    if j != i {
+                        repel(x, y, self.px[j as usize], self.py[j as usize], 1.0, &mut fx, &mut fy);
+                    }
+                    b = self.next[j as usize];
+                }
+                continue;
+            }
+            let cx = q.sx / q.mass;
+            let cy = q.sy / q.mass;
+            let dx = x - cx;
+            let dy = y - cy;
+            let d2 = fmla(dx, dx, dy * dy);
+            // A cell that holds the body itself is always opened, so it never pushes itself.
+            let inside = x >= q.x0 && x < q.x0 + q.side && y >= q.y0 && y < q.y0 + q.side;
+            if !inside && q.side * q.side < GRAPH_THETA * GRAPH_THETA * d2 {
+                repel(x, y, cx, cy, q.mass, &mut fx, &mut fy);
+            } else {
+                for &k in &q.kids {
+                    if k != 0 {
+                        self.stack.push(k);
+                    }
+                }
+            }
+        }
+        (fx, fy)
+    }
+}
+
+// Coulomb's repulsion of a mass m at (px, py) on a body at (x, y): REPULSION x m / d^2, away from
+// it. Closer than one unit counts as one unit, so two dots on top of each other cannot blow up.
+fn repel(x: f32, y: f32, px: f32, py: f32, m: f32, fx: &mut f32, fy: &mut f32) {
+    let dx = x - px;
+    let dy = y - py;
+    let d2 = fmla(dx, dx, dy * dy).max(1.0);
+    let f = GRAPH_REPULSION * m / (d2 * d2.sqrt());
+    *fx = fmla(dx, f, *fx);
+    *fy = fmla(dy, f, *fy);
+}
+
+struct Lay {
+    vx: Vec<f32>,
+    vy: Vec<f32>,
+    fx: Vec<f32>,
+    fy: Vec<f32>,
+    // What a dot keeps clear around its centre: its radius, or for a section head the reach of its
+    // satellites.
+    eff: Vec<f32>,
+    movable: Vec<bool>,
+    tree: Tree,
+}
+
+impl Lay {
+    fn new(g: &GraphModel) -> Lay {
+        let n = g.nodes.len();
+        let eff = g.nodes.iter().map(|nd| if nd.sats > 0 { nd.r.max(sat_extent(nd.r, nd.sats)) } else { nd.r }).collect();
+        Lay {
+            vx: vec![0.0; n],
+            vy: vec![0.0; n],
+            fx: vec![0.0; n],
+            fy: vec![0.0; n],
+            eff,
+            movable: vec![false; n],
+            tree: Tree::default(),
+        }
+    }
+}
+
+// Evenly spaced angles for nodes in the order given, the ring turned as a whole to sit as close as
+// it can to where each would like to be (`ideal`, in the same order): the circular mean of the
+// differences. When the wishes cancel out (they all want the same angle) the ring starts at the
+// first one's.
+fn ring_angles(ideal: &[f32], out: &mut Vec<f32>) {
+    out.clear();
+    let m = ideal.len();
+    if m == 0 {
+        return;
+    }
+    let step = TAU / m as f32;
+    let (mut s, mut c) = (0f64, 0f64);
+    for (k, &a) in ideal.iter().enumerate() {
+        let d = fmla(-step, k as f32, a);
+        s += d.sin() as f64;
+        c += d.cos() as f64;
+    }
+    let phase = if fmla(s, s, c * c) > 1e-6 * (m * m) as f64 { s.atan2(c) as f32 } else { ideal[0] };
+    for k in 0..m {
+        out.push(fmla(step, k as f32, phase));
+    }
+}
+
+// Navi's place_disk for one component: its hub at the origin, then a ring for each BFS shell, the
+// ring's nodes in the order of their parents' angles, so a branch stays together outward. A ring is
+// a rest length beyond the last one, wider when its nodes need more room. Each node's angle and
+// radius get a jitter from its page id, so no two start exactly symmetric (the forces could not
+// tell them apart).
+fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], parent: &mut [u32], angle: &mut [f32]) {
+    depth[hub] = 0;
+    angle[hub] = 0.0;
+    g.nodes[hub].x = 0.0;
+    g.nodes[hub].y = 0.0;
+    let mut shell: Vec<u32> = vec![hub as u32];
+    let mut next: Vec<u32> = Vec::new();
+    let mut ideal: Vec<f32> = Vec::new();
+    let mut ang: Vec<f32> = Vec::new();
+    let mut radius = 0.0f32;
+    let mut prev_big = lay.eff[hub];
+    loop {
+        next.clear();
+        for &u in &shell {
+            let u = u as usize;
+            for j in g.adj_at[u] as usize..g.adj_at[u + 1] as usize {
+                let v = g.adj[j] as usize;
+                if depth[v] < 0 {
+                    depth[v] = depth[u] + 1;
+                    parent[v] = u as u32;
+                    next.push(v as u32);
+                }
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        next.sort_by(|&a, &b| {
+            let (pa, pb) = (angle[parent[a as usize] as usize], angle[parent[b as usize] as usize]);
+            pa.total_cmp(&pb).then(g.rank[a as usize].cmp(&g.rank[b as usize]))
+        });
+        ideal.clear();
+        let mut around = 0.0f32;
+        let mut big = 0.0f32;
+        for &v in &next {
+            ideal.push(angle[parent[v as usize] as usize]);
+            around += fmla(2.0, lay.eff[v as usize], GRAPH_KNOCKOUT + SLACK);
+            big = big.max(lay.eff[v as usize]);
+        }
+        ring_angles(&ideal, &mut ang);
+        radius = (radius + GRAPH_SPRING_L).max(radius + prev_big + big + GRAPH_KNOCKOUT + SLACK).max(around / TAU);
+        let slot = TAU / next.len() as f32;
+        for (k, &v) in next.iter().enumerate() {
+            let pid = g.nodes[v as usize].pid;
+            let a = fmla(pid_jitter(pid, SALT_ANGLE), slot * 0.5, ang[k]);
+            let rr = fmla(pid_jitter(pid, SALT_RADIUS), GRAPH_SPRING_L * 0.16, radius);
+            angle[v as usize] = a;
+            g.nodes[v as usize].x = rr * a.cos();
+            g.nodes[v as usize].y = rr * a.sin();
+        }
+        prev_big = big;
+        std::mem::swap(&mut shell, &mut next);
+    }
+}
+
+// Seeds every component in its own frame, around the origin (pack puts them side by side).
+fn seed_all(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
+    let n = g.nodes.len();
+    let mut depth = vec![-1i32; n];
+    let mut parent = vec![0u32; n];
+    let mut angle = vec![0.0f32; n];
+    for c in 0..cs.hub.len() {
+        seed_component(g, lay, cs.hub[c] as usize, &mut depth, &mut parent, &mut angle);
+    }
+    for k in 0..g.force.len() {
+        g.nodes[g.force[k] as usize].placed = true;
+    }
+}
+
+// Relaxes the components that have a movable node: each step, the repulsion of the component's
+// other nodes (Barnes-Hut), gravity toward the component's centre and the springs of the edges move
+// the movable nodes; the others only push and pull. Components do not push each other: each is laid
+// out in its own frame (or, placed already, is far enough from the rest for it not to matter).
+//
+// When only a few of a component's nodes move (an incremental placement), the tree of the ones that
+// do not is built once for every step, and the moving ones push each other pair by pair: rebuilding
+// a 2000-node tree 40 times was most of the cost of placing one page.
+fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut dyn FnMut()) {
+    let nc = cs.hub.len();
+    let mut active = vec![false; nc];
+    for &v in &g.force {
+        let v = v as usize;
+        if lay.movable[v] {
+            active[g.nodes[v].comp as usize] = true;
+        }
+        lay.vx[v] = 0.0;
+        lay.vy[v] = 0.0;
+    }
+    let mut moving: Vec<Vec<u32>> = vec![Vec::new(); nc];
+    let mut still: Vec<Option<Tree>> = (0..nc).map(|_| None).collect();
+    for c in 0..nc {
+        let m = cs.members(c);
+        if !active[c] || m.len() < 2 {
+            continue;
+        }
+        moving[c] = m.iter().copied().filter(|&v| lay.movable[v as usize]).collect();
+        if moving[c].len() <= FEW_MOVING && moving[c].len() < m.len() {
+            let fixed: Vec<u32> = m.iter().copied().filter(|&v| !lay.movable[v as usize]).collect();
+            let mut t = Tree::default();
+            t.build(g, &fixed);
+            still[c] = Some(t);
+        }
+    }
+    for step in 0..steps {
+        for &v in &g.force {
+            lay.fx[v as usize] = 0.0;
+            lay.fy[v as usize] = 0.0;
+        }
+        for c in 0..nc {
+            let m = cs.members(c);
+            if !active[c] || m.len() < 2 {
+                continue;
+            }
+            let (mut sx, mut sy) = (0f64, 0f64);
+            for &v in m {
+                sx += g.nodes[v as usize].x as f64;
+                sy += g.nodes[v as usize].y as f64;
+            }
+            let cx = (sx / m.len() as f64) as f32;
+            let cy = (sy / m.len() as f64) as f32;
+            if still[c].is_none() {
+                lay.tree.build(g, m);
+            }
+            for &v in &moving[c] {
+                let (x, y) = (g.nodes[v as usize].x, g.nodes[v as usize].y);
+                let (mut rx, mut ry) = match still[c].as_mut() {
+                    Some(t) => t.push_at(x, y, u32::MAX),
+                    None => lay.tree.push_at(x, y, v),
+                };
+                if still[c].is_some() {
+                    for &u in &moving[c] {
+                        if u != v {
+                            repel(x, y, g.nodes[u as usize].x, g.nodes[u as usize].y, 1.0, &mut rx, &mut ry);
+                        }
+                    }
+                }
+                let v = v as usize;
+                lay.fx[v] = fmla(-GRAPH_GRAVITY, x - cx, rx);
+                lay.fy[v] = fmla(-GRAPH_GRAVITY, y - cy, ry);
+            }
+        }
+        for e in &g.edges {
+            let (a, b) = (e.a as usize, e.b as usize);
+            if !lay.movable[a] && !lay.movable[b] {
+                continue;
+            }
+            let dx = g.nodes[b].x - g.nodes[a].x;
+            let dy = g.nodes[b].y - g.nodes[a].y;
+            let d2 = fmla(dx, dx, dy * dy);
+            if d2 < 1e-6 {
+                continue; // (no direction to pull in; the repulsion parts them first)
+            }
+            let d = d2.sqrt();
+            let f = GRAPH_SPRING_K * (d - GRAPH_SPRING_L) / d;
+            lay.fx[a] = fmla(dx, f, lay.fx[a]);
+            lay.fy[a] = fmla(dy, f, lay.fy[a]);
+            lay.fx[b] = fmla(-dx, f, lay.fx[b]);
+            lay.fy[b] = fmla(-dy, f, lay.fy[b]);
+        }
+        for &v in &g.force {
+            let v = v as usize;
+            if !lay.movable[v] {
+                continue;
+            }
+            let mut vx = (lay.vx[v] + lay.fx[v]) * GRAPH_DAMPING;
+            let mut vy = (lay.vy[v] + lay.fy[v]) * GRAPH_DAMPING;
+            let s2 = fmla(vx, vx, vy * vy);
+            // (a NaN or an infinity, which no input should make, stops the node instead of spreading)
+            if !s2.is_finite() {
+                vx = 0.0;
+                vy = 0.0;
+            } else if s2 > MAX_MOVE * MAX_MOVE {
+                let k = MAX_MOVE / s2.sqrt();
+                vx *= k;
+                vy *= k;
+            }
+            lay.vx[v] = vx;
+            lay.vy[v] = vy;
+            g.nodes[v].x += vx;
+            g.nodes[v].y += vy;
+        }
+        if (step + 1) % GRAPH_PUMP_STEPS == 0 {
+            pump();
+        }
+    }
+}
+
+// Sets one pair apart when either is movable and their clear discs (lay.eff) come closer than the
+// knockout plus `check`: to the knockout plus SLACK, the movable one going all the way, or each half
+// when both are. True when it moved something.
+fn push_apart(g: &mut GraphModel, lay: &Lay, i: usize, j: usize, check: f32) -> bool {
+    let (mi, mj) = (lay.movable[i], lay.movable[j]);
+    if !mi && !mj {
+        return false;
+    }
+    let need = lay.eff[i] + lay.eff[j] + GRAPH_KNOCKOUT;
+    let dx = g.nodes[j].x - g.nodes[i].x;
+    let dy = g.nodes[j].y - g.nodes[i].y;
+    let d2 = fmla(dx, dx, dy * dy);
+    let lim = need + check - SLACK_EPS;
+    if d2 >= lim * lim {
+        return false;
+    }
+    let d = d2.sqrt();
+    let (ux, uy) = if d > 1e-3 {
+        (dx / d, dy / d)
+    } else {
+        // On top of each other: apart along an angle of the two page ids, the lower id one way and
+        // the higher the other, whichever of them came first.
+        let (pi, pj) = (g.nodes[i].pid, g.nodes[j].pid);
+        let (lo, hi, sign) = if pi <= pj { (pi, pj, 1.0f32) } else { (pj, pi, -1.0f32) };
+        let a = pid_unit(lo ^ hi.rotate_left(16), SALT_APART) * TAU;
+        (sign * a.cos(), sign * a.sin())
+    };
+    let push = need + SLACK - d;
+    let (si, sj) = if mi && mj {
+        (0.5, 0.5)
+    } else if mi {
+        (1.0, 0.0)
+    } else {
+        (0.0, 1.0)
+    };
+    g.nodes[i].x = fmla(-ux, push * si, g.nodes[i].x);
+    g.nodes[i].y = fmla(-uy, push * si, g.nodes[i].y);
+    g.nodes[j].x = fmla(ux, push * sj, g.nodes[j].x);
+    g.nodes[j].y = fmla(uy, push * sj, g.nodes[j].y);
+    true
+}
+
+// Every pair of `nodes` that may lie within `cell` of each other, once each: the nodes are sorted
+// into square cells of that side (by row, column, then page id, so the order never depends on the
+// notebook's), and each is paired with the rest of its own cell, the cell to its right and the three
+// below. `visit` may move the nodes; the cells are those of the positions at the start.
+fn grid_pairs(g: &mut GraphModel, nodes: &[u32], cell: f32, cells: &mut Vec<(i32, i32, u32, u32)>, visit: &mut dyn FnMut(&mut GraphModel, usize, usize)) {
+    cells.clear();
+    for &v in nodes {
+        let nd = &g.nodes[v as usize];
+        cells.push(((nd.y / cell).floor() as i32, (nd.x / cell).floor() as i32, g.rank[v as usize], v));
+    }
+    cells.sort_unstable();
+    for at in 0..cells.len() {
+        let (cy, cx, _, i) = cells[at];
+        let mut j = at + 1;
+        while j < cells.len() && cells[j].0 == cy && cells[j].1 == cx {
+            visit(g, i as usize, cells[j].3 as usize);
+            j += 1;
+        }
+        for (oy, ox) in [(0, 1), (1, -1), (1, 0), (1, 1)] {
+            let (ky, kx) = (cy.saturating_add(oy), cx.saturating_add(ox));
+            let mut j = cells.partition_point(|c| (c.0, c.1) < (ky, kx));
+            while j < cells.len() && cells[j].0 == ky && cells[j].1 == kx {
+                visit(g, i as usize, cells[j].3 as usize);
+                j += 1;
+            }
+        }
+    }
+}
+
+// The grid's cell for these nodes: as wide as the widest pair of them can need.
+fn pair_cell(lay: &Lay, nodes: &[u32], check: f32) -> f32 {
+    let mut big = 0.0f32;
+    for &v in nodes {
+        big = big.max(lay.eff[v as usize]);
+    }
+    fmla(2.0, big, GRAPH_KNOCKOUT + check + 1.0)
+}
+
+// The collision pass: no two force nodes' clear discs closer than the knockout (plus `check`, which
+// the layout sets to SLACK so the rounding for graph.ini keeps them apart, and a repair sets to 0 so
+// a valid kept layout does not move). Forces alone do not promise it, and the view's knockouts need
+// it. Pairs are set apart in grid order, round after round until a round moves nothing. True when it
+// ends clean.
+fn collide(g: &mut GraphModel, lay: &Lay, check: f32, pump: &mut dyn FnMut()) -> bool {
+    let nodes: Vec<u32> = g.force.iter().map(|&v| v as u32).collect();
+    let cell = pair_cell(lay, &nodes, check);
+    let mut cells: Vec<(i32, i32, u32, u32)> = Vec::with_capacity(nodes.len());
+    for _ in 0..COLLIDE_ROUNDS {
+        let mut moved = false;
+        grid_pairs(g, &nodes, cell, &mut cells, &mut |g, i, j| moved |= push_apart(g, lay, i, j, check));
+        pump();
+        if !moved {
+            return true;
+        }
+    }
+    false
+}
+
+// Navi's forces were made for its smaller dots: past a few hundred nodes their balance (gravity
+// against the whole cloud's repulsion) packs a component tighter than dots of 14 to 30 px fit, and
+// setting pairs apart one by one took the collision pass some 1500 rounds to open a 2000-node cloud
+// (3 after this). So
+// a component left with many touching pairs (one for every SPREAD_FEW members or more) is first
+// spread about its centre, by what three quarters of those pairs need (at most SPREAD_MAX at a
+// time), and measured again; the collision pass then has only the stragglers.
+fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) {
+    let mut cells: Vec<(i32, i32, u32, u32)> = Vec::new();
+    let mut need: Vec<f32> = Vec::new();
+    for c in 0..cs.hub.len() {
+        let m = cs.members(c);
+        if m.len() < 3 {
+            continue;
+        }
+        let cell = pair_cell(lay, m, SLACK);
+        for _ in 0..SPREAD_PASSES {
+            need.clear();
+            grid_pairs(g, m, cell, &mut cells, &mut |g, i, j| {
+                let lim = lay.eff[i] + lay.eff[j] + GRAPH_KNOCKOUT + SLACK;
+                let dx = g.nodes[j].x - g.nodes[i].x;
+                let dy = g.nodes[j].y - g.nodes[i].y;
+                let d = fmla(dx, dx, dy * dy).sqrt();
+                if d < lim - SLACK_EPS {
+                    need.push(lim / d.max(1.0));
+                }
+            });
+            if need.len() * SPREAD_FEW < m.len() {
+                break;
+            }
+            need.sort_by(|a, b| a.total_cmp(b));
+            let s = need[need.len() * 3 / 4].clamp(1.0, SPREAD_MAX);
+            let (mut sx, mut sy) = (0f64, 0f64);
+            for &v in m {
+                sx += g.nodes[v as usize].x as f64;
+                sy += g.nodes[v as usize].y as f64;
+            }
+            let cx = (sx / m.len() as f64) as f32;
+            let cy = (sy / m.len() as f64) as f32;
+            for &v in m {
+                let nd = &mut g.nodes[v as usize];
+                nd.x = fmla(nd.x - cx, s, cx);
+                nd.y = fmla(nd.y - cy, s, cy);
+            }
+            pump();
+        }
+    }
+}
+
+// Puts the components side by side: the widest in the middle, the others on rings around it, each
+// ring as deep as its first (widest) disc, each disc in its own slice of the ring with half a gap on
+// either side. Discs are each component's centroid and reach (lay.eff included), so no component
+// touches another.
+fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
+    let nc = cs.hub.len();
+    let mut discs: Vec<(usize, f32, f32, f32)> = Vec::with_capacity(nc);
+    for c in 0..nc {
+        let m = cs.members(c);
+        let (mut sx, mut sy) = (0f64, 0f64);
+        for &v in m {
+            sx += g.nodes[v as usize].x as f64;
+            sy += g.nodes[v as usize].y as f64;
+        }
+        let cx = (sx / m.len() as f64) as f32;
+        let cy = (sy / m.len() as f64) as f32;
+        let mut r = 0.0f32;
+        for &v in m {
+            let nd = &g.nodes[v as usize];
+            let (dx, dy) = (nd.x - cx, nd.y - cy);
+            r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
+        }
+        discs.push((c, cx, cy, r));
+    }
+    // (components are numbered from their lowest page id, so equal discs keep a page-id order)
+    discs.sort_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    let mut inner = 0.0f32;
+    let mut band = 0.0f32;
+    let mut ang = 0.0f32;
+    let mut open = false;
+    for (k, &(c, cx, cy, r)) in discs.iter().enumerate() {
+        let (tx, ty) = if k == 0 {
+            inner = r + COMP_GAP;
+            (0.0, 0.0)
+        } else {
+            loop {
+                let first = !open;
+                if first {
+                    band = r;
+                    ang = 0.0;
+                    open = true;
+                }
+                let mid = inner + band;
+                let half = (fmla(COMP_GAP, 0.5, r) / mid).min(1.0).asin();
+                if first || fmla(2.0, half, ang) <= TAU {
+                    let a = ang + half;
+                    ang = fmla(2.0, half, ang);
+                    break (mid * a.cos(), mid * a.sin());
+                }
+                inner = fmla(2.0, band, inner + COMP_GAP);
+                open = false;
+            }
+        };
+        let (ox, oy) = (tx - cx, ty - cy);
+        for &v in cs.members(c) {
+            g.nodes[v as usize].x += ox;
+            g.nodes[v as usize].y += oy;
+        }
+    }
+}
+
+// Whole world units, as graph.ini keeps them: what the view shows is what the next visit loads,
+// bit for bit. (Adding 0.0 turns the -0.0 that rounding -0.3 gives into the 0.0 that reading "0"
+// back gives.)
+fn snap1(x: f32) -> f32 {
+    if x.is_finite() {
+        x.round().clamp(-GRAPH_POS_MAX as f32, GRAPH_POS_MAX as f32) + 0.0
+    } else {
+        0.0
+    }
+}
+
+fn snap(g: &mut GraphModel, lay: &Lay) {
+    for k in 0..g.force.len() {
+        let v = g.force[k] as usize;
+        if lay.movable[v] {
+            g.nodes[v].x = snap1(g.nodes[v].x);
+            g.nodes[v].y = snap1(g.nodes[v].y);
+        }
+    }
+}
+
+/// The seed alone: place_disk for each component, the components packed, overlaps set apart. It is
+/// O(n + e) but for the collision pass, and is what the view shows while a bgjob child runs the
+/// full layout (graph_layout_job), so it runs in the app's process: pump is called between its
+/// stages and each collision round. Satellites follow their heads; the tray is the view's.
+pub fn graph_seed(g: &mut GraphModel, pump: &mut dyn FnMut()) {
+    let cs = comps_of(g);
+    let mut lay = Lay::new(g);
+    for &v in &g.force {
+        lay.movable[v as usize] = true;
+    }
+    seed_all(g, &lay, &cs);
+    pump();
+    pack(g, &lay, &cs);
+    collide(g, &lay, SLACK, pump);
+    snap(g, &lay);
+    place_satellites(g);
+    g.laid = GraphLaid::Seed;
+}
+
+/// The full layout: the seed, GRAPH_STEPS relaxation steps (pump every GRAPH_PUMP_STEPS), the
+/// components packed, overlaps set apart, positions rounded to whole units, then the satellites.
+/// Every kept position is replaced. Run it in-process only when graph_layout_in_process says so.
+pub fn graph_layout(g: &mut GraphModel, pump: &mut dyn FnMut()) {
+    let cs = comps_of(g);
+    let mut lay = Lay::new(g);
+    for &v in &g.force {
+        lay.movable[v as usize] = true;
+    }
+    seed_all(g, &lay, &cs);
+    relax(g, &mut lay, &cs, GRAPH_STEPS, pump);
+    spread(g, &lay, &cs, pump);
+    pack(g, &lay, &cs);
+    collide(g, &lay, SLACK, pump);
+    snap(g, &lay);
+    place_satellites(g);
+    g.laid = GraphLaid::Done;
+}
+
+// The centre of the placed force nodes, and how far they reach from it (their clear discs
+// included); the origin and 0 when none is placed.
+fn placed_disc(g: &GraphModel, lay: &Lay) -> (f32, f32, f32) {
+    let (mut sx, mut sy, mut k) = (0f64, 0f64, 0usize);
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if nd.placed {
+            sx += nd.x as f64;
+            sy += nd.y as f64;
+            k += 1;
+        }
+    }
+    if k == 0 {
+        return (0.0, 0.0, 0.0);
+    }
+    let (cx, cy) = ((sx / k as f64) as f32, (sy / k as f64) as f32);
+    let mut r = 0.0f32;
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if nd.placed {
+            let (dx, dy) = (nd.x - cx, nd.y - cy);
+            r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
+        }
+    }
+    (cx, cy, r)
+}
+
+// Gives each unplaced force node a first position. A node with placed neighbours goes one rest
+// length beyond their centroid, away from the map's centre (so a new leaf grows outward), turned a
+// little by its page id; nodes are taken in page-id order, round after round, so a chain of new
+// pages grows from the placed end. A node with no placed neighbour goes beside its section's named
+// page (for a named page, the section it was cut from: the page before it), or failing that just
+// outside everything placed, at an angle of its page id. Its own neighbours can then follow it.
+fn place_fresh(g: &mut GraphModel, lay: &Lay, fresh: &[usize]) {
+    loop {
+        loop {
+            let (cx, cy, _) = placed_disc(g, lay);
+            let mut any = false;
+            for &v in fresh {
+                if g.nodes[v].placed {
+                    continue;
+                }
+                let (mut sx, mut sy, mut k) = (0f64, 0f64, 0usize);
+                for j in g.adj_at[v] as usize..g.adj_at[v + 1] as usize {
+                    let u = &g.nodes[g.adj[j] as usize];
+                    if u.placed {
+                        sx += u.x as f64;
+                        sy += u.y as f64;
+                        k += 1;
+                    }
+                }
+                if k == 0 {
+                    continue;
+                }
+                let (nx, ny) = ((sx / k as f64) as f32, (sy / k as f64) as f32);
+                let pid = g.nodes[v].pid;
+                let (dx, dy) = (nx - cx, ny - cy);
+                let base = if fmla(dx, dx, dy * dy) >= 1.0 { dy.atan2(dx) } else { fmla(pid_unit(pid, SALT_SPOT), TAU, -PI) };
+                let a = fmla(pid_jitter(pid, SALT_TURN), 0.6, base);
+                g.nodes[v].x = fmla(GRAPH_SPRING_L, a.cos(), nx);
+                g.nodes[v].y = fmla(GRAPH_SPRING_L, a.sin(), ny);
+                g.nodes[v].placed = true;
+                any = true;
+            }
+            if !any {
+                break;
+            }
+        }
+        let Some(&v) = fresh.iter().find(|&&v| !g.nodes[v].placed) else { break };
+        let s = g.nodes[v].section;
+        let head = if s == v as i32 {
+            if v > 0 {
+                g.nodes[v - 1].section
+            } else {
+                -1
+            }
+        } else {
+            s
+        };
+        let pid = g.nodes[v].pid;
+        let a = pid_unit(pid, SALT_SPOT) * TAU;
+        if head >= 0 && g.nodes[head as usize].placed {
+            let h = head as usize;
+            let dist = fmla(GRAPH_SPRING_L, 0.5, lay.eff[h] + lay.eff[v]);
+            g.nodes[v].x = fmla(dist, a.cos(), g.nodes[h].x);
+            g.nodes[v].y = fmla(dist, a.sin(), g.nodes[h].y);
+        } else {
+            let (cx, cy, r) = placed_disc(g, lay);
+            let dist = if r > 0.0 { r + lay.eff[v] + COMP_GAP } else { 0.0 };
+            g.nodes[v].x = fmla(dist, a.cos(), cx);
+            g.nodes[v].y = fmla(dist, a.sin(), cy);
+        }
+        g.nodes[v].placed = true;
+    }
+}
+
+/// Places the force nodes that have no position yet (new pages, and the open page), keeping every
+/// other: each new one goes beside its placed neighbours, or beside its section's named page,
+/// then GRAPH_INC_STEPS steps run over the new pages' 2-hop neighbourhood with everything else
+/// fixed, and overlaps are set apart by moving only that neighbourhood. Last, a repair: dots that
+/// came to overlap while nothing moved (a page that got a name is bigger, and its satellites need
+/// room) are set apart, and only those move. A layout that was clean is left bit for bit as it was
+/// outside the new pages' neighbourhood. Satellites follow their heads. Returns how many it placed.
+pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
+    let cs = comps_of(g);
+    let mut lay = Lay::new(g);
+    let fresh: Vec<usize> = g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed).collect();
+    if !fresh.is_empty() {
+        place_fresh(g, &lay, &fresh);
+        for &v in &fresh {
+            lay.movable[v] = true;
+            for j in g.adj_at[v] as usize..g.adj_at[v + 1] as usize {
+                let u = g.adj[j] as usize;
+                lay.movable[u] = true;
+                for k in g.adj_at[u] as usize..g.adj_at[u + 1] as usize {
+                    lay.movable[g.adj[k] as usize] = true;
+                }
+            }
+        }
+        relax(g, &mut lay, &cs, GRAPH_INC_STEPS, pump);
+        collide(g, &lay, SLACK, pump);
+    }
+    for &v in &g.force {
+        lay.movable[v as usize] = true;
+    }
+    collide(g, &lay, 0.0, pump);
+    snap(g, &lay);
+    place_satellites(g);
+    g.laid = GraphLaid::Done;
+    fresh.len() as i32
+}
+
+// ---- Around: the rings of one page (Navi's positions_radial) ----
+
+// The radius of a ring of nodes as big as `big` at most, beyond a ring (or the centre) at `inner`
+// whose nodes are as big as `inner_big`: a rest length out at least, clear of the inner nodes, and
+// wide enough that neighbours on the ring keep a knockout between them.
+fn ring_radius(inner: f32, inner_big: f32, big: f32, m: usize, min_gap: f32) -> f32 {
+    let mut r = (inner + min_gap).max(inner + inner_big + big + GRAPH_KNOCKOUT + SLACK);
+    if m >= 2 {
+        let chord = fmla(2.0, big, GRAPH_KNOCKOUT + SLACK);
+        r = r.max(chord / (2.0 * (PI / m as f32).sin()));
+    }
+    r
+}
+
+/// The Around layout of one page: `centre` in the middle, the pages linked with it on a ring, and
+/// when depth is 2 the pages linked with those on an outer ring, each ring in the order of the
+/// parents' angles (the first ring in the order its pages lie around the centre in the map, or by
+/// page id when the map is not laid out). Only members are listed, the centre first, then each
+/// ring in its order; returns how many. The view draws the edges between members. Instant and
+/// deterministic: no forces.
+pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<GraphRing>) -> i32 {
+    out.clear();
+    let n = g.nodes.len();
+    if centre < 0 || centre as usize >= n || g.adj_at.len() != n + 1 {
+        return 0;
+    }
+    let c = centre as usize;
+    let mut seen = vec![false; n];
+    seen[c] = true;
+    out.push(GraphRing { node: centre, depth: 0, parent: -1, x: 0.0, y: 0.0 });
+    let cn = g.nodes[c];
+    let mut ring1: Vec<(f32, u32, usize)> = Vec::new();
+    for &v in graph_neighbours(g, centre) {
+        let v = v as usize;
+        seen[v] = true;
+        let nd = &g.nodes[v];
+        let (dx, dy) = (nd.x - cn.x, nd.y - cn.y);
+        let ideal = if cn.placed && nd.placed && fmla(dx, dx, dy * dy) > 0.0 {
+            dy.atan2(dx)
+        } else {
+            fmla(pid_unit(nd.pid, SALT_AROUND), TAU, -PI)
+        };
+        ring1.push((ideal, g.rank[v], v));
+    }
+    if ring1.is_empty() {
+        return 1;
+    }
+    ring1.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let ideal: Vec<f32> = ring1.iter().map(|e| e.0).collect();
+    let mut ang1: Vec<f32> = Vec::new();
+    ring_angles(&ideal, &mut ang1);
+    let big1 = ring1.iter().map(|e| g.nodes[e.2].r).fold(0.0f32, f32::max);
+    let r1 = ring_radius(0.0, cn.r, big1, ring1.len(), GRAPH_SPRING_L);
+    for (k, e) in ring1.iter().enumerate() {
+        out.push(GraphRing { node: e.2 as i32, depth: 1, parent: centre, x: r1 * ang1[k].cos(), y: r1 * ang1[k].sin() });
+    }
+    if depth < 2 {
+        return out.len() as i32;
+    }
+    // The outer ring: met from the first ring in its order, each parent's pages by page id.
+    let mut ring2: Vec<(usize, usize)> = Vec::new();
+    for (k, e) in ring1.iter().enumerate() {
+        for &v in graph_neighbours(g, e.2 as i32) {
+            let v = v as usize;
+            if !seen[v] {
+                seen[v] = true;
+                ring2.push((k, v));
+            }
+        }
+    }
+    if ring2.is_empty() {
+        return out.len() as i32;
+    }
+    let ideal: Vec<f32> = ring2.iter().map(|e| ang1[e.0]).collect();
+    let mut ang2: Vec<f32> = Vec::new();
+    ring_angles(&ideal, &mut ang2);
+    let big2 = ring2.iter().map(|e| g.nodes[e.1].r).fold(0.0f32, f32::max);
+    let r2 = ring_radius(r1, big1, big2, ring2.len(), GRAPH_SPRING_L);
+    for (k, e) in ring2.iter().enumerate() {
+        out.push(GraphRing {
+            node: e.1 as i32,
+            depth: 2,
+            parent: ring1[e.0].2 as i32,
+            x: r2 * ang2[k].cos(),
+            y: r2 * ang2[k].sin(),
+        });
+    }
+    out.len() as i32
 }
