@@ -77,14 +77,6 @@ pub fn sys_prevent_sleep(prevent: bool) {
 pub fn sys_activity() {
     platform::sys_activity()
 }
-/// Keep the Wi-Fi radio's power save off while Live view runs (awake), and give back what it had
-/// after (not awake). A radio left to doze while nobody watched came back sending the pen in bursts:
-/// a choppy dot in every browser, through restarts of the app and the browser, until its power save
-/// was set again.
-#[inline]
-pub fn sys_wifi_awake(awake: bool) {
-    platform::sys_wifi_awake(awake)
-}
 /// The battery for the clock and battery corner (status.rs): its percent (-1 when unknown) and
 /// whether it charges. On the Kindle: the kernel's power supply class, else the power service
 /// (`lipc-get-prop com.lab126.powerd battLevel`, `isCharging`), asked at most once a minute by a

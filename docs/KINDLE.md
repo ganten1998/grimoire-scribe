@@ -508,15 +508,13 @@ notebook page:
   for the new page's image. The Latency button shows how late the pen and the page image show (p50,
   p90, maximum), each from when the Kindle read the pen, plus the clocks' uncertainty. It times the
   browser's drawing callback, not when a monitor physically lights a pixel. A 240 fps video showing
-  the pen and monitor together is the final check. USB mode is not changed by Live view. Wi-Fi power
-  saving is: Live view turns it off as it starts (`wifi: power save off while Live view runs`) and
-  turns it back on as it stops, only if it was on (`/tmp/grimoire-wifi-ps` says it was; Grimoire's
-  next start gives it back after a crash; a reboot sets it anyway). Live view is sometimes choppy, an open
-  issue not explained yet: the Latency readout's Playout delay stays at its 20 ms cap and the dot
-  skips, in any browser, through restarts. While it is, `ping -i 0.1` from the Kindle to the
-  computer stalls about 250 ms in every 330 ms; with Live view stopped it does not. Wi-Fi power
-  saving is not shown to be the cause (it was off then). At actual size, full screen and Monitor
-  mode scroll.
+  the pen and monitor together is the final check. USB mode and Wi-Fi power saving are not changed
+  by Live view. Live view is sometimes choppy, an open issue not explained yet: the Latency readout's
+  Playout delay stays at its 20 ms cap and the dot skips, in any browser, through restarts. While it
+  is, `ping -i 0.1` from the Kindle to the computer stalls about 250 ms in every 330 ms. On
+  2026-10-28 a change of the radio's power saving (`iw dev wlan0 set power_save on` or `off`) ended
+  it, in one direction in the afternoon and the other in the evening: neither setting is the cure.
+  At actual size, full screen and Monitor mode scroll.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in
