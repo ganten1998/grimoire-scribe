@@ -359,8 +359,12 @@ reported), which use the commands and probes only the Rust build has.
 
 A scenario with a `# rust-only` line is skipped when the rule runs against the C build (`make
 c-check`, which sets `SCEN_SKIP_RUST_ONLY=1`): it uses commands, probes or behaviour only the Rust
-build has. The two rust selftests are skipped there too, and so is `make l10n-check`'s run of
-tests/scenarios/y_all_screens.qs, which visits the Rust build's screens.
+build has, unless `tests/c-scenarios/` holds a C variant of it (the script as it was before its panel taps
+became names), which runs in its place: the two roots whose data others use (`b_library`, which
+`share_check.sh`, the exporter check, `d_persist` and `x_turn_calibrated` start from, and `z_import_1_startup`)
+have one, and a variant must be kept in step with its original. A scenario whose `# root:` was skipped is skipped
+with it (it would copy a data root that was never made), even if it has no `# rust-only` line itself. The two rust selftests are skipped there too, and
+so is `make l10n-check`'s run of tests/scenarios/y_all_screens.qs, which visits the Rust build's screens.
 
 ## Languages in tests
 

@@ -149,7 +149,11 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 # and in fail.qs every line but the comments, waits and taps must be reported as failed, with
 # exit status 3. Then the same for tests/selftest/pass-rust.qs and fail-rust.qs, which use what only
 # the Rust build has (its commands and probes). With SCEN_SKIP_RUST_ONLY set (make c-check sets it),
-# a scenario with a "# rust-only" line is skipped, and so are the two rust selftests.
+# a scenario with a "# rust-only" line is skipped, unless tests/c-scenarios/ has its C variant, which runs in
+# its place (the two roots whose data others use: b_library, which share_check, the exporter check, d_persist and
+# x_turn_calibrated start from, and z_import_1_startup);
+# one whose "# root:" was skipped is skipped with it (it would copy a data root that was never made); and so
+# are the two rust selftests.
 SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
@@ -159,10 +163,15 @@ SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_D
 SCEN_LANG := GRIMOIRE_LANG=en
 scenarios: $(BUILD)/host/grimoire-headless
 	@unset $(SIM_HOOKS); \
-	failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); \
-	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && grep -q '^# rust-only' $$s; then echo "== $$n (rust-only: skipped)"; continue; fi; \
+	failed=; skipped=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); note=; \
+	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && grep -q '^# rust-only' $$s; then \
+	    if [ -f tests/c-scenarios/$$n.qs ]; then s=tests/c-scenarios/$$n.qs; note=" (the C build's variant)"; \
+	    else echo "== $$n (rust-only: skipped)"; skipped="$$skipped $$n "; continue; fi; fi; \
+	  from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
+	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && [ -n "$$from" ] && case "$$skipped" in *" $$from "*) true;; *) false;; esac; then \
+	    echo "== $$n (its root $$from is rust-only: skipped)"; skipped="$$skipped $$n "; continue; fi; \
 	  rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
-	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
+	  echo "== $$n$$note"; \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
 	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
 	    { grep -v '^http_port=' $$r/settings.ini 2>/dev/null; echo "http_port=$$GRIMOIRE_TEST_PORT"; } > $$r/settings.ini.port; \
