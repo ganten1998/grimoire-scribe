@@ -13,9 +13,8 @@
 //! page px = mm x dpi / 25.4 / zoom. The stored points are page geometry, so their spacing (a point
 //! every 2 mm) and the ellipse's vertex count are in page units and do not depend on the zoom.
 //!
-//! The gates are there to say no. On the owner's handwriting a hold-only trigger fires on a third
-//! of the strokes; here size, closure, winding, the scribble budget and the fit residuals each have
-//! to pass, and a stroke started in a writing burst (just after the last lift, close to it) gets
+//! The gates are there to say no. On the owner's 47 real strokes a hold-only trigger fired 21
+//! times; here size, closure, winding, the scribble budget and the fit residuals each have to pass, and a stroke started in a writing burst (just after the last lift, close to it) gets
 //! tolerances 0.7x as wide. Every refusal is an enum: the screens map them to text, this module
 //! has none.
 //!
@@ -50,7 +49,8 @@ pub const SHAPE_WIND_MAX: f32 = 2.6;
 /// The scribble budget: total absolute turning at most this x the winding plus SHAPE_TURN_PAD pi.
 pub const SHAPE_TURN_FACTOR: f32 = 1.6;
 pub const SHAPE_TURN_PAD: f32 = 0.6;
-/// A closed shape at least this many screen mm across (its long extent) and thick (its short one).
+/// A closed shape at least this many screen mm across and thick: its least width over all
+/// directions is the thickness, its width square to that the size across (a square's side both).
 pub const SHAPE_CLOSED_ACROSS_MM: f32 = 10.0;
 pub const SHAPE_CLOSED_THICK_MM: f32 = 4.0;
 /// Each polygon edge's chord / path at least this.
@@ -82,7 +82,7 @@ pub const SHAPE_GRID_SNAP_MM: f32 = 1.0;
 
 /// Edges and lines get a point at least every this many page mm.
 pub const SHAPE_POINT_MM: f32 = 2.0;
-/// An ellipse's chords stay within this many page px of the curve (see shape_ellipse_vertices).
+/// The vertex formula's px term (page px; see shape_ellipse_vertices), and its clamp.
 pub const SHAPE_ELLIPSE_PX: f32 = 0.25;
 pub const SHAPE_ELLIPSE_MIN_N: i32 = 24;
 pub const SHAPE_ELLIPSE_MAX_N: i32 = 720;
@@ -149,7 +149,7 @@ pub enum ShapeReason {
     TooNarrow = 5,
     /// closed, but less than SHAPE_CLOSED_THICK_MM thick
     TooThin = 6,
-    /// it does not go around once (a spiral, a hook, a figure eight)
+    /// it does not go around its centroid once (a spiral, twice round, a hook)
     Winding = 7,
     /// it turns far more than a shape that goes around once: a scribble or writing
     Scribble = 8,
@@ -192,16 +192,17 @@ pub struct ShapeFeatures {
     pub offset_mm: f32,
     /// the closure's gap / the diagonal
     pub gap: f32,
-    /// the closed path's least width (over all directions) and its width across that
+    /// the closed path's width square to its least width, and its least width (over all directions)
     pub across_mm: f32,
     pub thick_mm: f32,
     /// around the centroid, signed (the sign is the direction the stroke went)
     pub winding: f32,
     /// total absolute turning
     pub turning: f32,
-    /// ShortStraw's corners on the closed path
+    /// ShortStraw's corners on the closed path (on the open one, ends included, for v1.5's kinds)
     pub corners: i32,
-    /// the ellipse fit's RMS and largest radial errors / the minor semi-axis (0 when not fitted)
+    /// the ellipse fit's RMS and largest radial errors / the minor semi-axis (an arc's / its
+    /// radius; 0 when not fitted)
     pub rms: f32,
     pub max_err: f32,
     /// the fitted ellipse's minor / major axis
