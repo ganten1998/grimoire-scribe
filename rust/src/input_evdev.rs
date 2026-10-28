@@ -2888,6 +2888,11 @@ pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) 
         s.sample_batch = batch;
     })
 }
+pub fn input_forget_signal_pipe() {
+    for p in &G_SIGPIPE {
+        p.store(-1, Ordering::SeqCst); // (not closed: the child closes every inherited fd itself)
+    }
+}
 pub fn input_close() {
     work_pump_set(None);
     with(|s| s.hover_fn = None);

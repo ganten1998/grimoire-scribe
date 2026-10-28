@@ -224,6 +224,13 @@ pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
     platform::input_sample_hook(sample, batch)
 }
+/// In a forked child, before it closes what it inherited: the stop handler (SIGTERM, SIGINT,
+/// SIGHUP) writes nowhere from now on. The handler stays as it was, but the signal pipe's numbers
+/// go to the files the child opens next, and a stop would write a byte into one of them.
+#[inline]
+pub fn input_forget_signal_pipe() {
+    platform::input_forget_signal_pipe()
+}
 #[inline]
 pub fn input_close() {
     platform::input_close()

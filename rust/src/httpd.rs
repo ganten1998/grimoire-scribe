@@ -1826,6 +1826,7 @@ fn scan_request_line(req: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 // Child side of a heavy request: render, send everything (blocking), exit.
 fn serve_in_child(c: usize, method: &[u8], path: &[u8]) -> ! {
     work_pump_set(None); // the pens are Grimoire's to read (common.h), never a child's
+    input_forget_signal_pipe(); // (its numbers are closed below, and the render's files take them)
     let keep = with(|s| s.cl[c].fd);
     for fd in 3..1024 {
         if fd != keep {

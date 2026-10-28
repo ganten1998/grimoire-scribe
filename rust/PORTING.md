@@ -472,6 +472,12 @@ The only known ways the Rust build may differ, each deliberate:
   closes both, then resets them): a signal that comes late never writes to a closed descriptor, or
   to one a later open got the number of.
 
+- **The signal pipe in forked children**: bgjob's children and the share server's render children
+  take the signal pipe's numbers out of G_SIGPIPE (input_forget_signal_pipe) before they close
+  what they inherited. The C's keep them, so a stop sent to a child that still has Grimoire's
+  handler (bg_detach_rest's, a render) writes one byte into whatever file took the number since.
+  The handler itself is unchanged.
+
 Report any other difference you find yourself making; it is a bug until the owner decides
 otherwise.
 

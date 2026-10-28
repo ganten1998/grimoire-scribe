@@ -1471,6 +1471,7 @@ pub fn input_set_orientation(quarter_turns: i32) {
 pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
     with(|st| st.input_logical_to_panel(lx, ly, px, py));
 }
+pub fn input_forget_signal_pipe() {}
 pub fn input_close() {
     work_pump_set(None);
     expect_unrun();
