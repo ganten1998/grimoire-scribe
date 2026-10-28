@@ -1569,35 +1569,48 @@ fn compose(a: &mut App, r: Rect) {
     }
     draw_areas(a, r);
     if rect_overlaps(r, ed(a).panel) && !ed(a).live_no_panel {
+        // Only the part of the panel inside r: the page was blitted there alone, and the rest of the panel (and
+        // whatever menu is over it) is on the screen as it was; drawn again, the panel would lay itself over
+        // that menu, and over itself (its edges are blended with what is under them).
+        let clip = a.screen.clip;
+        canvas_set_clip(&mut a.screen, r);
         draw_panel(a);
+        a.screen.clip = clip;
     }
-    let s = ed(a);
+    draw_menus(a, r);
+}
+
+/// Every menu, sheet and bar that is up, over the page and the panel, in the order they stack: Paper, Templates,
+/// Display, Custom music, the tool picker, Find with its keyboard, and the Links bar over everything; each where
+/// it meets r. The panel is under all of them, and only ever over the notebook page.
+fn draw_menus(a: &mut App, r: Rect) {
+    let s = ed_ref(a);
     if s.paper_open && rect_overlaps(r, s.paper_rect) {
         draw_paper_sheet(a);
     }
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.ts.open && rect_overlaps(r, s.ts.rect) {
         with_modal(a, |s| &mut s.ts, tplsheet_draw);
     }
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.dm.open && rect_overlaps(r, s.dm.rect) {
         with_modal(a, |s| &mut s.dm, dispmenu_draw);
     }
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.mb.open && rect_overlaps(r, s.mb.rect) {
         with_modal(a, |s| &mut s.mb, musicbuild_draw);
     }
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.tools_open && rect_overlaps(r, s.tools_rect) {
         draw_tools(a);
     }
     // The Find sheet's card of rows and keyboard, where r meets them.
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.find.open {
         with_find(a, |f, a, nb, nav| findsheet_draw(f, a, nb, nav, r));
     }
     // The Links bar, over everything (laid out again as it is drawn: a turn changes the screen it is on).
-    let s = ed(a);
+    let s = ed_ref(a);
     if s.lb.open {
         let (aw, ah) = (a.w, a.h);
         let rect = {
@@ -1614,8 +1627,19 @@ fn compose(a: &mut App, r: Rect) {
     }
 }
 
-/// Live view: where the panel is, for its layer (RECT_EMPTY where none shows: no notebook, or the
-/// Pages view over everything).
+/// The panel drawn again (a pen picked, the panel moved, folded or refit): its place composed from the layers, the
+/// page, the panel and every menu that is up over it where they meet it. So never over a sheet, a keyboard or
+/// the Links bar, and not at all over the Pages view, which covers the screen.
+fn draw_panel_over(a: &mut App) {
+    if ed_ref(a).pv.open {
+        return;
+    }
+    let p = ed_ref(a).panel;
+    compose(a, p);
+}
+
+/// Live view: where the panel is, for its layer (RECT_EMPTY where none shows: no notebook, or a menu, sheet,
+/// bar or the Pages view in front, which draw over the panel: the browser's layer would be over them).
 pub fn editor_live_panel(a: &App) -> Rect {
     match a.ed.as_deref() {
         Some(s) if !sheet_open(s) => s.panel,
@@ -1677,7 +1701,7 @@ fn compose_all(a: &mut App, m: RefreshMode) {
 }
 
 fn repaint_panel(a: &mut App, m: RefreshMode) {
-    draw_panel(a);
+    draw_panel_over(a);
     let p = ed(a).panel;
     app_invalidate(a, p, m);
 }
@@ -3146,7 +3170,7 @@ fn move_panel_to(a: &mut App, x: i32, y: i32, m: RefreshMode) {
     let old = ed(a).panel;
     ed(a).panel = panel_rect_at(a, x, y);
     compose(a, old);
-    draw_panel(a);
+    draw_panel_over(a);
     let p = ed(a).panel;
     app_invalidate(a, rect_union(old, p), m);
 }
@@ -3167,7 +3191,7 @@ fn set_collapsed(a: &mut App, c: bool) {
     let x = if c { old.x + old.w - box_() } else { old.x + old.w - pw() };
     ed(a).panel = panel_rect_at(a, x, old.y);
     compose(a, old);
-    draw_panel(a);
+    draw_panel_over(a);
     let p = ed(a).panel;
     app_invalidate(a, rect_union(old, p), RefreshMode::Ui);
     persist_panel(a);
@@ -3250,8 +3274,7 @@ fn tools_tap(a: &mut App) {
             let st = &mut a.settings;
             st.white = K_INKS[clampi(h.arg, 0, N_INKS - 1) as usize].white;
             settings_save(st);
-            draw_panel(a); // the pen in use shows whether it draws white
-            draw_tools(a); // (over the panel where it covers it)
+            draw_panel_over(a); // the pen in use shows whether it draws white (the picker over the panel where it covers it)
             let s = ed(a);
             let r = rect_union(s.panel, s.tools_rect);
             app_invalidate(a, r, RefreshMode::Ui);
@@ -4071,8 +4094,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
             st.draw_tool = t;
         }
         settings_save(st);
-        draw_panel(a);
-        draw_tools(a); // (over the panel where it covers it)
+        draw_panel_over(a); // (the picker over the panel where it covers it)
         let s = ed(a);
         let r = rect_union(s.panel, s.tools_rect);
         app_invalidate(a, r, RefreshMode::Ui);
@@ -5306,6 +5328,27 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let s = ed_ref(a);
         let name = if open { hits_find(&s.hits, x as f32, y as f32).map(panel_name).unwrap_or_default() } else { String::new() };
         csnprintf!(out, cap, "%s", &name);
+        return 0;
+    }
+    if key == "layers" {
+        // Whether the screen is what its layers make of it: the page, the panel and then each menu that is up, in
+        // their order. The screen is composed again whole and compared with what it held: "ok", or the first pixel
+        // that differs, "X Y" (a panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here).
+        // A pixel that differs by 64 at most is not one: a frame's slanted edge drawn again over itself is blended
+        // with its own pixels (never by more than a quarter of the range), and a layer redrawn in place does that.
+        // The screen is the fresh one after it, so a check says what was wrong once.
+        if a.ed.is_none() || !(ed_ref(a).open && a.scr == ScreenId::Editor) {
+            return -1;
+        }
+        let keep = a.screen.px.clone();
+        compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h });
+        match keep.iter().zip(a.screen.px.iter()).position(|(x, y)| x.abs_diff(*y) > 64) {
+            None => csnprintf!(out, cap, "%s", "ok"),
+            Some(i) => {
+                let stride = a.screen.stride.max(1) as usize;
+                csnprintf!(out, cap, "%d %d", (i % stride) as i32, (i / stride) as i32)
+            }
+        };
         return 0;
     }
     if key == "areas" {
