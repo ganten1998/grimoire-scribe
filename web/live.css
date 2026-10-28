@@ -35,3 +35,10 @@ body.monitor #live .stage{margin:0 auto}
 body.monitor #live .latency{position:fixed;z-index:6;bottom:0;background:var(--bg)}
 body.monitor.actual,:root:fullscreen body.actual{box-sizing:border-box;height:100vh;overflow:auto}
 :root:fullscreen body.actual:not(.monitor){margin:0;padding:24px}
+
+#live .keys{border:2px solid var(--ink);border-radius:8px;padding:8px 16px;margin:0 0 12px;max-height:40vh;overflow:auto;background:var(--paper)}
+#live .keys[hidden]{display:none}
+#live .keys dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 20px}
+#live .keys dt{font-family:monospace}
+#live .keys dd{margin:0}
+body.monitor #live .keys{position:fixed;z-index:7;top:60px;left:12px;right:12px}

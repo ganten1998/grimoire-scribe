@@ -839,7 +839,7 @@ fn learn_row_at(g: i32, i: i32) -> LearnRow {
 }
 
 // An action's name as the Buttons sheet shows it: its row's, and in what it asks while it learns.
-fn action_label(action: i32) -> &'static str {
+pub(crate) fn action_label(action: i32) -> &'static str {
     if action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT as i32 {
         return tool_label(ToolKind(action - SHORTCUT_TOOL_BASE));
     }

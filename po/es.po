@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 13:02-0500\n"
+"POT-Creation-Date: 2026-10-28 18:16-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1343,6 +1343,26 @@ msgstr "Imagen en imagen"
 #: rust/src/httpd.rs
 msgid "This browser cannot show Live view."
 msgstr "Este navegador no puede mostrar la vista en directo."
+
+#: rust/src/httpd.rs
+msgid "Keys"
+msgstr "Teclas"
+
+#: rust/src/httpd.rs
+msgid ""
+"Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, "
+"then restart Live view."
+msgstr ""
+"Los atajos controlan Grimoire mientras esta página tiene el foco. Edita "
+"live-keys.ini y reinicia la vista en directo."
+
+#: rust/src/httpd.rs
+msgid "No Live view keys are assigned."
+msgstr "No hay teclas asignadas a la vista en directo."
+
+#: rust/src/httpd.rs
+msgid "Could not send keys. Release the keys and try again."
+msgstr "No se pudieron enviar las teclas. Suelta las teclas e inténtalo de nuevo."
 
 #. TRANSLATORS: Live view's page while it is off on the Kindle.
 #: rust/src/httpd.rs

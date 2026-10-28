@@ -228,6 +228,20 @@ idle controller sends nothing, so it looks the same as one switched off. When an
 controller exclusively (a button mapper), Grimoire cannot get its presses: the toast and the
 Controller sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
 
+## Live view keys
+
+While a browser shows Live view and its page has focus, the keyboard of that computer runs
+Grimoire's shortcut actions on the Kindle, as a keyboard paired with the Kindle would. The keys
+are in their own file, `live-keys.ini` beside `shortcuts.ini`, in the same `key.<key>=<action>`
+lines. Grimoire writes it from the built-in keyboard mappings the first time Live view starts,
+and reads it at each start: edit it, then stop and start Live view. The page's **Keys** button
+lists the keys in use.
+
+Only a browser paired for Live view can send keys, and only while Live view runs. A key held
+down sends one press (no repeats); keys are ignored while a field in the page has focus.
+Holding a key bound to `hold-eraser` keeps the eraser while it is held, and lets go if the
+browser goes quiet for a second and a half.
+
 ## Bluetooth
 
 The Kindle's own Bluetooth pairs audio, not controllers. A third-party helper,

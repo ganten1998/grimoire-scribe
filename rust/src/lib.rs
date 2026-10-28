@@ -82,6 +82,7 @@ pub mod keyboard;
 pub mod library;
 pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only, the Index's phase 1)
 pub mod live;
+pub mod live_keys;
 pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
 pub mod pagesview;
 pub mod panel; // header only

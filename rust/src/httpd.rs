@@ -39,6 +39,7 @@
 // The fonts and the web pages are embedded at build time: build/gen/fonts.c and build/gen/web.c in the
 // C (xxd -i), assets.rs here (include_bytes!, the same bytes).
 use crate::assets::*;
+use crate::live_keys::{LiveKey, LiveKeys, live_key_name};
 use crate::prelude::*;
 use std::cell::RefCell;
 use std::ffi::CStr;
@@ -227,6 +228,7 @@ struct State {
     /// HTTPD_SHARE, HTTPD_LIVE: who keeps the server up
     owners: u32,
     live_pairings: i32,
+    live_keys: LiveKeys,
     /// the request being answered is a HEAD
     head: bool,
     cl: Vec<Client>,
@@ -251,6 +253,7 @@ impl Default for State {
             served: 0,
             owners: 0,
             live_pairings: 0,
+            live_keys: LiveKeys::default(),
             head: false,
             cl: (0..MAX_CLIENTS).map(|_| Client::new()).collect(),
             cur: 0,
@@ -379,6 +382,7 @@ pub fn httpd_acquire(owner: u32, port: i32, dpi: f32, gothic: bool) -> i32 {
 pub fn httpd_release(owner: u32) {
     let none = with(|s| {
         s.owners &= !owner;
+        if owner & HTTPD_LIVE != 0 { s.live_keys = LiveKeys::default(); }
         s.owners == 0
     });
     if none {
@@ -390,6 +394,20 @@ pub fn httpd_owners() -> u32 {
     owners()
 }
 /// Browsers that paired for Live view since the start (the pairing card closes when it moves on).
+/// Load once per Live view session; a restart picks up edits to live-keys.ini.
+pub fn httpd_live_keys_load(path: &str) {
+    let map = crate::live_keys::live_keys_load(path);
+    with(|s| s.live_keys.reset(map));
+}
+pub fn httpd_live_key_pop() -> Option<LiveKey> {
+    with(|s| s.live_keys.pop(now_ms()))
+}
+pub fn httpd_live_key_action(key: &LiveKey) -> i32 {
+    with(|s| shortcuts_lookup(&s.live_keys.map, false, key.code, key.mods))
+}
+pub fn httpd_live_key_held(key: &LiveKey) -> bool {
+    live_on() && owners() & HTTPD_LIVE != 0 && with(|s| s.live_keys.is_held(key, now_ms()))
+}
 pub fn httpd_live_pairings() -> i32 {
     with(|s| s.live_pairings)
 }
@@ -444,6 +462,7 @@ pub fn httpd_stop() {
     with(|s| {
         s.listen = -1;
         s.owners = 0;
+        s.live_keys = LiveKeys::default();
     });
 }
 
@@ -650,6 +669,10 @@ fn respond_bytes(
         "OK"
     } else if code == 404 {
         "Not Found"
+    } else if code == 409 {
+        "Conflict"
+    } else if code == 429 {
+        "Too Many Requests"
     } else if code == 405 {
         "Method Not Allowed"
     } else if code == 400 {
@@ -1355,6 +1378,10 @@ fn route_live_page(query: &[u8]) {
         // TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
         // the computer's other windows (the browser's own name for it is fine).
         live_word(&mut b, &mut n, "pip", tr("Picture in picture"));
+        live_word(&mut b, &mut n, "keys", tr("Keys"));
+        live_word(&mut b, &mut n, "keysHint", tr("Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, then restart Live view."));
+        live_word(&mut b, &mut n, "keysEmpty", tr("No Live view keys are assigned."));
+        live_word(&mut b, &mut n, "keysError", tr("Could not send keys. Release the keys and try again."));
         live_word(&mut b, &mut n, "old", tr("This browser cannot show Live view."));
         buf_printf!(&mut b, "};</script><template id=live-bat>");
         bat_svg(&mut b);
@@ -1413,6 +1440,35 @@ fn route_live_page(query: &[u8]) {
     buf_free(&mut b);
 }
 
+// Bodyless POST, with the event in a bounded non-simple header. Cross-origin scripts need a
+// preflight, which this server refuses. Never accept a key on GET/HEAD or a form's simple POST.
+fn route_live_key(req: &[u8]) {
+    if !host_ok(req) { return respond_text(400, "bad host"); }
+    if owners() & HTTPD_LIVE == 0 || !live_on() { return respond_text(404, "live view is off"); }
+    if session_scopes() & PAIR_LIVE == 0 { return respond_text(401, "pair first"); }
+    if header_get(req, "Transfer-Encoding", 64).is_some()
+        || header_get(req, "Content-Length", 32).is_some_and(|v| v != b"0") {
+        return respond_text(400, "no body allowed");
+    }
+    let Some(event) = header_get(req, "X-Grimoire-Key", 32) else { return respond_text(400, "key header required") };
+    let Some(values) = parse_live_key(&event) else { return respond_text(400, "bad key") };
+    let cookie = header_get(req, "Cookie", 1024).unwrap_or_default();
+    let rc = with(|s| s.live_keys.submit(String::from_utf8_lossy(&cookie).into_owned(), values[0], values[1], values[2], now_ms()));
+    respond_text(rc, if rc == 200 { "ok" } else { "key refused" });
+}
+fn parse_live_key(event: &[u8]) -> Option<[i32; 3]> {
+    let text = std::str::from_utf8(event).ok()?;
+    let mut parts = text.split(',');
+    let mut values = [0; 3];
+    for value in &mut values {
+        let part = parts.next()?;
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) { return None; }
+        *value = part.parse().ok()?;
+    }
+    if parts.next().is_some() { return None; }
+    Some(values)
+}
+
 fn route_live(path: &[u8], query: &[u8]) {
     if path == b"/live" || path == b"/live/" {
         return route_live_page(query);
@@ -1448,6 +1504,25 @@ fn route_live(path: &[u8], query: &[u8]) {
         qlog!("live: a pairing was refused (%s)", if rc == PAIR_LOCKED { "locked" } else { "wrong code" });
         return redirect(if rc == PAIR_LOCKED { "/live?e=locked" } else { "/live?e=wrong" }, None);
     }
+    if path == b"/live/keys" {
+        if session_scopes() & PAIR_LIVE == 0 { return respond_text(401, "pair first"); }
+        let map = with(|s| s.live_keys.map.clone());
+        let mut b = Buf::default();
+        buf_puts(&mut b, "[");
+        for (i, key) in map.bindings.iter().take(map.count as usize).enumerate() {
+            buf_printf!(&mut b, "%s{\"code\":%d,\"mods\":%d,\"key\":", if i == 0 { "" } else { "," }, key.code, key.mods);
+            json_str(&mut b, live_key_name(key.code).as_bytes());
+            buf_puts(&mut b, ",\"action\":");
+            json_str(&mut b, shortcut_action_name(key.action).unwrap_or("").as_bytes());
+            buf_puts(&mut b, ",\"label\":");
+            json_str(&mut b, crate::library::action_label(key.action).as_bytes());
+            buf_puts(&mut b, "}");
+        }
+        buf_puts(&mut b, "]");
+        respond(200, "application/json", &b, None);
+        return;
+    }
+    if path == b"/live/key" { return respond_text(405, "POST only"); }
     if path == b"/live/time" {
         if session_scopes() & PAIR_LIVE == 0 {
             return respond_text(401, "pair first");
@@ -1909,6 +1984,9 @@ fn handle_request(c: usize) {
     let Some((method, path)) = scan_request_line(&req) else { return respond_text(400, "bad request") };
     let head = method == b"HEAD";
     with(|s| s.head = head);
+    if method == b"POST" && path == b"/live/key" {
+        return route_live_key(&req);
+    }
     if method != b"GET" && method != b"HEAD" {
         return respond_text(405, "GET only");
     }
@@ -2351,6 +2429,14 @@ mod tests {
         let mut b = Buf::default();
         json_str(&mut b, s);
         String::from_utf8(b.data).unwrap()
+    }
+
+    #[test]
+    fn live_keys_header_is_exact_and_bounded() {
+        assert_eq!(parse_live_key(b"44,1,1"), Some([44, 1, 1]));
+        for bad in [b"1,2".as_slice(), b"1,2,3,4", b"+1,0,1", b"1, 0,1", b"1,0,1x", b"1,0,", b"999999999999,0,1"] {
+            assert_eq!(parse_live_key(bad), None);
+        }
     }
 
     #[test]

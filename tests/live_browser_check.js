@@ -43,11 +43,17 @@ function page(respond) {
             readers[url] = reader; return reader;
         }}};
     }
-    const fetch = async url => { fetches.push(url); const r = respond && respond(url); return r || stream(url); };
+    const fetch = async (url, options) => {
+        fetches.push(url);
+        const r = respond && respond(url, options);
+        if (r) return r;
+        if (url === '/live/keys') return {ok: true, json: async () => []};
+        return stream(url);
+    };
     const context = {console, Uint8Array, Uint8ClampedArray, DataView, Blob, performance: {now: () => clock}, Promise, Math, Number, Date,
-        JSON, Set, Object, Array, String,
+        JSON, Set, Map, Object, Array, String,
         document: {getElementById: id => id === 'live' ? host : null, createElement: element, body,
-            documentElement: html, pictureInPictureEnabled: false},
+            documentElement: html, pictureInPictureEnabled: false, addEventListener(name, fn) { handlers['document.' + name] = fn; }},
         window: {GRIMOIRE_LIVE_WORDS: words, fetch, ReadableStream: function () {}, createImageBitmap: () => imagePromise,
             devicePixelRatio: 1}, fetch, createImageBitmap: () => imagePromise, innerHeight: 150,
         localStorage: {getItem() { throw Error('private storage'); }, setItem() { throw Error('private storage'); }},
