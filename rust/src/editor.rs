@@ -1316,6 +1316,10 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
         app_toast(a, tr("Could not open that page"), 3000);
         return false;
     };
+    live_reset();
+    a.live_processed = 0;
+    a.live_processed_ms = 0;
+    let s = ed(a);
     s.page = Some(np);
     s.index = index;
     s.nb.last_page = index;
@@ -2031,6 +2035,42 @@ fn clear_page(a: &mut App) {
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
     s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open
+}
+
+/// A cheap snapshot for the early input hook. UI gestures never paint provisional ink. The
+/// real brush remains authoritative: textures, nibs and paper restoration arrive in the tiles.
+pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
+    let Some(s) = a.ed.as_deref() else { return };
+    let Some(page) = s.open_page() else { return };
+    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.link_mode || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) {
+        return;
+    }
+    let st = &a.settings;
+    let mut ps = pen_stroke(st, ev.eraser || s.hold_eraser, ev.side_button);
+    if ps.act == PenAct::White && st.current_tool == TOOL_ERASER {
+        ps.tool = eraser_back(st);
+    }
+    let mut prm = if ps.act == PenAct::Precise { eraser_at_zoom(&st.tools[TOOL_ERASER.0 as usize], s.zoom) } else { st.tools[ps.tool.0 as usize] };
+    if s.owner == Owner::Draw {
+        if let Some(cur) = s.cur.as_deref() {
+            ps.tool = stroke_render_tool(cur);
+            ps.act = if stroke_is_erase(cur) { PenAct::White } else { PenAct::Ink };
+            prm = cur.params;
+        }
+    }
+    out.enabled = 1;
+    out.tool = ps.tool.0 as u8;
+    out.white = (ps.act != PenAct::Ink) as u8;
+    out.whole = (ps.act == PenAct::Whole) as u8;
+    out.width_min = prm.size_min_mm * a.dpi / 25.4 * s.zoom;
+    out.width_max = prm.size_max_mm * a.dpi / 25.4 * s.zoom;
+    out.pressure_floor = prm.pressure_floor;
+    out.pressure_ceiling = prm.pressure_ceiling;
+    out.pressure_gamma = prm.pressure_gamma;
+    out.opacity_min = prm.opacity_min;
+    out.opacity_max = prm.opacity_max;
+    out.clip = rect_intersect(page_to_screen(a, Rect { x: 0, y: 0, w: s.pgw, h: s.pgh }), Rect { x: 0, y: 0, w: a.w, h: a.h });
+    out.exclude = s.panel;
 }
 
 // Side button: clicks and holds that happen while not drawing. A press used for something else (a
@@ -3358,6 +3398,9 @@ pub fn editor_event(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::PinchBegin || ev.type_ == InType::PinchMove || ev.type_ == InType::PinchEnd {
+        if ev.type_ == InType::PinchBegin {
+            live_reset();
+        }
         if !s.pv.open {
             pinch(a, ev);
         }

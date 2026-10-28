@@ -1303,6 +1303,12 @@ fn route_live_page(query: &[u8]) {
         // picture (a dot, see-through while it hovers over the screen, solid while it touches), in
         // recordings too.
         live_word(&mut b, &mut n, "pen", tr("Show pen"));
+        // TRANSLATORS: browser controls and the optional latency meter; M toggles Monitor mode.
+        live_word(&mut b, &mut n, "monitor", tr("Monitor mode (M)"));
+        live_word(&mut b, &mut n, "latency", tr("Latency"));
+        live_word(&mut b, &mut n, "sampleAge", tr("Pen age at paint"));
+        live_word(&mut b, &mut n, "tileAge", tr("Tile batch age at paint"));
+        live_word(&mut b, &mut n, "clockError", tr("Clock uncertainty"));
         live_word(&mut b, &mut n, "record", tr("Record"));
         // TRANSLATORS: Live view's Record button where the browser can make no MP4 at all (WebM is the
         // other video format), and its tooltip saying why.
@@ -1406,7 +1412,17 @@ fn route_live(path: &[u8], query: &[u8]) {
         qlog!("live: a pairing was refused (%s)", if rc == PAIR_LOCKED { "locked" } else { "wrong code" });
         return redirect(if rc == PAIR_LOCKED { "/live?e=locked" } else { "/live?e=wrong" }, None);
     }
-    if path == b"/live/stream" {
+    if path == b"/live/time" {
+        if session_scopes() & PAIR_LIVE == 0 {
+            return respond_text(401, "pair first");
+        }
+        let mut b = Buf::default();
+        buf_printf!(&mut b, "{\"ms\":%u}", now_ms());
+        respond(200, "application/json", &b, None);
+        buf_free(&mut b);
+        return;
+    }
+    if path == b"/live/stream" || path == b"/live/pen" {
         if session_scopes() & PAIR_LIVE == 0 {
             return respond_text(401, "pair first");
         }
@@ -1417,7 +1433,8 @@ fn route_live(path: &[u8], query: &[u8]) {
             return respond_text(503, "live view is off");
         }
         // TRANSLATORS: Live view's answer to a third computer (two can watch at once).
-        if !live_take_viewer(cur_fd()) {
+        let taken = if path == b"/live/pen" { live_take_pen_viewer(cur_fd()) } else { live_take_viewer(cur_fd()) };
+        if !taken {
             return respond_text(503, tr("Two computers are watching already."));
         }
         qlog!("live: a viewer started (%d watching)", live_viewers());

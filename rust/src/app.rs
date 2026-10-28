@@ -55,6 +55,11 @@ pub struct App {
     pub scr: ScreenId,
     pub prev_scr: ScreenId,
     pub running: bool,
+    /// Live view's watermark: the live_seq of the newest captured event a screen has finished
+    /// handling, and that event's in_sample_ms. app_flush hands them to live_presented once every
+    /// pixel the event dirtied is in the stream, so a batch never retires ink it does not show yet.
+    pub live_processed: u32,
+    pub live_processed_ms: u32,
     /// Dirty accumulator, flushed once per loop iteration.
     pub dirty: Rect,
     pub dirty_mode: RefreshMode,
@@ -138,7 +143,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_hold_eraser, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
+    editor_busy, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
     editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut, editor_suspend,
 };
 pub use crate::library::{library_bt, library_learn_key, library_probe};
@@ -147,7 +152,7 @@ pub use crate::share::{share_draw_asleep, share_live_card_up, share_open, share_
 
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // The module's state (app.c's file-level statics), the main thread's alone (PORTING.md, Global state).
@@ -182,8 +187,54 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 static G_LIVE_APP: AtomicBool = AtomicBool::new(false);
 static G_LIVE_AWAKE: AtomicBool = AtomicBool::new(false);
 
+// For live_capture, which input_sample_hook calls from inside input reading (work_pump included, in
+// the middle of app work), where the C reads its g_live_app: what it reads of the App, kept here
+// (PORTING.md, The App). on, asleep and input_yielded follow the App wherever they change
+// (live_hover_sync); editor and styles are what the C's live_capture would find: a->scr ==
+// SCR_EDITOR && a->book.state != BOOK_RUNNING, and editor_live_style for an event of each eraser
+// and side button state, made again after every event and tick (live_cap_sync) and as Live view
+// starts, the moments the editor's state changes while no pen sample can be read.
+#[derive(Clone, Copy, Default)]
+struct LiveCap {
+    on: bool,
+    asleep: bool,
+    input_yielded: bool,
+    editor: bool,
+    /// [eraser][side_button]
+    styles: [[LiveStyle; 2]; 2],
+}
+
+thread_local! {
+    static LIVE_CAP: Cell<LiveCap> = Cell::new(LiveCap::default());
+    // app.c's g_live_ui_pending: the sequence of a captured UI pen-down not yet handled, 0 none
+    static LIVE_UI_PENDING: Cell<u32> = const { Cell::new(0) };
+    // and g_live_capture_blocked
+    static LIVE_CAPTURE_BLOCKED: Cell<bool> = const { Cell::new(false) };
+}
+
 fn live_hover_sync(a: &App) {
     G_LIVE_AWAKE.store(G_LIVE_APP.load(Ordering::Relaxed) && !a.asleep, Ordering::Relaxed);
+    LIVE_CAP.with(|c| {
+        let mut cap = c.get();
+        cap.on = G_LIVE_APP.load(Ordering::Relaxed);
+        cap.asleep = a.asleep;
+        cap.input_yielded = a.input_yielded;
+        c.set(cap);
+    });
+}
+
+fn live_cap_sync(a: &App) {
+    let mut cap = LiveCap { on: G_LIVE_APP.load(Ordering::Relaxed), asleep: a.asleep, input_yielded: a.input_yielded, ..Default::default() };
+    if cap.on && a.scr == ScreenId::Editor && a.book.state != BookState::Running {
+        cap.editor = true;
+        for (e, row) in cap.styles.iter_mut().enumerate() {
+            for (side, style) in row.iter_mut().enumerate() {
+                let ev = InEvent { eraser: e == 1, side_button: side == 1, ..Default::default() };
+                editor_live_style(a, &ev, style);
+            }
+        }
+    }
+    LIVE_CAP.with(|c| c.set(cap));
 }
 
 struct ScreenOps {
@@ -627,6 +678,11 @@ fn hid_changed(a: &mut App, ev: &InEvent) {
 }
 
 pub fn app_event(a: &mut App, ev: &InEvent) {
+    app_event_screens(a, ev);
+    live_cap_sync(a);
+}
+
+fn app_event_screens(a: &mut App, ev: &InEvent) {
     if ev.type_ == InType::Quit {
         a.running = false;
         return;
@@ -751,23 +807,12 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     if a.asleep && power_asleep_drops(ev) {
         return;
     }
-    // Live view's pen: where it is, for the browsers to draw over the picture (live_pen: one store
-    // per sample, nothing while Live view is off). Never asleep: the sleep screen, and the Kindle's
-    // own passcode over it, are not Grimoire's to show.
+    let mut captured = *ev;
     let t = ev.type_ as i32;
-    if !a.asleep && t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
-        live_pen(
-            if ev.type_ == InType::PenLeave {
-                LIVE_PEN_AWAY
-            } else if ev.type_ == InType::PenHover || ev.type_ == InType::PenUp {
-                LIVE_PEN_HOVER
-            } else {
-                LIVE_PEN_TOUCH
-            },
-            ev.x,
-            ev.y,
-        );
+    if captured.live_seq == 0 && t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
+        live_capture(&mut captured);
     }
+    let ev = &captured;
     // While a book's pages are being added (a few seconds), nothing may open its notebook.
     if a.book.state == BookState::Running
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key)
@@ -777,7 +822,27 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     if !a.asleep && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::PenButton) {
         note_input(a);
     }
+    // A pump inside UI work must not preview the old page or tool before that work finishes.
+    let mut before = LiveStyle::default();
+    if live_on() && a.scr == ScreenId::Editor {
+        editor_live_style(a, ev, &mut before);
+    }
+    LIVE_CAPTURE_BLOCKED.with(|b| {
+        b.set(!(ev.type_ == InType::PenMove
+            || (ev.type_ == InType::PenDown && before.enabled != 0 && !rect_contains(before.exclude, ev.x as i32, ev.y as i32))))
+    });
     (ops(a.scr).event)(a, ev);
+    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false));
+    if ev.live_seq != 0 {
+        a.live_processed = ev.live_seq;
+        a.live_processed_ms = in_sample_ms(ev);
+        LIVE_UI_PENDING.with(|p| {
+            if p.get() != 0 && (ev.live_seq.wrapping_sub(p.get()) as i32) >= 0 {
+                p.set(0);
+            }
+        });
+    }
+    live_wake_samples();
 }
 
 // The toast is never stored in a.screen: it is overlaid just for the refresh and the pixels
@@ -853,6 +918,33 @@ pub fn app_redraw(a: &mut App) {
 
 // ---- Live view ----
 
+fn live_capture(ev: &mut InEvent) {
+    let cap = LIVE_CAP.with(|c| c.get());
+    if !cap.on || cap.asleep || cap.input_yielded {
+        return;
+    }
+    let mut style = LiveStyle::default();
+    if cap.editor && !LIVE_CAPTURE_BLOCKED.with(|b| b.get()) && LIVE_UI_PENDING.with(|p| p.get()) == 0 {
+        style = cap.styles[ev.eraser as usize][ev.side_button as usize];
+    }
+    let ui = ev.type_ == InType::PenDown && (style.enabled == 0 || rect_contains(style.exclude, ev.x as i32, ev.y as i32));
+    ev.live_seq = live_sample(ev, &style);
+    if ui {
+        LIVE_UI_PENDING.with(|p| p.set(ev.live_seq));
+    }
+    live_pen(
+        if ev.type_ == InType::PenLeave {
+            LIVE_PEN_AWAY
+        } else if ev.type_ == InType::PenDown || ev.type_ == InType::PenMove {
+            LIVE_PEN_TOUCH
+        } else {
+            LIVE_PEN_HOVER
+        },
+        ev.x,
+        ev.y,
+    );
+}
+
 // The pen hovering, from input_hover_hook while Live view is on (on the Kindle the pen's own events
 // never say where it hovers). Never asleep, as for app_event's pen events.
 fn live_hover(x: f32, y: f32) {
@@ -896,6 +988,11 @@ pub fn live_view_open(a: &mut App) {
         live_set_warmth(warmth);
         G_LIVE_APP.store(true, Ordering::Relaxed);
         live_hover_sync(a);
+        a.live_processed = 0;
+        a.live_processed_ms = 0;
+        LIVE_UI_PENDING.with(|p| p.set(0));
+        live_cap_sync(a);
+        input_sample_hook(Some(live_capture), Some(live_wake_samples));
         input_hover_hook(Some(live_hover));
         display_skip_overlay(live_chip(a));
         app_invalidate(a, live_chip(a), RefreshMode::Ui);
@@ -909,6 +1006,7 @@ pub fn live_view_stop(a: &mut App, say: bool) {
         return;
     }
     input_hover_hook(None);
+    input_sample_hook(None, None);
     G_LIVE_APP.store(false, Ordering::Relaxed);
     live_hover_sync(a);
     live_stop();
@@ -972,6 +1070,7 @@ fn app_sleep(a: &mut App) {
     with(|s| s.sleep_shown = mode);
     if mode == 2 {
         a.input_yielded = true;
+        live_hover_sync(a);
         if !input_set_grab(false) || !sys_kindle_ui(true) {
             qlog!("sleep: could not hand input and screen to the Kindle; leaving for native unlock");
             a.running = false;
@@ -1219,6 +1318,11 @@ fn sleep_minute_ms() -> i32 {
 
 /// timers: autosave, toast, long press, httpd
 pub fn app_tick(a: &mut App, now: u32) {
+    app_tick_screens(a, now);
+    live_cap_sync(a);
+}
+
+fn app_tick_screens(a: &mut App, now: u32) {
     // The Bluetooth helper's script runs and requests are reaped even asleep.
     if a.bt_start_at != 0 && now.wrapping_sub(a.bt_start_at) as i32 >= 0 {
         a.bt_start_at = 0;
@@ -1348,6 +1452,7 @@ pub fn app_flush(a: &mut App) {
         return; // the sleep screen stays up until wake
     }
     if rect_is_empty(a.dirty) && rect_is_empty(with(|s| s.self_dirty)) {
+        live_presented(a.live_processed, a.live_processed_ms);
         return;
     }
     toast_follow(a); // (a screen that moves its floor redraws, so there is something to flush)
@@ -1370,6 +1475,7 @@ pub fn app_flush(a: &mut App) {
         a.ui_refreshes_since_full = 0;
     }
     live_push(&a.screen, a.dirty); // (before the toast and the chip: neither is streamed)
+    live_presented(a.live_processed, a.live_processed_ms);
     // The chip over what it covers, put back after the present, as the toast is.
     let chip = if live_on() { live_chip(a) } else { RECT_EMPTY };
     let mut chipped = !rect_is_empty(chip) && rect_overlaps(a.dirty, chip);
@@ -1407,6 +1513,9 @@ pub fn app_flush(a: &mut App) {
 /// calls leave/enter and redraws fully (REFRESH_FULL)
 pub fn app_switch(a: &mut App, s: ScreenId) {
     // (the C returns for a ScreenId out of range; a Rust ScreenId cannot be)
+    live_reset();
+    a.live_processed = 0;
+    a.live_processed_ms = 0;
     (ops(a.scr).leave)(a);
     a.prev_scr = a.scr;
     a.scr = s;

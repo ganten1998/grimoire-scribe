@@ -109,6 +109,8 @@ pub struct InEvent {
     /// says (the simulator). Only a stroke's samples take it (in_sample_ms): after a stall the read
     /// times bunch up, the kernel's keep the stroke's real spacing.
     pub k_ms: u32,
+    /// Live view sample already captured, 0 when off
+    pub live_seq: u32,
     /// the first sample after pen events the kernel dropped: joined straight
     pub gap: bool,
     /// IN_HID_*: the device's name, printable ASCII (hidkeys_name)
@@ -211,6 +213,12 @@ pub fn input_set_grab(grab: bool) -> bool {
 #[inline]
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
     platform::input_hover_hook(f)
+}
+/// Called before a pen event is queued, including during work_pump; NULL removes it. The batch
+/// callback runs once after reading the pens. Neither callback may wait, allocate or log.
+#[inline]
+pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
+    platform::input_sample_hook(sample, batch)
 }
 #[inline]
 pub fn input_close() {

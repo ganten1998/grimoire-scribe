@@ -1,33 +1,58 @@
-//! live.h: Live view, a computer's browser watching what Grimoire shows (docs/DESIGN.md, Live view).
+//! live.h: Live view. Protocol version 2. All integers and IEEE-754 f32 values are little-endian.
 //!
-//! While it is on, every rect the main loop presents is copied from App.screen into a shared frame
-//! (one memcpy of a rect it presents anyway; toasts and the live chip are never in it) and its
-//! 64 px tiles are marked. A browser that has paired (pair.h) gets a viewer child of its own, forked
-//! by the share server: it sends the tiles that changed as gray PNGs over one long HTTP response,
-//! at most about 30 batches a second, and never holds up the pen: a slow browser only makes the
-//! marks pile up, and the next batch carries what is newest. Two viewers at most. Nothing is
-//! written to disk.
+//! GET /live/stream carries authoritative PNG tiles, at most about 30 batches/s, and the legacy
+//! newest-only cursor. GET /live/pen carries samples on an independent socket and process, at
+//! ordinary priority: no PNG encoding, tile socket backpressure or 33 ms sleep is on its path.
+//! Both need the same PAIR_LIVE cookie. Each endpoint admits two connections; live_viewers reports
+//! the larger count, so a browser with both sockets counts once for sleep/idle policy. Both children
+//! die with the app. GET /live/time, also paired, returns {"ms": CLOCK_MONOTONIC milliseconds mod 2^32}.
 //!
-//! The pen's place is one word in the shared frame (live_pen): a sample stores it, which is all the
-//! pen path pays; only its coming into range wakes the viewers (a byte down each wake pipe), and
-//! while it is in range each viewer looks at it again every LIVE_PEN_MS by itself.
+//! The main process writes a 512-entry ring in mmap'd shared memory. Each entry has an atomic
+//! publication stamp and 22 atomic payload words: sample (20 bytes), style (64), epoch (4).
+//! The stamp is zero while writing, then the sample sequence; readers check it before and after
+//! copying the atomic words. Overrun never blocks the writer. The input hook does no allocation,
+//! logging or network IO; one nonblocking wake per pen reader per input batch releases the samples.
+//! Kernel event times are used when available, read times otherwise. Sequence zero is reserved;
+//! comparisons use signed 32-bit differences, so wrap is safe within half the sequence space.
 //!
-//! The stream's frames are little-endian: u32 length (of the type byte and the payload), u8 type,
-//! payload:
-//!   1 hello      u16 version (1), w, h, tile; u32 epoch: the screen's size, after a start or a turn
-//!   2 tile       u16 x, y, w, h, then the PNG of that rect
-//!   3 batch end  u32 seq, u32 the Kindle's ms: draw what came since the last one
-//!   4 ping       nothing: sent after 15 s without a batch
-//!   5 state      u8 LIVE_AWAKE, LIVE_ASLEEP, LIVE_PAIRING or LIVE_BYE; u8 1 when Grimoire shows its
-//!                colors inverted (white on black: the frame never is), else 0; u8 the front light's
-//!                warmth, 0..LIGHT_MAX, or LIVE_NO_WARMTH (no warm light, or not known). First thing
-//!                on every stream, then whenever any of them changes.
-//!   6 pen        u16 x, y in the screen's pixels (the tiles'), u8 LIVE_PEN_AWAY, LIVE_PEN_HOVER or
-//!                LIVE_PEN_TOUCH: where the Kindle's pen is, for the browser to draw over the picture.
-//!                After the tiles of the same batch, at most every LIVE_PEN_MS and only when it
-//!                changed: the newest place, so a browser that falls behind skips the ones between.
-//!                Only while the state is LIVE_AWAKE; a hello or any other state takes the pen away
-//!                (the browser forgets it), and the next pen frame says where it is again.
+//! Each frame: u32 length (type byte + payload), u8 type, then payload:
+//!  1 hello (12 bytes): u16 version=2, width, height, tile=64; u32 epoch. A turn, page/screen change,
+//!    sleep or pairing transition changes epoch. Clear provisional ink, never join across epochs.
+//!  2 tile: u16 x,y,width,height, then a grayscale PNG. Only /live/stream.
+//!  3 batch (16): u32 batch sequence, send time ms, presented sample sequence, presented sample ms.
+//!    The last two fields describe input already dispatched and ALL its dirty pixels copied by
+//!    app_flush, never the ring head (work_pump can read ahead). A child snapshots this watermark
+//!    before taking tile marks. Zero means no acknowledgement. A failed/incomplete tile batch
+//!    acknowledges nothing. A no-pixel-change acknowledgement still gets a batch. Retire preview
+//!    segments only when the complete batch is decoded AND painted, by sequence, not time.
+//!  4 ping (0): after 15 s idle.
+//!  5 state (3): u8 awake=0/asleep=1/pairing=2/bye=3, inverted (0/1), warmth (0..254; 255 unknown).
+//!    First on both streams. Non-awake clears ink/cursor and sends no screen or sample content.
+//!    Tile stream also sends inversion/warmth changes. Pairing codes and native PIN input stay out.
+//!  6 cursor (5): u16 x,y; u8 away=0/hover=1/touch=2. Legacy cursor on /live/stream, after tiles,
+//!    newest only, at most once per 33 ms. The v2 browser ignores it while /live/pen is connected.
+//!  7 samples (8 + 20*n): u32 epoch, reset (0/1), then n samples. Reset forgets previous stroke
+//!    continuity; n may be zero. Current sender emits one sample per frame, immediately on wake.
+//!    Each sample: +0 u32 sequence, +4 u32 time ms, +8 u16 x, +10 u16 y (screen pixels),
+//!    +12 u16 normalized pressure 0..65535, +14 i8 tilt x, +15 i8 tilt y (screen-frame degrees),
+//!    +16 u8 away/hover/touch, +17 u8 flags, +18 u16 reserved=0.
+//!    Flags: 1 eraser end, 2 side button, 4 down, 8 input gap, 16 preview permitted. Missing sequence
+//!    numbers and gaps break continuity. Only an explicit down can begin ink. A reconnect sends
+//!    only the newest place, without down; an overrun resets continuity and sends the retained tail.
+//!  8 style (64): applies to following samples, sent before the first and whenever it changes.
+//!    +0 u8 enabled, +1 u8 tool (existing 0..9 IDs), +2 u8 white, +3 u8 whole-stroke eraser;
+//!    +4,+8 f32 min/max screen width; +12,+16,+20 f32 pressure floor/ceiling/gamma;
+//!    +24,+28 f32 min/max opacity; +32 four i32 page clip x,y,w,h; +48 four i32 panel exclusion.
+//!    Width/opacity use clamp((pressure-floor)/(ceiling-floor),0,1)^gamma. Preview is round ink;
+//!    nibs, grain, smoothing, tilt response and exact paper restoration come from the real tiles.
+//!    Whole-stroke erasers show only the cursor: samples cannot identify the strokes they remove.
+//!
+//! Every sample stores its style, so a queued sample cannot inherit a later tool. UI contacts latch
+//! preview off through their gesture; while queued UI work or page rendering runs, capture is
+//! conservative. The browser clips ink away from the panel, bounds history to 2048 segments, and
+//! uses no prediction. Its meter estimates sample age at the rAF drawing callback, not physical
+//! scanout, from the smallest of eight timing RTTs (uncertainty at least RTT/2); refreshes every 30 s.
+//! Tile age is batch send to drawing callback. Neither is a phone-video measurement of visible ink.
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -42,7 +67,7 @@ pub const LIVE_VIEWERS: usize = 2;
 pub const LIVE_IDLE_OFF_MS: u32 = 10 * 60 * 1000;
 /// the state frame's warmth when there is none to follow
 pub const LIVE_NO_WARMTH: i32 = 255;
-/// pen frames at most this often (about 30 a second)
+/// legacy cursor only; fast samples never wait for it
 pub const LIVE_PEN_MS: u32 = 33;
 
 pub const LIVE_AWAKE: i32 = 0;
@@ -55,9 +80,38 @@ pub const LIVE_BATCH: i32 = 3;
 pub const LIVE_PING: i32 = 4;
 pub const LIVE_STATE: i32 = 5;
 pub const LIVE_PEN_FRAME: i32 = 6;
+pub const LIVE_SAMPLES: i32 = 7;
+pub const LIVE_STYLE: i32 = 8;
 pub const LIVE_PEN_AWAY: i32 = 0;
 pub const LIVE_PEN_HOVER: i32 = 1;
 pub const LIVE_PEN_TOUCH: i32 = 2;
+
+// Fast ink uses its own connection, so neither PNG encoding nor a full tile socket can hold it.
+pub const LIVE_RING: usize = 512;
+pub const LIVE_SAMPLE_BYTES: usize = 20;
+pub const LIVE_STYLE_BYTES: usize = 64;
+// flags: eraser end, side button, stroke start, discontinuity, allowed to preview this sample.
+pub const LIVE_ERASER: u8 = 1;
+pub const LIVE_SIDE: u8 = 2;
+pub const LIVE_DOWN: u8 = 4;
+pub const LIVE_GAP: u8 = 8;
+pub const LIVE_DRAW: u8 = 16;
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LiveStyle {
+    pub enabled: u8,
+    pub tool: u8,
+    pub white: u8,
+    pub whole: u8,
+    pub width_min: f32,
+    pub width_max: f32,
+    pub pressure_floor: f32,
+    pub pressure_ceiling: f32,
+    pub pressure_gamma: f32,
+    pub opacity_min: f32,
+    pub opacity_max: f32,
+    pub clip: Rect,
+    pub exclude: Rect,
+}
 
 // live.c: Live view. The main loop owns the shared frame and the viewer table; each viewer
 // is a forked child that reads the frame, never writes it, and owns one browser's connection.
@@ -79,7 +133,17 @@ struct Shared {
     pen: AtomicU32,
     w: AtomicU32,
     h: AtomicU32,
+    sample_head: AtomicU32,
+    ack_version: AtomicU32,
+    ack_sample: AtomicU32,
+    ack_ms: AtomicU32,
+    samples: [SampleSlot; LIVE_RING],
     dirty: [[AtomicU32; LIVE_WORDS]; LIVE_VIEWERS],
+}
+#[repr(C)]
+struct SampleSlot {
+    stamp: AtomicU32,
+    words: [AtomicU32; 22],
 }
 /// sizeof(Shared) in the C: where px begins
 const SHARED_SIZE: usize = std::mem::size_of::<Shared>();
@@ -119,13 +183,14 @@ struct Viewer {
 
 struct Live {
     sh: Option<Frame>,
-    v: [Viewer; LIVE_VIEWERS],
+    v: [Viewer; LIVE_VIEWERS * 2],
+    sample_wake: bool,
     /// when the last viewer left (or Live view started)
     last_viewer: u32,
 }
 
 thread_local! {
-    static S: RefCell<Live> = const { RefCell::new(Live { sh: None, v: [Viewer { pid: 0, wake: 0 }; LIVE_VIEWERS], last_viewer: 0 }) };
+    static S: RefCell<Live> = const { RefCell::new(Live { sh: None, v: [Viewer { pid: 0, wake: 0 }; LIVE_VIEWERS * 2], sample_wake: false, last_viewer: 0 }) };
 }
 fn with<R>(f: impl FnOnce(&mut Live) -> R) -> R {
     S.with(|s| f(&mut s.borrow_mut()))
@@ -231,7 +296,19 @@ pub fn live_on() -> bool {
 }
 
 pub fn live_viewers() -> i32 {
-    with(|s| s.v.iter().filter(|v| v.pid > 0).count() as i32)
+    with(|s| {
+        let mut tiles = 0;
+        let mut pens = 0;
+        for i in 0..LIVE_VIEWERS {
+            tiles += (s.v[i].pid > 0) as i32;
+            pens += (s.v[i + LIVE_VIEWERS].pid > 0) as i32;
+        }
+        if tiles > pens {
+            tiles
+        } else {
+            pens
+        }
+    })
 }
 
 fn wake_all() {
@@ -320,14 +397,14 @@ pub fn live_stop() {
     // Each viewer says bye and ends; one that does not within a second is stopped.
     let t0 = now_ms();
     while live_viewers() > 0 && now_ms().wrapping_sub(t0) < 1000 {
-        for i in 0..LIVE_VIEWERS {
+        for i in 0..LIVE_VIEWERS * 2 {
             reap(i, false);
         }
         if live_viewers() > 0 {
             sleep_ms(10);
         }
     }
-    for i in 0..LIVE_VIEWERS {
+    for i in 0..LIVE_VIEWERS * 2 {
         let pid = with(|s| s.v[i].pid);
         if pid > 0 {
             // SAFETY: SIGTERM to a child this process forked and has not reaped yet.
@@ -338,7 +415,10 @@ pub fn live_stop() {
     // SAFETY: the mapping live_start made, whole; nothing uses it after this (the Frame is
     // dropped from the state first, and the viewers are gone).
     unsafe { libc::munmap(f.base as *mut libc::c_void, f.size) };
-    with(|s| s.sh = None);
+    with(|s| {
+        s.sh = None;
+        s.sample_wake = false;
+    });
 }
 
 /// A rect of the screen presented: copied into the frame, its tiles marked, the viewers woken.
@@ -384,8 +464,20 @@ pub fn live_resize(w: i32, h: i32) {
     sh.w.store(w as u32, SeqCst);
     sh.h.store(h as u32, SeqCst);
     sh.pen.store(0, SeqCst); // (its place was on the screen before the turn)
+    sh.ack_sample.store(0, SeqCst);
+    sh.ack_ms.store(0, SeqCst);
     // SAFETY: px() is the start of the w * h pixel bytes (the size was checked against the mapping's).
     unsafe { std::ptr::write_bytes(f.px(), 255, (w as usize) * (h as usize)) };
+    sh.epoch.fetch_add(1, SeqCst);
+    mark_all(&f);
+    wake_all();
+}
+
+pub fn live_reset() {
+    let Some(f) = frame() else { return };
+    let sh = f.sh();
+    sh.ack_sample.store(0, SeqCst);
+    sh.ack_ms.store(0, SeqCst);
     sh.epoch.fetch_add(1, SeqCst);
     mark_all(&f);
     wake_all();
@@ -398,7 +490,10 @@ pub fn live_set_state(state: i32) {
     let sh = f.sh();
     // The state first, then (for the pairing card) its pixels: a viewer that reads them sees the
     // state after its own fence, and sends nothing.
-    sh.state.store(state as u32, SeqCst);
+    let previous = sh.state.swap(state as u32, SeqCst);
+    if previous != state as u32 {
+        live_reset();
+    }
     if state != LIVE_AWAKE {
         sh.pen.store(0, SeqCst); // (the browsers take it away with the state)
     }
@@ -451,7 +546,7 @@ pub fn live_poll(now: u32, idle_off: &mut bool) -> i32 {
     if !live_on() {
         return 0;
     }
-    for i in 0..LIVE_VIEWERS {
+    for i in 0..LIVE_VIEWERS * 2 {
         reap(i, false);
     }
     let n = live_viewers();
@@ -487,6 +582,13 @@ fn send_all(fd: i32, mut data: &[u8]) -> bool {
 fn send_frame(fd: i32, type_: u8, a: &[u8], b: &[u8]) -> bool {
     let mut head = [0u8; 5];
     live_frame_header(&mut head, (a.len() + b.len()) as u32, type_);
+    if a.len() + b.len() <= 128 {
+        let mut packet = [0u8; 133];
+        packet[..5].copy_from_slice(&head);
+        packet[5..5 + a.len()].copy_from_slice(a);
+        packet[5 + a.len()..5 + a.len() + b.len()].copy_from_slice(b);
+        return send_all(fd, &packet[..5 + a.len() + b.len()]);
+    }
     send_all(fd, &head) && (a.is_empty() || send_all(fd, a)) && (b.is_empty() || send_all(fd, b))
 }
 
@@ -499,9 +601,126 @@ fn put32(p: &mut [u8], v: u32) {
     put16(&mut p[2..], v >> 16);
 }
 
+pub fn live_style_payload(out: &mut [u8], s: &LiveStyle) {
+    out[0] = s.enabled;
+    out[1] = s.tool;
+    out[2] = s.white;
+    out[3] = s.whole;
+    let values = [s.width_min, s.width_max, s.pressure_floor, s.pressure_ceiling, s.pressure_gamma, s.opacity_min, s.opacity_max];
+    for (i, v) in values.iter().enumerate() {
+        put32(&mut out[4 + i * 4..], v.to_bits());
+    }
+    let rects = [s.clip.x, s.clip.y, s.clip.w, s.clip.h, s.exclude.x, s.exclude.y, s.exclude.w, s.exclude.h];
+    for (i, v) in rects.iter().enumerate() {
+        put32(&mut out[32 + i * 4..], *v as u32);
+    }
+}
+
+pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
+    let Some(f) = frame() else { return 0 };
+    let sh = f.sh();
+    if sh.state.load(SeqCst) != LIVE_AWAKE as u32 {
+        return 0;
+    }
+    let mut seq = sh.sample_head.load(SeqCst).wrapping_add(1);
+    if seq == 0 {
+        seq = 1; // zero means an event that was not captured
+    }
+    let mut record = [0u8; 88];
+    put32(&mut record, seq);
+    put32(&mut record[4..], in_sample_ms(ev));
+    put16(&mut record[8..], pen_px(ev.x, sh.w.load(SeqCst) as i32));
+    put16(&mut record[10..], pen_px(ev.y, sh.h.load(SeqCst) as i32));
+    put16(&mut record[12..], pen_px(ev.pressure * 65535.0, 65536));
+    record[14] = clampf(ev.tilt_x, -90.0, 90.0) as i8 as u8;
+    record[15] = clampf(ev.tilt_y, -90.0, 90.0) as i8 as u8;
+    record[16] = if ev.type_ == InType::PenLeave {
+        LIVE_PEN_AWAY
+    } else if ev.type_ == InType::PenDown || ev.type_ == InType::PenMove {
+        LIVE_PEN_TOUCH
+    } else {
+        LIVE_PEN_HOVER
+    } as u8;
+    record[17] = (if ev.eraser { LIVE_ERASER } else { 0 })
+        | (if ev.side_button { LIVE_SIDE } else { 0 })
+        | (if ev.type_ == InType::PenDown { LIVE_DOWN } else { 0 })
+        | (if ev.gap { LIVE_GAP } else { 0 })
+        | (if style.enabled != 0 { LIVE_DRAW } else { 0 });
+    live_style_payload(&mut record[20..20 + LIVE_STYLE_BYTES], style);
+    put32(&mut record[84..], sh.epoch.load(SeqCst));
+    let slot = &sh.samples[seq as usize % LIVE_RING];
+    // Every payload word is atomic as well: an overrun may write while a child reads. The two
+    // stamp reads reject that snapshot, without a C data race or a lock held by a slow viewer.
+    slot.stamp.store(0, SeqCst);
+    for (i, word) in slot.words.iter().enumerate() {
+        word.store(get32(&record[i * 4..]), SeqCst);
+    }
+    slot.stamp.store(seq, SeqCst);
+    sh.sample_head.store(seq, SeqCst);
+    with(|s| s.sample_wake = true);
+    seq
+}
+
+pub fn live_wake_samples() {
+    let v = with(|s| {
+        if s.sh.is_none() || !s.sample_wake {
+            return None;
+        }
+        s.sample_wake = false;
+        Some(s.v)
+    });
+    let Some(v) = v else { return };
+    for viewer in &v[LIVE_VIEWERS..] {
+        if viewer.pid > 0 {
+            // SAFETY: write(2) of one byte from a static to the wake pipe's write end, which this
+            // process owns for as long as the viewer's pid is set.
+            let r = unsafe { libc::write(viewer.wake, b"p".as_ptr() as *const libc::c_void, 1) };
+            if r < 0 { /* already awake */ }
+        }
+    }
+}
+
+pub fn live_presented(sample: u32, ms: u32) {
+    let Some(f) = frame() else { return };
+    let sh = f.sh();
+    if sample == 0 || sh.ack_sample.load(SeqCst) == sample {
+        return;
+    }
+    sh.ack_version.fetch_add(1, SeqCst);
+    sh.ack_sample.store(sample, SeqCst);
+    sh.ack_ms.store(ms, SeqCst);
+    sh.ack_version.fetch_add(1, SeqCst);
+    wake_all();
+}
+
+fn read_ack(sh: &Shared, sample: &mut u32, ms: &mut u32) {
+    let a = sh.ack_version.load(SeqCst);
+    *sample = sh.ack_sample.load(SeqCst);
+    *ms = sh.ack_ms.load(SeqCst);
+    if (a & 1) != 0 || a != sh.ack_version.load(SeqCst) {
+        *sample = 0;
+        *ms = 0;
+    }
+}
+
+fn sample_read(sh: &Shared, seq: u32, out: &mut [u8; 88]) -> bool {
+    let slot = &sh.samples[seq as usize % LIVE_RING];
+    if slot.stamp.load(SeqCst) != seq {
+        return false;
+    }
+    for (i, word) in slot.words.iter().enumerate() {
+        put32(&mut out[i * 4..], word.load(SeqCst));
+    }
+    slot.stamp.load(SeqCst) == seq
+}
+
+fn get32(p: &[u8]) -> u32 {
+    p[0] as u32 | (p[1] as u32) << 8 | (p[2] as u32) << 16 | (p[3] as u32) << 24
+}
+
 fn send_hello(fd: i32, w: i32, h: i32, epoch: u32) -> bool {
     let mut p = [0u8; 12];
-    put16(&mut p, 1);
+    put16(&mut p, 2);
     put16(&mut p[2..], w as u32);
     put16(&mut p[4..], h as u32);
     put16(&mut p[6..], LIVE_TILE as u32);
@@ -558,9 +777,137 @@ fn set_int_opt(fd: i32, level: libc::c_int, name: libc::c_int, v: libc::c_int) {
     unsafe { libc::setsockopt(fd, level, name, &v as *const libc::c_int as *const libc::c_void, std::mem::size_of::<libc::c_int>() as libc::socklen_t) };
 }
 
+// _exit(0): ends the child at once, running none of the parent's exit handlers.
+fn child_exit() -> ! {
+    // SAFETY: _exit takes no pointers and never returns.
+    unsafe { libc::_exit(0) }
+}
+
+fn pen_main(f: Frame, fd: i32, wake: i32, parent: libc::pid_t) -> ! {
+    let sh = f.sh();
+    let mut epoch: u32 = 0;
+    let mut cursor: u32 = 0;
+    let mut last = now_ms();
+    let mut told: u32 = !0;
+    let mut style = [0u8; LIVE_STYLE_BYTES];
+    let mut have_style = false;
+    let mut reset = true;
+    let mut snapshot = true;
+    loop {
+        let state = sh.state.load(SeqCst);
+        let e = sh.epoch.load(SeqCst);
+        if state != told {
+            if !send_state(fd, state, sh.invert.load(SeqCst), sh.warmth.load(SeqCst)) {
+                break;
+            }
+            told = state;
+            reset = true;
+            cursor = sh.sample_head.load(SeqCst);
+            if state == LIVE_BYE as u32 {
+                break;
+            }
+        }
+        if state == LIVE_AWAKE as u32 && (e != epoch || reset) {
+            epoch = e;
+            if !send_hello(fd, sh.w.load(SeqCst) as i32, sh.h.load(SeqCst) as i32, epoch) {
+                break;
+            }
+            cursor = sh.sample_head.load(SeqCst);
+            if cursor != 0 {
+                cursor -= 1; // newest place only; never replay a stroke when reconnecting
+            }
+            have_style = false;
+            snapshot = cursor != sh.sample_head.load(SeqCst);
+            let mut packet = [0u8; 8];
+            put32(&mut packet, epoch);
+            put32(&mut packet[4..], 1);
+            if !send_frame(fd, LIVE_SAMPLES as u8, &packet, &[]) {
+                break;
+            }
+            reset = false;
+        }
+        if state == LIVE_AWAKE as u32 {
+            let head = sh.sample_head.load(SeqCst);
+            if head.wrapping_sub(cursor) > LIVE_RING as u32 {
+                cursor = head.wrapping_sub(LIVE_RING as u32);
+                reset = true;
+            }
+            while cursor != head {
+                let mut next = cursor.wrapping_add(1);
+                if next == 0 {
+                    next = 1;
+                }
+                let mut record = [0u8; 88];
+                let mut packet = [0u8; 28];
+                if !sample_read(sh, next, &mut record) {
+                    reset = true;
+                    break;
+                }
+                cursor = next;
+                if get32(&record[84..]) != epoch {
+                    continue;
+                }
+                if sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.epoch.load(SeqCst) != epoch {
+                    break;
+                }
+                if !have_style || style[..] != record[20..20 + LIVE_STYLE_BYTES] {
+                    style.copy_from_slice(&record[20..20 + LIVE_STYLE_BYTES]);
+                    if !send_frame(fd, LIVE_STYLE as u8, &style, &[]) {
+                        child_exit();
+                    }
+                    have_style = true;
+                }
+                put32(&mut packet, epoch);
+                put32(&mut packet[4..], if reset { 1 } else { 0 });
+                packet[8..8 + LIVE_SAMPLE_BYTES].copy_from_slice(&record[..LIVE_SAMPLE_BYTES]);
+                if reset || snapshot {
+                    packet[25] &= !LIVE_DOWN;
+                }
+                snapshot = false;
+                if !send_frame(fd, LIVE_SAMPLES as u8, &packet, &[]) {
+                    child_exit();
+                }
+                reset = false;
+                last = now_ms();
+            }
+        }
+        if now_ms().wrapping_sub(last) >= 15000 {
+            if !send_frame(fd, LIVE_PING as u8, &[], &[]) {
+                break;
+            }
+            last = now_ms();
+        }
+        let mut pf = [libc::pollfd { fd: wake, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
+        // SAFETY: poll reads and writes the two pollfds of the local array.
+        let got = unsafe { libc::poll(pf.as_mut_ptr(), 2, 1000) };
+        if got < 0 && errno() != libc::EINTR {
+            break;
+        }
+        if pf[1].revents & (libc::POLLHUP | libc::POLLERR | libc::POLLIN) != 0 {
+            break;
+        }
+        if pf[0].revents & libc::POLLIN != 0 {
+            let mut drain = [0u8; 256];
+            // SAFETY: read into the local array, at most its length, from the wake pipe.
+            while unsafe { libc::read(wake, drain.as_mut_ptr() as *mut libc::c_void, drain.len()) } > 0 {}
+        }
+        // SAFETY: getppid takes no arguments.
+        if unsafe { libc::getppid() } != parent {
+            break;
+        }
+    }
+    // SAFETY: shutdown of our own socket's write side, then _exit, which ends the child at once and
+    // runs none of the parent's exit handlers.
+    unsafe {
+        libc::shutdown(fd, libc::SHUT_WR);
+        libc::_exit(0)
+    }
+}
+
 fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32) -> ! {
     let sh = f.sh();
-    let dirty = &sh.dirty[slot];
+    let fast = slot >= LIVE_VIEWERS;
+    let dirty = &sh.dirty[slot % LIVE_VIEWERS];
     for i in 3..1024 {
         if i != fd && i != wake {
             // SAFETY: closes a descriptor of this (forked) process; most of these are not open.
@@ -586,12 +933,14 @@ fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32) -> ! {
     }
     // SAFETY: getppid, nice and fcntl on our own descriptor take no pointers. (nice: best effort.)
     let parent = unsafe { libc::getppid() };
-    unsafe { libc::nice(5) };
+    if !fast {
+        unsafe { libc::nice(5) };
+    }
     unsafe { libc::fcntl(fd, libc::F_SETFL, libc::fcntl(fd, libc::F_GETFL, 0) & !libc::O_NONBLOCK) };
     set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_NODELAY, 1);
-    set_int_opt(fd, libc::SOL_SOCKET, libc::SO_SNDBUF, 256 * 1024);
+    set_int_opt(fd, libc::SOL_SOCKET, libc::SO_SNDBUF, if fast { 16 * 1024 } else { 256 * 1024 });
     // a browser that takes nothing for 10 s is gone
-    let tv = libc::timeval { tv_sec: 10, tv_usec: 0 };
+    let tv = libc::timeval { tv_sec: if fast { 1 } else { 10 }, tv_usec: 0 };
     // SAFETY: setsockopt reads one timeval from the local tv.
     unsafe { libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_SNDTIMEO, &tv as *const libc::timeval as *const libc::c_void, std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
     // SAFETY: this process's own stb setting (the fastest filter, a little bigger); the viewer is
@@ -599,6 +948,12 @@ fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32) -> ! {
     unsafe { crate::ffi_stb::stbi_write_force_png_filter = 1 };
     static HEAD: &[u8] = b"HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\n\
 Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+    if fast {
+        if !send_all(fd, HEAD) {
+            child_exit();
+        }
+        pen_main(f, fd, wake, parent);
+    }
     let cap = f.px_len();
     let mut sent: Vec<u8> = Vec::new();
     let mut tile: Vec<u8> = Vec::new();
@@ -620,6 +975,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
     let mut told_pen: u32 = 0;
     let mut w: i32 = 0;
     let mut h: i32 = 0;
+    let mut ack_sent: u32 = 0;
     'main: loop {
         let state = sh.state.load(SeqCst);
         let invert = sh.invert.load(SeqCst);
@@ -658,16 +1014,19 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             // A hello takes the pen away too. Read again: live_resize cleared it before the epoch
             // moved on, so a place read above may be one on the screen before the turn.
             told_pen = 0;
+            ack_sent = 0;
             pen = sh.pen.load(SeqCst);
         }
         if state == LIVE_AWAKE as u32 {
+            let (mut ack, mut ack_ms) = (0, 0);
+            read_ack(sh, &mut ack, &mut ack_ms); // before the marks: every acknowledged pixel is in this batch or an earlier one
             let mut words = [0u32; LIVE_WORDS];
             let mut any = false;
             for i in 0..LIVE_WORDS {
                 words[i] = dirty[i].swap(0, SeqCst);
                 any |= words[i] != 0;
             }
-            if any {
+            if any || (ack != 0 && ack != ack_sent) {
                 let mut runs = [RECT_EMPTY; LIVE_WORDS * 32];
                 let n = live_runs(&words, w, h, &mut runs);
                 let mut out = 0;
@@ -693,7 +1052,13 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                     if !changed {
                         continue;
                     }
-                    let Some(png) = Png::of_tile(&tile, r.w, r.h) else { continue };
+                    let Some(png) = Png::of_tile(&tile, r.w, r.h) else {
+                        for i in 0..LIVE_WORDS {
+                            dirty[i].fetch_or(words[i], SeqCst);
+                        }
+                        ok = false;
+                        break;
+                    };
                     let mut at = [0u8; 8];
                     put16(&mut at, r.x as u32);
                     put16(&mut at[2..], r.y as u32);
@@ -711,10 +1076,15 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                     }
                     out += 1;
                 }
-                if out != 0 {
-                    let mut p = [0u8; 8];
+                if out != 0 || (ok && ack != 0 && ack != ack_sent) {
+                    let mut p = [0u8; 16];
                     put32(&mut p, sh.seq.fetch_add(1, SeqCst));
                     put32(&mut p[4..], now_ms());
+                    put32(&mut p[8..], if ok { ack } else { 0 });
+                    put32(&mut p[12..], if ok { ack_ms } else { 0 });
+                    if ok && ack != 0 {
+                        ack_sent = ack;
+                    }
                     if !send_frame(fd, LIVE_BATCH as u8, &p, &[]) {
                         break;
                     }
@@ -791,14 +1161,13 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
     }
 }
 
-/// Hands the connection fd (an authenticated GET /live/stream) to a new viewer child: true when it
-/// took it (the caller closes its own copy), false when two are watching already or fork failed.
-pub fn live_take_viewer(fd: i32) -> bool {
+fn take_viewer(fd: i32, fast: bool) -> bool {
     let Some(f) = frame() else { return false };
     let mut slot: i32 = -1;
     let v = with(|s| s.v);
-    for (i, viewer) in v.iter().enumerate() {
-        if viewer.pid <= 0 {
+    let first = if fast { LIVE_VIEWERS } else { 0 };
+    for i in first..first + LIVE_VIEWERS {
+        if v[i].pid <= 0 {
             slot = i as i32;
         }
     }
@@ -821,8 +1190,10 @@ pub fn live_take_viewer(fd: i32) -> bool {
         // The main loop's state stays as it is for the viewer: it reads the frame and its own
         // marks, and the other slot's pipe end closes with every other fd.
         fence(SeqCst);
-        for i in 0..LIVE_WORDS {
-            f.sh().dirty[slot as usize][i].store(0xFFFFFFFF, SeqCst);
+        if !fast {
+            for i in 0..LIVE_WORDS {
+                f.sh().dirty[slot as usize][i].store(0xFFFFFFFF, SeqCst);
+            }
         }
         viewer_main(f, slot as usize, fd, p[0]);
     }
@@ -840,4 +1211,13 @@ pub fn live_take_viewer(fd: i32) -> bool {
     #[cfg(feature = "sim")]
     qlog!("live: (simulator) viewer pid %d", pid as i32); // (tests/live_check.sh: none outlives the app)
     true
+}
+
+/// Hands the connection fd (an authenticated GET /live/stream) to a new viewer child: true when it
+/// took it (the caller closes its own copy), false when two are watching already or fork failed.
+pub fn live_take_viewer(fd: i32) -> bool {
+    take_viewer(fd, false)
+}
+pub fn live_take_pen_viewer(fd: i32) -> bool {
+    take_viewer(fd, true)
 }

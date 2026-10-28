@@ -530,6 +530,12 @@ struct State {
     hover: PenHover,
     wacom_frame_us: u64,
     hover_said: i32,
+    // input_sample_hook's (Live view's): sample_fn sees each pen event as it is queued (and a raw
+    // hover, hover_from_raw), sample_batch runs once after each read of the pens. sample_fn runs under
+    // this module's borrow, in q_push: by input.h's rule it only stores into memory (app's and live's),
+    // so it never reaches input.
+    sample_fn: Option<fn(&mut InEvent)>,
+    sample_batch: Option<fn()>,
 
     /// The frame being reported is the first after a pen drop (pen_resync): its sample says so (gap).
     pen_gap: bool,
@@ -620,6 +626,8 @@ impl Default for State {
             hover: PenHover::default(),
             wacom_frame_us: 0,
             hover_said: -2,
+            sample_fn: None,
+            sample_batch: None,
             pen_gap: false,
             pen_good: PenState::default(),
             drops: 0,
@@ -650,9 +658,14 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 static G_QUIT: AtomicI32 = AtomicI32::new(0);
 static G_SIGPIPE: [AtomicI32; 2] = [AtomicI32::new(-1), AtomicI32::new(-1)];
 
-/// What a raw digitizer frame hands Live view's hook (hover_from_raw): the hook and the place, called
-/// once this module's state is let go, so the hook can reach anything. The other handlers give none.
-type Hover = Option<(fn(f32, f32), f32, f32)>;
+/// What a raw digitizer frame hands Live view (hover_from_raw), called once this module's state is let
+/// go, so the hook can reach anything: the hover hook and the place, or, while the sample hook is set,
+/// that hook and the hovering pen's event. The other handlers give none.
+type Hover = Option<HoverTo>;
+enum HoverTo {
+    Place(fn(f32, f32), f32, f32),
+    Sample(fn(&mut InEvent), InEvent),
+}
 /// drain's handler of one event.
 type Handler = fn(&mut State, &InputEvent) -> Hover;
 
@@ -698,7 +711,7 @@ fn mono_us() -> u64 {
 impl State {
     // ---- event queue ----
 
-    fn q_push(&mut self, e: InEvent) {
+    fn q_push(&mut self, mut e: InEvent) {
         // PIN touches belong only to Amazon. Do not even log their coordinates.
         if !self.input_grabbed
             && (power_asleep_drops(&e) || e.type_ == InType::PenHover || e.type_ == InType::PenLeave || e.type_ == InType::PenButton)
@@ -729,6 +742,11 @@ impl State {
         let n = (self.qt + 1) % QN;
         if n == self.qh {
             return; // full: drop (the app drains every loop, so this is pathological)
+        }
+        if let Some(f) = self.sample_fn {
+            if pen {
+                f(&mut e);
+            }
         }
         self.q[self.qt] = e;
         self.qt = n;
@@ -802,7 +820,14 @@ impl State {
             }
             self.wacom_frame_us = ev_us(ev);
             if let Some(f) = self.hover_fn {
-                return self.hover_from_raw().map(|(x, y)| (f, x, y));
+                return self.hover_from_raw().map(|(x, y)| match self.sample_fn {
+                    Some(sample) => {
+                        let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.W.side, ..Default::default() };
+                        e.k_ms = pensync_ms(self.wacom_frame_us, self.wacom_mono, e.t_ms);
+                        HoverTo::Sample(sample, e)
+                    }
+                    None => HoverTo::Place(f, x, y),
+                });
             }
             return None;
         }
@@ -2308,8 +2333,10 @@ fn drain(fd: i32, f: Handler) {
         }
         for ev in &evs[..r as usize / size_of::<InputEvent>()] {
             // (Each event under its own borrow of the state: a raw frame's hover hook runs after it.)
-            if let Some((hook, x, y)) = with(|s| f(s, ev)) {
-                hook(x, y);
+            match with(|s| f(s, ev)) {
+                Some(HoverTo::Place(hook, x, y)) => hook(x, y),
+                Some(HoverTo::Sample(hook, mut e)) => hook(&mut e),
+                None => {}
             }
         }
         if (r as usize) < size_of_val(&evs) {
@@ -2566,6 +2593,9 @@ fn read_pens(wacom: bool, pen: bool) {
         } else {
             drain(fd, discard_input);
         }
+    }
+    if let Some(batch) = with(|s| s.sample_batch) {
+        batch();
     }
 }
 
@@ -2849,9 +2879,16 @@ pub fn input_set_grab(grab: bool) -> bool {
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
     with(|s| s.hover_fn = f)
 }
+pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
+    with(|s| {
+        s.sample_fn = sample;
+        s.sample_batch = batch;
+    })
+}
 pub fn input_close() {
     work_pump_set(None);
     with(|s| s.hover_fn = None);
+    input_sample_hook(None, None);
     input_shortcuts_enable(false);
     with(|s| {
         if s.pen.fd >= 0 {
