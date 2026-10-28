@@ -1647,6 +1647,16 @@ pub fn editor_live_panel(a: &App) -> Rect {
     }
 }
 
+/// Live view: where the screen holds the panel, which the frame is pushed without (editor_live_under_panel): the
+/// panel's rect, with a menu over it or not (the browser's layer is gone while one is up, and the tiles must not
+/// hold the panel then), and none where the Pages view covers the screen.
+pub fn editor_live_hole(a: &App) -> Rect {
+    match a.ed.as_deref() {
+        Some(s) if s.open && !s.pv.open => s.panel,
+        _ => RECT_EMPTY,
+    }
+}
+
 /// Live view's chip on a notebook page, `size` px square: beside the panel, level with its header (its collapsed box
 /// as a whole), on its left, or on its right where the panel is too near the screen's left edge to leave room;
 /// none (empty) with a menu, sheet, bar or the Pages view in front, which draw over the panel. It is an
@@ -5939,6 +5949,7 @@ mod tests {
         ed(&mut a).collapsed = false;
         ed(&mut a).panel = Rect::new(1704, 220, 128, 1520);
         assert_ne!(editor_live_panel(&a), RECT_EMPTY);
+        assert_eq!(editor_live_hole(&a), Rect::new(1704, 220, 128, 1520));
         for open in [
             |s: &mut EditorState, on: bool| s.pv.open = on,
             |s: &mut EditorState, on: bool| s.tools_open = on,
@@ -5954,6 +5965,8 @@ mod tests {
             assert!(!editor_page_in_front(&a));
             assert_eq!(editor_live_chip(&a, 42), RECT_EMPTY);
             assert_eq!(editor_live_panel(&a), RECT_EMPTY);
+            // (the frame is still pushed without the panel under a menu, but for the Pages view, which has none)
+            assert_eq!(editor_live_hole(&a) == RECT_EMPTY, ed_ref(&a).pv.open);
             open(ed(&mut a), false);
             assert_ne!(editor_live_chip(&a, 42), RECT_EMPTY);
             assert_ne!(editor_live_panel(&a), RECT_EMPTY);

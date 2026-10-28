@@ -151,7 +151,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_chip, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_chip, editor_live_hole, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
     editor_open_notebook_at, editor_page_canvas, editor_page_in_front, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
     editor_shortcut, editor_shortcut_at, editor_suspend,
 };
@@ -1078,8 +1078,10 @@ fn live_push_screen(a: &mut App, r: Rect) {
     if !live_on() {
         return;
     }
-    let panel = if a.scr == ScreenId::Editor { editor_live_panel(a) } else { RECT_EMPTY };
-    let under = rect_intersect(r, panel);
+    // The layer is the panel the browser draws over the frame (none while a menu is in front of the page: it would
+    // be over the menu); the frame is pushed without the panel wherever the screen holds one, or a menu over it.
+    let (panel, hole) = if a.scr == ScreenId::Editor { (editor_live_panel(a), editor_live_hole(a)) } else { (RECT_EMPTY, RECT_EMPTY) };
+    let under = rect_intersect(r, hole);
     let moved = with(|s| s.live_panel) != panel;
     if !rect_is_empty(under) || moved {
         live_layer(LIVE_LAYER_PANEL, &a.screen, panel);
