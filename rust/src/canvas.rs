@@ -241,6 +241,49 @@ pub fn canvas_vline(c: &mut Canvas, x: i32, mut y0: i32, mut y1: i32, t: i32, gr
     canvas_fill(c, Rect { x, y: y0, w: t, h: y1 - y0 }, gray);
 }
 
+/// The dashes of an edge len px long, each `on` long with the gaps about `off`: (start, length) in whole
+/// pixels. The nearest whole number of dashes to on-and-off fits, the gaps stretched or squeezed to it, so
+/// both ends of the edge are dashes (the corners are solid). An edge too short for two dashes is one run.
+fn dash_runs(len: i32, on: i32, off: i32) -> Vec<(i32, i32)> {
+    let on = on.max(1);
+    if len <= 2 * on {
+        return vec![(0, len.max(0))];
+    }
+    let off = off.max(0);
+    let n = (((len + off) as f32 / (on + off) as f32).round() as i32).clamp(2, (len / on).max(2));
+    let span = (len - on) as f32 / (n - 1) as f32;
+    (0..n).map(|k| ((k as f32 * span).round() as i32, on)).collect()
+}
+
+/// A dashed rectangle for an overlay that is not ink: `thick` px dashes, `on` long with about `off` between,
+/// along the four edges of r (drawn inside it, as canvas_rect_outline does), each edge starting and ending
+/// on a dash so the corners are solid. A white halo band of `halo` px on both sides of every edge goes down
+/// first, so the dashes read over ink and over rules alike. Only 0 and 255, so a 1-bit refresh shows it
+/// as it is; everything is clipped to the canvas's clip like canvas_fill.
+pub fn canvas_dash_rect(c: &mut Canvas, r: Rect, thick: i32, on: i32, off: i32, halo: i32) {
+    if rect_is_empty(r) || thick <= 0 {
+        return;
+    }
+    let t = thick.min(r.w).min(r.h);
+    let top = Rect { x: r.x, y: r.y, w: r.w, h: t };
+    let bottom = Rect { x: r.x, y: r.y + r.h - t, w: r.w, h: t };
+    let left = Rect { x: r.x, y: r.y, w: t, h: r.h };
+    let right = Rect { x: r.x + r.w - t, y: r.y, w: t, h: r.h };
+    if halo > 0 {
+        for e in [top, bottom, left, right] {
+            canvas_fill(c, Rect { x: e.x - halo, y: e.y - halo, w: e.w + 2 * halo, h: e.h + 2 * halo }, 255);
+        }
+    }
+    for (x, w) in dash_runs(r.w, on, off) {
+        canvas_fill(c, Rect { x: r.x + x, y: top.y, w, h: t }, 0);
+        canvas_fill(c, Rect { x: r.x + x, y: bottom.y, w, h: t }, 0);
+    }
+    for (y, h) in dash_runs(r.h, on, off) {
+        canvas_fill(c, Rect { x: left.x, y: r.y + y, w: t, h }, 0);
+        canvas_fill(c, Rect { x: right.x, y: r.y + y, w: t, h }, 0);
+    }
+}
+
 /// Antialiased line with round caps; width in px (may be fractional). Opaque paint (not deposit).
 pub fn canvas_line_aa(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, gray: u8) {
     let hw = width * 0.5;
@@ -558,6 +601,92 @@ mod tests {
         canvas_set_clip(&mut c, Rect { x: 1, y: 1, w: 1, h: 1 });
         canvas_deposit_px(&mut c, 0, 0, 0, 1.0);
         assert_eq!(c.px[0], 250);
+    }
+
+    // The run lengths along one row or column of the canvas, from x0 to x1 (exclusive): (dark?, length).
+    fn runs(c: &Canvas, x0: i32, y0: i32, dx: i32, dy: i32, n: i32) -> Vec<(bool, i32)> {
+        let mut out: Vec<(bool, i32)> = Vec::new();
+        for i in 0..n {
+            let dark = at(c, x0 + i * dx, y0 + i * dy) == 0;
+            match out.last_mut() {
+                Some(l) if l.0 == dark => l.1 += 1,
+                _ => out.push((dark, 1)),
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_dashed_rect_has_its_dashes_and_gaps_and_solid_corners() {
+        // 5 dashes of 4 and 4 gaps of 3 make exactly 32 px: every edge of a 32 x 32 box is that.
+        let mut c = canvas(60, 60);
+        let r = Rect { x: 10, y: 10, w: 32, h: 32 };
+        canvas_dash_rect(&mut c, r, 2, 4, 3, 2);
+        let want = vec![(true, 4), (false, 3), (true, 4), (false, 3), (true, 4), (false, 3), (true, 4), (false, 3), (true, 4)];
+        assert_eq!(runs(&c, r.x, r.y, 1, 0, 32), want); // the top edge's first row
+        assert_eq!(runs(&c, r.x, r.y + r.h - 1, 1, 0, 32), want); // the bottom edge's last row
+        assert_eq!(runs(&c, r.x, r.y, 0, 1, 32), want); // the left edge
+        assert_eq!(runs(&c, r.x + r.w - 1, r.y, 0, 1, 32), want); // the right edge
+        // The dashes are 2 px thick: the second row of the top edge is the same, the third is not on.
+        assert_eq!(runs(&c, r.x, r.y + 1, 1, 0, 32), want);
+        assert_eq!(at(&c, r.x + 5, r.y + 2), 255);
+        // The four corners are solid (2 x 2 each).
+        for (cx, cy) in [(r.x, r.y), (r.x + r.w - 2, r.y), (r.x, r.y + r.h - 2), (r.x + r.w - 2, r.y + r.h - 2)] {
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                assert_eq!(at(&c, cx + dx, cy + dy), 0);
+            }
+        }
+        // The halo: 2 px of white on both sides of an edge's gap. (Over a dark page it shows.)
+        let mut d = canvas(60, 60);
+        canvas_fill(&mut d, Rect { x: 0, y: 0, w: 60, h: 60 }, 100);
+        canvas_dash_rect(&mut d, r, 2, 4, 3, 2);
+        assert_eq!(at(&d, r.x + 5, r.y - 1), 255);
+        assert_eq!(at(&d, r.x + 5, r.y - 2), 255);
+        assert_eq!(at(&d, r.x + 5, r.y - 3), 100);
+        assert_eq!(at(&d, r.x + 5, r.y + 2), 255); // inside: the halo
+        assert_eq!(at(&d, r.x + 5, r.y + 3), 255);
+        assert_eq!(at(&d, r.x + 5, r.y + 4), 100);
+        assert_eq!(at(&d, r.x + 5, r.y), 255); // the gap itself is white
+        assert_eq!(at(&d, r.x + 1, r.y), 0); // the dash is black
+        // Only 0 and 255 land on the page where the dashes are.
+        assert!(d.px.iter().all(|&p| p == 0 || p == 100 || p == 255));
+        // An edge that does not fit whole dashes and gaps is stretched to: both ends are still dashes.
+        let mut e = canvas(120, 40);
+        let r2 = Rect { x: 5, y: 5, w: 101, h: 30 };
+        canvas_dash_rect(&mut e, r2, 2, 16, 12, 0);
+        let top = runs(&e, r2.x, r2.y, 1, 0, 101);
+        assert_eq!(top.first(), Some(&(true, 16)));
+        assert_eq!(top.last(), Some(&(true, 16)));
+        assert!(top.iter().filter(|r| r.0).all(|r| r.1 == 16));
+        assert!(top.iter().filter(|r| !r.0).all(|r| (10..=14).contains(&r.1)));
+        // A box too small for two dashes is a solid outline.
+        let mut f = canvas(40, 40);
+        canvas_dash_rect(&mut f, Rect { x: 4, y: 4, w: 20, h: 20 }, 2, 16, 12, 0);
+        assert_eq!(runs(&f, 4, 4, 1, 0, 20), vec![(true, 20)]);
+        assert_eq!(runs(&f, 4, 4, 0, 1, 20), vec![(true, 20)]);
+    }
+
+    #[test]
+    fn a_dashed_rect_is_clipped() {
+        let mut c = canvas(50, 50);
+        canvas_set_clip(&mut c, Rect { x: 20, y: 20, w: 10, h: 10 });
+        canvas_dash_rect(&mut c, Rect { x: 5, y: 5, w: 40, h: 40 }, 2, 4, 3, 2);
+        // Nothing outside the clip changed: the screen is still all white and nothing dark is there.
+        assert!(c.px.iter().all(|&p| p == 255));
+        let mut d = canvas(50, 50);
+        canvas_set_clip(&mut d, Rect { x: 0, y: 0, w: 12, h: 50 });
+        canvas_dash_rect(&mut d, Rect { x: 5, y: 5, w: 40, h: 40 }, 2, 4, 3, 2);
+        for y in 0..50 {
+            for x in 12..50 {
+                assert_eq!(at(&d, x, y), 255);
+            }
+        }
+        assert_eq!(at(&d, 5, 5), 0);
+        assert_eq!(at(&d, 5, 44), 0);
+        // A rect with no area draws nothing.
+        let mut e = canvas(10, 10);
+        canvas_dash_rect(&mut e, RECT_EMPTY, 2, 4, 3, 2);
+        assert!(e.px.iter().all(|&p| p == 255));
     }
 
     #[test]
