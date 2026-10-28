@@ -28,7 +28,7 @@ wait 200
 expect library.sheet is buttons
 expect library.buttons_group is
 shot 02-buttons
-tap 930 682
+tap 930 629
 wait 100
 expect library.buttons_group is editing
 shot 02-buttons-editing
@@ -45,10 +45,10 @@ expect toast is That button is no longer for Eraser.
 tap 930 1696
 wait 100
 expect library.buttons_group is
-tap 930 1002
+tap 930 949
 wait 100
 expect library.buttons_group is pages
-tap 930 523
+tap 930 469
 wait 100
 expect library.learning is previous-page
 key 2 0
@@ -63,12 +63,12 @@ expect library.learning is
 expect pads.previous-page is 316
 expect pads.next-page is 317
 # Add a link and Name the page, under the Index
-tap 930 1483
+tap 930 1589
 wait 100
 expect library.learning is add-link
 key 321 0 1
 wait 100
-tap 930 1643
+tap 930 1749
 wait 100
 expect library.learning is name-page
 key 322 0 1
@@ -77,10 +77,10 @@ expect library.learning is
 expect pads.add-link is 321
 expect pads.name-page is 322
 shot 04-pages-links
-tap 930 1803
+tap 930 1909
 wait 100
 # Tools: each pen on its own (the picker's order), and previous / next tool
-tap 930 842
+tap 930 789
 wait 100
 expect library.buttons_group is tools
 shot 04-tools
@@ -117,7 +117,7 @@ expect library.buttons.picker-next is 320
 shot 04-tools-picker
 tap 930 2115
 wait 100
-tap 930 682
+tap 930 629
 wait 100
 tap 930 736
 wait 100
@@ -128,7 +128,7 @@ expect pads.redo is North
 shot 05-learned
 tap 930 1696
 wait 100
-tap 930 1482
+tap 930 1589
 wait 100
 expect library.sheet is shortcuts
 tap 930 1695
@@ -185,7 +185,7 @@ tap 746 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 1322
+tap 930 1429
 wait 100
 expect pads.undo is South
 expect pads.previous-page is Select,Left

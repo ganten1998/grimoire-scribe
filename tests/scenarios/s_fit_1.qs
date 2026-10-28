@@ -43,6 +43,20 @@ key 33 0
 wait 300
 expect editor.zoomed is 0
 expect editor.scale is 0.75
+# landscape-fit (a key or a controller's button) is the Display row: the width at once, even pinched in
+pinch 1240 930 300 900 6
+wait 400
+key 17 0
+wait 400
+expect settings.landscape_fit is 0
+expect editor.scale is 1.33
+expect editor.zoomed is 0
+expect toast is Sideways fills the width.
+key 17 0
+wait 400
+expect settings.landscape_fit is 1
+expect editor.scale is 0.75
+expect toast is Sideways shows the whole page.
 # the Display sheet's row: the width again, at once, even pinched in
 pinch 1240 930 300 900 6
 wait 400

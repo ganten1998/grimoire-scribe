@@ -90,7 +90,17 @@ Actions, in the Buttons sheet's groups:
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
   notebook's own paper right after the open one, which opens, as the Pages view's New page does),
   `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
-  its Pages or its Index tab), `add-link` (Add a link) and `name-page` (Name the page), both below.
+  its Pages or its Index tab), `landscape-fit` (sideways, the whole page or the page's width, in turn:
+  the Display sheet's "Sideways, show the whole page" row, with a toast; upright only the toast, as it
+  applies when the Kindle is sideways), `add-link` (Add a link) and `name-page` (Name the page), both
+  below.
+- **Index**: `links` (the Links bar: the links on the open page, one row for each page they lead to; it
+  opens and closes with its own button, and two fingers up also open it, two fingers down close it),
+  `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's Go to page
+  opens, closed again by its own button), `go-back` (Back to the page before: the page a link, the Pages
+  view or Find left, the newest first, up to 32, forgotten when the notebook closes; a page turn leaves
+  nothing on that list, and with none a toast says so) and `link-areas` (dotted boxes over the page where a
+  finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`, and `status-toggle` (the
   small clock and battery in the top left corner on and off, as a finger tap there does; docs/KINDLE.md,
@@ -137,7 +147,14 @@ never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
-`name-page`, `status-toggle`) and count them in Reload shortcuts.ini; their other lines still work.
+`name-page`, `status-toggle`, `links`, `go-to-page`, `go-back`, `link-areas`, `landscape-fit`) and count
+them in Reload shortcuts.ini; their other lines still work.
+
+Two-finger gestures are bound to the same actions in `gestures.ini` (docs/FORMAT.md) and need no Enable
+shortcuts: the Settings switch for them is `gestures` in settings.ini. Their built-ins are two fingers
+down `pages`, up `links`, left `next-page`, right `previous-page`, and a page turned that way never adds
+a page (a key's or a button's still does). A line `touch.2.up=nothing` turns a built-in off; the file is
+read at start and when shortcuts are reloaded.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux

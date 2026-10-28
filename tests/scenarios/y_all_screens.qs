@@ -35,7 +35,7 @@ tap 930 1215
 wait 50
 expect library.sheet is buttons
 shot 02-buttons
-tap 930 682
+tap 930 629
 wait 50
 expect library.buttons_group is editing
 shot 02-buttons-editing
@@ -47,7 +47,7 @@ tap 930 1056
 wait 50
 tap 930 1696
 wait 50
-tap 930 842
+tap 930 789
 wait 50
 expect library.buttons_group is tools
 shot 02-buttons-tools
@@ -68,19 +68,33 @@ expect library.learning is
 tap 930 2115
 wait 50
 expect library.buttons_group is
-tap 930 1002
+tap 930 949
 wait 50
 expect library.buttons_group is pages
 shot 02-buttons-pages
-tap 930 523
+tap 930 469
 wait 50
 expect library.learning is previous-page
 shot 02-buttons-learning-pages
-tap 930 523
+tap 930 469
 wait 50
-tap 930 1803
+tap 930 1909
 wait 50
-tap 930 1162
+tap 930 1109
+wait 50
+expect library.buttons_group is index
+shot 02-buttons-index
+tap 930 736
+wait 50
+expect library.learning is links
+shot 02-buttons-learning-index
+tap 930 736
+wait 50
+expect library.learning is
+tap 930 1376
+wait 50
+expect library.buttons_group is
+tap 930 1269
 wait 50
 expect library.buttons_group is menus
 shot 02-buttons-menus
@@ -89,7 +103,7 @@ shot 02-buttons-menus
 tap 930 1742
 wait 50
 expect library.buttons_group is
-tap 930 1482
+tap 930 1589
 wait 50
 expect library.sheet is shortcuts
 tap 930 1375
@@ -642,21 +656,28 @@ tap 1240 1008
 wait 50
 expect library.sheet is buttons
 shot 45-buttons-landscape
-tap 1240 636
+tap 1240 582
 wait 50
 expect library.buttons_group is tools
 shot 45-buttons-tools-landscape
 tap 1240 1699
 wait 50
 expect library.buttons_group is
-tap 1240 796
+tap 1240 742
 wait 50
 expect library.buttons_group is pages
 shot 45-buttons-pages-landscape
-tap 1240 1596
+tap 1240 1690
 wait 50
 expect library.buttons_group is
-tap 1240 1276
+tap 1240 902
+wait 50
+expect library.buttons_group is index
+shot 45-buttons-index-landscape
+tap 1240 1169
+wait 50
+expect library.buttons_group is
+tap 1240 1382
 wait 50
 expect library.sheet is shortcuts
 tap 1240 368

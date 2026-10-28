@@ -664,7 +664,7 @@ fn dates() {
 // Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
 // in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
 // formatted as the code formats it (keep this list in step with the messages); out holds them.
-const RARE_MAX: usize = 40;
+const RARE_MAX: usize = 48;
 const RARE_LEN: usize = 256;
 fn rare_notices(out: &mut Vec<String>) -> usize {
     out.clear();
@@ -708,6 +708,12 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!(tr("No buttons for %s now."), tr("Previous / next tool")));
     put(cformat!(tr("No buttons for %s now."), tr("Previous / next in the picker")));
     put(cformat!(tr("No buttons for %s now."), tr("Erase while held")));
+    // The Index's actions in the Buttons sheet, with their longest names.
+    put(cformat!(tr("That button is no longer for %s."), tr("Back to the page before")));
+    put(cformat!(tr("That button is no longer for %s."), tr("Links on this page")));
+    put(cformat!(tr("That button is no longer for %s."), tr("Whole page sideways")));
+    put(cformat!(tr("No buttons for %s now."), tr("Show link areas")));
+    put(cformat!("%s", tr("Nothing to go back to.")));
     // The gestures' toasts (a page turned past the end, the pen near, the pan hint).
     put(cformat!("%s", tr("This is the last page.")));
     put(cformat!("%s", tr("This is the first page.")));

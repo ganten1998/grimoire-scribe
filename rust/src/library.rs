@@ -759,17 +759,25 @@ static K_TOOLS: [LearnRow; 2] = [
     // previous and its next pen (with it closed, they switch tools through all nine), in that order.
     lr(Some(n_("Previous / next in the picker")), [SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT], IconKind::Grid),
 ];
-static K_PAGES: [LearnRow; 8] = [
+static K_PAGES: [LearnRow; 9] = [
     // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
     lr(Some(n_("Previous / next page")), [SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE], IconKind::Next),
     // TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
     lr(Some(n_("First / last page")), [SHORTCUT_FIRST_PAGE, SHORTCUT_LAST_PAGE], IconKind::None),
     lr(None, [SHORTCUT_NEW_PAGE, 0], IconKind::Plus),
     lr(None, [SHORTCUT_FIT_PAGE, 0], IconKind::Expand),
+    lr(None, [SHORTCUT_LANDSCAPE_FIT, 0], IconKind::Expand),
     lr(None, [SHORTCUT_PAGES, 0], IconKind::Notebook),
     lr(None, [SHORTCUT_INDEX, 0], IconKind::None),
     lr(None, [SHORTCUT_ADD_LINK, 0], IconKind::Link),
     lr(None, [SHORTCUT_NAME_PAGE, 0], IconKind::Rename),
+];
+// The Index group: the Links bar, Go to page or name, back to the page before, the link areas.
+static K_INDEX: [LearnRow; 4] = [
+    lr(None, [SHORTCUT_LINKS, 0], IconKind::Link),
+    lr(None, [SHORTCUT_GO_TO_PAGE, 0], IconKind::Search),
+    lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
+    lr(None, [SHORTCUT_LINK_AREAS, 0], IconKind::Eye),
 ];
 static K_MENUS: [LearnRow; 8] = [
     lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
@@ -791,7 +799,7 @@ struct Group {
     probe: &'static str,
     rows: &'static [LearnRow],
 }
-const N_GROUPS: i32 = 4;
+const N_GROUPS: i32 = 5;
 static K_GROUPS: [Group; N_GROUPS as usize] = [
     // TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
     // each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
@@ -802,6 +810,9 @@ static K_GROUPS: [Group; N_GROUPS as usize] = [
     // TRANSLATORS: (Buttons sheet) its group of page turning, new pages, the Pages view and the
     // Index, and links and page names.
     Group { label: n_("Pages..."), title: n_("Pages"), icon: IconKind::Next, probe: "pages", rows: &K_PAGES },
+    // TRANSLATORS: (Buttons sheet) its group of the Index's buttons: the Links bar, Go to page or name,
+    // back to the page before and the link areas.
+    Group { label: n_("Index..."), title: n_("Index"), icon: IconKind::Link, probe: "index", rows: &K_INDEX },
     // TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
     // it again).
     Group { label: n_("Menus..."), title: n_("Menus"), icon: IconKind::More, probe: "menus", rows: &K_MENUS },
@@ -890,6 +901,17 @@ fn action_label(action: i32) -> &'static str {
         // TRANSLATORS: (Buttons sheet) turns the small clock and battery in the screen's top left
         // corner on or off, on any screen.
         nm(SHORTCUT_STATUS, n_("Clock and battery")),
+        // TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
+        // up also open.
+        nm(SHORTCUT_LINKS, n_("Links on this page")),
+        // TRANSLATORS: (Buttons sheet) the sheet that goes to a page by its number or its name.
+        nm(SHORTCUT_GO_TO_PAGE, n_("Go to page")),
+        // TRANSLATORS: (Buttons sheet) returns to the page the last link, Find or Pages view left.
+        nm(SHORTCUT_GO_BACK, n_("Back to the page before")),
+        // TRANSLATORS: (Buttons sheet) dotted boxes over the page where a finger tap follows a link.
+        nm(SHORTCUT_LINK_AREAS, n_("Show link areas")),
+        // TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
+        nm(SHORTCUT_LANDSCAPE_FIT, n_("Whole page sideways")),
     ];
     for n in NAMES {
         if n.action == action {
@@ -2809,13 +2831,21 @@ mod tests {
     #[test]
     fn the_buttons_groups_rows() {
         // The Tools group: the pens in the picker's order, then its own two rows.
-        assert!(is_tools(1) && !is_tools(0) && !is_tools(2) && !is_tools(3));
+        assert!(is_tools(1) && !is_tools(0) && !is_tools(2) && !is_tools(3) && !is_tools(4));
         assert_eq!(group_rows(0), 7);
         assert_eq!(group_rows(1), TOOL_PENS as i32 + 2);
-        assert_eq!(group_rows(2), 8);
+        // Pages: turning, new, fit, whole page sideways (Rust only), Pages, Index, links, names
+        assert_eq!(group_rows(2), 9);
+        assert_eq!(learn_row_at(2, 4).act, [SHORTCUT_LANDSCAPE_FIT, 0]);
+        // Index (Rust only): the Links bar, Go to page or name, back, the link areas
+        assert_eq!(group_rows(3), 4);
+        assert_eq!(K_GROUPS[3].probe, "index");
+        assert_eq!(learn_row_at(3, 0).act, [SHORTCUT_LINKS, 0]);
+        assert_eq!(learn_row_at(3, 3).act, [SHORTCUT_LINK_AREAS, 0]);
+        assert_eq!(action_label(SHORTCUT_GO_BACK), "Back to the page before");
         // Menus: the editor's menus, then the clock and battery corner (Rust only), last
-        assert_eq!(group_rows(3), 8);
-        assert_eq!(learn_row_at(3, 7).act, [SHORTCUT_STATUS, 0]);
+        assert_eq!(group_rows(4), 8);
+        assert_eq!(learn_row_at(4, 7).act, [SHORTCUT_STATUS, 0]);
         assert_eq!(action_label(SHORTCUT_STATUS), "Clock and battery");
         let first = learn_row_at(1, 0);
         assert_eq!(first.act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);

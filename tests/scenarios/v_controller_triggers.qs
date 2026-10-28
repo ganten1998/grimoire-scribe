@@ -4,6 +4,7 @@
 # quarter or under, once each way however the hand wavers between. The Buttons sheet learns and
 # names them, controller.ini keeps them by name, and the editor acts on them, Erase while held from
 # the pull to the let-go.
+# rust-only
 wait 150
 hid attach pad Xbox Bluetooth Gamepad
 wait 100
@@ -13,7 +14,7 @@ tap 746 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 682
+tap 930 629
 wait 100
 expect library.buttons_group is editing
 tap 930 576
@@ -45,7 +46,7 @@ shot 01-triggers-learned
 axis 5 0
 tap 930 1696
 wait 100
-tap 930 1482
+tap 930 1589
 wait 100
 tap 930 1695
 wait 100

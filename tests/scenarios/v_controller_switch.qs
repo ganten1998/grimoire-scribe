@@ -51,7 +51,7 @@ tap 746 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 682
+tap 930 629
 wait 100
 expect library.buttons_group is editing
 shot 01-switch-editing

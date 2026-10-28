@@ -3,6 +3,7 @@
 # none, a toast says so, the release starts no learning, and controller.ini keeps it (shortcuts.ini's
 # pad. lines and the D-pad's starter lines stay set aside). A finger that moves off is no hold, and a
 # tap still learns.
+# rust-only
 wait 150
 tap 1535 95
 wait 200
@@ -10,7 +11,7 @@ tap 746 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 682
+tap 930 629
 wait 100
 expect library.buttons_group is editing
 expect pads.undo is South
@@ -40,23 +41,23 @@ expect pads.redo is
 # Pages: the previous / next page row, both actions and the D-pad's Left and Right with them
 tap 930 1696
 wait 100
-tap 930 1002
+tap 930 949
 wait 100
 expect library.buttons_group is pages
 expect pads.previous-page is Select,Left
-touch down 930 523
+touch down 930 469
 wait 700
-touch up 930 523
+touch up 930 469
 wait 100
 expect pads.previous-page is
 expect pads.next-page is
 expect toast is No buttons for Previous / next page now.
 expect library.learning is
 # A finger that moves off the row: no hold, no learning
-touch down 930 683
-touch move 930 794
+touch down 930 630
+touch move 930 741
 wait 700
-touch up 930 794
+touch up 930 741
 wait 100
 expect library.learning is
 # The Tools group's previous / next tool keep the D-pad's Up and Down

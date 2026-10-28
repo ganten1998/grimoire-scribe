@@ -29,7 +29,7 @@ const ICONS: [IconKind; IconKind::COUNT - 1] = [
     IconKind::Invert, IconKind::Fountain, IconKind::Fineliner, IconKind::Marker, IconKind::Up,
     IconKind::Down, IconKind::Music, IconKind::Castle, IconKind::Charcoal, IconKind::Calligraphy,
     IconKind::Language, IconKind::Pin, IconKind::Grid, IconKind::Copy, IconKind::Link,
-    IconKind::Live, IconKind::Gamepad, IconKind::Update, IconKind::Clock,
+    IconKind::Live, IconKind::Gamepad, IconKind::Update, IconKind::Clock, IconKind::Search, IconKind::Eye,
 ];
 
 fn slider_snap() {

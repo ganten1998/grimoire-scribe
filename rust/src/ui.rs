@@ -76,10 +76,13 @@ pub enum IconKind {
     Update = 52,  // ICON_UPDATE
     /// the clock and battery corner's (status.rs; not in the C tree)
     Clock = 53,
+    /// the Index's (Rust only): Go to page or name, and the link areas' eye
+    Search = 54,
+    Eye = 55,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 54;
+    pub const COUNT: usize = 56;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -284,6 +287,8 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Gamepad as usize] = 0xF0297; // md-gamepad_variant
     k[IconKind::Update as usize] = 0xF06B0; // md-update
     k[IconKind::Clock as usize] = 0xF0150; // md-clock_outline
+    k[IconKind::Search as usize] = 0xF0349; // md-magnify
+    k[IconKind::Eye as usize] = 0xF0208; // md-eye
     k
 };
 

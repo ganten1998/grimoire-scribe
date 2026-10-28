@@ -28,6 +28,8 @@ const LINK_BOX_MIN_MM: f32 = 5.0;
 const HINT_PAN: i32 = 1 << 6;
 /// the editor shows the whole page sideways now (landscape_fit), for an owner who had the width
 const HINT_SIDEWAYS: i32 = 1 << 8;
+/// The back list holds this many pages: the oldest is dropped past it.
+const BACK_MAX: usize = 32;
 // The "Move the pen away, then swipe." toast shows at most once in this long.
 const PEN_TOAST_EVERY_MS: u32 = 600_000;
 
@@ -238,6 +240,9 @@ pub struct EditorState {
     /// when "Move the pen away, then swipe." last showed (the t_ms of the PinchEnd that showed it)
     pen_toast_at: u32,
     pen_toast_shown: bool,
+    /// The pages the open notebook was left from by a link, the Pages view or Find, newest last, at most
+    /// BACK_MAX (page ids): Back to the page before pops it. Memory only; a page turn does not push.
+    back: Vec<u32>,
 
     /// Display sheet (front light, invert)
     dm: DispMenu,
@@ -1440,6 +1445,41 @@ fn arrive_readonly(a: &mut App) {
     app_invalidate(a, r, RefreshMode::Ui); // (already inside the arriving page's full repaint)
 }
 
+impl EditorState {
+    /// The page the editor leaves, onto the back list.
+    fn back_push(&mut self, pid: u32) {
+        if self.back.len() == BACK_MAX {
+            self.back.remove(0);
+        }
+        self.back.push(pid);
+    }
+    /// Pages deleted since they were pushed are skipped: dropped from the list.
+    fn back_prune(&mut self) {
+        let ids: Vec<u32> = (0..self.nb.npages().max(0) as usize).map(|i| self.nb.page_ids[i]).collect();
+        self.back.retain(|p| ids.contains(p));
+    }
+    /// The open page's id, 0 with none.
+    fn open_pid(&self) -> u32 {
+        if self.open && self.index >= 0 && self.index < self.nb.npages() {
+            self.nb.page_ids[self.index as usize]
+        } else {
+            0
+        }
+    }
+}
+
+/// go_to_page, leaving the page it left on the back list (when it went anywhere else).
+fn go_to_page_pushing(a: &mut App, index: i32) -> bool {
+    let s = ed(a);
+    let (from, at) = (s.open_pid(), s.index);
+    let ok = go_to_page(a, index);
+    let s = ed(a);
+    if ok && s.index != at && from != 0 {
+        s.back_push(from);
+    }
+    ok
+}
+
 fn go_to_page(a: &mut App, index: i32) -> bool {
     let s = ed(a);
     s.link_mode = false; // (a link's box is drawn on the page Add a link was asked on)
@@ -1549,6 +1589,7 @@ fn close_notebook(a: &mut App) {
         return;
     }
     s.link_mode = false;
+    s.back = Vec::new();
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
     // thumbnail and the PDF it drew of them are drawn again.
     if store_take_restored_count() > 0 {
@@ -2563,7 +2604,13 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
         }
         PvResult::Open => {
             let to = ed(a).pv.target;
+            let s = ed(a);
+            let (from, at) = (s.open_pid(), s.index);
             pages_hide(a, to);
+            let s = ed(a);
+            if s.index != at && from != 0 {
+                s.back_push(from);
+            }
         }
         PvResult::Delete => pages_delete(a),
         PvResult::New => {
@@ -2614,7 +2661,7 @@ fn link_follow(a: &mut App, x: f32, y: f32) {
     }
     let to = nav_link_page(&l, &ed(a).nb);
     if to >= 0 {
-        go_to_page(a, to);
+        go_to_page_pushing(a, to);
     } else if to == NAV_TO_INDEX {
         pages_show(a);
         ed(a).pv.index_tab = true;
@@ -3134,6 +3181,32 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         }
     } else if action == SHORTCUT_NAME_PAGE {
         pages_name(a);
+    } else if action == SHORTCUT_GO_BACK {
+        // Back to the page the last link, Find or Pages view left: the newest on the list that is still
+        // in the notebook, which is not pushed again.
+        let s = ed(a);
+        s.back_prune();
+        match s.back.pop() {
+            Some(pid) => {
+                let at = (0..s.nb.npages()).find(|&i| s.nb.page_ids[i as usize] == pid);
+                if let Some(i) = at {
+                    go_to_page(a, i);
+                }
+            }
+            None => {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
+                // before was asked with no page to go back to.
+                app_toast(a, tr("Nothing to go back to."), 2000);
+            }
+        }
+    } else if action == SHORTCUT_LANDSCAPE_FIT {
+        a.settings.landscape_fit = !a.settings.landscape_fit;
+        settings_save(&a.settings);
+        editor_fit_changed(a, true);
+        editor_fit_toast(a);
+    } else if action == SHORTCUT_LINK_AREAS {
+        a.settings.link_areas = !a.settings.link_areas;
+        settings_save(&a.settings);
     } else if action == SHORTCUT_NEW_PAGE {
         let i = ed(a).index;
         pages_new(a, i + 1); // the Pages view's New page, after the open one
@@ -4195,6 +4268,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "zoomed" {
         let z = s.open && zoomed(a);
         csnprintf!(out, cap, "%d", if z { 1 } else { 0 });
+    } else if key == "back" {
+        // The back list: its depth and its top as a page number ("2 3"), "0 0" when it is empty. (Pages
+        // deleted since are not in it.)
+        let ids: Vec<u32> = if s.open { (0..s.nb.npages().max(0) as usize).map(|i| s.nb.page_ids[i]).collect() } else { Vec::new() };
+        let live: Vec<u32> = s.back.iter().copied().filter(|p| ids.contains(p)).collect();
+        let top = live.last().and_then(|p| ids.iter().position(|q| q == p)).map_or(0, |i| i as i32 + 1);
+        csnprintf!(out, cap, "%d %d", live.len() as i32, top);
     } else if key == "scrolls" {
         // Whether the page scrolls on each axis now, "V H" (what a two-finger drag pans, touchgest.rs).
         let pans = s.open && !sheet_open(s);

@@ -1464,6 +1464,39 @@ msgstr ""
 msgid "Clock and battery"
 msgstr ""
 
+#. TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
+#. up also open.
+#: rust/src/library.rs
+msgid "Links on this page"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) returns to the page the last link, Find or Pages view left.
+#: rust/src/library.rs
+msgid "Back to the page before"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) dotted boxes over the page where a finger tap follows a link.
+#: rust/src/library.rs
+msgid "Show link areas"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
+#: rust/src/library.rs
+msgid "Whole page sideways"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) its group of the Index's buttons: the Links bar, Go to page or name,
+#. back to the page before and the link areas.
+#: rust/src/library.rs
+msgid "Index..."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
+#. before was asked with no page to go back to.
+#: rust/src/editor.rs
+msgid "Nothing to go back to."
+msgstr ""
+
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: src/library.c
 msgctxt "buttons"
@@ -2075,7 +2108,8 @@ msgstr ""
 msgid "Enter a page number in this notebook."
 msgstr ""
 
-#: src/pagesview.c
+#. TRANSLATORS: (Buttons sheet) the sheet that goes to a page by its number or its name.
+#: src/pagesview.c rust/src/library.rs
 msgid "Go to page"
 msgstr ""
 
