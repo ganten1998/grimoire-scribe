@@ -48,8 +48,7 @@ release too.
   Live view's words are in English and Spanish. A menu or a keyboard on the Kindle takes the
   panel out of the browser's copy while it is open, and the page under the panel arrives in the
   same push as the rest of the screen. While Live view runs, the Kindle's Wi-Fi power saving stays
-  off and comes back as it was when Live view stops: a radio left to doze while nobody watched could
-  send the pen in bursts afterwards, a choppy dot that outlasted restarts. At actual size, full
+  off, and comes back as it was when Live view stops. At actual size, full
   screen and Monitor mode scroll to the page's far edges. After the pen had been away for over 35
   minutes, the browser's dot froze and the quick line stopped until 71 minutes had passed: a long
   silence now starts them again.
