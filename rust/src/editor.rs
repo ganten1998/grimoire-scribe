@@ -5017,6 +5017,11 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 compose_all(a, RefreshMode::Full);
             } else if r == DmResult::Refit {
                 editor_fit_changed(a, true);
+                // The card was redrawn with its row flipped: presented, upright (sideways the Full of the
+                // view laid out again takes it in).
+                if !rect_is_empty(d) {
+                    app_invalidate(a, d, RefreshMode::Ui);
+                }
                 editor_fit_toast(a);
             } else if r == DmResult::Closed {
                 compose(a, d);
