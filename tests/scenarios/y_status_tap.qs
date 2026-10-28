@@ -63,7 +63,7 @@ wait 200
 expect settings.status_on is 1
 # A press that is held is not a tap (a hold is the page's), and a swipe out is not one.
 touch down 70 70
-wait 700
+wait 900
 touch up 70 70
 wait 200
 expect settings.status_on is 1

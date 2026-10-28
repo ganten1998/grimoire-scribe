@@ -27,9 +27,10 @@
 //! touch panel lets through is never the pen's hand, so a tap clears a "near" the pen's leaving left
 //! behind: one tap is always one toggle, at once, with nothing to wait out.
 //!
-//! The toggle is decided at the finger's lift: down in the zone, on no control, still within 5 mm of where
-//! it landed (a fingertip rolls on the glass; the 2.5 mm the buttons allow lost taps in the corner), and
-//! up within 600 ms. The lift needs no place of its own. The setting is saved after the refresh went out,
+//! The toggle is decided at the finger's lift: down in the zone, on no control, lifted in the zone (or within
+//! 5 mm of where it landed) and up within 800 ms. The path between is not asked: a deliberate press flattens
+//! the fingertip and its centroid drifts, which lost the slow taps while light fast ones passed. Every
+//! decision (down, up) is one grimoire.log line. The setting is saved after the refresh went out,
 //! not before it (a save waits for the storage twice).
 
 use crate::prelude::*;
@@ -39,8 +40,9 @@ use std::cell::RefCell;
 const ZONE_MM: f32 = 14.0;
 /// A finger that moves farther than this from where it landed is not tapping.
 const SLOP_MM: f32 = 5.0;
-/// A finger down longer than this is not a tap (a long press is the page's, a link's).
-const TAP_MS: u32 = 600;
+/// A finger down longer than this is not a tap (a long press is the page's, a link's). A deliberate press
+/// is slow: 800 ms.
+const TAP_MS: u32 = 800;
 /// While the corner is up the battery is read this often; a change shows at the next refresh. The
 /// simulator's is read in a tenth of a second, so a script sees a change at once (the Kindle's costs
 /// a few small file reads, and the power service's fallback has its own once-a-minute limit).
@@ -163,30 +165,32 @@ struct Tap {
     x0: f32,
     y0: f32,
     t0: u32,
-    moved: bool,
 }
 
 impl Tap {
     /// The first finger went down: it is a candidate only where `hit` says (inside the zone, no control there).
     fn down(&mut self, hit: bool, x: f32, y: f32, t: u32) {
-        *self = if hit { Tap { armed: true, x0: x, y0: y, t0: t, moved: false } } else { Tap::default() };
+        *self = if hit { Tap { armed: true, x0: x, y0: y, t0: t } } else { Tap::default() };
     }
     fn far(&self, x: f32, y: f32, slop: f32) -> bool {
         (x - self.x0).hypot(y - self.y0) > slop
     }
-    fn moved(&mut self, x: f32, y: f32, slop: f32) {
-        if self.armed && self.far(x, y, slop) {
-            self.moved = true;
-        }
-    }
-    /// The finger lifted: true when it was a tap (short, and never more than `slop` from where it landed).
-    /// Where it lifts matters only through that: a tap that ends a hair outside the square is still a tap.
-    fn up(&mut self, x: f32, y: f32, t: u32, slop: f32) -> bool {
+    /// The finger lifted: Ok when it was a tap, else why not. A press that landed in the zone and lifts in it
+    /// (`in_zone`, or within `slop` of where it landed: a press at the zone's edge rolls out) within TAP_MS is
+    /// a tap, whatever the fingertip did between: a deliberate press flattens and its centroid drifts, so the
+    /// path is not asked, only the two ends.
+    fn up(&mut self, x: f32, y: f32, t: u32, in_zone: bool, slop: f32) -> Result<(), &'static str> {
         if !self.armed {
-            return false;
+            return Err("no tap was armed");
         }
         self.armed = false;
-        !self.moved && !self.far(x, y, slop) && t.wrapping_sub(self.t0) <= TAP_MS
+        if t.wrapping_sub(self.t0) > TAP_MS {
+            return Err("held too long");
+        }
+        if !in_zone && self.far(x, y, slop) {
+            return Err("lifted away from the zone");
+        }
+        Ok(())
     }
     /// Something else began (a second finger, the pen): this was not a tap.
     fn cancel(&mut self) {
@@ -455,18 +459,47 @@ pub fn status_touch(a: &mut App, ev: &InEvent) {
             // pen leaving without a word left behind. (Asked before the screen handles the touch: what it
             // does may change what is there.)
             with(|s| s.pen_near = false);
-            let hit = status_hit(a, ev.x, ev.y) && !editor_control_at(a, ev.x, ev.y);
-            with(|s| s.tap.down(hit, ev.x, ev.y, ev.t_ms));
+            let in_zone = status_hit(a, ev.x, ev.y);
+            let ctl = in_zone && editor_control_at(a, ev.x, ev.y);
+            if in_zone {
+                if ctl {
+                    qlog!("status: corner down at %d,%d is on a control: not the clock's", ev.x as i32, ev.y as i32);
+                } else {
+                    qlog!("status: corner down at %d,%d in the zone: armed", ev.x as i32, ev.y as i32);
+                }
+            }
+            with(|s| s.tap.down(in_zone && !ctl, ev.x, ev.y, ev.t_ms));
         }
-        InType::TouchMove => with(|s| s.tap.moved(ev.x, ev.y, slop)),
-        InType::TouchUp if ev.value & TOUCH_F_CANCEL != 0 => with(|s| s.tap.cancel()),
+        // (the path between the two ends is not asked)
+        InType::TouchMove => {}
+        InType::TouchUp if ev.value & TOUCH_F_CANCEL != 0 => {
+            if with(|s| s.tap.armed) {
+                qlog!("status: corner up: the touch was cancelled (a second finger, a palm or the pen): no toggle");
+            }
+            with(|s| s.tap.cancel())
+        }
         InType::TouchUp => {
-            if with(|s| s.tap.up(ev.x, ev.y, ev.t_ms, slop)) {
-                status_toggle(a);
-                with(|s| s.tapped = true);
+            let in_zone = status_hit(a, ev.x, ev.y);
+            let armed = with(|s| s.tap.armed);
+            match with(|s| s.tap.up(ev.x, ev.y, ev.t_ms, in_zone, slop)) {
+                Ok(()) => {
+                    qlog!("status: corner up at %d,%d: toggled", ev.x as i32, ev.y as i32);
+                    status_toggle(a);
+                    with(|s| s.tapped = true);
+                }
+                Err(why) => {
+                    if armed {
+                        qlog!("status: corner up at %d,%d: no toggle, %s", ev.x as i32, ev.y as i32, why);
+                    }
+                }
             }
         }
-        InType::PinchBegin | InType::PinchMove | InType::PinchEnd => with(|s| s.tap.cancel()),
+        InType::PinchBegin | InType::PinchMove | InType::PinchEnd => {
+            if with(|s| s.tap.armed) {
+                qlog!("status: corner tap dropped: a pinch began");
+            }
+            with(|s| s.tap.cancel())
+        }
         _ => {}
     }
 }
@@ -955,47 +988,42 @@ mod tests {
 
 
     #[test]
-    fn a_tap_is_short_and_still_and_needs_no_place_to_lift() {
+    fn a_tap_is_short_and_lands_and_lifts_in_the_zone() {
         let slop = mm_to_px(SLOP_MM, 300.0);
         assert_eq!(slop.round() as i32, 59);
         let mut t = Tap::default();
-        // down on a hit, up quickly
         t.down(true, 60.0, 60.0, 1000);
-        assert!(t.up(62.0, 61.0, 1120, slop));
+        assert!(t.up(62.0, 61.0, 1120, true, slop).is_ok());
         // the same finger counts once
-        assert!(!t.up(62.0, 61.0, 1130, slop));
+        assert!(t.up(62.0, 61.0, 1130, true, slop).is_err());
         // not a hit (outside the zone, or a control there): not ours
         t.down(false, 60.0, 60.0, 1000);
-        assert!(!t.up(60.0, 60.0, 1100, slop));
-        // a finger rolls: 4 mm (47 px) from where it landed is still a tap, the lift a hair outside the square too
+        assert!(t.up(60.0, 60.0, 1100, true, slop).is_err());
+        // a lift in the zone is a tap wherever it is: the path is not asked
         t.down(true, 100.0, 100.0, 1000);
-        t.moved(140.0, 120.0, slop);
-        assert!(t.up(150.0, 130.0, 1100, slop), "50 px is a tap");
-        // past 5 mm: a drag, and a finger that came back is still one
+        assert!(t.up(160.0, 160.0, 1100, true, slop).is_ok());
+        // a lift outside the zone but near where it landed (a press at the edge rolls out) is one too
+        t.down(true, 150.0, 150.0, 1000);
+        assert!(t.up(175.0, 160.0, 1100, false, slop).is_ok());
+        // outside the zone and far: a swipe out
         t.down(true, 100.0, 100.0, 1000);
-        t.moved(100.0 + slop + 5.0, 100.0, slop);
-        assert!(!t.up(101.0, 100.0, 1100, slop));
-        t.down(true, 100.0, 100.0, 1000);
-        assert!(!t.up(100.0, 100.0 + slop + 5.0, 1100, slop), "the lift is a place too");
-        // diagonal: the distance is a distance (a square of 5 mm would take 80 px along the diagonal)
-        t.down(true, 100.0, 100.0, 1000);
-        assert!(!t.up(100.0 + slop * 0.8, 100.0 + slop * 0.8, 1100, slop));
+        assert!(t.up(100.0, 100.0 + slop + 5.0, 1100, false, slop).is_err());
         // held too long
         t.down(true, 60.0, 60.0, 1000);
-        assert!(!t.up(60.0, 60.0, 1000 + TAP_MS + 1, slop));
+        assert!(t.up(60.0, 60.0, 1000 + TAP_MS + 1, true, slop).is_err());
         t.down(true, 60.0, 60.0, 1000);
-        assert!(t.up(60.0, 60.0, 1000 + TAP_MS, slop));
+        assert!(t.up(60.0, 60.0, 1000 + TAP_MS, true, slop).is_ok());
         // a second finger or the pen takes it back
         t.down(true, 60.0, 60.0, 1000);
         t.cancel();
-        assert!(!t.up(60.0, 60.0, 1100, slop));
+        assert!(t.up(60.0, 60.0, 1100, true, slop).is_err());
         // the clock of the events wraps like now_ms does
         t.down(true, 60.0, 60.0, u32::MAX - 50);
-        assert!(t.up(60.0, 60.0, 70, slop));
+        assert!(t.up(60.0, 60.0, 70, true, slop).is_ok());
         // no lockout: tap after tap, each its own
         for i in 0..20u32 {
             t.down(true, 60.0, 60.0, 5000 + i * 90);
-            assert!(t.up(60.0, 60.0, 5000 + i * 90 + 40, slop), "tap {i}");
+            assert!(t.up(60.0, 60.0, 5000 + i * 90 + 40, true, slop).is_ok(), "tap {i}");
         }
     }
 

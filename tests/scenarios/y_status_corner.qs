@@ -75,7 +75,7 @@ expect display.presents is ui 6 6 331 48
 # Not a tap: a finger that stays down, one that swipes out of the corner, one that comes down outside it,
 # the pen.
 touch down 70 70
-wait 700
+wait 900
 touch up 70 70
 wait 200
 expect settings.status_on is 1
@@ -107,23 +107,23 @@ tap panel display
 wait 400
 expect status.shown is 0
 expect display.presents not -1
-tap 472 1720
+tap 472 1860
 wait 300
 expect settings.status_size is 1
 expect status.shown is 0
-tap 472 1720
+tap 472 1860
 wait 300
 expect settings.status_size is 2
-tap 472 1720
+tap 472 1860
 wait 300
 expect settings.status_size is 0
-tap 472 1720
+tap 472 1860
 wait 300
-tap 472 1720
+tap 472 1860
 wait 300
 expect settings.status_size is 2
 shot 02-display-sheet-large
-tap 1460 1720
+tap 1460 1860
 wait 400
 expect editor.modal is none
 expect status.shown is 1
