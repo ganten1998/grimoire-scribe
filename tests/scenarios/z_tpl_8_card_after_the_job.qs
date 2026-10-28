@@ -5,6 +5,7 @@
 # copy: tests/fixtures/scen-templates templates
 # env: GRIMOIRE_BG_DELAY_MS=3000
 # pdfs: 1
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -25,7 +26,7 @@ expect editor.picture is missing
 pen line 300 640 1300 700 40 0.6 0.6
 wait 300
 expect editor.strokes is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.card.1 is thumb

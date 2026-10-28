@@ -3,13 +3,14 @@
 # to undo.
 # copy: tests/fixtures/scen-tpl-nobg .
 # copy: tests/fixtures/scen-templates templates
+# rust-only
 wait 500
 expect screen is library
 tap 326 608
 wait 600
 expect screen is editor
 expect editor.paper is 1
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 232 1750
 waitbg

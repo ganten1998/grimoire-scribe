@@ -8,6 +8,7 @@
 # named after its title, its one page a document page on that picture (KOReader drew it at the
 # Scribe's page size, so it is the page's picture as it is, shown at once), and the editor opens on
 # it. The request is gone. Ink on it, then Back to KOReader from the Library saves it all.
+# rust-only
 wait 300
 shot 01-the-page
 expect screen is editor
@@ -22,7 +23,7 @@ expect editor.strokes is 0
 pen line 300 900 1300 950 40 0.6 0.6
 wait 700
 expect editor.strokes is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 shot 02-library
 expect screen is library

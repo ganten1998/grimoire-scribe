@@ -3,6 +3,7 @@
 # (editor.panel_fits). Each pen is pinned in the tool picker's Pin mode. (The Scribe 3's and the
 # Colorsoft's screen: z_tool_a_fit_colorsoft.)
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -18,7 +19,7 @@ expect editor.panel_fits is 1
 rotate 0
 wait 300
 # One pin
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -37,7 +38,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Two
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -56,7 +57,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Three
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -75,7 +76,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Four
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200

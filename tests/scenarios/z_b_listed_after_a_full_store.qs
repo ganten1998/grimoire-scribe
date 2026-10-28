@@ -5,6 +5,7 @@
 # leave the file).
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -27,7 +28,7 @@ storage ok
 wait 2600
 expect editor.unsaved is 0
 expect editor.compact_listed is 1
-pentap 1768 1566
+pentap panel library
 wait 1500
 expect screen is library
 expect bg.busy is 0
@@ -38,7 +39,7 @@ expect editor.strokes is 1
 expect editor.erase_strokes is 0
 expect editor.compact_listed is 0
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 300
 expect screen is library
 quit

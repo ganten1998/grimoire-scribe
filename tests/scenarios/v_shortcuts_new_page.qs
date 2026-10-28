@@ -4,6 +4,7 @@
 # editor's own + does there: on the open page's paper, or on the notebook's own after a photo (a
 # document picture is never carried over: z_photo_1_page.qs is the panel's twin). Previous page on
 # the first page stays.
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -20,7 +21,7 @@ expect editor.pages is 2
 expect editor.page is 2
 expect editor.paper is 1
 # Page 2 onto a photo, then the key on it: a page on the notebook's paper, not the photo's picture
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 511 1750
 wait 300
@@ -36,7 +37,7 @@ expect editor.pages is 3
 expect editor.page is 3
 expect editor.paper is 1
 expect annotate.role is
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

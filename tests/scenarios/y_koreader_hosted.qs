@@ -7,6 +7,7 @@
 # asleep.mode probe says which sleep screen is up, and 03 shows it (the page alone, no toolbar).
 # y_koreader_not_hosted holds the other side: from the Library, mode 2 stays the Kindle's own.
 # Back to KOReader leaves the way Exit does.
+# rust-only
 wait 200
 expect host is koreader
 shot 01-library-back-to-koreader
@@ -25,7 +26,7 @@ expect screen is editor
 pen line 300 1700 1400 1720 60 0.4 0.9
 wait 700
 expect editor.strokes is 1
-pentap 1768 1350
+pentap panel display
 wait 300
 expect editor.modal is display
 tap 800 1172
@@ -47,7 +48,7 @@ expect asleep is 0
 expect asleep.mode is
 expect screen is editor
 # The Library in Classic: Settings, Style, Done.
-pentap 1768 1560
+pentap panel library
 wait 300
 expect screen is library
 tap 1403 95

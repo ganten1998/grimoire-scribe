@@ -650,6 +650,52 @@ fn draw_panel(a: &mut App) {
     }
 }
 
+/// The runner's name for a panel button (`tap panel NAME`, `editor.panel_at.X.Y`): grip, collapse,
+/// expand, tool-picker, eraser, tool:NAME (a pinned pen, NAME as `editor.tool` names tools), undo,
+/// redo, clear, previous, pages (the page chip), next, paper, display, pen-feel, library. "" for a
+/// hit that is not one of the panel's.
+fn panel_name(h: &Hit) -> String {
+    match h.id {
+        P_GRIP => "grip".into(),
+        P_COLLAPSE => "collapse".into(),
+        P_EXPAND => "expand".into(),
+        P_TOOLPICK => "tool-picker".into(),
+        P_TOOL if h.arg == TOOL_ERASER.0 => "eraser".into(),
+        P_TOOL => match app_probe_tool(ToolKind(h.arg)) {
+            Some(n) => cformat!("tool:%s", n),
+            None => cformat!("tool:%d", h.arg),
+        },
+        P_UNDO => "undo".into(),
+        P_REDO => "redo".into(),
+        P_CLEAR => "clear".into(),
+        P_PREV => "previous".into(),
+        P_PAGES => "pages".into(),
+        P_NEXT => "next".into(),
+        P_PAPER => "paper".into(),
+        P_DISPLAY => "display".into(),
+        P_PENSET => "pen-feel".into(),
+        P_LIBRARY => "library".into(),
+        _ => String::new(),
+    }
+}
+
+/// The centre of the panel's button NAME (panel_name's names), None for no such button now: no
+/// editor open, or the button is not there (a disabled Undo has no hit, as a human tap finds
+/// nothing). The hits go stale after a stroke until the settle, and a human tap settles first, so
+/// this does too.
+pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
+    let s = a.ed.as_deref()?;
+    if a.scr != ScreenId::Editor || !s.open {
+        return None;
+    }
+    if s.panel_stale {
+        settle_now(a);
+    }
+    let s = ed_ref(a);
+    let h = s.hits.h.iter().rev().find(|h| panel_name(h) == name)?;
+    Some(((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
+}
+
 // A cache was just drawn with a picture white in it (bgimage_take_missing; at generation gen):
 // it is dropped once a background job has ended since (pictures_arrived).
 fn note_white(s: &mut EditorState, gen: u32) {
@@ -3792,6 +3838,23 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 /// The headless runner's "editor.*" keys, asked without the prefix (app_probe's contract);
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
+    // panel_at.X.Y: the name of the panel's button at (X, Y), empty for none. A stale panel is settled
+    // first, as a tap would (hence before s is borrowed).
+    if let Some(xy) = key.strip_prefix("panel_at.") {
+        let Some((xs, ys)) = xy.split_once('.') else { return -1 };
+        let (x, y) = (atoi(xs), atoi(ys));
+        if a.ed.is_none() {
+            return -1;
+        }
+        let open = ed_ref(a).open && a.scr == ScreenId::Editor;
+        if open && ed_ref(a).panel_stale {
+            settle_now(a);
+        }
+        let s = ed_ref(a);
+        let name = if open { hits_find(&s.hits, x as f32, y as f32).map(panel_name).unwrap_or_default() } else { String::new() };
+        csnprintf!(out, cap, "%s", &name);
+        return 0;
+    }
     let dpi = a.dpi;
     let Some(s) = a.ed.as_deref() else { return -1 };
     let st = &a.settings;
@@ -4208,6 +4271,34 @@ mod tests {
         assert_eq!(s.hits.h.len(), 1);
         assert_eq!((s.hits.h[0].id, s.hits.h[0].r), (P_EXPAND, p));
         assert_eq!(s.tool_button_shows, TB_NONE);
+    }
+
+    #[test]
+    fn the_panel_buttons_have_the_runners_names() {
+        let h = |id: i32, arg: i32| Hit { r: RECT_EMPTY, id, arg };
+        assert_eq!(panel_name(&h(P_TOOLPICK, 0)), "tool-picker");
+        assert_eq!(panel_name(&h(P_TOOL, TOOL_ERASER.0)), "eraser");
+        assert_eq!(panel_name(&h(P_TOOL, TOOL_HIGHLIGHTER.0)), "tool:highlighter");
+        assert_eq!(panel_name(&h(P_TOOL, TOOL_FINELINER.0)), "tool:fineliner");
+        for (id, name) in [
+            (P_GRIP, "grip"),
+            (P_COLLAPSE, "collapse"),
+            (P_EXPAND, "expand"),
+            (P_UNDO, "undo"),
+            (P_REDO, "redo"),
+            (P_CLEAR, "clear"),
+            (P_PREV, "previous"),
+            (P_PAGES, "pages"),
+            (P_NEXT, "next"),
+            (P_PAPER, "paper"),
+            (P_DISPLAY, "display"),
+            (P_PENSET, "pen-feel"),
+            (P_LIBRARY, "library"),
+        ] {
+            assert_eq!(panel_name(&h(id, 0)), name);
+        }
+        // a sheet's hit is no panel button
+        assert_eq!(panel_name(&h(P_PICK_PAPER, 0)), "");
     }
 
     #[test]

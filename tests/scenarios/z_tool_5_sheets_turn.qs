@@ -2,6 +2,7 @@
 # the screen it is on, and works there: the tool picker in Pin mode, the paper sheet, Custom music,
 # the Display sheet and the Pages view (editor.modal). As the Library does with its sheets.
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -13,7 +14,7 @@ pen line 300 700 1300 700 60 0.7 0.7
 wait 300
 # The tool picker in Pin mode: turned, it pins and unpins there; turned back, then asleep and
 # awake, still in Pin mode; Done, then a pen picked closes it
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -54,7 +55,7 @@ wait 200
 expect editor.modal is none
 expect editor.tool is marker
 # The paper sheet: turned, a paper picked there (dot grid); again, asleep and awake, grand staff
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 rotate 1
@@ -67,7 +68,7 @@ expect editor.modal is none
 expect editor.paper is 10
 rotate 0
 wait 300
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 sleep
@@ -81,7 +82,7 @@ expect editor.modal is none
 expect editor.paper is 8
 # Custom music (from the paper sheet): turned, its Cancel there; again, asleep and awake, a bass
 # staff added, then Cancel
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 1622 1452
 wait 200
@@ -95,7 +96,7 @@ wait 200
 expect editor.modal is none
 rotate 0
 wait 300
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 1622 1452
 wait 200
@@ -114,7 +115,7 @@ wait 200
 expect editor.modal is none
 expect editor.paper is 8
 # The Display sheet: turned, its sleep screen row there (and back), asleep and awake, Done
-pentap 1768 1350
+pentap panel display
 wait 200
 expect editor.modal is display
 rotate 1
@@ -143,10 +144,10 @@ tap 1462 1626
 wait 200
 expect editor.modal is none
 # The Pages view: turned, every page ticked there; turned back, asleep and awake, still ticked; Back
-pentap 1768 1114
+pentap panel next
 wait 300
 expect editor.pages is 2
-pentap 1768 1026
+pentap panel pages
 wait 300
 expect editor.modal is pages
 rotate 1
@@ -170,7 +171,7 @@ tap 125 95
 wait 300
 expect editor.modal is none
 expect editor.pages is 2
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

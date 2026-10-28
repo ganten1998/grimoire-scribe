@@ -6,6 +6,7 @@
 # settings: current_tool=4
 # settings: draw_tool=0
 # settings: white=1
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -20,17 +21,17 @@ expect editor.tool_button is highlighter
 expect editor.white_mark is 1
 shot 01-the-pen-in-use-on-the-tool-button
 # Collapsed and expanded: the same
-pentap 1795 260
+pentap panel collapse
 wait 300
 expect editor.panel is collapsed
 expect editor.tool_button is
 expect editor.white_mark is 1
-tap 1772 280
+tap panel expand
 wait 300
 expect editor.tool_button is highlighter
 expect editor.white_mark is 1
 # The marker pinned and in use: it stays on its pin through the Library and back
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -41,11 +42,11 @@ pentap 1600 273
 wait 200
 pentap 300 1800
 wait 200
-pentap 1768 466
+pentap panel tool:marker
 wait 100
 expect editor.tool is marker
 expect editor.white_mark is 1
-pentap 1768 1674
+pentap panel library
 wait 500
 expect screen is library
 tap 326 608
@@ -55,7 +56,7 @@ expect editor.tool is marker
 expect editor.draw_tool is highlighter
 expect editor.pins is marker
 expect editor.white_mark is 1
-pentap 1768 1674
+pentap panel library
 wait 500
 expect screen is library
 quit

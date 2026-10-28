@@ -3,6 +3,7 @@
 # on the collapsed panel too, and draws white ink, an erase stroke with the pen's own look. The
 # eraser in use shows no mark. Black again: the pen draws ink, and the mark goes.
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -15,7 +16,7 @@ expect editor.white_mark is 0
 pen line 300 700 1300 700 60 0.7 0.7
 wait 300
 expect editor.strokes is 1
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 expect editor.modal is tools
 expect editor.pin_mode is 0
@@ -43,26 +44,26 @@ expect editor.stroke_look is white pencil
 expect editor.live_matches_render is 1
 expect editor.white_mark is 1
 # Collapsed, the square shows it too; expanded again
-pentap 1795 260
+pentap panel collapse
 wait 300
 expect editor.panel is collapsed
 expect editor.white_mark is 1
 shot 04-collapsed-white
-tap 1772 280
+tap panel expand
 wait 300
 expect editor.panel is expanded
 expect editor.white_mark is 1
 # The eraser in use: no mark; back to the pencil, the mark again
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is eraser
 expect editor.white_mark is 0
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is pencil
 expect editor.white_mark is 1
 # Another pen picked keeps white: the marker draws white marker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1504 561
 wait 200
@@ -76,7 +77,7 @@ expect editor.strokes is 3
 expect editor.erase_strokes is 2
 expect editor.stroke_look is white marker
 # Black again: ink, and no mark
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 951 878
 wait 200
@@ -93,7 +94,7 @@ expect editor.strokes is 4
 expect editor.erase_strokes is 2
 expect editor.stroke_look is marker
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

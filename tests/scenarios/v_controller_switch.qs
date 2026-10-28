@@ -5,6 +5,7 @@
 # tools as with a new file. A Switch-mode controller ("Pro Controller": Linux's generic driver
 # numbers its buttons in the Pro Controller's order) has them named in the Buttons sheet as printed
 # on it, also one learned there; another controller's keep the files' names.
+# rust-only
 wait 150
 expect pads.previous-page is Select,Left
 expect pads.next-page is Start,Right
@@ -31,7 +32,7 @@ expect editor.tool is mech
 key 544 0 1
 wait 60
 expect editor.tool is pencil
-tap 1767 1565
+tap panel library
 wait 400
 expect screen is library
 # A Switch-mode controller: its own labels

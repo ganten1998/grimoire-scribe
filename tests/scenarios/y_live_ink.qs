@@ -4,6 +4,7 @@
 # the calibration's check box. A pressed button and a slider are not live ink. Only the editor's
 # ink asks for the MTK pen mode (on the Scribe 2 that stays as it was). The simulated panel
 # answers display.ink, display.pen_mode and display.last_fast.
+# rust-only
 wait 300
 expect display.ink is 0
 expect display.pen_mode is 0
@@ -52,7 +53,7 @@ tap 125 95
 wait 300
 expect editor.modal is none
 # Pen feel (Library, Settings, Pen feel): the test pad's stroke is live ink, without the pen mode
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 tap 1535 95

@@ -7,6 +7,7 @@
 # settings: panel_tools=marker
 # settings: current_tool=3
 # settings: before_eraser=7
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -17,20 +18,20 @@ expect screen is editor
 expect editor.tool is eraser
 expect editor.before_eraser is marker
 expect editor.draw_tool is pencil
-pentap 1768 574
+pentap panel eraser
 wait 100
 expect editor.tool is marker
 # A pencil line (the tool button's pencil: with a pin in use, one tap on the tool button picks it)
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 expect editor.tool is pencil
 pen line 300 1000 1500 1000 60 0.7 0.7
 wait 300
 expect editor.strokes is 1
 # The marker's pin, then the eraser: the button held draws white marker over the line
-pentap 1768 466
+pentap panel tool:marker
 wait 100
-pentap 1768 574
+pentap panel eraser
 wait 100
 expect editor.tool is eraser
 expect editor.before_eraser is marker
@@ -45,12 +46,12 @@ expect editor.stroke_settings is marker
 expect editor.live_matches_render is 1
 expect editor.tool is eraser
 # The pencil (the tool button's) before the eraser: then the button draws white pencil
-pentap 1768 574
+pentap panel eraser
 wait 100
 expect editor.tool is marker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
-pentap 1768 574
+pentap panel eraser
 wait 100
 expect editor.before_eraser is pencil
 side on
@@ -61,16 +62,16 @@ expect editor.strokes is 3
 expect editor.stroke_look is white pencil
 # From the eraser, the first top tap selects its pencil; the next opens the picker.
 # Unpin the marker, then use the eraser: the side button draws with that pencil.
-pentap 1768 466
+pentap panel tool:marker
 wait 100
-pentap 1768 574
+pentap panel eraser
 wait 100
 expect editor.before_eraser is marker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 expect editor.tool is pencil
 expect editor.modal is none
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1600 273
 wait 200
@@ -82,7 +83,7 @@ wait 200
 pentap 300 1800
 wait 200
 expect editor.tool is pencil
-pentap 1768 466
+pentap panel eraser
 expect editor.tool is eraser
 expect editor.before_eraser is pencil
 side on
@@ -91,10 +92,10 @@ side off
 wait 500
 expect editor.strokes is 4
 expect editor.stroke_look is white pencil
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is pencil
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

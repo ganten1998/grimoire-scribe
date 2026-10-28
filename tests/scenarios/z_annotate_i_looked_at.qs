@@ -5,11 +5,12 @@
 # A page KOReader sent, looked at and left without a stroke: the notebook made for it at this start
 # is a change all the same, so its PDF is written as it closes, and its card in the Library is the
 # page (its thumbnail, made as the editor leaves the page).
+# rust-only
 wait 300
 expect screen is editor
 expect annotate.result is made
 expect editor.strokes is 0
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.items is 1

@@ -6,6 +6,7 @@
 # previous / next page, tool and in the tool picker in two presses, 10 s without a press gives up,
 # Reset goes back to shortcuts.ini's), which the editor then uses (Add a link and Name the page
 # too, learned in the Pages group).
+# rust-only
 wait 150
 hid attach held Mapper Pad
 wait 100
@@ -147,7 +148,7 @@ expect editor.strokes is 1
 key 305 0 1
 wait 80
 expect editor.strokes is 0
-pentap 1768 1114
+pentap panel next
 wait 120
 expect editor.page is 2
 key 546 0 1
@@ -176,7 +177,7 @@ tap 217 2365
 wait 80
 expect editor.modal is none
 # Reset: shortcuts.ini's buttons again
-pentap 1768 1566
+pentap panel library
 wait 300
 tap 1535 95
 wait 200

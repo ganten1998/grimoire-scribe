@@ -7,6 +7,7 @@
 # env: GRIMOIRE_SIM_SIZE=1986x2648
 # settings: panel_tools=highlighter,fineliner,marker,calligraphy
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 expect size is 1986x2648
 expect settings.panel_tools is highlighter,fineliner,marker,calligraphy
@@ -21,7 +22,7 @@ expect editor.panel_rect is 1830 220 128 1842
 expect editor.panel_button is 100
 shot 01-upright-four-pins
 # The first pin, the highlighter, picked (under the tool button, 108 px apart)
-pentap 1894 466
+pentap panel tool:highlighter
 wait 100
 expect editor.tool is highlighter
 rotate 1
@@ -31,11 +32,11 @@ expect editor.panel_rect is 2492 132 128 1842
 expect editor.panel_button is 100
 shot 02-sideways-four-pins
 # Collapsed sideways: the same square, where the panel's top right was
-pentap 2557 172
+pentap panel collapse
 wait 300
 expect editor.panel is collapsed
 expect editor.panel_rect is 2500 132 120 120
-tap 2560 192
+tap panel expand
 wait 300
 expect editor.panel is expanded
 expect editor.panel_rect is 2492 132 128 1842
@@ -44,7 +45,7 @@ rotate 0
 wait 300
 expect editor.panel_rect is 1858 132 128 1842
 expect editor.panel_button is 100
-pentap 1922 1910
+pentap panel library
 wait 500
 expect screen is library
 quit

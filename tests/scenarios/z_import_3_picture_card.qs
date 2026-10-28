@@ -6,6 +6,7 @@
 # thumbnail.
 # copy: tests/fixtures/scen-picture-card .
 # pdfs: 1
+# rust-only
 wait 500
 shot 01-card
 expect screen is library
@@ -21,7 +22,7 @@ expect editor.paper is 1342177281
 pen line 300 900 1300 950 40 0.6 0.6
 wait 300
 expect editor.strokes is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 shot 03-card-thumbnail
 expect screen is library

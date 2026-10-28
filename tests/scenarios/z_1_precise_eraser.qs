@@ -9,6 +9,7 @@
 # settings: eraser_mode=1
 # settings: side_button=1
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -40,7 +41,7 @@ expect editor.stroke_settings is eraser
 expect editor.paper_cache is 1
 expect editor.live_matches_render is 1
 # The eraser button: the pen's tip erases
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is eraser
 pen line 400 780 700 900 20 0.6 0.6
@@ -51,7 +52,7 @@ expect editor.stroke_look is round tip
 expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
 # Tapped again: back to the pencil. The pen button (side_button=1) erases whatever the tip draws
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is pencil
 side on
@@ -69,28 +70,28 @@ wait 300
 expect editor.strokes is 7
 expect editor.erase_strokes is 3
 # Undo and redo an erase stroke
-pentap 1768 594
+pentap panel undo
 wait 700
 shot 02-undo-erase
 expect editor.strokes is 6
 expect editor.erase_strokes is 2
 expect editor.live_matches_render is 1
-pentap 1768 702
+pentap panel redo
 wait 700
 shot 03-redo-erase
 expect editor.strokes is 7
 expect editor.live_matches_render is 1
 # Clear page and its undo
-pentap 1768 810
+pentap panel clear
 wait 300
 expect editor.strokes is 0
 expect editor.live_matches_render is 1
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 7
 expect editor.live_matches_render is 1
 # Another paper (grand staff): the next erase stroke restores its lines
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 pentap 1348 1035
@@ -104,9 +105,9 @@ expect editor.strokes is 8
 expect editor.live_matches_render is 1
 # Both undone (the erase stroke, then the paper): medium rule again, and the next erase stroke
 # restores medium rule, not the staves it restored last
-pentap 1768 594
+pentap panel undo
 wait 200
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.paper is 1
 expect editor.strokes is 7
@@ -117,10 +118,10 @@ shot 05-erased-on-medium-again
 expect editor.strokes is 8
 expect editor.live_matches_render is 1
 # A new page on dot grid, written and erased
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 2
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 511 1035
 wait 400
@@ -133,7 +134,7 @@ expect editor.strokes is 2
 expect editor.erase_strokes is 1
 expect editor.live_matches_render is 1
 # Back on page 1 (medium rule): the paper follows the page
-pentap 1768 938
+pentap panel previous
 wait 400
 expect editor.page is 1
 expect editor.paper is 1
@@ -150,7 +151,7 @@ expect editor.strokes is 11
 expect editor.erase_strokes is 6
 expect editor.live_matches_render is 1
 # The Library: the notebook closes and is compacted in the background
-pentap 1768 1566
+pentap panel library
 wait 300
 expect screen is library
 wait 2000
@@ -166,7 +167,7 @@ expect editor.erase_strokes is 5
 expect editor.matches_closed is 1
 expect editor.live_matches_render is 1
 shot 08-after-compaction
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 expect bg.busy is 0

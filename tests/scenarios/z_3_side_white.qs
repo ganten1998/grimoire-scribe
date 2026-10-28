@@ -4,6 +4,7 @@
 # ink strokes away and leaves the white ones, which would bring back what they cover.
 # settings: side_button=3
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -30,7 +31,7 @@ expect editor.stroke_look is white pencil
 expect editor.stroke_settings is pencil
 expect editor.live_matches_render is 1
 # The marker picked: the button draws white marker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1504 561
 wait 200
@@ -47,7 +48,7 @@ expect editor.stroke_look is white marker
 expect editor.stroke_settings is marker
 expect editor.live_matches_render is 1
 # The eraser picked: the button still draws white with the toolbar's tool (the marker)
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is eraser
 side on
@@ -66,11 +67,11 @@ shot 03-stroke-eraser-leaves-white
 expect editor.strokes is 5
 expect editor.erase_strokes is 3
 expect editor.live_matches_render is 1
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 6
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 1500
 expect screen is library
 expect bg.busy is 0

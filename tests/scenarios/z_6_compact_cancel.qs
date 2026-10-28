@@ -5,6 +5,7 @@
 # env: GRIMOIRE_BG_DELAY_MS=3000
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -21,7 +22,7 @@ wait 300
 expect editor.strokes is 4
 expect editor.erase_strokes is 2
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 300
 expect screen is library
 expect bg.busy is 1
@@ -36,7 +37,7 @@ expect editor.matches_closed is 1
 expect editor.live_matches_render is 1
 shot 01-reopened-during-compaction
 # Closed again: this time the compaction gets through
-pentap 1768 1566
+pentap panel library
 wait 300
 expect bg.busy is 1
 wait 4500
@@ -49,7 +50,7 @@ expect editor.erase_strokes is 1
 expect editor.matches_closed is 1
 expect editor.live_matches_render is 1
 shot 02-compacted
-pentap 1768 1566
+pentap panel library
 wait 300
 expect bg.busy is 0
 quit

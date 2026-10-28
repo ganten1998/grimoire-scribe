@@ -1,5 +1,6 @@
 # Sleep screen continuity: sleep shows the page (no toolbar), wake brings the UI back;
 # pin page 1, go to page 2, sleep: the pinned page shows.
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -21,7 +22,7 @@ wait 400
 shot 02-awake
 expect asleep is 0
 expect screen is editor
-pentap 1768 1350
+pentap panel display
 wait 300
 shot 03-display-sheet-sleep
 expect editor.modal is display
@@ -33,7 +34,7 @@ wait 300
 tap 1464 1628
 wait 300
 expect editor.modal is none
-pentap 1768 1114
+pentap panel next
 wait 300
 expect editor.page is 2
 expect editor.pages is 2

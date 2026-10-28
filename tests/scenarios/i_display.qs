@@ -1,4 +1,5 @@
 # Toolbar clear (no confirmation), Display sheet: brightness/warmth sliders, invert colors
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -11,15 +12,15 @@ pen line 300 700 1300 720 60 0.3 0.9
 wait 300
 shot 01-before-clear
 expect editor.strokes is 2
-pentap 1768 810
+pentap panel clear
 wait 300
 expect toast is Page cleared
 shot 02-cleared-by-toolbar
 expect editor.strokes is 0
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 2
-pentap 1768 1350
+pentap panel display
 wait 300
 shot 03-display-sheet
 expect editor.modal is display

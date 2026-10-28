@@ -6,6 +6,7 @@
 # tests/l10n/templates.qs, in every language and style; this keeps a Spanish run in make scenarios,
 # with the style changed while Grimoire runs.) Its taps land in both styles.
 # copy: tests/fixtures/tpl-many templates
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -99,7 +100,7 @@ wait 100
 tap 1564 2254
 wait 400
 expect screen is editor
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 shot 09-paper-classic
@@ -114,7 +115,7 @@ tap 1562 2125
 wait 200
 rotate 1
 wait 400
-pentap 2388 1244
+pentap panel paper
 wait 200
 expect editor.modal is paper
 shot 11-paper-classic-sideways

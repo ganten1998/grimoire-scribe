@@ -3,13 +3,14 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index .
+# rust-only
 wait 100
 tap 965 95
 wait 100
 tap 1564 2254
 wait 200
-pentap 1768 1114
-pentap 1768 1114
+pentap panel next
+pentap panel next
 expect editor.page is 3
 key 23 1
 expect editor.pages_tab is index
@@ -43,10 +44,10 @@ expect editor.index_rows is 1
 expect toast is Could not save the page name.
 storage ok
 tap 125 95
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
-pentap 1768 1026
+pentap panel pages
 expect editor.pages_tab is index
 tap 1400 95
 # Start
@@ -78,14 +79,14 @@ key 23 1
 tap 900 300
 expect editor.page is 1
 # Insert a blank note between sections.
-pentap 1768 1026
+pentap panel pages
 tap 430 95
 tap 396 296
 tap 450 2395
 expect editor.page is 2
 expect editor.page_name is
 expect editor.index_rows is 2
-pentap 1768 1026
+pentap panel pages
 tap 850 95
 shot 04-inserted-note
 tap 900 435
@@ -93,11 +94,11 @@ expect editor.page is 4
 expect editor.page_name is Notes
 tap 200 74
 expect editor.page is 4
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 2
 # Delete the Start section. Notes still names the same physical page.
-pentap 1768 1026
+pentap panel pages
 tap 430 95
 tap 396 296
 tap 1630 95
@@ -108,17 +109,17 @@ expect editor.page is 3
 expect editor.page_name is Notes
 expect editor.strokes is 1
 rotate 1
-pentap 2388 1028
+pentap panel pages
 expect editor.pages_tab is index
 shot 05-index-landscape
 tap 125 95
 rotate 0
-pentap 1768 1566
+pentap panel library
 waitbg
 tap 200 400
 expect editor.page_name is Notes
 expect editor.loaded_pages is 1
-pentap 1768 1026
+pentap panel pages
 expect editor.pages_tab is index
 expect editor.index_rows is 1
 expect editor.loaded_pages is 1

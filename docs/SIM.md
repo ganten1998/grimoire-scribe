@@ -61,6 +61,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `axis CODE VALUE` | an axis of a controller as Linux's generic driver reports an Xbox One S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z 2 and ABS_RZ 5 0 to 1023), decided and decoded as input_evdev.c does: a trigger pulled past half its travel is a press of LT (or RT), let back to a quarter or under its release, once each way; the sticks do nothing |
 | `hid attach pad\|key\|held NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on. A controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so one named `Pro Controller` is a Switch-mode one (the Buttons sheet names its buttons B, A, ZL...) |
 | `pentap X Y`, `tap X Y` | pen tap / finger tap |
+| `pentap panel NAME`, `tap panel NAME` | the same at the centre of the editor panel's button NAME (the panel's names, below), where the panel draws it now. A stroke queued ahead of the line is handled first (the line ends the batch before it looks), and a stale panel is settled as a human tap settles it. NAME not a button now, or no notebook open, fails the line like a failed check: `expect failed (line N): no panel button NAME` (exit 3). Ends the batch, like `tap` |
 | `touch down/move/up X Y` | raw finger events |
 | `drag pen\|touch X0 Y0 X1 Y1 STEPS` | a slow drag (100 ms per step) |
 | `pinch CX CY D0 D1 STEPS [DX DY]` | two fingers around (CX, CY), D0 apart, spreading to D1 while the midpoint drifts by (DX, DY) |
@@ -98,6 +99,15 @@ while it is active or unreadable, and with a wake (outOfScreenSaver) while it is
 state changes only through `powerd`. tests/scenarios/p_power.qs, p_power_locked.qs and
 p_power_released_late.qs (a 4.1 s press whose hold never arrived) use these commands, and
 v_storage_full.qs leaves with a page that cannot be saved.
+
+The editor panel's buttons, by the names `tap panel` and `editor.panel_at.X.Y` use: `grip`, `collapse` and
+`expand` (the collapsed panel is one `expand` button), `tool-picker` (the tool button, or the grid when its pen
+is pinned), `tool:NAME` (a pinned pen, NAME as `editor.tool` has it), `eraser`, `undo`, `redo`, `clear`,
+`previous`, `pages` (the page chip), `next`, `paper`, `display`, `pen-feel` and `library`. A disabled button
+(Undo with nothing to undo, Clear on an empty page, Previous on page 1) has no hit and no name. A scenario
+that wants a panel button taps it by name, so that it does not break when the panel gains a button;
+`editor.panel_at.1768.594 is undo` upright with no pins (and the other coordinates of tests/scenarios/
+y_touch_selftest.qs) says which coordinate is which.
 
 Coordinates are screen pixels: portrait 1860x2480 (or the size `GRIMOIRE_SIM_SIZE` gives), or
 2480x1860 after `rotate 1` or `rotate 3`, calibrated or not (as on the Kindle, a calibration maps
@@ -224,6 +234,7 @@ shows what the app holds.
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
 | `editor.modal` | what is in front of the page: `none`, `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above), empty for none, after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
 | `editor.loaded_pages` | pages currently loaded in the editor; opening or paging the number grid must not increase this |

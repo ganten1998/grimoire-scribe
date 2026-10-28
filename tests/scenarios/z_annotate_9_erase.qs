@@ -7,6 +7,7 @@
 # Notes on a page KOReader sent, then the precise eraser and white ink (the pen's button held) over
 # them: they take the ink away down to the page's picture, which stays (the book's text is not
 # erased), and the page drawn afresh is what the editor shows (live is what a later look gets).
+# rust-only
 wait 300
 expect screen is editor
 expect annotate.result is made
@@ -25,7 +26,7 @@ expect editor.erase_strokes is 2
 expect editor.stroke_look is white pencil
 expect editor.live_matches_render is 1
 shot 01-erased-to-the-page
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

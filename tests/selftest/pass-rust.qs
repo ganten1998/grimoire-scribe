@@ -29,3 +29,16 @@ expect touch.suppressed is 0
 expect screen is library
 expect library.sheet is none
 expect main.longest_unpumped_ms is ok
+# the panel's names: a stroke makes Undo a button, found by name and at a point
+tap 965 95
+wait 100
+tap 510 460
+tap 1564 2254
+wait 400
+expect screen is editor
+expect editor.panel_at.1768.358 is tool-picker
+expect editor.panel_at.1768.594 is
+pen line 300 700 1300 720 20 0.6 0.6
+expect editor.panel_at.1768.594 is undo
+tap panel undo
+expect editor.strokes is 0

@@ -4,6 +4,7 @@
 # Live equals a fresh render through all of it.
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -59,7 +60,7 @@ rotate 0
 wait 600
 expect rotation is 0
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 1500
 expect screen is library
 expect bg.busy is 0

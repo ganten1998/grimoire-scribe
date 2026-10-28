@@ -1,4 +1,5 @@
 # Tool picker + new pens, sheet music notebook
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -11,7 +12,7 @@ tap 1564 2254
 wait 400
 expect screen is editor
 expect editor.paper is 3
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 shot 02-tool-picker
 expect editor.modal is tools
@@ -20,11 +21,11 @@ wait 200
 expect editor.modal is none
 expect editor.tool is fountain
 pen curve 300 600 40 70 0.7 4
-pentap 1768 358
+pentap panel tool-picker
 pentap 1504 561
 expect editor.tool is marker
 pen curve 300 900 40 70 0.7 4
-pentap 1768 358
+pentap panel tool-picker
 pentap 1188 561
 expect editor.tool is fineliner
 pen curve 300 1200 40 70 0.7 4
@@ -35,7 +36,7 @@ expect editor.strokes is 3
 # Let the ink settle before the README shot.
 wait 300
 expect toast is
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 pentap 1622 1452

@@ -7,11 +7,12 @@
 # the background (each job waits 1.5 s here): the editor makes the Library's card from the page as
 # it shows it, white. The job that fits the picture draws the card again with it, and the Library
 # reads the card again once the job is done.
+# rust-only
 wait 300
 expect screen is editor
 expect annotate.result is made
 expect annotate.luma is 255
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.items is 1

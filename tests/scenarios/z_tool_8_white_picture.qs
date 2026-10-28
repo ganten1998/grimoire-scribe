@@ -11,15 +11,16 @@
 # settings: eraser.size_min_mm=1
 # settings: eraser.size_max_mm=1
 # The import takes about a second here (waitbg waits for it); its toast shows for 8 s.
+# rust-only
 waitbg
 wait 300
 expect library.items is 1
 tap 326 608
 wait 600
 expect screen is editor
-pentap 1768 1114
+pentap panel next
 wait 400
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 3
 expect editor.paper is 1366081652
@@ -28,7 +29,7 @@ pen line 600 300 600 1300 80 0.7 0.7
 wait 300
 expect editor.strokes is 1
 # White marker along a bar: the bar stays, as it does drawn afresh
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1425 878
 wait 200
@@ -61,7 +62,7 @@ shot 02-line-taken-where-it-shows
 expect editor.strokes is 2
 expect editor.erase_strokes is 2
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

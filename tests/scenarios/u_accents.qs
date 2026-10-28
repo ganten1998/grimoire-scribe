@@ -6,6 +6,7 @@
 # o slash, a ring, x = 221 + 177 n; y 2205 inverted ? and !, angle quotes, middle dot,
 # x = 570 + 177 n. The notebook's card opens at 326 608, its menu at 547 1052 (Rename 930 842).
 # The checks read the keyboard's text, so they hold the accents themselves (UTF-8).
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -13,7 +14,7 @@ tap 790 460
 tap 1564 2254
 wait 300
 pen line 300 900 1300 950 80 0.2 0.9
-pentap 1768 1566
+pentap panel library
 # Let the mirror PDF be written (the page has ink), so each rename moves it to the new name:
 # grimoire/PDFs/<name>.pdf ends up with the accented name.
 wait 1500
@@ -77,7 +78,7 @@ shot 03-renamed-gothic
 tap 326 608
 wait 300
 expect screen is editor
-pentap 1768 1566
+pentap panel library
 wait 300
 expect screen is library
 # The card's menu shows the name in the blackletter title face.
@@ -138,7 +139,7 @@ expect library.sheet is none
 tap 326 608
 wait 300
 expect screen is editor
-pentap 1768 1566
+pentap panel library
 wait 1500
 expect screen is library
 quit

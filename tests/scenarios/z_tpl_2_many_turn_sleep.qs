@@ -4,12 +4,13 @@
 # keep the sheet open with the same tiles in view: after a turn it shows the page with the first
 # tile it showed. The same over New notebook.
 # copy: tests/fixtures/tpl-many templates
+# rust-only
 wait 300
 tap 965 95
 wait 100
 tap 1564 2254
 wait 400
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 232 1750
 wait 200
@@ -66,7 +67,7 @@ waitbg
 wait 300
 expect editor.picture is shown
 shot 08-on-grid-43
-pentap 1768 1242
+pentap panel paper
 wait 200
 pentap 232 1750
 wait 300
@@ -78,7 +79,7 @@ tap 1562 2125
 wait 200
 expect editor.modal is none
 # Over New notebook: a turn and a wake keep it open there too.
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 tap 965 95

@@ -2,6 +2,7 @@
 # A fixed broad band puts its lower edge within this eraser gesture; defaults have their own fixture.
 # settings: highlighter.size_min_mm=5.5000
 # settings: highlighter.size_max_mm=5.5000
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -43,7 +44,7 @@ wait 400
 expect toast is Page cleared
 shot 04-cleared
 expect editor.strokes is 0
-pentap 1768 594
+pentap panel undo
 wait 400
 shot 05-undo-clear
 expect editor.strokes is 1

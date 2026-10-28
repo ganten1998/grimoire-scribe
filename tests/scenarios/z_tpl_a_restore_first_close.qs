@@ -3,6 +3,7 @@
 # card for. (z_tpl_4 visits page 1 later, which would write them too.)
 # copy: tests/fixtures/scen-tpl-restore .
 # pdfs: 1
+# rust-only
 wait 500
 expect screen is library
 expect library.card.1.luma is 255
@@ -11,7 +12,7 @@ wait 600
 expect screen is editor
 expect editor.page is 2
 expect editor.unsaved is 0
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.card.1.luma is 236

@@ -14,6 +14,7 @@
 # pinned pen picked in the picker does); with it open they move its choice and it stays open, where
 # next and previous tool leave it as it is; while it pins they do nothing. With fewer than two pens
 # on the panel, next and previous tool go through the picker's nine.
+# rust-only
 wait 150
 tap 965 95
 wait 100
@@ -110,7 +111,7 @@ wait 60
 expect editor.tool is calligraphy
 expect editor.tool_button is calligraphy
 # The open picker: next and previous tool leave its choice where it is
-pentap 1768 358
+pentap panel tool-picker
 wait 100
 expect editor.modal is tools
 key 311 0 1

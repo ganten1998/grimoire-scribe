@@ -4,6 +4,7 @@
 # render.
 # root: z_4_erase_zoom_rotate
 # settings: eraser_mode=0
+# rust-only
 wait 300
 expect settings.eraser_mode is 0
 tap 326 608
@@ -18,11 +19,11 @@ shot 01-ink-gone-erase-strokes-kept
 expect editor.strokes is 3
 expect editor.erase_strokes is 3
 expect editor.live_matches_render is 1
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 5
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

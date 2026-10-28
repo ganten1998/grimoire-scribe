@@ -11,6 +11,7 @@
 # settings: marker.grain=0
 # settings: eraser.size_min_mm=1
 # settings: eraser.size_max_mm=1
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -23,7 +24,7 @@ pen line 300 1000 1500 1000 60 0.7 0.7
 wait 300
 expect editor.strokes is 1
 # White marker across the line
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1425 878
 wait 200
@@ -50,12 +51,12 @@ shot 02-line-taken-where-it-shows
 expect editor.strokes is 1
 expect editor.erase_strokes is 1
 expect editor.live_matches_render is 1
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 2
 expect editor.live_matches_render is 1
 # The eraser button (the tip as the stroke eraser) is the same: over the white, nothing
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is eraser
 pen line 896 950 904 1050 12 0.6 0.6
@@ -66,13 +67,13 @@ wait 700
 expect editor.strokes is 1
 # The line back; the eraser tapped again: back to the marker (white). Black pencil then, down
 # through the whited part after the white (a correction written over a word whited out)
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 2
-pentap 1768 466
+pentap panel eraser
 wait 100
 expect editor.tool is marker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 951 878
 wait 200
@@ -96,7 +97,7 @@ expect editor.erase_strokes is 1
 expect editor.stroke_look is white marker
 expect editor.live_matches_render is 1
 # Undone, the pencil is back; the eraser on the line where it shows takes the line
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 3
 eraser line 596 950 604 1050 12
@@ -104,7 +105,7 @@ wait 700
 expect editor.strokes is 2
 expect editor.stroke_look is pencil
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

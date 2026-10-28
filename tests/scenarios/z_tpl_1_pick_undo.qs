@@ -5,6 +5,7 @@
 # Templates sheet selects it, and both pages keep it when the notebook is opened again.
 # copy: tests/fixtures/scen-templates templates
 # settings: eraser_mode=1
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -15,7 +16,7 @@ expect editor.paper is 1
 pen line 300 640 1300 700 40 0.6 0.6
 wait 300
 expect editor.strokes is 1
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 pentap 232 1750
@@ -44,30 +45,30 @@ expect editor.erase_strokes is 1
 expect editor.live_matches_render is 1
 shot 03-erased-to-the-picture
 # Undone (the erase stroke, then the paper): medium rule again; then both redone.
-pentap 1768 594
+pentap panel undo
 wait 200
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.paper is 1
 expect editor.erase_strokes is 0
 expect editor.live_matches_render is 1
 shot 04-undone
-pentap 1768 702
+pentap panel redo
 wait 300
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is shown
 expect editor.live_matches_render is 1
-pentap 1768 702
+pentap panel redo
 wait 300
 expect editor.erase_strokes is 1
 expect editor.live_matches_render is 1
 # A page added after it.
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 2
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is shown
-pentap 1768 1242
+pentap panel paper
 wait 200
 shot 05-paper-sheet-on-a-template
 pentap 232 1750
@@ -80,7 +81,7 @@ expect editor.modal is paper
 tap 1562 2125
 wait 200
 expect editor.modal is none
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 tap 326 608
@@ -88,7 +89,7 @@ wait 600
 expect editor.page is 2
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is shown
-pentap 1768 938
+pentap panel previous
 wait 400
 expect editor.page is 1
 expect editor.paper_hex is 0x50f4d83c

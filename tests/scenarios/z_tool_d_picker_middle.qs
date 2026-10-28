@@ -5,6 +5,7 @@
 # settings: mirror_pdf=0
 # settings: panel_x=900
 # settings: panel_y=220
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -13,7 +14,7 @@ tap 1564 2254
 wait 400
 expect screen is editor
 expect editor.panel_rect is 900 220 128 1410
-pentap 964 358
+pentap panel tool-picker
 wait 200
 expect editor.modal is tools
 expect editor.tools_rect is 858 220 992 768
@@ -47,7 +48,7 @@ shot 02-closed
 # Sideways there is room right of the panel
 rotate 1
 wait 300
-pentap 964 358
+pentap panel tool-picker
 wait 200
 expect editor.modal is tools
 expect editor.tools_rect is 1048 220 992 768
@@ -56,7 +57,7 @@ wait 200
 expect editor.modal is none
 rotate 0
 wait 300
-pentap 964 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

@@ -161,6 +161,9 @@ struct State {
     expect: Expect,
     /// the script line being read (1-based)
     line_no: i32,
+    /// a line read too early and given back (`tap panel` with events still queued): the next
+    /// script_line returns it again
+    unread: Option<Vec<u8>>,
     expect_total: i32,
     expect_failed: i32,
 
@@ -239,6 +242,7 @@ impl Default for State {
             eraser: false,
             expect: Expect::default(),
             line_no: 0,
+            unread: None,
             expect_total: 0,
             expect_failed: 0,
             power_down_at: 0,
@@ -536,6 +540,21 @@ impl State {
         self.q_push(e);
     }
 
+    /// What `tap X Y` queues (a finger down and up), or `pentap X Y` (the nib down, then up 20 ms later).
+    fn tap_events(&mut self, x: f32, y: f32, pen: bool) {
+        if !pen {
+            self.touch_ev(InType::TouchDown, x, y);
+            self.touch_ev(InType::TouchUp, x, y);
+        } else {
+            self.pen_ev(InType::PenDown, x, y, 0.5, 0.0, 0.0, 0);
+            let up = self.pen_ev(InType::PenUp, x, y, 0.0, 0.0, 0.0, 20);
+            // A nib tap lifts away: touchgest sees the pen leave at its up (its events are as
+            // they were: no PenLeave is queued).
+            self.tpen.prox = false;
+            self.tpen.left_ms = up;
+        }
+    }
+
     // The simulated power key: one event, its value how long the key was held (IN_POWER_UP and
     // IN_POWER_HELD, as input_evdev.c reports them).
     fn power_key(&mut self, t: InType, held_ms: i32) {
@@ -552,6 +571,10 @@ impl State {
 
     /// The script's next line as fgets reads it, counted.
     fn script_line(&mut self) -> Option<Vec<u8>> {
+        if let Some(line) = self.unread.take() {
+            self.line_no += 1;
+            return Some(line);
+        }
         let line = fgets(self.script.as_mut()?, LINE_CAP)?;
         self.line_no += 1;
         Some(line)
@@ -1178,6 +1201,9 @@ enum Step {
     Batch,
     /// an expect with nothing queued since the last flush: check it now, then read on
     Check,
+    /// `tap panel NAME` / `pentap panel NAME` (true: the pen): the panel's button NAME is found where the
+    /// App is (script_step), then tapped like `tap` and `pentap` do, and the batch ends
+    Panel(FixedStr<32>, bool),
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -1373,18 +1399,22 @@ fn script_step_in(st: &mut State) -> Step {
             };
             st.touch_ev(t, v[0], v[1]);
         } else if a == b"tap" || a == b"pentap" {
-            scan_floats(s, 1, &mut v[..2]);
-            if a == b"tap" {
-                st.touch_ev(InType::TouchDown, v[0], v[1]);
-                st.touch_ev(InType::TouchUp, v[0], v[1]);
-            } else {
-                st.pen_ev(InType::PenDown, v[0], v[1], 0.5, 0.0, 0.0, 0);
-                let up = st.pen_ev(InType::PenUp, v[0], v[1], 0.0, 0.0, 0.0, 20);
-                // A nib tap lifts away: touchgest sees the pen leave at its up (its events are as
-                // they were: no PenLeave is queued).
-                st.tpen.prox = false;
-                st.tpen.left_ms = up;
+            // `panel NAME` first: scan_floats would read "panel" as the float 0 and tap (0, 0), the clock
+            // corner. The App finds the button (script_step), outside this borrow.
+            if b == b"panel" {
+                // The buttons are those the app drew from what is queued ahead of this line (a stroke
+                // makes Undo): it ends the batch first, as an expect does, and is read again then.
+                if st.qh != st.qt {
+                    st.unread = Some(line.clone());
+                    st.line_no -= 1;
+                    return Step::Batch;
+                }
+                let mut name = FixedStr::<32>::new();
+                name.set_bytes(sc.word(31).unwrap_or(b""));
+                return Step::Panel(name, a == b"pentap");
             }
+            scan_floats(s, 1, &mut v[..2]);
+            st.tap_events(v[0], v[1], a == b"pentap");
             return Step::Batch; // one tap per batch, like a human
         } else if a == b"drag" {
             // drag pen|touch x0 y0 x1 y1 steps
@@ -1611,8 +1641,25 @@ fn script_step_in(st: &mut State) -> Step {
 // Reads script lines until a batch boundary (wait/shot/end), checking an expect that needs no
 // batch first as it comes.
 fn script_step(mut a: Option<&mut App>) {
-    while let Step::Check = with(script_step_in) {
-        expect_check(a.as_deref_mut());
+    loop {
+        match with(script_step_in) {
+            Step::Check => expect_check(a.as_deref_mut()),
+            Step::Panel(name, pen) => {
+                // The App says where the button is; the tap is then the one `tap` and `pentap` queue.
+                let at = a.as_deref_mut().and_then(|a| editor_panel_point(a, name.as_str()));
+                with(|st| match at {
+                    Some((x, y)) => st.tap_events(x, y, pen),
+                    None => {
+                        // Fails the run like a failed check does (exit 3 at the end).
+                        err(&bformat("expect failed (line %d): no panel button %s\n", &[B::D(st.line_no), B::S(name.as_bytes())]));
+                        st.expect_total += 1;
+                        st.expect_failed += 1;
+                    }
+                });
+                break;
+            }
+            Step::Batch => break,
+        }
     }
     with(|st| st.fclock_fresh = true); // (a batch ended: the next contact line starts the clock again)
 }
@@ -2377,6 +2424,27 @@ mod tests {
         assert_eq!(b[0].type_, InType::Quit);
         assert!(with(|st| st.script_done));
         assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (0, 0));
+    }
+
+    #[test]
+    fn tap_panel_is_read_before_the_floats_and_fails_without_a_button() {
+        fresh();
+        // `panel` is no float: the tap arm's own test comes first, so it is never `tap 0 0` (the clock
+        // corner). With no App there is no editor, and no panel button: the line fails like a check
+        // does, by its number, and queues nothing.
+        script("tappanel", "tap panel undo\nexpect running is 1\npentap panel nosuchbutton\nwait 0\nquit\n");
+        let mut all = Vec::new();
+        for _ in 0..10 {
+            all.extend(batch());
+            if with(|st| st.script_done) {
+                break;
+            }
+        }
+        assert!(with(|st| st.script_done));
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].type_, InType::Quit);
+        // the two panel lines failed, the expect between them held
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (3, 2));
     }
 
     #[test]

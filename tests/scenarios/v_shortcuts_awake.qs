@@ -4,6 +4,7 @@
 # Keys and controller buttons count as someone here, as pen and touch do: paging with them alone
 # keeps the Kindle awake past "Sleep after" (one minute, which lasts 4 s here), and the power
 # service hears of them at most once a minute. With no input at all, the timer still runs out.
+# rust-only
 wait 150
 expect settings.sleep_minutes is 1
 expect power.pokes is 0
@@ -18,7 +19,7 @@ tap 510 460
 tap 1564 2254
 wait 200
 expect screen is editor
-pentap 1768 1114
+pentap panel next
 wait 120
 expect editor.pages is 2
 expect editor.page is 2

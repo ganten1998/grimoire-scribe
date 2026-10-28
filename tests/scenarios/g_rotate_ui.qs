@@ -1,4 +1,5 @@
 # Library and sheets when the Kindle is turned sideways
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -7,7 +8,7 @@ tap 1564 2254
 wait 400
 expect screen is editor
 pen curve 300 520 40 70 0.7 5
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 expect library.items is 1

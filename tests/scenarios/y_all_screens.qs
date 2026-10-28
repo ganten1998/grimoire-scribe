@@ -5,6 +5,7 @@
 # text short to fit fails (its shots, build/shots/l10n/<lang>-<style>/, show translators every
 # screen); make scenarios runs it in English and Gothic. Its taps land in both styles, and it
 # checks only what does not depend on the language. It leaves every setting as it found it.
+# rust-only
 wait 100
 expect screen is library
 expect library.items is 0
@@ -344,7 +345,7 @@ expect screen is editor
 pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
-pentap 1768 358
+pentap panel tool-picker
 wait 50
 expect editor.modal is tools
 shot 24-tools
@@ -385,14 +386,14 @@ expect editor.pin_mode is 0
 pentap 300 1800
 wait 50
 expect editor.modal is none
-pentap 1768 1458
+pentap panel pen-feel
 wait 100
 expect screen is penset
 shot 24-penfeel-white
 tap 125 95
 wait 100
 expect screen is editor
-pentap 1768 358
+pentap panel tool-picker
 wait 50
 pentap 951 878
 wait 50
@@ -400,7 +401,7 @@ expect settings.white is 0
 pentap 872 561
 wait 50
 expect editor.modal is none
-pentap 1768 1242
+pentap panel paper
 wait 100
 expect editor.modal is paper
 shot 25-paper
@@ -424,7 +425,7 @@ expect editor.modal is paper
 tap 1562 2125
 wait 100
 expect editor.modal is none
-pentap 1768 1350
+pentap panel display
 wait 100
 expect editor.modal is display
 shot 26-display-editor
@@ -444,12 +445,12 @@ expect settings.sleep_mode is 0
 tap 1462 1626
 wait 100
 expect editor.modal is none
-pentap 1768 1114
+pentap panel next
 wait 50
-pentap 1768 1114
+pentap panel next
 wait 50
 expect editor.pages is 3
-pentap 1768 1026
+pentap panel pages
 wait 150
 expect editor.modal is pages
 shot 28-pages
@@ -462,12 +463,12 @@ tap 1643 2365
 expect editor.index_rows is 1
 shot 28-index-named
 tap 125 95
-pentap 1768 938
-pentap 1768 1026
+pentap panel previous
+pentap panel pages
 tap 900 300
 shot 28-index-jump
 # a link: Add a link, its box, where it goes picked (the Index), then a finger held on it
-pentap 1768 1026
+pentap panel pages
 wait 150
 tap 1410 2395
 wait 50
@@ -488,9 +489,9 @@ shot 28-link-pick-had
 tap 125 95
 wait 100
 expect editor.modal is none
-pentap 1768 938
-pentap 1768 1114
-pentap 1768 1026
+pentap panel previous
+pentap panel next
+pentap panel pages
 tap 1400 95
 tap 1679 2205
 tap 1643 2365
@@ -517,16 +518,16 @@ expect editor.zoom not 1.00
 pinch 900 900 700 200 6
 wait 100
 expect editor.zoom is 1.00
-pentap 1768 810
+pentap panel clear
 wait 100
 expect editor.strokes is 0
 shot 32-cleared
-pentap 1768 1114
+pentap panel next
 wait 50
-pentap 1768 1114
+pentap panel next
 wait 50
 expect editor.pages is 3
-pentap 1768 1566
+pentap panel library
 wait 200
 expect screen is library
 # The Library: a notebook's menu, Save PDF now (its notice), Delete and Keep it; a folder
@@ -703,7 +704,7 @@ tap 267 530
 wait 200
 expect screen is editor
 shot 48-editor-landscape
-pentap 2388 358
+pentap panel tool-picker
 wait 50
 expect editor.modal is tools
 shot 48-tools-landscape
@@ -717,7 +718,7 @@ expect editor.pin_mode is 0
 pentap 1492 561
 wait 50
 expect editor.modal is none
-pentap 2388 1244
+pentap panel paper
 wait 150
 expect editor.modal is paper
 shot 48-paper-landscape
@@ -740,7 +741,7 @@ expect editor.modal is paper
 tap 2182 1696
 wait 100
 expect editor.modal is none
-pentap 2388 1028
+pentap panel pages
 wait 150
 expect editor.modal is pages
 shot 49-pages-landscape
@@ -754,7 +755,7 @@ tap 125 95
 wait 100
 expect editor.modal is none
 # a link, sideways: Add a link, its box, its page picked, a finger held on it
-pentap 2388 1028
+pentap panel pages
 wait 150
 tap 1300 95
 tap 1760 1775
@@ -776,7 +777,7 @@ shot 49-link-pick-had-landscape
 tap 125 95
 wait 100
 expect editor.modal is none
-pentap 2388 1560
+pentap panel library
 wait 200
 expect screen is library
 # Sideways, the rest: in folder A the notebook's menu, its Delete and Move to; at the top level the

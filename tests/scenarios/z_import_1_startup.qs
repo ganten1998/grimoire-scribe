@@ -8,6 +8,7 @@
 # pdfs: 1
 # The import takes about a second on a quiet machine and longer on a busy one: waitbg waits for it
 # (and for the templates' previews) to end, which puts its toast up for 8 s.
+# rust-only
 waitbg
 wait 300
 shot 01-library-imported
@@ -23,12 +24,12 @@ expect screen is editor
 expect editor.pages is 3
 expect editor.page is 1
 expect editor.paper is 1370650129
-pentap 1768 1114
+pentap panel next
 wait 400
 shot 03-page-2-colour-as-gray
 expect editor.page is 2
 expect editor.paper is 1372561192
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 3
 expect editor.paper is 1366081652
@@ -42,13 +43,13 @@ wait 600
 shot 05-page-10-erased
 expect editor.strokes is 0
 # The next page: the notebook's own paper (blank), not page 10's picture.
-pentap 1768 1114
+pentap panel next
 wait 400
 shot 06-new-page-blank
 expect editor.pages is 4
 expect editor.page is 4
 expect editor.paper is 4
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

@@ -7,16 +7,17 @@
 # holding its name; its Done saves the name and its Cancel keeps the old one, and either goes back to
 # the page; one that cannot be saved says so, back on the page. Neither acts through the keyboard,
 # and the Pages view opens again on the tab it was left on, not the Index shown under the keys.
+# rust-only
 wait 150
 tap 965 95
 wait 100
 tap 1564 2254
 wait 200
-pentap 1768 1114
-pentap 1768 1114
+pentap panel next
+pentap panel next
 expect editor.page is 3
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
 pen line 300 600 900 620 30 0.5 0.9
 expect editor.strokes is 1
@@ -51,8 +52,8 @@ expect editor.link.1 is p3
 expect toast is The link goes to page 3.
 tap 600 1100
 expect editor.page is 3
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
 # The controller's button, to the Index
 key 308 0 1
@@ -73,8 +74,8 @@ tap 125 95
 expect editor.modal is none
 tap 600 1100
 expect editor.page is 3
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
 wait 2600
 # Name the page: its keyboard over the Index, Done back to the page
@@ -132,7 +133,7 @@ expect editor.page_name is Map
 expect toast is Could not save the page name.
 storage ok
 # On another page, its own name
-pentap 1768 1114
+pentap panel next
 expect editor.page is 2
 key 49 0
 wait 60
@@ -147,7 +148,7 @@ tap 1643 2365
 expect editor.page_name is Notes
 expect editor.index_rows is 2
 # Left on its Pages tab, the Pages view opens there again after naming, by Cancel or by Done
-pentap 1768 1026
+pentap panel pages
 expect editor.modal is pages
 tap 430 95
 expect editor.pages_tab is pages
@@ -159,7 +160,7 @@ expect editor.pages_tab is index
 expect editor.keyboard is Page name
 tap 217 2365
 expect editor.modal is none
-pentap 1768 1026
+pentap panel pages
 expect editor.modal is pages
 expect editor.pages_tab is pages
 tap 125 95
@@ -169,7 +170,7 @@ expect editor.text is Notes
 tap 1643 2365
 expect editor.modal is none
 expect editor.page_name is Notes
-pentap 1768 1026
+pentap panel pages
 expect editor.pages_tab is pages
 tap 125 95
 expect editor.modal is none

@@ -7,6 +7,7 @@
 # not the page's size. The page is made at once and the editor opens on it, white, while the picture
 # is fitted to the upright page in the background (each background job waits 1.5 s here); once it is
 # done the page is drawn again with it, and ink goes on it as on any page.
+# rust-only
 wait 300
 shot 01-white-while-fitted
 expect screen is editor
@@ -23,7 +24,7 @@ pen line 300 1000 1300 1050 40 0.6 0.6
 wait 700
 expect editor.strokes is 1
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.items is 1

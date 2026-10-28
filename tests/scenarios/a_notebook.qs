@@ -1,4 +1,5 @@
 # Library -> new medium-rule notebook -> write with all three tools -> erase/undo/redo -> pages -> panel
+# rust-only
 wait 300
 shot 01-library-empty
 expect screen is library
@@ -29,7 +30,7 @@ pen line 300 1080 1200 1080 120 0.5 0.5 55 0
 wait 100
 expect editor.strokes is 5
 # Mechanical pencil
-pentap 1768 358
+pentap panel tool-picker
 expect editor.modal is tools
 pentap 1188 395
 wait 100
@@ -38,7 +39,7 @@ expect editor.tool is mech
 pen curve 300 1300 35 80 0.6 5
 pen line 300 1420 1400 1420 100 0.1 1.0
 # Ballpoint
-pentap 1768 358
+pentap panel tool-picker
 pentap 872 561
 wait 100
 expect editor.tool is ballpoint
@@ -53,19 +54,19 @@ wait 300
 shot 05-erased
 expect editor.strokes is 8
 expect editor.tool is ballpoint
-pentap 1768 594
+pentap panel undo
 wait 300
 shot 06-undo-erase
 expect editor.strokes is 9
-pentap 1768 702
+pentap panel redo
 wait 300
 shot 07-redo-erase
 expect editor.strokes is 8
-pentap 1768 594
+pentap panel undo
 wait 200
 expect editor.strokes is 9
 # New page, draw, back
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 2
 expect editor.pages is 2
@@ -74,14 +75,14 @@ pen curve 400 600 50 60 0.6 3
 wait 200
 shot 08-page2
 expect editor.strokes is 1
-pentap 1768 938
+pentap panel previous
 wait 400
 shot 09-back-page1
 expect editor.page is 1
 expect editor.pages is 2
 expect editor.strokes is 9
 # Collapse, drag the box, expand
-pentap 1795 260
+pentap panel collapse
 wait 300
 shot 10-collapsed
 expect editor.panel is collapsed
@@ -90,7 +91,7 @@ wait 300
 shot 11-collapsed-moved
 expect editor.panel is collapsed
 expect editor.strokes is 9
-tap 300 2200
+tap panel expand
 wait 300
 shot 12-expanded-moved
 expect editor.panel is expanded

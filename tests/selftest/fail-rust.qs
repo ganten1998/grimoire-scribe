@@ -10,3 +10,5 @@ expect settings.gestures is 0
 expect settings.hints is 4
 expect notebook.last_page is 7
 expect main.longest_unpumped_ms is 99999
+expect editor.panel_at.1768.594 is undo
+pentap panel nosuchbutton

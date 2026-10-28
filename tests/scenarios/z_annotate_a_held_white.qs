@@ -11,6 +11,7 @@
 # Then the page is drawn again with its picture. White ink over ink on the book's text afterwards
 # restores toward the picture: the text stays, and the page the editor holds is the page drawn
 # afresh.
+# rust-only
 wait 300
 expect screen is editor
 expect annotate.result is made
@@ -41,7 +42,7 @@ expect editor.erase_strokes is 2
 expect editor.stroke_look is white pencil
 expect editor.live_matches_render is 1
 shot 02-white-over-the-text
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

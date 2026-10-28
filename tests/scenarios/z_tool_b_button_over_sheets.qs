@@ -5,6 +5,7 @@
 # hand that draws white keeps a finger on the button.)
 # settings: mirror_pdf=0
 # settings: side_button=3
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -16,7 +17,7 @@ pen line 300 1000 1500 1000 60 0.7 0.7
 wait 700
 expect editor.strokes is 1
 # Held over the tool picker
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 expect editor.modal is tools
 side on
@@ -57,7 +58,7 @@ expect editor.strokes is 1
 expect toast not Page cleared
 # Held while the pen taps the highlighter's pin, and on after it
 side on
-pentap 1768 466
+pentap panel tool:highlighter
 wait 1500
 side off
 wait 200
@@ -65,7 +66,7 @@ expect editor.tool is highlighter
 expect editor.strokes is 1
 expect toast not Page cleared
 # Held over the Display sheet (under the pin now)
-pentap 1768 1458
+pentap panel display
 wait 200
 expect editor.modal is display
 side on
@@ -85,10 +86,10 @@ side off
 wait 200
 expect toast is Page cleared
 expect editor.strokes is 0
-pentap 1768 702
+pentap panel undo
 wait 300
 expect editor.strokes is 1
-pentap 1768 1674
+pentap panel library
 wait 500
 expect screen is library
 quit

@@ -1,12 +1,13 @@
 # copy: tests/fixtures/pages-many/notebooks notebooks
 # The number grid must not load any pages except the one explicitly opened.
+# rust-only
 wait 200
 tap 200 400
 wait 200
 expect screen is editor
 expect editor.pages is 120
 expect editor.loaded_pages is 1
-pentap 1768 1026
+pentap panel pages
 wait 200
 expect editor.modal is pages
 expect editor.loaded_pages is 1

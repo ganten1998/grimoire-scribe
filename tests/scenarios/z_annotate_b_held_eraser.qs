@@ -9,6 +9,7 @@
 # z_annotate_a_held_white with the precise eraser (the eraser tool, eraser_mode=1) over highlighter
 # ink (the pen's button held): the eraser down while the page's picture is fitted, held across the
 # end of that job, then moved on. The page is drawn again with its picture once the pen lifts.
+# rust-only
 wait 300
 expect screen is editor
 expect annotate.luma is 255
@@ -29,7 +30,7 @@ expect editor.erase_strokes is 1
 expect editor.stroke_look is round tip
 expect editor.live_matches_render is 1
 expect annotate.luma not 255
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 quit

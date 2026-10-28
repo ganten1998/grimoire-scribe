@@ -4,6 +4,7 @@
 # at its top left), and drawn once it is there. Undo puts the ruled paper back; a page added after it
 # gets the notebook's paper, not the photo.
 # copy: tests/fixtures/photos photos
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -11,7 +12,7 @@ tap 1564 2254
 wait 400
 expect screen is editor
 expect editor.paper is 1
-pentap 1768 1242
+pentap panel paper
 wait 200
 expect editor.modal is paper
 pentap 511 1750
@@ -35,20 +36,20 @@ pen line 300 1700 1500 1760 40 0.7 0.7
 wait 300
 expect editor.strokes is 1
 expect editor.live_matches_render is 1
-pentap 1768 594
+pentap panel undo
 wait 200
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.paper is 1
 expect editor.strokes is 0
-pentap 1768 702
+pentap panel redo
 wait 300
 expect annotate.role is document
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.pages is 2
 expect editor.page is 2
 expect editor.paper is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 quit

@@ -5,6 +5,7 @@
 # env: GRIMOIRE_SIM_SIZE=1986x2648
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 expect size is 1986x2648
 pentap 347 636
@@ -40,7 +41,7 @@ expect editor.stroke_screen_mm is 7.00
 expect editor.stroke_look is round tip
 expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
-pentap 1894 1566
+pentap panel library
 wait 1500
 expect screen is library
 expect bg.busy is 0

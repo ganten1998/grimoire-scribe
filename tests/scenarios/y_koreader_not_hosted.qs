@@ -3,6 +3,7 @@
 # never reaches the run). Sleep mode 2 stays the Kindle's own screensaver, which Grimoire leaves
 # to the Kindle UI (the simulator draws nothing of it): asleep.mode says 2. y_koreader_hosted holds
 # the other side: hosted by KOReader, mode 2 shows the page instead.
+# rust-only
 wait 200
 expect host is
 tap 965 95
@@ -14,7 +15,7 @@ expect screen is editor
 pen line 300 1700 1400 1720 60 0.4 0.9
 wait 700
 expect editor.strokes is 1
-pentap 1768 1350
+pentap panel display
 wait 300
 expect editor.modal is display
 tap 800 1172

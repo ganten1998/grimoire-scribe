@@ -6,6 +6,7 @@
 # Create; the waits hold for them on a busy machine.)
 # copy: tests/fixtures/scen-templates templates
 # env: GRIMOIRE_BG_DELAY_MS=3000
+# rust-only
 wait 300
 tap 965 95
 wait 100
@@ -52,15 +53,15 @@ wait 300
 expect editor.picture is shown
 expect editor.live_matches_render is 1
 shot 03-first-page-on-it
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 2
 expect editor.paper_hex is 0x50f4d83c
 expect editor.picture is shown
-pentap 1768 938
+pentap panel previous
 wait 400
 expect editor.page is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.card.1 is thumb

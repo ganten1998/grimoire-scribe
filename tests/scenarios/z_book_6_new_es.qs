@@ -5,11 +5,12 @@
 # copy: tests/fixtures/book/three import/.book
 # pdfs: 1
 # z_book_1_new in Spanish, with the fit check: the toast saying how many pages were added fits.
+# rust-only
 wait 600
 shot 01-added
 expect screen is editor
 expect annotate.book is done
 expect toast is Se añadieron 3 páginas del libro.
-pentap 1768 1566
+pentap panel library
 wait 600
 quit

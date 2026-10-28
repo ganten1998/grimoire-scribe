@@ -6,6 +6,7 @@
 # root: z_1_precise_eraser
 # settings: white=1
 # settings: side_button=2
+# rust-only
 wait 300
 expect settings.white is 1
 expect settings.side_button is 2
@@ -25,7 +26,7 @@ expect editor.stroke_look is white pencil
 expect editor.stroke_settings is pencil
 expect editor.live_matches_render is 1
 # White charcoal (picked in the tool picker) through the first line of writing
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 pentap 1504 395
 wait 200
@@ -56,20 +57,20 @@ expect editor.stroke_settings is highlighter
 expect editor.stroke_tip is 1
 expect editor.live_matches_render is 1
 # Undo the highlighter and the white charcoal, then redo the white charcoal
-pentap 1768 594
+pentap panel undo
 wait 200
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.strokes is 10
 expect editor.live_matches_render is 1
-pentap 1768 702
+pentap panel redo
 wait 700
 shot 04-redo-white
 expect editor.strokes is 11
 expect editor.erase_strokes is 7
 expect editor.stroke_look is white charcoal
 expect editor.live_matches_render is 1
-pentap 1768 1566
+pentap panel library
 wait 1500
 expect screen is library
 expect bg.busy is 0

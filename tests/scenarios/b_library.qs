@@ -1,4 +1,5 @@
 # Two notebooks with ink, a folder typed on the keyboard, move into it, settings, pen feel, calibration
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -11,7 +12,7 @@ expect screen is editor
 expect editor.paper is 2
 pen curve 300 700 45 80 0.6 4
 pen line 300 900 1300 950 80 0.2 0.9
-pentap 1768 1566
+pentap panel library
 wait 400
 expect screen is library
 expect library.items is 1
@@ -24,7 +25,7 @@ tap 1564 2254
 wait 300
 expect screen is editor
 expect editor.paper is 3
-pentap 1768 358
+pentap panel tool-picker
 expect editor.modal is tools
 pentap 872 561
 expect editor.tool is ballpoint
@@ -33,7 +34,7 @@ pen line 300 520 1300 520 60 0.7 0.7
 # The Library puts the latest saved first, by whole seconds: this notebook's save must come in a
 # later second than the first one's, or a tie could put the older one first and move that.
 wait 1100
-pentap 1768 1566
+pentap panel library
 wait 400
 shot 01-library-thumbs
 expect screen is library

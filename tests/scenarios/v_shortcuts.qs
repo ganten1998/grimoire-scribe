@@ -1,6 +1,7 @@
 # settings: shortcuts_enabled=1
 # env: GRIMOIRE_PASSCODE=enabled
 # Raw evdev button injection tests app gating, not Bluetooth or evdev hardware discovery.
+# rust-only
 wait 150
 expect settings.shortcuts_enabled is 1
 expect native_pin is 1
@@ -96,7 +97,7 @@ key 546 0 1
 wait 80
 expect editor.page is 2
 # An open tools sheet owns input; keyboard shortcuts cannot act through it.
-pentap 1768 358
+pentap panel tool-picker
 wait 80
 expect editor.modal is tools
 key 2 0

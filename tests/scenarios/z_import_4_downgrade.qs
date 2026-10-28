@@ -4,6 +4,7 @@
 # card is drawn again with the picture, and the notebook's PDF is written with it.
 # copy: tests/fixtures/scen-downgrade .
 # pdfs: 1
+# rust-only
 wait 500
 expect screen is library
 expect library.items is 1
@@ -16,7 +17,7 @@ expect screen is editor
 expect editor.pages is 1
 expect editor.paper is 1358954497
 expect editor.strokes is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 shot 02-card
 expect screen is library

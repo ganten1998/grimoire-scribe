@@ -4,6 +4,7 @@
 # is drawn again with the picture, and the notebook's PDF is written with it.
 # copy: tests/fixtures/scen-tpl-restore .
 # pdfs: 1
+# rust-only
 wait 500
 expect screen is library
 expect library.items is 1
@@ -16,7 +17,7 @@ expect editor.pages is 2
 expect editor.page is 2
 expect editor.paper is 1
 expect editor.unsaved is 0
-pentap 1768 1566
+pentap panel library
 wait 600
 expect screen is library
 expect library.card.1 is thumb
@@ -24,7 +25,7 @@ expect library.card.1.luma is 236
 shot 01-card-drawn-again
 tap 326 608
 wait 600
-pentap 1768 938
+pentap panel previous
 wait 400
 expect editor.page is 1
 expect editor.paper is 1358954497

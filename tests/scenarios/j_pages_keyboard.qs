@@ -12,6 +12,7 @@
 # page's covered its 0 and del). (display.presents and keyboard.draws count from their last check:
 # a "not -1" check only starts the count.)
 # (past the two repaints just after the start, main.c, so the checks see only what the keys send)
+# rust-only
 wait 3600
 # The Library's keyboard (New folder): a with the pen, resting on it for eight samples
 tap 1155 95
@@ -98,7 +99,7 @@ expect editor.keyboard is
 expect editor.page_name is as
 expect editor.index_rows is 1
 # Go to page's number pad: 1 costs the same; a page the notebook does not have keeps the pad up
-pentap 1768 1026
+pentap panel pages
 wait 400
 expect editor.modal is pages
 tap 930 2395

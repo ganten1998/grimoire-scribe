@@ -7,6 +7,7 @@
 # notebook's first now, and the editor opens on it. Page 12 (with its ink) is the second. The new
 # first page is what the Library's card shows: its thumbnail, which the editor makes as it leaves
 # the page (the one of the page that was first went), and the notebook's PDF is made again.
+# rust-only
 wait 300
 shot 01-page-5-first
 expect screen is editor
@@ -16,13 +17,13 @@ expect editor.page is 1
 expect editor.strokes is 0
 expect annotate.role is document
 expect annotate.book_page is 5/96
-pentap 1768 1114
+pentap panel next
 wait 400
 shot 02-page-12-second
 expect editor.page is 2
 expect annotate.book_page is 12/96
 expect editor.strokes is 1
-pentap 1768 1566
+pentap panel library
 wait 600
 shot 03-library
 expect screen is library

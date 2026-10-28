@@ -1,4 +1,5 @@
 # Pages view: previews, tick pages 2 and 4, delete; open a page from its preview; select all + delete
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -7,24 +8,24 @@ tap 1564 2254
 wait 300
 expect screen is editor
 pen curve 300 500 40 60 0.7 1
-pentap 1768 1114
+pentap panel next
 wait 200
 expect editor.page is 2
 pen curve 300 500 40 60 0.7 2
-pentap 1768 1114
+pentap panel next
 wait 200
 pen curve 300 500 40 60 0.7 3
-pentap 1768 1114
+pentap panel next
 wait 200
 pen curve 300 500 40 60 0.7 4
-pentap 1768 1114
+pentap panel next
 wait 200
 expect editor.page is 5
 expect editor.pages is 5
 pen curve 300 500 40 60 0.7 5
 wait 200
 expect editor.strokes is 1
-pentap 1768 1026
+pentap panel pages
 wait 400
 shot 01-pages-view
 expect editor.modal is pages
@@ -48,7 +49,7 @@ shot 04-opened-page-1
 expect editor.modal is none
 expect editor.page is 1
 expect editor.strokes is 1
-pentap 1768 1026
+pentap panel pages
 wait 400
 expect editor.modal is pages
 tap 1250 95

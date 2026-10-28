@@ -6,21 +6,22 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index .
+# rust-only
 wait 100
 tap 965 95
 wait 100
 tap 1564 2254
 wait 200
-pentap 1768 1114
-pentap 1768 1114
+pentap panel next
+pentap panel next
 expect editor.page is 3
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
 pen line 300 600 900 620 30 0.5 0.9
 expect editor.strokes is 1
 # Add a link, from the Index tab of the Pages view
-pentap 1768 1026
+pentap panel pages
 expect editor.modal is pages
 tap 850 95
 expect editor.pages_tab is index
@@ -53,8 +54,8 @@ tap 600 1500
 expect editor.page is 1
 tap 600 1100
 expect editor.page is 3
-pentap 1768 938
-pentap 1768 938
+pentap panel previous
+pentap panel previous
 expect editor.page is 1
 # A finger held on it: the Pages view, to change where it goes
 touch down 600 1100
@@ -70,7 +71,7 @@ expect editor.link.1 is p2
 expect editor.page is 1
 tap 600 1100
 expect editor.page is 2
-pentap 1768 938
+pentap panel previous
 expect editor.page is 1
 # ... to the Index
 touch down 600 1100
@@ -96,7 +97,7 @@ tap 600 1100
 expect editor.modal is none
 expect editor.page is 1
 # Back while picking takes the new box back
-pentap 1768 1026
+pentap panel pages
 expect editor.pages_tab is pages
 tap 850 95
 tap 1410 2395
@@ -109,7 +110,7 @@ expect editor.strokes is 2
 expect editor.links is 0 0
 expect editor.live_matches_render is 1
 # A link whose box is undone does nothing; redo brings it back
-pentap 1768 1026
+pentap panel pages
 tap 850 95
 tap 1410 2395
 pen line 300 1400 900 1500 30 0.6 0.6
@@ -118,12 +119,12 @@ expect editor.pages_tab is pages
 tap 1155 340
 expect editor.links is 1 1
 expect editor.link.1 is p3
-pentap 1768 594
+pentap panel undo
 wait 300
 expect editor.links is 1 0
 tap 600 1450
 expect editor.page is 1
-pentap 1768 702
+pentap panel redo
 wait 300
 expect editor.links is 1 1
 # The next ink never joins a link's box
@@ -131,7 +132,7 @@ pen line 1200 1800 1500 1900 30 0.6 0.6
 tap 1350 1850
 expect editor.page is 1
 # It stays through closing and opening the notebook
-pentap 1768 1566
+pentap panel library
 waitbg
 tap 200 400
 expect editor.page is 1

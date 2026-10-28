@@ -5,6 +5,7 @@
 # root: b_library
 # env: GRIMOIRE_SIM_SIZE=1986x2648
 # settings: mirror_pdf=0
+# rust-only
 wait 300
 expect size is 1986x2648
 pentap 347 636
@@ -21,7 +22,7 @@ expect editor.panel_fits is 1
 rotate 0
 wait 300
 # One pin
-pentap 1894 358
+pentap panel tool-picker
 wait 200
 pentap 1726 273
 wait 200
@@ -40,7 +41,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Two
-pentap 1894 358
+pentap panel tool-picker
 wait 200
 pentap 1726 273
 wait 200
@@ -59,7 +60,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Three
-pentap 1894 358
+pentap panel tool-picker
 wait 200
 pentap 1726 273
 wait 200
@@ -78,7 +79,7 @@ rotate 0
 wait 300
 expect editor.panel_fits is 1
 # Four
-pentap 1894 358
+pentap panel tool-picker
 wait 200
 pentap 1726 273
 wait 200

@@ -5,6 +5,7 @@
 # with what was written on the bigger screen. The calibration, recorded as the 1986x2648 panel's
 # by then, is scaled back: pen taps land.
 # root: y_pagesize_1_ksc
+# rust-only
 wait 300
 shot 01-library
 expect size is 1860x2480
@@ -32,7 +33,7 @@ shot 03-written
 expect editor.strokes is 3
 # Custom music (the panel's Paper): 7 systems of the layout fit on the notebook's 2648 px page
 # (6 would on this screen's 2480 px); + twice stops at 7
-pentap 1768 1242
+pentap panel paper
 wait 300
 expect editor.modal is paper
 pentap 1622 1452
@@ -68,13 +69,13 @@ expect editor.scale is 0.94
 expect editor.zoom is 1.00
 expect editor.zoomed is 0
 # A new page (the panel's + with the pen): the notebook's size
-pentap 1768 1114
+pentap panel next
 wait 500
 expect editor.pages is 2
 expect editor.page is 2
 expect editor.page_size is 1986x2648
 # Library with the pen. The notebook made here, in School: 100% again, on the page left open
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 tap 326 608
@@ -89,7 +90,7 @@ expect editor.scale is 1.00
 expect editor.pages is 2
 expect editor.page is 1
 expect editor.strokes is 4
-pentap 1768 1566
+pentap panel library
 wait 500
 expect screen is library
 quit

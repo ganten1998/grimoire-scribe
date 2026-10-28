@@ -1,5 +1,6 @@
 # Charcoal and the calligraphy pen on medium rule. Tilt is in the page frame: (40, 46) is a
 # right hand leaning the pen toward the bottom right; (-40, 46) a left hand; (0, 0) upright.
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -11,7 +12,7 @@ wait 400
 expect screen is editor
 expect editor.paper is 1
 # Charcoal: a pressure ramp, a loop, then the stick laid low on its side (tilt 70).
-pentap 1768 358
+pentap panel tool-picker
 pentap 1504 395
 expect editor.tool is charcoal
 pen line 150 330 1300 330 60 0.05 1.0 30 30
@@ -20,7 +21,7 @@ pen line 150 700 1300 700 60 0.7 0.7 50 50
 wait 100
 expect editor.strokes is 3
 # Calligraphy, right-handed lean: zigzags show thick down-right, hairline up-right.
-pentap 1768 358
+pentap panel tool-picker
 pentap 1188 727
 expect editor.tool is calligraphy
 pen line 150 1000 330 1180 30 0.7 0.7 40 46
@@ -42,7 +43,7 @@ wait 300
 expect toast is
 shot 01-charcoal-calligraphy
 expect editor.strokes is 15
-pentap 1768 358
+pentap panel tool-picker
 wait 200
 shot 02-picker
 expect editor.modal is tools

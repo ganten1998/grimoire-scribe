@@ -6,6 +6,7 @@
 # taps land.
 # root: b_library
 # env: GRIMOIRE_SIM_SIZE=1986x2648
+# rust-only
 wait 300
 shot 01-library
 expect size is 1986x2648
@@ -44,7 +45,7 @@ wait 700
 expect editor.strokes is 4
 # Custom music (the panel's Paper): systems per page for the notebook's 1860x2480 page, 6 of the
 # layout (7 would fit on this screen's 2648 px); + twice stops at 6. Cancel leaves the page be.
-pentap 1894 1242
+pentap panel paper
 wait 300
 expect editor.modal is paper
 pentap 1742 1565
@@ -63,7 +64,7 @@ expect editor.modal is none
 expect editor.paper is 3
 expect editor.strokes is 4
 # A new page (the panel's + with the pen): the notebook's size, not the screen's
-pentap 1894 1114
+pentap panel next
 wait 500
 expect editor.page is 2
 expect editor.pages is 2
@@ -74,7 +75,7 @@ wait 700
 shot 05-new-page
 expect editor.strokes is 1
 # The Pages view: both pages, the notebook's shape
-pentap 1894 1026
+pentap panel pages
 wait 400
 shot 06-pages
 expect editor.modal is pages
@@ -92,7 +93,7 @@ wait 1700
 expect asleep is 0
 expect editor.scale is 1.07
 # The pinned sleep page: page 2 pinned (Display, with the pen), then asleep on page 1
-pentap 1894 1350
+pentap panel display
 wait 300
 expect editor.modal is display
 tap 563 1368
@@ -102,7 +103,7 @@ wait 300
 tap 1523 1680
 wait 300
 expect editor.modal is none
-pentap 1894 938
+pentap panel previous
 wait 400
 expect editor.page is 1
 sleep
@@ -128,7 +129,7 @@ expect size is 1986x2648
 expect editor.scale is 1.07
 expect editor.zoomed is 0
 # Library with the pen; back to the top level with a finger
-pentap 1894 1566
+pentap panel library
 wait 500
 expect screen is library
 tap 125 95
@@ -151,7 +152,7 @@ pen curve 400 1200 45 70 0.6 4
 wait 700
 shot 10-made-here
 expect editor.strokes is 2
-pentap 1894 1566
+pentap panel library
 wait 500
 shot 11-library
 expect screen is library

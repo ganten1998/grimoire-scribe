@@ -4,6 +4,7 @@
 # written: the open notebook's PDF is written too, by the child that finishes the exports after
 # Grimoire has gone. (The first export is slowed down as a big notebook's is on the Kindle, so the
 # second one queues behind it.)
+# rust-only
 wait 200
 tap 965 95
 wait 100
@@ -11,7 +12,7 @@ tap 1564 2254
 wait 300
 expect screen is editor
 pen line 300 900 1300 950 40 0.6 0.6
-pentap 1768 1566
+pentap panel library
 wait 400
 expect screen is library
 expect library.items is 1

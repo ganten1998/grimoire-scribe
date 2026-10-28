@@ -2,6 +2,7 @@
 # meanwhile, so a page's render (1.2 s on a dense page), a save's fsyncs or a full-screen copy no
 # longer lets the kernel drop their events; the simulator only counts the calls. pump.calls is how
 # many came since it was last checked.
+# rust-only
 wait 300
 tap 965 95
 wait 200
@@ -17,12 +18,12 @@ expect editor.strokes is 2
 # (the start and the strokes: read, so that the next check counts only what follows)
 expect pump.calls not -1
 # A new page: page 1 is saved (a pump after each step of each file written) and page 2 drawn.
-pentap 1768 1114
+pentap panel next
 wait 400
 expect editor.page is 2
 expect pump.calls not 0
 # Back: page 1's two strokes are drawn again, with a pump after each and every 128 points.
-pentap 1768 938
+pentap panel previous
 wait 400
 expect editor.page is 1
 expect editor.strokes is 2

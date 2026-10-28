@@ -149,7 +149,8 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
     editor_busy, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
-    editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut, editor_suspend,
+    editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut,
+    editor_suspend,
 };
 pub use crate::calibrate::calibrate_control_at;
 pub use crate::editor::editor_control_at;
