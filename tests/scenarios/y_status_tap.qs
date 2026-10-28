@@ -5,7 +5,9 @@
 # The cases that used to fail (the owner on a Kindle: "inconsistent and janky ... an odd delay before I can try
 # again"): a fingertip that rolls on the glass past the buttons' 2.5 mm, a lift a hair outside the square, a pen that
 # left without a word (its "near" held the refresh back, so the setting changed and nothing showed), and a tap
-# right after a tap. The zone is a 14 mm square; the slop is 5 mm.
+# right after a tap. The zone is a 14 mm square and the box's place with 4 mm around it, shown or not (the owner,
+# on beta.5's first build: half the taps to bring it back went where the box had been, outside the square); the slop
+# is 5 mm.
 wait 3800
 clock 1700000000
 battery 87
@@ -18,17 +20,37 @@ wait 300
 expect screen is editor
 expect settings.status_on is 0
 expect status.zone is 0 0 165 165
-# The edges of the zone: the last pixel inside takes it, the first one outside does not.
+# The edges of the zone: the last pixel inside takes it, the first one outside does not. At this size the box is
+# 6 6 331 48; with 4 mm (47 px) around it, its place ends at x 384 and y 101 (a few pixels kept clear of those
+# edges: the runner's touch panel rounds a tap's place by a pixel).
 tap 164 164
 wait 200
 expect settings.status_on is 1
 expect status.shown is 1
+expect status.rect is 6 6 331 48
 tap 600 600
 wait 100
-tap 165 100
+tap 165 104
 wait 200
 expect settings.status_on is 1
 tap 100 165
+wait 200
+expect settings.status_on is 1
+tap 388 30
+wait 200
+expect settings.status_on is 1
+tap 20 20
+wait 200
+expect settings.status_on is 0
+expect status.shown is 0
+# Off, a tap where the box shows, at its far end and near the end of the 4 mm beyond it, brings it back.
+tap 330 40
+wait 200
+expect settings.status_on is 1
+tap 20 20
+wait 200
+expect settings.status_on is 0
+tap 380 97
 wait 200
 expect settings.status_on is 1
 tap 20 20
