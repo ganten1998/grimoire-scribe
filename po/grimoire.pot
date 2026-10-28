@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 07:00-0500\n"
+"POT-Creation-Date: 2026-10-27 15:28-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -977,6 +977,27 @@ msgstr ""
 msgid "Show pen"
 msgstr ""
 
+#. TRANSLATORS: browser controls and the optional latency meter; M toggles Monitor mode.
+#: src/httpd.c
+msgid "Monitor mode (M)"
+msgstr ""
+
+#: src/httpd.c
+msgid "Latency"
+msgstr ""
+
+#: src/httpd.c
+msgid "Pen age at paint"
+msgstr ""
+
+#: src/httpd.c
+msgid "Tile batch age at paint"
+msgstr ""
+
+#: src/httpd.c
+msgid "Clock uncertainty"
+msgstr ""
+
 #: src/httpd.c
 msgid "Record"
 msgstr ""
@@ -1033,7 +1054,6 @@ msgstr ""
 msgid "Too many tries. Wait 30 seconds, then type the new code."
 msgstr ""
 
-#. TRANSLATORS: Live view's answer to a third computer (two can watch at once).
 #: src/httpd.c
 msgid "Two computers are watching already."
 msgstr ""

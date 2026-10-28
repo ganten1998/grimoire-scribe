@@ -681,27 +681,42 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    each pixel the alpha-weighted mean of the area of the full-size picture it covers, for the rect
    that changed): the browser's own scaling, CSS or drawImage at any quality, picks pixels, and
    1 px ruled lines came out bright, dim or gone (measured in Chrome at 567 x 757: each line's ink
-   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). The pen is drawn over the
-   picture, never in it: `app_event` tells `live_pen` each pen event's place (away, hovering,
-   touching; never asleep), one atomic word in the shared frame (state in 2 bits, y and x in 15
-   each), so a sample costs a store; only the pen coming into range writes to the viewers' wake
-   pipes, and while it is in range each viewer looks again every 33 ms itself. On the Kindle the pen
-   service relays the pen coming and going, and where it touches, but not where it hovers (no X or Y
-   between the lift and the leaving, in the raw pen log of 2026-10-26), so while Live view is on
-   `input_hover_hook` hands it the raw digitizer's place at each of its frames while the pen is near
-   and not touching: the raw axes scaled onto the screen as the pen service scales them (8.4 units
-   to a pixel), each as it is until contact frames of the same moment (within 4 ms) show it
-   reversed, and none while even the best orientation is more than 8 px from the pen on average
-   (pensync.h); grimoire.log names the orientation once it is decided. A viewer reads the word with
-   the state, before the marks, and sends it after the tiles (frame 6: u16 x, y, u8 state), only
-   when it changed and at most every 33 ms, so a place is never ahead of a push before it; a hello
-   or any state but awake takes it away (asleep, the pairing card, a turn). The page draws a red
-   dot, see-through (55%) while it hovers and smaller and solid while it touches, inside a light
-   edge and a dark one so it shows on white, gray, black and inverted pages, on a canvas over the
-   averaged one (Show pen, on by default; the Mac simulator never says the pen left, as its mouse
-   leaving the window is no IN_PEN_LEAVE, so there the dot stays where it was last). Record and
-   Picture in picture take a third canvas, film: the full-size picture with the pen's mark drawn on
-   it, kept as tiles and pen frames come (not by animation frames), so both go on in a hidden tab.
+   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). The pen and provisional ink use a separate authenticated
+   `GET /live/pen` connection, with a viewer child at ordinary priority. It never encodes a PNG or
+   waits behind the tile stream's socket or 33 ms cadence. `src/live.h` is the version 2 protocol's
+   byte-level definition. The two connections each admit two readers; the larger count is the
+   viewer count used for idle and sleep policy.
+
+   `input_sample_hook` captures calibrated pen events before they enter the input queue, including
+   reads from `work_pump`; raw hover carries its kernel time through the same hook. A 512-entry
+   shared ring stores each event's sequence, time, pressure, tilt, buttons and immutable ink style.
+   Publication stamps and atomic payload words reject torn/overwritten samples without making
+   the input loop wait. Each input batch wakes the pen children once. The editor supplies width
+   and opacity pressure curves, the current zoom, color, page clip and panel exclusion. UI gestures,
+   read-only pages, sheets, the Library, Pages, link creation and work inside UI events suppress
+   preview. A queued UI contact also suppresses later samples until the main loop handles it.
+
+   `app_flush` publishes the last event already processed after copying all dirty pixels. This
+   watermark is independent of the ring head, which may be ahead during long work. Tile children
+   read it before consuming dirty marks, and send it in every completed batch (including a batch
+   with no changed pixels). Failed partial encoding acknowledges nothing. The browser retires ink
+   by sequence only after decoding and painting those tiles in the same animation callback. Equal
+   event times cannot retire unseen samples. Epochs separate screen/page changes, turns, sleep and
+   pairing; a gap or reconnect cannot start a stroke without a fresh down. History is bounded to
+   2048 segments while tiles fall behind. There is no prediction.
+
+   The overlay is a quick round approximation with pressure-varying width and opacity. Exact nibs,
+   grain, smoothing, tilt response, white ink's paper restoration and whole-stroke erasing remain
+   the tiles' job; whole-stroke erasing previews only its cursor. The red hover dot uses the newest
+   sample. Record and Picture in picture continue to take the authoritative picture plus the dot,
+   without provisional ink.
+
+   Monitor mode (M) fits the page, hides controls until hover/focus and requests fullscreen on a
+   user gesture. Its preference is kept locally, with storage failures ignored. Latency estimates
+   sample age at the animation callback and tile batch send-to-paint age, with p50/p90/max over
+   the latest 1000 observations. Eight authenticated `/live/time` requests select the smallest RTT
+   and report half of it as clock uncertainty; calibration repeats every 30 s. This is a software
+   estimate, not display scanout latency. Validate the final result with a 240 fps pen/monitor video.
    Record makes an MP4 wherever the browser can (the owner: "absolutely an mp4"). MediaRecorder's
    own first (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that isTypeSupported takes;
    Chrome raises the level itself, 5.0 at 1860x2480, measured in Chrome 156; Safari takes plain

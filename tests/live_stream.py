@@ -4,7 +4,7 @@
 # the stream (its hello, the screen as PNG tiles, composed, then the pen the script left hovering
 # over the card), a third viewer refused, and the log free of codes and tokens. Standard library only.
 # usage: live_stream.py <port> <app log> <out dir>
-import http.client, os, re, struct, sys, time, zlib
+import http.client, os, re, struct, sys, time, zlib, json, threading
 
 PORT, LOG, OUT = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 fail = 0
@@ -122,6 +122,13 @@ check('the code works once', st == 302 and 'Set-Cookie' not in hd)
 st, hd, body = get('/live', session)
 check('/live with the session is the viewer', st == 200 and b'GRIMOIRE_LIVE_WORDS' in body)
 
+# The clock and pen stream share exactly the same authentication rule.
+for route in ['/live/time', '/live/pen']:
+    st, _, _ = get(route)
+    check(route + ' requires pairing', st == 401)
+st, _, body = get('/live/time', session)
+check('clock returns monotonic milliseconds', st == 200 and isinstance(json.loads(body).get('ms'), int))
+
 # The stream.
 conn, r = get('/live/stream', session, keep=True)
 check('the stream answers', r.status == 200 and r.getheader('Content-Type') == 'application/octet-stream')
@@ -173,6 +180,59 @@ c2, r2 = get('/live/stream', session, keep=True)
 st3, hd3, body3 = get('/live/stream', session)
 check('two viewers at once, not three (503)', r2.status == 200 and st3 == 503)
 c2.close()
+# Keep consuming the authoritative stream while the dedicated pen stream carries early samples.
+acks = []
+def tile_ack_reader():
+    try:
+        while True:
+            hdr = r.read(5)
+            if len(hdr) != 5: return
+            n, kind = struct.unpack('<IB', hdr)
+            payload = r.read(n - 1)
+            if kind == 3 and len(payload) == 16: acks.append(struct.unpack('<IIII', payload)[2])
+    except (OSError, http.client.HTTPException): pass
+thread = threading.Thread(target=tile_ack_reader, daemon=True)
+thread.start()
+cp, rp = get('/live/pen', session, keep=True)
+check('dedicated pen stream answers', rp.status == 200)
+fast_raw, fast_frames, samples, styles = bytearray(), [], [], []
+style = None
+# Read the initial reset before releasing the script; no timing guess under a busy make -j.
+def fast_frame():
+    head = rp.read(5)
+    n, kind = struct.unpack('<IB', head)
+    payload = rp.read(n - 1)
+    fast_raw.extend(head + payload); fast_frames.append((kind, len(payload)))
+    return kind, payload
+while True:
+    kind, payload = fast_frame()
+    if kind == 7: break
+open(os.path.join(OUT, 'fast-start'), 'w').close()
+last_seq = 0
+while True:
+    kind, payload = fast_frame()
+    if kind == 8:
+        style = payload
+        styles.append(payload)
+    elif kind == 7 and len(payload) >= 28:
+        for at in range(8, len(payload), 20):
+            seq, ms, x, y, pressure, tx, ty, state, flags, reserved = struct.unpack('<IIHHHbbBBH', payload[at:at + 20])
+            samples.append((seq, x, y, pressure, state, flags, bool(style and style[0])))
+            last_seq = seq
+        if samples[-1][1:3] == (902, 1502): break
+ink_samples = [s for s in samples if s[5] & 16 and s[4] == 2]
+check('complete stroke arrives with pressure and a start flag', len(ink_samples) >= 33 and
+      any(s[5] & 4 for s in ink_samples) and max(s[3] for s in ink_samples) > min(s[3] for s in ink_samples))
+menu_samples = [s for s in samples if 800 <= s[1] <= 1000 and 400 <= s[2] <= 450 and s[4] == 2]
+check('menu contacts never request provisional ink', len(menu_samples) >= 17 and all(not s[6] and not s[5] & 16 for s in menu_samples))
+check('fast connection sends no tiles', all(kind != 2 for kind, _ in fast_frames))
+for _ in range(100):
+    if any(seq >= last_seq for seq in acks): break
+    time.sleep(.02)
+check('tiles acknowledge the processed samples', any(seq >= last_seq for seq in acks))
+with open(os.path.join(OUT, 'fast.bin'), 'wb') as f: f.write(fast_raw)
+with open(os.path.join(OUT, 'fast.txt'), 'w') as f: f.write(''.join('%d %d\n' % item for item in fast_frames))
+cp.close()
 conn.close()
 time.sleep(0.5)
 # (The simulator's own lines name the code and the QR code's address, for tests like this one.)

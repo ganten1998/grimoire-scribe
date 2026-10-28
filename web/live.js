@@ -1,13 +1,6 @@
-// Live view: what Grimoire on the Kindle shows, as it shows it. src/live.c streams the screen as
-// PNG tiles over one long response (GET /live/stream); this draws them on a canvas and keeps it
-// connected. Frames are little-endian: u32 length (of the type byte and the payload), u8 type,
-// payload. 1 hello (u16 version, w, h, tile; u32 epoch), 2 tile (u16 x, y, w, h; the PNG),
-// 3 batch end (u32 seq, u32 the Kindle's ms), 4 ping, 5 state (u8 0 awake, 1 asleep, 2 pairing,
-// 3 bye; u8 1 when Grimoire shows its colors inverted; u8 the front light's warmth, 0..24, 255 for
-// none: the picture follows both unless the Invert switch or the Warmth slider here says otherwise),
-// 6 pen (u16 x, y; u8 0 away, 1 hovering, 2 touching: drawn over the picture, never in it; a hello
-// or any state but awake takes it away). Under node (tests/live_check.js) it only exports the frame
-// reader, the pure parts below and CodecRecorder (which the check runs on a stand-in encoder).
+// Live view: authoritative PNG tiles on /live/stream and early pen samples on /live/pen.
+// src/live.h defines the version 2 wire format. The separate reader and overlay can paint ink
+// while PNG decoding is pending. Tests run the pure model and this page with DOM/canvas stand-ins.
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -303,9 +296,114 @@
         if (this.encoder.state === 'configured') this.encoder.flush().then(finish, finish);
         else finish();
     };
+    // Fast ink has a separate transport and canvas. Sequence numbers, not clock comparisons,
+    // reconcile it: several digitizer frames can share a millisecond, and the clock wraps.
+    const after = (a, b) => ((a - b) | 0) > 0;
+    function readStyle(body) {
+        if (body.length !== 64) throw new Error('bad ink style');
+        const d = new DataView(body.buffer, body.byteOffset, body.length);
+        const f = i => d.getFloat32(i, true), r = i => Array.from({length: 4}, (_, k) => d.getInt32(i + k * 4, true));
+        return {enabled: !!body[0], tool: body[1], white: !!body[2], whole: !!body[3],
+            min: f(4), max: f(8), floor: f(12), ceiling: f(16), gamma: f(20),
+            opacityMin: f(24), opacityMax: f(28), clip: r(32), exclude: r(48)};
+    }
+    function readSamples(body) {
+        if (body.length < 8 || (body.length - 8) % 20) throw new Error('bad pen samples');
+        const d = new DataView(body.buffer, body.byteOffset, body.length), samples = [];
+        for (let at = 8; at < body.length; at += 20) samples.push({
+            seq: d.getUint32(at, true), ms: d.getUint32(at + 4, true),
+            x: d.getUint16(at + 8, true), y: d.getUint16(at + 10, true), pressure: d.getUint16(at + 12, true) / 65535,
+            tiltX: d.getInt8(at + 14), tiltY: d.getInt8(at + 15), state: body[at + 16], flags: body[at + 17]});
+        return {epoch: d.getUint32(0, true), reset: !!d.getUint32(4, true), samples};
+    }
+    const inside = (r, s) => s.x >= r[0] && s.y >= r[1] && s.x < r[0] + r[2] && s.y < r[1] + r[3];
+    function inkWidth(style, s) {
+        const range = style.ceiling - style.floor;
+        const p = Math.pow(Math.min(1, Math.max(0, (s.pressure - style.floor) / Math.max(.0001, range))), style.gamma);
+        return {width: Math.max(.1, style.min + (style.max - style.min) * p),
+            opacity: Math.min(1, Math.max(0, style.opacityMin + (style.opacityMax - style.opacityMin) * p))};
+    }
+    function FastInk() { this.reset(); }
+    FastInk.prototype.reset = function () {
+        this.segments = []; this.prev = null; this.active = false; this.seq = 0; this.ack = 0; this.pen = null;
+    };
+    FastInk.prototype.accept = function (sample, style) {
+        if (this.seq && !after(sample.seq, this.seq)) return false;
+        const gap = (this.seq && ((sample.seq - this.seq) >>> 0) !== 1) || (sample.flags & 8);
+        if (gap) { this.prev = null; this.active = false; }
+        this.seq = sample.seq;
+        this.pen = sample.state ? sample : null;
+        if (sample.flags & 4) {
+            this.active = !!(style && style.enabled && !style.whole && (sample.flags & 16) &&
+                inside(style.clip, sample) && !inside(style.exclude, sample));
+            this.prev = null;
+        }
+        if (sample.state !== 2 || !(sample.flags & 16) || !style || !style.enabled) {
+            this.active = false; this.prev = null; return true;
+        }
+        if (this.active) {
+            const to = Object.assign({}, sample, inkWidth(style, sample));
+            if (!this.ack || after(sample.seq, this.ack)) {
+                this.segments.push({from: this.prev || to, to, style});
+                // A stalled tile transport cannot grow this canvas's history without bound.
+                if (this.segments.length > 2048) this.segments.shift();
+            }
+            this.prev = to;
+        }
+        return true;
+    };
+    FastInk.prototype.reconcile = function (seq) {
+        if (!seq || (this.ack && !after(seq, this.ack))) return;
+        this.ack = seq;
+        this.segments = this.segments.filter(s => after(s.to.seq, seq));
+        // Keep prev: the next segment must still start where the now-authoritative ink ended.
+    };
+    FastInk.prototype.draw = function (ctx, k, invert, light) {
+        for (const s of this.segments) {
+            ctx.save();
+            ctx.scale(k, k);
+            ctx.beginPath();
+            ctx.rect(...s.style.clip);
+            ctx.clip();
+            // The panel stays above a stroke even when that stroke crosses it.
+            ctx.beginPath();
+            ctx.rect(...s.style.clip);
+            ctx.rect(...s.style.exclude);
+            ctx.clip('evenodd');
+            const white = s.style.white !== invert;
+            const color = white ? 'rgb(' + light.join(',') + ')' : '#222';
+            ctx.strokeStyle = ctx.fillStyle = color;
+            ctx.globalAlpha = s.to.opacity;
+            ctx.lineWidth = (s.from.width + s.to.width) / 2;
+            ctx.lineCap = ctx.lineJoin = 'round';
+            ctx.beginPath();
+            if (s.from === s.to) { ctx.arc(s.to.x, s.to.y, s.to.width / 2, 0, Math.PI * 2); ctx.fill(); }
+            else { ctx.moveTo(s.from.x, s.from.y); ctx.lineTo(s.to.x, s.to.y); ctx.stroke(); }
+            ctx.restore();
+        }
+    };
+    function PaintAges() { this.best = Infinity; this.samples = []; this.tiles = []; }
+    PaintAges.prototype.sync = function (start, end, server) {
+        if (end < start || end - start >= this.best) return;
+        this.best = end - start; this.mid = (start + end) / 2; this.server = server;
+    };
+    PaintAges.prototype.age = function (now, ms) {
+        return this.best < Infinity ? now - this.mid + ((this.server - ms) | 0) : null;
+    };
+    PaintAges.prototype.add = function (list, now, ms) {
+        const age = this.age(now, ms);
+        if (age === null || !Number.isFinite(age)) return;
+        list.push(age); if (list.length > 1000) list.shift();
+    };
+    PaintAges.prototype.stats = function (list) {
+        if (!list.length) return null;
+        const sorted = [...list].sort((a, b) => a - b), n = sorted.length;
+        return [sorted[Math.floor((n - 1) * .5)], sorted[Math.floor((n - 1) * .9)], sorted[n - 1]];
+    };
+
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
-            mp4Boxes, MP4_SCALE, CodecRecorder};
+            mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples, FastInk, inkWidth, PaintAges};
         return;
     }
 
@@ -328,7 +426,17 @@
     penLayer.className = 'pen';
     const stage = document.createElement('div');
     stage.className = 'stage';
-    stage.append(view, penLayer);
+    const inkLayer = document.createElement('canvas');
+    const inkCtx = inkLayer.getContext('2d');
+    inkLayer.className = 'pen';
+    stage.append(view, inkLayer, penLayer);
+    const ink = new FastInk(), ages = new PaintAges();
+    let epoch = 0, penEpoch = 0, fastConnected = false, paintSamples = [], debug = false, monitor = false;
+    let tileAck = 0, paintedAck = 0, tileStamp = null;
+    const meter = document.createElement('output');
+    meter.className = 'latency';
+    meter.hidden = true;
+    try { monitor = localStorage.getItem('grimoire.monitor') === '1'; } catch (e) { /* private browsing */ }
     const film = document.createElement('canvas');     // shown with the pen on it: what Record and PiP take
     const filmCtx = film.getContext('2d');
     // pen: where the Kindle's pen is (readPen), null while away; penShown, filmPen: its marks drawn on
@@ -410,12 +518,52 @@
     if (!document.pictureInPictureEnabled || !film.captureStream ||
         !HTMLVideoElement.prototype.requestPictureInPicture) pipButton.hidden = true;
     button(words.full, full);
+    const monitorButton = button(words.monitor, () => setMonitor(!monitor, true));
+    const debugButton = button(words.latency, () => {
+        debug = !debug;
+        meter.hidden = !debug;
+        debugButton.setAttribute('aria-pressed', String(debug));
+        if (debug) syncClock();
+    });
+    function setMonitor(on, gesture) {
+        monitor = on; fit = true; showPen = true;
+        penSwitch.setAttribute('aria-checked', 'true');
+        document.body.classList.toggle('monitor', on);
+        monitorButton.setAttribute('aria-pressed', String(on));
+        try { localStorage.setItem('grimoire.monitor', on ? '1' : '0'); } catch (e) {}
+        if (gesture && on && !document.fullscreenElement && document.documentElement.requestFullscreen)
+            document.documentElement.requestFullscreen().catch(() => {});
+        if (gesture && !on && document.fullscreenElement && document.exitFullscreen)
+            document.exitFullscreen().catch(() => {});
+        layout();
+    }
+    async function syncClock() {
+        ages.best = Infinity;
+        for (let i = 0; debug && i < 8; i++) {
+            try {
+                const start = performance.now();
+                const r = await fetch('/live/time', {cache: 'no-store', credentials: 'same-origin'});
+                const data = await r.json(), end = performance.now();
+                if (r.ok && Number.isInteger(data.ms)) ages.sync(start, end, data.ms);
+            } catch (e) { /* try the next request */ }
+        }
+    }
+    function showAges() {
+        if (!debug) return;
+        const fmt = list => { const s = ages.stats(list); return s ? s.map(x => x.toFixed(1)).join(' / ') + ' ms' : '...'; };
+        meter.textContent = words.sampleAge + ': ' + fmt(ages.samples) + ' | ' + words.tileAge + ': ' + fmt(ages.tiles) +
+            ' | p50 / p90 / max | ' + words.clockError + ': ' + (ages.best < Infinity ? (ages.best / 2).toFixed(1) + ' ms' : '...');
+    }
+    setInterval(() => { if (debug) syncClock(); }, 30000);
     recordLabel();
-    host.replaceChildren(bar, stage);
+    host.replaceChildren(bar, meter, stage);
+    setMonitor(monitor, false);
     addEventListener('keydown', e => {
+        if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) setMonitor(!monitor, true);
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
     });
     addEventListener('resize', layout);
+    addEventListener('fullscreenchange', layout);
 
     function inverted() { return invertChoice === null ? kindleInvert : invertChoice; }
     function warmth() { return warmthChoice === null ? (kindleWarmth || 0) : warmthChoice; }
@@ -442,7 +590,7 @@
         const ratio = window.devicePixelRatio || 1;
         let w = raw.width / ratio, h = raw.height / ratio;
         if (fit) {
-            const room = host.clientWidth, tall = innerHeight - bar.offsetHeight - 24;
+            const room = host.clientWidth, tall = innerHeight - (monitor ? 2 : bar.offsetHeight + 24);
             const scale = Math.min(room / raw.width, tall / raw.height);
             w = Math.max(1, Math.floor(raw.width * scale));
             h = Math.max(1, Math.floor(raw.height * scale));
@@ -457,6 +605,8 @@
         penLayer.style.height = h + 'px';
         penLayer.width = view.width;  // (which clears it)
         penLayer.height = view.height;
+        inkLayer.style.cssText = penLayer.style.cssText;
+        inkLayer.width = view.width; inkLayer.height = view.height;
         penShown = null;
         penSoon();
         presentSoon(0, 0, raw.width, raw.height);
@@ -469,6 +619,11 @@
     }
     function drawPen() {
         penQueued = false;
+        inkCtx.clearRect(0, 0, inkLayer.width, inkLayer.height);
+        if (raw.width && penEpoch === epoch) ink.draw(inkCtx, view.width / raw.width, inverted(), light);
+        if (debug) for (const s of paintSamples) ages.add(ages.samples, performance.now(), s.ms);
+        paintSamples = [];
+        showAges();
         if (penShown) penCtx.clearRect(penShown.x, penShown.y, penShown.w, penShown.h);
         const m = showPen && raw.width ? penMark(pen, view.width / raw.width, window.devicePixelRatio || 1) : null;
         penShown = m && m.box;
@@ -651,7 +806,13 @@
         dirty = dirty ? union(dirty, r) : r;
         if (presentQueued) return;
         presentQueued = true;
-        requestAnimationFrame(present);
+        requestAnimationFrame(() => {
+            present();
+            if (tileAck) { paintedAck = tileAck; if (penEpoch === epoch) ink.reconcile(tileAck); }
+            if (debug && tileStamp !== null) ages.add(ages.tiles, performance.now(), tileStamp);
+            tileStamp = null;
+            drawPen();
+        });
     }
     function full() {
         const el = document.documentElement;
@@ -794,13 +955,20 @@
             for (const {type, body} of frames.push(value)) {
                 const d = new DataView(body.buffer, body.byteOffset, body.length);
                 if (type === 1 && body.length >= 12) {
+                    if (d.getUint16(0, true) !== 2) throw new Error('unsupported live protocol');
+                    const nextEpoch = d.getUint32(8, true);
+                    if (nextEpoch !== epoch) {
+                        if (nextEpoch !== penEpoch) { ink.reset(); paintSamples = []; }
+                        paintedAck = 0;
+                    }
+                    epoch = nextEpoch; tileAck = 0;
                     const w = d.getUint16(2, true), h = d.getUint16(4, true);
                     raw.width = shown.width = w;
                     raw.height = shown.height = h;
                     rawCtx.fillStyle = '#fff';
                     rawCtx.fillRect(0, 0, w, h);
                     pending = [];
-                    pen = null;  // (a hello takes the pen away: the next pen frame is on the new screen)
+                    movePen(penEpoch === epoch ? ink.pen : null);
                     probeH264(w, h);
                     layout();
                     if (filming()) filmAll();
@@ -819,10 +987,13 @@
                         if (t.bmp.close) t.bmp.close();
                         dirty = dirty ? union(dirty, t) : {x: t.x, y: t.y, w: t.w, h: t.h};
                     }
+                    tileAck = body.length >= 16 ? d.getUint32(8, true) : 0;
+                    tileStamp = body.length >= 8 ? d.getUint32(4, true) : null;
                     if (dirty) repaint(dirty.x, dirty.y, dirty.w, dirty.h);
+                    else presentSoon(0, 0, 1, 1);
                     status(words.live, true);
                 } else if (type === 6 && body.length >= 5) {
-                    movePen(readPen(body));
+                    if (!fastConnected) movePen(readPen(body));
                 } else if (type === 5 && body.length >= 1) {
                     const s = body[0];
                     const inv = body.length >= 2 ? body[1] === 1 : kindleInvert;
@@ -832,7 +1003,7 @@
                         kindleWarmth = warm;
                         look();
                     }
-                    if (s !== 0 && pen) movePen(null);  // (any state but awake takes the pen away)
+                    if (s !== 0) { ink.reset(); paintSamples = []; movePen(null); }  // (any state but awake takes the pen away)
                     if (s === 0) status(words.live, true);
                     else if (s === 1) status(words.asleep);
                     else if (s === 2) status(words.pairing);
@@ -845,6 +1016,46 @@
         }
     }
     const sleep = ms => new Promise(r => setTimeout(r, ms));
+    async function readFast(reader) {
+        const frames = new Frames();
+        let style = null;
+        for (;;) {
+            const {value, done} = await reader.read();
+            if (done) return;
+            for (const {type, body} of frames.push(value)) {
+                if (type === 1) {
+                    if (body.length !== 12 || new DataView(body.buffer).getUint16(0, true) !== 2)
+                        throw new Error('unsupported pen protocol');
+                    penEpoch = new DataView(body.buffer).getUint32(8, true);
+                    ink.reset(); if (penEpoch === epoch) ink.reconcile(paintedAck);
+                    paintSamples = []; style = null;
+                    movePen(null);
+                } else if (type === 8) style = readStyle(body);
+                else if (type === 7) {
+                    const packet = readSamples(body);
+                    if (packet.reset) { ink.reset(); paintSamples = []; if (penEpoch === epoch) ink.reconcile(paintedAck); }
+                    if (packet.epoch !== penEpoch) continue;
+                    for (const sample of packet.samples) if (ink.accept(sample, style)) paintSamples.push(sample);
+                    if (paintSamples.length > 2048) paintSamples.splice(0, paintSamples.length - 2048);
+                    movePen(penEpoch === epoch ? ink.pen : null);
+                } else if (type === 5 && body[0] !== 0) {
+                    ink.reset(); paintSamples = []; movePen(null);
+                    if (body[0] === 3) return;
+                }
+            }
+        }
+    }
+    (async function runFast() {
+        for (;;) {
+            try {
+                const r = await fetch('/live/pen', {cache: 'no-store', credentials: 'same-origin'});
+                if (r.status === 401 || r.status === 403) return;
+                if (r.ok && r.body) { fastConnected = true; await readFast(r.body.getReader()); }
+            } catch (e) { /* the next connection starts with a fresh stroke */ }
+            fastConnected = false; ink.reset(); paintSamples = []; movePen(null);
+            await sleep(500);
+        }
+    })();
     (async function run() {
         for (let delay = 500;;) {
             status(words.connecting);

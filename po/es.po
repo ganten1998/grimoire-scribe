@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 07:00-0500\n"
+"POT-Creation-Date: 2026-10-27 15:27-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1022,6 +1022,27 @@ msgstr "Como en el Kindle"
 msgid "Show pen"
 msgstr "Mostrar el lápiz"
 
+#. TRANSLATORS: browser controls and the optional latency meter; M toggles Monitor mode.
+#: src/httpd.c
+msgid "Monitor mode (M)"
+msgstr "Modo monitor (M)"
+
+#: src/httpd.c
+msgid "Latency"
+msgstr "Latencia"
+
+#: src/httpd.c
+msgid "Pen age at paint"
+msgstr "Tiempo del lápiz al dibujar"
+
+#: src/httpd.c
+msgid "Tile batch age at paint"
+msgstr "Tiempo de los bloques al dibujar"
+
+#: src/httpd.c
+msgid "Clock uncertainty"
+msgstr "Incertidumbre del reloj"
+
 #: src/httpd.c
 msgid "Record"
 msgstr "Grabar"
@@ -1080,7 +1101,6 @@ msgstr "Ese código no es el del Kindle."
 msgid "Too many tries. Wait 30 seconds, then type the new code."
 msgstr "Demasiados intentos. Espera 30 segundos y escribe el código nuevo."
 
-#. TRANSLATORS: Live view's answer to a third computer (two can watch at once).
 #: src/httpd.c
 msgid "Two computers are watching already."
 msgstr "Ya hay dos ordenadores mirando."

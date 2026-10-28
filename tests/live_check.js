@@ -410,7 +410,83 @@ function ffmpegChecks(work) {
                           (p.flags[0] === 'K') === samples[i].key));
 }
 
-codecChecks().catch(e => ok('codecs: ' + e, false)).then(() => {
+// Fast ink exercises the same model and draw calls the page uses, with no GUI or timing sleeps.
+const {readStyle, readSamples, FastInk, inkWidth, PaintAges} = require('../web/live.js');
+const styleBytes = new Uint8Array(64), sd = new DataView(styleBytes.buffer);
+styleBytes[0] = 1; styleBytes[1] = 2;
+[1, 9, .1, .9, 2, .2, .8].forEach((v, i) => sd.setFloat32(4 + i * 4, v, true));
+[0, 0, 1860, 2480, 1700, 0, 160, 1800].forEach((v, i) => sd.setInt32(32 + i * 4, v, true));
+const inkStyle = readStyle(styleBytes);
+ok('fast: style widths, pressure curve and UI exclusion read back', inkStyle.enabled && inkStyle.min === 1 &&
+    inkStyle.max === 9 && inkStyle.gamma === 2 && inkStyle.exclude[0] === 1700);
+ok('fast: pressure changes width and opacity', inkWidth(inkStyle, {pressure: 0}).width === 1 &&
+    inkWidth(inkStyle, {pressure: 1}).width === 9 && inkWidth(inkStyle, {pressure: .5}).width > 2);
+const makeSample = (seq, x, state = 2, flags = 16) => ({seq, x, y: 700, state, flags, pressure: .5, ms: 100});
+const fastInk = new FastInk();
+fastInk.accept(makeSample(1, 300, 2, 20), inkStyle);
+fastInk.accept(makeSample(2, 400), inkStyle);
+fastInk.accept(makeSample(3, 500), inkStyle);
+ok('fast: down and every move retained, even in the same millisecond', fastInk.segments.length === 3);
+fastInk.reconcile(2);
+ok('fast: only painted sequences retire', fastInk.segments.length === 1 && fastInk.segments[0].to.seq === 3 &&
+    fastInk.segments[0].from.seq === 2);
+fastInk.reconcile(3);
+fastInk.accept(makeSample(4, 600), inkStyle);
+ok('fast: reconciliation keeps the join to authoritative ink', fastInk.segments.length === 1 && fastInk.segments[0].from.seq === 3);
+fastInk.reconcile(20);
+fastInk.accept(makeSample(5, 610), inkStyle);
+ok('fast: late pen packets cannot redraw ink already in the tiles', fastInk.segments.length === 0);
+fastInk.reset();
+fastInk.accept(makeSample(10, 1750, 2, 20), inkStyle);
+fastInk.accept(makeSample(11, 400), inkStyle);
+ok('fast: a UI tap moving onto paper never starts a stroke', fastInk.segments.length === 0);
+fastInk.accept(makeSample(12, 400, 1, 0), inkStyle);
+fastInk.accept(makeSample(13, 400, 2, 20), {...inkStyle, enabled: false});
+fastInk.accept(makeSample(14, 500), inkStyle);
+ok('fast: a contact that began over a menu stays disabled', fastInk.segments.length === 0);
+fastInk.accept(makeSample(15, 400, 2, 20), inkStyle);
+fastInk.accept(makeSample(17, 600), inkStyle);
+ok('fast: missing samples never draw a bridge across lost ink', fastInk.segments.length === 1 && !fastInk.active);
+fastInk.accept(makeSample(18, 650, 2, 20), {...inkStyle, whole: true});
+ok('fast: whole-stroke eraser waits for authoritative tiles', fastInk.segments.length === 1 && !fastInk.active);
+fastInk.reset();
+fastInk.accept(makeSample(0xfffffffe, 300, 2, 20), inkStyle);
+fastInk.accept(makeSample(0xffffffff, 400), inkStyle);
+fastInk.accept(makeSample(1, 500, 2, 20), inkStyle);
+fastInk.reconcile(0xffffffff);
+ok('fast: reconciliation survives sequence wrap', fastInk.segments.length === 1 && fastInk.segments[0].to.seq === 1);
+let commands = [];
+const ctx = new Proxy({}, {get: (_, key) => (...args) => commands.push([key, ...args]),
+    set: (_, key, value) => { commands.push([key, value]); return true; }});
+fastInk.draw(ctx, .5, false, [255, 255, 255]);
+ok('fast: overlay clips to page and away from panel, then draws a round mark', commands.some(c => c[0] === 'clip' && c[1] === 'evenodd') &&
+    commands.some(c => c[0] === 'arc') && commands.some(c => c[0] === 'fill'));
+fastInk.reset();
+for (let i = 1; i <= 3000; i++) fastInk.accept(makeSample(i, i % 1000, 2, i === 1 ? 20 : 16), inkStyle);
+ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.segments.length === 2048);
+const clock = new PaintAges();
+clock.sync(1000, 1020, 0xfffffffa);
+clock.sync(1030, 1034, 14);
+clock.sync(1040, 1080, 42);
+ok('clock: smallest RTT selected and unsigned clock wrap handled', clock.best === 4 && clock.age(1050, 4) === 28);
+clock.add(clock.samples, 1050, 4);
+clock.add(clock.samples, 1060, 4);
+clock.add(clock.samples, 1070, 4);
+ok('clock: p50, p90, max come from observed ages', clock.stats(clock.samples).join() === '38,38,48');
+const fastPath = path.join(path.dirname(bin), 'fast.bin');
+if (fs.existsSync(fastPath)) {
+    let actualStyle = null, count = 0, sawTilt = false;
+    for (const frame of new Frames().push(new Uint8Array(fs.readFileSync(fastPath)))) {
+        if (frame.type === 8) actualStyle = readStyle(frame.body);
+        if (frame.type === 7) for (const s of readSamples(frame.body).samples) {
+            count++; sawTilt ||= Number.isFinite(s.tiltX) && Number.isFinite(s.tiltY);
+            if (s.flags & 16) ok('fast stream: drawable sample has enabled style', actualStyle && actualStyle.enabled);
+        }
+    }
+    ok('fast: browser reads the real headless sample stream', count >= 50 && sawTilt);
+}
+
+require('./live_browser_check.js')(ok).then(codecChecks).catch(e => ok('codecs: ' + e, false)).then(() => {
     try { ffmpegChecks(path.dirname(bin)); } catch (e) { ok('mp4 (ffmpeg): ' + e, false); }
     process.exit(fail);
 });
