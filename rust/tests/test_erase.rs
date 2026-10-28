@@ -121,8 +121,8 @@ fn rubber(x0: f32, y0: f32, x1: f32, y1: f32, p: f32, hash: u32) -> Box<Stroke> 
 
 // The paper beside a live canvas, as the brushes take it: shared bytes (the C hands them the
 // canvas's own).
-fn paper_bytes(c: &Canvas) -> Rc<[u8]> {
-    Rc::from(&c.px[..])
+fn paper_bytes(c: &Canvas) -> Rc<Vec<u8>> {
+    Rc::new(c.px.clone())
 }
 
 // Draws s the way the editor does: a new stroke, then stroke_append and brush_add sample by

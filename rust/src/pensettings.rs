@@ -218,11 +218,11 @@ fn pad_targets_free(a: &mut App) {
 
 // The pad's bare paper as the brush reads it: the C hands the brush the canvas's pixels, the
 // brushes here keep a shared copy (PORTING.md, Ownership). None without a copy.
-fn paper_px(paper: &Canvas) -> Option<Rc<[u8]>> {
+fn paper_px(paper: &Canvas) -> Option<Rc<Vec<u8>>> {
     if paper.px.is_empty() {
         None
     } else {
-        Some(Rc::from(&paper.px[..]))
+        Some(Rc::new(paper.px.clone()))
     }
 }
 

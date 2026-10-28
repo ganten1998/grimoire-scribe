@@ -62,7 +62,7 @@ pub fn stroke_mark_tip(s: &mut Stroke) {
 /// Starts b to draw s, live or replayed: one start for both, so they give the same pixels. An
 /// erase stroke's brush restores toward the paper given (as in brush_set_erase, NULL = white),
 /// which must cover the canvas's clip while it draws; an ink stroke's ignores it.
-pub fn stroke_brush_begin(b: &mut BrushState, s: &Stroke, dpi: f32, paper: Option<std::rc::Rc<[u8]>>, x0: i32, y0: i32, stride: i32) {
+pub fn stroke_brush_begin(b: &mut BrushState, s: &Stroke, dpi: f32, paper: Option<std::rc::Rc<Vec<u8>>>, x0: i32, y0: i32, stride: i32) {
     let erase = stroke_is_erase(s);
     let t = stroke_render_tool(s);
     brush_begin(b, t, &s.params, if erase { s.seed & 0xFFFFFF } else { s.seed }, dpi);
@@ -344,12 +344,12 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         return;
     }
     // (shared with each erase stroke's brush: the C hands them all the one buffer)
-    let copy: Option<Rc<[u8]>> = copy.map(|mut room| {
+    let copy: Option<Rc<Vec<u8>>> = copy.map(|mut room| {
         for y in 0..u.h {
             let at = ((u.y + y) * c.stride + u.x) as usize;
             room.extend_from_slice(&c.px[at..at + u.w as usize]);
         }
-        Rc::from(room)
+        Rc::new(room)
     });
     let mut b = BrushState::default();
     for i in 0..n {

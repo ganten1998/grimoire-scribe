@@ -241,7 +241,7 @@ fn live_erase(pg: &mut Page, live: &mut Canvas, paper: &Canvas, texture: ToolKin
     let mut n = stroke_new(TOOL_ERASER, prm, erase_seed(texture, hash));
     let mut b = BrushState::default();
     // (the brush shares the paper's pixels: a copy made for it)
-    stroke_brush_begin(&mut b, &n, DPI, Some(std::rc::Rc::from(&paper.px[..])), 0, 0, paper.stride);
+    stroke_brush_begin(&mut b, &n, DPI, Some(std::rc::Rc::new(paper.px.clone())), 0, 0, paper.stride);
     let steps = ((x1 - x0).hypot(y1 - y0) / 9.0) as i32 + 1;
     for i in 0..=steps {
         let f = (i as f32) / (steps as f32);

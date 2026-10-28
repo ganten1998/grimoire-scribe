@@ -378,7 +378,7 @@ pub struct BrushState {
     pub restored: bool,
     /// the paper under the canvas, one byte per pixel; None = white. Shared with whoever made it
     /// (the C's pointer into its caller's buffer): PORTING.md, Ownership.
-    pub paper: Option<std::rc::Rc<[u8]>>,
+    pub paper: Option<std::rc::Rc<Vec<u8>>>,
     /// the canvas pixel that paper[0] lies under
     pub paper_x0: i32,
     pub paper_y0: i32,
@@ -577,7 +577,7 @@ pub fn brush_begin(b: &mut BrushState, t: ToolKind, p: &ToolParams, seed: u32, d
 /// under canvas pixel (x, y) is paper[(y - y0) * stride + (x - x0)], and it must cover every pixel
 /// of the canvas's clip while b draws (the dabs stay inside the clip). NULL restores toward white:
 /// right for a canvas of ink alone, wrong over paper with lines (it would wipe them).
-pub fn brush_set_erase(b: &mut BrushState, paper: Option<std::rc::Rc<[u8]>>, x0: i32, y0: i32, stride: i32) {
+pub fn brush_set_erase(b: &mut BrushState, paper: Option<std::rc::Rc<Vec<u8>>>, x0: i32, y0: i32, stride: i32) {
     b.erase = true;
     b.restored = false;
     b.paper = paper;
@@ -773,7 +773,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
     }
     // (the paper is shared with whoever made it: a count taken for the dab, not a copy)
     let paper_rc = b.paper.clone();
-    let mut tg = DabTarget { ink: lk.ink, paper: paper_rc.as_deref(), x0: b.paper_x0, y0: b.paper_y0, stride: b.paper_stride, restored: false };
+    let mut tg = DabTarget { ink: lk.ink, paper: paper_rc.as_deref().map(|v| &v[..]), x0: b.paper_x0, y0: b.paper_y0, stride: b.paper_stride, restored: false };
     let seed = b.seed;
     let tooth: &[u8] = TOOTH.get_or_init(tooth_init);
     // A smooth dab's fully covered pixels all have the same opacity. Work out their

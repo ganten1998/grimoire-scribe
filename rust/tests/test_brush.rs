@@ -139,7 +139,7 @@ fn scenario(out: &mut String, ti: usize, var: i32, dpi: f32, mode: i32, rep: u32
             c.clip = Rect::new(40, 30, 200, 150);
         }
     }
-    let paper: Rc<[u8]> = Rc::from(make_paper());
+    let paper: Rc<Vec<u8>> = Rc::new(make_paper());
     let mut b = BrushState::default();
     brush_begin(&mut b, t, &p, 0xC0FFEE + ti as u32 + rep, dpi);
     if mode == 2 {

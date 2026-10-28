@@ -87,7 +87,7 @@ struct PageHistory {
 #[derive(Clone, Default)]
 struct SharedPaper {
     /// None: not made (the C's px NULL)
-    px: Option<Rc<[u8]>>,
+    px: Option<Rc<Vec<u8>>>,
     w: i32,
     h: i32,
     stride: i32,
@@ -1590,14 +1590,24 @@ fn page_paper(s: &mut EditorState, dpi: f32) -> bool {
     let fresh = s.paper.px.is_none();
     let k = s.open_page().unwrap().paper;
     if fresh || s.paper_k != k || s.paper_stale {
-        // (Drawn into a canvas of its own and then shared, where the C draws in place: no stroke is
-        // drawing toward it now, and the last one's brush lets go of it, as it is begun afresh for
-        // the next.)
-        s.paper = SharedPaper::default();
+        // (Held shared, where the C draws in place: no stroke is drawing toward it now, and the
+        // last one's brush lets go of it, as it is begun afresh for the next. Its pixels are drawn
+        // again where they are, as the C's are, when nothing else holds them: a page-size canvas
+        // made and copied anew would be megabytes of allocation and copying at a pen-down.)
         s.bs.paper = None;
+        let kept = s.paper.px.take().and_then(|px| Rc::try_unwrap(px).ok());
+        s.paper = SharedPaper::default();
         let mut c = Canvas::default();
-        if canvas_init(&mut c, s.pgw, s.pgh) != 0 {
-            return false;
+        match kept {
+            // (the same size: another one freed it above; canvas_init's stride is the width)
+            Some(px) if px.len() == (s.pgw.max(0) as usize) * (s.pgh.max(0) as usize) => {
+                c = Canvas { px, w: s.pgw, h: s.pgh, stride: s.pgw, clip: Rect { x: 0, y: 0, w: s.pgw, h: s.pgh } };
+            }
+            _ => {
+                if canvas_init(&mut c, s.pgw, s.pgh) != 0 {
+                    return false;
+                }
+            }
         }
         s.paper_k = k;
         s.paper_stale = false;
@@ -1607,7 +1617,7 @@ fn page_paper(s: &mut EditorState, dpi: f32) -> bool {
         if bgimage_take_missing() {
             note_white(s, bgimage_generation());
         }
-        s.paper = SharedPaper { w: c.w, h: c.h, stride: c.stride, px: Some(Rc::from(c.px)) };
+        s.paper = SharedPaper { w: c.w, h: c.h, stride: c.stride, px: Some(Rc::new(c.px)) };
     }
     true
 }
