@@ -1009,6 +1009,7 @@
     }
     function layout() {
         fitButton.textContent = fit ? words.actual : words.fit;
+        document.body.classList.toggle('actual', !fit);  // (actual size scrolls, full screen too: live.css)
         if (!raw.width) return;
         const ratio = window.devicePixelRatio || 1;
         let w = raw.width / ratio, h = raw.height / ratio;
