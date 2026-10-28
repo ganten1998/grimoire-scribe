@@ -52,7 +52,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, toasts, power button and sleep | all screens |
 | httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
 | share.c | the Share screen: the QR code, the addresses, its own layout check; the server answers its routes only while it is open. Also Live view's pairing card | app, httpd, qr |
-| live.h/.c, web/live.* | Live view: the shared copy of the screen, its 64 px tile marks, the viewer children that stream the tiles as PNGs; the browser's viewer | canvas |
+| live.h/.c, web/live.* | Live view: the shared copy of the screen, its 64 px tile marks, the viewer children that stream the tiles as PNGs; the pen sample ring and the pen viewer children (fast ink), the presented watermark; the browser's viewer | canvas, input |
 | pair.h/.c | one-use pairing codes and QR tokens, and the browser sessions they give (memory only) | - |
 | library.h/.c | library screen, new-notebook sheet (paper picker), rename/delete, Settings (Language among them) | app, store, ui, keyboard |
 | editor.h/.c | the notebook editor, live ink, eraser, floating panel, page nav, autosave, read-only pages | app, page, history, store |
@@ -666,8 +666,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    only lets the marks pile up; the pen loop never waits. While the pairing card is up the state is
    LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the viewer checks the
    state again after copying each run, and the app sets the state before the card is drawn). Asleep
-   it is LIVE_ASLEEP (the sleep screen is never pushed); a turn bumps the epoch, and each viewer
-   sends a new hello and every tile. The state frame also says whether Grimoire's colors are
+   it is LIVE_ASLEEP (the sleep screen is never pushed); a turn bumps the screen's epoch, and each
+   viewer sends a new hello and every tile. The state frame also says whether Grimoire's colors are
    inverted (`live_set_invert`, from settings.invert at every tick: the frame holds the screen as
    drawn, since the inversion is applied as it presents) and the front light's warmth
    (`live_set_warmth`: `light_warmth()`, as read once at Grimoire's start or as the Display sheet
@@ -681,42 +681,107 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    each pixel the alpha-weighted mean of the area of the full-size picture it covers, for the rect
    that changed): the browser's own scaling, CSS or drawImage at any quality, picks pixels, and
    1 px ruled lines came out bright, dim or gone (measured in Chrome at 567 x 757: each line's ink
-   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). The pen and provisional ink use a separate authenticated
-   `GET /live/pen` connection, with a viewer child at ordinary priority. It never encodes a PNG or
-   waits behind the tile stream's socket or 33 ms cadence. `src/live.h` is the version 2 protocol's
-   byte-level definition. The two connections each admit two readers; the larger count is the
-   viewer count used for idle and sleep policy.
+   0 to 255 that way, 155 to 156 averaged, as the exact average's 156). The pen is drawn over the
+   picture, never in it. Each pen event's place (away, hovering, touching; never asleep) goes to
+   `live_pen` as it is read (`live_capture`, below), one atomic word in the shared frame (state in
+   2 bits, y and x in 15 each), so a sample costs a store; only the pen coming into range writes to
+   the tile viewers' wake pipes, and while it is in range each viewer looks again every 33 ms
+   itself. On the Kindle the pen service relays the pen coming and going, and where it touches, but
+   not where it hovers (no X or Y between the lift and the leaving, in the raw pen log of
+   2026-10-26), so while Live view is on the app is handed the raw digitizer's place at each of its
+   frames while the pen is near and not touching (`input_hover_hook`, and with fast ink's
+   `input_sample_hook` set an IN_PEN_HOVER sample that is never queued, which needs no hover hook):
+   the raw axes scaled onto the screen as the pen service scales them (8.4 units to a pixel), each
+   as it is until contact frames of the same moment (within 4 ms) show it reversed, and none while
+   even the best orientation is more than 8 px from the pen on average (pensync.h); grimoire.log
+   names the orientation once it is decided. A tile viewer reads the word with the state, before
+   the marks, and sends it after the tiles (frame 6: u16 x, y, u8 state), only when it changed and
+   at most every 33 ms, so a place is never ahead of a push before it; a hello or any state but
+   awake takes it away (asleep, the pairing card, a turn). It is the legacy cursor now: the page
+   follows it only while it has no `/live/pen`, whose samples say sooner where the pen is. The page
+   draws a red dot, see-through (55%) while it hovers and smaller and solid while it touches,
+   inside a light edge and a dark one so it shows on white, gray, black and inverted pages, on a
+   canvas over the averaged one (Show pen, on by default; the Mac simulator never says the pen
+   left, as its mouse leaving the window is no IN_PEN_LEAVE, so there the dot stays where it was
+   last). Record and Picture in picture take a third canvas, film: the full-size picture with the
+   pen's mark drawn on it, kept as tiles and pen frames come (not by animation frames), so both go
+   on in a hidden tab.
 
-   `input_sample_hook` captures calibrated pen events before they enter the input queue, including
-   reads from `work_pump`; raw hover carries its kernel time through the same hook. A 512-entry
-   shared ring stores each event's sequence, time, pressure, tilt, buttons and immutable ink style.
-   Publication stamps and atomic payload words reject torn/overwritten samples without making
-   the input loop wait. Each input batch wakes the pen children once. The editor supplies width
-   and opacity pressure curves, the current zoom, color, page clip and panel exclusion. UI gestures,
-   read-only pages, sheets, the Library, Pages, link creation and work inside UI events suppress
-   preview. A queued UI contact also suppresses later samples until the main loop handles it.
+   **Fast ink** shows what the pen writes in the browser before the tiles can: its samples come on
+   a stream of their own (`GET /live/pen`, paired as `/live/stream` is), the page draws a quick
+   line from them at once, and the tiles' real ink takes its place as it comes. A pen viewer child
+   (two at most, `live_take_pen_viewer`; a browser with both streams counts once in
+   `live_viewers`) makes no PNG, keeps a 16 KiB send buffer and a 1 s send timeout, runs at the
+   ordinary priority where the tile viewers are niced, and sends what came as soon as it wakes: no
+   PNG being made, full tile socket or 33 ms between batches is ever on its way. live.h
+   (rust/src/live.rs's head) has the version 2 protocol byte by byte. `input_sample_hook` hands
+   the app each pen event as it is read, before it is queued, the reads `work_pump` makes during
+   long work too, and the raw hover above. `live_capture` (app.c) stores it with its ink style in
+   a ring of 512 in the shared frame (`live_sample`: its sequence, the kernel's time, place,
+   pressure, tilt, buttons and style; each record stamped zero while it is written and with its
+   sequence after, its words atomic, so a viewer that falls a whole ring behind rejects a torn one
+   and the writer never waits), which is all the pen path pays: no allocation, no log line, and one
+   byte down each pen viewer's wake pipe per read of the pens (`live_wake_samples`). A viewer packs
+   every sample that came since its last wake into one frame (64 at most; a backlog goes as a
+   few), a style frame before a sample whose style changed.
 
-   `app_flush` publishes the last event already processed after copying all dirty pixels. This
-   watermark is independent of the ring head, which may be ahead during long work. Tile children
-   read it before consuming dirty marks, and send it in every completed batch (including a batch
-   with no changed pixels). Failed partial encoding acknowledges nothing. The browser retires ink
-   by sequence only after decoding and painting those tiles in the same animation callback. Equal
-   event times cannot retire unseen samples. Epochs separate screen/page changes, turns, sleep and
-   pairing; a gap or reconnect cannot start a stroke without a fresh down. History is bounded to
-   2048 segments while tiles fall behind. There is no prediction.
+   The style is what the editor would draw (`editor_live_style`): the tool, its width range on the
+   screen at the zoom, its pressure curve and opacity, black or white ink, the stroke eraser (which
+   shows only its pen: the samples cannot say which strokes it takes), the page's clip and the
+   panel, where no quick ink goes. None while a sheet, the Pages view, the Library or any screen but
+   the editor is up, on a read-only page, while adding a link or pinching; none for a pen-down on
+   the panel or a menu and the rest of its gesture (a queued UI contact holds the samples after it
+   off until the app has handled it); and none for what a pump reads while a key, the power button,
+   sleep, waking or a screen's own UI work is handled, as that work may turn the page.
 
-   The overlay is a quick round approximation with pressure-varying width and opacity. Exact nibs,
-   grain, smoothing, tilt response, white ink's paper restoration and whole-stroke erasing remain
-   the tiles' job; whole-stroke erasing previews only its cursor. The red hover dot uses the newest
-   sample. Record and Picture in picture continue to take the authoritative picture plus the dot,
-   without provisional ink.
+   Two epochs. The screen's moves on at a start and a turn, the only times the tile viewers send a
+   hello and the picture starts again from white. The ink epoch moves on whenever ink drawn before
+   can no longer join what comes (`live_reset`): a turn, a page turned (`go_to_page`), a screen
+   changed (`app_switch`), a pinch begun, sleep, waking, and the pairing card coming or going. The
+   pen viewers say so with a hello, and the page clears its quick ink; a page turn costs only the
+   tiles that differ, as before fast ink. `app_flush` hands `live_presented` the newest pen event a
+   screen has finished handling (`App.live_processed`), with the ink epoch, once every pixel it
+   dirtied is in the frame; never the ring's head, which a pump reads ahead during long work. A
+   tile viewer reads that watermark before it takes its marks and sends it with its batch end (in
+   one of its own when no pixel changed), so every pixel it vouches for is in that batch or an
+   earlier one. A batch cut short (the state or the screen's epoch moved on, or a PNG could not be
+   made) vouches for nothing, and a PNG with no memory for it puts its marks back for the next wake,
+   at the batches' pace, never at once. The page draws quick ink only over a picture of its ink
+   epoch (the newest painted batch's), so a page turned shows none over the old page, and drops a
+   stroke's quick ink up to the sample a batch names once that batch's tiles are painted, in the
+   same animation frame, by sequence, never by time (several samples share a millisecond). A
+   missing sequence, a gap the kernel reported or a reconnect breaks a stroke, and only a pen-down
+   starts one: a browser that joins mid-stroke gets the newest place without its pen-down. The
+   history is 2048 segments at most while the tiles fall behind; there is no prediction. A wake
+   costs a byte only when the viewer has none on its way (a flag in the shared frame, which it
+   clears after draining its pipe), and each kind is woken only for its own news: the tile viewers
+   for pixels, the watermark, the cursor, the colors and the light; the pen viewers for samples
+   and the ink epoch; both for the state and a turn.
 
-   Monitor mode (M) fits the page, hides controls until hover/focus and requests fullscreen on a
-   user gesture. Its preference is kept locally, with storage failures ignored. Latency estimates
-   sample age at the animation callback and tile batch send-to-paint age, with p50/p90/max over
-   the latest 1000 observations. Eight authenticated `/live/time` requests select the smallest RTT
-   and report half of it as clock uncertainty; calibration repeats every 30 s. This is a software
-   estimate, not display scanout latency. Validate the final result with a 240 fps pen/monitor video.
+   The quick line is round, its width and opacity following the pressure curve, in the tool's own
+   shade (brush.c's look_of: the highlighter's gray, not black) as the picture's mapping shows it
+   (inverted, the warm light, transparent paper); a see-through stroke is drawn whole and laid over
+   the page once at its opacity, so its overlapping segments never add up to black over the writing
+   it highlights. White ink and the precise eraser draw the paper's color (black while inverted;
+   on transparent paper they take quick ink away). Nibs, grain, smoothing, tilt, the paper white
+   ink brings back and the stroke eraser are the tiles'. Record and Picture in picture take the
+   picture and the pen's dot, never the quick ink.
+
+   Monitor mode (M, or its button) fits the page, hides the controls until the pointer or keyboard
+   focus reaches them, and asks for full screen when chosen; the browser remembers it (storage that
+   fails is ignored). Latency (its button) shows two ages at the animation frame that draws them,
+   p50, p90 and the largest of the latest 1000: the pen's quick line, from its sample's Kindle
+   time, and the page image, from the time of the newest sample its painted batch vouches for (the
+   Kindle's own handling, rendering, PNGs and the network all in it); with the clocks'
+   uncertainty: of eight paired `GET /live/time` requests the one with the smallest round trip is
+   taken, half of it the uncertainty, again every 30 s. These are software estimates, not when a
+   monitor lights a pixel: a 240 fps video of the pen and the monitor together is the real check.
+   The pen stream follows the tile stream: it starts once a tile hello says the Kindle streams,
+   retries as the tile stream does (500 ms, doubling to 8 s), and after a 404 (Live view off, or a
+   Grimoire without fast ink) or a bye waits for the next tile hello. A page of another protocol
+   version than the Kindle's (a tab left open across an update) loads itself again, once a minute
+   at most.
+
    Record makes an MP4 wherever the browser can (the owner: "absolutely an mp4"). MediaRecorder's
    own first (H.264, the first of avc1.42E01E, avc1 and plain video/mp4 that isTypeSupported takes;
    Chrome raises the level itself, 5.0 at 1860x2480, measured in Chrome 156; Safari takes plain
@@ -745,10 +810,20 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    token or `/live` query; only the simulator logs the code and the viewers' pids, for
    tests/live_check.sh, which pairs as a browser, reads the stream (tests/live_stream.py, which
    decodes the PNGs itself, and the pen frame for the place its script left the pen hovering),
-   checks the browser's frame reader on the same bytes (tests/live_check.js, with the page's pen,
-   film and format math, mp4Boxes read back, CodecRecorder on a stand-in encoder, and, where ffmpeg
-   has libx264, a real H.264 stream put in an MP4 that ffmpeg must decode to the stream's own frames
-   at their times), refuses a third viewer, and checks that no viewer outlives the app.
+   refuses a third viewer, then reads the pen stream while its script (tests/live_fast.qs, which
+   the runner's `hold PATH` holds until the pen stream is read) opens a notebook, draws a stroke and
+   taps the panel and a menu: `/live/time` and `/live/pen` need pairing, the pen stream's hello and
+   reset, the stroke's samples with pressure and its pen-down, none of quick ink on the panel or a
+   menu, each frame in the ink epoch of the hello before it, no tiles on it, and a batch end that
+   vouches for the last sample in that epoch. It checks the browser's frame reader on the same bytes
+   (tests/live_check.js, with the page's pen, film and format math, the quick ink's model, colors
+   and drawing, mp4Boxes read back, CodecRecorder on a stand-in encoder, and, where ffmpeg has
+   libx264, a real H.264 stream put in an MP4 that ffmpeg must decode to the stream's own frames at
+   their times), runs the page itself on DOM and canvas stand-ins (tests/live_browser_check.js: the
+   quick ink painted while PNGs decode and retired by the batch that holds it, the ink epochs in
+   either order, the pen stream's states, Monitor mode, and how the pen stream retries), and checks
+   that no viewer outlives the app. test_live (rust/tests/test_live.rs) checks the ring, the frames
+   and the watermark against the viewer children over socket pairs.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
    (USBNetwork or any sshd on the device, host from `$GRIMOIRE_HOST`, default `kindle`), then runs
    the host build of the same renderer, `grimoire-export`, to produce

@@ -6,8 +6,7 @@
   so the browser can show a quick pressure-sensitive line while the exact page image catches up.
   Menu taps leave no preview ink. Monitor mode (M) fits the page and tucks the controls away; its
   choice is remembered in that browser. An optional Latency readout shows estimated pen and image
-  delays. Textured nibs and erasing still settle to Grimoire's exact rendering. Device latency
-  targets and the effect on the Kindle's own ink still need a comparison with this build installed.
+  delays. Textured nibs and erasing still settle to Grimoire's exact rendering.
 
 - **A Kindle reboot while writing, fixed**: with the developer switch `ink-metrics` on, Grimoire
   followed some ink refreshes through the Kindle's display driver, and a race in the driver could
