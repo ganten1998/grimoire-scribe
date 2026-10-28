@@ -37,6 +37,8 @@ pub struct App {
     pub screen: Canvas,
     pub settings: Settings,
     pub shortcuts: Shortcuts,
+    /// Live view holds have independent identity and a lease; physical releases cannot end them.
+    pub live_holds: Vec<crate::live_keys::LiveKey>,
     /// what each touch gesture does: the built-ins and gestures.ini (app_gestures_load)
     pub gestures: GestureMap,
     pub last_shortcut_code: i32,
@@ -716,6 +718,53 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     live_cap_sync(a);
 }
 
+/// Shared keyboard/controller/Live view dispatch. Callers own enablement, wake gating and
+/// press/release identity; the editor owns modal/stroke guards. Status actions work on every screen.
+fn app_shortcut_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
+    if action == SHORTCUT_STATUS {
+        status_toggle(a);
+        return true;
+    }
+    if action == SHORTCUT_STATUS_MODE {
+        status_cycle_mode(a);
+        return true;
+    }
+    if action == SHORTCUT_STATUS_CORNER {
+        status_cycle_corner(a);
+        return true;
+    }
+    if a.scr == ScreenId::Penset {
+        pensettings_shortcut(a, action);
+        return false;
+    }
+    a.scr == ScreenId::Editor && editor_shortcut_at(a, action, a.w as f32 * 0.5, a.h as f32 * 0.5, src)
+}
+
+// A handful of authenticated keys per tick. The server never calls the editor from inside a
+// request, and stale/revoked sessions cannot replay work after a slow frame or a Live view restart.
+fn live_keys_tick(a: &mut App) {
+    let mut had_holds = !a.live_holds.is_empty();
+    live_block(true);
+    for _ in 0..4 {
+        let Some(key) = httpd_live_key_pop() else { break };
+        if !key.down {
+            a.live_holds.retain(|h| h.code != key.code || h.cookie != key.cookie);
+        } else if !a.asleep && live_on() {
+            let action = httpd_live_key_action(&key);
+            note_input(a);
+            if app_shortcut_action(a, action, ActionSrc::Key) && action == SHORTCUT_HOLD_ERASER {
+                had_holds = true;
+                a.live_holds.push(key);
+            }
+        }
+    }
+    a.live_holds.retain(|key| !a.asleep && httpd_live_key_held(key));
+    if had_holds || !a.live_holds.is_empty() {
+        editor_hold_eraser(a, a.hold_code != 0 || !a.live_holds.is_empty());
+    }
+    live_block(false);
+}
+
 fn app_event_screens(a: &mut App, ev: &InEvent) {
     // Keys, the power button, sleep and wake do work that pumps the pens too (a shortcut turns the
     // page): no quick ink from what it reads before that work is done, as for a screen's own UI
@@ -737,22 +786,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
                 return;
             }
             let action = shortcuts_lookup(&a.shortcuts, ev.gamepad, ev.value, ev.key_mods as i32);
-            if action == SHORTCUT_STATUS {
-                status_toggle(a); // (the clock and battery: on or off on every screen, shown on a notebook page)
-                return;
-            }
-            if action == SHORTCUT_STATUS_MODE {
-                status_cycle_mode(a);
-                return;
-            }
-            if action == SHORTCUT_STATUS_CORNER {
-                status_cycle_corner(a);
-                return;
-            }
-            if a.scr == ScreenId::Penset {
-                pensettings_shortcut(a, action);
-            } else if a.scr == ScreenId::Editor
-                && editor_shortcut_at(a, action, a.w as f32 * 0.5, a.h as f32 * 0.5, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key })
+            if app_shortcut_action(a, action, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key })
                 && action == SHORTCUT_HOLD_ERASER
             {
                 a.hold_code = ev.value;
@@ -766,7 +800,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         // action waits for a release). A release never counts as input.
         if a.hold_code != 0 && ev.value == a.hold_code && ev.gamepad == a.hold_pad {
             a.hold_code = 0;
-            editor_hold_eraser(a, false);
+            editor_hold_eraser(a, !a.live_holds.is_empty());
         }
         return;
     }
@@ -774,7 +808,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         if ev.type_ == InType::HidDetach && a.hold_code != 0 {
             // (whichever went, its release cannot come)
             a.hold_code = 0;
-            editor_hold_eraser(a, false);
+            editor_hold_eraser(a, !a.live_holds.is_empty());
         }
         hid_changed(a, ev);
         return;
@@ -1119,6 +1153,7 @@ pub fn live_view_open(a: &mut App) {
             s.live_viewers = 0;
             s.live_panel = RECT_EMPTY; // (the new frame has no layer yet)
         });
+        httpd_live_keys_load(&format!("{}/live-keys.ini", store_root()));
         live_set_invert(a.settings.invert);
         let (mut intensity, mut warmth) = (0, 0);
         light_get(&mut intensity, &mut warmth); // (once: then light_warmth has it, as the Display sheet sets it)
@@ -1150,6 +1185,10 @@ pub fn live_view_stop(a: &mut App, say: bool) {
     live_stop();
     pair_forget(PAIR_LIVE); // the browsers that paired must pair again next time
     httpd_release(HTTPD_LIVE);
+    if !a.live_holds.is_empty() {
+        a.live_holds.clear();
+        editor_hold_eraser(a, a.hold_code != 0);
+    }
     app_watch_server(a);
     live_chip_sync(a); // (the chip goes: what is under it comes back)
     with(|s| s.live_viewers = 0);
@@ -1460,6 +1499,7 @@ fn sleep_minute_ms() -> i32 {
 /// timers: autosave, toast, long press, httpd
 pub fn app_tick(a: &mut App, now: u32) {
     app_tick_screens(a, now);
+    live_keys_tick(a);
     live_cap_sync(a);
 }
 

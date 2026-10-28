@@ -672,7 +672,7 @@ if (fs.existsSync(fastPath)) {
     ok('fast: browser reads the real headless sample stream', count >= 50 && sawTilt);
 }
 
-require('./live_browser_check.js')(ok).then(codecChecks).catch(e => ok('codecs: ' + e, false)).then(() => {
+require('./live_keys_check.js')(ok).then(() => require('./live_browser_check.js')(ok)).then(codecChecks).catch(e => ok('codecs: ' + e, false)).then(() => {
     try { ffmpegChecks(path.dirname(bin)); } catch (e) { ok('mp4 (ffmpeg): ' + e, false); }
     process.exit(fail);
 });

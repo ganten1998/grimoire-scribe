@@ -38,6 +38,7 @@ root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
 root/gestures.ini                       what two-finger gestures do, over the built-ins (2.0; settings.ini)
+root/live-keys.ini                      the keys a Live view browser sends, the owner edits (2.0; settings.ini)
 root/touch-trace                        an empty file the owner makes: asks for touch-trace.txt (2.0)
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
@@ -871,6 +872,14 @@ from it alone (`shortcuts.ini`'s `pad.` lines are set aside); a `key.` line in i
 line `shortcuts.ini` cannot read is, and so is an action this version does not know. A learn writes
 the file again from the lines that were read, so such a line goes then. Versions before
 2.0.0-beta.5 never read it.
+
+`live-keys.ini` (2.0.0-beta.6 on), beside them, holds the keys a browser showing Live view sends
+to Grimoire: `key.` lines in `shortcuts.ini`'s grammar (a `pad.` line is set aside). Grimoire writes
+it once, from the built-in keyboard mappings, the first time Live view starts and the file does not
+exist, and never changes it after that; an empty file means no keys. It is read when Live view
+starts, so an edit counts from the next start. It is independent of `shortcuts.ini`: editing one
+never changes the other, and Live view keys work whether or not keyboard shortcuts are on. Versions
+before 2.0.0-beta.6 never read it.
 
 `gestures.ini` (2.0), beside them, says what the touch gestures do, over the built-in
 ones, which are never written to it: two fingers down open Pages (`touch.2.down=pages`), up the Links

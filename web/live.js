@@ -735,11 +735,90 @@
         return [sorted[Math.floor((n - 1) * .5)], sorted[Math.floor((n - 1) * .9)], sorted[n - 1]];
     };
 
+    // The browser's logical key names match shortcuts.ini. codeNNN bindings use KeyboardEvent.code
+    // for punctuation/function keys; letters follow the owner's keyboard layout.
+    function liveKeyCode(e) {
+        const rows = [['1234567890', 2], ['qwertyuiop', 16], ['asdfghjkl', 30], ['zxcvbnm', 44]];
+        const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        for (const [letters, first] of rows) {
+            const i = letters.indexOf(key);
+            if (key.length === 1 && i >= 0) return first + i;
+        }
+        const names = {ArrowLeft: 105, ArrowRight: 106, ArrowUp: 103, ArrowDown: 108, PageUp: 104, PageDown: 109,
+            ' ': 57, Enter: 28, Tab: 15, Escape: 1, Home: 102, End: 107, BrowserBack: 158,
+            AudioVolumeUp: 115, AudioVolumeDown: 114, MediaPlayPause: 164, MediaTrackNext: 163, MediaTrackPrevious: 165};
+        if (names[key]) return names[key];
+        const physical = {Minus: 12, Equal: 13, Backspace: 14, BracketLeft: 26, BracketRight: 27,
+            Semicolon: 39, Quote: 40, Backquote: 41, Backslash: 43, Comma: 51, Period: 52, Slash: 53,
+            Insert: 110, Delete: 111, F11: 87, F12: 88};
+        if (/^F([1-9]|10)$/.test(e.code)) return 58 + Number(e.code.slice(1));
+        return physical[e.code] || 0;
+    }
+    function keyEditing(target) {
+        return !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '') ||
+            !!(target.closest && target.closest('[contenteditable]:not([contenteditable="false"])')));
+    }
+    function liveKeyMods(e) {
+        return (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+    }
+    // One request in flight, at most 32 waiting; no retry of a key whose result is unknown.
+    // Heartbeats renew hold-eraser alone, never repeat an action. Failure lets the server lease end.
+    function LiveKeyboard(bindings, send, failed) {
+        this.bindings = bindings;
+        this.held = new Map();
+        this.pending = [];
+        this.busy = false;
+        this.send = send;
+        this.failed = failed;
+    }
+    LiveKeyboard.prototype.pump = async function () {
+        if (this.busy) return;
+        this.busy = true;
+        try {
+            while (this.pending.length) await this.send(this.pending.shift());
+        } catch (e) {
+            this.pending.length = 0;
+            this.held.clear();
+            this.failed();
+        } finally { this.busy = false; }
+    };
+    LiveKeyboard.prototype.enqueue = function (code, mods, phase) {
+        if (this.pending.length >= 32) return false;
+        this.pending.push([code, mods, phase]);
+        this.pump();
+        return true;
+    };
+    LiveKeyboard.prototype.down = function (e) {
+        if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || keyEditing(e.target) ||
+            (e.getModifierState && e.getModifierState('AltGraph'))) return false;
+        const code = liveKeyCode(e), mods = liveKeyMods(e), id = e.code || String(code);
+        const binding = this.bindings.find(b => b.code === code && b.mods === mods);
+        if (!binding) return false;
+        e.preventDefault();
+        if (e.repeat || this.held.has(id) || this.held.size >= 16) return true;
+        if (this.enqueue(code, mods, 1)) this.held.set(id, binding);
+        return true;
+    };
+    LiveKeyboard.prototype.up = function (e) {
+        const id = e.code || String(liveKeyCode(e)), held = this.held.get(id);
+        if (!held) return;
+        e.preventDefault();
+        this.held.delete(id);
+        this.enqueue(held.code, held.mods, 0);
+    };
+    LiveKeyboard.prototype.release = function () {
+        for (const held of this.held.values()) this.enqueue(held.code, held.mods, 0);
+        this.held.clear();
+    };
+    LiveKeyboard.prototype.renew = function () {
+        for (const held of this.held.values()) if (held.action === 'hold-eraser') this.enqueue(held.code, held.mods, 2);
+    };
+
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
             filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples,
             FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
-            dotColor, dotSize};
+            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard};
         return;
     }
 
@@ -993,9 +1072,53 @@
     }
     setInterval(() => { if (debug) syncClock(); }, 30000);
     recordLabel();
-    host.replaceChildren(bar, meter, stage);
+    const keysPanel = document.createElement('section');
+    keysPanel.className = 'keys';
+    keysPanel.id = 'live-keys';
+    keysPanel.hidden = true;
+    const keysHint = document.createElement('p');
+    keysHint.textContent = words.keysHint;
+    const keysList = document.createElement('dl');
+    const keysMessage = document.createElement('p');
+    keysMessage.setAttribute('role', 'status');
+    keysPanel.append(keysHint, keysList, keysMessage);
+    const keysButton = button(words.keys, () => {
+        keysPanel.hidden = !keysPanel.hidden;
+        keysButton.setAttribute('aria-expanded', String(!keysPanel.hidden));
+    });
+    keysButton.setAttribute('aria-controls', keysPanel.id);
+    keysButton.setAttribute('aria-expanded', 'false');
+    const keyboard = new LiveKeyboard([], async event => {
+        const r = await fetch('/live/key', {method: 'POST', credentials: 'same-origin', cache: 'no-store',
+            headers: {'X-Grimoire-Key': event.join(',')}});
+        if (!r.ok) throw Error('key refused');
+    }, () => { keysMessage.textContent = words.keysError; });
+    async function loadKeys() {
+        try {
+            const r = await fetch('/live/keys', {credentials: 'same-origin', cache: 'no-store'});
+            if (!r.ok) throw Error('keys unavailable');
+            const bindings = await r.json();
+            keyboard.bindings = bindings;
+            for (const b of bindings) {
+                const key = document.createElement('dt'), label = document.createElement('dd');
+                key.textContent = (b.mods & 1 ? 'Ctrl+' : '') + (b.mods & 2 ? 'Shift+' : '') +
+                    (b.mods & 4 ? 'Alt+' : '') + (b.mods & 8 ? 'Meta+' : '') + b.key;
+                label.textContent = b.label;
+                keysList.append(key, label);
+            }
+            keysMessage.textContent = bindings.length ? '' : words.keysEmpty;
+        } catch (e) { keysMessage.textContent = words.keysError; }
+    }
+    loadKeys();
+    setInterval(() => keyboard.renew(), 500);
+    addEventListener('keyup', e => keyboard.up(e));
+    addEventListener('blur', () => keyboard.release());
+    addEventListener('pagehide', () => keyboard.release());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) keyboard.release(); });
+    host.replaceChildren(bar, keysPanel, meter, stage);
     setMonitor(monitor, false);
     addEventListener('keydown', e => {
+        if (keyboard.down(e) || e.repeat || e.isComposing || keyEditing(e.target) || e.defaultPrevented) return;
         if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) setMonitor(!monitor, true);
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
     });

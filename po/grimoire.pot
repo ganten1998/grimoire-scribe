@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 18:58-0500\n"
+"POT-Creation-Date: 2026-10-28 19:32-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1306,6 +1306,24 @@ msgstr ""
 #. the computer's other windows (the browser's own name for it is fine).
 #: rust/src/httpd.rs
 msgid "Picture in picture"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Keys"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid ""
+"Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, "
+"then restart Live view."
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "No Live view keys are assigned."
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Could not send keys. Release the keys and try again."
 msgstr ""
 
 #: rust/src/httpd.rs

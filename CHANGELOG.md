@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Keyboard shortcuts in Live view:** with the Live view page focused in a browser, that
+  computer's keys run Grimoire's shortcut actions on the Kindle. They come from their own file,
+  `live-keys.ini`, written from the built-in keyboard mappings the first time Live view starts; the
+  page's Keys button lists them. Only a browser paired for Live view can send keys.
+
 ## 2.0.0-beta.5 (2026-10-28)
 
 The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-beta.4 was a
