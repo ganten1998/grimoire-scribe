@@ -33,3 +33,5 @@ body.monitor #live .bar{position:fixed;z-index:5;top:0;left:0;right:0;opacity:0;
 body.monitor #live .bar:hover,body.monitor #live .bar:focus-within{opacity:1}
 body.monitor #live .stage{margin:0 auto}
 body.monitor #live .latency{position:fixed;z-index:6;bottom:0;background:var(--bg)}
+body.monitor.actual,:root:fullscreen body.actual{box-sizing:border-box;height:100vh;overflow:auto}
+:root:fullscreen body.actual:not(.monitor){margin:0;padding:24px}

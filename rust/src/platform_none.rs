@@ -96,6 +96,7 @@ pub fn sys_kindle_ui(run: bool) -> bool {
 }
 pub fn sys_prevent_sleep(prevent: bool) {}
 pub fn sys_activity() {}
+pub fn sys_wifi_awake(awake: bool) {}
 pub fn sys_battery() -> Battery {
     Battery::default()
 }

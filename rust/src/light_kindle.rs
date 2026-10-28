@@ -344,6 +344,26 @@ pub fn sys_activity() {
     run_bg("lipc-set-prop -i com.lab126.powerd touchScreenSaverTimeout 1 >/dev/null 2>&1");
 }
 
+// The radio's power save, through iw: off while awake (set each time, even when it is off already),
+// and on again after only if it was on when Grimoire turned it off. /tmp/grimoire-wifi-ps says it
+// was: it outlives a crash (app_init gives it back) and goes with a reboot, as the setting does.
+// The lock keeps a stop and a start that come close together from mixing their steps.
+pub fn sys_wifi_awake(awake: bool) {
+    if awake {
+        run_bg(
+            "exec 9>/tmp/grimoire-wifi.lock; flock 9; f=/tmp/grimoire-wifi-ps\n\
+             if [ ! -e $f ] && iw dev wlan0 get power_save 2>/dev/null | grep -q ': on'; then : > $f; fi\n\
+             iw dev wlan0 set power_save off >/dev/null 2>&1",
+        );
+        qlog!("wifi: power save off while Live view runs");
+    } else {
+        run_bg(
+            "exec 9>/tmp/grimoire-wifi.lock; flock 9; f=/tmp/grimoire-wifi-ps\n\
+             if [ -e $f ]; then iw dev wlan0 set power_save on >/dev/null 2>&1; rm -f $f; fi",
+        );
+    }
+}
+
 pub fn sys_kindle_ui(run: bool) -> bool {
     let stopped = std::env::var_os("GRIMOIRE_AWESOME_STOPPED");
     let pillow = std::env::var_os("GRIMOIRE_PILLOW_DISABLED");
