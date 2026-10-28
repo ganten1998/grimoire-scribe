@@ -299,7 +299,14 @@ Makefile rule only: running `grimoire-headless` by hand skips them like any comm
 leaves a file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those
 that did not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every
 check (exit 0) with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the
-comments, waits and taps must fail and be reported by its line number (exit 3).
+comments, waits and taps must fail and be reported by its line number (exit 3). Then the same for
+`tests/selftest/pass-rust.qs` (exit 0) and `tests/selftest/fail-rust.qs` (exit 3, its lines
+reported), which use the commands and probes only the Rust build has.
+
+A scenario with a `# rust-only` line is skipped when the rule runs against the C build (`make
+c-check`, which sets `SCEN_SKIP_RUST_ONLY=1`): it uses commands, probes or behaviour only the Rust
+build has. The two rust selftests are skipped there too, and so is `make l10n-check`'s run of
+tests/scenarios/y_all_screens.qs, which visits the Rust build's screens.
 
 ## Languages in tests
 

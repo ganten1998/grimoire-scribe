@@ -147,7 +147,9 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 # holds into DEST under the scenario's data root before the run (templates, import folders). Last,
 # the runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written,
 # and in fail.qs every line but the comments, waits and taps must be reported as failed, with
-# exit status 3.
+# exit status 3. Then the same for tests/selftest/pass-rust.qs and fail-rust.qs, which use what only
+# the Rust build has (its commands and probes). With SCEN_SKIP_RUST_ONLY set (make c-check sets it),
+# a scenario with a "# rust-only" line is skipped, and so are the two rust selftests.
 SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
@@ -157,7 +159,9 @@ SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_D
 SCEN_LANG := GRIMOIRE_LANG=en
 scenarios: $(BUILD)/host/grimoire-headless
 	@unset $(SIM_HOOKS); \
-	failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
+	failed=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); \
+	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && grep -q '^# rust-only' $$s; then echo "== $$n (rust-only: skipped)"; continue; fi; \
+	  rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
 	  echo "== $$n"; from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
 	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
 	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
@@ -190,6 +194,18 @@ scenarios: $(BUILD)/host/grimoire-headless
 	got=$$(sed -n 's/^expect failed (line \([0-9]*\)).*/ \1/p' $$d/fail.log | tr -d '\n'); \
 	if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail.log; \
 	  echo "selftest fail: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail"; fi; \
+	if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then \
+	  echo "== selftest pass-rust (the Rust build's own commands and probes: exit 0)"; \
+	  $(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass-rust GRIMOIRE_SCRIPT=tests/selftest/pass-rust.qs GRIMOIRE_SHOTS=$$d/shots \
+	    $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass-rust"; \
+	  echo "== selftest fail-rust (each line meant to fail is reported: exit 3; log in $$d/fail-rust.log)"; rc=0; \
+	  $(SCEN_LANG) GRIMOIRE_ROOT=$$d/fail-rust GRIMOIRE_SCRIPT=tests/selftest/fail-rust.qs GRIMOIRE_SHOTS=$$d/shots \
+	    $(BUILD)/host/grimoire-headless 2>$$d/fail-rust.log || rc=$$?; \
+	  want=$$(awk '!/^[[:space:]]*(#|$$)/ && $$1 != "wait" && $$1 != "tap" { printf " %d", NR }' tests/selftest/fail-rust.qs); \
+	  got=$$(sed -n 's/^expect failed (line \([0-9]*\)).*/ \1/p' $$d/fail-rust.log | tr -d '\n'); \
+	  if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail-rust.log; \
+	    echo "selftest fail-rust: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail-rust"; fi; \
+	fi; \
 	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
 
 # ---- languages ----
@@ -238,7 +254,8 @@ l10n:
 # the one button that takes the width it needs). Then tests/l10n/templates.qs, in every language and
 # style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
 # data root its "# copy:" line fills first, as make scenarios does. Under make check it waits for
-# the scenarios: both open the share server on the same port.
+# the scenarios: both open the share server on the same port. With SCEN_SKIP_RUST_ONLY set (make
+# c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.
 L10N_SCENARIO := tests/scenarios/y_all_screens.qs
 L10N_TEMPLATES := tests/l10n/templates.qs
 L10N_LANGS := en $(basename $(notdir $(L10N_MO)))
@@ -251,6 +268,7 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	      failed="$$failed $$m"; else echo "l10n: $$m is what msgfmt makes of $$p"; fi; \
 	  done; \
 	else echo "l10n: skipped the check that po/*.mo match po/*.po (msgfmt is not installed)"; fi; \
+	if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then \
 	for lang in $(L10N_LANGS); do for style in gothic classic; do n=$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
 	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n"; \
 	  echo "theme=$$style" > $$r/settings.ini; \
@@ -259,6 +277,7 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	    GRIMOIRE_SCRIPT=$(L10N_SCENARIO) GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
 	done; done; \
+	else echo "l10n: skipped $(L10N_SCENARIO) (rust-only: it visits the Rust build's screens)"; fi; \
 	for lang in $(L10N_LANGS); do r=$(BUILD)/scen/l10n/long-root/$$(printf 'a-long-data-root-%.0s' 1 2 3 4 5 6 7 8)$$lang; \
 	  rm -rf $(BUILD)/scen/l10n/long-root $(BUILD)/shots/l10n/long-root-$$lang; mkdir -p $$r; \
 	  echo "== l10n $$lang, a long data root"; \
@@ -574,12 +593,14 @@ rust-package: package
 # checks run against them: each rule below runs the app's rule with BUILD=$(CBUILD), and with -o
 # naming the C binary, which make then takes as up to date (never built with cargo), so tests/*.sh
 # and the scenario runner find the C build where they look for the app.
-#   make c-check     rust-check's checks against the C binaries (c-test for the unit tests)
+#   make c-check     rust-check's checks against the C binaries (c-test for the unit tests),
+#                    leaving out what only the Rust build runs (SCEN_SKIP_RUST_ONLY: the scenarios
+#                    with a "# rust-only" line, the rust selftests and y_all_screens.qs)
 #   make c-package   the Kindle zip with the C binary in it, in $(CBUILD)/dist (its licenses/ still
 #                    names the Rust parts)
 c-check: c-test c-headless c-tools c-kindle
-	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless scenarios
-	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless l10n-check
+	$(MAKE) BUILD=$(CBUILD) SCEN_SKIP_RUST_ONLY=1 -o $(CBUILD)/host/grimoire-headless scenarios
+	$(MAKE) BUILD=$(CBUILD) SCEN_SKIP_RUST_ONLY=1 -o $(CBUILD)/host/grimoire-headless l10n-check
 	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(CBUILD) $(SCEN_LANG) tests/share_check.sh $(CBUILD)/scen/b_library
 	BUILD=$(CBUILD) tests/live_check.sh
