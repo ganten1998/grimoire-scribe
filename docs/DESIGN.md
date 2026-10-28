@@ -759,10 +759,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    (`live_set_raw_map`); the capture state after every event and tick and wherever it changes
    (`live_set_capture`: whether quick ink may draw at all, the editor's style for each eraser and
    side button state, and the newest pen event handled); and whether the loop is in UI work
-   (`live_set_blocked`, LIVE_CAPTURE_BLOCKED's twin). The viewer decides each frame's style as
-   live_capture does (`live_raw_style`): a pen-down on the panel, or where nothing draws, is UI,
-   and nothing draws after it until the main loop has handled an event at or after it. Without the
-   node, or while the map is withdrawn, the viewer reads the ring as before.
+   (`live_set_blocked`, LIVE_CAPTURE_BLOCKED's twin). The viewer decides each frame's ink as
+   live_capture does (`live_raw_gate`): a pen-down on the panel, or where nothing draws, is UI,
+   and nothing draws after it until the main loop has handled an event at or after it. But the
+   viewer runs ahead of the main loop, often by a stroke or more, so a pen-down that comes while
+   the loop is in UI work (it is, for a moment, at every event it handles, and for the whole of a
+   pen-up's commit) or behind a UI pen-down it has not handled yet cannot be judged when it comes:
+   its samples are held (`LIVE_RAW_HOLD`, about half a second) until it can, then go drawn from
+   their pen-down or undrawn as UI. Judged as they came, such a stroke lost all its quick ink: the
+   page ends a stroke at its first undrawn sample and starts one only at a pen-down. For the same
+   reason a stroke once drawing goes on drawing through the loop's UI work, and one broken by a gap
+   starts again at the sample after it; the capture state a read finds half written is the one
+   before. Without the node, or while the map is withdrawn, the viewer reads the ring as before.
 
    A sample is known by its identity: the kernel's time of its frame in microseconds (u32,
    wrapping), the same for the raw node's frame the viewer reads and for the main loop's own event

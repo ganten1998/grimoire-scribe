@@ -953,34 +953,91 @@ fn a_raw_frame_is_placed_and_weighed_by_the_map() {
     check!(u16(&s[8..]) == 299 && u16(&s[10..]) == 300 && u16(&s[12..]) == 0 && s[17] == LIVE_SIDE | LIVE_DOWN);
 }
 
-fn raw_style_follows_the_capture_state() {
+// A raw frame's sample at (x, y) with its flags, as live_raw_sample makes it.
+fn gate_sample(f: &LiveRawFrame, x: u32, y: u32) -> [u8; LIVE_SAMPLE_BYTES] {
+    let mut s = [0u8; LIVE_SAMPLE_BYTES];
+    s[..4].copy_from_slice(&f.us.to_le_bytes());
+    s[8..10].copy_from_slice(&(x as u16).to_le_bytes());
+    s[10..12].copy_from_slice(&(y as u16).to_le_bytes());
+    s[16] = f.state as u8;
+    s[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
+    s
+}
+
+// One frame through the gate: (identity, flags, the style's tool and enabled) of each sample sent.
+fn gate(g: &mut LiveRawGate, cap: &LiveCapture, blocked: bool, f: &LiveRawFrame, x: u32, y: u32) -> Vec<(u32, u8, u8, u8)> {
+    let mut out = Vec::new();
+    live_raw_gate(g, cap, blocked, f, &gate_sample(f, x, y), &mut |s, st| out.push((u32_(s), s[17], st.tool, st.enabled)));
+    out
+}
+
+fn raw_gate_follows_the_capture_state() {
     let style = LiveStyle { enabled: 1, tool: 3, exclude: Rect { x: 250, y: 0, w: 50, h: 400 }, ..Default::default() };
     let eraser = LiveStyle { enabled: 1, tool: 9, ..style };
     let mut cap = LiveCapture { ok: true, editor: true, handled: 0, styles: [[style, style], [eraser, eraser]] };
-    let mut ui = 0u32;
-    let mut draw = 0u8;
+    let mut g = LiveRawGate::default();
     let down = LiveRawFrame { us: 100, state: LIVE_PEN_TOUCH, down: true, ..Default::default() };
     let mv = LiveRawFrame { us: 104, state: LIVE_PEN_TOUCH, ..Default::default() };
-    check!(live_raw_style(&cap, false, &mut ui, &down, 10, 10, &mut draw) == style && draw == LIVE_DRAW && ui == 0);
+    let up = LiveRawFrame { us: 108, state: LIVE_PEN_HOVER, ..Default::default() };
+    check!(gate(&mut g, &cap, false, &down, 10, 10) == vec![(100, LIVE_DOWN | LIVE_DRAW, 3, 1)] && g.ui == 0);
     let er = LiveRawFrame { eraser: true, ..mv };
-    check!(live_raw_style(&cap, false, &mut ui, &er, 10, 10, &mut draw).tool == 9);
-    // UI work under way, or no editor, or not ok: nothing draws
-    check!(live_raw_style(&cap, true, &mut ui, &mv, 10, 10, &mut draw).enabled == 0 && draw == 0);
+    check!(gate(&mut g, &cap, false, &er, 10, 10) == vec![(104, LIVE_ERASER | LIVE_DRAW, 9, 1)]);
+    // A stroke drawing goes on through the main loop's UI work (each event it handles is that for a
+    // moment), and a gap starts it again.
+    check!(gate(&mut g, &cap, true, &mv, 10, 10) == vec![(104, LIVE_DRAW, 3, 1)]);
+    let gap = LiveRawFrame { us: 105, gap: true, ..mv };
+    check!(gate(&mut g, &cap, false, &gap, 10, 10) == vec![(105, LIVE_GAP | LIVE_DOWN | LIVE_DRAW, 3, 1)]);
+    // No editor, or a style that draws nothing: the stroke ends, and stays ended.
     cap.editor = false;
-    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0);
+    check!(gate(&mut g, &cap, false, &mv, 10, 10) == vec![(104, 0, 0, 0)] && !g.drawing);
     cap.editor = true;
-    cap.ok = false;
-    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0);
-    cap.ok = true;
-    // a pen-down on the panel is UI: nothing until the main loop has handled it
+    check!(gate(&mut g, &cap, false, &mv, 10, 10) == vec![(104, 0, 3, 1)]);
+    check!(gate(&mut g, &cap, false, &up, 10, 10) == vec![(108, 0, 3, 1)]);
+    // A pen-down on the panel is UI: nothing draws until the main loop has handled it.
     let tap = LiveRawFrame { us: 200, ..down };
-    check!(live_raw_style(&cap, false, &mut ui, &tap, 260, 10, &mut draw).enabled == 0 && ui == 200);
-    let after = LiveRawFrame { us: 300, ..down };
-    check!(live_raw_style(&cap, false, &mut ui, &after, 10, 10, &mut draw).enabled == 0 && ui == 300); // (still pending: a UI pen-down again)
-    cap.handled = 250; // (the scaled pen's event of the tap: not this one's yet)
-    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw).enabled == 0 && ui == 300);
-    cap.handled = 300;
-    check!(live_raw_style(&cap, false, &mut ui, &mv, 10, 10, &mut draw) == style && ui == 0 && draw == LIVE_DRAW);
+    check!(gate(&mut g, &cap, false, &tap, 260, 10) == vec![(200, LIVE_DOWN, 0, 0)] && g.ui == 200);
+    check!(gate(&mut g, &cap, false, &up, 260, 10) == vec![(108, 0, 0, 0)]);
+    // The next stroke comes before it is handled: held, not judged (it used to be taken for UI too,
+    // and all its quick ink was lost: the page starts a stroke only at a pen-down) ...
+    let next = LiveRawFrame { us: 300, ..down };
+    let next2 = LiveRawFrame { us: 304, ..mv };
+    check!(gate(&mut g, &cap, false, &next, 10, 10).is_empty() && g.ui == 200 && g.pending == 300);
+    cap.handled = 150; // (an event before the tap's)
+    check!(gate(&mut g, &cap, false, &next2, 12, 10).is_empty() && g.n == 2);
+    // ... and drawn from its pen-down once the tap is handled.
+    cap.handled = 250;
+    let next3 = LiveRawFrame { us: 308, ..mv };
+    check!(gate(&mut g, &cap, false, &next3, 14, 10) == vec![(300, LIVE_DOWN | LIVE_DRAW, 3, 1), (304, LIVE_DRAW, 3, 1), (308, LIVE_DRAW, 3, 1)]);
+    check!(g.ui == 0 && g.drawing && g.n == 0);
+    // A pen-down while the main loop is in UI work (a pen-up's commit) is held until it is out of it.
+    check!(gate(&mut g, &cap, false, &LiveRawFrame { us: 310, ..up }, 14, 10).len() == 1);
+    let d4 = LiveRawFrame { us: 400, ..down };
+    check!(gate(&mut g, &cap, true, &d4, 20, 20).is_empty());
+    check!(gate(&mut g, &cap, true, &LiveRawFrame { us: 404, ..mv }, 21, 20).is_empty());
+    check!(gate(&mut g, &cap, false, &LiveRawFrame { us: 408, ..mv }, 22, 20).iter().map(|s| (s.0, s.1)).collect::<Vec<_>>()
+        == vec![(400, LIVE_DOWN | LIVE_DRAW), (404, LIVE_DRAW), (408, LIVE_DRAW)]);
+    // Judged after that work, where it came down: on the panel (the work moved it there), it is UI.
+    check!(gate(&mut g, &cap, false, &LiveRawFrame { us: 410, ..up }, 22, 20).len() == 1);
+    let d5 = LiveRawFrame { us: 500, ..down };
+    check!(gate(&mut g, &cap, true, &d5, 270, 20).is_empty());
+    check!(gate(&mut g, &cap, false, &LiveRawFrame { us: 504, ..mv }, 30, 20) == vec![(500, LIVE_DOWN, 0, 0), (504, 0, 0, 0)] && g.ui == 500);
+    // Lifted before it could be judged: its samples go on undrawn.
+    cap.handled = 500;
+    check!(gate(&mut g, &cap, false, &LiveRawFrame { us: 510, ..up }, 30, 20).len() == 1 && g.ui == 0);
+    check!(gate(&mut g, &cap, true, &LiveRawFrame { us: 600, ..down }, 30, 20).is_empty());
+    check!(gate(&mut g, &cap, true, &LiveRawFrame { us: 610, ..up }, 30, 20).iter().map(|s| s.1).collect::<Vec<_>>() == vec![LIVE_DOWN, 0]);
+    // The hold runs out: the oldest go on undrawn, and the stroke's first drawn sample says LIVE_DOWN.
+    check!(gate(&mut g, &cap, true, &LiveRawFrame { us: 1000, ..down }, 30, 20).is_empty());
+    for i in 1..LIVE_RAW_HOLD as u32 {
+        check!(gate(&mut g, &cap, true, &LiveRawFrame { us: 1000 + i, ..mv }, 30, 20).is_empty());
+    }
+    let spill = gate(&mut g, &cap, true, &LiveRawFrame { us: 1000 + LIVE_RAW_HOLD as u32, ..mv }, 30, 20);
+    check!(spill.len() == LIVE_RAW_HOLD && spill[0].1 == LIVE_DOWN && spill.iter().all(|s| s.1 & LIVE_DRAW == 0));
+    let go = gate(&mut g, &cap, false, &LiveRawFrame { us: 2000, ..mv }, 30, 20);
+    check!(go.len() == 2 && go[0] == (1000 + LIVE_RAW_HOLD as u32, LIVE_DOWN | LIVE_DRAW, 3, 1) && go[1] == (2000, LIVE_DRAW, 3, 1));
+    // Forgotten (a new epoch): nothing held, no stroke under way.
+    g.forget();
+    check!(gate(&mut g, &cap, false, &mv, 10, 10) == vec![(104, 0, 3, 1)]);
 }
 
 fn ev_bytes(e: &LiveInputEvent) -> Vec<u8> {
@@ -1160,7 +1217,7 @@ fn test_live() {
     run!(a_batch_cut_short_acknowledges_nothing);
     run!(the_raw_digitizer_decodes_into_frames);
     run!(a_raw_frame_is_placed_and_weighed_by_the_map);
-    run!(raw_style_follows_the_capture_state);
+    run!(raw_gate_follows_the_capture_state);
     run!(a_pen_viewer_reads_the_raw_node_itself);
     run!(a_layer_comes_with_the_tiles_and_goes);
     done();

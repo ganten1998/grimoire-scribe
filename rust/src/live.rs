@@ -1233,25 +1233,138 @@ fn at_or_after(a: u32, b: u32) -> bool {
     (a.wrapping_sub(b) as i32) >= 0
 }
 
-/// What a raw frame draws, as app.rs's live_capture decides it for an event: nothing unless quick ink
-/// is allowed (cap: the editor up and the app awake; the main loop not in UI work, blocked; no UI
-/// pen-down still unhandled, ui), else its eraser's and side button's style; and a pen-down where that
-/// draws nothing or on the panel is UI: nothing until the main loop has handled it (ui set to it).
-/// Returns the style; *draw is LIVE_DRAW or 0.
-pub fn live_raw_style(cap: &LiveCapture, blocked: bool, ui: &mut u32, f: &LiveRawFrame, x: i32, y: i32, draw: &mut u8) -> LiveStyle {
-    if *ui != 0 && at_or_after(cap.handled, *ui) {
-        *ui = 0;
+/// How many samples of a stroke not decided yet a pen viewer holds back (live_raw_gate): about half
+/// a second of the raw digitizer's frames. Past that they go on undrawn, and the stroke's quick ink
+/// starts where it is decided.
+pub const LIVE_RAW_HOLD: usize = 128;
+
+/// What a pen viewer that reads the raw digitizer keeps between its frames to decide their ink
+/// (live_raw_gate). It runs ahead of the main loop, often by a whole stroke or more: a pen-down
+/// that comes while the main loop is in UI work (blocked), or before it has handled a UI pen-down
+/// shown earlier, cannot be judged yet, and its samples wait here until it can.
+#[derive(Clone, Copy)]
+pub struct LiveRawGate {
+    /// a UI pen-down the main loop has not handled yet (its identity; 0 none)
+    pub ui: u32,
+    /// the stroke under way draws (its first drawn sample said LIVE_DOWN)
+    pub drawing: bool,
+    /// the pen-down not decided yet (its identity; 0 none), its flags and where it came down
+    pub pending: u32,
+    pub down_flags: u8,
+    pub at: (i32, i32),
+    /// the samples held back since it, and whether some went on undrawn already (the hold ran out)
+    pub held: [[u8; LIVE_SAMPLE_BYTES]; LIVE_RAW_HOLD],
+    pub n: usize,
+    pub spilled: bool,
+}
+
+impl Default for LiveRawGate {
+    fn default() -> Self {
+        LiveRawGate { ui: 0, drawing: false, pending: 0, down_flags: 0, at: (0, 0), held: [[0; LIVE_SAMPLE_BYTES]; LIVE_RAW_HOLD], n: 0, spilled: false }
     }
-    let mut style = LiveStyle::default();
-    if cap.ok && cap.editor && !blocked && *ui == 0 {
-        style = cap.styles[f.eraser as usize][f.side as usize];
+}
+
+impl LiveRawGate {
+    /// The stroke forgotten, what it held dropped: nothing was sent meanwhile (asleep, a new ink
+    /// epoch, the source changed), and the browser starts no stroke without a pen-down. A UI pen-down
+    /// still waiting stays: the main loop has it to handle either way.
+    pub fn forget(&mut self) {
+        self.drawing = false;
+        self.pending = 0;
+        self.n = 0;
+        self.spilled = false;
     }
-    if f.down && (style.enabled == 0 || rect_contains(style.exclude, x, y)) {
-        style = LiveStyle::default();
-        *ui = f.us;
+}
+
+// The style a sample's eraser and side button state draws with (its flags), or none.
+fn gate_style(cap: &LiveCapture, free: bool, flags: u8) -> LiveStyle {
+    if free {
+        cap.styles[(flags & LIVE_ERASER != 0) as usize][(flags & LIVE_SIDE != 0) as usize]
+    } else {
+        LiveStyle::default()
     }
-    *draw = if style.enabled != 0 { LIVE_DRAW } else { 0 };
-    style
+}
+
+// The held samples on their way: drawn with each one's style (the first saying LIVE_DOWN when the
+// stroke's own pen-down went on undrawn), or undrawn.
+fn gate_release(g: &mut LiveRawGate, cap: &LiveCapture, drawn: bool, send: &mut dyn FnMut(&[u8], &LiveStyle)) {
+    let free = cap.ok && cap.editor && g.ui == 0;
+    for i in 0..g.n {
+        let mut s = g.held[i];
+        let st = gate_style(cap, free, s[17]);
+        if drawn && st.enabled != 0 {
+            s[17] |= LIVE_DRAW;
+            if i == 0 && g.spilled {
+                s[17] |= LIVE_DOWN;
+            }
+        }
+        send(&s, &st);
+    }
+    g.n = 0;
+}
+
+/// One raw frame's sample (live_raw_sample's bytes) through the gate, as app.rs's live_capture
+/// decides an event's ink: send(sample, style) for each sample to send now, oldest first. Nothing
+/// draws unless quick ink is allowed (cap: the app awake and holding its input, the editor up) and
+/// no UI pen-down is still unhandled (g.ui). A pen-down where its style draws nothing or on the
+/// panel is UI: nothing draws until the main loop has handled it (g.ui set to it). One that comes
+/// while the main loop is in UI work (blocked), or behind an unhandled UI pen-down, is held with the
+/// samples after it until neither holds, then judged by the capture state the main loop published
+/// after that work: drawn from its pen-down, or UI. A stroke once drawing goes on drawing through
+/// the main loop's UI work (each event it handles is that for a moment; the browser ends a stroke
+/// at its first undrawn sample and starts one only at a pen-down), and a gap in it starts it again.
+pub fn live_raw_gate(g: &mut LiveRawGate, cap: &LiveCapture, blocked: bool, f: &LiveRawFrame, sample: &[u8], send: &mut dyn FnMut(&[u8], &LiveStyle)) {
+    if g.ui != 0 && at_or_after(cap.handled, g.ui) {
+        g.ui = 0;
+    }
+    let mut s = [0u8; LIVE_SAMPLE_BYTES];
+    s.copy_from_slice(&sample[..LIVE_SAMPLE_BYTES]);
+    s[17] &= !LIVE_DRAW;
+    if f.state != LIVE_PEN_TOUCH {
+        gate_release(g, cap, false, send); // (lifted before it could be judged: undrawn)
+        g.drawing = false;
+        g.pending = 0;
+        g.spilled = false;
+        send(&s, &gate_style(cap, cap.ok && cap.editor && g.ui == 0, s[17]));
+        return;
+    }
+    if f.down {
+        gate_release(g, cap, false, send);
+        g.drawing = false;
+        g.pending = f.us;
+        g.down_flags = s[17];
+        g.at = ((s[8] as u32 | (s[9] as u32) << 8) as i32, (s[10] as u32 | (s[11] as u32) << 8) as i32);
+        g.spilled = false;
+    }
+    if g.pending != 0 {
+        if g.n == LIVE_RAW_HOLD {
+            gate_release(g, cap, false, send);
+            g.spilled = true;
+        }
+        g.held[g.n] = s;
+        g.n += 1;
+        if blocked || g.ui != 0 {
+            return; // (judged at a later frame)
+        }
+        let st = gate_style(cap, cap.ok && cap.editor, g.down_flags);
+        if st.enabled == 0 || rect_contains(st.exclude, g.at.0, g.at.1) {
+            g.ui = g.pending;
+            g.pending = 0;
+            gate_release(g, cap, false, send);
+        } else {
+            g.pending = 0;
+            g.drawing = true;
+            gate_release(g, cap, true, send);
+        }
+        return;
+    }
+    let st = gate_style(cap, cap.ok && cap.editor && g.ui == 0, s[17]);
+    if g.drawing && st.enabled != 0 {
+        s[17] |= LIVE_DRAW | if f.gap { LIVE_DOWN } else { 0 };
+    } else {
+        g.drawing = false;
+    }
+    send(&s, &st);
 }
 
 /// After a read of the pens (input_sample_hook's batch callback, and app_event): the pen viewers
@@ -1605,14 +1718,15 @@ impl PenOut {
     }
 }
 
-// Everything the raw node has queued, read and sent: each frame placed by the map, with the ink style
-// the main loop's capture state gives it now (live_raw_style) and the ink epoch it is in. Nothing is
+// Everything the raw node has queued, read and sent: each frame placed by the map, its ink decided by
+// the gate (live_raw_gate) from the main loop's capture state and the ink epoch it is in. Nothing is
 // sent but while sending is on (the stream awake, in this epoch, quick ink's capture allowed): the
-// node is read empty either way, so what comes later is never stale.
-fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32, sending: bool, ui: &mut u32, reset: &mut bool) {
+// node is read empty either way, so what comes later is never stale. cap is the capture state as last
+// read whole: the main loop rewrites it at every pen event, and a read that meets a write keeps the
+// one before (an undrawn sample in a stroke would end its quick ink in the browser).
+fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32, sending: bool, gate: &mut LiveRawGate, cap: &mut LiveCapture, reset: &mut bool) {
     let mut evs = [LiveInputEvent::default(); 64];
     let mut cap_b = [0u8; CAPTURE_BYTES];
-    let mut cap = LiveCapture::default();
     let mut have_cap = false;
     loop {
         // SAFETY: read into the local array of input_event records, at most its size in bytes.
@@ -1630,34 +1744,33 @@ fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32,
                 }
                 continue;
             }
-            if !sending || o.dead {
+            if !sending || o.dead || sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.ink_epoch.load(SeqCst) != epoch {
+                gate.forget(); // (told at the top of pen_main with a hello; this frame is the epoch's before)
                 continue;
             }
-            if sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.ink_epoch.load(SeqCst) != epoch {
-                continue; // (told at the top of pen_main with a hello; this frame is the epoch's before)
-            }
             if !have_cap {
-                // (none whole this moment: the one before stays; the first time, nothing draws)
-                if sh.capture.read(&mut cap_b).is_some() {
-                    cap = capture_read(&cap_b);
+                // (the writer never waits: a few tries, else the one before stays)
+                for _ in 0..4 {
+                    if sh.capture.read(&mut cap_b).is_some() {
+                        *cap = capture_read(&cap_b);
+                        break;
+                    }
                 }
                 have_cap = true;
             }
             if !cap.ok {
+                gate.forget();
                 continue; // (asleep, the input the Kindle's, Live view going: nothing of the pen is sent)
             }
             let mut sample = [0u8; LIVE_SAMPLE_BYTES];
             let w = sh.w.load(SeqCst) as i32;
             let h = sh.h.load(SeqCst) as i32;
             live_raw_sample(&r.map, w, h, &fr, &mut sample);
-            let x = (sample[8] as u32 | (sample[9] as u32) << 8) as i32;
-            let y = (sample[10] as u32 | (sample[11] as u32) << 8) as i32;
-            let mut draw = 0u8;
-            let style = live_raw_style(&cap, sh.blocked.load(SeqCst) != 0, ui, &fr, x, y, &mut draw);
-            sample[17] |= draw;
             let mut style_b = [0u8; LIVE_STYLE_BYTES];
-            live_style_payload(&mut style_b, &style);
-            o.push(fd, epoch, &sample, &style_b, reset);
+            live_raw_gate(gate, cap, sh.blocked.load(SeqCst) != 0, &fr, &sample, &mut |s, st| {
+                live_style_payload(&mut style_b, st);
+                o.push(fd, epoch, s, &style_b, reset);
+            });
         }
     }
     o.flush(fd, epoch);
@@ -1710,8 +1823,9 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
     let mut o = PenOut { out: [0u8; 13 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH], n: 0, frame_reset: false, style: [0u8; LIVE_STYLE_BYTES], have_style: false, dead: false, last: now_ms() };
     let mut raw: Option<RawSource> = None;
     let mut map_seen: u32 = !0;
-    // a UI pen-down the raw node showed that the main loop has not handled yet (its identity; 0 none)
-    let mut ui: u32 = 0;
+    // what the raw node's frames draw (live_raw_gate), and the capture state as last read whole
+    let mut gate = LiveRawGate::default();
+    let mut cap = LiveCapture::default();
     loop {
         // The raw node: opened once the main loop publishes a map for it, let go when it takes it back.
         let mut mb = [0u8; MAP_BYTES];
@@ -1734,6 +1848,7 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
                             reset = true; // (from one source to the other: no stroke joins across)
                             cursor = sh.sample_head.load(SeqCst);
                             o.have_style = false;
+                            gate.forget();
                         }
                     }
                 }
@@ -1766,10 +1881,11 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
             }
             o.last = now_ms();
             reset = false;
+            gate.forget(); // (nothing held from the epoch before)
         }
         if let Some(r) = raw.as_mut() {
             cursor = sh.sample_head.load(SeqCst); // (the ring's samples are the same frames, later)
-            raw_pump(sh, r, &mut o, fd, epoch, state == LIVE_AWAKE as u32, &mut ui, &mut reset);
+            raw_pump(sh, r, &mut o, fd, epoch, state == LIVE_AWAKE as u32, &mut gate, &mut cap, &mut reset);
             if o.dead {
                 child_exit();
             }
@@ -1838,6 +1954,7 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
         if rfd >= 0 && pf[2].revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
             raw_close(raw.take()); // (the node went: the ring until a new map names it)
             reset = true;
+            gate.forget();
             cursor = sh.sample_head.load(SeqCst);
         }
         drain_wake(sh, slot, wake, pf[0].revents & libc::POLLIN != 0);
