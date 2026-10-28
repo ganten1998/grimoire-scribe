@@ -2,8 +2,11 @@
 # update.sh: Grimoire's updates through KPM (Settings > Updates; docs/KPM.md, Updates).
 #   check preview|stable  puts that channel's feed in KPM (and takes the other channel's away: KPM
 #                         installs the newest Grimoire any feed it knows lists), refreshes KPM's
-#                         index, and prints `kpm search grimoire`. Exit 3: no KPM; 4: the feed could
-#                         not be added; 5: the index could not be refreshed (no network, mostly).
+#                         index, and prints `kpm search grimoire`. Exit 3: no KPM; 4: the feeds could
+#                         not be listed, the feed could not be added, or (releases only) the
+#                         preview feed could not be taken away: nothing more is run, so a refused
+#                         channel change never goes on to update, search or offer a beta; 5: the
+#                         index could not be refreshed (no network, mostly).
 #   install PID [hosted]  run by the launcher as it leaves (from a copy in /tmp, as the update
 #                         replaces this file): once the launcher PID is gone (KPM's hooks refuse
 #                         while it runs), installs the newest Grimoire with KPM, showing its
@@ -24,14 +27,17 @@ upd_check() {
     *) echo "usage: update.sh check preview|stable" >&2; exit 2 ;;
     esac
     [ -x "$KPM" ] || { echo "update.sh: no KPM at $KPM" >&2; exit 3; }
-    repos=$("$KPM" list-repo 2>&1)
+    repos=$("$KPM" list-repo 2>&1) || {
+        printf '%s\n' "$repos" >&2
+        exit 4
+    }
     case $repos in
     *"($url)"*) ;;
     *) "$KPM" add-repo "$url" >&2 || exit 4 ;;
     esac
     # (The preview feed carries the stable releases too: on preview, the stable feed may stay.)
     if [ "$other" = grimoirepreview ]; then
-        case $repos in *"- grimoirepreview -"*) "$KPM" remove-repo grimoirepreview >&2 ;; esac
+        case $repos in *"- grimoirepreview -"*) "$KPM" remove-repo grimoirepreview >&2 || exit 4 ;; esac
     fi
     "$KPM" update >&2 || exit 5
     "$KPM" search grimoire

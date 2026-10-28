@@ -345,8 +345,9 @@ pub fn update_tick(latest: &mut String /* at most UPDATE_VERSION_LEN - 1 bytes *
     let Some(status) = status else { return UpdateEvent::None };
     let code = if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { -1 };
     if code != 0 {
-        // update.sh's codes: 3 no KPM, 4 the feed could not be added, 5 the index could not be
-        // refreshed (no network, mostly).
+        // update.sh's codes: 3 no KPM, 4 the feeds could not be listed or added, or (releases only)
+        // the preview feed could not be removed, 5 the index could not be refreshed (no network,
+        // mostly).
         csnprintf!(why, why_cap, "%s", if code == 3 { "no-kpm" } else if code == 4 { "feed" } else if code == 5 { "network" } else { "failed" });
         qlog!("update: the check did not work (%s, status %d)", &*why, code);
         return UpdateEvent::Failed;

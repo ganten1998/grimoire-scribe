@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """kindle/app/update.sh on the host, with KPM faked (a script keeping its feeds in a file and logging
 every call): check puts the chosen channel's feed in (once), takes the preview feed away for
-releases only, refreshes and prints the search; its exit codes for no KPM, a feed that will not add
-and no network; install waits for the launcher to be gone, installs, starts Grimoire again (not
+releases only, refreshes and prints the search; its exit codes for no KPM, a feed that will not add,
+feeds that will not list, a preview feed that will not go (releases only) and no network, and that
+none of those goes on to update, search or install; install waits for the launcher to be gone, installs, starts Grimoire again (not
 inside KOReader), and leaves grimoire/.update-failed when KPM fails."""
 import os
 import subprocess
@@ -23,6 +24,7 @@ echo "$*" >> "$D/calls"
 [ "$1" = -y ] && shift
 case "$1" in
 list-repo)
+    [ -e "$D/fail-list" ] && { echo "Could not read the repositories"; exit 1; }
     echo "Repositories:"
     while read -r id url; do echo "  - $id - Grimoire $id ($url)"; done < "$D/repos"
     ;;
@@ -31,7 +33,7 @@ add-repo)
     case "$2" in *preview*) id=grimoirepreview ;; *) id=grimoirestable ;; esac
     echo "$id $2" >> "$D/repos"
     ;;
-remove-repo) grep -v "^$2 " "$D/repos" > "$D/repos.new"; mv "$D/repos.new" "$D/repos" ;;
+remove-repo) [ -e "$D/fail-remove" ] && { echo "Could not remove $2"; exit 1; }; grep -v "^$2 " "$D/repos" > "$D/repos.new"; mv "$D/repos.new" "$D/repos" ;;
 update) [ -e "$D/offline" ] && exit 1; echo "Updated indexed packages." ;;
 search)
     printf '\033[32mFound 1 package(s) for grimoire:\033[0m\n'
@@ -101,6 +103,33 @@ class UpdateScript(unittest.TestCase):
         open(os.path.join(self.tmp, 'offline'), 'w').close()
         self.assertEqual(self.run_script('check', 'preview').returncode, 5)
         self.assertEqual(self.run_script('check', 'beta').returncode, 2)
+
+    def test_a_feed_list_that_fails_stops_the_check_for_either_channel(self):
+        open(os.path.join(self.tmp, 'fail-list'), 'w').close()
+        for channel in ('preview', 'stable'):
+            p = self.run_script('check', channel)
+            self.assertEqual(p.returncode, 4, p.stderr)
+            self.assertEqual(p.stdout, '')  # no search result to offer
+            self.assertIn('Could not read the repositories', p.stderr)
+        # Both checks ran `list-repo` and nothing else: no add, remove, update, search or install.
+        self.assertEqual(self.calls(), ['list-repo', 'list-repo'])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'installed')))
+
+    def test_releases_only_stops_when_the_preview_feed_will_not_go(self):
+        self.run_script('check', 'preview')
+        before = len(self.calls())
+        open(os.path.join(self.tmp, 'fail-remove'), 'w').close()
+        p = self.run_script('check', 'stable')
+        self.assertEqual(p.returncode, 4, p.stderr)
+        self.assertEqual(p.stdout, '')  # the beta the preview feed lists is not offered
+        self.assertIn('Could not remove grimoirepreview', p.stderr)
+        # The channel change was tried and refused; update, search and install never followed it.
+        self.assertEqual(self.calls()[before:], ['list-repo', 'add-repo ' + STABLE, 'remove-repo grimoirepreview'])
+        self.assertIn('grimoirepreview', read(os.path.join(self.tmp, 'repos')))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'installed')))
+        # Betas again is a different request: the stable feed may stay, and nothing needs removing.
+        p = self.run_script('check', 'preview')
+        self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_install_waits_then_installs_and_starts_grimoire_again(self):
         # The launcher as on the Kindle: a process nobody here waits for (an orphan, reaped by init).
