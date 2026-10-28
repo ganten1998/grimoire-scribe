@@ -26,6 +26,8 @@ release too.
   to 32, newest first, forgotten when the notebook closes; a toast says when there is none); Show
   link areas is the bar's eye, which draws the dotted, numbered boxes where each link's ink is, on
   and off, remembered; and Whole page sideways is the Display row of the same name.
+  Removing or changing a link now redraws the boxes at once, so a deleted link's box no longer
+  stays on the page.
 
 - **Draw while looking at your computer**: Live view now sends pen movement on its own connection,
   so the browser can show a quick pressure-sensitive line while the exact page image catches up.
