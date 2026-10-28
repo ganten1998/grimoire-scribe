@@ -411,7 +411,7 @@ function ffmpegChecks(work) {
 }
 
 // Fast ink exercises the same model and draw calls the page uses, with no GUI or timing sleeps.
-const {readStyle, readSamples, FastInk, inkWidth, PaintAges} = require('../web/live.js');
+const {readStyle, readSamples, FastInk, inkWidth, PaintAges, shade, INK_LEVEL} = require('../web/live.js');
 const styleBytes = new Uint8Array(64), sd = new DataView(styleBytes.buffer);
 styleBytes[0] = 1; styleBytes[1] = 2;
 [1, 9, .1, .9, 2, .2, .8].forEach((v, i) => sd.setFloat32(4 + i * 4, v, true));
@@ -458,9 +458,54 @@ ok('fast: reconciliation survives sequence wrap', fastInk.segments.length === 1 
 let commands = [];
 const ctx = new Proxy({}, {get: (_, key) => (...args) => commands.push([key, ...args]),
     set: (_, key, value) => { commands.push([key, value]); return true; }});
-fastInk.draw(ctx, .5, false, [255, 255, 255]);
+const plain = {invert: false, clear: false, light: [255, 255, 255]};
+fastInk.draw(ctx, .5, plain);
 ok('fast: overlay clips to page and away from panel, then draws a round mark', commands.some(c => c[0] === 'clip' && c[1] === 'evenodd') &&
     commands.some(c => c[0] === 'arc') && commands.some(c => c[0] === 'fill'));
+// The quick line's colors are repaint()'s: paper black while inverted, else the light; ink light
+// while inverted, else black; with transparent paper, ink as opaque as it is dark and no paper.
+const warm = [255, 200, 150];
+ok('fast colors: ink black, and the paper the light, as the picture shows them', shade(0, plain).join() === '0,0,0,1' &&
+    shade(255, {...plain, light: warm}).join() === '255,200,150,1');
+ok('fast colors: inverted, the paper black and the ink the light', shade(255, {...plain, invert: true}).join() === '0,0,0,1' &&
+    shade(0, {...plain, invert: true, light: warm}).join() === '255,200,150,1');
+ok('fast colors: transparent paper shows no paper, and ink as dark as it is', shade(255, {...plain, clear: true})[3] === 0 &&
+    shade(0, {...plain, clear: true}).join() === '0,0,0,1' && shade(0, {...plain, clear: true, invert: true, light: warm}).join() === '255,200,150,1');
+ok('fast colors: the highlighter is its own gray, not black', INK_LEVEL[4] === 110 && shade(INK_LEVEL[4], plain)[0] === 110);
+// A see-through run is drawn whole on the layer, then laid over the overlay once at its opacity: its
+// segments never pile up toward black. One that is not see-through goes straight on the overlay.
+function drawWith(ink, look) {
+    const main = [], scratch = [];
+    const rec = list => new Proxy({}, {get: (_, key) => (...args) => list.push([key, ...args]),
+        set: (_, key, value) => { list.push([key, value]); return true; }});
+    const layer = {canvas: {width: 10, height: 10}, ctx: rec(scratch)};
+    ink.draw(rec(main), 1, look, layer);
+    return {main, scratch, layer};
+}
+const highlighter = {...inkStyle, tool: 4, min: 35, max: 35, opacityMin: .5, opacityMax: .75};
+const band = new FastInk();
+for (let i = 1; i <= 40; i++) band.accept(makeSample(i, 300 + i * 3, 2, i === 1 ? 20 : 16), highlighter);
+let got = drawWith(band, plain);
+const composite = got.main.filter(c => c[0] === 'drawImage');
+ok('fast: a highlighter stroke goes on the overlay once, at its opacity, in its gray', composite.length === 1 &&
+    composite[0][1] === got.layer.canvas &&
+    got.main.some(c => c[0] === 'globalAlpha' && Math.abs(c[1] - inkWidth(highlighter, {pressure: .5}).opacity) < 1e-6) &&
+    !got.main.some(c => c[0] === 'stroke') && got.scratch.filter(c => c[0] === 'stroke').length === 39 &&
+    got.scratch.some(c => c[0] === 'strokeStyle' && c[1] === 'rgb(110,110,110)'));
+const opaque = new FastInk(), solid = {...inkStyle, opacityMin: 1, opacityMax: 1};
+opaque.accept(makeSample(1, 300, 2, 20), solid);
+opaque.accept(makeSample(2, 320), solid);
+got = drawWith(opaque, plain);
+ok('fast: an opaque stroke is drawn straight on the overlay', !got.main.some(c => c[0] === 'drawImage') &&
+    got.main.some(c => c[0] === 'stroke') && got.scratch.length === 0);
+const white = new FastInk(), whiteInk = {...solid, white: true};
+white.accept(makeSample(1, 300, 2, 20), whiteInk);
+white.accept(makeSample(2, 320), whiteInk);
+got = drawWith(white, {...plain, invert: true});
+ok('fast: white ink inverted is the black paper', got.main.some(c => c[0] === 'strokeStyle' && c[1] === 'rgb(0,0,0)'));
+got = drawWith(white, {...plain, clear: true});
+ok('fast: white ink on transparent paper takes the quick ink under it away',
+    got.main.some(c => c[0] === 'globalCompositeOperation' && c[1] === 'destination-out'));
 fastInk.reset();
 for (let i = 1; i <= 3000; i++) fastInk.accept(makeSample(i, i % 1000, 2, i === 1 ? 20 : 16), inkStyle);
 ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.segments.length === 2048);

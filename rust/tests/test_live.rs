@@ -255,11 +255,8 @@ fn nothing_is_sent_while_the_pairing_card_is_up() {
     // Every tile looked at again, none of the card's sent: the next batch holds the one real change.
     canvas_fill(&mut c, Rect { x: 100, y: 100, w: 10, h: 10 }, 0);
     live_push(&c, Rect { x: 100, y: 100, w: 10, h: 10 });
-    check!(read_batch(sv[1], &mut seen, w, h, &mut hellos) > 0);
-    if seen[105 * w as usize + 105] != 0 {
-        check!(read_batch(sv[1], &mut seen, w, h, &mut hellos) == 1);
-    }
-    check!(seen[0] == 200 && seen[105 * w as usize + 105] == 0);
+    check!(read_batch(sv[1], &mut seen, w, h, &mut hellos) == 1);
+    check!(seen[0] == 200 && seen[105 * w as usize + 105] == 0 && hellos == 1);
     live_stop();
     close(sv[1]);
     canvas_free(&mut c);
@@ -500,11 +497,7 @@ fn the_pen_is_never_sent_asleep_and_a_turn_takes_it_away() {
     check!(quiet(sv[1], 200));
     live_set_state(LIVE_AWAKE);
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_AWAKE as u8);
-    // A fresh epoch on wake: the picture is sent again, without a pen.
-    while !quiet(sv[1], 100) {
-        let f = read_frame(sv[1]);
-        check!(matches!(&f, Some((t, _)) if *t != LIVE_PEN_FRAME as u8));
-    }
+    check!(quiet(sv[1], 200));
     live_pen(LIVE_PEN_HOVER, 7.0, 8.0);
     check!(next_pen(sv[1], &mut pen, None, None) && pen[0] == 7 && pen[1] == 8);
     // The pairing card takes it away the same way.
@@ -512,11 +505,7 @@ fn the_pen_is_never_sent_asleep_and_a_turn_takes_it_away() {
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_PAIRING as u8);
     live_set_state(LIVE_AWAKE);
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_AWAKE as u8);
-    // A fresh epoch on wake: the picture is sent again, without a pen.
-    while !quiet(sv[1], 100) {
-        let f = read_frame(sv[1]);
-        check!(matches!(&f, Some((t, _)) if *t != LIVE_PEN_FRAME as u8));
-    }
+    check!(quiet(sv[1], 200));
     // Turned: the hello, and no pen until it is told on the turned screen (96 wide now).
     live_pen(LIVE_PEN_HOVER, 100.0, 10.0);
     check!(next_pen(sv[1], &mut pen, None, None) && pen[0] == 100);
@@ -567,14 +556,33 @@ fn next_kind(fd: i32, kind: i32) -> Option<Vec<u8>> {
     None
 }
 
+// The samples of the next samples frames, in order: (frame body, offset of the sample); the frames'
+// own heads (u32 ink epoch, u32 reset) are checked by the callers that care.
+fn next_samples(fd: i32, n: usize, frames: &mut Vec<Vec<u8>>) -> Vec<(u32, [u8; LIVE_SAMPLE_BYTES])> {
+    let mut out = Vec::new();
+    while out.len() < n {
+        let Some(body) = next_kind(fd, LIVE_SAMPLES) else { break };
+        check!(body.len() >= 8 && (body.len() - 8) % LIVE_SAMPLE_BYTES == 0 && body.len() <= 8 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH);
+        for at in (8..body.len()).step_by(LIVE_SAMPLE_BYTES) {
+            let mut one = [0u8; LIVE_SAMPLE_BYTES];
+            one.copy_from_slice(&body[at..at + LIVE_SAMPLE_BYTES]);
+            out.push((u32_(&body), one));
+        }
+        frames.push(body);
+    }
+    out
+}
+
 fn fast_samples_arrive_in_order_without_a_present() {
     check!(live_start(300, 200) == 0);
     let sv = socket_pair();
     check!(live_take_pen_viewer(sv[0]));
     close(sv[0]);
     check!(skip_head(sv[1]));
+    let hello = next_kind(sv[1], LIVE_HELLO);
+    check!(matches!(&hello, Some(b) if b.len() == 12 && u16(b) == 2 && u16(&b[2..]) == 300 && u16(&b[4..]) == 200 && u32_(&b[8..]) == 1));
     let b = next_kind(sv[1], LIVE_SAMPLES);
-    check!(matches!(&b, Some(b) if b.len() == 8 && u32_(&b[4..]) == 1));
+    check!(matches!(&b, Some(b) if b.len() == 8 && u32_(b) == 1 && u32_(&b[4..]) == 1));
     let style = LiveStyle {
         enabled: 1,
         tool: 2,
@@ -613,19 +621,17 @@ fn fast_samples_arrive_in_order_without_a_present() {
     let mut expected = [0u8; LIVE_STYLE_BYTES];
     live_style_payload(&mut expected, &style);
     check!(matches!(&b, Some(b) if b[..] == expected[..]));
-    for i in 0..60u32 {
-        let Some(body) = next_kind(sv[1], LIVE_SAMPLES) else {
-            check!(false);
-            break;
-        };
-        check!(body.len() == 28);
-        if body.len() != 28 {
-            break;
-        }
-        check!(u32_(&body[8..]) == first + i && u32_(&body[12..]) == 200 + i);
-        check!(u16(&body[16..]) == i && u16(&body[18..]) == 50 && u16(&body[20..]) == 32768);
-        check!(body[22] as i8 == -30 && body[23] == 40 && body[24] == LIVE_PEN_TOUCH as u8);
-        check!(body[25] == (LIVE_ERASER | LIVE_SIDE | LIVE_DRAW | if i != 0 { 0 } else { LIVE_DOWN }));
+    // All of them, in order; the ones that piled up go several to a frame.
+    let mut frames = Vec::new();
+    let got = next_samples(sv[1], 60, &mut frames);
+    check!(got.len() == 60 && frames.len() < 60);
+    for (i, (epoch, s)) in got.iter().enumerate() {
+        let i = i as u32;
+        check!(*epoch == 1);
+        check!(u32_(s) == first + i && u32_(&s[4..]) == 200 + i);
+        check!(u16(&s[8..]) == i && u16(&s[10..]) == 50 && u16(&s[12..]) == 32768);
+        check!(s[14] as i8 == -30 && s[15] == 40 && s[16] == LIVE_PEN_TOUCH as u8);
+        check!(s[17] == (LIVE_ERASER | LIVE_SIDE | LIVE_DRAW | if i != 0 { 0 } else { LIVE_DOWN }));
     }
     check!(quiet(sv[1], 50)); // no tile was needed, or sent, to release the pen
     live_set_state(LIVE_PAIRING);
@@ -636,8 +642,11 @@ fn fast_samples_arrive_in_order_without_a_present() {
     live_wake_samples();
     check!(quiet(sv[1], 50));
     live_set_state(LIVE_AWAKE);
+    // Awake again: a new ink epoch (each state change moved it on), told by a hello.
+    let hello = next_kind(sv[1], LIVE_HELLO);
+    check!(matches!(&hello, Some(b) if u32_(&b[8..]) == 3));
     let b = next_kind(sv[1], LIVE_SAMPLES);
-    check!(matches!(&b, Some(b) if b.len() == 8));
+    check!(matches!(&b, Some(b) if b.len() == 8 && u32_(b) == 3));
     check!(quiet(sv[1], 50)); // a resume cannot replay a previous epoch's stroke
     live_stop();
     close(sv[1]);
@@ -658,18 +667,14 @@ fn a_ring_overrun_is_explicit_and_keeps_the_newest_samples() {
         last = live_sample(&e, &style);
     }
     live_wake_samples();
-    let b = next_kind(sv[1], LIVE_SAMPLES);
-    check!(matches!(&b, Some(b) if b.len() == 28 && u32_(&b[4..]) == 1));
-    let mut seq = b.as_deref().map(|b| u32_(&b[8..])).unwrap_or(0);
-    check!(seq == last - LIVE_RING as u32 + 1);
-    while seq != last {
-        let Some(body) = next_kind(sv[1], LIVE_SAMPLES) else {
-            check!(false);
-            break;
-        };
-        check!(body.len() == 28 && u32_(&body[8..]) == seq + 1);
-        seq = u32_(&body[8..]);
-    }
+    let mut frames = Vec::new();
+    let got = next_samples(sv[1], LIVE_RING, &mut frames);
+    check!(!frames.is_empty() && u32_(&frames[0][4..]) == 1); // (the reset, on the first frame only)
+    check!(frames.iter().skip(1).all(|f| u32_(&f[4..]) == 0));
+    check!(got.len() == LIVE_RING && u32_(&got[0].1) == last - LIVE_RING as u32 + 1);
+    check!(got.windows(2).all(|w| u32_(&w[1].1) == u32_(&w[0].1) + 1) && u32_(&got[LIVE_RING - 1].1) == last);
+    // A backlog of 512 goes as frames of LIVE_PEN_BATCH, not as 512 sends.
+    check!(frames.len() <= LIVE_RING / LIVE_PEN_BATCH + 1);
     live_stop();
     close(sv[1]);
 }
@@ -693,11 +698,151 @@ fn batch_acknowledges_only_presented_input_even_with_newer_samples() {
     close(sv[0]);
     check!(skip_head(sv[1]));
     let b = next_kind(sv[1], LIVE_BATCH);
-    check!(matches!(&b, Some(b) if b.len() == 16 && u32_(&b[8..]) == rendered && u32_(&b[12..]) == 123));
+    check!(matches!(&b, Some(b) if b.len() == 20 && u32_(&b[8..]) == rendered && u32_(&b[12..]) == 123 && u32_(&b[16..]) == 1));
     // A no-op event still retires its preview, even when no tile changed.
     live_presented(rendered + 1, 124);
     let b = next_kind(sv[1], LIVE_BATCH);
-    check!(matches!(&b, Some(b) if b.len() == 16 && u32_(&b[8..]) == rendered + 1));
+    check!(matches!(&b, Some(b) if b.len() == 20 && u32_(&b[8..]) == rendered + 1 && u32_(&b[16..]) == 1));
+    // A page turned (live_reset): the watermark goes, and the next present (none of the new page's
+    // samples processed yet) says the new ink epoch in a batch of its own, vouching for no sample.
+    live_reset();
+    live_presented(0, 0);
+    let b = next_kind(sv[1], LIVE_BATCH);
+    check!(matches!(&b, Some(b) if b.len() == 20 && u32_(&b[8..]) == 0 && u32_(&b[16..]) == 2));
+    live_presented(0, 0); // (nothing new: no batch)
+    check!(quiet(sv[1], 100));
+    live_stop();
+    close(sv[1]);
+    canvas_free(&mut c);
+}
+
+// A page turned, a pinch, a screen changed (live_reset): the pen's ink epoch moves on, never the
+// screen's. The tiles that did not change are not sent again, and the browser keeps its picture.
+fn a_reset_moves_the_ink_epoch_and_sends_no_tiles() {
+    let (w, h) = (300, 200);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, w, h) == 0);
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            c.px[y * c.stride as usize + x] = ((x * 5 + y * 11) & 0xFF) as u8;
+        }
+    }
+    check!(live_start(w, h) == 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h });
+    let sv = socket_pair();
+    check!(live_take_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    let pv = socket_pair();
+    check!(live_take_pen_viewer(pv[0]));
+    close(pv[0]);
+    check!(skip_head(pv[1]));
+    let b = next_kind(pv[1], LIVE_HELLO);
+    check!(matches!(&b, Some(b) if u32_(&b[8..]) == 1));
+    let mut seen = vec![0u8; (w * h) as usize];
+    let mut hellos = 0;
+    check!(read_batch(sv[1], &mut seen, w, h, &mut hellos) > 0 && hellos == 1);
+    check!(quiet(pv[1], 50) || next_kind(pv[1], LIVE_SAMPLES).is_some_and(|b| b.len() == 8));
+    // The pen hovering before the page turns: the newest record when the new epoch's hello goes.
+    let style = LiveStyle { enabled: 1, clip: Rect { x: 0, y: 0, w, h }, ..Default::default() };
+    let hover = InEvent { type_: InType::PenHover, x: 5.0, y: 5.0, ..Default::default() };
+    live_sample(&hover, &style);
+    live_wake_samples();
+    let mut frames = Vec::new();
+    check!(next_samples(pv[1], 1, &mut frames).len() == 1);
+    live_reset();
+    check!(quiet(sv[1], 200)); // no hello, no tile: nothing changed on the screen
+    let b = next_kind(pv[1], LIVE_HELLO);
+    check!(matches!(&b, Some(b) if b.len() == 12 && u32_(&b[8..]) == 2));
+    let b = next_kind(pv[1], LIVE_SAMPLES);
+    check!(matches!(&b, Some(b) if b.len() == 8 && u32_(b) == 2 && u32_(&b[4..]) == 1));
+    // The next stroke, in the new epoch: its pen-down keeps LIVE_DOWN (the newest record at the
+    // hello was the old epoch's hover, which is never sent).
+    for i in 0..3 {
+        let e = InEvent { type_: if i != 0 { InType::PenMove } else { InType::PenDown }, x: 10.0 + i as f32, y: 10.0, pressure: 0.5, ..Default::default() };
+        live_sample(&e, &style);
+    }
+    live_wake_samples();
+    let got = next_samples(pv[1], 3, &mut frames);
+    check!(got.len() == 3 && got.iter().all(|(epoch, _)| *epoch == 2));
+    check!(got.first().is_some_and(|(_, s)| s[17] & LIVE_DOWN != 0) && got.iter().skip(1).all(|(_, s)| s[17] & LIVE_DOWN == 0));
+    // A change after it: one tile, in a batch, with the same hello as before.
+    canvas_fill(&mut c, Rect { x: 70, y: 70, w: 20, h: 20 }, 0);
+    live_push(&c, Rect { x: 70, y: 70, w: 20, h: 20 });
+    check!(read_batch(sv[1], &mut seen, w, h, &mut hellos) == 1 && hellos == 1);
+    check!(seen[(80 * w + 80) as usize] == 0);
+    live_stop();
+    close(sv[1]);
+    close(pv[1]);
+    canvas_free(&mut c);
+}
+
+// A browser that connects in the middle of a stroke gets the pen's newest place without LIVE_DOWN,
+// even when that sample is the stroke's pen-down: it never starts ink it saw only part of.
+fn a_pen_viewer_joining_mid_stroke_gets_no_pen_down() {
+    check!(live_start(300, 200) == 0);
+    let style = LiveStyle { enabled: 1, clip: Rect { x: 0, y: 0, w: 300, h: 200 }, ..Default::default() };
+    let hover = InEvent { type_: InType::PenHover, x: 40.0, y: 40.0, ..Default::default() };
+    live_sample(&hover, &style);
+    let down = InEvent { type_: InType::PenDown, x: 50.0, y: 50.0, pressure: 0.5, ..Default::default() };
+    let seq = live_sample(&down, &style);
+    let sv = socket_pair();
+    check!(live_take_pen_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    let mut frames = Vec::new();
+    let got = next_samples(sv[1], 1, &mut frames);
+    check!(got.len() == 1 && u32_(&got[0].1) == seq && got[0].1[16] == LIVE_PEN_TOUCH as u8);
+    check!(got[0].1[17] & LIVE_DOWN == 0 && got[0].1[17] & LIVE_DRAW != 0);
+    let mv = InEvent { type_: InType::PenMove, x: 60.0, y: 50.0, pressure: 0.5, ..Default::default() };
+    live_sample(&mv, &style);
+    live_wake_samples();
+    let got = next_samples(sv[1], 1, &mut frames);
+    check!(got.len() == 1 && u32_(&got[0].1) == seq + 1);
+    live_stop();
+    close(sv[1]);
+}
+
+// A batch cut short (the state moved on while it was being sent) vouches for nothing. The screen
+// is noise, 2.25 MB of PNGs, far more than the socket holds: the viewer is still sending when the
+// first tile is read, and the pairing card comes then.
+fn a_batch_cut_short_acknowledges_nothing() {
+    let (w, h) = (1536, 1536);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, w, h) == 0);
+    let mut seed: u32 = 12345;
+    for v in c.px.iter_mut() {
+        seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+        *v = (seed >> 16) as u8;
+    }
+    check!(live_start(w, h) == 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h });
+    let style = LiveStyle { enabled: 1, ..Default::default() };
+    let e = InEvent { type_: InType::PenDown, x: 5.0, y: 6.0, t_ms: 77, ..Default::default() };
+    let s = live_sample(&e, &style);
+    live_presented(s, 77);
+    let sv = socket_pair();
+    check!(live_take_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    let (mut tiles, mut batch, mut paired) = (0, None, false);
+    while let Some((type_, body)) = read_frame(sv[1]) {
+        if type_ == LIVE_TILE_FRAME as u8 {
+            tiles += 1;
+            if !paired {
+                live_set_state(LIVE_PAIRING);
+                paired = true;
+            }
+        } else if type_ == LIVE_BATCH as u8 {
+            batch = Some(body);
+            break;
+        }
+    }
+    let all = live_tiles_across(w) * live_tiles_across(h) / live_tiles_across(w); // (one run a row)
+    check!(paired && tiles >= 1 && tiles < all);
+    check!(matches!(&batch, Some(b) if b.len() == 20 && u32_(&b[8..]) == 0 && u32_(&b[12..]) == 0 && u32_(&b[16..]) == 0));
+    let mut st = [0u8; 3];
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_PAIRING as u8);
     live_stop();
     close(sv[1]);
     canvas_free(&mut c);
@@ -719,5 +864,8 @@ fn test_live() {
     run!(fast_samples_arrive_in_order_without_a_present);
     run!(a_ring_overrun_is_explicit_and_keeps_the_newest_samples);
     run!(batch_acknowledges_only_presented_input_even_with_newer_samples);
+    run!(a_reset_moves_the_ink_epoch_and_sends_no_tiles);
+    run!(a_pen_viewer_joining_mid_stroke_gets_no_pen_down);
+    run!(a_batch_cut_short_acknowledges_nothing);
     done();
 }

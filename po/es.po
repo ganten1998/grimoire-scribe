@@ -1022,23 +1022,37 @@ msgstr "Como en el Kindle"
 msgid "Show pen"
 msgstr "Mostrar el lápiz"
 
-#. TRANSLATORS: browser controls and the optional latency meter; M toggles Monitor mode.
+#. TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
+#. controls away, for drawing on the Kindle while looking at the computer; M is its key.
 #: src/httpd.c
 msgid "Monitor mode (M)"
 msgstr "Modo monitor (M)"
 
+#. TRANSLATORS: Live view's button in the browser that shows or hides its latency readout.
 #: src/httpd.c
 msgid "Latency"
 msgstr "Latencia"
 
+#. TRANSLATORS: the latency readout: how late the pen's quick line shows in the browser, from
+#. when the Kindle read the pen to when the browser draws it.
 #: src/httpd.c
 msgid "Pen age at paint"
-msgstr "Tiempo del lápiz al dibujar"
+msgstr "Retraso del lápiz en pantalla"
 
+#. TRANSLATORS: the latency readout: how late Grimoire's exact image of the page (the real ink
+#. that replaces the quick line) shows in the browser, from when the Kindle read the pen.
 #: src/httpd.c
-msgid "Tile batch age at paint"
-msgstr "Tiempo de los bloques al dibujar"
+msgid "Page image age at paint"
+msgstr "Retraso de la imagen en pantalla"
 
+#. TRANSLATORS: the latency readout's three numbers for each line: the median, the 90th
+#. percentile and the largest of the latest measurements.
+#: src/httpd.c
+msgid "p50 / p90 / max"
+msgstr "p50 / p90 / máx"
+
+#. TRANSLATORS: the latency readout: how far off its times may be, the Kindle's clock and the
+#. computer's being compared over the network.
 #: src/httpd.c
 msgid "Clock uncertainty"
 msgstr "Incertidumbre del reloj"
@@ -1101,6 +1115,7 @@ msgstr "Ese código no es el del Kindle."
 msgid "Too many tries. Wait 30 seconds, then type the new code."
 msgstr "Demasiados intentos. Espera 30 segundos y escribe el código nuevo."
 
+#. TRANSLATORS: Live view's answer to a third computer (two can watch at once).
 #: src/httpd.c
 msgid "Two computers are watching already."
 msgstr "Ya hay dos ordenadores mirando."

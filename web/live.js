@@ -1,6 +1,20 @@
-// Live view: authoritative PNG tiles on /live/stream and early pen samples on /live/pen.
-// src/live.h defines the version 2 wire format. The separate reader and overlay can paint ink
-// while PNG decoding is pending. Tests run the pure model and this page with DOM/canvas stand-ins.
+// Live view: what Grimoire on the Kindle shows, as it shows it. src/live.c (rust/src/live.rs)
+// streams the screen as PNG tiles over one long response (GET /live/stream); this draws them on a
+// canvas and keeps it connected. The pen comes on a stream of its own (GET /live/pen): its samples
+// draw a quick line on a canvas over the picture at once (fast ink), which the tiles' real ink
+// replaces as their batches say it reaches past them, while PNGs are still being decoded. Frames
+// are little-endian: u32 length (of the type byte and the payload), u8 type, payload. 1 hello (u16
+// version 2, w, h, tile; u32 the screen's epoch, or on /live/pen the ink epoch), 2 tile (u16 x, y,
+// w, h; the PNG), 3 batch end (u32 seq, u32 the Kindle's ms, u32 the newest pen sample its ink
+// holds, u32 that sample's ms, u32 the ink epoch it was presented in), 4 ping, 5 state (u8 0 awake,
+// 1 asleep, 2 pairing, 3 bye; u8 1 when Grimoire shows its colors inverted; u8 the front light's
+// warmth, 0..24, 255 for none: the picture follows both unless the Invert switch or the Warmth
+// slider here says otherwise), 6 pen (u16 x, y; u8 0 away, 1 hovering, 2 touching: drawn over the
+// picture, never in it, while there is no /live/pen; a hello or any state but awake takes it
+// away), 7 samples (u32 ink epoch, u32 reset, then 20 bytes a sample), 8 ink style (64 bytes).
+// src/live.h (live.rs's head) has them byte by byte. Under node (tests/live_check.js) it only
+// exports the frame reader, the pure parts below and CodecRecorder (which the check runs on a
+// stand-in encoder); tests/live_browser_check.js runs the page itself on DOM and canvas stand-ins.
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
@@ -358,28 +372,74 @@
         this.segments = this.segments.filter(s => after(s.to.seq, seq));
         // Keep prev: the next segment must still start where the now-authoritative ink ended.
     };
-    FastInk.prototype.draw = function (ctx, k, invert, light) {
-        for (const s of this.segments) {
+    // What each tool deposits, 0 (black) .. 255 (src/brush.c's look_of, by tool id): the quick
+    // line's shade, before the picture's own look (inverted, the warm light, transparent paper).
+    const INK_LEVEL = [38, 32, 12, 255, 110, 8, 5, 22, 14, 6];
+    // A pixel of the Kindle's (0 ink .. 255 paper) as repaint() shows it, look being {invert, clear,
+    // light}: [r, g, b, alpha]. White ink and the precise eraser bring the paper back (255): black
+    // while inverted, else the light; with transparent paper, nothing.
+    function shade(v, look) {
+        const [r, g, b] = look.light, dark = 255 - v;
+        if (look.clear) return look.invert ? [r, g, b, dark / 255] : [0, 0, 0, dark / 255];
+        const lit = (look.invert ? dark : v) / 255;
+        return [r * lit, g * lit, b * lit, 1];
+    }
+    // Segments i..j-1 (one run) on c, in its own pixels with k to each of the screen's.
+    function strokeRun(c, segs, i, j, k, color) {
+        const style = segs[i].style;
+        c.save();
+        c.scale(k, k);
+        c.beginPath();
+        c.rect(...style.clip);
+        c.clip();
+        // The panel stays above a stroke even when that stroke crosses it.
+        c.beginPath();
+        c.rect(...style.clip);
+        c.rect(...style.exclude);
+        c.clip('evenodd');
+        c.strokeStyle = c.fillStyle = color;
+        c.lineCap = c.lineJoin = 'round';
+        for (let n = i; n < j; n++) {
+            const s = segs[n];
+            c.lineWidth = (s.from.width + s.to.width) / 2;
+            c.beginPath();
+            if (s.from === s.to) { c.arc(s.to.x, s.to.y, s.to.width / 2, 0, Math.PI * 2); c.fill(); }
+            else { c.moveTo(s.from.x, s.from.y); c.lineTo(s.to.x, s.to.y); c.stroke(); }
+        }
+        c.restore();
+    }
+    // The quick ink on ctx (cleared by the caller), run by run: a run is one stroke's segments in a
+    // row with one style. A see-through one is drawn whole on layer ({canvas, ctx}, as big as ctx's
+    // canvas, clear) at full strength, then laid over ctx once at its strongest opacity: segments laid
+    // one over another at their own (a few to ten or more cover each pixel of a highlighter's band)
+    // would add up to near black over the writing it highlights. Without a layer (the checks) each
+    // segment goes straight on ctx.
+    FastInk.prototype.draw = function (ctx, k, look, layer) {
+        const segs = this.segments;
+        for (let i = 0, j; i < segs.length; i = j) {
+            for (j = i + 1; j < segs.length && segs[j].style === segs[i].style && segs[j].from === segs[j - 1].to; j++) {}
+            const style = segs[i].style;
+            let opacity = 0;
+            for (let n = i; n < j; n++) opacity = Math.max(opacity, segs[n].to.opacity);
+            const [r, g, b, a] = shade(style.white ? 255 : (INK_LEVEL[style.tool] ?? INK_LEVEL[0]), look);
+            // White ink on transparent paper takes the quick ink under it away, as it shows no paper.
+            const out = style.white && look.clear;
+            const color = 'rgb(' + r + ',' + g + ',' + b + ')', alpha = out ? opacity : opacity * a;
+            if (!layer || (alpha >= 1 && !out)) {
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                if (out) ctx.globalCompositeOperation = 'destination-out';
+                strokeRun(ctx, segs, i, j, k, color);
+                ctx.restore();
+                continue;
+            }
+            strokeRun(layer.ctx, segs, i, j, k, color);
             ctx.save();
-            ctx.scale(k, k);
-            ctx.beginPath();
-            ctx.rect(...s.style.clip);
-            ctx.clip();
-            // The panel stays above a stroke even when that stroke crosses it.
-            ctx.beginPath();
-            ctx.rect(...s.style.clip);
-            ctx.rect(...s.style.exclude);
-            ctx.clip('evenodd');
-            const white = s.style.white !== invert;
-            const color = white ? 'rgb(' + light.join(',') + ')' : '#222';
-            ctx.strokeStyle = ctx.fillStyle = color;
-            ctx.globalAlpha = s.to.opacity;
-            ctx.lineWidth = (s.from.width + s.to.width) / 2;
-            ctx.lineCap = ctx.lineJoin = 'round';
-            ctx.beginPath();
-            if (s.from === s.to) { ctx.arc(s.to.x, s.to.y, s.to.width / 2, 0, Math.PI * 2); ctx.fill(); }
-            else { ctx.moveTo(s.from.x, s.from.y); ctx.lineTo(s.to.x, s.to.y); ctx.stroke(); }
+            ctx.globalAlpha = alpha;
+            ctx.globalCompositeOperation = out ? 'destination-out' : 'source-over';
+            ctx.drawImage(layer.canvas, 0, 0);
             ctx.restore();
+            layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         }
     };
     function PaintAges() { this.best = Infinity; this.samples = []; this.tiles = []; }
@@ -403,7 +463,7 @@
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
-            mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples, FastInk, inkWidth, PaintAges};
+            mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples, FastInk, inkWidth, PaintAges, shade, INK_LEVEL};
         return;
     }
 
@@ -431,8 +491,15 @@
     inkLayer.className = 'pen';
     stage.append(view, inkLayer, penLayer);
     const ink = new FastInk(), ages = new PaintAges();
-    let epoch = 0, penEpoch = 0, fastConnected = false, paintSamples = [], debug = false, monitor = false;
-    let tileAck = 0, paintedAck = 0, tileStamp = null;
+    // penEpoch: the ink epoch /live/pen is in (0 before its hello); tileInk: the one the picture as
+    // drawn is in (the newest painted batch's), so quick ink is drawn only over the screen it was
+    // drawn on: a page turned, a pinch or a turn shows none until the picture has caught up.
+    // batchAck, batchAckMs, batchInk: what the batches read since the last paint vouch for, taken by
+    // the next one (painted); paintedAck, paintedInk: what the painted picture holds, for a new or
+    // reset pen stream to start from. tileHellos: how many tile hellos came (runFast waits for one).
+    let penEpoch = 0, tileInk = 0, fastConnected = false, paintSamples = [], debug = false, monitor = false;
+    let batchAck = 0, batchAckMs = 0, batchInk = 0, paintedAck = 0, paintedInk = 0, layer = null;
+    let tileHellos = 0, helloWaiters = [], penW = 0, penH = 0;
     const meter = document.createElement('output');
     meter.className = 'latency';
     meter.hidden = true;
@@ -525,6 +592,23 @@
         debugButton.setAttribute('aria-pressed', String(debug));
         if (debug) syncClock();
     });
+    // The quick ink is drawn only over the picture of the ink epoch it is in (penEpoch, tileInk).
+    function drawable() { return penEpoch !== 0 && penEpoch === tileInk; }
+    // The samples' pen over any picture of the same size (penW x penH, the pen stream's hello's): a
+    // page turned keeps it, a turn of the screen takes it away until both streams are turned.
+    function dotShown() { return penEpoch !== 0 && tileInk !== 0 && penW === raw.width && penH === raw.height; }
+    // A canvas as big as inkLayer for FastInk.draw's see-through runs (made at the first need).
+    function inkScratch() {
+        if (!layer) {
+            const canvas = document.createElement('canvas');
+            layer = {canvas, ctx: canvas.getContext('2d')};
+        }
+        if (layer.canvas.width !== inkLayer.width || layer.canvas.height !== inkLayer.height) {
+            layer.canvas.width = inkLayer.width;
+            layer.canvas.height = inkLayer.height;
+        }
+        return layer;
+    }
     function setMonitor(on, gesture) {
         monitor = on; fit = true; showPen = true;
         penSwitch.setAttribute('aria-checked', 'true');
@@ -552,7 +636,7 @@
         if (!debug) return;
         const fmt = list => { const s = ages.stats(list); return s ? s.map(x => x.toFixed(1)).join(' / ') + ' ms' : '...'; };
         meter.textContent = words.sampleAge + ': ' + fmt(ages.samples) + ' | ' + words.tileAge + ': ' + fmt(ages.tiles) +
-            ' | p50 / p90 / max | ' + words.clockError + ': ' + (ages.best < Infinity ? (ages.best / 2).toFixed(1) + ' ms' : '...');
+            ' | ' + words.stats + ' | ' + words.clockError + ': ' + (ages.best < Infinity ? (ages.best / 2).toFixed(1) + ' ms' : '...');
     }
     setInterval(() => { if (debug) syncClock(); }, 30000);
     recordLabel();
@@ -620,7 +704,8 @@
     function drawPen() {
         penQueued = false;
         inkCtx.clearRect(0, 0, inkLayer.width, inkLayer.height);
-        if (raw.width && penEpoch === epoch) ink.draw(inkCtx, view.width / raw.width, inverted(), light);
+        if (raw.width && drawable())
+            ink.draw(inkCtx, view.width / raw.width, {invert: inverted(), clear, light}, inkScratch());
         if (debug) for (const s of paintSamples) ages.add(ages.samples, performance.now(), s.ms);
         paintSamples = [];
         showAges();
@@ -808,11 +893,38 @@
         presentQueued = true;
         requestAnimationFrame(() => {
             present();
-            if (tileAck) { paintedAck = tileAck; if (penEpoch === epoch) ink.reconcile(tileAck); }
-            if (debug && tileStamp !== null) ages.add(ages.tiles, performance.now(), tileStamp);
-            tileStamp = null;
+            painted();
             drawPen();
         });
+    }
+    // The batches read since the last paint are on the page now, all their tiles in this same frame:
+    // the picture is in their ink epoch, and the quick ink they vouch for goes. Their age is the
+    // newest pen sample's in them (the Kindle's own handling, rendering, PNGs and the network
+    // included), never the batch's: an ack-only batch counts too, a tile-less one with none not.
+    function painted() {
+        if (!batchInk) return;
+        tileInk = batchInk;
+        if (batchAck) {
+            paintedAck = batchAck;
+            paintedInk = batchInk;
+            if (batchInk === penEpoch) ink.reconcile(batchAck);
+            if (debug) ages.add(ages.tiles, performance.now(), batchAckMs);
+        }
+        batchAck = batchInk = 0;
+        if (fastConnected) movePen(dotShown() ? ink.pen : null);
+    }
+    // A stream of another version: this page is not that Grimoire's (a tab left open across an
+    // update), and the Kindle serves the matching one with each load. Loaded again, once a minute
+    // at most; where the page cannot remember when it last did (no storage), never.
+    function protocolMismatch() {
+        try {
+            const now = Date.now(), last = Number(sessionStorage.getItem('grimoire.live.reload')) || 0;
+            if (!(now - last >= 0 && now - last < 60000)) {
+                sessionStorage.setItem('grimoire.live.reload', String(now));
+                location.reload();
+            }
+        } catch (e) { /* no storage */ }
+        throw new Error('unsupported live protocol');
     }
     function full() {
         const el = document.documentElement;
@@ -955,23 +1067,22 @@
             for (const {type, body} of frames.push(value)) {
                 const d = new DataView(body.buffer, body.byteOffset, body.length);
                 if (type === 1 && body.length >= 12) {
-                    if (d.getUint16(0, true) !== 2) throw new Error('unsupported live protocol');
-                    const nextEpoch = d.getUint32(8, true);
-                    if (nextEpoch !== epoch) {
-                        if (nextEpoch !== penEpoch) { ink.reset(); paintSamples = []; }
-                        paintedAck = 0;
-                    }
-                    epoch = nextEpoch; tileAck = 0;
+                    if (d.getUint16(0, true) !== 2) protocolMismatch();
+                    // The picture starts again from white (a start, a turn, a new stream): no quick
+                    // ink until a batch says which ink epoch it is in.
+                    tileInk = batchAck = batchInk = paintedAck = paintedInk = 0;
                     const w = d.getUint16(2, true), h = d.getUint16(4, true);
                     raw.width = shown.width = w;
                     raw.height = shown.height = h;
                     rawCtx.fillStyle = '#fff';
                     rawCtx.fillRect(0, 0, w, h);
                     pending = [];
-                    movePen(penEpoch === epoch ? ink.pen : null);
+                    movePen(null);  // (a hello takes the pen away: the next pen frame or sample is on the new screen)
                     probeH264(w, h);
                     layout();
                     if (filming()) filmAll();
+                    tileHellos++;
+                    for (const wake of helloWaiters.splice(0)) wake();
                 } else if (type === 2 && body.length > 8) {
                     const x = d.getUint16(0, true), y = d.getUint16(2, true);
                     const w = d.getUint16(4, true), h = d.getUint16(6, true);
@@ -987,8 +1098,17 @@
                         if (t.bmp.close) t.bmp.close();
                         dirty = dirty ? union(dirty, t) : {x: t.x, y: t.y, w: t.w, h: t.h};
                     }
-                    tileAck = body.length >= 16 ? d.getUint32(8, true) : 0;
-                    tileStamp = body.length >= 8 ? d.getUint32(4, true) : null;
+                    // What it vouches for (none in a batch cut short: its ink epoch is 0 then), kept
+                    // for the paint that shows it. A later batch of another ink epoch replaces it.
+                    const ack = body.length >= 20 ? d.getUint32(8, true) : 0, at = body.length >= 20 ? d.getUint32(16, true) : 0;
+                    if (at) {
+                        if (at !== batchInk) batchAck = 0;
+                        batchInk = at;
+                        if (ack) {
+                            batchAck = ack;
+                            batchAckMs = d.getUint32(12, true);
+                        }
+                    }
                     if (dirty) repaint(dirty.x, dirty.y, dirty.w, dirty.h);
                     else presentSoon(0, 0, 1, 1);
                     status(words.live, true);
@@ -1016,44 +1136,81 @@
         }
     }
     const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // The pen stream until it ends: 'bye' when Live view was turned off on the Kindle.
     async function readFast(reader) {
         const frames = new Frames();
         let style = null;
         for (;;) {
             const {value, done} = await reader.read();
-            if (done) return;
+            if (done) return null;
             for (const {type, body} of frames.push(value)) {
                 if (type === 1) {
-                    if (body.length !== 12 || new DataView(body.buffer).getUint16(0, true) !== 2)
-                        throw new Error('unsupported pen protocol');
-                    penEpoch = new DataView(body.buffer).getUint32(8, true);
-                    ink.reset(); if (penEpoch === epoch) ink.reconcile(paintedAck);
-                    paintSamples = []; style = null;
+                    if (body.length !== 12 || new DataView(body.buffer).getUint16(0, true) !== 2) protocolMismatch();
+                    // A new ink epoch (or stream): nothing drawn before joins what comes.
+                    const hd = new DataView(body.buffer);
+                    penEpoch = hd.getUint32(8, true);
+                    penW = hd.getUint16(2, true);
+                    penH = hd.getUint16(4, true);
+                    ink.reset();
+                    if (paintedInk === penEpoch) ink.reconcile(paintedAck);
+                    paintSamples = [];
+                    style = null;
                     movePen(null);
                 } else if (type === 8) style = readStyle(body);
                 else if (type === 7) {
                     const packet = readSamples(body);
-                    if (packet.reset) { ink.reset(); paintSamples = []; if (penEpoch === epoch) ink.reconcile(paintedAck); }
+                    if (packet.reset) {
+                        ink.reset();
+                        paintSamples = [];
+                        if (paintedInk === penEpoch) ink.reconcile(paintedAck);
+                    }
                     if (packet.epoch !== penEpoch) continue;
                     for (const sample of packet.samples) if (ink.accept(sample, style)) paintSamples.push(sample);
                     if (paintSamples.length > 2048) paintSamples.splice(0, paintSamples.length - 2048);
-                    movePen(penEpoch === epoch ? ink.pen : null);
+                    movePen(dotShown() ? ink.pen : null);
                 } else if (type === 5 && body[0] !== 0) {
-                    ink.reset(); paintSamples = []; movePen(null);
-                    if (body[0] === 3) return;
+                    ink.reset();
+                    paintSamples = [];
+                    movePen(null);
+                    if (body[0] === 3) return 'bye';
                 }
             }
         }
     }
+    // The next tile hello after the n-th: the tile stream (re)connected to a Kindle that streams.
+    function tileHello(n) {
+        return tileHellos > n ? Promise.resolve() : new Promise(r => helloWaiters.push(r));
+    }
+    // The pen stream: once the tile stream has said hello, and again after it fails as run() does it
+    // (from 500 ms, twice as long each time, up to 8 s). Live view off (404, which a Grimoire with no
+    // /live/pen answers too) or turned off (bye) waits for the tile stream's next hello instead; no
+    // longer paired (401, 403) stops it.
     (async function runFast() {
-        for (;;) {
+        let seen = 0;
+        for (let delay = 500;;) {
+            await tileHello(seen);
+            let how = null;
             try {
                 const r = await fetch('/live/pen', {cache: 'no-store', credentials: 'same-origin'});
                 if (r.status === 401 || r.status === 403) return;
-                if (r.ok && r.body) { fastConnected = true; await readFast(r.body.getReader()); }
+                if (r.status === 404) how = 'gone';
+                else if (r.ok && r.body) {
+                    delay = 500;
+                    fastConnected = true;
+                    how = await readFast(r.body.getReader());
+                }
             } catch (e) { /* the next connection starts with a fresh stroke */ }
-            fastConnected = false; ink.reset(); paintSamples = []; movePen(null);
-            await sleep(500);
+            fastConnected = false;
+            ink.reset();
+            paintSamples = [];
+            penEpoch = 0;
+            movePen(null);
+            if (how === 'gone' || how === 'bye') {
+                seen = tileHellos;
+                continue;
+            }
+            await sleep(delay);
+            delay = Math.min(delay * 2, 8000);
         }
     })();
     (async function run() {

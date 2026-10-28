@@ -192,8 +192,9 @@ static G_LIVE_AWAKE: AtomicBool = AtomicBool::new(false);
 // (PORTING.md, The App). on, asleep and input_yielded follow the App wherever they change
 // (live_hover_sync); editor and styles are what the C's live_capture would find: a->scr ==
 // SCR_EDITOR && a->book.state != BOOK_RUNNING, and editor_live_style for an event of each eraser
-// and side button state, made again after every event and tick (live_cap_sync) and as Live view
-// starts, the moments the editor's state changes while no pen sample can be read.
+// and side button state. They are made again after every event and every tick (live_cap_sync) and
+// as Live view starts: a sample input_poll reads takes the App as the loop left it, one a pump reads
+// in the middle of an event the App as that event began (PORTING.md, Decided differences).
 #[derive(Clone, Copy, Default)]
 struct LiveCap {
     on: bool,
@@ -679,10 +680,15 @@ fn hid_changed(a: &mut App, ev: &InEvent) {
 
 pub fn app_event(a: &mut App, ev: &InEvent) {
     app_event_screens(a, ev);
+    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false)); // (the work before the screens' ends at any return)
     live_cap_sync(a);
 }
 
 fn app_event_screens(a: &mut App, ev: &InEvent) {
+    // Keys, the power button, sleep and wake do work that pumps the pens too (a shortcut turns the
+    // page): no quick ink from what it reads before that work is done, as for a screen's own UI
+    // work below.
+    LIVE_CAPTURE_BLOCKED.with(|b| b.set(true));
     if ev.type_ == InType::Quit {
         a.running = false;
         return;
@@ -807,6 +813,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     if a.asleep && power_asleep_drops(ev) {
         return;
     }
+    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false));
     let mut captured = *ev;
     let t = ev.type_ as i32;
     if captured.live_seq == 0 && t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
@@ -928,6 +935,9 @@ fn live_capture(ev: &mut InEvent) {
         style = cap.styles[ev.eraser as usize][ev.side_button as usize];
     }
     let ui = ev.type_ == InType::PenDown && (style.enabled == 0 || rect_contains(style.exclude, ev.x as i32, ev.y as i32));
+    if ui {
+        style = LiveStyle::default(); // (a pen-down on UI draws nothing: its LIVE_DRAW says so too)
+    }
     ev.live_seq = live_sample(ev, &style);
     if ui {
         LIVE_UI_PENDING.with(|p| p.set(ev.live_seq));

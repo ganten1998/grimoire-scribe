@@ -819,14 +819,17 @@ impl State {
                 lat_match_raw(&mut self.match_, ev_us(ev), self.W.x, self.W.y);
             }
             self.wacom_frame_us = ev_us(ev);
-            if let Some(f) = self.hover_fn {
-                return self.hover_from_raw().map(|(x, y)| match self.sample_fn {
-                    Some(sample) => {
+            // Either hook wants the hover: the sample hook alone too (it takes the place of the
+            // hover hook's while it is set).
+            if self.hover_fn.is_some() || self.sample_fn.is_some() {
+                return self.hover_from_raw().and_then(|(x, y)| match (self.sample_fn, self.hover_fn) {
+                    (Some(sample), _) => {
                         let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.W.side, ..Default::default() };
                         e.k_ms = pensync_ms(self.wacom_frame_us, self.wacom_mono, e.t_ms);
-                        HoverTo::Sample(sample, e)
+                        Some(HoverTo::Sample(sample, e))
                     }
-                    None => HoverTo::Place(f, x, y),
+                    (None, Some(f)) => Some(HoverTo::Place(f, x, y)),
+                    (None, None) => None,
                 });
             }
             return None;
@@ -1024,7 +1027,7 @@ impl State {
         calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut e.tilt_x, &mut e.tilt_y);
         e.eraser = self.P.eraser;
         e.side_button = self.P.side || self.W.side;
-        if self.hover_fn.is_some() && contact {
+        if (self.hover_fn.is_some() || self.sample_fn.is_some()) && contact {
             self.hover_learn();
         }
         e.t_ms = now_ms();

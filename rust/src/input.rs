@@ -209,13 +209,17 @@ pub fn input_set_grab(grab: bool) -> bool {
 /// digitizer's frames while the pen is near and not touching; NULL stops it. On the Kindle the pen
 /// service relays the pen coming and going but not where it hovers, so this is the only way to know
 /// (pensync.h); never while input_set_grab(false) has given the pen to the Kindle. The simulator's
-/// hovering mouse comes as IN_PEN_HOVER events, so there it does nothing.
+/// hovering mouse comes as IN_PEN_HOVER events, so there it does nothing. While input_sample_hook is
+/// set, the raw hover goes to its sample callback instead (an IN_PEN_HOVER that is never queued),
+/// with or without this hook.
 #[inline]
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
     platform::input_hover_hook(f)
 }
-/// Called before a pen event is queued, including during work_pump; NULL removes it. The batch
-/// callback runs once after reading the pens. Neither callback may wait, allocate or log.
+/// Called before a pen event is queued, including during work_pump; NULL removes it. On the Kindle
+/// it also gets the raw digitizer's hover (input_hover_hook's place, as an IN_PEN_HOVER event that is
+/// never queued: no screen sees it). The batch callback runs once after reading the pens (the
+/// simulator: before each event is taken). Neither callback may wait, allocate or log.
 #[inline]
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
     platform::input_sample_hook(sample, batch)
