@@ -79,10 +79,13 @@ pub enum IconKind {
     /// the Index's (Rust only): Go to page or name, and the link areas' eye
     Search = 54,
     Eye = 55,
+    /// the Links bar's New link and Index buttons (Rust only)
+    LinkPlus = 56,
+    Bubbles = 57,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 56;
+    pub const COUNT: usize = 58;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -289,6 +292,8 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Clock as usize] = 0xF0150; // md-clock_outline
     k[IconKind::Search as usize] = 0xF0349; // md-magnify
     k[IconKind::Eye as usize] = 0xF0208; // md-eye
+    k[IconKind::LinkPlus as usize] = 0xF0C94; // md-link_plus
+    k[IconKind::Bubbles as usize] = 0xF05E3; // md-chart_bubble
     k
 };
 

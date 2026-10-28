@@ -30,6 +30,9 @@ const HINT_EYE: i32 = 1 << 2;
 const HINT_PAN: i32 = 1 << 6;
 /// the editor shows the whole page sideways now (landscape_fit), for an owner who had the width
 const HINT_SIDEWAYS: i32 = 1 << 8;
+/// settings.hints' bits 3 and 4: how many times the Links bar showed its second header line (0 to 3)
+const HINT_BAR_SHIFT: i32 = 3;
+const HINT_BAR_MASK: i32 = 3;
 /// The back list holds this many pages: the oldest is dropped past it.
 const BACK_MAX: usize = 32;
 // The "Move the pen away, then swipe." toast shows at most once in this long.
@@ -79,6 +82,10 @@ enum Owner {
     Build = 8,     // OWN_BUILD
     Templates = 9, // OWN_TEMPLATES
     Link = 10,     // OWN_LINK
+    /// a pointer that began on the Links bar (its chips, tool row, grip or header)
+    Bar = 11,
+    /// a pointer that began outside the bar (or Find), the panel included: swallowed, decided at the lift
+    Outside = 12,
 }
 
 // Every page visited while a notebook is open stays in memory with its history: undo
@@ -268,6 +275,8 @@ pub struct EditorState {
     back: Vec<u32>,
     /// the open page's link boxes (the eye, the bar's numbers)
     boxes: LinkBoxes,
+    /// the Links bar (linkbar.rs), over the page while it is open
+    lb: LinkBar,
 
     /// Display sheet (front light, invert)
     dm: DispMenu,
@@ -408,6 +417,20 @@ fn with_pv<R>(a: &mut App, f: impl FnOnce(&mut PagesView, &mut App, &NotebookInf
     let r = f(&mut pv, a, &nb, &nav);
     let s = ed(a);
     s.pv = pv;
+    s.nb = nb;
+    s.nav = nav;
+    r
+}
+
+// The same for the Links bar, with the notebook and its Nav that it reads.
+fn with_lb<R>(a: &mut App, f: impl FnOnce(&mut LinkBar, &mut App, &NotebookInfo, &Nav) -> R) -> R {
+    let s = ed(a);
+    let mut lb = std::mem::take(&mut s.lb);
+    let nb = std::mem::take(&mut s.nb);
+    let nav = std::mem::take(&mut s.nav);
+    let r = f(&mut lb, a, &nb, &nav);
+    let s = ed(a);
+    s.lb = lb;
     s.nb = nb;
     s.nav = nav;
     r
@@ -991,7 +1014,7 @@ fn touch_context(a: &App) {
     input_touch_context(TgView {
         scrolls_v: pans && a.h as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
-        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open),
+        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open),
         gestures_on: a.settings.gestures,
         record: false,
         keyboard_open: s.pv.kb.open,
@@ -1460,6 +1483,21 @@ fn compose(a: &mut App, r: Rect) {
     if s.tools_open && rect_overlaps(r, s.tools_rect) {
         draw_tools(a);
     }
+    // The Links bar, over everything (laid out again as it is drawn: a turn changes the screen it is on).
+    let s = ed(a);
+    if s.lb.open {
+        let (aw, ah) = (a.w, a.h);
+        let rect = {
+            let lb = &mut ed(a).lb;
+            linkbar_layout(lb, aw, ah);
+            lb.rect
+        };
+        if rect_overlaps(r, rect) {
+            let peek = 0;
+            with_lb(a, |lb, a, nb, nav| linkbar_draw(lb, a, nb, nav, peek));
+        }
+        a.toast_floor = rect.y;
+    }
 }
 
 // A page-space change: recompose what it covers on screen and refresh it.
@@ -1627,6 +1665,15 @@ impl EditorState {
         let ids: Vec<u32> = (0..self.nb.npages().max(0) as usize).map(|i| self.nb.page_ids[i]).collect();
         self.back.retain(|p| ids.contains(p));
     }
+    /// Where the newest page on the back list that is still in the notebook is: its index and what it is
+    /// called (its Index name, or "Page 3"). None while the list is empty.
+    fn back_top(&mut self) -> Option<(i32, String)> {
+        self.back_prune();
+        let pid = *self.back.last()?;
+        let i = (0..self.nb.npages()).find(|&i| self.nb.page_ids[i as usize] == pid)?;
+        let name = nav_name(&self.nav, pid);
+        Some((i, if name.is_empty() { cformat!(tr("Page %d"), i + 1) } else { name.to_string() }))
+    }
     /// The open page's id, 0 with none.
     fn open_pid(&self) -> u32 {
         if self.open && self.index >= 0 && self.index < self.nb.npages() {
@@ -1760,6 +1807,7 @@ fn close_notebook(a: &mut App) {
     s.link_mode = false;
     s.back = Vec::new();
     s.boxes.stale = true;
+    bar_drop(s);
     // Pages an older version had saved on blank paper got their pictures back as they opened: the
     // thumbnail and the PDF it drew of them are drawn again.
     if store_take_restored_count() > 0 {
@@ -2400,7 +2448,13 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open
+    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open
+}
+
+/// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
+/// stays), or a pen contact outside it is being swallowed. Fast ink never previews such a contact.
+pub fn editor_pen_not_ink(a: &App) -> bool {
+    a.ed.as_deref().is_some_and(|s| s.lb.open || (s.owner == Owner::Outside && s.owner_is_pen))
 }
 
 /// A cheap snapshot for the early input hook. UI gestures never paint provisional ink. The
@@ -2408,7 +2462,7 @@ fn sheet_open(s: &EditorState) -> bool {
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.link_mode || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) {
+    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.link_mode || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
@@ -3032,6 +3086,104 @@ fn open_tools(a: &mut App) {
     app_invalidate(a, r, RefreshMode::Ui);
 }
 
+// ---- the Links bar ----
+
+// The bar opens on the open page: its entries, the second header line for the first three opens, the way
+// back to the page it was left from. One Ui refresh of its card, no flash. Opening it disarms link mode,
+// silently (link_stop would toast).
+fn bar_open(a: &mut App) {
+    let (dpi, aw, ah) = (a.dpi, a.w, a.h);
+    let s = ed(a);
+    s.link_mode = false;
+    s.boxes.stale = true;
+    boxes_get(a);
+    let shown = (a.settings.hints >> HINT_BAR_SHIFT) & HINT_BAR_MASK;
+    let s = ed(a);
+    let Some(page) = s.open_page() else { return };
+    let mut lb = LinkBar::default();
+    linkbar_build(&mut lb, &s.nb, &s.nav, page, s.index, dpi);
+    lb.header_hint = shown < HINT_BAR_MASK;
+    lb.back_label = s.index + 1;
+    if let Some((_, label)) = s.back_top() {
+        lb.back_to.set_cut(&label);
+    }
+    linkbar_layout(&mut lb, aw, ah);
+    let rect = lb.rect;
+    s.lb = lb;
+    if shown < HINT_BAR_MASK {
+        a.settings.hints = (a.settings.hints & !(HINT_BAR_MASK << HINT_BAR_SHIFT)) | ((shown + 1) << HINT_BAR_SHIFT);
+        settings_save(&a.settings);
+    }
+    compose(a, rect);
+    app_invalidate(a, rect, RefreshMode::Ui);
+}
+
+// The bar is gone without a word: leaving the editor, a sleep, the notebook closing, or something that
+// draws everything itself next.
+fn bar_drop(s: &mut EditorState) {
+    s.lb.open = false;
+    s.lb.has_pressed = false;
+}
+
+// Cancel: back to the origin, and the bar closes (a GL16 of its card).
+fn bar_cancel(a: &mut App) {
+    let s = ed(a);
+    if !s.lb.open {
+        return;
+    }
+    let r = s.lb.rect;
+    bar_drop(s);
+    compose(a, r);
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+// What the bar was asked (linkbar_pointer's answer to a tap), after the rect of the button let go is
+// refreshed.
+fn bar_result(a: &mut App, r: LbResult, d: Rect) {
+    if !rect_is_empty(d) {
+        app_invalidate(a, d, RefreshMode::Ui);
+    }
+    match r {
+        LbResult::Cancel => bar_cancel(a),
+        LbResult::NewLink => {
+            let s = ed(a);
+            if s.lb.readonly {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
+                // was tapped on a page from a newer Grimoire, which cannot be changed.
+                app_toast(a, tr("This page is read-only."), 2500);
+            } else if !s.lb.links_ok {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): links.ini could not be
+                // read, so the Links bar lists none and cannot make one.
+                app_toast(a, tr("Links could not be read."), 3000);
+            } else {
+                bar_cancel(a);
+                link_start(a);
+            }
+        }
+        LbResult::Eye => {
+            let s = ed(a);
+            if !s.lb.links_ok {
+                app_toast(a, tr("Links could not be read."), 3000);
+            } else {
+                let button = s.lb.eye_button;
+                areas_toggle(a, button);
+            }
+        }
+        LbResult::Index => {
+            bar_drop(ed(a));
+            pages_show(a);
+            ed(a).pv.index_tab = true;
+            compose_all(a, RefreshMode::Full);
+        }
+        LbResult::Pager => {
+            let g = ed(a).lb.grid;
+            compose(a, g);
+            app_invalidate(a, g, RefreshMode::Ui);
+        }
+        _ => {}
+    }
+}
+
 fn panel_act(a: &mut App, h: Hit) {
     match h.id {
         P_TOOLPICK => {
@@ -3139,6 +3291,9 @@ fn panel_act(a: &mut App, h: Hit) {
 // sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
 // tab); 0 with none.
 fn front_menu(s: &EditorState) -> i32 {
+    if s.lb.open {
+        return SHORTCUT_LINKS;
+    }
     if s.pv.open {
         return if s.pv.index_tab { SHORTCUT_INDEX } else { SHORTCUT_PAGES };
     }
@@ -3156,7 +3311,8 @@ fn front_menu(s: &EditorState) -> i32 {
 
 // A menu's button (Pen feel and the Library leave the editor for their screens), or Close menu.
 fn menu_action(action: i32) -> bool {
-    action == SHORTCUT_PAGES
+    action == SHORTCUT_LINKS
+        || action == SHORTCUT_PAGES
         || action == SHORTCUT_INDEX
         || action == SHORTCUT_TOOL_PICKER
         || action == SHORTCUT_PAPER
@@ -3170,6 +3326,14 @@ fn menu_action(action: i32) -> bool {
 // back); with draw false the screen is about to be drawn whole anyway.
 fn close_front(a: &mut App, draw: bool) {
     let s = ed(a);
+    if s.lb.open {
+        if draw {
+            bar_cancel(a);
+        } else {
+            bar_drop(s);
+        }
+        return;
+    }
     if s.pv.open {
         if s.pv.picking {
             link_cancel(a);
@@ -3204,6 +3368,7 @@ fn close_front(a: &mut App, draw: bool) {
 // A menu's button with nothing in front: its menu opens, as the panel's button for it opens it.
 fn open_menu(a: &mut App, action: i32) {
     match action {
+        SHORTCUT_LINKS => bar_open(a),
         SHORTCUT_PAGES | SHORTCUT_INDEX => {
             let s = ed(a);
             s.pv.index_tab = action == SHORTCUT_INDEX;
@@ -3306,6 +3471,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         let s = ed(a);
         let r = rect_union(s.panel, s.tools_rect);
         app_invalidate(a, r, RefreshMode::Ui);
+        return true;
+    }
+    // Back to the page before, with the bar up, is the bar's Cancel (the refusal below would swallow it).
+    if action == SHORTCUT_GO_BACK && s.lb.open {
+        bar_cancel(a);
         return true;
     }
     if sheet_open(s) {
@@ -3635,6 +3805,7 @@ pub fn editor_free(a: &mut App) {
 // by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
 // closes with its notebook, and stays open through those too.)
 fn close_sheets(s: &mut EditorState) {
+    bar_drop(s);
     s.paper_open = false;
     s.dm.open = false;
     s.mb.open = false;
@@ -3731,6 +3902,14 @@ fn pinch(a: &mut App, ev: &InEvent) {
         if s.owner == Owner::Link {
             s.owner = Owner::None; // the first finger turns into the pinch
         }
+        if (s.owner == Owner::Bar || s.owner == Owner::Outside) && !s.owner_is_pen {
+            // The first finger was on the bar, or outside it waiting to stay: a button it pressed is let go
+            // (a Fast refresh) and nothing is decided.
+            s.owner = Owner::None;
+            let r = with_lb(a, |lb, a, _nb, _nav| linkbar_cancel_press(lb, a));
+            app_invalidate(a, r, RefreshMode::Fast);
+        }
+        let s = ed(a);
         if s.owner == Owner::Panel && !s.owner_is_pen {
             // The first finger had pressed a panel button: that press is cancelled.
             if s.has_pressed && s.pressed.id != P_GRIP && s.pressed.id != P_EXPAND {
@@ -3748,7 +3927,8 @@ fn pinch(a: &mut App, ev: &InEvent) {
         // A classified session starts with pinch zoom off too: its pan pans (the gate below is the
         // legacy one's, with the zoom setting).
         let classified = ev.value == 1;
-        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || (!classified && !pinch_zoom) {
+        // (The bar does not pan or zoom the page behind it.)
+        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || (!classified && !pinch_zoom) {
             return;
         }
         s.pinching = true;
@@ -3853,6 +4033,7 @@ pub fn editor_leave(a: &mut App) {
     if ed(a).owner == Owner::Erase {
         erase_end(a);
     }
+    bar_drop(ed(a)); // (it goes with the screen: Pen feel or calibration comes up whole)
     save_page(a);
     write_thumb_if_needed(a);
     // Out of the editor no page pans or zooms, and no gesture is its: only the master switch is told.
@@ -3873,6 +4054,7 @@ pub fn editor_suspend(a: &mut App) -> bool {
         erase_end(a);
     }
     let s = ed(a);
+    bar_drop(s); // (the Kindle sleeps: it is not there on waking)
     s.owner = Owner::None;
     s.has_pressed = false;
     s.dragging = false;
@@ -3891,7 +4073,7 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     if !s.open || s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.ts.open || s.paper_open {
         return true;
     }
-    if rect_contains(s.panel, x as i32, y as i32) {
+    if rect_contains(s.panel, x as i32, y as i32) || (s.lb.open && rect_contains(s.lb.rect, x as i32, y as i32)) {
         return true;
     }
     // (A link in the corner is not a control there: the corner's tap is the clock's, over a link too.)
@@ -3934,7 +4116,11 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
     }
     let Some(key) = gesturemap_key_of_id(ev.value) else { return };
     let front = front_menu(s);
-    let action = if front != 0 {
+    // With the bar up two fingers down always close it, back to where it began, whatever is bound (without this
+    // 2-down would fall through to Pages, which swaps the menu and keeps the page the bar was looking at).
+    let action = if front == SHORTCUT_LINKS && key == (GestureKey::Touch { fingers: 2, kind: TouchKind::Down }) {
+        SHORTCUT_LINKS
+    } else if front != 0 {
         let m = &a.gestures;
         // (the Pages view is two buttons' menu: Pages and Index)
         let owned = |k: GestureKey| {
@@ -4021,6 +4207,23 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             return; // one gesture at a time
         }
         s.owner_is_pen = pen;
+        // The Links bar takes every contact first: on it (its buttons, chips, grip and header), or outside it,
+        // which stays or closes at the lift (a pen outside acts at once and its stroke is swallowed).
+        if s.lb.open {
+            if rect_contains(s.lb.rect, ev.x as i32, ev.y as i32) {
+                s.owner = Owner::Bar;
+                let mut d = RECT_EMPTY;
+                with_lb(a, |lb, a, _nb, _nav| linkbar_pointer(lb, a, 0, ev, &mut d));
+            } else {
+                s.owner = Owner::Outside;
+                if pen {
+                    bar_cancel(a);
+                } else {
+                    press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
+                }
+            }
+            return;
+        }
         if s.pv.open {
             s.owner = Owner::Pages;
             pages_event(a, 0, ev);
@@ -4123,6 +4326,36 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             if !ed_ref(a).link_held && !moved {
                 link_follow(a, x0, y0);
             }
+        }
+        Owner::Bar => {
+            let mut d = RECT_EMPTY;
+            let r = with_lb(a, |lb, a, _nb, _nav| linkbar_pointer(lb, a, ph, ev, &mut d));
+            if ph == 2 || r == LbResult::Cancel {
+                ed(a).owner = if ph == 2 { Owner::None } else { Owner::Modal }; // (a drag that closed it: the rest is swallowed)
+            }
+            bar_result(a, r, d);
+        }
+        Owner::Outside => {
+            // A pen's stroke here is swallowed to its end; a finger decides at the lift.
+            if pen {
+                if ph == 2 {
+                    s.owner = Owner::None;
+                }
+                return;
+            }
+            press_move(&mut s.link_press, ev.x, ev.y);
+            if ph != 2 {
+                return;
+            }
+            s.owner = Owner::None;
+            let (x0, y0, moved) = (s.link_press.x0, s.link_press.y0, s.link_press.moved);
+            // In this order: a cancel (the touch became a gesture, or the pen came) does nothing; the corner's
+            // tap is the clock's alone; a lift on the panel's Links button is the button again, which cancels;
+            // any other tap outside stays or closes, and presses nothing.
+            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) || moved || !ed_ref(a).lb.open {
+                return;
+            }
+            bar_cancel(a);
         }
         Owner::Tools => {
             press_move(&mut s.tools_press, ev.x, ev.y);
@@ -4473,6 +4706,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let live: Vec<u32> = s.back.iter().copied().filter(|p| ids.contains(p)).collect();
         let top = live.last().and_then(|p| ids.iter().position(|q| q == p)).map_or(0, |i| i as i32 + 1);
         csnprintf!(out, cap, "%d %d", live.len() as i32, top);
+    } else if key == "bar" {
+        // The Links bar: closed (0), open, or looking at another page (peek).
+        csnprintf!(out, cap, "%s", if s.lb.open { "open" } else { "0" });
+    } else if let Some(k) = key.strip_prefix("bar.") {
+        if !linkbar_probe(&s.lb, k, out, cap) {
+            return -1;
+        }
     } else if key == "scrolls" {
         // Whether the page scrolls on each axis now, "V H" (what a two-finger drag pans, touchgest.rs).
         let pans = s.open && !sheet_open(s);
@@ -4497,7 +4737,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if s.pv.open {
+        let m = if s.lb.open {
+            "links"
+        } else if s.pv.open {
             "pages"
         } else if s.tools_open {
             "tools"

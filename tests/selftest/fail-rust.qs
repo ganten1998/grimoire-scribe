@@ -12,4 +12,7 @@ expect notebook.last_page is 7
 expect main.longest_unpumped_ms is 99999
 expect editor.panel_at.1768.594 is undo
 expect editor.scrolls is 1 1
+expect editor.bar is open
+expect editor.bar.entries is 3
+expect editor.areas is 2
 pentap panel nosuchbutton

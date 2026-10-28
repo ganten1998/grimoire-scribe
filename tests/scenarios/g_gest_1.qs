@@ -29,6 +29,16 @@ expect display.presents is full 0 0 1860 2480
 swipe 2 930 1400 0 -400
 expect editor.modal is none
 expect touch.gesture is 2.up
+# two fingers up with nothing in front open the Links bar (an empty one: this page has no links), and two
+# fingers down close it back to the page, not Pages
+swipe 2 930 1400 0 -400
+expect touch.gesture is 2.up
+expect editor.bar is open
+expect editor.modal is links
+swipe 2 930 900 0 400
+expect editor.bar is 0
+expect editor.modal is none
+expect editor.page is 1
 # left turns to the next page, right to the previous
 swipe 2 1300 1200 -400 0
 expect touch.gesture is 2.left

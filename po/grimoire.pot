@@ -1503,6 +1503,93 @@ msgstr ""
 msgid "Dotted boxes show where a finger tap follows a link. They never print."
 msgstr ""
 
+#. TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Links on this page (%d)"
+msgstr ""
+
+#. TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
+#. to, %d its number ("p. 12").
+#: rust/src/linkbar.rs
+#, c-format
+msgctxt "bar"
+msgid "p. %d"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's chip area when the open page has no links (about 1300 px at 44 px).
+#: rust/src/linkbar.rs
+msgid "No links on this page yet."
+msgstr ""
+
+#. TRANSLATORS: a second line of the Links bar's header the first three times it opens, at 34 px (about 1300 px).
+#: rust/src/linkbar.rs
+msgid "Tap a link to look. Tap the page to stay."
+msgstr ""
+
+#. TRANSLATORS: the Links bar's header while a page is on show above it: %s is its name (or "Page 3"), cut
+#. to fit; about 1000 px at 44 px.
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Showing %s. Tap the page to stay."
+msgstr ""
+
+#. TRANSLATORS: the Links bar's chip, while a page is on show above it, that shows the page the bar began
+#. on again: a single angle quote and the page's number (up to 380 px at 44 px in bold).
+#: rust/src/linkbar.rs
+#, c-format
+msgid "‹ Page %d"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's chip, with no page on show, that looks at the page the last link, Find or
+#. Pages view left: %s is its name (or "Page 3"); up to 560 px at 44 px in bold.
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Back to %s"
+msgstr ""
+
+#. TRANSLATORS: a chip of the Links bar, under the page's number in its right column: how many links go
+#. to that page (a multiplication sign and the count, "x2").
+#: rust/src/linkbar.rs
+#, c-format
+msgid "×%d"
+msgstr ""
+
+#. TRANSLATORS: a chip of the Links bar whose link goes to a page that is gone (about 700 px at 44 px).
+#: rust/src/linkbar.rs
+msgid "Page not here"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's four tool buttons, each under its icon in caps at 34 px (about 400 px
+#. wide): look for a page by its number or name; draw a new link; show the link areas on the page; the
+#. Index.
+#: rust/src/linkbar.rs
+msgid "Go to"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's tool button that starts a new link (400 px at 34 px caps, under its icon).
+#: rust/src/linkbar.rs
+msgid "New link"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's tool button that shows or hides the dotted link areas on the page (400 px at
+#. 34 px caps, under its eye; the eye is dimmed while they are hidden).
+#: rust/src/linkbar.rs
+msgid "Areas"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
+#. was tapped on a page from a newer Grimoire, which cannot be changed.
+#: rust/src/editor.rs
+msgid "This page is read-only."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): links.ini could not be
+#. read, so the Links bar lists none and cannot make one.
+#: rust/src/editor.rs src/linkbar.rs
+msgid "Links could not be read."
+msgstr ""
+
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: src/library.c
 msgctxt "buttons"

@@ -78,11 +78,123 @@ fn the_index_and_missing_targets_are_entries() {
     check!(n == 0 && num.iter().all(|&v| v == 0));
 }
 
+// A stroke through the points given (x, y pairs), with this seed: a link's ink.
+fn ink(seed: u32, xy: &[f32]) -> Box<Stroke> {
+    let mut prm = ToolParams::default();
+    prm.size_min_mm = 0.5;
+    prm.size_max_mm = 0.5;
+    prm.opacity_min = 1.0;
+    prm.opacity_max = 1.0;
+    let mut s = stroke_new(TOOL_FINELINER, &prm, seed);
+    for i in 0..xy.len() / 2 {
+        let pt = PenSample { x: xy[2 * i], y: xy[2 * i + 1], pressure: 0.5, tilt_x: 0.0, tilt_y: 0.0, t_ms: i as u32 };
+        stroke_append(&mut s, &pt, 300.0);
+    }
+    s
+}
+
+// The bar's entries from a real page and a real Nav: grouped by target, in reading order, a link whose ink is
+// gone left out, a link to the Index and to a page that is gone listed; read-only and unreadable states.
+fn the_bar_is_built_from_the_page() {
+    let nb = nb5();
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    let mut p = page_new(1860, 2480, PAPER_BLANK);
+    // three boxes to page 30 (twice, tops 1000 and 1800), page 20 (1400), and a box with no link ink to 40
+    page_add(&mut p, ink(0x11, &[300.0, 1000.0, 900.0, 1200.0]));
+    page_add(&mut p, ink(0x22, &[300.0, 1400.0, 900.0, 1500.0]));
+    page_add(&mut p, ink(0x33, &[300.0, 1800.0, 900.0, 1900.0]));
+    page_add(&mut p, ink(0x44, &[1000.0, 600.0, 1200.0, 700.0]));
+    check!(nav_link_set(&mut nav, 10, 0x11, "p30") == 0);
+    check!(nav_link_set(&mut nav, 10, 0x22, "p20") == 0);
+    check!(nav_link_set(&mut nav, 10, 0x33, "p30") == 0);
+    check!(nav_link_set(&mut nav, 10, 0x55, "p40") == 0); // (no ink of seed 0x55: dormant)
+    check!(nav_link_set(&mut nav, 10, 0x44, "index") == 0);
+    let mut lb = LinkBar::default();
+    linkbar_build(&mut lb, &nb, &nav, &p, 0, 300.0);
+    // reading order: the Index (top 600), page 30 (1000, and again at 1800), page 20 (1400)
+    check!(lb.open && lb.n == 3 && lb.links == 4 && lb.links_ok && !lb.readonly && lb.selected == -1);
+    check!(lb.entries[0].target == "index" && lb.entries[0].page == NAV_TO_INDEX && lb.entries[0].count == 1);
+    check!(lb.entries[1].target == "p30" && lb.entries[1].page == 2 && lb.entries[1].count == 2);
+    check!(lb.entries[2].target == "p20" && lb.entries[2].page == 1 && lb.entries[2].count == 1);
+    let mut out = String::new();
+    check!(linkbar_probe(&lb, "entries", &mut out, 64) && out == "3");
+    check!(linkbar_probe(&lb, "1", &mut out, 64) && out == "index");
+    check!(linkbar_probe(&lb, "2", &mut out, 64) && out == "p3 x2");
+    check!(linkbar_probe(&lb, "3", &mut out, 64) && out == "p2");
+    check!(linkbar_probe(&lb, "4", &mut out, 64) && out.is_empty());
+    check!(!linkbar_probe(&lb, "nonsense", &mut out, 64));
+    // a link to a page that has gone: listed, missing
+    let mut gone = nb.clone();
+    gone.page_ids = vec![10, 20, 40, 50];
+    linkbar_build(&mut lb, &gone, &nav, &p, 0, 300.0);
+    check!(lb.n == 3 && lb.entries[1].page == -1);
+    check!(linkbar_probe(&lb, "2", &mut out, 64) && out == "missing");
+    // a read-only page lists its links, and says so
+    p.readonly = true;
+    linkbar_build(&mut lb, &nb, &nav, &p, 0, 300.0);
+    check!(lb.readonly && lb.links_ok && lb.n == 3);
+    // links.ini unreadable: no entries, and the bar knows
+    nav.links_writable = false;
+    linkbar_build(&mut lb, &nb, &nav, &p, 0, 300.0);
+    check!(!lb.links_ok && lb.n == 0 && lb.open);
+    // no page: closed again by the editor; an origin past the notebook lists nothing
+    nav.links_writable = true;
+    linkbar_build(&mut lb, &nb, &nav, &p, 9, 300.0);
+    check!(lb.n == 0);
+}
+
+// The card: 316 + 140 R tall (R rows of chips, 1 to 3 upright, 1 or 2 sideways), 60 more with the hint line,
+// 20 px in from the sides and above the bottom edge; a pager from the seventh entry; six a screen either way.
+fn the_card_is_as_tall_as_its_rows_need() {
+    let mut lb = LinkBar::default();
+    for (n, h) in [(0, 456), (1, 456), (2, 456), (3, 596), (4, 596), (5, 736), (6, 736), (7, 736), (13, 736)] {
+        lb.n = n;
+        lb.header_hint = false;
+        linkbar_layout(&mut lb, 1860, 2480);
+        check!(lb.rect == Rect { x: 20, y: 2480 - 20 - h, w: 1820, h });
+        lb.header_hint = true;
+        linkbar_layout(&mut lb, 1860, 2480);
+        check!(lb.rect == Rect { x: 20, y: 2480 - 20 - h - 60, w: 1820, h: h + 60 });
+    }
+    for (n, h) in [(0, 456), (3, 456), (4, 596), (6, 596), (7, 596), (30, 596)] {
+        lb.n = n;
+        lb.header_hint = false;
+        linkbar_layout(&mut lb, 2480, 1860);
+        check!(lb.rect == Rect { x: 20, y: 1860 - 20 - h, w: 2440, h });
+    }
+    // the pager: screens of six, and a screen that is past the last is brought back
+    lb.n = 6;
+    lb.screen = 3;
+    linkbar_layout(&mut lb, 1860, 2480);
+    check!(lb.screen == 0);
+    lb.n = 7;
+    lb.screen = 3;
+    linkbar_layout(&mut lb, 1860, 2480);
+    check!(lb.screen == 1);
+    lb.n = 13;
+    lb.screen = 2;
+    linkbar_layout(&mut lb, 1860, 2480);
+    check!(lb.screen == 2);
+    let mut out = String::new();
+    lb.open = true;
+    check!(linkbar_probe(&lb, "pager", &mut out, 16) && out == "3/3");
+    lb.n = 5;
+    linkbar_layout(&mut lb, 1860, 2480);
+    check!(linkbar_probe(&lb, "pager", &mut out, 16) && out.is_empty());
+    // a bigger screen: the card spans it, the height is the same
+    lb.n = 2;
+    linkbar_layout(&mut lb, 1986, 2648);
+    check!(lb.rect == Rect { x: 20, y: 2648 - 20 - 456, w: 1946, h: 456 });
+}
+
 #[test]
 fn test_linkbar() {
     ui_init(300.0);
     run!(links_group_by_target_and_count);
     run!(entries_are_numbered_in_reading_order);
     run!(the_index_and_missing_targets_are_entries);
+    run!(the_bar_is_built_from_the_page);
+    run!(the_card_is_as_tall_as_its_rows_need);
     done();
 }

@@ -26,6 +26,20 @@ tap 60 60
 expect settings.status_on is 1
 tap 60 60
 expect settings.status_on is 0
+# with the Links bar up (an empty one: no links on this page) the corner's tap is still the clock's, and the
+# bar stays; two fingers down close it
+wait 200
+swipe 2 930 1400 0 -400
+expect editor.bar is open
+tap 60 60
+expect settings.status_on is 1
+expect editor.bar is open
+tap 60 60
+expect settings.status_on is 0
+expect editor.bar is open
+swipe 2 930 900 0 400
+expect editor.bar is 0
+expect editor.modal is none
 # a two-finger swipe whose first finger lands in the corner: a gesture, not the clock
 wait 200
 finger 1 down 60 60

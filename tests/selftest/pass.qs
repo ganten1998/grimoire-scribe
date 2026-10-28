@@ -83,7 +83,10 @@ expect size is 2480x1860
 rotate 0
 expect rotation is 0
 expect size is 1860x2480
-# Back to the library, which now holds the notebook
+# Back to the library, which now holds the notebook. The panel's Library button is at 1566 on the C build's
+# eleven buttons and at 1674 on the Rust build's twelve (the Links button is new): the tap that is not on it
+# lands on a bare page, or on a bare Library, and does nothing.
+pentap 1768 1674
 pentap 1768 1566
 expect screen is library
 expect toast is Saved

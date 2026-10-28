@@ -56,3 +56,15 @@ expect editor.modal is none
 expect touch.gesture is 2.up
 expect editor.zoomed is 1
 expect editor.zoom is 2.25
+# the Links bar does not pan either: with it up two fingers up or down are swipes, and two fingers down close
+# it back to the page as it was left, zoom and all
+pentap panel links
+wait 400
+expect editor.bar is open
+expect editor.scrolls is 0 0
+swipe 2 930 900 0 400
+expect editor.bar is 0
+expect editor.modal is none
+expect touch.gesture is 2.down
+expect editor.zoomed is 1
+expect editor.zoom is 2.25

@@ -664,7 +664,7 @@ fn dates() {
 // Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
 // in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
 // formatted as the code formats it (keep this list in step with the messages); out holds them.
-const RARE_MAX: usize = 48;
+const RARE_MAX: usize = 56;
 const RARE_LEN: usize = 256;
 fn rare_notices(out: &mut Vec<String>) -> usize {
     out.clear();
@@ -724,6 +724,10 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Sideways fills the width.")));
     put(cformat!("%s", tr("Applies when the Kindle is sideways.")));
     put(cformat!("%s", tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this.")));
+    // The Links bar's and the eye's toasts.
+    put(cformat!("%s", tr("Dotted boxes show where a finger tap follows a link. They never print.")));
+    put(cformat!("%s", tr("This page is read-only.")));
+    put(cformat!("%s", tr("Links could not be read.")));
     out.len()
 }
 
@@ -789,6 +793,49 @@ fn rare_notices_fit() {
             let mut data = String::new();
             csnprintf!(&mut data, 160, tr("Data: %s"), "/mnt/us/grimoire");
             check!(font_measure(FontFace::Regular, ui_small_size(), &data) <= if th == UiTheme::Gothic { 1640 } else { 1648 });
+        }
+    }
+    ui_set_theme(UiTheme::Gothic);
+    i18n_set("en");
+}
+
+// The Links bar's text, in every language and style, against the room its card gives it (upright: the
+// narrower; docs: PHASE1-BRIEF 13.3): the header and its hint line, the empty states, the right column, the
+// back chip with the biggest page number, the peek header, and the four tool words under their icons.
+fn the_links_bar_strings_fit() {
+    for l in 0..i18n_language_count() {
+        i18n_set(i18n_language_code(l).unwrap());
+        for th in THEMES {
+            ui_set_theme(th);
+            let ts = ui_text_size();
+            let small = ui_small_size();
+            let at = |what: &str, w: i32, room: i32| {
+                if w > room {
+                    eprintln!("  {} {:?}: {} is {} px, room {}", i18n_current(), th as i32, what, w, room);
+                }
+                w <= room
+            };
+            // the header (up to 64 links) beside the X and the pager (1780 - 118 - 394)
+            check!(at("header", font_measure(FontFace::Bold, ts, &cformat!(tr("Links on this page (%d)"), 64)), 1200));
+            check!(at("hint", font_measure(FontFace::Regular, small, tr("Tap a link to look. Tap the page to stay.")), 1700));
+            check!(at("none", font_measure(FontFace::Regular, ts, tr("No links on this page yet.")), 1700));
+            check!(at("unreadable", font_measure(FontFace::Regular, ts, tr("Links could not be read.")), 1700));
+            // a chip: "Page 2000" in its name room (878 - 96 - 150 - 14), the right column (144 px), "not here"
+            check!(at("page n", font_measure(FontFace::Regular, ts, &cformat!(tr("Page %d"), 2000)), 600));
+            check!(at("p. n", font_measure(FontFace::Regular, small, &cformat!(c_("bar", "p. %d"), 2000)), 144));
+            check!(at("x n", font_measure(FontFace::Regular, small, &cformat!(tr("×%d"), 64)), 144));
+            check!(at("not here", font_measure(FontFace::Regular, ts, tr("Page not here")), 600));
+            check!(at("the index", font_measure(FontFace::Regular, ts, tr("The Index")) + 66, 600));
+            // the chip that goes back, with a three-digit page: it is not clamped to its 380 px (four digits are, and its label shrinks)
+            let back = cformat!(tr("‹ Page %d"), 999);
+            check!(at("back", ui_chip_w(FontFace::Bold, ts, &back, 100, 200, 380), 379));
+            // the peek header (a long name is cut by design; "Page 2000" is not)
+            let showing = cformat!(tr("Showing %s. Tap the page to stay."), &cformat!(tr("Page %d"), 2000));
+            check!(at("showing", font_measure(FontFace::Regular, ts, &showing), 1100));
+            // the tool words, caps at 34 px under their icons, in a 430 px button (sideways 585) inside its edge
+            for w in [tr("Go to"), tr("New link"), tr("Areas"), tr("Index")] {
+                check!(at(w, font_measure(FontFace::Caps, small, w), 390));
+            }
         }
     }
     ui_set_theme(UiTheme::Gothic);
@@ -1253,6 +1300,7 @@ fn test_i18n() {
     run!(language_setting);
     run!(dates);
     run!(rare_notices_fit);
+    run!(the_links_bar_strings_fit);
     run!(copies_cut_between_characters);
     run!(raw_labels_fit);
     run!(paper_is_the_same_in_every_language);
