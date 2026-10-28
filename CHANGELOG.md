@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-beta.5 (unreleased)
+## 2.0.0-beta.5 (2026-10-28)
 
 The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-beta.4 was a
 performance candidate that was never published, so its changes (the last section below) are in this
@@ -18,15 +18,34 @@ release too.
   Kindle Scribe (2024) before this release. If something looks or behaves differently from
   2.0.0-beta.3 and is not in this list, it is a mistake in the port: please report it.
 
-<!-- RELEASE-PLACEHOLDER (Index, phase 1): the entry for the Index's touch gestures and the Links bar, in plain words, then delete this line. -->
-<!-- RELEASE-PLACEHOLDER (Index, later phases, if they are in this release): one entry each, then delete this line. -->
-<!-- RELEASE-PLACEHOLDER (Live view fixes that land after the fast ink below): one entry, or fold them into the fast ink entry, then delete this line. -->
+- **The Index from a button or a key**: five new actions for Buttons... (a new Index group, and
+  Whole page sideways in Pages) and for shortcuts.ini: Links on this page opens and closes the Links
+  bar; Go to page (Find: a keyboard over the page that takes a page number or part of a page's name,
+  accents and capitals ignored, so "arb" finds "Árbol") opens and closes the same keyboard as the
+  bar's Go to; Back to the page before returns to the page a link, the Pages view or Find left (up
+  to 32, newest first, forgotten when the notebook closes; a toast says when there is none); Show
+  link areas is the bar's eye, which draws the dotted, numbered boxes where each link's ink is, on
+  and off, remembered; and Whole page sideways is the Display row of the same name.
 
 - **Draw while looking at your computer**: Live view now sends pen movement on its own connection,
   so the browser can show a quick pressure-sensitive line while the exact page image catches up.
   Menu taps leave no preview ink. Monitor mode (M) fits the page and tucks the controls away; its
   choice is remembered in that browser. An optional Latency readout shows estimated pen and image
   delays. Textured nibs and erasing still settle to Grimoire's exact rendering.
+
+- **Live view, smoother and easier to read**: the pen's line and its dot in the browser no longer
+  skip. The browser used to get the pen's movement only when Grimoire's main loop read it, so a heavy
+  tool such as a textured brush sent it in bursts; now each browser reads the Kindle's pen sensor
+  itself the moment it has a point, and plays the points back at their own times (the Latency
+  readout has a Playout delay). The dot has five colours and a colour picker, and three sizes
+  (small is the new default, smaller than before; medium is the old size), remembered in that
+  browser. The toolbar and the clock and battery corner are layers over the page, each with a
+  switch (on by default, remembered). Picture in picture draws at its own window's pixels, so ruled
+  lines and thin strokes keep their weight there too. Recording makes an MP4 in Firefox now, where
+  its encoder can, and the button says Record (MP4) or Record (WebM) so you know which you get.
+  Live view's words are in English and Spanish. A menu or a keyboard on the Kindle takes the
+  panel out of the browser's copy while it is open, and the page under the panel arrives in the
+  same push as the rest of the screen.
 
 - **A Kindle reboot while writing, fixed**: with the developer switch `ink-metrics` on, Grimoire
   followed some ink refreshes through the Kindle's display driver, and a race in the driver could
@@ -183,8 +202,8 @@ release too.
 - **Live view**: Library > Share > Live view mirrors Grimoire's screen in a computer's browser on
   the same Wi-Fi, as it changes: open the address on the card and type its one-use code, or scan the
   QR code with a phone. Fit or actual size, full screen, transparent paper and recording in the
-  browser (an MP4 in Chrome, Edge and Safari; WebM in Firefox, which records no MP4, and for
-  transparent paper, which an MP4 cannot keep clear), the pen shown where it is (a see-through dot
+  browser (an MP4 in Chrome, Edge, Safari and Firefox where the browser can encode one, and WebM
+  where it cannot and for transparent paper, which an MP4 cannot keep clear), the pen shown where it is (a see-through dot
   while it hovers, solid while it touches; Show pen turns it off), an Invert colors switch and a
   Warmth slider: the picture follows Invert colors (the whole page goes black) and the front light's
   warmth (its light turns amber) on the Kindle until you change them, and As on the Kindle goes back

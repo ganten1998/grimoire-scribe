@@ -11,12 +11,15 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
-## 2.0.0-beta.5 candidate: gestures, the Links bar, sideways
+## 2.0.0-beta.5 (not yet on a Kindle)
 
-Not yet on a Kindle. `make rust-check` covers the recognizer's thresholds on recorded frames, every
-gesture and the bar's and Find's flows in the headless runner (two fingers, taps, the pen near, the
-corner), and the fit of every new string in English and Spanish. It cannot say how the thresholds feel
-under a hand, how the Links bar's refreshes look, or whether the palm is ignored.
+Not yet on a Kindle: the owner has not tested this release's bundle, so nothing below is claimed as
+seen on a device. `make check` covers the recognizer's thresholds on recorded frames, every gesture and
+the bar's and Find's flows in the headless runner (two fingers, taps, the pen near, the corner), the
+Live view page and its pen path against a stand-in digitizer, the update script against a stand-in KPM,
+the package and its clean-build comparison, and the fit of every new string in English and Spanish. It
+cannot say how the thresholds feel under a hand, how the Links bar's refreshes look, whether the palm is
+ignored, or how Live view looks in a real browser over Wi-Fi.
 
 Install the build and test in a notebook that has your beta.5 links, unless said otherwise.
 
@@ -58,13 +61,22 @@ Install the build and test in a notebook that has your beta.5 links, unless said
 8. **Feel.** Pinch zoom feels as before. A finger resting on a link no longer follows it when the pen
    comes near. After a long page render (a dense page or a PDF page), taps and swipes still register.
    Writing with your palm resting fires nothing.
-9. **Live view.** With Live view on, committing a peek with the pen shows no ink in the browser.
+9. **Live view.** With Live view on, committing a peek with the pen shows no ink in the browser. Write
+   quickly with a textured brush (charcoal): the pen's line and its dot in the browser should glide, not
+   skip (the Latency readout shows the pen age and the Playout delay). The dot's colour and size, the
+   Show toolbar and Show clock and battery switches, and Monitor mode come back after a reload of the
+   page. Picture in picture keeps ruled lines and thin strokes as heavy as the page view at its window's
+   size. In Firefox, Record says Record (MP4) and the file plays; in Chrome too; with transparent paper
+   it says Record (WebM). Menus, keyboards and the panel do not show through in the browser's copy.
 10. **Report.** Write, lift, and swipe right at once: how often "Move the pen away, then swipe." appears.
     Rest your palm and thumb while writing: nothing should fire.
 11. **Traces.** Create the empty file `grimoire/touch-trace`, restart Grimoire, and run the touch script in
     docs/KINDLE.md (about 15 minutes). Then delete `grimoire/touch-trace` and send `grimoire.log` and
     `grimoire/touch-trace.txt`.
-12. **Settings.** `settings.ini` gains `gestures=1`, `landscape_fit=1`, `hints=...` and `link_areas=...`
+12. **Updates.** Library > Settings > Updates > Check for updates, on a beta and then with releases only:
+    it says what it found, the preview feed is taken out of KPM for releases only, and a failed channel
+    change says so instead of offering a beta. This needs the published feed (see KPM feeds below).
+13. **Settings.** `settings.ini` gains `gestures=1`, `landscape_fit=1`, `hints=...` and `link_areas=...`
     at the end, and your other settings are unchanged. Turning Grimoire back to an older build keeps
     working. After updating from the beta before, the first notebook that opens says once what two
     fingers up and down do now, and the first turn sideways says once why two fingers swipe there.
