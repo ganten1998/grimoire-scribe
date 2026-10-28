@@ -257,7 +257,8 @@ l10n:
 # the scenarios: both open the share server on the same port. With SCEN_SKIP_RUST_ONLY set (make
 # c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.
 L10N_SCENARIO := tests/scenarios/y_all_screens.qs
-L10N_TEMPLATES := tests/l10n/templates.qs
+# (the Rust build's panel has a button more, so its Paper button is elsewhere: it runs templates-rust.qs)
+L10N_TEMPLATES := $(if $(SCEN_SKIP_RUST_ONLY),tests/l10n/templates.qs,tests/l10n/templates-rust.qs)
 L10N_LANGS := en $(basename $(notdir $(L10N_MO)))
 l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS)),scenarios)
 	@unset $(SIM_HOOKS); failed=; \

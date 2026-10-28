@@ -3,6 +3,7 @@
 # "# copy:" line below, as make scenarios does), over New notebook and over the editor's page,
 # upright and sideways, with its pages of tiles and their buttons. (y_all_screens visits the
 # sheet's other state, with no templates.) The taps are z_tpl_6_es_fit's; they land in both styles.
+# (The Rust build runs templates-rust.qs instead: its panel has one more button, and the Paper button moved.)
 # copy: tests/fixtures/tpl-many templates
 wait 300
 tap 965 95
