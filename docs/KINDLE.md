@@ -335,8 +335,8 @@ session with networking awake, not a reboot or deep sleep.
 
 ## The clock and battery corner
 
-A finger tap in a corner of a notebook page (a 14 mm square, the top left unless you pick another)
-turns on a small indicator there: the time and date as Grimoire writes them elsewhere
+A finger tap in a corner of a notebook page (a 14 mm square, the top left unless you pick another, or
+where the indicator shows, with 4 mm around it, whether it is up or not) turns on a small indicator there: the time and date as Grimoire writes them elsewhere
 (`Oct 10, 14:32`), a small battery drawn in pixel art that shows the charge (and a bolt over it while
 it charges), and the battery's percent. Tapping the indicator, or its corner again, turns it off.
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not

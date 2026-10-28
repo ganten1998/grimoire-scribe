@@ -94,7 +94,8 @@ release too.
   Library, Settings or any other screen, and not while a sheet, a menu, the Links bar, Find or the
   Pages view is in front of the page. Settings > Display, beside Done, has its size (small, medium
   or large; the battery grows with it) and its corner (top left, top right, bottom right, bottom
-  left): the tap zone, a 14 mm square, follows it. One tap is one toggle, at once: a fingertip that
+  left): the tap zone follows it, a 14 mm square and the box's own place with 4 mm around it, shown or
+  not (half the taps to bring it back went where it had been, outside the square). One tap is one toggle, at once: a fingertip that
   rolls inside the corner still taps, slow presses too (up to 0.8 second), nothing makes the next tap wait, and the box is refreshed as the
   finger lifts, even when a pen left the screen without a word. A key or a controller button can turn
   it on and off or move it to the next corner (Buttons... > Menus > Clock and battery, and Clock and

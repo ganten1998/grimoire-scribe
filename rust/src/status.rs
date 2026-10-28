@@ -40,6 +40,8 @@ use std::cell::RefCell;
 const ZONE_MM: f32 = 14.0;
 /// A finger that moves farther than this from where it landed is not tapping.
 const SLOP_MM: f32 = 5.0;
+/// Around the box's place, a tap still finds the corner: 4 mm.
+const PAD_MM: f32 = 4.0;
 /// A finger down longer than this is not a tap (a long press is the page's, a link's). A deliberate press
 /// is slow: 800 ms.
 const TAP_MS: u32 = 800;
@@ -386,11 +388,17 @@ pub fn status_square(a: &App) -> Rect {
     corner_square(a.settings.status_corner, a.w, a.h, side)
 }
 
-/// Whether (x, y) is in the corner as a tap finds it: its square, and the indicator's box while it is up.
-/// (Two places, never the box around both: a corner just moved leaves the old box on the panel until its
-/// refresh goes, and that must not make the screen between a tap's target.)
+/// Whether (x, y) is in the corner as a tap finds it: its square, the indicator's box while it is up, and
+/// where its box shows in the corner the setting names, with PAD_MM around it, up or not. (The owner's
+/// taps to bring it back went where it had been: the box is twice as wide as the square, and half of them
+/// fell outside it.) Separate places, never the box around them: a corner just moved leaves the old box
+/// on the panel until its refresh goes, and that must not make the screen between a tap's target.
 pub fn status_hit(a: &App, x: f32, y: f32) -> bool {
-    rect_contains(status_square(a), x as i32, y as i32) || rect_contains(with(|s| s.drawn), x as i32, y as i32)
+    let (px, py) = (x as i32, y as i32);
+    let pad = mm_to_px(PAD_MM, a.dpi).round() as i32;
+    let b = layout(a).rect;
+    let around = rect_intersect(Rect { x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad }, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    rect_contains(status_square(a), px, py) || rect_contains(around, px, py) || rect_contains(with(|s| s.drawn), px, py)
 }
 
 /// Whether the clock and battery may show on this screen now: the notebook's page is in front, with no sheet,
@@ -1201,7 +1209,12 @@ mod tests {
         // it follows the corner
         a.settings.status_corner = 2;
         assert_eq!(status_square(&a), Rect { x: 1695, y: 2315, w: 165, h: 165 });
-        assert!(status_hit(&a, 1850.0, 2470.0) && !status_hit(&a, 70.0, 70.0) && !status_hit(&a, 1600.0, 2470.0));
+        assert!(status_hit(&a, 1850.0, 2470.0) && !status_hit(&a, 70.0, 70.0) && !status_hit(&a, 1200.0, 2470.0));
+        // off, where its box would show (twice as wide as the square) and 4 mm around it, a tap finds it
+        let w = layout(&a).rect;
+        assert!(rect_is_empty(with(|s| s.drawn)) && w.w > 165);
+        assert!(status_hit(&a, (w.x + 10) as f32, (w.y + w.h / 2) as f32) && status_hit(&a, (w.x - 40) as f32, (w.y + 5) as f32));
+        assert!(!status_hit(&a, (w.x - 60) as f32, (w.y + 5) as f32) && !status_hit(&a, (w.x + 10) as f32, (w.y - 60) as f32));
         // while the indicator is up, its box is part of the corner: the box and the square, not the screen between
         a.settings.status_corner = 0;
         let l = layout_of(2, 0, a.w, a.h, 1700000000, &Battery { percent: 87, charging: true });

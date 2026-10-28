@@ -302,7 +302,7 @@ shows what the app holds.
 | `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent, which is drawn right of the battery; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
 | `status.icon`, `status.fill` | the battery's pixel art, `x y w h` (18 by 9 units, a unit about a tenth of the text's height: 54 by 27 px at the small size), and how many of its 12 columns of charge are lit (`10` at 87%, `1` for any charge, `0` at 0%); empty while it is not shown or has no battery |
 | `status.charging` | `1` while the corner shows its bolt, `0` while it does not; empty while it is not shown |
-| `status.zone` | the corner's square, `x y w h`, where a finger's tap finds it: 14 mm square in the corner `settings.status_corner` names (`0 0 165 165` at 300 dpi), and the indicator's box is part of the corner too while it is shown |
+| `status.zone` | the corner's square, `x y w h`, where a finger's tap finds it: 14 mm square in the corner `settings.status_corner` names (`0 0 165 165` at 300 dpi), and the indicator's box is part of the corner too while it is shown; a tap also finds the box's place in that corner with 4 mm around it, shown or not (`status_hit`) |
 | `status.front` | `1` while the notebook's page is in front, the only place the corner shows or takes a tap, else `0` |
 | `library.update` | the Updates sheet's check: `idle`, `checking`, `newer VERSION`, `newest VERSION` or `failed WHY` (`network`, `no-kpm`, `feed`, `failed`) |
 | `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
