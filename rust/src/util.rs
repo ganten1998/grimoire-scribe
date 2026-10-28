@@ -465,10 +465,15 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = Vec::new();
-    // (Straight into the buffer, which grows as the C's does: a page file is megabytes, read in a
-    // handful of calls rather than one per 4 KB with a copy each. EINTR is retried; on another
-    // error buf keeps what was read.)
-    let _ = f.read_to_end(&mut buf);
+    // (Straight into the buffer, sized from the file's length and grown as needed: a page file is
+    // megabytes, read in a handful of calls rather than one per 4 KB with a copy each. EINTR is
+    // retried. No memory for it is the C's NULL; after another error buf keeps what was read, as
+    // the C's fread leaves it.)
+    if let Err(e) = f.read_to_end(&mut buf) {
+        if e.kind() == std::io::ErrorKind::OutOfMemory {
+            return None;
+        }
+    }
     Some(buf)
 }
 
