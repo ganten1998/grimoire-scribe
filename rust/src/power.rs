@@ -180,10 +180,10 @@ pub fn power_wake_fallback(st: PowerdState, locked: &mut i32) -> WakeFallback {
     }
 }
 
-/// Input Grimoire ignores while it shows its sleep screen (or the Kindle's): pen and touch, and the
-/// start of a side button press or of a pinch (three clicks cleared the page, a pinch zoomed it).
-/// Their ends still get through, so one that began before the sleep finishes: a button left down
-/// would clear the page by its hold right after the wake.
+/// Input Grimoire ignores while it shows its sleep screen (or the Kindle's): pen and touch, the
+/// start of a side button press or of a pinch (three clicks cleared the page, a pinch zoomed it),
+/// and a two-finger gesture. Their ends still get through, so one that began before the sleep
+/// finishes: a button left down would clear the page by its hold right after the wake.
 pub fn power_asleep_drops(ev: &InEvent) -> bool {
     match ev.type_ {
         InType::Key
@@ -194,7 +194,8 @@ pub fn power_asleep_drops(ev: &InEvent) -> bool {
         | InType::TouchMove
         | InType::TouchUp
         | InType::PinchBegin
-        | InType::PinchMove => true,
+        | InType::PinchMove
+        | InType::Gesture => true,
         InType::PenButton => ev.side_button, // the press; its release gets through
         _ => false,
     }

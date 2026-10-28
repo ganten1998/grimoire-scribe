@@ -1443,6 +1443,7 @@ pub fn input_caps() -> InputCaps {
         orientation: 0,
         pen_name: FixedStr::from_str("SDL mouse (sim)"),
         touch_name: FixedStr::from_str("SDL right button (sim)"),
+        touch_slots: 10,
     }
 }
 pub fn input_watch_fd(fd: i32) {
@@ -1470,6 +1471,13 @@ pub fn input_set_orientation(quarter_turns: i32) {
 }
 pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
     with(|st| st.input_logical_to_panel(lx, ly, px, py));
+}
+pub fn input_touch_context(v: TgView) {
+    let _ = v;
+}
+// (The simulator writes no trace: the formatter is touchgest's, unit-tested there.)
+pub fn input_touch_trace(path: Option<&str>) {
+    let _ = path;
 }
 pub fn input_forget_signal_pipe() {}
 pub fn input_close() {

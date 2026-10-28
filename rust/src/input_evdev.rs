@@ -2194,6 +2194,10 @@ impl State {
                 }
                 self.caps.has_touch = true;
                 self.caps.touch_name.set_bytes(cbytes(&name));
+                let mut slots = InputAbsinfo::default();
+                if eviocgabs(fd, ABS_MT_SLOT, &mut slots) >= 0 {
+                    self.caps.touch_slots = slots.maximum.wrapping_add(1);
+                }
                 qlog!(
                     "input: touch %s (%s) x %d..%d y %d..%d",
                     &path,
@@ -2887,6 +2891,12 @@ pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) 
         s.sample_fn = sample;
         s.sample_batch = batch;
     })
+}
+pub fn input_touch_context(v: TgView) {
+    let _ = v;
+}
+pub fn input_touch_trace(path: Option<&str>) {
+    let _ = path;
 }
 pub fn input_forget_signal_pipe() {
     for p in &G_SIGPIPE {

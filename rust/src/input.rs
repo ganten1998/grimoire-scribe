@@ -40,7 +40,7 @@ pub enum InType {
     PenHover = 4,  // IN_PEN_HOVER
     /// left proximity
     PenLeave = 5,  // IN_PEN_LEAVE
-    /// first finger only
+    /// first finger only (value: TOUCH_F_* bits)
     TouchDown = 6,  // IN_TOUCH_DOWN
     TouchMove = 7,  // IN_TOUCH_MOVE
     TouchUp = 8,  // IN_TOUCH_UP
@@ -52,9 +52,12 @@ pub enum InType {
     PenButton = 11,  // IN_PEN_BUTTON
     /// device turned: value = quarter turns clockwise (0..3)
     Orientation = 12,  // IN_ORIENTATION
-    /// two fingers: (x,y) and (x2,y2)
+    /// two fingers: (x,y) and (x2,y2), by the order they landed in. value: 0 legacy (the runner's
+    /// `pinch`), 1 a session touchgest.rs classifies
     PinchBegin = 13,  // IN_PINCH_BEGIN
+    /// value: the class, 0 legacy, 1 zoom, 2 pan, 3 swipe
     PinchMove = 14,  // IN_PINCH_MOVE
+    /// value: 1 when touchgest refused a swipe only because the pen was near, else 0
     PinchEnd = 15,  // IN_PINCH_END
     /// the Kindle is going to sleep (goingToScreenSaver)
     Sleep = 16,  // IN_SLEEP
@@ -73,7 +76,17 @@ pub enum InType {
     HidDetach = 22,  // IN_HID_DETACH
     /// an IN_KEY's key or button let go: value, gamepad
     KeyUp = 23,  // IN_KEY_UP
+    /// two or three fingers made a recognized gesture: value = id (touchgest.rs's G_*); (x, y) start
+    /// midpoint, (x2, y2) end midpoint
+    Gesture = 24,
 }
+
+/// TouchDown/Move/Up value bit: the contact's TOUCH_MAJOR passed T_palm (touchgest_set_palm_major;
+/// logged only in this version).
+pub const TOUCH_F_BROAD: i32 = 1;
+/// TouchUp value bit: the off-screen cancel (x = y = -10000.0): the finger's stream ends without a
+/// lift in its place (the pen came, a second finger made a gesture of it, the kernel dropped events).
+pub const TOUCH_F_CANCEL: i32 = 2;
 
 /// Holding the power button this long saves and leaves Grimoire (below the Kindle's own ~7 s menu).
 pub const INPUT_POWER_HOLD_MS: i32 = 4000;
@@ -107,7 +120,8 @@ pub struct InEvent {
     pub t_ms: u32,
     /// Pen samples: when the kernel saw the frame, in now_ms()'s clock (pensync_ms), 0 where nobody
     /// says (the simulator). Only a stroke's samples take it (in_sample_ms): after a stall the read
-    /// times bunch up, the kernel's keep the stroke's real spacing.
+    /// times bunch up, the kernel's keep the stroke's real spacing. Touch, pinch and gesture events
+    /// carry their SYN_REPORT's kernel time too (the runner's contact lines: their frame's time).
     pub k_ms: u32,
     /// Live view sample already captured, 0 when off
     pub live_seq: u32,
@@ -139,6 +153,8 @@ pub struct InputCaps {
     pub orientation: i32,
     pub pen_name: FixedStr<64>,
     pub touch_name: FixedStr<64>,
+    /// contacts the touch panel follows at once (EVIOCGABS(ABS_MT_SLOT).maximum + 1), 0 unknown
+    pub touch_slots: i32,
 }
 
 #[inline]
@@ -223,6 +239,20 @@ pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
 #[inline]
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
     platform::input_sample_hook(sample, batch)
+}
+/// What the screen in front allows a two-finger drag (touchgest.rs): which axes the page scrolls on,
+/// whether a pinch may zoom, whether gestures are on, whether a keyboard is up. The editor pushes it
+/// as these change.
+#[inline]
+pub fn input_touch_context(v: TgView) {
+    platform::input_touch_context(v)
+}
+/// Appends the touch frames, the pen's coming and going and the gestures' outcomes to the file at
+/// path (grimoire/touch-trace.txt, opted into with an empty grimoire/touch-trace), while input is
+/// grabbed; None stops it. Never the pen's place. Only the Kindle writes one.
+#[inline]
+pub fn input_touch_trace(path: Option<&str>) {
+    platform::input_touch_trace(path)
 }
 /// In a forked child, before it closes what it inherited: the stop handler (SIGTERM, SIGINT,
 /// SIGHUP) writes nowhere from now on. The handler stays as it was, but the signal pipe's numbers

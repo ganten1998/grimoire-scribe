@@ -149,7 +149,7 @@ macro_rules! phase {
 // What the watchdog calls an event (InType's order) and a screen (ScreenId's): a slow batch names its
 // slowest event, which tells a page turn from a sheet opening. Never a key's value or a place.
 fn event_name(t: i32) -> &'static str {
-    const K: [&str; 24] = [
+    const K: [&str; 25] = [
         "none",
         "pen down",
         "pen move",
@@ -174,9 +174,10 @@ fn event_name(t: i32) -> &'static str {
         "controller or keyboard came",
         "controller or keyboard went",
         "key up",
+        "gesture",
     ];
-    const _: () = assert!(K.len() == InType::KeyUp as usize + 1, "an event name for each InType");
-    if t >= 0 && t <= InType::KeyUp as i32 {
+    const _: () = assert!(K.len() == InType::Gesture as usize + 1, "an event name for each InType");
+    if t >= 0 && t <= InType::Gesture as i32 {
         K[t as usize]
     } else {
         "?"
@@ -423,6 +424,8 @@ fn run() -> i32 {
         // Batch nearby samples, but keep showing ink during a backlog. A costly brush or
         // a continuously readable device must not postpone refreshes and timers until the
         // queue empties. Leave remaining events queued, in order, for the next iteration.
+        // (input_drained: the batch ended because nothing more was queued, not at its 64 events or
+        // 8 ms: the prefetch and the Links bar's hold timer wait for a quiet moment.)
         if poll(&mut ev, 30, &mut app) != 0 {
             phase!("reading input", &mut phase, 30);
             let batch_at = now_ms();
@@ -431,12 +434,18 @@ fn run() -> i32 {
             loop {
                 event_timed(&mut app, &ev, &mut slow);
                 count += 1;
-                if !(app.running && count < 64 && now_ms().wrapping_sub(batch_at) < 8 && poll(&mut ev, 0, &mut app) != 0) {
+                if !(app.running && count < 64 && now_ms().wrapping_sub(batch_at) < 8) {
+                    app.input_drained = false;
+                    break;
+                }
+                if poll(&mut ev, 0, &mut app) == 0 {
+                    app.input_drained = true;
                     break;
                 }
             }
             batch_done!(&mut phase, &slow);
         } else {
+            app.input_drained = true;
             phase!("reading input", &mut phase, 30);
         }
         app_tick(&mut app, now_ms());

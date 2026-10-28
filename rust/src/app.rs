@@ -124,6 +124,9 @@ pub struct App {
     pub book: BookStatus,
     /// when that toast last changed
     pub book_told: u32,
+    /// the main loop's last batch ended because no event was left queued (not at its 64 events or
+    /// 8 ms): the editor's prefetch and the Links bar's hold timer wait for this
+    pub input_drained: bool,
 }
 
 
@@ -832,11 +835,16 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     let ev = &captured;
     // While a book's pages are being added (a few seconds), nothing may open its notebook.
     if a.book.state == BookState::Running
-        && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key)
+        && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
         return;
     }
-    if !a.asleep && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::PenButton) {
+    if !a.asleep
+        && (app_pointer_phase(ev) >= 0
+            || ev.type_ == InType::PinchBegin
+            || ev.type_ == InType::PenButton
+            || ev.type_ == InType::Gesture)
+    {
         note_input(a);
     }
     // A finger tap in the top left corner on no control turns the clock and battery on or off; the

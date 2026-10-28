@@ -45,6 +45,7 @@ pub mod pensync;
 pub mod power;
 pub mod qr;
 pub mod shortcuts;
+pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
 pub mod update;
 pub mod util; // common.h (util.c)
 pub use util as common;
@@ -153,6 +154,7 @@ pub mod prelude {
     pub use crate::status::*;
     pub use crate::store::*;
     pub use crate::templates::*;
+    pub use crate::touchgest::*;
     pub use crate::tplsheet::*;
     pub use crate::ui::*;
     pub use crate::update::*;
