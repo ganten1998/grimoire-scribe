@@ -77,6 +77,22 @@ pub struct TgFrame {
     pub c: [TgContact; TG_MAX],
 }
 
+/// One column of the panel's slots, as EVIOCGMTSLOTS answers it for one ABS_MT code (`ask` is that
+/// ioctl: it gets a buffer whose first int is the code and returns whether the kernel took the
+/// request). The kernel writes only as many ints as the panel has slots (the smaller of that and the
+/// buffer) and leaves the rest of the buffer as it was, so the buffer goes in filled with `empty`: for
+/// the tracking id column that is -1 (no contact; a 0 there is a valid id, a finger that never lifts),
+/// for the others 0. False, and `col` untouched, when the ioctl failed.
+pub fn mt_column(ask: &mut dyn FnMut(&mut [i32; TG_MAX + 1]) -> bool, code: i32, empty: i32, col: &mut [i32; TG_MAX]) -> bool {
+    let mut buf = [empty; TG_MAX + 1];
+    buf[0] = code;
+    if !ask(&mut buf) {
+        return false;
+    }
+    col.copy_from_slice(&buf[1..]);
+    true
+}
+
 /// The pen, as the touch side sees it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TgPen {

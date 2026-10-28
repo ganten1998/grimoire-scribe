@@ -357,6 +357,57 @@ fn syn_dropped_leaves_no_phantom() {
     check!(types(&r.frame(13)) == [InType::TouchDown]);
 }
 
+// EVIOCGMTSLOTS writes only the panel's own slots: on a 10-slot panel the ids of slots 10..16 stay as
+// the buffer went in. They must read as no contact (-1): a 0 is a valid tracking id, six fingers that
+// never lift, and touch is dead until a restart.
+fn a_panel_with_fewer_slots_leaves_no_phantoms() {
+    const PANEL_SLOTS: usize = 10;
+    // The kernel's answer: slots 3 and 7 are down (ids 203 and 207) at (100 + i, 200 + i).
+    let mut kernel = |buf: &mut [i32; TG_MAX + 1]| {
+        let code = buf[0];
+        for i in 0..PANEL_SLOTS.min(buf.len() - 1) {
+            buf[1 + i] = match code {
+                0x39 => {
+                    if i == 3 || i == 7 {
+                        200 + i as i32
+                    } else {
+                        -1
+                    }
+                }
+                0x35 => 100 + i as i32,
+                _ => 200 + i as i32,
+            };
+        }
+        true
+    };
+    let mut col = [7i32; TG_MAX];
+    check!(mt_column(&mut kernel, 0x39, -1, &mut col));
+    check!(col[3] == 203 && col[7] == 207);
+    check!(col.iter().filter(|&&id| id >= 0).count() == 2);
+    check!(col[PANEL_SLOTS..].iter().all(|&id| id == -1));
+    // Any other column reads 0 past the panel's slots, and the panel's own are its answer.
+    check!(mt_column(&mut kernel, 0x35, 0, &mut col));
+    check!(col[9] == 109 && col[PANEL_SLOTS..].iter().all(|&v| v == 0));
+    // A request the kernel refuses leaves the column as it was.
+    let mut col = [5i32; TG_MAX];
+    check!(!mt_column(&mut |_| false, 0x39, -1, &mut col) && col == [5i32; TG_MAX]);
+    // A panel with more slots than the buffer holds fills it; the code goes in the first int.
+    let mut seen = 0;
+    check!(mt_column(
+        &mut |buf| {
+            seen = buf[0];
+            for v in buf[1..].iter_mut() {
+                *v = 1;
+            }
+            true
+        },
+        0x39,
+        -1,
+        &mut col
+    ));
+    check!(seen == 0x39 && col == [1i32; TG_MAX]);
+}
+
 // The frame after a cancel holds what the panel says is down (a resync after a drop, the fingers
 // still down when the Kindle hands the panel back): they wait to lift, even never seen to land.
 fn the_frame_after_a_cancel() {
@@ -940,6 +991,7 @@ fn test_touchgest() {
     run!(a_third_finger);
     run!(pen_arrival_cancels_never_taps);
     run!(syn_dropped_leaves_no_phantom);
+    run!(a_panel_with_fewer_slots_leaves_no_phantoms);
     run!(the_frame_after_a_cancel);
     run!(the_pair_is_by_landing_order);
     run!(busy_counts_every_contact);

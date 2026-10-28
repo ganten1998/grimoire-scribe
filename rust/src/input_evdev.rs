@@ -358,6 +358,7 @@ struct PenSt {
 // ---- touch state ----
 
 const MAX_SLOTS: usize = 16;
+const _: () = assert!(MAX_SLOTS == TG_MAX); // (mt_column's columns are touchgest's)
 
 /// T: the touch panel's slots as its events leave them. What the contacts mean (one finger's
 /// stream, a pinch, a gesture, a palm) is touchgest.rs's, fed one frame per SYN_REPORT.
@@ -1423,24 +1424,24 @@ impl State {
     }
 
     // The panel's slots as it holds them now, after it dropped events: who is down, where, with what
-    // tool, size and pressure, and the slot its next events are for.
+    // tool, size and pressure, and the slot its next events are for. A panel with fewer slots than
+    // MAX_SLOTS answers for its own only (mt_column), so a slot it does not have reads as no contact.
     fn touch_resync(&mut self) {
         let fd = self.touch.fd;
-        let mut slots = [0i32; MAX_SLOTS + 1];
         let codes = [ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TOUCH_MAJOR, ABS_MT_PRESSURE];
+        let mut col = [0i32; MAX_SLOTS];
         for code in codes {
-            slots[0] = code as i32;
-            if eviocgmtslots(fd, &mut slots) < 0 {
+            let empty = if code == ABS_MT_TRACKING_ID { -1 } else { 0 };
+            if !mt_column(&mut |buf| eviocgmtslots(fd, buf) >= 0, code as i32, empty, &mut col) {
                 continue;
             }
-            let v = &slots[1..];
             match code {
-                ABS_MT_TRACKING_ID => self.T.id.copy_from_slice(v),
-                ABS_MT_POSITION_X => self.T.x.copy_from_slice(v),
-                ABS_MT_POSITION_Y => self.T.y.copy_from_slice(v),
-                ABS_MT_TOOL_TYPE => self.T.tool.copy_from_slice(v),
-                ABS_MT_TOUCH_MAJOR => self.T.major.copy_from_slice(v),
-                _ => self.T.pressure.copy_from_slice(v),
+                ABS_MT_TRACKING_ID => self.T.id = col,
+                ABS_MT_POSITION_X => self.T.x = col,
+                ABS_MT_POSITION_Y => self.T.y = col,
+                ABS_MT_TOOL_TYPE => self.T.tool = col,
+                ABS_MT_TOUCH_MAJOR => self.T.major = col,
+                _ => self.T.pressure = col,
             }
         }
         let mut ai = InputAbsinfo::default();
