@@ -1776,10 +1776,20 @@ impl EditorState {
         let ids: Vec<u32> = (0..self.nb.npages().max(0) as usize).map(|i| self.nb.page_ids[i]).collect();
         self.back.retain(|p| ids.contains(p));
     }
-    /// Where the newest page on the back list that is still in the notebook is: its index and what it is
-    /// called (its Index name, or "Page 3"). None while the list is empty.
+    /// The page on show is not a page to go back to: entries at the top of the list that are it (a link
+    /// followed, then the pages turned back by hand) are dropped, so "Back to" never offers where the
+    /// owner already is and the go-back key never does nothing.
+    fn back_trim(&mut self) {
+        let here = self.open_pid();
+        while here != 0 && self.back.last() == Some(&here) {
+            self.back.pop();
+        }
+    }
+    /// Where the newest page on the back list that is still in the notebook (and not the one on show)
+    /// is: its index and what it is called (its Index name, or "Page 3"). None while the list is empty.
     fn back_top(&mut self) -> Option<(i32, String)> {
         self.back_prune();
+        self.back_trim();
         let pid = *self.back.last()?;
         let i = (0..self.nb.npages()).find(|&i| self.nb.page_ids[i as usize] == pid)?;
         let name = nav_name(&self.nav, pid);
@@ -4078,9 +4088,10 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         pages_name(a);
     } else if action == SHORTCUT_GO_BACK {
         // Back to the page the last link, Find or Pages view left: the newest on the list that is still
-        // in the notebook, which is not pushed again.
+        // in the notebook and is not the page on show, which is not pushed again.
         let s = ed(a);
         s.back_prune();
+        s.back_trim();
         match s.back.pop() {
             Some(pid) => {
                 let at = (0..s.nb.npages()).find(|&i| s.nb.page_ids[i as usize] == pid);
@@ -5873,6 +5884,33 @@ mod tests {
         let mut s = two_cached([5, 3], 5);
         s.ccache[0] = CacheEntry::default();
         assert_eq!(cache_victim(&s, false), Some(0));
+    }
+
+    #[test]
+    fn the_back_list_never_offers_the_page_on_show() {
+        let mut s = EditorState::default();
+        s.nb.page_ids = vec![10, 20, 30, 40];
+        s.open = true;
+        s.index = 0; // page 10 is on show
+        // A link followed from it, then the pages turned back by hand: its own entry is not a way back.
+        s.back = vec![30, 10];
+        assert_eq!(s.back_top(), Some((2, "Page 3".to_string())));
+        assert_eq!(s.back, [30]);
+        s.back = vec![10, 10];
+        assert_eq!(s.back_top(), None);
+        assert!(s.back.is_empty());
+        // Where it is not at the top, it stays for later (a browser's Back goes through it).
+        s.back = vec![10, 30];
+        assert_eq!(s.back_top(), Some((2, "Page 3".to_string())));
+        assert_eq!(s.back, [10, 30]);
+        // Pages deleted since are skipped first, and may leave the page on show on top.
+        s.back = vec![30, 10, 99];
+        assert_eq!(s.back_top(), Some((2, "Page 3".to_string())));
+        assert_eq!(s.back, [30]);
+        // With no page open there is no page on show to leave out.
+        s.open = false;
+        s.back = vec![10];
+        assert_eq!(s.back_top(), Some((0, "Page 1".to_string())));
     }
 
     #[test]

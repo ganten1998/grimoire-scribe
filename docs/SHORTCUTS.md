@@ -101,7 +101,7 @@ Actions, in the Buttons sheet's groups:
   `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's Go to page
   opens, closed again by its own button), `go-back` (Back to the page before: the page a link, the Pages
   view or Find left, the newest first, up to 32, forgotten when the notebook closes; a page turn leaves
-  nothing on that list, and with none a toast says so) and `link-areas` (dotted boxes over the page where a
+  nothing on that list, the page on show is never the one it goes back to, and with none a toast says so) and `link-areas` (dotted boxes over the page where a
   finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`, and `status-toggle` (the
