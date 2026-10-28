@@ -646,6 +646,23 @@ fn gesture_keys() {
     t.hints = 64;
     t.gestures = false;
     check!(settings_save(&t) == 0 && has_pins_line(&path, "hints=64") && has_pins_line(&path, "gestures=0"));
+    // The clock corner's place (status_corner): the top left by default, written after link_areas, clamped to
+    // 0..3 (a number past it is the nearest and goes back as it was), a third state not a thing for it.
+    check!(s.status_corner == 0);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_corner=0"));
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("link_areas=") < at("status_corner="));
+    s.status_corner = 3;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_corner=3"));
+    check!(settings_load(&mut t) == 0 && t.status_corner == 3);
+    check!(write_file_atomic(&path, b"status_corner=9\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.status_corner == 3);
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "status_corner=9"));
+    check!(write_file_atomic(&path, b"status_corner=-2\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.status_corner == 0);
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.status_corner == 0);
     // upgraded: version 3 exactly, a file that exists, no gestures key
     check!(write_file_atomic(&path, b"settings_version=3\ninvert=1\n") == 0);
     check!(settings_load(&mut t) == 0 && t.upgraded);

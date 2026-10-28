@@ -124,6 +124,9 @@ pub struct Settings {
     pub status_on: bool,
     /// and how large it is: 0 small, 1 medium, 2 large (settings.ini status_size)
     pub status_size: i32,
+    /// and in which corner of the page it sits: 0 top left (the default), 1 top right, 2 bottom right,
+    /// 3 bottom left (settings.ini status_corner; the tap zone follows it)
+    pub status_corner: i32,
     /// Two-finger gestures (the swipes and taps of gestures.ini; settings.ini gestures): off, a pinch
     /// and a pan still work.
     pub gestures: bool,
@@ -2515,6 +2518,7 @@ pub fn settings_default(s: &mut Settings) {
     s.before_eraser = -1;
     s.status_on = false;
     s.status_size = 0;
+    s.status_corner = 0;
     s.gestures = true;
     s.landscape_fit = true;
     s.hints = 0;
@@ -2775,6 +2779,7 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"landscape_fit" => s.landscape_fit = keep_bool("landscape_fit", v),
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
+        b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
         b"before_eraser" => {
             // A pen this version does not have (a newer one's), the eraser or no number at all is none
             // here, and stays in the file.
@@ -2969,6 +2974,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "landscape_fit", s.landscape_fit as i32);
     put_int(&mut b, "hints", s.hints);
     put_int(&mut b, "link_areas", s.link_areas as i32);
+    put_int(&mut b, "status_corner", s.status_corner);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());
