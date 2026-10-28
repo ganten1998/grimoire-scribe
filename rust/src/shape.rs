@@ -104,8 +104,8 @@ const MAX_RESAMPLED: usize = 8 * 40 + 1;
 /// ShortStraw's window (Wolin, Eoff and Hammond 2008) and its corner threshold.
 const STRAW_W: usize = 3;
 const STRAW_MEDIAN: f64 = 0.95;
-/// The share of the path at each end that the closure may cut away (an overshoot past the start, or
-/// a lead-in before the first corner).
+/// The share of the path at one end that the closure may cut away (an overshoot past the start,
+/// or a lead-in before it; never both).
 const CLOSE_TRIM: f64 = 0.15;
 
 /// What a stroke was recognized as. The values go into the shape-log.
@@ -190,8 +190,12 @@ pub struct ShapeFeatures {
     pub straight: f32,
     /// the largest distance from the chord
     pub offset_mm: f32,
-    /// the closure's gap / the diagonal
+    /// the closure's gap / the diagonal: what the gate tested, after an overshoot or a lead-in was
+    /// cut away (see end_gap)
     pub gap: f32,
+    /// the distance between the stroke's two ends / the diagonal, nothing cut: with gap, the
+    /// shape-log shows how much a closure leaned on the cut
+    pub end_gap: f32,
     /// the closed path's width square to its least width, and its least width (over all directions)
     pub across_mm: f32,
     pub thick_mm: f32,
@@ -202,7 +206,7 @@ pub struct ShapeFeatures {
     /// ShortStraw's corners on the closed path (on the open one, ends included, for v1.5's kinds)
     pub corners: i32,
     /// the ellipse fit's RMS and largest radial errors / the minor semi-axis (an arc's / its
-    /// radius; 0 when not fitted)
+    /// radius; 0 when not fitted); the largest includes the ends the closure cut away
     pub rms: f32,
     pub max_err: f32,
     /// the fitted ellipse's minor / major axis
@@ -495,6 +499,7 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     // CLOSED: find where the loop closes, then the size, winding and scribble gates.
     let (i, j, gap) = closure(&q, len);
     r.features.gap = (gap / diag) as f32;
+    r.features.end_gap = (chord / diag) as f32;
     if gap > SHAPE_CLOSE_GAP as f64 * diag * tol {
         if prm.extras {
             if let Some((kind, out)) = open_shape(&q, diag, prm, mm, tol, &mut r.features) {
@@ -562,8 +567,15 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     }
     let sign = if wind >= 0.0 { 1.0 } else { -1.0 };
     let seg_min = fmla(-(1.0 - SHAPE_SEG_STRAIGHT as f64), tol, 1.0);
-    let poly = polygon(&cyc, seg_min, diag, &mut r.features);
-    let ell = ellipse(lp, diag, tol, &mut r.features);
+    // What the closure cut away is the user's ink too, and the shape replaces it: it must lie on
+    // the shape (an overshoot runs on along the outline, or a little past a corner), or a circle
+    // with a stick (a balloon drawn string first, a fish's tail, a flag's pole) would lose the
+    // stick. A polygon may stray from it as far as a closing gap may be wide; an ellipse's radial
+    // error there is held to its largest (see ellipse()).
+    let cut: Vec<P> = q[..i].iter().chain(&q[j + 1..]).copied().collect();
+    let stray = SHAPE_CLOSE_GAP as f64 * diag * tol;
+    let poly = polygon(&cyc, seg_min, diag, &mut r.features).filter(|pg| cut.iter().all(|&c| outline_dist(c, &pg.1) <= stray));
+    let ell = ellipse(lp, &cut, diag, tol, &mut r.features);
     let first = raw[0];
     let pstep = page_step(prm);
     // Both can pass (a long ellipse's quarters are nearly straight): the closer outline wins.
@@ -633,8 +645,12 @@ fn page_step(prm: &ShapeParams) -> f64 {
     SHAPE_POINT_MM as f64 * prm.dpi as f64 / 25.4
 }
 
-/// Where the closed path closes: the nearest pair of points, one in the first CLOSE_TRIM of the
-/// path and one in the last. An overshoot past the start is cut there, a gap is measured there.
+/// Where the closed path closes, cut at one end only: either the stroke ran on past its start (an
+/// overshoot: the end goes back to its point nearest the first, within the last CLOSE_TRIM of the
+/// path) or it came in to its loop (a lead-in: the start moves on to its point nearest the last,
+/// within the first CLOSE_TRIM), whichever leaves the smaller gap. Cutting both ends at once would
+/// close any stroke that crosses itself near both of them: an alpha, a fish or a ribbon, whose
+/// ends fly apart, would lose both tails and come out a circle.
 fn closure(q: &[P], len: f64) -> (usize, usize, f64) {
     let n = q.len();
     let mut cum = vec![0.0; n];
@@ -644,18 +660,22 @@ fn closure(q: &[P], len: f64) -> (usize, usize, f64) {
     let head = CLOSE_TRIM * len;
     let tail = (1.0 - CLOSE_TRIM) * len;
     let mut best = (0, n - 1, dist(q[0], q[n - 1]));
-    for i in 0..n {
+    for j in (1..n).rev() {
+        if cum[j] < tail {
+            break;
+        }
+        let d = dist(q[0], q[j]);
+        if d < best.2 {
+            best = (0, j, d);
+        }
+    }
+    for i in 0..n - 1 {
         if cum[i] > head {
             break;
         }
-        for j in (i + 1..n).rev() {
-            if cum[j] < tail {
-                break;
-            }
-            let d = dist(q[i], q[j]);
-            if d < best.2 {
-                best = (i, j, d);
-            }
+        let d = dist(q[i], q[n - 1]);
+        if d < best.2 {
+            best = (i, n - 1, d);
         }
     }
     best
@@ -968,15 +988,21 @@ fn polygon(cyc: &[P], seg_min: f64, diag: f64, f: &mut ShapeFeatures) -> Option<
     Some((if nc == 3 { ShapeKind::Triangle } else { ShapeKind::Quad }, verts))
 }
 
+/// The distance of a point from a closed polygon's outline.
+fn outline_dist(q: P, v: &[P]) -> f64 {
+    let n = v.len();
+    let mut d = f64::MAX;
+    for k in 0..n {
+        d = d.min(seg_dist(q, v[k], v[(k + 1) % n]));
+    }
+    d
+}
+
 /// The RMS distance of the loop's points from a closed polygon.
 fn outline_rms(lp: &[P], v: &[P]) -> f64 {
-    let n = v.len();
     let mut s = 0.0;
     for &q in lp {
-        let mut d = f64::MAX;
-        for k in 0..n {
-            d = d.min(seg_dist(q, v[k], v[(k + 1) % n]));
-        }
+        let d = outline_dist(q, v);
         s = fmla(d, d, s);
     }
     (s / lp.len() as f64).sqrt()
@@ -1253,8 +1279,10 @@ fn solve<const N: usize>(mut m: [[f64; N]; N], mut r: [f64; N]) -> Option<[f64; 
 }
 
 /// The ellipse fit: in the loop's principal frame (so the ellipse has no cross term), the least-
-/// squares A s^2 + B t^2 + C s + D t = 1, then the radial errors. Some when both errors pass.
-fn ellipse(lp: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellipse> {
+/// squares A s^2 + B t^2 + C s + D t = 1, then the radial errors. Some when both errors pass. The
+/// fit and its RMS are the loop's; the largest error is also taken over `cut`, the ends the
+/// closure cut away, which the ellipse must account for too.
+fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellipse> {
     let (c0, th0) = pca(lp);
     let (u, v) = (unit(th0), unit(th0 + std::f64::consts::FRAC_PI_2));
     // (scaled to about 1, so the normal equations stay well conditioned)
@@ -1290,16 +1318,21 @@ fn ellipse(lp: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellip
         th += std::f64::consts::FRAC_PI_2;
     }
     let (u, v) = (unit(th), unit(th + std::f64::consts::FRAC_PI_2));
-    let (mut s2, mut emax) = (0.0, 0.0f64);
-    for &q in lp {
+    let radial = |q: P| -> f64 {
         let d = sub(q, c);
         let rq = norm(d);
         let phi = dot(d, v).atan2(dot(d, u));
         let (bc, as_) = (eb * phi.cos(), ea * phi.sin());
-        let re = ea * eb / fmla(bc, bc, as_ * as_).sqrt();
-        let e = rq - re;
+        rq - ea * eb / fmla(bc, bc, as_ * as_).sqrt()
+    };
+    let (mut s2, mut emax) = (0.0, 0.0f64);
+    for &q in lp {
+        let e = radial(q);
         s2 = fmla(e, e, s2);
         emax = emax.max(e.abs());
+    }
+    for &q in cut {
+        emax = emax.max(radial(q).abs());
     }
     let rms_px = (s2 / lp.len() as f64).sqrt();
     f.rms = (rms_px / eb) as f32;
