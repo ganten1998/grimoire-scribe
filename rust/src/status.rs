@@ -336,7 +336,9 @@ pub fn status_reset() {
         s.drawn_text.clear();
         s.drawn_key = None;
         s.pending = RECT_EMPTY;
-        s.read_at = 0; // (the battery ran down meanwhile: the first tick awake reads it again)
+        // (The battery ran down meanwhile: the first tick awake asks again. The kernel answers at
+        // once; lipc with its last reading until the next one is due.)
+        s.read_at = 0;
     });
     display_skip_status(RECT_EMPTY);
 }

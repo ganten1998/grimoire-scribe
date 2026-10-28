@@ -89,8 +89,9 @@ pub fn sys_battery() -> Battery {
     platform::sys_battery()
 }
 /// Ends a battery reading under way in the background, without waiting (or stops one that took
-/// too long), whether or not the corner asks for the battery now: status_tick calls it each tick,
-/// so a reading started before the corner went off or was held back is not left running. Nothing
+/// too long), whether or not the corner asks for the battery now: status_tick calls it each tick
+/// awake, so a reading started before the corner went off or was held back is not left running
+/// (one started just before a sleep ends at the first tick after the wake). Nothing
 /// to do where readings do not run in the background.
 #[inline]
 pub fn sys_battery_reap() {
