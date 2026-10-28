@@ -9,12 +9,16 @@ const SOURCE = fs.readFileSync(path.join(__dirname, '../web/live.js'), 'utf8');
 // A page on stand-ins. respond(url) answers its fetches (a stream by default: page.readers[url]
 // gets what the test pushes); timers are kept for the test to run (page.timers).
 function page(respond) {
-    const canvases = [], raf = [], readers = {}, handlers = {}, timers = [], fetches = [], toggles = [];
+    const canvases = [], raf = [], readers = {}, handlers = {}, timers = [], fetches = [], toggles = [], elements = [];
+    // The page's clock (performance.now): each paint is a frame 100 ms later, so a sample that came
+    // before it has played out (the playout holds samples back by at most 20 ms).
+    let clock = 1000;
     let fullscreen = 0;
     function element(tag) {
         const e = {tag, style: {}, classList: {toggle(name, on) { toggles.push([name, on]); }}, clientWidth: 100,
             clientLeft: 0, clientTop: 0, offsetLeft: 0, offsetTop: 0, offsetHeight: 20, width: 0, height: 0,
-            append() {}, replaceChildren() {}, setAttribute() {}, addEventListener(type, fn) { this[type] = fn; }};
+            append() {}, replaceChildren() {}, setAttribute(k, v) { this['@' + k] = v; }, addEventListener(type, fn) { this[type] = fn; }};
+        elements.push(e);
         if (tag === 'canvas') {
             const ctx = {calls: [], getImageData(x, y, w, h) { return {data: new Uint8ClampedArray(w * h * 4)}; },
                 createImageData(w, h) { return {data: new Uint8ClampedArray(w * h * 4)}; }};
@@ -40,7 +44,8 @@ function page(respond) {
         }}};
     }
     const fetch = async url => { fetches.push(url); const r = respond && respond(url); return r || stream(url); };
-    const context = {console, Uint8Array, Uint8ClampedArray, DataView, Blob, performance, Promise, Math, Number, Date,
+    const context = {console, Uint8Array, Uint8ClampedArray, DataView, Blob, performance: {now: () => clock}, Promise, Math, Number, Date,
+        JSON, Set, Object, Array, String,
         document: {getElementById: id => id === 'live' ? host : null, createElement: element, body,
             documentElement: html, pictureInPictureEnabled: false},
         window: {GRIMOIRE_LIVE_WORDS: words, fetch, ReadableStream: function () {}, createImageBitmap: () => imagePromise,
@@ -51,9 +56,9 @@ function page(respond) {
         requestAnimationFrame: fn => raf.push(fn), addEventListener: (name, fn) => { handlers[name] = fn; },
         setInterval() {}, setTimeout: (fn, ms) => timers.push({fn, ms}), clearTimeout() {}};
     vm.runInNewContext(SOURCE, context);
-    return {canvases, raf, readers, handlers, timers, fetches, toggles, decode, get fullscreen() { return fullscreen; },
-        overlay: canvases[4].ctx,
-        paint() { const batch = raf.splice(0); for (const fn of batch) fn(performance.now()); }};
+    return {canvases, raf, readers, handlers, timers, fetches, toggles, decode, elements, get fullscreen() { return fullscreen; },
+        overlay: canvases[5].ctx, raw: canvases[1].ctx,
+        paint() { clock += 100; const batch = raf.splice(0); for (const fn of batch) fn(clock); }};
 }
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const frame = (type, payload) => {
@@ -62,7 +67,7 @@ const frame = (type, payload) => {
 };
 function hello(epoch) {
     const p = new Uint8Array(12), d = new DataView(p.buffer);
-    [2, 100, 100, 64].forEach((v, i) => d.setUint16(i * 2, v, true)); d.setUint32(8, epoch, true);
+    [3, 100, 100, 64].forEach((v, i) => d.setUint16(i * 2, v, true)); d.setUint32(8, epoch, true);
     return frame(1, p);
 }
 function batch(ack, ink) {
@@ -76,9 +81,9 @@ const style = (() => {
     [0, 0, 100, 100, 90, 0, 10, 20].forEach((v, i) => d.setInt32(32 + i * 4, v, true));
     return frame(8, p);
 })();
-function sample(seq, x, flags, epoch = 1) {
+function sample(id, x, flags, epoch = 1) {
     const p = new Uint8Array(28), d = new DataView(p.buffer);
-    d.setUint32(0, epoch, true); d.setUint32(8, seq, true); d.setUint32(12, 100, true);
+    d.setUint32(0, epoch, true); d.setUint32(8, id, true); d.setUint32(12, 100, true);
     d.setUint16(16, x, true); d.setUint16(18, 40, true); d.setUint16(20, 32768, true);
     p[24] = 2; p[25] = flags; return frame(7, p);
 }
@@ -155,4 +160,40 @@ module.exports = async function browserChecks(ok) {
     }
     ok('page: the next tile hello starts it again; failures back off to 8 s (' + delays + ')', asked() === 8 &&
         delays.join() === '500,1000,2000,4000,8000,8000');
+
+    // The layers (frame 9): the toolbar drawn over the page once its batch is painted, gone from the
+    // picture when its switch is off (the page under it shows), back when on; the switches and the
+    // dot's settings start from their defaults where the browser keeps nothing.
+    p = page();
+    await turn();
+    const t2 = p.readers['/live/stream'];
+    t2.push(hello(1));
+    const layer = new Uint8Array(14), ld = new DataView(layer.buffer);
+    layer[0] = 0; ld.setUint16(2, 10, true); ld.setUint16(4, 20, true); ld.setUint16(6, 30, true); ld.setUint16(8, 40, true);
+    t2.push(frame(9, layer)); t2.push(batch(0, 1));
+    const bmp = {close() {}, tag: 'toolbar'};
+    p.decode(bmp);
+    for (let i = 0; i < 5; i++) await turn();
+    const drewLayer = () => p.raw.calls.some(c => c[0] === 'drawImage' && c[1] === bmp && c[6] === 10 && c[7] === 20);
+    ok('layers: the toolbar\'s layer drawn over the page, at its place', drewLayer());
+    const toolbar = p.elements.find(e => e.textContent === 'toolbar');
+    const status = p.elements.find(e => e.textContent === 'statusCorner');
+    ok('layers: two switches, both on by default without storage', !!toolbar && !!status &&
+       toolbar['@aria-checked'] === 'true' && status['@aria-checked'] === 'true');
+    p.raw.calls = [];
+    toolbar.click();
+    ok('layers: switched off, the page under the toolbar shows and the layer does not',
+       toolbar['@aria-checked'] === 'false' && !drewLayer() && p.raw.calls.some(c => c[0] === 'drawImage' && c[1] !== bmp && c[6] === 10));
+    p.raw.calls = [];
+    toolbar.click();
+    ok('layers: on again, the layer is back', drewLayer());
+    const empty = new Uint8Array(10);
+    t2.push(frame(9, empty)); t2.push(batch(0, 1));
+    for (let i = 0; i < 5; i++) await turn();
+    p.raw.calls = [];
+    toolbar.click(); toolbar.click();
+    ok('layers: one no longer on the screen draws nothing', !drewLayer());
+    const select = p.elements.find(e => e.tag === 'select'), picker = p.elements.find(e => e.type === 'color');
+    ok('dot: the size small and the first color by default, settable without storage', select.value === 'small' &&
+       picker.value === '#f03c28' && (select.value = 'large', select.change(), true) && select.value === 'large');
 };

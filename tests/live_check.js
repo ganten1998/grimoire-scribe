@@ -12,7 +12,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig, mp4Boxes,
+const { Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig, filmChoices, annexbNals,
+    annexbSample, avcCOf, mp4Boxes,
         MP4_SCALE, CodecRecorder } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
 const [bin, txt, pentxt] = process.argv.slice(2);
@@ -117,29 +118,63 @@ ok('mark: the box covers all it draws, in whole pixels', [hover, touch, penMark(
     penMark({x: 3, y: 7, state: 2}, 0.3071, 1.5, 0, 542)].every(covers));
 ok('mark: placed in a film at its offset', penMark({x: 0, y: 0, state: 2}, 0.75, 1, 0, 542).y === 542.375);
 ok('mark: none while away', penMark(null, 1, 1) === null && penMark({x: 1, y: 1, state: 0}, 1, 1) === null);
+// The dot's settings: smaller than it was by default (hovering 7, touching 5 CSS px then), any color.
+const { DOT_SIZES, DOT_COLORS, dotColor, dotSize } = require(path.join(__dirname, '..', 'web', 'live.js'));
+const big = penMark({x: 10, y: 10, state: 1}, 1, 1, 0, 0, {color: '#123abc', size: 'large'});
+ok('dot: small by default, smaller than it used to be', unit.r === DOT_SIZES.small[0] && unit.r < 7 &&
+   penMark({x: 0, y: 0, state: 2}, 1, 1).r === DOT_SIZES.small[1] && DOT_SIZES.small[1] < 5 && DOT_SIZES.medium.join() === '7,5');
+ok('dot: its color and size as chosen, its box still covering it', big.r === DOT_SIZES.large[0] && big.color === '#123abc' &&
+   covers(big) && drawn(big).fills[0].fill === '#123abc');
+ok('dot: remembered values read back safely', dotColor('#ABCDEF') === '#abcdef' && dotColor('red') === DOT_COLORS[0] &&
+   dotColor(null) === DOT_COLORS[0] && dotSize('large') === 'large' && dotSize('toString') === 'small' && dotSize(null) === 'small');
 // A recording keeps its size: the same screen fills it, a turned one goes in whole, centered.
 const same = filmFit(1860, 2480, 1860, 2480), side = filmFit(2480, 1860, 1860, 2480);
 ok('film: the same size, as it is', same.k === 1 && same.x === 0 && same.y === 0);
 ok('film: turned, whole and centered (0.75, at 0,542)', side.k === 0.75 && side.x === 0 && side.y === 542 &&
    2480 * side.k <= 1860 && side.y + 1860 * side.k <= 2480);
-const big = filmFit(1986, 2648, 2648, 1986);
-ok('film: the bigger Scribe turned back the other way fits too', big.y === 0 && big.x >= 0 &&
-   big.x + 1986 * big.k <= 2648 && 2648 * big.k <= 1986 + 1e-9);
+const bigger = filmFit(1986, 2648, 2648, 1986);
+ok('film: the bigger Scribe turned back the other way fits too', bigger.y === 0 && bigger.x >= 0 &&
+   bigger.x + 1986 * bigger.k <= 2648 && 2648 * bigger.k <= 1986 + 1e-9);
 // Record's format. What each browser's MediaRecorder said (Chrome 156, Safari: MP4 only, Firefox
 // 156 and Nightly 161: VP8 only), and h264, the codec its VideoEncoder took ('' for none).
 const chrome = () => true, safari = t => t === 'video/mp4', firefox = t => t === 'video/webm;codecs=vp8' || t === 'video/webm';
 const thrower = () => { throw new Error('no'); };
-const as = (f, h264) => { const r = recordType(f, h264 || ''); return [r.mime, r.ext, r.why, r.via, r.codec || ''].join('|'); };
+const film = codec => ({codec, width: 1860, height: 2480, format: 'avc', hw: ''});
+const as = (f, codec) => { const r = recordType(f, codec ? film(codec) : null); return [r.mime, r.ext, r.why, r.via, r.codec || ''].join('|'); };
 ok('record: Chrome, MediaRecorder\'s MP4 of H.264', as(chrome) === 'video/mp4;codecs=avc1.42E01E|mp4||recorder|' &&
    as(chrome, H264[0]) === 'video/mp4;codecs=avc1.42E01E|mp4||recorder|');
 ok('record: Safari, its plain MP4', as(safari) === 'video/mp4|mp4||recorder|');
-ok('record: Firefox with H.264 in VideoEncoder, the page\'s own MP4', as(firefox, 'avc1.420033') === 'video/mp4|mp4||codecs|avc1.420033');
+ok('record: Firefox with H.264 in VideoEncoder, the page\'s own MP4', as(firefox, 'avc1.420033') === 'video/mp4|mp4||codecs|avc1.420033' &&
+   recordType(firefox, film('avc1.42E033')).film.width === 1860);
 ok('record: Firefox without it, WebM, and the button says why', as(firefox) === 'video/webm;codecs=vp8|webm|browser|recorder|');
 ok('record: no MediaRecorder at all but VideoEncoder, the page\'s MP4', as(() => false, 'avc1.42001f') === 'video/mp4|mp4||codecs|avc1.42001f');
 ok('record: a browser that says nothing (or throws), its own choice, no reason claimed', as(() => false) === '|||recorder|' &&
    as(thrower) === '|||recorder|');
-ok('record: Baseline H.264 first, at a level that holds both Scribes', H264[0] === 'avc1.420033' &&
-   H264.every(c => /^avc1\.42/.test(c)) && filmConfig(H264[0], 1860, 2480).avc.format === 'avc');
+ok('record: Constrained Baseline H.264 first, at a level that holds both Scribes, Baseline only', H264[0] === 'avc1.42E033' &&
+   H264.every(c => /^avc1\.42/.test(c)) && filmConfig(H264[0], 1860, 2480).avc.format === 'avc' &&
+   filmConfig(H264[0], 1860, 2480, 'annexb', 'prefer-software').hardwareAcceleration === 'prefer-software' &&
+   !('hardwareAcceleration' in filmConfig(H264[0], 2, 2)));
+// What the probe asks VideoEncoder for a Scribe's screen: its own size first, both forms, the
+// browser's choice of hardware first; then smaller even sizes that a hardware encoder takes.
+const choices = filmChoices(1860, 2480);
+ok('record: the probe asks the screen\'s size first, in both forms, then smaller even sizes',
+   choices[0].width === 1860 && choices[0].height === 2480 && choices[0].format === 'avc' && choices[0].hw === '' &&
+   choices.some(c => c.format === 'annexb' && c.width === 1860) &&
+   choices.some(c => c.height === 2304 && c.width % 2 === 0 && Math.abs(c.width / c.height - 1860 / 2480) < 0.01) &&
+   choices.some(c => Math.max(c.width, c.height) === 1920) &&
+   choices.every(c => c.width % 2 === 0 && c.height % 2 === 0 && Math.max(c.width, c.height) <= 2480) &&
+   choices.findIndex(c => c.height === 2304) > choices.findIndex(c => c.hw === 'prefer-hardware'));
+// Annex B (Firefox's encoder may give only it): the parameter sets go to avcC, the pictures become
+// length-prefixed samples.
+const sps = [0x67, 0x42, 0xC0, 0x33, 0xAA], pps = [0x68, 0xCE, 0x3C], idr = [0x65, 0x88, 0x84, 0x00, 0x00, 0x03, 0x01];
+const annexb = Uint8Array.from([0, 0, 0, 1, 0x09, 0xF0, 0, 0, 0, 1, ...sps, 0, 0, 1, ...pps, 0, 0, 0, 1, ...idr]);
+const nals = annexbNals(annexb), sample = annexbSample(annexb);
+ok('record: Annex B read as its NAL units, start codes of 3 and 4 bytes', nals.length === 4 && nals[1].join() === sps.join() &&
+   nals[2].join() === pps.join() && nals[3].join() === idr.join());
+ok('record: an Annex B chunk as a length-prefixed sample, its SPS and PPS kept for avcC',
+   sample.sample.join() === [0, 0, 0, idr.length, ...idr].join() && sample.sps.join() === sps.join() && sample.pps.join() === pps.join());
+const avcc = avcCOf(Uint8Array.from(sps), Uint8Array.from(pps));
+ok('record: avcC of one SPS and one PPS', avcc.join() === [1, 0x42, 0xC0, 0x33, 0xFF, 0xE1, 0, 5, ...sps, 1, 0, 3, ...pps].join());
 
 // The MP4's boxes, read back. A box: {type, at, size, body (where its payload starts)}.
 function boxes(buf, start, end) {
@@ -411,7 +446,7 @@ function ffmpegChecks(work) {
 }
 
 // Fast ink exercises the same model and draw calls the page uses, with no GUI or timing sleeps.
-const {readStyle, readSamples, FastInk, inkWidth, PaintAges, shade, INK_LEVEL} = require('../web/live.js');
+const {readStyle, readSamples, FastInk, Playout, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage} = require('../web/live.js');
 const styleBytes = new Uint8Array(64), sd = new DataView(styleBytes.buffer);
 styleBytes[0] = 1; styleBytes[1] = 2;
 [1, 9, .1, .9, 2, .2, .8].forEach((v, i) => sd.setFloat32(4 + i * 4, v, true));
@@ -421,21 +456,25 @@ ok('fast: style widths, pressure curve and UI exclusion read back', inkStyle.ena
     inkStyle.max === 9 && inkStyle.gamma === 2 && inkStyle.exclude[0] === 1700);
 ok('fast: pressure changes width and opacity', inkWidth(inkStyle, {pressure: 0}).width === 1 &&
     inkWidth(inkStyle, {pressure: 1}).width === 9 && inkWidth(inkStyle, {pressure: .5}).width > 2);
-const makeSample = (seq, x, state = 2, flags = 16) => ({seq, x, y: 700, state, flags, pressure: .5, ms: 100});
+// Samples are known by their identity, the kernel's microseconds: several in one millisecond keep
+// their order, and the tiles' watermark names one.
+const makeSample = (id, x, state = 2, flags = 16) => ({id, x, y: 700, state, flags, pressure: .5, ms: 100});
 const fastInk = new FastInk();
-fastInk.accept(makeSample(1, 300, 2, 20), inkStyle);
-fastInk.accept(makeSample(2, 400), inkStyle);
-fastInk.accept(makeSample(3, 500), inkStyle);
+fastInk.accept(makeSample(1000, 300, 2, 20), inkStyle);
+fastInk.accept(makeSample(1250, 400), inkStyle);
+fastInk.accept(makeSample(1500, 500), inkStyle);
 ok('fast: down and every move retained, even in the same millisecond', fastInk.segments.length === 3);
-fastInk.reconcile(2);
-ok('fast: only painted sequences retire', fastInk.segments.length === 1 && fastInk.segments[0].to.seq === 3 &&
-    fastInk.segments[0].from.seq === 2);
-fastInk.reconcile(3);
-fastInk.accept(makeSample(4, 600), inkStyle);
-ok('fast: reconciliation keeps the join to authoritative ink', fastInk.segments.length === 1 && fastInk.segments[0].from.seq === 3);
-fastInk.reconcile(20);
-fastInk.accept(makeSample(5, 610), inkStyle);
+fastInk.reconcile(1250);
+ok('fast: only what the tiles hold retires', fastInk.segments.length === 1 && fastInk.segments[0].to.id === 1500 &&
+    fastInk.segments[0].from.id === 1250);
+fastInk.reconcile(1500);
+fastInk.accept(makeSample(1750, 600), inkStyle);
+ok('fast: reconciliation keeps the join to authoritative ink', fastInk.segments.length === 1 && fastInk.segments[0].from.id === 1500);
+fastInk.reconcile(9000);
+fastInk.accept(makeSample(2000, 610), inkStyle);
 ok('fast: late pen packets cannot redraw ink already in the tiles', fastInk.segments.length === 0);
+ok('fast: a sample older than the last is refused', fastInk.accept(makeSample(1900, 600), inkStyle) === false &&
+    fastInk.accept(makeSample(2000, 610, 0, 0), inkStyle) === true);
 fastInk.reset();
 fastInk.accept(makeSample(10, 1750, 2, 20), inkStyle);
 fastInk.accept(makeSample(11, 400), inkStyle);
@@ -445,16 +484,84 @@ fastInk.accept(makeSample(13, 400, 2, 20), {...inkStyle, enabled: false});
 fastInk.accept(makeSample(14, 500), inkStyle);
 ok('fast: a contact that began over a menu stays disabled', fastInk.segments.length === 0);
 fastInk.accept(makeSample(15, 400, 2, 20), inkStyle);
-fastInk.accept(makeSample(17, 600), inkStyle);
-ok('fast: missing samples never draw a bridge across lost ink', fastInk.segments.length === 1 && !fastInk.active);
+fastInk.accept(makeSample(17, 600, 2, 16 | 8), inkStyle);
+ok('fast: a gap never draws a bridge across lost ink', fastInk.segments.length === 1 && !fastInk.active);
 fastInk.accept(makeSample(18, 650, 2, 20), {...inkStyle, whole: true});
 ok('fast: whole-stroke eraser waits for authoritative tiles', fastInk.segments.length === 1 && !fastInk.active);
 fastInk.reset();
-fastInk.accept(makeSample(0xfffffffe, 300, 2, 20), inkStyle);
-fastInk.accept(makeSample(0xffffffff, 400), inkStyle);
-fastInk.accept(makeSample(1, 500, 2, 20), inkStyle);
-fastInk.reconcile(0xffffffff);
-ok('fast: reconciliation survives sequence wrap', fastInk.segments.length === 1 && fastInk.segments[0].to.seq === 1);
+fastInk.line.reset();
+fastInk.accept(makeSample(0xfffffc00, 300, 2, 20), inkStyle);
+fastInk.accept(makeSample(0xfffffe00, 400), inkStyle);
+fastInk.accept(makeSample(0x100, 500, 2, 20), inkStyle);
+fastInk.reconcile(0xfffffe00);
+ok('fast: reconciliation survives the identities\' wrap', fastInk.segments.length === 1 && fastInk.segments[0].to.id === 0x100);
+ok('fast: the timeline runs on across the wrap, in milliseconds', Math.abs(fastInk.segments[0].to.t - 1.28) < 1e-9);
+// The playout: samples that came in a burst show at their own pace, a few milliseconds behind.
+{
+    const ink2 = new FastInk(), po = new Playout();
+    let now = 5000;
+    // 20 samples 4 ms apart on the Kindle; the first five on time, then a burst of the rest 30 ms late.
+    for (let i = 0; i < 20; i++) {
+        const sm = makeSample(100000 + i * 4000, 300 + i * 10, 2, i ? 16 : 20);
+        ink2.accept(sm, inkStyle);
+        po.arrive(sm.t, i < 5 ? now + i * 4 : now + 76 + 30);
+    }
+    ok('playout: the offset is the quickest path, the delay at most PLAYOUT_MAX', po.offset === now && po.delay <= 20 && po.delay > 0);
+    const until = po.clock(now + 50);
+    const at = ink2.penAt(until);
+    ok('playout: the dot glides between samples', at && at.state === 2 && at.x > 300 && Math.abs((at.x - 300) / 10 * 4 - until) < 1e-6);
+    ok('playout: more is still to play, so another frame is asked', ink2.pending(until) && !ink2.pending(1e9));
+    const lines = [];
+    const rec = new Proxy({}, {get: (_, key) => (...args) => lines.push([key, ...args]), set: () => true});
+    ink2.draw(rec, 1, {invert: false, clear: false, light: [255, 255, 255]}, null, until);
+    const tos = lines.filter(c => c[0] === 'lineTo');
+    ok('playout: the line drawn as far as the clock, its last segment cut where it falls',
+       tos.length === Math.floor(until / 4) + 1 && Math.abs(tos[tos.length - 1][1] - at.x) < 1e-6);
+    ok('playout: none past a lift (no glide from touching to hovering)', (() => {
+        const i3 = new FastInk();
+        i3.accept(makeSample(1000, 100, 2, 20), inkStyle);
+        i3.accept(makeSample(5000, 200, 1, 0), inkStyle);
+        const p = i3.penAt(2);
+        return p.x === 100 && p.state === 2 && i3.penAt(4).state === 1 && i3.penAt(-1) === null;
+    })());
+    ok('playout: a dot away is no dot', (() => {
+        const i4 = new FastInk();
+        i4.accept(makeSample(1000, 100, 1, 0), inkStyle);
+        i4.accept(makeSample(2000, 100, 0, 0), inkStyle);
+        return i4.penAt(0).state === 1 && i4.penAt(1) === null;
+    })());
+    const p2 = new Playout();
+    ok('playout: before any sample everything shows', p2.clock(123) === Infinity);
+    // The dot's motion at 60 frames a second, from a pen moving 1 px every 4 ms whose samples reach
+    // the page in bursts every 20 ms (Wi-Fi's way), with and without the playout: the step from
+    // one frame to the next should be the pen's own 4.2 px.
+    const ink3 = new FastInk(), po3 = new Playout(), arrivals = [];
+    for (let i = 0; i < 1000; i++) arrivals.push({i, at: Math.ceil((i * 4 + 3) / 20) * 20});
+    let next = 0, newest = null;
+    const plain = [], played = [], delays = [];
+    for (let now = 100; now < 3900; now += 1000 / 60) {
+        while (next < arrivals.length && arrivals[next].at <= now) {
+            const sm = makeSample(1e6 + arrivals[next].i * 4000, 100 + arrivals[next].i, 1, 0);
+            ink3.accept(sm, inkStyle);
+            po3.arrive(sm.t, arrivals[next].at);
+            newest = sm;
+            next++;
+        }
+        plain.push(newest ? newest.x : 0);
+        const at = ink3.penAt(po3.clock(now));
+        played.push(at ? at.x : 0);
+        delays.push(po3.delay);
+    }
+    const steps = xs => xs.slice(1).map((x, k) => x - xs[k]).slice(60);  // (after the first second)
+    const spread = xs => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) * (b - m), 0) / xs.length); };
+    const sp = spread(steps(plain)), sq = spread(steps(played)), most = Math.max(...steps(played).map(Math.abs));
+    console.log('     playout: the dot\'s steps a frame (the pen moves 4.2 px), samples in 20 ms bursts: ' +
+        'drawn as they come sd ' + sp.toFixed(2) + ' px, max ' + Math.max(...steps(plain)).toFixed(1) +
+        ' px; played out sd ' + sq.toFixed(2) + ' px, max ' + most.toFixed(1) + ' px, added delay ' +
+        delays[delays.length - 1].toFixed(1) + ' ms');
+    ok('playout: bursts every 20 ms play out as a glide (the steps\' spread a tenth of drawing them as they come or less)',
+       sq < sp / 10 && most < 5 && delays[delays.length - 1] <= 20);
+}
 let commands = [];
 const ctx = new Proxy({}, {get: (_, key) => (...args) => commands.push([key, ...args]),
     set: (_, key, value) => { commands.push([key, value]); return true; }});
@@ -509,6 +616,32 @@ ok('fast: white ink on transparent paper takes the quick ink under it away',
 fastInk.reset();
 for (let i = 1; i <= 3000; i++) fastInk.accept(makeSample(i, i % 1000, 2, i === 1 ? 20 : 16), inkStyle);
 ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.segments.length === 2048);
+// The exact area average (the page view, Picture in picture, a smaller recording): a 1 px line keeps
+// its weight wherever it falls, and only the pixels a changed rect reaches are made.
+{
+    const W = 30, H = 10, src = new Uint8ClampedArray(W * H * 4).fill(255);
+    for (let y = 0; y < H; y++) { const i = (y * W + 13) * 4; src[i] = src[i + 1] = src[i + 2] = 0; }  // a black column at x 13
+    const reads = [];
+    const read = (x, y, w, h) => {
+        reads.push([x, y, w, h]);
+        const out = new Uint8ClampedArray(w * h * 4);
+        for (let r = 0; r < h; r++) out.set(src.subarray(((y + r) * W + x) * 4, ((y + r) * W + x + w) * 4), r * w * 4);
+        return out;
+    };
+    const all = areaAverage(read, W, H, 10, 10, {x: 0, y: 0, w: W, h: H}, null);
+    const col = x => all.data[(5 * 10 + x) * 4];
+    ok('area: a 1 px line at a third of the size is a third as dark, in one column', all.w === 10 && all.h === 10 &&
+       Math.abs(col(4) - 170) <= 1 && col(3) === 255 && col(5) === 255);
+    reads.length = 0;
+    const part = areaAverage(read, W, H, 10, 10, {x: 12, y: 2, w: 2, h: 1}, null);
+    ok('area: a changed rect makes only the pixels it reaches, from the source it needs', part.x === 4 && part.w === 1 &&
+       part.y === 2 && part.h === 1 && reads.length === 1 && reads[0].join() === '12,2,3,1' && Math.abs(part.data[0] - 170) <= 1);
+    const clearSrc = new Uint8ClampedArray(4 * 4).fill(0);
+    clearSrc.set([0, 0, 0, 255], 0);
+    const flat = areaAverage(() => clearSrc, 2, 2, 1, 1, {x: 0, y: 0, w: 2, h: 2}, [200, 100, 50]);
+    ok('area: over paper where the film has no transparency', flat.data[3] === 255 && Math.abs(flat.data[0] - 150) <= 1 &&
+       Math.abs(flat.data[1] - 75) <= 1);
+}
 const clock = new PaintAges();
 clock.sync(1000, 1020, 0xfffffffa);
 clock.sync(1030, 1034, 14);

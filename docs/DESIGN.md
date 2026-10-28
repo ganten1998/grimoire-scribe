@@ -732,7 +732,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    `live_viewers`) makes no PNG, keeps a 16 KiB send buffer and a 1 s send timeout, runs at the
    ordinary priority where the tile viewers are niced, and sends what came as soon as it wakes: no
    PNG being made, full tile socket or 33 ms between batches is ever on its way. live.h
-   (rust/src/live.rs's head) has the version 2 protocol byte by byte. `input_sample_hook` hands
+   (rust/src/live.rs's head) has the version 3 protocol byte by byte. `input_sample_hook` hands
    the app each pen event as it is read, before it is queued, the reads `work_pump` makes during
    long work too, and the raw hover above. `live_capture` (app.c) stores it with its ink style in
    a ring of 512 in the shared frame (`live_sample`: its sequence, the kernel's time, place,
@@ -742,6 +742,39 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    byte down each pen viewer's wake pipe per read of the pens (`live_wake_samples`). A viewer packs
    every sample that came since its last wake into one frame (64 at most; a backlog goes as a
    few), a style frame before a sample whose style changed.
+
+   That ring waits for the main loop: a sample reaches it, and the viewer's wake, only when the
+   loop reads the pens, so a heavy tool (a textured brush whose ink frames take tens of
+   milliseconds) held the samples back and let them go in bursts (the owner's readout in Firefox
+   Nightly: pen age at paint p50 6.5 ms, p90 64.5 ms, max 203.5 ms; a skipping dot). So where the
+   Kindle has the raw digitizer (WacomDigitizer, read without a grab), a pen viewer opens that node
+   itself (`raw_open`: never grabbed, each evdev reader has its own queue, so neither the main
+   loop's reader nor the pen service misses anything; EVIOCSCLOCKID for the main loop's
+   CLOCK_MONOTONIC kernel times; `st_rdev` checked) and sends each frame the moment the node has
+   it. The main loop publishes, in the shared frame, what the viewer cannot read itself: the map
+   from raw units to screen pixels (`input_raw_pen`: the affine map raw_hover and hover_from_raw
+   apply, worked out from three places inside the raw ranges, pressure and tilt ranges, and the
+   tilt's turn from calib_tilt; none while the hover orientation is not trusted, the times are not
+   CLOCK_MONOTONIC or the pen is the Kindle's), at each tick and as Live view starts
+   (`live_set_raw_map`); the capture state after every event and tick and wherever it changes
+   (`live_set_capture`: whether quick ink may draw at all, the editor's style for each eraser and
+   side button state, and the newest pen event handled); and whether the loop is in UI work
+   (`live_set_blocked`, LIVE_CAPTURE_BLOCKED's twin). The viewer decides each frame's style as
+   live_capture does (`live_raw_style`): a pen-down on the panel, or where nothing draws, is UI,
+   and nothing draws after it until the main loop has handled an event at or after it. Without the
+   node, or while the map is withdrawn, the viewer reads the ring as before.
+
+   A sample is known by its identity: the kernel's time of its frame in microseconds (u32,
+   wrapping), the same for the raw node's frame the viewer reads and for the main loop's own event
+   of it (InEvent.k_us; the simulator's scripted events, which have no kernel time, take the time
+   they are captured, kept increasing). The scaled pen that the main loop follows is relayed from
+   the raw frames about 0.1 ms after them, well inside a frame's 2 to 5 ms, so its event stamped t
+   covers every raw frame stamped t or before and no later one: the tiles' watermark, an identity
+   now, retires exactly the quick ink of the raw frames whose ink the tiles hold. Measured headless
+   (tests/live_pen_stall.py: a feeder writes a frame every 4 ms to both stand-in nodes while the
+   main loop is held 60 ms after each read), frame to browser: the ring p50 61 to 70 ms, p90 113 to
+   115 ms, max 128 to 129 ms; the viewer's own reader p50 0.1 ms, p90 0.2 ms, max 0.4 ms, every
+   frame delivered.
 
    The style is what the editor would draw (`editor_live_style`): the tool, its width range on the
    screen at the zoom, its pressure curve and opacity, black or white ink, the stroke eraser (which
@@ -767,9 +800,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    at the batches' pace, never at once. The page draws quick ink only over a picture of its ink
    epoch (the newest painted batch's), so a page turned shows none over the old page, and drops a
    stroke's quick ink up to the sample a batch names once that batch's tiles are painted, in the
-   same animation frame, by sequence, never by time (several samples share a millisecond). A
-   missing sequence, a gap the kernel reported or a reconnect breaks a stroke, and only a pen-down
-   starts one: a browser that joins mid-stroke gets the newest place without its pen-down. The
+   same animation frame, by identity, never by the millisecond (several samples share one). A gap
+   the kernel reported, a ring overrun or a reconnect breaks a stroke, and only a pen-down starts
+   one: a browser that joins mid-stroke gets the newest place without its pen-down. The
    history is 2048 segments at most while the tiles fall behind; there is no prediction. A wake
    costs a byte only when the viewer has none on its way (a flag in the shared frame, which it
    clears after draining its pipe), and each kind is woken only for its own news: the tile viewers
@@ -784,6 +817,40 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    on transparent paper they take quick ink away). Nibs, grain, smoothing, tilt, the paper white
    ink brings back and the stroke eraser are the tiles'. Record and Picture in picture take the
    picture and the pen's dot, never the quick ink.
+
+   The page plays the samples out at the pace the Kindle read them (Playout): each shows at its own
+   time on the samples' timeline (the identities' microseconds unwrapped) plus an offset, the least
+   this computer's clock has run ahead of the samples over the last 4 s (the quickest path from the
+   pen), plus a delay: the 90th percentile of how late the last 120 came and one sample's spacing
+   more (so the sample after the clock is there to glide to), at most 20 ms, rising at once and
+   falling slowly. A pen moving 1 px every 4 ms whose samples come in bursts every 20 ms steps
+   from frame to frame at 60 Hz with a spread of 1.86 px drawn as they come, and of 0.00 px played
+   out, 20 ms behind (tests/live_check.js). A burst within it draws as a smooth line, the
+   segment that the clock falls inside cut where it falls, and the dot glides between the two
+   samples on either side of the clock (only between samples of the same state, close in time: no
+   glide across a lift or a gap). The latency readout shows the delay (Playout delay), and a
+   sample's age counts as it shows. In a hidden tab (no animation frames) a recording and Picture
+   in picture take the newest place at once. The dot's color (five presets and the browser's color
+   picker) and size (small, the default and smaller than before, medium, the old size, or large)
+   are remembered in the browser (localStorage, failures ignored).
+
+   The editor's panel and the clock and battery corner are layers of their own (frame 9: u8 which,
+   its rect, its PNG; w 0 when it is not on the screen), shown over the page in the browser by
+   default and switched off each by its own switch (Show toolbar, Show clock and battery,
+   remembered). The frame holds the page under the panel: app_flush pushes the rect a.screen
+   presents, then composes the part of it under the panel again without the panel
+   (`editor_live_under_panel`: compose with the panel left out, pushed, the pixels put back) and
+   copies the panel into its layer (`live_layer`); the corner, an overlay never in a.screen, is
+   copied as status.rs paints it, and taken away when it goes. The tile viewer sends a layer that
+   changed after the batch's tiles, whole (Seq: odd while it is written), and every layer again
+   after a hello; a turn takes them away until the turned screen's flush tells them. The page keeps
+   the tiles on a canvas of their own and draws raw as the page with the layers that show; the quick
+   ink keeps off the panel only while the panel shows. The Kindle's own screen is unchanged.
+
+   Picture in picture plays film at its window's own pixels (its size, and each resize, by
+   devicePixelRatio), averaged as the page view is (areaAverage), so the video plays at about 1:1
+   and its ruled lines keep their weight (the browser's video scaler made them uneven); a recording
+   keeps its own size.
 
    Monitor mode (M, or its button) fits the page, hides the controls until the pointer or keyboard
    focus reaches them, and asks for full screen when chosen; the browser remembers it (storage that
@@ -806,7 +873,16 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    video/mp4). Firefox's MediaRecorder writes only WebM and Ogg (Nightly 161's XUL has no MP4
    writer), but its WebCodecs VideoEncoder makes H.264 (macOS: VideoToolbox), so there the page
    makes the MP4 itself (CodecRecorder): Baseline H.264 (no B frames, so no reordering table),
-   level 5.1, asked of VideoEncoder.isConfigSupported at each hello's size; a frame taken from film
+   asked of VideoEncoder.isConfigSupported at each hello's size, through filmChoices: the screen's
+   own size, then smaller even ones (a hardware encoder may take no side over 2304 or 1920 px; the
+   owner's Firefox Nightly 161 took none of the old probe's three Baseline strings at the screen's
+   size in the length-prefixed form, and said Record (WebM)), each with the
+   length-prefixed form and Annex B (whose parameter sets go to avcC, and whose NAL units become
+   length-prefixed samples), the browser's own choice of hardware, then software and hardware
+   outright, Constrained Baseline before Baseline at levels 5.1, 5.0, 4.2 and 3.1; an encoder that
+   fails once it began is struck off and the probe goes on past it. The button says which it
+   makes, Record (MP4) or Record (WebM), plain Record while the probe is out, and its tooltip the
+   codec and size; a frame taken from film
    once the code that changed it has run (a microtask, not an animation frame, so it goes on while
    the tab is hidden), at most 15 a second, a key frame when 2 s have passed since the last; at Stop
    the encoder is flushed and mp4Boxes writes ftyp, mdat (the chunks as they came) and moov (stts

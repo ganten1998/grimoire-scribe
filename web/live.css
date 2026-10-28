@@ -8,6 +8,11 @@ body.inverted{--bg:#000;--soft:#444}
 #live .bar .switch[aria-checked=true]::before{background:var(--ink) radial-gradient(circle at 24px 50%,var(--paper) 5px,transparent 6px)}
 #live .bar button[hidden]{display:none}
 #live .bar .warmth{display:inline-flex;align-items:center;gap:8px}
+#live .bar .dot{display:inline-flex;align-items:center;gap:6px}
+#live .bar .dot .swatch{width:24px;height:24px;padding:0;border-radius:50%;border:2px solid var(--ink)}
+#live .bar .dot .swatch[aria-pressed=true]{outline:3px solid var(--ink);outline-offset:2px}
+#live .bar .dot input{width:32px;height:28px;padding:0 2px;border:2px solid var(--ink);border-radius:8px;background:var(--paper);cursor:pointer}
+#live .bar .dot select{font:inherit;color:var(--ink);background:var(--paper);border:2px solid var(--ink);border-radius:8px;padding:5px 8px}
 #live .bar .warmth input{width:120px;margin:0;accent-color:var(--ink)}
 #live .pill{margin-right:auto;border:2px solid var(--soft);color:var(--quiet);border-radius:999px;padding:4px 14px}
 #live .pill.on{border-color:var(--ink);color:var(--paper);background:var(--ink)}
