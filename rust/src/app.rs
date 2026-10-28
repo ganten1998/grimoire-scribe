@@ -37,6 +37,8 @@ pub struct App {
     pub screen: Canvas,
     pub settings: Settings,
     pub shortcuts: Shortcuts,
+    /// what each touch gesture does: the built-ins and gestures.ini (app_gestures_load)
+    pub gestures: GestureMap,
     pub last_shortcut_code: i32,
     pub last_shortcut_mods: i32,
     pub last_shortcut_gamepad: bool,
@@ -526,6 +528,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
     csnprintf!(&mut controller_path, 1024, "%s/controller.ini", &store_root());
     shortcuts_load_all(&mut a.shortcuts, &shortcuts_path, &controller_path);
+    app_gestures_load(a);
     input_shortcuts_enable(a.settings.shortcuts_enabled);
     // The Bluetooth helper (bluetooth.h): the launcher says where its script is; in the simulator a
     // test may stand a helper in. It starts a moment after the first frame, if it is wanted.
@@ -873,6 +876,18 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         });
     }
     live_wake_samples();
+}
+
+/// The gestures again: the built-ins and `<root>/gestures.ini` over them (gesturemap.rs). Gestures
+/// need no Enable shortcuts: settings.gestures turns them off.
+pub fn app_gestures_load(a: &mut App) {
+    let path = cformat!("%s/gestures.ini", &store_root());
+    let n = gesturemap_load(&mut a.gestures, &path);
+    if n > 0 {
+        qlog!("gestures: %d line(s) of gestures.ini not used", n);
+    } else if n < 0 {
+        qlog!("gestures: gestures.ini could not be read; the built-in gestures apply");
+    }
 }
 
 /// Whether the current screen has a control at (x, y): a button, a sheet or menu that is up, a
@@ -1828,6 +1843,21 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             shortcut_pad_name(codes[i as usize], &mut name, 16);
             append_cut(out, cap, &cformat!("%s%s", if i != 0 { "," } else { "" }, &name));
             i += 1;
+        }
+    } else if let Some(action) = key.strip_prefix("gestures.") {
+        // The touch gestures that do an action, as gestures.ini names them: "gestures.pages" ->
+        // "touch.2.down" ("" none).
+        let act = shortcut_action(action);
+        out.clear();
+        for fingers in 2..=3u8 {
+            for kind in [TouchKind::Down, TouchKind::Up, TouchKind::Left, TouchKind::Right, TouchKind::Tap] {
+                let k = GestureKey::Touch { fingers, kind };
+                if act != SHORTCUT_NONE && gesturemap_action(&a.gestures, k) == act {
+                    let mut name = String::new();
+                    gesturemap_key_name(k, &mut name);
+                    append_cut(out, cap, &cformat!("%s%s", if out.is_empty() { "" } else { "," }, &name));
+                }
+            }
         }
     } else if key == "rotation" {
         csnprintf!(out, cap, "%d", a.rotation);

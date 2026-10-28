@@ -225,6 +225,7 @@ shows what the app holds.
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages` or `menus`; empty on its list (or with no Buttons sheet) |
 | `library.pair` | the Pair sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
 | `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
+| `gestures.ACTION` | the touch gestures that do ACTION, as gestures.ini names them, comma separated: `gestures.pages` is `touch.2.down` (a built-in, docs/FORMAT.md); empty for none |
 | `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |

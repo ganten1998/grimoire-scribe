@@ -37,6 +37,7 @@ root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named section
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
+root/gestures.ini                       what two-finger gestures do, over the built-ins (2.0; settings.ini)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
@@ -861,6 +862,27 @@ line `shortcuts.ini` cannot read is, and so is an action this version does not k
 the file again from the lines that were read, so such a line goes then. Versions before
 2.0.0-beta.5 never read it.
 
+`gestures.ini` (2.0), beside them, says what the touch gestures do, over the built-in
+ones, which are never written to it: two fingers down open Pages (`touch.2.down=pages`), up the Links
+bar (`touch.2.up=links`), left the next page and right the previous one (`touch.2.left=next-page`,
+`touch.2.right=previous-page`); three quick clicks of the pen's button, or holding it, clear the page
+(`pen.Button.triple`, `pen.Button.hold`). Its grammar is `shortcuts.ini`'s (`#` and `;` comments,
+trimmed `key=value` lines, a later line for the same key wins, keys in any case), read the same way
+(at most 64 KiB, up to a NUL). Keys and values:
+
+- `touch.<2|3>.<up|down|left|right|tap>`: an action's name (as in `shortcuts.ini`) or `nothing`,
+  which turns a built-in off. `touch.1.*` is kept for one finger's taps and links, and refused.
+- `pen.<Button|Button2|Eraser>.<tap|double|triple|hold|drag>`: an action, `nothing`, or `pan` or
+  `zoom` in a drag slot. Read and held; the pen's button keeps its own clicks in this version.
+- `shape.<action>=1,...`: a finger shape recorded for an action (format 1), carried as it is.
+
+A line it cannot read (a bad key, `touch.1.*`, an action it does not know on a touch line) is refused
+and counted, and the log says how many (`gestures: N line(s) of gestures.ini not used`); a pen or
+shape line naming an action or a pen slot it does not know is kept in memory as it was, for a later
+version (at most 1 KiB a line, 16 KiB in all). A file that cannot be read leaves the built-ins. This
+version only reads the file, at the start and when Settings > Controller reloads; nothing writes it,
+so it is the owner's to edit. Gestures need no Enable shortcuts.
+
 `bluetooth/` (2.0.0-beta.5 on) is not Grimoire's format: it is where the owner unpacks the
 Bluetooth helper (kindle-hid-passthrough), whose files, paired devices and their keys live there.
 Grimoire only reads whether its program is there, and on each start sets three lines of its
@@ -979,6 +1001,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `shortcuts.ini` (2.0) | never read | never read |
 | `controller` (2.0) | dropped on the next save | kept; there is no Bluetooth helper there |
 | `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 1.2.0 and 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
+| `gestures.ini` (2.0) | never read | never read: 1.2.0 to 2.0.0-beta.4 have no touch gestures (two fingers only pinch) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
 
 ## Highlighter rendering in 1.2.0

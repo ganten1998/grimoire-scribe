@@ -944,12 +944,14 @@ fn controller_path() -> String {
     out
 }
 
-// The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini).
+// The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini), and
+// gestures.ini's gestures.
 fn reload_shortcuts(a: &mut App) {
     let mut sp = String::new();
     csnprintf!(&mut sp, 1024, "%s/shortcuts.ini", &store_root());
     let cp = controller_path();
     shortcuts_load_all(&mut a.shortcuts, &sp, &cp);
+    app_gestures_load(a);
 }
 
 /// A controller's press while Settings > Controller > Buttons learns one: true when it took it.

@@ -47,6 +47,18 @@ pub const SHORTCUT_NAME_PAGE: i32 = 46;
 /// The clock and battery corner on or off, on any screen (status.rs; not in the C tree).
 pub const SHORTCUT_STATUS: i32 = 47;
 pub const SHORTCUT_LAST: i32 = 47;
+/// The Links bar: two fingers up open it (gesturemap.rs's built-in). Not a name in the files yet.
+pub const SHORTCUT_LINKS: i32 = 48;
+/// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
+/// later a finger shape or the pen's button. Page turns from a gesture never add a page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActionSrc {
+    Key,
+    Pad,
+    Touch,
+    Shape,
+    Pen,
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ShortcutBinding {
     pub code: i32,
@@ -280,34 +292,40 @@ fn parse(map: &mut Shortcuts, text: &[u8]) {
         binding(map, trim(&line[..eq]), trim(&line[eq + 1..]));
     }
 }
+/// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when it is
+/// not there; Err when it is not a file, is over cap bytes, or cannot be read; else its text up to
+/// its first NUL.
+pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, ()> {
+    if !access_ok(path) {
+        return Ok(None);
+    }
+    match std::fs::metadata(path) {
+        Ok(st) if st.is_file() && st.len() <= cap => {}
+        _ => return Err(()),
+    }
+    // Bound the read too, including a file changed since stat.
+    let Ok(f) = std::fs::File::open(path) else { return Err(()) };
+    let mut text = Vec::new();
+    let failed = std::io::Read::read_to_end(&mut std::io::Read::take(f, cap + 1), &mut text).is_err() || text.len() as u64 > cap;
+    if failed {
+        return Err(());
+    }
+    // (the C keeps the text as a string: it ends at a NUL)
+    text.truncate(text.iter().position(|&c| c == 0).unwrap_or(text.len()));
+    Ok(Some(text))
+}
+
 /// Missing file: defaults. Existing empty file: no bindings. Never rewrites user mappings.
 pub fn shortcuts_load(map: &mut Shortcuts, path: &str) {
     *map = Shortcuts::default();
-    let mut text: Vec<u8>;
-    if access_ok(path) {
-        match std::fs::metadata(path) {
-            Ok(st) if st.is_file() && st.len() <= 65536 => {}
-            _ => {
-                map.rejected += 1;
-                return;
-            }
-        }
-        // Bound the read too, including a file changed since stat.
-        let Ok(f) = std::fs::File::open(path) else {
-            map.rejected += 1;
-            return;
-        };
-        text = Vec::new();
-        let failed = std::io::Read::read_to_end(&mut std::io::Read::take(f, 65537), &mut text).is_err() || text.len() > 65536;
-        if failed {
+    let text = match ini_read_bounded(path, 65536) {
+        Ok(Some(text)) => text,
+        Ok(None) => DEFAULTS.as_bytes().to_vec(),
+        Err(()) => {
             map.rejected += 1;
             return;
         }
-        // (the C keeps the text as a string: it ends at a NUL)
-        text.truncate(text.iter().position(|&c| c == 0).unwrap_or(text.len()));
-    } else {
-        text = DEFAULTS.as_bytes().to_vec();
-    }
+    };
     parse(map, &text);
 }
 

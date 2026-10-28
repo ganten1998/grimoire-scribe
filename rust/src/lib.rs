@@ -35,6 +35,7 @@ pub mod canvas;
 pub mod fbcheck;
 pub mod fbpack;
 pub mod font;
+pub mod gesturemap; // which action each gesture does: the built-ins and gestures.ini
 pub mod hidkeys;
 pub mod i18n;
 pub mod json_min;
@@ -128,6 +129,7 @@ pub mod prelude {
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
     pub use crate::font::*;
+    pub use crate::gesturemap::*;
     pub use crate::hidkeys::*;
     pub use crate::history::*;
     pub use crate::httpd::*;

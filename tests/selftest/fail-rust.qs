@@ -4,3 +4,4 @@
 wait 200
 expect status.zone is 0 0 0 0
 expect status.shown is 1
+expect gestures.pages is touch.2.up

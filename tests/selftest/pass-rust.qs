@@ -5,3 +5,6 @@ wait 200
 expect running is 1
 expect status.zone is 0 0 142 142
 expect status.shown is 0
+expect gestures.pages is touch.2.down
+expect gestures.next-page is touch.2.left
+expect gestures.undo is
