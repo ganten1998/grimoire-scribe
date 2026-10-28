@@ -50,7 +50,9 @@ release too.
   same push as the rest of the screen. While Live view runs, the Kindle's Wi-Fi power saving stays
   off and comes back as it was when Live view stops: a radio left to doze while nobody watched could
   send the pen in bursts afterwards, a choppy dot that outlasted restarts. At actual size, full
-  screen and Monitor mode scroll to the page's far edges.
+  screen and Monitor mode scroll to the page's far edges. After the pen had been away for over 35
+  minutes, the browser's dot froze and the quick line stopped until 71 minutes had passed: a long
+  silence now starts them again.
 
 - **A Kindle reboot while writing, fixed**: with the developer switch `ink-metrics` on, Grimoire
   followed some ink refreshes through the Kindle's display driver, and a race in the driver could

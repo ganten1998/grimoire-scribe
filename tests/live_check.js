@@ -475,6 +475,14 @@ fastInk.accept(makeSample(2000, 610), inkStyle);
 ok('fast: late pen packets cannot redraw ink already in the tiles', fastInk.segments.length === 0);
 ok('fast: a sample older than the last is refused', fastInk.accept(makeSample(1900, 600), inkStyle) === false &&
     fastInk.accept(makeSample(2000, 610, 0, 0), inkStyle) === true);
+// The identities wrap at 2^32 us: 40 minutes on, a sample reads as older than the last one, unless a
+// silence that long starts the line again.
+const away = new FastInk(), later = (5000 + 40 * 60e6) >>> 0;
+away.heard(0);
+away.accept(makeSample(5000, 300, 1, 0), inkStyle);
+ok('fast: 40 minutes away reads as older without the silence', away.accept(makeSample(later, 310, 1, 0), inkStyle) === false);
+ok('fast: a silence starts the line again', away.heard(40 * 60e3) === true &&
+    away.accept(makeSample(later, 310, 1, 0), inkStyle) === true && away.pen && away.pen.x === 310 && away.heard(40 * 60e3 + 5) === false);
 fastInk.reset();
 fastInk.accept(makeSample(10, 1750, 2, 20), inkStyle);
 fastInk.accept(makeSample(11, 400), inkStyle);

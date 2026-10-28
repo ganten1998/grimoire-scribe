@@ -477,6 +477,20 @@
         }
         return true;
     };
+    // Identities are the Kindle's microseconds in 32 bits: once the pen had been away for over 35
+    // minutes, each new sample read as older than the last one (refused: the dot froze, no quick
+    // ink) until 71 minutes had passed. A silence of QUIET_MS (now: when a packet of samples came)
+    // starts the line again, its next sample the first; true when it did.
+    const QUIET_MS = 10 * 60 * 1000;
+    FastInk.prototype.heard = function (now) {
+        const quiet = this.heardAt !== undefined && now - this.heardAt > QUIET_MS;
+        this.heardAt = now;
+        if (quiet) {
+            this.reset();
+            this.line.reset();
+        }
+        return quiet;
+    };
     FastInk.prototype.reconcile = function (id) {
         if (!id || (this.ack && !after(id, this.ack))) return;
         this.ack = id;
@@ -1550,6 +1564,10 @@
                 } else if (type === 8) style = readStyle(body);
                 else if (type === 7) {
                     const packet = readSamples(body);
+                    if (ink.heard(performance.now())) {  // (a new line: played anew, no ack of before)
+                        playout.reset();
+                        paintSamples = [];
+                    }
                     if (packet.reset) {
                         ink.reset();
                         paintSamples = [];
