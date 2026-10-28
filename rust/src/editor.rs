@@ -26,6 +26,8 @@ const LINK_BOX_MIN_MM: f32 = 5.0;
 // settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
 /// two fingers dragged the page (a pan) while two fingers up and down are gestures
 const HINT_PAN: i32 = 1 << 6;
+/// the editor shows the whole page sideways now (landscape_fit), for an owner who had the width
+const HINT_SIDEWAYS: i32 = 1 << 8;
 // The "Move the pen away, then swipe." toast shows at most once in this long.
 const PEN_TOAST_EVERY_MS: u32 = 600_000;
 
@@ -204,8 +206,13 @@ pub struct EditorState {
     zoom: f32,
     ox: f32,
     oy: f32,
+    /// the resting zoom: the page's width across the screen, or sideways with landscape_fit the whole page
     zoom_default: f32,
     zoom_min: f32,
+    /// pinched in at most this far: four times the page's width across the screen, however it rests
+    zoom_max: f32,
+    /// the offset the resting view has across (the whole page sideways is centred: negative)
+    rest_ox: f32,
     /// screen size the view was set up for
     view_w: i32,
     view_h: i32,
@@ -908,7 +915,7 @@ fn view_identity(a: &App) -> bool {
 fn view_clamp(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
     let s = ed(a);
-    s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
+    s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_max);
     let mut vw = aw as f32 / s.zoom; // visible page area
     let mut vh = ah as f32 / s.zoom;
     // A page fitted to a screen of another size (a notebook from another Scribe) spans it but for
@@ -949,20 +956,73 @@ fn touch_context(a: &App) {
     });
 }
 
-// The page fills the screen's width: 100% upright for a page of this screen's size, the whole page
-// for a notebook from another Scribe (theirs are 3:4 too), and sideways the width (pan with two
-// fingers; pinching out shows the whole page).
+/// Where a page rests on a screen: (zoom, the least zoom, the most). The page fills the screen's width
+/// (100% upright for a page of this screen's size, the whole page for a notebook from another Scribe,
+/// theirs are 3:4 too); sideways with `fit` (settings.landscape_fit) the whole page shows instead,
+/// centred, and two fingers swipe anywhere. The least is the whole page either way, and the most four
+/// times the width's fit (the same expression and order it always was, so it is bit-identical).
+fn view_rest(aw: i32, ah: i32, pgw: i32, pgh: i32, fit: bool) -> (f32, f32, f32) {
+    let zoom_min = (aw as f32 / pgw as f32).min(ah as f32 / pgh as f32);
+    let zoom = if fit && aw > ah { zoom_min } else { aw as f32 / pgw as f32 };
+    let zoom_max = (aw as f32 / pgw as f32) * 4.0;
+    (zoom, zoom_min, zoom_max)
+}
+
+// The page at rest (view_rest): the width across upright, sideways the width too (pan with two fingers;
+// pinching out shows the whole page) or, with landscape_fit, the whole page.
 fn view_reset(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
+    let fit = a.settings.landscape_fit;
     let s = ed(a);
-    s.zoom_min = (aw as f32 / s.pgw as f32).min(ah as f32 / s.pgh as f32);
-    s.zoom_default = aw as f32 / s.pgw as f32;
-    s.zoom = s.zoom_default;
+    let (zoom, zoom_min, zoom_max) = view_rest(aw, ah, s.pgw, s.pgh, fit);
+    s.zoom_min = zoom_min;
+    s.zoom_max = zoom_max;
+    s.zoom_default = zoom;
+    s.zoom = zoom;
     s.ox = 0.0;
     s.oy = 0.0;
     s.view_w = aw;
     s.view_h = ah;
     view_clamp(a);
+    let s = ed(a);
+    s.rest_ox = s.ox;
+}
+
+/// settings.landscape_fit was flipped (the Display sheet's row, or the action): the page rests as the
+/// setting says from now on. In the editor, sideways, the view is laid out again at once, even pinched in
+/// (a Full refresh, as a turn gives); upright it changes nothing, and in the Library the editor lays its
+/// view out when it is next entered (view_w 0 is a view set up for no screen).
+pub fn editor_fit_changed(a: &mut App, in_editor: bool) {
+    if a.ed.is_none() {
+        return;
+    }
+    if in_editor && a.scr == ScreenId::Editor && ed_ref(a).open {
+        if a.w > a.h {
+            view_reset(a);
+            compose_all(a, RefreshMode::Full);
+        }
+    } else {
+        ed(a).view_w = 0;
+    }
+}
+
+/// The toast that says what flipping landscape_fit did (2500 ms): the new setting sideways, and upright
+/// where it applies to a later turn only.
+pub fn editor_fit_toast(a: &mut App) {
+    if a.w <= a.h {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
+        // "Sideways, show the whole page" was changed with the Kindle upright, where it makes no
+        // difference yet.
+        app_toast(a, tr("Applies when the Kindle is sideways."), 2500);
+    } else if a.settings.landscape_fit {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now shows
+        // the whole page when the Kindle is turned sideways.
+        app_toast(a, tr("Sideways shows the whole page."), 2500);
+    } else {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now fills the
+        // width with the page when the Kindle is turned sideways.
+        app_toast(a, tr("Sideways fills the width."), 2500);
+    }
 }
 
 fn to_page(s: &EditorState, sx: f32, sy: f32, px: &mut f32, py: &mut f32) {
@@ -990,7 +1050,8 @@ fn page_to_screen(a: &App, p: Rect) -> Rect {
 
 fn zoomed(a: &App) -> bool {
     let s = ed_ref(a);
-    (s.zoom - s.zoom_default).abs() > 0.01 || s.ox != 0.0 || s.oy > 0.5
+    // (The whole page sideways rests centred across, at a negative offset: rest_ox, 0 everywhere else.)
+    (s.zoom - s.zoom_default).abs() > 0.01 || s.ox != s.rest_ox || s.oy > 0.5
 }
 
 // Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page. The
@@ -3276,6 +3337,8 @@ pub fn editor_init(a: &mut App) {
     s.zoom = 1.0;
     s.zoom_default = 1.0;
     s.zoom_min = 1.0;
+    s.zoom_max = 4.0;
+    s.rest_ox = 0.0;
     s.tool_button_shows = TB_NONE; // (no panel drawn yet)
     // Erased ink an earlier run left in page files (it left with the notebook open, or a compaction
     // was stopped): taken out now, in the background, unless the notebook is opened first.
@@ -3332,7 +3395,8 @@ pub fn editor_enter(a: &mut App) {
         render_page_full(a);
     }
     let s = ed_ref(a);
-    if s.view_w != a.w || s.view_h != a.h {
+    let turned = s.view_w != a.w || s.view_h != a.h;
+    if turned {
         view_reset(a); // new notebook or turned
     }
     ed(a).pinching = false;
@@ -3367,6 +3431,16 @@ pub fn editor_enter(a: &mut App) {
     }
     compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h });
     touch_context(a);
+    // The first time the page comes up sideways whole, for the owner who had it filling the width: why
+    // (hints bit 8). Not for a fresh install or an owner who has seen it.
+    let st = &a.settings;
+    if turned && ed_ref(a).open && a.w > a.h && st.landscape_fit && st.upgraded && st.hints & HINT_SIDEWAYS == 0 {
+        a.settings.hints |= HINT_SIDEWAYS;
+        settings_save(&a.settings);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update:
+        // the editor now shows the whole page when the Kindle is sideways, which two-finger swipes need.
+        app_toast(a, tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this."), 6000);
+    }
 }
 
 /// a stroke / drag / pinch is in progress
@@ -3455,7 +3529,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
             }
             if ev.value == 1 {
                 s.zoom = s.pinch_z0 * d / s.pinch_d0;
-                s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
+                s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_max);
             } else {
                 s.zoom = s.pinch_z0; // a pan holds the zoom: no drift
                 s.pinch_panned = true;
@@ -3479,7 +3553,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
                 s.pinch_py = py;
             }
             s.zoom = s.pinch_z0 * d / s.pinch_d0;
-            s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
+            s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_max);
         }
         s.ox = s.pinch_px - mx / s.zoom; // keep the pinched spot under the fingers
         s.oy = s.pinch_py - my / s.zoom;
@@ -3860,6 +3934,9 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             let r = with_modal(a, |s| &mut s.dm, |dm, a| dispmenu_pointer(dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d));
             if r == DmResult::Inverted {
                 compose_all(a, RefreshMode::Full);
+            } else if r == DmResult::Refit {
+                editor_fit_changed(a, true);
+                editor_fit_toast(a);
             } else if r == DmResult::Closed {
                 compose(a, d);
                 app_invalidate(a, d, RefreshMode::Ui);
@@ -4411,6 +4488,68 @@ mod tests {
         ed(&mut a).zoom = 1.005;
         view_clamp(&mut a);
         assert!(view_identity(&a));
+    }
+
+    #[test]
+    fn sideways_the_whole_page_rests_when_asked() {
+        // Off (or upright, whatever it says) the page rests as it always did: its width across, the
+        // ceiling four times that, bit for bit, on the three screens' shapes.
+        for (aw, ah, pw, ph) in [(1860, 2480, 1860, 2480), (2480, 1860, 1860, 2480), (1986, 2648, 1986, 2648), (2648, 1986, 1986, 2648)] {
+            let width = aw as f32 / pw as f32;
+            for fit in [false, true] {
+                let (z, zmin, zmax) = view_rest(aw, ah, pw, ph, fit);
+                assert_eq!(zmax.to_bits(), (width * 4.0).to_bits());
+                assert_eq!(zmin.to_bits(), width.min(ah as f32 / ph as f32).to_bits());
+                if !fit || aw < ah {
+                    assert_eq!(z.to_bits(), width.to_bits());
+                } else {
+                    assert_eq!(z.to_bits(), zmin.to_bits());
+                }
+            }
+        }
+        // Off, sideways: the width across, from the top, at rest (the existing view).
+        let mut a = app(2480, 1860, 1860, 2480);
+        a.settings.landscape_fit = false;
+        view_reset(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!((s.zoom, s.zoom_default, s.zoom_max, s.rest_ox), (2480.0 / 1860.0, 2480.0 / 1860.0, 2480.0 / 1860.0 * 4.0, 0.0));
+        assert!(!zoomed(&a));
+        // On, sideways: the whole page, centred across, and that is rest: not zoomed until it moves.
+        let mut a = app(2480, 1860, 1860, 2480);
+        a.settings.landscape_fit = true;
+        view_reset(&mut a);
+        let s = ed_ref(&a);
+        assert_eq!(s.zoom, s.zoom_min);
+        assert_eq!(s.zoom, 0.75);
+        assert_eq!(s.zoom_default, 0.75);
+        assert_eq!(s.zoom_max, 2480.0 / 1860.0 * 4.0);
+        assert!(s.ox < 0.0 && s.rest_ox == s.ox && s.oy == 0.0);
+        assert!(!zoomed(&a));
+        // Zoomed in, then out to the whole page again: still at rest.
+        let s = ed(&mut a);
+        s.zoom = 2.0;
+        view_clamp(&mut a);
+        assert!(zoomed(&a));
+        let s = ed(&mut a);
+        s.zoom = 0.1;
+        view_clamp(&mut a);
+        assert!(!zoomed(&a));
+        // A pan away from rest is zoomed.
+        let s = ed(&mut a);
+        s.zoom = 1.5;
+        s.oy = 200.0;
+        view_clamp(&mut a);
+        assert!(zoomed(&a));
+        // Nothing may zoom past four times the width's fit.
+        let s = ed(&mut a);
+        s.zoom = 100.0;
+        view_clamp(&mut a);
+        assert_eq!(ed_ref(&a).zoom, 2480.0 / 1860.0 * 4.0);
+        // Upright with it on is today's view.
+        let mut a = app(1860, 2480, 1860, 2480);
+        a.settings.landscape_fit = true;
+        view_reset(&mut a);
+        assert!(view_identity(&a) && !zoomed(&a));
     }
 
     #[test]

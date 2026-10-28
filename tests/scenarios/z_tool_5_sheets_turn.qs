@@ -122,14 +122,14 @@ rotate 1
 wait 300
 expect editor.modal is display
 shot 05-display-sideways
-tap 1240 966
+tap 1240 1059
 wait 100
 expect settings.sleep_mode is 1
-tap 1240 966
+tap 1240 1059
 wait 100
-tap 1240 966
+tap 1240 1059
 wait 100
-tap 1240 966
+tap 1240 1059
 wait 100
 expect settings.sleep_mode is 0
 rotate 0
@@ -140,7 +140,7 @@ wait 300
 wake
 wait 300
 expect editor.modal is display
-tap 1462 1626
+tap 1462 1720
 wait 200
 expect editor.modal is none
 # The Pages view: turned, every page ticked there; turned back, asleep and awake, still ticked; Back

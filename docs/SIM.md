@@ -156,13 +156,13 @@ Settings 1535 95. Its five buttons widen together for a longer word, up to 220 p
 Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
 are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
 pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. Upright from the
-Library, the Display sheet's clock and battery size row is 735 1533, beside its Done at 1460 1533. The Language list
+Library, the Display sheet's "Sideways, show the whole page" row is 930 1032, its sleep screen row 930 1308, and its clock and battery size row 735 1626, beside its Done at 1460 1626. The Language list
 has Automatic at 930 785, English 930 945, Español 930 1105 and Cancel 930 1265. Pen feel's tabs
 are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
 fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
 top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
 sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
-is 1240 1005 and its Done 1770 1325; the Language list's Cancel 1240 1055. The first card's menu
+is 1240 1099 and its Done 1770 1419; the Language list's Cancel 1240 1055. The first card's menu
 button is 431 896; in a notebook's menu Move to folder is 1240 790 and Delete 1240 1110, Delete's
 Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Cancel at 1240 950. Share's
 Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
@@ -226,7 +226,7 @@ shows what the app holds.
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
 | `editor.tool` | the pen's tool by its settings.ini name: `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy` |
-| `editor.zoom` | the zoom with two decimals: `1.00` is the usual view (the page's width fitting the screen's: 100% upright for a notebook of this screen's size) |
+| `editor.zoom` | the zoom with two decimals: `1.00` is the usual view (the page's width fitting the screen's: 100% upright for a notebook of this screen's size; sideways the whole page while `landscape_fit` is on, its default) |
 | `editor.zoomed` | `1` while the view is zoomed or panned, else `0` |
 | `editor.scrolls` | `V H`: whether the page scrolls on the vertical and the horizontal axis now (`1 0`), what touchgest.rs reads to tell a two-finger pan from a swipe: `0 0` at the whole page, with a surface in front that does not pan (the Pages view, a sheet), or with no notebook open |
 | `editor.scale` | screen px per page px, two decimals: `1.00` for a notebook of this screen's size upright, `1.07` for an 1860x2480 notebook on a 1986x2648 screen, `0.94` the other way; `0.00` with no notebook open |

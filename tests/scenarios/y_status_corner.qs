@@ -84,26 +84,26 @@ tap 930 780
 wait 200
 expect library.sheet is display
 expect display.presents not -1
-tap 735 1533
+tap 735 1626
 wait 300
 expect settings.status_size is 1
 expect status.rect is 6 6 389 66
-expect display.presents is ui 180 419 1500 1222, ui 6 6 389 66
-tap 735 1533
+expect display.presents is ui 180 372 1500 1362, ui 6 6 389 66
+tap 735 1626
 wait 300
 expect settings.status_size is 2
 expect status.rect is 6 6 518 88
-tap 735 1533
+tap 735 1626
 wait 300
 expect settings.status_size is 0
 expect status.rect is 6 6 278 48
-tap 735 1533
+tap 735 1626
 wait 300
-tap 735 1533
+tap 735 1626
 wait 300
 expect settings.status_size is 2
 shot 02-display-sheet-large
-tap 1460 1533
+tap 1460 1626
 wait 300
 expect library.sheet is settings
 # Charging: the bolt widens the box; a battery that changes is one refresh, a minute passing another,

@@ -5,6 +5,7 @@
 # with what was written on the bigger screen. The calibration, recorded as the 1986x2648 panel's
 # by then, is scaled back: pen taps land.
 # root: y_pagesize_1_ksc
+# settings: landscape_fit=0
 # rust-only
 wait 300
 shot 01-library

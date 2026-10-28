@@ -4,6 +4,7 @@
 # render.
 # root: z_4_erase_zoom_rotate
 # settings: eraser_mode=0
+# settings: landscape_fit=0
 # rust-only
 wait 300
 expect settings.eraser_mode is 0

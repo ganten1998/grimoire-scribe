@@ -2454,6 +2454,11 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
             redraw(a, RefreshMode::Ui);
         } else if r == DmResult::Inverted {
             redraw(a, RefreshMode::Full);
+        } else if r == DmResult::Refit {
+            // (the editor, not open here, lays its page out again when it is next entered)
+            editor_fit_changed(a, false);
+            redraw(a, RefreshMode::Ui);
+            editor_fit_toast(a);
         } else if !rect_is_empty(d) {
             app_invalidate(a, d, if ph == 2 { RefreshMode::Ui } else { RefreshMode::Fast });
         }

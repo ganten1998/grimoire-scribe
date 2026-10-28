@@ -713,6 +713,11 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("This is the first page.")));
     put(cformat!("%s", tr("Move the pen away, then swipe.")));
     put(cformat!("%s", tr("Here two fingers move the page. Open Pages and Links from the panel.")));
+    // The Display sheet's sideways row's toasts, and the once-only hint after an update.
+    put(cformat!("%s", tr("Sideways shows the whole page.")));
+    put(cformat!("%s", tr("Sideways fills the width.")));
+    put(cformat!("%s", tr("Applies when the Kindle is sideways.")));
+    put(cformat!("%s", tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this.")));
     out.len()
 }
 
@@ -744,6 +749,9 @@ fn rare_notices_fit() {
             let room = 1500 - if th == UiTheme::Gothic { 80 } else { 72 };
             check!(font_measure(FontFace::Regular, ui_text_size(), tr("Front light controls are not available here.")) <= room);
             check!(font_measure(FontFace::Regular, ui_text_size(), tr("This Kindle has no warmth control.")) <= room);
+            // The Display sheet's checkbox rows (Invert, Sideways): one line beside the box (1300 px).
+            check!(font_measure(FontFace::Regular, ui_text_size(), tr("Sideways, show the whole page")) <= 1300);
+            check!(font_measure(FontFace::Regular, ui_text_size(), tr("Invert colors in Grimoire (white on black)")) <= 1300);
             // The Share screen without an address (the scenario has one), and asleep: lines across
             // the sheet's text room, the first in bold at the title size.
             let share = 1860 - 2 * 70 - if th == UiTheme::Gothic { 80 } else { 72 };

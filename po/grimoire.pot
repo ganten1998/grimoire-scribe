@@ -518,6 +518,37 @@ msgstr ""
 msgid "Invert colors in Grimoire (white on black)"
 msgstr ""
 
+#. TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
+#. the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
+#: rust/src/dispmenu.rs
+msgid "Sideways, show the whole page"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
+#. "Sideways, show the whole page" was changed with the Kindle upright, where it makes no
+#. difference yet.
+#: rust/src/editor.rs
+msgid "Applies when the Kindle is sideways."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now shows
+#. the whole page when the Kindle is turned sideways.
+#: rust/src/editor.rs
+msgid "Sideways shows the whole page."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now fills the
+#. width with the page when the Kindle is turned sideways.
+#: rust/src/editor.rs
+msgid "Sideways fills the width."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update:
+#. the editor now shows the whole page when the Kindle is sideways, which two-finger swipes need.
+#: rust/src/editor.rs
+msgid "Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this."
+msgstr ""
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: src/dispmenu.c
 msgid "Sleep"

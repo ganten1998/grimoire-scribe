@@ -148,7 +148,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
+    editor_busy, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
     editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut,
     editor_shortcut_at, editor_suspend,
 };

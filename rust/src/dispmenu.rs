@@ -13,6 +13,8 @@ pub enum DmResult {
     Changed = 1,  // DM_CHANGED
     Closed = 2,  // DM_CLOSED
     Inverted = 3,  // DM_INVERTED
+    /// Sideways, show the whole page was flipped (settings.landscape_fit): the host lays the page out again
+    Refit = 4,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -43,6 +45,7 @@ const D_PIN: i32 = 5;
 const D_SLEEP_AFTER: i32 = 6;
 const D_DONE: i32 = 7;
 const D_STATUS: i32 = 8;
+const D_FIT: i32 = 9;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -83,9 +86,9 @@ fn step_of(minutes: i32) -> i32 {
     best as i32
 }
 
-/// Rows: brightness, warmth, invert, [heading], sleep screen, [pin], sleep after.
+/// Rows: brightness, warmth, invert, sideways, [heading], sleep screen, [pin], sleep after.
 fn row_h(a: &App) -> i32 {
-    let rows = 6 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 7 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let room = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
     let h = room / rows;
     clampi(h, ui_px(100.0), ui_px(140.0))
@@ -96,7 +99,7 @@ fn card_rect(a: &App) -> Rect {
     if w > ui_px(1500.0) {
         w = ui_px(1500.0);
     }
-    let rows = 6 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 7 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let h = ui_px(120.0) + ui_px(72.0) + rows * row_h(a) + ui_px(190.0);
     Rect { x: (a.w - w) / 2, y: (a.h - h) / 3, w, h }
 }
@@ -175,6 +178,13 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     let inv = Rect { x: in_.x, y, w: in_.w, h: rh };
     ui_checkbox(&mut a.screen, inv, tr("Invert colors in Grimoire (white on black)"), a.settings.invert);
     hits_add(&mut m.hits, inv, D_INVERT, 0);
+    y += rh;
+    // Sideways, the editor shows the whole page (two fingers swipe anywhere), or the page's width.
+    let fit = Rect { x: in_.x, y, w: in_.w, h: rh };
+    // TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
+    // the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
+    ui_checkbox(&mut a.screen, fit, tr("Sideways, show the whole page"), a.settings.landscape_fit);
+    hits_add(&mut m.hits, fit, D_FIT, 0);
     y += rh;
     // Sleep section.
     canvas_hline(&mut a.screen, in_.x, in_.x + in_.w, y + rh / 3, ui_px(3.0), 0);
@@ -323,6 +333,13 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             display_set_invert(a.settings.invert);
             dispmenu_draw(m, a);
             return DmResult::Inverted;
+        }
+        D_FIT => {
+            a.settings.landscape_fit = !a.settings.landscape_fit;
+            settings_save(&a.settings);
+            dispmenu_draw(m, a);
+            *dirty = m.rect;
+            return DmResult::Refit;
         }
         D_SLEEP_MODE => {
             a.settings.sleep_mode = (a.settings.sleep_mode + 1) % 4;

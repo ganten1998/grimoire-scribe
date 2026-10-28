@@ -4,6 +4,7 @@
 # Live equals a fresh render through all of it.
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
+# settings: landscape_fit=0
 # rust-only
 wait 300
 tap 965 95

@@ -177,20 +177,20 @@ tap 930 780
 wait 50
 expect library.sheet is display
 shot 07-display
-tap 930 1215
+tap 930 1308
 wait 50
 shot 08-display-sleep-1
-tap 930 1215
+tap 930 1308
 wait 50
 shot 09-display-sleep-2
-tap 930 1215
+tap 930 1308
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1215
+tap 930 1308
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1533
+tap 1462 1626
 wait 50
 expect library.sheet is settings
 # Pen feel: every tab (the pad drawn on in the pencil's and the calligraphy pen's: the live readout),
@@ -429,20 +429,20 @@ pentap panel display
 wait 100
 expect editor.modal is display
 shot 26-display-editor
-tap 500 1305
+tap 500 1399
 wait 100
 shot 27-display-pinned
 expect settings.sleep_mode is 1
-tap 930 1165
+tap 930 1259
 wait 50
-tap 930 1165
+tap 930 1259
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1165
+tap 930 1259
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1626
+tap 1462 1720
 wait 100
 expect editor.modal is none
 pentap panel next
@@ -822,19 +822,19 @@ expect library.sheet is settings
 tap 1240 590
 wait 50
 expect library.sheet is display
-tap 1240 1005
+tap 1240 1099
 wait 50
-tap 1240 1005
+tap 1240 1099
 wait 50
 shot 54-display-landscape
-tap 1240 1005
+tap 1240 1099
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 1240 1005
+tap 1240 1099
 wait 50
 expect settings.sleep_mode is 0
-tap 1770 1325
+tap 1770 1419
 wait 50
 expect library.sheet is settings
 tap 1240 1385
