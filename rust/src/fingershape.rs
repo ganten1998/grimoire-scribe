@@ -60,7 +60,8 @@ pub const FS_ROT_DEG: i32 = 10;
 pub const FS_FAR: i32 = FS_T_MAX + FS_MARGIN_MIN;
 /// The slip-bank check calls its pump this often (in bank paths): about 1-2 s on the Kindle in all.
 pub const FS_BANK_PUMP: usize = 64;
-/// fs_match calls its pump after this many recorded samples (the work_pump rhythm, section 4).
+/// fs_match calls its pump after this many comparisons of a recorded sample with one try of the
+/// candidate (the work_pump rhythm, section 4).
 pub const FS_MATCH_PUMP: usize = 4;
 /// In recording, a refused straight stroke and another landing within this read as an X or = drawn
 /// in two strokes (section 4, Multi-stroke).
@@ -198,17 +199,15 @@ pub enum FsReason {
 // Integer helpers
 // ---------------------------------------------------------------------------------------------
 
-/// floor(sqrt(v)), bit by bit: exact on every target.
+/// floor(sqrt(v)), bit by bit: exact on every target. It starts at the highest power of 4 not
+/// above v (from its leading bit), so a 32-point distance takes about 11 steps, not 32.
 fn isqrt(v: i64) -> i64 {
     if v <= 0 {
         return 0;
     }
     let mut op = v as u64;
     let mut res = 0u64;
-    let mut one = 1u64 << 62;
-    while one > op {
-        one >>= 2;
-    }
+    let mut one = 1u64 << ((63 - op.leading_zeros()) & !1);
     while one != 0 {
         if op >= res + one {
             op -= res + one;
@@ -733,48 +732,59 @@ pub fn fs_sample_of(pts: &[FsPt], out: &mut FsSample) {
     }
 }
 
-/// A point cloud: the sample's centroid at 0 and its larger box side 512 units.
+/// A point cloud: the sample's centroid at 0 and its larger box side 512 units. Every point lies
+/// within 512 of the centroid (the centroid is inside the box), so the coordinates are i16 and
+/// the difference of two fits too: the distance loops then map onto the widening multiply-adds
+/// the targets have (NEON's vmlal.s16 on the Kindle and the Mac, SSE2's pmaddwd on a PC).
 #[derive(Clone, Copy, Debug, Default)]
 struct Cloud {
-    x: [i32; FS_N],
-    y: [i32; FS_N],
+    x: [i16; FS_N],
+    y: [i16; FS_N],
 }
 
-fn cloud_of(s: &FsSample) -> Cloud {
+/// The sample's cloud, turned by deg degrees about its centroid (0: as drawn), and then scaled so
+/// that the larger side of its box is 512 units again. Turning changes the box (a squarish Z
+/// turned by 10 degrees has a larger one, a long thin shape a shorter one), so a turned try left
+/// at the upright scale is compared with the recorded clouds at another size than theirs, and the
+/// tolerance shrinks, by a different amount for each way of turning. Normalizing after the turn
+/// compares like with like.
+fn cloud_of(s: &FsSample, deg: i32) -> Cloud {
     let mut c = Cloud::default();
     let (mut sx, mut sy) = (0i64, 0i64);
-    let (mut minx, mut maxx, mut miny, mut maxy) = (255i64, 0i64, 255i64, 0i64);
     for i in 0..FS_N {
-        let (x, y) = (s.xy[2 * i] as i64, s.xy[2 * i + 1] as i64);
-        sx += x;
-        sy += y;
-        minx = minx.min(x);
-        maxx = maxx.max(x);
-        miny = miny.min(y);
-        maxy = maxy.max(y);
+        sx += s.xy[2 * i] as i64;
+        sy += s.xy[2 * i + 1] as i64;
+    }
+    // The points about the centroid, times 32 so the mean stays exact, turned in Q14. The turned
+    // centroid is still exactly 0: the turned sums are sin and cos times sums that are 0.
+    let (cs, sn) = (fs_cos_q14(deg) as i64, fs_sin_q14(deg) as i64);
+    let mut u = [0i64; FS_N];
+    let mut v = [0i64; FS_N];
+    for i in 0..FS_N {
+        let x = FS_N as i64 * s.xy[2 * i] as i64 - sx;
+        let y = FS_N as i64 * s.xy[2 * i + 1] as i64 - sy;
+        u[i] = x * cs - y * sn;
+        v[i] = x * sn + y * cs;
+    }
+    let (mut minx, mut maxx, mut miny, mut maxy) = (u[0], u[0], v[0], v[0]);
+    for i in 1..FS_N {
+        minx = minx.min(u[i]);
+        maxx = maxx.max(u[i]);
+        miny = miny.min(v[i]);
+        maxy = maxy.max(v[i]);
     }
     let major = (maxx - minx).max(maxy - miny);
     if major == 0 {
         return c;
     }
-    // (x - mean) * 512 / major, with the mean kept exact: (32 x - sum) * 16 / major
+    // (At 0 degrees this is (32 x - sum) * 16 / major in sample units: the same numbers, so the
+    // as-drawn distances do not depend on the turned tries existing.)
+    // (|u| <= major, as the centroid is inside the box: so |x| <= 512)
     for i in 0..FS_N {
-        c.x[i] = div_round((FS_N as i64 * s.xy[2 * i] as i64 - sx) * (FS_SCALE as i64 / FS_N as i64), major) as i32;
-        c.y[i] = div_round((FS_N as i64 * s.xy[2 * i + 1] as i64 - sy) * (FS_SCALE as i64 / FS_N as i64), major) as i32;
+        c.x[i] = div_round(u[i] * FS_SCALE as i64, major) as i16;
+        c.y[i] = div_round(v[i] * FS_SCALE as i64, major) as i16;
     }
     c
-}
-
-/// The cloud turned by deg degrees about its centroid, in Q14 fixed point.
-fn rotate(c: &Cloud, deg: i32) -> Cloud {
-    let (cs, sn) = (fs_cos_q14(deg) as i64, fs_sin_q14(deg) as i64);
-    let mut r = Cloud::default();
-    for i in 0..FS_N {
-        let (x, y) = (c.x[i] as i64, c.y[i] as i64);
-        r.x[i] = div_round(x * cs - y * sn, 16384) as i32;
-        r.y[i] = div_round(x * sn + y * cs, 16384) as i32;
-    }
-    r
 }
 
 /// The path over the box diagonal, x1000, of a sample's 32 points: the structure guard's measure.
@@ -803,6 +813,9 @@ fn ratio_of(s: &FsSample) -> i32 {
 // The $P distance (section 4)
 // ---------------------------------------------------------------------------------------------
 
+// (greedy_pass keeps a point's index in a key's low 5 bits)
+const _: () = assert!(FS_N <= 32);
+
 /// The sum of the weights 32, 31, ... 1: the weights fall from 1 to 1/32 along the matching order.
 const WSUM: i64 = (FS_N * (FS_N + 1) / 2) as i64;
 /// A weighted sum over WSUM x FS_SCALE, per mille: D = sum * 1000 / DEN, rounded.
@@ -823,27 +836,27 @@ fn abandon_at(bound: i32) -> i64 {
 /// One greedy pass of $P: from point `start` of a, each point in turn takes the nearest point of b
 /// not yet taken (the first such on a tie). The weighted distance sum, or a sum >= stop once it is
 /// sure to end there.
+///
+/// The search packs each candidate into one key, squared distance above and index below, so the
+/// least key is the nearest point and the first on a tie; a taken point's key is u32::MAX. That is
+/// the same choice as a scan with a strict "<", without a branch per point, so the compiler can
+/// run it in vector lanes. A cloud's points lie within 512 of 0 (cloud_of), so a squared distance
+/// is at most 2 x 1024^2 = 2^21 and its key fits below 2^26.
 fn greedy_pass(a: &Cloud, b: &Cloud, start: usize, stop: i64) -> i64 {
-    let mut taken = [false; FS_N];
+    let mut taken = [0u32; FS_N];
     let mut sum = 0i64;
     for k in 0..FS_N {
         let i = (start + k) % FS_N;
         let (ax, ay) = (a.x[i], a.y[i]);
-        let mut best = i32::MAX;
-        let mut bj = 0;
+        let mut key = u32::MAX;
         for j in 0..FS_N {
-            if taken[j] {
-                continue;
-            }
-            let (dx, dy) = (b.x[j] - ax, b.y[j] - ay);
-            let d = dx * dx + dy * dy;
-            if d < best {
-                best = d;
-                bj = j;
-            }
+            let (dx, dy) = ((b.x[j] - ax) as i32, (b.y[j] - ay) as i32);
+            let d = (dx * dx + dy * dy) as u32;
+            key = key.min((d << 5 | j as u32) | taken[j]);
         }
-        taken[bj] = true;
-        sum += (FS_N - k) as i64 * isqrt(best as i64);
+        let bj = (key & 31) as usize;
+        taken[bj] = u32::MAX;
+        sum += (FS_N - k) as i64 * isqrt((key >> 5) as i64);
         if sum >= stop {
             return sum;
         }
@@ -851,10 +864,43 @@ fn greedy_pass(a: &Cloud, b: &Cloud, start: usize, stop: i64) -> i64 {
     sum
 }
 
+/// A weighted sum no greedy pass between a and b can go below, in either direction. In a pass
+/// each point is matched at least as far as its nearest neighbour in the other cloud, whatever is
+/// taken, and the weights 32..1 fall on the points in some order; the least such sum puts the
+/// largest weights on the nearest neighbours (the rearrangement inequality). So the sum of the
+/// sorted nearest-neighbour distances, weighted 32..1, bounds every pass one way, and the lesser
+/// of the two ways bounds cloud_dist. It costs about one pass, and a pair it puts past the bound
+/// needs none of the fourteen.
+fn lower_sum(a: &Cloud, b: &Cloud) -> i64 {
+    let mut na = [u32::MAX; FS_N];
+    let mut nb = [u32::MAX; FS_N];
+    for i in 0..FS_N {
+        for j in 0..FS_N {
+            let (dx, dy) = ((b.x[j] - a.x[i]) as i32, (b.y[j] - a.y[i]) as i32);
+            let d = (dx * dx + dy * dy) as u32;
+            na[i] = na[i].min(d);
+            nb[j] = nb[j].min(d);
+        }
+    }
+    // (isqrt keeps the order, so sorting the squares sorts the distances)
+    na.sort_unstable();
+    nb.sort_unstable();
+    let (mut sa, mut sb) = (0i64, 0i64);
+    for k in 0..FS_N {
+        sa += (FS_N - k) as i64 * isqrt(na[k] as i64);
+        sb += (FS_N - k) as i64 * isqrt(nb[k] as i64);
+    }
+    sa.min(sb)
+}
+
 /// The $P cloud distance, per mille of the shape's size: the minimum over starts every 5 points
 /// (floor(sqrt(32))) in both directions (a matched to b and b to a). Exact when it is at most
-/// bound, bound + 1 otherwise: the early abandoning that keeps 32 shapes fast.
+/// bound, bound + 1 otherwise: the early abandoning (and lower_sum's shortcut) that keeps 32
+/// shapes fast.
 fn cloud_dist(a: &Cloud, b: &Cloud, bound: i32) -> i32 {
+    if bound < UNBOUNDED && lower_sum(a, b) >= abandon_at(bound) {
+        return bound + 1;
+    }
     let mut best = bound + 1;
     let step = 5;
     let mut start = 0;
@@ -875,7 +921,12 @@ fn cloud_dist(a: &Cloud, b: &Cloud, bound: i32) -> i32 {
 /// The distance between two samples as drawn (no rotation tried), per mille: the measure of a
 /// recording's spread and consistency. Exact, and symmetric.
 pub fn fs_distance(a: &FsSample, b: &FsSample) -> i32 {
-    cloud_dist(&cloud_of(a), &cloud_of(b), UNBOUNDED)
+    cloud_dist(&cloud_of(a, 0), &cloud_of(b, 0), UNBOUNDED)
+}
+
+/// A sample's path over its box diagonal, x1000 (the structure guard's measure; ratio_of).
+pub fn fs_ratio(s: &FsSample) -> i32 {
+    ratio_of(s)
 }
 
 /// A shape to be matched: its cloud as drawn and turned by -10 and +10 degrees, and its ratio.
@@ -886,8 +937,7 @@ struct Cand {
 }
 
 fn cand_of(s: &FsSample) -> Cand {
-    let c = cloud_of(s);
-    Cand { rot: [c, rotate(&c, -FS_ROT_DEG), rotate(&c, FS_ROT_DEG)], ratio: ratio_of(s) }
+    Cand { rot: [cloud_of(s, 0), cloud_of(s, -FS_ROT_DEG), cloud_of(s, FS_ROT_DEG)], ratio: ratio_of(s) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -937,7 +987,7 @@ pub fn fs_prepare(g: &mut FsGesture, samples: &[FsSample]) {
     let mut rsum = 0i64;
     for i in 0..g.n {
         g.samples[i] = samples[i];
-        g.clouds[i] = cloud_of(&samples[i]);
+        g.clouds[i] = cloud_of(&samples[i], 0);
         rsum += ratio_of(&samples[i]) as i64;
     }
     for i in 0..g.n {
@@ -968,26 +1018,29 @@ pub fn fs_medoid(g: &FsGesture) -> usize {
     best.1
 }
 
-/// D_g(c): the minimum over the gesture's samples and the three rotations, exact up to bound and
-/// bound + 1 past it. The turned clouds are tried only when the upright one is within 1.5x the
-/// gesture's threshold: a shape that far off is not 10 degrees from matching, and it halves the work.
-fn gesture_dist(g: &FsGesture, c: &Cand, bound: i32) -> i32 {
-    let rot_gate = 3 * g.thr / 2;
-    let mut d = bound.max(rot_gate) + 1;
-    for i in 0..g.n {
-        d = d.min(cloud_dist(&c.rot[0], &g.clouds[i], d - 1));
-    }
-    if d <= rot_gate {
-        for r in 1..3 {
-            for i in 0..g.n {
-                d = d.min(cloud_dist(&c.rot[r], &g.clouds[i], d - 1));
-            }
+/// D_g(c) over the turns in `rots` (indices into c.rot: 0 as drawn, 1 and 2 turned): the minimum
+/// over those and the gesture's samples, exact up to bound and bound + 1 past it. Every turn is
+/// always tried: a shortcut that skips the turned tries when the upright one is far would make
+/// D_g depend on the shortcut (a Z turned 15 degrees would read 121 where its turned try reads 40),
+/// and separation and the slip bank must see the very distance the matcher can reach.
+fn gesture_dist_rots(g: &FsGesture, c: &Cand, rots: core::ops::Range<usize>, bound: i32) -> i32 {
+    let mut d = bound + 1;
+    for r in rots {
+        for i in 0..g.n {
+            d = d.min(cloud_dist(&c.rot[r], &g.clouds[i], d - 1));
         }
     }
-    d.min(bound + 1)
+    d
 }
 
-/// D_g for a sample, exactly (no bound): what the tests assert and the probe can show.
+/// D_g(c): the minimum over the gesture's samples and the candidate's three turns (section 4),
+/// exact up to bound and bound + 1 past it.
+fn gesture_dist(g: &FsGesture, c: &Cand, bound: i32) -> i32 {
+    gesture_dist_rots(g, c, 0..3, bound)
+}
+
+/// D_g for a sample, exactly (no bound): the distance fs_match ranks by, and what separation and
+/// the slip bank measure.
 pub fn fs_gesture_distance(g: &FsGesture, s: &FsSample) -> i32 {
     gesture_dist(g, &cand_of(s), UNBOUNDED)
 }
@@ -1004,51 +1057,129 @@ pub struct FsMatch {
     pub thr: i32,
     /// the second nearest's distance (FS_FAR + 1 when there is none or it is past FS_FAR)
     pub d2: i32,
+    /// the candidate's path/diagonal ratio, x1000 (fs_ratio), and the nearest gesture's
+    pub ratio: i32,
+    pub g_ratio: i32,
+}
+
+/// The decision from the numbers (section 4, steps 2 to 4): None to fire, or why not. d1 and thr
+/// are the nearest gesture's distance and threshold, d2 the second nearest's (another action's),
+/// ratio and g_ratio the candidate's and that gesture's path/diagonal ratios.
+/// - d1 <= thr, or NoMatch;
+/// - the margin d2 - d1 >= max(35, 30% of d1), or Unclear (as d1 <= thr <= 95 here, 30% of d1
+///   is at most 28 and the 35 always binds; the percentage is kept as the design states it, for a
+///   retuned FS_T_MAX);
+/// - ratio within 0.6x-1.6x of g_ratio, both ends included, or Structure: a spiral is not a circle.
+pub fn fs_decide(d1: i32, thr: i32, d2: i32, ratio: i32, g_ratio: i32) -> FsReason {
+    if d1 > thr {
+        return FsReason::NoMatch;
+    }
+    if d2 - d1 < FS_MARGIN_MIN || (d2 - d1) * 100 < FS_MARGIN_PCT * d1 {
+        return FsReason::Unclear;
+    }
+    if ratio * 10 < FS_GUARD_LO_X10 * g_ratio || ratio * 10 > FS_GUARD_HI_X10 * g_ratio {
+        return FsReason::Structure;
+    }
+    FsReason::None
 }
 
 /// The decision at runtime (after the gates): the nearest gesture fires when it is within its
 /// threshold, clearly nearer than the second nearest (another action: one shape per action), and
-/// alike in structure. Anything else fires nothing: an unknown shape never does anything. pump is
-/// called every FS_MATCH_PUMP samples (work_pump, so the pen's evdev buffer never overflows).
+/// alike in structure (fs_decide). Anything else fires nothing: an unknown shape never does
+/// anything. d1 and d2 are the exact D_g of fs_gesture_distance up to FS_FAR (FS_FAR + 1 past
+/// it), so the margin sees every turn of every gesture. At most FS_SHAPES_MAX gestures are read.
+/// pump is called after a gesture whenever the comparisons so far (a recorded sample against one
+/// of the candidate's three tries) have passed another multiple of FS_MATCH_PUMP (work_pump, so
+/// the pen's evdev buffer never overflows: a gesture is at most 9 comparisons).
 pub fn fs_match(s: &FsSample, gestures: &[FsGesture], pump: &mut dyn FnMut()) -> FsMatch {
     let c = cand_of(s);
-    let mut m = FsMatch { fired: None, why: FsReason::NoMatch, best: -1, d1: FS_FAR + 1, thr: 0, d2: FS_FAR + 1 };
+    let mut m = FsMatch {
+        fired: None,
+        why: FsReason::NoMatch,
+        best: -1,
+        d1: FS_FAR + 1,
+        thr: 0,
+        d2: FS_FAR + 1,
+        ratio: c.ratio,
+        g_ratio: 0,
+    };
+    let gestures = &gestures[..gestures.len().min(FS_SHAPES_MAX)];
     let mut done = 0usize;
+    let mut tick = |n: usize| {
+        let was = done / FS_MATCH_PUMP;
+        done += n;
+        if done / FS_MATCH_PUMP != was {
+            pump();
+        }
+    };
+    // First a cheap bound: one greedy pass per sample (the first start, as drawn) is one of the
+    // passes D_g takes the least of, so it bounds D_g from above, at a fortieth of the cost.
+    let n = gestures.len();
+    let mut d = [UNBOUNDED; FS_SHAPES_MAX];
+    for (i, g) in gestures.iter().enumerate() {
+        for j in 0..g.n {
+            d[i] = d[i].min(per_mille(greedy_pass(&c.rot[0], &g.clouds[j], 0, i64::MAX)));
+        }
+    }
+    // Then each D_g exactly, every turn, nearest bound first. A gesture need only be measured up
+    // to the second smallest value so far (an upper bound of the final d2): past that it can be
+    // neither of the two nearest, which is all the decision reads, and the measure abandons it
+    // early. So d1 and d2 come out exactly as one plain pass over all of them would give (ties
+    // keep the earlier gesture), and far gestures cost little.
+    let mut order = [0usize; FS_SHAPES_MAX];
+    for (k, o) in order.iter_mut().enumerate() {
+        *o = k;
+    }
+    let order = &mut order[..n];
+    order.sort_unstable_by_key(|&i| (d[i], i));
+    for &i in order.iter() {
+        let g = &gestures[i];
+        if g.n == 0 {
+            continue;
+        }
+        // (D_g <= d[i], so a bound of d[i] or more is always exact; a bound of the second
+        // smallest gives that bound + 1 for a gesture past it, which stays past it)
+        let b = d[i].min(second_least(&d[..n])).min(FS_FAR);
+        d[i] = gesture_dist(g, &c, b);
+        tick(3 * g.n);
+    }
     for (i, g) in gestures.iter().enumerate() {
         if g.n == 0 {
             continue;
         }
-        let d = gesture_dist(g, &c, FS_FAR);
-        if m.best < 0 || d < m.d1 {
+        let di = d[i].min(FS_FAR + 1);
+        if m.best < 0 || di < m.d1 {
             m.d2 = m.d1;
-            m.d1 = d;
+            m.d1 = di;
             m.best = i as i32;
             m.thr = g.thr;
-        } else if d < m.d2 {
-            m.d2 = d;
-        }
-        let was = done / FS_MATCH_PUMP;
-        done += g.n;
-        if done / FS_MATCH_PUMP != was {
-            pump();
+            m.g_ratio = g.ratio;
+        } else if di < m.d2 {
+            m.d2 = di;
         }
     }
-    if m.best < 0 || m.d1 > m.thr {
+    if m.best < 0 {
         return m;
     }
-    let (d1, d2) = (m.d1, m.d2);
-    if d2 - d1 < FS_MARGIN_MIN || (d2 - d1) * 100 < FS_MARGIN_PCT * d1 {
-        m.why = FsReason::Unclear;
-        return m;
+    m.why = fs_decide(m.d1, m.thr, m.d2, m.ratio, m.g_ratio);
+    if m.why == FsReason::None {
+        m.fired = Some(m.best as usize);
     }
-    let g = &gestures[m.best as usize];
-    if c.ratio * 10 < FS_GUARD_LO_X10 * g.ratio || c.ratio * 10 > FS_GUARD_HI_X10 * g.ratio {
-        m.why = FsReason::Structure;
-        return m;
-    }
-    m.fired = Some(m.best as usize);
-    m.why = FsReason::None;
     m
+}
+
+/// The second smallest value (the smallest twice when it repeats); FS_FAR + 1 for fewer than two.
+fn second_least(d: &[i32]) -> i32 {
+    let (mut a, mut b) = (FS_FAR + 1, FS_FAR + 1);
+    for &v in d {
+        if v < a {
+            b = a;
+            a = v;
+        } else if v < b {
+            b = v;
+        }
+    }
+    b
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1168,34 +1299,69 @@ pub enum FsSeparation {
     TooClose(usize),
 }
 
-/// Separation (6.3a): d = the minimum distance from the new samples to another action's shape h.
-/// d <= T_h is h's shape (SameAs); d < max(T_h, T_new) + FS_SEPARATE_PAD is too close. A SameAs
-/// anywhere wins over a TooClose; among each, the nearest. others holds every other action's
-/// shape (the action's own old shape, which the new one replaces, left out).
+/// The distance between two recorded shapes, for separation: the least over every pair of their
+/// samples and every turn, taken both ways (a's samples turned against b's, and b's turned against
+/// a's). Turning one shape by +10 degrees is not exactly turning the other by -10 in integers, and
+/// the least of both makes the distance symmetric, so a verdict cannot depend on which of the two
+/// was recorded first. Exact up to bound (bound + 1 past it).
+fn pair_dist(a: &FsGesture, b: &FsGesture, bound: i32) -> i32 {
+    let mut d = bound + 1;
+    for i in 0..a.n {
+        d = d.min(gesture_dist(b, &cand_of(&a.samples[i]), d - 1));
+    }
+    for j in 0..b.n {
+        d = d.min(gesture_dist(a, &cand_of(&b.samples[j]), d - 1));
+    }
+    d
+}
+
+/// The distance separation measures between a new shape and another action's (pair_dist,
+/// exact): what the tests assert.
+pub fn fs_shape_distance(a: &FsGesture, b: &FsGesture) -> i32 {
+    pair_dist(a, b, UNBOUNDED)
+}
+
+/// Separation (6.3a): d = the distance between the new shape and another action's shape h
+/// (fs_shape_distance, every sample and every turn both ways). h is near when d < max(T_h, T_new)
+/// + FS_SEPARATE_PAD, and the new shape is h's shape when also d <= T_h.
+/// - No near shape: Clear.
+/// - One near shape, and it is h's shape: SameAs(h), "Use moves it here". Moving it is safe only
+///   then: nothing else stays near the shape once h gives it up.
+/// - Otherwise TooClose, naming the nearest near shape it is not the shape of (or the nearest
+///   when it is the shape of several): the samples are discarded. So a shape too close to one
+///   action is never saved by being another's.
+///
+/// TooClose is symmetric (d and max(T_h, T_new) are), so two shapes are kept apart whichever was
+/// recorded first. others holds every other action's shape (the action's own old shape, which
+/// the new one replaces, left out).
 pub fn fs_record_separation(new: &FsGesture, others: &[FsGesture]) -> FsSeparation {
-    let mut same: Option<(i32, usize)> = None;
-    let mut close: Option<(i32, usize)> = None;
     let bound = FS_T_MAX + FS_SEPARATE_PAD;
+    let mut near = 0usize;
+    // the nearest near shape (d, index, whether it is h's shape), and the nearest that is not
+    let mut first: Option<(i32, usize, bool)> = None;
+    let mut close: Option<(i32, usize)> = None;
     for (k, h) in others.iter().enumerate() {
         if h.n == 0 {
             continue;
         }
-        let mut d = bound + 1;
-        for i in 0..new.n {
-            d = d.min(gesture_dist(h, &cand_of(&new.samples[i]), bound));
+        let d = pair_dist(new, h, bound);
+        if d >= h.thr.max(new.thr) + FS_SEPARATE_PAD {
+            continue;
         }
-        if d <= h.thr {
-            if same.is_none_or(|(sd, _)| d < sd) {
-                same = Some((d, k));
-            }
-        } else if d < h.thr.max(new.thr) + FS_SEPARATE_PAD && close.is_none_or(|(cd, _)| d < cd) {
+        near += 1;
+        let same = d <= h.thr;
+        if first.is_none_or(|(fd, _, _)| d < fd) {
+            first = Some((d, k, same));
+        }
+        if !same && close.is_none_or(|(cd, _)| d < cd) {
             close = Some((d, k));
         }
     }
-    match (same, close) {
-        (Some((_, k)), _) => FsSeparation::SameAs(k),
-        (None, Some((_, k))) => FsSeparation::TooClose(k),
-        (None, None) => FsSeparation::Clear,
+    match (first, close) {
+        (None, _) => FsSeparation::Clear,
+        (Some((_, k, true)), _) if near == 1 => FsSeparation::SameAs(k),
+        (_, Some((_, k))) => FsSeparation::TooClose(k),
+        (Some((_, k, _)), None) => FsSeparation::TooClose(k),
     }
 }
 
