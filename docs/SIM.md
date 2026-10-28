@@ -92,16 +92,20 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
 | `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
 | `clock SECONDS` | the time the clock and battery corner shows, in unix seconds (`clock 1700000000` is 2023-11-14 22:13:20 UTC), kept where the script puts it: it does not run on; `clock real` is the machine's clock again |
-| `battery PERCENT [charging]` | the battery that corner shows, 0 to 100, with the bolt when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
+| `battery PERCENT [charging]` | the battery that corner shows (a pixel art battery with the percent beside it), 0 to 100, with the bolt over it when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
 | `storage full`, `storage ok` | from now on every file write fails, as on a full userstore, or works again |
 | `quit` | quit (end of script also quits) |
 
 The clock and battery corner (docs/KINDLE.md; src status.rs, the Rust build only) reads the simulated
 battery every 100 ms in place of the Kindle's every 10 s, so a script sees a change after a short
 `wait`. Its time is local time: a script that checks its text sets `# env: TZ=UTC` (y_status_corner.qs does).
-The refreshes it sends show in `display.presents` as `ui` of its own rect, and are held back while the
-pen is near (`pen hover` until `pen leave`), a stroke is drawn or `display.pen_mode` is 1. A `pentap`
-leaves the pen near, as the runner never sends the pen's leaving by itself: follow it with `pen leave`.
+It shows on the notebook page only (`status.front`: no Library, no sheet, menu, bar or Pages view in front),
+and a script's taps in its corner (`tap`, `touch`, `finger`) toggle it there and nowhere else. The refreshes
+it sends show in `display.presents` as `ui` of its own rect (two, apart, when it moves from one corner to
+another), and are held back while the pen is near (`pen hover` until `pen leave`), a stroke is drawn or
+`display.pen_mode` is 1. A `pentap` leaves the pen near, as the runner never sends the pen's leaving by
+itself: follow it with `pen leave`, or with a finger tap, which is never the pen's hand and clears it
+(a `pentap` also leaves the driver in pen mode for about 1.5 s, until the page settles).
 
 The simulated power service answers a sleep request (powerButton) with a sleep (goingToScreenSaver)
 while it is active or unreadable, and with a wake (outOfScreenSaver) while it is in
@@ -166,7 +170,7 @@ Settings 1535 95. Its five buttons widen together for a longer word, up to 220 p
 Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
 are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
 pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. Upright from the
-Library, the Display sheet's "Sideways, show the whole page" row is 930 1032, its sleep screen row 930 1308, and its clock and battery size row 735 1626, beside its Done at 1460 1626. The Language list
+Library, the Display sheet's "Sideways, show the whole page" row is 930 1032, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
 has Automatic at 930 785, English 930 945, Español 930 1105 and Cancel 930 1265. Pen feel's tabs
 are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
 fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
@@ -257,6 +261,7 @@ shows what the app holds.
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
 | `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above), empty for none, after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
@@ -270,7 +275,7 @@ shows what the app holds.
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
 | `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) or the Find sheet's (`Page number or name`) |
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
-| `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty |
+| `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
 | `editor.link_mode` | `1` after Add a link until the next ink stroke (the link's box) or a page change, else `0` |
 | `editor.links` | the open page's links: how many it has, then how many of them have their ink on it (`2 1`) |
@@ -290,13 +295,15 @@ shows what the app holds.
 | `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
-| `settings.status_on`, `settings.status_size` | the clock and battery corner as settings.ini stores it: `1` while it is on, and its size, 0 small, 1 medium, 2 large |
+| `settings.status_on`, `settings.status_size`, `settings.status_corner` | the clock and battery corner as settings.ini stores it: `1` while it is on, its size, 0 small, 1 medium, 2 large, and its corner, 0 top left, 1 top right, 2 bottom right, 3 bottom left |
 | `settings.gestures`, `settings.landscape_fit`, `settings.hints`, `settings.link_areas` | the gestures' settings as settings.ini stores them: `1` while on, `landscape_fit` on by default, `hints` the one-time tips shown as a bitmask (FORMAT.md), `link_areas` `1` while the eye is on |
 | `notebook.last_page` | the open notebook's `last_page` plus 1: the page its notebook.ini reopens it on (a peek of another page never changes it); `0` with no notebook open |
-| `status.shown` | `1` while the panel holds the clock and battery corner, else `0`. A tap in the corner or the `status-toggle` shortcut turns it on at once (`settings.status_on`), but it is shown only once its refresh has been sent: not while the pen is near, nor while asleep |
-| `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
+| `status.shown` | `1` while the panel holds the clock and battery corner, else `0`. A tap in the corner or the `status-toggle` shortcut turns it on at once (`settings.status_on`), but it is shown only on a notebook page with nothing in front of it (`status.front`), and only once its refresh has been sent: not while the pen is near, nor while asleep |
+| `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent, which is drawn right of the battery; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
+| `status.icon`, `status.fill` | the battery's pixel art, `x y w h` (18 by 9 units, a unit about a tenth of the text's height: 54 by 27 px at the small size), and how many of its 12 columns of charge are lit (`10` at 87%, `1` for any charge, `0` at 0%); empty while it is not shown or has no battery |
 | `status.charging` | `1` while the corner shows its bolt, `0` while it does not; empty while it is not shown |
-| `status.zone` | the corner a finger's tap finds, `x y w h`: 12 mm square, and the indicator's box too while it is shown (`0 0 142 142` at 300 dpi) |
+| `status.zone` | the corner's square, `x y w h`, where a finger's tap finds it: 14 mm square in the corner `settings.status_corner` names (`0 0 165 165` at 300 dpi), and the indicator's box is part of the corner too while it is shown |
+| `status.front` | `1` while the notebook's page is in front, the only place the corner shows or takes a tap, else `0` |
 | `library.update` | the Updates sheet's check: `idle`, `checking`, `newer VERSION`, `newest VERSION` or `failed WHY` (`network`, `no-kpm`, `feed`, `failed`) |
 | `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |

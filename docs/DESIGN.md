@@ -120,19 +120,39 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   Live view chip and before the toast: `app_flush` paints it over `App.screen` when a refresh reaches
   its rect (widening the refresh to hold it whole), presents, and puts the pixels under it back, so
   it is never in a page, an export, a thumbnail, a sleep screen (`app_sleep` presents `App.screen`
-  as it is) or a Live view frame (`live_push` comes before it). Its own refreshes are one small GL16
-  of its rect, and of what it covered when its box shrinks or it goes: at each minute and when the
-  battery or its charging changes (`status_tick`), and when it is turned on or off or resized. They
-  go through `display_present` with no wait of any kind, and a flush that has none of its own
-  carries them (`status_flush`). They are held back while the pen is near (any pen event until
-  `IN_PEN_LEAVE`), a stroke or another gesture is in progress (`editor_busy`), or the driver is in
+  as it is) or a Live view frame (`live_push` comes before it). It is on the notebook page only
+  (`wanted`: the setting is on, the editor is the screen and `editor_page_in_front` says no sheet, menu,
+  bar, keyboard or Pages view is over the page); `status_tick` takes it down where it is when that stops
+  being so, in a refresh of its own rect. It sits in the corner `status_corner` names, a box of the time, a
+  battery in pixel art (units a tenth of the text's height: an outline with notched corners, a terminal, a
+  bar of up to 12 lit columns, a bolt on a white halo while it charges) and the percent. Its own refreshes
+  are one small GL16 of its rect, and of what it covered when its box shrinks, moves or it goes, each a
+  refresh of its own (two corners are never one refresh across the screen: `pending` is a few rects, joined
+  only where they touch): at each minute and when the battery or its charging changes (`status_tick`), and
+  when it is turned on or off, resized or moved. They go through `display_present` with no wait of any
+  kind, and a flush that has none of its own carries them (`status_flush`), which then writes the setting
+  that changed (a save waits for the storage twice, so it follows the refresh). They are held back while
+  the pen is near (any pen event until `IN_PEN_LEAVE`, or until a finger the touch panel lets through: that
+  is never the pen's hand), a stroke or another gesture is in progress (`editor_busy`), or the driver is in
   pen mode (`display_pen_mode_on`: it stays so past a stroke until a grayscale refresh is due, and
   that refresh waits for the pen's last frame, so a refresh of the corner must not be the one that
-  ends it). A finger tap in the 12 mm corner turns it on and off, if the screen has no control
-  there (`app_control_at`: each screen answers from the hit list it dispatches taps through; a
-  sheet or menu that is up takes every tap; on the page, a link or the panel is a control); the
-  screen sees the touch as ever, and the corner only watches. `display_skip_status` leaves its rect
-  out of the screen guard, as `display_skip_overlay` does the chip's.
+  ends it). A finger tap in the 14 mm corner square turns it on and off: decided at the lift, with the
+  finger down in the square or on the box, on no control (`editor_control_at`: the panel, or a link, but
+  not one in the corner), within 5 mm of where it landed and under 600 ms, wherever it lifts; the screen
+  sees the touch as ever, and the corner only watches (`status_tapped` tells it at the lift, so no link is
+  followed). `display_skip_status` leaves its rect out of the screen guard, as `display_skip_overlay` does
+  the chip's.
+- Live view's chip (`live_chip`, `live_chip_sync`) is the second: on a notebook page it is beside the
+  editor's panel (`editor_live_chip`: left of it, level with its header, or right where the panel is at the
+  screen's left edge) and follows it, with none while a menu is in front; on the other screens it is in
+  the top right corner. A flush moves it (the pixels it left come back from `App.screen`).
+- The panel is under every menu (`compose`: the page, the areas, the panel, then `draw_menus`: Paper,
+  Templates, Display, Custom music, the tool picker, Find with its keyboard and the Links bar). What draws
+  the panel alone (a tool picked, the panel dragged, folded or fitted, a settle) goes through
+  `draw_panel_over`, which draws the menus over the part they cover again; `compose` draws the menus over the
+  whole panel, not only over the rect it was asked for. The Pages view covers the screen and the panel is
+  not drawn on it, and Live view's browser layer of the panel (`editor_live_panel`) is empty while any of
+  them is up.
 - Display safety (main.c, display_fbink.c): the screen guard reads the framebuffer back (8 and
   32 bpp) and repaints what another process drew; after 10 repaints in a row it turns itself off.
   If the first frame and the next 4 refreshes all fail (`display_broken`, retried once a second),
@@ -906,9 +926,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    before anything else, so no export child inherits a socket and the headless runner never waits
    for one); on Linux they also have PR_SET_PDEATHSIG, and everywhere they end once their parent
    has gone.
-   An icon-only chip in the top right corner (inside the 50 px margin) says Live view is on; it is
-   overlaid at the present like the toast, and the screen guard skips it
-   (`display_skip_overlay`). Auto-sleep waits while a computer watches. The log names no code,
+   An icon-only chip says Live view is on: in the top right corner (inside the 50 px margin) on the Library,
+   Share and the other screens, and beside the editor's panel on a notebook page (and none while a menu is
+   in front of it); it is overlaid at the present like the toast, and the screen guard skips it
+   (`display_skip_overlay`, moved with the chip). Auto-sleep waits while a computer watches. The log names no code,
    token or `/live` query; only the simulator logs the code and the viewers' pids, for
    tests/live_check.sh, which pairs as a browser, reads the stream (tests/live_stream.py, which
    decodes the PNGs itself, and the pen frame for the place its script left the pen hovering),

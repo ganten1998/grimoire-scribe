@@ -99,12 +99,12 @@ docs/) are shared: the Rust build uses them as they are.
 
 `status.rs` (the clock and battery corner, 2.0.0-beta.5) has no C file: nothing there is a port, so
 the rules above that say "translate" do not apply to it, and it adds what it needs: the Settings
-keys `status_on` and `status_size` (docs/FORMAT.md), the action `status-toggle` (SHORTCUT_STATUS),
-the icon `IconKind::Clock`, `display_skip_status` and `display_pen_mode_on` in display.rs and its
-platforms, `sys_battery` and `sys_wall_clock` in light.rs and its platforms, the runner's `clock`
-and `battery` commands and `status.*` probes, and a `*_control_at` question each screen answers
-(`app_control_at`). The C tree has none of these; `make c-check` cannot run tests/scenarios/
-y_status_corner.qs.
+keys `status_on`, `status_size` and `status_corner` (docs/FORMAT.md), the actions `status-toggle` and
+`status-corner` (SHORTCUT_STATUS, SHORTCUT_STATUS_CORNER), the icon `IconKind::Clock`,
+`display_skip_status` and `display_pen_mode_on` in display.rs and its platforms, `sys_battery` and
+`sys_wall_clock` in light.rs and its platforms, the runner's `clock` and `battery` commands and
+`status.*` probes, and `editor_page_in_front` and `editor_control_at` (it shows on the notebook page only).
+The C tree has none of these; `make c-check` cannot run tests/scenarios/y_status_*.qs.
 
 Live view's version 3 (2.0.0-beta.5) is Rust only too: the pen viewers' own reader of the raw
 digitizer (`input_raw_pen`, `live_set_raw_map`, `live_set_capture`, `live_set_blocked`, the

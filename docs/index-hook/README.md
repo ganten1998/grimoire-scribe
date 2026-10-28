@@ -27,8 +27,11 @@ All Index work goes into the Rust crate. The C tree under `src/` is reference on
 Two features land first and must be respected:
 
 - **Live view fast ink**: a pen sample stream to the browser, with provisional ink.
-- **The clock/battery corner**: toggled by a finger TAP in a ~12 mm top-left zone. No gesture may claim a top-left
-  tap. A shape that starts there is still a shape.
+- **The clock/battery corner**: toggled by a finger TAP in a 14 mm zone in its corner of the notebook page (the top
+  left unless the owner picks another: settings.ini `status_corner`; it shows on the notebook page only, never on
+  the Library, a sheet or the Pages view). No gesture may claim a tap in that zone. A shape that starts there is
+  still a shape. The Live view icon sits beside the panel, and every menu draws over the panel (the owner,
+  2026-10-28).
 
 ## The owner's brief (verbatim)
 

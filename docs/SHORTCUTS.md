@@ -104,9 +104,11 @@ Actions, in the Buttons sheet's groups:
   nothing on that list, the page on show is never the one it goes back to, and with none a toast says so) and `link-areas` (dotted boxes over the page where a
   finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
-  unfolds it), `library` (saves and closes the notebook), `close-menu`, and `status-toggle` (the
-  small clock and battery in the top left corner on and off, as a finger tap there does; docs/KINDLE.md,
-  The clock and battery corner).
+  unfolds it), `library` (saves and closes the notebook), `close-menu`, `status-toggle` (the
+  small clock and battery on a notebook page on and off, as a finger tap in its corner does) and
+  `status-corner` (the next of the page's four corners for it, clockwise from the top left, as the Display
+  sheet's corner cell does; docs/KINDLE.md, The clock and battery corner). With no notebook page in front
+  they change the setting and say so with a toast, since it shows on a page only.
 
 `previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool button's
 pen and the pinned pens, top to bottom as the panel shows them, from the last round to the first and
@@ -149,7 +151,7 @@ never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
-`name-page`, `status-toggle`, `links`, `go-to-page`, `go-back`, `link-areas`, `landscape-fit`) and count
+`name-page`, `status-toggle`, `status-corner`, `links`, `go-to-page`, `go-back`, `link-areas`, `landscape-fit`) and count
 them in Reload shortcuts.ini; their other lines still work.
 
 Two-finger gestures are bound to the same actions in `gestures.ini` (docs/FORMAT.md) and need no Enable
@@ -198,8 +200,8 @@ South, East, North, West, L1, R1, L2, R2, Select, Start, Up, Down, Left, Right, 
 triggers, above), or numbered 256–767. Later duplicate bindings replace earlier ones. Up to 64 bindings and 64 KiB of
 configuration are accepted. An existing empty file deliberately disables mappings.
 
-Shortcuts act only in the idle notebook editor, apart from `status-toggle`, which acts on every
-screen while Grimoire is awake. They do nothing while drawing, pinching,
+Shortcuts act only in the idle notebook editor, apart from `status-toggle` and `status-corner`, which
+act on every screen while Grimoire is awake. They do nothing while drawing, pinching,
 sleeping or displaying a sheet, except the menus' buttons and Close menu (above), Erase while held,
 whose press counts even during a stroke (from the next one), and next and previous in the picker,
 which move the open tool picker's choice. Next page on the last

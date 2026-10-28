@@ -45,9 +45,16 @@ Install the build and test in a notebook that has your beta.5 links, unless said
    fills again, vertical two-finger drags pan, and left and right still turn pages. Zoomed in (either
    orientation): two fingers pan with no zoom drift, the panel's page chip and chain button open Pages
    and Links, and the hint about it shows once.
-7. **The clock corner.** A finger tap in the top left corner toggles the clock: with nothing open, with
-   the bar up, while peeking, and over a link there (the link is not followed). A two-finger swipe that
-   starts there fires its gesture and does not toggle the clock.
+7. **The clock corner.** On a notebook page, a finger tap in the top left corner (14 mm) turns the clock
+   and battery on and the next tap off: every tap, however the fingertip rolls (up to 5 mm), with no wait
+   before the next one and no pen in the way (the taps used to be "inconsistent and janky"). The battery is
+   pixel art left of the percent, lit to its charge, with a bolt over it while it charges. Settings >
+   Display, beside Done, has its size and its corner: each of the four corners takes the tap, and only that
+   corner does. It shows on the page only: never on the Library, Settings or Share, and not with the Links
+   bar, Find, Display, Paper, the tool picker or the Pages view open. Over a link in the corner the link is
+   not followed. A two-finger swipe that starts there fires its gesture and does not toggle the clock.
+   Live view's icon is beside the panel (it follows it when dragged or folded), and every menu is drawn
+   over the panel, the Find keyboard and the Links bar too, with the panel dragged down the page.
 8. **Feel.** Pinch zoom feels as before. A finger resting on a link no longer follows it when the pen
    comes near. After a long page render (a dense page or a PDF page), taps and swipes still register.
    Writing with your palm resting fires nothing.

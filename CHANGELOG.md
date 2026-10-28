@@ -61,16 +61,32 @@ release too.
   Naming a page right after writing on it no longer leaves the toolbar drawn over the keyboard,
   and a notice stays above the keys (Go to page's "Enter a page number" covered its 0 and del).
 
-- **A small clock and battery in the corner**: tap the top left corner of the screen with a finger
-  and a small box shows the time, the battery's percent and, while it charges, a bolt; tap it again
-  to hide it. It works on every screen, wherever nothing else is under your finger: a Back button, a
-  menu that is open or a link keeps its tap. A key or a controller button can turn it on and off too
-  (Buttons... > Menus > Clock and battery), and Settings > Display has its size, small, medium or
-  large, beside Done. It changes each minute and when the battery or its charging changes, with one
+- **A small clock and battery on the notebook page**: tap a corner of the page with a finger (the top
+  left, or the corner you pick in Settings > Display) and a small box shows the time, a battery drawn
+  in pixel art that shows the charge, with its percent beside it, and a bolt over the battery while it
+  charges; tap it again to hide it. It shows on the notebook page and nowhere else: not on the
+  Library, Settings or any other screen, and not while a sheet, a menu, the Links bar, Find or the
+  Pages view is in front of the page. Settings > Display, beside Done, has its size (small, medium
+  or large; the battery grows with it) and its corner (top left, top right, bottom right, bottom
+  left): the tap zone, a 14 mm square, follows it. One tap is one toggle, at once: a fingertip that
+  rolls up to 5 mm still taps, nothing makes the next tap wait, and the box is refreshed as the
+  finger lifts, even when a pen left the screen without a word. A key or a controller button can turn
+  it on and off or move it to the next corner (Buttons... > Menus > Clock and battery, and Clock and
+  battery corner). It changes each minute and when the battery or its charging changes, with one
   small refresh of its own, and holds back while the pen is near or you are writing, so it never
   touches a stroke. It is only ever on the screen: never in a page, a PDF or a picture, Live view
-  or the sleep screen. Older versions leave the two new lines in settings.ini alone, and count
-  `status-toggle` among the shortcuts they do not know.
+  or the sleep screen. Older versions leave the three new lines in settings.ini alone, and count
+  `status-toggle` and `status-corner` among the shortcuts they do not know.
+
+- **Live view's icon beside the panel**: while a computer watches with Live view, the small icon that
+  says so is no longer in the top right corner of a notebook page, where it covered the page: it sits
+  beside the panel, level with its header, and moves with it when you drag or fold the panel. On the
+  other screens it stays in the top right corner.
+
+- **Menus over the panel**: the panel is only ever over the notebook page. The Links bar, Find and its
+  keyboard, Display, Paper, the tool picker and the Pages view are all drawn over it, however the page
+  or the panel is redrawn, so a button of the panel can no longer show through a menu or a keyboard.
+  In Live view the browser's copy of the panel goes while one of them is open.
 
 - **Two-finger gestures and the Links bar**: on a notebook page, two fingers down open Pages and two
   fingers up open the Links bar, left turns to the next page and right to the previous one (a page

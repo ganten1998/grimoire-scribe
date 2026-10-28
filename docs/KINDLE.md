@@ -335,27 +335,37 @@ session with networking awake, not a reboot or deep sleep.
 
 ## The clock and battery corner
 
-A finger tap in the top left corner of any Grimoire screen (a 12 mm square) turns on a small
-indicator there: the time and date as Grimoire writes them elsewhere (`Oct 10, 14:32`), the battery's
-percent, and a small bolt while it charges. Tapping it, or the corner again, turns it off. A control
-under the finger keeps the tap (a Back button, a sheet that is up, a link on a page), so the corner
-works on the page, the Library with nothing in it there, and the like. A keyboard or controller
-button can do the same: the `status-toggle` action (docs/SHORTCUTS.md, Buttons > Menus). Settings >
-Display, beside Done, sets its size: small, medium or large. It is settings.ini `status_on` and
-`status_size` (docs/FORMAT.md).
+A finger tap in a corner of a notebook page (a 14 mm square, the top left unless you pick another)
+turns on a small indicator there: the time and date as Grimoire writes them elsewhere
+(`Oct 10, 14:32`), a small battery drawn in pixel art that shows the charge (and a bolt over it while
+it charges), and the battery's percent. Tapping the indicator, or its corner again, turns it off.
+It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
+while a sheet, a menu, the Links bar, Find, a keyboard or the Pages view is in front of the page, so it
+never gets in the way of another screen. The panel, or a link the way a finger tap would follow it,
+keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
+
+One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner, did
+not move more than 5 mm, was down less than 0.6 second), where it lifts needs no place of its own, and
+nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
+and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
+change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,
+medium or large) and the corner (top left, top right, bottom right, bottom left, in turn). They are
+settings.ini `status_on`, `status_size` and `status_corner` (docs/FORMAT.md).
 
 It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
 thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
-when the percent or charging changes, one small grayscale refresh of its own box, and not while the
-pen is near, a stroke is being drawn or the pen mode of the driver is on: it waits for the pen to
-leave. It never waits for the display.
+when the percent or charging changes, one small grayscale refresh of its own box (two when it moves from
+one corner to another: the new place and the old), and not while the pen is near, a stroke is being
+drawn or the pen mode of the driver is on: it waits for the pen to leave. A finger the touch panel lets
+through is never the pen's hand, so a tap takes back a pen's "near" that nothing ended. It never waits
+for the display, and the setting is written to settings.ini after the refresh has gone out.
 
 The battery comes from the kernel: the power supply whose `type` is `Battery` in
 `/sys/class/power_supply/*` (its `capacity`, and `status` reading `Charging`), read every 10 seconds
 while the corner is on. Where there is none, from the power service (`lipc-get-prop com.lab126.powerd
 battLevel` and `isCharging`), at most once a minute and only while the pen is away, by a shell in
 the background that Grimoire never waits for (one that takes over 2 seconds is stopped): its answer
-shows from the next reading on. With neither, the corner shows the time alone.
+shows from the next reading on. With neither, the corner shows the time alone, with no battery drawn.
 The screen guard leaves the corner's box out of its checks, so it is not taken for something else
 drawing over Grimoire.
 
