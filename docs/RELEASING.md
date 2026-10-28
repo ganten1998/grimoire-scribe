@@ -53,14 +53,15 @@ them.
    old. Look at the dates before the tag:
 
    ```sh
-   cd rust && for c in $(awk '/^name = / { gsub(/"/, "", $3); n = $3 } /^version = / { gsub(/"/, "", $3); if (n != "" && n != "grimoire") print n "/" $3 }' Cargo.lock); do
+   (cd rust && for c in $(awk '/^name = / { gsub(/"/, "", $3); n = $3 } /^version = / { gsub(/"/, "", $3); if (n != "" && n != "grimoire") print n "/" $3 }' Cargo.lock); do
      curl -s -A 'grimoire-release' "https://crates.io/api/v1/crates/$c" | python3 -I -c 'import json, sys; v = json.load(sys.stdin)["version"]; print(v["crate"], v["num"], v["created_at"][:10])'
-   done
+   done)
    ```
 
-   A crate that is younger goes back to its newest version older than that: `cargo update -p CRATE
-   --precise VERSION` in `rust/`, then the gate again. A crate is only ever moved to a version that
-   is old enough.
+   A crate that is younger goes back to its newest version older than that:
+   `(cd rust && cargo update -p CRATE --precise VERSION)`, then the gate again. A crate is only ever
+   moved to a version that is old enough. Both commands are in a subshell on purpose: the next step
+   starts at the repository root, where `make check` and `tools/release-preflight.sh` are.
 
 4. **The bump commit.** One commit, `release: prepare VERSION`, with:
    - `VERSION`. Everything else reads it: the binary (build.rs), the zip's name and README.txt, the
@@ -82,9 +83,15 @@ them.
    with the pinned toolchain and no skipped part:
 
    ```sh
-   make check DIST=$HOME/Library/Caches/grimoire-dist
-   cp build/kindle/grimoire $HOME/Library/Caches/grimoire-dist/tested-grimoire
+   (
+     set -eu
+     make check DIST="$HOME/Library/Caches/grimoire-dist"
+     cp build/kindle/grimoire "$HOME/Library/Caches/grimoire-dist/tested-grimoire"
+   )
    ```
+
+   (The subshell with `set -eu` is what makes a failed gate stop the copy: without it the `cp` can
+   take a binary an earlier build left, and the block still ends well.)
 
    `make check` is `make rust-check` plus the zip and its launchers, the clean-build comparison, the
    KPM package and the KOReader patches, and ends by collecting `Grimoire-VERSION-COMMIT/` in
@@ -100,9 +107,17 @@ them.
    them) but not the binary, so after the docs commit run `make check` again on it and compare:
 
    ```sh
-   cmp build/kindle/grimoire $HOME/Library/Caches/grimoire-dist/tested-grimoire && echo "the tested binary"
-   tools/release-preflight.sh
+   (
+     set -eu
+     make check DIST="$HOME/Library/Caches/grimoire-dist"
+     cmp build/kindle/grimoire "$HOME/Library/Caches/grimoire-dist/tested-grimoire"
+     echo "the tested binary"
+     tools/release-preflight.sh v2.0.0-beta.5
+   )
    ```
+
+   (For another version, write its tag in place of `v2.0.0-beta.5`.) The `cmp` stands alone, so a
+   binary that differs from the tested one ends the block before the preflight can say anything good.
 
    The commit that is tagged is that docs commit. Its dist bundle, not the tested one, is what the
    dry run below compares with CI.
@@ -123,14 +138,23 @@ gh run watch RUN -R ganten1998/grimoire-scribe --exit-status
 built with what the owner tested, byte for byte:
 
 ```sh
-rm -rf /tmp/grimoire-ci && gh run download RUN -R ganten1998/grimoire-scribe -n grimoire-release -D /tmp/grimoire-ci
-D=$HOME/Library/Caches/grimoire-dist/Grimoire-VERSION-COMMIT
-for f in Grimoire-VERSION.zip KOReader-patches.zip grimoire_KPM_kindlehf.kpkg manifest.json manifest.v2.json; do
-  cmp /tmp/grimoire-ci/$f $D/$f && echo "same  $f"
-done
+(
+  set -eu
+  rm -rf /tmp/grimoire-ci
+  gh run download RUN -R ganten1998/grimoire-scribe -n grimoire-release -D /tmp/grimoire-ci
+  D="$HOME/Library/Caches/grimoire-dist/Grimoire-VERSION-COMMIT"   # the bundle's real directory
+  for f in Grimoire-VERSION.zip KOReader-patches.zip grimoire_KPM_kindlehf.kpkg manifest.json manifest.v2.json; do
+    cmp "/tmp/grimoire-ci/$f" "$D/$f"
+    echo "same  $f"
+  done
+)
 ```
 
-All five must be the same. If one is not, **do not release**: the owner tested other bytes than CI
+(Write the version in `Grimoire-VERSION.zip` and the KPM number in `grimoire_KPM_kindlehf.kpkg`:
+`Grimoire-2.0.0-beta.5.zip` and `grimoire_2.0.1005_kindlehf.kpkg`. Compare only these five files:
+the two `SHA256SUMS.txt` and the two directories differ on purpose, since the bundle also holds
+`SOURCE.json` and the manifests.) The block stops at the first file that differs, and its status is
+then not 0. All five must be the same. If one is not, **do not release**: the owner tested other bytes than CI
 would publish. The usual causes are a different rustc, zig or cargo-zigbuild version, a different
 crate in `Cargo.lock`, or a path or environment that reached the binary (tests/repro_check.sh
 looks for the last kind). Fix the cause, gate, test again.
