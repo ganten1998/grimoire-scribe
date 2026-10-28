@@ -2927,8 +2927,10 @@ pub fn input_close() {
         }
         s.powerd_fd = -1;
         s.powerd_pid = -1;
+        // (Each end is taken out of G_SIGPIPE before it is closed: a signal that comes late finds -1,
+        // never a closed descriptor, or one that a later open got the number of.)
         for p in &G_SIGPIPE {
-            let fd = p.load(Ordering::SeqCst);
+            let fd = p.swap(-1, Ordering::SeqCst);
             if fd >= 0 {
                 close_fd(fd);
             }
@@ -2936,8 +2938,6 @@ pub fn input_close() {
         s.pen.fd = -1;
         s.touch.fd = -1;
         s.power_fd = -1;
-        G_SIGPIPE[0].store(-1, Ordering::SeqCst);
-        G_SIGPIPE[1].store(-1, Ordering::SeqCst);
     })
 }
 
