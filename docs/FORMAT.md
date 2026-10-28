@@ -878,7 +878,8 @@ trimmed `key=value` lines, a later line for the same key wins, keys in any case)
 (at most 64 KiB, up to a NUL). Keys and values:
 
 - `touch.<2|3>.<up|down|left|right|tap>`: an action's name (as in `shortcuts.ini`) or `nothing`,
-  which turns a built-in off. `touch.1.*` is kept for one finger's taps and links, and refused.
+  which turns a built-in off. `hold-eraser` is refused (and counted): it is momentary, ends at a
+  release, and a gesture has none. `touch.1.*` is kept for one finger's taps and links, and refused.
 - `pen.<Button|Button2|Eraser>.<tap|double|triple|hold|drag>`: an action, `nothing`, or `pan` or
   `zoom` in a drag slot. Read and held; the pen's button keeps its own clicks in this version.
 - `shape.<action>=1,...`: a finger shape recorded for an action (format 1), carried as it is.

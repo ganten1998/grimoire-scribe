@@ -164,7 +164,8 @@ read at start and when shortcuts are reloaded.
 or changes it. With no file the built-ins above apply. Each line is `key=action` in the grammar of
 `shortcuts.ini` (`#` and `;` start a comment, blanks are trimmed, a later line for the same key
 wins). A two-finger key is `touch.2.` and one of `up`, `down`, `left`, `right` or `tap`, and its value
-is the name of any action above, or `nothing`, which turns a built-in off:
+is the name of any action above except `hold-eraser` (it lasts while its key is down, and a gesture has
+no release to end it, so that line is refused), or `nothing`, which turns a built-in off:
 
 ```ini
 # two fingers up make a new page, as the panel's + does; two fingers down do nothing
@@ -185,7 +186,7 @@ down open Pages and two fingers up close them); any other gesture does its own a
 front may refuse. With the Links bar up, two fingers down always close it, back to the page it began on.
 The file is read when Grimoire starts and by Settings > Controller > Reload shortcuts.ini. A line it
 cannot use (a bad key, `touch.1.*`, which is kept for one finger's taps and links, an action this
-version has not heard of) is refused and counted in the log (`gestures: N line(s) of gestures.ini not
+version has not heard of, `hold-eraser` on a `touch.*` line) is refused and counted in the log (`gestures: N line(s) of gestures.ini not
 used`); the others still load. `touch.3.*` lines are read, but three fingers on the screen are refused
 in this version, so they do nothing yet. The `pen.*` and `shape.*` lines, which this version only
 carries, and the rest of the grammar are in docs/FORMAT.md.

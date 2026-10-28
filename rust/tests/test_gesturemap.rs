@@ -67,6 +67,24 @@ fn refused_lines_are_counted() {
     check!(gesturemap_carried(&m).is_empty());
 }
 
+// Erase while held is momentary, and a gesture has no release to end it: a touch line naming it is refused
+// and counted, the slot keeps what it had (a built-in, or an earlier line), and other actions load.
+fn hold_eraser_is_not_a_touch_action() {
+    let (m, n) = parsed("touch.2.tap=hold-eraser\ntouch.3.up=Hold-Eraser\ntouch.2.left=undo\n");
+    check!(n == 2 && m.refused == 2);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Tap)) == 0);
+    check!(gesturemap_action(&m, touch(3, TouchKind::Up)) == 0);
+    check!(!gesturemap_is_set(&m, touch(2, TouchKind::Tap)));
+    check!(gesturemap_action(&m, touch(2, TouchKind::Left)) == SHORTCUT_UNDO);
+    // over a built-in, or an earlier line, it changes nothing
+    let (m, n) = parsed("touch.2.up=undo\ntouch.2.up=hold-eraser\ntouch.2.down=hold-eraser\n");
+    check!(n == 2);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == SHORTCUT_UNDO);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    // and nothing reaches it by looking for the gesture of the action either
+    check!(gesturemap_key_for(&m, SHORTCUT_HOLD_ERASER, ActionSrc::Touch).is_none());
+}
+
 // Pen lines are parsed and held (the pen's button keeps its own clicks for now); shape lines and lines
 // with an action or pen slot this version does not know are carried as they were, one per key (a
 // later line wins), and nothing of them acts on the touch gestures.
@@ -182,6 +200,7 @@ fn test_gesturemap() {
     run!(the_built_ins);
     run!(a_line_overrides_and_nothing_turns_off);
     run!(refused_lines_are_counted);
+    run!(hold_eraser_is_not_a_touch_action);
     run!(pen_and_shape_lines_are_carried);
     run!(loading_the_file);
     run!(the_mirror);

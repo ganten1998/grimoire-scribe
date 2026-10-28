@@ -3,8 +3,9 @@
 //! comments, trimmed key=value lines, a later duplicate wins, keys in any case), read through
 //! shortcuts.rs's bounded reader. Pure apart from that one read: no App, no UI.
 //!
-//! Keys: `touch.<2|3>.<up|down|left|right|tap>` (an action's file name, or `nothing` to turn a
-//! built-in off; `touch.1.*` is kept for one-finger taps and links, and refused), `pen.<Button|
+//! Keys: `touch.<2|3>.<up|down|left|right|tap>` (an action's file name, but `hold-eraser`, which needs
+//! a release a gesture has not, or `nothing` to turn a built-in off; `touch.1.*` is kept for
+//! one-finger taps and links, and refused), `pen.<Button|
 //! Button2|Eraser>.<tap|double|triple|hold|drag>` (parsed and held: the pen's button keeps its own
 //! clicks for now) and `shape.<action>` (a finger shape someone recorded: carried as it is, for a
 //! version that draws them). A line this version cannot use but a newer one wrote (an action it does
@@ -181,6 +182,11 @@ impl GestureMap {
                 };
                 let Some(&(_, kind)) = K_TOUCH_KINDS.iter().find(|(n, _)| *n == kind) else { return false };
                 let Some(action) = value_action(value) else { return false };
+                // Erase while held is momentary: it ends at a release, and a gesture has none, so it would
+                // stay on until the notebook closed.
+                if action == SHORTCUT_HOLD_ERASER {
+                    return false;
+                }
                 self.touch[fingers][tk(kind)] = action;
                 self.touch_set[fingers][tk(kind)] = true;
                 true
