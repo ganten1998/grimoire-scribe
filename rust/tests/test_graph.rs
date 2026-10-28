@@ -63,6 +63,12 @@ fn all_finite(g: &GraphModel) -> bool {
     g.nodes.iter().all(|n| !n.placed || (n.x.is_finite() && n.y.is_finite())) && g.nodes.iter().all(|n| n.r.is_finite() && n.r > 0.0)
 }
 
+// The same nodes placed at the same bits (one run, one machine).
+fn same_places(a: &GraphModel, b: &GraphModel) -> bool {
+    a.nodes.len() == b.nodes.len()
+        && a.nodes.iter().zip(&b.nodes).all(|(x, y)| x.placed == y.placed && x.x.to_bits() == y.x.to_bits() && x.y.to_bits() == y.y.to_bits())
+}
+
 fn force_placed(g: &GraphModel) -> bool {
     g.force.iter().all(|&v| g.nodes[v as usize].placed)
 }
@@ -141,8 +147,11 @@ fn bands_and_degrees() {
     check!(node(&g, 31).section == n30 && node(&g, 31).sat_rank == 0);
     check!(node(&g, 32).section == n30 && node(&g, 32).sat_rank == 1);
     check!(node(&g, 41).section == n40 && node(&g, 41).sat_rank == 0);
-    check!(node(&g, 20).sats == 2 && node(&g, 30).sats == 2 && node(&g, 40).sats == 1);
-    check!(node(&g, 10).section == n40 && node(&g, 10).sats == 0);
+    // (the open page 11, plain, keeps its slot on section 40's spiral, empty while it is open)
+    check!(node(&g, 20).sats == 2 && node(&g, 30).sats == 2 && node(&g, 40).sats == 2);
+    check!(node(&g, 11).section == n40 && node(&g, 11).sat_rank == 1 && node(&g, 11).tier == GraphTier::Force);
+    check!(node(&g, 10).section == n40 && node(&g, 10).sats == 0 && node(&g, 10).sat_rank == -1);
+    check!(graph_sat_more(&g, n40) == 0);
     check!(node(&g, 13).section == -1 && node(&g, 13).sat_rank == -1);
     // degrees: distinct linked pages, either way
     check!(node(&g, 21).degree == 1 && node(&g, 30).degree == 1);
@@ -222,6 +231,45 @@ fn pid_table() {
     check!(link(&mut b, 6, 1, 5) == 0);
     let g = built(&b, 0);
     check!(graph_node_of(&g, 5) == 0 && node(&g, 5).degree == 1 && g.edges.len() == 1);
+}
+
+// A page listed twice (a damaged notebook.ini): its links stay at its first place, but every place
+// of a named page heads a section, as nav_section_of has it, and graph.ini keeps one position per
+// page: the later place is laid out afresh each visit, the same way each time.
+fn duplicate_pages() {
+    let mut b = book(&[5, 6, 5, 7, 8]);
+    name(&mut b, 5, "Five");
+    check!(link(&mut b, 8, 1, 6) == 0);
+    let g = built(&b, 0);
+    for i in 0..5 {
+        check!(g.nodes[i].section == nav_section_of(&b.nav, &b.nb, i as i32));
+    }
+    check!(g.nodes[2].named && g.nodes[2].dup && !g.nodes[0].dup && g.nodes[2].tier == GraphTier::Force);
+    check!(g.nodes[3].section == 2 && g.nodes[3].tier == GraphTier::Satellite && g.nodes[3].sat_rank == 0);
+    check!(g.nodes[0].sats == 0 && g.nodes[2].sats == 1);
+    check!(graph_persisted(&g.nodes[0]) && !graph_persisted(&g.nodes[2]));
+    // the gen holds page 5 once
+    let mut bytes: Vec<u8> = Vec::new();
+    for pid in [5u32, 6, 8] {
+        bytes.push(b'n');
+        bytes.extend_from_slice(&pid.to_le_bytes());
+    }
+    bytes.push(b'e');
+    bytes.extend_from_slice(&6u32.to_le_bytes());
+    bytes.extend_from_slice(&8u32.to_le_bytes());
+    check!(graph_gen(&g) == fnv(&bytes));
+    // laid out, kept, and visited twice: the same bits, nothing overlapping
+    let mut g = built(&b, 0);
+    graph_layout(&mut g, &mut || {});
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &g);
+    check!(ini.pos.len() == 3 && overlaps(&g) == 0);
+    let mut v1 = built(&b, 0);
+    let mut v2 = built(&b, 0);
+    check!(graph_apply_ini(&mut v1, &ini) == GraphPlan::Ready && graph_apply_ini(&mut v2, &ini) == GraphPlan::Ready);
+    check!(graph_place_new(&mut v1, &mut || {}) == 1 && graph_place_new(&mut v2, &mut || {}) == 1);
+    check!(same_places(&v1, &v2));
+    check!(force_placed(&v1) && overlaps(&v1) == 0 && !graph_ini_store(&mut ini, &v1));
 }
 
 // ---- the layout ----
@@ -360,7 +408,8 @@ fn satellites_near_head() {
     }
     check!(within && count == 150 + 8 + 9);
     // all of them clear of each other, of every other dot, and of every knockout, the 90 drawn only
-    // from 2x zoom included
+    // from 2x zoom included (a section of more than about 1000 satellites squeezes its hidden ones
+    // closer, to keep them within 3 rest lengths: past that they may touch at 2x)
     check!(overlaps(&g) == 0 && all_finite(&g));
     let hidden = g.nodes.iter().filter(|n| n.tier == GraphTier::Satellite && n.sat_rank >= GRAPH_SAT_DRAWN).count();
     check!(hidden == 90);
@@ -504,6 +553,37 @@ fn open_page_placed_beside_its_section() {
     let head = &g.nodes[o.section as usize];
     check!(o.placed && dist(o, head) < 3.0 * GRAPH_SPRING_L && overlaps(&g) == 0);
     check!(!graph_ini_store(&mut ini, &g));
+}
+
+// The satellites keep their places whichever page the map is opened from: an open plain page
+// keeps its slot on its section's spiral, empty while it is open.
+fn satellites_ignore_the_open_page() {
+    let mut b = book(&(1..=40).collect::<Vec<u32>>());
+    name(&mut b, 1, "Head");
+    name(&mut b, 20, "Other");
+    check!(link(&mut b, 1, 1, 20) == 0);
+    let ga = laid_out(&b, 0);
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &ga);
+    let mut views: Vec<GraphModel> = Vec::new();
+    for open in [0u32, 3, 12, 25] {
+        let mut g = built(&b, open);
+        check!(graph_apply_ini(&mut g, &ini) == GraphPlan::Ready);
+        check!(graph_place_new(&mut g, &mut || {}) == (open != 0) as i32);
+        views.push(g);
+    }
+    for v in &views[1..] {
+        let mut same = true;
+        for (k, n) in views[0].nodes.iter().enumerate() {
+            let m = &v.nodes[k];
+            if !m.open {
+                same &= n.placed == m.placed && n.x.to_bits() == m.x.to_bits() && n.y.to_bits() == m.y.to_bits();
+            }
+        }
+        check!(same);
+        let o = &v.nodes[v.open as usize];
+        check!(o.placed && o.sat_rank >= 0 && dist(o, &v.nodes[o.section as usize]) < 3.0 * GRAPH_SPRING_L && overlaps(v) == 0);
+    }
 }
 
 fn relayout_rule() {
@@ -930,6 +1010,7 @@ fn test_graph() {
     run!(bands_and_degrees);
     run!(radius_formula);
     run!(pid_table);
+    run!(duplicate_pages);
     run!(layout_deterministic);
     run!(components_apart);
     run!(no_overlap_no_nan);
@@ -937,6 +1018,7 @@ fn test_graph() {
     run!(layout_pumps);
     run!(incremental_moves_only_the_neighbourhood);
     run!(open_page_placed_beside_its_section);
+    run!(satellites_ignore_the_open_page);
     run!(relayout_rule);
     run!(around_rings);
     run!(ini_round_trip);

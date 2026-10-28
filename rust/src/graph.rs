@@ -194,6 +194,9 @@ pub struct GraphNode {
     pub tier: GraphTier,
     /// has an Index name (nav.ini)
     pub named: bool,
+    /// a later place of a page the notebook lists twice (a damaged notebook.ini): the page's links
+    /// and badge are its first place's, and graph.ini keeps the first place's position only
+    pub dup: bool,
     /// has a link: out (to a page of this notebook, to the Index or to itself) or in (from a page)
     pub linked: bool,
     /// the page open in the editor
@@ -209,9 +212,12 @@ pub struct GraphNode {
     pub self_links: i32,
     /// its section's named page (nav_section_of: itself when it is named), -1 before the first name
     pub section: i32,
-    /// a satellite's place among its section's satellites, in notebook order; -1 for the others
+    /// its slot on its section's spiral, in notebook order: every unnamed, unlinked page after a
+    /// named page has one, the open page included (its slot stays empty while it is a force node, so
+    /// the satellites do not depend on the page the map is opened from); -1 for the others
     pub sat_rank: i32,
-    /// how many satellites a named page has
+    /// a named page's slots: its section's unnamed, unlinked pages (graph_sat_more counts the
+    /// satellites past GRAPH_SAT_DRAWN)
     pub sats: i32,
     /// a force node's component (numbered in the order of their lowest page id); -1 for the others
     pub comp: i32,
@@ -507,18 +513,26 @@ pub fn graph_radius(d: i32, dmax: i32, named: bool) -> f32 {
 
 /// The nodes graph.ini keeps and graph_gen covers: the force nodes that are named or linked. The
 /// open page, when it is a force node only because it is open, is placed afresh beside its section
-/// each time: it would otherwise make every visit from another plain page a different graph.
+/// each time: it would otherwise make every visit from another plain page a different graph. So is
+/// a later place of a page listed twice (dup), whose page id the first place's position holds.
 pub fn graph_persisted(n: &GraphNode) -> bool {
-    n.tier == GraphTier::Force && (n.named || n.linked)
+    n.tier == GraphTier::Force && !n.dup && (n.named || n.linked)
 }
 
 /// How many of a section head's satellites are not drawn at fit (the view's '+N'), 0 for a node
-/// that is no head.
+/// that is no head. (The open page's empty slot, when it is past GRAPH_SAT_DRAWN, is no satellite.)
 pub fn graph_sat_more(g: &GraphModel, head: i32) -> i32 {
     if head < 0 || head as usize >= g.nodes.len() {
         return 0;
     }
-    (g.nodes[head as usize].sats - GRAPH_SAT_DRAWN).max(0)
+    let mut more = (g.nodes[head as usize].sats - GRAPH_SAT_DRAWN).max(0);
+    if g.open >= 0 && (g.open as usize) < g.nodes.len() {
+        let o = &g.nodes[g.open as usize];
+        if o.tier == GraphTier::Force && o.section == head && o.sat_rank >= GRAPH_SAT_DRAWN {
+            more -= 1;
+        }
+    }
+    more
 }
 
 /// Builds the map of notebook nb: its pages, Index names and links (nav), and the open page
@@ -529,7 +543,9 @@ pub fn graph_sat_more(g: &GraphModel, head: i32) -> i32 {
 /// O(n + e). Links from a page or to a page that is not in the notebook are ignored, as are targets
 /// this version does not know; they make no page linked. A link from a page to itself counts as a
 /// link (the page is a force node, so the link can be seen) but is no edge and no degree: a loop
-/// says nothing about where the page belongs.
+/// says nothing about where the page belongs. A page listed twice has its links at its first
+/// place (as nav_link_page finds it); every place of a named page is named, so each node's section
+/// is nav_section_of's.
 pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u32) -> i32 {
     *g = GraphModel { open: -1, ..GraphModel::default() };
     let n = nb.page_ids.len();
@@ -556,6 +572,15 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         let at = graph_node_of(g, name.pid);
         if at >= 0 {
             g.nodes[at as usize].named = true;
+        }
+    }
+    // A later place of a page listed twice is named as its first place is: nav_section_of reads the
+    // name by page id, so it heads a section there too.
+    for i in 0..n {
+        let first = graph_node_of(g, g.nodes[i].pid);
+        if first >= 0 && first as usize != i {
+            g.nodes[i].dup = true;
+            g.nodes[i].named = g.nodes[first as usize].named;
         }
     }
     if open_pid != 0 {
@@ -635,7 +660,10 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         g.adj[fill[b] as usize] = e.a;
         fill[b] += 1;
     }
-    // The bands, in notebook order: a section runs from a named page to the next.
+    // The bands, in notebook order: a section runs from a named page to the next. Every unnamed,
+    // unlinked page after a named page takes the next slot on its section's spiral, the open page
+    // too: its slot stays empty while it is a force node, so opening the map from another page of
+    // the section moves no satellite.
     let mut head: i32 = -1;
     for i in 0..n {
         if g.nodes[i].named {
@@ -643,13 +671,16 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         }
         g.nodes[i].section = head;
         let nd = g.nodes[i];
-        if nd.named || nd.linked || nd.open {
-            g.nodes[i].tier = GraphTier::Force;
-        } else if head >= 0 {
+        let plain = !nd.named && !nd.linked;
+        if plain && head >= 0 {
             let h = head as usize;
-            g.nodes[i].tier = GraphTier::Satellite;
             g.nodes[i].sat_rank = g.nodes[h].sats;
             g.nodes[h].sats += 1;
+        }
+        if !plain || nd.open {
+            g.nodes[i].tier = GraphTier::Force;
+        } else if head >= 0 {
+            g.nodes[i].tier = GraphTier::Satellite;
         } else {
             g.nodes[i].tier = GraphTier::Tray;
             g.tray.push(i as i32);
@@ -745,20 +776,22 @@ pub fn graph_layout_in_process(g: &GraphModel) -> bool {
 
 // ---- the satellites' spiral ----
 
-// The inner edge of a head's satellite spiral: clear of the head's dot, a satellite and both
-// knockouts.
-fn sat_r0(r_head: f32) -> f32 {
-    r_head + GRAPH_R_SAT + GRAPH_KNOCKOUT + SLACK
-}
+// The inner edge of a satellite spiral: clear of the biggest dot a head can have, a satellite and
+// both knockouts. It is the same for every head, whatever its size: a head's radius follows the
+// map's top degree (dmax), and a spiral that followed it would move every satellite of the map
+// whenever one page got a new best linked neighbour.
+const SAT_R0: f32 = GRAPH_R_MIN + GRAPH_R_SPAN + GRAPH_R_SAT + GRAPH_KNOCKOUT + SLACK;
 
 // The squared distance of satellite `rank` (of `count`) from its head's centre. Satellite k lies
 // at sqrt(r0^2 + pitch^2 (k + 0.5)): each takes the same area of the annulus, so the spiral is as
 // even at its first dot as at its last. The ones past GRAPH_SAT_DRAWN (drawn from 2x zoom, where
-// the dots grow with the zoom) go on at the same pitch, so they are as far apart; only a section
-// so long (some 650 satellites) that they would leave 3 rest lengths of the head has that outer
-// band squeezed to stay within them, and there the 2x view may show them touching.
-fn sat_rho2(r_head: f32, count: i32, rank: i32) -> f32 {
-    let r0 = sat_r0(r_head);
+// the dots grow with the zoom) go on at the same pitch, so they are as far apart, up to some 650
+// of them. A longer section would leave 3 rest lengths of the head, so its outer band is squeezed
+// to stay within them: the pitch shrinks with the count, and past about 1000 satellites in one
+// section (some 16 px between neighbours, two dots and a knockout) the 2x view shows the hidden
+// ones touching. The 60 drawn at fit are never squeezed.
+fn sat_rho2(count: i32, rank: i32) -> f32 {
+    let r0 = SAT_R0;
     let c2 = GRAPH_SAT_PITCH * GRAPH_SAT_PITCH;
     if rank < GRAPH_SAT_DRAWN {
         return fmla(c2, rank as f32 + 0.5, r0 * r0);
@@ -780,12 +813,12 @@ fn sat_extent(r_head: f32, count: i32) -> f32 {
     if count <= 0 {
         return r_head;
     }
-    sat_rho2(r_head, count, count - 1).sqrt() + GRAPH_R_SAT
+    sat_rho2(count, count - 1).sqrt() + GRAPH_R_SAT
 }
 
-// Satellite `rank` of a head with `count` of them, from the head's centre.
-fn sat_offset(r_head: f32, count: i32, rank: i32, turn: f32) -> (f32, f32) {
-    let rho = sat_rho2(r_head, count, rank).sqrt();
+// Satellite `rank` of a head with `count` slots, from the head's centre.
+fn sat_offset(count: i32, rank: i32, turn: f32) -> (f32, f32) {
+    let rho = sat_rho2(count, rank).sqrt();
     let a = fmla(GOLDEN, rank as f32, turn);
     (rho * a.cos(), rho * a.sin())
 }
@@ -803,7 +836,7 @@ fn place_satellites(g: &mut GraphModel) {
             continue;
         }
         let h = g.nodes[s as usize];
-        let (dx, dy) = sat_offset(h.r, h.sats, g.nodes[i].sat_rank, pid_unit(h.pid, SALT_SAT) * TAU);
+        let (dx, dy) = sat_offset(h.sats, g.nodes[i].sat_rank, pid_unit(h.pid, SALT_SAT) * TAU);
         g.nodes[i].x = h.x + dx;
         g.nodes[i].y = h.y + dy;
         g.nodes[i].placed = true;
