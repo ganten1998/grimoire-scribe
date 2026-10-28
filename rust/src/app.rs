@@ -1032,15 +1032,16 @@ fn live_push_screen(a: &mut App, r: Rect) {
         return;
     }
     let panel = if a.scr == ScreenId::Editor { editor_live_panel(a) } else { RECT_EMPTY };
-    live_push(&a.screen, r);
     let under = rect_intersect(r, panel);
     let moved = with(|s| s.live_panel) != panel;
     if !rect_is_empty(under) || moved {
         live_layer(LIVE_LAYER_PANEL, &a.screen, panel);
         with(|s| s.live_panel = panel);
     }
-    if !rect_is_empty(under) {
-        editor_live_under_panel(a, under);
+    if rect_is_empty(under) {
+        live_push(&a.screen, r);
+    } else {
+        editor_live_under_panel(a, under, r);
     }
 }
 

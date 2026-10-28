@@ -1159,12 +1159,14 @@ pub fn editor_live_panel(a: &App) -> Rect {
     }
 }
 
-/// Live view: r (inside the panel) of the screen as it is without the panel, into Live view's frame
-/// (live_push), a.screen left as it was: the browser has the page under the panel, and the panel as
-/// its own layer (app.rs, live_push_screen).
-pub fn editor_live_under_panel(a: &mut App, r: Rect) {
+/// Live view: push (live_push) of the screen with r (inside the panel and push) as it is without the
+/// panel, in one push, a.screen left as it was: the browser has the page under the panel, and the
+/// panel as its own layer (app.rs, live_push_screen). One push: a tile viewer woken between two
+/// would send the panel in the page's tiles for a batch.
+pub fn editor_live_under_panel(a: &mut App, r: Rect, push: Rect) {
     let mut keep = Canvas::default();
     if canvas_init(&mut keep, r.w, r.h) != 0 {
+        live_push(&a.screen, push); // (the panel in the page's tiles, rather than none of push)
         return;
     }
     canvas_blit(&mut keep, &a.screen, r, 0, 0);
@@ -1173,7 +1175,7 @@ pub fn editor_live_under_panel(a: &mut App, r: Rect) {
     compose(a, r);
     ed(a).live_no_panel = false;
     a.toast_floor = floor;
-    live_push(&a.screen, r);
+    live_push(&a.screen, push);
     canvas_blit(&mut a.screen, &keep, Rect { x: 0, y: 0, w: r.w, h: r.h }, r.x, r.y);
     canvas_free(&mut keep);
 }
