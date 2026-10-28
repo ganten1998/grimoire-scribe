@@ -68,6 +68,12 @@ pub const FS_MATCH_PUMP: usize = 4;
 pub const FS_TWO_STROKE_MS: u32 = 700;
 /// Vertices of the longest slip-bank path (a 220 degree arc in 5 degree segments).
 pub const FS_BANK_PTS: usize = 48;
+/// Coordinates are clamped into +-this (about a million px, hundreds of screens; the off-screen
+/// cancel's -10000 is well inside). Squared distances of clamped points, even times 256 for the
+/// 1/16 px lengths, stay far below i64's range, so no input can overflow the arithmetic.
+pub const FS_COORD_MAX: i32 = 1 << 20;
+/// The screen scale is clamped into 1..=this px per 100 mm (1000 px/mm), for the same reason.
+pub const FS_PX100_MAX: i32 = 100_000;
 
 /// Every capture and gate constant, in one table that the page and the record card both read
 /// (section 3: "identical at runtime and in recording"). Lengths are tenths of a mm on the screen,
@@ -268,11 +274,17 @@ pub fn fs_mm_px(mm10: i32, px_per_100mm: i32) -> i32 {
     div_round(mm10 as i64 * px_per_100mm as i64, 1000) as i32
 }
 
+/// The squared distance of two points that are within +-FS_COORD_MAX (every point this module
+/// keeps is clamped there first): at most 2^43, so callers may multiply it by 256 and more.
 fn dist2(ax: i32, ay: i32, bx: i32, by: i32) -> i64 {
-    // (widened first: any two i32 points, even the off-screen cancel's -10000, fit)
     let dx = bx as i64 - ax as i64;
     let dy = by as i64 - ay as i64;
     dx * dx + dy * dy
+}
+
+/// A point from outside, clamped into +-FS_COORD_MAX.
+fn clamp_pt(x: i32, y: i32) -> FsPt {
+    FsPt { x: x.clamp(-FS_COORD_MAX, FS_COORD_MAX), y: y.clamp(-FS_COORD_MAX, FS_COORD_MAX) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -387,10 +399,11 @@ pub enum FsSwipe {
 }
 
 /// The finger landed on the idle page (OWN_LINK, armed). Points are kept from the landing, so a
-/// shape includes its own start. px_per_100mm is the screen's scale (fs_mm_px).
+/// shape includes its own start. px_per_100mm is the screen's scale (fs_mm_px). Coordinates are
+/// clamped into +-FS_COORD_MAX and the scale into 1..=FS_PX100_MAX.
 pub fn fs_begin(s: &mut FsStroke, x: i32, y: i32, t: u32, px_per_100mm: i32) {
     *s = FsStroke::default();
-    let p = FsPt { x, y };
+    let p = clamp_pt(x, y);
     s.state = FsState::Pending;
     s.frames = 1;
     s.pts[0] = p;
@@ -399,16 +412,24 @@ pub fn fs_begin(s: &mut FsStroke, x: i32, y: i32, t: u32, px_per_100mm: i32) {
     s.t0 = t;
     s.anchor = p;
     s.anchor_t = t;
-    s.minx = x;
-    s.maxx = x;
-    s.miny = y;
-    s.maxy = y;
-    s.px100 = px_per_100mm.max(1);
+    s.minx = p.x;
+    s.maxx = p.x;
+    s.miny = p.y;
+    s.maxy = p.y;
+    s.px100 = px_per_100mm.clamp(1, FS_PX100_MAX);
 }
 
 fn die(s: &mut FsStroke, why: FsReason) {
     s.state = FsState::Dead;
     s.dead = why;
+}
+
+/// Pending to Drawing: the finger left the slop (within the lead, or it would be Dead) and the
+/// two-finger landing window is over.
+fn promote(s: &mut FsStroke, t: u32) {
+    if s.state == FsState::Pending && s.exited && t.wrapping_sub(s.t0) >= FS_GATES.trail_ms {
+        s.state = FsState::Drawing;
+    }
 }
 
 /// Keeps a point. A full buffer keeps every other point and from then on every other frame, so a
@@ -443,8 +464,9 @@ pub fn fs_add(s: &mut FsStroke, x: i32, y: i32, t: u32, broad: bool) -> FsState 
         return s.state;
     }
     let g = &FS_GATES;
-    let p = FsPt { x, y };
-    s.frames += 1;
+    let p = clamp_pt(x, y);
+    let (x, y) = (p.x, p.y);
+    s.frames = s.frames.saturating_add(1);
     let seg = isqrt(dist2(s.last.x, s.last.y, x, y) * 256);
     s.path16 += seg;
     s.minx = s.minx.min(x);
@@ -458,6 +480,11 @@ pub fn fs_add(s: &mut FsStroke, x: i32, y: i32, t: u32, broad: bool) -> FsState 
         die(s, FsReason::Broad);
         return s.state;
     }
+    // A stroke that left the slop is a shape from trail_ms on, whether or not a tick came to say
+    // so. Promote it before the pause test: when ticks did not arrive (a render backlog, a replay
+    // of frames only), the rest that this frame ends may have begun while it was still Pending,
+    // and it is a shape's pause all the same. Ticks or no ticks, the verdict is the same.
+    promote(s, t);
     // The pause is judged before this frame moves the anchor: a still finger sends no frames, so
     // the first frame after a rest is the one that tells how long the rest was.
     if s.state == FsState::Drawing && t.wrapping_sub(s.anchor_t) >= g.pause_ms {
@@ -489,9 +516,7 @@ pub fn fs_add(s: &mut FsStroke, x: i32, y: i32, t: u32, broad: bool) -> FsState 
 /// ends a shape that ran over time or held still. Returns the state after it.
 pub fn fs_tick(s: &mut FsStroke, now: u32) -> FsState {
     let g = &FS_GATES;
-    if s.state == FsState::Pending && s.exited && now.wrapping_sub(s.t0) >= g.trail_ms {
-        s.state = FsState::Drawing;
-    }
+    promote(s, now);
     if s.state == FsState::Drawing {
         if now.wrapping_sub(s.t0) > g.dur_max_ms {
             die(s, FsReason::TooSlow);
@@ -536,13 +561,23 @@ pub fn fs_box(s: &FsStroke) -> Rect {
 }
 
 /// The real lift at t_lift. Runs the gates (section 3) for a shape and writes its sample to out;
-/// the session is Idle afterwards (its points and box stay readable for the trail).
+/// the session is Idle afterwards (its points and box stay readable for the trail, and for
+/// fs_two_strokes at the next landing).
 pub fn fs_finish(s: &mut FsStroke, t_lift: u32, mode: FsMode, out: &mut FsSample) -> FsLift {
     fs_tick(s, t_lift);
     let state = s.state;
     s.state = FsState::Idle;
     match state {
-        FsState::Idle | FsState::Pending => FsLift::Nothing,
+        FsState::Idle => FsLift::Nothing,
+        // A finger that left the slop in time and lifted inside the two-finger landing window,
+        // with no cancel: a quick flick (100-150 ms is a normal one-finger swipe). No second
+        // finger can come any more, so a straight flick is judged as a swipe like a slower one.
+        // Anything else stays nothing: a shape never fires without the trail having shown it.
+        FsState::Pending if s.exited => match gate(s, t_lift, fs_gates(mode)) {
+            FsLift::Swipe(d) => FsLift::Swipe(d),
+            _ => FsLift::Nothing,
+        },
+        FsState::Pending => FsLift::Nothing,
         FsState::Dead => FsLift::Refused(s.dead),
         FsState::Drawing => {
             let r = gate(s, t_lift, fs_gates(mode));
@@ -584,8 +619,9 @@ fn gate(s: &FsStroke, t_lift: u32, g: &FsGates) -> FsLift {
     if s.path16 * 10 > g.tangle_x10 as i64 * diag16 {
         return refuse(FsReason::Tangled);
     }
-    // Mean speed over the drawn part: path / (lift - slop exit) >= speed_mm_s, in integers:
-    // path16 / 16 px * 100 / px100 mm * 1000 / dt >= speed.
+    // Mean speed over the drawn part, read as section 3 words it ("path length / time from the
+    // 6 mm exit to the lift"): the whole path, its first 6 mm included, over the time since the
+    // exit. In integers: path16 / 16 px * 100 / px100 mm * 1000 / dt >= speed.
     let dt = t_lift.wrapping_sub(s.t_exit).max(1) as i64;
     if s.path16 * 100 * 1000 < g.speed_mm_s as i64 * 16 * s.px100 as i64 * dt {
         return refuse(FsReason::TooSlow);
@@ -645,10 +681,26 @@ fn swipe(s: &FsStroke, dur: u32, g: &FsGates) -> Option<FsSwipe> {
     Some(if dy > 0 { FsSwipe::Down } else { FsSwipe::Up })
 }
 
-/// Whether a stroke is an X or = drawn in two strokes (recording only): the previous lift was a
-/// refused straight stroke and this finger landed within FS_TWO_STROKE_MS of it.
-pub fn fs_two_strokes(prev: FsLift, prev_lift_ms: u32, land_ms: u32) -> bool {
-    prev == FsLift::Refused(FsReason::Straight) && land_ms.wrapping_sub(prev_lift_ms) <= FS_TWO_STROKE_MS
+/// Whether a landing starts the second stroke of an X or = drawn in two strokes (recording only),
+/// asked at the landing before fs_begin reuses the stroke: the previous stroke was a bar and this
+/// finger landed within FS_TWO_STROKE_MS of its lift. A bar is a straight stroke that left the
+/// slop, whatever its lift made of it: too straight, a swipe (a quick bar), too small or too few
+/// frames (a short one), or nothing (a flick lifted inside the two-finger window). A stroke that
+/// died (a late start, a pause, a palm) is not a bar: its points stop where it died.
+pub fn fs_two_strokes(prev: &FsStroke, prev_lift: FsLift, prev_lift_ms: u32, land_ms: u32) -> bool {
+    let bar_lift = matches!(
+        prev_lift,
+        FsLift::Nothing
+            | FsLift::Swipe(_)
+            | FsLift::Refused(FsReason::Straight)
+            | FsLift::Refused(FsReason::TooSmall)
+            | FsLift::Refused(FsReason::Frames)
+    );
+    if !bar_lift || !prev.exited || prev.dead != FsReason::None || prev.n < 2 {
+        return false;
+    }
+    let major = ((prev.maxx - prev.minx) as i64).max((prev.maxy - prev.miny) as i64);
+    straight(prev, major, &FS_GATES) && land_ms.wrapping_sub(prev_lift_ms) <= FS_TWO_STROKE_MS
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -669,14 +721,16 @@ impl Default for FsSample {
 }
 
 /// Resamples a polyline (screen px) to 32 points evenly spaced along it, in 1/16 px, and scales
-/// them into an FsSample. Streaming, in two passes, so a path of any length needs no buffer.
+/// them into an FsSample. Streaming, in two passes, so a path of any length needs no buffer. The
+/// points are clamped into +-FS_COORD_MAX as they are read.
 pub fn fs_sample_of(pts: &[FsPt], out: &mut FsSample) {
     *out = FsSample::default();
     if pts.is_empty() {
         return;
     }
+    let pt = |i: usize| clamp_pt(pts[i].x, pts[i].y);
     let seg = |i: usize| -> i64 {
-        let (a, b) = (pts[i], pts[i + 1]);
+        let (a, b) = (pt(i), pt(i + 1));
         isqrt(dist2(a.x, a.y, b.x, b.y) * 256)
     };
     let mut total = 0i64;
@@ -690,7 +744,7 @@ pub fn fs_sample_of(pts: &[FsPt], out: &mut FsSample) {
     let last = FS_N as i64 - 1;
     for i in 0..pts.len() - 1 {
         let d = seg(i);
-        let (a, b) = (pts[i], pts[i + 1]);
+        let (a, b) = (pt(i), pt(i + 1));
         while k < FS_N && k as i64 * total / last <= acc + d {
             let along = k as i64 * total / last - acc;
             let (ax, ay) = (a.x as i64 * 16, a.y as i64 * 16);
@@ -706,7 +760,7 @@ pub fn fs_sample_of(pts: &[FsPt], out: &mut FsSample) {
         acc += d;
     }
     // (a lone point, or the rounding's leftovers: the path's end)
-    let end = pts[pts.len() - 1];
+    let end = pt(pts.len() - 1);
     while k < FS_N {
         rx[k] = end.x as i64 * 16;
         ry[k] = end.y as i64 * 16;
@@ -1391,20 +1445,47 @@ pub enum FsCodec {
     Newer,
 }
 
-/// Writes "1,N,<128 hex>,..." (lowercase) for 2 or 3 samples into out (replacing it).
-pub fn fs_encode(samples: &[FsSample], out: &mut String) {
+/// The longest shape value: "1,3" and three samples of 128 hex digits, each after a comma.
+pub const FS_VALUE_MAX: usize = 3 + FS_SAMPLES_MAX * (1 + 4 * FS_N);
+
+/// Whether a sample is degenerate: its box under 32 units on both axes (a sample fs_sample_of
+/// wrote from a real stroke always spans 0-255 on its larger side).
+fn degenerate(s: &FsSample) -> bool {
+    let (mut minx, mut maxx, mut miny, mut maxy) = (255u8, 0u8, 255u8, 0u8);
+    for i in 0..FS_N {
+        minx = minx.min(s.xy[2 * i]);
+        maxx = maxx.max(s.xy[2 * i]);
+        miny = miny.min(s.xy[2 * i + 1]);
+        maxy = maxy.max(s.xy[2 * i + 1]);
+    }
+    maxx - minx < 32 && maxy - miny < 32
+}
+
+/// Writes "1,N,<128 hex>,..." (lowercase) into out and returns it: exactly what fs_decode reads
+/// back. Only 2 or 3 samples that are not degenerate make a value; anything else is Malformed
+/// and nothing is written, so a line this writes is never one the reader refuses. A fixed
+/// buffer, so nothing is allocated.
+pub fn fs_encode<'a>(samples: &[FsSample], out: &'a mut [u8; FS_VALUE_MAX]) -> Result<&'a str, FsCodec> {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    out.clear();
-    let n = samples.len().min(FS_SAMPLES_MAX);
-    out.push_str("1,");
-    out.push((b'0' + n as u8) as char);
-    for s in &samples[..n] {
-        out.push(',');
+    let n = samples.len();
+    if !(2..=FS_SAMPLES_MAX).contains(&n) || samples.iter().any(degenerate) {
+        return Err(FsCodec::Malformed);
+    }
+    out[0] = b'0' + FS_FORMAT as u8;
+    out[1] = b',';
+    out[2] = b'0' + n as u8;
+    let mut k = 3;
+    for s in samples {
+        out[k] = b',';
+        k += 1;
         for &b in &s.xy {
-            out.push(HEX[(b >> 4) as usize] as char);
-            out.push(HEX[(b & 15) as usize] as char);
+            out[k] = HEX[(b >> 4) as usize];
+            out[k + 1] = HEX[(b & 15) as usize];
+            k += 2;
         }
     }
+    // (only ASCII digits, letters and commas were written)
+    core::str::from_utf8(&out[..k]).map_err(|_| FsCodec::Malformed)
 }
 
 fn hexval(c: u8) -> Option<u8> {
@@ -1447,14 +1528,7 @@ pub fn fs_decode(v: &str, out: &mut [FsSample; FS_SAMPLES_MAX]) -> Result<usize,
             let lo = hexval(f[2 * i + 1]).ok_or(FsCodec::Malformed)?;
             s.xy[i] = hi << 4 | lo;
         }
-        let (mut minx, mut maxx, mut miny, mut maxy) = (255u8, 0u8, 255u8, 0u8);
-        for i in 0..FS_N {
-            minx = minx.min(s.xy[2 * i]);
-            maxx = maxx.max(s.xy[2 * i]);
-            miny = miny.min(s.xy[2 * i + 1]);
-            maxy = maxy.max(s.xy[2 * i + 1]);
-        }
-        if maxx - minx < 32 && maxy - miny < 32 {
+        if degenerate(s) {
             return Err(FsCodec::Malformed);
         }
     }
