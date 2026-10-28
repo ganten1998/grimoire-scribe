@@ -8,6 +8,7 @@
 # charging changes, held back while the pen is near or a stroke is drawn, and never in the sleep screen.
 # The script sets the clock (2023-11-14 22:13:20 UTC) and the battery.
 # (The first 4 s are the startup's two unconditional repaints, which this checks the refreshes of.)
+# rust-only
 wait 3800
 clock 1700000000
 battery 87
