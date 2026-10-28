@@ -243,11 +243,12 @@ check "the binary beats in /tmp/grimoire.alive" grep -qF /tmp/grimoire.alive "$B
 # its own betas' names, so for 2.0.0 this cannot tell a stale 2.0.0-beta.N from the right one.)
 check "the binary names this version ($VERSION)" grep -qF -- "$VERSION" "$B/app/grimoire"
 # restore()'s backstop for a power-service watcher a crash left behind (pkill -f) must match the
-# watcher's command line, both kinds of it (src/input_evdev.c, WATCH_EVENTS): the two drifted once.
+# watcher's command line, both kinds of it (rust/src/input_evdev.rs, the WATCH_EVENTS macro): the two
+# drifted once.
 PAT=$(sed -n 's/^ *pkill -f "\(.*\)" 2>.*/\1/p' "$B/app/grimoire.sh")
-EVENTS=$(sed -n 's/^#define WATCH_EVENTS "\(.*\)"$/\1/p' src/input_evdev.c)
+EVENTS=$(sed -n '/^macro_rules! WATCH_EVENTS {/,/^}/s/^[[:space:]]*"\([^"]*\)".*/\1/p' rust/src/input_evdev.rs)
 check "restore() has a pkill pattern ($PAT)" [ -n "$PAT" ]
-check "src/input_evdev.c names the watched events ($EVENTS)" [ -n "$EVENTS" ]
+check "rust/src/input_evdev.rs names the watched events ($EVENTS)" [ -n "$EVENTS" ]
 for w in "lipc-wait-event -s 0 $EVENTS" "lipc-wait-event -m -s 0 $EVENTS"; do
     check "the binary runs '$w'" sh -c 'tr "\000" "\n" <"$1" | grep -qF -- "$2"' sh "$B/app/grimoire" "$w"
     check "restore()'s pkill pattern matches '$w'" sh -c 'printf "%s\n" "$2" | grep -qE -- "$1"' sh "$PAT" "$w"
