@@ -262,7 +262,8 @@ pub fn findsheet_pointer(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav:
         f.has_pressed = false;
         let h = f.pressed;
         canvas_invert(&mut a.screen, h.r);
-        app_invalidate(a, h.r, RefreshMode::Ui);
+        // (a press a second finger took over, the cancel, is let go with a Fast refresh as it was pressed)
+        app_invalidate(a, h.r, if touch_cancelled(ev) { RefreshMode::Fast } else { RefreshMode::Ui });
         if press_is_tap(&f.press, h.r) && h.arg >= 0 && (h.arg as usize) < f.n && f.rows[h.arg as usize].page >= 0 {
             return FsResult::Go(f.rows[h.arg as usize].page);
         }

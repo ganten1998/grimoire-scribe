@@ -88,6 +88,11 @@ pub const TOUCH_F_BROAD: i32 = 1;
 /// lift in its place (the pen came, a second finger made a gesture of it, the kernel dropped events).
 pub const TOUCH_F_CANCEL: i32 = 2;
 
+/// An event that is a finger's off-screen cancel: what it had pressed is let go, nothing is tapped.
+pub fn touch_cancelled(ev: &InEvent) -> bool {
+    ev.type_ == InType::TouchUp && ev.value & TOUCH_F_CANCEL != 0
+}
+
 /// Holding the power button this long saves and leaves Grimoire (below the Kindle's own ~7 s menu).
 pub const INPUT_POWER_HOLD_MS: i32 = 4000;
 

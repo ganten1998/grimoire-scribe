@@ -4292,7 +4292,8 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
     let p = s.press;
     if h.id != P_GRIP && h.id != P_EXPAND {
         canvas_invert(&mut a.screen, h.r);
-        app_invalidate(a, h.r, RefreshMode::Ui);
+        // (a press a second finger took over, the cancel, is let go with a Fast refresh as it was pressed)
+        app_invalidate(a, h.r, if touch_cancelled(ev) { RefreshMode::Fast } else { RefreshMode::Ui });
     }
     if !press_is_tap(&p, h.r) && !rect_contains(h.r, ev.x as i32, ev.y as i32) {
         return;
@@ -4924,7 +4925,14 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             if ph == 2 || r == LbResult::Cancel {
                 ed(a).owner = if ph == 2 { Owner::None } else { Owner::Modal }; // (a drag that closed it: the rest is swallowed)
             }
-            bar_result(a, r, d);
+            if touch_cancelled(ev) {
+                // A button the first finger pressed is let go with a Fast refresh as it was pressed: a second
+                // finger took the touch over (the cancel does no tap, so there is no result to act on).
+                app_invalidate(a, d, RefreshMode::Fast);
+                bar_result(a, r, RECT_EMPTY);
+            } else {
+                bar_result(a, r, d);
+            }
         }
         Owner::Outside => {
             // A pen's stroke here is swallowed to its end; a finger decides at the lift.
