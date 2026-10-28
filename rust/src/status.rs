@@ -1,8 +1,15 @@
-//! status.rs: the clock and battery corner. A small indicator in the top left corner of the panel:
-//! the time (format_time_short, as the app writes times everywhere), the battery's percent, and a
-//! small bolt while it charges. A finger tap in a 12 mm square there turns it on and off, on any
-//! screen where no control is under the finger; the shortcut action `status-toggle` does the same,
-//! and the Display sheet sets its size (settings.ini status_on, status_size; docs/FORMAT.md).
+//! status.rs: the clock and battery corner. A small indicator in one corner of a notebook page (settings.ini
+//! status_corner: the top left unless the owner picks another): the time (format_time_short, as the app
+//! writes times everywhere), a pixel art battery that shows the charge and, while it charges, a bolt, and the
+//! percent. A finger tap in a 14 mm square in that corner turns it on and off; the shortcut action
+//! `status-toggle` does the same, `status-corner` (and the Display sheet's row) moves it to the next
+//! corner, and the Display sheet sets its size (settings.ini status_on, status_corner, status_size;
+//! docs/FORMAT.md).
+//!
+//! It shows on the notebook page itself and nowhere else: not on the Library, Settings, Share or Pen
+//! feel, and not while a sheet or menu is in front of the page (the Pages view, the Links bar, Find,
+//! Display, Paper, the tool picker and the keyboards). `wanted` is that rule; a tap works under it too:
+//! no other screen takes a tap in the corner for the clock.
 //!
 //! Rust build only: the C tree has no such thing, so nothing here is a port.
 //!
@@ -12,16 +19,26 @@
 //! a.screen as it is). The screen guard leaves its rect out (display_skip_status).
 //!
 //! It refreshes itself at each minute and when the battery or charging changes: one small GL16 of
-//! its rect (and of what it covered, when it shrinks or goes), through display_present like every
-//! other refresh. No display waits of any kind. Nothing is sent while the pen is near, a stroke is
-//! in progress or the driver is in pen mode (a grayscale refresh would end that mode and wait for
-//! the pen's last frame, display_fbink.rs pen_leave): the corner waits for the pen to leave.
+//! its rect (and of what it covered, when it shrinks, moves or goes, each a refresh of its own: two
+//! corners are never one refresh across the screen), through display_present like every other
+//! refresh. No display waits of any kind. Nothing is sent while the pen is near, a stroke is in
+//! progress or the driver is in pen mode (a grayscale refresh would end that mode and wait for the
+//! pen's last frame, display_fbink.rs pen_leave): the corner waits for the pen to leave. A finger the
+//! touch panel lets through is never the pen's hand, so a tap clears a "near" the pen's leaving left
+//! behind: one tap is always one toggle, at once, with nothing to wait out.
+//!
+//! The toggle is decided at the finger's lift: down in the zone, on no control, still within 5 mm of where
+//! it landed (a fingertip rolls on the glass; the 2.5 mm the buttons allow lost taps in the corner), and
+//! up within 600 ms. The lift needs no place of its own. The setting is saved after the refresh went out,
+//! not before it (a save waits for the storage twice).
 
 use crate::prelude::*;
 use std::cell::RefCell;
 
-/// The tap zone's side, in mm. The indicator joins it while it is up, so a tap on it turns it off.
-const ZONE_MM: f32 = 12.0;
+/// The tap zone's side, in mm: a corner square. The indicator joins it while it is up, so a tap on it turns it off.
+const ZONE_MM: f32 = 14.0;
+/// A finger that moves farther than this from where it landed is not tapping.
+const SLOP_MM: f32 = 5.0;
 /// A finger down longer than this is not a tap (a long press is the page's, a link's).
 const TAP_MS: u32 = 600;
 /// While the corner is up the battery is read this often; a change shows at the next refresh. The
@@ -35,8 +52,17 @@ const POLL_MS: u32 = 100;
 const SIZE_PX: [f32; 3] = [30.0, 42.0, 56.0];
 /// How many sizes there are.
 pub const STATUS_SIZES: i32 = 3;
-/// The bolt shown while charging: md-flash, in the font's Material Design icons.
-const BOLT_CP: u32 = 0xF0241;
+/// How many corners there are: settings.ini status_corner 0 top left, 1 top right, 2 bottom right, 3 bottom left.
+pub const STATUS_CORNERS: i32 = 4;
+
+/// The battery's pixel art, in units (one unit is a few screen px, so the art keeps its look at every size):
+/// a body 16 wide and 9 tall with its notched corners, a terminal 2 wide, and inside the body up to
+/// FILL_COLS columns of charge 5 tall, one unit in from the outline.
+const ICON_UW: i32 = 18;
+const ICON_UH: i32 = 9;
+pub const FILL_COLS: i32 = 12;
+/// The charging bolt, 5 by 7 units, centred in the body's inside (which is 14 by 7).
+const BOLT: [&[u8; 5]; 7] = [b"...XX", b"..XX.", b".XX..", b"XXXXX", b"..XX.", b".XX..", b"XX..."];
 
 /// What the power supply says now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,7 +82,8 @@ impl Default for Battery {
 // ---- the text ----
 
 /// "Oct 10, 14:32  87%": the time as the app writes times (the language in use, local time), then
-/// the percent; just the time where the battery cannot be read. The bolt is drawn, not written.
+/// the percent; just the time where the battery cannot be read. This is what the runner's `status.text`
+/// reads: the percent is drawn right of the battery, which sits between the two.
 pub fn status_text(t: i64, b: &Battery) -> String {
     let mut when = String::new();
     format_time_short(t, &mut when, 64);
@@ -108,36 +135,58 @@ pub fn battery_from_sysfs(root: &str) -> Option<Battery> {
     None
 }
 
+
+// ---- where the corners are ----
+
+/// The corner's square of `side` px on a w by h screen: corner 0 top left, 1 top right, 2 bottom right, 3 bottom
+/// left (clockwise from the top left).
+pub fn corner_square(corner: i32, w: i32, h: i32, side: i32) -> Rect {
+    let side = side.min(w).min(h);
+    let right = corner == 1 || corner == 2;
+    let bottom = corner == 2 || corner == 3;
+    Rect { x: if right { w - side } else { 0 }, y: if bottom { h - side } else { 0 }, w: side, h: side }
+}
+
+/// A box of bw by bh px in that corner, m px from the two edges it is nearest.
+fn corner_box(corner: i32, w: i32, h: i32, bw: i32, bh: i32, m: i32) -> Rect {
+    let right = corner == 1 || corner == 2;
+    let bottom = corner == 2 || corner == 3;
+    Rect { x: if right { w - m - bw } else { m }, y: if bottom { h - m - bh } else { m }, w: bw, h: bh }
+}
+
 // ---- a tap in the corner ----
 
-/// A finger that went down in the zone on no control, followed to its release.
+/// A finger that went down in the zone on no control, followed to its lift.
 #[derive(Clone, Copy, Debug, Default)]
 struct Tap {
     armed: bool,
-    press: Press,
+    x0: f32,
+    y0: f32,
+    t0: u32,
+    moved: bool,
 }
 
 impl Tap {
-    /// The first finger went down: it is a candidate only inside the zone and with no control there.
-    fn down(&mut self, zone: Rect, control: bool, x: f32, y: f32, t: u32) {
-        self.armed = !control && rect_contains(zone, x as i32, y as i32);
-        if self.armed {
-            press_begin(&mut self.press, x, y, t);
+    /// The first finger went down: it is a candidate only where `hit` says (inside the zone, no control there).
+    fn down(&mut self, hit: bool, x: f32, y: f32, t: u32) {
+        *self = if hit { Tap { armed: true, x0: x, y0: y, t0: t, moved: false } } else { Tap::default() };
+    }
+    fn far(&self, x: f32, y: f32, slop: f32) -> bool {
+        (x - self.x0).hypot(y - self.y0) > slop
+    }
+    fn moved(&mut self, x: f32, y: f32, slop: f32) {
+        if self.armed && self.far(x, y, slop) {
+            self.moved = true;
         }
     }
-    fn moved(&mut self, x: f32, y: f32) {
-        if self.armed {
-            press_move(&mut self.press, x, y);
-        }
-    }
-    /// The finger lifted: true when it was a tap (short, still, down and up inside the zone).
-    fn up(&mut self, zone: Rect, x: f32, y: f32, t: u32) -> bool {
+    /// The finger lifted: true when it was a tap (short, and never more than `slop` from where it landed).
+    /// Where it lifts matters only through that: a tap that ends a hair outside the square is still a tap.
+    fn up(&mut self, x: f32, y: f32, t: u32, slop: f32) -> bool {
         if !self.armed {
             return false;
         }
         self.armed = false;
-        press_move(&mut self.press, x, y);
-        t.wrapping_sub(self.press.t0) <= TAP_MS && press_is_tap(&self.press, zone)
+        !self.moved && !self.far(x, y, slop) && t.wrapping_sub(self.t0) <= TAP_MS
     }
     /// Something else began (a second finger, the pen): this was not a tap.
     fn cancel(&mut self) {
@@ -156,17 +205,21 @@ struct State {
     /// the battery as last read, and when (now_ms, 0 never)
     battery: Battery,
     read_at: u32,
-    /// what the panel shows now: the rect (empty for nothing), what it says, and the minute and
-    /// battery that says
+    /// what the panel shows now: the rect (empty for nothing), what it says, its battery icon and how much
+    /// of it is lit, and the minute and battery that says
     drawn: Rect,
     drawn_text: String,
     drawn_charging: bool,
+    drawn_icon: Rect,
+    drawn_fill: i32,
     drawn_key: Option<(i64, Battery)>,
-    /// a refresh asked for and not sent yet: the rect (empty for none)
-    pending: Rect,
+    /// refreshes asked for and not sent yet: a few rects, apart (empty for none)
+    pending: Vec<Rect>,
     /// the touch event status_touch saw last was the lift of a tap in the corner, which turned the
     /// indicator on or off (status_tapped: the screen that handles that same event asks)
     tapped: bool,
+    /// a setting changed that settings.ini does not hold yet: saved after the refresh went out
+    save_due: bool,
 }
 
 thread_local! {
@@ -179,73 +232,183 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 
 // ---- where it goes and what it looks like ----
 
+/// The measures of the indicator at a size.
+struct Metrics {
+    px: f32,
+    padx: i32,
+    /// the box's height
+    bh: i32,
+    /// the battery art's unit, and its height
+    unit: i32,
+    ih: i32,
+}
+
+fn metrics(size: i32) -> Metrics {
+    let px = ui_px(SIZE_PX[clampi(size, 0, STATUS_SIZES - 1) as usize]) as f32;
+    let face = FontFace::Fixed;
+    let lh = font_ascent(face, px) + font_descent(face, px);
+    let pady = (px * 0.3) as i32;
+    // (a unit a tenth of the text's height: the art stands about as tall as the digits beside it)
+    let unit = ((px / 9.5).round() as i32).max(2);
+    let ih = ICON_UH * unit;
+    Metrics { px, padx: (px * 0.5) as i32, bh: (lh + 2 * pady).max(ih + 2 * ui_px(3.0)), unit, ih }
+}
+
 /// What the indicator says and where it sits.
 struct Layout {
     rect: Rect,
+    /// "Oct 10, 14:32  87%", as `status.text` reads it
     text: String,
-    text_r: Rect,
-    bolt: Option<Rect>,
+    time: String,
+    time_r: Rect,
+    pct: String,
+    pct_r: Rect,
+    /// the battery art, with no battery reading none
+    icon: Option<Rect>,
+    unit: i32,
+    battery: Battery,
     px: f32,
     /// the minute and battery it shows
     key: (i64, Battery),
 }
 
-fn size_px(size: i32) -> f32 {
-    ui_px(SIZE_PX[clampi(size, 0, STATUS_SIZES - 1) as usize]) as f32
+/// How many of the FILL_COLS columns a charge lights: the nearest to its share, one for any charge at all.
+pub fn battery_fill(percent: i32) -> i32 {
+    if percent <= 0 {
+        return 0;
+    }
+    clampi((percent * FILL_COLS + 50) / 100, 1, FILL_COLS)
 }
 
-/// The indicator for a size, a time and a battery. Its text is in the monospaced face every theme
-/// shares, so its box changes only with the number of characters.
-fn layout_of(size: i32, t: i64, b: &Battery) -> Layout {
-    let px = size_px(size);
-    let text = status_text(t, b);
+/// The indicator for a size, a corner of a w by h screen, a time and a battery: the time, the battery's
+/// art and then its percent, left to right in every corner. Its text is in the monospaced face every
+/// theme shares, so its box changes only with the number of characters.
+fn layout_of(size: i32, corner: i32, sw: i32, sh: i32, t: i64, b: &Battery) -> Layout {
+    let m = metrics(size);
+    let mut time = String::new();
+    format_time_short(t, &mut time, 64);
     let face = FontFace::Fixed;
-    let tw = font_measure(face, px, &text);
-    let lh = font_ascent(face, px) + font_descent(face, px);
-    let padx = (px * 0.5) as i32;
-    let pady = (px * 0.3) as i32;
-    let (gap, bw) = if b.charging { ((px * 0.3) as i32, (px * 0.6) as i32) } else { (0, 0) };
-    let m = ui_px(6.0);
-    let rect = Rect { x: m, y: m, w: padx + tw + gap + bw + padx, h: lh + 2 * pady };
+    let tw = font_measure(face, m.px, &time);
+    let has_battery = b.percent >= 0;
+    let pct = if has_battery { cformat!("%d%%", b.percent) } else { String::new() };
+    let pw = if has_battery { font_measure(face, m.px, &pct) } else { 0 };
+    let (iw, g1, g2) = if has_battery { (ICON_UW * m.unit, (m.px * 0.6) as i32, (m.px * 0.3) as i32) } else { (0, 0, 0) };
+    let bw = m.padx + tw + g1 + iw + g2 + pw + m.padx;
+    let rect = corner_box(corner, sw, sh, bw, m.bh, ui_px(6.0));
+    let time_r = Rect { x: rect.x + m.padx, y: rect.y, w: tw + 2, h: rect.h };
+    let ix = time_r.x + tw + g1;
+    let icon = has_battery.then_some(Rect { x: ix, y: rect.y + (rect.h - m.ih) / 2, w: iw, h: m.ih });
     Layout {
         rect,
-        text,
-        text_r: Rect { x: m + padx, y: m, w: tw + 2, h: rect.h },
-        bolt: if b.charging { Some(Rect { x: m + padx + tw + gap, y: m + pady, w: bw, h: lh }) } else { None },
-        px,
+        text: status_text(t, b),
+        time,
+        time_r,
+        pct,
+        pct_r: Rect { x: ix + iw + g2, y: rect.y, w: pw + 2, h: rect.h },
+        icon,
+        unit: m.unit,
+        battery: *b,
+        px: m.px,
         key: (t.div_euclid(60), *b),
     }
 }
 
-/// The band across the top of the screen that the indicator of the current size stays inside,
+/// The band along the top or bottom of the screen that the indicator of the current size stays inside,
 /// whatever it says: its box starts at the margin and is as tall as layout_of makes it. Asked
-/// before a layout, which costs a clock, a format and a measure, so a refresh far below costs none.
+/// before a layout, which costs a clock, a format and a measure, so a refresh far away costs none.
 fn band(a: &App) -> Rect {
-    let px = size_px(a.settings.status_size);
-    let face = FontFace::Fixed;
-    let lh = font_ascent(face, px) + font_descent(face, px);
-    let pady = (px * 0.3) as i32;
-    Rect { x: 0, y: 0, w: a.w, h: ui_px(6.0) + lh + 2 * pady }
+    let h = ui_px(6.0) + metrics(a.settings.status_size).bh;
+    let bottom = a.settings.status_corner == 2 || a.settings.status_corner == 3;
+    Rect { x: 0, y: if bottom { a.h - h } else { 0 }, w: a.w, h }
 }
 
 fn layout(a: &App) -> Layout {
     let b = with(|s| s.battery);
-    layout_of(a.settings.status_size, sys_wall_clock(), &b)
+    layout_of(a.settings.status_size, a.settings.status_corner, a.w, a.h, sys_wall_clock(), &b)
+}
+
+/// The battery in pixel art in r (ICON_UW by ICON_UH units of u px): an outline with notched corners, its
+/// terminal, the charge as a bar of lit columns (battery_fill) and, while it charges, the bolt over it
+/// on a white halo, so it reads over any charge.
+fn draw_battery(c: &mut Canvas, r: Rect, u: i32, b: &Battery) {
+    let cell = |c: &mut Canvas, x: i32, y: i32, w: i32, h: i32, gray: u8| {
+        canvas_fill(c, Rect { x: r.x + x * u, y: r.y + y * u, w: w * u, h: h * u }, gray)
+    };
+    cell(c, 1, 0, 14, 1, 0);
+    cell(c, 1, 8, 14, 1, 0);
+    cell(c, 0, 1, 1, 7, 0);
+    cell(c, 15, 1, 1, 7, 0);
+    cell(c, 16, 2, 2, 5, 0);
+    let n = battery_fill(b.percent);
+    if n > 0 {
+        cell(c, 2, 2, n, 5, 0);
+    }
+    if b.charging {
+        let lit = |f: &mut dyn FnMut(i32, i32)| {
+            for (dy, row) in BOLT.iter().enumerate() {
+                for (dx, &ch) in row.iter().enumerate() {
+                    if ch == b'X' {
+                        f(6 + dx as i32, 1 + dy as i32);
+                    }
+                }
+            }
+        };
+        lit(&mut |bx, by| {
+            for ny in by - 1..=by + 1 {
+                for nx in bx - 1..=bx + 1 {
+                    if (1..=14).contains(&nx) && (1..=7).contains(&ny) {
+                        cell(c, nx, ny, 1, 1, 255);
+                    }
+                }
+            }
+        });
+        lit(&mut |bx, by| cell(c, bx, by, 1, 1, 0));
+    }
 }
 
 fn draw(c: &mut Canvas, l: &Layout) {
     ui_frame(c, l.rect, ui_px(8.0), 255, true, 0);
     ui_frame(c, l.rect, ui_px(8.0), 0, false, ui_px(2.0));
-    font_draw_left(c, FontFace::Fixed, l.px, l.text_r, &l.text, 0);
-    if let Some(b) = l.bolt {
-        font_draw_icon(c, FontFace::Regular, BOLT_CP, b, 0);
+    font_draw_left(c, FontFace::Fixed, l.px, l.time_r, &l.time, 0);
+    if let Some(ir) = l.icon {
+        draw_battery(c, ir, l.unit, &l.battery);
+        font_draw_left(c, FontFace::Fixed, l.px, l.pct_r, &l.pct, 0);
     }
 }
 
-/// The corner as a tap finds it: 12 mm square, and the indicator while it is up.
-pub fn status_zone(a: &App) -> Rect {
+/// The square a tap finds in the corner the setting names: 14 mm.
+pub fn status_square(a: &App) -> Rect {
     let side = (ZONE_MM * a.dpi / 25.4).round() as i32;
-    rect_union(Rect { x: 0, y: 0, w: side, h: side }, with(|s| s.drawn))
+    corner_square(a.settings.status_corner, a.w, a.h, side)
+}
+
+/// Whether (x, y) is in the corner as a tap finds it: its square, and the indicator's box while it is up.
+/// (Two places, never the box around both: a corner just moved leaves the old box on the panel until its
+/// refresh goes, and that must not make the screen between a tap's target.)
+pub fn status_hit(a: &App, x: f32, y: f32) -> bool {
+    rect_contains(status_square(a), x as i32, y as i32) || rect_contains(with(|s| s.drawn), x as i32, y as i32)
+}
+
+/// Whether the clock and battery may show on this screen now: the notebook's page is in front, with no sheet,
+/// menu, Pages view or keyboard over it. The only place it shows, and the only place a tap in the corner is
+/// its.
+fn page_in_front(a: &App) -> bool {
+    #[cfg(test)]
+    if let Some(f) = TEST_FRONT.with(|c| c.get()) {
+        return f;
+    }
+    a.scr == ScreenId::Editor && editor_page_in_front(a)
+}
+
+// (The unit tests have no notebook: they say whether the page is in front.)
+#[cfg(test)]
+thread_local! {
+    static TEST_FRONT: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether the panel should hold the indicator now: it is on, and the page is in front.
+fn wanted(a: &App) -> bool {
+    a.settings.status_on && page_in_front(a)
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -276,21 +439,29 @@ fn status_busy(a: &App) -> bool {
 }
 
 /// A finger's events, before the screen sees them (it sees them all as ever; the corner only
-/// watches): a tap in the zone with no control under it turns the indicator on or off. app_event
+/// watches): a tap in the zone with no control under it turns the indicator on or off. Only the page
+/// has the corner (page_in_front); a sheet opened under a finger takes the corner's tap with it. app_event
 /// calls it awake only.
 pub fn status_touch(a: &mut App, ev: &InEvent) {
     with(|s| s.tapped = false);
+    if !page_in_front(a) {
+        with(|s| s.tap.cancel());
+        return;
+    }
+    let slop = mm_to_px(SLOP_MM, a.dpi);
     match ev.type_ {
         InType::TouchDown => {
-            let zone = status_zone(a);
-            // (asked before the screen handles the touch: what it does may change what is there)
-            let control = rect_contains(zone, ev.x as i32, ev.y as i32) && app_control_at(a, ev.x, ev.y);
-            with(|s| s.tap.down(zone, control, ev.x, ev.y, ev.t_ms));
+            // A finger the touch panel let through is not the writing hand: the pen is not near, whatever a
+            // pen leaving without a word left behind. (Asked before the screen handles the touch: what it
+            // does may change what is there.)
+            with(|s| s.pen_near = false);
+            let hit = status_hit(a, ev.x, ev.y) && !editor_control_at(a, ev.x, ev.y);
+            with(|s| s.tap.down(hit, ev.x, ev.y, ev.t_ms));
         }
-        InType::TouchMove => with(|s| s.tap.moved(ev.x, ev.y)),
+        InType::TouchMove => with(|s| s.tap.moved(ev.x, ev.y, slop)),
+        InType::TouchUp if ev.value & TOUCH_F_CANCEL != 0 => with(|s| s.tap.cancel()),
         InType::TouchUp => {
-            let zone = status_zone(a);
-            if with(|s| s.tap.up(zone, ev.x, ev.y, ev.t_ms)) {
+            if with(|s| s.tap.up(ev.x, ev.y, ev.t_ms, slop)) {
                 status_toggle(a);
                 with(|s| s.tapped = true);
             }
@@ -308,33 +479,98 @@ fn read_battery() {
     });
 }
 
-/// The rect to refresh for a change of the indicator: what it covers now and what it covered.
-fn changed_rect(a: &App) -> Rect {
-    let now = if a.settings.status_on { layout(a).rect } else { RECT_EMPTY };
-    rect_intersect(rect_union(now, with(|s| s.drawn)), Rect { x: 0, y: 0, w: a.w, h: a.h })
+/// Asks for a refresh of r: joined to one asked for already that it touches, else one of its own.
+fn ask(r: Rect) {
+    if rect_is_empty(r) {
+        return;
+    }
+    with(|s| {
+        for p in s.pending.iter_mut() {
+            if rect_overlaps(*p, r) {
+                *p = rect_union(*p, r);
+                return;
+            }
+        }
+        if s.pending.len() < 4 {
+            s.pending.push(r);
+        } else {
+            s.pending[0] = rect_union(s.pending[0], r);
+        }
+    });
 }
 
-fn ask(r: Rect) {
-    with(|s| s.pending = rect_union(s.pending, r));
+/// The indicator changed (on, off, size, corner): a refresh of what it covers now, and one of what it covered.
+fn ask_change(a: &App) {
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    if wanted(a) {
+        ask(rect_intersect(layout(a).rect, screen));
+    }
+    ask(rect_intersect(with(|s| s.drawn), screen));
+}
+
+/// What a change says when the page is not in front, so nothing shows: a toast, so a press of a shortcut
+/// is never a silent one.
+fn say(a: &mut App, msg: &str) {
+    app_toast(a, msg, 2500);
+}
+
+/// The setting changed: settings.ini is written after the refresh (status_flush).
+fn save_later() {
+    with(|s| s.save_due = true);
 }
 
 /// Turns the indicator on or off: a tap in the corner, or the status-toggle shortcut.
 pub fn status_toggle(a: &mut App) {
     a.settings.status_on = !a.settings.status_on;
-    settings_save(&a.settings);
-    qlog!("status: the clock and battery corner is %s (size %d)", if a.settings.status_on { "on" } else { "off" }, a.settings.status_size);
-    if a.settings.status_on && !status_busy(a) {
+    save_later();
+    qlog!(
+        "status: the clock and battery corner is %s (size %d, corner %d)",
+        if a.settings.status_on { "on" } else { "off" },
+        a.settings.status_size,
+        a.settings.status_corner
+    );
+    let front = page_in_front(a);
+    if a.settings.status_on && front && !status_busy(a) {
         read_battery(); // (so its first drawing has the percent; else the next tick reads it)
     }
-    ask(changed_rect(a));
+    ask_change(a);
+    if !front {
+        if a.settings.status_on {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the clock and battery were turned
+            // on with a shortcut where no notebook page is in front; they show on a page only.
+            say(a, tr("Clock and battery on. They show on a notebook page."));
+        } else {
+            // TRANSLATORS: a toast: the clock and battery were turned off with a shortcut.
+            say(a, tr("Clock and battery off."));
+        }
+    }
 }
 
 /// Settings > Display > the size row: the next size, small to medium to large and round.
 pub fn status_cycle_size(a: &mut App) {
     a.settings.status_size = (a.settings.status_size + 1) % STATUS_SIZES;
-    settings_save(&a.settings);
-    if a.settings.status_on {
-        ask(changed_rect(a));
+    save_later();
+    ask_change(a);
+}
+
+/// The corner's name for a toast, one sentence for each (settings.ini status_corner 0, 1, 2, 3).
+static K_CORNER_TOASTS: [&str; STATUS_CORNERS as usize] = [
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) when the status-corner shortcut moves the
+    // clock and battery where no notebook page is in front: which corner of the page they sit in now.
+    n_("Clock and battery: top left corner of the page"),
+    n_("Clock and battery: top right corner of the page"),
+    n_("Clock and battery: bottom right corner of the page"),
+    n_("Clock and battery: bottom left corner of the page"),
+];
+
+/// The next corner, clockwise from the top left and round (the status-corner shortcut, the Display sheet's row).
+pub fn status_cycle_corner(a: &mut App) {
+    a.settings.status_corner = (a.settings.status_corner + 1) % STATUS_CORNERS;
+    save_later();
+    qlog!("status: the clock and battery corner moves to corner %d", a.settings.status_corner);
+    ask_change(a);
+    if !page_in_front(a) {
+        say(a, tr(K_CORNER_TOASTS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]));
     }
 }
 
@@ -346,8 +582,10 @@ pub fn status_reset() {
         s.tap.cancel();
         s.drawn = RECT_EMPTY;
         s.drawn_text.clear();
+        s.drawn_icon = RECT_EMPTY;
+        s.drawn_fill = 0;
         s.drawn_key = None;
-        s.pending = RECT_EMPTY;
+        s.pending.clear();
         // (The battery ran down meanwhile: the first tick awake asks again. The kernel answers at
         // once; lipc with its last reading until the next one is due.)
         s.read_at = 0;
@@ -355,11 +593,25 @@ pub fn status_reset() {
     display_skip_status(RECT_EMPTY);
 }
 
+/// A setting waits to be saved (the corner's refresh went first): written now, as the Kindle sleeps.
+pub fn status_save_now(a: &App) {
+    if with(|s| std::mem::take(&mut s.save_due)) {
+        settings_save(&a.settings);
+    }
+}
+
 /// From app_tick, awake: reads the battery now and then and asks for a refresh when the minute or
-/// the battery is not what the panel shows.
+/// the battery is not what the panel shows, or when the indicator is on the panel and the page no
+/// longer wants it there (a sheet opened, the screen changed: only its own rect is taken down).
 pub fn status_tick(a: &mut App, now: u32) {
     sys_battery_reap(); // (a reading under way ends, or is stopped, even with the corner off or held back)
-    if !a.settings.status_on || status_busy(a) {
+    let want = wanted(a);
+    let drawn = with(|s| s.drawn);
+    if (!want && rect_is_empty(drawn)) || status_busy(a) {
+        return;
+    }
+    if !want {
+        ask(drawn);
         return;
     }
     if with(|s| s.read_at == 0 || now.wrapping_sub(s.read_at) >= POLL_MS) {
@@ -367,7 +619,7 @@ pub fn status_tick(a: &mut App, now: u32) {
     }
     let key = (sys_wall_clock().div_euclid(60), with(|s| s.battery));
     if with(|s| s.drawn_key) != Some(key) {
-        ask(changed_rect(a));
+        ask_change(a);
     }
 }
 
@@ -385,14 +637,16 @@ fn set_drawn(l: Option<&Layout>) {
         s.drawn = r;
         s.drawn_key = l.map(|l| l.key);
         s.drawn_text = l.map(|l| l.text.clone()).unwrap_or_default();
-        s.drawn_charging = l.is_some_and(|l| l.bolt.is_some());
+        s.drawn_charging = l.is_some_and(|l| l.battery.charging && l.icon.is_some());
+        s.drawn_icon = l.and_then(|l| l.icon).unwrap_or(RECT_EMPTY);
+        s.drawn_fill = l.map_or(0, |l| if l.icon.is_some() { battery_fill(l.battery.percent) } else { 0 });
     });
     display_skip_status(r);
 }
 
-/// Paints the indicator into a.screen; the cover holds what was there. It counts as on the panel
-/// from here (the refresh follows at once), even when there was no memory to save the pixels under
-/// it (then nothing is painted, and the minute passes before it is tried again).
+/// Paints the indicator into a.screen; the cover holds what was there. It counts as on the panel from
+/// here (the refresh follows at once), even when there was no memory to save the pixels under it (then
+/// nothing is painted, and the minute passes before it is tried again).
 fn paint(a: &mut App, l: &Layout) -> Option<StatusCover> {
     set_drawn(Some(l));
     paint_into(a, l)
@@ -414,22 +668,30 @@ fn paint_into(a: &mut App, l: &Layout) -> Option<StatusCover> {
     Some(StatusCover { rect: l.rect, under })
 }
 
-/// For a refresh of `dirty` in app_flush: when the indicator is up and the refresh reaches it,
-/// paints it and widens dirty to hold it whole, and where it was if that was elsewhere (a size
-/// that changed, a text that got shorter).
+/// For a refresh of `dirty` in app_flush: when the indicator is wanted and the refresh reaches it,
+/// paints it and widens dirty to hold it whole, and where it was if that touches the refresh (a size that
+/// changed, a text that got shorter; a corner it left is asked a refresh of its own).
 pub fn status_cover(a: &mut App, dirty: &mut Rect) -> Option<StatusCover> {
-    if !a.settings.status_on {
+    if !wanted(a) {
         return None;
     }
     // (every fast ink frame comes here: most are nowhere near the corner)
-    if !rect_overlaps(*dirty, rect_union(band(a), with(|s| s.drawn))) {
+    let old = with(|s| s.drawn);
+    if !rect_overlaps(*dirty, band(a)) && !rect_overlaps(*dirty, old) {
         return None;
     }
     let l = layout(a);
     if !rect_overlaps(*dirty, l.rect) {
         return None;
     }
-    *dirty = rect_union(*dirty, rect_union(l.rect, with(|s| s.drawn)));
+    *dirty = rect_union(*dirty, l.rect);
+    if !rect_is_empty(old) && old != l.rect {
+        if rect_overlaps(*dirty, old) {
+            *dirty = rect_union(*dirty, old);
+        } else {
+            ask(old);
+        }
+    }
     paint(a, &l)
 }
 
@@ -439,14 +701,12 @@ pub fn status_uncover(a: &mut App, mut c: StatusCover) {
     canvas_free(&mut c.under);
 }
 
-/// A refresh of `r` was sent: it was the one asked for if it held that, and an indicator that is
-/// off is gone from the panel if it held where it was.
+/// A refresh of `r` was sent: it was the one asked for if it held that, and an indicator that is not
+/// wanted is gone from the panel if it held where it was.
 pub fn status_presented(a: &App, r: Rect) {
-    let off = !a.settings.status_on;
+    let off = !wanted(a);
     let gone = with(|s| {
-        if rect_contains_rect(r, s.pending) {
-            s.pending = RECT_EMPTY;
-        }
+        s.pending.retain(|p| !rect_contains_rect(r, *p));
         off && !rect_is_empty(s.drawn) && rect_contains_rect(r, s.drawn)
     });
     if gone {
@@ -458,7 +718,7 @@ pub fn status_presented(a: &App, r: Rect) {
 /// Live view starts: the indicator's layer, when the panel shows it (painted into a.screen, copied,
 /// put back; nothing is presented).
 pub fn status_live(a: &mut App) {
-    if !a.settings.status_on || rect_is_empty(with(|s| s.drawn)) {
+    if !wanted(a) || rect_is_empty(with(|s| s.drawn)) {
         return;
     }
     let l = layout(a);
@@ -467,46 +727,93 @@ pub fn status_live(a: &mut App) {
     }
 }
 
+/// Joins r to the regions to send, where it touches one.
+fn add_region(v: &mut Vec<Rect>, r: Rect) {
+    if rect_is_empty(r) {
+        return;
+    }
+    let mut r = r;
+    let mut i = 0;
+    while i < v.len() {
+        if rect_overlaps(v[i], r) {
+            r = rect_union(v.remove(i), r);
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+    v.push(r);
+}
+
 /// A refresh of the corner alone, when one is asked for and the pen allows it: a small GL16 of the
-/// indicator and of what it covered.
+/// indicator and of each place it covered, each its own. Then the setting that changed is saved, if one
+/// is waiting: the refresh is on its way first.
 pub fn status_flush(a: &mut App) {
-    let pending = with(|s| s.pending);
-    if rect_is_empty(pending) || status_busy(a) {
+    flush_corner(a);
+    if with(|s| s.save_due) && !status_busy(a) {
+        with(|s| s.save_due = false);
+        settings_save(&a.settings);
+    }
+}
+
+fn flush_corner(a: &mut App) {
+    if with(|s| s.pending.is_empty()) || status_busy(a) {
         return;
     }
-    let on = a.settings.status_on;
+    let on = wanted(a);
     if !on && rect_is_empty(with(|s| s.drawn)) {
-        with(|s| s.pending = RECT_EMPTY); // nothing of it is on the panel: nothing to take down
+        with(|s| s.pending.clear()); // nothing of it is on the panel: nothing to take down
         return;
     }
-    let mut region = rect_intersect(pending, Rect { x: 0, y: 0, w: a.w, h: a.h });
-    let mut cover = None;
-    if on {
-        let l = layout(a);
-        region = rect_union(region, l.rect);
-        cover = paint(a, &l);
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let pending = with(|s| std::mem::take(&mut s.pending));
+    let mut regions: Vec<Rect> = Vec::new();
+    for p in pending {
+        add_region(&mut regions, rect_intersect(p, screen));
     }
-    display_present(&a.screen, region, RefreshMode::Ui);
+    let l = on.then(|| layout(a));
+    if let Some(l) = &l {
+        add_region(&mut regions, rect_intersect(l.rect, screen));
+    }
+    let cover = l.as_ref().and_then(|l| paint(a, l));
+    for r in &regions {
+        display_present(&a.screen, *r, RefreshMode::Ui);
+    }
     if let Some(c) = cover {
         status_uncover(a, c);
     }
-    status_presented(a, region);
+    for r in &regions {
+        status_presented(a, *r);
+    }
 }
 
 // ---- for the runner ----
 
 /// The runner's status.* keys: "shown" 1 while the panel holds the indicator, "text" and "rect"
 /// ("x y w h") what it says and where (empty while it is not shown), "charging" 1 when it shows the
-/// bolt, "zone" the corner a tap finds ("x y w h"). The setting itself is "settings.status_on".
+/// bolt, "icon" the battery art's rect and "fill" how many of its 12 columns are lit (empty while it is
+/// not shown or has no battery), "zone" the corner's square a tap finds ("x y w h"; the indicator's box
+/// is part of the corner too while it is up) and "front" 1 while the page is in front, the only place it
+/// shows. The settings themselves are "settings.status_on", "settings.status_size" and
+/// "settings.status_corner".
 pub fn status_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
-    let (drawn, text, charging) = with(|s| (s.drawn, s.drawn_text.clone(), s.drawn_charging));
+    let (drawn, text, charging, icon, fill) = with(|s| (s.drawn, s.drawn_text.clone(), s.drawn_charging, s.drawn_icon, s.drawn_fill));
     let shown = !rect_is_empty(drawn);
+    let rect_text = |out: &mut String, r: Rect, show: bool| {
+        if show {
+            csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h)
+        } else {
+            csnprintf!(out, cap, "%s", "")
+        }
+    };
     match key {
         "shown" => csnprintf!(out, cap, "%d", shown as i32),
         "text" => csnprintf!(out, cap, "%s", if shown { text.as_str() } else { "" }),
-        "rect" => {
-            if shown {
-                csnprintf!(out, cap, "%d %d %d %d", drawn.x, drawn.y, drawn.w, drawn.h)
+        "rect" => rect_text(out, drawn, shown),
+        "icon" => rect_text(out, icon, shown && !rect_is_empty(icon)),
+        "fill" => {
+            if shown && !rect_is_empty(icon) {
+                csnprintf!(out, cap, "%d", fill)
             } else {
                 csnprintf!(out, cap, "%s", "")
             }
@@ -523,10 +830,8 @@ pub fn status_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
                 "0"
             }
         ),
-        "zone" => {
-            let z = status_zone(a);
-            csnprintf!(out, cap, "%d %d %d %d", z.x, z.y, z.w, z.h)
-        }
+        "zone" => rect_text(out, status_square(a), true),
+        "front" => csnprintf!(out, cap, "%d", page_in_front(a) as i32),
         _ => return -1,
     };
     0
@@ -535,6 +840,11 @@ pub fn status_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The page is in front (or not) for the tests that have no notebook.
+    fn front(on: bool) {
+        TEST_FRONT.with(|c| c.set(Some(on)));
+    }
 
     fn up() {
         ui_init(300.0);
@@ -643,87 +953,239 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+
     #[test]
-    fn a_tap_is_short_still_and_in_the_zone() {
-        let zone = Rect { x: 0, y: 0, w: 142, h: 142 };
+    fn a_tap_is_short_and_still_and_needs_no_place_to_lift() {
+        let slop = mm_to_px(SLOP_MM, 300.0);
+        assert_eq!(slop.round() as i32, 59);
         let mut t = Tap::default();
-        // down and up in the zone, quickly
-        t.down(zone, false, 60.0, 60.0, 1000);
-        assert!(t.up(zone, 62.0, 61.0, 1120));
+        // down on a hit, up quickly
+        t.down(true, 60.0, 60.0, 1000);
+        assert!(t.up(62.0, 61.0, 1120, slop));
         // the same finger counts once
-        assert!(!t.up(zone, 62.0, 61.0, 1130));
-        // a control under the finger: not ours
-        t.down(zone, true, 60.0, 60.0, 1000);
-        assert!(!t.up(zone, 60.0, 60.0, 1100));
-        // down outside the zone
-        t.down(zone, false, 300.0, 60.0, 1000);
-        assert!(!t.up(zone, 300.0, 60.0, 1100));
-        // down in the zone, up outside it (a swipe), or moved past the slop on the way
-        t.down(zone, false, 100.0, 100.0, 1000);
-        assert!(!t.up(zone, 400.0, 100.0, 1100));
-        t.down(zone, false, 20.0, 20.0, 1000);
-        t.moved(120.0, 120.0);
-        assert!(!t.up(zone, 21.0, 21.0, 1100));
+        assert!(!t.up(62.0, 61.0, 1130, slop));
+        // not a hit (outside the zone, or a control there): not ours
+        t.down(false, 60.0, 60.0, 1000);
+        assert!(!t.up(60.0, 60.0, 1100, slop));
+        // a finger rolls: 4 mm (47 px) from where it landed is still a tap, the lift a hair outside the square too
+        t.down(true, 100.0, 100.0, 1000);
+        t.moved(140.0, 120.0, slop);
+        assert!(t.up(150.0, 130.0, 1100, slop), "50 px is a tap");
+        // past 5 mm: a drag, and a finger that came back is still one
+        t.down(true, 100.0, 100.0, 1000);
+        t.moved(100.0 + slop + 5.0, 100.0, slop);
+        assert!(!t.up(101.0, 100.0, 1100, slop));
+        t.down(true, 100.0, 100.0, 1000);
+        assert!(!t.up(100.0, 100.0 + slop + 5.0, 1100, slop), "the lift is a place too");
+        // diagonal: the distance is a distance (a square of 5 mm would take 80 px along the diagonal)
+        t.down(true, 100.0, 100.0, 1000);
+        assert!(!t.up(100.0 + slop * 0.8, 100.0 + slop * 0.8, 1100, slop));
         // held too long
-        t.down(zone, false, 60.0, 60.0, 1000);
-        assert!(!t.up(zone, 60.0, 60.0, 1000 + TAP_MS + 1));
-        t.down(zone, false, 60.0, 60.0, 1000);
-        assert!(t.up(zone, 60.0, 60.0, 1000 + TAP_MS));
+        t.down(true, 60.0, 60.0, 1000);
+        assert!(!t.up(60.0, 60.0, 1000 + TAP_MS + 1, slop));
+        t.down(true, 60.0, 60.0, 1000);
+        assert!(t.up(60.0, 60.0, 1000 + TAP_MS, slop));
         // a second finger or the pen takes it back
-        t.down(zone, false, 60.0, 60.0, 1000);
+        t.down(true, 60.0, 60.0, 1000);
         t.cancel();
-        assert!(!t.up(zone, 60.0, 60.0, 1100));
+        assert!(!t.up(60.0, 60.0, 1100, slop));
         // the clock of the events wraps like now_ms does
-        t.down(zone, false, 60.0, 60.0, u32::MAX - 50);
-        assert!(t.up(zone, 60.0, 60.0, 70));
+        t.down(true, 60.0, 60.0, u32::MAX - 50);
+        assert!(t.up(60.0, 60.0, 70, slop));
+        // no lockout: tap after tap, each its own
+        for i in 0..20u32 {
+            t.down(true, 60.0, 60.0, 5000 + i * 90);
+            assert!(t.up(60.0, 60.0, 5000 + i * 90 + 40, slop), "tap {i}");
+        }
     }
 
     #[test]
-    fn the_box_grows_with_the_size_and_holds_its_text() {
+    fn the_corners_are_the_four_of_the_screen() {
+        let (w, h, side) = (1860, 2480, 165);
+        assert_eq!(corner_square(0, w, h, side), Rect { x: 0, y: 0, w: 165, h: 165 });
+        assert_eq!(corner_square(1, w, h, side), Rect { x: 1695, y: 0, w: 165, h: 165 });
+        assert_eq!(corner_square(2, w, h, side), Rect { x: 1695, y: 2315, w: 165, h: 165 });
+        assert_eq!(corner_square(3, w, h, side), Rect { x: 0, y: 2315, w: 165, h: 165 });
+        // a box keeps its margin from the two edges it is nearest
+        assert_eq!(corner_box(0, w, h, 300, 50, 6), Rect { x: 6, y: 6, w: 300, h: 50 });
+        assert_eq!(corner_box(1, w, h, 300, 50, 6), Rect { x: 1554, y: 6, w: 300, h: 50 });
+        assert_eq!(corner_box(2, w, h, 300, 50, 6), Rect { x: 1554, y: 2424, w: 300, h: 50 });
+        assert_eq!(corner_box(3, w, h, 300, 50, 6), Rect { x: 6, y: 2424, w: 300, h: 50 });
+        // sideways, the screen's own corners
+        assert_eq!(corner_square(2, 2480, 1860, side), Rect { x: 2315, y: 1695, w: 165, h: 165 });
+        // never past a small screen
+        assert_eq!(corner_square(0, 100, 80, 165), Rect { x: 0, y: 0, w: 80, h: 80 });
+    }
+
+    #[test]
+    fn the_battery_lights_its_share_of_twelve_columns() {
+        assert_eq!(battery_fill(-1), 0);
+        assert_eq!(battery_fill(0), 0);
+        // any charge at all lights one
+        assert_eq!(battery_fill(1), 1);
+        assert_eq!(battery_fill(4), 1);
+        assert_eq!(battery_fill(50), 6);
+        assert_eq!(battery_fill(87), 10);
+        assert_eq!(battery_fill(99), 12);
+        assert_eq!(battery_fill(100), 12);
+        assert_eq!(battery_fill(250), 12);
+        // never a column less for more charge
+        let mut last = 0;
+        for p in 0..=100 {
+            let f = battery_fill(p);
+            assert!(f >= last && (0..=FILL_COLS).contains(&f));
+            last = f;
+        }
+    }
+
+    // The black pixels of a unit square of the art: (unit column, unit row) of a canvas drawn at u px a unit.
+    fn art(b: &Battery, u: i32) -> (Canvas, Rect) {
+        let r = Rect { x: u, y: u, w: ICON_UW * u, h: ICON_UH * u };
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, r.w + 2 * u, r.h + 2 * u), 0);
+        let (w, h) = (c.w, c.h);
+        canvas_fill(&mut c, Rect { x: 0, y: 0, w, h }, 255);
+        draw_battery(&mut c, r, u, b);
+        (c, r)
+    }
+    fn black(c: &Canvas, r: Rect, u: i32, cx: i32, cy: i32) -> bool {
+        // (the middle of the unit: a unit is one colour)
+        c.px[((r.y + cy * u + u / 2) * c.stride + r.x + cx * u + u / 2) as usize] < 128
+    }
+
+    #[test]
+    fn the_battery_art_shows_the_charge_and_the_bolt() {
+        for u in [3, 4, 6] {
+            let empty = Battery { percent: 0, charging: false };
+            let (c, r) = art(&empty, u);
+            // the outline: notched corners, edges, the terminal; nothing inside
+            assert!(!black(&c, r, u, 0, 0) && !black(&c, r, u, 15, 0) && !black(&c, r, u, 0, 8) && !black(&c, r, u, 15, 8));
+            assert!(black(&c, r, u, 1, 0) && black(&c, r, u, 14, 8) && black(&c, r, u, 0, 4) && black(&c, r, u, 15, 4));
+            assert!(black(&c, r, u, 16, 4) && black(&c, r, u, 17, 2) && black(&c, r, u, 17, 6));
+            assert!(!black(&c, r, u, 16, 1) && !black(&c, r, u, 16, 7), "the terminal is smaller than the body");
+            for cx in 2..14 {
+                assert!(!black(&c, r, u, cx, 4), "u {u}: empty at column {cx}");
+            }
+            // the charge fills from the left, by battery_fill's share, in the five rows inside
+            for p in [1, 25, 50, 87, 100] {
+                let (c, r) = art(&Battery { percent: p, charging: false }, u);
+                let lit = (2..14).filter(|&cx| black(&c, r, u, cx, 4)).count() as i32;
+                assert_eq!(lit, battery_fill(p), "u {u}: {p}%");
+                for cx in 2..2 + lit {
+                    for cy in 2..7 {
+                        assert!(black(&c, r, u, cx, cy), "u {u}: {p}% solid at {cx},{cy}");
+                    }
+                }
+                assert!(!black(&c, r, u, 2, 1) && !black(&c, r, u, 2, 7), "the padding inside the outline stays white");
+            }
+            // charging: the bolt is there over an empty battery, black on white
+            let (c, r) = art(&Battery { percent: 0, charging: true }, u);
+            let dark = (0..ICON_UW).flat_map(|cx| (0..ICON_UH).map(move |cy| (cx, cy))).filter(|&(cx, cy)| black(&c, r, u, cx, cy)).count();
+            let plain = art(&empty, u);
+            let dark0 = (0..ICON_UW).flat_map(|cx| (0..ICON_UH).map(move |cy| (cx, cy))).filter(|&(cx, cy)| black(&plain.0, plain.1, u, cx, cy)).count();
+            let bolt: usize = BOLT.iter().map(|row| row.iter().filter(|&&ch| ch == b'X').count()).sum();
+            assert_eq!(dark, dark0 + bolt, "u {u}: the bolt's units");
+            // over a full battery it has a halo, so it reads: white units beside the bolt in the black
+            let (c, r) = art(&Battery { percent: 100, charging: true }, u);
+            assert!(black(&c, r, u, 8, 4), "the bolt's crossbar is black");
+            assert!(!black(&c, r, u, 5, 4) || !black(&c, r, u, 11, 4), "a white halo breaks the fill beside the bolt");
+            assert!(black(&c, r, u, 3, 3) && black(&c, r, u, 13, 5), "the charge away from the bolt is whole");
+        }
+    }
+
+    #[test]
+    fn the_box_grows_with_the_size_and_holds_its_text_and_its_battery() {
         utc();
         up();
         let b = Battery { percent: 87, charging: false };
         let t = 1700000000;
-        let (s0, s1, s2) = (layout_of(0, t, &b), layout_of(1, t, &b), layout_of(2, t, &b));
-        assert!(s0.rect.w < s1.rect.w && s1.rect.w < s2.rect.w);
-        assert!(s0.rect.h < s1.rect.h && s1.rect.h < s2.rect.h);
-        for l in [&s0, &s1, &s2] {
-            // in the corner, inside the screen, and the text inside the box
-            assert!(l.rect.x > 0 && l.rect.y > 0 && l.rect.w < 1860);
-            assert!(rect_contains_rect(l.rect, l.text_r), "text {:?} in {:?}", l.text_r, l.rect);
-            assert_eq!(l.text, "Nov 14, 22:13  87%");
-            assert!(l.bolt.is_none());
+        for corner in 0..STATUS_CORNERS {
+            let (s0, s1, s2) = (layout_of(0, corner, 1860, 2480, t, &b), layout_of(1, corner, 1860, 2480, t, &b), layout_of(2, corner, 1860, 2480, t, &b));
+            assert!(s0.rect.w < s1.rect.w && s1.rect.w < s2.rect.w);
+            assert!(s0.rect.h < s1.rect.h && s1.rect.h < s2.rect.h);
+            assert!(s0.unit < s1.unit && s1.unit < s2.unit, "the art scales with the size");
+            for l in [&s0, &s1, &s2] {
+                // in its corner, inside the screen, the time, the battery and the percent inside the box, in that order
+                let screen = Rect { x: 0, y: 0, w: 1860, h: 2480 };
+                assert!(rect_contains_rect(screen, l.rect) && l.rect.w < 1860 / 2);
+                let near_top = corner < 2;
+                assert!(if near_top { l.rect.y == 6 } else { l.rect.y + l.rect.h == 2480 - 6 }, "corner {corner}");
+                let near_left = corner == 0 || corner == 3;
+                assert!(if near_left { l.rect.x == 6 } else { l.rect.x + l.rect.w == 1860 - 6 }, "corner {corner}");
+                let icon = l.icon.expect("a battery");
+                assert!(rect_contains_rect(l.rect, l.time_r) && rect_contains_rect(l.rect, icon) && rect_contains_rect(l.rect, l.pct_r));
+                assert!(l.time_r.x + l.time_r.w <= icon.x && icon.x + icon.w <= l.pct_r.x, "time, then the battery, then its percent");
+                assert_eq!(icon.w, ICON_UW * l.unit);
+                assert_eq!(icon.h, ICON_UH * l.unit);
+                // the art is centred in the box's height (to a pixel)
+                assert!((icon.y - l.rect.y - (l.rect.y + l.rect.h - (icon.y + icon.h))).abs() <= 1);
+                assert_eq!(l.text, "Nov 14, 22:13  87%");
+                assert_eq!((l.time.as_str(), l.pct.as_str()), ("Nov 14, 22:13", "87%"));
+            }
         }
-        // the large one still sits in a corner of an upright panel, not a quarter of its width
-        assert!(s2.rect.w < 1860 / 2);
-        // the bolt widens the box on its right and sits inside it
-        let c = layout_of(1, t, &Battery { percent: 87, charging: true });
-        assert!(c.rect.w > s1.rect.w);
-        let bolt = c.bolt.unwrap();
-        assert!(rect_contains_rect(c.rect, bolt) && bolt.x >= c.text_r.x + c.text_r.w - 2);
+        // charging does not move or widen anything: the bolt is inside the art
+        let c = layout_of(1, 0, 1860, 2480, t, &Battery { percent: 87, charging: true });
+        let n = layout_of(1, 0, 1860, 2480, t, &b);
+        assert_eq!(c.rect, n.rect);
+        assert_eq!(c.icon, n.icon);
         // one box a minute, however the minute reads
-        assert_eq!(layout_of(1, t, &b).key, layout_of(1, t + 10, &b).key);
-        assert_ne!(layout_of(1, t, &b).key, layout_of(1, t + 60, &b).key);
-        // without a percent the box is shorter
-        assert!(layout_of(1, t, &Battery::default()).rect.w < s1.rect.w);
+        assert_eq!(layout_of(1, 0, 1860, 2480, t, &b).key, layout_of(1, 0, 1860, 2480, t + 10, &b).key);
+        assert_ne!(layout_of(1, 0, 1860, 2480, t, &b).key, layout_of(1, 0, 1860, 2480, t + 60, &b).key);
+        // without a percent the time alone, no battery drawn
+        let none = layout_of(1, 0, 1860, 2480, t, &Battery::default());
+        assert!(none.icon.is_none() && none.pct.is_empty() && none.rect.w < n.rect.w);
+        assert_eq!(none.text, "Nov 14, 22:13");
+        // the box is as tall as the art and its margins, so the art never touches the frame
+        for size in 0..STATUS_SIZES {
+            let l = layout_of(size, 0, 1860, 2480, t, &b);
+            let icon = l.icon.unwrap();
+            assert!(icon.y - l.rect.y >= ui_px(3.0) && l.rect.h >= l.unit * ICON_UH + 2 * ui_px(3.0));
+        }
     }
 
     #[test]
-    fn the_zone_is_twelve_millimetres_and_takes_the_indicator() {
+    fn the_band_holds_the_box_of_each_corner() {
         utc();
         up();
         let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
-        let z = status_zone(&a);
-        assert_eq!(z, Rect { x: 0, y: 0, w: 142, h: 142 });
-        a.dpi = 150.0;
-        assert_eq!(status_zone(&a).w, 71);
-        // while the indicator is up, its box is part of the corner
-        let l = layout_of(2, 1700000000, &Battery { percent: 87, charging: true });
-        set_drawn(Some(&l));
-        let z = status_zone(&a);
-        assert!(rect_contains_rect(z, l.rect) && z.w >= l.rect.x + l.rect.w);
+        let b = Battery { percent: 87, charging: true };
+        for size in 0..STATUS_SIZES {
+            for corner in 0..STATUS_CORNERS {
+                a.settings.status_size = size;
+                a.settings.status_corner = corner;
+                let l = layout_of(size, corner, a.w, a.h, 1700000000, &b);
+                assert!(rect_contains_rect(band(&a), l.rect), "size {size} corner {corner}: {:?} in {:?}", l.rect, band(&a));
+                assert_eq!(band(&a).h, ui_px(6.0) + l.rect.h);
+            }
+        }
+    }
+
+    #[test]
+    fn the_zone_is_fourteen_millimetres_in_the_corner_and_takes_the_indicator() {
+        utc();
+        up();
         status_reset();
-        assert_eq!(status_zone(&a).w, 71);
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(status_square(&a), Rect { x: 0, y: 0, w: 165, h: 165 });
+        a.dpi = 150.0;
+        assert_eq!(status_square(&a).w, 83);
+        a.dpi = 300.0;
+        // it follows the corner
+        a.settings.status_corner = 2;
+        assert_eq!(status_square(&a), Rect { x: 1695, y: 2315, w: 165, h: 165 });
+        assert!(status_hit(&a, 1850.0, 2470.0) && !status_hit(&a, 70.0, 70.0) && !status_hit(&a, 1600.0, 2470.0));
+        // while the indicator is up, its box is part of the corner: the box and the square, not the screen between
+        a.settings.status_corner = 0;
+        let l = layout_of(2, 0, a.w, a.h, 1700000000, &Battery { percent: 87, charging: true });
+        set_drawn(Some(&l));
+        assert!(status_hit(&a, 70.0, 70.0) && status_hit(&a, (l.rect.x + l.rect.w - 5) as f32, 30.0));
+        assert!(!status_hit(&a, (l.rect.x + l.rect.w + 20) as f32, 30.0) && !status_hit(&a, 400.0, 400.0));
+        // the corner moved, the old box still on the panel until its refresh: both places take the tap, nothing between
+        a.settings.status_corner = 2;
+        assert!(status_hit(&a, 1850.0, 2470.0) && status_hit(&a, 100.0, 30.0));
+        assert!(!status_hit(&a, 900.0, 1200.0) && !status_hit(&a, 1700.0, 100.0));
+        status_reset();
+        assert!(!status_hit(&a, 100.0, 30.0));
     }
 
     #[test]
@@ -735,11 +1197,15 @@ mod tests {
         let mut out = String::new();
         assert_eq!(status_probe(&a, "shown", &mut out, 64), 0);
         assert_eq!(out, "0");
-        status_probe(&a, "text", &mut out, 64);
-        assert_eq!(out, "");
-        status_probe(&a, "rect", &mut out, 64);
-        assert_eq!(out, "");
-        let l = layout_of(0, 1700000000, &Battery { percent: 9, charging: true });
+        for k in ["text", "rect", "icon", "fill", "charging"] {
+            status_probe(&a, k, &mut out, 64);
+            assert_eq!(out, "", "{k}");
+        }
+        status_probe(&a, "zone", &mut out, 64);
+        assert_eq!(out, "0 0 165 165");
+        status_probe(&a, "front", &mut out, 64);
+        assert_eq!(out, "0", "no notebook page in front");
+        let l = layout_of(0, 0, 1860, 2480, 1700000000, &Battery { percent: 9, charging: true });
         set_drawn(Some(&l));
         status_probe(&a, "shown", &mut out, 64);
         assert_eq!(out, "1");
@@ -749,16 +1215,27 @@ mod tests {
         assert_eq!(out, "1");
         status_probe(&a, "rect", &mut out, 64);
         assert_eq!(out, format!("{} {} {} {}", l.rect.x, l.rect.y, l.rect.w, l.rect.h));
+        let ir = l.icon.unwrap();
+        status_probe(&a, "icon", &mut out, 64);
+        assert_eq!(out, format!("{} {} {} {}", ir.x, ir.y, ir.w, ir.h));
+        status_probe(&a, "fill", &mut out, 64);
+        assert_eq!(out, "1");
+        // no battery: no icon, no fill
+        let l = layout_of(0, 0, 1860, 2480, 1700000000, &Battery::default());
+        set_drawn(Some(&l));
+        status_probe(&a, "icon", &mut out, 64);
+        assert_eq!(out, "");
+        status_probe(&a, "fill", &mut out, 64);
+        assert_eq!(out, "");
         assert_eq!(status_probe(&a, "nope", &mut out, 64), -1);
         status_reset();
     }
 
     #[test]
-    fn the_bolt_and_the_clock_are_in_the_font() {
+    fn the_clock_is_in_the_font() {
         up();
-        // The glyphs the corner and the Display sheet draw must exist in the embedded face, or they
-        // draw nothing.
-        for cp in [BOLT_CP, 0xF0150] {
+        // The glyph the Display sheet's rows draw must exist in the embedded face, or they draw nothing.
+        for cp in [0xF0150u32] {
             let mut c = Canvas::default();
             assert_eq!(canvas_init(&mut c, 64, 64), 0);
             canvas_fill(&mut c, Rect { x: 0, y: 0, w: 64, h: 64 }, 255);
@@ -798,6 +1275,36 @@ mod tests {
         }
     }
 
+    #[test]
+    fn refreshes_asked_for_join_where_they_touch_and_stay_apart_where_they_do_not() {
+        status_reset();
+        let near = |r: Rect| with(|s| s.pending.contains(&r));
+        let (a, b, c) = (Rect { x: 6, y: 6, w: 300, h: 50 }, Rect { x: 100, y: 20, w: 400, h: 60 }, Rect { x: 1554, y: 2424, w: 300, h: 50 });
+        ask(a);
+        ask(RECT_EMPTY);
+        assert_eq!(with(|s| s.pending.len()), 1);
+        // a corner's two boxes are two refreshes, never the screen between
+        ask(c);
+        assert_eq!(with(|s| s.pending.len()), 2);
+        assert!(near(a) && near(c));
+        // one that touches a joins it
+        ask(b);
+        assert_eq!(with(|s| s.pending.len()), 2);
+        assert!(near(rect_union(a, b)) && near(c));
+        // a presented refresh takes what it held
+        let reached = rect_union(a, b);
+        with(|s| s.pending.retain(|p| !rect_contains_rect(reached, *p)));
+        assert_eq!(with(|s| s.pending.clone()), vec![c]);
+        // regions to send join the same way
+        let mut v = Vec::new();
+        add_region(&mut v, a);
+        add_region(&mut v, c);
+        add_region(&mut v, b);
+        assert_eq!(v.len(), 2);
+        assert!(v.contains(&rect_union(a, b)) && v.contains(&c));
+        status_reset();
+    }
+
     // (The host's panel is none, so a refresh is sent to nowhere here; the runner's panel is another
     // thread's state in a test, and the scenario y_status_corner.qs covers that build.)
     #[cfg(not(any(feature = "sim", feature = "kindle")))]
@@ -806,6 +1313,7 @@ mod tests {
         utc();
         up();
         status_reset();
+        front(true);
         let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
         assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
         canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: 600, h: 400 }, 200);
@@ -815,19 +1323,29 @@ mod tests {
         ask(r);
         status_pen(&InEvent { type_: InType::PenHover, ..Default::default() });
         status_flush(&mut a);
-        assert_eq!(with(|s| s.pending), r, "kept while the pen is near");
+        assert_eq!(with(|s| s.pending.clone()), vec![r], "kept while the pen is near");
         assert!(rect_is_empty(with(|s| s.drawn)));
         status_pen(&InEvent { type_: InType::PenLeave, ..Default::default() });
         status_flush(&mut a);
-        assert!(rect_is_empty(with(|s| s.pending)), "sent once the pen is gone");
+        assert!(with(|s| s.pending.is_empty()), "sent once the pen is gone");
         assert!(!rect_is_empty(with(|s| s.drawn)));
         assert_eq!(a.screen.px, before, "and the screen holds none of it");
+        // a corner moved: two small refreshes, the new place and the old, and none across the screen
+        a.settings.status_corner = 2;
+        ask_change(&a);
+        assert_eq!(with(|s| s.pending.len()), 2);
+        let old = with(|s| s.drawn);
+        let new = layout(&a).rect;
+        assert!(with(|s| s.pending.contains(&old) && s.pending.contains(&new)) && !rect_overlaps(old, new));
+        status_flush(&mut a);
+        assert!(with(|s| s.pending.is_empty()) && with(|s| s.drawn) == new, "the new place is what is on the panel now");
         // off, what it covered goes with one more, and then nothing is asked for
         a.settings.status_on = false;
-        ask(with(|s| s.drawn));
+        ask_change(&a);
         status_flush(&mut a);
-        assert!(rect_is_empty(with(|s| s.pending)) && rect_is_empty(with(|s| s.drawn)));
+        assert!(with(|s| s.pending.is_empty()) && rect_is_empty(with(|s| s.drawn)));
         status_flush(&mut a);
+        front(false);
         status_reset();
     }
 
@@ -836,6 +1354,7 @@ mod tests {
         utc();
         up();
         status_reset();
+        front(true);
         let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
         assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
         canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: 600, h: 400 }, 200);
@@ -856,24 +1375,64 @@ mod tests {
             }
         }
         assert!(a.screen.px.contains(&255) && a.screen.px.contains(&0));
-        // it is on the panel from here, with its text and its bolt
+        // it is on the panel from here, with its text, its battery and its bolt
         let mut out = String::new();
         status_probe(&a, "shown", &mut out, 8);
         assert_eq!(out, "1");
         status_probe(&a, "charging", &mut out, 8);
         assert_eq!(out, "1");
+        status_probe(&a, "fill", &mut out, 8);
+        assert_eq!(out, battery_fill(42).to_string());
         status_uncover(&mut a, cover);
         assert_eq!(a.screen.px, before);
         // a refresh elsewhere does not touch it
         let mut far = Rect { x: 300, y: 300, w: 50, h: 50 };
         assert!(status_cover(&mut a, &mut far).is_none() && far == Rect { x: 300, y: 300, w: 50, h: 50 });
-        // off, it is not painted at all
+        // in a bottom corner it is painted there, and the top's old place goes with its own refresh when
+        // the refresh does not reach it
+        a.settings.status_corner = 3;
+        let old = with(|s| s.drawn);
+        let mut low = Rect { x: 0, y: 300, w: 600, h: 100 };
+        let c = status_cover(&mut a, &mut low).expect("covered in the bottom corner");
+        assert!(rect_contains_rect(low, c.rect) && c.rect.y > 300 && c.rect.x < 100);
+        assert!(with(|s| s.pending.contains(&old)), "the old place is asked a refresh of its own");
+        status_uncover(&mut a, c);
+        // off, or the page not in front: it is not painted at all
         a.settings.status_on = false;
         let mut dirty = Rect { x: 0, y: 0, w: 600, h: 400 };
         assert!(status_cover(&mut a, &mut dirty).is_none());
         status_presented(&a, dirty);
         status_probe(&a, "shown", &mut out, 8);
         assert_eq!(out, "0");
+        a.settings.status_on = true;
+        front(false);
+        assert!(status_cover(&mut a, &mut dirty).is_none());
+        front(true);
+        status_reset();
+        front(false);
+    }
+
+    #[test]
+    fn a_sheet_over_the_page_takes_the_indicator_down_where_it_is() {
+        utc();
+        up();
+        status_reset();
+        front(true);
+        let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
+        a.settings.status_on = true;
+        let l = layout_of(0, 0, 600, 400, 1700000000, &Battery { percent: 80, charging: false });
+        set_drawn(Some(&l));
+        // the page goes out of front (a sheet opened): the tick asks for the indicator's own rect, and a
+        // refresh that holds it takes it off the panel
+        front(false);
+        status_tick(&mut a, 1000);
+        assert_eq!(with(|s| s.pending.clone()), vec![l.rect]);
+        status_presented(&a, rect_inflate(l.rect, 4));
+        assert!(rect_is_empty(with(|s| s.drawn)) && with(|s| s.pending.is_empty()));
+        // and nothing more is asked while there is nothing on the panel
+        status_tick(&mut a, 1000);
+        assert!(with(|s| s.pending.is_empty()));
         status_reset();
     }
 }

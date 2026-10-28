@@ -44,7 +44,8 @@ pub const SHORTCUT_PICKER_NEXT: i32 = 44;
 /// goes back to the page.
 pub const SHORTCUT_ADD_LINK: i32 = 45;
 pub const SHORTCUT_NAME_PAGE: i32 = 46;
-/// The clock and battery corner on or off, on any screen (status.rs; not in the C tree).
+/// The clock and battery corner on or off (status.rs; not in the C tree): it acts on every screen, and shows
+/// on a notebook page.
 pub const SHORTCUT_STATUS: i32 = 47;
 /// The Index's actions (2.0.0-beta.5, Rust only): the Links bar (two fingers up open it, gesturemap.rs's
 /// built-in), the Find sheet (Go to page or name), back to the page before, the dotted link areas, and
@@ -54,7 +55,9 @@ pub const SHORTCUT_GO_TO_PAGE: i32 = 49;
 pub const SHORTCUT_GO_BACK: i32 = 50;
 pub const SHORTCUT_LINK_AREAS: i32 = 51;
 pub const SHORTCUT_LANDSCAPE_FIT: i32 = 52;
-pub const SHORTCUT_LAST: i32 = 52;
+/// The clock and battery corner's place, the next of the page's four corners (status.rs; Rust only).
+pub const SHORTCUT_STATUS_CORNER: i32 = 53;
+pub const SHORTCUT_LAST: i32 = 53;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. Page turns from a gesture never add a page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,7 +182,7 @@ const K_TOOL_ACTIONS: [&str; TOOL_COUNT] = [
     "tool:charcoal",
     "tool:calligraphy",
 ];
-const K_ACTIONS: [(&str, i32); 33] = [
+const K_ACTIONS: [(&str, i32); 34] = [
     ("undo", SHORTCUT_UNDO), ("redo", SHORTCUT_REDO), ("previous-page", SHORTCUT_PREV_PAGE),
     ("next-page", SHORTCUT_NEXT_PAGE), ("previous-tool", SHORTCUT_PREV_TOOL), ("next-tool", SHORTCUT_NEXT_TOOL),
     ("white", SHORTCUT_WHITE), ("index", SHORTCUT_INDEX), ("hold-eraser", SHORTCUT_HOLD_ERASER),
@@ -191,6 +194,7 @@ const K_ACTIONS: [(&str, i32); 33] = [
     ("picker-next", SHORTCUT_PICKER_NEXT), ("add-link", SHORTCUT_ADD_LINK), ("name-page", SHORTCUT_NAME_PAGE),
     ("status-toggle", SHORTCUT_STATUS), ("links", SHORTCUT_LINKS), ("go-to-page", SHORTCUT_GO_TO_PAGE),
     ("go-back", SHORTCUT_GO_BACK), ("link-areas", SHORTCUT_LINK_AREAS), ("landscape-fit", SHORTCUT_LANDSCAPE_FIT),
+    ("status-corner", SHORTCUT_STATUS_CORNER),
 ];
 /// Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
 /// the analog triggers (hidkeys_trigger_event reports them as these).

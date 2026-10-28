@@ -148,15 +148,13 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
-    editor_open_notebook_at, editor_page_canvas, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
+    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_open_notebook_at, editor_page_canvas, editor_page_in_front, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
     editor_shortcut, editor_shortcut_at, editor_suspend,
 };
-pub use crate::calibrate::calibrate_control_at;
-pub use crate::editor::editor_control_at;
-pub use crate::library::{library_bt, library_control_at, library_learn_key, library_probe};
-pub use crate::pensettings::{pensettings_control_at, pensettings_open, pensettings_probe, pensettings_shortcut};
-pub use crate::share::{share_control_at, share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep};
+pub use crate::library::{library_bt, library_learn_key, library_probe};
+pub use crate::pensettings::{pensettings_open, pensettings_probe, pensettings_shortcut};
+pub use crate::share::{share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep};
 
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 
@@ -737,7 +735,11 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             }
             let action = shortcuts_lookup(&a.shortcuts, ev.gamepad, ev.value, ev.key_mods as i32);
             if action == SHORTCUT_STATUS {
-                status_toggle(a); // (the clock and battery corner is on every screen)
+                status_toggle(a); // (the clock and battery: on or off on every screen, shown on a notebook page)
+                return;
+            }
+            if action == SHORTCUT_STATUS_CORNER {
+                status_cycle_corner(a);
                 return;
             }
             if a.scr == ScreenId::Penset {
@@ -876,8 +878,8 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     {
         note_input(a);
     }
-    // A finger tap in the top left corner on no control turns the clock and battery on or off; the
-    // screen sees the touch as it always does.
+    // A finger tap in the clock and battery's corner of the notebook page, on no control, turns it on or
+    // off; the screen sees the touch as it always does.
     if !a.asleep {
         status_touch(a, ev);
     }
@@ -911,18 +913,6 @@ pub fn app_gestures_load(a: &mut App) {
         qlog!("gestures: %d line(s) of gestures.ini not used", n);
     } else if n < 0 {
         qlog!("gestures: gestures.ini could not be read; the built-in gestures apply");
-    }
-}
-
-/// Whether the current screen has a control at (x, y): a button, a sheet or menu that is up, a
-/// link on the page, the editor's panel. The clock and battery corner leaves a tap there to it.
-pub fn app_control_at(a: &App, x: f32, y: f32) -> bool {
-    match a.scr {
-        ScreenId::Library => library_control_at(a, x, y),
-        ScreenId::Editor => editor_control_at(a, x, y),
-        ScreenId::Penset => pensettings_control_at(a, x, y),
-        ScreenId::Calib => calibrate_control_at(a, x, y),
-        ScreenId::Share => share_control_at(a, x, y),
     }
 }
 
@@ -1175,6 +1165,7 @@ fn app_sleep(a: &mut App) {
     }
     a.asleep = true;
     live_hover_sync(a);
+    status_save_now(a); // (a setting the corner changed, saved after its refresh: the refresh is not coming)
     status_reset(); // (the sleep screen is drawn without the corner)
     a.wake_redraw_at = 0;
     a.wake_fallback_at = 0;

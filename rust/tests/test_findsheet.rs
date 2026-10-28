@@ -86,8 +86,8 @@ fn there_are_at_most_five_rows_upright_and_three_sideways() {
     check!(rows.len() == 3 && rows[2] == "Tema 3");
 }
 
-// The card sits 12 px above the keyboard, a row 124 px with 16 between and 16 of padding, never above the clock
-// corner's zone and 8 px; only the rows that are buttons have hits, at the rows' places.
+// The card sits 12 px above the keyboard, a row 124 px with 16 between and 16 of padding, never above 8 px from the
+// screen's top; only the rows that are buttons have hits, at the rows' places.
 fn the_card_is_above_the_keyboard() {
     let (nb, nav) = notebook(&[(1, "Aa"), (2, "Ab"), (3, "Ac"), (4, "Ad"), (5, "Ae")]);
     for (w, h) in [(1860, 2480), (2480, 1860)] {
@@ -101,7 +101,7 @@ fn the_card_is_above_the_keyboard() {
         check!(n == if w > h { 3 } else { 5 });
         check!(f.rect.y + f.rect.h == kb.y - 12 && f.rect.x == kb.x && f.rect.w == kb.w);
         check!(f.rect.h == 32 + n * 124 + (n - 1) * 16);
-        check!(f.rect.y >= status_zone(&a).h + 8);
+        check!(f.rect.y >= 8);
         check!(f.hits.h.len() as i32 == n);
         // the last row sits on the bottom padding, the first on the top's
         check!(f.hits.h[0].r.y == f.rect.y + 16 && f.hits.h[(n - 1) as usize].r.y + 124 == f.rect.y + f.rect.h - 16);

@@ -77,12 +77,12 @@ pub fn findsheet_open(f: &mut FindSheet, a: &App) {
     // go to a page by typing its number or a name of the Index.
     keyboard_open(&mut f.kb, tr("Page number or name"), b"");
     f.kb.area = keyboard_modal_rect(Rect { x: 0, y: 0, w: a.w, h: a.h });
-    layout(f, a);
+    layout(f);
 }
 
 // The card above the keyboard: its rows 124 px tall with 16 px between and 16 px of padding, the bottom 12 px
-// above the keyboard, its top never above the clock corner's zone and 8 px.
-fn layout(f: &mut FindSheet, a: &App) {
+// above the keyboard, its top never above 8 px from the screen's (the clock and battery is not shown while it is up).
+fn layout(f: &mut FindSheet) {
     hits_clear(&mut f.hits);
     if f.n == 0 {
         f.rect = RECT_EMPTY;
@@ -90,7 +90,7 @@ fn layout(f: &mut FindSheet, a: &App) {
     }
     let (rh, gap, pad) = (u(124.0), u(16.0), u(16.0));
     let h = 2 * pad + f.n as i32 * rh + (f.n as i32 - 1) * gap;
-    let floor = status_zone(a).h + u(8.0);
+    let floor = u(8.0);
     let bottom = f.kb.area.y - u(12.0);
     let top = (bottom - h).max(floor);
     f.rect = Rect { x: f.kb.area.x, y: top, w: f.kb.area.w, h: bottom - top };
@@ -110,7 +110,7 @@ fn row_rect(f: &FindSheet, i: usize) -> Rect {
 }
 
 /// The rows for what the field holds now, made again (the card moved by layout). Returns whether they changed.
-pub fn findsheet_update(f: &mut FindSheet, a: &App, nb: &NotebookInfo, nav: &Nav) -> bool {
+pub fn findsheet_update(f: &mut FindSheet, _a: &App, nb: &NotebookInfo, nav: &Nav) -> bool {
     let before: Vec<(i32, String)> = f.rows[..f.n].iter().map(|r| (r.page, r.label.as_str().to_string())).collect();
     let old = f.rect;
     let text = f.kb.text.as_str().trim().to_string();
@@ -158,7 +158,7 @@ pub fn findsheet_update(f: &mut FindSheet, a: &App, nb: &NotebookInfo, nav: &Nav
         f.rows[i] = FindRow { page: *page, named: *named, label: FixedStr::default() };
         f.rows[i].label.set_cut(label);
     }
-    layout(f, a);
+    layout(f);
     let after: Vec<(i32, String)> = f.rows[..f.n].iter().map(|r| (r.page, r.label.as_str().to_string())).collect();
     let changed = before != after || old != f.rect;
     f.rows_dirty = if changed { rect_union(old, f.rect) } else { RECT_EMPTY };
@@ -215,7 +215,7 @@ pub fn findsheet_draw(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav: &N
     } else {
         f.kb.area = kb_area;
     }
-    layout(f, a);
+    layout(f);
     if rect_overlaps(r, f.rect) {
         draw_rows(f, a);
     }
@@ -225,7 +225,7 @@ pub fn findsheet_draw(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav: &N
 
 /// Draws the card of rows alone, where typing changed it (the editor draws the page under it again first).
 pub fn findsheet_draw_rows(f: &mut FindSheet, a: &mut App) -> Rect {
-    layout(f, a);
+    layout(f);
     draw_rows(f, a);
     f.rect
 }

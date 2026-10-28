@@ -706,12 +706,6 @@ pub fn pensettings_shortcut(a: &mut App, action: i32) -> bool {
     true
 }
 
-/// Whether the pen settings screen has a control at (x, y): a button, a tab, a slider or the pad. The
-/// clock and battery corner leaves a tap there to it.
-pub fn pensettings_control_at(a: &App, x: f32, y: f32) -> bool {
-    a.ps.as_deref().is_none_or(|s| hits_find(&s.hits, x, y).is_some())
-}
-
 pub fn pensettings_event(a: &mut App, ev: &InEvent) {
     let pen = ev.type_ == InType::PenDown || ev.type_ == InType::PenMove || ev.type_ == InType::PenUp;
     let ph = app_pointer_phase(ev);

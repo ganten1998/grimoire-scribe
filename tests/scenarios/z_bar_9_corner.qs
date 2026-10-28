@@ -1,7 +1,8 @@
 # rust-only
-# The clock corner's tap is the clock's alone with the Links bar up, while a page is looked at, and over a link
-# drawn there (which is not followed); a tap outside the bar that is not the corner then stays on the page above;
-# a tap on the panel's Links button is the button again, which cancels to the page the bar began on.
+# The clock corner's tap is the clock's alone over a link drawn there (which is not followed), on the bare page. With
+# the Links bar up, or while a page is looked at, the clock is not shown and that corner is no corner: a tap there is
+# any tap outside the bar, which stays on the page above (or closes the bar on the page it began on); a tap on the
+# panel's Links button is the button again, which cancels to the page the bar began on.
 # root: z_bar_0_make
 wait 300
 tap 200 400
@@ -23,30 +24,42 @@ expect settings.status_on is 1
 expect editor.page is 1
 tap 60 60
 expect settings.status_on is 0
-# with the bar up
+# with the bar up the clock is not shown and the corner is no corner: a tap there is any tap outside the bar, which
+# closes it on the page it began on (the link under it is not followed, the clock not toggled)
 swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
 expect editor.bar.entries is 2
 expect editor.bar.1 is p2 x2
 expect editor.bar.2 is p3 x2
+expect status.front is 0
 tap 60 60
-expect settings.status_on is 1
-expect editor.bar is open
-tap 60 60
+wait 300
 expect settings.status_on is 0
-# while a page is looked at
+expect editor.bar is 0
+expect editor.page is 1
+expect status.front is 1
+# while a page is looked at: the same tap stays on the page above
+swipe 2 930 1300 0 -400
+wait 300
 tap 479 2218
 wait 300
 expect editor.bar is peek
 expect editor.bar.peek is 2
 tap 60 60
-expect settings.status_on is 1
-expect editor.bar is peek
-expect editor.page is 1
-tap 60 60
+wait 300
 expect settings.status_on is 0
+expect editor.bar is 0
+expect editor.page is 2
+key 48 0
+wait 300
+expect editor.page is 1
 # a tap outside it that is not the corner stays on the page above
+swipe 2 930 1300 0 -400
+wait 300
+tap 479 2218
+wait 300
+expect editor.bar is peek
 tap 600 1100
 wait 300
 expect editor.bar is 0

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 06:59-0500\n"
+"POT-Creation-Date: 2026-10-28 08:21-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -499,20 +499,37 @@ msgstr "En reposo: el salvapantallas del Kindle (toca para cambiar)"
 msgid "Sleep screen: KOReader wallpaper (tap to change)"
 msgstr "Al dormir: imagen de KOReader (toca para cambiar)"
 
-#. TRANSLATORS: the Display sheet's row beside Done: how large the clock and battery in the top
-#. left corner are (a tap on that corner turns them on and off), which a tap moves to the next
-#. size. 580 to 720 px at 34 px, with 890 px to hold it on one line (898 in Classic), or two lines.
+#. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
+#. which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
-msgid "Clock and battery size: small (tap to change)"
-msgstr "Tamaño del reloj y la batería: pequeño (toca para cambiar)"
+msgid "Clock size: small"
+msgstr "Tamaño del reloj: pequeño"
 
 #: rust/src/dispmenu.rs
-msgid "Clock and battery size: medium (tap to change)"
-msgstr "Tamaño del reloj y la batería: mediano (toca para cambiar)"
+msgid "Clock size: medium"
+msgstr "Tamaño del reloj: mediano"
 
 #: rust/src/dispmenu.rs
-msgid "Clock and battery size: large (tap to change)"
-msgstr "Tamaño del reloj y la batería: grande (toca para cambiar)"
+msgid "Clock size: large"
+msgstr "Tamaño del reloj: grande"
+
+#. TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
+#. clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+#: rust/src/dispmenu.rs
+msgid "Clock corner: top left"
+msgstr "Esquina del reloj: arriba a la izquierda"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: top right"
+msgstr "Esquina del reloj: arriba a la derecha"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: bottom right"
+msgstr "Esquina del reloj: abajo a la derecha"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: bottom left"
+msgstr "Esquina del reloj: abajo a la izquierda"
 
 #. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
@@ -1660,11 +1677,17 @@ msgstr "Plegar el panel"
 msgid "Close menu"
 msgstr "Cerrar el menú"
 
-#. TRANSLATORS: (Buttons sheet) turns the small clock and battery in the screen's top left
-#. corner on or off, on any screen.
+#. TRANSLATORS: (Buttons sheet) turns the small clock and battery on a notebook page on or off,
+#. on any screen (it shows on a page only).
 #: rust/src/library.rs
 msgid "Clock and battery"
 msgstr "Reloj y batería"
+
+#. TRANSLATORS: (Buttons sheet) moves the clock and battery to the next corner of the notebook
+#. page, clockwise from the top left.
+#: rust/src/library.rs
+msgid "Clock and battery corner"
+msgstr "Esquina del reloj y la batería"
 
 #. TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
 #. up also open.
@@ -2779,6 +2802,35 @@ msgstr "En reposo"
 msgid "Wake the Kindle to share again."
 msgstr "Despierta el Kindle para volver a compartir."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the clock and battery were turned
+#. on with a shortcut where no notebook page is in front; they show on a page only.
+#: rust/src/status.rs
+msgid "Clock and battery on. They show on a notebook page."
+msgstr "Reloj y batería activados. Se ven en la página de un cuaderno."
+
+#. TRANSLATORS: a toast: the clock and battery were turned off with a shortcut.
+#: rust/src/status.rs
+msgid "Clock and battery off."
+msgstr "Reloj y batería desactivados."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) when the status-corner shortcut moves the
+#. clock and battery where no notebook page is in front: which corner of the page they sit in now.
+#: rust/src/status.rs
+msgid "Clock and battery: top left corner of the page"
+msgstr "Reloj y batería: esquina superior izquierda de la página"
+
+#: rust/src/status.rs
+msgid "Clock and battery: top right corner of the page"
+msgstr "Reloj y batería: esquina superior derecha de la página"
+
+#: rust/src/status.rs
+msgid "Clock and battery: bottom right corner of the page"
+msgstr "Reloj y batería: esquina inferior derecha de la página"
+
+#: rust/src/status.rs
+msgid "Clock and battery: bottom left corner of the page"
+msgstr "Reloj y batería: esquina inferior izquierda de la página"
+
 #. TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
 #. offer (1560 px at 64 px in bold, sideways 2180).
 #: rust/src/tplsheet.rs
@@ -3343,6 +3395,12 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Clock and battery size: medium (tap to change)"
+#~ msgstr "Tamaño del reloj y la batería: mediano (toca para cambiar)"
+
+#~ msgid "Clock and battery size: large (tap to change)"
+#~ msgstr "Tamaño del reloj y la batería: grande (toca para cambiar)"
 
 #~ msgid ""
 #~ "Transparent paper records as WebM: an MP4 cannot keep the paper "

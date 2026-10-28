@@ -577,12 +577,6 @@ pub fn share_leave(a: &mut App) {
     app_watch_server(a);
 }
 
-/// Whether the Share screen has a button at (x, y). The clock and battery corner leaves a tap there
-/// to it.
-pub fn share_control_at(a: &App, x: f32, y: f32) -> bool {
-    a.share.as_deref().is_none_or(|s| hits_find(&s.hits, x, y).is_some())
-}
-
 pub fn share_event(a: &mut App, ev: &InEvent) {
     httpd_poll();
     if app_pointer_phase(ev) != 2 {

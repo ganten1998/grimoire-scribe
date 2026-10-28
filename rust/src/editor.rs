@@ -1443,14 +1443,15 @@ fn box_screen(s: &EditorState, p: Rect) -> Rect {
     Rect { x: x0, y: y0, w: (x1 - x0).max(1), h: (y1 - y0).max(1) }
 }
 
-/// Where a box's number tag goes: at its top-left, kept on the screen, and right of the clock corner when
-/// it would fall in that.
+/// Where a box's number tag goes: at its top-left, kept on the screen, and beside the clock's corner when
+/// it would fall in that (right of a corner on the left, left of one on the right).
 fn eye_tag(a: &App, sr: Rect) -> Rect {
     let t = ui_px(52.0);
     let mut r = Rect { x: clampi(sr.x, 0, (a.w - t).max(0)), y: clampi(sr.y, 0, (a.h - t).max(0)), w: t, h: t };
-    let z = corner_zone(a);
+    let z = status_square(a);
     if rect_overlaps(r, z) {
-        r.x = clampi(z.x + z.w + ui_px(8.0), 0, (a.w - t).max(0));
+        let x = if z.x == 0 { z.x + z.w + ui_px(8.0) } else { z.x - t - ui_px(8.0) };
+        r.x = clampi(x, 0, (a.w - t).max(0));
     }
     r
 }
@@ -4668,38 +4669,38 @@ pub fn editor_suspend(a: &mut App) -> bool {
     save_page(a)
 }
 
-/// Whether the editor has a control at (x, y) for a finger: a sheet, a menu or the Pages view that is
-/// up (each takes every tap), the panel, or a link on the page. The page itself is not one. The
-/// clock and battery corner leaves a tap on a control to it.
+/// Whether the notebook's page itself is in front: a notebook is open and no sheet, menu, Pages view, Links bar
+/// or keyboard is over it. The only place the clock and battery shows (status.rs), and where a tap in its
+/// corner is its.
+pub fn editor_page_in_front(a: &App) -> bool {
+    a.ed.as_deref().is_some_and(|s| s.open && !sheet_open(s))
+}
+
+/// Whether the editor has a control at (x, y) for a finger on the page: the panel, or a link there. (A sheet, a
+/// menu or the Pages view that is up takes every tap: the clock and battery is not shown then, and asks no
+/// more.) The clock and battery corner leaves a tap on a control to it, but for a link in its own corner,
+/// which is not one there: the corner's tap is the clock's, over a link too.
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     let s = ed_ref(a);
-    if !s.open || s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.ts.open || s.paper_open {
+    if !s.open || sheet_open(s) {
         return true;
     }
-    if rect_contains(s.panel, x as i32, y as i32) || (s.lb.open && rect_contains(s.lb.rect, x as i32, y as i32)) {
+    if rect_contains(s.panel, x as i32, y as i32) {
         return true;
     }
-    // (A link in the corner is not a control there: the corner's tap is the clock's, over a link too.)
-    if rect_contains(status_zone(a), x as i32, y as i32) {
+    if status_hit(a, x, y) {
         return false;
     }
     let mut l = NavLink::default();
     link_under(a, x, y, &mut l)
 }
 
-/// The clock and battery corner as a finger's tap finds it (status.rs): 12 mm square, and the
-/// indicator while it is up.
-fn corner_zone(a: &App) -> Rect {
-    status_zone(a)
-}
-
 /// Whether the finger lift being handled was a tap in the corner, which the clock took (status.rs
-/// decides at the lift, before the screen sees it, and toggles itself): one finger, unmoved, landed in
-/// the zone, a real lift. A cancel up (the off-screen point that ends a finger a gesture or the pen took)
-/// never is, and the pen is not a finger. Whatever tap a finger on the page would make, the corner's
-/// comes first and nothing else happens.
-fn corner_tap(a: &App, x0: f32, y0: f32, moved: bool, cancelled: bool) -> bool {
-    !cancelled && !moved && rect_contains(corner_zone(a), x0 as i32, y0 as i32) && status_tapped()
+/// decides at the lift, before the screen sees it, and toggles itself): a real lift, not the cancel up (the
+/// off-screen point that ends a finger a gesture or the pen took). Whatever tap a finger on the page would
+/// make, the corner's comes first and nothing else happens.
+fn corner_tap(cancelled: bool) -> bool {
+    !cancelled && status_tapped()
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
@@ -4941,7 +4942,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             // Decided at the lift, in this order: a cancel (the touch became a gesture, or the pen came)
             // ends silently; the corner's tap is the clock's alone; an unmoved, unheld tap follows the link.
             let (x0, y0, moved) = (s.link_press.x0, s.link_press.y0, s.link_press.moved);
-            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) {
+            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(false) {
                 return;
             }
             if !ed_ref(a).link_held && !moved {
@@ -4985,10 +4986,10 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
             s.owner = Owner::None;
             let (x0, y0, moved) = (s.link_press.x0, s.link_press.y0, s.link_press.moved);
-            // In this order: a cancel (the touch became a gesture, or the pen came) does nothing; the corner's
-            // tap is the clock's alone; a lift on the panel's Links button is the button again, which cancels;
-            // any other tap outside stays or closes, and presses nothing.
-            if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) || moved {
+            // In this order: a cancel (the touch became a gesture, or the pen came) does nothing; a lift on the
+            // panel's Links button is the button again, which cancels; any other tap outside stays or closes,
+            // and presses nothing. (The clock's corner is not shown with the bar or Find up: no tap is its.)
+            if ev.value & TOUCH_F_CANCEL != 0 || moved {
                 return;
             }
             if ed_ref(a).find.open {

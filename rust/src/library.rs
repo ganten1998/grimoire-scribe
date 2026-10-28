@@ -779,7 +779,7 @@ static K_INDEX: [LearnRow; 4] = [
     lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
     lr(None, [SHORTCUT_LINK_AREAS, 0], IconKind::Eye),
 ];
-static K_MENUS: [LearnRow; 8] = [
+static K_MENUS: [LearnRow; 9] = [
     lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
     lr(None, [SHORTCUT_PAPER, 0], IconKind::Paper),
     lr(None, [SHORTCUT_DISPLAY, 0], IconKind::Brightness),
@@ -788,6 +788,7 @@ static K_MENUS: [LearnRow; 8] = [
     lr(None, [SHORTCUT_LIBRARY, 0], IconKind::Library),
     lr(None, [SHORTCUT_CLOSE_MENU, 0], IconKind::Close),
     lr(None, [SHORTCUT_STATUS, 0], IconKind::Clock),
+    lr(None, [SHORTCUT_STATUS_CORNER, 0], IconKind::Clock),
 ];
 struct Group {
     /// its row in the list
@@ -898,9 +899,12 @@ fn action_label(action: i32) -> &'static str {
         nm(SHORTCUT_LIBRARY, n_("Library")),
         // TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
         nm(SHORTCUT_CLOSE_MENU, n_("Close menu")),
-        // TRANSLATORS: (Buttons sheet) turns the small clock and battery in the screen's top left
-        // corner on or off, on any screen.
+        // TRANSLATORS: (Buttons sheet) turns the small clock and battery on a notebook page on or off,
+        // on any screen (it shows on a page only).
         nm(SHORTCUT_STATUS, n_("Clock and battery")),
+        // TRANSLATORS: (Buttons sheet) moves the clock and battery to the next corner of the notebook
+        // page, clockwise from the top left.
+        nm(SHORTCUT_STATUS_CORNER, n_("Clock and battery corner")),
         // TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
         // up also open.
         nm(SHORTCUT_LINKS, n_("Links on this page")),
@@ -2428,12 +2432,6 @@ pub fn library_leave(a: &mut App) {
     lib(a).pressed = None;
 }
 
-/// Whether the Library has a control at (x, y): a button, a card, or any sheet that is up (a sheet
-/// takes every tap, a tap outside it included). The clock and battery corner leaves such a tap to it.
-pub fn library_control_at(a: &App, x: f32, y: f32) -> bool {
-    a.lib.as_deref().is_none_or(|s| s.modal != Modal::None || hits_find(&s.hits, x, y).is_some())
-}
-
 pub fn library_event(a: &mut App, ev: &InEvent) {
     let ph = app_pointer_phase(ev);
     if ph < 0 {
@@ -2843,10 +2841,12 @@ mod tests {
         assert_eq!(learn_row_at(3, 0).act, [SHORTCUT_LINKS, 0]);
         assert_eq!(learn_row_at(3, 3).act, [SHORTCUT_LINK_AREAS, 0]);
         assert_eq!(action_label(SHORTCUT_GO_BACK), "Back to the page before");
-        // Menus: the editor's menus, then the clock and battery corner (Rust only), last
-        assert_eq!(group_rows(4), 8);
+        // Menus: the editor's menus, then the clock and battery and its corner (Rust only), last
+        assert_eq!(group_rows(4), 9);
         assert_eq!(learn_row_at(4, 7).act, [SHORTCUT_STATUS, 0]);
+        assert_eq!(learn_row_at(4, 8).act, [SHORTCUT_STATUS_CORNER, 0]);
         assert_eq!(action_label(SHORTCUT_STATUS), "Clock and battery");
+        assert_eq!(action_label(SHORTCUT_STATUS_CORNER), "Clock and battery corner");
         let first = learn_row_at(1, 0);
         assert_eq!(first.act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
         assert_eq!(learn_row_at(1, TOOL_PENS as i32).act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);

@@ -46,6 +46,7 @@ const D_SLEEP_AFTER: i32 = 6;
 const D_DONE: i32 = 7;
 const D_STATUS: i32 = 8;
 const D_FIT: i32 = 9;
+const D_CORNER: i32 = 10;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -64,17 +65,40 @@ static K_MODE_ROWS: [&str; 4] = [
     n_("Sleep screen: KOReader wallpaper (tap to change)"),
 ];
 
-/// The clock and battery corner's size row (settings.ini status_size 0, 1, 2), one sentence per
-/// choice. It sits beside Done, in the room the buttons row leaves, so the sheet's other rows stay
-/// where they were.
+/// The clock and battery's size (settings.ini status_size 0, 1, 2) and corner (status_corner 0, 1, 2, 3): two
+/// cells side by side in the room beside Done, each a tap that moves to the next choice, one sentence for
+/// each choice so a language can put its words in order. Each has 505 px for an icon and two lines of text
+/// at 34 px, about 365 px a line.
 static K_STATUS_ROWS: [&str; 3] = [
-    // TRANSLATORS: the Display sheet's row beside Done: how large the clock and battery in the top
-    // left corner are (a tap on that corner turns them on and off), which a tap moves to the next
-    // size. 580 to 720 px at 34 px, with 890 px to hold it on one line (898 in Classic), or two lines.
-    n_("Clock and battery size: small (tap to change)"),
-    n_("Clock and battery size: medium (tap to change)"),
-    n_("Clock and battery size: large (tap to change)"),
+    // TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
+    // which a tap moves to the next size. Two lines of about 365 px at 34 px.
+    n_("Clock size: small"),
+    n_("Clock size: medium"),
+    n_("Clock size: large"),
 ];
+static K_CORNER_ROWS: [&str; 4] = [
+    // TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
+    // clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+    n_("Clock corner: top left"),
+    n_("Clock corner: top right"),
+    n_("Clock corner: bottom right"),
+    n_("Clock corner: bottom left"),
+];
+
+/// The corner's pictogram in r: the page as an outline, a little taller than wide, with a solid square in the
+/// corner the clock sits in.
+fn draw_corner_icon(c: &mut Canvas, r: Rect, corner: i32) {
+    let (w, h) = (r.w * 3 / 4, r.h);
+    let page = Rect { x: r.x + (r.w - w) / 2, y: r.y, w, h };
+    let t = ui_px(4.0);
+    canvas_rect_outline(c, page, t, 0);
+    let d = w * 2 / 5;
+    let pad = t + ui_px(5.0);
+    let right = corner == 1 || corner == 2;
+    let bottom = corner == 2 || corner == 3;
+    let dot = Rect { x: if right { page.x + w - pad - d } else { page.x + pad }, y: if bottom { page.y + h - pad - d } else { page.y + pad }, w: d, h: d * 2 / 3 };
+    canvas_fill(c, dot, 0);
+}
 
 fn step_of(minutes: i32) -> i32 {
     let mut best = 0usize;
@@ -215,24 +239,23 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     // at 44 px, on the keyboard 334 px at 44 px in bold.
     ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut m.hits, done, D_DONE, 0);
-    // The size of the clock and battery corner (status.rs), left of Done.
-    let sz = Rect { x: in_.x, y: done.y, w: done.x - in_.x - ui_px(30.0), h: done.h };
-    canvas_fill(&mut a.screen, sz, 255);
-    ui_icon(&mut a.screen, IconKind::Clock, Rect { x: sz.x, y: sz.y + sz.h / 8, w: sz.h * 3 / 4, h: sz.h * 3 / 4 }, 0);
-    // (At the small size throughout, so the three sentences look alike: the middle one would not fit
-    // on a line at 44 px.)
-    ui_text(
-        &mut a.screen,
-        FontFace::Regular,
-        ui_small_size(),
-        ui_small_size(),
-        Rect { x: sz.x + sz.h, y: sz.y, w: sz.w - sz.h, h: sz.h },
-        tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]),
-        2,
-        false,
-        0,
-    );
+    // The clock and battery's size and corner (status.rs), left of Done: two cells.
+    let room = Rect { x: in_.x, y: done.y, w: done.x - in_.x - ui_px(30.0), h: done.h };
+    let cw = (room.w - ui_px(20.0)) / 2;
+    let sz = Rect { x: room.x, y: room.y, w: cw, h: room.h };
+    let co = Rect { x: room.x + cw + ui_px(20.0), y: room.y, w: cw, h: room.h };
+    canvas_fill(&mut a.screen, room, 255);
+    let isz = room.h * 3 / 4;
+    ui_icon(&mut a.screen, IconKind::Clock, Rect { x: sz.x, y: sz.y + sz.h / 8, w: isz, h: isz }, 0);
+    // (At the small size throughout, so the sentences look alike: they would not fit on a line at 44 px.)
+    let cell_text = |c: &mut Canvas, cell: Rect, text: &str| {
+        ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: cell.x + room.h, y: cell.y, w: cell.w - room.h, h: cell.h }, text, 2, false, 0);
+    };
+    cell_text(&mut a.screen, sz, tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]));
     hits_add(&mut m.hits, sz, D_STATUS, 0);
+    draw_corner_icon(&mut a.screen, Rect { x: co.x, y: co.y + co.h / 8, w: isz, h: isz }, a.settings.status_corner);
+    cell_text(&mut a.screen, co, tr(K_CORNER_ROWS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]));
+    hits_add(&mut m.hits, co, D_CORNER, 0);
     m.rect
 }
 
@@ -346,6 +369,7 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             settings_save(&a.settings);
         }
         D_STATUS => status_cycle_size(a),
+        D_CORNER => status_cycle_corner(a),
         D_PIN => {
             if editor_pin_sleep_page(a) {
                 a.settings.sleep_mode = 1;
