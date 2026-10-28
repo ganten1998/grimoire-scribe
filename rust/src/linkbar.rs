@@ -126,6 +126,13 @@ pub fn linkbar_group(
     count
 }
 
+/// The entries the pager shows now: the screenful.
+pub fn linkbar_visible(lb: &LinkBar) -> &[LbEntry] {
+    let first = ((lb.screen * lb.per).max(0) as usize).min(lb.n);
+    let end = (first + lb.per.max(0) as usize).min(lb.n);
+    &lb.entries[first..end]
+}
+
 /// The bar's state while it is open (memory only).
 #[derive(Clone, Debug)]
 pub struct LinkBar {
@@ -402,8 +409,9 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         let back = Rect { x: head.x, y: hy, w: bwid, h: bh };
         ui_button(c, back, IconKind::None, &back_text, ButtonStyle::Plain);
         hits_add(&mut lb.hits, back, LB_BACK, 0);
-        let label = if lb.selected >= 0 && (lb.selected as usize) < lb.n { entry_label(nb, nav, &lb.entries[lb.selected as usize]).0 } else { String::new() };
-        let shown = if label.is_empty() { cformat!(tr("Page %d"), peek) } else { label };
+        // (the page's own name, or its number: an entry looked at and the back list's page both are pages)
+        let name = if (peek as usize) <= nb.page_ids.len() { nav_name(nav, nb.page_ids[peek as usize - 1]) } else { "" };
+        let shown = if name.is_empty() { cformat!(tr("Page %d"), peek) } else { name.to_string() };
         // TRANSLATORS: the Links bar's header while a page is on show above it: %s is its name (or "Page 3"), cut
         // to fit; about 1000 px at 44 px.
         let msg = cformat!(tr("Showing %s. Tap the page to stay."), &shown);
@@ -426,7 +434,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         let title = cformat!(tr("Links on this page (%d)"), lb.links);
         ui_text(c, FontFace::Bold, ts, ui_small_size(), Rect { x: tx, y: hy, w: right - tx, h: bh }, &title, 1, false, 0);
     }
-    if lb.header_hint {
+    if lb.header_hint && peek == 0 {
         // TRANSLATORS: a second line of the Links bar's header the first three times it opens, at 34 px (about 1300 px).
         font_draw_left(c, FontFace::Regular, ui_small_size(), Rect { x: head.x, y: hy + bh - u(4.0), w: head.w, h: u(60.0) }, tr("Tap a link to look. Tap the page to stay."), 0);
     }

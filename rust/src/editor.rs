@@ -120,6 +120,49 @@ impl Default for LinkBoxes {
     }
 }
 
+/// The page the Links bar shows above itself while an entry is looked at (D2): a display state only. The open
+/// page (s.index, s.page, its history, the link boxes, s.zoom/ox/oy) and page_canvas stay the origin's until a
+/// commit, so autosave, undo or a link tap can never act on the peeked page.
+#[derive(Clone, Copy, Debug, Default)]
+struct Peek {
+    active: bool,
+    /// the peeked page's index and id
+    index: i32,
+    pid: u32,
+    /// where it rests on this screen (view_rest, centred as view_clamp would)
+    zoom: f32,
+    ox: f32,
+    oy: f32,
+    /// the canvas cache slot it is shown from
+    slot: usize,
+    /// pages looked at since the bar opened: three or more leave GL16 ghosting, so a cancel then is a Full
+    count: i32,
+    /// it is the back list's newest page ("Back to ..."): staying there pops the list instead of pushing
+    from_back: bool,
+}
+
+/// A page canvas the bar keeps for a peek (the origin's is page_canvas, so three in all): rendered ahead of the
+/// tap in bands, or at the tap. Keyed by page id, page size and bgimage_generation(); freed when the bar closes.
+#[derive(Default)]
+struct CacheEntry {
+    /// 0: the slot is free
+    pid: u32,
+    w: i32,
+    h: i32,
+    pic_gen: u32,
+    canvas: Canvas,
+    /// the page it was drawn from when the session cache (EditorState.hist) did not have it: read by the
+    /// pumped reader, moved into the session cache at a commit
+    page: Option<Box<Page>>,
+    /// rows of the canvas drawn so far (all of them: ready)
+    rows_done: i32,
+    from_hist: bool,
+    /// a picture an image paper shows was not there when it was drawn: a commit draws the page again
+    white: bool,
+    /// when it was last shown (cache_tick), for the least recently used
+    used: u32,
+}
+
 /// The page's paper alone, at page size (EditorState.paper): the C's Canvas, whose pixels the brush
 /// of an erase stroke points into while it draws. Here the brush shares them (BrushState.paper,
 /// PORTING.md, Ownership): drawn into a canvas of their own, then held shared, so a stroke keeps the
@@ -277,6 +320,13 @@ pub struct EditorState {
     boxes: LinkBoxes,
     /// the Links bar (linkbar.rs), over the page while it is open
     lb: LinkBar,
+    /// the page it shows above itself, if it does
+    peek: Peek,
+    /// two page canvases besides page_canvas for the peeks, and what they did since the bar opened
+    ccache: [CacheEntry; 2],
+    cache_hits: i32,
+    cache_misses: i32,
+    cache_tick: u32,
 
     /// Display sheet (front light, invert)
     dm: DispMenu,
@@ -695,7 +745,8 @@ fn draw_panel(a: &mut App) {
     }
     y += btn_h() + gap();
     let mut lab = String::new();
-    csnprintf!(&mut lab, 32, "%d / %d", s.index + 1, s.nb.npages());
+    // (a page the Links bar is looking at shows its own number)
+    csnprintf!(&mut lab, 32, "%d / %d", if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages());
     let lr = Rect { x: x - ui_px(6.0), y, w: w + ui_px(12.0), h: label_h() };
     ui_frame(c, lr, ui_px(10.0), 0, false, ui_px(2.0)); // a tappable chip: opens Pages
     let fit = g_fit();
@@ -1125,7 +1176,11 @@ fn zoomed(a: &App) -> bool {
 fn blit_view(a: &mut App, r: Rect) {
     let App { screen, ed, .. } = a;
     let s = ed.as_deref().unwrap();
-    let pc = &s.page_canvas;
+    blit_canvas(screen, &s.page_canvas, s.zoom, s.ox, s.oy, r);
+}
+
+// The same for any page canvas at any view: the open page's, or the one the Links bar shows.
+fn blit_canvas(screen: &mut Canvas, pc: &Canvas, zoom: f32, ox: f32, oy: f32, r: Rect) {
     // (the C's static ix[8192], wx[8192])
     let mut ix = [0i32; 8192];
     let mut wx = [0u8; 8192];
@@ -1134,14 +1189,14 @@ fn blit_view(a: &mut App, r: Rect) {
         r.w = 8192;
     }
     for i in 0..r.w {
-        let fx = ((r.x + i) as f32 + 0.5) / s.zoom + s.ox - 0.5;
+        let fx = ((r.x + i) as f32 + 0.5) / zoom + ox - 0.5;
         let x = fx.floor() as i32;
         ix[i as usize] = x;
         wx[i as usize] = ((fx - x as f32) * 255.0) as u8;
     }
     for y in r.y..r.y + r.h {
         let dst = y as usize * screen.stride as usize;
-        let fy = (y as f32 + 0.5) / s.zoom + s.oy - 0.5;
+        let fy = (y as f32 + 0.5) / zoom + oy - 0.5;
         let py = fy.floor() as i32;
         let wy = ((fy - py as f32) * 255.0) as u32;
         let py0 = clampi(py, 0, pc.h - 1);
@@ -1166,6 +1221,28 @@ fn blit_view(a: &mut App, r: Rect) {
             work_pump();
         }
     }
+}
+
+/// Where a page of pgw x pgh rests on an aw x ah screen (view_rest), centred as view_clamp centres it: what
+/// the view_reset of that page would give, for the page the bar shows without making it the open one.
+fn peek_view(aw: i32, ah: i32, pgw: i32, pgh: i32, fit: bool) -> (f32, f32, f32) {
+    let (zoom, zoom_min, zoom_max) = view_rest(aw, ah, pgw, pgh, fit);
+    let z = clampf(zoom, zoom_min, zoom_max);
+    let mut vw = aw as f32 / z;
+    let mut vh = ah as f32 / z;
+    if (vw - pgw as f32).abs() < 0.01 {
+        vw = pgw as f32;
+    }
+    if (vh - pgh as f32).abs() < 0.01 {
+        vh = pgh as f32;
+    }
+    // (a view that holds the whole page on an axis is centred on it; else it starts at the top or the left)
+    let ox = if vw >= pgw as f32 { -(vw - pgw as f32) / 2.0 } else { clampf(0.0, 0.0, pgw as f32 - vw) };
+    let oy = if vh >= pgh as f32 { -(vh - pgh as f32) / 2.0 } else { clampf(0.0, 0.0, pgh as f32 - vh) };
+    if (z - 1.0).abs() < 0.01 && pgw == aw && pgh == ah {
+        return (1.0, 0.0, 0.0);
+    }
+    (z, ox, oy)
 }
 
 // ---- tool picker ----
@@ -1369,7 +1446,7 @@ fn eye_reach(a: &App, sr: Rect) -> Rect {
 /// Only on the screen (never in the page canvas, so never in a thumbnail, the PDF, the share page or the sleep
 /// image), 1-bit, so DU and GL16 show it alike. At most LB_MAX boxes, each tested against r.
 fn draw_areas(a: &mut App, r: Rect) {
-    if !a.settings.link_areas {
+    if !a.settings.link_areas || ed_ref(a).peek.active {
         return;
     }
     boxes_get(a);
@@ -1453,7 +1530,18 @@ fn compose(a: &mut App, r: Rect) {
     if rect_is_empty(r) {
         return;
     }
-    if view_identity(a) {
+    let s = ed_ref(a);
+    if s.peek.active {
+        // The page the bar is looking at, at its own rest view; the open page is not touched.
+        let (zoom, ox, oy, slot) = (s.peek.zoom, s.peek.ox, s.peek.oy, s.peek.slot);
+        let App { screen, ed, .. } = a;
+        let pc = &ed.as_deref().unwrap().ccache[slot].canvas;
+        if zoom == 1.0 && ox == 0.0 && oy == 0.0 && pc.w == screen.w && pc.h == screen.h {
+            canvas_blit(screen, pc, r, r.x, r.y);
+        } else {
+            blit_canvas(screen, pc, zoom, ox, oy, r);
+        }
+    } else if view_identity(a) {
         let App { screen, ed, .. } = a;
         canvas_blit(screen, &ed.as_deref().unwrap().page_canvas, r, r.x, r.y);
     } else {
@@ -1493,7 +1581,8 @@ fn compose(a: &mut App, r: Rect) {
             lb.rect
         };
         if rect_overlaps(r, rect) {
-            let peek = 0;
+            let s = ed_ref(a);
+            let peek = if s.peek.active { s.peek.index + 1 } else { 0 };
             with_lb(a, |lb, a, nb, nav| linkbar_draw(lb, a, nb, nav, peek));
         }
         a.toast_floor = rect.y;
@@ -3095,6 +3184,8 @@ fn bar_open(a: &mut App) {
     let (dpi, aw, ah) = (a.dpi, a.w, a.h);
     let s = ed(a);
     s.link_mode = false;
+    s.peek = Peek::default();
+    cache_free(s);
     s.boxes.stale = true;
     boxes_get(a);
     let shown = (a.settings.hints >> HINT_BAR_SHIFT) & HINT_BAR_MASK;
@@ -3119,22 +3210,316 @@ fn bar_open(a: &mut App) {
 }
 
 // The bar is gone without a word: leaving the editor, a sleep, the notebook closing, or something that
-// draws everything itself next.
+// draws everything itself next. A page it was looking at is only a display state, so nothing is undone:
+// page_canvas and the view were never touched.
 fn bar_drop(s: &mut EditorState) {
     s.lb.open = false;
     s.lb.has_pressed = false;
+    s.peek = Peek::default();
+    cache_free(s);
 }
 
-// Cancel: back to the origin, and the bar closes (a GL16 of its card).
+// The canvases of the peeks are freed with the bar.
+fn cache_free(s: &mut EditorState) {
+    for e in s.ccache.iter_mut() {
+        *e = CacheEntry::default();
+    }
+    s.cache_hits = 0;
+    s.cache_misses = 0;
+}
+
+// Cancel: back to the origin, and the bar closes: a GL16 of its card, or, with a page looked at, the whole
+// screen again (the origin's canvas was never touched), a Full after three peeks (GL16 ghosting builds up).
 fn bar_cancel(a: &mut App) {
     let s = ed(a);
     if !s.lb.open {
         return;
     }
-    let r = s.lb.rect;
+    let (r, peeking, full) = (s.lb.rect, s.peek.active, s.peek.count >= 3);
     bar_drop(s);
-    compose(a, r);
-    app_invalidate(a, r, RefreshMode::Ui);
+    if peeking {
+        compose_all(a, if full { RefreshMode::Full } else { RefreshMode::Ui });
+    } else {
+        compose(a, r);
+        app_invalidate(a, r, RefreshMode::Ui);
+    }
+}
+
+// Stay where it is looking, or just close if it is looking at nothing: a tap on the page, a tap outside the
+// bar, the page above, a pen down outside.
+fn bar_stay(a: &mut App) {
+    if ed_ref(a).peek.active {
+        bar_commit(a);
+    } else {
+        bar_cancel(a);
+    }
+}
+
+// The page above the bar is a page the notebook has now: what go_to_page does, without a render and without a
+// second read. The origin is saved and goes on the back list (or, if this page was reached through Back, the
+// list is popped, as a browser's Back does); the peeked page takes the origin's place, its canvas swapped into
+// page_canvas and its Page into the session cache; one Full, which clears the peeks' ghosting.
+fn bar_commit(a: &mut App) {
+    let s = ed(a);
+    if !s.lb.open || !s.peek.active {
+        return;
+    }
+    let pk = s.peek;
+    if !save_page(a) {
+        bar_cancel(a);
+        return;
+    }
+    write_thumb_if_needed(a);
+    let s = ed(a);
+    let from = s.open_pid();
+    // The peeked page in the session cache: the one it has, else the one the bar read, moved in.
+    let Some(e) = s.entry_for(pk.pid) else {
+        bar_cancel(a);
+        return;
+    };
+    if s.hist[e].page.is_none() {
+        s.hist[e].page = s.ccache[pk.slot].page.take();
+    }
+    let ready = s.hist[e].page.is_some() && s.ccache[pk.slot].rows_done >= s.pgh && !s.ccache[pk.slot].white;
+    if s.hist[e].page.is_none() {
+        // (the page was lost somewhere: read it again, as go_to_page does)
+        bar_drop(s);
+        go_to_page_pushing(a, pk.index);
+        return;
+    }
+    live_reset();
+    a.live_processed = 0;
+    a.live_processed_ms = 0;
+    let s = ed(a);
+    s.link_mode = false;
+    s.settle = RECT_EMPTY;
+    s.panel_stale = false;
+    s.page = Some(pk.pid);
+    s.index = pk.index;
+    s.nb.last_page = pk.index;
+    s.info_dirty = true;
+    if ready {
+        // It was drawn from that very Page: they match by construction (canvas_page).
+        let App { ed, .. } = a;
+        let s = ed.as_deref_mut().unwrap();
+        std::mem::swap(&mut s.page_canvas, &mut s.ccache[pk.slot].canvas);
+        s.canvas_page = s.open_page_ref();
+        s.boxes.stale = true;
+        if s.open_page().is_some_and(|p| paper_is_image(p.paper)) {
+            s.paper_stale = true;
+        }
+    } else {
+        render_page_full(a);
+    }
+    let s = ed(a);
+    if pk.from_back {
+        s.back.pop();
+    } else if from != 0 {
+        s.back_push(from);
+    }
+    bar_drop(s);
+    view_reset(a);
+    compose_all(a, RefreshMode::Full);
+    arrive_readonly(a);
+}
+
+// ---- the peek's canvases ----
+
+/// Rows of a page's canvas drawn in one go ahead of a tap.
+const CACHE_BAND: i32 = 160;
+
+// The slot that holds this page at this size and picture generation, if any.
+fn cache_find(s: &EditorState, pid: u32) -> Option<usize> {
+    let gen = bgimage_generation();
+    (0..s.ccache.len()).find(|&i| {
+        let e = &s.ccache[i];
+        e.pid == pid && e.w == s.pgw && e.h == s.pgh && e.pic_gen == gen && !e.canvas.px.is_empty()
+    })
+}
+
+// A slot for a page: a free one; else (for a tap, not for the prefetch) the least recently used that is not the
+// one on show.
+fn cache_victim(s: &EditorState, evict: bool) -> Option<usize> {
+    if let Some(i) = (0..s.ccache.len()).find(|&i| s.ccache[i].pid == 0 || s.ccache[i].canvas.px.is_empty()) {
+        return Some(i);
+    }
+    if !evict {
+        return None;
+    }
+    (0..s.ccache.len()).filter(|&i| !(s.peek.active && s.peek.slot == i)).min_by_key(|&i| s.ccache[i].used.wrapping_sub(s.cache_tick))
+}
+
+// A canvas and a page for page `index` in a slot (nothing drawn yet): the session cache's page if it has one,
+// else read by the pumped reader. False when there is no memory for the canvas or the page does not read.
+fn cache_begin(a: &mut App, slot: usize, index: i32) -> bool {
+    let s = ed(a);
+    let (pid, w, h) = (s.nb.page_ids[index as usize], s.pgw, s.pgh);
+    s.ccache[slot] = CacheEntry::default();
+    let e = &mut s.ccache[slot];
+    if canvas_init(&mut e.canvas, w, h) != 0 {
+        s.ccache[slot] = CacheEntry::default();
+        return false;
+    }
+    e.w = w;
+    e.h = h;
+    e.pic_gen = bgimage_generation();
+    e.from_hist = s.hist.iter().any(|x| x.page_id == pid && x.page.is_some());
+    if !e.from_hist {
+        let mut p = None;
+        if store_load_page_pumped(&s.nb, index, w, h, &mut p) != 0 || p.is_none() {
+            s.ccache[slot] = CacheEntry::default();
+            return false;
+        }
+        e.page = p;
+    }
+    e.pid = pid;
+    true
+}
+
+// Draws up to `bands` bands of 160 rows of a slot's canvas (all that are left with i32::MAX) from its page.
+fn cache_render(a: &mut App, slot: usize, bands: i32) {
+    let dpi = a.dpi;
+    let s = ed(a);
+    let (pgw, pgh) = (s.pgw, s.pgh);
+    let App { ed, .. } = a;
+    let s = ed.as_deref_mut().unwrap();
+    let e = &mut s.ccache[slot];
+    if e.pid == 0 || e.rows_done >= pgh {
+        return;
+    }
+    let page: &Page = if e.from_hist {
+        match s.hist.iter().find(|x| x.page_id == e.pid).and_then(|x| x.page.as_deref()) {
+            Some(p) => p,
+            None => return,
+        }
+    } else {
+        match e.page.as_deref() {
+            Some(p) => p,
+            None => return,
+        }
+    };
+    bgimage_take_missing(); // (what drew white before)
+    let mut n = 0;
+    while e.rows_done < pgh && n < bands {
+        let r = Rect { x: 0, y: e.rows_done, w: pgw, h: CACHE_BAND.min(pgh - e.rows_done) };
+        page_render(&mut e.canvas, page, r, dpi);
+        e.rows_done += r.h;
+        n += 1;
+    }
+    if bgimage_take_missing() {
+        e.white = true; // (a picture that is not there yet drew white: a commit draws the page again)
+    }
+}
+
+// The page the bar looks at above itself: from the cache (drawn whole now if the prefetch has not), the origin
+// untouched. The page area above the bar and the bar go out as one GL16: no flash, never a GC16. `selected`
+// is the entry (-1 for the back list's page).
+fn peek_page(a: &mut App, t: i32, selected: i32, from_back: bool) {
+    let (aw, ah, fit) = (a.w, a.h, a.settings.landscape_fit);
+    let s = ed(a);
+    if t < 0 || t >= s.nb.npages() {
+        return;
+    }
+    let pid = s.nb.page_ids[t as usize];
+    let slot = match cache_find(s, pid) {
+        Some(i) => {
+            if s.ccache[i].rows_done >= s.pgh {
+                s.cache_hits += 1;
+            } else {
+                s.cache_misses += 1;
+            }
+            i
+        }
+        None => {
+            s.cache_misses += 1;
+            let made = cache_victim(s, true).filter(|&i| cache_begin(a, i, t));
+            match made {
+                Some(i) => i,
+                None => {
+                    // No memory for another canvas, or the page does not read: what a link follow does, the same
+                    // pixels, slower, no peek (the origin goes on the back list).
+                    let s = ed(a);
+                    let was = s.lb.open;
+                    bar_drop(s);
+                    if was {
+                        go_to_page_pushing(a, t);
+                    }
+                    return;
+                }
+            }
+        }
+    };
+    cache_render(a, slot, i32::MAX);
+    let s = ed(a);
+    s.cache_tick = s.cache_tick.wrapping_add(1);
+    s.ccache[slot].used = s.cache_tick;
+    let (zoom, ox, oy) = peek_view(aw, ah, s.pgw, s.pgh, fit);
+    let count = s.peek.count + 1;
+    s.peek = Peek { active: true, index: t, pid, zoom, ox, oy, slot, count, from_back };
+    s.lb.selected = selected;
+    let area = Rect { x: 0, y: 0, w: aw, h: s.lb.rect.y };
+    let bar = s.lb.rect;
+    compose(a, area);
+    compose(a, bar);
+    app_invalidate(a, rect_union(area, bar), RefreshMode::Ui);
+}
+
+// The back chip. While a page is looked at it shows the origin again (the bar stays, its header the origin's);
+// with none, "Back to ..." looks at the back list's newest page.
+fn bar_back(a: &mut App) {
+    let aw = a.w;
+    let s = ed(a);
+    if s.peek.active {
+        s.peek = Peek { count: s.peek.count, ..Peek::default() };
+        s.lb.selected = -1;
+        let (area, bar) = (Rect { x: 0, y: 0, w: aw, h: s.lb.rect.y }, s.lb.rect);
+        compose(a, area);
+        compose(a, bar);
+        app_invalidate(a, rect_union(area, bar), RefreshMode::Ui);
+    } else if let Some((t, _)) = s.back_top() {
+        peek_page(a, t, -1, true);
+    }
+}
+
+// The next thing the bar can get ready for a tap while the pens and fingers are idle: the pages its entries on
+// screen go to, then the back list's newest, each read (one page a tick) and drawn (one band of 160 rows a tick)
+// into a free slot. It never evicts what is there, and it stops at the first contact (editor_tick asks).
+fn prefetch_step(a: &mut App) {
+    let s = ed(a);
+    if !s.lb.open {
+        return;
+    }
+    let mut want: Vec<i32> = Vec::new();
+    for e in linkbar_visible(&s.lb) {
+        if e.page >= 0 && e.page != s.index && !want.contains(&e.page) {
+            want.push(e.page);
+        }
+    }
+    if let Some((t, _)) = s.back_top() {
+        if t != s.index && !want.contains(&t) {
+            want.push(t);
+        }
+    }
+    for t in want {
+        let s = ed(a);
+        let pid = s.nb.page_ids[t as usize];
+        match cache_find(s, pid) {
+            Some(i) => {
+                if s.ccache[i].rows_done < s.pgh {
+                    cache_render(a, i, 1);
+                    return;
+                }
+            }
+            None => {
+                // (a free slot only: what is there is wanted by a tap as much)
+                let Some(i) = cache_victim(s, false) else { return };
+                if cache_begin(a, i, t) {
+                    return; // (a page read is the tick's work)
+                }
+                return;
+            }
+        }
+    }
 }
 
 // What the bar was asked (linkbar_pointer's answer to a tap), after the rect of the button let go is
@@ -3145,6 +3530,20 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
     }
     match r {
         LbResult::Cancel => bar_cancel(a),
+        LbResult::Peek(i) => {
+            let Some(e) = ed_ref(a).lb.entries.get(i as usize).copied() else { return };
+            if e.page == NAV_TO_INDEX {
+                bar_result(a, LbResult::Index, RECT_EMPTY);
+            } else if e.page < 0 {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
+                // whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
+                app_toast(a, tr("That link's page is not in this notebook."), 3000);
+            } else if e.page != ed_ref(a).index {
+                peek_page(a, e.page, i, false);
+            }
+        }
+        LbResult::Commit => bar_commit(a),
+        LbResult::Back => bar_back(a),
         LbResult::NewLink => {
             let s = ed(a);
             if s.lb.readonly {
@@ -3156,7 +3555,8 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
                 // read, so the Links bar lists none and cannot make one.
                 app_toast(a, tr("Links could not be read."), 3000);
             } else {
-                bar_cancel(a);
+                // The new link goes on the page that shows: commit to it first, then today's inked flow.
+                bar_stay(a);
                 link_start(a);
             }
         }
@@ -3170,6 +3570,10 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
             }
         }
         LbResult::Index => {
+            // The Index acts on the page that shows: commit to it, then the Pages view's Index tab.
+            if ed_ref(a).peek.active {
+                bar_commit(a);
+            }
             bar_drop(ed(a));
             pages_show(a);
             ed(a).pv.index_tab = true;
@@ -3433,6 +3837,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
     if front != 0 && menu_action(action) {
         if s.pv.open && s.pv.kb.open {
             return false;
+        }
+        // Another menu's button or key while the bar looks at a page: that page is the one the menu is for.
+        if front == SHORTCUT_LINKS && s.peek.active && action != SHORTCUT_LINKS && action != SHORTCUT_CLOSE_MENU {
+            bar_commit(a);
+            open_menu(a, action);
+            return true;
         }
         if (action == SHORTCUT_PAGES || action == SHORTCUT_INDEX) && action != front && s.pv.open {
             s.pv.index_tab = action == SHORTCUT_INDEX; // the other tab, as a tap on it
@@ -4217,7 +4627,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             } else {
                 s.owner = Owner::Outside;
                 if pen {
-                    bar_cancel(a);
+                    bar_stay(a); // (the page above stays, or the bar just closes; the stroke is swallowed)
                 } else {
                     press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
                 }
@@ -4355,7 +4765,12 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             if ev.value & TOUCH_F_CANCEL != 0 || corner_tap(a, x0, y0, moved, false) || moved || !ed_ref(a).lb.open {
                 return;
             }
-            bar_cancel(a);
+            let links_button = ed_ref(a).hits.h.iter().any(|h| h.id == P_LINKS && rect_contains(h.r, x0 as i32, y0 as i32));
+            if links_button {
+                bar_cancel(a);
+            } else {
+                bar_stay(a);
+            }
         }
         Owner::Tools => {
             press_move(&mut s.tools_press, ev.x, ev.y);
@@ -4536,6 +4951,12 @@ pub fn editor_tick(a: &mut App, now: u32) {
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && now.wrapping_sub(s.link_down_at) >= LINK_HOLD_MS {
         link_hold(a);
     }
+    // The Links bar gets the pages it goes to ready while nothing is touching: a page or a band a tick.
+    let drained = a.input_drained;
+    let s = ed(a);
+    if s.open && s.lb.open && s.owner == Owner::None && drained {
+        prefetch_step(a);
+    }
     // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during
     // which a sheet was in front of the page, nor one the pen pressed anything during.
     let s = ed(a);
@@ -4708,7 +5129,15 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d %d", live.len() as i32, top);
     } else if key == "bar" {
         // The Links bar: closed (0), open, or looking at another page (peek).
-        csnprintf!(out, cap, "%s", if s.lb.open { "open" } else { "0" });
+        csnprintf!(out, cap, "%s", if !s.lb.open { "0" } else if s.peek.active { "peek" } else { "open" });
+    } else if key == "bar.peek" {
+        // The number of the page the bar is looking at, 0 when it is not.
+        csnprintf!(out, cap, "%d", if s.lb.open && s.peek.active { s.peek.index + 1 } else { 0 });
+    } else if key == "canvas_cache" {
+        // What the bar's canvas cache did since the bar opened: taps that found their page ready, taps that did
+        // not, and the pages it holds now ("1 0 2").
+        let held = s.ccache.iter().filter(|e| e.pid != 0 && !e.canvas.px.is_empty()).count();
+        csnprintf!(out, cap, "%d %d %d", s.cache_hits, s.cache_misses, held as i32);
     } else if let Some(k) = key.strip_prefix("bar.") {
         if !linkbar_probe(&s.lb, k, out, cap) {
             return -1;
@@ -5070,6 +5499,22 @@ mod tests {
         a.settings.landscape_fit = true;
         view_reset(&mut a);
         assert!(view_identity(&a) && !zoomed(&a));
+    }
+
+    #[test]
+    fn a_peeked_page_rests_where_the_open_page_would() {
+        // The view the bar shows a page at is the one view_reset would give it as the open page, on every
+        // screen and page shape, with the whole page sideways on and off.
+        for (aw, ah, pw, ph) in [(1860, 2480, 1860, 2480), (2480, 1860, 1860, 2480), (1986, 2648, 1986, 2648), (2648, 1986, 1986, 2648), (1860, 2480, 1986, 2648), (2480, 1860, 1986, 2648), (1986, 2648, 1860, 2480)] {
+            for fit in [false, true] {
+                let mut a = app(aw, ah, pw, ph);
+                a.settings.landscape_fit = fit;
+                view_reset(&mut a);
+                let s = ed_ref(&a);
+                let (z, ox, oy) = peek_view(aw, ah, pw, ph, fit);
+                assert_eq!((z.to_bits(), ox.to_bits(), oy.to_bits()), (s.zoom.to_bits(), s.ox.to_bits(), s.oy.to_bits()), "{aw}x{ah} page {pw}x{ph} fit {fit}");
+            }
+        }
     }
 
     #[test]
