@@ -102,6 +102,9 @@ pub struct App {
     pub toast_under: Canvas,
     /// pixels Live view's chip covers, put back after each present
     pub chip_under: Canvas,
+    /// where the chip was last put on the panel (empty for none): it moves with the editor's panel, and goes
+    /// with a menu in front of the page
+    pub chip_at: Rect,
     /// toasts stay above this y (the keyboard, a sheet's buttons); 0 none.
     /// The screen sets it as it draws; app_switch clears it.
     pub toast_floor: i32,
@@ -148,7 +151,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_chip, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
     editor_open_notebook_at, editor_page_canvas, editor_page_in_front, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
     editor_shortcut, editor_shortcut_at, editor_suspend,
 };
@@ -1031,12 +1034,32 @@ pub fn app_watch_server(a: &mut App) {
     input_watch_fd(if httpd_running() && !a.asleep { httpd_fd() } else { -1 });
 }
 
-// Where the chip that says Live view is on sits: the top right corner, inside the screens' 50 px
-// margin (clear of the Library's buttons), never in the stream.
+// Where the chip that says Live view is on sits. On a notebook page it is beside the editor's panel, and moves with
+// it: left of it (right where the panel is at the screen's left edge), level with its header; with a menu, sheet or
+// bar in front, which draws over the panel, there is none. On the other screens (no panel) it is in the top right
+// corner, inside the screens' 50 px margin (clear of the Library's buttons). Never in the stream.
 fn live_chip(a: &App) -> Rect {
     let s = ui_px(42.0);
     let m = ui_px(4.0);
+    if a.scr == ScreenId::Editor {
+        return editor_live_chip(a, s);
+    }
     Rect { x: a.w - s - m, y: m, w: s, h: s }
+}
+
+// The chip is where live_chip says now: when it moved (the panel was dragged or folded, a menu opened or closed,
+// Live view started or stopped) the pixels it left are shown again from the screen, and the screen guard skips
+// the new place.
+fn live_chip_sync(a: &mut App) {
+    let now = if live_on() { live_chip(a) } else { RECT_EMPTY };
+    if now == a.chip_at {
+        return;
+    }
+    let old = a.chip_at;
+    a.chip_at = now;
+    display_skip_overlay(now);
+    app_invalidate(a, old, RefreshMode::Ui); // (what is under it comes back)
+    app_invalidate(a, now, RefreshMode::Ui);
 }
 
 // The raw digitizer's map for the pen viewers (input_raw_pen), as it stands: at each tick, as Live
@@ -1103,8 +1126,7 @@ pub fn live_view_open(a: &mut App) {
         status_live(a); // (the clock and battery corner's layer, if it is up)
         input_sample_hook(Some(live_capture), Some(live_wake_samples));
         input_hover_hook(Some(live_hover));
-        display_skip_overlay(live_chip(a));
-        app_invalidate(a, live_chip(a), RefreshMode::Ui);
+        live_chip_sync(a);
         qlog!("live: on");
     }
     share_open_live(a);
@@ -1122,8 +1144,7 @@ pub fn live_view_stop(a: &mut App, say: bool) {
     pair_forget(PAIR_LIVE); // the browsers that paired must pair again next time
     httpd_release(HTTPD_LIVE);
     app_watch_server(a);
-    display_skip_overlay(RECT_EMPTY);
-    app_invalidate(a, live_chip(a), RefreshMode::Ui); // (the chip goes: what is under it comes back)
+    live_chip_sync(a); // (the chip goes: what is under it comes back)
     with(|s| s.live_viewers = 0);
     qlog!("live: off");
     // TRANSLATORS: a toast as Live view stops (the Stop button on its card).
@@ -1335,9 +1356,7 @@ pub fn app_set_rotation(a: &mut App, quarter_turns: i32) {
     live_raw_sync(); // (the turned map before the new epoch: no frame of it placed the old way)
     live_resize(w, h);
     with(|s| s.live_panel = RECT_EMPTY); // (live_resize took the layers away)
-    if live_on() {
-        display_skip_overlay(live_chip(a));
-    }
+    a.chip_at = RECT_EMPTY; // (the whole screen is drawn again: the next flush puts the chip where it goes now)
     // Re-lay out the current screen in the new shape.
     a.relayout = true;
     (ops(a.scr).leave)(a);
@@ -1572,6 +1591,7 @@ fn app_flush_in(a: &mut App) {
     if a.asleep {
         return; // the sleep screen stays up until wake
     }
+    live_chip_sync(a);
     if rect_is_empty(a.dirty) && rect_is_empty(with(|s| s.self_dirty)) {
         live_presented(a.live_processed, a.live_processed_ms);
         status_flush(a); // (the clock and battery corner alone: its own small refresh, if one is due)
@@ -1599,7 +1619,7 @@ fn app_flush_in(a: &mut App) {
     live_push_screen(a, a.dirty); // (before the toast, the chip and the corner: none is streamed)
     live_presented(a.live_processed, a.live_processed_ms);
     // The chip over what it covers, put back after the present, as the toast is.
-    let chip = if live_on() { live_chip(a) } else { RECT_EMPTY };
+    let chip = a.chip_at;
     let mut chipped = !rect_is_empty(chip) && rect_overlaps(a.dirty, chip);
     if chipped {
         a.dirty = rect_union(a.dirty, chip);
@@ -1891,8 +1911,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     } else if key == "live.pairing" {
         csnprintf!(out, cap, "%d", if share_live_card_up(a) { 1 } else { 0 });
     } else if key == "live.chip" {
-        let r = live_chip(a);
-        if live_on() {
+        let r = a.chip_at;
+        if live_on() && !rect_is_empty(r) {
             csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
         } else {
             csnprintf!(out, cap, "%s", "");

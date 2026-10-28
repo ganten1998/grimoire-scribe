@@ -1618,9 +1618,26 @@ fn compose(a: &mut App, r: Rect) {
 /// Pages view over everything).
 pub fn editor_live_panel(a: &App) -> Rect {
     match a.ed.as_deref() {
-        Some(s) if !s.pv.open => s.panel,
+        Some(s) if !sheet_open(s) => s.panel,
         _ => RECT_EMPTY,
     }
+}
+
+/// Live view's chip on a notebook page, `size` px square: beside the panel, level with its header (its collapsed box
+/// as a whole), on its left, or on its right where the panel is too near the screen's left edge to leave room;
+/// none (empty) with a menu, sheet, bar or the Pages view in front, which draw over the panel. It is an
+/// overlay, so it moves with the panel at the next flush.
+pub fn editor_live_chip(a: &App, size: i32) -> Rect {
+    let Some(s) = a.ed.as_deref() else { return RECT_EMPTY };
+    if !s.open || sheet_open(s) {
+        return RECT_EMPTY;
+    }
+    let (p, gap) = (s.panel, ui_px(8.0));
+    let level = if s.collapsed { box_() } else { head_h() };
+    let y = clampi(p.y + (level - size) / 2, 0, (a.h - size).max(0));
+    let left = p.x - gap - size;
+    let x = if left >= 0 { left } else { clampi(p.x + p.w + gap, 0, (a.w - size).max(0)) };
+    Rect { x, y, w: size, h: size }
 }
 
 /// Live view: push (live_push) of the screen with r (inside the panel and push) as it is without the
@@ -5841,6 +5858,63 @@ mod tests {
         assert_eq!(s.hits.h.len(), 1);
         assert_eq!((s.hits.h[0].id, s.hits.h[0].r), (P_EXPAND, p));
         assert_eq!(s.tool_button_shows, TB_NONE);
+    }
+
+    #[test]
+    fn live_views_chip_sits_beside_the_panel_and_goes_with_a_menu() {
+        let mut a = app(1860, 2480, 1860, 2480);
+        // No notebook open: no chip on the page.
+        assert_eq!(editor_live_chip(&a, 42), RECT_EMPTY);
+        let s = ed(&mut a);
+        s.open = true;
+        s.panel = Rect::new(1704, 220, 128, 1520);
+        fit_panel_to(&a.settings, a.h);
+        // Left of the panel, level with its header (80 tall: the chip's middle is the header's).
+        let c = editor_live_chip(&a, 42);
+        assert_eq!(c, Rect::new(1704 - 8 - 42, 220 + (head_h() - 42) / 2, 42, 42));
+        assert!(!rect_overlaps(c, ed_ref(&a).panel));
+        // It follows the panel.
+        ed(&mut a).panel = Rect::new(900, 700, 128, 1520);
+        assert_eq!(editor_live_chip(&a, 42).x, 900 - 8 - 42);
+        assert_eq!(editor_live_chip(&a, 42).y, 700 + (head_h() - 42) / 2);
+        // At the screen's left edge there is no room on its left: it is on its right.
+        ed(&mut a).panel = Rect::new(10, 700, 128, 1520);
+        let c = editor_live_chip(&a, 42);
+        assert_eq!(c.x, 10 + 128 + 8);
+        assert!(!rect_overlaps(c, ed_ref(&a).panel));
+        // Folded, the box is one button: level with all of it.
+        let s = ed(&mut a);
+        s.collapsed = true;
+        s.panel = Rect::new(1700, 220, box_(), box_());
+        let c = editor_live_chip(&a, 42);
+        assert_eq!((c.x, c.y), (1700 - 8 - 42, 220 + (box_() - 42) / 2));
+        // Always on the screen.
+        ed(&mut a).panel = Rect::new(0, 0, box_(), box_());
+        let c = editor_live_chip(&a, 42);
+        assert!(rect_contains_rect(Rect::new(0, 0, 1860, 2480), c));
+        // A menu, sheet, bar or the Pages view in front takes it away, and the panel's Live layer with it.
+        ed(&mut a).collapsed = false;
+        ed(&mut a).panel = Rect::new(1704, 220, 128, 1520);
+        assert_ne!(editor_live_panel(&a), RECT_EMPTY);
+        for open in [
+            |s: &mut EditorState, on: bool| s.pv.open = on,
+            |s: &mut EditorState, on: bool| s.tools_open = on,
+            |s: &mut EditorState, on: bool| s.mb.open = on,
+            |s: &mut EditorState, on: bool| s.dm.open = on,
+            |s: &mut EditorState, on: bool| s.ts.open = on,
+            |s: &mut EditorState, on: bool| s.paper_open = on,
+            |s: &mut EditorState, on: bool| s.lb.open = on,
+            |s: &mut EditorState, on: bool| s.find.open = on,
+        ] {
+            assert!(editor_page_in_front(&a));
+            open(ed(&mut a), true);
+            assert!(!editor_page_in_front(&a));
+            assert_eq!(editor_live_chip(&a, 42), RECT_EMPTY);
+            assert_eq!(editor_live_panel(&a), RECT_EMPTY);
+            open(ed(&mut a), false);
+            assert_ne!(editor_live_chip(&a, 42), RECT_EMPTY);
+            assert_ne!(editor_live_panel(&a), RECT_EMPTY);
+        }
     }
 
     #[test]
