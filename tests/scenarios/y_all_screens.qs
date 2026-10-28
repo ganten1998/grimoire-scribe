@@ -191,20 +191,20 @@ tap 930 780
 wait 50
 expect library.sheet is display
 shot 07-display
-tap 930 1308
+tap 930 1448
 wait 50
 shot 08-display-sleep-1
-tap 930 1308
+tap 930 1448
 wait 50
 shot 09-display-sleep-2
-tap 930 1308
+tap 930 1448
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1308
+tap 930 1448
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1626
+tap 1462 1766
 wait 50
 expect library.sheet is settings
 # Pen feel: every tab (the pad drawn on in the pencil's and the calligraphy pen's: the live readout),
@@ -443,20 +443,20 @@ pentap panel display
 wait 100
 expect editor.modal is display
 shot 26-display-editor
-tap 500 1399
+tap 500 1539
 wait 100
 shot 27-display-pinned
 expect settings.sleep_mode is 1
-tap 930 1259
+tap 930 1399
 wait 50
-tap 930 1259
+tap 930 1399
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1259
+tap 930 1399
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1720
+tap 1462 1860
 wait 100
 expect editor.modal is none
 pentap panel next
@@ -851,19 +851,19 @@ expect library.sheet is settings
 tap 1240 590
 wait 50
 expect library.sheet is display
-tap 1240 1099
+tap 1240 1239
 wait 50
-tap 1240 1099
+tap 1240 1239
 wait 50
 shot 54-display-landscape
-tap 1240 1099
+tap 1240 1239
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 1240 1099
+tap 1240 1239
 wait 50
 expect settings.sleep_mode is 0
-tap 1770 1419
+tap 1770 1559
 wait 50
 expect library.sheet is settings
 tap 1240 1385
@@ -978,7 +978,17 @@ expect screen is editor
 expect editor.pages is 3
 expect editor.page is 3
 expect editor.links is 1 1
-# the last page: two fingers left turn nowhere (no page is added) and say so
+# the last page: with the Display sheet's "Swiping past the last page adds a page" row off, two fingers left turn
+# nowhere (no page is added) and say so
+pentap panel display
+wait 300
+expect editor.modal is display
+tap 500 1126
+wait 300
+expect settings.gesture_new_page is 0
+tap 1462 1860
+wait 300
+expect editor.modal is none
 wait 1100
 swipe 2 1500 900 -400 0
 wait 300
@@ -1136,7 +1146,7 @@ tap 1240 779
 wait 300
 expect settings.landscape_fit is 1
 shot 69-display-fit-on-landscape
-tap 1768 1513
+tap 1768 1653
 wait 300
 expect editor.modal is none
 # upright, the same row says where it applies
@@ -1153,7 +1163,7 @@ shot 69-display-fit-toast
 tap 930 986
 wait 300
 expect settings.landscape_fit is 1
-tap 1462 1720
+tap 1462 1860
 wait 300
 expect editor.modal is none
 expect settings.link_areas is 0

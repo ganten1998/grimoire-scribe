@@ -25,7 +25,8 @@ Install the build and test in a notebook that has your beta.5 links, unless said
 
 1. **Upright.** Two fingers down anywhere on a page open Pages with one flash; two fingers up close
    them. Two fingers left turn to the next page, and right to the previous one. On the last page, two
-   fingers left show "This is the last page." and no page is added; on the first page, two fingers
+   fingers left add a page (Display > "Swiping past the last page adds a page", on by default; off, they show
+   "This is the last page." and add none); on the first page, two fingers
    right show "This is the first page." The panel's + still adds a page.
 2. **The Links bar.** Two fingers up (or the chain button after Next on the panel, which has a small
    dot when the page has links) open the bar along the bottom with no flash. It shows one row for each
@@ -49,7 +50,7 @@ Install the build and test in a notebook that has your beta.5 links, unless said
    orientation): two fingers pan with no zoom drift, the panel's page chip and chain button open Pages
    and Links, and the hint about it shows once.
 7. **The clock corner.** On a notebook page, a finger tap in the top left corner (14 mm) turns the clock
-   and battery on and the next tap off: every tap, however the fingertip rolls (up to 5 mm), with no wait
+   and battery on and the next tap off: every tap, light or slow and hard, wherever the fingertip drifts inside the corner, with no wait
    before the next one and no pen in the way (the taps used to be "inconsistent and janky"). The battery is
    pixel art left of the percent, lit to its charge, with a bolt over it while it charges. Settings >
    Display, beside Done, has its size and its corner: each of the four corners takes the tap, and only that

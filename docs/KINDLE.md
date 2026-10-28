@@ -344,8 +344,9 @@ while a sheet, a menu, the Links bar, Find, a keyboard or the Pages view is in f
 never gets in the way of another screen. The panel, or a link the way a finger tap would follow it,
 keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
 
-One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner, did
-not move more than 5 mm, was down less than 0.6 second), where it lifts needs no place of its own, and
+One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner and lifts in it,
+or within 5 mm of where it landed, in under 0.8 second; the path between is not asked, so a slow, hard press
+that flattens and drifts still taps), and
 nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
 and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
 change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,

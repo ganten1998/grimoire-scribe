@@ -27,11 +27,11 @@ wait 300
 shot 03-display-sheet-sleep
 expect editor.modal is display
 expect settings.sleep_mode is 0
-tap 496 1392
+tap 496 1532
 expect toast is This page is now the sleep screen
 expect settings.sleep_mode is 1
 wait 300
-tap 1464 1722
+tap 1464 1862
 wait 300
 expect editor.modal is none
 pentap panel next

@@ -83,7 +83,7 @@ expect toast is Sideways shows the whole page.
 tap 1240 779
 wait 400
 expect settings.landscape_fit is 0
-tap 1462 1720
+tap 1462 1860
 wait 300
 expect editor.modal is none
 # upright the setting applies to a later turn only: the toast and the card's new checkbox, and no refresh

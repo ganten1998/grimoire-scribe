@@ -916,6 +916,8 @@ fn action_label(action: i32) -> &'static str {
         nm(SHORTCUT_LINK_AREAS, n_("Show link areas")),
         // TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
         nm(SHORTCUT_LANDSCAPE_FIT, n_("Whole page sideways")),
+        // TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
+        nm(SHORTCUT_GESTURE_NEW_PAGE, n_("Swiping past the last page adds a page")),
     ];
     for n in NAMES {
         if n.action == action {

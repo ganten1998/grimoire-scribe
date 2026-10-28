@@ -47,6 +47,7 @@ const D_DONE: i32 = 7;
 const D_STATUS: i32 = 8;
 const D_FIT: i32 = 9;
 const D_CORNER: i32 = 10;
+const D_NEWPAGE: i32 = 11;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -110,9 +111,9 @@ fn step_of(minutes: i32) -> i32 {
     best as i32
 }
 
-/// Rows: brightness, warmth, invert, sideways, [heading], sleep screen, [pin], sleep after.
+/// Rows: brightness, warmth, invert, sideways, new page by swiping, [heading], sleep screen, [pin], sleep after.
 fn row_h(a: &App) -> i32 {
-    let rows = 7 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 8 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let room = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
     let h = room / rows;
     clampi(h, ui_px(100.0), ui_px(140.0))
@@ -123,9 +124,10 @@ fn card_rect(a: &App) -> Rect {
     if w > ui_px(1500.0) {
         w = ui_px(1500.0);
     }
-    let rows = 7 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 8 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let h = ui_px(120.0) + ui_px(72.0) + rows * row_h(a) + ui_px(190.0);
-    Rect { x: (a.w - w) / 2, y: (a.h - h) / 3, w, h }
+    // (the card's top stays where it was before the new-page row: it grows downward by that row)
+    Rect { x: (a.w - w) / 2, y: (a.h - (h - row_h(a))) / 3, w, h }
 }
 
 pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
@@ -209,6 +211,13 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     // the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
     ui_checkbox(&mut a.screen, fit, tr("Sideways, show the whole page"), a.settings.landscape_fit);
     hits_add(&mut m.hits, fit, D_FIT, 0);
+    y += rh;
+    // Two fingers left on the last page add a page (on by default).
+    let np = Rect { x: in_.x, y, w: in_.w, h: rh };
+    // TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
+    // (off: it only says it is the last page). About 1000 px at 44 px.
+    ui_checkbox(&mut a.screen, np, tr("Swiping past the last page adds a page"), a.settings.gesture_new_page);
+    hits_add(&mut m.hits, np, D_NEWPAGE, 0);
     y += rh;
     // Sleep section.
     canvas_hline(&mut a.screen, in_.x, in_.x + in_.w, y + rh / 3, ui_px(3.0), 0);
@@ -363,6 +372,13 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             dispmenu_draw(m, a);
             *dirty = m.rect;
             return DmResult::Refit;
+        }
+        D_NEWPAGE => {
+            a.settings.gesture_new_page = !a.settings.gesture_new_page;
+            settings_save(&a.settings);
+            dispmenu_draw(m, a);
+            *dirty = m.rect;
+            return DmResult::Changed;
         }
         D_SLEEP_MODE => {
             a.settings.sleep_mode = (a.settings.sleep_mode + 1) % 4;

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 09:36-0500\n"
+"POT-Creation-Date: 2026-10-28 13:02-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -542,6 +542,13 @@ msgstr ""
 msgid "Sideways, show the whole page"
 msgstr ""
 
+#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
+#. (off: it only says it is the last page). About 1000 px at 44 px.
+#. TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
+#: rust/src/dispmenu.rs rust/src/library.rs
+msgid "Swiping past the last page adds a page"
+msgstr ""
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
 msgid "Sleep"
@@ -843,7 +850,7 @@ msgid "Saved"
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-#. to the next page on the last one.
+#. to the next page on the last one, with adding a page by swiping turned off.
 #: rust/src/editor.rs
 msgid "This is the last page."
 msgstr ""
@@ -858,6 +865,18 @@ msgstr ""
 #. before was asked with no page to go back to.
 #: rust/src/editor.rs
 msgid "Nothing to go back to."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one now add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds a page."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one no longer add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds no page."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button

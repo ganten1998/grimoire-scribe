@@ -42,7 +42,7 @@ wait 500
 shot 04-inverted
 expect settings.invert is 1
 expect editor.modal is display
-tap 1464 1718
+tap 1464 1858
 wait 300
 shot 05-sheet-closed-inverted
 expect editor.modal is none

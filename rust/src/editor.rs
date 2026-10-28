@@ -116,11 +116,13 @@ struct LinkBoxes {
     /// its bar entry's number, from 1
     entry: [u8; LB_MAX],
     stale: bool,
+    /// how many boxes the eye's last paint drew (the scripts' editor.eye_drawn: 0 when it painted none)
+    drawn: usize,
 }
 // (arrays derive Default only up to 32 elements: EditorState keeps its derive)
 impl Default for LinkBoxes {
     fn default() -> Self {
-        LinkBoxes { n: 0, link: [NavLink::default(); LB_MAX], area: [RECT_EMPTY; LB_MAX], entry: [0; LB_MAX], stale: true }
+        LinkBoxes { n: 0, link: [NavLink::default(); LB_MAX], area: [RECT_EMPTY; LB_MAX], entry: [0; LB_MAX], stale: true, drawn: 0 }
     }
 }
 
@@ -1466,9 +1468,11 @@ fn eye_reach(a: &App, sr: Rect) -> Rect {
 /// image), 1-bit, so DU and GL16 show it alike. At most LB_MAX boxes, each tested against r.
 fn draw_areas(a: &mut App, r: Rect) {
     if !a.settings.link_areas || ed_ref(a).peek.active {
+        ed(a).boxes.drawn = 0;
         return;
     }
     boxes_get(a);
+    ed(a).boxes.drawn = ed_ref(a).boxes.n;
     let (thick, on, off, halo) = (ui_px(4.0), ui_px(16.0), ui_px(12.0), ui_px(2.0));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
@@ -2980,19 +2984,23 @@ fn link_box_drawn(a: &mut App, seed: u32) {
 // The link the Pages view picked for goes to target ("index" or "p<page id>"), and the view closes on
 // the open page.
 fn link_to(a: &mut App, target: &str, done: &str) {
+    // The link is set first and the view closes after it (the repaint then makes the eye's boxes again).
     let s = ed(a);
     let pid = s.nb.page_ids[s.index as usize];
-    pages_hide(a, -1);
-    let s = ed(a);
     let seed = s.link_seed;
     s.boxes.stale = true; // (a link changed or made, or put back as saved)
-    if nav_link_set(&mut s.nav, pid, seed, target) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
+    let failed = nav_link_set(&mut s.nav, pid, seed, target) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
+    if failed {
         nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
+    } else {
+        s.changed = true;
+    }
+    pages_hide(a, -1);
+    if failed {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
         app_toast(a, tr("Could not save the link."), 3000);
         return;
     }
-    s.changed = true;
     app_toast(a, done, 2500);
 }
 
@@ -3046,17 +3054,23 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             link_to(a, "index", tr("The link goes to the Index."));
         }
         PvResult::Unlink => {
-            pages_hide(a, -1);
+            // The link goes first and the view closes after it: closing repaints the page, and the eye
+            // (link boxes) must be made again for that paint, or the deleted link's boxes stay on the glass.
             let s = ed(a);
             let (pid, seed) = (s.nb.page_ids[s.index as usize], s.link_seed);
             s.boxes.stale = true;
             nav_link_remove(&mut s.nav, pid, seed);
-            if nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
+            let failed = nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
+            if failed {
                 nav_load(s.nb.id.as_str(), &mut s.nav);
+            } else {
+                s.changed = true;
+            }
+            pages_hide(a, -1);
+            if failed {
                 app_toast(a, tr("Could not save the link."), 3000);
                 return;
             }
-            s.changed = true;
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Remove link took the
             // link away; the ink drawn around it is still on the page.
             app_toast(a, tr("Link removed. Its ink stays on the page."), 2500);
@@ -4139,17 +4153,17 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
     } else if action == SHORTCUT_UNDO || action == SHORTCUT_REDO {
         panel_act(a, Hit { id: if action == SHORTCUT_UNDO { P_UNDO } else { P_REDO }, ..Default::default() });
     } else if action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE {
-        // The panel's arrows: next page on the last page adds one, as its + does. A gesture's turn
-        // never adds a page (it is easy to make by mistake): it says where it stopped.
-        let s = ed(a);
+        // The panel's arrows: next page on the last page adds one, as its + does. So does a gesture's turn
+        // (settings.gesture_new_page, on by default); with it off, a gesture says where it stopped.
+        let (index, npages, may_add) = (ed(a).index, ed(a).nb.npages(), a.settings.gesture_new_page);
         if src != ActionSrc::Key && src != ActionSrc::Pad {
-            if action == SHORTCUT_NEXT_PAGE && s.index >= s.nb.npages() - 1 {
+            if action == SHORTCUT_NEXT_PAGE && index >= npages - 1 && !may_add {
                 // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-                // to the next page on the last one.
+                // to the next page on the last one, with adding a page by swiping turned off.
                 app_toast(a, tr("This is the last page."), 1500);
                 return true;
             }
-            if action == SHORTCUT_PREV_PAGE && s.index <= 0 {
+            if action == SHORTCUT_PREV_PAGE && index <= 0 {
                 // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
                 // to the previous page on the first one.
                 app_toast(a, tr("This is the first page."), 1500);
@@ -4191,6 +4205,18 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
                 // before was asked with no page to go back to.
                 app_toast(a, tr("Nothing to go back to."), 2000);
             }
+        }
+    } else if action == SHORTCUT_GESTURE_NEW_PAGE {
+        a.settings.gesture_new_page = !a.settings.gesture_new_page;
+        settings_save(&a.settings);
+        if a.settings.gesture_new_page {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+            // next page on the last one now add a page.
+            app_toast(a, tr("Swiping past the last page adds a page."), 2000);
+        } else {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+            // next page on the last one no longer add a page.
+            app_toast(a, tr("Swiping past the last page adds no page."), 2000);
         }
     } else if action == SHORTCUT_LANDSCAPE_FIT {
         a.settings.landscape_fit = !a.settings.landscape_fit;
@@ -5359,6 +5385,14 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
                 csnprintf!(out, cap, "%d %d", (i % stride) as i32, (i / stride) as i32)
             }
         };
+        return 0;
+    }
+    if key == "eye_drawn" {
+        // How many link boxes the eye's last paint drew (not made again here: a stale paint shows).
+        if a.ed.is_none() {
+            return -1;
+        }
+        csnprintf!(out, cap, "%d", ed_ref(a).boxes.drawn as i32);
         return 0;
     }
     if key == "areas" {

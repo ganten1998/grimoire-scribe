@@ -1,7 +1,9 @@
 # rust-only
 # Two fingers on the page, upright: down opens Pages with one flash, up closes them (the swipe the
-# other way takes back what the first did), left and right turn the page and never add one.
+# other way takes back what the first did), left and right turn the page; with gesture_new_page off (set here) they add no page past the end
+# (g_gest_10_new_page has the default, which adds one).
 # settings: mirror_pdf=0
+# settings: gesture_new_page=0
 wait 300
 tap 965 95
 wait 100

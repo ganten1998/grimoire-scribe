@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 08:21-0500\n"
+"POT-Creation-Date: 2026-10-28 13:02-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -581,6 +581,13 @@ msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
 msgid "Sideways, show the whole page"
 msgstr "De lado, ver la página entera"
 
+#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
+#. (off: it only says it is the last page). About 1000 px at 44 px.
+#. TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
+#: rust/src/dispmenu.rs rust/src/library.rs
+msgid "Swiping past the last page adds a page"
+msgstr "Deslizar tras la última página añade una página"
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
 msgid "Sleep"
@@ -890,7 +897,7 @@ msgid "Saved"
 msgstr "Guardado"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-#. to the next page on the last one.
+#. to the next page on the last one, with adding a page by swiping turned off.
 #: rust/src/editor.rs
 msgid "This is the last page."
 msgstr "Es la última página."
@@ -906,6 +913,18 @@ msgstr "Es la primera página."
 #: rust/src/editor.rs
 msgid "Nothing to go back to."
 msgstr "No hay a dónde volver."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one now add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds a page."
+msgstr "Deslizar tras la última página añade una página."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one no longer add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds no page."
+msgstr "Deslizar tras la última página no añade página."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
 #. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.

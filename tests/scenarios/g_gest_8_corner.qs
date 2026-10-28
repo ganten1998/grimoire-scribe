@@ -3,6 +3,7 @@
 # not by a gesture that just fired, and a two-finger swipe or tap that starts there is a gesture and
 # leaves the clock alone.
 # settings: shortcuts_enabled=1
+# settings: gesture_new_page=0
 # settings: mirror_pdf=0
 # copy: tests/fixtures/link-keys .
 wait 300

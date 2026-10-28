@@ -88,7 +88,7 @@ release too.
   Pages view is in front of the page. Settings > Display, beside Done, has its size (small, medium
   or large; the battery grows with it) and its corner (top left, top right, bottom right, bottom
   left): the tap zone, a 14 mm square, follows it. One tap is one toggle, at once: a fingertip that
-  rolls up to 5 mm still taps, nothing makes the next tap wait, and the box is refreshed as the
+  rolls inside the corner still taps, slow presses too (up to 0.8 second), nothing makes the next tap wait, and the box is refreshed as the
   finger lifts, even when a pen left the screen without a word. A key or a controller button can turn
   it on and off or move it to the next corner (Buttons... > Menus > Clock and battery, and Clock and
   battery corner). It changes each minute and when the battery or its charging changes, with one
@@ -109,7 +109,8 @@ release too.
 
 - **Two-finger gestures and the Links bar**: on a notebook page, two fingers down open Pages and two
   fingers up open the Links bar, left turns to the next page and right to the previous one (a page
-  turned this way never adds a page). The bar is a card along the bottom with one row for each page
+  turned left on the last one adds a page, as the next-page key does; a row in Display, under
+  Sideways, turns that off). The bar is a card along the bottom with one row for each page
   the open page's links go to, numbered as the page's dotted link areas are (Areas in the bar, or
   Buttons... > Index, show them over the page, never in a PDF): tap a row to look at that page, tap
   the page to stay on it, or X to go back where you were. Go to opens a keyboard that takes a page

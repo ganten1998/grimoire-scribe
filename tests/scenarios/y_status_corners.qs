@@ -36,11 +36,11 @@ shot 01-top-left
 tap panel display
 wait 400
 expect editor.modal is display
-tap 997 1720
+tap 997 1860
 wait 300
 expect settings.status_corner is 1
 expect status.zone is 1695 0 165 165
-tap 1460 1720
+tap 1460 1860
 wait 400
 expect editor.modal is none
 expect status.shown is 1

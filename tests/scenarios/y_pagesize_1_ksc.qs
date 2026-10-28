@@ -97,11 +97,11 @@ expect editor.scale is 1.07
 pentap panel display
 wait 300
 expect editor.modal is display
-tap 563 1462
+tap 563 1611
 expect toast is This page is now the sleep screen
 expect settings.sleep_mode is 1
 wait 300
-tap 1523 1774
+tap 1523 1923
 wait 300
 expect editor.modal is none
 pentap panel previous

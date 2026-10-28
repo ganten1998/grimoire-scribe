@@ -138,7 +138,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   that refresh waits for the pen's last frame, so a refresh of the corner must not be the one that
   ends it). A finger tap in the 14 mm corner square turns it on and off: decided at the lift, with the
   finger down in the square or on the box, on no control (`editor_control_at`: the panel, or a link, but
-  not one in the corner), within 5 mm of where it landed and under 600 ms, wherever it lifts; the screen
+  not one in the corner), lifted in the square (or within 5 mm of where it landed) and under 800 ms, whatever the fingertip did between (the path is not asked: a hard press drifts); every decision is one `grimoire.log` line; the screen
   sees the touch as ever, and the corner only watches (`status_tapped` tells it at the lift, so no link is
   followed). `display_skip_status` leaves its rect out of the screen guard, as `display_skip_overlay` does
   the chip's.
@@ -1008,7 +1008,7 @@ are never counted, and a swipe refused only for the pen says so once in ten minu
 touchgest what its screen allows (`touch_context`: whether the page pans, zooms, may start a gesture)
 after every event, so a sheet, the bar or a keyboard makes a drag a swipe, which the mirror rule closes
 the menu with. What a gesture does is `gesturemap.rs`'s (the built-ins, then `gestures.ini`), through
-the same `editor_shortcut_at` a key uses; a page turned by a gesture never adds a page. The corner's
+the same `editor_shortcut_at` a key uses; a page turned left by a gesture on the last page adds a page as the next-page key does, unless `gesture_new_page` is off (then a toast says it is the last page). The corner's
 clock tap (status.rs) decides at the lift and every finger tap that phase adds checks it first.
 `grimoire.log` has one line per touch session and the owner's opt-in `touch-trace.txt` has every
 contact frame (docs/FORMAT.md, docs/KINDLE.md).

@@ -29,12 +29,12 @@ expect editor.strokes is 1
 pentap panel display
 wait 300
 expect editor.modal is display
-tap 800 1266
+tap 800 1406
 wait 200
-tap 800 1266
+tap 800 1406
 wait 200
 expect settings.sleep_mode is 2
-tap 1464 1722
+tap 1464 1862
 wait 300
 expect editor.modal is none
 sleep

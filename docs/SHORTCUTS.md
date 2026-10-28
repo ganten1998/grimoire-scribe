@@ -151,13 +151,14 @@ never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
-`name-page`, `status-toggle`, `status-corner`, `links`, `go-to-page`, `go-back`, `link-areas`, `landscape-fit`) and count
+`name-page`, `status-toggle`, `status-corner`, `links`, `go-to-page`, `go-back`, `link-areas`, `landscape-fit`, `gesture-new-page`) and count
 them in Reload shortcuts.ini; their other lines still work.
 
 Two-finger gestures are bound to the same actions in `gestures.ini` (docs/FORMAT.md) and need no Enable
 shortcuts: the Settings switch for them is `gestures` in settings.ini. Their built-ins are two fingers
-down `pages`, up `links`, left `next-page`, right `previous-page`, and a page turned that way never adds
-a page (a key's or a button's still does). A line `touch.2.up=nothing` turns a built-in off; the file is
+down `pages`, up `links`, left `next-page`, right `previous-page`, and a page turned left on the last page
+adds a page, as the next-page key does (`gesture_new_page=0` in settings.ini, the Display sheet's "Swiping past the
+last page adds a page" row, or the `gesture-new-page` action turns that off: the swipe then only says it is the last page). A line `touch.2.up=nothing` turns a built-in off; the file is
 read at start and when shortcuts are reloaded.
 
 ### gestures.ini by hand
