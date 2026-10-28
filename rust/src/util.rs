@@ -465,15 +465,10 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        match f.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        }
-    }
+    // (Straight into the buffer, which grows as the C's does: a page file is megabytes, read in a
+    // handful of calls rather than one per 4 KB with a copy each. EINTR is retried; on another
+    // error buf keeps what was read.)
+    let _ = f.read_to_end(&mut buf);
     Some(buf)
 }
 
