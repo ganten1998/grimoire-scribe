@@ -103,7 +103,7 @@ v_storage_full.qs leaves with a page that cannot be saved.
 The editor panel's buttons, by the names `tap panel` and `editor.panel_at.X.Y` use: `grip`, `collapse` and
 `expand` (the collapsed panel is one `expand` button), `tool-picker` (the tool button, or the grid when its pen
 is pinned), `tool:NAME` (a pinned pen, NAME as `editor.tool` has it), `eraser`, `undo`, `redo`, `clear`,
-`previous`, `pages` (the page chip), `next`, `paper`, `display`, `pen-feel` and `library`. A disabled button
+`previous`, `pages` (the page chip), `next`, `links` (the Links button), `paper`, `display`, `pen-feel` and `library`. A disabled button
 (Undo with nothing to undo, Clear on an empty page, Previous on page 1) has no hit and no name. A scenario
 that wants a panel button taps it by name, so that it does not break when the panel gains a button;
 `editor.panel_at.1768.594 is undo` upright with no pins (and the other coordinates of tests/scenarios/

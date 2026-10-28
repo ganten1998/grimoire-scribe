@@ -1,7 +1,7 @@
 # The panel with 0 to 4 pinned pens on the 2022 and 2024 Scribes' screen (1860x2480), upright and
 # sideways: always inside the screen with 12 px free above and below it, its buttons at full size
-# (editor.panel_fits). Each pen is pinned in the tool picker's Pin mode. (The Scribe 3's and the
-# Colorsoft's screen: z_tool_a_fit_colorsoft.)
+# (editor.panel_fits), but for four pins sideways, where they are 1% smaller. Each pen is pinned in the
+# tool picker's Pin mode. (The Scribe 3's and the Colorsoft's screen: z_tool_a_fit_colorsoft.)
 # settings: mirror_pdf=0
 # rust-only
 wait 300
@@ -90,7 +90,10 @@ expect editor.pins is highlighter,fineliner,marker,calligraphy
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-expect editor.panel_fits is 1
+# (the one place the buttons do not stay at full size: with the Links button there are twelve, and four pins
+# sideways need the room between them at half and the buttons 1% smaller: 99 px, the panel 1830 px)
+expect editor.panel_fits is 0
+expect editor.panel_button is 99
 shot 01-four-pins-sideways
 rotate 0
 wait 300

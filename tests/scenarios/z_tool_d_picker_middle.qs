@@ -13,7 +13,7 @@ tap 510 460
 tap 1564 2254
 wait 400
 expect screen is editor
-expect editor.panel_rect is 900 220 128 1410
+expect editor.panel_rect is 900 220 128 1518
 pentap panel tool-picker
 wait 200
 expect editor.modal is tools

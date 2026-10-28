@@ -61,6 +61,7 @@ const P_PIN_MODE: i32 = 20;
 const P_PICK_INK: i32 = 21;
 const P_PICK_MORE: i32 = 22;
 const P_PICK_PHOTOS: i32 = 23;
+const P_LINKS: i32 = 24;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
@@ -683,6 +684,17 @@ fn draw_panel(a: &mut App) {
     ui_button(c, rn, if last { IconKind::Plus } else { IconKind::Next }, "", ButtonStyle::Plain);
     hits_add(&mut s.hits, rn, P_NEXT, 0);
     y += btn_h() + gap();
+    // Links: the bar of this page's links, with a dot when the page has some.
+    let rl = Rect { x, y, w, h: btn_h() };
+    ui_button(c, rl, IconKind::Link, "", ButtonStyle::Plain);
+    hits_add(&mut s.hits, rl, P_LINKS, 0);
+    let mut first = 0;
+    if s.open && nav_links_of(&s.nav, s.open_pid(), &mut first) > 0 {
+        // (7 px across, 10 px in from the corner)
+        let r = ui_px(7.0) as f32 / 2.0;
+        canvas_disc_aa(c, (rl.x + rl.w - ui_px(10.0)) as f32 - r, (rl.y + ui_px(10.0)) as f32 + r, r, 0, 1.0);
+    }
+    y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
     // Paper, Display, Pen feel, Library (icons only, like the rest of the panel).
@@ -702,7 +714,7 @@ fn draw_panel(a: &mut App) {
 
 /// The runner's name for a panel button (`tap panel NAME`, `editor.panel_at.X.Y`): grip, collapse,
 /// expand, tool-picker, eraser, tool:NAME (a pinned pen, NAME as `editor.tool` names tools), undo,
-/// redo, clear, previous, pages (the page chip), next, paper, display, pen-feel, library. "" for a
+/// redo, clear, previous, pages (the page chip), next, links, paper, display, pen-feel, library. "" for a
 /// hit that is not one of the panel's.
 fn panel_name(h: &Hit) -> String {
     match h.id {
@@ -721,6 +733,7 @@ fn panel_name(h: &Hit) -> String {
         P_PREV => "previous".into(),
         P_PAGES => "pages".into(),
         P_NEXT => "next".into(),
+        P_LINKS => "links".into(),
         P_PAPER => "paper".into(),
         P_DISPLAY => "display".into(),
         P_PENSET => "pen-feel".into(),
@@ -3089,6 +3102,14 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_CLEAR => clear_page(a),
         P_PAGES => pages_show(a),
+        // The panel's button for the bar opens it, as the action does (its own button again closes it).
+        P_LINKS => {
+            if front_menu(ed_ref(a)) == SHORTCUT_LINKS {
+                close_front(a, true);
+            } else {
+                open_menu(a, SHORTCUT_LINKS);
+            }
+        }
         P_DISPLAY => {
             with_modal(a, |s| &mut s.dm, dispmenu_open);
             let r = with_modal(a, |s| &mut s.dm, dispmenu_draw);
@@ -4854,12 +4875,12 @@ mod tests {
             assert!(p.x >= 0 && p.x + p.w <= w && p.y >= m && p.y + p.h <= h - m);
             assert_eq!(p.h, panel_height(g_fit(), pins as i32));
             // The buttons from the top: grip, collapse, the tool button, the pins, the eraser, (undo,
-            // redo, clear and previous greyed out), the page chip, next, paper, display, pen feel,
+            // redo, clear and previous greyed out), the page chip, next, links, paper, display, pen feel,
             // the library, whose gap under it ends the panel but for its last 6 px.
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_PAGES, P_NEXT, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
+            want.extend([P_TOOL, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
@@ -4896,6 +4917,7 @@ mod tests {
             (P_PREV, "previous"),
             (P_PAGES, "pages"),
             (P_NEXT, "next"),
+            (P_LINKS, "links"),
             (P_PAPER, "paper"),
             (P_DISPLAY, "display"),
             (P_PENSET, "pen-feel"),
