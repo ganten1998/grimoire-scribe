@@ -1305,6 +1305,24 @@ fn route_live_page(query: &[u8]) {
         // picture (a dot, see-through while it hovers over the screen, solid while it touches), in
         // recordings too.
         live_word(&mut b, &mut n, "pen", tr("Show pen"));
+        // TRANSLATORS: Live view's controls in the browser for the pen's dot: its color (a few named
+        // ones, and any other from the browser's color picker) and its size.
+        live_word(&mut b, &mut n, "dotColor", tr("Pen dot color"));
+        live_word(&mut b, &mut n, "dotRed", tr("Red"));
+        live_word(&mut b, &mut n, "dotBlue", tr("Blue"));
+        live_word(&mut b, &mut n, "dotGreen", tr("Green"));
+        live_word(&mut b, &mut n, "dotOrange", tr("Orange"));
+        live_word(&mut b, &mut n, "dotPurple", tr("Purple"));
+        live_word(&mut b, &mut n, "dotCustom", tr("Other color"));
+        live_word(&mut b, &mut n, "dotSize", tr("Pen dot size"));
+        // TRANSLATORS: the pen dot's sizes in Live view's browser page.
+        live_word(&mut b, &mut n, "small", tr("Small"));
+        live_word(&mut b, &mut n, "medium", tr("Medium"));
+        live_word(&mut b, &mut n, "large", tr("Large"));
+        // TRANSLATORS: Live view's switches in the browser: the notebook's toolbar, and the clock and
+        // battery corner, each drawn over the page in the browser or not (the Kindle is unchanged).
+        live_word(&mut b, &mut n, "toolbar", tr("Show toolbar"));
+        live_word(&mut b, &mut n, "statusCorner", tr("Show clock and battery"));
         // TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
         // controls away, for drawing on the Kindle while looking at the computer; M is its key.
         live_word(&mut b, &mut n, "monitor", tr("Monitor mode (M)"));
@@ -1322,10 +1340,15 @@ fn route_live_page(query: &[u8]) {
         // TRANSLATORS: the latency readout: how far off its times may be, the Kindle's clock and the
         // computer's being compared over the network.
         live_word(&mut b, &mut n, "clockError", tr("Clock uncertainty"));
+        // TRANSLATORS: the latency readout: how long the browser holds the pen's samples back so that
+        // a burst of them draws as a smooth line instead of a jump.
+        live_word(&mut b, &mut n, "playout", tr("Playout delay"));
         live_word(&mut b, &mut n, "record", tr("Record"));
         // TRANSLATORS: Live view's Record button where the browser can make no MP4 at all (WebM is the
         // other video format), and its tooltip saying why.
         live_word(&mut b, &mut n, "recordWebm", tr("Record (WebM)"));
+        // TRANSLATORS: Live view's Record button where the browser records an MP4.
+        live_word(&mut b, &mut n, "recordMp4", tr("Record (MP4)"));
         live_word(&mut b, &mut n, "webmBrowser", tr("This browser cannot record MP4, so the video is WebM."));
         live_word(&mut b, &mut n, "stop", tr("Stop recording"));
         live_word(&mut b, &mut n, "full", tr("Full screen"));

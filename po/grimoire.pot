@@ -992,6 +992,63 @@ msgstr ""
 msgid "Show pen"
 msgstr ""
 
+#. TRANSLATORS: Live view's controls in the browser for the pen's dot: its color (a few named
+#. ones, and any other from the browser's color picker) and its size.
+#: rust/src/httpd.rs
+msgid "Pen dot color"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Red"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Blue"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Green"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Orange"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Purple"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Other color"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Pen dot size"
+msgstr ""
+
+#. TRANSLATORS: the pen dot's sizes in Live view's browser page.
+#: rust/src/httpd.rs
+msgid "Small"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Medium"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Large"
+msgstr ""
+
+#. TRANSLATORS: Live view's switches in the browser: the notebook's toolbar, and the clock and
+#. battery corner, each drawn over the page in the browser or not (the Kindle is unchanged).
+#: rust/src/httpd.rs
+msgid "Show toolbar"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Show clock and battery"
+msgstr ""
+
 #. TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
 #. controls away, for drawing on the Kindle while looking at the computer; M is its key.
 #: src/httpd.c
@@ -1027,6 +1084,12 @@ msgstr ""
 msgid "Clock uncertainty"
 msgstr ""
 
+#. TRANSLATORS: the latency readout: how long the browser holds the pen's samples back so that
+#. a burst of them draws as a smooth line instead of a jump.
+#: rust/src/httpd.rs
+msgid "Playout delay"
+msgstr ""
+
 #: src/httpd.c
 msgid "Record"
 msgstr ""
@@ -1035,6 +1098,11 @@ msgstr ""
 #. other video format), and its tooltip saying why.
 #: src/httpd.c
 msgid "Record (WebM)"
+msgstr ""
+
+#. TRANSLATORS: Live view's Record button where the browser records an MP4.
+#: rust/src/httpd.rs
+msgid "Record (MP4)"
 msgstr ""
 
 #: src/httpd.c

@@ -1037,6 +1037,63 @@ msgstr "Como en el Kindle"
 msgid "Show pen"
 msgstr "Mostrar el lápiz"
 
+#. TRANSLATORS: Live view's controls in the browser for the pen's dot: its color (a few named
+#. ones, and any other from the browser's color picker) and its size.
+#: rust/src/httpd.rs
+msgid "Pen dot color"
+msgstr "Color del punto del lápiz"
+
+#: rust/src/httpd.rs
+msgid "Red"
+msgstr "Rojo"
+
+#: rust/src/httpd.rs
+msgid "Blue"
+msgstr "Azul"
+
+#: rust/src/httpd.rs
+msgid "Green"
+msgstr "Verde"
+
+#: rust/src/httpd.rs
+msgid "Orange"
+msgstr "Naranja"
+
+#: rust/src/httpd.rs
+msgid "Purple"
+msgstr "Morado"
+
+#: rust/src/httpd.rs
+msgid "Other color"
+msgstr "Otro color"
+
+#: rust/src/httpd.rs
+msgid "Pen dot size"
+msgstr "Tamaño del punto del lápiz"
+
+#. TRANSLATORS: the pen dot's sizes in Live view's browser page.
+#: rust/src/httpd.rs
+msgid "Small"
+msgstr "Pequeño"
+
+#: rust/src/httpd.rs
+msgid "Medium"
+msgstr "Mediano"
+
+#: rust/src/httpd.rs
+msgid "Large"
+msgstr "Grande"
+
+#. TRANSLATORS: Live view's switches in the browser: the notebook's toolbar, and the clock and
+#. battery corner, each drawn over the page in the browser or not (the Kindle is unchanged).
+#: rust/src/httpd.rs
+msgid "Show toolbar"
+msgstr "Mostrar barra de herramientas"
+
+#: rust/src/httpd.rs
+msgid "Show clock and battery"
+msgstr "Mostrar reloj y batería"
+
 #. TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
 #. controls away, for drawing on the Kindle while looking at the computer; M is its key.
 #: src/httpd.c
@@ -1072,6 +1129,12 @@ msgstr "p50 / p90 / máx"
 msgid "Clock uncertainty"
 msgstr "Incertidumbre del reloj"
 
+#. TRANSLATORS: the latency readout: how long the browser holds the pen's samples back so that
+#. a burst of them draws as a smooth line instead of a jump.
+#: rust/src/httpd.rs
+msgid "Playout delay"
+msgstr "Retardo de reproducción"
+
 #: src/httpd.c
 msgid "Record"
 msgstr "Grabar"
@@ -1081,6 +1144,11 @@ msgstr "Grabar"
 #: src/httpd.c
 msgid "Record (WebM)"
 msgstr "Grabar (WebM)"
+
+#. TRANSLATORS: Live view's Record button where the browser records an MP4.
+#: rust/src/httpd.rs
+msgid "Record (MP4)"
+msgstr "Grabar (MP4)"
 
 #: src/httpd.c
 msgid "This browser cannot record MP4, so the video is WebM."
