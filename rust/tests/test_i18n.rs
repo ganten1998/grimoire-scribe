@@ -708,6 +708,11 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!(tr("No buttons for %s now."), tr("Previous / next tool")));
     put(cformat!(tr("No buttons for %s now."), tr("Previous / next in the picker")));
     put(cformat!(tr("No buttons for %s now."), tr("Erase while held")));
+    // The gestures' toasts (a page turned past the end, the pen near, the pan hint).
+    put(cformat!("%s", tr("This is the last page.")));
+    put(cformat!("%s", tr("This is the first page.")));
+    put(cformat!("%s", tr("Move the pen away, then swipe.")));
+    put(cformat!("%s", tr("Here two fingers move the page. Open Pages and Links from the panel.")));
     out.len()
 }
 

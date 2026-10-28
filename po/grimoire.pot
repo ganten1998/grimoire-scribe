@@ -650,6 +650,30 @@ msgstr ""
 msgid "Page cleared"
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+#. to the next page on the last one.
+#: rust/src/editor.rs
+msgid "This is the last page."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+#. to the previous page on the first one.
+#: rust/src/editor.rs
+msgid "This is the first page."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
+#. while the pen was near the screen, so nothing happened.
+#: rust/src/editor.rs
+msgid "Move the pen away, then swipe."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
+#. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
+#: rust/src/editor.rs
+msgid "Here two fingers move the page. Open Pages and Links from the panel."
+msgstr ""
+
 #: src/editor.c
 msgid "Could not delete those pages"
 msgstr ""

@@ -150,7 +150,7 @@ pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
     editor_busy, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
     editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut,
-    editor_suspend,
+    editor_shortcut_at, editor_suspend,
 };
 pub use crate::calibrate::calibrate_control_at;
 pub use crate::editor::editor_control_at;
@@ -726,7 +726,10 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             }
             if a.scr == ScreenId::Penset {
                 pensettings_shortcut(a, action);
-            } else if a.scr == ScreenId::Editor && editor_shortcut(a, action) && action == SHORTCUT_HOLD_ERASER {
+            } else if a.scr == ScreenId::Editor
+                && editor_shortcut_at(a, action, a.w as f32 * 0.5, a.h as f32 * 0.5, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key })
+                && action == SHORTCUT_HOLD_ERASER
+            {
                 a.hold_code = ev.value;
                 a.hold_pad = ev.gamepad;
             }

@@ -23,6 +23,12 @@ const LINK_HOLD_MS: u32 = 600;
 // A link's box drawn smaller than this both ways is no box: it is taken back.
 const LINK_BOX_MIN_MM: f32 = 5.0;
 
+// settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
+/// two fingers dragged the page (a pan) while two fingers up and down are gestures
+const HINT_PAN: i32 = 1 << 6;
+// The "Move the pen away, then swipe." toast shows at most once in this long.
+const PEN_TOAST_EVERY_MS: u32 = 600_000;
+
 // The hits' ids (the panel's, the paper sheet's and the tool picker's).
 #[allow(dead_code)]
 const P_NONE: i32 = 0;
@@ -217,6 +223,14 @@ pub struct EditorState {
     pinch_mx0: f32,
     pinch_my0: f32,
     last_pinch_paint: u32,
+    /// the two fingers are a session touchgest classified (PinchBegin.value 1): its moves say zoom (1),
+    /// pan (2) or swipe (3); the legacy pinch (the runner's `pinch`) decides itself
+    pinch_classified: bool,
+    /// a classified pan moved the page this session: the pan hint is due when it ends
+    pinch_panned: bool,
+    /// when "Move the pen away, then swipe." last showed (the t_ms of the PinchEnd that showed it)
+    pen_toast_at: u32,
+    pen_toast_shown: bool,
 
     /// Display sheet (front light, invert)
     dm: DispMenu,
@@ -913,6 +927,26 @@ fn view_clamp(a: &mut App) {
         s.ox = 0.0;
         s.oy = 0.0;
     }
+    touch_context(a);
+}
+
+/// What touchgest needs of the editor to tell a pan from a swipe, and to let a pinch zoom: whether the
+/// page scrolls on each axis, whether a pinch may zoom, whether gestures are on and whether a keyboard
+/// is up. Pushed whenever any of these may have changed (the end of view_clamp, editor_event,
+/// editor_shortcut_at, editor_tick and editor_enter), cheap: it stores a small struct. With a surface in
+/// front that does not pan the page (the Pages view, the sheets), a two-finger drag is always a swipe
+/// candidate: a pan there would move nothing.
+fn touch_context(a: &App) {
+    let Some(s) = a.ed.as_deref() else { return };
+    let pans = s.open && !sheet_open(s);
+    input_touch_context(TgView {
+        scrolls_v: pans && a.h as f32 / s.zoom < s.pgh as f32 - 0.5,
+        scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
+        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open),
+        gestures_on: a.settings.gestures,
+        record: false,
+        keyboard_open: s.pv.kb.open,
+    });
 }
 
 // The page fills the screen's width: 100% upright for a page of this screen's size, the whole page
@@ -2910,6 +2944,20 @@ pub fn editor_hold_eraser(a: &mut App, held: bool) {
 // they leave the picker as it is: pressed again and again they never move the highlight from the
 // panel to the picker and back.
 pub fn editor_shortcut(a: &mut App, action: i32) -> bool {
+    let (x, y) = (a.w as f32 * 0.5, a.h as f32 * 0.5);
+    editor_shortcut_at(a, action, x, y, ActionSrc::Key)
+}
+
+/// The same for an action that came from src, at the point (x, y) it came from (a key's is the screen's
+/// centre). A page turn from a touch gesture never adds a page: on the last page it says so, as on the
+/// first.
+pub fn editor_shortcut_at(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) -> bool {
+    let r = editor_shortcut_in(a, action, x, y, src);
+    touch_context(a);
+    r
+}
+
+fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc) -> bool {
     let asleep = a.asleep;
     let Some(s) = a.ed.as_deref_mut() else { return false };
     if !s.open || asleep || action == 0 {
@@ -2991,7 +3039,23 @@ pub fn editor_shortcut(a: &mut App, action: i32) -> bool {
     } else if action == SHORTCUT_UNDO || action == SHORTCUT_REDO {
         panel_act(a, Hit { id: if action == SHORTCUT_UNDO { P_UNDO } else { P_REDO }, ..Default::default() });
     } else if action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE {
-        // The panel's arrows: next page on the last page adds one, as its + does.
+        // The panel's arrows: next page on the last page adds one, as its + does. A gesture's turn
+        // never adds a page (it is easy to make by mistake): it says where it stopped.
+        let s = ed(a);
+        if src != ActionSrc::Key && src != ActionSrc::Pad {
+            if action == SHORTCUT_NEXT_PAGE && s.index >= s.nb.npages() - 1 {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+                // to the next page on the last one.
+                app_toast(a, tr("This is the last page."), 1500);
+                return true;
+            }
+            if action == SHORTCUT_PREV_PAGE && s.index <= 0 {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+                // to the previous page on the first one.
+                app_toast(a, tr("This is the first page."), 1500);
+                return true;
+            }
+        }
         panel_act(a, Hit { id: if action == SHORTCUT_NEXT_PAGE { P_NEXT } else { P_PREV }, ..Default::default() });
     } else if action == SHORTCUT_FIRST_PAGE || action == SHORTCUT_LAST_PAGE {
         let s = ed(a);
@@ -3302,6 +3366,7 @@ pub fn editor_enter(a: &mut App) {
         close_sheets(ed(a));
     }
     compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    touch_context(a);
 }
 
 /// a stroke / drag / pinch is in progress
@@ -3322,7 +3387,10 @@ pub fn editor_pin_sleep_page(a: &mut App) -> bool {
     editor_page_canvas(a).is_some_and(|c| store_save_sleep_image(c) == 0)
 }
 
-// Two fingers: zoom around the midpoint and pan with it.
+// Two fingers: zoom around the midpoint and pan with it. A legacy pinch (the runner's `pinch`, value 0)
+// decides itself: nothing until the fingers clearly spread or travel, then both. A session touchgest
+// classified (value 1) says what it is: ZOOM (1, no dead zone: it committed already), PAN (2, the page
+// moves with the midpoint, the zoom held) or SWIPE (3, nothing moves: the gesture comes at the lift).
 fn pinch(a: &mut App, ev: &InEvent) {
     let mx = (ev.x + ev.x2) * 0.5;
     let my = (ev.y + ev.y2) * 0.5;
@@ -3337,7 +3405,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
             if s.has_pressed && s.pressed.id != P_GRIP && s.pressed.id != P_EXPAND {
                 let r = s.pressed.r;
                 canvas_invert(&mut a.screen, r);
-                app_invalidate(a, r, RefreshMode::Ui);
+                app_invalidate(a, r, RefreshMode::Fast);
             }
             let s = ed(a);
             s.has_pressed = false;
@@ -3346,11 +3414,16 @@ fn pinch(a: &mut App, ev: &InEvent) {
         }
         let pinch_zoom = a.settings.pinch_zoom;
         let s = ed(a);
-        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || !pinch_zoom {
+        // A classified session starts with pinch zoom off too: its pan pans (the gate below is the
+        // legacy one's, with the zoom setting).
+        let classified = ev.value == 1;
+        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || (!classified && !pinch_zoom) {
             return;
         }
         s.pinching = true;
         s.pinch_committed = false;
+        s.pinch_classified = classified;
+        s.pinch_panned = false;
         s.pinch_mx0 = mx;
         s.pinch_my0 = my;
         s.pinch_d0 = if d > 10.0 { d } else { 10.0 };
@@ -3366,25 +3439,48 @@ fn pinch(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::PinchMove {
-        // Nothing happens until the fingers clearly spread/close or travel: resting fingers
-        // (or a hand) must not zoom or flash the screen.
-        if !s.pinch_committed {
-            let spread = (d / s.pinch_d0 - 1.0).abs();
-            let travel = (mx - s.pinch_mx0).hypot(my - s.pinch_my0);
-            if spread < 0.10 && travel < ui_px(70.0) as f32 {
-                return;
+        if s.pinch_classified {
+            if ev.value != 1 && ev.value != 2 {
+                return; // a swipe candidate moves nothing
             }
-            s.pinch_committed = true;
-            // Re-anchor at the commit point so the view does not jump by the dead zone.
-            s.pinch_d0 = if d > 10.0 { d } else { 10.0 };
-            s.pinch_z0 = s.zoom;
-            let (mut px, mut py) = (0.0, 0.0);
-            to_page(s, mx, my, &mut px, &mut py);
-            s.pinch_px = px;
-            s.pinch_py = py;
+            if !s.pinch_committed {
+                // touchgest committed at this move: anchor here, so the view does not jump.
+                s.pinch_committed = true;
+                s.pinch_d0 = if d > 10.0 { d } else { 10.0 };
+                s.pinch_z0 = s.zoom;
+                let (mut px, mut py) = (0.0, 0.0);
+                to_page(s, mx, my, &mut px, &mut py);
+                s.pinch_px = px;
+                s.pinch_py = py;
+            }
+            if ev.value == 1 {
+                s.zoom = s.pinch_z0 * d / s.pinch_d0;
+                s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
+            } else {
+                s.zoom = s.pinch_z0; // a pan holds the zoom: no drift
+                s.pinch_panned = true;
+            }
+        } else {
+            // Nothing happens until the fingers clearly spread/close or travel: resting fingers
+            // (or a hand) must not zoom or flash the screen.
+            if !s.pinch_committed {
+                let spread = (d / s.pinch_d0 - 1.0).abs();
+                let travel = (mx - s.pinch_mx0).hypot(my - s.pinch_my0);
+                if spread < 0.10 && travel < ui_px(70.0) as f32 {
+                    return;
+                }
+                s.pinch_committed = true;
+                // Re-anchor at the commit point so the view does not jump by the dead zone.
+                s.pinch_d0 = if d > 10.0 { d } else { 10.0 };
+                s.pinch_z0 = s.zoom;
+                let (mut px, mut py) = (0.0, 0.0);
+                to_page(s, mx, my, &mut px, &mut py);
+                s.pinch_px = px;
+                s.pinch_py = py;
+            }
+            s.zoom = s.pinch_z0 * d / s.pinch_d0;
+            s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
         }
-        s.zoom = s.pinch_z0 * d / s.pinch_d0;
-        s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_default * 4.0);
         s.ox = s.pinch_px - mx / s.zoom; // keep the pinched spot under the fingers
         s.oy = s.pinch_py - my / s.zoom;
         view_clamp(a);
@@ -3400,6 +3496,22 @@ fn pinch(a: &mut App, ev: &InEvent) {
     if s.pinch_committed {
         compose_all(a, RefreshMode::Ui);
     }
+    // A pan that moved the page, while two fingers up or down are gestures: say once that here two
+    // fingers move the page, and where Pages and Links are instead (hints bit 6).
+    let s = ed(a);
+    let panned = s.pinch_classified && s.pinch_panned;
+    s.pinch_panned = false;
+    if panned && a.settings.hints & HINT_PAN == 0 {
+        let up = GestureKey::Touch { fingers: 2, kind: TouchKind::Up };
+        let down = GestureKey::Touch { fingers: 2, kind: TouchKind::Down };
+        if gesturemap_action(&a.gestures, up) != 0 || gesturemap_action(&a.gestures, down) != 0 {
+            a.settings.hints |= HINT_PAN;
+            settings_save(&a.settings);
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
+            // fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
+            app_toast(a, tr("Here two fingers move the page. Open Pages and Links from the panel."), 4000);
+        }
+    }
 }
 
 pub fn editor_leave(a: &mut App) {
@@ -3412,6 +3524,8 @@ pub fn editor_leave(a: &mut App) {
     }
     save_page(a);
     write_thumb_if_needed(a);
+    // Out of the editor no page pans or zooms, and no gesture is its: only the master switch is told.
+    input_touch_context(TgView { gestures_on: a.settings.gestures, ..TgView::default() });
 }
 
 /// flush pending page/info saves; false if they failed
@@ -3454,8 +3568,64 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
+    editor_event_in(a, ev);
+    touch_context(a);
+}
+
+// Two or three fingers made a gesture: what it does is gestures.ini's (the built-ins without one), but
+// for the mirror rule. With a menu in front, a gesture bound to that menu's own action closes it, and so
+// does the opposite gesture (two fingers down opened Pages, two fingers up close them: the same swipe
+// the other way takes back what the first did). Any other gesture does its own action, which a menu in
+// front refuses or swaps for its own (editor_shortcut_at).
+fn editor_gesture(a: &mut App, ev: &InEvent) {
+    let s = ed_ref(a);
+    if !s.open || s.pv.kb.open {
+        return;
+    }
+    let Some(key) = gesturemap_key_of_id(ev.value) else { return };
+    let front = front_menu(s);
+    let action = if front != 0 {
+        let m = &a.gestures;
+        // (the Pages view is two buttons' menu: Pages and Index)
+        let owned = |k: GestureKey| {
+            let act = gesturemap_action(m, k);
+            act == front || (act != 0 && (front == SHORTCUT_PAGES || front == SHORTCUT_INDEX) && (act == SHORTCUT_PAGES || act == SHORTCUT_INDEX))
+        };
+        if owned(key) || owned(gesturemap_mirror(key)) {
+            front
+        } else {
+            gesturemap_action(m, key)
+        }
+    } else {
+        gesturemap_action(&a.gestures, key)
+    };
+    if action == 0 {
+        return;
+    }
+    editor_shortcut_at(a, action, ev.x2, ev.y2, ActionSrc::Touch);
+}
+
+// A two-finger swipe or tap refused only because the pen was near: said once in a while, never while
+// the pen is down (a toast is a GL16), and never twice within PEN_TOAST_EVERY_MS of the events' clock.
+fn pen_toast(a: &mut App, t_ms: u32) {
+    let s = ed(a);
+    if (s.owner != Owner::None && s.owner_is_pen) || (s.pen_toast_shown && t_ms.wrapping_sub(s.pen_toast_at) < PEN_TOAST_EVERY_MS) {
+        return;
+    }
+    s.pen_toast_at = t_ms;
+    s.pen_toast_shown = true;
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
+    // while the pen was near the screen, so nothing happened.
+    app_toast(a, tr("Move the pen away, then swipe."), 2000);
+}
+
+fn editor_event_in(a: &mut App, ev: &InEvent) {
     let s = ed(a);
     if !s.open {
+        return;
+    }
+    if ev.type_ == InType::Gesture {
+        editor_gesture(a, ev);
         return;
     }
     if ev.type_ == InType::PenLeave {
@@ -3472,7 +3642,11 @@ pub fn editor_event(a: &mut App, ev: &InEvent) {
         if ev.type_ == InType::PinchBegin {
             live_reset();
         }
-        if !s.pv.open {
+        // (before pinch(): a session no pinch started for, the Pages view's or a refused one's, says it too)
+        if ev.type_ == InType::PinchEnd && ev.value == 1 {
+            pen_toast(a, ev.t_ms);
+        }
+        if !ed(a).pv.open {
             pinch(a, ev);
         }
         return;
@@ -3796,6 +3970,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
         render_page_full(a);
         compose_all(a, RefreshMode::Ui);
     }
+    touch_context(a);
 }
 
 // ---- headless checks ----
@@ -3914,6 +4089,12 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "zoomed" {
         let z = s.open && zoomed(a);
         csnprintf!(out, cap, "%d", if z { 1 } else { 0 });
+    } else if key == "scrolls" {
+        // Whether the page scrolls on each axis now, "V H" (what a two-finger drag pans, touchgest.rs).
+        let pans = s.open && !sheet_open(s);
+        let v = pans && (a.h as f32 / s.zoom) < s.pgh as f32 - 0.5;
+        let h = pans && (a.w as f32 / s.zoom) < s.pgw as f32 - 0.5;
+        csnprintf!(out, cap, "%d %d", v as i32, h as i32);
     } else if key == "stroke_start" {
         // Where the page's newest stroke starts, in page px: ink lands under the pen through the view.
         let p = if has_page { s.open_page().and_then(|p| p.strokes.last()) } else { None };

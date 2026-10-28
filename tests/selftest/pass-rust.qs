@@ -37,6 +37,7 @@ tap 1564 2254
 wait 400
 expect screen is editor
 expect editor.panel_at.1768.358 is tool-picker
+expect editor.scrolls is 0 0
 expect editor.panel_at.1768.594 is
 pen line 300 700 1300 720 20 0.6 0.6
 expect editor.panel_at.1768.594 is undo
