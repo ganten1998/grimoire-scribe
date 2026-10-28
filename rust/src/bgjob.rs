@@ -171,6 +171,20 @@ pub fn bg_detach_rest() {
     // jobs and ends with _exit.
     let pid = unsafe { libc::fork() };
     if pid == 0 {
+        // Grimoire's stop handler writes a byte to the signal pipe, whose number child_setup frees
+        // and the jobs' files take next: a stop sent to this child would write into a PDF or a
+        // page. The child has always gone on through a stop (the handler only set a flag nobody
+        // here reads), so it ignores them outright, before anything reuses the number.
+        // SAFETY: sigaction is plain data, zeroed then set to SIG_IGN; sigaction reads the
+        // structure we own.
+        unsafe {
+            let mut sa: libc::sigaction = std::mem::zeroed();
+            sa.sa_sigaction = libc::SIG_IGN;
+            libc::sigemptyset(&mut sa.sa_mask);
+            libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
+            libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+            libc::sigaction(libc::SIGHUP, &sa, std::ptr::null_mut());
+        }
         // SAFETY: setsid detaches the child from the terminal and process group it was forked in.
         unsafe { libc::setsid() };
         child_setup();
