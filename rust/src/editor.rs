@@ -2030,9 +2030,14 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     }
     render_page_full(a);
     ed(a).view_w = 0; // set the view up afresh on enter
+    let sideways_seen = a.settings.hints & HINT_SIDEWAYS;
     app_switch(a, ScreenId::Editor);
     arrive_readonly(a);
-    first_open_tip(a);
+    // One tip at a time: a notebook that came up sideways told the owner why (editor_enter, a toast of six
+    // seconds), and the first-open tip would take its place. It waits for the next open instead.
+    if a.settings.hints & HINT_SIDEWAYS == sideways_seen {
+        first_open_tip(a);
+    }
 }
 
 // The owner who updated from the build before is told once, as the first notebook comes up, what two
