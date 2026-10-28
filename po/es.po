@@ -588,6 +588,12 @@ msgstr "De lado ocupa todo el ancho."
 msgid "Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this."
 msgstr "De lado ahora se ve la página entera y los gestos de dos dedos funcionan. Pellizca para ampliar; se cambia en Pantalla."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
+#. two fingers dragged up and down on a page do now.
+#: rust/src/editor.rs
+msgid "New: two fingers up show this page's links. Two fingers down show all pages."
+msgstr "Novedad: dos dedos hacia arriba muestran los enlaces de esta página; hacia abajo, todas las páginas."
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: src/dispmenu.c
 msgid "Sleep"

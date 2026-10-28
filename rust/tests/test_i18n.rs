@@ -724,6 +724,8 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Sideways fills the width.")));
     put(cformat!("%s", tr("Applies when the Kindle is sideways.")));
     put(cformat!("%s", tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this.")));
+    // (and the first notebook's, as two fingers up and down start to mean something)
+    put(cformat!("%s", tr("New: two fingers up show this page's links. Two fingers down show all pages.")));
     // The Links bar's and the eye's toasts.
     put(cformat!("%s", tr("Dotted boxes show where a finger tap follows a link. They never print.")));
     put(cformat!("%s", tr("This page is read-only.")));

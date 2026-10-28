@@ -24,6 +24,8 @@ const LINK_HOLD_MS: u32 = 600;
 const LINK_BOX_MIN_MM: f32 = 5.0;
 
 // settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
+/// the first notebook that opened after the update said what two fingers up and down do now
+const HINT_FIRST_OPEN: i32 = 1 << 0;
 /// the eye was turned on: dotted boxes show where a finger tap follows a link
 const HINT_EYE: i32 = 1 << 2;
 /// two fingers dragged the page (a pan) while two fingers up and down are gestures
@@ -2020,6 +2022,23 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     ed(a).view_w = 0; // set the view up afresh on enter
     app_switch(a, ScreenId::Editor);
     arrive_readonly(a);
+    first_open_tip(a);
+}
+
+// The owner who updated from the build before is told once, as the first notebook comes up, what two
+// fingers up and down do now (hints bit 0). Not a fresh install, a settings file made by this build, or
+// an owner who has seen it (Settings.upgraded, store.rs). The gesture map is not consulted: the tip says
+// the two built-ins, and an owner who has only just updated has no gestures.ini to have changed them.
+fn first_open_tip(a: &mut App) {
+    let st = &a.settings;
+    if !st.upgraded || !st.gestures || st.hints & HINT_FIRST_OPEN != 0 || !ed_ref(a).open || a.scr != ScreenId::Editor {
+        return;
+    }
+    a.settings.hints |= HINT_FIRST_OPEN;
+    settings_save(&a.settings);
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
+    // two fingers dragged up and down on a page do now.
+    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down show all pages."), 6000);
 }
 
 /// the same, at that page
