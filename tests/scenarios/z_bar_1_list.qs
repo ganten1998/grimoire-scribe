@@ -59,6 +59,33 @@ expect editor.bar is open
 key 37 0
 wait 300
 expect editor.bar is 0
+# a drag of 15 mm down from the grip or the header closes it; a tap outside it only closes it (nothing under the
+# finger is pressed); a pen outside closes it at once and its stroke is swallowed
+key 37 0
+wait 300
+expect editor.bar is open
+drag touch 930 2030 930 2300 4
+wait 300
+expect editor.bar is 0
+expect editor.modal is none
+key 37 0
+wait 300
+tap 600 600
+wait 300
+expect editor.bar is 0
+expect editor.page is 1
+key 37 0
+wait 300
+expect editor.bar is open
+expect editor.strokes is 3
+pen down 600 600 0.5
+expect editor.bar is 0
+pen move 900 620 0.7
+pen up 900 620
+wait 300
+expect editor.strokes is 3
+pen leave
+wait 1100
 # sideways
 rotate 1
 wait 1200
