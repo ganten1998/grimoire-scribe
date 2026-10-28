@@ -426,7 +426,17 @@ impl State {
         e.eraser = self.eraser;
         e.side_button = self.side;
         e.t_ms = e.t_ms.wrapping_add(dt);
-        // The pen ends what fingers are doing (the Kindle's pen_frame arrival rule), before its event.
+        self.pen_arrives(&e);
+        let t_ms = e.t_ms;
+        self.q_push(e);
+        self.px = x;
+        self.py = y;
+        t_ms
+    }
+
+    // A pen event about to be queued (the script's, or the stand-in raw node's): the pen ends what
+    // fingers are doing (the Kindle's pen_frame arrival rule), before its event ...
+    fn pen_arrives(&mut self, e: &InEvent) {
         if touchgest_busy(&self.tg) {
             let mut out = TgOut::default();
             let k = self.tg_now();
@@ -436,7 +446,7 @@ impl State {
             }
         }
         // ... and touchgest sees it near, touching, or gone.
-        match t {
+        match e.type_ {
             InType::PenDown | InType::PenMove => {
                 self.tpen.prox = true;
                 self.tpen.touching = true;
@@ -453,11 +463,6 @@ impl State {
             }
             _ => {}
         }
-        let t_ms = e.t_ms;
-        self.q_push(e);
-        self.px = x;
-        self.py = y;
-        t_ms
     }
 
     /// The frame clock's now: where the last frame was, or now_ms() if that is later.
@@ -1857,6 +1862,7 @@ impl State {
                 e.gap = f.gap;
                 e.k_us = f.us;
                 e.k_ms = f.ms;
+                self.pen_arrives(&e);
                 self.q_push(e);
                 self.px = f.x as f32;
                 self.py = f.y as f32;
