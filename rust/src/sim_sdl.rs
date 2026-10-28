@@ -97,6 +97,12 @@ struct State {
     hids: [InputHid; 4],
     nhids: usize,
 
+    // input_sample_hook's (Live view's): called for each pen event as it is queued, and before
+    // each event is taken. They run under this module's borrow: by input.h's rule they only store
+    // into memory (app's and live's), so they never reach the runner.
+    sample_fn: Option<fn(&mut InEvent)>,
+    sample_batch: Option<fn()>,
+
     // ---- display ----
     /// g_last_screen: whether anything was presented yet (a shot before that writes nothing)
     presented: bool,
@@ -134,6 +140,8 @@ struct State {
     // ---- script mode ----
     script: Option<BufReader<File>>,
     wait_until: u32,
+    /// hold's PATH: the script resumes once that file exists ("" for none)
+    hold_file: FixedStr<256>,
     /// external test driver owns lifetime after the hold command
     script_hold: bool,
     /// waitbg: the wait ends early once no background job is queued or running
@@ -180,6 +188,8 @@ impl Default for State {
             shortcuts_enabled: false,
             hids: [InputHid::default(); 4],
             nhids: 0,
+            sample_fn: None,
+            sample_batch: None,
             presented: false,
             sim_invert: false,
             eink: Vec::new(),
@@ -199,6 +209,7 @@ impl Default for State {
             pokes: 0,
             script: None,
             wait_until: 0,
+            hold_file: FixedStr::new(),
             script_hold: false,
             wait_bg: false,
             pending_shot: FixedStr::new(),
@@ -231,10 +242,16 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 }
 
 impl State {
-    fn q_push(&mut self, e: InEvent) {
+    fn q_push(&mut self, mut e: InEvent) {
         let n = (self.qt + 1) % QN;
         if n == self.qh {
             return; // full: drop
+        }
+        let t = e.type_ as i32;
+        if let Some(f) = self.sample_fn {
+            if t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
+                f(&mut e);
+            }
         }
         self.q[self.qt] = e;
         self.qt = n;
@@ -242,6 +259,9 @@ impl State {
     fn q_pop(&mut self, e: &mut InEvent) -> bool {
         if self.qh == self.qt {
             return false;
+        }
+        if let Some(b) = self.sample_batch {
+            b();
         }
         *e = self.q[self.qh];
         self.qh = (self.qh + 1) % QN;
@@ -609,6 +629,12 @@ pub fn input_set_grab(grab: bool) -> bool {
 // (Its hover is the mouse's, as IN_PEN_HOVER events: Live view takes it from app_event.)
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
     let _ = f;
+}
+pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
+    with(|st| {
+        st.sample_fn = sample;
+        st.sample_batch = batch;
+    });
 }
 pub fn sys_prevent_sleep(prevent: bool) {
     let _ = prevent;
@@ -1198,6 +1224,7 @@ fn script_step_in(st: &mut State) -> Step {
             return Step::Batch;
         } else if a == b"hold" {
             st.script_hold = true;
+            st.hold_file.set_bytes(b);
             return Step::Batch;
         } else if a == b"waitbg" {
             // Background work (an import, a template's picture, a PDF) takes as long as the machine
@@ -1422,6 +1449,11 @@ fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         if with(|st| st.expect.pending) {
             expect_check(a.as_deref_mut()); // an expect waits for the same moment
         }
+        with(|st| {
+            if st.script_hold && !st.hold_file.is_empty() && access_exists(st.hold_file.as_bytes()) {
+                st.script_hold = false;
+            }
+        });
         if with(|st| st.script_hold) {
             sleep_ms(timeout_ms);
             return 0;
@@ -1453,6 +1485,13 @@ fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
 
 pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
     poll(ev, timeout_ms, None)
+}
+
+// access(path, F_OK) == 0
+fn access_exists(path: &[u8]) -> bool {
+    let Ok(c) = std::ffi::CString::new(path) else { return false };
+    // SAFETY: access reads the NUL-terminated path c holds.
+    unsafe { libc::access(c.as_ptr(), libc::F_OK) == 0 }
 }
 
 // ---- the runner's probe point ----

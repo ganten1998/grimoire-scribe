@@ -219,7 +219,12 @@ passes `App *a`. There is **no global pointer to it**. The C keeps two:
   `app_probe(a, key, out, cap)` takes the App.
 - `g_live_app` (app.c), for the hover hook (input_hover_hook calls back from inside input
   reading, possibly from work_pump in the middle of app work): the hook reads an atomic that app.rs
-  keeps equal to "Live view is on and the app is awake" instead of the App.
+  keeps equal to "Live view is on and the app is awake" instead of the App. Fast ink's live_capture
+  (input_sample_hook's, called from the same places) reads app.rs's LiveCap instead: Live view on,
+  asleep and input_yielded, kept equal to the App's wherever they change, and the rest of what the
+  C's live_capture reads of it (the screen, the book's state, editor_live_style for an event of
+  each eraser and side button state), made again after every app_event and app_tick and as Live
+  view starts.
 
 The screens keep their state in `a.lib`, `a.ed`, `a.ps`, `a.cal`, `a.share`
 (`Option<Box<XState>>`). The C passes `App *a` and pointers into the App's own state together
@@ -442,6 +447,11 @@ The only known ways the Rust build may differ, each deliberate:
   wall-clock seconds pass through it (wall_time, localtime_r); it overflows in 2038, not before.
 - **Panics**: a todo!() or a bounds check that fails ends the process where the C would read out of
   bounds. The release profile aborts on panic (no unwinding).
+- **Fast ink's style in a pump**: a pen sample that work_pump reads in the middle of a screen's
+  event takes its ink style from LiveCap (The App), which is the editor as that event began; the
+  C's live_capture reads the editor as it is at that moment. They differ only where the handler of a
+  pen move or of a pen-down on the page (the events whose pumps may preview at all) changes the
+  tool, the view or the panel and then pumps.
 
 Report any other difference you find yourself making; it is a bug until the owner decides
 otherwise.

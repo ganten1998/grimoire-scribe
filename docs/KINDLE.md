@@ -419,6 +419,17 @@ session with networking awake, not a reboot or deep sleep.
   pen on average over 32 contact frames)` says how its axes lie on the pen's, or
   `input: the raw digitizer's place is N px from the pen's at best (...): Live view shows no
   hovering pen` that they did not match, and the hover dot then only shows where the pen lifted.
+- **Drawing while watching a computer**: pair Live view, then choose Monitor mode (M). It fits the
+  page and hides the controls until the pointer or keyboard focus reaches them. The browser draws
+  quick pressure-sensitive ink from pen samples, in the pen's own shade (the highlighter gray and
+  see-through), then replaces it with Grimoire's exact image. Nibs and textured pens can change
+  appearance at that handoff; white ink and precise erasing show the paper's color until the real
+  paper returns. Whole-stroke erasing shows the pointer only. After a page turn the quick ink waits
+  for the new page's image. The Latency button shows how late the pen and the page image show (p50,
+  p90, maximum), each from when the Kindle read the pen, plus the clocks' uncertainty. It times the
+  browser's drawing callback, not when a monitor physically lights a pixel. A 240 fps video showing
+  the pen and monitor together is the final check. USB mode and Wi-Fi power saving are not changed
+  by Live view.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in

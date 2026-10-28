@@ -2,6 +2,12 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+- **Draw while looking at your computer**: Live view now sends pen movement on its own connection,
+  so the browser can show a quick pressure-sensitive line while the exact page image catches up.
+  Menu taps leave no preview ink. Monitor mode (M) fits the page and tucks the controls away; its
+  choice is remembered in that browser. An optional Latency readout shows estimated pen and image
+  delays. Textured nibs and erasing still settle to Grimoire's exact rendering.
+
 - **A Kindle reboot while writing, fixed**: with the developer switch `ink-metrics` on, Grimoire
   followed some ink refreshes through the Kindle's display driver, and a race in the driver could
   then crash the Kindle, which rebooted itself. Grimoire no longer asks the driver for those

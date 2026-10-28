@@ -59,6 +59,7 @@ pub fn input_set_grab(grab: bool) -> bool {
     false
 }
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {}
+pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {}
 pub fn input_close() {}
 
 // ---- light.h ----

@@ -20,3 +20,11 @@ video.pip{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointe
 .code input{font:inherit;font-size:1.6em;letter-spacing:.3em;width:7.5em;padding:6px 10px;color:var(--fg);background:var(--field);border:2px solid var(--fg);border-radius:8px}
 .code button{font:inherit;font-size:1.2em;margin-left:10px;padding:8px 16px;color:var(--bg);background:var(--fg);border:2px solid var(--fg);border-radius:8px}
 .code .err{color:#f77}
+
+#live .latency{display:block;font:12px monospace;margin:6px 0;color:var(--quiet)}
+#live .latency[hidden]{display:none}
+body.monitor{margin:0;padding:0;overflow:hidden}
+body.monitor #live .bar{position:fixed;z-index:5;top:0;left:0;right:0;opacity:0;transition:opacity .15s}
+body.monitor #live .bar:hover,body.monitor #live .bar:focus-within{opacity:1}
+body.monitor #live .stage{margin:0 auto}
+body.monitor #live .latency{position:fixed;z-index:6;bottom:0;background:var(--bg)}

@@ -129,6 +129,12 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | phone, computer | **teléfono, computadora** | *móvil*, *ordenador* (Spain); *celular* (Latin America). |
 | browser | **navegador** | |
 | Show pen (Live view's switch in the browser) | **Mostrar el lápiz** | The Scribe's pen, so *lápiz*, as everywhere (above). |
+| Monitor mode (Live view's button in the browser: the page fitted, the controls tucked away, for drawing while looking at the computer) | **Modo monitor** (*Modo monitor (M)*) | *Monitor* is the computer's screen, which *pantalla* would confuse with the Kindle's. |
+| Latency (the readout) | **Latencia** | Its lines say how late each thing shows: **retraso** (below), the plain word. |
+| page image (Live view's exact picture of the page, the real ink that replaces the quick line; sent as tiles, which never show as such) | **la imagen** (*Retraso de la imagen en pantalla*) | *Bloques* (the tiles) meant nothing to a reader. |
+| Pen age at paint, Page image age at paint | **Retraso del lápiz en pantalla**, **Retraso de la imagen en pantalla** | How late each shows on the computer, from when the Kindle read the pen. Was *Tiempo del lápiz al dibujar*, which read as the time spent drawing (*dibujar* is what the pen does). |
+| p50 / p90 / max (the readout's three numbers) | **p50 / p90 / máx** | The median and the 90th percentile keep their usual short names. |
+| Clock uncertainty | **Incertidumbre del reloj** | *Margen de error del reloj*. |
 | video; Record (WebM) | **video**; **Grabar (WebM)** | *vídeo* (Spain). MP4 and WebM are format names, never translated. |
 | download, served | **descargar, Descargas realizadas** | The counter is the downloads made; *Descargas servidas* read as a calque (food is served). *Descargas atendidas*. |
 | Effects, studio | **Efectos, estudio** | |

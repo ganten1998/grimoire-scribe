@@ -17,6 +17,8 @@
 //!   GET /live                     Live view (live.h): the code form, or the viewer once paired
 //!   GET /live/pair?code=|t=       trades the Kindle's code (or its QR code's token) for a session
 //!   GET /live/stream              the screen, for a paired browser (a viewer child answers it)
+//!   GET /live/pen                 the pen's samples, for a paired browser (a pen viewer child)
+//!   GET /live/time                the Kindle's now_ms(), for a paired browser's latency meter
 //! The server runs while an owner keeps it (httpd_acquire): the Share screen, whose routes are every
 //! one above but /live, and Live view, whose are /live and the fonts. A route no owner has answers
 //! 403 (a download while only Live view runs) or 404.
@@ -1303,6 +1305,23 @@ fn route_live_page(query: &[u8]) {
         // picture (a dot, see-through while it hovers over the screen, solid while it touches), in
         // recordings too.
         live_word(&mut b, &mut n, "pen", tr("Show pen"));
+        // TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
+        // controls away, for drawing on the Kindle while looking at the computer; M is its key.
+        live_word(&mut b, &mut n, "monitor", tr("Monitor mode (M)"));
+        // TRANSLATORS: Live view's button in the browser that shows or hides its latency readout.
+        live_word(&mut b, &mut n, "latency", tr("Latency"));
+        // TRANSLATORS: the latency readout: how late the pen's quick line shows in the browser, from
+        // when the Kindle read the pen to when the browser draws it.
+        live_word(&mut b, &mut n, "sampleAge", tr("Pen age at paint"));
+        // TRANSLATORS: the latency readout: how late Grimoire's exact image of the page (the real ink
+        // that replaces the quick line) shows in the browser, from when the Kindle read the pen.
+        live_word(&mut b, &mut n, "tileAge", tr("Page image age at paint"));
+        // TRANSLATORS: the latency readout's three numbers for each line: the median, the 90th
+        // percentile and the largest of the latest measurements.
+        live_word(&mut b, &mut n, "stats", tr("p50 / p90 / max"));
+        // TRANSLATORS: the latency readout: how far off its times may be, the Kindle's clock and the
+        // computer's being compared over the network.
+        live_word(&mut b, &mut n, "clockError", tr("Clock uncertainty"));
         live_word(&mut b, &mut n, "record", tr("Record"));
         // TRANSLATORS: Live view's Record button where the browser can make no MP4 at all (WebM is the
         // other video format), and its tooltip saying why.
@@ -1406,7 +1425,17 @@ fn route_live(path: &[u8], query: &[u8]) {
         qlog!("live: a pairing was refused (%s)", if rc == PAIR_LOCKED { "locked" } else { "wrong code" });
         return redirect(if rc == PAIR_LOCKED { "/live?e=locked" } else { "/live?e=wrong" }, None);
     }
-    if path == b"/live/stream" {
+    if path == b"/live/time" {
+        if session_scopes() & PAIR_LIVE == 0 {
+            return respond_text(401, "pair first");
+        }
+        let mut b = Buf::default();
+        buf_printf!(&mut b, "{\"ms\":%u}", now_ms());
+        respond(200, "application/json", &b, None);
+        buf_free(&mut b);
+        return;
+    }
+    if path == b"/live/stream" || path == b"/live/pen" {
         if session_scopes() & PAIR_LIVE == 0 {
             return respond_text(401, "pair first");
         }
@@ -1416,8 +1445,9 @@ fn route_live(path: &[u8], query: &[u8]) {
         if !live_on() {
             return respond_text(503, "live view is off");
         }
-        // TRANSLATORS: Live view's answer to a third computer (two can watch at once).
-        if !live_take_viewer(cur_fd()) {
+        let taken = if path == b"/live/pen" { live_take_pen_viewer(cur_fd()) } else { live_take_viewer(cur_fd()) };
+        if !taken {
+            // TRANSLATORS: Live view's answer to a third computer (two can watch at once).
             return respond_text(503, tr("Two computers are watching already."));
         }
         qlog!("live: a viewer started (%d watching)", live_viewers());

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-27 07:00-0500\n"
+"POT-Creation-Date: 2026-10-27 15:28-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -975,6 +975,41 @@ msgstr ""
 #. recordings too.
 #: src/httpd.c
 msgid "Show pen"
+msgstr ""
+
+#. TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
+#. controls away, for drawing on the Kindle while looking at the computer; M is its key.
+#: src/httpd.c
+msgid "Monitor mode (M)"
+msgstr ""
+
+#. TRANSLATORS: Live view's button in the browser that shows or hides its latency readout.
+#: src/httpd.c
+msgid "Latency"
+msgstr ""
+
+#. TRANSLATORS: the latency readout: how late the pen's quick line shows in the browser, from
+#. when the Kindle read the pen to when the browser draws it.
+#: src/httpd.c
+msgid "Pen age at paint"
+msgstr ""
+
+#. TRANSLATORS: the latency readout: how late Grimoire's exact image of the page (the real ink
+#. that replaces the quick line) shows in the browser, from when the Kindle read the pen.
+#: src/httpd.c
+msgid "Page image age at paint"
+msgstr ""
+
+#. TRANSLATORS: the latency readout's three numbers for each line: the median, the 90th
+#. percentile and the largest of the latest measurements.
+#: src/httpd.c
+msgid "p50 / p90 / max"
+msgstr ""
+
+#. TRANSLATORS: the latency readout: how far off its times may be, the Kindle's clock and the
+#. computer's being compared over the network.
+#: src/httpd.c
+msgid "Clock uncertainty"
 msgstr ""
 
 #: src/httpd.c
