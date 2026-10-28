@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # White ink from the tool picker's ink row (Black | White): a tap keeps the picker open and sets
 # settings.white; the pen in use then shows that it draws white (its button hollow: editor.white_mark),
 # on the collapsed panel too, and draws white ink, an erase stroke with the pen's own look. The

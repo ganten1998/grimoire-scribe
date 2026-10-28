@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The tool picker stays whole on the screen. Beside a panel dragged to the middle (x 900) neither
 # side has room for it, so it goes over the panel, inside the screen's right edge (editor.tools_rect),
 # and its Pin and White at that edge work. The picker takes the taps over the panel, and stays

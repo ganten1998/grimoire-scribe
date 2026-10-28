@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Charcoal and the calligraphy pen on medium rule. Tilt is in the page frame: (40, 46) is a
 # right hand leaning the pen toward the bottom right; (-40, 46) a left hand; (0, 0) upright.
 # rust-only

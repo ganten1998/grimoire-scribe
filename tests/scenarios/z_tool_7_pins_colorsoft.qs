@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Four pinned pens (panel_tools in settings.ini, as the tool picker's Pin mode writes it) on a
 # 1986x2648 screen (the Scribe 3 and the Scribe Colorsoft): the panel fits upright and sideways
 # with its buttons at full size and its 12 px margins (editor.panel_rect: x y w h), the pins in

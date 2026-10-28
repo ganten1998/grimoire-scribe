@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The maintainer's handwriting stays centered and erasable as its original 32 strokes.
 # env: GRIMOIRE_CHECK_FIT=1
 wait 100

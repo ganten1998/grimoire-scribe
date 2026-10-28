@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_PASSCODE=enabled
 # Native PIN keeps ownership of input until outOfScreenSaver. Time and touches never unlock.
 wait 200

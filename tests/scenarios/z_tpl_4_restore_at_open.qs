@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A notebook 1.0.0-beta wrote on: it saved page 1 (an imported page) as version 1 Blank and drew
 # the Library's card on blank paper, and bg/pages.ini still lists page 1 with its picture. Opened
 # here on page 2, page 1 gets its picture back at once, though it is not visited: closed, the card

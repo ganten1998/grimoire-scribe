@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_ANNOTATE=1
 # copy: tests/fixtures/annotate/page-12 import/.annotate
 # GRIMOIRE_ANNOTATE=1, but Grimoire was not started by KOReader (no GRIMOIRE_HOST: kindle/app/grimoire.sh

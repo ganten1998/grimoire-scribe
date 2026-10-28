@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The pen's button clears the page only from the page itself. Held 1.2 s (or clicked three times)
 # while a sheet is in front of it (the tool picker, in Pin mode too, the Display sheet), or while
 # the pen taps the panel's buttons, it clears nothing, also once the sheet is closed with the

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index-keys .
 # rust-only

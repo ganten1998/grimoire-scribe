@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Cancelling a peek: X returns to the page the bar began on with one Ui, or one Full after three peeks (GL16
 # ghosting builds up); the back chip returns to it with the bar kept.

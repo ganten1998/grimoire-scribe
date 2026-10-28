@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # copy: tests/fixtures/annotate/page-12 import/.annotate
 # A fresh request, but this start was not asked to open it (no GRIMOIRE_ANNOTATE: Grimoire started

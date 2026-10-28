@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The eye: dotted, numbered boxes over the page where a finger's tap follows a link. The link-areas
 # action turns it on and off; the boxes are the links' ink padded to a finger's size, three of them

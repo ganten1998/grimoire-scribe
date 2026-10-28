@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # Controllers as express keys: one another app holds, one coming and going (a toast each way, at
 # most one a direction in 30 s, so a link that keeps dropping does not flash the screen), the

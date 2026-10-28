@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A folder of page pictures in grimoire/import/ (copied in over USB while Grimoire was closed)
 # becomes a notebook at startup, in the background: a toast says so and the Library shows it. Its
 # pages are the pictures in the natural order of their names (page-1, page-2, page-10; notes.txt

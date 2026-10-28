@@ -158,6 +158,54 @@ fn corner_box(corner: i32, w: i32, h: i32, bw: i32, bh: i32, m: i32) -> Rect {
     Rect { x: if right { w - m - bw } else { m }, y: if bottom { h - m - bh } else { m }, w: bw, h: bh }
 }
 
+/// The bar reserves a real viewport strip even while a sheet is over it. Existing corner
+/// settings do not affect its height. It remains available while touch is rejected by the panel.
+pub fn status_reserved(a: &App) -> i32 {
+    if a.settings.status_mode == 0 && a.scr == ScreenId::Editor && editor_page_canvas(a).is_some() {
+        ui_px(104.0).min(a.h / 5)
+    } else { 0 }
+}
+
+pub fn status_cycle_mode(a: &mut App) {
+    if editor_busy(a) { return; }
+    a.settings.status_mode = (a.settings.status_mode + 1) % 3;
+    save_later();
+    ask_change(a);
+    crate::editor::editor_status_changed(a);
+}
+
+fn bar_layout(a: &App, b: &Battery) -> Layout {
+    let mut l = layout_of(0, 0, a.w, a.h, sys_wall_clock(), b);
+    let h = status_reserved(a);
+    let pad = ui_px(16.0);
+    let half = h / 2;
+    let clock_w = l.rect.w + pad;
+    let clock_x = (a.w - clock_w).max(a.w / 2);
+    let dx = clock_x - l.rect.x;
+    let dy = (half - l.rect.h) / 2 - l.rect.y;
+    l.time_r.x += dx; l.time_r.y += dy;
+    l.pct_r.x += dx; l.pct_r.y += dy;
+    if let Some(r) = l.icon.as_mut() { r.x += dx; r.y += dy; }
+    l.rect = Rect { x: 0, y: 0, w: a.w, h };
+    if let Some((book, page, links)) = crate::editor::editor_status_text(a) {
+        let mut add = |x, y, w, text: String, icon| l.cells.push(BarCell { rect: Rect { x, y, w, h: half }, text, icon });
+        add(pad, 0, (clock_x - pad * 2).max(1), book, IconKind::None);
+        let page_end = a.w * 38 / 100;
+        let links_end = a.w * 60 / 100;
+        let tool_end = a.w - ui_px(132.0);
+        add(pad, half, page_end - pad, page, IconKind::None);
+        add(page_end, half, links_end - page_end, links, IconKind::Link);
+        add(links_end, half, (tool_end - links_end).max(1), tool_label(a.settings.current_tool).to_string(), ui_tool_icon(a.settings.current_tool.0 as i32));
+        add(tool_end, half, ui_px(56.0), String::new(), if live_on() { IconKind::Live } else { IconKind::None });
+        let mut hids = [InputHid::default(); 16];
+        input_hids(&mut hids);
+        let connected = hids.iter().any(|h| h.gamepad && !h.held && !h.name.is_empty());
+        add(tool_end + ui_px(64.0), half, ui_px(56.0), String::new(), if connected { IconKind::Gamepad } else { IconKind::None });
+    }
+    l.text = format!("{}  {}", l.text, l.cells.iter().map(|c| c.text.as_str()).collect::<Vec<_>>().join("  "));
+    l
+}
+
 // ---- a tap in the corner ----
 
 /// A finger that went down in the zone on no control, followed to its lift.
@@ -226,6 +274,7 @@ struct State {
     tapped: bool,
     /// a setting changed that settings.ini does not hold yet: saved after the refresh went out
     save_due: bool,
+    bar_cells: Vec<BarCell>,
 }
 
 thread_local! {
@@ -261,7 +310,11 @@ fn metrics(size: i32) -> Metrics {
 }
 
 /// What the indicator says and where it sits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BarCell { rect: Rect, text: String, icon: IconKind }
+
 struct Layout {
+    cells: Vec<BarCell>,
     rect: Rect,
     /// "Oct 10, 14:32  87%", as `status.text` reads it
     text: String,
@@ -305,6 +358,7 @@ fn layout_of(size: i32, corner: i32, sw: i32, sh: i32, t: i64, b: &Battery) -> L
     let ix = time_r.x + tw + g1;
     let icon = has_battery.then_some(Rect { x: ix, y: rect.y + (rect.h - m.ih) / 2, w: iw, h: m.ih });
     Layout {
+        cells: Vec::new(),
         rect,
         text: status_text(t, b),
         time,
@@ -323,6 +377,7 @@ fn layout_of(size: i32, corner: i32, sw: i32, sh: i32, t: i64, b: &Battery) -> L
 /// whatever it says: its box starts at the margin and is as tall as layout_of makes it. Asked
 /// before a layout, which costs a clock, a format and a measure, so a refresh far away costs none.
 fn band(a: &App) -> Rect {
+    if status_reserved(a) > 0 { return Rect { x: 0, y: 0, w: a.w, h: status_reserved(a) }; }
     let h = ui_px(6.0) + metrics(a.settings.status_size).bh;
     let bottom = a.settings.status_corner == 2 || a.settings.status_corner == 3;
     Rect { x: 0, y: if bottom { a.h - h } else { 0 }, w: a.w, h }
@@ -330,7 +385,9 @@ fn band(a: &App) -> Rect {
 
 fn layout(a: &App) -> Layout {
     let b = with(|s| s.battery);
-    layout_of(a.settings.status_size, a.settings.status_corner, a.w, a.h, sys_wall_clock(), &b)
+    if status_reserved(a) > 0 { bar_layout(a, &b) } else {
+        layout_of(a.settings.status_size, a.settings.status_corner, a.w, a.h, sys_wall_clock(), &b)
+    }
 }
 
 /// The battery in pixel art in r (ICON_UW by ICON_UH units of u px): an outline with notched corners, its
@@ -373,8 +430,23 @@ fn draw_battery(c: &mut Canvas, r: Rect, u: i32, b: &Battery) {
 }
 
 fn draw(c: &mut Canvas, l: &Layout) {
+    if !l.cells.is_empty() {
+        canvas_fill(c, l.rect, 255);
+        canvas_fill(c, Rect { x: 0, y: l.rect.h - ui_px(2.0), w: l.rect.w, h: ui_px(2.0) }, 0);
+        for cell in &l.cells {
+            let mut r = cell.rect;
+            if cell.icon != IconKind::None {
+                let side = ui_px(36.0);
+                ui_icon(c, cell.icon, Rect { x: r.x, y: r.y + (r.h - side) / 2, w: side, h: side }, 0);
+                r.x += side + ui_px(6.0); r.w -= side + ui_px(10.0);
+            }
+            // ui_text shrinks/truncates at UTF-8 boundaries through the shared font renderer.
+            font_draw_left_name(c, FontFace::Regular, ui_px(30.0) as f32, r, &cell.text, 0);
+        }
+    } else {
     ui_frame(c, l.rect, ui_px(8.0), 255, true, 0);
     ui_frame(c, l.rect, ui_px(8.0), 0, false, ui_px(2.0));
+    }
     font_draw_left(c, FontFace::Fixed, l.px, l.time_r, &l.time, 0);
     if let Some(ir) = l.icon {
         draw_battery(c, ir, l.unit, &l.battery);
@@ -420,7 +492,7 @@ thread_local! {
 
 /// Whether the panel should hold the indicator now: it is on, and the page is in front.
 fn wanted(a: &App) -> bool {
-    a.settings.status_on && page_in_front(a)
+    (a.settings.status_mode == 0 || (a.settings.status_mode == 1 && a.settings.status_on)) && page_in_front(a)
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -456,6 +528,7 @@ fn status_busy(a: &App) -> bool {
 /// calls it awake only.
 pub fn status_touch(a: &mut App, ev: &InEvent) {
     with(|s| s.tapped = false);
+    if a.settings.status_mode != 1 { return; }
     if !page_in_front(a) {
         with(|s| s.tap.cancel());
         return;
@@ -562,6 +635,11 @@ fn save_later() {
 
 /// Turns the indicator on or off: a tap in the corner, or the status-toggle shortcut.
 pub fn status_toggle(a: &mut App) {
+    if a.settings.status_mode != 1 {
+        if editor_busy(a) { return; }
+        a.settings.status_mode = if a.settings.status_mode == 0 { 2 } else { 0 };
+        save_later(); ask_change(a); crate::editor::editor_status_changed(a); return;
+    }
     a.settings.status_on = !a.settings.status_on;
     save_later();
     qlog!(
@@ -626,6 +704,7 @@ pub fn status_reset() {
         s.drawn_icon = RECT_EMPTY;
         s.drawn_fill = 0;
         s.drawn_key = None;
+        s.bar_cells.clear();
         s.pending.clear();
         // (The battery ran down meanwhile: the first tick awake asks again. The kernel answers at
         // once; lipc with its last reading until the next one is due.)
@@ -659,9 +738,19 @@ pub fn status_tick(a: &mut App, now: u32) {
         read_battery();
     }
     let key = (sys_wall_clock().div_euclid(60), with(|s| s.battery));
-    if with(|s| s.drawn_key) != Some(key) {
-        ask_change(a);
-    }
+    if status_reserved(a) > 0 {
+        let l = layout(a);
+        let old = with(|s| s.bar_cells.clone());
+        if drawn != l.rect || old.len() != l.cells.len() { ask(l.rect); }
+        else {
+            for (before, after) in old.iter().zip(&l.cells) {
+                if before != after { ask(after.rect); }
+            }
+            if with(|s| s.drawn_key) != Some(key) {
+                ask(Rect { x: l.time_r.x, y: 0, w: a.w - l.time_r.x, h: l.rect.h / 2 });
+            }
+        }
+    } else if with(|s| s.drawn_key) != Some(key) { ask_change(a); }
 }
 
 // ---- painting it, for app_flush ----
@@ -676,6 +765,7 @@ fn set_drawn(l: Option<&Layout>) {
     let r = l.map_or(RECT_EMPTY, |l| l.rect);
     with(|s| {
         s.drawn = r;
+        s.bar_cells = l.map(|l| l.cells.clone()).unwrap_or_default();
         s.drawn_key = l.map(|l| l.key);
         s.drawn_text = l.map(|l| l.text.clone()).unwrap_or_default();
         s.drawn_charging = l.is_some_and(|l| l.battery.charging && l.icon.is_some());
@@ -814,7 +904,7 @@ fn flush_corner(a: &mut App) {
     }
     let l = on.then(|| layout(a));
     if let Some(l) = &l {
-        add_region(&mut regions, rect_intersect(l.rect, screen));
+        if l.cells.is_empty() { add_region(&mut regions, rect_intersect(l.rect, screen)); }
     }
     let cover = l.as_ref().and_then(|l| paint(a, l));
     for r in &regions {
@@ -848,6 +938,9 @@ pub fn status_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     };
     match key {
+        "reserved" => csnprintf!(out, cap, "%d", status_reserved(a)),
+        "live" => csnprintf!(out, cap, "%d", with(|s| s.bar_cells.iter().any(|c| c.icon == IconKind::Live)) as i32),
+        "controller" => csnprintf!(out, cap, "%d", with(|s| s.bar_cells.iter().any(|c| c.icon == IconKind::Gamepad)) as i32),
         "shown" => csnprintf!(out, cap, "%d", shown as i32),
         "text" => csnprintf!(out, cap, "%s", if shown { text.as_str() } else { "" }),
         "rect" => rect_text(out, drawn, shown),
@@ -1184,6 +1277,7 @@ mod tests {
         utc();
         up();
         let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
         let b = Battery { percent: 87, charging: true };
         for size in 0..STATUS_SIZES {
             for corner in 0..STATUS_CORNERS {
@@ -1202,6 +1296,7 @@ mod tests {
         up();
         status_reset();
         let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
         assert_eq!(status_square(&a), Rect { x: 0, y: 0, w: 165, h: 165 });
         a.dpi = 150.0;
         assert_eq!(status_square(&a).w, 83);
@@ -1356,6 +1451,7 @@ mod tests {
         status_reset();
         front(true);
         let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
         assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
         canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: 600, h: 400 }, 200);
         let before = a.screen.px.clone();
@@ -1397,6 +1493,7 @@ mod tests {
         status_reset();
         front(true);
         let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
         assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
         canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: 600, h: 400 }, 200);
         a.settings.status_on = true;
@@ -1460,6 +1557,7 @@ mod tests {
         status_reset();
         front(true);
         let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
         assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
         a.settings.status_on = true;
         let l = layout_of(0, 0, 600, 400, 1700000000, &Battery { percent: 80, charging: false });

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The notebook 1.0.0-beta wrote on (as in z_tpl_4), opened on page 2 and closed once, page 1 never
 # visited: the pages it gets back as it opens are what this close writes the notebook's PDF and
 # card for. (z_tpl_4 visits page 1 later, which would write them too.)

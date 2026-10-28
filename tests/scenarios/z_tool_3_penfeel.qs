@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Pen feel with white ink on (white=1, as the tool picker's ink row sets it) and its Eraser row.
 # A drawing tool's tab has a black swatch on its test pad, and the pen draws white there with the
 # tool's look (penset.pad_white: white went through the swatch); Clear lays it again. The eraser's

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The editor's Paper sheet > More papers... > a template: the page goes onto it as onto any paper,
 # one undo step, and its picture (made for this notebook in the background) is drawn once it is
 # there. The precise eraser over ink on it brings the picture back, undo and redo of the change are

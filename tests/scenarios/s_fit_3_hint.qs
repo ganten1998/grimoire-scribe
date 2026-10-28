@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # An owner updating from the build before (a settings.ini at version 3 with no gestures key) is told once,
 # the first time the page comes up sideways whole, why two fingers swipe there now; a fresh install is not.

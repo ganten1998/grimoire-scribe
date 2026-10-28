@@ -6,6 +6,10 @@ The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-b
 performance candidate that was never published, so its changes (the last section below) are in this
 release too.
 
+- **Notebook status bar:** the new default keeps the notebook, page and section, link counts, tool,
+  clock, battery, screen sharing and controller visible above the page. Upright and sideways, the
+  page fits below it. Display lets you select Bar, Corner or Off, also available as `status-mode`.
+
 - **Grimoire is now written in Rust**: the whole app has been rewritten, screen for screen and file
   for file, from the C it was written in until now. Using it does not change: the same screens,
   pens, papers, shortcuts and settings. The port itself changes no file: your notebooks, templates,

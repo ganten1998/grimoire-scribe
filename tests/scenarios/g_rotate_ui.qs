@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Library and sheets when the Kindle is turned sideways
 # rust-only
 wait 300

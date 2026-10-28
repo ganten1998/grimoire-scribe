@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The panel with 0 to 4 pinned pens on the Scribe 3's and the Scribe Colorsoft's screen
 # (1986x2648), upright and sideways: always inside the screen with 12 px free above and below it,
 # its buttons at full size (editor.panel_fits), as on the 1860x2480 Scribes (z_tool_9_fit). Each

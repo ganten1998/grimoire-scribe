@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # copy: tests/fixtures/pages-many/notebooks notebooks
 # The number grid, and the Find sheet's Go to page, must not load any pages except the one explicitly opened.
 # rust-only

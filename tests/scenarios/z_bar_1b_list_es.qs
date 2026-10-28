@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The Links bar in Spanish, upright and sideways, under the fit check: nothing is cut that should not be.
 # root: z_bar_0_make

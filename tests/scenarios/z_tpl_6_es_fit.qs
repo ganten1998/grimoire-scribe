@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_LANG=es
 # env: GRIMOIRE_CHECK_FIT=1
 # The Templates sheet with templates in it, in Spanish with the fit check (a run that cuts any

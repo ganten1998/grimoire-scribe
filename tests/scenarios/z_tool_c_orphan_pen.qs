@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The pen in use always has its button on the panel. Here settings.ini is as 1.0.0-beta leaves it
 # after a pinned highlighter was in use (it drops panel_tools and keeps current_tool), with white
 # on: opening a notebook, the highlighter goes to the tool button, selected, with the white mark.

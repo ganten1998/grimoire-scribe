@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # A finger held on a Buttons row (0.6 s) takes that row's buttons away, one row at a time: it reads
 # none, a toast says so, the release starts no learning, and controller.ini keeps it (shortcuts.ini's

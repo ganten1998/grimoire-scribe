@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Pages view: previews, tick pages 2 and 4, delete; open a page from its preview; select all + delete
 # rust-only
 wait 200

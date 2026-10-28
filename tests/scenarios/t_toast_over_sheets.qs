@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_PASSCODE=left-off
 # A toast that is up when a sheet opens (here the notice a start shows for 10 s) moves above the
 # sheet's buttons, or above the keyboard, so their labels stay readable; it goes back to its

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The precise eraser (eraser_mode=1, set by hand until Pen feel has its switch): the pen's eraser
 # end, the eraser button and the pen button (side_button=1) draw erase strokes that take away only
 # what they touch and keep the paper's lines, each with the round tip and the eraser's settings

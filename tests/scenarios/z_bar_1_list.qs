@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The Links bar: two fingers up (or the panel's Links button, or the links action) open it along the bottom, one
 # row per place the page's links go, numbered in reading order and counted: here page 3 twice, then page 2. X,

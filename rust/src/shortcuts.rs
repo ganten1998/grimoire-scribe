@@ -59,7 +59,8 @@ pub const SHORTCUT_LANDSCAPE_FIT: i32 = 52;
 pub const SHORTCUT_STATUS_CORNER: i32 = 53;
 /// Two fingers left on the last page add a page, or do not (settings.ini gesture_new_page; Rust only).
 pub const SHORTCUT_GESTURE_NEW_PAGE: i32 = 54;
-pub const SHORTCUT_LAST: i32 = 54;
+pub const SHORTCUT_STATUS_MODE: i32 = 55;
+pub const SHORTCUT_LAST: i32 = 55;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. A page turned by a gesture adds a page on the last one unless settings.ini gesture_new_page is off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,7 +185,7 @@ const K_TOOL_ACTIONS: [&str; TOOL_COUNT] = [
     "tool:charcoal",
     "tool:calligraphy",
 ];
-const K_ACTIONS: [(&str, i32); 35] = [
+const K_ACTIONS: [(&str, i32); 36] = [
     ("undo", SHORTCUT_UNDO), ("redo", SHORTCUT_REDO), ("previous-page", SHORTCUT_PREV_PAGE),
     ("next-page", SHORTCUT_NEXT_PAGE), ("previous-tool", SHORTCUT_PREV_TOOL), ("next-tool", SHORTCUT_NEXT_TOOL),
     ("white", SHORTCUT_WHITE), ("index", SHORTCUT_INDEX), ("hold-eraser", SHORTCUT_HOLD_ERASER),
@@ -196,7 +197,7 @@ const K_ACTIONS: [(&str, i32); 35] = [
     ("picker-next", SHORTCUT_PICKER_NEXT), ("add-link", SHORTCUT_ADD_LINK), ("name-page", SHORTCUT_NAME_PAGE),
     ("status-toggle", SHORTCUT_STATUS), ("links", SHORTCUT_LINKS), ("go-to-page", SHORTCUT_GO_TO_PAGE),
     ("go-back", SHORTCUT_GO_BACK), ("link-areas", SHORTCUT_LINK_AREAS), ("landscape-fit", SHORTCUT_LANDSCAPE_FIT),
-    ("status-corner", SHORTCUT_STATUS_CORNER), ("gesture-new-page", SHORTCUT_GESTURE_NEW_PAGE),
+    ("status-mode", SHORTCUT_STATUS_MODE), ("status-corner", SHORTCUT_STATUS_CORNER), ("gesture-new-page", SHORTCUT_GESTURE_NEW_PAGE),
 ];
 /// Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
 /// the analog triggers (hidkeys_trigger_event reports them as these).

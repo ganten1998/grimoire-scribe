@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # A button the first finger pressed on the bar or the Find sheet, and a second finger took over (the first
 # finger's cancel, then the gesture): let go with a Fast refresh as it was pressed, not a Ui one, and nothing

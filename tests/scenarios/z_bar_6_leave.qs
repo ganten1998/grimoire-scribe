@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # A peek is gone when the Kindle sleeps (the bar closes, the page it began on is there on waking) and when
 # Grimoire is left: notebook.ini was never written with the peeked page.

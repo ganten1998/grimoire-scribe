@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Taps and pen taps land where the script says after the Kindle turns, on a calibrated root too
 # (b_library calibrated the pen and touch). As on the Kindle, the calibration maps the digitizer
 # to the upright panel, so one made upright stays right sideways.

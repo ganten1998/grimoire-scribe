@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/link-keys .
 # A key on the Pages view's keyboard costs what a key on the Library's does: the text line, then the

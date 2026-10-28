@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # root: r_passcode
 # env: GRIMOIRE_PASSCODE=enabled
 # A subsequent start still uses native unlock without a calibration startup tip.

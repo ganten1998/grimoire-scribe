@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The stroke eraser (eraser_mode=0) takes a stroke away only where it touches ink of it that shows:
 # over the part of a pencil line that white ink took away (the page there is its paper again) it
 # takes nothing, and the line stays; over the part that shows it takes the line, and undo brings it

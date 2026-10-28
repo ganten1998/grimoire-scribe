@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Contact-level touch through the recognizer the Kindle's panel goes through: a spread zooms like the
 # legacy pinch, a palm (tool 2) keeps every contact quiet until all lift, and a pen coming near ends a

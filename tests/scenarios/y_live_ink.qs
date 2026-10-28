@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Live ink and the colour panel's wait (display_fbink.c): on a Scribe Colorsoft every fast refresh
 # but live ink waits until the driver has read the frame, so a pen stroke must be marked live ink
 # from its start to its end wherever it draws: ink and the eraser in the editor, the pen feel pad,

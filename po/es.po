@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 13:02-0500\n"
+"POT-Creation-Date: 2026-10-28 17:58-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -499,6 +499,18 @@ msgstr "En reposo: el salvapantallas del Kindle (toca para cambiar)"
 msgid "Sleep screen: KOReader wallpaper (tap to change)"
 msgstr "Al dormir: imagen de KOReader (toca para cambiar)"
 
+#: rust/src/dispmenu.rs
+msgid "Status: bar"
+msgstr "Estado: barra"
+
+#: rust/src/dispmenu.rs
+msgid "Status: corner"
+msgstr "Estado: esquina"
+
+#: rust/src/dispmenu.rs
+msgid "Status: off"
+msgstr "Estado: oculto"
+
 #. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
 #. which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
@@ -643,6 +655,16 @@ msgstr "Más papeles..."
 #: rust/src/editor.rs rust/src/library.rs
 msgid "Custom music..."
 msgstr "Partitura a medida..."
+
+#: rust/src/editor.rs
+#, fuzzy
+msgid "From"
+msgstr "Desde"
+
+#: rust/src/editor.rs
+#, fuzzy
+msgid "To"
+msgstr "Hasta"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
 #. "Sideways, show the whole page" was changed with the Kindle upright, where it makes no

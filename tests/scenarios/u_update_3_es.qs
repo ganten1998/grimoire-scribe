@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_LANG=es GRIMOIRE_CHECK_FIT=1 GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_PREVIEW=2.0.0-beta.9 FAKE_UPDATE_STABLE=1.2.0
 # Settings > Updates in Spanish (the longer language), upright and sideways, every text checked for
 # fit: the version, a newer one with its Update row, releases only and the newest.

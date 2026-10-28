@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Pinch zoom off: the swipes work (Pages opens and closes), a spread zooms nothing, and sideways with
 # the page filling the width a vertical two-finger drag still pans.

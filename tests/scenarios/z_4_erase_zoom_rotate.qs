@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The precise eraser keeps its size on the screen (editor.stroke_screen_mm: the newest stroke's
 # width at the zoom it shows at): zoomed in, its widths on the page are divided by the zoom;
 # sideways too. It stays the round tip with the eraser's settings (at the zoom: stroke_settings).

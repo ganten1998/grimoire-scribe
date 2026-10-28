@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Resting fingers / a hand must not zoom or flash; a real pinch still zooms (with a GL16 settle)
 wait 200
 tap 965 95

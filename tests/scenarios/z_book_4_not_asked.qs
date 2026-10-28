@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # root: z_annotate_3_order
 # copy: tests/fixtures/book/merge import/.book
 # A book request left by a hand-over that never reached Grimoire, found by a start from the Library

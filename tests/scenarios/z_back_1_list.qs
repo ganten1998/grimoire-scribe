@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Back to the page before: a link, the Pages view and a Find result leave the page they came from on the
 # back list (at most 32, memory only), a page turn does not, and the action pops the newest, with a toast

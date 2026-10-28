@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Compaction runs in the background once the notebook closes, and opening the notebook stops it
 # first: then its page file is as it was, and the next close compacts it. GRIMOIRE_BG_DELAY_MS makes
 # each background job wait 3 s first, as a compaction of a heavily erased page can take that long

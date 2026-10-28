@@ -1,3 +1,4 @@
+# settings: status_mode=1
 wait 200
 tap 965 95
 wait 100

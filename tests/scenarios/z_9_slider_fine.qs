@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Holding and moving away gives exact, continuous adjustments, without an up-event jump.
 # env: GRIMOIRE_CHECK_FIT=1
 wait 100

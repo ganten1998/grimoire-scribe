@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The pen the eraser goes back to is kept in settings.ini (before_eraser), so it outlives a restart
 # (KOReader's hand-over restarts Grimoire): Grimoire starts with the eraser in use after the pinned
 # marker, and a tap on the eraser goes back to the marker, not to the tool button's pencil. While

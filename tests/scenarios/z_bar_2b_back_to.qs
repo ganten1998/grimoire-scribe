@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The back list in the bar: after a page was stayed on from the bar, the bar on the new page offers "Back to"
 # the page it came from, which looks at it like any entry; staying there pops the list (as a browser's Back

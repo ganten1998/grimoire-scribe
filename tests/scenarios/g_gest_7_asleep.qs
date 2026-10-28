@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Asleep, a gesture is dropped (the screen is the Kindle's); awake again, the editor is as it was.
 # settings: mirror_pdf=0

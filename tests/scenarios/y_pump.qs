@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The work pump (common.h): the app's long work calls it as it goes. On the Kindle it reads the pens
 # meanwhile, so a page's render (1.2 s on a dense page), a save's fsyncs or a full-screen copy no
 # longer lets the kernel drop their events; the simulator only counts the calls. pump.calls is how

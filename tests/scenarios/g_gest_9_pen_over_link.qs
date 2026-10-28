@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The pen wins over a finger on a link: its stroke starts (it used to be dropped as one gesture at a
 # time), and the finger's session ends with no follow when it lifts.

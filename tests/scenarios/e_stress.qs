@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # stress: many strokes, big erases, deep undo/redo, pages, paper changes
 # rust-only
 wait 200

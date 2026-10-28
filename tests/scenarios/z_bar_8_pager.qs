@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # More entries than a screenful: a page of 13 links to 13 pages gets the pager next to the X, three screens of six
 # (upright and sideways alike); its arrows turn the screenful and only they redraw the chips, and the card does

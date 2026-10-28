@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A Kindle that stays locked after the power button (its passcode waiting): a press with no wake
 # leaves Grimoire on its sleep screen; a second one in a row saves and leaves Grimoire, so the
 # Kindle gets its pen and touch back even where the 4 s hold cannot be seen.

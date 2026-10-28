@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The Pen feel test pad with the precise eraser (eraser_mode=1): the pen's eraser end, and the tip
 # on the eraser's tab, erase only what they touch on the pad (its lines and Clear button stay), as
 # in the editor, instead of clearing it. The pad's strokes are live ink. (White ink on the pad:

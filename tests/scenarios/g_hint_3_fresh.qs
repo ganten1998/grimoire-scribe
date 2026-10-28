@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # A fresh install has no settings file to have upgraded: the first notebook opens without the tip, and
 # the first turn sideways without the sideways hint.

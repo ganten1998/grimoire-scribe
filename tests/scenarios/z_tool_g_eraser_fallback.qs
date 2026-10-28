@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A remembered pen that is no longer pinned falls back to the top tool after a restart.
 # settings: mirror_pdf=0
 # settings: side_button=3

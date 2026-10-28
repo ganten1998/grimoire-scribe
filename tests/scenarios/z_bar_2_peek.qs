@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Looking at where a link goes without going there: tap an entry in the Links bar and the page above it becomes
 # that page, one GL16 of the page area and the bar together (no flash), the open page, its history and its

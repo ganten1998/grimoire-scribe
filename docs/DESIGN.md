@@ -1066,3 +1066,13 @@ No GL16 and no toast ever run while the pen is down for ink: a pen down during a
 PenDown, and the stroke is swallowed (`draw_begin` never runs, so pen mode is never on for it). The
 every-30th-Ui promotion to Full stays.
 
+
+### Notebook status bar
+
+`status_mode=0` reserves a 104 px strip at 300 dpi. The editor fits the page below it by including the
+strip in its existing page-to-screen offset; pen coordinates, zoom and pan share that transform.
+The bar uses the existing status overlay and Live view status layer. Changes to individual fields
+request only their rectangles; the clock and battery use their own rectangle. Minute refreshes and
+field updates respect the existing pen/gesture/driver busy guards. Sheets hide the bar without
+changing the page transform. `status_mode=1` keeps the corner; `2` hides the status display.
+Historical coordinate scenarios explicitly request Corner mode; `y_status_bar*` cover the default.

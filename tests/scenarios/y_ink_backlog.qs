@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A queued burst must appear on screen before pen-up, retaining every sample. The old
 # unbounded main loop processed all 258 events before a single display refresh.
 wait 300

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The pen button drawing white (side_button=3): while it is held, the pen draws white with its own
 # drawing tool, over ink the tip drew; with the eraser picked, with the drawing tool the toolbar
 # shows. The tip with the eraser picked is the stroke eraser here (eraser_mode=0): it takes whole

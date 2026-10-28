@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # root: z_annotate_3_order
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_BOOK=1

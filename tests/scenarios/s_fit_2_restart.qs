@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The setting is kept across a restart: s_fit_1 left it off, and the notebook it left comes up sideways
 # with the page's width across. Settings > Display, in the Library, turns it on: the editor lays the

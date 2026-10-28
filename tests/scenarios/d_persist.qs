@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Run after b_library on the same root: everything must come back.
 # root: b_library
 wait 300

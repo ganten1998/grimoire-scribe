@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Go to page or name: the bar's Go to (after staying on the page it shows), the go-to-page key and the Pages
 # view's "Go to page..." open the Find sheet, a keyboard along the bottom with its rows above it. A number

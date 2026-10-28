@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The editor's Paper sheet > Photos... > a photo from grimoire/photos: the page goes onto it as onto
 # any paper (one undo step), a document page on the photo's own picture, made in the background,
 # upright (IMG_0001.jpg is stored sideways with EXIF orientation 6: its upright view has a black block

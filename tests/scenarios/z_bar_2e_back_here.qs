@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The back list never offers the page that shows: a link followed and the pages turned back by hand to where
 # it began leave that page on the list, and the bar has no "Back to" chip for it (it used to peek the very

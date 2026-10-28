@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Two notebooks with ink, a folder typed on the keyboard, move into it, settings, pen feel, calibration
 # rust-only
 wait 200

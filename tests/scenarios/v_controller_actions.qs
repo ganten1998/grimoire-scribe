@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/controller-actions .
 # The controller's actions in the editor (controller.ini gives each a button): a single pen and the

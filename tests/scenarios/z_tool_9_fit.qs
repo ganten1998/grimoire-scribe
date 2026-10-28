@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The panel with 0 to 4 pinned pens on the 2022 and 2024 Scribes' screen (1860x2480), upright and
 # sideways: always inside the screen with 12 px free above and below it, its buttons at full size
 # (editor.panel_fits), but for four pins sideways, where they are 1% smaller. Each pen is pinned in the

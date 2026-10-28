@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # env: GRIMOIRE_PASSCODE=enabled
 # Raw evdev button injection tests app gating, not Bluetooth or evdev hardware discovery.

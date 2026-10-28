@@ -741,6 +741,10 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
                 status_toggle(a); // (the clock and battery: on or off on every screen, shown on a notebook page)
                 return;
             }
+            if action == SHORTCUT_STATUS_MODE {
+                status_cycle_mode(a);
+                return;
+            }
             if action == SHORTCUT_STATUS_CORNER {
                 status_cycle_corner(a);
                 return;
@@ -1039,6 +1043,7 @@ pub fn app_watch_server(a: &mut App) {
 // bar in front, which draws over the panel, there is none. On the other screens (no panel) it is in the top right
 // corner, inside the screens' 50 px margin (clear of the Library's buttons). Never in the stream.
 fn live_chip(a: &App) -> Rect {
+    if status_reserved(a) > 0 { return RECT_EMPTY; }
     let s = ui_px(42.0);
     let m = ui_px(4.0);
     if a.scr == ScreenId::Editor {
@@ -1827,7 +1832,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 27] = [
+    let nums: [(&str, i32); 28] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -1843,6 +1848,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.controller", st.controller as i32),
         ("settings.updates", st.updates),
         ("settings.status_on", st.status_on as i32),
+        ("settings.status_mode", st.status_mode),
         ("settings.status_size", st.status_size),
         ("settings.status_corner", st.status_corner),
         ("settings.gestures", st.gestures as i32),

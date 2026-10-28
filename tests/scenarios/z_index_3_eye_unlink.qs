@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The eye (the link areas, on) follows the links the moment they change: a link made shows its dotted box at once, and
 # a link removed takes its box off the glass at once (the owner on a Kindle: links that were deleted lingered with the
 # show mode on, until the page was swapped out and back). editor.eye_drawn is how many boxes the eye's LAST PAINT drew.

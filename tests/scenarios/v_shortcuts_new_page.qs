@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/photos photos
 # Next page (the keyboard's Right, a controller's Start) on the last page adds a page, exactly as the

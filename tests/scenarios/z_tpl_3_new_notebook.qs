@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # New notebook > More papers... > a template: New notebook's last tile shows it, selected, and the
 # notebook is made on it. A paper tile picked after it takes its place, and the template again. The
 # first page draws white until the background has made the template's picture for the notebook,

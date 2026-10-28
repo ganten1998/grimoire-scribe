@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # White ink and the stroke eraser on a page whose paper is a picture (an imported page: black
 # bars across white). White ink restores the picture under it, the bars too, live as a fresh render
 # draws it (editor.live_matches_render); the stroke eraser takes nothing where the ink does not

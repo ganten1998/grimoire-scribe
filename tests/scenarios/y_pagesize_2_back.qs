@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Back on an 1860x2480 Scribe with what y_pagesize_1_ksc left. The notebook made on the 1986x2648
 # screen keeps its size: the whole page fitted to this smaller screen (no zoom chip), its ink where
 # it was written, new ink under the pen, Custom music counting systems for its 2648 px page,

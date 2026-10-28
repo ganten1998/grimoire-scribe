@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Sideways, show the whole page: the Display sheet's row turns it off and on (a Full refresh when
 # sideways, only a toast upright), the page rests whole and centred until it is zoomed or moved, and a

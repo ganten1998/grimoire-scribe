@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Every sheet of the editor stays open through a turn and a sleep with its wake, laid out again for
 # the screen it is on, and works there: the tool picker in Pin mode, the paper sheet, Custom music,
 # the Display sheet and the Pages view (editor.modal). As the Library does with its sheets.

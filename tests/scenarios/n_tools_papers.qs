@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Tool picker + new pens, sheet music notebook
 # rust-only
 wait 200

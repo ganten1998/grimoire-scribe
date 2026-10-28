@@ -1041,6 +1041,27 @@ fn draw_paper_sheet(a: &mut App) {
     hits_add(&mut s.modal_hits, cancel, P_PICK_CANCEL, 0);
 }
 
+/// Display data only: no mutable editor state escapes to the status renderer.
+pub fn editor_status_text(a: &App) -> Option<(String, String, String)> {
+    let s = a.ed.as_deref()?;
+    if !s.open { return None; }
+    let pid = *s.nb.page_ids.get(s.index as usize)?;
+    let section = nav_section_of(&s.nav, &s.nb, s.index);
+    let name = s.nb.page_ids.get(section.max(0) as usize).map(|p| nav_name(&s.nav, *p)).unwrap_or("");
+    let page = format!("{} / {}  {}", s.index + 1, s.nb.page_ids.len(), name);
+    let outgoing = s.nav.links.iter().filter(|l| l.pid == pid).count();
+    let incoming = s.nav.links.iter().filter(|l| nav_link_page(l, &s.nb) == s.index).count();
+    Some((s.nb.name.to_string(), page, format!("{} {}  {} {}", tr("From"), outgoing, tr("To"), incoming)))
+}
+
+/// Refit after the status strip is enabled or removed, in either orientation.
+pub fn editor_status_changed(a: &mut App) {
+    if a.scr == ScreenId::Editor && a.ed.as_deref().is_some_and(|s| s.open) {
+        view_reset(a);
+        compose_all(a, RefreshMode::Full);
+    } else if let Some(s) = a.ed.as_deref_mut() { s.view_w = 0; }
+}
+
 // ---- view ----
 
 fn view_identity(a: &App) -> bool {
@@ -1049,8 +1070,10 @@ fn view_identity(a: &App) -> bool {
 }
 
 fn view_clamp(a: &mut App) {
-    let (aw, ah) = (a.w, a.h);
+    let top = status_reserved(a);
+    let (aw, ah) = (a.w, a.h - top);
     let s = ed(a);
+    s.oy += top as f32 / s.zoom;
     s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_max);
     let mut vw = aw as f32 / s.zoom; // visible page area
     let mut vh = ah as f32 / s.zoom;
@@ -1070,6 +1093,7 @@ fn view_clamp(a: &mut App) {
         s.ox = 0.0;
         s.oy = 0.0;
     }
+    s.oy -= top as f32 / s.zoom;
     touch_context(a);
 }
 
@@ -1083,7 +1107,7 @@ fn touch_context(a: &App) {
     let Some(s) = a.ed.as_deref() else { return };
     let pans = s.open && !sheet_open(s);
     input_touch_context(TgView {
-        scrolls_v: pans && a.h as f32 / s.zoom < s.pgh as f32 - 0.5,
+        scrolls_v: pans && (a.h - status_reserved(a)) as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
         zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open),
         gestures_on: a.settings.gestures,
@@ -1107,18 +1131,20 @@ fn view_rest(aw: i32, ah: i32, pgw: i32, pgh: i32, fit: bool) -> (f32, f32, f32)
 // The page at rest (view_rest): the width across upright, sideways the width too (pan with two fingers;
 // pinching out shows the whole page) or, with landscape_fit, the whole page.
 fn view_reset(a: &mut App) {
-    let (aw, ah) = (a.w, a.h);
-    let fit = a.settings.landscape_fit;
+    let top = status_reserved(a);
+    let (aw, ah) = (a.w, a.h - top);
+    let fit = a.settings.landscape_fit || top > 0;
     let s = ed(a);
-    let (zoom, zoom_min, zoom_max) = view_rest(aw, ah, s.pgw, s.pgh, fit);
+    let (mut zoom, zoom_min, zoom_max) = view_rest(aw, ah, s.pgw, s.pgh, fit);
+    if top > 0 { zoom = zoom_min; }
     s.zoom_min = zoom_min;
     s.zoom_max = zoom_max;
     s.zoom_default = zoom;
     s.zoom = zoom;
     s.ox = 0.0;
-    s.oy = 0.0;
+    s.oy = -(top as f32) / zoom;
     s.view_w = aw;
-    s.view_h = ah;
+    s.view_h = ah + top;
     view_clamp(a);
     let s = ed(a);
     s.rest_ox = s.ox;
@@ -1187,13 +1213,15 @@ fn page_to_screen(a: &App, p: Rect) -> Rect {
 fn zoomed(a: &App) -> bool {
     let s = ed_ref(a);
     // (The whole page sideways rests centred across, at a negative offset: rest_ox, 0 everywhere else.)
-    (s.zoom - s.zoom_default).abs() > 0.01 || s.ox != s.rest_ox || s.oy > 0.5
+    (s.zoom - s.zoom_default).abs() > 0.01 || s.ox != s.rest_ox || s.oy + status_reserved(a) as f32 / s.zoom > 0.5
 }
 
 // Draws the visible page into a screen rect: bilinear sampling, a gray desk outside the page. The
 // whole screen of it (a pinch, a zoomed page) is about 100 ms on the Kindle: the pens are read every
 // 64 rows (work_pump, common.h).
 fn blit_view(a: &mut App, r: Rect) {
+    let top = status_reserved(a);
+    let r = rect_intersect(r, Rect { x: 0, y: top, w: a.w, h: a.h - top });
     let App { screen, ed, .. } = a;
     let s = ed.as_deref().unwrap();
     blit_canvas(screen, &s.page_canvas, s.zoom, s.ox, s.oy, r);
@@ -1553,11 +1581,15 @@ fn compose(a: &mut App, r: Rect) {
     if rect_is_empty(r) {
         return;
     }
+    let top = status_reserved(a);
+    canvas_fill(&mut a.screen, rect_intersect(r, Rect { x: 0, y: 0, w: a.w, h: top }), 255);
     let s = ed_ref(a);
     if s.peek.active {
         // The page the bar is looking at, at the view it rests in on this screen; the open page is not touched.
         let slot = s.peek.slot;
-        let (zoom, ox, oy) = peek_view(a.w, a.h, s.pgw, s.pgh, a.settings.landscape_fit);
+        let (zoom, ox, mut oy) = peek_view(a.w, a.h - top, s.pgw, s.pgh, a.settings.landscape_fit || top > 0);
+        oy -= top as f32 / zoom;
+        let r = rect_intersect(r, Rect { x: 0, y: top, w: a.w, h: a.h - top });
         let App { screen, ed, .. } = a;
         let pc = &ed.as_deref().unwrap().ccache[slot].canvas;
         if zoom == 1.0 && ox == 0.0 && oy == 0.0 && pc.w == screen.w && pc.h == screen.h {
@@ -2722,6 +2754,7 @@ pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     out.opacity_min = prm.opacity_min;
     out.opacity_max = prm.opacity_max;
     out.clip = rect_intersect(page_to_screen(a, Rect { x: 0, y: 0, w: s.pgw, h: s.pgh }), Rect { x: 0, y: 0, w: a.w, h: a.h });
+    out.clip = rect_intersect(out.clip, Rect { x: 0, y: status_reserved(a), w: a.w, h: a.h - status_reserved(a) });
     out.exclude = s.panel;
 }
 
@@ -4062,6 +4095,7 @@ pub fn editor_shortcut_at(a: &mut App, action: i32, x: f32, y: f32, src: ActionS
 }
 
 fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc) -> bool {
+    if action == SHORTCUT_STATUS_MODE && !editor_busy(a) { status_cycle_mode(a); return true; }
     let asleep = a.asleep;
     let Some(s) = a.ed.as_deref_mut() else { return false };
     if !s.open || asleep || action == 0 {
@@ -4835,6 +4869,8 @@ fn pen_toast(a: &mut App, t_ms: u32) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
+    if status_reserved(a) > 0 && ev.y < status_reserved(a) as f32 && editor_page_in_front(a)
+        && app_pointer_phase(ev) == 0 && !editor_busy(a) { return; }
     let s = ed(a);
     if !s.open {
         return;
@@ -5753,6 +5789,31 @@ mod tests {
         s.pgw = pw;
         s.pgh = ph;
         a
+    }
+
+    #[test]
+    fn status_strip_keeps_page_coordinates_below_it_at_every_zoom() {
+        for (w, h) in [(1860, 2480), (2480, 1860)] {
+            let mut a = app(w, h, 1860, 2480);
+            a.scr = ScreenId::Editor;
+            ed(&mut a).open = true;
+            assert_eq!(canvas_init(&mut ed(&mut a).page_canvas, 1860, 2480), 0);
+            let top = status_reserved(&a);
+            assert_eq!(top, 104);
+            view_reset(&mut a);
+            assert!(!zoomed(&a));
+            let s = ed_ref(&a);
+            assert!((s.zoom - (w as f32 / 1860.0).min((h-top) as f32 / 2480.0)).abs() < 1e-6);
+            let (mut x, mut y) = (0.0, 0.0);
+            to_page(s, w as f32 / 2.0, top as f32, &mut x, &mut y);
+            assert!(y.abs() < 0.001);
+            ed(&mut a).zoom *= 2.0;
+            view_clamp(&mut a);
+            let s = ed_ref(&a);
+            to_page(s, w as f32 / 2.0, top as f32, &mut x, &mut y);
+            assert!(y >= -0.001);
+            assert!(s.oy >= -(top as f32) / s.zoom - 0.001);
+        }
     }
 
     #[test]

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # 50 templates and a file that is no picture: the Templates sheet opens at once, its tiles waiting
 # for the previews the background makes, which fill in as they come (the file that is no picture
 # leaves the sheet). Three pages of 24 upright, 21 sideways, with Prev and Next. A turn and a sleep

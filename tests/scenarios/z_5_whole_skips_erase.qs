@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The stroke eraser (eraser_mode=0, as before 1.1) on the page z_4_erase_zoom_rotate left, where
 # erase strokes cross the ink: it takes the whole ink strokes it touches and never an erase stroke
 # (taking one away would bring back the ink it covers); undo puts the ink back; live equals a fresh

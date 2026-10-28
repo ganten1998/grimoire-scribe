@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # While the bar is open and nothing touches the screen it gets the pages its entries go to ready, a band of 160
 # rows a tick: a tap then finds both in the cache (a hit, no miss), and nothing in all that, the peek included,

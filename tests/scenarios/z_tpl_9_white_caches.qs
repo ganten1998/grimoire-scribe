@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # What drew a template white while its picture was being made, other than the open page itself:
 # here the paper erase strokes restore toward, drawn white by a precise erase on the template page.
 # The picture comes while another page is open, or while the page is back on its old paper (the

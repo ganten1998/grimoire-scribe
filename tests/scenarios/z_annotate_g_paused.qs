@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_ANNOTATE=1
 # env: GRIMOIRE_PASSCODE=enabled

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Links drawn on pages: Add a link in the Index, then the ink drawn around what links (a dot is too
 # small and is taken back), then its page picked; a finger's tap follows it, a finger held on it
 # changes where it goes (another page, the Index) or removes it (its ink stays); Back while picking

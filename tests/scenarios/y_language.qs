@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_LANG=es
 # Settings > Language. Automatic follows the system's language (in the simulator GRIMOIRE_LANG,
 # here Spanish); a pick applies at once (the sheet comes back in it) and is saved, and

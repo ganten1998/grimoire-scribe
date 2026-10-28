@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_PASSCODE=left-off
 # A session ended without putting the passcode back (the Kindle restarted under Grimoire): the
 # launcher does not turn it back on itself, Grimoire tells the user to (at this start and the

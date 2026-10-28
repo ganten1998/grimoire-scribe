@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Pinned pens. The tool picker's Pin (top right) turns its grid into the pens pinned to the panel:
 # a tap pins one under the tool button or unpins it, the picker staying open; Done ends that. Each
 # pin is a panel button, selected while in use, and the buttons below move down by one each. A tap

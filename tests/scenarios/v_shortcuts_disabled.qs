@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: sleep_minutes=1
 # env: GRIMOIRE_SLEEP_MINUTE_MS=4000
 wait 100

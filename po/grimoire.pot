@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 13:02-0500\n"
+"POT-Creation-Date: 2026-10-28 17:58-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -460,6 +460,18 @@ msgstr ""
 msgid "Sleep screen: KOReader wallpaper (tap to change)"
 msgstr ""
 
+#: rust/src/dispmenu.rs
+msgid "Status: bar"
+msgstr ""
+
+#: rust/src/dispmenu.rs
+msgid "Status: corner"
+msgstr ""
+
+#: rust/src/dispmenu.rs
+msgid "Status: off"
+msgstr ""
+
 #. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
 #. which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
@@ -603,6 +615,14 @@ msgstr ""
 #. one line or two).
 #: rust/src/editor.rs rust/src/library.rs
 msgid "Custom music..."
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "From"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "To"
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's

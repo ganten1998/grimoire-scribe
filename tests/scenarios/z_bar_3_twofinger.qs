@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Two fingers down during a peek close the bar back to the page it began on, not Pages: the first finger of the
 # gesture lands on the page above the bar, where a lift would stay, and the second finger's landing drops that.

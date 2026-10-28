@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Sleep screen continuity: sleep shows the page (no toolbar), wake brings the UI back;
 # pin page 1, go to page 2, sleep: the pinned page shows.
 # rust-only

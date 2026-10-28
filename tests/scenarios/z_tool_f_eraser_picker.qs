@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The fixed eraser gets the same select-then-open behavior as any other pinned tool.
 # settings: draw_tool=2
 # settings: current_tool=2

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/shortcuts-1.2 .
 # 1.2.0's shortcuts.ini, as a Kindle that had shortcuts on keeps it: it binds no D-pad direction, so

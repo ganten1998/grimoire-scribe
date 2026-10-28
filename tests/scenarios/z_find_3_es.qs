@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The Find sheet in Spanish, upright and sideways, with its rows, under the fit check: its title, the rows, the
 # line that says there is no such page.

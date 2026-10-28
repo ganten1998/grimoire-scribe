@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # New link on the Links bar: the bar closes and today's inked flow starts (the next stroke is the link's box, then
 # the Pages view picks its page); with another page looked at, it is that page the link is made on (the bar stays

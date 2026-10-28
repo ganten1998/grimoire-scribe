@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The data b_library made on an 1860x2480 Scribe, opened on a 1986x2648 one (the Scribe 3 and the
 # Scribe Colorsoft): its notebooks keep their page size, fitted to the screen (no zoom chip), their
 # ink where it was written, new ink lands under the pen, new pages get the notebook's size, Custom

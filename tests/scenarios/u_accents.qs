@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Rename a notebook with accents through the keyboard's accents page (Gothic), then again in
 # Classic. Keys (portrait): shift 175 2205, del 1679 2205, Cancel 217 2365, the page key 696 2365
 # (labelled with a and e acute on the letters page, abc on the accents page), space 1060 2365,

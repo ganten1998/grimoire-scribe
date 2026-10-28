@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_CHECK_FIT=1
 # env: GRIMOIRE_SIM_ADDRS=wlan0=192.168.0.20
 # Every screen and sheet, upright and sideways, for the fit check: make l10n-check runs this in

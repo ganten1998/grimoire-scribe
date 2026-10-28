@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The notebook the Links bar's scenarios start from (# root: z_bar_0_make): five pages, three links drawn on
 # page 1 with the pen (to page 3, to page 2 and to page 3 again, from the top of the page down), then page 3

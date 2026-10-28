@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # env: TZ=UTC
 # settings: mirror_pdf=0

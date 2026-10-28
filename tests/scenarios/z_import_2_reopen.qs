@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Run after z_import_1_startup on the same root: the folder it imported went to import/done, so
 # this start imports nothing (no toast but the first-run tip), and the notebook opens where it was
 # left, on the blank page it added.

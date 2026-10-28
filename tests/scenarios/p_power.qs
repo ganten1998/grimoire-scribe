@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The power button's ways out of every stuck state: a sleep announcement Grimoire missed, a Kindle
 # still locked after a press, the side button and pinches while asleep, a wake announced while the
 # key is down, a press held short of 4 s, a press that follows another, and the 4 s hold that saves

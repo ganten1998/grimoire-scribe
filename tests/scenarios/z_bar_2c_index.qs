@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # An entry for the Index: a tap on it leaves the bar for the Pages view's Index tab (there is no page to look at).
 # settings: shortcuts_enabled=1

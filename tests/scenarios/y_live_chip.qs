@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
 # rust-only
 # Live view's chip (it says a computer is watching): on a notebook page it sits BESIDE THE PANEL and moves with it,

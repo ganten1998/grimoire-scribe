@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Names: letters find the pages the Index names, accents and capitals ignored, best first (the name begins with
 # them, then a word does, then anywhere inside) and in page order among equals; the rows say the name alone;

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A page with erased ink is listed for compaction (erased.txt) once its file has the erase stroke,
 # at a save, and a save that fails lists nothing: with the store full (the simulator's "storage
 # full") the autosave fails and the page is not listed; once there is room the next autosave writes

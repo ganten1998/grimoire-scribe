@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # pdfs: 1
 # Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader sets

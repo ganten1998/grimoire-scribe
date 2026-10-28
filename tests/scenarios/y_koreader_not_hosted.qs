@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_HOST=
 # Started from the Kindle's Library: no host (GRIMOIRE_HOST is set empty here, so a caller's
 # never reaches the run). Sleep mode 2 stays the Kindle's own screensaver, which Grimoire leaves

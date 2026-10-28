@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_LANG=es
 # env: GRIMOIRE_CHECK_FIT=1
 # A templates folder of files that are no pictures Grimoire can use: the Templates sheet offers

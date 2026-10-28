@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # White ink (white=1, set by hand until the tool picker has Black / White) on the page
 # z_1_precise_eraser left: every drawing tool draws white with its own settings and texture (white
 # pencil keeps the paper's tooth, white charcoal its grain), the paper's lines stay, live equals a

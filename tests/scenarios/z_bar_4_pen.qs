@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The pen outside the bar while it looks at a page: that page stays (at the pen's down, with its Full), and the
 # stroke the pen began is swallowed: nothing is drawn, no ink is marked live.

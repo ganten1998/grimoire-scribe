@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Zoomed in, two fingers pan the page: the zoom held, a drag that starts at the top edge pans too, and a
 # drag at a scroll limit still pans (nowhere): it never navigates. The first pan says once where Pages

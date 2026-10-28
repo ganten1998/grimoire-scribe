@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_PREVIEW=2.0.0-beta.9 FAKE_UPDATE_STABLE=1.2.0
 # Settings > Updates, kindle/app/update.sh stood in for by tests/fake_update.sh: the version running;
 # a check of the preview channel (a beta's own) finds a newer beta; releases only finds nothing newer

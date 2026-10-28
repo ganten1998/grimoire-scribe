@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: TZ=UTC
 # rust-only
 # The battery in the clock and battery corner (status.rs): pixel art left of the percent, an outline with a terminal

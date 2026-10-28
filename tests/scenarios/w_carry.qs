@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Forward compatibility, the parts a script can reach. Pages from a newer Grimoire open read-only
 # (tests/test_format.c covers those); an ordinary page never does: writing, a paper change and
 # clearing all work, with no "made by a newer Grimoire" toast. Reopening the notebook (which also

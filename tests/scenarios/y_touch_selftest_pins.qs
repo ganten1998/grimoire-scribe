@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # tap panel NAME with four pens pinned under the tool button, the panel's buttons moved down by four and, sideways,
 # its metrics scaled to fit: Undo, Redo and the pinned pens are found where they are drawn.

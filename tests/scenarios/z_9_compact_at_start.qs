@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The compaction z_8_left_open left (it quit with the notebook open) runs at this start, in the
 # background, before the notebook is opened: its page file has lost the erased line and the pass
 # over it.

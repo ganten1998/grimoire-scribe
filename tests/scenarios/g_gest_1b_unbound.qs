@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # With two fingers up unbound (gestures.ini: touch.2.up=nothing) the swipe does nothing, the panel's Links
 # button still opens the bar, and two fingers down still close it back to the page it began on: the bar's

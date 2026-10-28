@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # root: y_language
 # env: GRIMOIRE_LANG=es
 # The language picked stays picked when Grimoire starts again (Automatic would be Spanish here),

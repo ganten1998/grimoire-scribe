@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # An imported notebook that 1.0.0-beta wrote on: it saved the page as version 1 Blank (the ink
 # kept) and drew its thumbnail on blank paper, and bg/pages.ini still lists the page with its
 # picture. Opened here, the page has its picture again (and is saved so); closed, the Library

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # An owner updating from the build before (a settings.ini at version 3 with no gestures key) is told
 # once, as the first notebook comes up, what two fingers up and down do now (hints bit 0): one toast

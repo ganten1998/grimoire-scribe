@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_BG_DELAY_MS=3000
 # pdfs: 2
 # Leaving straight from the editor (the 4 s hold) while another notebook's PDF is still being

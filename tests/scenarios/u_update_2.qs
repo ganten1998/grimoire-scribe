@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_FAIL=5
 # Settings > Updates when the check cannot reach the feed (update.sh's status 5: no network): it says
 # so, and Update stays off.

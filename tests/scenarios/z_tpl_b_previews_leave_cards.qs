@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A background job that changes no card does not draw the Library again: here the templates'
 # previews, made after New notebook's More papers... was opened and left. (One that changes a
 # card does: z_tpl_8.) The job is slowed so that it ends with the Library in front.

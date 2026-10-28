@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Two tips never meet. An owner who updated and whose first notebook comes up sideways is told why the page
 # is whole (the sideways hint, bit 8) and the first-open tip (bit 0) waits for the next open, instead of

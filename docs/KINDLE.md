@@ -333,7 +333,20 @@ session with networking awake, not a reboot or deep sleep.
   only, which is why they stay on lines 2 to 5 (package_check pins each line). It runs a
   scriptlet as `su -c 'sh -l <path>'` with no arguments, and runs xrefresh when the script ends.
 
-## The clock and battery corner
+## Status display
+
+The default is a slim bar across the top of a notebook page. Its first line shows the notebook name,
+clock and battery; its second shows page and section, outgoing and incoming link counts, the current
+tool, screen sharing and any available controller. The page fits below the bar in either orientation,
+and the bar cannot become ink. It stays visible while the writing hand rests on the screen.
+
+Display's title row selects Bar, Corner or Off with a pen or a finger. The `status-mode` shortcut
+cycles the three choices. In Bar or Off, `status-toggle` toggles the bar. In Corner it keeps the
+existing tap and toggle behavior. The clock size and corner controls still apply to Corner mode.
+Text refreshes only when its field changes; clock and battery refreshes wait while writing.
+Long notebook and section names are shortened to fit. Live view's status switch hides the bar there.
+
+### The clock and battery corner
 
 A finger tap in a corner of a notebook page (a 14 mm square, the top left unless you pick another, or
 where the indicator shows, with 4 mm around it, whether it is up or not) turns on a small indicator there: the time and date as Grimoire writes them elsewhere

@@ -48,6 +48,7 @@ const D_STATUS: i32 = 8;
 const D_FIT: i32 = 9;
 const D_CORNER: i32 = 10;
 const D_NEWPAGE: i32 = 11;
+const D_STATUS_MODE: i32 = 12;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -70,6 +71,7 @@ static K_MODE_ROWS: [&str; 4] = [
 /// cells side by side in the room beside Done, each a tap that moves to the next choice, one sentence for
 /// each choice so a language can put its words in order. Each has 505 px for an icon and two lines of text
 /// at 34 px, about 365 px a line.
+static K_STATUS_MODES: [&str; 3] = [n_("Status: bar"), n_("Status: corner"), n_("Status: off")];
 static K_STATUS_ROWS: [&str; 3] = [
     // TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
     // which a tap moves to the next size. Two lines of about 365 px at 34 px.
@@ -179,6 +181,12 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     hits_clear(&mut m.hits);
     m.rect = card_rect(a);
     let in_ = ui_sheet(&mut a.screen, m.rect, tr("Display"));
+    let title = Rect { x: m.rect.x + ui_px(50.0), y: m.rect.y + ui_px(20.0), w: m.rect.w - ui_px(100.0), h: ui_px(90.0) };
+    canvas_fill(&mut a.screen, title, 255);
+    font_draw_left(&mut a.screen, FontFace::Title, ui_title_size(), Rect { w: title.w / 2, ..title }, tr("Display"), 0);
+    let mode_rect = Rect { x: title.x + title.w / 2, w: title.w / 2, ..title };
+    ui_button(&mut a.screen, mode_rect, IconKind::Clock, tr(K_STATUS_MODES[clampi(a.settings.status_mode, 0, 2) as usize]), ButtonStyle::Plain);
+    hits_add(&mut m.hits, mode_rect, D_STATUS_MODE, 0);
     let rh = row_h(a);
     let mut y = in_.y;
     let have = light_available() && m.intensity >= 0;
@@ -383,6 +391,14 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         D_SLEEP_MODE => {
             a.settings.sleep_mode = (a.settings.sleep_mode + 1) % 4;
             settings_save(&a.settings);
+        }
+        D_STATUS_MODE => {
+            a.settings.status_mode = (a.settings.status_mode + 1) % 3;
+            settings_save(&a.settings);
+            crate::editor::editor_status_changed(a);
+            dispmenu_draw(m, a);
+            *dirty = m.rect;
+            return DmResult::Changed;
         }
         D_STATUS => status_cycle_size(a),
         D_CORNER => status_cycle_corner(a),

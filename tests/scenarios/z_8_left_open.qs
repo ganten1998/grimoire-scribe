@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Grimoire leaves with a notebook open (quit): its page with erased ink stays listed (erased.txt)
 # instead of a compaction Grimoire's leaving would cut short, and the next start compacts it
 # (z_9_compact_at_start).

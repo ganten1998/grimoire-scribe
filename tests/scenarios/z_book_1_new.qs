@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_BOOK=1
 # copy: tests/fixtures/book/three import/.book

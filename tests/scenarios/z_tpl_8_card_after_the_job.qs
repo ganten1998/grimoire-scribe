@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A notebook made on a template and written on at once, then left before the background has made
 # the template's picture for it (the jobs are slowed here, as a big picture is on the Kindle): its
 # Library card is drawn on white paper first, and again with the picture once the job is done.

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Two fingers on the page, upright: down opens Pages with one flash, up closes them (the swipe the
 # other way takes back what the first did), left and right turn the page; with gesture_new_page off (set here) they add no page past the end

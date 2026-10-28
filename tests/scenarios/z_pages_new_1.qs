@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # New page and Copy page in the Pages view. New page adds a blank page of the notebook's own paper
 # after the open page, or after the last page ticked, and opens it; Copy page copies the one page
 # ticked, its ink and its paper, right after it, and opens the copy. Neither ever makes a page the

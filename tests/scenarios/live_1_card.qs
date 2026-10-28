@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Live view's pairing card: Share's Live view button turns it on (the chip shows, its code and QR
 # code on the card); Done keeps it on; Share's button shows the card again while it is on; Stop
 # turns it off. tests/live_check.sh holds a copy at the card (its "live_check holds here" line)

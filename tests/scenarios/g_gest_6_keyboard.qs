@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # A keyboard in front (the Pages view's naming keyboard): a swipe is refused ("keyboard"), whatever it is
 # bound to, and nothing changes.

@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Toolbar clear (no confirmation), Display sheet: brightness/warmth sliders, invert colors
 # rust-only
 wait 200

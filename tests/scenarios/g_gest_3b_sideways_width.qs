@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Sideways with the page filling the width (landscape_fit off): the view rests at the top, so an upward
 # drag pans (a downward one would pan nowhere), and a drag to the left turns the page.

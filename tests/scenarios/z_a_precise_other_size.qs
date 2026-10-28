@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The precise eraser on a notebook from a Scribe of another size (b_library's 1860x2480 pages on a
 # 1986x2648 screen, fitted to it): the eraser keeps its size on the screen, fitted and zoomed in,
 # and restores the paper at the notebook's page size, not the screen's.

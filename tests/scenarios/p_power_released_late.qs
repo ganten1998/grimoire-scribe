@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # The power button held 4 s while Grimoire was too busy to see the 4 s mark: its release, held 4 s
 # or more, leaves Grimoire just as the hold would have (the runner never sends the hold here).
 wait 200

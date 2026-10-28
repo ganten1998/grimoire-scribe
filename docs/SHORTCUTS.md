@@ -268,3 +268,5 @@ controller's axes (`axis CODE VALUE`, its triggers read as LT and RT) and device
 `hid detach NAME`), and `tests/bt_check.sh` runs the pairing sheet against a stand-in for the
 helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controller discovery or
 real button numbering on a Kindle.
+
+`status-mode` cycles Bar, Corner and Off. `status-toggle` toggles the selected bar or corner.

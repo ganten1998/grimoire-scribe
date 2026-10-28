@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Library -> new medium-rule notebook -> write with all three tools -> erase/undo/redo -> pages -> panel
 # rust-only
 wait 300

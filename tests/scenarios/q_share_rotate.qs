@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Share turned sideways and back, then asleep and awake: the QR code beside the text in
 # landscape, one server the whole visit (tests/share_check.sh downloads across the turns and
 # checks it never restarts), stopped by Done and started again by the next visit.

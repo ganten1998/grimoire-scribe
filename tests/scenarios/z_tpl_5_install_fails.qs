@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A template that cannot go into the notebook (here a file stands where the notebook keeps its
 # pictures, bg/): picking it says so and changes nothing, the page stays on its paper with nothing
 # to undo.

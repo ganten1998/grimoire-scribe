@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # Sideways the whole page shows (landscape_fit, on by default): at rest the page does not scroll on either
 # axis, so two fingers swipe anywhere, and pinching zooms in from the whole page.

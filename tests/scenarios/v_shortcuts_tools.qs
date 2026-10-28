@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # settings: panel_tools=highlighter,fineliner
 # settings: current_tool=3

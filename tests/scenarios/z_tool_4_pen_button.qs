@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Library > Settings, the row for the pen's button: a tap moves it through its four choices
 # (side_button 0 to 3: nothing, erases, highlights, draws white) and round again, upright and
 # sideways, each said as a whole sentence (01-draws-white).

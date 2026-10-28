@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # An Xbox-layout controller's analog triggers (8BitDo's Xbox mode through Linux's generic driver:
 # ABS_Z and ABS_RZ, 0 to 1023) are buttons, LT and RT: pressed past half their travel, let go at a

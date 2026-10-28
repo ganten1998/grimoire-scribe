@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The pen wins. A swipe a little after the pen left, and 60 mm from where it wrote, fires; with the pen
 # hovering, a swipe is refused ("pen") and says so once in a while.

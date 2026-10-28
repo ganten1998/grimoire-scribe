@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # rust-only
 # The runner's panel names: `tap panel NAME` and `pentap panel NAME` press the panel's button where it is
 # drawn now, and editor.panel_at.X.Y names the button at a point, so a scenario never has to know where the

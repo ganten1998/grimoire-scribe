@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # A notebook whose own paper is one of its pictures and that has no thumbnail yet (as a notebook
 # made on a template will be): its Library card shows that picture (library.card.1 is "picture",
 # with the grid's mean, not white paper's 255), never another paper. The picture was made for a

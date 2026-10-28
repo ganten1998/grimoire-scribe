@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/link-keys .
 # Add a link (L, a controller's West) starts a link on the open page in one press, as the Index's

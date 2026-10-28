@@ -1,3 +1,4 @@
+# settings: status_mode=1
 # Section names stay with page ids through insert/delete, Index opens no other page files,
 # jumps leave the writing area clear, and names survive closing/reopening the notebook. Both orientations.
 # env: GRIMOIRE_CHECK_FIT=1
