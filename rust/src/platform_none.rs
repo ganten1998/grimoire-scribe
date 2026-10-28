@@ -66,6 +66,9 @@ pub fn input_hover_hook(f: Option<fn(f32, f32)>) {}
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {}
 pub fn input_touch_context(v: TgView) {}
 pub fn input_touch_trace(path: Option<&str>) {}
+pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
+    false
+}
 pub fn input_forget_signal_pipe() {}
 pub fn input_close() {}
 

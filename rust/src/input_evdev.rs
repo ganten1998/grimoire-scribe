@@ -889,6 +889,7 @@ impl State {
                     (Some(sample), _) => {
                         let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.W.side, ..Default::default() };
                         e.k_ms = pensync_ms(self.wacom_frame_us, self.wacom_mono, e.t_ms);
+                        e.k_us = if self.wacom_mono { self.wacom_frame_us as u32 } else { 0 };
                         Some(HoverTo::Sample(sample, e))
                     }
                     (None, Some(f)) => Some(HoverTo::Place(f, x, y)),
@@ -1095,6 +1096,8 @@ impl State {
         }
         e.t_ms = now_ms();
         e.k_ms = pensync_ms(self.pen_frame_us, self.pen_mono, e.t_ms);
+        // (Live view's identity: this frame covers the raw one it was relayed from, live.rs)
+        e.k_us = if self.pen_mono { self.pen_frame_us as u32 } else { 0 };
         e.gap = self.pen_gap;
         if self.ink_mono && contact {
             // A stroke's samples start the oldest afresh: one left from the stroke before (its last
@@ -2645,7 +2648,79 @@ fn clock_mono(fd: i32) -> bool {
     unsafe { libc::ioctl(fd, EVIOCSCLOCKID as libc::Ioctl, &clk as *const c_int) == 0 }
 }
 
+impl State {
+    // Live view's raw digitizer map (input_raw_pen): three raw places inside its ranges (so no cut
+    // bends the line) taken through what raw_hover and hover_from_raw do to a frame, unrounded, give
+    // the affine map; the tilt's turn into the screen's frame comes from calib_tilt the same way.
+    fn raw_pen_map(&self, out: &mut LiveRawMap) -> bool {
+        // (Only once contact frames have decided how the raw axes lie on the scaled pen's: before that
+        // an axis taken as it is might be reversed, and the ring's samples, the scaled pen's own, stay.)
+        if self.wacom.fd < 0
+            || !self.wacom_mono
+            || !self.pen_mono // (the main loop's events then take no kernel time: no identities in common)
+            || !self.input_grabbed
+            || self.hover.n < PENSYNC_HOVER_FRAMES as u32
+            || pensync_hover_orientation(&self.hover) < 0
+        {
+            return false;
+        }
+        let h = &self.hover;
+        let place = |rx: i32, ry: i32| -> Option<(f32, f32)> {
+            let (mut sx, mut sy) = (0.0f32, 0.0f32);
+            if !pensync_hover_place(h, rx, ry, &mut sx, &mut sy) {
+                return None;
+            }
+            let normf = |v: f32, a: &InputAbsinfo| {
+                let span = a.maximum.wrapping_sub(a.minimum);
+                if span > 0 { (v - a.minimum as f32) / span as f32 } else { 0.0 }
+            };
+            Some(self.map(&self.pen_cal, normf(sx, &self.pen.ax), normf(sy, &self.pen.ay)))
+        };
+        let (x0, x1) = (h.rmin[0] + (h.rmax[0] - h.rmin[0]) / 4, h.rmin[0] + (h.rmax[0] - h.rmin[0]) * 3 / 4);
+        let (y0, y1) = (h.rmin[1] + (h.rmax[1] - h.rmin[1]) / 4, h.rmin[1] + (h.rmax[1] - h.rmin[1]) * 3 / 4);
+        if x1 <= x0 || y1 <= y0 {
+            return false;
+        }
+        let (Some(p0), Some(px), Some(py)) = (place(x0, y0), place(x1, y0), place(x0, y1)) else { return false };
+        let (dx, dy) = ((x1 - x0) as f32, (y1 - y0) as f32);
+        let (ax, ay) = ((px.0 - p0.0) / dx, (px.1 - p0.1) / dx);
+        let (bx, by) = ((py.0 - p0.0) / dy, (py.1 - p0.1) / dy);
+        *out = LiveRawMap {
+            m: [ax, bx, p0.0 - ax * x0 as f32 - bx * y0 as f32, ay, by, p0.1 - ay * x0 as f32 - by * y0 as f32],
+            rmin: h.rmin,
+            rmax: h.rmax,
+            pmin: self.wacom.ap.minimum,
+            pmax: self.wacom.ap.maximum,
+            tilt_min: [self.wacom.atx.minimum, self.wacom.aty.minimum],
+            tilt_max: [self.wacom.atx.maximum, self.wacom.aty.maximum],
+            tilt_res: [self.wacom.atx.resolution, self.wacom.aty.resolution],
+            ..Default::default()
+        };
+        let (mut t1, mut t2) = (1.0f32, 0.0f32);
+        calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut t1, &mut t2);
+        let (mut t3, mut t4) = (0.0f32, 1.0f32);
+        calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut t3, &mut t4);
+        out.tm = [t1, t3, t2, t4];
+        out.dev = fstat_fd(self.wacom.fd).map_or(0, |st| st.st_rdev as u64);
+        // The node's path, from the descriptor (/proc names what it was opened as).
+        let mut path = [0u8; 128];
+        let link = cformat!("/proc/self/fd/%d", self.wacom.fd);
+        let Ok(c) = CString::new(link) else { return false };
+        // SAFETY: readlink writes at most path.len() - 1 bytes into the local array.
+        let n = unsafe { libc::readlink(c.as_ptr(), path.as_mut_ptr() as *mut libc::c_char, path.len() - 1) };
+        if n <= 0 {
+            return false;
+        }
+        out.path.set_bytes(&path[..n as usize]);
+        true
+    }
+}
+
 // ---- input.h (input.rs forwards here on the Kindle) ----
+
+pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
+    with(|s| s.raw_pen_map(out))
+}
 
 pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
     if with(|s| s.open_devices(screen_w, screen_h, pen, touch)) != 0 {

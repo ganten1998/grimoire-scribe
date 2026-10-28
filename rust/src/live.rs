@@ -13,13 +13,36 @@
 //! follow. Neither a PNG being made, a full tile socket nor the 33 ms between batches is ever on its
 //! way: its viewer child (two at most too, a browser with both streams counting once in
 //! live_viewers) makes no PNGs, keeps a small send buffer, runs at the ordinary priority where the
-//! tile ones are niced, and sends what is new as soon as it wakes. The input hook
-//! (input_sample_hook) hands each pen event to live_sample as it is read, work_pump's reads too: one
-//! record in a ring of LIVE_RING in the shared frame (the sample, the ink style it draws with, its
-//! ink epoch), which is all the pen path pays, with no allocation and no log line, and one byte down
-//! each pen viewer's wake pipe per read of the pens (live_wake_samples). Each record has a stamp,
-//! zero while it is written and its sequence after, read before and after its words are copied: a
-//! viewer a whole ring behind sees no half of one, and the writer never waits for it.
+//! tile ones are niced, and sends what is new as soon as it wakes.
+//!
+//! Where the Kindle has a raw digitizer (WacomDigitizer, which Grimoire reads without a grab), the
+//! pen viewer opens that node itself (EVIOCSCLOCKID: CLOCK_MONOTONIC kernel times) and sends each
+//! of its frames as it comes, whatever the main loop is doing: a textured brush whose ink frames
+//! take tens of milliseconds used to hold the samples back until the loop read the pens again, and
+//! they reached the browser in bursts. The main loop publishes in the shared frame what the viewer
+//! cannot read itself: how the raw frames map onto the screen (input_raw_pen, live_set_raw_map), the
+//! ink style of each eraser and side button state with whether quick ink is allowed at all and the
+//! newest pen event it has handled (live_set_capture), whether it is in the middle of UI work
+//! (live_set_blocked), and the ink epoch. Without a raw digitizer, or while its place is not
+//! trusted, the samples come the old way: the input hook (input_sample_hook) hands each pen event
+//! to live_sample as it is read, work_pump's reads too: one record in a ring of LIVE_RING in the
+//! shared frame (the sample, the ink style it draws with, its ink epoch), which is all the pen path
+//! pays, with no allocation and no log line, and one byte down each pen viewer's wake pipe per read
+//! of the pens (live_wake_samples). Each record has a stamp, zero while it is written and its
+//! sequence after, read before and after its words are copied: a viewer a whole ring behind sees no
+//! half of one, and the writer never waits for it.
+//!
+//! A sample is known by the kernel's time of its frame in microseconds (u32, wrapping: its
+//! identity), the same for the raw node's frame the viewer reads and the main loop's own event of
+//! it. The scaled pen's frames, which the main loop follows, are relayed from the raw ones about
+//! 0.1 ms after them (pensync.h), well inside a frame's 2 to 5 ms: an event of the scaled pen
+//! stamped t covers every raw frame stamped t or before, and no later one. That is what lets the
+//! tiles' watermark (below) retire the quick ink the viewer sent from the raw node exactly.
+//!
+//! The editor's panel and the clock and battery corner come as layers of their own (frame 9): the
+//! frame holds the page under the panel (app_flush composes that rect again without it), and the
+//! corner, an overlay never in the frame, is copied as it is painted. The browser shows either or
+//! neither over the page. The Kindle's own screen is unchanged.
 //!
 //! Two epochs. The screen's moves on at a start and a turn, the only times the tiles start again
 //! from white. The ink epoch moves on whenever ink drawn before can no longer join what comes (a
@@ -33,15 +56,15 @@
 //!
 //! The streams' frames are little-endian (floats IEEE 754): u32 length (of the type byte and the
 //! payload), u8 type, payload:
-//!   1 hello      u16 version (2), w, h, tile; u32 epoch: the screen's size, after a start or a turn.
+//!   1 hello      u16 version (3), w, h, tile; u32 epoch: the screen's size, after a start or a turn.
 //!                On /live/pen the epoch is the ink epoch, and a hello comes after each change of it.
 //!   2 tile       u16 x, y, w, h, then the PNG of that rect (/live/stream only)
-//!   3 batch end  u32 seq, u32 the Kindle's ms; u32 the newest pen sample whose ink the tiles so far
-//!                hold, u32 its ms and u32 the ink epoch it was presented in: draw what came since the
-//!                last one, and drop the quick ink up to that sample once it shows. The sample is 0 for
-//!                none, and all three are 0 in a batch cut short (the state or the screen's epoch moved
-//!                on, or a PNG could not be made). A new watermark comes in a batch of its own when no
-//!                pixel changed.
+//!   3 batch end  u32 seq, u32 the Kindle's ms; u32 the newest pen sample (its identity) whose ink the
+//!                tiles so far hold, u32 its ms and u32 the ink epoch it was presented in: draw what came
+//!                since the last one, and drop the quick ink of every sample up to that identity once it
+//!                shows. The sample is 0 for none, and all three are 0 in a batch cut short (the state or
+//!                the screen's epoch moved on, or a PNG could not be made). A new watermark comes in a
+//!                batch of its own when no pixel changed.
 //!   4 ping       nothing: sent after 15 s without a batch, or (/live/pen) without a sample
 //!   5 state      u8 LIVE_AWAKE, LIVE_ASLEEP, LIVE_PAIRING or LIVE_BYE; u8 1 when Grimoire shows its
 //!                colors inverted (white on black: the frame never is), else 0; u8 the front light's
@@ -59,13 +82,14 @@
 //!                forgets it), and the next pen frame says where it is again.
 //!   7 samples    u32 the ink epoch; u32 1 when the stroke before cannot be joined (after a hello, or
 //!                an overrun of the ring), else 0; then n samples (n = 0 right after a hello, else at
-//!                most LIVE_PEN_BATCH), oldest first, LIVE_SAMPLE_BYTES each: u32 seq, u32 ms (the
-//!                kernel's time of the event where known), u16 x, y (the screen's pixels), u16
+//!                most LIVE_PEN_BATCH), oldest first, LIVE_SAMPLE_BYTES each: u32 identity (the
+//!                kernel's time of the frame in microseconds, wrapping; never 0), u32 ms (the same
+//!                time in the Kindle's ms, for the latency meter), u16 x, y (the screen's pixels), u16
 //!                pressure (0..65535), i8 tilt x, y (degrees, the screen's frame), u8 LIVE_PEN_AWAY,
 //!                LIVE_PEN_HOVER or LIVE_PEN_TOUCH, u8 flags (LIVE_ERASER, LIVE_SIDE, LIVE_DOWN,
-//!                LIVE_GAP, LIVE_DRAW), u16 0. A seq missing or LIVE_GAP breaks the stroke, and only
-//!                LIVE_DOWN starts one. A stream starts at the newest sample, without LIVE_DOWN, so it
-//!                never draws a stroke it saw only the end of.
+//!                LIVE_GAP, LIVE_DRAW), u16 0. LIVE_GAP breaks the stroke, and only LIVE_DOWN starts
+//!                one. A stream starts at the newest sample, without LIVE_DOWN, so it never draws a
+//!                stroke it saw only the end of.
 //!   8 style      LIVE_STYLE_BYTES (live_style_payload): what the samples after it draw, before the
 //!                first and whenever it changes. u8 enabled (0: no quick ink, as on a menu), u8 the
 //!                tool (0..9), u8 white (white ink or the precise eraser), u8 whole (the stroke eraser,
@@ -75,6 +99,10 @@
 //!                0, 1) ^ gamma); i32 x, y, w, h of the page on the screen (the ink's clip), then of
 //!                the panel (no ink over it). The quick ink is round: nibs, grain, smoothing, tilt and
 //!                the paper white ink brings back come with the tiles.
+//!   9 layer      u8 LIVE_LAYER_PANEL (the editor's panel) or LIVE_LAYER_STATUS (the clock and battery
+//!                corner), u8 0, u16 x, y, w, h, then the PNG of that rect (/live/stream only); w = 0
+//!                and no PNG when the layer is not on the screen. In the batch it changed in, and
+//!                again after every hello. The tiles under it hold what is under it.
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -105,6 +133,13 @@ pub const LIVE_STATE: i32 = 5;
 pub const LIVE_PEN_FRAME: i32 = 6;
 pub const LIVE_SAMPLES: i32 = 7;
 pub const LIVE_STYLE: i32 = 8;
+pub const LIVE_LAYER: i32 = 9;
+/// the streams' version, in each hello
+pub const LIVE_VERSION: u32 = 3;
+/// the layers (frame 9): the editor's panel, and the clock and battery corner
+pub const LIVE_LAYERS: usize = 2;
+pub const LIVE_LAYER_PANEL: usize = 0;
+pub const LIVE_LAYER_STATUS: usize = 1;
 pub const LIVE_PEN_AWAY: i32 = 0;
 pub const LIVE_PEN_HOVER: i32 = 1;
 pub const LIVE_PEN_TOUCH: i32 = 2;
@@ -153,11 +188,14 @@ const _: () = assert!(cfg!(target_has_atomic = "32"), "the tile marks must work 
 
 // The frame both sides map. w and h change only on a turn, written before epoch moves on; px holds
 // w * h bytes (the same in either orientation), rows w apart, right after this header (the C's
-// flexible array member). Each tile viewer slot has marks of its own: a viewer takes its marks as it
-// sends, which must leave the other's. pen is live_pen_word's. ack_* is live_presented's watermark,
-// written between two steps of ack_version (odd while it changes) so a viewer reads it whole.
-// woken: a slot's wake byte is on its way (wake): the child clears it once it has drained its pipe
-// and before it looks at the frame again, so a wake while it is set needs no byte of its own.
+// flexible array member), then a buffer of as many bytes for each layer. Each tile viewer slot has
+// marks of its own: a viewer takes its marks as it sends, which must leave the other's. pen is
+// live_pen_word's. ack_* is live_presented's watermark, written between two steps of ack_version
+// (odd while it changes) so a viewer reads it whole. woken: a slot's wake byte is on its way (wake):
+// the child clears it once it has drained its pipe and before it looks at the frame again, so a wake
+// while it is set needs no byte of its own. capture, raw_map and each layer are written the same
+// way (Seq), and blocked is live_set_blocked's. ring_only: GRIMOIRE_LIVE_PEN_SOURCE=ring (tests and
+// measurements: the pen viewers take the samples from the ring even where a raw digitizer is).
 #[repr(C)]
 struct Shared {
     epoch: AtomicU32,
@@ -175,6 +213,11 @@ struct Shared {
     ack_ms: AtomicU32,
     ack_ink: AtomicU32,
     woken: [AtomicU32; LIVE_VIEWERS * 2],
+    blocked: AtomicU32,
+    ring_only: AtomicU32,
+    capture: Seq<CAPTURE_WORDS>,
+    raw_map: Seq<MAP_WORDS>,
+    layers: [Seq<5>; LIVE_LAYERS],
     samples: [SampleSlot; LIVE_RING],
     dirty: [[AtomicU32; LIVE_WORDS]; LIVE_VIEWERS],
 }
@@ -185,6 +228,56 @@ struct SampleSlot {
     stamp: AtomicU32,
     words: [AtomicU32; 22],
 }
+/// Words the main loop writes whole and a viewer reads whole: version is odd while they change, so
+/// a reader that sees it odd, or changed by the end of its copy, has no snapshot and tries again
+/// later. The writer never waits for a reader.
+#[repr(C)]
+struct Seq<const N: usize> {
+    version: AtomicU32,
+    words: [AtomicU32; N],
+}
+impl<const N: usize> Seq<N> {
+    /// Bytes as words (little-endian; a short last word is zero filled).
+    fn write(&self, bytes: &[u8]) {
+        self.version.fetch_add(1, SeqCst);
+        for (i, word) in self.words.iter().enumerate() {
+            let mut b = [0u8; 4];
+            for (k, v) in b.iter_mut().enumerate() {
+                *v = bytes.get(i * 4 + k).copied().unwrap_or(0);
+            }
+            word.store(u32::from_le_bytes(b), SeqCst);
+        }
+        self.version.fetch_add(1, SeqCst);
+    }
+    /// The words into out (as many bytes as it holds); the version they were read at, None when
+    /// they were changing.
+    fn read(&self, out: &mut [u8]) -> Option<u32> {
+        let v = self.version.load(SeqCst);
+        if v & 1 != 0 {
+            return None;
+        }
+        for (i, word) in self.words.iter().enumerate() {
+            let b = word.load(SeqCst).to_le_bytes();
+            for (k, v) in b.iter().enumerate() {
+                if let Some(o) = out.get_mut(i * 4 + k) {
+                    *o = *v;
+                }
+            }
+        }
+        if self.version.load(SeqCst) == v {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+/// live_set_capture's words: u8 ok, u8 editor, u16 0, u32 handled, then the four styles
+/// ([eraser][side], LIVE_STYLE_BYTES each).
+const CAPTURE_BYTES: usize = 8 + 4 * LIVE_STYLE_BYTES;
+const CAPTURE_WORDS: usize = CAPTURE_BYTES / 4;
+/// live_set_raw_map's words (raw_map_bytes)
+const MAP_BYTES: usize = 228;
+const MAP_WORDS: usize = MAP_BYTES / 4;
 /// sizeof(Shared) in the C: where px begins
 const SHARED_SIZE: usize = std::mem::size_of::<Shared>();
 
@@ -209,8 +302,14 @@ impl Frame {
         // SAFETY: the mapping is SHARED_SIZE + w * h long, so SHARED_SIZE is inside it (or its end).
         unsafe { (self.base as *mut u8).add(SHARED_SIZE) }
     }
+    /// w * h: the pixels, and each layer's buffer
     fn px_len(&self) -> usize {
-        self.size - SHARED_SIZE
+        (self.size - SHARED_SIZE) / (1 + LIVE_LAYERS)
+    }
+    /// The first byte of layer i's buffer (px_len bytes), read and written in short copies as px.
+    fn layer_px(&self, i: usize) -> *mut u8 {
+        // SAFETY: the mapping holds px_len bytes of pixels and then px_len for each layer.
+        unsafe { self.px().add(self.px_len() * (1 + i)) }
     }
 }
 
@@ -223,6 +322,11 @@ struct Viewer {
 
 struct Live {
     sh: Option<Frame>,
+    /// the last identity handed out (ident)
+    last_ident: u32,
+    /// what live_set_capture and live_set_raw_map wrote last
+    capture_sent: [u8; CAPTURE_BYTES],
+    map_sent: [u8; MAP_BYTES],
     /// slots 0..LIVE_VIEWERS: the tile viewers; then the pen viewers
     v: [Viewer; LIVE_VIEWERS * 2],
     /// a sample was stored since the pen viewers were last woken (live_wake_samples)
@@ -232,7 +336,7 @@ struct Live {
 }
 
 thread_local! {
-    static S: RefCell<Live> = const { RefCell::new(Live { sh: None, v: [Viewer { pid: 0, wake: 0 }; LIVE_VIEWERS * 2], sample_wake: false, last_viewer: 0 }) };
+    static S: RefCell<Live> = const { RefCell::new(Live { sh: None, last_ident: 0, capture_sent: [0; CAPTURE_BYTES], map_sent: [0; MAP_BYTES], v: [Viewer { pid: 0, wake: 0 }; LIVE_VIEWERS * 2], sample_wake: false, last_viewer: 0 }) };
 }
 fn with<R>(f: impl FnOnce(&mut Live) -> R) -> R {
     S.with(|s| f(&mut s.borrow_mut()))
@@ -420,7 +524,7 @@ pub fn live_start(w: i32, h: i32) -> i32 {
     {
         return -1;
     }
-    let size = SHARED_SIZE + (w as usize) * (h as usize);
+    let size = SHARED_SIZE + (w as usize) * (h as usize) * (1 + LIVE_LAYERS);
     // SAFETY: an anonymous shared mapping: no file, no address asked for; the result is checked.
     let p = unsafe { libc::mmap(std::ptr::null_mut(), size, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED | libc::MAP_ANON, -1, 0) };
     if p == libc::MAP_FAILED {
@@ -436,6 +540,8 @@ pub fn live_start(w: i32, h: i32) -> i32 {
     sh.warmth.store(LIVE_NO_WARMTH as u32, SeqCst);
     sh.epoch.store(1, SeqCst);
     sh.ink_epoch.store(1, SeqCst); // (nothing presented in it yet: ack_ink stays 0 until app_flush)
+    let ring_only = std::env::var_os("GRIMOIRE_LIVE_PEN_SOURCE").is_some_and(|v| v.as_encoded_bytes() == b"ring");
+    sh.ring_only.store(ring_only as u32, SeqCst);
     mark_all(&f);
     with(|s| {
         s.sh = Some(f);
@@ -494,6 +600,8 @@ pub fn live_stop() {
     with(|s| {
         s.sh = None;
         s.sample_wake = false;
+        s.capture_sent = [0; CAPTURE_BYTES];
+        s.map_sent = [0; MAP_BYTES];
     });
 }
 
@@ -534,7 +642,7 @@ pub fn live_push(screen: &Canvas, r: Rect) {
 /// it is told again, and a new ink epoch (the ink before is on the screen before the turn).
 pub fn live_resize(w: i32, h: i32) {
     let Some(f) = frame() else { return };
-    if (w as usize).wrapping_mul(h as usize).wrapping_add(SHARED_SIZE) != f.size {
+    if (w as usize).wrapping_mul(h as usize).wrapping_mul(1 + LIVE_LAYERS).wrapping_add(SHARED_SIZE) != f.size {
         return;
     }
     let sh = f.sh();
@@ -544,6 +652,9 @@ pub fn live_resize(w: i32, h: i32) {
     set_ack(sh, 0, 0, sh.ack_ink.load(SeqCst)); // (the turned screen's first flush says it again)
     // SAFETY: px() is the start of the w * h pixel bytes (the size was checked against the mapping's).
     unsafe { std::ptr::write_bytes(f.px(), 255, (w as usize) * (h as usize)) };
+    for layer in sh.layers.iter() {
+        layer.write(&[0u8; 20]); // (on the screen before the turn: the turned one's flush tells them again)
+    }
     next_ink_epoch(sh);
     sh.epoch.fetch_add(1, SeqCst);
     mark_all(&f);
@@ -653,8 +764,35 @@ pub fn live_style_payload(out: &mut [u8], s: &LiveStyle) {
     }
 }
 
+/// CLOCK_MONOTONIC in microseconds (the clock of the pens' kernel times, EVIOCSCLOCKID).
+fn mono_us() -> u64 {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: clock_gettime writes one timespec into our local.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    (ts.tv_sec as u64) * 1_000_000 + (ts.tv_nsec as u64) / 1000
+}
+
+/// A pen event's identity (frame 7): the kernel's time of its frame in microseconds (InEvent.k_us),
+/// or, where nobody says (the simulator's scripted events), when it is captured, kept after the last
+/// one handed out so that no two events share one. Never 0.
+fn ident(ev: &InEvent) -> u32 {
+    let last = with(|s| s.last_ident);
+    let mut id = ev.k_us;
+    if id == 0 {
+        id = mono_us() as u32;
+        if (id.wrapping_sub(last) as i32) <= 0 {
+            id = last.wrapping_add(1);
+        }
+    }
+    if id == 0 {
+        id = 1; // zero means an event that was not captured
+    }
+    with(|s| s.last_ident = id);
+    id
+}
+
 /// A pen event as it is read (input_sample_hook, through app.c's live_capture), with what it draws:
-/// stored in the ring for the pen viewers. Its sequence, or 0 when nothing was stored (Live view is
+/// stored in the ring for the pen viewers. Its identity, or 0 when nothing was stored (Live view is
 /// off, or not awake). No allocation, no log line, no system call: the wake is
 /// live_wake_samples's, once per read of the pens.
 pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
@@ -665,10 +803,11 @@ pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
     }
     let mut seq = sh.sample_head.load(SeqCst).wrapping_add(1);
     if seq == 0 {
-        seq = 1; // zero means an event that was not captured
+        seq = 1; // (the ring's own count: a stamp of zero is a record being written)
     }
+    let id = ident(ev);
     let mut record = [0u8; 88];
-    put32(&mut record, seq);
+    put32(&mut record, id);
     put32(&mut record[4..], in_sample_ms(ev));
     put16(&mut record[8..], pen_px(ev.x, sh.w.load(SeqCst) as i32));
     put16(&mut record[10..], pen_px(ev.y, sh.h.load(SeqCst) as i32));
@@ -699,7 +838,533 @@ pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
     slot.stamp.store(seq, SeqCst);
     sh.sample_head.store(seq, SeqCst);
     with(|s| s.sample_wake = true);
-    seq
+    id
+}
+
+/// What quick ink may draw, as app.rs's LiveCap has it, for the pen viewers that read the raw
+/// digitizer themselves: ok (Live view on, the app awake and holding its input), whether the editor
+/// is up (quick ink is the editor's only), the newest pen event the main loop has handled (its
+/// identity: App.live_processed), and the style of each eraser ([0] off, [1] on) and side button
+/// state, as editor_live_style makes them.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LiveCapture {
+    pub ok: bool,
+    pub editor: bool,
+    pub handled: u32,
+    pub styles: [[LiveStyle; 2]; 2],
+}
+
+fn capture_bytes(c: &LiveCapture) -> [u8; CAPTURE_BYTES] {
+    let mut b = [0u8; CAPTURE_BYTES];
+    b[0] = c.ok as u8;
+    b[1] = c.editor as u8;
+    put32(&mut b[4..], c.handled);
+    for (e, row) in c.styles.iter().enumerate() {
+        for (side, style) in row.iter().enumerate() {
+            live_style_payload(&mut b[8 + (e * 2 + side) * LIVE_STYLE_BYTES..], style);
+        }
+    }
+    b
+}
+
+/// The main loop's capture state (after every event and tick, and wherever ok changes): written
+/// only when it changed, so a viewer's snapshot stays good meanwhile.
+pub fn live_set_capture(c: &LiveCapture) {
+    let Some(f) = frame() else { return };
+    let b = capture_bytes(c);
+    if with(|s| s.capture_sent == b) {
+        return;
+    }
+    f.sh().capture.write(&b);
+    with(|s| s.capture_sent = b);
+}
+
+/// The main loop is in UI work that a pen sample must not preview through (app.rs's
+/// LIVE_CAPTURE_BLOCKED): set before a screen handles an event that is no stroke's, cleared after.
+pub fn live_set_blocked(on: bool) {
+    let Some(f) = frame() else { return };
+    f.sh().blocked.store(on as u32, SeqCst);
+}
+
+/// Where the raw digitizer is and how its frames map onto the screen (input_raw_pen fills it): its
+/// node (st_rdev, 0 for any; the path to open), screen x = m[0] rx plus m[1] ry plus m[2] and y =
+/// m[3] rx plus m[4] ry plus m[5] for a raw place cut to rmin..rmax (the result cut to the screen),
+/// pressure pmin..pmax as 0..1, each tilt axis's range and resolution (tilt_deg), and the tilt into
+/// the screen's frame: x' = tm[0] x plus tm[1] y, y' = tm[2] x plus tm[3] y.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LiveRawMap {
+    pub dev: u64,
+    pub path: FixedStr<128>,
+    pub m: [f32; 6],
+    pub rmin: [i32; 2],
+    pub rmax: [i32; 2],
+    pub pmin: i32,
+    pub pmax: i32,
+    pub tilt_min: [i32; 2],
+    pub tilt_max: [i32; 2],
+    pub tilt_res: [i32; 2],
+    pub tm: [f32; 4],
+}
+
+fn raw_map_bytes(m: Option<&LiveRawMap>) -> [u8; MAP_BYTES] {
+    let mut b = [0u8; MAP_BYTES];
+    let Some(m) = m else { return b };
+    b[0] = 1;
+    put32(&mut b[4..], m.dev as u32);
+    put32(&mut b[8..], (m.dev >> 32) as u32);
+    let path = m.path.as_bytes();
+    let n = path.len().min(127);
+    b[12..12 + n].copy_from_slice(&path[..n]);
+    for (i, v) in m.m.iter().enumerate() {
+        put32(&mut b[140 + i * 4..], v.to_bits());
+    }
+    let ints = [m.rmin[0], m.rmin[1], m.rmax[0], m.rmax[1], m.pmin, m.pmax, m.tilt_min[0], m.tilt_max[0], m.tilt_res[0], m.tilt_min[1], m.tilt_max[1], m.tilt_res[1]];
+    for (i, v) in ints.iter().enumerate() {
+        put32(&mut b[164 + i * 4..], *v as u32);
+    }
+    for (i, v) in m.tm.iter().enumerate() {
+        put32(&mut b[212 + i * 4..], v.to_bits());
+    }
+    b
+}
+
+/// raw_map_bytes read back; None for none.
+fn raw_map_read(b: &[u8; MAP_BYTES]) -> Option<LiveRawMap> {
+    if b[0] == 0 {
+        return None;
+    }
+    let mut m = LiveRawMap { dev: get32(&b[4..]) as u64 | (get32(&b[8..]) as u64) << 32, ..Default::default() };
+    let end = b[12..140].iter().position(|&c| c == 0).unwrap_or(128);
+    m.path.set_bytes(&b[12..12 + end]);
+    for i in 0..6 {
+        m.m[i] = f32::from_bits(get32(&b[140 + i * 4..]));
+    }
+    let int = |i: usize| get32(&b[164 + i * 4..]) as i32;
+    m.rmin = [int(0), int(1)];
+    m.rmax = [int(2), int(3)];
+    m.pmin = int(4);
+    m.pmax = int(5);
+    m.tilt_min = [int(6), int(9)];
+    m.tilt_max = [int(7), int(10)];
+    m.tilt_res = [int(8), int(11)];
+    for i in 0..4 {
+        m.tm[i] = f32::from_bits(get32(&b[212 + i * 4..]));
+    }
+    Some(m)
+}
+
+/// The raw digitizer's map as the main loop knows it now (app_tick, and as Live view starts), or
+/// None while there is none (no raw digitizer, its place not trusted, the pen not Grimoire's): the
+/// pen viewers then take the samples from the ring. Written only when it changed.
+pub fn live_set_raw_map(m: Option<&LiveRawMap>) {
+    let Some(f) = frame() else { return };
+    let b = raw_map_bytes(m);
+    if with(|s| s.map_sent == b) {
+        return;
+    }
+    f.sh().raw_map.write(&b);
+    with(|s| s.map_sent = b);
+    wake_pens(); // (a pen viewer opens the node, or lets it go)
+}
+
+/// Layer i (LIVE_LAYER_PANEL, LIVE_LAYER_STATUS) is r of screen now, or not on the screen (r empty):
+/// its pixels copied into the layer's buffer, the tile viewers woken. An empty layer told again
+/// changes nothing.
+pub fn live_layer(i: usize, screen: &Canvas, r: Rect) {
+    let Some(f) = frame() else { return };
+    let sh = f.sh();
+    let w = sh.w.load(SeqCst) as i32;
+    let h = sh.h.load(SeqCst) as i32;
+    if screen.w != w || screen.h != h || i >= LIVE_LAYERS {
+        return; // (a turn not told yet: live_resize comes, and the flush after it tells the layers)
+    }
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w, h });
+    let layer = &sh.layers[i];
+    let mut was = [0u8; 20];
+    let empty = rect_is_empty(r);
+    if empty && layer.read(&mut was).is_some() && get32(&was[8..]) == 0 {
+        return;
+    }
+    let mut words = [0u8; 20];
+    if !empty {
+        put32(&mut words, r.x as u32);
+        put32(&mut words[4..], r.y as u32);
+        put32(&mut words[8..], r.w as u32);
+        put32(&mut words[12..], r.h as u32);
+        // The same rect with the same pixels (every flush that reaches the panel tells it): nothing.
+        if layer.read(&mut was).is_some() && was[..16] == words[..16] {
+            let same = (0..r.h).all(|y| {
+                let from = &screen.px[((r.y + y) as usize) * (screen.stride as usize) + r.x as usize..][..r.w as usize];
+                // SAFETY: row y of the packed copy is inside the layer's buffer (r is cut to the
+                // screen); only this process writes it, so it holds what was copied last.
+                let kept = unsafe { std::slice::from_raw_parts(f.layer_px(i).add((y as usize) * (r.w as usize)) as *const u8, r.w as usize) };
+                from == kept
+            });
+            if same {
+                return;
+            }
+        }
+    }
+    layer.version.fetch_add(1, SeqCst);
+    for y in 0..if empty { 0 } else { r.h } {
+        let from = &screen.px[((r.y + y) as usize) * (screen.stride as usize) + r.x as usize..][..r.w as usize];
+        // SAFETY: row y of the packed r.w x r.h copy is inside the layer's px_len (= w * h) bytes,
+        // since r is cut to the screen; `from` is the caller's canvas, a different allocation.
+        unsafe { std::ptr::copy_nonoverlapping(from.as_ptr(), f.layer_px(i).add((y as usize) * (r.w as usize)), r.w as usize) };
+    }
+    for (k, word) in layer.words.iter().enumerate() {
+        word.store(get32(&words[k * 4..]), SeqCst);
+    }
+    layer.version.fetch_add(1, SeqCst);
+    wake_tiles();
+}
+
+// ---- the raw digitizer, as a pen viewer reads it ----
+
+// linux/input.h's numbers the raw pen uses (input_evdev.rs has them all).
+const EV_SYN: u16 = 0x00;
+const EV_KEY: u16 = 0x01;
+const EV_ABS: u16 = 0x03;
+const SYN_REPORT: u16 = 0;
+const SYN_DROPPED: u16 = 3;
+const BTN_TOOL_PEN: u16 = 0x140;
+const BTN_TOOL_RUBBER: u16 = 0x141;
+const BTN_TOUCH: u16 = 0x14a;
+const BTN_STYLUS: u16 = 0x14b;
+const ABS_X: u16 = 0x00;
+const ABS_Y: u16 = 0x01;
+const ABS_PRESSURE: u16 = 0x18;
+const ABS_TILT_X: u16 = 0x1a;
+const ABS_TILT_Y: u16 = 0x1b;
+
+/// struct input_event as the kernel writes it (input_evdev.rs's InputEvent): two unsigned longs of
+/// time, type, code and value. The simulator's stand-in node takes the host's layout of the same.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LiveInputEvent {
+    pub sec: libc::c_ulong,
+    pub usec: libc::c_ulong,
+    pub type_: u16,
+    pub code: u16,
+    pub value: i32,
+}
+
+/// The raw digitizer's newest values, as a pen viewer reads its events (live_raw_event).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LiveRawPen {
+    pub x: i32,
+    pub y: i32,
+    pub p: i32,
+    pub tx: i32,
+    pub ty: i32,
+    pub tool_pen: bool,
+    pub tool_rubber: bool,
+    pub touch: bool,
+    pub side: bool,
+    /// x and y read since the pen came near
+    pub placed: bool,
+    /// the last frame sent had contact, was near
+    pub was_touch: bool,
+    pub was_near: bool,
+    /// SYN_DROPPED: what comes up to the next SYN_REPORT is half a frame; the frame after it is a gap
+    pub dropping: bool,
+    pub gap: bool,
+}
+
+/// One raw frame (its SYN_REPORT), as a pen viewer sends it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LiveRawFrame {
+    /// its identity (microseconds) and its ms (in now_ms()'s clock)
+    pub us: u32,
+    pub ms: u32,
+    /// LIVE_PEN_AWAY, LIVE_PEN_HOVER or LIVE_PEN_TOUCH
+    pub state: i32,
+    pub down: bool,
+    pub gap: bool,
+    pub eraser: bool,
+    pub side: bool,
+    pub x: i32,
+    pub y: i32,
+    pub p: i32,
+    pub tx: i32,
+    pub ty: i32,
+}
+
+/// One event of the raw digitizer into st: true at the end of a frame to send (out). The pen is near
+/// while either tool's button is down, touches while BTN_TOUCH is or its pressure is over pmin (the
+/// raw digitizer's contact, as raw_hover reads it in input_evdev.rs), and is sent once placed; its
+/// going away is one frame of LIVE_PEN_AWAY. After SYN_DROPPED the half frame is not sent, and the
+/// next one is a gap (the caller asks the node what it holds meanwhile, where it can).
+pub fn live_raw_event(st: &mut LiveRawPen, pmin: i32, ev: &LiveInputEvent, out: &mut LiveRawFrame) -> bool {
+    match (ev.type_, ev.code) {
+        (EV_SYN, SYN_DROPPED) => {
+            st.dropping = true;
+            false
+        }
+        (EV_SYN, SYN_REPORT) => {
+            if st.dropping {
+                st.dropping = false;
+                st.gap = true;
+                return false;
+            }
+            let near = st.tool_pen || st.tool_rubber;
+            let us = (ev.sec as u64).wrapping_mul(1_000_000).wrapping_add(ev.usec as u64);
+            let mut f = LiveRawFrame {
+                us: if us as u32 == 0 { 1 } else { us as u32 },
+                ms: (us / 1000) as u32, // (as now_ms() truncates: sec * 1000 + usec / 1000)
+                eraser: st.tool_rubber,
+                side: st.side,
+                x: st.x,
+                y: st.y,
+                p: st.p,
+                tx: st.tx,
+                ty: st.ty,
+                ..Default::default()
+            };
+            if !near {
+                st.placed = false;
+                let was = st.was_near;
+                st.was_near = false;
+                st.was_touch = false;
+                if !was {
+                    return false;
+                }
+                f.state = LIVE_PEN_AWAY;
+                *out = f;
+                return true;
+            }
+            if !st.placed {
+                return false;
+            }
+            let touching = st.touch || st.p > pmin;
+            f.state = if touching { LIVE_PEN_TOUCH } else { LIVE_PEN_HOVER };
+            f.down = touching && !st.was_touch;
+            f.gap = std::mem::take(&mut st.gap);
+            st.was_touch = touching;
+            st.was_near = true;
+            *out = f;
+            true
+        }
+        _ if st.dropping => false,
+        (EV_KEY, BTN_TOOL_PEN) => {
+            st.tool_pen = ev.value != 0;
+            false
+        }
+        (EV_KEY, BTN_TOOL_RUBBER) => {
+            st.tool_rubber = ev.value != 0;
+            false
+        }
+        (EV_KEY, BTN_TOUCH) => {
+            st.touch = ev.value != 0;
+            false
+        }
+        (EV_KEY, BTN_STYLUS) => {
+            st.side = ev.value != 0;
+            false
+        }
+        (EV_ABS, ABS_X) => {
+            st.x = ev.value;
+            st.placed = true;
+            false
+        }
+        (EV_ABS, ABS_Y) => {
+            st.y = ev.value;
+            st.placed = true;
+            false
+        }
+        (EV_ABS, ABS_PRESSURE) => {
+            st.p = ev.value;
+            false
+        }
+        (EV_ABS, ABS_TILT_X) => {
+            st.tx = ev.value;
+            false
+        }
+        (EV_ABS, ABS_TILT_Y) => {
+            st.ty = ev.value;
+            false
+        }
+        _ => false,
+    }
+}
+
+// Tilt in degrees, as input_evdev.rs's tilt_deg reads an axis: units per radian where the axis says
+// its resolution, small ranges as degrees, larger ones scaled to +-90.
+fn raw_tilt_deg(v: i32, min: i32, max: i32, res: i32) -> f32 {
+    if max == min {
+        return 0.0;
+    }
+    if res > 0 {
+        return clampf(v as f32 / res as f32 * 57.29578, -90.0, 90.0);
+    }
+    let m = if min.wrapping_abs() > max.wrapping_abs() { min.wrapping_abs() } else { max.wrapping_abs() };
+    if m <= 127 {
+        return clampf(v as f32, -90.0, 90.0);
+    }
+    clampf(v as f32 * 90.0 / m as f32, -90.0, 90.0)
+}
+
+/// A raw frame as frame 7's sample (out: LIVE_SAMPLE_BYTES), placed on the w x h screen by m. Its
+/// flags but LIVE_DRAW, which the caller adds.
+pub fn live_raw_sample(m: &LiveRawMap, w: i32, h: i32, f: &LiveRawFrame, out: &mut [u8]) {
+    let rx = (f.x.clamp(m.rmin[0].min(m.rmax[0]), m.rmax[0].max(m.rmin[0]))) as f32;
+    let ry = (f.y.clamp(m.rmin[1].min(m.rmax[1]), m.rmax[1].max(m.rmin[1]))) as f32;
+    let sx = m.m[0] * rx + m.m[1] * ry + m.m[2];
+    let sy = m.m[3] * rx + m.m[4] * ry + m.m[5];
+    let span = m.pmax.wrapping_sub(m.pmin);
+    let p = if f.state != LIVE_PEN_TOUCH || span <= 0 { 0.0 } else { clampf(f.p.wrapping_sub(m.pmin) as f32 / span as f32, 0.0, 1.0) };
+    let tx = raw_tilt_deg(f.tx, m.tilt_min[0], m.tilt_max[0], m.tilt_res[0]);
+    let ty = raw_tilt_deg(f.ty, m.tilt_min[1], m.tilt_max[1], m.tilt_res[1]);
+    put32(out, f.us);
+    put32(&mut out[4..], f.ms);
+    put16(&mut out[8..], pen_px(sx, w));
+    put16(&mut out[10..], pen_px(sy, h));
+    put16(&mut out[12..], pen_px(p * 65535.0, 65536));
+    out[14] = clampf(m.tm[0] * tx + m.tm[1] * ty, -90.0, 90.0) as i8 as u8;
+    out[15] = clampf(m.tm[2] * tx + m.tm[3] * ty, -90.0, 90.0) as i8 as u8;
+    out[16] = f.state as u8;
+    out[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
+    out[18] = 0;
+    out[19] = 0;
+}
+
+/// a after b, or the same (identities wrap)
+fn at_or_after(a: u32, b: u32) -> bool {
+    (a.wrapping_sub(b) as i32) >= 0
+}
+
+/// How many samples of a stroke not decided yet a pen viewer holds back (live_raw_gate): about half
+/// a second of the raw digitizer's frames. Past that they go on undrawn, and the stroke's quick ink
+/// starts where it is decided.
+pub const LIVE_RAW_HOLD: usize = 128;
+
+/// What a pen viewer that reads the raw digitizer keeps between its frames to decide their ink
+/// (live_raw_gate). It runs ahead of the main loop, often by a whole stroke or more: a pen-down
+/// that comes while the main loop is in UI work (blocked), or before it has handled a UI pen-down
+/// shown earlier, cannot be judged yet, and its samples wait here until it can.
+#[derive(Clone, Copy)]
+pub struct LiveRawGate {
+    /// a UI pen-down the main loop has not handled yet (its identity; 0 none)
+    pub ui: u32,
+    /// the stroke under way draws (its first drawn sample said LIVE_DOWN)
+    pub drawing: bool,
+    /// the pen-down not decided yet (its identity; 0 none), its flags and where it came down
+    pub pending: u32,
+    pub down_flags: u8,
+    pub at: (i32, i32),
+    /// the samples held back since it, and whether some went on undrawn already (the hold ran out)
+    pub held: [[u8; LIVE_SAMPLE_BYTES]; LIVE_RAW_HOLD],
+    pub n: usize,
+    pub spilled: bool,
+}
+
+impl Default for LiveRawGate {
+    fn default() -> Self {
+        LiveRawGate { ui: 0, drawing: false, pending: 0, down_flags: 0, at: (0, 0), held: [[0; LIVE_SAMPLE_BYTES]; LIVE_RAW_HOLD], n: 0, spilled: false }
+    }
+}
+
+impl LiveRawGate {
+    /// The stroke forgotten, what it held dropped: nothing was sent meanwhile (asleep, a new ink
+    /// epoch, the source changed), and the browser starts no stroke without a pen-down. A UI pen-down
+    /// still waiting stays: the main loop has it to handle either way.
+    pub fn forget(&mut self) {
+        self.drawing = false;
+        self.pending = 0;
+        self.n = 0;
+        self.spilled = false;
+    }
+}
+
+// The style a sample's eraser and side button state draws with (its flags), or none.
+fn gate_style(cap: &LiveCapture, free: bool, flags: u8) -> LiveStyle {
+    if free {
+        cap.styles[(flags & LIVE_ERASER != 0) as usize][(flags & LIVE_SIDE != 0) as usize]
+    } else {
+        LiveStyle::default()
+    }
+}
+
+// The held samples on their way: drawn with each one's style (the first saying LIVE_DOWN when the
+// stroke's own pen-down went on undrawn), or undrawn.
+fn gate_release(g: &mut LiveRawGate, cap: &LiveCapture, drawn: bool, send: &mut dyn FnMut(&[u8], &LiveStyle)) {
+    let free = cap.ok && cap.editor && g.ui == 0;
+    for i in 0..g.n {
+        let mut s = g.held[i];
+        let st = gate_style(cap, free, s[17]);
+        if drawn && st.enabled != 0 {
+            s[17] |= LIVE_DRAW;
+            if i == 0 && g.spilled {
+                s[17] |= LIVE_DOWN;
+            }
+        }
+        send(&s, &st);
+    }
+    g.n = 0;
+}
+
+/// One raw frame's sample (live_raw_sample's bytes) through the gate, as app.rs's live_capture
+/// decides an event's ink: send(sample, style) for each sample to send now, oldest first. Nothing
+/// draws unless quick ink is allowed (cap: the app awake and holding its input, the editor up) and
+/// no UI pen-down is still unhandled (g.ui). A pen-down where its style draws nothing or on the
+/// panel is UI: nothing draws until the main loop has handled it (g.ui set to it). One that comes
+/// while the main loop is in UI work (blocked), or behind an unhandled UI pen-down, is held with the
+/// samples after it until neither holds, then judged by the capture state the main loop published
+/// after that work: drawn from its pen-down, or UI. A stroke once drawing goes on drawing through
+/// the main loop's UI work (each event it handles is that for a moment; the browser ends a stroke
+/// at its first undrawn sample and starts one only at a pen-down), and a gap in it starts it again.
+pub fn live_raw_gate(g: &mut LiveRawGate, cap: &LiveCapture, blocked: bool, f: &LiveRawFrame, sample: &[u8], send: &mut dyn FnMut(&[u8], &LiveStyle)) {
+    if g.ui != 0 && at_or_after(cap.handled, g.ui) {
+        g.ui = 0;
+    }
+    let mut s = [0u8; LIVE_SAMPLE_BYTES];
+    s.copy_from_slice(&sample[..LIVE_SAMPLE_BYTES]);
+    s[17] &= !LIVE_DRAW;
+    if f.state != LIVE_PEN_TOUCH {
+        gate_release(g, cap, false, send); // (lifted before it could be judged: undrawn)
+        g.drawing = false;
+        g.pending = 0;
+        g.spilled = false;
+        send(&s, &gate_style(cap, cap.ok && cap.editor && g.ui == 0, s[17]));
+        return;
+    }
+    if f.down {
+        gate_release(g, cap, false, send);
+        g.drawing = false;
+        g.pending = f.us;
+        g.down_flags = s[17];
+        g.at = ((s[8] as u32 | (s[9] as u32) << 8) as i32, (s[10] as u32 | (s[11] as u32) << 8) as i32);
+        g.spilled = false;
+    }
+    if g.pending != 0 {
+        if g.n == LIVE_RAW_HOLD {
+            gate_release(g, cap, false, send);
+            g.spilled = true;
+        }
+        g.held[g.n] = s;
+        g.n += 1;
+        if blocked || g.ui != 0 {
+            return; // (judged at a later frame)
+        }
+        let st = gate_style(cap, cap.ok && cap.editor, g.down_flags);
+        if st.enabled == 0 || rect_contains(st.exclude, g.at.0, g.at.1) {
+            g.ui = g.pending;
+            g.pending = 0;
+            gate_release(g, cap, false, send);
+        } else {
+            g.pending = 0;
+            g.drawing = true;
+            gate_release(g, cap, true, send);
+        }
+        return;
+    }
+    let st = gate_style(cap, cap.ok && cap.editor && g.ui == 0, s[17]);
+    if g.drawing && st.enabled != 0 {
+        s[17] |= LIVE_DRAW | if f.gap { LIVE_DOWN } else { 0 };
+    } else {
+        g.drawing = false;
+    }
+    send(&s, &st);
 }
 
 /// After a read of the pens (input_sample_hook's batch callback, and app_event): the pen viewers
@@ -806,7 +1471,7 @@ fn sample_read(sh: &Shared, seq: u32, out: &mut [u8; 88]) -> bool {
 
 fn send_hello(fd: i32, w: i32, h: i32, epoch: u32) -> bool {
     let mut p = [0u8; 12];
-    put16(&mut p, 2);
+    put16(&mut p, LIVE_VERSION);
     put16(&mut p[2..], w as u32);
     put16(&mut p[4..], h as u32);
     put16(&mut p[6..], LIVE_TILE as u32);
@@ -893,21 +1558,302 @@ fn send_samples(fd: i32, out: &mut [u8], epoch: u32, reset: bool, n: usize) -> b
     send_all(fd, &out[..5 + len])
 }
 
-// A pen viewer (GET /live/pen): the state as it changes, a hello for each ink epoch, and the ring's
-// samples, every one that came since the last wake in as few frames as they fit, each with the style
-// before it when that changed. It makes no PNG and never waits for anything but its wake pipe.
+// ---- a pen viewer's own reader of the raw digitizer ----
+
+/// EVIOCSCLOCKID (input_evdev.rs's: linux/ioctl.h's encoding of 'E' 0xa0 with an int)
+#[cfg(feature = "kindle")]
+const EVIOCSCLOCKID: u32 = 0x4004_45a0;
+
+/// The raw digitizer's node as a pen viewer opened it for itself (raw_open), with the map it was
+/// opened for and what its events have said so far.
+struct RawSource {
+    fd: i32,
+    map: LiveRawMap,
+    pen: LiveRawPen,
+}
+
+/// Opens the node m names, never grabbed (the main loop's reader of it, and the pen service's, see
+/// every event as before: each reader of an evdev node has a queue of its own), non-blocking, its
+/// times in CLOCK_MONOTONIC as the main loop's are; -1 when it cannot, or it is not that node (dev).
+/// The simulator's stand-in is a FIFO, opened for writing too so that it never reads as ended while
+/// no writer has it open.
+fn raw_open(m: &LiveRawMap) -> i32 {
+    let Ok(path) = std::ffi::CString::new(m.path.as_bytes()) else { return -1 };
+    if m.path.is_empty() {
+        return -1;
+    }
+    #[cfg(feature = "sim")]
+    let flags = libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC;
+    #[cfg(not(feature = "sim"))]
+    let flags = libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC;
+    // SAFETY: open reads the NUL-terminated path; the result is checked.
+    let fd = unsafe { libc::open(path.as_ptr(), flags) };
+    if fd < 0 {
+        return -1;
+    }
+    if m.dev != 0 {
+        // SAFETY: fstat writes one stat into the zeroed local.
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd, &mut st) } != 0 || st.st_rdev as u64 != m.dev {
+            // SAFETY: closes the descriptor opened above.
+            unsafe { libc::close(fd) };
+            return -1;
+        }
+    }
+    #[cfg(feature = "kindle")]
+    {
+        let clk = libc::CLOCK_MONOTONIC as libc::c_int;
+        // SAFETY: EVIOCSCLOCKID reads one int, our local.
+        if unsafe { libc::ioctl(fd, EVIOCSCLOCKID as libc::Ioctl, &clk as *const libc::c_int) } != 0 {
+            // SAFETY: closes the descriptor opened above.
+            unsafe { libc::close(fd) };
+            return -1; // (its times would not be the main loop's: no identities in common)
+        }
+    }
+    fd
+}
+
+/// After a drop (SYN_DROPPED), what the node holds now (EVIOCGABS, EVIOCGKEY), as input_evdev.rs's
+/// wacom_resync asks it. Only on the Kindle; the simulator's FIFO drops nothing.
+#[cfg(feature = "kindle")]
+fn raw_resync(r: &mut RawSource) {
+    #[repr(C)]
+    #[derive(Default)]
+    struct Absinfo {
+        value: i32,
+        minimum: i32,
+        maximum: i32,
+        fuzz: i32,
+        flat: i32,
+        resolution: i32,
+    }
+    let abs = |code: u16| -> Option<i32> {
+        let mut ai = Absinfo::default();
+        let req = (2u32 << 30) | ((std::mem::size_of::<Absinfo>() as u32) << 16) | (0x45 << 8) | (0x40 + code as u32);
+        // SAFETY: EVIOCGABS writes one input_absinfo into our local.
+        (unsafe { libc::ioctl(r.fd, req as libc::Ioctl, &mut ai as *mut Absinfo) } >= 0).then_some(ai.value)
+    };
+    if let Some(v) = abs(ABS_X) {
+        r.pen.x = v;
+        r.pen.placed = true;
+    }
+    if let Some(v) = abs(ABS_Y) {
+        r.pen.y = v;
+    }
+    if let Some(v) = abs(ABS_PRESSURE) {
+        r.pen.p = v;
+    }
+    if let Some(v) = abs(ABS_TILT_X) {
+        r.pen.tx = v;
+    }
+    if let Some(v) = abs(ABS_TILT_Y) {
+        r.pen.ty = v;
+    }
+    let mut keys = [0u8; 96];
+    let req = (2u32 << 30) | ((keys.len() as u32) << 16) | (0x45 << 8) | 0x18;
+    // SAFETY: EVIOCGKEY writes at most keys.len() bytes into the local array.
+    if unsafe { libc::ioctl(r.fd, req as libc::Ioctl, keys.as_mut_ptr()) } >= 0 {
+        let bit = |b: u16| keys[(b / 8) as usize] & (1 << (b % 8)) != 0;
+        r.pen.tool_pen = bit(BTN_TOOL_PEN);
+        r.pen.tool_rubber = bit(BTN_TOOL_RUBBER);
+        r.pen.touch = bit(BTN_TOUCH);
+        r.pen.side = bit(BTN_STYLUS);
+    }
+}
+#[cfg(not(feature = "kindle"))]
+fn raw_resync(_r: &mut RawSource) {}
+
+fn raw_close(r: Option<RawSource>) {
+    if let Some(r) = r {
+        // SAFETY: closes the node's descriptor, which only this viewer has.
+        unsafe { libc::close(r.fd) };
+    }
+}
+
+/// What a pen viewer keeps between its sends (pen_main).
+struct PenOut {
+    out: [u8; 13 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH],
+    n: usize,
+    frame_reset: bool,
+    style: [u8; LIVE_STYLE_BYTES],
+    have_style: bool,
+    /// a send failed: the browser is gone
+    dead: bool,
+    /// when something was last sent (for the ping)
+    last: u32,
+}
+
+impl PenOut {
+    fn flush(&mut self, fd: i32, epoch: u32) {
+        if self.n > 0 && !self.dead {
+            let n = self.n;
+            if !send_samples(fd, &mut self.out, epoch, self.frame_reset, n) {
+                self.dead = true;
+            }
+            self.last = now_ms();
+        }
+        self.n = 0;
+    }
+    /// One sample (LIVE_SAMPLE_BYTES) drawn with style (its frame-8 bytes): the style first when it
+    /// changed, after the samples before it, which draw with the one before.
+    fn push(&mut self, fd: i32, epoch: u32, sample: &[u8], style: &[u8], reset: &mut bool) {
+        if !self.have_style || self.style[..] != style[..LIVE_STYLE_BYTES] {
+            self.flush(fd, epoch);
+            self.style.copy_from_slice(&style[..LIVE_STYLE_BYTES]);
+            if !self.dead && !send_frame(fd, LIVE_STYLE as u8, &self.style, &[]) {
+                self.dead = true;
+            }
+            self.have_style = true;
+        }
+        if self.n == 0 {
+            self.frame_reset = *reset;
+        }
+        let at = 13 + self.n * LIVE_SAMPLE_BYTES;
+        self.out[at..at + LIVE_SAMPLE_BYTES].copy_from_slice(&sample[..LIVE_SAMPLE_BYTES]);
+        *reset = false;
+        self.n += 1;
+        if self.n == LIVE_PEN_BATCH {
+            self.flush(fd, epoch);
+        }
+    }
+}
+
+// Everything the raw node has queued, read and sent: each frame placed by the map, its ink decided by
+// the gate (live_raw_gate) from the main loop's capture state and the ink epoch it is in. Nothing is
+// sent but while sending is on (the stream awake, in this epoch, quick ink's capture allowed): the
+// node is read empty either way, so what comes later is never stale. cap is the capture state as last
+// read whole: the main loop rewrites it at every pen event, and a read that meets a write keeps the
+// one before (an undrawn sample in a stroke would end its quick ink in the browser).
+fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32, sending: bool, gate: &mut LiveRawGate, cap: &mut LiveCapture, reset: &mut bool) {
+    let mut evs = [LiveInputEvent::default(); 64];
+    let mut cap_b = [0u8; CAPTURE_BYTES];
+    let mut have_cap = false;
+    loop {
+        // SAFETY: read into the local array of input_event records, at most its size in bytes.
+        let got = unsafe { libc::read(r.fd, evs.as_mut_ptr() as *mut libc::c_void, std::mem::size_of_val(&evs)) };
+        if got <= 0 {
+            break;
+        }
+        let n = got as usize / std::mem::size_of::<LiveInputEvent>();
+        for ev in evs[..n].iter() {
+            let mut fr = LiveRawFrame::default();
+            let dropping = r.pen.dropping;
+            if !live_raw_event(&mut r.pen, r.map.pmin, ev, &mut fr) {
+                if dropping && !r.pen.dropping {
+                    raw_resync(r); // (the half frame is over: what the node holds now)
+                }
+                continue;
+            }
+            if !sending || o.dead || sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.ink_epoch.load(SeqCst) != epoch {
+                gate.forget(); // (told at the top of pen_main with a hello; this frame is the epoch's before)
+                continue;
+            }
+            if !have_cap {
+                // (the writer never waits: a few tries, else the one before stays)
+                for _ in 0..4 {
+                    if sh.capture.read(&mut cap_b).is_some() {
+                        *cap = capture_read(&cap_b);
+                        break;
+                    }
+                }
+                have_cap = true;
+            }
+            if !cap.ok {
+                gate.forget();
+                continue; // (asleep, the input the Kindle's, Live view going: nothing of the pen is sent)
+            }
+            let mut sample = [0u8; LIVE_SAMPLE_BYTES];
+            let w = sh.w.load(SeqCst) as i32;
+            let h = sh.h.load(SeqCst) as i32;
+            live_raw_sample(&r.map, w, h, &fr, &mut sample);
+            let mut style_b = [0u8; LIVE_STYLE_BYTES];
+            live_raw_gate(gate, cap, sh.blocked.load(SeqCst) != 0, &fr, &sample, &mut |s, st| {
+                live_style_payload(&mut style_b, st);
+                o.push(fd, epoch, s, &style_b, reset);
+            });
+        }
+    }
+    o.flush(fd, epoch);
+}
+
+/// capture_bytes read back.
+fn capture_read(b: &[u8; CAPTURE_BYTES]) -> LiveCapture {
+    let mut c = LiveCapture { ok: b[0] != 0, editor: b[1] != 0, handled: get32(&b[4..]), ..Default::default() };
+    for e in 0..2 {
+        for side in 0..2 {
+            c.styles[e][side] = live_style_read(&b[8 + (e * 2 + side) * LIVE_STYLE_BYTES..]);
+        }
+    }
+    c
+}
+
+/// live_style_payload read back.
+pub fn live_style_read(b: &[u8]) -> LiveStyle {
+    let f = |i: usize| f32::from_bits(get32(&b[4 + i * 4..]));
+    let int = |i: usize| get32(&b[32 + i * 4..]) as i32;
+    LiveStyle {
+        enabled: b[0],
+        tool: b[1],
+        white: b[2],
+        whole: b[3],
+        width_min: f(0),
+        width_max: f(1),
+        pressure_floor: f(2),
+        pressure_ceiling: f(3),
+        pressure_gamma: f(4),
+        opacity_min: f(5),
+        opacity_max: f(6),
+        clip: Rect { x: int(0), y: int(1), w: int(2), h: int(3) },
+        exclude: Rect { x: int(4), y: int(5), w: int(6), h: int(7) },
+    }
+}
+
+// A pen viewer (GET /live/pen): the state as it changes, a hello for each ink epoch, and the samples,
+// every one that came since the last wake in as few frames as they fit, each with the style before it
+// when that changed: from the raw digitizer's node while the main loop publishes a map for it (raw:
+// read the moment the node has a frame, whatever the main loop is doing), else from the ring. It
+// makes no PNG and never waits for anything but its wake pipe and the node.
 fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> ! {
     let sh = f.sh();
     let mut epoch: u32 = 0;
     let mut cursor: u32 = 0;
-    let mut last = now_ms();
     let mut told: u32 = !0;
-    let mut style = [0u8; LIVE_STYLE_BYTES];
-    let mut have_style = false;
     let mut reset = true;
     let mut snapshot = true;
-    let mut out = [0u8; 13 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH];
+    let mut o = PenOut { out: [0u8; 13 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH], n: 0, frame_reset: false, style: [0u8; LIVE_STYLE_BYTES], have_style: false, dead: false, last: now_ms() };
+    let mut raw: Option<RawSource> = None;
+    let mut map_seen: u32 = !0;
+    // what the raw node's frames draw (live_raw_gate), and the capture state as last read whole
+    let mut gate = LiveRawGate::default();
+    let mut cap = LiveCapture::default();
     loop {
+        // The raw node: opened once the main loop publishes a map for it, let go when it takes it back.
+        let mut mb = [0u8; MAP_BYTES];
+        if let Some(v) = sh.raw_map.read(&mut mb) {
+            if v != map_seen {
+                map_seen = v;
+                let m = if sh.ring_only.load(SeqCst) != 0 { None } else { raw_map_read(&mb) };
+                match (m, raw.as_mut()) {
+                    (Some(m), Some(r)) if r.map.path == m.path && r.map.dev == m.dev => r.map = m,
+                    (m, _) => {
+                        let had = raw.is_some();
+                        raw_close(raw.take());
+                        if let Some(m) = m {
+                            let rfd = raw_open(&m);
+                            if rfd >= 0 {
+                                raw = Some(RawSource { fd: rfd, map: m, pen: LiveRawPen::default() });
+                            }
+                        }
+                        if had != raw.is_some() {
+                            reset = true; // (from one source to the other: no stroke joins across)
+                            cursor = sh.sample_head.load(SeqCst);
+                            o.have_style = false;
+                            gate.forget();
+                        }
+                    }
+                }
+            }
+        }
         let state = sh.state.load(SeqCst);
         let e = sh.ink_epoch.load(SeqCst);
         if state != told {
@@ -928,22 +1874,27 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
             }
             // newest place only; never replay a stroke when reconnecting
             cursor = sh.sample_head.load(SeqCst).saturating_sub(1);
-            have_style = false;
+            o.have_style = false;
             snapshot = cursor != sh.sample_head.load(SeqCst);
-            if !send_samples(fd, &mut out, epoch, true, 0) {
+            if !send_samples(fd, &mut o.out, epoch, true, 0) {
                 break;
             }
+            o.last = now_ms();
             reset = false;
+            gate.forget(); // (nothing held from the epoch before)
         }
-        if state == LIVE_AWAKE as u32 {
+        if let Some(r) = raw.as_mut() {
+            cursor = sh.sample_head.load(SeqCst); // (the ring's samples are the same frames, later)
+            raw_pump(sh, r, &mut o, fd, epoch, state == LIVE_AWAKE as u32, &mut gate, &mut cap, &mut reset);
+            if o.dead {
+                child_exit();
+            }
+        } else if state == LIVE_AWAKE as u32 {
             let head = sh.sample_head.load(SeqCst);
             if head.wrapping_sub(cursor) > LIVE_RING as u32 {
                 cursor = head.wrapping_sub(LIVE_RING as u32);
                 reset = true;
             }
-            // n samples in out, the first of them after a reset (frame_reset)
-            let mut n = 0usize;
-            let mut frame_reset = false;
             while cursor != head {
                 let mut next = cursor.wrapping_add(1);
                 if next == 0 {
@@ -964,56 +1915,35 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
                 if sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.ink_epoch.load(SeqCst) != epoch {
                     break;
                 }
-                if !have_style || style[..] != record[20..20 + LIVE_STYLE_BYTES] {
-                    // (the samples before it go first: they draw with the style before)
-                    if n > 0 {
-                        if !send_samples(fd, &mut out, epoch, frame_reset, n) {
-                            child_exit();
-                        }
-                        last = now_ms();
-                    }
-                    n = 0;
-                    style.copy_from_slice(&record[20..20 + LIVE_STYLE_BYTES]);
-                    if !send_frame(fd, LIVE_STYLE as u8, &style, &[]) {
-                        child_exit();
-                    }
-                    have_style = true;
-                }
-                if n == 0 {
-                    frame_reset = reset;
-                }
-                let at = 13 + n * LIVE_SAMPLE_BYTES;
-                out[at..at + LIVE_SAMPLE_BYTES].copy_from_slice(&record[..LIVE_SAMPLE_BYTES]);
                 if reset || snapshot {
-                    out[at + 17] &= !LIVE_DOWN;
+                    record[17] &= !LIVE_DOWN;
                 }
                 snapshot = false;
-                reset = false;
-                n += 1;
-                if n == LIVE_PEN_BATCH {
-                    if !send_samples(fd, &mut out, epoch, frame_reset, n) {
-                        child_exit();
-                    }
-                    n = 0;
-                    last = now_ms();
-                }
-            }
-            if n > 0 {
-                if !send_samples(fd, &mut out, epoch, frame_reset, n) {
+                let (sample, style) = record.split_at(20);
+                o.push(fd, epoch, sample, style, &mut reset);
+                if o.dead {
                     child_exit();
                 }
-                last = now_ms();
+            }
+            o.flush(fd, epoch);
+            if o.dead {
+                child_exit();
             }
         }
-        if now_ms().wrapping_sub(last) >= 15000 {
+        if now_ms().wrapping_sub(o.last) >= 15000 {
             if !send_frame(fd, LIVE_PING as u8, &[], &[]) {
                 break;
             }
-            last = now_ms();
+            o.last = now_ms();
         }
-        let mut pf = [libc::pollfd { fd: wake, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
-        // SAFETY: poll reads and writes the two pollfds of the local array.
-        let got = unsafe { libc::poll(pf.as_mut_ptr(), 2, 1000) };
+        let rfd = raw.as_ref().map_or(-1, |r| r.fd);
+        let mut pf = [
+            libc::pollfd { fd: wake, events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: rfd, events: libc::POLLIN, revents: 0 },
+        ];
+        // SAFETY: poll reads and writes the pollfds of the local array (a negative fd is skipped).
+        let got = unsafe { libc::poll(pf.as_mut_ptr(), if rfd >= 0 { 3 } else { 2 }, 1000) };
         if got < 0 && errno() != libc::EINTR {
             break;
         }
@@ -1021,12 +1951,19 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
         if pf[1].revents & (libc::POLLHUP | libc::POLLERR | libc::POLLIN) != 0 {
             break;
         }
+        if rfd >= 0 && pf[2].revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+            raw_close(raw.take()); // (the node went: the ring until a new map names it)
+            reset = true;
+            gate.forget();
+            cursor = sh.sample_head.load(SeqCst);
+        }
         drain_wake(sh, slot, wake, pf[0].revents & libc::POLLIN != 0);
         // SAFETY: getppid takes no arguments.
         if unsafe { libc::getppid() } != parent {
             break;
         }
     }
+    raw_close(raw.take());
     // SAFETY: shutdown of our own socket's write side, then _exit, which ends the child at once and
     // runs none of the parent's exit handlers.
     unsafe {
@@ -1102,6 +2039,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
     }
     sent.resize(cap, 0);
     tile.resize(LIVE_TILE as usize * 4096, 0);
+    let mut layer_buf: Vec<u8> = Vec::new();
     let mut epoch: u32 = 0;
     let mut last_batch: u32 = 0;
     let mut last_sent = now_ms();
@@ -1117,6 +2055,8 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
     // the watermark as the browser has it: its sample (0 none yet) and its ink epoch
     let mut ack_sent: u32 = 0;
     let mut ink_sent: u32 = 0;
+    // each layer's version as the browser has it (odd: none yet, never a version written whole)
+    let mut layer_sent: [u32; LIVE_LAYERS] = [!0; LIVE_LAYERS];
     'main: loop {
         let state = sh.state.load(SeqCst);
         let invert = sh.invert.load(SeqCst);
@@ -1157,6 +2097,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             told_pen = 0;
             ack_sent = 0;
             ink_sent = 0;
+            layer_sent = [!0; LIVE_LAYERS]; // (a hello takes them away: each comes again)
             pen = sh.pen.load(SeqCst);
         }
         if state == LIVE_AWAKE as u32 {
@@ -1164,13 +2105,14 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             // Before the marks: every pixel it vouches for is in this batch or an earlier one.
             read_ack(sh, &mut ack, &mut ack_ms, &mut ack_ink);
             let news = ack_ink != ink_sent || (ack != 0 && ack != ack_sent);
+            let layer_news = (0..LIVE_LAYERS).any(|i| sh.layers[i].version.load(SeqCst) != layer_sent[i]);
             let mut words = [0u32; LIVE_WORDS];
             let mut any = false;
             for i in 0..LIVE_WORDS {
                 words[i] = dirty[i].swap(0, SeqCst);
                 any |= words[i] != 0;
             }
-            if any || news {
+            if any || news || layer_news {
                 let mut runs = [RECT_EMPTY; LIVE_WORDS * 32];
                 let n = live_runs(&words, w, h, &mut runs);
                 let mut out = 0;
@@ -1224,6 +2166,45 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                         let at = (r.y as usize + y) * (w as usize) + r.x as usize;
                         sent[at..at + r.w as usize].copy_from_slice(&tile[y * r.w as usize..][..r.w as usize]);
                     }
+                    out += 1;
+                }
+                // The layers that changed, after the tiles (the page under them first), each whole:
+                // one being written as it is read comes at the next wake, which its write makes.
+                for i in 0..LIVE_LAYERS {
+                    if !ok || sh.layers[i].version.load(SeqCst) == layer_sent[i] {
+                        continue;
+                    }
+                    let mut words = [0u8; 20];
+                    let Some(v) = sh.layers[i].read(&mut words) else { continue };
+                    let r = Rect { x: get32(&words) as i32, y: get32(&words[4..]) as i32, w: get32(&words[8..]) as i32, h: get32(&words[12..]) as i32 };
+                    let n = (r.w.max(0) as usize) * (r.h.max(0) as usize);
+                    if n > f.px_len() || (n > 0 && layer_buf.try_reserve(n.saturating_sub(layer_buf.len())).is_err()) {
+                        continue;
+                    }
+                    layer_buf.resize(n.max(layer_buf.len()), 0);
+                    // SAFETY: n bytes from the start of layer i's buffer, which holds px_len >= n; a
+                    // copy of bytes the main loop may be rewriting, checked whole by the version below.
+                    unsafe { std::ptr::copy_nonoverlapping(f.layer_px(i) as *const u8, layer_buf.as_mut_ptr(), n) };
+                    fence(SeqCst);
+                    if sh.layers[i].version.load(SeqCst) != v {
+                        continue;
+                    }
+                    let mut at = [0u8; 10];
+                    at[0] = i as u8;
+                    put16(&mut at[2..], r.x as u32);
+                    put16(&mut at[4..], r.y as u32);
+                    put16(&mut at[6..], r.w as u32);
+                    put16(&mut at[8..], r.h as u32);
+                    let sent_ok = if n == 0 {
+                        send_frame(fd, LIVE_LAYER as u8, &at, &[])
+                    } else {
+                        let Some(png) = Png::of_tile(&layer_buf, r.w, r.h) else { continue };
+                        send_frame(fd, LIVE_LAYER as u8, &at, png.as_slice())
+                    };
+                    if !sent_ok {
+                        child_exit();
+                    }
+                    layer_sent[i] = v;
                     out += 1;
                 }
                 if out != 0 || (ok && news) {

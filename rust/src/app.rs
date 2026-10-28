@@ -148,9 +148,9 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_style, editor_open_notebook, editor_open_notebook_at, editor_page_canvas,
-    editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now, editor_shortcut,
-    editor_shortcut_at, editor_suspend,
+    editor_busy, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_open_notebook_at, editor_page_canvas, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
+    editor_shortcut, editor_shortcut_at, editor_suspend,
 };
 pub use crate::calibrate::calibrate_control_at;
 pub use crate::editor::editor_control_at;
@@ -175,6 +175,8 @@ struct State {
     told: bool,
     // as last told (a toast when the first comes)
     live_viewers: i32,
+    /// the panel's rect as Live view's layer last has it (live_push_screen)
+    live_panel: Rect,
     // sleep_minute_ms's minute, read from the environment once (the simulator's)
     #[cfg(feature = "sim")]
     minute_ms: i32,
@@ -229,7 +231,20 @@ fn live_hover_sync(a: &App) {
         cap.asleep = a.asleep;
         cap.input_yielded = a.input_yielded;
         c.set(cap);
+        live_cap_publish(&cap, a.live_processed);
     });
+}
+
+// What live_capture reads, for the pen viewers that read the raw digitizer themselves (live.rs,
+// LiveCapture), with the newest pen event handled: published wherever LIVE_CAP changes.
+fn live_cap_publish(cap: &LiveCap, handled: u32) {
+    live_set_capture(&LiveCapture { ok: cap.on && !cap.asleep && !cap.input_yielded, editor: cap.editor, handled, styles: cap.styles });
+}
+
+// LIVE_CAPTURE_BLOCKED, told to the pen viewers too (live_set_blocked).
+fn live_block(on: bool) {
+    LIVE_CAPTURE_BLOCKED.with(|b| b.set(on));
+    live_set_blocked(on);
 }
 
 fn live_cap_sync(a: &App) {
@@ -244,6 +259,7 @@ fn live_cap_sync(a: &App) {
         }
     }
     LIVE_CAP.with(|c| c.set(cap));
+    live_cap_publish(&cap, a.live_processed);
 }
 
 struct ScreenOps {
@@ -695,7 +711,7 @@ fn hid_changed(a: &mut App, ev: &InEvent) {
 
 pub fn app_event(a: &mut App, ev: &InEvent) {
     app_event_screens(a, ev);
-    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false)); // (the work before the screens' ends at any return)
+    live_block(false); // (the work before the screens' ends at any return)
     live_cap_sync(a);
 }
 
@@ -703,7 +719,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     // Keys, the power button, sleep and wake do work that pumps the pens too (a shortcut turns the
     // page): no quick ink from what it reads before that work is done, as for a screen's own UI
     // work below.
-    LIVE_CAPTURE_BLOCKED.with(|b| b.set(true));
+    live_block(true);
     if ev.type_ == InType::Quit {
         a.running = false;
         return;
@@ -839,7 +855,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     if !a.asleep {
         status_pen(ev);
     }
-    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false));
+    live_block(false);
     let mut captured = *ev;
     let t = ev.type_ as i32;
     if captured.live_seq == 0 && t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
@@ -870,12 +886,10 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     if live_on() && a.scr == ScreenId::Editor {
         editor_live_style(a, ev, &mut before);
     }
-    LIVE_CAPTURE_BLOCKED.with(|b| {
-        b.set(!(ev.type_ == InType::PenMove
-            || (ev.type_ == InType::PenDown && before.enabled != 0 && !rect_contains(before.exclude, ev.x as i32, ev.y as i32))))
-    });
+    live_block(!(ev.type_ == InType::PenMove
+        || (ev.type_ == InType::PenDown && before.enabled != 0 && !rect_contains(before.exclude, ev.x as i32, ev.y as i32))));
     (ops(a.scr).event)(a, ev);
-    LIVE_CAPTURE_BLOCKED.with(|b| b.set(false));
+    live_block(false);
     if ev.live_seq != 0 {
         a.live_processed = ev.live_seq;
         a.live_processed_ms = in_sample_ms(ev);
@@ -1035,6 +1049,36 @@ fn live_chip(a: &App) -> Rect {
     Rect { x: a.w - s - m, y: m, w: s, h: s }
 }
 
+// The raw digitizer's map for the pen viewers (input_raw_pen), as it stands: at each tick, as Live
+// view starts and as the screen turns (what changes it: a turn, the pen given to the Kindle, the
+// place learned or lost).
+fn live_raw_sync() {
+    let mut m = LiveRawMap::default();
+    let ok = input_raw_pen(&mut m);
+    live_set_raw_map(if ok { Some(&m) } else { None });
+}
+
+// A rect of a.screen presented, into Live view's frame (live_push): in the editor, the page under its
+// panel instead of the panel (composed again without it, editor_live_under_panel), and the panel as
+// its own layer (live_layer), for the browser to show or not.
+fn live_push_screen(a: &mut App, r: Rect) {
+    if !live_on() {
+        return;
+    }
+    let panel = if a.scr == ScreenId::Editor { editor_live_panel(a) } else { RECT_EMPTY };
+    let under = rect_intersect(r, panel);
+    let moved = with(|s| s.live_panel) != panel;
+    if !rect_is_empty(under) || moved {
+        live_layer(LIVE_LAYER_PANEL, &a.screen, panel);
+        with(|s| s.live_panel = panel);
+    }
+    if rect_is_empty(under) {
+        live_push(&a.screen, r);
+    } else {
+        editor_live_under_panel(a, under, r);
+    }
+}
+
 /// Live view (live.h): the Share screen's button turns it on and shows the pairing card (again,
 /// while it is on); live_view_stop turns it off (say: with a toast). app_watch_server keeps
 /// input_poll watching the share server while it runs and the Kindle is awake.
@@ -1051,7 +1095,10 @@ pub fn live_view_open(a: &mut App) {
             app_toast(a, tr("Could not start Live view"), 3000);
             return;
         }
-        with(|s| s.live_viewers = 0);
+        with(|s| {
+            s.live_viewers = 0;
+            s.live_panel = RECT_EMPTY; // (the new frame has no layer yet)
+        });
         live_set_invert(a.settings.invert);
         let (mut intensity, mut warmth) = (0, 0);
         light_get(&mut intensity, &mut warmth); // (once: then light_warmth has it, as the Display sheet sets it)
@@ -1062,6 +1109,8 @@ pub fn live_view_open(a: &mut App) {
         a.live_processed_ms = 0;
         LIVE_UI_PENDING.with(|p| p.set(0));
         live_cap_sync(a);
+        live_raw_sync();
+        status_live(a); // (the clock and battery corner's layer, if it is up)
         input_sample_hook(Some(live_capture), Some(live_wake_samples));
         input_hover_hook(Some(live_hover));
         display_skip_overlay(live_chip(a));
@@ -1097,6 +1146,7 @@ fn live_tick(a: &mut App, now: u32) {
     }
     live_set_invert(a.settings.invert); // (however it changed: the browsers follow it)
     live_set_warmth(light_warmth());
+    live_raw_sync();
     if a.scr != ScreenId::Share {
         httpd_poll(); // (Share's own tick polls it there)
     }
@@ -1291,7 +1341,9 @@ pub fn app_set_rotation(a: &mut App, quarter_turns: i32) {
         a.h = h;
     }
     a.dirty = RECT_EMPTY;
+    live_raw_sync(); // (the turned map before the new epoch: no frame of it placed the old way)
     live_resize(w, h);
+    with(|s| s.live_panel = RECT_EMPTY); // (live_resize took the layers away)
     if live_on() {
         display_skip_overlay(live_chip(a));
     }
@@ -1553,7 +1605,7 @@ fn app_flush_in(a: &mut App) {
     if m == RefreshMode::Full {
         a.ui_refreshes_since_full = 0;
     }
-    live_push(&a.screen, a.dirty); // (before the toast, the chip and the corner: none is streamed)
+    live_push_screen(a, a.dirty); // (before the toast, the chip and the corner: none is streamed)
     live_presented(a.live_processed, a.live_processed_ms);
     // The chip over what it covers, put back after the present, as the toast is.
     let chip = if live_on() { live_chip(a) } else { RECT_EMPTY };
@@ -1616,7 +1668,7 @@ pub fn app_switch(a: &mut App, s: ScreenId) {
 /// Pressed-state feedback for a tapped control: invert + FAST refresh now.
 pub fn app_press_feedback(a: &mut App, r: Rect) {
     canvas_invert(&mut a.screen, r);
-    live_push(&a.screen, r);
+    live_push_screen(a, r);
     display_present(&a.screen, r, RefreshMode::Fast);
 }
 

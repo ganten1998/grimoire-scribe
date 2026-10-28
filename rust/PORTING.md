@@ -106,6 +106,14 @@ and `battery` commands and `status.*` probes, and a `*_control_at` question each
 (`app_control_at`). The C tree has none of these; `make c-check` cannot run tests/scenarios/
 y_status_corner.qs.
 
+Live view's version 3 (2.0.0-beta.5) is Rust only too: the pen viewers' own reader of the raw
+digitizer (`input_raw_pen`, `live_set_raw_map`, `live_set_capture`, `live_set_blocked`, the
+`live_raw_*` functions), samples known by the kernel's microseconds (`InEvent.k_us`), the editor's
+panel and the clock's corner as layers (`live_layer`, `editor_live_panel`,
+`editor_live_under_panel`, `status_live`), and the runner's stand-in nodes
+(`GRIMOIRE_SIM_RAWPEN`, `GRIMOIRE_SIM_RAWPEN_MAIN`, `GRIMOIRE_SIM_STALL_MS`; docs/SIM.md). The C
+tree streams version 2: `make c-check` cannot run tests/live_check.sh.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.
