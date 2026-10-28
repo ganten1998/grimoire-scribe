@@ -1,15 +1,27 @@
 // shape_corpus: synthetic strokes for test_shape, made deterministically (a seeded PRNG), in page
-// mm at the Scribe's 300 dpi and zoom 1. Paths are built in mm as polylines, densified to the pen's
-// spacing (about 0.25 mm, a 3 ms frame at a brisk 80 mm/s), then given a hand's faults: a slow
-// wobble (two sines, an amplitude the caller picks from the shape's size), per-sample jitter, a
-// pressure ramp at each end and a tilt that drifts a little. Closed shapes start anywhere on
-// their outline, go either way and stop short of or past their start.
+// mm at the Scribe's 300 dpi and zoom 1. Paths are built in mm as polylines, sampled evenly at the
+// pen's spacing (PEN_STEP_MM along the path, a sample every PEN_STEP_MM / PEN_SPEED_MM_S at a
+// steady speed), then given a hand's faults: a wobble (two sines whose wavelengths are true
+// lengths along the path, an amplitude the caller picks from the shape's size), per-sample jitter,
+// a pressure ramp at each end and a tilt that drifts a little. Closed shapes start anywhere on
+// their outline, go either way and stop short of or past their start. A stroke the hold
+// evaluates ends in a rest: the nib jittering in place (with_hold) or wandering within the
+// trigger's 1 mm (with_wander); held picks one at random.
+//
+// For scale, the owner's own strokes (assets/eraser-sample.qpg, written slowly) have samples
+// about 0.07 mm apart and a second-difference jitter of about 0.018 mm (median; 0.029 mm at the
+// 90th percentile): Noise::Steady's 0.03 mm is already a little rougher than that pen,
+// Noise::Rough's 0.08 mm several times rougher, Noise::Slow puts that jitter on samples 0.1 mm
+// apart, and Noise::Tremor gives the rough hand's wobble a tremor's short waves.
 #![allow(dead_code)]
 
 use grimoire::prelude::*;
 use std::f64::consts::PI;
 
 pub const DPI: f32 = 300.0;
+/// The pen's sample spacing along the path (mm) and the speed that spacing is drawn at.
+pub const PEN_STEP_MM: f64 = 0.25;
+pub const PEN_SPEED_MM_S: f64 = 80.0;
 
 /// Page px per mm at DPI.
 pub fn px(mm: f64) -> f64 {
@@ -60,12 +72,13 @@ pub struct Hand {
     pub jitter: f64,
     /// corners rounded over about this many mm
     pub round: f64,
-    /// the wobble's wavelengths are from this to twice this (mm): a hand drifts over the whole
-    /// shape, not in ripples
+    /// the wobble's wavelengths are from this to twice this (mm), lengths along the path
     pub wave: f64,
+    /// the samples' spacing along the path (mm): PEN_STEP_MM, or less for a slow pen
+    pub step: f64,
 }
 
-pub const CLEAN: Hand = Hand { wobble: 0.0, jitter: 0.0, round: 0.0, wave: 20.0 };
+pub const CLEAN: Hand = Hand { wobble: 0.0, jitter: 0.0, round: 0.0, wave: 20.0, step: PEN_STEP_MM };
 
 pub type Pt = (f64, f64);
 
@@ -84,6 +97,9 @@ pub fn densify(path: &[Pt], step: f64) -> Vec<Pt> {
     out
 }
 
+/// A moving average over `half` samples each side, its window narrowed near the ends so it stays
+/// centred: the ends stay where they are (a one-sided window would pull them in, shortening every
+/// line by about the corner rounding).
 fn smooth(p: &[Pt], half: usize) -> Vec<Pt> {
     if half == 0 || p.len() < 3 {
         return p.to_vec();
@@ -91,8 +107,8 @@ fn smooth(p: &[Pt], half: usize) -> Vec<Pt> {
     let n = p.len();
     (0..n)
         .map(|i| {
-            let a = i.saturating_sub(half);
-            let b = (i + half).min(n - 1);
+            let h = half.min(i).min(n - 1 - i);
+            let (a, b) = (i - h, i + h);
             let mut s = (0.0, 0.0);
             for q in &p[a..=b] {
                 s.0 += q.0;
@@ -104,18 +120,48 @@ fn smooth(p: &[Pt], half: usize) -> Vec<Pt> {
         .collect()
 }
 
-/// The path as pen samples (page px), with the hand's faults.
+/// The polyline sampled every `step` mm along its length (its first and last points kept; the
+/// vertices between are cut across, as a pen sampling at a steady rate cuts them).
+pub fn even(path: &[Pt], step: f64) -> Vec<Pt> {
+    let mut out = vec![path[0]];
+    let mut prev = path[0];
+    let mut acc = 0.0;
+    for &cur in &path[1..] {
+        let mut d = ((cur.0 - prev.0).powi(2) + (cur.1 - prev.1).powi(2)).sqrt();
+        while d > 0.0 && acc + d >= step {
+            let t = (step - acc) / d;
+            let np = (prev.0 + (cur.0 - prev.0) * t, prev.1 + (cur.1 - prev.1) * t);
+            out.push(np);
+            prev = np;
+            d = ((cur.0 - prev.0).powi(2) + (cur.1 - prev.1).powi(2)).sqrt();
+            acc = 0.0;
+        }
+        acc += d;
+        prev = cur;
+    }
+    let last = path[path.len() - 1];
+    if out[out.len() - 1] != last {
+        out.push(last);
+    }
+    out
+}
+
+/// The path as pen samples (page px), with the hand's faults. The wobble's phase and the samples'
+/// times follow the true length along the path.
 pub fn pen(path: &[Pt], hand: Hand, rng: &mut Rng) -> Vec<PenSample> {
-    let step = 0.25;
-    let mut d = densify(path, step);
+    let step = hand.step;
+    let mut d = even(path, step);
     d = smooth(&d, (hand.round / step / 2.0).round() as usize);
     let n = d.len();
     let (l1, l2) = (rng.range(hand.wave, 2.0 * hand.wave), rng.range(hand.wave, 2.0 * hand.wave));
     let (f1, f2, f3, f4) = (rng.range(0.0, 2.0 * PI), rng.range(0.0, 2.0 * PI), rng.range(0.0, 2.0 * PI), rng.range(0.0, 2.0 * PI));
     let mut out = Vec::with_capacity(n);
     let (tx, ty) = (rng.range(15.0, 40.0), rng.range(10.0, 30.0));
+    let mut s = 0.0;
     for (i, &(x, y)) in d.iter().enumerate() {
-        let s = i as f64 * step;
+        if i > 0 {
+            s += ((x - d[i - 1].0).powi(2) + (y - d[i - 1].1).powi(2)).sqrt();
+        }
         let wx = hand.wobble * ((2.0 * PI * s / l1 + f1).sin() * 0.7 + (2.0 * PI * s / l2 + f2).sin() * 0.3);
         let wy = hand.wobble * ((2.0 * PI * s / l2 + f3).sin() * 0.7 + (2.0 * PI * s / l1 + f4).sin() * 0.3);
         let (jx, jy) = (hand.jitter * rng.gauss(), hand.jitter * rng.gauss());
@@ -128,10 +174,28 @@ pub fn pen(path: &[Pt], hand: Hand, rng: &mut Rng) -> Vec<PenSample> {
             pressure: pressure as f32,
             tilt_x: (tx + 0.5 * rng.gauss()) as f32,
             tilt_y: (ty + 0.5 * rng.gauss()) as f32,
-            t_ms: 1_000_000 + 3 * i as u32,
+            t_ms: 1_000_000 + (s / PEN_SPEED_MM_S * 1000.0).round() as u32,
         });
     }
     out
+}
+
+/// The stroke as the hold hands it over: `n` more samples at its last point, each jittered by
+/// `sigma` mm, a frame (PEN_STEP_MM at PEN_SPEED_MM_S) apart, the pressure held.
+pub fn with_hold(mut s: Vec<PenSample>, n: usize, sigma: f64, rng: &mut Rng) -> Vec<PenSample> {
+    let Some(&last) = s.last() else {
+        return s;
+    };
+    let frame = (PEN_STEP_MM / PEN_SPEED_MM_S * 1000.0).max(1.0);
+    for k in 1..=n {
+        s.push(PenSample {
+            x: last.x + px(sigma * rng.gauss()) as f32,
+            y: last.y + px(sigma * rng.gauss()) as f32,
+            t_ms: last.t_ms.wrapping_add((k as f64 * frame).round() as u32),
+            ..last
+        });
+    }
+    s
 }
 
 /// Turns and moves a path.
@@ -212,28 +276,104 @@ pub fn expected(k: Pos) -> ShapeKind {
     }
 }
 
-/// A hand for a shape whose smallest feature is `minor` mm and largest `major`: steadier for small
-/// shapes, as a hand drawing small is.
-pub fn hand_for(minor: f64, major: f64, rng: &mut Rng) -> Hand {
-    Hand { wobble: (minor * rng.range(0.006, 0.014)).clamp(0.05, 0.5), jitter: 0.04, round: rng.range(0.3, 1.0), wave: major * rng.range(0.5, 1.0) }
+/// How unsteady the hand of a positive is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Noise {
+    /// no faults at all, no gap or overshoot
+    Clean,
+    /// a steady hand: a slow wobble of about 1% of the shape's small side (0.05-0.5 mm) over
+    /// wavelengths of half to twice its size, 0.03 mm of jitter
+    Steady,
+    /// a rough one: a wobble of 0.5-1% of the shape's size (0.1-0.8 mm) over wavelengths of half
+    /// to twice its size, corners rounded over up to 1.2 mm, and 0.08 mm of jitter
+    Rough,
+    /// the rough hand on a slow pen: its samples 0.1 mm apart, about as far as they jitter, so
+    /// the raw path zigzags
+    Slow,
+    /// the rough hand with a tremor: the same wobble over wavelengths of a sixth to a third of
+    /// the shape's size (at least 3 mm). It bends a polygon's edges to about the 0.93 straightness
+    /// the plan allows them, so by the plan's own numbers some of its polygons are not
+    /// straight-edged: a stress level, below the others' rate.
+    Tremor,
 }
 
-/// One positive of kind k, its size drawn from 12-80 mm (the line from 13: its gate is 12), any
-/// turn, any start, either way, a gap of up to 5% of the perimeter or an overshoot of up to 12%.
-pub fn positive(k: Pos, rng: &mut Rng, noisy: bool) -> Vec<PenSample> {
+/// The noisy levels the rate test sweeps.
+pub const NOISE_ALL: [Noise; 4] = [Noise::Steady, Noise::Rough, Noise::Slow, Noise::Tremor];
+
+/// A hand for a shape whose smallest feature is `minor` mm and largest `major`.
+pub fn hand_for(minor: f64, major: f64, noise: Noise, rng: &mut Rng) -> Hand {
+    match noise {
+        Noise::Clean => CLEAN,
+        Noise::Steady => Hand { wobble: (minor * rng.range(0.006, 0.014)).clamp(0.05, 0.5), jitter: 0.03, round: rng.range(0.3, 1.0), wave: major * rng.range(0.5, 1.0), step: PEN_STEP_MM },
+        Noise::Rough => Hand { wobble: (major * rng.range(0.005, 0.01)).clamp(0.1, 0.8), jitter: 0.08, round: rng.range(0.3, 1.2), wave: major * rng.range(0.5, 1.0), step: PEN_STEP_MM },
+        Noise::Slow => Hand { step: 0.1, ..hand_for(minor, major, Noise::Rough, rng) },
+        Noise::Tremor => Hand { wave: (major * rng.range(1.0 / 6.0, 1.0 / 3.0)).max(3.0), ..hand_for(minor, major, Noise::Rough, rng) },
+    }
+}
+
+/// The stroke as the hold hands it over when the nib wanders as it rests: `n` frames of a random
+/// walk (0.05 mm steps) kept within `radius` mm of the last point, the pressure held. The trigger
+/// fires on any rest within its 1 mm, so up to that this is a rest too.
+pub fn with_wander(mut s: Vec<PenSample>, n: usize, radius: f64, rng: &mut Rng) -> Vec<PenSample> {
+    let Some(&last) = s.last() else {
+        return s;
+    };
+    let frame = (PEN_STEP_MM / PEN_SPEED_MM_S * 1000.0).max(1.0);
+    let (mut dx, mut dy) = (0.0f64, 0.0f64);
+    for k in 1..=n {
+        dx += 0.05 * rng.gauss();
+        dy += 0.05 * rng.gauss();
+        let d = (dx * dx + dy * dy).sqrt();
+        if d > radius {
+            dx *= radius / d;
+            dy *= radius / d;
+        }
+        s.push(PenSample {
+            x: last.x + px(dx) as f32,
+            y: last.y + px(dy) as f32,
+            t_ms: last.t_ms.wrapping_add((k as f64 * frame).round() as u32),
+            ..last
+        });
+    }
+    s
+}
+
+/// The stroke as the hold hands it over, at random: 100-200 frames of rest, the nib jittering
+/// 0.02-0.1 mm (one sigma) about its last point, or wandering within 0.3-0.9 mm of it.
+pub fn held(s: Vec<PenSample>, rng: &mut Rng) -> Vec<PenSample> {
+    let n = 100 + rng.int(101);
+    if rng.coin() {
+        let sigma = rng.range(0.02, 0.1);
+        with_hold(s, n, sigma, rng)
+    } else {
+        let radius = rng.range(0.3, 0.9);
+        with_wander(s, n, radius, rng)
+    }
+}
+
+/// One positive of kind k, its size drawn from 12-80 mm (the line from 12, its gate, plus 0.2 mm;
+/// a rectangle from 4.5 mm thick, its gate 4), any turn, any start, either way, and unless clean
+/// a gap of up to 5% of the perimeter or an overshoot of up to 12%.
+pub fn positive(k: Pos, rng: &mut Rng, noise: Noise) -> Vec<PenSample> {
+    let hand = |minor: f64, major: f64, rng: &mut Rng| hand_for(minor, major, noise, rng);
+    positive_with(k, rng, noise != Noise::Clean, &hand)
+}
+
+/// positive() with the hand made by `hand` from the shape's (minor, major) sizes.
+pub fn positive_with(k: Pos, rng: &mut Rng, gaps: bool, hand: &dyn Fn(f64, f64, &mut Rng) -> Hand) -> Vec<PenSample> {
     let rot = rng.range(0.0, 2.0 * PI);
     let (cx, cy) = (rng.range(60.0, 90.0), rng.range(60.0, 140.0));
     let start = rng.f();
     let fwd = rng.coin();
-    let extra = if noisy { rng.range(-0.05, 0.12) } else { 0.0 };
+    let extra = if gaps { rng.range(-0.05, 0.12) } else { 0.0 };
     let (path, minor, major) = match k {
         Pos::Line => {
-            let l = rng.range(13.0, 80.0);
+            let l = rng.range(12.2, 80.0);
             (place(&[(-l / 2.0, 0.0), (l / 2.0, 0.0)], rot, cx, cy), l, l)
         }
         Pos::Rectangle => {
             let w = rng.range(14.0, 80.0);
-            let h = (w * rng.range(0.3, 0.78)).max(7.0);
+            let h = (w * rng.range(0.3, 0.78)).max(4.5);
             let v = [(-w / 2.0, -h / 2.0), (w / 2.0, -h / 2.0), (w / 2.0, h / 2.0), (-w / 2.0, h / 2.0)];
             (place(&trace_polygon(&v, start, fwd, extra), rot, cx, cy), h, w)
         }
@@ -283,8 +423,8 @@ pub fn positive(k: Pos, rng: &mut Rng, noisy: bool) -> Vec<PenSample> {
             (place(&trace_ellipse(r, r, start * 2.0 * PI, fwd, extra), rot, cx, cy), r * 2.0, r * 2.0)
         }
     };
-    let hand = if noisy { hand_for(minor, major, rng) } else { CLEAN };
-    pen(&path, hand, rng)
+    let h = hand(minor, major, rng);
+    pen(&path, h, rng)
 }
 
 // ---- negatives: writing at written size, scribbles, small shapes ----
@@ -380,7 +520,7 @@ pub fn cursive_word(rng: &mut Rng) -> Vec<PenSample> {
     }
     let rot = rng.range(-0.08, 0.08);
     let p = place(&path, rot, 30.0, 80.0);
-    pen(&p, Hand { wobble: 0.05, jitter: 0.03, round: 0.2, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.05, jitter: 0.03, round: 0.2, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 /// A single letter at written size (3-8 mm): e, l, o with its tail, a, and the like.
@@ -394,7 +534,7 @@ pub fn letter(rng: &mut Rng) -> Vec<PenSample> {
         _ => hump_glyph(0.0, h * 0.5, h * 0.7, 2, true),
     };
     let p = place(&path, rng.range(-0.15, 0.15), 50.0, 50.0);
-    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 /// A digit, 0-9, at written size (height 4-9 mm), as one stroke the way they are written.
@@ -450,7 +590,7 @@ pub fn digit(d: usize, rng: &mut Rng) -> Vec<PenSample> {
         }
     };
     let p = place(&path, rng.range(-0.15, 0.15), 50.0, 60.0);
-    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 /// A CJK-like stroke at written size (a character 6-10 mm): a level stroke with a hook, a
@@ -471,7 +611,7 @@ pub fn cjk_stroke(rng: &mut Rng) -> Vec<PenSample> {
             .collect(),
     };
     let p = place(&path, rng.range(-0.05, 0.05), 40.0, 40.0);
-    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.2, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 /// A scribble 15-40 mm: a random walk with momentum, hatching, a round scribble of several turns,
@@ -514,7 +654,72 @@ pub fn scribble(rng: &mut Rng) -> Vec<PenSample> {
             .collect(),
     };
     let p = place(&path, rng.range(0.0, 2.0 * PI), 80.0, 80.0);
-    pen(&p, Hand { wobble: 0.1, jitter: 0.04, round: 0.3, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.1, jitter: 0.04, round: 0.3, wave: 20.0, step: PEN_STEP_MM }, rng)
+}
+
+/// Which crossing doodle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Doodle {
+    /// an alpha: the nodal cubic (t^2 - 1, t (t^2 - 1)), its teardrop loop and two tails that
+    /// cross at the node and fly apart
+    Alpha,
+    /// a fish: a tail in, once round a circle, and a tail out from where the tail came in, the
+    /// two spreading apart like a fish's
+    Fish,
+    /// a ribbon: a tail up, round a tall loop, and down again across the first tail
+    Ribbon,
+}
+
+pub const DOODLE_ALL: [Doodle; 3] = [Doodle::Alpha, Doodle::Fish, Doodle::Ribbon];
+
+/// A stroke that crosses itself near both ends, its ends far apart, 15-40 mm: no shape, however
+/// round its loop (cut at both ends it would close where it crosses).
+pub fn crossing_doodle(k: Doodle, rng: &mut Rng) -> Vec<PenSample> {
+    let size = rng.range(15.0, 40.0);
+    let path: Vec<Pt> = match k {
+        Doodle::Alpha => {
+            // the tails reach t = +-tt; at s = 1 the curve is tt^2 wide and twice the larger of
+            // the loop's half height (0.385) and the tails' (tt (tt^2 - 1)) tall
+            let tt = rng.range(1.15, 1.45);
+            let s = size / (tt * tt).max(2.0 * (tt * (tt * tt - 1.0)).max(0.385));
+            (0..=240)
+                .map(|i| {
+                    let t = -tt + 2.0 * tt * i as f64 / 240.0;
+                    (s * (t * t - 1.0), s * t * (t * t - 1.0))
+                })
+                .collect()
+        }
+        Doodle::Fish => {
+            let r = size / 2.0;
+            // in along a chord below the circle, then round from its lowest left point, then out
+            // across the way in
+            let a0 = PI * rng.range(0.6, 0.8);
+            let tail = r * rng.range(0.5, 1.0);
+            let p0 = (r * a0.cos(), r * a0.sin());
+            let mut v = vec![(p0.0 - tail * 0.8, p0.1 + tail * 0.6)];
+            for i in 0..=120 {
+                let t = a0 - 2.0 * PI * i as f64 / 120.0;
+                v.push((r * t.cos(), r * t.sin()));
+            }
+            v.push((p0.0 + tail * 1.6, p0.1 + tail * 0.9));
+            v
+        }
+        Doodle::Ribbon => {
+            let (a, b) = (size * 0.375, size * 0.5);
+            let below = b + size * rng.range(0.15, 0.3);
+            let leg = size * rng.range(0.5, 0.9);
+            let mut v = vec![(-a * 0.8, below + leg), (0.0, below)];
+            for i in 0..=120 {
+                let t = PI / 3.0 - (2.0 * PI - PI / 3.0) * i as f64 / 120.0;
+                v.push((a * t.cos(), b * t.sin()));
+            }
+            v.push((0.0, below));
+            v.push((a * 0.8, below + leg));
+            v
+        }
+    };
+    let p = place(&path, rng.range(0.0, 2.0 * PI), 80.0, 80.0);
+    pen(&p, Hand { wobble: 0.05, jitter: 0.03, round: 0.3, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 /// A shape at written size: a circle, square or triangle under 9.5 mm, a line under 11.5 mm.
@@ -534,7 +739,7 @@ pub fn small_shape(rng: &mut Rng) -> Vec<PenSample> {
         }
     };
     let p = place(&path, rot, 60.0, 60.0);
-    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.3, wave: 20.0 }, rng)
+    pen(&p, Hand { wobble: 0.04, jitter: 0.03, round: 0.3, wave: 20.0, step: PEN_STEP_MM }, rng)
 }
 
 // ---- v1.5's kinds (ShapeParams::extras) ----
@@ -632,6 +837,6 @@ pub fn extra_positive(k: Extra, rng: &mut Rng, noisy: bool) -> Vec<PenSample> {
             (place(&v, rot, cx, cy), r, 2.0 * r)
         }
     };
-    let hand = if noisy { hand_for(minor, major, rng) } else { CLEAN };
+    let hand = hand_for(minor, major, if noisy { Noise::Steady } else { Noise::Clean }, rng);
     pen(&path, hand, rng)
 }
