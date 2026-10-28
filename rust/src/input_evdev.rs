@@ -69,6 +69,7 @@ const ABS_DISTANCE: u16 = 0x19;
 const ABS_TILT_X: u16 = 0x1a;
 const ABS_TILT_Y: u16 = 0x1b;
 const ABS_MT_SLOT: u16 = 0x2f;
+const ABS_MT_TOUCH_MAJOR: u16 = 0x30;
 const ABS_MT_POSITION_X: u16 = 0x35;
 const ABS_MT_POSITION_Y: u16 = 0x36;
 const ABS_MT_TOOL_TYPE: u16 = 0x37;
@@ -358,7 +359,8 @@ struct PenSt {
 
 const MAX_SLOTS: usize = 16;
 
-/// T
+/// T: the touch panel's slots as its events leave them. What the contacts mean (one finger's
+/// stream, a pinch, a gesture, a palm) is touchgest.rs's, fed one frame per SYN_REPORT.
 #[derive(Clone, Copy, Debug)]
 struct TouchSt {
     slot: i32,
@@ -367,35 +369,28 @@ struct TouchSt {
     y: [i32; MAX_SLOTS],
     /// ABS_MT_TOOL_TYPE: 0 finger, 1 pen, 2 palm (MT_TOOL_PALM)
     tool: [i32; MAX_SLOTS],
-    /// when the contact landed
-    down_at: [u32; MAX_SLOTS],
-    /// slot we follow, -1 none
-    main: i32,
-    /// main finger down (as reported to the app)
-    active: bool,
-    /// palm: ignore until all fingers lift
-    suppressed: bool,
-    /// a late second contact: no pinch until all fingers lift
-    suppressed_pinch: bool,
-    last_x: f32,
-    last_y: f32,
+    /// ABS_MT_TOUCH_MAJOR and ABS_MT_PRESSURE, 0 where the panel says nothing
+    major: [i32; MAX_SLOTS],
+    pressure: [i32; MAX_SLOTS],
+    /// the kernel's time of the SYN_REPORT being handled
+    frame_us: u64,
+    /// a SYN_DROPPED came: the rest of its frame is skipped, and its SYN_REPORT asks the panel what it
+    /// holds (touch_resync)
+    dropped: bool,
 }
 
 impl Default for TouchSt {
     fn default() -> Self {
         TouchSt {
             slot: 0,
-            id: [0; MAX_SLOTS],
+            id: [-1; MAX_SLOTS],
             x: [0; MAX_SLOTS],
             y: [0; MAX_SLOTS],
             tool: [0; MAX_SLOTS],
-            down_at: [0; MAX_SLOTS],
-            main: -1,
-            active: false,
-            suppressed: false,
-            suppressed_pinch: false,
-            last_x: 0.0,
-            last_y: 0.0,
+            major: [0; MAX_SLOTS],
+            pressure: [0; MAX_SLOTS],
+            frame_us: 0,
+            dropped: false,
         }
     }
 }
@@ -504,6 +499,16 @@ struct State {
 
     // ---- touch state ----
     T: TouchSt,
+    /// the recognizer the touch frames go through (touchgest.rs)
+    tg: TouchGest,
+    /// the touch panel's events are stamped in CLOCK_MONOTONIC for this reader (clock_mono): each
+    /// frame is timed by its SYN_REPORT
+    touch_mono: bool,
+    /// the pen's last contact point (logical px, as emit_pen maps it): touchgest keeps gestures away
+    /// from where the pen just wrote
+    pen_last: (f32, f32),
+    /// touch events handled so far (wrapping): input_poll ticks touchgest when none came
+    touch_events: u32,
 
     // The raw digitizer's own drops: its frames are bigger than the scaled pen's (pressure and tilt
     // too), so its 128 events overflow sooner. Up to the next SYN_REPORT is partial and skipped (no
@@ -547,8 +552,6 @@ struct State {
     pen_read_ms: u32,
     /// the pen has been read since input_open
     pen_read: bool,
-
-    pinching: bool,
 
     keys: [KeyDev; KEY_DEVS],
     keys_enabled: bool,
@@ -614,6 +617,10 @@ impl Default for State {
             P: PenSt::default(),
             pen_left_ms: 0,
             T: TouchSt::default(),
+            tg: TouchGest::default(),
+            touch_mono: false,
+            pen_last: (0.0, 0.0),
+            touch_events: 0,
             wacom_dropping: false,
             wacom_resync: false,
             wacom_drops: 0,
@@ -633,7 +640,6 @@ impl Default for State {
             drops: 0,
             pen_read_ms: 0,
             pen_read: false,
-            pinching: false,
             keys: [KeyDev::default(); KEY_DEVS],
             keys_enabled: false,
             keys_init: false,
@@ -1050,11 +1056,14 @@ impl State {
         self.q_push(e);
     }
 
-    fn emit_touch(&mut self, t: InType, x: f32, y: f32) {
-        let mut e = InEvent { type_: t, nx: x, ny: y, ..Default::default() };
-        (e.x, e.y) = self.map(&self.touch_cal, x, y);
-        e.t_ms = now_ms();
-        self.q_push(e);
+    /// touchgest's events, in order: read now (t_ms), at the frame's kernel time (k_ms, touchgest's).
+    fn tg_push(&mut self, out: &TgOut) {
+        let now = now_ms();
+        for e in &out.ev[..out.n] {
+            let mut e = *e;
+            e.t_ms = now;
+            self.q_push(e);
+        }
     }
 
     // The pen as its frames report it, for pensync.h.
@@ -1088,11 +1097,13 @@ impl State {
         self.P.eraser = self.P.tool_rubber || self.W.rubber;
         let s = self.pen_state();
         let touching = pensync_contact(&s, self.pen.has_touch_btn, self.pen.ap.minimum);
-        if self.P.prox && !self.P.was_prox && self.T.active {
-            // The pen arrived while a finger (likely the palm) was down: end that touch.
-            self.emit_touch(InType::TouchUp, self.T.last_x, self.T.last_y);
-            self.T.active = false;
-            self.T.suppressed = true;
+        if ((self.P.prox && !self.P.was_prox) || (touching && !self.P.was_touching)) && touchgest_busy(&self.tg) {
+            // The pen arrived (or touched) while a finger, likely the palm, was down: that touch ends
+            // with the off-screen cancel, a pinch with PinchEnd, before the pen's own event, and every
+            // contact waits to lift. (The pen always wins: a PenDown must never meet a pinch.)
+            let mut out = TgOut::default();
+            touchgest_cancel(&mut self.tg, pensync_ms(self.pen_frame_us, self.pen_mono, now_ms()), &mut out);
+            self.tg_push(&out);
         }
         if touching && !self.P.was_touching {
             self.emit_pen(InType::PenDown);
@@ -1106,6 +1117,10 @@ impl State {
         if !self.P.prox && self.P.was_prox {
             self.emit_pen(InType::PenLeave);
             self.pen_left_ms = now_ms();
+        }
+        if touching {
+            // (where it touched, for touchgest; emit_pen's own mapping, read on the touch side)
+            self.pen_last = self.map(&self.pen_cal, norm(self.P.x, &self.pen.ax), norm(self.P.y, &self.pen.ay));
         }
         self.P.was_touching = touching;
         self.P.was_prox = self.P.prox;
@@ -1348,162 +1363,104 @@ impl State {
         }
     }
 
-    // Touches are ignored while the pen is near and for a second after it leaves: the writing hand
-    // rests on the screen between strokes.
-    fn palm_window(&self) -> bool {
-        self.P.prox || now_ms().wrapping_sub(self.pen_left_ms) < 1000
-    }
-
-    // Ends the single-finger stream without a tap (the UP lands nowhere near any control).
-    fn cancel_touch(&mut self) {
-        if !self.T.active {
-            return;
+    // The panel's slots as it holds them now, after it dropped events: who is down, where, with what
+    // tool, size and pressure, and the slot its next events are for.
+    fn touch_resync(&mut self) {
+        let fd = self.touch.fd;
+        let mut slots = [0i32; MAX_SLOTS + 1];
+        let codes = [ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TOUCH_MAJOR, ABS_MT_PRESSURE];
+        for code in codes {
+            slots[0] = code as i32;
+            if eviocgmtslots(fd, &mut slots) < 0 {
+                continue;
+            }
+            let v = &slots[1..];
+            match code {
+                ABS_MT_TRACKING_ID => self.T.id.copy_from_slice(v),
+                ABS_MT_POSITION_X => self.T.x.copy_from_slice(v),
+                ABS_MT_POSITION_Y => self.T.y.copy_from_slice(v),
+                ABS_MT_TOOL_TYPE => self.T.tool.copy_from_slice(v),
+                ABS_MT_TOUCH_MAJOR => self.T.major.copy_from_slice(v),
+                _ => self.T.pressure.copy_from_slice(v),
+            }
         }
-        let e = InEvent { type_: InType::TouchUp, x: -10000.0, y: -10000.0, t_ms: now_ms(), ..Default::default() };
-        self.q_push(e);
-        self.T.active = false;
+        let mut ai = InputAbsinfo::default();
+        if eviocgabs(fd, ABS_MT_SLOT, &mut ai) >= 0 {
+            self.T.slot = clampi(ai.value, 0, MAX_SLOTS as i32 - 1);
+        }
     }
 
-    fn emit_pinch(&mut self, t: InType, s1: usize, s2: usize) {
-        let mut e = InEvent { type_: t, ..Default::default() };
-        let (n1x, n1y) = (norm(self.T.x[s1], &self.touch.ax), norm(self.T.y[s1], &self.touch.ay));
-        let (n2x, n2y) = (norm(self.T.x[s2], &self.touch.ax), norm(self.T.y[s2], &self.touch.ay));
-        (e.x, e.y) = self.map(&self.touch_cal, n1x, n1y);
-        (e.x2, e.y2) = self.map(&self.touch_cal, n2x, n2y);
-        e.t_ms = now_ms();
-        self.q_push(e);
-    }
-
+    // One SYN_REPORT's contacts, as touchgest takes them: logical px through map() (and the normalized
+    // place calibration reads), the frame's kernel time; its events go into the queue in order.
     fn touch_frame(&mut self) {
-        // Two fingers down = pinch (zoom/pan). The single-finger stream pauses until all lift.
-        // A contact the panel flags as a palm cancels touch input until every contact lifts.
-        let mut fingers = 0;
-        let mut s1: i32 = -1;
-        let mut s2: i32 = -1;
-        let mut palm = false;
+        let now = now_ms();
+        let mut f = TgFrame { k_ms: pensync_ms(self.T.frame_us, self.touch_mono, now), ..Default::default() };
         for s in 0..MAX_SLOTS {
-            if self.T.id[s] < 0 {
+            if self.T.id[s] < 0 || f.n >= TG_MAX {
                 continue;
             }
-            if self.T.tool[s] == 2 {
-                palm = true;
-                continue;
-            }
-            fingers += 1;
-            if s1 < 0 {
-                s1 = s as i32;
-            } else if s2 < 0 {
-                s2 = s as i32;
-            }
+            let nx = norm(self.T.x[s], &self.touch.ax);
+            let ny = norm(self.T.y[s], &self.touch.ay);
+            let (x, y) = self.map(&self.touch_cal, nx, ny);
+            let tool = match self.T.tool[s] {
+                1 => 1,
+                2 => 2,
+                _ => 0,
+            };
+            f.c[f.n] = TgContact { id: self.T.id[s], slot: s as i32, x, y, nx, ny, major: self.T.major[s], tool, pressure: self.T.pressure[s] };
+            f.n += 1;
         }
-        if palm && !self.pinching {
-            self.cancel_touch();
-            self.T.suppressed = true;
-        }
-        if self.pinching && (self.palm_window() || palm) {
-            // The pen came near (or a palm landed) mid-pinch: stop zooming right there.
-            self.pinching = false;
-            self.q_push(InEvent { type_: InType::PinchEnd, t_ms: now_ms(), ..Default::default() });
-            self.T.suppressed = true;
-            return;
-        }
-        if fingers >= 2 && !self.palm_window() && !palm && !self.T.suppressed_pinch {
-            let (s1, s2) = (s1 as usize, s2 as usize);
-            if !self.pinching {
-                // A real pinch puts both fingers down together; a palm or a second hand arrives
-                // later. Late second contacts are treated as a palm.
-                let a = self.T.down_at[s1];
-                let b = self.T.down_at[s2];
-                if a.abs_diff(b) > 400 {
-                    self.cancel_touch();
-                    self.T.suppressed = true;
-                    self.T.suppressed_pinch = true;
-                    return;
-                }
-                self.pinching = true;
-                self.cancel_touch(); // the first finger's press turns into the pinch
-                self.T.suppressed = true; // and no tap fires when the fingers lift
-                self.emit_pinch(InType::PinchBegin, s1, s2);
-            } else {
-                self.emit_pinch(InType::PinchMove, s1, s2);
-            }
-            return;
-        }
-        if self.pinching {
-            self.pinching = false;
-            let e = InEvent { type_: InType::PinchEnd, t_ms: now_ms(), ..Default::default() };
-            self.q_push(e);
-        }
-        // Follow one finger: the first to land; another finger never moves the pointer.
-        if self.T.main >= 0 && self.T.id[self.T.main as usize] < 0 {
-            if self.T.active {
-                self.emit_touch(InType::TouchUp, self.T.last_x, self.T.last_y);
-            }
-            self.T.active = false;
-            self.T.main = -1;
-        }
-        let mut any = false;
-        for s in 0..MAX_SLOTS {
-            any |= self.T.id[s] >= 0;
-        }
-        if !any {
-            self.T.suppressed = false;
-            self.T.suppressed_pinch = false;
-        }
-        if self.T.main < 0 && !self.T.suppressed {
-            for s in 0..MAX_SLOTS {
-                if self.T.id[s] >= 0 {
-                    self.T.main = s as i32;
-                    break;
-                }
-            }
-        }
-        if self.T.main < 0 || self.T.suppressed {
-            return;
-        }
-        if self.palm_window() {
-            self.T.suppressed = true;
-            if self.T.active {
-                self.emit_touch(InType::TouchUp, self.T.last_x, self.T.last_y);
-            }
-            self.T.active = false;
-            return;
-        }
-        let m = self.T.main as usize;
-        let x = norm(self.T.x[m], &self.touch.ax);
-        let y = norm(self.T.y[m], &self.touch.ay);
-        if !self.T.active {
-            self.T.active = true;
-            self.emit_touch(InType::TouchDown, x, y);
-        } else if x != self.T.last_x || y != self.T.last_y {
-            self.emit_touch(InType::TouchMove, x, y);
-        }
-        self.T.last_x = x;
-        self.T.last_y = y;
+        let pen = TgPen { prox: self.P.prox, touching: self.P.was_touching, left_ms: self.pen_left_ms, last: self.pen_last };
+        let mut out = TgOut::default();
+        touchgest_frame(&mut self.tg, &f, &pen, &mut out);
+        self.tg_push(&out);
     }
 
     fn handle_touch(&mut self, ev: &InputEvent) -> Hover {
+        self.touch_events = self.touch_events.wrapping_add(1);
+        if ev.type_ == EV_SYN && ev.code == SYN_DROPPED {
+            self.T.dropped = true;
+            return None;
+        }
+        if ev.type_ == EV_SYN && ev.code == SYN_REPORT {
+            self.T.frame_us = ev_us(ev);
+            if self.T.dropped {
+                // What the panel holds now, then everything down waits to lift: a lift lost in the
+                // drop leaves no contact behind, and nothing half seen becomes a tap.
+                self.T.dropped = false;
+                self.touch_resync();
+                let mut out = TgOut::default();
+                touchgest_cancel(&mut self.tg, pensync_ms(self.T.frame_us, self.touch_mono, now_ms()), &mut out);
+                self.tg_push(&out);
+            }
+            self.touch_frame();
+            return None;
+        }
+        if self.T.dropped {
+            return None; // the rest of the frame the drop cut: the resync reads what it left
+        }
         if ev.type_ == EV_ABS {
             let s = self.T.slot as usize;
             match ev.code {
                 ABS_MT_SLOT => self.T.slot = clampi(ev.value, 0, MAX_SLOTS as i32 - 1),
                 ABS_MT_TRACKING_ID => {
                     if ev.value >= 0 && self.T.id[s] < 0 {
-                        self.T.down_at[s] = now_ms();
                         self.T.tool[s] = 0;
+                        self.T.major[s] = 0;
+                        self.T.pressure[s] = 0;
                     }
                     self.T.id[s] = ev.value;
                 }
                 ABS_MT_TOOL_TYPE => self.T.tool[s] = ev.value,
                 ABS_MT_POSITION_X => self.T.x[s] = ev.value,
                 ABS_MT_POSITION_Y => self.T.y[s] = ev.value,
+                ABS_MT_TOUCH_MAJOR => self.T.major[s] = ev.value,
+                ABS_MT_PRESSURE => self.T.pressure[s] = ev.value,
                 _ => {}
             }
         } else if ev.type_ == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0 {
             // Belt and braces: some panels only signal the final lift through BTN_TOUCH.
             self.T.id = [-1; MAX_SLOTS];
-        } else if ev.type_ == EV_SYN && ev.code == SYN_REPORT {
-            self.touch_frame();
         }
         None
     }
@@ -2013,7 +1970,8 @@ impl State {
             }
             // Every node at once: which are kept is known only after the ioctls and the log line below,
             // and by then a hovering pen may have queued events. The clock is this reader's only, so it
-            // does nothing to the nodes closed again, and touch and orientation never read event times.
+            // does nothing to the nodes closed again; orientation never reads event times, and touch
+            // times each frame by its SYN_REPORT (touchgest.rs).
             let mono = clock_mono(fd);
             let mut name = [0u8; 64];
             name[0] = b'?';
@@ -2186,6 +2144,7 @@ impl State {
                 );
             } else if touch && self.touch.fd < 0 {
                 self.touch.fd = fd;
+                self.touch_mono = mono;
                 eviocgabs(fd, ABS_MT_POSITION_X, &mut self.touch.ax);
                 eviocgabs(fd, ABS_MT_POSITION_Y, &mut self.touch.ay);
                 if ioctl_grab(fd, 1) != 0 {
@@ -2508,10 +2467,11 @@ fn clock_mono(fd: i32) -> bool {
 
 // ---- input.h (input.rs forwards here on the Kindle) ----
 
-pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
     if with(|s| s.open_devices(screen_w, screen_h, pen, touch)) != 0 {
         return -1;
     }
+    with(|s| touchgest_init(&mut s.tg, dpi));
 
     powerd_start();
     let mut p: [c_int; 2] = [-1; 2];
@@ -2607,11 +2567,12 @@ fn read_pens(wacom: bool, pen: bool) {
 }
 
 // The work pump (common.h), set by input_open: long work on the main thread calls it every few
-// milliseconds, and at most every PUMP_MS it reads the two pens as input_poll does, without waiting.
-// The raw digitizer's buffer overflows after about 100 ms of hover (its frames are 5-7 events), the
-// scaled pen's after 120-175 ms of writing, and a page's render took 1.2 s. What it reads goes into
-// the queue behind what is there, in order, for the main loop. Keys, touch, power and orientation
-// wait for input_poll: they keep their own order, and nothing of theirs is lost meanwhile.
+// milliseconds, and at most every PUMP_MS it reads the two pens as input_poll does, without waiting,
+// then the touch panel. The raw digitizer's buffer overflows after about 100 ms of hover (its frames
+// are 5-7 events), the scaled pen's after 120-175 ms of writing, and a page's render took 1.2 s; the
+// touch panel's would lose a finger's lift. What it reads goes into the queue behind what is there,
+// in order, for the main loop. Keys, power and orientation wait for input_poll: they keep their own
+// order, and nothing of theirs is lost meanwhile.
 const PUMP_MS: u32 = 8;
 fn input_pump() {
     let now = now_ms();
@@ -2621,13 +2582,14 @@ fn input_pump() {
         }
         s.pump_in = true;
         s.pens_read_ms = now;
-        Some((s.wacom.fd, s.pen.fd))
+        Some((s.wacom.fd, s.pen.fd, s.touch.fd, s.input_grabbed))
     });
-    let Some((wacom_fd, pen_fd)) = fds else { return };
-    let mut pf = [pollfd(-1); 2];
+    let Some((wacom_fd, pen_fd, touch_fd, grabbed)) = fds else { return };
+    let mut pf = [pollfd(-1); 3];
     let mut n = 0usize;
     let mut iwac: i32 = -1;
     let mut ipen: i32 = -1;
+    let mut itouch: i32 = -1;
     if wacom_fd >= 0 {
         iwac = n as i32;
         pf[n] = pollfd(wacom_fd);
@@ -2638,11 +2600,20 @@ fn input_pump() {
         pf[n] = pollfd(pen_fd);
         n += 1;
     }
+    if touch_fd >= 0 {
+        itouch = n as i32;
+        pf[n] = pollfd(touch_fd);
+        n += 1;
+    }
     if n != 0 && poll_fds(&mut pf[..n], 0) > 0 {
         read_pens(
             iwac >= 0 && (pf[iwac as usize].revents & libc::POLLIN) != 0,
             ipen >= 0 && (pf[ipen as usize].revents & libc::POLLIN) != 0,
         );
+        // Touch after the pens, as input_poll reads them.
+        if itouch >= 0 && (pf[itouch as usize].revents & libc::POLLIN) != 0 {
+            drain(touch_fd, if grabbed { State::handle_touch } else { discard_input });
+        }
     }
     with(|s| {
         s.side_check();
@@ -2663,8 +2634,9 @@ pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
         return 1;
     }
     // Never while the pen or a finger is in use: nothing reads the pen while the scan runs.
+    let touch_events = with(|s| s.touch_events);
     let (fds, key_fds) = with(|s| {
-        let busy = s.P.prox || s.P.touching || s.T.active || s.pinching;
+        let busy = s.P.prox || s.P.touching || touchgest_busy(&s.tg);
         if s.keys_enabled && hidkeys_scan_due(now_ms(), s.keys_scan, busy, s.pen_left_ms) {
             s.key_scan(true);
         }
@@ -2711,6 +2683,17 @@ pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
             let grabbed = with(|s| s.input_grabbed);
             drain(touch_fd, if grabbed { State::handle_touch } else { discard_input });
         }
+    }
+    // Fingers held still give no frames: what only time decides (a tap's last lift, a lone finger's
+    // wait for its partner) is decided here, by touchgest's tick.
+    with(|s| {
+        if s.touch_events == touch_events && s.input_grabbed && touchgest_busy(&s.tg) {
+            let mut out = TgOut::default();
+            touchgest_tick(&mut s.tg, now_ms(), &mut out);
+            s.tg_push(&out);
+        }
+    });
+    if r > 0 {
         if readable(ipow, libc::POLLIN) {
             with(|s| s.handle_power_fd());
         }
@@ -2831,6 +2814,11 @@ pub fn input_set_grab(grab: bool) -> bool {
         }
     }
     with(|s| {
+        // What the fingers were doing ends here, while their events still reach the app: a finger's
+        // stream with the off-screen cancel, a pinch with PinchEnd.
+        let mut out = TgOut::default();
+        touchgest_cancel(&mut s.tg, now_ms(), &mut out);
+        s.tg_push(&out);
         let mut ok = true;
         let flag = if grab { 1 } else { 0 };
         if s.pen.fd >= 0 && ioctl_grab(s.pen.fd, flag) != 0 {
@@ -2853,10 +2841,6 @@ pub fn input_set_grab(grab: bool) -> bool {
         s.W = WacomSt::default();
         pensync_raw_clear(&mut s.raw);
         s.T = TouchSt::default();
-        s.T.main = -1;
-        s.T.suppressed = true;
-        s.T.id = [-1; MAX_SLOTS];
-        s.pinching = false;
         s.side_reported = false;
         s.pen_resume_block = false;
         if s.input_grabbed {
@@ -2867,17 +2851,16 @@ pub fn input_set_grab(grab: bool) -> bool {
                 s.side_reported = s.P.side;
             }
             if s.touch.fd >= 0 {
-                let mut slots = [-1i32; MAX_SLOTS + 1];
-                slots[0] = ABS_MT_TRACKING_ID as i32;
-                if eviocgmtslots(s.touch.fd, &mut slots) >= 0 {
-                    s.T.id.copy_from_slice(&slots[1..]);
-                    s.T.suppressed = s.T.id.iter().any(|&id| id >= 0);
-                }
-                let mut ai = InputAbsinfo::default();
-                if eviocgabs(s.touch.fd, ABS_MT_SLOT, &mut ai) >= 0 {
-                    s.T.slot = clampi(ai.value, 0, MAX_SLOTS as i32 - 1);
-                }
+                // The fingers still down from the PIN wait to lift (the frame after the cancel).
+                s.touch_resync();
+                s.touch_frame();
             }
+        } else {
+            // Not fed while the Kindle has the panel: what touchgest held goes now, so nothing
+            // counts as down meanwhile (the key scan's busy flag).
+            let mut out = TgOut::default();
+            touchgest_frame(&mut s.tg, &TgFrame::default(), &TgPen::default(), &mut out);
+            s.tg_push(&out);
         }
         qlog!("input: native lock: %s %s", if grab { "grab" } else { "release" }, if ok { "ok" } else { "failed" });
         ok
@@ -2893,7 +2876,7 @@ pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) 
     })
 }
 pub fn input_touch_context(v: TgView) {
-    let _ = v;
+    with(|s| touchgest_set_view(&mut s.tg, v))
 }
 pub fn input_touch_trace(path: Option<&str>) {
     let _ = path;

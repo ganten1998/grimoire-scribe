@@ -157,9 +157,10 @@ pub struct InputCaps {
     pub touch_slots: i32,
 }
 
+/// dpi: the screen's (display_open's), for touchgest's millimetre thresholds.
 #[inline]
-pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
-    platform::input_open(screen_w, screen_h, pen, touch)
+pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+    platform::input_open(screen_w, screen_h, dpi, pen, touch)
 }
 /// NULL leaves that mapping unchanged; pass input_default_calib's values to reset one.
 #[inline]

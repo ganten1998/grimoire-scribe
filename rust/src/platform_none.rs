@@ -36,7 +36,7 @@ pub fn display_close() {}
 
 // ---- input.h ----
 
-pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
     -1
 }
 pub fn input_set_calib(pen: Option<&InputCalib>, touch: Option<&InputCalib>) {}

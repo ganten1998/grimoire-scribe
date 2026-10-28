@@ -384,7 +384,7 @@ fn run() -> i32 {
     // The front light's levels, once: asking takes 95-191 ms on the Kindle, nothing can read the pens
     // meanwhile, and they are not open yet (light.h).
     light_refresh();
-    if input_open(w, h, None, None) != 0 {
+    if input_open(w, h, dpi, None, None) != 0 {
         qlog!("input_open failed");
         display_close();
         return 1;

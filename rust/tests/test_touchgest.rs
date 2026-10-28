@@ -357,6 +357,29 @@ fn syn_dropped_leaves_no_phantom() {
     check!(types(&r.frame(13)) == [InType::TouchDown]);
 }
 
+// The frame after a cancel holds what the panel says is down (a resync after a drop, the fingers
+// still down when the Kindle hands the panel back): they wait to lift, even never seen to land.
+fn the_frame_after_a_cancel() {
+    let mut r = Rig::new();
+    check!(r.cancel().is_empty());
+    r.down(0, 900.0, 1200.0);
+    check!(r.frame(13).is_empty() && r.probe("touch.suppressed") == "1");
+    r.down(1, 1200.0, 1200.0);
+    check!(r.frame(13).is_empty());
+    r.up(0);
+    r.up(1);
+    check!(r.frame(13).is_empty() && r.probe("touch.class") == "none");
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.up(0);
+    r.frame(13);
+    // A cancel followed by a frame with nothing down holds nothing after it.
+    r.cancel();
+    check!(r.frame(13).is_empty());
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+}
+
 // The pair is the order the fingers landed in, not their slots'.
 fn the_pair_is_by_landing_order() {
     let mut r = Rig::new();
@@ -833,6 +856,7 @@ fn test_touchgest() {
     run!(a_third_finger);
     run!(pen_arrival_cancels_never_taps);
     run!(syn_dropped_leaves_no_phantom);
+    run!(the_frame_after_a_cancel);
     run!(the_pair_is_by_landing_order);
     run!(busy_counts_every_contact);
     run!(kernel_time_decides);

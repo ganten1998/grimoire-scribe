@@ -1383,8 +1383,8 @@ fn sim_pump() {
     G_PUMPS.with(|p| p.set(p.get().wrapping_add(1)));
 }
 
-pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
-    let _ = (screen_w, screen_h);
+pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+    let _ = (screen_w, screen_h, dpi);
     work_pump_set(Some(sim_pump));
     with(|st| {
         let (mut p, mut t) = (InputCalib::default(), InputCalib::default());
@@ -2270,7 +2270,7 @@ mod tests {
         let (mut w, mut h, mut dpi) = (0, 0, 0f32);
         let r = display_open(&mut w, &mut h, &mut dpi);
         err(cformat!("open %d: %dx%d %08x\n", r, w, h, bits(dpi)).as_bytes());
-        let r = input_open(w, h, None, None);
+        let r = input_open(w, h, dpi, None, None);
         let caps = input_caps();
         err(cformat!("input %d: %s, %s\n", r, &caps.pen_name, &caps.touch_name).as_bytes());
         // A calibration with the axes swapped and one mirrored, for the pen; the finger keeps the default.

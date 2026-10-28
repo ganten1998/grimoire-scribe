@@ -342,6 +342,9 @@ pub struct TouchGest {
     my0: f32,
     /// PinchBegin went out and its PinchEnd has not
     begun: bool,
+    /// a cancel came: every contact of the next frame waits to lift (the panel's state after a drop,
+    /// or the fingers still down when the Kindle hands the panel back)
+    hold: bool,
     view: TgView,
     palm_major: i32,
     thr: Thr,
@@ -373,6 +376,7 @@ impl Default for TouchGest {
             mx0: 0.0,
             my0: 0.0,
             begun: false,
+            hold: false,
             view: TgView::default(),
             palm_major: i32::MAX,
             thr: Thr::at(300.0),
@@ -1068,6 +1072,15 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
         t.pen |= c.tool == 1;
         t.palm |= c.tool == 2;
     }
+    if g.hold {
+        g.hold = false;
+        for t in g.t.iter_mut() {
+            t.locked |= t.on;
+        }
+        if touchgest_busy(g) {
+            g.ph = Ph::Suppressed;
+        }
+    }
     g.lifts(out, k);
     g.landings(pen, out, k);
     g.work(pen, out, k);
@@ -1076,8 +1089,10 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
     }
 }
 
-/// The pen arrived, or the kernel dropped touch events: the finger's stream ends with the cancel, a
-/// session with PinchEnd, and every contact down waits to lift.
+/// The pen arrived, the kernel dropped touch events, or the Kindle took the panel or gave it back:
+/// the finger's stream ends with the cancel, a session with PinchEnd, and every contact down waits to
+/// lift, with every contact of the next frame (the panel's state read again after a drop or a regrab,
+/// which may hold contacts this module never saw land).
 pub fn touchgest_cancel(g: &mut TouchGest, k_ms: u32, out: &mut TgOut) {
     *out = TgOut::default();
     if matches!(g.ph, Ph::One | Ph::Wait | Ph::Session | Ph::TapWait) {
@@ -1088,6 +1103,7 @@ pub fn touchgest_cancel(g: &mut TouchGest, k_ms: u32, out: &mut TgOut) {
     for t in g.t.iter_mut() {
         t.locked |= t.on;
     }
+    g.hold = true;
     g.ph = if touchgest_busy(g) { Ph::Suppressed } else { Ph::Idle };
 }
 
