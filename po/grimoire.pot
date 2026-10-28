@@ -459,6 +459,21 @@ msgstr ""
 msgid "Sleep screen: KOReader wallpaper (tap to change)"
 msgstr ""
 
+#. TRANSLATORS: the Display sheet's row beside Done: how large the clock and battery in the top
+#. left corner are (a tap on that corner turns them on and off), which a tap moves to the next
+#. size. 580 to 720 px at 34 px, with 890 px to hold it on one line (898 in Classic), or two lines.
+#: rust/src/dispmenu.rs
+msgid "Clock and battery size: small (tap to change)"
+msgstr ""
+
+#: rust/src/dispmenu.rs
+msgid "Clock and battery size: medium (tap to change)"
+msgstr ""
+
+#: rust/src/dispmenu.rs
+msgid "Clock and battery size: large (tap to change)"
+msgstr ""
+
 #. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: src/dispmenu.c
@@ -1386,6 +1401,12 @@ msgstr ""
 #. TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
 #: src/library.c
 msgid "Close menu"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) turns the small clock and battery in the screen's top left
+#. corner on or off, on any screen.
+#: rust/src/library.rs
+msgid "Clock and battery"
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.

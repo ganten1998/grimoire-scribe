@@ -83,7 +83,9 @@ tap 930 1162
 wait 50
 expect library.buttons_group is menus
 shot 02-buttons-menus
-tap 930 1696
+# (Done is a row lower since the Menus group got its eighth, the clock and battery corner's, in the
+# Rust build: this y is on it there and on the C build's, in both styles.)
+tap 930 1742
 wait 50
 expect library.buttons_group is
 tap 930 1482

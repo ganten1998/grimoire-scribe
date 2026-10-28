@@ -41,6 +41,17 @@
   Naming a page right after writing on it no longer leaves the toolbar drawn over the keyboard,
   and a notice stays above the keys (Go to page's "Enter a page number" covered its 0 and del).
 
+- **A small clock and battery in the corner**: tap the top left corner of the screen with a finger
+  and a small box shows the time, the battery's percent and, while it charges, a bolt; tap it again
+  to hide it. It works on every screen, wherever nothing else is under your finger: a Back button, a
+  menu that is open or a link keeps its tap. A key or a controller button can turn it on and off too
+  (Buttons... > Menus > Clock and battery), and Settings > Display has its size, small, medium or
+  large, beside Done. It changes each minute and when the battery or its charging changes, with one
+  small refresh of its own, and holds back while the pen is near or you are writing, so it never
+  touches a stroke. It is only ever on the screen: never in a page, a PDF or a picture, Live view
+  or the sleep screen. Older versions leave the two new lines in settings.ini alone, and count
+  `status-toggle` among the shortcuts they do not know.
+
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:
   Grimoire closes, KPM installs it with its progress on the screen, and Grimoire starts again. A

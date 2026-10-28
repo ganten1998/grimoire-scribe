@@ -92,7 +92,9 @@ Actions, in the Buttons sheet's groups:
   `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
   its Pages or its Index tab), `add-link` (Add a link) and `name-page` (Name the page), both below.
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
-  unfolds it), `library` (saves and closes the notebook), `close-menu`.
+  unfolds it), `library` (saves and closes the notebook), `close-menu`, and `status-toggle` (the
+  small clock and battery in the top left corner on and off, as a finger tap there does; docs/KINDLE.md,
+  The clock and battery corner).
 
 `previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool button's
 pen and the pinned pens, top to bottom as the panel shows them, from the last round to the first and
@@ -135,7 +137,7 @@ never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
-`name-page`) and count them in Reload shortcuts.ini; their other lines still work.
+`name-page`, `status-toggle`) and count them in Reload shortcuts.ini; their other lines still work.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux
@@ -144,7 +146,8 @@ South, East, North, West, L1, R1, L2, R2, Select, Start, Up, Down, Left, Right, 
 triggers, above), or numbered 256–767. Later duplicate bindings replace earlier ones. Up to 64 bindings and 64 KiB of
 configuration are accepted. An existing empty file deliberately disables mappings.
 
-Shortcuts act only in the idle notebook editor. They do nothing while drawing, pinching,
+Shortcuts act only in the idle notebook editor, apart from `status-toggle`, which acts on every
+screen while Grimoire is awake. They do nothing while drawing, pinching,
 sleeping or displaying a sheet, except the menus' buttons and Close menu (above), Erase while held,
 whose press counts even during a stroke (from the next one), and next and previous in the picker,
 which move the open tool picker's choice. Next page on the last

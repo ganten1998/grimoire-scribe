@@ -120,6 +120,10 @@ pub struct Settings {
     /// The pen in use when the eraser was last picked on the panel, a tool id or -1 for none: where
     /// a tap on the eraser in use goes back to while that pen is still on the panel.
     pub before_eraser: i32,
+    /// The clock and battery corner is on (settings.ini status_on; status.rs)
+    pub status_on: bool,
+    /// and how large it is: 0 small, 1 medium, 2 large (settings.ini status_size)
+    pub status_size: i32,
 }
 
 // ---- state ----
@@ -2470,6 +2474,8 @@ pub fn settings_default(s: &mut Settings) {
     s.eraser_mode = 0; // whole strokes, as before 1.1
     s.white = false;
     s.before_eraser = -1;
+    s.status_on = false;
+    s.status_size = 0;
 }
 
 /// pen.panel / touch.panel: the panel the calibration was made on, "WxH" (1.1 on). A value that does
@@ -2720,6 +2726,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"eraser_mode" => s.eraser_mode = keep_int("eraser_mode", v, 0, 1),
         b"white" => s.white = keep_bool("white", v),
         b"panel_tools" => pins_kv(s, "panel_tools", v),
+        b"status_on" => s.status_on = keep_bool("status_on", v),
+        b"status_size" => s.status_size = keep_int("status_size", v, 0, 2),
         b"before_eraser" => {
             // A pen this version does not have (a newer one's), the eraser or no number at all is none
             // here, and stays in the file.
@@ -2898,8 +2906,12 @@ pub fn settings_save(s: &Settings) -> i32 {
             put(&mut b, &key, &cformat!("%.4f", s.tools[tk].get(pi.field)));
         }
     }
-    // (Last of the known keys: the newest. A language this build lacks goes back as it was.)
+    // (A language this build lacks goes back as it was.)
     put(&mut b, "language", if i18n_setting_known(s.language.as_str()) { s.language.as_str() } else { "auto" });
+    // The clock and battery corner's keys (status.rs) are the newest, so they come last of the known
+    // ones: a build without them keeps both lines as lines it does not know.
+    put_int(&mut b, "status_on", s.status_on as i32);
+    put_int(&mut b, "status_size", s.status_size);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

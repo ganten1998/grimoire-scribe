@@ -81,10 +81,21 @@ struct State {
     shells: [libc::pid_t; BG_SHELLS],
     intensity: i32,
     warmth: i32,
+    /// the battery as the power service last said, and when (now_ms, 0 never): sys_battery's fallback
+    battery: Battery,
+    battery_at: u32,
 }
 
 thread_local! {
-    static S: RefCell<State> = const { RefCell::new(State { shells: [0; BG_SHELLS], intensity: -1, warmth: -1 }) };
+    static S: RefCell<State> = const {
+        RefCell::new(State {
+            shells: [0; BG_SHELLS],
+            intensity: -1,
+            warmth: -1,
+            battery: Battery { percent: -1, charging: false },
+            battery_at: 0,
+        })
+    };
 }
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -343,4 +354,41 @@ pub fn sys_kindle_ui(run: bool) -> bool {
         }
     );
     run_line(&cmd, 32, 3000).is_some_and(|answer| answer == b"ready")
+}
+
+/// The kernel's power supplies, one directory each.
+const POWER_SUPPLY_DIR: &str = "/sys/class/power_supply";
+/// lipc is asked for the battery at most this often (it takes tens of ms, and the pens are not read
+/// meanwhile).
+const BATTERY_LIPC_MS: u32 = 60000;
+
+/// Asks the power service for the battery (two lipc runs, each waiting 1 s at most): -1 percent when
+/// it does not answer.
+fn battery_from_lipc() -> Battery {
+    let ask = |prop: &str| -> Option<i32> {
+        let line = run_line(&cformat!("lipc-get-prop -i com.lab126.powerd %s 2>/dev/null", prop), 16, 1000)?;
+        battery_parse_number(&line)
+    };
+    let percent = ask("battLevel").filter(|p| (0..=100).contains(p)).unwrap_or(-1);
+    let charging = percent >= 0 && ask("isCharging").is_some_and(|c| c != 0);
+    Battery { percent, charging }
+}
+
+pub fn sys_battery() -> Battery {
+    // The kernel first: a few small reads, nothing to wait for.
+    if let Some(b) = battery_from_sysfs(POWER_SUPPLY_DIR) {
+        return b;
+    }
+    let due = with(|s| s.battery_at == 0 || now_ms().wrapping_sub(s.battery_at) >= BATTERY_LIPC_MS);
+    if !due {
+        return with(|s| s.battery);
+    }
+    with(|s| s.battery_at = now_ms() | 1); // (before the call: a slow answer is not asked for again at once)
+    let b = battery_from_lipc();
+    with(|s| s.battery = b);
+    b
+}
+
+pub fn sys_wall_clock() -> i64 {
+    wall_time()
 }

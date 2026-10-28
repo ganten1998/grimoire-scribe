@@ -74,10 +74,12 @@ pub enum IconKind {
     Live = 50,  // ICON_LIVE
     Gamepad = 51,  // ICON_GAMEPAD
     Update = 52,  // ICON_UPDATE
+    /// the clock and battery corner's (status.rs; not in the C tree)
+    Clock = 53,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 53;
+    pub const COUNT: usize = 54;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -281,6 +283,7 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Live as usize] = 0xF0119; // md-cast_connected
     k[IconKind::Gamepad as usize] = 0xF0297; // md-gamepad_variant
     k[IconKind::Update as usize] = 0xF06B0; // md-update
+    k[IconKind::Clock as usize] = 0xF0150; // md-clock_outline
     k
 };
 

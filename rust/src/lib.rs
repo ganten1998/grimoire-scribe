@@ -83,6 +83,7 @@ pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
 pub mod share;
+pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
 pub mod ui;
 
 // ---- wave 4: the platform and the main loop ----
@@ -149,6 +150,7 @@ pub mod prelude {
     pub use crate::power::*;
     pub use crate::qr::*;
     pub use crate::shortcuts::*;
+    pub use crate::status::*;
     pub use crate::store::*;
     pub use crate::templates::*;
     pub use crate::tplsheet::*;

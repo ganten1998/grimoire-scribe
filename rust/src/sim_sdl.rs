@@ -136,6 +136,10 @@ struct State {
     sim_grab: bool,
     // How often the app told the power service someone is here: the runner's "power.pokes".
     pokes: i32,
+    // The clock and battery corner's inputs (status.rs): the script's `clock` and `battery`. The
+    // clock stays where the script put it (None: the real one); the battery starts full.
+    clock: Option<i64>,
+    battery: Battery,
 
     // ---- script mode ----
     script: Option<BufReader<File>>,
@@ -207,6 +211,8 @@ impl Default for State {
             powerd_state: FixedStr::from_str("active"),
             sim_grab: true,
             pokes: 0,
+            clock: None,
+            battery: Battery { percent: 100, charging: false },
             script: None,
             wait_until: 0,
             hold_file: FixedStr::new(),
@@ -642,11 +648,23 @@ pub fn sys_prevent_sleep(prevent: bool) {
 pub fn sys_activity() {
     with(|st| st.pokes += 1);
 }
+pub fn sys_battery() -> Battery {
+    with(|st| st.battery)
+}
+pub fn sys_wall_clock() -> i64 {
+    with(|st| st.clock).unwrap_or_else(wall_time)
+}
 pub fn display_broken() -> bool {
     false
 }
 pub fn display_skip_overlay(r: Rect) {
     let _ = r;
+}
+pub fn display_skip_status(r: Rect) {
+    let _ = r;
+}
+pub fn display_pen_mode_on() -> bool {
+    with(|st| st.pen_mode)
 }
 
 pub fn display_find_overwrite(screen: &Canvas, skip: Rect, where_: &mut Rect) -> bool {
@@ -1306,6 +1324,30 @@ fn script_step_in(st: &mut State) -> Step {
         } else if a == b"powerd" {
             // powerd STATE: what the power service reports from now on (active, screenSaver, ...)
             st.powerd_state.set_bytes(b);
+        } else if a == b"clock" {
+            // clock SECONDS | real: the time the corner shows (unix seconds), kept where the script
+            // puts it; real is the machine's again
+            let (v, used) = strtol10(b);
+            if b == b"real" {
+                st.clock = None;
+            } else if used != 0 && used == b.len() {
+                st.clock = Some(v);
+            } else {
+                err(&bformat("script: bad clock line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+            }
+        } else if a == b"battery" {
+            // battery PERCENT [charging] | none: the battery the corner shows (none: unreadable)
+            let (v, used) = strtol10(b);
+            if b == b"none" {
+                st.battery = Battery::default();
+            } else if used != 0 && used == b.len() && (0..=100).contains(&v) {
+                let charging = sc.word(15) == Some(&b"charging"[..]);
+                st.battery = Battery { percent: v as i32, charging };
+            } else {
+                err(&bformat("script: bad battery line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+            }
         } else if a == b"quit" {
             let e = st.make_ev(InType::Quit, 0.0, 0.0, true);
             st.q_push(e);

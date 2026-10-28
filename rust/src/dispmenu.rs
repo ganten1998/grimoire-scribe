@@ -42,6 +42,7 @@ const D_SLEEP_MODE: i32 = 4;
 const D_PIN: i32 = 5;
 const D_SLEEP_AFTER: i32 = 6;
 const D_DONE: i32 = 7;
+const D_STATUS: i32 = 8;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -58,6 +59,18 @@ static K_MODE_ROWS: [&str; 4] = [
     n_("Sleep screen: a pinned page (tap to change)"),
     n_("Sleep screen: the Kindle's own screensaver (tap to change)"),
     n_("Sleep screen: KOReader wallpaper (tap to change)"),
+];
+
+/// The clock and battery corner's size row (settings.ini status_size 0, 1, 2), one sentence per
+/// choice. It sits beside Done, in the room the buttons row leaves, so the sheet's other rows stay
+/// where they were.
+static K_STATUS_ROWS: [&str; 3] = [
+    // TRANSLATORS: the Display sheet's row beside Done: how large the clock and battery in the top
+    // left corner are (a tap on that corner turns them on and off), which a tap moves to the next
+    // size. 580 to 720 px at 34 px, with 890 px to hold it on one line (898 in Classic), or two lines.
+    n_("Clock and battery size: small (tap to change)"),
+    n_("Clock and battery size: medium (tap to change)"),
+    n_("Clock and battery size: large (tap to change)"),
 ];
 
 fn step_of(minutes: i32) -> i32 {
@@ -192,6 +205,24 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     // at 44 px, on the keyboard 334 px at 44 px in bold.
     ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut m.hits, done, D_DONE, 0);
+    // The size of the clock and battery corner (status.rs), left of Done.
+    let sz = Rect { x: in_.x, y: done.y, w: done.x - in_.x - ui_px(30.0), h: done.h };
+    canvas_fill(&mut a.screen, sz, 255);
+    ui_icon(&mut a.screen, IconKind::Clock, Rect { x: sz.x, y: sz.y + sz.h / 8, w: sz.h * 3 / 4, h: sz.h * 3 / 4 }, 0);
+    // (At the small size throughout, so the three sentences look alike: the middle one would not fit
+    // on a line at 44 px.)
+    ui_text(
+        &mut a.screen,
+        FontFace::Regular,
+        ui_small_size(),
+        ui_small_size(),
+        Rect { x: sz.x + sz.h, y: sz.y, w: sz.w - sz.h, h: sz.h },
+        tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]),
+        2,
+        false,
+        0,
+    );
+    hits_add(&mut m.hits, sz, D_STATUS, 0);
     m.rect
 }
 
@@ -297,6 +328,7 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             a.settings.sleep_mode = (a.settings.sleep_mode + 1) % 4;
             settings_save(&a.settings);
         }
+        D_STATUS => status_cycle_size(a),
         D_PIN => {
             if editor_pin_sleep_page(a) {
                 a.settings.sleep_mode = 1;

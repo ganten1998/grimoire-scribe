@@ -147,6 +147,8 @@ struct State {
     g_live_area: Rect,
     /// display_skip_overlay
     g_overlay: Rect,
+    /// display_skip_status
+    g_status: Rect,
 }
 
 impl State {
@@ -202,6 +204,7 @@ impl State {
             g_live: false,
             g_live_area: RECT_EMPTY,
             g_overlay: RECT_EMPTY,
+            g_status: RECT_EMPTY,
         }
     }
 }
@@ -923,6 +926,15 @@ pub fn display_open(w: &mut i32, h: &mut i32, dpi: &mut f32) -> i32 {
 pub fn display_skip_overlay(r: Rect) {
     with(|s| s.g_overlay = r);
 }
+pub fn display_skip_status(r: Rect) {
+    with(|s| s.g_status = r);
+}
+/// Whether the driver is in pen mode now. It stays so past a stroke, until a grayscale refresh
+/// is due (pen_leave), and that refresh waits for the pen's last frame: the clock and battery
+/// corner (status.rs) keeps its own refreshes out of that wait.
+pub fn display_pen_mode_on() -> bool {
+    with(|s| s.g_pen_mode)
+}
 pub fn display_set_invert(on: bool) {
     with(|s| {
         if on != s.g_invert {
@@ -1214,7 +1226,7 @@ pub fn display_find_overwrite(screen: &Canvas, skip: Rect, where_: &mut Rect) ->
         let (mut differ, mut x0, mut y0, mut x1, mut y1) = (0, w, h, 0, 0);
         for y in (STEP / 2..h).step_by(STEP as usize) {
             for x in (STEP / 2..w).step_by(STEP as usize) {
-                if rect_contains(skip, x, y) || rect_contains(s.g_live_area, x, y) || rect_contains(s.g_overlay, x, y) {
+                if rect_contains(skip, x, y) || rect_contains(s.g_live_area, x, y) || rect_contains(s.g_overlay, x, y) || rect_contains(s.g_status, x, y) {
                     continue;
                 }
                 let want = screen.px[y as usize * screen.stride as usize + x as usize];
@@ -1267,7 +1279,7 @@ pub fn display_band_overwritten(screen: &Canvas, band: Rect, skip: Rect) -> bool
         let (mut differ, mut total) = (0, 0);
         for y in (band.y + 2..band.y + band.h).step_by(6) {
             for x in (band.x + 2..band.x + band.w).step_by(6) {
-                if rect_contains(skip, x, y) || rect_contains(s.g_live_area, x, y) || rect_contains(s.g_overlay, x, y) {
+                if rect_contains(skip, x, y) || rect_contains(s.g_live_area, x, y) || rect_contains(s.g_overlay, x, y) || rect_contains(s.g_status, x, y) {
                     continue;
                 }
                 let want = screen.px[y as usize * screen.stride as usize + x as usize];

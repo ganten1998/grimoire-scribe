@@ -787,6 +787,8 @@ line. Values are clamped to their ranges when read.
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
+| `status_on` | 0 or 1: the small clock and battery in the screen's top left corner (a tap there turns it on and off; docs/KINDLE.md, The clock and battery corner), off by default. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
+| `status_size` | its size, 0 small, 1 medium, 2 large (the Display sheet's row), 0 by default and clamped to 0..2. Since 2.0.0-beta.5, as `status_on` |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
 | `updates` | `stable` (releases only) or `preview` (betas too): which of Grimoire's feeds Settings > Updates checks (docs/KPM.md, Updating). Absent: by the running version (a beta or RC: preview). Since 2.0.0-beta.5; versions before keep or drop it as above |
@@ -834,7 +836,7 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   saved as used, because the launcher opens the firewall for the port it finds in the file.
 - A `settings_version` above its own is written back as it is.
 - The 0/1 keys (`panel_collapsed`, `mirror_pdf`, `follow_rotation`, `invert`, `pinch_zoom`,
-  `passcode_told`, `white`, `shortcuts_enabled`, and the calibration's `valid` and `swap`) read any
+  `passcode_told`, `white`, `shortcuts_enabled`, `status_on`, and the calibration's `valid` and `swap`) read any
   other value as on when it starts with a nonzero number and as off otherwise, and write it back
   as it was under the rule above.
 

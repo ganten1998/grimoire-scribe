@@ -333,6 +333,31 @@ session with networking awake, not a reboot or deep sleep.
   only, which is why they stay on lines 2 to 5 (package_check pins each line). It runs a
   scriptlet as `su -c 'sh -l <path>'` with no arguments, and runs xrefresh when the script ends.
 
+## The clock and battery corner
+
+A finger tap in the top left corner of any Grimoire screen (a 12 mm square) turns on a small
+indicator there: the time and date as Grimoire writes them elsewhere (`Oct 10, 14:32`), the battery's
+percent, and a small bolt while it charges. Tapping it, or the corner again, turns it off. A control
+under the finger keeps the tap (a Back button, a sheet that is up, a link on a page), so the corner
+works on the page, the Library with nothing in it there, and the like. A keyboard or controller
+button can do the same: the `status-toggle` action (docs/SHORTCUTS.md, Buttons > Menus). Settings >
+Display, beside Done, sets its size: small, medium or large. It is settings.ini `status_on` and
+`status_size` (docs/FORMAT.md).
+
+It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
+thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
+when the percent or charging changes, one small grayscale refresh of its own box, and not while the
+pen is near, a stroke is being drawn or the pen mode of the driver is on: it waits for the pen to
+leave. It never waits for the display.
+
+The battery comes from the kernel: the power supply whose `type` is `Battery` in
+`/sys/class/power_supply/*` (its `capacity`, and `status` reading `Charging`), read every 10 seconds
+while the corner is on. Where there is none, from the power service (`lipc-get-prop com.lab126.powerd
+battLevel` and `isCharging`), at most once a minute, which waits for lipc for a moment (1 second
+each at most): it is asked only while the pen is away. With neither, the corner shows the time alone.
+The screen guard leaves the corner's box out of its checks, so it is not taken for something else
+drawing over Grimoire.
+
 ## If something is off
 
 - **Stuck**: hold the power button 4 seconds; Grimoire saves and leaves, and the launcher gives

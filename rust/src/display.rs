@@ -108,6 +108,20 @@ pub fn display_find_overwrite(screen: &Canvas, skip: Rect, where_: &mut Rect) ->
 pub fn display_skip_overlay(r: Rect) {
     platform::display_skip_overlay(r)
 }
+/// A rect the panel shows over App.screen while the clock and battery corner is up (status.rs):
+/// both checks leave it out too, apart from the Live view chip's, which has its own. RECT_EMPTY for
+/// none.
+#[inline]
+pub fn display_skip_status(r: Rect) {
+    platform::display_skip_status(r)
+}
+/// True while the panel's driver is in pen mode: set by the first stroke's fast frames and
+/// kept past the stroke until a grayscale refresh is due (display_fbink.rs, pen_leave), which then
+/// waits for the pen's last frame. The simulator answers with what display_pen_mode last asked.
+#[inline]
+pub fn display_pen_mode_on() -> bool {
+    platform::display_pen_mode_on()
+}
 /// True once the first frame and the next 4 refreshes have all failed: the panel is not Grimoire's
 /// to drive, and it should leave. A failure after any refresh worked never counts. Polled by the
 /// main loop: until one refresh works it also refreshes the whole panel again once a second, so a

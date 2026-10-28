@@ -134,19 +134,19 @@ fn every_action_by_name() {
         named += 1;
         check!(shortcut_action(name) == a);
     }
-    check!(named == 10 + 8 + 19); // the tools, the first actions, and 2.0.0-beta.5's
+    check!(named == 10 + 8 + 20); // the tools, the first actions, and 2.0.0-beta.5's (the last, status-toggle, Rust only)
     let path = format!("{}/shortcuts-new.ini", tl_tmp());
     let text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n\
                 pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n\
                 pad.606=tool-picker\npad.607=paper\npad.608=display\npad.609=pen-feel\n\
                 pad.610=fold-panel\npad.611=library\npad.612=close-menu\nkey.z=undo\n\
                 pad.614=picker-previous\nkey.PageDown=picker-next\n\
-                pad.615=add-link\nkey.Ctrl+n=name-page\n\
+                pad.615=add-link\nkey.Ctrl+n=name-page\npad.616=status-toggle\n\
                 pad.North=menu:frobnicate\nkey.x=hold-pen\npad.613=tool:crayon\n";
     check!(write_file_atomic(&path, text.as_bytes()) == 0);
     let mut m = Shortcuts::default();
     shortcuts_load(&mut m, &path);
-    check!(m.count == 20 && m.rejected == 3);
+    check!(m.count == 21 && m.rejected == 3);
     check!(shortcuts_lookup(&m, true, 312, 0) == SHORTCUT_HOLD_ERASER && shortcuts_lookup(&m, true, 612, 0) == SHORTCUT_CLOSE_MENU);
     // The tool picker's next and previous, beside next and previous tool (the panel's pens).
     check!(shortcuts_lookup(&m, true, 614, 0) == SHORTCUT_PICKER_PREV && shortcuts_lookup(&m, false, 109, 0) == SHORTCUT_PICKER_NEXT);
@@ -159,6 +159,9 @@ fn every_action_by_name() {
             && shortcuts_lookup(&m, false, 49, 0) == SHORTCUT_NONE
     );
     check!(shortcut_action_name(SHORTCUT_ADD_LINK) == Some("add-link") && shortcut_action_name(SHORTCUT_NAME_PAGE) == Some("name-page"));
+    // The clock and battery corner, on any screen (Rust only).
+    check!(shortcuts_lookup(&m, true, 616, 0) == SHORTCUT_STATUS && shortcut_action("status-toggle") == SHORTCUT_STATUS);
+    check!(shortcut_action_name(SHORTCUT_STATUS) == Some("status-toggle") && SHORTCUT_STATUS == SHORTCUT_LAST);
     check!(shortcuts_lookup(&m, false, 44, 0) == SHORTCUT_UNDO && shortcuts_lookup(&m, true, 307, 0) == SHORTCUT_NONE);
     unlink(&path);
     // Learned into controller.ini by name: every action a button, which read back, with room to spare.

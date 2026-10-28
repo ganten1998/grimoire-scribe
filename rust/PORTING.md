@@ -95,6 +95,17 @@ Every C file has a module of the same name; a header and its .c are one module.
 The other files (tests/*.sh, *.py, *.js, *.lua, tests/scenarios, kindle/, web/, po/, tools/*.py,
 docs/) are shared: the Rust build uses them as they are.
 
+### Rust only
+
+`status.rs` (the clock and battery corner, 2.0.0-beta.5) has no C file: nothing there is a port, so
+the rules above that say "translate" do not apply to it, and it adds what it needs: the Settings
+keys `status_on` and `status_size` (docs/FORMAT.md), the action `status-toggle` (SHORTCUT_STATUS),
+the icon `IconKind::Clock`, `display_skip_status` and `display_pen_mode_on` in display.rs and its
+platforms, `sys_battery` and `sys_wall_clock` in light.rs and its platforms, the runner's `clock`
+and `battery` commands and `status.*` probes, and a `*_control_at` question each screen answers
+(`app_control_at`). The C tree has none of these; `make c-check` cannot run tests/scenarios/
+y_status_corner.qs.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.
