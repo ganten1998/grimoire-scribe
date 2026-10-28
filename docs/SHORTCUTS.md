@@ -15,11 +15,13 @@ optional input devices again.
 ## Controller buttons
 
 **Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list has
-four groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser, Erase
+five groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser, Erase
 while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in the tool
 picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next
-page, first / last page, new page, fit page, Pages, Index, add a link, name the page) and **Menus**
-(the tool picker, Paper, Display, Pen feel, fold the panel, the Library, close menu). Open a group,
+page, first / last page, new page, fit page, whole page sideways, Pages, Index, add a link, name the
+page), **Index** (the Links bar, go to a page or name, back to the page before, link areas) and **Menus**
+(the tool picker, Paper, Display, Pen feel, fold the panel, the Library, close menu, the clock and
+battery). Open a group,
 tap a row, then press the button; Done goes back up to the list. One button per action: a button
 that did something else does this now (a toast says which action lost it), and the action's other
 buttons stop doing it. The previous / next and first / last rows learn two presses, the first one's
@@ -155,6 +157,38 @@ shortcuts: the Settings switch for them is `gestures` in settings.ini. Their bui
 down `pages`, up `links`, left `next-page`, right `previous-page`, and a page turned that way never adds
 a page (a key's or a button's still does). A line `touch.2.up=nothing` turns a built-in off; the file is
 read at start and when shortcuts are reloaded.
+
+### gestures.ini by hand
+
+`gestures.ini` sits beside `shortcuts.ini` in `/mnt/us/grimoire/` and is yours to write: nothing creates
+or changes it. With no file the built-ins above apply. Each line is `key=action` in the grammar of
+`shortcuts.ini` (`#` and `;` start a comment, blanks are trimmed, a later line for the same key
+wins). A two-finger key is `touch.2.` and one of `up`, `down`, `left`, `right` or `tap`, and its value
+is the name of any action above, or `nothing`, which turns a built-in off:
+
+```ini
+# two fingers up make a new page, as the panel's + does; two fingers down do nothing
+touch.2.up=new-page
+touch.2.down=nothing
+# a two-finger tap undoes
+touch.2.tap=undo
+```
+
+A swipe is two fingers that land together and travel about 20 mm in a roughly straight line within a
+second; a tap is two fingers down and up together, moving under 5 mm, within 0.3 s. A slower or
+curved drag is a pan or a pinch, never a swipe, and zoomed in two fingers only pan the page (no swipe
+fires, whatever is bound). A finger resting on the screen, a palm beside the writing hand and the pen
+being near all refuse a gesture, so it cannot fire while writing; a swipe refused only because the
+pen was near says "Move the pen away, then swipe." now and then. With a menu or sheet in front, the
+gesture bound to that menu's own action closes it, and so does the opposite gesture (two fingers
+down open Pages and two fingers up close them); any other gesture does its own action, which a menu in
+front may refuse. With the Links bar up, two fingers down always close it, back to the page it began on.
+The file is read when Grimoire starts and by Settings > Controller > Reload shortcuts.ini. A line it
+cannot use (a bad key, `touch.1.*`, which is kept for one finger's taps and links, an action this
+version has not heard of) is refused and counted in the log (`gestures: N line(s) of gestures.ini not
+used`); the others still load. `touch.3.*` lines are read, but three fingers on the screen are refused
+in this version, so they do nothing yet. The `pen.*` and `shape.*` lines, which this version only
+carries, and the rest of the grammar are in docs/FORMAT.md.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux

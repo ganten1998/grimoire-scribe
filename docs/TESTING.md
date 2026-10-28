@@ -11,6 +11,60 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.5 candidate: gestures, the Links bar, sideways
+
+Not yet on a Kindle. `make rust-check` covers the recognizer's thresholds on recorded frames, every
+gesture and the bar's and Find's flows in the headless runner (two fingers, taps, the pen near, the
+corner), and the fit of every new string in English and Spanish. It cannot say how the thresholds feel
+under a hand, how the Links bar's refreshes look, or whether the palm is ignored.
+
+Install the build and test in a notebook that has your beta.5 links, unless said otherwise.
+
+1. **Upright.** Two fingers down anywhere on a page open Pages with one flash; two fingers up close
+   them. Two fingers left turn to the next page, and right to the previous one. On the last page, two
+   fingers left show "This is the last page." and no page is added; on the first page, two fingers
+   right show "This is the first page." The panel's + still adds a page.
+2. **The Links bar.** Two fingers up (or the chain button after Next on the panel, which has a small
+   dot when the page has links) open the bar along the bottom with no flash. It shows one row for each
+   Index entry the page links to, numbered in reading order, with "×2" where two links go to the same
+   page. Two fingers down, X, or the chain button again close it.
+3. **Hopping.** Tap an entry: the page above the bar becomes that page with no flash, the panel's chip
+   shows its number, and the bar keeps the starting page's links. Tap another entry: it shows that one.
+   Tap the page above the bar with a finger: you stay there (one flash), and that tap does nothing else
+   (no link followed, no panel button pressed). Or press X or "‹ Page 3": you are back where you started,
+   zoom included. A pen stroke on the page while peeking also stays, and is not drawn.
+4. **Areas.** In the bar, Areas shows dashed, numbered boxes where each link's ink is, matching the row
+   numbers. They are not in the PDF. They are remembered after a restart. The first time, a tip explains
+   them.
+5. **Go to.** The bar's Go to (and the Pages view's "Go to page...") opens a keyboard over the page. "12"
+   offers "Go to page 12"; a name finds the page with accents and capitals ignored ("arb" finds
+   "Árbol"). The result opens with one flash. A key bound to Back to the page before
+   returns.
+6. **Sideways.** Turn the Kindle: the whole page shows (on by default). Two-finger swipes work anywhere,
+   and a pinch zooms in from the whole page. Display > "Sideways, show the whole page" off: the width
+   fills again, vertical two-finger drags pan, and left and right still turn pages. Zoomed in (either
+   orientation): two fingers pan with no zoom drift, the panel's page chip and chain button open Pages
+   and Links, and the hint about it shows once.
+7. **The clock corner.** A finger tap in the top left corner toggles the clock: with nothing open, with
+   the bar up, while peeking, and over a link there (the link is not followed). A two-finger swipe that
+   starts there fires its gesture and does not toggle the clock.
+8. **Feel.** Pinch zoom feels as before. A finger resting on a link no longer follows it when the pen
+   comes near. After a long page render (a dense page or a PDF page), taps and swipes still register.
+   Writing with your palm resting fires nothing.
+9. **Live view.** With Live view on, committing a peek with the pen shows no ink in the browser.
+10. **Report.** Write, lift, and swipe right at once: how often "Move the pen away, then swipe." appears.
+    Rest your palm and thumb while writing: nothing should fire.
+11. **Traces.** Create the empty file `grimoire/touch-trace`, restart Grimoire, and run the touch script in
+    docs/KINDLE.md (about 15 minutes). Then delete `grimoire/touch-trace` and send `grimoire.log` and
+    `grimoire/touch-trace.txt`.
+12. **Settings.** `settings.ini` gains `gestures=1`, `landscape_fit=1`, `hints=...` and `link_areas=...`
+    at the end, and your other settings are unchanged. Turning Grimoire back to an older build keeps
+    working. After updating from the beta before, the first notebook that opens says once what two
+    fingers up and down do now, and the first turn sideways says once why two fingers swipe there.
+
+Known in this build: New link still uses the inked flow; holding a link on the page still opens the Pages
+picker; holding a bar row does nothing; three-finger gestures are off.
+
 ## 2.0.0-beta.4 candidate
 
 The offscreen CPU measurements and output-equivalence checks are in

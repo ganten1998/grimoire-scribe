@@ -81,7 +81,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 - Screens never call display directly. They call `app_invalidate(app, rect, mode)` and the
   main loop calls `app_flush(app)` after draining all pending input events, so a burst of
   pen samples becomes one refresh.
-- Refresh modes: `REFRESH_FAST` (DU, black/white, for live ink, ~120 ms), `REFRESH_UI`
+- Refresh modes: `REFRESH_FAST` (DU, black/white, for live ink, ~188 ms measured, 294 ms cold), `REFRESH_UI`
   (GL16 partial, no flash, for UI and to settle the grays of a finished stroke),
   `REFRESH_FULL` (GC16 flashing, page turns / screen changes / every 30 UI refreshes).
   Accumulating different modes keeps the strongest (FULL > UI > FAST).
@@ -888,3 +888,75 @@ The handover wrapper retains KOReader's frameworkStarted LIPC service across Dev
 its native framework was stopped. Input/screen teardown still occurs before Grimoire. The handle
 closes after Grimoire returns, before koreader.sh starts a new reader process. App exit statuses
 propagate to the plugin so failed launches keep the diagnostic marker.
+
+## Touch gestures, the Links bar, Find and the link areas (2.0.0-beta.5, the Rust build)
+
+**Touch.** Fingers reach the editor through `touchgest.rs`, a pure recognizer that input_evdev.rs
+(the Kindle) and sim_sdl.rs (the runner) each feed contact frames and the pen's state, with kernel
+time (`wrapping_sub`, never `now_ms()` inside a batch). It keeps today's one finger (tap, link hold,
+the finger session) and pinch exactly, and adds the two-finger classes: ZOOM (the fingers spread or
+close), PAN (they move together on an axis the page scrolls on), SWIPE (about 20 mm in a straight line
+within a second, in one of four directions) and TAP (two fingers down and up together). A third finger
+makes three, which is refused. The pen always wins: its proximity or contact cancels every finger
+session, a resting palm or thumb and the first finger inside the pen's window (1 s after it leaves)
+are never counted, and a swipe refused only for the pen says so once in ten minutes. The editor tells
+touchgest what its screen allows (`touch_context`: whether the page pans, zooms, may start a gesture)
+after every event, so a sheet, the bar or a keyboard makes a drag a swipe, which the mirror rule closes
+the menu with. What a gesture does is `gesturemap.rs`'s (the built-ins, then `gestures.ini`), through
+the same `editor_shortcut_at` a key uses; a page turned by a gesture never adds a page. The corner's
+clock tap (status.rs) decides at the lift and every finger tap that phase adds checks it first.
+`grimoire.log` has one line per touch session and the owner's opt-in `touch-trace.txt` has every
+contact frame (docs/FORMAT.md, docs/KINDLE.md).
+
+**Sideways.** With `landscape_fit` (on by default) a page turned sideways rests whole, at the height of
+the screen (`view_rest`): nothing scrolls, so two-finger swipes work anywhere, and a pinch zooms in from
+there. Off, the width fills the screen as upright and a vertical two-finger drag pans.
+
+**The Links bar** (linkbar.rs, hosted by the editor as dispmenu.rs is) is a card along the bottom with one
+chip per place the open page's links go (the Index, a named page, a numbered page or a page that is
+gone), numbered in reading order and counted when two links share a page; a tool row has Go to, New
+link, Areas and Index. It opens and closes on one Ui refresh of its card (no flash). Tapping a chip
+peeks: the page above the bar is that page, drawn from a small canvas cache (the origin's own canvas
+is never touched, so nothing autosaves, undoes or follows a link on the peeked page), and the view
+is never saved. Staying (a finger tap on the page, a pen down outside, the chip again) commits it: the
+origin goes on the back list, the cached canvas is swapped in (no second read or render) and one Full
+refresh clears the peeks' ghosting. Cancel (X, two fingers down, Close menu, the Links button) puts
+the page back as it was left, zoom and all. The bar and Find draw over the panel, and a press on
+either is a DU of its own (`app_press_feedback`).
+
+**Find** (findsheet.rs) is the Pages view's number pad done again for the whole notebook: a split
+keyboard host puts the rows card above the keyboard, a number offers "Go to page N", letters search the
+Index's names (accents and capitals ignored; names that begin with them first, then a word, then
+anywhere inside). A result goes through `go_to_page` and one Full.
+
+**The eye** (`link_areas`) draws a dotted box (canvas_dash_rect) and a numbered tag over each link's ink
+at compose time. It is never drawn into `page_canvas`, so it is never in a thumbnail, a PDF, a share
+page or the sleep screen. The tags carry the bar's entry numbers, from the same grouping function.
+
+**Refresh choices.** DU is 188 ms (294 cold), GL16 271 ms and GC16 341 ms. Screens only `app_invalidate`
+and `app_flush` presents once per loop pass with the strongest mode over one union; nothing here adds a
+display call or a wait.
+
+| Surface | Waveform | Rect |
+|---|---|---|
+| Two-finger gesture while moving | none: the action's own refresh is the feedback | |
+| Pan or zoom | Fast at most every 180 ms of the event clock, then Ui at the end if it moved | whole screen |
+| Panel press cancelled by a second finger | Fast | the button |
+| A bar chip or button press | DU at once (`app_press_feedback`), outside the accumulator | the chip |
+| Bar open or close | Ui | the card |
+| Peek | Ui, one present | the page area united with the card |
+| Commit | Full (resets the every-30th counter) | whole screen |
+| Cancel | Ui, or Full after three or more peeks | whole screen |
+| Back chip, pager | Ui | the page area, the chip grid |
+| Eye toggle | Ui of the button, a flush, then Ui of the boxes' union | the button, then the union |
+| Find open from the bar or a key | Ui | rows card and keyboard |
+| Find open from the Pages view | Full (the view closes in the same refresh) | whole screen |
+| Find typing | Fast field, rows and key, each flushed; one Ui of keyboard and rows 900 ms after a pause | |
+| Find result | Full (`go_to_page`) | whole screen |
+| A page-turn toast at the end of the notebook | toast only | |
+| `landscape_fit` toggled sideways | Full | whole screen |
+
+No GL16 and no toast ever run while the pen is down for ink: a pen down during a peek commits it at the
+PenDown, and the stroke is swallowed (`draw_begin` never runs, so pen mode is never on for it). The
+every-30th-Ui promotion to Full stays.
+

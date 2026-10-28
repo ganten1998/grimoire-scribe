@@ -52,6 +52,20 @@
   or the sleep screen. Older versions leave the two new lines in settings.ini alone, and count
   `status-toggle` among the shortcuts they do not know.
 
+- **Two-finger gestures and the Links bar**: on a notebook page, two fingers down open Pages and two
+  fingers up open the Links bar, left turns to the next page and right to the previous one (a page
+  turned this way never adds a page). The bar is a card along the bottom with one row for each page
+  the open page's links go to, numbered as the page's dotted link areas are (Areas in the bar, or
+  Buttons... > Index, show them over the page, never in a PDF): tap a row to look at that page, tap
+  the page to stay on it, or X to go back where you were. Go to opens a keyboard that takes a page
+  number or part of a page's name from the Index, and Back to the page before returns. The panel has
+  a Links button after Next. The pen always wins: with it near the screen or just lifted, a gesture
+  does not fire, and a resting palm fires nothing. Sideways now shows the whole page (Display >
+  "Sideways, show the whole page" turns it off), so two-finger swipes work there too. A new
+  gestures.ini beside shortcuts.ini changes what each gesture does (docs/SHORTCUTS.md). After the
+  update, the first notebook you open and the first turn sideways say what changed, once. Older
+  versions keep the four new settings.ini lines and never read gestures.ini.
+
 - **Updates from Grimoire**: Library > Settings > Updates checks Grimoire's feed through KPM (betas
   and releases on a beta, releases only on a release; a tap changes it) and installs a newer one:
   Grimoire closes, KPM installs it with its progress on the screen, and Grimoire starts again. A

@@ -359,6 +359,49 @@ shows from the next reading on. With neither, the corner shows the time alone.
 The screen guard leaves the corner's box out of its checks, so it is not taken for something else
 drawing over Grimoire.
 
+## Touch gestures and the touch trace
+
+Two fingers are gestures on the notebook page (docs/SHORTCUTS.md, gestures.ini by hand): down opens
+Pages, up the Links bar, left the next page and right the previous one, and a page turned that way never
+adds a page. They need no Enable shortcuts, and `gestures=0` in settings.ini turns them off (a pinch
+and a pan still work). The pen wins: with it near the screen, or just lifted (under a second), a
+gesture does not fire, and a swipe refused only for that says "Move the pen away, then swipe." now
+and then. A palm resting beside the writing hand fires nothing.
+
+`grimoire.log` has a line per touch session while Grimoire has the screen: the contacts, the gaps
+between them landing and lifting, and what became of it (`touch: session 2 contacts, landing gaps 0 112
+ms, lift gaps 0 40 ms: fired 2.down`, or `rejected pen`, `zoom`, `pan`, `palm`), a line with the
+fingertip size seen for each single finger, and for the first 300 two-finger frames of a run the raw
+contacts (slot, tracking id, tool, touch major, pressure, no coordinates). At most 2000 such lines a
+run.
+
+**The touch trace** records every contact frame so the thresholds can be tuned on real hands. It is
+off unless you turn it on:
+
+1. Create the empty file `grimoire/touch-trace` (beside `notebooks/`), for example
+   `touch /mnt/us/grimoire/touch-trace` over SSH or an empty file made over USB.
+2. Restart Grimoire (Library > Exit, then open it again).
+3. Do the touch script below. Grimoire appends to `grimoire/touch-trace.txt`: a `# grimoire touch-trace 1`
+   header line at each start, `F` lines (one per touch frame: kernel time, then `slot:id:x:y:major:tool`
+   for each contact), `P` lines (the pen's state changes only: prox, down, up, leave; never its
+   position) and `E` lines (what the recognizer decided). It stops at 4 MB, with one `E ... cap` line.
+4. Delete `grimoire/touch-trace` so the next start does not record, and send `grimoire.log` and
+   `grimoire/touch-trace.txt`. The trace is never in a notebook, an export or the share server, and
+   nothing is written while the Kindle's own passcode keypad has the screen.
+
+**The touch script** (about 15 minutes: a 3-minute two-finger part, then the rest). Work on a
+notebook page:
+
+- 20 two-finger swipes each way, 10 two-finger taps, and 5 three-finger taps (those should do nothing);
+- writing with the palm resting on the screen (nothing should fire);
+- 10 swipes straight after lifting the pen (write, lift, swipe right at once: note how often "Move the
+  pen away, then swipe." shows);
+- one finger drawing a Z, an N, an S, a circle, an alpha, a triangle and a V, 10 of each (nothing
+  should happen in this build);
+- 10 one-finger swipes each way;
+- 5 minutes of writing and 2 minutes holding the Kindle and reading, thumb on the screen as you
+  usually hold it.
+
 ## If something is off
 
 - **Stuck**: hold the power button 4 seconds; Grimoire saves and leaves, and the launcher gives
