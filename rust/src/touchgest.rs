@@ -275,6 +275,8 @@ struct Track {
     resting: bool,
     /// waits to lift: no gesture forms while it is down
     locked: bool,
+    /// its place in the touch session's record (sess), TG_MAX past its room
+    si: usize,
 }
 
 /// The pixel sizes of the rules, from millimetres at the screen's dpi (touchgest_init).
@@ -351,6 +353,10 @@ pub struct TouchGest {
     last_gesture: i32,
     last_reject: Option<TgReject>,
     result: Result_,
+    /// the touch session's record (first contact down to all lifted), for grimoire.log: each
+    /// contact's landing and lift, in the order they landed
+    sess: [(u32, u32); TG_MAX],
+    sess_n: usize,
 }
 
 impl Default for TouchGest {
@@ -383,6 +389,8 @@ impl Default for TouchGest {
             last_gesture: 0,
             last_reject: None,
             result: Result_::None,
+            sess: [(0, 0); TG_MAX],
+            sess_n: 0,
         }
     }
 }
@@ -806,6 +814,9 @@ impl TouchGest {
         for t in self.t.iter_mut() {
             if lifted(t) {
                 t.on = false;
+                if t.si < TG_MAX {
+                    self.sess[t.si].1 = k;
+                }
             }
         }
     }
@@ -1050,6 +1061,11 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
     // gives the gesture its end.)
     let session = g.ph == Ph::Session || g.ph == Ph::TapWait;
     let p = g.p;
+    if !touchgest_busy(g) && f.n > 0 {
+        // A touch session starts.
+        g.sess_n = 0;
+        g.result = Result_::None;
+    }
     for c in &f.c[..f.n.min(TG_MAX)] {
         let i = match g.t.iter().position(|t| t.on && t.id == c.id && t.slot == c.slot) {
             Some(i) => i,
@@ -1057,7 +1073,12 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
                 let free = |i: &usize| !g.t[*i].on && !(session && p.contains(i));
                 let Some(i) = (0..TG_MAX).find(free).or_else(|| (0..TG_MAX).find(|&i| !g.t[i].on)) else { continue };
                 let (x, y) = (ipx(c.x), ipx(c.y));
-                g.t[i] = Track { on: true, fresh: true, id: c.id, slot: c.slot, down_k: k, x0: x, y0: y, ..Default::default() };
+                let si = g.sess_n;
+                if si < TG_MAX {
+                    g.sess[si] = (k, k);
+                    g.sess_n += 1;
+                }
+                g.t[i] = Track { on: true, fresh: true, id: c.id, slot: c.slot, down_k: k, x0: x, y0: y, si, ..Default::default() };
                 i
             }
         };
@@ -1171,6 +1192,139 @@ pub fn touchgest_probe(g: &TouchGest, key: &str, out: &mut String) -> bool {
         "touch.gesture" => out.push_str(touchgest_gesture_name(g.last_gesture)),
         "touch.reject" => out.push_str(g.last_reject.map_or("", touchgest_reject_name)),
         _ => return false,
+    }
+    true
+}
+
+// ---- the touch log and the trace (input_evdev.rs writes them; nothing here does I/O) ----
+//
+// grimoire.log gets, while input is grabbed: a multi-contact frame's contacts (no places), each
+// touch session's landing and lift gaps and how it went, and a single finger's TOUCH_MAJOR; the
+// owner's opt-in touch-trace.txt every frame with places, the pen's coming and going (never where),
+// and the gestures' outcomes. Each formatter writes nothing (and says false) when input is not
+// grabbed: the Kindle's PIN screen owns the panel then.
+
+/// "touch: k %u n %d" and, per contact, " s%d:id%d:t%d:m%d:p%d" (slot, tracking id, tool,
+/// touch_major, pressure): no places.
+pub fn touchgest_log_frame(f: &TgFrame, grabbed: bool, out: &mut String) -> bool {
+    out.clear();
+    if !grabbed {
+        return false;
+    }
+    let mut each = String::new();
+    for c in &f.c[..f.n.min(TG_MAX)] {
+        each.push_str(&cformat!(" s%d:id%d:t%d:m%d:p%d", c.slot, c.id, c.tool as i32, c.major, c.pressure));
+    }
+    out.push_str(&cformat!("touch: k %u n %d%s", f.k_ms, f.n as i32, &each));
+    true
+}
+
+/// How the last touch session went: "fired 2.down", "rejected pen", "zoom", "pan", "palm",
+/// "cancelled" (the pen came, the panel dropped events), "none".
+pub fn touchgest_result_name(g: &TouchGest, out: &mut String) {
+    out.clear();
+    match g.result {
+        Result_::Fired(id) => out.push_str(&cformat!("fired %s", touchgest_gesture_name(id))),
+        Result_::Rejected(r) => out.push_str(&cformat!("rejected %s", touchgest_reject_name(r))),
+        Result_::Zoom => out.push_str("zoom"),
+        Result_::Pan => out.push_str("pan"),
+        Result_::Palm => out.push_str("palm"),
+        Result_::Cancelled => out.push_str("cancelled"),
+        Result_::None => out.push_str("none"),
+    }
+}
+
+/// How many contacts the last touch session had (its first contact down to all lifted).
+pub fn touchgest_session_contacts(g: &TouchGest) -> i32 {
+    g.sess_n as i32
+}
+
+/// The last touch session, once all its contacts lifted: "touch: session %d contacts, landing gaps
+/// %s ms, lift gaps %s ms: %s", the gaps from the first landing and from the first lift ("0 112").
+/// False for a session of one contact.
+pub fn touchgest_log_session(g: &TouchGest, grabbed: bool, out: &mut String) -> bool {
+    out.clear();
+    let n = g.sess_n;
+    if !grabbed || n < 2 {
+        return false;
+    }
+    let mut lifts = [0u32; TG_MAX];
+    for i in 0..n {
+        lifts[i] = g.sess[i].1;
+    }
+    let lifts = &mut lifts[..n];
+    lifts.sort_by_key(|&t| t.wrapping_sub(g.sess[0].0));
+    let (mut land, mut lift) = (String::new(), String::new());
+    for i in 0..n {
+        let sep = if i > 0 { " " } else { "" };
+        land.push_str(&cformat!("%s%u", sep, g.sess[i].0.wrapping_sub(g.sess[0].0)));
+        lift.push_str(&cformat!("%s%u", sep, lifts[i].wrapping_sub(lifts[0])));
+    }
+    let mut how = String::new();
+    touchgest_result_name(g, &mut how);
+    out.push_str(&cformat!("touch: session %d contacts, landing gaps %s ms, lift gaps %s ms: %s", n as i32, &land, &lift, &how));
+    true
+}
+
+/// A single finger's TOUCH_MAJOR at its lift: "touch: fingertips touch_major median %d max %d over %d
+/// frames".
+pub fn touchgest_log_fingertips(median: i32, max: i32, frames: i32, grabbed: bool, out: &mut String) -> bool {
+    out.clear();
+    if !grabbed {
+        return false;
+    }
+    out.push_str(&cformat!("touch: fingertips touch_major median %d max %d over %d frames", median, max, frames));
+    true
+}
+
+// (The trace's lines are formatted with core's write!, into a String the reader reserved: the
+// touch path never allocates, and these are no printf formats of the C's.)
+
+/// The trace's header, at each open of the file (and each turn): "# grimoire touch-trace 1, rotation
+/// R, WxH, dpi D".
+pub fn touchgest_trace_header(rotation: i32, w: i32, h: i32, dpi: f32, out: &mut String) {
+    use std::fmt::Write;
+    let _ = writeln!(out, "# grimoire touch-trace 1, rotation {rotation}, {w}x{h}, dpi {}", dpi.round() as i32);
+}
+
+/// A frame: "F <k_ms> <slot>:<id>:<x>:<y>:<major>:<tool> ..." (logical px, rounded), appended.
+pub fn touchgest_trace_frame(f: &TgFrame, grabbed: bool, out: &mut String) -> bool {
+    use std::fmt::Write;
+    if !grabbed {
+        return false;
+    }
+    let _ = write!(out, "F {}", f.k_ms);
+    for c in &f.c[..f.n.min(TG_MAX)] {
+        let _ = write!(out, " {}:{}:{}:{}:{}:{}", c.slot, c.id, ipx(c.x), ipx(c.y), c.major, c.tool);
+    }
+    out.push('\n');
+    true
+}
+
+/// The pen's coming and going: "P <k_ms> prox|down|up|leave" (never where), appended.
+pub fn touchgest_trace_pen(k_ms: u32, what: &str, grabbed: bool, out: &mut String) -> bool {
+    use std::fmt::Write;
+    if !grabbed {
+        return false;
+    }
+    let _ = writeln!(out, "P {k_ms} {what}");
+    true
+}
+
+/// A decision: "E <k_ms> fired 2.down", "E <k_ms> rejected pen" (nothing for none), appended.
+pub fn touchgest_trace_outcome(k_ms: u32, o: TgOutcome, grabbed: bool, out: &mut String) -> bool {
+    use std::fmt::Write;
+    if !grabbed {
+        return false;
+    }
+    match o {
+        TgOutcome::None => return false,
+        TgOutcome::Fired(id) => {
+            let _ = writeln!(out, "E {k_ms} fired {}", touchgest_gesture_name(id));
+        }
+        TgOutcome::Rejected(r) => {
+            let _ = writeln!(out, "E {k_ms} rejected {}", touchgest_reject_name(r));
+        }
     }
     true
 }

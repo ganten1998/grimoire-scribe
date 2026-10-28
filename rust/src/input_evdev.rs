@@ -395,6 +395,55 @@ impl Default for TouchSt {
     }
 }
 
+// ---- the touch log and trace ----
+
+/// grimoire.log's touch lines: the first TLOG_FRAMES multi-contact frames of each touch session, at
+/// most TLOG_LINES in a run; a single finger's TOUCH_MAJOR kept for its first TIP_N frames.
+const TLOG_FRAMES: i32 = 300;
+const TLOG_LINES: i32 = 2000;
+const TIP_N: usize = 128;
+
+#[derive(Clone, Copy, Debug)]
+struct TouchLog {
+    /// multi-contact frames logged this touch session, touch lines logged this run
+    frames: i32,
+    lines: i32,
+    /// a single finger's TOUCH_MAJOR at each frame it reported one (the first TIP_N), how many
+    /// frames, the largest
+    tip: [i32; TIP_N],
+    tip_frames: i32,
+    tip_max: i32,
+}
+
+impl Default for TouchLog {
+    fn default() -> Self {
+        TouchLog { frames: 0, lines: 0, tip: [0; TIP_N], tip_frames: 0, tip_max: 0 }
+    }
+}
+
+/// The trace file is written TRACE_FLUSH bytes at a time (or at each touch session's end), up to
+/// TRACE_MAX bytes in all; its buffer has TRACE_ROOM, so the pen's lines never write.
+const TRACE_FLUSH: usize = 4096;
+const TRACE_ROOM: usize = 8192;
+const TRACE_MAX: u64 = 4 * 1024 * 1024;
+
+/// The opt-in touch trace (input_touch_trace): grimoire/touch-trace.txt while grimoire/touch-trace is
+/// there.
+#[derive(Debug)]
+struct TouchTrace {
+    /// O_APPEND, -1 none
+    fd: i32,
+    /// what waits to be written (TRACE_ROOM reserved: appending never allocates)
+    buf: String,
+    written: u64,
+}
+
+impl Default for TouchTrace {
+    fn default() -> Self {
+        TouchTrace { fd: -1, buf: String::new(), written: 0 }
+    }
+}
+
 // Optional external inputs are watched without exclusive grabs. Native PIN input is discarded
 // at the same boundary as pen/touch, and key values and device names are never written to the log.
 const KEY_DEVS: usize = 4;
@@ -509,6 +558,10 @@ struct State {
     pen_last: (f32, f32),
     /// touch events handled so far (wrapping): input_poll ticks touchgest when none came
     touch_events: u32,
+    tlog: TouchLog,
+    trace: TouchTrace,
+    /// the screen's (input_open), for the trace's header
+    dpi: f32,
 
     // The raw digitizer's own drops: its frames are bigger than the scaled pen's (pressure and tilt
     // too), so its 128 events overflow sooner. Up to the next SYN_REPORT is partial and skipped (no
@@ -621,6 +674,9 @@ impl Default for State {
             touch_mono: false,
             pen_last: (0.0, 0.0),
             touch_events: 0,
+            tlog: TouchLog::default(),
+            trace: TouchTrace::default(),
+            dpi: 0.0,
             wacom_dropping: false,
             wacom_resync: false,
             wacom_drops: 0,
@@ -1097,6 +1153,9 @@ impl State {
         self.P.eraser = self.P.tool_rubber || self.W.rubber;
         let s = self.pen_state();
         let touching = pensync_contact(&s, self.pen.has_touch_btn, self.pen.ap.minimum);
+        if self.trace.fd >= 0 {
+            self.trace_pen(touching);
+        }
         if ((self.P.prox && !self.P.was_prox) || (touching && !self.P.was_touching)) && touchgest_busy(&self.tg) {
             // The pen arrived (or touched) while a finger, likely the palm, was down: that touch ends
             // with the off-screen cancel, a pinch with PinchEnd, before the pen's own event, and every
@@ -1412,8 +1471,116 @@ impl State {
         }
         let pen = TgPen { prox: self.P.prox, touching: self.P.was_touching, left_ms: self.pen_left_ms, last: self.pen_last };
         let mut out = TgOut::default();
+        let was_busy = touchgest_busy(&self.tg);
         touchgest_frame(&mut self.tg, &f, &pen, &mut out);
         self.tg_push(&out);
+        self.touch_log(&f, &out, was_busy);
+    }
+
+    // grimoire.log's touch lines (only while grabbed: touchgest is never fed at the PIN) and the trace.
+    fn touch_log(&mut self, f: &TgFrame, out: &TgOut, was_busy: bool) {
+        let grabbed = self.input_grabbed;
+        let mut line = String::new();
+        if f.n >= 2 && self.tlog.frames < TLOG_FRAMES && touchgest_log_frame(f, grabbed, &mut line) {
+            self.tlog.frames += 1;
+            self.tlog_line(&line);
+        }
+        if f.n == 1 && f.c[0].major > 0 {
+            let l = &mut self.tlog;
+            if (l.tip_frames as usize) < TIP_N {
+                l.tip[l.tip_frames as usize] = f.c[0].major;
+            }
+            l.tip_frames += 1;
+            l.tip_max = l.tip_max.max(f.c[0].major);
+        }
+        if self.trace.fd >= 0 {
+            touchgest_trace_frame(f, grabbed, &mut self.trace.buf);
+            touchgest_trace_outcome(f.k_ms, out.outcome, grabbed, &mut self.trace.buf);
+        }
+        let ended = was_busy && !touchgest_busy(&self.tg);
+        if ended {
+            // The touch session is over: its gaps and how it went, or one finger's size.
+            if touchgest_log_session(&self.tg, grabbed, &mut line) {
+                self.tlog_line(&line);
+            } else if touchgest_session_contacts(&self.tg) == 1 && self.tlog.tip_frames > 0 {
+                let n = (self.tlog.tip_frames as usize).min(TIP_N);
+                let mut v = self.tlog.tip;
+                v[..n].sort_unstable();
+                if touchgest_log_fingertips(v[n / 2], self.tlog.tip_max, self.tlog.tip_frames, grabbed, &mut line) {
+                    self.tlog_line(&line);
+                }
+            }
+            self.tlog.frames = 0;
+            self.tlog.tip_frames = 0;
+            self.tlog.tip_max = 0;
+        }
+        if self.trace.fd >= 0 && (ended || self.trace.buf.len() >= TRACE_FLUSH) {
+            self.trace_flush(f.k_ms);
+        }
+    }
+
+    fn tlog_line(&mut self, line: &str) {
+        if self.tlog.lines < TLOG_LINES {
+            qlog!("%s", line);
+        } else if self.tlog.lines == TLOG_LINES {
+            qlog!("touch: log cap reached");
+        }
+        self.tlog.lines = self.tlog.lines.saturating_add(1);
+    }
+
+    // The pen's coming and going for the trace, never where (no write here: the touch side flushes).
+    fn trace_pen(&mut self, touching: bool) {
+        let what = if self.P.prox && !self.P.was_prox {
+            "prox"
+        } else if touching && !self.P.was_touching {
+            "down"
+        } else if !touching && self.P.was_touching {
+            "up"
+        } else if !self.P.prox && self.P.was_prox {
+            "leave"
+        } else {
+            return;
+        };
+        if self.trace.buf.len() + 32 <= TRACE_ROOM {
+            let k = pensync_ms(self.pen_frame_us, self.pen_mono, now_ms());
+            touchgest_trace_pen(k, what, self.input_grabbed, &mut self.trace.buf);
+        }
+    }
+
+    // What waits goes to the file; at TRACE_MAX the trace ends with one "E <k_ms> cap" line.
+    fn trace_flush(&mut self, k_ms: u32) {
+        if self.trace.fd < 0 {
+            return;
+        }
+        let capped = self.trace.written + self.trace.buf.len() as u64 >= TRACE_MAX;
+        if capped {
+            use std::fmt::Write;
+            let _ = writeln!(self.trace.buf, "E {k_ms} cap");
+        }
+        let mut left = self.trace.buf.as_bytes();
+        while !left.is_empty() {
+            // SAFETY: write reads at most left.len() bytes of our buffer; the fd is the trace's own.
+            let w = unsafe { libc::write(self.trace.fd, left.as_ptr() as *const c_void, left.len()) };
+            if w < 0 && errno() == libc::EINTR {
+                continue;
+            }
+            if w <= 0 {
+                break; // (a full or failed userstore: what did not fit is dropped)
+            }
+            self.trace.written += w as u64;
+            left = &left[w as usize..];
+        }
+        self.trace.buf.clear();
+        if capped {
+            close_fd(self.trace.fd);
+            self.trace.fd = -1;
+        }
+    }
+
+    // The trace's header: at each open of the file, and when the screen turns (its places are logical).
+    fn trace_header(&mut self) {
+        let (w, h) = if self.rot & 1 != 0 { (self.h, self.w) } else { (self.w, self.h) };
+        touchgest_trace_header(self.rot, w, h, self.dpi, &mut self.trace.buf);
     }
 
     fn handle_touch(&mut self, ev: &InputEvent) -> Hover {
@@ -2166,6 +2333,18 @@ impl State {
                     self.touch.ay.minimum,
                     self.touch.ay.maximum
                 );
+                // How many contacts it follows and how it sizes them (touchgest's thresholds come
+                // from the owner's traces).
+                let mut major = InputAbsinfo::default();
+                eviocgabs(fd, ABS_MT_TOUCH_MAJOR, &mut major);
+                qlog!(
+                    "input: touch slots %d..%d, touch_major %d..%d r%d",
+                    slots.minimum,
+                    slots.maximum,
+                    major.minimum,
+                    major.maximum,
+                    major.resolution
+                );
             } else if power >= 0 && (self.power_fd < 0 || power < power_rank) {
                 if self.power_fd >= 0 {
                     qlog!("input: %s is another power key with more keys, not watched", &power_path);
@@ -2471,7 +2650,10 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
     if with(|s| s.open_devices(screen_w, screen_h, pen, touch)) != 0 {
         return -1;
     }
-    with(|s| touchgest_init(&mut s.tg, dpi));
+    with(|s| {
+        touchgest_init(&mut s.tg, dpi);
+        s.dpi = dpi;
+    });
 
     powerd_start();
     let mut p: [c_int; 2] = [-1; 2];
@@ -2758,7 +2940,13 @@ pub fn input_hids(out: &mut [InputHid]) -> i32 {
     with(|s| s.hids(out))
 }
 pub fn input_set_orientation(quarter_turns: i32) {
-    with(|s| s.rot = quarter_turns & 3)
+    with(|s| {
+        if s.rot != quarter_turns & 3 && s.trace.fd >= 0 {
+            s.rot = quarter_turns & 3;
+            s.trace_header();
+        }
+        s.rot = quarter_turns & 3;
+    })
 }
 #[allow(non_snake_case)]
 pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
@@ -2879,7 +3067,31 @@ pub fn input_touch_context(v: TgView) {
     with(|s| touchgest_set_view(&mut s.tg, v))
 }
 pub fn input_touch_trace(path: Option<&str>) {
-    let _ = path;
+    with(|s| {
+        s.trace_flush(now_ms());
+        if s.trace.fd >= 0 {
+            close_fd(s.trace.fd);
+            s.trace.fd = -1;
+        }
+        let Some(path) = path else { return };
+        let Ok(c) = CString::new(path) else { return };
+        // SAFETY: open reads the NUL-terminated path.
+        let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
+        if fd < 0 {
+            qlog!("input: touch trace %s: %s", path, &strerror(errno()));
+            return;
+        }
+        let written = fstat_fd(fd).map_or(0, |st| st.st_size as u64);
+        if written >= TRACE_MAX {
+            close_fd(fd);
+            qlog!("input: touch trace %s is full (4 MB): not written", path);
+            return;
+        }
+        s.trace = TouchTrace { fd, buf: String::with_capacity(TRACE_ROOM), written };
+        s.trace_header();
+        s.trace_flush(now_ms());
+        qlog!("input: touch trace in %s", path);
+    })
 }
 pub fn input_forget_signal_pipe() {
     for p in &G_SIGPIPE {
@@ -2887,6 +3099,7 @@ pub fn input_forget_signal_pipe() {
     }
 }
 pub fn input_close() {
+    input_touch_trace(None);
     work_pump_set(None);
     with(|s| s.hover_fn = None);
     input_sample_hook(None, None);

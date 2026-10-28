@@ -467,7 +467,18 @@ drawing over Grimoire.
   should give thick strokes down to the right when a right hand leans the pen that way),
   `watcher-multi` runs one continuous `lipc-wait-event -m -s 0` (KOReader's way) instead of the
   one-shot loop, for a device test (the log line `input: watching the power service (pid N): ...`
-  says which mode is running).
+  says which mode is running), and `touch-trace` asks for the touch trace below.
+- **The touch log and trace.** While Grimoire has the panel, `grimoire.log` gets
+  `input: touch slots ...` at the start (how many contacts the panel follows and how it sizes
+  them), the contacts of the first 300 frames of each multi-finger touch (`touch: k ...`: slot,
+  tracking id, tool, size and pressure, never where), each multi-finger touch's landing and lift
+  gaps and what it became (`touch: session ...: fired 2.down`, `rejected pen`, `zoom`, `pan`,
+  `palm`), and a single finger's size at its lift (`touch: fingertips ...`), at most 2000 such lines
+  a run. With an empty `grimoire/touch-trace`, Grimoire also appends every touch frame with its
+  places, the pen coming near, touching, lifting and leaving (never where it is: no handwriting),
+  and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
+  of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP
+  carries it. Delete `grimoire/touch-trace` to stop, and send the two files when asked.
 - **The startup log** starts with a diagnostics block. `device:` lines give the model code (the
   first 6 characters of /proc/usid, never the serial), memory, CPU part and hardware. `display:`
   lines give the FBInk device id, platform, pixel format, color panel flag, raw vinfo and finfo,

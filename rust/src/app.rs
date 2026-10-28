@@ -529,6 +529,12 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     csnprintf!(&mut controller_path, 1024, "%s/controller.ini", &store_root());
     shortcuts_load_all(&mut a.shortcuts, &shortcuts_path, &controller_path);
     app_gestures_load(a);
+    // The owner's touch trace (docs/KINDLE.md): an empty <root>/touch-trace asks for
+    // <root>/touch-trace.txt, written while Grimoire has the panel (only the Kindle writes one).
+    let switch = cformat!("%s/touch-trace", &store_root());
+    if std::fs::metadata(&switch).is_ok() {
+        input_touch_trace(Some(&cformat!("%s/touch-trace.txt", &store_root())));
+    }
     input_shortcuts_enable(a.settings.shortcuts_enabled);
     // The Bluetooth helper (bluetooth.h): the launcher says where its script is; in the simulator a
     // test may stand a helper in. It starts a moment after the first frame, if it is wanted.

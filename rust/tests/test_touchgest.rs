@@ -844,6 +844,90 @@ fn two_finger_taps() {
     check!(r.frame(60).is_empty() && r.probe("touch.reject") == "three");
 }
 
+// ---- the touch log and the trace ----
+
+// The formatters' exact lines, and nothing at all while input is not grabbed (the PIN's).
+fn the_log_and_trace_lines() {
+    let mut f = TgFrame { k_ms: 123456, ..Default::default() };
+    f.c[0] = TgContact { id: 41, slot: 0, x: 100.4, y: 200.6, nx: 0.05, ny: 0.08, major: 7, tool: 0, pressure: 30 };
+    f.c[1] = TgContact { id: 42, slot: 3, x: 1500.5, y: 2400.0, nx: 0.8, ny: 0.97, major: 9, tool: 2, pressure: 0 };
+    f.n = 2;
+    let mut s = String::new();
+    check!(touchgest_log_frame(&f, true, &mut s) && s == "touch: k 123456 n 2 s0:id41:t0:m7:p30 s3:id42:t2:m9:p0");
+    check!(!touchgest_log_frame(&f, false, &mut s) && s.is_empty());
+    let mut t = String::new();
+    check!(touchgest_trace_frame(&f, true, &mut t) && t == "F 123456 0:41:100:201:7:0 3:42:1501:2400:9:2\n");
+    check!(touchgest_trace_pen(123460, "prox", true, &mut t));
+    check!(touchgest_trace_outcome(123470, TgOutcome::Fired(G_2_DOWN), true, &mut t));
+    check!(touchgest_trace_outcome(123480, TgOutcome::Rejected(TgReject::Pen), true, &mut t));
+    check!(!touchgest_trace_outcome(123490, TgOutcome::None, true, &mut t));
+    check!(t == "F 123456 0:41:100:201:7:0 3:42:1501:2400:9:2\nP 123460 prox\nE 123470 fired 2.down\nE 123480 rejected pen\n");
+    let mut u = String::new();
+    check!(!touchgest_trace_frame(&f, false, &mut u) && !touchgest_trace_pen(1, "down", false, &mut u));
+    check!(!touchgest_trace_outcome(1, TgOutcome::Fired(G_2_UP), false, &mut u) && u.is_empty());
+    touchgest_trace_header(1, 2480, 1860, 300.0, &mut u);
+    check!(u == "# grimoire touch-trace 1, rotation 1, 2480x1860, dpi 300\n");
+    check!(touchgest_log_fingertips(12, 20, 33, true, &mut s) && s == "touch: fingertips touch_major median 12 max 20 over 33 frames");
+    check!(!touchgest_log_fingertips(12, 20, 33, false, &mut s) && s.is_empty());
+    // A trace frame appends to what the buffer holds and allocates nothing more when it has room.
+    let mut b = String::with_capacity(4096);
+    let cap = b.capacity();
+    for _ in 0..20 {
+        touchgest_trace_frame(&f, true, &mut b);
+    }
+    check!(b.capacity() == cap);
+}
+
+// A touch session's record: how many contacts, their landing and lift gaps from the first, how it
+// went; one contact logs no session line.
+fn the_session_line() {
+    let mut r = Rig::new();
+    let mut s = String::new();
+    swipe2(&mut r, 930.0, 900.0, 0.0, 400.0, 295.0, 30);
+    check!(touchgest_session_contacts(&r.g) == 2);
+    check!(touchgest_log_session(&r.g, true, &mut s));
+    check!(s == "touch: session 2 contacts, landing gaps 0 30 ms, lift gaps 0 5 ms: fired 2.down");
+    check!(!touchgest_log_session(&r.g, false, &mut s) && s.is_empty());
+    let mut r = Rig::new();
+    r.down(0, 800.0, 1200.0);
+    r.frame(450);
+    r.down(1, 1100.0, 1200.0);
+    r.frame(20);
+    r.up(1);
+    r.frame(40);
+    r.up(0);
+    r.frame(20);
+    check!(touchgest_log_session(&r.g, true, &mut s) && s == "touch: session 2 contacts, landing gaps 0 450 ms, lift gaps 0 40 ms: palm");
+    let mut r = Rig::new();
+    check!(fired(&swipe2(&mut r, 930.0, 900.0, 0.0, mm(10.0), 295.0, 30)) == 0);
+    touchgest_result_name(&r.g, &mut s);
+    check!(s == "rejected short");
+    let mut r = Rig::new();
+    r.down(0, 800.0, 1200.0);
+    r.frame(20);
+    r.up(0);
+    r.frame(20);
+    check!(touchgest_session_contacts(&r.g) == 1 && !touchgest_log_session(&r.g, true, &mut s));
+    // A zoom, a pan, a cancel.
+    let mut r = Rig::new();
+    drag2(&mut r, (800.0, 1200.0), (600.0, 1200.0), (1100.0, 1200.0), (1300.0, 1200.0), 20, 8);
+    touchgest_result_name(&r.g, &mut s);
+    check!(s == "zoom");
+    let mut r = Rig::new();
+    touchgest_set_view(&mut r.g, TgView { scrolls_v: true, gestures_on: true, ..Default::default() });
+    swipe2(&mut r, 930.0, 900.0, 0.0, 400.0, 295.0, 30);
+    touchgest_result_name(&r.g, &mut s);
+    check!(s == "pan");
+    let mut r = Rig::new();
+    r.down(0, 800.0, 1200.0);
+    r.frame(20);
+    r.cancel();
+    r.up(0);
+    r.frame(20);
+    touchgest_result_name(&r.g, &mut s);
+    check!(s == "cancelled");
+}
+
 #[test]
 fn test_touchgest() {
     run!(one_finger_is_the_stream_it_was);
@@ -869,5 +953,7 @@ fn test_touchgest() {
     run!(resting_contacts);
     run!(the_tick);
     run!(two_finger_taps);
+    run!(the_log_and_trace_lines);
+    run!(the_session_line);
     done();
 }
