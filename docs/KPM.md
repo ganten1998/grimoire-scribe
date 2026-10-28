@@ -82,7 +82,8 @@ uses KPM's upgrade hooks and does not need that workaround.
 ## Build and publication
 
 `make kpm-package` builds the ZIP first, then `tools/kpm-package.py` produces the deterministic
-package, repository manifests and checksum in `build/kpm`. `make check` includes KPM tests.
+package, repository manifests and checksum in `build/kpm`. `make check` includes KPM tests. The steps
+of a release, from the version bump to the feed, are in [RELEASING.md](RELEASING.md).
 
 Merge the workflow onto the default branch before publishing the first release through it.
 The GitHub release workflow runs the full checks. Only a **published GitHub release** uploads

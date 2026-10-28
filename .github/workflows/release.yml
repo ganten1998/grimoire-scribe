@@ -11,35 +11,26 @@ permissions:
 concurrency:
   group: grimoire-release-${{ github.event_name == 'release' && 'publish' || github.ref }}
   cancel-in-progress: false
+env:
+  # The toolchain the Kindle binary is built with. A local build with the same three versions makes
+  # the same bytes (tests/repro_check.sh holds the build to that), so these are the versions the
+  # maintainer's Mac must run before a release is tagged: docs/RELEASING.md, Before the tag.
+  # Each is at least two weeks older than the release it builds.
+  RUST_VERSION: '1.97.1'
+  ZIG_VERSION: '0.16.0'
+  CARGO_ZIGBUILD_VERSION: '0.23.0'
+  # Retry a crate download before failing the job over a network blip.
+  CARGO_NET_RETRY: '5'
 jobs:
   package:
     runs-on: macos-15
-    timeout-minutes: 60
+    # Two clean builds of the Kindle binary (tests/repro_check.sh) and the whole gate, on a runner
+    # with three cores: the first Rust run decides whether this is enough.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.12'
-      - name: Install build and test tools
-        run: |
-          brew install gettext luajit imagemagick shellcheck luacheck
-          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
-          curl --fail --location --retry 3 https://ziglang.org/download/index.json -o "$RUNNER_TEMP/zig-index.json"
-          python3 - <<'PY'
-          import hashlib, json, os, pathlib, platform, tarfile, urllib.request
-          entry = json.load(open(os.environ['RUNNER_TEMP'] + '/zig-index.json'))['0.16.0'][('aarch64' if platform.machine() == 'arm64' else 'x86_64') + '-macos']
-          archive = pathlib.Path(os.environ['RUNNER_TEMP']) / 'zig.tar.xz'
-          urllib.request.urlretrieve(entry['tarball'], archive)
-          assert hashlib.sha256(archive.read_bytes()).hexdigest() == entry['shasum']
-          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'zig'
-          target.mkdir()
-          with tarfile.open(archive) as tar:
-              tar.extractall(target, filter='data')
-          with open(os.environ['GITHUB_PATH'], 'a') as path:
-              path.write(str(next(target.iterdir())) + '\n')
-          PY
       - name: Check release identity
         if: github.event_name == 'release'
         env:
@@ -48,8 +39,65 @@ jobs:
         run: |
           test "$TAG" = "v$(cat VERSION)"
           case "$TAG" in *-*) test "$PRERELEASE" = true ;; *) test "$PRERELEASE" = false ;; esac
+          # The changelog has this version's dated section and no placeholder; the README and
+          # docs/TESTING.md name the version (docs/RELEASING.md, Before the tag).
+          tools/release-preflight.sh "$TAG"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install test tools
+        # Tools the checks run (msgfmt for the languages, luajit and luacheck for the KOReader
+        # plugin, shellcheck for the launchers, ImageMagick for the studio picture); none of them
+        # makes a byte of a release file. Node is the runner image's.
+        run: |
+          brew install gettext luajit imagemagick shellcheck luacheck
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+      - name: Install Rust
+        # rustc, cargo and the Kindle's standard library, exactly RUST_VERSION. The Makefile finds
+        # them through RUST_BIN (the Mac has a Homebrew rustc that shadows rustup's).
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target armv7-unknown-linux-musleabihf --no-self-update
+          rustup default "$RUST_VERSION"
+          echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: Install zig
+        # zig links the Kindle binary and compiles the vendored C (cargo-zigbuild runs it). The
+        # archive's sha256 is written here, from ziglang.org's index for this release: the download
+        # is checked against it, never against a hash that came with it.
+        run: |
+          case "$(uname -m)" in
+            arm64) arch=aarch64 sum=b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489 ;;
+            x86_64) arch=x86_64 sum=0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7 ;;
+            *) echo "no zig ${ZIG_VERSION} pinned for $(uname -m)"; exit 1 ;;
+          esac
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/zig.tar.xz" \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-${arch}-macos-${ZIG_VERSION}.tar.xz"
+          echo "${sum}  ${RUNNER_TEMP}/zig.tar.xz" | shasum -a 256 -c -
+          mkdir "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+      - name: Install cargo-zigbuild
+        # From crates.io at its pinned version, with the crate's own Cargo.lock (--locked).
+        run: |
+          PATH="$RUST_BIN:$PATH" cargo install cargo-zigbuild --version "$CARGO_ZIGBUILD_VERSION" --locked --root "$RUNNER_TEMP/cargo-zigbuild"
+          echo "$RUNNER_TEMP/cargo-zigbuild/bin" >> "$GITHUB_PATH"
+      - name: Check the toolchain and fetch the crates
+        # The versions are the pinned ones. rust/Cargo.lock decides every crate (--locked fails the
+        # job on a lockfile that would change, instead of changing it); the Makefile's licenses step
+        # reads the libc crate from the fetched sources.
+        run: |
+          test "$("$RUST_BIN/rustc" --version | cut -d' ' -f2)" = "$RUST_VERSION"
+          test "$(zig version)" = "$ZIG_VERSION"
+          test "$(cargo-zigbuild --version)" = "cargo-zigbuild $CARGO_ZIGBUILD_VERSION"
+          "$RUST_BIN/rustc" -vV
+          zig version
+          (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
       - name: Run release checks and build KPM package
-        run: make -j4 check
+        # make check: the app's gate (make rust-check: unit tests, scenarios, languages, share
+        # server, Live view, Bluetooth, exporter, the ARM build), the zip and its launchers, two
+        # clean builds of every release file compared byte for byte, the KPM package and the
+        # KOReader patches. One make, not -j: the scenarios, the languages and the share checks
+        # open the share server on the same port, and the clean builds should not compete with them.
+        run: make check
       - name: Collect release files
         run: |
           cp build/dist/Grimoire-"$(cat VERSION)".zip build/dist/KOReader-patches.zip build/kpm/
@@ -59,6 +107,8 @@ jobs:
           printf '%s\n' *.zip *.kpkg | LC_ALL=C sort | while IFS= read -r name; do shasum -a 256 "$name"; done > SHA256SUMS.txt
           test "$(wc -l < SHA256SUMS.txt)" -eq 3
           shasum -a 256 -c SHA256SUMS.txt
+          # In the log, to compare with a local make dist (its folder's SHA256SUMS.txt).
+          cat SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: grimoire-release

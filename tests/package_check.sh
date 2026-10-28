@@ -238,6 +238,10 @@ pins "the reset scriptlet" "$B/zip/$RESET" 'S=${GRIMOIRE_US:-/mnt/us}/grimoire/s
 # The watchdog looks for the heartbeat where the binary writes it (TMP is /tmp on the device).
 check "app/grimoire.sh watches \$TMP/grimoire.alive" grep -qE '^BEAT=\$TMP/grimoire\.alive( |$)' "$B/app/grimoire.sh"
 check "the binary beats in /tmp/grimoire.alive" grep -qF /tmp/grimoire.alive "$B/app/grimoire"
+# VERSION reaches the binary through build.rs (env!("GRIMOIRE_VERSION")): a binary built before a
+# version bump, or from a stale cargo target, names the old one. (A stable version is the start of
+# its own betas' names, so for 2.0.0 this cannot tell a stale 2.0.0-beta.N from the right one.)
+check "the binary names this version ($VERSION)" grep -qF -- "$VERSION" "$B/app/grimoire"
 # restore()'s backstop for a power-service watcher a crash left behind (pkill -f) must match the
 # watcher's command line, both kinds of it (src/input_evdev.c, WATCH_EVENTS): the two drifted once.
 PAT=$(sed -n 's/^ *pkill -f "\(.*\)" 2>.*/\1/p' "$B/app/grimoire.sh")

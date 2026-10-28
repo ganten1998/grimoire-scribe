@@ -2,6 +2,26 @@
 
 ## 2.0.0-beta.5 (unreleased)
 
+The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-beta.4 was a
+performance candidate that was never published, so its changes (the last section below) are in this
+release too.
+
+- **Grimoire is now written in Rust**: the whole app has been rewritten, screen for screen and file
+  for file, from the C it was written in until now. Using it does not change: the same screens,
+  pens, papers, shortcuts and settings. The port itself changes no file: your notebooks, templates,
+  settings and everything else under `grimoire/` are read and written as before, so there is nothing
+  to convert (the new features below add a few files of their own, each described in its entry).
+  The point is the versions to come: Rust makes a whole family of crashes (reading or writing past
+  the end of a buffer, using memory that was already freed) much harder to write, in everything
+  except the small C parts the app still links and that are unchanged: the screen library FBInk,
+  the font and image code and the QR code. The maintainer compared it with the C version on a
+  Kindle Scribe (2024) before this release. If something looks or behaves differently from
+  2.0.0-beta.3 and is not in this list, it is a mistake in the port: please report it.
+
+<!-- RELEASE-PLACEHOLDER (Index, phase 1): the entry for the Index's touch gestures and the Links bar, in plain words, then delete this line. -->
+<!-- RELEASE-PLACEHOLDER (Index, later phases, if they are in this release): one entry each, then delete this line. -->
+<!-- RELEASE-PLACEHOLDER (Live view fixes that land after the fast ink below): one entry, or fold them into the fast ink entry, then delete this line. -->
+
 - **Draw while looking at your computer**: Live view now sends pen movement on its own connection,
   so the browser can show a quick pressure-sensitive line while the exact page image catches up.
   Menu taps leave no preview ink. Monitor mode (M) fits the page and tucks the controls away; its
@@ -164,7 +184,7 @@
 - **The notebook PDF has a table of contents and links**: named sections become the PDF's outline
   (the bookmarks a PDF reader lists), and links drawn to pages are links in the PDF.
 
-## 2.0.0-beta.4 (unreleased)
+## 2.0.0-beta.4 (candidate, folded into 2.0.0-beta.5)
 
 - **Live ink on gray pages goes straight to black**: on a gray PDF page or template, most
   pixels under a new stroke used to flash white first and turn black a whole display waveform
