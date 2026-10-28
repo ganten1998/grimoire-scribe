@@ -183,7 +183,7 @@ pub fn shape_path(name: &str) -> Vec<P> {
 }
 
 /// The kinds of accident the gates and the bank must stand against (10.2).
-pub const SLIPS: &[&str] = &["swipe", "thumbarc", "slide", "scrub", "scribble"];
+pub const SLIPS: &[&str] = &["swipe", "thumbarc", "slide", "hairpin", "drift", "scrub", "scribble"];
 
 /// A random slip path in 0-1000ish units.
 pub fn slip_path(kind: &str, r: &mut Rng) -> Vec<P> {
@@ -211,6 +211,38 @@ pub fn slip_path(kind: &str, r: &mut Rng) -> Vec<P> {
             let rest = 10 * (100 - corner);
             let p2 = (p1.0 + rdiv(rest * fs_cos_q14(h + turn) as i64, 16384) as i32, p1.1 + rdiv(rest * fs_sin_q14(h + turn) as i64, 16384) as i32);
             poly(&mut o, &[(0, 0), p1, p2]);
+        }
+        // out and back: a slide that turns all the way round, with a rounded tip
+        "hairpin" => {
+            let r0 = r.range(20, 90);
+            let back = r.range(55, 100);
+            let lean = r.range(-15, 15);
+            line(&mut o, (0, 500), (1000, 500));
+            o.pop();
+            let side = if r.next() & 1 == 0 { 1 } else { -1 };
+            arc(&mut o, (1000, 500 + side * r0), r0, r0, -90 * side, 90 * side + lean * side);
+            let end = *o.last().unwrap();
+            let h = 180 + lean * side;
+            let len = 10 * back as i64;
+            let tip = (end.0 + rdiv(len * fs_cos_q14(h) as i64, 16384) as i32, end.1 + rdiv(len * fs_sin_q14(h) as i64, 16384) as i32);
+            line(&mut o, end, tip);
+        }
+        // a palm-like drift: the hand slides on, its heading wandering a little at a time
+        "drift" => {
+            // (headings in 1/16 degree: a bend of up to 6 degrees a step, wandering by 1)
+            let mut h = r.range(0, 359) * 16;
+            let mut bend = r.range(-48, 48);
+            let (mut x, mut y) = (0i64, 0i64);
+            o.push((0, 0));
+            for _ in 0..40 {
+                bend = (bend + r.range(-16, 16)).clamp(-96, 96);
+                h += bend;
+                x += rdiv(25 * fs_cos_q14(h / 16) as i64, 16384);
+                y += rdiv(25 * fs_sin_q14(h / 16) as i64, 16384);
+                let p = (x as i32, y as i32);
+                let last = *o.last().unwrap();
+                line(&mut o, last, p);
+            }
         }
         // scrubbing back and forth
         "scrub" => {
@@ -254,6 +286,12 @@ pub struct Draw {
     pub jitter: i32,
     /// slow wobble amplitude, px
     pub wobble: i32,
+    /// corners rounded over this much of the path, tenths of a mm (a finger cuts corners)
+    pub round: i32,
+    /// a hook at the end as the finger lifts: its length in tenths of a mm, turned by hook_turn
+    /// degrees from the way the path was going
+    pub hook: i32,
+    pub hook_turn: i32,
     /// the box centre on the screen
     pub cx: i32,
     pub cy: i32,
@@ -262,8 +300,85 @@ pub struct Draw {
 
 impl Default for Draw {
     fn default() -> Draw {
-        Draw { size_mm: 40, rot: 0, aspect: 100, reverse: false, shift: 0, ms: 900, jitter: 0, wobble: 0, cx: 900, cy: 1200, seed: 1 }
+        Draw {
+            size_mm: 40,
+            rot: 0,
+            aspect: 100,
+            reverse: false,
+            shift: 0,
+            ms: 900,
+            jitter: 0,
+            wobble: 0,
+            round: 0,
+            hook: 0,
+            hook_turn: 0,
+            cx: 900,
+            cy: 1200,
+            seed: 1,
+        }
     }
+}
+
+fn len_of(a: P, b: P) -> i64 {
+    isqrt(((b.0 - a.0) as i64).pow(2) + ((b.1 - a.1) as i64).pow(2))
+}
+
+/// What a finger does to a placed path (screen px): corners rounded by a moving average over
+/// `round` of the path (the window shrinks near the ends, so the ends stay put), then an end hook.
+pub fn finger(pts: &[P], d: &Draw) -> Vec<P> {
+    let mut v = pts.to_vec();
+    if v.len() < 2 {
+        return v;
+    }
+    if d.round > 0 {
+        let half = (d.round as i64 * PX100 as i64 / 1000 / 2).max(1);
+        let mut cum = vec![0i64];
+        for w in v.windows(2) {
+            cum.push(cum.last().unwrap() + len_of(w[0], w[1]));
+        }
+        let total = *cum.last().unwrap();
+        // (prefix sums, and a window [lo, hi) whose two edges only move forward: both
+        // cum - h and cum + h grow along the path, h shrinking only near the ends)
+        let (mut px, mut py) = (vec![0i64], vec![0i64]);
+        for p in &v {
+            px.push(px.last().unwrap() + p.0 as i64);
+            py.push(py.last().unwrap() + p.1 as i64);
+        }
+        let (mut lo, mut hi) = (0usize, 0usize);
+        let mut out = Vec::with_capacity(v.len());
+        for i in 0..v.len() {
+            let h = half.min(cum[i]).min(total - cum[i]);
+            while cum[lo] < cum[i] - h {
+                lo += 1;
+            }
+            while hi < v.len() && cum[hi] <= cum[i] + h {
+                hi += 1;
+            }
+            let n = (hi - lo) as i64;
+            out.push((rdiv(px[hi] - px[lo], n) as i32, rdiv(py[hi] - py[lo], n) as i32));
+        }
+        v = out;
+    }
+    if d.hook > 0 {
+        // the way the path was going over its last 3 mm
+        let end = *v.last().unwrap();
+        let back = 3 * PX100 as i64 / 100;
+        let mut k = v.len() - 1;
+        while k > 0 && len_of(v[k], end) < back {
+            k -= 1;
+        }
+        let (dx, dy) = ((end.0 - v[k].0) as i64, (end.1 - v[k].1) as i64);
+        let l = isqrt(dx * dx + dy * dy).max(1);
+        let (cs, sn) = (fs_cos_q14(d.hook_turn) as i64, fs_sin_q14(d.hook_turn) as i64);
+        let (hx, hy) = (rdiv(dx * cs - dy * sn, 16384), rdiv(dx * sn + dy * cs, 16384));
+        let hook_px = d.hook as i64 * PX100 as i64 / 1000;
+        let tip = (end.0 + rdiv(hx * hook_px, l) as i32, end.1 + rdiv(hy * hook_px, l) as i32);
+        let steps = (hook_px / 4).max(1);
+        for s in 1..=steps {
+            v.push((end.0 + rdiv((tip.0 - end.0) as i64 * s, steps) as i32, end.1 + rdiv((tip.1 - end.1) as i64 * s, steps) as i32));
+        }
+    }
+    v
 }
 
 /// The path placed on the screen as Draw says (no timing): reversed, shifted, stretched, turned,
@@ -312,9 +427,11 @@ pub struct Frame {
     pub t: u32,
 }
 
-/// The frames a finger sends drawing pts in d.ms: 80 Hz (12 and 13 ms apart in turn), along the
-/// path at minimum-jerk speed, with jitter and a slow wobble.
+/// The frames a finger sends drawing pts in d.ms: the corners rounded and the end hooked as d
+/// says (finger), then 80 Hz (12 and 13 ms apart in turn), along the path at minimum-jerk speed,
+/// with jitter and a slow wobble.
 pub fn frames_of(pts: &[P], d: &Draw) -> Vec<Frame> {
+    let pts = &finger(pts, d)[..];
     let mut cum = vec![0i64];
     for w in pts.windows(2) {
         let l = isqrt(((w[1].0 - w[0].0) as i64).pow(2) + ((w[1].1 - w[0].1) as i64).pow(2));
@@ -400,21 +517,29 @@ pub fn vary_record(r: &mut Rng, seed: u32) -> Draw {
         cx: r.range(700, 1100),
         cy: r.range(900, 1500),
         seed,
+        ..Draw::default()
     }
 }
 
-/// A use-like variation: any size from 25 to 90 mm, +-10 degrees, aspect 0.85-1.15, more jitter
-/// and wobble, either direction, any start on a closed shape.
+/// A use-like variation, the design's harsh one (10.2 and section 5's results): any size from 20
+/// to 100 mm, +-12 degrees, aspect 0.8-1.25, jitter 0.3-0.8 mm (4-9 px), wobble, either
+/// direction, any start on a closed shape, corners rounded over up to 3 mm, and an end hook of up
+/// to 3 mm in two draws of three.
 pub fn vary_use(r: &mut Rng, seed: u32) -> Draw {
+    let hooked = r.range(0, 2) > 0;
+    let hook_turn = r.range(40, 120) * if r.next() & 1 == 0 { 1 } else { -1 };
     Draw {
-        size_mm: r.range(25, 90),
-        rot: r.range(-10, 10),
-        aspect: r.range(85, 115),
+        size_mm: r.range(20, 100),
+        rot: r.range(-12, 12),
+        aspect: r.range(80, 125),
         reverse: r.next() & 1 == 1,
         shift: r.range(0, 99),
         ms: r.range(600, 1400) as u32,
-        jitter: r.range(3, 8),
+        jitter: r.range(4, 9),
         wobble: r.range(0, 14),
+        round: r.range(0, 30),
+        hook: if hooked { r.range(5, 30) } else { 0 },
+        hook_turn,
         cx: r.range(700, 1100),
         cy: r.range(900, 1500),
         seed,
