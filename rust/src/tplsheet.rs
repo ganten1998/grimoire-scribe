@@ -342,8 +342,8 @@ fn draw_empty(s: &TplSheet, a: &mut App, r: Rect) {
     // TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
     // offer (1560 px at 64 px in bold, sideways 2180).
     let mut heading = tr("No templates yet");
-    // TRANSLATORS: the same for the Photos sheet, when grimoire/photos has no photo (as above).
     if s.photos {
+        // TRANSLATORS: the same for the Photos sheet, when grimoire/photos has no photo (as above).
         heading = tr("No photos yet");
     }
     font_draw_centered(c, FontFace::Bold, ui_title_size(), Rect { x: w.x, y, w: w.w, h: ui_px(100.0) }, heading, 0);
@@ -377,12 +377,12 @@ a new page in Pages first.");
         bad += s.t[i].bad as i32;
     }
     if bad != 0 {
-        // TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
-        // does not read, or too big): how many; %s is the log file, which says which (by number). Up
-        // to 2 lines of 1560 px at 34 px, sideways 2180.
         csnprintf!(
             &mut text,
             640,
+            // TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
+            // does not read, or too big): how many; %s is the log file, which says which (by number). Up
+            // to 2 lines of 1560 px at 34 px, sideways 2180.
             ng_("Grimoire cannot use %d file there (see %s).", "Grimoire cannot use %d files there (see %s).", bad as i64),
             bad,
             "grimoire.log"
@@ -400,9 +400,9 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     // TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
     // write on as paper), which More papers... opens (1560 px at 64 px).
     let mut title = tr("Templates");
-    // TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
-    // opens (1560 px at 64 px).
     if s.photos {
+        // TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+        // opens (1560 px at 64 px).
         title = tr("Photos");
     }
     let in_ = ui_sheet(c, s.rect, title);

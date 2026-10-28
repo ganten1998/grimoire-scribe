@@ -687,30 +687,6 @@ mod tests {
     }
 
     #[test]
-    fn lookups_contexts_and_plurals() {
-        assert!(i18n_set("es") && i18n_current() == "es");
-        assert_eq!(tr("Done"), "Listo");
-        assert_eq!(tr("Cancel"), "Cancelar");
-        assert_eq!(tr("This is not in any catalog"), "This is not in any catalog");
-        assert_eq!(tr(""), "");
-        // A context tells two meanings apart: "key" is not the plain lookup.
-        assert_eq!(c_("key", "space"), "espacio");
-        assert_eq!(c_("nope", "Done"), "Done");
-        assert_eq!(c_("paper", "Blank"), "En blanco");
-        // The plural form of a count, in the language's rule.
-        assert_eq!(ng_("%d page", "%d pages", 1), "%d p\u{e1}gina");
-        assert_eq!(ng_("%d page", "%d pages", 0), "%d p\u{e1}ginas");
-        assert_eq!(ng_("%d page", "%d pages", 2), "%d p\u{e1}ginas");
-        assert_eq!(ng_("%d thing", "%d things", 1), "%d thing");
-        assert_eq!(ng_("%d thing", "%d things", 3), "%d things");
-        assert_eq!(i18n_getn_many("%d page", "%d pages", 1), ng_("%d page", "%d pages", 1));
-        english();
-        assert_eq!(tr("Done"), "Done");
-        assert_eq!(ng_("%d page", "%d pages", 1), "%d page");
-        assert_eq!(ng_("%d page", "%d pages", 2), "%d pages");
-    }
-
-    #[test]
     fn setting_the_language() {
         assert!(i18n_set("es_MX.UTF-8") && i18n_current() == "es");
         assert!(!i18n_set("fr_FR.UTF-8") && i18n_current() == "en" && tr("Done") == "Done");

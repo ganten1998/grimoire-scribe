@@ -259,9 +259,9 @@ fn tile_label(v: &PagesView, nb: &NotebookInfo, nav: &Nav, i: i32, lab: &mut Str
         i18n_copy(lab, name, cap);
     }
     let bp = book_page(v, nb.page_ids[i as usize]);
-    // TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
-    // annotated from KOReader): "p. 12". 355 px at 34 px.
     if bp != 0 {
+        // TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
+        // annotated from KOReader): "p. 12". 355 px at 34 px.
         csnprintf!(book, bcap, tr("p. %d"), bp);
     } else {
         book.clear();
@@ -353,9 +353,9 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     hits_add(&mut v.hits, back, PG_BACK, 0);
     let k = ticked_in(v, nb.npages());
     let mut del = String::new();
-    // TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
-    // Classic): Delete, with how many pages are ticked; tick all of them, or none.
     if k != 0 {
+        // TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
+        // Classic): Delete, with how many pages are ticked; tick all of them, or none.
         csnprintf!(&mut del, 64, tr("Delete (%d)"), k);
     } else {
         csnprintf!(&mut del, 64, "%s", tr("Delete"));

@@ -274,6 +274,28 @@ pub fn cut_at_bytes(s: &str, max: usize) -> &str {
     &s[..n]
 }
 
+// Dates in the language in use: the month's short name and the order come from the catalog.
+fn month_short(tm: &libc::tm) -> &'static str {
+    use crate::i18n::nc_;
+    const MON: [&str; 12] = [
+        // TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
+        // Library's cards, which are narrow when the Kindle is sideways.
+        nc_("month", "Jan"),
+        nc_("month", "Feb"),
+        nc_("month", "Mar"),
+        nc_("month", "Apr"),
+        nc_("month", "May"),
+        nc_("month", "Jun"),
+        nc_("month", "Jul"),
+        nc_("month", "Aug"),
+        nc_("month", "Sep"),
+        nc_("month", "Oct"),
+        nc_("month", "Nov"),
+        nc_("month", "Dec"),
+    ];
+    crate::i18n::c_("month", MON[((tm.tm_mon % 12 + 12) % 12) as usize])
+}
+
 /// Format a unix time as "Oct 10, 14:32" (local time) into buf.
 pub fn format_time_short(t: i64, buf: &mut String, cap: usize) {
     let tm = local_tm(t);
@@ -291,28 +313,6 @@ pub fn format_date_short(t: i64, buf: &mut String, cap: usize) {
     // above), then the day. "%2$d %1$s" is "10 Oct".
     let s = crate::cformat!(crate::i18n::c_("date", "%s %d"), month_short(&tm), tm.tm_mday);
     strlcpy_q(buf, &s, cap);
-}
-
-// Dates in the language in use: the month's short name and the order come from the catalog.
-fn month_short(tm: &libc::tm) -> &'static str {
-    use crate::i18n::nc_;
-    // TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
-    // Library's cards, which are narrow when the Kindle is sideways.
-    const MON: [&str; 12] = [
-        nc_("month", "Jan"),
-        nc_("month", "Feb"),
-        nc_("month", "Mar"),
-        nc_("month", "Apr"),
-        nc_("month", "May"),
-        nc_("month", "Jun"),
-        nc_("month", "Jul"),
-        nc_("month", "Aug"),
-        nc_("month", "Sep"),
-        nc_("month", "Oct"),
-        nc_("month", "Nov"),
-        nc_("month", "Dec"),
-    ];
-    crate::i18n::c_("month", MON[((tm.tm_mon % 12 + 12) % 12) as usize])
 }
 
 /// Path helpers (POSIX). mkdir -p; returns 0 on success.

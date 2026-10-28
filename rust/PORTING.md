@@ -486,10 +486,15 @@ The switch was made in wave 4: `make package`, `make dist` and the KPM rules shi
 4. The l10n rule extracts the msgids from rust/src/*.rs with the keywords
    `-ktr -kn_ -kc_:1c,2 -knc_:1c,2 -kng_:1,2`, through xgettext's C parser (`--language=C`):
    gettext 1.0's Rust parser drops the `#, c-format` marks msgfmt --check needs. po/grimoire.pot
-   must come out the same, apart from the source references; it does not yet (see the wave 4
-   report: i18n.rs's own tests get extracted, some TRANSLATORS comments sit a line too high after
-   rustfmt, and two groups of strings come in another order), so `make l10n`'s output is not
-   committed until it does.
+   comes out the same, apart from the source references and the date, and po/es.mo byte for byte
+   the same. Three things keep it so: i18n.rs's lookup checks, whose msgids no screen shows, are
+   in tests/test_i18n_lookups.rs, out of xgettext's reach; each TRANSLATORS comment sits on the
+   line right above the one with its call (xgettext's C parser drops a comment when a line of
+   other code comes between them, an `if`, a `let x = [` or a call's first line); and functions
+   keep the C file's order where that orders the strings (paper.rs, util.rs). A few comments are
+   dropped by both trees' extraction alike (above an `if` in the C too): they stay as they are,
+   since attaching them would change po/grimoire.pot. The committed catalogs still name the C's
+   sources: `make l10n` would only change those references and the date.
 5. `make check` is `make rust-check` plus the package, launcher, KPM and patch checks. The release
    workflow (.github/workflows/release.yml, `make -j4 check`) now needs rustup's stable toolchain,
    the armv7-unknown-linux-musleabihf target and cargo-zigbuild on its runner.

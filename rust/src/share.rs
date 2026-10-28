@@ -232,13 +232,13 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
     let mut end = y;
     if s(a).live {
         let mut shown = String::new();
-        // TRANSLATORS: Live view's pairing card, over the code a computer types (1640 px at 44 px
-        // upright, 1578 sideways).
         draw_line(
             &mut a.screen,
             FontFace::Regular,
             ui_text_size(),
             Rect { x, y, w, h: ui_px(80.0) },
+            // TRANSLATORS: Live view's pairing card, over the code a computer types (1640 px at 44 px
+            // upright, 1578 sideways).
             tr("Then type this code:"),
             0,
         );
@@ -260,8 +260,8 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
         return end;
     }
     for i in 0..N_HELP {
-        // TRANSLATORS: the last help line, with the command a computer pulls everything with.
         if i == N_HELP - 1 {
+            // TRANSLATORS: the last help line, with the command a computer pulls everything with.
             csnprintf!(&mut text, 160, tr("From a terminal: %s <address above>"), K_PULL);
         }
         end = draw_line(

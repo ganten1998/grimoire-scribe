@@ -159,31 +159,6 @@ pub fn music_decode(k: PaperKind, m: &mut MusicLayout) -> bool {
     }
 }
 
-/// "Treble staff", "Tab, 6 lines", ...
-pub fn music_part_name(p: MusicPart) -> &'static str {
-    match p {
-        // TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
-        // (280 px at 44 px in Gothic, 298 in Classic, or two lines at 34 px) and in its list of the
-        // layout's parts.
-        PART_TREBLE => nc_("music part", "Treble staff"),
-        PART_BASS => nc_("music part", "Bass staff"),
-        PART_ALTO => nc_("music part", "Alto staff"),
-        PART_TENOR => nc_("music part", "Tenor staff"),
-        PART_PERC => nc_("music part", "Drum staff"),
-        PART_STAFF => nc_("music part", "Plain staff"),
-        PART_TAB4 => nc_("music part", "Tab, 4 lines"),
-        PART_TAB5 => nc_("music part", "Tab, 5 lines"),
-        PART_TAB6 => nc_("music part", "Tab, 6 lines"),
-        PART_TAB7 => nc_("music part", "Tab, 7 lines"),
-        PART_LYRICS => nc_("music part", "Lyric line"),
-        _ => "",
-    }
-}
-/// the same in the language in use, for the screens
-pub fn part_label(p: MusicPart) -> &'static str {
-    c_("music part", music_part_name(p))
-}
-
 fn part_lines(p: MusicPart) -> i32 {
     if p >= PART_TAB4 && p <= PART_TAB7 {
         return 4 + (p.0 - PART_TAB4.0);
@@ -260,9 +235,9 @@ pub const PAPER_PICKER_COUNT: i32 = PAPER_COUNT + 1;
 /// e.g. "Narrow rule", "Narrow, no margin", "Template", "Imported page", "Newer paper"
 pub fn paper_name(k: PaperKind) -> &'static str {
     // A picture: a template the owner copied in, or a page of an imported document.
-    // TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
-    // of a document imported as pictures (named as the other papers are, below).
     if paper_is_image(k) {
+        // TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
+        // of a document imported as pictures (named as the other papers are, below).
         return if paper_is_document(k) { nc_("paper", "Imported page") } else { nc_("paper", "Template") };
     }
     match k {
@@ -301,6 +276,31 @@ pub fn paper_name(k: PaperKind) -> &'static str {
 /// identifier for /api/list.json).
 pub fn paper_label(k: PaperKind) -> &'static str {
     c_("paper", paper_name(k))
+}
+
+/// "Treble staff", "Tab, 6 lines", ...
+pub fn music_part_name(p: MusicPart) -> &'static str {
+    match p {
+        // TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
+        // (280 px at 44 px in Gothic, 298 in Classic, or two lines at 34 px) and in its list of the
+        // layout's parts.
+        PART_TREBLE => nc_("music part", "Treble staff"),
+        PART_BASS => nc_("music part", "Bass staff"),
+        PART_ALTO => nc_("music part", "Alto staff"),
+        PART_TENOR => nc_("music part", "Tenor staff"),
+        PART_PERC => nc_("music part", "Drum staff"),
+        PART_STAFF => nc_("music part", "Plain staff"),
+        PART_TAB4 => nc_("music part", "Tab, 4 lines"),
+        PART_TAB5 => nc_("music part", "Tab, 5 lines"),
+        PART_TAB6 => nc_("music part", "Tab, 6 lines"),
+        PART_TAB7 => nc_("music part", "Tab, 7 lines"),
+        PART_LYRICS => nc_("music part", "Lyric line"),
+        _ => "",
+    }
+}
+/// the same in the language in use, for the screens
+pub fn part_label(p: MusicPart) -> &'static str {
+    c_("music part", music_part_name(p))
 }
 
 /// The order papers are offered in pickers (index 0..PAPER_COUNT-1 -> kind).

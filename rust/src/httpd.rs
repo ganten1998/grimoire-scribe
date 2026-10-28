@@ -928,9 +928,9 @@ fn nb_card(b: &mut Buf, nb: &NotebookInfo) {
 }
 
 fn download_footer(b: &mut Buf) {
-    // TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
-    // {percent} includes the percent sign: sent to the browser, not saved to its disk.
     let words = [
+        // TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
+        // {percent} includes the percent sign: sent to the browser, not saved to its disk.
         tr("Preparing PDF..."),
         tr("Preparing PDF: {done} / {total} pages"),
         tr("Sending PDF: {percent}"),
@@ -1373,10 +1373,10 @@ fn route_live_page(query: &[u8]) {
     buf_printf!(&mut b, "</button></p>");
     if e == b"wrong" || e == b"locked" {
         buf_printf!(&mut b, "<p class=err role=alert>");
-        // TRANSLATORS: the code form after a wrong code, and after five (the Kindle shows a new one).
         html_esc(
             &mut b,
             if e == b"wrong" {
+                // TRANSLATORS: the code form after a wrong code, and after five (the Kindle shows a new one).
                 tr("That code is not the one on the Kindle.")
             } else {
                 tr("Too many tries. Wait 30 seconds, then type the new code.")
@@ -1569,9 +1569,9 @@ fn route(path_in: &[u8]) {
     if path == b"/apple-touch-icon.png" || path == b"/apple-touch-icon-precomposed.png" {
         return route_touch_icon();
     }
-    // TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
-    // keeps the server up: the Share screen must be open for those.
     if owners() & HTTPD_SHARE == 0 {
+        // TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
+        // keeps the server up: the Share screen must be open for those.
         return respond_text(403, tr("Open Share on the Kindle to download."));
     }
     if path == b"/" || path == b"/index.html" {
