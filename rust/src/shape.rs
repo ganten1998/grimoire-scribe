@@ -14,9 +14,15 @@
 //! every 2 mm) and the ellipse's vertex count are in page units and do not depend on the zoom.
 //!
 //! The gates are there to say no. On the owner's 47 real strokes a hold-only trigger fired 21
-//! times; here size, closure, winding, the scribble budget and the fit residuals each have to pass, and a stroke started in a writing burst (just after the last lift, close to it) gets
+//! times; here size, closure, winding, the scribble budget and the fit residuals each have to
+//! pass, and a stroke started in a writing burst (just after the last lift, close to it) gets
 //! tolerances 0.7x as wide. Every refusal is an enum: the screens map them to text, this module
 //! has none.
+//!
+//! Before any gate the stroke is cleaned of what the pen adds and the hand did not draw: the rest
+//! the hold leaves at its end (the nib jittering in place for half a second) is cut, and the
+//! samples are thinned to one every SAMPLE_GAP_MM on the glass, so a slow pen's dense jitter does
+//! not read as a zigzag.
 //!
 //! Floats are f64 inside (the fits sum hundreds of products) and f32 at the edges, as PenSample
 //! is. Every `a * b + c` is written `fmla(a, b, c)` (PORTING.md, Floating point).
@@ -87,6 +93,13 @@ pub const SHAPE_ELLIPSE_PX: f32 = 0.25;
 pub const SHAPE_ELLIPSE_MIN_N: i32 = 24;
 pub const SHAPE_ELLIPSE_MAX_N: i32 = 720;
 
+// ---- the trigger (the editor's; only its radius is used here) ----
+
+/// The hold: the nib still within this many screen mm (of where it came to rest) for the hold
+/// time. The recognizer cuts the samples within twice this of the stroke's last one (the rest the
+/// hold left; see cut_hold).
+pub const SHAPE_HOLD_MM: f32 = 1.0;
+
 // ---- the writing-burst gate (the editor fills ShapeParams::burst with shape_in_burst) ----
 
 /// A stroke started within this many ms of the last lift...
@@ -98,9 +111,20 @@ pub const SHAPE_BURST_TOL: f32 = 0.7;
 /// A burst stroke's hold is this times as long (the editor's: the hold timing is not here).
 pub const SHAPE_BURST_HOLD: f32 = 1.5;
 
-/// More resampled points than this (a path longer than 8 diagonals) is ink no shape has: no closed
-/// shape with an overshoot comes near it, and it keeps the work bounded.
-const MAX_RESAMPLED: usize = 8 * 40 + 1;
+/// The raw samples are thinned to one at least this many screen mm from the last one kept before
+/// the stroke is resampled. The resampling walks the raw path, and where the pen's jitter is
+/// comparable to its sample spacing (a slow pen, dense samples) the raw path zigzags: it grows
+/// longer than the stroke, so the resampled points crowd onto the zigzag, a line loses its
+/// straightness and a polygon's turning swamps the scribble budget, worst on small shapes whose
+/// step is shortest. Thinned at a fixed size on the glass the zigzag is gone whatever the pen's
+/// rate, and a corner moves by a quarter of this at most.
+const SAMPLE_GAP_MM: f64 = 0.5;
+/// A path longer than this many diagonals is ink no shape has: no closed shape with an overshoot
+/// comes near it, and it keeps the work bounded (321 points at diag/40).
+const MAX_DIAGS: f64 = 8.0;
+/// A closed loop is resampled finer when its thickness spans fewer than this many steps (see
+/// shape_recognize).
+const THIN_STEPS: f64 = 8.0;
 /// ShortStraw's window (Wolin, Eoff and Hammond 2008) and its corner threshold.
 const STRAW_W: usize = 3;
 const STRAW_MEDIAN: f64 = 0.95;
@@ -336,8 +360,9 @@ fn intersect(a: (P, P), b: (P, P)) -> Option<P> {
 }
 
 /// The points every `step` along the path (the first and, within half a step, the last).
-/// None when that is more than MAX_RESAMPLED points.
-fn resample(raw: &[P], step: f64) -> Option<Vec<P>> {
+/// None when the path is longer than MAX_DIAGS times `diag`.
+fn resample(raw: &[P], step: f64, diag: f64) -> Option<Vec<P>> {
+    let max_points = (MAX_DIAGS * diag / step).round() as usize + 1;
     let mut out = vec![raw[0]];
     let mut prev = raw[0];
     let mut acc = 0.0;
@@ -346,7 +371,7 @@ fn resample(raw: &[P], step: f64) -> Option<Vec<P>> {
         while d > 0.0 && acc + d >= step {
             let np = lerp(prev, cur, (step - acc) / d);
             out.push(np);
-            if out.len() > MAX_RESAMPLED {
+            if out.len() > max_points {
                 return None;
             }
             prev = np;
@@ -365,7 +390,7 @@ fn resample(raw: &[P], step: f64) -> Option<Vec<P>> {
         let n = out.len();
         out[n - 1] = last;
     }
-    if out.len() > MAX_RESAMPLED {
+    if out.len() > max_points {
         return None;
     }
     Some(out)
@@ -435,23 +460,23 @@ pub fn shape_paper_ruled(k: PaperKind) -> bool {
 
 /// Recognizes a raw stroke (`pts`, page px) on a page drawn with `prm`. Never fails: a stroke that
 /// is no shape comes back with ShapeKind::None and the reason.
+///
+/// `pts` is the stroke as it stands when the hold fires, its resting samples included: the
+/// recognizer cuts them itself (cut_hold), so the editor passes the stroke whole. shape-last's
+/// stroke, which ended in a lift and no hold, goes through the same cut, which only straightens
+/// its last 2 mm (and takes a lift-off hook with them).
 pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     let mut r = ShapeResult::default();
     let mm = px_per_mm(prm.dpi, prm.zoom);
     let tol = if prm.burst { SHAPE_BURST_TOL as f64 } else { 1.0 };
-    let mut raw: Vec<P> = Vec::with_capacity(pts.len());
-    for s in pts {
-        if !s.x.is_finite() || !s.y.is_finite() {
-            r.reason = ShapeReason::Degenerate;
-            return r;
-        }
-        let q = p(s.x as f64, s.y as f64);
-        // (repeated points add nothing to the path)
-        if raw.last() != Some(&q) {
-            raw.push(q);
-        }
+    if mm <= 0.0 || pts.iter().any(|s| !s.x.is_finite() || !s.y.is_finite()) {
+        r.reason = ShapeReason::Degenerate;
+        return r;
     }
-    if mm <= 0.0 || raw.len() < 2 {
+    let (pts, end_t) = cut_hold(pts, 2.0 * SHAPE_HOLD_MM as f64 * mm);
+    let pts = &pts[..];
+    let raw = spaced(pts, SAMPLE_GAP_MM * mm);
+    if raw.len() < 2 {
         r.reason = ShapeReason::Degenerate;
         return r;
     }
@@ -470,7 +495,7 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
         return r;
     }
     let step = diag / SHAPE_RESAMPLE_DIV as f64;
-    let Some(q) = resample(&raw, step) else {
+    let Some(q) = resample(&raw, step, diag) else {
         r.reason = ShapeReason::Scribble;
         return r;
     };
@@ -495,7 +520,7 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
         }
         let ends = line_ends(&q, &raw, prm, mm);
         r.kind = ShapeKind::Line;
-        r.pts = finish(pts, &segments(&[ends.0, ends.1], false, page_step(prm)));
+        r.pts = finish(pts, &segments(&[ends.0, ends.1], false, page_step(prm)), end_t);
         return r;
     }
 
@@ -507,15 +532,14 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
         if prm.extras {
             if let Some((kind, out)) = open_shape(&q, diag, prm, mm, tol, &mut r.features) {
                 r.kind = kind;
-                r.pts = finish(pts, &out);
+                r.pts = finish(pts, &out, end_t);
                 return r;
             }
         }
         r.reason = ShapeReason::NotClosed;
         return r;
     }
-    let lp = &q[i..=j];
-    let (thick, across) = widths(lp);
+    let (thick, across) = widths(&q[i..=j]);
     r.features.across_mm = (across / mm) as f32;
     r.features.thick_mm = (thick / mm) as f32;
     if across < SHAPE_CLOSED_ACROSS_MM as f64 * mm {
@@ -526,6 +550,20 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
         r.reason = ShapeReason::TooThin;
         return r;
     }
+    // ShortStraw needs a few points along a shape's shortest edge, and a long thin one resampled
+    // at diag/40 has two or three on each short edge: too few to tell their two corners apart. A
+    // loop thinner than THIN_STEPS steps is resampled again, at its thickness / THIN_STEPS, and
+    // closed again there; the gates below and the fits measure that finer loop. (At the 4 mm
+    // gate that is 0.5 mm, the thinning's gap, so the finer points add no jitter of their own.)
+    let fine = thick / THIN_STEPS;
+    let (q, step, i, j) = match (fine < step).then(|| resample(&raw, fine, diag)).flatten() {
+        Some(qf) => {
+            let (fi, fj, _) = closure(&qf, path_len(&qf));
+            (qf, fine, fi, fj)
+        }
+        None => (q, step, i, j),
+    };
+    let lp = &q[i..=j];
     let pi = std::f64::consts::PI;
     let cen = centroid(lp);
     let mut wind = 0.0;
@@ -590,17 +628,70 @@ pub fn shape_recognize(pts: &[PenSample], prm: &ShapeParams) -> ShapeResult {
     if let (true, Some((kind, verts))) = (use_poly, poly) {
         let (kind, verts) = snap_polygon(kind, verts, prm, mm);
         r.kind = kind;
-        r.pts = finish(pts, &start_closed(&verts, sign, first, pstep));
+        r.pts = finish(pts, &start_closed(&verts, sign, first, pstep), end_t);
         return r;
     }
     if let Some(el) = ell {
         let (kind, outline) = ellipse_outline(&el, sign, first);
         r.kind = kind;
-        r.pts = finish(pts, &outline);
+        r.pts = finish(pts, &outline, end_t);
         return r;
     }
     r.reason = ShapeReason::NoFit;
     r
+}
+
+/// The stroke without the samples the hold left at its end: those within `r` (page px) of the last
+/// sample, back to the first one that is not, become the last sample alone. The trigger fires only
+/// after the nib has rested within SHAPE_HOLD_MM of one place for the hold time, so every stroke it
+/// hands over ends in a few hundred samples jittering or wandering there, all within twice that
+/// of the last one (the caller's `r`). Kept, their wanderings would add path length (a line's
+/// straightness) and turns (the scribble budget) that nobody drew, more than the thinning can
+/// take out once the nib wanders past SAMPLE_GAP_MM; cut, the last stretch of the drawing up to
+/// the rest becomes one straight step of at most `r`. That last sample is timed when the nib came
+/// to the rest, so the drawing's times end there; the second value is the stroke's real end (the
+/// last sample's own time), which the snapped stroke's last point keeps. A stroke that ended in a
+/// lift (shape-last's) loses only that last straight step.
+fn cut_hold(pts: &[PenSample], r: f64) -> (Vec<PenSample>, u32) {
+    let Some(last) = pts.last() else {
+        return (Vec::new(), 0);
+    };
+    let far = |s: &PenSample| dist(p(s.x as f64, s.y as f64), p(last.x as f64, last.y as f64)) > r;
+    match pts.iter().rposition(far) {
+        Some(k) => {
+            // (k is before the last sample, which is no distance from itself)
+            let mut out = pts[..=k].to_vec();
+            out.push(PenSample { t_ms: pts[k + 1].t_ms, ..*last });
+            (out, last.t_ms)
+        }
+        // (all of it within r: a dot, which the size gate refuses as it is)
+        None => (pts.to_vec(), last.t_ms),
+    }
+}
+
+/// The samples at least `gap` (page px) from the last one kept (SAMPLE_GAP_MM says why). The first
+/// and the last sample are always kept, the last in the place of a kept one too close to it, so
+/// the stroke still starts and ends where it did.
+fn spaced(pts: &[PenSample], gap: f64) -> Vec<P> {
+    let mut raw: Vec<P> = Vec::with_capacity(pts.len());
+    for s in pts {
+        let q = p(s.x as f64, s.y as f64);
+        if raw.last().is_none_or(|&l| dist(l, q) >= gap) {
+            raw.push(q);
+        }
+    }
+    if let Some(s) = pts.last() {
+        let last = p(s.x as f64, s.y as f64);
+        if raw.last() != Some(&last) {
+            if raw.len() > 1 {
+                let n = raw.len();
+                raw[n - 1] = last;
+            } else {
+                raw.push(last);
+            }
+        }
+    }
+    raw
 }
 
 /// The loop's least width over all directions (every 2 degrees) and its width across that: a
@@ -687,7 +778,23 @@ fn closure(q: &[P], len: f64) -> (usize, usize, f64) {
             best = (i, n - 1, d);
         }
     }
-    best
+    // The loop must not double back where it closes. The point kept nearest the other end can lie
+    // up to half a step beyond it, and the closing step would then turn back on itself and read as
+    // a corner in the middle of an edge: that point goes (the cut moves on by a step, twice at
+    // most, and only across a gap under a step: an open stroke's ends are left as they are).
+    let (mut i, mut j) = (best.0, best.1);
+    let step = dist(q[0], q[1]);
+    for _ in 0..2 {
+        if j <= i + 3 || dist(q[i], q[j]) >= step || dot(sub(q[i], q[j]), sub(q[i + 1], q[i])) >= 0.0 {
+            break;
+        }
+        if best.0 > 0 {
+            i += 1;
+        } else {
+            j -= 1;
+        }
+    }
+    (i, j, dist(q[i], q[j]))
 }
 
 // ---- lines ----
@@ -1675,8 +1782,9 @@ fn median(v: &mut [f32]) -> f32 {
 
 /// The snapped points as samples: the pressure is the median of the raw samples in the middle 80%
 /// of the stroke by arc length (the lead-in and lift-off are light), the tilt the median of all of
-/// them, and each point's time the raw time at the same fraction of the arc length.
-fn finish(raw: &[PenSample], out: &[P]) -> Vec<PenSample> {
+/// them, and each point's time the raw time at the same fraction of the arc length, except the
+/// last point's, which is `end_t`, when the stroke really ended (after its rest; see cut_hold).
+fn finish(raw: &[PenSample], out: &[P], end_t: u32) -> Vec<PenSample> {
     let n = raw.len();
     let mut cum = vec![0.0f64; n];
     for k in 1..n {
@@ -1706,22 +1814,15 @@ fn finish(raw: &[PenSample], out: &[P]) -> Vec<PenSample> {
         while seg + 1 < n - 1 && cum[seg + 1] < target {
             seg += 1;
         }
-        let t = if k == out.len() - 1 {
-            off[n - 1]
+        let t_ms = if k == out.len() - 1 {
+            end_t
         } else if n == 1 || cum[seg + 1] <= cum[seg] {
-            off[seg]
+            t0.wrapping_add(off[seg].round() as u32)
         } else {
             let f = ((target - cum[seg]) / (cum[seg + 1] - cum[seg])).clamp(0.0, 1.0);
-            fmla(off[seg + 1] - off[seg], f, off[seg])
+            t0.wrapping_add(fmla(off[seg + 1] - off[seg], f, off[seg]).round() as u32)
         };
-        res.push(PenSample {
-            x: q.x as f32,
-            y: q.y as f32,
-            pressure,
-            tilt_x,
-            tilt_y,
-            t_ms: t0.wrapping_add(t.round() as u32),
-        });
+        res.push(PenSample { x: q.x as f32, y: q.y as f32, pressure, tilt_x, tilt_y, t_ms });
     }
     res
 }
