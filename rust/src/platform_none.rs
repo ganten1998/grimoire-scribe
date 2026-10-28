@@ -93,6 +93,7 @@ pub fn sys_activity() {}
 pub fn sys_battery() -> Battery {
     Battery::default()
 }
+pub fn sys_battery_reap() {}
 pub fn sys_wall_clock() -> i64 {
     wall_time()
 }

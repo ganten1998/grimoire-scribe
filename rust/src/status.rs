@@ -214,6 +214,17 @@ fn layout_of(size: i32, t: i64, b: &Battery) -> Layout {
     }
 }
 
+/// The band across the top of the screen that the indicator of the current size stays inside,
+/// whatever it says: its box starts at the margin and is as tall as layout_of makes it. Asked
+/// before a layout, which costs a clock, a format and a measure, so a refresh far below costs none.
+fn band(a: &App) -> Rect {
+    let px = size_px(a.settings.status_size);
+    let face = FontFace::Fixed;
+    let lh = font_ascent(face, px) + font_descent(face, px);
+    let pady = (px * 0.3) as i32;
+    Rect { x: 0, y: 0, w: a.w, h: ui_px(6.0) + lh + 2 * pady }
+}
+
 fn layout(a: &App) -> Layout {
     let b = with(|s| s.battery);
     layout_of(a.settings.status_size, sys_wall_clock(), &b)
@@ -325,6 +336,7 @@ pub fn status_reset() {
         s.drawn_text.clear();
         s.drawn_key = None;
         s.pending = RECT_EMPTY;
+        s.read_at = 0; // (the battery ran down meanwhile: the first tick awake reads it again)
     });
     display_skip_status(RECT_EMPTY);
 }
@@ -332,6 +344,7 @@ pub fn status_reset() {
 /// From app_tick, awake: reads the battery now and then and asks for a refresh when the minute or
 /// the battery is not what the panel shows.
 pub fn status_tick(a: &mut App, now: u32) {
+    sys_battery_reap(); // (a reading under way ends, or is stopped, even with the corner off or held back)
     if !a.settings.status_on || status_busy(a) {
         return;
     }
@@ -385,6 +398,10 @@ fn paint(a: &mut App, l: &Layout) -> Option<StatusCover> {
 /// that changed, a text that got shorter).
 pub fn status_cover(a: &mut App, dirty: &mut Rect) -> Option<StatusCover> {
     if !a.settings.status_on {
+        return None;
+    }
+    // (every fast ink frame comes here: most are nowhere near the corner)
+    if !rect_overlaps(*dirty, rect_union(band(a), with(|s| s.drawn))) {
         return None;
     }
     let l = layout(a);

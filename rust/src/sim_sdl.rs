@@ -651,6 +651,7 @@ pub fn sys_activity() {
 pub fn sys_battery() -> Battery {
     with(|st| st.battery)
 }
+pub fn sys_battery_reap() {}
 pub fn sys_wall_clock() -> i64 {
     with(|st| st.clock).unwrap_or_else(wall_time)
 }

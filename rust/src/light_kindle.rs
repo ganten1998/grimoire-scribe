@@ -508,6 +508,15 @@ pub fn sys_battery() -> Battery {
     with(|s| s.battery)
 }
 
+pub fn sys_battery_reap() {
+    if with(|s| s.ask.pid <= 0) {
+        return;
+    }
+    if let Some(b) = battery_ask_end() {
+        with(|s| s.battery = b);
+    }
+}
+
 pub fn sys_wall_clock() -> i64 {
     wall_time()
 }
