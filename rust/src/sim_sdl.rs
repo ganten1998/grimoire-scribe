@@ -1403,7 +1403,13 @@ pub fn input_open(screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch:
     }
     if let Some(script) = std::env::var_os("GRIMOIRE_SCRIPT") {
         match File::open(&script) {
-            Ok(f) => with(|st| st.script = Some(BufReader::new(f))),
+            // The wait clock starts now: poll compares now_ms() with wait_until as a signed 32-bit
+            // difference, which holds only within 2^31 ms of it. (The C's g_wait_until starts at 0,
+            // so once CLOCK_MONOTONIC passes 2^31 ms, 24.8 days up, every run waited forever.)
+            Ok(f) => with(|st| {
+                st.script = Some(BufReader::new(f));
+                st.wait_until = now_ms();
+            }),
             Err(_) => {
                 err(&bformat("cannot open script %s\n", &[B::S(script.as_bytes())]));
                 return -1;
@@ -1507,8 +1513,12 @@ fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
             });
         }
         let (wait_until, wait_bg) = with(|st| (st.wait_until, st.wait_bg));
-        if (now_ms().wrapping_sub(wait_until) as i32) < 0 {
-            let mut left = wait_until.wrapping_sub(now_ms());
+        // (One reading of the clock for both: the wait is over once the signed difference from it
+        // is no longer negative, and what is left is measured from that same reading, so a wait
+        // that ended between two readings never comes out as 2^32 ms still to go.)
+        let now = now_ms();
+        if (now.wrapping_sub(wait_until) as i32) < 0 {
+            let mut left = wait_until.wrapping_sub(now);
             if wait_bg && left > 20 {
                 left = 20; // look again soon
             }
@@ -1976,8 +1986,7 @@ mod tests {
             st.pen = p;
             st.touch = t;
             st.script = Some(BufReader::new(File::open(&path).unwrap()));
-            // (the C starts with g_wait_until 0, a wait that ends at once only while now_ms() is
-            // within 2^31 of it: a test starts from now instead)
+            // (the wait clock starts now, as input_open starts it with the script it opens)
             st.wait_until = now_ms();
         });
         let _ = std::fs::remove_file(&path);
