@@ -5,3 +5,5 @@ wait 200
 expect status.zone is 0 0 0 0
 expect status.shown is 1
 expect gestures.pages is touch.2.up
+expect touch.contacts is 9
+expect main.longest_unpumped_ms is 99999

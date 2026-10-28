@@ -348,6 +348,12 @@ pub static SIM_STORAGE_FULL: std::sync::atomic::AtomicBool = std::sync::atomic::
 /// Atomic file write: path.tmp, fsync, rename. Returns 0 on success. It pumps (work_pump) between
 /// its steps, so each wait on the storage is one fsync at most.
 pub fn write_file_atomic(path: &str, data: &[u8]) -> i32 {
+    let r = write_file_atomic_in(path, data);
+    work_pump_mark(); // (a save's waits are the storage's, not work that should pump)
+    r
+}
+
+fn write_file_atomic_in(path: &str, data: &[u8]) -> i32 {
     let tmp = format!("{path}.tmp");
     #[cfg(feature = "sim")]
     if SIM_STORAGE_FULL.load(Ordering::Relaxed) {
@@ -454,6 +460,30 @@ pub fn work_pump() {
     // SAFETY: getpid has no preconditions.
     if f != 0 && unsafe { libc::getpid() } == PUMP_PID.load(Ordering::Relaxed) {
         // SAFETY: PUMP only ever holds 0 or a `fn()` stored by work_pump_set, cast back to its type.
+        let f: fn() = unsafe { std::mem::transmute::<usize, fn()>(f) };
+        f();
+    }
+}
+
+// The work pump's mark (the runner's): fn and the process that set it.
+static PUMP_MARK: AtomicUsize = AtomicUsize::new(0);
+static PUMP_MARK_PID: AtomicI32 = AtomicI32::new(0);
+
+/// Work that need not pump ends here: a present (app_flush) and a file save (write_file_atomic). The
+/// headless runner times the stretches between input reads and pumps (main.longest_unpumped_ms) and
+/// leaves these out; elsewhere no hook is set and it does nothing (only the process that set it runs
+/// it, as work_pump).
+pub fn work_pump_mark_set(f: Option<fn()>) {
+    PUMP_MARK.store(f.map_or(0, |f| f as usize), Ordering::Relaxed);
+    // SAFETY: getpid has no preconditions.
+    PUMP_MARK_PID.store(if f.is_some() { unsafe { libc::getpid() } } else { 0 }, Ordering::Relaxed);
+}
+
+pub fn work_pump_mark() {
+    let f = PUMP_MARK.load(Ordering::Relaxed);
+    // SAFETY: getpid has no preconditions.
+    if f != 0 && unsafe { libc::getpid() } == PUMP_MARK_PID.load(Ordering::Relaxed) {
+        // SAFETY: PUMP_MARK only ever holds 0 or a `fn()` stored by work_pump_mark_set, cast back.
         let f: fn() = unsafe { std::mem::transmute::<usize, fn()>(f) };
         f();
     }

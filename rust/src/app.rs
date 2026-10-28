@@ -1517,6 +1517,11 @@ pub fn app_invalidate_all(a: &mut App, m: RefreshMode) {
 
 /// presents dirty rect (if any)
 pub fn app_flush(a: &mut App) {
+    app_flush_in(a);
+    work_pump_mark(); // (a present's waits are the panel's, not work that should pump)
+}
+
+fn app_flush_in(a: &mut App) {
     if a.asleep {
         return; // the sleep screen stays up until wake
     }

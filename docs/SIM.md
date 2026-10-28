@@ -64,6 +64,10 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `touch down/move/up X Y` | raw finger events |
 | `drag pen\|touch X0 Y0 X1 Y1 STEPS` | a slow drag (100 ms per step) |
 | `pinch CX CY D0 D1 STEPS [DX DY]` | two fingers around (CX, CY), D0 apart, spreading to D1 while the midpoint drifts by (DX, DY) |
+| `finger ID down X Y [MAJOR] [TOOL]`, `finger ID move X Y [MAJOR] [TOOL]`, `finger ID up X Y` | contact ID (1 to 16) of the frame being built: down adds it, move moves it, up lifts it (the next `frame` no longer has it). MAJOR is its TOUCH_MAJOR (default 0), TOOL 0 a finger, 1 a pen, 2 a palm (default 0). Does not end a batch |
+| `frame [MS]` | the fingers down now as one contact frame, through touchgest as the Kindle's panel is, at the frame clock (below); its events are queued, then the clock moves on by MS (default 13). Does not end a batch |
+| `swipe N X Y DX DY [STEPS] [SEP] [LANDGAP]` | N fingers (2 or 3, fingers 1 to N) centred on (X, Y), SEP px apart across the motion (default 295, 25 mm), landing LANDGAP ms apart (default 30), moving by (DX, DY) over STEPS frames (default 10) 20 ms apart, then lifting one frame (5 ms) apart; one batch |
+| `tapn N X Y [SEP] [MS]` | N fingers (fingers 1 to N) in a row centred on (X, Y), SEP px apart (default 150), each kept on the screen, landing one frame each 10 ms apart, still for MS (default 80), lifting one frame each 10 ms apart: `tapn 2 100 100` puts them at x 25 and 175, their midpoint at 100; one batch |
 | `rotate N` | the Kindle now turned N quarter turns clockwise (0..3) |
 | `sleep`, `wake` | the power service announcing the sleep screen, and its end |
 | `wait MS` | let timers run (autosave, toasts, the share server) |
@@ -105,6 +109,23 @@ pinch is all one batch, so its frames go out as one refresh at its end: to see a
 (`display.last_fast`), use `touch down` and `touch move` lines, as tests/scenarios/y_live_ink.qs
 does. A line the runner does not know fails the run like a failed check (a misspelt `expect` would
 otherwise be skipped).
+
+`finger`, `frame`, `swipe` and `tapn` are contact-level touch: their frames go through the recognizer
+the Kindle's touch panel goes through (touchgest.rs), which makes them one finger's events, a pinch,
+a gesture or nothing, and the `touch.*` keys read it. The legacy `tap`, `touch`, `drag touch` and
+`pinch` inject their events directly and do not pass through it. Each frame is stamped (its events'
+`t_ms` and `k_ms`) with the frame clock: the first `finger` or `frame` line of a batch starts it at
+now if that is later than where it was left, and `frame MS` moves it on by MS, so a contact sequence
+is timed by its offsets, as `drag` (100 ms steps) and `pinch` (160 ms) are, even when an `expect` or
+a `wait` splits it while fingers are down; it never goes back. There is no virtual app clock: a hold
+still needs a real `wait`, and so does a tap's refusal when its last finger stays (decided as time
+passes, by the frame clock's now). touchgest learns the pen from the pen lines: `pen down` and `move`
+put it near and touching (and say where), `pen up` leaves it near, `pen hover` near, `pen leave` gone
+at that line's time, and a `pentap` ends with the pen gone at its up (a nib tap lifted away; the
+events it queues are as they were). A pen line while fingers are down ends them first, as the pen's
+arrival does on the Kindle. So contact-level touch after pen input waits out the pen window: `pen
+leave` if the pen is hovering, then `wait 1100` (two fingers are refused for 300 ms after the pen
+leaves and kept 40 mm from where it last touched until 1 s; one finger is the writing hand for 1 s).
 
 The keyboard's keys in portrait (the Library's keyboard, for every name, at 300 dpi): shift
 175 2205, del 1679 2205, Cancel 217 2365, `-` 477 2365, the page key 696 2365 (labelled with a
@@ -173,6 +194,12 @@ shows what the app holds.
 | `running` | `1` while the app runs, `0` for a check after it quit (the runner answers this one) |
 | `watching` | `1` while input_poll also watches the share server's socket, else `0` (the runner answers this one too) |
 | `power.pokes` | how many times the app told the power service someone is here: at most once a minute, for pen, touch, or a key while shortcuts are on (the runner answers this one too) |
+| `main.longest_unpumped_ms` | the longest stretch between two reads of input or pump calls since this key was last checked, presents and file saves left out: `ok` under the runner's bound of 250 ms (host time of a debug build: it catches a missing pump, not the Kindle's ~100 ms), else the stretch in ms. The check starts the count again, so `expect main.longest_unpumped_ms not -1` only starts it (the runner answers this one too) |
+| `touch.contacts` | contacts down now, as touchgest follows them (the contact lines' fingers; the runner answers the `touch.` keys) |
+| `touch.class` | what they are doing: `none`, `one` (one finger's stream), `landing` (two fingers, not committed yet), `zoom`, `pan`, `swipe`, `tap` (a two-finger tap waiting for its last finger), `suppressed` (every contact waits to lift, or the pen's hand is held) |
+| `touch.suppressed` | `1` while contacts wait to lift (or a lone finger is held: the pen's hand, one beside a resting palm), else `0` |
+| `touch.gesture` | the last gesture fired, as gestures.ini names it after `touch.` (`2.down`, `2.up`, `2.left`, `2.right`, `2.tap`); empty before any |
+| `touch.reject` | the last refusal: `pen`, `apart`, `straight`, `short`, `direction`, `hand`, `spread`, `late`, `three`, `keyboard`, `off` or `slow`; empty before any, and a gesture fired clears it |
 | `pump.calls` | how many times long work called the work pump (`work_pump`, common.h: on the Kindle it reads the pens meanwhile) since this key was last checked, so `expect pump.calls not -1` only starts the count (the runner answers this one too) |
 | `keyboard.draws` | how many times an on-screen keyboard was drawn whole (`keyboard_draw`, keyboard.h) since this key was last checked, counted the same way (the runner answers this one too) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |

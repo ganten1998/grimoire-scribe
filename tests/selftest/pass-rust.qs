@@ -8,3 +8,19 @@ expect status.shown is 0
 expect gestures.pages is touch.2.down
 expect gestures.next-page is touch.2.left
 expect gestures.undo is
+expect main.longest_unpumped_ms not -1
+expect touch.contacts is 0
+expect touch.class is none
+finger 1 down 930 1800
+frame 20
+expect touch.contacts is 1
+expect touch.class is one
+finger 1 up 930 1800
+frame
+expect touch.contacts is 0
+swipe 2 930 1200 0 400
+expect touch.class is none
+expect touch.suppressed is 0
+expect screen is library
+expect library.sheet is none
+expect main.longest_unpumped_ms is ok

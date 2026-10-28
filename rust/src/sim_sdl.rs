@@ -174,6 +174,19 @@ struct State {
     // nothing reads it; input_open still takes it as the C does).
     #[allow(dead_code)]
     pressure: f32,
+
+    // ---- contact-level touch (finger, frame, swipe, tapn): through the same touchgest as the Kindle ----
+    tg: TouchGest,
+    /// the frame being built: finger ID (1..16) -> its contact (a finger line's)
+    fingers: [Option<TgContact>; TG_MAX + 1],
+    /// the frame clock: the next frame's time, and the last frame's. A batch's first contact line
+    /// starts it at now_ms() if that is later; frame MS moves it on by MS, so a contact sequence is
+    /// timed by its offsets whatever expects or waits split it, and never goes back.
+    fclock: u32,
+    flast: u32,
+    fclock_fresh: bool,
+    /// the pen as touchgest sees it, from the script's pen lines
+    tpen: TgPen,
 }
 
 impl Default for State {
@@ -232,6 +245,12 @@ impl Default for State {
             axis_keys: HidKeys::default(),
             axis_trig: HidTriggers::default(),
             pressure: 0.6,
+            tg: TouchGest::default(),
+            fingers: [None; TG_MAX + 1],
+            fclock: 0,
+            flast: 0,
+            fclock_fresh: true,
+            tpen: TgPen::default(),
         }
     }
 }
@@ -241,6 +260,27 @@ thread_local! {
     // The work pump's count, apart from the rest: work_pump can run from anywhere in the app's long
     // paths, so its hook takes no other borrow.
     static G_PUMPS: Cell<i32> = const { Cell::new(0) };
+    // main.longest_unpumped_ms, the same way: when input was last read (a poll, a pump, the end of a
+    // present or a save), and the longest stretch without since the key was last checked.
+    static G_LAST_READ: Cell<u32> = const { Cell::new(0) };
+    static G_UNPUMPED: Cell<u32> = const { Cell::new(0) };
+}
+
+/// The runner's bound for main.longest_unpumped_ms: host time of a debug build on a shared machine,
+/// so it catches a missing pump (a whole page read or drawn unpumped), not the Kindle's ~100 ms.
+const UNPUMPED_OK_MS: u32 = 250;
+
+/// Input is read now: the stretch since it was last read counts toward main.longest_unpumped_ms.
+fn unpumped_note() {
+    let now = now_ms();
+    let gap = now.wrapping_sub(G_LAST_READ.with(|c| c.get()));
+    G_UNPUMPED.with(|c| c.set(c.get().max(gap)));
+    G_LAST_READ.with(|c| c.set(now));
+}
+
+/// A present or a save ended (work_pump_mark): its time is not counted.
+fn unpumped_mark() {
+    G_LAST_READ.with(|c| c.set(now_ms()));
 }
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -361,7 +401,7 @@ impl State {
         e
     }
 
-    fn pen_ev(&mut self, t: InType, x: f32, y: f32, p: f32, tx: f32, ty: f32, dt: u32) {
+    fn pen_ev(&mut self, t: InType, x: f32, y: f32, p: f32, tx: f32, ty: f32, dt: u32) -> u32 {
         let mut e = self.make_ev(t, x, y, true);
         e.pressure = p;
         e.tilt_x = tx;
@@ -369,9 +409,126 @@ impl State {
         e.eraser = self.eraser;
         e.side_button = self.side;
         e.t_ms = e.t_ms.wrapping_add(dt);
+        // The pen ends what fingers are doing (the Kindle's pen_frame arrival rule), before its event.
+        if touchgest_busy(&self.tg) {
+            let mut out = TgOut::default();
+            let k = self.tg_now();
+            touchgest_cancel(&mut self.tg, k, &mut out);
+            for c in &out.ev[..out.n] {
+                self.q_push(*c);
+            }
+        }
+        // ... and touchgest sees it near, touching, or gone.
+        match t {
+            InType::PenDown | InType::PenMove => {
+                self.tpen.prox = true;
+                self.tpen.touching = true;
+                self.tpen.last = (e.x, e.y);
+            }
+            InType::PenUp | InType::PenHover => {
+                self.tpen.prox = true;
+                self.tpen.touching = false;
+            }
+            InType::PenLeave => {
+                self.tpen.prox = false;
+                self.tpen.touching = false;
+                self.tpen.left_ms = e.t_ms;
+            }
+            _ => {}
+        }
+        let t_ms = e.t_ms;
         self.q_push(e);
         self.px = x;
         self.py = y;
+        t_ms
+    }
+
+    /// The frame clock's now: where the last frame was, or now_ms() if that is later.
+    fn tg_now(&self) -> u32 {
+        let now = now_ms();
+        if (now.wrapping_sub(self.flast) as i32) > 0 {
+            now
+        } else {
+            self.flast
+        }
+    }
+
+    /// A contact line's frame clock: the batch's first starts it at now_ms() if that is later.
+    fn fclock_start(&mut self) {
+        if self.fclock_fresh {
+            let now = now_ms();
+            if (now.wrapping_sub(self.fclock) as i32) > 0 {
+                self.fclock = now;
+            }
+            self.fclock_fresh = false;
+        }
+    }
+
+    /// A finger line's contact: its place as make_ev makes it (the calibration, the turn).
+    fn finger_contact(&self, id: i32, x: f32, y: f32, major: i32, tool: u8) -> TgContact {
+        let e = self.make_ev(InType::TouchMove, x, y, false);
+        TgContact { id, slot: id, x: e.x, y: e.y, nx: e.nx, ny: e.ny, major, tool, pressure: 0 }
+    }
+
+    /// frame MS: the fingers down now go through touchgest at the frame clock, its events are queued
+    /// (timed by the frame), and the clock moves on by MS.
+    fn tg_frame(&mut self, ms: u32) {
+        self.fclock_start();
+        let mut f = TgFrame { k_ms: self.fclock, ..Default::default() };
+        for c in self.fingers.iter().flatten() {
+            f.c[f.n] = *c;
+            f.n += 1;
+        }
+        let mut out = TgOut::default();
+        touchgest_frame(&mut self.tg, &f, &self.tpen, &mut out);
+        for e in &out.ev[..out.n] {
+            self.q_push(*e);
+        }
+        self.flast = self.fclock;
+        self.fclock = self.fclock.wrapping_add(ms);
+    }
+
+    /// swipe N X Y DX DY STEPS SEP LANDGAP: N fingers centred on (X, Y), SEP px apart across the
+    /// motion, landing LANDGAP ms apart, moving by (DX, DY) over STEPS frames 20 ms apart, then
+    /// lifting one frame (5 ms) apart.
+    fn tg_swipe(&mut self, n: usize, x: f32, y: f32, dx: f32, dy: f32, steps: i32, sep: f32, gap: u32) {
+        let l = (dx * dx + dy * dy).sqrt();
+        let (ux, uy) = if l > 0.0 { (-dy / l, dx / l) } else { (1.0, 0.0) };
+        let at = |i: usize, f: f32| {
+            let o = (i as f32 - (n - 1) as f32 * 0.5) * sep;
+            (fmla(ux, o, x) + dx * f, fmla(uy, o, y) + dy * f)
+        };
+        for i in 0..n {
+            let (px, py) = at(i, 0.0);
+            self.fingers[i + 1] = Some(self.finger_contact(i as i32 + 1, px, py, 0, 0));
+            self.tg_frame(if i + 1 < n { gap } else { 20 });
+        }
+        for s in 1..=steps {
+            let f = s as f32 / steps as f32;
+            for i in 0..n {
+                let (px, py) = at(i, f);
+                self.fingers[i + 1] = Some(self.finger_contact(i as i32 + 1, px, py, 0, 0));
+            }
+            self.tg_frame(if s < steps { 20 } else { 5 });
+        }
+        for i in 0..n {
+            self.fingers[i + 1] = None;
+            self.tg_frame(5);
+        }
+    }
+
+    /// tapn N X Y SEP MS: N fingers in a row centred on (X, Y), SEP px apart (each kept on the
+    /// screen), landing one frame each 10 ms apart, still for MS, lifting one frame each 10 ms apart.
+    fn tg_tapn(&mut self, n: usize, x: f32, y: f32, sep: f32, ms: u32) {
+        for i in 0..n {
+            let px = clampf(fmla(i as f32 - (n - 1) as f32 * 0.5, sep, x), 0.0, (self.w - 1) as f32);
+            self.fingers[i + 1] = Some(self.finger_contact(i as i32 + 1, px, y, 0, 0));
+            self.tg_frame(if i + 1 < n { 10 } else { ms });
+        }
+        for i in 0..n {
+            self.fingers[i + 1] = None;
+            self.tg_frame(10);
+        }
     }
 
     fn touch_ev(&mut self, t: InType, x: f32, y: f32) {
@@ -844,6 +1001,27 @@ impl State {
 // lines before it did. "keyboard.draws": how many times an on-screen keyboard was drawn
 // (keyboard_draw, keyboard.h) since this key was last checked, the same way.
 fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
+    if key.starts_with(b"touch.") {
+        // touchgest's: what the contact lines' fingers are doing (touchgest_probe)
+        let Ok(key) = std::str::from_utf8(key) else { return false };
+        let mut got = String::new();
+        if !with(|st| touchgest_probe(&st.tg, key, &mut got)) {
+            return false;
+        }
+        csnprintf!(out, cap, "%s", &got);
+        return true;
+    }
+    if key == b"main.longest_unpumped_ms" {
+        // The longest stretch without reading input since the last check (it starts the count again):
+        // "ok" under the runner's bound, else the stretch in ms (expect compares no numbers).
+        let gap = G_UNPUMPED.with(|c| c.replace(0));
+        if gap < UNPUMPED_OK_MS {
+            csnprintf!(out, cap, "%s", "ok");
+        } else {
+            csnprintf!(out, cap, "%u", gap);
+        }
+        return true;
+    }
     if key == b"pump.calls" {
         csnprintf!(out, cap, "%d", G_PUMPS.with(|p| p.replace(0)));
         return true;
@@ -1201,7 +1379,11 @@ fn script_step_in(st: &mut State) -> Step {
                 st.touch_ev(InType::TouchUp, v[0], v[1]);
             } else {
                 st.pen_ev(InType::PenDown, v[0], v[1], 0.5, 0.0, 0.0, 0);
-                st.pen_ev(InType::PenUp, v[0], v[1], 0.0, 0.0, 0.0, 20);
+                let up = st.pen_ev(InType::PenUp, v[0], v[1], 0.0, 0.0, 0.0, 20);
+                // A nib tap lifts away: touchgest sees the pen leave at its up (its events are as
+                // they were: no PenLeave is queued).
+                st.tpen.prox = false;
+                st.tpen.left_ms = up;
             }
             return Step::Batch; // one tap per batch, like a human
         } else if a == b"drag" {
@@ -1349,6 +1531,65 @@ fn script_step_in(st: &mut State) -> Step {
                 err(&bformat("script: bad battery line: %s", &[B::S(s)]));
                 st.expect_unknown_line();
             }
+        } else if a == b"finger" {
+            // finger ID down|move X Y [MAJOR] [TOOL], finger ID up X Y: the frame being built
+            let (id, used) = strtol10(b);
+            let what = sc.word(15).unwrap_or(b"");
+            let k = scan_floats(s, 3, &mut v[..4]);
+            let id = if used != 0 && used == b.len() && (1..=TG_MAX as i64).contains(&id) { id as usize } else { 0 };
+            let major = if k > 2 { v[2] } else { 0.0 };
+            let tool = if k > 3 { v[3] } else { 0.0 };
+            let ok = id != 0
+                && k >= 2
+                && major >= 0.0
+                && (tool == 0.0 || tool == 1.0 || tool == 2.0)
+                && (what == b"down" || ((what == b"move" || what == b"up") && st.fingers[id].is_some()));
+            if !ok {
+                err(&bformat("script: bad finger line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            st.fclock_start();
+            st.fingers[id] = if what == b"up" {
+                None // (the next frame has it lifted)
+            } else {
+                Some(st.finger_contact(id as i32, v[0], v[1], major as i32, tool as u8))
+            };
+        } else if a == b"frame" {
+            // frame [MS]: the fingers down now through touchgest; the frame clock moves on by MS
+            let (ms, used) = strtol10(b);
+            if !b.is_empty() && (used != b.len() || ms < 0) {
+                err(&bformat("script: bad frame line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            st.tg_frame(if b.is_empty() { 13 } else { ms as u32 });
+        } else if a == b"swipe" {
+            // swipe N X Y DX DY [STEPS] [SEP] [LANDGAP]
+            let k = scan_floats(s, 1, &mut v[..8]);
+            let n = v[0] as usize;
+            if k < 5 || !(v[0] == 2.0 || v[0] == 3.0) || (k > 5 && v[5] < 1.0) || (k > 7 && v[7] < 0.0) {
+                err(&bformat("script: bad swipe line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            let steps = if k > 5 { v[5] as i32 } else { 10 };
+            let sep = if k > 6 { v[6] } else { 295.0 };
+            let gap = if k > 7 { v[7] as u32 } else { 30 };
+            st.tg_swipe(n, v[1], v[2], v[3], v[4], steps, sep, gap);
+            return Step::Batch;
+        } else if a == b"tapn" {
+            // tapn N X Y [SEP] [MS]
+            let k = scan_floats(s, 1, &mut v[..5]);
+            if k < 3 || v[0] < 1.0 || v[0] > 10.0 || v[0] != v[0].floor() || (k > 4 && v[4] < 0.0) {
+                err(&bformat("script: bad tapn line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            let sep = if k > 3 { v[3] } else { 150.0 };
+            let ms = if k > 4 { v[4] as u32 } else { 80 };
+            st.tg_tapn(v[0] as usize, v[1], v[2], sep, ms);
+            return Step::Batch;
         } else if a == b"quit" {
             let e = st.make_ev(InType::Quit, 0.0, 0.0, true);
             st.q_push(e);
@@ -1373,6 +1614,7 @@ fn script_step(mut a: Option<&mut App>) {
     while let Step::Check = with(script_step_in) {
         expect_check(a.as_deref_mut());
     }
+    with(|st| st.fclock_fresh = true); // (a batch ended: the next contact line starts the clock again)
 }
 
 // ---- input ----
@@ -1381,11 +1623,15 @@ fn script_step(mut a: Option<&mut App>) {
 // only counts the calls, for the runner's "pump.calls" (the app's own long paths reach it).
 fn sim_pump() {
     G_PUMPS.with(|p| p.set(p.get().wrapping_add(1)));
+    unpumped_note();
 }
 
 pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
-    let _ = (screen_w, screen_h, dpi);
+    let _ = (screen_w, screen_h);
     work_pump_set(Some(sim_pump));
+    work_pump_mark_set(Some(unpumped_mark));
+    G_LAST_READ.with(|c| c.set(now_ms()));
+    with(|st| touchgest_init(&mut st.tg, dpi));
     with(|st| {
         let (mut p, mut t) = (InputCalib::default(), InputCalib::default());
         st.input_default_calib(Some(&mut p), Some(&mut t));
@@ -1473,7 +1719,7 @@ pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
     with(|st| st.input_logical_to_panel(lx, ly, px, py));
 }
 pub fn input_touch_context(v: TgView) {
-    let _ = v;
+    with(|st| touchgest_set_view(&mut st.tg, v));
 }
 // (The simulator writes no trace: the formatter is touchgest's, unit-tested there.)
 pub fn input_touch_trace(path: Option<&str>) {
@@ -1482,13 +1728,39 @@ pub fn input_touch_trace(path: Option<&str>) {
 pub fn input_forget_signal_pipe() {}
 pub fn input_close() {
     work_pump_set(None);
+    work_pump_mark_set(None);
     expect_unrun();
     with(|st| st.script = None);
 }
 
-// The poll itself, with the App where the main loop hands it one (input_poll_app).
-fn poll(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
+// The poll itself, with the App where the main loop hands it one (input_poll_app). Input is read here:
+// the stretches between polls (and pumps) are what main.longest_unpumped_ms measures, the poll's own
+// waits not.
+fn poll(ev: &mut InEvent, timeout_ms: i32, a: Option<&mut App>) -> i32 {
+    unpumped_note();
+    let r = poll_in(ev, timeout_ms, a);
+    G_LAST_READ.with(|c| c.set(now_ms()));
+    r
+}
+
+fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
     if with(|st| st.q_pop(ev)) {
+        return 1;
+    }
+    // Fingers held still give no frames: what only time decides goes by the frame clock's now.
+    let ticked = with(|st| {
+        if !touchgest_busy(&st.tg) {
+            return false;
+        }
+        let mut out = TgOut::default();
+        let k = st.tg_now();
+        touchgest_tick(&mut st.tg, k, &mut out);
+        for e in &out.ev[..out.n] {
+            st.q_push(*e);
+        }
+        out.n > 0
+    });
+    if ticked && with(|st| st.q_pop(ev)) {
         return 1;
     }
     if with(|st| st.headless) {
@@ -2002,6 +2274,17 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The next batch that brings events (past the waits before it).
+    fn next_batch() -> Vec<InEvent> {
+        for _ in 0..100 {
+            let b = batch();
+            if !b.is_empty() {
+                return b;
+            }
+        }
+        Vec::new()
+    }
+
     /// The events the next batch brings, as the main loop takes them.
     fn batch() -> Vec<InEvent> {
         let mut out = Vec::new();
@@ -2412,6 +2695,133 @@ mod tests {
         assert_eq!((png[24], png[25]), (8, 0)); // 8-bit gray
         assert!(cwd.join("shots-sim-probe/a-name-that-is-long-enough-to-see.png").exists());
         let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    // finger and frame lines build contact frames through touchgest without ending a batch; the frame
+    // clock times them by their offsets, and a check between two frames never sends it back.
+    #[test]
+    fn contact_lines_and_the_frame_clock() {
+        fresh();
+        script(
+            "fingers",
+            "finger 1 down 500 600\nframe 30\nfinger 2 down 800 600\nframe 20\nexpect touch.contacts is 2\n\
+             finger 1 move 500 700\nfinger 2 move 800 700\nframe 20\nfinger 1 up 500 700\nframe 5\n\
+             finger 2 up 800 700\nframe\nwait 0\n\
+             finger 9 move 1 1\nfinger 17 down 1 1\nfinger 1 down 5\nframe x\nfinger 3 down 1 1 0 4\nwait 0\n",
+        );
+        let b = batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::TouchDown, InType::TouchUp, InType::PinchBegin]);
+        let t0 = b[0].k_ms;
+        assert_eq!((b[0].t_ms, b[1].k_ms, b[2].k_ms), (t0, t0.wrapping_add(30), t0.wrapping_add(30)));
+        assert_eq!((b[1].x, b[1].value), (-10000.0, TOUCH_F_CANCEL));
+        assert!((b[2].x - 500.0).abs() < 1e-3 && (b[2].x2 - 800.0).abs() < 1e-3);
+        let b = batch();
+        // the check came once that batch was handled: it saw both fingers down
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 0));
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::PinchMove, InType::PinchEnd]);
+        // (the clock went on from where the first batch left it: never back, the offsets kept)
+        assert!(b[0].k_ms.wrapping_sub(t0) as i32 >= 50 && b[1].k_ms.wrapping_sub(b[0].k_ms) == 20);
+        assert_eq!(b[0].value, 3); // a drag where nothing scrolls: a swipe that is still too short
+        assert!(batch().is_empty());
+        // Bad finger and frame lines fail the run like unknown commands: an ID no finger has, one past
+        // 16, no Y, a frame that is no number, a tool past 2.
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (6, 5));
+        let mut got = String::new();
+        assert!(power_probe(b"touch.contacts", &mut got, GOT_CAP) && got == "0");
+        assert!(power_probe(b"touch.class", &mut got, GOT_CAP) && got == "none");
+        assert!(!power_probe(b"touch.nonsense", &mut got, GOT_CAP));
+    }
+
+    // swipe and tapn are a batch each, through the same touchgest; with gestures on, they fire.
+    #[test]
+    fn swipe_and_tapn_are_a_batch_each() {
+        fresh();
+        script("swipe", "swipe 2 930 900 0 400\ntapn 2 100 100\nswipe 2 930 900 0 400 10 295 160\nwait 0\n");
+        input_touch_context(TgView { gestures_on: true, ..Default::default() });
+        let b = batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types.len(), 14);
+        assert_eq!(&types[..3], [InType::TouchDown, InType::TouchUp, InType::PinchBegin]);
+        assert!(types[3..12].iter().all(|&t| t == InType::PinchMove));
+        assert_eq!(&types[12..], [InType::PinchEnd, InType::Gesture]);
+        let g = &b[13];
+        assert_eq!(g.value, G_2_DOWN);
+        assert!((g.x - 930.0).abs() < 1e-3 && (g.y - 900.0).abs() < 1e-3 && (g.y2 - 1300.0).abs() < 1e-3);
+        // the timeline: the second finger 30 ms after the first, moves 20 ms apart (the first PinchMove
+        // at the commit, the second move), the lift 5 ms on
+        assert_eq!(b[2].k_ms.wrapping_sub(b[0].k_ms), 30);
+        assert_eq!(b[3].k_ms.wrapping_sub(b[2].k_ms), 40);
+        assert_eq!(b[4].k_ms.wrapping_sub(b[3].k_ms), 20);
+        assert_eq!(b[13].k_ms.wrapping_sub(b[11].k_ms), 5);
+        let mut got = String::new();
+        assert!(power_probe(b"touch.gesture", &mut got, GOT_CAP) && got == "2.down");
+        // tapn 2 100 100: fingers at x 25 and 175, the midpoint 100: a two-finger tap
+        let b = batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::TouchDown, InType::TouchUp, InType::PinchBegin, InType::PinchEnd, InType::Gesture]);
+        assert!((b[2].x - 25.0).abs() < 1e-3 && (b[2].x2 - 175.0).abs() < 1e-3);
+        assert_eq!((b[4].value, b[4].k_ms.wrapping_sub(b[0].k_ms)), (G_2_TAP, 100));
+        // a second finger 160 ms after the first may zoom or pan, never swipe
+        let b = batch();
+        assert!(!b.iter().any(|e| e.type_ == InType::Gesture));
+        assert!(power_probe(b"touch.reject", &mut got, GOT_CAP) && got == "late");
+    }
+
+    // The pen lines are touchgest's pen: near, touching, gone (pen leave stamps when); a pentap's nib
+    // lifts away; a pen line while fingers are down ends them first (the Kindle's arrival rule).
+    #[test]
+    fn pen_lines_tell_touchgest() {
+        fresh();
+        script(
+            "tgpen",
+            "pen hover 300 300\nwait 0\npen leave\nwait 0\npentap 400 400\nwait 0\n\
+             finger 1 down 900 1200\nframe\nwait 1100\nfinger 1 move 950 1200\nframe\npen down 300 300\npen up 300 300\nwait 0\n",
+        );
+        batch();
+        assert!(with(|st| st.tpen.prox && !st.tpen.touching));
+        let b = batch();
+        assert_eq!(b.last().map(|e| e.type_), Some(InType::PenLeave));
+        assert!(with(|st| !st.tpen.prox && st.tpen.left_ms == b.last().unwrap().t_ms));
+        let b = batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::PenDown, InType::PenUp]); // (as it always was: no leave queued)
+        assert!(with(|st| !st.tpen.prox && st.tpen.left_ms == b[1].t_ms && st.tpen.last.0 == b[0].x));
+        // A finger within the second after the pentap is the writing hand: quiet.
+        assert!(batch().is_empty());
+        let b = next_batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::PenDown, InType::PenUp]);
+        // After the second, a finger's stream ends with the cancel before the pen's down.
+        fresh();
+        script("tgpen2", "finger 1 down 900 1200\nframe\npen down 300 300\npen up 300 300\nwait 0\n");
+        let b = batch();
+        let types: Vec<InType> = b.iter().map(|e| e.type_).collect();
+        assert_eq!(types, [InType::TouchDown, InType::TouchUp, InType::PenDown, InType::PenUp]);
+        assert_eq!(b[1].value, TOUCH_F_CANCEL);
+    }
+
+    // A still pair gives no frames: the tick decides by the frame clock (a tap whose last finger
+    // stays is refused 150 ms after the first lift), never by a clock behind the last frame.
+    #[test]
+    fn the_tick_uses_the_frame_clock() {
+        fresh();
+        script("tgtick", "finger 1 down 850 1200\nfinger 2 down 1150 1200\nframe 60\nfinger 1 up 850 1200\nframe 10\nwait 400\n");
+        let b = batch();
+        assert_eq!(b.iter().map(|e| e.type_).collect::<Vec<_>>(), [InType::PinchBegin]);
+        let lift = with(|st| st.flast);
+        let mut end = None;
+        for _ in 0..40 {
+            if let Some(e) = batch().into_iter().find(|e| e.type_ == InType::PinchEnd) {
+                end = Some(e);
+                break;
+            }
+        }
+        let end = end.expect("the tick refused the tap");
+        assert!(end.k_ms.wrapping_sub(lift) as i32 > 150);
+        let mut got = String::new();
+        assert!(power_probe(b"touch.reject", &mut got, GOT_CAP) && got == "slow");
     }
 
     #[test]
