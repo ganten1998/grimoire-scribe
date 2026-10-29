@@ -45,7 +45,7 @@ function page(respond) {
     }
     const fetch = async (url, options) => {
         fetches.push(url);
-        const r = respond && respond(url, options);
+        const r = respond && respond(url, clock, options);
         if (r) return r;
         if (url === '/live/keys') return {ok: true, json: async () => []};
         return stream(url);
@@ -62,8 +62,9 @@ function page(respond) {
         requestAnimationFrame: fn => raf.push(fn), addEventListener: (name, fn) => { handlers[name] = fn; },
         setInterval() {}, setTimeout: (fn, ms) => timers.push({fn, ms}), clearTimeout() {}};
     vm.runInNewContext(SOURCE, context);
-    return {canvases, raf, readers, handlers, timers, fetches, toggles, decode, elements, get fullscreen() { return fullscreen; },
+    return {canvases, raf, readers, handlers, timers, fetches, toggles, decode, elements, get now() { return clock; }, get fullscreen() { return fullscreen; },
         overlay: canvases[5].ctx, raw: canvases[1].ctx,
+        advance(ms) { clock += ms; },
         paint() { clock += 100; const batch = raf.splice(0); for (const fn of batch) fn(clock); }};
 }
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -76,9 +77,9 @@ function hello(epoch) {
     [3, 100, 100, 64].forEach((v, i) => d.setUint16(i * 2, v, true)); d.setUint32(8, epoch, true);
     return frame(1, p);
 }
-function batch(ack, ink) {
+function batch(ack, ink, ms = 100) {
     const p = new Uint8Array(20), d = new DataView(p.buffer);
-    d.setUint32(8, ack, true); d.setUint32(12, 100, true); d.setUint32(16, ink, true);
+    d.setUint32(8, ack, true); d.setUint32(12, ms, true); d.setUint32(16, ink, true);
     return frame(3, p);
 }
 const style = (() => {
@@ -87,9 +88,10 @@ const style = (() => {
     [0, 0, 100, 100, 90, 0, 10, 20].forEach((v, i) => d.setInt32(32 + i * 4, v, true));
     return frame(8, p);
 })();
-function sample(id, x, flags, epoch = 1) {
+function sample(id, x, flags, epoch = 1, ms = 100, reset = false) {
     const p = new Uint8Array(28), d = new DataView(p.buffer);
-    d.setUint32(0, epoch, true); d.setUint32(8, id, true); d.setUint32(12, 100, true);
+    d.setUint32(0, epoch, true); d.setUint32(4, Number(reset), true);
+    d.setUint32(8, id, true); d.setUint32(12, ms, true);
     d.setUint16(16, x, true); d.setUint16(18, 40, true); d.setUint16(20, 32768, true);
     p[24] = 2; p[25] = flags; return frame(7, p);
 }
@@ -143,6 +145,107 @@ module.exports = async function browserChecks(ok) {
         p.toggles.some(t => t[0] === 'monitor' && t[1] === true) && p.fullscreen === 1);
     p.handlers.keydown({key: 'm'});
     ok('page: M again turns it off', p.toggles.filter(t => t[0] === 'monitor').pop()[1] === false);
+
+    // Real readers and paints, with virtual time: old watermarks can be painted, queued, or
+    // still decoding when the first new sample arrives. Exercise both sides of the u32 wrap.
+    for (const minutes of [36, 40, 71, 72]) for (const order of ['painted', 'queued', 'decoding', 'reset', 'empty', 'hello', 'foreign', 'burst', 'reconnect', 'clock-paused']) {
+        const q = page();
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1));
+        await turn();
+        let r = q.readers['/live/pen'];
+        const old = 1000000, oldMs = 0xffff0000, gap = minutes * 60000;
+        const id = (old + gap * 1000) >>> 0, ms = (oldMs + gap) >>> 0;
+        t.push(batch(old, 1, oldMs));
+        r.push(hello(1)); r.push(style); r.push(sample(old, 20, 20, 1, oldMs));
+        await turn(); q.paint();
+        if (order !== 'clock-paused') q.advance(gap);
+        if (order === 'queued' || order === 'decoding') {
+            if (order === 'decoding') t.push(frame(2, tile));
+            t.push(batch(old, 1, oldMs));
+            await turn();
+        }
+        if (order === 'reconnect') {
+            r.end(); await turn();
+            q.timers.shift().fn(); await turn();
+            r = q.readers['/live/pen'];
+            r.push(hello(1)); r.push(style);
+        }
+        if (order === 'hello') { r.push(hello(1)); r.push(style); }
+        if (order === 'foreign') {
+            r.push(sample(old, 80, 20, 2, oldMs, true));
+            await turn();
+        }
+        if (order === 'empty') {
+            const empty = new Uint8Array(8), d = new DataView(empty.buffer);
+            d.setUint32(0, 1, true); d.setUint32(4, 1, true);
+            r.push(frame(7, empty));
+            await turn();
+        }
+        if (order === 'burst') {
+            const body = new Uint8Array(48), d = new DataView(body.buffer);
+            d.setUint32(0, 1, true);
+            body.set(sample((old + 4000) >>> 0, 25, 16, 1, (oldMs + 4) >>> 0).subarray(13), 8);
+            body.set(sample(id, 40, 20, 1, ms).subarray(13), 28);
+            r.push(frame(7, body));
+        } else r.push(sample(id, 40, 20, 1, ms, order === 'reset'));
+        r.push(sample((id + 4000) >>> 0, 50, 16, 1, (ms + 4) >>> 0));
+        await turn(); q.paint();
+        const prefix = 'recovery: ' + minutes + ' minutes, ' + order;
+        ok(prefix + ': fresh ink and dot paint immediately', has(q.overlay, 'fill') && has(q.overlay, 'stroke') &&
+            shownCalls(q.canvases[4].ctx).some(c => c[0] === 'arc' && c[1] >= 50));
+        if (order === 'decoding') { q.decode({close() {}}); await turn(); q.paint(); }
+        // Repeated old ack from a layer batch must not retire new ink, even after decoding.
+        t.push(batch(old, 1, oldMs));
+        await turn(); q.paint();
+        ok(prefix + ': stale tile acknowledgement keeps fresh ink', has(q.overlay, 'fill') && has(q.overlay, 'stroke'));
+        t.push(batch(id, 1, ms));
+        await turn(); q.paint();
+        ok(prefix + ': current acknowledgement retires only its ink', !has(q.overlay, 'fill') && has(q.overlay, 'stroke'));
+        t.push(batch((id + 4000) >>> 0, 1, (ms + 4) >>> 0));
+        await turn(); q.paint();
+        ok(prefix + ': next acknowledgement retires the rest', !inks(q.overlay));
+    }
+
+    // Tiles can already cover the first post-idle sample. Recovery must keep that valid ack,
+    // while the dot still follows the pen and only the unacknowledged tail draws as quick ink.
+    {
+        const q = page(); await turn();
+        const t = q.readers['/live/stream']; t.push(hello(1)); await turn();
+        const r = q.readers['/live/pen'], gap = 40 * 60000, old = 1000000, id = (old + gap * 1000) >>> 0;
+        t.push(batch(old, 1, 100)); r.push(hello(1)); r.push(style); r.push(sample(old, 20, 20));
+        await turn(); q.paint(); q.advance(gap);
+        t.push(batch(id, 1, gap + 100)); await turn(); q.paint();
+        r.push(sample(id, 40, 20, 1, gap + 100)); r.push(sample(id + 4000, 50, 16, 1, gap + 104));
+        await turn(); q.paint();
+        ok('recovery: tiles first keep their valid ack and draw only the newer tail',
+            !has(q.overlay, 'fill') && has(q.overlay, 'stroke') && has(q.canvases[4].ctx, 'arc'));
+    }
+    // The meter must count the first paint of an ack, not a repeated watermark's idle time.
+    // After silence it discards previous observations and calibrates again, even if the local
+    // clock barely advanced (the server's sample ms detects this kind of sleep).
+    {
+        let serverOffset = 0;
+        const q = page((url, now) => url === '/live/time' ? {ok: true, json: async () => ({ms: (now + serverOffset) >>> 0})} : null);
+        await turn();
+        q.elements.find(e => e.textContent === 'latency').click(); await turn();
+        const t = q.readers['/live/stream']; t.push(hello(1)); await turn();
+        const r = q.readers['/live/pen']; r.push(hello(1)); r.push(style); r.push(sample(1000000, 20, 20, 1, 1000));
+        t.push(batch(1000000, 1, 1000)); await turn(); q.paint();
+        const meter = q.elements.find(e => e.tag === 'output');
+        const tileAges = () => meter.textContent.split(' | ')[1];
+        const first = tileAges();
+        q.advance(5000); t.push(batch(1000000, 1, 1000)); await turn(); q.paint();
+        ok('diagnostics: repeated tile watermark does not inflate paint latency', tileAges() === first);
+        const syncs = q.fetches.filter(u => u === '/live/time').length;
+        const gap = 40 * 60000, id = (1000000 + gap * 1000) >>> 0;
+        serverOffset = 1000 + gap - q.now;
+        r.push(sample(id, 40, 20, 1, 1000 + gap)); await turn(); q.paint();
+        ok('diagnostics: recovery drops old tile ages and asks for a fresh clock calibration',
+            tileAges() === 'tileAge: ...' && q.fetches.filter(u => u === '/live/time').length > syncs &&
+            meter.textContent.startsWith('sampleAge: 100.0 / 100.0 / 100.0 ms'));
+    }
 
     // The pen stream on a Kindle without it (404, and Live view off): it waits for the next tile
     // hello, never polls; a failure backs off as the tile stream does, from 500 ms to 8 s.

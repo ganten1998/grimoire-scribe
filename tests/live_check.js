@@ -483,6 +483,25 @@ away.accept(makeSample(5000, 300, 1, 0), inkStyle);
 ok('fast: 40 minutes away reads as older without the silence', away.accept(makeSample(later, 310, 1, 0), inkStyle) === false);
 ok('fast: a silence starts the line again', away.heard(40 * 60e3) === true &&
     away.accept(makeSample(later, 310, 1, 0), inkStyle) === true && away.pen && away.pen.x === 310 && away.heard(40 * 60e3 + 5) === false);
+// Exact half/full-cycle edges too: acknowledge with both stamps, including ms wrapping.
+for (const gapUs of [2 ** 31 - 1, 2 ** 31, 2 ** 31 + 1, 2 ** 32 - 1, 2 ** 32, 2 ** 32 + 1]) {
+    const model = new FastInk(), old = 5000, oldMs = 0xffff0000;
+    const id = (old + gapUs) >>> 0, ms = (oldMs + Math.floor(gapUs / 1000)) >>> 0;
+    model.heard(1000, oldMs);
+    model.accept({...makeSample(old, 300, 2, 20), ms: oldMs}, inkStyle);
+    model.reconcile(old, oldMs);
+    const recovered = model.heard(1001, ms);  // this computer's clock barely advanced
+    model.reconcile(old, oldMs);  // a reset/reconnect can restore the painted watermark
+    model.accept({...makeSample(id, 400, 2, 20), ms}, inkStyle);
+    model.reconcile(old, oldMs);  // or a layer batch can repeat it
+    ok('recovery: exact ' + gapUs + ' us gap keeps new ink and restarts time', recovered &&
+        model.segments.length === 1 && model.pen.t === 0 && model.pen.x === 400);
+    model.reconcile(id, ms);
+    model.reconcile(old, oldMs);  // a stale watermark must never move the ack backwards
+    model.accept({...makeSample((id + 4000) >>> 0, 420), ms: (ms + 4) >>> 0}, inkStyle);
+    ok('recovery: exact ' + gapUs + ' us gap acknowledges new ink and keeps its join',
+        model.ack === id && model.segments.length === 1 && model.segments[0].from.id === id && model.pen.t === 4);
+}
 fastInk.reset();
 fastInk.accept(makeSample(10, 1750, 2, 20), inkStyle);
 fastInk.accept(makeSample(11, 400), inkStyle);
@@ -659,6 +678,12 @@ clock.add(clock.samples, 1050, 4);
 clock.add(clock.samples, 1060, 4);
 clock.add(clock.samples, 1070, 4);
 ok('clock: p50, p90, max come from observed ages', clock.stats(clock.samples).join() === '38,38,48');
+clock.reset();
+ok('clock: recovery forgets old calibration and observations', clock.best === Infinity &&
+    clock.age(2000, 100) === null && clock.stats(clock.samples) === null && clock.stats(clock.tiles) === null);
+clock.sync(2000, 2004, 1000);
+clock.add(clock.samples, 2012, 1000);
+ok('clock: recovery measures from the new calibration only', clock.stats(clock.samples).join() === '10,10,10');
 const fastPath = path.join(path.dirname(bin), 'fast.bin');
 if (fs.existsSync(fastPath)) {
     let actualStyle = null, count = 0, sawTilt = false;

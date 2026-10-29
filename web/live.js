@@ -408,6 +408,16 @@
     // each sample's is the kernel's time of its frame in microseconds, which the tiles' watermark
     // names too, and they wrap (u32).
     const after = (a, b) => ((a - b) | 0) > 0;
+    const QUIET_MS = 10 * 60 * 1000;
+    // The ms stamp shares the kernel frame's time but wraps only every 49 days. It resolves
+    // old tile watermarks across long gaps; nearby raw/scaled frames still use their exact ids.
+    const sampleAfter = (a, aMs, b, bMs) => {
+        if (aMs !== undefined && bMs !== undefined) {
+            const elapsed = (aMs - bMs) | 0;
+            if (Math.abs(elapsed) > QUIET_MS) return elapsed > 0;
+        }
+        return after(a, b);
+    };
     function readStyle(body) {
         if (body.length !== 64) throw new Error('bad ink style');
         const d = new DataView(body.buffer, body.byteOffset, body.length);
@@ -445,7 +455,7 @@
     function FastInk() { this.line = new Timeline(); this.reset(); }
     // (The timeline goes on: identities are the Kindle's clock across strokes and epochs alike.)
     FastInk.prototype.reset = function () {
-        this.segments = []; this.prev = null; this.active = false; this.id = 0; this.ack = 0; this.pen = null;
+        this.segments = []; this.prev = null; this.active = false; this.id = 0; this.ack = 0; this.ackMs = undefined; this.pen = null;
         this.trail = [];
     };
     // A sample in (false for one older than the last: a stream never goes back). t: its time on the
@@ -468,7 +478,7 @@
         }
         if (this.active) {
             const to = Object.assign({}, sample, inkWidth(style, sample));
-            if (!this.ack || after(sample.id, this.ack)) {
+            if (!this.ack || sampleAfter(sample.id, sample.ms, this.ack, this.ackMs)) {
                 this.segments.push({from: this.prev || to, to, style});
                 // A stalled tile transport cannot grow this canvas's history without bound.
                 if (this.segments.length > 2048) this.segments.shift();
@@ -477,24 +487,25 @@
         }
         return true;
     };
-    // Identities are the Kindle's microseconds in 32 bits: once the pen had been away for over 35
-    // minutes, each new sample read as older than the last one (refused: the dot froze, no quick
-    // ink) until 71 minutes had passed. A silence of QUIET_MS (now: when a packet of samples came)
-    // starts the line again, its next sample the first; true when it did.
-    const QUIET_MS = 10 * 60 * 1000;
-    FastInk.prototype.heard = function (now) {
-        const quiet = this.heardAt !== undefined && now - this.heardAt > QUIET_MS;
+    // Start a fresh timeline after silence, including when this computer's clock paused during
+    // sleep or old and new samples arrive in one burst. Only actual, matching samples call heard:
+    // an empty reset or a packet from another epoch cannot consume the recovery before the pen.
+    FastInk.prototype.heard = function (now, ms) {
+        const quiet = (this.heardAt !== undefined && now - this.heardAt > QUIET_MS) ||
+            (this.heardMs !== undefined && ((ms - this.heardMs) | 0) > QUIET_MS);
         this.heardAt = now;
+        this.heardMs = ms;
         if (quiet) {
             this.reset();
             this.line.reset();
         }
         return quiet;
     };
-    FastInk.prototype.reconcile = function (id) {
-        if (!id || (this.ack && !after(id, this.ack))) return;
+    FastInk.prototype.reconcile = function (id, ms) {
+        if (!id || (this.ack && !sampleAfter(id, ms, this.ack, this.ackMs))) return;
         this.ack = id;
-        this.segments = this.segments.filter(s => after(s.to.id, id));
+        this.ackMs = ms;
+        this.segments = this.segments.filter(s => sampleAfter(s.to.id, s.to.ms, id, ms));
         // Keep prev: the next segment must still start where the now-authoritative ink ended.
     };
     // Where the pen is at time t of the timeline: between the samples on either side of it, where both
@@ -716,7 +727,8 @@
         }
         return {x: vx0, y: vy0, w: ow, h: oh, data: p};
     }
-    function PaintAges() { this.best = Infinity; this.samples = []; this.tiles = []; }
+    function PaintAges() { this.reset(); }
+    PaintAges.prototype.reset = function () { this.best = Infinity; this.samples = []; this.tiles = []; };
     PaintAges.prototype.sync = function (start, end, server) {
         if (end < start || end - start >= this.best) return;
         this.best = end - start; this.mid = (start + end) / 2; this.server = server;
@@ -855,7 +867,7 @@
     // the next one (painted); paintedAck, paintedInk: what the painted picture holds, for a new or
     // reset pen stream to start from. tileHellos: how many tile hellos came (runFast waits for one).
     let penEpoch = 0, tileInk = 0, fastConnected = false, paintSamples = [], debug = false, monitor = false;
-    let batchAck = 0, batchAckMs = 0, batchInk = 0, paintedAck = 0, paintedInk = 0, layer = null;
+    let batchAck = 0, batchAckMs = 0, batchInk = 0, paintedAck = 0, paintedAckMs = 0, paintedInk = 0, layer = null;
     let tileHellos = 0, helloWaiters = [], penW = 0, penH = 0;
     // The layers (frame 9) as the stream has them: [{x, y, w, h, bmp}] (w 0: not on the screen), and
     // whether each shows here (layerOn: the toolbar, the clock and battery corner; both by default).
@@ -1391,10 +1403,13 @@
         if (!batchInk) return;
         tileInk = batchInk;
         if (batchAck) {
+            const fresh = paintedAck !== batchAck || paintedAckMs !== batchAckMs || paintedInk !== batchInk;
             paintedAck = batchAck;
+            paintedAckMs = batchAckMs;
             paintedInk = batchInk;
-            if (batchInk === penEpoch) ink.reconcile(batchAck);
-            if (debug) ages.add(ages.tiles, performance.now(), batchAckMs);
+            if (batchInk === penEpoch) ink.reconcile(batchAck, batchAckMs);
+            // Layer-only batches can repeat the last watermark long after its ink was painted.
+            if (debug && fresh) ages.add(ages.tiles, performance.now(), batchAckMs);
         }
         batchAck = batchInk = 0;
         if (fastConnected) penSoon();  // (the dot plays out from the samples: drawPen)
@@ -1577,7 +1592,7 @@
                     if (d.getUint16(0, true) !== 3) protocolMismatch();
                     // The picture starts again from white (a start, a turn, a new stream): no quick
                     // ink until a batch says which ink epoch it is in.
-                    tileInk = batchAck = batchInk = paintedAck = paintedInk = 0;
+                    tileInk = batchAck = batchInk = paintedAck = paintedAckMs = paintedInk = 0;
                     const w = d.getUint16(2, true), h = d.getUint16(4, true);
                     raw.width = shown.width = page.width = w;
                     raw.height = shown.height = page.height = h;
@@ -1680,29 +1695,33 @@
                     penW = hd.getUint16(2, true);
                     penH = hd.getUint16(4, true);
                     ink.reset();
-                    if (paintedInk === penEpoch) ink.reconcile(paintedAck);
+                    if (paintedInk === penEpoch) ink.reconcile(paintedAck, paintedAckMs);
                     paintSamples = [];
                     style = null;
                     movePen(null);
                 } else if (type === 8) style = readStyle(body);
                 else if (type === 7) {
                     const packet = readSamples(body);
-                    if (ink.heard(performance.now())) {  // (a new line: played anew, no ack of before)
-                        playout.reset();
-                        paintSamples = [];
-                    }
+                    if (packet.epoch !== penEpoch) continue;
                     if (packet.reset) {
                         ink.reset();
                         paintSamples = [];
-                        if (paintedInk === penEpoch) ink.reconcile(paintedAck);
+                        if (paintedInk === penEpoch) ink.reconcile(paintedAck, paintedAckMs);
                     }
-                    if (packet.epoch !== penEpoch) continue;
                     const now = performance.now();
-                    for (const sample of packet.samples)
+                    for (const sample of packet.samples) {
+                        if (ink.heard(now, sample.ms)) {
+                            playout.reset();
+                            paintSamples = [];
+                            if (paintedInk === penEpoch) ink.reconcile(paintedAck, paintedAckMs);
+                            ages.reset();
+                            if (debug) syncClock();
+                        }
                         if (ink.accept(sample, style)) {
                             paintSamples.push(sample);
                             playout.arrive(sample.t, now);
                         }
+                    }
                     if (paintSamples.length > 2048) paintSamples.splice(0, paintSamples.length - 2048);
                     // The dot plays out at the next frames (drawPen); a hidden tab has none, so a
                     // recording or Picture in picture takes the newest place at once.
