@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 02:09-0500\n"
+"POT-Creation-Date: 2026-10-29 02:11-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -817,6 +817,13 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "Could not save the link."
+msgstr ""
+
+#. TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
+#. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
+#. change, redraw or delete it).
+#: rust/src/editor.rs
+msgid "Linked. Tap it with a finger to go there; hold it for more."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the

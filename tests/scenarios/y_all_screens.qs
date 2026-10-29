@@ -554,7 +554,8 @@ pen leave
 wait 1100
 swipe 2 930 1200 0 400
 wait 300
-expect settings.hints is 64
+# (64, the pan hint, and 2: the first link made above showed the first-link tip)
+expect settings.hints is 66
 expect editor.zoom not 1.00
 shot 31-zoom-pan-hint
 tap 930 74

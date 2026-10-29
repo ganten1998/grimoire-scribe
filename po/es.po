@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 02:09-0500\n"
+"POT-Creation-Date: 2026-10-29 02:11-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -863,6 +863,13 @@ msgstr "No se pudo guardar el nombre de página."
 #: rust/src/editor.rs
 msgid "Could not save the link."
 msgstr "No se pudo guardar el enlace."
+
+#. TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
+#. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
+#. change, redraw or delete it).
+#: rust/src/editor.rs
+msgid "Linked. Tap it with a finger to go there; hold it for more."
+msgstr "Enlazado. Tócalo con un dedo para ir; mantenlo pulsado para más."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
 #. end of the notebook and the new link goes to it.

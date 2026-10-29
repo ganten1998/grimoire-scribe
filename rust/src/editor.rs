@@ -32,9 +32,11 @@ const LASSO_MAX: usize = 4096;
 /// The most targets kept for Link to...'s Recent targets (it offers four of them).
 const RECENT_MAX: usize = 8;
 
-// settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
+// settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 5 and 7 are for later versions.
 /// the first notebook that opened after the update said what two fingers up and down do now
 const HINT_FIRST_OPEN: i32 = 1 << 0;
+/// the first link made said that a finger's tap follows it and a hold opens its card
+const HINT_FIRST_LINK: i32 = 1 << 1;
 /// the eye was turned on: dotted boxes show where a finger tap follows a link
 const HINT_EYE: i32 = 1 << 2;
 /// two fingers dragged the page (a pan) while two fingers up and down are gestures
@@ -3900,6 +3902,16 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     repaint_panel(a, RefreshMode::Ui); // (Undo is enabled now)
     if from_bar {
         bar_open(a); // (with the new entry, in the same pass)
+    }
+    // The first link ever made says, once, how a link is used (hints bit 1), instead of where it goes.
+    if a.settings.hints & HINT_FIRST_LINK == 0 {
+        a.settings.hints |= HINT_FIRST_LINK;
+        settings_save(&a.settings);
+        // TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
+        // lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
+        // change, redraw or delete it).
+        app_toast(a, tr("Linked. Tap it with a finger to go there; hold it for more."), 4000);
+        return;
     }
     app_toast(a, &msg, 2500);
 }

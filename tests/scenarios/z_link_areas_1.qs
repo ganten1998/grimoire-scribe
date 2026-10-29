@@ -14,12 +14,13 @@ expect screen is editor
 expect editor.page is 1
 expect editor.areas is 0
 expect settings.link_areas is 0
-expect settings.hints is 0
+# (bit 1: z_bar_0_make's first link showed the first-link tip)
+expect settings.hints is 2
 key 30 0
 wait 200
 expect settings.link_areas is 1
 expect editor.areas is 3
-expect settings.hints is 4
+expect settings.hints is 6
 expect toast is Dotted boxes show where a finger tap follows a link. They never print.
 shot 01-areas
 wait 4300

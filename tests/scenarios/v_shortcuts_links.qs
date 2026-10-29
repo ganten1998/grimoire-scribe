@@ -54,7 +54,9 @@ expect editor.modal is none
 expect editor.page is 1
 expect editor.links is 1 1
 expect editor.link.1 is p3
-expect toast is Linked to page 3.
+# (the first link this data root makes: the one-time tip instead of where it goes, hints bit 1)
+expect toast is Linked. Tap it with a finger to go there; hold it for more.
+expect settings.hints is 2
 tap 600 1100
 expect editor.page is 3
 pentap panel previous
