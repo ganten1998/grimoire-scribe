@@ -112,12 +112,18 @@ fn plot(v: &MapView) -> Rect {
     }
 }
 fn save(v: &mut MapView) {
+    if !v.ini.writable || v.id.is_empty(){return;}
+    if v.layout!=MapLayout::Done {
+        // Seeds are display-only. A child may already have written its finished layout while
+        // the UI waits to adopt it; only view preferences may be changed in that interval.
+        graph_ini_update_preferences(v.id.as_str(),v.mode,v.ini.show_unlinked);
+        return;
+    }
     v.ini.mode = v.mode;
     graph_ini_store(&mut v.ini, &v.g);
-    if v.ini.writable {
-        graph_ini_write(v.id.as_str(), &mut v.ini);
-    }
+    if v.ini.writable {graph_ini_write(v.id.as_str(), &mut v.ini);}
 }
+
 fn reserve<T>(v: &mut Vec<T>, n: usize) -> bool {
     v.try_reserve_exact(n.saturating_sub(v.len())).is_ok()
 }
@@ -278,7 +284,8 @@ pub fn mapview_open(
     true
 }
 pub fn mapview_close(v: &mut MapView) {
-    save(v);
+    // Failed opens have not read the cache or established a complete model.
+    if v.open {save(v);}
     *v = MapView::default();
 }
 fn button(v: &mut MapView, c: &mut Canvas, r: Rect, id: u8, text: &str, icon: IconKind, active: bool) {
@@ -1043,8 +1050,8 @@ pub fn mapview_pinch(v: &mut MapView, a: &mut App, e: &InEvent) {
     canvas_reset_clip(&mut a.screen);
     app_invalidate(a, pr, RefreshMode::Fast);
 }
-pub fn mapview_background_done(v: &mut MapView, ok: bool) {
-    if v.open && v.layout == MapLayout::Running {
+pub fn mapview_background_done(v: &mut MapView,id:&str, ok: bool) {
+    if v.open && v.id.as_str()==id && v.layout == MapLayout::Running {
         if ok {
             v.job_done = true;
         } else {
@@ -1287,9 +1294,37 @@ mod tests {
         assert!(v.drag.is_none()&&v.needs_redraw);
     }
     #[test]
+    fn background_completion_belongs_only_to_its_notebook() {
+        let mut v=MapView{open:true,layout:MapLayout::Running,..Default::default()};v.id.set("B");
+        mapview_background_done(&mut v,"A",true);assert!(!v.job_done);assert_eq!(v.layout,MapLayout::Running);
+        mapview_background_done(&mut v,"A",false);assert_eq!(v.layout,MapLayout::Running);
+        mapview_background_done(&mut v,"B",true);assert!(v.job_done);
+    }
+    #[test]
+    fn failed_open_and_pending_seed_never_replace_a_finished_cache() {
+        let root=std::env::temp_dir().join(format!("grimoire-map-cache-{}",std::process::id()));
+        store_init(root.to_str().unwrap());let mut nb=NotebookInfo::default();assert_eq!(store_create("Map","",PAPER_BLANK,&mut nb),0);
+        let mut path=String::new();assert_eq!(graph_ini_path(nb.id.as_str(),&mut path),0);
+        let original=b"# Grimoire graph\ngen=12345678\npos.1=1234,876\npin.1=1\nfuture=kept\n";
+        assert_eq!(write_file_atomic(&path,original),0);
+        let mut failed=MapView{id:nb.id,..Default::default()};mapview_close(&mut failed);
+        assert_eq!(read_file(&path).unwrap(),original);
+        let (mut v,_)=view(1860,2480,2,true);v.id=nb.id;v.layout=MapLayout::Running;
+        let mut before=GraphIni::default();assert_eq!(graph_ini_read(nb.id.as_str(),&mut before),0);
+        v.mode=GraphMode::Around;v.ini.show_unlinked=false;save(&mut v);
+        let mut after=GraphIni::default();assert_eq!(graph_ini_read(nb.id.as_str(),&mut after),0);
+        assert_eq!(after.pos,before.pos);assert_eq!(after.pins,before.pins);assert_eq!(after.unknown,before.unknown);
+        assert_eq!(after.mode,GraphMode::Around);assert!(!after.show_unlinked);
+        mapview_close(&mut v);graph_ini_read(nb.id.as_str(),&mut after);assert_eq!(after.pos,before.pos);
+        std::fs::remove_file(&path).unwrap();
+        let (mut seed,_)=view(1860,2480,2,true);seed.id=nb.id;seed.layout=MapLayout::Running;save(&mut seed);
+        graph_ini_read(nb.id.as_str(),&mut after);assert!(after.pos.is_empty()&&!after.has_gen);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn failed_background_layout_reenables_tidy_visibly() {
         let mut v=MapView{open:true,layout:MapLayout::Running,..Default::default()};
-        mapview_background_done(&mut v,false);
+        mapview_background_done(&mut v,"",false);
         assert_eq!(v.layout,MapLayout::Seed);assert!(v.needs_redraw);assert!(!v.job_done);
     }
     #[test]

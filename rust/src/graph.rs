@@ -1836,6 +1836,33 @@ pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
     changed
 }
 
+// A stable sidecar lock covers each read/modify/atomic-replace transaction. Locking graph.ini
+// itself would protect the old inode after rename and let the next writer race the new one.
+struct GraphCacheLock { _file:std::fs::File }
+fn cache_lock(path:&str)->Option<GraphCacheLock> {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::fd::AsRawFd;
+    let file=std::fs::OpenOptions::new().read(true).write(true).create(true).mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK).open(format!("{path}.lock")).ok()?;
+    if !file.metadata().ok()?.is_file(){return None;}
+    // SAFETY: the live File owns this descriptor. The critical section contains only a bounded
+    // cache read and atomic write; the worker computes its layout before taking this lock.
+    if unsafe {libc::flock(file.as_raw_fd(),libc::LOCK_EX)}!=0{return None;}
+    Some(GraphCacheLock{_file:file}) // closing the descriptor releases its advisory lock
+}
+fn update_preferences_path(path:&str,mode:GraphMode,show_unlinked:bool)->i32 {
+    let Some(_lock)=cache_lock(path) else{return -1;};
+    let mut latest=GraphIni::default();
+    if graph_ini_read_path(path,&mut latest)!=0||!latest.writable{return -1;}
+    latest.mode=mode;latest.show_unlinked=show_unlinked;
+    graph_ini_write_path(path,&mut latest)
+}
+/// Change only view choices while a background layout may be finishing.
+pub fn graph_ini_update_preferences(id:&str,mode:GraphMode,show_unlinked:bool)->i32 {
+    let mut path=String::new();if graph_ini_path(id,&mut path)!=0{return -1;}
+    update_preferences_path(&path,mode,show_unlinked)
+}
+
 /// The work of a bgjob child for a big or Tidy-up layout, on a model the child built itself
 /// (store_load_info, nav_load, graph_build; the open page does not matter, as it is not kept) and
 /// the graph.ini it read (for its mode, unlinked choice, pins and carried lines, and to honour a
@@ -1844,6 +1871,7 @@ pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
 pub fn graph_layout_job(g: &mut GraphModel, ini: &mut GraphIni, path: &str) -> i32 {
     if !graph_layout(g, &mut || {}) { return -1; }
     graph_ini_store(ini, g);
+    let Some(_lock)=cache_lock(path) else{return -1;};
     // View choices may have changed while the child was laying out. Keep the latest metadata;
     // only the positions and generation belong to this job.
     let mut latest = GraphIni::default();
@@ -2299,6 +2327,7 @@ pub fn graph_ini_write(id: &str, ini: &mut GraphIni) -> i32 {
     if graph_ini_path(id, &mut path) != 0 {
         return -1;
     }
+    let Some(_lock)=cache_lock(&path) else{return -1;};
     graph_ini_write_path(&path, ini)
 }
 

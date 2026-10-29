@@ -1511,9 +1511,10 @@ fn powerd_state_now(name: &mut String, cap: usize) -> PowerdState {
 // a template's picture may now be there to draw. Returns bg_poll's result for the PDF mirror's toast.
 fn poll_jobs(a: &mut App) -> i32 {
     let mut done = -1;
-    let r = bg_poll_kind(Some(&mut done));
+    let mut done_id=FixedStr::new();
+    let r = bg_poll_job(Some(&mut done),Some(&mut done_id));
     if done == BgKind::GraphLayout as i32 {
-        crate::editor::editor_map_done(a, r > 0);
+        crate::editor::editor_map_done(a,done_id.as_str(), r > 0);
         return 0;
     }
     if done == BgKind::Template as i32 {

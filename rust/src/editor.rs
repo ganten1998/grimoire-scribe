@@ -654,9 +654,9 @@ fn map_hide(a: &mut App, draw: bool) {
     }
     touch_context(a);
 }
-pub fn editor_map_done(a: &mut App, ok: bool) {
+pub fn editor_map_done(a: &mut App,id:&str, ok: bool) {
     if let Some(s) = a.ed.as_deref_mut() {
-        mapview_background_done(&mut s.map, ok);
+        mapview_background_done(&mut s.map,id, ok);
     }
 }
 fn map_result(a: &mut App, result: MapResult) {

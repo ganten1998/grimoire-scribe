@@ -9,6 +9,7 @@ use testlib::*;
 struct Ended {
     kind: i32,
     result: i32,
+    id: FixedStr<STORE_ID_LEN>,
 }
 
 // Runs the queue dry: the jobs in the order they ended (at most e.len() of them).
@@ -18,10 +19,11 @@ fn drain(e: &mut [Ended]) -> usize {
     let mut ms = 0;
     while bg_busy() && ms < 30000 {
         let mut k = -1;
-        let r = bg_poll_kind(Some(&mut k));
+        let mut id=FixedStr::new();
+        let r = bg_poll_job(Some(&mut k),Some(&mut id));
         if k >= 0 {
             if n < cap {
-                e[n] = Ended { kind: k, result: r };
+                e[n] = Ended { kind: k, result: r,id };
             }
             n += 1;
         } else {
@@ -92,7 +94,7 @@ fn graph_child_writes_the_notebooks_layout() {
     let mut path = String::new(); check!(graph_ini_path(nb.id.as_str(),&mut path)==0);
     bg_queue(BgKind::GraphLayout,Some(nb.id.as_str()),Some(&path),300.0,true);
     let mut ended = [Ended::default();1];
-    check!(drain(&mut ended)==1 && ended[0].kind==BgKind::GraphLayout as i32 && ended[0].result==1);
+    check!(drain(&mut ended)==1 && ended[0].kind==BgKind::GraphLayout as i32 && ended[0].result==1 && ended[0].id==nb.id);
     let mut ini = GraphIni::default();
     check!(graph_ini_read_path(&path,&mut ini)==0 && ini.has_gen && ini.pos.len()==1);
     check!(ini.pos[0].pid==nb.page_ids[0]);

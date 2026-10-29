@@ -1238,3 +1238,9 @@ at most every 180 ms and Ui at the end; actions use their own refresh. Hold eras
 press for either its hold or drag binding and ends at release, coexisting with held keys.
 No GL16 or toast is submitted while the nib is down; deferred feedback appears after lift.
 Hardware BTN_STYLUS2 capability gates Button2; Eraser slot lines are always carried, never live.
+
+Map layout results carry their notebook ID. A closed or different map ignores the completion;
+a matching open map adopts it only when idle. Failed map opens discard their partial state.
+Seed positions stay in memory, so neither closing a map nor changing its view can publish seeds
+as a completed cache. A short `graph.ini.lock` transaction serializes preference changes with
+the child's final read/merge/write; layout computation happens before that lock is acquired.

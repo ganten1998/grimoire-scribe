@@ -112,7 +112,11 @@ pub fn bg_cancel_notebook(id: &str) {
 /// Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
 /// succeeded / failed, else 0. Call it often (app_tick). The kind of the job that just finished
 /// (notify or not) is in *done_kind when done_kind is not NULL and something finished (else -1).
-pub fn bg_poll_kind(done_kind: Option<&mut i32>) -> i32 {
+pub fn bg_poll_kind(done_kind: Option<&mut i32>) -> i32 {bg_poll_job(done_kind,None)}
+
+/// The completed job's identity accompanies its kind, before the next queued job starts.
+pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<STORE_ID_LEN>>)->i32 {
+    if let Some(id)=done_id.as_deref_mut(){id.clear();}
     let mut result = 0;
     let mut done_kind = done_kind;
     if let Some(d) = done_kind.as_mut() {
@@ -126,7 +130,8 @@ pub fn bg_poll_kind(done_kind: Option<&mut i32>) -> i32 {
         let r = unsafe { libc::waitpid(pid, &mut st, libc::WNOHANG) };
         if r == pid || r < 0 {
             let ok = r == pid && libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0;
-            let (kind, notify) = with(|s| (s.running.kind, s.running_notify));
+            let (kind, notify, id) = with(|s| (s.running.kind, s.running_notify,s.running.id));
+            if let Some(done)=done_id.as_deref_mut(){*done=id;}
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
             if notify || kind == BgKind::GraphLayout {
                 result = if ok { 1 } else { -1 };

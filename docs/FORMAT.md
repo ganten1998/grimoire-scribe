@@ -1148,3 +1148,7 @@ hash, All/Around mode, whether unlinked pages are shown, and integer world posit
 page ID. Reserved pin entries and unknown bounded lines are retained. A file that cannot be read
 safely is ignored and never overwritten that session. Raw notebook ZIPs exclude this cache.
 Deleting it loses no ink, names, links or notebook content.
+
+`graph.ini.lock` is an empty advisory-lock sidecar for map-cache transactions. It has no notebook
+content, is excluded from raw exports with the map cache, and may be removed while Grimoire is
+closed. It keeps an atomic replacement of graph.ini from invalidating the writer's lock.
