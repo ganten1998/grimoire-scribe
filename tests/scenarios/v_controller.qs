@@ -49,7 +49,7 @@ expect library.buttons_group is
 tap 930 949
 wait 100
 expect library.buttons_group is pages
-tap 930 469
+tap 930 416
 wait 100
 expect library.learning is previous-page
 key 2 0
@@ -64,12 +64,12 @@ expect library.learning is
 expect pads.previous-page is 316
 expect pads.next-page is 317
 # Add a link and Name the page, under the Index
-tap 930 1589
+tap 930 1536
 wait 100
 expect library.learning is add-link
 key 321 0 1
 wait 100
-tap 930 1749
+tap 930 1696
 wait 100
 expect library.learning is name-page
 key 322 0 1
@@ -78,8 +78,18 @@ expect library.learning is
 expect pads.add-link is 321
 expect pads.name-page is 322
 shot 04-pages-links
-tap 930 1909
+# The last action row is distinct from Name and Done, and learns the actual gesture toggle.
+tap 930 1856
 wait 100
+expect library.learning is gesture-new-page
+shot 04-pages-gesture-learning
+key 323 0 1
+wait 100
+expect library.learning is
+expect pads.gesture-new-page is 323
+tap 930 2016
+wait 100
+expect library.buttons_group is
 # Tools: each pen on its own (the picker's order), and previous / next tool
 tap 930 789
 wait 100
@@ -143,6 +153,26 @@ wait 200
 pen line 300 700 600 720 8 0.6 0.7
 wait 80
 expect editor.strokes is 1
+# The learned action controls whether a swipe past the last page adds another page.
+pen leave
+expect settings.gesture_new_page is 1
+key 323 0 1
+wait 100
+expect settings.gesture_new_page is 0
+wait 1100
+swipe 2 1300 1200 -400 0
+expect editor.pages is 1
+expect editor.page is 1
+key 323 0 1
+wait 100
+expect settings.gesture_new_page is 1
+wait 1100
+swipe 2 1300 1200 -400 0
+expect editor.pages is 2
+expect editor.page is 2
+key 316 0 1
+wait 100
+expect editor.page is 1
 key 304 0 1
 wait 80
 expect editor.strokes is 1
@@ -192,4 +222,5 @@ expect pads.undo is South
 expect pads.previous-page is Select,Left
 expect pads.previous-tool is L1,Up
 expect pads.add-link is
+expect pads.gesture-new-page is
 quit

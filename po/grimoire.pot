@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 17:58-0500\n"
+"POT-Creation-Date: 2026-10-28 18:58-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1698,6 +1698,11 @@ msgstr ""
 #. TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
 #: rust/src/library.rs
 msgid "Whole page sideways"
+msgstr ""
+
+#. TRANSLATORS: (Buttons sheet) cycles between the status bar, the clock corner and Off.
+#: rust/src/library.rs
+msgid "Status display"
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.

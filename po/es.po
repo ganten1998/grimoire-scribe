@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 17:58-0500\n"
+"POT-Creation-Date: 2026-10-28 18:58-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -598,7 +598,7 @@ msgstr "De lado, ver la página entera"
 #. TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
 #: rust/src/dispmenu.rs rust/src/library.rs
 msgid "Swiping past the last page adds a page"
-msgstr "Deslizar tras la última página añade una página"
+msgstr "Deslizar al final añade una página"
 
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
@@ -657,12 +657,10 @@ msgid "Custom music..."
 msgstr "Partitura a medida..."
 
 #: rust/src/editor.rs
-#, fuzzy
 msgid "From"
 msgstr "Desde"
 
 #: rust/src/editor.rs
-#, fuzzy
 msgid "To"
 msgstr "Hasta"
 
@@ -1755,6 +1753,11 @@ msgstr "Mostrar zonas de enlace"
 #: rust/src/library.rs
 msgid "Whole page sideways"
 msgstr "Página entera de lado"
+
+#. TRANSLATORS: (Buttons sheet) cycles between the status bar, the clock corner and Off.
+#: rust/src/library.rs
+msgid "Status display"
+msgstr "Indicador de estado"
 
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: rust/src/library.rs

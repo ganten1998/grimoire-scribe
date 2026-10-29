@@ -398,17 +398,19 @@ impl Default for TouchSt {
 
 // ---- the touch log and trace ----
 
+mod touch_log_budget;
+use touch_log_budget::{LogDecision, TouchLogBudget};
+
 /// grimoire.log's touch lines: the first TLOG_FRAMES multi-contact frames of each touch session, at
-/// most TLOG_LINES in a run; a single finger's TOUCH_MAJOR kept for its first TIP_N frames.
+/// most 2000 in a 60-second window; a single finger's TOUCH_MAJOR kept for its first TIP_N frames.
 const TLOG_FRAMES: i32 = 300;
-const TLOG_LINES: i32 = 2000;
 const TIP_N: usize = 128;
 
 #[derive(Clone, Copy, Debug)]
 struct TouchLog {
-    /// multi-contact frames logged this touch session, touch lines logged this run
+    /// multi-contact frames logged this touch session, renewable log window
     frames: i32,
-    lines: i32,
+    budget: TouchLogBudget,
     /// a single finger's TOUCH_MAJOR at each frame it reported one (the first TIP_N), how many
     /// frames, the largest
     tip: [i32; TIP_N],
@@ -418,7 +420,7 @@ struct TouchLog {
 
 impl Default for TouchLog {
     fn default() -> Self {
-        TouchLog { frames: 0, lines: 0, tip: [0; TIP_N], tip_frames: 0, tip_max: 0 }
+        TouchLog { frames: 0, budget: TouchLogBudget::default(), tip: [0; TIP_N], tip_frames: 0, tip_max: 0 }
     }
 }
 
@@ -1487,7 +1489,7 @@ impl State {
         let mut line = String::new();
         if f.n >= 2 && self.tlog.frames < TLOG_FRAMES && touchgest_log_frame(f, grabbed, &mut line) {
             self.tlog.frames += 1;
-            self.tlog_line(&line);
+            self.tlog_line(f.k_ms, &line);
         }
         if f.n == 1 && f.c[0].major > 0 {
             let l = &mut self.tlog;
@@ -1505,13 +1507,13 @@ impl State {
         if ended {
             // The touch session is over: its gaps and how it went, or one finger's size.
             if touchgest_log_session(&self.tg, grabbed, &mut line) {
-                self.tlog_line(&line);
+                self.tlog_line(f.k_ms, &line);
             } else if touchgest_session_contacts(&self.tg) == 1 && self.tlog.tip_frames > 0 {
                 let n = (self.tlog.tip_frames as usize).min(TIP_N);
                 let mut v = self.tlog.tip;
                 v[..n].sort_unstable();
                 if touchgest_log_fingertips(v[n / 2], self.tlog.tip_max, self.tlog.tip_frames, grabbed, &mut line) {
-                    self.tlog_line(&line);
+                    self.tlog_line(f.k_ms, &line);
                 }
             }
             self.tlog.frames = 0;
@@ -1523,13 +1525,12 @@ impl State {
         }
     }
 
-    fn tlog_line(&mut self, line: &str) {
-        if self.tlog.lines < TLOG_LINES {
-            qlog!("%s", line);
-        } else if self.tlog.lines == TLOG_LINES {
-            qlog!("touch: log cap reached");
+    fn tlog_line(&mut self, k_ms: u32, line: &str) {
+        match self.tlog.budget.admit(k_ms) {
+            LogDecision::Line => qlog!("%s", line),
+            LogDecision::Cap => qlog!("touch: log cap reached (2000 lines/60 s; resumes next window)"),
+            LogDecision::Skip => {},
         }
-        self.tlog.lines = self.tlog.lines.saturating_add(1);
     }
 
     // The pen's coming and going for the trace, never where (no write here: the touch side flushes).

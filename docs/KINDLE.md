@@ -546,7 +546,9 @@ notebook page:
   tracking id, tool, size and pressure, never where), each multi-finger touch's landing and lift
   gaps and what it became (`touch: session ...: fired 2.down`, `rejected pen`, `zoom`, `pan`,
   `palm`), and a single finger's size at its lift (`touch: fingertips ...`), at most 2000 such lines
-  a run. With an empty `grimoire/touch-trace`, Grimoire also appends every touch frame with its
+  per 60-second window. A capped window adds one `touch: log cap reached` notice; the first
+  diagnostic after 60 seconds starts a fresh budget, so later sessions survive a long day.
+  The 300-frame limit still applies to each contact session. With an empty `grimoire/touch-trace`, Grimoire also appends every touch frame with its
   places, the pen coming near, touching, lifting and leaving (never where it is: no handwriting),
   and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
   of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP

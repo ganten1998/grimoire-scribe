@@ -19,7 +19,7 @@ five groups, as the editor's panel groups its buttons: **Editing** (undo, redo, 
 while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in the tool
 picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next
 page, first / last page, new page, fit page, whole page sideways, Pages, Index, add a link, name the
-page), **Index** (the Links bar, go to a page or name, back to the page before, link areas) and **Menus**
+page, swipe past the last page to add a page), **Index** (the Links bar, go to a page or name, back to the page before, link areas) and **Menus**
 (the tool picker, Paper, Display, Pen feel, fold the panel, the Library, close menu, the clock and
 battery). Open a group,
 tap a row, then press the button; Done goes back up to the list. One button per action: a button
@@ -95,7 +95,8 @@ Actions, in the Buttons sheet's groups:
   its Pages or its Index tab), `landscape-fit` (sideways, the whole page or the page's width, in turn:
   the Display sheet's "Sideways, show the whole page" row, with a toast; upright only the toast, as it
   applies when the Kindle is sideways), `add-link` (Add a link) and `name-page` (Name the page), both
-  below.
+  below, and `gesture-new-page` ("Swiping past the last page adds a page": turns that behavior on
+  or off, as the Display sheet's checkbox does).
 - **Index**: `links` (the Links bar: the links on the open page, one row for each page they lead to; it
   opens and closes with its own button, and two fingers up also open it, two fingers down close it),
   `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's Go to page

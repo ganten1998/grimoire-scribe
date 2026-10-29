@@ -759,7 +759,7 @@ static K_TOOLS: [LearnRow; 2] = [
     // previous and its next pen (with it closed, they switch tools through all nine), in that order.
     lr(Some(n_("Previous / next in the picker")), [SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT], IconKind::Grid),
 ];
-static K_PAGES: [LearnRow; 9] = [
+static K_PAGES: [LearnRow; 10] = [
     // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
     lr(Some(n_("Previous / next page")), [SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE], IconKind::Next),
     // TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
@@ -771,6 +771,7 @@ static K_PAGES: [LearnRow; 9] = [
     lr(None, [SHORTCUT_INDEX, 0], IconKind::None),
     lr(None, [SHORTCUT_ADD_LINK, 0], IconKind::Link),
     lr(None, [SHORTCUT_NAME_PAGE, 0], IconKind::Rename),
+    lr(None, [SHORTCUT_GESTURE_NEW_PAGE, 0], IconKind::Plus),
 ];
 // The Index group: the Links bar, Go to page or name, back to the page before, the link areas.
 static K_INDEX: [LearnRow; 4] = [
@@ -779,7 +780,7 @@ static K_INDEX: [LearnRow; 4] = [
     lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
     lr(None, [SHORTCUT_LINK_AREAS, 0], IconKind::Eye),
 ];
-static K_MENUS: [LearnRow; 9] = [
+static K_MENUS: [LearnRow; 10] = [
     lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
     lr(None, [SHORTCUT_PAPER, 0], IconKind::Paper),
     lr(None, [SHORTCUT_DISPLAY, 0], IconKind::Brightness),
@@ -789,6 +790,7 @@ static K_MENUS: [LearnRow; 9] = [
     lr(None, [SHORTCUT_CLOSE_MENU, 0], IconKind::Close),
     lr(None, [SHORTCUT_STATUS, 0], IconKind::Clock),
     lr(None, [SHORTCUT_STATUS_CORNER, 0], IconKind::Clock),
+    lr(None, [SHORTCUT_STATUS_MODE, 0], IconKind::Clock),
 ];
 struct Group {
     /// its row in the list
@@ -918,6 +920,8 @@ fn action_label(action: i32) -> &'static str {
         nm(SHORTCUT_LANDSCAPE_FIT, n_("Whole page sideways")),
         // TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
         nm(SHORTCUT_GESTURE_NEW_PAGE, n_("Swiping past the last page adds a page")),
+        // TRANSLATORS: (Buttons sheet) cycles between the status bar, the clock corner and Off.
+        nm(SHORTCUT_STATUS_MODE, n_("Status display")),
     ];
     for n in NAMES {
         if n.action == action {
@@ -2834,9 +2838,10 @@ mod tests {
         assert!(is_tools(1) && !is_tools(0) && !is_tools(2) && !is_tools(3) && !is_tools(4));
         assert_eq!(group_rows(0), 7);
         assert_eq!(group_rows(1), TOOL_PENS as i32 + 2);
-        // Pages: turning, new, fit, whole page sideways (Rust only), Pages, Index, links, names
-        assert_eq!(group_rows(2), 9);
+        // Pages: turning, new, fit, whole page sideways, Pages, Index, links, names, swipe-to-add.
+        assert_eq!(group_rows(2), 10);
         assert_eq!(learn_row_at(2, 4).act, [SHORTCUT_LANDSCAPE_FIT, 0]);
+        assert_eq!(learn_row_at(2, 9).act, [SHORTCUT_GESTURE_NEW_PAGE, 0]);
         // Index (Rust only): the Links bar, Go to page or name, back, the link areas
         assert_eq!(group_rows(3), 4);
         assert_eq!(K_GROUPS[3].probe, "index");
@@ -2844,9 +2849,10 @@ mod tests {
         assert_eq!(learn_row_at(3, 3).act, [SHORTCUT_LINK_AREAS, 0]);
         assert_eq!(action_label(SHORTCUT_GO_BACK), "Back to the page before");
         // Menus: the editor's menus, then the clock and battery and its corner (Rust only), last
-        assert_eq!(group_rows(4), 9);
+        assert_eq!(group_rows(4), 10);
         assert_eq!(learn_row_at(4, 7).act, [SHORTCUT_STATUS, 0]);
         assert_eq!(learn_row_at(4, 8).act, [SHORTCUT_STATUS_CORNER, 0]);
+        assert_eq!(learn_row_at(4, 9).act, [SHORTCUT_STATUS_MODE, 0]);
         assert_eq!(action_label(SHORTCUT_STATUS), "Clock and battery");
         assert_eq!(action_label(SHORTCUT_STATUS_CORNER), "Clock and battery corner");
         let first = learn_row_at(1, 0);
@@ -2862,5 +2868,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn buttons_rows_have_separate_reachable_touch_targets() {
+        assert_eq!(font_init(), 0);
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            ui_set_theme(theme);
+            for (w, h, dpi) in [(1860, 2480, 300.0), (1986, 2648, 320.0)] {
+                ui_init(dpi);
+                for (w, h) in [(w, h), (h, w)] {
+                    let mut a = App { w, h, dpi, ..Default::default() };
+                    assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+                    library_init(&mut a);
+                    for group in 0..N_GROUPS {
+                        lib(&mut a).modal = Modal::Buttons;
+                        lib(&mut a).buttons_group = group;
+                        hits_clear(&mut lib(&mut a).hits);
+                        draw_modal(&mut a);
+                        let hits = &a.lib.as_ref().unwrap().hits;
+                        assert_eq!(hits.h.len(), group_rows(group) as usize + 1);
+                        let mut bottom = 0;
+                        for (row, hit) in hits.h.iter().enumerate() {
+                            let r = hit.r;
+                            assert!(r.y > bottom && r.y + r.h < h - ui_px(40.0));
+                            assert!(r.x >= 0 && r.x + r.w <= w);
+                            assert!(r.h >= (dpi * 10.0 / 25.4).floor() as i32);
+                            let found = hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32).unwrap();
+                            assert_eq!((found.id, found.arg), if row < group_rows(group) as usize {
+                                (H_BUTTON_ROW, row as i32)
+                            } else {
+                                (H_BUTTONS_DONE, 0)
+                            });
+                            bottom = r.y + r.h;
+                        }
+                    }
+                    library_free(&mut a);
+                    canvas_free(&mut a.screen);
+                }
+            }
+        }
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
     }
 }

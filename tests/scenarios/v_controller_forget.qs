@@ -46,19 +46,19 @@ tap 930 949
 wait 100
 expect library.buttons_group is pages
 expect pads.previous-page is Select,Left
-touch down 930 469
+touch down 930 416
 wait 700
-touch up 930 469
+touch up 930 416
 wait 100
 expect pads.previous-page is
 expect pads.next-page is
 expect toast is No buttons for Previous / next page now.
 expect library.learning is
 # A finger that moves off the row: no hold, no learning
-touch down 930 630
-touch move 930 741
+touch down 930 576
+touch move 930 687
 wait 700
-touch up 930 741
+touch up 930 687
 wait 100
 expect library.learning is
 # The Tools group's previous / next tool keep the D-pad's Up and Down

@@ -6,6 +6,10 @@ The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-b
 performance candidate that was never published, so its changes (the last section below) are in this
 release too.
 
+- **Buttons sheet:** "Swiping past the last page adds a page" and the status display (bar, corner
+  or off) can be given a button, in the Pages and Menus groups.
+- **The touch log keeps going on a long day:** its 2000-line limit now applies per minute, not per
+  run, so touches late in the day still leave their lines in `grimoire.log`.
 - **Notebook status bar:** the new default keeps the notebook, page and section, link counts, tool,
   clock, battery, screen sharing and controller visible above the page. Upright and sideways, the
   page fits below it. Display lets you select Bar, Corner or Off, also available as `status-mode`.

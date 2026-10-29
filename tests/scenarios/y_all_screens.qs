@@ -73,14 +73,22 @@ tap 930 949
 wait 50
 expect library.buttons_group is pages
 shot 02-buttons-pages
-tap 930 469
+tap 930 416
 wait 50
 expect library.learning is previous-page
 shot 02-buttons-learning-pages
-tap 930 469
+tap 930 416
 wait 50
-tap 930 1909
+# The added final row and its learning text, with Done below it.
+tap 930 1856
 wait 50
+expect library.learning is gesture-new-page
+shot 02-buttons-learning-gesture-new-page
+tap 930 1856
+wait 50
+tap 930 2016
+wait 50
+expect library.buttons_group is
 tap 930 1109
 wait 50
 expect library.buttons_group is index
@@ -99,9 +107,13 @@ tap 930 1269
 wait 50
 expect library.buttons_group is menus
 shot 02-buttons-menus
-# (Done is lower since the Menus group got its eighth and ninth rows, the clock and battery's and its
-# corner's, in the Rust build, in both styles.)
-tap 930 1910
+# The final action row cycles the status display (action 55 in the parallel status-bar change).
+tap 930 1856
+wait 50
+shot 02-buttons-learning-status-display
+tap 930 1856
+wait 50
+tap 930 2016
 wait 50
 expect library.buttons_group is
 tap 930 1589
@@ -676,7 +688,13 @@ tap 1240 742
 wait 50
 expect library.buttons_group is pages
 shot 45-buttons-pages-landscape
-tap 1240 1690
+tap 1240 1556
+wait 50
+expect library.learning is gesture-new-page
+shot 45-buttons-learning-gesture-new-page-landscape
+tap 1240 1556
+wait 50
+tap 1240 1700
 wait 50
 expect library.buttons_group is
 tap 1240 902
