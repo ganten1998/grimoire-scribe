@@ -806,8 +806,9 @@ pub fn linkbar_pick_docks_top(centre_y: i32, ah: i32) -> bool {
 }
 
 /// Link to... on an aw x ah screen: the bar's frame, 316 + 140 R tall for R rows of chips (the most a screenful
-/// has), at the top with its top at top_y (below the clock corner), or at the bottom 20 px above the edge.
-pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y: i32) {
+/// has), at the top with its top at top_y (below the clock corner), or at the bottom ending at bottom_y (above a
+/// clock corner at the bottom; 0: 20 px above the edge).
+pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y: i32, bottom_y: i32) {
     let (cols, max_rows) = grid_of(aw, ah);
     let n = lb.picks.len() as i32;
     lb.cols = cols;
@@ -821,7 +822,7 @@ pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y:
     lb.header_hint = false;
     lb.top = top;
     let h = u(316.0 + 140.0 * lb.rows as f32);
-    let y = if top { top_y } else { ah - u(20.0) - h };
+    let y = if top { top_y } else if bottom_y > 0 { bottom_y - h } else { ah - u(20.0) - h };
     lb.rect = Rect { x: u(20.0), y, w: aw - 2 * u(20.0), h };
     let gtop = lb.rect.y + u(16.0) + u(36.0);
     lb.grid = Rect { x: lb.rect.x, y: gtop, w: lb.rect.w, h: chips_y(lb) + lb.rows * u(124.0) + (lb.rows - 1) * u(16.0) - gtop };

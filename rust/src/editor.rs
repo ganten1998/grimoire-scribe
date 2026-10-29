@@ -729,7 +729,7 @@ impl EditorState {
     // whatever it had: a link drawn on it later this session is never migrated behind its back.
     fn migrate_entry(&mut self, e: usize) {
         let pid = self.hist[e].page_id;
-        if self.migrate_done.contains(&pid) || !self.nav.links_writable {
+        if self.migrate_done.binary_search(&pid).is_ok() || !self.nav.links_writable {
             return;
         }
         if let Some(p) = self.hist[e].page.as_deref() {
@@ -753,21 +753,24 @@ impl EditorState {
         // (room for every page was made at the open; a page added since may need more. Without it the
         // page is not remembered, and the idle ticks stop: see migrate_room)
         if self.migrate_done.len() < self.migrate_done.capacity() || self.migrate_done.try_reserve(16).is_ok() {
-            self.migrate_done.push(pid);
+            if let Err(i) = self.migrate_done.binary_search(&pid) {
+                self.migrate_done.insert(i, pid);
+            }
         }
     }
 
     // Whether every page tried can be remembered: the idle ticks migrate only then, so a page that
     // could not be remembered is never read again and again.
-    fn migrate_room(&self) -> bool {
-        self.migrate_done.capacity() >= self.nb.page_ids.len()
+    fn migrate_room(&mut self) -> bool {
+        let needed = self.nb.page_ids.len().saturating_sub(self.migrate_done.len());
+        self.migrate_done.try_reserve(needed).is_ok()
     }
 
     // The first page in notebook order with a link that has no area and that this session has not
     // tried, as an index; -1 for none.
     fn migrate_next(&self) -> i32 {
         for (i, &pid) in self.nb.page_ids.iter().enumerate() {
-            if !self.migrate_done.contains(&pid) && nav_links_legacy(&self.nav, pid) > 0 {
+            if nav_links_legacy(&self.nav, pid) > 0 && self.migrate_done.binary_search(&pid).is_err() {
                 return i as i32;
             }
         }
@@ -1842,11 +1845,11 @@ fn draw_menus(a: &mut App, r: Rect) {
     let s = ed_ref(a);
     if s.lt.open && !s.lt.hidden {
         let (aw, ah) = (a.w, a.h);
-        let top_y = dock_top_y(a);
+        let (top_y, bottom_y) = (dock_top_y(a), dock_bottom_y(a));
         let (rect, top) = {
             let lt = &mut ed(a).lt;
             let top = lt.top;
-            linkbar_layout_pick(lt, aw, ah, top, top_y);
+            linkbar_layout_pick(lt, aw, ah, top, top_y, bottom_y);
             (lt.rect, top)
         };
         if rect_overlaps(r, rect) {
@@ -3005,7 +3008,7 @@ fn pen_button(a: &mut App, ev: &InEvent) {
     if ev.side_button {
         s.btn_down = true;
         s.btn_down_at = t;
-        s.btn_used_for_ink = s.owner != Owner::None || sheet_open(s);
+        s.btn_used_for_ink = s.owner != Owner::None || sheet_open(s) || s.lm.state != LmState::Off;
         s.btn_hold_fired = false;
         return;
     }
@@ -3326,9 +3329,10 @@ fn lm_bounds(a: &App) -> Rect {
 }
 
 /// The strip while a link is being made (6.3): along the bottom, 20 px in from the sides and above the edge.
+/// Above the clock corner when it is at the bottom (rule 12: it never meets the corner's zone).
 fn strip_rect(a: &App) -> Rect {
     let h = ui_px(130.0);
-    Rect { x: ui_px(20.0), y: a.h - ui_px(20.0) - h, w: a.w - ui_px(40.0), h }
+    Rect { x: ui_px(20.0), y: dock_bottom_y(a) - h, w: a.w - ui_px(40.0), h }
 }
 
 /// The strip's Cancel: 260 x 100 at its right, 15 px in.
@@ -3441,7 +3445,7 @@ fn lasso_area(bx0: f32, by0: f32, bx1: f32, by1: f32, pgw: i32, pgh: i32) -> Rec
 /// A lasso smaller than LINK_BOX_MIN_MM both ways (at this dpi) makes no area.
 fn lasso_too_small(r: Rect, dpi: f32) -> bool {
     let min_px = LINK_BOX_MIN_MM * dpi / 25.4;
-    (r.w as f32) < min_px && (r.h as f32) < min_px
+    r.w <= 0 || r.h <= 0 || ((r.w as f32) < min_px && (r.h as f32) < min_px)
 }
 
 /// Add a link, from the Index, the bar's New link or the add-link shortcut, or the card's Redraw the area for
@@ -3471,6 +3475,8 @@ fn link_arm(a: &mut App, from_bar: bool, redraw: Option<u32>) {
     let strip = strip_rect(a);
     let s = ed(a);
     s.lm = LinkMaking { state: LmState::Armed, strip, from_bar, redraw, ..Default::default() };
+    s.nclicks = 0;
+    if s.btn_down { s.btn_used_for_ink = true; }
     compose(a, strip);
     app_invalidate(a, strip, RefreshMode::Ui);
 }
@@ -3619,6 +3625,17 @@ fn dock_top_y(a: &App) -> i32 {
     y + ui_px(8.0)
 }
 
+/// Where a surface docked at the bottom of the screen (the strip, Link to...) ends: 20 px above the edge, and 8 px
+/// above the clock corner's zone when the corner is at the bottom, so nothing this phase adds meets it (rule 12).
+fn dock_bottom_y(a: &App) -> i32 {
+    let z = status_zone(a);
+    let mut y = a.h - ui_px(20.0);
+    if !rect_is_empty(z) && z.y >= a.h / 2 {
+        y = y.min(z.y - ui_px(8.0));
+    }
+    y
+}
+
 /// The Recent targets Link to... is offered, newest first: the targets links were made to this session,
 /// then the back list's pages (linkbar_build_pick leaves out the open page, repeats and pages gone).
 fn recent_targets(s: &EditorState) -> Vec<FixedStr<NAV_TARGET_LEN>> {
@@ -3647,7 +3664,7 @@ fn lt_open(a: &mut App) {
 /// `current` marks the target the links have now (a retarget), `no_pages` leaves Choose from the pages... out.
 fn lt_open_for(a: &mut App, centre_y: i32, current: &str, no_pages: bool) {
     let (aw, ah) = (a.w, a.h);
-    let top_y = dock_top_y(a);
+    let (top_y, bottom_y) = (dock_top_y(a), dock_bottom_y(a));
     let s = ed(a);
     let top = linkbar_pick_docks_top(centre_y, ah);
     let recent = recent_targets(s);
@@ -3655,7 +3672,7 @@ fn lt_open_for(a: &mut App, centre_y: i32, current: &str, no_pages: bool) {
     if linkbar_build_pick(&mut lt, &s.nb, &s.nav, &recent, s.open_pid(), current, no_pages) < 0 {
         qlog!("index: no memory to list the Index for a link");
     }
-    linkbar_layout_pick(&mut lt, aw, ah, top, top_y);
+    linkbar_layout_pick(&mut lt, aw, ah, top, top_y, bottom_y);
     let rect = lt.rect;
     s.lt = lt;
     compose(a, rect);
@@ -3880,7 +3897,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
         app_toast(a, tr("Could not save the link."), 3000);
         if from_bar {
-            bar_open(a);
+            bar_show(a, false);
         }
         return;
     }
@@ -3901,7 +3918,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     lm_close(a, u); // (the rectangle goes; with the eye on, compose draws the new box)
     repaint_panel(a, RefreshMode::Ui); // (Undo is enabled now)
     if from_bar {
-        bar_open(a); // (with the new entry, in the same pass)
+        bar_show(a, false); // (with the new entry, in the same pass)
     }
     // The first link ever made says, once, how a link is used (hints bit 1), instead of where it goes.
     if a.settings.hints & HINT_FIRST_LINK == 0 {
@@ -3974,7 +3991,7 @@ fn link_retarget(a: &mut App, target: &str, new_page: i32) {
     if same || pid == 0 {
         lm_close(a, u);
         if from_bar {
-            bar_open(a);
+            bar_show(a, false);
         }
         return;
     }
@@ -3995,7 +4012,7 @@ fn link_retarget(a: &mut App, target: &str, new_page: i32) {
         lm_close(a, u);
         app_toast(a, tr("Could not save the link."), 3000);
         if from_bar {
-            bar_open(a);
+            bar_show(a, false);
         }
         return;
     }
@@ -4010,7 +4027,7 @@ fn link_retarget(a: &mut App, target: &str, new_page: i32) {
     lm_close(a, u);
     repaint_panel(a, RefreshMode::Ui);
     if from_bar {
-        bar_open(a);
+        bar_show(a, false);
     }
     app_toast(a, &msg, 2500);
 }
@@ -4035,7 +4052,7 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
         app_invalidate(a, u, RefreshMode::Ui);
         app_toast(a, tr("Could not save the link."), 3000);
         if from_bar {
-            bar_open(a);
+            bar_show(a, false);
         }
         return;
     }
@@ -4055,7 +4072,7 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
     app_invalidate(a, u, RefreshMode::Ui);
     repaint_panel(a, RefreshMode::Ui);
     if from_bar {
-        bar_open(a);
+        bar_show(a, false);
     }
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Redraw the
     // area gave the link the area just drawn; Undo brings the old one back.
@@ -4078,7 +4095,7 @@ fn link_cancel(a: &mut App, toast: bool) {
     lm_drop(s);
     lm_close(a, u);
     if from_bar {
-        bar_open(a);
+        bar_show(a, false);
     }
     if toast && !quiet {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
@@ -4660,7 +4677,7 @@ fn card_redraw(a: &mut App) {
     if ed_ref(a).lm.state == LmState::Off {
         card_close(a); // (refused: the border goes, and the bar comes back)
         if from_bar {
-            bar_open(a);
+            bar_show(a, false);
         }
     }
 }
@@ -4978,6 +4995,10 @@ fn find_result(a: &mut App, r: FsResult, d: Rect) {
 // back to the page it was left from. One Ui refresh of its card, no flash. Opening it disarms link making,
 // silently (the strip goes in the same refresh).
 fn bar_open(a: &mut App) {
+    bar_show(a, true);
+}
+
+fn bar_show(a: &mut App, count_open: bool) {
     link_off(a);
     let (dpi, aw, ah) = (a.dpi, a.w, a.h);
     let s = ed(a);
@@ -4998,7 +5019,7 @@ fn bar_open(a: &mut App) {
     linkbar_layout(&mut lb, aw, ah);
     let rect = lb.rect;
     s.lb = lb;
-    if shown < HINT_BAR_MASK {
+    if count_open && shown < HINT_BAR_MASK {
         a.settings.hints = (a.settings.hints & !(HINT_BAR_MASK << HINT_BAR_SHIFT)) | ((shown + 1) << HINT_BAR_SHIFT);
         settings_save(&a.settings);
     }
@@ -6404,8 +6425,35 @@ pub fn editor_suspend(a: &mut App) -> bool {
 /// Whether the notebook's page itself is in front: a notebook is open and no sheet, menu, Pages view, Links bar
 /// or keyboard is over it. The only place the clock and battery shows (status.rs), and where a tap in its
 /// corner is its.
+///
+/// The card, Link to... and Find PICK (phase 2) are sheets for every other purpose, but they leave the page's corner in
+/// front: the clock shows and keeps its tap with them up (rule 12), unless a keyboard covers the corner.
 pub fn editor_page_in_front(a: &App) -> bool {
-    a.ed.as_deref().is_some_and(|s| s.open && !sheet_open(s))
+    a.ed.as_deref().is_some_and(|s| s.open && !corner_sheet_open(s) && !keyboard_over_corner(a, s))
+}
+
+/// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
+fn corner_sheet_open(s: &EditorState) -> bool {
+    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || (s.find.open && s.find.mode != FindMode::Pick)
+}
+
+/// Whether a keyboard the card, New page... or Find PICK opened lies over the clock corner's square (one docked at the
+/// bottom, with the corner at the bottom).
+fn keyboard_over_corner(a: &App, s: &EditorState) -> bool {
+    let sq = status_square(a);
+    [&s.card.kb, &s.lm.kb, &s.find.kb].iter().any(|kb| kb.open && rect_overlaps(kb.area, sq))
+}
+
+/// Whether (x, y) is on a surface of the card, Link to..., Find PICK or the strip: a control, never the corner's.
+fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
+    let kb_at = |kb: &Keyboard| kb.open && rect_contains(kb.area, x, y);
+    (s.card.open && rect_contains(s.card.rect, x, y))
+        || (s.lt.open && !s.lt.hidden && rect_contains(s.lt.rect, x, y))
+        || (s.find.open && rect_contains(s.find.rect, x, y))
+        || ((s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso) && rect_contains(s.lm.strip, x, y))
+        || kb_at(&s.card.kb)
+        || kb_at(&s.lm.kb)
+        || kb_at(&s.find.kb)
 }
 
 /// Whether the editor has a control at (x, y) for a finger on the page: the panel, or a link there. (A sheet, a
@@ -6414,10 +6462,10 @@ pub fn editor_page_in_front(a: &App) -> bool {
 /// which is not one there: the corner's tap is the clock's, over a link too.
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     let s = ed_ref(a);
-    if !s.open || sheet_open(s) {
+    if !s.open || corner_sheet_open(s) {
         return true;
     }
-    if rect_contains(s.panel, x as i32, y as i32) {
+    if rect_contains(s.panel, x as i32, y as i32) || phase2_surface_at(s, x as i32, y as i32) {
         return true;
     }
     if status_hit(a, x, y) {
@@ -6493,7 +6541,7 @@ fn pen_toast(a: &mut App, t_ms: u32) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
-    if status_reserved(a) > 0 && ev.y < status_reserved(a) as f32 && editor_page_in_front(a)
+    if status_reserved(a) > 0 && ev.y < status_reserved(a) as f32 && a.ed.as_deref().is_some_and(|s| s.open && !sheet_open(s))
         && app_pointer_phase(ev) == 0 && !editor_busy(a) { return; }
     let s = ed(a);
     if !s.open {
@@ -7118,7 +7166,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during
     // which a sheet was in front of the page, nor one the pen pressed anything during.
     let s = ed(a);
-    if s.btn_down && sheet_open(s) {
+    if s.btn_down && (sheet_open(s) || s.lm.state != LmState::Off) {
         s.btn_used_for_ink = true;
     }
     if s.open
@@ -8171,11 +8219,27 @@ mod tests {
         assert_eq!(lasso_area(-5.5, -1.0, 2000.2, 30.1, 1860, 2480), Rect { x: 0, y: 0, w: 1860, h: 31 });
     }
 
+    #[test]
+    fn migration_tracks_new_pages_and_keeps_tried_ids_sorted() {
+        let mut s = EditorState::default();
+        s.nb.page_ids = vec![30, 10];
+        assert!(s.migrate_room());
+        s.migrate_tried(30);
+        s.nb.page_ids.push(20);
+        assert!(s.migrate_room());
+        s.migrate_tried(10);
+        s.migrate_tried(20);
+        s.migrate_tried(10);
+        assert_eq!(s.migrate_done, vec![10, 20, 30]);
+    }
+
     // Too small for a link: under 5 mm both ways (59 px at 300 dpi); 5 mm either way is an area.
     #[test]
     fn a_lasso_under_five_mm_both_ways_is_too_small() {
         let min = (LINK_BOX_MIN_MM * 300.0 / 25.4).ceil() as i32; // 60
         assert!(lasso_too_small(Rect { x: 0, y: 0, w: 0, h: 0 }, 300.0));
+        assert!(lasso_too_small(Rect { x: 0, y: 0, w: 0, h: 500 }, 300.0));
+        assert!(lasso_too_small(Rect { x: 0, y: 0, w: 500, h: 0 }, 300.0));
         assert!(lasso_too_small(Rect { x: 0, y: 0, w: min - 1, h: min - 1 }, 300.0));
         assert!(!lasso_too_small(Rect { x: 0, y: 0, w: min, h: 3 }, 300.0));
         assert!(!lasso_too_small(Rect { x: 0, y: 0, w: 3, h: min }, 300.0));

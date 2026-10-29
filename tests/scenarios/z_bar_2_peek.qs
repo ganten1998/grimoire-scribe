@@ -62,7 +62,7 @@ wait 800
 expect editor.link_card is 1
 touch up 600 1100
 expect editor.modal is card
-tap 125 95
+tap 1200 1900
 wait 300
 expect editor.modal is none
 expect editor.page is 1

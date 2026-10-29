@@ -228,11 +228,11 @@ fn link_to_offers_its_chips_in_order() {
     check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "p50", true) == 0);
     check!(lb.no_pages && lb.selected == 5);
     check!(chips(&lb)[5] == "recent p5 current" && chips(&lb)[8] == "p5 current" && chips(&lb)[7] == "p3");
-    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0, 0);
     check!(lb.screen == 0);
     check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "p50", true) == 0);
     lb.selected = 8;
-    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0, 0);
     check!(lb.screen == 1);
     check!(linkbar_probe_pick(&lb, "screen", &mut out, 16) && out == "2/2");
     // the Index is current: its chip
@@ -254,11 +254,11 @@ fn link_to_is_laid_out_and_docked() {
             check!(nav_set_name(&mut nav, nb.page_ids[k], names[k]) == 0);
         }
         check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "", false) == 0);
-        linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+        linkbar_layout_pick(&mut lb, 1860, 2480, false, 0, 0);
         check!(lb.rect == Rect { x: 20, y: 2480 - 20 - h_up, w: 1820, h: h_up });
-        linkbar_layout_pick(&mut lb, 1860, 2480, true, 173);
+        linkbar_layout_pick(&mut lb, 1860, 2480, true, 173, 0);
         check!(lb.top && lb.rect == Rect { x: 20, y: 173, w: 1820, h: h_up });
-        linkbar_layout_pick(&mut lb, 2480, 1860, false, 0);
+        linkbar_layout_pick(&mut lb, 2480, 1860, false, 0, 0);
         check!(lb.rect == Rect { x: 20, y: 1860 - 20 - h_side, w: 2440, h: h_side });
     }
     let mut out = String::new();

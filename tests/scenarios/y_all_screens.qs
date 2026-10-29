@@ -526,7 +526,7 @@ touch up 600 1100
 wait 100
 expect editor.link_card is 1
 shot 28-link-card
-tap 125 95
+tap 1200 1900
 wait 100
 expect editor.modal is none
 # a second link to the Index, low on the page: Link to... docks at the top, and so do New page...'s keyboard and
@@ -914,7 +914,7 @@ touch up 700 900
 wait 100
 expect editor.link_card is 1
 shot 49-link-card-landscape
-tap 125 95
+tap 2200 1500
 wait 100
 expect editor.modal is none
 pentap panel library

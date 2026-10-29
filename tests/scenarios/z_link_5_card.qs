@@ -58,15 +58,21 @@ tap 1200 1900
 expect editor.link_card is 0
 expect editor.link_card.border is 0
 expect editor.page is 1
-# With the card up the clock is not shown, so its corner is no corner: a tap there is a tap outside (the clock not
-# toggled)
+# The clock corner keeps its tap with the card up (rule 12): a tap there toggles the clock and the card stays
 touch down 600 1100
 wait 800
 touch up 600 1100
 expect editor.link_card is 1
-expect status.front is 0
+expect status.front is 1
 tap 60 60
+wait 100
+expect settings.status_on is 1
+expect editor.link_card is 1
+tap 60 60
+wait 100
 expect settings.status_on is 0
+expect editor.link_card is 1
+tap 1200 1900
 expect editor.link_card is 0
 # Change where it goes...: Link to... without Choose from the pages..., Cap marked; The Index
 touch down 600 1100
@@ -78,6 +84,15 @@ wait 100
 expect editor.linkto is pick
 expect editor.modal is linkto
 expect editor.link_card is 0
+# and with Link to... up: the clock toggles, nothing is cancelled
+tap 60 60
+wait 100
+expect settings.status_on is 1
+expect editor.linkto is pick
+tap 60 60
+wait 100
+expect settings.status_on is 0
+expect editor.linkto is pick
 expect editor.link_card.border is 1
 expect editor.ui_at.930.2370 is
 expect editor.ui_at.480.2370 is linkto.search

@@ -15,6 +15,20 @@ expect editor.strip is new
 expect editor.link_mode is 1
 expect editor.linkto is 0
 shot 01-strip
+# While selecting a link, button holds and clicks never clear the ordinary ink.
+pen hover 900 1800
+side on
+wait 1300
+side off
+side on
+side off
+side on
+side off
+side on
+side off
+expect editor.strip is new
+expect editor.links is 3 3
+expect editor.undo_kind not clear
 # A dot is too small: the strip stays, and no ink
 pentap 600 1700
 expect toast is Too small for a link: draw around what links.

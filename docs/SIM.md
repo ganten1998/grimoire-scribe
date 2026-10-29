@@ -99,7 +99,8 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 The clock and battery corner (docs/KINDLE.md; src status.rs, the Rust build only) reads the simulated
 battery every 100 ms in place of the Kindle's every 10 s, so a script sees a change after a short
 `wait`. Its time is local time: a script that checks its text sets `# env: TZ=UTC` (y_status_corner.qs does).
-It shows on the notebook page only (`status.front`: no Library, no sheet, menu, bar or Pages view in front),
+It shows on the notebook page only (`status.front`: no Library, no sheet, menu, bar or Pages view in front; the
+long-press card, Link to... and Find PICK leave it in front, unless a keyboard they opened covers the corner),
 and a script's taps in its corner (`tap`, `touch`, `finger`) toggle it there and nowhere else. The refreshes
 it sends show in `display.presents` as `ui` of its own rect (two, apart, when it moves from one corner to
 another), and are held back while the pen is near (`pen hover` until `pen leave`), a stroke is drawn or
@@ -429,7 +430,9 @@ its left + 390). It goes right of the border, else left, below, above, never ove
 the panel when it can. Its rows: Rename in the Index (Add page N to the Index... for an unnamed page; none for the
 Index), Change where it goes..., Redraw the area and Delete link. Rename's keyboard (`Name in the Index`) docks at
 the top when the border's centre is in the lower 45% of the screen (its keys 1307 px higher). A tap outside closes
-the card; with it up the clock is not shown, so the clock's corner is a tap outside too. Change where it goes...
+the card; a tap in the clock's corner toggles the clock and the card stays (the same with Link to... up: nothing
+is cancelled). The strip and Link to... docked at the bottom end 8 px above a clock corner at the bottom (z_link_8_corner).
+Change where it goes...
 opens Link to... with two tools, Search and Cancel (centres x 480 and 1380 upright), the current target's chip
 reading ` current`.
 A press held on a Links bar chip (`touch down` on it, `wait 800`, `touch up`) opens the same card for all of
