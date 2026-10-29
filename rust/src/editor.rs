@@ -6295,6 +6295,19 @@ fn close_sheets(s: &mut EditorState) {
     tplsheet_close(&mut s.ts);
 }
 
+// On a landscape full-page view the margins are useful space for the panel. Keep the writer's
+// chosen side, and move only horizontally; custom page sizes with no room retain the old placement.
+fn landscape_panel_slot(a: &App, left: bool) -> Option<i32> {
+    if !a.settings.landscape_fit || a.w <= a.h {return None;}
+    let s=ed_ref(a);
+    let width=if s.collapsed {box_()}else{pw()};
+    let gap=ui_px(24.0);
+    let page_left=(-s.ox*s.zoom).floor() as i32;
+    let page_right=((s.pgw as f32-s.ox)*s.zoom).ceil() as i32;
+    let x=if left {page_left-gap-width}else{page_right+gap};
+    (x>=0 && x+width<=a.w).then_some(x)
+}
+
 pub fn editor_enter(a: &mut App) {
     let s = ed(a);
     if s.page_canvas.px.is_empty() && canvas_init(&mut s.page_canvas, s.pgw, s.pgh) != 0 {
@@ -6304,6 +6317,9 @@ pub fn editor_enter(a: &mut App) {
         render_page_full(a);
     }
     let s = ed_ref(a);
+    let panel_left = if s.view_w > 0 && s.panel.w > 0 {
+        s.panel.x + s.panel.w/2 < s.view_w/2
+    } else {a.settings.panel_x >= 0 && a.settings.panel_x < a.w/2};
     let turned = s.view_w != a.w || s.view_h != a.h;
     if turned {
         view_reset(a); // new notebook or turned
@@ -6321,6 +6337,9 @@ pub fn editor_enter(a: &mut App) {
     if x < 0 || y < 0 {
         x = a.w - (if ed(a).collapsed { box_() } else { pw() }) - ui_px(28.0);
         y = ui_px(220.0);
+    }
+    if turned {
+        if let Some(beside_page)=landscape_panel_slot(a,panel_left) {x=beside_page;}
     }
     let p = panel_rect_at(a, x, y);
     let s = ed(a);
@@ -8259,6 +8278,29 @@ mod tests {
         }
         // a sheet's hit is no panel button
         assert_eq!(panel_name(&h(P_PICK_PAPER, 0)), "");
+    }
+
+    #[test]
+    fn landscape_panel_uses_the_blank_margin_on_either_side_only_with_full_page_on() {
+        for collapsed in [false,true] {for bar in [0,1] {
+            let mut a=app(2480,1860,1860,2480);
+            a.settings.status_mode=bar;a.settings.landscape_fit=true;
+            ed(&mut a).collapsed=collapsed;ed(&mut a).open=true;
+            view_reset(&mut a);
+            let width=if collapsed{box_()}else{pw()};
+            let left=landscape_panel_slot(&a,true).unwrap();let right=landscape_panel_slot(&a,false).unwrap();
+            let s=ed_ref(&a);
+            let page_left=(-s.ox*s.zoom).floor()as i32;
+            let page_right=((s.pgw as f32-s.ox)*s.zoom).ceil()as i32;
+            assert_eq!(page_left-left-width,ui_px(24.0));
+            assert_eq!(right-page_right,ui_px(24.0));
+            assert!(left>=0 && right+width<=a.w);
+            a.settings.landscape_fit=false;
+            assert_eq!(landscape_panel_slot(&a,true),None);
+            assert_eq!(landscape_panel_slot(&a,false),None);
+            a.w=1860;a.h=2480;a.settings.landscape_fit=true;
+            assert_eq!(landscape_panel_slot(&a,true),None);
+        }}
     }
 
     #[test]

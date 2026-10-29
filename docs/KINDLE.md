@@ -728,3 +728,8 @@ Normal or Slow hold time. Ordinary writing, white ink and erasing keep their exi
 
 An empty `grimoire/shape-log` file enables recognition diagnostics at startup. The log records measurements,
 recognition reasons, timing, and whether a preview was kept or cancelled, without stroke coordinates.
+
+When rotating into landscape with **Sideways, show the whole page** enabled, the toolbar uses the blank
+margin just outside the page, with a 24 px gap at 300 dpi. A toolbar on the left stays on the left;
+a toolbar on the right stays on the right. Its saved portrait position is retained. When the setting
+is off, rotation keeps the previous toolbar placement behavior.

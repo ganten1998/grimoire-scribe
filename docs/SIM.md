@@ -521,3 +521,6 @@ an in-progress stroke has a snapped preview. `editor.stroke_shape` reports its l
 or `none`; `editor.undo_kind` and `redo_kind` also accept `replace`. `pentap panel shapes` toggles recognition.
 `z_shape_1_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_2_move_cancels`
 checks moving on from the preview restores the freehand stroke.
+
+`z_sideways_toolbar` checks rotation with the toolbar on either side of the page, then disables
+`landscape_fit` and verifies the saved placement is retained. The full-page landscape gap is 24 px at 300 dpi.
