@@ -83,6 +83,10 @@ const P_LINKS: i32 = 24;
 // Stable registry id after phase 4's three actions; moved into actions.rs on integration.
 const P_SHAPES: i32 = 25;
 const P_SHAPE_HOLD: i32 = 26;
+const P_SHAPE_QUADS: i32 = 27;
+const P_SHAPE_ROUND: i32 = 28;
+const P_SHAPE_LINKS: i32 = 29;
+const P_SHAPE_DONE: i32 = 30;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
@@ -141,6 +145,11 @@ struct LinkMaking {
     /// the lasso, page px, at most LASSO_MAX points (reserved at its start; with no room none are kept and
     /// the lasso is only drawn as it goes)
     pts: Vec<(f32, f32)>,
+    shape_preview: Option<Vec<(f32,f32)>>,
+    shape_anchor: (f32,f32),
+    shape_anchor_k: u32,
+    shape_tried: bool,
+    shape_kind: ShapeKind,
     /// the last point the lasso went to, page px (the next segment starts there)
     last: (f32, f32),
     /// how far (screen px) a new point must be from the last one to be kept; doubles as the lasso fills
@@ -448,6 +457,7 @@ pub struct EditorState {
     // Tool picker (opened from the toolbar's tool button). In Pin mode a tap pins a pen to the
     // panel, or unpins it.
     tools_open: bool,
+    shapes_menu: bool,
     pin_mode: bool,
     /// where its top is meant to be: the panel's, as it opened (it stays there while pins move the
     /// panel; laid out again at a turn)
@@ -1105,7 +1115,8 @@ fn draw_panel(a: &mut App) {
     y += btn_h() + gap();
     let rc = Rect { x, y, w, h: btn_h() ,
     }; // clear the page right away (no confirmation)
-    let can_clear = s.open_page().is_some_and(|p| !p.strokes.is_empty());
+    let can_clear = s.open_page().is_some_and(|p| !p.strokes.is_empty())
+        || (s.open && nav_links_of(&s.nav,s.open_pid(),&mut 0)>0);
     ui_button(c, rc, IconKind::Broom, "", if can_clear { ButtonStyle::Plain } else { ButtonStyle::Disabled },
     );
     if can_clear {
@@ -1140,18 +1151,10 @@ fn draw_panel(a: &mut App) {
     );
     hits_add(&mut s.hits, rn, P_NEXT, 0);
     y += btn_h() + gap();
-    // Links: the bar of this page's links, with a dot when the page has some.
-    let rl = Rect { x, y, w, h: btn_h() ,
-    };
-    ui_button(c, rl, IconKind::Link, "", ButtonStyle::Plain);
+    // Add a link directly; the upward two-finger swipe opens the Links bar.
+    let rl = Rect { x, y, w, h: btn_h() };
+    ui_button(c, rl, IconKind::LinkPlus, "", ButtonStyle::Plain);
     hits_add(&mut s.hits, rl, P_LINKS, 0);
-    let mut first = 0;
-    if s.open && nav_links_of(&s.nav, s.open_pid(), &mut first) > 0 {
-        // (7 px across, 10 px in from the corner)
-        let r = ui_px(7.0) as f32 / 2.0;
-        canvas_disc_aa(c, (rl.x + rl.w - ui_px(10.0)) as f32 - r, (rl.y + ui_px(10.0)) as f32 + r, r, 0, 1.0,
-        );
-    }
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
@@ -1213,8 +1216,13 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     }
     if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
+    if let Some(control)=name.strip_prefix("linkto."){return linkbar_control_point(&s.lt,control);}
     if s.tools_open {
         let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}
+            else if let Some(control)=name.strip_prefix("shapes.") {
+                match control {"on"=>Some((P_SHAPES,0)),"hold"=>Some((P_SHAPE_HOLD,0)),"quads"=>Some((P_SHAPE_QUADS,0)),
+                    "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
+            }
             else if let Some(tool)=name.strip_prefix("picker.tool:") {
                 let action=shortcut_action(&format!("tool:{tool}"));
                 (action>=SHORTCUT_TOOL_BASE && action<SHORTCUT_TOOL_BASE+TOOL_COUNT as i32).then_some((P_PICK_TOOL,action-SHORTCUT_TOOL_BASE))
@@ -1708,6 +1716,7 @@ const K_INKS: [Ink; 2] = [
 const N_INKS: i32 = K_INKS.len() as i32;
 
 fn draw_tools(a: &mut App) {
+    if ed_ref(a).shapes_menu { draw_shape_menu(a); return; }
     let (aw, ah) = (a.w, a.h);
     let App { screen: c, settings: st, ed, .. } = a;
     let s = ed.as_deref_mut().unwrap();
@@ -1720,7 +1729,7 @@ fn draw_tools(a: &mut App) {
     let gridw = 2 * ui_px(520.0) + g;
     let inkh = ui_px(120.0);
     let w = gridw + 2 * ui_px(30.0);
-    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + 2 * (g + inkh) + ui_px(40.0);
+    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + g + inkh + ui_px(40.0);
     let mut x = s.panel.x - w - ui_px(20.0);
     if x < ui_px(10.0) {
         x = s.panel.x + s.panel.w + ui_px(20.0);
@@ -1776,7 +1785,7 @@ fn draw_tools(a: &mut App) {
     let mut title = String::new();
     if s.pin_mode {
         // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
-        // tool button: a tap pins a pen or unpins it; %d is how many can be (4). About 700 px at 44 px
+        // tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
         // in bold, or two lines at 34 px. Normally the title is Tools.
         csnprintf!(&mut title, 160, tr("Pin to the panel (up to %d)"), PANEL_PINS_MAX as i32);
     } else {
@@ -1833,15 +1842,34 @@ fn draw_tools(a: &mut App) {
             hits_add(&mut s.tools_hits, r, P_PICK_INK, i);
         }
     }
-    let shape_y = iy + inkh + g;
-    for i in 0..2 {
-        let r = Rect { x:x+ui_px(30.0)+i*(iw+g), y:shape_y, w:iw, h:inkh };
-        let label = if i == 0 { tr(if st.shapes { n_("Smart shapes: On") } else { n_("Smart shapes: Off") }) }
-            else { tr(shape_hold_label(st.shape_hold_ms)) };
-        ui_button(c,r,IconKind::None,label,if s.pin_mode {ButtonStyle::Disabled} else {ButtonStyle::Plain});
-        if !s.pin_mode { hits_add(&mut s.tools_hits,r,if i==0 {P_SHAPES} else {P_SHAPE_HOLD},0); }
-    }
+}
 
+fn draw_shape_menu(a: &mut App) {
+    let (aw,ah)=(a.w,a.h);
+    let App {screen:c,settings:st,ed,..}=a;
+    let s=ed.as_deref_mut().unwrap(); hits_clear(&mut s.tools_hits);
+    let (w,rh,g)=(ui_px(1116.0).min(aw-ui_px(20.0)),ui_px(120.0),ui_px(16.0));
+    let h=ui_px(140.0)+6*rh+5*g;
+    let mut x=s.panel.x-w-ui_px(20.0);
+    if x<ui_px(10.0) {x=s.panel.x+s.panel.w+ui_px(20.0);}
+    x=clampi(x,ui_px(10.0),aw-w-ui_px(10.0));
+    let y=clampi(s.tools_y,ui_px(10.0),ah-h-ui_px(10.0));
+    s.tools_rect=Rect{x,y,w,h};
+    ui_frame(c,s.tools_rect,ui_px(22.0),255,true,0);
+    ui_frame(c,s.tools_rect,ui_px(22.0),0,false,ui_px(6.0));
+    font_draw_left(c,FontFace::Title,ui_title_size(),Rect{x:x+ui_px(30.0),y:y+ui_px(15.0),w:w-ui_px(60.0),h:ui_px(85.0)},tr("Smart shapes"),0);
+    let rows=[
+        (P_SHAPES,tr(if st.shapes {n_("Smart shapes: On")}else{n_("Smart shapes: Off")})),
+        (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
+        (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
+        (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
+        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Link areas: On")}else{n_("Link areas: Off")})),
+        (P_SHAPE_DONE,tr("Done")),
+    ];
+    for (i,(id,label)) in rows.into_iter().enumerate() {
+        let r=Rect{x:x+ui_px(30.0),y:y+ui_px(110.0)+i as i32*(rh+g),w:w-ui_px(60.0),h:rh};
+        ui_button(c,r,IconKind::None,label,ButtonStyle::Plain);hits_add(&mut s.tools_hits,r,id,0);
+    }
 }
 
 // ---- the eye: where a finger tap follows a link ----
@@ -2963,6 +2991,7 @@ fn shape_report(enabled: bool, mode: &str, result: &ShapeResult, burst: bool, zo
 fn shape_hold_tick(a: &mut App, now: u32) {
     if !a.settings.shapes || !a.input_drained { return; }
     let (dpi, hold_ms, logging) = (a.dpi, a.settings.shape_hold_ms, a.shape_log);
+    let policy=(a.settings.shape_quads,a.settings.shape_round);
     let s = ed(a);
     if s.owner != Owner::Draw || s.sh.still_fired || s.sh.preview.is_some() { return; }
     let Some(raw) = s.cur.as_ref().filter(|raw| !stroke_is_erase(raw)) else { return; };
@@ -2971,6 +3000,7 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     s.sh.still_fired = true;
     let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
     prm.burst = s.sh.burst;
+    prm.quad_mode=policy.0;prm.circle_mode=policy.1;
     work_pump();
     let started = now_ms();
     let r = shape_recognize(&raw.pts, &prm);
@@ -3301,16 +3331,34 @@ fn clear_page(a: &mut App) {
     if refuse_readonly(a) {
         return;
     }
-    if ed(a).open_page().is_none_or(|p| p.strokes.is_empty()) {
+    if ed(a).open_page().is_none_or(|p| p.strokes.is_empty())
+        && nav_links_of(&ed_ref(a).nav,ed_ref(a).open_pid(),&mut 0)==0 {
         app_toast(a, tr("This page is already empty"), 1500);
         return;
     }
     let s = ed(a);
     let Some(h) = s.cur_hist() else { return };
     let ip = s.page_ix().unwrap();
+    let pid=s.open_pid();
+    let mut records=Vec::new();
+    let count=nav_links_of(&s.nav,pid,&mut 0) as usize;
+    if count>0 {
+        if !s.nav.links_writable || records.try_reserve_exact(count).is_err() {
+            app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+        }
+        for link in s.nav.links.iter().filter(|link|link.pid==pid) {records.push((Some(link_rec(link)),None));}
+        for (link,_) in &records {nav_link_remove(&mut s.nav,pid,link.as_ref().unwrap().seed);}
+        if nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb)!=0 {
+            nav_load(s.nb.id.as_str(),&mut s.nav);migration_reset(s);
+            app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+        }
+        s.links_dirty=false;
+    }
+    let links=(!records.is_empty()).then_some(LinkEdit{pid,records});
     let (hh, page) = hist_page(&mut s.hist, h, ip);
-    history_push_clear(hh, page); // takes every stroke off the page, undoable
+    history_push_clear_links(hh, page,links);
     ed(a).boxes.stale = true;
+    bar_rebuild(a);
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
     mark_changed(ed(a));
@@ -3595,7 +3643,8 @@ fn undo_redo(a: &mut App, undo: bool) {
     let Some(h) = s.cur_hist() else { return };
     let Some(ip) = s.page_ix() else { return };
     let kind = if undo { history_undo_kind(&s.hist[h].h) } else { history_redo_kind(&s.hist[h].h) };
-    if kind == Some(ActKind::Link) {
+    let has_links=if undo {s.hist[h].h.undo.last()}else{s.hist[h].h.redo.last()}.is_some_and(|step|step.link.is_some());
+    if kind == Some(ActKind::Link) || has_links {
         undo_redo_link(a, h, ip, undo);
         return;
     }
@@ -4063,6 +4112,8 @@ fn lasso_begin(a: &mut App, ev: &InEvent) {
     let lm = &mut s.lm;
     lm.state = LmState::Lasso;
     lm.pts.clear();
+    lm.shape_preview=None;lm.shape_kind=ShapeKind::None;lm.shape_tried=false;
+    lm.shape_anchor=(ev.x,ev.y);lm.shape_anchor_k=in_sample_ms(ev);
     if lm.pts.capacity() < LASSO_MAX {
         // (no room: the lasso is drawn as it goes and its box still makes the area; compose draws none of it)
         let _ = lm.pts.try_reserve_exact(LASSO_MAX);
@@ -4084,10 +4135,19 @@ fn lasso_begin(a: &mut App, ev: &InEvent) {
 /// input batch, at the loop's flush), and never into the page. A segment under the panel or the strip is
 /// kept but not drawn (compose draws the lasso under them).
 fn lasso_move(a: &mut App, ev: &InEvent) {
+    let dpi=a.dpi;
+    if ed_ref(a).lm.shape_preview.is_some() {
+        if !shape_anchor_moved(ed_ref(a).lm.shape_anchor,(ev.x,ev.y),dpi,true) {return;}
+        let s=ed(a);s.lm.shape_preview=None;s.lm.shape_kind=ShapeKind::None;
+        let r=s.lm.lasso_rect;compose(a,r);app_invalidate(a,r,RefreshMode::Fast);
+    }
     let s = ed(a);
     let (mut px, mut py) = (0.0, 0.0);
     to_page(s, ev.x, ev.y, &mut px, &mut py);
     let lm = &mut s.lm;
+    if shape_anchor_moved(lm.shape_anchor,(ev.x,ev.y),dpi,false) {
+        lm.shape_anchor=(ev.x,ev.y);lm.shape_anchor_k=in_sample_ms(ev);lm.shape_tried=false;
+    }
     lm.bx0 = lm.bx0.min(px);
     lm.bx1 = lm.bx1.max(px);
     lm.by0 = lm.by0.min(py);
@@ -4123,7 +4183,7 @@ fn draw_lasso(a: &mut App, r: Rect) {
     if s.lm.state != LmState::Lasso || s.lm.pts.len() < 2 {
         return;
     }
-    let pts: Vec<(f32, f32)> = s.lm.pts.iter().map(|&p| lasso_screen_pt(s, p)).collect();
+    let pts: Vec<(f32, f32)> = s.lm.shape_preview.as_ref().unwrap_or(&s.lm.pts).iter().map(|&p| lasso_screen_pt(s, p)).collect();
     let (thick, on, off) = lasso_pen();
     let clip = a.screen.clip;
     let c = rect_intersect(r, lasso_clip(a));
@@ -4146,15 +4206,57 @@ fn draw_area_wait(a: &mut App, r: Rect) {
     a.screen.clip = clip;
 }
 
+/// Link selection uses the same shape policies as ink, but the snapped outline stays an overlay.
+fn link_shape_snap(a: &mut App) -> bool {
+    if !a.settings.shapes || !a.settings.shape_links {return false;}
+    let s=ed_ref(a);
+    if s.lm.state!=LmState::Lasso {return false;}
+    let mut pts=Vec::new();
+    if pts.try_reserve_exact(s.lm.pts.len()).is_err() {return false;}
+    for (i,&(x,y)) in s.lm.pts.iter().enumerate() {
+        pts.push(PenSample{x,y,pressure:0.5,t_ms:(i as u32)*10,..Default::default()});
+    }
+    let mut prm=shape_params(a.dpi,s.zoom,s.open_page().unwrap().paper,s.pgw);
+    prm.quad_mode=a.settings.shape_quads;prm.circle_mode=a.settings.shape_round;
+    let result=shape_recognize(&pts,&prm);
+    if !matches!(result.kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse) {return false;}
+    let clean:Vec<_>=result.pts.iter().map(|p|(p.x,p.y)).collect();
+    let s=ed(a);s.lm.shape_preview=Some(clean);s.lm.shape_kind=result.kind;
+    true
+}
+
+fn link_shape_tick(a: &mut App,now:u32) {
+    let s=ed_ref(a);
+    if s.owner!=Owner::Lasso || s.lm.shape_tried || s.lm.shape_preview.is_some() || !a.input_drained
+        || now.wrapping_sub(s.lm.shape_anchor_k)<a.settings.shape_hold_ms as u32 {return;}
+    ed(a).lm.shape_tried=true;
+    if !link_shape_snap(a) {return;}
+    let s=ed_ref(a);
+    let mut r=s.lm.lasso_rect;
+    for &p in s.lm.shape_preview.as_ref().unwrap() {
+        let (x,y)=lasso_screen_pt(s,p);
+        r=rect_union(r,Rect{x:x.floor() as i32-4,y:y.floor() as i32-4,w:9,h:9});
+    }
+    ed(a).lm.lasso_rect=r;
+    compose(a,r);app_invalidate(a,r,RefreshMode::Fast);
+}
+
 /// The pen lifted (or left) while drawing the lasso (6.5): its box is the area. Too small, and the strip
 /// stays for another try; otherwise the lasso and the strip go, the dotted rectangle shows the area (a GL16
 /// flushed on its own), and Link to... opens to pick where the link goes (a GL16 of its card).
 fn lasso_end(a: &mut App) {
+    if ed_ref(a).lm.shape_preview.is_none() { link_shape_snap(a); }
     let dpi = a.dpi;
     let s = ed(a);
     s.owner = Owner::None;
     if s.lm.state != LmState::Lasso {
         return;
+    }
+    if let Some(pts)=s.lm.shape_preview.take() {
+        if let Some(&(x,y))=pts.first() {
+            s.lm.bx0=x;s.lm.bx1=x;s.lm.by0=y;s.lm.by1=y;
+            for (x,y) in pts {s.lm.bx0=s.lm.bx0.min(x);s.lm.bx1=s.lm.bx1.max(x);s.lm.by0=s.lm.by0.min(y);s.lm.by1=s.lm.by1.max(y);}
+        }
     }
     let lm = &s.lm;
     let r = lasso_area(lm.bx0, lm.by0, lm.bx1, lm.by1, s.pgw, s.pgh);
@@ -4162,6 +4264,7 @@ fn lasso_end(a: &mut App) {
     if lasso_too_small(r, dpi) {
         let s = ed(a);
         s.lm.state = LmState::Armed;
+        s.lm.shape_kind = ShapeKind::None;
         s.lm.pts.clear();
         s.lm.lasso_rect = RECT_EMPTY;
         compose(a, drawn);
@@ -4715,6 +4818,7 @@ fn lm_check_menus(a: &mut App) {
 fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
     let before = if a.settings.link_areas { eye_bounds(a) } else { RECT_EMPTY };
     let s = ed(a);
+    let clearing=if undo {history_undo_kind(&s.hist[ih].h)}else{history_redo_kind(&s.hist[ih].h)}==Some(ActKind::Clear);
     let mut d = RECT_EMPTY;
     let (hh, page) = hist_page(&mut s.hist, ih, ip);
     if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
@@ -4738,17 +4842,24 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
     s.boxes.stale = true;
     ok = ok && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0;
     if !ok {
+        if clearing {
+            // A failed sidecar save must also reverse the tentative ink change, preserving
+            // the original Clear action so a later retry remains possible.
+            let (h,page)=hist_page(&mut s.hist,ih,ip);
+            let mut dirty=RECT_EMPTY;
+            if undo {history_redo(h,page,&mut dirty);}else{history_undo(h,page,&mut dirty);}
+        }
         nav_load(s.nb.id.as_str(), &mut s.nav);
         migration_reset(s);
         let h = &mut s.hist[ih].h;
         if undo {
-            history_drop_last_redo(h);
+            if !clearing {history_drop_last_redo(h);}
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
             // could not save links.ini, so the change is still there.
             app_toast(a, tr("Could not save the links: that change was not undone."), 3000,
             );
         } else {
-            history_drop_last_undo(h);
+            if !clearing {history_drop_last_undo(h);}
             // TRANSLATORS: the same toast for Redo.
             app_toast(a, tr("Could not save the links: that change was not redone."), 3000,
             );
@@ -4758,6 +4869,11 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
     }
     s.links_dirty = false;
     s.changed = true; // (the notebook changed: the PDF mirror runs at close)
+    if clearing {
+        mark_changed(s);
+        bar_rebuild(a);render_page_full(a);compose_all(a,RefreshMode::Full);repaint_panel(a,RefreshMode::Ui);
+        return;
+    }
     if a.settings.link_areas {
         let u = rect_union(before, eye_bounds(a));
         compose(a, u);
@@ -5394,6 +5510,7 @@ fn set_collapsed(a: &mut App, c: bool) {
 fn close_tools(a: &mut App) {
     let s = ed(a);
     s.tools_open = false;
+    s.shapes_menu = false;
     s.pin_mode = false;
     let r = s.tools_rect;
     compose(a, r);
@@ -5425,7 +5542,7 @@ fn toggle_pin(a: &mut App, t: ToolKind) {
     if !settings_toggle_pin(st, t) {
         let mut msg = String::new();
         // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-        // panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+        // panel holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
         // or two lines.
         csnprintf!(&mut msg, 200, ng_("The panel holds up to %d pen. Unpin one first.",
                                       "The panel holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
@@ -5469,6 +5586,16 @@ fn tools_tap(a: &mut App) {
             let r = ed(a).tools_rect;
             app_invalidate(a,r,RefreshMode::Ui);
         }
+        P_SHAPE_QUADS | P_SHAPE_ROUND | P_SHAPE_LINKS => {
+            match h.id {
+                P_SHAPE_QUADS => a.settings.shape_quads = (a.settings.shape_quads+1)%3,
+                P_SHAPE_ROUND => a.settings.shape_round = (a.settings.shape_round+1)%3,
+                _ => a.settings.shape_links = !a.settings.shape_links,
+            }
+            settings_save(&a.settings);draw_tools(a);
+            let r=ed(a).tools_rect;app_invalidate(a,r,RefreshMode::Ui);
+        }
+        P_SHAPE_DONE => close_tools(a),
         P_PICK_INK => {
             let st = &mut a.settings;
             st.white = K_INKS[clampi(h.arg, 0, N_INKS - 1) as usize].white;
@@ -5501,11 +5628,19 @@ fn tools_tap(a: &mut App) {
 fn open_tools(a: &mut App) {
     let s = ed(a);
     s.tools_open = true;
+    s.shapes_menu = false;
     s.pin_mode = false;
     s.tools_y = s.panel.y;
     draw_tools(a);
     let r = ed(a).tools_rect;
     app_invalidate(a, r, RefreshMode::Ui);
+}
+
+fn open_shape_menu(a: &mut App) {
+    let s=ed(a);
+    s.tools_open=true;s.shapes_menu=true;s.pin_mode=false;s.tools_y=s.panel.y;
+    draw_tools(a);
+    let r=ed(a).tools_rect;app_invalidate(a,r,RefreshMode::Ui);
 }
 
 // ---- the Find sheet ----
@@ -5627,6 +5762,7 @@ pub fn editor_shape_hold_cycle(a: &mut App) {
 }
 pub fn editor_shape_last(a: &mut App) {
     let (dpi,logging) = (a.dpi,a.shape_log);
+    let policy=(a.settings.shape_quads,a.settings.shape_round);
     let s = ed(a);
     if s.owner != Owner::None || sheet_open(s) || s.open_page().is_none_or(|p| p.readonly) {return;}
     let (Some(ip),Some(hi)) = (s.page_ix(),s.cur_hist()) else {return;};
@@ -5640,7 +5776,8 @@ pub fn editor_shape_last(a: &mut App) {
         return;
     }
     let raw = p.strokes.last().unwrap();
-    let prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
+    let mut prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
+    prm.quad_mode=policy.0;prm.circle_mode=policy.1;
     let started = now_ms();
     let result = shape_recognize(&raw.pts,&prm);
     shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);
@@ -6160,15 +6297,12 @@ fn panel_act(a: &mut App, h: Hit) {
             app_invalidate(a, r, RefreshMode::Ui);
         }
         P_CLEAR => clear_page(a),
-        P_SHAPES => editor_shapes_toggle(a),
+        P_SHAPES => open_shape_menu(a),
         P_PAGES => pages_show(a),
-        // The panel's button for the bar opens it, as the action does (its own button again closes it).
+        // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
         P_LINKS => {
-            if front_menu(ed_ref(a)) == SHORTCUT_LINKS {
-                close_front(a, true);
-            } else {
-                open_menu(a, SHORTCUT_LINKS);
-            }
+            if ed_ref(a).lm.state != LmState::Off { link_cancel(a,true); }
+            else { link_arm(a,false,None); }
         }
         P_DISPLAY => {
             with_modal(a, |s| &mut s.dm, dispmenu_open);
@@ -8276,7 +8410,8 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
             let links_button = ed_ref(a).hits.h.iter().any(|h| h.id == P_LINKS && rect_contains(h.r, x0 as i32, y0 as i32));
             if links_button {
-                bar_cancel(a);
+                bar_stay(a);
+                link_arm(a,false,None);
             } else {
                 bar_stay(a);
             }
@@ -8479,11 +8614,12 @@ pub fn editor_tick(a: &mut App, now: u32) {
         }
     }
     shape_hold_tick(a, now);
+    link_shape_tick(a, now);
     if ed_ref(a).sh.tip_pending && !ed_ref(a).pen_near && rect_is_empty(ed_ref(a).settle) {
         ed(a).sh.tip_pending = false;
         if a.settings.hints & (1 << 5) == 0 {
             a.settings.hints |= 1 << 5; settings_save(&a.settings);
-            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes button turns this off."),4000);
+            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes menu has the options."),4000);
         }
     }
     if ed_ref(a).open && a.input_drained {
@@ -9194,6 +9330,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%s", if t == TB_GRID { "grid" } else if t == TB_NONE { "" } else { name.unwrap_or("?") });
     } else if key == "pin_mode" {
         csnprintf!(out, cap, "%d", if s.tools_open && s.pin_mode { 1 } else { 0 });
+    } else if key == "shapes_menu" {
+        csnprintf!(out,cap,"%d",(s.tools_open && s.shapes_menu) as i32);
+    } else if key == "link_shape" {
+        csnprintf!(out,cap,"%s",format!("{:?}",s.lm.shape_kind).to_lowercase().as_str());
     } else if key == "tools_rect" {
         // Where the tool picker is while it is open, "x y w h" (as toast.rect), else empty.
         let r = s.tools_rect;
@@ -9275,6 +9415,61 @@ mod tests {
         compose_all(&mut a, RefreshMode::Ui);
         app_flush(&mut a);
         a
+    }
+
+    #[test]
+    fn clear_removes_current_page_links_and_ink_as_one_undoable_saved_change() {
+        let root=std::env::temp_dir().join(format!("grimoire-clear-links-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);store_init(root.to_str().unwrap());
+        let mut nb=NotebookInfo::default();assert_eq!(store_create("Void","",PAPER_BLANK,&mut nb),0);
+        assert_eq!(store_add_page(&mut nb,1,PAPER_BLANK),0);
+        let mut a=fshape_app();
+        let s=ed(&mut a);s.nb=nb;nav_init(&mut s.nav);
+        assert_eq!(nav_link_set(&mut s.nav,1,77,"index"),0);
+        assert_eq!(nav_link_set_area(&mut s.nav,1,77,Some(Rect{x:100,y:200,w:300,h:300})),0);
+        assert_eq!(nav_link_set(&mut s.nav,2,78,"index"),0);
+        assert_eq!(nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb),0);
+        let mut prm=ToolParams::default();tool_params_default(TOOL_PENCIL,&mut prm);
+        let mut ink=stroke_new(TOOL_PENCIL,&prm,123);
+        stroke_append(&mut ink,&PenSample{x:300.0,y:400.0,pressure:0.5,..Default::default()},300.0);
+        page_add(s.open_page_mut().unwrap(),ink);
+        clear_page(&mut a);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(),0);
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).is_none());
+        assert!(nav_link_get(&ed_ref(&a).nav,2,78).is_some());
+        let mut saved=Nav::default();nav_load(ed_ref(&a).nb.id.as_str(),&mut saved);
+        assert!(nav_link_get(&saved,1,77).is_none());
+        let h=ed(&mut a).cur_hist().unwrap();
+        assert_eq!(ed_ref(&a).hist[h].h.undo.last().unwrap().kind,ActKind::Clear);
+        let blocked=root.join("notebooks").join(ed_ref(&a).nb.id.as_str()).join("links.ini.tmp");
+        std::fs::create_dir(&blocked).unwrap();
+        undo_redo(&mut a,true);
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).is_none());
+        assert_eq!(history_undo_kind(&ed_ref(&a).hist[h].h),Some(ActKind::Clear));
+        std::fs::remove_dir(&blocked).unwrap();
+        undo_redo(&mut a,true);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(),1);
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).unwrap().has_area);
+        std::fs::create_dir(&blocked).unwrap();
+        clear_page(&mut a);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(),1);
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).is_some());
+        undo_redo(&mut a,false);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(),1);
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).is_some());
+        assert_eq!(history_redo_kind(&ed_ref(&a).hist[h].h),Some(ActKind::Clear));
+        std::fs::remove_dir(&blocked).unwrap();
+        undo_redo(&mut a,false);
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        assert!(nav_link_get(&ed_ref(&a).nav,1,77).is_none());
+        // A page with no ink still has something to clear when it has a link.
+        let s=ed(&mut a);assert_eq!(nav_link_set(&mut s.nav,1,88,"index"),0);
+        assert_eq!(nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb),0);
+        clear_page(&mut a);assert!(nav_link_get(&ed_ref(&a).nav,1,88).is_none());
+        undo_redo(&mut a,true);assert!(nav_link_get(&ed_ref(&a).nav,1,88).is_some());
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn fshape_event(a: &mut App, type_: InType, x: f32, y: f32, t_ms: u32) {
@@ -9549,14 +9744,15 @@ mod tests {
     }
 
     #[test]
-    fn status_strip_keeps_page_coordinates_below_it_at_every_zoom() {
+    fn clock_corner_reserves_no_page_strip_at_any_zoom() {
         for (w, h) in [(1860, 2480), (2480, 1860)] {
             let mut a = app(w, h, 1860, 2480);
             a.scr = ScreenId::Editor;
             ed(&mut a).open = true;
             assert_eq!(canvas_init(&mut ed(&mut a).page_canvas, 1860, 2480), 0);
+            a.settings.landscape_fit=true;
             let top = status_reserved(&a);
-            assert_eq!(top, 104);
+            assert_eq!(top, 0);
             view_reset(&mut a);
             assert!(!zoomed(&a));
             let s = ed_ref(&a);
@@ -9726,7 +9922,7 @@ mod tests {
 
     #[test]
     fn the_panel_is_as_tall_as_panel_h_says() {
-        for (w, h, pins) in [(1860, 2480, 0), (2480, 1860, 0), (2480, 1860, 4), (1860, 2480, 4),
+        for (w, h, pins) in [(1860, 2480, 0), (2480, 1860, 0), (2480, 1860, 3), (1860, 2480, 3),
         ] {
             let mut a = app(w, h, 1860, 2480);
             for i in 0..pins {

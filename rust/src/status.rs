@@ -158,21 +158,11 @@ fn corner_box(corner: i32, w: i32, h: i32, bw: i32, bh: i32, m: i32) -> Rect {
     Rect { x: if right { w - m - bw } else { m }, y: if bottom { h - m - bh } else { m }, w: bw, h: bh }
 }
 
-/// The bar reserves a real viewport strip even while a sheet is over it. Existing corner
-/// settings do not affect its height. It remains available while touch is rejected by the panel.
-pub fn status_reserved(a: &App) -> i32 {
-    if a.settings.status_mode == 0 && a.scr == ScreenId::Editor && editor_page_canvas(a).is_some() {
-        ui_px(104.0).min(a.h / 5)
-    } else { 0 }
-}
+/// The clock corner overlays the page; no status strip is reserved.
+pub fn status_reserved(_a: &App) -> i32 { 0 }
 
-pub fn status_cycle_mode(a: &mut App) {
-    if editor_busy(a) { return; }
-    a.settings.status_mode = (a.settings.status_mode + 1) % 3;
-    save_later();
-    ask_change(a);
-    crate::editor::editor_status_changed(a);
-}
+/// Compatibility for the retired status-mode action.
+pub fn status_cycle_mode(a: &mut App) { status_toggle(a); }
 
 fn bar_layout(a: &App, b: &Battery) -> Layout {
     let mut l = layout_of(0, 0, a.w, a.h, sys_wall_clock(), b);
@@ -501,7 +491,7 @@ thread_local! {
 
 /// Whether the panel should hold the indicator now: it is on, and the page is in front.
 fn wanted(a: &App) -> bool {
-    (a.settings.status_mode == 0 || (a.settings.status_mode == 1 && a.settings.status_on)) && page_in_front(a)
+    a.settings.status_on && page_in_front(a)
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -537,7 +527,6 @@ fn status_busy(a: &App) -> bool {
 /// calls it awake only.
 pub fn status_touch(a: &mut App, ev: &InEvent) {
     with(|s| s.tapped = false);
-    if a.settings.status_mode != 1 { return; }
     if !page_in_front(a) {
         with(|s| s.tap.cancel());
         return;
@@ -644,11 +633,7 @@ fn save_later() {
 
 /// Turns the indicator on or off: a tap in the corner, or the status-toggle shortcut.
 pub fn status_toggle(a: &mut App) {
-    if a.settings.status_mode != 1 {
-        if editor_busy(a) { return; }
-        a.settings.status_mode = if a.settings.status_mode == 0 { 2 } else { 0 };
-        save_later(); ask_change(a); crate::editor::editor_status_changed(a); return;
-    }
+    a.settings.status_mode = 1;
     a.settings.status_on = !a.settings.status_on;
     save_later();
     qlog!(

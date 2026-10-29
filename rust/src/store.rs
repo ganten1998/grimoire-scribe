@@ -52,7 +52,7 @@ impl NotebookInfo {
 
 pub const SETTINGS_VERSION: i32 = 3;
 /// pens pinned to the editor's panel, at most
-pub const PANEL_PINS_MAX: usize = 4;
+pub const PANEL_PINS_MAX: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Settings {
@@ -139,10 +139,15 @@ pub struct Settings {
     /// Two fingers left on the last page add a page (settings.ini gesture_new_page, on by default); off, a
     /// gesture only says it is the last page (a key's next page still adds one).
     pub gesture_new_page: bool,
-    /// 0 bar (default), 1 corner, 2 off.
+    /// Legacy status-display value, normalized to the clock corner (1) on load.
     pub status_mode: i32,
     pub shapes: bool,
     pub shape_hold_ms: i32,
+    /// Four-sided shapes: 0 uneven, 1 rectangles, 2 squares.
+    pub shape_quads: i32,
+    /// Round shapes: 0 as drawn, 1 prefer circles, 2 circles only.
+    pub shape_round: i32,
+    pub shape_links: bool,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
     /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
@@ -2948,16 +2953,19 @@ pub fn settings_default(s: &mut Settings) {
     s.eraser_mode = 0; // whole strokes, as before 1.1
     s.white = false;
     s.before_eraser = -1;
-    s.status_on = false;
+    s.status_on = true;
     s.status_size = 0;
     s.status_corner = 0;
     s.rotation_lock = 0;
     s.gestures = true;
     s.landscape_fit = true;
     s.gesture_new_page = true;
-    s.status_mode = 0;
+    s.status_mode = 1;
     s.shapes = true;
     s.shape_hold_ms = 550;
+    s.shape_quads = 1;
+    s.shape_round = 1;
+    s.shape_links = true;
     s.hints = 0;
     s.link_areas = false;
 }
@@ -3284,6 +3292,9 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
         b"shapes" => s.shapes = keep_bool("shapes", v),
         b"shape_hold_ms" => s.shape_hold_ms = keep_int("shape_hold_ms", v, 300, 1500),
+        b"shape_quads" => s.shape_quads = keep_int("shape_quads", v, 0, 2),
+        b"shape_round" => s.shape_round = keep_int("shape_round", v, 0, 2),
+        b"shape_links" => s.shape_links = keep_bool("shape_links", v),
         b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
@@ -3398,6 +3409,12 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     } else {
         s.version = SETTINGS_VERSION;
     }
+    match s.status_mode {
+        0 => { s.status_on = true; s.status_size = 0; s.status_corner = 0; }
+        2 => s.status_on = false,
+        _ => {}
+    }
+    s.status_mode = 1;
     rc
 }
 
@@ -3555,6 +3572,9 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "status_mode", s.status_mode);
     put_int(&mut b, "shapes", s.shapes as i32);
     put_int(&mut b, "shape_hold_ms", s.shape_hold_ms);
+    put_int(&mut b, "shape_quads", s.shape_quads);
+    put_int(&mut b, "shape_round", s.shape_round);
+    put_int(&mut b, "shape_links", s.shape_links as i32);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

@@ -277,7 +277,7 @@ static K_INDEX: [LearnRow; 8] = [
     lr(None, [SHORTCUT_LINK_AREAS, 0], IconKind::Eye),
 ];
 
-static K_MENUS: [LearnRow; 10] = [
+static K_MENUS: [LearnRow; 9] = [
     lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
     lr(None, [SHORTCUT_PAPER, 0], IconKind::Paper),
     lr(None, [SHORTCUT_DISPLAY, 0], IconKind::Brightness),
@@ -287,7 +287,6 @@ static K_MENUS: [LearnRow; 10] = [
     lr(None, [SHORTCUT_CLOSE_MENU, 0], IconKind::Close),
     lr(None, [SHORTCUT_STATUS, 0], IconKind::Clock),
     lr(None, [SHORTCUT_STATUS_CORNER, 0], IconKind::Clock),
-    lr(None, [SHORTCUT_STATUS_MODE, 0], IconKind::Clock),
 ];
 
 static K_SCREEN: [LearnRow; 10] = [
@@ -386,7 +385,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 64] = [
+pub static K_ACTIONS: [(&str, i32); 63] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -420,7 +419,6 @@ pub static K_ACTIONS: [(&str, i32); 64] = [
     ("go-back", SHORTCUT_GO_BACK),
     ("link-areas", SHORTCUT_LINK_AREAS),
     ("landscape-fit", SHORTCUT_LANDSCAPE_FIT),
-    ("status-mode", SHORTCUT_STATUS_MODE),
     ("status-corner", SHORTCUT_STATUS_CORNER),
     ("gesture-new-page", SHORTCUT_GESTURE_NEW_PAGE),
     ("zoom-out", SHORTCUT_ZOOM_OUT),
@@ -463,7 +461,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 74] = [
+static ACTIONS: [ActionInfo; 73] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -870,14 +868,6 @@ static ACTIONS: [ActionInfo; 74] = [
         IconKind::Plus,
         ActionKind::Toggle,
     ),
-    nm(
-        SHORTCUT_STATUS_MODE,
-        "status-mode",
-        n_("Status display"),
-        GROUP_MENUS,
-        IconKind::Clock,
-        ActionKind::Cycle,
-    ),
     // New phase 3 actions, ids 56 to 77.
     pair(
         SHORTCUT_ZOOM_OUT,
@@ -1088,6 +1078,7 @@ pub fn action_info(id: i32) -> Option<&'static ActionInfo> {
 }
 
 pub fn action_by_name(name: &str) -> i32 {
+    if name == "status-mode" { return SHORTCUT_STATUS; } // retired display-mode binding
     for &(n, id) in TOOL_NAMES.iter() {
         if n == name {
             return id;

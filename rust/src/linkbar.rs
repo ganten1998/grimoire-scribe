@@ -1048,7 +1048,16 @@ pub fn linkbar_probe_pick(lb: &LinkBar, key: &str, out: &mut String, cap: usize)
 
 /// Named list controls for the headless runner; only currently active hit targets resolve.
 pub fn linkbar_control_point(lb:&LinkBar,name:&str)->Option<(f32,f32)> {
-    if !lb.open||lb.hidden||lb.mode!=LbMode::List{return None;}
-    let id=match name {"index"=>LB_INDEX,"incoming"=>LB_AROUND,_=>return None};
-    lb.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
+    if !lb.open||lb.hidden{return None;}
+    let (id,arg)=if lb.mode==LbMode::Pick {
+        match name {
+            "index"=>(LB_CHIP,lb.picks.iter().position(|p|p.kind==PickKind::Index)? as i32),
+            "pages"=>(LB_PAGES,0),"search"=>(LB_SEARCH,0),"cancel"=>(LB_CANCEL,0),
+            n if n.starts_with("chip.")=>(LB_CHIP,n[5..].parse::<i32>().ok()?-1),
+            _=>return None,
+        }
+    } else {
+        (match name {"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)
+    };
+    lb.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
 }

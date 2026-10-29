@@ -200,11 +200,15 @@ pub struct ShapeParams {
     /// v1.5: also arrows, open polylines and arcs (plan step 22: off until the corpus gate passes
     /// with them on)
     pub extras: bool,
+    /// 0 preserves uneven quadrilaterals, 1 makes rectangles, 2 makes squares.
+    pub quad_mode: i32,
+    /// 0 follows the fitted ratio, 1 favors circles except obvious ovals, 2 makes circles.
+    pub circle_mode: i32,
 }
 
 /// The parameters for a page drawn at `zoom`, outside a writing burst, v1.5's kinds off.
 pub fn shape_params(dpi: f32, zoom: f32, paper: PaperKind, page_w: i32) -> ShapeParams {
-    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false }
+    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false, quad_mode: 0, circle_mode: 0 }
 }
 
 /// What the gates measured, for the shape-log (no coordinates). Lengths are screen mm, angles are
@@ -677,7 +681,7 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
         return Some(r);
     }
     if let Some(el) = ell {
-        let (kind, outline) = ellipse_outline(&el, sign, first)?;
+        let (kind, outline) = ellipse_outline(&el, sign, first, prm.circle_mode)?;
         r.kind = kind;
         r.pts = finish(pts, &outline, end_t)?;
         return Some(r);
@@ -1213,7 +1217,7 @@ fn snap_polygon(kind: ShapeKind, v: Vec<P>, prm: &ShapeParams, mm: f64) -> Optio
     let ang = corner_angles(&v)?;
     let deg = |a: f64| a.to_degrees();
     if kind == ShapeKind::Quad {
-        if !ang.iter().all(|&a| (deg(a) - 90.0).abs() <= SHAPE_RECT_DEG as f64) {
+        if prm.quad_mode == 0 && !ang.iter().all(|&a| (deg(a) - 90.0).abs() <= SHAPE_RECT_DEG as f64) {
             return Some((kind, v));
         }
         return rectangle(&v, prm, mm);
@@ -1273,12 +1277,19 @@ fn rectangle(v: &[P], prm: &ShapeParams, mm: f64) -> Option<(ShapeKind, Vec<P>)>
         }
     }
     if us.len() != 2 || ws.len() != 2 {
-        return Some((ShapeKind::Quad, shape_copy(v, 0)?));
+        if prm.quad_mode == 0 {return Some((ShapeKind::Quad, shape_copy(v, 0)?));}
+        // A pronounced trapezoid can vote all its edges into one direction. The strict
+        // policies must still produce right angles, rather than leak an uneven quad.
+        us.clear();ws.clear();
+        us.push(v.iter().map(|&p|dot(p,u)).fold(f64::INFINITY,f64::min));
+        us.push(v.iter().map(|&p|dot(p,u)).fold(f64::NEG_INFINITY,f64::max));
+        ws.push(v.iter().map(|&p|dot(p,w)).fold(f64::INFINITY,f64::min));
+        ws.push(v.iter().map(|&p|dot(p,w)).fold(f64::NEG_INFINITY,f64::max));
     }
     let (mut ua, mut ub) = (us[0].min(us[1]), us[0].max(us[1]));
     let (mut wa, mut wb) = (ws[0].min(ws[1]), ws[0].max(ws[1]));
     let (lu, lw) = (ub - ua, wb - wa);
-    let square = (lu - lw).abs() <= SHAPE_SQUARE_SIDES as f64 * lu.max(lw);
+    let square = prm.quad_mode == 2 || (lu - lw).abs() <= SHAPE_SQUARE_SIDES as f64 * lu.max(lw);
     if square {
         let s = 0.5 * (lu + lw);
         let (cu, cw) = (0.5 * (ua + ub), 0.5 * (wa + wb));
@@ -1524,8 +1535,8 @@ fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> O
 
 /// The ellipse's (or circle's) N vertices, from its point nearest the stroke's first point, the
 /// stroke's way round, then the first again: N + 1 points.
-fn ellipse_outline(e: &Ellipse, sign: f64, first: P) -> Option<(ShapeKind, Vec<P>)> {
-    let circle = e.b / e.a >= SHAPE_CIRCLE_RATIO as f64;
+fn ellipse_outline(e: &Ellipse, sign: f64, first: P, mode: i32) -> Option<(ShapeKind, Vec<P>)> {
+    let circle = mode == 2 || e.b / e.a >= if mode == 1 { 0.72 } else { SHAPE_CIRCLE_RATIO as f64 };
     let (mut th, mut a, mut b) = (e.th, e.a, e.b);
     if circle {
         let r = 0.5 * (a + b);
@@ -1915,4 +1926,27 @@ mod allocation_tests {
         }
         assert!(succeeded);
     }
+    #[test]
+    fn shape_preferences_control_quads_and_roundness_without_changing_the_raw_path() {
+        let v=vec![p(0.0,0.0),p(110.0,0.0),p(165.0,80.0),p(55.0,80.0)];
+        let mut prm=shape_params(300.0,1.0,PAPER_BLANK,1860);
+        assert_eq!(snap_polygon(ShapeKind::Quad,v.clone(),&prm,300.0/25.4).unwrap().0,ShapeKind::Quad);
+        for mode in [1,2] {
+            prm.quad_mode=mode;
+            let (kind,vs)=snap_polygon(ShapeKind::Quad,v.clone(),&prm,300.0/25.4).unwrap();
+            assert_eq!(kind,if mode==2 {ShapeKind::Square}else{ShapeKind::Rectangle});
+            for k in 0..4 {
+                let a=sub(vs[(k+1)%4],vs[k]);let b=sub(vs[(k+2)%4],vs[(k+1)%4]);
+                assert!(dot(a,b).abs()<1e-6);
+            }
+            if mode==2 {assert!((dist(vs[0],vs[1])-dist(vs[1],vs[2])).abs()<1e-6);}
+        }
+        let e=Ellipse{c:p(200.0,200.0),th:0.0,a:100.0,b:80.0,rms_px:0.0};
+        assert_eq!(ellipse_outline(&e,1.0,p(300.0,200.0),0).unwrap().0,ShapeKind::Ellipse);
+        assert_eq!(ellipse_outline(&e,1.0,p(300.0,200.0),1).unwrap().0,ShapeKind::Circle);
+        let obvious=Ellipse{b:50.0,..e};
+        assert_eq!(ellipse_outline(&obvious,1.0,p(300.0,200.0),1).unwrap().0,ShapeKind::Ellipse);
+        assert_eq!(ellipse_outline(&obvious,1.0,p(300.0,200.0),2).unwrap().0,ShapeKind::Circle);
+    }
+
 }

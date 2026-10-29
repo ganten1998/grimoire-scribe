@@ -136,7 +136,12 @@ pub fn history_push_paper(h: &mut History, old_k: PaperKind, new_k: PaperKind) {
 
 /// call BEFORE clearing: it takes all strokes out
 pub fn history_push_clear(h: &mut History, p: &mut Page) {
-    if p.strokes.is_empty() {
+    history_push_clear_links(h,p,None);
+}
+
+/// Links have already been saved by the editor; keep them with the ink in one Clear step.
+pub fn history_push_clear_links(h: &mut History, p: &mut Page, links: Option<LinkEdit>) {
+    if p.strokes.is_empty() && links.as_ref().is_none_or(|e|e.records.is_empty()) {
         return;
     }
     // strokes now belong to the action
@@ -147,6 +152,7 @@ pub fn history_push_clear(h: &mut History, p: &mut Page) {
         ids: owned.iter().map(|s| stroke_id(s)).collect(),
         owned,
         owns: true,
+        link: links.map(Box::new),
         ..Default::default()
     };
     push_undo(h, a);
@@ -187,7 +193,7 @@ pub fn history_redo_kind(h: &History) -> Option<ActKind> {
 }
 
 /// The link records of the step history_undo (`undone`) or history_redo just moved: the top of the
-/// redo stack after an undo, of the undo stack after a redo. None if that step is not a Link step.
+/// redo stack after an undo, of the undo stack after a redo. Also used by Clear steps with links.
 pub fn history_moved_link(h: &History, undone: bool) -> Option<&LinkEdit> {
     let top = if undone { h.redo.last() } else { h.undo.last() };
     top.and_then(|a| a.link.as_deref())

@@ -1607,7 +1607,7 @@ fn record_pen_output(a: &mut App, out: PbOut) {
 fn record_pen_event(a: &mut App, ev: &InEvent) -> Option<bool> {
     if !matches!(ev.type_, InType::PenButton | InType::PenHover | InType::PenLeave
         | InType::PenDown | InType::PenMove | InType::PenUp) { return None; }
-    let config = a.pb_config;
+    let config = PbConfig { waits:[true,true,false], ..a.pb_config };
     let t = in_sample_ms(ev);
     if ev.type_ == InType::PenButton {
         let button = if ev.value == 2 { PenBtn::Button2 } else { PenBtn::Button };
@@ -4827,7 +4827,7 @@ pub fn library_tick(a: &mut App, now: u32) {
     if library_record_active(a) {
         // A queued release/contact must reach the model before a wall-clock tick.
         if a.input_drained {
-            let config = a.pb_config;
+            let config = PbConfig { waits:[true,true,false], ..a.pb_config };
             for _ in 0..3 {
                 let out = penbutton_tick(&mut lib(a).record_pb, &config, now);
                 if out == PbOut::None { break; }
@@ -5381,10 +5381,12 @@ mod tests {
         assert!(!a.pb_config.waits[0]);
         open_record_card(&mut a, SHORTCUT_REDO);
         record_side(&mut a, 2000, true); record_side(&mut a, 2080, false);
+        assert_eq!(probe(&mut a, "record"), "wait");
+        library_tick(&mut a,2430);
         assert_eq!(probe(&mut a, "record"), "pattern pen.Button.tap");
-        pen_card_tap(&mut a, H_RECORD_CANCEL, 2200);
+        pen_card_tap(&mut a, H_RECORD_CANCEL, 2500);
         assert!(reset_gesture_map(&mut a));
-        assert!(a.pb_config.waits[0]);
+        assert!(!a.pb_config.waits[0]);
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(root);
@@ -5479,7 +5481,7 @@ mod tests {
         assert_eq!(text, "3-finger tap +1");
         // More pen slots are still one source (including the legal built-in duplicate).
         gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
-        assert_eq!(text, "pen button triple-click");
+        assert_eq!(text, "pen button hold");
         let frames = shape_frames("Z", &Draw::default());
         let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
         let mut sample = FsSample::default();
@@ -5710,8 +5712,8 @@ mod tests {
         assert_eq!(group_row_count(3), 8);
         assert_eq!(ACTION_GROUPS[3].probe, "index");
         assert_eq!(learn_row_at(3, 7).unwrap().act, [SHORTCUT_LINK_AREAS, 0]);
-        assert_eq!(group_row_count(4), 10);
-        assert_eq!(learn_row_at(4, 9).unwrap().act, [SHORTCUT_STATUS_MODE, 0]);
+        assert_eq!(group_row_count(4), 9);
+        assert!(learn_row_at(4, 9).is_none());
         assert_eq!(group_row_count(5), 10);
         assert_eq!(group_row_count(6), 6);
         assert_eq!(binding_row_count(BUTTONS, 6), 4);

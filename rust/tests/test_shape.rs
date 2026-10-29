@@ -205,6 +205,9 @@ fn the_owners_strokes_never_snap_at_written_size() {
             if rec(pts).kind != ShapeKind::None {
                 at1 += 1;
             }
+            let mut configured=shape_params(DPI,1.0,PAPER_BLANK,page.w);
+            configured.quad_mode=1;configured.circle_mode=1;
+            check!(shape_recognize(pts,&configured).kind==ShapeKind::None);
             // twice the size: zoom 2 (screen mm = page mm x zoom), the gates see the stroke doubled
             let r2 = shape_recognize(pts, &shape_params(DPI, 2.0, PAPER_BLANK, page.w));
             match r2.kind {

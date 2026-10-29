@@ -650,15 +650,15 @@ fn panel_tools() {
     settings_default(&mut s);
     check!(settings_save(&s) == 0 && has_pins_line(&path, "panel_tools="));
     check!(settings_load(&mut t) == 0 && t.npins == 0);
-    // Unknown names, the eraser and repeats are left out; the first four left are the pins.
+    // Unknown names, the eraser and repeats are left out; the first three left are the pins.
     let mixed = "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker\n";
     check!(write_file_atomic(&path, mixed.as_bytes()) == 0);
-    check!(settings_load(&mut t) == 0 && t.npins == 4);
+    check!(settings_load(&mut t) == 0 && t.npins == 3);
     check!(
         t.pins[0] == TOOL_HIGHLIGHTER
             && t.pins[1] == TOOL_PENCIL
             && t.pins[2] == TOOL_MECH_PENCIL
-            && t.pins[3] == TOOL_BALLPOINT
+
     );
     for i in 0..t.npins as usize {
         for k in 0..i {
@@ -667,11 +667,11 @@ fn panel_tools() {
     }
     let mut text = String::new();
     settings_pins_text(&t, &mut text, 128);
-    check!(text == "highlighter,pencil,mech,ballpoint");
-    // Full: a fifth is refused, the pins stay as they were.
+    check!(text == "highlighter,pencil,mech");
+    // Full: a fourth is refused, the pins stay as they were.
     check!(
         !settings_toggle_pin(&mut t, TOOL_MARKER)
-            && t.npins == 4
+            && t.npins == 3
             && !settings_pinned(&t, TOOL_MARKER)
     );
     // Saved unchanged, the line goes back as it was (a newer version's pen is still in it).
@@ -683,16 +683,16 @@ fn panel_tools() {
             )
     );
     // Changed, the pins are written as they are: unpinning one keeps the others' order.
-    check!(settings_toggle_pin(&mut t, TOOL_PENCIL) && t.npins == 3);
+    check!(settings_toggle_pin(&mut t, TOOL_PENCIL) && t.npins == 2);
     check!(
-        settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint")
+        settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=highlighter,mech")
     );
-    check!(settings_toggle_pin(&mut t, TOOL_CALLIGRAPHY) && t.pins[3] == TOOL_CALLIGRAPHY);
+    check!(settings_toggle_pin(&mut t, TOOL_CALLIGRAPHY) && t.pins[2] == TOOL_CALLIGRAPHY);
     check!(
         settings_save(&t) == 0
-            && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint,calligraphy")
+            && has_pins_line(&path, "panel_tools=highlighter,mech,calligraphy")
     );
-    check!(settings_load(&mut s) == 0 && s.npins == 4 && s.pins[3] == TOOL_CALLIGRAPHY);
+    check!(settings_load(&mut s) == 0 && s.npins == 3 && s.pins[2] == TOOL_CALLIGRAPHY);
     // Written by hand with spaces, and with nothing between commas.
     let spaced = "panel_tools= fineliner ,, marker,\n";
     check!(write_file_atomic(&path, spaced.as_bytes()) == 0);
@@ -736,15 +736,26 @@ fn before_eraser() {
 // The clock and battery corner's keys (status.rs; Rust only): off and small without them, written
 // last of the known keys, clamped, and a value past the range or a third state written back as it
 // was until the setting changes.
+fn shape_preferences_and_retired_bar_migration() {
+    let path=format!("{}/settings.ini",store_root());
+    check!(write_file_atomic(&path,b"status_mode=0\nstatus_on=0\nstatus_size=2\nstatus_corner=3\nshape_quads=2\nshape_round=2\nshape_links=0\nshape_hold_ms=900\n")==0);
+    let mut s=Settings::default();check!(settings_load(&mut s)==0);
+    check!(s.status_mode==1 && s.status_on && s.status_size==0 && s.status_corner==0);
+    check!(s.shape_quads==2 && s.shape_round==2 && !s.shape_links && s.shape_hold_ms==900);
+    s.status_on=false;check!(settings_save(&s)==0);
+    let mut t=Settings::default();check!(settings_load(&mut t)==0);
+    check!(!t.status_on && t.status_mode==1 && t.shape_quads==2 && t.shape_round==2 && !t.shape_links);
+}
+
 fn status_corner_keys() {
     let path = format!("{}/settings.ini", store_root());
     let mut s = Settings::default();
     let mut t = Settings::default();
     settings_default(&mut s);
-    check!(!s.status_on && s.status_size == 0);
+    check!(s.status_on && s.status_size == 0 && s.status_corner == 0 && s.status_mode == 1);
     check!(
         settings_save(&s) == 0
-            && has_pins_line(&path, "status_on=0")
+            && has_pins_line(&path, "status_on=1")
             && has_pins_line(&path, "status_size=0")
     );
     let text = read_file(&path).unwrap_or_default();
@@ -760,7 +771,7 @@ fn status_corner_keys() {
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
     // a file with neither key: the defaults
     check!(write_file_atomic(&path, b"invert=1\n") == 0);
-    check!(settings_load(&mut t) == 0 && !t.status_on && t.status_size == 0);
+    check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 0);
     // a size past the range is the nearest, a third state is on; both go back as they were
     check!(write_file_atomic(&path, b"status_on=2\nstatus_size=7\n") == 0);
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
@@ -1183,6 +1194,7 @@ fn test_store() {
     run!(panel_tools);
     run!(before_eraser);
     run!(status_corner_keys);
+    run!(shape_preferences_and_retired_bar_migration);
     run!(gesture_keys);
     run!(rotation_lock_key);
     run!(safe_names);

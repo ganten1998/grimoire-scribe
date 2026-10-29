@@ -88,7 +88,7 @@ fn tk(k: TouchKind) -> usize {
 }
 
 /// The built-ins only: two fingers down open Pages, up the Links bar, left and right turn the page;
-/// three quick clicks of the pen's button, or holding it, clear the page (as the pen's button does).
+/// holding the pen's button clears the page; triple click is unassigned.
 /// Two- and three-finger taps and one finger's gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
     let pen_button2 = m.pen_button2;
@@ -99,7 +99,6 @@ pub fn gesturemap_defaults(m: &mut GestureMap) {
     m.touch[0][tk(TouchKind::Up)] = SHORTCUT_LINKS;
     m.touch[0][tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
     m.touch[0][tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
-    m.pen[PenBtn::Button as usize][PenKind::Triple as usize] = SHORTCUT_CLEAR_PAGE;
     m.pen[PenBtn::Button as usize][PenKind::Hold as usize] = SHORTCUT_CLEAR_PAGE;
 }
 
@@ -290,7 +289,7 @@ impl GestureMap {
                         // Commit the fallback only after carrying succeeded: refusal is atomic.
                         if !self.carry(key, line) { return false; }
                         let built_in = if btn == PenBtn::Button
-                            && matches!(kind, PenKind::Triple | PenKind::Hold) {
+                            && kind == PenKind::Hold {
                             SHORTCUT_CLEAR_PAGE
                         } else { 0 };
                         self.pen[btn as usize][kind as usize] = built_in;
@@ -370,7 +369,18 @@ pub fn gesturemap_parse(m: &mut GestureMap, text: &[u8]) -> i32 {
 pub fn gesturemap_load(m: &mut GestureMap, path: &str) -> i32 {
     gesturemap_defaults(m);
     match crate::shortcuts::ini_read_bounded(path, GESTURES_CAP) {
-        Ok(Some(text)) => gesturemap_parse(m, &text),
+        Ok(Some(text)) => {
+            let refused = gesturemap_parse(m, &text);
+            // RC1 saved both historical defaults. Retire only that duplicate pair; custom
+            // assignments to either gesture remain available.
+            let button = PenBtn::Button as usize;
+            if m.pen[button][PenKind::Triple as usize] == SHORTCUT_CLEAR_PAGE
+                && m.pen[button][PenKind::Hold as usize] == SHORTCUT_CLEAR_PAGE {
+                m.pen[button][PenKind::Triple as usize] = 0;
+                m.pen_set[button][PenKind::Triple as usize] = true;
+            }
+            refused
+        },
         Ok(None) => 0,
         Err(()) => {
             m.writable = false;
@@ -487,7 +497,7 @@ pub fn gesturemap_carried(m: &GestureMap) -> &[u8] {
 pub const GM_SHAPES_MAX: usize = FS_SHAPES_MAX;
 const HEADER: &str = concat!(
     "# Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:\n",
-    "# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.triple=clear-page, pen.Button.hold=clear-page\n",
+    "# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page\n",
     "# shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.\n",
 );
 
