@@ -1141,3 +1141,14 @@ hold path (its picker, Remove link, The Index) is gone. Deleting a link never de
 The border's strips hold only black and white pixels and never meet, so DU shows them exactly; one union
 of the four would be the whole box, and DU would posterize the gray ink inside it. No GL16 and no toast
 while the pen is down: the lasso's GL16 comes at the lift.
+
+The Index map is an editor-hosted full-screen menu. Its model reads notebook metadata and links,
+without loading page files. The current page has two rings, selection a third; labels avoid both
+other labels and other dots. Select/deselect refreshes the labels and incident edges as well as
+the node and card, since a card-only update would leave stale bold edges and label knockouts.
+Pan/pinch previews are throttled to180ms and settle on release. Layouts over300force nodes run
+in a background child; a finished result is swapped in after500ms of idle time.
+
+Nested Library folders are logical slash-separated paths stored in notebook metadata and
+folders.ini. Notebook IDs and physical directories stay fixed. A subtree rename validates all
+new paths and collisions before writing, retaining original metadata for rollback on write failure.

@@ -1448,6 +1448,10 @@ fn powerd_state_now(name: &mut String, cap: usize) -> PowerdState {
 fn poll_jobs(a: &mut App) -> i32 {
     let mut done = -1;
     let r = bg_poll_kind(Some(&mut done));
+    if done == BgKind::GraphLayout as i32 {
+        crate::editor::editor_map_done(a, r > 0);
+        return 0;
+    }
     if done == BgKind::Template as i32 {
         bgimage_retry_missing();
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)

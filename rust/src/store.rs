@@ -1459,6 +1459,78 @@ pub fn store_add_folder(name: &str) -> i32 {
     save_folders_ini(&f)
 }
 
+/// Rename a logical subtree; the page files and notebook identities never move.
+/// Validate every destination and keep exact metadata for rollback before the first write.
+pub fn store_rename_folder(old: &str, new: &str) -> i32 {
+    if !store_folder_valid(old) || !store_folder_valid(new) {
+        return -1;
+    }
+    if old == new {
+        return 0;
+    }
+    if store_folder_contains(old, new) {
+        return -1;
+    }
+    let mut all = Vec::new();
+    if store_list_folders(&mut all) != 0 {
+        return -1;
+    }
+    if !all.iter().any(|f| f == old) || all.iter().any(|f| store_folder_contains(new, f)) {
+        return -1;
+    }
+    let mut folders = load_folders_ini();
+    for f in &mut folders {
+        if store_folder_contains(old, f.as_str()) {
+            let path = format!("{}{}", new, &f.as_str()[old.len()..]);
+            if !store_folder_valid(&path) {
+                return -1;
+            }
+            f.set(&path);
+        }
+    }
+    let mut books = Vec::new();
+    if store_list(&mut books) != 0 {
+        return -1;
+    }
+    let mut changes = Vec::new();
+    if changes.try_reserve_exact(books.len()).is_err() {
+        return -1;
+    }
+    for mut nb in books {
+        if !store_folder_contains(old, nb.folder.as_str()) {
+            continue;
+        }
+        let dest = format!("{}{}", new, &nb.folder.as_str()[old.len()..]);
+        if !store_folder_valid(&dest) {
+            return -1;
+        }
+        let Some(dir) = notebook_dir(nb.id.as_bytes()) else {
+            return -1;
+        };
+        let path = format!("{dir}/notebook.ini");
+        let Some(bytes) = read_file(&path) else {
+            return -1;
+        };
+        nb.folder.set(&dest);
+        changes.push((nb, path, bytes));
+    }
+    for i in 0..changes.len() {
+        if write_info(&changes[i].0) != 0 {
+            for (_, path, bytes) in &changes[..i] {
+                write_file_atomic(path, bytes);
+            }
+            return -1;
+        }
+    }
+    if save_folders_ini(&folders) != 0 {
+        for (_, path, bytes) in &changes {
+            write_file_atomic(path, bytes);
+        }
+        return -1;
+    }
+    0
+}
+
 /// only from folders.ini; notebooks keep theirs
 pub fn store_remove_folder(name: &str) -> i32 {
     let mut f = load_folders_ini();
@@ -2794,7 +2866,15 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         }
         b"shortcuts_enabled" => s.shortcuts_enabled = keep_bool("shortcuts_enabled", v),
         b"controller" => s.controller = keep_bool("controller", v),
-        b"updates" => s.updates = if v == b"stable" { 1 } else if v == b"preview" { 2 } else { 0 },
+        b"updates" => {
+            s.updates = if v == b"stable" {
+                1
+            } else if v == b"preview" {
+                2
+            } else {
+                0
+            }
+        }
         b"sleep_mode" => s.sleep_mode = keep_int("sleep_mode", v, 0, 3),
         b"sleep_minutes" => s.sleep_minutes = keep_int("sleep_minutes", v, 0, 240),
         b"settings_version" => s.version = c_atoi(v),

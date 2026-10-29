@@ -95,6 +95,8 @@ const H_UPDATES: i32 = 54;
 const H_UPD_CHANNEL: i32 = 55;
 const H_UPD_CHECK: i32 = 56;
 const H_UPD_NOW: i32 = 57;
+const H_MOVE_PREV: i32 = 58;
+const H_MOVE_NEXT: i32 = 59;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -104,6 +106,7 @@ struct Item {
     folder: FixedStr<STORE_NAME_LEN>,
     /// notebooks inside (folders)
     count: i32,
+    has_children: bool,
 }
 
 /// The screen's state (library.c's, which app.h keeps opaque): library_init makes it, in a.lib.
@@ -115,6 +118,7 @@ pub struct LibraryState {
     items: Vec<Item>,
     /// "" = top level
     cur_folder: FixedStr<STORE_NAME_LEN>,
+    folder_move_page: usize,
     page: i32,
     /// per notebook, lazily loaded (px empty until then)
     thumbs: Vec<Canvas>,
@@ -267,13 +271,17 @@ fn reload(a: &mut App) {
     s.thumb_picture = vec![false; nbooks];
     s.card_stamp = vec![0; nbooks];
     s.items = Vec::with_capacity(nbooks + s.folders.len() + 1);
-    if s.cur_folder.is_empty() {
+    {
         for f in 0..s.folders.len() {
+            if store_folder_parent(&s.folders[f]) != s.cur_folder.as_str() {
+                continue;
+            }
             let mut it = Item { is_folder: true, ..Default::default() };
             it.folder.set(&s.folders[f]);
             for i in 0..nbooks {
-                it.count += (s.books[i].folder == s.folders[f].as_str()) as i32;
+                it.count += store_folder_contains(&s.folders[f], s.books[i].folder.as_str()) as i32;
             }
+            it.has_children = s.folders.iter().any(|child| child != &s.folders[f] && store_folder_contains(it.folder.as_str(), child));
             s.items.push(it);
         }
     }
@@ -406,7 +414,7 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
     let mut label = String::new();
     let title: &str;
     if it.is_folder {
-        title = ui_name_label(it.folder.as_str(), &mut label, LABEL_CAP);
+        title = ui_name_label(store_folder_leaf(it.folder.as_str()), &mut label, LABEL_CAP);
         // TRANSLATORS: under a folder's card in the Library.
         csnprintf!(&mut line2, 128, ng_("%d notebook", "%d notebooks", it.count as i64), it.count);
     } else {
@@ -481,7 +489,7 @@ fn draw_base(a: &mut App) {
         // TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
         Btn { icon: IconKind::Share, label: tr("Share"), id: H_SHARE, show: true },
         // TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
-        Btn { icon: IconKind::FolderPlus, label: tr("Folder"), id: H_NEWFOLDER, show: s.cur_folder.is_empty() },
+        Btn { icon: IconKind::FolderPlus, label: tr("Folder"), id: H_NEWFOLDER, show: true },
         // TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
         Btn { icon: IconKind::Plus, label: tr("New"), id: H_NEW, show: true },
     ];
@@ -1743,10 +1751,10 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::Rename, tr("Rename folder"), H_FMORE_RENAME, 0, ButtonStyle::Plain),
                 menu_row(
                     IconKind::Trash,
-                    if it.count != 0 { tr("Remove folder (move its notebooks out first)") } else { tr("Remove folder") },
+                    if it.count != 0 || it.has_children { tr("Remove folder (move its notebooks out first)") } else { tr("Remove folder") },
                     H_FMORE_REMOVE,
                     0,
-                    if it.count != 0 { ButtonStyle::Disabled } else { ButtonStyle::Plain },
+                    if it.count != 0 || it.has_children { ButtonStyle::Disabled } else { ButtonStyle::Plain },
                 ),
                 menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
@@ -1760,12 +1768,24 @@ fn draw_modal(a: &mut App) {
             let curf = s.books[it.nb].folder;
             // TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
             // notebook: "In: Library (top level)").
-            rows.push(menu_row(IconKind::Library, tr("Library (top level)"), H_MOVE_TOP, 0, if !curf.is_empty() { ButtonStyle::Plain } else { ButtonStyle::Selected }));
-            let mut f = 0;
-            while f < s.folders.len() && rows.len() < 12 {
+            rows.push(menu_row(
+                IconKind::Library,
+                tr("Library (top level)"),
+                H_MOVE_TOP,
+                0,
+                if !curf.is_empty() { ButtonStyle::Plain } else { ButtonStyle::Selected },
+            ));
+            let mut f = s.folder_move_page * 6;
+            while f < s.folders.len() && f < (s.folder_move_page + 1) * 6 {
                 let st = if curf != s.folders[f].as_str() { ButtonStyle::Plain } else { ButtonStyle::Selected };
                 rows.push(menu_row(IconKind::Folder, &s.folders[f], H_MOVE_TO, f as i32, st));
                 f += 1;
+            }
+            if s.folder_move_page > 0 {
+                rows.push(menu_row(IconKind::Back, tr("Previous folders"), H_MOVE_PREV, 0, ButtonStyle::Plain));
+            }
+            if f < s.folders.len() {
+                rows.push(menu_row(IconKind::None, tr("More folders"), H_MOVE_NEXT, 0, ButtonStyle::Plain));
             }
             rows.push(menu_row(IconKind::FolderPlus, tr("New folder..."), H_MOVE_NEW, 0, ButtonStyle::Plain));
             rows.push(menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain));
@@ -1989,30 +2009,41 @@ fn kb_finished(a: &mut App, ok: bool) {
                     mirror_follow(a, &id, false);
                 }
             }
-            KbPurpose::NewFolder => {
-                store_add_folder(&txt);
-            }
-            KbPurpose::MoveNewFolder => {
-                store_add_folder(&txt);
-                if let Some(it) = it.filter(|it| !it.is_folder) {
-                    let id = lib(a).books[it.nb].id.as_str().to_string();
-                    store_set_folder(&id, &txt);
-                    mirror_follow(a, &id, false);
+            KbPurpose::NewFolder | KbPurpose::MoveNewFolder => {
+                let parent = lib(a).cur_folder;
+                let mut path = FixedStr::new();
+                if !store_folder_join(parent.as_str(), &txt, &mut path) || store_add_folder(path.as_str()) != 0 {
+                    app_toast(a, tr("Could not create the folder. Use a shorter name without a slash."), 3500);
+                } else if kbp == KbPurpose::MoveNewFolder {
+                    if let Some(it) = it.filter(|it| !it.is_folder) {
+                        let id = lib(a).books[it.nb].id.as_str().to_string();
+                        if store_set_folder(&id, path.as_str()) == 0 {
+                            mirror_follow(a, &id, false);
+                        } else {
+                            app_toast(a, tr("Could not move the notebook."), 3000);
+                        }
+                    }
                 }
             }
             KbPurpose::RenameFolder => {
                 if let Some(it) = it.filter(|it| it.is_folder) {
-                    for i in 0..lib(a).books.len() {
-                        if lib(a).books[i].folder == it.folder {
-                            let id = lib(a).books[i].id.as_str().to_string();
-                            store_set_folder(&id, &txt);
+                    let mut dest = FixedStr::new();
+                    if !store_folder_join(store_folder_parent(it.folder.as_str()), &txt, &mut dest)
+                        || store_rename_folder(it.folder.as_str(), dest.as_str()) != 0
+                    {
+                        app_toast(a, tr("Could not rename the folder. Check the name and destination."), 3500);
+                    } else {
+                        let ids: Vec<String> = lib(a)
+                            .books
+                            .iter()
+                            .filter(|nb| store_folder_contains(it.folder.as_str(), nb.folder.as_str()))
+                            .map(|nb| nb.id.as_str().to_string())
+                            .collect();
+                        for id in ids {
                             mirror_follow(a, &id, false);
                         }
-                    }
-                    if store_remove_folder(it.folder.as_str()) == 0 {
                         export_mirror_prune_folder(it.folder.as_str(), &app_mirror_dir());
                     }
-                    store_add_folder(&txt);
                 }
             }
         }
@@ -2029,7 +2060,8 @@ fn act(a: &mut App, h: &Hit) {
     match h.id {
         H_BACK => {
             let s = lib(a);
-            s.cur_folder.clear();
+            let parent = store_folder_parent(s.cur_folder.as_str()).to_string();
+            s.cur_folder.set(&parent);
             s.page = 0;
             reload(a);
             redraw(a, RefreshMode::Full);
@@ -2335,7 +2367,19 @@ fn act(a: &mut App, h: &Hit) {
                 open_kb(a, KbPurpose::Rename, c_("keyboard", "Name"), name.as_bytes());
             }
         }
-        H_MORE_MOVE => open_modal(a, Modal::Move),
+        H_MORE_MOVE => {
+            lib(a).folder_move_page = 0;
+            open_modal(a, Modal::Move);
+        }
+        H_MOVE_PREV | H_MOVE_NEXT => {
+            let s = lib(a);
+            if h.id == H_MOVE_PREV {
+                s.folder_move_page = s.folder_move_page.saturating_sub(1);
+            } else if (s.folder_move_page + 1) * 6 < s.folders.len() {
+                s.folder_move_page += 1;
+            }
+            redraw(a, RefreshMode::Ui);
+        }
         H_MORE_PDF => {
             if let Some(it) = it {
                 let id = lib(a).books[it.nb].id.as_str().to_string();
@@ -2368,10 +2412,13 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_FMORE_RENAME => {
             if let Some(it) = it {
-                open_kb(a, KbPurpose::RenameFolder, c_("keyboard", "Folder"), it.folder.as_bytes());
+                open_kb(a, KbPurpose::RenameFolder, c_("keyboard", "Folder"), store_folder_leaf(it.folder.as_str()).as_bytes());
             }
         }
         H_FMORE_REMOVE => {
+            if it.is_some_and(|it| it.count != 0 || it.has_children) {
+                return;
+            }
             if let Some(it) = it {
                 if store_remove_folder(it.folder.as_str()) == 0 {
                     export_mirror_prune_folder(it.folder.as_str(), &app_mirror_dir());
@@ -2386,8 +2433,11 @@ fn act(a: &mut App, h: &Hit) {
                 let s = lib(a);
                 let id = s.books[it.nb].id.as_str().to_string();
                 let folder = if h.id == H_MOVE_TOP { String::new() } else { s.folders[h.arg as usize].clone() };
-                store_set_folder(&id, &folder);
-                mirror_follow(a, &id, false);
+                if store_set_folder(&id, &folder) == 0 {
+                    mirror_follow(a, &id, false);
+                } else {
+                    app_toast(a, tr("Could not move the notebook."), 3000);
+                }
             }
             lib(a).modal = Modal::None;
             reload(a);
@@ -2670,7 +2720,16 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if name {
         // the name under the card, as drawn (ui_name_label)
         let mut label = String::new();
-        csnprintf!(out, cap, "%s", ui_name_label(if it.is_folder { it.folder.as_str() } else { s.books[it.nb].name.as_str() }, &mut label, LABEL_CAP));
+        csnprintf!(
+            out,
+            cap,
+            "%s",
+            ui_name_label(
+                if it.is_folder { store_folder_leaf(it.folder.as_str()) } else { s.books[it.nb].name.as_str() },
+                &mut label,
+                LABEL_CAP
+            )
+        );
         return 0;
     }
     if it.is_folder {

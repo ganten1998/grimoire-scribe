@@ -718,6 +718,20 @@ pub fn export_notebook_zip(nb: &NotebookInfo, dpi: f32, z: &mut ZipWriter, prefi
     notebook_into_zip(nb, dpi, z, prefix, None, true)
 }
 
+/// Sanitize each logical component, retaining hierarchy in folder ZIPs.
+fn export_folder_components(path: &str) -> String {
+    let mut result = String::new();
+    for part in path.split('/').filter(|p| !p.is_empty()) {
+        let mut safe = String::new();
+        export_safe_name(part, &mut safe, STORE_NAME_LEN);
+        if !result.is_empty() {
+            result.push('/');
+        }
+        result.push_str(&safe);
+    }
+    result
+}
+
 /// Every notebook in folder ("" = all notebooks, grouped "<folder>/<name>/..."). To bound memory
 /// on the device, folder/all zips carry each notebook's PDF + raw files, not per-page PNGs.
 pub fn export_folder_zip(folder: &str, dpi: f32, out: &mut Buf) -> i32 {
@@ -729,16 +743,21 @@ pub fn export_folder_zip(folder: &str, dpi: f32, out: &mut Buf) -> i32 {
     // Track used "<folder>/<name>" paths to disambiguate duplicates.
     let mut used: Vec<String> = Vec::new();
     for nb in &nbs {
-        if !folder.is_empty() && nb.folder.as_bytes() != folder.as_bytes() {
+        if !store_folder_contains(folder, nb.folder.as_str()) {
             continue;
         }
-        let mut sf = String::new();
+        let sf;
         let mut sn = String::new();
         let mut prefix = String::new();
         let mut dir = String::new();
-        if folder.is_empty() && !nb.folder.is_empty() {
-            export_safe_name(nb.folder.as_str(), &mut sf, STORE_NAME_LEN);
-            csnprintf!(&mut prefix, 200, "%s/", &sf);
+        let relative = if folder.is_empty() {
+            nb.folder.as_str()
+        } else {
+            nb.folder.as_str().strip_prefix(folder).unwrap_or("").trim_start_matches('/')
+        };
+        if !relative.is_empty() {
+            sf = export_folder_components(relative);
+            csnprintf!(&mut prefix, 400, "%s/", &sf);
         }
         export_safe_name(nb.name.as_str(), &mut sn, STORE_NAME_LEN);
         strlcpy_q(&mut dir, &sn, 400);

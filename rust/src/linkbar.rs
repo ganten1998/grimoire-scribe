@@ -51,6 +51,7 @@ const LB_INDEX: i32 = 10;
 const LB_SEARCH: i32 = 11;
 const LB_PAGES: i32 = 12;
 const LB_CANCEL: i32 = 13;
+const LB_AROUND: i32 = 14;
 
 /// The bar lists the page's links (List), or it is Link to..., picking where a new link goes (Pick).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,6 +105,7 @@ pub enum LbResult {
     /// the Areas button: the eye turned on or off (the editor redraws the button and the boxes)
     Eye,
     Index,
+    Around,
     /// the pager: another screenful of chips (the grid is drawn again)
     Pager,
     /// Link to...: chip i of picks
@@ -194,6 +196,7 @@ pub struct LinkBar {
     pub n: usize,
     /// links in all (the header's count): an entry with two is two
     pub links: i32,
+    pub incoming: i32,
     /// the pager's screenful
     pub screen: i32,
     /// the entry being looked at, -1 for none
@@ -254,6 +257,7 @@ impl Default for LinkBar {
             entries: [LbEntry::default(); LB_MAX],
             n: 0,
             links: 0,
+            incoming: 0,
             screen: 0,
             selected: -1,
             rect: RECT_EMPTY,
@@ -296,6 +300,15 @@ pub fn linkbar_build(lb: &mut LinkBar, nb: &NotebookInfo, nav: &Nav, page: &Page
         return;
     }
     let pid = nb.page_ids[origin as usize];
+    // Nav is sorted by source; repeated links from one page count once, as in the graph.
+    let target = format!("p{}", pid);
+    let mut last = 0;
+    for l in &nav.links {
+        if l.pid != pid && l.target == target.as_str() && l.pid != last && nb.page_ids.contains(&l.pid) {
+            lb.incoming += 1;
+            last = l.pid;
+        }
+    }
     let mut links = [NavLink::default(); LB_MAX];
     let mut areas = [RECT_EMPTY; LB_MAX];
     let n = nav_link_areas(nav, page, pid, NAV_LINK_MIN_MM * dpi / 25.4, &mut links, &mut areas) as usize;
@@ -513,6 +526,14 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
             hits_add(&mut lb.hits, back, LB_BACK, 0);
             tx = back.x + back.w + u(20.0);
         }
+        if lb.incoming > 0 {
+            let text = cformat!(ng_("%d page links here", "%d pages link here", lb.incoming as i64), lb.incoming);
+            let width = ui_chip_w(FontFace::Bold, ui_small_size(), &text, bh, u(360.0), u(620.0)).min(right - tx);
+            let chip = Rect { x: right - width, y: hy, w: width, h: bh };
+            ui_button(c, chip, IconKind::None, &text, ButtonStyle::Plain);
+            hits_add(&mut lb.hits, chip, LB_AROUND, 0);
+            right = chip.x - u(16.0);
+        }
         // TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
         let title = cformat!(tr("Links on this page (%d)"), lb.links);
         ui_text(c, FontFace::Bold, ts, ui_small_size(), Rect { x: tx, y: hy, w: right - tx, h: bh }, &title, 1, false, 0);
@@ -649,6 +670,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_NEW => LbResult::NewLink,
         LB_AREAS => LbResult::Eye,
         LB_INDEX => LbResult::Index,
+        LB_AROUND => LbResult::Around,
         _ => LbResult::None,
     }
 }
@@ -697,6 +719,8 @@ pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> b
     }
     if key == "entries" {
         csnprintf!(out, cap, "%d", if lb.open { lb.n as i32 } else { 0 });
+    } else if key == "incoming" {
+        csnprintf!(out, cap, "%d", lb.incoming);
     } else if key == "pager" {
         // The pager's screenful, "2/3"; empty with one screenful or closed.
         if lb.open && lb.screens > 1 {

@@ -1073,3 +1073,19 @@ the ones drawn vertical in 1.2.0 to 2.0.0-beta.4, which cannot be told apart fro
 `shapes=1` enables smart shapes by default; `0` disables them. Values 2 and 3 are carried as future states
 and used as enabled here. `shape_hold_ms=550` is the normal dwell time, clamped to 300..1500 milliseconds.
 The tool picker cycles 400, 550 and 900 milliseconds. These keys are appended to the older settings.
+
+### Nested Library folders
+
+A folder name may contain slash-separated components, up to95UTF-8bytes in total. Components
+are nonempty and cannot be `.` or `..`; a new folder is entered as one component relative to the
+folder currently open. Ancestors of a notebook or an explicit empty folder are inferred when
+listing. These are logical names: notebook directories and `.qpg` files do not move on a folder
+rename or move. Older versions display a nested logical name as a flat folder.
+
+### Index map cache: graph.ini
+
+`notebooks/<id>/graph.ini` is disposable layout state. It carries the sorted graph generation
+hash, All/Around mode, whether unlinked pages are shown, and integer world positions keyed by
+page ID. Reserved pin entries and unknown bounded lines are retained. A file that cannot be read
+safely is ignored and never overwritten that session. Raw notebook ZIPs exclude this cache.
+Deleting it loses no ink, names, links or notebook content.

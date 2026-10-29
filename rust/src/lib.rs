@@ -157,6 +157,7 @@ pub mod prelude {
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;
+    pub use crate::mapview::*;
     pub use crate::page::*;
     pub use crate::pagesview::*;
     pub use crate::pair::*;

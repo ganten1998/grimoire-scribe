@@ -239,6 +239,11 @@ pub fn mapview_open(
     around_open: bool,
 ) -> bool {
     *v = MapView::default();
+    #[cfg(feature = "sim")]
+    if std::env::var_os("GRIMOIRE_SIM_MAP_NOMEM").is_some_and(|s| s == "1") {
+        app_toast(a, tr("Not enough memory for the map."), 3000);
+        return false;
+    }
     v.w = a.w;
     v.h = a.h;
     v.id = nb.id;
@@ -367,6 +372,13 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
         if !rect_overlaps(visible_rect(v, i), pr) {
             continue;
         }
+        // Outer rings first: their white interiors must not erase the dot's fill or inner ring.
+        if i as i32 == v.selected {
+            ring(c, x, y, r + 12.0, 8.0);
+        }
+        if n.open {
+            ring(c, x, y, r + 6.0, 2.0);
+        }
         let level = match n.degree {
             0 => 0,
             1 => 1,
@@ -377,12 +389,6 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
         if level < 4 {
             ring(c, x, y, r, 3.0);
             canvas_disc_pattern(c, x, y, (r - 3.0).max(0.0), level);
-        }
-        if n.open {
-            ring(c, x, y, r + 6.0, 2.0);
-        }
-        if i as i32 == v.selected {
-            ring(c, x, y, r + 12.0, 8.0);
         }
         if n.index_links > 0 {
             canvas_lozenge(c, x + r, y - r, u(8.0) as f32, 0);
@@ -455,10 +461,20 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
                     h,
                 },
             ];
-            if let Some(r) = spots
-                .into_iter()
-                .find(|r| rect_intersect(*r, pr) == *r && !v.labels.iter().any(|&old| rect_overlaps(old, *r)))
-            {
+            if let Some(r) = spots.into_iter().find(|r| {
+                rect_intersect(*r, pr) == *r
+                    && !v.labels.iter().any(|&old| rect_overlaps(old, *r))
+                    && !(0..v.g.nodes.len()).any(|other| {
+                        other != i
+                            && location(v, other).is_some_and(|p| {
+                                let (cx, cy) = screen_point(v, p);
+                                let radius = v.g.nodes[other].r * v.zoom + 4.0;
+                                let nearest_x = cx.clamp(r.x as f32, (r.x + r.w) as f32);
+                                let nearest_y = cy.clamp(r.y as f32, (r.y + r.h) as f32);
+                                (cx - nearest_x).hypot(cy - nearest_y) < radius
+                            })
+                    })
+            }) {
                 v.labels.push(r);
                 canvas_fill(c, r, if i as i32 == v.selected { 0 } else { 255 });
                 font_draw_left_name(
@@ -517,7 +533,7 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
             }
         };
         let title = if v.g.tray.len() > 200 && !v.tray_expanded {
-            cformat!(tr("Not linked yet: %d pages. Show"), v.g.tray.len() as i32)
+            cformat!(ng_("Not linked yet: %d page. Show", "Not linked yet: %d pages. Show", v.g.tray.len() as i64), v.g.tray.len() as i32)
         } else {
             cformat!(tr("Not linked yet (%d)"), v.g.tray.len() as i32)
         };
@@ -735,48 +751,17 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
                 id,
                 text,
                 IconKind::None,
-                true,
+                id != RENAME || nav.writable,
             );
         }
     } else {
         let bw = u(220.0);
+        button(v, c, Rect { x: u(20.0), y: bottom + u(15.0), w: bw, h: bh }, MINUS, "", IconKind::Minus, true);
+        button(v, c, Rect { x: u(252.0), y: bottom + u(15.0), w: bw, h: bh }, PLUS, "", IconKind::Plus, true);
         button(
             v,
             c,
-            Rect {
-                x: u(20.0),
-                y: bottom + u(15.0),
-                w: bw,
-                h: bh,
-            },
-            MINUS,
-            "",
-            IconKind::Minus,
-            true,
-        );
-        button(
-            v,
-            c,
-            Rect {
-                x: u(252.0),
-                y: bottom + u(15.0),
-                w: bw,
-                h: bh,
-            },
-            PLUS,
-            "",
-            IconKind::Plus,
-            true,
-        );
-        button(
-            v,
-            c,
-            Rect {
-                x: u(500.0),
-                y: bottom + u(15.0),
-                w: u(640.0),
-                h: bh,
-            },
+            Rect { x: u(500.0), y: bottom + u(15.0), w: u(640.0), h: bh },
             UNLINKED,
             tr(if v.ini.show_unlinked {
                 n_("Unlinked: Show")
@@ -809,6 +794,7 @@ pub fn mapview_draw(v: &mut MapView, a: &mut App, nav: &Nav, r: Rect) {
     v.w = a.w;
     v.h = a.h;
     if v.canvas.w != a.w || v.canvas.h != a.h {
+        v.drag = None;
         if canvas_init(&mut v.canvas, a.w, a.h) != 0 {
             return;
         }
@@ -1092,9 +1078,21 @@ pub fn mapview_rebuild(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Na
     if graph_build(&mut g, nb, nav, open_pid) != 0 {
         return false;
     }
-    v.g = g;
+    let old = std::mem::replace(&mut v.g, g);
     if !layout(v, a, false) {
+        v.g = old;
         return false;
+    }
+    // A rename changes membership (an unnamed satellite can become a named force node),
+    // but every dot the user has already seen stays where it was.
+    for node in &mut v.g.nodes {
+        let at = graph_node_of(&old, node.pid);
+        if at >= 0 && old.nodes[at as usize].placed {
+            let before = old.nodes[at as usize];
+            node.x = before.x;
+            node.y = before.y;
+            node.placed = true;
+        }
     }
     if v.mode == GraphMode::Around {
         around(v, v.centre);
@@ -1246,6 +1244,29 @@ mod tests {
         }
     }
     #[test]
+    fn an_open_selected_dot_keeps_both_its_pattern_and_rings() {
+        let (mut v, nav) = view(1860, 2480, 2, true);
+        v.selected = 0;
+        let mut c = Canvas::default();
+        canvas_init(&mut c, v.w, v.h);
+        render(&mut v, &mut c, &nav);
+        let n = v.g.nodes[0];
+        let (x, y) = screen_point(&v, (n.x, n.y));
+        let r = n.r * v.zoom;
+        let pixel = |xx: f32| c.px[y.round() as usize * c.stride as usize + xx.round() as usize];
+        // Hollowing an outer ring used to erase the inner one and all of the dither.
+        assert_eq!(pixel(x + r - 1.0), 0);
+        assert_eq!(pixel(x + r + 5.0), 0);
+        let inside = Rect { x: x.round() as i32 - 10, y: y.round() as i32 - 10, w: 20, h: 20 };
+        let mut black = 0;
+        for yy in inside.y..inside.y + inside.h {
+            for xx in inside.x..inside.x + inside.w {
+                black += (c.px[(yy * c.stride + xx) as usize] == 0) as i32;
+            }
+        }
+        assert!(black > 0 && black < 400);
+    }
+    #[test]
     fn the_nearest_dot_wins_and_controls_take_their_own_taps() {
         let mut v = MapView::default();
         for (i, x) in [(0, 100.0), (1, 160.0)] {
@@ -1299,4 +1320,18 @@ mod tests {
             }
         }
     }
+}
+
+/// Runner taps resolve the node on this host instead of hard-coding layout coordinates.
+pub fn mapview_node_point(v: &MapView, pid: u32) -> Option<(f32, f32)> {
+    let i = graph_node_of(&v.g, pid);
+    if !v.open || i < 0 {
+        return None;
+    }
+    let i = i as usize;
+    v.hits.iter().find_map(|h| match h.kind {
+        MapHitKind::Node(n) if n == i => Some(h.centre),
+        MapHitKind::Tray(n) if n == i => Some(((h.rect.x + h.rect.w / 2) as f32, (h.rect.y + h.rect.h / 2) as f32)),
+        _ => None,
+    })
 }

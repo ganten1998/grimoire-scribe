@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 07:55-0500\n"
+"POT-Creation-Date: 2026-10-29 08:18-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -592,6 +592,23 @@ msgstr ""
 msgid "Could not save the sleep screen"
 msgstr ""
 
+#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
+#. 1500 px at 44 px).
+#: rust/src/editor.rs
+msgid "Name in the Index"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. gave page %d the Index name %s.
+#: rust/src/editor.rs
+#, c-format
+msgid "Page %d is in the Index as %s."
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Could not save the page name."
+msgstr ""
+
 #. TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
 #: rust/src/editor.rs
 msgid "Paper for this page"
@@ -818,10 +835,6 @@ msgstr ""
 msgid "Name the new page"
 msgstr ""
 
-#: rust/src/editor.rs
-msgid "Could not save the page name."
-msgstr ""
-
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "Could not save the link."
@@ -899,19 +912,6 @@ msgstr ""
 #. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
 #: rust/src/editor.rs
 msgid "That link's page is not in this notebook."
-msgstr ""
-
-#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
-#. 1500 px at 44 px).
-#: rust/src/editor.rs
-msgid "Name in the Index"
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-#. gave page %d the Index name %s.
-#: rust/src/editor.rs
-#, c-format
-msgid "Page %d is in the Index as %s."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
@@ -2269,6 +2269,14 @@ msgid "Remove folder"
 msgstr ""
 
 #: rust/src/library.rs
+msgid "Previous folders"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "More folders"
+msgstr ""
+
+#: rust/src/library.rs
 msgid "New folder..."
 msgstr ""
 
@@ -2301,6 +2309,18 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Could not create the notebook (storage full?)"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Could not create the folder. Use a shorter name without a slash."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Could not move the notebook."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Could not rename the folder. Check the name and destination."
 msgstr ""
 
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
@@ -2385,6 +2405,13 @@ msgstr ""
 #, c-format
 msgid "Back to %s"
 msgstr ""
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "%d page links here"
+msgid_plural "%d pages link here"
+msgstr[0] ""
+msgstr[1] ""
 
 #. TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
 #: rust/src/linkbar.rs
@@ -2502,15 +2529,17 @@ msgstr ""
 
 #: rust/src/mapview.rs
 #, c-format
-msgid "Not linked yet: %d pages. Show"
-msgstr ""
+msgid "Not linked yet: %d page. Show"
+msgid_plural "Not linked yet: %d pages. Show"
+msgstr[0] ""
+msgstr[1] ""
 
 #: rust/src/mapview.rs
 #, c-format
 msgid "Not linked yet (%d)"
 msgstr ""
 
-#: rust/src/mapview.rs
+#: rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Graph"
 msgstr ""
 
@@ -2608,6 +2637,13 @@ msgstr ""
 #: rust/src/pagesview.rs
 msgid "Page names could not be read."
 msgstr ""
+
+#: rust/src/pagesview.rs
+#, c-format
+msgid "%d link here"
+msgid_plural "%d links here"
+msgstr[0] ""
+msgstr[1] ""
 
 #. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
 #. Classic): Delete, with how many pages are ticked; tick all of them, or none.

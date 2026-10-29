@@ -1240,6 +1240,7 @@ enum Step {
     /// `tap panel NAME` / `pentap panel NAME` (true: the pen): the panel's button NAME is found where the
     /// App is (script_step), then tapped like `tap` and `pentap` do, and the batch ends
     Panel(FixedStr<32>, bool),
+    MapNode(u32, bool),
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -1437,6 +1438,15 @@ fn script_step_in(st: &mut State) -> Step {
         } else if a == b"tap" || a == b"pentap" {
             // `panel NAME` first: scan_floats would read "panel" as the float 0 and tap (0, 0), the clock
             // corner. The App finds the button (script_step), outside this borrow.
+            if b == b"map-node" {
+                if st.qh != st.qt {
+                    st.unread = Some(line.clone());
+                    st.line_no -= 1;
+                    return Step::Batch;
+                }
+                let pid = std::str::from_utf8(sc.word(15).unwrap_or(b"0")).ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+                return Step::MapNode(pid, a == b"pentap");
+            }
             if b == b"panel" {
                 // The buttons are those the app drew from what is queued ahead of this line (a stroke
                 // makes Undo): it ends the batch first, as an expect does, and is read again then.
@@ -1688,6 +1698,18 @@ fn script_step(mut a: Option<&mut App>) {
                     None => {
                         // Fails the run like a failed check does (exit 3 at the end).
                         err(&bformat("expect failed (line %d): no panel button %s\n", &[B::D(st.line_no), B::S(name.as_bytes())]));
+                        st.expect_total += 1;
+                        st.expect_failed += 1;
+                    }
+                });
+                break;
+            }
+            Step::MapNode(pid, pen) => {
+                let at = a.as_deref_mut().and_then(|a| crate::editor::editor_map_point(a, pid));
+                with(|st| match at {
+                    Some((x, y)) => st.tap_events(x, y, pen),
+                    None => {
+                        err(format!("expect failed (line {}): no map node {}\n", st.line_no, pid).as_bytes());
                         st.expect_total += 1;
                         st.expect_failed += 1;
                     }

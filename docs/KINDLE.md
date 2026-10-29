@@ -733,3 +733,15 @@ When rotating into landscape with **Sideways, show the whole page** enabled, the
 margin just outside the page, with a 24 px gap at 300 dpi. A toolbar on the left stays on the left;
 a toolbar on the right stays on the right. Its saved portrait position is retained. When the setting
 is off, rotation keeps the previous toolbar placement behavior.
+
+The Links bar's Index button opens the Index map. Tap a dot to see its page card, and tap it again
+to open the page. The List switch returns to named pages; Graph on that list reopens the map.
+Drag to pan, pinch to zoom, and choose Around for nearby links. Rename on a page card edits its Index
+name. A Links-bar incoming-pages chip opens Around for the current page.
+
+Folders may contain subfolders. Open a folder and use Folder to create one inside it; Back goes up
+one level. Renaming a folder also renames its descendants. Move to folder lists full destinations,
+with More folders when needed. Folder ZIP exports include descendants and keep their hierarchy.
+PDF mirrors retain their existing filename convention (a slash in a logical folder becomes an
+underscore). Links between pages of one notebook can be made with New link and Choose from the pages.
+The selection stroke disappears; a visible border is ordinary ink drawn separately.
