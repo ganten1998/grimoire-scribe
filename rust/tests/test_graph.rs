@@ -528,6 +528,84 @@ fn incremental_moves_only_the_neighbourhood() {
     check!(!graph_ini_store(&mut ini, &g2));
 }
 
+fn large_incremental_moves_only_the_neighbourhood() {
+    let a = random_book(700, 1100, 180, 21);
+    let ga = laid_out(&a, 0);
+    let mut ini = GraphIni::default();
+    check!(graph_ini_store(&mut ini, &ga));
+    check!(!graph_ini_store(&mut ini, &ga)); // (nothing changed the second time)
+    let kept = ga.force.iter().filter(|&&v| graph_persisted(&ga.nodes[v as usize])).count();
+    check!(ini.pos.len() == kept);
+    // the new page goes at the end of the notebook, linked to a well-linked old page (short of the
+    // best linked: a new top degree would shrink every dot a little, and their satellites with them)
+    let old = ga
+        .force
+        .iter()
+        .map(|&v| &ga.nodes[v as usize])
+        .filter(|n| n.degree < ga.dmax)
+        .max_by_key(|n| (n.degree, std::cmp::Reverse(n.pid)))
+        .unwrap()
+        .pid;
+    let new_pid = a.nb.next_page_id;
+    let mut b = a.clone();
+    for extra in 0..3 {
+        b.nb.page_ids.push(new_pid + extra);
+        check!(link(&mut b, new_pid + extra, 1, old) == 0);
+    }
+    let mut g = built(&b, 0);
+    check!(graph_gen(&g) != ini.gen);
+    check!(graph_apply_ini(&mut g, &ini) == GraphPlan::Incremental);
+    let fresh: Vec<u32> = g.force.iter().map(|&v| &g.nodes[v as usize]).filter(|n| !n.placed).map(|n| n.pid).collect();
+    check!(fresh == vec![new_pid, new_pid + 1, new_pid + 2]);
+    // the 2-hop set of the new page
+    let nn = graph_node_of(&g, new_pid);
+    let mut hop = vec![false; g.nodes.len()];
+    for extra in 0..3 { hop[graph_node_of(&g, new_pid + extra) as usize] = true; }
+    for &u in graph_neighbours(&g, nn) {
+        hop[u as usize] = true;
+        for &w in graph_neighbours(&g, u) {
+            hop[w as usize] = true;
+        }
+    }
+    let mut pumps = 0;
+    check!(graph_place_new(&mut g, &mut || pumps += 1) == 3);
+    check!(pumps >= GRAPH_INC_STEPS / GRAPH_PUMP_STEPS);
+    let mut still = true;
+    let mut outside = 0;
+    for &v in &ga.force {
+        let was = &ga.nodes[v as usize];
+        let i = graph_node_of(&g, was.pid) as usize;
+        if hop[i] {
+            continue;
+        }
+        outside += 1;
+        still &= g.nodes[i].x.to_bits() == was.x.to_bits() && g.nodes[i].y.to_bits() == was.y.to_bits();
+    }
+    check!(still && outside > 40);
+    // the satellites of heads outside it did not move either
+    let mut sat_still = true;
+    for n in &ga.nodes {
+        if n.tier == GraphTier::Satellite && !hop[n.section as usize] {
+            let m = node(&g, n.pid);
+            sat_still &= m.x.to_bits() == n.x.to_bits() && m.y.to_bits() == n.y.to_bits();
+        }
+    }
+    check!(sat_still);
+    // and the new page sits sensibly: near its neighbour, clear of everything, in whole units
+    let p = node(&g, new_pid);
+    check!(p.placed && p.x.is_finite() && p.y.is_finite() && p.x == p.x.round() && p.y == p.y.round());
+    let d = dist(p, node(&g, old));
+    check!(d > p.r + node(&g, old).r && d < 2.5 * GRAPH_SPRING_L);
+    check!(overlaps(&g) == 0 && force_placed(&g) && all_finite(&g));
+    // what it stores now is the new graph, and a second visit changes nothing
+    check!(graph_ini_store(&mut ini, &g));
+    let mut g2 = built(&b, 0);
+    check!(graph_apply_ini(&mut g2, &ini) == GraphPlan::Ready);
+    check!(graph_place_new(&mut g2, &mut || {}) == 0);
+    check!(g2.nodes.iter().zip(&g.nodes).all(|(x, y)| x.x.to_bits() == y.x.to_bits() && x.y.to_bits() == y.y.to_bits()));
+    check!(!graph_ini_store(&mut ini, &g2));
+}
+
 // Opening the map from a plain page makes it a force node for the visit only: it is placed beside
 // its section's named page, every kept dot stays, and graph.ini does not change for it.
 fn open_page_placed_beside_its_section() {
@@ -1017,6 +1095,7 @@ fn test_graph() {
     run!(satellites_near_head);
     run!(layout_pumps);
     run!(incremental_moves_only_the_neighbourhood);
+    run!(large_incremental_moves_only_the_neighbourhood);
     run!(open_page_placed_beside_its_section);
     run!(satellites_ignore_the_open_page);
     run!(relayout_rule);

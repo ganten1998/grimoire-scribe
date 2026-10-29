@@ -453,12 +453,33 @@ fn target_pid(t: &[u8]) -> u32 {
     id as u32
 }
 
+// Notebook-sized storage is reserved before it is filled, so low memory is a refused map.
+#[cfg(test)]
+std::thread_local! { static GRAPH_ALLOCATIONS_LEFT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) }; }
+fn graph_buffer<T>(n: usize) -> Option<Vec<T>> {
+    #[cfg(test)]
+    if GRAPH_ALLOCATIONS_LEFT.with(|left| match left.get() {
+        Some(0) => true,
+        Some(n) => { left.set(Some(n - 1)); false },
+        None => false,
+    }) { return None; }
+    let mut v = Vec::new();
+    v.try_reserve_exact(n).ok()?;
+    Some(v)
+}
+fn graph_filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
+    let mut v = graph_buffer(n)?;
+    v.resize(n, value);
+    Some(v)
+}
+
 // The nodes in page-id order: a stable radix sort, 8 bits a pass, O(n). It never looks at the
 // notebook order, which is what keeps the layout independent of it.
-fn pid_order(nodes: &[GraphNode]) -> Vec<u32> {
+fn pid_order(nodes: &[GraphNode]) -> Option<Vec<u32>> {
     let n = nodes.len();
-    let mut a: Vec<u32> = (0..n as u32).collect();
-    let mut b = vec![0u32; n];
+    let mut a = graph_buffer(n)?;
+    a.extend(0..n as u32);
+    let mut b = graph_filled(n, 0u32)?;
     for shift in [0u32, 8, 16, 24] {
         let mut count = [0usize; 257];
         for &i in &a {
@@ -474,16 +495,16 @@ fn pid_order(nodes: &[GraphNode]) -> Vec<u32> {
         }
         std::mem::swap(&mut a, &mut b);
     }
-    a
+    Some(a)
 }
 
 // Sorts directed links (low rank, high rank, direction) by the pair: two stable counting passes,
 // the high rank and then the low, O(n + e).
-fn sort_pairs(p: &mut Vec<(u32, u32, u8)>, n: usize) {
-    let mut tmp = vec![(0u32, 0u32, 0u8); p.len()];
+fn sort_pairs(p: &mut Vec<(u32, u32, u8)>, n: usize) -> Option<()> {
+    let mut tmp = graph_filled(p.len(), (0u32, 0u32, 0u8))?;
     for pass in 0..2 {
         let key = |e: &(u32, u32, u8)| if pass == 0 { e.1 as usize } else { e.0 as usize };
-        let mut count = vec![0usize; n + 1];
+        let mut count = graph_filled(n + 1, 0usize)?;
         for e in p.iter() {
             count[key(e) + 1] += 1;
         }
@@ -497,6 +518,7 @@ fn sort_pairs(p: &mut Vec<(u32, u32, u8)>, n: usize) {
         }
         std::mem::swap(p, &mut tmp);
     }
+    Some(())
 }
 
 /// A force node's radius at fit: 14 + 16 x ln(1 + d) / ln(1 + dmax) px (14 to 30), 0.75 of it
@@ -552,16 +574,18 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     if n > STORE_MAX_PAGES {
         return -1;
     }
+    let built = (|| -> Option<()> {
     let blank = GraphNode { section: -1, sat_rank: -1, comp: -1, ..GraphNode::default() };
-    g.nodes = nb.page_ids.iter().map(|&pid| GraphNode { pid, ..blank }).collect();
-    g.slots = vec![0u16; GRAPH_SLOTS];
+    g.nodes = graph_buffer(n)?;
+    g.nodes.extend(nb.page_ids.iter().map(|&pid| GraphNode { pid, ..blank }));
+    g.slots = graph_filled(GRAPH_SLOTS, 0u16)?;
     for i in 0..n {
         if g.nodes[i].pid != 0 {
             slot_put(&mut g.slots, &g.nodes, i);
         }
     }
-    let order = pid_order(&g.nodes);
-    g.rank = vec![0u32; n];
+    let order = pid_order(&g.nodes)?;
+    g.rank = graph_filled(n, 0u32)?;
     for (k, &i) in order.iter().enumerate() {
         g.rank[i as usize] = k as u32;
     }
@@ -590,7 +614,10 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         }
     }
     // Every link once: a badge, a loop, or a directed pair.
-    let mut pairs: Vec<(u32, u32, u8)> = Vec::new();
+    let mut pairs: Vec<(u32, u32, u8)> = graph_buffer(nav.links.len())?;
+    g.edges = graph_buffer(nav.links.len())?;
+    g.force = graph_buffer(n)?;
+    g.tray = graph_buffer(n)?;
     for l in &nav.links {
         let src = graph_node_of(g, l.pid);
         if src < 0 {
@@ -620,7 +647,7 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         }
     }
     // One edge per pair: the pair's links side by side once sorted.
-    sort_pairs(&mut pairs, n);
+    sort_pairs(&mut pairs, n)?;
     for &(lo, hi, dir) in &pairs {
         let (a, b) = (order[lo as usize] as i32, order[hi as usize] as i32);
         match g.edges.last_mut() {
@@ -647,12 +674,13 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     }
     // The neighbour lists, filled in edge order: each comes out in page-id order, the pages before
     // it from the edges where it is b, then those after it from the edges where it is a.
-    g.adj_at = vec![0u32; n + 1];
+    g.adj_at = graph_filled(n + 1, 0u32)?;
     for i in 0..n {
         g.adj_at[i + 1] = g.adj_at[i] + g.nodes[i].degree as u32;
     }
-    g.adj = vec![0i32; g.adj_at[n] as usize];
-    let mut fill: Vec<u32> = g.adj_at[..n].to_vec();
+    g.adj = graph_filled(g.adj_at[n] as usize, 0i32)?;
+    let mut fill = graph_buffer(n)?;
+    fill.extend_from_slice(&g.adj_at[..n]);
     for e in &g.edges {
         let (a, b) = (e.a as usize, e.b as usize);
         g.adj[fill[a] as usize] = e.b;
@@ -697,7 +725,7 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         g.nodes[i].r = if nd.tier == GraphTier::Force { graph_radius(nd.degree, g.dmax, nd.named) } else { GRAPH_R_SAT };
     }
     // Components, numbered from their lowest page id, found breadth first.
-    let mut queue: Vec<usize> = Vec::new();
+    let mut queue: Vec<usize> = graph_buffer(n)?;
     let mut nc = 0;
     for k in 0..g.force.len() {
         let s = g.force[k] as usize;
@@ -722,7 +750,12 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         nc += 1;
     }
     g.ncomp = nc;
-    0
+    Some(())
+    })();
+    if built.is_none() {
+        *g = GraphModel { open: -1, ..GraphModel::default() };
+        -1
+    } else { 0 }
 }
 
 // ---- graph.ini's gen ----
@@ -2198,4 +2231,31 @@ pub fn graph_ini_write(id: &str, ini: &mut GraphIni) -> i32 {
         return -1;
     }
     graph_ini_write_path(&path, ini)
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+    #[test]
+    fn every_model_allocation_can_fail_without_leaving_a_partial_map() {
+        let mut nb = NotebookInfo::default();
+        nb.page_ids = vec![1, 2, 3];
+        let nav = Nav::default();
+        let mut succeeded = false;
+        for allowed in 0..32 {
+            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(Some(allowed)));
+            let mut g = GraphModel::default();
+            let rc = graph_build(&mut g, &nb, &nav, 1);
+            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(None));
+            if rc == 0 { succeeded = true; break; }
+            assert_eq!(rc, -1);
+            assert!(g.nodes.is_empty() && g.edges.is_empty() && g.open == -1);
+        }
+        assert!(succeeded);
+    }
+    #[test]
+    fn impossible_buffer_capacity_is_refused() {
+        assert!(graph_buffer::<GraphNode>(usize::MAX).is_none());
+        assert!(graph_filled::<u32>(usize::MAX, 0).is_none());
+    }
 }
