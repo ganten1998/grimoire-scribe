@@ -43,6 +43,7 @@ pub mod koreader;
 pub mod latency;
 pub mod pair;
 pub mod pensync;
+pub mod penbutton;
 pub mod power;
 pub mod qr;
 pub mod shortcuts;
@@ -161,6 +162,7 @@ pub mod prelude {
     pub use crate::panel::*;
     pub use crate::paper::*;
     pub use crate::pensync::*;
+    pub use crate::penbutton::*;
     pub use crate::power::*;
     pub use crate::qr::*;
     pub use crate::shortcuts::*;
