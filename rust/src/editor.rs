@@ -3202,11 +3202,31 @@ fn pages_copy(a: &mut App, index: i32) {
     if !save_page(a) {
         return;
     }
+    // The source page read first (PHASE2 9.2): it is migrated as it is read, so the copy takes its areas. (One
+    // that does not read keeps legacy links; they are copied anyway and find the copy's ink: same strokes,
+    // same seeds.)
+    let _ = ed(a).page_at(index);
     if store_duplicate_page(&mut ed(a).nb, index, index + 1) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
         // Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
         app_toast(a, tr("Could not copy that page"), 3000);
         return;
+    }
+    // Copy page keeps links: the copy gets every link of its source, same seed, target and area. Not an undo
+    // step; links to the copied page are not changed. Before the copy opens, so its boxes are there.
+    let s = ed(a);
+    let (src, copy) = (s.nb.page_ids[index as usize], s.nb.page_ids[index as usize + 1]);
+    let mut first = 0;
+    let mut links_failed = false;
+    if nav_links_of(&s.nav, src, &mut first) > 0 {
+        s.boxes.stale = true;
+        if nav_link_copy(&mut s.nav, src, copy) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
+            nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved: the copy has none)
+            migration_reset(s);
+            links_failed = true;
+        } else {
+            s.links_dirty = false; // (the save wrote every migrated area too)
+        }
     }
     pages_added(a, index + 1);
     let s = ed(a);
@@ -3214,6 +3234,12 @@ fn pages_copy(a: &mut App, index: i32) {
     if erased && s.index == index + 1 {
         let pid = s.nb.page_ids[s.index as usize];
         note_for_compaction(s, pid);
+    }
+    if links_failed {
+        // TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+        // lines): the page was copied, but the links drawn on it could not be saved for the copy.
+        app_toast(a, tr("The copy has no links: they could not be saved."), 3000);
+        return;
     }
     let mut msg = String::new();
     // TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two

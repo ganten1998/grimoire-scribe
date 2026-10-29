@@ -1,7 +1,8 @@
 # The migrated areas were saved (z_link_0_migrate): opened again, the notebook has nothing left to
 # migrate and nothing waiting to be written (page 4, never opened, was migrated by the idle ticks and
 # saved: nothing migrates at this open), and its links keep their areas. (Page 1's link D, whose
-# ring was undone in beta.5, has no ink and so no area: it is tried at the page's load and stays.)
+# ring was undone in beta.5, has no ink and so no area: it is tried at the page's load and stays.) The copy
+# of page 1 that z_link_0_migrate made last keeps its links.
 # root: z_link_0_migrate
 # rust-only
 wait 300
@@ -15,8 +16,16 @@ expect editor.links is 4 3
 expect editor.link.2 is p3
 expect editor.link.2.area is 300 1000 600 200
 expect editor.link.3.area is
+# (link A's page is the fourth now: z_link_0_migrate ended with a copy of page 1 as page 2)
 tap 600 1100
-expect editor.page is 3
+expect editor.page is 4
+# The copy's links were saved with it
+pentap panel previous
+pentap panel previous
+expect editor.page is 2
+expect editor.links is 4 3
+expect editor.link.2 is p3
+expect editor.link.2.area is 300 1000 600 200
 pentap panel library
 waitbg
 expect screen is library

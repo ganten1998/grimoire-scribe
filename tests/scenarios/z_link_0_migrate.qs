@@ -5,7 +5,7 @@
 # box of its ink as its area, the ink stays; D stays as it is), the idle ticks migrate page 4 without
 # opening it, and links.ini is written after a pause. Then a link follows its area: ring A erased whole
 # still goes to page 3, ring C (hidden) still to the Index, and inside page 4's small ring the small
-# one wins (beta.5 followed the big one). links.ini orders a page's links by seed: on page 1 link 1 is
+# one wins (beta.5 followed the big one). Last, Copy page copies page 1's links with their areas. links.ini orders a page's links by seed: on page 1 link 1 is
 # C, 2 is A, 3 is D and 4 is B.
 # copy: tests/fixtures/beta5-links .
 # settings: mirror_pdf=0
@@ -71,8 +71,48 @@ expect editor.link.1 is p2
 expect editor.link.2 is p3
 tap 750 1050
 expect editor.page is 3
-# Back on page 1, where the notebook opens again
+# Back on page 1
 pentap panel previous
+pentap panel previous
+expect editor.page is 1
+# Copy page keeps links (PHASE2-BRIEF 9.2): page 1 ticked alone is copied as page 2, which opens with the
+# same links (same seeds, so the same N), the same areas, and D still dormant. Here last, as the copy moves
+# the later pages one on (z_link_0b_reopen opens it again).
+pentap panel pages
+wait 300
+expect editor.modal is pages
+tap 450 95
+wait 100
+expect editor.pages_tab is pages
+tap 396 296
+wait 100
+expect editor.ticked is 1
+tap 1410 2395
+wait 300
+expect editor.modal is none
+expect editor.page is 2
+expect editor.pages is 5
+expect toast has a copy of page 1
+expect editor.strokes is 3
+expect editor.links is 4 3
+expect editor.link.1 is index
+expect editor.link.1.area is 1000 1000 500 200
+expect editor.link.2 is p3
+expect editor.link.2.area is 300 1000 600 200
+expect editor.link.3 is p4
+expect editor.link.3.area is
+expect editor.link.4 is p2
+expect editor.link.4.area is 300 1400 600 100
+expect editor.links_dirty is 0
+expect editor.undo_kind is
+# the copy's ring A area still goes to page 3, now the fourth page (links name pages, not places)
+pen leave
+wait 1100
+tap 600 1100
+expect editor.page is 4
+pentap panel previous
+pentap panel previous
+expect editor.page is 2
 pentap panel previous
 expect editor.page is 1
 pentap panel library

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 02:08-0500\n"
+"POT-Creation-Date: 2026-10-29 02:09-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -800,6 +800,12 @@ msgstr "No se pudo añadir una página"
 #: rust/src/editor.rs
 msgid "Could not copy that page"
 msgstr "No se pudo copiar la página"
+
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): the page was copied, but the links drawn on it could not be saved for the copy.
+#: rust/src/editor.rs
+msgid "The copy has no links: they could not be saved."
+msgstr "La copia no tiene enlaces: no se pudieron guardar."
 
 #. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
 #. lines): %d is the page it copies.
