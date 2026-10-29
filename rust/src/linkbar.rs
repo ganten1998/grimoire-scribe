@@ -32,7 +32,8 @@ const LINE_MM: f32 = 10.0;
 
 /// A drag down from the grip or the header this far closes the bar.
 const DRAG_CLOSE_MM: f32 = 15.0;
-/// A press held this long on a chip is neither a peek nor a stay: the long-press card is phase 2's.
+/// A press held this long on a chip is neither a peek nor a stay: it is the long-press card's (the editor's tick
+/// opens it, PHASE2 8.10).
 const HOLD_MS: u32 = 600;
 
 // Hit ids.
@@ -238,6 +239,10 @@ pub struct LinkBar {
     pub hidden: bool,
     /// the pager was turned by hand: a layout keeps the screen it is on
     paged: bool,
+    /// the entry whose chip a press held on (the long-press card is up for it: its lift does nothing), -1 none
+    pub held: i32,
+    /// when the press on the bar began (now_ms, the editor's clock: its tick times the hold)
+    pub down_at: u32,
 }
 
 // (Arrays derive Default only up to 32 elements: written by hand, as EditorState's LinkBoxes.)
@@ -275,6 +280,8 @@ impl Default for LinkBar {
             no_pages: false,
             hidden: false,
             paged: false,
+            held: -1,
+            down_at: 0,
         }
     }
 }
@@ -573,6 +580,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
     *dirty = RECT_EMPTY;
     if ph == 0 {
         press_begin(&mut lb.press, ev.x, ev.y, ev.t_ms);
+        lb.held = -1;
         let h = hits_find(&lb.hits, ev.x, ev.y).copied();
         lb.has_pressed = h.is_some();
         lb.drag = false;
@@ -641,6 +649,27 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_INDEX => LbResult::Index,
         _ => LbResult::None,
     }
+}
+
+/// The chip a press is on now in List mode, unmoved (entry index and the chip's rect): what a hold opens the
+/// long-press card for. None for any other press.
+pub fn linkbar_pressed_chip(lb: &LinkBar) -> Option<(i32, Rect)> {
+    if !lb.open || lb.mode != LbMode::List || !lb.has_pressed || lb.pressed.id != LB_CHIP || lb.press.moved || lb.held >= 0 {
+        return None;
+    }
+    Some((lb.pressed.arg, lb.pressed.r))
+}
+
+/// The press on chip `i` is a hold now (the long-press card opens for its entry): the chip is drawn as it was
+/// (its rect returned, to refresh), and the lift does nothing.
+pub fn linkbar_hold(lb: &mut LinkBar, a: &mut App, i: i32) -> Rect {
+    lb.held = i;
+    if !lb.has_pressed {
+        return RECT_EMPTY;
+    }
+    lb.has_pressed = false;
+    canvas_invert(&mut a.screen, lb.pressed.r);
+    lb.pressed.r
 }
 
 /// The finger that pressed a button is a pinch now: the button is drawn as it was. The rect to refresh (empty

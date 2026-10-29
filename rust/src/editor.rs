@@ -4388,24 +4388,88 @@ fn card_border_fast(a: &mut App) {
 /// The card for the links `seeds` on the open page (one held on the page), its border shown first: the
 /// strips by DU, then the card by GL16 beside it. The finger is still down: its lift does nothing more.
 fn card_show(a: &mut App, seeds: &[u32]) {
+    card_set(a, seeds, false);
+    card_border_fast(a);
+    let s = ed_ref(a);
+    let (w, h) = linkcard_size(&s.card);
+    let screen = Rect { x: 0, y: top_of_page(a), w: a.w, h: a.h - top_of_page(a) };
+    let rect = linkcard_place(w, h, s.card.band, screen, s.panel, status_zone(a));
+    ed(a).card.rect = rect;
+    compose(a, rect);
+    app_invalidate(a, rect, RefreshMode::Ui);
+}
+
+/// The card set up for the links `seeds` on the open page, with their boxes and the band their borders cover
+/// (nothing drawn yet).
+fn card_set(a: &mut App, seeds: &[u32], from_bar: bool) {
     let s = ed(a);
     let pid = s.open_pid();
     let readonly = s.open_page().is_some_and(|p| p.readonly);
     let boxes = card_boxes(a, seeds);
-    with_card(a, |c, _a, nb, nav| linkcard_set(c, pid, seeds, nb, nav, readonly, false));
+    with_card(a, |c, _a, nb, nav| linkcard_set(c, pid, seeds, nb, nav, readonly, from_bar));
     let s = ed(a);
     s.card.boxes = boxes;
     s.card.border = true;
     let band = card_band(a);
     ed(a).card.band = band;
-    card_border_fast(a);
+}
+
+/// A press held on chip `chip` of the Links bar (entry i, 8.10, D1): the long-press card for all the entry's
+/// links on the page, above the bar in the chip's column, the bar staying under it. While the bar looks at
+/// another page it looks at its own again first (the links are there), and the borders come with the page area's
+/// one GL16 (no DU over a peek's ghosting); else they come by DU strips, or for more than three boxes by one GL16
+/// of their bounds (4N DU presents would queue in the driver).
+fn bar_hold(a: &mut App, i: i32, chip: Rect) {
+    let d = with_lb(a, |lb, a, _nb, _nav| linkbar_hold(lb, a, i));
+    let s = ed(a);
+    let peeking = s.peek.active;
+    if peeking {
+        s.peek = Peek { count: s.peek.count, ..Peek::default() };
+        s.lb.selected = -1;
+    }
+    // The entry's links, in reading order: those whose box carries its number.
+    boxes_get(a);
+    let s = ed_ref(a);
+    let mut ks: Vec<usize> = (0..s.boxes.n).filter(|&k| s.boxes.entry[k] as i32 == i + 1).collect();
+    ks.sort_by_key(|&k| (s.boxes.area[k].y, s.boxes.area[k].x, k));
+    let seeds: Vec<u32> = ks.iter().map(|&k| s.boxes.link[k].seed).collect();
+    if seeds.is_empty() {
+        if peeking {
+            bar_back_drawn(a);
+        }
+        app_invalidate(a, d, RefreshMode::Ui);
+        return;
+    }
+    card_set(a, &seeds, true);
+    let s = ed_ref(a);
+    let (aw, bar) = (a.w, s.lb.rect);
+    if peeking {
+        bar_back_drawn(a);
+        app_flush(a);
+    } else if s.card.boxes.len() <= 3 {
+        card_border_fast(a);
+    } else {
+        let band = s.card.band;
+        compose(a, band);
+        app_invalidate(a, band, RefreshMode::Ui);
+        app_flush(a);
+    }
     let s = ed_ref(a);
     let (w, h) = linkcard_size(&s.card);
-    let screen = Rect { x: 0, y: top_of_page(a), w: a.w, h: a.h - top_of_page(a) };
-    let rect = linkcard_place(w, h, band, screen, s.panel, status_zone(a));
+    let rect = linkcard_place_above(w, h, chip, bar, Rect { x: 0, y: 0, w: aw, h: a.h });
     ed(a).card.rect = rect;
     compose(a, rect);
-    app_invalidate(a, rect, RefreshMode::Ui);
+    let u = rect_union(rect, d);
+    app_invalidate(a, u, RefreshMode::Ui);
+}
+
+/// The page area above the bar and the bar composed again after a peek ended (bar_back's drawing), one GL16.
+fn bar_back_drawn(a: &mut App) {
+    let s = ed_ref(a);
+    let (area, bar) = (Rect { x: 0, y: 0, w: a.w, h: s.lb.rect.y }, s.lb.rect);
+    compose(a, area);
+    compose(a, bar);
+    app_invalidate(a, rect_union(area, bar), RefreshMode::Ui);
 }
 
 /// The screen's top line for a card: below the status bar while it is up.
@@ -6590,6 +6654,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         if s.lb.open {
             if rect_contains(s.lb.rect, ev.x as i32, ev.y as i32) {
                 s.owner = Owner::Bar;
+                s.lb.down_at = now_ms(); // (a hold on a chip opens the long-press card: editor_tick)
                 let mut d = RECT_EMPTY;
                 with_lb(a, |lb, a, _nb, _nav| linkbar_pointer(lb, a, 0, ev, &mut d));
             } else {
@@ -7052,6 +7117,13 @@ pub fn editor_tick(a: &mut App, now: u32) {
     let s = ed(a);
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && now.wrapping_sub(s.link_down_at) >= LINK_HOLD_MS {
         card_open_link(a);
+    }
+    // A press held on a chip of the Links bar (a finger or the pen): the long-press card for its entry (8.10).
+    let s = ed(a);
+    if s.open && s.owner == Owner::Bar && !s.card.open && now.wrapping_sub(s.lb.down_at) >= LINK_HOLD_MS {
+        if let Some((i, chip)) = linkbar_pressed_chip(&s.lb) {
+            bar_hold(a, i, chip);
+        }
     }
     // Typing on New page...'s keyboard pauses: its grayscale refresh.
     let s = ed(a);

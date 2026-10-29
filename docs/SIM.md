@@ -432,6 +432,11 @@ the top when the border's centre is in the lower 45% of the screen (its keys 130
 the card; with it up the clock is not shown, so the clock's corner is a tap outside too. Change where it goes...
 opens Link to... with two tools, Search and Cancel (centres x 480 and 1380 upright), the current target's chip
 reading ` current`.
+A press held on a Links bar chip (`touch down` on it, `wait 800`, `touch up`) opens the same card for all of
+that entry's links on the page (`editor.link_card.links`; no Redraw for two or more, and the line "To change one,
+hold it on the page."), above the bar in the chip's column (`linkcard_place_above`), the bar staying under it; while
+the bar looks at another page it first looks at its own again (`editor.bar.peek is 0`), the borders coming with the
+page area's GL16 rather than DU strips.
 
 ## Languages in tests
 
