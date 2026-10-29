@@ -2,6 +2,7 @@
 # (see the scenarios rule in the Makefile). It asks what only the Rust build answers, one of each
 # family at least once (docs/SIM.md lists them). make c-check skips it (SCEN_SKIP_RUST_ONLY).
 wait 200
+expect pen.gesture is
 expect running is 1
 expect status.zone is 0 0 165 165
 expect status.shown is 0
@@ -54,10 +55,10 @@ expect editor.link_card.border is 0
 expect editor.recent is
 expect editor.kb_dock is
 expect editor.areas is 0
-expect editor.panel_at.1768.594 is
-expect editor.panel_at.1768.1242 is links
+expect editor.panel_at.1768.720 is
+expect editor.panel_at.1768.1320 is links
 pen line 300 700 1300 720 20 0.6 0.6
-expect editor.panel_at.1768.594 is undo
+expect editor.panel_at.1768.720 is undo
 expect editor.undo_kind is add
 tap panel undo
 expect editor.strokes is 0

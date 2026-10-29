@@ -94,9 +94,9 @@ widths. The Spanish catalog has no untranslated entries.
 
 ## Remaining integration and owner work
 
-The main owner owns Phase 6 scenarios, selftest probes, scenario coordinates after row changes,
-full gates and commits. This worker did not run scenarios, full gates, project formatting,
-GUI, device/SSH operations, publishing or push. Gate status must be filled from actual results.
+The completed focused scenarios and selftests are recorded below. The parent owns the combined
+release gate and retargeting of older scenarios against its final integrated UI. No full gate,
+project formatting, GUI, device/SSH operation, publishing or push was performed here.
 
 No Phase 6 Kindle result or Phase 3 owner trace is available here. `TG_TUNE`, real-hand shape
 acceptance, accidental-fire rates, hover spacing, physical second-button behavior and e-ink
@@ -128,3 +128,37 @@ The 20-byte public sample stays the same size and uses the additional LIVE_SIDE2
 the browser's drawing decision remains LIVE_DRAW. Raw Live decoding/resync carries
 BTN_STYLUS2, preventing provisional ink for second-button drags and selecting the correct
 momentary eraser style. Focused tests cover this independently of the final page render.
+
+## Completed focused handback
+
+Source/runtime commit: 7553d60. The completion commit adds twelve v_gestures_4 scenarios,
+five text-binding fixtures plus their README, and both Rust selftest updates. The passing
+selftest's existing panel hit points were retargeted for the Shapes button. Older combined
+Pages/screen-tour scenarios remain with the parent.
+
+The scope covers recording Links on double-click; editable triple/hold Clear page defaults;
+immediate momentary erasing; non-ink Pages drag; actual pan/zoom UI recording and motion;
+legacy unbound side-button ink; delayed and immediate tap; hidden/carried and enabled/live
+Button2; and the bilingual pen UI gallery in both orientations. The focused harness also
+checks saved pen lines and both cleared built-ins, beyond the touch-first action probes.
+
+Pinned host model/Live/i18n tests pass, including 12 standalone PenButtons boundary tests,
+the existing pure tests, 959 action checks, 246 gesturemap checks, and the new second-button
+early Live regression. Five editor pen tests pass on host and simulator; nine Library tests
+pass on each build. Input validation passes 29 adapter/simulator tests plus three runner
+checks. The current headless and ARM release builds pass in index-p6-host-arm.log.
+
+The final focused scenario run is index-p6-focused-final.log: twelve scenario runs, both
+Rust selftests (including the exact expected exit-3 failure oracle), and four EN/ES x
+Gothic/Classic gallery runs. All 18 expected outcomes pass. Each gallery includes upright
+and sideways states with CHECK_FIT. The binary hash is
+387c6ea3c2fc99930a1d10a7b2b4d5e14c24e6614ce9154f0c8fbccdec827c03.
+
+Actual rendering exposed a clipped Spanish Hold eraser title. The fixed title uses the
+existing 64-to-34 px fitting path within its original bounds. A regression now renders
+every assignable action title in both languages/themes; recognized pen names remain 64 px.
+No translation was shortened to hide this issue.
+
+No known Phase 6 source blocker remains. No final combined rust-check result or device
+acceptance is claimed. Parent heads after 6f3cdd6 (including c34aaed) have deliberately
+not been merged here; the parent will resolve those overlaps during integration.
