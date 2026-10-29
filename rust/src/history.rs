@@ -23,6 +23,8 @@ pub enum ActKind {
     Clear = 3,  // ACT_CLEAR
     /// A step of link edits (`Action.link`): the page itself is untouched.
     Link = 4,
+    /// A stroke replaced by a snapped shape; owns the version off the page.
+    Replace = 5,
 }
 
 /// One link as an undo step keeps it: what nav_link_put needs to restore it exactly (its page is the
@@ -148,6 +150,21 @@ pub fn history_push_clear(h: &mut History, p: &mut Page) {
         ..Default::default()
     };
     push_undo(h, a);
+}
+
+/// Replace one stroke, retaining the other version for undo and redo. A refused reservation
+/// leaves the page and history unchanged; an empty dirty rectangle reports that refusal.
+pub fn history_push_replace(h: &mut History, page: &mut Page, index: i32, shape: Box<Stroke>) -> Rect {
+    if page.readonly || index < 0 || index as usize >= page.strokes.len() { return RECT_EMPTY; }
+    let mut a = Action { kind: ActKind::Replace, owns: true, ..Default::default() };
+    if a.indices.try_reserve_exact(1).is_err() || a.ids.try_reserve_exact(1).is_err()
+        || a.owned.try_reserve_exact(1).is_err() || h.undo.try_reserve(1).is_err() { return RECT_EMPTY; }
+    let dirty = rect_union(page.strokes[index as usize].bbox, shape.bbox);
+    a.ids.push(stroke_id(&shape));
+    a.indices.push(index);
+    a.owned.push(std::mem::replace(&mut page.strokes[index as usize], shape));
+    push_undo(h, a);
+    dirty
 }
 
 /// Records a link step ALREADY applied to the Nav and saved (push only after nav_save_links returned
@@ -299,6 +316,19 @@ fn apply(a: &mut Action, p: &mut Page, dirty: &mut Rect, undo: bool) -> bool {
             *dirty = full;
             p.paper = if undo { a.paper_old } else { a.paper_new };
         }
+        ActKind::Replace => {
+            *dirty = RECT_EMPTY;
+            if let (Some(&id), Some(&index)) = (a.ids.first(), a.indices.first()) {
+                let at = find_stroke(p, id, index);
+                if at >= 0 && !a.owned.is_empty() {
+                    let other = &mut a.owned[0];
+                    let current = &mut p.strokes[at as usize];
+                    *dirty = rect_union(current.bbox, other.bbox);
+                    std::mem::swap(current, other);
+                    a.ids[0] = stroke_id(current);
+                }
+            }
+        }
         ActKind::Link => {
             // (the page is untouched: the editor applies the records to the Nav)
             *dirty = RECT_EMPTY;
@@ -340,6 +370,28 @@ mod tests {
     }
     fn ids(p: &Page) -> Vec<StrokeId> {
         p.strokes.iter().map(|s| stroke_id(s)).collect()
+    }
+
+    #[test]
+    fn replace_restores_both_versions_and_the_prior_add() {
+        let mut p = page_new(1000, 1000, PAPER_BLANK);
+        let mut h = History::default(); history_init(&mut h);
+        let raw = dot(100.0, 100.0); let raw_id = stroke_id(&raw); let raw_box = raw.bbox;
+        history_push_add(&mut h, 0, &raw); page_add(&mut p, raw);
+        let shape = dot(300.0, 300.0); let shape_id = stroke_id(&shape); let both = rect_union(raw_box, shape.bbox);
+        assert_eq!(history_push_replace(&mut h, &mut p, 0, shape), both);
+        assert_eq!(stroke_id(&p.strokes[0]), shape_id);
+        assert_eq!(history_undo_kind(&h), Some(ActKind::Replace));
+        let mut d = RECT_EMPTY;
+        assert!(history_undo(&mut h, &mut p, &mut d)); assert_eq!(d, both);
+        assert_eq!(stroke_id(&p.strokes[0]), raw_id);
+        assert!(history_undo(&mut h, &mut p, &mut d)); assert!(p.strokes.is_empty());
+        assert!(history_redo(&mut h, &mut p, &mut d)); assert_eq!(stroke_id(&p.strokes[0]), raw_id);
+        assert!(history_redo(&mut h, &mut p, &mut d)); assert_eq!(stroke_id(&p.strokes[0]), shape_id);
+        h.limit = 1;
+        history_push_paper(&mut h, PAPER_BLANK, PAPER_WIDE);
+        history_free(&mut h);
+        assert_eq!(stroke_id(&p.strokes[0]), shape_id);
     }
 
     // An action owns its strokes exactly when they are not on the page, and the dirty rect is
