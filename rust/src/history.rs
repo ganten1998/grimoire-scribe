@@ -7,6 +7,9 @@
 //! Strokes are located by pointer on undo/redo; the stored index is the insert position. In Rust
 //! the pointer is the boxed stroke's address (page.rs: stroke_id), `ids`; the strokes themselves
 //! are in `owned` while the action owns them.
+//!   LINK   (phase 2) a step of link changes on the page's links (links.ini, not the page file): it
+//!          moves between the stacks like any other, so ink and links keep one order, and leaves
+//!          the page untouched; the editor applies its records to the Nav (history_moved_link).
 
 use crate::prelude::*;
 
@@ -18,6 +21,26 @@ pub enum ActKind {
     Erase = 1,  // ACT_ERASE
     Paper = 2,  // ACT_PAPER
     Clear = 3,  // ACT_CLEAR
+    /// A step of link edits (`Action.link`): the page itself is untouched.
+    Link = 4,
+}
+
+/// One link as an undo step keeps it: what nav_link_put needs to restore it exactly (its page is the
+/// step's). The editor converts (link_rec, rec_link), so this file stays free of the Nav.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LinkRec {
+    pub seed: u32,
+    pub target: FixedStr<NAV_TARGET_LEN>,
+    pub area: Rect,
+    pub has_area: bool,
+}
+
+/// One undo step's link changes on page `pid`: each record is (before, after) for one seed, None for
+/// no link. A group from the bar (xN) is one step of N records.
+#[derive(Clone, Debug, Default)]
+pub struct LinkEdit {
+    pub pid: u32,
+    pub records: Vec<(Option<LinkRec>, Option<LinkRec>)>,
 }
 
 #[derive(Debug, Default)]
@@ -34,6 +57,8 @@ pub struct Action {
     pub owns: bool,
     pub paper_old: PaperKind,
     pub paper_new: PaperKind,
+    /// ActKind::Link: its records (None for every other kind). Boxed: most actions are ink.
+    pub link: Option<Box<LinkEdit>>,
 }
 
 #[derive(Debug, Default)]
@@ -123,6 +148,42 @@ pub fn history_push_clear(h: &mut History, p: &mut Page) {
         ..Default::default()
     };
     push_undo(h, a);
+}
+
+/// Records a link step ALREADY applied to the Nav and saved (push only after nav_save_links returned
+/// 0). No records: no step. Like every push it clears redo, and the limit drops the oldest step,
+/// a link step's records with it.
+pub fn history_push_link(h: &mut History, e: LinkEdit) {
+    if e.records.is_empty() {
+        return;
+    }
+    push_undo(h, Action { kind: ActKind::Link, link: Some(Box::new(e)), ..Default::default() });
+}
+
+/// The kind of the step an undo would apply, None for none (the editor applies a Link step's records).
+pub fn history_undo_kind(h: &History) -> Option<ActKind> {
+    h.undo.last().map(|a| a.kind)
+}
+/// The kind of the step a redo would apply, None for none.
+pub fn history_redo_kind(h: &History) -> Option<ActKind> {
+    h.redo.last().map(|a| a.kind)
+}
+
+/// The link records of the step history_undo (`undone`) or history_redo just moved: the top of the
+/// redo stack after an undo, of the undo stack after a redo. None if that step is not a Link step.
+pub fn history_moved_link(h: &History, undone: bool) -> Option<&LinkEdit> {
+    let top = if undone { h.redo.last() } else { h.undo.last() };
+    top.and_then(|a| a.link.as_deref())
+}
+
+/// Drops the step on top of the redo stack: a link step an undo moved whose save then failed (the
+/// links are back to the file, so the step no longer describes them).
+pub fn history_drop_last_redo(h: &mut History) {
+    h.redo.pop();
+}
+/// Drops the step on top of the undo stack (a redone link step whose save failed).
+pub fn history_drop_last_undo(h: &mut History) {
+    h.undo.pop();
 }
 
 pub fn history_can_undo(h: &History) -> bool {
@@ -237,6 +298,10 @@ fn apply(a: &mut Action, p: &mut Page, dirty: &mut Rect, undo: bool) -> bool {
         ActKind::Paper => {
             *dirty = full;
             p.paper = if undo { a.paper_old } else { a.paper_new };
+        }
+        ActKind::Link => {
+            // (the page is untouched: the editor applies the records to the Nav)
+            *dirty = RECT_EMPTY;
         }
     }
     true
