@@ -12,7 +12,7 @@ fn nb5() -> NotebookInfo {
 }
 
 fn link(seed: u32, target: &str) -> NavLink {
-    NavLink { pid: 10, seed, target: FixedStr::from_str(target) }
+    NavLink { pid: 10, seed, target: FixedStr::from_str(target), ..Default::default() }
 }
 
 fn box_at(x: i32, y: i32) -> Rect {
