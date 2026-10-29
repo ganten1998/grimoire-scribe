@@ -1810,6 +1810,11 @@ fn use_recording(a: &mut App) {
         if !check_shape_candidate(a) {
             return;
         }
+        // After two samples Use runs the checks. Leave a newly discovered reassignment
+        // visible until the next Use, just as when the third sample ran those checks.
+        if lib(a).record_same_action != 0 {
+            return;
+        }
     }
     let action = lib(a).record_action;
     if let Some(key) = lib(a).record_key {
@@ -5216,6 +5221,21 @@ mod tests {
         assert_eq!(probe(&mut a, "record"), "0");
 
         assert_eq!(gesturemap_shape_set(&mut a.gestures, SHORTCUT_UNDO, &samples[..2]), 0);
+        open_record_card(&mut a, SHORTCUT_REDO);
+        {
+            let s = lib(&mut a);
+            s.record_samples = samples;
+            s.record_sample_count = 2;
+            s.record_phase = RecordPhase::Ready;
+        }
+        use_recording(&mut a);
+        assert!(library_record_active(&a));
+        assert!(lib(&mut a).record_checks_done);
+        assert_eq!(lib(&mut a).record_same_action, SHORTCUT_UNDO);
+        assert_eq!(probe(&mut a, "record.line"), "That is the shape for Undo. Use moves it here.");
+        assert!(gesturemap_shape_of(&a.gestures, SHORTCUT_UNDO).is_some());
+        assert!(gesturemap_shape_of(&a.gestures, SHORTCUT_REDO).is_none());
+        close_record_card(&mut a);
         assert!(gestures_reset(&mut a));
         assert_eq!(a.lib.as_ref().unwrap().hits.h.len(), 2);
         assert!(lib(&mut a).gestures_reset_confirm);
