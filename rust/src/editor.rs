@@ -443,8 +443,6 @@ pub struct EditorState {
     // to... picks where it goes. A finger's tap on a link follows it; one held on it (LINK_HOLD_MS) shows
     // its border and the long-press card beside it (card), over the page.
     lm: LinkMaking,
-    /// the link the Pages view's old hold path picked for (nothing sets it now: that path goes in commit 13)
-    link_seed: u32,
     /// a finger on the page (OWN_LINK)
     link_press: Press,
     link_down_at: u32,
@@ -3673,7 +3671,7 @@ fn link_choose(a: &mut App) {
     ed(a).lt.hidden = true;
     save_page(a);
     let index = ed(a).index;
-    if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index, false)) {
+    if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index)) {
         let s = ed(a);
         s.lt.hidden = false;
         let r = s.lt.rect;
@@ -4028,14 +4026,9 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
 
 /// No link is made (6.10): from the strip's or Link to...'s Cancel, a tap outside Link to..., the add-link
 /// action again, Close menu, and Back while Link to... is up. The strip, the lasso, the rectangle and Link
-/// to... go; `toast` says so; the bar comes back when its New link began it. The Pages view picking for a link
-/// held on (its own path) just closes.
+/// to... go; `toast` says so; the bar comes back when its New link began it.
 fn link_cancel(a: &mut App, toast: bool) {
     let s = ed(a);
-    if s.pv.open && s.pv.picking && s.pv.pick_had {
-        pages_hide(a, -1);
-        return;
-    }
     if s.lm.state == LmState::Off && !(s.pv.open && s.pv.picking) {
         return;
     }
@@ -4141,30 +4134,6 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
     repaint_panel(a, RefreshMode::Ui);
 }
 
-// The link held on (link_hold), whose Pages view picked, goes to target ("index" or "p<page id>"), and the view closes on
-// the open page.
-fn link_to(a: &mut App, target: &str, done: &str) {
-    // The link is set first and the view closes after it (the repaint then makes the eye's boxes again).
-    let s = ed(a);
-    let pid = s.nb.page_ids[s.index as usize];
-    let seed = s.link_seed;
-    s.boxes.stale = true; // (a link changed or made, or put back as saved)
-    let failed = nav_link_set(&mut s.nav, pid, seed, target) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
-    if failed {
-        nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
-        migration_reset(s);
-    } else {
-        s.changed = true;
-    }
-    pages_hide(a, -1);
-    if failed {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
-        app_toast(a, tr("Could not save the link."), 3000);
-        return;
-    }
-    app_toast(a, done, 2500);
-}
-
 fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
     match with_pv(a, |pv, a, nb, nav| pagesview_pointer(pv, a, nb, nav, ph, ev)) {
         PvResult::Close => {
@@ -4184,51 +4153,16 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             link_arm(a, false, None);
         }
         PvResult::Pick => {
+            // (the view picks only for Choose from the pages..., a new link waiting in Link to...)
             let s = ed(a);
             let to = s.pv.target;
             let mut target = String::new();
-            let mut done = String::new();
             csnprintf!(&mut target, NAV_TARGET_LEN, "p%u", s.nb.page_ids[to as usize]);
             if s.lm.state == LmState::Pick {
                 link_pick(a, &target);
-                return;
-            }
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
-            // page now goes to page %d (a tap on it with a finger turns there).
-            csnprintf!(&mut done, 160, tr("The link goes to page %d."), to + 1);
-            link_to(a, &target, &done);
-        }
-        PvResult::PickIndex => {
-            if ed_ref(a).lm.state == LmState::Pick {
-                link_pick(a, "index");
-                return;
-            }
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
-            // page now opens the Index (the list of named pages).
-            link_to(a, "index", tr("The link goes to the Index."));
-        }
-        PvResult::Unlink => {
-            // The link goes first and the view closes after it: closing repaints the page, and the eye
-            // (link boxes) must be made again for that paint, or the deleted link's boxes stay on the glass.
-            let s = ed(a);
-            let (pid, seed) = (s.nb.page_ids[s.index as usize], s.link_seed);
-            s.boxes.stale = true;
-            nav_link_remove(&mut s.nav, pid, seed);
-            let failed = nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
-            if failed {
-                nav_load(s.nb.id.as_str(), &mut s.nav);
-                migration_reset(s);
             } else {
-                s.changed = true;
+                pages_hide(a, -1);
             }
-            pages_hide(a, -1);
-            if failed {
-                app_toast(a, tr("Could not save the link."), 3000);
-                return;
-            }
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Remove link took the
-            // link away; the ink drawn around it is still on the page.
-            app_toast(a, tr("Link removed. Its ink stays on the page."), 2500);
         }
         PvResult::Open => {
             let to = ed(a).pv.target;

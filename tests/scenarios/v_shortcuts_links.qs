@@ -65,11 +65,12 @@ key 308 0 1
 wait 60
 expect editor.link_mode is 1
 pen line 300 1600 900 1800 30 0.6 0.6
-# Link to... opens: Choose from the pages... picks in the Pages view
-expect editor.ui_at.930.679 is linkto.pages
-tap 930 679
-expect editor.picking is new
-tap 1440 95
+# Link to... opens (docked at the top): its The Index chip (the Pages view's picking header has no The Index
+# button now)
+expect editor.linkto.2 is index
+expect editor.linkto.rect is 20 173 1820 596
+expect editor.ui_at.1381.387 is linkto.chip.2
+tap 1381 387
 expect editor.modal is none
 expect editor.links is 2 2
 expect toast is Linked to the Index.

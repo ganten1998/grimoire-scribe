@@ -353,6 +353,8 @@ fn entry_name<'a>(nb: &NotebookInfo, nav: &'a Nav, e: &LbEntry) -> &'a str {
 /// (false); "" for a page that is not here.
 fn entry_label(nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
     if e.page == NAV_TO_INDEX {
+        // TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
+        // Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
         return (tr("The Index").to_string(), false);
     }
     if e.page < 0 {

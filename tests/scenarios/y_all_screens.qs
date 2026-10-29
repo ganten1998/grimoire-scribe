@@ -507,7 +507,13 @@ expect editor.ui_at.930.2370 is linkto.pages
 tap 930 2370
 expect editor.picking is new
 shot 28-link-pick-new
-tap 1400 95
+# (no The Index in the picking header now: Back to Link to..., then its The Index chip)
+tap 125 95
+wait 100
+expect editor.linkto is pick
+expect editor.linkto.2 is index
+expect editor.ui_at.1381.2078 is linkto.chip.2
+tap 1381 2078
 wait 100
 expect editor.link.1 is index
 touch down 600 1100

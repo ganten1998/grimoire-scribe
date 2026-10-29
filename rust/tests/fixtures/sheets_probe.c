@@ -486,25 +486,8 @@ static void pages_views(void) {
             }
             pv_probe_all(&v, t);
             pagesview_close(&v);
-            // Picking where a link goes: one just drawn, one the page had.
-            for (int had = 0; had < 2; had++) {
-                pv_reset(&v);
-                if (!pagesview_pick(&v, &app, &nb, &nav, 12, had)) abort();
-                pagesview_draw(&v, &app);
-                snprintf(label, sizeof label, "pages %s pick had %d tab %d", t, had, v.index_tab);
-                emit(label, &app);
-                pv_probe_all(&v, t);
-                pagesview_close(&v);
-            }
-            // Picking in a notebook with no names: the Pages tab.
-            Nav none;
-            nav_init(&none);
-            pv_reset(&v);
-            if (!pagesview_pick(&v, &app, &nb, &none, 12, true)) abort();
-            pagesview_draw(&v, &app);
-            snprintf(label, sizeof label, "pages %s pick none tab %d", t, v.index_tab);
-            emit(label, &app);
-            pagesview_close(&v);
+            // (Picking where a link goes is not recorded: the Rust app's picking header lost The Index, Remove link
+            // and Go to page... in Index phase 2, so test_sheets_probe.rs checks its picking screen on its own.)
             // The naming keyboard, over the Index; and Go to page's number pad.
             pv_reset(&v);
             if (!pagesview_name(&v, &app, &nb, &nav, 6)) abort();
@@ -562,10 +545,6 @@ static void pages_views(void) {
                 pagesview_draw(&v, &app);
                 h = fnv_u32(fnv_u32(h, (uint32_t)canvas_hash(&app.screen)), (uint32_t)(canvas_hash(&app.screen) >> 32));
                 v.index_tab = true;
-                pagesview_draw(&v, &app);
-                h = fnv_u32(fnv_u32(h, (uint32_t)canvas_hash(&app.screen)), (uint32_t)(canvas_hash(&app.screen) >> 32));
-                pagesview_close(&v);
-                if (!pagesview_pick(&v, &app, &nb, &nav, 6, true)) abort();
                 pagesview_draw(&v, &app);
                 h = fnv_u32(fnv_u32(h, (uint32_t)canvas_hash(&app.screen)), (uint32_t)(canvas_hash(&app.screen) >> 32));
                 pagesview_close(&v);

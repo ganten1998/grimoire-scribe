@@ -276,7 +276,7 @@ shows what the app holds.
 | `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) the Find sheet's (`Page number or name`) or New page...'s (`Name the new page`) |
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
-| `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
+| `editor.picking` | `new` while the Pages view picks where a new link goes (Link to...'s Choose from the pages...), else empty (it no longer reads `had`: a link held on opens the long-press card) |
 | `editor.link_mode` | `1` while the link-making strip is up (after Add a link: armed, or drawing the lasso), else `0` |
 | `editor.strip` | `new` while the strip is up for a new link (armed or drawing the lasso), `redraw` while it is up for the card's Redraw the area, else `0` |
 | `editor.lasso` | how many points the lasso being drawn holds (at most 4096), `0` otherwise |

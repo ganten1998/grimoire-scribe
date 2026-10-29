@@ -7,8 +7,9 @@
 //! A modal hosted by the editor, which keeps the notebook: the view draws itself and takes the taps,
 //! and says what was asked (PvResult); the editor does it (opens a page, deletes the ticked ones).
 //!
-//! It also picks where a link drawn on a page goes (pagesview_pick): then a tile, an Index row or a
-//! page number picks that page, and there are no ticks, nor New page or Copy page. And it opens with
+//! It also picks where a new link goes (pagesview_pick, Link to...'s Choose from the pages...): then a
+//! tile or an Index row picks that page, and there are no ticks, nor New page, Copy page or Go to page...
+//! (Link to... has the Index and Search for those). And it opens with
 //! its naming keyboard up for the open page (pagesview_name), for a shortcut pressed on the page.
 
 use crate::prelude::*;
@@ -26,8 +27,8 @@ const PG_COPY: i32 = 10;
 const PG_TAB: i32 = 11;
 const PG_NAME: i32 = 12;
 const PG_LINK: i32 = 13;
-const PG_TO_INDEX: i32 = 14;
-const PG_UNLINK: i32 = 15;
+// (14 and 15 were the picking header's The Index and Remove link, retired with the Pages view's hold path:
+// a link held on opens the long-press card over the page instead)
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -53,12 +54,9 @@ pub enum PvResult {
     // While picking (pagesview_pick); its Back button says PV_CLOSE:
     /// the link goes to page `target`
     Pick = 8, // PV_PICK
-    /// ... to the Index
-    PickIndex = 9, // PV_PICK_INDEX
-    /// Remove link (a link the page had)
-    Unlink = 10, // PV_UNLINK
-    /// Go to page...: the view closes and the Find sheet opens over the page (Rust only: the number pad it used
-    /// to open is kept for picking a link's page, where Find has no mode yet)
+    // (9 and 10, PV_PICK_INDEX and PV_UNLINK, went with the Pages view's hold path: the other values stay)
+    /// Go to page...: the view closes and the Find sheet opens over the page (Rust only: the C's number pad
+    /// stays behind jump_pad, for the test that holds the view to the C build)
     GoTo = 11,
 }
 
@@ -70,7 +68,8 @@ pub struct PagesView {
     pub open: bool,
     /// the open page's index; the editor keeps it up to date
     pub current: i32,
-    /// Go to page...'s number pad (while a link's page is picked; else the Find sheet is Go to page...)
+    /// Go to page...'s number pad (only with jump_pad; else the Find sheet is Go to page...), and the
+    /// naming keyboard
     pub kb: Keyboard,
     /// Go to page... opens the number pad as the C build's does, instead of leaving for the Find sheet: the app
     /// never sets it; the test that holds the view to the C build's recorded behaviour does
@@ -89,10 +88,8 @@ pub struct PagesView {
     pub tab_initialized: bool,
     pub naming: bool,
     pub index_screen: i32,
-    /// picking where a link goes (pagesview_pick)
+    /// picking where a new link goes (pagesview_pick)
     pub picking: bool,
-    /// ... a link the page had (it can be removed), not one drawn just now
-    pub pick_had: bool,
     /// opened to name the open page (pagesview_name): its keyboard's
     /// Cancel says PV_CLOSE, and after its Done the editor closes the view
     pub name_only: bool,
@@ -169,7 +166,6 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     }
     v.current = current;
     v.picking = false;
-    v.pick_had = false;
     let npages = nb.npages() as usize;
     if v.sel.len() < npages {
         if v.sel.try_reserve_exact(npages - v.sel.len()).is_err() {
@@ -187,8 +183,8 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     true
 }
 
-/// The same to pick where a link on the open page goes: had, a link it had (else one drawn now).
-pub fn pagesview_pick(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, current: i32, had: bool) -> bool {
+/// The same to pick where a new link on the open page goes (Choose from the pages...).
+pub fn pagesview_pick(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, current: i32) -> bool {
     if !pagesview_open(v, a, nb, nav, current) {
         return false;
     }
@@ -196,7 +192,6 @@ pub fn pagesview_pick(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         v.index_tab = false; // an Index with nothing to pick
     }
     v.picking = true;
-    v.pick_had = had;
     true
 }
 
@@ -231,7 +226,6 @@ pub fn pagesview_name(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
 pub fn pagesview_close(v: &mut PagesView) {
     v.open = false;
     v.picking = false;
-    v.pick_had = false;
     end_name_only(v);
     keyboard_close(&mut v.kb);
     annotate_map_free(&mut v.book);
@@ -372,19 +366,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     // TRANSLATORS: the Pages view's button that ticks every page, or none (328 px at 34 px in
     // Gothic, 344 in Classic).
     if v.picking {
-        // Where a link goes: the Index, or (one the page had) nowhere any more.
-        let to = if v.pick_had { rall } else { Rect { x: rall.x, y: by, w: rdel.x + rdel.w - rall.x, h: bh } };
-        // TRANSLATORS: while picking where a link drawn on a page goes, the button that sends it to
-        // the notebook's Index (the list of named pages): 322 px at 34 px under its icon, or about
-        // 740 px when Remove link is not beside it.
-        ui_button(c, to, IconKind::Link, tr("The Index"), ButtonStyle::Plain);
-        hits_add(&mut v.hits, to, PG_TO_INDEX, 0);
-        if v.pick_had {
-            // TRANSLATORS: while picking where a link goes, the button that removes the link (the
-            // ink drawn around it stays): 322 px at 34 px under its icon.
-            ui_button(c, rdel, IconKind::Trash, tr("Remove link"), ButtonStyle::Plain);
-            hits_add(&mut v.hits, rdel, PG_UNLINK, 0);
-        }
+        // Nothing beside the tabs while picking: Link to..., under the view, has The Index as a chip.
     } else if v.index_tab {
         let name = Rect { x: rall.x, y: by, w: rdel.x + rdel.w - rall.x, h: bh };
         // TRANSLATORS: Index tab header button (about 740 px wide, 44 px text).
@@ -543,8 +525,11 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         hits_add(&mut v.hits, nr, PG_NEXT, 0);
     }
     let jump = Rect { x: aw / 2 - ui_px(300.0), y: pr.y, w: ui_px(600.0), h: pr.h };
-    ui_button(c, jump, IconKind::None, tr("Go to page..."), ButtonStyle::Plain);
-    hits_add(&mut v.hits, jump, PG_JUMP, 0);
+    // (not while picking: Link to...'s Search finds a page by number or name)
+    if !v.picking {
+        ui_button(c, jump, IconKind::None, tr("Go to page..."), ButtonStyle::Plain);
+        hits_add(&mut v.hits, jump, PG_JUMP, 0);
+    }
     // New page before Go to page..., Copy page after it, each up to 400 px of the room beside it.
     let g = ui_px(20.0);
     let mut bw = jump.x - g - (pr.x + pr.w + g);
@@ -633,7 +618,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             // byte, which is not the NUL unless the text is empty.)
             if !text.is_empty() && end == text.len() && page >= 1 && page <= nb.npages() as i64 {
                 v.target = page as i32 - 1;
-                return if v.picking { PvResult::Pick } else { PvResult::Open };
+                return PvResult::Open; // (the number pad never opens while picking: no Go to page... then)
             }
             // Not a page of this notebook: the number pad stays, its Done let go.
             v.kb.open = true;
@@ -676,9 +661,8 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             open_naming(v, nb, nav);
             redraw(v, a, nb, nav, RefreshMode::Ui);
         }
-        // Go to page... leaves for the Find sheet (page number or name) while the view is for pages; a link's
-        // page being picked keeps the number pad, which is how it picks by number.
-        PG_JUMP if !v.picking && !v.jump_pad => return PvResult::GoTo,
+        // Go to page... leaves for the Find sheet (page number or name); it is not there while picking.
+        PG_JUMP if !v.jump_pad => return PvResult::GoTo,
         PG_JUMP => {
             v.naming = false;
             keyboard_open(&mut v.kb, tr("Go to page"), b"");
@@ -691,8 +675,6 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             return if v.picking { PvResult::Pick } else { PvResult::Open };
         }
         PG_LINK => return PvResult::Link,
-        PG_TO_INDEX => return PvResult::PickIndex,
-        PG_UNLINK => return PvResult::Unlink,
         PG_TOGGLE => {
             if (hit.arg as usize) < v.sel.len() {
                 v.sel[hit.arg as usize] = !v.sel[hit.arg as usize];
@@ -750,7 +732,7 @@ fn atoi(s: &str) -> i32 {
 
 /// The headless runner's keys for it, without "editor." (docs/SIM.md): "tile.N", the label under
 /// page N's tile (from 1) as drawn, its two lines joined by " | " ("Page 3 | p. 12"); empty while it
-/// is closed. "picking": "new" or "had" while it picks where a link goes, else empty. "keyboard":
+/// is closed. "picking": "new" while it picks where a new link goes, else empty. "keyboard":
 /// its keyboard's title while that is up ("Page name", "Go to page"), else empty; "text" what it
 /// holds. 0, or -1 for a key it does not know.
 pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, out: &mut String, cap: usize) -> i32 {
@@ -758,7 +740,7 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
     if key == "pages_tab" {
         csnprintf!(out, cap, "%s", if v.index_tab { "index" } else { "pages" });
     } else if key == "picking" {
-        csnprintf!(out, cap, "%s", if !v.open || !v.picking { "" } else if v.pick_had { "had" } else { "new" });
+        csnprintf!(out, cap, "%s", if !v.open || !v.picking { "" } else { "new" });
     } else if key == "keyboard" {
         csnprintf!(out, cap, "%s", if v.open && v.kb.open { v.kb.title.as_str() } else { "" });
     } else if key == "text" {

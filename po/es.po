@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 00:23-0500\n"
+"POT-Creation-Date: 2026-10-29 02:08-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -918,25 +918,6 @@ msgstr "Cambio de enlace deshecho."
 #: rust/src/editor.rs
 msgid "Link change redone."
 msgstr "Cambio de enlace rehecho."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
-#. page now goes to page %d (a tap on it with a finger turns there).
-#: rust/src/editor.rs
-#, c-format
-msgid "The link goes to page %d."
-msgstr "El enlace lleva a la página %d."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
-#. page now opens the Index (the list of named pages).
-#: rust/src/editor.rs
-msgid "The link goes to the Index."
-msgstr "El enlace lleva al índice."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Remove link took the
-#. link away; the ink drawn around it is still on the page.
-#: rust/src/editor.rs
-msgid "Link removed. Its ink stays on the page."
-msgstr "Se quitó el enlace. Su tinta sigue en la página."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
 #. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
@@ -2363,10 +2344,9 @@ msgstr "Guardando el PDF en segundo plano..."
 msgid "Moved to %s"
 msgstr "Movido a %s"
 
-#. TRANSLATORS: while picking where a link drawn on a page goes, the button that sends it to
-#. the notebook's Index (the list of named pages): 322 px at 34 px under its icon, or about
-#. 740 px when Remove link is not beside it.
-#: rust/src/linkbar.rs rust/src/linkcard.rs rust/src/pagesview.rs
+#. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
+#. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
+#: rust/src/linkbar.rs rust/src/linkcard.rs
 msgid "The Index"
 msgstr "El índice"
 
@@ -2581,12 +2561,6 @@ msgstr "No se pudieron leer los nombres de página."
 #, c-format
 msgid "Delete (%d)"
 msgstr "Borrar (%d)"
-
-#. TRANSLATORS: while picking where a link goes, the button that removes the link (the
-#. ink drawn around it stays): 322 px at 34 px under its icon.
-#: rust/src/pagesview.rs
-msgid "Remove link"
-msgstr "Quitar enlace"
 
 #: rust/src/pagesview.rs
 msgid "Rename this page"
@@ -3632,6 +3606,19 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#, c-format
+#~ msgid "The link goes to page %d."
+#~ msgstr "El enlace lleva a la página %d."
+
+#~ msgid "The link goes to the Index."
+#~ msgstr "El enlace lleva al índice."
+
+#~ msgid "Link removed. Its ink stays on the page."
+#~ msgstr "Se quitó el enlace. Su tinta sigue en la página."
+
+#~ msgid "Remove link"
+#~ msgstr "Quitar enlace"
 
 #, c-format
 #~ msgid "The link goes to page %d. Tap another to change it."

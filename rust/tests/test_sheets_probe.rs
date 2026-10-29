@@ -549,25 +549,8 @@ fn pages_views(p: &mut Probe) {
             }
             pv_probe_all(p, &v, &many, t);
             pagesview_close(&mut v);
-            // Picking where a link goes: one just drawn, one the page had.
-            for had in 0..2 {
-                pv_reset(&mut v);
-                assert!(pagesview_pick(&mut v, &mut p.app, &nb, &nav, 12, had != 0));
-                pagesview_draw(&mut v, &mut p.app, &nb, &nav);
-                let label = cformat!("pages %s pick had %d tab %d", t, had, v.index_tab);
-                p.emit(&label);
-                pv_probe_all(p, &v, &nav, t);
-                pagesview_close(&mut v);
-            }
-            // Picking in a notebook with no names: the Pages tab.
-            let mut none = Nav::default();
-            nav_init(&mut none);
-            pv_reset(&mut v);
-            assert!(pagesview_pick(&mut v, &mut p.app, &nb, &none, 12, true));
-            pagesview_draw(&mut v, &mut p.app, &nb, &none);
-            let label = cformat!("pages %s pick none tab %d", t, v.index_tab);
-            p.emit(&label);
-            pagesview_close(&mut v);
+            // Picking where a link goes is checked on its own (pages_picking below): the picking header lost
+            // The Index, Remove link and Go to page... in Index phase 2, so it no longer matches the C build.
             // The naming keyboard, over the Index; and Go to page's number pad.
             pv_reset(&mut v);
             assert!(pagesview_name(&mut v, &mut p.app, &nb, &nav, 6));
@@ -629,10 +612,6 @@ fn pages_views(p: &mut Probe) {
                 pagesview_draw(&mut v, &mut p.app, &nb, &nav);
                 h = fold(h, &p.app.screen);
                 pagesview_close(&mut v);
-                assert!(pagesview_pick(&mut v, &mut p.app, &nb, &nav, 6, true));
-                pagesview_draw(&mut v, &mut p.app, &nb, &nav);
-                h = fold(h, &p.app.screen);
-                pagesview_close(&mut v);
                 assert!(pagesview_open(&mut v, &mut p.app, &nb, &nav, 6));
                 v.index_tab = false;
                 keyboard_open(&mut v.kb, "Go to page", b"");
@@ -645,6 +624,52 @@ fn pages_views(p: &mut Probe) {
         }
     }
     i18n_set("en");
+}
+
+// Rust only (Index phase 2): the Pages view picking where a new link goes (Link to...'s Choose from the
+// pages...). Its header keeps Back and the two tabs and nothing beside them (The Index is a chip of Link to...
+// and Remove link went with the hold path), and its bottom row has only the pagers: no Go to page..., New page
+// or Copy page. A tile still picks its page; with no names it opens on the Pages tab.
+fn pages_picking(p: &mut Probe) {
+    let (nb, nav) = (p.nb.clone(), p.nav.clone());
+    let mut none = Nav::default();
+    nav_init(&mut none);
+    for turn in 0..2 {
+        let (w, h) = dims(turn);
+        p.screen(w, h);
+        for th in 0..2 {
+            look(th);
+            for named in 0..2 {
+                let n = if named != 0 { &nav } else { &none };
+                let mut v = PagesView::default();
+                check!(pagesview_pick(&mut v, &mut p.app, &nb, n, 12));
+                check!(v.picking && v.index_tab == (named != 0));
+                pagesview_draw(&mut v, &mut p.app, &nb, n);
+                let mut out = String::new();
+                check!(pagesview_probe(&v, &nb, n, "picking", &mut out, 64) == 0 && out == "new");
+                for retired in [PG_JUMP, PG_NEW, PG_COPY, PG_DELETE, PG_ALL, PG_NAME, PG_LINK, 14, 15] {
+                    check!(!v.hits.h.iter().any(|h| h.id == retired));
+                }
+                // The header: white from the Index tab's right edge to the screen's.
+                let tabs = v.hits.h.iter().filter(|h| h.id == PG_TAB).map(|h| h.r.x + h.r.w).max().unwrap_or(0);
+                check!(tabs > 0);
+                let back = v.hits.h.iter().find(|h| h.id == PG_BACK).map(|h| h.r).unwrap_or_default();
+                let c = &p.app.screen;
+                let mut white = true;
+                for y in back.y..back.y + back.h {
+                    for x in tabs + 1..c.w {
+                        white &= c.px[(y * c.stride + x) as usize] == 255;
+                    }
+                }
+                check!(white);
+                // A tile picks its page (Pages tab), as before.
+                if named == 0 {
+                    check!(pv_tap(p, &mut v, PG_OPEN, 13) == PvResult::Pick as i32 && v.target == 13);
+                }
+                pagesview_free(&mut v);
+            }
+        }
+    }
 }
 
 // A scripted sequence of taps, as the editor would see them: what each says, and the view's state.
@@ -1084,6 +1109,7 @@ fn test_sheets_probe() {
     section(&mut p, "templates", templates);
     setup_notebook(&mut p);
     section(&mut p, "pages views", pages_views);
+    pages_picking(&mut p);
     section(&mut p, "penset draws", penset_draws);
     font_shutdown();
     done();

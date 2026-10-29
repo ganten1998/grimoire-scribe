@@ -15,11 +15,11 @@ pentap panel previous
 wait 100
 key 38 0
 pen line 300 1000 900 1200 30 0.6 0.6
-# Link to... opens: Choose from the pages... picks in the Pages view
-expect editor.ui_at.930.2370 is linkto.pages
-tap 930 2370
-expect editor.picking is new
-tap 1250 95
+# Link to... opens: its The Index chip (the Pages view's picking header has no The Index button now)
+expect editor.linkto.2 is index
+expect editor.linkto.rect is 20 2004 1820 456
+expect editor.ui_at.1381.2218 is linkto.chip.2
+tap 1381 2218
 expect editor.link.1 is index
 expect editor.links is 1 1
 pen leave
