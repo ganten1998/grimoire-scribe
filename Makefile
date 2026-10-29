@@ -108,7 +108,7 @@ RUST_BIN  ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin
 RTARGET   ?= $(abspath $(BUILD))/cargo
 RKINDLE   := armv7-unknown-linux-musleabihf
 RCARGO    = cd rust && $(1) PATH="$(RUST_BIN):$$PATH" CARGO_TARGET_DIR="$(RTARGET)" $(CARGO)
-RCOPY     = mkdir -p $(dir $(2)) && { cmp -s $(1) $(2) || cp $(1) $(2); }
+RCOPY     = mkdir -p $(dir $(2)) && { cmp -s $(1) $(2) || { cp $(1) $(2).tmp && mv $(2).tmp $(2); }; }
 # The Kindle binary names no path of the machine that built it (panic locations name sources):
 # a build at another place or on another Mac makes the same bytes, as kindle/no-comment.ld does for
 # the toolchain's names. (cargo joins this to .cargo/config.toml's rustflags.) cargo-zigbuild links
@@ -159,10 +159,11 @@ SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_D
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
+SELFTEST_PASS = $(if $(SCEN_SKIP_RUST_ONLY),tests/selftest/pass-c.qs,tests/selftest/pass.qs)
 scenarios: $(BUILD)/host/grimoire-headless
 	@unset $(SIM_HOOKS); \
 	failed=; skipped=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); note=; \
@@ -183,6 +184,8 @@ scenarios: $(BUILD)/host/grimoire-headless
 	    if ! sed -n 's/^# copy: *//p' $$s | while read -r src dst; do \
 	      mkdir -p "$$r/$$dst" && cp -R "$$src/." "$$r/$$dst/" || exit 1; done; then \
 	      echo "$$n: a # copy: line failed"; failed="$$failed $$n"; continue; fi; fi; \
+	  generator=$$(sed -n 's/^# generate: *//p' $$s | head -n 1); \
+	  if [ -n "$$generator" ] && ! python3 $$generator $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
 	  envs=$$(sed -n 's/^# env: *//p' $$s | tr '\n' ' '); \
 	  env $(SCEN_LANG) $$envs GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
@@ -194,7 +197,7 @@ scenarios: $(BUILD)/host/grimoire-headless
 	done; \
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
 	echo "== selftest pass (every expect holds: exit 0, and the PDF export is done)"; \
-	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs GRIMOIRE_SHOTS=$$d/shots \
+	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=$(SELFTEST_PASS) GRIMOIRE_SHOTS=$$d/shots \
 	  $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
 	if ! ls $$d/pass/PDFs/*.pdf >/dev/null 2>&1; then \
 	  echo "selftest pass: the run ended before its PDF export"; failed="$$failed selftest/pass"; fi; \

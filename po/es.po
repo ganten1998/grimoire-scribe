@@ -5,7 +5,18 @@
 # every choice of words to confirm, and build/shots/l10n/es-*/ show every screen (make l10n-check).
 #
 msgid ""
-msgstr "Project-Id-Version: Grimoire 1.0.0-beta\nReport-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\nPOT-Creation-Date: 2026-10-29 02:11-0500\nPO-Revision-Date: 2026-10-20 08:02-0500\nLast-Translator: draft\nLanguage-Team: Spanish\nLanguage: es\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+msgstr ""
+"Project-Id-Version: Grimoire 1.0.0-beta\n"
+"Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
+"POT-Creation-Date: 2026-10-29 08:28-0500\n"
+"PO-Revision-Date: 2026-10-20 08:02-0500\n"
+"Last-Translator: draft\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: rust/src/actions.rs
 msgid "Previous / next tool"
@@ -68,7 +79,7 @@ msgstr "Páginas"
 msgid "Index..."
 msgstr "Índice..."
 
-#: rust/src/actions.rs rust/src/linkbar.rs
+#: rust/src/actions.rs rust/src/linkbar.rs rust/src/mapview.rs
 msgid "Index"
 msgstr "Índice"
 
@@ -382,42 +393,77 @@ msgstr "Reposo tras"
 msgid "Update channel"
 msgstr "Canal de actualizaciones"
 
+#: rust/src/actions.rs
+msgid "Smart shapes"
+msgstr "Formas inteligentes"
+
+#: rust/src/actions.rs
+msgid "Shape hold time"
+msgstr "Pausa para formas"
+
+#: rust/src/actions.rs
+msgid "Shape the last stroke"
+msgstr "Dar forma al último trazo"
+
+#: rust/src/actions.rs
+msgid "Index map"
+msgstr "Mapa del índice"
+
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
 msgid "Untitled"
 msgstr "Sin título"
 
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
+#. and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
+#. two. This one: the picture of the page KOReader sent is damaged or missing.
 #: rust/src/app.rs
 msgid "Could not open the page KOReader sent: its picture does not read."
-msgstr "No se pudo abrir la página que envió KOReader: no se puede leer su imagen."
+msgstr ""
+"No se pudo abrir la página que envió KOReader: no se puede leer su imagen."
 
+#. TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
+#. written.
 #: rust/src/app.rs
 msgid "Could not add the page KOReader sent. Is the storage full?"
-msgstr "No se pudo añadir la página que envió KOReader. ¿Está lleno el almacenamiento?"
+msgstr ""
+"No se pudo añadir la página que envió KOReader. ¿Está lleno el "
+"almacenamiento?"
 
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
 #: rust/src/app.rs
 #, c-format
 msgid "Could not open the page KOReader sent (see %s)."
 msgstr "No se pudo abrir la página que envió KOReader (detalles en %s)."
 
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
+#. toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
+#. than a notebook holds; %d is that number (2000).
 #: rust/src/app.rs
 #, c-format
 msgid "The book has more pages than a notebook holds (%d)."
 msgstr "El libro tiene más páginas de las que caben en un cuaderno (%d)."
 
+#. TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
 #: rust/src/app.rs
 msgid "Could not open the book KOReader sent: a page's picture does not read."
-msgstr "No se pudo abrir el libro que envió KOReader: no se puede leer la imagen de una página."
+msgstr ""
+"No se pudo abrir el libro que envió KOReader: no se puede leer la imagen de "
+"una página."
 
+#. TRANSLATORS: (as above) the pages could not be added: a file could not be written.
 #: rust/src/app.rs
 msgid "Could not add the book's pages. Is the storage full?"
-msgstr "No se pudieron añadir las páginas del libro. ¿Está lleno el almacenamiento?"
+msgstr ""
+"No se pudieron añadir las páginas del libro. ¿Está lleno el almacenamiento?"
 
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
 #: rust/src/app.rs
 #, c-format
 msgid "Could not open the book KOReader sent (see %s)."
 msgstr "No se pudo abrir el libro que envió KOReader (detalles en %s)."
 
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
 #: rust/src/app.rs
 #, c-format
 msgid "Added %d page of the book."
@@ -425,24 +471,37 @@ msgid_plural "Added %d pages of the book."
 msgstr[0] "Se añadió %d página del libro."
 msgstr[1] "Se añadieron %d páginas del libro."
 
+#. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+#. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
 #: rust/src/app.rs
 #, c-format
 msgid "Adding the book's pages: %d of %d"
 msgstr "Añadiendo las páginas del libro: %d de %d"
 
+#. TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
 #: rust/src/app.rs
 msgid "The last update did not install. grimoire.log says why."
 msgstr "La última actualización no se instaló. grimoire.log dice por qué."
 
+#. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
+#. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
 #: rust/src/app.rs
 msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
-msgstr "La contraseña del Kindle quedó desactivada. Vuelve a activarla en la Configuración del Kindle."
+msgstr ""
+"La contraseña del Kindle quedó desactivada. Vuelve a activarla en la "
+"Configuración del Kindle."
 
+#. TRANSLATORS: %s is the app's name, Grimoire.
 #: rust/src/app.rs
 #, c-format
 msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
-msgstr "No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir hace falta su lápiz."
+msgstr ""
+"No se encontró el lápiz. %s está hecho para el Kindle Scribe; para escribir "
+"hace falta su lápiz."
 
+#. TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
+#. or page turner comes or goes. "Held by another app": another program (a button mapper)
+#. takes its presses, so Grimoire gets none.
 #: rust/src/app.rs
 msgid "Controller disconnected"
 msgstr "Mando desconectado"
@@ -461,22 +520,31 @@ msgstr "Mando conectado"
 msgid "Could not start Live view"
 msgstr "No se pudo iniciar la vista en directo"
 
+#. TRANSLATORS: a toast as Live view stops (the Stop button on its card).
 #: rust/src/app.rs
 msgid "Live view ended."
 msgstr "La vista en directo terminó."
 
+#. TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
 #: rust/src/app.rs
 msgid "Live view turned off: no one watched for 10 minutes."
 msgstr "La vista en directo se apagó: nadie miró en 10 minutos."
 
+#. TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
 #: rust/src/app.rs
 msgid "A computer is watching this screen."
 msgstr "Un ordenador está mirando esta pantalla."
 
+#. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
+#. saved (a full storage), so it stays once.
 #: rust/src/app.rs
 msgid "Could not save this page. Hold power 4 s again to leave anyway."
-msgstr "No se pudo guardar esta página. Vuelve a mantener presionado el botón de encendido 4 s para salir de todos modos."
+msgstr ""
+"No se pudo guardar esta página. Vuelve a mantener presionado el botón de "
+"encendido 4 s para salir de todos modos."
 
+#. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
+#. %s is the app's name, Grimoire.
 #: rust/src/app.rs
 #, c-format
 msgid "Saved. Leaving %s."
@@ -487,6 +555,9 @@ msgstr "Guardado. Saliendo de %s."
 msgid "Leaving %s without this page."
 msgstr "Saliendo de %s sin guardar esta página."
 
+#. TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
+#. installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
+#. opens the new one next time.
 #: rust/src/app.rs
 msgid "Updating. Open Grimoire from KOReader again in a moment."
 msgstr "Actualizando. Abre Grimoire desde KOReader de nuevo en un momento."
@@ -495,6 +566,7 @@ msgstr "Actualizando. Abre Grimoire desde KOReader de nuevo en un momento."
 msgid "Updating. Grimoire starts again by itself."
 msgstr "Actualizando. Grimoire vuelve a abrirse solo."
 
+#. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
 #: rust/src/app.rs
 #, c-format
 msgid "Imported a notebook of %d page."
@@ -502,11 +574,14 @@ msgid_plural "Imported a notebook of %d pages."
 msgstr[0] "Se importó un cuaderno de %d página."
 msgstr[1] "Se importó un cuaderno de %d páginas."
 
+#. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
+#. that says why. The folder stays where it was.
 #: rust/src/app.rs
 #, c-format
 msgid "Could not import a folder of pages (see %s)."
 msgstr "No se pudo importar una carpeta de páginas (detalles en %s)."
 
+#. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: rust/src/app.rs
 #, c-format
 msgid "PDF saved to %s"
@@ -516,10 +591,12 @@ msgstr "PDF guardado en %s"
 msgid "Could not save the PDF"
 msgstr "No se pudo guardar el PDF"
 
+#. TRANSLATORS: a page that could not be read; %s is the log file that says which.
 #: rust/src/app.rs
 #, c-format
 msgid "A damaged page was set aside; a blank one took its place (see %s)"
-msgstr "Se apartó una página dañada y una en blanco ocupa su lugar (detalles en %s)"
+msgstr ""
+"Se apartó una página dañada y una en blanco ocupa su lugar (detalles en %s)"
 
 #: rust/src/app.rs rust/src/library.rs
 msgid "Could not save shortcuts.ini"
@@ -669,7 +746,12 @@ msgid ""
 "Copy pictures here to write on them as paper: PNG or JPG files, upright, in "
 "the shape of a Kindle Scribe page (3:4). 1860 x 2480 pixels is best. Light "
 "lines on white work best on e-ink: dark areas hide your writing."
-msgstr "Copia aquí imágenes para escribir sobre ellas como papel: archivos PNG o JPG, en vertical, con la forma de una página del Kindle Scribe (3:4). Lo ideal es 1860 x 2480 píxeles. En una pantalla de tinta electrónica funcionan mejor las líneas claras sobre blanco: las zonas oscuras ocultan lo que escribes."
+msgstr ""
+"Copia aquí imágenes para escribir sobre ellas como papel: archivos PNG o "
+"JPG, en vertical, con la forma de una página del Kindle Scribe (3:4). Lo "
+"ideal es 1860 x 2480 píxeles. En una pantalla de tinta electrónica funcionan "
+"mejor las líneas claras sobre blanco: las zonas oscuras ocultan lo que "
+"escribes."
 
 #: rust/src/bgwork_template.rs
 msgid ""
@@ -677,7 +759,11 @@ msgid ""
 "copy of each template it uses, so changing or deleting a file here never "
 "changes pages already written on it. Grimoire keeps its previews of these "
 "files in the .cache folder."
-msgstr "Cópialas por USB con Grimoire cerrado. Cada cuaderno guarda su propia copia de cada plantilla que usa, así que cambiar o borrar un archivo de aquí nunca cambia las páginas ya escritas sobre ella. Grimoire guarda en la carpeta .cache sus vistas previas de estos archivos."
+msgstr ""
+"Cópialas por USB con Grimoire cerrado. Cada cuaderno guarda su propia copia "
+"de cada plantilla que usa, así que cambiar o borrar un archivo de aquí nunca "
+"cambia las páginas ya escritas sobre ella. Grimoire guarda en la "
+"carpeta .cache sus vistas previas de estos archivos."
 
 #: rust/src/bgwork_template.rs
 msgid "Photos for Grimoire"
@@ -689,7 +775,12 @@ msgid ""
 "saved them. In a notebook, open Paper and pick Photos...: the photo becomes "
 "the open page's paper, fitted to the page and turned upright. For a page of "
 "its own, add a new page in Pages first."
-msgstr "Copia aquí fotos para escribir sobre ellas: archivos JPG o PNG, tal como los guardó tu teléfono o tu cámara. En un cuaderno, abre Papel y elige Fotos...: la foto pasa a ser el papel de la página abierta, ajustada a la página y puesta derecha. Para una página propia, añade antes una nueva página en Páginas."
+msgstr ""
+"Copia aquí fotos para escribir sobre ellas: archivos JPG o PNG, tal como los "
+"guardó tu teléfono o tu cámara. En un cuaderno, abre Papel y elige Fotos...: "
+"la foto pasa a ser el papel de la página abierta, ajustada a la página y "
+"puesta derecha. Para una página propia, añade antes una nueva página en "
+"Páginas."
 
 #: rust/src/bgwork_template.rs
 msgid ""
@@ -697,7 +788,11 @@ msgid ""
 "copy of each photo it uses, so changing or deleting a file here never "
 "changes pages already written on it. Grimoire keeps its previews of these "
 "files in the .cache folder."
-msgstr "Cópialas por USB con Grimoire cerrado. Cada cuaderno guarda su propia copia de cada foto que usa, así que cambiar o borrar un archivo de aquí nunca cambia las páginas ya escritas sobre ella. Grimoire guarda en la carpeta .cache sus vistas previas de estos archivos."
+msgstr ""
+"Cópialas por USB con Grimoire cerrado. Cada cuaderno guarda su propia copia "
+"de cada foto que usa, así que cambiar o borrar un archivo de aquí nunca "
+"cambia las páginas ya escritas sobre ella. Grimoire guarda en la "
+"carpeta .cache sus vistas previas de estos archivos."
 
 #: rust/src/bgwork_template.rs
 msgid "Importing pages into Grimoire"
@@ -710,13 +805,21 @@ msgid ""
 "folder's name becomes the notebook's name, and the pages follow the file "
 "names in order (page-2 comes before page-10). Gray pictures import faster "
 "and take less room than colour ones."
-msgstr "Para escribir sobre páginas que ya tienes, como un PDF guardado como imágenes, pon aquí una carpeta de archivos PNG o JPG, una imagen por página, y abre Grimoire. El nombre de la carpeta será el nombre del cuaderno, y las páginas siguen el orden de los nombres de archivo (page-2 va antes de page-10). Las imágenes en gris se importan más rápido y ocupan menos espacio que las de color."
+msgstr ""
+"Para escribir sobre páginas que ya tienes, como un PDF guardado como "
+"imágenes, pon aquí una carpeta de archivos PNG o JPG, una imagen por página, "
+"y abre Grimoire. El nombre de la carpeta será el nombre del cuaderno, y las "
+"páginas siguen el orden de los nombres de archivo (page-2 va antes de "
+"page-10). Las imágenes en gris se importan más rápido y ocupan menos espacio "
+"que las de color."
 
 #: rust/src/bgwork_template.rs
 msgid ""
 "Grimoire imports each folder in the background and then moves it into the "
 "done folder. Copy folders in over USB while Grimoire is closed."
-msgstr "Grimoire importa cada carpeta en segundo plano y después la mueve a la carpeta done. Copia las carpetas por USB con Grimoire cerrado."
+msgstr ""
+"Grimoire importa cada carpeta en segundo plano y después la mueve a la "
+"carpeta done. Copia las carpetas por USB con Grimoire cerrado."
 
 #: rust/src/brush.rs
 msgctxt "tool"
@@ -970,6 +1073,23 @@ msgstr "Esta página es ahora la pantalla de reposo"
 msgid "Could not save the sleep screen"
 msgstr "No se pudo guardar la pantalla de reposo"
 
+#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
+#. 1500 px at 44 px).
+#: rust/src/editor.rs
+msgid "Name in the Index"
+msgstr "Nombre en el índice"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. gave page %d the Index name %s.
+#: rust/src/editor.rs
+#, c-format
+msgid "Page %d is in the Index as %s."
+msgstr "La página %d está en el índice como %s."
+
+#: rust/src/editor.rs
+msgid "Could not save the page name."
+msgstr "No se pudo guardar el nombre de página."
+
 #. TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
 #: rust/src/editor.rs
 msgid "Paper for this page"
@@ -1022,11 +1142,15 @@ msgstr "De lado se ve la página entera."
 msgid "Sideways fills the width."
 msgstr "De lado ocupa todo el ancho."
 
+#. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
+#. the pens draw black ink. 426 px at 44 px, or two lines at 34 px.
 #: rust/src/editor.rs
 msgctxt "ink"
 msgid "Black"
 msgstr "Negro"
 
+#. TRANSLATORS: the other choice of the tool picker's ink row: the pens draw white ink, which
+#. takes away the ink under it and keeps the paper's lines (426 px at 44 px).
 #: rust/src/editor.rs
 msgctxt "ink"
 msgid "White"
@@ -1039,11 +1163,16 @@ msgctxt "panel"
 msgid "Pin"
 msgstr "Fijar"
 
+#. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+#. tool button: a tap pins a pen or unpins it; %d is how many can be (4). About 700 px at 44 px
+#. in bold, or two lines at 34 px. Normally the title is Tools.
 #: rust/src/editor.rs
 #, c-format
 msgid "Pin to the panel (up to %d)"
 msgstr "Fijar en el panel (hasta %d)"
 
+#. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
+#. Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
 #: rust/src/editor.rs
 msgctxt "tool"
 msgid "Mechanical"
@@ -1055,8 +1184,20 @@ msgid "Calligraphy"
 msgstr "Caligrafía"
 
 #: rust/src/editor.rs
+msgid "Smart shapes: On"
+msgstr "Formas inteligentes: Sí"
+
+#: rust/src/editor.rs
+msgid "Smart shapes: Off"
+msgstr "Formas inteligentes: No"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
+#. eye draws dotted boxes over the page where a finger's tap follows a link.
+#: rust/src/editor.rs
 msgid "Dotted boxes show where a finger tap follows a link. They never print."
-msgstr "Los recuadros punteados muestran dónde un toque con el dedo sigue un enlace. Nunca se imprimen."
+msgstr ""
+"Los recuadros punteados muestran dónde un toque con el dedo sigue un enlace. "
+"Nunca se imprimen."
 
 #: rust/src/editor.rs
 msgid "Could not save this page. Is the storage full?"
@@ -1065,10 +1206,12 @@ msgstr "No se pudo guardar esta página. ¿Está lleno el almacenamiento?"
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "This page was made by a newer Grimoire. It is read-only here."
-msgstr "Esta página se creó con una versión más reciente de Grimoire. Aquí es de solo lectura."
+msgstr ""
+"Esta página se creó con una versión más reciente de Grimoire. Aquí es de "
+"solo lectura."
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
-#: rust/src/linkcard.rs rust/src/pagesview.rs
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/pagesview.rs
 #, c-format
 msgid "Page %d"
 msgstr "Página %d"
@@ -1081,10 +1224,14 @@ msgstr "No se pudo abrir esa página"
 msgid "Could not open that notebook"
 msgstr "No se pudo abrir ese cuaderno"
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
+#. two fingers dragged up and down on a page do now.
 #: rust/src/editor.rs
 msgid ""
 "New: two fingers up show this page's links. Two fingers down show all pages."
-msgstr "Novedad: dos dedos hacia arriba muestran los enlaces de esta página; hacia abajo, todas las páginas."
+msgstr ""
+"Novedad: dos dedos hacia arriba muestran los enlaces de esta página; hacia "
+"abajo, todas las páginas."
 
 #: rust/src/editor.rs
 msgid "This page is already empty"
@@ -1098,6 +1245,7 @@ msgstr "Se limpió la página"
 msgid "Could not delete those pages"
 msgstr "No se pudieron borrar esas páginas"
 
+#. TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
 #: rust/src/editor.rs
 #, c-format
 msgid "Deleted %d page (kept in %s)"
@@ -1115,10 +1263,14 @@ msgstr "No se pudo añadir una página"
 msgid "Could not copy that page"
 msgstr "No se pudo copiar la página"
 
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): the page was copied, but the links drawn on it could not be saved for the copy.
 #: rust/src/editor.rs
 msgid "The copy has no links: they could not be saved."
 msgstr "La copia no tiene enlaces: no se pudieron guardar."
 
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): %d is the page it copies.
 #: rust/src/editor.rs
 #, c-format
 msgid "This page is a copy of page %d."
@@ -1140,6 +1292,8 @@ msgstr "Rodea lo que enlaza."
 msgid "Links could not be read in this notebook."
 msgstr "No se pudieron leer los enlaces de este cuaderno."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
+#. has the most links a page may have; %d is that number (64).
 #: rust/src/editor.rs
 #, c-format
 msgid "This page has %d links: delete one to add another."
@@ -1163,15 +1317,14 @@ msgstr "¿Adónde lleva el enlace? Toca su página."
 msgid "Name the new page"
 msgstr "Nombre de la página nueva"
 
-#: rust/src/editor.rs
-msgid "Could not save the page name."
-msgstr "No se pudo guardar el nombre de página."
-
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "Could not save the link."
 msgstr "No se pudo guardar el enlace."
 
+#. TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
+#. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
+#. change, redraw or delete it).
 #: rust/src/editor.rs
 msgid "Linked. Tap it with a finger to go there; hold it for more."
 msgstr "Enlazado. Tócalo con un dedo para ir; mantenlo pulsado para más."
@@ -1215,10 +1368,13 @@ msgstr "Zona nueva guardada. Deshacer recupera la anterior."
 msgid "No link made."
 msgstr "No se creó el enlace."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
+#. could not save links.ini, so the change is still there.
 #: rust/src/editor.rs
 msgid "Could not save the links: that change was not undone."
 msgstr "No se pudieron guardar los enlaces: el cambio no se deshizo."
 
+#. TRANSLATORS: the same toast for Redo.
 #: rust/src/editor.rs
 msgid "Could not save the links: that change was not redone."
 msgstr "No se pudieron guardar los enlaces: el cambio no se rehízo."
@@ -1240,17 +1396,8 @@ msgstr "Cambio de enlace rehecho."
 msgid "That link's page is not in this notebook."
 msgstr "La página de ese enlace no está en este cuaderno."
 
-#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
-#. 1500 px at 44 px).
-#: rust/src/editor.rs
-msgid "Name in the Index"
-msgstr "Nombre en el índice"
-
-#: rust/src/editor.rs
-#, c-format
-msgid "Page %d is in the Index as %s."
-msgstr "La página %d está en el índice como %s."
-
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. emptied page %d's name, which takes it out of the Index.
 #: rust/src/editor.rs
 #, c-format
 msgid "Page %d is not in the Index now."
@@ -1268,12 +1415,52 @@ msgstr "Enlaces borrados. Deshacer los recupera."
 msgid "Link deleted. Undo brings it back."
 msgstr "Enlace borrado. Deshacer lo recupera."
 
+#. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
+#. panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+#. or two lines.
 #: rust/src/editor.rs
 #, c-format
 msgid "The panel holds up to %d pen. Unpin one first."
 msgid_plural "The panel holds up to %d pens. Unpin one first."
 msgstr[0] "En el panel cabe hasta %d herramienta. Quita una primero."
 msgstr[1] "En el panel caben hasta %d herramientas. Quita una primero."
+
+#: rust/src/editor.rs
+msgid "Hold: Quick"
+msgstr "Pausa: Corta"
+
+#: rust/src/editor.rs
+msgid "Hold: Slow"
+msgstr "Pausa: Larga"
+
+#: rust/src/editor.rs
+msgid "Hold: Normal"
+msgstr "Pausa: Normal"
+
+#: rust/src/editor.rs
+msgid "Smart shapes on. Hold the pen still at the end of a shape."
+msgstr ""
+"Formas inteligentes activadas. Deja el lápiz quieto al terminar una forma."
+
+#: rust/src/editor.rs
+msgid "Smart shapes off."
+msgstr "Formas inteligentes desactivadas."
+
+#: rust/src/editor.rs
+msgid "Shape hold: Quick (0.4 s)"
+msgstr "Pausa para formas: Corta (0,4 s)"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Slow (0.9 s)"
+msgstr "Pausa para formas: Larga (0,9 s)"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Normal (0.55 s)"
+msgstr "Pausa para formas: Normal (0,55 s)"
+
+#: rust/src/editor.rs
+msgid "No shape in the last stroke."
+msgstr "No hay una forma en el último trazo."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
 #. was tapped on a page from a newer Grimoire, which cannot be changed.
@@ -1326,6 +1513,8 @@ msgstr "Deslizar tras la última página añade una página."
 msgid "Swiping past the last page adds no page."
 msgstr "Deslizar tras la última página no añade página."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
+#. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
 #: rust/src/editor.rs
 #, c-format
 msgid "Eraser: %s"
@@ -1345,11 +1534,16 @@ msgctxt "eraser"
 msgid "Whole strokes"
 msgstr "Trazos enteros"
 
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
+#. on the Templates sheet could not become the page's paper (or the new notebook's); %s is
+#. the log file that says why.
 #: rust/src/editor.rs rust/src/library.rs
 #, c-format
 msgid "Could not use that template (see %s)."
 msgstr "No se pudo usar esa plantilla (detalles en %s)."
 
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
+#. Photos sheet could not become the page's paper; %s is the log file that says why.
 #: rust/src/editor.rs
 #, c-format
 msgid "Could not use that photo (see %s)."
@@ -1361,11 +1555,16 @@ msgstr "No se pudo usar esa foto (detalles en %s)."
 msgid ""
 "Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom "
 "in; Display changes this."
-msgstr "De lado ahora se ve la página entera y los gestos de dos dedos funcionan. Pellizca para ampliar; se cambia en Pantalla."
+msgstr ""
+"De lado ahora se ve la página entera y los gestos de dos dedos funcionan. "
+"Pellizca para ampliar; se cambia en Pantalla."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
+#. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
 #: rust/src/editor.rs
 msgid "Here two fingers move the page. Open Pages and Links from the panel."
-msgstr "Aquí dos dedos mueven la página. Abre Páginas y Enlaces desde el panel."
+msgstr ""
+"Aquí dos dedos mueven la página. Abre Páginas y Enlaces desde el panel."
 
 #. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
 #. about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
@@ -1378,6 +1577,13 @@ msgstr "No es una de tus figuras. Ajustes > Gestos las muestra."
 #: rust/src/editor.rs
 msgid "Move the pen away, then swipe."
 msgstr "Aparta el lápiz y desliza."
+
+#: rust/src/editor.rs
+msgid ""
+"Shape made. Undo takes it away; the panel's shapes button turns this off."
+msgstr ""
+"Forma hecha. Deshacer la quita; el botón de formas del panel desactiva esta "
+"función."
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
 #. go to a page by typing its number or a name of the Index.
@@ -1471,7 +1677,9 @@ msgstr "No se pudo descargar el PDF. Inténtalo de nuevo."
 msgid ""
 "Download status unavailable. Check your browser's Downloads and the Kindle's "
 "Wi-Fi."
-msgstr "No se puede consultar el estado. Revisa las descargas del navegador y la conexión wifi del Kindle."
+msgstr ""
+"No se puede consultar el estado. Revisa las descargas del navegador y la "
+"conexión wifi del Kindle."
 
 #: rust/src/httpd.rs
 msgid "Dismiss"
@@ -1572,7 +1780,7 @@ msgstr "Emparejando en el Kindle..."
 msgid "Live view is off on the Kindle"
 msgstr "La vista en directo está apagada en el Kindle"
 
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/mapview.rs
 msgid "Fit"
 msgstr "Ajustar"
 
@@ -1734,7 +1942,9 @@ msgstr "Teclas"
 msgid ""
 "Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, "
 "then restart Live view."
-msgstr "Los atajos controlan Grimoire mientras esta página tiene el foco. Edita live-keys.ini y reinicia la vista en directo."
+msgstr ""
+"Los atajos controlan Grimoire mientras esta página tiene el foco. Edita live-"
+"keys.ini y reinicia la vista en directo."
 
 #: rust/src/httpd.rs
 msgid "No Live view keys are assigned."
@@ -1742,7 +1952,8 @@ msgstr "No hay teclas asignadas a la vista en directo."
 
 #: rust/src/httpd.rs
 msgid "Could not send keys. Release the keys and try again."
-msgstr "No se pudieron enviar las teclas. Suelta las teclas e inténtalo de nuevo."
+msgstr ""
+"No se pudieron enviar las teclas. Suelta las teclas e inténtalo de nuevo."
 
 #: rust/src/httpd.rs
 msgid "This browser cannot show Live view."
@@ -1751,7 +1962,9 @@ msgstr "Este navegador no puede mostrar la vista en directo."
 #. TRANSLATORS: Live view's page while it is off on the Kindle.
 #: rust/src/httpd.rs
 msgid "Live view is off. On the Kindle, open Share and tap Live view."
-msgstr "La vista en directo está apagada. En el Kindle, abre Compartir y toca Vista en directo."
+msgstr ""
+"La vista en directo está apagada. En el Kindle, abre Compartir y toca Vista "
+"en directo."
 
 #. TRANSLATORS: Live view's code form in the browser: the six digits the Kindle shows.
 #: rust/src/httpd.rs
@@ -1840,6 +2053,7 @@ msgstr "Ajustes"
 msgid "Share"
 msgstr "Compartir"
 
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
 #: rust/src/library.rs
 msgid "Folder"
 msgstr "Carpeta"
@@ -1885,7 +2099,7 @@ msgstr "Cuaderno nuevo"
 msgid "Name: %s"
 msgstr "Nombre: %s"
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Rename"
 msgstr "Renombrar"
 
@@ -2224,7 +2438,9 @@ msgstr "Gestos: activados (toca para cambiar)"
 
 #: rust/src/library.rs
 msgid "Ideas: a two-finger tap for Undo, a finger shape for Pages."
-msgstr "Ideas: un toque con dos dedos para Deshacer, una figura con el dedo para Páginas."
+msgstr ""
+"Ideas: un toque con dos dedos para Deshacer, una figura con el dedo para "
+"Páginas."
 
 #: rust/src/library.rs
 msgid "Reset buttons"
@@ -2302,7 +2518,8 @@ msgstr "Copiar los PDF a %s (USB)"
 #. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
 #: rust/src/library.rs
 msgid "Holding the pen button does nothing (tap to change)"
-msgstr "Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
+msgstr ""
+"Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
 
 #: rust/src/library.rs
 msgid "Holding the pen button erases (tap to change)"
@@ -2317,7 +2534,8 @@ msgstr "Mantener presionado el botón del lápiz resalta (toca para cambiar)"
 #. at 44 px, sideways 1610, or two lines at 34 px.
 #: rust/src/library.rs
 msgid "Holding the pen button draws white (tap to change)"
-msgstr "Mantener presionado el botón del lápiz dibuja en blanco (toca para cambiar)"
+msgstr ""
+"Mantener presionado el botón del lápiz dibuja en blanco (toca para cambiar)"
 
 #: rust/src/library.rs
 msgid "Turn with the Kindle (portrait and landscape)"
@@ -2531,7 +2749,7 @@ msgstr "Fuente Terminess en los menús"
 msgid "Save PDF to %s now"
 msgstr "Guardar el PDF en %s ahora"
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Open"
 msgstr "Abrir"
 
@@ -2554,6 +2772,14 @@ msgstr "Quitar la carpeta (primero saca sus cuadernos)"
 #: rust/src/library.rs
 msgid "Remove folder"
 msgstr "Quitar la carpeta"
+
+#: rust/src/library.rs
+msgid "Previous folders"
+msgstr "Carpetas anteriores"
+
+#: rust/src/library.rs
+msgid "More folders"
+msgstr "Más carpetas"
 
 #: rust/src/library.rs
 msgid "New folder..."
@@ -2583,6 +2809,18 @@ msgstr "Conservarlo"
 msgid "Could not create the notebook (storage full?)"
 msgstr "No se pudo crear el cuaderno (¿almacenamiento lleno?)"
 
+#: rust/src/library.rs
+msgid "Could not create the folder. Use a shorter name without a slash."
+msgstr "No se pudo crear la carpeta. Usa un nombre más corto y sin barras."
+
+#: rust/src/library.rs
+msgid "Could not move the notebook."
+msgstr "No se pudo mover el cuaderno."
+
+#: rust/src/library.rs
+msgid "Could not rename the folder. Check the name and destination."
+msgstr "No se pudo renombrar la carpeta. Comprueba el nombre y el destino."
+
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
 #: rust/src/library.rs
 #, c-format
@@ -2611,7 +2849,9 @@ msgstr "Actualizado. Reinicia KOReader para aplicar los cambios."
 
 #: rust/src/library.rs
 msgid "Could not update KOReader. A different patch or a storage error?"
-msgstr "No se pudo actualizar KOReader. ¿Hay otro parche o un error de almacenamiento?"
+msgstr ""
+"No se pudo actualizar KOReader. ¿Hay otro parche o un error de "
+"almacenamiento?"
 
 #: rust/src/library.rs
 msgid "Saving the PDF in the background..."
@@ -2661,6 +2901,13 @@ msgstr "Mostrando %s. Toca la página para quedarte."
 #, c-format
 msgid "Back to %s"
 msgstr "Volver a %s"
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "%d page links here"
+msgid_plural "%d pages link here"
+msgstr[0] "%d página enlaza aquí"
+msgstr[1] "%d páginas enlazan aquí"
 
 #. TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
 #: rust/src/linkbar.rs
@@ -2772,6 +3019,59 @@ msgstr "Borrar enlace"
 msgid "To change one, hold it on the page."
 msgstr "Para cambiar uno, mantenlo pulsado en la página."
 
+#: rust/src/mapview.rs
+msgid "Not enough memory for the map."
+msgstr "No hay memoria suficiente para el mapa."
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet: %d page. Show"
+msgid_plural "Not linked yet: %d pages. Show"
+msgstr[0] "Aún sin enlaces: %d página. Mostrar"
+msgstr[1] "Aún sin enlaces: %d páginas. Mostrar"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet (%d)"
+msgstr "Sin enlazar (%d)"
+
+#: rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Graph"
+msgstr "Grafo"
+
+#: rust/src/mapview.rs
+msgid "List"
+msgstr "Lista"
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr "Todo"
+
+#: rust/src/mapview.rs
+msgid "Around"
+msgstr "Alrededor"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Page %d. Links to %d, linked from %d."
+msgstr "Página %d. Enlaces a %d, desde %d."
+
+#: rust/src/mapview.rs
+msgid "Around it"
+msgstr "A su alrededor"
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Show"
+msgstr "Sin enlazar: Mostrar"
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Hide"
+msgstr "Sin enlazar: Ocultar"
+
+#: rust/src/mapview.rs
+msgid "Tidy up"
+msgstr "Reorganizar"
+
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.
 #: rust/src/musicbuild.rs
 msgid "Custom music"
@@ -2833,6 +3133,13 @@ msgstr "Nombra una página para incluirla aquí."
 #: rust/src/pagesview.rs
 msgid "Page names could not be read."
 msgstr "No se pudieron leer los nombres de página."
+
+#: rust/src/pagesview.rs
+#, c-format
+msgid "%d link here"
+msgid_plural "%d links here"
+msgstr[0] "%d enlace aquí"
+msgstr[1] "%d enlaces aquí"
 
 #. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
 #. Classic): Delete, with how many pages are ticked; tick all of them, or none.
@@ -3087,7 +3394,9 @@ msgstr "tinta"
 #. 34 px; the readings below take that room too).
 #: rust/src/pensettings.rs
 msgid "Draw on the pad to see live pressure and tilt."
-msgstr "Dibuja en la zona de prueba para ver la presión y la inclinación en tiempo real."
+msgstr ""
+"Dibuja en la zona de prueba para ver la presión y la inclinación en tiempo "
+"real."
 
 #. TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
 #: rust/src/pensettings.rs
@@ -3188,11 +3497,14 @@ msgstr "Páginas en PNG, cuadernos en PDF o zip, carpetas y todo en zip."
 
 #: rust/src/share.rs
 msgid "Effects: transparent, recolored or filtered copies of any page."
-msgstr "Efectos: copias de cualquier página, transparentes, con otros colores o con filtros."
+msgstr ""
+"Efectos: copias de cualquier página, transparentes, con otros colores o con "
+"filtros."
 
 #: rust/src/share.rs
 msgid "Same Wi-Fi network only. Keep this screen open while downloading."
-msgstr "Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
+msgstr ""
+"Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
 
 #. TRANSLATORS: how many downloads the Share screen has answered since it opened.
 #: rust/src/share.rs
@@ -3342,7 +3654,8 @@ msgstr "Copia fotos JPG o PNG en la carpeta %s por USB, con Grimoire cerrado."
 msgid ""
 "Copy PNG or JPG pictures into the %s folder over USB while Grimoire is "
 "closed."
-msgstr "Copia imágenes PNG o JPG en la carpeta %s por USB, con Grimoire cerrado."
+msgstr ""
+"Copia imágenes PNG o JPG en la carpeta %s por USB, con Grimoire cerrado."
 
 #. TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
 #. 2180); README.txt is the file Grimoire wrote in that folder.
@@ -3350,13 +3663,18 @@ msgstr "Copia imágenes PNG o JPG en la carpeta %s por USB, con Grimoire cerrado
 msgid ""
 "Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 "
 "pixels. The README.txt there says more."
-msgstr "Funcionan mejor las imágenes en vertical, con la forma de una página (3:4); lo ideal es 1860 x 2480 píxeles. El README.txt de esa carpeta da más detalles."
+msgstr ""
+"Funcionan mejor las imágenes en vertical, con la forma de una página (3:4); "
+"lo ideal es 1860 x 2480 píxeles. El README.txt de esa carpeta da más "
+"detalles."
 
 #: rust/src/tplsheet.rs
 msgid ""
 "A photo becomes the open page's paper, upright and fitted to the page. For a "
 "page of its own, add a new page in Pages first."
-msgstr "Una foto pasa a ser el papel de la página abierta, derecha y ajustada a la página. Para una página propia, añade antes una nueva página en Páginas."
+msgstr ""
+"Una foto pasa a ser el papel de la página abierta, derecha y ajustada a la "
+"página. Para una página propia, añade antes una nueva página en Páginas."
 
 #. TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
 #. does not read, or too big): how many; %s is the log file, which says which (by number). Up
@@ -3534,7 +3852,8 @@ msgstr "El Kindle respondió %d a %s"
 #, javascript-format
 msgctxt "studio"
 msgid "The Kindle stopped answering (%s). Is the Share screen still open?"
-msgstr "El Kindle dejó de responder (%s). ¿Sigue abierta la pantalla Compartir?"
+msgstr ""
+"El Kindle dejó de responder (%s). ¿Sigue abierta la pantalla Compartir?"
 
 #. TRANSLATORS: the Warmth slider's value: cooler (blue) or warmer (orange), by how much.
 #: web/studio.js
@@ -3800,7 +4119,10 @@ msgctxt "studio"
 msgid ""
 "The same picture from the page’s two layers, with ImageMagick 7 in a macOS "
 "or Linux terminal. Download the layers into one folder and run it there:"
-msgstr "La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en una terminal de macOS o Linux. Descarga las capas en una misma carpeta y ejecuta allí el comando:"
+msgstr ""
+"La misma imagen a partir de las dos capas de la página, con ImageMagick 7 en "
+"una terminal de macOS o Linux. Descarga las capas en una misma carpeta y "
+"ejecuta allí el comando:"
 
 #: web/studio.js
 msgctxt "studio"
@@ -3956,3 +4278,6 @@ msgstr "Copiado"
 #, c-format
 #~ msgid "Tick pages, then Delete.   %d of %d"
 #~ msgstr "Marca páginas y toca Borrar.   %d de %d"
+
+#~ msgid "Shortcuts"
+#~ msgstr "Atajos"

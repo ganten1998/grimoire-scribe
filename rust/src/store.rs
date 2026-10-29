@@ -19,7 +19,7 @@ pub struct NotebookInfo {
     /// directory name, e.g. "20261010-143205-a3f1"
     pub id: FixedStr<STORE_ID_LEN>,
     pub name: FixedStr<STORE_NAME_LEN>,
-    /// "" = top level; one level of folders only
+    /// "" = top level; nested folders are slash-separated logical names (not disk paths).
     pub folder: FixedStr<STORE_NAME_LEN>,
     /// default paper for new pages
     pub paper: PaperKind,
@@ -141,6 +141,8 @@ pub struct Settings {
     pub gesture_new_page: bool,
     /// 0 bar (default), 1 corner, 2 off.
     pub status_mode: i32,
+    pub shapes: bool,
+    pub shape_hold_ms: i32,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
     /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
@@ -1393,6 +1395,7 @@ pub fn store_rename(id: &str, name: &str) -> i32 {
 }
 
 pub fn store_set_folder(id: &str, folder: &str) -> i32 {
+    if !folder.is_empty() && !store_folder_valid(folder) {return -1;}
     let mut nb = NotebookInfo::default();
     let mut rc = store_load_info(id, &mut nb);
     if rc == 0 {
@@ -1513,9 +1516,26 @@ fn save_folders_ini(f: &[FolderName]) -> i32 {
     write_file_atomic(&path, &buf)
 }
 
+/// Logical folder ancestry, with a component boundary (School does not contain Schoolwork).
+pub fn store_folder_contains(parent: &str, path: &str) -> bool {
+    parent.is_empty() || path == parent || path.strip_prefix(parent).is_some_and(|rest| rest.starts_with('/'))
+}
+pub fn store_folder_parent(path: &str) -> &str { path.rsplit_once('/').map_or("",|(parent,_)|parent) }
+pub fn store_folder_leaf(path: &str) -> &str { path.rsplit('/').next().unwrap_or("") }
+pub fn store_folder_valid(path: &str) -> bool {
+    !path.is_empty() && path.len() < STORE_NAME_LEN && !path.contains(['\n','\r','\0'])
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
+}
+/// Join a user-entered folder name to its parent without silently truncating a destination.
+pub fn store_folder_join(parent: &str, name: &str, out: &mut FixedStr<STORE_NAME_LEN>) -> bool {
+    if name.contains('/') || name.is_empty() {return false;}
+    let path=if parent.is_empty(){name.to_string()}else{format!("{parent}/{name}")};
+    if !store_folder_valid(&path){return false;}out.set(&path);true
+}
+
 /// Folders exist as notebook.folder values plus root/folders.ini (so empty folders persist).
 pub fn store_add_folder(name: &str) -> i32 {
-    if name.is_empty() {
+    if !store_folder_valid(name) {
         return -1;
     }
     let mut f = load_folders_ini();
@@ -1526,6 +1546,78 @@ pub fn store_add_folder(name: &str) -> i32 {
     clean_line(&mut nf, name.as_bytes());
     f.push(nf);
     save_folders_ini(&f)
+}
+
+/// Rename a logical subtree; the page files and notebook identities never move.
+/// Validate every destination and keep exact metadata for rollback before the first write.
+pub fn store_rename_folder(old: &str, new: &str) -> i32 {
+    if !store_folder_valid(old) || !store_folder_valid(new) {
+        return -1;
+    }
+    if old == new {
+        return 0;
+    }
+    if store_folder_contains(old, new) {
+        return -1;
+    }
+    let mut all = Vec::new();
+    if store_list_folders(&mut all) != 0 {
+        return -1;
+    }
+    if !all.iter().any(|f| f == old) || all.iter().any(|f| store_folder_contains(new, f)) {
+        return -1;
+    }
+    let mut folders = load_folders_ini();
+    for f in &mut folders {
+        if store_folder_contains(old, f.as_str()) {
+            let path = format!("{}{}", new, &f.as_str()[old.len()..]);
+            if !store_folder_valid(&path) {
+                return -1;
+            }
+            f.set(&path);
+        }
+    }
+    let mut books = Vec::new();
+    if store_list(&mut books) != 0 {
+        return -1;
+    }
+    let mut changes = Vec::new();
+    if changes.try_reserve_exact(books.len()).is_err() {
+        return -1;
+    }
+    for mut nb in books {
+        if !store_folder_contains(old, nb.folder.as_str()) {
+            continue;
+        }
+        let dest = format!("{}{}", new, &nb.folder.as_str()[old.len()..]);
+        if !store_folder_valid(&dest) {
+            return -1;
+        }
+        let Some(dir) = notebook_dir(nb.id.as_bytes()) else {
+            return -1;
+        };
+        let path = format!("{dir}/notebook.ini");
+        let Some(bytes) = read_file(&path) else {
+            return -1;
+        };
+        nb.folder.set(&dest);
+        changes.push((nb, path, bytes));
+    }
+    for i in 0..changes.len() {
+        if write_info(&changes[i].0) != 0 {
+            for (_, path, bytes) in &changes[..i] {
+                write_file_atomic(path, bytes);
+            }
+            return -1;
+        }
+    }
+    if save_folders_ini(&folders) != 0 {
+        for (_, path, bytes) in &changes {
+            write_file_atomic(path, bytes);
+        }
+        return -1;
+    }
+    0
 }
 
 /// only from folders.ini; notebooks keep theirs
@@ -1696,8 +1788,16 @@ pub fn store_list_folders(out: &mut Vec<String>) -> i32 {
         if name.is_empty() {
             continue;
         }
-        if !all.iter().any(|x| x.as_bytes() == name.as_bytes()) {
-            all.push(*name);
+        // Include implicit ancestors of notebooks and explicit empty subfolders, so every path
+        // is reachable even when an older build wrote only its leaf path.
+        let mut path = name.as_str();
+        loop {
+            if !all.iter().any(|x| x.as_bytes() == path.as_bytes()) {
+                if all.try_reserve(1).is_err() {return -1;}
+                all.push(FolderName::from_str(path));
+            }
+            let parent=store_folder_parent(path);
+            if parent.is_empty(){break;}path=parent;
         }
     }
     all.sort_by(|x, y| cmp_name(x.as_bytes(), y.as_bytes()));
@@ -2851,6 +2951,8 @@ pub fn settings_default(s: &mut Settings) {
     s.landscape_fit = true;
     s.gesture_new_page = true;
     s.status_mode = 0;
+    s.shapes = true;
+    s.shape_hold_ms = 550;
     s.hints = 0;
     s.link_areas = false;
 }
@@ -3175,6 +3277,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
+        b"shapes" => s.shapes = keep_bool("shapes", v),
+        b"shape_hold_ms" => s.shape_hold_ms = keep_int("shape_hold_ms", v, 300, 1500),
         b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
@@ -3444,6 +3548,8 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "rotation_lock", s.rotation_lock);
     put_int(&mut b, "gesture_new_page", s.gesture_new_page as i32);
     put_int(&mut b, "status_mode", s.status_mode);
+    put_int(&mut b, "shapes", s.shapes as i32);
+    put_int(&mut b, "shape_hold_ms", s.shape_hold_ms);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

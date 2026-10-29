@@ -590,3 +590,27 @@ is the maintainer's embedded handwriting; the runtime does not open a user noteb
 indicates a value waiting for the throttled repaint. `z_9_slider_fine.qs` uses pen and touch to
 hold, move away from the track, select 0.30, catch up and track directly within the knob-height
 band, resume fine control on either side, release without a jump and check the saved value.
+
+### Smart-shape probes
+
+`settings.shapes` and `settings.shape_hold_ms` report the saved controls. `editor.shape_preview` is 1 while
+an in-progress stroke has a snapped preview. `editor.stroke_shape` reports its lowercase recognized kind,
+or `none`; `editor.undo_kind` and `redo_kind` also accept `replace`. `pentap panel shapes` toggles recognition.
+`z_shape_1_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_2_move_cancels`
+checks moving on from the preview restores the freehand stroke.
+
+`z_sideways_toolbar` checks rotation with the toolbar on either side of the page, then disables
+`landscape_fit` and verifies the saved placement is retained. The full-page landscape gap is 24 px at 300 dpi.
+
+The Index map is a full-screen menu (`editor.map` is `graph`, otherwise `0`). Its probes include
+`nodes`, `edges`, `force`, `satellites`, `tray`, `orphans`, `selected` (page number), `mode`, `layout`,
+`labels`, `zoom`, `node.PID` (tier, radius, screen x/y, visible), and `ui_at.X.Y`.
+`tap map-node PID` resolves the current host's layout before tapping; scenarios never assume saved
+coordinates from another machine. Header controls occupy y=20..170: Back x=20..170, List632..832,
+All848..1148, Around1160..1460; the selection card's buttons occupy the bottom155pixels.
+`GRIMOIRE_SIM_MAP_NOMEM=1` refuses map allocation and checks the Index-list fallback.
+`editor.bar.incoming` counts distinct other pages linking to the open page.
+
+Library folders are logical paths. `library.folder` reports the full current path; folder cards show
+only their last component. `z_subfolders` checks child creation and parent navigation; storage tests
+check subtree rename, empty descendants and refusing overlong destinations before any metadata changes.

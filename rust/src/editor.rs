@@ -80,6 +80,9 @@ const P_PICK_INK: i32 = 21;
 const P_PICK_MORE: i32 = 22;
 const P_PICK_PHOTOS: i32 = 23;
 const P_LINKS: i32 = 24;
+// Stable registry id after phase 4's three actions; moved into actions.rs on integration.
+const P_SHAPES: i32 = 25;
+const P_SHAPE_HOLD: i32 = 26;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
@@ -111,6 +114,7 @@ enum Owner {
     LinkTo = 16,
     /// a pointer that began on the link-making strip (its Cancel, or the strip around it)
     Strip = 17,
+    Map = 18,
 }
 
 /// Making a link without ink (PHASE2 6): the strip is up and the next pen contact on the page is the lasso
@@ -256,7 +260,19 @@ struct SharedPaper {
 /// The screen's state (editor.c's, which app.h keeps opaque): editor_init makes it, in a.ed.
 /// Its fields are the translator's, from the C struct, by the rules of PORTING.md.
 #[derive(Default)]
+struct ShapeHold {
+    anchor: (f32, f32), anchor_k: u32, still_fired: bool, burst: bool,
+    preview: Option<ShapePreview>, last_lift: Option<PenSample>,
+    last_kind: ShapeKind, last_reason: ShapeReason, tip_pending: bool,
+}
+struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
+
+#[derive(Default)]
 pub struct EditorState {
+    map: MapView,
+    map_kb: Keyboard,
+    map_rename_pid: u32,
+    sh: ShapeHold,
     open: bool,
     /// compose leaves the panel out (editor_live_under_panel: Live view's page under it)
     live_no_panel: bool,
@@ -592,6 +608,122 @@ fn with_pv<R>(a: &mut App, f: impl FnOnce(&mut PagesView, &mut App, &NotebookInf
     s.nb = nb;
     s.nav = nav;
     r
+}
+
+fn with_map<R>(a: &mut App, f: impl FnOnce(&mut MapView, &mut App, &NotebookInfo, &Nav) -> R) -> R {
+    let s = ed(a);
+    let mut map = std::mem::take(&mut s.map);
+    let nb = std::mem::take(&mut s.nb);
+    let nav = std::mem::take(&mut s.nav);
+    let result = f(&mut map, a, &nb, &nav);
+    let s = ed(a);
+    s.map = map;
+    s.nb = nb;
+    s.nav = nav;
+    result
+}
+fn map_draw(a: &mut App, r: Rect) {
+    with_map(a, |map, a, _, nav| mapview_draw(map, a, nav, r));
+    if ed_ref(a).map_kb.open {
+        let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+        let mut kb = std::mem::take(&mut ed(a).map_kb);
+        keyboard_draw(&mut kb, &mut a.screen, screen);
+        a.toast_floor = kb.area.y;
+        ed(a).map_kb = kb;
+    }
+}
+fn map_show(a: &mut App, around: bool) {
+    close_sheets(ed(a));
+    pagesview_close(&mut ed(a).pv);
+    link_off(a);
+    let pid = ed_ref(a).open_pid();
+    let ok = with_map(a, |map, a, nb, nav| mapview_open(map, a, nb, nav, pid, around));
+    if !ok {
+        mapview_close(&mut ed(a).map);
+        ed(a).pv.index_tab = true;
+        pages_show(a);
+    }
+    touch_context(a);
+}
+fn map_hide(a: &mut App, draw: bool) {
+    let s = ed(a);
+    mapview_close(&mut s.map);
+    keyboard_close(&mut s.map_kb);
+    s.owner = Owner::None;
+    if draw {
+        compose_all(a, RefreshMode::Full);
+    }
+    touch_context(a);
+}
+pub fn editor_map_done(a: &mut App, ok: bool) {
+    if let Some(s) = a.ed.as_deref_mut() {
+        mapview_background_done(&mut s.map, ok);
+    }
+}
+fn map_result(a: &mut App, result: MapResult) {
+    match result {
+        MapResult::Close => map_hide(a, true),
+        MapResult::Open(pid) => {
+            let to = ed_ref(a).nb.page_ids.iter().position(|&p| p == pid);
+            map_hide(a, false);
+            if let Some(i) = to {
+                go_to_page_pushing(a, i as i32);
+            } else {
+                compose_all(a, RefreshMode::Full);
+            }
+        }
+        MapResult::Pages | MapResult::List => {
+            map_hide(a, false);
+            ed(a).pv.index_tab = true;
+            pages_show(a);
+        }
+        MapResult::Rename(pid) => {
+            let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+            let s = ed(a);
+            if !s.nav.writable {
+                return;
+            }
+            let name = nav_name(&s.nav, pid).as_bytes();
+            keyboard_open(&mut s.map_kb, tr("Name in the Index"), name);
+            s.map_rename_pid = pid;
+            s.map_kb.area = keyboard_modal_rect_docked(screen, 0);
+            compose_all(a, RefreshMode::Ui);
+        }
+        MapResult::None => {}
+    }
+}
+fn map_pointer(a: &mut App, phase: i32, ev: &InEvent) {
+    if ed_ref(a).map_kb.open {
+        let mut kb = std::mem::take(&mut ed(a).map_kb);
+        let result = app_keyboard_pointer(a, &mut kb, phase, ev);
+        let text = kb.text;
+        ed(a).map_kb = kb;
+        if result == KbResult::Done || result == KbResult::Cancel {
+            keyboard_close(&mut ed(a).map_kb);
+            if result == KbResult::Done {
+                let s = ed(a);
+                let pid = s.map_rename_pid;
+                if nav_set_name(&mut s.nav, pid, text.as_str().trim()) == 0 && nav_save(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0 {
+                    s.changed = true;
+                    let open = s.open_pid();
+                    let number = s.nb.page_ids.iter().position(|&p| p == pid).map_or(0, |i| i + 1);
+                    with_map(a, |map, a, nb, nav| mapview_rebuild(map, a, nb, nav, open));
+                    let msg = cformat!(tr("Page %d is in the Index as %s."), number as i32, text.as_str().trim());
+                    app_toast(a, &msg, 2500);
+                } else {
+                    nav_load(s.nb.id.as_str(), &mut s.nav);
+                    app_toast(a, tr("Could not save the page name."), 3000);
+                }
+            }
+            compose_all(a, RefreshMode::Ui);
+        }
+    } else {
+        let result = with_map(a, |map, a, _, nav| mapview_pointer(map, a, nav, phase, ev));
+        map_result(a, result);
+    }
+    if phase == 2 {
+        ed(a).owner = Owner::None;
+    }
 }
 
 // The same for the Links bar, with the notebook and its Nav that it reads.
@@ -945,6 +1077,13 @@ fn draw_panel(a: &mut App) {
     ui_button(c, re, IconKind::Eraser, "", tool_style(st, TOOL_ERASER));
     hits_add(&mut s.hits, re, P_TOOL, TOOL_ERASER.0);
     y += btn_h() + gap();
+    let shapes = Rect { x, y, w, h:btn_h() };
+    ui_button(c, shapes, IconKind::None, "", ButtonStyle::Plain);
+    let icon = Rect { x:x+ui_px(24.0), y:y+ui_px(16.0), w:w-ui_px(48.0), h:btn_h()-ui_px(32.0) };
+    font_draw_icon(c, FontFace::Regular, if st.shapes {0xF0831} else {0xF0832}, icon, 0);
+    if !st.shapes { canvas_slash(c, icon, ui_px(4.0)); }
+    hits_add(&mut s.hits, shapes, P_SHAPES, 0);
+    y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
     let h = if s.open { s.cur_hist() } else { None };
@@ -1052,6 +1191,7 @@ fn panel_name(h: &Hit) -> String {
         P_UNDO => "undo".into(),
         P_REDO => "redo".into(),
         P_CLEAR => "clear".into(),
+        P_SHAPES => "shapes".into(),
         P_PREV => "previous".into(),
         P_PAGES => "pages".into(),
         P_NEXT => "next".into(),
@@ -1346,10 +1486,12 @@ fn touch_context(a: &App) {
     input_touch_context(TgView {
         scrolls_v: pans && (a.h - status_reserved(a)) as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
-        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open),
+        zoom_ok: a.settings.pinch_zoom
+            && !s.map_kb.open
+            && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open),
         gestures_on: a.settings.gestures,
         record: false,
-        keyboard_open: s.pv.kb.open || s.find.open || s.lm.kb.open || s.card.kb.open,
+        keyboard_open: s.map_kb.open || s.pv.kb.open || s.find.open || s.lm.kb.open || s.card.kb.open,
     });
 }
 
@@ -1569,10 +1711,10 @@ fn draw_tools(a: &mut App) {
     let g = ui_px(16.0);
     let cols = 3;
     let rows = (N_DRAW_TOOLS as i32 + cols - 1) / cols;
-    let gridw = cols * bw + (cols - 1) * g;
+    let gridw = 2 * ui_px(520.0) + g;
     let inkh = ui_px(120.0);
     let w = gridw + 2 * ui_px(30.0);
-    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + g + inkh + ui_px(40.0);
+    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + 2 * (g + inkh) + ui_px(40.0);
     let mut x = s.panel.x - w - ui_px(20.0);
     if x < ui_px(10.0) {
         x = s.panel.x + s.panel.w + ui_px(20.0);
@@ -1685,6 +1827,15 @@ fn draw_tools(a: &mut App) {
             hits_add(&mut s.tools_hits, r, P_PICK_INK, i);
         }
     }
+    let shape_y = iy + inkh + g;
+    for i in 0..2 {
+        let r = Rect { x:x+ui_px(30.0)+i*(iw+g), y:shape_y, w:iw, h:inkh };
+        let label = if i == 0 { tr(if st.shapes { n_("Smart shapes: On") } else { n_("Smart shapes: Off") }) }
+            else { tr(shape_hold_label(st.shape_hold_ms)) };
+        ui_button(c,r,IconKind::None,label,if s.pin_mode {ButtonStyle::Disabled} else {ButtonStyle::Plain});
+        if !s.pin_mode { hits_add(&mut s.tools_hits,r,if i==0 {P_SHAPES} else {P_SHAPE_HOLD},0); }
+    }
+
 }
 
 // ---- the eye: where a finger tap follows a link ----
@@ -1830,6 +1981,10 @@ fn areas_toggle(a: &mut App, button: Rect) {
 
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
+    if ed_ref(a).map.open {
+        map_draw(a, r);
+        return;
+    }
     if ed(a).pv.open {
         // the Pages view covers everything
         with_pv(a, pagesview_draw);
@@ -2737,6 +2892,13 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     stroke_mark_tip(&mut cur); // live and replayed, it keeps the tip it is drawn with now
     let (ppx, pstride) = if paper { (s.paper.px.clone(), s.paper.stride) } else { (None, 0) };
     stroke_brush_begin(&mut s.bs, &cur, dpi, ppx, 0, 0, pstride);
+    let first = sample_of(s, ev);
+    s.sh.burst = shape_in_burst(s.sh.last_lift.as_ref(), &first, dpi, s.zoom);
+    s.sh.anchor = (ev.x, ev.y);
+    s.sh.anchor_k = in_sample_ms(ev);
+    s.sh.still_fired = false;
+    s.sh.preview = None;
+    s.sh.last_kind = ShapeKind::None;
     s.cur = Some(cur);
     smoother_reset(&mut s.sm);
     // Ink asks for the pen mode (where it is on); an erase stroke is live ink without it, as the
@@ -2748,7 +2910,15 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     }
 }
 
+fn shape_anchor_moved(anchor: (f32,f32), point: (f32,f32), dpi: f32, preview: bool) -> bool {
+    (point.0-anchor.0).hypot(point.1-anchor.1) > mm_to_px(SHAPE_HOLD_MM * if preview {1.5} else {1.0},dpi)
+}
+fn shape_dwell_ms(ms: i32, burst: bool) -> u32 {
+    (ms as f32 * if burst {SHAPE_BURST_HOLD} else {1.0}) as u32
+}
+
 fn draw_sample(a: &mut App, ev: &InEvent) {
+    let shape_log = a.shape_log;
     let dpi = a.dpi;
     let s = ed(a);
     let mut p = sample_of(s, ev);
@@ -2760,14 +2930,95 @@ fn draw_sample(a: &mut App, ev: &InEvent) {
     let cur = s.cur.as_deref_mut().unwrap();
     smoother_apply(&mut s.sm, cur.params.smoothing, &mut p);
     stroke_append(cur, &p, dpi);
+    if s.sh.preview.is_some() {
+        if !shape_anchor_moved(s.sh.anchor,(ev.x,ev.y),dpi,true) { return; }
+        let preview = s.sh.preview.take().unwrap();
+        canvas_blit(&mut s.page_canvas, &preview.saved, Rect { x:0,y:0,w:preview.region.w,h:preview.region.h }, preview.region.x, preview.region.y);
+        let mut dirty = preview.region;
+        for pt in &s.cur.as_ref().unwrap().pts[preview.raw_n..] {
+            dirty = rect_union(dirty, brush_add(&mut s.bs, &mut s.page_canvas, pt));
+        }
+        s.sh.anchor = (ev.x,ev.y); s.sh.anchor_k = in_sample_ms(ev); s.sh.still_fired = false;
+        s.sh.last_kind = ShapeKind::None;
+        if shape_log {qlog!("shape: moved on");}
+        show(a, dirty, RefreshMode::Fast);
+        return;
+    }
+    if shape_anchor_moved(s.sh.anchor,(ev.x,ev.y),dpi,false) {
+        s.sh.anchor = (ev.x,ev.y); s.sh.anchor_k = in_sample_ms(ev); s.sh.still_fired = false;
+    }
     let d = brush_add(&mut s.bs, &mut s.page_canvas, &p);
     if !rect_is_empty(d) {
         show(a, d, RefreshMode::Fast);
     }
 }
 
-fn draw_end(a: &mut App) {
+fn shape_report(enabled: bool, mode: &str, result: &ShapeResult, burst: bool, zoom: f32, elapsed: u32, render: u32) {
+    if !enabled {return;}
+    let kind = format!("{:?}",result.kind).to_lowercase();
+    let reason = format!("{:?}",result.reason).to_lowercase();
+    let f = result.features;
+    qlog!("shape: %s %s %s diag %.1f straight %.3f gap %.3f wind %.2f turn %.2f corners %d rms %.3f max %.3f axis %.3f burst %d zoom %.2f ms %u render %u",
+        mode,kind.as_str(),reason.as_str(),f.diag_mm,f.straight,f.gap,f.winding,f.turning,f.corners,f.rms,f.max_err,f.axis_ratio,burst as i32,zoom,elapsed,render);
+}
+
+// A still pen sends no samples on some hardware, so this is driven by the 30 ms wall-clock tick.
+fn shape_hold_tick(a: &mut App, now: u32) {
+    if !a.settings.shapes || !a.input_drained { return; }
+    let (dpi, hold_ms, logging) = (a.dpi, a.settings.shape_hold_ms, a.shape_log);
     let s = ed(a);
+    if s.owner != Owner::Draw || s.sh.still_fired || s.sh.preview.is_some() { return; }
+    let Some(raw) = s.cur.as_ref().filter(|raw| !stroke_is_erase(raw)) else { return; };
+    let hold = shape_dwell_ms(hold_ms,s.sh.burst);
+    if now.wrapping_sub(s.sh.anchor_k) < hold { return; }
+    s.sh.still_fired = true;
+    let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
+    prm.burst = s.sh.burst;
+    work_pump();
+    let started = now_ms();
+    let r = shape_recognize(&raw.pts, &prm);
+    let elapsed = now_ms().wrapping_sub(started);
+    work_pump();
+    let s = ed(a);
+    s.sh.last_reason = r.reason;
+    if r.kind == ShapeKind::None { shape_report(logging,"hold",&r,prm.burst,prm.zoom,elapsed,0); return; }
+    let raw = s.cur.as_ref().unwrap();
+    let Some(stroke) = shape_stroke(raw, &r, dpi) else { return; };
+    let region = rect_intersect(rect_union(raw.bbox, stroke.bbox), Rect {x:0,y:0,w:s.pgw,h:s.pgh});
+    if rect_is_empty(region) { return; }
+    let mut saved = Canvas::default();
+    if canvas_init(&mut saved, region.w, region.h) != 0 { if logging {qlog!("shape: hold none nomem");} return; }
+    canvas_blit(&mut saved, &s.page_canvas, region, 0, 0);
+    let raw_n = raw.pts.len();
+    let render_started = now_ms();
+    draw_page(a, region);
+    let s = ed(a);
+    let mut bs = BrushState::default();
+    stroke_brush_begin(&mut bs, &stroke, dpi, None, 0, 0, 0);
+    for (i, pt) in stroke.pts.iter().enumerate() {
+        brush_add(&mut bs, &mut s.page_canvas, pt);
+        if i & 7 == 0 { work_pump(); }
+    }
+    s.sh.last_kind = r.kind;
+    s.sh.preview = Some(ShapePreview { saved, region, raw_n, stroke });
+    shape_report(logging,"hold",&r,prm.burst,prm.zoom,elapsed,now_ms().wrapping_sub(render_started));
+    show(a, region, RefreshMode::Fast);
+}
+
+fn draw_end(a: &mut App) {
+    let shape_log = a.shape_log;
+    let s = ed(a);
+    let snapped = s.sh.preview.take();
+    if let Some(preview) = snapped {
+        s.cur = Some(preview.stroke);
+        s.sh.tip_pending = true;
+        if shape_log {qlog!("shape: kept");}
+        s.settle = rect_union(s.settle, preview.region);
+        live_reset();
+    }
+    if let Some(cur) = s.cur.as_ref().filter(|s| !stroke_is_erase(s)) {
+        s.sh.last_lift = cur.pts.last().copied();
+    }
     let st = s.cur.take();
     s.owner = Owner::None;
     s.boxes.stale = true; // (a beta.5 link's ink may have been added to)
@@ -3072,7 +3323,17 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open
+    s.map.open
+        || s.pv.open
+        || s.tools_open
+        || s.mb.open
+        || s.dm.open
+        || s.paper_open
+        || s.ts.open
+        || s.lb.open
+        || s.find.open
+        || s.lt.open
+        || s.card.open
 }
 
 /// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
@@ -3080,7 +3341,13 @@ fn sheet_open(s: &EditorState) -> bool {
 /// swallowed. Fast ink never previews such a contact.
 pub fn editor_pen_not_ink(a: &App) -> bool {
     a.ed.as_deref().is_some_and(|s| {
-        s.lb.open || s.find.open || s.card.open || s.lm.state != LmState::Off || (s.owner == Owner::Outside && s.owner_is_pen)
+        s.map.open
+            || s.sh.preview.is_some()
+            || s.lb.open
+            || s.find.open
+            || s.card.open
+            || s.lm.state != LmState::Off
+            || (s.owner == Owner::Outside && s.owner_is_pen)
     })
 }
 
@@ -3089,7 +3356,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
+    if !s.open || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
@@ -4360,6 +4627,10 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
                 pages_hide(a, -1);
             }
         }
+        PvResult::Graph => {
+            pagesview_close(&mut ed(a).pv);
+            map_show(a, false);
+        }
         PvResult::Link => {
             pages_hide(a, -1);
             link_arm(a, false, None);
@@ -5031,6 +5302,12 @@ fn tools_tap(a: &mut App) {
             let r = ed(a).tools_rect;
             app_invalidate(a, r, RefreshMode::Ui);
         }
+        P_SHAPES | P_SHAPE_HOLD => {
+            if h.id == P_SHAPES { editor_shapes_toggle(a); } else { editor_shape_hold_cycle(a); }
+            draw_tools(a);
+            let r = ed(a).tools_rect;
+            app_invalidate(a,r,RefreshMode::Ui);
+        }
         P_PICK_INK => {
             let st = &mut a.settings;
             st.white = K_INKS[clampi(h.arg, 0, N_INKS - 1) as usize].white;
@@ -5169,6 +5446,50 @@ fn find_result(a: &mut App, r: FsResult, d: Rect) {
         }
         _ => app_invalidate(a, d, RefreshMode::Fast),
     }
+}
+
+fn shape_hold_label(ms: i32) -> &'static str {
+    match shape_hold_nearest(ms) { 400 => n_("Hold: Quick"), 900 => n_("Hold: Slow"), _ => n_("Hold: Normal") }
+}
+fn shape_hold_nearest(ms: i32) -> i32 {
+    [400,550,900].into_iter().min_by_key(|&v| (v-ms).abs()).unwrap()
+}
+pub fn editor_shapes_toggle(a: &mut App) {
+    a.settings.shapes = !a.settings.shapes; settings_save(&a.settings);
+    repaint_panel(a,RefreshMode::Ui);
+    app_toast(a,tr(if a.settings.shapes {n_("Smart shapes on. Hold the pen still at the end of a shape.")} else {n_("Smart shapes off.")}),3000);
+}
+pub fn editor_shape_hold_cycle(a: &mut App) {
+    a.settings.shape_hold_ms = match shape_hold_nearest(a.settings.shape_hold_ms) {400=>550,550=>900,_=>400};
+    settings_save(&a.settings);
+    app_toast(a,tr(match a.settings.shape_hold_ms {400=>n_("Shape hold: Quick (0.4 s)"),900=>n_("Shape hold: Slow (0.9 s)"),_=>n_("Shape hold: Normal (0.55 s)")}),3000);
+}
+pub fn editor_shape_last(a: &mut App) {
+    let (dpi,logging) = (a.dpi,a.shape_log);
+    let s = ed(a);
+    if s.owner != Owner::None || sheet_open(s) || s.open_page().is_none_or(|p| p.readonly) {return;}
+    let (Some(ip),Some(hi)) = (s.page_ix(),s.cur_hist()) else {return;};
+    let p = s.hist[ip].page.as_deref().unwrap();
+    let valid = p.strokes.last().is_some_and(|raw| {
+        !stroke_is_erase(raw)
+            && s.hist[hi].h.undo.last().is_some_and(|step| step.kind == ActKind::Add && step.ids.last() == Some(&stroke_id(raw)))
+    });
+    if !valid {
+        app_toast(a, tr("No shape in the last stroke."), 3000);
+        return;
+    }
+    let raw = p.strokes.last().unwrap();
+    let prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
+    let started = now_ms();
+    let result = shape_recognize(&raw.pts,&prm);
+    shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);
+    let Some(shape) = shape_stroke(raw,&result,dpi) else {app_toast(a,tr("No shape in the last stroke."),3000); return;};
+    let index = p.strokes.len() as i32 - 1;
+    let (history,page) = hist_page(&mut s.hist,hi,ip);
+    let dirty = history_push_replace(history,page,index,shape);
+    if rect_is_empty(dirty) {return;}
+    s.sh.last_kind = result.kind; mark_changed(s);
+    draw_page(a,dirty); show(a,dirty,RefreshMode::Ui); repaint_panel(a,RefreshMode::Ui); live_reset();
 }
 
 // ---- the Links bar ----
@@ -5587,15 +5908,16 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
                 areas_toggle(a, button);
             }
         }
+        LbResult::Around => {
+            bar_drop(ed(a));
+            map_show(a, true);
+        }
         LbResult::Index => {
-            // The Index acts on the page that shows: commit to it, then the Pages view's Index tab.
             if ed_ref(a).peek.active {
                 bar_commit(a);
             }
             bar_drop(ed(a));
-            pages_show(a);
-            ed(a).pv.index_tab = true;
-            compose_all(a, RefreshMode::Full);
+            map_show(a, false);
         }
         LbResult::Pager => {
             let g = ed(a).lb.grid;
@@ -5675,6 +5997,7 @@ fn panel_act(a: &mut App, h: Hit) {
             app_invalidate(a, r, RefreshMode::Ui);
         }
         P_CLEAR => clear_page(a),
+        P_SHAPES => editor_shapes_toggle(a),
         P_PAGES => pages_show(a),
         // The panel's button for the bar opens it, as the action does (its own button again closes it).
         P_LINKS => {
@@ -5713,6 +6036,9 @@ fn panel_act(a: &mut App, h: Hit) {
 // sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
 // tab); 0 with none.
 fn front_menu(s: &EditorState) -> i32 {
+    if s.map.open {
+        return SHORTCUT_INDEX_MAP;
+    }
     if s.find.open {
         return SHORTCUT_GO_TO_PAGE;
     }
@@ -5736,7 +6062,8 @@ fn front_menu(s: &EditorState) -> i32 {
 
 // A menu's button (Pen feel and the Library leave the editor for their screens), or Close menu.
 fn menu_action(action: i32) -> bool {
-    action == SHORTCUT_GO_TO_PAGE
+    action == SHORTCUT_INDEX_MAP
+        || action == SHORTCUT_GO_TO_PAGE
         || action == SHORTCUT_LINKS
         || action == SHORTCUT_PAGES
         || action == SHORTCUT_INDEX
@@ -5751,6 +6078,10 @@ fn menu_action(action: i32) -> bool {
 // The menu in front closes, as its Back or a tap outside it closes it (a link being placed is taken
 // back); with draw false the screen is about to be drawn whole anyway.
 fn close_front(a: &mut App, draw: bool) {
+    if ed_ref(a).map.open {
+        map_hide(a, draw);
+        return;
+    }
     let s = ed(a);
     if s.find.open {
         if draw {
@@ -5802,6 +6133,7 @@ fn close_front(a: &mut App, draw: bool) {
 // A menu's button with nothing in front: its menu opens, as the panel's button for it opens it.
 fn open_menu(a: &mut App, action: i32) {
     match action {
+        SHORTCUT_INDEX_MAP => map_show(a, false),
         SHORTCUT_GO_TO_PAGE => find_show(a),
         SHORTCUT_LINKS => bar_open(a),
         SHORTCUT_PAGES | SHORTCUT_INDEX => {
@@ -5869,6 +6201,20 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     }
     if s.owner != Owner::None || s.pinching {
         return false;
+    }
+    if s.map.open {
+        if s.map_kb.open {
+            if action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK {
+                keyboard_close(&mut s.map_kb);
+                compose_all(a, RefreshMode::Ui);
+                return true;
+            }
+            return false;
+        }
+        if action == SHORTCUT_GO_BACK {
+            map_hide(a, true);
+            return true;
+        }
     }
     // The long-press card (8.11): with Rename's keyboard up nothing is done; Close menu and Back close the card
     // (back to the bar under it, if any); another menu's button closes it and goes on (with the bar under it,
@@ -5972,6 +6318,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     }
     if sheet_open(s) {
         return false;
+    }
+    match action {
+        SHORTCUT_SHAPES=>{editor_shapes_toggle(a);return true;},
+        SHORTCUT_SHAPE_HOLD=>{editor_shape_hold_cycle(a);return true;},
+        SHORTCUT_SHAPE_LAST=>{editor_shape_last(a);return true;},_=>{}
     }
     if (SHORTCUT_INVERT..=SHORTCUT_UPDATE_CHANNEL).contains(&action) {
         return app_global_action(a, action, src);
@@ -6358,6 +6709,10 @@ pub fn editor_free(a: &mut App) {
 // by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
 // closes with its notebook, and stays open through those too.)
 fn close_sheets(s: &mut EditorState) {
+    if s.map.open {
+        mapview_close(&mut s.map);
+    }
+    keyboard_close(&mut s.map_kb);
     card_drop(s);
     bar_drop(s);
     find_drop(s);
@@ -6367,6 +6722,19 @@ fn close_sheets(s: &mut EditorState) {
     s.tools_open = false;
     s.pin_mode = false;
     tplsheet_close(&mut s.ts);
+}
+
+// On a landscape full-page view the margins are useful space for the panel. Keep the writer's
+// chosen side, and move only horizontally; custom page sizes with no room retain the old placement.
+fn landscape_panel_slot(a: &App, left: bool) -> Option<i32> {
+    if !a.settings.landscape_fit || a.w <= a.h {return None;}
+    let s=ed_ref(a);
+    let width=if s.collapsed {box_()}else{pw()};
+    let gap=ui_px(24.0);
+    let page_left=(-s.ox*s.zoom).floor() as i32;
+    let page_right=((s.pgw as f32-s.ox)*s.zoom).ceil() as i32;
+    let x=if left {page_left-gap-width}else{page_right+gap};
+    (x>=0 && x+width<=a.w).then_some(x)
 }
 
 pub fn editor_enter(a: &mut App) {
@@ -6379,6 +6747,9 @@ pub fn editor_enter(a: &mut App) {
         render_page_full(a);
     }
     let s = ed_ref(a);
+    let panel_left = if s.view_w > 0 && s.panel.w > 0 {
+        s.panel.x + s.panel.w/2 < s.view_w/2
+    } else {a.settings.panel_x >= 0 && a.settings.panel_x < a.w/2};
     let turned = s.view_w != a.w || s.view_h != a.h;
     if turned {
         view_reset(a); // new notebook or turned
@@ -6396,6 +6767,9 @@ pub fn editor_enter(a: &mut App) {
     if x < 0 || y < 0 {
         x = a.w - (if ed(a).collapsed { box_() } else { pw() }) - ui_px(28.0);
         y = ui_px(220.0);
+    }
+    if turned {
+        if let Some(beside_page)=landscape_panel_slot(a,panel_left) {x=beside_page;}
     }
     let p = panel_rect_at(a, x, y);
     let s = ed(a);
@@ -6692,7 +7066,15 @@ pub fn editor_page_in_front(a: &App) -> bool {
 
 /// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
 fn corner_sheet_open(s: &EditorState) -> bool {
-    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || (s.find.open && s.find.mode != FindMode::Pick)
+    s.map.open
+        || s.pv.open
+        || s.tools_open
+        || s.mb.open
+        || s.dm.open
+        || s.paper_open
+        || s.ts.open
+        || s.lb.open
+        || (s.find.open && s.find.mode != FindMode::Pick)
 }
 
 /// Whether a keyboard the card, New page... or Find PICK opened lies over the clock corner's square (one docked at the
@@ -7295,8 +7677,33 @@ fn pen_toast(a: &mut App, t_ms: u32) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
-    if status_reserved(a) > 0 && ev.y < status_reserved(a) as f32 && a.ed.as_deref().is_some_and(|s| s.open && !sheet_open(s))
-        && app_pointer_phase(ev) == 0 && !editor_busy(a) { return; }
+    if ed_ref(a).map.open {
+        if matches!(ev.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd) {
+            ed(a).owner = Owner::None;
+            ed(a).pinching = ev.type_ != InType::PinchEnd;
+            if !ed_ref(a).map_kb.open {
+                with_map(a, |map, a, _, _| mapview_pinch(map, a, ev));
+            }
+            return;
+        }
+        let phase = app_pointer_phase(ev);
+        if phase >= 0 {
+            if phase == 0 {
+                ed(a).owner = Owner::Map;
+            }
+            map_pointer(a, phase, ev);
+            return;
+        }
+    }
+
+    if status_reserved(a) > 0
+        && ev.y < status_reserved(a) as f32
+        && a.ed.as_deref().is_some_and(|s| s.open && !sheet_open(s))
+        && app_pointer_phase(ev) == 0
+        && !editor_busy(a)
+    {
+        return;
+    }
     let s = ed(a);
     if !s.open {
         return;
@@ -7565,6 +7972,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
         }
         Owner::Strip => strip_pointer(a, ph, ev),
+        Owner::Map => map_pointer(a, ph, ev),
         Owner::Card => {
             if ed_ref(a).card.kb.open {
                 card_kb_pointer(a, ph, ev);
@@ -7897,6 +8305,26 @@ fn migrate_step(a: &mut App) {
 }
 
 pub fn editor_tick(a: &mut App, now: u32) {
+    if ed_ref(a).map.open {
+        if ed_ref(a).map_kb.open {
+            let mut kb = std::mem::take(&mut ed(a).map_kb);
+            app_keyboard_tick(a, &mut kb, now);
+            ed(a).map_kb = kb;
+        } else {
+            with_map(a, |map, a, _, _| mapview_tick(map, a, now));
+            if ed_ref(a).map.needs_redraw {
+                compose_all(a, RefreshMode::Ui);
+            }
+        }
+    }
+    shape_hold_tick(a, now);
+    if ed_ref(a).sh.tip_pending && !ed_ref(a).pen_near && rect_is_empty(ed_ref(a).settle) {
+        ed(a).sh.tip_pending = false;
+        if a.settings.hints & (1 << 5) == 0 {
+            a.settings.hints |= 1 << 5; settings_save(&a.settings);
+            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes button turns this off."),4000);
+        }
+    }
     if ed_ref(a).open && a.input_drained {
         let state = fs_tick(&mut ed(a).fs, now);
         if state == FsState::Dead {
@@ -8205,6 +8633,16 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         } else {
             csnprintf!(out, cap, "%s", "");
         }
+    } else if key == "map" || key.starts_with("map.") {
+        let map_key = key.strip_prefix("map.").unwrap_or("");
+        if !mapview_probe(&s.map, map_key, out) {
+            return -1;
+        }
+    } else if key == "shape_preview" {
+        csnprintf!(out, cap, "%d", s.sh.preview.is_some() as i32);
+    } else if key == "stroke_shape" {
+        let kind = format!("{:?}", s.sh.last_kind).to_lowercase();
+        csnprintf!(out, cap, "%s", kind.as_str());
     } else if key == "undo_kind" || key == "redo_kind" {
         // The kind of step an undo (a redo) of the open page would apply, empty for none.
         let e = if has_page { s.page.and_then(|pid| s.hist.iter().position(|e| e.page_id == pid)) } else { None };
@@ -8262,7 +8700,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%s", &v);
     } else if key == "kb_dock" {
         // Where the keyboard in front is docked (Find, Rename, New page...): top or bottom; empty for none.
-        let kb = if s.find.open {
+        let kb = if s.map_kb.open {
+            Some(&s.map_kb)
+        } else if s.find.open {
             Some(&s.find.kb)
         } else if s.card.kb.open {
             Some(&s.card.kb)
@@ -8347,6 +8787,8 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         if !findsheet_probe(&s.find, k, out, cap) {
             return -1;
         }
+    } else if (key == "keyboard" || key == "text") && s.map_kb.open {
+        csnprintf!(out, cap, "%s", if key == "keyboard" { s.map_kb.title.as_str() } else { s.map_kb.text.as_str() });
     } else if (key == "keyboard" || key == "text") && s.find.open {
         // Its keyboard's title and what the field holds (the Pages view's, otherwise).
         csnprintf!(out, cap, "%s", if key == "keyboard" { s.find.kb.title.as_str() } else { s.find.kb.text.as_str() });
@@ -8396,7 +8838,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if s.find.open {
+        let m = if s.map.open {
+            "map"
+        } else if s.find.open {
             "find"
         } else if s.card.open {
             "card"
@@ -9018,8 +9462,7 @@ mod tests {
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY,
-            ]);
+            want.extend([P_TOOL, P_SHAPES, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
@@ -9114,6 +9557,7 @@ mod tests {
             (P_UNDO, "undo"),
             (P_REDO, "redo"),
             (P_CLEAR, "clear"),
+            (P_SHAPES, "shapes"),
             (P_PREV, "previous"),
             (P_PAGES, "pages"),
             (P_NEXT, "next"),
@@ -9127,6 +9571,42 @@ mod tests {
         }
         // a sheet's hit is no panel button
         assert_eq!(panel_name(&h(P_PICK_PAPER, 0)), "");
+    }
+
+    #[test]
+    fn landscape_panel_uses_the_blank_margin_on_either_side_only_with_full_page_on() {
+        for collapsed in [false,true] {for bar in [0,1] {
+            let mut a=app(2480,1860,1860,2480);
+            a.settings.status_mode=bar;a.settings.landscape_fit=true;
+            ed(&mut a).collapsed=collapsed;ed(&mut a).open=true;
+            view_reset(&mut a);
+            let width=if collapsed{box_()}else{pw()};
+            let left=landscape_panel_slot(&a,true).unwrap();let right=landscape_panel_slot(&a,false).unwrap();
+            let s=ed_ref(&a);
+            let page_left=(-s.ox*s.zoom).floor()as i32;
+            let page_right=((s.pgw as f32-s.ox)*s.zoom).ceil()as i32;
+            assert_eq!(page_left-left-width,ui_px(24.0));
+            assert_eq!(right-page_right,ui_px(24.0));
+            assert!(left>=0 && right+width<=a.w);
+            a.settings.landscape_fit=false;
+            assert_eq!(landscape_panel_slot(&a,true),None);
+            assert_eq!(landscape_panel_slot(&a,false),None);
+            a.w=1860;a.h=2480;a.settings.landscape_fit=true;
+            assert_eq!(landscape_panel_slot(&a,true),None);
+        }}
+    }
+
+    #[test]
+    fn shape_hold_uses_screen_mm_hysteresis_and_burst_time() {
+        let mm = mm_to_px(1.0,300.0);
+        assert!(!shape_anchor_moved((0.0,0.0),(0.9*mm,0.0),300.0,false));
+        assert!(shape_anchor_moved((0.0,0.0),(1.1*mm,0.0),300.0,false));
+        assert!(!shape_anchor_moved((0.0,0.0),(1.4*mm,0.0),300.0,true));
+        assert!(shape_anchor_moved((0.0,0.0),(1.6*mm,0.0),300.0,true));
+        assert_eq!(shape_dwell_ms(550,false),550);
+        assert_eq!(shape_dwell_ms(550,true),825);
+        assert_eq!(shape_hold_nearest(720),550);
+        assert_eq!(shape_hold_nearest(800),900);
     }
 
     #[test]
@@ -9298,4 +9778,8 @@ mod tests {
         assert!(!lasso_too_small(Rect { x: 0, y: 0, w: 3, h: min }, 300.0));
         assert!(lasso_too_small(Rect { x: 0, y: 0, w: min, h: min }, 600.0));
     }
+}
+
+pub fn editor_map_point(a: &App, pid: u32) -> Option<(f32, f32)> {
+    a.ed.as_deref().and_then(|s| mapview_node_point(&s.map, pid))
 }

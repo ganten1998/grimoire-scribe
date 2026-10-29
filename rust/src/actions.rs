@@ -26,6 +26,10 @@ pub const SHORTCUT_BLUETOOTH_CONTROLLER: i32 = 74;
 pub const SHORTCUT_LANGUAGE: i32 = 75;
 pub const SHORTCUT_SLEEP_AFTER: i32 = 76;
 pub const SHORTCUT_UPDATE_CHANNEL: i32 = 77;
+pub const SHORTCUT_SHAPES:i32=78;
+pub const SHORTCUT_SHAPE_HOLD:i32=79;
+pub const SHORTCUT_SHAPE_LAST:i32=80;
+pub const SHORTCUT_INDEX_MAP:i32=81;
 
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
@@ -151,7 +155,7 @@ const fn lr(label: Option<&'static str>, act: [i32; 2], icon: IconKind) -> Learn
     LearnRow { label, act, icon }
 }
 
-static K_EDITING: [LearnRow; 7] = [
+static K_EDITING: [LearnRow; 10] = [
     lr(None, [SHORTCUT_UNDO, 0], IconKind::Undo),
     lr(None, [SHORTCUT_REDO, 0], IconKind::Redo),
     lr(
@@ -163,6 +167,9 @@ static K_EDITING: [LearnRow; 7] = [
     lr(None, [SHORTCUT_ERASER_MODE, 0], IconKind::None),
     lr(None, [SHORTCUT_WHITE, 0], IconKind::None),
     lr(None, [SHORTCUT_CLEAR_PAGE, 0], IconKind::Broom),
+    lr(None,[SHORTCUT_SHAPES,0],IconKind::Grid),
+    lr(None,[SHORTCUT_SHAPE_HOLD,0],IconKind::Clock),
+    lr(None,[SHORTCUT_SHAPE_LAST,0],IconKind::Grid),
 ];
 
 // TRANSLATORS: (Buttons sheet) the previous and next tool's buttons, in that order (as the other
@@ -255,8 +262,9 @@ static K_PAGES: [LearnRow; 9] = [
     lr(None, [SHORTCUT_GESTURE_NEW_PAGE, 0], IconKind::Plus),
 ];
 
-static K_INDEX: [LearnRow; 7] = [
+static K_INDEX: [LearnRow; 8] = [
     lr(None, [SHORTCUT_LINKS, 0], IconKind::Link),
+    lr(None,[SHORTCUT_INDEX_MAP,0],IconKind::Grid),
     lr(None, [SHORTCUT_INDEX, 0], IconKind::None),
     lr(None, [SHORTCUT_GO_TO_PAGE, 0], IconKind::Search),
     lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
@@ -374,7 +382,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 58] = [
+pub static K_ACTIONS: [(&str, i32); 62] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -433,6 +441,8 @@ pub static K_ACTIONS: [(&str, i32); 58] = [
     ("language", SHORTCUT_LANGUAGE),
     ("sleep-after", SHORTCUT_SLEEP_AFTER),
     ("update-channel", SHORTCUT_UPDATE_CHANNEL),
+    ("shapes",SHORTCUT_SHAPES),("shape-hold",SHORTCUT_SHAPE_HOLD),
+    ("shape-last",SHORTCUT_SHAPE_LAST),("index-map",SHORTCUT_INDEX_MAP),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -448,7 +458,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 68] = [
+static ACTIONS: [ActionInfo; 72] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -1054,6 +1064,10 @@ static ACTIONS: [ActionInfo; 68] = [
         IconKind::Update,
         ActionKind::Cycle,
     ),
+    nm(SHORTCUT_SHAPES,"shapes",n_("Smart shapes"),GROUP_EDITING,IconKind::Grid,ActionKind::Toggle),
+    nm(SHORTCUT_SHAPE_HOLD,"shape-hold",n_("Shape hold time"),GROUP_EDITING,IconKind::Clock,ActionKind::Cycle),
+    nm(SHORTCUT_SHAPE_LAST,"shape-last",n_("Shape the last stroke"),GROUP_EDITING,IconKind::Grid,ActionKind::OneShot),
+    nm(SHORTCUT_INDEX_MAP,"index-map",n_("Index map"),GROUP_INDEX,IconKind::Grid,ActionKind::Menu),
 ];
 
 pub fn action_info(id: i32) -> Option<&'static ActionInfo> {

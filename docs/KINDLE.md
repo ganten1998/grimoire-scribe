@@ -757,3 +757,30 @@ a complete PNG with a temporary file and rename. It never shows the sleep UI. Er
 the main handover. Display's fourth sleep choice loads this bounded image once per Grimoire run;
 missing/unsupported image modes use the page instead. Random folders select once per handover.
 The last snapshot can be used on a subsequent Library start. Native PIN always takes priority.
+
+## Smart shapes
+
+Hold the pen still at the end of a drawn shape to preview a straightened line, circle, ellipse or polygon.
+Move the nib on to keep the freehand drawing instead. Lift to keep the preview as one stroke; Undo removes it.
+The Shapes button below the eraser turns this off. The tool picker also offers Smart shapes and a Quick,
+Normal or Slow hold time. Ordinary writing, white ink and erasing keep their existing behavior.
+
+An empty `grimoire/shape-log` file enables recognition diagnostics at startup. The log records measurements,
+recognition reasons, timing, and whether a preview was kept or cancelled, without stroke coordinates.
+
+When rotating into landscape with **Sideways, show the whole page** enabled, the toolbar uses the blank
+margin just outside the page, with a 24 px gap at 300 dpi. A toolbar on the left stays on the left;
+a toolbar on the right stays on the right. Its saved portrait position is retained. When the setting
+is off, rotation keeps the previous toolbar placement behavior.
+
+The Links bar's Index button opens the Index map. Tap a dot to see its page card, and tap it again
+to open the page. The List switch returns to named pages; Graph on that list reopens the map.
+Drag to pan, pinch to zoom, and choose Around for nearby links. Rename on a page card edits its Index
+name. A Links-bar incoming-pages chip opens Around for the current page.
+
+Folders may contain subfolders. Open a folder and use Folder to create one inside it; Back goes up
+one level. Renaming a folder also renames its descendants. Move to folder lists full destinations,
+with More folders when needed. Folder ZIP exports include descendants and keep their hierarchy.
+PDF mirrors retain their existing filename convention (a slash in a logical folder becomes an
+underscore). Links between pages of one notebook can be made with New link and Choose from the pages.
+The selection stroke disappears; a visible border is ordinary ink drawn separately.

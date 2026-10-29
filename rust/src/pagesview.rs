@@ -27,6 +27,7 @@ const PG_COPY: i32 = 10;
 const PG_TAB: i32 = 11;
 const PG_NAME: i32 = 12;
 const PG_LINK: i32 = 13;
+const PG_GRAPH: i32 = 16;
 // (14 and 15 were the picking header's The Index and Remove link, retired with the Pages view's hold path:
 // a link held on opens the long-press card over the page instead)
 
@@ -58,6 +59,7 @@ pub enum PvResult {
     /// Go to page...: the view closes and the Find sheet opens over the page (Rust only: the C's number pad
     /// stays behind jump_pad, for the test that holds the view to the C build)
     GoTo = 11,
+    Graph = 12,
 }
 
 /// (The C keeps pointers to the editor's notebook and Nav, nb and nav; here the editor passes them
@@ -309,6 +311,22 @@ fn draw_index(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, tota
     }
     let mut indices = [0i32; STORE_MAX_PAGES];
     nav_index(nav, nb, &mut indices);
+    // One traversal of the links, outside the visible-row loop. Page IDs need not be in notebook order.
+    let mut incoming = [0i32; STORE_MAX_PAGES];
+    let mut ids = Vec::new();
+    if ids.try_reserve_exact(nb.page_ids.len()).is_ok() {
+        ids.extend(nb.page_ids.iter().enumerate().map(|(i, &pid)| (pid, i)));
+        ids.sort_unstable_by_key(|p| p.0);
+        for l in &nav.links {
+            if let Some(pid) = l.target.as_str().strip_prefix('p').and_then(|t| t.parse::<u32>().ok()) {
+                if ids.binary_search_by_key(&l.pid, |p| p.0).is_ok() {
+                    if let Ok(at) = ids.binary_search_by_key(&pid, |p| p.0) {
+                        incoming[ids[at].1] += 1;
+                    }
+                }
+            }
+        }
+    }
     let per = index_rows(a);
     let section = nav_section_of(nav, nb, v.current);
     let mut row = 0;
@@ -325,8 +343,18 @@ fn draw_index(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, tota
             c,
             if i == section { FontFace::Bold } else { FontFace::Regular },
             ui_text_size(),
-            Rect { x: r.x + ui_px(30.0), y: r.y, w: r.w - ui_px(250.0), h: r.h },
+            Rect { x: r.x + ui_px(30.0), y: r.y, w: r.w - ui_px(720.0), h: r.h },
             title,
+            0,
+        );
+        let count = incoming[i as usize];
+        let text = cformat!(ng_("%d link here", "%d links here", count as i64), count);
+        font_draw_left(
+            c,
+            FontFace::Regular,
+            ui_small_size(),
+            Rect { x: r.x + r.w - ui_px(670.0), y: r.y, w: ui_px(440.0), h: r.h },
+            &text,
             0,
         );
         let mut number = String::new();
@@ -368,7 +396,10 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     if v.picking {
         // Nothing beside the tabs while picking: Link to..., under the view, has The Index as a chip.
     } else if v.index_tab {
-        let name = Rect { x: rall.x, y: by, w: rdel.x + rdel.w - rall.x, h: bh };
+        let name = Rect { x: rall.x, y: by, w: ui_px(420.0), h: bh };
+        let graph = Rect { x: rdel.x + rdel.w - ui_px(300.0), y: by, w: ui_px(300.0), h: bh };
+        ui_button(c, graph, IconKind::Bubbles, tr("Graph"), ButtonStyle::Plain);
+        hits_add(&mut v.hits, graph, PG_GRAPH, 0);
         // TRANSLATORS: Index tab header button (about 740 px wide, 44 px text).
         ui_button(
             c,
@@ -657,6 +688,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             }
             redraw(v, a, nb, nav, RefreshMode::Full);
         }
+        PG_GRAPH => return PvResult::Graph,
         PG_NAME => {
             open_naming(v, nb, nav);
             redraw(v, a, nb, nav, RefreshMode::Ui);

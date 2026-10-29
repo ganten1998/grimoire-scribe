@@ -1844,6 +1844,14 @@ pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
 pub fn graph_layout_job(g: &mut GraphModel, ini: &mut GraphIni, path: &str) -> i32 {
     if !graph_layout(g, &mut || {}) { return -1; }
     graph_ini_store(ini, g);
+    // View choices may have changed while the child was laying out. Keep the latest metadata;
+    // only the positions and generation belong to this job.
+    let mut latest = GraphIni::default();
+    if graph_ini_read_path(path, &mut latest) != 0 {return -1;}
+    if latest.file {
+        ini.mode=latest.mode;ini.show_unlinked=latest.show_unlinked;
+        ini.pins=latest.pins;ini.unknown=latest.unknown;
+    }
     graph_ini_write_path(path, ini)
 }
 

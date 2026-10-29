@@ -106,6 +106,7 @@ pub mod input; // input.h: the same
 pub mod light; // light.h: the same
 pub mod light_kindle;
 pub mod mainloop; // main.c
+pub mod mapview;
 
 #[cfg(feature = "kindle")]
 pub mod display_fbink;
@@ -161,6 +162,7 @@ pub mod prelude {
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;
+    pub use crate::mapview::*;
     pub use crate::page::*;
     pub use crate::pagesview::*;
     pub use crate::pair::*;

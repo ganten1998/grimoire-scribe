@@ -30,6 +30,7 @@ pub use crate::share::ShareState;
 /// (PORTING.md, The App).
 #[derive(Default)]
 pub struct App {
+    pub shape_log: bool,
     pub w: i32,
     pub h: i32,
     pub dpi: f32,
@@ -560,6 +561,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     app_gestures_load(a);
     // The owner's touch trace (docs/KINDLE.md): an empty <root>/touch-trace asks for
     // <root>/touch-trace.txt, written while Grimoire has the panel (only the Kindle writes one).
+    a.shape_log = std::path::Path::new(&cformat!("%s/shape-log", &store_root())).is_file();
     let switch = cformat!("%s/touch-trace", &store_root());
     if std::fs::metadata(&switch).is_ok() {
         input_touch_trace(Some(&cformat!("%s/touch-trace.txt", &store_root())));
@@ -1482,6 +1484,10 @@ fn powerd_state_now(name: &mut String, cap: usize) -> PowerdState {
 fn poll_jobs(a: &mut App) -> i32 {
     let mut done = -1;
     let r = bg_poll_kind(Some(&mut done));
+    if done == BgKind::GraphLayout as i32 {
+        crate::editor::editor_map_done(a, r > 0);
+        return 0;
+    }
     if done == BgKind::Template as i32 {
         bgimage_retry_missing();
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
@@ -1925,7 +1931,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 29] = [
+    let nums: [(&str, i32); 31] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -1942,6 +1948,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.updates", st.updates),
         ("settings.status_on", st.status_on as i32),
         ("settings.status_mode", st.status_mode),
+        ("settings.shapes", st.shapes as i32),
+        ("settings.shape_hold_ms", st.shape_hold_ms),
         ("settings.status_size", st.status_size),
         ("settings.status_corner", st.status_corner),
         ("settings.rotation_lock", st.rotation_lock),

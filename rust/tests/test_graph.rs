@@ -1033,6 +1033,13 @@ fn layout_job_writes_atomically() {
     check!(back.gen == graph_gen(&g) && back.mode == GraphMode::Around && back.unknown == b"carried=yes\n".to_vec());
     let kept = g.force.iter().filter(|&&v| graph_persisted(&g.nodes[v as usize])).count();
     check!(back.pos.len() == kept && back == ini);
+    // The view changes its choices after this job loaded its metadata: positions may change,
+    // but finishing the job must keep those newer choices and carried lines.
+    back.mode = GraphMode::All; back.show_unlinked = false; back.unknown = b"newer=kept\n".to_vec();
+    check!(graph_ini_write_path(&path,&mut back)==0);
+    check!(graph_layout_job(&mut g,&mut ini,&path)==0);
+    check!(ini.mode==GraphMode::All && !ini.show_unlinked && ini.unknown==b"newer=kept\n");
+
     // the parent, reading it, finds the layout ready, and lays nothing out
     let mut view = built(&b, 0);
     check!(graph_apply_ini(&mut view, &back) == GraphPlan::Ready);
