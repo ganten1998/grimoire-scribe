@@ -232,7 +232,7 @@ fn links_follow_their_boxes() {
     // Where they go.
     let mut order = nb.clone();
     order.page_ids = vec![9, 7, 3];
-    let link = |target: &str| NavLink { pid: 7, seed: 1, target: FixedStr::from_str(target) };
+    let link = |target: &str| NavLink { pid: 7, seed: 1, target: FixedStr::from_str(target), ..Default::default() };
     let (to9, toindex, gone, future) = (link("p9"), link("index"), link("p44"), link("s2"));
     check!(nav_link_page(&to9, &order) == 0 && nav_link_page(&toindex, &order) == NAV_TO_INDEX);
     check!(nav_link_page(&gone, &order) == -1 && nav_link_page(&future, &order) == -1);

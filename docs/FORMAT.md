@@ -753,9 +753,20 @@ page that is no longer in the notebook, and a link to such a page, is left out o
 the file; a target this version does not know (any other run of 1 to 15 bytes from `!` to `~`) is
 kept and does nothing.
 
+From 2.0.0-beta.6 a link may also have an area, an `area.<page id>=<seed>,<x>,<y>,<w>,<h>` line
+written right after its `link.` line: an axis-aligned rectangle in page pixels at the notebook's page
+size, the same coordinates as the page's strokes. The page id and seed are as in a `link.` line; x,
+y, w and h are 1 to 4 decimal digits each with nothing else, 1 <= w, 1 <= h and x + w, y + h <= 6000.
+The last area line for a page id and seed wins, wherever it is in the file. An area line that does
+not parse is carried as an unknown line (its link has no area); one whose page id and seed have no
+link is left out of the next save. More than 4000 area lines make the file not read, as more than
+4000 links do. A file whose links have no area is byte for byte what 2.0.0-beta.5 writes; beta.5
+carries the area lines it does not read as unknown lines, within their limits below.
+
 Unknown lines are carried in order, up to 255 bytes each and 16 KiB together, as `nav.ini`'s are,
 and a file that does not read (the same rules) disables adding and changing links and is never
-overwritten; the section names go on working. There are at most 64 links on a page (a file may hold
+overwritten; the section names go on working. The file is read and written up to 512 KiB (from
+2.0.0-beta.6; 256 KiB before). There are at most 64 links on a page (a file may hold
 more for a page: they are kept) and 4000 in a notebook (a file with more does not read).
 
 Links are kept apart from `nav.ini` for the versions before: 1.2.0 to 2.0.0-beta.4 refuse a
