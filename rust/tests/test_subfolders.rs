@@ -45,5 +45,20 @@ fn nested_destinations_keep_notebooks_and_empty_folders_reachable() {
     assert_eq!(store_list_folders(&mut folders), 0);
     assert!(folders.iter().any(|f| f == "College/Physics/Empty"));
     assert!(!folders.iter().any(|f| store_folder_contains("School", f)));
+    // Folder ZIPs keep descendants and do not include a similarly named sibling.
+    let mut outside=NotebookInfo::default();assert_eq!(store_create("Outside","Collegework",PAPER_BLANK,&mut outside),0);
+    ui_init(300.0);assert_eq!(font_init(),0);
+    let mut archive=Buf::default();assert_eq!(export_folder_zip("College",25.0,&mut archive),0);
+    let data=&archive.data;let end=data.len()-22;assert_eq!(&data[end..end+4],b"PK\x05\x06");
+    let u16_at=|at:usize|u16::from_le_bytes(data[at..at+2].try_into().unwrap()) as usize;
+    let mut at=u32::from_le_bytes(data[end+16..end+20].try_into().unwrap()) as usize;
+    let mut entries=Vec::new();
+    while at<end {
+        assert_eq!(&data[at..at+4],b"PK\x01\x02");let n=u16_at(at+28);
+        entries.push(std::str::from_utf8(&data[at+46..at+46+n]).unwrap());
+        at+=46+n+u16_at(at+30)+u16_at(at+32);
+    }
+    assert!(entries.iter().any(|n|n.starts_with("Physics/Notes/")),"{entries:?}");
+    assert!(!entries.iter().any(|n|n.contains("Outside")||n.contains("Collegework")));
     std::fs::remove_dir_all(root).unwrap();
 }
