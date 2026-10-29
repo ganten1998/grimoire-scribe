@@ -50,6 +50,9 @@ pen line 300 900 1300 920 20 0.6 0.6
 expect editor.strokes is 1
 pentap panel clear
 expect editor.strokes is 0
+# no card, Link to... or strip up: nothing there by that name
+expect editor.ui_at.900.900 is
+expect editor.link_card is 0
 # a name that is not a button
 pentap panel pen-feel
 wait 300

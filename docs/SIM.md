@@ -260,7 +260,7 @@ shows what the app holds.
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
-| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `card` (the long-press card, or Rename's keyboard over it), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above), empty for none, after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
@@ -278,16 +278,20 @@ shows what the app holds.
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
 | `editor.link_mode` | `1` while the link-making strip is up (after Add a link: armed, or drawing the lasso), else `0` |
-| `editor.strip` | `new` while the strip is up for a new link (armed or drawing the lasso), else `0` |
+| `editor.strip` | `new` while the strip is up for a new link (armed or drawing the lasso), `redraw` while it is up for the card's Redraw the area, else `0` |
 | `editor.lasso` | how many points the lasso being drawn holds (at most 4096), `0` otherwise |
 | `editor.link_area` | the area a new link waits to be given a target for (from the lasso's lift to the pick), `x y w h` in page px; empty otherwise |
 | `editor.undo_kind`, `editor.redo_kind` | the kind of step an undo (a redo) of the open page would apply: `add`, `erase`, `paper`, `clear` or `link`; empty for none |
-| `editor.ui_at.X.Y` | the name of what link making shows at screen point (X, Y): `strip.cancel`, or on Link to... `linkto.chip.N` (N from 1 across its screens), `linkto.search`, `linkto.pages`, `linkto.cancel`, `linkto.prev`, `linkto.next`; empty for none. The way to check a raw tap on it, as `editor.panel_at` does for the panel |
+| `editor.ui_at.X.Y` | the name of what the long-press card or link making shows at screen point (X, Y): on the card `card.rename`, `card.retarget`, `card.redraw`, `card.delete` (a disabled row has none); `strip.cancel`, or on Link to... `linkto.chip.N` (N from 1 across its screens), `linkto.search`, `linkto.pages`, `linkto.cancel`, `linkto.prev`, `linkto.next`; empty for none. The way to check a raw tap on it, as `editor.panel_at` does for the panel |
 | `editor.linkto` | `pick` while Link to... is open (up, or hidden under New page...'s keyboard or the Pages view it opened), else `0` |
 | `editor.linkto.rect`, `editor.linkto.dock` | its card, `x y w h`, and `top` or `bottom`; both empty while it is closed |
 | `editor.linkto.chips`, `editor.linkto.N`, `editor.linkto.screen` | how many chips it has on all its screens; chip N from 1: `new`, `index`, `recent p<page>`, `p<page>` (an Index entry), then ` current` on a marked target, empty past the last; its pager's screen, `S/T` |
 | `editor.recent` | the targets links were made to this session (Link to...'s Recent targets come from them, then from the back list), as page numbers newest first (`3 2`); empty for none |
-| `editor.kb_dock` | where the keyboard in front is docked (Find, New page...): `top` or `bottom`; empty with none |
+| `editor.link_card` | `1` while the long-press card is up, else `0` |
+| `editor.link_card.rows` | its rows in order, space separated (`rename retarget redraw delete`), a disabled one with a leading `-`; `readonly` for a read-only page's card; empty while it is closed |
+| `editor.link_card.title`, `editor.link_card.rect`, `editor.link_card.links` | its title as drawn (`Árbol`, `Page 2`, `The Index`, `Page not here`), its card `x y w h`, and how many links it acts on; empty (or `0`) while it is closed |
+| `editor.link_card.border` | how many boxes carry the card's heavy border now (it stays while Change where it goes... or Redraw the area goes on), `0` for none |
+| `editor.kb_dock` | where the keyboard in front is docked (Find, Rename, New page...): `top` or `bottom`; empty with none |
 | `editor.links` | the open page's links: how many it has, then how many of them have a box: an area, or for a link without one (beta.5's) its ink on the page (`2 1`) |
 | `editor.link.N` | where the open page's link N goes (from 1, in `links.ini`'s order): `index`, `p<page id>`, or another version's target; empty past the last |
 | `editor.link.N.area` | the open page's link N's area (links.ini's `area.` line), `x y w h` in page px; empty for a link without one (a beta.5 link not migrated yet, or a dormant one) and past the last |
@@ -417,6 +421,17 @@ them; at the top (`editor.kb_dock is top`) its keys sit 1307 px higher and the r
 keyboard (y 1169, its first row's centre 1247). New page... opens a keyboard (`Name the new page`)
 docked as Link to... is: at the top its keys sit 1307 px higher than the coordinates below (Done 1643 1058). A
 scenario checks each raw tap on the strip and Link to... with `editor.ui_at.X.Y` first.
+
+A finger held on a link (`touch down X Y`, `wait 800`, `touch up X Y`) shows its heavy border (four DU strips,
+each its own `fast` present in `display.presents`) and then the long-press card beside it (one `ui` of its rect):
+780 px wide, its rows 732 x 118 from 134 px below its top, 130 px apart (centres at top + 193, 323, 453, 583, x at
+its left + 390). It goes right of the border, else left, below, above, never over the clock's corner zone, and off
+the panel when it can. Its rows: Rename in the Index (Add page N to the Index... for an unnamed page; none for the
+Index), Change where it goes..., Redraw the area and Delete link. Rename's keyboard (`Name in the Index`) docks at
+the top when the border's centre is in the lower 45% of the screen (its keys 1307 px higher). A tap outside closes
+the card; with it up the clock is not shown, so the clock's corner is a tap outside too. Change where it goes...
+opens Link to... with two tools, Search and Cancel (centres x 480 and 1380 upright), the current target's chip
+reading ` current`.
 
 ## Languages in tests
 

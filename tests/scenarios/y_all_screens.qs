@@ -494,7 +494,7 @@ pentap panel previous
 pentap panel pages
 tap 900 300
 shot 28-index-jump
-# a link: Add a link, its box, where it goes picked (the Index), then a finger held on it
+# a link: Add a link, its box, where it goes picked (the Index), then a finger held on it (the long-press card)
 pentap panel pages
 wait 150
 tap 1410 2395
@@ -514,8 +514,8 @@ touch down 600 1100
 wait 800
 touch up 600 1100
 wait 100
-expect editor.picking is had
-shot 28-link-pick-had
+expect editor.link_card is 1
+shot 28-link-card
 tap 125 95
 wait 100
 expect editor.modal is none
@@ -805,7 +805,7 @@ tap 500 95
 tap 125 95
 wait 100
 expect editor.modal is none
-# a link, sideways: Add a link, its box, its page picked, a finger held on it
+# a link, sideways: Add a link, its box, its page picked, a finger held on it (the long-press card)
 pentap panel pages
 wait 150
 tap 1300 95
@@ -826,8 +826,8 @@ touch down 700 900
 wait 800
 touch up 700 900
 wait 100
-expect editor.picking is had
-shot 49-link-pick-had-landscape
+expect editor.link_card is 1
+shot 49-link-card-landscape
 tap 125 95
 wait 100
 expect editor.modal is none

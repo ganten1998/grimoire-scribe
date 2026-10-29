@@ -1,7 +1,8 @@
 # settings: status_mode=1
 # Links drawn on pages: Add a link in the Index, then the dashed lasso drawn around what links (a dot
 # is too small, and the strip stays), then its page picked; the lasso is never ink. A finger's tap
-# follows it, a finger held on it changes where it goes (another page, the Index) or removes it; Back
+# follows it, a finger held on it shows the long-press card, which changes where it goes (another page, the
+# Index) or deletes it; Back
 # while picking makes no link; Undo takes a link just made away and Redo brings it back; the links stay
 # through closing and opening the notebook.
 # env: GRIMOIRE_CHECK_FIT=1
@@ -61,16 +62,33 @@ expect editor.page is 3
 pentap panel previous
 pentap panel previous
 expect editor.page is 1
-# A finger held on it: the Pages view, to change where it goes
+# A finger held on it: its border and the long-press card over the page (PHASE2 8), to change where it goes
+pen leave
+wait 1100
 touch down 600 1100
 wait 800
-expect editor.picking is had
-expect toast is The link goes to page 3. Tap another to change it.
+expect editor.link_card is 1
+expect editor.link_card.title is Page 3
+expect editor.link_card.rows is rename retarget redraw delete
 touch up 600 1100
-expect editor.modal is pages
-shot 03-pick-had
-tap 703 340
+expect editor.modal is card
+expect editor.page is 1
+shot 03-card
+# Change where it goes...: Link to..., without Choose from the pages...; its Search finds page 2
+expect editor.ui_at.679.1558 is card.retarget
+tap 679 1558
+wait 100
+expect editor.linkto is pick
+expect editor.ui_at.480.2370 is linkto.search
+tap 480 2370
+wait 100
+expect editor.find is pick
+tap 310 1725
+expect editor.find.1 is Link to page 2
+tap 1643 2365
+wait 100
 expect editor.modal is none
+expect toast is Linked to page 2.
 expect editor.link.1 is p2
 expect editor.page is 1
 tap 600 1100
@@ -78,31 +96,43 @@ expect editor.page is 2
 pentap panel previous
 expect editor.page is 1
 # ... to the Index
+pen leave
+wait 1100
 touch down 600 1100
 wait 800
 touch up 600 1100
-tap 1250 95
+tap 679 1558
+wait 100
+expect editor.linkto.2 is index
+expect editor.ui_at.1381.2078 is linkto.chip.2
+tap 1381 2078
+wait 100
 expect editor.link.1 is index
-expect toast is The link goes to the Index.
+expect toast is Linked to the Index.
 tap 600 1100
 expect editor.modal is pages
 expect editor.pages_tab is index
 tap 125 95
 expect editor.modal is none
-# ... removed (the lasso left no ink: only the first stroke is on the page)
+# ... deleted (the lasso left no ink: only the first stroke is on the page)
+pen leave
+wait 1100
 touch down 600 1100
 wait 800
 touch up 600 1100
-tap 1630 95
+expect editor.link_card.rows is retarget redraw delete
+expect editor.ui_at.679.1688 is card.delete
+tap 679 1688
 expect editor.links is 0 0
 expect editor.strokes is 1
-expect toast is Link removed. Its ink stays on the page.
+expect toast is Link deleted. Undo brings it back.
 tap 600 1100
 expect editor.modal is none
 expect editor.page is 1
 # Back while picking: no link made, and no ink was ever drawn for it
 pentap panel pages
-expect editor.pages_tab is pages
+# (on the tab it was left on: the Index, from following the link there; no hold path opens it on Pages now)
+expect editor.pages_tab is index
 tap 850 95
 tap 1410 2395
 pen line 300 1400 900 1500 30 0.6 0.6

@@ -48,6 +48,9 @@ expect editor.links_dirty is 0
 expect editor.ui_at.900.900 is
 expect editor.linkto is 0
 expect editor.linkto.rect is
+expect editor.link_card is 0
+expect editor.link_card.rect is
+expect editor.link_card.border is 0
 expect editor.recent is
 expect editor.kb_dock is
 expect editor.areas is 0

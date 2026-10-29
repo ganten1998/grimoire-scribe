@@ -55,12 +55,13 @@ frame
 wait 200
 expect editor.page is 1
 pen leave
-# the long hold on a link on the page is unchanged: the Pages view, to change where it goes
+# the long hold on a link on the page: its border and the long-press card (PHASE2 8), over the page; a tap
+# outside closes it
 touch down 600 1100
 wait 800
-expect editor.picking is had
+expect editor.link_card is 1
 touch up 600 1100
-expect editor.modal is pages
+expect editor.modal is card
 tap 125 95
 wait 300
 expect editor.modal is none

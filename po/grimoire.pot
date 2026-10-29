@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 00:10-0500\n"
+"POT-Creation-Date: 2026-10-29 00:23-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -763,8 +763,12 @@ msgstr ""
 msgid "This page is a copy of page %d."
 msgstr ""
 
-#. TRANSLATORS: the strip along the bottom while a link is made (about 1400 px at 44 px in bold):
-#. the next pen stroke draws a ring around what the link is, and leaves no ink.
+#. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
+#. bold): the next pen stroke draws the link's new area, and leaves no ink.
+#: rust/src/editor.rs
+msgid "Draw the link's new area."
+msgstr ""
+
 #: rust/src/editor.rs
 msgid "Draw around what links."
 msgstr ""
@@ -836,6 +840,12 @@ msgstr ""
 msgid "Linked to the Index."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Redraw the
+#. area gave the link the area just drawn; Undo brings the old one back.
+#: rust/src/editor.rs
+msgid "New area saved. Undo brings the old one back."
+msgstr ""
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
 #. (its Cancel, or Back while picking where it goes), and no link was made.
 #: rust/src/editor.rs
@@ -889,21 +899,36 @@ msgstr ""
 msgid "That link's page is not in this notebook."
 msgstr ""
 
-#. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): a
-#. finger held on a link; it goes to page %d now, and a tap on another page changes that.
+#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
+#. 1500 px at 44 px).
+#: rust/src/editor.rs
+msgid "Name in the Index"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. gave page %d the Index name %s.
 #: rust/src/editor.rs
 #, c-format
-msgid "The link goes to page %d. Tap another to change it."
+msgid "Page %d is in the Index as %s."
 msgstr ""
 
-#. TRANSLATORS: the same toast for a link to the Index.
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. emptied page %d's name, which takes it out of the Index.
 #: rust/src/editor.rs
-msgid "The link goes to the Index. Tap a page to change it."
+#, c-format
+msgid "Page %d is not in the Index now."
 msgstr ""
 
-#. TRANSLATORS: the same toast for a link whose page is gone.
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card of a Links bar
+#. row deleted its links; Undo brings them back (the ink around them stays).
 #: rust/src/editor.rs
-msgid "The link's page is not in this notebook. Tap a page to change it."
+msgid "Links deleted. Undo brings them back."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card deleted the
+#. link; Undo brings it back (the ink around it stays).
+#: rust/src/editor.rs
+msgid "Link deleted. Undo brings it back."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the

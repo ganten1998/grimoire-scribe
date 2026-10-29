@@ -743,6 +743,11 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Link change undone.")));
     put(cformat!("%s", tr("Link change redone.")));
     put(cformat!(tr("Linked to the new page %d."), 2000));
+    put(cformat!(tr("Page %d is in the Index as %s."), 2000, "Wwwwwwwwwwwwwwwwwwww"));
+    put(cformat!(tr("Page %d is not in the Index now."), 2000));
+    put(cformat!("%s", tr("Link deleted. Undo brings it back.")));
+    put(cformat!("%s", tr("Links deleted. Undo brings them back.")));
+    put(cformat!("%s", tr("New area saved. Undo brings the old one back.")));
     out.len()
 }
 
@@ -857,6 +862,8 @@ fn the_links_bar_strings_fit() {
             check!(at("no names", font_measure(FontFace::Regular, ts, tr("No page names match.")), 1700));
             // the link-making strip's line beside its Cancel (PHASE2 6.3)
             check!(at("strip", font_measure(FontFace::Bold, ts, tr("Draw around what links.")), 1400));
+            check!(at("strip redraw", font_measure(FontFace::Bold, ts, tr("Draw the link's new area.")), 1400));
+            check!(at("name in index", font_measure(FontFace::Bold, ts, tr("Name in the Index")), 1000));
             // Link to... (PHASE2 6.6): its header beside the pager, New page...'s chip label (in a chip's name room,
             // as the bar's), its three tool words (caps at 34 px in a 580 px button), New page...'s keyboard title
             check!(at("link to title", font_measure(FontFace::Bold, ts, tr("Where does the link go?")), 1100));

@@ -32,13 +32,14 @@ expect editor.links is 1 1
 expect editor.areas is 1
 expect editor.eye_drawn is 1
 shot 01-eye-link-made
-# removed from the page: the box is off the glass at once, not at the next page swap
+# deleted from the long-press card (PHASE2 8.9): the box is off the glass at once, not at the next page swap
 touch down 600 1100
 wait 800
 touch up 600 1100
-tap 1630 95
+expect editor.ui_at.679.1818 is card.delete
+tap 679 1818
 expect editor.links is 0 0
-expect toast is Link removed. Its ink stays on the page.
+expect toast is Link deleted. Undo brings it back.
 expect editor.eye_drawn is 0
 expect editor.areas is 0
 shot 02-eye-link-removed
@@ -47,12 +48,18 @@ pentap panel pages
 tap 850 95
 tap 1410 2395
 pen line 300 1400 900 1500 30 0.6 0.6
+expect editor.linkto.dock is top
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 tap 1155 340
 expect editor.eye_drawn is 1
+pen leave
+wait 1100
 touch down 600 1450
 wait 800
 touch up 600 1450
-tap 1630 95
+expect editor.ui_at.679.2118 is card.delete
+tap 679 2118
 expect editor.links is 0 0
 expect editor.eye_drawn is 0
 quit
