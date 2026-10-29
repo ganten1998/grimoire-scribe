@@ -728,6 +728,13 @@ fn link_box(p: &Page, seed: u32, min_px: f32, box_: &mut Rect) -> i32 {
         *box_ = RECT_EMPTY;
         return -1;
     }
+    *box_ = padded_box(x0, y0, x1, y1, min_px);
+    last
+}
+
+// A box made at least min_px a side around its centre, rounded outward. Shared by the ink box and
+// the area, so an area migrated from ink gives the same padded box within 1 px.
+fn padded_box(mut x0: f32, mut y0: f32, mut x1: f32, mut y1: f32, min_px: f32) -> Rect {
     let cx = (x0 + x1) * 0.5;
     let cy = (y0 + y1) * 0.5;
     if x1 - x0 < min_px {
@@ -740,12 +747,33 @@ fn link_box(p: &Page, seed: u32, min_px: f32, box_: &mut Rect) -> i32 {
     }
     let ix = x0.floor() as i32;
     let iy = y0.floor() as i32;
-    *box_ = Rect { x: ix, y: iy, w: x1.ceil() as i32 - ix, h: y1.ceil() as i32 - iy };
-    last
+    Rect { x: ix, y: iy, w: x1.ceil() as i32 - ix, h: y1.ceil() as i32 - iy }
 }
 
-/// The boxes of page p's links (p is page pid): for each link whose strokes are there, the box of
-/// their points (the ink strokes only), made at least min_px a side around its centre. Writes at most
+// The area clamped to the page, used as stored (the stored value is never rewritten by the clamp).
+// Empty after a page-size change: no area.
+fn area_on_page(l: &NavLink, p: &Page) -> Option<Rect> {
+    if !l.has_area {
+        return None;
+    }
+    let r = l.area;
+    let (x0, y0) = (r.x.clamp(0, p.w.max(0)), r.y.clamp(0, p.h.max(0)));
+    let (x1, y1) = ((r.x + r.w).clamp(0, p.w.max(0)), (r.y + r.h).clamp(0, p.h.max(0)));
+    (x1 > x0 && y1 > y0).then_some(Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
+}
+
+// What a tap on the page finds of link l: its area when it has one on the page, else the box of its
+// ink (beta.5's links until they migrate), padded to min_px. None: dormant (no area, no ink).
+fn link_hit_box(l: &NavLink, p: &Page, min_px: f32) -> Option<Rect> {
+    if let Some(r) = area_on_page(l, p) {
+        return Some(padded_box(r.x as f32, r.y as f32, (r.x + r.w) as f32, (r.y + r.h) as f32, min_px));
+    }
+    let mut box_ = Rect::default();
+    (link_box(p, l.seed, min_px, &mut box_) >= 0).then_some(box_)
+}
+
+/// The boxes of page p's links (p is page pid): for each link that has one, its area, or for a link
+/// without one the box of its ink strokes' points, made at least min_px a side around its centre. Writes at most
 /// cap links and their boxes; returns how many it wrote.
 pub fn nav_link_areas(nav: &Nav, p: &Page, pid: u32, min_px: f32, links: &mut [NavLink], areas: &mut [Rect]) -> i32 {
     // (the C's cap: how many of each the caller has room for)
@@ -755,8 +783,7 @@ pub fn nav_link_areas(nav: &Nav, p: &Page, pid: u32, min_px: f32, links: &mut [N
     let mut wrote = 0;
     let mut i = first;
     while i < first + count && wrote < cap {
-        let mut box_ = Rect::default();
-        if link_box(p, nav.links[i as usize].seed, min_px, &mut box_) >= 0 {
+        if let Some(box_) = link_hit_box(&nav.links[i as usize], p, min_px) {
             links[wrote as usize] = nav.links[i as usize];
             areas[wrote as usize] = box_;
             wrote += 1;
@@ -766,28 +793,118 @@ pub fn nav_link_areas(nav: &Nav, p: &Page, pid: u32, min_px: f32, links: &mut [N
     wrote
 }
 
-/// The link whose box holds (x, y) on page p, the one drawn last when boxes overlap. False for none.
+/// The link whose box holds (x, y) on page p: where boxes overlap, the one with the smallest box, so
+/// a small link inside a big one stays reachable; a tie goes to the lower seed. False for none.
 pub fn nav_link_at(nav: &Nav, p: &Page, pid: u32, x: f32, y: f32, min_px: f32, out: &mut NavLink) -> bool {
     let mut first = 0;
     let count = nav_links_of(nav, pid, &mut first);
-    let mut best: i32 = -1;
-    let mut best_last: i32 = -1;
-    for i in first..first + count {
-        let mut box_ = Rect::default();
-        let last = link_box(p, nav.links[i as usize].seed, min_px, &mut box_);
-        if last <= best_last {
+    let mut best: Option<(usize, i64)> = None;
+    for i in first as usize..(first + count) as usize {
+        let Some(b) = link_hit_box(&nav.links[i], p, min_px) else { continue };
+        if !(x >= b.x as f32 && x < (b.x + b.w) as f32 && y >= b.y as f32 && y < (b.y + b.h) as f32) {
             continue;
         }
-        if x >= box_.x as f32 && x < (box_.x + box_.w) as f32 && y >= box_.y as f32 && y < (box_.y + box_.h) as f32 {
-            best = i;
-            best_last = last;
+        let size = b.w as i64 * b.h as i64;
+        // (links are in seed order: replacing only on a strictly smaller box keeps the lower seed)
+        if best.is_none_or(|(_, s)| size < s) {
+            best = Some((i, size));
         }
     }
-    if best < 0 {
-        return false;
-    }
-    *out = nav.links[best as usize];
+    let Some((i, _)) = best else { return false };
+    *out = nav.links[i];
     true
+}
+
+/// How many links of page pid have no area (beta.5's, until they migrate).
+pub fn nav_links_legacy(nav: &Nav, pid: u32) -> i32 {
+    let mut first = 0;
+    let count = nav_links_of(nav, pid, &mut first);
+    nav.links[first as usize..(first + count) as usize].iter().filter(|l| !l.has_area).count() as i32
+}
+
+/// Gives each link of page pid (p) that has no area the unpadded box of its ink, rounded outward and
+/// clamped to the page and the format's range. Links with no ink stay as they are (dormant). The
+/// strokes are read, never changed; the caller saves. How many got an area; -1 when not writable.
+pub fn nav_link_migrate(nav: &mut Nav, p: &Page, pid: u32) -> i32 {
+    if !nav.links_writable {
+        return -1;
+    }
+    let mut first = 0;
+    let count = nav_links_of(nav, pid, &mut first);
+    let (first, count) = (first as usize, count as usize);
+    // One pass over the strokes, a box per legacy seed (sorted: links are in seed order), never a
+    // pass per link: a dense page has 64.
+    let mut seeds: Vec<(u32, [f32; 4], bool)> = Vec::new();
+    for l in &nav.links[first..first + count] {
+        if !l.has_area && seeds.try_reserve(1).is_ok() {
+            seeds.push((l.seed, [0.0; 4], false));
+        }
+    }
+    if seeds.is_empty() {
+        return 0;
+    }
+    for st in &p.strokes {
+        if stroke_is_erase(st) || st.pts.is_empty() {
+            continue;
+        }
+        let Ok(k) = seeds.binary_search_by_key(&st.seed, |e| e.0) else { continue };
+        let e = &mut seeds[k];
+        for pt in &st.pts {
+            if !e.2 {
+                e.1 = [pt.x, pt.y, pt.x, pt.y];
+                e.2 = true;
+            }
+            e.1[0] = e.1[0].min(pt.x);
+            e.1[1] = e.1[1].min(pt.y);
+            e.1[2] = e.1[2].max(pt.x);
+            e.1[3] = e.1[3].max(pt.y);
+        }
+    }
+    let (pw, ph) = (p.w.min(NAV_AREA_MAX), p.h.min(NAV_AREA_MAX));
+    if pw < 1 || ph < 1 {
+        return 0;
+    }
+    let mut got = 0;
+    for (seed, b, seen) in seeds {
+        if !seen {
+            continue;
+        }
+        // floor of the minimum, ceil of the maximum, each side at least 1 px, inside the page
+        let x0 = (b[0].floor() as i32).clamp(0, pw - 1);
+        let y0 = (b[1].floor() as i32).clamp(0, ph - 1);
+        let x1 = (b[2].ceil() as i32).clamp(x0 + 1, pw);
+        let y1 = (b[3].ceil() as i32).clamp(y0 + 1, ph);
+        if nav_link_set_area(nav, pid, seed, Some(Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })) == 0 {
+            got += 1;
+        }
+    }
+    got
+}
+
+/// Every link of page `from` onto page `to` (same seed, target, area), for Copy page. -1 at a limit
+/// or when not writable: nothing copied.
+pub fn nav_link_copy(nav: &mut Nav, from: u32, to: u32) -> i32 {
+    if !nav.links_writable || from == to || to == 0 {
+        return -1;
+    }
+    let mut first = 0;
+    let count = nav_links_of(nav, from, &mut first);
+    let mut to_first = 0;
+    let have = nav_links_of(nav, to, &mut to_first);
+    let src: Vec<NavLink> = nav.links[first as usize..(first + count) as usize].to_vec();
+    let new = src.iter().filter(|l| nav_link_get(nav, to, l.seed).is_none()).count() as i32;
+    if have + new > NAV_LINKS_PER_PAGE.max(have) || nav.links.len() as i32 + new > NAV_LINKS_MAX {
+        return -1;
+    }
+    for l in src {
+        let copy = NavLink { pid: to, ..l };
+        if link_put(nav, to, l.seed, l.target.as_str()) != 0 {
+            return -1;
+        }
+        let at = link_slot(nav, to, l.seed);
+        nav.links[at] = copy;
+    }
+    0
 }
 
 /// The seed for a new ink stroke on page p (page pid): want, or the next after it that no ink stroke on

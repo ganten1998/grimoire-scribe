@@ -743,8 +743,11 @@ takes 1 to 8, either case); the target is `index` (the Index) or `p<page id>` (a
 notebook, the id from 1, no leading zeros). The last line for a page id and seed wins.
 
 A link is the ink drawn around what links: the page's ink strokes (not erase strokes) whose seed is
-the link's. Its box is the box of their points, made at least 7 mm a side around its centre; where
-boxes overlap, the link whose last stroke comes later in the page wins. The strokes are ordinary
+the link's. Its box is the box of their points, made at least 7 mm a side around its centre. A link
+with an area (below) uses its area instead, clamped to the page and made at least 7 mm a side the
+same way; an area that a smaller page leaves empty falls back to the ink. Where boxes overlap, the
+link with the smaller box wins, and of two the same size the one with the lower seed (from
+2.0.0-beta.6; 2.0.0-beta.5 follows the link whose last stroke comes later in the page). The strokes are ordinary
 ink, so a version that does not read links shows them as they were drawn, and erasing, undoing or
 compacting them away leaves the link with no box: it does nothing, and is kept (a redo brings its
 box back) until its page is deleted. Grimoire gives every new ink stroke a seed that no ink stroke on

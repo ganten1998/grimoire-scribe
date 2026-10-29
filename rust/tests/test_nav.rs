@@ -208,7 +208,7 @@ fn links_follow_their_boxes() {
     check!(nav_link_at(&n, &p, 7, 401.0, 399.0, 40.0, &mut at) && at.target == "index");
     check!(!nav_link_at(&n, &p, 7, 300.0, 300.0, 40.0, &mut at));
     check!(!nav_link_at(&n, &p, 3, 150.0, 130.0, 40.0, &mut at)); // another page's link, not this page's
-    // The one drawn last wins where boxes overlap; a box with no strokes left does nothing.
+    // The smaller box wins where boxes overlap; a box with no strokes left does nothing.
     let over = [140.0, 110.0, 260.0, 150.0];
     page_add(&mut p, stroke_at(0x5555, TOOL_FINELINER, &over));
     check!(nav_link_set(&mut n, 7, 0x5555, "p3") == 0);
@@ -216,6 +216,14 @@ fn links_follow_their_boxes() {
     check!(nav_link_at(&n, &p, 7, 110.0, 150.0, 40.0, &mut at) && at.seed == 0xa0a0a0a0);
     stroke_free(page_remove(&mut p, 3));
     check!(nav_link_at(&n, &p, 7, 150.0, 130.0, 40.0, &mut at) && at.seed == 0xa0a0a0a0);
+    // A later, bigger box does not take over the smaller one inside it.
+    let big = [50.0, 50.0, 300.0, 300.0];
+    page_add(&mut p, stroke_at(0x6666, TOOL_FINELINER, &big));
+    check!(nav_link_set(&mut n, 7, 0x6666, "p3") == 0);
+    check!(nav_link_at(&n, &p, 7, 150.0, 130.0, 40.0, &mut at) && at.seed == 0xa0a0a0a0);
+    check!(nav_link_at(&n, &p, 7, 60.0, 280.0, 40.0, &mut at) && at.seed == 0x6666);
+    stroke_free(page_remove(&mut p, 3));
+    nav_link_remove(&mut n, 7, 0x6666);
     check!(nav_link_areas(&n, &p, 7, 40.0, &mut got, &mut areas) == 2 && nav_links_of(&n, 7, &mut first) == 3);
     // An erase stroke with a link's seed is no part of its box.
     page_add(&mut p, stroke_at(0xa0a0a0a0, TOOL_ERASER, &dot));
@@ -432,10 +440,123 @@ fn pdf_has_the_outline_and_links() {
     check!(has(&t, "15 0 obj\n<< /Title <FEFF0045006E0064> /Parent 13 0 R /Prev 14 0 R /Dest [10 0 R /Fit] >>"));
     check!(has(&t, "trailer\n<< /Size 17 "));
     buf_free(&mut b);
+    // A link with an area: its /Rect is the area, not the ink box.
+    nav_init(&mut n);
+    check!(nav_load(book.id.as_str(), &mut n) == 0);
+    check!(nav_link_set_area(&mut n, book.page_ids[0], 0x77, Some(Rect { x: 1000, y: 1500, w: 400, h: 300 })) == 0);
+    check!(nav_save_links(book.id.as_str(), &mut n, &book) == 0);
+    nav_free(&mut n);
+    let mut b = Buf::default();
+    check!(export_notebook_pdf(&book, 300.0, &mut b) == 0 && xref_holds(&b));
+    let t: Vec<u8> = b.data.iter().map(|&c| if c == 0 { b' ' } else { c }).collect();
+    let want = cformat!(
+        "16 0 obj\n<< /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] /Dest [10 0 R /Fit] >>",
+        1000.0 * s,
+        fmla(-1800.0, s, ph),
+        1400.0 * s,
+        fmla(-1500.0, s, ph)
+    );
+    check!(has(&t, &want));
+    buf_free(&mut b);
     buf_free(&mut plain);
 }
 
 // The C main: a store in a directory of its own and a notebook in it.
+fn rect(x: i32, y: i32, w: i32, h: i32) -> Rect {
+    Rect { x, y, w, h }
+}
+
+// Phase 2: an area comes first, the smaller box wins, migration takes the unpadded ink box.
+fn link_areas_hit_and_migrate() {
+    let mut n = Nav::default();
+    nav_init(&mut n);
+    let mut p = page_new(600, 800, PAPER_BLANK);
+    let ring = [100.0, 100.0, 300.0, 100.0, 300.0, 200.0, 100.0, 200.0, 100.0, 100.0];
+    page_add(&mut p, stroke_at(0x10, TOOL_FINELINER, &ring));
+    check!(nav_link_set(&mut n, 7, 0x10, "p9") == 0);
+    let mut at = NavLink::default();
+    // An area beats the ink box of the same link.
+    check!(nav_link_set_area(&mut n, 7, 0x10, Some(rect(400, 400, 100, 100))) == 0);
+    check!(!nav_link_at(&n, &p, 7, 150.0, 150.0, 40.0, &mut at));
+    check!(nav_link_at(&n, &p, 7, 450.0, 450.0, 40.0, &mut at) && at.seed == 0x10);
+    // A tiny area is padded to min_px around its centre.
+    check!(nav_link_set_area(&mut n, 7, 0x10, Some(rect(400, 400, 2, 2))) == 0);
+    let mut got = [NavLink::default(); 8];
+    let mut boxes = [Rect::default(); 8];
+    check!(nav_link_areas(&n, &p, 7, 40.0, &mut got, &mut boxes) == 1 && boxes[0] == rect(381, 381, 40, 40));
+    // An area left empty by a smaller page falls back to the ink box.
+    check!(nav_link_set_area(&mut n, 7, 0x10, Some(rect(700, 900, 50, 50))) == 0);
+    check!(nav_link_areas(&n, &p, 7, 40.0, &mut got, &mut boxes) == 1 && boxes[0] == rect(100, 100, 200, 100));
+    check!(nav_link_get(&n, 7, 0x10).unwrap().area == rect(700, 900, 50, 50)); // (the stored value stays)
+    // Nested areas: the smaller wins whichever was made first; a tie goes to the lower seed.
+    check!(nav_link_set_area(&mut n, 7, 0x10, Some(rect(150, 150, 50, 50))) == 0);
+    check!(nav_link_set(&mut n, 7, 0x08, "p3") == 0 && nav_link_set_area(&mut n, 7, 0x08, Some(rect(0, 0, 500, 500))) == 0);
+    check!(nav_link_at(&n, &p, 7, 170.0, 170.0, 40.0, &mut at) && at.seed == 0x10);
+    check!(nav_link_at(&n, &p, 7, 20.0, 20.0, 40.0, &mut at) && at.seed == 0x08);
+    check!(nav_link_set(&mut n, 7, 0x20, "index") == 0 && nav_link_set_area(&mut n, 7, 0x20, Some(rect(150, 150, 50, 50))) == 0);
+    check!(nav_link_at(&n, &p, 7, 170.0, 170.0, 40.0, &mut at) && at.seed == 0x10);
+    nav_link_remove(&mut n, 7, 0x20);
+    nav_link_remove(&mut n, 7, 0x08);
+
+    // Migration: the unpadded ink box, rounded outward; erase strokes ignored; a dot gives 1 x 1.
+    check!(nav_link_set_area(&mut n, 7, 0x10, None) == 0 && nav_links_legacy(&n, 7) == 1);
+    check!(nav_link_areas(&n, &p, 7, 40.0, &mut got, &mut boxes) == 1);
+    let padded = boxes[0];
+    page_add(&mut p, stroke_at(0x10, TOOL_ERASER, &[10.0, 10.0, 590.0, 790.0]));
+    page_add(&mut p, stroke_at(0x11, TOOL_FINELINER, &[50.5, 60.25]));
+    check!(nav_link_set(&mut n, 7, 0x11, "p3") == 0);
+    check!(nav_link_set(&mut n, 7, 0x12, "p3") == 0); // dormant: no ink
+    check!(nav_links_legacy(&n, 7) == 3);
+    let mut ro = n.clone();
+    ro.links_writable = false;
+    check!(nav_link_migrate(&mut ro, &p, 7) == -1 && nav_links_legacy(&ro, 7) == 3);
+    check!(nav_link_migrate(&mut n, &p, 7) == 2 && nav_links_legacy(&n, 7) == 1);
+    check!(nav_link_get(&n, 7, 0x10).unwrap().area == rect(100, 100, 200, 100));
+    check!(nav_link_get(&n, 7, 0x11).unwrap().area == rect(50, 60, 1, 1));
+    check!(!nav_link_get(&n, 7, 0x12).unwrap().has_area);
+    // The padded box of a migrated area is the ink box's, within 1 px.
+    check!(nav_link_areas(&n, &p, 7, 40.0, &mut got, &mut boxes) == 2);
+    let b = boxes[got.iter().position(|l| l.seed == 0x10).unwrap()];
+    check!((b.x - padded.x).abs() <= 1 && (b.y - padded.y).abs() <= 1 && (b.w - padded.w).abs() <= 1 && (b.h - padded.h).abs() <= 1);
+    // Strokes are read, never changed.
+    check!(p.strokes.len() == 3);
+
+    // A dense page: 64 links migrate in one call, each to its own ink box.
+    let mut d = Nav::default();
+    nav_init(&mut d);
+    let mut q = page_new(600, 800, PAPER_BLANK);
+    for i in 0..NAV_LINKS_PER_PAGE as u32 {
+        let (x, y) = ((i % 8) as f32 * 70.0 + 5.0, (i / 8) as f32 * 90.0 + 5.0);
+        page_add(&mut q, stroke_at(0x100 + i, TOOL_FINELINER, &[x, y, x + 30.0, y + 40.0]));
+        check!(nav_link_set(&mut d, 3, 0x100 + i, "index") == 0);
+    }
+    check!(nav_link_migrate(&mut d, &q, 3) == NAV_LINKS_PER_PAGE && nav_links_legacy(&d, 3) == 0);
+    for i in 0..NAV_LINKS_PER_PAGE as u32 {
+        let (x, y) = ((i % 8) as i32 * 70 + 5, (i / 8) as i32 * 90 + 5);
+        check!(nav_link_get(&d, 3, 0x100 + i).unwrap().area == rect(x, y, 30, 40));
+    }
+
+    // Copy page: seeds, targets and areas; nothing past the per-page limit.
+    check!(nav_link_copy(&mut n, 7, 8) == 0);
+    check!(nav_link_get(&n, 8, 0x10).map(|l| (l.target, l.area)) == nav_link_get(&n, 7, 0x10).map(|l| (l.target, l.area)));
+    check!(nav_links_of(&n, 8, &mut 0) == 3 && nav_link_get(&n, 8, 0x10).unwrap().pid == 8);
+    for i in 0..NAV_LINKS_PER_PAGE as u32 - 1 {
+        check!(nav_link_set(&mut d, 4, 0x900 + i, "index") == 0);
+    }
+    let before = d.links.len();
+    check!(nav_link_copy(&mut d, 3, 4) == -1 && d.links.len() == before);
+    // nav_link_put restores a removed link whole and obeys the per-page limit.
+    let whole = nav_link_get(&n, 7, 0x11).unwrap();
+    nav_link_remove(&mut n, 7, 0x11);
+    check!(nav_link_get(&n, 7, 0x11).is_none() && nav_link_put(&mut n, &whole) == 0 && nav_link_get(&n, 7, 0x11) == Some(whole));
+    check!(nav_link_set(&mut d, 4, 0x1, "index") == 0); // 64 now
+    check!(nav_link_put(&mut d, &NavLink { pid: 4, seed: 0x2, ..whole }) == -1);
+    page_free(p);
+    page_free(q);
+    nav_free(&mut n);
+    nav_free(&mut d);
+}
+
 #[test]
 fn test_nav() {
     let root = cformat!("%s/nav-%d", tl_tmp().as_str(), std::process::id() as i32);
@@ -455,6 +576,7 @@ fn test_nav() {
     run!(unreadable_files_stay_untouched);
     run!(raw_zip_keeps_index);
     run!(links_follow_their_boxes);
+    run!(link_areas_hit_and_migrate);
     run!(links_save_prune_and_carry);
     run!(links_limits_and_unreadable);
     run!(pdf_has_the_outline_and_links);
