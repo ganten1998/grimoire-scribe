@@ -40,9 +40,9 @@ pub enum GestureKey {
     Pen { button: PenBtn, kind: PenKind },
 }
 
-/// A pen drag slot's own values besides actions: it pans or zooms the page.
-pub const GESTURE_PAN: i32 = -1;
-pub const GESTURE_ZOOM: i32 = -2;
+/// Stable registry actions, assignable only to a live pen button's drag slot.
+pub const GESTURE_PAN: i32 = SHORTCUT_PEN_PAN;
+pub const GESTURE_ZOOM: i32 = SHORTCUT_PEN_ZOOM;
 
 /// gestures.ini is read up to this size (shortcuts.ini's cap).
 pub const GESTURES_CAP: u64 = 65536;
@@ -75,6 +75,8 @@ pub struct GestureMap {
     /// [button][kind], the same
     pen: [[i32; 5]; 3],
     pen_set: [[bool; 5]; 3],
+    /// Hardware capability, set before load and retained by defaults and Reset.
+    pen_button2: bool,
     /// the lines carried for a later version, as they were, each ended with a newline
     carried: Vec<u8>,
     /// lines refused, since the last gesturemap_defaults
@@ -89,7 +91,9 @@ fn tk(k: TouchKind) -> usize {
 /// three quick clicks of the pen's button, or holding it, clear the page (as the pen's button does).
 /// Two- and three-finger taps and one finger's gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
+    let pen_button2 = m.pen_button2;
     *m = GestureMap::default();
+    m.pen_button2 = pen_button2;
     m.writable = true;
     m.touch[0][tk(TouchKind::Down)] = SHORTCUT_PAGES;
     m.touch[0][tk(TouchKind::Up)] = SHORTCUT_LINKS;
@@ -97,6 +101,33 @@ pub fn gesturemap_defaults(m: &mut GestureMap) {
     m.touch[0][tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
     m.pen[PenBtn::Button as usize][PenKind::Triple as usize] = SHORTCUT_CLEAR_PAGE;
     m.pen[PenBtn::Button as usize][PenKind::Hold as usize] = SHORTCUT_CLEAR_PAGE;
+}
+
+/// Set the hardware capability before loading the map. Reload to activate carried Button2 lines.
+pub fn gesturemap_pen_button2(m: &mut GestureMap, enabled: bool) {
+    m.pen_button2 = enabled;
+}
+
+fn pen_live(m: &GestureMap, button: PenBtn) -> bool {
+    button == PenBtn::Button || (button == PenBtn::Button2 && m.pen_button2)
+}
+
+/// Clicks wait only where a live double or triple binding needs disambiguation.
+pub fn gesturemap_pen_config(m: &GestureMap) -> PbConfig {
+    let mut c = PbConfig { waits: [false; 3], ..PbConfig::default() };
+    for &(_, button) in &K_PEN_BTNS {
+        c.waits[button as usize] = [PenKind::Double, PenKind::Triple].iter().any(|&kind|
+            gesturemap_action(m, GestureKey::Pen { button, kind }) != 0);
+    }
+    c
+}
+
+fn pen_action_valid(kind: PenKind, action: i32) -> bool {
+    action == 0 || (action_sources(action) & SRC_PEN != 0 && match action {
+        GESTURE_PAN | GESTURE_ZOOM => kind == PenKind::Drag,
+        SHORTCUT_HOLD_ERASER => matches!(kind, PenKind::Hold | PenKind::Drag),
+        _ => true,
+    })
 }
 
 /// isspace() in the C locale, as shortcuts.ini's reader has it.
@@ -185,8 +216,36 @@ impl GestureMap {
         }
     }
 
-    /// One trimmed `key=value` line: false when it is refused.
+    fn put_pen(&mut self, button: PenBtn, kind: PenKind, action: i32) {
+        self.pen[button as usize][kind as usize] = action;
+        self.pen_set[button as usize][kind as usize] = true;
+        let mut key = String::new();
+        gesturemap_key_name(GestureKey::Pen { button, kind }, &mut key);
+        self.uncarry(key.as_bytes());
+    }
+
+    fn set_pen(&mut self, button: PenBtn, kind: PenKind, action: i32, reading: bool) {
+        for &(_, other_button) in &K_PEN_BTNS {
+            if !pen_live(self, other_button) { continue; }
+            for &(_, other_kind) in &K_PEN_KINDS {
+                if (button, kind) == (other_button, other_kind) { continue; }
+                // The two historical Clear page defaults are the sole duplicate exception on read.
+                let builtin_pair = reading && action == SHORTCUT_CLEAR_PAGE
+                    && button == PenBtn::Button && other_button == PenBtn::Button
+                    && matches!(kind, PenKind::Triple | PenKind::Hold)
+                    && matches!(other_kind, PenKind::Triple | PenKind::Hold);
+                if action != 0 && !builtin_pair
+                    && self.pen[other_button as usize][other_kind as usize] == action {
+                    self.put_pen(other_button, other_kind, 0);
+                }
+            }
+        }
+        self.put_pen(button, kind, action);
+    }
+
+    /// One raw `key=value` line: false when refused; trim only the parsed key and value.
     fn line(&mut self, line: &[u8]) -> bool {
+        if !self.writable { return false; }
         let Some(eq) = line.iter().position(|&c| c == b'=') else { return false ;
         };
         let (key, value) = (trim(&line[..eq]), trim(&line[eq + 1..]));
@@ -218,26 +277,25 @@ impl GestureMap {
                     // a pen slot a later version has: carried
                     return name_like(value) && self.carry(key, line);
                 };
-                let (bi, ki) = (btn as usize, kind as usize);
-                let action = match value {
-                    b"pan" if kind == PenKind::Drag => Some(GESTURE_PAN),
-                    b"zoom" if kind == PenKind::Drag => Some(GESTURE_ZOOM),
-                    _ => value_action(value),
-                };
-                match action {
+                if !pen_live(self, btn) {
+                    return name_like(value) && self.carry(key, line);
+                }
+                match value_action(value) {
                     Some(action) => {
-                        self.uncarry(key);
-                        self.pen[bi][ki] = action;
-                        self.pen_set[bi][ki] = true;
+                        if !pen_action_valid(kind, action) { return false; }
+                        self.set_pen(btn, kind, action, true);
                         true
                     }
                     None if name_like(value) => {
-                        // An action a later version has: carried, and the slot keeps its built-in.
-                        let mut built_in = GestureMap::default();
-                        gesturemap_defaults(&mut built_in);
-                        self.pen[bi][ki] = built_in.pen[bi][ki];
-                        self.pen_set[bi][ki] = false;
-                        self.carry(key, line)
+                        // Commit the fallback only after carrying succeeded: refusal is atomic.
+                        if !self.carry(key, line) { return false; }
+                        let built_in = if btn == PenBtn::Button
+                            && matches!(kind, PenKind::Triple | PenKind::Hold) {
+                            SHORTCUT_CLEAR_PAGE
+                        } else { 0 };
+                        self.pen[btn as usize][kind as usize] = built_in;
+                        self.pen_set[btn as usize][kind as usize] = false;
+                        true
                     }
                     None => false,
                 }
@@ -294,8 +352,8 @@ pub fn gesturemap_parse(m: &mut GestureMap, text: &[u8]) -> i32 {
     let mut refused = 0;
     // (as shortcuts.ini's: the empty lines between two newlines are skipped)
     for line in text.split(|&c| c == b'\n').filter(|l| !l.is_empty()) {
-        let line = trim(line);
-        if line.is_empty() || line[0] == b'#' || line[0] == b';' {
+        let trimmed = trim(line);
+        if trimmed.is_empty() || trimmed[0] == b'#' || trimmed[0] == b';' {
             continue;
         }
         if !m.line(line) {
@@ -328,7 +386,8 @@ pub fn gesturemap_action(m: &GestureMap, k: GestureKey) -> i32 {
             fingers: f @ 2..=3, kind ,
         } => m.touch[(f - 2) as usize][tk(kind)],
         GestureKey::Touch { .. } => 0,
-        GestureKey::Pen { button, kind } => m.pen[button as usize][kind as usize],
+        GestureKey::Pen { button, kind } if pen_live(m, button) => m.pen[button as usize][kind as usize],
+        GestureKey::Pen { .. } => 0,
     }
 }
 
@@ -446,13 +505,20 @@ fn put_touch(m: &mut GestureMap, fingers: u8, kind: TouchKind, action: i32) {
     }
 }
 
-/// Move this pattern to an action; each touch action has at most one pattern. Shapes are separate.
+/// Move this gesture to an action; each source has at most one edited binding per action.
+/// Shapes are separate. Pen slots must be live and support the action's release requirements.
 pub fn gesturemap_set(m: &mut GestureMap, k: GestureKey, action: i32) -> i32 {
     if !m.writable {
         return -1;
     }
-    let GestureKey::Touch { fingers, kind } = k else {
-        return -1;
+    let (fingers, kind) = match k {
+        GestureKey::Pen { button, kind } => {
+            if !pen_live(m, button) || !pen_action_valid(kind, action) { return -1; }
+            let lost = gesturemap_action(m, k);
+            m.set_pen(button, kind, action, false);
+            return if lost != action { lost } else { 0 };
+        }
+        GestureKey::Touch { fingers, kind } => (fingers, kind),
     };
     if !(1..=3).contains(&fingers)
         || (fingers == 1 && kind == TouchKind::Tap)
@@ -496,6 +562,14 @@ pub fn gesturemap_clear_action(m: &mut GestureMap, action: i32) {
             }
             if gesturemap_action(m, GestureKey::Touch { fingers: f, kind }) == action {
                 put_touch(m, f, kind, 0);
+            }
+        }
+    }
+    for &(_, button) in &K_PEN_BTNS {
+        if !pen_live(m, button) { continue; }
+        for &(_, kind) in &K_PEN_KINDS {
+            if gesturemap_action(m, GestureKey::Pen { button, kind }) == action {
+                m.put_pen(button, kind, 0);
             }
         }
     }
@@ -601,7 +675,7 @@ pub fn gesturemap_format(m: &GestureMap, out: &mut Vec<u8>) -> bool {
     for &(_, button) in &K_PEN_BTNS {
         for &(_, kind) in &K_PEN_KINDS {
             let k = GestureKey::Pen { button, kind };
-            if !gesturemap_is_set(m, k) {
+            if !pen_live(m, button) || !gesturemap_is_set(m, k) {
                 continue;
             }
             gesturemap_key_name(k, &mut key);

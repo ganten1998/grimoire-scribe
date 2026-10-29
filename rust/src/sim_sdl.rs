@@ -18,6 +18,12 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::Ordering;
 
+// Exercise the evdev frame adapters on the host as well as cross-checking the Kindle build.
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "input_evdev.rs"]
+mod evdev_tests;
+
 // ---- shared event queue ----
 
 const QN: usize = 8192;
@@ -165,6 +171,12 @@ struct State {
     px: f32,
     py: f32,
     side: bool,
+    side2: bool,
+    pen_button2: bool,
+    /// The click helper owns the queue until its last scheduled release is delivered.
+    side_click_until: Option<u32>,
+    raw_side2: bool,
+    raw_side_reported: [bool; 2],
     eraser: bool,
 
     expect: Expect,
@@ -253,6 +265,11 @@ impl Default for State {
             px: 0.0,
             py: 0.0,
             side: false,
+            side2: false,
+            pen_button2: false,
+            side_click_until: None,
+            raw_side2: false,
+            raw_side_reported: [false; 2],
             eraser: false,
             expect: Expect::default(),
             line_no: 0,
@@ -322,7 +339,15 @@ impl State {
         self.qt = n;
     }
     fn q_pop(&mut self, e: &mut InEvent) -> bool {
+        self.q_pop_at(e, now_ms())
+    }
+    fn q_pop_at(&mut self, e: &mut InEvent, now: u32) -> bool {
         if self.qh == self.qt {
+            return false;
+        }
+        // Never hand a future button press to the wall-clock hold timer. If a stall
+        // passed a queued release, it is drained before the app gets an idle tick.
+        if self.side_click_until.is_some() && (now.wrapping_sub(self.q[self.qh].t_ms) as i32) < 0 {
             return false;
         }
         if let Some(b) = self.sample_batch {
@@ -330,6 +355,7 @@ impl State {
         }
         *e = self.q[self.qh];
         self.qh = (self.qh + 1) % QN;
+        if self.qh == self.qt { self.side_click_until = None; }
         true
     }
 
@@ -417,6 +443,10 @@ impl State {
         e.x = x;
         e.y = y;
         e.t_ms = now_ms();
+        if pen && matches!(t, InType::PenDown | InType::PenMove | InType::PenUp | InType::PenHover | InType::PenLeave | InType::PenButton) {
+            e.side_button = self.side;
+            e.side_button2 = self.side2;
+        }
         e
     }
 
@@ -427,6 +457,7 @@ impl State {
         e.tilt_y = ty;
         e.eraser = self.eraser;
         e.side_button = self.side;
+        e.side_button2 = self.side2;
         e.t_ms = e.t_ms.wrapping_add(dt);
         self.pen_arrives(&e);
         let t_ms = e.t_ms;
@@ -434,6 +465,38 @@ impl State {
         self.px = x;
         self.py = y;
         t_ms
+    }
+
+    fn side_event(&mut self, second: bool, down: bool, at: u32) {
+        if second { self.side2 = down; } else { self.side = down; }
+        let mut e = self.make_ev(InType::PenButton, self.px, self.py, true);
+        e.value = if second { 2 } else { 0 };
+        e.t_ms = at;
+        self.q_push(e);
+    }
+
+    /// N clicks at one hovering point, paced on the same wrapping clock as input_poll.
+    fn side_click(&mut self, second: bool, count: u32, gap: u32, press: u32) {
+        let at = now_ms();
+        let mut hover = self.make_ev(InType::PenHover, self.px, self.py, true);
+        hover.eraser = self.eraser;
+        hover.t_ms = at; // one clock read for the whole sequence, including its hover
+        if self.tpen.touching {
+            let mut up = hover;
+            up.type_ = InType::PenUp;
+            self.pen_arrives(&up);
+            self.q_push(up);
+        }
+        self.pen_arrives(&hover);
+        self.q_push(hover);
+        let mut t = at;
+        for i in 0..count {
+            self.side_event(second, true, t);
+            t = t.wrapping_add(press);
+            self.side_event(second, false, t);
+            if i + 1 < count { t = t.wrapping_add(gap); }
+        }
+        self.side_click_until = Some(t);
     }
 
     // A pen event about to be queued (the script's, or the stand-in raw node's): the pen ends what
@@ -1647,11 +1710,47 @@ fn script_step_in(st: &mut State) -> Step {
             if st.shortcuts_enabled {
                 st.q_push(e);
             }
-        } else if a == b"side" {
-            st.side = b == b"on";
-            let mut e = st.make_ev(InType::PenButton, st.px, st.py, true);
-            e.side_button = st.side;
-            st.q_push(e);
+        } else if a == b"side" || a == b"side2" {
+            let second = a == b"side2";
+            if second && !st.pen_button2 {
+                err(&bformat("script: side2 needs GRIMOIRE_SIM_PEN_BUTTON2=1: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            if b == b"click" {
+                // Start on a drained queue: every timestamp belongs to this helper, and
+                // preceding pen samples reach the app before its hovering frame does.
+                if st.qh != st.qt {
+                    st.unread = Some(line.clone());
+                    return Step::Batch;
+                }
+                let mut args = Vec::new();
+                let mut valid = true;
+                while let Some(word) = sc.word(64) {
+                    let (v, used) = strtol10(word);
+                    if used != word.len() || v < 0 || v > i32::MAX as i64 { valid = false; }
+                    args.push(v as u32);
+                }
+                let count = args.first().copied().unwrap_or(0);
+                let gap = args.get(1).copied().unwrap_or(150);
+                let press = args.get(2).copied().unwrap_or(80);
+                let duration = count as u64 * press as u64 + count.saturating_sub(1) as u64 * gap as u64;
+                if !valid || args.is_empty() || args.len() > 3 || count == 0
+                    || count as usize > (QN - 4) / 2 || duration > i32::MAX as u64
+                {
+                    err(&bformat("script: bad side click line: %s", &[B::S(s)]));
+                    st.expect_unknown_line();
+                    continue;
+                }
+                st.side_click(second, count, gap, press);
+                return Step::Batch;
+            }
+            if b != b"on" && b != b"off" {
+                err(&bformat("script: bad side line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            st.side_event(second, b == b"on", now_ms());
         } else if a == b"touch" {
             if sc.word(95)==Some(b"library") {
                 if st.qh!=st.qt {st.unread=Some(line.clone());st.line_no-=1;return Step::Batch;}
@@ -2018,7 +2117,10 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
     work_pump_set(Some(sim_pump));
     work_pump_mark_set(Some(unpumped_mark));
     G_LAST_READ.with(|c| c.set(now_ms()));
-    with(|st| touchgest_init(&mut st.tg, dpi));
+    with(|st| {
+        touchgest_init(&mut st.tg, dpi);
+        st.pen_button2 = std::env::var("GRIMOIRE_SIM_PEN_BUTTON2").is_ok_and(|v| v == "1");
+    });
     let tune_name = std::env::var("GRIMOIRE_TOUCH_TUNE").or_else(|_| std::env::var("TOUCH_TUNE")).unwrap_or_default();
     let tune = if tune_name == "v1" { TG_TUNE_V1 } else { TG_TUNE };
     let slots = sim_touch_slots();
@@ -2084,6 +2186,7 @@ pub fn input_default_calib(pen: Option<&mut InputCalib>, touch: Option<&mut Inpu
 }
 pub fn input_caps() -> InputCaps {
     InputCaps {
+        pen_button2: with(|st| st.pen_button2),
         has_pen: true,
         has_pressure: true,
         has_tilt: true,
@@ -2141,6 +2244,59 @@ pub fn input_close() {
 }
 
 impl State {
+    // The Live decoder's wire format stays unchanged. Button2 belongs to this
+    // input reader and accompanies its ordinary frames and explicit button events.
+    fn raw_event(&mut self, ev: &LiveInputEvent) -> bool {
+        if ev.type_ == 0 && ev.code == 3 { self.raw_side2 = false; }
+        if !self.raw_pen.dropping && ev.type_ == 1 && ev.code == 0x14c {
+            self.raw_side2 = ev.value != 0;
+        }
+        let mut f = LiveRawFrame::default();
+        if !live_raw_event(&mut self.raw_pen, 0, ev, &mut f) { return false; }
+        let t = match f.state {
+            LIVE_PEN_TOUCH if f.down => InType::PenDown,
+            LIVE_PEN_TOUCH => InType::PenMove,
+            LIVE_PEN_HOVER if self.raw_touching => InType::PenUp,
+            LIVE_PEN_HOVER => InType::PenHover,
+            _ => InType::PenLeave,
+        };
+        self.raw_touching = f.state == LIVE_PEN_TOUCH;
+        if t == InType::PenLeave { self.raw_side2 = false; }
+        let mut e = self.make_ev(t, f.x as f32, f.y as f32, true);
+        e.pressure = if t == InType::PenDown || t == InType::PenMove { clampf(f.p as f32 / 4095.0, 0.0, 1.0) } else { 0.0 };
+        e.tilt_x = f.tx as f32 / 100.0;
+        e.tilt_y = f.ty as f32 / 100.0;
+        e.eraser = f.eraser;
+        e.side_button = f.side && t != InType::PenLeave;
+        e.side_button2 = self.raw_side2 && self.pen_button2;
+        e.gap = f.gap;
+        e.k_us = f.us;
+        e.k_ms = f.ms;
+        self.side = e.side_button;
+        self.side2 = e.side_button2;
+        self.px = f.x as f32;
+        self.py = f.y as f32;
+        if t == InType::PenLeave {
+            self.pen_arrives(&e);
+            self.q_push(e);
+            self.raw_side_reported = [false; 2];
+            return true; // proximity loss itself cancels holds and pending clicks
+        }
+        let states = [e.side_button, e.side_button2];
+        for i in 0..2 {
+            if states[i] != self.raw_side_reported[i] {
+                let mut b = e;
+                b.type_ = InType::PenButton;
+                b.value = if i == 0 { 0 } else { 2 };
+                self.q_push(b);
+            }
+        }
+        self.raw_side_reported = states;
+        self.pen_arrives(&e);
+        self.q_push(e);
+        true
+    }
+
     // The stand-in raw node's frames as pen events (raw_fd): true when any came.
     fn raw_read(&mut self) -> bool {
         if self.raw_fd < 0 {
@@ -2155,32 +2311,7 @@ impl State {
                 break;
             }
             for ev in evs[..got as usize / std::mem::size_of::<LiveInputEvent>()].iter() {
-                let mut f = LiveRawFrame::default();
-                if !live_raw_event(&mut self.raw_pen, 0, ev, &mut f) {
-                    continue;
-                }
-                let t = match f.state {
-                    LIVE_PEN_TOUCH if f.down => InType::PenDown,
-                    LIVE_PEN_TOUCH => InType::PenMove,
-                    LIVE_PEN_HOVER if self.raw_touching => InType::PenUp,
-                    LIVE_PEN_HOVER => InType::PenHover,
-                    _ => InType::PenLeave,
-                };
-                self.raw_touching = f.state == LIVE_PEN_TOUCH;
-                let mut e = self.make_ev(t, f.x as f32, f.y as f32, true);
-                e.pressure = if t == InType::PenDown || t == InType::PenMove { clampf(f.p as f32 / 4095.0, 0.0, 1.0) } else { 0.0 };
-                e.tilt_x = f.tx as f32 / 100.0;
-                e.tilt_y = f.ty as f32 / 100.0;
-                e.eraser = f.eraser;
-                e.side_button = f.side;
-                e.gap = f.gap;
-                e.k_us = f.us;
-                e.k_ms = f.ms;
-                self.pen_arrives(&e);
-                self.q_push(e);
-                self.px = f.x as f32;
-                self.py = f.y as f32;
-                any = true;
+                any |= self.raw_event(ev);
             }
         }
         any
@@ -2206,6 +2337,16 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
     }
     if with(|st| st.q_pop(ev)) {
         return 1;
+    }
+    if let Some(due) = with(|st| st.side_click_until.map(|_| st.q[st.qh].t_ms)) {
+        // No script command or expect passes an undelivered helper release. Polling at
+        // timeout 0 still drains every due event, including releases after a slow frame.
+        if timeout_ms != 0 {
+            let left = due.wrapping_sub(now_ms()) as i32;
+            if left > 0 { sleep_ms(if timeout_ms < 0 { left } else { left.min(timeout_ms) }); }
+            if with(|st| st.q_pop(ev)) { return 1; }
+        }
+        return 0;
     }
     // Fingers held still give no frames: what only time decides goes by the frame clock's now.
     let ticked = with(|st| {
@@ -2844,6 +2985,155 @@ mod tests {
         assert_eq!(b[0].type_, InType::Quit);
         assert!(with(|st| st.script_done));
         assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (0, 0));
+    }
+
+    fn queued() -> Vec<InEvent> {
+        with(|st| {
+            let mut out = Vec::new();
+            let mut i = st.qh;
+            while i != st.qt { out.push(st.q[i]); i = (i + 1) % QN; }
+            out
+        })
+    }
+
+    #[test]
+    fn side_click_defaults_and_overrides_have_exact_frame_spacing() {
+        fresh();
+        script("side-click-defaults", "side click 3\nquit\n");
+        with(|st| { st.px = 123.0; st.py = 456.0; assert!(matches!(script_step_in(st), Step::Batch)); });
+        let q = queued();
+        assert_eq!(q.len(), 7);
+        assert_eq!(q[0].type_, InType::PenHover);
+        assert!(q.iter().all(|e| (e.x - 123.0).abs() < 0.001 && (e.y - 456.0).abs() < 0.001));
+        let start = q[0].t_ms;
+        assert_eq!(q.iter().map(|e| e.t_ms.wrapping_sub(start)).collect::<Vec<_>>(), [0, 0, 80, 230, 310, 460, 540]);
+        assert_eq!(q[1..].iter().map(|e| (e.type_, e.value, e.side_button, e.side_button2)).collect::<Vec<_>>(),
+            (0..6).map(|i| (InType::PenButton, 0, i % 2 == 0, false)).collect::<Vec<_>>());
+        assert!(with(|st| st.tpen.prox && !st.tpen.touching && st.side_click_until == Some(start.wrapping_add(540))));
+
+        fresh();
+        script("side-click-overrides", "side2 click 2 351 450\nquit\n");
+        with(|st| { st.pen_button2 = true; script_step_in(st); });
+        let q = queued();
+        let start = q[0].t_ms;
+        assert_eq!(q.iter().map(|e| e.t_ms.wrapping_sub(start)).collect::<Vec<_>>(), [0, 0, 450, 801, 1251]);
+        assert!(q[1..].iter().all(|e| e.value == 2 && !e.side_button));
+        assert_eq!(q[1..].iter().map(|e| e.side_button2).collect::<Vec<_>>(), [true, false, true, false]);
+    }
+
+    #[test]
+    fn side_on_off_keeps_its_sequence_and_both_states_accompany_every_pen_frame() {
+        fresh();
+        with(|st| st.pen_button2 = true);
+        script("side-both", "pen hover 120 340\nside on\nside2 on\npen down 120 340\npen move 125 345\npen up 125 345\npen hover 125 345\npen leave\nside off\nside2 off\nwait 0\n");
+        let q = batch();
+        assert_eq!(q.iter().map(|e| e.type_).collect::<Vec<_>>(), [InType::PenHover, InType::PenButton, InType::PenButton,
+            InType::PenDown, InType::PenMove, InType::PenUp, InType::PenHover, InType::PenLeave, InType::PenButton, InType::PenButton]);
+        assert_eq!((q[1].value, q[1].side_button, q[1].side_button2), (0, true, false));
+        assert_eq!((q[2].value, q[2].side_button, q[2].side_button2), (2, true, true));
+        assert!(q[3..8].iter().all(|e| e.side_button && e.side_button2));
+        assert_eq!((q[8].value, q[8].side_button, q[8].side_button2), (0, false, true));
+        assert_eq!((q[9].value, q[9].side_button, q[9].side_button2), (2, false, false));
+    }
+
+    #[test]
+    fn second_button_requires_capability_and_bad_helpers_fail_without_events() {
+        fresh();
+        assert!(!input_caps().pen_button2);
+        script("side-refused", "side2 on\nside2 off\nside2 click 2\nside click 0\nside click -1\nside click 1 -2\nside click 1 2 -3\nside click 1 2 3 4\nside click 99999\nside click 2 2147483647\nwait 0\n");
+        assert!(batch().is_empty());
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (10, 10));
+        assert!(with(|st| !st.side && !st.side2 && st.side_click_until.is_none()));
+        with(|st| st.pen_button2 = true);
+        assert!(input_caps().pen_button2);
+    }
+
+    #[test]
+    fn side_click_waits_on_wall_time_and_drains_a_late_release_before_idle() {
+        fresh();
+        script("side-paced", "side click 1 150 80\nhold\n");
+        with(|st| { script_step_in(st); });
+        let start = queued()[0].t_ms;
+        let c = PbConfig::default();
+        let mut pb = PenButtons::default();
+        let pen = PbPen { prox: true, touching: false };
+        with(|st| {
+            let mut e = InEvent::default();
+            assert!(st.q_pop_at(&mut e, start));
+            assert_eq!(e.type_, InType::PenHover);
+            assert!(st.q_pop_at(&mut e, start));
+            assert_eq!((e.type_, e.side_button), (InType::PenButton, true));
+            assert_eq!(penbutton_event(&mut pb, &c, PbIn { t_ms: e.t_ms, button: PenBtn::Button, down: true }, pen), PbOut::None);
+            assert!(!st.q_pop_at(&mut e, start.wrapping_add(79)));
+            assert!(st.side_click_until.is_some() && !st.script_hold);
+            // A slow frame passed even the hold deadline. Poll must hand out the
+            // already-due release before the consumer gets an idle hold tick.
+            assert!(st.q_pop_at(&mut e, start.wrapping_add(1300)));
+            assert_eq!((e.type_, e.side_button), (InType::PenButton, false));
+            assert_eq!(e.t_ms.wrapping_sub(start), 80);
+            assert_eq!(penbutton_event(&mut pb, &c, PbIn { t_ms: e.t_ms, button: PenBtn::Button, down: false }, pen), PbOut::None);
+            assert_eq!(penbutton_tick(&mut pb, &c, start.wrapping_add(1300)), PbOut::Fire(PenBtn::Button, PenKind::Tap));
+            assert!(!st.q_pop_at(&mut e, start.wrapping_add(1300)));
+            assert!(st.side_click_until.is_none() && !st.script_hold);
+        });
+        let mut e = InEvent::default();
+        assert_eq!(poll(&mut e, 0, None), 0);
+        assert!(!with(|st| st.script_hold));
+        assert_eq!(poll(&mut e, 1, None), 0);
+        assert!(with(|st| st.script_hold));
+    }
+
+    #[test]
+    fn side_click_release_is_not_delivered_early_and_wraps_its_clock() {
+        fresh();
+        script("side-release", "side2 click 1 0 12\nwait 0\n");
+        with(|st| st.pen_button2 = true);
+        let first = batch();
+        assert_eq!(first.len(), 2);
+        assert!(first[1].side_button2);
+        let release = next_batch();
+        assert_eq!(release.len(), 1);
+        assert_eq!((release[0].value, release[0].side_button2), (2, false));
+        assert_eq!(release[0].t_ms.wrapping_sub(first[1].t_ms), 12);
+        assert!((now_ms().wrapping_sub(release[0].t_ms) as i32) >= 0);
+        // Exercise the queue itself across wrap, including a delayed poll that
+        // drains both a press and its due release before declaring itself idle.
+        fresh();
+        with(|st| {
+            st.side_event(true, true, u32::MAX - 5);
+            st.side_event(true, false, 4);
+            st.side_click_until = Some(4);
+            let mut e = InEvent::default();
+            assert!(!st.q_pop_at(&mut e, u32::MAX - 6));
+            assert!(st.q_pop_at(&mut e, u32::MAX));
+            assert!(e.side_button2);
+            assert!(!st.q_pop_at(&mut e, 3));
+            assert!(st.q_pop_at(&mut e, 4));
+            assert!(!e.side_button2);
+            assert!(st.side_click_until.is_none());
+        });
+    }
+
+    #[test]
+    fn raw_second_button_survives_frames_ignores_partial_drop_and_cancels_on_leave() {
+        fresh();
+        with(|st| {
+            st.pen_button2 = true;
+            let mut send = |type_, code, value| st.raw_event(&LiveInputEvent { type_, code, value, ..Default::default() });
+            for (t, c, v) in [(1, 0x140, 1), (3, 0, 300), (3, 1, 400), (1, 0x14c, 1), (0, 0, 0),
+                (1, 0x14a, 1), (0, 0, 0), (1, 0x14a, 0), (0, 0, 0),
+                (0, 3, 0), (1, 0x14c, 1), (0, 0, 0), (0, 0, 0),
+                (1, 0x14c, 1), (0, 0, 0), (1, 0x140, 0), (0, 0, 0)] { send(t, c, v); }
+        });
+        let q = queued();
+        assert_eq!(q.iter().filter(|e| e.type_ == InType::PenButton).map(|e| (e.value, e.side_button2)).collect::<Vec<_>>(),
+            [(2, true), (2, false), (2, true)]);
+        assert!(q.iter().filter(|e| matches!(e.type_, InType::PenDown | InType::PenUp)).all(|e| e.side_button2));
+        let gap = q.iter().find(|e| e.gap && e.type_ == InType::PenHover).unwrap();
+        assert!(!gap.side_button2);
+        let leave = q.iter().position(|e| e.type_ == InType::PenLeave).unwrap();
+        assert!(!q[leave].side_button2);
+        assert_eq!(leave + 1, q.len()); // no button event may revive proximity after leave
     }
 
     #[test]

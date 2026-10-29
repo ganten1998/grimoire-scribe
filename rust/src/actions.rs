@@ -31,15 +31,17 @@ pub const SHORTCUT_SHAPE_HOLD:i32=79;
 pub const SHORTCUT_SHAPE_LAST:i32=80;
 pub const SHORTCUT_INDEX_MAP:i32=81;
 
+pub const SHORTCUT_PEN_PAN: i32 = 82;
+pub const SHORTCUT_PEN_ZOOM: i32 = 83;
+
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
 pub const SRC_TOUCH: u8 = 4;
 pub const SRC_SHAPE: u8 = 8;
-/// Reserved for the pen-button phase.
 pub const SRC_PEN: u8 = 16;
-const SRC_ALL_PHASE3: u8 = SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE;
-const SRC_TOUCH_SHAPE: u8 = SRC_TOUCH | SRC_SHAPE;
-const SRC_KEY_PAD: u8 = SRC_KEY | SRC_PAD;
+const SRC_ALL: u8 = SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE | SRC_PEN;
+const SRC_GESTURES: u8 = SRC_TOUCH | SRC_SHAPE | SRC_PEN;
+const SRC_BUTTONS_PEN: u8 = SRC_KEY | SRC_PAD | SRC_PEN;
 
 pub const GROUP_EDITING: usize = 0;
 pub const GROUP_TOOLS: usize = 1;
@@ -125,7 +127,7 @@ const fn nm(
     icon: IconKind,
     kind: ActionKind,
 ) -> ActionInfo {
-    ai(id, name, label, None, icon, group, 0, kind, SRC_ALL_PHASE3)
+    ai(id, name, label, None, icon, group, 0, kind, SRC_ALL)
 }
 const fn pair(
     id: i32,
@@ -145,7 +147,7 @@ const fn pair(
         group,
         pair_id,
         kind,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     )
 }
 
@@ -234,7 +236,7 @@ static K_TOOLS: [LearnRow; 11] = [
     ),
 ];
 
-static K_PAGES: [LearnRow; 9] = [
+static K_PAGES: [LearnRow; 11] = [
     lr(
         Some(n_("Previous / next page")),
         [SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE],
@@ -260,6 +262,8 @@ static K_PAGES: [LearnRow; 9] = [
     lr(None, [SHORTCUT_PAGES, 0], IconKind::Notebook),
     lr(None, [SHORTCUT_LANDSCAPE_FIT, 0], IconKind::Expand),
     lr(None, [SHORTCUT_GESTURE_NEW_PAGE, 0], IconKind::Plus),
+    lr(None, [SHORTCUT_PEN_PAN, 0], IconKind::Next),
+    lr(None, [SHORTCUT_PEN_ZOOM, 0], IconKind::Expand),
 ];
 
 static K_INDEX: [LearnRow; 8] = [
@@ -382,7 +386,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 62] = [
+pub static K_ACTIONS: [(&str, i32); 64] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -443,6 +447,7 @@ pub static K_ACTIONS: [(&str, i32); 62] = [
     ("update-channel", SHORTCUT_UPDATE_CHANNEL),
     ("shapes",SHORTCUT_SHAPES),("shape-hold",SHORTCUT_SHAPE_HOLD),
     ("shape-last",SHORTCUT_SHAPE_LAST),("index-map",SHORTCUT_INDEX_MAP),
+    ("pan", SHORTCUT_PEN_PAN), ("zoom", SHORTCUT_PEN_ZOOM),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -458,7 +463,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 72] = [
+static ACTIONS: [ActionInfo; 74] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -469,7 +474,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 1,
@@ -480,7 +485,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 2,
@@ -491,7 +496,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 3,
@@ -502,7 +507,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_EDITING,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 4,
@@ -513,7 +518,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 5,
@@ -524,7 +529,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 6,
@@ -535,7 +540,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 7,
@@ -546,7 +551,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 8,
@@ -557,7 +562,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     ai(
         SHORTCUT_TOOL_BASE + 9,
@@ -568,7 +573,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_TOOLS,
         0,
         ActionKind::Cycle,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     // Existing actions. Translator notes and msgids from library.rs are retained at their moved labels.
     nm(
@@ -648,7 +653,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_EDITING,
         0,
         ActionKind::Momentary,
-        SRC_KEY_PAD,
+        SRC_BUTTONS_PEN,
     ),
     nm(
         SHORTCUT_ERASER_MODE,
@@ -790,7 +795,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_INDEX,
         0,
         ActionKind::Menu,
-        SRC_ALL_PHASE3,
+        SRC_ALL,
     ),
     // TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name this page opens it.
     nm(
@@ -1027,7 +1032,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_SYSTEM,
         0,
         ActionKind::Toggle,
-        SRC_TOUCH_SHAPE,
+        SRC_GESTURES,
     ),
     ai(
         SHORTCUT_BLUETOOTH_CONTROLLER,
@@ -1038,7 +1043,7 @@ static ACTIONS: [ActionInfo; 72] = [
         GROUP_SYSTEM,
         0,
         ActionKind::Toggle,
-        SRC_TOUCH_SHAPE,
+        SRC_GESTURES,
     ),
     nm(
         SHORTCUT_LANGUAGE,
@@ -1068,6 +1073,14 @@ static ACTIONS: [ActionInfo; 72] = [
     nm(SHORTCUT_SHAPE_HOLD,"shape-hold",n_("Shape hold time"),GROUP_EDITING,IconKind::Clock,ActionKind::Cycle),
     nm(SHORTCUT_SHAPE_LAST,"shape-last",n_("Shape the last stroke"),GROUP_EDITING,IconKind::Grid,ActionKind::OneShot),
     nm(SHORTCUT_INDEX_MAP,"index-map",n_("Index map"),GROUP_INDEX,IconKind::Grid,ActionKind::Menu),
+    ai(
+        SHORTCUT_PEN_PAN, "pan", n_("Pan with the pen"), None, IconKind::Next,
+        GROUP_PAGES, 0, ActionKind::Momentary, SRC_PEN,
+    ),
+    ai(
+        SHORTCUT_PEN_ZOOM, "zoom", n_("Zoom with the pen"), None, IconKind::Expand,
+        GROUP_PAGES, 0, ActionKind::Momentary, SRC_PEN,
+    ),
 ];
 
 pub fn action_info(id: i32) -> Option<&'static ActionInfo> {

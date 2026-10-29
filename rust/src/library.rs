@@ -206,6 +206,12 @@ pub struct LibraryState {
     record_newer_confirm: bool,
     record_touch_origin: bool,
     record_two_strokes_pending: bool,
+    // The card owns recognition independently of the editor and never sends pen ink.
+    record_pb: PenButtons,
+    record_pen: PbPen,
+    record_pen_pointer: bool,
+    record_pen_capture: bool,
+    record_pen_redraw: bool,
     // The Pair sheet (Settings > Controller > Pair a controller): what it asked the Bluetooth helper
     // last (ASK_*), what it asks next and when, the controllers found and those paired.
     bt_asked: i32,
@@ -1035,7 +1041,7 @@ const GESTURES: BindKind = BindKind {
     modal: Modal::Gestures,
     title: n_("Gestures"),
     prompt: n_("Do the gesture for %s"),
-    sources: SRC_TOUCH | SRC_SHAPE,
+    sources: SRC_TOUCH | SRC_SHAPE | SRC_PEN,
     row_text: gestures_row_text,
     learn: gestures_learn,
     forget: gestures_forget,
@@ -1194,22 +1200,79 @@ fn gesture_key_label(k: GestureKey, out: &mut String) {
             fingers: 3,
             kind: TouchKind::Tap,
         } => out.push_str(tr("3-finger tap")),
-        GestureKey::Touch { .. } | GestureKey::Pen { .. } => out.push_str(tr("no gesture")),
+        GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Tap } => out.push_str(tr("pen button click")),
+        GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Double } => out.push_str(tr("pen button double-click")),
+        GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Triple } => out.push_str(tr("pen button triple-click")),
+        GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Hold } => out.push_str(tr("pen button hold")),
+        GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Drag } => out.push_str(tr("pen button drag")),
+        GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Tap } => out.push_str(tr("second pen button click")),
+        GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Double } => out.push_str(tr("second pen button double-click")),
+        GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Triple } => out.push_str(tr("second pen button triple-click")),
+        GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Hold } => out.push_str(tr("second pen button hold")),
+        GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Drag } => out.push_str(tr("second pen button drag")),
+        GestureKey::Touch { .. } | GestureKey::Pen { button: PenBtn::Eraser, .. } => out.push_str(tr("no gesture")),
     }
 }
 
-fn gesture_binding_text(a: &App, action: i32, out: &mut String) {
+// A source counts once even if several of its slots do the action. Unsupported
+// three-finger slots must not hide a usable one-finger or pen binding on a two-slot panel.
+fn gesture_touch_for_caps(a: &App, action: i32, touch_slots: i32) -> Option<GestureKey> {
+    let mut touch = None;
+    for fingers in [2, 3, 1] {
+        if fingers == 3 && touch_slots < 3 { continue; }
+        for kind in [TouchKind::Down, TouchKind::Up, TouchKind::Left, TouchKind::Right, TouchKind::Tap] {
+            let key = GestureKey::Touch { fingers, kind };
+            if gesturemap_action(&a.gestures, key) == action && action != SHORTCUT_NONE {
+                touch = Some(key);
+                break;
+            }
+        }
+        if touch.is_some() { break; }
+    }
+    touch
+}
+
+fn gesture_row_binding_text(a: &App, actions: &[i32], touch_slots: i32, out: &mut String) {
+    let (mut touch, mut pen) = (None, None);
+    let (mut shape, mut newer) = (false, false);
+    let mut sources = 0;
+    for &action in actions.iter().filter(|&&action| action != SHORTCUT_NONE) {
+        let t = gesture_touch_for_caps(a, action, touch_slots);
+        let p = gesturemap_key_for(&a.gestures, action, ActionSrc::Pen);
+        let s = gesturemap_shape_of(&a.gestures, action).is_some();
+        let n = gesturemap_shape_newer(&a.gestures, action);
+        sources += t.is_some() as i32 + (s || n) as i32 + p.is_some() as i32;
+        touch = touch.or(t);
+        pen = pen.or(p);
+        shape |= s;
+        newer |= n;
+    }
     out.clear();
-    let key=gesturemap_key_for(&a.gestures,action,ActionSrc::Touch).filter(|k|!matches!(k,GestureKey::Touch{fingers:3,..}) || input_caps().touch_slots>=3);
-    if let Some(k) = key {
-        gesture_key_label(k, out);
-    } else if gesturemap_shape_of(&a.gestures, action).is_some() {
+    if let Some(key) = touch {
+        gesture_key_label(key, out);
+    } else if shape {
         out.push_str(tr("finger shape"));
-    } else if gesturemap_shape_newer(&a.gestures, action) {
+    } else if newer {
         out.push_str(tr("finger shape (newer version)"));
+    } else if let Some(key) = pen {
+        gesture_key_label(key, out);
     } else {
         out.push_str(tr("no gesture"));
     }
+    if sources > 1 {
+        // TRANSLATORS: extra binding sources on a Gestures row, after its first touch, shape or pen binding.
+        let suffix = cformat!(tr("+%d"), sources - 1);
+        out.push(' ');
+        out.push_str(&suffix);
+    }
+}
+
+fn gesture_binding_text_for_caps(a: &App, action: i32, touch_slots: i32, out: &mut String) {
+    gesture_row_binding_text(a, &[action], touch_slots, out);
+}
+
+fn gesture_binding_text(a: &App, action: i32, out: &mut String) {
+    gesture_binding_text_for_caps(a, action, input_caps().touch_slots, out);
 }
 
 fn buttons_row_text(a: &App, action: i32, out: &mut String) {
@@ -1287,6 +1350,7 @@ fn save_gesture_map(a: &mut App, next: GestureMap) -> bool {
         return false;
     }
     a.gestures = next;
+    app_gestures_sync(a);
     true
 }
 
@@ -1301,7 +1365,7 @@ fn gestures_forget(a: &mut App, row: LearnRow) -> bool {
     }
     let mut msg = String::new();
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held a Gestures
-    // sheet row, whose touch and shape bindings are clear; %s is its action or paired row name.
+    // sheet row, whose touch, shape and pen bindings are clear; %s is its action or paired row name.
     csnprintf!(
         &mut msg,
         200,
@@ -1325,12 +1389,13 @@ fn gestures_reset(a: &mut App) -> bool {
 }
 
 fn reset_gesture_map(a: &mut App) -> bool {
-    let mut next = GestureMap::default();
+    let mut next = a.gestures.clone();
     if gesturemap_reset(&mut next, &gesture_path()) < 0 {
         app_toast(a, tr("Could not save the gestures."), 3000);
         return false;
     }
     a.gestures = next;
+    app_gestures_sync(a);
     lib(a).gestures_file_readable = true;
     lib(a).gestures_refused = 0;
     lib(a).gestures_reset_confirm = false;
@@ -1339,7 +1404,9 @@ fn reset_gesture_map(a: &mut App) -> bool {
 }
 
 fn open_gestures(a: &mut App) {
+    gesturemap_pen_button2(&mut a.gestures, input_caps().pen_button2);
     let n = gesturemap_load(&mut a.gestures, &gesture_path());
+    app_gestures_sync(a);
     let s = lib(a);
     s.gestures_file_readable = n >= 0;
     s.gestures_refused = n.max(0);
@@ -1389,6 +1456,11 @@ fn open_record_card(a: &mut App, action: i32) -> bool {
         s.record_newer_confirm = false;
         s.record_touch_origin = false;
         s.record_two_strokes_pending = false;
+        s.record_pb = PenButtons::default();
+        s.record_pen = PbPen::default();
+        s.record_pen_pointer = false;
+        s.record_pen_capture = false;
+        s.record_pen_redraw = false;
         s.pressed = None;
     }
     input_touch_context(TgView { gestures_on: true, record: true, ..TgView::default() });
@@ -1406,6 +1478,11 @@ fn close_record_card(a: &mut App) {
     s.record_key = None;
     s.record_touch_active = false;
     s.record_two_strokes_pending = false;
+    s.record_pb = PenButtons::default();
+    s.record_pen = PbPen::default();
+    s.record_pen_pointer = false;
+    s.record_pen_capture = false;
+    s.record_pen_redraw = false;
     s.record_trail = RECT_EMPTY;
     s.record_line.clear();
     s.pressed = None;
@@ -1430,6 +1507,13 @@ pub fn library_record_active(a: &App) -> bool {
 }
 
 fn redraw_record_card(a: &mut App) {
+    // Ui is GL16 on the Kindle. Recognition may finish at contact, but its
+    // display update waits for lift; no feedback may interrupt a pen drag.
+    if lib(a).record_pen.touching {
+        lib(a).record_pen_redraw = true;
+        return;
+    }
+    lib(a).record_pen_redraw = false;
     let card = record_card_rect(a);
     // Samples/pattern and Use change below the fixed title and instructions. Restore any
     // earlier trail as well; a refusal with no trail uses only draw_record_line instead.
@@ -1496,7 +1580,76 @@ fn draw_record_trail(a: &mut App, now: u32) {
     app_flush(a);
 }
 
+fn record_pen_output(a: &mut App, out: PbOut) {
+    let (button, kind) = match out {
+        PbOut::Fire(button, kind) => (button, kind),
+        PbOut::HoldBegin(button) => (button, PenKind::Hold),
+        PbOut::DragBegin(button) => (button, PenKind::Drag),
+        _ => return,
+    };
+    if button == PenBtn::Eraser || (button == PenBtn::Button2 && !input_caps().pen_button2) { return; }
+    let s = lib(a);
+    s.record_attempted = true;
+    s.pressed = None;
+    s.record_pen_pointer = false;
+    if kind == PenKind::Drag { s.record_pen_capture = true; }
+    fs_abort(&mut s.record_stroke);
+    s.record_touch_active = false;
+    if s.record_sample_count != 0 {
+        record_refusal(a, tr("Not like the first one: draw it again."));
+    } else {
+        record_pattern(a, GestureKey::Pen { button, kind });
+    }
+}
+
+// Return Some(consumed) for every pen event. Only a normal pen tap that starts
+// on Use/Try again/Cancel reaches the Library's ordinary pointer handling.
+fn record_pen_event(a: &mut App, ev: &InEvent) -> Option<bool> {
+    if !matches!(ev.type_, InType::PenButton | InType::PenHover | InType::PenLeave
+        | InType::PenDown | InType::PenMove | InType::PenUp) { return None; }
+    let config = a.pb_config;
+    let t = in_sample_ms(ev);
+    if ev.type_ == InType::PenButton {
+        let button = if ev.value == 2 { PenBtn::Button2 } else { PenBtn::Button };
+        if button == PenBtn::Button2 && !input_caps().pen_button2 { return Some(true); }
+        let down = if button == PenBtn::Button2 { ev.side_button2 } else { ev.side_button };
+        let s = lib(a);
+        s.record_pen.prox = true;
+        s.record_attempted = true;
+        let out = penbutton_event(&mut s.record_pb, &config, PbIn { t_ms: t, button, down }, s.record_pen);
+        record_pen_output(a, out);
+        return Some(true);
+    }
+    let pen = PbPen {
+        prox: ev.type_ != InType::PenLeave,
+        touching: matches!(ev.type_, InType::PenDown | InType::PenMove),
+    };
+    lib(a).record_pen = pen;
+    // Two buttons may end together on lift/leave. Drain all outputs, including ends.
+    for _ in 0..3 {
+        let out = penbutton_pen(&mut lib(a).record_pb, &config, pen, t);
+        if out == PbOut::None { break; }
+        record_pen_output(a, out);
+    }
+    if ev.type_ == InType::PenDown {
+        let pointer = !ev.side_button && !ev.side_button2 && !lib(a).record_pen_capture
+            && hits_find(&lib(a).hits, ev.x, ev.y)
+                .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL));
+        lib(a).record_pen_pointer = pointer;
+    }
+    let pointer = lib(a).record_pen_pointer;
+    if !pen.touching {
+        let s = lib(a);
+        s.record_pen_pointer = false;
+        s.record_pen_capture = false;
+        if ev.type_ == InType::PenLeave { s.record_pen_redraw |= s.pressed.take().is_some(); }
+        if s.record_pen_redraw { redraw_record_card(a); }
+    }
+    Some(!pointer || matches!(ev.type_, InType::PenHover | InType::PenLeave))
+}
+
 fn record_event(a: &mut App, ev: &InEvent) -> bool {
+    if let Some(consumed) = record_pen_event(a, ev) { return consumed; }
     if ev.type_ == InType::Gesture {
         let s = lib(a);
         s.record_attempted = true;
@@ -1643,7 +1796,30 @@ fn shape_refusal_line(reason: FsReason) -> &'static str {
     }
 }
 
+fn record_slot_refusal(action: i32, key: GestureKey) -> Option<&'static str> {
+    if action == SHORTCUT_HOLD_ERASER && !matches!(key,
+        GestureKey::Pen { kind: PenKind::Hold | PenKind::Drag, .. }) {
+        // TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
+        return Some(tr("Hold eraser needs the button held: hold it or drag with it."));
+    }
+    if matches!(action, SHORTCUT_PEN_PAN | SHORTCUT_PEN_ZOOM) && !matches!(key,
+        GestureKey::Pen { kind: PenKind::Drag, .. }) {
+        // TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
+        return Some(tr("Hold the pen button and drag with it."));
+    }
+    let source = match key { GestureKey::Touch { .. } => SRC_TOUCH, GestureKey::Pen { .. } => SRC_PEN };
+    if action_sources(action) & source == 0 {
+        return Some(tr("Use the pen button for this action."));
+    }
+    None
+}
+
 fn record_pattern(a: &mut App, key: GestureKey) {
+    let action = lib(a).record_action;
+    if let Some(line) = record_slot_refusal(action, key) {
+        record_refusal(a, line);
+        return;
+    }
     let losing = gesturemap_action(&a.gestures, key);
     let name = {
         let mut out = String::new();
@@ -1743,6 +1919,12 @@ fn check_shape_candidate(a: &mut App) -> bool {
 }
 
 fn record_shape_sample(a: &mut App, sample: FsSample) {
+    let action = lib(a).record_action;
+    if action_sources(action) & SRC_SHAPE == 0 {
+        let key = GestureKey::Touch { fingers: 1, kind: TouchKind::Up };
+        record_refusal(a, record_slot_refusal(action, key).unwrap_or(tr("Use the pen button for this action.")));
+        return;
+    }
     let count = lib(a).record_sample_count;
     if count == 0 {
         let current = gesturemap_shapes(&a.gestures).len();
@@ -1827,7 +2009,7 @@ fn use_recording(a: &mut App) {
         }
         if loser != 0 && loser != action {
             let mut msg = String::new();
-            // TRANSLATORS: a toast when a touch gesture is reassigned; %s is the action that loses it.
+            // TRANSLATORS: a toast when a touch or pen gesture is reassigned; %s is the action that loses it.
             csnprintf!(&mut msg, 200, tr("That gesture is no longer for %s."), action_label(loser));
             app_toast(a, &msg, 2500);
         }
@@ -2316,17 +2498,19 @@ fn bind_reset_hit(kind: BindKind) -> i32 {
 fn bind_row_text(a: &App, kind: BindKind, row: LearnRow, out: &mut String) {
     let label = row.label.map(tr).unwrap_or_else(|| action_label(row.act[0]));
     let mut first = String::new();
+    if kind.modal == GESTURES.modal {
+        gesture_row_binding_text(a, &row.act, input_caps().touch_slots, &mut first);
+        // TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
+        csnprintf!(out, 256, c_("gesture row", "%s: %s"), label, &first);
+        return;
+    }
     (kind.row_text)(a, row.act[0], &mut first);
     if row.act[1] != 0 {
         let mut second = String::new();
         (kind.row_text)(a, row.act[1], &mut second);
-        // TRANSLATORS: the Gestures sheet row: action and two bindings, about 1000 px at 44 px bold.
-        let fmt = if kind.modal == GESTURES.modal { c_("gesture row", "%s: %s / %s") } else { "%s: %s / %s" };
-        csnprintf!(out, 256, fmt, label, &first, &second);
+        csnprintf!(out, 256, "%s: %s / %s", label, &first, &second);
     } else {
-        // TRANSLATORS: the Gestures sheet row: action and binding, about 1000 px at 44 px bold.
-        let fmt = if kind.modal == GESTURES.modal { c_("gesture row", "%s: %s") } else { "%s: %s" };
-        csnprintf!(out, 256, fmt, label, &first);
+        csnprintf!(out, 256, "%s: %s", label, &first);
     }
 }
 
@@ -2637,6 +2821,10 @@ fn record_line_rect(a: &App) -> Rect {
 }
 
 fn draw_record_line(a: &mut App) {
+    if lib(a).record_pen.touching {
+        lib(a).record_pen_redraw = true;
+        return;
+    }
     let r = record_line_rect(a);
     canvas_fill(&mut a.screen, r, 255);
     let line = lib(a).record_line.clone();
@@ -2669,7 +2857,7 @@ fn draw_record_card(a: &mut App) {
     let in_ = ui_sheet(screen, card, "");
     let title = {
         let mut text = String::new();
-        // TRANSLATORS: the record card's title, about 1300 px wide at 64 px; %s is an action name.
+        // TRANSLATORS: the record card's title, about 1300 px wide, 64 px down to 34 px; %s is an action name.
         csnprintf!(
             &mut text,
             256,
@@ -2679,22 +2867,25 @@ fn draw_record_card(a: &mut App) {
         text
     };
     let top = in_.y + ui_px(12.0);
-    font_draw_centered(
+    ui_text(
         screen,
         FontFace::Bold,
         ui_px(64.0) as f32,
+        ui_small_size(),
         Rect::new(in_.x, top, in_.w, ui_px(76.0)),
         &title,
+        1,
+        true,
         0,
     );
-    // TRANSLATORS: the record card's instruction line, about 1320 px at 44 px or two lines at 34 px.
     ui_text(
         screen,
         FontFace::Regular,
         ui_text_size(),
         ui_small_size(),
         Rect::new(in_.x, top + ui_px(82.0), in_.w, ui_px(90.0)),
-        tr("Draw a shape with one finger, or swipe or tap with two fingers."),
+        // TRANSLATORS: record card instructions, about 1312 px at 44 px or two lines at 34 px, upright and sideways.
+        tr("Draw a shape with one finger, swipe or tap with two fingers, or use the pen's button."),
         2,
         false,
         0,
@@ -2708,13 +2899,13 @@ fn draw_record_card(a: &mut App) {
     if let Some(k) = key {
         let mut name = String::new();
         gesture_key_label(k, &mut name);
-        font_draw_centered(
+        font_draw_wrapped(
             screen,
             FontFace::Bold,
             ui_px(64.0) as f32,
             Rect::new(in_.x, slots_y, in_.w, slot),
             &name,
-            0,
+            2, 0, true, 0,
         );
     } else {
         for i in 0..3 {
@@ -4505,6 +4696,11 @@ pub fn library_leave(a: &mut App) {
     s.pressed = None;
     s.record_touch_active = false;
     s.record_previous_lift = None;
+    s.record_pb = PenButtons::default();
+    s.record_pen = PbPen::default();
+    s.record_pen_pointer = false;
+    s.record_pen_capture = false;
+    s.record_pen_redraw = false;
     fs_abort(&mut s.record_stroke);
     input_touch_context(TgView { gestures_on: a.settings.gestures, record: false, ..TgView::default() });
 }
@@ -4629,6 +4825,15 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 
 pub fn library_tick(a: &mut App, now: u32) {
     if library_record_active(a) {
+        // A queued release/contact must reach the model before a wall-clock tick.
+        if a.input_drained {
+            let config = a.pb_config;
+            for _ in 0..3 {
+                let out = penbutton_tick(&mut lib(a).record_pb, &config, now);
+                if out == PbOut::None { break; }
+                record_pen_output(a, out);
+            }
+        }
         let s = lib(a);
         if !s.record_attempted && !s.record_touch_active && now.wrapping_sub(s.record_started) >= LEARN_MS {
             close_record_card(a);
@@ -5095,6 +5300,214 @@ mod tests {
         out
     }
 
+    fn pen_record_app() -> App {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        library_init(&mut a);
+        gesturemap_defaults(&mut a.gestures);
+        app_gestures_sync(&mut a);
+        let s = lib(&mut a);
+        s.modal = Modal::Gestures;
+        s.gestures_group = 0;
+        s.gestures_file_readable = true;
+        a
+    }
+
+    fn record_side(a: &mut App, t_ms: u32, down: bool) {
+        library_event(a, &InEvent { type_: InType::PenButton, t_ms, side_button: down, ..Default::default() });
+    }
+
+    fn pen_card_tap(a: &mut App, id: i32, t_ms: u32) {
+        let hit = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == id).copied().unwrap();
+        let (x, y) = ((hit.r.x + hit.r.w / 2) as f32, (hit.r.y + hit.r.h / 2) as f32);
+        library_event(a, &InEvent { type_: InType::PenDown, x, y, t_ms, ..Default::default() });
+        library_event(a, &InEvent { type_: InType::PenUp, x, y, t_ms: t_ms + 40, ..Default::default() });
+    }
+
+    #[test]
+    fn pen_record_timing_reassignment_buttons_and_save_failure() {
+        let root = std::env::temp_dir().join(format!("grimoire-p6-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut a = pen_record_app();
+        open_record_card(&mut a, SHORTCUT_UNDO);
+        record_side(&mut a, 100, true);
+        record_side(&mut a, 180, false);
+        library_tick(&mut a, 529);
+        assert_eq!(probe(&mut a, "record"), "wait");
+        a.input_drained = false;
+        library_tick(&mut a, 530);
+        assert_eq!(probe(&mut a, "record"), "wait");
+        a.input_drained = true;
+        library_tick(&mut a, 530);
+        assert_eq!(probe(&mut a, "record"), "pattern pen.Button.tap");
+        pen_card_tap(&mut a, H_RECORD_RETRY, 600);
+        assert_eq!(probe(&mut a, "record"), "wait");
+
+        let key = GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Double };
+        assert_eq!(gesturemap_set(&mut a.gestures, key, SHORTCUT_LINKS), 0);
+        app_gestures_sync(&mut a);
+        for t in [1000, 1200] { record_side(&mut a, t, true); record_side(&mut a, t + 80, false); }
+        library_tick(&mut a, 1630);
+        assert_eq!(probe(&mut a, "record"), "pattern pen.Button.double");
+        assert_eq!(probe(&mut a, "record.line"), "Now for Links on this page. Use moves it here.");
+        assert_eq!(gesturemap_action(&a.gestures, key), SHORTCUT_LINKS);
+        // Failed persistence cannot move the live binding or close the candidate.
+        lib(&mut a).gestures_file_readable = false;
+        pen_card_tap(&mut a, H_RECORD_USE, 1700);
+        assert_eq!(gesturemap_action(&a.gestures, key), SHORTCUT_LINKS);
+        assert!(library_record_active(&a));
+        lib(&mut a).gestures_file_readable = true;
+        pen_card_tap(&mut a, H_RECORD_USE, 1800);
+        assert!(!library_record_active(&a));
+        assert_eq!(gesturemap_action(&a.gestures, key), SHORTCUT_UNDO);
+        assert!(std::fs::read_to_string(gesture_path()).unwrap().contains("pen.Button.double=undo"));
+        assert_eq!(a.toast.as_str(), "That gesture is no longer for Links on this page.");
+        assert!(a.pb_config.waits[0]);
+
+        // Clearing every multi-click binding updates timing without another file load.
+        let mut next = a.gestures.clone();
+        gesturemap_clear_action(&mut next, SHORTCUT_UNDO);
+        gesturemap_clear_action(&mut next, SHORTCUT_CLEAR_PAGE);
+        assert!(save_gesture_map(&mut a, next));
+        assert!(!a.pb_config.waits[0]);
+        open_record_card(&mut a, SHORTCUT_REDO);
+        record_side(&mut a, 2000, true); record_side(&mut a, 2080, false);
+        assert_eq!(probe(&mut a, "record"), "pattern pen.Button.tap");
+        pen_card_tap(&mut a, H_RECORD_CANCEL, 2200);
+        assert!(reset_gesture_map(&mut a));
+        assert!(a.pb_config.waits[0]);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pen_record_hold_drag_restrictions_and_proximity() {
+        let mut a = pen_record_app();
+        open_record_card(&mut a, SHORTCUT_HOLD_ERASER);
+        record_side(&mut a, 100, true); record_side(&mut a, 180, false);
+        library_tick(&mut a, 530);
+        assert!(lib(&mut a).record_key.is_none());
+        assert_eq!(probe(&mut a, "record.line"), "Hold eraser needs the button held: hold it or drag with it.");
+        record_side(&mut a, 1000, true);
+        library_tick(&mut a, 2199);
+        assert!(lib(&mut a).record_key.is_none());
+        a.input_drained = false;
+        library_tick(&mut a, 2200);
+        assert!(lib(&mut a).record_key.is_none());
+        a.input_drained = true;
+        library_tick(&mut a, 2200);
+        assert_eq!(probe(&mut a, "record"), "pattern pen.Button.hold");
+        record_side(&mut a, 2250, false);
+        assert_eq!(probe(&mut a, "record"), "pattern pen.Button.hold");
+        // Touch patterns and shape samples cannot enter the eraser's pen-only row.
+        open_record_card(&mut a, SHORTCUT_HOLD_ERASER);
+        record_pattern(&mut a, GestureKey::Touch { fingers: 2, kind: TouchKind::Tap });
+        assert!(lib(&mut a).record_key.is_none());
+        record_shape_sample(&mut a, FsSample::default());
+        assert_eq!(lib(&mut a).record_sample_count, 0);
+        assert_eq!(probe(&mut a, "record.line"), "Hold eraser needs the button held: hold it or drag with it.");
+
+        for action in [SHORTCUT_PEN_PAN, SHORTCUT_PEN_ZOOM] {
+            open_record_card(&mut a, action);
+            record_side(&mut a, 3000, true);
+            library_tick(&mut a, 4200);
+            assert_eq!(probe(&mut a, "record.line"), "Hold the pen button and drag with it.");
+            assert!(lib(&mut a).record_key.is_none());
+            record_side(&mut a, 4250, false);
+            pen_card_tap(&mut a, H_RECORD_RETRY, 4300);
+            record_side(&mut a, 4400, true);
+            a.dirty = RECT_EMPTY;
+            a.dirty_mode = RefreshMode::Fast;
+            library_event(&mut a, &InEvent { type_: InType::PenDown, x: 800.0, y: 1100.0,
+                side_button: true, t_ms: 4410, ..Default::default() });
+            assert_eq!(probe(&mut a, "record"), "pattern pen.Button.drag");
+            assert!(!lib(&mut a).record_pen_pointer);
+            assert!(lib(&mut a).pressed.is_none());
+            assert!(lib(&mut a).record_pen_redraw);
+            assert!(rect_is_empty(a.dirty)); // No Ui/GL16 submission during contact.
+            library_event(&mut a, &InEvent { type_: InType::PenUp, t_ms: 4450, ..Default::default() });
+            assert!(!lib(&mut a).record_pen_redraw);
+            assert!(!rect_is_empty(a.dirty));
+            assert_eq!(a.dirty_mode, RefreshMode::Ui);
+            record_side(&mut a, 4460, false);
+            library_tick(&mut a, 5000);
+            assert_eq!(probe(&mut a, "record"), "pattern pen.Button.drag");
+        }
+        open_record_card(&mut a, SHORTCUT_UNDO);
+        record_side(&mut a, 6000, true); record_side(&mut a, 6080, false);
+        library_event(&mut a, &InEvent { type_: InType::PenLeave, t_ms: 6100, ..Default::default() });
+        library_tick(&mut a, 6500);
+        assert_eq!(probe(&mut a, "record"), "wait");
+        // A release queued just below the hold threshold wins over a later tick.
+        open_record_card(&mut a, SHORTCUT_HOLD_ERASER);
+        record_side(&mut a, 7000, true);
+        a.input_drained = false;
+        library_tick(&mut a, 8300);
+        record_side(&mut a, 8199, false);
+        a.input_drained = true;
+        library_tick(&mut a, 8400);
+        assert!(lib(&mut a).record_key.is_none());
+        assert_eq!(probe(&mut a, "record"), "wait");
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    #[test]
+    fn gesture_rows_count_sources_once_and_hide_unsupported_slots() {
+        use crate::fingershape_synth::{shape_frames, Draw};
+        i18n_set("en");
+        let mut a = App::default();
+        gesturemap_defaults(&mut a.gestures);
+        let touch3 = GestureKey::Touch { fingers: 3, kind: TouchKind::Tap };
+        assert_eq!(gesturemap_set(&mut a.gestures, touch3, SHORTCUT_UNDO), 0);
+        let tap = GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Tap };
+        assert_eq!(gesturemap_set(&mut a.gestures, tap, SHORTCUT_UNDO), 0);
+        let mut text = String::new();
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 2, &mut text);
+        assert_eq!(text, "pen button click");
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 3, &mut text);
+        assert_eq!(text, "3-finger tap +1");
+        // More pen slots are still one source (including the legal built-in duplicate).
+        gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
+        assert_eq!(text, "pen button triple-click");
+        let frames = shape_frames("Z", &Draw::default());
+        let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
+        let mut sample = FsSample::default();
+        fs_sample_of(&points, &mut sample);
+        assert_eq!(gesturemap_shape_set(&mut a.gestures, SHORTCUT_UNDO, &[sample, sample]), 0);
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 2, &mut text);
+        assert_eq!(text, "finger shape +1");
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 3, &mut text);
+        assert_eq!(text, "3-finger tap +2");
+        gesturemap_clear_action(&mut a.gestures, SHORTCUT_UNDO);
+        gesturemap_pen_button2(&mut a.gestures, true);
+        let second = GestureKey::Pen { button: PenBtn::Button2, kind: PenKind::Double };
+        assert_eq!(gesturemap_set(&mut a.gestures, second, SHORTCUT_UNDO), 0);
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 2, &mut text);
+        assert_eq!(text, "second pen button double-click");
+        gesturemap_pen_button2(&mut a.gestures, false);
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 2, &mut text);
+        assert_eq!(text, "no gesture");
+        assert_eq!(gesturemap_parse(&mut a.gestures, b"pen.Eraser.tap=undo\n"), 0);
+        gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 2, &mut text);
+        assert_eq!(text, "no gesture");
+        assert!(binding_row_index(GESTURES, 0, SHORTCUT_HOLD_ERASER).is_some());
+        for action in [SHORTCUT_PEN_PAN, SHORTCUT_PEN_ZOOM] {
+            assert!(binding_row_index(GESTURES, 2, action).is_some());
+            assert!(binding_row_index(BUTTONS, 2, action).is_none());
+        }
+    }
+
     #[test]
     fn recording_contacts_buttons_timeout_and_rotation() {
         use crate::fingershape_synth::{shape_frames, Draw};
@@ -5288,7 +5701,9 @@ mod tests {
         assert_eq!(group_row_count(0), 10);
         assert_eq!(group_row_count(1), TOOL_PENS as usize + 2);
         // Zoom and scrolling are Pages rows; Index owns links and naming.
-        assert_eq!(group_row_count(2), 9);
+        assert_eq!(group_row_count(2), 11);
+        assert_eq!(binding_row_count(BUTTONS, 2), 9);
+        assert_eq!(binding_row_count(GESTURES, 2), 11);
         assert_eq!(learn_row_at(2, 2).unwrap().act, [SHORTCUT_ZOOM_OUT, SHORTCUT_ZOOM_IN]);
         assert_eq!(learn_row_at(2, 7).unwrap().act, [SHORTCUT_LANDSCAPE_FIT, 0]);
         assert_eq!(learn_row_at(2, 8).unwrap().act, [SHORTCUT_GESTURE_NEW_PAGE, 0]);
@@ -5300,7 +5715,7 @@ mod tests {
         assert_eq!(group_row_count(5), 10);
         assert_eq!(group_row_count(6), 6);
         assert_eq!(binding_row_count(BUTTONS, 6), 4);
-        assert_eq!(binding_row_count(GESTURES, 0), 9); // Hold eraser needs a key or button.
+        assert_eq!(binding_row_count(GESTURES, 0), 10); // Hold eraser is pen-only here.
         assert_eq!(binding_row_at(BUTTONS, 6, 1).unwrap().act, [SHORTCUT_LANGUAGE, 0]);
         assert_eq!(learn_row_at(1, 0).unwrap().act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
         assert_eq!(learn_row_at(1, TOOL_PENS as usize).unwrap().act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);

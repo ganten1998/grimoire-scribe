@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 08:28-0500\n"
+"POT-Creation-Date: 2026-10-29 08:45-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -408,6 +408,14 @@ msgstr "Dar forma al último trazo"
 #: rust/src/actions.rs
 msgid "Index map"
 msgstr "Mapa del índice"
+
+#: rust/src/actions.rs
+msgid "Pan with the pen"
+msgstr "Mover con el lápiz"
+
+#: rust/src/actions.rs
+msgid "Zoom with the pen"
+msgstr "Ampliar con el lápiz"
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
@@ -2193,6 +2201,46 @@ msgid "3-finger tap"
 msgstr "toque con 3 dedos"
 
 #: rust/src/library.rs
+msgid "pen button click"
+msgstr "clic del botón del lápiz"
+
+#: rust/src/library.rs
+msgid "pen button double-click"
+msgstr "doble clic del botón del lápiz"
+
+#: rust/src/library.rs
+msgid "pen button triple-click"
+msgstr "triple clic del botón del lápiz"
+
+#: rust/src/library.rs
+msgid "pen button hold"
+msgstr "botón del lápiz mantenido"
+
+#: rust/src/library.rs
+msgid "pen button drag"
+msgstr "arrastre con el botón del lápiz"
+
+#: rust/src/library.rs
+msgid "second pen button click"
+msgstr "clic del segundo botón del lápiz"
+
+#: rust/src/library.rs
+msgid "second pen button double-click"
+msgstr "doble clic del segundo botón del lápiz"
+
+#: rust/src/library.rs
+msgid "second pen button triple-click"
+msgstr "triple clic del segundo botón del lápiz"
+
+#: rust/src/library.rs
+msgid "second pen button hold"
+msgstr "segundo botón del lápiz mantenido"
+
+#: rust/src/library.rs
+msgid "second pen button drag"
+msgstr "arrastre con el segundo botón del lápiz"
+
+#: rust/src/library.rs
 msgid "no gesture"
 msgstr "sin gesto"
 
@@ -2203,6 +2251,12 @@ msgstr "figura con el dedo"
 #: rust/src/library.rs
 msgid "finger shape (newer version)"
 msgstr "figura con el dedo (versión más nueva)"
+
+#. TRANSLATORS: extra binding sources on a Gestures row, after its first touch, shape or pen binding.
+#: rust/src/library.rs
+#, c-format
+msgid "+%d"
+msgstr "+%d"
 
 #. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
 #: rust/src/library.rs
@@ -2324,6 +2378,20 @@ msgstr "De un trazo, sin levantar el dedo."
 msgid "Grimoire keeps up to 32 shapes."
 msgstr "Grimoire guarda hasta 32 figuras."
 
+#. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
+#: rust/src/library.rs
+msgid "Hold eraser needs the button held: hold it or drag with it."
+msgstr "Borrar mientras se pulsa necesita el botón pulsado: mantenlo o arrastra con él."
+
+#. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
+#: rust/src/library.rs
+msgid "Hold the pen button and drag with it."
+msgstr "Mantén pulsado el botón del lápiz y arrastra con él."
+
+#: rust/src/library.rs
+msgid "Use the pen button for this action."
+msgstr "Usa el botón del lápiz para esta acción."
+
 #. TRANSLATORS: the record card's status line (1320 px at 44 px or two lines at 34 px);
 #. %s is the action that currently owns this gesture.
 #: rust/src/library.rs
@@ -2364,7 +2432,7 @@ msgstr "Bien. Dibújala otra vez (2 de 3)."
 msgid "Once more makes it surer, or Use."
 msgstr "Una vez más la afina, o Usar."
 
-#. TRANSLATORS: a toast when a touch gesture is reassigned; %s is the action that loses it.
+#. TRANSLATORS: a toast when a touch or pen gesture is reassigned; %s is the action that loses it.
 #: rust/src/library.rs
 #, c-format
 msgid "That gesture is no longer for %s."
@@ -2418,14 +2486,7 @@ msgstr "Olvidado."
 msgid "Could not forget that controller"
 msgstr "No se pudo olvidar ese mando"
 
-#. TRANSLATORS: the Gestures sheet row: action and two bindings, about 1000 px at 44 px bold.
-#: rust/src/library.rs
-#, c-format
-msgctxt "gesture row"
-msgid "%s: %s / %s"
-msgstr "%s: %s / %s"
-
-#. TRANSLATORS: the Gestures sheet row: action and binding, about 1000 px at 44 px bold.
+#. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
 #, c-format
 msgctxt "gesture row"
@@ -2465,9 +2526,12 @@ msgstr[1] "¿Restablecer los gestos? Se borrarán %d figuras."
 msgid "Reset"
 msgstr "Restablecer"
 
+#. TRANSLATORS: record card instructions, about 1312 px at 44 px or two lines at 34 px, upright and sideways.
 #: rust/src/library.rs
-msgid "Draw a shape with one finger, or swipe or tap with two fingers."
-msgstr "Dibuja una figura con un dedo, o desliza o toca con dos dedos."
+msgid ""
+"Draw a shape with one finger, swipe or tap with two fingers, or use the "
+"pen's button."
+msgstr "Dibuja una figura con un dedo, desliza o toca con dos dedos, o usa el botón del lápiz."
 
 #: rust/src/library.rs
 msgid "One stroke, without lifting. Two turns or a loop."
@@ -4192,6 +4256,11 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#, c-format
+#~ msgctxt "gesture row"
+#~ msgid "%s: %s / %s"
+#~ msgstr "%s: %s / %s"
 
 #, c-format
 #~ msgid "The link goes to page %d."

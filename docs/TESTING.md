@@ -11,6 +11,26 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## Index phase 6: pen-button gestures (device checks pending)
+
+No Kindle installation or owner acceptance result is claimed for Phase 6. The 350 ms
+multi-click gap is intentional: a single click waits 350 ms while double/triple is bound;
+triple means each next press within 350 ms of the previous release, not three within 1.2 s.
+A hovering hold remains 1200 ms. A click lasts at most 450 ms with no nib contact. Momentary
+erasing begins at press without waiting for hold recognition.
+
+Run [the Phase 6 owner checks](KINDLE.md#phase-6-owner-checks-pending-on-a-kindle) on the actual
+build: record/reassign/clear/reset, normal nib taps on card buttons, momentary eraser and key
+coexistence, bound drag without page/Live ink, real pan/zoom, side-button ink when unbound,
+proximity cancellation, second-button capability and the EN/ES fit matrix. Verify no GL16
+or toast during contact. Record build/device/firmware/pen and actual pass/fail for each item.
+
+Focused host coverage and its exact commands/results are tracked in
+[index-hook/PHASE6-IMPLEMENTATION.md](index-hook/PHASE6-IMPLEMENTATION.md). The main owner owns
+Phase 6 scenarios, integration and full gates. Until those run, focused unit passes are not a
+passing release gate. Phase 3 tuning and the owner trace remain pending as documented below;
+Phase 6 does not turn synthetic fixtures into owner evidence.
+
 ## Index phase 3: gestures and finger shapes (device checks pending)
 
 No phase 3 device results or owner trace are available for this work. `TG_TUNE` is provisional;

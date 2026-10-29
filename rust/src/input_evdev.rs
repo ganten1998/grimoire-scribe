@@ -59,6 +59,7 @@ const BTN_TOOL_PEN: u16 = 0x140;
 const BTN_TOOL_RUBBER: u16 = 0x141;
 const BTN_TOUCH: u16 = 0x14a;
 const BTN_STYLUS: u16 = 0x14b;
+const BTN_STYLUS2: u16 = 0x14c;
 const KEY_MAX: usize = 0x2ff;
 const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
@@ -168,14 +169,14 @@ const _: () = assert!(KEYB_BYTES == HID_KEY_BYTES && ABSB_BYTES == HID_ABS_BYTES
 fn eviocgabs(fd: i32, code: u16, ai: &mut InputAbsinfo) -> i32 {
     // SAFETY: EVIOCGABS writes one struct input_absinfo (its size is in the request) into ai, a
     // repr(C) struct of six ints that any bytes make valid; a bad fd only makes it fail.
-    unsafe { libc::ioctl(fd, eviocgabs_req(code) as libc::Ioctl, ai as *mut InputAbsinfo,
+    unsafe { libc::ioctl(fd, eviocgabs_req(code) as _, ai as *mut InputAbsinfo,
         ) }
 }
 /// A read request whose length is the buffer's (EVIOCGNAME, EVIOCGKEY, EVIOCGBIT).
 fn evioc_read(fd: i32, nr: u32, buf: &mut [u8]) -> i32 {
     // SAFETY: the request carries buf.len(), and the kernel writes at most that many bytes into the
     // buffer; bytes are bytes.
-    unsafe { libc::ioctl(fd, ioc(IOC_READ, nr, buf.len()) as libc::Ioctl, buf.as_mut_ptr(),
+    unsafe { libc::ioctl(fd, ioc(IOC_READ, nr, buf.len()) as _, buf.as_mut_ptr(),
         ) }
 }
 /// EVIOCGNAME(buf.len())
@@ -194,13 +195,13 @@ fn eviocgbit(fd: i32, ev: u16, buf: &mut [u8]) -> i32 {
 fn eviocgmtslots(fd: i32, slots: &mut [i32]) -> i32 {
     // SAFETY: the request carries the slice's size in bytes, and the kernel reads slots[0] and writes
     // at most that many bytes of ints into it.
-    unsafe { libc::ioctl(fd, ioc(IOC_READ, 0x0a, size_of_val(slots)) as libc::Ioctl, slots.as_mut_ptr(),
+    unsafe { libc::ioctl(fd, ioc(IOC_READ, 0x0a, size_of_val(slots)) as _, slots.as_mut_ptr(),
         ) }
 }
 /// EVIOCGRAB with its argument as the value (1 grab, 0 let go), as the kernel takes it.
 fn ioctl_grab(fd: i32, grab: c_int) -> i32 {
     // SAFETY: EVIOCGRAB reads no memory: the kernel takes the argument itself as the flag.
-    unsafe { libc::ioctl(fd, EVIOCGRAB as libc::Ioctl, grab) }
+    unsafe { libc::ioctl(fd, EVIOCGRAB as _, grab) }
 }
 
 // ---- libc, each call wrapped once ----
@@ -332,6 +333,7 @@ struct WacomSt {
     /// the raw digitizer also reports the eraser end and the side button
     rubber: bool,
     side: bool,
+    side2: bool,
 }
 
 // ---- event queue ----
@@ -350,6 +352,7 @@ struct PenSt {
     eraser: bool,
     touching: bool,
     side: bool,
+    side2: bool,
     was_prox: bool,
     was_touching: bool,
     x: i32,
@@ -403,6 +406,7 @@ impl Default for TouchSt {
 
 // ---- the touch log and trace ----
 
+#[path = "input_evdev/touch_log_budget.rs"]
 mod touch_log_budget;
 use touch_log_budget::{LogDecision, TouchLogBudget};
 
@@ -533,6 +537,10 @@ struct State {
     pen_resume_block: bool,
     /// last side-button state sent as IN_PEN_BUTTON
     side_reported: bool,
+    side2_reported: bool,
+    /// Buttons advertised by the pointer node: prefer its relayed stream to avoid
+    /// replaying the same edge once from raw Wacom and again from the pen service.
+    pen_buttons: [bool; 2],
     power_fd: i32,
     /// the press being followed (release, or the 4 s hold)
     pkey: PowerKey,
@@ -611,6 +619,7 @@ struct State {
     pen_gap: bool,
     /// The pen at the last complete frame read: where a resync after a drop goes on from.
     pen_good: PenState,
+    pen_good_side2: bool,
 
     drops: i32,
     /// when the pen was last read (input_open starts it when it is done)
@@ -665,6 +674,8 @@ impl Default for State {
             initial_grab_failed: false,
             pen_resume_block: false,
             side_reported: false,
+            side2_reported: false,
+            pen_buttons: [false; 2],
             power_fd: -1,
             pkey: PowerKey::default(),
             power_mono: false,
@@ -706,6 +717,7 @@ impl Default for State {
             sample_batch: None,
             pen_gap: false,
             pen_good: PenState::default(),
+            pen_good_side2: false,
             drops: 0,
             pen_read_ms: 0,
             pen_read: false,
@@ -895,6 +907,7 @@ impl State {
                 lat_match_raw(&mut self.match_, ev_us(ev), self.W.x, self.W.y);
             }
             self.wacom_frame_us = ev_us(ev);
+            self.side_check();
             // Learn a usable pen hover for touchgest whenever the input is grabbed. The Live hooks
             // still receive it only when installed.
             let k = pensync_ms(self.wacom_frame_us, self.wacom_mono, now_ms());
@@ -905,7 +918,7 @@ impl State {
             if self.hover_fn.is_some() || self.sample_fn.is_some() {
                 return place.and_then(|(x, y)| match (self.sample_fn, self.hover_fn) {
                     (Some(sample), _) => {
-                        let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.W.side, ..Default::default() };
+                        let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.pen_sides()[0], side_button2: self.pen_sides()[1], ..Default::default() };
                         e.k_ms = pensync_ms(self.wacom_frame_us, self.wacom_mono, e.t_ms);
                         e.k_us = if self.wacom_mono { self.wacom_frame_us as u32 } else { 0 };
                         Some(HoverTo::Sample(sample, e))
@@ -924,6 +937,8 @@ impl State {
                 self.W.rubber = ev.value != 0;
             } else if ev.code == BTN_STYLUS {
                 self.W.side = ev.value != 0;
+            } else if ev.code == BTN_STYLUS2 {
+                self.W.side2 = ev.value != 0;
             }
             return None;
         }
@@ -978,6 +993,7 @@ impl State {
         if eviocgkey(fd, &mut keys) >= 0 {
             self.W.rubber = test_bit(&keys, BTN_TOOL_RUBBER as usize);
             self.W.side = test_bit(&keys, BTN_STYLUS as usize);
+            self.W.side2 = test_bit(&keys, BTN_STYLUS2 as usize);
         }
         // Pen frames from the lost stretch are older than this, and take these newest values.
         if self.wacom_mono {
@@ -1111,7 +1127,7 @@ impl State {
         calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut e.tilt_x, &mut e.tilt_y,
         );
         e.eraser = self.P.eraser;
-        e.side_button = self.P.side || self.W.side;
+        [e.side_button, e.side_button2] = self.pen_sides();
         if self.input_grabbed && contact {
             self.hover_learn();
         }
@@ -1165,6 +1181,7 @@ impl State {
 
     fn pen_frame(&mut self) {
         self.pen_good = self.pen_state();
+        self.pen_good_side2 = self.P.side2;
         // A pen still touching the final PIN key must lift before it can start new ink.
         if self.pen_resume_block {
             if self.P.touching {
@@ -1189,6 +1206,22 @@ impl State {
             touchgest_cancel(&mut self.tg, pensync_ms(self.pen_frame_us, self.pen_mono, now_ms()), &mut out,
             );
             self.tg_push(&out);
+        }
+        // The button transition precedes contact so a button held on landing starts a drag.
+        // Leave cancels both buttons itself; synthetic releases would revive proximity
+        // in consumers and could turn a departure into a click.
+        let leaving = !self.P.prox && self.P.was_prox;
+        if leaving {
+            self.P.side = false;
+            self.P.side2 = false;
+            self.W.side = false;
+            self.W.side2 = false;
+            self.pen_good.side = false;
+            self.pen_good_side2 = false;
+            self.side_reported = false;
+            self.side2_reported = false;
+        } else {
+            self.side_check();
         }
         if touching && !self.P.was_touching {
             self.emit_pen(InType::PenDown);
@@ -1215,7 +1248,7 @@ impl State {
 
     // The pen's current buttons and axes straight from the device, into s; which of them it answered
     // (PS_F_*). EVIOCGKEY last: it takes the queued button events out of the queue.
-    fn pen_query(&self, s: &mut PenState) -> u32 {
+    fn pen_query(&self, s: &mut PenState, side2: &mut bool) -> u32 {
         let fd = self.pen.fd;
         let mut ok = 0u32;
         let mut ai = InputAbsinfo::default();
@@ -1245,6 +1278,7 @@ impl State {
             s.tool_rubber = test_bit(&keys, BTN_TOOL_RUBBER as usize);
             s.touching = test_bit(&keys, BTN_TOUCH as usize);
             s.side = test_bit(&keys, BTN_STYLUS as usize);
+            *side2 = test_bit(&keys, BTN_STYLUS2 as usize);
             ok |= PS_F_KEYS;
         }
         ok
@@ -1253,7 +1287,9 @@ impl State {
     // The pen as the device holds it now, into P (the native PIN screen handed it back).
     fn pen_read_state(&mut self) {
         let mut s = self.pen_state();
-        self.pen_query(&mut s);
+        let mut side2 = self.P.side2;
+        self.pen_query(&mut s, &mut side2);
+        self.P.side2 = side2;
         self.P.tool_pen = s.tool_pen;
         self.P.tool_rubber = s.tool_rubber;
         self.P.touching = s.touching;
@@ -1313,7 +1349,8 @@ impl State {
             ev[i] = self.pen_ev(&raw[i]);
         }
         let mut now_st = self.pen_good;
-        let now_ok = self.pen_query(&mut now_st);
+        let mut now_side2 = self.pen_good_side2;
+        let now_ok = self.pen_query(&mut now_st, &mut now_side2);
         let t = PenTail {
             good: self.pen_good,
             ev: &ev[..n],
@@ -1323,7 +1360,8 @@ impl State {
             p_min: self.pen.ap.minimum,
         };
         let mut info = PenTailInfo::default();
-        let nf = pensync_tail(&t, &mut frames, &mut info);
+        let mut side2 = vec![false; PEN_TAIL_MAX + 3];
+        let nf = pen_tail_button2(&t, self.pen_good_side2, now_side2, &mut frames, &mut side2, &mut info);
         // One found at the first read came before Grimoire read the pen at all: a pen hovering at launch
         // fills the queue while the rest of the start runs (each node input_open closes again waits out
         // an RCU grace period). No stroke had begun, and it is not one of the stalls the count is for.
@@ -1356,7 +1394,9 @@ impl State {
             info.y,
             if info.lifted { "; the pen lifted in the lost stretch" } else { "" }
         );
-        for f in &frames[..nf as usize] {
+        for i in 0..nf {
+            let f = frames[i];
+            self.P.side2 = side2[i];
             self.P.tool_pen = f.s.tool_pen;
             self.P.tool_rubber = f.s.tool_rubber;
             self.P.touching = f.s.touching;
@@ -1389,6 +1429,7 @@ impl State {
                 BTN_TOOL_RUBBER => self.P.tool_rubber = ev.value != 0,
                 BTN_TOUCH => self.P.touching = ev.value != 0,
                 BTN_STYLUS => self.P.side = ev.value != 0,
+                BTN_STYLUS2 => self.P.side2 = ev.value != 0,
                 _ => {}
             },
             EV_ABS => {
@@ -2447,6 +2488,17 @@ impl State {
             self.caps.has_tilt = self.pen.atx.maximum > self.pen.atx.minimum;
             qlog!("input: using the raw digitizer as the pen");
         }
+        for (i, fd) in [self.pen.fd, self.wacom.fd].into_iter().enumerate() {
+            if fd >= 0 {
+                let mut keys = [0u8; KEYB_BYTES];
+                if eviocgbit(fd, EV_KEY, &mut keys) >= 0 {
+                    let buttons = [test_bit(&keys, BTN_STYLUS as usize), test_bit(&keys, BTN_STYLUS2 as usize)];
+                    if i == 0 { self.pen_buttons = buttons; }
+                    self.caps.pen_button2 |= buttons[1];
+                }
+            }
+        }
+        qlog!("input: pen buttons %d", if self.pen.fd < 0 { 0 } else if self.caps.pen_button2 { 2 } else { 1 });
         if self.pen.fd >= 0 && !self.pen_mono {
             qlog!("input: the pen's EVIOCSCLOCKID failed: stroke samples are timed when read");
         }
@@ -2499,21 +2551,69 @@ impl State {
         0
     }
 
-    // Side button presses/releases, from whichever pen device reports them.
-    fn side_check(&mut self) {
-        let side = self.P.side || self.W.side;
-        if side == self.side_reported {
-            return;
-        }
-        self.side_reported = side;
-        let mut b = InEvent { type_: InType::PenButton, side_button: side, ..Default::default() };
-        b.nx = norm(self.P.x, &self.pen.ax);
-        b.ny = norm(self.P.y, &self.pen.ay);
-        (b.x, b.y) = self.map(&self.pen_cal, b.nx, b.ny);
-        b.t_ms = now_ms();
-        qlog!("input: pen button %s", if side { "down" } else { "up" });
-        self.q_push(b);
+    fn pen_sides(&self) -> [bool; 2] {
+        let pointer = [self.P.side, self.P.side2];
+        let raw = [self.W.side, self.W.side2];
+        std::array::from_fn(|i| {
+            if self.wacom.fd >= 0 && !self.pen_buttons[i] { raw[i] } else { pointer[i] }
+        })
     }
+
+    // Side button presses/releases, from whichever selected pen device reports them.
+    fn side_check(&mut self) {
+        let states = self.pen_sides();
+        for (i, side) in states.into_iter().enumerate() {
+            if i == 1 && !self.caps.pen_button2 { continue; }
+            let reported = if i == 0 { &mut self.side_reported } else { &mut self.side2_reported };
+            if side == *reported { continue; }
+            *reported = side;
+            let mut b = InEvent {
+                type_: InType::PenButton, value: if i == 0 { 0 } else { 2 },
+                side_button: states[0], side_button2: states[1], ..Default::default()
+            };
+            b.nx = norm(self.P.x, &self.pen.ax);
+            b.ny = norm(self.P.y, &self.pen.ay);
+            (b.x, b.y) = self.map(&self.pen_cal, b.nx, b.ny);
+            if let Some((x, y)) = self.hover_from_raw() { (b.x, b.y) = (x, y); }
+            b.eraser = self.P.tool_rubber || self.W.rubber;
+            b.t_ms = now_ms();
+            if i == 0 { qlog!("input: pen button %s", if side { "down" } else { "up" }); }
+            else { qlog!("input: pen button2 %s", if side { "down" } else { "up" }); }
+            self.q_push(b);
+        }
+    }
+}
+
+/// Run the existing recovery algorithm for each side button without changing the
+/// pensync/Live state API. Geometry and the initial synthetic lift match in both
+/// passes; only the optional last query correction can have a different length.
+fn pen_tail_button2(t: &PenTail<'_>, good2: bool, now2: bool, frames: &mut [PenFrame], side2: &mut [bool], info: &mut PenTailInfo) -> usize {
+    let nf = pensync_tail(t, frames, info) as usize;
+    let mut ev2 = t.ev.to_vec();
+    for e in &mut ev2 {
+        if e.type_ == EV_KEY {
+            if e.code == BTN_STYLUS { e.type_ = EV_MSC; }
+            else if e.code == BTN_STYLUS2 { e.code = BTN_STYLUS; }
+        }
+    }
+    let mut second = *t;
+    second.good.side = good2;
+    second.now.side = now2;
+    second.ev = &ev2;
+    let mut frames2 = vec![PenFrame::default(); frames.len()];
+    let mut info2 = PenTailInfo::default();
+    let nf2 = pensync_tail(&second, &mut frames2, &mut info2) as usize;
+    info.keys |= info2.keys;
+    let common = info.frames.max(1) as usize + info.lifted as usize;
+    let total = nf.max(nf2);
+    for i in 0..total {
+        if i >= nf { frames[i] = frames[nf - 1]; }
+        if i >= common { frames[i].moved = false; frames[i].gap = false; }
+        let second = &frames2[i.min(nf2 - 1)];
+        debug_assert!(i >= common || (frames[i].t_us == second.t_us && frames[i].s.x == second.s.x && frames[i].s.y == second.s.y));
+        side2[i] = second.s.side;
+    }
+    total
 }
 
 fn drain(fd: i32, f: Handler) {
@@ -2688,9 +2788,9 @@ fn node_of(st: &libc::stat) -> HidNode {
 // queue is thrown away and a SYN_DROPPED queued (Linux 4.9's evdev_set_clk_type), a drop at the
 // first read that no stall caused.
 fn clock_mono(fd: i32) -> bool {
-    let clk: c_int = libc::CLOCK_MONOTONIC;
+    let clk: c_int = libc::CLOCK_MONOTONIC as c_int;
     // SAFETY: EVIOCSCLOCKID reads one int, our local.
-    unsafe { libc::ioctl(fd, EVIOCSCLOCKID as libc::Ioctl, &clk as *const c_int) == 0 }
+    unsafe { libc::ioctl(fd, EVIOCSCLOCKID as _, &clk as *const c_int) == 0 }
 }
 
 impl State {
@@ -3167,6 +3267,8 @@ pub fn input_set_grab(grab: bool) -> bool {
         pensync_raw_clear(&mut s.raw);
         s.T = TouchSt::default();
         s.side_reported = false;
+        s.side2_reported = false;
+        s.pen_good_side2 = false;
         s.pen_resume_block = false;
         if s.input_grabbed {
             if s.pen.fd >= 0 {
@@ -3174,6 +3276,8 @@ pub fn input_set_grab(grab: bool) -> bool {
                 s.pen_good = s.pen_state();
                 s.pen_resume_block = s.P.touching;
                 s.side_reported = s.P.side;
+                s.side2_reported = s.P.side2;
+                s.pen_good_side2 = s.P.side2;
             }
             if s.touch.fd >= 0 {
                 // The fingers still down from the PIN wait to lift (the frame after the cancel).
@@ -3322,4 +3426,136 @@ pub fn input_touch_trace_event(line: &str) {
         let _ = writeln!(s.trace.buf, "E {k} {line}");
         s.trace_flush(k);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(type_: u16, code: u16, value: i32, t_us: u64) -> PenEv {
+        PenEv { type_, code, value, t_us }
+    }
+
+    #[test]
+    fn second_button_tail_preserves_geometry_and_both_independent_query_corrections() {
+        let ev = [event(EV_SYN, SYN_DROPPED, 0, 10), event(EV_SYN, SYN_REPORT, 0, 20),
+            event(EV_ABS, ABS_X, 100, 30), event(EV_KEY, BTN_STYLUS2, 1, 30), event(EV_SYN, SYN_REPORT, 0, 30),
+            event(EV_ABS, ABS_X, 110, 40), event(EV_KEY, BTN_STYLUS, 1, 40), event(EV_SYN, SYN_REPORT, 0, 40)];
+        for (now1, now2) in [(true, true), (false, true), (true, false), (false, false)] {
+            let good = PenState { tool_pen: true, x: 90, ..Default::default() };
+            let t = PenTail { good, ev: &ev, now: PenState { side: now1, ..good }, now_ok: PS_F_KEYS, touch_btn: true, p_min: 0 };
+            let mut frames = [PenFrame::default(); 12];
+            let mut states = [false; 12];
+            let mut info = PenTailInfo::default();
+            let n = pen_tail_button2(&t, false, now2, &mut frames, &mut states, &mut info);
+            assert_eq!((frames[0].s.x, frames[1].s.x), (100, 110));
+            assert_eq!((frames[0].s.side, states[0]), (false, true));
+            assert_eq!((frames[1].s.side, states[1]), (true, true));
+            assert_eq!((frames[n - 1].s.side, states[n - 1]), (now1, now2));
+            assert_eq!(n, if now1 && now2 { 2 } else { 3 });
+            if n == 3 { assert!(!frames[2].moved && !frames[2].gap); }
+        }
+    }
+
+    #[test]
+    fn second_button_tail_recovers_no_tail_and_initial_lift() {
+        let partial = [event(EV_SYN, SYN_DROPPED, 0, 10), event(EV_KEY, BTN_STYLUS2, 0, 20), event(EV_SYN, SYN_REPORT, 0, 20)];
+        let good = PenState { tool_pen: true, touching: true, x: 40, ..Default::default() };
+        let t = PenTail { good, ev: &partial, now: PenState { touching: false, x: 80, ..good }, now_ok: PS_F_ALL, touch_btn: true, p_min: 0 };
+        let mut frames = [PenFrame::default(); 12];
+        let mut states = [false; 12];
+        let mut info = PenTailInfo::default();
+        let n = pen_tail_button2(&t, true, false, &mut frames, &mut states, &mut info);
+        assert_eq!(n, 2);
+        assert_eq!((frames[0].s.x, frames[0].s.touching, states[0]), (40, false, true));
+        assert_eq!((frames[1].s.x, frames[1].s.touching, states[1]), (80, false, false));
+        assert!(info.lifted && frames[1].gap);
+    }
+
+    #[test]
+    fn raw_wacom_second_button_edges_are_not_collapsed_and_partial_drops_are_ignored() {
+        let mut s = State::default();
+        s.caps.pen_button2 = true;
+        s.wacom.fd = 999999; // never read; queries fail and preserve last known state
+        let key = |value| InputEvent { type_: EV_KEY, code: BTN_STYLUS2, value, ..Default::default() };
+        let syn = |code| InputEvent { type_: EV_SYN, code, ..Default::default() };
+        s.handle_wacom(&key(1));
+        s.handle_wacom(&syn(SYN_REPORT));
+        s.handle_wacom(&syn(SYN_DROPPED));
+        s.handle_wacom(&key(0)); // partial frame: the query will replace it
+        s.handle_wacom(&syn(SYN_REPORT));
+        assert!(s.wacom_resync && s.W.side2);
+        s.wacom_resync(); // no node in this test: failed queries retain the last known state
+        s.handle_wacom(&key(0));
+        s.handle_wacom(&syn(SYN_REPORT));
+        let mut e = InEvent::default();
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.value, e.side_button2), (InType::PenButton, 2, true));
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.value, e.side_button2), (InType::PenButton, 2, false));
+        assert!(!s.q_pop(&mut e));
+    }
+
+    #[test]
+    fn relayed_buttons_are_not_replayed_from_the_raw_digitizer() {
+        let mut s = State::default();
+        s.caps.pen_button2 = true;
+        s.wacom.fd = 999999; // role selection only, never read
+        s.pen_buttons = [true; 2];
+        s.P.tool_pen = true;
+        s.P.was_prox = true;
+        let mut e = InEvent::default();
+        for down in [true, false] {
+            s.W.side = down;
+            s.W.side2 = down;
+            s.side_check(); // raw frames arrive before their relayed pointer frames
+            assert!(!s.q_pop(&mut e));
+            s.P.side = down;
+            s.P.side2 = down;
+            s.pen_frame();
+            assert!(s.q_pop(&mut e));
+            assert_eq!((e.type_, e.value, e.side_button, e.side_button2), (InType::PenButton, 0, down, down));
+            assert!(s.q_pop(&mut e));
+            assert_eq!((e.type_, e.value, e.side_button, e.side_button2), (InType::PenButton, 2, down, down));
+            assert!(!s.q_pop(&mut e));
+        }
+        // A service that omits Button2 still takes that button from Wacom.
+        s.pen_buttons[1] = false;
+        s.W.side2 = true;
+        s.side_check();
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.value, e.side_button2), (InType::PenButton, 2, true));
+        assert!(!s.q_pop(&mut e));
+    }
+
+    #[test]
+    fn pen_frames_carry_second_button_and_leave_cancels_without_a_click() {
+        let mut s = State::default();
+        s.caps.pen_button2 = true;
+        s.pen.has_touch_btn = true;
+        s.P.tool_pen = true;
+        s.P.side2 = true;
+        s.P.dirty = true;
+        s.pen_frame();
+        let mut e = InEvent::default();
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.value, e.side_button, e.side_button2), (InType::PenButton, 2, false, true));
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.side_button2), (InType::PenHover, true));
+        for t in [InType::PenDown, InType::PenMove, InType::PenUp] {
+            s.P.touching = t != InType::PenUp;
+            s.P.dirty = true;
+            s.pen_frame();
+            assert!(s.q_pop(&mut e));
+            assert_eq!((e.type_, e.side_button2), (t, true));
+        }
+        s.P.tool_pen = false;
+        s.pen_frame();
+        assert!(s.q_pop(&mut e));
+        assert_eq!((e.type_, e.side_button2), (InType::PenLeave, false));
+        assert!(!s.q_pop(&mut e));
+        s.side_check();
+        assert!(!s.q_pop(&mut e));
+        assert!(!s.side2_reported && !s.pen_good_side2);
+    }
 }

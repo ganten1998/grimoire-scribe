@@ -48,7 +48,7 @@ pub enum InType {
     Power = 9,  // IN_POWER
     /// signal / window closed
     Quit = 10,  // IN_QUIT
-    /// pen side button pressed/released (side_button = state)
+    /// pen side button pressed/released (value 0: side_button, 2: side_button2)
     PenButton = 11,  // IN_PEN_BUTTON
     /// device turned: value = quarter turns clockwise (0..3)
     Orientation = 12,  // IN_ORIENTATION
@@ -116,7 +116,9 @@ pub struct InEvent {
     pub eraser: bool,
     /// BTN_STYLUS held
     pub side_button: bool,
-    /// IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
+    /// BTN_STYLUS2 held (only when InputCaps.pen_button2 is true)
+    pub side_button2: bool,
+    /// IN_PEN_BUTTON: 0 Button, 2 Button2; IN_ORIENTATION: quarter turns clockwise; IN_POWER_UP/HELD: ms held
     pub value: i32,
     /// pinch: the second finger (screen px)
     pub x2: f32,
@@ -152,6 +154,8 @@ pub fn in_sample_ms(e: &InEvent) -> u32 {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct InputCaps {
+    /// The selected pen or its raw digitizer advertises BTN_STYLUS2.
+    pub pen_button2: bool,
     pub has_pen: bool,
     pub has_pressure: bool,
     pub has_tilt: bool,

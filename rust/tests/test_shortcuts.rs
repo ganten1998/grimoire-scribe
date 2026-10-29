@@ -163,7 +163,7 @@ fn every_action_by_name() {
         named += 1;
         check!(shortcut_action(name) == a);
     }
-    check!(named == 10 + 8 + 28 + 22 + 4); // the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only)
+    check!(named == 10 + 8 + 28 + 22 + 4 + 2); // the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only)
     let path = format!("{}/shortcuts-new.ini", tl_tmp());
     let text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n\
                 pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n\
@@ -210,7 +210,7 @@ fn every_action_by_name() {
     );
     check!(
         shortcut_action_name(SHORTCUT_STATUS) == Some("status-toggle")
-            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 26 == SHORTCUT_LAST
+            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 28 == SHORTCUT_LAST
     );
     // The Index's actions: by their names, in the files and the Buttons sheet.
     for (name, id) in [
@@ -227,7 +227,7 @@ fn every_action_by_name() {
             && SHORTCUT_LANDSCAPE_FIT + 1 == SHORTCUT_STATUS_CORNER
             && SHORTCUT_STATUS_CORNER + 1 == SHORTCUT_GESTURE_NEW_PAGE
             && SHORTCUT_GESTURE_NEW_PAGE + 1 == SHORTCUT_STATUS_MODE
-            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == SHORTCUT_LAST
+            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == 81 && SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM == SHORTCUT_LAST
     );
     check!(
         shortcut_action("status-mode") == SHORTCUT_STATUS_MODE
@@ -272,7 +272,7 @@ fn every_action_by_name() {
             && has(t, "=tool:calligraphy\n")));
     let mut back = Shortcuts::default();
     shortcuts_load_all(&mut back, &sp, &cp);
-    check!(back.rejected == 0 && back.count == 17 + named - 2); // the default keys, and a button each
+    check!(back.rejected == 0 && back.count == 17 + named - 4); // the default keys, and a button each
     for a in 1..=SHORTCUT_LAST {
         if shortcut_action_name(a).is_some() && action_sources(a) & SRC_PAD != 0 {
             check!(shortcuts_pads_for(&back, ActionSrc::Pad, a, &mut []) == 1);

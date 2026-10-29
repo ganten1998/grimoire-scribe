@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 08:28-0500\n"
+"POT-Creation-Date: 2026-10-29 08:45-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -407,6 +407,14 @@ msgstr ""
 
 #: rust/src/actions.rs
 msgid "Index map"
+msgstr ""
+
+#: rust/src/actions.rs
+msgid "Pan with the pen"
+msgstr ""
+
+#: rust/src/actions.rs
+msgid "Zoom with the pen"
 msgstr ""
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
@@ -2135,6 +2143,46 @@ msgid "3-finger tap"
 msgstr ""
 
 #: rust/src/library.rs
+msgid "pen button click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "pen button double-click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "pen button triple-click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "pen button hold"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "pen button drag"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "second pen button click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "second pen button double-click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "second pen button triple-click"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "second pen button hold"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "second pen button drag"
+msgstr ""
+
+#: rust/src/library.rs
 msgid "no gesture"
 msgstr ""
 
@@ -2144,6 +2192,12 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "finger shape (newer version)"
+msgstr ""
+
+#. TRANSLATORS: extra binding sources on a Gestures row, after its first touch, shape or pen binding.
+#: rust/src/library.rs
+#, c-format
+msgid "+%d"
 msgstr ""
 
 #. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
@@ -2266,6 +2320,20 @@ msgstr ""
 msgid "Grimoire keeps up to 32 shapes."
 msgstr ""
 
+#. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
+#: rust/src/library.rs
+msgid "Hold eraser needs the button held: hold it or drag with it."
+msgstr ""
+
+#. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
+#: rust/src/library.rs
+msgid "Hold the pen button and drag with it."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Use the pen button for this action."
+msgstr ""
+
 #. TRANSLATORS: the record card's status line (1320 px at 44 px or two lines at 34 px);
 #. %s is the action that currently owns this gesture.
 #: rust/src/library.rs
@@ -2306,7 +2374,7 @@ msgstr ""
 msgid "Once more makes it surer, or Use."
 msgstr ""
 
-#. TRANSLATORS: a toast when a touch gesture is reassigned; %s is the action that loses it.
+#. TRANSLATORS: a toast when a touch or pen gesture is reassigned; %s is the action that loses it.
 #: rust/src/library.rs
 #, c-format
 msgid "That gesture is no longer for %s."
@@ -2360,14 +2428,7 @@ msgstr ""
 msgid "Could not forget that controller"
 msgstr ""
 
-#. TRANSLATORS: the Gestures sheet row: action and two bindings, about 1000 px at 44 px bold.
-#: rust/src/library.rs
-#, c-format
-msgctxt "gesture row"
-msgid "%s: %s / %s"
-msgstr ""
-
-#. TRANSLATORS: the Gestures sheet row: action and binding, about 1000 px at 44 px bold.
+#. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
 #, c-format
 msgctxt "gesture row"
@@ -2405,8 +2466,11 @@ msgstr[1] ""
 msgid "Reset"
 msgstr ""
 
+#. TRANSLATORS: record card instructions, about 1312 px at 44 px or two lines at 34 px, upright and sideways.
 #: rust/src/library.rs
-msgid "Draw a shape with one finger, or swipe or tap with two fingers."
+msgid ""
+"Draw a shape with one finger, swipe or tap with two fingers, or use the "
+"pen's button."
 msgstr ""
 
 #: rust/src/library.rs

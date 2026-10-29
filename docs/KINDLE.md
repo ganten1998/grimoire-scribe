@@ -496,13 +496,48 @@ lists acceptance targets and decision rules; synthetic fixtures cannot satisfy t
 8. Controller > Buttons has seven groups. Try light, invert, rotation lock, theme, language,
    sleep after, sleep screen (all four modes, including KOReader wallpaper) and Whole page
    sideways on keys and on gestures/shapes. Enable shortcuts and Bluetooth controller must
-   be learnable only by gestures/shapes. Check the toasts for changes with no visible effect.
+   be learnable by touch, shapes or pen, never keys/pads. Check the toasts for changes with no visible effect.
 9. Check the dotted trail on real e-ink, with the Links bar up, and interrupt it with the pen:
    no ink, link, export mark or flash while writing. Confirm no delayed action after sleep or
    a screen change. Report any two-finger try that still needs care and repeat the study if asked.
 
-A two-contact Kindle has no three-finger rows. Pen-button gesture learning remains for phase 6;
-one-turn shapes remain refused. These are checks to perform, not recorded device results.
+A two-contact Kindle has no three-finger bindings in its rows. Pen-button learning is covered
+by the Phase 6 checks below; one-turn shapes remain refused. These are checks to perform,
+not recorded device results.
+
+## Phase 6 owner checks (pending on a Kindle)
+
+No Phase 6 device result is recorded here. Record the build, Kindle model/firmware, pen,
+language, theme and orientation with each result; retain the Phase 3 owner trace and freeze
+checks above. Synthetic tests cannot establish real-hand acceptance or accidental-fire rates.
+
+1. Settings > Gestures > Index > Links: record a pen double-click. The card shows the name;
+   tap Use with the nib. On the page two clicks open Links after the short pause. Try again
+   and Cancel also accept normal nib taps. No recording puts ink on the page.
+2. A quick triple-click still clears the page; each next press must be within 350 ms of the
+   previous release. Hovering with the button held 1.2 s also clears. Bind click to Undo and
+   check its 350 ms delay while double/triple is bound, then immediate release when both are clear.
+3. Hold Clear page's row to clear its gestures. Both triple and hold stop clearing after save
+   and restart. Reset restores both; keep unrelated touch, shape and folder/map behavior working.
+4. Record Hold eraser with a hold or drag. Erasing starts at the button press without a 1.2 s
+   wait, lasts until release and then normal writing returns. A click attempt gives a readable
+   refusal; it must not save a tap slot. Check coexistence with a key held for erasing.
+5. Record a button drag for Pages: it opens once at contact and leaves no ink, including Live
+   view. In Pan with the pen and Zoom with the pen, clicks/holds are refused and drags work.
+   Zoom in first for pan; drag vertically for anchored zoom. Check no GL16 or toast during
+   contact, Ui settling at lift, and no stray click or action after proximity is lost.
+6. Clear the drag binding: holding the button while writing uses Settings' side-button ink
+   choice again (nothing, eraser, highlighter, white). The Settings row only cycles that choice.
+   Pen Next page at the end must not add a page.
+7. Reassign an occupied pen gesture: the card names its current action before Use, and the
+   losing action is named after saving. Cancel or an unwritable file leaves the live map intact.
+   Existing shape first-Use conflict confirmation still needs a second Use when a clash is found.
+8. Check all new labels, long rows with thumbnails and the card body upright/sideways, EN/ES,
+   Gothic/Classic. Hold eraser has only pen gestures; pan/zoom only drag. On a two-slot panel,
+   three-finger bindings must not obscure a usable shape or pen binding; extra sources show `+N`.
+9. If the pen reports a second button, record all five Button2 kinds. Otherwise its bindings
+   must remain carried and hidden. Eraser-end slots never act as button gestures; its contact
+   still erases. Keep the `input: pen buttons N` open-time log with the result.
 
 ## If something is off
 
