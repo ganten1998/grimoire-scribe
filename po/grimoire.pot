@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 07:40-0500\n"
+"POT-Creation-Date: 2026-10-29 07:55-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -714,7 +714,7 @@ msgid "This page was made by a newer Grimoire. It is read-only here."
 msgstr ""
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
-#: rust/src/linkcard.rs rust/src/pagesview.rs
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/pagesview.rs
 #, c-format
 msgid "Page %d"
 msgstr ""
@@ -1289,7 +1289,7 @@ msgstr ""
 msgid "Live view is off on the Kindle"
 msgstr ""
 
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/mapview.rs
 msgid "Fit"
 msgstr ""
 
@@ -1625,7 +1625,7 @@ msgstr ""
 msgid "Name: %s"
 msgstr ""
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Rename"
 msgstr ""
 
@@ -1700,7 +1700,7 @@ msgid "Index..."
 msgstr ""
 
 #. TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
-#: rust/src/library.rs rust/src/linkbar.rs
+#: rust/src/library.rs rust/src/linkbar.rs rust/src/mapview.rs
 msgid "Index"
 msgstr ""
 
@@ -2244,7 +2244,7 @@ msgstr ""
 msgid "Save PDF to %s now"
 msgstr ""
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Open"
 msgstr ""
 
@@ -2494,6 +2494,57 @@ msgstr ""
 #. 700 px): its rows act on all of them; one is changed alone by holding it on the page.
 #: rust/src/linkcard.rs
 msgid "To change one, hold it on the page."
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Not enough memory for the map."
+msgstr ""
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet: %d pages. Show"
+msgstr ""
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet (%d)"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Graph"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "List"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Around"
+msgstr ""
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Page %d. Links to %d, linked from %d."
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Around it"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Show"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Hide"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "Tidy up"
 msgstr ""
 
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.

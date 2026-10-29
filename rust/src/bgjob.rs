@@ -128,7 +128,7 @@ pub fn bg_poll_kind(done_kind: Option<&mut i32>) -> i32 {
             let ok = r == pid && libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0;
             let (kind, notify) = with(|s| (s.running.kind, s.running_notify));
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
-            if notify {
+            if notify || kind == BgKind::GraphLayout {
                 result = if ok { 1 } else { -1 };
             }
             if let Some(d) = done_kind.as_mut() {

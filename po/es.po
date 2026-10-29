@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 07:40-0500\n"
+"POT-Creation-Date: 2026-10-29 07:55-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -757,7 +757,7 @@ msgstr ""
 "solo lectura."
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
-#: rust/src/linkcard.rs rust/src/pagesview.rs
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/pagesview.rs
 #, c-format
 msgid "Page %d"
 msgstr "Página %d"
@@ -1002,7 +1002,8 @@ msgstr "Pausa: Normal"
 
 #: rust/src/editor.rs
 msgid "Smart shapes on. Hold the pen still at the end of a shape."
-msgstr "Formas inteligentes activadas. Deja el lápiz quieto al terminar una forma."
+msgstr ""
+"Formas inteligentes activadas. Deja el lápiz quieto al terminar una forma."
 
 #: rust/src/editor.rs
 msgid "Smart shapes off."
@@ -1137,7 +1138,9 @@ msgstr "Aparta el lápiz y desliza."
 #: rust/src/editor.rs
 msgid ""
 "Shape made. Undo takes it away; the panel's shapes button turns this off."
-msgstr "Forma hecha. Deshacer la quita; el botón de formas del panel desactiva esta función."
+msgstr ""
+"Forma hecha. Deshacer la quita; el botón de formas del panel desactiva esta "
+"función."
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
 #. go to a page by typing its number or a name of the Index.
@@ -1339,7 +1342,7 @@ msgstr "Emparejando en el Kindle..."
 msgid "Live view is off on the Kindle"
 msgstr "La vista en directo está apagada en el Kindle"
 
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/mapview.rs
 msgid "Fit"
 msgstr "Ajustar"
 
@@ -1680,7 +1683,7 @@ msgstr "Papel"
 msgid "Name: %s"
 msgstr "Nombre: %s"
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Rename"
 msgstr "Renombrar"
 
@@ -1755,7 +1758,7 @@ msgid "Index..."
 msgstr "Índice..."
 
 #. TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
-#: rust/src/library.rs rust/src/linkbar.rs
+#: rust/src/library.rs rust/src/linkbar.rs rust/src/mapview.rs
 msgid "Index"
 msgstr "Índice"
 
@@ -2301,7 +2304,7 @@ msgstr "Fuente Terminess en los menús"
 msgid "Save PDF to %s now"
 msgstr "Guardar el PDF en %s ahora"
 
-#: rust/src/library.rs
+#: rust/src/library.rs rust/src/mapview.rs
 msgid "Open"
 msgstr "Abrir"
 
@@ -2554,6 +2557,57 @@ msgstr "Borrar enlace"
 #: rust/src/linkcard.rs
 msgid "To change one, hold it on the page."
 msgstr "Para cambiar uno, mantenlo pulsado en la página."
+
+#: rust/src/mapview.rs
+msgid "Not enough memory for the map."
+msgstr "No hay memoria suficiente para el mapa."
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet: %d pages. Show"
+msgstr "Sin enlazar: %d páginas. Ver"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Not linked yet (%d)"
+msgstr "Sin enlazar (%d)"
+
+#: rust/src/mapview.rs
+msgid "Graph"
+msgstr "Grafo"
+
+#: rust/src/mapview.rs
+msgid "List"
+msgstr "Lista"
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr "Todo"
+
+#: rust/src/mapview.rs
+msgid "Around"
+msgstr "Alrededor"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Page %d. Links to %d, linked from %d."
+msgstr "Página %d. Enlaces a %d, desde %d."
+
+#: rust/src/mapview.rs
+msgid "Around it"
+msgstr "A su alrededor"
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Show"
+msgstr "Sin enlazar: Mostrar"
+
+#: rust/src/mapview.rs
+msgid "Unlinked: Hide"
+msgstr "Sin enlazar: Ocultar"
+
+#: rust/src/mapview.rs
+msgid "Tidy up"
+msgstr "Reorganizar"
 
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.
 #: rust/src/musicbuild.rs

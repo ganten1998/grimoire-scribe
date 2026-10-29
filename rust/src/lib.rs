@@ -102,7 +102,8 @@ pub mod display; // display.h: the types; the functions are the build's platform
 pub mod light_kindle;
 pub mod input; // input.h: the same
 pub mod light; // light.h: the same
-pub mod mainloop; // main.c
+pub mod mainloop;
+pub mod mapview; // main.c
 
 #[cfg(feature = "kindle")]
 pub mod display_fbink;
