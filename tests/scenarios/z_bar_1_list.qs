@@ -78,13 +78,13 @@ expect editor.page is 1
 key 37 0
 wait 300
 expect editor.bar is open
-expect editor.strokes is 3
+expect editor.strokes is 0
 pen down 600 600 0.5
 expect editor.bar is 0
 pen move 900 620 0.7
 pen up 900 620
 wait 300
-expect editor.strokes is 3
+expect editor.strokes is 0
 pen leave
 wait 1100
 # sideways

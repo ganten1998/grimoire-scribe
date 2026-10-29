@@ -664,7 +664,7 @@ fn dates() {
 // Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
 // in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
 // formatted as the code formats it (keep this list in step with the messages); out holds them.
-const RARE_MAX: usize = 56;
+const RARE_MAX: usize = 72;
 const RARE_LEN: usize = 256;
 fn rare_notices(out: &mut Vec<String>) -> usize {
     out.clear();
@@ -730,6 +730,18 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Dotted boxes show where a finger tap follows a link. They never print.")));
     put(cformat!("%s", tr("This page is read-only.")));
     put(cformat!("%s", tr("Links could not be read.")));
+    // Making a link without ink (PHASE2 14): its refusals, the pick, and undoing it.
+    put(cformat!("%s", tr("Links could not be read in this notebook.")));
+    put(cformat!(tr("This page has %d links: delete one to add another."), 64));
+    put(cformat!(tr("Linked to %s."), "Capítulo cuatro: la casa del árbol viejo"));
+    put(cformat!(tr("Linked to page %d."), 2000));
+    put(cformat!("%s", tr("Linked to the Index.")));
+    put(cformat!("%s", tr("Too small for a link: draw around what links.")));
+    put(cformat!("%s", tr("No link made.")));
+    put(cformat!("%s", tr("Could not save the links: that change was not undone.")));
+    put(cformat!("%s", tr("Could not save the links: that change was not redone.")));
+    put(cformat!("%s", tr("Link change undone.")));
+    put(cformat!("%s", tr("Link change redone.")));
     out.len()
 }
 
@@ -841,6 +853,8 @@ fn the_links_bar_strings_fit() {
             check!(at("no page", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 2000), 99999, 2000)), 1700));
             check!(at("no page 1", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 1), 2, 1)), 1700));
             check!(at("no names", font_measure(FontFace::Regular, ts, tr("No page names match.")), 1700));
+            // the link-making strip's line beside its Cancel (PHASE2 6.3)
+            check!(at("strip", font_measure(FontFace::Bold, ts, tr("Draw around what links.")), 1400));
             // the tool words, caps at 34 px under their icons, in a 430 px button (sideways 585) inside its edge
             for w in [tr("Go to"), tr("New link"), tr("Areas"), tr("Index")] {
                 check!(at(w, font_measure(FontFace::Caps, small, w), 390));

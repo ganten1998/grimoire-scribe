@@ -2,12 +2,13 @@
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/link-keys .
 # Add a link (L, a controller's West) starts a link on the open page in one press, as the Index's
-# Add a link does but without the Pages view: the ink drawn next is its box, then the Pages view
-# picks where it goes (a page, the Index). Pressed again while the link waits for its box, it is not
-# made. Name the page (N, a controller's North) opens the Index's naming keyboard for the open page,
-# holding its name; its Done saves the name and its Cancel keeps the old one, and either goes back to
-# the page; one that cannot be saved says so, back on the page. Neither acts through the keyboard,
-# and the Pages view opens again on the tab it was left on, not the Index shown under the keys.
+# Add a link does but without the Pages view: the strip comes up, the next pen stroke is the dashed
+# lasso around its area (no ink), then the Pages view picks where it goes (a page, the Index). Pressed
+# again while the strip is up, it is not made. Name the page (N, a controller's North) opens the
+# Index's naming keyboard for the open page, holding its name; its Done saves the name and its Cancel
+# keeps the old one, and either goes back to the page; one that cannot be saved says so, back on the
+# page. Neither acts through the keyboard, and the Pages view opens again on the tab it was left on,
+# not the Index shown under the keys.
 # rust-only
 wait 150
 tap 965 95
@@ -27,7 +28,7 @@ key 38 0
 wait 60
 expect editor.link_mode is 1
 expect editor.modal is none
-expect toast is Draw around what links. Then tap where it goes.
+expect editor.strip is new
 shot 01-add-a-link
 key 38 0
 wait 60
@@ -39,7 +40,7 @@ key 38 0
 wait 60
 expect editor.link_mode is 1
 pen line 300 1000 900 1200 30 0.6 0.6
-expect editor.strokes is 2
+expect editor.strokes is 1
 expect editor.link_mode is 0
 expect editor.modal is pages
 expect editor.picking is new
@@ -50,7 +51,7 @@ expect editor.modal is none
 expect editor.page is 1
 expect editor.links is 1 1
 expect editor.link.1 is p3
-expect toast is The link goes to page 3.
+expect toast is Linked to page 3.
 tap 600 1100
 expect editor.page is 3
 pentap panel previous
@@ -65,7 +66,7 @@ expect editor.picking is new
 tap 1440 95
 expect editor.modal is none
 expect editor.links is 2 2
-expect toast is The link goes to the Index.
+expect toast is Linked to the Index.
 # (links.ini orders a page's links by their seeds: a finger's tap tells which goes where)
 tap 600 1700
 expect editor.modal is pages

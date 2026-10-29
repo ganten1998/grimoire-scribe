@@ -131,11 +131,12 @@ the fountain pen): a pinned pen is picked as a tap on its pin picks it (the tool
 pen), another goes to the tool button. The starter mappings give them no key or button.
 
 `add-link` starts a link on the open page in one press, as the Index's Add a link does, without
-going through the Pages view: a toast asks you to draw around what links, the next ink stroke is the
-link's box, and the Pages view then asks where it goes (tap a page, or The Index). Pressed again
-while the link waits for its box, it is not made (a toast says so), as Close menu does. On a
-read-only page it does nothing but say so, and where the notebook's `links.ini` does not read it
-does nothing (the Index's Add a link is greyed out then). `name-page` opens the Index's naming
+going through the Pages view: a strip along the bottom asks you to draw around what links, the next
+pen stroke on the page draws a dashed lasso around the link's area (it leaves no ink, whatever the
+tool), and the Pages view then asks where it goes (tap a page, or The Index). Pressed again while
+the strip is up, it is not made (a toast says so), as Close menu and the strip's Cancel do. On a
+read-only page, where the notebook's `links.ini` does not read, and on a page that has 64 links, it
+does nothing but say so. `name-page` opens the Index's naming
 keyboard for the open page, holding its name: Done saves it (an empty name takes it out of the
 Index), Cancel keeps the old one, and either goes back to the page, not to the Index; the Pages
 view then opens again on the tab it was left on. Where the notebook's `nav.ini` does not read it

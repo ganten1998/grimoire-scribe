@@ -24,8 +24,11 @@ const LINK_HOLD_MS: u32 = 600;
 // ticks migrate a page each, so the notebook's pages are saved once); a failed write is tried again
 // this long after.
 const LINKS_FLUSH_MS: u32 = 2000;
-// A link's box drawn smaller than this both ways is no box: it is taken back.
+// A lasso smaller than this both ways draws no link's area: the strip stays for another try.
 const LINK_BOX_MIN_MM: f32 = 5.0;
+// The lasso keeps at most this many points: past it every other point goes and the spacing a new point
+// needs doubles, so a long scribble around an area costs a bounded memory and compose.
+const LASSO_MAX: usize = 4096;
 
 // settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
 /// the first notebook that opened after the update said what two fingers up and down do now
@@ -94,6 +97,52 @@ enum Owner {
     Outside = 12,
     /// a pointer that began on the Find sheet (its rows or its keyboard)
     Find = 13,
+    /// the pen drawing the dashed lasso around a new link's area (never ink)
+    Lasso = 14,
+    /// a pointer that began on the link-making strip (its Cancel, or the strip around it)
+    Strip = 17,
+}
+
+/// Making a link without ink (PHASE2 6): the strip is up and the next pen contact on the page is the lasso
+/// (Armed), the lasso is being drawn (Lasso), or its area waits for where the link goes (Pick, the Pages
+/// view picking).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum LmState {
+    #[default]
+    Off,
+    Armed,
+    Lasso,
+    Pick,
+}
+
+/// The link being made: the strip, the lasso and the area. Screen-only: nothing here touches the page,
+/// page_canvas, the history or the PDF until the pick saves the link.
+#[derive(Clone, Debug, Default)]
+struct LinkMaking {
+    state: LmState,
+    /// the lasso, page px, at most LASSO_MAX points (reserved at its start; with no room none are kept and
+    /// the lasso is only drawn as it goes)
+    pts: Vec<(f32, f32)>,
+    /// the last point the lasso went to, page px (the next segment starts there)
+    last: (f32, f32),
+    /// how far (screen px) a new point must be from the last one to be kept; doubles as the lasso fills
+    spacing: f32,
+    /// the dash phase at the last point, so the lasso drawn piece by piece matches the one compose draws whole
+    phase: i32,
+    /// the box of every point the pen gave, page px (the area: decimation never shrinks it)
+    bx0: f32,
+    by0: f32,
+    bx1: f32,
+    by1: f32,
+    /// screen px: what the lasso has drawn so far
+    lasso_rect: Rect,
+    /// page px: the area, from the lift until the pick
+    area: Rect,
+    /// the strip, where compose last laid it out
+    strip: Rect,
+    /// a press on the strip (its Cancel inverts at the down)
+    press: Press,
+    cancel_down: bool,
 }
 
 // Every page visited while a notebook is open stays in memory with its history: undo
@@ -365,12 +414,12 @@ pub struct EditorState {
     /// the Pages view (pagesview.h)
     pv: PagesView,
     nav: Nav,
-    // Links (nav.h). Add a link (the Index, or the add-link shortcut) waits for the next ink stroke
-    // on the open page, its box (link_mode); then the Pages view picks where it goes. A finger's
-    // tap on a link follows it; one held on it (LINK_HOLD_MS) opens the Pages view to change where
-    // it goes, or remove it.
-    link_mode: bool,
-    /// the link the Pages view picks for: its box's seed
+    // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
+    // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then the
+    // Pages view picks where it goes. A finger's tap on a link follows it; one held on it
+    // (LINK_HOLD_MS) opens the Pages view to change where it goes, or remove it.
+    lm: LinkMaking,
+    /// the link the Pages view's hold path picks for (link_hold): its seed
     link_seed: u32,
     /// a finger on the page (OWN_LINK)
     link_press: Press,
@@ -1672,6 +1721,8 @@ fn compose(a: &mut App, r: Rect) {
         blit_view(a, r);
     }
     draw_areas(a, r);
+    draw_lasso(a, r);
+    draw_area_wait(a, r);
     if rect_overlaps(r, ed(a).panel) && !ed(a).live_no_panel {
         // Only the part of the panel inside r: the page was blitted there alone, and the rest of the panel (and
         // whatever menu is over it) is on the screen as it was; drawn again, the panel would lay itself over
@@ -1728,6 +1779,11 @@ fn draw_menus(a: &mut App, r: Rect) {
             with_lb(a, |lb, a, nb, nav| linkbar_draw(lb, a, nb, nav, peek));
         }
         a.toast_floor = rect.y;
+    }
+    // The link-making strip, where the bar draws (the bar is never up with it).
+    let st = ed_ref(a).lm.state;
+    if st == LmState::Armed || st == LmState::Lasso {
+        draw_strip(a, r);
     }
 }
 
@@ -2025,7 +2081,7 @@ fn links_flush(a: &mut App) {
 
 fn go_to_page(a: &mut App, index: i32) -> bool {
     let s = ed(a);
-    s.link_mode = false; // (a link's box is drawn on the page Add a link was asked on)
+    lm_drop(s); // (a link's area is drawn on the page Add a link was asked on; the screen is drawn whole below)
     s.settle = RECT_EMPTY; // the whole screen is about to be redrawn anyway
     s.panel_stale = false;
     if !save_page(a) {
@@ -2132,7 +2188,7 @@ fn close_notebook(a: &mut App) {
     if !s.open {
         return;
     }
-    s.link_mode = false;
+    lm_drop(s);
     s.back = Vec::new();
     s.boxes.stale = true;
     bar_drop(s);
@@ -2385,19 +2441,6 @@ fn page_paper(s: &mut EditorState, dpi: f32) -> bool {
     true
 }
 
-// Whether stroke s, drawn after Add a link, is too small to be the link's box both ways.
-fn link_box_too_small(dpi: f32, s: &Stroke) -> bool {
-    let (mut x0, mut y0, mut x1, mut y1) = (1e9f32, 1e9f32, -1e9f32, -1e9f32);
-    for p in &s.pts {
-        x0 = x0.min(p.x);
-        x1 = x1.max(p.x);
-        y0 = y0.min(p.y);
-        y1 = y1.max(p.y);
-    }
-    let min_px = LINK_BOX_MIN_MM * dpi / 25.4;
-    x1 - x0 < min_px && y1 - y0 < min_px
-}
-
 fn draw_begin(a: &mut App, ev: &InEvent) {
     if refuse_readonly(a) {
         // neither ink nor the eraser (tool, eraser end or side button)
@@ -2495,11 +2538,10 @@ fn draw_sample(a: &mut App, ev: &InEvent) {
 }
 
 fn draw_end(a: &mut App) {
-    let dpi = a.dpi;
     let s = ed(a);
     let st = s.cur.take();
     s.owner = Owner::None;
-    s.boxes.stale = true; // (a link's ink may have been added to, or a link's box made)
+    s.boxes.stale = true; // (a beta.5 link's ink may have been added to)
     display_pen_mode(false);
     let Some(st) = st else { return };
     if st.pts.is_empty() {
@@ -2516,24 +2558,12 @@ fn draw_end(a: &mut App) {
         stroke_free(st);
         return;
     }
-    if s.link_mode && !stroke_is_erase(&st) && link_box_too_small(dpi, &st) {
-        // A dot or a tick for a link's box: taken back (no undo step), and the next stroke is tried.
-        let d = st.bbox;
-        stroke_free(st);
-        draw_page(a, d);
-        show(a, d, RefreshMode::Ui);
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
-        // stroke drawn was too small to be the link's box.
-        app_toast(a, tr("Too small for a link: draw around what links."), 3000);
-        return;
-    }
     let h = s.cur_hist();
     let had_undo = h.is_some_and(|i| history_can_undo(&s.hist[i].h));
     let had_redo = h.is_some_and(|i| history_can_redo(&s.hist[i].h));
     let ip = s.page_ix().unwrap();
     let was_empty = s.hist[ip].page.as_deref().unwrap().strokes.is_empty();
     let erase = stroke_is_erase(&st);
-    let seed = st.seed;
     // (the stroke's identity survives the move into the page: PORTING.md, wave 2's conventions)
     let sid = stroke_id(&st);
     let page = s.hist[ip].page.as_deref_mut().unwrap();
@@ -2557,9 +2587,6 @@ fn draw_end(a: &mut App) {
     // Only touch the panel when Undo/Redo availability actually changed.
     if !had_undo || had_redo || was_empty {
         s.panel_stale = true;
-    }
-    if s.link_mode && !erase && kept {
-        link_box_drawn(a, seed);
     }
 }
 
@@ -2815,9 +2842,12 @@ fn sheet_open(s: &EditorState) -> bool {
 }
 
 /// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
-/// stays), or a pen contact outside it is being swallowed. Fast ink never previews such a contact.
+/// stays), a link is being made (the strip, the lasso: 6.4), or a pen contact outside the bar is being
+/// swallowed. Fast ink never previews such a contact.
 pub fn editor_pen_not_ink(a: &App) -> bool {
-    a.ed.as_deref().is_some_and(|s| s.lb.open || s.find.open || (s.owner == Owner::Outside && s.owner_is_pen))
+    a.ed.as_deref().is_some_and(|s| {
+        s.lb.open || s.find.open || s.lm.state != LmState::Off || (s.owner == Owner::Outside && s.owner_is_pen)
+    })
 }
 
 /// A cheap snapshot for the early input hook. UI gestures never paint provisional ink. The
@@ -2825,7 +2855,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.link_mode || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
+    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
@@ -2900,6 +2930,12 @@ fn undo_redo(a: &mut App, undo: bool) {
     let s = ed(a);
     let Some(h) = s.cur_hist() else { return };
     let Some(ip) = s.page_ix() else { return };
+    let kind = if undo { history_undo_kind(&s.hist[h].h) } else { history_redo_kind(&s.hist[h].h) };
+    if kind == Some(ActKind::Link) {
+        undo_redo_link(a, h, ip, undo);
+        return;
+    }
+    let s = ed(a);
     let mut d = RECT_EMPTY;
     let (hh, page) = hist_page(&mut s.hist, h, ip);
     if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
@@ -2919,7 +2955,7 @@ fn undo_redo(a: &mut App, undo: bool) {
 // ---- pages view: open, act, delete ----
 
 fn pages_show(a: &mut App) {
-    ed(a).link_mode = false;
+    lm_drop(ed(a)); // (the view comes up whole)
     save_page(a);
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_open(pv, a, nb, nav, index)) {
@@ -2935,7 +2971,7 @@ fn pages_name(a: &mut App) {
     if !ed(a).nav.writable {
         return;
     }
-    ed(a).link_mode = false;
+    lm_drop(ed(a)); // (the view comes up whole)
     save_page(a);
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_name(pv, a, nb, nav, index)) {
@@ -3077,34 +3113,325 @@ fn pages_copy(a: &mut App, index: i32) {
     app_toast(a, &msg, 2500);
 }
 
-// Add a link, from the Index or the add-link shortcut on the page: the next ink stroke on the open
-// page is the link's box (link_box_drawn). Neither on a read-only page nor while links.ini does not
-// read (the Index's button is greyed out then).
-fn link_start(a: &mut App) {
-    if refuse_readonly(a) || !ed(a).nav.links_writable {
+// ---- making a link without ink (PHASE2 6) ----
+
+/// A link as an undo step keeps it (history.rs stays free of the Nav).
+fn link_rec(l: &NavLink) -> LinkRec {
+    LinkRec { seed: l.seed, target: l.target, area: l.area, has_area: l.has_area }
+}
+/// The link a step's record puts back on page pid.
+fn rec_link(pid: u32, r: &LinkRec) -> NavLink {
+    NavLink { pid, seed: r.seed, target: r.target, area: r.area, has_area: r.has_area }
+}
+
+/// After a nav_load rollback (a failed link save): the links in memory are the file's again, so migrated
+/// areas no longer wait for a save, and every page with a legacy link may be tried again (idle ticks).
+fn migration_reset(s: &mut EditorState) {
+    s.links_dirty = false;
+    s.migrate_done.clear(); // (its room stays: migrate_room)
+    s.boxes.stale = true;
+}
+
+/// Link making ends with nothing drawn: for a caller that draws the whole screen next (a page change, the
+/// Pages view coming up, closing). A pen still drawing the lasso has the rest of its stroke ignored.
+fn lm_drop(s: &mut EditorState) {
+    if s.owner == Owner::Lasso || s.owner == Owner::Strip {
+        s.owner = Owner::None;
+    }
+    s.lm = LinkMaking::default();
+}
+
+/// Link making ends silently with the strip, the lasso and the dotted rectangle taken off the screen in
+/// one Ui refresh (a menu opening over the page: its own refresh joins it). Nothing when none is made.
+fn link_off(a: &mut App) {
+    if ed_ref(a).lm.state == LmState::Off {
         return;
     }
-    ed(a).link_mode = true;
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
-    // a box or a ring around what links with the pen; the Pages view then asks where it goes.
-    app_toast(a, tr("Draw around what links. Then tap where it goes."), 4000);
+    let u = lm_bounds(a);
+    lm_drop(ed(a));
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
 }
 
-// A link still waiting for its box is not made (Close menu, or add-link pressed again).
-fn link_stop(a: &mut App) {
-    ed(a).link_mode = false;
-    app_toast(a, tr("No link made."), 2500);
+/// Where link making draws now on the screen: the strip, the lasso so far, and the dotted rectangle.
+fn lm_bounds(a: &App) -> Rect {
+    let s = ed_ref(a);
+    let mut u = RECT_EMPTY;
+    if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
+        u = rect_union(s.lm.strip, strip_rect(a));
+    }
+    u = rect_union(u, s.lm.lasso_rect);
+    if s.lm.state == LmState::Pick {
+        u = rect_union(u, area_band(a));
+    }
+    rect_intersect(u, Rect { x: 0, y: 0, w: a.w, h: a.h })
 }
 
-// After Add a link: stroke s (seed: its seed), just drawn on the open page, is the link's box. The
-// Pages view picks where it goes.
-fn link_box_drawn(a: &mut App, seed: u32) {
+/// The strip while a link is being made (6.3): along the bottom, 20 px in from the sides and above the edge.
+fn strip_rect(a: &App) -> Rect {
+    let h = ui_px(130.0);
+    Rect { x: ui_px(20.0), y: a.h - ui_px(20.0) - h, w: a.w - ui_px(40.0), h }
+}
+
+/// The strip's Cancel: 260 x 100 at its right, 15 px in.
+fn strip_cancel(strip: Rect) -> Rect {
+    let (w, h, m) = (ui_px(260.0), ui_px(100.0), ui_px(15.0));
+    Rect { x: strip.x + strip.w - m - w, y: strip.y + m, w, h }
+}
+
+/// The strip, over the page, the panel and the menus, where r meets it; the toasts keep above it.
+fn draw_strip(a: &mut App, r: Rect) {
+    let strip = strip_rect(a);
     let s = ed(a);
-    s.link_mode = false;
-    s.link_seed = seed;
+    s.lm.strip = strip;
+    let pressed = s.lm.cancel_down;
+    if rect_overlaps(r, strip) {
+        let clip = a.screen.clip;
+        canvas_set_clip(&mut a.screen, r);
+        let c = &mut a.screen;
+        ui_frame(c, strip, ui_px(24.0), 255, true, 0);
+        ui_frame(c, strip, ui_px(24.0), 0, false, ui_px(6.0));
+        let cancel = strip_cancel(strip);
+        let tx = strip.x + ui_px(32.0);
+        let text = Rect { x: tx, y: strip.y, w: cancel.x - ui_px(32.0) - tx, h: strip.h };
+        // TRANSLATORS: the strip along the bottom while a link is made (about 1400 px at 44 px in bold):
+        // the next pen stroke draws a ring around what the link is, and leaves no ink.
+        font_draw_left(c, FontFace::Bold, ui_text_size(), text, tr("Draw around what links."), 0);
+        ui_button(c, cancel, IconKind::None, tr("Cancel"), if pressed { ButtonStyle::Selected } else { ButtonStyle::Plain });
+        a.screen.clip = clip;
+    }
+    a.toast_floor = strip.y;
+}
+
+/// The screen rect of the dotted rectangle around the area waiting for its target, and the band it paints
+/// (its halo included).
+fn area_screen(s: &EditorState) -> Rect {
+    box_screen(s, s.lm.area)
+}
+fn area_band(a: &App) -> Rect {
+    let s = ed_ref(a);
+    if s.lm.state != LmState::Pick || rect_is_empty(s.lm.area) {
+        return RECT_EMPTY;
+    }
+    rect_inflate(area_screen(s), ui_px(2.0) + 1)
+}
+
+/// A page point on the screen (screen = (page - o) * zoom), unrounded: the lasso drawn as the pen moves and
+/// the one compose draws whole go through this one conversion, so their pixels agree.
+fn lasso_screen_pt(s: &EditorState, p: (f32, f32)) -> (f32, f32) {
+    ((p.0 - s.ox) * s.zoom, (p.1 - s.oy) * s.zoom)
+}
+
+/// Where the lasso may draw on the screen: the page, below the status bar.
+fn lasso_clip(a: &App) -> Rect {
+    let s = ed_ref(a);
+    let top = status_reserved(a);
+    let page = page_to_screen(a, Rect { x: 0, y: 0, w: s.pgw, h: s.pgh });
+    rect_intersect(page, Rect { x: 0, y: top, w: a.w, h: a.h - top })
+}
+
+/// The lasso's dashes (6.4): 4 px, 12 on and 8 off, black, no halo.
+fn lasso_pen() -> (i32, i32, i32) {
+    (ui_px(4.0), ui_px(12.0), ui_px(8.0))
+}
+
+/// Whether point p (page px) joins the lasso after `last`: it must be `spacing` screen px from it. A full
+/// lasso drops every other point first and doubles the spacing; a lasso with no room (its reservation
+/// failed) keeps no points but still goes on from the new one. Returns whether p was taken.
+fn lasso_keep(pts: &mut Vec<(f32, f32)>, spacing: &mut f32, last: &mut (f32, f32), p: (f32, f32), zoom: f32) -> bool {
+    let (dx, dy) = ((p.0 - last.0) * zoom, (p.1 - last.1) * zoom);
+    if dx * dx + dy * dy < *spacing * *spacing {
+        return false;
+    }
+    if pts.len() >= LASSO_MAX {
+        let mut k = 0;
+        pts.retain(|_| {
+            k += 1;
+            k % 2 == 1
+        });
+        *spacing *= 2.0;
+    }
+    if pts.len() < pts.capacity() {
+        pts.push(p);
+    }
+    *last = p;
+    true
+}
+
+/// The area a lasso's box gives: whole page px around it (floor, ceil), on the page.
+fn lasso_area(bx0: f32, by0: f32, bx1: f32, by1: f32, pgw: i32, pgh: i32) -> Rect {
+    let x0 = clampi(bx0.floor() as i32, 0, pgw);
+    let y0 = clampi(by0.floor() as i32, 0, pgh);
+    let x1 = clampi(bx1.ceil() as i32, 0, pgw);
+    let y1 = clampi(by1.ceil() as i32, 0, pgh);
+    Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+/// A lasso smaller than LINK_BOX_MIN_MM both ways (at this dpi) makes no area.
+fn lasso_too_small(r: Rect, dpi: f32) -> bool {
+    let min_px = LINK_BOX_MIN_MM * dpi / 25.4;
+    (r.w as f32) < min_px && (r.h as f32) < min_px
+}
+
+/// Add a link, from the Index, the bar's New link or the add-link shortcut: the strip comes up and the next
+/// pen contact on the open page draws the lasso. Refused, with a toast, on a read-only page, while links.ini
+/// does not read, and on a page that has all the links it may.
+fn link_arm(a: &mut App) {
+    if refuse_readonly(a) {
+        return;
+    }
+    let s = ed(a);
+    if !s.nav.links_writable {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link was asked while
+        // the notebook's links.ini could not be read, so no link can be made.
+        app_toast(a, tr("Links could not be read in this notebook."), 3000);
+        return;
+    }
+    let pid = s.open_pid();
+    if nav_links_of(&s.nav, pid, &mut 0) >= NAV_LINKS_PER_PAGE {
+        let mut msg = String::new();
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
+        // has the most links a page may have; %d is that number (64).
+        csnprintf!(&mut msg, 160, tr("This page has %d links: delete one to add another."), NAV_LINKS_PER_PAGE);
+        app_toast(a, &msg, 3000);
+        return;
+    }
+    let strip = strip_rect(a);
+    let s = ed(a);
+    s.lm = LinkMaking { state: LmState::Armed, strip, ..Default::default() };
+    compose(a, strip);
+    app_invalidate(a, strip, RefreshMode::Ui);
+}
+
+/// A pen down on the page while armed: the lasso begins there (never pen mode, never the live ink style).
+fn lasso_begin(a: &mut App, ev: &InEvent) {
+    let s = ed(a);
+    let (mut px, mut py) = (0.0, 0.0);
+    to_page(s, ev.x, ev.y, &mut px, &mut py);
+    s.owner = Owner::Lasso;
+    let lm = &mut s.lm;
+    lm.state = LmState::Lasso;
+    lm.pts.clear();
+    if lm.pts.capacity() < LASSO_MAX {
+        // (no room: the lasso is drawn as it goes and its box still makes the area; compose draws none of it)
+        let _ = lm.pts.try_reserve_exact(LASSO_MAX);
+    }
+    if lm.pts.capacity() > 0 {
+        lm.pts.push((px, py));
+    }
+    lm.last = (px, py);
+    lm.spacing = ui_px(2.0) as f32;
+    lm.phase = 0;
+    lm.bx0 = px;
+    lm.bx1 = px;
+    lm.by0 = py;
+    lm.by1 = py;
+    lm.lasso_rect = RECT_EMPTY;
+}
+
+/// The pen moved while drawing the lasso: the new segment goes straight to the screen with a DU (one per
+/// input batch, at the loop's flush), and never into the page. A segment under the panel or the strip is
+/// kept but not drawn (compose draws the lasso under them).
+fn lasso_move(a: &mut App, ev: &InEvent) {
+    let s = ed(a);
+    let (mut px, mut py) = (0.0, 0.0);
+    to_page(s, ev.x, ev.y, &mut px, &mut py);
+    let lm = &mut s.lm;
+    lm.bx0 = lm.bx0.min(px);
+    lm.bx1 = lm.bx1.max(px);
+    lm.by0 = lm.by0.min(py);
+    lm.by1 = lm.by1.max(py);
+    let prev = lm.last;
+    let zoom = s.zoom;
+    if !lasso_keep(&mut lm.pts, &mut lm.spacing, &mut lm.last, (px, py), zoom) {
+        return;
+    }
+    let (p0, p1) = (lasso_screen_pt(s, prev), lasso_screen_pt(s, (px, py)));
+    let (thick, on, off) = lasso_pen();
+    let seg = rect_from_points(p0.0, p0.1, p1.0, p1.1, thick as f32 + 1.0);
+    let hidden = rect_overlaps(seg, s.panel) || rect_overlaps(seg, s.lm.strip);
+    let phase = s.lm.phase;
+    let clip = lasso_clip(a);
+    let keep = a.screen.clip;
+    canvas_set_clip(&mut a.screen, clip);
+    let ph = canvas_dash_poly(&mut a.screen, &[p0, p1], if hidden { 0 } else { thick }, on, off, 0, phase);
+    a.screen.clip = keep;
+    let d = rect_intersect(seg, clip);
+    let s = ed(a);
+    s.lm.phase = ph;
+    s.lm.lasso_rect = rect_union(s.lm.lasso_rect, d);
+    if !hidden && !rect_is_empty(d) {
+        app_invalidate(a, d, RefreshMode::Fast);
+    }
+}
+
+/// The whole lasso, as compose draws it (over the eye's boxes, under the panel), where r meets it.
+fn draw_lasso(a: &mut App, r: Rect) {
+    let s = ed_ref(a);
+    if s.lm.state != LmState::Lasso || s.lm.pts.len() < 2 {
+        return;
+    }
+    let pts: Vec<(f32, f32)> = s.lm.pts.iter().map(|&p| lasso_screen_pt(s, p)).collect();
+    let (thick, on, off) = lasso_pen();
+    let clip = a.screen.clip;
+    let c = rect_intersect(r, lasso_clip(a));
+    canvas_set_clip(&mut a.screen, c);
+    canvas_dash_poly(&mut a.screen, &pts, thick, on, off, 0, 0);
+    a.screen.clip = clip;
+}
+
+/// The dotted rectangle around the area waiting for its target (6.5), where r meets it.
+fn draw_area_wait(a: &mut App, r: Rect) {
+    let s = ed_ref(a);
+    if s.lm.state != LmState::Pick || rect_is_empty(s.lm.area) {
+        return;
+    }
+    let sr = area_screen(s);
+    let clip = a.screen.clip;
+    canvas_set_clip(&mut a.screen, r);
+    canvas_dash_rect(&mut a.screen, sr, ui_px(3.0), ui_px(8.0), ui_px(8.0), ui_px(2.0));
+    a.screen.clip = clip;
+}
+
+/// The pen lifted (or left) while drawing the lasso (6.5): its box is the area. Too small, and the strip
+/// stays for another try; otherwise the lasso and the strip go, the dotted rectangle shows the area, and the
+/// Pages view picks where the link goes.
+fn lasso_end(a: &mut App) {
+    let dpi = a.dpi;
+    let s = ed(a);
+    s.owner = Owner::None;
+    if s.lm.state != LmState::Lasso {
+        return;
+    }
+    let lm = &s.lm;
+    let r = lasso_area(lm.bx0, lm.by0, lm.bx1, lm.by1, s.pgw, s.pgh);
+    let drawn = lm.lasso_rect;
+    if lasso_too_small(r, dpi) {
+        let s = ed(a);
+        s.lm.state = LmState::Armed;
+        s.lm.pts.clear();
+        s.lm.lasso_rect = RECT_EMPTY;
+        compose(a, drawn);
+        app_invalidate(a, drawn, RefreshMode::Ui);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
+        // stroke drawn was too small to be the link's box.
+        app_toast(a, tr("Too small for a link: draw around what links."), 3000);
+        return;
+    }
+    let strip = s.lm.strip;
+    s.lm.state = LmState::Pick;
+    s.lm.area = r;
+    s.lm.pts = Vec::new();
+    s.lm.lasso_rect = RECT_EMPTY;
+    let u = rect_union(rect_union(drawn, strip), area_band(a));
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
+    // The Pages view picks where it goes (Link to... comes in its place later): its Full refresh covers
+    // the one above.
     save_page(a);
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index, false)) {
+        link_cancel(a, false);
         return;
     }
     compose_all(a, RefreshMode::Full);
@@ -3113,7 +3440,198 @@ fn link_box_drawn(a: &mut App, seed: u32) {
     app_toast(a, tr("Where does the link go? Tap its page."), 3000);
 }
 
-// The link the Pages view picked for goes to target ("index" or "p<page id>"), and the view closes on
+/// A press on the strip (6.3): Cancel inverts at the down and cancels at the up if it was a tap; the rest of
+/// the strip does nothing (a pen there never starts the lasso).
+fn strip_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    let s = ed(a);
+    let cancel = strip_cancel(s.lm.strip);
+    if ph == 0 {
+        press_begin(&mut s.lm.press, ev.x, ev.y, ev.t_ms);
+        if rect_contains(cancel, ev.x as i32, ev.y as i32) {
+            s.lm.cancel_down = true;
+            app_press_feedback(a, cancel);
+        }
+        return;
+    }
+    press_move(&mut s.lm.press, ev.x, ev.y);
+    if ph != 2 {
+        return;
+    }
+    s.owner = Owner::None;
+    let was_down = s.lm.cancel_down;
+    s.lm.cancel_down = false;
+    if !was_down {
+        return;
+    }
+    if !touch_cancelled(ev) && press_is_tap(&s.lm.press, cancel) {
+        link_cancel(a, true);
+    } else {
+        compose(a, cancel);
+        app_invalidate(a, cancel, RefreshMode::Fast);
+    }
+}
+
+/// A new link's area goes to target ("index" or "p<page id>"): the link is made with a seed of its own,
+/// saved, and is one undo step (6.7); the Pages view closes on the open page.
+fn link_pick(a: &mut App, target: &str) {
+    let s = ed(a);
+    if s.lm.state != LmState::Pick || s.page_ix().is_none() {
+        lm_drop(s);
+        pages_hide(a, -1);
+        return;
+    }
+    let pid = s.open_pid();
+    let area = s.lm.area;
+    lm_drop(s);
+    let page = s.open_page().unwrap();
+    // unique among the page's ink and link seeds: a link never takes in ink, and new ink never joins it
+    let want = now_ms().wrapping_mul(2654435761) ^ page.strokes.len() as u32;
+    let seed = nav_new_seed(&s.nav, page, pid, want);
+    s.boxes.stale = true;
+    let ok = nav_link_set(&mut s.nav, pid, seed, target) == 0
+        && nav_link_set_area(&mut s.nav, pid, seed, Some(area)) == 0
+        && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0;
+    if !ok {
+        nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
+        migration_reset(s);
+        pages_hide(a, -1);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
+        app_toast(a, tr("Could not save the link."), 3000);
+        return;
+    }
+    let made = nav_link_get(&s.nav, pid, seed);
+    let mut records = Vec::new();
+    // (no memory for the step's one record: the link stays, saved, but Undo does not take it away)
+    if let (Some(l), Ok(())) = (made, records.try_reserve_exact(1)) {
+        records.push((None, Some(link_rec(&l))));
+    }
+    if let Some(h) = s.cur_hist() {
+        history_push_link(&mut s.hist[h].h, LinkEdit { pid, records });
+    }
+    s.links_dirty = false; // (the save wrote every migrated area too)
+    s.changed = true;
+    let to = made.map_or(-1, |l| nav_link_page(&l, &s.nb));
+    let mut msg = String::new();
+    if to >= 0 {
+        let name = nav_name(&s.nav, s.nb.page_ids[to as usize]);
+        if !name.is_empty() {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+            // the page with this name in the Index (%s).
+            csnprintf!(&mut msg, 200, tr("Linked to %s."), name);
+        } else {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+            // page %d, which has no name in the Index.
+            csnprintf!(&mut msg, 200, tr("Linked to page %d."), to + 1);
+        }
+    } else {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to the
+        // Index (the list of named pages).
+        csnprintf!(&mut msg, 200, "%s", tr("Linked to the Index."));
+    }
+    pages_hide(a, -1); // (the screen composed whole: the rectangle goes, the eye shows the new box)
+    app_toast(a, &msg, 2500);
+}
+
+/// No link is made (6.10): from the strip's Cancel, the add-link action again, Close menu, and the Pages
+/// view's Back while it picks for a new link. The strip, the lasso and the rectangle go; `toast` says so.
+/// The Pages view picking for a link held on (its own path) just closes.
+fn link_cancel(a: &mut App, toast: bool) {
+    let s = ed(a);
+    if s.pv.open && s.pv.picking && s.pv.pick_had {
+        pages_hide(a, -1);
+        return;
+    }
+    if s.lm.state == LmState::Off && !(s.pv.open && s.pv.picking) {
+        return;
+    }
+    let u = lm_bounds(a);
+    let s = ed(a);
+    lm_drop(s);
+    if s.pv.open {
+        pages_hide(a, -1);
+    } else {
+        compose(a, u);
+        app_invalidate(a, u, RefreshMode::Ui);
+    }
+    if toast {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
+        // (its Cancel, or Back while picking where it goes), and no link was made.
+        app_toast(a, tr("No link made."), 2500);
+    }
+}
+
+/// A menu came up while the strip was up (any menu's button, on the panel or as an action): the link is not
+/// made, silently, and the strip goes in the menu's refresh. The Pages view picking for the area is the
+/// making's own (Pick), and stays.
+fn lm_check_menus(a: &mut App) {
+    let Some(s) = a.ed.as_deref() else { return };
+    if (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso) && s.owner != Owner::Lasso && sheet_open(s) {
+        link_off(a);
+    }
+}
+
+/// An undo or redo of a link step (4.2): its records are put back in the Nav and links.ini is saved; the
+/// page is untouched. A failed save puts the links back as the file has them and drops the step.
+fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
+    let before = if a.settings.link_areas { eye_bounds(a) } else { RECT_EMPTY };
+    let s = ed(a);
+    let mut d = RECT_EMPTY;
+    let (hh, page) = hist_page(&mut s.hist, ih, ip);
+    if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
+        return;
+    }
+    let mut ok = true;
+    if let Some(e) = history_moved_link(&s.hist[ih].h, undo) {
+        let pid = e.pid;
+        for (b, af) in &e.records {
+            let want = if undo { b } else { af };
+            match want {
+                Some(r) => ok &= nav_link_put(&mut s.nav, &rec_link(pid, r)) == 0,
+                None => {
+                    if let Some(r) = b.as_ref().or(af.as_ref()) {
+                        nav_link_remove(&mut s.nav, pid, r.seed);
+                    }
+                }
+            }
+        }
+    }
+    s.boxes.stale = true;
+    ok = ok && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0;
+    if !ok {
+        nav_load(s.nb.id.as_str(), &mut s.nav);
+        migration_reset(s);
+        let h = &mut s.hist[ih].h;
+        if undo {
+            history_drop_last_redo(h);
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
+            // could not save links.ini, so the change is still there.
+            app_toast(a, tr("Could not save the links: that change was not undone."), 3000);
+        } else {
+            history_drop_last_undo(h);
+            // TRANSLATORS: the same toast for Redo.
+            app_toast(a, tr("Could not save the links: that change was not redone."), 3000);
+        }
+        repaint_panel(a, RefreshMode::Ui);
+        return;
+    }
+    s.links_dirty = false;
+    s.changed = true; // (the notebook changed: the PDF mirror runs at close)
+    if a.settings.link_areas {
+        let u = rect_union(before, eye_bounds(a));
+        compose(a, u);
+        app_invalidate(a, u, RefreshMode::Ui);
+    } else if undo {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo took back a link change
+        // (a link made, deleted or changed), which shows nowhere on the page while the eye is off.
+        app_toast(a, tr("Link change undone."), 2000);
+    } else {
+        // TRANSLATORS: the same toast for Redo.
+        app_toast(a, tr("Link change redone."), 2000);
+    }
+    repaint_panel(a, RefreshMode::Ui);
+}
+
+// The link held on (link_hold), whose Pages view picked, goes to target ("index" or "p<page id>"), and the view closes on
 // the open page.
 fn link_to(a: &mut App, target: &str, done: &str) {
     // The link is set first and the view closes after it (the repaint then makes the eye's boxes again).
@@ -3124,6 +3642,7 @@ fn link_to(a: &mut App, target: &str, done: &str) {
     let failed = nav_link_set(&mut s.nav, pid, seed, target) != 0 || nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
     if failed {
         nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
+        migration_reset(s);
     } else {
         s.changed = true;
     }
@@ -3136,38 +3655,18 @@ fn link_to(a: &mut App, target: &str, done: &str) {
     app_toast(a, done, 2500);
 }
 
-// Back while the Pages view picks for a link drawn just now: its box is taken back (an undo step,
-// the box's own: nothing else happened since).
-fn link_cancel(a: &mut App) {
-    let had = ed(a).pv.pick_had;
-    pages_hide(a, -1);
-    if had {
-        return;
-    }
-    let s = ed(a);
-    let h = s.cur_hist();
-    let can = h.is_some_and(|i| history_can_undo(&s.hist[i].h));
-    let seed = s.link_seed;
-    if can && s.open_page().is_some_and(|p| p.strokes.last().is_some_and(|x| x.seed == seed)) {
-        undo_redo(a, true);
-    }
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
-    // new link goes took its box back.
-    app_toast(a, tr("No link made."), 2500);
-}
-
 fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
     match with_pv(a, |pv, a, nb, nav| pagesview_pointer(pv, a, nb, nav, ph, ev)) {
         PvResult::Close => {
             if ed(a).pv.picking {
-                link_cancel(a);
+                link_cancel(a, true);
             } else {
                 pages_hide(a, -1);
             }
         }
         PvResult::Link => {
             pages_hide(a, -1);
-            link_start(a);
+            link_arm(a);
         }
         PvResult::Pick => {
             let s = ed(a);
@@ -3175,12 +3674,20 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             let mut target = String::new();
             let mut done = String::new();
             csnprintf!(&mut target, NAV_TARGET_LEN, "p%u", s.nb.page_ids[to as usize]);
+            if s.lm.state == LmState::Pick {
+                link_pick(a, &target);
+                return;
+            }
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
             // page now goes to page %d (a tap on it with a finger turns there).
             csnprintf!(&mut done, 160, tr("The link goes to page %d."), to + 1);
             link_to(a, &target, &done);
         }
         PvResult::PickIndex => {
+            if ed_ref(a).lm.state == LmState::Pick {
+                link_pick(a, "index");
+                return;
+            }
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the
             // page now opens the Index (the list of named pages).
             link_to(a, "index", tr("The link goes to the Index."));
@@ -3195,6 +3702,7 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             let failed = nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
             if failed {
                 nav_load(s.nb.id.as_str(), &mut s.nav);
+                migration_reset(s);
             } else {
                 s.changed = true;
             }
@@ -3300,7 +3808,7 @@ fn link_hold(a: &mut App) {
     }
     ed(a).link_seed = l.seed;
     save_page(a);
-    ed(a).link_mode = false;
+    lm_drop(ed(a)); // (the view comes up whole)
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index, true)) {
         return;
@@ -3470,7 +3978,7 @@ fn open_tools(a: &mut App) {
 // Go to page or name: the sheet opens over the page with an empty field (the sheet's own refresh: a Ui of the
 // keyboard, there are no rows yet). The page it is asked on stays the open one until a row is gone to.
 fn find_open(a: &mut App) {
-    ed(a).link_mode = false;
+    link_off(a);
     let mut f = std::mem::take(&mut ed(a).find);
     findsheet_open(&mut f, a);
     ed(a).find = f;
@@ -3534,12 +4042,12 @@ fn find_result(a: &mut App, r: FsResult, d: Rect) {
 // ---- the Links bar ----
 
 // The bar opens on the open page: its entries, the second header line for the first three opens, the way
-// back to the page it was left from. One Ui refresh of its card, no flash. Opening it disarms link mode,
-// silently (link_stop would toast).
+// back to the page it was left from. One Ui refresh of its card, no flash. Opening it disarms link making,
+// silently (the strip goes in the same refresh).
 fn bar_open(a: &mut App) {
+    link_off(a);
     let (dpi, aw, ah) = (a.dpi, a.w, a.h);
     let s = ed(a);
-    s.link_mode = false;
     s.peek = Peek::default();
     cache_free(s);
     s.boxes.stale = true;
@@ -3651,7 +4159,7 @@ fn bar_commit(a: &mut App) {
     a.live_processed = 0;
     a.live_processed_ms = 0;
     let s = ed(a);
-    s.link_mode = false;
+    lm_drop(s);
     s.settle = RECT_EMPTY;
     s.panel_stale = false;
     s.page = Some(pk.pid);
@@ -3920,9 +4428,9 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
                 // read, so the Links bar lists none and cannot make one.
                 app_toast(a, tr("Links could not be read."), 3000);
             } else {
-                // The new link goes on the page that shows: commit to it first, then today's inked flow.
+                // The new link goes on the page that shows: commit to it first, then the strip.
                 bar_stay(a);
-                link_start(a);
+                link_arm(a);
             }
         }
         LbResult::Eye => {
@@ -4117,7 +4625,7 @@ fn close_front(a: &mut App, draw: bool) {
     }
     if s.pv.open {
         if s.pv.picking {
-            link_cancel(a);
+            link_cancel(a, true);
         } else if draw {
             pages_hide(a, -1);
         } else {
@@ -4162,8 +4670,8 @@ fn open_menu(a: &mut App, action: i32) {
         SHORTCUT_DISPLAY => panel_act(a, Hit { id: P_DISPLAY, ..Default::default() }),
         SHORTCUT_PEN_FEEL => panel_act(a, Hit { id: P_PENSET, ..Default::default() }),
         SHORTCUT_LIBRARY => panel_act(a, Hit { id: P_LIBRARY, ..Default::default() }),
-        // Nothing in front: a link waiting for its box is not made.
-        SHORTCUT_CLOSE_MENU if ed(a).link_mode => link_stop(a),
+        // Nothing in front: a link being made is not made.
+        SHORTCUT_CLOSE_MENU if ed(a).lm.state != LmState::Off => link_cancel(a, true),
         _ => {}
     }
 }
@@ -4193,6 +4701,7 @@ pub fn editor_shortcut(a: &mut App, action: i32) -> bool {
 /// first.
 pub fn editor_shortcut_at(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) -> bool {
     let r = editor_shortcut_in(a, action, x, y, src);
+    lm_check_menus(a);
     touch_context(a);
     r
 }
@@ -4315,12 +4824,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
             go_to_page(a, to);
         }
     } else if action == SHORTCUT_ADD_LINK {
-        // The Index's Add a link from the page; pressed again while the link waits for its box, it
-        // is not made, as a menu's own button closes it.
-        if ed(a).link_mode {
-            link_stop(a);
+        // The Index's Add a link from the page; pressed again while the strip is up, the link is not made,
+        // as a menu's own button closes it.
+        if ed(a).lm.state != LmState::Off {
+            link_cancel(a, true);
         } else {
-            link_start(a);
+            link_arm(a);
         }
     } else if action == SHORTCUT_NAME_PAGE {
         pages_name(a);
@@ -4629,6 +5138,10 @@ pub fn editor_enter(a: &mut App) {
     let turned = s.view_w != a.w || s.view_h != a.h;
     if turned {
         view_reset(a); // new notebook or turned
+        let s = ed(a);
+        if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
+            lm_drop(s); // (silently: the screen is composed whole below; a picking Pages view stays)
+        }
     }
     ed(a).pinching = false;
     fit_panel_to(&a.settings, a.h);
@@ -4848,6 +5361,7 @@ pub fn editor_leave(a: &mut App) {
     if !a.relayout {
         bar_drop(ed(a));
         find_drop(ed(a));
+        lm_drop(ed(a)); // (a link being made is not made, silently)
     }
     save_page(a);
     links_flush(a);
@@ -4872,6 +5386,9 @@ pub fn editor_suspend(a: &mut App) -> bool {
     let s = ed(a);
     bar_drop(s); // (the Kindle sleeps: it is not there on waking)
     find_drop(s);
+    if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
+        lm_drop(s); // (a lasso being drawn ends with it; a picking Pages view stays, as every sheet does)
+    }
     s.owner = Owner::None;
     s.has_pressed = false;
     s.dragging = false;
@@ -4920,6 +5437,7 @@ fn corner_tap(cancelled: bool) -> bool {
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
     editor_event_in(a, ev);
+    lm_check_menus(a);
     touch_context(a);
 }
 
@@ -5105,6 +5623,10 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
             s.owner = Owner::Modal;
             ui_pointer(a, 0, ev, true);
+        } else if (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso) && rect_contains(s.lm.strip, ev.x as i32, ev.y as i32) {
+            // The strip takes a finger or the pen: its Cancel, or nothing (never the lasso).
+            s.owner = Owner::Strip;
+            strip_pointer(a, 0, ev);
         } else if rect_contains(s.panel, ev.x as i32, ev.y as i32) {
             s.owner = Owner::Panel;
             // A stroke just ended: Undo/Clear may have become available, but the panel (and its
@@ -5113,6 +5635,10 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 settle_now(a);
             }
             ui_pointer(a, 0, ev, false);
+        } else if pen && s.lm.state == LmState::Armed {
+            // While a link is made the next pen contact on the page is its lasso, whatever the tool (the
+            // eraser end, the side button and Erase while held too): never ink.
+            lasso_begin(a, ev);
         } else if pen {
             draw_begin(a, ev);
             if ed(a).owner == Owner::Draw {
@@ -5144,6 +5670,14 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 erase_end(a);
             }
         }
+        Owner::Lasso => {
+            if ph == 1 {
+                lasso_move(a, ev);
+            } else {
+                lasso_end(a);
+            }
+        }
+        Owner::Strip => strip_pointer(a, ph, ev),
         Owner::Pages => {
             pages_event(a, ph, ev);
             if ph == 2 {
@@ -5470,7 +6004,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // over the page. A page not in the session cache is read for it and dropped (memory stays flat),
     // with the pens pumped as it is read. Each page is tried once, whatever happens.
     let s = ed(a);
-    if s.open && drained && s.owner == Owner::None && !s.pinching && !sheet_open(s) && !s.link_mode && s.nav.links_writable && s.migrate_room() {
+    if s.open && drained && s.owner == Owner::None && !s.pinching && !sheet_open(s) && s.lm.state == LmState::Off && s.nav.links_writable && s.migrate_room() {
         migrate_step(a);
     }
     // Migrated areas are saved after a pause (and again 2 s after a failed save), apart from the
@@ -5606,7 +6140,45 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "index_rows" {
         csnprintf!(out, cap, "%d", if has_page { nav_index(&s.nav, &s.nb, &mut []) } else { 0 });
     } else if key == "link_mode" {
-        csnprintf!(out, cap, "%d", if s.open && s.link_mode { 1 } else { 0 });
+        // The strip is up: armed, or drawing the lasso.
+        let on = s.open && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
+        csnprintf!(out, cap, "%d", if on { 1 } else { 0 });
+    } else if key == "strip" {
+        // The strip: 0, or new while it is up for a new link.
+        let on = s.open && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
+        csnprintf!(out, cap, "%s", if on { "new" } else { "0" });
+    } else if key == "lasso" {
+        // How many points the lasso being drawn holds, 0 otherwise.
+        csnprintf!(out, cap, "%d", if s.open && s.lm.state == LmState::Lasso { s.lm.pts.len() as i32 } else { 0 });
+    } else if key == "link_area" {
+        // The area a new link waits to be given a target for, x y w h page px, empty otherwise.
+        if s.open && s.lm.state == LmState::Pick {
+            let r = s.lm.area;
+            csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+        } else {
+            csnprintf!(out, cap, "%s", "");
+        }
+    } else if key == "undo_kind" || key == "redo_kind" {
+        // The kind of step an undo (a redo) of the open page would apply, empty for none.
+        let e = if has_page { s.page.and_then(|pid| s.hist.iter().position(|e| e.page_id == pid)) } else { None };
+        let kind = e.and_then(|i| if key == "undo_kind" { history_undo_kind(&s.hist[i].h) } else { history_redo_kind(&s.hist[i].h) });
+        let name = match kind {
+            Some(ActKind::Add) => "add",
+            Some(ActKind::Erase) => "erase",
+            Some(ActKind::Paper) => "paper",
+            Some(ActKind::Clear) => "clear",
+            Some(ActKind::Link) => "link",
+            None => "",
+        };
+        csnprintf!(out, cap, "%s", name);
+    } else if let Some(xy) = key.strip_prefix("ui_at.") {
+        // The name of what link making shows at screen point (X, Y), empty for none (the strip's Cancel now;
+        // the card and Link to... later).
+        let Some((xs, ys)) = xy.split_once('.') else { return -1 };
+        let (x, y) = (atoi(xs), atoi(ys));
+        let on = s.open && a.scr == ScreenId::Editor && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
+        let name = if on && rect_contains(strip_cancel(s.lm.strip), x, y) { "strip.cancel" } else { "" };
+        csnprintf!(out, cap, "%s", name);
     } else if key == "links" {
         // The open page's links: how many it has, and how many of them have their box on it.
         let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
@@ -6353,5 +6925,63 @@ mod tests {
         assert_eq!(atoi(" -3x"), -3);
         assert_eq!(atoi("x"), 0);
         assert_eq!(atoi(""), 0);
+    }
+
+    // The lasso (6.4, 6.5): a ring traced many times keeps at most LASSO_MAX points, the spacing doubling as
+    // it fills, and the area is the box of every point the pen gave; a point closer than the spacing is not
+    // kept; with no room for points the lasso still goes on.
+    #[test]
+    fn the_lasso_keeps_a_bounded_ring_and_its_whole_box() {
+        let mut pts: Vec<(f32, f32)> = Vec::new();
+        pts.try_reserve_exact(LASSO_MAX).unwrap();
+        let mut spacing = 2.0f32;
+        let start = (800.0f32, 1000.0f32);
+        let mut last = start;
+        pts.push(start);
+        let (mut bx0, mut by0, mut bx1, mut by1) = (start.0, start.1, start.0, start.1);
+        for i in 0..40_000 {
+            let t = i as f32 * 0.01;
+            let p = (800.0 + 300.0 * t.cos() - 300.0, 1000.0 + 200.0 * (t * 1.37).sin());
+            bx0 = bx0.min(p.0);
+            bx1 = bx1.max(p.0);
+            by0 = by0.min(p.1);
+            by1 = by1.max(p.1);
+            lasso_keep(&mut pts, &mut spacing, &mut last, p, 1.0);
+            assert!(pts.len() <= LASSO_MAX);
+        }
+        assert!(pts.capacity() == LASSO_MAX); // (never grown past its reservation)
+        assert!(spacing > 2.0);
+        let r = lasso_area(bx0, by0, bx1, by1, 1860, 2480);
+        assert_eq!(r, Rect { x: bx0.floor() as i32, y: by0.floor() as i32, w: bx1.ceil() as i32 - bx0.floor() as i32, h: by1.ceil() as i32 - by0.floor() as i32 });
+        // the kept points stay within the box, and reach its corners to within the spacing
+        let (kx0, kx1) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
+        assert!(kx0 >= bx0 && kx1 <= bx1 && kx0 - bx0 <= spacing * 2.0 && bx1 - kx1 <= spacing * 2.0);
+        // too close to the last point: not kept, and the last point stays
+        let mut s2 = 2.0;
+        let mut v = Vec::with_capacity(4);
+        let mut l2 = (10.0, 10.0);
+        assert!(!lasso_keep(&mut v, &mut s2, &mut l2, (11.0, 10.5), 1.0));
+        assert!(lasso_keep(&mut v, &mut s2, &mut l2, (13.0, 10.0), 1.0));
+        assert_eq!(l2, (13.0, 10.0));
+        // zoomed in twice, the same page distance is twice the screen distance
+        assert!(lasso_keep(&mut v, &mut s2, &mut l2, (14.1, 10.0), 2.0));
+        // no room: nothing kept, the lasso still moves on
+        let mut none: Vec<(f32, f32)> = Vec::new();
+        let mut l3 = (0.0, 0.0);
+        assert!(lasso_keep(&mut none, &mut s2, &mut l3, (50.0, 0.0), 1.0));
+        assert!(none.is_empty() && l3 == (50.0, 0.0));
+        // the area is clamped to the page
+        assert_eq!(lasso_area(-5.5, -1.0, 2000.2, 30.1, 1860, 2480), Rect { x: 0, y: 0, w: 1860, h: 31 });
+    }
+
+    // Too small for a link: under 5 mm both ways (59 px at 300 dpi); 5 mm either way is an area.
+    #[test]
+    fn a_lasso_under_five_mm_both_ways_is_too_small() {
+        let min = (LINK_BOX_MIN_MM * 300.0 / 25.4).ceil() as i32; // 60
+        assert!(lasso_too_small(Rect { x: 0, y: 0, w: 0, h: 0 }, 300.0));
+        assert!(lasso_too_small(Rect { x: 0, y: 0, w: min - 1, h: min - 1 }, 300.0));
+        assert!(!lasso_too_small(Rect { x: 0, y: 0, w: min, h: 3 }, 300.0));
+        assert!(!lasso_too_small(Rect { x: 0, y: 0, w: 3, h: min }, 300.0));
+        assert!(lasso_too_small(Rect { x: 0, y: 0, w: min, h: min }, 600.0));
     }
 }

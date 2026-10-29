@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 19:32-0500\n"
+"POT-Creation-Date: 2026-10-28 21:55-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -726,12 +726,6 @@ msgid ""
 "New: two fingers up show this page's links. Two fingers down show all pages."
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
-#. stroke drawn was too small to be the link's box.
-#: rust/src/editor.rs
-msgid "Too small for a link: draw around what links."
-msgstr ""
-
 #: rust/src/editor.rs
 msgid "This page is already empty"
 msgstr ""
@@ -769,16 +763,29 @@ msgstr ""
 msgid "This page is a copy of page %d."
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, draw
-#. a box or a ring around what links with the pen; the Pages view then asks where it goes.
+#. TRANSLATORS: the strip along the bottom while a link is made (about 1400 px at 44 px in bold):
+#. the next pen stroke draws a ring around what the link is, and leaves no ink.
 #: rust/src/editor.rs
-msgid "Draw around what links. Then tap where it goes."
+msgid "Draw around what links."
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back while picking where a
-#. new link goes took its box back.
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link was asked while
+#. the notebook's links.ini could not be read, so no link can be made.
 #: rust/src/editor.rs
-msgid "No link made."
+msgid "Links could not be read in this notebook."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
+#. has the most links a page may have; %d is that number (64).
+#: rust/src/editor.rs
+#, c-format
+msgid "This page has %d links: delete one to add another."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
+#. stroke drawn was too small to be the link's box.
+#: rust/src/editor.rs
+msgid "Too small for a link: draw around what links."
 msgstr ""
 
 #. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
@@ -790,6 +797,54 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "Could not save the link."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+#. the page with this name in the Index (%s).
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to %s."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+#. page %d, which has no name in the Index.
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to page %d."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to the
+#. Index (the list of named pages).
+#: rust/src/editor.rs
+msgid "Linked to the Index."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
+#. (its Cancel, or Back while picking where it goes), and no link was made.
+#: rust/src/editor.rs
+msgid "No link made."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
+#. could not save links.ini, so the change is still there.
+#: rust/src/editor.rs
+msgid "Could not save the links: that change was not undone."
+msgstr ""
+
+#. TRANSLATORS: the same toast for Redo.
+#: rust/src/editor.rs
+msgid "Could not save the links: that change was not redone."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo took back a link change
+#. (a link made, deleted or changed), which shows nowhere on the page while the eye is off.
+#: rust/src/editor.rs
+msgid "Link change undone."
+msgstr ""
+
+#. TRANSLATORS: the same toast for Redo.
+#: rust/src/editor.rs
+msgid "Link change redone."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the link drawn on the

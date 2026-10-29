@@ -183,8 +183,8 @@ expect editor.pages is 4
 key 613 0 1
 wait 100
 expect editor.modal is none
-# Close menu while a link waits for its box, and while the Pages view picks where a new one goes:
-# no link is made (its box is taken back, as Back takes it)
+# Close menu while the strip is up, and while the Pages view picks where a new link goes: no link is
+# made (the lasso left no ink, so the strokes stay as they were)
 key 606 0 1
 wait 200
 tap 1410 2395
@@ -202,7 +202,7 @@ wait 100
 pen line 300 1000 900 1200 30 0.6 0.6
 wait 200
 expect editor.picking is new
-expect editor.strokes is 3
+expect editor.strokes is 2
 key 613 0 1
 wait 200
 expect editor.modal is none

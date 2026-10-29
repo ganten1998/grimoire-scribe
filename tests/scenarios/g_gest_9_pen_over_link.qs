@@ -20,14 +20,15 @@ pen line 300 1000 900 1200 30 0.6 0.6
 expect editor.picking is new
 tap 703 340
 expect editor.links is 1 1
-expect editor.strokes is 1
+# (the lasso that made the link left no ink)
+expect editor.strokes is 0
 tap 600 1500
 expect editor.page is 1
 # a finger rests on the link, the pen writes elsewhere, the finger lifts
 touch down 600 1100
 pen line 300 1700 900 1800 30 0.6 0.6
 touch up 600 1100
-expect editor.strokes is 2
+expect editor.strokes is 1
 expect editor.page is 1
 # the same finger without the pen follows it
 tap 600 1100

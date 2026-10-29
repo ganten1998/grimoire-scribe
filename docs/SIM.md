@@ -277,8 +277,13 @@ shows what the app holds.
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
-| `editor.link_mode` | `1` after Add a link until the next ink stroke (the link's box) or a page change, else `0` |
-| `editor.links` | the open page's links: how many it has, then how many of them have their ink on it (`2 1`) |
+| `editor.link_mode` | `1` while the link-making strip is up (after Add a link: armed, or drawing the lasso), else `0` |
+| `editor.strip` | `new` while the strip is up for a new link (armed or drawing the lasso), else `0` |
+| `editor.lasso` | how many points the lasso being drawn holds (at most 4096), `0` otherwise |
+| `editor.link_area` | the area a new link waits to be given a target for (from the lasso's lift to the pick), `x y w h` in page px; empty otherwise |
+| `editor.undo_kind`, `editor.redo_kind` | the kind of step an undo (a redo) of the open page would apply: `add`, `erase`, `paper`, `clear` or `link`; empty for none |
+| `editor.ui_at.X.Y` | the name of what link making shows at screen point (X, Y): `strip.cancel`; empty for none. The way to check a raw tap on it, as `editor.panel_at` does for the panel |
+| `editor.links` | the open page's links: how many it has, then how many of them have a box: an area, or for a link without one (beta.5's) its ink on the page (`2 1`) |
 | `editor.link.N` | where the open page's link N goes (from 1, in `links.ini`'s order): `index`, `p<page id>`, or another version's target; empty past the last |
 | `editor.link.N.area` | the open page's link N's area (links.ini's `area.` line), `x y w h` in page px; empty for a link without one (a beta.5 link not migrated yet, or a dormant one) and past the last |
 | `editor.migrate_left` | how many pages of the open notebook have a link without an area and have not been tried this session: the idle ticks migrate one a tick (a page is tried once, at its first read or by the idle ticks) |
@@ -385,6 +390,16 @@ became names), which runs in its place: the two roots whose data others use (`b_
 have one, and a variant must be kept in step with its original. A scenario whose `# root:` was skipped is skipped
 with it (it would copy a data root that was never made), even if it has no `# rust-only` line itself. The two rust selftests are skipped there too, and
 so is `make l10n-check`'s run of tests/scenarios/y_all_screens.qs, which visits the Rust build's screens.
+
+### Making links
+
+Add a link (`key 38 0`, the Index's Add a link, or the Links bar's New link) shows the strip along the bottom
+(upright at y 2330 to 2460, its Cancel 260 x 100 at x 1565, centre 1695 2395), and the next pen contact on the page
+draws the dashed lasso around the link's area: a `pen line` (or `pen down`, `pen move` lines and `pen up`) is that
+lasso, never ink, whatever the tool. Its box is the area (`editor.link_area`), unless it is under 5 mm both ways (a
+`pentap`): then the strip stays and says so. Until the Links bar's Link to... chooses where a link goes, the
+Pages view picks it as before (`editor.picking is new`). A scenario checks each raw tap on the strip with
+`editor.ui_at.X.Y` first.
 
 ## Languages in tests
 

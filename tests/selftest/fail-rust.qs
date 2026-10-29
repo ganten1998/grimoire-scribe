@@ -15,4 +15,6 @@ expect editor.scrolls is 1 1
 expect editor.bar is open
 expect editor.bar.entries is 3
 expect editor.areas is 2
+expect editor.strip is new
+expect editor.lasso is 9
 pentap panel nosuchbutton

@@ -742,8 +742,9 @@ An optional UTF-8 file inside the notebook directory: `# ...`, then one
 takes 1 to 8, either case); the target is `index` (the Index) or `p<page id>` (a page of the
 notebook, the id from 1, no leading zeros). The last line for a page id and seed wins.
 
-A link is the ink drawn around what links: the page's ink strokes (not erase strokes) whose seed is
-the link's. Its box is the box of their points, made at least 7 mm a side around its centre. A link
+A link made by 2.0.0-beta.5 is the ink drawn around what links: the page's ink strokes (not erase
+strokes) whose seed is the link's; from 2.0.0-beta.6 a new link is drawn with a lasso that leaves no
+ink and has an area (below), and its seed is one no ink stroke on its page has. Its box is the box of their points, made at least 7 mm a side around its centre. A link
 with an area (below) uses its area instead, clamped to the page and made at least 7 mm a side the
 same way; an area that a smaller page leaves empty falls back to the ink. Where boxes overlap, the
 link with the smaller box wins, and of two the same size the one with the lower seed (from

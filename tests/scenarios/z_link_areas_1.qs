@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # rust-only
 # The eye: dotted, numbered boxes over the page where a finger's tap follows a link. The link-areas
-# action turns it on and off; the boxes are the links' ink padded to a finger's size, three of them
+# action turns it on and off; the boxes are the links' areas padded to a finger's size, three of them
 # here, tagged 1 2 1 (the bar's entries: page 3 twice, page 2). They are on the screen only, so a
 # stroke across one still renders as the page does, and the setting is kept through a restart. The
 # first time it comes on a toast says what the boxes are. (The bar's Areas button, which does the same,
@@ -39,7 +39,7 @@ expect toast is
 expect display.presents is ui 297 997 606 906
 # a stroke across a box: the page canvas is what a fresh render draws (the boxes are not in it)
 pen line 200 1050 1000 1100 30 0.5 0.5
-expect editor.strokes is 4
+expect editor.strokes is 1
 expect editor.areas is 3
 expect editor.live_matches_render is 1
 shot 02-areas-after-a-stroke
