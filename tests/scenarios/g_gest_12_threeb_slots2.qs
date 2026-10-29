@@ -22,4 +22,4 @@ wait 100
 expect library.ui_at.930.1069 is gestures.group.pages
 tap 930 1069
 wait 100
-expect library.gestures.7 is Pages: none
+expect library.gestures.7 is Pages: no gesture

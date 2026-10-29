@@ -432,7 +432,7 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
         for i in candidates {
             let (x, y) = screen_point(v, location(v, i).unwrap());
             let r = v.g.nodes[i].r * v.zoom + u(16.0) as f32;
-            let name = label(v, nav, i);
+            let name = if v.g.nodes[i].named {label(v,nav,i)} else {cformat!(tr("p. %d"),page_number(v,i) as i32)};
             let w = font_measure(FontFace::Bold, u(34.0) as f32, &name).min(u(320.0)) + u(16.0);
             let h = u(48.0);
             let spots = [
@@ -1050,6 +1050,7 @@ pub fn mapview_background_done(v: &mut MapView, ok: bool) {
         } else {
             v.layout = MapLayout::Seed;
             v.job_done = false;
+            v.needs_redraw = true;
         }
     }
 }
@@ -1067,6 +1068,7 @@ pub fn mapview_tick(v: &mut MapView, _a: &mut App, now: u32) -> MapResult {
             v.needs_redraw = true;
         } else {
             v.layout = MapLayout::Seed;
+            v.needs_redraw = true;
         }
         v.job_done = false;
     }
@@ -1265,6 +1267,30 @@ mod tests {
             }
         }
         assert!(black > 0 && black < 400);
+    }
+    #[test]
+    fn pan_and_pinch_preserve_the_world_anchor_and_settle_on_release() {
+        let (mut v,nav)=view(1860,2480,4,true);
+        let mut a=App{w:1860,h:2480,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,a.w,a.h);
+        mapview_draw(&mut v,&mut a,&nav,Rect::new(0,0,1860,2480));
+        let (z,ox,oy)=(v.zoom,v.ox,v.oy);
+        mapview_pointer(&mut v,&mut a,&nav,0,&InEvent{x:900.0,y:1000.0,t_ms:0,..Default::default()});
+        mapview_pointer(&mut v,&mut a,&nav,1,&InEvent{x:1100.0,y:1100.0,t_ms:200,..Default::default()});
+        assert!((v.ox-(ox-200.0/z)).abs()<0.001);assert!((v.oy-(oy-100.0/z)).abs()<0.001);
+        mapview_pointer(&mut v,&mut a,&nav,2,&InEvent{x:1100.0,y:1100.0,t_ms:240,..Default::default()});
+        assert!(v.drag.is_none());
+        v.zoom=1.0;v.ox=0.0;v.oy=0.0;
+        mapview_pinch(&mut v,&mut a,&InEvent{type_:InType::PinchBegin,x:800.0,y:1000.0,x2:1000.0,y2:1000.0,t_ms:300,..Default::default()});
+        mapview_pinch(&mut v,&mut a,&InEvent{type_:InType::PinchMove,x:700.0,y:1000.0,x2:1100.0,y2:1000.0,t_ms:500,..Default::default()});
+        assert_eq!(v.zoom,2.0);assert!((v.ox+900.0/v.zoom-900.0).abs()<0.001);assert!((v.oy+1000.0/v.zoom-1000.0).abs()<0.001);
+        mapview_pinch(&mut v,&mut a,&InEvent{type_:InType::PinchEnd,t_ms:540,..Default::default()});
+        assert!(v.drag.is_none()&&v.needs_redraw);
+    }
+    #[test]
+    fn failed_background_layout_reenables_tidy_visibly() {
+        let mut v=MapView{open:true,layout:MapLayout::Running,..Default::default()};
+        mapview_background_done(&mut v,false);
+        assert_eq!(v.layout,MapLayout::Seed);assert!(v.needs_redraw);assert!(!v.job_done);
     }
     #[test]
     fn the_nearest_dot_wins_and_controls_take_their_own_taps() {

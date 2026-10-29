@@ -61,5 +61,5 @@ finger 2 move 1000 1015
 frame 40
 finger 2 up 1000 1015
 frame
-expect touch.reject is slow
+expect touch.reject is short
 expect editor.modal is none

@@ -8,18 +8,16 @@
 wait 150
 tap 1535 95
 wait 200
-expect library.ui_at.580.1930 is controller
-tap 580 1930
+tap library controller
 wait 200
 tap 930 1215
 wait 200
-expect library.ui_at.930.469 is buttons.group.editing
-tap 930 469
+tap library buttons.group.editing
 wait 100
 expect library.buttons_group is editing
 expect pads.undo is South
 expect pads.redo is North
-touch down 930 576
+touch down library buttons.row.1
 wait 300
 expect pads.undo is South
 wait 400
@@ -28,13 +26,13 @@ expect library.buttons.undo is none
 expect toast is No buttons for Undo now.
 expect library.learning is
 shot 01-held
-touch up 930 576
+touch up library buttons.row.1
 wait 100
 expect library.learning is
 expect pads.redo is North
 expect pads.tool:eraser is East
 # A tap still learns, the row that was forgotten too
-tap 930 576
+tap library buttons.row.1
 wait 100
 expect library.learning is undo
 key 307 0 1
@@ -42,10 +40,9 @@ wait 100
 expect pads.undo is North
 expect pads.redo is
 # Pages: the previous / next page row, both actions and the D-pad's Left and Right with them
-tap 930 1696
+tap library done
 wait 100
-expect library.ui_at.930.789 is buttons.group.pages
-tap 930 789
+tap library buttons.group.pages
 wait 100
 expect library.buttons_group is pages
 expect pads.previous-page is Select,Left

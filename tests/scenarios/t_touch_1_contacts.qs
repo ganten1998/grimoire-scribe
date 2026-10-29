@@ -68,17 +68,20 @@ expect editor.modal is none
 # a panel button pressed by one finger and taken over by a second is let go with a Fast refresh, as it
 # was pressed (the first finger's cancel, then the pinch), not a Ui one
 pen leave
+# The earlier pinch advanced the contact clock beyond wall time.
+frame 1100
+frame 0
 wait 1100
-expect editor.panel_at.1768.1026 is pages
+expect editor.panel_at.1768.1134 is pages
 expect display.presents not -1
-finger 1 down 1768 1026
+finger 1 down 1768 1134
 frame 40
-expect display.presents is fast 1712 996 112 60
-finger 2 down 1400 1026
+expect display.presents is fast 1712 1104 112 60
+finger 2 down 1400 1134
 frame 20
-expect display.presents is fast 1712 996 112 60
-finger 1 up 1768 1026
-finger 2 up 1400 1026
+expect display.presents is fast 1712 1104 112 60
+finger 1 up 1768 1134
+finger 2 up 1400 1134
 frame
 expect touch.contacts is 0
 expect editor.modal is none

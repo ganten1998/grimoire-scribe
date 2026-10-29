@@ -82,7 +82,7 @@ pen move 1216.658 961.797 0.6 0 0
 pen move 1219.163 980.826 0.6 0 0
 pen move 1220.000 1000.000 0.6 0 0
 wait 700
-expect editor.shape_preview is 1
+expect editor.shape_preview is circle
 expect editor.stroke_shape is circle
 pen up
 pen leave

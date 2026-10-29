@@ -7,13 +7,11 @@
 wait 150
 tap 1535 95
 wait 100
-expect library.ui_at.580.1930 is controller
-tap 580 1930
+tap library controller
 wait 100
 tap 930 1215
 wait 100
-expect library.ui_at.930.789 is buttons.group.pages
-tap 930 789
+tap library buttons.group.pages
 wait 100
 expect library.buttons_group is pages
 tap 930 1536
@@ -61,8 +59,7 @@ shot 04-sideways-learned
 tap 1240 1714
 wait 100
 expect library.buttons_group is
-expect library.ui_at.1240.1542 is done
-tap 1240 1542
+tap library done
 wait 100
 expect library.sheet is shortcuts
 tap 1240 1488

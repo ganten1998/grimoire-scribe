@@ -11,16 +11,14 @@ hid attach pad Xbox Bluetooth Gamepad
 wait 100
 tap 1535 95
 wait 200
-expect library.ui_at.580.1930 is controller
-tap 580 1930
+tap library controller
 wait 200
 tap 930 1215
 wait 200
-expect library.ui_at.930.469 is buttons.group.editing
-tap 930 469
+tap library buttons.group.editing
 wait 100
 expect library.buttons_group is editing
-tap 930 576
+tap library buttons.row.1
 wait 100
 expect library.learning is undo
 axis 2 300
@@ -38,7 +36,7 @@ expect library.buttons.undo is LT
 axis 2 400
 axis 2 900
 axis 2 100
-tap 930 1056
+tap library buttons.row.4
 wait 100
 expect library.learning is hold-eraser
 axis 5 1023
@@ -47,10 +45,9 @@ expect library.learning is
 expect pads.hold-eraser is RT
 shot 01-triggers-learned
 axis 5 0
-tap 930 1696
+tap library done
 wait 100
-expect library.ui_at.930.1749 is done
-tap 930 1749
+tap library done
 wait 100
 tap 930 1695
 wait 100

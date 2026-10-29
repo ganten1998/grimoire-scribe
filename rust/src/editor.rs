@@ -640,8 +640,7 @@ fn map_show(a: &mut App, around: bool) {
     let ok = with_map(a, |map, a, nb, nav| mapview_open(map, a, nb, nav, pid, around));
     if !ok {
         mapview_close(&mut ed(a).map);
-        ed(a).pv.index_tab = true;
-        pages_show(a);
+        index_show(a);
     }
     touch_context(a);
 }
@@ -674,8 +673,7 @@ fn map_result(a: &mut App, result: MapResult) {
         }
         MapResult::Pages | MapResult::List => {
             map_hide(a, false);
-            ed(a).pv.index_tab = true;
-            pages_show(a);
+            index_show(a);
         }
         MapResult::Rename(pid) => {
             let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
@@ -1213,9 +1211,16 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if a.scr != ScreenId::Editor || !s.open {
         return None;
     }
-    if s.panel_stale {
-        settle_now(a);
+    if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
+    if s.tools_open {
+        let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}
+            else if let Some(tool)=name.strip_prefix("picker.tool:") {
+                let action=shortcut_action(&format!("tool:{tool}"));
+                (action>=SHORTCUT_TOOL_BASE && action<SHORTCUT_TOOL_BASE+TOOL_COUNT as i32).then_some((P_PICK_TOOL,action-SHORTCUT_TOOL_BASE))
+            }else{None};
+        if let Some((id,arg))=target {return s.tools_hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32));}
     }
+    if s.panel_stale {settle_now(a);}
     let s = ed_ref(a);
     let h = s.hits.h.iter().rev().find(|h| panel_name(h) == name)?;
     Some(((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
@@ -3472,6 +3477,12 @@ fn pages_show(a: &mut App) {
         return;
     }
     compose_all(a, RefreshMode::Full);
+}
+
+// Explicit Index entries stay on the list even on the first open with no named pages.
+fn index_show(a:&mut App) {
+    pages_show(a);
+    if ed_ref(a).pv.open {ed(a).pv.index_tab=true;compose_all(a,RefreshMode::Full);}
 }
 
 // name-page: the Pages view's naming keyboard for the open page, over its Index, as Name this page
@@ -5867,7 +5878,9 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
             let Some(e) = ed_ref(a).lb.entries.get(i as usize).copied() else { return ;
             };
             if e.page == NAV_TO_INDEX {
-                bar_result(a, LbResult::Index, RECT_EMPTY);
+                // The link target "index" keeps its list meaning; only the bar's Index button is the map.
+                if ed_ref(a).peek.active {bar_commit(a);}
+                bar_drop(ed(a));index_show(a);
             } else if e.page < 0 {
                 // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
                 // whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
@@ -6769,7 +6782,7 @@ pub fn editor_enter(a: &mut App) {
         x = a.w - (if ed(a).collapsed { box_() } else { pw() }) - ui_px(28.0);
         y = ui_px(220.0);
     }
-    if turned {
+    if turned || (a.relayout && a.w>a.h && a.settings.landscape_fit) {
         if let Some(beside_page)=landscape_panel_slot(a,panel_left) {x=beside_page;}
     }
     let p = panel_rect_at(a, x, y);

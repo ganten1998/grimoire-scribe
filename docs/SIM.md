@@ -622,3 +622,8 @@ file fails the run. `editor.shape_snaps` counts committed snaps and shape-last r
 editor session; `z_shape_writing` holds every one of the bundled handwriting asset's32strokes
 for700ms and requires this counter to remain zero. `z_shape_last` checks one Replace undo step
 and both new action families. The test runner ticks during an explicit `wait` with the nib down.
+
+`tap library NAME` and `touch down|move|up library NAME` resolve the Library control by its
+`library.ui_at` name, including a binding row or a record-card button. They fail if that control
+is not currently reachable. These commands make recording and controller tests independent of
+menu spacing; unit checks still verify separate, on-screen hit targets.

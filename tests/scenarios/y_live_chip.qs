@@ -22,19 +22,19 @@ tap 1564 2254
 wait 400
 expect screen is editor
 expect live.on is 1
-# Beside the panel (the panel is 128 wide and 1518 tall at x 1704, y 220, its header 80 tall): left of it, level with the header.
-expect editor.panel_rect is 1704 220 128 1518
+# Beside the panel (the panel is 128 wide and 1626 tall at x 1704, y 220, its header 80 tall): left of it, level with the header.
+expect editor.panel_rect is 1704 220 128 1626
 expect live.chip is 1654 239 42 42
 shot 01-beside-the-panel
 # It follows the panel: dragged to the middle of the page, the chip comes along; dragged to the left edge it is on
 # the panel's right.
 drag touch 1737 260 933 760 5
 wait 400
-expect editor.panel_rect is 900 720 128 1518
+expect editor.panel_rect is 900 720 128 1626
 expect live.chip is 850 739 42 42
 drag touch 933 760 33 760 5
 wait 400
-expect editor.panel_rect is 0 720 128 1518
+expect editor.panel_rect is 0 720 128 1626
 expect live.chip is 136 739 42 42
 shot 02-left-edge
 # Folded, the panel is one box and the chip is level with it.

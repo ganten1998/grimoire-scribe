@@ -4,16 +4,13 @@
 wait 200
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-tap 890 1930
+tap library gestures
 wait 100
 expect library.sheet is gestures
-expect library.ui_at.930.789 is gestures.group.editing
-tap 930 789
+tap library gestures.group.editing
 wait 100
 expect library.gestures_group is editing
-expect library.ui_at.930.656 is gestures.row.1
-tap 930 656
+tap library gestures.row.1
 wait 100
 expect library.gestures.learning is undo
 expect library.record is wait
@@ -25,8 +22,7 @@ expect library.record is ready
 shape Z 930 1150 45 600
 expect library.record is ready
 shot 01-three-samples
-expect library.ui_at.500.1650 is record.use
-tap 500 1650
+tap library record.use
 wait 100
 expect library.record is 0
 expect gestures.shape_count is 1

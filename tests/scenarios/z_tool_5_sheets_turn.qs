@@ -17,7 +17,7 @@ wait 300
 # awake, still in Pin mode; Done, then a pen picked closes it
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 expect editor.modal is tools
 expect editor.pin_mode is 1
@@ -27,11 +27,11 @@ expect size is 2480x1860
 expect editor.modal is tools
 expect editor.pin_mode is 1
 shot 01-pin-mode-sideways
-pentap 1808 561
+pentap editor picker.tool:fineliner
 wait 200
 expect editor.pins is fineliner
 expect editor.modal is tools
-pentap 1808 561
+pentap editor picker.tool:fineliner
 wait 200
 expect editor.pins is
 rotate 0
@@ -47,11 +47,11 @@ expect asleep is 0
 expect editor.modal is tools
 expect editor.pin_mode is 1
 shot 02-pin-mode-awake
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 expect editor.pin_mode is 0
 expect editor.modal is tools
-pentap 1504 561
+pentap editor picker.tool:marker
 wait 200
 expect editor.modal is none
 expect editor.tool is marker

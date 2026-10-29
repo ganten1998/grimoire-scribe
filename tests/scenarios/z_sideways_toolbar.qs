@@ -11,6 +11,10 @@ rotate 1
 wait 200
 expect editor.panel_rect is 1962 220 128 1626
 shot 01-right-margin
+# Flipping between landscape orientations also retains the margin placement.
+rotate 3
+wait 200
+expect editor.panel_rect is 1962 220 128 1626
 rotate 0
 wait 200
 touch down 1736 260

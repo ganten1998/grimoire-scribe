@@ -21,13 +21,13 @@ wait 400
 expect screen is editor
 expect editor.pins is
 expect settings.panel_tools is
-expect editor.panel_rect is 1704 220 128 1518
+expect editor.panel_rect is 1704 220 128 1626
 expect editor.panel_button is 100
 expect editor.tool_button is pencil
 # Pin mode: Highlighter, then Fineliner
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 expect editor.modal is tools
 expect editor.pin_mode is 1
@@ -38,19 +38,19 @@ wait 200
 expect settings.white is 0
 expect editor.pin_mode is 1
 expect editor.white_mark is 0
-pentap 1504 727
+pentap editor picker.tool:highlighter
 wait 200
 expect editor.modal is tools
 expect editor.pins is highlighter
-pentap 1188 561
+pentap editor picker.tool:fineliner
 wait 200
 expect editor.pins is highlighter,fineliner
 expect settings.panel_tools is highlighter,fineliner
-expect editor.panel_rect is 1704 220 128 1734
+expect editor.panel_rect is 1704 220 128 1842
 expect editor.tool is pencil
 shot 02-two-pinned
 # Done, then a tap outside closes the picker
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 expect editor.pin_mode is 0
 expect editor.modal is tools
@@ -134,12 +134,12 @@ expect editor.panel_rect is 1712 220 120 120
 tap panel expand
 wait 300
 expect editor.panel is expanded
-expect editor.panel_rect is 1704 220 128 1734
+expect editor.panel_rect is 1704 220 128 1842
 # Sideways: two pins fit where the panel was (its place kept from the collapse)
 rotate 1
 wait 300
 expect size is 2480x1860
-expect editor.panel_rect is 1704 114 128 1734
+expect editor.panel_rect is 1962 29 128 1819
 expect editor.panel_button is 100
 shot 04-sideways-two-pins
 # Two more pinned sideways (Marker, Calligraphy): the panel moves up to keep its 12 px margins,
@@ -150,25 +150,25 @@ wait 200
 expect editor.tool is pencil
 pentap panel tool-picker
 wait 200
-pentap 1600 167
+pentap editor picker.pin-mode
 wait 200
 expect editor.pin_mode is 1
-pentap 1504 455
+pentap editor picker.tool:marker
 wait 200
 expect editor.pins is highlighter,fineliner,marker
-pentap 1188 621
+pentap editor picker.tool:calligraphy
 wait 200
 expect editor.pins is highlighter,fineliner,marker,calligraphy
-expect editor.panel_rect is 1704 18 128 1830
-expect editor.panel_button is 99
+expect editor.panel_rect is 1962 28 128 1820
+expect editor.panel_button is 93
 # A fifth: refused, with a toast
-pentap 872 289
+pentap editor picker.tool:pencil
 wait 200
 expect toast is The panel holds up to 4 pens. Unpin one first.
 expect editor.pins is highlighter,fineliner,marker,calligraphy
 expect editor.modal is tools
 shot 05-sideways-four-pinned
-pentap 1600 167
+pentap editor picker.pin-mode
 wait 200
 pentap 300 1500
 wait 200
@@ -190,7 +190,7 @@ expect editor.tool is calligraphy
 rotate 0
 wait 300
 expect size is 1860x2480
-expect editor.panel_rect is 1704 220 128 1950
+expect editor.panel_rect is 1704 220 128 2058
 expect editor.panel_button is 100
 shot 07-upright-four-pins
 # The tool button's own pen pinned (Fineliner out, Pencil in): the tool button shows a grid (the
@@ -200,15 +200,15 @@ wait 200
 expect editor.tool is pencil
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
-pentap 1188 561
+pentap editor picker.tool:fineliner
 wait 200
-pentap 872 395
+pentap editor picker.tool:pencil
 wait 200
 expect editor.pins is highlighter,marker,calligraphy,pencil
 expect editor.tool_button is grid
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 pentap 300 1800
 wait 200
@@ -232,7 +232,7 @@ wait 100
 expect editor.tool is pencil
 pentap panel tool-picker
 wait 200
-pentap 1504 727
+pentap editor picker.tool:highlighter
 wait 200
 expect editor.modal is none
 expect editor.tool is highlighter
@@ -241,15 +241,15 @@ expect editor.tool_button is grid
 # The highlighter, in use, unpinned: it moves to the tool button
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
-pentap 1504 727
+pentap editor picker.tool:highlighter
 wait 200
 expect editor.pins is marker,calligraphy,pencil
 expect editor.tool is highlighter
 expect editor.draw_tool is highlighter
 expect editor.tool_button is highlighter
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 pentap 300 1800
 wait 200
@@ -268,12 +268,12 @@ expect editor.tool is highlighter
 expect editor.modal is none
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
-pentap 1504 561
+pentap editor picker.tool:marker
 wait 200
 expect editor.pins is calligraphy,pencil
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
 pentap 300 1800
 wait 200
@@ -286,16 +286,16 @@ expect editor.tool is highlighter
 # Every pin off: the panel as it was
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap editor picker.pin-mode
 wait 200
-pentap 1188 727
+pentap editor picker.tool:calligraphy
 wait 200
-pentap 872 395
+pentap editor picker.tool:pencil
 wait 200
 expect editor.pins is
 expect settings.panel_tools is
-expect editor.panel_rect is 1704 220 128 1518
-pentap 1600 273
+expect editor.panel_rect is 1704 220 128 1626
+pentap editor picker.pin-mode
 wait 200
 pentap 300 1800
 wait 200

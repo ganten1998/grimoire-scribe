@@ -19,7 +19,7 @@ tap 347 636
 wait 500
 expect screen is editor
 expect editor.pins is highlighter,fineliner,marker,calligraphy
-expect editor.panel_rect is 1830 220 128 1950
+expect editor.panel_rect is 1830 220 128 2058
 expect editor.panel_button is 100
 shot 01-upright-four-pins
 # The first pin, the highlighter, picked (under the tool button, 108 px apart)
@@ -29,22 +29,22 @@ expect editor.tool is highlighter
 rotate 1
 wait 300
 expect size is 2648x1986
-expect editor.panel_rect is 2492 24 128 1950
+expect editor.panel_rect is 2093 19 128 1955
 expect editor.panel_button is 100
 shot 02-sideways-four-pins
 # Collapsed sideways: the same square, where the panel's top right was
 pentap panel collapse
 wait 300
 expect editor.panel is collapsed
-expect editor.panel_rect is 2500 24 120 120
+expect editor.panel_rect is 2101 19 120 120
 tap panel expand
 wait 300
 expect editor.panel is expanded
-expect editor.panel_rect is 2492 24 128 1950
+expect editor.panel_rect is 2093 19 128 1955
 # Upright again: the panel where it was put sideways, as far right as it goes
 rotate 0
 wait 300
-expect editor.panel_rect is 1858 24 128 1950
+expect editor.panel_rect is 1858 19 128 2058
 expect editor.panel_button is 100
 pentap panel library
 wait 500

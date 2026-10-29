@@ -5,23 +5,19 @@
 wait 200
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-tap 890 1930
+tap library gestures
 wait 100
 expect library.sheet is gestures
-expect library.ui_at.930.789 is gestures.group.editing
-tap 930 789
+tap library gestures.group.editing
 wait 100
 expect library.gestures_group is editing
 expect gestures.shape.undo is 3
-expect library.ui_at.930.656 is gestures.row.1
-touch down 930 656
+touch down library gestures.row.1
 wait 700
-touch up 930 656
+touch up library gestures.row.1
 expect gestures.shape_count is 0
 expect toast is No gestures for Undo now.
-expect library.ui_at.930.656 is gestures.row.1
-tap 930 656
+tap library gestures.row.1
 wait 100
 expect library.gestures.learning is undo
 expect library.record is wait
@@ -31,26 +27,21 @@ shape Z 930 1150 45 600
 expect library.record is ready
 shape Z 930 1150 45 600
 expect library.record is ready
-expect library.ui_at.500.1650 is record.use
-tap 500 1650
+tap library record.use
 wait 100
 expect library.record is 0
 expect gestures.shape_count is 1
-expect library.ui_at.930.1616 is done
-tap 930 1616
+tap library done
 wait 100
-expect library.ui_at.930.1909 is gestures.reset
-tap 930 1909
+tap library gestures.reset
 wait 100
 expect gestures.shape_count is 1
-expect library.ui_at.1200.1120 is gestures.reset.cancel
-tap 1200 1120
+tap library gestures.reset.cancel
 wait 100
 expect gestures.shape_count is 1
 tap 930 1909
 wait 100
-expect library.ui_at.650.1120 is gestures.reset.confirm
-tap 650 1120
+tap library gestures.reset.confirm
 wait 100
 expect gestures.shape_count is 0
 expect gestures.pages is touch.2.down

@@ -1395,7 +1395,11 @@ pub fn store_rename(id: &str, name: &str) -> i32 {
 }
 
 pub fn store_set_folder(id: &str, folder: &str) -> i32 {
-    if !folder.is_empty() && !store_folder_valid(folder) {return -1;}
+    // Preserve the historic UTF-8 truncation of flat names. Nested destinations must never
+    // silently become a different path; the Library validates all new joins before calling us.
+    if folder.contains('/') && !store_folder_valid(folder) {return -1;}
+    let mut clean=FixedStr::<STORE_NAME_LEN>::new();clean_line(&mut clean,folder.as_bytes());
+    if !clean.is_empty() && !store_folder_valid(clean.as_str()){return -1;}
     let mut nb = NotebookInfo::default();
     let mut rc = store_load_info(id, &mut nb);
     if rc == 0 {
@@ -1535,9 +1539,10 @@ pub fn store_folder_join(parent: &str, name: &str, out: &mut FixedStr<STORE_NAME
 
 /// Folders exist as notebook.folder values plus root/folders.ini (so empty folders persist).
 pub fn store_add_folder(name: &str) -> i32 {
-    if !store_folder_valid(name) {
-        return -1;
-    }
+    if name.contains('/') && !store_folder_valid(name){return -1;}
+    let mut clean=FixedStr::<STORE_NAME_LEN>::new();clean_line(&mut clean,name.as_bytes());
+    if !store_folder_valid(clean.as_str()){return -1;}
+    let name=clean.as_str();
     let mut f = load_folders_ini();
     if f.iter().any(|x| x.as_bytes() == name.as_bytes()) {
         return 0;

@@ -15,10 +15,10 @@ tap 510 460
 tap 1564 2254
 wait 400
 expect screen is editor
-# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 950 (the screen's height less its margin and the panel's 1518).
+# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 842 (the screen's height less its margin and the panel's 1626).
 drag touch 1737 260 133 1200 6
 wait 400
-expect editor.panel_rect is 100 950 128 1518
+expect editor.panel_rect is 100 842 128 1626
 expect editor.layers is ok
 # The Links bar, along the bottom, over the panel's foot; closed again.
 key 37 0

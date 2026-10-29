@@ -72,7 +72,8 @@ expect editor.pins is highlighter,fineliner,marker
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-expect editor.panel_fits is 1
+expect editor.panel_fits is 0
+expect editor.panel_button is 99
 rotate 0
 wait 300
 expect editor.panel_fits is 1
@@ -94,7 +95,7 @@ wait 300
 # (the one place the buttons do not stay at full size: with the Links button there are twelve, and four pins
 # sideways need the room between them at half and the buttons 1% smaller: 99 px, the panel 1830 px)
 expect editor.panel_fits is 0
-expect editor.panel_button is 99
+expect editor.panel_button is 93
 shot 01-four-pins-sideways
 rotate 0
 wait 300

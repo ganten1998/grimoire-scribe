@@ -27,3 +27,9 @@ expect editor.page is 3
 key 37 0
 expect editor.bar.incoming is 1
 shot 02-incoming
+
+tap editor bar.incoming
+expect editor.map is graph
+expect editor.map.mode is around
+tap 100 95
+expect editor.map is 0

@@ -47,3 +47,17 @@ fn dotted_polyline_honors_clip_and_keeps_only_binary_overlay_values() {
     assert!(c.px.contains(&0));
     assert!(c.px.contains(&255));
 }
+
+#[test]
+#[cfg(not(debug_assertions))]
+fn release_long_edge_stays_below_fifty_microseconds() {
+    let mut c=canvas(1860,2480,255);
+    let mut best=std::time::Duration::MAX;
+    // The best of short batches excludes unrelated scheduling pauses on a shared host.
+    for _ in 0..7 {
+        let start=std::time::Instant::now();
+        for i in 0..32 {canvas_line_aa(&mut c,80.0+i as f32,200.0,1780.0,2200.0,2.5,0);}
+        best=best.min(start.elapsed()/32);
+    }
+    assert!(best.as_secs_f64()<0.00005,"long edge: {best:?}");
+}

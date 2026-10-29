@@ -1200,7 +1200,8 @@ fn gesture_key_label(k: GestureKey, out: &mut String) {
 
 fn gesture_binding_text(a: &App, action: i32, out: &mut String) {
     out.clear();
-    if let Some(k) = gesturemap_key_for(&a.gestures, action, ActionSrc::Touch) {
+    let key=gesturemap_key_for(&a.gestures,action,ActionSrc::Touch).filter(|k|!matches!(k,GestureKey::Touch{fingers:3,..}) || input_caps().touch_slots>=3);
+    if let Some(k) = key {
         gesture_key_label(k, out);
     } else if gesturemap_shape_of(&a.gestures, action).is_some() {
         out.push_str(tr("finger shape"));
@@ -5408,4 +5409,13 @@ mod tests {
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);
     }
+}
+
+/// Resolve a runner tap through the same hit names used by ui_at probes.
+pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
+    let points:Vec<_>=a.lib.as_deref()?.hits.h.iter().map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32)).collect();
+    for (x,y) in points {
+        let mut out=String::new();
+        if library_probe(a,&format!("ui_at.{}.{}",x as i32,y as i32),&mut out,128)==0 && out==name{return Some((x,y));}
+    }None
 }

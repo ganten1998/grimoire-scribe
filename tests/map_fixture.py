@@ -12,7 +12,7 @@ links=[]
 if count==40:
  for i in range(3,26):links.append((i,1,3+(i-2)%23))
  for i in range(3,10):links.append((i,2,i+7))
-else:
+elif count!=250:
  for i in range(1,count+1):
   for seed,step in [(1,1),(2,31)]:links.append((i,seed,1+(i-1+step)%count))
 (book/'links.ini').write_text('# Grimoire links\n'+''.join(f'link.{a}={seed:08x},p{b}\narea.{a}={seed:08x},300,{500+seed*300},400,200\n' for a,seed,b in links))

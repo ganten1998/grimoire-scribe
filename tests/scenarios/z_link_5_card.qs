@@ -264,7 +264,7 @@ touch down 992 825
 wait 800
 touch up 992 825
 expect editor.link_card is 1
-expect editor.link_card.rect is 1253 739 780 666
+expect editor.link_card.rect is 757 935 780 666
 shot 09-card-sideways
 tap 2200 1700
 expect editor.link_card is 0
@@ -272,7 +272,7 @@ touch down 992 1725
 wait 800
 touch up 992 1725
 expect editor.link_card is 1
-expect editor.link_card.rect is 1253 1304 780 536
+expect editor.link_card.rect is 757 1304 780 536
 shot 10-card-sideways-low
 tap 2200 300
 rotate 0
