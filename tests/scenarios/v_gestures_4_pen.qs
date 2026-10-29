@@ -59,13 +59,14 @@ wait 400
 expect editor.bar is 0
 pen line 300 700 1300 700 20 0.6 0.6
 expect editor.strokes is 1
-# Each release-to-next-press gap is 150 ms, below the new 350 ms limit.
+# Triple-click has no built-in Clear page action, even with a custom double-click binding.
+# Each release-to-next-press gap is 150 ms, below the 350 ms limit.
 side click 3
 wait 400
 expect pen.gesture is Button.triple
-expect editor.strokes is 0
-pen line 300 700 1300 700 20 0.6 0.6
 expect editor.strokes is 1
+pen line 300 700 1300 700 20 0.6 0.6
+expect editor.strokes is 2
 pen hover 930 1100
 side on
 wait 1300

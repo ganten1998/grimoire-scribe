@@ -13,7 +13,7 @@ expect library.ui_at.930.749 is gestures.group.editing
 tap 930 749
 wait 100
 expect library.gestures_group is editing
-expect library.gestures.7 is Clear page: pen button triple-click
+expect library.gestures.7 is Clear page: pen button hold
 expect library.ui_at.930.1400 is gestures.row.7
 touch down 930 1400
 wait 700

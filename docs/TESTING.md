@@ -11,6 +11,29 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.2 (device checks pending)
+
+This candidate replaces the notebook status bar with the small top-left clock corner, makes the
+toolbar link button add a link, limits pinned tools to three, and gives Smart Shapes its own menu.
+The menu controls hold speed, four-sided and round-shape preferences, and ink-free link-area
+snapping. Clear page removes outgoing link areas together with ink, including otherwise blank
+pages; one Undo/Redo restores or clears both. Other pages' links are unchanged. Pen-button hold is
+the only built-in Clear page binding; custom click bindings and multi-click recording remain.
+
+Automated checks cover these changes, failed link saves, and ordinary KOReader startup with saved
+rotation 0 while the sensor reads upside down. The startup fix requires the updated Grimoire
+KOReader plugin. No physical acceptance of RC2 is claimed. On the Kindle, verify:
+
+1. From the Kindle home screen at 180 degrees, start KOReader and check its orientation and taps.
+   Repeat with accelerometer ignore and orientation lock enabled, then check a Grimoire round trip.
+2. On a page with ink and a link to The Index, Clear page, change pages and reopen the notebook.
+   Its link count should be zero. Repeat on an ink-free linked page; Undo/Redo should affect the
+   ink and links together, while another page's links remain intact.
+3. Check the clock corner and Display menu, direct toolbar link creation, two-finger Links swipe,
+   fourth-pin refusal, Smart Shapes preferences and link-area snapping without ink.
+4. Continue the gesture checks below, including hold-to-clear, recording multiple clicks and
+   preserving custom pen-button assignments.
+
 ## 2.0.0-rc.1 (2026-10-29)
 
 This candidate includes Index phases 2–6, the KOReader orientation fix, nested notebook folders
@@ -26,7 +49,7 @@ KOReader plugin was updated without restarting the active reader. The owner subs
 - Returning from Grimoire restores KOReader's orientation correctly.
 - Starting KOReader from the Kindle home screen while held upside down still starts upright.
 - Pen-button hold still clears the page; the default triple-click did not work.
-- A link to The Index on page 17 of the newest notebook in Void remained after Clear page.
+- A link to The Index on page 17 remained after Clear page.
 
 The next candidate fixes startup orientation, retires the triple-click default, and makes Clear
 page remove its links with the ink in one undoable operation. Those fixes have automated coverage;
@@ -127,7 +150,8 @@ Install the build and test first in the notebooks that have your beta.5 links.
    returns to your page.
 6. **Nested links.** A small link inside a bigger one: a tap inside the small one follows the small one.
 7. **Copy page** keeps the page's links, with the same areas.
-8. **Clear page** clears ink only: the links stay (delete them from the card).
+8. **Clear page** in RC2 removes ink and outgoing link areas together, including on an otherwise
+   blank page. One Undo/Redo restores or clears both. Ordinary erasing still leaves links intact.
 9. **Feel.** The border and card appear quickly; circling never lags behind the pen; nothing flashes
    except a page change; writing right after a link is made goes on in fast pen mode.
 10. **Going back (optional).** Install the previous build (f9d13f5) again for a moment: your old links
@@ -136,9 +160,9 @@ Install the build and test first in the notebooks that have your beta.5 links.
 11. **Report** any link that goes somewhere else than before, and any place where the card covers what
     you wanted to see.
 
-Known in this build: a visible border around a link is freehand ink until Smart shapes (a later phase);
-Rename is not undone by Undo; a page made by New page... stays after Undo removes its link; Clear page
-leaves the page's links.
+The original phase 2 build left links after Clear page; RC2 changes that behavior as described
+above. Rename is not undone by Undo; a page made by New page... stays after Undo removes its link.
+A visible border is ordinary ink, which can also use Smart Shapes in the current candidate.
 
 ## 2.0.0-beta.5 (not yet on a Kindle)
 
