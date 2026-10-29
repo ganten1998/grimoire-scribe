@@ -367,6 +367,36 @@ pub fn canvas_line_aa(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, width:
     let len2 = fmla(dx, dx, dy * dy);
     for y in b.y..b.y + b.h {
         let py = y as f32 + 0.5;
+        // The capsule lies inside this infinite strip. Restrict work to its row span,
+        // then retain the original coverage arithmetic for identical edge pixels and caps.
+        let (left, right) = if dy != 0.0 && len2.is_finite() {
+            let centre = x0 as f64 + (py as f64 - y0 as f64) * dx as f64 / dy as f64;
+            let reach = (hw as f64 + 0.5).max(0.0) * (len2 as f64).sqrt() / (dy as f64).abs();
+            (b.x.max(((centre - reach).floor() as i32).saturating_sub(2)),
+             (b.x + b.w).min(((centre + reach).ceil() as i32).saturating_add(2)))
+        } else { (b.x, b.x + b.w) };
+        for x in left..right {
+            let px = x as f32 + 0.5;
+            let t = if len2 > 0.0 { clampf(fmla(px - x0, dx, (py - y0) * dy) / len2, 0.0, 1.0) } else { 0.0 };
+            let ex = px - fmla(dx, t, x0);
+            let ey = py - fmla(dy, t, y0);
+            let a = cov(fmla(ex, ex, ey * ey).sqrt() - hw);
+            if a > 0.0 {
+                blend_px(&mut c.px[(y * c.stride + x) as usize], gray, a);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+fn canvas_line_aa_reference(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, gray: u8) {
+    let hw = width * 0.5;
+    let b = rect_intersect(rect_from_points(x0, y0, x1, y1, hw + 1.0), c.clip);
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let len2 = fmla(dx, dx, dy * dy);
+    for y in b.y..b.y + b.h {
+        let py = y as f32 + 0.5;
         for x in b.x..b.x + b.w {
             let px = x as f32 + 0.5;
             let t = if len2 > 0.0 { clampf(fmla(px - x0, dx, (py - y0) * dy) / len2, 0.0, 1.0) } else { 0.0 };
@@ -375,6 +405,24 @@ pub fn canvas_line_aa(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, width:
             let a = cov(fmla(ex, ex, ey * ey).sqrt() - hw);
             if a > 0.0 {
                 blend_px(&mut c.px[(y * c.stride + x) as usize], gray, a);
+            }
+        }
+    }
+}
+
+/// Binary Bayer fill for a map node: 0 empty, 1 quarter, 2 half, 3 three quarters, 4 solid.
+/// Pattern cells are 2 by 2 pixels and anchored to screen coordinates.
+pub fn canvas_disc_pattern(c: &mut Canvas, cx: f32, cy: f32, radius: f32, level: i32) {
+    const BAYER: [[i32; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    if radius <= 0.0 || !radius.is_finite() || c.px.is_empty() { return; }
+    let b = rect_intersect(rect_from_points(cx, cy, cx, cy, radius), c.clip);
+    let threshold = level.clamp(0, 4) * 4;
+    for y in b.y..b.y+b.h {
+        for x in b.x..b.x+b.w {
+            let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+            if fmla(dx, dx, dy * dy) <= radius * radius {
+                let black = BAYER[((y / 2) & 3) as usize][((x / 2) & 3) as usize] < threshold;
+                c.px[(y * c.stride + x) as usize] = if black { 0 } else { 255 };
             }
         }
     }
@@ -868,5 +916,37 @@ mod slash_tests {
         canvas_set_clip(&mut c, Rect { x:0, y:0, w:24, h:48 });
         canvas_slash(&mut c, r, 4);
         for y in 0..48 { for x in 24..48 { assert_eq!(c.px[(y*48+x) as usize], 255); }}
+    }
+}
+
+#[cfg(test)]
+mod map_primitive_tests {
+    use super::*;
+    #[test]
+    fn line_row_spans_match_the_old_coverage_pixel_for_pixel() {
+        let mut state = 12345u32;
+        let mut next = || { state = state.wrapping_mul(1664525).wrapping_add(1013904223); state as f32 / u32::MAX as f32 };
+        for _ in 0..300 {
+            let mut a = Canvas::default(); canvas_init(&mut a, 240, 240);
+            for (i, pixel) in a.px.iter_mut().enumerate() { *pixel = (i % 256) as u8; }
+            canvas_set_clip(&mut a, Rect { x: 10, y: 8, w: 220, h: 222 });
+            let mut b = a.clone();
+            let (x0,y0,x1,y1,w) = (next()*320.0-40.0,next()*320.0-40.0,next()*320.0-40.0,next()*320.0-40.0,next()*12.0+0.1);
+            canvas_line_aa(&mut a, x0,y0,x1,y1,w,31);
+            canvas_line_aa_reference(&mut b, x0,y0,x1,y1,w,31);
+            assert_eq!(a.px,b.px,"line {x0},{y0} -> {x1},{y1}, width {w}");
+        }
+    }
+    #[test]
+    fn bayer_discs_have_the_requested_binary_coverage() {
+        for level in 0..=4 {
+            let mut c = Canvas::default(); canvas_init(&mut c, 160,160);
+            canvas_disc_pattern(&mut c,80.0,80.0,64.0,level);
+            assert!(c.px.iter().all(|&p| p==0 || p==255));
+            let black = c.px.iter().filter(|&&p| p==0).count() as f32;
+            let area = std::f32::consts::PI*64.0*64.0;
+            assert!((black/area-level as f32*0.25).abs()<1.0/16.0);
+            assert_eq!(c.px[0],255);
+        }
     }
 }
