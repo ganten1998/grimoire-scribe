@@ -58,6 +58,26 @@ pub fn canvas_rect_outline(c: &mut Canvas, r: Rect, t: i32, gray: u8) {
     canvas_fill(c, Rect { x: r.x + r.w - t, y: r.y + t, w: t, h: r.h - 2 * t }, gray);
 }
 
+/// A solid black slash rising across r. The mask stays inside r and the canvas clip;
+/// only black and white are used, as required by the e-ink panel's DU waveform.
+pub fn canvas_slash(c: &mut Canvas, r: Rect, thick: i32) {
+    if thick <= 0 || rect_is_empty(r) || c.px.is_empty() { return; }
+    let clip = rect_intersect(rect_intersect(r, c.clip), Rect { x: 0, y: 0, w: c.w, h: c.h });
+    if rect_is_empty(clip) { return; }
+    let pad = thick.min(r.w).min(r.h) as f64 * 0.5;
+    let (x0, y0) = (r.x as f64 + pad, (r.y + r.h) as f64 - pad);
+    let (dx, dy) = ((r.w as f64 - 2.0 * pad).max(0.0), -(r.h as f64 - 2.0 * pad).max(0.0));
+    let len2 = dx * dx + dy * dy;
+    for y in clip.y..clip.y + clip.h {
+        for x in clip.x..clip.x + clip.w {
+            let (px, py) = (x as f64 + 0.5 - x0, y as f64 + 0.5 - y0);
+            let t = if len2 > 0.0 { ((px * dx + py * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+            let (ex, ey) = (px - t * dx, py - t * dy);
+            if ex * ex + ey * ey <= pad * pad { c.px[(y * c.stride + x) as usize] = 0; }
+        }
+    }
+}
+
 /// "Over" blend of gray at alpha a into one pixel (clip already checked).
 /// (`*p + (gray - *p) * a` is one contracted multiply-add in the C build, see fmla, then the 0.5 is
 /// added on its own.)
@@ -825,5 +845,28 @@ mod tests {
         assert_eq!(canvas_dash_poly(&mut n, &[(5.0, 5.0), (15.0, 5.0)], 0, 4, 3, 0, 0), 3);
         assert_eq!(canvas_dash_poly(&mut n, &[], 2, 4, 3, 0, -1), 6);
         assert!(n.px.iter().all(|&p| p == 255));
+    }
+}
+
+#[cfg(test)]
+mod slash_tests {
+    use super::*;
+    #[test]
+    fn slash_stays_in_its_rect_and_clip_and_has_binary_pixels() {
+        let mut c = Canvas::default(); assert_eq!(canvas_init(&mut c, 48, 48), 0);
+        let r = Rect { x: 8, y: 8, w: 32, h: 32 };
+        canvas_slash(&mut c, r, 4);
+        assert_eq!(c.px[(24 * c.stride + 24) as usize], 0);
+        assert_eq!(c.px[(12 * c.stride + 12) as usize], 255);
+        assert!(c.px.iter().all(|&p| p == 0 || p == 255));
+        let black = c.px.iter().filter(|&&p| p == 0).count();
+        assert!(black > 120 && black < 200);
+        for y in 0..c.h { for x in 0..c.w {
+            if !rect_contains(r, x, y) { assert_eq!(c.px[(y*c.stride+x) as usize], 255); }
+        }}
+        canvas_fill(&mut c, Rect { x:0, y:0, w:48, h:48 }, 255);
+        canvas_set_clip(&mut c, Rect { x:0, y:0, w:24, h:48 });
+        canvas_slash(&mut c, r, 4);
+        for y in 0..48 { for x in 24..48 { assert_eq!(c.px[(y*48+x) as usize], 255); }}
     }
 }
