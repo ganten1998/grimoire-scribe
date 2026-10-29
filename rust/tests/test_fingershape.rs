@@ -547,7 +547,8 @@ fn v_and_caret() {
     check!(fs_distance(&v, &c) == 264);
     check!(fs_distance(&c, &v) == 264);
     check!(fs_distance(&v, &c) >= 2 * FS_T_MAX);
-    // Recorded for two actions, each draw fires its own, never the other.
+    // This artificial bank bypasses recording, which refuses these one-turn shapes.
+    // Keep exact distance and noisy-fire snapshots to guard rotation and the new structure rule.
     let gv = rec("V", 21);
     let gc = rec("caret", 22);
     eprintln!("  V: spread {} thr {} ratio {}; caret: spread {} thr {} ratio {}", gv.spread, gv.thr, gv.ratio, gc.spread, gc.thr, gc.ratio);
@@ -582,11 +583,11 @@ fn v_and_caret() {
     let mv = fs_match(&ideal("V", &d), &gs, &mut none);
     let mc = fs_match(&ideal("caret", &d), &gs, &mut none);
     eprintln!("  ideal V: {mv:?}\n  ideal caret: {mc:?}");
-    check!(mv.fired == Some(0) && mc.fired == Some(1));
+    check!(mv.fired.is_none() && mc.fired.is_none() && mv.why == FsReason::Structure && mc.why == FsReason::Structure);
     check!(mv.d1 == V_D1 && mv.d2 == FS_FAR + 1 && mc.d1 == CARET_D1 && mc.d2 == FS_FAR + 1);
 }
-const V_FIRED: i32 = 30;
-const CARET_FIRED: i32 = 30;
+const V_FIRED: i32 = 5;
+const CARET_FIRED: i32 = 9;
 const V_D1: i32 = 22;
 const CARET_D1: i32 = 14;
 
@@ -794,6 +795,13 @@ fn structure_guard() {
     check!(ts.fired.is_none() && ts.why == FsReason::Structure && ts.d1 <= ts.thr);
     check!(dc.fired.is_none() && dc.why == FsReason::Structure && dc.d1 <= dc.thr);
     check!(c.fired == Some(0));
+    // The slip guard only rejects one-direction partial turns: a two-turn S, a loop, a loop with
+    // a tail and a two-turn spiral remain usable as recorded shapes.
+    for (k, name) in ["S", "circle", "alpha", "spiral"].iter().enumerate() {
+        let g = [rec(name, 660 + k as u32)];
+        let m = fs_match(&ideal(name, &Draw::default()), &g, &mut none);
+        check!(m.fired == Some(0));
+    }
     check!((ts.d1, dc.d1, c.d1) == GUARD_D1);
     // the candidates' ratios are fs_ratio's, against the circle's mean
     check!(ts.ratio == fs_ratio(&ideal("tspiral", &d)) && ts.g_ratio == gs[0].ratio);
@@ -982,14 +990,14 @@ fn record_consistent() {
     eprintln!("  Z stretched {}%: {}, {}%: {}", CONSIST_EDGE.0, fs_distance(&z0, &c), CONSIST_EDGE.1, fs_distance(&z0, &c2));
     check!(fs_distance(&z0, &c) == 60 && fs_record_consistent(&c, &[z0]).is_ok());
     check!(fs_distance(&z0, &c2) == 61 && fs_record_consistent(&c2, &[z0]) == Err(FsReason::Inconsistent));
-    // Within 60 of any earlier sample is enough: a Z narrower still is too far from the first but
-    // near the narrow one, so it is kept once that one is.
+    // Being near sample 2 cannot rescue sample 3 when it is too far from sample 1.
+    // Test both orders so consistency cannot depend on which earlier sample is checked first.
     let c3 = ideal("Z", &Draw { aspect: CONSIST_FAR, ..Draw::default() });
     eprintln!("  Z at {CONSIST_FAR}%: {} from the first, {} from the 80% one", fs_distance(&z0, &c3), fs_distance(&c, &c3));
     check!(fs_distance(&z0, &c3) > FS_CONSIST_MAX && fs_distance(&c, &c3) <= FS_CONSIST_MAX);
     check!(fs_record_consistent(&c3, &[z0]) == Err(FsReason::Inconsistent));
-    check!(fs_record_consistent(&c3, &[z0, c]).is_ok());
-    check!(fs_record_consistent(&c3, &[c, z0]).is_ok());
+    check!(fs_record_consistent(&c3, &[z0, c]) == Err(FsReason::Inconsistent));
+    check!(fs_record_consistent(&c3, &[c, z0]) == Err(FsReason::Inconsistent));
     check!(fs_record_consistent(&b, &[]).is_ok());
 }
 
@@ -1137,6 +1145,18 @@ fn codec() {
     check!(fs_match(&out[0], &[g], &mut none).fired == Some(0));
 }
 
+/// A noisy returning hairpin used to match S as an unordered cloud. Its endpoint gap and
+/// one-way signed turns must keep it out even when its cloud distance is within the S threshold.
+fn near_closed_hairpin_is_not_an_s() {
+    let sample = FsSample { xy: [120,0,125,11,128,27,132,44,138,60,140,76,142,93,147,109,
+        149,126,153,143,156,159,158,176,162,192,165,209,167,226,169,243,157,254,143,255,
+        129,247,124,231,120,214,116,198,112,181,109,165,106,148,101,132,99,115,94,99,
+        92,82,89,66,85,50,89,34] };
+    let g = rec("S", 202);
+    let m = fs_match(&sample, &[g], &mut none);
+    check!(m.d1 <= m.thr && m.fired.is_none() && m.why == FsReason::Structure);
+}
+
 // ---- the corpus (10.2) ----
 
 /// What one corpus run measured.
@@ -1146,6 +1166,8 @@ struct Corpus {
     ok_use: u32,
     ok_rec: u32,
     tries: u32,
+    /// captured use and recording candidates compared with the matcher
+    matches: u32,
     wrong: u32,
     /// per slip kind: past the gates, fired
     slips: Vec<(&'static str, u32, u32)>,
@@ -1158,21 +1180,25 @@ const CORPUS_SHAPES: [&str; 12] = ["N", "Z", "S", "circle", "alpha", "two", "M",
 /// Records the corpus shapes, then draws `per_shape` use-like and recording-like tries of each
 /// kept shape and `per_kind` slips of each kind against them.
 fn corpus_run(per_shape: u32, per_kind: u32, quiet: bool) -> Corpus {
+    corpus_run_padded(per_shape, per_kind, quiet, FS_BANK_PAD)
+}
+
+fn corpus_run_padded(per_shape: u32, per_kind: u32, quiet: bool, pad: i32) -> Corpus {
     let mut kept: Vec<(&'static str, FsGesture)> = Vec::new();
     for (k, name) in CORPUS_SHAPES.iter().enumerate() {
         let g = rec(name, 200 + k as u32);
         let others: Vec<FsGesture> = kept.iter().map(|k| k.1).collect();
         let sep = fs_record_separation(&g, &others);
-        let bank = fs_record_bank(&g, &mut none);
+        let bank = fs_bank_hit(&g, g.thr + pad - FS_BANK_PAD, &mut none);
         if !quiet {
             eprintln!("  record {name}: thr {} sep {sep:?} bank {bank:?}", g.thr);
         }
-        if sep == FsSeparation::Clear && bank.is_ok() {
+        if sep == FsSeparation::Clear && bank.is_none() {
             kept.push((name, g));
         }
     }
     let gs: Vec<FsGesture> = kept.iter().map(|k| k.1).collect();
-    let mut c = Corpus { kept: kept.iter().map(|k| k.0).collect(), ok_use: 0, ok_rec: 0, tries: 0, wrong: 0, slips: Vec::new() };
+    let mut c = Corpus { kept: kept.iter().map(|k| k.0).collect(), ok_use: 0, ok_rec: 0, tries: 0, matches: 0, wrong: 0, slips: Vec::new() };
     // Use-like (the design's harsh regime) and recording-like draws of each kept shape.
     let mut r = Rng::new(300);
     for (i, (name, _)) in kept.iter().enumerate() {
@@ -1184,6 +1210,7 @@ fn corpus_run(per_shape: u32, per_kind: u32, quiet: bool) -> Corpus {
                 if capture(&shape_frames(name, &dv), 1000, FsMode::Runtime, &mut s) != FsLift::Shape {
                     continue;
                 }
+                c.matches += 1;
                 match fs_match(&s, &gs, &mut none).fired {
                     Some(j) if j == i => {
                         if regime == 0 {
@@ -1230,20 +1257,16 @@ fn corpus_accept_gates(c: &Corpus) {
     check!(c.ok_rec * 100 >= 97 * c.tries);
 }
 
-/// The slip gates at full size (10.2), per kind of slip:
-/// - swipes, thumb arcs and scrubs: none;
-/// - palm-like drifts: at most 1 per 1000 (the shape layer alone; the palm and pen gates close
-///   the rest);
-/// - one-turn slides and hairpins: the design's target is none, which the P4 freeze must reach
-///   with the finger model fitted to the device traces (its prototype left 2 slides in 12,000).
-///   Under this harsher synthetic model, with its hooks and rounded corners, 4 slides (all the
-///   triangle's) and 7 hairpins in 12,000 still fire, so until then they are held to the drifts'
-///   1 per 1000;
-/// - deliberate random scribbles: no bound (the hard case: the prototype fired 86 in 12,000).
+/// The slip gates at full size (10.2): no swipe, thumb-arc or scrub fires; at most two of each
+/// single-turn kind (slide and hairpin) fire; palm-like drifts stay at most 1 per 1000. Scribbles
+/// remain unbounded by the design, but still contribute to the wrong-action count.
 fn corpus_slip_gates(c: &Corpus, per_kind: u32) {
+    let single_turns: u32 = c.slips.iter().filter(|(k, _, _)| *k == "slide" || *k == "hairpin").map(|(_, _, n)| *n).sum();
+    check!(single_turns <= 2);
     for &(kind, _, fired) in &c.slips {
         match kind {
-            "drift" | "slide" | "hairpin" => check!(fired * 1000 <= per_kind),
+            "slide" | "hairpin" => check!(fired <= 2),
+            "drift" => check!(fired * 1000 <= per_kind),
             "scribble" => {}
             _ => check!(fired == 0),
         }
@@ -1269,22 +1292,22 @@ fn corpus() {
 const CORPUS_KEPT: [&str; 7] = ["Z", "S", "circle", "alpha", "M", "triangle", "W"];
 const CORPUS_ACCEPT: (u32, u32, u32) = (132, 140, 140);
 const CORPUS_SLIPS: [(&str, u32, u32); 7] =
-    [("swipe", 91, 0), ("thumbarc", 126, 0), ("slide", 240, 0), ("hairpin", 289, 1), ("drift", 160, 0), ("scrub", 9, 0), ("scribble", 277, 1)];
+    [("swipe", 91, 0), ("thumbarc", 126, 0), ("slide", 240, 0), ("hairpin", 289, 0), ("drift", 160, 0), ("scrub", 9, 0), ("scribble", 277, 1)];
 
-/// The design's corpus at full size: 200 tries per kept shape in each regime and 12,000 slips of
-/// each kind (10.2), with its gates. Too slow for the debug run:
+/// The design's corpus plus 6,200+ matcher comparisons: 500 tries per kept shape in each regime
+/// and 12,000 slips of each kind (10.2), with its gates. Too slow for the debug run:
 ///   cargo test --release --test test_fingershape -- --ignored corpus_full
 #[test]
 #[ignore]
 fn corpus_full() {
-    let c = corpus_run(200, 12_000, true);
+    let c = corpus_run(500, 12_000, true);
     eprintln!("kept {:?}", c.kept);
-    eprintln!("use: {}/{} fired, recording: {}/{}, wrong {}", c.ok_use, c.tries, c.ok_rec, c.tries, c.wrong);
+    eprintln!("use: {}/{} fired, recording: {}/{}, matcher comparisons {}, wrong {}", c.ok_use, c.tries, c.ok_rec, c.tries, c.matches, c.wrong);
     for (kind, shapes, fired) in &c.slips {
         eprintln!("slips {kind}: {shapes}/12000 past the gates, {fired} fired");
     }
     check!(c.kept == CORPUS_KEPT);
-    check!((c.ok_use, c.ok_rec, c.tries) == (1324, 1400, 1400));
+    check!(c.matches >= 6_200);
     check!(c.slips == CORPUS_FULL_SLIPS);
     corpus_accept_gates(&c);
     corpus_slip_gates(&c, 12_000);
@@ -1293,11 +1316,11 @@ fn corpus_full() {
 const CORPUS_FULL_SLIPS: [(&str, u32, u32); 7] = [
     ("swipe", 3256, 0),
     ("thumbarc", 5951, 0),
-    ("slide", 9444, 4),
-    ("hairpin", 11651, 7),
+    ("slide", 9444, 2),
+    ("hairpin", 11651, 0),
     ("drift", 6829, 1),
     ("scrub", 183, 0),
-    ("scribble", 11223, 68),
+    ("scribble", 11223, 59),
 ];
 
 /// The bench's gestures: 32 shapes of 3 samples, every corpus shape once and the first few twice.
@@ -1395,6 +1418,7 @@ fn test_fingershape() {
     run!(margin);
     run!(match_exact);
     run!(structure_guard);
+    run!(near_closed_hairpin_is_not_an_s);
     run!(pump);
     run!(record_first);
     run!(record_bank);
@@ -1403,5 +1427,17 @@ fn test_fingershape() {
     run!(codec);
     run!(corpus);
     run!(bench);
+    done();
+}
+
+/// Compare the reviewed pad choices on the same deterministic full corpus.
+#[test]
+#[ignore]
+fn corpus_pad_study() {
+    for pad in [0, 10] {
+        let c = corpus_run_padded(700, 12_000, true, pad);
+        eprintln!("PAD {pad}: kept {:?}; use {}/{}; recording {}/{}; wrong {}; slips {:?}",
+            c.kept, c.ok_use, c.tries, c.ok_rec, c.tries, c.wrong, c.slips);
+    }
     done();
 }

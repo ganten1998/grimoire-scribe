@@ -49,7 +49,7 @@ pub const FS_MARGIN_PCT: i32 = 30;
 /// The structure guard: the candidate's path/diagonal ratio within 0.6x-1.6x of the gesture's.
 pub const FS_GUARD_LO_X10: i32 = 6;
 pub const FS_GUARD_HI_X10: i32 = 16;
-/// A later recording sample must lie within this of an earlier one (6.3).
+/// A later recording sample must lie within this of every earlier one (6.3).
 pub const FS_CONSIST_MAX: i32 = 60;
 /// Separation: too close to another action's shape under max(T_h, T_new) + this (6.3).
 pub const FS_SEPARATE_PAD: i32 = 20;
@@ -193,7 +193,7 @@ pub enum FsReason {
     NoMatch,
     /// runtime: the best is not clearly better than the second best (another action)
     Unclear,
-    /// runtime: the path/diagonal ratio is unlike the winner's (a spiral is not a circle)
+    /// runtime: the path ratio or signed-turn structure is unlike the winner
     Structure,
     /// recording: not like the earlier samples ("Not like the first one")
     Inconsistent,
@@ -292,7 +292,8 @@ fn dist2(ax: i32, ay: i32, bx: i32, by: i32) -> i64 {
 
 /// A point from outside, clamped into +-FS_COORD_MAX.
 fn clamp_pt(x: i32, y: i32) -> FsPt {
-    FsPt { x: x.clamp(-FS_COORD_MAX, FS_COORD_MAX), y: y.clamp(-FS_COORD_MAX, FS_COORD_MAX) }
+    FsPt { x: x.clamp(-FS_COORD_MAX, FS_COORD_MAX), y: y.clamp(-FS_COORD_MAX, FS_COORD_MAX) ,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -565,7 +566,8 @@ pub fn fs_box(s: &FsStroke) -> Rect {
     if s.frames == 0 {
         return RECT_EMPTY;
     }
-    Rect { x: s.minx, y: s.miny, w: s.maxx - s.minx + 1, h: s.maxy - s.miny + 1 }
+    Rect { x: s.minx, y: s.miny, w: s.maxx - s.minx + 1, h: s.maxy - s.miny + 1 ,
+    }
 }
 
 /// The real lift at t_lift. Runs the gates (section 3) for a shape and writes its sample to out;
@@ -724,7 +726,8 @@ pub struct FsSample {
 
 impl Default for FsSample {
     fn default() -> Self {
-        FsSample { xy: [128; 2 * FS_N] }
+        FsSample { xy: [128; 2 * FS_N] ,
+        }
     }
 }
 
@@ -871,6 +874,79 @@ fn ratio_of(s: &FsSample) -> i32 {
     (path * 1000 / diag) as i32
 }
 
+/// The signed angle from one segment to the next, rounded to the nearest whole degree. The
+/// cross-product magnitude and dot product are the sine and cosine at a shared scale; the fixed
+/// sine table gives an exact, portable integer comparison without atan2 or floating point.
+fn signed_turn_deg(ax: i32, ay: i32, bx: i32, by: i32) -> i32 {
+    let (cross, dot) = ((ax * by - ay * bx) as i64, (ax * bx + ay * by) as i64);
+    if cross == 0 {
+        return if dot < 0 { 180 } else { 0 };
+    }
+    let side = cross.signum() as i32;
+    let sin = cross.abs();
+    let (mut lo, mut hi) = (0, 180);
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        let side_of_mid = sin * fs_cos_q14(mid) as i64 - dot * fs_sin_q14(mid) as i64;
+        if side_of_mid > 0 {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let residual = |deg| (sin * fs_cos_q14(deg) as i64 - dot * fs_sin_q14(deg) as i64).abs();
+    side * if residual(lo) <= residual(hi) { lo } else { hi }
+}
+
+/// Whether a candidate is an open, one-direction turn: a hooked swipe, a drifting arc, or a
+/// single-turn slide/hairpin. Those paths can look like a loop or a multi-turn recorded shape as
+/// unordered point clouds. Near-closed paths (triangle, circle) and paths with reversals or more
+/// than one full turn stay eligible. Six coarse chord headings suppress point quantization and
+/// finger jitter before the signed turns are compared.
+fn fs_open_single_turn(s: &FsSample) -> bool {
+    let (mut minx, mut maxx, mut miny, mut maxy) = (255i32, 0i32, 255i32, 0i32);
+    for i in 0..FS_N {
+        minx = minx.min(s.xy[2 * i] as i32);
+        maxx = maxx.max(s.xy[2 * i] as i32);
+        miny = miny.min(s.xy[2 * i + 1] as i32);
+        maxy = maxy.max(s.xy[2 * i + 1] as i32);
+    }
+    let (dx, dy) = (
+        s.xy[0] as i32 - s.xy[2 * (FS_N - 1)] as i32,
+        s.xy[1] as i32 - s.xy[2 * (FS_N - 1) + 1] as i32,
+    );
+    let gap2 = (dx * dx + dy * dy) as i64;
+    let (w, h) = (maxx - minx, maxy - miny);
+    let diag2 = (w * w + h * h) as i64;
+    // A loop closes within one seventh of its diagonal. A returning hairpin with a
+    // visible endpoint gap must still pass the signed-turn guard.
+    if diag2 == 0 || gap2 * 49 <= diag2 {
+        return false;
+    }
+
+    let mut chords = [(0i32, 0i32); 6];
+    for (k, chord) in chords.iter_mut().enumerate() {
+        let (a, b) = (k * (FS_N - 1) / 6, (k + 1) * (FS_N - 1) / 6);
+        *chord = (
+            s.xy[2 * b] as i32 - s.xy[2 * a] as i32,
+            s.xy[2 * b + 1] as i32 - s.xy[2 * a + 1] as i32,
+        );
+    }
+    let (mut cw, mut ccw) = (0i32, 0i32);
+    for i in 1..chords.len() {
+        let turn = signed_turn_deg(chords[i - 1].0, chords[i - 1].1, chords[i].0, chords[i].1);
+        if turn >= 3 {
+            cw += turn;
+        } else if turn <= -3 {
+            ccw -= turn;
+        }
+    }
+    // Small reverse turns from quantization or finger wobble do not make a deliberate second turn.
+    let one_way = cw.min(ccw) <= 5;
+    let total = cw + ccw;
+    one_way && (15..=270).contains(&total)
+}
+
 // ---------------------------------------------------------------------------------------------
 // The $P distance (section 4)
 // ---------------------------------------------------------------------------------------------
@@ -999,7 +1075,9 @@ struct Cand {
 }
 
 fn cand_of(s: &FsSample) -> Cand {
-    Cand { rot: [cloud_of(s, 0), cloud_of(s, -FS_ROT_DEG), cloud_of(s, FS_ROT_DEG)], ratio: ratio_of(s) }
+    Cand { rot: [cloud_of(s, 0), cloud_of(s, -FS_ROT_DEG), cloud_of(s, FS_ROT_DEG),
+        ], ratio: ratio_of(s) ,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1132,6 +1210,7 @@ pub struct FsMatch {
 ///   is at most 28 and the 35 always binds; the percentage is kept as the design states it, for a
 ///   retuned FS_T_MAX);
 /// - ratio within 0.6x-1.6x of g_ratio, both ends included, or Structure: a spiral is not a circle.
+///   fs_match also rejects an open one-direction turn that can be a finger slip.
 pub fn fs_decide(d1: i32, thr: i32, d2: i32, ratio: i32, g_ratio: i32) -> FsReason {
     if d1 > thr {
         return FsReason::NoMatch;
@@ -1147,9 +1226,10 @@ pub fn fs_decide(d1: i32, thr: i32, d2: i32, ratio: i32, g_ratio: i32) -> FsReas
 
 /// The decision at runtime (after the gates): the nearest gesture fires when it is within its
 /// threshold, clearly nearer than the second nearest (another action: one shape per action), and
-/// alike in structure (fs_decide). Anything else fires nothing: an unknown shape never does
-/// anything. d1 and d2 are the exact D_g of fs_gesture_distance up to FS_FAR (FS_FAR + 1 past
-/// it), so the margin sees every turn of every gesture. At most FS_SHAPES_MAX gestures are read.
+/// alike in structure (fs_decide plus the open single-turn guard). Anything else fires nothing: an
+/// unknown shape never does anything. d1 and d2 are the exact D_g of fs_gesture_distance up to
+/// FS_FAR (FS_FAR + 1 past it), so the margin sees every turn of every gesture. At most
+/// FS_SHAPES_MAX gestures are read.
 /// pump is called after a gesture whenever the comparisons so far (a recorded sample against one
 /// of the candidate's three tries) have passed another multiple of FS_MATCH_PUMP (work_pump, so
 /// the pen's evdev buffer never overflows: a gesture is at most 9 comparisons).
@@ -1224,6 +1304,9 @@ pub fn fs_match(s: &FsSample, gestures: &[FsGesture], pump: &mut dyn FnMut()) ->
         return m;
     }
     m.why = fs_decide(m.d1, m.thr, m.d2, m.ratio, m.g_ratio);
+    if m.why == FsReason::None && fs_open_single_turn(s) {
+        m.why = FsReason::Structure;
+    }
     if m.why == FsReason::None {
         m.fired = Some(m.best as usize);
     }
@@ -1250,7 +1333,8 @@ fn second_least(d: &[i32]) -> i32 {
 
 /// Slip-bank paths, each at 18 orientations: one-turn slides (16 turns x 5 corner places), arcs
 /// (10 sweeps), then hairpins (2 senses x 2 return lengths x 2 tip widths).
-const BANK_TURNS: [i32; 16] = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 175];
+const BANK_TURNS: [i32; 16] = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 175,
+];
 const BANK_CORNER_PCT: [i32; 5] = [20, 35, 50, 65, 80];
 const BANK_ORIENTS: usize = 18;
 const BANK_ARCS: usize = 10;
@@ -1295,7 +1379,8 @@ pub fn fs_bank_path(i: usize, out: &mut [FsPt; FS_BANK_PTS]) -> usize {
     let mut leg = |n: &mut usize, len: i64, heading: i32| {
         x += div_round(len * fs_cos_q14(heading) as i64, 16384);
         y += div_round(len * fs_sin_q14(heading) as i64, 16384);
-        out[*n] = FsPt { x: x as i32, y: y as i32 };
+        out[*n] = FsPt { x: x as i32, y: y as i32 ,
+        };
         *n += 1;
     };
     if i < BANK_SLIDES {
@@ -1325,7 +1410,8 @@ pub fn fs_bank_path(i: usize, out: &mut [FsPt; FS_BANK_PTS]) -> usize {
         leg(&mut n, out_len, heading);
         let (ex, ey) = (out[1].x as i64, out[1].y as i64);
         let side = heading + sense * 90;
-        let (cx, cy) = (ex + div_round(r * fs_cos_q14(side) as i64, 16384), ey + div_round(r * fs_sin_q14(side) as i64, 16384));
+        let (cx, cy) = (ex + div_round(r * fs_cos_q14(side) as i64, 16384), ey + div_round(r * fs_sin_q14(side) as i64, 16384),
+        );
         for s in 1..=12 {
             let a = side + 180 + sense * 15 * s;
             out[n] = FsPt {
@@ -1379,9 +1465,9 @@ pub fn fs_record_first(s: &FsSample, pump: &mut dyn FnMut()) -> Result<(), FsRea
     }
 }
 
-/// Samples 2 and 3: each must lie within FS_CONSIST_MAX of an earlier sample.
+/// Samples 2 and 3: each must lie within FS_CONSIST_MAX of every earlier sample.
 pub fn fs_record_consistent(s: &FsSample, earlier: &[FsSample]) -> Result<(), FsReason> {
-    if earlier.is_empty() || earlier.iter().any(|e| fs_distance(s, e) <= FS_CONSIST_MAX) {
+    if earlier.iter().all(|e| fs_distance(s, e) <= FS_CONSIST_MAX) {
         return Ok(());
     }
     Err(FsReason::Inconsistent)
@@ -1517,7 +1603,8 @@ fn degenerate(s: &FsSample) -> bool {
 /// back. Only 2 or 3 samples that are not degenerate make a value; anything else is Malformed
 /// and nothing is written, so a line this writes is never one the reader refuses. A fixed
 /// buffer, so nothing is allocated.
-pub fn fs_encode<'a>(samples: &[FsSample], out: &'a mut [u8; FS_VALUE_MAX]) -> Result<&'a str, FsCodec> {
+pub fn fs_encode<'a>(samples: &[FsSample], out: &'a mut [u8; FS_VALUE_MAX],
+) -> Result<&'a str, FsCodec> {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let n = samples.len();
     if !(2..=FS_SAMPLES_MAX).contains(&n) || samples.iter().any(degenerate) {
