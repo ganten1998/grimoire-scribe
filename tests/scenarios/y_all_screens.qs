@@ -500,8 +500,12 @@ wait 150
 tap 1410 2395
 wait 50
 expect editor.link_mode is 1
+expect editor.strip is new
+shot 28-link-strip
 pen line 300 1000 900 1200 30 0.6 0.6
 wait 150
+expect editor.linkto is pick
+shot 28-link-linkto
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.930.2370 is linkto.pages
 tap 930 2370
@@ -525,6 +529,56 @@ shot 28-link-card
 tap 125 95
 wait 100
 expect editor.modal is none
+# a second link to the Index, low on the page: Link to... docks at the top, and so do New page...'s keyboard and
+# Find in pick mode; then the bar's x2 row held (the card for both links)
+pentap panel pages
+wait 150
+tap 1410 2395
+wait 50
+pen line 300 2000 900 2150 30 0.6 0.6
+wait 150
+expect editor.linkto.dock is top
+shot 28-link-linkto-top
+expect editor.ui_at.479.387 is linkto.chip.1
+tap 479 387
+wait 100
+expect editor.kb_dock is top
+shot 28-link-newpage-keyboard
+tap 217 1058
+wait 100
+expect editor.linkto is pick
+expect editor.ui_at.330.679 is linkto.search
+tap 330 679
+wait 100
+expect editor.find is pick
+expect editor.kb_dock is top
+shot 28-link-find-pick-top
+tap 217 1058
+wait 100
+expect editor.find is 0
+expect editor.linkto.2 is index
+expect editor.ui_at.1381.387 is linkto.chip.2
+tap 1381 387
+wait 100
+expect editor.links is 2 2
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
+wait 300
+expect editor.bar is open
+expect editor.bar.entries is 1
+expect editor.bar.1 is index
+touch down 479 2218
+wait 800
+touch up 479 2218
+wait 100
+expect editor.link_card is 1
+expect editor.link_card.links is 2
+shot 28-link-card-xn
+swipe 2 1300 300 0 400
+wait 300
+expect editor.link_card is 0
+expect editor.bar is 0
 pentap panel previous
 pentap panel next
 pentap panel pages
@@ -554,8 +608,9 @@ pen leave
 wait 1100
 swipe 2 930 1200 0 400
 wait 300
-# (64, the pan hint, and 2: the first link made above showed the first-link tip)
-expect settings.hints is 66
+# (64, the pan hint; 2, the first link made above showed the first-link tip; 8, the Links bar showed its
+# second header line once)
+expect settings.hints is 74
 expect editor.zoom not 1.00
 shot 31-zoom-pan-hint
 tap 930 74
@@ -819,8 +874,32 @@ tap 1300 95
 tap 1760 1775
 wait 50
 expect editor.link_mode is 1
+expect editor.strip is new
+shot 49-link-strip-landscape
 pen line 400 800 1000 1000 30 0.6 0.6
 wait 150
+expect editor.linkto is pick
+shot 49-link-linkto-landscape
+# Search: Find in pick mode, sideways; a tap outside comes back to Link to...
+expect editor.ui_at.433.1750 is linkto.search
+tap 433 1750
+wait 100
+expect editor.find is pick
+shot 49-link-find-pick-landscape
+tap 900 300
+wait 100
+expect editor.find is 0
+expect editor.linkto is pick
+# New page...'s keyboard, sideways; a tap outside it comes back to Link to...
+expect editor.ui_at.428.1598 is linkto.chip.1
+tap 428 1598
+wait 100
+expect editor.kb_dock is bottom
+shot 49-link-newpage-keyboard-landscape
+tap 900 300
+wait 100
+expect editor.keyboard is
+expect editor.linkto is pick
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.1239.1750 is linkto.pages
 tap 1239 1750

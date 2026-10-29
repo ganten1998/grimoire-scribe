@@ -133,8 +133,10 @@ pen), another goes to the tool button. The starter mappings give them no key or 
 `add-link` starts a link on the open page in one press, as the Index's Add a link does, without
 going through the Pages view: a strip along the bottom asks you to draw around what links, the next
 pen stroke on the page draws a dashed lasso around the link's area (it leaves no ink, whatever the
-tool), and the Pages view then asks where it goes (tap a page, or The Index). Pressed again while
-the strip is up, it is not made (a toast says so), as Close menu and the strip's Cancel do. On a
+tool), and Link to... then asks where it goes (a new page, The Index, a recent page, an Index entry,
+Search, or Choose from the pages...). It does not wait for ink: the stroke that follows draws the area
+only. Pressed again while the strip or Link to... is up, it is not made (a toast says so), as Close
+menu and their Cancel do. On a
 read-only page, where the notebook's `links.ini` does not read, and on a page that has 64 links, it
 does nothing but say so. `name-page` opens the Index's naming
 keyboard for the open page, holding its name: Done saves it (an empty name takes it out of the

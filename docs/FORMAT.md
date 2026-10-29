@@ -767,6 +767,25 @@ link is left out of the next save. More than 4000 area lines make the file not r
 4000 links do. A file whose links have no area is byte for byte what 2.0.0-beta.5 writes; beta.5
 carries the area lines it does not read as unknown lines, within their limits below.
 
+From 2.0.0-beta.6 a link is (page, seed, target, area): the area is what a finger's tap follows, and it is
+never drawn in the page, its thumbnail, its PDF page image, the share page or the sleep picture (the
+Links bar's Areas shows it as a dashed box). A link made by 2.0.0-beta.5 is migrated: as its page is
+first read in a session (or, for a page not opened, on the editor's idle ticks, one page at a time), each
+of its links with no area gets the box of the points of its ink strokes, without the 7 mm growth (the
+minimum rounded down, the maximum up, at least 1 px a side, clamped to the page), and links.ini is
+written after a pause. The ink stays on the page as ordinary ink: migration never removes or changes a
+stroke, and deleting a link never deletes ink either. A link with no such stroke (its ink undone or
+erased in beta.5) stays as it is; a read-only page's links are not migrated (their ink boxes keep
+working). Copy page gives the copy every link of its page, with the same seeds, targets and areas.
+
+What a 2.0.0-beta.5 build does with this file: it reads every `link.` line, and a link with an area but
+no ink does nothing there (one made from 2.0.0-beta.6 on), while a migrated link keeps working there
+through its ink. It carries the `area.` lines as unknown lines up to 16 KiB together (about 430 links);
+past that, or past 256 KiB, the file does not read there, so its links are read-only there and the file is
+never overwritten. A beta.5 build that deletes a link leaves its area line, which this version drops as
+an orphan at its next save; one that changes a link's target keeps it, and it still matches. links.ini
+has no version line: a later kind of area comes as a key of its own, which this version carries.
+
 Unknown lines are carried in order, up to 255 bytes each and 16 KiB together, as `nav.ini`'s are,
 and a file that does not read (the same rules) disables adding and changing links and is never
 overwritten; the section names go on working. The file is read and written up to 512 KiB (from
@@ -810,7 +829,7 @@ line. Values are clamped to their ranges when read.
 | `status_size` | its size, 0 small, 1 medium, 2 large (the Display sheet's row), 0 by default and clamped to 0..2. Since 2.0.0-beta.5, as `status_on` |
 | `gestures` | 0 or 1: the two-finger gestures (two fingers down, up, left and right, and a two-finger tap: `gestures.ini`, below), on by default; off, a pinch and a pan still work. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `landscape_fit` | 0 or 1: sideways, the editor shows the whole page (the page is as wide as the screen is tall, so it rests at the height of the screen), on by default; off, the page's width fills the screen as it does upright. Since 2.0.0-beta.5, as `gestures` |
-| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 2 the link areas tip, 3 and 4 a counter 0 to 3 of the Links bar's header hints, 6 the pan hint, 8 the sideways hint, which takes a notebook's first open from the first-open tip when it comes up sideways, so the tip comes at the next open; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
+| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 2 the link areas tip, 3 and 4 a counter 0 to 3 of the Links bar's header hints, 6 the pan hint, 8 the sideways hint, which takes a notebook's first open from the first-open tip when it comes up sideways, so the tip comes at the next open; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
 | `link_areas` | 0 or 1: dotted boxes over the page show where a finger tap follows a link (the Links bar's Areas button), off by default. Since 2.0.0-beta.5, as `gestures` |
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
 | `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `status_corner`. Since 2.0.0-beta.5, as `gestures` |
@@ -1009,6 +1028,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `templates/`, `import/` in the data root (and `import/.attempts`, 1.1) | never read | read |
 | `photos/` in the data root (2.0) | never read | never read; a page on a photo is drawn as any picture page |
 | `links.ini` (links drawn on pages, 2.0) | never read or written: the ink around a link shows as ink, and a tap on it does nothing; a page it deletes leaves its links for 2.0 to drop | the same; 1.2.0 to 2.0.0-beta.4 never read it either (Links) |
+| `area.` lines in `links.ini` (a link's area, 2.0.0-beta.6) | never read or written, as the file | the same; 2.0.0-beta.5 carries them as unknown lines within its limits, and a link with an area but no ink does nothing there (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
 | a stroke parameter past its range | drawn at the range's end; a re-save writes it narrowed | the same (see Frozen invariants) |

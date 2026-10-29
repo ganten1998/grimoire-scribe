@@ -11,6 +11,60 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## Index phase 2: links without ink and the long-press card (2.0.0-beta.6 candidate, not yet on a Kindle)
+
+Not yet on a Kindle. `make check` covers links.ini's area lines byte for byte, the migration of beta.5 links
+on a fixture made by the beta.5 inked flow, link undo and redo, the strip, the lasso, Link to..., Find's
+pick mode, the card's rows, placement and refreshes in the headless runner, and the fit of every new string
+in English and Spanish. It cannot say how the border and the card feel under a finger, whether circling
+keeps up with the pen, or how the DU strips look over gray ink.
+
+Install the build and test first in the notebooks that have your beta.5 links.
+
+1. **Your beta.5 links.** Open each notebook: every link still goes where it went. Turn on Areas in the
+   Links bar: each link's dashed box sits where its ring was, and the ring is still on the page as ink.
+2. **Ink is no longer the link.** Erase an old ring completely: a finger tap where it was still follows
+   the link.
+3. **Making a link.** In the bar, New link (or your add-link button): a strip at the bottom says "Draw
+   around what links.". Circle some words: a dashed line follows the pen with no flash, and when you lift
+   it a dotted rectangle stays and "Where does the link go?" opens. No ink is left on the page, ever.
+   - Circle low on the page: the chooser opens at the top, below the clock corner.
+   - It lists New page..., The Index, the pages you linked or visited recently, then your Index; Search
+     finds any page by number or name; Choose from the pages... opens the Pages view.
+   - Pick one: "Linked to ..." (the very first time, a tip about tap and hold); from the bar, the bar comes
+     back with the new row. One Undo removes the link; Redo brings it back.
+   - New page...: name it; a new last page is added and linked, and you stay where you were.
+   - A dot is "Too small"; Cancel says "No link made.".
+4. **Holding a link.** Hold a finger on a link for about half a second: a heavy dotted border shows
+   exactly what is tappable, then a small card opens beside it. The page stays in view the whole time (no
+   Pages view, no full flash).
+   - Rename in the Index: a keyboard opens over the page with the border still visible; Done renames that
+     page in the Index everywhere. On an unnamed page the row reads "Add page N to the Index...".
+   - Change where it goes...: the chooser marks the current target and has no Choose from the pages....
+   - Redraw the area: circle the new area; Undo brings the old one back.
+   - Delete link: "Link deleted. Undo brings it back."; a border you drew yourself stays, and so does the
+     ring of a beta.5 link (deleting a link never deletes ink).
+   - A tap outside the card closes it and does nothing else. With the card up the clock is not shown,
+     so a tap in the clock corner closes the card too (the brief had it toggle the clock and leave the
+     card: say which you prefer).
+5. **Holding a row in the bar.** The same card, above the bar. A ×2 row deletes or retargets both links
+   in one Undo step, and says "To change one, hold it on the page."; while peeking, holding a row first
+   returns to your page.
+6. **Nested links.** A small link inside a bigger one: a tap inside the small one follows the small one.
+7. **Copy page** keeps the page's links, with the same areas.
+8. **Clear page** clears ink only: the links stay (delete them from the card).
+9. **Feel.** The border and card appear quickly; circling never lags behind the pen; nothing flashes
+   except a page change; writing right after a link is made goes on in fast pen mode.
+10. **Going back (optional).** Install the previous build (f9d13f5) again for a moment: your old links
+    still work there (through their ink; links made in this build have no ink, so they do nothing
+    there); come back to this build: nothing was lost.
+11. **Report** any link that goes somewhere else than before, and any place where the card covers what
+    you wanted to see.
+
+Known in this build: a visible border around a link is freehand ink until Smart shapes (a later phase);
+Rename is not undone by Undo; a page made by New page... stays after Undo removes its link; Clear page
+leaves the page's links.
+
 ## 2.0.0-beta.5 (not yet on a Kindle)
 
 Not yet on a Kindle: the owner has not tested this release's bundle, so nothing below is claimed as

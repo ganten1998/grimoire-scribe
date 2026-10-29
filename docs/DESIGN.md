@@ -1035,8 +1035,8 @@ keyboard host puts the rows card above the keyboard, a number offers "Go to page
 Index's names (accents and capitals ignored; names that begin with them first, then a word, then
 anywhere inside). A result goes through `go_to_page` and one Full.
 
-**The eye** (`link_areas`) draws a dotted box (canvas_dash_rect) and a numbered tag over each link's ink
-at compose time. It is never drawn into `page_canvas`, so it is never in a thumbnail, a PDF, a share
+**The eye** (`link_areas`) draws a dotted box (canvas_dash_rect) and a numbered tag over each link's box
+(from 2.0.0-beta.6 its area, or its ink for a link that has none) at compose time. It is never drawn into `page_canvas`, so it is never in a thumbnail, a PDF, a share
 page or the sleep screen. The tags carry the bar's entry numbers, from the same grouping function.
 
 **Refresh choices.** DU is 188 ms (294 cold), GL16 271 ms and GC16 341 ms. Screens only `app_invalidate`
@@ -1076,3 +1076,68 @@ request only their rectangles; the clock and battery use their own rectangle. Mi
 field updates respect the existing pen/gesture/driver busy guards. Sheets hide the bar without
 changing the page transform. `status_mode=1` keeps the corner; `2` hides the status display.
 Historical coordinate scenarios explicitly request Corner mode; `y_status_bar*` cover the default.
+
+## Links without ink and the long-press card (2.0.0-beta.6, Index phase 2)
+
+A link is (page, seed, target, area) in `links.ini` (docs/FORMAT.md). The area is screen-only: the eye
+draws it at compose time and nothing puts it in `page_canvas`, so it is never in a thumbnail, a PDF, a
+share page or the sleep screen. A link's box is its area, or for a beta.5 link with no area yet the box of
+its ink; the smallest box under a finger wins. beta.5 links migrate at page load and on idle ticks (one
+page per tick, read through `store_load_page_pumped`), and their ink stays as ordinary ink. Making,
+deleting, retargeting and redrawing a link are undo steps (`ActKind::Link`, the editor applying the
+records); a step whose save fails is dropped. Copy page copies the page's links.
+
+**The strip.** Add a link (the bar's New link, the add-link action) shows a strip along the bottom
+("Draw around what links.", a Cancel at its right). It is not a sheet: the page still pans, zooms,
+turns and follows links while it is up (a page change cancels it silently). The next pen contact on the
+page, whatever the tool, is the lasso.
+
+**The lasso** (`Owner::Lasso`) is dashes drawn straight into the screen with `canvas_dash_poly`, one DU
+per input batch, never pen mode or the live ink style: it is not ink, and touches neither the page, the
+history nor the PDF. At the lift its box (page px) is the area; a box under 7 mm both ways says "Too
+small" and the strip stays. A dotted rectangle (`canvas_dash_rect`) marks the area until the pick.
+
+**Link to...** is a second `LinkBar` in pick mode (`EditorState.lt`): New page..., The Index, up to four
+recent targets (this session's picks, then the back list), then the Index's entries, six chips a screen
+upright, with a pager; a tool row of Search, Choose from the pages... (a new link only) and Cancel. It
+docks at the top, below the clock corner, when the area's centre is in the lower 45% of the screen, and
+at the bottom otherwise. New page... names a page added at the end and links to it (the open page
+stays). Search is Find in PICK mode: its digits row reads "Link to page N", a row links instead of going
+there, and its keyboard docks with Link to... (`keyboard_set_dock`). Choose from the pages... is the
+Pages view picking, with no buttons beside its tabs and no Go to page.... The first link ever made toasts
+a tip about tap and hold once (`hints` bit 1) instead of "Linked to ...".
+
+**The card** (linkcard.rs). A finger held 600 ms on a link draws a heavy dotted border around its box
+and opens a card beside it: Rename in the Index (Add page N to the Index... for an unnamed page),
+Change where it goes..., Redraw the area and Delete link, Delete last; a read-only page's card has no
+rows. The card goes right of the border, else left, below, above, never over the border, the panel
+(when it can) or the clock corner. A Links bar row held 600 ms opens the same card above the bar for
+every link of that row on the page: a ×N row has Rename, Change where they go... and Delete N links,
+each one undo step for all N. Rename's keyboard docks away from the border; Rename keeps the card open,
+every other row closes it. A tap outside closes the card and does nothing else. The Pages view's old
+hold path (its picker, Remove link, The Index) is gone. Deleting a link never deletes ink.
+
+**Refresh choices** (no new display call, no new wait):
+
+| Surface | Waveform | Rect |
+|---|---|---|
+| Strip opens or closes | Ui | the strip |
+| Lasso while drawing | Fast per input batch | each segment's box |
+| Lasso too small | Ui at the lift, then the toast | the lasso's rect |
+| Lasso lift | Ui, its own flush, then Link to...'s Ui | lasso, strip and rectangle; then Link to... |
+| Link to... opens or closes, its pager | Ui | its card, the chip grid |
+| A chip, row or button press | DU at once (`app_press_feedback`) | the chip or row |
+| Find PICK typing | as Find: Fast field, rows and key, each flushed; one Ui after a pause | |
+| Choose from the pages... and back | Full | whole screen |
+| Pick done | Ui | the rectangle's band and Link to... (and the bar coming back) |
+| Card opens from the page | four Fast strips of the border, each flushed on its own, then Ui | the strips, then the card |
+| Card opens from a peeking bar | Ui of the page area with its borders, its own flush, then Ui | the page area, then card and chip |
+| Card opens from the bar, not peeking | four Fast strips per box (at most three boxes), else one Ui of their bounds; then Ui | |
+| Card closes | Ui | card and strips |
+| Link undo or redo, Areas on | Ui | the records' boxes, before and after |
+| Link undo or redo, Areas off | toast only | |
+| Migration | nothing | |
+
+The border's strips hold only black and white pixels and never meet, so DU shows them exactly; one union
+of the four would be the whole box, and DU would posterize the gray ink inside it. No GL16 and no toast
+while the pen is down: the lasso's GL16 comes at the lift.

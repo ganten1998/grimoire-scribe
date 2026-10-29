@@ -353,7 +353,7 @@ where the indicator shows, with 4 mm around it, whether it is up or not) turns o
 (`Oct 10, 14:32`), a small battery drawn in pixel art that shows the charge (and a bolt over it while
 it charges), and the battery's percent. Tapping the indicator, or its corner again, turns it off.
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
-while a sheet, a menu, the Links bar, Find, a keyboard or the Pages view is in front of the page, so it
+while a sheet, a menu, the Links bar, Link to..., a link's long-press card, Find, a keyboard or the Pages view is in front of the page, so it
 never gets in the way of another screen. The panel, or a link the way a finger tap would follow it,
 keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
 
@@ -382,6 +382,25 @@ the background that Grimoire never waits for (one that takes over 2 seconds is s
 shows from the next reading on. With neither, the corner shows the time alone, with no battery drawn.
 The screen guard leaves the corner's box out of its checks, so it is not taken for something else
 drawing over Grimoire.
+
+## Links on a page (2.0.0-beta.6)
+
+A link is an invisible area of a page that a finger's tap follows; making one leaves no ink. In the
+Links bar, New link (or an add-link button) shows a strip along the bottom: circle what links with the
+pen (a dashed line, gone at the lift), then pick where it goes in "Where does the link go?" (a new page,
+the Index, a recent page, an Index entry, Search or Choose from the pages...). Areas in the bar shows each
+link's area as a dashed box; it is never printed. If you want a visible border, draw it as ordinary ink.
+
+Hold a finger on a link for about half a second: a heavy dotted border shows its area and a small card
+beside it offers Rename in the Index, Change where it goes..., Redraw the area and Delete link, over the
+page. Holding a row of the Links bar opens the same card for all of that row's links on the page. Making,
+deleting, retargeting and redrawing a link are undone by Undo; renaming is not.
+
+The links you made with 2.0.0-beta.5 (inked rings) keep working: as a notebook opens, each one's ring
+gives it its area, and the ring stays on the page as ink. Deleting a link never deletes ink. Turning back
+to 2.0.0-beta.5 (f9d13f5) keeps those links working there through their ink; links made from beta.6 on
+have no ink, so they do nothing in beta.5 until you come back. The checks to run on the Kindle are in
+docs/TESTING.md (Index phase 2).
 
 ## Touch gestures and the touch trace
 
