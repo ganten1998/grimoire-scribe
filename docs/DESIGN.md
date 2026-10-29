@@ -1244,3 +1244,5 @@ a matching open map adopts it only when idle. Failed map opens discard their par
 Seed positions stay in memory, so neither closing a map nor changing its view can publish seeds
 as a completed cache. A short `graph.ini.lock` transaction serializes preference changes with
 the child's final read/merge/write; layout computation happens before that lock is acquired.
+Reopening a map retains its running or queued Tidy job, so the completed layout is still adopted
+and an older cached view cannot overwrite it on close.

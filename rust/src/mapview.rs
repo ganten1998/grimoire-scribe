@@ -225,14 +225,17 @@ fn layout(v: &mut MapView, a: &mut App, force: bool) -> bool {
             v.layout = MapLayout::Running;
             // Save the seed and view choices before the child reads the cache.
             save(v);
-            bg_queue(BgKind::GraphLayout, Some(v.id.as_str()), Some(&path), a.dpi, false);
+            if !bg_pending(BgKind::GraphLayout,v.id.as_str()) {
+                bg_queue(BgKind::GraphLayout, Some(v.id.as_str()), Some(&path), a.dpi, false);
+            }
             true
         }
     } else {
         graph_place_new(&mut v.g, &mut work_pump) >= 0
     };
     if ok && v.layout != MapLayout::Running {
-        v.layout = MapLayout::Done;
+        // A cached map can be reopened while its Tidy job is still running or queued.
+        v.layout = if bg_pending(BgKind::GraphLayout,v.id.as_str()){MapLayout::Running}else{MapLayout::Done};
     }
     ok
 }
@@ -1319,6 +1322,32 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         let (mut seed,_)=view(1860,2480,2,true);seed.id=nb.id;seed.layout=MapLayout::Running;save(&mut seed);
         graph_ini_read(nb.id.as_str(),&mut after);assert!(after.pos.is_empty()&&!after.has_gen);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn cached_map_tidy_survives_close_reopen_completion_and_close() {
+        let root=std::env::temp_dir().join(format!("grimoire-map-reopen-{}",std::process::id()));
+        store_init(root.to_str().unwrap());let mut nb=NotebookInfo::default();assert_eq!(store_create("Map","",PAPER_BLANK,&mut nb),0);
+        nb.page_ids=(1..=400).collect();nb.next_page_id=401;assert_eq!(store_save_info(&mut nb),0);
+        let mut nav=Nav::default();nav_init(&mut nav);for pid in 1..=400{assert_eq!(nav_set_name(&mut nav,pid,"Named"),0);}
+        assert_eq!(nav_save(nb.id.as_str(),&mut nav,&nb),0);
+        let mut a=App{w:1860,h:2480,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,a.w,a.h);
+        let mut v=MapView{id:nb.id,open:true,w:a.w,h:a.h,..Default::default()};v.pages=nb.page_ids.clone();
+        assert_eq!(graph_build(&mut v.g,&nb,&nav,1),0);assert!(graph_seed(&mut v.g,&mut ||{}));save(&mut v);
+        assert!(layout(&mut v,&mut a,true));assert_eq!(v.layout,MapLayout::Running);
+        mapview_close(&mut v);
+        assert!(mapview_open(&mut v,&mut a,&nb,&nav,1,false));assert_eq!(v.layout,MapLayout::Running);
+        let until=now_ms().wrapping_add(10000);
+        while bg_busy() && (now_ms().wrapping_sub(until) as i32)<0 {
+            let mut kind=-1;let mut id=FixedStr::new();let result=bg_poll_job(Some(&mut kind),Some(&mut id));
+            if kind==BgKind::GraphLayout as i32 {mapview_background_done(&mut v,id.as_str(),result>0);}
+            sleep_ms(2);
+        }
+        assert!(!bg_busy());assert!(v.job_done);
+        mapview_tick(&mut v,&mut a,now_ms().wrapping_add(600));assert_eq!(v.layout,MapLayout::Done);
+        let mut before=GraphIni::default();graph_ini_read(nb.id.as_str(),&mut before);assert_eq!(before.pos.len(),400);
+        mapview_close(&mut v);let mut after=GraphIni::default();graph_ini_read(nb.id.as_str(),&mut after);
+        assert_eq!(after.pos,before.pos);assert_eq!(after.gen,before.gen);
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

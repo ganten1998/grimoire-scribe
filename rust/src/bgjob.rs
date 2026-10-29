@@ -109,6 +109,12 @@ pub fn bg_cancel_notebook(id: &str) {
         with(|s| s.pid = -1);
     }
 }
+/// Running includes an exited child until it is reaped, so a reopened view still receives its result.
+pub fn bg_pending(kind:BgKind,id:&str)->bool {
+    with(|s|(s.pid>0&&s.running.kind==kind&&s.running.id.as_str()==id)
+        ||s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id))
+}
+
 /// Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
 /// succeeded / failed, else 0. Call it often (app_tick). The kind of the job that just finished
 /// (notify or not) is in *done_kind when done_kind is not NULL and something finished (else -1).
