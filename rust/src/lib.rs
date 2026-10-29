@@ -61,6 +61,8 @@ pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
 pub mod history;
+pub mod shape;
+pub mod graph;
 pub mod musicbuild;
 pub mod nav;
 pub mod page;
@@ -137,6 +139,8 @@ pub mod prelude {
     pub use crate::gesturemap::*;
     pub use crate::hidkeys::*;
     pub use crate::history::*;
+    pub use crate::shape::*;
+    pub use crate::graph::*;
     pub use crate::httpd::*;
     pub use crate::i18n::*;
     pub use crate::inkmode::*;
