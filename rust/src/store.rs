@@ -19,7 +19,7 @@ pub struct NotebookInfo {
     /// directory name, e.g. "20261010-143205-a3f1"
     pub id: FixedStr<STORE_ID_LEN>,
     pub name: FixedStr<STORE_NAME_LEN>,
-    /// "" = top level; one level of folders only
+    /// "" = top level; nested folders are slash-separated logical names (not disk paths).
     pub folder: FixedStr<STORE_NAME_LEN>,
     /// default paper for new pages
     pub paper: PaperKind,
@@ -1327,6 +1327,7 @@ pub fn store_rename(id: &str, name: &str) -> i32 {
 }
 
 pub fn store_set_folder(id: &str, folder: &str) -> i32 {
+    if !folder.is_empty() && !store_folder_valid(folder) {return -1;}
     let mut nb = NotebookInfo::default();
     let mut rc = store_load_info(id, &mut nb);
     if rc == 0 {
@@ -1426,9 +1427,26 @@ fn save_folders_ini(f: &[FolderName]) -> i32 {
     write_file_atomic(&path, &buf)
 }
 
+/// Logical folder ancestry, with a component boundary (School does not contain Schoolwork).
+pub fn store_folder_contains(parent: &str, path: &str) -> bool {
+    parent.is_empty() || path == parent || path.strip_prefix(parent).is_some_and(|rest| rest.starts_with('/'))
+}
+pub fn store_folder_parent(path: &str) -> &str { path.rsplit_once('/').map_or("",|(parent,_)|parent) }
+pub fn store_folder_leaf(path: &str) -> &str { path.rsplit('/').next().unwrap_or("") }
+pub fn store_folder_valid(path: &str) -> bool {
+    !path.is_empty() && path.len() < STORE_NAME_LEN && !path.contains(['\n','\r','\0'])
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
+}
+/// Join a user-entered folder name to its parent without silently truncating a destination.
+pub fn store_folder_join(parent: &str, name: &str, out: &mut FixedStr<STORE_NAME_LEN>) -> bool {
+    if name.contains('/') || name.is_empty() {return false;}
+    let path=if parent.is_empty(){name.to_string()}else{format!("{parent}/{name}")};
+    if !store_folder_valid(&path){return false;}out.set(&path);true
+}
+
 /// Folders exist as notebook.folder values plus root/folders.ini (so empty folders persist).
 pub fn store_add_folder(name: &str) -> i32 {
-    if name.is_empty() {
+    if !store_folder_valid(name) {
         return -1;
     }
     let mut f = load_folders_ini();
@@ -1555,8 +1573,16 @@ pub fn store_list_folders(out: &mut Vec<String>) -> i32 {
         if name.is_empty() {
             continue;
         }
-        if !all.iter().any(|x| x.as_bytes() == name.as_bytes()) {
-            all.push(*name);
+        // Include implicit ancestors of notebooks and explicit empty subfolders, so every path
+        // is reachable even when an older build wrote only its leaf path.
+        let mut path = name.as_str();
+        loop {
+            if !all.iter().any(|x| x.as_bytes() == path.as_bytes()) {
+                if all.try_reserve(1).is_err() {return -1;}
+                all.push(FolderName::from_str(path));
+            }
+            let parent=store_folder_parent(path);
+            if parent.is_empty(){break;}path=parent;
         }
     }
     all.sort_by(|x, y| cmp_name(x.as_bytes(), y.as_bytes()));
