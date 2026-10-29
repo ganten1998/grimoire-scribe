@@ -6,13 +6,6 @@
   computer's keys run Grimoire's shortcut actions on the Kindle. They come from their own file,
   `live-keys.ini`, written from the built-in keyboard mappings the first time Live view starts; the
   page's Keys button lists them. Only a browser paired for Live view can send keys.
-
-## 2.0.0-beta.5 (2026-10-28)
-
-The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-beta.4 was a
-performance candidate that was never published, so its changes (the last section below) are in this
-release too.
-
 - **Buttons sheet:** "Swiping past the last page adds a page" and the status display (bar, corner
   or off) can be given a button, in the Pages and Menus groups.
 - **The touch log keeps going on a long day:** its 2000-line limit now applies per minute, not per
@@ -20,6 +13,14 @@ release too.
 - **Notebook status bar:** the new default keeps the notebook, page and section, link counts, tool,
   clock, battery, screen sharing and controller visible above the page. Upright and sideways, the
   page fits below it. Display lets you select Bar, Corner or Off, also available as `status-mode`.
+- **Live view after a long pen silence:** quick ink and the pen dot no longer freeze once the pen
+  has been away for over 35 minutes.
+
+## 2.0.0-beta.5 (2026-10-28)
+
+The first release written in Rust. It is what is new since 2.0.0-beta.3: 2.0.0-beta.4 was a
+performance candidate that was never published, so its changes (the last section below) are in this
+release too.
 
 - **Grimoire is now written in Rust**: the whole app has been rewritten, screen for screen and file
   for file, from the C it was written in until now. Using it does not change: the same screens,
