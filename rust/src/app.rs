@@ -143,9 +143,12 @@ pub struct App {
 //   X_enter(a) on switch-in (draw everything into a.screen and invalidate);
 //   X_leave(a) on switch-out; X_event(a, ev); X_tick(a, now).
 // (The C's DECLARE_SCREEN declares these; the definitions are the screens'.)
-pub use crate::calibrate::{calibrate_enter, calibrate_event, calibrate_free, calibrate_init, calibrate_leave, calibrate_tick};
-pub use crate::editor::{editor_enter, editor_event, editor_free, editor_init, editor_leave, editor_tick};
-pub use crate::library::{library_enter, library_event, library_free, library_init, library_leave, library_tick};
+pub use crate::calibrate::{calibrate_enter, calibrate_event, calibrate_free, calibrate_init, calibrate_leave, calibrate_tick,
+};
+pub use crate::editor::{editor_enter, editor_event, editor_free, editor_init, editor_leave, editor_tick,
+};
+pub use crate::library::{library_enter, library_event, library_free, library_init, library_leave, library_tick,
+};
 pub use crate::pensettings::{
     pensettings_enter, pensettings_event, pensettings_free, pensettings_init, pensettings_leave, pensettings_tick,
 };
@@ -160,7 +163,8 @@ pub use crate::editor::{
 };
 pub use crate::library::{library_bt, library_learn_key, library_probe};
 pub use crate::pensettings::{pensettings_open, pensettings_probe, pensettings_shortcut};
-pub use crate::share::{share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep};
+pub use crate::share::{share_draw_asleep, share_live_card_up, share_open, share_open_live, share_sleep,
+};
 
 // app.c: screen switching, the dirty-rect accumulator, toasts.
 
@@ -228,7 +232,8 @@ thread_local! {
 }
 
 fn live_hover_sync(a: &App) {
-    G_LIVE_AWAKE.store(G_LIVE_APP.load(Ordering::Relaxed) && !a.asleep, Ordering::Relaxed);
+    G_LIVE_AWAKE.store(G_LIVE_APP.load(Ordering::Relaxed) && !a.asleep, Ordering::Relaxed,
+    );
     LIVE_CAP.with(|c| {
         let mut cap = c.get();
         cap.on = G_LIVE_APP.load(Ordering::Relaxed);
@@ -242,7 +247,8 @@ fn live_hover_sync(a: &App) {
 // What live_capture reads, for the pen viewers that read the raw digitizer themselves (live.rs,
 // LiveCapture), with the newest pen event handled: published wherever LIVE_CAP changes.
 fn live_cap_publish(cap: &LiveCap, handled: u32) {
-    live_set_capture(&LiveCapture { ok: cap.on && !cap.asleep && !cap.input_yielded, editor: cap.editor, handled, styles: cap.styles });
+    live_set_capture(&LiveCapture { ok: cap.on && !cap.asleep && !cap.input_yielded, editor: cap.editor, handled, styles: cap.styles ,
+    });
 }
 
 // LIVE_CAPTURE_BLOCKED, told to the pen viewers too (live_set_blocked).
@@ -286,7 +292,8 @@ static K_SCREENS: [ScreenOps; ScreenId::COUNT] = [
         tick: library_tick,
     },
     // SCR_EDITOR
-    ScreenOps { init: editor_init, free_: editor_free, enter: editor_enter, leave: editor_leave, event: editor_event, tick: editor_tick },
+    ScreenOps { init: editor_init, free_: editor_free, enter: editor_enter, leave: editor_leave, event: editor_event, tick: editor_tick ,
+    },
     // SCR_PENSET
     ScreenOps {
         init: pensettings_init,
@@ -306,7 +313,8 @@ static K_SCREENS: [ScreenOps; ScreenId::COUNT] = [
         tick: calibrate_tick,
     },
     // SCR_SHARE
-    ScreenOps { init: share_init, free_: share_free, enter: share_enter, leave: share_leave, event: share_event, tick: share_tick },
+    ScreenOps { init: share_init, free_: share_free, enter: share_enter, leave: share_leave, event: share_event, tick: share_tick ,
+    },
 ];
 
 fn ops(s: ScreenId) -> &'static ScreenOps {
@@ -449,7 +457,8 @@ fn calib_follow_panel(c: &mut InputCalib, pw: &mut i32, ph: &mut i32, w: i32, h:
 fn annotate_at_start(a: &mut App, msg: &mut String, cap: usize) -> bool {
     let asked = getenv("GRIMOIRE_ANNOTATE");
     let mut r = AnnotateResult::default();
-    annotate_take(asked.as_deref() == Some("1") && !app_host().is_empty(), &mut r);
+    annotate_take(asked.as_deref() == Some("1") && !app_host().is_empty(), &mut r,
+    );
     if r.outcome == AnnotateOutcome::Opened || r.outcome == AnnotateOutcome::Made {
         let nb = r.nb;
         editor_open_notebook_at(a, nb.as_str(), r.pid, r.outcome == AnnotateOutcome::Made);
@@ -564,20 +573,23 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let standin = getenv("GRIMOIRE_BT_API");
     #[cfg(not(feature = "sim"))]
     let standin: Option<String> = None;
-    bt_init(&store_root(), getenv("GRIMOIRE_BT_SCRIPT").as_deref(), standin.as_deref());
+    bt_init(&store_root(), getenv("GRIMOIRE_BT_SCRIPT").as_deref(), standin.as_deref(),
+    );
     // Settings > Updates (update.h): the launcher says where update.sh and the request file are.
     let mut request = String::new();
     let asked = getenv("GRIMOIRE_UPDATE_REQUEST");
     csnprintf!(&mut request, 700, "%s/.update-request", &store_root());
     let asked = asked.filter(|s| !s.is_empty());
-    update_init(getenv("GRIMOIRE_UPDATE_SCRIPT").as_deref(), Some(asked.as_deref().unwrap_or(&request)));
+    update_init(getenv("GRIMOIRE_UPDATE_SCRIPT").as_deref(), Some(asked.as_deref().unwrap_or(&request)),
+    );
     let mut failed = String::new();
     csnprintf!(&mut failed, 700, "%s/.update-failed", &store_root());
     if std::fs::metadata(&failed).is_ok() {
         let _ = std::fs::remove_file(&failed);
         qlog!("update: the last update did not install (update.sh's lines above in this log say why)");
         // TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
-        app_toast(a, tr("The last update did not install. grimoire.log says why."), 6000);
+        app_toast(a, tr("The last update did not install. grimoire.log says why."), 6000,
+        );
     }
     a.bt_start_at = if a.settings.controller && a.settings.shortcuts_enabled { now_ms().wrapping_add(1500) } else { 0 };
     // Shortcuts on means a scan for keyboards and controllers every 5 s, controller the Bluetooth
@@ -591,8 +603,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         a.settings.controller
     );
     let st = &mut a.settings;
-    calib_follow_panel(&mut st.pen_calib, &mut st.pen_panel_w, &mut st.pen_panel_h, w, h, "pen");
-    calib_follow_panel(&mut st.touch_calib, &mut st.touch_panel_w, &mut st.touch_panel_h, w, h, "touch");
+    calib_follow_panel(&mut st.pen_calib, &mut st.pen_panel_w, &mut st.pen_panel_h, w, h, "pen",
+    );
+    calib_follow_panel(&mut st.touch_calib, &mut st.touch_panel_w, &mut st.touch_panel_h, w, h, "touch",
+    );
     if a.settings.pen_calib.valid || a.settings.touch_calib.valid {
         input_set_calib(
             if a.settings.pen_calib.valid { Some(&a.settings.pen_calib) } else { None },
@@ -621,7 +635,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     templates_init();
     import_scan(dpi);
     let caps = input_caps();
-    if caps.has_orientation && a.settings.follow_rotation && caps.orientation != 0 {
+    if a.settings.rotation_lock != 0 {
+        app_set_rotation(a, a.settings.rotation_lock - 1);
+    } else if caps.has_orientation && a.settings.follow_rotation && caps.orientation != 0 {
         app_set_rotation(a, caps.orientation);
     }
     // A page KOReader sent to annotate: the editor opens on it now, under the toast below. When it
@@ -631,7 +647,8 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     // A whole book KOReader sent: its pages are added over the next moments (book_tick), and the
     // editor then opens on the reader's page.
     let book = getenv("GRIMOIRE_BOOK");
-    book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book);
+    book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
+    );
     // Compatibility notice for beta.1, which could leave the passcode off after a restart.
     // Current standalone sessions leave it enabled and yield to the native keypad on sleep.
     let passcode = getenv("GRIMOIRE_PASSCODE");
@@ -640,7 +657,8 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         qlog!("device passcode: left off by an earlier session; telling the user");
         // TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
         // or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
-        app_toast(a, tr("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000);
+        app_toast(a, tr("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000,
+        );
     } else if annotate_failed {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
@@ -704,7 +722,8 @@ fn note_input(a: &mut App) {
 fn hid_changed(a: &mut App, ev: &InEvent) {
     let attach = ev.type_ == InType::HidAttach;
     a.hid_changes = a.hid_changes.wrapping_add(1);
-    if a.asleep || editor_busy(a) || !hidkeys_due(&mut a.hid_toast_at[if attach { 0 } else { 1 }], now_ms(), 30000) {
+    if a.asleep || editor_busy(a) || !hidkeys_due(&mut a.hid_toast_at[if attach { 0 } else { 1 }], now_ms(), 30000,
+        ) {
         return;
     }
     // TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
@@ -739,6 +758,7 @@ fn app_shortcut_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         pensettings_shortcut(a, action);
         return false;
     }
+    if a.scr == ScreenId::Library { return app_global_action(a, action, src); }
     a.scr == ScreenId::Editor && editor_shortcut_at(a, action, a.w as f32 * 0.5, a.h as f32 * 0.5, src)
 }
 
@@ -748,7 +768,8 @@ fn live_keys_tick(a: &mut App) {
     let mut had_holds = !a.live_holds.is_empty();
     live_block(true);
     for _ in 0..4 {
-        let Some(key) = httpd_live_key_pop() else { break };
+        let Some(key) = httpd_live_key_pop() else { break ;
+        };
         if !key.down {
             a.live_holds.retain(|h| h.code != key.code || h.cookie != key.cookie);
         } else if !a.asleep && live_on() {
@@ -787,8 +808,10 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             if a.scr == ScreenId::Library && library_learn_key(a, ev.value, ev.gamepad) {
                 return;
             }
-            let action = shortcuts_lookup(&a.shortcuts, ev.gamepad, ev.value, ev.key_mods as i32);
-            if app_shortcut_action(a, action, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key })
+            let action = shortcuts_lookup(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32,
+            );
+            if app_shortcut_action(a, action, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key },
+            )
                 && action == SHORTCUT_HOLD_ERASER
             {
                 a.hold_code = ev.value;
@@ -816,7 +839,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::Orientation {
-        if a.settings.follow_rotation {
+        if a.settings.follow_rotation && a.settings.rotation_lock == 0 {
             a.pending_rotation = ev.value & 3;
         }
         return;
@@ -850,7 +873,8 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         // A press the power service already answered needs nothing more: a wake announced while
         // the key was still down must not turn the release into a sleep request (that made the
         // Kindle fall asleep again right after waking).
-        match power_up_action(followed, a.power_answered, a.power_down_asleep, a.asleep, ev.value) {
+        match power_up_action(followed, a.power_answered, a.power_down_asleep, a.asleep, ev.value,
+        ) {
             PowerUpAction::SleepWait => a.power_pressed_at = now_ms() | 1, // expect goingToScreenSaver soon
             PowerUpAction::WakeWait => a.wake_fallback_at = now_ms().wrapping_add(3000) | 1, // and outOfScreenSaver
             PowerUpAction::Leave => {
@@ -932,7 +956,8 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         editor_live_style(a, ev, &mut before);
     }
     live_block(!(ev.type_ == InType::PenMove
-        || (ev.type_ == InType::PenDown && before.enabled != 0 && !rect_contains(before.exclude, ev.x as i32, ev.y as i32))));
+        || (ev.type_ == InType::PenDown && before.enabled != 0 && !rect_contains(before.exclude, ev.x as i32, ev.y as i32))),
+    );
     (ops(a.scr).event)(a, ev);
     live_block(false);
     if ev.live_seq != 0 {
@@ -974,7 +999,9 @@ fn toast_hide(a: &mut App) {
 // for its controls (the keyboard, a sheet's buttons), just above them, so their labels stay
 // readable while it shows.
 fn toast_place(a: &App) -> Rect {
-    let mut r = ui_toast_rect(Rect { x: 0, y: 0, w: a.w, h: a.h }, a.toast.as_str());
+    let mut r = ui_toast_rect(Rect { x: 0, y: 0, w: a.w, h: a.h ,
+        }, a.toast.as_str(),
+    );
     let gap = ui_px(20.0);
     if a.toast_floor > 0 && r.y + r.h + gap > a.toast_floor {
         r.y = a.toast_floor - r.h - gap;
@@ -1085,7 +1112,8 @@ fn live_chip(a: &App) -> Rect {
     if a.scr == ScreenId::Editor {
         return editor_live_chip(a, s);
     }
-    Rect { x: a.w - s - m, y: m, w: s, h: s }
+    Rect { x: a.w - s - m, y: m, w: s, h: s ,
+    }
 }
 
 // The chip is where live_chip says now: when it moved (the panel was dragged or folded, a menu opened or closed,
@@ -1141,7 +1169,8 @@ fn live_push_screen(a: &mut App, r: Rect) {
 pub fn live_view_open(a: &mut App) {
     if !live_on() {
         let mut ok = live_start(a.w, a.h) == 0;
-        if ok && httpd_acquire(HTTPD_LIVE, a.settings.http_port, a.dpi, ui_theme() == UiTheme::Gothic) != 0 {
+        if ok && httpd_acquire(HTTPD_LIVE, a.settings.http_port, a.dpi, ui_theme() == UiTheme::Gothic,
+            ) != 0 {
             live_stop();
             ok = false;
         }
@@ -1215,7 +1244,8 @@ fn live_tick(a: &mut App, now: u32) {
         // (the card keeps its code fresh: it waits there)
         live_view_stop(a, false);
         // TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
-        app_toast(a, tr("Live view turned off: no one watched for 10 minutes."), 4000);
+        app_toast(a, tr("Live view turned off: no one watched for 10 minutes."), 4000,
+        );
         return;
     }
     // TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
@@ -1258,7 +1288,8 @@ fn app_sleep(a: &mut App) {
         }
         return;
     }
-    let full = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let full = Rect { x: 0, y: 0, w: a.w, h: a.h ,
+    };
     let mut pinned = Canvas::default();
     let mut wallpaper = false;
     if mode == 3 {
@@ -1359,7 +1390,8 @@ fn app_leave(a: &mut App) {
             qlog!("leaving: staying this once (holding the power button 4 s again within a minute leaves without the page)");
             // TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
             // saved (a full storage), so it stays once.
-            app_toast(a, tr("Could not save this page. Hold power 4 s again to leave anyway."), 10000);
+            app_toast(a, tr("Could not save this page. Hold power 4 s again to leave anyway."), 10000,
+            );
             return;
         }
         let mut msg = String::new();
@@ -1378,13 +1410,17 @@ pub fn app_leave_for_update(a: &mut App) {
     // TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
     // installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
     // opens the new one next time.
-    app_toast(a, if hosted { tr("Updating. Open Grimoire from KOReader again in a moment.") } else { tr("Updating. Grimoire starts again by itself.") }, 3000);
+    app_toast(a, if hosted { tr("Updating. Open Grimoire from KOReader again in a moment.") } else { tr("Updating. Grimoire starts again by itself.") }, 3000,
+    );
     a.running = false;
 }
 
 /// Turn the UI to a device rotation now (relayouts every screen).
 pub fn app_set_rotation(a: &mut App, quarter_turns: i32) {
     let r = quarter_turns & 3;
+    if a.settings.rotation_lock != 0 && r != a.settings.rotation_lock - 1 {
+        return;
+    }
     // (every platform fills both; the App's own size stands in until it does)
     let (mut w, mut h) = (a.w, a.h);
     display_set_orientation(r, &mut w, &mut h);
@@ -1531,7 +1567,8 @@ fn app_tick_screens(a: &mut App, now: u32) {
         let mut msg = String::new();
         // TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
         if bg > 0 { csnprintf!(&mut msg, 256, tr("PDF saved to %s"), "grimoire/PDFs"); }
-        app_toast(a, if bg > 0 { msg.as_str() } else { tr("Could not save the PDF") }, 2500);
+        app_toast(a, if bg > 0 { msg.as_str() } else { tr("Could not save the PDF") }, 2500,
+        );
     }
     if store_take_corrupt_count() > 0 {
         let mut msg = String::new();
@@ -1603,6 +1640,9 @@ fn app_tick_screens(a: &mut App, now: u32) {
     if a.asleep {
         return;
     }
+    if a.settings.rotation_lock != 0 {
+        a.pending_rotation = -1;
+    }
     if a.pending_rotation >= 0 && a.pending_rotation != a.rotation && !(a.scr == ScreenId::Editor && editor_busy(a)) {
         let r = a.pending_rotation;
         a.pending_rotation = -1;
@@ -1619,7 +1659,9 @@ fn app_tick_screens(a: &mut App, now: u32) {
 }
 
 pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
-    let r = rect_intersect(r, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: a.w, h: a.h ,
+        },
+    );
     if rect_is_empty(r) {
         return;
     }
@@ -1631,7 +1673,9 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
 }
 
 pub fn app_invalidate_all(a: &mut App, m: RefreshMode) {
-    app_invalidate(a, Rect { x: 0, y: 0, w: a.w, h: a.h }, m);
+    app_invalidate(a, Rect { x: 0, y: 0, w: a.w, h: a.h ,
+        }, m,
+    );
 }
 
 /// presents dirty rect (if any)
@@ -1681,7 +1725,8 @@ fn app_flush_in(a: &mut App) {
         if chipped {
             canvas_blit(&mut a.chip_under, &a.screen, chip, 0, 0);
             ui_frame(&mut a.screen, chip, ui_px(8.0), 0, true, 0);
-            ui_icon(&mut a.screen, IconKind::Live, rect_inflate(chip, -ui_px(2.0)), 255);
+            ui_icon(&mut a.screen, IconKind::Live, rect_inflate(chip, -ui_px(2.0)), 255,
+            );
         }
     }
     // The corner's clock over what it covers, put back after the present like the others (the
@@ -1701,13 +1746,17 @@ fn app_flush_in(a: &mut App) {
     }
     display_present(&a.screen, a.dirty, m);
     if overlay {
-        canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h }, a.toast_rect.x, a.toast_rect.y);
+        canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h ,
+            }, a.toast_rect.x, a.toast_rect.y,
+        );
     }
     if let Some(c) = corner {
         status_uncover(a, c);
     }
     if chipped {
-        canvas_blit(&mut a.screen, &a.chip_under, Rect { x: 0, y: 0, w: chip.w, h: chip.h }, chip.x, chip.y);
+        canvas_blit(&mut a.screen, &a.chip_under, Rect { x: 0, y: 0, w: chip.w, h: chip.h ,
+            }, chip.x, chip.y,
+        );
     }
     status_presented(a, a.dirty);
     a.dirty = RECT_EMPTY;
@@ -1757,7 +1806,8 @@ pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InE
 /// present with the key's rect already in the accumulator, one union from its rows down to the key, the
 /// overlapping refresh this host exists to avoid. The caller invalidates the key's rect, on the fast waveform,
 /// after its own flush; app_keyboard_pointer is this and that, byte for byte what it was.
-pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent) -> (KbResult, Rect) {
+pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent,
+) -> (KbResult, Rect) {
     let mut d = RECT_EMPTY;
     let r = keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d);
     if r == KbResult::Done || r == KbResult::Cancel {
@@ -1773,7 +1823,9 @@ pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev
     // on the Kindle several times the pixels to copy, and the next key's refreshes would overlap it
     // and wait in the driver's queue for it to end (docs/INK-PERFORMANCE.md), every key behind the
     // one before. One clean GL16 of the keyboard follows once typing pauses (app_keyboard_tick).
-    keyboard_draw(kb, &mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    keyboard_draw(kb, &mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h ,
+        },
+    );
     if !rect_is_empty(kb.field_dirty) {
         app_invalidate(a, kb.field_dirty, RefreshMode::Fast);
         app_flush(a);
@@ -1859,6 +1911,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("status.") {
         return status_probe(a, k, out, cap);
     }
+    if key.starts_with("fshape.") { return editor_probe(a, key, out, cap); }
     if let Some(k) = key.strip_prefix("editor.") {
         return editor_probe(a, k, out, cap);
     }
@@ -1878,7 +1931,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 30] = [
+    let nums: [(&str, i32); 31] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -1899,6 +1952,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.shape_hold_ms", st.shape_hold_ms),
         ("settings.status_size", st.status_size),
         ("settings.status_corner", st.status_corner),
+        ("settings.rotation_lock", st.rotation_lock),
         ("settings.gestures", st.gestures as i32),
         ("settings.landscape_fit", st.landscape_fit as i32),
         ("settings.gesture_new_page", st.gesture_new_page as i32),
@@ -1907,7 +1961,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("shortcuts.code", a.last_shortcut_code),
         ("native_pin", a.native_pin as i32),
         ("input.yielded", a.input_yielded as i32),
-        ("sleep.wallpaper", !a.koreader_wallpaper.px.is_empty() as i32),
+        ("sleep.wallpaper", !a.koreader_wallpaper.px.is_empty() as i32,
+        ),
         ("bg.busy", bg_busy() as i32), // a background job (an export, a compaction) runs or waits
     ];
     for (k, v) in nums {
@@ -1927,7 +1982,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     let dot = tool.and_then(|t| t.find('.'));
     if let (Some(tool), Some(dot)) = (tool, dot) {
         for t in 0..TOOL_COUNT {
-            let Some(name) = app_probe_tool(ToolKind(t as i32)) else { continue };
+            let Some(name) = app_probe_tool(ToolKind(t as i32)) else { continue ;
+            };
             if name.len() != dot || !tool.starts_with(name) {
                 continue;
             }
@@ -1990,29 +2046,37 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     } else if let Some(action) = key.strip_prefix("pads.") {
         // The controller buttons for an action, as the files name them: "pads.undo" -> "East" ("" none).
         let mut codes = [0i32; 4];
-        let n = shortcuts_pads_for(&a.shortcuts, shortcut_action(action), &mut codes);
+        let n = shortcuts_pads_for(&a.shortcuts, ActionSrc::Pad,
+            shortcut_action(action), &mut codes,
+        );
         out.clear();
         let mut i = 0;
         while i < n && i < 4 {
             let mut name = String::new();
             shortcut_pad_name(codes[i as usize], &mut name, 16);
-            append_cut(out, cap, &cformat!("%s%s", if i != 0 { "," } else { "" }, &name));
+            append_cut(out, cap, &cformat!("%s%s", if i != 0 { "," } else { "" }, &name),
+            );
             i += 1;
         }
+    } else if key == "gestures.shape_count" {
+        csnprintf!(out, cap, "%d", gesturemap_shapes(&a.gestures).len() as i32);
+    } else if key == "gestures.refused" {
+        csnprintf!(out, cap, "%d", a.gestures.refused);
+    } else if let Some(action) = key.strip_prefix("gestures.shape.") {
+        out.clear();
+        if let Some(g) = gesturemap_shape_of(&a.gestures, shortcut_action(action)) {
+            csnprintf!(out, cap, "%d", g.n as i32);
+        }
     } else if let Some(action) = key.strip_prefix("gestures.") {
-        // The touch gestures that do an action, as gestures.ini names them: "gestures.pages" ->
-        // "touch.2.down" ("" none).
         let act = shortcut_action(action);
         out.clear();
-        for fingers in 2..=3u8 {
-            for kind in [TouchKind::Down, TouchKind::Up, TouchKind::Left, TouchKind::Right, TouchKind::Tap] {
-                let k = GestureKey::Touch { fingers, kind };
-                if act != SHORTCUT_NONE && gesturemap_action(&a.gestures, k) == act {
-                    let mut name = String::new();
-                    gesturemap_key_name(k, &mut name);
-                    append_cut(out, cap, &cformat!("%s%s", if out.is_empty() { "" } else { "," }, &name));
+        if let Some(k) =gesturemap_key_for(&a.gestures, act , ActionSrc::Touch){
+            gesturemap_key_name(k, out);
                 }
-            }
+            else if gesturemap_shape_of(&a.gestures, act).is_some()
+            || gesturemap_shape_newer(&a.gestures, act)
+        {
+            out.push_str("shape");
         }
     } else if key == "rotation" {
         csnprintf!(out, cap, "%d", a.rotation);
@@ -2083,7 +2147,8 @@ pub fn app_probe_music(m: Option<&MusicLayout>, out: &mut String, cap: usize) {
 /// tools. tests/test_probe.c holds it to what settings_save writes.
 pub fn app_probe_tool(t: ToolKind) -> Option<&'static str> {
     const K: [&str; TOOL_COUNT] =
-        ["pencil", "mech", "ballpoint", "eraser", "highlighter", "fountain", "fineliner", "marker", "charcoal", "calligraphy"];
+        ["pencil", "mech", "ballpoint", "eraser", "highlighter", "fountain", "fineliner", "marker", "charcoal", "calligraphy",
+    ];
     if t.0 >= 0 && (t.0 as usize) < TOOL_COUNT {
         Some(K[t.0 as usize])
     } else {
@@ -2131,18 +2196,26 @@ mod tests {
     #[test]
     fn the_dirty_rect_keeps_the_strongest_mode() {
         let mut a = App { w: 100, h: 200, ..Default::default() };
-        app_invalidate(&mut a, Rect { x: 10, y: 10, w: 5, h: 5 }, RefreshMode::Ui);
-        app_invalidate(&mut a, Rect { x: 50, y: 60, w: 5, h: 5 }, RefreshMode::Fast);
+        app_invalidate(&mut a, Rect { x: 10, y: 10, w: 5, h: 5 ,
+            }, RefreshMode::Ui,
+        );
+        app_invalidate(&mut a, Rect { x: 50, y: 60, w: 5, h: 5 ,
+            }, RefreshMode::Fast,
+        );
         assert_eq!(a.dirty_mode, RefreshMode::Ui);
         assert_eq!(a.dirty, Rect { x: 10, y: 10, w: 45, h: 55 });
         // Off the screen: nothing.
-        app_invalidate(&mut a, Rect { x: 300, y: 0, w: 5, h: 5 }, RefreshMode::Full);
+        app_invalidate(&mut a, Rect { x: 300, y: 0, w: 5, h: 5 ,
+            }, RefreshMode::Full,
+        );
         assert_eq!(a.dirty_mode, RefreshMode::Ui);
         app_invalidate_all(&mut a, RefreshMode::Full);
         assert_eq!((a.dirty, a.dirty_mode), (Rect { x: 0, y: 0, w: 100, h: 200 }, RefreshMode::Full));
         // With nothing dirty, the first mode asked for is the mode, however weak.
         a.dirty = RECT_EMPTY;
-        app_invalidate(&mut a, Rect { x: 0, y: 0, w: 1, h: 1 }, RefreshMode::Fast);
+        app_invalidate(&mut a, Rect { x: 0, y: 0, w: 1, h: 1 ,
+            }, RefreshMode::Fast,
+        );
         assert_eq!(a.dirty_mode, RefreshMode::Fast);
     }
 
@@ -2154,4 +2227,161 @@ mod tests {
         append_cut(&mut out, 8, ",West");
         assert_eq!(out, "East,So");
     }
+}
+/// The existing screen lifecycle applied after a language or theme change.
+pub fn app_relayout(a: &mut App) {
+    app_redraw_mode(a, RefreshMode::Full);
+}
+
+/// Save and use the power-button sleep transition, including the current sleep-screen policy.
+pub fn app_request_sleep(a: &mut App) {
+    if a.asleep {
+        return;
+    }
+    a.sleep_requested = true;
+    app_sleep(a);
+    request_sleep(a);
+}
+
+/// Enable shortcuts with the same defaults, readers and Bluetooth lifecycle as Settings.
+pub fn app_toggle_shortcuts(a: &mut App) {
+    let path = cformat!("%s/shortcuts.ini", &store_root());
+    if !a.settings.shortcuts_enabled && shortcuts_write_defaults(&path) != 0 {
+        app_toast(a, tr("Could not save shortcuts.ini"), 5000);
+        return;
+    }
+    a.settings.shortcuts_enabled = !a.settings.shortcuts_enabled;
+    settings_save(&a.settings);
+    input_shortcuts_enable(a.settings.shortcuts_enabled);
+    if !a.settings.shortcuts_enabled {
+        bt_stop();
+    } else if a.settings.controller && bt_present() {
+        bt_start();
+    }
+    let pads = cformat!("%s/controller.ini", &store_root());
+    shortcuts_load_all(&mut a.shortcuts, &path, &pads);
+}
+
+pub fn app_toggle_controller(a: &mut App) {
+    a.settings.controller = !a.settings.controller;
+    settings_save(&a.settings);
+    if a.settings.controller {
+        bt_start();
+    } else {
+        bt_stop();
+    }
+}
+
+/// Settings actions shared by the editor and Library. Callers apply their modal/stroke guards.
+pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
+    if !(SHORTCUT_INVERT..=SHORTCUT_UPDATE_CHANNEL).contains(&action) || action_sources(action) & src.mask() == 0 { return false; }
+    let mut msg = String::new();
+    let mut relayout = false;
+    match action {
+        SHORTCUT_INVERT => {
+            a.settings.invert = !a.settings.invert;
+            display_set_invert(a.settings.invert);
+            live_set_invert(a.settings.invert);
+            app_invalidate_all(a, RefreshMode::Full);
+        }
+        SHORTCUT_LIGHT_DOWN | SHORTCUT_LIGHT_UP | SHORTCUT_WARMTH_DOWN | SHORTCUT_WARMTH_UP => {
+            let warm = action == SHORTCUT_WARMTH_DOWN || action == SHORTCUT_WARMTH_UP;
+            let (light, warmth) = light_cached();
+            let level = if warm { warmth } else { light };
+            if level < 0 {
+                // TRANSLATORS: light action before its cached level is known; toast, 1700 px at 44 px.
+                app_toast(a, tr("Light not ready yet."), 2000);
+                return true;
+            }
+            let up = action == SHORTCUT_LIGHT_UP || action == SHORTCUT_WARMTH_UP;
+            let value = (level + if up { 1 } else { -1 }).clamp(0, LIGHT_MAX);
+            if warm { light_set_warmth(value); } else { light_set_intensity(value); }
+            // TRANSLATORS: cached light step and maximum; toast, 1700 px at 44 px bold.
+            csnprintf!(&mut msg, 256, if warm { tr("Warmth %d of %d") } else { tr("Light %d of %d") }, value, LIGHT_MAX);
+        }
+        SHORTCUT_ROTATION_LOCK => {
+            a.settings.rotation_lock = if a.settings.rotation_lock == 0 { 1 + a.rotation } else { 0 };
+            if a.settings.rotation_lock == 0 && a.settings.follow_rotation {
+                let caps = input_caps();
+                if caps.has_orientation { a.pending_rotation = caps.orientation; }
+            } else { a.pending_rotation = -1; }
+            // TRANSLATORS: rotation action feedback, toast, 1700 px at 44 px bold.
+            msg.push_str(if a.settings.rotation_lock != 0 { tr("Rotation locked.") } else { tr("Rotation follows the Kindle.") });
+        }
+        SHORTCUT_PINCH_ZOOM => {
+            a.settings.pinch_zoom = !a.settings.pinch_zoom;
+            // TRANSLATORS: pinch zoom toggle feedback, toast, 1700 px at 44 px bold.
+            msg.push_str(if a.settings.pinch_zoom { tr("Pinch zoom on.") } else { tr("Pinch zoom off.") });
+        }
+        SHORTCUT_THEME => {
+            a.settings.theme = if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Gothic as i32 } else { UiTheme::Classic as i32 };
+            ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Classic } else { UiTheme::Gothic });
+            relayout = true;
+        }
+        SHORTCUT_SIDE_BUTTON => {
+            a.settings.side_button = (a.settings.side_button + 1) % 4;
+            // TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
+            const ROWS: [&str; 4] = [n_("Holding the pen button does nothing"), n_("Holding the pen button erases"), n_("Holding the pen button highlights"), n_("Holding the pen button draws white")];
+            msg.push_str(tr(ROWS[a.settings.side_button as usize]));
+        }
+        SHORTCUT_MIRROR_PDF => {
+            a.settings.mirror_pdf = !a.settings.mirror_pdf;
+            // TRANSLATORS: PDF mirror setting feedback; toast, 1700 px at 44 px bold.
+            msg.push_str(if a.settings.mirror_pdf { tr("PDF copies on.") } else { tr("PDF copies off.") });
+        }
+        SHORTCUT_SLEEP_SCREEN => {
+            if a.native_pin { return false; }
+            // Keep the branch's existing KOReader wallpaper choice as well as the brief's three.
+            a.settings.sleep_mode = (a.settings.sleep_mode + 1) % 4;
+            // TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
+            const ROWS: [&str; 4] = [n_("Sleep screen: the page I'm on (tap to change)"), n_("Sleep screen: a pinned page (tap to change)"), n_("Sleep screen: the Kindle's own screensaver (tap to change)"), n_("Sleep screen: KOReader wallpaper (tap to change)")];
+            msg.push_str(tr(ROWS[a.settings.sleep_mode as usize]));
+        }
+        SHORTCUT_SLEEP => { app_request_sleep(a); return true; }
+        SHORTCUT_GESTURES => {
+            a.settings.gestures = !a.settings.gestures;
+            // TRANSLATORS: gestures action feedback; off names the recovery menu. Toast, two 1700 px lines at 44 px.
+            msg.push_str(if a.settings.gestures { tr("Gestures on.") } else { tr("Gestures off. Settings > Gestures turns them back on.") });
+        }
+        SHORTCUT_SHORTCUTS => {
+            app_toggle_shortcuts(a);
+            // TRANSLATORS: shortcut enablement feedback; toast, 1700 px at 44 px bold.
+            msg.push_str(if a.settings.shortcuts_enabled { tr("Shortcuts on.") } else { tr("Shortcuts off.") });
+        }
+        SHORTCUT_BLUETOOTH_CONTROLLER => {
+            app_toggle_controller(a);
+            // TRANSLATORS: Bluetooth controller setting feedback; toast, 1700 px at 44 px bold.
+            msg.push_str(if a.settings.controller { tr("Bluetooth controller on.") } else { tr("Bluetooth controller off.") });
+        }
+        SHORTCUT_LANGUAGE => {
+            let current = i18n_find(i18n_current());
+            let next = (current + 1).rem_euclid(i18n_language_count());
+            let code = i18n_language_code(next).unwrap_or("en");
+            a.settings.language.set(code);
+            i18n_set(code);
+            msg.push_str(i18n_language_name(next).unwrap_or("English"));
+            relayout = true;
+        }
+        SHORTCUT_SLEEP_AFTER => {
+            const STEPS: [i32; 8] = [0, 1, 2, 5, 10, 15, 30, 60];
+            let at = STEPS.iter().enumerate().min_by_key(|(_, v)| (**v - a.settings.sleep_minutes).abs()).map_or(0, |(i, _)| i);
+            a.settings.sleep_minutes = STEPS[(at + 1) % STEPS.len()];
+            app_apply_sleep_policy(a);
+            let value = if a.settings.sleep_minutes == 0 { tr("Never").to_string() } else { cformat!("%d min", a.settings.sleep_minutes) };
+            // TRANSLATORS: sleep timeout after cycling, %s is its value; toast, 1700 px at 44 px bold.
+            msg = cformat!(tr("Sleep after: %s"), &value);
+        }
+        SHORTCUT_UPDATE_CHANNEL => {
+            a.settings.updates = (a.settings.updates + 1) % 3;
+            // TRANSLATORS: update channels, used in a toast with Update channel: %s; 1700 px at 44 px.
+            const CHANNELS: [&str; 3] = [n_("Automatic"), n_("Preview"), n_("Stable")];
+            // TRANSLATORS: selected update channel, %s is its name; toast, 1700 px at 44 px bold.
+            msg = cformat!(tr("Update channel: %s"), tr(CHANNELS[a.settings.updates as usize]));
+        }
+        _ => return false,
+    }
+    settings_save(&a.settings);
+    if relayout { app_relayout(a); }
+    if !msg.is_empty() { app_toast(a, &msg, 2000); }
+    true
 }

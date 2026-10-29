@@ -139,3 +139,10 @@ pub fn display_wait() {
 pub fn display_close() {
     platform::display_close()
 }
+/// Cached indication for pacing non-ink trails on a colour panel. No display operation is issued.
+pub fn display_last_fast_waiting() -> bool {
+    #[cfg(feature = "kindle")]
+    { crate::display_fbink::display_last_fast_waiting() }
+    #[cfg(not(feature = "kindle"))]
+    { false }
+}

@@ -102,7 +102,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Pin this page | **Fijar esta página** | |
 | Live view, Stop | **Vista en directo**, **Detener** (*La vista en directo terminó*) | The screen watched in a computer's browser. The computer **mira** (*Un ordenador está mirando esta pantalla*). |
 | Controller, its buttons, pair, forget | **mando**, **botones del mando**, **emparejar**, **olvidar** (*Mando conectado*, *Emparejar un mando*) | A game controller: *mando* (Spain), *control* in much of Latin America. A press: *pulsa* (*Pulsa un botón para Deshacer*). The Bluetooth helper: *asistente Bluetooth*. |
-| A controller's actions (the Buttons sheet's rows): Erase while held, Eraser mode, Clear page, Fit page, Tool picker, Fold the panel, Close menu, Add a link, Name the page | **Borrar manteniendo presionado**, **Modo del borrador**, **Limpiar la página**, **Ajustar la página**, **Selector de herramientas**, **Plegar el panel**, **Cerrar el menú**, **Añadir un enlace**, **Nombrar la página** | Each name also fills *Pulsa un botón para %s* and *Ese botón ya no es para %s*, so they keep their articles (*Cerrar menú* reads as a label). *Add a link* there has the context `buttons`, so it keeps its article where the Index's button stays *Añadir enlace*; *Nombrar la página* is the open page's, as the Index's *Nombrar esta página*. The sheet's groups: **Edición, Herramientas, Páginas, Índice, Menús** (the Index's group is *Índice...* in the list and *Índice* as the sheet's title). Previous / next: *Página anterior / siguiente*; in the tool picker: **Anterior / siguiente en el selector** (*Pulsa un botón para Siguiente en el selector*), the Tools group saying of what. |
+| A controller's actions (the Buttons sheet's rows): Erase while held, Eraser mode, Clear page, Fit page, Tool picker, Fold the panel, Close menu, Add a link, Name the page | **Borrar manteniendo presionado**, **Modo del borrador**, **Limpiar la página**, **Ajustar la página**, **Selector de herramientas**, **Plegar el panel**, **Cerrar el menú**, **Añadir un enlace**, **Nombrar la página** | Each name also fills *Pulsa un botón para %s* and *Ese botón ya no es para %s*, so they keep their articles (*Cerrar menú* reads as a label). *Add a link* there has the context `buttons`, so it keeps its article where the Index's button stays *Añadir enlace*; *Nombrar la página* is the open page's, as the Index's *Nombrar esta página*. The sheet's groups: **Edición, Herramientas, Páginas, Índice, Menús, Pantalla, Sistema** (the Index's group is *Índice...* in the list and *Índice* as the sheet's title). Previous / next: *Página anterior / siguiente*; in the tool picker: **Anterior / siguiente en el selector** (*Pulsa un botón para Siguiente en el selector*), the Tools group saying of what. |
 | Link (drawn on a page), Add a link | **enlace**, **Añadir enlace** (*Enlazado con la página 3.*) | Where a link goes is where it **lleva** (*Cambiar a dónde lleva...*), or where it **va** in Link to...'s title (*¿Adónde va el enlace?*); the lasso around what links: *Rodea lo que enlaza.* Not *Vínculo*. (*Quitar enlace*, the Pages view's Remove link, is retired from 2.0.0-beta.6.) |
 | A link's area (Index phase 2: Redraw the area, the strip, New area saved) | **zona** (*Volver a dibujar la zona*, *Dibuja la nueva zona del enlace.*, *Zona nueva guardada.*) | As *zona de enlace* below. The long-press card is never named in a string (no *tarjeta*); its rows are verbs: *Renombrar en el índice*, *Cambiar a dónde lleva...*, *Volver a dibujar la zona*, *Borrar enlace* (deleting a link is **borrar**, as Delete elsewhere). |
 | Pin (pens to the panel), unpin | **Fijar** (*Fijar en el panel (hasta 4)*), **quitar** (*Quita una primero*) | As *Fijar esta página*; *Anclar*, *desanclar*. The pens pinned are *herramientas* (*En el panel caben hasta 4 herramientas*), as the tool picker's title calls them. |
@@ -167,3 +167,30 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 - No º or ª anywhere: the Gothic face draws them as a plain o and a.
 - Not translated: Grimoire, Kindle, Kindle Scribe, Wi-Fi, PDF, PNG, ZIP, ImageMagick, macOS,
   Linux, the command `tools/grimoire-pull --http`, and the folder and file names above.
+
+
+## Phase 3 gestures and action registry
+
+| English | Spanish | Use and budget |
+| --- | --- | --- |
+| Gestures; gesture | **Gestos; gesto** | Settings bottom word is **Gestos**; gestures do not depend on **Activar atajos**. The row is *Gestos: activados/desactivados (toca para cambiar)*. |
+| finger shape; finger shape (newer version) | **figura con el dedo; figura con el dedo (versión más nueva)** | Always *figura con el dedo* in a binding row, never bare *figura*. Smart shapes keep *forma*. A record-card sentence may shorten the repeated noun to *figura*. |
+| tap; 2-finger tap | **toque; toque con 2 dedos** | Direction rows: *1 dedo hacia arriba*, *2 dedos hacia abajo*, *3 dedos a la izquierda*, *2 dedos a la derecha*. |
+| no gesture | **sin gesto** | A binding's empty state, not *ninguno*. |
+| Screen... / Screen; System... / System | **Pantalla... / Pantalla; Sistema... / Sistema** | Seven shared groups: Edición, Herramientas, Páginas, Índice, Menús, Pantalla, Sistema. |
+| Do the gesture for %s | **Haz el gesto para %s** | Record card title; the substituted action is the registry's existing translated label/context. |
+| Use; Try again; Reset gestures | **Usar; Otra vez; Restablecer los gestos** | Use saves; Try again starts a fresh attempt; Reset restores built-ins and deletes recorded shapes after confirmation. |
+| Now for %s. Use moves it here. | **Ahora es para %s. Usar lo trae aquí.** | Names the action losing a pattern. Shape version: *Es la figura de %s. Usar la trae aquí.* |
+| Lock rotation; Pinch to zoom; Switch theme | **Bloquear la rotación; Pellizcar para ampliar; Cambiar de tema** | Registry labels, independent of the longer Settings sentences. |
+| Less / more light; less / more warmth | **Menos / más luz; Menos / más calidez** | Pair labels; individual steps keep *Menos luz*, *Más luz*, *Menos calidez*, *Más calidez*. |
+| Zoom out / zoom in; Scroll up / down | **Alejar / acercar; Desplazar arriba / abajo** | Each member also has its individual registry label. |
+| PDF copies; Sleep screen; Sleep now | **Copias en PDF; Pantalla de reposo; Reposo ahora** | The sleep-screen cycle retains KOReader wallpaper as its fourth choice. |
+| Update channel; Automatic; Preview; Stable; Never | **Canal de actualizaciones; Automático; Beta; Estable; Nunca** | These short values fill action toasts. Studio's *Preview* keeps its separate context and translation *Vista previa*. |
+| %s: %s; %s: %s / %s | **%s: %s; %s: %s / %s** | Both use context `gesture row`; preserve every placeholder and its order. |
+
+New refusal/progress sentences follow PHASE3-BRIEF section 15. Keep tú imperatives (*Desliza*,
+*Apoya*, *Dibújala*, *Muévete*). The 248 px / 34 px caps footer budget is checked for Controller
+(**Mando**), Gestures (**Gestos**) and Updates (**Actualizaciones**) in English/Spanish and
+Gothic/Classic. Existing translations and contexts remain intact; the compact footer did not
+require abbreviating *Actualizaciones*. Record-card refusal lines are tested in two lines at
+34 px within the actual 1292 px line rectangle, and the unwrapped footer within 1312 px.

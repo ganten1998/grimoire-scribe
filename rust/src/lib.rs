@@ -21,6 +21,7 @@
 compile_error!("the kindle and sim features are two builds of the app: enable one");
 
 // ---- infrastructure (no C file of its own) ----
+pub mod actions; // action ids, registry metadata and binding groups
 pub mod assets; // build/gen/*.c: fonts, eraser sample, web pages, catalogs
 pub mod cfmt; // printf, for log lines, translations and every byte-exact text
 pub mod ffi_fbink; // third_party/FBInk via csrc/fbink_shim.c (the Kindle)
@@ -34,6 +35,8 @@ pub mod calib_fit;
 pub mod canvas;
 pub mod fbcheck;
 pub mod fbpack;
+pub mod fingershape;
+pub mod fingershape_synth;
 pub mod font;
 pub mod gesturemap; // which action each gesture does: the built-ins and gestures.ini
 pub mod hidkeys;
@@ -79,6 +82,7 @@ pub mod calibrate;
 pub mod dispmenu;
 pub mod editor;
 pub mod erasersample; // header only (the bytes are in assets.rs)
+pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
 pub mod httpd;
 pub mod inkmode; // header only
 pub mod keyboard;
@@ -87,7 +91,6 @@ pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only,
 pub mod linkcard; // the long-press card: what a held link (or bar row) can do (Rust only, the Index's phase 2)
 pub mod live;
 pub mod live_keys;
-pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
 pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
@@ -99,11 +102,11 @@ pub mod ui;
 pub mod display; // display.h: the types; the functions are the build's platform's
 // light_kindle.c is plain POSIX (lipc through the shell): it builds everywhere, as tests/test_lockui.c
 // compiles it on the host; light.rs takes it as the platform on the Kindle only.
-pub mod light_kindle;
 pub mod input; // input.h: the same
 pub mod light; // light.h: the same
-pub mod mainloop;
-pub mod mapview; // main.c
+pub mod light_kindle;
+pub mod mainloop; // main.c
+pub mod mapview;
 
 #[cfg(feature = "kindle")]
 pub mod display_fbink;
@@ -118,6 +121,7 @@ pub mod platform_none; // host builds: tools and cargo test link no platform
 
 /// Every header's surface, as the C's one namespace: `use crate::prelude::*;` in each module.
 pub mod prelude {
+    pub use crate::actions::*;
     pub use crate::annotate::*;
     pub use crate::app::*;
     pub use crate::bat::*;
@@ -137,6 +141,7 @@ pub mod prelude {
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
     pub use crate::findsheet::*;
+    pub use crate::fingershape::*;
     pub use crate::font::*;
     pub use crate::gesturemap::*;
     pub use crate::hidkeys::*;
@@ -151,9 +156,9 @@ pub mod prelude {
     pub use crate::keyboard::*;
     pub use crate::koreader::*;
     pub use crate::latency::*;
+    pub use crate::light::*;
     pub use crate::linkbar::*;
     pub use crate::linkcard::*;
-    pub use crate::light::*;
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;

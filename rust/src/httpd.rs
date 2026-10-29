@@ -1515,7 +1515,7 @@ fn route_live(path: &[u8], query: &[u8]) {
             buf_puts(&mut b, ",\"action\":");
             json_str(&mut b, shortcut_action_name(key.action).unwrap_or("").as_bytes());
             buf_puts(&mut b, ",\"label\":");
-            json_str(&mut b, crate::library::action_label(key.action).as_bytes());
+            json_str(&mut b, crate::actions::action_label(key.action).as_bytes());
             buf_puts(&mut b, "}");
         }
         buf_puts(&mut b, "]");

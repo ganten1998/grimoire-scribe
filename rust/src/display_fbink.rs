@@ -134,6 +134,7 @@ struct State {
     LH: i32,
     /// a colour panel: fast refreshes outside live ink wait for the driver's read
     g_mdp_wait: bool,
+    last_fast_wait: bool,
     /// waits logged (the first few, for a tester's log)
     g_mdp_logged: i32,
     /// strokes being drawn (display_live_ink): their fast frames never wait
@@ -198,6 +199,7 @@ impl State {
             LW: 0,
             LH: 0,
             g_mdp_wait: false,
+            last_fast_wait: false,
             g_mdp_logged: 0,
             g_ink: LiveInk::default(),
             g_invert: false,
@@ -1143,6 +1145,7 @@ pub fn display_present(screen: &Canvas, r: Rect, mode: RefreshMode) {
         } else if mode != RefreshMode::Fast && whole_frame && !s.g_previous.px.is_empty() {
             s.g_frame_known = true;
         }
+        if mode == RefreshMode::Fast { s.last_fast_wait = ret >= 0 && s.g_mdp_wait && !ink; }
         if ret >= 0 && mode == RefreshMode::Fast && s.g_mdp_wait && !ink {
             mdp_wait(s);
         }
@@ -1352,3 +1355,5 @@ pub fn display_close() {
         s.g_frame_known = false;
     })
 }
+/// Last Fast frame needed the existing colour-panel driver wait; reads cached state only.
+pub fn display_last_fast_waiting() -> bool { with(|s| s.last_fast_wait) }

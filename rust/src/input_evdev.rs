@@ -168,13 +168,15 @@ const _: () = assert!(KEYB_BYTES == HID_KEY_BYTES && ABSB_BYTES == HID_ABS_BYTES
 fn eviocgabs(fd: i32, code: u16, ai: &mut InputAbsinfo) -> i32 {
     // SAFETY: EVIOCGABS writes one struct input_absinfo (its size is in the request) into ai, a
     // repr(C) struct of six ints that any bytes make valid; a bad fd only makes it fail.
-    unsafe { libc::ioctl(fd, eviocgabs_req(code) as libc::Ioctl, ai as *mut InputAbsinfo) }
+    unsafe { libc::ioctl(fd, eviocgabs_req(code) as libc::Ioctl, ai as *mut InputAbsinfo,
+        ) }
 }
 /// A read request whose length is the buffer's (EVIOCGNAME, EVIOCGKEY, EVIOCGBIT).
 fn evioc_read(fd: i32, nr: u32, buf: &mut [u8]) -> i32 {
     // SAFETY: the request carries buf.len(), and the kernel writes at most that many bytes into the
     // buffer; bytes are bytes.
-    unsafe { libc::ioctl(fd, ioc(IOC_READ, nr, buf.len()) as libc::Ioctl, buf.as_mut_ptr()) }
+    unsafe { libc::ioctl(fd, ioc(IOC_READ, nr, buf.len()) as libc::Ioctl, buf.as_mut_ptr(),
+        ) }
 }
 /// EVIOCGNAME(buf.len())
 fn eviocgname(fd: i32, buf: &mut [u8]) -> i32 {
@@ -192,7 +194,8 @@ fn eviocgbit(fd: i32, ev: u16, buf: &mut [u8]) -> i32 {
 fn eviocgmtslots(fd: i32, slots: &mut [i32]) -> i32 {
     // SAFETY: the request carries the slice's size in bytes, and the kernel reads slots[0] and writes
     // at most that many bytes of ints into it.
-    unsafe { libc::ioctl(fd, ioc(IOC_READ, 0x0a, size_of_val(slots)) as libc::Ioctl, slots.as_mut_ptr()) }
+    unsafe { libc::ioctl(fd, ioc(IOC_READ, 0x0a, size_of_val(slots)) as libc::Ioctl, slots.as_mut_ptr(),
+        ) }
 }
 /// EVIOCGRAB with its argument as the value (1 grab, 0 let go), as the kernel takes it.
 fn ioctl_grab(fd: i32, grab: c_int) -> i32 {
@@ -216,7 +219,8 @@ fn poll_fds(pf: &mut [libc::pollfd], timeout_ms: i32) -> i32 {
     unsafe { libc::poll(pf.as_mut_ptr(), pf.len() as libc::nfds_t, timeout_ms) }
 }
 fn pollfd(fd: i32) -> libc::pollfd {
-    libc::pollfd { fd, events: libc::POLLIN, revents: 0 }
+    libc::pollfd { fd, events: libc::POLLIN, revents: 0 ,
+    }
 }
 fn access_ok(path: &CStr) -> bool {
     // SAFETY: access reads the NUL-terminated path.
@@ -226,7 +230,8 @@ fn access_ok(path: &CStr) -> bool {
 fn open_node(path: &str) -> i32 {
     let Ok(c) = CString::new(path) else { return -1 };
     // SAFETY: open reads the NUL-terminated path.
-    unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC) }
+    unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        ) }
 }
 fn stat_path(path: &str) -> Option<libc::stat> {
     let c = CString::new(path).ok()?;
@@ -420,7 +425,8 @@ struct TouchLog {
 
 impl Default for TouchLog {
     fn default() -> Self {
-        TouchLog { frames: 0, budget: TouchLogBudget::default(), tip: [0; TIP_N], tip_frames: 0, tip_max: 0 }
+        TouchLog { frames: 0, budget: TouchLogBudget::default(), tip: [0; TIP_N], tip_frames: 0, tip_max: 0 ,
+        }
     }
 }
 
@@ -443,7 +449,8 @@ struct TouchTrace {
 
 impl Default for TouchTrace {
     fn default() -> Self {
-        TouchTrace { fd: -1, buf: String::new(), written: 0 }
+        TouchTrace { fd: -1, buf: String::new(), written: 0 ,
+        }
     }
 }
 
@@ -559,6 +566,8 @@ struct State {
     /// the pen's last contact point (logical px, as emit_pen maps it): touchgest keeps gestures away
     /// from where the pen just wrote
     pen_last: (f32, f32),
+    /// last mapped raw hover point and its kernel time, for touchgest's learned-hover rule
+    tg_hover: Option<(f32, f32, u32)>,
     /// touch events handled so far (wrapping): input_poll ticks touchgest when none came
     touch_events: u32,
     tlog: TouchLog,
@@ -676,6 +685,7 @@ impl Default for State {
             tg: TouchGest::default(),
             touch_mono: false,
             pen_last: (0.0, 0.0),
+            tg_hover: None,
             touch_events: 0,
             tlog: TouchLog::default(),
             trace: TouchTrace::default(),
@@ -767,7 +777,8 @@ fn ev_us(ev: &InputEvent) -> u64 {
 const PEN_TAIL_MAX: usize = 512; // the kernel keeps 128 events, and this is read in microseconds
 
 fn mono_us() -> u64 {
-    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 ,
+    };
     // SAFETY: clock_gettime writes one timespec into our local.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
     (ts.tv_sec as u64) * 1_000_000 + (ts.tv_nsec as u64) / 1000
@@ -884,10 +895,15 @@ impl State {
                 lat_match_raw(&mut self.match_, ev_us(ev), self.W.x, self.W.y);
             }
             self.wacom_frame_us = ev_us(ev);
-            // Either hook wants the hover: the sample hook alone too (it takes the place of the
-            // hover hook's while it is set).
+            // Learn a usable pen hover for touchgest whenever the input is grabbed. The Live hooks
+            // still receive it only when installed.
+            let k = pensync_ms(self.wacom_frame_us, self.wacom_mono, now_ms());
+            let place = self.hover_from_raw();
+            if let Some((x, y)) = place {
+                self.tg_hover = Some((x, y, k));
+            }
             if self.hover_fn.is_some() || self.sample_fn.is_some() {
-                return self.hover_from_raw().and_then(|(x, y)| match (self.sample_fn, self.hover_fn) {
+                return place.and_then(|(x, y)| match (self.sample_fn, self.hover_fn) {
                     (Some(sample), _) => {
                         let mut e = InEvent { type_: InType::PenHover, x, y, t_ms: now_ms(), eraser: self.W.rubber, side_button: self.W.side, ..Default::default() };
                         e.k_ms = pensync_ms(self.wacom_frame_us, self.wacom_mono, e.t_ms);
@@ -984,7 +1000,8 @@ impl State {
         {
             return None;
         }
-        Some((norm((sx + 0.5) as i32, &self.pen.ax), norm((sy + 0.5) as i32, &self.pen.ay)))
+        Some((norm((sx + 0.5) as i32, &self.pen.ax), norm((sy + 0.5) as i32, &self.pen.ay),
+        ))
     }
 
     // A raw frame read while Live view follows the hover: the pen near (the scaled pen's proximity) and
@@ -1005,7 +1022,8 @@ impl State {
     // ahead of the pen frames still being read. grimoire.log names the orientation once it is decided,
     // and again only if it changes.
     fn hover_learn(&mut self) {
-        if self.wacom.fd < 0 || !self.pen_mono || !self.wacom_mono || !self.W.placed || self.W.p <= self.wacom.ap.minimum {
+        if !self.input_grabbed
+            || self.wacom.fd < 0 || !self.pen_mono || !self.wacom_mono || !self.W.placed || self.W.p <= self.wacom.ap.minimum {
             return;
         }
         let a = self.wacom_frame_us;
@@ -1090,10 +1108,11 @@ impl State {
         // Into the screen's frame, like the position (the calligraphy nib turns with the lean).
         // On the owner's Scribe 2, held the way its sensor calls upside down, a right hand reads
         // (-40, -46) raw: leaning toward the screen's bottom right, (+40, +46) here.
-        calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut e.tilt_x, &mut e.tilt_y);
+        calib_tilt(&self.pen_cal, self.rot, self.tilt_flip, &mut e.tilt_x, &mut e.tilt_y,
+        );
         e.eraser = self.P.eraser;
         e.side_button = self.P.side || self.W.side;
-        if (self.hover_fn.is_some() || self.sample_fn.is_some()) && contact {
+        if self.input_grabbed && contact {
             self.hover_learn();
         }
         e.t_ms = now_ms();
@@ -1167,7 +1186,8 @@ impl State {
             // with the off-screen cancel, a pinch with PinchEnd, before the pen's own event, and every
             // contact waits to lift. (The pen always wins: a PenDown must never meet a pinch.)
             let mut out = TgOut::default();
-            touchgest_cancel(&mut self.tg, pensync_ms(self.pen_frame_us, self.pen_mono, now_ms()), &mut out);
+            touchgest_cancel(&mut self.tg, pensync_ms(self.pen_frame_us, self.pen_mono, now_ms()), &mut out,
+            );
             self.tg_push(&out);
         }
         if touching && !self.P.was_touching {
@@ -1185,7 +1205,8 @@ impl State {
         }
         if touching {
             // (where it touched, for touchgest; emit_pen's own mapping, read on the touch side)
-            self.pen_last = self.map(&self.pen_cal, norm(self.P.x, &self.pen.ax), norm(self.P.y, &self.pen.ay));
+            self.pen_last = self.map(&self.pen_cal, norm(self.P.x, &self.pen.ax), norm(self.P.y, &self.pen.ay),
+            );
         }
         self.P.was_touching = touching;
         self.P.was_prox = self.P.prox;
@@ -1248,7 +1269,8 @@ impl State {
     // A pen event as pensync.h takes it: an ABS_MT_PRESSURE (some digitizers only report the MT
     // flavour) scaled into ABS_PRESSURE's range, as handle_pen does.
     fn pen_ev(&self, ev: &InputEvent) -> PenEv {
-        let mut e = PenEv { t_us: ev_us(ev), type_: ev.type_, code: ev.code, value: ev.value };
+        let mut e = PenEv { t_us: ev_us(ev), type_: ev.type_, code: ev.code, value: ev.value ,
+        };
         if ev.type_ != EV_ABS || ev.code != ABS_MT_PRESSURE {
             return e;
         }
@@ -1433,11 +1455,13 @@ impl State {
     // MAX_SLOTS answers for its own only (mt_column), so a slot it does not have reads as no contact.
     fn touch_resync(&mut self) {
         let fd = self.touch.fd;
-        let codes = [ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TOUCH_MAJOR, ABS_MT_PRESSURE];
+        let codes = [ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TOUCH_MAJOR, ABS_MT_PRESSURE,
+        ];
         let mut col = [0i32; MAX_SLOTS];
         for code in codes {
             let empty = if code == ABS_MT_TRACKING_ID { -1 } else { 0 };
-            if !mt_column(&mut |buf| eviocgmtslots(fd, buf) >= 0, code as i32, empty, &mut col) {
+            if !mt_column(&mut |buf| eviocgmtslots(fd, buf) >= 0, code as i32, empty, &mut col,
+            ) {
                 continue;
             }
             match code {
@@ -1472,10 +1496,13 @@ impl State {
                 2 => 2,
                 _ => 0,
             };
-            f.c[f.n] = TgContact { id: self.T.id[s], slot: s as i32, x, y, nx, ny, major: self.T.major[s], tool, pressure: self.T.pressure[s] };
+            f.c[f.n] = TgContact { id: self.T.id[s], slot: s as i32, x, y, nx, ny, major: self.T.major[s], tool, pressure: self.T.pressure[s] ,
+            };
             f.n += 1;
         }
-        let pen = TgPen { prox: self.P.prox, touching: self.P.was_touching, left_ms: self.pen_left_ms, last: self.pen_last };
+        let pen = TgPen { prox: self.P.prox, touching: self.P.was_touching, left_ms: self.pen_left_ms, last: self.pen_last ,
+            hover: self.tg_hover,
+        };
         let mut out = TgOut::default();
         let was_busy = touchgest_busy(&self.tg);
         touchgest_frame(&mut self.tg, &f, &pen, &mut out);
@@ -1508,11 +1535,15 @@ impl State {
             // The touch session is over: its gaps and how it went, or one finger's size.
             if touchgest_log_session(&self.tg, grabbed, &mut line) {
                 self.tlog_line(f.k_ms, &line);
+            if touchgest_log_measure(&self.tg, grabbed, &mut line) {
+                    self.tlog_line(f.k_ms, &line);
+                }
             } else if touchgest_session_contacts(&self.tg) == 1 && self.tlog.tip_frames > 0 {
                 let n = (self.tlog.tip_frames as usize).min(TIP_N);
                 let mut v = self.tlog.tip;
                 v[..n].sort_unstable();
-                if touchgest_log_fingertips(v[n / 2], self.tlog.tip_max, self.tlog.tip_frames, grabbed, &mut line) {
+                if touchgest_log_fingertips(v[n / 2], self.tlog.tip_max, self.tlog.tip_frames, grabbed, &mut line,
+                ) {
                     self.tlog_line(f.k_ms, &line);
                 }
             }
@@ -1528,9 +1559,9 @@ impl State {
     fn tlog_line(&mut self, k_ms: u32, line: &str) {
         match self.tlog.budget.admit(k_ms) {
             LogDecision::Line => qlog!("%s", line),
-            LogDecision::Cap => qlog!("touch: log cap reached (2000 lines/60 s; resumes next window)"),
-            LogDecision::Skip => {},
-        }
+            LogDecision::Cap => {
+                qlog!("touch: log cap reached (2000 lines/60 s; resumes next window)")}
+            LogDecision::Skip => {}}
     }
 
     // The pen's coming and going for the trace, never where (no write here: the touch side flushes).
@@ -1602,7 +1633,8 @@ impl State {
                 self.T.dropped = false;
                 self.touch_resync();
                 let mut out = TgOut::default();
-                touchgest_cancel(&mut self.tg, pensync_ms(self.T.frame_us, self.touch_mono, now_ms()), &mut out);
+                touchgest_cancel(&mut self.tg, pensync_ms(self.T.frame_us, self.touch_mono, now_ms()), &mut out,
+                );
                 self.tg_push(&out);
             }
             self.touch_frame();
@@ -1662,7 +1694,8 @@ impl State {
         let room = POWERD_BUF - 1 - len;
         // SAFETY: read writes at most room bytes into powerd_buf from len on: len + room is 511, inside
         // the buffer, and bytes are bytes.
-        let r = unsafe { libc::read(self.powerd_fd, self.powerd_buf[len..].as_mut_ptr() as *mut c_void, room) };
+        let r = unsafe { libc::read(self.powerd_fd, self.powerd_buf[len..].as_mut_ptr() as *mut c_void, room,
+            ) };
         if r <= 0 {
             if r == 0 {
                 // the watcher died: stop polling it
@@ -1751,7 +1784,8 @@ impl State {
     fn power_hold_check(&mut self) {
         let mut held = 0;
         let fd = self.power_fd;
-        let t = powerkey_tick(&mut self.pkey, now_ms(), &mut || power_key_down(fd), &mut held);
+        let t = powerkey_tick(&mut self.pkey, now_ms(), &mut || power_key_down(fd), &mut held,
+        );
         if t == InType::PowerUp {
             qlog!("input: the power key is up at the %d ms check: its release was missed", INPUT_POWER_HOLD_MS);
         }
@@ -1763,7 +1797,8 @@ impl State {
     fn default_calib(&self) -> (InputCalib, InputCalib) {
         // KOReader applies no axis swap/mirror for the Scribe: the axes map straight onto the
         // upright framebuffer. Swap only if the ranges say the axes are crossed.
-        let mut p = InputCalib { valid: false, swap_xy: false, ax: self.w as f32, bx: 0.0, ay: self.h as f32, by: 0.0 };
+        let mut p = InputCalib { valid: false, swap_xy: false, ax: self.w as f32, bx: 0.0, ay: self.h as f32, by: 0.0 ,
+        };
         if self.pen.fd >= 0 {
             let (mx, my) = (self.pen.ax.maximum, self.pen.ay.maximum);
             if mx.wrapping_sub(self.h).wrapping_abs() < mx.wrapping_sub(self.w).wrapping_abs()
@@ -1772,7 +1807,8 @@ impl State {
                 p.swap_xy = true;
             }
         }
-        let mut t = InputCalib { valid: false, swap_xy: false, ax: self.w as f32, bx: 0.0, ay: self.h as f32, by: 0.0 };
+        let mut t = InputCalib { valid: false, swap_xy: false, ax: self.w as f32, bx: 0.0, ay: self.h as f32, by: 0.0 ,
+        };
         if self.touch.fd >= 0 {
             let (mx, my) = (self.touch.ax.maximum, self.touch.ay.maximum);
             let aspect_dev = if my != 0 { mx as f32 / my as f32 } else { 1.0 };
@@ -1841,7 +1877,8 @@ impl State {
         for (code, a) in info.iter_mut().enumerate() {
             let mut ai = InputAbsinfo::default();
             if test_bit(axes, code) && eviocgabs(self.keys[i].fd, code as u16, &mut ai) >= 0 {
-                *a = HidAxis { minimum: ai.minimum, maximum: ai.maximum, value: ai.value };
+                *a = HidAxis { minimum: ai.minimum, maximum: ai.maximum, value: ai.value ,
+                };
             }
         }
         let k = &mut self.keys[i];
@@ -1874,7 +1911,8 @@ impl State {
         self.key_announce(i, InType::HidDetach);
     }
     // A node input_open looked at and leaves that is no keyboard or controller either.
-    fn key_none_note(&mut self, fd: i32, path: &str, name: &str, keys: &[u8; HID_KEY_BYTES], axes: &[u8; HID_ABS_BYTES]) {
+    fn key_none_note(&mut self, fd: i32, path: &str, name: &str, keys: &[u8; HID_KEY_BYTES], axes: &[u8; HID_ABS_BYTES],
+    ) {
         if hidkeys_optional(name, keys, axes) == HidKind::None {
             if let Some(st) = fstat_fd(fd) {
                 let n = node_of(&st);
@@ -1886,7 +1924,8 @@ impl State {
     fn held_nodes(&self, out: &mut [u64; 5 + KEY_DEVS]) -> usize {
         let cap = out.len();
         let mut fds = [-1i32; 5 + KEY_DEVS];
-        fds[..5].copy_from_slice(&[self.pen.fd, self.wacom.fd, self.touch.fd, self.power_fd, self.orient_fd]);
+        fds[..5].copy_from_slice(&[self.pen.fd, self.wacom.fd, self.touch.fd, self.power_fd, self.orient_fd,
+        ]);
         let mut nfds = 5;
         let mut n = 0;
         for i in 0..KEY_DEVS {
@@ -1922,7 +1961,8 @@ impl State {
         let mut opened = 0;
         let mut held = [0u64; 5 + KEY_DEVS];
         let nheld = self.held_nodes(&mut held);
-        let Ok(d) = std::fs::read_dir("/dev/input") else { return };
+        let Ok(d) = std::fs::read_dir("/dev/input") else { return ;
+        };
         for e in d {
             let Ok(e) = e else { break };
             let fname = e.file_name();
@@ -2099,7 +2139,8 @@ impl State {
         let k = &mut self.keys[i];
         let mut n = if ev.type_ == EV_ABS { hidkeys_trigger_event(&mut k.keys, &k.trig, ev.code as i32, ev.value, &mut out[0]) } else { 0 };
         if n == 0 {
-            n = hidkeys_event(&mut k.keys, k.kind, ev.type_ as i32, ev.code as i32, ev.value, &mut out);
+            n = hidkeys_event(&mut k.keys, k.kind, ev.type_ as i32, ev.code as i32, ev.value, &mut out,
+            );
         }
         for p in &out[..n as usize] {
             self.key_push(p);
@@ -2108,7 +2149,8 @@ impl State {
     }
 
     // The part of input_open before its children and signals: the devices.
-    fn open_devices(&mut self, screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+    fn open_devices(&mut self, screen_w: i32, screen_h: i32, pen: Option<&InputCalib>, touch: Option<&InputCalib>,
+    ) -> i32 {
         self.w = screen_w;
         self.h = screen_h;
         self.tilt_flip = access_ok(c"/mnt/us/grimoire/tilt-flip");
@@ -2584,7 +2626,8 @@ fn powerd_start() {
             libc::dup2(p[1], 1);
             libc::close(p[0]);
             libc::close(p[1]);
-            libc::execlp(c"sh".as_ptr(), c"sh".as_ptr(), c"-c".as_ptr(), script.as_ptr(), std::ptr::null::<libc::c_char>());
+            libc::execlp(c"sh".as_ptr(), c"sh".as_ptr(), c"-c".as_ptr(), script.as_ptr(), std::ptr::null::<libc::c_char>(),
+            );
             libc::_exit(127);
         }
     }
@@ -2635,7 +2678,8 @@ fn dev_of(st: &libc::stat) -> u64 {
 }
 #[allow(clippy::unnecessary_cast)]
 fn node_of(st: &libc::stat) -> HidNode {
-    HidNode { rdev: st.st_rdev as u64, ino: st.st_ino as u64, ctime_s: st.st_ctime as i64, ctime_ns: st.st_ctime_nsec as i64 }
+    HidNode { rdev: st.st_rdev as u64, ino: st.st_ino as u64, ctime_s: st.st_ctime as i64, ctime_ns: st.st_ctime_nsec as i64 ,
+    }
 }
 
 // Stamps fd's events in now_ms()'s clock, for this reader only (the pen service and the Kindle's
@@ -2675,19 +2719,24 @@ impl State {
                 let span = a.maximum.wrapping_sub(a.minimum);
                 if span > 0 { (v - a.minimum as f32) / span as f32 } else { 0.0 }
             };
-            Some(self.map(&self.pen_cal, normf(sx, &self.pen.ax), normf(sy, &self.pen.ay)))
+            Some(self.map(&self.pen_cal, normf(sx, &self.pen.ax), normf(sy, &self.pen.ay),
+            ))
         };
-        let (x0, x1) = (h.rmin[0] + (h.rmax[0] - h.rmin[0]) / 4, h.rmin[0] + (h.rmax[0] - h.rmin[0]) * 3 / 4);
-        let (y0, y1) = (h.rmin[1] + (h.rmax[1] - h.rmin[1]) / 4, h.rmin[1] + (h.rmax[1] - h.rmin[1]) * 3 / 4);
+        let (x0, x1) = (h.rmin[0] + (h.rmax[0] - h.rmin[0]) / 4, h.rmin[0] + (h.rmax[0] - h.rmin[0]) * 3 / 4,
+        );
+        let (y0, y1) = (h.rmin[1] + (h.rmax[1] - h.rmin[1]) / 4, h.rmin[1] + (h.rmax[1] - h.rmin[1]) * 3 / 4,
+        );
         if x1 <= x0 || y1 <= y0 {
             return false;
         }
-        let (Some(p0), Some(px), Some(py)) = (place(x0, y0), place(x1, y0), place(x0, y1)) else { return false };
+        let (Some(p0), Some(px), Some(py)) = (place(x0, y0), place(x1, y0), place(x0, y1)) else { return false ;
+        };
         let (dx, dy) = ((x1 - x0) as f32, (y1 - y0) as f32);
         let (ax, ay) = ((px.0 - p0.0) / dx, (px.1 - p0.1) / dx);
         let (bx, by) = ((py.0 - p0.0) / dy, (py.1 - p0.1) / dy);
         *out = LiveRawMap {
-            m: [ax, bx, p0.0 - ax * x0 as f32 - bx * y0 as f32, ay, by, p0.1 - ay * x0 as f32 - by * y0 as f32],
+            m: [ax, bx, p0.0 - ax * x0 as f32 - bx * y0 as f32, ay, by, p0.1 - ay * x0 as f32 - by * y0 as f32,
+            ],
             rmin: h.rmin,
             rmax: h.rmax,
             pmin: self.wacom.ap.minimum,
@@ -2706,9 +2755,11 @@ impl State {
         // The node's path, from the descriptor (/proc names what it was opened as).
         let mut path = [0u8; 128];
         let link = cformat!("/proc/self/fd/%d", self.wacom.fd);
-        let Ok(c) = CString::new(link) else { return false };
+        let Ok(c) = CString::new(link) else { return false ;
+        };
         // SAFETY: readlink writes at most path.len() - 1 bytes into the local array.
-        let n = unsafe { libc::readlink(c.as_ptr(), path.as_mut_ptr() as *mut libc::c_char, path.len() - 1) };
+        let n = unsafe { libc::readlink(c.as_ptr(), path.as_mut_ptr() as *mut libc::c_char, path.len() - 1,
+            ) };
         if n <= 0 {
             return false;
         }
@@ -2723,12 +2774,14 @@ pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
     with(|s| s.raw_pen_map(out))
 }
 
-pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
+pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>,
+) -> i32 {
     if with(|s| s.open_devices(screen_w, screen_h, pen, touch)) != 0 {
         return -1;
     }
     with(|s| {
         touchgest_init(&mut s.tg, dpi);
+        touchgest_set_slots(&mut s.tg, s.caps.touch_slots.max(0) as usize);
         s.dpi = dpi;
     });
 
@@ -2805,7 +2858,8 @@ fn read_pens(wacom: bool, pen: bool) {
             s.wacom_read = true;
             (s.wacom.fd, s.input_grabbed)
         });
-        drain(fd, if grabbed { State::handle_wacom } else { discard_input });
+        drain(fd, if grabbed { State::handle_wacom } else { discard_input },
+        );
         with(|s| {
             if s.wacom_resync {
                 s.wacom_resync();
@@ -2843,7 +2897,8 @@ fn input_pump() {
         s.pens_read_ms = now;
         Some((s.wacom.fd, s.pen.fd, s.touch.fd, s.input_grabbed))
     });
-    let Some((wacom_fd, pen_fd, touch_fd, grabbed)) = fds else { return };
+    let Some((wacom_fd, pen_fd, touch_fd, grabbed)) = fds else { return ;
+    };
     let mut pf = [pollfd(-1); 3];
     let mut n = 0usize;
     let mut iwac: i32 = -1;
@@ -2871,7 +2926,8 @@ fn input_pump() {
         );
         // Touch after the pens, as input_poll reads them.
         if itouch >= 0 && (pf[itouch as usize].revents & libc::POLLIN) != 0 {
-            drain(touch_fd, if grabbed { State::handle_touch } else { discard_input });
+            drain(touch_fd, if grabbed { State::handle_touch } else { discard_input },
+            );
         }
     }
     with(|s| {
@@ -2905,7 +2961,9 @@ pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
                 key_fds[i] = k.fd;
             }
         }
-        ([s.powerd_fd, s.orient_fd, s.wacom.fd, s.pen.fd, s.touch.fd, s.power_fd], key_fds)
+        ([s.powerd_fd, s.orient_fd, s.wacom.fd, s.pen.fd, s.touch.fd, s.power_fd,
+            ], key_fds,
+        )
     });
     let [powerd_fd, orient_fd, wacom_fd, pen_fd, touch_fd, power_fd] = fds;
     let sig_fd = G_SIGPIPE[0].load(Ordering::SeqCst);
@@ -2940,7 +2998,8 @@ pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
         read_pens(readable(iwac, libc::POLLIN), readable(ipen, libc::POLLIN));
         if readable(itouch, libc::POLLIN) {
             let grabbed = with(|s| s.input_grabbed);
-            drain(touch_fd, if grabbed { State::handle_touch } else { discard_input });
+            drain(touch_fd, if grabbed { State::handle_touch } else { discard_input },
+            );
         }
     }
     // Fingers held still give no frames: what only time decides (a tap's last lift, a lone finger's
@@ -3101,6 +3160,7 @@ pub fn input_set_grab(grab: bool) -> bool {
             }
         }
         s.input_grabbed = grab && ok;
+        s.tg_hover = None;
         s.P = PenSt::default();
         s.pen_good = PenState::default();
         s.W = WacomSt::default();
@@ -3153,7 +3213,8 @@ pub fn input_touch_trace(path: Option<&str>) {
         let Some(path) = path else { return };
         let Ok(c) = CString::new(path) else { return };
         // SAFETY: open reads the NUL-terminated path.
-        let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
+        let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND | libc::O_CLOEXEC, 0o644 as libc::c_uint,
+            ) };
         if fd < 0 {
             qlog!("input: touch trace %s: %s", path, &strerror(errno()));
             return;
@@ -3164,7 +3225,8 @@ pub fn input_touch_trace(path: Option<&str>) {
             qlog!("input: touch trace %s is full (4 MB): not written", path);
             return;
         }
-        s.trace = TouchTrace { fd, buf: String::with_capacity(TRACE_ROOM), written };
+        s.trace = TouchTrace { fd, buf: String::with_capacity(TRACE_ROOM), written ,
+        };
         s.trace_header();
         s.trace_flush(now_ms());
         qlog!("input: touch trace in %s", path);
@@ -3248,4 +3310,16 @@ pub fn input_ink_times(newest: &mut u64, oldest: &mut u64, raw: &mut u64) -> boo
         s.ink_raw = 0;
         true
     })
+}
+/// Editor-side shape outcomes share the bounded, opt-in touch trace and its grabbed-input gate.
+pub fn input_touch_trace_event(line: &str) {
+    if line.len() > 256 || line.contains(['\n', '\r']) || !line.starts_with("shape ") { return; }
+    with(|s| {
+        if !s.input_grabbed || s.trace.fd < 0 { return; }
+        let k = now_ms();
+        if s.trace.buf.len() + line.len() + 24 > TRACE_ROOM { s.trace_flush(k); }
+        use std::fmt::Write;
+        let _ = writeln!(s.trace.buf, "E {k} {line}");
+        s.trace_flush(k);
+    });
 }

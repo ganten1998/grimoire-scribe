@@ -186,6 +186,52 @@ tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's c
 2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
 Cancel 1240 1675. The editor's tool button is 2388 358.
 
+### Phase 3 touch runner and recording
+
+| Command | Meaning |
+| --- | --- |
+| `shape NAME X Y SIZE_MM [MS] [ROT] [SEED] [REV]` | Synthetic one-finger frames through touchgest every 13 ms; names from `fingershape_synth::SHAPES`, including `Z`, `N`, `S`, `circle`, `alpha`, `triangle`, `V`, `check`, `zigzag`, `square`. Defaults: 900 ms, rotation 0 degrees, seed 1. A trailing REV token reverses drawing direction. Coordinates are the centre in screen pixels; size is millimetres. |
+| `fpath X1 Y1 X2 Y2 ... [MS]` | Exact screen-pixel polyline through touchgest; at least two points, default 600 ms. An odd final argument is the duration. |
+| `trace FILE` | Replay `F` contact frames and `P` pen states on their kernel-time deltas using the shared trace parser; advances ticks between frames. Recorded `E` decisions are evidence, not injected actions. |
+
+`GRIMOIRE_SIM_TOUCH_SLOTS=N` selects the simulated panel's slot capability.
+`GRIMOIRE_TOUCH_TUNE=v1` selects the old tuning table; otherwise the simulator and runner use
+the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. Synthetic
+shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.
+The trace contains no pen coordinates: replay cannot measure hover-distance acceptance.
+
+The Settings bottom row is KOReader | Controller | Gestures | Updates | Done, in either
+orientation. Phase 3 bottom-row and record-card coordinates await verification by the main
+scenario owner; use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
+values include `controller`, `gestures`, `updates`, `done`, `gestures.master`,
+`gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
+`gestures.reset.cancel`, `record.use`, `record.retry` and `record.cancel`. This is a hit-test
+probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
+
+**Recording a gesture in a scenario.** Open Settings > Gestures and a group; verify each
+candidate tap with `library.ui_at.X.Y`. Tap an action, expect `library.gestures.learning`
+to name it and `library.record` to be `wait`. A paired row continues with the second member
+after saving the first. Use `tapn`/`swipe` for a pattern; expect `pattern touch.2.tap` (for example), then tap
+Use. For a shape, use `shape Z ...` with distinct seeds for repeated samples, checking
+`shape 1`, then `ready`; a third sample is optional. Use runs the slip/conflict checks before
+saving. Check `library.record.line` for the refusal or reassignment reason, and check
+`gestures.ACTION`, `gestures.shape.ACTION` and the file after success. Try again restarts the
+attempt; Cancel leaves the bindings unchanged. To exercise a failed save, use the main
+scenario owner's fixture and assert that the live binding and card survive unchanged.
+
+The host tool uses the same recognizer without opening the app:
+
+```sh
+cargo run --manifest-path rust/Cargo.toml --bin tgstudy -- tests/fixtures/touch/synthetic.txt --tune new
+# An owner trace, once supplied:
+# tgstudy TRACE --tune new --set swipe_mm=16 --sweep cos_min=0.7:0.8:0.05 --blocks BLOCKS.txt
+```
+
+`tgstudy` splits at hands-off gaps of at least 4 s (the study asks for 5 s), prints block sizes,
+session measures and outcomes, intended-fire counts and wrong/negative fires. Check the split
+before interpreting a report. `--blocks` supplies names in order. No coordinate or success-rate
+claim from synthetic replay establishes the owner study or the finger-shape freeze gate.
+
 ### Checks
 
 `expect KEY is VALUE` (exactly), `expect KEY has TEXT` (contains it) and `expect KEY not VALUE`
@@ -223,7 +269,7 @@ shows what the app holds.
 | `touch.contacts` | contacts down now, as touchgest follows them (the contact lines' fingers; the runner answers the `touch.` keys) |
 | `touch.class` | what they are doing: `none`, `one` (one finger's stream), `landing` (two fingers, not committed yet), `zoom`, `pan`, `swipe`, `tap` (a two-finger tap waiting for its last finger), `suppressed` (every contact waits to lift, or the pen's hand is held) |
 | `touch.suppressed` | `1` while contacts wait to lift (or a lone finger is held: the pen's hand, one beside a resting palm), else `0` |
-| `touch.gesture` | the last gesture fired, as gestures.ini names it after `touch.` (`2.down`, `2.up`, `2.left`, `2.right`, `2.tap`); empty before any |
+| `touch.gesture` | the last gesture fired, as gestures.ini names it after `touch.` (`1.up` through `1.right`, `2.up` through `2.tap`, and `3.up` through `3.tap`); empty before any |
 | `touch.reject` | the last refusal: `pen`, `apart`, `straight`, `short`, `direction`, `hand`, `spread`, `late`, `three`, `keyboard`, `off` or `slow`; empty before any, and a gesture fired clears it |
 | `pump.calls` | how many times long work called the work pump (`work_pump`, common.h: on the Kindle it reads the pens meanwhile) since this key was last checked, so `expect pump.calls not -1` only starts the count (the runner answers this one too) |
 | `keyboard.draws` | how many times an on-screen keyboard was drawn whole (`keyboard_draw`, keyboard.h) since this key was last checked, counted the same way (the runner answers this one too) |
@@ -303,13 +349,28 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet) or `pair` (its Pair sheet) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates` or `gestures` |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
-| `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) or `menus`; empty on its list (or with no Buttons sheet) |
+| `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
 | `library.pair` | the Pair sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
 | `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
-| `gestures.ACTION` | the touch gestures that do ACTION, as gestures.ini names them, comma separated: `gestures.pages` is `touch.2.down` (a built-in, docs/FORMAT.md); empty for none |
+| `gestures.ACTION` | binding for ACTION: its touch key (`touch.1.right`, `touch.2.down`) if present, otherwise `shape` for a known or carried newer shape; empty for none. Built-ins are in FORMAT.md. |
+| `gestures.shape.ACTION` | sample count for ACTION's recorded shape; empty for none |
+| `gestures.shape_count`, `gestures.refused` | number of recorded shapes, and lines refused at the last map load |
+| `library.gestures_group` | open group (`editing`, `tools`, `pages`, `index`, `menus`, `screen`, `system`), else empty |
+| `library.gestures.N` | 1-based visible row N's text as drawn at the root or in a group, in the current language |
+| `library.gestures.learning` | action being recorded, or `0` |
+| `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
+| `library.record.line` | record card's progress/refusal line, empty without a card |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow |
+| `settings.rotation_lock` | `0` follows the sensor, `1..4` locks rotation to stored value minus 1 |
+| `touch.tune` | `v1` or `new` (provisional `TG_TUNE`) |
+| `fshape.last` | `<fired\|reject\|refused\|cancel> <action\|reason> <d1> <thr> <d2>`, empty before any outcome |
+| `fshape.fired` | fired count since last read; reading consumes the count |
+| `fshape.state` | `idle`, `pending`, `drawing`, `dead` |
+| `fshape.trail` | current trail rectangle `x y w h`, empty for none |
+| `fshape.armed` | `1` when page capture may arm, otherwise `0` |
 | `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |

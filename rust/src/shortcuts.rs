@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-pub const SHORTCUT_MAX: usize = 64;
+pub const SHORTCUT_MAX: usize = 192;
 pub const KEYMOD_CTRL: i32 = 1;
 pub const KEYMOD_SHIFT: i32 = 2;
 pub const KEYMOD_ALT: i32 = 4;
@@ -60,23 +60,44 @@ pub const SHORTCUT_STATUS_CORNER: i32 = 53;
 /// Two fingers left on the last page add a page, or do not (settings.ini gesture_new_page; Rust only).
 pub const SHORTCUT_GESTURE_NEW_PAGE: i32 = 54;
 pub const SHORTCUT_STATUS_MODE: i32 = 55;
-pub const SHORTCUT_LAST: i32 = 55;
+pub const SHORTCUT_LAST: i32 = SHORTCUT_INDEX_MAP;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. A page turned by a gesture adds a page on the last one unless settings.ini gesture_new_page is off.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ActionSrc {
+    #[default]
     Key,
     Pad,
     Touch,
     Shape,
     Pen,
 }
+impl ActionSrc {
+    pub const fn mask(self) -> u8 {
+        match self {
+            ActionSrc::Key => SRC_KEY,
+            ActionSrc::Pad => SRC_PAD,
+            ActionSrc::Touch => SRC_TOUCH,
+            ActionSrc::Shape => SRC_SHAPE,
+            ActionSrc::Pen => SRC_PEN,
+        }
+    }
+}
+impl From<bool> for ActionSrc {
+    fn from(gamepad: bool) -> Self {
+        if gamepad {
+            ActionSrc::Pad
+        } else {
+            ActionSrc::Key
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ShortcutBinding {
     pub code: i32,
     pub mods: i32,
     pub action: i32,
-    pub gamepad: bool,
+    pub src: ActionSrc,
 }
 #[derive(Clone, Debug)]
 pub struct Shortcuts {
@@ -86,7 +107,8 @@ pub struct Shortcuts {
 }
 impl Default for Shortcuts {
     fn default() -> Self {
-        Shortcuts { bindings: [ShortcutBinding::default(); SHORTCUT_MAX], count: 0, rejected: 0 }
+        Shortcuts { bindings: [ShortcutBinding::default(); SHORTCUT_MAX], count: 0, rejected: 0 ,
+        }
     }
 }
 
@@ -169,36 +191,6 @@ pub fn shortcut_keycode(name: &str) -> i32 {
     -1
 }
 
-const K_TOOLS: [&str; TOOL_COUNT] =
-    ["pencil", "mech", "ballpoint", "eraser", "highlighter", "fountain", "fineliner", "marker", "charcoal", "calligraphy"];
-// (K_TOOLS with "tool:" before each: shortcut_action_name hands out &'static str, where the C
-// formats into a static buffer.)
-const K_TOOL_ACTIONS: [&str; TOOL_COUNT] = [
-    "tool:pencil",
-    "tool:mech",
-    "tool:ballpoint",
-    "tool:eraser",
-    "tool:highlighter",
-    "tool:fountain",
-    "tool:fineliner",
-    "tool:marker",
-    "tool:charcoal",
-    "tool:calligraphy",
-];
-const K_ACTIONS: [(&str, i32); 36] = [
-    ("undo", SHORTCUT_UNDO), ("redo", SHORTCUT_REDO), ("previous-page", SHORTCUT_PREV_PAGE),
-    ("next-page", SHORTCUT_NEXT_PAGE), ("previous-tool", SHORTCUT_PREV_TOOL), ("next-tool", SHORTCUT_NEXT_TOOL),
-    ("white", SHORTCUT_WHITE), ("index", SHORTCUT_INDEX), ("hold-eraser", SHORTCUT_HOLD_ERASER),
-    ("eraser-mode", SHORTCUT_ERASER_MODE), ("clear-page", SHORTCUT_CLEAR_PAGE), ("first-page", SHORTCUT_FIRST_PAGE),
-    ("last-page", SHORTCUT_LAST_PAGE), ("new-page", SHORTCUT_NEW_PAGE), ("fit-page", SHORTCUT_FIT_PAGE),
-    ("pages", SHORTCUT_PAGES), ("tool-picker", SHORTCUT_TOOL_PICKER), ("paper", SHORTCUT_PAPER),
-    ("display", SHORTCUT_DISPLAY), ("pen-feel", SHORTCUT_PEN_FEEL), ("fold-panel", SHORTCUT_FOLD_PANEL),
-    ("library", SHORTCUT_LIBRARY), ("close-menu", SHORTCUT_CLOSE_MENU), ("picker-previous", SHORTCUT_PICKER_PREV),
-    ("picker-next", SHORTCUT_PICKER_NEXT), ("add-link", SHORTCUT_ADD_LINK), ("name-page", SHORTCUT_NAME_PAGE),
-    ("status-toggle", SHORTCUT_STATUS), ("links", SHORTCUT_LINKS), ("go-to-page", SHORTCUT_GO_TO_PAGE),
-    ("go-back", SHORTCUT_GO_BACK), ("link-areas", SHORTCUT_LINK_AREAS), ("landscape-fit", SHORTCUT_LANDSCAPE_FIT),
-    ("status-mode", SHORTCUT_STATUS_MODE), ("status-corner", SHORTCUT_STATUS_CORNER), ("gesture-new-page", SHORTCUT_GESTURE_NEW_PAGE),
-];
 /// Gamepad buttons by name: the Linux gamepad convention's, the D-pad (HAT0 decodes to these), and
 /// the analog triggers (hidkeys_trigger_event reports them as these).
 const K_BUTTONS: [(&str, i32); 16] = [
@@ -209,22 +201,8 @@ const K_BUTTONS: [(&str, i32); 16] = [
 ];
 
 pub fn shortcut_action(name: &str) -> i32 {
-    if let Some(rest) = name.strip_prefix("tool:") {
-        for (i, tool) in K_TOOLS.iter().enumerate() {
-            if rest == *tool {
-                return SHORTCUT_TOOL_BASE + i as i32;
-            }
-        }
-        return SHORTCUT_NONE;
-    }
-    for (action_name, action) in K_ACTIONS {
-        if name == action_name {
-            return action;
-        }
-    }
-    SHORTCUT_NONE
-}
-fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8]) -> bool {
+    action_by_name(name) }
+fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8], allow_key: bool, allow_pad: bool) -> bool {
     // (Text from a file is bytes. A key or value that is not UTF-8 matches no name, number or
     // modifier, so the C refuses its line once, as here.)
     let (Ok(key), Ok(value)) = (std::str::from_utf8(key), std::str::from_utf8(value)) else {
@@ -233,6 +211,11 @@ fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8]) -> bool {
     };
     let mut b = ShortcutBinding { code: -1, action: shortcut_action(value), ..Default::default() };
     if let Some(rest) = key.strip_prefix("pad.") {
+        b.src = ActionSrc::Pad;
+        if !allow_pad {
+            m.rejected += 1;
+            return false;
+        }
         let (n, end) = strtol10(rest.as_bytes());
         if end != 0 && end == rest.len() && (256..=767).contains(&n) {
             b.code = n as i32;
@@ -242,8 +225,12 @@ fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8]) -> bool {
                 b.code = code;
             }
         }
-        b.gamepad = true;
-    } else if let Some(mut p) = key.strip_prefix("key.") {
+        } else if let Some(mut p) = key.strip_prefix("key.") {
+        b.src = ActionSrc::Key;
+        if !allow_key {
+            m.rejected += 1;
+            return false;
+        }
         while let Some(plus) = p.find('+') {
             let part = &p[..plus];
             if part.eq_ignore_ascii_case("Ctrl") {
@@ -262,13 +249,13 @@ fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8]) -> bool {
         }
         b.code = shortcut_keycode(p);
     }
-    if b.code < 0 || b.action == 0 {
+    if b.code < 0 || b.action == 0 || action_sources(b.action) & b.src.mask() == 0 {
         m.rejected += 1;
         return false;
     }
     for i in 0..m.count as usize {
         let old = &mut m.bindings[i];
-        if old.code == b.code && old.mods == b.mods && old.gamepad == b.gamepad {
+        if old.code == b.code && old.mods == b.mods && old.src == b.src {
             *old = b;
             return true;
         }
@@ -292,7 +279,7 @@ fn trim(s: &[u8]) -> &[u8] {
     }
     &s[a..n]
 }
-fn parse(map: &mut Shortcuts, text: &[u8]) {
+fn parse(map: &mut Shortcuts, text: &[u8], allow_key: bool, allow_pad: bool) {
     // (strtok_r with "\n": the empty lines between two newlines are skipped.)
     for line in text.split(|&c| c == b'\n').filter(|l| !l.is_empty()) {
         let line = trim(line);
@@ -303,7 +290,10 @@ fn parse(map: &mut Shortcuts, text: &[u8]) {
             map.rejected += 1;
             continue;
         };
-        binding(map, trim(&line[..eq]), trim(&line[eq + 1..]));
+        binding(map, trim(&line[..eq]), trim(&line[eq + 1..]),
+            allow_key,
+            allow_pad,
+        );
     }
 }
 /// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when it is
@@ -318,7 +308,8 @@ pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, 
         _ => return Err(()),
     }
     // Bound the read too, including a file changed since stat.
-    let Ok(f) = std::fs::File::open(path) else { return Err(()) };
+    let Ok(f) = std::fs::File::open(path) else { return Err(()) ;
+    };
     let mut text = Vec::new();
     let failed = std::io::Read::read_to_end(&mut std::io::Read::take(f, cap + 1), &mut text).is_err() || text.len() as u64 > cap;
     if failed {
@@ -331,6 +322,10 @@ pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, 
 
 /// Missing file: defaults. Existing empty file: no bindings. Never rewrites user mappings.
 pub fn shortcuts_load(map: &mut Shortcuts, path: &str) {
+    shortcuts_load_sources(map, path, true, true);
+}
+
+fn shortcuts_load_sources(map: &mut Shortcuts, path: &str, allow_key: bool, allow_pad: bool) {
     *map = Shortcuts::default();
     let text = match ini_read_bounded(path, 65536) {
         Ok(Some(text)) => text,
@@ -340,17 +335,18 @@ pub fn shortcuts_load(map: &mut Shortcuts, path: &str) {
             return;
         }
     };
-    parse(map, &text);
+    parse(map, &text, allow_key, allow_pad);
 }
 
 /// access(path, F_OK) == 0
 fn access_ok(path: &str) -> bool {
     std::fs::metadata(path).is_ok()
 }
-pub fn shortcuts_lookup(map: &Shortcuts, gamepad: bool, code: i32, mods: i32) -> i32 {
+pub fn shortcuts_lookup(map: &Shortcuts, src: impl Into<ActionSrc>, code: i32, mods: i32) -> i32 {
+    let src = src.into();
     for i in 0..map.count as usize {
         let b = &map.bindings[i];
-        if b.gamepad == gamepad && b.code == code && b.mods == mods {
+        if b.src == src && b.code == code && b.mods == mods {
             return b.action;
         }
     }
@@ -369,12 +365,13 @@ pub fn shortcuts_write_defaults(path: &str) -> i32 {
 /// for, none counted as refused). An empty file keeps no mappings.
 fn add_dpad(map: &mut Shortcuts) {
     for i in 0..map.count as usize {
-        if map.bindings[i].gamepad && map.bindings[i].code >= 544 && map.bindings[i].code <= 547 {
+        if map.bindings[i].src == ActionSrc::Pad
+            && map.bindings[i].code >= 544 && map.bindings[i].code <= 547 {
             return;
         }
     }
     let mut dpad = Shortcuts::default();
-    parse(&mut dpad, DPAD_LINES.as_bytes());
+    parse(&mut dpad, DPAD_LINES.as_bytes(), false, true);
     let mut i = 0;
     while i < dpad.count && map.count < SHORTCUT_MAX as i32 {
         map.bindings[map.count as usize] = dpad.bindings[i as usize];
@@ -388,7 +385,7 @@ fn add_dpad(map: &mut Shortcuts) {
 /// and counted, as in shortcuts.ini. A shortcuts.ini that binds no D-pad direction (one written
 /// before 2.0.0-beta.5) gets the D-pad's starter lines in memory; the file is not changed.
 pub fn shortcuts_load_all(map: &mut Shortcuts, shortcuts_path: &str, controller_path: &str) {
-    shortcuts_load(map, shortcuts_path);
+    shortcuts_load_sources(map, shortcuts_path, true, true);
     if map.count != 0 {
         add_dpad(map);
     }
@@ -396,10 +393,10 @@ pub fn shortcuts_load_all(map: &mut Shortcuts, shortcuts_path: &str, controller_
         return;
     }
     let mut pads = Shortcuts::default();
-    shortcuts_load(&mut pads, controller_path);
+    shortcuts_load_sources(&mut pads, controller_path, false, true);
     let mut kept = 0usize;
     for i in 0..map.count as usize {
-        if !map.bindings[i].gamepad {
+        if map.bindings[i].src != ActionSrc::Pad {
             map.bindings[kept] = map.bindings[i];
             kept += 1;
         }
@@ -407,7 +404,7 @@ pub fn shortcuts_load_all(map: &mut Shortcuts, shortcuts_path: &str, controller_
     map.count = kept as i32;
     map.rejected += pads.rejected;
     for i in 0..pads.count as usize {
-        if !pads.bindings[i].gamepad || map.count == SHORTCUT_MAX as i32 {
+        if pads.bindings[i].src != ActionSrc::Pad || map.count == SHORTCUT_MAX as i32 {
             map.rejected += 1; // (a key there, or no room)
             continue;
         }
@@ -418,22 +415,37 @@ pub fn shortcuts_load_all(map: &mut Shortcuts, shortcuts_path: &str, controller_
 
 /// controller.ini with every gamepad binding of map, written whole (atomically); -1 when it could not be.
 fn write_pads(next: &Shortcuts, controller_path: &str) -> i32 {
-    // (the C builds it in a char[4096])
-    const TEXT_CAP: usize = 4096;
-    let mut text = String::from(
-        "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n\
-         # While this file is here, shortcuts.ini's pad. lines are set aside.\n",
-    );
+    const HEADER: &str = "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n\
+         # While this file is here, shortcuts.ini's pad. lines are set aside.\n";
+    let mut longest_name = 0usize;
+    for id in (SHORTCUT_TOOL_BASE..SHORTCUT_TOOL_BASE + TOOL_COUNT as i32)
+        .chain(K_ACTIONS.iter().map(|(_, id)| *id))
+    {
+        if let Some(name) = shortcut_action_name(id) {
+            longest_name = longest_name.max(name.len());
+        }
+    }
+    // `pad.767=` is eight bytes; each line ends in LF.
+    let text_cap = HEADER.len() + SHORTCUT_MAX * (8 + longest_name + 1);
+    let mut text = String::new();
+    if text.try_reserve_exact(text_cap).is_err() {
+        return -1;
+    }
+    text.push_str(HEADER);
     for i in 0..next.count as usize {
         let b = &next.bindings[i];
-        if !b.gamepad {
+        if b.src != ActionSrc::Pad {
             continue;
         }
         let mut pad = String::new();
         shortcut_pad_name(b.code, &mut pad, 16);
         // (an action with no name prints "(null)", as the C library's %s does)
-        let line = cformat!("pad.%s=%s\n", &pad, shortcut_action_name(b.action).unwrap_or("(null)"));
-        if line.len() >= TEXT_CAP - text.len() {
+        let line = cformat!(
+            "pad.%s=%s\n",
+            &pad,
+            shortcut_action_name(b.action).unwrap_or("(null)")
+        );
+        if line.len() > text_cap.saturating_sub(text.len()) {
             return -1;
         }
         text.push_str(&line);
@@ -447,15 +459,26 @@ fn write_pads(next: &Shortcuts, controller_path: &str) -> i32 {
 /// Gamepad button code does action from now on, as its only button: the button's old action and the
 /// action's other buttons lose theirs. Writes controller.ini with every gamepad binding; -1 when it
 /// could not (map unchanged).
-pub fn shortcuts_learn(map: &mut Shortcuts, controller_path: &str, code: i32, action: i32) -> i32 {
-    if shortcut_action_name(action).is_none() || !(256..=767).contains(&code) {
+pub fn shortcuts_learn(
+    map: &mut Shortcuts,
+    controller_path: &str,
+    src: impl Into<ActionSrc>,
+    code: i32,
+    action: i32,
+) -> i32 {
+    let src = src.into();
+    if src != ActionSrc::Pad
+        || shortcut_action_name(action).is_none()
+        || action_sources(action) & src.mask() == 0
+        || !(256..=767).contains(&code)
+    {
         return -1;
     }
     let mut next = map.clone();
     let mut kept = 0usize;
     for i in 0..next.count as usize {
         let b = next.bindings[i];
-        if b.gamepad && (b.code == code || b.action == action) {
+        if b.src == src && (b.code == code || b.action == action) {
             continue;
         }
         next.bindings[kept] = b;
@@ -465,7 +488,12 @@ pub fn shortcuts_learn(map: &mut Shortcuts, controller_path: &str, code: i32, ac
     if next.count == SHORTCUT_MAX as i32 {
         return -1;
     }
-    next.bindings[next.count as usize] = ShortcutBinding { code, action, gamepad: true, ..Default::default() };
+    next.bindings[next.count as usize] = ShortcutBinding {
+        code,
+        action,
+        src,
+        ..Default::default()
+    };
     next.count += 1;
     if write_pads(&next, controller_path) != 0 {
         return -1;
@@ -477,12 +505,22 @@ pub fn shortcuts_learn(map: &mut Shortcuts, controller_path: &str, code: i32, ac
 /// row held): controller.ini is written with every other gamepad binding, as shortcuts_learn writes
 /// it, so shortcuts.ini's pad. lines (and the D-pad's starter lines) stay set aside. Nothing is
 /// written when neither had a button. -1 when it could not be written (map unchanged).
-pub fn shortcuts_forget(map: &mut Shortcuts, controller_path: &str, action: i32, action2: i32) -> i32 {
+pub fn shortcuts_forget(
+    map: &mut Shortcuts,
+    controller_path: &str,
+    src: impl Into<ActionSrc>,
+    action: i32,
+    action2: i32,
+) -> i32 {
+    let src = src.into();
+    if src != ActionSrc::Pad {
+        return -1;
+    }
     let mut next = map.clone();
     let mut kept = 0usize;
     for i in 0..next.count as usize {
         let b = next.bindings[i];
-        if b.gamepad && (b.action == action || (action2 != 0 && b.action == action2)) {
+        if b.src == src && (b.action == action || (action2 != 0 && b.action == action2)) {
             continue;
         }
         next.bindings[kept] = b;
@@ -499,11 +537,17 @@ pub fn shortcuts_forget(map: &mut Shortcuts, controller_path: &str, action: i32,
     0
 }
 /// The gamepad buttons for action: how many there are, the first cap of them in codes.
-pub fn shortcuts_pads_for(map: &Shortcuts, action: i32, codes: &mut [i32]) -> i32 {
+pub fn shortcuts_pads_for(
+    map: &Shortcuts,
+    src: impl Into<ActionSrc>,
+    action: i32,
+    codes: &mut [i32],
+) -> i32 {
+    let src = src.into();
     let mut n = 0i32;
     for i in 0..map.count as usize {
         let b = &map.bindings[i];
-        if !b.gamepad || b.action != action {
+        if b.src != src || b.action != action {
             continue;
         }
         if (n as usize) < codes.len() {
@@ -527,7 +571,9 @@ pub fn shortcut_pad_name(code: i32, out: &mut String, cap: usize) {
 /// X, L, R, ZL, ZR, -, +, LS, RS, Home, Capture: hidkeys_switch), else as the files name it.
 pub fn shortcut_pad_label(code: i32, switch_layout: bool, out: &mut String, cap: usize) {
     // The Pro Controller's simple report, in its order from BTN_A (hidkeys_switch).
-    const K_SWITCH: [&str; 14] = ["B", "A", "Y", "X", "L", "R", "ZL", "ZR", "-", "+", "LS", "RS", "Home", "Capture"];
+    const K_SWITCH: [&str; 14] = [
+        "B", "A", "Y", "X", "L", "R", "ZL", "ZR", "-", "+", "LS", "RS", "Home", "Capture",
+    ];
     if switch_layout && code >= 304 && code < 304 + K_SWITCH.len() as i32 {
         csnprintf!(out, cap, "%s", K_SWITCH[(code - 304) as usize]);
     } else {
@@ -536,13 +582,4 @@ pub fn shortcut_pad_label(code: i32, switch_layout: bool, out: &mut String, cap:
 }
 /// An action's name in the files ("undo", "tool:eraser"), or None.
 pub fn shortcut_action_name(action: i32) -> Option<&'static str> {
-    if action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT as i32 {
-        return Some(K_TOOL_ACTIONS[(action - SHORTCUT_TOOL_BASE) as usize]);
-    }
-    for (name, a) in K_ACTIONS {
-        if a == action {
-            return Some(name);
-        }
-    }
-    None
-}
+    action_info(action ) .map(|a| a .name)}

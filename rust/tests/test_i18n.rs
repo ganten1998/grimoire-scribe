@@ -903,6 +903,101 @@ fn the_links_bar_strings_fit() {
     i18n_set("en");
 }
 
+// Phase 3's five-cell Settings footer gives each word 248 px at 34 px caps.
+// These are raw measurements: a translation must fit without shrinking the budget.
+fn gestures_and_record_card_strings_fit() {
+    let reasons = [
+        "The pen is near: move it away.",
+        "Put the fingers down together.",
+        "Swipe in a straight line.",
+        "Swipe farther.",
+        "Move both fingers the same way.",
+        "Your hand moved: try again.",
+        "Two fingers spreading is kept for zoom.",
+        "Keep the fingers 1 to 8 cm apart.",
+        "Too slow: do it in one go.",
+        "This Kindle feels two fingers at most.",
+        "Draw it bigger: at least 2 cm across.",
+        "Too slow: draw it in one go.",
+        "Start moving as soon as you touch.",
+        "You held still, so it stopped.",
+        "Too straight: give it two turns.",
+        "Too many turns: draw a simpler shape.",
+        "Use a fingertip, not the hand.",
+        "One stroke, without lifting.",
+        "Grimoire keeps up to 32 shapes.",
+        "Good. Draw it again (2 of 3).",
+        "Not like the first one: draw it again.",
+        "Once more makes it surer, or Use.",
+        "Checking that a slip cannot draw it...",
+        "Too easy to make by accident.",
+        "Give it two turns or a loop.",
+        "This replaces a shape from a newer Grimoire.",
+        "Draw a shape with one finger, or swipe or tap with two fingers.",
+    ];
+    for language in ["en", "es"] {
+        i18n_set(language);
+        for theme in THEMES {
+            ui_set_theme(theme);
+            for source in ["Controller", "Gestures", "Updates"] {
+                let label = tr(source);
+                let width = font_measure(FontFace::Caps, 34.0, label);
+                if width > 248 {
+                    eprintln!("  {} {:?}: footer {:?} is {} px, room 248", language, theme, label, width);
+                }
+                check!(width <= 248);
+                if language == "es" {
+                    check!(label != source);
+                }
+            }
+            // record_line_rect: 1400 px card minus 54 px margins on each side.
+            // ui_text may use 44 px on one line or two at 34 px; its reason must
+            // fit at the minimum size, and remain whole in the 256-byte buffer.
+            let card_fits = |line: &str| {
+                let mut widest = 0;
+                let lines = font_wrap_lines(FontFace::Regular, 34.0, line, 1292, Some(&mut widest));
+                if !(1..=2).contains(&lines) || widest > 1292 || line.len() >= 256 {
+                    eprintln!("  {} {:?}: record line {:?}, {} lines, {} px, {} bytes", language, theme, line, lines, widest, line.len());
+                }
+                (1..=2).contains(&lines) && widest <= 1292 && line.len() < 256
+            };
+            for source in reasons {
+                check!(card_fits(tr(source)));
+                if language == "es" {
+                    check!(tr(source) != source);
+                }
+            }
+            // Exercise every learnable action as the substituted conflict owner,
+            // including the long paired-row labels' individual actions.
+            for group in ACTION_GROUPS.iter() {
+                for row in group.rows {
+                    for action in row.act {
+                        if action == 0 || action_sources(action) & (SRC_TOUCH | SRC_SHAPE) == 0 {
+                            continue;
+                        }
+                        for source in [
+                            "Now for %s. Use moves it here.",
+                            "That is the shape for %s. Use moves it here.",
+                            "Too close to the shape for %s.",
+                        ] {
+                            check!(card_fits(&cformat!(tr(source), action_label(action))));
+                        }
+                    }
+                }
+            }
+            let footer = tr("One stroke, without lifting. Two turns or a loop.");
+            check!(font_measure(FontFace::Regular, 34.0, footer) <= 1312);
+            // Three buttons in the sheet's 1312 px inner width, with two 20 px gaps.
+            // ui_button reserves 16 px inside the cell; no icon appears above the word.
+            for source in ["Use", "Try again", "Cancel"] {
+                check!(font_measure(FontFace::Caps, 34.0, tr(source)) <= 408);
+            }
+        }
+    }
+    ui_set_theme(UiTheme::Gothic);
+    i18n_set("en");
+}
+
 // A translation can be longer than the English a buffer was sized for: i18n_copy cuts it between
 // two characters, and takes off one that snprintf already cut.
 fn copies_cut_between_characters() {
@@ -1362,6 +1457,7 @@ fn test_i18n() {
     run!(dates);
     run!(rare_notices_fit);
     run!(the_links_bar_strings_fit);
+    run!(gestures_and_record_card_strings_fit);
     run!(copies_cut_between_characters);
     run!(raw_labels_fit);
     run!(paper_is_the_same_in_every_language);

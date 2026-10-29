@@ -264,6 +264,15 @@ pub fn input_touch_context(v: TgView) {
 pub fn input_touch_trace(path: Option<&str>) {
     platform::input_touch_trace(path)
 }
+/// Appends an editor-side event (such as a finger-shape result) to the opt-in trace. Platforms that
+/// do not write touch traces ignore it.
+#[inline]
+pub fn input_touch_trace_event(line: &str) {
+    #[cfg(any(feature = "kindle", feature = "sim"))]
+    platform::input_touch_trace_event(line);
+    #[cfg(not(any(feature = "kindle", feature = "sim")))]
+    let _ = line;
+}
 /// Live view's pen viewers read the raw digitizer themselves (live.rs): where its node is and how
 /// its frames map onto the screen, as this module places its own events. false while there is none
 /// to read: no raw digitizer, its place not trusted (pensync_hover_orientation -1), its times not

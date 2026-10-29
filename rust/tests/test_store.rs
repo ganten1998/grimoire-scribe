@@ -27,7 +27,13 @@ fn mkdir(path: &str) -> bool {
     std::fs::DirBuilder::new().mode(0o755).create(path).is_ok()
 }
 fn system(cmd: &str) -> i32 {
-    std::process::Command::new("sh").arg("-c").arg(cmd).status().ok().and_then(|s| s.code()).unwrap_or(-1)
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .status()
+        .ok()
+        .and_then(|s| s.code())
+        .unwrap_or(-1)
 }
 /// strtoul(s, NULL, 10) for the digits that start s
 fn strtoul(s: &[u8]) -> usize {
@@ -41,7 +47,8 @@ fn strtoul(s: &[u8]) -> usize {
     n
 }
 fn find(hay: &[u8], needle: &str) -> Option<usize> {
-    hay.windows(needle.len()).position(|w| w == needle.as_bytes())
+    hay.windows(needle.len())
+        .position(|w| w == needle.as_bytes())
 }
 
 fn count_pdf_pages(done: i32, total: i32, count: &mut i32) {
@@ -50,7 +57,10 @@ fn count_pdf_pages(done: i32, total: i32, count: &mut i32) {
 }
 
 fn buffer_failure_stays_failed() {
-    let mut b = Buf { err: true, ..Default::default() };
+    let mut b = Buf {
+        err: true,
+        ..Default::default()
+    };
     check!(buf_append(&mut b, b"xx") == -1 && b.err);
     check!(b.data.is_empty());
     b.data.clear();
@@ -66,7 +76,14 @@ fn squiggle(t: ToolKind, y: f32) -> Box<Stroke> {
     let mut s = stroke_new(t, &p, 99);
     for i in 0..50 {
         let f = i as f32;
-        let q = PenSample { x: fmla(f, 20.0, 300.0), y: fmla(30.0, (f * 0.4).sin(), y), pressure: 0.2 + f / 70.0, tilt_x: 10.0, tilt_y: -5.0, t_ms: i as u32 * 4 };
+        let q = PenSample {
+            x: fmla(f, 20.0, 300.0),
+            y: fmla(30.0, (f * 0.4).sin(), y),
+            pressure: 0.2 + f / 70.0,
+            tilt_x: 10.0,
+            tilt_y: -5.0,
+            t_ms: i as u32 * 4,
+        };
         stroke_append(&mut s, &q, 300.0);
     }
     s
@@ -85,13 +102,22 @@ fn new_page_after_a_document_page() {
     check!(!paper_is_document(PaperKind(0x55000123)) && !paper_is_document(PaperKind(0x53000123)));
     check!(!paper_is_document(PAPER_GRID) && !paper_is_document(music_default()));
     check!(store_new_page_paper(&nb, doc) == PAPER_NARROW);
-    check!(store_new_page_paper(&nb, tpl) == tpl && store_new_page_paper(&nb, PAPER_GRID) == PAPER_GRID);
+    check!(
+        store_new_page_paper(&nb, tpl) == tpl
+            && store_new_page_paper(&nb, PAPER_GRID) == PAPER_GRID
+    );
     check!(store_new_page_paper(&nb, PaperKind(0x55000123)) == PaperKind(0x55000123));
     check!(store_add_page(&mut nb, 1, doc) == 0 && store_add_page(&mut nb, 2, tpl) == 0);
     let mut p = None;
-    check!(store_load_page(&nb, 1, 1860, 2480, &mut p) == 0 && p.as_ref().is_some_and(|p| p.paper == PAPER_NARROW));
+    check!(
+        store_load_page(&nb, 1, 1860, 2480, &mut p) == 0
+            && p.as_ref().is_some_and(|p| p.paper == PAPER_NARROW)
+    );
     drop(p.take());
-    check!(store_load_page(&nb, 2, 1860, 2480, &mut p) == 0 && p.as_ref().is_some_and(|p| p.paper == tpl));
+    check!(
+        store_load_page(&nb, 2, 1860, 2480, &mut p) == 0
+            && p.as_ref().is_some_and(|p| p.paper == tpl)
+    );
     drop(p.take());
     let mut odd = nb.clone();
     odd.paper = doc; // a notebook whose own paper is a document page's: Blank, never the picture
@@ -108,7 +134,10 @@ fn notebooks() {
     check!(store_add_page(&mut nb, 0, PAPER_WIDE) == 0);
     check!(nb.npages() == 3 && nb.page_ids[0] == 3 && nb.page_ids[1] == 1 && nb.page_ids[2] == 2);
     let mut p = None;
-    check!(store_load_page(&nb, 2, 1860, 2480, &mut p) == 0 && p.as_ref().is_some_and(|p| p.paper == PAPER_MUSIC));
+    check!(
+        store_load_page(&nb, 2, 1860, 2480, &mut p) == 0
+            && p.as_ref().is_some_and(|p| p.paper == PAPER_MUSIC)
+    );
     let mut p = p.unwrap();
     page_add(&mut p, squiggle(TOOL_PENCIL, 500.0));
     page_add(&mut p, squiggle(TOOL_BALLPOINT, 900.0));
@@ -116,9 +145,17 @@ fn notebooks() {
     let mut q = None;
     check!(store_load_page(&nb, 2, 1860, 2480, &mut q) == 0);
     let qp = q.unwrap();
-    check!(qp.strokes.len() == 2 && qp.strokes[1].pts.len() == 50 && qp.strokes[1].tool == TOOL_BALLPOINT);
+    check!(
+        qp.strokes.len() == 2
+            && qp.strokes[1].pts.len() == 50
+            && qp.strokes[1].tool == TOOL_BALLPOINT
+    );
     check_near!(qp.strokes[0].pts[10].x, p.strokes[0].pts[10].x, 1e-4);
-    check_near!(qp.strokes[0].pts[10].pressure, p.strokes[0].pts[10].pressure, 1e-4);
+    check_near!(
+        qp.strokes[0].pts[10].pressure,
+        p.strokes[0].pts[10].pressure,
+        1e-4
+    );
     check_near!(qp.strokes[0].pts[10].tilt_y, -5.0f32, 0.01);
     drop(qp);
     // Scaled load
@@ -147,7 +184,14 @@ fn notebooks() {
     check!(b.data.len() > 1000 && b.data.starts_with(b"%PDF-1.4"));
     let mut with_progress = Buf::default();
     let mut completed = 0;
-    check!(export_notebook_pdf_progress(&nb, 300.0, &mut with_progress, Some(&mut |done, total| count_pdf_pages(done, total, &mut completed))) == 0);
+    check!(
+        export_notebook_pdf_progress(
+            &nb,
+            300.0,
+            &mut with_progress,
+            Some(&mut |done, total| count_pdf_pages(done, total, &mut completed))
+        ) == 0
+    );
     check!(completed == nb.npages() + 1);
     check!(with_progress.data == b.data);
     buf_free(&mut with_progress);
@@ -186,7 +230,9 @@ fn notebooks() {
     let path = format!("{out}/notebook.zip");
     write_file_atomic(&path, &b.data);
     buf_free(&mut b);
-    let cmd = format!("unzip -tq '{path}' >/dev/null && unzip -l '{path}' | grep -q 'Physics/page-002.png'");
+    let cmd = format!(
+        "unzip -tq '{path}' >/dev/null && unzip -l '{path}' | grep -q 'Physics/page-002.png'"
+    );
     check!(system(&cmd) == 0);
     let docs = format!("{}/PDFs", root());
     check!(export_mirror_pdf(&nb, 300.0, &docs) == 0);
@@ -197,8 +243,8 @@ fn notebooks() {
     bg_mirror_pdf(nb.id.as_str(), 300.0, &docs, true);
     bg_mirror_pdf(nb.id.as_str(), 300.0, &docs, false); // queued behind the running one (it may be stale)
     bg_mirror_pdf(nb.id.as_str(), 300.0, &docs, false); // a duplicate of a queued job merges into it
-    // Two exports by children built with the sanitizers and niced: on a loaded machine (several
-    // gates at once) that takes far longer than on an idle one, so wait for them by the clock.
+                                                        // Two exports by children built with the sanitizers and niced: on a loaded machine (several
+                                                        // gates at once) that takes far longer than on an idle one, so wait for them by the clock.
     let mut got = 0;
     let until = now_ms().wrapping_add(60000);
     while (bg_busy() || got == 0) && (now_ms().wrapping_sub(until) as i32) < 0 {
@@ -237,9 +283,15 @@ fn copy_pages_keeps_bytes_and_order() {
     check!(before.is_some() && after.is_some() && before == after);
     let mut p = None;
     check!(store_load_page(&nb, 1, 1860, 2480, &mut p) == 0);
-    check!(p.as_ref().is_some_and(|p| p.strokes.len() == 1 && p.paper == PaperKind(0x51000123)));
+    check!(p
+        .as_ref()
+        .is_some_and(|p| p.strokes.len() == 1 && p.paper == PaperKind(0x51000123)));
     drop(p);
-    check!(store_load_info(nb.id.as_str(), &mut back) == 0 && back.npages() == 2 && back.page_ids[1] == 2);
+    check!(
+        store_load_info(nb.id.as_str(), &mut back) == 0
+            && back.npages() == 2
+            && back.page_ids[1] == 2
+    );
 
     // A page from a future header version is read-only here. Copy retains its original bytes.
     let mut before = before.unwrap_or_default();
@@ -254,7 +306,10 @@ fn copy_pages_keeps_bytes_and_order() {
         let after = read_file(&dest);
         check!(after.as_ref().is_some_and(|a| a == &before));
         let mut p = None;
-        check!(store_load_page(&nb, 1, 1860, 2480, &mut p) == 0 && p.as_ref().is_some_and(|p| p.readonly));
+        check!(
+            store_load_page(&nb, 1, 1860, 2480, &mut p) == 0
+                && p.as_ref().is_some_and(|p| p.readonly)
+        );
     }
     check!(nb.npages() == 3 && nb.page_ids[0] == 1 && nb.page_ids[1] == 3 && nb.page_ids[2] == 2);
 
@@ -264,7 +319,9 @@ fn copy_pages_keeps_bytes_and_order() {
     check!(store_duplicate_page(&mut nb, 0, end) == 0);
     let mut p = None;
     check!(store_load_page(&nb, nb.npages() - 1, 1860, 2480, &mut p) == 0);
-    check!(p.as_ref().is_some_and(|p| p.strokes.is_empty() && p.paper == PAPER_NARROW));
+    check!(p
+        .as_ref()
+        .is_some_and(|p| p.strokes.is_empty() && p.paper == PAPER_NARROW));
 }
 
 fn copy_and_insert_fail_without_changing_the_page_list() {
@@ -288,7 +345,9 @@ fn copy_and_insert_fail_without_changing_the_page_list() {
     check!(store_duplicate_page(&mut nb, 0, 1) != 0);
     check!(nb.npages() == 1 && nb.next_page_id == 2);
     check!(std::fs::remove_dir(&source).is_ok());
-    check!(original.as_ref().is_some_and(|o| write_file_atomic(&source, o) == 0));
+    check!(original
+        .as_ref()
+        .is_some_and(|o| write_file_atomic(&source, o) == 0));
 
     // Writing the page succeeds, but saving notebook.ini fails. The new file is removed,
     // the old notebook.ini stays intact and the in-memory list is safe to save again.
@@ -297,15 +356,29 @@ fn copy_and_insert_fail_without_changing_the_page_list() {
     let next = nb.next_page_id;
     let modified = nb.modified;
     check!(store_duplicate_page(&mut nb, 0, 1) != 0);
-    check!(nb.npages() == 1 && nb.page_ids[0] == 1 && nb.next_page_id == next && nb.modified == modified);
+    check!(
+        nb.npages() == 1
+            && nb.page_ids[0] == 1
+            && nb.next_page_id == next
+            && nb.modified == modified
+    );
     check!(!exists(&dest));
     check!(store_add_page(&mut nb, 1, PAPER_GRID) != 0);
-    check!(nb.npages() == 1 && nb.page_ids[0] == 1 && nb.next_page_id == next && nb.modified == modified);
+    check!(
+        nb.npages() == 1
+            && nb.page_ids[0] == 1
+            && nb.next_page_id == next
+            && nb.modified == modified
+    );
     check!(!exists(&dest));
     let data = read_file(&info);
     check!(old_info.is_some() && data.is_some() && old_info == data);
     check!(std::fs::remove_dir(&blocked).is_ok() && store_save_info(&mut nb) == 0);
-    check!(store_load_info(nb.id.as_str(), &mut back) == 0 && back.npages() == 1 && back.page_ids[0] == 1);
+    check!(
+        store_load_info(nb.id.as_str(), &mut back) == 0
+            && back.npages() == 1
+            && back.page_ids[0] == 1
+    );
     check!(store_duplicate_page(&mut nb, 0, 1) == 0 && nb.page_ids[1] == next);
 }
 
@@ -332,10 +405,12 @@ fn fuzz_deserialize() {
     // Every truncation must fail cleanly (except the full length).
     let mut l = 0;
     while l < len {
-        check!(page_deserialize(&d[..l], &mut q) != 0 || {
-            drop(q.take());
-            true
-        });
+        check!(
+            page_deserialize(&d[..l], &mut q) != 0 || {
+                drop(q.take());
+                true
+            }
+        );
         l += 7;
     }
     srand(1);
@@ -362,7 +437,18 @@ fn fuzz_deserialize() {
 }
 
 fn custom_music_paper_roundtrip() {
-    let m = MusicLayout { systems: 3, n: 5, part: [PART_TREBLE, PART_BASS, PART_TAB6, PART_LYRICS, PART_TAB4, PART_NONE] };
+    let m = MusicLayout {
+        systems: 3,
+        n: 5,
+        part: [
+            PART_TREBLE,
+            PART_BASS,
+            PART_TAB6,
+            PART_LYRICS,
+            PART_TAB4,
+            PART_NONE,
+        ],
+    };
     let k = music_encode(&m);
     let mut r = MusicLayout::default();
     check!(paper_is_custom(k) && music_decode(k, &mut r));
@@ -371,21 +457,30 @@ fn custom_music_paper_roundtrip() {
     check!(paper_sanitize(PAPER_CUSTOM_FLAG, PAPER_BLANK) == PAPER_BLANK); // no parts
     check!(paper_sanitize(PAPER_CUSTOM_FLAG | 1 << 24 | 15, PAPER_BLANK) == PAPER_BLANK); // bad part
     check!(paper_sanitize(999, PAPER_MEDIUM) == PAPER_MEDIUM);
-    check!(music_max_systems(&m, 2480, 300.0) >= 2 && music_max_systems(&m, 2480, 300.0) <= MUSIC_MAX_SYSTEMS);
+    check!(
+        music_max_systems(&m, 2480, 300.0) >= 2
+            && music_max_systems(&m, 2480, 300.0) <= MUSIC_MAX_SYSTEMS
+    );
     let mut p = page_new(1860, 2480, k);
     page_add(&mut p, squiggle(ToolKind(0), 300.0));
     let mut d = Vec::new();
     check!(page_serialize(&p, &mut d) == 0);
     check!(d[4] == 2); // version 2 only for custom paper
     let mut q = None;
-    check!(page_deserialize(&d, &mut q) == 0 && q.as_ref().is_some_and(|q| q.paper == k && q.strokes.len() == 1));
+    check!(
+        page_deserialize(&d, &mut q) == 0
+            && q.as_ref()
+                .is_some_and(|q| q.paper == k && q.strokes.len() == 1)
+    );
     let mut l = 0;
     while l < d.len() {
         let mut t = None;
-        check!(page_deserialize(&d[..l], &mut t) != 0 || {
-            drop(t.take());
-            true
-        });
+        check!(
+            page_deserialize(&d[..l], &mut t) != 0 || {
+                drop(t.take());
+                true
+            }
+        );
         l += 5;
     }
     drop(q);
@@ -402,10 +497,21 @@ fn settings_roundtrip() {
     s.tools[TOOL_PENCIL.0 as usize].tilt_size = 99.0; // out of range, must clamp on load
     s.panel_x = 123;
     s.panel_collapsed = true;
-    s.pen_calib = InputCalib { valid: true, swap_xy: true, ax: -1860.0, bx: 1860.0, ay: 2480.0, by: 0.0 };
+    s.pen_calib = InputCalib {
+        valid: true,
+        swap_xy: true,
+        ax: -1860.0,
+        bx: 1860.0,
+        ay: 2480.0,
+        by: 0.0,
+    };
     check!(settings_save(&s) == 0);
     settings_load(&mut t);
-    check_near!(t.tools[TOOL_BALLPOINT.0 as usize].pressure_gamma, 2.5f32, 1e-3);
+    check_near!(
+        t.tools[TOOL_BALLPOINT.0 as usize].pressure_gamma,
+        2.5f32,
+        1e-3
+    );
     check_near!(t.tools[TOOL_PENCIL.0 as usize].tilt_size, 4.0f32, 1e-3);
     check!(t.panel_x == 123 && t.panel_collapsed && t.pen_calib.valid && t.pen_calib.swap_xy);
     check_near!(t.pen_calib.ax, -1860.0f32, 1e-2);
@@ -441,7 +547,11 @@ fn settings_upgrade_ballpoint_smoothing() {
     write_file_atomic(&path, v2.as_bytes());
     let mut s = Settings::default();
     settings_load(&mut s);
-    let (ball, pencil, fine) = (TOOL_BALLPOINT.0 as usize, TOOL_PENCIL.0 as usize, TOOL_FINELINER.0 as usize);
+    let (ball, pencil, fine) = (
+        TOOL_BALLPOINT.0 as usize,
+        TOOL_PENCIL.0 as usize,
+        TOOL_FINELINER.0 as usize,
+    );
     check_near!(s.tools[ball].smoothing, 0.50f32, 1e-3);
     check_near!(s.tools[pencil].smoothing, 0.25f32, 1e-3);
     check_near!(s.tools[fine].smoothing, 1.00f32, 1e-3); // its default did not change
@@ -464,7 +574,10 @@ fn settings_upgrade_ballpoint_smoothing() {
 fn pen_defaults_from_device() {
     // Pen-only snapshot chosen on the Kindle, independent of the compiled defaults.
     let path = format!("{}/settings.ini", store_root());
-    let snapshot = read_file(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/fixtures/pen-defaults.ini"));
+    let snapshot = read_file(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/fixtures/pen-defaults.ini"
+    ));
     check!(snapshot.is_some());
     let Some(snapshot) = snapshot else { return };
     check!(write_file_atomic(&path, &snapshot) == 0);
@@ -491,7 +604,11 @@ fn pen_defaults_from_device() {
     check!(settings_save(&chosen) == 0 && settings_load(&mut saved) == 0);
     for t in 0..TOOL_COUNT {
         for i in 0..pi.len() {
-            check_near!(*tool_param_ptr(&mut saved.tools[t], &pi[i]), *tool_param_ptr(&mut chosen.tools[t], &pi[i]), 1e-6);
+            check_near!(
+                *tool_param_ptr(&mut saved.tools[t], &pi[i]),
+                *tool_param_ptr(&mut chosen.tools[t], &pi[i]),
+                1e-6
+            );
         }
     }
 }
@@ -511,11 +628,24 @@ fn panel_tools() {
     let mut t = Settings::default();
     settings_default(&mut s);
     check!(s.npins == 0 && !settings_pinned(&s, TOOL_PENCIL));
-    check!(settings_toggle_pin(&mut s, TOOL_HIGHLIGHTER) && settings_toggle_pin(&mut s, TOOL_FINELINER));
-    check!(!settings_toggle_pin(&mut s, TOOL_ERASER) && !settings_toggle_pin(&mut s, ToolKind(TOOL_COUNT as i32)));
-    check!(s.npins == 2 && settings_pinned(&s, TOOL_FINELINER) && !settings_pinned(&s, TOOL_ERASER));
+    check!(
+        settings_toggle_pin(&mut s, TOOL_HIGHLIGHTER)
+            && settings_toggle_pin(&mut s, TOOL_FINELINER)
+    );
+    check!(
+        !settings_toggle_pin(&mut s, TOOL_ERASER)
+            && !settings_toggle_pin(&mut s, ToolKind(TOOL_COUNT as i32))
+    );
+    check!(
+        s.npins == 2 && settings_pinned(&s, TOOL_FINELINER) && !settings_pinned(&s, TOOL_ERASER)
+    );
     check!(settings_save(&s) == 0 && has_pins_line(&path, "panel_tools=highlighter,fineliner"));
-    check!(settings_load(&mut t) == 0 && t.npins == 2 && t.pins[0] == TOOL_HIGHLIGHTER && t.pins[1] == TOOL_FINELINER);
+    check!(
+        settings_load(&mut t) == 0
+            && t.npins == 2
+            && t.pins[0] == TOOL_HIGHLIGHTER
+            && t.pins[1] == TOOL_FINELINER
+    );
     // None pinned: an empty line.
     settings_default(&mut s);
     check!(settings_save(&s) == 0 && has_pins_line(&path, "panel_tools="));
@@ -524,7 +654,12 @@ fn panel_tools() {
     let mixed = "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker\n";
     check!(write_file_atomic(&path, mixed.as_bytes()) == 0);
     check!(settings_load(&mut t) == 0 && t.npins == 4);
-    check!(t.pins[0] == TOOL_HIGHLIGHTER && t.pins[1] == TOOL_PENCIL && t.pins[2] == TOOL_MECH_PENCIL && t.pins[3] == TOOL_BALLPOINT);
+    check!(
+        t.pins[0] == TOOL_HIGHLIGHTER
+            && t.pins[1] == TOOL_PENCIL
+            && t.pins[2] == TOOL_MECH_PENCIL
+            && t.pins[3] == TOOL_BALLPOINT
+    );
     for i in 0..t.npins as usize {
         for k in 0..i {
             check!(t.pins[i] != t.pins[k] && t.pins[i] != TOOL_ERASER);
@@ -534,19 +669,39 @@ fn panel_tools() {
     settings_pins_text(&t, &mut text, 128);
     check!(text == "highlighter,pencil,mech,ballpoint");
     // Full: a fifth is refused, the pins stay as they were.
-    check!(!settings_toggle_pin(&mut t, TOOL_MARKER) && t.npins == 4 && !settings_pinned(&t, TOOL_MARKER));
+    check!(
+        !settings_toggle_pin(&mut t, TOOL_MARKER)
+            && t.npins == 4
+            && !settings_pinned(&t, TOOL_MARKER)
+    );
     // Saved unchanged, the line goes back as it was (a newer version's pen is still in it).
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker"));
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(
+                &path,
+                "panel_tools=eraser,nope,highlighter,highlighter,pencil,mech,ballpoint,marker"
+            )
+    );
     // Changed, the pins are written as they are: unpinning one keeps the others' order.
     check!(settings_toggle_pin(&mut t, TOOL_PENCIL) && t.npins == 3);
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint"));
+    check!(
+        settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint")
+    );
     check!(settings_toggle_pin(&mut t, TOOL_CALLIGRAPHY) && t.pins[3] == TOOL_CALLIGRAPHY);
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint,calligraphy"));
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(&path, "panel_tools=highlighter,mech,ballpoint,calligraphy")
+    );
     check!(settings_load(&mut s) == 0 && s.npins == 4 && s.pins[3] == TOOL_CALLIGRAPHY);
     // Written by hand with spaces, and with nothing between commas.
     let spaced = "panel_tools= fineliner ,, marker,\n";
     check!(write_file_atomic(&path, spaced.as_bytes()) == 0);
-    check!(settings_load(&mut t) == 0 && t.npins == 2 && t.pins[0] == TOOL_FINELINER && t.pins[1] == TOOL_MARKER);
+    check!(
+        settings_load(&mut t) == 0
+            && t.npins == 2
+            && t.pins[0] == TOOL_FINELINER
+            && t.pins[1] == TOOL_MARKER
+    );
     unlink(&path);
 }
 
@@ -587,13 +742,21 @@ fn status_corner_keys() {
     let mut t = Settings::default();
     settings_default(&mut s);
     check!(!s.status_on && s.status_size == 0);
-    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_on=0") && has_pins_line(&path, "status_size=0"));
+    check!(
+        settings_save(&s) == 0
+            && has_pins_line(&path, "status_on=0")
+            && has_pins_line(&path, "status_size=0")
+    );
     let text = read_file(&path).unwrap_or_default();
     let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
     check!(at("language=") < at("status_on=") && at("status_on=") < at("status_size="));
     s.status_on = true;
     s.status_size = 2;
-    check!(settings_save(&s) == 0 && has_pins_line(&path, "status_on=1") && has_pins_line(&path, "status_size=2"));
+    check!(
+        settings_save(&s) == 0
+            && has_pins_line(&path, "status_on=1")
+            && has_pins_line(&path, "status_size=2")
+    );
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
     // a file with neither key: the defaults
     check!(write_file_atomic(&path, b"invert=1\n") == 0);
@@ -601,11 +764,19 @@ fn status_corner_keys() {
     // a size past the range is the nearest, a third state is on; both go back as they were
     check!(write_file_atomic(&path, b"status_on=2\nstatus_size=7\n") == 0);
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "status_on=2") && has_pins_line(&path, "status_size=7"));
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(&path, "status_on=2")
+            && has_pins_line(&path, "status_size=7")
+    );
     // changed, they are written as they are
     t.status_size = 1;
     t.status_on = false;
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "status_on=0") && has_pins_line(&path, "status_size=1"));
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(&path, "status_on=0")
+            && has_pins_line(&path, "status_size=1")
+    );
     check!(settings_load(&mut s) == 0 && !s.status_on && s.status_size == 1);
     unlink(&path);
 }
@@ -626,26 +797,66 @@ fn gesture_keys() {
     let text = read_file(&path).unwrap_or_default();
     let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
     check!(at("language=") < at("status_size=") && at("status_size=") < at("gestures="));
-    check!(at("gestures=") < at("landscape_fit=") && at("landscape_fit=") < at("hints=") && at("hints=") < at("link_areas="));
+    check!(
+        at("gestures=") < at("landscape_fit=")
+            && at("landscape_fit=") < at("hints=")
+            && at("hints=") < at("link_areas=")
+    );
     check!(!text.windows(9).any(|w| w == b"upgraded="));
     s.gestures = false;
     s.landscape_fit = false;
     s.hints = 0x1c5;
     s.link_areas = true;
-    check!(settings_save(&s) == 0 && has_pins_line(&path, "gestures=0") && has_pins_line(&path, "hints=453"));
-    check!(settings_load(&mut t) == 0 && !t.gestures && !t.landscape_fit && t.hints == 453 && t.link_areas);
+    check!(
+        settings_save(&s) == 0
+            && has_pins_line(&path, "gestures=0")
+            && has_pins_line(&path, "hints=453")
+    );
+    check!(
+        settings_load(&mut t) == 0
+            && !t.gestures
+            && !t.landscape_fit
+            && t.hints == 453
+            && t.link_areas
+    );
     // a file with none of them: the defaults, and not an upgrade (it has no settings_version either)
     check!(write_file_atomic(&path, b"invert=1\n") == 0);
-    check!(settings_load(&mut t) == 0 && t.gestures && t.landscape_fit && t.hints == 0 && !t.link_areas && !t.upgraded);
+    check!(
+        settings_load(&mut t) == 0
+            && t.gestures
+            && t.landscape_fit
+            && t.hints == 0
+            && !t.link_areas
+            && !t.upgraded
+    );
     // hints is clamped to 0..i32::MAX; a third state of a switch is on; both go back as they were
-    check!(write_file_atomic(&path, b"gestures=2\nlandscape_fit=0\nhints=-5\nlink_areas=3\n") == 0);
-    check!(settings_load(&mut t) == 0 && t.gestures && !t.landscape_fit && t.hints == 0 && t.link_areas);
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "gestures=2") && has_pins_line(&path, "hints=-5"));
+    check!(
+        write_file_atomic(
+            &path,
+            b"gestures=2\nlandscape_fit=0\nhints=-5\nlink_areas=3\n"
+        ) == 0
+    );
+    check!(
+        settings_load(&mut t) == 0
+            && t.gestures
+            && !t.landscape_fit
+            && t.hints == 0
+            && t.link_areas
+    );
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(&path, "gestures=2")
+            && has_pins_line(&path, "hints=-5")
+    );
     check!(has_pins_line(&path, "link_areas=3") && has_pins_line(&path, "landscape_fit=0"));
     // changed, they are written as they are
     t.hints = 64;
     t.gestures = false;
-    check!(settings_save(&t) == 0 && has_pins_line(&path, "hints=64") && has_pins_line(&path, "gestures=0"));
+    check!(
+        settings_save(&t) == 0
+            && has_pins_line(&path, "hints=64")
+            && has_pins_line(&path, "gestures=0")
+    );
     // The clock corner's place (status_corner): the top left by default, written after link_areas, clamped to
     // 0..3 (a number past it is the nearest and goes back as it was), a third state not a thing for it.
     check!(s.status_corner == 0);
@@ -680,6 +891,33 @@ fn gesture_keys() {
     unlink(&path);
 }
 
+// Rotation lock's settings.ini value is 0 (follow) or the locked orientation plus one.
+fn rotation_lock_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let mut t = Settings::default();
+    settings_default(&mut s);
+    check!(
+        s.rotation_lock == 0 && settings_save(&s) == 0 && has_pins_line(&path, "rotation_lock=0")
+    );
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(
+        at("status_corner=") < at("rotation_lock=")
+            && at("rotation_lock=") < at("gesture_new_page=")
+    );
+    s.rotation_lock = 4;
+    check!(settings_save(&s) == 0 && settings_load(&mut t) == 0 && t.rotation_lock == 4);
+    check!(write_file_atomic(&path, b"rotation_lock=7\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.rotation_lock == 4);
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "rotation_lock=7"));
+    check!(write_file_atomic(&path, b"rotation_lock=-2\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.rotation_lock == 0);
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.rotation_lock == 0);
+    unlink(&path);
+}
+
 // A damaged page is renamed aside, never overwritten by the blank shown in its place; an empty
 // notebook.ini gets its page list back from the page files.
 fn damage_is_kept() {
@@ -691,7 +929,10 @@ fn damage_is_kept() {
     let path = format!("{dir}/p2.qpg");
     check!(std::fs::write(&path, b"QPG1 this is not a page").is_ok());
     let mut p = None;
-    check!(store_load_page(&nb, 1, 1860, 2480, &mut p) == 0 && p.as_ref().is_some_and(|p| p.strokes.is_empty()));
+    check!(
+        store_load_page(&nb, 1, 1860, 2480, &mut p) == 0
+            && p.as_ref().is_some_and(|p| p.strokes.is_empty())
+    );
     drop(p);
     check!(store_take_corrupt_count() == 1);
     check!(store_take_corrupt_count() == 0);
@@ -699,7 +940,10 @@ fn damage_is_kept() {
     let mut aside = 0;
     if let Ok(d) = std::fs::read_dir(&dir) {
         for e in d.flatten() {
-            if e.file_name().to_string_lossy().starts_with("p2.qpg.damaged-") {
+            if e.file_name()
+                .to_string_lossy()
+                .starts_with("p2.qpg.damaged-")
+            {
                 aside += 1;
             }
         }
@@ -710,7 +954,8 @@ fn damage_is_kept() {
     let _ = std::fs::write(&path, b""); // truncated to nothing
     let mut back = NotebookInfo::default();
     check!(store_load_info(nb.id.as_str(), &mut back) == 0);
-    check!(back.npages() == 2 && back.page_ids[0] == 1 && back.page_ids[1] == 3); // p2 is set aside
+    check!(back.npages() == 2 && back.page_ids[0] == 1 && back.page_ids[1] == 3);
+    // p2 is set aside
 }
 
 static PUMPS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
@@ -729,7 +974,17 @@ fn a_pumped_load_is_the_same_page_and_pumps() {
     check!(store_load_page(&nb, 0, 1860, 2480, &mut p) == 0);
     let mut pg = p.unwrap();
     for i in 0..700 {
-        page_add(&mut pg, squiggle(if i % 2 == 0 { TOOL_PENCIL } else { TOOL_BALLPOINT }, 100.0 + (i % 40) as f32 * 50.0));
+        page_add(
+            &mut pg,
+            squiggle(
+                if i % 2 == 0 {
+                    TOOL_PENCIL
+                } else {
+                    TOOL_BALLPOINT
+                },
+                100.0 + (i % 40) as f32 * 50.0,
+            ),
+        );
     }
     check!(store_save_page(&nb, 0, &pg) == 0);
     let (mut plain, mut pump) = (None, None);
@@ -742,18 +997,34 @@ fn a_pumped_load_is_the_same_page_and_pumps() {
     work_pump_set(None);
     check!(after_plain == 0 && after_pumped - after_plain >= 700 / 256);
     let (a, b) = (plain.unwrap(), pump.unwrap());
-    check!(a.strokes.len() == 700 && b.strokes.len() == 700 && a.paper == b.paper && a.w == b.w && a.h == b.h && a.readonly == b.readonly);
+    check!(
+        a.strokes.len() == 700
+            && b.strokes.len() == 700
+            && a.paper == b.paper
+            && a.w == b.w
+            && a.h == b.h
+            && a.readonly == b.readonly
+    );
     for i in 0..a.strokes.len() {
         let (x, y) = (&a.strokes[i], &b.strokes[i]);
-        check!(x.tool == y.tool && x.seed == y.seed && x.pts.len() == y.pts.len() && x.bbox == y.bbox);
-        check!(x.pts[0].x == y.pts[0].x && x.pts[49].y == y.pts[49].y && x.pts[25].pressure == y.pts[25].pressure);
+        check!(
+            x.tool == y.tool && x.seed == y.seed && x.pts.len() == y.pts.len() && x.bbox == y.bbox
+        );
+        check!(
+            x.pts[0].x == y.pts[0].x
+                && x.pts[49].y == y.pts[49].y
+                && x.pts[25].pressure == y.pts[25].pressure
+        );
     }
     // a damaged file: the pumped reader sets it aside as an open does, and a blank page takes its place
     let dir = format!("{}/notebooks/{}", root(), nb.id);
     check!(std::fs::write(format!("{dir}/p2.qpg"), b"QPG1 this is not a page").is_ok());
     store_take_corrupt_count();
     let mut q = None;
-    check!(store_load_page_pumped(&nb, 1, 1860, 2480, &mut q) == 0 && q.as_ref().is_some_and(|q| q.strokes.is_empty()));
+    check!(
+        store_load_page_pumped(&nb, 1, 1860, 2480, &mut q) == 0
+            && q.as_ref().is_some_and(|q| q.strokes.is_empty())
+    );
     check!(store_take_corrupt_count() == 1 && std::fs::metadata(format!("{dir}/p2.qpg")).is_err());
     // out of range: nothing, as store_load_page
     check!(store_load_page_pumped(&nb, 9, 1860, 2480, &mut q) == -1 && q.is_none());
@@ -762,7 +1033,18 @@ fn a_pumped_load_is_the_same_page_and_pumps() {
 // Folders sort by their letters, accents or not: an accented first letter sorts with its base
 // letter, not after Z (the keyboard types accents).
 fn folders_sort_with_accents() {
-    let names = ["Zoología", "Álgebra", "Arte", "Études", "school", "Straße", "Strasse", "Łódź", "Lapiz", "e\u{301}poca"];
+    let names = [
+        "Zoología",
+        "Álgebra",
+        "Arte",
+        "Études",
+        "school",
+        "Straße",
+        "Strasse",
+        "Łódź",
+        "Lapiz",
+        "e\u{301}poca",
+    ];
     for n in names.iter() {
         check!(store_add_folder(n) == 0);
     }
@@ -770,7 +1052,18 @@ fn folders_sort_with_accents() {
     check!(store_list_folders(&mut fs) == 0);
     // (ß sorts as ss; equal letters, the bytes decide: "Strasse" before "Straße"; a decomposed
     // e-acute sorts as e.)
-    let want = ["Álgebra", "Arte", "e\u{301}poca", "Études", "Lapiz", "Łódź", "school", "Strasse", "Straße", "Zoología"];
+    let want = [
+        "Álgebra",
+        "Arte",
+        "e\u{301}poca",
+        "Études",
+        "Lapiz",
+        "Łódź",
+        "school",
+        "Strasse",
+        "Straße",
+        "Zoología",
+    ];
     let mut at = 0;
     for i in 0..fs.len() {
         if at >= want.len() {
@@ -840,7 +1133,9 @@ fn empty_mirror_folder_cleanup() {
     let mut link = format!("{mirror}/Link");
     let absolute_outside = std::fs::canonicalize(&outside);
     check!(absolute_outside.is_ok());
-    check!(absolute_outside.as_ref().is_ok_and(|a| symlink(a, &link).is_ok()));
+    check!(absolute_outside
+        .as_ref()
+        .is_ok_and(|a| symlink(a, &link).is_ok()));
     check!(export_mirror_prune_folder("Link", &mirror) == 0 && exists(&outside));
     check!(std::fs::symlink_metadata(&link).is_ok_and(|m| m.file_type().is_symlink()));
     path = format!("{mirror}/Empty");
@@ -848,7 +1143,9 @@ fn empty_mirror_folder_cleanup() {
     link = format!("{}/mirror-link", root());
     let absolute_mirror = std::fs::canonicalize(&mirror);
     check!(absolute_mirror.is_ok());
-    check!(absolute_mirror.as_ref().is_ok_and(|a| symlink(a, &link).is_ok()));
+    check!(absolute_mirror
+        .as_ref()
+        .is_ok_and(|a| symlink(a, &link).is_ok()));
     check!(export_mirror_prune_folder("Empty", &link) == -1 && exists(&path));
     check!(export_mirror_prune_folder("../outside", &mirror) == 0 && exists(&outside));
     // A remaining logical folder may refer to the candidate through an alias.
@@ -857,7 +1154,9 @@ fn empty_mirror_folder_cleanup() {
     let absolute_target = std::fs::canonicalize(&path);
     check!(absolute_target.is_ok());
     link = format!("{mirror}/Alias");
-    check!(absolute_target.as_ref().is_ok_and(|a| symlink(a, &link).is_ok()));
+    check!(absolute_target
+        .as_ref()
+        .is_ok_and(|a| symlink(a, &link).is_ok()));
     check!(store_add_folder("Alias") == 0);
     check!(export_mirror_prune_folder("AliasTarget", &mirror) == 0 && exists(&path));
     check!(store_remove_folder("Alias") == 0);
@@ -885,6 +1184,7 @@ fn test_store() {
     run!(before_eraser);
     run!(status_corner_keys);
     run!(gesture_keys);
+    run!(rotation_lock_key);
     run!(safe_names);
     run!(empty_mirror_folder_cleanup);
     run!(damage_is_kept);

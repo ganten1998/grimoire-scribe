@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 08:18-0500\n"
+"POT-Creation-Date: 2026-10-29 08:28-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -17,6 +17,397 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: rust/src/actions.rs
+msgid "Previous / next tool"
+msgstr "Herramienta anterior / siguiente"
+
+#: rust/src/actions.rs
+msgid "Previous / next in the picker"
+msgstr "Anterior / siguiente en el selector"
+
+#: rust/src/actions.rs
+msgid "Previous / next page"
+msgstr "Página anterior / siguiente"
+
+#: rust/src/actions.rs
+msgid "First / last page"
+msgstr "Primera / última página"
+
+#: rust/src/actions.rs
+msgid "Zoom out / zoom in"
+msgstr "Alejar / acercar"
+
+#: rust/src/actions.rs
+msgid "Scroll up / down"
+msgstr "Desplazar arriba / abajo"
+
+#: rust/src/actions.rs
+msgid "Light down / up"
+msgstr "Menos / más luz"
+
+#: rust/src/actions.rs
+msgid "Warmth down / up"
+msgstr "Menos / más calidez"
+
+#: rust/src/actions.rs
+msgid "Editing..."
+msgstr "Edición..."
+
+#: rust/src/actions.rs
+msgid "Editing"
+msgstr "Edición"
+
+#: rust/src/actions.rs
+msgid "Tools..."
+msgstr "Herramientas..."
+
+#. TRANSLATORS: the title of the editor's tool picker.
+#: rust/src/actions.rs rust/src/editor.rs
+msgid "Tools"
+msgstr "Herramientas"
+
+#: rust/src/actions.rs
+msgid "Pages..."
+msgstr "Páginas..."
+
+#: rust/src/actions.rs
+msgid "Pages"
+msgstr "Páginas"
+
+#: rust/src/actions.rs
+msgid "Index..."
+msgstr "Índice..."
+
+#: rust/src/actions.rs rust/src/linkbar.rs rust/src/mapview.rs
+msgid "Index"
+msgstr "Índice"
+
+#: rust/src/actions.rs
+msgid "Menus..."
+msgstr "Menús..."
+
+#: rust/src/actions.rs
+msgid "Menus"
+msgstr "Menús"
+
+#: rust/src/actions.rs
+msgid "Screen..."
+msgstr "Pantalla..."
+
+#: rust/src/actions.rs
+msgid "Screen"
+msgstr "Pantalla"
+
+#: rust/src/actions.rs
+msgid "System..."
+msgstr "Sistema..."
+
+#: rust/src/actions.rs
+msgid "System"
+msgstr "Sistema"
+
+#. TRANSLATORS: the drawing tools: in the editor's tool picker (268 px at 34 px in Gothic, 284 in
+#. Classic, where the Mechanical pencil and the Calligraphy pen go by shorter names) and after
+#. "Pen feel:".
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Pencil"
+msgstr "Grafito"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Mechanical pencil"
+msgstr "Portaminas"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Ballpoint"
+msgstr "Bolígrafo"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Eraser"
+msgstr "Borrador"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Highlighter"
+msgstr "Resaltador"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Fountain pen"
+msgstr "Estilográfica"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Fineliner"
+msgstr "Marcador fino"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Marker"
+msgstr "Marcador"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Charcoal"
+msgstr "Carboncillo"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Calligraphy pen"
+msgstr "Pluma de caligrafía"
+
+#: rust/src/actions.rs
+msgid "Undo"
+msgstr "Deshacer"
+
+#: rust/src/actions.rs
+msgid "Redo"
+msgstr "Rehacer"
+
+#: rust/src/actions.rs
+msgid "Previous page"
+msgstr "Página anterior"
+
+#: rust/src/actions.rs
+msgid "Next page"
+msgstr "Página siguiente"
+
+#: rust/src/actions.rs
+msgid "Previous tool"
+msgstr "Herramienta anterior"
+
+#: rust/src/actions.rs
+msgid "Next tool"
+msgstr "Herramienta siguiente"
+
+#: rust/src/actions.rs
+msgid "White ink"
+msgstr "Tinta blanca"
+
+#: rust/src/actions.rs
+msgid "Erase while held"
+msgstr "Borrar manteniendo presionado"
+
+#: rust/src/actions.rs
+msgid "Eraser mode"
+msgstr "Modo del borrador"
+
+#: rust/src/actions.rs
+msgid "Clear page"
+msgstr "Limpiar la página"
+
+#: rust/src/actions.rs
+msgid "First page"
+msgstr "Primera página"
+
+#: rust/src/actions.rs
+msgid "Last page"
+msgstr "Última página"
+
+#: rust/src/actions.rs rust/src/pagesview.rs
+msgid "New page"
+msgstr "Nueva página"
+
+#: rust/src/actions.rs
+msgid "Fit page"
+msgstr "Ajustar la página"
+
+#: rust/src/actions.rs
+msgid "Tool picker"
+msgstr "Selector de herramientas"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Paper"
+msgstr "Papel"
+
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Display"
+msgstr "Pantalla"
+
+#: rust/src/actions.rs
+msgid "Pen feel"
+msgstr "Sensibilidad"
+
+#: rust/src/actions.rs
+msgid "Fold the panel"
+msgstr "Plegar el panel"
+
+#. TRANSLATORS: the share index's heading over the notebooks in no folder.
+#: rust/src/actions.rs rust/src/httpd.rs
+msgid "Library"
+msgstr "Biblioteca"
+
+#: rust/src/actions.rs
+msgid "Close menu"
+msgstr "Cerrar el menú"
+
+#: rust/src/actions.rs
+msgid "Previous in the picker"
+msgstr "Anterior en el selector"
+
+#: rust/src/actions.rs
+msgid "Next in the picker"
+msgstr "Siguiente en el selector"
+
+#: rust/src/actions.rs
+msgctxt "buttons"
+msgid "Add a link"
+msgstr "Añadir un enlace"
+
+#: rust/src/actions.rs
+msgid "Name the page"
+msgstr "Nombrar la página"
+
+#: rust/src/actions.rs
+msgid "Clock and battery"
+msgstr "Reloj y batería"
+
+#: rust/src/actions.rs
+msgid "Links on this page"
+msgstr "Enlaces de esta página"
+
+#: rust/src/actions.rs rust/src/pagesview.rs
+msgid "Go to page"
+msgstr "Ir a la página"
+
+#: rust/src/actions.rs
+msgid "Back to the page before"
+msgstr "Volver a la página anterior"
+
+#: rust/src/actions.rs
+msgid "Show link areas"
+msgstr "Mostrar zonas de enlace"
+
+#: rust/src/actions.rs
+msgid "Whole page sideways"
+msgstr "Página entera de lado"
+
+#: rust/src/actions.rs
+msgid "Clock and battery corner"
+msgstr "Esquina del reloj y la batería"
+
+#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
+#. (off: it only says it is the last page). About 1000 px at 44 px.
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Swiping past the last page adds a page"
+msgstr "Deslizar al final añade una página"
+
+#: rust/src/actions.rs
+msgid "Status display"
+msgstr "Indicador de estado"
+
+#: rust/src/actions.rs
+msgid "Zoom out"
+msgstr "Alejar"
+
+#: rust/src/actions.rs
+msgid "Zoom in"
+msgstr "Acercar"
+
+#: rust/src/actions.rs
+msgid "Scroll up"
+msgstr "Desplazar arriba"
+
+#: rust/src/actions.rs
+msgid "Scroll down"
+msgstr "Desplazar abajo"
+
+#. TRANSLATORS: Live view's switch in the browser: the picture white on black. It follows
+#. Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
+#: rust/src/actions.rs rust/src/httpd.rs
+msgid "Invert colors"
+msgstr "Invertir colores"
+
+#: rust/src/actions.rs
+msgid "Less light"
+msgstr "Menos luz"
+
+#: rust/src/actions.rs
+msgid "More light"
+msgstr "Más luz"
+
+#: rust/src/actions.rs
+msgid "Less warmth"
+msgstr "Menos calidez"
+
+#: rust/src/actions.rs
+msgid "More warmth"
+msgstr "Más calidez"
+
+#: rust/src/actions.rs
+msgid "Lock rotation"
+msgstr "Bloquear la rotación"
+
+#: rust/src/actions.rs
+msgid "Pinch to zoom"
+msgstr "Pellizcar para ampliar"
+
+#: rust/src/actions.rs
+msgid "Switch theme"
+msgstr "Cambiar de tema"
+
+#: rust/src/actions.rs
+msgid "Side button"
+msgstr "Botón lateral"
+
+#: rust/src/actions.rs
+msgid "PDF copies"
+msgstr "Copias en PDF"
+
+#: rust/src/actions.rs
+msgid "Sleep screen"
+msgstr "Pantalla de reposo"
+
+#: rust/src/actions.rs
+msgid "Sleep now"
+msgstr "Reposo ahora"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Gestures"
+msgstr "Gestos"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Enable shortcuts"
+msgstr "Activar atajos"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Bluetooth controller"
+msgstr "Mando Bluetooth"
+
+#. TRANSLATORS: the title of the list of languages (Settings > Language).
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Language"
+msgstr "Idioma"
+
+#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Sleep after"
+msgstr "Reposo tras"
+
+#: rust/src/actions.rs
+msgid "Update channel"
+msgstr "Canal de actualizaciones"
+
+#: rust/src/actions.rs
+msgid "Smart shapes"
+msgstr "Formas inteligentes"
+
+#: rust/src/actions.rs
+msgid "Shape hold time"
+msgstr "Pausa para formas"
+
+#: rust/src/actions.rs
+msgid "Shape the last stroke"
+msgstr "Dar forma al último trazo"
+
+#: rust/src/actions.rs
+msgid "Index map"
+msgstr "Mapa del índice"
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
@@ -207,6 +598,145 @@ msgid "A damaged page was set aside; a blank one took its place (see %s)"
 msgstr ""
 "Se apartó una página dañada y una en blanco ocupa su lugar (detalles en %s)"
 
+#: rust/src/app.rs rust/src/library.rs
+msgid "Could not save shortcuts.ini"
+msgstr "No se pudo guardar shortcuts.ini"
+
+#. TRANSLATORS: light action before its cached level is known; toast, 1700 px at 44 px.
+#: rust/src/app.rs
+msgid "Light not ready yet."
+msgstr "La luz aún no está lista."
+
+#. TRANSLATORS: cached light step and maximum; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Warmth %d of %d"
+msgstr "Calidez %d de %d"
+
+#: rust/src/app.rs
+#, c-format
+msgid "Light %d of %d"
+msgstr "Luz %d de %d"
+
+#. TRANSLATORS: rotation action feedback, toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Rotation locked."
+msgstr "Rotación bloqueada."
+
+#: rust/src/app.rs
+msgid "Rotation follows the Kindle."
+msgstr "La rotación sigue al Kindle."
+
+#. TRANSLATORS: pinch zoom toggle feedback, toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Pinch zoom on."
+msgstr "Zoom con pellizco activado."
+
+#: rust/src/app.rs
+msgid "Pinch zoom off."
+msgstr "Zoom con pellizco desactivado."
+
+#. TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
+#: rust/src/app.rs
+msgid "Holding the pen button does nothing"
+msgstr "Mantener presionado el botón del lápiz no hace nada"
+
+#: rust/src/app.rs
+msgid "Holding the pen button erases"
+msgstr "Mantener presionado el botón del lápiz borra"
+
+#: rust/src/app.rs
+msgid "Holding the pen button highlights"
+msgstr "Mantener presionado el botón del lápiz resalta"
+
+#: rust/src/app.rs
+msgid "Holding the pen button draws white"
+msgstr "Mantener presionado el botón del lápiz dibuja en blanco"
+
+#. TRANSLATORS: PDF mirror setting feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "PDF copies on."
+msgstr "Copias en PDF activadas."
+
+#: rust/src/app.rs
+msgid "PDF copies off."
+msgstr "Copias en PDF desactivadas."
+
+#. TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
+#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
+#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: the page I'm on (tap to change)"
+msgstr "En reposo: la página abierta (toca para cambiar)"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: a pinned page (tap to change)"
+msgstr "En reposo: una página fijada (toca para cambiar)"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
+msgstr "En reposo: el salvapantallas del Kindle (toca para cambiar)"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: KOReader wallpaper (tap to change)"
+msgstr "Al dormir: imagen de KOReader (toca para cambiar)"
+
+#. TRANSLATORS: gestures action feedback; off names the recovery menu. Toast, two 1700 px lines at 44 px.
+#: rust/src/app.rs
+msgid "Gestures on."
+msgstr "Gestos activados."
+
+#: rust/src/app.rs
+msgid "Gestures off. Settings > Gestures turns them back on."
+msgstr "Gestos desactivados. Ajustes > Gestos los vuelve a activar."
+
+#. TRANSLATORS: shortcut enablement feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Shortcuts on."
+msgstr "Atajos activados."
+
+#: rust/src/app.rs
+msgid "Shortcuts off."
+msgstr "Atajos desactivados."
+
+#. TRANSLATORS: Bluetooth controller setting feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Bluetooth controller on."
+msgstr "Mando Bluetooth activado."
+
+#: rust/src/app.rs
+msgid "Bluetooth controller off."
+msgstr "Mando Bluetooth desactivado."
+
+#: rust/src/app.rs
+msgid "Never"
+msgstr "Nunca"
+
+#. TRANSLATORS: sleep timeout after cycling, %s is its value; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Sleep after: %s"
+msgstr "Reposo tras: %s"
+
+#. TRANSLATORS: update channels, used in a toast with Update channel: %s; 1700 px at 44 px.
+#: rust/src/app.rs
+msgid "Automatic"
+msgstr "Automático"
+
+#: rust/src/app.rs
+msgid "Preview"
+msgstr "Beta"
+
+#: rust/src/app.rs
+msgid "Stable"
+msgstr "Estable"
+
+#. TRANSLATORS: selected update channel, %s is its name; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Update channel: %s"
+msgstr "Canal de actualizaciones: %s"
+
 #: rust/src/bgwork_template.rs
 msgid "Templates for Grimoire"
 msgstr "Plantillas para Grimoire"
@@ -290,59 +820,6 @@ msgid ""
 msgstr ""
 "Grimoire importa cada carpeta en segundo plano y después la mueve a la "
 "carpeta done. Copia las carpetas por USB con Grimoire cerrado."
-
-#. TRANSLATORS: the drawing tools: in the editor's tool picker (268 px at 34 px in Gothic, 284 in
-#. Classic, where the Mechanical pencil and the Calligraphy pen go by shorter names) and after
-#. "Pen feel:".
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Pencil"
-msgstr "Grafito"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Mechanical pencil"
-msgstr "Portaminas"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Ballpoint"
-msgstr "Bolígrafo"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Eraser"
-msgstr "Borrador"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Highlighter"
-msgstr "Resaltador"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Fountain pen"
-msgstr "Estilográfica"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Fineliner"
-msgstr "Marcador fino"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Marker"
-msgstr "Marcador"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Charcoal"
-msgstr "Carboncillo"
-
-#: rust/src/brush.rs
-msgctxt "tool"
-msgid "Calligraphy pen"
-msgstr "Pluma de caligrafía"
 
 #: rust/src/brush.rs
 msgctxt "tool"
@@ -481,24 +958,6 @@ msgstr "Lápiz listo."
 msgid "Calibration saved"
 msgstr "Calibración guardada"
 
-#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
-#: rust/src/dispmenu.rs
-msgid "Sleep screen: the page I'm on (tap to change)"
-msgstr "En reposo: la página abierta (toca para cambiar)"
-
-#: rust/src/dispmenu.rs
-msgid "Sleep screen: a pinned page (tap to change)"
-msgstr "En reposo: una página fijada (toca para cambiar)"
-
-#: rust/src/dispmenu.rs
-msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
-msgstr "En reposo: el salvapantallas del Kindle (toca para cambiar)"
-
-#: rust/src/dispmenu.rs
-msgid "Sleep screen: KOReader wallpaper (tap to change)"
-msgstr "Al dormir: imagen de KOReader (toca para cambiar)"
-
 #: rust/src/dispmenu.rs
 msgid "Status: bar"
 msgstr "Estado: barra"
@@ -543,12 +1002,6 @@ msgstr "Esquina del reloj: abajo a la derecha"
 msgid "Clock corner: bottom left"
 msgstr "Esquina del reloj: abajo a la izquierda"
 
-#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
-#. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
-#: rust/src/dispmenu.rs
-msgid "Sleep after"
-msgstr "Reposo tras"
-
 #: rust/src/dispmenu.rs
 msgid "Brightness"
 msgstr "Brillo"
@@ -570,10 +1023,6 @@ msgctxt "sleep after"
 msgid "never"
 msgstr "nunca"
 
-#: rust/src/dispmenu.rs rust/src/library.rs
-msgid "Display"
-msgstr "Pantalla"
-
 #. TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
 msgid "Front light controls are not available here."
@@ -592,13 +1041,6 @@ msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
 #: rust/src/dispmenu.rs
 msgid "Sideways, show the whole page"
 msgstr "De lado, ver la página entera"
-
-#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
-#. (off: it only says it is the last page). About 1000 px at 44 px.
-#. TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
-#: rust/src/dispmenu.rs rust/src/library.rs
-msgid "Swiping past the last page adds a page"
-msgstr "Deslizar al final añade una página"
 
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
@@ -728,11 +1170,6 @@ msgstr "Fijar"
 #, c-format
 msgid "Pin to the panel (up to %d)"
 msgstr "Fijar en el panel (hasta %d)"
-
-#. TRANSLATORS: the title of the editor's tool picker.
-#: rust/src/editor.rs rust/src/library.rs
-msgid "Tools"
-msgstr "Herramientas"
 
 #. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
 #. Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
@@ -1129,6 +1566,12 @@ msgid "Here two fingers move the page. Open Pages and Links from the panel."
 msgstr ""
 "Aquí dos dedos mueven la página. Abre Páginas y Enlaces desde el panel."
 
+#. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
+#. about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
+#: rust/src/editor.rs
+msgid "That is not one of your finger shapes. Settings > Gestures lists them."
+msgstr "No es una de tus figuras. Ajustes > Gestos las muestra."
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
 #. while the pen was near the screen, so nothing happened.
 #: rust/src/editor.rs
@@ -1259,11 +1702,6 @@ msgstr[1] "%d cuadernos en tu Kindle"
 msgid "Download everything (zip)"
 msgstr "Descargar todo (zip)"
 
-#. TRANSLATORS: the share index's heading over the notebooks in no folder.
-#: rust/src/httpd.rs rust/src/library.rs
-msgid "Library"
-msgstr "Biblioteca"
-
 #. TRANSLATORS: on the share index, under a folder with no notebooks.
 #: rust/src/httpd.rs
 msgctxt "folder"
@@ -1353,12 +1791,6 @@ msgstr "Tamaño real"
 #: rust/src/httpd.rs
 msgid "Transparent paper"
 msgstr "Papel transparente"
-
-#. TRANSLATORS: Live view's switch in the browser: the picture white on black. It follows
-#. Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
-#: rust/src/httpd.rs
-msgid "Invert colors"
-msgstr "Invertir colores"
 
 #: rust/src/httpd.rs
 msgid "As on the Kindle"
@@ -1595,7 +2027,6 @@ msgctxt "key"
 msgid "space"
 msgstr "espacio"
 
-#. TRANSLATORS: under a folder's card in the Library.
 #: rust/src/library.rs
 #, c-format
 msgid "%d notebook"
@@ -1603,9 +2034,6 @@ msgid_plural "%d notebooks"
 msgstr[0] "%d cuaderno"
 msgstr[1] "%d cuadernos"
 
-#. TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
-#. date and time, "Oct 10, 14:32"). Sideways the line has 316 px at 34 px; when it is longer,
-#. the time is left out.
 #: rust/src/library.rs
 #, c-format
 msgid "%d page, %s"
@@ -1613,19 +2041,14 @@ msgid_plural "%d pages, %s"
 msgstr[0] "%d página, %s"
 msgstr[1] "%d páginas, %s"
 
-#. TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
-#. (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
-#. 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
 #: rust/src/library.rs
 msgid "Exit"
 msgstr "Salir"
 
-#. TRANSLATORS: the Library's top bar (see Exit).
 #: rust/src/library.rs
 msgid "Settings"
 msgstr "Ajustes"
 
-#. TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
 #: rust/src/library.rs
 msgid "Share"
 msgstr "Compartir"
@@ -1635,7 +2058,6 @@ msgstr "Compartir"
 msgid "Folder"
 msgstr "Carpeta"
 
-#. TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
 #: rust/src/library.rs
 msgid "New"
 msgstr "Nuevo"
@@ -1646,7 +2068,6 @@ msgstr "Nuevo"
 msgid "Back to KOReader"
 msgstr "Volver a KOReader"
 
-#. TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
 #: rust/src/library.rs
 msgid "This folder is empty"
 msgstr "Esta carpeta está vacía"
@@ -1655,7 +2076,6 @@ msgstr "Esta carpeta está vacía"
 msgid "No notebooks yet"
 msgstr "Aún no hay cuadernos"
 
-#. TRANSLATORS: New is the top bar's button (as translated there).
 #: rust/src/library.rs
 msgid "Tap New to start one."
 msgstr "Toca Nuevo para empezar uno."
@@ -1671,10 +2091,6 @@ msgstr "Página %d de %d"
 #: rust/src/library.rs
 msgid "New notebook"
 msgstr "Cuaderno nuevo"
-
-#: rust/src/library.rs
-msgid "Paper"
-msgstr "Papel"
 
 #. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
 #. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
@@ -1692,8 +2108,6 @@ msgstr "Renombrar"
 msgid "In: %s"
 msgstr "En: %s"
 
-#. TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
-#. notebook: "In: Library (top level)").
 #: rust/src/library.rs
 msgid "Library (top level)"
 msgstr "Biblioteca (sin carpeta)"
@@ -1702,225 +2116,19 @@ msgstr "Biblioteca (sin carpeta)"
 msgid "Create"
 msgstr "Crear"
 
-#. TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
-#. other rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens
-#. on the panel (the tool button's and the pinned ones): a pin beside it.
 #: rust/src/library.rs
-msgid "Previous / next tool"
-msgstr "Herramienta anterior / siguiente"
-
-#. TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its
-#. previous and its next pen (with it closed, they switch tools through all nine), in that order.
-#: rust/src/library.rs
-msgid "Previous / next in the picker"
-msgstr "Anterior / siguiente en el selector"
-
-#. TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
-#: rust/src/library.rs
-msgid "Previous / next page"
-msgstr "Página anterior / siguiente"
-
-#. TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
-#: rust/src/library.rs
-msgid "First / last page"
-msgstr "Primera / última página"
-
-#. TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
-#. each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
-#. undo, redo, the eraser, white ink, clearing the page.
-#: rust/src/library.rs
-msgid "Editing..."
-msgstr "Edición..."
+msgid "Controller buttons"
+msgstr "Botones del mando"
 
 #: rust/src/library.rs
-msgid "Editing"
-msgstr "Edición"
-
-#. TRANSLATORS: (Buttons sheet) its group of the drawing tools, one by one.
-#: rust/src/library.rs
-msgid "Tools..."
-msgstr "Herramientas..."
-
-#. TRANSLATORS: (Buttons sheet) its group of page turning, new pages, the Pages view and the
-#. Index, and links and page names.
-#: rust/src/library.rs
-msgid "Pages..."
-msgstr "Páginas..."
+#, c-format
+msgid "Press a button for %s"
+msgstr "Pulsa un botón para %s"
 
 #: rust/src/library.rs
-msgid "Pages"
-msgstr "Páginas"
-
-#. TRANSLATORS: (Buttons sheet) its group of the Index's buttons: the Links bar, Go to page or name,
-#. back to the page before and the link areas.
-#: rust/src/library.rs
-msgid "Index..."
-msgstr "Índice..."
-
-#. TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
-#: rust/src/library.rs rust/src/linkbar.rs rust/src/mapview.rs
-msgid "Index"
-msgstr "Índice"
-
-#. TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
-#. it again).
-#: rust/src/library.rs
-msgid "Menus..."
-msgstr "Menús..."
-
-#: rust/src/library.rs
-msgid "Menus"
-msgstr "Menús"
-
-#. TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by
-#. the controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the
-#. names. The same names fill "Press a button for %s" and "That button is no longer for %s.".
-#: rust/src/library.rs
-msgid "Undo"
-msgstr "Deshacer"
-
-#: rust/src/library.rs
-msgid "Redo"
-msgstr "Rehacer"
-
-#. TRANSLATORS: (Buttons sheet) the pen erases while the controller's button is held down.
-#: rust/src/library.rs
-msgid "Erase while held"
-msgstr "Borrar manteniendo presionado"
-
-#. TRANSLATORS: (Buttons sheet) the eraser takes whole strokes, or only what it touches, in turn.
-#: rust/src/library.rs
-msgid "Eraser mode"
-msgstr "Modo del borrador"
-
-#: rust/src/library.rs
-msgid "White ink"
-msgstr "Tinta blanca"
-
-#. TRANSLATORS: (Buttons sheet) takes every stroke off the page, as the panel's broom.
-#: rust/src/library.rs
-msgid "Clear page"
-msgstr "Limpiar la página"
-
-#: rust/src/library.rs
-msgid "Previous tool"
-msgstr "Herramienta anterior"
-
-#: rust/src/library.rs
-msgid "Next tool"
-msgstr "Herramienta siguiente"
-
-#. TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen ("Press a button for
-#. Next in the picker").
-#: rust/src/library.rs
-msgid "Previous in the picker"
-msgstr "Anterior en el selector"
-
-#: rust/src/library.rs
-msgid "Next in the picker"
-msgstr "Siguiente en el selector"
-
-#: rust/src/library.rs
-msgid "Previous page"
-msgstr "Página anterior"
-
-#: rust/src/library.rs
-msgid "Next page"
-msgstr "Página siguiente"
-
-#: rust/src/library.rs
-msgid "First page"
-msgstr "Primera página"
-
-#: rust/src/library.rs
-msgid "Last page"
-msgstr "Última página"
-
-#: rust/src/library.rs rust/src/pagesview.rs
-msgid "New page"
-msgstr "Nueva página"
-
-#. TRANSLATORS: (Buttons sheet) the page's whole width again after a pinch zoomed it.
-#: rust/src/library.rs
-msgid "Fit page"
-msgstr "Ajustar la página"
-
-#. TRANSLATORS: (Buttons sheet) starts a link on the open page, as the Index's Add a link
-#. does: what the pen draws next is its box, then a tap picks where it goes ("Press a button
-#. for Add a link").
-#: rust/src/library.rs
-msgctxt "buttons"
-msgid "Add a link"
-msgstr "Añadir un enlace"
-
-#. TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name
-#. this page opens it.
-#: rust/src/library.rs
-msgid "Name the page"
-msgstr "Nombrar la página"
-
-#. TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
-#: rust/src/library.rs
-msgid "Tool picker"
-msgstr "Selector de herramientas"
-
-#. TRANSLATORS: (Buttons sheet) the screen of each tool's pressure and tilt ("Pen feel: %s").
-#: rust/src/library.rs
-msgid "Pen feel"
-msgstr "Sensibilidad"
-
-#. TRANSLATORS: (Buttons sheet) folds the editor's panel into its small box, or unfolds it.
-#: rust/src/library.rs
-msgid "Fold the panel"
-msgstr "Plegar el panel"
-
-#. TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
-#: rust/src/library.rs
-msgid "Close menu"
-msgstr "Cerrar el menú"
-
-#. TRANSLATORS: (Buttons sheet) turns the small clock and battery on a notebook page on or off,
-#. on any screen (it shows on a page only).
-#: rust/src/library.rs
-msgid "Clock and battery"
-msgstr "Reloj y batería"
-
-#. TRANSLATORS: (Buttons sheet) moves the clock and battery to the next corner of the notebook
-#. page, clockwise from the top left.
-#: rust/src/library.rs
-msgid "Clock and battery corner"
-msgstr "Esquina del reloj y la batería"
-
-#. TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
-#. up also open.
-#: rust/src/library.rs
-msgid "Links on this page"
-msgstr "Enlaces de esta página"
-
-#. TRANSLATORS: (Buttons sheet) the sheet that goes to a page by its number or its name.
-#: rust/src/library.rs rust/src/pagesview.rs
-msgid "Go to page"
-msgstr "Ir a la página"
-
-#. TRANSLATORS: (Buttons sheet) returns to the page the last link, Find or Pages view left.
-#: rust/src/library.rs
-msgid "Back to the page before"
-msgstr "Volver a la página anterior"
-
-#. TRANSLATORS: (Buttons sheet) dotted boxes over the page where a finger tap follows a link.
-#: rust/src/library.rs
-msgid "Show link areas"
-msgstr "Mostrar zonas de enlace"
-
-#. TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
-#: rust/src/library.rs
-msgid "Whole page sideways"
-msgstr "Página entera de lado"
-
-#. TRANSLATORS: (Buttons sheet) cycles between the status bar, the clock corner and Off.
-#: rust/src/library.rs
-msgid "Status display"
-msgstr "Indicador de estado"
+#, c-format
+msgid "Do the gesture for %s"
+msgstr "Haz el gesto para %s"
 
 #. TRANSLATORS: (Buttons sheet) an action no controller button does.
 #: rust/src/library.rs
@@ -1928,29 +2136,255 @@ msgctxt "buttons"
 msgid "none"
 msgstr "ninguno"
 
+#: rust/src/library.rs
+msgid "1 finger up"
+msgstr "1 dedo hacia arriba"
+
+#: rust/src/library.rs
+msgid "1 finger down"
+msgstr "1 dedo hacia abajo"
+
+#: rust/src/library.rs
+msgid "1 finger left"
+msgstr "1 dedo a la izquierda"
+
+#: rust/src/library.rs
+msgid "1 finger right"
+msgstr "1 dedo a la derecha"
+
+#: rust/src/library.rs
+msgid "2 fingers up"
+msgstr "2 dedos hacia arriba"
+
+#: rust/src/library.rs
+msgid "2 fingers down"
+msgstr "2 dedos hacia abajo"
+
+#: rust/src/library.rs
+msgid "2 fingers left"
+msgstr "2 dedos a la izquierda"
+
+#: rust/src/library.rs
+msgid "2 fingers right"
+msgstr "2 dedos a la derecha"
+
+#: rust/src/library.rs
+msgid "2-finger tap"
+msgstr "toque con 2 dedos"
+
+#: rust/src/library.rs
+msgid "3 fingers up"
+msgstr "3 dedos hacia arriba"
+
+#: rust/src/library.rs
+msgid "3 fingers down"
+msgstr "3 dedos hacia abajo"
+
+#: rust/src/library.rs
+msgid "3 fingers left"
+msgstr "3 dedos a la izquierda"
+
+#: rust/src/library.rs
+msgid "3 fingers right"
+msgstr "3 dedos a la derecha"
+
+#: rust/src/library.rs
+msgid "3-finger tap"
+msgstr "toque con 3 dedos"
+
+#: rust/src/library.rs
+msgid "no gesture"
+msgstr "sin gesto"
+
+#: rust/src/library.rs
+msgid "finger shape"
+msgstr "figura con el dedo"
+
+#: rust/src/library.rs
+msgid "finger shape (newer version)"
+msgstr "figura con el dedo (versión más nueva)"
+
 #. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
 #: rust/src/library.rs
 msgid "Could not save controller.ini"
 msgstr "No se pudo guardar controller.ini"
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the button just learned
-#. did something else, which it no longer does; %s is that action's name, as the Buttons sheet
-#. names it ("Undo", "Pencil").
-#: rust/src/library.rs
-#, c-format
-msgid "That button is no longer for %s."
-msgstr "Ese botón ya no es para %s."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
-#. Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
-#. sheet shows it ("Undo", "Previous / next page").
 #: rust/src/library.rs
 #, c-format
 msgid "No buttons for %s now."
 msgstr "Ya no hay botones para %s."
 
-#. TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
-#. (about 1100 px at 44 px in bold, and the same for the two below).
+#: rust/src/library.rs
+msgid "Could not save the gestures."
+msgstr "No se pudieron guardar los gestos."
+
+#: rust/src/library.rs
+#, c-format
+msgid "No gestures for %s now."
+msgstr "Ya no hay gestos para %s."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): malformed or unknown
+#. gestures.ini lines were skipped; %d is their count.
+#: rust/src/library.rs
+#, c-format
+msgid "%d line of gestures.ini could not be used."
+msgid_plural "%d lines of gestures.ini could not be used."
+msgstr[0] "No se pudo usar %d línea de gestures.ini."
+msgstr[1] "No se pudieron usar %d líneas de gestures.ini."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): the current gestures.ini
+#. is unreadable; Reset gestures is the recovery action.
+#: rust/src/library.rs
+msgid "gestures.ini could not be read: Reset makes a new one."
+msgstr "No se pudo leer gestures.ini: Restablecer crea uno nuevo."
+
+#. TRANSLATORS: the record card already has a shape sample; repeat that shape.
+#: rust/src/library.rs
+msgid "Not like the first one: draw it again."
+msgstr "No se parece a la primera: otra vez."
+
+#. TRANSLATORS: a single-finger tap or hold on the record card cannot be assigned.
+#: rust/src/library.rs
+msgid "One finger is kept for taps and links."
+msgstr "Un dedo es para tocar y enlaces."
+
+#: rust/src/library.rs
+msgid "The pen is near: move it away."
+msgstr "El lápiz está cerca: apártalo."
+
+#: rust/src/library.rs
+msgid "Put the fingers down together."
+msgstr "Apoya los dedos a la vez."
+
+#: rust/src/library.rs
+msgid "Swipe in a straight line."
+msgstr "Desliza en línea recta."
+
+#: rust/src/library.rs
+msgid "Swipe farther."
+msgstr "Desliza más lejos."
+
+#: rust/src/library.rs
+msgid "Move both fingers the same way."
+msgstr "Mueve los dos dedos igual."
+
+#: rust/src/library.rs
+msgid "Your hand moved: try again."
+msgstr "La mano se movió: inténtalo otra vez."
+
+#: rust/src/library.rs
+msgid "Two fingers spreading is kept for zoom."
+msgstr "Separar dos dedos es para el zoom."
+
+#: rust/src/library.rs
+msgid "Keep the fingers 1 to 8 cm apart."
+msgstr "Separa los dedos entre 1 y 8 cm."
+
+#: rust/src/library.rs
+msgid "Too slow: do it in one go."
+msgstr "Muy lento: hazlo de una vez."
+
+#: rust/src/library.rs
+msgid "This Kindle feels two fingers at most."
+msgstr "Este Kindle detecta dos dedos como máximo."
+
+#: rust/src/library.rs
+msgid "Draw it bigger: at least 2 cm across."
+msgstr "Dibújala más grande: 2 cm o más."
+
+#: rust/src/library.rs
+msgid "Too slow: draw it in one go."
+msgstr "Muy lenta: dibújala de una vez."
+
+#: rust/src/library.rs
+msgid "Start moving as soon as you touch."
+msgstr "Muévete en cuanto toques."
+
+#: rust/src/library.rs
+msgid "You held still, so it stopped."
+msgstr "Te detuviste y se canceló."
+
+#: rust/src/library.rs
+msgid "Too straight: give it two turns."
+msgstr "Muy recta: dale dos giros."
+
+#: rust/src/library.rs
+msgid "Too many turns: draw a simpler shape."
+msgstr "Demasiadas vueltas: hazla más simple."
+
+#: rust/src/library.rs
+msgid "Use a fingertip, not the hand."
+msgstr "Usa la yema del dedo, no la mano."
+
+#: rust/src/library.rs
+msgid "One stroke, without lifting."
+msgstr "De un trazo, sin levantar el dedo."
+
+#: rust/src/library.rs
+msgid "Grimoire keeps up to 32 shapes."
+msgstr "Grimoire guarda hasta 32 figuras."
+
+#. TRANSLATORS: the record card's status line (1320 px at 44 px or two lines at 34 px);
+#. %s is the action that currently owns this gesture.
+#: rust/src/library.rs
+#, c-format
+msgid "Now for %s. Use moves it here."
+msgstr "Ahora es para %s. Usar lo trae aquí."
+
+#. TRANSLATORS: the record card's status line; %s is the action that already owns this shape.
+#: rust/src/library.rs
+#, c-format
+msgid "That is the shape for %s. Use moves it here."
+msgstr "Es la figura de %s. Usar la trae aquí."
+
+#. TRANSLATORS: the record card's status line; %s is the action whose shape is too close.
+#: rust/src/library.rs
+#, c-format
+msgid "Too close to the shape for %s."
+msgstr "Muy parecida a la figura de %s."
+
+#: rust/src/library.rs
+msgid "Checking that a slip cannot draw it..."
+msgstr "Comprobando que un roce no la trace..."
+
+#. TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
+#: rust/src/library.rs
+msgid "Too easy to make by accident."
+msgstr "Demasiado fácil de hacer sin querer."
+
+#: rust/src/library.rs
+msgid "Give it two turns or a loop."
+msgstr "Dale dos giros o un bucle."
+
+#: rust/src/library.rs
+msgid "Good. Draw it again (2 of 3)."
+msgstr "Bien. Dibújala otra vez (2 de 3)."
+
+#: rust/src/library.rs
+msgid "Once more makes it surer, or Use."
+msgstr "Una vez más la afina, o Usar."
+
+#. TRANSLATORS: a toast when a touch gesture is reassigned; %s is the action that loses it.
+#: rust/src/library.rs
+#, c-format
+msgid "That gesture is no longer for %s."
+msgstr "Ese gesto ya no es para %s."
+
+#: rust/src/library.rs
+msgid "This replaces a shape from a newer Grimoire."
+msgstr "Esto sustituye una figura de un Grimoire más nuevo."
+
+#. TRANSLATORS: a toast when a recorded finger shape is moved; %s is the action that loses it.
+#: rust/src/library.rs
+#, c-format
+msgid "That shape is no longer for %s."
+msgstr "Esa figura ya no es para %s."
+
+#: rust/src/library.rs
+#, c-format
+msgid "That button is no longer for %s."
+msgstr "Ese botón ya no es para %s."
+
 #: rust/src/library.rs
 msgid "No controller or keyboard connected"
 msgstr "Ningún mando ni teclado conectado"
@@ -1972,12 +2406,10 @@ msgstr "%s conectado"
 msgid "Could not pair that controller"
 msgstr "No se pudo emparejar ese mando"
 
-#. TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
 #: rust/src/library.rs
 msgid "Paired. The controller connects in a moment."
 msgstr "Emparejado. El mando se conecta en un momento."
 
-#. TRANSLATORS: a toast: the controller is no longer paired with the Kindle.
 #: rust/src/library.rs
 msgid "Forgotten."
 msgstr "Olvidado."
@@ -1986,8 +2418,69 @@ msgstr "Olvidado."
 msgid "Could not forget that controller"
 msgstr "No se pudo olvidar ese mando"
 
-#. TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
-#. that language's name (each language is named in itself: "English", "Español").
+#. TRANSLATORS: the Gestures sheet row: action and two bindings, about 1000 px at 44 px bold.
+#: rust/src/library.rs
+#, c-format
+msgctxt "gesture row"
+msgid "%s: %s / %s"
+msgstr "%s: %s / %s"
+
+#. TRANSLATORS: the Gestures sheet row: action and binding, about 1000 px at 44 px bold.
+#: rust/src/library.rs
+#, c-format
+msgctxt "gesture row"
+msgid "%s: %s"
+msgstr "%s: %s"
+
+#: rust/src/library.rs
+msgid "Gestures: on (tap to change)"
+msgstr "Gestos: activados (toca para cambiar)"
+
+#: rust/src/library.rs
+msgid "Ideas: a two-finger tap for Undo, a finger shape for Pages."
+msgstr ""
+"Ideas: un toque con dos dedos para Deshacer, una figura con el dedo para "
+"Páginas."
+
+#: rust/src/library.rs
+msgid "Reset buttons"
+msgstr "Restablecer botones"
+
+#: rust/src/library.rs
+msgid "Reset gestures"
+msgstr "Restablecer los gestos"
+
+#: rust/src/library.rs
+msgid "Reset gestures?"
+msgstr "¿Restablecer los gestos?"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Reset gestures? %d finger shape will be deleted."
+msgid_plural "Reset gestures? %d finger shapes will be deleted."
+msgstr[0] "¿Restablecer los gestos? Se borrará %d figura."
+msgstr[1] "¿Restablecer los gestos? Se borrarán %d figuras."
+
+#: rust/src/library.rs
+msgid "Reset"
+msgstr "Restablecer"
+
+#: rust/src/library.rs
+msgid "Draw a shape with one finger, or swipe or tap with two fingers."
+msgstr "Dibuja una figura con un dedo, o desliza o toca con dos dedos."
+
+#: rust/src/library.rs
+msgid "One stroke, without lifting. Two turns or a loop."
+msgstr "De un trazo, sin levantar el dedo. Dos giros o un bucle."
+
+#: rust/src/library.rs
+msgid "Use"
+msgstr "Usar"
+
+#: rust/src/library.rs
+msgid "Try again"
+msgstr "Otra vez"
+
 #: rust/src/library.rs
 #, c-format
 msgid "Automatic (%s)"
@@ -2017,8 +2510,6 @@ msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
 msgid "Style: Classic (tap for Gothic)"
 msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
 
-#. TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
-#. every notebook.
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -2091,9 +2582,6 @@ msgstr "lápiz: %s"
 msgid "Data: %s"
 msgstr "Datos: %s"
 
-#. TRANSLATORS: Settings' bottom buttons, each a word under its icon (about 360 px at 34 px):
-#. to the Controller sheet (a controller's or keyboard's buttons as shortcuts), and to the
-#. Updates sheet (check for a newer Grimoire and install it).
 #: rust/src/library.rs
 msgid "Controller"
 msgstr "Mando"
@@ -2103,9 +2591,6 @@ msgstr "Mando"
 msgid "Updates"
 msgstr "Actualizaciones"
 
-#. TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
-#. running; then while it checks; then what the check found: a newer one (%s), or that this
-#. one (%s) is the newest; or why it could not check.
 #: rust/src/library.rs
 msgid "Updates come through KPM, which is not here."
 msgstr "Las actualizaciones llegan por KPM, que no está aquí."
@@ -2137,8 +2622,6 @@ msgstr "No se pudo buscar actualizaciones."
 msgid "This is Grimoire %s."
 msgstr "Versión instalada: Grimoire %s."
 
-#. TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
-#. only (stable); a tap changes it.
 #: rust/src/library.rs
 msgid "Updates: betas and releases (tap for releases only)"
 msgstr "Actualizaciones: betas y versiones (toca para solo versiones)"
@@ -2154,7 +2637,6 @@ msgstr "Actualizaciones: solo versiones (toca para incluir betas)"
 msgid "Update to %s"
 msgstr "Actualizar a %s"
 
-#. TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
 #: rust/src/library.rs
 msgid "Check for updates"
 msgstr "Buscar actualizaciones"
@@ -2163,8 +2645,6 @@ msgstr "Buscar actualizaciones"
 msgid "Update"
 msgstr "Actualizar"
 
-#. TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
-#. way: often a button held a few seconds).
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
 msgstr "Buscando... Pon el mando en modo de emparejamiento."
@@ -2177,13 +2657,11 @@ msgstr "Emparejando..."
 msgid "Tap a controller to pair it."
 msgstr "Toca un mando para emparejarlo."
 
-#. TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
 #: rust/src/library.rs
 #, c-format
 msgid "Forget %s"
 msgstr "Olvidar %s"
 
-#. TRANSLATORS: (Pair sheet) searches for controllers again.
 #: rust/src/library.rs
 msgid "Search again"
 msgstr "Buscar de nuevo"
@@ -2193,27 +2671,6 @@ msgstr "Buscar de nuevo"
 msgid "Pair a controller"
 msgstr "Emparejar un mando"
 
-#. TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
-#: rust/src/library.rs
-msgid "Reset buttons"
-msgstr "Restablecer botones"
-
-#. TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a group of
-#. actions, then a tap on a row and a press on the controller, makes that button do it.
-#: rust/src/library.rs
-msgid "Controller buttons"
-msgstr "Botones del mando"
-
-#. TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): %s is the
-#. action's name as the rows show it ("Undo", "Pencil", "Next page"). About 1100 px at
-#. 44 px in bold.
-#: rust/src/library.rs
-#, c-format
-msgid "Press a button for %s"
-msgstr "Pulsa un botón para %s"
-
-#. TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
-#. hold, and how many of their lines were refused.
 #: rust/src/library.rs
 #, c-format
 msgid "Mappings: %d; rejected: %d"
@@ -2238,31 +2695,19 @@ msgstr "Bluetooth: iniciando..."
 msgid "Bluetooth did not start (see grimoire.log)"
 msgstr "Bluetooth no se inició (mira grimoire.log)"
 
-#. TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
-#. many shortcuts they hold, and how many of their lines were refused.
 #: rust/src/library.rs
 #, c-format
 msgid "Reload shortcuts.ini (%d, %d refused)"
 msgstr "Recargar shortcuts.ini (%d, %d rechazadas)"
 
 #: rust/src/library.rs
-msgid "Enable shortcuts"
-msgstr "Activar atajos"
-
-#: rust/src/library.rs
-msgid "Bluetooth controller"
-msgstr "Mando Bluetooth"
-
-#: rust/src/library.rs
 msgid "No Bluetooth helper in grimoire/bluetooth"
 msgstr "No hay asistente Bluetooth en grimoire/bluetooth"
 
-#. TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
 #: rust/src/library.rs
 msgid "Pair a controller..."
 msgstr "Emparejar un mando..."
 
-#. TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
 #: rust/src/library.rs
 msgid "Buttons..."
 msgstr "Botones..."
@@ -2351,8 +2796,6 @@ msgstr "Mover a"
 msgid "Delete \"%s\"?"
 msgstr "¿Borrar «%s»?"
 
-#. TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
-#. Kindle's storage (%s), or keep the notebook.
 #: rust/src/library.rs
 #, c-format
 msgid "Delete (moves it to %s)"
@@ -2361,11 +2804,6 @@ msgstr "Borrar (lo mueve a %s)"
 #: rust/src/library.rs
 msgid "Keep it"
 msgstr "Conservarlo"
-
-#. TRANSLATORS: the title of the list of languages (Settings > Language).
-#: rust/src/library.rs
-msgid "Language"
-msgstr "Idioma"
 
 #: rust/src/library.rs
 msgid "Could not create the notebook (storage full?)"
@@ -2399,10 +2837,6 @@ msgstr "Carpeta"
 msgctxt "keyboard"
 msgid "Name"
 msgstr "Nombre"
-
-#: rust/src/library.rs
-msgid "Could not save shortcuts.ini"
-msgstr "No se pudo guardar shortcuts.ini"
 
 #. TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
 #: rust/src/library.rs
@@ -3818,9 +4252,6 @@ msgstr "Copiado"
 #~ msgid "Press a button for the next tool"
 #~ msgstr "Pulsa un botón para la herramienta siguiente"
 
-#~ msgid "Shortcuts"
-#~ msgstr "Atajos"
-
 #~ msgid "test pad (the eraser clears it)"
 #~ msgstr "zona de prueba (el borrador la limpia)"
 
@@ -3847,3 +4278,6 @@ msgstr "Copiado"
 #, c-format
 #~ msgid "Tick pages, then Delete.   %d of %d"
 #~ msgstr "Marca páginas y toca Borrar.   %d de %d"
+
+#~ msgid "Shortcuts"
+#~ msgstr "Atajos"

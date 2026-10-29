@@ -8,22 +8,32 @@ use crate::prelude::*;
 enum Modal {
     #[default]
     None = 0, // MOD_NONE
-    New = 1,         // MOD_NEW
-    Settings = 2,    // MOD_SETTINGS
-    More = 3,        // MOD_MORE
-    FolderMore = 4,  // MOD_FOLDER_MORE
-    Move = 5,        // MOD_MOVE
-    Delete = 6,      // MOD_DELETE
-    Kb = 7,          // MOD_KB
-    Display = 8,     // MOD_DISPLAY
-    Music = 9,       // MOD_MUSIC
-    Language = 10,   // MOD_LANGUAGE
-    Templates = 11,  // MOD_TEMPLATES
-    Koreader = 12,   // MOD_KOREADER
-    Shortcuts = 13,  // MOD_SHORTCUTS
-    Buttons = 14,    // MOD_BUTTONS
-    Pair = 15,       // MOD_PAIR
-    Updates = 16,    // MOD_UPDATES
+    New = 1,        // MOD_NEW
+    Settings = 2,   // MOD_SETTINGS
+    More = 3,       // MOD_MORE
+    FolderMore = 4, // MOD_FOLDER_MORE
+    Move = 5,       // MOD_MOVE
+    Delete = 6,     // MOD_DELETE
+    Kb = 7,         // MOD_KB
+    Display = 8,    // MOD_DISPLAY
+    Music = 9,      // MOD_MUSIC
+    Language = 10,  // MOD_LANGUAGE
+    Templates = 11, // MOD_TEMPLATES
+    Koreader = 12,  // MOD_KOREADER
+    Shortcuts = 13, // MOD_SHORTCUTS
+    Buttons = 14,   // MOD_BUTTONS
+    Pair = 15,      // MOD_PAIR
+    Updates = 16,   // MOD_UPDATES
+    Gestures = 17,  // MOD_GESTURES
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum RecordPhase {
+    #[default]
+    Wait,
+    Shape,
+    Checking,
+    Ready,
 }
 
 #[repr(i32)]
@@ -95,8 +105,19 @@ const H_UPDATES: i32 = 54;
 const H_UPD_CHANNEL: i32 = 55;
 const H_UPD_CHECK: i32 = 56;
 const H_UPD_NOW: i32 = 57;
-const H_MOVE_PREV: i32 = 58;
-const H_MOVE_NEXT: i32 = 59;
+const H_MOVE_PREV: i32 = 69;
+const H_MOVE_NEXT: i32 = 70;
+const H_GESTURES: i32 = 58;
+const H_GESTURE_GROUP: i32 = 59;
+const H_GESTURE_ROW: i32 = 60;
+const H_GESTURES_RESET: i32 = 61;
+const H_GESTURES_DONE: i32 = 62;
+const H_GESTURES_MASTER: i32 = 63;
+const H_RECORD_USE: i32 = 64;
+const H_RECORD_RETRY: i32 = 65;
+const H_RECORD_CANCEL: i32 = 66;
+const H_GESTURES_RESET_CONFIRM: i32 = 67;
+const H_GESTURES_RESET_CANCEL: i32 = 68;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -155,6 +176,36 @@ pub struct LibraryState {
     learn_row: i32,
     learn_step: i32,
     learn_at: u32,
+    // The Gestures sheet shares the action rows and binding descriptor with Buttons, while its
+    // record card owns a one-finger stroke and the candidates being recorded.
+    gestures_group: i32,
+    gestures_learning: i32,
+    gestures_file_readable: bool,
+    gestures_refused: i32,
+    gestures_reset_confirm: bool,
+    record_action: i32,
+    record_next_action: i32,
+    record_started: u32,
+    record_phase: RecordPhase,
+    record_key: Option<GestureKey>,
+    record_line: String,
+    record_samples: [FsSample; FS_SAMPLES_MAX],
+    record_sample_count: usize,
+    record_checks_done: bool,
+    record_stroke: FsStroke,
+    record_previous_stroke: FsStroke,
+    record_previous_lift: Option<FsLift>,
+    record_previous_lift_ms: u32,
+    record_touch_active: bool,
+    record_attempted: bool,
+    record_drawn: usize,
+    record_trail_phase: i32,
+    record_last_frame: u32,
+    record_trail: Rect,
+    record_same_action: i32,
+    record_newer_confirm: bool,
+    record_touch_origin: bool,
+    record_two_strokes_pending: bool,
     // The Pair sheet (Settings > Controller > Pair a controller): what it asked the Bluetooth helper
     // last (ASK_*), what it asks next and when, the controllers found and those paired.
     bt_asked: i32,
@@ -215,7 +266,13 @@ fn margin() -> i32 {
 }
 fn grid_top() -> i32 {
     // The Gothic frieze hangs below the header rule; leave air under its drops.
-    top_h() + margin() + if ui_theme() == UiTheme::Gothic { ui_px(24.0) } else { 0 }
+    top_h()
+        + margin()
+        + if ui_theme() == UiTheme::Gothic {
+            ui_px(24.0)
+        } else {
+            0
+        }
 }
 
 /// cols, rows, cw, ch for a screen aw x ah.
@@ -287,14 +344,21 @@ fn reload(a: &mut App) {
     }
     for i in 0..nbooks {
         if s.books[i].folder == s.cur_folder {
-            s.items.push(Item { nb: i, ..Default::default() });
+            s.items.push(Item {
+                nb: i,
+                ..Default::default()
+            });
         }
     }
     let pages = (s.items.len() as i32 + pp - 1) / pp;
     s.page = clampi(s.page, 0, if pages > 0 { pages - 1 } else { 0 });
 }
 
-fn unique_name(s: &LibraryState, base: &FixedStr<STORE_NAME_LEN>, out: &mut FixedStr<STORE_NAME_LEN>) {
+fn unique_name(
+    s: &LibraryState,
+    base: &FixedStr<STORE_NAME_LEN>,
+    out: &mut FixedStr<STORE_NAME_LEN>,
+) {
     out.set_bytes(base.as_bytes());
     for k in 2..1000 {
         let mut taken = false;
@@ -362,7 +426,12 @@ fn picture_card(s: &mut LibraryState, nb: usize) {
         return;
     }
     bgimage_take_missing(); // (what drew white before)
-    bgimage_render(&mut full, s.books[nb].id.as_str(), s.books[nb].paper, Rect::new(0, 0, pw, ph));
+    bgimage_render(
+        &mut full,
+        s.books[nb].id.as_str(),
+        s.books[nb].paper,
+        Rect::new(0, 0, pw, ph),
+    );
     if bgimage_take_missing() && nb < s.card_stamp.len() {
         s.card_stamp[nb] = CARD_STALE;
     }
@@ -380,7 +449,9 @@ fn thumb_for(s: &mut LibraryState, dpi: f32, nb: usize) -> Option<&Canvas> {
         if nb < s.card_stamp.len() {
             s.card_stamp[nb] = store_thumb_stamp(s.books[nb].id.as_str()); // (before it is read)
         }
-        if store_load_thumb(s.books[nb].id.as_str(), &mut s.thumbs[nb]) != 0 && paper_is_image(s.books[nb].paper) {
+        if store_load_thumb(s.books[nb].id.as_str(), &mut s.thumbs[nb]) != 0
+            && paper_is_image(s.books[nb].paper)
+        {
             picture_card(s, nb);
         }
     }
@@ -416,7 +487,12 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
     if it.is_folder {
         title = ui_name_label(store_folder_leaf(it.folder.as_str()), &mut label, LABEL_CAP);
         // TRANSLATORS: under a folder's card in the Library.
-        csnprintf!(&mut line2, 128, ng_("%d notebook", "%d notebooks", it.count as i64), it.count);
+        csnprintf!(
+            &mut line2,
+            128,
+            ng_("%d notebook", "%d notebooks", it.count as i64),
+            it.count
+        );
     } else {
         let nb = &s.books[it.nb];
         title = ui_name_label(nb.name.as_str(), &mut label, LABEL_CAP);
@@ -425,13 +501,28 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
         // TRANSLATORS: under a notebook's card in the Library: its pages and when it last changed (a
         // date and time, "Oct 10, 14:32"). Sideways the line has 316 px at 34 px; when it is longer,
         // the time is left out.
-        csnprintf!(&mut line2, 128, ng_("%d page, %s", "%d pages, %s", nb.npages() as i64), nb.npages(), &when);
+        csnprintf!(
+            &mut line2,
+            128,
+            ng_("%d page, %s", "%d pages, %s", nb.npages() as i64),
+            nb.npages(),
+            &when
+        );
     }
     let more = ui_px(110.0);
-    let tr_ = Rect::new(r.x, r.y + th + ui_px(14.0), r.w - more - ui_px(10.0), ui_px(70.0));
+    let tr_ = Rect::new(
+        r.x,
+        r.y + th + ui_px(14.0),
+        r.w - more - ui_px(10.0),
+        ui_px(70.0),
+    );
     // Gothic names use the pixel face's regular weight: its overprinted bold turns a name in
     // capitals into a solid black bar.
-    let face = if ui_theme() == UiTheme::Gothic { FontFace::Regular } else { FontFace::Bold };
+    let face = if ui_theme() == UiTheme::Gothic {
+        FontFace::Regular
+    } else {
+        FontFace::Bold
+    };
     font_draw_left_name(c, face, ui_text_size(), tr_, title, 0);
     let lr = Rect::new(r.x, tr_.y + tr_.h, r.w - more - ui_px(10.0), ui_px(56.0));
     let mut ls = ui_small_size();
@@ -445,7 +536,13 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
             let nb = &s.books[it.nb];
             let mut day = String::new();
             format_date_short(nb.modified, &mut day, 64);
-            csnprintf!(&mut line2, 128, ng_("%d page, %s", "%d pages, %s", nb.npages() as i64), nb.npages(), &day);
+            csnprintf!(
+                &mut line2,
+                128,
+                ng_("%d page, %s", "%d pages, %s", nb.npages() as i64),
+                nb.npages(),
+                &day
+            );
         }
     }
     font_draw_left(c, FontFace::Regular, ls, lr, &line2, 60);
@@ -483,15 +580,35 @@ fn draw_base(a: &mut App) {
         // TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
         // (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
         // 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
-        Btn { icon: IconKind::Exit, label: tr("Exit"), id: H_EXIT, show: true },
+        Btn {
+            icon: IconKind::Exit,
+            label: tr("Exit"),
+            id: H_EXIT,
+            show: true,
+        },
         // TRANSLATORS: the Library's top bar (see Exit).
-        Btn { icon: IconKind::Gear, label: tr("Settings"), id: H_SETTINGS, show: true },
+        Btn {
+            icon: IconKind::Gear,
+            label: tr("Settings"),
+            id: H_SETTINGS,
+            show: true,
+        },
         // TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
-        Btn { icon: IconKind::Share, label: tr("Share"), id: H_SHARE, show: true },
+        Btn {
+            icon: IconKind::Share,
+            label: tr("Share"),
+            id: H_SHARE,
+            show: true,
+        },
         // TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
         Btn { icon: IconKind::FolderPlus, label: tr("Folder"), id: H_NEWFOLDER, show: true },
         // TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
-        Btn { icon: IconKind::Plus, label: tr("New"), id: H_NEW, show: true },
+        Btn {
+            icon: IconKind::Plus,
+            label: tr("New"),
+            id: H_NEW,
+            show: true,
+        },
     ];
     // Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader), Exit goes
     // back to KOReader.
@@ -506,7 +623,16 @@ fn draw_base(a: &mut App) {
     // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
     // Hosted, Exit's longer "Back to KOReader" takes only its own room.
     for (i, b) in btns.iter().enumerate().skip(if hosted { 1 } else { 0 }) {
-        let need = ui_button_need_w(bh, b.icon, b.label, if i == 4 { ButtonStyle::Primary } else { ButtonStyle::Plain });
+        let need = ui_button_need_w(
+            bh,
+            b.icon,
+            b.label,
+            if i == 4 {
+                ButtonStyle::Primary
+            } else {
+                ButtonStyle::Plain
+            },
+        );
         if b.show {
             bw = clampi(need, bw, ui_px(220.0));
         }
@@ -526,22 +652,60 @@ fn draw_base(a: &mut App) {
         }
         rx -= w;
         let r = Rect::new(rx, by, w, bh);
-        ui_button(c, r, b.icon, b.label, if i == 4 { ButtonStyle::Primary } else { ButtonStyle::Plain });
+        ui_button(
+            c,
+            r,
+            b.icon,
+            b.label,
+            if i == 4 {
+                ButtonStyle::Primary
+            } else {
+                ButtonStyle::Plain
+            },
+        );
         hits_add(&mut s.hits, r, b.id, 0);
         rx -= ui_px(20.0);
     }
     if !s.cur_folder.is_empty() {
-        ui_icon(c, IconKind::Folder, Rect::new(x, by + ui_px(25.0), ui_px(100.0), ui_px(100.0)), 0);
+        ui_icon(
+            c,
+            IconKind::Folder,
+            Rect::new(x, by + ui_px(25.0), ui_px(100.0), ui_px(100.0)),
+            0,
+        );
         x += ui_px(115.0);
     } else if ui_theme() == UiTheme::Gothic {
-        ui_emblem(c, (x + ui_px(55.0)) as f32, th as f32 / 2.0, ui_px(52.0) as f32, 0, 255);
+        ui_emblem(
+            c,
+            (x + ui_px(55.0)) as f32,
+            th as f32 / 2.0,
+            ui_px(52.0) as f32,
+            0,
+            255,
+        );
         x += ui_px(140.0);
     }
     // (A folder's name, cut short if it must be; else the app's.)
     let mut label = String::new();
-    let title_px = ui_title_size() * if ui_theme() == UiTheme::Gothic { 1.8 } else { 1.25 };
-    let title = if !s.cur_folder.is_empty() { ui_name_label(s.cur_folder.as_str(), &mut label, LABEL_CAP) } else { APP_NAME };
-    font_draw_left_name(c, FontFace::Title, title_px, Rect::new(x, 0, rx - x - ui_px(20.0), th), title, 0);
+    let title_px = ui_title_size()
+        * if ui_theme() == UiTheme::Gothic {
+            1.8
+        } else {
+            1.25
+        };
+    let title = if !s.cur_folder.is_empty() {
+        ui_name_label(s.cur_folder.as_str(), &mut label, LABEL_CAP)
+    } else {
+        APP_NAME
+    };
+    font_draw_left_name(
+        c,
+        FontFace::Title,
+        title_px,
+        Rect::new(x, 0, rx - x - ui_px(20.0), th),
+        title,
+        0,
+    );
     ui_rule(c, 0, aw, th, ui_px(4.0), 0);
     ui_frieze(c, 0, aw, th + ui_px(9.0), ui_px(28.0), 0);
 
@@ -550,11 +714,22 @@ fn draw_base(a: &mut App) {
     if empty_hint_shown(s) {
         let mut er = Rect::new(m, th + ui_px(300.0), aw - 2 * m, ui_px(100.0));
         // TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
-        let empty = if !s.cur_folder.is_empty() { tr("This folder is empty") } else { tr("No notebooks yet") };
+        let empty = if !s.cur_folder.is_empty() {
+            tr("This folder is empty")
+        } else {
+            tr("No notebooks yet")
+        };
         font_draw_centered(c, FontFace::Bold, ui_title_size(), er, empty, 0);
         er.y += ui_px(110.0);
         // TRANSLATORS: New is the top bar's button (as translated there).
-        font_draw_centered(c, FontFace::Regular, ui_text_size(), er, tr("Tap New to start one."), 60);
+        font_draw_centered(
+            c,
+            FontFace::Regular,
+            ui_text_size(),
+            er,
+            tr("Tap New to start one."),
+            60,
+        );
     }
     for i in 0..pp {
         let idx = s.page * pp + i;
@@ -563,7 +738,13 @@ fn draw_base(a: &mut App) {
         }
         let col = i % cols;
         let row = i / cols;
-        draw_card(c, s, dpi, Rect::new(m + col * (cw + m), grid_top() + row * (ch + m), cw, ch), idx as usize);
+        draw_card(
+            c,
+            s,
+            dpi,
+            Rect::new(m + col * (cw + m), grid_top() + row * (ch + m), cw, ch),
+            idx as usize,
+        );
     }
     // Pager.
     let mut pages = (s.items.len() as i32 + pp - 1) / pp;
@@ -574,8 +755,28 @@ fn draw_base(a: &mut App) {
     ui_rule(c, 0, aw, y - ui_px(10.0), ui_px(3.0), 0);
     let pr = Rect::new(m, y + ui_px(15.0), ui_px(220.0), bottom_h() - ui_px(30.0));
     let nr = Rect::new(aw - m - ui_px(220.0), pr.y, ui_px(220.0), pr.h);
-    ui_button(c, pr, IconKind::Prev, "", if s.page > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
-    ui_button(c, nr, IconKind::Next, "", if s.page < pages - 1 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+    ui_button(
+        c,
+        pr,
+        IconKind::Prev,
+        "",
+        if s.page > 0 {
+            ButtonStyle::Plain
+        } else {
+            ButtonStyle::Disabled
+        },
+    );
+    ui_button(
+        c,
+        nr,
+        IconKind::Next,
+        "",
+        if s.page < pages - 1 {
+            ButtonStyle::Plain
+        } else {
+            ButtonStyle::Disabled
+        },
+    );
     if s.page > 0 {
         hits_add(&mut s.hits, pr, H_PREV, 0);
     }
@@ -585,7 +786,14 @@ fn draw_base(a: &mut App) {
     let mut pl = String::new();
     // TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
     csnprintf!(&mut pl, 96, tr("Page %d of %d"), s.page + 1, pages);
-    font_draw_centered(c, FontFace::Bold, ui_text_size(), Rect::new(pr.x + pr.w, pr.y, nr.x - pr.x - pr.w, pr.h), &pl, 0);
+    font_draw_centered(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(pr.x + pr.w, pr.y, nr.x - pr.x - pr.w, pr.h),
+        &pl,
+        0,
+    );
 }
 
 fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
@@ -602,12 +810,24 @@ fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
 
 fn draw_new(a: &mut App) {
     let (aw, ah, dpi) = (a.w, a.h, a.dpi);
-    let App { screen: c, lib, settings, .. } = a;
+    let App {
+        screen: c,
+        lib,
+        settings,
+        ..
+    } = a;
     let s = lib.as_deref_mut().unwrap();
     let card = sheet_rect(aw, ah, ui_px(2300.0));
     // TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
     let in_ = ui_sheet(c, card, tr("New notebook"));
-    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(70.0)), tr("Paper"), 0);
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(in_.x, in_.y, in_.w, ui_px(70.0)),
+        tr("Paper"),
+        0,
+    );
     // The tiles over the name rows and the buttons (420 px), under the heading (80): upright in 6
     // columns, sideways in 7 (tplsheet.h).
     let gap = ui_px(30.0);
@@ -641,7 +861,12 @@ fn draw_new(a: &mut App) {
         } else {
             paper_at(i)
         };
-        let tr_ = Rect::new(in_.x + (in_.w - gridw) / 2 + (i % g.cols) * (g.tw + gap), ty + (i / g.cols) * g.cell_h, g.tw, g.th);
+        let tr_ = Rect::new(
+            in_.x + (in_.w - gridw) / 2 + (i % g.cols) * (g.tw + gap),
+            ty + (i / g.cols) * g.cell_h,
+            g.tw,
+            g.th,
+        );
         canvas_fill(c, tr_, 255);
         let pv = if more {
             if tpl && !s.tpl_prev.px.is_empty() {
@@ -664,7 +889,14 @@ fn draw_new(a: &mut App) {
         } else {
             !tpl && s.new_paper == k
         };
-        ui_frame(c, rect_inflate(tr_, if sel { ui_px(10.0) } else { 0 }), ui_px(12.0), 0, false, if sel { ui_px(9.0) } else { ui_px(3.0) });
+        ui_frame(
+            c,
+            rect_inflate(tr_, if sel { ui_px(10.0) } else { 0 }),
+            ui_px(12.0),
+            0,
+            false,
+            if sel { ui_px(9.0) } else { ui_px(3.0) },
+        );
         let mut label = paper_label(k);
         if custom {
             // TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
@@ -688,7 +920,12 @@ fn draw_new(a: &mut App) {
         } else {
             H_PAPER
         };
-        hits_add(&mut s.hits, Rect::new(tr_.x, tr_.y, tr_.w, g.th + ui_px(90.0)), id, k.0 as i32);
+        hits_add(
+            &mut s.hits,
+            Rect::new(tr_.x, tr_.y, tr_.w, g.th + ui_px(90.0)),
+            id,
+            k.0 as i32,
+        );
     }
     let mut y = ty + g.rows * g.cell_h + ui_px(20.0);
     let mut line = String::new();
@@ -696,12 +933,35 @@ fn draw_new(a: &mut App) {
     // icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
     csnprintf!(&mut line, 320, tr("Name: %s"), &s.new_name);
     let rn = Rect::new(in_.x + in_.w - ui_px(300.0), y, ui_px(300.0), ui_px(120.0));
-    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(in_.x, y, in_.w - ui_px(330.0), ui_px(120.0)), &line, 0);
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(in_.x, y, in_.w - ui_px(330.0), ui_px(120.0)),
+        &line,
+        0,
+    );
     ui_button(c, rn, IconKind::Rename, tr("Rename"), ButtonStyle::Plain);
     hits_add(&mut s.hits, rn, H_NEW_RENAME, 0);
     y += ui_px(140.0);
-    csnprintf!(&mut line, 320, tr("In: %s"), if !s.cur_folder.is_empty() { s.cur_folder.as_str() } else { tr("Library (top level)") });
-    font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(in_.x, y, in_.w, ui_px(80.0)), &line, 60);
+    csnprintf!(
+        &mut line,
+        320,
+        tr("In: %s"),
+        if !s.cur_folder.is_empty() {
+            s.cur_folder.as_str()
+        } else {
+            tr("Library (top level)")
+        }
+    );
+    font_draw_left(
+        c,
+        FontFace::Regular,
+        ui_text_size(),
+        Rect::new(in_.x, y, in_.w, ui_px(80.0)),
+        &line,
+        60,
+    );
     let bh = ui_px(140.0);
     let bw = ui_px(380.0);
     let cancel = Rect::new(in_.x, in_.y + in_.h - bh, bw, bh);
@@ -709,7 +969,13 @@ fn draw_new(a: &mut App) {
     // TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
     // the main one), or at 34 px, or two lines of that.
     ui_button(c, cancel, IconKind::None, tr("Cancel"), ButtonStyle::Plain);
-    ui_button(c, create, IconKind::None, tr("Create"), ButtonStyle::Primary);
+    ui_button(
+        c,
+        create,
+        IconKind::None,
+        tr("Create"),
+        ButtonStyle::Primary,
+    );
     hits_add(&mut s.hits, cancel, H_CANCEL, 0);
     hits_add(&mut s.hits, create, H_NEW_CREATE, 0);
 }
@@ -724,7 +990,13 @@ struct MenuRow {
 }
 
 fn menu_row(icon: IconKind, label: &str, id: i32, arg: i32, st: ButtonStyle) -> MenuRow {
-    MenuRow { icon, label: label.to_string(), id, arg, st }
+    MenuRow {
+        icon,
+        label: label.to_string(),
+        id,
+        arg,
+        st,
+    }
 }
 
 // ---- the controller's buttons (Settings > Controller > Buttons) ----
@@ -734,224 +1006,91 @@ const LEARN_MS: u32 = 10000;
 // editor opens (LINK_HOLD_MS).
 const ROW_HOLD_MS: u32 = 600;
 
-// A row learns one action's button, or two in turn (the previous page's, then the next page's).
-// label None: the action's own name (action_label).
+// One descriptor drives the Buttons and Gestures sheets. The shared registry supplies the seven
+// action groups; these callbacks own only source-specific text and changes.
 #[derive(Clone, Copy)]
-struct LearnRow {
-    label: Option<&'static str>,
-    act: [i32; 2],
-    icon: IconKind,
-}
-
-const fn lr(label: Option<&'static str>, act: [i32; 2], icon: IconKind) -> LearnRow {
-    LearnRow { label, act, icon }
-}
-
-// The Buttons sheet's groups, as the editor's panel groups its buttons: each a sheet of rows.
-static K_EDITING: [LearnRow; 7] = [
-    lr(None, [SHORTCUT_UNDO, 0], IconKind::Undo),
-    lr(None, [SHORTCUT_REDO, 0], IconKind::Redo),
-    lr(None, [SHORTCUT_TOOL_BASE + TOOL_ERASER.0, 0], IconKind::Eraser),
-    lr(None, [SHORTCUT_HOLD_ERASER, 0], IconKind::Gamepad),
-    lr(None, [SHORTCUT_ERASER_MODE, 0], IconKind::None),
-    lr(None, [SHORTCUT_WHITE, 0], IconKind::None),
-    lr(None, [SHORTCUT_CLEAR_PAGE, 0], IconKind::Broom),
-];
-// The Tools group: TOOL_ORDER's pens first (learn_row_at), then this.
-static K_TOOLS: [LearnRow; 2] = [
-    // TRANSLATORS: (Buttons sheet) the previous and the next tool's buttons, in that order (as the
-    // other rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens
-    // on the panel (the tool button's and the pinned ones): a pin beside it.
-    lr(Some(n_("Previous / next tool")), [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL], IconKind::Pin),
-    // TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its
-    // previous and its next pen (with it closed, they switch tools through all nine), in that order.
-    lr(Some(n_("Previous / next in the picker")), [SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT], IconKind::Grid),
-];
-static K_PAGES: [LearnRow; 10] = [
-    // TRANSLATORS: (Buttons sheet) the previous and the next page's buttons, in that order.
-    lr(Some(n_("Previous / next page")), [SHORTCUT_PREV_PAGE, SHORTCUT_NEXT_PAGE], IconKind::Next),
-    // TRANSLATORS: (Buttons sheet) the first and the last page's buttons, in that order.
-    lr(Some(n_("First / last page")), [SHORTCUT_FIRST_PAGE, SHORTCUT_LAST_PAGE], IconKind::None),
-    lr(None, [SHORTCUT_NEW_PAGE, 0], IconKind::Plus),
-    lr(None, [SHORTCUT_FIT_PAGE, 0], IconKind::Expand),
-    lr(None, [SHORTCUT_LANDSCAPE_FIT, 0], IconKind::Expand),
-    lr(None, [SHORTCUT_PAGES, 0], IconKind::Notebook),
-    lr(None, [SHORTCUT_INDEX, 0], IconKind::None),
-    lr(None, [SHORTCUT_ADD_LINK, 0], IconKind::Link),
-    lr(None, [SHORTCUT_NAME_PAGE, 0], IconKind::Rename),
-    lr(None, [SHORTCUT_GESTURE_NEW_PAGE, 0], IconKind::Plus),
-];
-// The Index group: the Links bar, Go to page or name, back to the page before, the link areas.
-static K_INDEX: [LearnRow; 4] = [
-    lr(None, [SHORTCUT_LINKS, 0], IconKind::Link),
-    lr(None, [SHORTCUT_GO_TO_PAGE, 0], IconKind::Search),
-    lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
-    lr(None, [SHORTCUT_LINK_AREAS, 0], IconKind::Eye),
-];
-static K_MENUS: [LearnRow; 10] = [
-    lr(None, [SHORTCUT_TOOL_PICKER, 0], IconKind::Grid),
-    lr(None, [SHORTCUT_PAPER, 0], IconKind::Paper),
-    lr(None, [SHORTCUT_DISPLAY, 0], IconKind::Brightness),
-    lr(None, [SHORTCUT_PEN_FEEL, 0], IconKind::Tune),
-    lr(None, [SHORTCUT_FOLD_PANEL, 0], IconKind::Collapse),
-    lr(None, [SHORTCUT_LIBRARY, 0], IconKind::Library),
-    lr(None, [SHORTCUT_CLOSE_MENU, 0], IconKind::Close),
-    lr(None, [SHORTCUT_STATUS, 0], IconKind::Clock),
-    lr(None, [SHORTCUT_STATUS_CORNER, 0], IconKind::Clock),
-    lr(None, [SHORTCUT_STATUS_MODE, 0], IconKind::Clock),
-];
-struct Group {
-    /// its row in the list
-    label: &'static str,
-    /// the title of its sheet
+struct BindKind {
+    modal: Modal,
     title: &'static str,
-    icon: IconKind,
-    /// library.buttons_group
-    probe: &'static str,
-    rows: &'static [LearnRow],
-}
-const N_GROUPS: i32 = 5;
-static K_GROUPS: [Group; N_GROUPS as usize] = [
-    // TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
-    // each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
-    // undo, redo, the eraser, white ink, clearing the page.
-    Group { label: n_("Editing..."), title: n_("Editing"), icon: IconKind::Undo, probe: "editing", rows: &K_EDITING },
-    // TRANSLATORS: (Buttons sheet) its group of the drawing tools, one by one.
-    Group { label: n_("Tools..."), title: n_("Tools"), icon: IconKind::Grid, probe: "tools", rows: &K_TOOLS },
-    // TRANSLATORS: (Buttons sheet) its group of page turning, new pages, the Pages view and the
-    // Index, and links and page names.
-    Group { label: n_("Pages..."), title: n_("Pages"), icon: IconKind::Next, probe: "pages", rows: &K_PAGES },
-    // TRANSLATORS: (Buttons sheet) its group of the Index's buttons: the Links bar, Go to page or name,
-    // back to the page before and the link areas.
-    Group { label: n_("Index..."), title: n_("Index"), icon: IconKind::Link, probe: "index", rows: &K_INDEX },
-    // TRANSLATORS: (Buttons sheet) its group of the editor's menus: each button opens one (and closes
-    // it again).
-    Group { label: n_("Menus..."), title: n_("Menus"), icon: IconKind::More, probe: "menus", rows: &K_MENUS },
-];
-
-// Whether group g's rows are the Tools group's (which the C tells by its rows' address).
-fn is_tools(g: i32) -> bool {
-    std::ptr::eq(K_GROUPS[g as usize].rows.as_ptr(), K_TOOLS.as_ptr())
+    prompt: &'static str,
+    sources: u8,
+    row_text: fn(&App, i32, &mut String),
+    learn: fn(&mut App, i32) -> bool,
+    forget: fn(&mut App, LearnRow) -> bool,
+    reset: fn(&mut App) -> bool,
 }
 
-// How many rows group g has (the Tools group's pens too).
-fn group_rows(g: i32) -> i32 {
-    K_GROUPS[g as usize].rows.len() as i32 + if is_tools(g) { TOOL_PENS as i32 } else { 0 }
-}
+const BUTTONS: BindKind = BindKind {
+    modal: Modal::Buttons,
+    title: n_("Controller buttons"),
+    prompt: n_("Press a button for %s"),
+    sources: SRC_KEY | SRC_PAD,
+    row_text: buttons_row_text,
+    learn: buttons_learn,
+    forget: buttons_forget,
+    reset: buttons_reset,
+};
 
-// Row i of group g: the Tools group's first rows are TOOL_ORDER's pens, the picker's order.
-fn learn_row_at(g: i32, i: i32) -> LearnRow {
-    if is_tools(g) && i < TOOL_PENS as i32 {
-        let t = TOOL_ORDER[i as usize];
-        return LearnRow { label: None, act: [SHORTCUT_TOOL_BASE + t.0, 0], icon: ui_tool_icon(t.0) };
-    }
-    K_GROUPS[g as usize].rows[(if is_tools(g) { i - TOOL_PENS as i32 } else { i }) as usize]
-}
+const GESTURES: BindKind = BindKind {
+    modal: Modal::Gestures,
+    title: n_("Gestures"),
+    prompt: n_("Do the gesture for %s"),
+    sources: SRC_TOUCH | SRC_SHAPE,
+    row_text: gestures_row_text,
+    learn: gestures_learn,
+    forget: gestures_forget,
+    reset: gestures_reset,
+};
 
-// An action's name as the Buttons sheet shows it: its row's, and in what it asks while it learns.
-pub(crate) fn action_label(action: i32) -> &'static str {
-    if action >= SHORTCUT_TOOL_BASE && action < SHORTCUT_TOOL_BASE + TOOL_COUNT as i32 {
-        return tool_label(ToolKind(action - SHORTCUT_TOOL_BASE));
-    }
-    struct Name {
-        action: i32,
-        label: &'static str,
-        /// its msgctxt, for a name the Index shares in English
-        ctx: Option<&'static str>,
-    }
-    const fn nm(action: i32, label: &'static str) -> Name {
-        Name { action, label, ctx: None }
-    }
-    static NAMES: &[Name] = &[
-        // TRANSLATORS: the Buttons sheet's rows (Settings > Controller > Buttons), each followed by
-        // the controller buttons that do it ("Undo: South"): about 1100 px at 44 px in bold, with the
-        // names. The same names fill "Press a button for %s" and "That button is no longer for %s.".
-        nm(SHORTCUT_UNDO, n_("Undo")),
-        nm(SHORTCUT_REDO, n_("Redo")),
-        // TRANSLATORS: (Buttons sheet) the pen erases while the controller's button is held down.
-        nm(SHORTCUT_HOLD_ERASER, n_("Erase while held")),
-        // TRANSLATORS: (Buttons sheet) the eraser takes whole strokes, or only what it touches, in turn.
-        nm(SHORTCUT_ERASER_MODE, n_("Eraser mode")),
-        nm(SHORTCUT_WHITE, n_("White ink")),
-        // TRANSLATORS: (Buttons sheet) takes every stroke off the page, as the panel's broom.
-        nm(SHORTCUT_CLEAR_PAGE, n_("Clear page")),
-        nm(SHORTCUT_PREV_TOOL, n_("Previous tool")),
-        nm(SHORTCUT_NEXT_TOOL, n_("Next tool")),
-        // TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen ("Press a button for
-        // Next in the picker").
-        nm(SHORTCUT_PICKER_PREV, n_("Previous in the picker")),
-        nm(SHORTCUT_PICKER_NEXT, n_("Next in the picker")),
-        nm(SHORTCUT_PREV_PAGE, n_("Previous page")),
-        nm(SHORTCUT_NEXT_PAGE, n_("Next page")),
-        nm(SHORTCUT_FIRST_PAGE, n_("First page")),
-        nm(SHORTCUT_LAST_PAGE, n_("Last page")),
-        nm(SHORTCUT_NEW_PAGE, n_("New page")),
-        // TRANSLATORS: (Buttons sheet) the page's whole width again after a pinch zoomed it.
-        nm(SHORTCUT_FIT_PAGE, n_("Fit page")),
-        nm(SHORTCUT_PAGES, n_("Pages")),
-        // TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
-        nm(SHORTCUT_INDEX, n_("Index")),
-        // TRANSLATORS: (Buttons sheet) starts a link on the open page, as the Index's Add a link
-        // does: what the pen draws next is its box, then a tap picks where it goes ("Press a button
-        // for Add a link").
-        Name { action: SHORTCUT_ADD_LINK, label: nc_("buttons", "Add a link"), ctx: Some("buttons") },
-        // TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name
-        // this page opens it.
-        nm(SHORTCUT_NAME_PAGE, n_("Name the page")),
-        // TRANSLATORS: (Buttons sheet) the editor's tool picker, which its tool button opens.
-        nm(SHORTCUT_TOOL_PICKER, n_("Tool picker")),
-        nm(SHORTCUT_PAPER, n_("Paper")),
-        nm(SHORTCUT_DISPLAY, n_("Display")),
-        // TRANSLATORS: (Buttons sheet) the screen of each tool's pressure and tilt ("Pen feel: %s").
-        nm(SHORTCUT_PEN_FEEL, n_("Pen feel")),
-        // TRANSLATORS: (Buttons sheet) folds the editor's panel into its small box, or unfolds it.
-        nm(SHORTCUT_FOLD_PANEL, n_("Fold the panel")),
-        nm(SHORTCUT_LIBRARY, n_("Library")),
-        // TRANSLATORS: (Buttons sheet) closes whichever of the editor's menus is open.
-        nm(SHORTCUT_CLOSE_MENU, n_("Close menu")),
-        // TRANSLATORS: (Buttons sheet) turns the small clock and battery on a notebook page on or off,
-        // on any screen (it shows on a page only).
-        nm(SHORTCUT_STATUS, n_("Clock and battery")),
-        // TRANSLATORS: (Buttons sheet) moves the clock and battery to the next corner of the notebook
-        // page, clockwise from the top left.
-        nm(SHORTCUT_STATUS_CORNER, n_("Clock and battery corner")),
-        // TRANSLATORS: (Buttons sheet) the Links bar: the links on the open page, which two fingers
-        // up also open.
-        nm(SHORTCUT_LINKS, n_("Links on this page")),
-        // TRANSLATORS: (Buttons sheet) the sheet that goes to a page by its number or its name.
-        nm(SHORTCUT_GO_TO_PAGE, n_("Go to page")),
-        // TRANSLATORS: (Buttons sheet) returns to the page the last link, Find or Pages view left.
-        nm(SHORTCUT_GO_BACK, n_("Back to the page before")),
-        // TRANSLATORS: (Buttons sheet) dotted boxes over the page where a finger tap follows a link.
-        nm(SHORTCUT_LINK_AREAS, n_("Show link areas")),
-        // TRANSLATORS: (Buttons sheet) sideways, the whole page, or the page's width, in turn.
-        nm(SHORTCUT_LANDSCAPE_FIT, n_("Whole page sideways")),
-        // TRANSLATORS: (Buttons sheet) turns on and off adding a page when two fingers swipe left on the last page.
-        nm(SHORTCUT_GESTURE_NEW_PAGE, n_("Swiping past the last page adds a page")),
-        // TRANSLATORS: (Buttons sheet) cycles between the status bar, the clock corner and Off.
-        nm(SHORTCUT_STATUS_MODE, n_("Status display")),
-    ];
-    for n in NAMES {
-        if n.action == action {
-            return match n.ctx {
-                Some(ctx) => c_(ctx, n.label),
-                None => tr(n.label),
-            };
+fn binding_row_count(kind: BindKind, group: usize) -> usize {
+    let mut n = 0;
+    for row in 0..group_row_count(group) {
+        let Some(r) = learn_row_at(group, row) else {
+            continue;
+        };
+        if action_sources(r.act[0]) & kind.sources != 0 {
+            n += 1;
         }
     }
-    "?"
+    n
 }
 
-// The action the open row waits for a press for.
+fn binding_row_at(kind: BindKind, group: usize, wanted: usize) -> Option<LearnRow> {
+    let mut visible = 0;
+    for row in 0..group_row_count(group) {
+        let r = learn_row_at(group, row)?;
+        if action_sources(r.act[0]) & kind.sources == 0 {
+            continue;
+        }
+        if visible == wanted {
+            return Some(r);
+        }
+        visible += 1;
+    }
+    None
+}
+
+fn binding_row_index(kind: BindKind, group: usize, action: i32) -> Option<usize> {
+    (0..binding_row_count(kind, group)).find(|&i| {
+        binding_row_at(kind, group, i).is_some_and(|r| r.act[0] == action || r.act[1] == action)
+    })
+}
+
+// The action the selected Buttons row waits for; paired rows learn both actions in turn.
 fn learning_action(s: &LibraryState) -> i32 {
-    learn_row_at(s.buttons_group, s.learn_row).act[s.learn_step as usize]
+    binding_row_at(
+        BUTTONS,
+        s.buttons_group.max(0) as usize,
+        s.learn_row.max(0) as usize,
+    )
+    .map_or(SHORTCUT_NONE, |r| r.act[s.learn_step.clamp(0, 1) as usize])
 }
 
 // "South, Up" for an action's buttons, "none" when it has none; "B, Up" while the first controller
 // connected is a Switch-mode one, as its buttons are printed.
 fn pads_text(a: &App, action: i32, out: &mut String, cap: usize) {
-    let mut codes = [0i32; 4];
-    let n = shortcuts_pads_for(&a.shortcuts, action, &mut codes);
+    let mut codes = [0i32; GROUP_ROWS_MAX];
+    let n = shortcuts_pads_for(&a.shortcuts, ActionSrc::Pad, action, &mut codes);
     let mut h = [InputHid::default(); 4];
     let nh = input_hids(&mut h);
     let mut switch_layout = false;
@@ -963,12 +1102,18 @@ fn pads_text(a: &App, action: i32, out: &mut String, cap: usize) {
     }
     out.clear();
     let mut i = 0;
-    while i < n && i < 4 {
+    while i < n && i < GROUP_ROWS_MAX as i32 {
         let mut name = String::new();
         shortcut_pad_label(codes[i as usize], switch_layout, &mut name, 16);
         let len = out.len();
         let mut piece = String::new();
-        csnprintf!(&mut piece, cap - len, "%s%s", if i != 0 { ", " } else { "" }, &name);
+        csnprintf!(
+            &mut piece,
+            cap - len,
+            "%s%s",
+            if i != 0 { ", " } else { "" },
+            &name
+        );
         out.push_str(&piece);
         i += 1;
     }
@@ -982,6 +1127,734 @@ fn controller_path() -> String {
     let mut out = String::new();
     csnprintf!(&mut out, 1024, "%s/controller.ini", &store_root());
     out
+}
+
+fn gesture_path() -> String {
+    gesturemap_path()
+}
+
+fn gesture_key_label(k: GestureKey, out: &mut String) {
+    out.clear();
+    // TRANSLATORS: names of the gestures shown in Settings > Gestures, in a row with an action.
+    // Each name must fit in about 1000 px at 44 px bold when a shape thumbnail is also shown.
+    match k {
+        GestureKey::Touch {
+            fingers: 1,
+            kind: TouchKind::Up,
+        } => out.push_str(tr("1 finger up")),
+        GestureKey::Touch {
+            fingers: 1,
+            kind: TouchKind::Down,
+        } => out.push_str(tr("1 finger down")),
+        GestureKey::Touch {
+            fingers: 1,
+            kind: TouchKind::Left,
+        } => out.push_str(tr("1 finger left")),
+        GestureKey::Touch {
+            fingers: 1,
+            kind: TouchKind::Right,
+        } => out.push_str(tr("1 finger right")),
+        GestureKey::Touch {
+            fingers: 2,
+            kind: TouchKind::Up,
+        } => out.push_str(tr("2 fingers up")),
+        GestureKey::Touch {
+            fingers: 2,
+            kind: TouchKind::Down,
+        } => out.push_str(tr("2 fingers down")),
+        GestureKey::Touch {
+            fingers: 2,
+            kind: TouchKind::Left,
+        } => out.push_str(tr("2 fingers left")),
+        GestureKey::Touch {
+            fingers: 2,
+            kind: TouchKind::Right,
+        } => out.push_str(tr("2 fingers right")),
+        GestureKey::Touch {
+            fingers: 2,
+            kind: TouchKind::Tap,
+        } => out.push_str(tr("2-finger tap")),
+        GestureKey::Touch {
+            fingers: 3,
+            kind: TouchKind::Up,
+        } => out.push_str(tr("3 fingers up")),
+        GestureKey::Touch {
+            fingers: 3,
+            kind: TouchKind::Down,
+        } => out.push_str(tr("3 fingers down")),
+        GestureKey::Touch {
+            fingers: 3,
+            kind: TouchKind::Left,
+        } => out.push_str(tr("3 fingers left")),
+        GestureKey::Touch {
+            fingers: 3,
+            kind: TouchKind::Right,
+        } => out.push_str(tr("3 fingers right")),
+        GestureKey::Touch {
+            fingers: 3,
+            kind: TouchKind::Tap,
+        } => out.push_str(tr("3-finger tap")),
+        GestureKey::Touch { .. } | GestureKey::Pen { .. } => out.push_str(tr("no gesture")),
+    }
+}
+
+fn gesture_binding_text(a: &App, action: i32, out: &mut String) {
+    out.clear();
+    if let Some(k) = gesturemap_key_for(&a.gestures, action, ActionSrc::Touch) {
+        gesture_key_label(k, out);
+    } else if gesturemap_shape_of(&a.gestures, action).is_some() {
+        out.push_str(tr("finger shape"));
+    } else if gesturemap_shape_newer(&a.gestures, action) {
+        out.push_str(tr("finger shape (newer version)"));
+    } else {
+        out.push_str(tr("no gesture"));
+    }
+}
+
+fn buttons_row_text(a: &App, action: i32, out: &mut String) {
+    pads_text(a, action, out, 256);
+}
+
+fn gestures_row_text(a: &App, action: i32, out: &mut String) {
+    gesture_binding_text(a, action, out);
+}
+
+fn buttons_learn(a: &mut App, action: i32) -> bool {
+    let Some(s) = a.lib.as_deref_mut() else {
+        return false;
+    };
+    if s.modal != BUTTONS.modal || s.buttons_group < 0 {
+        return false;
+    }
+    let Some(row) = binding_row_index(BUTTONS, s.buttons_group as usize, action) else {
+        return false;
+    };
+    s.learn_row = row as i32;
+    s.learn_step = 0;
+    s.learn_at = now_ms();
+    redraw(a, RefreshMode::Ui);
+    true
+}
+
+fn buttons_forget(a: &mut App, row: LearnRow) -> bool {
+    let cp = controller_path();
+    if shortcuts_forget(
+        &mut a.shortcuts,
+        &cp,
+        ActionSrc::Pad,
+        row.act[0],
+        row.act[1],
+    ) != 0
+    {
+        app_toast(a, tr("Could not save controller.ini"), 4000);
+        return false;
+    }
+    let mut msg = String::new();
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Buttons sheet row now
+    // has no controller button; %s is its name ("Undo", "Previous / next page").
+    csnprintf!(
+        &mut msg,
+        200,
+        tr("No buttons for %s now."),
+        row.label
+            .map(tr)
+            .unwrap_or_else(|| action_label(row.act[0]))
+    );
+    app_toast(a, &msg, 2000);
+    true
+}
+
+fn buttons_reset(a: &mut App) -> bool {
+    let cp = controller_path();
+    let _ = std::fs::remove_file(&cp);
+    lib(a).learn_row = -1;
+    reload_shortcuts(a);
+    true
+}
+
+fn gestures_learn(a: &mut App, action: i32) -> bool {
+    open_record_card(a, action)
+}
+
+fn save_gesture_map(a: &mut App, next: GestureMap) -> bool {
+    if !lib(a).gestures_file_readable {
+        app_toast(a, tr("Could not save the gestures."), 3000);
+        return false;
+    }
+    if gesturemap_save(&next, &gesture_path()) < 0 {
+        app_toast(a, tr("Could not save the gestures."), 3000);
+        return false;
+    }
+    a.gestures = next;
+    true
+}
+
+fn gestures_forget(a: &mut App, row: LearnRow) -> bool {
+    let mut next = a.gestures.clone();
+    gesturemap_clear_action(&mut next, row.act[0]);
+    if row.act[1] != 0 {
+        gesturemap_clear_action(&mut next, row.act[1]);
+    }
+    if !save_gesture_map(a, next) {
+        return false;
+    }
+    let mut msg = String::new();
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held a Gestures
+    // sheet row, whose touch and shape bindings are clear; %s is its action or paired row name.
+    csnprintf!(
+        &mut msg,
+        200,
+        tr("No gestures for %s now."),
+        row.label
+            .map(tr)
+            .unwrap_or_else(|| action_label(row.act[0]))
+    );
+    app_toast(a, &msg, 2000);
+    true
+}
+
+fn gestures_reset(a: &mut App) -> bool {
+    let n = gesturemap_shapes(&a.gestures).len();
+    if n != 0 {
+        lib(a).gestures_reset_confirm = true;
+        redraw(a, RefreshMode::Ui);
+        return true;
+    }
+    reset_gesture_map(a)
+}
+
+fn reset_gesture_map(a: &mut App) -> bool {
+    let mut next = GestureMap::default();
+    if gesturemap_reset(&mut next, &gesture_path()) < 0 {
+        app_toast(a, tr("Could not save the gestures."), 3000);
+        return false;
+    }
+    a.gestures = next;
+    lib(a).gestures_file_readable = true;
+    lib(a).gestures_refused = 0;
+    lib(a).gestures_reset_confirm = false;
+    redraw(a, RefreshMode::Ui);
+    true
+}
+
+fn open_gestures(a: &mut App) {
+    let n = gesturemap_load(&mut a.gestures, &gesture_path());
+    let s = lib(a);
+    s.gestures_file_readable = n >= 0;
+    s.gestures_refused = n.max(0);
+    s.gestures_group = -1;
+    s.gestures_learning = SHORTCUT_NONE;
+    s.gestures_reset_confirm = false;
+    s.record_action = SHORTCUT_NONE;
+    s.record_next_action = SHORTCUT_NONE;
+    if n > 0 {
+        let mut msg = String::new();
+        // TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): malformed or unknown
+        // gestures.ini lines were skipped; %d is their count.
+        csnprintf!(&mut msg, 200, ng_("%d line of gestures.ini could not be used.", "%d lines of gestures.ini could not be used.", n as i64), n);
+        app_toast(a, &msg, 3500);
+    } else if n < 0 {
+        // TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): the current gestures.ini
+        // is unreadable; Reset gestures is the recovery action.
+        app_toast(a, tr("gestures.ini could not be read: Reset makes a new one."), 4000);
+    }
+    open_modal(a, Modal::Gestures);
+}
+
+fn open_record_card(a: &mut App, action: i32) -> bool {
+    let now = now_ms();
+    {
+        let s = lib(a);
+        s.gestures_learning = action;
+        s.record_action = action;
+        s.record_started = now;
+        s.record_phase = RecordPhase::Wait;
+        s.record_key = None;
+        s.record_line.clear();
+        s.record_samples = [FsSample::default(); FS_SAMPLES_MAX];
+        s.record_sample_count = 0;
+        s.record_checks_done = false;
+        s.record_stroke = FsStroke::default();
+        s.record_previous_stroke = FsStroke::default();
+        s.record_previous_lift = None;
+        s.record_previous_lift_ms = 0;
+        s.record_touch_active = false;
+        s.record_attempted = false;
+        s.record_drawn = 0;
+        s.record_trail_phase = 0;
+        s.record_last_frame = 0;
+        s.record_trail = RECT_EMPTY;
+        s.record_same_action = 0;
+        s.record_newer_confirm = false;
+        s.record_touch_origin = false;
+        s.record_two_strokes_pending = false;
+        s.pressed = None;
+    }
+    input_touch_context(TgView { gestures_on: true, record: true, ..TgView::default() });
+    redraw(a, RefreshMode::Ui);
+    true
+}
+
+fn close_record_card(a: &mut App) {
+    input_touch_context(TgView { gestures_on: a.settings.gestures, ..TgView::default() });
+    let s = lib(a);
+    s.record_action = SHORTCUT_NONE;
+    s.record_next_action = SHORTCUT_NONE;
+    s.gestures_learning = SHORTCUT_NONE;
+    s.record_phase = RecordPhase::Wait;
+    s.record_key = None;
+    s.record_touch_active = false;
+    s.record_two_strokes_pending = false;
+    s.record_trail = RECT_EMPTY;
+    s.record_line.clear();
+    s.pressed = None;
+    redraw(a, RefreshMode::Ui);
+}
+
+// Paired rows learn both directions, just as Buttons does. Each Use saves its own
+// action before opening the other card; Cancel leaves an already saved binding intact.
+fn finish_recording(a: &mut App) {
+    let next = lib(a).record_next_action;
+    if next != SHORTCUT_NONE {
+        lib(a).record_next_action = SHORTCUT_NONE;
+        open_record_card(a, next);
+    } else {
+        close_record_card(a);
+    }
+}
+
+/// Whether the Library currently owns the raw gesture recording context.
+pub fn library_record_active(a: &App) -> bool {
+    a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)
+}
+
+fn redraw_record_card(a: &mut App) {
+    let card = record_card_rect(a);
+    // Samples/pattern and Use change below the fixed title and instructions. Restore any
+    // earlier trail as well; a refusal with no trail uses only draw_record_line instead.
+    let dynamic = Rect::new(card.x + ui_px(20.0), card.y + ui_px(180.0),
+        card.w - ui_px(40.0), card.h - ui_px(200.0));
+    let r = rect_union(dynamic, lib(a).record_trail);
+    hits_clear(&mut lib(a).hits);
+    draw_record_card(a);
+    lib(a).record_trail = RECT_EMPTY;
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+fn record_refusal(a: &mut App, line: &str) {
+    let s = lib(a);
+    let restore_card = s.record_key.is_some() || !rect_is_empty(s.record_trail);
+    s.record_attempted = true;
+    s.record_key = None;
+    s.record_phase = match s.record_sample_count {
+        0 => RecordPhase::Wait,
+        1 => RecordPhase::Shape,
+        _ => RecordPhase::Ready,
+    };
+    s.record_line = line.to_string();
+    if restore_card { redraw_record_card(a); } else { draw_record_line(a); }
+}
+
+// Only the screen receives this trail. Throttle display submissions to 25 Hz; lifting
+// redraws the entire card so neither dots nor a discarded button press remain behind.
+fn draw_record_trail(a: &mut App, now: u32) {
+    let s = lib(a);
+    if s.record_stroke.state != FsState::Drawing
+        || (s.record_drawn != 0 && now.wrapping_sub(s.record_last_frame) < 40)
+    {
+        return;
+    }
+    let points = fs_points(&s.record_stroke);
+    let n = points.len();
+    if n < 2 || n == s.record_drawn {
+        return;
+    }
+    let from = if n >= s.record_drawn { s.record_drawn.saturating_sub(1) } else { 0 };
+    let mut xy = [(0.0f32, 0.0f32); FS_RAW_MAX];
+    for (i, p) in points[from..].iter().enumerate() {
+        xy[i] = (p.x as f32, p.y as f32);
+    }
+    let phase = s.record_trail_phase;
+    let card = record_card_rect(a);
+    let old_clip = a.screen.clip;
+    canvas_set_clip(&mut a.screen, rect_intersect(old_clip, card));
+    let phase = canvas_dot_poly(
+        &mut a.screen, &xy[..n - from], ui_px(3.5).max(1),
+        ui_px(20.0).max(1), ui_px(2.0).max(1), phase,
+    );
+    a.screen.clip = old_clip;
+    let bounds = fs_box(&lib(a).record_stroke);
+    let pad = ui_px(7.0).max(1);
+    let r = rect_intersect(card, Rect::new(bounds.x - pad, bounds.y - pad, bounds.w + 2 * pad, bounds.h + 2 * pad));
+    let s = lib(a);
+    s.record_drawn = n;
+    s.record_trail_phase = phase;
+    s.record_last_frame = now;
+    s.record_trail = rect_union(s.record_trail, r);
+    app_invalidate(a, r, RefreshMode::Fast);
+    app_flush(a);
+}
+
+fn record_event(a: &mut App, ev: &InEvent) -> bool {
+    if ev.type_ == InType::Gesture {
+        let s = lib(a);
+        s.record_attempted = true;
+        s.record_touch_active = false;
+        s.pressed = None;
+        fs_abort(&mut s.record_stroke);
+        if ev.value < 0 {
+            record_refusal(a, record_reject_line(ev.value));
+        } else if lib(a).record_sample_count == 0 {
+            if let Some(key) = gesturemap_key_of_id(ev.value) {
+                record_pattern(a, key);
+            }
+        } else {
+            // TRANSLATORS: the record card already has a shape sample; repeat that shape.
+            record_refusal(a, tr("Not like the first one: draw it again."));
+        }
+        return true;
+    }
+    if !matches!(ev.type_, InType::TouchDown | InType::TouchMove | InType::TouchUp) {
+        return false;
+    }
+    let t = in_sample_ms(ev);
+    if ev.type_ == InType::TouchDown {
+        if !rect_contains(record_card_rect(a), ev.x as i32, ev.y as i32) {
+            return true;
+        }
+        let button = hits_find(&lib(a).hits, ev.x, ev.y)
+            .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL));
+        let px100 = (a.dpi / 25.4 * 100.0).round() as i32;
+        let s = lib(a);
+        s.record_two_strokes_pending = !button && s.record_previous_lift.is_some_and(|lift|
+            fs_two_strokes(&s.record_previous_stroke, lift, s.record_previous_lift_ms, t));
+        fs_begin(&mut s.record_stroke, ev.x.round_ties_even() as i32, ev.y.round_ties_even() as i32, t, px100);
+        if ev.value & TOUCH_F_BROAD != 0 {
+            fs_kill(&mut s.record_stroke, FsReason::Broad);
+        }
+        s.record_touch_active = true;
+        s.record_touch_origin = !button;
+        s.record_attempted |= !button;
+        s.record_drawn = 0;
+        s.record_trail_phase = 0;
+        s.record_last_frame = 0;
+        if s.record_two_strokes_pending {
+            record_refusal(a, shape_refusal_line(FsReason::TwoStrokes));
+        }
+        return !button;
+    }
+    if !lib(a).record_touch_active {
+        return true;
+    }
+    if touch_cancelled(ev) {
+        let s = lib(a);
+        let restore_card = s.pressed.is_some() || !rect_is_empty(s.record_trail);
+        fs_abort(&mut s.record_stroke);
+        s.record_touch_active = false;
+        s.pressed = None;
+        if restore_card { redraw_record_card(a); }
+        return true;
+    }
+    let state = fs_add(&mut lib(a).record_stroke, ev.x.round_ties_even() as i32,
+        ev.y.round_ties_even() as i32, t, ev.value & TOUCH_F_BROAD != 0);
+    if state == FsState::Drawing && !lib(a).record_touch_origin {
+        let s = lib(a);
+        s.record_touch_origin = true;
+        s.record_attempted = true;
+        if let Some(h) = s.pressed.take() {
+            canvas_invert(&mut a.screen, h.r);
+            app_invalidate(a, h.r, RefreshMode::Ui);
+        }
+    }
+    if ev.type_ == InType::TouchMove {
+        draw_record_trail(a, ev.t_ms);
+        return lib(a).record_touch_origin;
+    }
+    let mut sample = FsSample::default();
+    let s = lib(a);
+    let lift = fs_finish(&mut s.record_stroke, t, FsMode::Record, &mut sample);
+    s.record_touch_active = false;
+    if !s.record_touch_origin {
+        return false; // A button tap keeps its normal pressed/release handling.
+    }
+    s.pressed = None;
+    s.record_previous_stroke = std::mem::take(&mut s.record_stroke);
+    s.record_previous_lift = Some(lift);
+    s.record_previous_lift_ms = t;
+    if s.record_two_strokes_pending {
+        record_refusal(a, shape_refusal_line(FsReason::TwoStrokes));
+    } else {
+        match lift {
+            FsLift::Shape if lib(a).record_key.is_none() && lib(a).record_sample_count < FS_SAMPLES_MAX => {
+                redraw_record_card(a);
+                record_shape_sample(a, sample);
+            }
+            FsLift::Swipe(dir) if lib(a).record_sample_count == 0 => record_pattern(a, GestureKey::Touch {
+                fingers: 1,
+                kind: match dir { FsSwipe::Up => TouchKind::Up, FsSwipe::Down => TouchKind::Down,
+                    FsSwipe::Left => TouchKind::Left, FsSwipe::Right => TouchKind::Right },
+            }),
+            FsLift::Nothing => {
+                // TRANSLATORS: a single-finger tap or hold on the record card cannot be assigned.
+                record_refusal(a, tr("One finger is kept for taps and links."));
+            }
+            FsLift::Refused(reason) => record_refusal(a, shape_refusal_line(reason)),
+            _ => redraw_record_card(a),
+        }
+    }
+    true
+}
+
+fn record_touch_name(key: GestureKey, out: &mut String) {
+    gesture_key_label(key, out);
+}
+
+fn record_reject_line(code: i32) -> &'static str {
+    // TRANSLATORS: refusal lines on the gesture recording card, about 1320 px at 44 px or two lines at 34 px.
+    match code {
+        -1 => tr("The pen is near: move it away."),
+        -2 => tr("Put the fingers down together."),
+        -3 => tr("Swipe in a straight line."),
+        -4 => tr("Swipe farther."),
+        -5 => tr("Move both fingers the same way."),
+        -6 => tr("Your hand moved: try again."),
+        -7 => tr("Two fingers spreading is kept for zoom."),
+        -9 => tr("Keep the fingers 1 to 8 cm apart."),
+        -10 => tr("Too slow: do it in one go."),
+        -11 => tr("This Kindle feels two fingers at most."),
+        _ => tr("Your hand moved: try again."),
+    }
+}
+
+fn shape_refusal_line(reason: FsReason) -> &'static str {
+    // TRANSLATORS: shape recording refusal lines, about 1320 px at 44 px or two lines at 34 px.
+    match reason {
+        FsReason::TooSmall => tr("Draw it bigger: at least 2 cm across."),
+        FsReason::TooSlow => tr("Too slow: draw it in one go."),
+        FsReason::LateStart => tr("Start moving as soon as you touch."),
+        FsReason::Paused => tr("You held still, so it stopped."),
+        FsReason::Straight => tr("Too straight: give it two turns."),
+        FsReason::Tangled => tr("Too many turns: draw a simpler shape."),
+        FsReason::Broad => tr("Use a fingertip, not the hand."),
+        FsReason::TwoStrokes => tr("One stroke, without lifting."),
+        FsReason::Full => tr("Grimoire keeps up to 32 shapes."),
+        _ => tr("Draw it bigger: at least 2 cm across."),
+    }
+}
+
+fn record_pattern(a: &mut App, key: GestureKey) {
+    let losing = gesturemap_action(&a.gestures, key);
+    let name = {
+        let mut out = String::new();
+        record_touch_name(key, &mut out);
+        out
+    };
+    let s = lib(a);
+    s.record_key = Some(key);
+    s.record_phase = RecordPhase::Ready;
+    s.record_same_action = losing;
+    s.record_checks_done = true;
+    s.record_newer_confirm = false;
+    if losing != 0 && losing != s.record_action {
+        let mut line = String::new();
+        // TRANSLATORS: the record card's status line (1320 px at 44 px or two lines at 34 px);
+        // %s is the action that currently owns this gesture.
+        csnprintf!(&mut line, 256, tr("Now for %s. Use moves it here."), action_label(losing));
+        s.record_line = line;
+    } else {
+        s.record_line = name;
+    }
+    redraw_record_card(a);
+}
+
+fn check_shape_candidate(a: &mut App) -> bool {
+    let (action, n, samples) = {
+        let s = lib(a);
+        (s.record_action, s.record_sample_count, s.record_samples)
+    };
+    if n < 2 {
+        return false;
+    }
+    let mut candidate = FsGesture::default();
+    fs_prepare(&mut candidate, &samples[..n]);
+    let mut others = [FsGesture::default(); FS_SHAPES_MAX];
+    let mut other_actions = [0i32; FS_SHAPES_MAX];
+    let mut no = 0;
+    for &(other_action, gesture) in gesturemap_shapes(&a.gestures) {
+        if other_action != action {
+            others[no] = gesture;
+            other_actions[no] = other_action;
+            no += 1;
+        }
+    }
+    match fs_record_separation(&candidate, &others[..no]) {
+        FsSeparation::SameAs(i) => {
+            let loser = other_actions[i];
+            let mut line = String::new();
+            // TRANSLATORS: the record card's status line; %s is the action that already owns this shape.
+            csnprintf!(&mut line, 256, tr("That is the shape for %s. Use moves it here."), action_label(loser));
+            let s = lib(a);
+            s.record_same_action = loser;
+            s.record_checks_done = true;
+            s.record_phase = RecordPhase::Ready;
+            s.record_line = line;
+            redraw_record_card(a);
+            return true;
+        }
+        FsSeparation::TooClose(i) => {
+            let mut line = String::new();
+            // TRANSLATORS: the record card's status line; %s is the action whose shape is too close.
+            csnprintf!(&mut line, 256, tr("Too close to the shape for %s."), action_label(other_actions[i]));
+            let s = lib(a);
+            s.record_sample_count = 0;
+            s.record_samples = [FsSample::default(); FS_SAMPLES_MAX];
+            s.record_checks_done = false;
+            s.record_phase = RecordPhase::Wait;
+            s.record_line = line;
+            redraw_record_card(a);
+            return false;
+        }
+        FsSeparation::Clear => {}
+    }
+    {
+        let s = lib(a);
+        s.record_phase = RecordPhase::Checking;
+        s.record_line = tr("Checking that a slip cannot draw it...").to_string();
+    }
+    draw_record_line(a);
+    if fs_record_bank(&candidate, &mut work_pump).is_err() {
+        let s = lib(a);
+        s.record_sample_count = 0;
+        s.record_samples = [FsSample::default(); FS_SAMPLES_MAX];
+        s.record_checks_done = false;
+        s.record_phase = RecordPhase::Wait;
+        // TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
+        s.record_line = cformat!("%s\n%s", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
+        redraw_record_card(a);
+        return false;
+    }
+    let s = lib(a);
+    s.record_phase = RecordPhase::Ready;
+    s.record_checks_done = true;
+    s.record_line.clear();
+    redraw_record_card(a);
+    true
+}
+
+fn record_shape_sample(a: &mut App, sample: FsSample) {
+    let count = lib(a).record_sample_count;
+    if count == 0 {
+        let current = gesturemap_shapes(&a.gestures).len();
+        let action = lib(a).record_action;
+        let has_own = gesturemap_shape_of(&a.gestures, action).is_some();
+        if fs_record_room(current.saturating_sub(has_own as usize)).is_err() {
+            let s = lib(a);
+            s.record_phase = RecordPhase::Wait;
+            s.record_line = shape_refusal_line(FsReason::Full).to_string();
+            redraw_record_card(a);
+            return;
+        }
+        {
+            let s = lib(a);
+            s.record_phase = RecordPhase::Checking;
+            s.record_line = tr("Checking that a slip cannot draw it...").to_string();
+        }
+        draw_record_line(a);
+        if fs_record_first(&sample, &mut work_pump).is_err() {
+            let s = lib(a);
+            s.record_phase = RecordPhase::Wait;
+            // TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
+            s.record_line = cformat!("%s\n%s", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
+            redraw_record_card(a);
+            return;
+        }
+        let s = lib(a);
+        s.record_samples[0] = sample;
+        s.record_sample_count = 1;
+        s.record_checks_done = false;
+        s.record_phase = RecordPhase::Shape;
+        s.record_line = tr("Good. Draw it again (2 of 3).").to_string();
+        redraw_record_card(a);
+        return;
+    }
+    let earlier = lib(a).record_samples;
+    if fs_record_consistent(&sample, &earlier[..count]).is_err() {
+        let s = lib(a);
+        s.record_phase = RecordPhase::Shape;
+        s.record_line = tr("Not like the first one: draw it again.").to_string();
+        redraw_record_card(a);
+        return;
+    }
+    {
+        let s = lib(a);
+        s.record_samples[count] = sample;
+        s.record_sample_count = count + 1;
+        s.record_checks_done = false;
+        s.record_same_action = 0;
+        s.record_newer_confirm = false;
+        s.record_phase = RecordPhase::Ready;
+        s.record_line = if count == 1 { tr("Once more makes it surer, or Use.").to_string() } else { String::new() };
+    }
+    if count + 1 == FS_SAMPLES_MAX {
+        let _ = check_shape_candidate(a);
+    } else {
+        redraw_record_card(a);
+    }
+}
+
+fn use_recording(a: &mut App) {
+    if lib(a).record_phase != RecordPhase::Ready {
+        return;
+    }
+    if lib(a).record_key.is_none() && !lib(a).record_checks_done {
+        if !check_shape_candidate(a) {
+            return;
+        }
+        // After two samples Use runs the checks. Leave a newly discovered reassignment
+        // visible until the next Use, just as when the third sample ran those checks.
+        if lib(a).record_same_action != 0 {
+            return;
+        }
+    }
+    let action = lib(a).record_action;
+    if let Some(key) = lib(a).record_key {
+        let mut next = a.gestures.clone();
+        let loser = gesturemap_set(&mut next, key, action);
+        if loser < 0 || !save_gesture_map(a, next) {
+            app_toast(a, tr("Could not save the gestures."), 3000);
+            return;
+        }
+        if loser != 0 && loser != action {
+            let mut msg = String::new();
+            // TRANSLATORS: a toast when a touch gesture is reassigned; %s is the action that loses it.
+            csnprintf!(&mut msg, 200, tr("That gesture is no longer for %s."), action_label(loser));
+            app_toast(a, &msg, 2500);
+        }
+        finish_recording(a);
+        return;
+    }
+    if gesturemap_shape_newer(&a.gestures, action) && !lib(a).record_newer_confirm {
+        let s = lib(a);
+        s.record_newer_confirm = true;
+        s.record_line = tr("This replaces a shape from a newer Grimoire.").to_string();
+        redraw_record_card(a);
+        return;
+    }
+    let samples = lib(a).record_samples;
+    let count = lib(a).record_sample_count;
+    let mut next = a.gestures.clone();
+    let loser = gesturemap_shape_set(&mut next, action, &samples[..count]);
+    if loser < 0 || !save_gesture_map(a, next) {
+        app_toast(a, tr("Could not save the gestures."), 3000);
+        return;
+    }
+    if loser != 0 && loser != action {
+        let mut msg = String::new();
+        // TRANSLATORS: a toast when a recorded finger shape is moved; %s is the action that loses it.
+        csnprintf!(&mut msg, 200, tr("That shape is no longer for %s."), action_label(loser));
+        app_toast(a, &msg, 2500);
+    }
+    finish_recording(a);
 }
 
 // The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini), and
@@ -998,7 +1871,9 @@ fn reload_shortcuts(a: &mut App) {
 // A controller's press while the Buttons sheet learns: true when it was taken (the row's action has
 // that button now, or the file could not be written: a toast says so).
 pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
-    let Some(s) = a.lib.as_deref() else { return false };
+    let Some(s) = a.lib.as_deref() else {
+        return false;
+    };
     if s.modal != Modal::Buttons || s.buttons_group < 0 || s.learn_row < 0 {
         return false;
     }
@@ -1007,8 +1882,8 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
     }
     let cp = controller_path();
     let action = learning_action(s);
-    let before = shortcuts_lookup(&a.shortcuts, true, code, 0);
-    if shortcuts_learn(&mut a.shortcuts, &cp, code, action) != 0 {
+    let before = shortcuts_lookup(&a.shortcuts, ActionSrc::Pad, code, 0);
+    if shortcuts_learn(&mut a.shortcuts, &cp, ActionSrc::Pad, code, action) != 0 {
         // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
         app_toast(a, tr("Could not save controller.ini"), 4000);
         lib(a).learn_row = -1;
@@ -1020,11 +1895,16 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the button just learned
         // did something else, which it no longer does; %s is that action's name, as the Buttons sheet
         // names it ("Undo", "Pencil").
-        csnprintf!(&mut msg, 200, tr("That button is no longer for %s."), action_label(before));
+        csnprintf!(
+            &mut msg,
+            200,
+            tr("That button is no longer for %s."),
+            action_label(before)
+        );
         app_toast(a, &msg, 2500);
     }
     let s = lib(a);
-    if s.learn_step == 0 && learn_row_at(s.buttons_group, s.learn_row).act[1] != 0 {
+    if s.learn_step == 0 && binding_row_at(BUTTONS, s.buttons_group as usize, s.learn_row as usize).unwrap().act[1] != 0 {
         s.learn_step = 1;
         s.learn_at = now_ms();
     } else {
@@ -1037,17 +1917,25 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
 // A Buttons row held (ROW_HOLD_MS): its actions lose their buttons, this row's alone, and it reads
 // "none"; a toast says so. Its release starts no learning.
 fn forget_row(a: &mut App, row: i32) {
-    let r = learn_row_at(lib(a).buttons_group, row);
+    let Some(r) = binding_row_at(BUTTONS, lib(a).buttons_group as usize, row as usize) else { return };
     let mut msg = String::new();
     let cp = controller_path();
     lib(a).learn_row = -1;
-    if shortcuts_forget(&mut a.shortcuts, &cp, r.act[0], r.act[1]) != 0 {
+    if shortcuts_forget(&mut a.shortcuts, &cp, ActionSrc::Pad, r.act[0], r.act[1]) != 0 {
         app_toast(a, tr("Could not save controller.ini"), 4000);
     } else {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
         // Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
         // sheet shows it ("Undo", "Previous / next page").
-        csnprintf!(&mut msg, 200, tr("No buttons for %s now."), match r.label { Some(l) => tr(l), None => action_label(r.act[0]) });
+        csnprintf!(
+            &mut msg,
+            200,
+            tr("No buttons for %s now."),
+            match r.label {
+                Some(l) => tr(l),
+                None => action_label(r.act[0]),
+            }
+        );
         app_toast(a, &msg, 2000);
     }
     redraw(a, RefreshMode::Ui);
@@ -1062,7 +1950,16 @@ fn hid_status(a: &mut App, out: &mut String, cap: usize) {
     if n == 0 {
         // TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
         // (about 1100 px at 44 px in bold, and the same for the two below).
-        csnprintf!(out, cap, "%s", if a.settings.shortcuts_enabled { tr("No controller or keyboard connected") } else { "" });
+        csnprintf!(
+            out,
+            cap,
+            "%s",
+            if a.settings.shortcuts_enabled {
+                tr("No controller or keyboard connected")
+            } else {
+                ""
+            }
+        );
     } else if h[0].held {
         // TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
         // (a button mapper) holds it, so Grimoire gets none of its presses.
@@ -1123,7 +2020,13 @@ fn bt_send(s: &mut LibraryState) {
                     classic = d.classic;
                 }
             }
-            csnprintf!(&mut path, 160, "/pair?addr=%s&protocol=%s", &s.pair_addr, if classic { "classic" } else { "ble" });
+            csnprintf!(
+                &mut path,
+                160,
+                "/pair?addr=%s&protocol=%s",
+                &s.pair_addr,
+                if classic { "classic" } else { "ble" }
+            );
         }
         ASK_REMOVE => {
             csnprintf!(&mut path, 160, "/remove?addr=%s", &s.pair_addr);
@@ -1152,7 +2055,9 @@ fn pair_open(s: &mut LibraryState) {
 // The helper's answer (or none) to what the Pair sheet asked.
 pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
     let (e, r) = (event, reply);
-    let Some(s) = a.lib.as_deref_mut() else { return };
+    let Some(s) = a.lib.as_deref_mut() else {
+        return;
+    };
     if e == BtEvent::State {
         if s.modal == Modal::Shortcuts || s.modal == Modal::Pair {
             redraw(a, RefreshMode::Ui);
@@ -1213,13 +2118,29 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
             } else {
                 s.pairing = false;
                 // TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
-                app_toast(a, if ok && !r.pairing { tr("Paired. The controller connects in a moment.") } else { tr("Could not pair that controller") }, 3000);
+                app_toast(
+                    a,
+                    if ok && !r.pairing {
+                        tr("Paired. The controller connects in a moment.")
+                    } else {
+                        tr("Could not pair that controller")
+                    },
+                    3000,
+                );
                 bt_ask(lib(a), ASK_STATUS, 0);
             }
         }
         ASK_REMOVE => {
             // TRANSLATORS: a toast: the controller is no longer paired with the Kindle.
-            app_toast(a, if ok { tr("Forgotten.") } else { tr("Could not forget that controller") }, 2500);
+            app_toast(
+                a,
+                if ok {
+                    tr("Forgotten.")
+                } else {
+                    tr("Could not forget that controller")
+                },
+                2500,
+            );
             bt_ask(lib(a), ASK_STATUS, 0);
         }
         _ => {}
@@ -1253,7 +2174,11 @@ fn upd_poll(a: &mut App) {
     if e == UpdateEvent::None {
         return;
     }
-    s.upd = if e == UpdateEvent::Done { UPD_DONE } else { UPD_FAILED };
+    s.upd = if e == UpdateEvent::Done {
+        UPD_DONE
+    } else {
+        UPD_FAILED
+    };
     if s.modal == Modal::Updates {
         redraw(a, RefreshMode::Ui);
     }
@@ -1279,14 +2204,33 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     let in_ = ui_sheet(c, card, title);
     for (i, row) in rows.iter().enumerate() {
         let r = Rect::new(in_.x, in_.y + i as i32 * (rh + gap), in_.w, rh);
-        ui_frame(c, r, ui_px(16.0), if row.st == ButtonStyle::Selected { 0 } else { 255 }, true, 0);
         ui_frame(
             c,
             r,
             ui_px(16.0),
-            if row.st == ButtonStyle::Disabled { 170 } else { 0 },
+            if row.st == ButtonStyle::Selected {
+                0
+            } else {
+                255
+            },
+            true,
+            0,
+        );
+        ui_frame(
+            c,
+            r,
+            ui_px(16.0),
+            if row.st == ButtonStyle::Disabled {
+                170
+            } else {
+                0
+            },
             false,
-            if row.st == ButtonStyle::Primary { ui_px(6.0) } else { ui_px(3.0) },
+            if row.st == ButtonStyle::Primary {
+                ui_px(6.0)
+            } else {
+                ui_px(3.0)
+            },
         );
         let fg: u8 = if row.st == ButtonStyle::Selected {
             255
@@ -1296,13 +2240,570 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
             0
         };
         if row.icon != IconKind::None {
-            ui_icon(c, row.icon, Rect::new(r.x + ui_px(20.0), r.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), fg);
+            ui_icon(
+                c,
+                row.icon,
+                Rect::new(
+                    r.x + ui_px(20.0),
+                    r.y + ui_px(15.0),
+                    rh - ui_px(30.0),
+                    rh - ui_px(30.0),
+                ),
+                fg,
+            );
         }
-        font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h), &row.label, fg);
+        let text_rect = Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h);
+        if row.id == H_NONE && row.st == ButtonStyle::Disabled {
+            ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), text_rect, &row.label, 2, false, fg);
+        } else {
+            font_draw_left(c, FontFace::Bold, ui_text_size(), text_rect, &row.label, fg);
+        }
         if row.st != ButtonStyle::Disabled {
             hits_add(&mut s.hits, r, row.id, row.arg);
         }
     }
+}
+
+fn bind_group(kind: BindKind, s: &LibraryState) -> i32 {
+    if kind.modal == BUTTONS.modal {
+        s.buttons_group
+    } else {
+        s.gestures_group
+    }
+}
+
+fn bind_group_set(kind: BindKind, s: &mut LibraryState, group: i32) {
+    if kind.modal == BUTTONS.modal {
+        s.buttons_group = group;
+    } else {
+        s.gestures_group = group;
+    }
+}
+
+fn bind_group_hit(kind: BindKind) -> i32 {
+    if kind.modal == BUTTONS.modal {
+        H_BUTTON_GROUP
+    } else {
+        H_GESTURE_GROUP
+    }
+}
+
+fn bind_row_hit(kind: BindKind) -> i32 {
+    if kind.modal == BUTTONS.modal {
+        H_BUTTON_ROW
+    } else {
+        H_GESTURE_ROW
+    }
+}
+
+fn bind_done_hit(kind: BindKind) -> i32 {
+    if kind.modal == BUTTONS.modal {
+        H_BUTTONS_DONE
+    } else {
+        H_GESTURES_DONE
+    }
+}
+
+fn bind_reset_hit(kind: BindKind) -> i32 {
+    if kind.modal == BUTTONS.modal {
+        H_BUTTONS_RESET
+    } else {
+        H_GESTURES_RESET
+    }
+}
+
+fn bind_row_text(a: &App, kind: BindKind, row: LearnRow, out: &mut String) {
+    let label = row.label.map(tr).unwrap_or_else(|| action_label(row.act[0]));
+    let mut first = String::new();
+    (kind.row_text)(a, row.act[0], &mut first);
+    if row.act[1] != 0 {
+        let mut second = String::new();
+        (kind.row_text)(a, row.act[1], &mut second);
+        // TRANSLATORS: the Gestures sheet row: action and two bindings, about 1000 px at 44 px bold.
+        let fmt = if kind.modal == GESTURES.modal { c_("gesture row", "%s: %s / %s") } else { "%s: %s / %s" };
+        csnprintf!(out, 256, fmt, label, &first, &second);
+    } else {
+        // TRANSLATORS: the Gestures sheet row: action and binding, about 1000 px at 44 px bold.
+        let fmt = if kind.modal == GESTURES.modal { c_("gesture row", "%s: %s") } else { "%s: %s" };
+        csnprintf!(out, 256, fmt, label, &first);
+    }
+}
+
+fn bind_menu_rows(a: &App, kind: BindKind) -> Vec<MenuRow> {
+    let mut rows: Vec<MenuRow> = Vec::with_capacity(N_GROUPS + 4);
+    if kind.modal == GESTURES.modal {
+        // TRANSLATORS: Settings > Gestures' master switch row, about 1200 px at 44 px bold.
+        rows.push(menu_row(
+            IconKind::Gestures,
+            tr(if a.settings.gestures {
+                "Gestures: on (tap to change)"
+            } else {
+                "Gestures: off (tap to change)"
+            }),
+            H_GESTURES_MASTER,
+            0,
+            ButtonStyle::Plain,
+        ));
+        // TRANSLATORS: a short example below the Gestures sheet's master switch, about 1300 px
+        // at 44 px bold or two lines at 34 px.
+        rows.push(menu_row(
+            IconKind::None,
+            tr("Ideas: a two-finger tap for Undo, a finger shape for Pages."),
+            H_NONE,
+            0,
+            ButtonStyle::Disabled,
+        ));
+    }
+    for (i, grp) in ACTION_GROUPS.iter().enumerate() {
+        if binding_row_count(kind, i) == 0 {
+            continue;
+        }
+        rows.push(menu_row(
+            grp.icon,
+            tr(grp.label),
+            bind_group_hit(kind),
+            i as i32,
+            ButtonStyle::Plain,
+        ));
+    }
+    let reset_text = if kind.modal == BUTTONS.modal {
+        tr("Reset buttons")
+    } else {
+        tr("Reset gestures")
+    };
+    let reset_enabled = if kind.modal == BUTTONS.modal {
+        std::fs::metadata(controller_path()).is_ok()
+    } else {
+        true
+    };
+    rows.push(menu_row(
+        IconKind::Trash,
+        reset_text,
+        bind_reset_hit(kind),
+        0,
+        if reset_enabled {
+            ButtonStyle::Plain
+        } else {
+            ButtonStyle::Disabled
+        },
+    ));
+    rows.push(menu_row(
+        IconKind::Back,
+        tr("Done"),
+        bind_done_hit(kind),
+        0,
+        ButtonStyle::Plain,
+    ));
+    rows
+}
+
+fn draw_bind_sheet(a: &mut App, kind: BindKind) {
+    let group = bind_group(kind, lib(a));
+    if group < 0 {
+        let rows = bind_menu_rows(a, kind);
+        draw_menu(a, tr(kind.title), &rows);
+    } else {
+        draw_bind_group(a, kind, group as usize);
+    }
+}
+
+fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
+    let n = binding_row_count(kind, group) as i32;
+    let mut rh = ui_px(140.0);
+    let mut gap = ui_px(20.0);
+    let room = a.h - 2 * ui_px(40.0) - ui_px(120.0) - ui_px(72.0);
+    if (n + 1) * (rh + gap) > room {
+        rh = clampi(room / (n + 1) - gap, ui_px(118.0), rh);
+    }
+    if (n + 1) * (rh + gap) > room {
+        gap = clampi(room / (n + 1) - rh, ui_px(10.0), gap);
+    }
+    let card = sheet_rect(a.w, a.h, ui_px(120.0) + ui_px(72.0) + (n + 1) * (rh + gap));
+    let title = tr(ACTION_GROUPS[group].title);
+    let in_ = ui_sheet(&mut a.screen, card, title);
+    for i in 0..n as usize {
+        let r = binding_row_at(kind, group, i).unwrap();
+        let learning = kind.modal == BUTTONS.modal
+            && lib(a).buttons_group == group as i32
+            && lib(a).learn_row == i as i32;
+        let mut text = String::new();
+        if learning {
+            let step = lib(a).learn_step.clamp(0, 1) as usize;
+            csnprintf!(&mut text, 256, tr(kind.prompt), action_label(r.act[step]));
+        } else {
+            bind_row_text(a, kind, r, &mut text);
+        }
+        let thumb = if kind.modal == GESTURES.modal {
+            gesturemap_shape_of(&a.gestures, r.act[0])
+                .or_else(|| gesturemap_shape_of(&a.gestures, r.act[1]))
+                .copied()
+        } else {
+            None
+        };
+        let row_rect = Rect::new(in_.x, in_.y + i as i32 * (rh + gap), in_.w, rh);
+        let App { screen: c, lib, .. } = a;
+        draw_bind_row(
+            c,
+            &mut lib.as_deref_mut().unwrap().hits,
+            kind,
+            r,
+            i,
+            row_rect,
+            rh,
+            learning,
+            &text,
+            thumb,
+        );
+    }
+    let done = Rect::new(in_.x, in_.y + n * (rh + gap), in_.w, rh);
+    let App { screen: c, lib, .. } = a;
+    ui_button(c, done, IconKind::Back, tr("Done"), ButtonStyle::Plain);
+    hits_add(
+        &mut lib.as_deref_mut().unwrap().hits,
+        done,
+        bind_done_hit(kind),
+        0,
+    );
+}
+
+fn draw_bind_row(
+    c: &mut Canvas,
+    hits: &mut HitList,
+    kind: BindKind,
+    row: LearnRow,
+    index: usize,
+    r: Rect,
+    rh: i32,
+    learning: bool,
+    text: &str,
+    thumb: Option<FsGesture>,
+) {
+    let selected = learning;
+    ui_frame(c, r, ui_px(16.0), if selected { 0 } else { 255 }, true, 0);
+    ui_frame(
+        c,
+        r,
+        ui_px(16.0),
+        0,
+        false,
+        ui_px(if selected { 6.0 } else { 3.0 }),
+    );
+    let fg = if selected { 255 } else { 0 };
+    if row.icon != IconKind::None {
+        ui_icon(
+            c,
+            row.icon,
+            Rect::new(
+                r.x + ui_px(20.0),
+                r.y + ui_px(15.0),
+                rh - ui_px(30.0),
+                rh - ui_px(30.0),
+            ),
+            fg,
+        );
+    }
+    let thumb_w = if thumb.is_some() { ui_px(120.0) } else { 0 };
+    let text_x = r.x + rh + ui_px(10.0);
+    let text_w = r.w - rh - ui_px(30.0) - thumb_w;
+    ui_text(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        ui_small_size(),
+        Rect::new(text_x, r.y, text_w, r.h),
+        text,
+        2,
+        false,
+        fg,
+    );
+    if let Some(g) = thumb.as_ref() {
+        let thumb_rect = Rect::new(
+            r.x + r.w - ui_px(108.0),
+            r.y + (r.h - ui_px(96.0)) / 2,
+            ui_px(96.0),
+            ui_px(96.0),
+        );
+        draw_shape_thumb(c, thumb_rect, g);
+    }
+    hits_add(hits, r, bind_row_hit(kind), index as i32);
+}
+
+fn draw_shape_thumb(c: &mut Canvas, r: Rect, g: &FsGesture) {
+    canvas_fill(c, r, 255);
+    canvas_rect_outline(c, r, ui_px(2.0), 0);
+    if g.n == 0 {
+        return;
+    }
+    let old_clip = c.clip;
+    canvas_set_clip(c, rect_intersect(old_clip, r));
+    let pad = ui_px(10.0);
+    let side_x = (r.w - 2 * pad).max(1);
+    let side_y = (r.h - 2 * pad).max(1);
+    let sample = &g.samples[fs_medoid(g).min(g.n - 1)];
+    for i in 1..FS_N {
+        let x0 = r.x + pad + sample.xy[(i - 1) * 2] as i32 * side_x / 255;
+        let y0 = r.y + pad + sample.xy[(i - 1) * 2 + 1] as i32 * side_y / 255;
+        let x1 = r.x + pad + sample.xy[i * 2] as i32 * side_x / 255;
+        let y1 = r.y + pad + sample.xy[i * 2 + 1] as i32 * side_y / 255;
+        canvas_line_aa(
+            c,
+            x0 as f32,
+            y0 as f32,
+            x1 as f32,
+            y1 as f32,
+            ui_px(3.0) as f32,
+            0,
+        );
+    }
+    let clip = rect_intersect(r, c.clip);
+    for y in clip.y..clip.y + clip.h {
+        for x in clip.x..clip.x + clip.w {
+            let i = (y * c.stride + x) as usize;
+            c.px[i] = if c.px[i] < 128 { 0 } else { 255 };
+        }
+    }
+    c.clip = old_clip;
+}
+
+fn draw_gestures_modal(a: &mut App) {
+    let group = lib(a).gestures_group;
+    if group >= 0 {
+        draw_bind_group(a, GESTURES, group as usize);
+    } else {
+        draw_bind_sheet(a, GESTURES);
+    }
+    if lib(a).record_action != 0 {
+        hits_clear(&mut lib(a).hits);
+        draw_record_card(a);
+    } else if lib(a).gestures_reset_confirm {
+        hits_clear(&mut lib(a).hits);
+        draw_gesture_reset_card(a);
+    }
+}
+
+fn draw_gesture_reset_card(a: &mut App) {
+    let count = gesturemap_shapes(&a.gestures).len() as i64;
+    let card = sheet_rect(a.w, a.h, ui_px(620.0));
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let in_ = ui_sheet(c, card, tr("Reset gestures?"));
+    let mut prompt = String::new();
+    // TRANSLATORS: confirmation before Reset gestures removes the recorded finger shapes.
+    csnprintf!(
+        &mut prompt,
+        256,
+        ng_(
+            "Reset gestures? %d finger shape will be deleted.",
+            "Reset gestures? %d finger shapes will be deleted.",
+            count
+        ),
+        count
+    );
+    font_draw_centered(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(in_.x, in_.y, in_.w, ui_px(180.0)),
+        &prompt,
+        0,
+    );
+    let gap = ui_px(30.0);
+    let bw = (in_.w - gap) / 2;
+    let y = in_.y + in_.h - ui_px(140.0);
+    let reset = Rect::new(in_.x, y, bw, ui_px(140.0));
+    let cancel = Rect::new(reset.x + bw + gap, y, in_.w - bw - gap, ui_px(140.0));
+    ui_button(c, reset, IconKind::Trash, tr("Reset"), ButtonStyle::Primary);
+    ui_button(c, cancel, IconKind::Close, tr("Cancel"), ButtonStyle::Plain);
+    hits_add(&mut s.hits, reset, H_GESTURES_RESET_CONFIRM, 0);
+    hits_add(&mut s.hits, cancel, H_GESTURES_RESET_CANCEL, 0);
+}
+
+fn record_card_rect(a: &App) -> Rect {
+    let w = ui_px(1400.0).min(a.w - ui_px(80.0));
+    let h = ui_px(1000.0).min(a.h - ui_px(80.0));
+    Rect::new((a.w - w) / 2, (a.h - h) / 2, w, h)
+}
+
+fn record_line_rect(a: &App) -> Rect {
+    let card = record_card_rect(a);
+    let margin = ui_px(54.0);
+    Rect::new(
+        card.x + margin,
+        card.y + ui_px(560.0),
+        card.w - 2 * margin,
+        ui_px(100.0),
+    )
+}
+
+fn draw_record_line(a: &mut App) {
+    let r = record_line_rect(a);
+    canvas_fill(&mut a.screen, r, 255);
+    let line = lib(a).record_line.clone();
+    ui_text(
+        &mut a.screen,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        r,
+        &line,
+        2,
+        false,
+        0,
+    );
+    app_invalidate(a, r, RefreshMode::Ui);
+    app_flush(a);
+}
+
+fn draw_record_card(a: &mut App) {
+    let card = record_card_rect(a);
+    let line_r = record_line_rect(a);
+    let title_action = lib(a).record_action;
+    let phase = lib(a).record_phase;
+    let line = lib(a).record_line.clone();
+    let key = lib(a).record_key;
+    let samples = lib(a).record_samples;
+    let nsamples = lib(a).record_sample_count;
+    let (screen, lib) = (&mut a.screen, &mut a.lib);
+    let s = lib.as_deref_mut().unwrap();
+    let in_ = ui_sheet(screen, card, "");
+    let title = {
+        let mut text = String::new();
+        // TRANSLATORS: the record card's title, about 1300 px wide at 64 px; %s is an action name.
+        csnprintf!(
+            &mut text,
+            256,
+            tr("Do the gesture for %s"),
+            action_label(title_action)
+        );
+        text
+    };
+    let top = in_.y + ui_px(12.0);
+    font_draw_centered(
+        screen,
+        FontFace::Bold,
+        ui_px(64.0) as f32,
+        Rect::new(in_.x, top, in_.w, ui_px(76.0)),
+        &title,
+        0,
+    );
+    // TRANSLATORS: the record card's instruction line, about 1320 px at 44 px or two lines at 34 px.
+    ui_text(
+        screen,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        Rect::new(in_.x, top + ui_px(82.0), in_.w, ui_px(90.0)),
+        tr("Draw a shape with one finger, or swipe or tap with two fingers."),
+        2,
+        false,
+        0,
+    );
+
+    let slot = ui_px(260.0);
+    let slot_gap = ui_px(40.0);
+    let slots_w = 3 * slot + 2 * slot_gap;
+    let slots_x = card.x + (card.w - slots_w) / 2;
+    let slots_y = top + ui_px(190.0);
+    if let Some(k) = key {
+        let mut name = String::new();
+        gesture_key_label(k, &mut name);
+        font_draw_centered(
+            screen,
+            FontFace::Bold,
+            ui_px(64.0) as f32,
+            Rect::new(in_.x, slots_y, in_.w, slot),
+            &name,
+            0,
+        );
+    } else {
+        for i in 0..3 {
+            let r = Rect::new(slots_x + i as i32 * (slot + slot_gap), slots_y, slot, slot);
+            canvas_fill(screen, r, 255);
+            canvas_dash_rect(screen, r, ui_px(3.0), ui_px(12.0), ui_px(9.0), ui_px(2.0));
+            let mut number = String::new();
+            csnprintf!(&mut number, 8, "%d", i as i32 + 1);
+            font_draw_centered(
+                screen,
+                FontFace::Regular,
+                ui_px(34.0) as f32,
+                r,
+                &number,
+                120,
+            );
+            if i < nsamples {
+                let mut g = FsGesture::default();
+                fs_prepare(&mut g, &samples[..=i]);
+                let thumb = Rect::new(
+                    r.x + ui_px(20.0),
+                    r.y + ui_px(20.0),
+                    r.w - ui_px(40.0),
+                    r.h - ui_px(40.0),
+                );
+                draw_shape_thumb(screen, thumb, &g);
+            }
+        }
+    }
+    ui_text(
+        screen,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        line_r,
+        &line,
+        2,
+        false,
+        0,
+    );
+    // TRANSLATORS: the record card's footer, about 1320 px at 34 px; shape recordings need two turns or a loop.
+    font_draw_centered(
+        screen,
+        FontFace::Regular,
+        ui_small_size(),
+        Rect::new(in_.x, card.y + card.h - ui_px(230.0), in_.w, ui_px(60.0)),
+        tr("One stroke, without lifting. Two turns or a loop."),
+        0,
+    );
+    let by = card.y + card.h - ui_px(150.0);
+    let gap = ui_px(20.0);
+    let bw = (in_.w - 2 * gap) / 3;
+    let use_r = Rect::new(in_.x, by, bw, ui_px(110.0));
+    let retry_r = Rect::new(in_.x + bw + gap, by, bw, ui_px(110.0));
+    let cancel_r = Rect::new(
+        retry_r.x + bw + gap,
+        by,
+        in_.w - 2 * bw - 2 * gap,
+        ui_px(110.0),
+    );
+    // TRANSLATORS: the record card's buttons; Use saves the recording, Try again clears this
+    // attempt, and Cancel returns to the Gestures sheet.
+    ui_button(
+        screen,
+        use_r,
+        IconKind::Check,
+        tr("Use"),
+        if phase == RecordPhase::Ready {
+            ButtonStyle::Primary
+        } else {
+            ButtonStyle::Disabled
+        },
+    );
+    ui_button(
+        screen,
+        retry_r,
+        IconKind::Undo,
+        tr("Try again"),
+        ButtonStyle::Plain,
+    );
+    ui_button(
+        screen,
+        cancel_r,
+        IconKind::Close,
+        tr("Cancel"),
+        ButtonStyle::Plain,
+    );
+    hits_add(&mut s.hits, use_r, H_RECORD_USE, 0);
+    hits_add(&mut s.hits, retry_r, H_RECORD_RETRY, 0);
+    hits_add(&mut s.hits, cancel_r, H_RECORD_CANCEL, 0);
 }
 
 // The language Settings > Language has picked: its index, or -1 for automatic (language=auto,
@@ -1319,7 +2820,12 @@ fn language_picked(a: &App) -> i32 {
 fn language_auto_label(out: &mut String, cap: usize) {
     // TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
     // that language's name (each language is named in itself: "English", "Español").
-    csnprintf!(out, cap, tr("Automatic (%s)"), i18n_language_name(i18n_find(i18n_auto())).unwrap_or("(null)"));
+    csnprintf!(
+        out,
+        cap,
+        tr("Automatic (%s)"),
+        i18n_language_name(i18n_find(i18n_auto())).unwrap_or("(null)")
+    );
 }
 
 fn draw_settings(a: &mut App) {
@@ -1329,9 +2835,19 @@ fn draw_settings(a: &mut App) {
     if language_picked(a) < 0 {
         language_auto_label(&mut lang, 96);
     } else {
-        csnprintf!(&mut lang, 96, "%s", i18n_language_name(language_picked(a)).unwrap_or("(null)"));
+        csnprintf!(
+            &mut lang,
+            96,
+            "%s",
+            i18n_language_name(language_picked(a)).unwrap_or("(null)")
+        );
     }
-    let App { screen: c, lib, settings, .. } = a;
+    let App {
+        screen: c,
+        lib,
+        settings,
+        ..
+    } = a;
     let s = lib.as_deref_mut().unwrap();
     let card = sheet_rect(aw, ah, ui_px(1820.0));
     let in_ = ui_sheet(c, card, tr("Settings"));
@@ -1340,17 +2856,44 @@ fn draw_settings(a: &mut App) {
     let mut y = in_.y;
     let r1 = Rect::new(in_.x, y, in_.w, rh);
     ui_button(c, r1, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(c, IconKind::Tune, Rect::new(r1.x + ui_px(20.0), r1.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Tune,
+        Rect::new(
+            r1.x + ui_px(20.0),
+            r1.y + ui_px(15.0),
+            rh - ui_px(30.0),
+            rh - ui_px(30.0),
+        ),
+        0,
+    );
     // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
     // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
     // 34 px). Sideways they are 80 px wider.
     let pens = tr("Pen sensitivity (pressure + tilt per tool)");
-    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r1.x + rh + ui_px(10.0), r1.y, r1.w - rh - ui_px(30.0), rh), pens, 0);
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(r1.x + rh + ui_px(10.0), r1.y, r1.w - rh - ui_px(30.0), rh),
+        pens,
+        0,
+    );
     hits_add(&mut s.hits, r1, H_SET_PENS, 0);
     y += rh + gap;
     let r2 = Rect::new(in_.x, y, in_.w, rh);
     ui_button(c, r2, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(c, IconKind::Target, Rect::new(r2.x + ui_px(20.0), r2.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Target,
+        Rect::new(
+            r2.x + ui_px(20.0),
+            r2.y + ui_px(15.0),
+            rh - ui_px(30.0),
+            rh - ui_px(30.0),
+        ),
+        0,
+    );
     font_draw_left(
         c,
         FontFace::Bold,
@@ -1363,12 +2906,27 @@ fn draw_settings(a: &mut App) {
     y += rh + gap;
     let r2b = Rect::new(in_.x, y, in_.w, rh);
     ui_button(c, r2b, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(c, IconKind::Brightness, Rect::new(r2b.x + ui_px(20.0), r2b.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Brightness,
+        Rect::new(
+            r2b.x + ui_px(20.0),
+            r2b.y + ui_px(15.0),
+            rh - ui_px(30.0),
+            rh - ui_px(30.0),
+        ),
+        0,
+    );
     font_draw_left(
         c,
         FontFace::Bold,
         ui_text_size(),
-        Rect::new(r2b.x + rh + ui_px(10.0), r2b.y, r2b.w - rh - ui_px(30.0), rh),
+        Rect::new(
+            r2b.x + rh + ui_px(10.0),
+            r2b.y,
+            r2b.w - rh - ui_px(30.0),
+            rh,
+        ),
         tr("Display: brightness, warmth, invert"),
         0,
     );
@@ -1376,20 +2934,37 @@ fn draw_settings(a: &mut App) {
     y += rh + gap;
     let rt = Rect::new(in_.x, y, in_.w, ui_px(110.0));
     canvas_fill(c, rt, 255);
-    ui_icon(c, IconKind::Castle, Rect::new(rt.x, rt.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Castle,
+        Rect::new(rt.x, rt.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
+        0,
+    );
     // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
     let mut style = tr("Style: Gothic (tap for Classic)");
     if ui_theme() == UiTheme::Classic {
         style = tr("Style: Classic (tap for Gothic)");
     }
-    font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(rt.x + ui_px(110.0), rt.y, rt.w - ui_px(110.0), rt.h), style, 0);
+    font_draw_left(
+        c,
+        FontFace::Regular,
+        ui_text_size(),
+        Rect::new(rt.x + ui_px(110.0), rt.y, rt.w - ui_px(110.0), rt.h),
+        style,
+        0,
+    );
     hits_add(&mut s.hits, rt, H_SET_THEME, 0);
     y += ui_px(130.0);
     let r3 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
     let mut row = String::new();
     // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
     // every notebook.
-    csnprintf!(&mut row, 256, tr("Mirror PDFs to %s (USB)"), "grimoire/PDFs");
+    csnprintf!(
+        &mut row,
+        256,
+        tr("Mirror PDFs to %s (USB)"),
+        "grimoire/PDFs"
+    );
     ui_checkbox(c, r3, &row, settings.mirror_pdf);
     hits_add(&mut s.hits, r3, H_SET_MIRROR, 0);
     y += ui_px(130.0);
@@ -1406,7 +2981,12 @@ fn draw_settings(a: &mut App) {
         n_("Holding the pen button draws white (tap to change)"),
     ];
     canvas_fill(c, r4, 255);
-    ui_icon(c, IconKind::Highlighter, Rect::new(r4.x, r4.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Highlighter,
+        Rect::new(r4.x, r4.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
+        0,
+    );
     ui_text(
         c,
         FontFace::Regular,
@@ -1421,11 +3001,21 @@ fn draw_settings(a: &mut App) {
     hits_add(&mut s.hits, r4, H_SET_SIDE, 0);
     y += ui_px(130.0);
     let r5 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(c, r5, tr("Turn with the Kindle (portrait and landscape)"), settings.follow_rotation);
+    ui_checkbox(
+        c,
+        r5,
+        tr("Turn with the Kindle (portrait and landscape)"),
+        settings.follow_rotation,
+    );
     hits_add(&mut s.hits, r5, H_SET_ROTATE, 0);
     y += ui_px(130.0);
     let r6 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(c, r6, tr("Pinch with two fingers to zoom"), settings.pinch_zoom);
+    ui_checkbox(
+        c,
+        r6,
+        tr("Pinch with two fingers to zoom"),
+        settings.pinch_zoom,
+    );
     hits_add(&mut s.hits, r6, H_SET_PINCH, 0);
     y += ui_px(130.0);
     // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
@@ -1433,7 +3023,12 @@ fn draw_settings(a: &mut App) {
     // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
     csnprintf!(&mut lang_line, 160, tr("Language: %s"), &lang);
     canvas_fill(c, rl, 255);
-    ui_icon(c, IconKind::Language, Rect::new(rl.x, rl.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)), 0);
+    ui_icon(
+        c,
+        IconKind::Language,
+        Rect::new(rl.x, rl.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
+        0,
+    );
     ui_text(
         c,
         FontFace::Regular,
@@ -1466,26 +3061,67 @@ fn draw_settings(a: &mut App) {
         csnprintf!(&mut pen, 160, tr("pen: %s"), &caps.pen_name);
     }
     csnprintf!(&mut about, 320, "Grimoire %s  %s", GRIMOIRE_VERSION, &pen);
-    font_draw_left(c, FontFace::Regular, ui_small_size(), Rect::new(in_.x, y, in_.w, ui_px(60.0)), &about, 60);
+    font_draw_left(
+        c,
+        FontFace::Regular,
+        ui_small_size(),
+        Rect::new(in_.x, y, in_.w, ui_px(60.0)),
+        &about,
+        60,
+    );
     // (The data's path is a name: a long one is cut short, as names are. tests/test_i18n.c checks
     // that the label fits with the Kindle's path.)
     csnprintf!(&mut about, 320, tr("Data: %s"), &store_root());
-    font_draw_left_name(c, FontFace::Regular, ui_small_size(), Rect::new(in_.x, y + ui_px(60.0), in_.w, ui_px(60.0)), &about, 60);
-    let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - ui_px(140.0), ui_px(380.0), ui_px(140.0));
+    font_draw_left_name(
+        c,
+        FontFace::Regular,
+        ui_small_size(),
+        Rect::new(in_.x, y + ui_px(60.0), in_.w, ui_px(60.0)),
+        &about,
+        60,
+    );
+    let done = Rect::new(
+        in_.x + in_.w - ui_px(380.0),
+        in_.y + in_.h - ui_px(140.0),
+        ui_px(380.0),
+        ui_px(140.0),
+    );
     ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut s.hits, done, H_CANCEL, 0);
-    let ko = Rect::new(in_.x, done.y, ui_px(420.0), done.h);
+    let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
     ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
     hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Between KOReader and Done: Controller and Updates, each half the room.
-    let mid = done.x - ko.x - ko.w - ui_px(90.0);
-    let keys = Rect::new(ko.x + ko.w + ui_px(30.0), done.y, mid / 2, done.h);
-    let upd = Rect::new(keys.x + keys.w + ui_px(30.0), done.y, mid - mid / 2, done.h);
-    // TRANSLATORS: Settings' bottom buttons, each a word under its icon (about 360 px at 34 px):
-    // to the Controller sheet (a controller's or keyboard's buttons as shortcuts), and to the
-    // Updates sheet (check for a newer Grimoire and install it).
-    ui_button(c, keys, IconKind::Gamepad, tr("Controller"), ButtonStyle::Plain);
+    // Controller, Gestures and Updates share the space between KOReader and Done.
+    let gap = ui_px(30.0);
+    let mid = done.x - ko.x - ko.w - 4 * gap;
+    let third = mid / 3;
+    let keys = Rect::new(ko.x + ko.w + gap, done.y, third, done.h);
+    let gestures = Rect::new(keys.x + keys.w + gap, done.y, third, done.h);
+    let upd = Rect::new(
+        gestures.x + gestures.w + gap,
+        done.y,
+        mid - 2 * third,
+        done.h,
+    );
+    // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
+    // Controller opens the connected key/controller settings, Gestures opens gesture bindings,
+    // Updates checks for a newer Grimoire.
+    ui_button(
+        c,
+        keys,
+        IconKind::Gamepad,
+        tr("Controller"),
+        ButtonStyle::Plain,
+    );
     hits_add(&mut s.hits, keys, H_SHORTCUTS, 0);
+    ui_button(
+        c,
+        gestures,
+        IconKind::Gestures,
+        tr("Gestures"),
+        ButtonStyle::Plain,
+    );
+    hits_add(&mut s.hits, gestures, H_GESTURES, 0);
     ui_button(c, upd, IconKind::Update, tr("Updates"), ButtonStyle::Plain);
     hits_add(&mut s.hits, upd, H_UPDATES, 0);
 }
@@ -1518,41 +3154,100 @@ fn draw_modal(a: &mut App) {
             let mut now = String::new();
             let avail = update_available();
             let s = lib(a);
-            let (upd, newer, latest, why) = (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
+            let (upd, newer, latest, why) =
+                (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
             if !avail {
                 // TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
                 // running; then while it checks; then what the check found: a newer one (%s), or that this
                 // one (%s) is the newest; or why it could not check.
-                csnprintf!(&mut status, 200, "%s", tr("Updates come through KPM, which is not here."));
+                csnprintf!(
+                    &mut status,
+                    200,
+                    "%s",
+                    tr("Updates come through KPM, which is not here.")
+                );
             } else if upd == UPD_CHECKING {
                 csnprintf!(&mut status, 200, "%s", tr("Checking for updates..."));
             } else if upd == UPD_DONE && newer {
                 csnprintf!(&mut status, 200, tr("Grimoire %s is available."), &latest);
             } else if upd == UPD_DONE {
-                csnprintf!(&mut status, 200, tr("Grimoire %s is the newest."), GRIMOIRE_VERSION);
+                csnprintf!(
+                    &mut status,
+                    200,
+                    tr("Grimoire %s is the newest."),
+                    GRIMOIRE_VERSION
+                );
             } else if upd == UPD_FAILED && why == "network" {
                 csnprintf!(&mut status, 200, "%s", tr("Could not check. Is Wi-Fi on?"));
             } else if upd == UPD_FAILED && why == "no-kpm" {
-                csnprintf!(&mut status, 200, "%s", tr("Updates come through KPM, which is not here."));
+                csnprintf!(
+                    &mut status,
+                    200,
+                    "%s",
+                    tr("Updates come through KPM, which is not here.")
+                );
             } else if upd == UPD_FAILED {
                 csnprintf!(&mut status, 200, "%s", tr("Could not check for updates."));
             } else {
-                csnprintf!(&mut status, 200, tr("This is Grimoire %s."), GRIMOIRE_VERSION);
+                csnprintf!(
+                    &mut status,
+                    200,
+                    tr("This is Grimoire %s."),
+                    GRIMOIRE_VERSION
+                );
             }
             // TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
             // only (stable); a tap changes it.
-            csnprintf!(&mut channel, 200, "%s", if upd_preview(a) { tr("Updates: betas and releases (tap for releases only)") }
-                                                   else { tr("Updates: releases only (tap for betas too)") });
+            csnprintf!(
+                &mut channel,
+                200,
+                "%s",
+                if upd_preview(a) {
+                    tr("Updates: betas and releases (tap for releases only)")
+                } else {
+                    tr("Updates: releases only (tap for betas too)")
+                }
+            );
             // TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
             // installs it, and Grimoire starts again.
             csnprintf!(&mut now, 160, tr("Update to %s"), &latest);
             let can = avail && upd != UPD_CHECKING;
             let rows = [
                 menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
-                menu_row(IconKind::None, &channel, H_UPD_CHANNEL, 0, if can { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
+                menu_row(
+                    IconKind::None,
+                    &channel,
+                    H_UPD_CHANNEL,
+                    0,
+                    if can {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
                 // TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
-                menu_row(IconKind::Update, tr("Check for updates"), H_UPD_CHECK, 0, if can { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
-                menu_row(IconKind::Download, if newer { now.as_str() } else { tr("Update") }, H_UPD_NOW, 0, if newer { ButtonStyle::Primary } else { ButtonStyle::Disabled }),
+                menu_row(
+                    IconKind::Update,
+                    tr("Check for updates"),
+                    H_UPD_CHECK,
+                    0,
+                    if can {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
+                menu_row(
+                    IconKind::Download,
+                    if newer { now.as_str() } else { tr("Update") },
+                    H_UPD_NOW,
+                    0,
+                    if newer {
+                        ButtonStyle::Primary
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
             // TRANSLATORS: the Updates sheet's title (Settings > Updates).
@@ -1563,14 +3258,34 @@ fn draw_modal(a: &mut App) {
             let mut rows: Vec<MenuRow> = Vec::with_capacity(8);
             // TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
             // way: often a button held a few seconds).
-            let first = if s.scanning { tr("Searching... Put the controller in pairing mode.") }
-                        else if s.pairing { tr("Pairing...") } else { tr("Tap a controller to pair it.") };
-            rows.push(menu_row(IconKind::None, first, H_NONE, 0, ButtonStyle::Disabled));
+            let first = if s.scanning {
+                tr("Searching... Put the controller in pairing mode.")
+            } else if s.pairing {
+                tr("Pairing...")
+            } else {
+                tr("Tap a controller to pair it.")
+            };
+            rows.push(menu_row(
+                IconKind::None,
+                first,
+                H_NONE,
+                0,
+                ButtonStyle::Disabled,
+            ));
             let mut i = 0;
             while i < s.nfound && rows.len() < 5 {
                 let d = &s.found[i as usize];
                 let mut name = String::new();
-                csnprintf!(&mut name, BT_NAME_LEN + 40, "%s", if !d.name.is_empty() { d.name.as_str() } else { d.address.as_str() });
+                csnprintf!(
+                    &mut name,
+                    BT_NAME_LEN + 40,
+                    "%s",
+                    if !d.name.is_empty() {
+                        d.name.as_str()
+                    } else {
+                        d.address.as_str()
+                    }
+                );
                 let chosen = s.pairing && d.address == s.pair_addr;
                 let st = if chosen {
                     ButtonStyle::Selected
@@ -1587,84 +3302,92 @@ fn draw_modal(a: &mut App) {
                 let p = &s.paired[i as usize];
                 let mut name = String::new();
                 // TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
-                csnprintf!(&mut name, BT_NAME_LEN + 40, tr("Forget %s"), if !p.name.is_empty() { p.name.as_str() } else { p.address.as_str() });
-                rows.push(menu_row(IconKind::Trash, &name, H_PAIR_FORGET, i, if s.pairing { ButtonStyle::Disabled } else { ButtonStyle::Plain }));
+                csnprintf!(
+                    &mut name,
+                    BT_NAME_LEN + 40,
+                    tr("Forget %s"),
+                    if !p.name.is_empty() {
+                        p.name.as_str()
+                    } else {
+                        p.address.as_str()
+                    }
+                );
+                rows.push(menu_row(
+                    IconKind::Trash,
+                    &name,
+                    H_PAIR_FORGET,
+                    i,
+                    if s.pairing {
+                        ButtonStyle::Disabled
+                    } else {
+                        ButtonStyle::Plain
+                    },
+                ));
                 i += 1;
             }
             // TRANSLATORS: (Pair sheet) searches for controllers again.
-            rows.push(menu_row(IconKind::None, tr("Search again"), H_PAIR_AGAIN, 0, if s.scanning || s.pairing { ButtonStyle::Disabled } else { ButtonStyle::Plain }));
-            rows.push(menu_row(IconKind::Back, tr("Done"), H_BUTTONS_DONE, 0, ButtonStyle::Plain));
+            rows.push(menu_row(
+                IconKind::None,
+                tr("Search again"),
+                H_PAIR_AGAIN,
+                0,
+                if s.scanning || s.pairing {
+                    ButtonStyle::Disabled
+                } else {
+                    ButtonStyle::Plain
+                },
+            ));
+            rows.push(menu_row(
+                IconKind::Back,
+                tr("Done"),
+                H_BUTTONS_DONE,
+                0,
+                ButtonStyle::Plain,
+            ));
             // TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
             draw_menu(a, tr("Pair a controller"), &rows);
         }
-        Modal::Buttons => {
-            let mut rows: Vec<MenuRow> = Vec::with_capacity(16);
-            let g = lib(a).buttons_group;
-            if g < 0 {
-                for (i, grp) in K_GROUPS.iter().enumerate() {
-                    rows.push(menu_row(grp.icon, tr(grp.label), H_BUTTON_GROUP, i as i32, ButtonStyle::Plain));
-                }
-                let cp = controller_path();
-                // TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
-                rows.push(menu_row(IconKind::Trash, tr("Reset buttons"), H_BUTTONS_RESET, 0, if std::fs::metadata(&cp).is_ok() { ButtonStyle::Plain } else { ButtonStyle::Disabled }));
-                rows.push(menu_row(IconKind::Back, tr("Done"), H_BUTTONS_DONE, 0, ButtonStyle::Plain));
-                // TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a group of
-                // actions, then a tap on a row and a press on the controller, makes that button do it.
-                draw_menu(a, tr("Controller buttons"), &rows);
-                return;
-            }
-            let hid_changes = a.hid_changes;
-            lib(a).shown_hid_changes = hid_changes; // (pads_text names the buttons for the controller connected)
-            let (learn_row, learn_step) = (lib(a).learn_row, lib(a).learn_step);
-            for i in 0..group_rows(g) {
-                let r = learn_row_at(g, i);
-                let learning = learn_row == i;
-                let mut text = String::new();
-                if learning {
-                    // TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): %s is the
-                    // action's name as the rows show it ("Undo", "Pencil", "Next page"). About 1100 px at
-                    // 44 px in bold.
-                    csnprintf!(&mut text, 200, tr("Press a button for %s"), action_label(r.act[learn_step as usize]));
-                } else {
-                    let mut p1 = String::new();
-                    let mut p2 = String::new();
-                    pads_text(a, r.act[0], &mut p1, 64);
-                    let label = match r.label {
-                        Some(l) => tr(l),
-                        None => action_label(r.act[0]),
-                    };
-                    if r.act[1] != 0 {
-                        pads_text(a, r.act[1], &mut p2, 64);
-                        csnprintf!(&mut text, 200, "%s: %s / %s", label, &p1, &p2);
-                    } else {
-                        csnprintf!(&mut text, 200, "%s: %s", label, &p1);
-                    }
-                }
-                rows.push(menu_row(r.icon, &text, H_BUTTON_ROW, i, if learning { ButtonStyle::Selected } else { ButtonStyle::Plain }));
-            }
-            rows.push(menu_row(IconKind::Back, tr("Done"), H_BUTTONS_DONE, 0, ButtonStyle::Plain));
-            draw_menu(a, tr(K_GROUPS[g as usize].title), &rows);
-        }
+        Modal::Buttons => draw_bind_sheet(a, BUTTONS),
+        Modal::Gestures => draw_gestures_modal(a),
         Modal::Shortcuts => {
             let mut count = String::new();
             let mut last = String::new();
             let mut status = String::new();
             // TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
             // hold, and how many of their lines were refused.
-            csnprintf!(&mut count, 160, tr("Mappings: %d; rejected: %d"), a.shortcuts.count, a.shortcuts.rejected);
+            csnprintf!(
+                &mut count,
+                160,
+                tr("Mappings: %d; rejected: %d"),
+                a.shortcuts.count,
+                a.shortcuts.rejected
+            );
             if a.last_shortcut_code != 0 {
                 csnprintf!(
                     &mut last,
                     160,
                     tr("Last input: %s %d; modifiers: %d"),
-                    if a.last_shortcut_gamepad { "pad" } else { "key" },
+                    if a.last_shortcut_gamepad {
+                        "pad"
+                    } else {
+                        "key"
+                    },
                     a.last_shortcut_code,
                     a.last_shortcut_mods
                 );
             } else {
-                csnprintf!(&mut last, 160, "%s", tr("Press a connected key or controller button"));
+                csnprintf!(
+                    &mut last,
+                    160,
+                    "%s",
+                    tr("Press a connected key or controller button")
+                );
             }
-            let (code, mods, gamepad) = (a.last_shortcut_code, a.last_shortcut_mods, a.last_shortcut_gamepad);
+            let (code, mods, gamepad) = (
+                a.last_shortcut_code,
+                a.last_shortcut_mods,
+                a.last_shortcut_gamepad,
+            );
             let s = lib(a);
             s.shown_shortcut_code = code;
             s.shown_shortcut_mods = mods;
@@ -1678,7 +3401,12 @@ fn draw_modal(a: &mut App) {
                 // would not start.
                 csnprintf!(&mut status, 160, "%s", tr("Bluetooth: starting..."));
             } else if bs == BtState::Failed {
-                csnprintf!(&mut status, 160, "%s", tr("Bluetooth did not start (see grimoire.log)"));
+                csnprintf!(
+                    &mut status,
+                    160,
+                    "%s",
+                    tr("Bluetooth did not start (see grimoire.log)")
+                );
             }
             let on = a.settings.shortcuts_enabled;
             let present = bt_present();
@@ -1686,24 +3414,74 @@ fn draw_modal(a: &mut App) {
             let mut reload = String::new();
             // TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
             // many shortcuts they hold, and how many of their lines were refused.
-            csnprintf!(&mut reload, 160, tr("Reload shortcuts.ini (%d, %d refused)"), a.shortcuts.count, a.shortcuts.rejected);
+            csnprintf!(
+                &mut reload,
+                160,
+                tr("Reload shortcuts.ini (%d, %d refused)"),
+                a.shortcuts.count,
+                a.shortcuts.rejected
+            );
             let rows = [
-                menu_row(if on { IconKind::Check } else { IconKind::None }, tr("Enable shortcuts"), H_SHORTCUT_ENABLE, 0, ButtonStyle::Plain),
+                menu_row(
+                    if on { IconKind::Check } else { IconKind::None },
+                    tr("Enable shortcuts"),
+                    H_SHORTCUT_ENABLE,
+                    0,
+                    ButtonStyle::Plain,
+                ),
                 // TRANSLATORS: (Controller sheet) starts the Bluetooth helper with Grimoire, for a
                 // Bluetooth controller; without the helper unpacked in grimoire/bluetooth, the second.
                 menu_row(
-                    if a.settings.controller && present { IconKind::Check } else { IconKind::None },
-                    if present { tr("Bluetooth controller") } else { tr("No Bluetooth helper in grimoire/bluetooth") },
+                    if a.settings.controller && present {
+                        IconKind::Check
+                    } else {
+                        IconKind::None
+                    },
+                    if present {
+                        tr("Bluetooth controller")
+                    } else {
+                        tr("No Bluetooth helper in grimoire/bluetooth")
+                    },
                     H_BT_TOGGLE,
                     0,
-                    if present && on { ButtonStyle::Plain } else { ButtonStyle::Disabled },
+                    if present && on {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
                 ),
                 // TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
-                menu_row(IconKind::Plus, tr("Pair a controller..."), H_PAIR, 0, if bt_up && on { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
+                menu_row(
+                    IconKind::Plus,
+                    tr("Pair a controller..."),
+                    H_PAIR,
+                    0,
+                    if bt_up && on {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
                 menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
                 // TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
-                menu_row(IconKind::None, tr("Buttons..."), H_BUTTONS, 0, if on { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
-                menu_row(IconKind::None, &reload, H_SHORTCUT_RELOAD, 0, ButtonStyle::Plain),
+                menu_row(
+                    IconKind::None,
+                    tr("Buttons..."),
+                    H_BUTTONS,
+                    0,
+                    if on {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
+                menu_row(
+                    IconKind::None,
+                    &reload,
+                    H_SHORTCUT_RELOAD,
+                    0,
+                    ButtonStyle::Plain,
+                ),
                 menu_row(IconKind::None, &last, H_NONE, 0, ButtonStyle::Disabled),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
@@ -1716,13 +3494,67 @@ fn draw_modal(a: &mut App) {
             let mut ko = String::new();
             let found = koreader_find(&mut ko, 800);
             let installed = koreader_item_installed(0);
-            let if_found = if found { ButtonStyle::Plain } else { ButtonStyle::Disabled };
+            let if_found = if found {
+                ButtonStyle::Plain
+            } else {
+                ButtonStyle::Disabled
+            };
             let rows = [
-                menu_row(IconKind::Notebook, if found { tr("Install / update Grimoire plugin") } else { tr("KOReader not found") }, H_KO_ITEM, 0, if_found),
-                menu_row(IconKind::Trash, tr("Remove Grimoire plugin"), H_KO_ITEM, -1, if installed { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
-                menu_row(if koreader_item_installed(1) { IconKind::Check } else { IconKind::None }, tr("Disable diagonal screenshot gestures"), H_KO_ITEM, 1, if_found),
-                menu_row(if koreader_item_installed(2) { IconKind::Check } else { IconKind::None }, tr("Square folder corners"), H_KO_ITEM, 2, if_found),
-                menu_row(if koreader_item_installed(3) { IconKind::Check } else { IconKind::None }, tr("Terminess menu font"), H_KO_ITEM, 3, if_found),
+                menu_row(
+                    IconKind::Notebook,
+                    if found {
+                        tr("Install / update Grimoire plugin")
+                    } else {
+                        tr("KOReader not found")
+                    },
+                    H_KO_ITEM,
+                    0,
+                    if_found,
+                ),
+                menu_row(
+                    IconKind::Trash,
+                    tr("Remove Grimoire plugin"),
+                    H_KO_ITEM,
+                    -1,
+                    if installed {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
+                menu_row(
+                    if koreader_item_installed(1) {
+                        IconKind::Check
+                    } else {
+                        IconKind::None
+                    },
+                    tr("Disable diagonal screenshot gestures"),
+                    H_KO_ITEM,
+                    1,
+                    if_found,
+                ),
+                menu_row(
+                    if koreader_item_installed(2) {
+                        IconKind::Check
+                    } else {
+                        IconKind::None
+                    },
+                    tr("Square folder corners"),
+                    H_KO_ITEM,
+                    2,
+                    if_found,
+                ),
+                menu_row(
+                    if koreader_item_installed(3) {
+                        IconKind::Check
+                    } else {
+                        IconKind::None
+                    },
+                    tr("Terminess menu font"),
+                    H_KO_ITEM,
+                    3,
+                    if_found,
+                ),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
             draw_menu(a, "KOReader", &rows);
@@ -1734,12 +3566,42 @@ fn draw_modal(a: &mut App) {
             // Kindle's storage the PDF goes in.
             csnprintf!(&mut pdf, 256, tr("Save PDF to %s now"), "grimoire/PDFs");
             let rows = [
-                menu_row(IconKind::Notebook, tr("Open"), H_MORE_OPEN, 0, ButtonStyle::Plain),
-                menu_row(IconKind::Rename, tr("Rename"), H_MORE_RENAME, 0, ButtonStyle::Plain),
-                menu_row(IconKind::FolderMove, tr("Move to folder"), H_MORE_MOVE, 0, ButtonStyle::Plain),
+                menu_row(
+                    IconKind::Notebook,
+                    tr("Open"),
+                    H_MORE_OPEN,
+                    0,
+                    ButtonStyle::Plain,
+                ),
+                menu_row(
+                    IconKind::Rename,
+                    tr("Rename"),
+                    H_MORE_RENAME,
+                    0,
+                    ButtonStyle::Plain,
+                ),
+                menu_row(
+                    IconKind::FolderMove,
+                    tr("Move to folder"),
+                    H_MORE_MOVE,
+                    0,
+                    ButtonStyle::Plain,
+                ),
                 menu_row(IconKind::Download, &pdf, H_MORE_PDF, 0, ButtonStyle::Plain),
-                menu_row(IconKind::Trash, tr("Delete"), H_MORE_DELETE, 0, ButtonStyle::Plain),
-                menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+                menu_row(
+                    IconKind::Trash,
+                    tr("Delete"),
+                    H_MORE_DELETE,
+                    0,
+                    ButtonStyle::Plain,
+                ),
+                menu_row(
+                    IconKind::Close,
+                    tr("Cancel"),
+                    H_CANCEL,
+                    0,
+                    ButtonStyle::Plain,
+                ),
             ];
             let title = name_label(lib(a).books[it.nb].name.as_str());
             draw_menu(a, &title, &rows);
@@ -1748,7 +3610,13 @@ fn draw_modal(a: &mut App) {
             let Some(it) = it else { return };
             // TRANSLATORS: a folder's menu (1470 px at 44 px in bold); only an empty folder can go.
             let rows = [
-                menu_row(IconKind::Rename, tr("Rename folder"), H_FMORE_RENAME, 0, ButtonStyle::Plain),
+                menu_row(
+                    IconKind::Rename,
+                    tr("Rename folder"),
+                    H_FMORE_RENAME,
+                    0,
+                    ButtonStyle::Plain,
+                ),
                 menu_row(
                     IconKind::Trash,
                     if it.count != 0 || it.has_children { tr("Remove folder (move its notebooks out first)") } else { tr("Remove folder") },
@@ -1756,7 +3624,8 @@ fn draw_modal(a: &mut App) {
                     0,
                     if it.count != 0 || it.has_children { ButtonStyle::Disabled } else { ButtonStyle::Plain },
                 ),
-                menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+                menu_row(IconKind::Close,tr("Cancel"),H_CANCEL,0,ButtonStyle::Plain,
+                ),
             ];
             let title = name_label(it.folder.as_str());
             draw_menu(a, &title, &rows);
@@ -1801,10 +3670,21 @@ fn draw_modal(a: &mut App) {
             csnprintf!(&mut title, 256, tr("Delete \"%s\"?"), &name);
             // TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
             // Kindle's storage (%s), or keep the notebook.
-            csnprintf!(&mut del, 256, tr("Delete (moves it to %s)"), "grimoire/trash");
+            csnprintf!(
+                &mut del,
+                256,
+                tr("Delete (moves it to %s)"),
+                "grimoire/trash"
+            );
             let rows = [
                 menu_row(IconKind::Trash, &del, H_DELETE_YES, 0, ButtonStyle::Primary),
-                menu_row(IconKind::Close, tr("Keep it"), H_CANCEL, 0, ButtonStyle::Plain),
+                menu_row(
+                    IconKind::Close,
+                    tr("Keep it"),
+                    H_CANCEL,
+                    0,
+                    ButtonStyle::Plain,
+                ),
             ];
             draw_menu(a, &title, &rows);
         }
@@ -1814,14 +3694,40 @@ fn draw_modal(a: &mut App) {
             let cur = language_picked(a);
             let mut auto_label = String::new();
             language_auto_label(&mut auto_label, 96);
-            rows.push(menu_row(IconKind::Language, &auto_label, H_LANG_PICK, -1, if cur < 0 { ButtonStyle::Selected } else { ButtonStyle::Plain }));
+            rows.push(menu_row(
+                IconKind::Language,
+                &auto_label,
+                H_LANG_PICK,
+                -1,
+                if cur < 0 {
+                    ButtonStyle::Selected
+                } else {
+                    ButtonStyle::Plain
+                },
+            ));
             let mut i = 0;
             while i < i18n_language_count() && rows.len() < 11 {
                 let name = i18n_language_name(i).unwrap_or("(null)");
-                rows.push(menu_row(IconKind::None, name, H_LANG_PICK, i, if cur == i { ButtonStyle::Selected } else { ButtonStyle::Plain }));
+                rows.push(menu_row(
+                    IconKind::None,
+                    name,
+                    H_LANG_PICK,
+                    i,
+                    if cur == i {
+                        ButtonStyle::Selected
+                    } else {
+                        ButtonStyle::Plain
+                    },
+                ));
                 i += 1;
             }
-            rows.push(menu_row(IconKind::Close, tr("Cancel"), H_LANG_BACK, 0, ButtonStyle::Plain));
+            rows.push(menu_row(
+                IconKind::Close,
+                tr("Cancel"),
+                H_LANG_BACK,
+                0,
+                ButtonStyle::Plain,
+            ));
             // TRANSLATORS: the title of the list of languages (Settings > Language).
             draw_menu(a, tr("Language"), &rows);
         }
@@ -1874,7 +3780,14 @@ fn toast_floor(a: &App) -> i32 {
         &s.hits
     };
     // (A toast of two lines is taller: the band is as tall as the toast up now, else one line.)
-    let t = ui_toast_rect(Rect::new(0, 0, a.w, a.h), if a.toast_visible { a.toast.as_str() } else { "" });
+    let t = ui_toast_rect(
+        Rect::new(0, 0, a.w, a.h),
+        if a.toast_visible {
+            a.toast.as_str()
+        } else {
+            ""
+        },
+    );
     let gap = ui_px(20.0);
     let mut y = t.y;
     let mut below = 0; // below: the control the toast must stay above
@@ -1966,14 +3879,24 @@ fn start_on_template(nb: &mut NotebookInfo, path: &str) -> bool {
     if template_start_notebook(nb, path, &mut why) == 0 {
         return true;
     }
-    qlog!("library: %s: the new notebook's template could not be used: %s", &nb.id, why);
+    qlog!(
+        "library: %s: the new notebook's template could not be used: %s",
+        &nb.id,
+        why
+    );
     false
 }
 
 fn create_notebook(a: &mut App) {
     let mut nb = Box::<NotebookInfo>::default();
     let s = lib(a);
-    if store_create(s.new_name.as_str(), s.cur_folder.as_str(), s.new_paper, &mut nb) == 0 {
+    if store_create(
+        s.new_name.as_str(),
+        s.cur_folder.as_str(),
+        s.new_paper,
+        &mut nb,
+    ) == 0
+    {
         s.modal = Modal::None;
         let tpl_ok = s.new_tpl.is_empty() || start_on_template(&mut nb, s.new_tpl.as_str());
         let id = nb.id.as_str().to_string();
@@ -1981,7 +3904,12 @@ fn create_notebook(a: &mut App) {
         editor_open_notebook(a, &id);
         if !tpl_ok {
             let mut msg = String::new();
-            csnprintf!(&mut msg, 256, tr("Could not use that template (see %s)."), "grimoire.log");
+            csnprintf!(
+                &mut msg,
+                256,
+                tr("Could not use that template (see %s)."),
+                "grimoire.log"
+            );
             app_toast(a, &msg, 4000);
         }
         return;
@@ -2115,7 +4043,11 @@ fn act(a: &mut App, h: &Hit) {
         H_CARD_MORE => {
             let s = lib(a);
             s.target = h.arg;
-            let m = if s.items[h.arg as usize].is_folder { Modal::FolderMore } else { Modal::More };
+            let m = if s.items[h.arg as usize].is_folder {
+                Modal::FolderMore
+            } else {
+                Modal::More
+            };
             open_modal(a, m);
         }
         H_PAPER => {
@@ -2140,10 +4072,55 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_NEW_RENAME => {
             let name = lib(a).new_name;
-            open_kb(a, KbPurpose::NewName, c_("keyboard", "Name"), name.as_bytes());
+            open_kb(
+                a,
+                KbPurpose::NewName,
+                c_("keyboard", "Name"),
+                name.as_bytes(),
+            );
         }
         H_NEW_CREATE => create_notebook(a),
         H_CANCEL => close_modal(a),
+        H_GESTURES => open_gestures(a),
+        H_GESTURE_GROUP => {
+            let s = lib(a);
+            bind_group_set(GESTURES, s, clampi(h.arg, 0, N_GROUPS as i32 - 1));
+            s.gestures_learning = SHORTCUT_NONE;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_GESTURE_ROW => {
+            let s = lib(a);
+            if let Some(row) = binding_row_at(GESTURES, s.gestures_group.max(0) as usize, h.arg.max(0) as usize) {
+                if s.record_action == row.act[0] {
+                    close_record_card(a);
+                } else {
+                    (GESTURES.learn)(a, row.act[0]);
+                    lib(a).record_next_action = row.act[1];
+                }
+            }
+        }
+        H_GESTURES_MASTER => {
+            app_global_action(a, SHORTCUT_GESTURES, ActionSrc::Touch);
+            input_touch_context(TgView { gestures_on: a.settings.gestures, ..TgView::default() });
+            redraw(a, RefreshMode::Ui);
+        }
+        H_GESTURES_RESET => { (GESTURES.reset)(a); }
+        H_GESTURES_RESET_CONFIRM => { reset_gesture_map(a); }
+        H_GESTURES_RESET_CANCEL => {
+            lib(a).gestures_reset_confirm = false;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_GESTURES_DONE => {
+            if lib(a).gestures_group >= 0 {
+                lib(a).gestures_group = -1;
+                redraw(a, RefreshMode::Ui);
+            } else {
+                open_modal(a, Modal::Settings);
+            }
+        }
+        H_RECORD_USE => use_recording(a),
+        H_RECORD_RETRY => { let action = lib(a).record_action; open_record_card(a, action); }
+        H_RECORD_CANCEL => close_record_card(a),
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_SHORTCUT_ENABLE | H_SHORTCUT_RELOAD => {
             let mut path = String::new();
@@ -2155,7 +4132,11 @@ fn act(a: &mut App, h: &Hit) {
                 }
                 a.settings.shortcuts_enabled = !a.settings.shortcuts_enabled;
                 settings_save(&a.settings);
-                qlog!("settings: shortcuts %d, controller %d", a.settings.shortcuts_enabled, a.settings.controller);
+                qlog!(
+                    "settings: shortcuts %d, controller %d",
+                    a.settings.shortcuts_enabled,
+                    a.settings.controller
+                );
                 input_shortcuts_enable(a.settings.shortcuts_enabled);
                 // The Bluetooth helper serves shortcuts alone: it goes with them, and comes back with
                 // them while Bluetooth controller stays on.
@@ -2176,7 +4157,7 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_BUTTON_GROUP => {
             let s = lib(a);
-            s.buttons_group = clampi(h.arg, 0, N_GROUPS - 1);
+            s.buttons_group = clampi(h.arg, 0, N_GROUPS as i32 - 1);
             s.learn_row = -1;
             redraw(a, RefreshMode::Ui);
         }
@@ -2240,7 +4221,11 @@ fn act(a: &mut App, h: &Hit) {
         H_BT_TOGGLE => {
             a.settings.controller = !a.settings.controller;
             settings_save(&a.settings);
-            qlog!("settings: shortcuts %d, controller %d", a.settings.shortcuts_enabled, a.settings.controller);
+            qlog!(
+                "settings: shortcuts %d, controller %d",
+                a.settings.shortcuts_enabled,
+                a.settings.controller
+            );
             if a.settings.controller {
                 bt_start();
             } else {
@@ -2281,11 +4266,19 @@ fn act(a: &mut App, h: &Hit) {
         H_KOREADER => open_modal(a, Modal::Koreader),
         H_KO_ITEM => {
             let item = if h.arg < 0 { 0 } else { h.arg };
-            let enabled = if h.arg < 0 { false } else { item == 0 || !koreader_item_installed(item) };
+            let enabled = if h.arg < 0 {
+                false
+            } else {
+                item == 0 || !koreader_item_installed(item)
+            };
             if koreader_item_set(item, enabled) == 0 {
                 app_toast(a, tr("Updated. Restart KOReader to apply."), 5000);
             } else {
-                app_toast(a, tr("Could not update KOReader. A different patch or a storage error?"), 7000);
+                app_toast(
+                    a,
+                    tr("Could not update KOReader. A different patch or a storage error?"),
+                    7000,
+                );
             }
             redraw(a, RefreshMode::Ui);
         }
@@ -2309,8 +4302,16 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_THEME => {
-            a.settings.theme = if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Gothic as i32 } else { UiTheme::Classic as i32 };
-            ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Classic } else { UiTheme::Gothic });
+            a.settings.theme = if a.settings.theme == UiTheme::Classic as i32 {
+                UiTheme::Gothic as i32
+            } else {
+                UiTheme::Classic as i32
+            };
+            ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 {
+                UiTheme::Classic
+            } else {
+                UiTheme::Gothic
+            });
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
         }
@@ -2340,7 +4341,11 @@ fn act(a: &mut App, h: &Hit) {
         H_SET_LANGUAGE => open_modal(a, Modal::Language),
         H_LANG_PICK => {
             // Saved and applied at once: the Settings sheet comes back in the language picked.
-            let code = if h.arg >= 0 { i18n_language_code(h.arg) } else { Some("auto") };
+            let code = if h.arg >= 0 {
+                i18n_language_code(h.arg)
+            } else {
+                Some("auto")
+            };
             if let Some(code) = code.filter(|code| a.settings.language != *code) {
                 a.settings.language.set(code);
                 settings_save(&a.settings);
@@ -2364,7 +4369,12 @@ fn act(a: &mut App, h: &Hit) {
         H_MORE_RENAME => {
             if let Some(it) = it {
                 let name = lib(a).books[it.nb].name;
-                open_kb(a, KbPurpose::Rename, c_("keyboard", "Name"), name.as_bytes());
+                open_kb(
+                    a,
+                    KbPurpose::Rename,
+                    c_("keyboard", "Name"),
+                    name.as_bytes(),
+                );
             }
         }
         H_MORE_MOVE => {
@@ -2396,8 +4406,8 @@ fn act(a: &mut App, h: &Hit) {
                 let s = lib(a);
                 export_mirror_path(&s.books[it.nb], &app_mirror_dir(), &mut nb_path, 1200);
                 let _ = std::fs::remove_file(&nb_path); // the notebook goes to trash; its mirror PDF should not linger
-                // A compaction of it, queued or running, stops first: it would write into the folder
-                // in the trash (or leave a temporary file there).
+                                                        // A compaction of it, queued or running, stops first: it would write into the folder
+                                                        // in the trash (or leave a temporary file there).
                 let id = s.books[it.nb].id.as_str().to_string();
                 bg_cancel_notebook(&id);
                 store_delete(&id);
@@ -2456,10 +4466,13 @@ pub fn library_init(a: &mut App) {
     s.target = -1;
     s.learn_row = -1;
     s.buttons_group = -1;
+    s.gestures_group = -1;
 }
 
 pub fn library_free(a: &mut App) {
-    let Some(s) = a.lib.as_deref_mut() else { return };
+    let Some(s) = a.lib.as_deref_mut() else {
+        return;
+    };
     free_lists(s);
     for k in 0..PAPER_COUNT as usize {
         canvas_free(&mut s.paper_prev[k]);
@@ -2481,14 +4494,24 @@ pub fn library_enter(a: &mut App) {
     }
     s.pressed = None;
     reload(a);
+    let record = library_record_active(a);
+    input_touch_context(TgView { gestures_on: record || a.settings.gestures, record, ..TgView::default() });
     redraw(a, RefreshMode::Full);
 }
 
 pub fn library_leave(a: &mut App) {
-    lib(a).pressed = None;
+    let s = lib(a);
+    s.pressed = None;
+    s.record_touch_active = false;
+    s.record_previous_lift = None;
+    fs_abort(&mut s.record_stroke);
+    input_touch_context(TgView { gestures_on: a.settings.gestures, record: false, ..TgView::default() });
 }
 
 pub fn library_event(a: &mut App, ev: &InEvent) {
+    if library_record_active(a) && record_event(a, ev) {
+        return;
+    }
     let ph = app_pointer_phase(ev);
     if ph < 0 {
         return;
@@ -2536,7 +4559,15 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
             redraw(a, RefreshMode::Ui);
             editor_fit_toast(a);
         } else if !rect_is_empty(d) {
-            app_invalidate(a, d, if ph == 2 { RefreshMode::Ui } else { RefreshMode::Fast });
+            app_invalidate(
+                a,
+                d,
+                if ph == 2 {
+                    RefreshMode::Ui
+                } else {
+                    RefreshMode::Fast
+                },
+            );
         }
         return;
     }
@@ -2596,6 +4627,23 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    if library_record_active(a) {
+        let s = lib(a);
+        if !s.record_attempted && !s.record_touch_active && now.wrapping_sub(s.record_started) >= LEARN_MS {
+            close_record_card(a);
+        } else if s.record_touch_active {
+            let state = fs_tick(&mut s.record_stroke, now);
+            if state == FsState::Drawing && !s.record_touch_origin {
+                s.record_touch_origin = true;
+                s.record_attempted = true;
+                if let Some(h) = s.pressed.take() {
+                    canvas_invert(&mut a.screen, h.r);
+                    app_invalidate(a, h.r, RefreshMode::Ui);
+                }
+            }
+            draw_record_trail(a, now);
+        }
+    }
     let s = a.lib.as_deref().unwrap();
     if s.modal == Modal::Shortcuts
         && (s.shown_shortcut_code != a.last_shortcut_code
@@ -2635,6 +4683,17 @@ pub fn library_tick(a: &mut App, now: u32) {
         let row = s.pressed.map_or(0, |p| p.arg);
         s.pressed = None;
         forget_row(a, row);
+    }
+    let s = lib(a);
+    if s.modal == Modal::Gestures && s.gestures_group >= 0 && s.record_action == SHORTCUT_NONE
+        && !s.gestures_reset_confirm && s.pressed.is_some_and(|p| p.id == H_GESTURE_ROW)
+        && !s.press.moved && now.wrapping_sub(s.pressed_at) >= ROW_HOLD_MS
+    {
+        let row = s.pressed.take().unwrap().arg;
+        if let Some(row) = binding_row_at(GESTURES, s.gestures_group as usize, row as usize) {
+            (GESTURES.forget)(a, row);
+            redraw(a, RefreshMode::Ui);
+        }
     }
     if lib(a).modal == Modal::Kb {
         let mut kb = std::mem::take(&mut lib(a).kb);
@@ -2699,7 +4758,10 @@ fn strtol10(s: &[u8]) -> (i64, usize) {
         mag = (mag * 10 + (d - b'0') as i128).min(1i128 << 80); // (past any long: saturates below)
     }
     let v = if neg { -mag } else { mag };
-    (v.clamp(libc::c_long::MIN as i128, libc::c_long::MAX as i128) as i64, i)
+    (
+        v.clamp(libc::c_long::MIN as i128, libc::c_long::MAX as i128) as i64,
+        i,
+    )
 }
 
 // card.N (from 1, as library.items counts them): what card N shows, "folder", "thumb" (its
@@ -2748,12 +4810,35 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             }
         }
         let np: u64 = t.map_or(0, |t| t.w as u64 * t.h as u64);
-        csnprintf!(out, cap, "%d", (sum + np / 2).checked_div(np).map_or(255, |m| m as i32));
+        csnprintf!(
+            out,
+            cap,
+            "%d",
+            (sum + np / 2).checked_div(np).map_or(255, |m| m as i32)
+        );
     } else if !s.thumbs[it.nb].px.is_empty() {
-        csnprintf!(out, cap, "%s", if s.thumb_picture[it.nb] { "picture" } else { "thumb" });
+        csnprintf!(
+            out,
+            cap,
+            "%s",
+            if s.thumb_picture[it.nb] {
+                "picture"
+            } else {
+                "thumb"
+            }
+        );
     } else {
         // (as paper_preview draws it)
-        csnprintf!(out, cap, "paper %u", if !paper_is_known(k) || paper_is_image(k) { PAPER_BLANK.0 } else { k.0 });
+        csnprintf!(
+            out,
+            cap,
+            "paper %u",
+            if !paper_is_known(k) || paper_is_image(k) {
+                PAPER_BLANK.0
+            } else {
+                k.0
+            }
+        );
     }
     0
 }
@@ -2762,7 +4847,7 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
 /// "templates.*" keys reach it whole (docs/SIM.md).
 // The script runner's "library.*" keys (app_probe forwards them without the prefix).
 pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
-    static SHEETS: [&str; 17] = [
+    static SHEETS: [&str; 18] = [
         "none",        // MOD_NONE
         "new",         // MOD_NEW
         "settings",    // MOD_SETTINGS
@@ -2780,6 +4865,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         "buttons",     // MOD_BUTTONS
         "pair",        // MOD_PAIR
         "updates",     // MOD_UPDATES
+        "gestures",    // MOD_GESTURES
     ];
     if a.lib.is_none() {
         return -1;
@@ -2791,6 +4877,72 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             Some(m) => csnprintf!(out, cap, "%s", *m),
             None => csnprintf!(out, cap, "%d", s.modal as i32),
         };
+    } else if key == "gestures_group" {
+        let group = if s.modal == Modal::Gestures && s.gestures_group >= 0 {
+            ACTION_GROUPS.get(s.gestures_group as usize).map_or("", |g| g.probe)
+        } else { "" };
+        csnprintf!(out, cap, "%s", group);
+    } else if key == "gestures.learning" {
+        let name = if s.modal == Modal::Gestures && s.gestures_learning != SHORTCUT_NONE {
+            shortcut_action_name(s.gestures_learning).unwrap_or("0")
+        } else { "0" };
+        csnprintf!(out, cap, "%s", name);
+    } else if let Some(row) = key.strip_prefix("gestures.") {
+        let Ok(row) = row.parse::<usize>() else { return -1; };
+        if s.modal != Modal::Gestures || row == 0 { return -1; }
+        if s.gestures_group < 0 {
+            let rows = bind_menu_rows(a, GESTURES);
+            let Some(row) = rows.get(row - 1) else { return -1; };
+            csnprintf!(out, cap, "%s", &row.label);
+            return 0;
+        }
+        let Some(row) = binding_row_at(GESTURES, s.gestures_group as usize, row - 1) else { return -1; };
+        let mut text = String::new();
+        bind_row_text(a, GESTURES, row, &mut text);
+        csnprintf!(out, cap, "%s", &text);
+    } else if key == "record.line" {
+        csnprintf!(out, cap, "%s", if library_record_active(a) { &lib(a).record_line } else { "" });
+    } else if key == "record" {
+        if !library_record_active(a) {
+            csnprintf!(out, cap, "0");
+        } else if let Some(key) = lib(a).record_key {
+            let mut name = String::new();
+            gesturemap_key_name(key, &mut name);
+            csnprintf!(out, cap, "pattern %s", &name);
+        } else {
+            let s = lib(a);
+            match s.record_phase {
+                RecordPhase::Checking => csnprintf!(out, cap, "checking"),
+                RecordPhase::Ready => csnprintf!(out, cap, "ready"),
+                RecordPhase::Shape => csnprintf!(out, cap, "shape %d", s.record_sample_count),
+                _ => csnprintf!(out, cap, "wait"),
+            };
+        }
+    } else if let Some(point) = key.strip_prefix("ui_at.") {
+        let Some((x, y)) = point.split_once('.') else { return -1; };
+        let (Ok(x), Ok(y)) = (x.parse::<i32>(), y.parse::<i32>()) else { return -1; };
+        let hit = hits_find(&s.hits, x as f32, y as f32);
+        let mut name = String::new();
+        if let Some(hit) = hit {
+            name.push_str(match hit.id {
+                H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
+                H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
+                H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
+                H_GESTURES_RESET_CONFIRM => "gestures.reset.confirm",
+                H_GESTURES_RESET_CANCEL => "gestures.reset.cancel",
+                H_RECORD_USE => "record.use", H_RECORD_RETRY => "record.retry", H_RECORD_CANCEL => "record.cancel",
+                H_GESTURE_GROUP => "gestures.group.", H_GESTURE_ROW => "gestures.row.",
+                H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
+                H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
+                _ => "",
+            });
+            if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
+                if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
+            } else if matches!(hit.id, H_GESTURE_ROW | H_BUTTON_ROW) {
+                name.push_str(&(hit.arg + 1).to_string());
+            }
+        }
+        csnprintf!(out, cap, "%s", &name);
     } else if key == "learning" {
         // The action the Buttons sheet waits for a press for ("undo", "next-page"), else empty.
         let n = if s.modal == Modal::Buttons && s.buttons_group >= 0 && s.learn_row >= 0 {
@@ -2805,14 +4957,29 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     } else if key == "buttons_group" {
         // The Buttons sheet's group open ("editing", "tools", "pages", "menus"), else empty.
         let open = s.modal == Modal::Buttons && s.buttons_group >= 0;
-        csnprintf!(out, cap, "%s", if open { K_GROUPS[s.buttons_group as usize].probe } else { "" });
+        csnprintf!(
+            out,
+            cap,
+            "%s",
+            if open {
+                ACTION_GROUPS[s.buttons_group as usize].probe
+            } else {
+                ""
+            }
+        );
     } else if key == "update" {
         // The Updates sheet's check: "idle", "checking", "newer <version>", "newest <version>" or
         // "failed <why>".
         if s.upd == UPD_CHECKING {
             csnprintf!(out, cap, "checking");
         } else if s.upd == UPD_DONE {
-            csnprintf!(out, cap, "%s %s", if upd_newer(s) { "newer" } else { "newest" }, &s.upd_latest);
+            csnprintf!(
+                out,
+                cap,
+                "%s %s",
+                if upd_newer(s) { "newer" } else { "newest" },
+                &s.upd_latest
+            );
         } else if s.upd == UPD_FAILED {
             csnprintf!(out, cap, "failed %s", &s.upd_why);
         } else {
@@ -2820,9 +4987,24 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         }
     } else if key == "pair" {
         // The Pair sheet: "scanning", "pairing" or "idle", then the controllers found and paired.
-        csnprintf!(out, cap, "%s %d %d", if s.scanning { "scanning" } else if s.pairing { "pairing" } else { "idle" }, s.nfound, s.npaired);
+        csnprintf!(
+            out,
+            cap,
+            "%s %d %d",
+            if s.scanning {
+                "scanning"
+            } else if s.pairing {
+                "pairing"
+            } else {
+                "idle"
+            },
+            s.nfound,
+            s.npaired
+        );
     } else if key == "bluetooth" {
-        static NAMES: [&str; 6] = ["stopped", "starting", "owned", "external", "failed", "stopping"];
+        static NAMES: [&str; 6] = [
+            "stopped", "starting", "owned", "external", "failed", "stopping",
+        ];
         csnprintf!(out, cap, "%s", NAMES[bt_state() as usize]);
     } else if key == "folder" {
         csnprintf!(out, cap, "%s", &s.cur_folder);
@@ -2834,7 +5016,16 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         let pages = (s.items.len() as i32 + pp - 1) / pp;
         csnprintf!(out, cap, "%d", if pages > 0 { pages } else { 1 });
     } else if key == "text" {
-        csnprintf!(out, cap, "%s", if s.modal == Modal::Kb { s.kb.text.as_str() } else { "" });
+        csnprintf!(
+            out,
+            cap,
+            "%s",
+            if s.modal == Modal::Kb {
+                s.kb.text.as_str()
+            } else {
+                ""
+            }
+        );
     } else if key == "hint" {
         csnprintf!(out, cap, "%d", if empty_hint_shown(s) { 1 } else { 0 });
     } else if key == "cards_redrawn" {
@@ -2859,14 +5050,31 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     } else if let Some(rest) = key.strip_prefix("templates.") {
         // (The C passes NULL for a closed sheet: one that is not open answers the same.)
         let closed = TplSheet::default();
-        return tplsheet_probe(if s.modal == Modal::Templates { &s.ts } else { &closed }, rest, out, cap);
+        return tplsheet_probe(
+            if s.modal == Modal::Templates {
+                &s.ts
+            } else {
+                &closed
+            },
+            rest,
+            out,
+            cap,
+        );
     } else if key == "music" {
         // The layout on the Custom music sheet while it is open, else New notebook's custom paper.
         let mut m = MusicLayout::default();
         if s.modal == Modal::Music {
             app_probe_music(Some(&s.mb.m), out, cap);
         } else {
-            app_probe_music(if music_decode(s.new_paper, &mut m) { Some(&m) } else { None }, out, cap);
+            app_probe_music(
+                if music_decode(s.new_paper, &mut m) {
+                    Some(&m)
+                } else {
+                    None
+                },
+                out,
+                cap,
+            );
         }
     } else if let Some(rest) = key.strip_prefix("card.") {
         return card_probe(a, rest, out, cap);
@@ -2880,6 +5088,185 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
 mod tests {
     use super::*;
 
+    fn probe(a: &mut App, key: &str) -> String {
+        let mut out = String::new();
+        assert_eq!(library_probe(a, key, &mut out, 512), 0, "{key}");
+        out
+    }
+
+    #[test]
+    fn recording_contacts_buttons_timeout_and_rotation() {
+        use crate::fingershape_synth::{shape_frames, Draw};
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        #[cfg(feature = "sim")]
+        {
+            // Line-only progress refreshes flush immediately, so provide the simulator's panel.
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        library_init(&mut a);
+        gesturemap_defaults(&mut a.gestures);
+        lib(&mut a).modal = Modal::Gestures;
+        lib(&mut a).gestures_group = 0;
+        open_record_card(&mut a, SHORTCUT_UNDO);
+        assert_eq!(a.lib.as_ref().unwrap().hits.h.len(), 3);
+        assert_eq!(probe(&mut a, "sheet"), "gestures");
+        assert_eq!(probe(&mut a, "gestures_group"), "editing");
+        assert_eq!(probe(&mut a, "gestures.learning"), "undo");
+        let now = lib(&mut a).record_started;
+        library_tick(&mut a, now.wrapping_add(LEARN_MS));
+        assert_eq!(probe(&mut a, "record"), "0");
+
+        open_record_card(&mut a, SHORTCUT_UNDO);
+        library_event(&mut a, &InEvent { type_: InType::Gesture, value: -7, ..Default::default() });
+        assert_eq!(probe(&mut a, "record.line"), "Two fingers spreading is kept for zoom.");
+        let now = lib(&mut a).record_started;
+        library_tick(&mut a, now.wrapping_add(LEARN_MS * 2));
+        assert!(library_record_active(&a)); // A refused attempt also stops the initial timer.
+        library_event(&mut a, &InEvent { type_: InType::Gesture, value: G_2_DOWN, ..Default::default() });
+        assert_eq!(probe(&mut a, "record"), "pattern touch.2.down");
+        let retry = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_RECORD_RETRY).copied().unwrap();
+        let (x, y) = (retry.r.x + retry.r.w / 2, retry.r.y + retry.r.h / 2);
+        assert_eq!(probe(&mut a, &format!("ui_at.{x}.{y}")), "record.retry");
+        for type_ in [InType::TouchDown, InType::TouchUp] {
+            library_event(&mut a, &InEvent { type_, x: x as f32, y: y as f32, t_ms: 200, ..Default::default() });
+        }
+        assert_eq!(probe(&mut a, "record"), "wait");
+
+        let frames = shape_frames("V", &Draw::default());
+        let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
+        let mut sample = FsSample::default();
+        fs_sample_of(&points, &mut sample);
+        record_shape_sample(&mut a, sample);
+        assert_eq!(probe(&mut a, "record.line"), "Too easy to make by accident.\nGive it two turns or a loop.");
+        assert_eq!(lib(&mut a).record_sample_count, 0);
+
+        // Three actual shape captures run the existing sample, consistency and bank checks.
+        for attempt in 0..3 {
+            let frames = shape_frames("square", &Draw::default());
+            for (i, f) in frames.iter().enumerate() {
+                let previous = (lib(&mut a).record_drawn, lib(&mut a).record_last_frame);
+                library_event(&mut a, &InEvent {
+                    type_: if i == 0 { InType::TouchDown } else { InType::TouchMove },
+                    x: f.x as f32, y: f.y as f32, t_ms: 1000 + attempt * 2000 + f.t,
+                    ..Default::default()
+                });
+                if i > 0 && previous.0 != 0 && lib(&mut a).record_last_frame != previous.1 {
+                    assert!(lib(&mut a).record_last_frame.wrapping_sub(previous.1) >= 40);
+                }
+            }
+            let f = frames.last().unwrap();
+            library_event(&mut a, &InEvent { type_: InType::TouchUp,
+                x: f.x as f32, y: f.y as f32, t_ms: 1000 + attempt * 2000 + f.t,
+                ..Default::default() });
+            assert_eq!(lib(&mut a).record_sample_count, attempt as usize + 1);
+            assert!(rect_is_empty(lib(&mut a).record_trail));
+        }
+        assert_eq!(probe(&mut a, "record"), "ready");
+        assert!(lib(&mut a).record_checks_done);
+        let samples = lib(&mut a).record_samples;
+        library_leave(&mut a);
+        a.relayout = true;
+        library_enter(&mut a);
+        assert_eq!(lib(&mut a).record_sample_count, 3);
+        assert_eq!(lib(&mut a).record_samples[0].xy, samples[0].xy);
+
+        // A contact beginning on Cancel becomes a drawing; its lift must not cancel.
+        let cancel = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_RECORD_CANCEL).copied().unwrap();
+        let (x, y) = (cancel.r.x + cancel.r.w / 2, cancel.r.y + cancel.r.h / 2);
+        library_event(&mut a, &InEvent { type_: InType::TouchDown, x: x as f32, y: y as f32, t_ms: 9000, ..Default::default() });
+        assert!(lib(&mut a).pressed.is_some());
+        library_event(&mut a, &InEvent { type_: InType::TouchMove, x: (x - 100) as f32, y: y as f32, t_ms: 9100, ..Default::default() });
+        library_tick(&mut a, 9180);
+        assert!(lib(&mut a).pressed.is_none());
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x: (x - 100) as f32, y: y as f32, t_ms: 9200, ..Default::default() });
+        assert!(library_record_active(&a));
+
+        // Single-finger swipes become patterns; a prompt second bar is a two-stroke refusal.
+        open_record_card(&mut a, SHORTCUT_UNDO);
+        for i in 0..=8 {
+            library_event(&mut a, &InEvent { type_: if i == 0 { InType::TouchDown } else { InType::TouchMove },
+                x: (700 + 50 * i) as f32, y: 1100.0, t_ms: 10000 + 40 * i,
+                ..Default::default() });
+        }
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x: 1100.0, y: 1100.0, t_ms: 10330, ..Default::default() });
+        assert_eq!(probe(&mut a, "record"), "pattern touch.1.right");
+        library_event(&mut a, &InEvent { type_: InType::TouchDown, x: 700.0, y: 1200.0, t_ms: 10350, ..Default::default() });
+        assert_eq!(probe(&mut a, "record.line"), "One stroke, without lifting.");
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x: 700.0, y: 1200.0, t_ms: 10400, ..Default::default() });
+        let cancel = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_RECORD_CANCEL).copied().unwrap();
+        for type_ in [InType::TouchDown, InType::TouchUp] {
+            library_event(&mut a, &InEvent { type_, x: (cancel.r.x + cancel.r.w / 2) as f32,
+                y: (cancel.r.y + cancel.r.h / 2) as f32, t_ms: 11000, ..Default::default() });
+        }
+        assert_eq!(probe(&mut a, "record"), "0");
+
+        assert_eq!(gesturemap_shape_set(&mut a.gestures, SHORTCUT_UNDO, &samples[..2]), 0);
+        open_record_card(&mut a, SHORTCUT_REDO);
+        {
+            let s = lib(&mut a);
+            s.record_samples = samples;
+            s.record_sample_count = 2;
+            s.record_phase = RecordPhase::Ready;
+        }
+        use_recording(&mut a);
+        assert!(library_record_active(&a));
+        assert!(lib(&mut a).record_checks_done);
+        assert_eq!(lib(&mut a).record_same_action, SHORTCUT_UNDO);
+        assert_eq!(probe(&mut a, "record.line"), "That is the shape for Undo. Use moves it here.");
+        assert!(gesturemap_shape_of(&a.gestures, SHORTCUT_UNDO).is_some());
+        assert!(gesturemap_shape_of(&a.gestures, SHORTCUT_REDO).is_none());
+        close_record_card(&mut a);
+        assert!(gestures_reset(&mut a));
+        assert_eq!(a.lib.as_ref().unwrap().hits.h.len(), 2);
+        assert!(lib(&mut a).gestures_reset_confirm);
+        act(&mut a, &Hit { id: H_GESTURES_RESET_CANCEL, ..Default::default() });
+        assert!(!lib(&mut a).gestures_reset_confirm);
+        lib(&mut a).gestures_group = 2;
+        act(&mut a, &Hit { id: H_GESTURE_ROW, arg: 2, ..Default::default() });
+        assert_eq!(lib(&mut a).record_action, SHORTCUT_ZOOM_OUT);
+        assert_eq!(lib(&mut a).record_next_action, SHORTCUT_ZOOM_IN);
+        act(&mut a, &Hit { id: H_RECORD_RETRY, ..Default::default() });
+        assert_eq!(lib(&mut a).record_next_action, SHORTCUT_ZOOM_IN);
+        finish_recording(&mut a);
+        assert_eq!(lib(&mut a).record_action, SHORTCUT_ZOOM_IN);
+        finish_recording(&mut a);
+        assert!(!library_record_active(&a));
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    #[test]
+    fn shape_thumbnail_stays_in_its_box_and_restores_clip() {
+        ui_init(300.0);
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 150, 150), 0);
+        c.px.fill(127);
+        let old = Rect::new(3, 4, 140, 139);
+        canvas_set_clip(&mut c, old);
+        let r = Rect::new(20, 21, 96, 96);
+        let mut g = FsGesture::default();
+        let sample = FsSample { xy: std::array::from_fn(|i| if i % 3 == 0 { 255 } else { 0 }) };
+        fs_prepare(&mut g, &[sample, sample]);
+        draw_shape_thumb(&mut c, r, &g);
+        assert_eq!(c.clip, old);
+        let mut black = 0;
+        for y in 0..c.h {
+            for x in 0..c.w {
+                let p = c.px[(y * c.stride + x) as usize];
+                if rect_contains(r, x, y) {
+                    assert!(p == 0 || p == 255);
+                    black += (p == 0) as usize;
+                } else { assert_eq!(p, 127); }
+            }
+        }
+        assert!(black > 0);
+        canvas_free(&mut c);
+    }
+
     #[test]
     fn strtol10_reads_as_strtol() {
         assert_eq!(strtol10(b"3.luma"), (3, 1));
@@ -2888,45 +5275,72 @@ mod tests {
         assert_eq!(strtol10(b"-2"), (-2, 2));
         assert_eq!(strtol10(b".luma"), (0, 0));
         assert_eq!(strtol10(b"x"), (0, 0));
-        assert_eq!(strtol10(b"99999999999999999999999").0, libc::c_long::MAX as i64);
+        assert_eq!(
+            strtol10(b"99999999999999999999999").0,
+            libc::c_long::MAX as i64
+        );
     }
 
     #[test]
     fn the_buttons_groups_rows() {
-        // The Tools group: the pens in the picker's order, then its own two rows.
-        assert!(is_tools(1) && !is_tools(0) && !is_tools(2) && !is_tools(3) && !is_tools(4));
-        assert_eq!(group_rows(0), 7);
-        assert_eq!(group_rows(1), TOOL_PENS as i32 + 2);
-        // Pages: turning, new, fit, whole page sideways, Pages, Index, links, names, swipe-to-add.
-        assert_eq!(group_rows(2), 10);
-        assert_eq!(learn_row_at(2, 4).act, [SHORTCUT_LANDSCAPE_FIT, 0]);
-        assert_eq!(learn_row_at(2, 9).act, [SHORTCUT_GESTURE_NEW_PAGE, 0]);
-        // Index (Rust only): the Links bar, Go to page or name, back, the link areas
-        assert_eq!(group_rows(3), 4);
-        assert_eq!(K_GROUPS[3].probe, "index");
-        assert_eq!(learn_row_at(3, 0).act, [SHORTCUT_LINKS, 0]);
-        assert_eq!(learn_row_at(3, 3).act, [SHORTCUT_LINK_AREAS, 0]);
-        assert_eq!(action_label(SHORTCUT_GO_BACK), "Back to the page before");
-        // Menus: the editor's menus, then the clock and battery and its corner (Rust only), last
-        assert_eq!(group_rows(4), 10);
-        assert_eq!(learn_row_at(4, 7).act, [SHORTCUT_STATUS, 0]);
-        assert_eq!(learn_row_at(4, 8).act, [SHORTCUT_STATUS_CORNER, 0]);
-        assert_eq!(learn_row_at(4, 9).act, [SHORTCUT_STATUS_MODE, 0]);
-        assert_eq!(action_label(SHORTCUT_STATUS), "Clock and battery");
-        assert_eq!(action_label(SHORTCUT_STATUS_CORNER), "Clock and battery corner");
-        let first = learn_row_at(1, 0);
-        assert_eq!(first.act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
-        assert_eq!(learn_row_at(1, TOOL_PENS as i32).act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);
-        assert_eq!(learn_row_at(2, 0).label, Some("Previous / next page"));
-        // Every action a row learns has a name of its own.
+        assert_eq!(N_GROUPS, 7);
+        assert_eq!(group_row_count(0), 10);
+        assert_eq!(group_row_count(1), TOOL_PENS as usize + 2);
+        // Zoom and scrolling are Pages rows; Index owns links and naming.
+        assert_eq!(group_row_count(2), 9);
+        assert_eq!(learn_row_at(2, 2).unwrap().act, [SHORTCUT_ZOOM_OUT, SHORTCUT_ZOOM_IN]);
+        assert_eq!(learn_row_at(2, 7).unwrap().act, [SHORTCUT_LANDSCAPE_FIT, 0]);
+        assert_eq!(learn_row_at(2, 8).unwrap().act, [SHORTCUT_GESTURE_NEW_PAGE, 0]);
+        assert_eq!(group_row_count(3), 8);
+        assert_eq!(ACTION_GROUPS[3].probe, "index");
+        assert_eq!(learn_row_at(3, 7).unwrap().act, [SHORTCUT_LINK_AREAS, 0]);
+        assert_eq!(group_row_count(4), 10);
+        assert_eq!(learn_row_at(4, 9).unwrap().act, [SHORTCUT_STATUS_MODE, 0]);
+        assert_eq!(group_row_count(5), 10);
+        assert_eq!(group_row_count(6), 6);
+        assert_eq!(binding_row_count(BUTTONS, 6), 4);
+        assert_eq!(binding_row_count(GESTURES, 0), 9); // Hold eraser needs a key or button.
+        assert_eq!(binding_row_at(BUTTONS, 6, 1).unwrap().act, [SHORTCUT_LANGUAGE, 0]);
+        assert_eq!(learn_row_at(1, 0).unwrap().act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
+        assert_eq!(learn_row_at(1, TOOL_PENS as usize).unwrap().act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);
         for g in 0..N_GROUPS {
-            for i in 0..group_rows(g) {
-                let r = learn_row_at(g, i);
+            for i in 0..group_row_count(g) {
+                let r = learn_row_at(g, i).unwrap();
                 for &act in r.act.iter().filter(|&&x| x != 0) {
                     assert_ne!(action_label(act), "?", "group {g} row {i}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn gesture_sheets_fit_in_both_languages_and_orientations() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        font_set_overflow_hook(Some(|text, need, have| panic!("{text:?} needs {need}px, has {have}px")));
+        for language in ["en", "es"] {
+            i18n_set(language);
+            for theme in [UiTheme::Gothic, UiTheme::Classic] {
+                ui_set_theme(theme);
+                for (w, h) in [(1860, 2480), (2480, 1860)] {
+                    let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+                    assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+                    library_init(&mut a);
+                    gesturemap_defaults(&mut a.gestures);
+                    lib(&mut a).modal = Modal::Gestures;
+                    for group in -1..N_GROUPS as i32 {
+                        lib(&mut a).gestures_group = group;
+                        hits_clear(&mut lib(&mut a).hits);
+                        draw_bind_sheet(&mut a, GESTURES);
+                    }
+                    library_free(&mut a);
+                    canvas_free(&mut a.screen);
+                }
+            }
+        }
+        font_set_overflow_hook(None);
+        i18n_set("en");
+        ui_set_theme(UiTheme::Gothic);
     }
 
     #[test]
@@ -2937,29 +5351,53 @@ mod tests {
             for (w, h, dpi) in [(1860, 2480, 300.0), (1986, 2648, 320.0)] {
                 ui_init(dpi);
                 for (w, h) in [(w, h), (h, w)] {
-                    let mut a = App { w, h, dpi, ..Default::default() };
+                    let mut a = App {
+                        w,
+                        h,
+                        dpi,
+                        ..Default::default()
+                    };
                     assert_eq!(canvas_init(&mut a.screen, w, h), 0);
                     library_init(&mut a);
-                    for group in 0..N_GROUPS {
-                        lib(&mut a).modal = Modal::Buttons;
-                        lib(&mut a).buttons_group = group;
+                    for kind in [BUTTONS, GESTURES] {
+                        for group in 0..N_GROUPS {
+                            lib(&mut a).modal = kind.modal;
+                            bind_group_set(kind, lib(&mut a), group as i32);
+                            hits_clear(&mut lib(&mut a).hits);
+                            draw_modal(&mut a);
+                            let hits = &a.lib.as_ref().unwrap().hits;
+                            assert_eq!(hits.h.len(), binding_row_count(kind, group) + 1);
+                            let mut bottom = 0;
+                            for (row, hit) in hits.h.iter().enumerate() {
+                                let r = hit.r;
+                                assert!(r.y > bottom && r.y + r.h < h - ui_px(40.0));
+                                assert!(r.x >= 0 && r.x + r.w <= w);
+                                assert!(r.h >= (dpi * 10.0 / 25.4).floor() as i32);
+                                let found =
+                                    hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
+                                        .unwrap();
+                                assert_eq!(
+                                    (found.id, found.arg),
+                                    if row < binding_row_count(kind, group) {
+                                        (bind_row_hit(kind), row as i32)
+                                    } else {
+                                        (bind_done_hit(kind), 0)
+                                    }
+                                );
+                                bottom = r.y + r.h;
+                            }
+                        }
+                        bind_group_set(kind, lib(&mut a), -1);
                         hits_clear(&mut lib(&mut a).hits);
                         draw_modal(&mut a);
-                        let hits = &a.lib.as_ref().unwrap().hits;
-                        assert_eq!(hits.h.len(), group_rows(group) as usize + 1);
                         let mut bottom = 0;
-                        for (row, hit) in hits.h.iter().enumerate() {
-                            let r = hit.r;
-                            assert!(r.y > bottom && r.y + r.h < h - ui_px(40.0));
-                            assert!(r.x >= 0 && r.x + r.w <= w);
-                            assert!(r.h >= (dpi * 10.0 / 25.4).floor() as i32);
-                            let found = hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32).unwrap();
-                            assert_eq!((found.id, found.arg), if row < group_rows(group) as usize {
-                                (H_BUTTON_ROW, row as i32)
-                            } else {
-                                (H_BUTTONS_DONE, 0)
-                            });
-                            bottom = r.y + r.h;
+                        for hit in &a.lib.as_ref().unwrap().hits.h {
+                            assert!(hit.r.y > bottom && hit.r.y + hit.r.h < h - ui_px(40.0));
+                            assert!(hit.r.x >= 0 && hit.r.x + hit.r.w <= w);
+                            bottom = hit.r.y + hit.r.h;
+                        }
+                        if kind.modal == Modal::Gestures {
+                            assert!(probe(&mut a, "gestures.1").starts_with("Gestures:"));
                         }
                     }
                     library_free(&mut a);

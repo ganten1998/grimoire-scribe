@@ -47,24 +47,24 @@ fn a_line_overrides_and_nothing_turns_off() {
     check!(gesturemap_action(&m, touch(3, TouchKind::Up)) == SHORTCUT_REDO);
     check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == 0); // nothing: the built-in is off
     check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES); // a later line wins
-    check!(gesturemap_action(&m, touch(2, TouchKind::Right)) == SHORTCUT_PREV_PAGE); // untouched
+    check!(gesturemap_action(&m, touch(2, TouchKind::Right)) == 0); // the action moved to the left gesture
     check!(gesturemap_is_set(&m, touch(2, TouchKind::Up)) && gesturemap_is_set(&m, touch(2, TouchKind::Tap)));
-    check!(!gesturemap_is_set(&m, touch(2, TouchKind::Right)));
+    check!(gesturemap_is_set(&m, touch(2, TouchKind::Right))); // moving its action writes an explicit nothing
     check!(gesturemap_key_for(&m, SHORTCUT_LINKS, ActionSrc::Touch).is_none());
 }
 
-// touch.1.* is one finger's (taps and links): refused, as bad keys and unknown actions on touch lines
-// are, each counted, while the other lines load.
+// One-finger taps remain reserved; directions load, and newer shape versions are carried.
 fn refused_lines_are_counted() {
     let (m, n) = parsed(
         "touch.1.tap=undo\ntouch.1.left=undo\ntouch.4.up=undo\ntouch.2.sideways=undo\ntouch.2=undo\n\
          touch.2.up.more=undo\nfoo.bar=undo\nno equals sign\ntouch.2.up=frobnicate\ntouch.2.up=\n\
          shape.undo=2,3,ab\nshape.undo.x=1,2\npen.Button.tap=un do\ntouch.2.tap=redo\n",
     );
-    check!(n == 13 && m.refused == 13);
+    check!(n == 11 && m.refused == 11);
     check!(gesturemap_action(&m, touch(2, TouchKind::Tap)) == SHORTCUT_REDO);
     check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == SHORTCUT_LINKS);
-    check!(gesturemap_carried(&m).is_empty());
+    check!(gesturemap_carried(&m) == b"shape.undo=2,3,ab\n");
+    check!(gesturemap_action(&m, touch(1, TouchKind::Left)) == SHORTCUT_UNDO);
 }
 
 // Erase while held is momentary, and a gesture has no release to end it: a touch line naming it is refused
@@ -91,7 +91,7 @@ fn hold_eraser_is_not_a_touch_action() {
 fn pen_and_shape_lines_are_carried() {
     let (m, n) = parsed(
         "pen.Button.double=undo\npen.button2.TAP=nothing\npen.Eraser.drag=pan\npen.Button.drag=zoom\n\
-         shape.undo=1,2,00ff,ff00\nshape.Undo=1,3,aa,bb,cc\nshape.frobnicate=1,2,00,11\n\
+         shape.undo=2,2,00ff,ff00\nshape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\n\
          pen.Button.hold=frobnicate\npen.Button3.tap=undo\n",
     );
     check!(n == 0);
@@ -102,7 +102,7 @@ fn pen_and_shape_lines_are_carried() {
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE); // its built-in
     check!(
         gesturemap_carried(&m)
-            == b"shape.Undo=1,3,aa,bb,cc\nshape.frobnicate=1,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
+            == b"shape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
     );
     check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
     // pan and zoom are a drag slot's alone
@@ -116,7 +116,7 @@ fn pen_and_shape_lines_are_carried() {
     check!(n == 1 && gesturemap_carried(&m).is_empty());
     let mut text = String::new();
     for i in 0..20 {
-        text.push_str(&format!("shape.a{i:02}=1,2,{}\n", "b".repeat(990))); // 1005 bytes a line
+        text.push_str(&format!("shape.a{i:02}=2,2,{}\n", "b".repeat(990))); // 1005 bytes a line
     }
     let (m, n) = parsed(&text);
     check!(n == 4 && gesturemap_carried(&m).len() == 16 * 1005);
@@ -195,6 +195,81 @@ fn the_names() {
     }
 }
 
+fn recorded_samples(name: &str) -> [FsSample; 2] {
+    let s = grimoire::fingershape_synth::ideal(name, &grimoire::fingershape_synth::Draw::default());
+    [s, s]
+}
+
+fn writing_patterns_and_shapes() {
+    let (mut m, _) = parsed("");
+    let mut text = Vec::new();
+    check!(gesturemap_format(&m, &mut text) && text.starts_with(b"# Grimoire: gestures (Settings > Gestures)."));
+    let z = recorded_samples("Z");
+    check!(gesturemap_shape_set(&mut m, SHORTCUT_UNDO, &z) == 0);
+    check!(gesturemap_set(&mut m, touch(1, TouchKind::Left), SHORTCUT_UNDO) == 0);
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_REDO) == 0);
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_UNDO) == SHORTCUT_REDO);
+    check!(gesturemap_action(&m, touch(1, TouchKind::Left)) == 0);
+    check!(gesturemap_shape_of(&m, SHORTCUT_UNDO).is_some()); // a pattern does not clear its shape
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Down), 0) == SHORTCUT_PAGES);
+    check!(gesturemap_format(&m, &mut text));
+    let formatted = String::from_utf8(text.clone()).unwrap();
+    check!(formatted.contains("touch.2.down=nothing\n") && formatted.contains("touch.2.tap=undo\nshape.undo=1,2,"));
+    let (mut back, n) = parsed(&formatted);
+    check!(n == 0 && gesturemap_shape_of(&back, SHORTCUT_UNDO).unwrap().samples[..2] == z);
+    let mut again = Vec::new();
+    check!(gesturemap_format(&back, &mut again) && again == text);
+    check!(gesturemap_shape_set(&mut back, SHORTCUT_REDO, &z) == SHORTCUT_UNDO);
+    check!(gesturemap_shape_of(&back, SHORTCUT_UNDO).is_none() && gesturemap_shape_of(&back, SHORTCUT_REDO).is_some());
+    check!(gesturemap_action(&back, touch(2, TouchKind::Tap)) == SHORTCUT_UNDO);
+    gesturemap_clear_action(&mut back, SHORTCUT_REDO);
+    check!(gesturemap_shape_of(&back, SHORTCUT_REDO).is_none());
+    check!(gesturemap_set(&mut back, touch(1, TouchKind::Tap), SHORTCUT_UNDO) == -1);
+    check!(gesturemap_set(&mut back, touch(2, TouchKind::Tap), SHORTCUT_HOLD_ERASER) == -1);
+    check!(gesturemap_shape_set(&mut back, SHORTCUT_HOLD_ERASER, &z) == -1);
+    let (mut newer, refused) = parsed("shape.undo=9,opaque,newer,data\ntouch.1.up=redo\n");
+    check!(refused == 0 && gesturemap_shape_newer(&newer, SHORTCUT_UNDO));
+    check!(gesturemap_format(&newer, &mut text) && String::from_utf8_lossy(&text).ends_with("shape.undo=9,opaque,newer,data\n"));
+    check!(gesturemap_shape_set(&mut newer, SHORTCUT_UNDO, &z) == 0 && !gesturemap_shape_newer(&newer, SHORTCUT_UNDO));
+    let (_, refused) = parsed("shape.undo=1,2,ab,cd\nshape.hold-eraser=9,opaque\ntouch.1.tap=redo\n");
+    check!(refused == 3);
+    // Valid known shapes have a 32-record cap even when every line uses a different action.
+    let mut encoded = [0; FS_VALUE_MAX];
+    let value = fs_encode(&z, &mut encoded).unwrap();
+    let names: Vec<_> = (1..=SHORTCUT_LAST).filter(|&a| action_sources(a) & SRC_SHAPE != 0).take(FS_SHAPES_MAX + 1).collect();
+    check!(names.len() == FS_SHAPES_MAX + 1);
+    let mut input = String::new();
+    for a in names { input.push_str(&format!("shape.{}={value}\n", shortcut_action_name(a).unwrap())); }
+    let (capped, refused) = parsed(&input);
+    check!(refused == 1 && gesturemap_shapes(&capped).len() == FS_SHAPES_MAX);
+}
+
+fn atomic_saves_and_read_protection() {
+    let dir = format!("{}/gesturemap-write-{}", tl_tmp(), std::process::id());
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = format!("{dir}/gestures.ini");
+    let mut m = GestureMap::default();
+    check!(gesturemap_load(&mut m, &path) == 0);
+    check!(gesturemap_save(&m, &path) == 1 && !std::path::Path::new(&path).exists());
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_UNDO) == 0);
+    check!(gesturemap_save(&m, &path) == 0);
+    let saved = std::fs::read(&path).unwrap();
+    let original = m.clone();
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_REDO) == SHORTCUT_UNDO);
+    std::fs::create_dir(format!("{path}.tmp")).unwrap();
+    check!(gesturemap_save(&m, &path) == -1 && std::fs::read(&path).unwrap() == saved);
+    check!(gesturemap_action(&original, touch(2, TouchKind::Tap)) == SHORTCUT_UNDO);
+    std::fs::remove_dir(format!("{path}.tmp")).unwrap();
+    std::fs::write(&path, vec![b'#'; GESTURES_CAP as usize + 1]).unwrap();
+    check!(gesturemap_load(&mut m, &path) == -1 && !m.writable);
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_UNDO) == -1);
+    check!(gesturemap_shape_set(&mut m, SHORTCUT_UNDO, &recorded_samples("Z")) == -1);
+    check!(gesturemap_save(&m, &path) == -1 && std::fs::metadata(&path).unwrap().len() == GESTURES_CAP + 1);
+    check!(gesturemap_reset(&mut m, &path) == 0 && m.writable && !std::path::Path::new(&path).exists());
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn test_gesturemap() {
     run!(the_built_ins);
@@ -206,5 +281,7 @@ fn test_gesturemap() {
     run!(the_mirror);
     run!(key_for_order);
     run!(the_names);
+    run!(writing_patterns_and_shapes);
+    run!(atomic_saves_and_read_protection);
     done();
 }

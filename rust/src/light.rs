@@ -4,6 +4,14 @@
 
 use crate::status::Battery;
 
+use std::cell::Cell;
+
+thread_local! {
+    /// Facade cache for callers on the input path. It is populated by explicit reads/refreshes
+    /// and kept current by the set wrappers, so `light_cached` never reaches the platform.
+    static LIGHT_CACHE: Cell<(i32, i32)> = const { Cell::new((-1, -1)) };
+}
+
 // light.h is implemented by light_kindle.c on the Kindle and by the simulator (sim_sdl.c); host
 // builds link none (platform_none.rs). These forward to it.
 #[cfg(feature = "kindle")]
@@ -24,25 +32,46 @@ pub fn light_available() -> bool {
 #[inline]
 pub fn light_refresh() {
     platform::light_refresh()
+;
+    let (mut intensity, mut warmth) = (-1, -1);
+    platform::light_get(&mut intensity, &mut warmth);
+    LIGHT_CACHE.set((intensity, warmth));
 }
 /// Current levels (0..LIGHT_MAX) as last read or set; -1 where unknown.
 #[inline]
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     platform::light_get(intensity, warmth)
+;
+    LIGHT_CACHE.set((*intensity, *warmth));
+}
+/// The last known light levels, or (-1, -1) until a read or set has supplied them. This never
+/// performs a platform call, so it is safe for shortcut and gesture dispatch.
+#[inline]
+pub fn light_cached() -> (i32, i32) {
+    LIGHT_CACHE.get()
 }
 #[inline]
 pub fn light_set_intensity(level: i32) {
     platform::light_set_intensity(level)
+;
+    LIGHT_CACHE.set((level.clamp(0, LIGHT_MAX), LIGHT_CACHE.get().1));
 }
 #[inline]
 pub fn light_set_warmth(level: i32) {
     platform::light_set_warmth(level)
+;
+    LIGHT_CACHE.set((LIGHT_CACHE.get().0, level.clamp(0, LIGHT_MAX)));
 }
 /// The warmth as last read (light_get) or set, without asking the power service: -1 before either,
 /// or on a Kindle without warm light.
 #[inline]
 pub fn light_warmth() -> i32 {
-    platform::light_warmth()
+    let cached = LIGHT_CACHE.get().1;
+    if cached >= 0 {
+        cached
+    } else {
+        platform::light_warmth()
+}
 }
 
 /// Other bits of the Kindle system Grimoire drives.

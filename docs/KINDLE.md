@@ -425,10 +425,9 @@ docs/TESTING.md (Index phase 2).
 ## Touch gestures and the touch trace
 
 Two fingers are gestures on the notebook page (docs/SHORTCUTS.md, gestures.ini by hand): down opens
-Pages, up the Links bar, left the next page and right the previous one, and a page turned that way never
-adds a page. They need no Enable shortcuts, and `gestures=0` in settings.ini turns them off (a pinch
-and a pan still work). The pen wins: with it near the screen, or just lifted (under a second), a
-gesture does not fire, and a swipe refused only for that says "Move the pen away, then swipe." now
+Pages, up the Links bar, left the next page and right the previous one, and a left swipe on the last page adds a page by default (`gesture_new_page=0` turns that off). They need no Enable shortcuts, and `gestures=0` in settings.ini turns them off (a pinch
+and a pan still work). The pen wins near the fingers; a fresh hover at least 60 mm away can permit a swipe, and
+a pinch can begin straight after writing. A gesture refused because of the nearby pen does not fire, and a swipe refused only for that says "Move the pen away, then swipe." now
 and then. A palm resting beside the writing hand fires nothing.
 
 `grimoire.log` has a line per touch session while Grimoire has the screen: the contacts, the gaps
@@ -452,18 +451,58 @@ off unless you turn it on:
    `grimoire/touch-trace.txt`. The trace is never in a notebook, an export or the share server, and
    nothing is written while the Kindle's own passcode keypad has the screen.
 
-**The touch script** (about 15 minutes: a 3-minute two-finger part, then the rest). Work on a
-notebook page:
+## The two-finger study
 
-- 20 two-finger swipes each way, 10 two-finger taps, and 5 three-finger taps (those should do nothing);
-- writing with the palm resting on the screen (nothing should fire);
-- 10 swipes straight after lifting the pen (write, lift, swipe right at once: note how often "Move the
-  pen away, then swipe." shows);
-- one finger drawing a Z, an N, an S, a circle, an alpha, a triangle and a V, 10 of each (nothing
-  should happen in this build);
-- 10 one-finger swipes each way;
-- 5 minutes of writing and 2 minutes holding the Kindle and reading, thumb on the screen as you
-  usually hold it.
+Phase 3 uses provisional `TG_TUNE` defaults until an owner trace is supplied. No real-hand
+success rate or shape freeze result has been measured here. Enable the switch file and restart
+as above. On a notebook page, use natural speed and pressure, as you normally would; keep
+hands off for 5 seconds between blocks. The block boundaries matter to the replay tool.
+
+| Block | Do this in order |
+| --- | --- |
+| A–D | 20 two-finger swipes up, then 20 down, 20 left, 20 right (pause between directions) |
+| E | 10 two-finger taps |
+| F | 10 pinches out, then 10 in, on an unzoomed page; they should zoom |
+| G | Zoom in, then 10 two-finger drags in any direction; all should pan |
+| H | 10 swipes and 5 pinches, each begun immediately after lifting the pen from a stroke |
+| I | 10 swipes with the lightest touch that still registers |
+| J | 3 minutes writing with palm and little finger resting normally |
+| K | 2 minutes holding the Kindle and reading; turn it once |
+| L | Z, N, S, circle, alpha, triangle, V: 10 each with one finger, then 10 one-finger swipes each way |
+
+Remove the switch file when done and send `grimoire.log` plus `grimoire/touch-trace.txt`, with
+the build, date and any skipped/miscounted blocks. Review the trace before placing it at
+`tests/fixtures/touch/owner-<date>.txt`, with a README naming the build, date and block order.
+It contains finger coordinates and pen state changes, never pen coordinates. Replay therefore
+judges block H's pen timing, not hover-distance safety. The [study record](index-hook/TOUCH-STUDY.md)
+lists acceptance targets and decision rules; synthetic fixtures cannot satisfy them.
+
+## Phase 3 owner checks (pending on a Kindle)
+
+1. Turn pages and open Pages/Links with fast, slow and light swipes, including fingers drifting
+   together. Pinch straight after writing and re-grab a finger briefly during pinch/pan.
+2. Write with the palm resting, then hold/read for several minutes: no page turns, menus or
+   shapes should fire. Try a distant fresh pen hover and a nearby hover separately.
+3. Check KOReader | Controller | Gestures | Updates | Done upright and sideways, in English
+   and Spanish, in Gothic and Classic. All five labels should fit.
+4. In Gestures record a two-finger tap for Undo; then reassign an occupied pattern. The card
+   must name the action losing it. Try fingers far apart, diagonal motion and the nearby pen;
+   each refusal should give its reason, with readable text.
+5. Record Z, N or a loop three times for Pages. Draw it upright, sideways and zoomed in. Reject
+   V/check as too easy by accident; an unknown shape should fade without adding ink or undo.
+6. Tap the clock corner: its clock still toggles. Start a deliberate shape there: it can fire.
+7. Hold a row to clear. Reset restores built-ins and confirms when shapes exist. Cancel a
+   recording and try an unwritable gesture file: neither should change live bindings.
+8. Controller > Buttons has seven groups. Try light, invert, rotation lock, theme, language,
+   sleep after, sleep screen (all four modes, including KOReader wallpaper) and Whole page
+   sideways on keys and on gestures/shapes. Enable shortcuts and Bluetooth controller must
+   be learnable only by gestures/shapes. Check the toasts for changes with no visible effect.
+9. Check the dotted trail on real e-ink, with the Links bar up, and interrupt it with the pen:
+   no ink, link, export mark or flash while writing. Confirm no delayed action after sleep or
+   a screen change. Report any two-finger try that still needs care and repeat the study if asked.
+
+A two-contact Kindle has no three-finger rows. Pen-button gesture learning remains for phase 6;
+one-turn shapes remain refused. These are checks to perform, not recorded device results.
 
 ## If something is off
 

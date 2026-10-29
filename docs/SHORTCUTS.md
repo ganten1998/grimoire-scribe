@@ -14,14 +14,12 @@ optional input devices again.
 
 ## Controller buttons
 
-**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list has
-five groups, as the editor's panel groups its buttons: **Editing** (undo, redo, the eraser, Erase
-while held, the eraser's mode, white ink, clear page), **Tools** (each of the nine pens in the tool
-picker's order, previous / next tool, and previous / next in the picker), **Pages** (previous / next
-page, first / last page, new page, fit page, whole page sideways, Pages, Index, add a link, name the
-page, swipe past the last page to add a page), **Index** (the Links bar, go to a page or name, back to the page before, link areas) and **Menus**
-(the tool picker, Paper, Display, Pen feel, fold the panel, the Library, close menu, the clock and
-battery). Open a group,
+**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
+has seven registry groups: **Editing** (undo, redo, erase and clear), **Tools** (pens and tool
+steps), **Pages** (page movement, zoom, scroll and sideways behavior), **Index** (links, finding
+and naming), **Menus** (surfaces, panel and status), **Screen** (light, warmth, rotation and
+appearance) and **System** (gesture switch, language, sleep after and update channel).
+The registry table below gives the exact membership and source restrictions. Open a group,
 tap a row, then press the button; Done goes back up to the list. One button per action: a button
 that did something else does this now (a toast says which action lost it), and the action's other
 buttons stop doing it. The previous / next and first / last rows learn two presses, the first one's
@@ -167,36 +165,41 @@ read at start and when shortcuts are reloaded.
 
 ### gestures.ini by hand
 
-`gestures.ini` sits beside `shortcuts.ini` in `/mnt/us/grimoire/` and is yours to write: nothing creates
-or changes it. With no file the built-ins above apply. Each line is `key=action` in the grammar of
-`shortcuts.ini` (`#` and `;` start a comment, blanks are trimmed, a later line for the same key
-wins). A two-finger key is `touch.2.` and one of `up`, `down`, `left`, `right` or `tap`, and its value
-is the name of any action above except `hold-eraser` (it lasts while its key is down, and a gesture has
-no release to end it, so that line is refused), or `nothing`, which turns a built-in off:
+`gestures.ini` sits beside `shortcuts.ini` in `/mnt/us/grimoire/`. Settings > Gestures now
+writes it. With no file the built-ins above apply. It is an overlay: only changed slots are
+written, `nothing` clears a built-in, and Reset removes the file and restores the defaults.
+The exact header, carry limits, shape codec and atomic write contract are in [FORMAT.md](FORMAT.md).
 
 ```ini
-# two fingers up make a new page, as the panel's + does; two fingers down do nothing
+# two fingers up make a new page; two fingers down do nothing
 touch.2.up=new-page
 touch.2.down=nothing
 # a two-finger tap undoes
 touch.2.tap=undo
+# one-finger swipes are also assignable
+touch.1.right=go-back
 ```
 
-A swipe is two fingers that land together and travel about 20 mm in a roughly straight line within a
-second; a tap is two fingers down and up together, moving under 5 mm, within 0.3 s. A slower or
-curved drag is a pan or a pinch, never a swipe, and zoomed in two fingers only pan the page (no swipe
-fires, whatever is bound). A finger resting on the screen, a palm beside the writing hand and the pen
-being near all refuse a gesture, so it cannot fire while writing; a swipe refused only because the
-pen was near says "Move the pen away, then swipe." now and then. With a menu or sheet in front, the
-gesture bound to that menu's own action closes it, and so does the opposite gesture (two fingers
-down open Pages and two fingers up close them); any other gesture does its own action, which a menu in
-front may refuse. With the Links bar up, two fingers down always close it, back to the page it began on.
-The file is read when Grimoire starts and by Settings > Controller > Reload shortcuts.ini. A line it
-cannot use (a bad key, `touch.1.*`, which is kept for one finger's taps and links, an action this
-version has not heard of, `hold-eraser` on a `touch.*` line) is refused and counted in the log (`gestures: N line(s) of gestures.ini not
-used`); the others still load. `touch.3.*` lines are read, but three fingers on the screen are refused
-in this version, so they do nothing yet. The `pen.*` and `shape.*` lines, which this version only
-carries, and the rest of the grammar are in docs/FORMAT.md.
+`touch.1.up/down/left/right` are valid; `touch.1.tap` stays reserved for taps and links.
+`touch.2.*` and `touch.3.*` accept up/down/left/right/tap. Three-finger patterns require at
+least three reported slots; a two-slot panel neither shows three-finger rows nor promotes a
+partial three-finger attempt into a two-finger action. `shape.ACTION` stores two or three
+recorded samples; it is best created with the record card, not hand-written.
+
+The provisional `TG_TUNE` accepts a 16 mm swipe within 1200 ms, with each finger travelling
+at least 8 mm, and a two-finger tap within 400 ms moving at most 6 mm. These are implementation
+defaults, not owner measurements; see [the pending study](index-hook/TOUCH-STUDY.md). Two fingers
+pan while zoomed in. Nearby writing, palms and extra fingers suppress actions; a recent, distant
+pen hover can allow a swipe, and a pinch can begin straight after writing. A brief lost finger
+in a pinch/pan has an 80 ms re-grab grace period within 15 mm.
+
+With a menu or sheet in front, its own bound gesture closes it, as can its opposite; other
+actions follow the surface's input rules. With the Links bar up, two fingers down always close
+it, back to the page it began on. Finger shapes can act over the Links bar without becoming ink,
+links or undo entries. Clock-corner taps keep their existing behavior; moving into a shape can
+still arm capture there. Opening Settings > Gestures reloads the map, as does Controller >
+Reload shortcuts.ini. Unsupported source/action combinations and malformed lines are refused
+and counted; unknown future lines are carried within the limits in FORMAT.md.
 
 Key names include letters, digits, Left/Right/Up/Down, PageUp/PageDown, Space, Enter, Tab,
 Escape, VolumeUp/VolumeDown, PlayPause, NextSong/PreviousSong, Home, End, Back and `codeNN` (Linux
@@ -231,6 +234,104 @@ it within tens of milliseconds of the Bluetooth helper (below), and neither can 
 idle controller sends nothing, so it looks the same as one switched off. When another app holds a
 controller exclusively (a button mapper), Grimoire cannot get its presses: the toast and the
 Controller sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
+
+## Phase 3 action registry
+
+`rust/src/actions.rs` is the shared registry for parsing, dispatch and both learning sheets.
+Names below are the persistent INI values; numeric ids are internal. The new actions use ids
+56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`). Groups are Editing, Tools,
+Pages, Index, Menus, Screen and System. `tool:pencil` remains a compatibility entry even though
+the current Tools learning list starts with the mechanical pencil.
+
+Toggle changes a boolean; Menu opens/closes a surface; Step moves one increment; Cycle advances
+through choices; OneShot runs once; Momentary lasts until release. A gesture has no release,
+so `hold-eraser` is key/pad only. Calibration is deliberately outside the assignable registry.
+`shortcuts` (Enable shortcuts) and `bluetooth-controller` are touch/shape only: a key or pad
+must not turn off its own input. Pen-button learning is reserved for a later phase.
+
+| Persistent action name | Kind | Group | Sources |
+| --- | --- | --- | --- |
+| `tool:pencil` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:mech` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:ballpoint` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:eraser` | Cycle | Editing | Key, pad, touch, shape |
+| `tool:highlighter` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:fountain` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:fineliner` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:marker` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:charcoal` | Cycle | Tools | Key, pad, touch, shape |
+| `tool:calligraphy` | Cycle | Tools | Key, pad, touch, shape |
+| `undo` | OneShot | Editing | Key, pad, touch, shape |
+| `redo` | OneShot | Editing | Key, pad, touch, shape |
+| `previous-page` | Step | Pages | Key, pad, touch, shape |
+| `next-page` | Step | Pages | Key, pad, touch, shape |
+| `previous-tool` | Step | Tools | Key, pad, touch, shape |
+| `next-tool` | Step | Tools | Key, pad, touch, shape |
+| `white` | Toggle | Editing | Key, pad, touch, shape |
+| `index` | Menu | Index | Key, pad, touch, shape |
+| `hold-eraser` | Momentary | Editing | Key, pad |
+| `eraser-mode` | Toggle | Editing | Key, pad, touch, shape |
+| `clear-page` | OneShot | Editing | Key, pad, touch, shape |
+| `first-page` | Step | Pages | Key, pad, touch, shape |
+| `last-page` | Step | Pages | Key, pad, touch, shape |
+| `new-page` | OneShot | Pages | Key, pad, touch, shape |
+| `fit-page` | OneShot | Pages | Key, pad, touch, shape |
+| `pages` | Menu | Pages | Key, pad, touch, shape |
+| `tool-picker` | Menu | Menus | Key, pad, touch, shape |
+| `paper` | Menu | Menus | Key, pad, touch, shape |
+| `display` | Menu | Menus | Key, pad, touch, shape |
+| `pen-feel` | Menu | Menus | Key, pad, touch, shape |
+| `fold-panel` | Toggle | Menus | Key, pad, touch, shape |
+| `library` | Menu | Menus | Key, pad, touch, shape |
+| `close-menu` | OneShot | Menus | Key, pad, touch, shape |
+| `picker-previous` | Step | Tools | Key, pad, touch, shape |
+| `picker-next` | Step | Tools | Key, pad, touch, shape |
+| `add-link` | Menu | Index | Key, pad, touch, shape |
+| `name-page` | Menu | Index | Key, pad, touch, shape |
+| `status-toggle` | Toggle | Menus | Key, pad, touch, shape |
+| `links` | Menu | Index | Key, pad, touch, shape |
+| `go-to-page` | Menu | Index | Key, pad, touch, shape |
+| `go-back` | OneShot | Index | Key, pad, touch, shape |
+| `link-areas` | Toggle | Index | Key, pad, touch, shape |
+| `landscape-fit` | Toggle | Pages | Key, pad, touch, shape |
+| `status-corner` | Cycle | Menus | Key, pad, touch, shape |
+| `gesture-new-page` | Toggle | Pages | Key, pad, touch, shape |
+| `status-mode` | Cycle | Menus | Key, pad, touch, shape |
+| `zoom-out` | Step | Pages | Key, pad, touch, shape |
+| `zoom-in` | Step | Pages | Key, pad, touch, shape |
+| `scroll-up` | Step | Pages | Key, pad, touch, shape |
+| `scroll-down` | Step | Pages | Key, pad, touch, shape |
+| `invert` | Toggle | Screen | Key, pad, touch, shape |
+| `light-down` | Step | Screen | Key, pad, touch, shape |
+| `light-up` | Step | Screen | Key, pad, touch, shape |
+| `warmth-down` | Step | Screen | Key, pad, touch, shape |
+| `warmth-up` | Step | Screen | Key, pad, touch, shape |
+| `rotation-lock` | Toggle | Screen | Key, pad, touch, shape |
+| `pinch-zoom` | Toggle | Screen | Key, pad, touch, shape |
+| `theme` | Cycle | Screen | Key, pad, touch, shape |
+| `side-button` | Cycle | Screen | Key, pad, touch, shape |
+| `mirror-pdf` | Toggle | Screen | Key, pad, touch, shape |
+| `sleep-screen` | Cycle | Screen | Key, pad, touch, shape |
+| `sleep` | OneShot | Screen | Key, pad, touch, shape |
+| `gestures` | Toggle | System | Key, pad, touch, shape |
+| `shortcuts` | Toggle | System | Touch, shape |
+| `bluetooth-controller` | Toggle | System | Touch, shape |
+| `language` | Cycle | System | Key, pad, touch, shape |
+| `sleep-after` | Cycle | System | Key, pad, touch, shape |
+| `update-channel` | Cycle | System | Key, pad, touch, shape |
+
+Gestures do not need Enable shortcuts. `settings.gestures` gates touch patterns and finger
+shapes; pinch/pan retain their own setting. Recording preserves unrelated key and pad bindings.
+Each action has at most one touch pattern and one finger shape. Assigning an occupied pattern
+or an equivalent shape moves that source to the new action; the record card names the losing
+action before Use. Hold a Gestures row to clear its touch and shape bindings together. Clear,
+learn and reassignment save a copy atomically before replacing the active map. Failed saves
+leave the live map unchanged; an unreadable file can be replaced only with Reset.
+
+`rotation-lock` stores 1 plus the current rotation, or 0 to follow the Kindle. `sleep-screen`
+cycles four existing choices: page, pinned page, Kindle screensaver, KOReader wallpaper (value
+3 already existed). The light and warmth actions use cached controls; no input handler waits
+for a device read. Theme, language and invert deliberately request a Full refresh.
 
 ## Live view keys
 

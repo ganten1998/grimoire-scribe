@@ -17,6 +17,7 @@ impl Rig {
     fn new() -> Rig {
         let mut g = TouchGest::default();
         touchgest_init(&mut g, 300.0);
+        touchgest_set_tune(&mut g, &TG_TUNE_V1);
         touchgest_set_view(&mut g, TgView { zoom_ok: true, gestures_on: true, ..Default::default() });
         Rig { g, pen: TgPen::default(), k: 100_000, c: Vec::new() }
     }
@@ -62,6 +63,16 @@ impl Rig {
         check!(touchgest_probe(&self.g, key, &mut s));
         s
     }
+}
+
+fn tuned(t: &TgTune) -> Rig {
+    let mut r = Rig::new();
+    touchgest_set_tune(&mut r.g, t);
+    r
+}
+
+fn record_mode(r: &mut Rig) {
+    touchgest_set_view(&mut r.g, TgView { zoom_ok: true, gestures_on: true, record: true, ..Default::default() });
 }
 
 /// Two fingers: a from a0 to a1 and b from b0 to b1, b landing gap ms after a, then steps frames
@@ -979,6 +990,125 @@ fn the_session_line() {
     check!(s == "cancelled");
 }
 
+fn forgiving_tuning_edges() {
+    for (travel, want) in [(15.0, 0), (17.0, G_2_RIGHT)] {
+        let mut r = tuned(&TG_TUNE);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        check!(fired(&swipe2(&mut r, 900.0, 1200.0, mm(travel), 0.0, mm(20.0), 0)) == want);
+    }
+    for (ratio, want) in [(2.9, G_2_RIGHT), (3.1, 0)] {
+        let mut r = tuned(&TG_TUNE);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        let ev = drag2(&mut r, (700.0, 1000.0), (700.0 + mm(12.0), 1000.0),
+            (700.0, 1300.0), (700.0 + mm(12.0 * ratio), 1300.0), 0, 10);
+        check!(fired(&ev) == want);
+    }
+    for (cos, want) in [(0.68f32, 0), (0.72, G_2_RIGHT)] {
+        let mut t = TG_TUNE;
+        t.spread_max = 100.0;
+        let mut r = tuned(&t);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        let y = mm(24.0) * (1.0 - cos * cos).sqrt() / cos;
+        let ev = drag2(&mut r, (700.0, 1000.0), (700.0 + mm(24.0), 1000.0 - y),
+            (700.0, 1300.0), (700.0 + mm(24.0), 1300.0 + y), 0, 10);
+        check!(fired(&ev) == want);
+    }
+    for (duration, want) in [(390, G_2_TAP), (410, 0)] {
+        let mut r = tuned(&TG_TUNE);
+        r.down(0, 800.0, 1200.0); r.down(1, 1100.0, 1200.0); r.frame(duration);
+        r.up(0); r.up(1);
+        check!(fired(&r.frame(0)) == want);
+    }
+    // Converging sideways fingers do not constitute opposite along-axis motion.
+    for (t, want) in [(&TG_TUNE, G_2_RIGHT), (&TG_TUNE_V1, 0)] {
+        let mut r = tuned(t);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        let ev = drag2(&mut r, (700.0, 900.0), (1300.0, 1080.0), (700.0, 1500.0), (1300.0, 1320.0), 0, 10);
+        check!(fired(&ev) == want);
+    }
+}
+
+fn following_lift_and_zoom_regrab() {
+    for (go_on, want) in [(true, G_2_RIGHT), (false, 0)] {
+        let mut r = tuned(&TG_TUNE);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        r.down(0, 700.0, 1000.0); r.down(1, 700.0, 1300.0); r.frame(40);
+        r.mv(0, 790.0, 1000.0); r.mv(1, 790.0, 1300.0); r.frame(30);
+        r.up(0); let mut ev = r.frame(40);
+        if go_on { r.mv(1, 1000.0, 1300.0); }
+        ev.extend(r.frame(40)); r.up(1); ev.extend(r.frame(0));
+        check!(fired(&ev) == want);
+    }
+    for (gap, away, regrabs) in [(60, 12.0, true), (100, 12.0, false), (60, 20.0, false)] {
+        let mut r = tuned(&TG_TUNE);
+        r.down(0, 800.0, 1200.0); r.down(1, 1100.0, 1200.0); r.frame(20);
+        r.mv(0, 700.0, 1200.0); r.mv(1, 1200.0, 1200.0); r.frame(20);
+        r.up(0); let lift = r.k; check!(!types(&r.frame(gap)).contains(&InType::PinchEnd));
+        let mut out = TgOut::default(); touchgest_tick(&mut r.g, r.k, &mut out);
+        let mut ev = out.ev[..out.n].to_vec();
+        r.down(2, 700.0 + mm(away), 1200.0); ev.extend(r.frame(0));
+        check!(ev.iter().any(|e| e.type_ == InType::PinchBegin && e.value == 1) == regrabs);
+        if !regrabs {
+            // A mismatched regrab also resolves at the grace deadline, using the original lift time.
+            touchgest_tick(&mut r.g, lift + 100, &mut out); ev.extend_from_slice(&out.ev[..out.n]);
+            check!(ev.iter().any(|e| e.type_ == InType::PinchEnd && e.k_ms == lift));
+        }
+    }
+    let mut r = tuned(&TG_TUNE);
+    r.down(0, 800.0, 1200.0); r.down(1, 1100.0, 1200.0); r.frame(20);
+    r.mv(0, 890.0, 1200.0); r.mv(1, 1190.0, 1200.0); r.frame(20);
+    check!(r.probe("touch.class") == "swipe");
+    r.mv(0, 750.0, 1200.0); r.mv(1, 1300.0, 1200.0);
+    check!(r.frame(20).iter().any(|e| e.type_ == InType::PinchMove && e.value == 1));
+    check!(r.probe("touch.class") == "zoom");
+}
+
+fn record_hover_three_and_measure() {
+    for (fingers, slots, want) in [(2, 2, G_2_TAP), (3, 3, G_3_TAP), (3, 2, -11)] {
+        let mut r = tuned(&TG_TUNE); record_mode(&mut r); touchgest_set_slots(&mut r.g, slots);
+        for i in 0..fingers { r.down(i, 700.0 + i as f32 * 180.0, 1200.0); }
+        let mut ev = r.frame(100); for i in 0..fingers { r.up(i); } ev.extend(r.frame(0));
+        check!(fired(&ev) == want);
+        check!(!ev.iter().any(|e| matches!(e.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd)));
+    }
+    for (far, age, want) in [(80.0, 0, G_2_RIGHT), (30.0, 0, 0), (80.0, 51, 0)] {
+        let mut r = tuned(&TG_TUNE);
+        touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+        r.pen.prox = true;
+        r.down(0, 300.0 + mm(far), 1000.0); r.down(1, 300.0 + mm(far), 1250.0);
+        r.pen.hover = Some((300.0, 1100.0, r.k.wrapping_sub(age))); r.frame(20);
+        let mut ev = Vec::new();
+        for i in 1..=10 {
+            r.pen.hover = Some((300.0, 1100.0, r.k.wrapping_sub(age)));
+            r.mv(0, 300.0 + mm(far) + i as f32 * 30.0, 1000.0);
+            r.mv(1, 300.0 + mm(far) + i as f32 * 30.0, 1250.0); ev.extend(r.frame(20));
+        }
+        r.up(0); r.up(1); r.pen.hover = Some((300.0, 1100.0, r.k.wrapping_sub(age))); ev.extend(r.frame(0));
+        check!(fired(&ev) == want);
+    }
+    let mut r = tuned(&TG_TUNE);
+    let ev = swipe2(&mut r, 900.0, 1200.0, 300.0, 0.0, 240.0, 0);
+    check!(fired(&ev) == G_2_RIGHT);
+    let mut line = String::new();
+    check!(touchgest_log_measure(&r.g, true, &mut line) && line.starts_with("touch: measure d0 "));
+    check!(!line.contains("900") && !line.contains("1200"));
+    check!(!touchgest_log_measure(&r.g, false, &mut line) && line.is_empty());
+    for (r, code) in [(TgReject::Pen,-1),(TgReject::Late,-2),(TgReject::Straight,-3),(TgReject::Short,-4),
+        (TgReject::Direction,-5),(TgReject::Spread,-5),(TgReject::Hand,-6),(TgReject::Zoom,-7),
+        (TgReject::Apart,-9),(TgReject::Slow,-10),(TgReject::Three,-11)] { check!(touchgest_reject_code(r) == code); }
+    // A record card has no zoomable page, but spreading must still be reserved for zoom.
+    let mut rec = tuned(&TG_TUNE);
+    touchgest_set_view(&mut rec.g, TgView { record: true, gestures_on: true, ..Default::default() });
+    let ev = drag2(&mut rec, (700.0, 1200.0), (500.0, 1200.0), (1000.0, 1200.0), (1200.0, 1200.0), 0, 10);
+    check!(fired(&ev) == -7 && !ev.iter().any(|e| matches!(e.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd)));
+    // Runtime and recording consume the same tuned verdict, while recording has no pinch side effects.
+    let mut runtime = tuned(&TG_TUNE); let mut record = tuned(&TG_TUNE); record_mode(&mut record);
+    let a = swipe2(&mut runtime, 900.0, 1200.0, 300.0, 0.0, 240.0, 0);
+    let b = swipe2(&mut record, 900.0, 1200.0, 300.0, 0.0, 240.0, 0);
+    check!(fired(&a) == fired(&b) && fired(&b) == G_2_RIGHT);
+    check!(!b.iter().any(|e| matches!(e.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd)));
+}
+
 #[test]
 fn test_touchgest() {
     run!(one_finger_is_the_stream_it_was);
@@ -1007,5 +1137,8 @@ fn test_touchgest() {
     run!(two_finger_taps);
     run!(the_log_and_trace_lines);
     run!(the_session_line);
+    run!(forgiving_tuning_edges);
+    run!(following_lift_and_zoom_regrab);
+    run!(record_hover_three_and_measure);
     done();
 }
