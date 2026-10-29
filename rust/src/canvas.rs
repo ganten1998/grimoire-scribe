@@ -284,6 +284,60 @@ pub fn canvas_dash_rect(c: &mut Canvas, r: Rect, thick: i32, on: i32, off: i32, 
     }
 }
 
+/// A dashed polyline for an overlay that is not ink (the lasso around a link's area): a square pen
+/// `thick` px wide walks the path, on for `on` px and off for `off` px measured along it, starting `phase` px
+/// into that pattern, and the phase at the path's end comes back, so a path drawn piece by piece (each piece
+/// starting at the last one's final point, with the phase the last one returned) is the path drawn whole,
+/// pixel for pixel. Lengths are counted in whole pixels per segment (each segment's length rounded), which is
+/// what keeps the pieces exact; the pen's own width counts toward a dash, so a horizontal or vertical run
+/// shows dashes `on` long and gaps `off` long. A path's final point is never stamped: it is the next piece's
+/// first. With `halo` > 0 a white band of `halo` px goes down first on both sides of the whole path (dashes
+/// and gaps), so the dashes read over ink; drawn piece by piece, a halo may clip the end of the piece before,
+/// so a caller that draws in pieces passes 0. Only 0 and 255; clipped to the canvas's clip like canvas_fill.
+pub fn canvas_dash_poly(c: &mut Canvas, pts: &[(f32, f32)], thick: i32, on: i32, off: i32, halo: i32, phase: i32) -> i32 {
+    let period = (on.max(0) + off.max(0)).max(1);
+    let mut ph = phase.rem_euclid(period);
+    if pts.len() < 2 {
+        return ph;
+    }
+    // the samples a dash inks: the pen's width already adds thick - 1 px to every run of them
+    let ink_len = if off <= 0 { period } else { (on - (thick - 1)).max(1).min(on.max(1)) };
+    let stamp = |c: &mut Canvas, x: f32, y: f32, t: i32, gray: u8| {
+        let x0 = (x - t as f32 / 2.0 + 0.5).floor() as i32;
+        let y0 = (y - t as f32 / 2.0 + 0.5).floor() as i32;
+        canvas_fill(c, Rect { x: x0, y: y0, w: t, h: t }, gray);
+    };
+    // the integer length of each segment, the same in the whole path and in any piece of it
+    let seg_len = |a: (f32, f32), b: (f32, f32)| -> i32 {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let l = (dx * dx + dy * dy).sqrt();
+        if l.is_finite() { l.round().min(1.0e6) as i32 } else { 0 }
+    };
+    if thick > 0 && halo > 0 {
+        let ht = thick + 2 * halo;
+        for w in pts.windows(2) {
+            let l = seg_len(w[0], w[1]);
+            for t in 0..l {
+                let f = t as f32 / l as f32;
+                stamp(c, w[0].0 + (w[1].0 - w[0].0) * f, w[0].1 + (w[1].1 - w[0].1) * f, ht, 255);
+            }
+        }
+    }
+    for w in pts.windows(2) {
+        let l = seg_len(w[0], w[1]);
+        if thick > 0 && on > 0 {
+            for t in 0..l {
+                if (ph + t) % period < ink_len {
+                    let f = t as f32 / l as f32;
+                    stamp(c, w[0].0 + (w[1].0 - w[0].0) * f, w[0].1 + (w[1].1 - w[0].1) * f, thick, 0);
+                }
+            }
+        }
+        ph = (ph + l % period) % period;
+    }
+    ph
+}
+
 /// Antialiased line with round caps; width in px (may be fractional). Opaque paint (not deposit).
 pub fn canvas_line_aa(c: &mut Canvas, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, gray: u8) {
     let hw = width * 0.5;
@@ -705,5 +759,71 @@ mod tests {
         assert_eq!(at(&c, 5, 0), 8);
         assert_eq!(at(&c, 5, 4), 8);
         assert_eq!(at(&c, 5, 5), 255);
+    }
+
+    // canvas_dash_poly: the pattern measured along a path with a corner; a path drawn in two pieces with the
+    // returned phase is the whole path pixel for pixel; the clip; only 0 and 255.
+    #[test]
+    fn a_dashed_polyline_keeps_its_pattern_across_corners_and_pieces() {
+        // A 1 px pen: along the top row x 10..29 the samples t 0..19 ink where t mod 7 < 4, then down x 30
+        // the pattern goes on from 20.
+        let mut c = canvas(60, 60);
+        let ph = canvas_dash_poly(&mut c, &[(10.0, 10.0), (30.0, 10.0), (30.0, 30.0)], 1, 4, 3, 0, 0);
+        assert_eq!(ph, 40 % 7);
+        for t in 0..20 {
+            assert_eq!(at(&c, 10 + t, 10) == 0, t % 7 < 4, "top t {t}");
+            assert_eq!(at(&c, 30, 10 + t) == 0, (20 + t) % 7 < 4, "down t {t}");
+        }
+        assert_eq!(at(&c, 30, 30), 255); // the final point is the next piece's
+        // A 2 px pen: the dashes along a straight run are exactly 4 long and the gaps exactly 3.
+        let mut d = canvas(80, 20);
+        canvas_dash_poly(&mut d, &[(10.0, 10.0), (60.0, 10.0)], 2, 4, 3, 0, 0);
+        let row = runs(&d, 9, 10, 1, 0, 49);
+        assert_eq!(&row[..6], &[(true, 4), (false, 3), (true, 4), (false, 3), (true, 4), (false, 3)]);
+        assert_eq!(runs(&d, 9, 9, 1, 0, 49), row); // two rows thick
+        assert_eq!(at(&d, 10, 11), 255);
+        // The phase starts the pattern part way in.
+        let mut e = canvas(40, 10);
+        canvas_dash_poly(&mut e, &[(5.0, 5.0), (30.0, 5.0)], 1, 4, 3, 0, 5);
+        assert_eq!(at(&e, 5, 5), 255); // 5 and 6 are the gap
+        assert_eq!(at(&e, 6, 5), 255);
+        assert_eq!(at(&e, 7, 5), 0); // 7 = a new dash
+        // A ring of float points, whole and in two pieces, at the lasso's sizes.
+        let ring: Vec<(f32, f32)> = (0..=60)
+            .map(|i| {
+                let a = i as f32 * std::f32::consts::TAU / 60.0;
+                (100.0 + 70.3 * a.cos(), 100.0 + 55.7 * a.sin())
+            })
+            .collect();
+        let mut whole = canvas(200, 200);
+        let pw = canvas_dash_poly(&mut whole, &ring, 4, 12, 8, 0, 3);
+        let mut parts = canvas(200, 200);
+        let p1 = canvas_dash_poly(&mut parts, &ring[..=23], 4, 12, 8, 0, 3);
+        let p2 = canvas_dash_poly(&mut parts, &ring[23..], 4, 12, 8, 0, p1);
+        assert_eq!(pw, p2);
+        assert!(whole.px == parts.px);
+        assert!(whole.px.contains(&0) && whole.px.iter().all(|&p| p == 0 || p == 255));
+        // With a halo over a gray page: only the page's gray, 0 and 255.
+        let mut g = canvas(200, 200);
+        canvas_fill(&mut g, Rect { x: 0, y: 0, w: 200, h: 200 }, 100);
+        canvas_dash_poly(&mut g, &ring, 4, 12, 8, 2, 0);
+        assert!(g.px.iter().all(|&p| p == 0 || p == 100 || p == 255));
+        assert!(g.px.contains(&255) && g.px.contains(&0));
+        // The clip: nothing lands outside it.
+        let mut k = canvas(200, 200);
+        canvas_set_clip(&mut k, Rect { x: 0, y: 0, w: 100, h: 200 });
+        canvas_dash_poly(&mut k, &ring, 4, 12, 8, 2, 0);
+        for y in 0..200 {
+            for x in 100..200 {
+                assert_eq!(at(&k, x, y), 255);
+            }
+        }
+        assert!(k.px.contains(&0));
+        // Fewer than two points, or no pen: nothing drawn, the phase kept (and wrapped).
+        let mut n = canvas(20, 20);
+        assert_eq!(canvas_dash_poly(&mut n, &[(5.0, 5.0)], 2, 4, 3, 0, 9), 2);
+        assert_eq!(canvas_dash_poly(&mut n, &[(5.0, 5.0), (15.0, 5.0)], 0, 4, 3, 0, 0), 3);
+        assert_eq!(canvas_dash_poly(&mut n, &[], 2, 4, 3, 0, -1), 6);
+        assert!(n.px.iter().all(|&p| p == 255));
     }
 }
