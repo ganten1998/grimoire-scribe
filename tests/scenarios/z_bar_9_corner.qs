@@ -1,4 +1,5 @@
 # settings: status_mode=1
+# settings: status_on=0
 # rust-only
 # The clock corner's tap is the clock's alone over a link drawn there (which is not followed), on the bare page. With
 # the Links bar up, or while a page is looked at, the clock is not shown and that corner is no corner: a tap there is

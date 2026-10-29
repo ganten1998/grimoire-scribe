@@ -1,4 +1,5 @@
 # settings: status_mode=1
+# settings: status_on=0
 # settings: status_corner=2
 # rust-only
 # root: z_bar_0_make
