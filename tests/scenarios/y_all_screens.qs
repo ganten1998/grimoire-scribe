@@ -12,13 +12,165 @@ expect screen is library
 expect library.items is 0
 expect library.hint is 1
 shot 01-library-empty
+# Phase 3: every Gestures group, with the record card in both orientations.
+tap 1535 95
+wait 50
+expect library.ui_at.890.1930 is gestures
+tap 890 1930
+wait 50
+expect library.sheet is gestures
+shot p3-gestures
+expect library.ui_at.930.749 is gestures.group.editing
+tap 930 749
+wait 50
+expect library.gestures_group is editing
+shot p3-gestures-editing
+rotate 1
+wait 100
+shot p3-gestures-editing-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.656 is gestures.row.1
+tap 930 656
+wait 50
+expect library.record is wait
+shot p3-record-empty
+rotate 1
+wait 100
+shot p3-record-empty-sideways
+rotate 0
+wait 100
+tapn 2 930 1100
+expect library.record is pattern touch.2.tap
+shot p3-record-pattern
+rotate 1
+wait 100
+shot p3-record-pattern-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1650 is record.retry
+tap 930 1650
+wait 50
+shape Z 930 1150 45 600
+shape Z 930 1150 45 600
+expect library.record is ready
+shot p3-record-two-samples
+rotate 1
+wait 100
+shot p3-record-two-samples-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1650 is record.retry
+tap 930 1650
+wait 50
+shape V 930 1150 45 600
+shot p3-record-refusal
+rotate 1
+wait 100
+shot p3-record-refusal-sideways
+rotate 0
+wait 100
+expect library.ui_at.1360.1650 is record.cancel
+tap 1360 1650
+wait 50
+expect library.record is 0
+expect library.ui_at.930.1616 is done
+tap 930 1616
+wait 50
+expect library.ui_at.930.909 is gestures.group.tools
+tap 930 909
+wait 50
+expect library.gestures_group is tools
+shot p3-gestures-tools
+rotate 1
+wait 100
+shot p3-gestures-tools-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.2115 is done
+tap 930 2115
+wait 50
+expect library.ui_at.930.1069 is gestures.group.pages
+tap 930 1069
+wait 50
+expect library.gestures_group is pages
+shot p3-gestures-pages
+rotate 1
+wait 100
+shot p3-gestures-pages-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1856 is done
+tap 930 1856
+wait 50
+expect library.ui_at.930.1229 is gestures.group.index
+tap 930 1229
+wait 50
+expect library.gestures_group is index
+shot p3-gestures-index
+rotate 1
+wait 100
+shot p3-gestures-index-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1696 is done
+tap 930 1696
+wait 50
+expect library.ui_at.930.1389 is gestures.group.menus
+tap 930 1389
+wait 50
+expect library.gestures_group is menus
+shot p3-gestures-menus
+rotate 1
+wait 100
+shot p3-gestures-menus-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.2016 is done
+tap 930 2016
+wait 50
+expect library.ui_at.930.1549 is gestures.group.screen
+tap 930 1549
+wait 50
+expect library.gestures_group is screen
+shot p3-gestures-screen
+rotate 1
+wait 100
+shot p3-gestures-screen-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.2016 is done
+tap 930 2016
+wait 50
+expect library.ui_at.930.1709 is gestures.group.system
+tap 930 1709
+wait 50
+expect library.gestures_group is system
+shot p3-gestures-system
+rotate 1
+wait 100
+shot p3-gestures-system-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1616 is done
+tap 930 1616
+wait 50
+expect library.ui_at.930.2069 is done
+tap 930 2069
+wait 50
+expect library.sheet is settings
+expect library.ui_at.1550.1930 is done
+tap 1550 1930
+wait 50
+expect library.sheet is none
 # Settings: every row. The style row twice (the other style's sheet in between), the mirror,
 # turning and pinching rows twice, the pen button row through its four texts.
 tap 1535 95
 wait 50
 expect library.sheet is settings
 shot 02-settings
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 50
 expect library.sheet is shortcuts
 shot 02-shortcuts-disabled
@@ -36,7 +188,7 @@ tap 930 1215
 wait 50
 expect library.sheet is buttons
 shot 02-buttons
-tap 930 629
+tap 930 469
 wait 50
 expect library.buttons_group is editing
 shot 02-buttons-editing
@@ -48,7 +200,7 @@ tap 930 1056
 wait 50
 tap 930 1696
 wait 50
-tap 930 789
+tap 930 629
 wait 50
 expect library.buttons_group is tools
 shot 02-buttons-tools
@@ -69,7 +221,7 @@ expect library.learning is
 tap 930 2115
 wait 50
 expect library.buttons_group is
-tap 930 949
+tap 930 789
 wait 50
 expect library.buttons_group is pages
 shot 02-buttons-pages
@@ -80,43 +232,75 @@ shot 02-buttons-learning-pages
 tap 930 416
 wait 50
 # The added final row and its learning text, with Done below it.
-tap 930 1856
+tap 930 1696
 wait 50
 expect library.learning is gesture-new-page
 shot 02-buttons-learning-gesture-new-page
+tap 930 1696
+wait 50
 tap 930 1856
 wait 50
-tap 930 2016
-wait 50
 expect library.buttons_group is
-tap 930 1109
+tap 930 949
 wait 50
 expect library.buttons_group is index
 shot 02-buttons-index
-tap 930 736
+expect library.ui_at.930.576 is buttons.row.1
+tap 930 576
 wait 50
 expect library.learning is links
 shot 02-buttons-learning-index
-tap 930 736
+tap 930 576
 wait 50
 expect library.learning is
-tap 930 1376
+expect library.ui_at.930.1696 is done
+tap 930 1696
 wait 50
 expect library.buttons_group is
-tap 930 1269
+expect library.ui_at.930.1109 is buttons.group.menus
+tap 930 1109
 wait 50
 expect library.buttons_group is menus
 shot 02-buttons-menus
-# The final action row cycles the status display (action 55 in the parallel status-bar change).
+expect library.ui_at.930.1856 is buttons.row.10
 tap 930 1856
 wait 50
+expect library.learning is status-mode
 shot 02-buttons-learning-status-display
 tap 930 1856
 wait 50
+expect library.ui_at.930.2016 is done
 tap 930 2016
 wait 50
 expect library.buttons_group is
-tap 930 1589
+expect library.ui_at.930.1269 is buttons.group.screen
+tap 930 1269
+wait 50
+expect library.buttons_group is screen
+shot p3-buttons-screen
+rotate 1
+wait 100
+shot p3-buttons-screen-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.2016 is done
+tap 930 2016
+wait 50
+expect library.ui_at.930.1429 is buttons.group.system
+tap 930 1429
+wait 50
+expect library.buttons_group is system
+shot p3-buttons-system
+rotate 1
+wait 100
+shot p3-buttons-system-sideways
+rotate 0
+wait 100
+expect library.ui_at.930.1376 is done
+tap 930 1376
+wait 50
+expect library.ui_at.930.1749 is done
+tap 930 1749
 wait 50
 expect library.sheet is shortcuts
 tap 930 1375
@@ -129,7 +313,8 @@ wait 50
 expect library.sheet is none
 tap 1535 95
 wait 50
-tap 1152 1930
+expect library.ui_at.1200.1930 is updates
+tap 1200 1930
 wait 50
 expect library.sheet is updates
 shot 02-updates-no-kpm
@@ -139,7 +324,8 @@ expect library.sheet is none
 tap 1535 95
 wait 50
 expect library.sheet is settings
-tap 500 1930
+expect library.ui_at.260.1930 is ko
+tap 260 1930
 wait 50
 expect library.sheet is koreader
 shot 02-koreader-controls
@@ -731,7 +917,8 @@ tap 2155 95
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
-tap 1062 1695
+expect library.ui_at.863.1695 is controller
+tap 863 1695
 wait 50
 expect library.sheet is shortcuts
 tap 1240 368
@@ -742,14 +929,14 @@ tap 1240 1008
 wait 50
 expect library.sheet is buttons
 shot 45-buttons-landscape
-tap 1240 582
+tap 1240 422
 wait 50
 expect library.buttons_group is tools
 shot 45-buttons-tools-landscape
 tap 1240 1699
 wait 50
 expect library.buttons_group is
-tap 1240 742
+tap 1240 582
 wait 50
 expect library.buttons_group is pages
 shot 45-buttons-pages-landscape
@@ -762,14 +949,16 @@ wait 50
 tap 1240 1700
 wait 50
 expect library.buttons_group is
-tap 1240 902
+tap 1240 742
 wait 50
 expect library.buttons_group is index
 shot 45-buttons-index-landscape
-tap 1240 1169
+expect library.ui_at.1240.1456 is done
+tap 1240 1456
 wait 50
 expect library.buttons_group is
-tap 1240 1382
+expect library.ui_at.1240.1542 is done
+tap 1240 1542
 wait 50
 expect library.sheet is shortcuts
 tap 1240 368

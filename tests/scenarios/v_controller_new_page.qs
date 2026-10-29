@@ -1,25 +1,27 @@
 # rust-only
 # settings: shortcuts_enabled=1
 # settings: mirror_pdf=0
-# The tenth Pages action stays separate from Name and Done in both orientations. Learn, replace,
+# The last Pages action stays separate from sideways fit and Done in both orientations. Learn, replace,
 # forget and relearn it sideways, then use the saved button to control actual two-finger page turns.
 # This scenario also runs with GRIMOIRE_CHECK_FIT=1 in English/Spanish and Gothic/Classic.
 wait 150
 tap 1535 95
 wait 100
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 100
 tap 930 1215
 wait 100
-tap 930 949
+expect library.ui_at.930.789 is buttons.group.pages
+tap 930 789
 wait 100
 expect library.buttons_group is pages
-tap 930 1696
+tap 930 1536
 wait 100
-expect library.learning is name-page
-tap 930 1696
+expect library.learning is landscape-fit
+tap 930 1536
 wait 100
-tap 930 1856
+tap 930 1696
 wait 100
 expect library.learning is gesture-new-page
 shot 01-upright-learning
@@ -30,10 +32,10 @@ rotate 1
 wait 100
 expect library.buttons_group is pages
 shot 02-sideways-pages
-tap 1240 1412
+tap 1240 1398
 wait 100
-expect library.learning is name-page
-tap 1240 1412
+expect library.learning is landscape-fit
+tap 1240 1398
 wait 100
 tap 1240 1556
 wait 100
@@ -56,10 +58,11 @@ key 326 0 1
 wait 100
 expect pads.gesture-new-page is 326
 shot 04-sideways-learned
-tap 1240 1700
+tap 1240 1714
 wait 100
 expect library.buttons_group is
-tap 1240 1382
+expect library.ui_at.1240.1542 is done
+tap 1240 1542
 wait 100
 expect library.sheet is shortcuts
 tap 1240 1488

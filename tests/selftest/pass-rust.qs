@@ -63,3 +63,7 @@ tap panel undo
 expect editor.strokes is 0
 expect editor.undo_kind is
 expect editor.redo_kind is add
+
+expect fshape.state is idle
+expect gestures.shape_count is 0
+expect library.record is 0

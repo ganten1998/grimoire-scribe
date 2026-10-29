@@ -48,11 +48,13 @@ expect library.buttons.next-page is RS, Right
 expect library.buttons.clear-page is none
 tap 1535 95
 wait 200
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 629
+expect library.ui_at.930.469 is buttons.group.editing
+tap 930 469
 wait 100
 expect library.buttons_group is editing
 shot 01-switch-editing
