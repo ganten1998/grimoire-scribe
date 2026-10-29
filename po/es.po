@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 23:36-0500\n"
+"POT-Creation-Date: 2026-10-29 00:10-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -749,7 +749,7 @@ msgstr ""
 "solo lectura."
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
-#: rust/src/pagesview.rs
+#: rust/src/linkcard.rs rust/src/pagesview.rs
 #, c-format
 msgid "Page %d"
 msgstr "Página %d"
@@ -965,7 +965,7 @@ msgstr[1] "En el panel caben hasta %d herramientas. Quita una primero."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
 #. was tapped on a page from a newer Grimoire, which cannot be changed.
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/linkcard.rs
 msgid "This page is read-only."
 msgstr "Esta página es de solo lectura."
 
@@ -1109,7 +1109,7 @@ msgstr "Ningún nombre coincide."
 #. TRANSLATORS: a row of the Find sheet, in its right column at 34 px (about 150 px): the page a name is on, %d its number ("p. 12").
 #. TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
 #. to, %d its number ("p. 12").
-#: rust/src/findsheet.rs rust/src/linkbar.rs
+#: rust/src/findsheet.rs rust/src/linkbar.rs rust/src/linkcard.rs
 #, c-format
 msgctxt "bar"
 msgid "p. %d"
@@ -2343,18 +2343,18 @@ msgstr "Movido a %s"
 #. TRANSLATORS: while picking where a link drawn on a page goes, the button that sends it to
 #. the notebook's Index (the list of named pages): 322 px at 34 px under its icon, or about
 #. 740 px when Remove link is not beside it.
-#: rust/src/linkbar.rs rust/src/pagesview.rs
+#: rust/src/linkbar.rs rust/src/linkcard.rs rust/src/pagesview.rs
 msgid "The Index"
 msgstr "El índice"
 
 #. TRANSLATORS: a chip of the Links bar whose link goes to a page that is gone (about 700 px at 44 px).
-#: rust/src/linkbar.rs
+#: rust/src/linkbar.rs rust/src/linkcard.rs
 msgid "Page not here"
 msgstr "Página no disponible"
 
 #. TRANSLATORS: a chip of the Links bar, under the page's number in its right column: how many links go
 #. to that page (a multiplication sign and the count, "x2").
-#: rust/src/linkbar.rs
+#: rust/src/linkbar.rs rust/src/linkcard.rs
 #, c-format
 msgid "×%d"
 msgstr "×%d"
@@ -2437,6 +2437,58 @@ msgstr "Buscar"
 #: rust/src/linkbar.rs
 msgid "Choose from the pages..."
 msgstr "Elegir entre las páginas..."
+
+#. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name in
+#. the Index: %d is that page's number; the row names it (about 700 px at 44 px).
+#: rust/src/linkcard.rs
+#, c-format
+msgid "Add page %d to the Index..."
+msgstr "Añadir la página %d al índice..."
+
+#. TRANSLATORS: a row of the long-press card of a link: rename the page it goes to, in the Index
+#. (everywhere the page is listed; about 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Rename in the Index"
+msgstr "Renombrar en el índice"
+
+#. TRANSLATORS: a row of the long-press card of a Links bar row of several links: change where all of them
+#. go (about 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Change where they go..."
+msgstr "Cambiar a dónde llevan..."
+
+#. TRANSLATORS: a row of the long-press card of a link: pick another place for it to go (about 700 px at
+#. 44 px).
+#: rust/src/linkcard.rs
+msgid "Change where it goes..."
+msgstr "Cambiar a dónde lleva..."
+
+#. TRANSLATORS: a row of the long-press card of a link: draw a new area for it with the pen (about 700 px
+#. at 44 px).
+#: rust/src/linkcard.rs
+msgid "Redraw the area"
+msgstr "Volver a dibujar la zona"
+
+#. TRANSLATORS: a row of the long-press card of a Links bar row: delete all its links on this page, %d
+#. of them (about 700 px at 44 px). The ink around them stays.
+#: rust/src/linkcard.rs
+#, c-format
+msgid "Delete %d link"
+msgid_plural "Delete %d links"
+msgstr[0] "Borrar %d enlace"
+msgstr[1] "Borrar %d enlaces"
+
+#. TRANSLATORS: a row of the long-press card of a link: delete the link (the ink around it stays; about
+#. 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Delete link"
+msgstr "Borrar enlace"
+
+#. TRANSLATORS: the last line of the long-press card of a Links bar row of several links (34 px, about
+#. 700 px): its rows act on all of them; one is changed alone by holding it on the page.
+#: rust/src/linkcard.rs
+msgid "To change one, hold it on the page."
+msgstr "Para cambiar uno, mantenlo pulsado en la página."
 
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.
 #: rust/src/musicbuild.rs

@@ -865,6 +865,27 @@ fn the_links_bar_strings_fit() {
                 check!(at(w, font_measure(FontFace::Caps, small, w), 540));
             }
             check!(at("name new page", font_measure(FontFace::Bold, ts, tr("Name the new page")), 1000));
+            // the long-press card (PHASE2 8.3): its title beside the right column (780 - 48 - 150 - 32), its rows'
+            // labels right of the icon (732 - 120 - 20: one line at 44 px down to 34, as ui_text draws them), the bar
+            // row's line (732 - 16, at 34 px, down to 30)
+            check!(at("card title", font_measure(FontFace::Bold, ts, &cformat!(tr("Page %d"), 2000)), 550));
+            check!(at("card not here", font_measure(FontFace::Bold, ts, tr("Page not here")), 550));
+            for w in [
+                cformat!(tr("Add page %d to the Index..."), 2000),
+                tr("Rename in the Index").to_string(),
+                tr("Change where it goes...").to_string(),
+                tr("Change where they go...").to_string(),
+                tr("Redraw the area").to_string(),
+                tr("Delete link").to_string(),
+                cformat!(ng_("Delete %d link", "Delete %d links", 64), 64),
+            ] {
+                let fits = font_fit_px(FontFace::Regular, ts, small, &w, 592) > 0.0;
+                check!(at(&w, if fits { 0 } else { font_measure(FontFace::Regular, small, &w) }, 592));
+            }
+            for w in [tr("To change one, hold it on the page."), tr("This page is read-only.")] {
+                let fits = font_fit_px(FontFace::Regular, small, small * 0.88, w, 716) > 0.0;
+                check!(at(w, if fits { 0 } else { font_measure(FontFace::Regular, small * 0.88, w) }, 716));
+            }
             // the tool words, caps at 34 px under their icons, in a 430 px button (sideways 585) inside its edge
             for w in [tr("Go to"), tr("New link"), tr("Areas"), tr("Index")] {
                 check!(at(w, font_measure(FontFace::Caps, small, w), 390));

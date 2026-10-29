@@ -81,6 +81,7 @@ pub mod inkmode; // header only
 pub mod keyboard;
 pub mod library;
 pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only, the Index's phase 1)
+pub mod linkcard; // the long-press card: what a held link (or bar row) can do (Rust only, the Index's phase 2)
 pub mod live;
 pub mod live_keys;
 pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
@@ -145,6 +146,7 @@ pub mod prelude {
     pub use crate::koreader::*;
     pub use crate::latency::*;
     pub use crate::linkbar::*;
+    pub use crate::linkcard::*;
     pub use crate::light::*;
     pub use crate::live::*;
     pub use crate::musicbuild::*;
