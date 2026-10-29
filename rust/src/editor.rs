@@ -3340,10 +3340,13 @@ fn clear_page(a: &mut App) {
     let Some(h) = s.cur_hist() else { return };
     let ip = s.page_ix().unwrap();
     let pid=s.open_pid();
+    if !s.nav.links_writable {
+        app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+    }
     let mut records=Vec::new();
     let count=nav_links_of(&s.nav,pid,&mut 0) as usize;
     if count>0 {
-        if !s.nav.links_writable || records.try_reserve_exact(count).is_err() {
+        if records.try_reserve_exact(count).is_err() {
             app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
         }
         for link in s.nav.links.iter().filter(|link|link.pid==pid) {records.push((Some(link_rec(link)),None));}
@@ -7290,7 +7293,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
             settings_save(&a.settings);
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
             // fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
-            app_toast(a, tr("Here two fingers move the page. Open Pages and Links from the panel."), 4000,
+            app_toast(a, tr("Here two fingers move the page. Zoom out for page and link swipes."), 4000,
             );
         }
     }
@@ -9402,6 +9405,7 @@ mod tests {
         gesturemap_defaults(&mut a.gestures);
         assert!(gesturemap_set(&mut a.gestures, fs_touch1_key(FsSwipe::Right), SHORTCUT_ZOOM_IN) >= 0);
         let s = ed(&mut a);
+        nav_init(&mut s.nav);
         s.open = true;
         s.nb.page_ids = vec![1, 2];
         for pid in [1, 2] {

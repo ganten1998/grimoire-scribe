@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Replace the notebook status bar with a small enabled top-left clock corner; remove the Display mode selector.
+- The toolbar link-plus button creates a link directly; swipe up with two fingers for the Links bar.
+- Limit pinned pens to three. Smart Shapes has its own menu for On/Off, hold speed, four-sided and round-shape preferences, and ink-free link-area snapping (enabled by default).
+- Clear page removes its link areas as well as ink, with one combined Undo/Redo, including otherwise blank pages. Failed link saves preserve the page.
+- Pen-button Clear page defaults to hold only. Recording still recognizes multiple clicks when no multi-click action is bound.
+- KOReader startup uses the orientation sensor after restoring book/browser settings, including saved rotation 0, just as returning from Grimoire does. Accelerometer ignore and lock settings remain honored.
+
 ## 2.0.0-rc.1 (2026-10-29)
 
 - **Links without ink:** draw around an area to select it, then choose a page in the same notebook

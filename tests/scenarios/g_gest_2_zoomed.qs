@@ -1,3 +1,5 @@
+# settings: shortcuts_enabled=1
+# copy: tests/fixtures/index-keys .
 # settings: status_mode=1
 # rust-only
 # Zoomed in, two fingers pan the page: the zoom held, a drag that starts at the top edge pans too, and a
@@ -24,7 +26,7 @@ expect editor.modal is none
 expect touch.gesture is
 expect editor.zoom is 2.25
 expect editor.zoomed is 1
-expect toast is Here two fingers move the page. Open Pages and Links from the panel.
+expect toast is Here two fingers move the page. Zoom out for page and link swipes.
 expect settings.hints is 64
 wait 4200
 expect toast is
@@ -59,7 +61,7 @@ expect editor.zoomed is 1
 expect editor.zoom is 2.25
 # the Links bar does not pan either: with it up two fingers up or down are swipes, and two fingers down close
 # it back to the page as it was left, zoom and all
-pentap panel links
+key 37 0
 wait 400
 expect editor.bar is open
 expect editor.scrolls is 0 0

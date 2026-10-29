@@ -292,6 +292,12 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	    GRIMOIRE_SCRIPT=$(L10N_SCENARIO) GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
 	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
 	done; done; \
+	for lang in $(L10N_LANGS); do for style in gothic classic; do n=shapes-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
+	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n"; \
+	  echo "theme=$$style" > $$r/settings.ini; \
+	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=tests/l10n/shapes.qs \
+	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
+	done; done; \
 	else echo "l10n: skipped $(L10N_SCENARIO) (rust-only: it visits the Rust build's screens)"; fi; \
 	for lang in $(L10N_LANGS); do r=$(BUILD)/scen/l10n/long-root/$$(printf 'a-long-data-root-%.0s' 1 2 3 4 5 6 7 8)$$lang; \
 	  rm -rf $(BUILD)/scen/l10n/long-root $(BUILD)/shots/l10n/long-root-$$lang; mkdir -p $$r; \

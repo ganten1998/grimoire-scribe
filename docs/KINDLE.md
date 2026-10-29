@@ -365,18 +365,13 @@ session with networking awake, not a reboot or deep sleep.
   only, which is why they stay on lines 2 to 5 (package_check pins each line). It runs a
   scriptlet as `su -c 'sh -l <path>'` with no arguments, and runs xrefresh when the script ends.
 
-## Status display
+## Clock and battery
 
-The default is a slim bar across the top of a notebook page. Its first line shows the notebook name,
-clock and battery; its second shows page and section, outgoing and incoming link counts, the current
-tool, screen sharing and any available controller. The page fits below the bar in either orientation,
-and the bar cannot become ink. It stays visible while the writing hand rests on the screen.
-
-Display's title row selects Bar, Corner or Off with a pen or a finger. The `status-mode` shortcut
-cycles the three choices. In Bar or Off, `status-toggle` toggles the bar. In Corner it keeps the
-existing tap and toggle behavior. The clock size and corner controls still apply to Corner mode.
-Text refreshes only when its field changes; clock and battery refreshes wait while writing.
-Long notebook and section names are shortened to fit. Live view's status switch hides the bar there.
+The default is a small clock and battery indicator in the top-left corner of the notebook page.
+It overlays the page without taking space away from it. Tap its corner to hide or show it; Display
+keeps the existing size and corner choices. The notebook status bar and its mode selector have been
+removed. Older Bar preferences become the small, enabled top-left corner; an explicit Off preference
+stays off. The old `status-mode` shortcut is retained as an alias for `status-toggle`.
 
 ### The clock and battery corner
 
@@ -526,11 +521,11 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
 1. Settings > Gestures > Index > Links: record a pen double-click. The card shows the name;
    tap Use with the nib. On the page two clicks open Links after the short pause. Try again
    and Cancel also accept normal nib taps. No recording puts ink on the page.
-2. A quick triple-click still clears the page; each next press must be within 350 ms of the
-   previous release. Hovering with the button held 1.2 s also clears. Bind click to Undo and
+2. Holding the button while hovering for 1.2 s clears the page. Triple-click has no default action.
+   Bind click to Undo and
    check its 350 ms delay while double/triple is bound, then immediate release when both are clear.
-3. Hold Clear page's row to clear its gestures. Both triple and hold stop clearing after save
-   and restart. Reset restores both; keep unrelated touch, shape and folder/map behavior working.
+3. Hold Clear page's row to clear its gestures. Hold stops clearing after save
+   and restart. Reset restores hold only; keep unrelated touch, shape and folder/map behavior working.
 4. Record Hold eraser with a hold or drag. Erasing starts at the button press without a 1.2 s
    wait, lasts until release and then normal writing returns. A click attempt gives a readable
    refusal; it must not save a tap slot. Check coexistence with a key held for erasing.
@@ -809,8 +804,19 @@ The last snapshot can be used on a subsequent Library start. Native PIN always t
 
 Hold the pen still at the end of a drawn shape to preview a straightened line, circle, ellipse or polygon.
 Move the nib on to keep the freehand drawing instead. Lift to keep the preview as one stroke; Undo removes it.
-The Shapes button below the eraser turns this off. The tool picker also offers Smart shapes and a Quick,
-Normal or Slow hold time. Ordinary writing, white ink and erasing keep their existing behavior.
+The Shapes button below the eraser opens its own menu: On/Off, Quick/Normal/Slow hold time,
+four-sided shapes (uneven allowed, rectangles, or squares only), round shapes (as drawn, prefer
+circles, or circles only), and link-area snapping. Rectangles and Prefer circles are the defaults;
+Prefer circles keeps a clearly elongated oval as an ellipse. The tool picker contains pens and ink.
+Ordinary writing, white ink and erasing keep their existing behavior.
+
+Link-area snapping starts enabled. A held selection previews the clean outline; moving on restores
+the freehand selection. Closed selections also snap on lift. The link uses the snapped outline's
+bounds; selection marks disappear and never become page ink. The toolbar's link-plus button starts
+a link directly; the two-finger upward swipe still opens the Links bar.
+
+Clear page removes both ink and the current page's link areas, including an otherwise blank page
+with links. One Undo restores both together; Redo clears both again. Other pages' links stay intact.
 
 An empty `grimoire/shape-log` file enables recognition diagnostics at startup. The log records measurements,
 recognition reasons, timing, and whether a preview was kept or cancelled, without stroke coordinates.

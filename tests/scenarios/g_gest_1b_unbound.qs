@@ -1,7 +1,9 @@
+# settings: shortcuts_enabled=1
+# copy: tests/fixtures/index-keys .
 # settings: status_mode=1
 # rust-only
 # With two fingers up unbound (gestures.ini: touch.2.up=nothing) the swipe does nothing, the panel's Links
-# button still opens the bar, and two fingers down still close it back to the page it began on: the bar's
+# button starts a link directly, a bound Links key still opens the bar, and two fingers down close it: the bar's
 # cancel is fixed, whatever is bound (without it 2-down would be Pages, which swaps the menu and keeps what
 # the bar was looking at).
 # settings: mirror_pdf=0
@@ -30,6 +32,11 @@ expect editor.bar is 0
 expect editor.modal is none
 expect touch.gesture is 2.up
 pentap panel links
+expect editor.bar is 0
+expect editor.link_mode is 1
+pentap panel links
+expect editor.link_mode is 0
+key 37 0
 wait 400
 expect editor.bar is open
 swipe 2 930 900 0 400

@@ -825,7 +825,7 @@ line. Values are clamped to their ranges when read.
 | `music_layout` | the last custom music layout built: a paper value (decimal) |
 | `theme` | `gothic` or `classic` |
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
-| `status_on` | 0 or 1: the small clock and battery in a corner of the notebook page (`status_corner`; a tap there turns it on and off, and it shows on the page only, never on the Library or a sheet; docs/KINDLE.md, The clock and battery corner), off by default. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
+| `status_on` | 0 or 1: the small clock and battery in a corner of the notebook page (`status_corner`; a tap there turns it on and off, and it shows on the page only, never on the Library or a sheet; docs/KINDLE.md, The clock and battery corner), on by default, small and top left. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `status_size` | its size, 0 small, 1 medium, 2 large (the Display sheet's row), 0 by default and clamped to 0..2. Since 2.0.0-beta.5, as `status_on` |
 | `gestures` | 0 or 1: touch patterns and one-finger gestures, on by default; off, the touch recognizer does not dispatch these actions. Pinch and pan remain available when pinch zoom is enabled. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `landscape_fit` | 0 or 1: sideways, the editor shows the whole page (the page is as wide as the screen is tall, so it rests at the height of the screen), on by default; off, the page's width fills the screen as it does upright. Since 2.0.0-beta.5, as `gestures` |
@@ -834,7 +834,7 @@ line. Values are clamped to their ranges when read.
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
 | `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `status_corner`. Since phase 3; earlier versions carry the unknown key. |
 | `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `rotation_lock`. Since 2.0.0-beta.5, as `gestures` |
-| `status_mode` | 0 Bar (default), 1 Corner, 2 Off. Since 2.0.0-beta.6; a file without it (written by an earlier version) gets the Bar. Written after `gesture_new_page`. Display selects the mode; `status-mode` cycles it. Bar reserves 104 px at 300 dpi above the fitted notebook page in either orientation; Corner retains `status_on`, size, and corner preferences. |
+| `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
 | `updates` | `stable` (releases only) or `preview` (betas too): which of Grimoire's feeds Settings > Updates checks (docs/KPM.md, Updating). Absent: by the running version (a beta or RC: preview). Since 2.0.0-beta.5; versions before keep or drop it as above |
@@ -921,7 +921,7 @@ finger shapes on the built-ins. With no file, two fingers down open Pages, up op
 turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
 have no built-in action. Three-finger patterns are available only when the panel reports at least
 three touch slots; the owner's Kindle reports two. The pen button's built-ins are
-`pen.Button.triple=clear-page` and `pen.Button.hold=clear-page`; both may be cleared or rebound.
+`pen.Button.hold=clear-page`; triple-click is unassigned. RC1 files with the duplicate triple/hold Clear pair load as hold only. Custom assignments remain available.
 
 The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
 duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
@@ -929,7 +929,7 @@ these three comment lines, byte for byte:
 
 ```ini
 # Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
-# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.triple=clear-page, pen.Button.hold=clear-page
+# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 
@@ -1152,3 +1152,9 @@ Deleting it loses no ink, names, links or notebook content.
 `graph.ini.lock` is an empty advisory-lock sidecar for map-cache transactions. It has no notebook
 content, is excluded from raw exports with the map cache, and may be removed while Grimoire is
 closed. It keeps an atomic replacement of graph.ini from invalidating the writer's lock.
+
+Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choices 400/550/900),
+`shape_quads` (0 uneven allowed, 1 rectangles/default, 2 squares only), `shape_round` (0 as drawn,
+1 prefer circles/default, 2 circles only), and `shape_links` (on by default). Prefer circles uses
+minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. Link areas retain
+rectangular bounds in links.ini; snapping changes their selection outline and bounds, not QPG data.

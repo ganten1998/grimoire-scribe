@@ -49,7 +49,7 @@ tap 703 340
 pen leave
 wait 1100
 expect editor.page is 1
-tap panel links
+key 37 0
 wait 100
 tap 479 2218
 expect editor.bar is peek
@@ -68,7 +68,7 @@ shape Z 930 1150 45 600
 expect editor.bar is 0
 expect editor.page is 1
 expect fshape.fired is 1
-tap panel links
+key 37 0
 tap 479 2218
 expect editor.bar is peek
 tap 600 1100

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-rc.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 09:22-0500\n"
+"POT-Creation-Date: 2026-10-29 15:30-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -297,10 +297,6 @@ msgid "Swiping past the last page adds a page"
 msgstr ""
 
 #: rust/src/actions.rs
-msgid "Status display"
-msgstr ""
-
-#: rust/src/actions.rs
 msgid "Zoom out"
 msgstr ""
 
@@ -393,7 +389,7 @@ msgstr ""
 msgid "Update channel"
 msgstr ""
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/editor.rs
 msgid "Smart shapes"
 msgstr ""
 
@@ -927,18 +923,6 @@ msgstr ""
 msgid "Calibration saved"
 msgstr ""
 
-#: rust/src/dispmenu.rs
-msgid "Status: bar"
-msgstr ""
-
-#: rust/src/dispmenu.rs
-msgid "Status: corner"
-msgstr ""
-
-#: rust/src/dispmenu.rs
-msgid "Status: off"
-msgstr ""
-
 #. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
 #. which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
@@ -1133,7 +1117,7 @@ msgid "Pin"
 msgstr ""
 
 #. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
-#. tool button: a tap pins a pen or unpins it; %d is how many can be (4). About 700 px at 44 px
+#. tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
 #. in bold, or two lines at 34 px. Normally the title is Tools.
 #: rust/src/editor.rs
 #, c-format
@@ -1158,6 +1142,38 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid "Smart shapes: Off"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Four sides: Uneven allowed"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Four sides: Squares only"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Four sides: Rectangles"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Round shapes: As drawn"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Round shapes: Circles only"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Round shapes: Prefer circles"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Link areas: On"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Link areas: Off"
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
@@ -1198,6 +1214,10 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid "This page is already empty"
+msgstr ""
+
+#: rust/src/editor.rs
+msgid "Could not save the links. The page was not cleared."
 msgstr ""
 
 #: rust/src/editor.rs
@@ -1379,7 +1399,7 @@ msgid "Link deleted. Undo brings it back."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-#. panel holds: %d is how many it holds, 4 in this version. About 1700 px at 44 px in bold,
+#. panel holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
 #. or two lines.
 #: rust/src/editor.rs
 #, c-format
@@ -1522,7 +1542,7 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
 #. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
 #: rust/src/editor.rs
-msgid "Here two fingers move the page. Open Pages and Links from the panel."
+msgid "Here two fingers move the page. Zoom out for page and link swipes."
 msgstr ""
 
 #. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
@@ -1539,7 +1559,7 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid ""
-"Shape made. Undo takes it away; the panel's shapes button turns this off."
+"Shape made. Undo takes it away; the panel's shapes menu has the options."
 msgstr ""
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):

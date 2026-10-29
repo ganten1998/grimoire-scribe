@@ -237,11 +237,11 @@ tap library buttons.group.menus
 wait 50
 expect library.buttons_group is menus
 shot 02-buttons-menus
-tap library buttons.row.10
+tap library buttons.row.9
 wait 50
-expect library.learning is status-mode
-shot 02-buttons-learning-status-display
-tap library buttons.row.10
+expect library.learning is status-corner
+shot 02-buttons-learning-clock-corner
+tap library buttons.row.9
 wait 50
 tap library done
 wait 50
@@ -537,26 +537,22 @@ pentap 1600 273
 wait 50
 expect editor.pin_mode is 1
 shot 24-tools-pin-mode
-pentap 1504 727
+tap panel picker.tool:highlighter
 wait 50
-pentap 1188 561
+tap panel picker.tool:fineliner
 wait 50
-pentap 1504 561
+tap panel picker.tool:marker
 wait 50
-pentap 1188 727
+expect editor.pins is highlighter,fineliner,marker
+tap panel picker.tool:calligraphy
 wait 50
-expect editor.pins is highlighter,fineliner,marker,calligraphy
-pentap 872 395
-wait 50
-expect editor.pins is highlighter,fineliner,marker,calligraphy
+expect editor.pins is highlighter,fineliner,marker
 shot 24-tools-pin-cap
-pentap 1504 727
+tap panel picker.tool:highlighter
 wait 50
-pentap 1188 561
+tap panel picker.tool:fineliner
 wait 50
-pentap 1504 561
-wait 50
-pentap 1188 727
+tap panel picker.tool:marker
 wait 50
 expect editor.pins is
 pentap 1600 273
@@ -1262,12 +1258,16 @@ pentap panel previous
 wait 100
 expect editor.page is 2
 expect editor.links is 0 0
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
 expect editor.bar.entries is 0
 shot 66-bar-empty
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is 0
 pentap panel next
@@ -1314,7 +1314,9 @@ expect editor.index_rows is 1
 pentap panel next
 wait 100
 expect editor.page is 3
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
 expect editor.bar.entries is 2
@@ -1333,7 +1335,9 @@ wait 300
 expect editor.bar is 0
 expect editor.page is 3
 # the eye, from the bar's Areas: its tip, and the dotted boxes with the numbers of the rows
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 tap 1155 2370
 wait 300
@@ -1375,7 +1379,9 @@ tap 279 1745
 wait 300
 expect editor.find is 0
 # the bar sideways (three chips across), its peek, and on a page with no links
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
 expect editor.bar.entries is 2
@@ -1391,12 +1397,16 @@ expect editor.bar is 0
 expect editor.page is 3
 pentap panel previous
 wait 100
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
 expect editor.bar.entries is 0
 shot 68-bar-empty-landscape
-pentap panel links
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is 0
 # the Display sheet's sideways row, sideways: off (the width fills again), then on
@@ -1436,12 +1446,17 @@ expect settings.link_areas is 0
 # Smart shapes and the map in every language/theme, upright and sideways.
 pentap panel shapes
 wait 100
+expect editor.shapes_menu is 1
+tap panel shapes.on
 expect settings.shapes is 0
 shot 70-shapes-off
-pentap panel shapes
+tap panel shapes.on
 wait 100
 expect settings.shapes is 1
-pentap panel links
+tap panel shapes.done
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 150
 expect editor.bar is open
 shot 71-incoming-bar

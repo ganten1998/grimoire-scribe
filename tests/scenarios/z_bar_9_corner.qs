@@ -3,7 +3,7 @@
 # The clock corner's tap is the clock's alone over a link drawn there (which is not followed), on the bare page. With
 # the Links bar up, or while a page is looked at, the clock is not shown and that corner is no corner: a tap there is
 # any tap outside the bar, which stays on the page above (or closes the bar on the page it began on); a tap on the
-# panel's Links button is the button again, which cancels to the page the bar began on.
+# panel's link-plus button commits the preview and starts a link on the visible page.
 # root: z_bar_0_make
 wait 300
 tap 200 400
@@ -71,7 +71,7 @@ expect editor.page is 2
 key 48 0
 wait 300
 expect editor.page is 1
-# the panel's Links button again: back to the origin, not a stay
+# The link-plus button starts a link on the visible preview page.
 swipe 2 930 1300 0 -400
 wait 300
 tap 479 2218
@@ -80,4 +80,5 @@ expect editor.bar is peek
 tap panel links
 wait 300
 expect editor.bar is 0
-expect editor.page is 1
+expect editor.page is 2
+expect editor.link_mode is 1

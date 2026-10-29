@@ -53,8 +53,13 @@ expect editor.bar.rect is 20 2004 1820 456
 key 45 0
 wait 300
 expect editor.bar is 0
-# the panel's Links button, upright: it opens the bar, and its dot says the page has links
+# The toolbar adds a link directly; the Links key still opens the bar.
 pentap panel links
+expect editor.link_mode is 1
+expect editor.bar is 0
+pentap panel links
+expect editor.link_mode is 0
+key 37 0
 wait 300
 expect editor.bar is open
 key 37 0

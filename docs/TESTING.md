@@ -19,8 +19,18 @@ cargo-zigbuild 0.23.0. Automated coverage includes the model and allocation-fail
 handwriting replay, map jobs and cache races, input recording, controller and pen-button scenarios,
 English/Spanish screen-fit checks, the ARM build and release packaging checks.
 
-No Kindle installation or owner acceptance of this exact candidate is claimed. Device acceptance
-remains pending, particularly:
+RC1 at `c3b1eda2cd53` was installed over SSH on October 29, with the package and executable
+hashes verified, a validated backup, and unchanged Grimoire user-data hashes. The already installed
+KOReader plugin was updated without restarting the active reader. The owner subsequently reported:
+
+- Returning from Grimoire restores KOReader's orientation correctly.
+- Starting KOReader from the Kindle home screen while held upside down still starts upright.
+- Pen-button hold still clears the page; the default triple-click did not work.
+- A link to The Index on page 17 of the newest notebook in Void remained after Clear page.
+
+The next candidate fixes startup orientation, retires the triple-click default, and makes Clear
+page remove its links with the ink in one undoable operation. Those fixes have automated coverage;
+no physical acceptance of the next candidate is claimed. Other device checks remain pending:
 
 1. Update the Grimoire KOReader plugin, leave Grimoire while holding the Kindle upside down,
    check tap alignment, then keep turning the device to confirm subsequent sensor changes.
@@ -36,7 +46,8 @@ Kindle success rates. No tag, public release or KPM feed update is part of candi
 
 ## Index phase 6: pen-button gestures (device checks pending)
 
-No Kindle installation or owner acceptance result is claimed for Phase 6. The 350 ms
+Complete Phase 6 owner acceptance remains pending. On RC1 the owner confirmed pen-button hold
+still clears, but triple-click did not; the next candidate keeps hold as the sole default. The 350 ms
 multi-click gap is intentional: a single click waits 350 ms while double/triple is bound;
 triple means each next press within 350 ms of the previous release, not three within 1.2 s.
 A hovering hold remains 1200 ms. A click lasts at most 450 ms with no nib contact. Momentary

@@ -1068,15 +1068,12 @@ PenDown, and the stroke is swallowed (`draw_begin` never runs, so pen mode is ne
 every-30th-Ui promotion to Full stays.
 
 
-### Notebook status bar
+### Clock corner after RC1 feedback
 
-`status_mode=0` reserves a 104 px strip at 300 dpi. The editor fits the page below it by including the
-strip in its existing page-to-screen offset; pen coordinates, zoom and pan share that transform.
-The bar uses the existing status overlay and Live view status layer. Changes to individual fields
-request only their rectangles; the clock and battery use their own rectangle. Minute refreshes and
-field updates respect the existing pen/gesture/driver busy guards. Sheets hide the bar without
-changing the page transform. `status_mode=1` keeps the corner; `2` hides the status display.
-Historical coordinate scenarios explicitly request Corner mode; `y_status_bar*` cover the default.
+The status strip is retired: `status_reserved` always returns zero and the corner overlays the
+unmodified page viewport. Defaults are on, small, top left. Loading legacy Bar settings migrates to
+those defaults; legacy Off stays off. Display has no title-row mode button, and no Status display
+assignment is advertised. `status-mode` remains a compatibility alias for the corner toggle.
 
 ## Links without ink and the long-press card (2.0.0-beta.6, Index phase 2)
 
@@ -1219,7 +1216,9 @@ its own `PenButtons`. `App.pb_config` derives waits from live double/triple bind
 use wrapping u32 milliseconds. A click is at most 450 ms with no nib contact, multi-click gaps
 are at most 350 ms from release to next press, and the result resolves 350 ms after final release.
 A single click fires immediately only when neither double nor triple is bound. Hovering holds
-begin once at 1200 ms. Both owners tick only after the input queue is drained, so a queued release
+begin once at 1200 ms. The recorder always waits for a possible multi-click, even when none is currently bound; runtime
+waits still depend on bindings. Clear page defaults only to hold, with the duplicate RC1
+triple/hold pair migrated to hold. Both owners tick only after the input queue is drained, so a queued release
 cannot be mistaken for a hold. Proximity loss cancels a pending sequence and ends capture.
 
 While the card is active, PenButton, proximity, contact and lift feed only its own recognizer.
@@ -1246,3 +1245,8 @@ as a completed cache. A short `graph.ini.lock` transaction serializes preference
 the child's final read/merge/write; layout computation happens before that lock is acquired.
 Reopening a map retains its running or queued Tidy job, so the completed layout is still adopted
 and an older cached view cannot overwrite it on close.
+
+Clear page saves removal of the current page's links before touching its ink, then records one
+`ActKind::Clear` carrying the removed strokes and `LinkEdit`. A link-only page still gets this
+step. Undo/Redo applies both parts; a failed link save reverses the tentative ink operation and
+keeps the Clear step for retry. Initial Clear save failure leaves ink and history unchanged.
