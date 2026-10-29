@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 23:07-0500\n"
+"POT-Creation-Date: 2026-10-28 23:36-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1029,8 +1029,13 @@ msgstr ""
 msgid "Page number or name"
 msgstr ""
 
-#. TRANSLATORS: a row of the Find sheet for a page number typed, which a tap goes to (about 1300 px at 44 px):
-#. %d is the number.
+#. TRANSLATORS: a row of the Find sheet while it picks where a new link goes (Link to...'s Search),
+#. for a page number typed, which a tap links to (about 1300 px at 44 px): %d is the number.
+#: rust/src/findsheet.rs
+#, c-format
+msgid "Link to page %d"
+msgstr ""
+
 #: rust/src/findsheet.rs
 #, c-format
 msgid "Go to page %d"

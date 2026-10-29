@@ -851,6 +851,7 @@ fn the_links_bar_strings_fit() {
             // the right column's 164), the line for a page that is not there with the biggest numbers
             check!(at("find title", font_measure(FontFace::Bold, ts, tr("Page number or name")), 700));
             check!(at("go to n", font_measure(FontFace::Regular, ts, &cformat!(tr("Go to page %d"), 2000)), 1500));
+            check!(at("link to n", font_measure(FontFace::Regular, ts, &cformat!(tr("Link to page %d"), 2000)), 1500));
             check!(at("no page", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 2000), 99999, 2000)), 1700));
             check!(at("no page 1", font_measure(FontFace::Regular, ts, &cformat!(ng_("There is no page %d (%d page).", "There is no page %d (%d pages).", 1), 2, 1)), 1700));
             check!(at("no names", font_measure(FontFace::Regular, ts, tr("No page names match.")), 1700));

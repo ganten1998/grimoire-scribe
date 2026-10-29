@@ -8,6 +8,10 @@
 //!     word, then anywhere; accents and capitals ignored), best first, then in page order; or "No page names
 //!     match." (not a button).
 //!
+//! In pick mode (PHASE2 7.2, Link to...'s Search) the same sheet finds where a new link goes: a digits row reads
+//! "Link to page 12", and its keyboard may dock at the top of the screen, below the clock corner, with the rows
+//! under it, so neither covers the link's area low on the page.
+//!
 //! A tap on a row, or the keyboard's Done on the first row that is a button, goes there; Cancel, a tap outside it
 //! and the menu's own action close it. It draws itself and takes the taps and says what was asked (FsResult); the
 //! editor does it. Its functions never reach back into the editor's state (PORTING.md, Sheets and keyboards).
@@ -22,6 +26,14 @@ use crate::prelude::*;
 pub const FS_ROWS: usize = 5;
 
 const FS_ROW: i32 = 1;
+
+/// Go to a page (Go), or pick the page a new link goes to (Pick).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FindMode {
+    #[default]
+    Go,
+    Pick,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FindRow {
@@ -48,6 +60,7 @@ pub enum FsResult {
 #[derive(Clone, Debug, Default)]
 pub struct FindSheet {
     pub open: bool,
+    pub mode: FindMode,
     pub kb: Keyboard,
     pub rows: [FindRow; FS_ROWS],
     pub n: usize,
@@ -80,8 +93,19 @@ pub fn findsheet_open(f: &mut FindSheet, a: &App) {
     layout(f);
 }
 
+/// Opens the sheet in pick mode, for Link to...'s Search: its keyboard docked with its top at top_y (0: at the
+/// bottom, as in Go mode), the rows under it when it is at the top.
+pub fn findsheet_open_pick(f: &mut FindSheet, a: &App, top_y: i32) {
+    findsheet_open(f, a);
+    f.mode = FindMode::Pick;
+    keyboard_set_dock(&mut f.kb, top_y);
+    f.kb.area = keyboard_modal_rect_docked(Rect { x: 0, y: 0, w: a.w, h: a.h }, f.kb.dock_y);
+    layout(f);
+}
+
 // The card above the keyboard: its rows 124 px tall with 16 px between and 16 px of padding, the bottom 12 px
 // above the keyboard, its top never above 8 px from the screen's (the clock and battery is not shown while it is up).
+// Under a keyboard docked at the top, the card's top is 16 px below it.
 fn layout(f: &mut FindSheet) {
     hits_clear(&mut f.hits);
     if f.n == 0 {
@@ -90,10 +114,14 @@ fn layout(f: &mut FindSheet) {
     }
     let (rh, gap, pad) = (u(124.0), u(16.0), u(16.0));
     let h = 2 * pad + f.n as i32 * rh + (f.n as i32 - 1) * gap;
-    let floor = u(8.0);
-    let bottom = f.kb.area.y - u(12.0);
-    let top = (bottom - h).max(floor);
-    f.rect = Rect { x: f.kb.area.x, y: top, w: f.kb.area.w, h: bottom - top };
+    if f.kb.dock_y > 0 {
+        f.rect = Rect { x: f.kb.area.x, y: f.kb.area.y + f.kb.area.h + u(16.0), w: f.kb.area.w, h };
+    } else {
+        let floor = u(8.0);
+        let bottom = f.kb.area.y - u(12.0);
+        let top = (bottom - h).max(floor);
+        f.rect = Rect { x: f.kb.area.x, y: top, w: f.kb.area.w, h: bottom - top };
+    }
     for i in 0..f.n {
         if f.rows[i].page >= 0 {
             let r = row_rect(f, i);
@@ -124,7 +152,14 @@ pub fn findsheet_update(f: &mut FindSheet, _a: &App, nb: &NotebookInfo, nav: &Na
         if n >= 1 && n <= npages {
             // TRANSLATORS: a row of the Find sheet for a page number typed, which a tap goes to (about 1300 px at 44 px):
             // %d is the number.
-            rows.push((n as i32 - 1, cformat!(tr("Go to page %d"), n as i32), false));
+            let row = if f.mode == FindMode::Pick {
+                // TRANSLATORS: a row of the Find sheet while it picks where a new link goes (Link to...'s Search),
+                // for a page number typed, which a tap links to (about 1300 px at 44 px): %d is the number.
+                cformat!(tr("Link to page %d"), n as i32)
+            } else {
+                cformat!(tr("Go to page %d"), n as i32)
+            };
+            rows.push((n as i32 - 1, row, false));
         } else {
             // TRANSLATORS: a line of the Find sheet for a page number the notebook does not have (not a button, about
             // 1300 px at 44 px): the first %d is the number typed, the second how many pages it has.
@@ -202,7 +237,7 @@ fn draw_rows(f: &FindSheet, a: &mut App) {
 /// card and the keyboard together (what a refresh of the sheet covers). The toast keeps above the keyboard.
 pub fn findsheet_draw(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav: &Nav, r: Rect) -> Rect {
     let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
-    let kb_area = keyboard_modal_rect(screen);
+    let kb_area = keyboard_modal_rect_docked(screen, f.kb.dock_y);
     // (a turn changes how many rows there is room for: the rows are made again for it)
     let cap = if a.w > a.h { 3 } else { FS_ROWS };
     if cap != f.max_rows {
@@ -219,7 +254,9 @@ pub fn findsheet_draw(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav: &N
     if rect_overlaps(r, f.rect) {
         draw_rows(f, a);
     }
-    a.toast_floor = f.kb.area.y;
+    if f.kb.dock_y == 0 {
+        a.toast_floor = f.kb.area.y; // (docked at the top, the toast keeps its place)
+    }
     rect_union(f.rect, f.kb.area)
 }
 

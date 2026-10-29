@@ -3201,6 +3201,9 @@ fn lm_drop(s: &mut EditorState) {
     if s.owner == Owner::Lasso || s.owner == Owner::Strip || s.owner == Owner::LinkTo {
         s.owner = Owner::None;
     }
+    if s.find.open && s.find.mode == FindMode::Pick {
+        find_drop(s); // (Link to...'s Search)
+    }
     s.lt = LinkBar::default();
     s.lm = LinkMaking::default();
 }
@@ -3232,6 +3235,9 @@ fn lm_bounds(a: &App) -> Rect {
     }
     if s.lm.state == LmState::Naming && s.lm.kb.open {
         u = rect_union(u, s.lm.kb.area);
+    }
+    if s.find.open && s.find.mode == FindMode::Pick {
+        u = rect_union(u, rect_union(s.find.rect, s.find.kb.area));
     }
     rect_intersect(u, Rect { x: 0, y: 0, w: a.w, h: a.h })
 }
@@ -3570,6 +3576,7 @@ fn lt_result(a: &mut App, r: LbResult, d: Rect) {
                 link_pick(a, &target);
             }
         }
+        LbResult::Search => find_pick_open(a),
         LbResult::Choose => link_choose(a),
         LbResult::Cancel => link_cancel(a, true),
         LbResult::Pager => {
@@ -3860,7 +3867,14 @@ fn lm_check_menus(a: &mut App) {
         LmState::Off => false,
         LmState::Armed | LmState::Lasso => s.owner != Owner::Lasso && sheet_open(s),
         LmState::Pick | LmState::Naming => {
-            s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open || (s.pv.open && !s.pv.picking)
+            s.tools_open
+                || s.mb.open
+                || s.dm.open
+                || s.paper_open
+                || s.ts.open
+                || s.lb.open
+                || (s.find.open && s.find.mode != FindMode::Pick)
+                || (s.pv.open && !s.pv.picking)
         }
     };
     if other {
@@ -4294,6 +4308,21 @@ fn find_show(a: &mut App) {
     app_invalidate(a, r, RefreshMode::Ui);
 }
 
+// Link to...'s Search (7.2): the Find sheet in pick mode over the page, its keyboard docked where Link to... is (at
+// the top exactly when it is), Link to... hidden under it; one Ui of both.
+fn find_pick_open(a: &mut App) {
+    let dock = if ed_ref(a).lt.top { dock_top_y(a) } else { 0 };
+    let s = ed(a);
+    s.lt.hidden = true;
+    let lt_rect = s.lt.rect;
+    let mut f = std::mem::take(&mut s.find);
+    findsheet_open_pick(&mut f, a, dock);
+    ed(a).find = f;
+    compose(a, lt_rect);
+    let r = with_find(a, |f, a, nb, nav| findsheet_draw(f, a, nb, nav, Rect { x: 0, y: 0, w: a.w, h: a.h }));
+    app_invalidate(a, rect_union(r, lt_rect), RefreshMode::Ui);
+}
+
 // The sheet is gone without a word (leaving the editor, a sleep, the notebook closing, a page drawn whole).
 fn find_drop(s: &mut EditorState) {
     s.find.open = false;
@@ -4303,14 +4332,19 @@ fn find_drop(s: &mut EditorState) {
     s.find.rect = RECT_EMPTY;
 }
 
-// Cancel: the page again where the card and the keyboard were, a Ui.
+// Cancel: the page again where the card and the keyboard were, a Ui. In pick mode Link to... comes back with it.
 fn find_close(a: &mut App) {
     let s = ed(a);
     if !s.find.open {
         return;
     }
-    let r = rect_union(s.find.rect, s.find.kb.area);
+    let mut r = rect_union(s.find.rect, s.find.kb.area);
+    let pick = s.find.mode == FindMode::Pick;
     find_drop(s);
+    if pick && s.lt.open {
+        s.lt.hidden = false;
+        r = rect_union(r, s.lt.rect);
+    }
     compose(a, r);
     app_invalidate(a, r, RefreshMode::Ui);
 }
@@ -4326,6 +4360,14 @@ fn find_go(a: &mut App, index: i32) {
 // then the card of rows, then the key, each its own fast refresh.
 fn find_result(a: &mut App, r: FsResult, d: Rect) {
     match r {
+        FsResult::Go(i) if ed_ref(a).find.mode == FindMode::Pick => {
+            // Link to...'s Search: the link goes there, with no page change and nothing on the back list.
+            let s = ed(a);
+            let Some(&pid) = s.nb.page_ids.get(i.max(0) as usize) else { return };
+            let mut target = String::new();
+            csnprintf!(&mut target, NAV_TARGET_LEN, "p%u", pid);
+            link_pick(a, &target);
+        }
         FsResult::Go(i) => find_go(a, i),
         FsResult::Close => find_close(a),
         FsResult::Changed => {
@@ -5094,6 +5136,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         let s = ed(a);
         let r = rect_union(s.panel, s.tools_rect);
         app_invalidate(a, r, RefreshMode::Ui);
+        return true;
+    }
+    // Back with Link to...'s Search up: Link to... again.
+    if action == SHORTCUT_GO_BACK && s.find.open && s.find.mode == FindMode::Pick {
+        find_close(a);
         return true;
     }
     // Back to the page before, with the bar up, is the bar's Cancel (the refusal below would swallow it).
@@ -6145,7 +6192,10 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 return;
             }
             if ed_ref(a).find.open {
-                find_close(a); // (a tap outside the Find sheet closes it, and is swallowed)
+                // (a tap outside the Find sheet closes it, and is swallowed; in pick mode the corner keeps its tap)
+                if !(ed_ref(a).find.mode == FindMode::Pick && corner_tap(false)) {
+                    find_close(a);
+                }
                 return;
             }
             if !ed_ref(a).lb.open {
@@ -6686,8 +6736,8 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let top = live.last().and_then(|p| ids.iter().position(|q| q == p)).map_or(0, |i| i as i32 + 1);
         csnprintf!(out, cap, "%d %d", live.len() as i32, top);
     } else if key == "find" {
-        // The Find sheet: closed (0) or open (go: a page by its number or name).
-        csnprintf!(out, cap, "%s", if s.find.open { "go" } else { "0" });
+        // The Find sheet: closed (0), open (go: a page by its number or name), or picking where a new link goes (pick).
+        csnprintf!(out, cap, "%s", if !s.find.open { "0" } else if s.find.mode == FindMode::Pick { "pick" } else { "go" });
     } else if let Some(k) = key.strip_prefix("find.") {
         if !findsheet_probe(&s.find, k, out, cap) {
             return -1;

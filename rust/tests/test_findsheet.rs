@@ -119,6 +119,37 @@ fn rect_contains_rect(o: Rect, i: Rect) -> bool {
     i.x >= o.x && i.y >= o.y && i.x + i.w <= o.x + o.w && i.y + i.h <= o.y + o.h
 }
 
+// Pick mode (Link to...'s Search, PHASE2 7.2): a number's row says "Link to page N"; names as in Go mode; docked
+// at the top the keyboard starts at the dock and the card sits 16 px under it, docked at the bottom as Go mode.
+fn pick_mode_links_and_docks() {
+    let a = app(1860, 2480);
+    let (nb, nav) = notebook(&[(3, "\u{c1}rbol"), (5, "Arena")]);
+    let mut f = FindSheet::default();
+    findsheet_open_pick(&mut f, &a, 173);
+    check!(f.open && f.mode == FindMode::Pick && f.kb.dock_y == 173 && f.kb.area.y == 173 && f.kb.area.h == 980);
+    let type_in = |f: &mut FindSheet, text: &str| -> Vec<String> {
+        f.kb.text = FixedStr::from_str(text);
+        findsheet_update(f, &a, &nb, &nav);
+        (0..f.n).map(|i| f.rows[i].label.as_str().to_string()).collect()
+    };
+    check!(type_in(&mut f, "2") == ["Link to page 2"]);
+    check!(f.rows[0].page == 1);
+    check!(f.rect == Rect { x: 20, y: 173 + 980 + 16, w: 1820, h: 156 });
+    let mut names = type_in(&mut f, "ar");
+    names.sort();
+    check!(names == ["Arena", "\u{c1}rbol"]);
+    check!(f.rect.y == 173 + 980 + 16 && f.rect.h == 2 * 16 + 2 * 124 + 16);
+    check!(type_in(&mut f, "99") == ["There is no page 99 (12 pages)."]);
+    // at the bottom: Go mode's place, and Go mode keeps "Go to page"
+    findsheet_open_pick(&mut f, &a, 0);
+    check!(f.kb.dock_y == 0 && f.kb.area == keyboard_modal_rect(Rect { x: 0, y: 0, w: 1860, h: 2480 }));
+    check!(type_in(&mut f, "2") == ["Link to page 2"]);
+    check!(f.rect.y + f.rect.h == f.kb.area.y - 12);
+    findsheet_open(&mut f, &a);
+    check!(f.mode == FindMode::Go && f.kb.dock_y == 0);
+    check!(type_in(&mut f, "2") == ["Go to page 2"]);
+}
+
 #[test]
 fn test_findsheet() {
     ui_init(300.0);
@@ -126,5 +157,6 @@ fn test_findsheet() {
     run!(the_rows_follow_what_is_typed);
     run!(there_are_at_most_five_rows_upright_and_three_sideways);
     run!(the_card_is_above_the_keyboard);
+    run!(pick_mode_links_and_docks);
     done();
 }

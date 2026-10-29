@@ -245,7 +245,7 @@ shows what the app holds.
 | `editor.back` | the back list (Back to the page before): `DEPTH TOP`, how many pages it holds and the page number of the newest (`2 3`), `0 0` when it is empty or no notebook is open. Pages deleted since are not counted |
 | `editor.scrolls` | `V H`: whether the page scrolls on the vertical and the horizontal axis now (`1 0`), what touchgest.rs reads to tell a two-finger pan from a swipe: `0 0` at the whole page, with a surface in front that does not pan (the Pages view, a sheet), or with no notebook open |
 | `editor.areas` | `0` while the eye (the link areas, `settings.link_areas`) is off, else how many dotted boxes it draws over the open page (one for every link whose ink is on it, up to 64) |
-| `editor.find` | the Find sheet (Go to page or name; the bar's Go to, the `go-to-page` action and the Pages view's Go to page... open it): `0` while it is closed, `go` while it is open |
+| `editor.find` | the Find sheet (Go to page or name; the bar's Go to, the `go-to-page` action and the Pages view's Go to page... open it): `0` while it is closed, `go` while it is open, `pick` while it picks where a new link goes (Link to...'s Search) |
 | `editor.find.rows` | how many rows its card shows now (five upright at most, three sideways), 0 with nothing typed or while it is closed |
 | `editor.find.N` | row N of the card as drawn, from 1: `Go to page 3`, a name (`Árbol`), `There is no page 9 (5 pages).` or `No page names match.` (the last two are lines, not buttons); empty past the last |
 | `editor.bar` | the Links bar: `0` while it is closed, `open` while it is up, `peek` while it shows another page above itself (an entry tapped, or "Back to ..."): the open page, its history and `notebook.last_page` stay the page the bar began on until that page is stayed on |
@@ -410,7 +410,11 @@ above the edge, or at the top when the centre of the area is in the lower 45% of
 its top 8 px below the clock corner's zone (173 upright at 300 dpi with the status bar off). Its tool row's centre is
 90 px above the card's bottom: upright at the bottom y 2370, Search x 330, Choose from the pages... 930, Cancel 1530;
 sideways at the bottom y 1750, x 433, 1239 and 2045. Choose from the pages... opens the Pages view to pick
-(`editor.picking is new`); its Back comes back to Link to.... New page... opens a keyboard (`Name the new page`)
+(`editor.picking is new`); its Back comes back to Link to.... Search opens the Find sheet in pick mode
+(`editor.find is pick`; a number's row reads `Link to page N`): a row or Done links there with no page change, and
+its Cancel or a tap outside comes back to Link to.... Docked at the bottom its rows and keys are where Go mode has
+them; at the top (`editor.kb_dock is top`) its keys sit 1307 px higher and the rows card starts 16 px under the
+keyboard (y 1169, its first row's centre 1247). New page... opens a keyboard (`Name the new page`)
 docked as Link to... is: at the top its keys sit 1307 px higher than the coordinates below (Done 1643 1058). A
 scenario checks each raw tap on the strip and Link to... with `editor.ui_at.X.Y` first.
 
