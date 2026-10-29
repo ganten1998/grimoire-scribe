@@ -22,3 +22,6 @@ expect editor.link_card is 1
 pentap panel nosuchbutton
 
 expect fshape.state is drawing
+
+expect editor.map is graph
+expect editor.shape_preview is circle

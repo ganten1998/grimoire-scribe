@@ -389,3 +389,8 @@ helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controll
 real button numbering on a Kindle.
 
 `status-mode` cycles Bar, Corner and Off. `status-toggle` toggles the selected bar or corner.
+
+Smart-shape actions are `shapes` (toggle recognition), `shape-hold` (cycle400/550/900ms) and
+`shape-last` (replace the last drawn stroke with its recognized shape, with one undo step).
+`index-map` opens/closes the graph; `index` still opens the named-page list. All four may be
+assigned to keyboard, controller, touch-pattern or recorded finger-shape input.

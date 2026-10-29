@@ -173,6 +173,7 @@ struct State {
     /// a line read too early and given back (`tap panel` with events still queued): the next
     /// script_line returns it again
     unread: Option<Vec<u8>>,
+    replay_lines: std::collections::VecDeque<Vec<u8>>,
     expect_total: i32,
     expect_failed: i32,
 
@@ -256,6 +257,7 @@ impl Default for State {
             expect: Expect::default(),
             line_no: 0,
             unread: None,
+            replay_lines: std::collections::VecDeque::new(),
             expect_total: 0,
             expect_failed: 0,
             power_down_at: 0,
@@ -740,6 +742,7 @@ impl State {
             self.line_no += 1;
             return Some(line);
         }
+        if let Some(line)=self.replay_lines.pop_front(){return Some(line);}
         let line = fgets(self.script.as_mut()?, LINE_CAP)?;
         self.line_no += 1;
         Some(line)
@@ -1388,6 +1391,7 @@ enum Step {
     /// App is (script_step), then tapped like `tap` and `pentap` do, and the batch ends
     Panel(FixedStr<32>, bool),
     MapNode(u32, bool),
+    Strokes(FixedStr<512>,usize,u32),
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -1480,6 +1484,12 @@ fn script_step_in(st: &mut State) -> Step {
             }
             return Step::Batch;
         } else if a == b"pen" || a == b"eraser" {
+            if b==b"strokes" {
+                if st.qh!=st.qt {st.unread=Some(line.clone());st.line_no-=1;return Step::Batch;}
+                let mut path=FixedStr::new();path.set_bytes(sc.word(511).unwrap_or(b""));
+                let n=sc.float().unwrap_or(usize::MAX as f32) as usize;let hold=sc.float().unwrap_or(0.0) as u32;
+                return Step::Strokes(path,n,hold);
+            }
             st.eraser = a == b"eraser";
             let k = scan_floats(s, 2, &mut v);
             if b == b"down" {
@@ -1918,6 +1928,30 @@ fn script_step(mut a: Option<&mut App>) {
                     }
                 });
                 break;
+            }
+            Step::Strokes(path,n,hold)=>{
+                let mut page=None;
+                let data=read_file(path.as_str());
+                if data.is_none() || page_deserialize(data.as_deref().unwrap_or(&[]),&mut page)!=0 || page.as_ref().is_none_or(|p|p.readonly) || a.as_ref().is_none_or(|a|a.scr!=ScreenId::Editor) {
+                    with(|st|{err(format!("expect failed (line {}): cannot replay strokes from {}\n",st.line_no,path.as_str()).as_bytes());st.expect_total+=1;st.expect_failed+=1;});
+                    continue;
+                }
+                let page=page.unwrap();let mut lines=std::collections::VecDeque::new();
+                for stroke in page.strokes.iter().take(n) {
+                    for (i,p) in stroke.pts.iter().enumerate() {
+                        let (x,y)=crate::editor::editor_replay_point(a.as_deref().unwrap(),p.x,p.y);
+                        if i>0 {let dt=p.t_ms.wrapping_sub(stroke.pts[i-1].t_ms).min(1000);if dt>0 {lines.push_back(format!("wait {}",dt).into_bytes());}}
+                        lines.push_back(format!("pen {} {} {} {} {} {}",if i==0{"down"}else{"move"},x,y,p.pressure,p.tilt_x,p.tilt_y).into_bytes());
+                        // Flush even a file whose timestamps are all equal before filling the event ring.
+                        if i%24==23 {lines.push_back(b"wait 0".to_vec());}
+                    }
+                    if let Some(p)=stroke.pts.last() {
+                        let (x,y)=crate::editor::editor_replay_point(a.as_deref().unwrap(),p.x,p.y);
+                        lines.push_back(format!("wait {}",hold).into_bytes());
+                        lines.push_back(format!("pen up {} {}",x,y).into_bytes());lines.push_back(b"wait 0".to_vec());
+                    }
+                }
+                with(|st|st.replay_lines=lines);
             }
             Step::MapNode(pid, pen) => {
                 let at = a.as_deref_mut().and_then(|a| crate::editor::editor_map_point(a, pid));

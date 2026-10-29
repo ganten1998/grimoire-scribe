@@ -593,10 +593,10 @@ band, resume fine control on either side, release without a jump and check the s
 
 ### Smart-shape probes
 
-`settings.shapes` and `settings.shape_hold_ms` report the saved controls. `editor.shape_preview` is 1 while
-an in-progress stroke has a snapped preview. `editor.stroke_shape` reports its lowercase recognized kind,
+`settings.shapes` and `settings.shape_hold_ms` report the saved controls. `editor.shape_preview` reports the lowercase kind while
+an in-progress stroke has a snapped preview, or `0` otherwise. `editor.stroke_shape` reports its lowercase recognized kind,
 or `none`; `editor.undo_kind` and `redo_kind` also accept `replace`. `pentap panel shapes` toggles recognition.
-`z_shape_1_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_2_move_cancels`
+`z_shape_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_move_on`
 checks moving on from the preview restores the freehand stroke.
 
 `z_sideways_toolbar` checks rotation with the toolbar on either side of the page, then disables
@@ -614,3 +614,11 @@ All848..1148, Around1160..1460; the selection card's buttons occupy the bottom15
 Library folders are logical paths. `library.folder` reports the full current path; folder cards show
 only their last component. `z_subfolders` checks child creation and parent navigation; storage tests
 check subtree rename, empty descendants and refusing overlong destinations before any metadata changes.
+
+`pen strokes FILE.qpg [N] [HOLD_MS]` replays the first N strokes (all by default) through the
+current page viewport, preserving pressure/tilt and point spacing, and pausing before each lift.
+Timestamp gaps within a stroke are capped at one second in the runner. An unreadable or read-only
+file fails the run. `editor.shape_snaps` counts committed snaps and shape-last replacements in the
+editor session; `z_shape_writing` holds every one of the bundled handwriting asset's32strokes
+for700ms and requires this counter to remain zero. `z_shape_last` checks one Replace undo step
+and both new action families. The test runner ticks during an explicit `wait` with the nib down.

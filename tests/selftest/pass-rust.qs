@@ -38,6 +38,9 @@ wait 400
 expect screen is editor
 expect editor.panel_at.1768.358 is tool-picker
 expect editor.scrolls is 0 0
+expect editor.map is 0
+expect editor.shape_preview is 0
+expect settings.shapes is 1
 expect editor.bar is 0
 expect editor.bar.entries is 0
 expect editor.bar.rect is

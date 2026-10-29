@@ -43,9 +43,9 @@ fn registry_names_groups_and_labels() {
         "status-corner",
         "gesture-new-page",
     ];
-    let expected_group_rows = [7usize, 11, 9, 7, 10, 10, 6];
+    let expected_group_rows = [10usize, 11, 9, 8, 10, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
-    check!(SHORTCUT_LAST == 77 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
+    check!(SHORTCUT_LAST == 81 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
     let mut all = Vec::new();
@@ -56,11 +56,11 @@ fn registry_names_groups_and_labels() {
         check!(action_by_name(name) == id);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 22);
+    check!(K_ACTIONS.len() == old_names.len() + 26);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 68);
+    check!(all.len() == 72);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -76,7 +76,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 68 && names.len() == 68);
+    check!(ids.len() == 72 && names.len() == 72);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want

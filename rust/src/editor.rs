@@ -263,7 +263,7 @@ struct SharedPaper {
 struct ShapeHold {
     anchor: (f32, f32), anchor_k: u32, still_fired: bool, burst: bool,
     preview: Option<ShapePreview>, last_lift: Option<PenSample>,
-    last_kind: ShapeKind, last_reason: ShapeReason, tip_pending: bool,
+    last_kind: ShapeKind, last_reason: ShapeReason, tip_pending: bool, kept: u32,
 }
 struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
 
@@ -3011,6 +3011,7 @@ fn draw_end(a: &mut App) {
     let snapped = s.sh.preview.take();
     if let Some(preview) = snapped {
         s.cur = Some(preview.stroke);
+        s.sh.kept=s.sh.kept.saturating_add(1);
         s.sh.tip_pending = true;
         if shape_log {qlog!("shape: kept");}
         s.settle = rect_union(s.settle, preview.region);
@@ -5488,7 +5489,7 @@ pub fn editor_shape_last(a: &mut App) {
     let (history,page) = hist_page(&mut s.hist,hi,ip);
     let dirty = history_push_replace(history,page,index,shape);
     if rect_is_empty(dirty) {return;}
-    s.sh.last_kind = result.kind; mark_changed(s);
+    s.sh.last_kind = result.kind; s.sh.kept=s.sh.kept.saturating_add(1); mark_changed(s);
     draw_page(a,dirty); show(a,dirty,RefreshMode::Ui); repaint_panel(a,RefreshMode::Ui); live_reset();
 }
 
@@ -8638,8 +8639,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         if !mapview_probe(&s.map, map_key, out) {
             return -1;
         }
+    } else if key=="shape_snaps" {csnprintf!(out,cap,"%u",s.sh.kept);
     } else if key == "shape_preview" {
-        csnprintf!(out, cap, "%d", s.sh.preview.is_some() as i32);
+        let text=if s.sh.preview.is_some(){format!("{:?}",s.sh.last_kind).to_lowercase()}else{"0".to_string()};csnprintf!(out,cap,"%s",&text);
     } else if key == "stroke_shape" {
         let kind = format!("{:?}", s.sh.last_kind).to_lowercase();
         csnprintf!(out, cap, "%s", kind.as_str());
@@ -9782,4 +9784,9 @@ mod tests {
 
 pub fn editor_map_point(a: &App, pid: u32) -> Option<(f32, f32)> {
     a.ed.as_deref().and_then(|s| mapview_node_point(&s.map, pid))
+}
+
+/// Replay page samples through the current viewport, as real input reaches it.
+pub fn editor_replay_point(a:&App,x:f32,y:f32)->(f32,f32) {
+    let s=ed_ref(a);((x-s.ox)*s.zoom,(y-s.oy)*s.zoom)
 }
