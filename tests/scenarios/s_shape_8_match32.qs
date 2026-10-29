@@ -10,6 +10,7 @@ wait 200
 expect screen is editor
 expect gestures.shape_count is 32
 expect gestures.refused is 0
+expect gestures.shape.shape-hold is 2
 pen line 300 650 1300 670 10 0.6 0.6
 pen leave
 wait 1100

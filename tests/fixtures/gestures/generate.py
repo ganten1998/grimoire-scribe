@@ -28,7 +28,7 @@ ACTIONS = ['undo','redo','previous-page','next-page','previous-tool','next-tool'
            'index','eraser-mode','clear-page','first-page','last-page','new-page','fit-page',
            'pages','tool-picker','paper','display','pen-feel','fold-panel','library',
            'close-menu','add-link','name-page','status-toggle','links','go-to-page','go-back',
-           'link-areas','landscape-fit','status-mode','status-corner']
+           'link-areas','landscape-fit','shape-hold','status-corner']
 for count, name in [(32, 'match32'), (8, 'stress8')]:
     folder = HERE / name
     folder.mkdir(exist_ok=True)

@@ -34,12 +34,9 @@ wait 300
 shot 03-eraser-end
 # (its end also reaches the highlighter band's lower edge: only the first line is left)
 expect editor.strokes is 1
-# triple click clears, undo brings it back
+# Holding the pen button clears with the current default binding; undo brings it back.
 side on
-side off
-side on
-side off
-side on
+wait 1500
 side off
 wait 400
 expect toast is Page cleared

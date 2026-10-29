@@ -1,5 +1,6 @@
 # rust-only
 # settings: status_mode=1
+# settings: status_on=0
 # settings: mirror_pdf=0
 # root: s_shape_1_record
 # settings: shortcuts_enabled=1

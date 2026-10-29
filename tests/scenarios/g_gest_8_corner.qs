@@ -1,4 +1,5 @@
 # settings: status_mode=1
+# settings: status_on=0
 # rust-only
 # The clock corner's tap (a finger, 14 mm square, top left) is never claimed: not by a link drawn there,
 # not by a gesture that just fired, and a two-finger swipe or tap that starts there is a gesture and
