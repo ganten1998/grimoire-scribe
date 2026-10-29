@@ -8217,6 +8217,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             Some(ActKind::Paper) => "paper",
             Some(ActKind::Clear) => "clear",
             Some(ActKind::Link) => "link",
+            Some(ActKind::Replace) => "replace",
             None => "",
         };
         csnprintf!(out, cap, "%s", name);
