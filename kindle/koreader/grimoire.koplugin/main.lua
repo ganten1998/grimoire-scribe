@@ -24,7 +24,7 @@ all along, so nothing of the Kindle's own screens shows in between. When Grimoir
 starts as usual, and its own start (start_with, lastfile) reopens the book. A second marker the
 wrapper writes once Grimoire has run tells that start it comes back from Grimoire, and the
 plugin turns KOReader as the Kindle is held (rotation_as_the_sensor_has_it). Ordinary starts
-also sample the sensor when no saved rotation or keep-current-rotation setting takes precedence.
+sample the sensor too, after the book or file browser has restored its rotation.
 
 A launch marker in KOReader's settings folder says a hand-over is under way. The wrapper removes
 it once Grimoire has run; found at KOReader's next start, it means Grimoire never ran (the
@@ -318,7 +318,7 @@ local SCRIBES = { KindleScribe = true, KindleScribe3 = true, KindleScribeColorSo
 -- nothing at the rotation it has already. It sets the rotation alone, never the native rotation,
 -- so drawing and touch stay together (native_rotation_as_the_framebuffer_has_it runs first). On the
 -- next tick, once the book or the file browser is up and has set its own rotation. Ordinary starts
--- have the same missing initial event, but must leave an explicitly saved rotation alone.
+-- need the same initial event: a persisted default 0 must not hide a Kindle held upside down.
 local function sensor_to_rotation(read_code, context)
     local input, screen = Device.input, Device.screen
     if not (input and screen and screen.getRotationMode) then return end
@@ -354,21 +354,8 @@ local function sensor_to_rotation(read_code, context)
         was, "->", now .. how)
 end
 
--- FileManager:setRotationMode and ReaderView:onReadSettings restore these settings. A present 0
--- is a saved upright choice, distinct from KOReader's fallback 0 when nothing was saved. Check
--- after ReadSettings, so plugins that supply document settings have had their say as well.
-local function startup_rotation_choice(ui)
-    if G_reader_settings:readSetting("lock_rotation") == true then return "lock_rotation" end
-    local key = "fm_rotation_mode"
-    if ui.document then
-        key = ui.paging and "kopt_rotation_mode" or "copt_rotation_mode"
-        if ui.doc_settings and ui.doc_settings:readSetting(key) ~= nil then return key end
-    end
-    if G_reader_settings:readSetting(key) ~= nil then return key end
-end
-
 local sensor_checked = false
-local function rotation_as_the_sensor_has_it(read_code, ui)
+local function rotation_as_the_sensor_has_it(read_code)
     if sensor_checked then return end
     sensor_checked = true
     local ok, err = pcall(function()
@@ -383,14 +370,7 @@ local function rotation_as_the_sensor_has_it(read_code, ui)
         end
         -- (UIManager runs its tasks without a pcall: an error in one would end reader.lua.)
         UIManager:nextTick(function()
-            local done, why = pcall(function()
-                local choice = not returning and startup_rotation_choice(ui)
-                if choice then
-                    logger.info(context .. ", keeping saved rotation (" .. choice .. "): rotation left alone")
-                    return
-                end
-                sensor_to_rotation(read_code, context)
-            end)
+            local done, why = pcall(sensor_to_rotation, read_code, context)
             if not done then logger.warn("Grimoire: could not read the orientation sensor:", why) end
         end)
     end)
@@ -471,7 +451,7 @@ function Grimoire:init()
     if not Device:isKindle() then return end
     keep_alive_as_the_kindle_has_it()
     native_rotation_as_the_framebuffer_has_it()
-    rotation_as_the_sensor_has_it(self.orientation_sensor_code, self.ui)
+    rotation_as_the_sensor_has_it(self.orientation_sensor_code)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):

@@ -896,8 +896,8 @@ do -- KOReader back from Grimoire takes its rotation from a window manager kept 
     check("an ordinary start: the missing initial sensor event is supplied", W.sensor_reads == 1 and W.rotation == 2)
 end
 
-do -- Ordinary Kindle starts have no back marker. Supply the initial event only when KOReader
-    -- fell back to a default rotation, after the browser or reader restored its own settings.
+do -- Ordinary Kindle starts have no back marker. Supply the initial event after the browser or
+    -- reader restores its settings, even when an upright default was persisted earlier.
     for _, view in ipairs({ "browser", "paged", "reflowable" }) do
         for code = 15, 18 do
             local name = "startup-" .. view .. "-" .. code
@@ -921,9 +921,10 @@ do -- Ordinary Kindle starts have no back marker. Supply the initial event only 
         { "browser-upright", false, "fm_rotation_mode", 0 },
         { "browser-landscape", false, "fm_rotation_mode", 1 },
         { "paged-default", true, "kopt_rotation_mode", 0 },
-        { "reflowable-default", true, "copt_rotation_mode", 3, "reflowable" },
+        { "reflowable-default", true, "copt_rotation_mode", 0, "reflowable" },
+        { "reflowable-landscape", true, "copt_rotation_mode", 3, "reflowable" },
         { "paged-document-upright", true, "kopt_rotation_mode", 0, "paged", true },
-        { "reflowable-document", true, "copt_rotation_mode", 1, "reflowable", true },
+        { "reflowable-document-upright", true, "copt_rotation_mode", 0, "reflowable", true },
         { "keep-current", true, "lock_rotation", true },
     }) do
         world("startup-saved-" .. c[1])
@@ -934,11 +935,11 @@ do -- Ordinary Kindle starts have no back marker. Supply the initial event only 
         -- As ReaderUI does, set/read document settings after plugin init and before the first tick.
         if c[6] then W.book.settings = { [c[3]] = c[4] } else W.settings[c[3]] = c[4] end
         run_ticks()
-        check(c[1] .. ": explicit rotation takes precedence without a sensor read",
-            W.sensor_reads == 0 and #W.gyro == 0 and W.rotation == rotation)
+        check(c[1] .. ": sensor wins over restored rotation", W.sensor_reads == 1
+            and W.gyro[1] == "4:71:2" and W.rotation == 2)
         check(c[1] .. ": saved value kept", (c[6] and W.book.settings or W.settings)[c[3]] == c[4])
         g:new{ ui = new_ui(c[2]) }; run_ticks()
-        check(c[1] .. ": not retried in the same process", W.sensor_reads == 0)
+        check(c[1] .. ": not retried in the same process", W.sensor_reads == 1)
     end
 
     world("startup-unrelated-settings")
@@ -953,6 +954,18 @@ do -- Ordinary Kindle starts have no back marker. Supply the initial event only 
     Device.input.handleGyroEv = void_ev -- a setting/plugin can change this before the first tick
     run_ticks()
     check("startup: ignored accelerometer is not read", W.sensor_reads == 0 and W.rotation == 0)
+
+    world("startup-persisted-zero-ignore")
+    W.sensor, W.settings.fm_rotation_mode = 16, 0
+    Device.input.handleGyroEv = void_ev
+    koreader(false); run_ticks()
+    check("persisted 0 with gyro ignored: no read or rotation", W.sensor_reads == 0 and W.rotation == 0)
+
+    world("startup-persisted-zero-lock")
+    W.sensor, W.settings.lock_rotation, W.settings.fm_rotation_mode, W.locked = 16, true, 0, true
+    koreader(false); run_ticks()
+    check("persisted 0 with gyro locked: upside down still allowed within portrait", W.sensor_reads == 1
+        and W.rotation == 2 and at("onRotation") and not at("sendEvent"))
 
     for _, c in ipairs({ { 17, 0, 0 }, { 16, 0, 2 }, { 18, 1, 3 }, { 15, 1, 1 } }) do
         world("startup-locked-" .. c[1])

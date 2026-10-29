@@ -236,15 +236,14 @@ KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KP
    the Kindle home screen is upside down, then KOReader's default is upright. The plugin now
    samples the sensor once on that start too, on the first UI tick after the browser or book
    restores its settings, using the same accelerometer handler and its ignore/lock rules.
-   An explicit saved browser rotation (`fm_rotation_mode`), reader default or document rotation
-   (`kopt_rotation_mode` for paged books, `copt_rotation_mode` for reflowable books) takes priority;
-   so does "Keep current rotation across views" (`lock_rotation`). A saved 0 is an intentional
-   upright choice, unlike an absent setting's fallback 0. These preferences are never changed.
-   This conservative startup rule leaves such saved orientations alone; the Grimoire-return
-   marker keeps its existing sensor-following behavior. The startup log starts with
-   `Grimoire: at KOReader startup` and says whether a saved choice was kept or a sensor read made.
-   The setting precedence follows upstream [FileManager](https://github.com/koreader/koreader/blob/master/frontend/apps/filemanager/filemanager.lua)
-   and [ReaderView](https://github.com/koreader/koreader/blob/master/frontend/apps/reader/modules/readerview.lua).
+   Saved browser (`fm_rotation_mode`), reader default or document rotations (`kopt_rotation_mode`
+   for paged books, `copt_rotation_mode` for reflowable books) and "Keep current rotation across
+   views" (`lock_rotation`) do not suppress this initial event: a commonly persisted upright 0
+   must not hide a Kindle held upside down. The same sensor-wins policy applies at ordinary
+   startup and on return from Grimoire, without directly changing those stored preferences.
+   KOReader's own [gyro handler](https://github.com/koreader/koreader/blob/master/frontend/device/input.lua)
+   still honors ignoring the accelerometer and locking rotations to the current orientation pair.
+   The startup log starts with `Grimoire: at KOReader startup` and says what was read and done.
 6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
    another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
    start. See grimoire/grimoire.log." over the book or the file browser.
