@@ -48,12 +48,14 @@ fn what_the_user_waits_on_goes_first() {
     bg_mirror_pdf("nb-c", 300.0, "/nonexistent/PDFs", false);
     bg_queue(BgKind::Template, Some("nb-d"), Some("/nonexistent/t.png"), 300.0, false);
     bg_mirror_pdf("nb-e", 300.0, "/nonexistent/PDFs", true);
+    bg_queue(BgKind::GraphLayout,Some("nb-map"),Some("/nonexistent/graph.ini"),300.0,false);
     let mut e = [Ended::default(); 8];
-    check!(drain(&mut e) == 6);
+    check!(drain(&mut e) == 7);
     check!(e[0].kind == BG_COMPACT_PAGES && e[1].kind == BG_TEMPLATE);
     check!(e[2].kind == BG_MIRROR_PDF && e[2].result == -1); // the export asked for (it fails here)
-    check!(e[3].kind == BG_MIRROR_PDF && e[3].result == 0); // the mirror, which reports nothing
-    check!(e[4].kind == BG_IMPORT_FOLDER && e[5].kind == BG_COMPACT_PAGES);
+    check!(e[3].kind == BgKind::GraphLayout as i32);
+    check!(e[4].kind == BG_MIRROR_PDF && e[4].result == 0); // the mirror, which reports nothing
+    check!(e[5].kind == BG_IMPORT_FOLDER && e[6].kind == BG_COMPACT_PAGES);
 }
 
 // A full queue lets its oldest compaction go (the pages stay listed for the next one), not the
@@ -81,6 +83,21 @@ fn a_full_queue_lets_a_compaction_go_first() {
     check!(compactions == 0);
 }
 
+fn graph_child_writes_the_notebooks_layout() {
+    let mut nb = NotebookInfo::default();
+    check!(store_create("Map child","",PAPER_BLANK,&mut nb)==0);
+    let mut nav = Nav::default(); nav_init(&mut nav);
+    check!(nav_set_name(&mut nav,nb.page_ids[0],"Start")==0);
+    check!(nav_save(nb.id.as_str(),&mut nav,&nb)==0);
+    let mut path = String::new(); check!(graph_ini_path(nb.id.as_str(),&mut path)==0);
+    bg_queue(BgKind::GraphLayout,Some(nb.id.as_str()),Some(&path),300.0,true);
+    let mut ended = [Ended::default();1];
+    check!(drain(&mut ended)==1 && ended[0].kind==BgKind::GraphLayout as i32 && ended[0].result==1);
+    let mut ini = GraphIni::default();
+    check!(graph_ini_read_path(&path,&mut ini)==0 && ini.has_gen && ini.pos.len()==1);
+    check!(ini.pos[0].pid==nb.page_ids[0]);
+}
+
 #[test]
 fn test_bgjob() {
     let root = format!("{}/bgjob-{}", tl_tmp(), std::process::id());
@@ -88,6 +105,7 @@ fn test_bgjob() {
     check!(store_init(&root) == 0);
     run!(what_the_user_waits_on_goes_first);
     run!(a_full_queue_lets_a_compaction_go_first);
+    run!(graph_child_writes_the_notebooks_layout);
     let _ = std::fs::remove_dir_all(&root);
     done();
 }

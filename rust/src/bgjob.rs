@@ -20,6 +20,8 @@ pub enum BgKind {
     Template = 2, // BG_TEMPLATE
     /// path: a folder of page images; makes a notebook of them (src/bgwork_template.c)
     ImportFolder = 3, // BG_IMPORT_FOLDER
+    /// id: notebook, path: graph.ini; layout is computed and saved by the child.
+    GraphLayout = 4,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -76,7 +78,7 @@ pub fn bg_cancel_notebook(id: &str) {
         let mut dropped = 0;
         let mut i = 0;
         while i < s.q.len() {
-            if s.q[i].kind == BgKind::CompactPages && s.q[i].id.as_bytes() == id.as_bytes() {
+            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout) && s.q[i].id.as_bytes() == id.as_bytes() {
                 take(&mut s.q, i);
                 dropped += 1;
             } else {
@@ -86,10 +88,10 @@ pub fn bg_cancel_notebook(id: &str) {
         dropped
     });
     for _ in 0..dropped {
-        qlog!("bg: compaction of %s dropped (the notebook opens or goes)", id);
+        qlog!("bg: notebook work for %s dropped (the notebook opens or goes)", id);
     }
     let pid = with(|s| {
-        if s.pid > 0 && s.running.kind == BgKind::CompactPages && s.running.id.as_bytes() == id.as_bytes() {
+        if s.pid > 0 && matches!(s.running.kind, BgKind::CompactPages | BgKind::GraphLayout) && s.running.id.as_bytes() == id.as_bytes() {
             s.pid
         } else {
             -1
@@ -152,7 +154,7 @@ pub fn bg_detach_rest() {
         let mut left = Vec::new();
         let mut i = 0;
         while i < s.q.len() {
-            if s.q[i].kind == BgKind::CompactPages {
+            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout) {
                 left.push(take(&mut s.q, i));
             } else {
                 i += 1;
@@ -161,7 +163,7 @@ pub fn bg_detach_rest() {
         left
     });
     for j in &left {
-        qlog!("bg: compaction of %s left for the next run", &j.id);
+        qlog!("bg: notebook work for %s left for the next run", &j.id);
     }
     let (jobs, running) = with(|s| (s.q.clone(), s.pid));
     if jobs.is_empty() {
@@ -210,7 +212,7 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 4] = ["export", "compaction", "template", "import"];
+const K_KIND_NAMES: [&str; 5] = ["export", "compaction", "template", "import", "map layout"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -245,9 +247,21 @@ fn run_mirror(j: &Job) -> i32 {
     rc
 }
 
+fn run_graph(j: &Job) -> i32 {
+    let mut nb = NotebookInfo::default();
+    let mut nav = Nav::default();
+    if store_load_info(j.id.as_str(), &mut nb) != 0 || nav_load(j.id.as_str(), &mut nav) != 0 {return -1;}
+    let mut graph = GraphModel::default();
+    if graph_build(&mut graph,&nb,&nav,0) != 0 {return -1;}
+    let mut ini = GraphIni::default();
+    if graph_ini_read_path(j.dir.as_str(),&mut ini) != 0 {return -1;}
+    graph_layout_job(&mut graph,&mut ini,j.dir.as_str())
+}
+
 fn run_job(j: &Job) -> i32 {
     match j.kind {
         BgKind::MirrorPdf => run_mirror(j),
+        BgKind::GraphLayout => run_graph(j),
         BgKind::CompactPages => bg_compact_pages(j.id.as_str(), j.dpi),
         BgKind::Template => bg_template(j.id.as_str(), j.dir.as_str(), j.dpi),
         BgKind::ImportFolder => bg_import_folder(j.dir.as_str(), j.dpi),
@@ -300,9 +314,10 @@ fn rank(j: &Job) -> i32 {
         return 0;
     }
     match j.kind {
-        BgKind::MirrorPdf => 1,
-        BgKind::ImportFolder => 2,
-        _ => 3,
+        BgKind::GraphLayout => 1,
+        BgKind::MirrorPdf => 2,
+        BgKind::ImportFolder => 3,
+        _ => 4,
     }
 }
 
