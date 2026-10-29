@@ -6,19 +6,26 @@
 wait 2000
 tap 1535 95
 wait 200
-tap 746 1930
+tap library controller
 wait 200
+expect library.sheet is shortcuts
 tap 930 895
 wait 300
+expect library.sheet is pair
 shot 01-searching
 wait 3000
+expect library.pair is idle 2 0
 shot 02-found
 tap 930 895
 wait 300
+expect library.pair is pairing 2 0
 shot 03-pairing
 wait 2500
+expect library.pair is idle 2 1
 shot 04-paired
 rotate 1
 wait 300
+expect library.sheet is pair
+expect library.pair is idle 2 1
 shot 05-paired-landscape
 quit

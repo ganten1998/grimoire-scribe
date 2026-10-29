@@ -622,7 +622,7 @@ c-check: c-test c-headless c-tools c-kindle
 	$(MAKE) BUILD=$(CBUILD) -o $(CBUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(CBUILD) $(SCEN_LANG) tests/share_check.sh $(CBUILD)/scen/b_library
 	BUILD=$(CBUILD) tests/live_check.sh
-	BUILD=$(CBUILD) tests/bt_check.sh
+	BUILD=$(CBUILD) BT_SCENARIOS=tests/c-bt tests/bt_check.sh
 	$(CBUILD)/host/grimoire-export --force $(CBUILD)/scen/b_library $(CBUILD)/export-check
 	@echo "C CHECK PASSED"
 c-package: c-kindle

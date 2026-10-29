@@ -2,6 +2,7 @@
 # Pairing a Bluetooth controller, end to end in the simulator: a stand-in for the helper's local API
 # (tests/fake_bthelper.py) on a free port, and tests/bt/*.qs run against it (make
 # scenarios never sees them: they need the stand-in). Also kindle/app/bluetooth.sh's host tests.
+# BT_SCENARIOS selects the frozen C reference's cases, whose Settings layout predates Gestures.
 # usage: [BUILD=build] tests/bt_check.sh
 set -eu
 BUILD=${BUILD:-build}
@@ -20,7 +21,7 @@ if ! PORT=$(cat "$B/helper.port" 2>/dev/null); then
     exit 1
 fi
 fail=0
-for s in tests/bt/*.qs; do
+for s in "${BT_SCENARIOS:-tests/bt}"/*.qs; do
     n=$(basename "$s" .qs)
     r=$B/$n
     mkdir -p "$r"
