@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 08:45-0500\n"
+"POT-Creation-Date: 2026-10-29 09:22-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -2381,7 +2381,9 @@ msgstr "Grimoire guarda hasta 32 figuras."
 #. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
 #: rust/src/library.rs
 msgid "Hold eraser needs the button held: hold it or drag with it."
-msgstr "Borrar mientras se pulsa necesita el botón pulsado: mantenlo o arrastra con él."
+msgstr ""
+"Borrar mientras se pulsa necesita el botón pulsado: mantenlo o arrastra con "
+"él."
 
 #. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
 #: rust/src/library.rs
@@ -2531,7 +2533,9 @@ msgstr "Restablecer"
 msgid ""
 "Draw a shape with one finger, swipe or tap with two fingers, or use the "
 "pen's button."
-msgstr "Dibuja una figura con un dedo, desliza o toca con dos dedos, o usa el botón del lápiz."
+msgstr ""
+"Dibuja una figura con un dedo, desliza o toca con dos dedos, o usa el botón "
+"del lápiz."
 
 #: rust/src/library.rs
 msgid "One stroke, without lifting. Two turns or a loop."
@@ -3087,6 +3091,13 @@ msgstr "Para cambiar uno, mantenlo pulsado en la página."
 msgid "Not enough memory for the map."
 msgstr "No hay memoria suficiente para el mapa."
 
+#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
+#. annotated from KOReader): "p. 12". 355 px at 34 px.
+#: rust/src/mapview.rs rust/src/pagesview.rs
+#, c-format
+msgid "p. %d"
+msgstr "p. %d"
+
 #: rust/src/mapview.rs
 #, c-format
 msgid "Not linked yet: %d page. Show"
@@ -3182,13 +3193,6 @@ msgstr "Nombre de página"
 #, c-format
 msgid "Page %d (open)"
 msgstr "Página %d (abierta)"
-
-#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
-#. annotated from KOReader): "p. 12". 355 px at 34 px.
-#: rust/src/pagesview.rs
-#, c-format
-msgid "p. %d"
-msgstr "p. %d"
 
 #: rust/src/pagesview.rs
 msgid "Name a page to list it here."

@@ -22,9 +22,9 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release 2.0.0-beta.5.** Grimoire is in daily use on
-> one Kindle Scribe (2024), and testers run it on theirs. It autosaves every stroke and keeps
-> damaged files instead of overwriting them, but treat it as a beta: copy your notebooks off now
+> **Pre-release 2.0.0-rc.1.** Earlier builds are in daily use on
+> Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
+> damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
 > and then (Library > Share makes that one click).
 
 ## Will it run on my Kindle?

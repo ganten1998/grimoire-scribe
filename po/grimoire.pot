@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-beta.5\n"
+"Project-Id-Version: Grimoire 2.0.0-rc.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 08:45-0500\n"
+"POT-Creation-Date: 2026-10-29 09:22-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -3023,6 +3023,13 @@ msgstr ""
 msgid "Not enough memory for the map."
 msgstr ""
 
+#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
+#. annotated from KOReader): "p. 12". 355 px at 34 px.
+#: rust/src/mapview.rs rust/src/pagesview.rs
+#, c-format
+msgid "p. %d"
+msgstr ""
+
 #: rust/src/mapview.rs
 #, c-format
 msgid "Not linked yet: %d page. Show"
@@ -3117,13 +3124,6 @@ msgstr ""
 #: rust/src/pagesview.rs
 #, c-format
 msgid "Page %d (open)"
-msgstr ""
-
-#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
-#. annotated from KOReader): "p. 12". 355 px at 34 px.
-#: rust/src/pagesview.rs
-#, c-format
-msgid "p. %d"
 msgstr ""
 
 #: rust/src/pagesview.rs

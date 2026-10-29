@@ -11,6 +11,29 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.1 (2026-10-29)
+
+This candidate includes Index phases 2–6, the KOReader orientation fix, nested notebook folders
+and the landscape toolbar placement. It is prepared with Rust 1.97.1, Zig 0.16.0 and
+cargo-zigbuild 0.23.0. Automated coverage includes the model and allocation-failure tests,
+handwriting replay, map jobs and cache races, input recording, controller and pen-button scenarios,
+English/Spanish screen-fit checks, the ARM build and release packaging checks.
+
+No Kindle installation or owner acceptance of this exact candidate is claimed. Device acceptance
+remains pending, particularly:
+
+1. Update the Grimoire KOReader plugin, leave Grimoire while holding the Kindle upside down,
+   check tap alignment, then keep turning the device to confirm subsequent sensor changes.
+2. Rotate with Whole page sideways on and the toolbar on either side, then repeat with it off.
+3. Create and rename nested folders, move a notebook, and create/edit/undo links between its
+   pages. New selection strokes disappear; beta.5 lasso ink remains ordinary ink.
+4. Try held shapes, moving on to cancel, recorded finger gestures and pen-button actions on
+   actual notebook pages. Check accidental activations, latency, Live view and e-ink refreshes.
+
+The detailed phase-specific checks below remain applicable. The real-hand touch study has not
+been supplied; provisional tuning is identified in its notes rather than presented as measured
+Kindle success rates. No tag, public release or KPM feed update is part of candidate preparation.
+
 ## Index phase 6: pen-button gestures (device checks pending)
 
 No Kindle installation or owner acceptance result is claimed for Phase 6. The 350 ms

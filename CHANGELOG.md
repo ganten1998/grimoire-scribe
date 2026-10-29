@@ -1,6 +1,35 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-rc.1 (2026-10-29)
+
+- **Links without ink:** draw around an area to select it, then choose a page in the same notebook
+  or The Index. The selection disappears; a visible border is ordinary ink drawn separately.
+  Hold a link to rename its destination, change its target, redraw its area or remove it. Link
+  changes have undo/redo. Existing beta.5 lasso strokes remain ordinary ink, including after
+  deleting their link; the page file format is unchanged.
+- **Record your gestures:** Settings > Gestures assigns touch patterns and recorded finger shapes
+  to actions. Recording checks consistency and shows a conflict before replacing a binding.
+  Three-finger patterns appear only on panels that support three contacts. Real-device tuning
+  and false-trigger measurements remain part of candidate acceptance.
+- **Smart shapes:** hold the pen still at the end of a line, circle, ellipse, triangle or box to
+  preview a clean shape. Lift to keep it, or move on to continue the original stroke. Recognition
+  starts enabled, has a toolbar switch and hold-time choices, and supports shaping the last
+  stroke with one undoable replacement. Erasing, white ink and link selection are excluded.
+- **The Index map:** the Links bar's Index button and the list's Graph button show the notebook's
+  linked pages, named sections and unlinked pages. Select a dot for its page card; pan, pinch,
+  switch All/Around, rename a page or open it. Large layouts run in the background. Incoming-link
+  counts appear in the list and a Links-bar chip opens Around for the current page. Links to
+  The Index retain their named-page-list meaning.
+- **Pen-button gestures:** assign clicks, double/triple clicks, holds and button-held drags.
+  Pan and zoom drags leave no ink; momentary erasing starts on button press. Triple click and
+  hold still clear the page by default; double click has no built-in assignment. A second
+  button is offered only when the pen reports it.
+- **Nested notebook folders:** create subfolders inside folders, move notebooks to nested
+  destinations and rename a whole folder subtree. Back goes up one level. Folder ZIP exports
+  include descendants and retain their hierarchy.
+- **Toolbar beside a landscape page:** with Whole page sideways enabled, rotating places the
+  toolbar just outside the page on its chosen side with a small gap. Flipping between landscape
+  orientations retains that placement. The width-filling setting keeps its existing behavior.
 
 - **Keyboard shortcuts in Live view:** with the Live view page focused in a browser, that
   computer's keys run Grimoire's shortcut actions on the Kindle. They come from their own file,
