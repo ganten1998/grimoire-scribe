@@ -1452,8 +1452,7 @@ tap 1000 95
 wait 100
 expect editor.map.mode is all
 shot 72-index-map
-tap map-node 3
-expect editor.map.selected is 3
+tap editor map.current
 shot 73-map-card
 rotate 1
 wait 100

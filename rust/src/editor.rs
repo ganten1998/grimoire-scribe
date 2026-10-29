@@ -1211,6 +1211,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if a.scr != ScreenId::Editor || !s.open {
         return None;
     }
+    if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
     if s.tools_open {
         let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}

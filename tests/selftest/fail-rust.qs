@@ -2,6 +2,7 @@
 # or a tap fails, so the run must report each of them by its line number and exit with status 3
 # (see the scenarios rule in the Makefile). make c-check skips it (SCEN_SKIP_RUST_ONLY).
 wait 200
+expect pen.gesture is Button.double
 expect status.zone is 0 0 0 0
 expect status.shown is 1
 expect gestures.pages is touch.2.up
