@@ -438,6 +438,39 @@ fn typed_name_is_stored_whole() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// The top dock (keyboard_set_dock): undocked, the modal is exactly where it always was, on every screen
+// the device and the simulator use; docked, its top is the dock and its size is unchanged; keyboard_open
+// puts a docked keyboard back at the bottom, and keyboard_draw lays out where the dock says.
+fn modal_rect_takes_the_dock() {
+    let h = ui_px(170.0) + 5 * ui_px(150.0) + ui_px(60.0);
+    for (w, sh) in [(1860, 2480), (2480, 1860), (1986, 2648)] {
+        let screen = Rect { x: 0, y: 0, w, h: sh };
+        let before = Rect { x: ui_px(20.0), y: sh - h - ui_px(20.0), w: w - ui_px(40.0), h };
+        check!(keyboard_modal_rect(screen) == before);
+        check!(keyboard_modal_rect_docked(screen, 0) == before);
+        let docked = keyboard_modal_rect_docked(screen, 150);
+        check!(docked.y == 150);
+        check!(docked.x == before.x && docked.w == before.w && docked.h == before.h);
+    }
+    // upright on the Scribe the docked modal ends at 1130, its keys 1330 px above the bottom dock's
+    let up = keyboard_modal_rect_docked(K_SCREEN, 150);
+    check!(up.y + up.h == 150 + h);
+    check!(keyboard_modal_rect(K_SCREEN).y - up.y == K_SCREEN.h - h - ui_px(20.0) - 150);
+    let mut kb = Keyboard::default();
+    open_kb(&mut kb, b"");
+    let bottom = kb.area;
+    keyboard_set_dock(&mut kb, 150);
+    draw(&mut kb);
+    check!(kb.area.y == 150 && kb.area.h == bottom.h);
+    let mut r = Rect::default();
+    check!(keyboard_key_rect(&kb, 'q' as u32, &mut r) && r.y < 150 + h && r.y > 150);
+    keyboard_set_dock(&mut kb, -5);
+    check!(kb.dock_y == 0);
+    keyboard_set_dock(&mut kb, 150);
+    open_kb(&mut kb, b"");
+    check!(kb.dock_y == 0 && kb.area == bottom);
+}
+
 fn setup() {
     ui_init(300.0);
     if font_init() != 0 {
@@ -465,6 +498,7 @@ fn test_keyboard() {
     run!(accents_in_every_face);
     run!(one_character_keys_at_title_size);
     run!(typed_name_is_stored_whole);
+    run!(modal_rect_takes_the_dock);
     G_C.with(|c| canvas_free(&mut c.borrow_mut()));
     done();
 }

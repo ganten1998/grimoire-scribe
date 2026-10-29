@@ -45,6 +45,10 @@ pub struct Keyboard {
     /// when a pause in typing gets the keys their grayscale refresh
     /// (app_keyboard_tick), 0 for none due
     pub settle_at: u32,
+    /// 0 docks the modal at the bottom of the screen (every keyboard until a caller says otherwise);
+    /// otherwise the modal's top y on the screen, for a keyboard that must keep clear of something low on
+    /// the page (a link's area being given a target)
+    pub dock_y: i32,
 }
 
 // keyboard.c: on-screen keyboard modal. Layout is computed from the area it was drawn in,
@@ -239,12 +243,26 @@ pub fn keyboard_upper(c: u32) -> u32 {
 /// Where keyboard_draw puts the keyboard on this screen: along the bottom, 20 px in from the sides and above the
 /// edge (a screen that lays out around it knows before it is drawn).
 pub fn keyboard_modal_rect(screen: Rect) -> Rect {
-    modal_rect(screen)
+    modal_rect(screen, 0)
 }
 
-fn modal_rect(screen: Rect) -> Rect {
+/// keyboard_modal_rect for a keyboard docked with keyboard_set_dock: dock_y 0 is the bottom, as above;
+/// otherwise the modal's top sits dock_y below the screen's top.
+pub fn keyboard_modal_rect_docked(screen: Rect, dock_y: i32) -> Rect {
+    modal_rect(screen, dock_y)
+}
+
+fn modal_rect(screen: Rect, dock_y: i32) -> Rect {
     let h = ui_px(170.0) + 5 * ui_px(150.0) + ui_px(60.0);
-    Rect { x: screen.x + ui_px(20.0), y: screen.y + screen.h - h - ui_px(20.0), w: screen.w - ui_px(40.0), h }
+    let y = if dock_y > 0 { screen.y + dock_y } else { screen.y + screen.h - h - ui_px(20.0) };
+    Rect { x: screen.x + ui_px(20.0), y, w: screen.w - ui_px(40.0), h }
+}
+
+/// Docks an open keyboard: top_y 0 keeps it at the bottom; otherwise the modal's top is at top_y (a caller
+/// passes the line below the clock corner, so the keyboard never covers it). keyboard_open resets the dock to
+/// the bottom, so a caller that docks calls this after it.
+pub fn keyboard_set_dock(kb: &mut Keyboard, top_y: i32) {
+    kb.dock_y = top_y.max(0);
 }
 
 fn field_rect(area: Rect) -> Rect {
@@ -383,11 +401,12 @@ pub fn keyboard_draws_take() -> u32 {
     G_DRAWS.with(|g| g.replace(0))
 }
 
-/// Draws the modal (text field at top, keys below) anchored to the bottom of screen.
+/// Draws the modal (text field at top, keys below) anchored to the bottom of screen, or at its dock
+/// (keyboard_set_dock).
 /// Returns the rect it covered (to invalidate).
 pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
     G_DRAWS.with(|g| g.set(g.get().wrapping_add(1)));
-    let area = modal_rect(screen);
+    let area = modal_rect(screen, kb.dock_y);
     kb.area = area;
     ui_frame(c, area, ui_px(24.0), 255, true, 0);
     ui_frame(c, area, ui_px(24.0), 0, false, ui_px(6.0));
