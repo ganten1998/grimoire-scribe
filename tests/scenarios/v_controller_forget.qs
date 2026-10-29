@@ -8,11 +8,13 @@
 wait 150
 tap 1535 95
 wait 200
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 629
+expect library.ui_at.930.469 is buttons.group.editing
+tap 930 469
 wait 100
 expect library.buttons_group is editing
 expect pads.undo is South
@@ -42,7 +44,8 @@ expect pads.redo is
 # Pages: the previous / next page row, both actions and the D-pad's Left and Right with them
 tap 930 1696
 wait 100
-tap 930 949
+expect library.ui_at.930.789 is buttons.group.pages
+tap 930 789
 wait 100
 expect library.buttons_group is pages
 expect pads.previous-page is Select,Left
@@ -56,9 +59,9 @@ expect toast is No buttons for Previous / next page now.
 expect library.learning is
 # A finger that moves off the row: no hold, no learning
 touch down 930 576
-touch move 930 687
+touch move 20 687
 wait 700
-touch up 930 687
+touch up 20 687
 wait 100
 expect library.learning is
 # The Tools group's previous / next tool keep the D-pad's Up and Down

@@ -20,7 +20,8 @@ wait 100
 expect toast is Controller disconnected
 tap 1535 95
 wait 200
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 200
 expect library.sheet is shortcuts
 shot 01-controller-sheet
@@ -29,7 +30,8 @@ wait 200
 expect library.sheet is buttons
 expect library.buttons_group is
 shot 02-buttons
-tap 930 629
+expect library.ui_at.930.469 is buttons.group.editing
+tap 930 469
 wait 100
 expect library.buttons_group is editing
 shot 02-buttons-editing
@@ -46,7 +48,8 @@ expect toast is That button is no longer for Eraser.
 tap 930 1696
 wait 100
 expect library.buttons_group is
-tap 930 949
+expect library.ui_at.930.789 is buttons.group.pages
+tap 930 789
 wait 100
 expect library.buttons_group is pages
 tap 930 416
@@ -63,35 +66,43 @@ wait 100
 expect library.learning is
 expect pads.previous-page is 316
 expect pads.next-page is 317
-# Add a link and Name the page, under the Index
-tap 930 1536
+# The last Pages action and Done are distinct.
+expect library.ui_at.930.1696 is buttons.row.9
+tap 930 1696
+wait 100
+expect library.learning is gesture-new-page
+key 323 0 1
+wait 100
+expect pads.gesture-new-page is 323
+expect library.ui_at.930.1856 is done
+tap 930 1856
+wait 100
+# Add a link and Name the page now live in Index.
+expect library.ui_at.930.949 is buttons.group.index
+tap 930 949
+wait 100
+expect library.buttons_group is index
+expect library.ui_at.930.1216 is buttons.row.5
+tap 930 1216
 wait 100
 expect library.learning is add-link
 key 321 0 1
 wait 100
-tap 930 1696
+expect library.ui_at.930.1376 is buttons.row.6
+tap 930 1376
 wait 100
 expect library.learning is name-page
 key 322 0 1
 wait 100
-expect library.learning is
 expect pads.add-link is 321
 expect pads.name-page is 322
-shot 04-pages-links
-# The last action row is distinct from Name and Done, and learns the actual gesture toggle.
-tap 930 1856
-wait 100
-expect library.learning is gesture-new-page
-shot 04-pages-gesture-learning
-key 323 0 1
-wait 100
-expect library.learning is
-expect pads.gesture-new-page is 323
-tap 930 2016
+expect library.ui_at.930.1696 is done
+tap 930 1696
 wait 100
 expect library.buttons_group is
 # Tools: each pen on its own (the picker's order), and previous / next tool
-tap 930 789
+expect library.ui_at.930.629 is buttons.group.tools
+tap 930 629
 wait 100
 expect library.buttons_group is tools
 shot 04-tools
@@ -128,7 +139,8 @@ expect library.buttons.picker-next is 320
 shot 04-tools-picker
 tap 930 2115
 wait 100
-tap 930 629
+expect library.ui_at.930.469 is buttons.group.editing
+tap 930 469
 wait 100
 tap 930 736
 wait 100
@@ -139,7 +151,8 @@ expect pads.redo is North
 shot 05-learned
 tap 930 1696
 wait 100
-tap 930 1589
+expect library.ui_at.930.1749 is done
+tap 930 1749
 wait 100
 expect library.sheet is shortcuts
 tap 930 1695
@@ -212,11 +225,13 @@ pentap panel library
 wait 300
 tap 1535 95
 wait 200
-tap 746 1930
+expect library.ui_at.580.1930 is controller
+tap 580 1930
 wait 200
 tap 930 1215
 wait 200
-tap 930 1429
+expect library.ui_at.930.1589 is buttons.reset
+tap 930 1589
 wait 100
 expect pads.undo is South
 expect pads.previous-page is Select,Left

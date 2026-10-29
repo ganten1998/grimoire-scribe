@@ -5,7 +5,8 @@
 wait 150
 tap 1535 95
 wait 200
-tap 1152 1930
+expect library.ui_at.1200.1930 is updates
+tap 1200 1930
 wait 200
 tap 930 1055
 wait 600

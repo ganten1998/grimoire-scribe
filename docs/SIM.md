@@ -201,8 +201,22 @@ shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner
 The trace contains no pen coordinates: replay cannot measure hover-distance acceptance.
 
 The Settings bottom row is KOReader | Controller | Gestures | Updates | Done, in either
-orientation. Phase 3 bottom-row and record-card coordinates await verification by the main
-scenario owner; use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
+orientation. These interior tap points were checked with `library.ui_at` in English and
+Spanish, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
+
+| Target | Upright | Sideways |
+|---|---|---|
+| Controller | 580, 1930 | 863, 1695 |
+| Gestures | 890, 1930 | 1170, 1695 |
+| Updates | 1200, 1930 | 1470, 1695 |
+| Settings Done | 1550, 1930 | 1820, 1695 |
+| Record Use (when enabled) | 500, 1650 | 810, 1340 |
+| Record Try again | 930, 1650 | 1240, 1340 |
+| Record Cancel | 1360, 1650 | 1670, 1340 |
+
+The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
+and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
+Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
 values include `controller`, `gestures`, `updates`, `done`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
 `gestures.reset.cancel`, `record.use`, `record.retry` and `record.cancel`. This is a hit-test
@@ -214,7 +228,9 @@ to name it and `library.record` to be `wait`. A paired row continues with the se
 after saving the first. Use `tapn`/`swipe` for a pattern; expect `pattern touch.2.tap` (for example), then tap
 Use. For a shape, use `shape Z ...` with distinct seeds for repeated samples, checking
 `shape 1`, then `ready`; a third sample is optional. Use runs the slip/conflict checks before
-saving. Check `library.record.line` for the refusal or reassignment reason, and check
+saving, or the third sample runs them immediately. If the first Use discovers that another
+action owns the shape, the card names it and a second Use confirms the move.
+Check `library.record.line` for the refusal or reassignment reason, and check
 `gestures.ACTION`, `gestures.shape.ACTION` and the file after success. Try again restarts the
 attempt; Cancel leaves the bindings unchanged. To exercise a failed save, use the main
 scenario owner's fixture and assert that the live binding and card survive unchanged.

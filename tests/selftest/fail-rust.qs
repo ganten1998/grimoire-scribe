@@ -20,3 +20,5 @@ expect editor.lasso is 9
 expect editor.linkto is pick
 expect editor.link_card is 1
 pentap panel nosuchbutton
+
+expect fshape.state is drawing
