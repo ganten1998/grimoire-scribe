@@ -5,8 +5,8 @@
 # on a pin picks it and leaves the tool button's pen; so does a pinned pen picked in the picker.
 # While a pin is in use, the tool button's first tap picks its own pen back, and the next opens the
 # picker. The eraser, tapped on and off, goes back to the pen used just before it (a pin), or to
-# the tool button's pen once that pin is gone. Collapsed and expanded; turned sideways, where four
-# pins fit with the panel's margins (the buttons 1% smaller); a fifth pin is refused with a toast; the
+# the tool button's pen once that pin is gone. Collapsed and expanded; turned sideways, where three
+# pins fit with the panel's margins (the buttons 1% smaller); a fourth pin is refused with a toast; the
 # tool button's own pen pinned, the tool button shows a grid, which always opens the picker;
 # unpinning the pen in use moves it to the tool button. Last, every pin taken off: the panel is as
 # it was.
@@ -142,8 +142,8 @@ expect size is 2480x1860
 expect editor.panel_rect is 1962 29 128 1819
 expect editor.panel_button is 100
 shot 04-sideways-two-pins
-# Two more pinned sideways (Marker, Calligraphy): the panel moves up to keep its 12 px margins,
-# its buttons at full size; the picker stays where it opened (the fineliner's pin is in use: the
+# The third pin added sideways (Marker): the panel moves up to keep its 12 px margins,
+# its buttons 1% smaller; the picker stays where it opened (the fineliner's pin is in use: the
 # tool button's first tap picks its pencil)
 pentap panel tool-picker
 wait 200
@@ -156,28 +156,26 @@ expect editor.pin_mode is 1
 pentap editor picker.tool:marker
 wait 200
 expect editor.pins is highlighter,fineliner,marker
+expect settings.panel_tools is highlighter,fineliner,marker
+expect editor.panel_rect is 1962 18 128 1830
+expect editor.panel_button is 99
+# A fourth: refused, with a toast
 pentap editor picker.tool:calligraphy
 wait 200
-expect editor.pins is highlighter,fineliner,marker,calligraphy
-expect editor.panel_rect is 1962 18 128 1820
-expect editor.panel_button is 93
-# A fifth: refused, with a toast
-pentap editor picker.tool:pencil
-wait 200
-expect toast is The panel holds up to 4 pens. Unpin one first.
-expect editor.pins is highlighter,fineliner,marker,calligraphy
+expect toast is The panel holds up to 3 pens. Unpin one first.
+expect editor.pins is highlighter,fineliner,marker
 expect editor.modal is tools
-shot 05-sideways-four-pinned
+shot 05-sideways-three-pinned
 pentap editor picker.pin-mode
 wait 200
 pentap 300 1500
 wait 200
 expect editor.modal is none
-shot 06-sideways-four-pins
-# The fourth pin writes; the eraser under it, on and off, goes back to it
-pentap panel tool:calligraphy
+shot 06-sideways-three-pins
+# The third pin writes; the eraser under it, on and off, goes back to it
+pentap panel tool:marker
 wait 100
-expect editor.tool is calligraphy
+expect editor.tool is marker
 pen line 300 900 1300 950 40 0.7 0.7
 wait 300
 expect editor.strokes is 2
@@ -186,15 +184,15 @@ wait 100
 expect editor.tool is eraser
 pentap panel eraser
 wait 100
-expect editor.tool is calligraphy
+expect editor.tool is marker
 rotate 0
 wait 300
 expect size is 1860x2480
-expect editor.panel_rect is 1704 220 128 2058
+expect editor.panel_rect is 1704 220 128 1950
 expect editor.panel_button is 100
-shot 07-upright-four-pins
+shot 07-upright-three-pins
 # The tool button's own pen pinned (Fineliner out, Pencil in): the tool button shows a grid (the
-# calligraphy pen's pin is in use: the first tap picks the pencil)
+# marker pen's pin is in use: the first tap picks the pencil)
 pentap panel tool-picker
 wait 200
 expect editor.tool is pencil
@@ -206,7 +204,7 @@ pentap editor picker.tool:fineliner
 wait 200
 pentap editor picker.tool:pencil
 wait 200
-expect editor.pins is highlighter,marker,calligraphy,pencil
+expect editor.pins is highlighter,marker,pencil
 expect editor.tool_button is grid
 pentap editor picker.pin-mode
 wait 200
@@ -215,7 +213,7 @@ wait 200
 expect editor.modal is none
 shot 08-grid-tool-button
 # With the highlighter's pin in use, the grid opens the picker (its pencil is a pin of its own);
-# closed again. The pencil's pin (the fourth) picks it; the highlighter picked in the picker (the
+# closed again. The pencil's pin (the third) picks it; the highlighter picked in the picker (the
 # grid opens it) is the one in use, and the tool button keeps its pen
 pentap panel tool:highlighter
 wait 100
@@ -245,7 +243,7 @@ pentap editor picker.pin-mode
 wait 200
 pentap editor picker.tool:highlighter
 wait 200
-expect editor.pins is marker,calligraphy,pencil
+expect editor.pins is marker,pencil
 expect editor.tool is highlighter
 expect editor.draw_tool is highlighter
 expect editor.tool_button is highlighter
@@ -272,7 +270,7 @@ pentap editor picker.pin-mode
 wait 200
 pentap editor picker.tool:marker
 wait 200
-expect editor.pins is calligraphy,pencil
+expect editor.pins is pencil
 pentap editor picker.pin-mode
 wait 200
 pentap 300 1800
@@ -288,8 +286,6 @@ pentap panel tool-picker
 wait 200
 pentap editor picker.pin-mode
 wait 200
-pentap editor picker.tool:calligraphy
-wait 200
 pentap editor picker.tool:pencil
 wait 200
 expect editor.pins is
@@ -301,6 +297,21 @@ pentap 300 1800
 wait 200
 expect editor.modal is none
 shot 09-no-pins
+# The fourth-pin refusal never removes Calligraphy from the picker: it still draws normally.
+pentap panel tool-picker
+pentap panel picker.tool:calligraphy
+expect editor.tool is calligraphy
+pen line 300 1100 1300 1150 40 0.7 0.7
+wait 700
+expect editor.strokes is 3
+expect editor.stroke_look is calligraphy
+expect editor.live_matches_render is 1
+pentap panel eraser
+expect editor.tool is eraser
+pentap panel eraser
+expect editor.tool is calligraphy
+pentap panel undo
+expect editor.strokes is 2
 pentap panel library
 wait 500
 expect screen is library

@@ -29,7 +29,7 @@ pentap panel tool-picker
 wait 200
 pentap 1425 878
 wait 200
-pentap 1504 561
+pentap panel picker.tool:marker
 wait 200
 expect editor.modal is none
 expect settings.white is 1
@@ -79,7 +79,7 @@ wait 200
 pentap 951 878
 wait 200
 expect settings.white is 0
-pentap 872 395
+pentap panel picker.tool:pencil
 wait 200
 expect editor.modal is none
 expect editor.tool is pencil

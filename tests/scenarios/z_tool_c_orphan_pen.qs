@@ -34,12 +34,12 @@ expect editor.white_mark is 1
 # The marker pinned and in use: it stays on its pin through the Library and back
 pentap panel tool-picker
 wait 200
-pentap 1600 273
+pentap panel picker.pin-mode
 wait 200
-pentap 1504 561
+pentap panel picker.tool:marker
 wait 200
 expect editor.pins is marker
-pentap 1600 273
+pentap panel picker.pin-mode
 wait 200
 pentap 300 1800
 wait 200

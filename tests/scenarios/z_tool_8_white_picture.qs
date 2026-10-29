@@ -34,7 +34,7 @@ pentap panel tool-picker
 wait 200
 pentap 1425 878
 wait 200
-pentap 1504 561
+pentap panel picker.tool:marker
 wait 200
 expect settings.white is 1
 pen line 300 778 1300 778 40 1.0 1.0

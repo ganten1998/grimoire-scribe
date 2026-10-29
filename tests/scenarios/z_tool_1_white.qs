@@ -66,7 +66,7 @@ expect editor.white_mark is 1
 # Another pen picked keeps white: the marker draws white marker
 pentap panel tool-picker
 wait 200
-pentap 1504 561
+pentap panel picker.tool:marker
 wait 200
 expect editor.modal is none
 expect editor.tool is marker

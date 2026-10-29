@@ -1,6 +1,7 @@
-// test_panel.c: the editor's floating panel (src/panel.h). With 0 to 4 pens pinned it fits the
+// The editor's floating panel. With 0 to 3 pens pinned it fits the
 // 2022/2024 Scribes' screen and the Scribe 3's and Colorsoft's, upright and sideways, keeping its
-// 12 px margins and its buttons at full size; the collapsed square never changes. Next and previous
+// 12 px margins (99 px buttons with three pins on older Scribes sideways, otherwise full size).
+// The collapsed square never changes. Next and previous
 // tool go through its pens alone, and the tool picker's next and previous through the picker's nine.
 // Index loops and float comparisons are written as the C test writes them.
 #![allow(clippy::needless_range_loop, clippy::float_cmp)]
@@ -11,17 +12,48 @@ use testlib::*;
 
 fn fits_both_scribes_both_ways() {
     check!(PANEL_BUTTONS == 13);
+    check!(PANEL_PINS_MAX == 3);
     for (w,h) in [(1860,2480),(2480,1860),(1986,2648),(2648,1986)] {
         for pins in 0..=PANEL_PINS_MAX as i32 {
             let f = panel_fit(h,pins);
             check!(panel_height(f,pins)+2*ui_px(PANEL_MARGIN as f32)<=h);
-            check!(panel_w()<=w && f.scale >= 0.93 && f.space >= 0.5);
-            check!(panel_btn_h(f)>=ui_px(93.0));
+            check!(panel_w()+2*ui_px(PANEL_MARGIN as f32)<=w && f.scale >= 0.99 && f.space >= 0.5);
+            check!(panel_btn_h(f)>=ui_px(99.0));
+            // Only three pins on the older Scribes in landscape need smaller buttons.
+            check!(panel_btn_h(f)==ui_px(if h==1860 && pins==3 {99.0}else{100.0}));
             if h>=2480 {check!(f.scale==1.0 && f.space==1.0);}
         }
     }
     check!(panel_height(PanelFit{scale:1.0,space:1.0},0)==1626);
     check!(panel_box()==ui_px(120.0));
+}
+
+fn three_pins_roundtrip_and_a_fourth_is_refused() {
+    let root = std::path::PathBuf::from(tl_tmp()).join(format!("grimoire-panel-pins-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    check!(store_init(root.to_str().unwrap()) == 0);
+    let mut s = Settings::default();
+    settings_default(&mut s);
+    for t in [TOOL_HIGHLIGHTER, TOOL_FINELINER, TOOL_MARKER] {
+        check!(settings_toggle_pin(&mut s, t));
+    }
+    check!(!settings_toggle_pin(&mut s, TOOL_CALLIGRAPHY));
+    let mut text = String::new();
+    settings_pins_text(&s, &mut text, 128);
+    check!(text == "highlighter,fineliner,marker" && s.npins == 3);
+    check!(settings_save(&s) == 0);
+    let mut restored = Settings::default();
+    check!(settings_load(&mut restored) == 0);
+    settings_pins_text(&restored, &mut text, 128);
+    check!(text == "highlighter,fineliner,marker" && restored.npins == 3);
+    check!(!settings_pinned(&restored, TOOL_CALLIGRAPHY));
+    // A replacement keeps the remaining pins' order and survives another restart.
+    check!(settings_toggle_pin(&mut restored, TOOL_FINELINER));
+    check!(settings_toggle_pin(&mut restored, TOOL_CALLIGRAPHY));
+    check!(settings_save(&restored) == 0 && settings_load(&mut s) == 0);
+    settings_pins_text(&s, &mut text, 128);
+    check!(text == "highlighter,marker,calligraphy");
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 // A screen far shorter than any Scribe's: the room between the buttons goes down to half, then
@@ -147,6 +179,7 @@ fn test_panel() {
     ui_init(300.0);
     run!(fits_both_scribes_both_ways);
     run!(shrinks_to_fit_a_short_screen);
+    run!(three_pins_roundtrip_and_a_fourth_is_refused);
     run!(next_tool_walks_the_panels_pens);
     run!(picker_step_walks_the_nine);
     done();

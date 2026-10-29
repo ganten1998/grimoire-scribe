@@ -39,15 +39,15 @@ wait 400
 expect editor.strokes is 1
 expect toast not Page cleared
 # Held while Pin mode pins the highlighter, then Done and the picker closed, the button still down
-pentap 1600 273
+pentap panel picker.pin-mode
 wait 200
 expect editor.pin_mode is 1
 side on
-pentap 1504 727
+pentap panel picker.tool:highlighter
 wait 1300
 expect editor.pins is highlighter
 expect editor.strokes is 1
-pentap 1600 273
+pentap panel picker.pin-mode
 wait 200
 pentap 300 1800
 wait 300

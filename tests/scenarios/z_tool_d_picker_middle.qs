@@ -18,7 +18,10 @@ expect editor.panel_rect is 900 220 128 1626
 pentap panel tool-picker
 wait 200
 expect editor.modal is tools
-expect editor.tools_rect is 734 220 1116 904
+expect editor.tools_rect is 734 220 1116 768
+expect editor.shapes_menu is 0
+expect settings.shapes is 1
+expect settings.shape_hold_ms is 550
 # Pin, at the picker's top right: Pin mode; White there does nothing; Done
 pentap editor picker.pin-mode
 wait 200
@@ -45,14 +48,23 @@ expect editor.modal is none
 expect editor.tool is ballpoint
 expect editor.draw_tool is ballpoint
 expect editor.strokes is 0
+expect settings.shapes is 1
+expect settings.shape_hold_ms is 550
 shot 02-closed
+# Smart Shapes is a separate sheet reached from its own panel button.
+pentap panel shapes
+expect editor.shapes_menu is 1
+pentap panel shapes.done
+expect editor.shapes_menu is 0
+expect editor.modal is none
+expect editor.tool is ballpoint
 # Sideways there is room right of the panel
 rotate 1
 wait 300
 pentap panel tool-picker
 wait 200
 expect editor.modal is tools
-expect editor.tools_rect is 826 220 1116 904
+expect editor.tools_rect is 826 220 1116 768
 pentap 300 1700
 wait 200
 expect editor.modal is none
