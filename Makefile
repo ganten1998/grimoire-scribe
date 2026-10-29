@@ -162,6 +162,7 @@ SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_D
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
+SELFTEST_PASS = $(if $(SCEN_SKIP_RUST_ONLY),tests/selftest/pass-c.qs,tests/selftest/pass.qs)
 scenarios: $(BUILD)/host/grimoire-headless
 	@unset $(SIM_HOOKS); \
 	failed=; skipped=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); note=; \
@@ -193,7 +194,7 @@ scenarios: $(BUILD)/host/grimoire-headless
 	done; \
 	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
 	echo "== selftest pass (every expect holds: exit 0, and the PDF export is done)"; \
-	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=tests/selftest/pass.qs GRIMOIRE_SHOTS=$$d/shots \
+	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=$(SELFTEST_PASS) GRIMOIRE_SHOTS=$$d/shots \
 	  $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
 	if ! ls $$d/pass/PDFs/*.pdf >/dev/null 2>&1; then \
 	  echo "selftest pass: the run ended before its PDF export"; failed="$$failed selftest/pass"; fi; \

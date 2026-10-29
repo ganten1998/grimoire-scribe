@@ -138,6 +138,8 @@ pub struct Settings {
     pub gesture_new_page: bool,
     /// 0 bar (default), 1 corner, 2 off.
     pub status_mode: i32,
+    pub shapes: bool,
+    pub shape_hold_ms: i32,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
     /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
@@ -2528,6 +2530,8 @@ pub fn settings_default(s: &mut Settings) {
     s.landscape_fit = true;
     s.gesture_new_page = true;
     s.status_mode = 0;
+    s.shapes = true;
+    s.shape_hold_ms = 550;
     s.hints = 0;
     s.link_areas = false;
 }
@@ -2787,6 +2791,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
+        b"shapes" => s.shapes = keep_bool("shapes", v),
+        b"shape_hold_ms" => s.shape_hold_ms = keep_int("shape_hold_ms", v, 300, 1500),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
         b"before_eraser" => {
@@ -2986,6 +2992,8 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "status_corner", s.status_corner);
     put_int(&mut b, "gesture_new_page", s.gesture_new_page as i32);
     put_int(&mut b, "status_mode", s.status_mode);
+    put_int(&mut b, "shapes", s.shapes as i32);
+    put_int(&mut b, "shape_hold_ms", s.shape_hold_ms);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

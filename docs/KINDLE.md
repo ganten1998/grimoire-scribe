@@ -718,3 +718,13 @@ a complete PNG with a temporary file and rename. It never shows the sleep UI. Er
 the main handover. Display's fourth sleep choice loads this bounded image once per Grimoire run;
 missing/unsupported image modes use the page instead. Random folders select once per handover.
 The last snapshot can be used on a subsequent Library start. Native PIN always takes priority.
+
+## Smart shapes
+
+Hold the pen still at the end of a drawn shape to preview a straightened line, circle, ellipse or polygon.
+Move the nib on to keep the freehand drawing instead. Lift to keep the preview as one stroke; Undo removes it.
+The Shapes button below the eraser turns this off. The tool picker also offers Smart shapes and a Quick,
+Normal or Slow hold time. Ordinary writing, white ink and erasing keep their existing behavior.
+
+An empty `grimoire/shape-log` file enables recognition diagnostics at startup. The log records measurements,
+recognition reasons, timing, and whether a preview was kept or cancelled, without stroke coordinates.

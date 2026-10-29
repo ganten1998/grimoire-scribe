@@ -78,6 +78,8 @@ const P_PICK_INK: i32 = 21;
 const P_PICK_MORE: i32 = 22;
 const P_PICK_PHOTOS: i32 = 23;
 const P_LINKS: i32 = 24;
+const P_SHAPES: i32 = 25;
+const P_SHAPE_HOLD: i32 = 26;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
@@ -253,7 +255,16 @@ struct SharedPaper {
 /// The screen's state (editor.c's, which app.h keeps opaque): editor_init makes it, in a.ed.
 /// Its fields are the translator's, from the C struct, by the rules of PORTING.md.
 #[derive(Default)]
+struct ShapeHold {
+    anchor: (f32, f32), anchor_k: u32, still_fired: bool, burst: bool,
+    preview: Option<ShapePreview>, last_lift: Option<PenSample>,
+    last_kind: ShapeKind, last_reason: ShapeReason, tip_pending: bool,
+}
+struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
+
+#[derive(Default)]
 pub struct EditorState {
+    sh: ShapeHold,
     open: bool,
     /// compose leaves the panel out (editor_live_under_panel: Live view's page under it)
     live_no_panel: bool,
@@ -904,6 +915,13 @@ fn draw_panel(a: &mut App) {
     ui_button(c, re, IconKind::Eraser, "", tool_style(st, TOOL_ERASER));
     hits_add(&mut s.hits, re, P_TOOL, TOOL_ERASER.0);
     y += btn_h() + gap();
+    let shapes = Rect { x, y, w, h:btn_h() };
+    ui_button(c, shapes, IconKind::None, "", ButtonStyle::Plain);
+    let icon = Rect { x:x+ui_px(24.0), y:y+ui_px(16.0), w:w-ui_px(48.0), h:btn_h()-ui_px(32.0) };
+    font_draw_icon(c, FontFace::Regular, if st.shapes {0xF0831} else {0xF0832}, icon, 0);
+    if !st.shapes { canvas_slash(c, icon, ui_px(4.0)); }
+    hits_add(&mut s.hits, shapes, P_SHAPES, 0);
+    y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
     let h = if s.open { s.cur_hist() } else { None };
@@ -996,6 +1014,7 @@ fn panel_name(h: &Hit) -> String {
         P_UNDO => "undo".into(),
         P_REDO => "redo".into(),
         P_CLEAR => "clear".into(),
+        P_SHAPES => "shapes".into(),
         P_PREV => "previous".into(),
         P_PAGES => "pages".into(),
         P_NEXT => "next".into(),
@@ -1498,10 +1517,10 @@ fn draw_tools(a: &mut App) {
     let g = ui_px(16.0);
     let cols = 3;
     let rows = (N_DRAW_TOOLS as i32 + cols - 1) / cols;
-    let gridw = cols * bw + (cols - 1) * g;
+    let gridw = 2 * ui_px(520.0) + g;
     let inkh = ui_px(120.0);
     let w = gridw + 2 * ui_px(30.0);
-    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + g + inkh + ui_px(40.0);
+    let h = ui_px(110.0) + rows * bh + (rows - 1) * g + 2 * (g + inkh) + ui_px(40.0);
     let mut x = s.panel.x - w - ui_px(20.0);
     if x < ui_px(10.0) {
         x = s.panel.x + s.panel.w + ui_px(20.0);
@@ -1606,6 +1625,15 @@ fn draw_tools(a: &mut App) {
             hits_add(&mut s.tools_hits, r, P_PICK_INK, i);
         }
     }
+    let shape_y = iy + inkh + g;
+    for i in 0..2 {
+        let r = Rect { x:x+ui_px(30.0)+i*(iw+g), y:shape_y, w:iw, h:inkh };
+        let label = if i == 0 { tr(if st.shapes { n_("Smart shapes: On") } else { n_("Smart shapes: Off") }) }
+            else { tr(shape_hold_label(st.shape_hold_ms)) };
+        ui_button(c,r,IconKind::None,label,if s.pin_mode {ButtonStyle::Disabled} else {ButtonStyle::Plain});
+        if !s.pin_mode { hits_add(&mut s.tools_hits,r,if i==0 {P_SHAPES} else {P_SHAPE_HOLD},0); }
+    }
+
 }
 
 // ---- the eye: where a finger tap follows a link ----
@@ -2621,6 +2649,13 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     stroke_mark_tip(&mut cur); // live and replayed, it keeps the tip it is drawn with now
     let (ppx, pstride) = if paper { (s.paper.px.clone(), s.paper.stride) } else { (None, 0) };
     stroke_brush_begin(&mut s.bs, &cur, dpi, ppx, 0, 0, pstride);
+    let first = sample_of(s, ev);
+    s.sh.burst = shape_in_burst(s.sh.last_lift.as_ref(), &first, dpi, s.zoom);
+    s.sh.anchor = (ev.x, ev.y);
+    s.sh.anchor_k = in_sample_ms(ev);
+    s.sh.still_fired = false;
+    s.sh.preview = None;
+    s.sh.last_kind = ShapeKind::None;
     s.cur = Some(cur);
     smoother_reset(&mut s.sm);
     // Ink asks for the pen mode (where it is on); an erase stroke is live ink without it, as the
@@ -2632,7 +2667,15 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     }
 }
 
+fn shape_anchor_moved(anchor: (f32,f32), point: (f32,f32), dpi: f32, preview: bool) -> bool {
+    (point.0-anchor.0).hypot(point.1-anchor.1) > mm_to_px(SHAPE_HOLD_MM * if preview {1.5} else {1.0},dpi)
+}
+fn shape_dwell_ms(ms: i32, burst: bool) -> u32 {
+    (ms as f32 * if burst {SHAPE_BURST_HOLD} else {1.0}) as u32
+}
+
 fn draw_sample(a: &mut App, ev: &InEvent) {
+    let shape_log = a.shape_log;
     let dpi = a.dpi;
     let s = ed(a);
     let mut p = sample_of(s, ev);
@@ -2644,14 +2687,95 @@ fn draw_sample(a: &mut App, ev: &InEvent) {
     let cur = s.cur.as_deref_mut().unwrap();
     smoother_apply(&mut s.sm, cur.params.smoothing, &mut p);
     stroke_append(cur, &p, dpi);
+    if s.sh.preview.is_some() {
+        if !shape_anchor_moved(s.sh.anchor,(ev.x,ev.y),dpi,true) { return; }
+        let preview = s.sh.preview.take().unwrap();
+        canvas_blit(&mut s.page_canvas, &preview.saved, Rect { x:0,y:0,w:preview.region.w,h:preview.region.h }, preview.region.x, preview.region.y);
+        let mut dirty = preview.region;
+        for pt in &s.cur.as_ref().unwrap().pts[preview.raw_n..] {
+            dirty = rect_union(dirty, brush_add(&mut s.bs, &mut s.page_canvas, pt));
+        }
+        s.sh.anchor = (ev.x,ev.y); s.sh.anchor_k = in_sample_ms(ev); s.sh.still_fired = false;
+        s.sh.last_kind = ShapeKind::None;
+        if shape_log {qlog!("shape: moved on");}
+        show(a, dirty, RefreshMode::Fast);
+        return;
+    }
+    if shape_anchor_moved(s.sh.anchor,(ev.x,ev.y),dpi,false) {
+        s.sh.anchor = (ev.x,ev.y); s.sh.anchor_k = in_sample_ms(ev); s.sh.still_fired = false;
+    }
     let d = brush_add(&mut s.bs, &mut s.page_canvas, &p);
     if !rect_is_empty(d) {
         show(a, d, RefreshMode::Fast);
     }
 }
 
-fn draw_end(a: &mut App) {
+fn shape_report(enabled: bool, mode: &str, result: &ShapeResult, burst: bool, zoom: f32, elapsed: u32, render: u32) {
+    if !enabled {return;}
+    let kind = format!("{:?}",result.kind).to_lowercase();
+    let reason = format!("{:?}",result.reason).to_lowercase();
+    let f = result.features;
+    qlog!("shape: %s %s %s diag %.1f straight %.3f gap %.3f wind %.2f turn %.2f corners %d rms %.3f max %.3f axis %.3f burst %d zoom %.2f ms %u render %u",
+        mode,kind.as_str(),reason.as_str(),f.diag_mm,f.straight,f.gap,f.winding,f.turning,f.corners,f.rms,f.max_err,f.axis_ratio,burst as i32,zoom,elapsed,render);
+}
+
+// A still pen sends no samples on some hardware, so this is driven by the 30 ms wall-clock tick.
+fn shape_hold_tick(a: &mut App, now: u32) {
+    if !a.settings.shapes || !a.input_drained { return; }
+    let (dpi, hold_ms, logging) = (a.dpi, a.settings.shape_hold_ms, a.shape_log);
     let s = ed(a);
+    if s.owner != Owner::Draw || s.sh.still_fired || s.sh.preview.is_some() { return; }
+    let Some(raw) = s.cur.as_ref().filter(|raw| !stroke_is_erase(raw)) else { return; };
+    let hold = shape_dwell_ms(hold_ms,s.sh.burst);
+    if now.wrapping_sub(s.sh.anchor_k) < hold { return; }
+    s.sh.still_fired = true;
+    let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
+    prm.burst = s.sh.burst;
+    work_pump();
+    let started = now_ms();
+    let r = shape_recognize(&raw.pts, &prm);
+    let elapsed = now_ms().wrapping_sub(started);
+    work_pump();
+    let s = ed(a);
+    s.sh.last_reason = r.reason;
+    if r.kind == ShapeKind::None { shape_report(logging,"hold",&r,prm.burst,prm.zoom,elapsed,0); return; }
+    let raw = s.cur.as_ref().unwrap();
+    let Some(stroke) = shape_stroke(raw, &r, dpi) else { return; };
+    let region = rect_intersect(rect_union(raw.bbox, stroke.bbox), Rect {x:0,y:0,w:s.pgw,h:s.pgh});
+    if rect_is_empty(region) { return; }
+    let mut saved = Canvas::default();
+    if canvas_init(&mut saved, region.w, region.h) != 0 { if logging {qlog!("shape: hold none nomem");} return; }
+    canvas_blit(&mut saved, &s.page_canvas, region, 0, 0);
+    let raw_n = raw.pts.len();
+    let render_started = now_ms();
+    draw_page(a, region);
+    let s = ed(a);
+    let mut bs = BrushState::default();
+    stroke_brush_begin(&mut bs, &stroke, dpi, None, 0, 0, 0);
+    for (i, pt) in stroke.pts.iter().enumerate() {
+        brush_add(&mut bs, &mut s.page_canvas, pt);
+        if i & 7 == 0 { work_pump(); }
+    }
+    s.sh.last_kind = r.kind;
+    s.sh.preview = Some(ShapePreview { saved, region, raw_n, stroke });
+    shape_report(logging,"hold",&r,prm.burst,prm.zoom,elapsed,now_ms().wrapping_sub(render_started));
+    show(a, region, RefreshMode::Fast);
+}
+
+fn draw_end(a: &mut App) {
+    let shape_log = a.shape_log;
+    let s = ed(a);
+    let snapped = s.sh.preview.take();
+    if let Some(preview) = snapped {
+        s.cur = Some(preview.stroke);
+        s.sh.tip_pending = true;
+        if shape_log {qlog!("shape: kept");}
+        s.settle = rect_union(s.settle, preview.region);
+        live_reset();
+    }
+    if let Some(cur) = s.cur.as_ref().filter(|s| !stroke_is_erase(s)) {
+        s.sh.last_lift = cur.pts.last().copied();
+    }
     let st = s.cur.take();
     s.owner = Owner::None;
     s.boxes.stale = true; // (a beta.5 link's ink may have been added to)
@@ -2959,7 +3083,7 @@ fn sheet_open(s: &EditorState) -> bool {
 /// swallowed. Fast ink never previews such a contact.
 pub fn editor_pen_not_ink(a: &App) -> bool {
     a.ed.as_deref().is_some_and(|s| {
-        s.lb.open || s.find.open || s.card.open || s.lm.state != LmState::Off || (s.owner == Owner::Outside && s.owner_is_pen)
+        s.sh.preview.is_some() || s.lb.open || s.find.open || s.card.open || s.lm.state != LmState::Off || (s.owner == Owner::Outside && s.owner_is_pen)
     })
 }
 
@@ -2968,7 +3092,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
+    if !s.open || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
@@ -4856,6 +4980,12 @@ fn tools_tap(a: &mut App) {
             let r = ed(a).tools_rect;
             app_invalidate(a, r, RefreshMode::Ui);
         }
+        P_SHAPES | P_SHAPE_HOLD => {
+            if h.id == P_SHAPES { editor_shapes_toggle(a); } else { editor_shape_hold_cycle(a); }
+            draw_tools(a);
+            let r = ed(a).tools_rect;
+            app_invalidate(a,r,RefreshMode::Ui);
+        }
         P_PICK_INK => {
             let st = &mut a.settings;
             st.white = K_INKS[clampi(h.arg, 0, N_INKS - 1) as usize].white;
@@ -4987,6 +5117,44 @@ fn find_result(a: &mut App, r: FsResult, d: Rect) {
         }
         _ => app_invalidate(a, d, RefreshMode::Fast),
     }
+}
+
+fn shape_hold_label(ms: i32) -> &'static str {
+    match shape_hold_nearest(ms) { 400 => n_("Hold: Quick"), 900 => n_("Hold: Slow"), _ => n_("Hold: Normal") }
+}
+fn shape_hold_nearest(ms: i32) -> i32 {
+    [400,550,900].into_iter().min_by_key(|&v| (v-ms).abs()).unwrap()
+}
+pub fn editor_shapes_toggle(a: &mut App) {
+    a.settings.shapes = !a.settings.shapes; settings_save(&a.settings);
+    repaint_panel(a,RefreshMode::Ui);
+    app_toast(a,tr(if a.settings.shapes {n_("Smart shapes on. Hold the pen still at the end of a shape.")} else {n_("Smart shapes off.")}),3000);
+}
+pub fn editor_shape_hold_cycle(a: &mut App) {
+    a.settings.shape_hold_ms = match shape_hold_nearest(a.settings.shape_hold_ms) {400=>550,550=>900,_=>400};
+    settings_save(&a.settings);
+    app_toast(a,tr(match a.settings.shape_hold_ms {400=>n_("Shape hold: Quick (0.4 s)"),900=>n_("Shape hold: Slow (0.9 s)"),_=>n_("Shape hold: Normal (0.55 s)")}),3000);
+}
+pub fn editor_shape_last(a: &mut App) {
+    let (dpi,logging) = (a.dpi,a.shape_log);
+    let s = ed(a);
+    if s.owner != Owner::None || sheet_open(s) || s.open_page().is_none_or(|p| p.readonly) {return;}
+    let (Some(ip),Some(hi)) = (s.page_ix(),s.cur_hist()) else {return;};
+    let p = s.hist[ip].page.as_deref().unwrap();
+    let valid = p.strokes.last().is_some_and(|raw| !stroke_is_erase(raw) && s.hist[hi].h.undo.last().is_some_and(|step| step.kind==ActKind::Add && step.ids.last()==Some(&stroke_id(raw))));
+    if !valid { app_toast(a,tr("No shape in the last stroke."),3000); return; }
+    let raw = p.strokes.last().unwrap();
+    let prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
+    let started = now_ms();
+    let result = shape_recognize(&raw.pts,&prm);
+    shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);
+    let Some(shape) = shape_stroke(raw,&result,dpi) else {app_toast(a,tr("No shape in the last stroke."),3000); return;};
+    let index = p.strokes.len() as i32 - 1;
+    let (history,page) = hist_page(&mut s.hist,hi,ip);
+    let dirty = history_push_replace(history,page,index,shape);
+    if rect_is_empty(dirty) {return;}
+    s.sh.last_kind = result.kind; mark_changed(s);
+    draw_page(a,dirty); show(a,dirty,RefreshMode::Ui); repaint_panel(a,RefreshMode::Ui); live_reset();
 }
 
 // ---- the Links bar ----
@@ -5485,6 +5653,7 @@ fn panel_act(a: &mut App, h: Hit) {
             app_invalidate(a, r, RefreshMode::Ui);
         }
         P_CLEAR => clear_page(a),
+        P_SHAPES => editor_shapes_toggle(a),
         P_PAGES => pages_show(a),
         // The panel's button for the bar opens it, as the action does (its own button again closes it).
         P_LINKS => {
@@ -7111,6 +7280,14 @@ fn migrate_step(a: &mut App) {
 }
 
 pub fn editor_tick(a: &mut App, now: u32) {
+    shape_hold_tick(a, now);
+    if ed_ref(a).sh.tip_pending && !ed_ref(a).pen_near && rect_is_empty(ed_ref(a).settle) {
+        ed(a).sh.tip_pending = false;
+        if a.settings.hints & (1 << 5) == 0 {
+            a.settings.hints |= 1 << 5; settings_save(&a.settings);
+            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes button turns this off."),4000);
+        }
+    }
     let s = ed(a);
     // The pen gone for SETTLE_LEFT_MS (not just lifted high for a moment), or near for too long.
     let stopped = (now.wrapping_sub(s.settle_at) as i32) >= 0 || (!s.pen_near && (now.wrapping_sub(s.pen_left) as i32) >= SETTLE_LEFT_MS);
@@ -7352,6 +7529,11 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         } else {
             csnprintf!(out, cap, "%s", "");
         }
+    } else if key == "shape_preview" {
+        csnprintf!(out, cap, "%d", s.sh.preview.is_some() as i32);
+    } else if key == "stroke_shape" {
+        let kind = format!("{:?}", s.sh.last_kind).to_lowercase();
+        csnprintf!(out, cap, "%s", kind.as_str());
     } else if key == "undo_kind" || key == "redo_kind" {
         // The kind of step an undo (a redo) of the open page would apply, empty for none.
         let e = if has_page { s.page.and_then(|pid| s.hist.iter().position(|e| e.page_id == pid)) } else { None };
@@ -7969,7 +8151,7 @@ mod tests {
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
+            want.extend([P_TOOL, P_SHAPES, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
@@ -8063,6 +8245,7 @@ mod tests {
             (P_UNDO, "undo"),
             (P_REDO, "redo"),
             (P_CLEAR, "clear"),
+            (P_SHAPES, "shapes"),
             (P_PREV, "previous"),
             (P_PAGES, "pages"),
             (P_NEXT, "next"),
@@ -8076,6 +8259,19 @@ mod tests {
         }
         // a sheet's hit is no panel button
         assert_eq!(panel_name(&h(P_PICK_PAPER, 0)), "");
+    }
+
+    #[test]
+    fn shape_hold_uses_screen_mm_hysteresis_and_burst_time() {
+        let mm = mm_to_px(1.0,300.0);
+        assert!(!shape_anchor_moved((0.0,0.0),(0.9*mm,0.0),300.0,false));
+        assert!(shape_anchor_moved((0.0,0.0),(1.1*mm,0.0),300.0,false));
+        assert!(!shape_anchor_moved((0.0,0.0),(1.4*mm,0.0),300.0,true));
+        assert!(shape_anchor_moved((0.0,0.0),(1.6*mm,0.0),300.0,true));
+        assert_eq!(shape_dwell_ms(550,false),550);
+        assert_eq!(shape_dwell_ms(550,true),825);
+        assert_eq!(shape_hold_nearest(720),550);
+        assert_eq!(shape_hold_nearest(800),900);
     }
 
     #[test]

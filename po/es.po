@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 02:11-0500\n"
+"POT-Creation-Date: 2026-10-29 07:40-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -729,6 +729,14 @@ msgctxt "tool"
 msgid "Calligraphy"
 msgstr "Caligrafía"
 
+#: rust/src/editor.rs
+msgid "Smart shapes: On"
+msgstr "Formas inteligentes: Sí"
+
+#: rust/src/editor.rs
+msgid "Smart shapes: Off"
+msgstr "Formas inteligentes: No"
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
 #. eye draws dotted boxes over the page where a finger's tap follows a link.
 #: rust/src/editor.rs
@@ -980,6 +988,42 @@ msgid_plural "The panel holds up to %d pens. Unpin one first."
 msgstr[0] "En el panel cabe hasta %d herramienta. Quita una primero."
 msgstr[1] "En el panel caben hasta %d herramientas. Quita una primero."
 
+#: rust/src/editor.rs
+msgid "Hold: Quick"
+msgstr "Pausa: Corta"
+
+#: rust/src/editor.rs
+msgid "Hold: Slow"
+msgstr "Pausa: Larga"
+
+#: rust/src/editor.rs
+msgid "Hold: Normal"
+msgstr "Pausa: Normal"
+
+#: rust/src/editor.rs
+msgid "Smart shapes on. Hold the pen still at the end of a shape."
+msgstr "Formas inteligentes activadas. Deja el lápiz quieto al terminar una forma."
+
+#: rust/src/editor.rs
+msgid "Smart shapes off."
+msgstr "Formas inteligentes desactivadas."
+
+#: rust/src/editor.rs
+msgid "Shape hold: Quick (0.4 s)"
+msgstr "Pausa para formas: Corta (0,4 s)"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Slow (0.9 s)"
+msgstr "Pausa para formas: Larga (0,9 s)"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Normal (0.55 s)"
+msgstr "Pausa para formas: Normal (0,55 s)"
+
+#: rust/src/editor.rs
+msgid "No shape in the last stroke."
+msgstr "No hay una forma en el último trazo."
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
 #. was tapped on a page from a newer Grimoire, which cannot be changed.
 #: rust/src/editor.rs rust/src/linkcard.rs
@@ -1089,6 +1133,11 @@ msgstr ""
 #: rust/src/editor.rs
 msgid "Move the pen away, then swipe."
 msgstr "Aparta el lápiz y desliza."
+
+#: rust/src/editor.rs
+msgid ""
+"Shape made. Undo takes it away; the panel's shapes button turns this off."
+msgstr "Forma hecha. Deshacer la quita; el botón de formas del panel desactiva esta función."
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
 #. go to a page by typing its number or a name of the Index.

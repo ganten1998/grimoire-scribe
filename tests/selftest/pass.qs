@@ -61,13 +61,13 @@ pen line 300 700 1200 700 40 0.5 0.5
 expect editor.strokes is 1
 expect editor.unsaved is 1
 # The tool picker, then the mechanical pencil from it
-pentap 1768 358
+pentap panel tool-picker
 expect editor.modal is tools
 pentap 1188 395
 expect editor.modal is none
 expect editor.tool is mech
 # A second page
-pentap 1768 1114
+pentap panel next
 expect editor.page is 2
 expect editor.pages is 2
 expect editor.strokes is 0
@@ -83,11 +83,8 @@ expect size is 2480x1860
 rotate 0
 expect rotation is 0
 expect size is 1860x2480
-# Back to the library, which now holds the notebook. The panel's Library button is at 1566 on the C build's
-# eleven buttons and at 1674 on the Rust build's twelve (the Links button is new): the tap that is not on it
-# lands on a bare page, or on a bare Library, and does nothing.
-pentap 1768 1674
-pentap 1768 1566
+# Semantic panel taps stay valid as new buttons are added.
+pentap panel library
 expect screen is library
 expect toast is Saved
 expect library.items is 1

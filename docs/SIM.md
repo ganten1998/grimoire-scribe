@@ -513,3 +513,11 @@ is the maintainer's embedded handwriting; the runtime does not open a user noteb
 indicates a value waiting for the throttled repaint. `z_9_slider_fine.qs` uses pen and touch to
 hold, move away from the track, select 0.30, catch up and track directly within the knob-height
 band, resume fine control on either side, release without a jump and check the saved value.
+
+### Smart-shape probes
+
+`settings.shapes` and `settings.shape_hold_ms` report the saved controls. `editor.shape_preview` is 1 while
+an in-progress stroke has a snapped preview. `editor.stroke_shape` reports its lowercase recognized kind,
+or `none`; `editor.undo_kind` and `redo_kind` also accept `replace`. `pentap panel shapes` toggles recognition.
+`z_shape_1_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_2_move_cancels`
+checks moving on from the preview restores the freehand stroke.

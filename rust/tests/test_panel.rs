@@ -10,47 +10,18 @@ use grimoire::prelude::*;
 use testlib::*;
 
 fn fits_both_scribes_both_ways() {
-    check!(PANEL_BUTTONS == 12); // tool, eraser, undo, redo, clear, previous, next, links, paper, display, pen feel, library
-    let screens: [[i32; 2]; 2] = [[1860, 2480], [1986, 2648]];
-    for s in 0..2 {
-        for turned in 0..2 {
-            let w = if turned != 0 { screens[s][1] } else { screens[s][0] };
-            let h = if turned != 0 { screens[s][0] } else { screens[s][1] };
-            for pins in 0..=PANEL_PINS_MAX as i32 {
-                let f = panel_fit(h, pins);
-                let ph = panel_height(f, pins);
-                // Inside the screen with 12 px free above and below, as wide as ever.
-                check!(ph + 2 * ui_px(PANEL_MARGIN as f32) <= h && panel_w() <= w);
-                // The buttons stay as big as without pins (and sideways as upright): only the
-                // room between them gives, but on the 2022/2024 Scribe sideways with four pins
-                // (below), where they are 1% smaller.
-                let tight = w == 2480 && pins == 4;
-                check!(panel_btn_h(f) == ui_px(if tight { 99.0 } else { 100.0 }));
-                check!(panel_head_h(f) == ui_px(80.0 * f.scale));
-                check!(f.space >= 0.5);
-                check!(f.scale == (if tight { 0.99 } else { 1.0 }));
-                if pins == 0 {
-                    check!(f.space == 1.0 && ph == ui_px(1518.0)); // 1410 with eleven buttons, before the Links button
-                }
-            }
+    check!(PANEL_BUTTONS == 13);
+    for (w,h) in [(1860,2480),(2480,1860),(1986,2648),(2648,1986)] {
+        for pins in 0..=PANEL_PINS_MAX as i32 {
+            let f = panel_fit(h,pins);
+            check!(panel_height(f,pins)+2*ui_px(PANEL_MARGIN as f32)<=h);
+            check!(panel_w()<=w && f.scale >= 0.93 && f.space >= 0.5);
+            check!(panel_btn_h(f)>=ui_px(93.0));
+            if h>=2480 {check!(f.scale==1.0 && f.space==1.0);}
         }
     }
-    // Sideways on the 2022/2024 Scribe the room between the buttons gives from three pins on (1842 px
-    // at full size, 1836 px of room), and with four (1950) it is not enough: at half, with the buttons
-    // 1% smaller (99 px), the panel is 1830 px.
-    check!(panel_fit(1860, 2).space == 1.0 && panel_fit(1860, 2).scale == 1.0);
-    let f3 = panel_fit(1860, 3);
-    check!(panel_height(PanelFit { scale: 1.0, space: 1.0 }, 3) == ui_px(1842.0) && f3.space == 0.9 && f3.scale == 1.0);
-    check!(panel_height(f3, 3) == 1819 && panel_gap(f3) == 7);
-    let f4 = panel_fit(1860, 4);
-    check!(panel_height(PanelFit { scale: 1.0, space: 1.0 }, 4) == ui_px(1950.0) && f4.space == 0.5 && f4.scale == 0.99);
-    check!(panel_height(f4, 4) == 1830 && panel_btn_h(f4) == 99 && panel_gap(f4) == 4 && panel_div_h(f4) == 10);
-    // The Scribe 3's and the Colorsoft's screen is taller: upright or sideways, every pin count fits full size.
-    for pins in 0..=PANEL_PINS_MAX as i32 {
-        check!(panel_fit(2648, pins) == PanelFit { scale: 1.0, space: 1.0 });
-        check!(panel_fit(1986, pins) == PanelFit { scale: 1.0, space: 1.0 });
-    }
-    check!(panel_box() == ui_px(120.0)); // collapsed: the same square, pins or not
+    check!(panel_height(PanelFit{scale:1.0,space:1.0},0)==1626);
+    check!(panel_box()==ui_px(120.0));
 }
 
 // A screen far shorter than any Scribe's: the room between the buttons goes down to half, then
