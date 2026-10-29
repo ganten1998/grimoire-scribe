@@ -1,7 +1,7 @@
 # settings: status_mode=1
-# env: GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_PREVIEW=2.0.0-beta.9 FAKE_UPDATE_STABLE=1.2.0
+# env: GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_PREVIEW=9.0.0-beta.9 FAKE_UPDATE_STABLE=1.2.0
 # Settings > Updates, kindle/app/update.sh stood in for by tests/fake_update.sh: the version running;
-# a check of the preview channel (a beta's own) finds a newer beta; releases only finds nothing newer
+# a check of the preview channel finds a future-version beta; releases only finds nothing newer
 # (1.2.0), and Update stays off; betas again, a check, then Update now: Grimoire leaves (the request
 # for the launcher: tests/test_update.c).
 wait 150
@@ -17,7 +17,7 @@ tap 930 1055
 wait 100
 expect library.update is checking
 wait 900
-expect library.update is newer 2.0.0-beta.9
+expect library.update is newer 9.0.0-beta.9
 shot 02-newer
 tap 930 895
 wait 100
@@ -36,7 +36,7 @@ wait 100
 expect settings.updates is 2
 tap 930 1055
 wait 1000
-expect library.update is newer 2.0.0-beta.9
+expect library.update is newer 9.0.0-beta.9
 tap 930 1215
 wait 300
 expect running is 0
