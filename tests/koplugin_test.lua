@@ -515,6 +515,7 @@ local function new_ui(in_book)
         ui.getCurrentPage = function() return b.page end
         ui.doc_settings = { readSetting = function(_, key)
             if key == "partial_md5_checksum" then return b.md5 end
+            return b.settings and b.settings[key]
         end }
         ui.doc_props = { display_title = b.title }
         if b.kind == "reflowable" then
@@ -763,6 +764,7 @@ do -- KOReader back from Grimoire takes its rotation from a window manager kept 
         W.calls = {}
         Device:exit()
         check(name .. ": the back marker written", is_file(W.back))
+        W.ticks = {} -- reader.lua exited: its unrun startup task does not survive into the new process.
         -- koreader.sh starts KOReader again: KindleScribe:init has set its rotation (before_start).
         if before_start then before_start() end
         W.rotations = {}
@@ -784,7 +786,7 @@ do -- KOReader back from Grimoire takes its rotation from a window manager kept 
         .. "(DEVICE_ROTATED_UPSIDE_DOWN): rotation 0 -> 2")
     koreader(true)
     run_ticks()
-    check(s .. ": the next start (no hand-over) reads no sensor", W.sensor_reads == 1)
+    check(s .. ": the next ordinary start also checks its initial orientation", W.sensor_reads == 2 and W.rotation == 2)
 
     -- With baa43ea's step: KindleScribe:init took the window manager's stale D (native and rotation
     -- upside down) while the framebuffer is upright (3). The native rotation becomes the framebuffer's
@@ -891,7 +893,111 @@ do -- KOReader back from Grimoire takes its rotation from a window manager kept 
     W.sensor = 16
     koreader(true)
     run_ticks()
-    check("an ordinary start: no sensor read", W.sensor_reads == 0 and W.rotation == 0)
+    check("an ordinary start: the missing initial sensor event is supplied", W.sensor_reads == 1 and W.rotation == 2)
+end
+
+do -- Ordinary Kindle starts have no back marker. Supply the initial event only when KOReader
+    -- fell back to a default rotation, after the browser or reader restored its own settings.
+    for _, view in ipairs({ "browser", "paged", "reflowable" }) do
+        for code = 15, 18 do
+            local name = "startup-" .. view .. "-" .. code
+            world(name)
+            W.sensor = code
+            W.book.kind = view == "reflowable" and "reflowable" or "paged"
+            local g = koreader(view ~= "browser")
+            check(name .. ": deferred until the view is ready", W.sensor_reads == 0 and W.rotation == 0)
+            run_ticks()
+            check(name .. ": follows the sensor with native rotation unchanged", W.sensor_reads == 1
+                and W.rotation == ({ [15] = 0, [16] = 2, [17] = 1, [18] = 3 })[code]
+                and Device.screen.native_rotation_mode == 0)
+            check(name .. ": no marker or saved rotation written", not is_file(W.back) and next(W.settings) == nil)
+            g:new{ ui = new_ui(true) }
+            run_ticks()
+            check(name .. ": only once across views in one process", W.sensor_reads == 1)
+        end
+    end
+
+    for _, c in ipairs({
+        { "browser-upright", false, "fm_rotation_mode", 0 },
+        { "browser-landscape", false, "fm_rotation_mode", 1 },
+        { "paged-default", true, "kopt_rotation_mode", 0 },
+        { "reflowable-default", true, "copt_rotation_mode", 3, "reflowable" },
+        { "paged-document-upright", true, "kopt_rotation_mode", 0, "paged", true },
+        { "reflowable-document", true, "copt_rotation_mode", 1, "reflowable", true },
+        { "keep-current", true, "lock_rotation", true },
+    }) do
+        world("startup-saved-" .. c[1])
+        local rotation = c[4] == true and 1 or c[4]
+        W.sensor, W.rotation = 16, rotation
+        W.book.kind = c[5] or "paged"
+        local g = koreader(c[2])
+        -- As ReaderUI does, set/read document settings after plugin init and before the first tick.
+        if c[6] then W.book.settings = { [c[3]] = c[4] } else W.settings[c[3]] = c[4] end
+        run_ticks()
+        check(c[1] .. ": explicit rotation takes precedence without a sensor read",
+            W.sensor_reads == 0 and #W.gyro == 0 and W.rotation == rotation)
+        check(c[1] .. ": saved value kept", (c[6] and W.book.settings or W.settings)[c[3]] == c[4])
+        g:new{ ui = new_ui(c[2]) }; run_ticks()
+        check(c[1] .. ": not retried in the same process", W.sensor_reads == 0)
+    end
+
+    world("startup-unrelated-settings")
+    W.settings.fm_rotation_mode, W.settings.copt_rotation_mode = 1, 3
+    W.book.settings, W.sensor = { copt_rotation_mode = 1 }, 16
+    koreader(true); run_ticks()
+    check("a paged book ignores saved rotations belonging to other views", W.sensor_reads == 1 and W.rotation == 2)
+
+    world("startup-ignore")
+    W.sensor = 16
+    koreader(false)
+    Device.input.handleGyroEv = void_ev -- a setting/plugin can change this before the first tick
+    run_ticks()
+    check("startup: ignored accelerometer is not read", W.sensor_reads == 0 and W.rotation == 0)
+
+    for _, c in ipairs({ { 17, 0, 0 }, { 16, 0, 2 }, { 18, 1, 3 }, { 15, 1, 1 } }) do
+        world("startup-locked-" .. c[1])
+        W.sensor, W.rotation, W.locked = c[1], c[2], true
+        koreader(false); run_ticks()
+        check("startup: locked gyro " .. c[1] .. " preserves the orientation pair", W.sensor_reads == 1 and W.rotation == c[3])
+    end
+
+    world("startup-native-first")
+    W.sensor, W.hw_rotation, Device.screen.native_rotation_mode = 16, 1, 0
+    koreader(false); run_ticks()
+    check("startup: native correction precedes gyro correction", #W.rotations == 2
+        and W.rotations[1] == "0@2" and W.rotations[2] == "2@2")
+
+    for _, model in ipairs({ "KindleScribe3", "KindleScribeColorSoft", "KindlePaperWhite5" }) do
+        world("startup-" .. model)
+        Device.model, W.sensor = model, 16
+        koreader(false); run_ticks()
+        check(model .. ": startup sensor is restricted to Scribes", W.sensor_reads == (model == "KindlePaperWhite5" and 0 or 1))
+    end
+    world("startup-no-gsensor")
+    W.gsensor, W.sensor = false, 16
+    koreader(false); run_ticks()
+    check("startup: no accelerometer capability, no read", W.sensor_reads == 0 and W.rotation == 0)
+
+    for _, code in ipairs({ 0, 19, 20 }) do
+        world("startup-no-turn-" .. code)
+        W.sensor = code
+        koreader(false); run_ticks()
+        check("startup: non-rotation code " .. code .. " leaves rotation alone", W.sensor_reads == 1 and #W.gyro == 0 and W.rotation == 0)
+    end
+    world("startup-no-sensor")
+    koreader(false)
+    check("startup: missing sensor is harmless", pcall(run_ticks) and W.sensor_reads == 1 and W.rotation == 0 and not at("warn"))
+    world("startup-sensor-error")
+    W.sensor_error = true
+    koreader(false)
+    check("startup: sensor error cannot escape the UI task", pcall(run_ticks) and W.sensor_reads == 1 and W.rotation == 0 and at("warn"))
+
+    world("return-keeps-existing-policy")
+    W.sensor, W.settings.fm_rotation_mode, W.settings.lock_rotation = 16, 0, true
+    write(W.back, "back\n")
+    koreader(false); run_ticks()
+    check("return: marker still follows gyro despite saved startup preferences", W.sensor_reads == 1 and W.rotation == 2
+        and not is_file(W.back) and W.settings.fm_rotation_mode == 0 and W.settings.lock_rotation == true)
 end
 
 do -- KOReader not started by koreader.sh (no /var/tmp/koreader.sh).

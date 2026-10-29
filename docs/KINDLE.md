@@ -232,6 +232,19 @@ KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KP
    native rotation, so drawing and touch stay together. One line in crash.log says what was read
    and done (`Grimoire: back from Grimoire, the orientation sensor reads 16
    (DEVICE_ROTATED_UPSIDE_DOWN): rotation 0 -> 2`).
+   An ordinary KOReader start has no return marker, but can miss the same initial sensor event:
+   the Kindle home screen is upside down, then KOReader's default is upright. The plugin now
+   samples the sensor once on that start too, on the first UI tick after the browser or book
+   restores its settings, using the same accelerometer handler and its ignore/lock rules.
+   An explicit saved browser rotation (`fm_rotation_mode`), reader default or document rotation
+   (`kopt_rotation_mode` for paged books, `copt_rotation_mode` for reflowable books) takes priority;
+   so does "Keep current rotation across views" (`lock_rotation`). A saved 0 is an intentional
+   upright choice, unlike an absent setting's fallback 0. These preferences are never changed.
+   This conservative startup rule leaves such saved orientations alone; the Grimoire-return
+   marker keeps its existing sensor-following behavior. The startup log starts with
+   `Grimoire: at KOReader startup` and says whether a saved choice was kept or a sensor read made.
+   The setting precedence follows upstream [FileManager](https://github.com/koreader/koreader/blob/master/frontend/apps/filemanager/filemanager.lua)
+   and [ReaderView](https://github.com/koreader/koreader/blob/master/frontend/apps/reader/modules/readerview.lua).
 6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
    another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
    start. See grimoire/grimoire.log." over the book or the file browser.
