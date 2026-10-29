@@ -467,6 +467,18 @@ fn graph_buffer<T>(n: usize) -> Option<Vec<T>> {
     v.try_reserve_exact(n).ok()?;
     Some(v)
 }
+fn graph_collect<T>(iter: impl IntoIterator<Item=T>, n: usize) -> Option<Vec<T>> {
+    let mut out = graph_buffer(n)?;
+    for item in iter {
+        if out.len() == out.capacity() { out.try_reserve_exact(1).ok()?; }
+        out.push(item);
+    }
+    Some(out)
+}
+fn graph_copy<T: Copy>(items: &[T]) -> Option<Vec<T>> {
+    graph_collect(items.iter().copied(), items.len())
+}
+
 fn graph_filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
     let mut v = graph_buffer(n)?;
     v.resize(n, value);
@@ -892,23 +904,23 @@ impl Comps {
     }
 }
 
-fn comps_of(g: &GraphModel) -> Comps {
+fn comps_of(g: &GraphModel) -> Option<Comps> {
     let nc = g.ncomp.max(0) as usize;
-    let mut at = vec![0u32; nc + 1];
+    let mut at = graph_filled(nc + 1, 0u32)?;
     for &v in &g.force {
         at[g.nodes[v as usize].comp as usize + 1] += 1;
     }
     for c in 0..nc {
         at[c + 1] += at[c];
     }
-    let mut fill: Vec<u32> = at[..nc].to_vec();
-    let mut list = vec![0u32; g.force.len()];
+    let mut fill: Vec<u32> = graph_copy(&at[..nc])?;
+    let mut list = graph_filled(g.force.len(), 0u32)?;
     for &v in &g.force {
         let c = g.nodes[v as usize].comp as usize;
         list[fill[c] as usize] = v as u32;
         fill[c] += 1;
     }
-    let mut hub = vec![0u32; nc];
+    let mut hub = graph_filled(nc, 0u32)?;
     for c in 0..nc {
         let m = &list[at[c] as usize..at[c + 1] as usize];
         let mut best = m[0];
@@ -919,7 +931,7 @@ fn comps_of(g: &GraphModel) -> Comps {
         }
         hub[c] = best;
     }
-    Comps { at, list, hub }
+    Some(Comps { at, list, hub })
 }
 
 // One cell of the Barnes-Hut quadtree.
@@ -950,12 +962,15 @@ struct Tree {
 }
 
 impl Tree {
-    fn build(&mut self, g: &GraphModel, members: &[u32]) {
+    fn build(&mut self, g: &GraphModel, members: &[u32]) -> Option<()> {
         let n = g.nodes.len();
+        let bound = members.len().checked_mul(TREE_DEPTH as usize + 1)?.checked_add(1)?;
+        self.q.try_reserve_exact(bound.saturating_sub(self.q.len())).ok()?;
+        self.stack.try_reserve_exact(bound.saturating_sub(self.stack.len())).ok()?;
         if self.next.len() < n {
-            self.next.resize(n, 0);
-            self.px.resize(n, 0.0);
-            self.py.resize(n, 0.0);
+            self.next = graph_filled(n, 0)?;
+            self.px = graph_filled(n, 0.0)?;
+            self.py = graph_filled(n, 0.0)?;
         }
         let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
         for &v in members {
@@ -973,7 +988,8 @@ impl Tree {
         for &v in members {
             self.insert(v);
         }
-    }
+        Some(())
+}
 
     fn quarter(&self, at: usize, x: f32, y: f32) -> usize {
         let q = &self.q[at];
@@ -1104,18 +1120,18 @@ struct Lay {
 }
 
 impl Lay {
-    fn new(g: &GraphModel) -> Lay {
+    fn new(g: &GraphModel) -> Option<Lay> {
         let n = g.nodes.len();
-        let eff = g.nodes.iter().map(|nd| if nd.sats > 0 { nd.r.max(sat_extent(nd.r, nd.sats)) } else { nd.r }).collect();
-        Lay {
-            vx: vec![0.0; n],
-            vy: vec![0.0; n],
-            fx: vec![0.0; n],
-            fy: vec![0.0; n],
+        let eff = graph_collect(g.nodes.iter().map(|nd| if nd.sats > 0 { nd.r.max(sat_extent(nd.r, nd.sats)) } else { nd.r }), n)?;
+        Some(Lay {
+            vx: graph_filled(n, 0.0)?,
+            vy: graph_filled(n, 0.0)?,
+            fx: graph_filled(n, 0.0)?,
+            fy: graph_filled(n, 0.0)?,
             eff,
-            movable: vec![false; n],
+            movable: graph_filled(n, false)?,
             tree: Tree::default(),
-        }
+        })
     }
 }
 
@@ -1123,11 +1139,12 @@ impl Lay {
 // it can to where each would like to be (`ideal`, in the same order): the circular mean of the
 // differences. When the wishes cancel out (they all want the same angle) the ring starts at the
 // first one's.
-fn ring_angles(ideal: &[f32], out: &mut Vec<f32>) {
+fn ring_angles(ideal: &[f32], out: &mut Vec<f32>) -> Option<()> {
     out.clear();
+    out.try_reserve_exact(ideal.len()).ok()?;
     let m = ideal.len();
     if m == 0 {
-        return;
+        return Some(());
     }
     let step = TAU / m as f32;
     let (mut s, mut c) = (0f64, 0f64);
@@ -1140,6 +1157,7 @@ fn ring_angles(ideal: &[f32], out: &mut Vec<f32>) {
     for k in 0..m {
         out.push(fmla(step, k as f32, phase));
     }
+    Some(())
 }
 
 // Navi's place_disk for one component: its hub at the origin, then a ring for each BFS shell, the
@@ -1147,15 +1165,15 @@ fn ring_angles(ideal: &[f32], out: &mut Vec<f32>) {
 // a rest length beyond the last one, wider when its nodes need more room. Each node's angle and
 // radius get a jitter from its page id, so no two start exactly symmetric (the forces could not
 // tell them apart).
-fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], parent: &mut [u32], angle: &mut [f32]) {
+fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], parent: &mut [u32], angle: &mut [f32]) -> Option<()> {
     depth[hub] = 0;
     angle[hub] = 0.0;
     g.nodes[hub].x = 0.0;
     g.nodes[hub].y = 0.0;
-    let mut shell: Vec<u32> = vec![hub as u32];
-    let mut next: Vec<u32> = Vec::new();
-    let mut ideal: Vec<f32> = Vec::new();
-    let mut ang: Vec<f32> = Vec::new();
+    let mut shell: Vec<u32> = graph_collect(std::iter::once(hub as u32), g.nodes.len())?;
+    let mut next: Vec<u32> = graph_buffer(g.nodes.len())?;
+    let mut ideal: Vec<f32> = graph_buffer(g.nodes.len())?;
+    let mut ang: Vec<f32> = graph_buffer(g.nodes.len())?;
     let mut radius = 0.0f32;
     let mut prev_big = lay.eff[hub];
     loop {
@@ -1174,7 +1192,7 @@ fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], 
         if next.is_empty() {
             break;
         }
-        next.sort_by(|&a, &b| {
+        next.sort_unstable_by(|&a, &b| {
             let (pa, pb) = (angle[parent[a as usize] as usize], angle[parent[b as usize] as usize]);
             pa.total_cmp(&pb).then(g.rank[a as usize].cmp(&g.rank[b as usize]))
         });
@@ -1186,7 +1204,7 @@ fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], 
             around += fmla(2.0, lay.eff[v as usize], GRAPH_KNOCKOUT + SLACK);
             big = big.max(lay.eff[v as usize]);
         }
-        ring_angles(&ideal, &mut ang);
+        ring_angles(&ideal, &mut ang)?;
         radius = (radius + GRAPH_SPRING_L).max(radius + prev_big + big + GRAPH_KNOCKOUT + SLACK).max(around / TAU);
         let slot = TAU / next.len() as f32;
         for (k, &v) in next.iter().enumerate() {
@@ -1200,20 +1218,22 @@ fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], 
         prev_big = big;
         std::mem::swap(&mut shell, &mut next);
     }
+    Some(())
 }
 
 // Seeds every component in its own frame, around the origin (pack puts them side by side).
-fn seed_all(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
+fn seed_all(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
     let n = g.nodes.len();
-    let mut depth = vec![-1i32; n];
-    let mut parent = vec![0u32; n];
-    let mut angle = vec![0.0f32; n];
+    let mut depth = graph_filled(n, -1i32)?;
+    let mut parent = graph_filled(n, 0u32)?;
+    let mut angle = graph_filled(n, 0.0f32)?;
     for c in 0..cs.hub.len() {
-        seed_component(g, lay, cs.hub[c] as usize, &mut depth, &mut parent, &mut angle);
+        seed_component(g, lay, cs.hub[c] as usize, &mut depth, &mut parent, &mut angle)?;
     }
     for k in 0..g.force.len() {
         g.nodes[g.force[k] as usize].placed = true;
     }
+    Some(())
 }
 
 // Relaxes the components that have a movable node: each step, the repulsion of the component's
@@ -1224,9 +1244,9 @@ fn seed_all(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
 // When only a few of a component's nodes move (an incremental placement), the tree of the ones that
 // do not is built once for every step, and the moving ones push each other pair by pair: rebuilding
 // a 2000-node tree 40 times was most of the cost of placing one page.
-fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut dyn FnMut()) {
+fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut dyn FnMut()) -> Option<()> {
     let nc = cs.hub.len();
-    let mut active = vec![false; nc];
+    let mut active = graph_filled(nc, false)?;
     for &v in &g.force {
         let v = v as usize;
         if lay.movable[v] {
@@ -1235,18 +1255,18 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
         lay.vx[v] = 0.0;
         lay.vy[v] = 0.0;
     }
-    let mut moving: Vec<Vec<u32>> = vec![Vec::new(); nc];
-    let mut still: Vec<Option<Tree>> = (0..nc).map(|_| None).collect();
+    let mut moving: Vec<Vec<u32>> = graph_collect((0..nc).map(|_| Vec::new()), nc)?;
+    let mut still: Vec<Option<Tree>> = graph_collect((0..nc).map(|_| None), nc)?;
     for c in 0..nc {
         let m = cs.members(c);
         if !active[c] || m.len() < 2 {
             continue;
         }
-        moving[c] = m.iter().copied().filter(|&v| lay.movable[v as usize]).collect();
+        moving[c] = graph_collect(m.iter().copied().filter(|&v| lay.movable[v as usize]), m.len())?;
         if moving[c].len() <= FEW_MOVING && moving[c].len() < m.len() {
-            let fixed: Vec<u32> = m.iter().copied().filter(|&v| !lay.movable[v as usize]).collect();
+            let fixed: Vec<u32> = graph_collect(m.iter().copied().filter(|&v| !lay.movable[v as usize]), m.len())?;
             let mut t = Tree::default();
-            t.build(g, &fixed);
+            t.build(g, &fixed)?;
             still[c] = Some(t);
         }
     }
@@ -1268,7 +1288,7 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
             let cx = (sx / m.len() as f64) as f32;
             let cy = (sy / m.len() as f64) as f32;
             if still[c].is_none() {
-                lay.tree.build(g, m);
+                lay.tree.build(g, m)?;
             }
             for &v in &moving[c] {
                 let (x, y) = (g.nodes[v as usize].x, g.nodes[v as usize].y);
@@ -1332,6 +1352,7 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
             pump();
         }
     }
+    Some(())
 }
 
 // Sets one pair apart when either is movable and their clear discs (lay.eff) come closer than the
@@ -1380,8 +1401,9 @@ fn push_apart(g: &mut GraphModel, lay: &Lay, i: usize, j: usize, check: f32) -> 
 // into square cells of that side (by row, column, then page id, so the order never depends on the
 // notebook's), and each is paired with the rest of its own cell, the cell to its right and the three
 // below. `visit` may move the nodes; the cells are those of the positions at the start.
-fn grid_pairs(g: &mut GraphModel, nodes: &[u32], cell: f32, cells: &mut Vec<(i32, i32, u32, u32)>, visit: &mut dyn FnMut(&mut GraphModel, usize, usize)) {
+fn grid_pairs(g: &mut GraphModel, nodes: &[u32], cell: f32, cells: &mut Vec<(i32, i32, u32, u32)>, visit: &mut dyn FnMut(&mut GraphModel, usize, usize)) -> Option<()> {
     cells.clear();
+    cells.try_reserve_exact(nodes.len()).ok()?;
     for &v in nodes {
         let nd = &g.nodes[v as usize];
         cells.push(((nd.y / cell).floor() as i32, (nd.x / cell).floor() as i32, g.rank[v as usize], v));
@@ -1403,6 +1425,7 @@ fn grid_pairs(g: &mut GraphModel, nodes: &[u32], cell: f32, cells: &mut Vec<(i32
             }
         }
     }
+    Some(())
 }
 
 // The grid's cell for these nodes: as wide as the widest pair of them can need.
@@ -1419,19 +1442,19 @@ fn pair_cell(lay: &Lay, nodes: &[u32], check: f32) -> f32 {
 // a valid kept layout does not move). Forces alone do not promise it, and the view's knockouts need
 // it. Pairs are set apart in grid order, round after round until a round moves nothing. True when it
 // ends clean.
-fn collide(g: &mut GraphModel, lay: &Lay, check: f32, pump: &mut dyn FnMut()) -> bool {
-    let nodes: Vec<u32> = g.force.iter().map(|&v| v as u32).collect();
+fn collide(g: &mut GraphModel, lay: &Lay, check: f32, pump: &mut dyn FnMut()) -> Option<bool> {
+    let nodes: Vec<u32> = graph_collect(g.force.iter().map(|&v| v as u32), g.force.len())?;
     let cell = pair_cell(lay, &nodes, check);
-    let mut cells: Vec<(i32, i32, u32, u32)> = Vec::with_capacity(nodes.len());
+    let mut cells: Vec<(i32, i32, u32, u32)> = graph_buffer(nodes.len())?;
     for _ in 0..COLLIDE_ROUNDS {
         let mut moved = false;
-        grid_pairs(g, &nodes, cell, &mut cells, &mut |g, i, j| moved |= push_apart(g, lay, i, j, check));
+        grid_pairs(g, &nodes, cell, &mut cells, &mut |g, i, j| moved |= push_apart(g, lay, i, j, check))?;
         pump();
         if !moved {
-            return true;
+            return Some(true);
         }
     }
-    false
+    Some(false)
 }
 
 // Navi's forces were made for its smaller dots: past a few hundred nodes their balance (gravity
@@ -1441,9 +1464,10 @@ fn collide(g: &mut GraphModel, lay: &Lay, check: f32, pump: &mut dyn FnMut()) ->
 // a component left with many touching pairs (one for every SPREAD_FEW members or more) is first
 // spread about its centre, by what three quarters of those pairs need (at most SPREAD_MAX at a
 // time), and measured again; the collision pass then has only the stragglers.
-fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) {
+fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) -> Option<()> {
     let mut cells: Vec<(i32, i32, u32, u32)> = Vec::new();
     let mut need: Vec<f32> = Vec::new();
+    let mut allocation_failed = false;
     for c in 0..cs.hub.len() {
         let m = cs.members(c);
         if m.len() < 3 {
@@ -1458,13 +1482,15 @@ fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) {
                 let dy = g.nodes[j].y - g.nodes[i].y;
                 let d = fmla(dx, dx, dy * dy).sqrt();
                 if d < lim - SLACK_EPS {
+                    if need.len() == need.capacity() && need.try_reserve(1).is_err() { allocation_failed = true; return; }
                     need.push(lim / d.max(1.0));
                 }
-            });
+            })?;
+            if allocation_failed { return None; }
             if need.len() * SPREAD_FEW < m.len() {
                 break;
             }
-            need.sort_by(|a, b| a.total_cmp(b));
+            need.sort_unstable_by(|a, b| a.total_cmp(b));
             let s = need[need.len() * 3 / 4].clamp(1.0, SPREAD_MAX);
             let (mut sx, mut sy) = (0f64, 0f64);
             for &v in m {
@@ -1481,15 +1507,16 @@ fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) {
             pump();
         }
     }
+    Some(())
 }
 
 // Puts the components side by side: the widest in the middle, the others on rings around it, each
 // ring as deep as its first (widest) disc, each disc in its own slice of the ring with half a gap on
 // either side. Discs are each component's centroid and reach (lay.eff included), so no component
 // touches another.
-fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
+fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
     let nc = cs.hub.len();
-    let mut discs: Vec<(usize, f32, f32, f32)> = Vec::with_capacity(nc);
+    let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(nc)?;
     for c in 0..nc {
         let m = cs.members(c);
         let (mut sx, mut sy) = (0f64, 0f64);
@@ -1508,7 +1535,7 @@ fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
         discs.push((c, cx, cy, r));
     }
     // (components are numbered from their lowest page id, so equal discs keep a page-id order)
-    discs.sort_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
     let mut inner = 0.0f32;
     let mut band = 0.0f32;
     let mut ang = 0.0f32;
@@ -1542,6 +1569,7 @@ fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) {
             g.nodes[v as usize].y += oy;
         }
     }
+    Some(())
 }
 
 // Whole world units, as graph.ini keeps them: what the view shows is what the next visit loads,
@@ -1565,42 +1593,54 @@ fn snap(g: &mut GraphModel, lay: &Lay) {
     }
 }
 
+fn graph_layout_attempt(g: &mut GraphModel, run: impl FnOnce(&mut GraphModel) -> Option<()>) -> bool {
+    let Some(saved) = graph_copy(&g.nodes) else { return false; };
+    let laid = g.laid;
+    if run(g).is_some() { true } else { g.nodes = saved; g.laid = laid; false }
+}
+
 /// The seed alone: place_disk for each component, the components packed, overlaps set apart. It is
 /// O(n + e) but for the collision pass, and is what the view shows while a bgjob child runs the
 /// full layout (graph_layout_job), so it runs in the app's process: pump is called between its
 /// stages and each collision round. Satellites follow their heads; the tray is the view's.
-pub fn graph_seed(g: &mut GraphModel, pump: &mut dyn FnMut()) {
-    let cs = comps_of(g);
-    let mut lay = Lay::new(g);
+pub fn graph_seed(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
+    graph_layout_attempt(g, |g| {
+    let cs = comps_of(g)?;
+    let mut lay = Lay::new(g)?;
     for &v in &g.force {
         lay.movable[v as usize] = true;
     }
-    seed_all(g, &lay, &cs);
+    seed_all(g, &lay, &cs)?;
     pump();
-    pack(g, &lay, &cs);
-    collide(g, &lay, SLACK, pump);
+    pack(g, &lay, &cs)?;
+    collide(g, &lay, SLACK, pump)?;
     snap(g, &lay);
     place_satellites(g);
     g.laid = GraphLaid::Seed;
+    Some(())
+    })
 }
 
 /// The full layout: the seed, GRAPH_STEPS relaxation steps (pump every GRAPH_PUMP_STEPS), the
 /// components packed, overlaps set apart, positions rounded to whole units, then the satellites.
 /// Every kept position is replaced. Run it in-process only when graph_layout_in_process says so.
-pub fn graph_layout(g: &mut GraphModel, pump: &mut dyn FnMut()) {
-    let cs = comps_of(g);
-    let mut lay = Lay::new(g);
+pub fn graph_layout(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
+    graph_layout_attempt(g, |g| {
+    let cs = comps_of(g)?;
+    let mut lay = Lay::new(g)?;
     for &v in &g.force {
         lay.movable[v as usize] = true;
     }
-    seed_all(g, &lay, &cs);
-    relax(g, &mut lay, &cs, GRAPH_STEPS, pump);
-    spread(g, &lay, &cs, pump);
-    pack(g, &lay, &cs);
-    collide(g, &lay, SLACK, pump);
+    seed_all(g, &lay, &cs)?;
+    relax(g, &mut lay, &cs, GRAPH_STEPS, pump)?;
+    spread(g, &lay, &cs, pump)?;
+    pack(g, &lay, &cs)?;
+    collide(g, &lay, SLACK, pump)?;
     snap(g, &lay);
     place_satellites(g);
     g.laid = GraphLaid::Done;
+    Some(())
+    })
 }
 
 // The centre of the placed force nodes, and how far they reach from it (their clear discs
@@ -1707,9 +1747,11 @@ fn place_fresh(g: &mut GraphModel, lay: &Lay, fresh: &[usize]) {
 /// room) are set apart, and only those move. A layout that was clean is left bit for bit as it was
 /// outside the new pages' neighbourhood. Satellites follow their heads. Returns how many it placed.
 pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
-    let cs = comps_of(g);
-    let mut lay = Lay::new(g);
-    let fresh: Vec<usize> = g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed).collect();
+    let mut placed = 0;
+    let ok = graph_layout_attempt(g, |g| {
+    let cs = comps_of(g)?;
+    let mut lay = Lay::new(g)?;
+    let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
     if !fresh.is_empty() {
         place_fresh(g, &lay, &fresh);
         for &v in &fresh {
@@ -1722,17 +1764,21 @@ pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
                 }
             }
         }
-        relax(g, &mut lay, &cs, GRAPH_INC_STEPS, pump);
-        collide(g, &lay, SLACK, pump);
+        relax(g, &mut lay, &cs, GRAPH_INC_STEPS, pump)?;
+        collide(g, &lay, SLACK, pump)?;
     }
-    for &v in &g.force {
-        lay.movable[v as usize] = true;
+    if fresh.is_empty() {
+        // With new nodes, even the repair and rounding must keep the distant nodes fixed.
+        for &v in &g.force { lay.movable[v as usize] = true; }
     }
-    collide(g, &lay, 0.0, pump);
+    collide(g, &lay, 0.0, pump)?;
     snap(g, &lay);
     place_satellites(g);
     g.laid = GraphLaid::Done;
-    fresh.len() as i32
+    placed = fresh.len() as i32;
+    Some(())
+    });
+    if ok { placed } else { -1 }
 }
 
 /// Puts graph.ini's kept positions on the force nodes it keeps (graph_persisted), and says what
@@ -1745,6 +1791,7 @@ pub fn graph_apply_ini(g: &mut GraphModel, ini: &GraphIni) -> GraphPlan {
     for k in 0..g.force.len() {
         let v = g.force[k] as usize;
         if !graph_persisted(&g.nodes[v]) {
+            g.nodes[v].placed = false;
             continue;
         }
         kept += 1;
@@ -1775,7 +1822,7 @@ pub fn graph_apply_ini(g: &mut GraphModel, ini: &GraphIni) -> GraphPlan {
 /// changed, so the caller writes only then.
 pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
     let gen = graph_gen(g);
-    let mut pos: Vec<GraphPos> = Vec::with_capacity(g.force.len());
+    let Some(mut pos) = graph_buffer(g.force.len()) else { ini.writable = false; return false; };
     for &v in &g.force {
         let nd = &g.nodes[v as usize];
         if graph_persisted(nd) && nd.placed {
@@ -1795,7 +1842,7 @@ pub fn graph_ini_store(ini: &mut GraphIni, g: &GraphModel) -> bool {
 /// refusal): the full layout, unpumped, then graph.ini written whole and atomically at path. 0, or
 /// -1 when the write failed or the file was refused.
 pub fn graph_layout_job(g: &mut GraphModel, ini: &mut GraphIni, path: &str) -> i32 {
-    graph_layout(g, &mut || {});
+    if !graph_layout(g, &mut || {}) { return -1; }
     graph_ini_store(ini, g);
     graph_ini_write_path(path, ini)
 }
@@ -1821,17 +1868,19 @@ fn ring_radius(inner: f32, inner_big: f32, big: f32, m: usize, min_gap: f32) -> 
 /// ring in its order; returns how many. The view draws the edges between members. Instant and
 /// deterministic: no forces.
 pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<GraphRing>) -> i32 {
+    let result = (|| -> Option<i32> {
     out.clear();
     let n = g.nodes.len();
     if centre < 0 || centre as usize >= n || g.adj_at.len() != n + 1 {
-        return 0;
+        return Some(0);
     }
     let c = centre as usize;
-    let mut seen = vec![false; n];
+    let mut seen = graph_filled(n, false)?;
     seen[c] = true;
+    out.try_reserve_exact(n).ok()?;
     out.push(GraphRing { node: centre, depth: 0, parent: -1, x: 0.0, y: 0.0 });
     let cn = g.nodes[c];
-    let mut ring1: Vec<(f32, u32, usize)> = Vec::new();
+    let mut ring1: Vec<(f32, u32, usize)> = graph_buffer(n)?;
     for &v in graph_neighbours(g, centre) {
         let v = v as usize;
         seen[v] = true;
@@ -1845,22 +1894,22 @@ pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<Graph
         ring1.push((ideal, g.rank[v], v));
     }
     if ring1.is_empty() {
-        return 1;
+        return Some(1);
     }
-    ring1.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-    let ideal: Vec<f32> = ring1.iter().map(|e| e.0).collect();
+    ring1.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let ideal: Vec<f32> = graph_collect(ring1.iter().map(|e| e.0), ring1.len())?;
     let mut ang1: Vec<f32> = Vec::new();
-    ring_angles(&ideal, &mut ang1);
+    ring_angles(&ideal, &mut ang1)?;
     let big1 = ring1.iter().map(|e| g.nodes[e.2].r).fold(0.0f32, f32::max);
     let r1 = ring_radius(0.0, cn.r, big1, ring1.len(), GRAPH_SPRING_L);
     for (k, e) in ring1.iter().enumerate() {
         out.push(GraphRing { node: e.2 as i32, depth: 1, parent: centre, x: r1 * ang1[k].cos(), y: r1 * ang1[k].sin() });
     }
     if depth < 2 {
-        return out.len() as i32;
+        return Some(out.len() as i32);
     }
     // The outer ring: met from the first ring in its order, each parent's pages by page id.
-    let mut ring2: Vec<(usize, usize)> = Vec::new();
+    let mut ring2: Vec<(usize, usize)> = graph_buffer(n)?;
     for (k, e) in ring1.iter().enumerate() {
         for &v in graph_neighbours(g, e.2 as i32) {
             let v = v as usize;
@@ -1871,11 +1920,11 @@ pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<Graph
         }
     }
     if ring2.is_empty() {
-        return out.len() as i32;
+        return Some(out.len() as i32);
     }
-    let ideal: Vec<f32> = ring2.iter().map(|e| ang1[e.0]).collect();
+    let ideal: Vec<f32> = graph_collect(ring2.iter().map(|e| ang1[e.0]), ring2.len())?;
     let mut ang2: Vec<f32> = Vec::new();
-    ring_angles(&ideal, &mut ang2);
+    ring_angles(&ideal, &mut ang2)?;
     let big2 = ring2.iter().map(|e| g.nodes[e.1].r).fold(0.0f32, f32::max);
     let r2 = ring_radius(r1, big1, big2, ring2.len(), GRAPH_SPRING_L);
     for (k, e) in ring2.iter().enumerate() {
@@ -1887,7 +1936,9 @@ pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<Graph
             y: r2 * ang2[k].sin(),
         });
     }
-    out.len() as i32
+    Some(out.len() as i32)
+    })();
+    match result { Some(n) => n, None => { out.clear(); -1 } }
 }
 
 // ---- graph.ini: reading and writing ----
@@ -2019,6 +2070,7 @@ fn carry(buf: &mut Vec<u8>, line: &[u8]) -> i32 {
     if line.len() > GRAPH_LINE_MAX || buf.len() + line.len() + 1 > GRAPH_UNKNOWN_MAX {
         return -1;
     }
+    if buf.try_reserve_exact(line.len() + 1).is_err() { return -1; }
     buf.extend_from_slice(line);
     buf.push(b'\n');
     0
@@ -2040,8 +2092,10 @@ fn ini_line(ini: &mut GraphIni, line: &[u8], pos: &mut Vec<GraphPos>, pins: &mut
         b"unlinked=hide" => ini.show_unlinked = false,
         _ => {
             if let Some(p) = pos_parse(line) {
+                if pos.try_reserve(1).is_err() { return -1; }
                 pos.push(p);
             } else if let Some(pid) = pin_parse(line) {
+                if pins.try_reserve(1).is_err() { return -1; }
                 pins.push(pid);
             } else {
                 return carry(&mut ini.unknown, line);
@@ -2070,9 +2124,11 @@ fn ini_parse(text: &[u8], ini: &mut GraphIni) -> i32 {
         }
     }
     // The last line for a page wins: a stable sort keeps the lines' order among equals.
-    pos.sort_by_key(|p| p.pid);
-    let mut one: Vec<GraphPos> = Vec::with_capacity(pos.len());
-    for p in pos {
+    let Some(mut ordered) = graph_buffer(pos.len()) else { return -1; };
+    ordered.extend(pos.into_iter().enumerate());
+    ordered.sort_unstable_by_key(|(line, p)| (p.pid, *line));
+    let Some(mut one) = graph_buffer::<GraphPos>(ordered.len()) else { return -1; };
+    for (_, p) in ordered {
         match one.last_mut() {
             Some(l) if l.pid == p.pid => *l = p,
             _ => one.push(p),
@@ -2159,7 +2215,7 @@ fn carried(ini: &GraphIni) -> Option<Vec<u8>> {
     if u.last() != Some(&b'\n') || u.contains(&0) {
         return None;
     }
-    let mut out: Vec<u8> = Vec::with_capacity(u.len());
+    let mut out: Vec<u8> = graph_buffer(u.len())?;
     for line in u[..u.len() - 1].split(|&c| c == b'\n') {
         let content = line.strip_suffix(b"\r").unwrap_or(line);
         if content.len() > GRAPH_LINE_MAX {
@@ -2177,20 +2233,25 @@ fn carried(ini: &GraphIni) -> Option<Vec<u8>> {
 // order given (graph_ini_store's is page-id order), the pins, then the carried lines. None past
 // GRAPH_FILE_MAX.
 fn ini_text(ini: &GraphIni, carry: &[u8]) -> Option<Vec<u8>> {
-    let mut t: Vec<u8> = Vec::new();
-    t.extend_from_slice(INI_HEADER);
-    if ini.has_gen {
-        t.extend_from_slice(cformat!("gen=%08x\n", ini.gen).as_bytes());
+    let mut t: Vec<u8> = graph_buffer(GRAPH_FILE_MAX)?;
+    fn append(t: &mut Vec<u8>, bytes: &[u8]) -> Option<()> {
+        if bytes.len() > GRAPH_FILE_MAX - t.len() { return None; }
+        t.extend_from_slice(bytes);
+        Some(())
     }
-    t.extend_from_slice(if ini.mode == GraphMode::Around { b"mode=around\n" } else { b"mode=all\n" });
-    t.extend_from_slice(if ini.show_unlinked { b"unlinked=show\n" } else { b"unlinked=hide\n" });
+    append(&mut t, INI_HEADER)?;
+    if ini.has_gen {
+        append(&mut t, cformat!("gen=%08x\n", ini.gen).as_bytes())?;
+    }
+    append(&mut t, if ini.mode == GraphMode::Around { b"mode=around\n" } else { b"mode=all\n" })?;
+    append(&mut t, if ini.show_unlinked { b"unlinked=show\n" } else { b"unlinked=hide\n" })?;
     for p in &ini.pos {
-        t.extend_from_slice(cformat!("pos.%u=%d,%d\n", p.pid, p.x, p.y).as_bytes());
+        append(&mut t, cformat!("pos.%u=%d,%d\n", p.pid, p.x, p.y).as_bytes())?;
     }
     for &pid in &ini.pins {
-        t.extend_from_slice(cformat!("pin.%u=1\n", pid).as_bytes());
+        append(&mut t, cformat!("pin.%u=1\n", pid).as_bytes())?;
     }
-    t.extend_from_slice(carry);
+    append(&mut t, carry)?;
     (t.len() <= GRAPH_FILE_MAX).then_some(t)
 }
 
@@ -2250,6 +2311,26 @@ mod allocation_tests {
             if rc == 0 { succeeded = true; break; }
             assert_eq!(rc, -1);
             assert!(g.nodes.is_empty() && g.edges.is_empty() && g.open == -1);
+        }
+        assert!(succeeded);
+    }
+    #[test]
+    fn layout_refusal_restores_the_previous_positions() {
+        let mut nb = NotebookInfo::default(); nb.page_ids = vec![1, 2, 3];
+        let mut nav = Nav::default(); nav_init(&mut nav);
+        assert_eq!(nav_link_set(&mut nav, 1, 7, "p2"), 0);
+        assert_eq!(nav_link_set(&mut nav, 2, 8, "p3"), 0);
+        let mut base = GraphModel::default(); assert_eq!(graph_build(&mut base, &nb, &nav, 1), 0);
+        assert!(graph_seed(&mut base, &mut || {}));
+        let mut succeeded = false;
+        for allowed in 0..256 {
+            let mut g = base.clone();
+            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(Some(allowed)));
+            let ok = graph_layout(&mut g, &mut || {});
+            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(None));
+            if ok { succeeded = true; break; }
+            assert_eq!(g.nodes, base.nodes);
+            assert_eq!(g.laid, base.laid);
         }
         assert!(succeeded);
     }

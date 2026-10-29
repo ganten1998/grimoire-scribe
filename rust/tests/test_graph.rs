@@ -615,6 +615,8 @@ fn open_page_placed_beside_its_section() {
     graph_ini_store(&mut ini, &ga);
     let plain = ga.nodes.iter().find(|n| n.tier == GraphTier::Satellite).unwrap();
     let mut g = built(&a, plain.pid);
+    // A seed from a pending layout must not masquerade as a cached position for the open page.
+    assert!(graph_seed(&mut g, &mut || {}));
     let o = node(&g, plain.pid);
     check!(o.tier == GraphTier::Force && o.open && !graph_persisted(o));
     check!(graph_gen(&g) == ini.gen);
