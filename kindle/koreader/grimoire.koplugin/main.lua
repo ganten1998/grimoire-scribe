@@ -21,7 +21,9 @@ exits with code 85 (its Restart). So Open asks for that restart and wraps Device
 one exit: once KOReader's own exit has let go of everything, the wrapper runs Grimoire in the
 foreground (grimoire/app/grimoire.sh --hosted koreader). koreader.sh keeps the Kindle UI paused
 all along, so nothing of the Kindle's own screens shows in between. When Grimoire ends, KOReader
-starts as usual, and its own start (start_with, lastfile) reopens the book.
+starts as usual, and its own start (start_with, lastfile) reopens the book. A second marker the
+wrapper writes once Grimoire has run tells that start it comes back from Grimoire, and the
+plugin turns KOReader as the Kindle is held (rotation_as_the_sensor_has_it).
 
 A launch marker in KOReader's settings folder says a hand-over is under way. The wrapper removes
 it once Grimoire has run; found at KOReader's next start, it means Grimoire never ran (the
@@ -245,6 +247,133 @@ local function launch_marker()
     return DataStorage:getSettingsDir() .. "/grimoire_launch.txt"
 end
 
+-- Written once Grimoire has run (whatever it answered), so KOReader's next start knows it comes back
+-- from a hand-over: the launch marker is gone by then when Grimoire ran well.
+local function back_marker()
+    return DataStorage:getSettingsDir() .. "/grimoire_back.txt"
+end
+
+-- The Kindle's orientation sensor's current code (15 upright, 16 upside down, 17 landscape left,
+-- 18 landscape right), read with EVIOCGABS(ABS_PRESSURE) from the input device that has it, found
+-- as Grimoire finds it (rust/src/input_evdev.rs): ABS_PRESSURE in a 10..30 range, no ABS_X and no
+-- ABS_MT_POSITION_X (so neither a pen nor a touch screen). Answers code and the device's path, or
+-- nil and why. Nothing is grabbed or read off the device: the ioctls only ask.
+local function orientation_sensor_code()
+    local ffi = require("ffi")
+    local bit = require("bit")
+    require("ffi/posix_h")
+    local C = ffi.C
+    -- linux/input.h's numbers, the asm-generic ioctl encoding (as rust/src/input_evdev.rs has it):
+    -- EVIOCGBIT(EV_ABS, 8) = _IOC(_IOC_READ, 'E', 0x20 + 3, 8) and EVIOCGABS(ABS_PRESSURE) =
+    -- _IOR('E', 0x40 + 0x18, struct input_absinfo), 24 bytes. As uint32_t cdata, so either
+    -- declaration of ioctl KOReader has (int or unsigned long request) takes them as they are.
+    local EVIOCGBIT_ABS = ffi.cast("uint32_t", 0x80084523)
+    local EVIOCGABS_PRESSURE = ffi.cast("uint32_t", 0x80184558)
+    local ABS_X, ABS_PRESSURE, ABS_MT_POSITION_X = 0x00, 0x18, 0x35
+    local flags = bit.bor(C.O_RDONLY, C.O_NONBLOCK, C.O_CLOEXEC)
+    local names = {}
+    for name in lfs.dir("/dev/input") do
+        local n = name:match("^event(%d+)$")
+        if n then table.insert(names, tonumber(n)) end
+    end
+    table.sort(names)
+    local bits = ffi.new("uint8_t[8]")
+    local absinfo = ffi.new("int32_t[6]") -- value, minimum, maximum, fuzz, flat, resolution
+    local function has(code) return bit.band(bits[bit.rshift(code, 3)], bit.lshift(1, bit.band(code, 7))) ~= 0 end
+    for _, n in ipairs(names) do
+        local path = "/dev/input/event" .. n
+        local fd = C.open(path, flags)
+        if fd >= 0 then
+            ffi.fill(bits, 8)
+            local code
+            if C.ioctl(fd, EVIOCGBIT_ABS, bits) >= 0 and has(ABS_PRESSURE) and not has(ABS_X)
+                    and not has(ABS_MT_POSITION_X) and C.ioctl(fd, EVIOCGABS_PRESSURE, absinfo) >= 0
+                    and absinfo[1] >= 10 and absinfo[2] <= 30 then
+                code = tonumber(absinfo[0])
+            end
+            C.close(fd)
+            if code then return code, path end
+        end
+    end
+    return nil, "no orientation sensor found"
+end
+
+-- The sensor's codes as KOReader's KindleGyroTransform turns them into its MSC_GYRO values.
+local GYRO_OF_CODE = {
+    [15] = "DEVICE_ROTATED_UPRIGHT",
+    [16] = "DEVICE_ROTATED_UPSIDE_DOWN",
+    [17] = "DEVICE_ROTATED_CLOCKWISE",
+    [18] = "DEVICE_ROTATED_COUNTER_CLOCKWISE",
+}
+local SCRIBES = { KindleScribe = true, KindleScribe3 = true, KindleScribeColorSoft = true }
+
+-- KOReader back from Grimoire takes its rotation from the window manager (KindleScribe:init), which
+-- grimoire.sh kept stopped all through Grimoire, so it answers with how the Kindle was held before
+-- Grimoire, or with nothing (rotation 0); and the orientation sensor reports only changes: held still
+-- (upside down, say), nothing tells KOReader otherwise. So on a Scribe, back from a hand-over, the
+-- sensor's current code is read and given to KOReader's own accelerometer handler as the event it
+-- would have had, which honours its settings: nothing when the accelerometer is ignored (the
+-- handler is not KOReader's), only a turn within portrait or within landscape under its lock, and
+-- nothing at the rotation it has already. It sets the rotation alone, never the native rotation,
+-- so drawing and touch stay together (native_rotation_as_the_framebuffer_has_it runs first). On the
+-- next tick, once the book or the file browser is up and has set its own rotation. Once per run.
+local function sensor_to_rotation(read_code)
+    local input, screen = Device.input, Device.screen
+    if not (input and screen and screen.getRotationMode) then return end
+    local gyro = input.handleMiscGyroEv
+    if not gyro or input.handleGyroEv ~= gyro then
+        logger.info("Grimoire: back from Grimoire, KOReader ignores the accelerometer: rotation",
+            screen:getRotationMode(), "left alone")
+        return
+    end
+    local code, where = read_code()
+    local name = code and GYRO_OF_CODE[code]
+    if not name then
+        logger.info("Grimoire: back from Grimoire, the orientation sensor reads", tostring(code or where)
+            .. ": rotation", screen:getRotationMode(), "left alone")
+        return
+    end
+    local ffi = require("ffi")
+    require("ffi/linux_input_h")
+    local C = ffi.C
+    local was = screen:getRotationMode()
+    -- What KindleGyroTransform makes of the sensor's event, to KOReader's handler as its main loop
+    -- gives it (Input:handleMiscEv), and a SetRotationMode it answers sent on as the main loop sends
+    -- it (UIManager's default input handler: sendEvent).
+    local event = input:handleGyroEv({ type = C.EV_MSC, code = C.MSC_GYRO, value = C[name] })
+    if event then UIManager:sendEvent(event) end
+    local now = screen:getRotationMode()
+    local how = ""
+    if now == was then
+        how = Device:isGSensorLocked() and " (left alone: the same, or the orientation lock keeps it)"
+            or " (left alone: the same)"
+    end
+    logger.info("Grimoire: back from Grimoire, the orientation sensor reads", code, "(" .. name .. "): rotation",
+        was, "->", now .. how)
+end
+
+local sensor_checked = false
+local function rotation_as_the_sensor_has_it(read_code)
+    if sensor_checked then return end
+    sensor_checked = true
+    local ok, err = pcall(function()
+        local marker = back_marker()
+        if not is_file(marker) then return end
+        os.remove(marker)
+        if not SCRIBES[Device.model] then return end
+        if not (Device.hasGSensor and Device:hasGSensor()) then
+            logger.info("Grimoire: back from Grimoire, KOReader knows no accelerometer here: rotation left alone")
+            return
+        end
+        -- (UIManager runs its tasks without a pcall: an error in one would end reader.lua.)
+        UIManager:nextTick(function()
+            local done, why = pcall(sensor_to_rotation, read_code)
+            if not done then logger.warn("Grimoire: could not read the orientation sensor:", why) end
+        end)
+    end)
+    if not ok then logger.warn("Grimoire: could not check for a hand-over's return:", err) end
+end
+
 local function is_nonempty_file(path)
     return is_file(path) and (lfs.attributes(path, "size") or 0) > 0
 end
@@ -311,6 +440,7 @@ local Grimoire = WidgetContainer:extend{
     -- Where things are on the Kindle (tests/koplugin_test.lua points these into a scratch tree).
     us = "/mnt/us",
     koreader_sh = "/var/tmp/koreader.sh", -- koreader.sh runs from this copy while KOReader is up
+    orientation_sensor_code = orientation_sensor_code, -- (the test's stand-in has no /dev/input)
 }
 
 function Grimoire:init()
@@ -318,6 +448,7 @@ function Grimoire:init()
     if not Device:isKindle() then return end
     keep_alive_as_the_kindle_has_it()
     native_rotation_as_the_framebuffer_has_it()
+    rotation_as_the_sensor_has_it(self.orientation_sensor_code)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):
@@ -1026,6 +1157,11 @@ function Grimoire:handOver(launcher, busy, extra)
             local status = exit_status(os.execute(command))
             logger.info("Grimoire: back in KOReader, grimoire.sh status", status)
             if status == 0 then os.remove(marker) end
+            local back = io.open(back_marker(), "w")
+            if back then
+                back:write(os.date("%Y-%m-%d %H:%M:%S"), "\n")
+                back:close()
+            end
         end, ...)
         if framework then
             rawset(Device, "framework_lipc_handle", own_framework)

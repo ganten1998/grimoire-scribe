@@ -15,6 +15,13 @@
   page fits below it. Display lets you select Bar, Corner or Off, also available as `status-mode`.
 - **Live view after a long pen silence:** quick ink and the pen dot no longer freeze once the pen
   has been away for over 35 minutes.
+- **KOReader comes back turned as you hold the Kindle:** leaving Grimoire for KOReader no longer
+  lands in KOReader's default orientation until you pick one by hand. Back from Grimoire, the
+  KOReader plugin reads the orientation sensor once and turns KOReader to match (upside down,
+  upright or sideways), honouring KOReader's own accelerometer settings: nothing when it ignores
+  the accelerometer, and only a flip within portrait or landscape when its orientation lock is on.
+  Taps still land where they are drawn (update the plugin: Library > Settings > KOReader > Install
+  / update Grimoire plugin).
 
 ## 2.0.0-beta.5 (2026-10-28)
 

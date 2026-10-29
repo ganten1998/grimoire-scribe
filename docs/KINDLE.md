@@ -212,6 +212,26 @@ KPM packaging and its install/upgrade/remove hooks are documented in [KPM.md](KP
    makes the native rotation the framebuffer's and sets KOReader's rotation again over it, the one
    it closed with (`Grimoire: KOReader's native rotation 2 against the framebuffer's 3 (drawing and
    touch apart): native rotation 0 and rotation 2 again`). Once per run.
+   And KOReader is turned as the Kindle is held. The stopped window manager answers with how the
+   Kindle was held before Grimoire, or with nothing (KOReader then starts upright), and the
+   orientation sensor (`bma4xy_feature` on the Scribe 2, `kx132` on others) reports only turns, so
+   a Kindle held still, upside down say, came back upright and stayed so until its rotation was
+   chosen by hand (seen 2026-10-28). So the wrapper writes a second marker,
+   `koreader/settings/grimoire_back.txt`, once Grimoire has run, whatever it answered; at the
+   start that finds it (and deletes it), on a Kindle Scribe (`KindleScribe`, `KindleScribe3`,
+   `KindleScribeColorSoft`) whose KOReader has an accelerometer, the plugin reads the sensor's
+   current code on KOReader's next tick (after the native rotation above, and after the book or the
+   file browser has set its own rotation): `EVIOCGABS(ABS_PRESSURE)` from the `/dev/input/event*`
+   device with ABS_PRESSURE in a 10..30 range and neither ABS_X nor ABS_MT_POSITION_X, as Grimoire
+   finds it. 15, 16, 17 and 18 (upright, upside down, landscape left, landscape right) become the
+   `MSC_GYRO` event KOReader's `KindleGyroTransform` makes of them, handed to KOReader's own
+   accelerometer handler (`Device.input:handleGyroEv`), and a `SetRotationMode` it answers is sent
+   on as KOReader's main loop sends it. So KOReader's settings hold: with the accelerometer ignored
+   nothing is read, under the orientation lock only a turn within portrait or within landscape is
+   made, and a Kindle held as KOReader stands changes nothing. Only the rotation is set, never the
+   native rotation, so drawing and touch stay together. One line in crash.log says what was read
+   and done (`Grimoire: back from Grimoire, the orientation sensor reads 16
+   (DEVICE_ROTATED_UPSIDE_DOWN): rotation 0 -> 2`).
 6. A launch marker still there at that start means Grimoire never ran (grimoire.sh refused, found
    another Grimoire, or was never reached): the plugin deletes it and shows "Grimoire could not
    start. See grimoire/grimoire.log." over the book or the file browser.
