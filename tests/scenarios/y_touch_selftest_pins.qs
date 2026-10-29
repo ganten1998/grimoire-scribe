@@ -1,7 +1,8 @@
 # settings: status_mode=1
 # rust-only
-# tap panel NAME with four pens pinned under the tool button, the panel's buttons moved down by four and, sideways,
-# its metrics scaled to fit: Undo, Redo and the pinned pens are found where they are drawn.
+# tap panel NAME with three pens pinned under the tool button and, sideways, its metrics scaled
+# to fit: Undo, Redo and the pinned pens are found where they are drawn. A legacy four-pin
+# setting loads only its first three pins.
 # settings: mirror_pdf=0
 # settings: panel_tools=highlighter,fineliner,marker,charcoal
 wait 300
@@ -11,7 +12,7 @@ tap 510 460
 tap 1564 2254
 wait 400
 expect screen is editor
-expect editor.pins is highlighter,fineliner,marker,charcoal
+expect editor.pins is highlighter,fineliner,marker
 pen line 300 700 1300 720 20 0.6 0.6
 tap panel undo
 expect editor.strokes is 0
