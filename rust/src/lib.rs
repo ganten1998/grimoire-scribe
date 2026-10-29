@@ -43,6 +43,7 @@ pub mod koreader;
 pub mod latency;
 pub mod pair;
 pub mod pensync;
+pub mod penbutton;
 pub mod power;
 pub mod qr;
 pub mod shortcuts;
@@ -61,6 +62,8 @@ pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
 pub mod history;
+pub mod shape;
+pub mod graph;
 pub mod musicbuild;
 pub mod nav;
 pub mod page;
@@ -137,6 +140,8 @@ pub mod prelude {
     pub use crate::gesturemap::*;
     pub use crate::hidkeys::*;
     pub use crate::history::*;
+    pub use crate::shape::*;
+    pub use crate::graph::*;
     pub use crate::httpd::*;
     pub use crate::i18n::*;
     pub use crate::inkmode::*;
@@ -157,6 +162,7 @@ pub mod prelude {
     pub use crate::panel::*;
     pub use crate::paper::*;
     pub use crate::pensync::*;
+    pub use crate::penbutton::*;
     pub use crate::power::*;
     pub use crate::qr::*;
     pub use crate::shortcuts::*;
