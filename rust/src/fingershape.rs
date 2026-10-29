@@ -436,7 +436,7 @@ fn die(s: &mut FsStroke, why: FsReason) {
 /// Pending to Drawing: the finger left the slop (within the lead, or it would be Dead) and the
 /// two-finger landing window is over.
 fn promote(s: &mut FsStroke, t: u32) {
-    if s.state == FsState::Pending && s.exited && t.wrapping_sub(s.t0) >= FS_GATES.trail_ms {
+    if s.state == FsState::Pending && s.exited && (t.wrapping_sub(s.t0) as i32) >= FS_GATES.trail_ms as i32 {
         s.state = FsState::Drawing;
     }
 }
@@ -527,9 +527,11 @@ pub fn fs_tick(s: &mut FsStroke, now: u32) -> FsState {
     let g = &FS_GATES;
     promote(s, now);
     if s.state == FsState::Drawing {
-        if now.wrapping_sub(s.t0) > g.dur_max_ms {
+        // A replay frame (or a just-arrived kernel sample) can be ahead of the wall tick.
+        // A negative elapsed time must not become a wrapped, multi-day timeout.
+        if (now.wrapping_sub(s.t0) as i32) > g.dur_max_ms as i32 {
             die(s, FsReason::TooSlow);
-        } else if now.wrapping_sub(s.anchor_t) >= g.pause_ms {
+        } else if (now.wrapping_sub(s.anchor_t) as i32) >= g.pause_ms as i32 {
             die(s, FsReason::Paused);
         }
     }

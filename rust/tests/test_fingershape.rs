@@ -307,6 +307,23 @@ fn capture_cancels() {
     check!(fs_box(&i) == RECT_EMPTY);
 }
 
+fn capture_tick_before_frame() {
+    // The runner's frame clock can lead wall time. The same signed comparison must
+    // preserve a pending/drawing session both normally and across the u32 wrap.
+    for t0 in [1000u32, u32::MAX - 150] {
+        let mut s = FsStroke::default();
+        fs_begin(&mut s, 1000, 1000, t0, PX100);
+        check!(fs_add(&mut s, 1100, 1000, t0.wrapping_add(50), false) == FsState::Pending);
+        check!(fs_tick(&mut s, t0.wrapping_sub(10)) == FsState::Pending);
+        drawing(&mut s, t0);
+        check!(fs_tick(&mut s, t0.wrapping_sub(10)) == FsState::Drawing);
+        check!(fs_tick(&mut s, t0.wrapping_add(200)) == FsState::Drawing);
+        check!(fs_tick(&mut s, t0.wrapping_add(799)) == FsState::Drawing);
+        check!(fs_tick(&mut s, t0.wrapping_add(800)) == FsState::Dead);
+        check!(s.dead == FsReason::Paused);
+    }
+}
+
 fn capture_clock_wrap() {
     // now_ms() wraps: a shape drawn across the wrap is the same shape
     let fr = shape_frames("Z", &Draw::default());
@@ -1397,6 +1414,7 @@ fn test_fingershape() {
     run!(capture_extremes);
     run!(capture_overtime);
     run!(capture_cancels);
+    run!(capture_tick_before_frame);
     run!(capture_clock_wrap);
     run!(capture_decimation);
     run!(gate_frames);

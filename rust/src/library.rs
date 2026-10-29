@@ -1729,7 +1729,7 @@ fn check_shape_candidate(a: &mut App) -> bool {
         s.record_checks_done = false;
         s.record_phase = RecordPhase::Wait;
         // TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
-        s.record_line = cformat!("{}\n{}", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
+        s.record_line = cformat!("%s\n%s", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
         redraw_record_card(a);
         return false;
     }
@@ -1764,7 +1764,7 @@ fn record_shape_sample(a: &mut App, sample: FsSample) {
             let s = lib(a);
             s.record_phase = RecordPhase::Wait;
             // TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
-            s.record_line = cformat!("{}\n{}", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
+            s.record_line = cformat!("%s\n%s", tr("Too easy to make by accident."), tr("Give it two turns or a loop."));
             redraw_record_card(a);
             return;
         }
@@ -2247,14 +2247,12 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
                 fg,
             );
         }
-        font_draw_left(
-            c,
-            FontFace::Bold,
-            ui_text_size(),
-            Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h),
-            &row.label,
-            fg,
-        );
+        let text_rect = Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h);
+        if row.id == H_NONE && row.st == ButtonStyle::Disabled {
+            ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), text_rect, &row.label, 2, false, fg);
+        } else {
+            font_draw_left(c, FontFace::Bold, ui_text_size(), text_rect, &row.label, fg);
+        }
         if row.st != ButtonStyle::Disabled {
             hits_add(&mut s.hits, r, row.id, row.arg);
         }
@@ -2502,12 +2500,15 @@ fn draw_bind_row(
     let thumb_w = if thumb.is_some() { ui_px(120.0) } else { 0 };
     let text_x = r.x + rh + ui_px(10.0);
     let text_w = r.w - rh - ui_px(30.0) - thumb_w;
-    font_draw_left(
+    ui_text(
         c,
         FontFace::Bold,
         ui_text_size(),
+        ui_small_size(),
         Rect::new(text_x, r.y, text_w, r.h),
         text,
+        2,
+        false,
         fg,
     );
     if let Some(g) = thumb.as_ref() {
@@ -5146,6 +5147,14 @@ mod tests {
         }
         assert_eq!(probe(&mut a, "record"), "wait");
 
+        let frames = shape_frames("V", &Draw::default());
+        let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
+        let mut sample = FsSample::default();
+        fs_sample_of(&points, &mut sample);
+        record_shape_sample(&mut a, sample);
+        assert_eq!(probe(&mut a, "record.line"), "Too easy to make by accident.\nGive it two turns or a loop.");
+        assert_eq!(lib(&mut a).record_sample_count, 0);
+
         // Three actual shape captures run the existing sample, consistency and bank checks.
         for attempt in 0..3 {
             let frames = shape_frames("square", &Draw::default());
@@ -5298,6 +5307,36 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn gesture_sheets_fit_in_both_languages_and_orientations() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        font_set_overflow_hook(Some(|text, need, have| panic!("{text:?} needs {need}px, has {have}px")));
+        for language in ["en", "es"] {
+            i18n_set(language);
+            for theme in [UiTheme::Gothic, UiTheme::Classic] {
+                ui_set_theme(theme);
+                for (w, h) in [(1860, 2480), (2480, 1860)] {
+                    let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+                    assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+                    library_init(&mut a);
+                    gesturemap_defaults(&mut a.gestures);
+                    lib(&mut a).modal = Modal::Gestures;
+                    for group in -1..N_GROUPS as i32 {
+                        lib(&mut a).gestures_group = group;
+                        hits_clear(&mut lib(&mut a).hits);
+                        draw_bind_sheet(&mut a, GESTURES);
+                    }
+                    library_free(&mut a);
+                    canvas_free(&mut a.screen);
+                }
+            }
+        }
+        font_set_overflow_hook(None);
+        i18n_set("en");
+        ui_set_theme(UiTheme::Gothic);
     }
 
     #[test]
