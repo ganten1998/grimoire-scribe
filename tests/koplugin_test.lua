@@ -123,6 +123,37 @@ Device.screen = {
         return png_answer(path, string.format("SHOT %dx%d\n", W.screen.w, W.screen.h))
     end,
 }
+-- KOReader's input, as KindleScribe:init and Device:init leave it with an accelerometer: its gyro
+-- handler (Input:handleMiscGyroEv, as KOReader has it) as handleGyroEv, unless the accelerometer
+-- is ignored (W.gsensor_ignored: KOReader's voidEv instead); the lock as W.locked has it, a turn
+-- under it set straight on the screen (and UIManager:onRotation, in W.calls). The events it is
+-- given are in W.gyro as "<type>:<code>:<value>". KOReader's MSC_GYRO values, as ffi/linux_input_h
+-- declares them, for the plugin's require of it.
+local ffi = require("ffi")
+ffi.cdef[[
+static const unsigned EV_MSC = 4;
+static const unsigned MSC_GYRO = 71;
+static const unsigned DEVICE_ROTATED_UPRIGHT = 0;
+static const unsigned DEVICE_ROTATED_CLOCKWISE = 1;
+static const unsigned DEVICE_ROTATED_UPSIDE_DOWN = 2;
+static const unsigned DEVICE_ROTATED_COUNTER_CLOCKWISE = 3;
+]]
+package.loaded["ffi/linux_input_h"] = true
+local function handle_misc_gyro(_, ev)
+    table.insert(W.gyro, string.format("%d:%d:%d", ev.type, ev.code, ev.value))
+    local rotation = ({ [0] = 0, 1, 2, 3 })[ev.value]
+    if not rotation then return end
+    local old_rotation = Device.screen:getRotationMode()
+    if Device:isGSensorLocked() then
+        if rotation ~= old_rotation and rotation % 2 == old_rotation % 2 then
+            Device.screen:setRotationMode(rotation)
+            table.insert(W.calls, "onRotation")
+        end
+    elseif rotation ~= old_rotation then
+        return { name = "SetRotationMode", args = { rotation } }
+    end
+end
+local function void_ev() end
 -- nextTick queues its task for run_ticks, KOReader's UI loop: UIManager runs its tasks without a
 -- pcall, so an error in one ends reader.lua.
 local UIManager = {
@@ -135,6 +166,11 @@ local UIManager = {
     nextTick = function(_, f) table.insert(W.ticks, f) end,
     scheduleIn = function(_, _, f) table.insert(W.scheduled, f) end,
     restartKOReader = function() table.insert(W.calls, "restart") end,
+    -- A SetRotationMode turns the screen, as the reader's or the file browser's handler does.
+    sendEvent = function(_, event)
+        table.insert(W.calls, "sendEvent " .. event.name .. " " .. tostring(event.args[1]))
+        if event.name == "SetRotationMode" then Device.screen:setRotationMode(event.args[1]) end
+    end,
 }
 local function run_ticks()
     while W.ticks[1] do
@@ -431,6 +467,13 @@ local function world(name)
     Device.model, Device.screen.native_rotation_mode = "KindleScribe", 0
     W.hw_rotation, W.rotation, W.rotations = 3, 0, {}
     Device.powerd = { lipc_handle = lipc_handle() }
+    -- The orientation sensor's current code (W.sensor; nil: none found; W.sensor_error: the read
+    -- fails), each read counted in W.sensor_reads; KOReader's accelerometer (W.gsensor), its lock.
+    W.sensor, W.sensor_reads, W.gsensor, W.locked, W.gyro = nil, 0, true, false, {}
+    W.back = W.dir .. "/settings/grimoire_back.txt"
+    Device.hasGSensor = function() return W.gsensor end
+    Device.isGSensorLocked = function() return W.locked end
+    Device.input = { handleMiscGyroEv = handle_misc_gyro, handleGyroEv = handle_misc_gyro }
     package.loaded["pluginshare"] = W.share
     assert(sh("rm -rf " .. q(W.dir) .. " && mkdir -p " .. q(W.us .. "/documents") .. " " ..
         q(W.us .. "/grimoire/app") .. " " .. q(W.dir .. "/settings") .. " " .. q(W.dir .. "/var/tmp")))
@@ -533,6 +576,12 @@ local function koreader(in_book)
     local Plugin = dofile(plugin_dir .. "/main.lua")
     Plugin.us = W.us
     Plugin.koreader_sh = W.koreader_sh
+    Plugin.orientation_sensor_code = function()
+        W.sensor_reads = W.sensor_reads + 1
+        if W.sensor_error then error("ioctl failed") end
+        if W.sensor == nil then return nil, "no orientation sensor found" end
+        return W.sensor, "/dev/input/event2"
+    end
     return Plugin:new{ ui = new_ui(in_book) }
 end
 
@@ -700,6 +749,149 @@ do -- KOReader's native rotation as the framebuffer has it: back from Grimoire, 
     W.kindle, Device.screen.native_rotation_mode = false, 2
     koreader(false)
     check("not a Kindle: left alone", Device.screen.native_rotation_mode == 2 and #W.rotations == 0)
+end
+
+do -- KOReader back from Grimoire takes its rotation from a window manager kept stopped all through
+    -- Grimoire, and the orientation sensor tells only of turns: held still upside down, KOReader
+    -- stayed upright (the owner, 2026-10-28). Back from a hand-over, on a Scribe, the sensor's code
+    -- now goes to KOReader's own accelerometer handler, on the next tick, after the native rotation.
+    local function back_from_grimoire(name, setup, in_book, before_start)
+        world(name)
+        if setup then setup() end
+        local g = koreader(false)
+        g:onOpenGrimoire()
+        W.calls = {}
+        Device:exit()
+        check(name .. ": the back marker written", is_file(W.back))
+        -- koreader.sh starts KOReader again: KindleScribe:init has set its rotation (before_start).
+        if before_start then before_start() end
+        W.rotations = {}
+        if in_book == nil then in_book = true end
+        koreader(in_book)
+    end
+    local s = "back upside down"
+    back_from_grimoire("sensor-upside-down", function() W.sensor = 16 end)
+    check(s .. ": a marker says the hand-over came back", not is_file(W.back) and at("execute sh "))
+    check(s .. ": the sensor read on the next tick, not before", W.sensor_reads == 0 and W.rotation == 0)
+    run_ticks()
+    check(s .. ": read once", W.sensor_reads == 1)
+    check(s .. ": KOReader's gyro handler had what KindleGyroTransform makes of 16",
+        #W.gyro == 1 and W.gyro[1] == "4:71:2")
+    check(s .. ": SetRotationMode upside down, sent on", at("sendEvent SetRotationMode 2") ~= nil)
+    check(s .. ": the screen turned, the native rotation kept", W.rotation == 2 and W.rotations[#W.rotations] == "2@0"
+        and Device.screen.native_rotation_mode == 0)
+    check(s .. ": logged", W.logs[#W.logs] == "Grimoire: back from Grimoire, the orientation sensor reads 16 "
+        .. "(DEVICE_ROTATED_UPSIDE_DOWN): rotation 0 -> 2")
+    koreader(true)
+    run_ticks()
+    check(s .. ": the next start (no hand-over) reads no sensor", W.sensor_reads == 1)
+
+    -- With baa43ea's step: KindleScribe:init took the window manager's stale D (native and rotation
+    -- upside down) while the framebuffer is upright (3). The native rotation becomes the framebuffer's
+    -- first (drawing and touch together again, rotation 2); the sensor, upside down, keeps it.
+    back_from_grimoire("sensor-after-native", function() W.sensor = 16 end, true, function()
+        Device.screen.native_rotation_mode, W.rotation = 2, 2
+    end)
+    run_ticks()
+    s = "stale D, held upside down"
+    check(s .. ": native the framebuffer's, rotation set again, then left alone", Device.screen.native_rotation_mode == 0
+        and #W.rotations == 1 and W.rotations[1] == "2@0" and W.rotation == 2 and not at("sendEvent"))
+    -- The framebuffer upside down (1), the window manager's stale U: native upside down first, then
+    -- the sensor's turn on top of it (2 at native 2: drawn as the framebuffer is, touch at 2).
+    back_from_grimoire("sensor-fb-upside-down", function() W.sensor = 16 end, true, function()
+        W.hw_rotation = 1
+    end)
+    run_ticks()
+    s = "framebuffer upside down, stale U"
+    check(s .. ": native upside down, then SetRotationMode 2 over it", Device.screen.native_rotation_mode == 2
+        and #W.rotations == 2 and W.rotations[1] == "0@2" and W.rotations[2] == "2@2")
+
+    back_from_grimoire("sensor-ignored", function()
+        W.sensor = 16
+        Device.input.handleGyroEv = void_ev
+    end)
+    run_ticks()
+    check("accelerometer ignored: nothing read, nothing turned", W.sensor_reads == 0 and #W.gyro == 0
+        and W.rotation == 0 and not at("sendEvent"))
+    check("accelerometer ignored: logged", W.logs[#W.logs] == "Grimoire: back from Grimoire, KOReader ignores the "
+        .. "accelerometer: rotation 0 left alone")
+
+    back_from_grimoire("sensor-locked-sideways", function()
+        W.sensor, W.locked = 17, true
+    end)
+    run_ticks()
+    check("locked, the sensor sideways from portrait: nothing turned", #W.gyro == 1 and W.gyro[1] == "4:71:1"
+        and W.rotation == 0 and not at("sendEvent") and not at("onRotation"))
+    check("locked, sideways: logged as left alone", W.logs[#W.logs] == "Grimoire: back from Grimoire, the "
+        .. "orientation sensor reads 17 (DEVICE_ROTATED_CLOCKWISE): rotation 0 -> 0 (left alone: the same, or the "
+        .. "orientation lock keeps it)")
+
+    back_from_grimoire("sensor-locked-upside-down", function()
+        W.sensor, W.locked = 16, true
+    end)
+    run_ticks()
+    check("locked, upside down from portrait: turned within portrait, as the lock allows",
+        W.rotation == 2 and at("onRotation") and not at("sendEvent"))
+
+    back_from_grimoire("sensor-sideways", function() W.sensor = 18 end)
+    run_ticks()
+    check("unlocked, landscape right: SetRotationMode counter-clockwise", W.gyro[1] == "4:71:3"
+        and at("sendEvent SetRotationMode 3") and W.rotation == 3)
+
+    back_from_grimoire("sensor-same", function() W.sensor = 15 end)
+    run_ticks()
+    check("upright and KOReader upright: left alone", #W.gyro == 1 and W.rotation == 0 and not at("sendEvent")
+        and W.logs[#W.logs]:find("rotation 0 -> 0 (left alone: the same)", 1, true) ~= nil)
+
+    back_from_grimoire("sensor-none", function() W.sensor = nil end)
+    local ok = pcall(run_ticks)
+    check("no sensor: nothing turned, no error, no warning", ok and W.sensor_reads == 1 and #W.gyro == 0
+        and W.rotation == 0 and not at("warn"))
+    check("no sensor: logged", W.logs[#W.logs] == "Grimoire: back from Grimoire, the orientation sensor reads "
+        .. "no orientation sensor found: rotation 0 left alone")
+
+    back_from_grimoire("sensor-face-up", function() W.sensor = 19 end)
+    run_ticks()
+    check("a code with no turn (face up): left alone", #W.gyro == 0 and W.rotation == 0)
+
+    back_from_grimoire("sensor-fails", function() W.sensor_error = true end)
+    ok = pcall(run_ticks)
+    check("the read fails: a warning, the tick does not raise", ok and at("warn") and W.rotation == 0)
+
+    back_from_grimoire("sensor-refused", function()
+        W.sensor, W.status.hosted = 16, 768
+    end)
+    run_ticks()
+    check("grimoire.sh refused: back all the same, the sensor applied", W.rotation == 2 and not is_file(W.back))
+
+    for _, m in ipairs({ "KindleScribe3", "KindleScribeColorSoft" }) do
+        back_from_grimoire("sensor-" .. m, function()
+            W.sensor = 16
+            Device.model = m
+        end)
+        run_ticks()
+        check(m .. ": the sensor applied", W.rotation == 2)
+    end
+
+    back_from_grimoire("sensor-paperwhite", function()
+        W.sensor = 16
+        Device.model = "KindlePaperWhite5"
+    end)
+    run_ticks()
+    check("not a Scribe: no sensor read, the marker gone", W.sensor_reads == 0 and W.rotation == 0
+        and not is_file(W.back))
+
+    back_from_grimoire("sensor-no-gsensor", function()
+        W.sensor, W.gsensor = 16, false
+    end)
+    run_ticks()
+    check("no accelerometer in KOReader: no sensor read", W.sensor_reads == 0 and W.rotation == 0)
+
+    world("sensor-ordinary-start")
+    W.sensor = 16
+    koreader(true)
+    run_ticks()
+    check("an ordinary start: no sensor read", W.sensor_reads == 0 and W.rotation == 0)
 end
 
 do -- KOReader not started by koreader.sh (no /var/tmp/koreader.sh).
