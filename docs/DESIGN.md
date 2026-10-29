@@ -999,13 +999,14 @@ propagate to the plugin so failed launches keep the diagnostic marker.
 
 **Touch.** Fingers reach the editor through `touchgest.rs`, a pure recognizer that input_evdev.rs
 (the Kindle) and sim_sdl.rs (the runner) each feed contact frames and the pen's state, with kernel
-time (`wrapping_sub`, never `now_ms()` inside a batch). It keeps today's one finger (tap, link hold,
-the finger session) and pinch exactly, and adds the two-finger classes: ZOOM (the fingers spread or
-close), PAN (they move together on an axis the page scrolls on), SWIPE (about 20 mm in a straight line
-within a second, in one of four directions) and TAP (two fingers down and up together). A third finger
-makes three, which is refused. The pen always wins: its proximity or contact cancels every finger
-session, a resting palm or thumb and the first finger inside the pen's window (1 s after it leaves)
-are never counted, and a swipe refused only for the pen says so once in ten minutes. The editor tells
+time (`wrapping_sub`, never `now_ms()` inside a batch). It keeps the one-finger tap/link-hold
+stream and recognizes ZOOM, PAN, SWIPE and TAP. Phase 3 selects provisional `TG_TUNE`:
+a 16 mm swipe within 1200 ms and a tap within 400 ms, with the other gates in
+[TOUCH-STUDY.md](index-hook/TOUCH-STUDY.md). `TG_TUNE_V1` retains the older behavior for replay.
+Three-finger patterns require at least three reported slots; two-slot panels suppress them.
+Pen contact wins; nearby hover, resting palms and held contacts suppress actions. A fresh
+hover far from all fingers can permit a swipe, and pinch can start immediately after writing.
+A swipe refused only for the pen says so once in ten minutes. The editor tells
 touchgest what its screen allows (`touch_context`: whether the page pans, zooms, may start a gesture)
 after every event, so a sheet, the bar or a keyboard makes a drag a swipe, which the mirror rule closes
 the menu with. What a gesture does is `gesturemap.rs`'s (the built-ins, then `gestures.ini`), through
@@ -1141,3 +1142,58 @@ hold path (its picker, Remove link, The Index) is gone. Deleting a link never de
 The border's strips hold only black and white pixels and never meet, so DU shows them exactly; one union
 of the four would be the whole box, and DU would posterize the gray ink inside it. No GL16 and no toast
 while the pen is down: the lasso's GL16 comes at the lift.
+
+
+## Settings > Gestures and page finger shapes (Index phase 3)
+
+The Settings bottom row has five equal cells: KOReader, Controller, Gestures, Updates, Done.
+Controller, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
+in English and Spanish, in both themes. Coordinates remain pending main-scenario verification.
+Buttons and Gestures share the seven registry groups and row descriptors from `actions.rs`.
+Source masks hide Momentary hold-eraser from gestures and prevent keys/pads learning their own
+Enable shortcuts or Bluetooth-controller switches; calibration stays outside the registry.
+
+The Gestures sheet has a master on/off row, an ideas line, seven group rows, Reset and Done.
+Groups filter for TOUCH or SHAPE, show the binding beside each action and a 96 px medoid
+thumbnail for a recorded shape. Paired rows learn one member at a time. A hold clears both
+sources for the row (both members of a pair); Reset restores built-ins and confirms first when shapes exist. It also
+recovers from an unreadable file. Learn/clear use copy-save-swap: failed persistence leaves the
+live map and record card intact.
+
+The record card keeps three sample slots, Use, Try again and Cancel. First input selects a
+pattern, one-finger swipe or shape. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
+shapes require two consistent samples, with an optional third. Conflict and accidental-slip
+checks run before saving, with progress/refusal text in the line's own rectangle. Moving a
+binding names the losing action; replacing a carried newer shape requires an explicit second
+Use after the warning. Try again resets the attempt, Cancel returns without saving, and no
+attempt within 10 s closes the idle card. Pen taps on either surface are UI input, never ink.
+
+On a notebook page, capture arms only in the eligible idle view with gestures enabled and at
+least a shape or one-finger binding. A stationary clock-corner tap stays Pending and belongs to
+the clock; deliberate motion can become a shape. Pen arrival, another contact, sleep or a
+screen/layout change aborts capture. The dotted, outlined black/white trail is drawn only on
+the screen canvas; it never enters the page, undo stack, exported PNG/PDF or autosave. The page
+backing restores the trail, including over the Links bar. Refusals fade; a first unknown shape
+can show the one-time tip (`hints` bit 7). Match dispatch uses the common action path.
+
+| Surface/event | Refresh | Contract |
+| --- | --- | --- |
+| Two-finger swipe/tap | Action's own refresh | Nothing while moving |
+| Pan/zoom, late zoom, re-grab | Fast at most every 180 ms of event time; Ui at PinchEnd | Re-grab delays the end by at most `grace_ms` |
+| Finger-shape trail | Fast, own flush, at most 25 Hz | Never pen mode/live ink; do not merge a trail frame into Ui |
+| Match | Ui of trail rectangle, with action refresh | One GL16 per shape, counts toward every-30th Full |
+| Reject | Fast thinning, then Ui after 250 ms | No Full flash |
+| Abort by pen | Fast restore, then writing settle | Never GL16 while pen is down |
+| Record reason/progress | Ui of that line only | No whole-card redraw for a changed reason |
+| Gestures open/group/close | Ui, as Buttons | Existing sheet behavior |
+| Invert/theme/language | Full | Deliberate screen changes |
+| Other actions | Existing action/kind refresh | No device read or new wait in input dispatch |
+
+`TG_TUNE` remains provisional without the owner trace. Synthetic replay exercises transitions
+and persistence; it does not establish real-hand success rates, false-fire rates or e-ink
+appearance. The pending study and the shape freeze gate are in [TOUCH-STUDY.md](index-hook/TOUCH-STUDY.md).
+
+The line-only progress/refusal refresh above is the phase 3 contract. At this source snapshot,
+`record_refusal` still calls `redraw_record_card` (whole-card Ui), as does sample progress;
+`draw_record_line` has the smaller refresh path. This remains an implementation deviation for
+the main owner to resolve; the contract is not evidence of a measured device refresh.

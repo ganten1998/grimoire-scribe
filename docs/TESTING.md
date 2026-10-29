@@ -11,6 +11,27 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## Index phase 3: gestures and finger shapes (device checks pending)
+
+No phase 3 device results or owner trace are available for this work. `TG_TUNE` is provisional;
+synthetic fixtures and runner probes do not measure owner success, accidental fires, hover
+spacing or e-ink trail appearance. The main owner will run the full gate and record its actual
+result in `index-p3-check.log`; no passing full-gate claim is made here.
+
+Run all [phase 3 owner checks](KINDLE.md#phase-3-owner-checks-pending-on-a-kindle): natural two-finger
+swipes/taps, pinch after writing and re-grab; zero accidental fires while writing/holding;
+near/far pen hover; five Settings labels upright/sideways in both languages/themes; pattern
+record/reassign/refuse; two/three-sample shape recording, V/check refusals, unknown-shape fade;
+clock-corner tap and shape; hold-clear, Reset, failed-save/Cancel preservation; seven groups and
+source restrictions; toggles/cycles including all four sleep-screen choices; trail over Links,
+pen interruption, sleep/layout aborts, no ink/undo/export marks. Capture the build, Kindle,
+firmware, language/theme and failures before marking any item passed.
+
+Then run [the two-finger study](KINDLE.md#the-two-finger-study), blocks A–L with 5 s hands-off gaps,
+and send the trace/log. [TOUCH-STUDY.md](index-hook/TOUCH-STUDY.md) records the pending thresholds,
+acceptance targets and shape freeze gate. Owner blocks J/K must have zero pattern and shape
+fires, and L must establish shape acceptance; synthetic negative traces cannot substitute.
+
 ## Index phase 2: links without ink and the long-press card (2.0.0-beta.6 candidate, not yet on a Kindle)
 
 Not yet on a Kindle. `make check` covers links.ini's area lines byte for byte, the migration of beta.5 links

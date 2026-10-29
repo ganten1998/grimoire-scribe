@@ -437,7 +437,9 @@ impl State {
     // A pen event about to be queued (the script's, or the stand-in raw node's): the pen ends what
     // fingers are doing (the Kindle's pen_frame arrival rule), before its event ...
     fn pen_arrives(&mut self, e: &InEvent) {
-        if touchgest_busy(&self.tg) {
+        let arrives = matches!(e.type_, InType::PenDown | InType::PenMove)
+            || (e.type_ == InType::PenHover && !self.tpen.prox);
+        if arrives && touchgest_busy(&self.tg) {
             let mut out = TgOut::default();
             let k = self.tg_now();
             touchgest_cancel(&mut self.tg, k, &mut out);
@@ -446,20 +448,30 @@ impl State {
             }
         }
         // ... and touchgest sees it near, touching, or gone.
+        let at = self.tg_now();
         match e.type_ {
             InType::PenDown | InType::PenMove => {
                 self.tpen.prox = true;
                 self.tpen.touching = true;
                 self.tpen.last = (e.x, e.y);
+            self.tpen.hover = None;
             }
-            InType::PenUp | InType::PenHover => {
+            InType::PenUp => {
                 self.tpen.prox = true;
                 self.tpen.touching = false;
+                self.tpen.hover = None;
+            }
+            InType::PenHover => {
+                self.tpen.prox = true;
+                self.tpen.touching = false;
+                self.tpen.last = (e.x, e.y);
+                self.tpen.hover = Some((e.x, e.y, at));
             }
             InType::PenLeave => {
                 self.tpen.prox = false;
                 self.tpen.touching = false;
-                self.tpen.left_ms = e.t_ms;
+                self.tpen.left_ms = at;
+                self.tpen.hover = None;
             }
             _ => {}
         }
@@ -551,6 +563,141 @@ impl State {
             self.fingers[i + 1] = None;
             self.tg_frame(10);
         }
+    }
+
+    /// A synthetic one-finger path, on the contact-frame clock used by finger/frame/swipe/tapn.
+    /// The first point lands at the current frame time; later points keep their supplied offsets.
+    fn tg_path(&mut self, points: &[(u32, f32, f32)]) {
+        if points.is_empty() {
+            return;
+        }
+        self.fingers = [None; TG_MAX + 1];
+        self.fclock_start();
+        let mut previous = points[0].0;
+        for (i, &(at, x, y)) in points.iter().enumerate() {
+            self.fingers[1] = Some(self.finger_contact(1, x, y, 0, 0));
+            self.tg_frame(if i == 0 { 0 } else { at.wrapping_sub(previous) });
+            previous = at;
+        }
+        self.fingers[1] = None;
+        self.tg_frame(13);
+    }
+
+    /// A polyline kept exact at every supplied vertex, sampled every 13 ms between its vertices.
+    fn tg_fpath(&mut self, xy: &[f32], ms: u32) {
+        if xy.len() < 4 || xy.len() & 1 != 0 || ms == 0 {
+            return;
+        }
+        let n = xy.len() / 2;
+        let mut lengths = vec![0.0f32; n];
+        for i in 1..n {
+            let dx = xy[2 * i] - xy[2 * (i - 1)];
+            let dy = xy[2 * i + 1] - xy[2 * (i - 1) + 1];
+            lengths[i] = lengths[i - 1] + (dx * dx + dy * dy).sqrt();
+        }
+        let total = lengths[n - 1];
+        let mut times = Vec::with_capacity((ms / 13 + 1) as usize + n);
+        let mut t = 0;
+        while t < ms {
+            times.push(t);
+            t = t.saturating_add(13);
+        }
+        times.push(ms);
+        for i in 1..n - 1 {
+            let at = if total > 0.0 { (lengths[i] / total * ms as f32).round_ties_even() as u32 } else { (i as u32 * ms) / (n as u32 - 1) };
+            times.push(at.min(ms));
+        }
+        times.sort_unstable();
+        times.dedup();
+        let mut points = Vec::with_capacity(times.len());
+        for at in times {
+            let d = if total > 0.0 { total * at as f32 / ms as f32 } else { total };
+            let mut i = 1;
+            while i < n - 1 && lengths[i] < d {
+                i += 1;
+            }
+            let (x, y) = if total == 0.0 {
+                (xy[0], xy[1])
+            } else {
+                let span = lengths[i] - lengths[i - 1];
+                let f = if span > 0.0 { ((d - lengths[i - 1]) / span).clamp(0.0, 1.0) } else { 0.0 };
+                (lerpf(xy[(i - 1) * 2], xy[i * 2], f), lerpf(xy[(i - 1) * 2 + 1], xy[i * 2 + 1], f))
+            };
+            points.push((at, x, y));
+        }
+        self.tg_path(&points);
+    }
+
+    /// Replay trace records through the same recognizer and monotonic clock as contact commands.
+    fn tg_trace(&mut self, text: &str) -> Result<(), String> {
+        let mut source_origin = None;
+        let target_origin = self.tg_now();
+        let mut last_k = target_origin;
+        for (line_no, raw) in text.lines().enumerate() {
+            let line = raw.trim_end_matches('\r');
+            let parsed = touchgest_trace_parse_line(line).map_err(|e| format!("line {}: {e:?}", line_no + 1))?;
+            match parsed {
+                TgTraceLine::Ignore | TgTraceLine::Header { .. } => {}
+                TgTraceLine::Outcome { k_ms, .. } => {
+                    let origin = *source_origin.get_or_insert(k_ms);
+                    let at = target_origin.wrapping_add(k_ms.wrapping_sub(origin));
+                    self.tg_trace_ticks(&mut last_k, at);
+                    self.flast = at;
+                    self.fclock = at;
+                }
+                TgTraceLine::Pen { k_ms, what } => {
+                    let origin = *source_origin.get_or_insert(k_ms);
+                    let at = target_origin.wrapping_add(k_ms.wrapping_sub(origin));
+                    self.tg_trace_ticks(&mut last_k, at);
+                    self.tpen.hover = None;
+                    self.tpen.last = (-1_000_000.0, -1_000_000.0);
+                    match what {
+                        TgTracePen::Prox => { self.tpen.prox = true; self.tpen.touching = false; }
+                        TgTracePen::Down => { self.tpen.prox = true; self.tpen.touching = true; }
+                        TgTracePen::Up => { self.tpen.prox = true; self.tpen.touching = false; }
+                        TgTracePen::Leave => { self.tpen.prox = false; self.tpen.touching = false; self.tpen.left_ms = at; }
+                    }
+                    if what != TgTracePen::Leave && touchgest_busy(&self.tg) {
+                        let mut out = TgOut::default();
+                        touchgest_cancel(&mut self.tg, at, &mut out);
+                        for event in &out.ev[..out.n] { self.q_push(*event); }
+                    }
+                    self.flast = at;
+                    self.fclock = at;
+                }
+                TgTraceLine::Frame(mut frame) => {
+                    let origin = *source_origin.get_or_insert(frame.k_ms);
+                    let at = target_origin.wrapping_add(frame.k_ms.wrapping_sub(origin));
+                    self.tg_trace_ticks(&mut last_k, at);
+                    frame.k_ms = at;
+                    let mut out = TgOut::default();
+                    touchgest_frame(&mut self.tg, &frame, &self.tpen, &mut out);
+                    for event in &out.ev[..out.n] { self.q_push(*event); }
+                    self.fingers = [None; TG_MAX + 1];
+                    for c in &frame.c[..frame.n.min(TG_MAX)] {
+                        let slot = (c.slot + 1).clamp(1, TG_MAX as i32) as usize;
+                        self.fingers[slot] = Some(*c);
+                    }
+                    self.flast = at;
+                    self.fclock = at;
+                }
+            }
+        }
+        self.fclock_fresh = true;
+        Ok(())
+    }
+
+    fn tg_trace_ticks(&mut self, from: &mut u32, to: u32) {
+        let mut gap = to.wrapping_sub(*from);
+        if gap as i32 <= 0 { return; }
+        while gap >= 10 {
+            *from = from.wrapping_add(10);
+            let mut out = TgOut::default();
+            touchgest_tick(&mut self.tg, *from, &mut out);
+            for event in &out.ev[..out.n] { self.q_push(*event); }
+            gap -= 10;
+        }
+        *from = to;
     }
 
     fn touch_ev(&mut self, t: InType, x: f32, y: f32) {
@@ -1263,7 +1410,75 @@ fn script_step_in(st: &mut State) -> Step {
         }
         let a = a.unwrap_or(b"");
         let b = b.unwrap_or(b"");
-        if a == b"pen" || a == b"eraser" {
+        if a == b"shape" {
+            let (Some(x), Some(y), Some(size)) = (sc.int(), sc.int(), sc.int()) else {
+                err(&bformat("script: bad shape line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            };
+            let ms = sc.int().unwrap_or(900).max(1) as u32;
+            let rot = sc.int().unwrap_or(0);
+            let seed = sc.int().unwrap_or(1) as u32;
+            let reverse = sc.word(16).is_some();
+            let Ok(name) = std::str::from_utf8(b) else {
+                err(&bformat("script: bad shape line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            };
+            if !crate::fingershape_synth::SHAPES.contains(&name) || size <= 0 {
+                err(&bformat("script: bad shape line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            let draw = crate::fingershape_synth::Draw { cx: x, cy: y, size_mm: size, ms, rot, seed, reverse, ..Default::default() };
+            let frames = crate::fingershape_synth::shape_frames(name, &draw);
+            let points: Vec<_> = frames.iter().map(|f| (f.t, f.x as f32, f.y as f32)).collect();
+            st.tg_path(&points);
+            return Step::Batch;
+        } else if a == b"fpath" {
+            let mut args = Scan::new(s);
+            let _ = args.word(usize::MAX);
+            let mut coords = Vec::new();
+            while let Some(value) = args.float() { coords.push(value); }
+            let ms = if coords.len() > 4 && coords.len() & 1 != 0 {
+                let t = coords.pop().unwrap_or(600.0);
+                if !t.is_finite() || t <= 0.0 { 0 } else { t as u32 }
+            } else { 600 };
+            if coords.len() < 4 || coords.len() & 1 != 0 || ms == 0 {
+                err(&bformat("script: bad fpath line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            st.tg_fpath(&coords, ms);
+            return Step::Batch;
+        } else if a == b"trace" {
+            let mut path_scan = Scan::new(s);
+            let _ = path_scan.word(usize::MAX);
+            let Some(path) = path_scan.word(4095) else {
+                err(&bformat("script: bad trace line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            };
+            let Ok(path) = std::str::from_utf8(path) else {
+                err(&bformat("script: bad trace path: %s", &[B::S(path)]));
+                st.expect_unknown_line();
+                continue;
+            };
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(_) => {
+                    err(&bformat("script: cannot read trace: %s", &[B::S(path.as_bytes())]));
+                    st.expect_unknown_line();
+                    continue;
+                }
+            };
+            if let Err(e) = st.tg_trace(&text) {
+                err(&bformat("script: bad trace: %s", &[B::S(e.as_bytes())]));
+                st.expect_unknown_line();
+                continue;
+            }
+            return Step::Batch;
+        } else if a == b"pen" || a == b"eraser" {
             st.eraser = a == b"eraser";
             let k = scan_floats(s, 2, &mut v);
             if b == b"down" {
@@ -1702,6 +1917,15 @@ fn script_step(mut a: Option<&mut App>) {
 
 // ---- input ----
 
+fn sim_touch_slots() -> i32 {
+    std::env::var("GRIMOIRE_SIM_TOUCH_SLOTS")
+        .or_else(|_| std::env::var("SIM_TOUCH_SLOTS"))
+        .ok()
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(10)
+        .max(0)
+}
+
 // The work pump (common.h): the simulator has no input devices to read during long work, so its hook
 // only counts the calls, for the runner's "pump.calls" (the app's own long paths reach it).
 fn sim_pump() {
@@ -1715,6 +1939,13 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
     work_pump_mark_set(Some(unpumped_mark));
     G_LAST_READ.with(|c| c.set(now_ms()));
     with(|st| touchgest_init(&mut st.tg, dpi));
+    let tune_name = std::env::var("GRIMOIRE_TOUCH_TUNE").or_else(|_| std::env::var("TOUCH_TUNE")).unwrap_or_default();
+    let tune = if tune_name == "v1" { TG_TUNE_V1 } else { TG_TUNE };
+    let slots = sim_touch_slots();
+    with(|st| {
+        touchgest_set_tune(&mut st.tg, &tune);
+        touchgest_set_slots(&mut st.tg, slots as usize);
+    });
     with(|st| {
         let (mut p, mut t) = (InputCalib::default(), InputCalib::default());
         st.input_default_calib(Some(&mut p), Some(&mut t));
@@ -1782,7 +2013,7 @@ pub fn input_caps() -> InputCaps {
         orientation: 0,
         pen_name: FixedStr::from_str("SDL mouse (sim)"),
         touch_name: FixedStr::from_str("SDL right button (sim)"),
-        touch_slots: 10,
+        touch_slots: sim_touch_slots(),
     }
 }
 pub fn input_watch_fd(fd: i32) {
@@ -1817,6 +2048,9 @@ pub fn input_touch_context(v: TgView) {
 // (The simulator writes no trace: the formatter is touchgest's, unit-tested there.)
 pub fn input_touch_trace(path: Option<&str>) {
     let _ = path;
+}
+pub fn input_touch_trace_event(line: &str) {
+    let _ = line;
 }
 pub fn input_forget_signal_pipe() {}
 pub fn input_close() {
@@ -2876,6 +3110,8 @@ mod tests {
     #[test]
     fn contact_lines_and_the_frame_clock() {
         fresh();
+        // This fixture asserts the legacy first-lift timestamps; the new follow window is tested separately.
+        with(|st| touchgest_set_tune(&mut st.tg, &TG_TUNE_V1));
         script(
             "fingers",
             "finger 1 down 500 600\nframe 30\nfinger 2 down 800 600\nframe 20\nexpect touch.contacts is 2\n\

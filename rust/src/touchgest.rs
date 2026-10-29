@@ -83,7 +83,8 @@ pub struct TgFrame {
 /// buffer) and leaves the rest of the buffer as it was, so the buffer goes in filled with `empty`: for
 /// the tracking id column that is -1 (no contact; a 0 there is a valid id, a finger that never lifts),
 /// for the others 0. False, and `col` untouched, when the ioctl failed.
-pub fn mt_column(ask: &mut dyn FnMut(&mut [i32; TG_MAX + 1]) -> bool, code: i32, empty: i32, col: &mut [i32; TG_MAX]) -> bool {
+pub fn mt_column(ask: &mut dyn FnMut(&mut [i32; TG_MAX + 1]) -> bool, code: i32, empty: i32, col: &mut [i32; TG_MAX],
+) -> bool {
     let mut buf = [empty; TG_MAX + 1];
     buf[0] = code;
     if !ask(&mut buf) {
@@ -103,6 +104,9 @@ pub struct TgPen {
     pub left_ms: u32,
     /// its last contact point, logical px
     pub last: (f32, f32),
+/// latest learned hover point, logical px and its kernel time; absent on panels without a
+    /// trustworthy raw-digitizer mapping
+    pub hover: Option<(f32, f32, u32)>,
 }
 
 /// What the screen in front allows, pushed by the editor (input_touch_context).
@@ -127,6 +131,8 @@ pub struct TgOut {
     pub n: usize,
     pub ev: [InEvent; 8],
     pub outcome: TgOutcome,
+/// Record-card refusal code (zero when this call did not refuse a recorded pattern).
+    pub reject_code: i32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -152,6 +158,8 @@ pub enum TgReject {
     Keyboard,
     Off,
     Slow,
+    /// Record mode keeps a zoom for the page rather than binding it as a pattern.
+    Zoom,
 }
 
 /// The gestures (InEvent.value of an InType::Gesture). The three-finger ones are named for the
@@ -168,51 +176,118 @@ pub const G_3_RIGHT: i32 = 9;
 pub const G_3_TAP: i32 = 10;
 
 
-// ---- the rules' numbers ----
+// ---- one tuning table for runtime, recording and replay ----
 
-/// A second finger this soon after the first makes a session that may swipe or tap (prov.).
-const LAND_MS: u32 = 150;
-/// Up to this, a later second finger zooms or pans only; later still, a second contact is a palm or
-/// a second hand, as it always was.
-const PALM_MS: u32 = 400;
-/// A finger this soon after the pen was near is the writing hand.
-const PEN_WINDOW_MS: u32 = 1000;
-/// A session the pen left less than this before is the pen's hand: it never fires (prov.).
-const PEN_GONE_MS: u32 = 300;
-/// A kernel time this far before the pen's leave still counts as the pen being near: a touch frame
-/// read after the leave can be older than it (PENSYNC_K_MAX_AGE_MS bounds how old k_ms gets).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TgTune {
+    pub land_ms: u32 ,
+    pub palm_ms: u32,
+    pub pen_window_ms: u32,
+    pub pen_gone_ms: u32,
+    pub far_mm: f32,
+    pub rest_ms: u32,
+    pub rest_mm: f32,
+    pub commit_spread: f32,
+    pub commit_px: f32,
+    pub zoom_ratio: f32,
+    pub zoom_opposite_mm: f32,
+    pub zoom_upgrade: f32,
+    pub zoom_after_pen: bool,
+    pub grace_ms: u32,
+    pub regrab_mm: f32,
+    pub tan_axis: f32,
+    pub swipe_mm: f32,
+    pub finger_mm: f32,
+    pub cos_min: f32,
+    pub finger_ratio: f32,
+    pub spread_max: f32,
+    pub spread_opposite: bool,
+    pub swipe_ms: u32,
+    pub follow_ms: u32,
+    pub tap_lift_ms: u32,
+    pub tap_ms: u32,
+    pub tap_mm: f32,
+    pub apart_min_mm: f32,
+    pub apart_max_mm: f32,
+    pub palm_major: i32,
+    pub hover_far_mm: f32,
+    pub hover_age_ms: u32,
+}
+
+/// The beta.5 recognizer, with every new rule disabled.
+pub const TG_TUNE_V1: TgTune = TgTune {
+    land_ms: 150,
+    palm_ms: 400,
+    pen_window_ms: 1000,
+    pen_gone_ms: 300,
+    far_mm: 40.0,
+    rest_ms: 300,
+    rest_mm: 3.0,
+    commit_spread: 0.10,
+    commit_px: 70.0,
+    zoom_ratio: 0.6,
+    zoom_opposite_mm: 0.0,
+    zoom_upgrade: 0.0,
+    zoom_after_pen: false,
+    grace_ms: 0,
+    regrab_mm: 0.0,
+    tan_axis: 0.577_350_3,
+    swipe_mm: 20.0,
+    finger_mm: 12.0,
+    cos_min: 0.8,
+    finger_ratio: 2.0,
+    spread_max: 0.25,
+    spread_opposite: false,
+    swipe_ms: 1000,
+    follow_ms: 0,
+    tap_lift_ms: 150,
+    tap_ms: 300,
+    tap_mm: 5.0,
+    apart_min_mm: 8.0,
+    apart_max_mm: 70.0,
+    palm_major: i32::MAX,
+    hover_far_mm: 0.0,
+    hover_age_ms: 0,
+};
+/// Provisional phase 3 defaults. No owner trace was supplied for the threshold study, so these
+/// remain the brief's measured-log-informed starting values rather than frozen study results.
+pub const TG_TUNE: TgTune = TgTune {
+    land_ms: 150,
+    palm_ms: 400,
+    pen_window_ms: 1000,
+    pen_gone_ms: 300,
+    far_mm: 40.0,
+    rest_ms: 300,
+    rest_mm: 3.0,
+    commit_spread: 0.10,
+    commit_px: 70.0,
+    zoom_ratio: 0.4,
+    zoom_opposite_mm: 2.0,
+    zoom_upgrade: 0.15,
+    zoom_after_pen: true,
+    grace_ms: 80,
+    regrab_mm: 15.0,
+    tan_axis: 0.577_350_3,
+    swipe_mm: 16.0,
+    finger_mm: 8.0,
+    cos_min: 0.7,
+    finger_ratio: 3.0,
+    spread_max: 0.50,
+    spread_opposite: true,
+    swipe_ms: 1200,
+    follow_ms: 250,
+    tap_lift_ms: 200,
+    tap_ms: 400,
+    tap_mm: 6.0,
+    apart_min_mm: 8.0,
+    apart_max_mm: 80.0,
+    palm_major: i32::MAX,
+    hover_far_mm: 60.0,
+    hover_age_ms: 50,
+};
+
+// A queued touch frame may precede the pen's leave on the same wrapping clock.
 const PEN_BEHIND_MS: u32 = 10000;
-/// A resting contact was still (within REST_MM of where it landed) for this long before the
-/// gesture's first finger (prov.). REST_MM is also the move that fixes the finger count.
-const REST_MS: u32 = 300;
-const REST_MM: f32 = 3.0;
-/// The commit: the spread changes by this much, or the midpoint travels COMMIT_PX at 300 dpi.
-const COMMIT_SPREAD: f32 = 0.10;
-const COMMIT_PX: f32 = 70.0;
-/// A commit is a zoom when the spread changed at least this much of the midpoint's travel.
-const ZOOM_RATIO: f32 = 0.6;
-/// tan 30 degrees: a drag farther off its axis is not straight.
-const TAN30: f32 = 0.577_350_3;
-/// A swipe goes SWIPE_MM along its axis, each finger at least FINGER_MM within the cosine COS_MIN of
-/// the midpoint's way, the farthest finger at most FINGER_RATIO times the nearest, the spread
-/// changed by at most SPREAD_MAX, all within SWIPE_MS of the first landing (prov.).
-const SWIPE_MM: f32 = 20.0;
-const FINGER_MM: f32 = 12.0;
-const COS_MIN: f32 = 0.8;
-const FINGER_RATIO: f32 = 2.0;
-const SPREAD_MAX: f32 = 0.25;
-const SWIPE_MS: u32 = 1000;
-/// A tap: every finger lifts within TAP_LIFT_MS of the others, TAP_MS from the first landing to
-/// the last lift, none moving more than TAP_MM (prov.).
-const TAP_LIFT_MS: u32 = 150;
-const TAP_MS: u32 = 300;
-const TAP_MM: f32 = 5.0;
-/// A gesture's fingers are at least APART_MIN_MM and at most APART_MAX_MM apart (prov.).
-const APART_MIN_MM: f32 = 8.0;
-const APART_MAX_MM: f32 = 70.0;
-/// A resting contact, and the pen's last point once it left 300 ms to 1 s ago, keep this far from
-/// every finger of the gesture (prov.).
-const FAR_MM: f32 = 40.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum Ph {
@@ -228,6 +303,10 @@ enum Ph {
     Session,
     /// an uncommitted session's first finger lifted: a tap, if the other lifts in time
     TapWait,
+    /// a one-finger continuation may complete a short or uncommitted two-finger swipe
+    Follow,
+    /// a committed zoom or pan waits briefly for the lifted finger to return
+    Grace,
     /// every contact down waits to lift (while none is locked, a new pair beside resting ones may
     /// still make a gesture)
     Suppressed,
@@ -295,6 +374,21 @@ struct Track {
     si: usize,
 }
 
+/// Integer-only snapshot for the opt-in measure line. It contains no contact coordinates.
+#[derive(Clone, Copy, Debug, Default)]
+struct TgMeasure {
+    ready: bool,
+    d0: i32,
+    along: i32,
+    across: i32,
+    spread: i32,
+    fingers: [i32; 2],
+    cos: i32,
+    ms: u32,
+    first_lift: u32,
+    pen: i32,
+}
+
 /// The pixel sizes of the rules, from millimetres at the screen's dpi (touchgest_init).
 #[derive(Clone, Copy, Debug)]
 struct Thr {
@@ -306,21 +400,27 @@ struct Thr {
     finger: f32,
     swipe: f32,
     far: f32,
+opposite: f32,
+    regrab: f32,
+    hover_far: f32,
 }
 
 impl Thr {
-    fn at(dpi: f32) -> Thr {
+    fn at(dpi: f32, t: &TgTune) -> Thr {
         // (ui_px's scale: 300 dpi is 1)
         let scale = if dpi > 50.0 { dpi / 300.0 } else { 1.0 };
         Thr {
-            commit: (COMMIT_PX * scale).round_ties_even(),
-            rest: mm_to_px(REST_MM, dpi),
-            tap: mm_to_px(TAP_MM, dpi),
-            apart_min: mm_to_px(APART_MIN_MM, dpi),
-            apart_max: mm_to_px(APART_MAX_MM, dpi),
-            finger: mm_to_px(FINGER_MM, dpi),
-            swipe: mm_to_px(SWIPE_MM, dpi),
-            far: mm_to_px(FAR_MM, dpi),
+            commit: (t.commit_px * scale).round_ties_even(),
+            rest: mm_to_px(t.rest_mm, dpi),
+            tap: mm_to_px(t.tap_mm, dpi),
+            apart_min: mm_to_px(t.apart_min_mm, dpi),
+            apart_max: mm_to_px(t.apart_max_mm, dpi),
+            finger: mm_to_px(t.finger_mm, dpi),
+            swipe: mm_to_px(t.swipe_mm, dpi),
+            far: mm_to_px(t.far_mm, dpi),
+            opposite: mm_to_px(t.zoom_opposite_mm, dpi),
+            regrab: mm_to_px(t.regrab_mm, dpi),
+            hover_far: mm_to_px(t.hover_far_mm, dpi),
         }
     }
 }
@@ -336,7 +436,8 @@ pub struct TouchGest {
     /// the last TouchDown or TouchMove, whose place the TouchUp repeats
     last: InEvent,
     /// Session: the pair by landing order, the first one's landing, the first lift
-    p: [usize; 2],
+    p: [usize; 3],
+    p_n: usize,
     first_k: u32,
     lift_k: u32,
     class: Class,
@@ -356,6 +457,8 @@ pub struct TouchGest {
     fixed: bool,
     /// spread and midpoint as the session began (integer px)
     d0: f32,
+    /// original two-finger spread, retained for measurement across a re-grab
+    measure_d0: f32,
     mx0: f32,
     my0: f32,
     /// PinchBegin went out and its PinchEnd has not
@@ -364,7 +467,22 @@ pub struct TouchGest {
     /// or the fingers still down when the Kindle hands the panel back)
     hold: bool,
     view: TgView,
-    palm_major: i32,
+    tune: TgTune,
+    dpi: f32,
+    pen_age: i32,
+    measure_lift: Option<u32>,
+    follow_i: usize,
+    follow_start: (i32, i32),
+    follow_offset: (f32, f32),
+    follow_mid0: (f32, f32),
+    follow_deadline: u32,
+    grace_i: usize,
+    grace_at: (i32, i32),
+    grace_lift_k: u32,
+    slots: usize,
+    regrabbed: bool,
+    measure: TgMeasure,
+    last_k: u32,
     thr: Thr,
     last_gesture: i32,
     last_reject: Option<TgReject>,
@@ -383,7 +501,8 @@ impl Default for TouchGest {
             one: 0,
             one_on: false,
             last: InEvent::default(),
-            p: [0; 2],
+            p: [0; 3],
+            p_n: 0,
             first_k: 0,
             lift_k: 0,
             class: Class::Pending,
@@ -395,13 +514,29 @@ impl Default for TouchGest {
             pen_close: false,
             fixed: false,
             d0: 0.0,
+            measure_d0: 0.0,
             mx0: 0.0,
             my0: 0.0,
             begun: false,
             hold: false,
             view: TgView::default(),
-            palm_major: i32::MAX,
-            thr: Thr::at(300.0),
+            tune: TG_TUNE,
+            dpi: 300.0,
+            pen_age: -1,
+            measure_lift: None,
+            follow_i: 0,
+            follow_start: (0, 0),
+            follow_offset: (0.0, 0.0),
+            follow_mid0: (0.0, 0.0),
+            follow_deadline: 0,
+            grace_i: 0,
+            grace_at: (0, 0),
+            grace_lift_k: 0,
+            slots: 2,
+            regrabbed: false,
+            measure: TgMeasure::default(),
+            last_k: 0,
+            thr: Thr::at(300.0, &TG_TUNE),
             last_gesture: 0,
             last_reject: None,
             result: Result_::None,
@@ -441,9 +576,9 @@ impl TouchGest {
         out.n += 1;
     }
 
-    /// The pen is near, or left less than PEN_WINDOW_MS ago (by the frame's time).
-    fn pen_window(pen: &TgPen, k: u32) -> bool {
-        pen.prox || pen.touching || Self::gone_within(pen, k, PEN_WINDOW_MS)
+    /// The pen is near, or left less than self.tune.pen_window_ms ago (by the frame's time).
+    fn pen_window(&self, pen: &TgPen, k: u32) -> bool {
+        pen.prox || pen.touching || Self::gone_within(pen, k, self.tune.pen_window_ms)
     }
 
     /// The pen left less than ms before k (a frame older than the leave counts too).
@@ -487,7 +622,8 @@ impl TouchGest {
 
     fn pinch_end(&mut self, out: &mut TgOut, k: u32, value: i32) {
         if self.begun {
-            self.push(out, InEvent { type_: InType::PinchEnd, value, ..Default::default() }, k);
+            self.push(out, InEvent { type_: InType::PinchEnd, value, ..Default::default() }, k,
+            );
             self.begun = false;
         }
     }
@@ -510,29 +646,49 @@ impl TouchGest {
     fn reject(&mut self, out: &mut TgOut, k: u32, r: TgReject) {
         self.pinch_end(out, k, if r == TgReject::Pen { 1 } else { 0 });
         self.last_reject = Some(r);
+        out.reject_code = touchgest_reject_code(r);
         out.outcome = TgOutcome::Rejected(r);
         self.result = Result_::Rejected(r);
+        if self.view.record {
+            self.push(
+                out,
+                InEvent {
+                    type_: InType::Gesture,
+                    value: out.reject_code,
+                    ..Default::default()
+                },
+                k,
+            );
+        }
         self.suppress();
     }
 
     /// The gesture fires, unless gestures are off, a keyboard is up, or the pen was near.
     fn accept(&mut self, out: &mut TgOut, k: u32, id: i32) {
-        if !self.view.gestures_on {
+        if !self.view.record && !self.view.gestures_on {
             self.reject(out, k, TgReject::Off);
-        } else if self.view.keyboard_open {
+        } else if !self.view.record && self.view.keyboard_open {
             self.reject(out, k, TgReject::Keyboard);
         } else if self.blocked || self.pen_close {
             self.reject(out, k, TgReject::Pen);
         } else {
             self.pinch_end(out, k, 0);
-            let (a, b) = (&self.t[self.p[0]], &self.t[self.p[1]]);
+            let (mut sx, mut sy, mut ex, mut ey) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+            for &i in &self.p[..self.p_n] {
+                let t = &self.t[i];
+                sx += t.fx;
+                sy += t.fy;
+                ex += t.c.x;
+                ey += t.c.y;
+            }
+            let n = self.p_n.max(1)as f32;
             let e = InEvent {
                 type_: InType::Gesture,
                 value: id,
-                x: (a.fx + b.fx) * 0.5,
-                y: (a.fy + b.fy) * 0.5,
-                x2: (a.c.x + b.c.x) * 0.5,
-                y2: (a.c.y + b.c.y) * 0.5,
+                x: sx / n,
+                y: sy / n,
+                x2: ex / n,
+                y2: ey / n,
                 ..Default::default()
             };
             self.push(out, e, k);
@@ -545,11 +701,11 @@ impl TouchGest {
     }
 
     /// Track i may rest beside a gesture whose first finger landed at first_k: flagged a palm, or
-    /// still for REST_MS before; either way FAR_MM from each of the fingers, and not locked.
+    /// still for self.tune.rest_ms before; either way FAR_MM from each of the fingers, and not locked.
     fn rest_ok(&self, i: usize, fingers: &[usize], first_k: u32) -> bool {
         let t = &self.t[i];
         !t.locked
-            && (t.palm || (t.far <= self.thr.rest && at_least(t.down_k, first_k, REST_MS)))
+            && (t.palm || (t.far <= self.thr.rest && at_least(t.down_k, first_k, self.tune.rest_ms)))
             && fingers.iter().all(|&f| self.d(i, f) >= self.thr.far)
     }
 
@@ -576,7 +732,7 @@ impl TouchGest {
     /// the first lift (which ends the session anyway).
     fn count_fixed(&self, k: u32) -> bool {
         let (p, q) = (&self.t[self.p[0]], &self.t[self.p[1]]);
-        self.fixed || at_least(self.first_k, k, LAND_MS) || p.far >= self.thr.rest || q.far >= self.thr.rest
+        self.fixed || at_least(self.first_k, k, self.tune.land_ms) || p.far >= self.thr.rest || q.far >= self.thr.rest
     }
 
     /// A resting contact moved: the hand moved.
@@ -594,20 +750,59 @@ impl TouchGest {
                 self.one = fingers[0];
             }
             2 => self.start_session(fingers[0], fingers[1], pen, out, k, false),
+            3 if self.slots >= 3 => self.start_three(fingers, pen, out, k),
             _ => self.reject(out, k, TgReject::Three),
         }
     }
 
-    /// The session's geometry from the pair as they are now (its start, or a new pair).
-    fn pair(&mut self, a: usize, b: usize) {
-        // By landing order (the same frame: by slot), not by slot.
-        let (ta, tb) = (&self.t[a], &self.t[b]);
+    fn promote_three(&mut self, third: usize, pen: &TgPen, out: &mut TgOut, k: u32) {
+        let old = [self.p[0], self.p[1]];
+        self.pinch_end(out, k, 0);
+        self.p = [old[0], old[1], third];
+        self.p_n = 3;
+        let t = &mut self.t[third];
+        t.sx = t.x0;
+        t.sy = t.y0;
+        t.fx = t.c.x;
+        t.fy = t.c.y;
+        self.mx0 = (self.t[old[0]].sx + self.t[old[1]].sx + self.t[third].sx) as f32 / 3.0;
+        self.my0 = (self.t[old[0]].sy + self.t[old[1]].sy + self.t[third].sy) as f32 / 3.0;
+        self.d0 = 0.0;
+        self.class = Class::Pending;
+        self.axis_h = false;
+        self.slow = false;
+        self.fixed = false;
+        self.inert = false;
+        self.in_window |= self.pen_window(pen, k);
+        self.begun = false;
+    }
+
+    /// The session's geometry from its fingers as they are now (its start, or a new pair).
+    fn fingers(&mut self, fingers: &[usize]) {
+        let mut order = [0usize; 3];
+        let n = fingers.len().min(order.len());
+        order[..n].copy_from_slice(&fingers[..n]);
+        // At most three items; keep the fixed-size recognizer allocation-free.
+        for i in 1..n {
+            let mut j = i;
+            while j > 0 {
+                let (a, b) = (order[j - 1], order[j]);
+                let ta = &self.t[a];
+                let tb = &self.t[b];
         let a_first = (ta.down_k.wrapping_sub(tb.down_k) as i32) < 0 || (ta.down_k == tb.down_k && ta.slot <= tb.slot);
-        self.p = if a_first { [a, b] } else { [b, a] };
+        if a_first {
+                    break;
+                }
+                order.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+        self.p = order;
+        self.p_n = n;
         self.first_k = self.t[self.p[0]].down_k;
-        self.slow = over(self.first_k, self.t[self.p[1]].down_k, LAND_MS);
+        self.slow = n == 2 && over(self.first_k, self.t[self.p[1]].down_k, self.tune.land_ms);
         self.fixed = self.slow;
-        for &i in &self.p {
+        for &i in &self.p [..n] {
             let t = &mut self.t[i];
             t.sx = t.ix;
             t.sy = t.iy;
@@ -615,45 +810,105 @@ impl TouchGest {
             t.fy = t.c.y;
         }
         let (p, q) = (&self.t[self.p[0]], &self.t[self.p[1]]);
-        self.d0 = dist(p.ix, p.iy, q.ix, q.iy);
-        self.mx0 = (p.ix + q.ix) as f32 * 0.5;
-        self.my0 = (p.iy + q.iy) as f32 * 0.5;
+        self.d0 = if n == 2 {
+            dist(p.ix, p.iy, q.ix, q.iy)} else {
+            0.0
+        };
+        let (mut mx, mut my) = (0.0f32, 0.0f32);
+        for &i in &self.p[..n] {
+            mx += self.t[i].ix as f32;
+            my += self.t[i].iy as f32;
+        }
+        self.mx0 = mx / n.max(1) as f32 ;
+        self.my0 = my / n.max(1) as f32 ;
         self.class = Class::Pending;
         self.inert = false;
     }
 
-    fn start_session(&mut self, a: usize, b: usize, pen: &TgPen, out: &mut TgOut, k: u32, from_one: bool) {
+    fn pair(&mut self, a: usize, b: usize) {
+        self.fingers(&[a, b]);
+    }
+
+    fn start_session(&mut self, a: usize, b: usize, pen: &TgPen, out: &mut TgOut, k: u32, from_one: bool,
+    ) {
         if from_one {
             self.cancel_one(out, k); // the first finger's press turns into the session
         }
         self.pair(a, b);
-        self.in_window = Self::pen_window(pen, k);
+        self.measure_d0 = self.d0;
+        self.measure_lift = None;
+        self.measure = TgMeasure::default();
+        self.pen_age = if pen.prox || pen.touching {
+            -1
+        } else {
+            k.wrapping_sub(pen.left_ms) as i32
+        };
+        self.in_window = self.pen_window(pen, k);
         self.blocked = false;
         self.pen_close = false;
         self.ph = Ph::Session;
-        self.begun = true;
+        self.begun = !self.view.record;
+        if self.begun {
         let e = self.pinch_ev(InType::PinchBegin, 1);
         self.push(out, e, k);
     }
 
-    /// The pen near a session (every frame of it): a session it touched, hovered or left under
-    /// PEN_GONE_MS before never fires, and a zoom or pan under way ends there (as it always has); one
-    /// it left PEN_GONE_MS to PEN_WINDOW_MS before fires only with every finger FAR_MM from its last
-    /// point. True when the session ended.
+    }
+
+    fn start_three(&mut self, fingers: &[usize], pen: &TgPen, _out: &mut TgOut, k: u32) {
+        self.fingers(fingers);
+        self.measure_d0 = 0.0;
+        self.measure_lift = None;
+        self.measure = TgMeasure::default();
+        self.pen_age = if pen.prox || pen.touching {
+            -1
+        } else {
+            k.wrapping_sub(pen.left_ms) as i32
+        };
+        self.in_window = self.pen_window(pen, k);
+        self.blocked = false;
+        self.pen_close = false;
+        self.ph = Ph::Session;
+        self.begun = false;
+    }
+
+    fn hover_far(&self, pen: &TgPen, k: u32) -> bool {
+        if self.tune.hover_far_mm <= 0.0 || self.tune.hover_age_ms == 0 || pen.touching {
+            return false;
+        }
+        let Some((x, y, at)) = pen.hover else {
+            return false;
+        };
+        let age = k.wrapping_sub(at) as i32;
+        if age < 0 || age as u32 > self.tune.hover_age_ms {
+            return false;
+        }
+        let (x, y) = (ipx(x), ipx(y));
+        self.p[..self.p_n].iter().all(|&i| {
+            let t = &self.t[i];
+            !t.on || dist(t.ix, t.iy, x, y) >= self.thr.hover_far
+        })
+    }
+
+    /// The pen near a session (every frame of it): a fresh far hover sample can clear proximity;
+    /// otherwise touching, proximity or a recent leave blocks it. A two-finger zoom or pan may use
+    /// the separate post-writing rule when it is old and far enough.
     fn pen_near(&mut self, pen: &TgPen, out: &mut TgOut, k: u32) -> bool {
-        if pen.touching || pen.prox || Self::gone_within(pen, k, PEN_GONE_MS) {
+        let hover_far = self.hover_far(pen, k);
+        if pen.touching || ((pen.prox || Self::gone_within(pen, k, self.tune.pen_gone_ms)) && !hover_far) {
             self.blocked = true;
-            if self.ph == Ph::Session && !self.inert && (self.class == Class::Zoom || self.class == Class::Pan) {
+            if matches!(self.ph , Ph::Session | Ph::Grace)
+                && !self.inert && (self.class == Class::Zoom || self.class == Class::Pan) {
                 self.result = if self.class == Class::Zoom { Result_::Zoom } else { Result_::Pan };
                 self.pinch_end(out, k, 0);
                 self.suppress();
                 return true;
             }
-        } else if Self::gone_within(pen, k, PEN_WINDOW_MS) {
+        } else if Self::gone_within(pen, k, self.tune.pen_window_ms) {
             let (lx, ly) = (ipx(pen.last.0), ipx(pen.last.1));
-            for &i in &self.p {
+            for &i in &self.p [..self.p_n] {
                 let t = &self.t[i];
-                if t.on && dist(t.ix, t.iy, lx, ly) < self.thr.far {
+                if !hover_far && t.on && dist(t.ix, t.iy, lx, ly) < self.thr.far {
                     self.pen_close = true;
                 }
             }
@@ -661,21 +916,66 @@ impl TouchGest {
         false
     }
 
+    fn motion_free(&self, pen: &TgPen, k: u32) -> bool {
+        if self.hover_far(pen, k) {
+            return true;
+        }
+        if !self.in_window && !self.blocked && !self.pen_close {
+            return true;
+        }
+        if self.tune.zoom_after_pen
+            && self.p_n == 2
+            && !pen.prox
+            && !pen.touching
+            && at_least(pen.left_ms, k, self.tune.pen_gone_ms)
+        {
+            let (x, y) = (ipx(pen.last.0), ipx(pen.last.1));
+            return self.p[..self.p_n].iter().all(|&i| {
+                let t = &self.t[i];
+                !t.on || dist(t.ix, t.iy, x, y) >= self.thr.far
+            });
+        }
+        false
+    }
+
+    fn opposite_motion(&self) -> bool {
+        if self.p_n != 2 || self.thr.opposite <= 0.0 {
+            return false;
+        }
+        let (a, b) = (self.t[self.p[0]], self.t[self.p[1]]);
+        let (ax, ay) = ((a.ix - a.sx) as f32, (a.iy - a.sy) as f32);
+        let (bx, by) = ((b.ix - b.sx) as f32, (b.iy - b.sy) as f32);
+        let al = (ax * ax + ay * ay).sqrt();
+        let bl = (bx * bx + by * by).sqrt();
+        al >= self.thr.opposite && bl >= self.thr.opposite && ax * bx + ay * by < 0.0
+    }
+
+    fn is_zoom(&self, d: f32, travel: f32) -> bool {
+        (self.view.zoom_ok || self.view.record)
+            && self.p_n == 2
+            && ((d - self.d0).abs() >= self.tune.zoom_ratio * travel || self.opposite_motion())
+    }
+
     /// The commit's class: a zoom when the spread changed most of the travel (and the pen allows
     /// it), else a drag along its main axis: a pan on an axis the page scrolls on, refused more than
     /// 30 degrees off its axis when nothing scrolls, else a swipe (never for a late second finger).
-    fn classify(&mut self, out: &mut TgOut, k: u32, d: f32, dx: f32, dy: f32) {
-        let free = !self.in_window && !self.blocked;
+    fn classify(&mut self, out: &mut TgOut, k: u32, pen: &TgPen, d: f32, dx: f32, dy: f32) {
+        let free = self.motion_free(pen, k);
         let travel = (dx * dx + dy * dy).sqrt();
-        if self.view.zoom_ok && free && (d - self.d0).abs() >= ZOOM_RATIO * travel {
+        if free && self.is_zoom(d , travel){
             self.class = Class::Zoom;
+            return;
+        }
+        if self.p_n == 3 {
+            self.class = Class::Swipe;
+            self.axis_h = dx.abs() > dy.abs();
             return;
         }
         let h = dx.abs() > dy.abs();
         let (along, across) = if h { (dx.abs(), dy.abs()) } else { (dy.abs(), dx.abs()) };
         let scrolls = if h { self.view.scrolls_h } else { self.view.scrolls_v };
         self.axis_h = h;
-        if across > along * TAN30 {
+        if across > along * self.tune.tan_axis {
             if !(self.view.scrolls_h || self.view.scrolls_v) {
                 self.reject(out, k, TgReject::Straight);
                 return;
@@ -693,21 +993,50 @@ impl TouchGest {
     }
 
     /// A frame of a session with both fingers down: the commit, then a PinchMove each frame.
-    fn session_frame(&mut self, out: &mut TgOut, k: u32) {
-        let (p, q) = (self.t[self.p[0]], self.t[self.p[1]]);
-        if self.class == Class::Pending {
-            let d = dist(p.ix, p.iy, q.ix, q.iy);
-            let dx = (p.ix + q.ix) as f32 * 0.5 - self.mx0;
-            let dy = (p.iy + q.iy) as f32 * 0.5 - self.my0;
+    fn session_frame(&mut self, out: &mut TgOut, k: u32, pen: &TgPen) {
+        let (mut mx, mut my) = (0.0f32, 0.0f32);
+        for &i in &self.p[..self.p_n] {
+            mx += self.t[i].ix as f32;
+            my += self.t[i].iy as f32;
+        }
+        mx /= self.p_n.max(1) as f32 ;
+        my /= self.p_n.max(1) as f32;
+        let (dx, dy) = (mx - self.mx0, my - self.my0);
             let travel = (dx * dx + dy * dy).sqrt();
-            let spread = (d / self.d0.max(10.0) - 1.0).abs();
-            if spread < COMMIT_SPREAD && travel < self.thr.commit {
+            let d = if self.p_n == 2 {
+            self.d(self.p[0], self.p[1])
+        } else {
+            0.0
+        };
+        if self.class == Class::Pending {
+            let spread = if self.p_n == 2 {
+                (d / self.d0.max(10.0) - 1.0).abs()} else {
+                0.0
+            };
+            if spread < self.tune.commit_spread && travel < self.thr.commit {
                 return; // nothing moves until the fingers clearly spread or travel
             }
-            self.classify(out, k, d, dx, dy);
+            self.classify(out, k, pen, d, dx, dy);
             if self.ph != Ph::Session {
                 return;
             }
+        } else if matches!(self.class, Class::Swipe | Class::Pan)
+            && (self.view.zoom_ok || self.view.record)
+            && self.tune.zoom_upgrade > 0.0
+            && self.motion_free(pen, k)
+            && self.opposite_motion()
+            && (d - self.d0).abs() >= self.tune.zoom_upgrade * self.d0
+        {
+            self.class = Class::Zoom;
+            self.inert = false;
+            if !self.view.record {
+                let e = self.pinch_ev(InType::PinchMove, 1);
+                self.push(out, e, k);
+            }
+            return;
+        }
+        if self.view.record || self.p_n == 3 || self.regrabbed {
+            return;
         }
         if self.inert {
             return;
@@ -721,66 +1050,242 @@ impl TouchGest {
         self.push(out, e, k);
     }
 
-    /// A swipe's first lift: far enough along its axis, straight, both fingers the same way and about
-    /// as far, the spread kept, in time; then the gesture of its way.
-    fn swipe_lift(&mut self, out: &mut TgOut, k: u32) {
-        let (p, q) = (self.t[self.p[0]], self.t[self.p[1]]);
-        let dx = (p.ix + q.ix) as f32 * 0.5 - self.mx0;
-        let dy = (p.iy + q.iy) as f32 * 0.5 - self.my0;
+    fn midpoint(&self) -> (f32, f32) {
+        let (mut x, mut y) = (0.0f32, 0.0f32);
+        for &i in &self.p[..self.p_n] {
+            x += self.t[i].ix as f32;
+            y += self.t[i].iy as f32;
+        }
+        let n = self.p_n.max(1) as f32;
+        (x / n, y / n)
+    }
+
+    /// Apply the swipe thresholds to the current pair or triple.
+    fn swipe_verdict(&self, k: u32) -> Result<i32, TgReject> {
+        let (mx, my) = self.midpoint();
+        let dx = mx - self.mx0;
+        let dy = my - self.my0;
         let (along, across) = if self.axis_h { (dx, dy) } else { (dy, dx) };
         let m = (dx * dx + dy * dy).sqrt();
-        let mut lens = [0f32; 2];
+        let mut lens = [0f32; 3];
         let mut same_way = true;
-        for (n, t) in [p, q].iter().enumerate() {
+        let mut min_apart = f32::MAX;
+        let mut max_apart = 0.0f32;
+        for a in 0..self.p_n {
+            for b in a + 1..self.p_n {
+                let d = self.d(self.p[a], self.p[b]);
+                min_apart = min_apart.min(d);
+                max_apart = max_apart.max(d);
+            }
+        }
+        for (n, &i) in self.p[..self.p_n].iter().enumerate() {
+            let t = self.t[i];
             let (fx, fy) = ((t.ix - t.sx) as f32, (t.iy - t.sy) as f32);
             lens[n] = (fx * fx + fy * fy).sqrt();
-            same_way &= lens[n] >= self.thr.finger && (fx * dx + fy * dy) >= COS_MIN * lens[n] * m;
+            same_way &= lens[n] >= self.thr.finger && (fx * dx + fy * dy) >= self.tune.cos_min * lens[n] * m;
         }
-        let r = if self.d0 < self.thr.apart_min || self.d0 > self.thr.apart_max {
-            Some(TgReject::Apart)
-        } else if along.abs() < self.thr.swipe {
-            Some(TgReject::Short)
-        } else if across.abs() > along.abs() * TAN30 {
-            Some(TgReject::Straight)
-        } else if !same_way || lens[0].max(lens[1]) > FINGER_RATIO * lens[0].min(lens[1]) {
-            Some(TgReject::Direction)
-        } else if (dist(p.ix, p.iy, q.ix, q.iy) - self.d0).abs() > SPREAD_MAX * self.d0 {
-            Some(TgReject::Spread)
-        } else if over(self.first_k, k, SWIPE_MS) {
-            Some(TgReject::Slow)
+        let apart = if self.p_n == 2 { self.d0 } else { min_apart };
+        let too_far = if self.p_n == 2 { self.d0 } else { max_apart };
+        let spread_changed = self.p_n == 2
+            && (self.d(self.p[0], self.p[1]) - self.d0).abs() > self.tune.spread_max * self.d0;
+        let along_separation = if self.axis_h {
+            ((self.t[self.p[0]].ix - self.t[self.p[0]].sx)
+                - (self.t[self.p[1]].ix - self.t[self.p[1]].sx))
+                .abs() as f32
         } else {
-            None
+            ((self.t[self.p[0]].iy - self.t[self.p[0]].sy)
+                - (self.t[self.p[1]].iy - self.t[self.p[1]].sy))
+                .abs() as f32
         };
-        match r {
-            Some(r) => self.reject(out, k, r),
-            None => {
+        let spread_reject = if !spread_changed {
+            false
+        } else if self.tune.spread_opposite {
+            along_separation > self.tune.spread_max * self.d0
+        } else {
+            true
+        };
+        if apart < self.thr.apart_min || too_far > self.thr.apart_max {
+            Err(TgReject::Apart)
+        } else if along.abs() < self.thr.swipe {
+            Err(TgReject::Short)
+        } else if across.abs() > along.abs() * self.tune.tan_axis {
+            Err(TgReject::Straight)
+        } else if !same_way
+            || lens[..self.p_n].iter().copied().fold(0.0f32, f32::max)
+                > self.tune.finger_ratio * lens[..self.p_n].iter().copied().fold(f32::MAX, f32::min)
+        {
+            Err(TgReject::Direction)
+        } else if spread_reject {
+            Err(TgReject::Spread)
+        } else if over(self.first_k, k, self.tune.swipe_ms) {
+            Err(TgReject::Slow)
+        } else {
+            let two = match (self.axis_h, along < 0.0) {
+                (true, true) => G_2_LEFT,
+                (true, false) => G_2_RIGHT,
+                (false, true) => G_2_UP,
+                (false, false) => G_2_DOWN,
+        };
+            let three = match (self.axis_h, along < 0.0) {
+                (true, true) => G_3_LEFT,
+                (true, false) => G_3_RIGHT,
+                (false, true) => G_3_UP,
+                (false, false) => G_3_DOWN,
+            };
+            Ok(if self.p_n == 3 { three } else { two })
+        }
+    }
+
+    fn start_follow(&mut self, remaining: usize, k: u32) {
+        let (mx, my) = self.midpoint();
+        let t = &self.t[remaining];
+        if self.class == Class::Pending {
+            let (dx, dy) = ((t.ix - t.sx) as f32, (t.iy - t.sy) as f32);
+            self.axis_h = dx.abs() > dy.abs();
+            self.class = Class::Swipe;
+        }
+        self.follow_i = remaining;
+        self.follow_start = (t.sx, t.sy);
+        self.follow_offset = (mx - t.ix as f32, my - t.iy as f32);
+        self.follow_mid0 = (self.mx0, self.my0);
+        self.follow_deadline = k.wrapping_add(self.tune.follow_ms);
+        self.ph = Ph::Follow;
+    }
+
+    fn follow_verdict(&self, k: u32) -> Result<i32, TgReject> {
+        let t = &self.t[self.follow_i];
+        let (mx, my) = (
+            t.ix as f32 + self.follow_offset.0,
+            t.iy as f32 + self.follow_offset.1,
+        );
+        let (dx, dy) = (mx - self.follow_mid0.0, my - self.follow_mid0.1);
+        let (along, across) = if self.axis_h { (dx, dy) } else { (dy, dx) };
+        let (fx, fy) = (
+            (t.ix - self.follow_start.0) as f32,
+            (t.iy - self.follow_start.1) as f32,
+        );
+        let len = (fx * fx + fy * fy).sqrt();
+        let m = (dx * dx + dy * dy).sqrt();
+        if self.d0 < self.thr.apart_min || self.d0 > self.thr.apart_max {
+            Err(TgReject::Apart)
+        } else if along.abs() < self.thr.swipe {
+            Err(TgReject::Short)
+        } else if across.abs() > along.abs() * self.tune.tan_axis {
+            Err(TgReject::Straight)
+        } else if len < self.thr.finger || fx * dx + fy * dy < self.tune.cos_min * len * m {
+            Err(TgReject::Direction)
+        } else if over(self.first_k, k, self.tune.swipe_ms) {
+            Err(TgReject::Slow)
+        } else {
                 let id = match (self.axis_h, along < 0.0) {
                     (true, true) => G_2_LEFT,
                     (true, false) => G_2_RIGHT,
                     (false, true) => G_2_UP,
                     (false, false) => G_2_DOWN,
                 };
-                self.accept(out, k, id);
+                Ok(id)
+        }
+    }
+
+    fn finish_follow(&mut self, out: &mut TgOut, k: u32, force: bool) {
+        let lifted = !self.t[self.follow_i].on || !self.t[self.follow_i].seen;
+        let timed_out =
+            over(self.follow_deadline, k, 0) || over(self.first_k, k, self.tune.swipe_ms);
+        match self.follow_verdict(k) {
+            Ok(id) => self.accept(out, k, id),
+            Err(TgReject::Short) if !force && !lifted && !timed_out => {}
+            Err(TgReject::Short) if over(self.first_k, k, self.tune.swipe_ms) => {
+                self.reject(out, k, TgReject::Slow)
             }
+            Err(r) if force || lifted || timed_out => self.reject(out, k, r),
+            Err(_) => {}
+            }
+        }
+
+    fn start_grace(&mut self, lifted_pos: usize, k: u32) {
+        self.grace_i = lifted_pos;
+        self.grace_at = (self.t[self.p[lifted_pos]].ix, self.t[self.p[lifted_pos]].iy);
+        self.grace_lift_k = k;
+        self.ph = Ph::Grace;
+        self.result = if self.class == Class::Zoom {
+            Result_::Zoom
+        } else {
+            Result_::Pan
+        };
+            }
+        fn end_grace(&mut self, out: &mut TgOut) {
+        self.pinch_end(out, self.grace_lift_k, 0);
+        self.suppress();
+    }
+
+    /// A swipe's first lift, or its continued one-finger tail.
+    fn swipe_lift(&mut self, out: &mut TgOut, k: u32, can_follow: bool) {
+        match self.swipe_verdict(k) {
+            Err(TgReject::Short) if can_follow && self.tune.follow_ms > 0 => {
+                let lifted = self.p[..self.p_n]
+                    .iter()
+                    .position(|&i| self.t[i].on && !self.t[i].seen);
+                let remaining = self.p[..self.p_n]
+                    .iter()
+                    .copied()
+                    .find(|&i| self.t[i].on && self.t[i].seen);
+                if self.p_n == 2 {
+                    if let Some(r) = remaining {
+                        if self.class != Class::Pending || self.t[r].far > self.thr.tap {
+                            self.start_follow(r, k);
+                            return;
+                        }
+                    }
+                }
+                if lifted.is_none() {
+                    return;
+                }
+                self.reject(out, k, TgReject::Short);
+            }
+            Err(r) => self.reject(out, k, r),
+            Ok(id) => self.accept(out, k, id),
         }
     }
 
     /// One of the session's fingers lifted: a zoom or pan ends, a swipe fires or is refused, and an
     /// uncommitted session may be a tap.
-    fn first_lift(&mut self, out: &mut TgOut, k: u32) {
+    fn first_lift(&mut self, out: &mut TgOut, k: u32, all_lifted: bool) {
+        self.measure_lift.get_or_insert(k);
         match self.class {
+            Class::Zoom if self.view.record => self.reject(out, k, TgReject::Zoom),
+            Class::Pan if self.view.record => self.swipe_lift(out, k, false),
+            Class::Zoom | Class::Pan if self.tune.grace_ms > 0 && !all_lifted && self.p_n == 2 => {
+                let lifted_pos = self.p[..self.p_n]
+                    .iter()
+                    .position(|&i| self.t[i].on && !self.t[i].seen)
+                    .unwrap_or(0);
+                self.start_grace(lifted_pos, k);
+            }
             Class::Zoom | Class::Pan => {
                 self.result = if self.class == Class::Zoom { Result_::Zoom } else { Result_::Pan };
                 self.pinch_end(out, k, 0);
                 self.suppress();
             }
-            Class::Swipe => self.swipe_lift(out, k),
+            Class::Swipe => self.swipe_lift(out, k, true),
             Class::Pending => {
+                if !all_lifted && self.p_n == 2 && self.tune.follow_ms > 0 {
+                    if let Some(r) = self.p[..self.p_n]
+                        .iter()
+                        .copied()
+                        .find(|&i| self.t[i].on && self.t[i].seen && self.t[i].far > self.thr.tap)
+                    {
+                        self.start_follow(r, k);
+                        return;
+                    }
+                }
                 if self.slow {
                     self.reject(out, k, TgReject::Late);
-                } else if self.t[self.p[0]].far > self.thr.tap || self.t[self.p[1]].far > self.thr.tap {
+                } else if self.p[..self.p_n]
+                    .iter()
+                    .any(|&i| self.t[i].far > self.thr.tap )
+                {
                     self.reject(out, k, TgReject::Short);
-                } else if over(self.first_k, k, TAP_MS) {
+                } else if over(self.first_k, k, self.tune.tap_ms) {
                     self.reject(out, k, TgReject::Slow);
                 } else {
                     self.lift_k = k;
@@ -792,18 +1297,21 @@ impl TouchGest {
 
     /// The tap's last finger lifted.
     fn tap_lift(&mut self, out: &mut TgOut, k: u32) {
-        if over(self.lift_k, k, TAP_LIFT_MS) || over(self.first_k, k, TAP_MS) {
+        if over(self.lift_k, k, self.tune.tap_lift_ms) || over(self.first_k, k, self.tune.tap_ms) {
             self.reject(out, k, TgReject::Slow);
-        } else if self.d0 < self.thr.apart_min || self.d0 > self.thr.apart_max {
+        } else if self.p_n == 2 && (self.d0 < self.thr.apart_min || self.d0 > self.thr.apart_max ) {
+            self.reject(out, k, TgReject::Apart);
+        } else if self.p_n == 3 && self.swipe_verdict(k) == Err(TgReject::Apart) {
             self.reject(out, k, TgReject::Apart);
         } else {
-            self.accept(out, k, G_2_TAP);
+            self.accept(out, k, if self.p_n == 3 { G_3_TAP } else { G_2_TAP});
         }
     }
 
     fn lifts(&mut self, out: &mut TgOut, k: u32) {
         let lifted = |t: &Track| t.on && !t.seen;
-        let pair_lifted = |g: &TouchGest| lifted(&g.t[g.p[0]]) || lifted(&g.t[g.p[1]]);
+        let pair_lifted = |g: &TouchGest| g.p[..g.p_n].iter() .any(|&i| lifted(&g.t[i]));
+        let all_pair_lifted = |g: &TouchGest| g.p[..g.p_n].iter().all(|&i| lifted(&g.t[i]));
         match self.ph {
             Ph::One if lifted(&self.t[self.one]) => {
                 if self.one_on {
@@ -813,17 +1321,22 @@ impl TouchGest {
                     self.push(out, e, k);
                     self.one_on = false;
                 }
+                else if self.view.record {
+                    self.reject(out, k, TgReject::Pen);
+                }
                 self.ph = Ph::Idle;
             }
             Ph::Wait if lifted(&self.t[self.one]) => self.ph = Ph::Suppressed,
             Ph::Session if pair_lifted(self) => {
-                let both = lifted(&self.t[self.p[0]]) && lifted(&self.t[self.p[1]]);
-                self.first_lift(out, k);
-                if self.ph == Ph::TapWait && both {
+                let all = all_pair_lifted(self);
+                self.first_lift(out, k, all);
+                if self.ph == Ph::TapWait && all {
                     self.tap_lift(out, k);
                 }
             }
             Ph::TapWait if pair_lifted(self) => self.tap_lift(out, k),
+            Ph::Follow if lifted(&self.t[self.follow_i]) => self.finish_follow(out, k, true),
+            Ph::Grace if pair_lifted(self) => self.end_grace(out),
             _ => {}
         }
         // (A lifted track keeps what it was: a tap's first finger gives the gesture its end.)
@@ -863,7 +1376,7 @@ impl TouchGest {
                     // still make a gesture of it).
                     self.ph = Ph::One;
                     self.one = new[0];
-                    self.one_on = !Self::pen_window(pen, k);
+                    self.one_on = !self.pen_window(pen, k);
                     if self.one_on {
                         let e = self.touch_ev(InType::TouchDown, new[0]);
                         self.last = e;
@@ -885,7 +1398,10 @@ impl TouchGest {
             }
             Ph::One => {
                 let a = self.one;
-                if palms || n >= 3 {
+                if !palms && n == 2 && self.slots >= 3 && !over(self.t[a].down_k, k, 250) {
+                    self.cancel_one(out, k);
+                    self.start_three(&[a, new[0], new[1]], pen, out, k);
+                } else if palms || n >= 3 {
                     // A palm cancels the finger and suppresses until all lift, as it always did.
                     self.cancel_one(out, k);
                     if palms {
@@ -894,7 +1410,7 @@ impl TouchGest {
                     } else {
                         self.reject(out, k, TgReject::Three);
                     }
-                } else if n == 1 && !over(self.t[a].down_k, k, PALM_MS) {
+                } else if n == 1 && !over(self.t[a].down_k, k, self.tune.palm_ms) {
                     self.start_session(a, new[0], pen, out, k, true);
                 } else if self.rest_ok(a, new, k) {
                     // The first finger rests (a grip thumb): the new ones may make a gesture.
@@ -915,6 +1431,15 @@ impl TouchGest {
             }
             Ph::Wait => {
                 let b = self.one;
+                if !palms && n == 2 && self.slots >= 3 && !over(self.t[b].down_k, k, 250) {
+                    if self.rest_others(&[b, new[0], new[1]], self.t[b].down_k) {
+                        self.start_three(&[b, new[0], new[1]], pen, out, k);
+                    } else {
+                        self.result = Result_::Palm;
+                        self.suppress();
+                    }
+                    return;
+                }
                 let all: [usize; 2] = [b, if n > 0 { new[0] } else { b }];
                 let fingers = if n > 0 { &all[..] } else { &all[..1] };
                 if n >= 2 {
@@ -923,7 +1448,7 @@ impl TouchGest {
                     self.result = Result_::Palm; // too near to rest beside them
                     self.suppress();
                 } else if n == 1 {
-                    if over(self.t[b].down_k, k, PALM_MS) {
+                    if over(self.t[b].down_k, k, self.tune.palm_ms) {
                         self.result = Result_::Palm;
                         self.suppress();
                     } else {
@@ -951,12 +1476,18 @@ impl TouchGest {
                         }
                     }
                 }
-                if n == 0 || self.class == Class::Zoom {
+                // Preserve the legacy two-slot zoom: incidental extra contacts stay outside its pair.
+                if self.class == Class::Zoom && self.slots < 3 { return; }
+                if n == 1 && self.p_n == 2 && self.slots >= 3 && !over(self.first_k, k, 250) {
+                    self.promote_three(new[0], pen, out, k);
+                    return;
+                }
+                if n == 0 {
                     return; // (a zoom under way keeps its two fingers)
                 }
                 // A third finger. Before the commit, one of the pair may be a resting thumb beside
                 // the two others (it landed early and kept still): they are the pair from now on.
-                if n == 1 && self.class == Class::Pending {
+                if n == 1 && self.p_n == 2 && self.class == Class::Pending {
                     for w in 0..2 {
                         let (rest, other) = (self.p[w], self.p[1 - w]);
                         let first = self.t[other].down_k;
@@ -966,15 +1497,56 @@ impl TouchGest {
                             t.sx = t.ix;
                             t.sy = t.iy;
                             self.pair(other, new[0]);
-                            self.in_window |= Self::pen_window(pen, k);
+                            self.in_window |= self.pen_window(pen, k);
                             return;
                         }
                     }
                 }
                 let late = self.count_fixed(k);
-                self.reject(out, k, if late { TgReject::Late } else { TgReject::Three });
+                self.reject(out, k, if late { TgReject::Late } else { TgReject::Three },
+                );
             }
             Ph::TapWait => self.reject(out, k, TgReject::Late),
+            Ph::Follow => self.reject(out, k, TgReject::Three),
+            Ph::Grace => {
+                if over(self.grace_lift_k, k, self.tune.grace_ms) {
+                    self.end_grace(out);
+                    return;
+                }
+                let (mut best, mut best_d) = (None, f32::MAX);
+                for &i in new {
+                    let d = dist(self.grace_at.0, self.grace_at.1, self.t[i].ix, self.t[i].iy);
+                    if d < best_d {
+                        best = Some(i);
+                        best_d = d;
+                    }
+                }
+                if let Some(i) = best.filter(|_| best_d <= self.thr.regrab) {
+                    self.p[self.grace_i] = i;
+                    let (a, b) = (self.p[0], self.p[1]);
+                    for j in [a, b] {
+                        let t = &mut self.t[j];
+                        t.sx = t.ix;
+                        t.sy = t.iy;
+                        t.fx = t.c.x;
+                        t.fy = t.c.y;
+                    }
+                    self.d0 = self.d(a, b);
+                    self.mx0 = (self.t[a].ix + self.t[b].ix) as f32 * 0.5;
+                    self.my0 = (self.t[a].iy + self.t[b].iy) as f32 * 0.5;
+                    self.ph = Ph::Session;
+                    self.begun = true;
+                    self.regrabbed = true;
+                    let value = if self.class == Class::Pan { 2 } else { 1 };
+                    let e = self.pinch_ev(InType::PinchBegin, value);
+                    self.push(out, e, k);
+                    for &extra in new.iter().filter(|&&j| j != i) {
+                        self.t[extra].locked = true;
+                    }
+                } else {
+                    self.end_grace(out);
+                }
+            }
             Ph::Suppressed => {
                 if self.t.iter().any(|t| t.on && t.locked) || !self.rest_others(new, k) {
                     self.suppress();
@@ -996,10 +1568,10 @@ impl TouchGest {
                     self.result = Result_::Palm;
                     self.suppress();
                 } else if !self.one_on {
-                    if at_least(t.down_k, k, LAND_MS) {
+                    if at_least(t.down_k, k, self.tune.land_ms) {
                         self.ph = Ph::Suppressed; // the pen's hand: quiet until it lifts
                     }
-                } else if Self::pen_window(pen, k) {
+                } else if self.pen_window(pen, k) {
                     self.cancel_one(out, k);
                     self.suppress();
                 } else if t.c.nx != self.last.nx || t.c.ny != self.last.ny {
@@ -1012,12 +1584,13 @@ impl TouchGest {
                 let t = self.t[self.one];
                 if self.rest_moved() {
                     self.reject(out, k, TgReject::Hand);
-                } else if t.palm || t.pen || over(t.down_k, k, PALM_MS) {
+                } else if t.palm || t.pen || over(t.down_k, k, self.tune.palm_ms) {
                     self.ph = Ph::Suppressed;
                 }
             }
             Ph::Session | Ph::TapWait => {
-                if self.p.iter().any(|&i| self.t[i].on && (self.t[i].palm || self.t[i].pen)) {
+                if self.p[..self.p_n]
+                    .iter().any(|&i| self.t[i].on && (self.t[i].palm || self.t[i].pen)) {
                     // A finger the panel calls a palm now ends the session, as a palm always did.
                     self.result = Result_::Palm;
                     self.pinch_end(out, k, 0);
@@ -1033,27 +1606,121 @@ impl TouchGest {
                 }
                 if self.ph == Ph::Session {
                     self.fixed = self.count_fixed(k);
-                    self.session_frame(out, k);
-                } else if self.p.iter().any(|&i| self.t[i].on && self.t[i].far > self.thr.tap) {
+                    self.session_frame(out, k, pen);
+                } else if self.p[..self.p_n]
+                    .iter().any(|&i| self.t[i].on && self.t[i].far > self.thr.tap) {
                     self.reject(out, k, TgReject::Short);
-                } else if over(self.lift_k, k, TAP_LIFT_MS) || over(self.first_k, k, TAP_MS) {
+                } else if over(self.lift_k, k, self.tune.tap_lift_ms) || over(self.first_k, k, self.tune.tap_ms) {
                     self.reject(out, k, TgReject::Slow);
+                }
+            }
+            Ph::Follow => {
+                if self.t[self.follow_i].palm || self.t[self.follow_i].pen {
+                    self.reject(out, k, TgReject::Hand);
+                    return;
+                }
+                if self.rest_moved() {
+                    self.reject(out, k, TgReject::Hand);
+                    return;
+                }
+                let _ = self.pen_near(pen, out, k);
+                self.finish_follow(out, k, false);
+            }
+            Ph::Grace => {
+                if self.pen_near(pen, out, k) {
+                    return;
+                }
+                if over(self.grace_lift_k, k, self.tune.grace_ms) {
+                    self.end_grace(out);
                 }
             }
             _ => {}
         }
     }
+
+    fn measure_finish(&mut self, k: u32, pen: &TgPen) {
+        let (a, b) = (self.t[self.p[0]], self.t[self.p[1]]);
+        let (dx, dy) = (
+            ((a.ix + b.ix) as f32 * 0.5) - self.mx0,
+            ((a.iy + b.iy) as f32 * 0.5) - self.my0,
+        );
+        let horizontal = if matches!(self.class, Class::Swipe | Class::Pan) {
+            self.axis_h
+        } else {
+            dx.abs() > dy.abs()
+        };
+        let (along, across) = if horizontal {
+            (dx.abs(), dy.abs())
+        } else {
+            (dy.abs(), dx.abs())
+        };
+        let d = dist(a.ix, a.iy, b.ix, b.iy);
+        let mm10 = |px: f32| (px * (254.0 / self.dpi.max(1.0))).round_ties_even() as i32;
+        let (ax, ay) = ((a.ix - a.sx) as f32, (a.iy - a.sy) as f32);
+        let (bx, by) = ((b.ix - b.sx) as f32, (b.iy - b.sy) as f32);
+        let m = (dx * dx + dy * dy).sqrt();
+        let cosine = |x: f32, y: f32| {
+            let l = (x * x + y * y).sqrt();
+            if l == 0.0 || m == 0.0 {
+                0.0
+            } else {
+                ((x * dx + y * dy) / (l * m) * 100.0).clamp(-100.0, 100.0)
+            }
+        };
+        let since_left =
+            if pen.prox || pen.touching || Self::gone_within(pen, k, self.tune.pen_gone_ms) {
+                -1
+            } else {
+                k.wrapping_sub(pen.left_ms) as i32
+            };
+        let first = self.measure_lift.unwrap_or(k);
+        self.measure = TgMeasure {
+            ready: true,
+            d0: mm10(self.measure_d0),
+            along: mm10(along),
+            across: mm10(across),
+            spread: if self.measure_d0 > 0.0 {
+                ((d - self.measure_d0) * 100.0 / self.measure_d0).round_ties_even() as i32
+            } else {
+                0
+            },
+            fingers: [
+                mm10((ax * ax + ay * ay).sqrt()),
+                mm10((bx * bx + by * by).sqrt()),
+            ],
+            cos: cosine(ax, ay).min(cosine(bx, by)).round_ties_even() as i32,
+            ms: k.wrapping_sub(self.first_k),
+            first_lift: first.wrapping_sub(self.first_k),
+            pen: since_left,
+        };
+    }
 }
 
 /// Converts every millimetre and pixel threshold for the screen's dpi, once (input_open).
 pub fn touchgest_init(g: &mut TouchGest, dpi: f32) {
-    g.thr = Thr::at(dpi);
+    g.dpi = if dpi > 50.0 { dpi } else { 300.0 };
+    touchgest_set_tune(g, &TG_TUNE);
+}
+
+/// Apply tuning without resetting the current input stream. Pixel thresholds are derived once.
+pub fn touchgest_set_tune(g: &mut TouchGest, t: &TgTune) {
+    g.tune = *t;
+    g.thr = Thr::at(g.dpi, t);
+}
+
+pub fn touchgest_tune(g: &TouchGest) -> TgTune {
+    g.tune
+}
+
+/// Set the number of contact slots the physical panel can report. Two is the conservative default.
+pub fn touchgest_set_slots(g: &mut TouchGest, n: usize) {
+    g.slots = n.min(TG_MAX);
 }
 
 /// TOUCH_MAJOR above t marks a contact broad (TOUCH_F_BROAD: logged only in this version). Never,
 /// until this is called.
 pub fn touchgest_set_palm_major(g: &mut TouchGest, t: i32) {
-    g.palm_major = t;
+    g.tune.palm_major = t;
 }
 
 pub fn touchgest_set_view(g: &mut TouchGest, v: TgView) {
@@ -1068,15 +1735,16 @@ pub fn touchgest_busy(g: &TouchGest) -> bool {
 /// A frame of contacts.
 pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut TgOut) {
     *out = TgOut::default();
+    g.regrabbed = false;
     let k = f.k_ms;
+    g.last_k = k;
     for t in g.t.iter_mut() {
         t.seen = false;
         t.fresh = false;
     }
     // (A new contact takes a free track the session does not still read: a tap's first finger, lifted,
     // gives the gesture its end.)
-    let session = g.ph == Ph::Session || g.ph == Ph::TapWait;
-    let p = g.p;
+    let session = matches!(g.ph , Ph::Session |Ph::TapWait| Ph::Follow | Ph::Grace);
     if !touchgest_busy(g) && f.n > 0 {
         // A touch session starts.
         g.sess_n = 0;
@@ -1086,8 +1754,9 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
         let i = match g.t.iter().position(|t| t.on && t.id == c.id && t.slot == c.slot) {
             Some(i) => i,
             None => {
-                let free = |i: &usize| !g.t[*i].on && !(session && p.contains(i));
-                let Some(i) = (0..TG_MAX).find(free).or_else(|| (0..TG_MAX).find(|&i| !g.t[i].on)) else { continue };
+                let free = |i: &usize| !g.t[*i].on && !(session && g.p[..g.p_n].contains(i));
+                let Some(i) = (0..TG_MAX).find(free).or_else(|| (0..TG_MAX).find(|&i| !g.t[i].on)) else { continue ;
+                };
                 let (x, y) = (ipx(c.x), ipx(c.y));
                 let si = g.sess_n;
                 if si < TG_MAX {
@@ -1098,7 +1767,7 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
                 i
             }
         };
-        let palm_major = g.palm_major;
+        let palm_major = g.tune.palm_major;
         let t = &mut g.t[i];
         t.seen = true;
         t.c = *c;
@@ -1121,6 +1790,9 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
     g.lifts(out, k);
     g.landings(pen, out, k);
     g.work(pen, out, k);
+    if !touchgest_busy(g) && g.p_n == 2 && g.measure_lift.is_some() && !g.measure.ready {
+        g.measure_finish(k, pen);
+    }
     if !touchgest_busy(g) {
         g.ph = Ph::Idle;
     }
@@ -1132,7 +1804,8 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
 /// which may hold contacts this module never saw land).
 pub fn touchgest_cancel(g: &mut TouchGest, k_ms: u32, out: &mut TgOut) {
     *out = TgOut::default();
-    if matches!(g.ph, Ph::One | Ph::Wait | Ph::Session | Ph::TapWait) {
+    if matches!(g.ph, Ph::One | Ph::Wait | Ph::Session | Ph::TapWait| Ph::Follow | Ph::Grace
+    ) {
         g.result = Result_::Cancelled;
     }
     g.cancel_one(out, k_ms);
@@ -1150,10 +1823,17 @@ pub fn touchgest_tick(g: &mut TouchGest, k_ms: u32, out: &mut TgOut) {
     *out = TgOut::default();
     let k = k_ms;
     match g.ph {
-        Ph::One if !g.one_on && at_least(g.t[g.one].down_k, k, LAND_MS) => g.ph = Ph::Suppressed,
-        Ph::Wait if over(g.t[g.one].down_k, k, PALM_MS) => g.ph = Ph::Suppressed,
-        Ph::Session => g.fixed |= at_least(g.first_k, k, LAND_MS),
-        Ph::TapWait if over(g.lift_k, k, TAP_LIFT_MS) || over(g.first_k, k, TAP_MS) => g.reject(out, k, TgReject::Slow),
+        Ph::One if !g.one_on && at_least(g.t[g.one].down_k, k, g.tune.land_ms) => {
+            g.ph = Ph::Suppressed}
+        Ph::Wait if over(g.t[g.one].down_k, k, g.tune.palm_ms) => g.ph = Ph::Suppressed,
+        Ph::Session => g.fixed |= at_least(g.first_k, k, g.tune.land_ms),
+        Ph::TapWait if over(g.lift_k, k, g.tune.tap_lift_ms) || over(g.first_k, k, g.tune.tap_ms) => {
+            g.reject(out, k, TgReject::Slow)
+        }
+        Ph::Follow if over(g.follow_deadline, k, 0) || over(g.first_k, k, g.tune.swipe_ms) => {
+            g.finish_follow(out, k, true)
+        }
+        Ph::Grace if over(g.grace_lift_k, k, g.tune.grace_ms) => g.end_grace(out),
         _ => {}
     }
 }
@@ -1172,12 +1852,30 @@ pub fn touchgest_reject_name(r: TgReject) -> &'static str {
         TgReject::Keyboard => "keyboard",
         TgReject::Off => "off",
         TgReject::Slow => "slow",
+    TgReject::Zoom => "zoom",
+    }
+}
+
+/// Record-card refusal codes. -8 belongs to the card's own one-finger tap/link message.
+pub fn touchgest_reject_code(r: TgReject) -> i32 {
+    match r {
+        TgReject::Pen => -1,
+        TgReject::Late => -2,
+        TgReject::Straight => -3,
+        TgReject::Short => -4,
+        TgReject::Direction | TgReject::Spread => -5,
+        TgReject::Hand | TgReject::Off | TgReject::Keyboard => -6,
+        TgReject::Zoom => -7,
+        TgReject::Apart => -9,
+        TgReject::Slow => -10,
+        TgReject::Three => -11,
     }
 }
 
 /// A gesture as gestures.ini names it after "touch." ("2.down"); "" for none.
 pub fn touchgest_gesture_name(id: i32) -> &'static str {
-    const K: [&str; 10] = ["2.up", "2.down", "2.left", "2.right", "2.tap", "3.up", "3.down", "3.left", "3.right", "3.tap"];
+    const K: [&str; 10] = ["2.up", "2.down", "2.left", "2.right", "2.tap", "3.up", "3.down", "3.left", "3.right", "3.tap",
+    ];
     if (G_2_UP..=G_3_TAP).contains(&id) {
         K[(id - G_2_UP) as usize]
     } else {
@@ -1191,7 +1889,8 @@ pub fn touchgest_probe(g: &TouchGest, key: &str, out: &mut String) -> bool {
     out.clear();
     let quiet = g.ph == Ph::Suppressed || g.ph == Ph::Wait || (g.ph == Ph::One && !g.one_on);
     match key {
-        "touch.contacts" => out.push_str(&cformat!("%d", g.t.iter().filter(|t| t.on).count() as i32)),
+        "touch.contacts" => {
+            out.push_str(&cformat!("%d", g.t.iter().filter(|t| t.on).count() as i32))}
         "touch.class" => out.push_str(match g.ph {
             Ph::Idle => "none",
             _ if quiet => "suppressed",
@@ -1207,6 +1906,7 @@ pub fn touchgest_probe(g: &TouchGest, key: &str, out: &mut String) -> bool {
         "touch.suppressed" => out.push_str(if quiet { "1" } else { "0" }),
         "touch.gesture" => out.push_str(touchgest_gesture_name(g.last_gesture)),
         "touch.reject" => out.push_str(g.last_reject.map_or("", touchgest_reject_name)),
+        "touch.tune" => out.push_str(if g.tune == TG_TUNE_V1 { "v1" } else { "new" }),
         _ => return false,
     }
     true
@@ -1282,9 +1982,28 @@ pub fn touchgest_log_session(g: &TouchGest, grabbed: bool, out: &mut String) -> 
     true
 }
 
+/// Measurement companion to `touchgest_log_session`. Values are integer tenths of a millimetre,
+/// except spread (signed percent), cosine (0..100), elapsed milliseconds, and pen age (-1 near).
+/// It contains no coordinates and is silent when input is not grabbed.
+pub fn touchgest_log_measure(g: &TouchGest, grabbed: bool, out: &mut String) -> bool {
+    use std::fmt::Write;
+    out.clear();
+    if !grabbed || !g.measure.ready || g.p_n != 2 {
+        return false;
+    }
+    let m = g.measure;
+    let _ = write!(
+        out,
+        "touch: measure d0 {} along {} across {} spread {}% fingers {} {} cos {} ms {} first-lift {} pen {}",
+        m.d0, m.along, m.across, m.spread, m.fingers[0], m.fingers[1], m.cos, m.ms, m.first_lift, m.pen
+    );
+    true
+}
+
 /// A single finger's TOUCH_MAJOR at its lift: "touch: fingertips touch_major median %d max %d over %d
 /// frames".
-pub fn touchgest_log_fingertips(median: i32, max: i32, frames: i32, grabbed: bool, out: &mut String) -> bool {
+pub fn touchgest_log_fingertips(median: i32, max: i32, frames: i32, grabbed: bool, out: &mut String,
+) -> bool {
     out.clear();
     if !grabbed {
         return false;
@@ -1343,4 +2062,105 @@ pub fn touchgest_trace_outcome(k_ms: u32, o: TgOutcome, grabbed: bool, out: &mut
         }
     }
     true
+}
+/// Pen marker in a trace. The trace deliberately contains no pen coordinates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TgTracePen {
+    Prox,
+    Down,
+    Up,
+    Leave,
+}
+
+/// A parsed touch trace line. Frame normalized coordinates are zero because calibration is not
+/// stored in the trace; callers that need them can scale from the parsed header dimensions.
+#[derive(Clone, Copy, Debug)]
+pub enum TgTraceLine<'a> {
+    Ignore,
+    Header { rotation: i32, width: i32, height: i32, dpi: i32 },
+    Frame(TgFrame),
+    Pen { k_ms: u32, what: TgTracePen },
+    Outcome { k_ms: u32, text: &'a str },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TgTraceParseError {
+    BadHeader,
+    BadFrame,
+    BadPen,
+    BadOutcome,
+}
+
+/// Parse one `touch-trace.txt` line without allocating. F preserves logical contact positions, P
+/// preserves only pen state and timing, and E text is borrowed so the runner can compare it.
+pub fn touchgest_trace_parse_line(line: &str) -> Result<TgTraceLine<'_>, TgTraceParseError> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(TgTraceLine::Ignore);
+    }
+    if line.starts_with('#') {
+        if !line.starts_with("# grimoire touch-trace") {
+            return Ok(TgTraceLine::Ignore);
+        }
+        let mut words = line.split_ascii_whitespace();
+        let valid = words.next() == Some("#")
+            && words.next() == Some("grimoire")
+            && words.next() == Some("touch-trace")
+            && words.next() == Some("1,")
+            && words.next() == Some("rotation");
+        if !valid { return Err(TgTraceParseError::BadHeader); }
+        let rotation = words.next().and_then(|s| s.strip_suffix(',')).and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadHeader)?;
+        let dims = words.next().ok_or(TgTraceParseError::BadHeader)?;
+        let (w, h) = dims.split_once('x').ok_or(TgTraceParseError::BadHeader)?;
+        let width = w.parse().map_err(|_| TgTraceParseError::BadHeader)?;
+        let height = h.strip_suffix(',').ok_or(TgTraceParseError::BadHeader)?.parse().map_err(|_| TgTraceParseError::BadHeader)?;
+        if words.next() != Some("dpi") { return Err(TgTraceParseError::BadHeader); }
+        let dpi = words.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadHeader)?;
+        if words.next().is_some() { return Err(TgTraceParseError::BadHeader); }
+        return Ok(TgTraceLine::Header { rotation, width, height, dpi });
+    }
+    let mut words = line.split_ascii_whitespace();
+    match words.next() {
+        Some("F") => {
+            let k_ms = words.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+            let mut f = TgFrame { k_ms, ..Default::default() };
+            for token in words {
+                if f.n == TG_MAX { return Err(TgTraceParseError::BadFrame); }
+                let mut p = token.split(':');
+                let slot: i32 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                let id: i32 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                let x: i32 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                let y: i32 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                let major: i32 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                let tool: u8 = p.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadFrame)?;
+                if p.next().is_some() || slot < 0 || slot as usize >= TG_MAX || tool > 2 {
+                    return Err(TgTraceParseError::BadFrame);
+                }
+                f.c[f.n] = TgContact { id, slot, x: x as f32, y: y as f32, major, tool, ..Default::default() };
+                f.n += 1;
+            }
+            Ok(TgTraceLine::Frame(f))
+        }
+        Some("P") => {
+            let k_ms = words.next().and_then(|s| s.parse().ok()).ok_or(TgTraceParseError::BadPen)?;
+            let what = match words.next() {
+                Some("prox") => TgTracePen::Prox,
+                Some("down") => TgTracePen::Down,
+                Some("up") => TgTracePen::Up,
+                Some("leave") => TgTracePen::Leave,
+                _ => return Err(TgTraceParseError::BadPen),
+            };
+            if words.next().is_some() { return Err(TgTraceParseError::BadPen); }
+            Ok(TgTraceLine::Pen { k_ms, what })
+        }
+        Some("E") => {
+            let rest = line.strip_prefix("E ").ok_or(TgTraceParseError::BadOutcome)?;
+            let (time, text) = rest.split_once(char::is_whitespace).ok_or(TgTraceParseError::BadOutcome)?;
+            let k_ms = time.parse().map_err(|_| TgTraceParseError::BadOutcome)?;
+            let text = text.trim();
+            if text.is_empty() { return Err(TgTraceParseError::BadOutcome); }
+            Ok(TgTraceLine::Outcome { k_ms, text })
+        }
+        _ => Err(TgTraceParseError::BadFrame),
+    }
 }

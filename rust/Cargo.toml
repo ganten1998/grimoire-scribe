@@ -45,6 +45,11 @@ required-features = ["sim"]
 name = "grimoire-export"
 path = "src/bin/grimoire-export.rs"
 
+# The host-only touch-trace replay and threshold study; it links the same pure touchgest module.
+[[bin]]
+name = "tgstudy"
+path = "src/bin/tgstudy.rs"
+
 # tools/mkicon.c and tools/mklogo.c: the committed Library cover and logo, run by hand.
 [[bin]]
 name = "mkicon"

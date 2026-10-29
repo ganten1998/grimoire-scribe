@@ -37,7 +37,7 @@ root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named section
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
-root/gestures.ini                       what two-finger gestures do, over the built-ins (2.0; settings.ini)
+root/gestures.ini                       touch bindings and recorded finger shapes, over the built-ins (2.0; settings.ini)
 root/live-keys.ini                      the keys a Live view browser sends, the owner edits (2.0; settings.ini)
 root/touch-trace                        an empty file the owner makes: asks for touch-trace.txt (2.0)
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
@@ -827,12 +827,13 @@ line. Values are clamped to their ranges when read.
 | `language` | the language of the screens (since 1.1): `auto` (the default, also when the key is missing: the Kindle's own language if Grimoire speaks it, else English), `en` or `es`. A code this version does not speak (a later one's) acts as `auto` and is written back as it was (below). 1.0.0-beta drops it on its next save, so a language picked in Settings goes back to Automatic |
 | `status_on` | 0 or 1: the small clock and battery in a corner of the notebook page (`status_corner`; a tap there turns it on and off, and it shows on the page only, never on the Library or a sheet; docs/KINDLE.md, The clock and battery corner), off by default. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `status_size` | its size, 0 small, 1 medium, 2 large (the Display sheet's row), 0 by default and clamped to 0..2. Since 2.0.0-beta.5, as `status_on` |
-| `gestures` | 0 or 1: the two-finger gestures (two fingers down, up, left and right, and a two-finger tap: `gestures.ini`, below), on by default; off, a pinch and a pan still work. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
+| `gestures` | 0 or 1: touch patterns and one-finger gestures, on by default; off, the touch recognizer does not dispatch these actions. Pinch and pan remain available when pinch zoom is enabled. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `landscape_fit` | 0 or 1: sideways, the editor shows the whole page (the page is as wide as the screen is tall, so it rests at the height of the screen), on by default; off, the page's width fills the screen as it does upright. Since 2.0.0-beta.5, as `gestures` |
-| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 2 the link areas tip, 3 and 4 a counter 0 to 3 of the Links bar's header hints, 6 the pan hint, 8 the sideways hint, which takes a notebook's first open from the first-open tip when it comes up sideways, so the tip comes at the next open; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
+| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 2 the link areas tip, 3 and 4 a counter 0 to 3 of the Links bar's header hints, 6 the pan hint, 7 the finger-shape reject tip, 8 the sideways hint, which takes a notebook's first open from the first-open tip when it comes up sideways, so the tip comes at the next open; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
 | `link_areas` | 0 or 1: dotted boxes over the page show where a finger tap follows a link (the Links bar's Areas button), off by default. Since 2.0.0-beta.5, as `gestures` |
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
-| `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `status_corner`. Since 2.0.0-beta.5, as `gestures` |
+| `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `status_corner`. Since phase 3; earlier versions carry the unknown key. |
+| `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `rotation_lock`. Since 2.0.0-beta.5, as `gestures` |
 | `status_mode` | 0 Bar (default), 1 Corner, 2 Off. Since 2.0.0-beta.6; a file without it (written by an earlier version) gets the Bar. Written after `gesture_new_page`. Display selects the mode; `status-mode` cycles it. Bar reserves 104 px at 300 dpi above the fitted notebook page in either orientation; Corner retains `status_on`, size, and corner preferences. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -915,27 +916,66 @@ starts, so an edit counts from the next start. It is independent of `shortcuts.i
 never changes the other, and Live view keys work whether or not keyboard shortcuts are on. Versions
 before 2.0.0-beta.6 never read it.
 
-`gestures.ini` (2.0), beside them, says what the touch gestures do, over the built-in
-ones, which are never written to it: two fingers down open Pages (`touch.2.down=pages`), up the Links
-bar (`touch.2.up=links`), left the next page and right the previous one (`touch.2.left=next-page`,
-`touch.2.right=previous-page`); three quick clicks of the pen's button, or holding it, clear the page
-(`pen.Button.triple`, `pen.Button.hold`). Its grammar is `shortcuts.ini`'s (`#` and `;` comments,
-trimmed `key=value` lines, a later line for the same key wins, keys in any case), read the same way
-(at most 64 KiB, up to a NUL). Keys and values:
+`gestures.ini` (phase 3), beside the shortcut files, overlays touch bindings and recorded finger
+shapes on the built-ins. With no file, two fingers down open Pages, up opens the Links bar, left
+turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
+have no built-in action. Three-finger patterns are available only when the panel reports at least
+three touch slots; the owner's Kindle reports two. The pen button keeps its existing triple-click and
+hold behavior in this phase.
 
-- `touch.<2|3>.<up|down|left|right|tap>`: an action's name (as in `shortcuts.ini`) or `nothing`,
-  which turns a built-in off. `hold-eraser` is refused (and counted): it is momentary, ends at a
-  release, and a gesture has none. `touch.1.*` is kept for one finger's taps and links, and refused.
-- `pen.<Button|Button2|Eraser>.<tap|double|triple|hold|drag>`: an action, `nothing`, or `pan` or
-  `zoom` in a drag slot. Read and held; the pen's button keeps its own clicks in this version.
-- `shape.<action>=1,...`: a finger shape recorded for an action (format 1), carried as it is.
+The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
+duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
+these three comment lines, byte for byte:
 
-A line it cannot read (a bad key, `touch.1.*`, an action it does not know on a touch line) is refused
-and counted, and the log says how many (`gestures: N line(s) of gestures.ini not used`); a pen or
-shape line naming an action or a pen slot it does not know is kept in memory as it was, for a later
-version (at most 1 KiB a line, 16 KiB in all). A file that cannot be read leaves the built-ins. This
-version only reads the file, at the start and when Settings > Controller reloads; nothing writes it,
-so it is the owner's to edit. Gestures need no Enable shortcuts.
+```ini
+# Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
+# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.triple=clear-page, pen.Button.hold=clear-page
+# shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
+```
+
+The keys phase 3 can set are:
+
+- `touch.1.<up|down|left|right>` for a one-finger swipe; `touch.1.tap` is refused.
+- `touch.<2|3>.<up|down|left|right|tap>` for two- and (on capable panels) three-finger patterns.
+- `shape.<action>=1,N,S1,S2[,S3]` for a recorded shape. `N` is 2 or 3 samples. Each sample
+  stores 32 normalized points in drawing order as x then y, two hexadecimal digits per coordinate
+  (128 hexadecimal digits per sample). The encoder uses lowercase hex; the decoder accepts either
+  case. A value has exactly 261 bytes for two samples or 390 for three, without whitespace or an
+  ending newline; each sample's larger side spans 00..ff. Degenerate samples (both extents under
+  32 units) are refused. The line's action must allow the SHAPE source.
+
+Touch and shape bindings accept registered actions that allow the matching source, or `nothing` for
+a cleared built-in touch slot. `hold-eraser` is refused for touch and shapes because it needs a
+release. Each action has at most one touch binding and one shape binding; shape lines are written in
+action-id order. Touch lines are written in one-finger up/down/left/right order, followed by two-
+finger up/down/left/right/tap, then three-finger in the same order. Pen lines are retained in the
+file for later phase work; this phase adds no pen-button gesture UI or dispatch.
+
+After the comment header, the writer emits changed touch slots (`=nothing` for a cleared built-in),
+then retained pen lines, shape lines, and other carried lines in their read order. Line endings are
+LF. Unknown or newer-format lines are carried byte-for-byte, up to 1 KiB per line and 16 KiB total;
+the file itself is bounded to 64 KiB. A `shape.<action>` value with a nonzero unsupported format
+version is carried verbatim and shown as "finger shape (newer version)"; recording a replacement
+warns before discarding it. Malformed or unsupported touch/shape lines are refused and
+counted (`gestures: N line(s) of gestures.ini not used`). When the overlay has no changes, saving
+removes `gestures.ini`.
+
+Settings > Gestures reloads the map. A failed read leaves built-ins visible but marks the map
+unwritable. Learning or clearing edits a copy and writes it atomically with `write_file_atomic`;
+the in-memory map changes only after a successful write. Reset is the recovery path: it removes the
+file even after an unreadable load, then restores the built-ins. Gestures do not require Enable
+shortcuts, and `.qpg` pages are unchanged by bindings or finger-shape trails.
+
+The recognizer also writes a coordinate-free measurement after each grabbed two-finger session:
+
+```text
+touch: measure d0 %d along %d across %d spread %d%% fingers %d %d cos %d ms %d first-lift %d pen %d
+```
+
+`d0`, `along`, `across`, and the two finger travels are integer tenths of a millimetre; `spread` is
+a signed percent, `cos` is the smaller direction cosine from 0 to 100, and the times are
+milliseconds. `pen` is time since pen lift, or `-1` while the pen is near. The line contains no
+coordinates and is silent while input is not grabbed. It follows the existing `touch: session` line.
 
 `bluetooth/` (2.0.0-beta.5 on) is not Grimoire's format: it is where the owner unpacks the
 Bluetooth helper (kindle-hid-passthrough), whose files, paired devices and their keys live there.

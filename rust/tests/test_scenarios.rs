@@ -15,7 +15,7 @@ use std::process::{Command, Output};
 const BIN: &str = env!("CARGO_BIN_EXE_grimoire-headless");
 
 // ../Makefile's SIM_HOOKS: nothing else of the caller's reaches the app's test hooks.
-const SIM_HOOKS: [&str; 22] = [
+const SIM_HOOKS: [&str; 26] = [
     "GRIMOIRE_HOST",
     "GRIMOIRE_PASSCODE",
     "GRIMOIRE_SIM_ADDRS",
@@ -35,6 +35,10 @@ const SIM_HOOKS: [&str; 22] = [
     "GRIMOIRE_L10N_DIR",
     "GRIMOIRE_ANNOTATE",
     "GRIMOIRE_SLEEP_MINUTE_MS",
+    "GRIMOIRE_SIM_TOUCH_SLOTS",
+    "GRIMOIRE_TOUCH_TUNE",
+    "SIM_TOUCH_SLOTS",
+    "TOUCH_TUNE",
     "GRIMOIRE_ROOT",
     "GRIMOIRE_SCRIPT",
     "GRIMOIRE_SHOTS",

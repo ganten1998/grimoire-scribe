@@ -36,7 +36,7 @@ pub fn live_keys_load(path: &str) -> Shortcuts {
         let mut defaults = Shortcuts::default();
         shortcuts_load(&mut defaults, path);
         let mut text = String::from("# Live view keyboard. Reload by stopping and starting Live view.\n");
-        for b in defaults.bindings.iter().take(defaults.count as usize).filter(|b| !b.gamepad) {
+        for b in defaults.bindings.iter().take(defaults.count as usize).filter(|b| b.src == ActionSrc::Key) {
             text.push_str(&format!("key.{}{}{}{}{}={}\n",
                 if b.mods & KEYMOD_CTRL != 0 { "Ctrl+" } else { "" },
                 if b.mods & KEYMOD_SHIFT != 0 { "Shift+" } else { "" },
@@ -52,7 +52,7 @@ pub fn live_keys_load(path: &str) -> Shortcuts {
     }
     let mut map = Shortcuts::default();
     shortcuts_load(&mut map, path);
-    let keys: Vec<_> = map.bindings.iter().take(map.count as usize).filter(|b| !b.gamepad).copied().collect();
+    let keys: Vec<_> = map.bindings.iter().take(map.count as usize).filter(|b| b.src == ActionSrc::Key).copied().collect();
     map.bindings.fill(ShortcutBinding::default());
     map.bindings[..keys.len()].copy_from_slice(&keys);
     map.count = keys.len() as i32;
@@ -62,7 +62,8 @@ pub fn live_keys_load(path: &str) -> Shortcuts {
 pub fn live_key_name(code: i32) -> String {
     for name in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
         "a", "s", "d", "f", "g", "h", "j", "k", "l", "z", "x", "c", "v", "b", "n", "m", "Left", "Right", "Up", "Down",
-        "PageUp", "PageDown", "Space", "Enter", "Tab", "Escape", "VolumeUp", "VolumeDown", "PlayPause", "NextSong", "PreviousSong", "Home", "End", "Back"] {
+        "PageUp", "PageDown", "Space", "Enter", "Tab", "Escape", "VolumeUp", "VolumeDown", "PlayPause", "NextSong", "PreviousSong", "Home", "End", "Back",
+    ] {
         if shortcut_keycode(name) == code { return name.to_owned(); }
     }
     format!("code{code}")
@@ -74,7 +75,8 @@ impl LiveKeys {
     }
     pub fn is_held(&self, key: &LiveKey, now: u32) -> bool {
         pair_cookie_scopes(&key.cookie) & PAIR_LIVE != 0 && self.held.iter().any(|h|
-            h.key.code == key.code && h.key.cookie == key.cookie && ms_since(now, h.refreshed) < LIVE_KEY_LEASE_MS)
+            {
+                h.key.code == key.code && h.key.cookie == key.cookie && ms_since(now, h.refreshed) < LIVE_KEY_LEASE_MS})
     }
     /// phase 0 release, 1 press, 2 held-eraser lease renewal (never dispatches another action).
     pub fn submit(&mut self, cookie: String, code: i32, mods: i32, phase: i32, now: u32) -> i32 {
@@ -84,7 +86,7 @@ impl LiveKeys {
         let held = self.held.iter().position(|h| h.key.code == code && h.key.cookie == cookie);
         if phase == 2 {
             if let Some(i) = held {
-                if shortcuts_lookup(&self.map, false, code, self.held[i].key.mods) != SHORTCUT_HOLD_ERASER { return 400; }
+                if shortcuts_lookup(&self.map, ActionSrc::Key, code, self.held[i].key.mods) != SHORTCUT_HOLD_ERASER { return 400; }
                 if ms_since(now, self.held[i].refreshed) < 200 { return 429; }
                 self.held[i].refreshed = now;
                 return 200;
@@ -95,17 +97,19 @@ impl LiveKeys {
             if let Some(i) = held { self.held.remove(i); }
         } else {
             if held.is_some() { return 409; } // repeat, even from a client ignoring KeyboardEvent.repeat
-            if shortcuts_lookup(&self.map, false, code, mods) == SHORTCUT_NONE { return 400; }
+            if shortcuts_lookup(&self.map, ActionSrc::Key, code, mods) == SHORTCUT_NONE { return 400; }
             self.credit = (self.credit + ms_since(now, self.clock).min(1000) * 20).min(16000);
             self.clock = now;
             if self.credit < 1000 || self.held.len() >= MAX_HELD { return 429; }
         }
         self.events.retain(|k| ms_since(now, k.at) <= MAX_AGE_MS);
         if self.events.len() >= LIVE_KEY_QUEUE { return 429; }
-        let key = LiveKey { code, mods, down: phase == 1, cookie, at: now };
+        let key = LiveKey { code, mods, down: phase == 1, cookie, at: now ,
+        };
         if key.down {
             self.credit -= 1000;
-            self.held.push(Held { key: key.clone(), refreshed: now });
+            self.held.push(Held { key: key.clone(), refreshed: now ,
+            });
         }
         self.events.push_back(key);
         200
@@ -173,7 +177,8 @@ mod tests {
         q.reset(Shortcuts::default());
         assert!(q.pop(1050).is_none());
         // The age check works through the millisecond clock's wrap.
-        q.events.push_back(LiveKey { code: 2, mods: 0, down: true, cookie, at: u32::MAX - 20 });
+        q.events.push_back(LiveKey { code: 2, mods: 0, down: true, cookie, at: u32::MAX - 20 ,
+        });
         assert!(q.pop(30).is_some());
     }
     #[test]

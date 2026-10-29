@@ -155,6 +155,7 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 # one whose "# root:" was skipped is skipped with it (it would copy a data root that was never made); and so
 # are the two rust selftests.
 SIM_HOOKS := GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
+             GRIMOIRE_SIM_TOUCH_SLOTS GRIMOIRE_TOUCH_TUNE SIM_TOUCH_SLOTS TOUCH_TUNE \
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
@@ -318,10 +319,13 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	echo "l10n-check: every language fits ($(L10N_LANGS))"
 
 # ---- host tools (rust/src/bin: tools/*.c's ports) ----
-tools: $(BUILD)/host/grimoire-export
+tools: $(BUILD)/host/grimoire-export $(BUILD)/host/tgstudy
 $(BUILD)/host/grimoire-export: FORCE
 	$(call RCARGO) build --bin grimoire-export
 	@$(call RCOPY,$(RTARGET)/debug/grimoire-export,$@)
+$(BUILD)/host/tgstudy: FORCE
+	$(call RCARGO) build --bin tgstudy
+	@$(call RCOPY,$(RTARGET)/debug/tgstudy,$@)
 
 # The Library cover, drawn with the gothic widgets (committed; run by hand after a design change).
 icon: $(BUILD)/host/mkicon

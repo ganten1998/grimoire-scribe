@@ -127,6 +127,9 @@ pub struct Settings {
     /// and in which corner of the page it sits: 0 top left (the default), 1 top right, 2 bottom right,
     /// 3 bottom left (settings.ini status_corner; the tap zone follows it)
     pub status_corner: i32,
+    /// Rotation to hold while locked (settings.ini rotation_lock): 0 follows the Kindle, 1..=4
+    /// hold the current rotation plus one. The app resolves the current orientation at lock time.
+    pub rotation_lock: i32,
     /// Two-finger gestures (the swipes and taps of gestures.ini; settings.ini gestures): off, a pinch
     /// and a pan still work.
     pub gestures: bool,
@@ -655,9 +658,11 @@ macro_rules! qlog_once {
 /// be written back (docs/FORMAT.md). Comment lines and lines with no '=' are skipped; a value loses
 /// one trailing CR.
 fn ini_parse_file(path: &str, cb: &mut dyn FnMut(&[u8], &[u8])) -> i32 {
-    let Some(txt) = read_file(path) else { return -1 };
+    let Some(txt) = read_file(path) else { return -1 ;
+    };
     for line in c_lines(&txt) {
-        let Some(eq) = line.iter().position(|&b| b == b'=') else { continue };
+        let Some(eq) = line.iter().position(|&b| b == b'=') else { continue ;
+        };
         if line[0] == b'#' {
             continue;
         }
@@ -815,7 +820,8 @@ fn info_unknown(nb: &mut NotebookInfo, k: &[u8], v: &[u8]) {
 }
 
 fn rebuild_pages(dir: &str, nb: &mut NotebookInfo) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else { return ;
+    };
     for e in rd {
         if nb.page_ids.len() >= STORE_MAX_PAGES {
             break;
@@ -848,7 +854,8 @@ fn notebook_size_from_pages(dir: &str, nb: &mut NotebookInfo) {
     let mut nsizes = 0;
     for i in 0..nb.page_ids.len() {
         let path = cformat!("%s/p%u.qpg", dir, nb.page_ids[i]);
-        let Some((w, h)) = page_file_size(&path) else { continue };
+        let Some((w, h)) = page_file_size(&path) else { continue ;
+        };
         let mut k = 0;
         while k < nsizes && (sw[k] != w || sh[k] != h) {
             k += 1;
@@ -883,7 +890,8 @@ fn notebook_size_from_pages(dir: &str, nb: &mut NotebookInfo) {
 pub fn store_load_info(id_in: &str, out: &mut NotebookInfo) -> i32 {
     let mut id = FixedStr::<STORE_ID_LEN>::new();
     id.set(id_in); // id_in may be out->id itself: copy it before the reset
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 ;
+    };
     *out = NotebookInfo::default();
     out.id.set_bytes(id.as_bytes());
     let path = cformat!("%s/notebook.ini", &dir);
@@ -936,7 +944,8 @@ pub fn store_load_info(id_in: &str, out: &mut NotebookInfo) -> i32 {
 }
 
 fn write_info(nb: &NotebookInfo) -> i32 {
-    let Some(dir) = notebook_dir(nb.id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(nb.id.as_bytes()) else { return -1 ;
+    };
     write_info_at(&dir, nb)
 }
 
@@ -958,10 +967,22 @@ fn write_info_at(dir: &str, nb: &NotebookInfo) -> i32 {
         &mut b,
         "# Grimoire notebook\nname=%s\nfolder=%s\npaper=%u\ncreated=%lld\nmodified=%lld\n\
          last_page=%d\nnext_page_id=%u\npages=",
-        &[raw(name.as_bytes()), raw(folder.as_bytes()), val(nb.paper.0), val(nb.created), val(nb.modified), val(nb.last_page), val(nb.next_page_id)],
+        &[
+            raw(name.as_bytes()),
+            raw(folder.as_bytes()),
+            val(nb.paper.0),
+            val(nb.created),
+            val(nb.modified),
+            val(nb.last_page),
+            val(nb.next_page_id),
+        ],
     );
     for i in 0..nb.page_ids.len().min(STORE_MAX_PAGES) {
-        sb_printf(&mut b, "%s%u", &[val(if i > 0 { "," } else { "" }), val(nb.page_ids[i])]);
+        sb_printf(
+            &mut b,
+            "%s%u",
+            &[val(if i > 0 { "," } else { "" }), val(nb.page_ids[i])],
+        );
     }
     b.push(b'\n');
     let (mut pw, mut ph) = (0, 0);
@@ -982,11 +1003,17 @@ pub fn store_save_info(nb: &mut NotebookInfo) -> i32 {
 
 /// store_source_ok over bytes (a source= value, or a NotebookInfo's own).
 fn source_ok(key: &[u8]) -> bool {
-    let n = key.iter().take(STORE_SOURCE_LEN).position(|&c| c == 0).unwrap_or(key.len().min(STORE_SOURCE_LEN));
+    let n = key
+        .iter()
+        .take(STORE_SOURCE_LEN)
+        .position(|&c| c == 0)
+        .unwrap_or(key.len().min(STORE_SOURCE_LEN));
     if n == 0 || n >= STORE_SOURCE_LEN {
         return false;
     }
-    key[..n].iter().all(|&c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+    key[..n]
+        .iter()
+        .all(|&c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
 }
 /// A book key as notebook.ini's source= holds one: 1 to 63 letters, digits, '-' or '_'. A source=
 /// line with any other value is one this version does not know: kept as it is (NotebookInfo.extra).
@@ -1098,7 +1125,10 @@ fn side_load(bgdir: &str, s: &mut Side) -> i32 {
 fn side_save(bgdir: &str, s: &mut Side) -> i32 {
     s.e.sort_by_key(|e| e.pid);
     let mut b: Vec<u8> = Vec::new();
-    b.extend_from_slice(cformat!("# Grimoire: the image paper of each page that has one (docs/FORMAT.md)\n").as_bytes());
+    b.extend_from_slice(
+        cformat!("# Grimoire: the image paper of each page that has one (docs/FORMAT.md)\n")
+            .as_bytes(),
+    );
     for e in &s.e {
         b.extend_from_slice(cformat!("p%u=%u\n", e.pid, e.kind).as_bytes());
     }
@@ -1123,14 +1153,28 @@ fn side_note(nb: &NotebookInfo, pid: u32, paper: PaperKind) {
     }
     let mut s = Side::default();
     if side_load(&bgdir, &mut s) != 0 {
-        qlog_once!("store: %s: bg/pages.ini does not read; left as it is", &nb.id);
+        qlog_once!(
+            "store: %s: bg/pages.ini does not read; left as it is",
+            &nb.id
+        );
         return;
     }
     let have = side_get(&s, pid);
     let listed = have.is_some();
-    let wrong = if image { !(listed && have == Some(paper.0)) } else { listed };
-    if wrong && (side_set(&mut s, pid, if image { paper.0 } else { 0 }) != 0 || side_save(&bgdir, &mut s) != 0) {
-        qlog!("store: %s: could not update bg/pages.ini for p%u.qpg", &nb.id, pid);
+    let wrong = if image {
+        !(listed && have == Some(paper.0))
+    } else {
+        listed
+    };
+    if wrong
+        && (side_set(&mut s, pid, if image { paper.0 } else { 0 }) != 0
+            || side_save(&bgdir, &mut s) != 0)
+    {
+        qlog!(
+            "store: %s: could not update bg/pages.ini for p%u.qpg",
+            &nb.id,
+            pid
+        );
     }
 }
 
@@ -1150,7 +1194,11 @@ fn side_restore(nb: &NotebookInfo, pid: u32, p: &mut Page) -> bool {
         return false;
     }
     let mut s = Side::default();
-    let kind = if side_load(&bgdir, &mut s) == 0 { side_get(&s, pid) } else { None };
+    let kind = if side_load(&bgdir, &mut s) == 0 {
+        side_get(&s, pid)
+    } else {
+        None
+    };
     if let Some(kind) = kind {
         p.paper = PaperKind(kind);
         qlog_once!(
@@ -1250,14 +1298,27 @@ fn random_hex(n: usize) -> String {
         b[..4].copy_from_slice(&x.to_ne_bytes());
     }
     const HX: &[u8; 16] = b"0123456789abcdef";
-    (0..n).map(|i| HX[((b[i / 2] >> (if i & 1 != 0 { 0 } else { 4 })) & 15) as usize] as char).collect()
+    (0..n)
+        .map(|i| HX[((b[i / 2] >> (if i & 1 != 0 { 0 } else { 4 })) & 15) as usize] as char)
+        .collect()
 }
 
 /// A fresh notebook id ("20261010-143205-a3f1": the local time and 4 random hex digits).
 pub fn store_make_id(id: &mut String /* STORE_ID_LEN - 1 bytes */) {
     let tm = local_tm(wall_time());
     let rnd = random_hex(4);
-    csnprintf!(id, STORE_ID_LEN, "%04d%02d%02d-%02d%02d%02d-%s", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, &rnd);
+    csnprintf!(
+        id,
+        STORE_ID_LEN,
+        "%04d%02d%02d-%02d%02d%02d-%s",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        &rnd
+    );
 }
 
 /// With 1 empty page, at the device's page size (recorded as the notebook's).
@@ -1268,7 +1329,14 @@ pub fn store_create(name: &str, folder: &str, paper: PaperKind, out: &mut Notebo
     let mut id = String::new();
     store_make_id(&mut id);
     nb.id.set(&id);
-    clean_line(&mut nb.name, if !name.is_empty() { name.as_bytes() } else { tr("Untitled").as_bytes() });
+    clean_line(
+        &mut nb.name,
+        if !name.is_empty() {
+            name.as_bytes()
+        } else {
+            tr("Untitled").as_bytes()
+        },
+    );
     clean_line(&mut nb.folder, folder.as_bytes());
     nb.paper = paper_sanitize(paper.0, PAPER_MEDIUM);
     nb.created = t;
@@ -1336,9 +1404,20 @@ pub fn store_set_folder(id: &str, folder: &str) -> i32 {
 
 fn move_to_trash(src: &str, base: &str) -> i32 {
     let mut dst = String::new();
-    csnprintf!(&mut dst, 800, "%s/trash/%s-%lld", &g_root(), base, wall_time());
+    csnprintf!(
+        &mut dst,
+        800,
+        "%s/trash/%s-%lld",
+        &g_root(),
+        base,
+        wall_time()
+    );
     if let Err(e) = std::fs::rename(src, &dst) {
-        qlog!("trash %s: %s", src, &strerror(e.raw_os_error().unwrap_or(0)));
+        qlog!(
+            "trash %s: %s",
+            src,
+            &strerror(e.raw_os_error().unwrap_or(0))
+        );
         return -1;
     }
     0
@@ -1346,13 +1425,19 @@ fn move_to_trash(src: &str, base: &str) -> i32 {
 
 /// moves to trash/
 pub fn store_delete(id: &str) -> i32 {
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else {
+        return -1;
+    };
     move_to_trash(&dir, id)
 }
 
 fn cmp_modified(x: &NotebookInfo, y: &NotebookInfo) -> Ordering {
     if x.modified != y.modified {
-        return if x.modified < y.modified { Ordering::Greater } else { Ordering::Less };
+        return if x.modified < y.modified {
+            Ordering::Greater
+        } else {
+            Ordering::Less
+        };
     }
     x.id.as_bytes().cmp(y.id.as_bytes())
 }
@@ -1361,7 +1446,9 @@ fn cmp_modified(x: &NotebookInfo, y: &NotebookInfo) -> Ordering {
 pub fn store_list(out: &mut Vec<NotebookInfo>) -> i32 {
     out.clear();
     let dir = cformat!("%s/notebooks", &g_root());
-    let Ok(rd) = std::fs::read_dir(&dir) else { return -1 };
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return -1;
+    };
     let mut arr: Vec<NotebookInfo> = Vec::new();
     for e in rd {
         let Ok(e) = e else { break };
@@ -1397,7 +1484,9 @@ type FolderName = FixedStr<STORE_NAME_LEN>;
 fn load_folders_ini() -> Vec<FolderName> {
     let path = cformat!("%s/folders.ini", &g_root());
     let mut out = Vec::new();
-    let Some(txt) = read_file(&path) else { return out };
+    let Some(txt) = read_file(&path) else {
+        return out;
+    };
     let mut first = true;
     for line in c_lines(&txt) {
         // Only the header line is a comment: a folder may well be called "#1".
@@ -1452,16 +1541,54 @@ pub fn store_remove_folder(name: &str) -> i32 {
 // bytes. Equal that way, the names' own bytes decide, so the order never depends on the input's.
 // (code point from, to, base letters)
 const K_FOLD: [(u16, u16, &str); 48] = [
-    (0xC0, 0xC5, "a"),   (0xC6, 0xC6, "ae"),  (0xC7, 0xC7, "c"),   (0xC8, 0xCB, "e"),   (0xCC, 0xCF, "i"),
-    (0xD0, 0xD0, "d"),   (0xD1, 0xD1, "n"),   (0xD2, 0xD6, "o"),   (0xD8, 0xD8, "o"),   (0xD9, 0xDC, "u"),
-    (0xDD, 0xDD, "y"),   (0xDE, 0xDE, "th"),  (0xDF, 0xDF, "ss"),  (0xE0, 0xE5, "a"),   (0xE6, 0xE6, "ae"),
-    (0xE7, 0xE7, "c"),   (0xE8, 0xEB, "e"),   (0xEC, 0xEF, "i"),   (0xF0, 0xF0, "d"),   (0xF1, 0xF1, "n"),
-    (0xF2, 0xF6, "o"),   (0xF8, 0xF8, "o"),   (0xF9, 0xFC, "u"),   (0xFD, 0xFD, "y"),   (0xFE, 0xFE, "th"),
-    (0xFF, 0xFF, "y"),   (0x100, 0x105, "a"), (0x106, 0x10D, "c"), (0x10E, 0x111, "d"), (0x112, 0x11B, "e"),
-    (0x11C, 0x123, "g"), (0x124, 0x127, "h"), (0x128, 0x131, "i"), (0x132, 0x133, "ij"), (0x134, 0x135, "j"),
-    (0x136, 0x138, "k"), (0x139, 0x142, "l"), (0x143, 0x14B, "n"), (0x14C, 0x151, "o"), (0x152, 0x153, "oe"),
-    (0x154, 0x159, "r"), (0x15A, 0x161, "s"), (0x162, 0x167, "t"), (0x168, 0x173, "u"), (0x174, 0x175, "w"),
-    (0x176, 0x178, "y"), (0x179, 0x17E, "z"), (0x17F, 0x17F, "s"),
+    (0xC0, 0xC5, "a"),
+    (0xC6, 0xC6, "ae"),
+    (0xC7, 0xC7, "c"),
+    (0xC8, 0xCB, "e"),
+    (0xCC, 0xCF, "i"),
+    (0xD0, 0xD0, "d"),
+    (0xD1, 0xD1, "n"),
+    (0xD2, 0xD6, "o"),
+    (0xD8, 0xD8, "o"),
+    (0xD9, 0xDC, "u"),
+    (0xDD, 0xDD, "y"),
+    (0xDE, 0xDE, "th"),
+    (0xDF, 0xDF, "ss"),
+    (0xE0, 0xE5, "a"),
+    (0xE6, 0xE6, "ae"),
+    (0xE7, 0xE7, "c"),
+    (0xE8, 0xEB, "e"),
+    (0xEC, 0xEF, "i"),
+    (0xF0, 0xF0, "d"),
+    (0xF1, 0xF1, "n"),
+    (0xF2, 0xF6, "o"),
+    (0xF8, 0xF8, "o"),
+    (0xF9, 0xFC, "u"),
+    (0xFD, 0xFD, "y"),
+    (0xFE, 0xFE, "th"),
+    (0xFF, 0xFF, "y"),
+    (0x100, 0x105, "a"),
+    (0x106, 0x10D, "c"),
+    (0x10E, 0x111, "d"),
+    (0x112, 0x11B, "e"),
+    (0x11C, 0x123, "g"),
+    (0x124, 0x127, "h"),
+    (0x128, 0x131, "i"),
+    (0x132, 0x133, "ij"),
+    (0x134, 0x135, "j"),
+    (0x136, 0x138, "k"),
+    (0x139, 0x142, "l"),
+    (0x143, 0x14B, "n"),
+    (0x14C, 0x151, "o"),
+    (0x152, 0x153, "oe"),
+    (0x154, 0x159, "r"),
+    (0x15A, 0x161, "s"),
+    (0x162, 0x167, "t"),
+    (0x168, 0x173, "u"),
+    (0x174, 0x175, "w"),
+    (0x176, 0x178, "y"),
+    (0x179, 0x17E, "z"),
+    (0x17F, 0x17F, "s"),
 ];
 
 /// The next character of s folded for sorting into out (up to 4 bytes, then a 0); returns its
@@ -1469,7 +1596,11 @@ const K_FOLD: [(u16, u16, &str); 48] = [
 pub(crate) fn fold_next(s: &[u8], out: &mut [u8; 5]) -> usize {
     let u = |i: usize| s.get(i).copied().unwrap_or(0);
     if u(0) < 0x80 {
-        out[0] = if u(0).is_ascii_uppercase() { u(0) + 32 } else { u(0) };
+        out[0] = if u(0).is_ascii_uppercase() {
+            u(0) + 32
+        } else {
+            u(0)
+        };
         out[1] = 0;
         return 1;
     }
@@ -1529,12 +1660,20 @@ fn cmp_name(a: &[u8], b: &[u8]) -> Ordering {
         if fx[px] == 0 || fy[py] == 0 {
             if fx[px] != fy[py] {
                 // one ran out first: it goes first
-                return if fx[px] != 0 { Ordering::Greater } else { Ordering::Less };
+                return if fx[px] != 0 {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                };
             }
             break;
         }
         if fx[px] != fy[py] {
-            return if fx[px] < fy[py] { Ordering::Less } else { Ordering::Greater };
+            return if fx[px] < fy[py] {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
         }
         px += 1;
         py += 1;
@@ -1549,7 +1688,11 @@ pub fn store_list_folders(out: &mut Vec<String>) -> i32 {
     store_list(&mut nbs);
     let mut all: Vec<FolderName> = Vec::new();
     for i in 0..f.len() + nbs.len() {
-        let name = if i < f.len() { &f[i] } else { &nbs[i - f.len()].folder };
+        let name = if i < f.len() {
+            &f[i]
+        } else {
+            &nbs[i - f.len()].folder
+        };
         if name.is_empty() {
             continue;
         }
@@ -1575,12 +1718,20 @@ fn take_page_id(nb: &NotebookInfo) -> u32 {
         }
         let path = page_path(nb, pid);
         if let Err(e) = std::fs::symlink_metadata(&path) {
-            return if e.raw_os_error() == Some(libc::ENOENT) { pid } else { 0 };
+            return if e.raw_os_error() == Some(libc::ENOENT) {
+                pid
+            } else {
+                0
+            };
         }
         if tries == 64 {
             return 0;
         }
-        qlog_once!("store: %s: p%u.qpg is not in the page list; left as it is", &nb.id, pid);
+        qlog_once!(
+            "store: %s: p%u.qpg is not in the page list; left as it is",
+            &nb.id,
+            pid
+        );
         tries += 1;
         pid += 1;
     }
@@ -1667,7 +1818,10 @@ pub fn store_duplicate_page(nb: &mut NotebookInfo, index: i32, at: i32) -> i32 {
             (Some(d), Ok(m)) => m.size() == d.len() as u64,
             _ => false,
         };
-        if data.is_none() || !size_matches || page_deserialize(data.as_deref().unwrap_or(&[]), &mut p) != 0 {
+        if data.is_none()
+            || !size_matches
+            || page_deserialize(data.as_deref().unwrap_or(&[]), &mut p) != 0
+        {
             return -1;
         }
     }
@@ -1751,18 +1905,37 @@ fn scale_page(p: &mut Page, w: i32, h: i32) {
 /// bg/pages.ini lists with an image paper but that reads as Blank (an older version saved it so)
 /// gets its image paper back, and is written so again (each such page counted, below). Every page
 /// comes with Page.nb set to the notebook's id.
-pub fn store_load_page(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>) -> i32 {
+pub fn store_load_page(
+    nb: &NotebookInfo,
+    index: i32,
+    w: i32,
+    h: i32,
+    out: &mut Option<Box<Page>>,
+) -> i32 {
     load_page_with(nb, index, w, h, out, false)
 }
 
 /// store_load_page for a read the pens must not wait for: the same page, set aside and written back as an
 /// open would, but work_pump() runs every 256 strokes as it is read. The editor's peek reads a page this way
 /// while the Links bar is up (a dense page is 1.2 s of reading and drawing on the Kindle).
-pub fn store_load_page_pumped(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>) -> i32 {
+pub fn store_load_page_pumped(
+    nb: &NotebookInfo,
+    index: i32,
+    w: i32,
+    h: i32,
+    out: &mut Option<Box<Page>>,
+) -> i32 {
     load_page_with(nb, index, w, h, out, true)
 }
 
-fn load_page_with(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Option<Box<Page>>, pump: bool) -> i32 {
+fn load_page_with(
+    nb: &NotebookInfo,
+    index: i32,
+    w: i32,
+    h: i32,
+    out: &mut Option<Box<Page>>,
+    pump: bool,
+) -> i32 {
     *out = None;
     if index < 0 || index >= nb.npages() {
         return -1;
@@ -1778,11 +1951,22 @@ fn load_page_with(nb: &NotebookInfo, index: i32, w: i32, h: i32, out: &mut Optio
             let mut aside = String::new();
             csnprintf!(&mut aside, 760, "%s.damaged-%lld", &path, wall_time());
             let rc = std::fs::rename(&path, &aside);
-            qlog!("store: corrupt page %s, %s; starting blank", &path, if rc.is_ok() { "set aside" } else { "could not set aside" });
+            qlog!(
+                "store: corrupt page %s, %s; starting blank",
+                &path,
+                if rc.is_ok() {
+                    "set aside"
+                } else {
+                    "could not set aside"
+                }
+            );
             with(|s| s.g_corrupt_pages += 1);
         } else if let Some(pg) = p.as_deref_mut() {
             if pg.readonly {
-                qlog!("store: %s opens read-only and stays as it is on disk", &path);
+                qlog!(
+                    "store: %s opens read-only and stays as it is on disk",
+                    &path
+                );
             } else if side_restore(nb, pid, pg) {
                 // Written back as this version writes it, so the picture stays without the list's help,
                 // and counted (store_take_restored_count): what the older version drew of the page, the
@@ -1869,7 +2053,9 @@ fn cmp_aside(x: &Aside, y: &Aside) -> Ordering {
 
 /// Whether a file reads as a page now, normally or read-only (quietly: the page is not opened).
 fn page_file_opens(path: &str) -> bool {
-    let Some(data) = read_file(path) else { return false };
+    let Some(data) = read_file(path) else {
+        return false;
+    };
     let mut p: Option<Box<Page>> = None;
     page_parse(&data, &mut p, true, false) == 0
 }
@@ -1878,7 +2064,9 @@ fn page_file_opens(path: &str) -> bool {
 /// writes a page whose image paper it does not know.
 fn page_file_v1_blank(path: &str) -> bool {
     let mut b = [0u8; 8];
-    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
     let got = matches!(f.read(&mut b), Ok(8));
     got && &b[..4] == b"QPG1" && b[4] == 1 && b[5] == 0 && b[6] == PAPER_BLANK.0 as u8 && b[7] == 0
 }
@@ -1919,7 +2107,11 @@ pub fn store_restore_listed_pages(nb: &NotebookInfo) -> i32 {
                         if write_page_file(nb, e.pid, pg) == 0 {
                             restored += 1;
                         } else {
-                            qlog!("store: %s: could not write p%u.qpg's paper back", &nb.id, e.pid);
+                            qlog!(
+                                "store: %s: could not write p%u.qpg's paper back",
+                                &nb.id,
+                                e.pid
+                            );
                         }
                     }
                 }
@@ -1927,7 +2119,11 @@ pub fn store_restore_listed_pages(nb: &NotebookInfo) -> i32 {
         }
     }
     if restored != 0 {
-        qlog!("store: %s: %d page(s) an older version saved with blank paper get their pictures back from bg/pages.ini", &nb.id, restored);
+        qlog!(
+            "store: %s: %d page(s) an older version saved with blank paper get their pictures back from bg/pages.ini",
+            &nb.id,
+            restored
+        );
     }
     with(|st| st.g_restored_pages += restored);
     restored
@@ -1938,18 +2134,28 @@ pub fn store_restore_listed_pages(nb: &NotebookInfo) -> i32 {
 /// newest copy if there are several. Only pages in the page list come back; if p<id>.qpg exists
 /// again, both are kept. Returns how many came back; each is logged.
 pub fn store_recover_pages(nb: &NotebookInfo) -> i32 {
-    let Some(dir) = notebook_dir(nb.id.as_bytes()) else { return 0 };
-    let Ok(rd) = std::fs::read_dir(&dir) else { return 0 };
+    let Some(dir) = notebook_dir(nb.id.as_bytes()) else {
+        return 0;
+    };
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
     let mut asides: Vec<Aside> = Vec::new();
     for e in rd {
         let Ok(e) = e else { break };
         let d_name = e.file_name();
         let d_name = d_name.as_bytes();
-        let Some((id, t)) = scan_aside_name(d_name) else { continue };
+        let Some((id, t)) = scan_aside_name(d_name) else {
+            continue;
+        };
         if id == 0 || id >= 0x7fffffff || d_name.len() >= 64 {
             continue;
         }
-        asides.push(Aside { pid: id as u32, t, name: String::from_utf8_lossy(d_name).into_owned() });
+        asides.push(Aside {
+            pid: id as u32,
+            t,
+            name: String::from_utf8_lossy(d_name).into_owned(),
+        });
     }
     asides.sort_by(cmp_aside);
     let n = asides.len();
@@ -1966,7 +2172,12 @@ pub fn store_recover_pages(nb: &NotebookInfo) -> i32 {
             // No longer one of the notebook's pages (deleted since, or missing from a page list
             // that was rebuilt): put back, it would be no page of the notebook, and a new page
             // could take its number and write over it. It stays aside.
-            qlog_once!("store: %s: p%u.qpg is not in the page list; its set-aside copies stay aside (%s)", &nb.id, pid, &asides[i].name);
+            qlog_once!(
+                "store: %s: p%u.qpg is not in the page list; its set-aside copies stay aside (%s)",
+                &nb.id,
+                pid,
+                &asides[i].name
+            );
             i = j;
             continue;
         }
@@ -1980,15 +2191,30 @@ pub fn store_recover_pages(nb: &NotebookInfo) -> i32 {
             }
             if exists {
                 // An older version wrote a fresh page there since (it was edited): keep both.
-                qlog_once!("store: %s: %s opens now, but p%u.qpg exists too; both kept", &nb.id, &asides[k].name, pid);
+                qlog_once!(
+                    "store: %s: %s opens now, but p%u.qpg exists too; both kept",
+                    &nb.id,
+                    &asides[k].name,
+                    pid
+                );
             } else {
                 match std::fs::rename(&aside, &path) {
                     Ok(()) => {
-                        qlog!("store: %s: recovered p%u.qpg from %s", &nb.id, pid, &asides[k].name);
+                        qlog!(
+                            "store: %s: recovered p%u.qpg from %s",
+                            &nb.id,
+                            pid,
+                            &asides[k].name
+                        );
                         restored += 1;
                     }
                     Err(e) => {
-                        qlog_once!("store: %s: could not recover %s: %s", &nb.id, &asides[k].name, &strerror(e.raw_os_error().unwrap_or(0)));
+                        qlog_once!(
+                            "store: %s: could not recover %s: %s",
+                            &nb.id,
+                            &asides[k].name,
+                            &strerror(e.raw_os_error().unwrap_or(0))
+                        );
                     }
                 }
             }
@@ -2069,9 +2295,18 @@ pub fn page_serialize(p: &Page, out: &mut Vec<u8>) -> i32 {
         for q in s.pts.iter() {
             w_f32(&mut w, q.x);
             w_f32(&mut w, q.y);
-            w_u16(&mut w, ((clampf(q.pressure, 0.0, 1.0) * 65535.0).round_ties_even() as i64) as u16);
-            w_u16(&mut w, (((clampf(q.tilt_x, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16);
-            w_u16(&mut w, (((clampf(q.tilt_y, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16);
+            w_u16(
+                &mut w,
+                ((clampf(q.pressure, 0.0, 1.0) * 65535.0).round_ties_even() as i64) as u16,
+            );
+            w_u16(
+                &mut w,
+                (((clampf(q.tilt_x, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16,
+            );
+            w_u16(
+                &mut w,
+                (((clampf(q.tilt_y, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16,
+            );
             w_u32(&mut w, q.t_ms);
         }
     }
@@ -2127,10 +2362,17 @@ fn sane_size(w: u32, h: u32) -> bool {
 fn newer_page(ver: u32, w: u32, h: u32, out: &mut Option<Box<Page>>, quiet: bool) -> i32 {
     let sane = sane_size(w, h);
     let (gw, gh) = g_wh();
-    let mut p = page_new(if sane { w as i32 } else { gw }, if sane { h as i32 } else { gh }, PAPER_BLANK);
+    let mut p = page_new(
+        if sane { w as i32 } else { gw },
+        if sane { h as i32 } else { gh },
+        PAPER_BLANK,
+    );
     p.readonly = true;
     if !quiet {
-        qlog!("store: read-only page: version %u is from a newer Grimoire, shown blank", ver);
+        qlog!(
+            "store: read-only page: version %u is from a newer Grimoire, shown blank",
+            ver
+        );
     }
     *out = Some(p);
     0
@@ -2161,7 +2403,10 @@ fn read_tail(r: &mut R, p: &mut Page) -> Option<String> {
         if r.n - r.pos < 8 {
             return Some("cut-off bytes after the strokes".to_string());
         }
-        let ok = tag_char(c[0], true) && tag_char(c[1], false) && tag_char(c[2], false) && tag_char(c[3], false);
+        let ok = tag_char(c[0], true)
+            && tag_char(c[1], false)
+            && tag_char(c[2], false)
+            && tag_char(c[3], false);
         if !ok {
             return Some("bytes after the strokes that are not chunks".to_string());
         }
@@ -2171,7 +2416,10 @@ fn read_tail(r: &mut R, p: &mut Page) -> Option<String> {
         }
         if c[0].is_ascii_uppercase() {
             // (the tag is four ASCII letters or digits: tag_char)
-            return Some(cformat!("a chunk this version does not know (%.4s)", std::str::from_utf8(&c[..4]).unwrap_or("")));
+            return Some(cformat!(
+                "a chunk this version does not know (%.4s)",
+                std::str::from_utf8(&c[..4]).unwrap_or("")
+            ));
         }
         r.pos += 8 + clen as usize;
     }
@@ -2185,7 +2433,12 @@ fn read_tail(r: &mut R, p: &mut Page) -> Option<String> {
 fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool, pump: bool) -> i32 {
     *out = None;
     let len = buf.len();
-    let mut r = R { d: buf, n: len, pos: 0, err: false };
+    let mut r = R {
+        d: buf,
+        n: len,
+        pos: 0,
+        err: false,
+    };
     match r_take(&mut r, 4) {
         Some(m) if m == b"QPG1" => {}
         _ => return -1,
@@ -2272,7 +2525,11 @@ fn page_parse(buf: &[u8], out: &mut Option<Box<Page>>, quiet: bool, pump: bool) 
     }
     let mut ro = read_tail(&mut r, &mut p);
     if unknown_tools != 0 {
-        ro = Some(cformat!("%u stroke%s with a tool this version does not have", unknown_tools, if unknown_tools == 1 { "" } else { "s" }));
+        ro = Some(cformat!(
+            "%u stroke%s with a tool this version does not have",
+            unknown_tools,
+            if unknown_tools == 1 { "" } else { "s" }
+        ));
     }
     if let Some(ro) = ro {
         p.readonly = true;
@@ -2325,7 +2582,11 @@ fn access_ok(path: &str) -> bool {
 
 fn save_pgm(path: &str, t: &Canvas) -> i32 {
     let hdr = cformat!("P5\n%d %d\n255\n", t.w, t.h);
-    let (w, h, stride) = (t.w.max(0) as usize, t.h.max(0) as usize, t.stride.max(0) as usize);
+    let (w, h, stride) = (
+        t.w.max(0) as usize,
+        t.h.max(0) as usize,
+        t.stride.max(0) as usize,
+    );
     let mut buf: Vec<u8> = Vec::new();
     if buf.try_reserve_exact(hdr.len() + w * h).is_err() {
         return -1;
@@ -2341,8 +2602,16 @@ fn load_pgm(path: &str, out: &mut Canvas) -> i32 {
     *out = Canvas::default();
     let Some(d) = read_file(path) else { return -1 };
     let len = d.len();
-    let Some((w, h, mx, off)) = scan_p5_header(&d) else { return -1 };
-    if w <= 0 || h <= 0 || w > 8000 || h > 8000 || mx != 255 || off + 1 + (w as usize) * (h as usize) > len {
+    let Some((w, h, mx, off)) = scan_p5_header(&d) else {
+        return -1;
+    };
+    if w <= 0
+        || h <= 0
+        || w > 8000
+        || h > 8000
+        || mx != 255
+        || off + 1 + (w as usize) * (h as usize) > len
+    {
         return -1;
     }
     if canvas_init(out, w, h) != 0 {
@@ -2364,7 +2633,9 @@ pub fn store_read_pgm(path: &str, out: &mut Canvas) -> i32 {
 
 /// Thumbnails (P5 PGM, ~ 1/8 page size).
 pub fn store_save_thumb(id: &str, thumb: &Canvas) -> i32 {
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else {
+        return -1;
+    };
     let path = cformat!("%s/thumb.pgm", &dir);
     save_pgm(&path, thumb)
 }
@@ -2372,7 +2643,9 @@ pub fn store_save_thumb(id: &str, thumb: &Canvas) -> i32 {
 /// canvas_init'd by the callee
 pub fn store_load_thumb(id: &str, out: &mut Canvas) -> i32 {
     *out = Canvas::default();
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else {
+        return -1;
+    };
     let path = cformat!("%s/thumb.pgm", &dir);
     load_pgm(&path, out)
 }
@@ -2381,10 +2654,20 @@ pub fn store_load_thumb(id: &str, out: &mut Canvas) -> i32 {
 /// write is a new file, renamed into place: its inode, size and times): 0 when there is none, else
 /// odd. A card read from it knows by this whether it was written since.
 pub fn store_thumb_stamp(id: &str) -> u64 {
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return 0 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else {
+        return 0;
+    };
     let path = cformat!("%s/thumb.pgm", &dir);
-    let Ok(st) = std::fs::metadata(&path) else { return 0 };
-    let v = [st.dev(), st.ino(), st.size(), st.mtime() as u64, st.ctime() as u64];
+    let Ok(st) = std::fs::metadata(&path) else {
+        return 0;
+    };
+    let v = [
+        st.dev(),
+        st.ino(),
+        st.size(),
+        st.mtime() as u64,
+        st.ctime() as u64,
+    ];
     let mut h: u64 = 1469598103934665603; // FNV-1a over them
     for x in v {
         for b in (0..64).step_by(8) {
@@ -2408,17 +2691,22 @@ pub fn store_read_thumb_file(id: &str) -> Option<Vec<u8>> {
 
 /// Tests: called by store_replace_thumb_if_same just before it looks at thumb.pgm again (the editor
 /// writing a card meanwhile).
-pub static STORE_TEST_BEFORE_CARD_REPLACE: std::sync::Mutex<Option<fn(&str)>> = std::sync::Mutex::new(None);
+pub static STORE_TEST_BEFORE_CARD_REPLACE: std::sync::Mutex<Option<fn(&str)>> =
+    std::sync::Mutex::new(None);
 
 pub fn store_replace_thumb_if_same(id: &str, thumb: &Canvas, was: &[u8]) -> i32 {
-    let Some(dir) = notebook_dir(id.as_bytes()) else { return -1 };
+    let Some(dir) = notebook_dir(id.as_bytes()) else {
+        return -1;
+    };
     let path = cformat!("%s/thumb.pgm", &dir);
     let mut mine = String::new();
     csnprintf!(&mut mine, 720, "%s.card.tmp", &path);
     if save_pgm(&mine, thumb) != 0 {
         return -1;
     }
-    let hook = *STORE_TEST_BEFORE_CARD_REPLACE.lock().unwrap_or_else(|e| e.into_inner());
+    let hook = *STORE_TEST_BEFORE_CARD_REPLACE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     if let Some(f) = hook {
         f(id);
     }
@@ -2454,7 +2742,15 @@ pub fn store_load_sleep_image(out: &mut Canvas) -> i32 {
 fn stbi_info(data: &[u8]) -> Option<(i32, i32, i32)> {
     let (mut w, mut h, mut ch) = (0, 0, 0);
     // SAFETY: reads at most data.len() bytes of data and writes the three ints, all ours.
-    let ok = unsafe { crate::ffi_stb::stbi_info_from_memory(data.as_ptr(), data.len() as libc::c_int, &mut w, &mut h, &mut ch) };
+    let ok = unsafe {
+        crate::ffi_stb::stbi_info_from_memory(
+            data.as_ptr(),
+            data.len() as libc::c_int,
+            &mut w,
+            &mut h,
+            &mut ch,
+        )
+    };
     (ok != 0).then_some((w, h, ch))
 }
 
@@ -2464,7 +2760,14 @@ fn stbi_load_gray(data: &[u8]) -> Option<(Vec<u8>, i32, i32)> {
     // SAFETY: reads at most data.len() bytes of data and writes the three ints, all ours; on success
     // it returns w * h bytes (one channel was asked for) that we copy out and free below.
     unsafe {
-        let p = crate::ffi_stb::stbi_load_from_memory(data.as_ptr(), data.len() as libc::c_int, &mut w, &mut h, &mut ch, 1);
+        let p = crate::ffi_stb::stbi_load_from_memory(
+            data.as_ptr(),
+            data.len() as libc::c_int,
+            &mut w,
+            &mut h,
+            &mut ch,
+            1,
+        );
         if p.is_null() {
             return None;
         }
@@ -2476,16 +2779,24 @@ fn stbi_load_gray(data: &[u8]) -> Option<(Vec<u8>, i32, i32)> {
 
 pub fn store_load_koreader_sleep(out: &mut Canvas) -> i32 {
     let path = cformat!("%s/koreader-sleep.png", &g_root());
-    let Ok(st) = std::fs::metadata(&path) else { return -1 };
+    let Ok(st) = std::fs::metadata(&path) else {
+        return -1;
+    };
     if st.size() == 0 || st.size() > 32 * 1024 * 1024 {
         return -1;
     }
-    let Some(encoded) = read_file(&path) else { return -1 };
-    let Some((w, h, _)) = stbi_info(&encoded) else { return -1 };
+    let Some(encoded) = read_file(&path) else {
+        return -1;
+    };
+    let Some((w, h, _)) = stbi_info(&encoded) else {
+        return -1;
+    };
     if w < 1 || h < 1 || w > 6000 || h > 6000 || (w as usize) * (h as usize) > 16000000 {
         return -1;
     }
-    let Some((data, w, h)) = stbi_load_gray(&encoded) else { return -1 };
+    let Some((data, w, h)) = stbi_load_gray(&encoded) else {
+        return -1;
+    };
     drop(encoded);
     let rc = canvas_init(out, w, h);
     if rc == 0 {
@@ -2497,7 +2808,18 @@ pub fn store_load_koreader_sleep(out: &mut Canvas) -> i32 {
 
 // ---- settings ----
 
-static K_TOOL_KEYS: [&str; TOOL_COUNT] = ["pencil", "mech", "ballpoint", "eraser", "highlighter", "fountain", "fineliner", "marker", "charcoal", "calligraphy"];
+static K_TOOL_KEYS: [&str; TOOL_COUNT] = [
+    "pencil",
+    "mech",
+    "ballpoint",
+    "eraser",
+    "highlighter",
+    "fountain",
+    "fineliner",
+    "marker",
+    "charcoal",
+    "calligraphy",
+];
 
 pub fn settings_default(s: &mut Settings) {
     *s = Settings::default();
@@ -2524,6 +2846,7 @@ pub fn settings_default(s: &mut Settings) {
     s.status_on = false;
     s.status_size = 0;
     s.status_corner = 0;
+    s.rotation_lock = 0;
     s.gestures = true;
     s.landscape_fit = true;
     s.gesture_new_page = true;
@@ -2537,14 +2860,26 @@ pub fn settings_default(s: &mut Settings) {
 /// calibration's panel is not recorded.
 fn panel_kv(pw: &mut i32, ph: &mut i32, key: &str, v: &[u8]) -> bool {
     let (w, used) = size_value(v);
-    let h = if v.get(used) == Some(&b'x') { size_value(&v[used + 1..]).0 } else { 0 };
+    let h = if v.get(used) == Some(&b'x') {
+        size_value(&v[used + 1..]).0
+    } else {
+        0
+    };
     if !page_size_ok(w as i64, h as i64) {
         return false;
     }
     *pw = w;
     *ph = h;
     let used = cformat!("%dx%d", w, h);
-    keep_value(key, v, if v != used.as_bytes() { Some(&used) } else { None });
+    keep_value(
+        key,
+        v,
+        if v != used.as_bytes() {
+            Some(&used)
+        } else {
+            None
+        },
+    );
     true
 }
 /// key: the whole settings.ini key ("pen.valid"), k: what follows the dot.
@@ -2598,7 +2933,11 @@ fn keep_value(k: &str, raw: &[u8], used: Option<&str>) {
         if s.g_kept.len() == SETTINGS_KEPT_MAX || k.len() >= 48 || raw.len() > 256 {
             return;
         }
-        s.g_kept.push(Kept { key: k.to_string(), used: cut_at_bytes(used, 63).to_string(), raw: raw.to_vec() });
+        s.g_kept.push(Kept {
+            key: k.to_string(),
+            used: cut_at_bytes(used, 63).to_string(),
+            raw: raw.to_vec(),
+        });
     });
 }
 
@@ -2641,7 +2980,11 @@ pub fn settings_pins_text(s: &Settings, out: &mut String, cap: usize) {
         if n >= cap {
             break;
         }
-        let piece = cformat!("%s%s", if i > 0 { "," } else { "" }, K_TOOL_KEYS[s.pins[i].0 as usize]);
+        let piece = cformat!(
+            "%s%s",
+            if i > 0 { "," } else { "" },
+            K_TOOL_KEYS[s.pins[i].0 as usize]
+        );
         n += piece.len();
         text.push_str(&piece);
     }
@@ -2671,7 +3014,10 @@ fn pins_kv(s: &mut Settings, k: &str, v: &[u8]) {
             if s.npins as usize >= PANEL_PINS_MAX {
                 break;
             }
-            if ToolKind(t as i32) != TOOL_ERASER && K_TOOL_KEYS[t].as_bytes() == w && !settings_pinned(s, ToolKind(t as i32)) {
+            if ToolKind(t as i32) != TOOL_ERASER
+                && K_TOOL_KEYS[t].as_bytes() == w
+                && !settings_pinned(s, ToolKind(t as i32))
+            {
                 s.pins[s.npins as usize] = ToolKind(t as i32);
                 s.npins += 1;
             }
@@ -2683,7 +3029,15 @@ fn pins_kv(s: &mut Settings, k: &str, v: &[u8]) {
     }
     let mut used = String::new();
     settings_pins_text(s, &mut used, 128);
-    keep_value(k, v, if v != used.as_bytes() { Some(&used) } else { None });
+    keep_value(
+        k,
+        v,
+        if v != used.as_bytes() {
+            Some(&used)
+        } else {
+            None
+        },
+    );
 }
 
 fn keep_int(k: &str, v: &[u8], lo: i32, hi: i32) -> i32 {
@@ -2698,7 +3052,15 @@ fn keep_int(k: &str, v: &[u8], lo: i32, hi: i32) -> i32 {
 /// (atoi, as 1.0.0-beta reads it) and written back as it was until the setting changes.
 fn keep_bool(k: &str, v: &[u8]) -> bool {
     let on = c_atoi(v) != 0;
-    keep_value(k, v, if v != b"0" && v != b"1" { Some(if on { "1" } else { "0" }) } else { None });
+    keep_value(
+        k,
+        v,
+        if v != b"0" && v != b"1" {
+            Some(if on { "1" } else { "0" })
+        } else {
+            None
+        },
+    );
     on
 }
 
@@ -2742,12 +3104,22 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         return false; // a tool (or group) this version does not have
     }
     match k {
-        b"current_tool" => s.current_tool = ToolKind(keep_int("current_tool", v, 0, TOOL_COUNT as i32 - 1)),
+        b"current_tool" => {
+            s.current_tool = ToolKind(keep_int("current_tool", v, 0, TOOL_COUNT as i32 - 1))
+        }
         b"music_layout" => {
             let x = c_strtoul(v).0 as u32;
             s.music_layout = paper_sanitize(x, music_default());
             let used = cformat!("%u", s.music_layout.0);
-            keep_value("music_layout", v, if s.music_layout.0 != x { Some(&used) } else { None });
+            keep_value(
+                "music_layout",
+                v,
+                if s.music_layout.0 != x {
+                    Some(&used)
+                } else {
+                    None
+                },
+            );
         }
         b"draw_tool" => s.draw_tool = ToolKind(keep_int("draw_tool", v, 0, TOOL_COUNT as i32 - 1)),
         b"panel_x" => s.panel_x = c_atoi(v),
@@ -2760,11 +3132,27 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"pinch_zoom" => s.pinch_zoom = keep_bool("pinch_zoom", v),
         b"theme" => {
             s.theme = if v == b"classic" { 1 } else { 0 };
-            keep_value("theme", v, if s.theme == 1 || v == b"gothic" { None } else { Some("gothic") });
+            keep_value(
+                "theme",
+                v,
+                if s.theme == 1 || v == b"gothic" {
+                    None
+                } else {
+                    Some("gothic")
+                },
+            );
         }
         b"shortcuts_enabled" => s.shortcuts_enabled = keep_bool("shortcuts_enabled", v),
         b"controller" => s.controller = keep_bool("controller", v),
-        b"updates" => s.updates = if v == b"stable" { 1 } else if v == b"preview" { 2 } else { 0 },
+        b"updates" => {
+            s.updates = if v == b"stable" {
+                1
+            } else if v == b"preview" {
+                2
+            } else {
+                0
+            }
+        }
         b"sleep_mode" => s.sleep_mode = keep_int("sleep_mode", v, 0, 3),
         b"sleep_minutes" => s.sleep_minutes = keep_int("sleep_minutes", v, 0, 240),
         b"settings_version" => s.version = c_atoi(v),
@@ -2787,15 +3175,33 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
+        b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
         b"before_eraser" => {
             // A pen this version does not have (a newer one's), the eraser or no number at all is none
             // here, and stays in the file.
             let (x, used) = c_strtol(v);
-            s.before_eraser = if used != 0 && used == v.len() && x >= 0 && x < TOOL_COUNT as i64 && x != TOOL_ERASER.0 as i64 { x as i32 } else { -1 };
+            s.before_eraser = if used != 0
+                && used == v.len()
+                && x >= 0
+                && x < TOOL_COUNT as i64
+                && x != TOOL_ERASER.0 as i64
+            {
+                x as i32
+            } else {
+                -1
+            };
             let used = cformat!("%d", s.before_eraser);
-            keep_value("before_eraser", v, if v != used.as_bytes() { Some(&used) } else { None });
+            keep_value(
+                "before_eraser",
+                v,
+                if v != used.as_bytes() {
+                    Some(&used)
+                } else {
+                    None
+                },
+            );
         }
         _ => return false,
     }
@@ -2833,7 +3239,12 @@ fn settings_upgrade(s: &mut Settings) {
         tool_params_default(tool, &mut d);
         let nv = d.get(off);
         if (*v - old_v).abs() < 0.005 && (*v - nv).abs() >= 0.005 {
-            qlog!("settings: %s default updated %.2f -> %.2f", tool_name(tool), *v, nv);
+            qlog!(
+                "settings: %s default updated %.2f -> %.2f",
+                tool_name(tool),
+                *v,
+                nv
+            );
             *v = nv;
         }
     }
@@ -2863,7 +3274,11 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     };
     let dropped = with(|st| st.g_set_dropped);
     if dropped != 0 {
-        qlog!("settings: %d unknown line(s) past %d bytes not kept", dropped, SETTINGS_UNKNOWN_MAX);
+        qlog!(
+            "settings: %d unknown line(s) past %d bytes not kept",
+            dropped,
+            SETTINGS_UNKNOWN_MAX
+        );
     }
     if rc == 0 {
         // An owner upgrading from the build before the gestures: an existing file at version 3 that has
@@ -2937,7 +3352,11 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "shortcuts_enabled", s.shortcuts_enabled as i32);
     put_int(&mut b, "controller", s.controller as i32);
     if s.updates != 0 {
-        put(&mut b, "updates", if s.updates == 1 { "stable" } else { "preview" });
+        put(
+            &mut b,
+            "updates",
+            if s.updates == 1 { "stable" } else { "preview" },
+        );
     }
     put_int(&mut b, "sleep_mode", s.sleep_mode);
     put_int(&mut b, "sleep_minutes", s.sleep_minutes);
@@ -2950,21 +3369,51 @@ pub fn settings_save(s: &Settings) -> i32 {
     put(&mut b, "panel_tools", &t);
     put_int(&mut b, "before_eraser", s.before_eraser);
     put(&mut b, "music_layout", &cformat!("%u", s.music_layout.0));
-    put(&mut b, "theme", if s.theme == 1 { "classic" } else { "gothic" });
+    put(
+        &mut b,
+        "theme",
+        if s.theme == 1 { "classic" } else { "gothic" },
+    );
     // A newer version's settings_version stays as it is: its own upgrades have already run.
-    put_int(&mut b, "settings_version", if s.version > SETTINGS_VERSION { s.version } else { SETTINGS_VERSION });
+    put_int(
+        &mut b,
+        "settings_version",
+        if s.version > SETTINGS_VERSION {
+            s.version
+        } else {
+            SETTINGS_VERSION
+        },
+    );
     let cs = [&s.pen_calib, &s.touch_calib];
     let cn = ["pen", "touch"];
-    let panel = [[s.pen_panel_w, s.pen_panel_h], [s.touch_panel_w, s.touch_panel_h]];
+    let panel = [
+        [s.pen_panel_w, s.pen_panel_h],
+        [s.touch_panel_w, s.touch_panel_h],
+    ];
     for i in 0..2 {
         put_int(&mut b, &cformat!("%s.valid", cn[i]), cs[i].valid as i32);
         put_int(&mut b, &cformat!("%s.swap", cn[i]), cs[i].swap_xy as i32);
         b.extend_from_slice(
-            cformat!("%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n", cn[i], cs[i].ax, cn[i], cs[i].bx, cn[i], cs[i].ay, cn[i], cs[i].by).as_bytes(),
+            cformat!(
+                "%s.ax=%.6f\n%s.bx=%.6f\n%s.ay=%.6f\n%s.by=%.6f\n",
+                cn[i],
+                cs[i].ax,
+                cn[i],
+                cs[i].bx,
+                cn[i],
+                cs[i].ay,
+                cn[i],
+                cs[i].by
+            )
+            .as_bytes(),
         );
         if panel[i][0] > 0 {
             // the panel it was made on, once known
-            put(&mut b, &cformat!("%s.panel", cn[i]), &cformat!("%dx%d", panel[i][0], panel[i][1]));
+            put(
+                &mut b,
+                &cformat!("%s.panel", cn[i]),
+                &cformat!("%dx%d", panel[i][0], panel[i][1]),
+            );
         }
     }
     for tk in 0..TOOL_COUNT {
@@ -2974,7 +3423,15 @@ pub fn settings_save(s: &Settings) -> i32 {
         }
     }
     // (A language this build lacks goes back as it was.)
-    put(&mut b, "language", if i18n_setting_known(s.language.as_str()) { s.language.as_str() } else { "auto" });
+    put(
+        &mut b,
+        "language",
+        if i18n_setting_known(s.language.as_str()) {
+            s.language.as_str()
+        } else {
+            "auto"
+        },
+    );
     // The newest keys come last of the known ones: a build without them keeps their lines as lines it
     // does not know. The clock and battery corner's (status.rs), then the gestures' (Index phase 1).
     put_int(&mut b, "status_on", s.status_on as i32);
@@ -2984,6 +3441,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "hints", s.hints);
     put_int(&mut b, "link_areas", s.link_areas as i32);
     put_int(&mut b, "status_corner", s.status_corner);
+    put_int(&mut b, "rotation_lock", s.rotation_lock);
     put_int(&mut b, "gesture_new_page", s.gesture_new_page as i32);
     put_int(&mut b, "status_mode", s.status_mode);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
@@ -2997,7 +3455,8 @@ pub fn settings_save(s: &Settings) -> i32 {
             None => l.len(),
         };
         at += len;
-        let replaced = (panel[0][0] > 0 && l.starts_with(b"pen.panel=")) || (panel[1][0] > 0 && l.starts_with(b"touch.panel="));
+        let replaced = (panel[0][0] > 0 && l.starts_with(b"pen.panel="))
+            || (panel[1][0] > 0 && l.starts_with(b"touch.panel="));
         if !replaced {
             b.extend_from_slice(&l[..len]);
         }
@@ -3018,7 +3477,10 @@ mod tests {
         assert_eq!(c_strtoul(b" 12,3"), (12, 3));
         assert_eq!(c_strtoul(b",1"), (0, 0));
         assert_eq!(c_strtoul(b"-1").0, libc::c_ulong::MAX as u64);
-        assert_eq!(c_strtol(b"99999999999999999999999"), (libc::c_long::MAX as i64, 23));
+        assert_eq!(
+            c_strtol(b"99999999999999999999999"),
+            (libc::c_long::MAX as i64, 23)
+        );
         assert_eq!(size_value(b"1986x2648"), (1986, 4));
         assert_eq!(size_value(b"100001"), (0, 6));
         assert_eq!(c_strtof(b"2.5"), 2.5);
@@ -3038,7 +3500,10 @@ mod tests {
         assert_eq!(scan_page_name(b"p12.qpgx"), None);
         assert_eq!(scan_page_name(b"p12.qp"), None);
         assert_eq!(scan_page_name(b"notebook.ini"), None);
-        assert_eq!(scan_aside_name(b"p3.qpg.damaged-1792000100"), Some((3, 1792000100)));
+        assert_eq!(
+            scan_aside_name(b"p3.qpg.damaged-1792000100"),
+            Some((3, 1792000100))
+        );
         assert_eq!(scan_aside_name(b"p3.qpg.damaged-"), None);
         assert_eq!(scan_aside_name(b"p3.qpg.damaged-5x"), None);
         assert_eq!(scan_aside_name(b"p3.qpg"), None);
@@ -3066,7 +3531,11 @@ mod tests {
     #[test]
     fn printf_with_raw_bytes() {
         let mut b = Vec::new();
-        sb_printf(&mut b, "name=%s\nn=%d %s|", &[raw(b"a\xffb"), val(5), raw(b"")]);
+        sb_printf(
+            &mut b,
+            "name=%s\nn=%d %s|",
+            &[raw(b"a\xffb"), val(5), raw(b"")],
+        );
         assert_eq!(b, b"name=a\xffb\nn=5 |");
     }
 }

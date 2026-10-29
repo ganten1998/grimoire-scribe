@@ -3,14 +3,9 @@
 //! comments, trimmed key=value lines, a later duplicate wins, keys in any case), read through
 //! shortcuts.rs's bounded reader. Pure apart from that one read: no App, no UI.
 //!
-//! Keys: `touch.<2|3>.<up|down|left|right|tap>` (an action's file name, but `hold-eraser`, which needs
-//! a release a gesture has not, or `nothing` to turn a built-in off; `touch.1.*` is kept for
-//! one-finger taps and links, and refused), `pen.<Button|
-//! Button2|Eraser>.<tap|double|triple|hold|drag>` (parsed and held: the pen's button keeps its own
-//! clicks for now) and `shape.<action>` (a finger shape someone recorded: carried as it is, for a
-//! version that draws them). A line this version cannot use but a newer one wrote (an action it does
-//! not know on a pen or shape line, a pen slot it does not know) is carried as it was; a line that
-//! cannot be read is refused and counted. Nothing here writes the file.
+//! One-finger directions, multi-finger patterns and recorded shapes share this atomic sidecar.
+//! Unknown versions and future actions are carried within fixed bounds. A failed read prevents
+//! writes until Reset, and callers save an edited copy before publishing it to the App.
 
 use crate::prelude::*;
 
@@ -50,23 +45,32 @@ pub const GESTURE_PAN: i32 = -1;
 pub const GESTURE_ZOOM: i32 = -2;
 
 /// gestures.ini is read up to this size (shortcuts.ini's cap).
-const GESTURES_CAP: u64 = 65536;
+pub const GESTURES_CAP: u64 = 65536;
 /// Lines carried for a later version: each at most CARRY_LINE_MAX bytes, CARRY_MAX in all.
 const CARRY_LINE_MAX: usize = 1024;
 const CARRY_MAX: usize = 16384;
 
 const K_TOUCH_KINDS: [(&str, TouchKind); 5] =
-    [("up", TouchKind::Up), ("down", TouchKind::Down), ("left", TouchKind::Left), ("right", TouchKind::Right), ("tap", TouchKind::Tap)];
-const K_PEN_BTNS: [(&str, PenBtn); 3] = [("Button", PenBtn::Button), ("Button2", PenBtn::Button2), ("Eraser", PenBtn::Eraser)];
+    [("up", TouchKind::Up), ("down", TouchKind::Down), ("left", TouchKind::Left), ("right", TouchKind::Right), ("tap", TouchKind::Tap),
+];
+const K_PEN_BTNS: [(&str, PenBtn); 3] = [("Button", PenBtn::Button), ("Button2", PenBtn::Button2), ("Eraser", PenBtn::Eraser),
+];
 const K_PEN_KINDS: [(&str, PenKind); 5] =
-    [("tap", PenKind::Tap), ("double", PenKind::Double), ("triple", PenKind::Triple), ("hold", PenKind::Hold), ("drag", PenKind::Drag)];
+    [("tap", PenKind::Tap), ("double", PenKind::Double), ("triple", PenKind::Triple), ("hold", PenKind::Hold), ("drag", PenKind::Drag),
+];
 /// The order a touch gesture is looked for by action (gesturemap_key_for): the built-ins' order.
-const K_TOUCH_ORDER: [TouchKind; 5] = [TouchKind::Down, TouchKind::Up, TouchKind::Left, TouchKind::Right, TouchKind::Tap];
+const K_TOUCH_ORDER: [TouchKind; 5] = [TouchKind::Down, TouchKind::Up, TouchKind::Left, TouchKind::Right, TouchKind::Tap,
+];
 
 #[derive(Clone, Debug, Default)]
 pub struct GestureMap {
     /// [fingers - 2][kind]: the action (0 nothing), and whether a line of the file set it
     touch: [[i32; 5]; 2],
+    touch1: [i32; 4],
+    touch1_set: [bool; 4],
+    shapes: Vec<(i32, FsGesture)>,
+    /// False after an unreadable file; Reset is the explicit recovery path.
+    pub writable: bool,
     touch_set: [[bool; 5]; 2],
     /// [button][kind], the same
     pen: [[i32; 5]; 3],
@@ -86,6 +90,7 @@ fn tk(k: TouchKind) -> usize {
 /// Two- and three-finger taps and one finger's gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
     *m = GestureMap::default();
+    m.writable = true;
     m.touch[0][tk(TouchKind::Down)] = SHORTCUT_PAGES;
     m.touch[0][tk(TouchKind::Up)] = SHORTCUT_LINKS;
     m.touch[0][tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
@@ -125,7 +130,8 @@ fn parts(key: &[u8]) -> Option<(String, String, Option<String>)> {
     if it.next().is_some() || a.is_empty() || b.is_empty() || c.is_some_and(|c| c.is_empty()) {
         return None;
     }
-    Some((a.to_ascii_lowercase(), b.to_ascii_lowercase(), c.map(|c| c.to_ascii_lowercase())))
+    Some((a.to_ascii_lowercase(), b.to_ascii_lowercase(), c.map(|c| c.to_ascii_lowercase()),
+    ))
 }
 
 /// The action a value names: Some(0) for `nothing`, Some(action) for an action this version knows.
@@ -144,10 +150,21 @@ impl GestureMap {
         if line.len() > CARRY_LINE_MAX {
             return false;
         }
-        self.uncarry(key);
-        if self.carried.len() + line.len() + 1 > CARRY_MAX {
+        let replaced: usize = self.carried
+            .split_inclusive(|&b| b == b'\n')
+            .filter(|l| {
+                let end = l.iter().position(|&b| b == b'=').unwrap_or(l.len());
+                trim(&l[..end]).eq_ignore_ascii_case(key)
+            })
+            .map(|l| l.len())
+            .sum();
+        if self.carried.len() - replaced + line.len() + 1 > CARRY_MAX {
             return false;
         }
+        if self.carried.try_reserve_exact(line.len() + 1).is_err() {
+            return false;
+        }
+        self.uncarry(key);
         self.carried.extend_from_slice(line);
         self.carried.push(b'\n');
         true
@@ -170,26 +187,29 @@ impl GestureMap {
 
     /// One trimmed `key=value` line: false when it is refused.
     fn line(&mut self, line: &[u8]) -> bool {
-        let Some(eq) = line.iter().position(|&c| c == b'=') else { return false };
+        let Some(eq) = line.iter().position(|&c| c == b'=') else { return false ;
+        };
         let (key, value) = (trim(&line[..eq]), trim(&line[eq + 1..]));
-        let Some((head, a, b)) = parts(key) else { return false };
+        let Some((head, a, b)) = parts(key) else { return false ;
+        };
         match (head.as_str(), b) {
             ("touch", Some(kind)) => {
                 let fingers = match a.as_str() {
-                    "2" => 0,
-                    "3" => 1,
-                    _ => return false, // touch.1.* is one finger's (taps and links), and kept so
+                    "1" => 1,
+                    "2" => 2,
+                    "3" => 3,
+                    _ => return false, };
+                let Some(&(_, kind)) = K_TOUCH_KINDS.iter().find(|(n, _)| *n == kind) else { return false ;
                 };
-                let Some(&(_, kind)) = K_TOUCH_KINDS.iter().find(|(n, _)| *n == kind) else { return false };
-                let Some(action) = value_action(value) else { return false };
-                // Erase while held is momentary: it ends at a release, and a gesture has none, so it would
-                // stay on until the notebook closed.
-                if action == SHORTCUT_HOLD_ERASER {
+                let Some(action) = value_action(value) else { return false ;
+                };
+                if fingers == 1 && kind == TouchKind::Tap {
                     return false;
                 }
-                self.touch[fingers][tk(kind)] = action;
-                self.touch_set[fingers][tk(kind)] = true;
-                true
+                if action != 0 && action_sources(action) & SRC_TOUCH == 0 {
+                    return false;
+                }
+                gesturemap_set(self, GestureKey::Touch { fingers, kind}, action)>= 0
             }
             ("pen", Some(kind)) => {
                 let btn = K_PEN_BTNS.iter().find(|(n, _)| n.eq_ignore_ascii_case(&a)).map(|&(_, b)| b);
@@ -222,8 +242,47 @@ impl GestureMap {
                     None => false,
                 }
             }
-            // A recorded finger shape (format 1): carried as it is for a version that draws them.
-            ("shape", None) => name_like(a.as_bytes()) && value.starts_with(b"1,") && self.carry(key, line),
+            ("shape", None) => {
+                if !name_like(a.as_bytes()) {
+                    return false;
+                }
+                let Ok(value) = std::str::from_utf8(value) else {
+                    return false;
+                };
+                let action = action_by_name(&a);
+                if action != 0 && action_sources(action) &SRC_SHAPE == 0 {
+                    return false;
+                }
+                let mut samples = [FsSample::default(); FS_SAMPLES_MAX];
+                match fs_decode(value, & mut samples) {
+                    Err(FsCodec::Malformed) => false,
+                    Err(FsCodec::Newer) => {
+                        if !self.carry(key, line) {
+                            return false;
+                        }
+                        self.shapes.retain(|(a, _)| *a != action);
+                        true
+                    }
+                    Ok(_) if action == 0 => self.carry(key, line),
+            Ok(n) => {
+                        let at = self.shapes.binary_search_by_key(&action, |(a, _)| *a);
+                        if at.is_err()
+                            && (self.shapes.len() >= FS_SHAPES_MAX
+                                || self.shapes.try_reserve_exact(1).is_err())
+                        {
+                            return false;
+                        }
+                        let mut g = FsGesture::default();
+                        fs_prepare(&mut g, &samples[..n]);
+                        self.uncarry(key);
+                        match at {
+                            Ok(i) => self.shapes[i].1 = g,
+                            Err(i) => self.shapes.insert(i, (action, g)),
+                        }
+                        true
+                    }
+                }
+            }
             _ => false,
         }
     }
@@ -255,14 +314,19 @@ pub fn gesturemap_load(m: &mut GestureMap, path: &str) -> i32 {
     match crate::shortcuts::ini_read_bounded(path, GESTURES_CAP) {
         Ok(Some(text)) => gesturemap_parse(m, &text),
         Ok(None) => 0,
-        Err(()) => -1,
+        Err(()) => {
+            m.writable = false;
+            -1}
     }
 }
 
 /// The action a gesture does, 0 for nothing.
 pub fn gesturemap_action(m: &GestureMap, k: GestureKey) -> i32 {
     match k {
-        GestureKey::Touch { fingers: f @ 2..=3, kind } => m.touch[(f - 2) as usize][tk(kind)],
+        GestureKey::Touch { fingers: 1, kind } if kind != TouchKind::Tap => m.touch1[tk(kind)],
+        GestureKey::Touch {
+            fingers: f @ 2..=3, kind ,
+        } => m.touch[(f - 2) as usize][tk(kind)],
         GestureKey::Touch { .. } => 0,
         GestureKey::Pen { button, kind } => m.pen[button as usize][kind as usize],
     }
@@ -277,7 +341,7 @@ pub fn gesturemap_key_for(m: &GestureMap, action: i32, src: ActionSrc) -> Option
     }
     match src {
         ActionSrc::Touch => {
-            for fingers in 2..=3u8 {
+            for fingers in [2, 3, 1] {
                 for kind in K_TOUCH_ORDER {
                     let k = GestureKey::Touch { fingers, kind };
                     if gesturemap_action(m, k) == action {
@@ -321,12 +385,14 @@ pub fn gesturemap_mirror(k: GestureKey) -> GestureKey {
 
 /// touchgest's gesture (InEvent.value of an InType::Gesture) as a key.
 pub fn gesturemap_key_of_id(id: i32) -> Option<GestureKey> {
-    const KINDS: [TouchKind; 5] = [TouchKind::Up, TouchKind::Down, TouchKind::Left, TouchKind::Right, TouchKind::Tap];
+    const KINDS: [TouchKind; 5] = [TouchKind::Up, TouchKind::Down, TouchKind::Left, TouchKind::Right, TouchKind::Tap,
+    ];
     if !(G_2_UP..=G_3_TAP).contains(&id) {
         return None;
     }
     let i = (id - G_2_UP) as usize;
-    Some(GestureKey::Touch { fingers: 2 + (i / 5) as u8, kind: KINDS[i % 5] })
+    Some(GestureKey::Touch { fingers: 2 + (i / 5) as u8, kind: KINDS[i % 5] ,
+    })
 }
 
 /// A key as gestures.ini names it: "touch.2.down", "pen.Button.triple".
@@ -345,7 +411,10 @@ pub fn gesturemap_key_name(k: GestureKey, out: &mut String) {
 /// Whether a line of gestures.ini set this gesture (a built-in is never written to the file).
 pub fn gesturemap_is_set(m: &GestureMap, k: GestureKey) -> bool {
     match k {
-        GestureKey::Touch { fingers: f @ 2..=3, kind } => m.touch_set[(f - 2) as usize][tk(kind)],
+        GestureKey::Touch { fingers: 1, kind } if kind != TouchKind::Tap => m.touch1_set[tk(kind)],
+        GestureKey::Touch {
+            fingers: f @ 2..=3, kind ,
+        } => m.touch_set[(f - 2) as usize][tk(kind)],
         GestureKey::Touch { .. } => false,
         GestureKey::Pen { button, kind } => m.pen_set[button as usize][kind as usize],
     }
@@ -355,4 +424,238 @@ pub fn gesturemap_is_set(m: &GestureMap, k: GestureKey) -> bool {
 /// newline.
 pub fn gesturemap_carried(m: &GestureMap) -> &[u8] {
     &m.carried
+}
+pub const GM_SHAPES_MAX: usize = FS_SHAPES_MAX;
+const HEADER: &str = concat!(
+    "# Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:\n",
+    "# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.triple=clear-page, pen.Button.hold=clear-page\n",
+    "# shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.\n",
+);
+
+pub fn gesturemap_path() -> String {
+    cformat!("%s/gestures.ini", &store_root())
+}
+
+fn put_touch(m: &mut GestureMap, fingers: u8, kind: TouchKind, action: i32) {
+    if fingers == 1 {
+        m.touch1[tk(kind)] = action;
+        m.touch1_set[tk(kind)] = true;
+    } else {
+        m.touch[(fingers - 2) as usize][tk(kind)] = action;
+        m.touch_set[(fingers - 2) as usize][tk(kind)] = true;
+    }
+}
+
+/// Move this pattern to an action; each touch action has at most one pattern. Shapes are separate.
+pub fn gesturemap_set(m: &mut GestureMap, k: GestureKey, action: i32) -> i32 {
+    if !m.writable {
+        return -1;
+    }
+    let GestureKey::Touch { fingers, kind } = k else {
+        return -1;
+    };
+    if !(1..=3).contains(&fingers)
+        || (fingers == 1 && kind == TouchKind::Tap)
+        || (action != 0 && action_sources(action) & SRC_TOUCH == 0)
+    {
+        return -1;
+    }
+    let lost = gesturemap_action(m, k);
+    if action != 0 {
+        for f in 1..=3 {
+            for &(_, t) in &K_TOUCH_KINDS {
+                if f == 1 && t == TouchKind::Tap {
+                    continue;
+                }
+                let other = GestureKey::Touch {
+                    fingers: f,
+                    kind: t,
+                };
+                if other != k && gesturemap_action(m, other) == action {
+                    put_touch(m, f, t, 0);
+                }
+            }
+        }
+    }
+    put_touch(m, fingers, kind, action);
+    if lost != action {
+        lost
+    } else {
+        0
+    }
+}
+
+pub fn gesturemap_clear_action(m: &mut GestureMap, action: i32) {
+    if !m.writable || action == 0 {
+        return;
+    }
+    for f in 1..=3 {
+        for &(_, kind) in &K_TOUCH_KINDS {
+            if f == 1 && kind == TouchKind::Tap {
+                continue;
+            }
+            if gesturemap_action(m, GestureKey::Touch { fingers: f, kind }) == action {
+                put_touch(m, f, kind, 0);
+            }
+        }
+    }
+    m.shapes.retain(|(a, _)| *a != action);
+    m.uncarry(format!("shape.{}", shortcut_action_name(action).unwrap_or("")).as_bytes());
+}
+
+pub fn gesturemap_shapes(m: &GestureMap) -> &[(i32, FsGesture)] {
+    &m.shapes
+}
+pub fn gesturemap_shape_of(m: &GestureMap, action: i32) -> Option<&FsGesture> {
+    m.shapes
+        .binary_search_by_key(&action, |(a, _)| *a)
+        .ok()
+        .map(|i| &m.shapes[i].1)
+}
+pub fn gesturemap_shape_newer(m: &GestureMap, action: i32) -> bool {
+    let key = format!("shape.{}", shortcut_action_name(action).unwrap_or(""));
+    m.carried.split(|&b| b == b'\n').any(|l| {
+        l.iter()
+            .position(|&b| b == b'=')
+            .is_some_and(|i| trim(&l[..i]).eq_ignore_ascii_case(key.as_bytes()))
+    })
+}
+pub fn gesturemap_has_onefinger(m: &GestureMap) -> bool {
+    m.touch1.iter().any(|&a| a != 0)
+}
+
+/// Install a checked recording; an existing action's same shape moves here, leaving touch alone.
+pub fn gesturemap_shape_set(m: &mut GestureMap, action: i32, samples: &[FsSample]) -> i32 {
+    let mut encoded = [0u8; FS_VALUE_MAX];
+    if !m.writable
+        || action_sources(action) & SRC_SHAPE == 0
+        || fs_encode(samples, &mut encoded).is_err()
+    {
+        return -1;
+    }
+    let mut g = FsGesture::default();
+    fs_prepare(&mut g, samples);
+    let mut bank = [FsGesture::default(); FS_SHAPES_MAX];
+    let mut actions = [0; FS_SHAPES_MAX];
+    let mut n = 0;
+    for &(a, h) in &m.shapes {
+        if a != action {
+            bank[n] = h;
+            actions[n] = a;
+            n += 1;
+        }
+    }
+    let lost = match fs_record_separation(&g, &bank[..n]) {
+        FsSeparation::Clear => 0,
+        FsSeparation::SameAs(i) => actions[i],
+        FsSeparation::TooClose(_) => return -1,
+    };
+    let exists = gesturemap_shape_of(m, action).is_some();
+    if !exists && lost == 0 && m.shapes.len() >= FS_SHAPES_MAX {
+        return -1;
+    }
+    if !exists && lost == 0 && m.shapes.try_reserve_exact(1).is_err() {
+        return -1;
+    }
+    m.shapes.retain(|(a, _)| *a != lost && *a != action);
+    let at = m
+        .shapes
+        .binary_search_by_key(&action, |(a, _)| *a)
+        .unwrap_err();
+    m.shapes.insert(at, (action, g));
+    m.uncarry(format!("shape.{}", shortcut_action_name(action).unwrap_or("")).as_bytes());
+    if lost != 0 {
+        m.uncarry(format!("shape.{}", shortcut_action_name(lost).unwrap_or("")).as_bytes());
+    }
+    lost
+}
+
+/// Pure canonical writer. Built-ins are implicit; unknown lines retain their read order and bytes.
+pub fn gesturemap_format(m: &GestureMap, out: &mut Vec<u8>) -> bool {
+    out.clear();
+    if !m.writable || out.try_reserve_exact(GESTURES_CAP as usize).is_err() {
+        return false;
+    }
+    out.extend_from_slice(HEADER.as_bytes());
+    let mut built_in = GestureMap::default();
+    gesturemap_defaults(&mut built_in);
+    let mut key = String::new();
+    for f in 1..=3 {
+        for &(_, kind) in &K_TOUCH_KINDS {
+            if f == 1 && kind == TouchKind::Tap {
+                continue;
+            }
+            let k = GestureKey::Touch { fingers: f, kind };
+            let action = gesturemap_action(m, k);
+            if action != gesturemap_action(&built_in, k) {
+                gesturemap_key_name(k, &mut key);
+                let value = if action == 0 {
+                    "nothing"
+                } else {
+                    shortcut_action_name(action).unwrap_or("")
+                };
+                out.extend_from_slice(format!("{key}={value}\n").as_bytes());
+            }
+        }
+    }
+    for &(_, button) in &K_PEN_BTNS {
+        for &(_, kind) in &K_PEN_KINDS {
+            let k = GestureKey::Pen { button, kind };
+            if !gesturemap_is_set(m, k) {
+                continue;
+            }
+            gesturemap_key_name(k, &mut key);
+            let value = match gesturemap_action(m, k) {
+                0 => "nothing",
+                GESTURE_PAN => "pan",
+                GESTURE_ZOOM => "zoom",
+                a => shortcut_action_name(a).unwrap_or(""),
+            };
+            out.extend_from_slice(format!("{key}={value}\n").as_bytes());
+        }
+    }
+    let mut encoded = [0u8; FS_VALUE_MAX];
+    for &(action, g) in &m.shapes {
+        let Ok(value) = fs_encode(&g.samples[..g.n], &mut encoded) else {
+            return false;
+        };
+        out.extend_from_slice(
+            format!(
+                "shape.{}={value}\n",
+                shortcut_action_name(action).unwrap_or("")
+            )
+            .as_bytes(),
+        );
+    }
+    if out.len() + m.carried.len() > GESTURES_CAP as usize {
+        return false;
+    }
+    out.extend_from_slice(&m.carried);
+    true
+}
+
+/// Atomic; an empty overlay removes the file. Refuse an unreadable source until explicit Reset.
+pub fn gesturemap_save(m: &GestureMap, path: &str) -> i32 {
+    let mut text = Vec::new();
+    if !gesturemap_format(m, &mut text) {
+        return -1;
+    }
+    if text.len() == HEADER.len() {
+        return match std::fs::remove_file(path) {
+            Ok(()) => 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 1,
+            Err(_) => -1,
+        };
+    }
+    write_file_atomic(path, &text)
+}
+
+pub fn gesturemap_reset(m: &mut GestureMap, path: &str) -> i32 {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return -1,
+    }
+    gesturemap_defaults(m);
+    0
 }
