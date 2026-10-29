@@ -4816,8 +4816,9 @@ fn lm_check_menus(a: &mut App) {
     }
 }
 
-/// An undo or redo of a link step (4.2): its records are put back in the Nav and links.ini is saved; the
-/// page is untouched. A failed save puts the links back as the file has them and drops the step.
+/// Undo/redo link records and save links.ini. Clear also changes ink in the same step; a failed
+/// save reverses that tentative ink change and keeps Clear available to retry. Other failed link
+/// steps reload the saved links and are dropped.
 fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
     let before = if a.settings.link_areas { eye_bounds(a) } else { RECT_EMPTY };
     let s = ed(a);
@@ -6502,6 +6503,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         return true;
     }
     if s.owner != Owner::None || s.pinching {
+        return false;
+    }
+    // An armed link selection leaves the page visible but is still an active operation.
+    // A hovering pen-button hold must not clear its existing ink or link areas underneath it.
+    if action == SHORTCUT_CLEAR_PAGE && s.lm.state != LmState::Off {
         return false;
     }
     if s.map.open {
