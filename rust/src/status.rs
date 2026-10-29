@@ -460,6 +460,15 @@ pub fn status_square(a: &App) -> Rect {
     corner_square(a.settings.status_corner, a.w, a.h, side)
 }
 
+/// The corner's zone: its square and where its box shows with the room a tap has around it, together (what
+/// a card or keyboard docked at the top keeps below, so it never meets the corner).
+pub fn status_zone(a: &App) -> Rect {
+    let pad = mm_to_px(PAD_MM, a.dpi).round() as i32;
+    let b = layout(a).rect;
+    let around = rect_intersect(Rect { x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad }, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    rect_union(status_square(a), around)
+}
+
 /// Whether (x, y) is in the corner as a tap finds it: its square, the indicator's box while it is up, and
 /// where its box shows in the corner the setting names, with PAD_MM around it, up or not. (The owner's
 /// taps to bring it back went where it had been: the box is twice as wide as the square, and half of them

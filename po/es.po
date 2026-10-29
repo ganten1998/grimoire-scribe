@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-28 21:55-0500\n"
+"POT-Creation-Date: 2026-10-28 23:07-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -443,7 +443,7 @@ msgstr "Cancelar (toca con un dedo)"
 #. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
 #. the main one), or at 34 px, or two lines of that.
 #: rust/src/calibrate.rs rust/src/editor.rs rust/src/keyboard.rs
-#: rust/src/library.rs rust/src/musicbuild.rs
+#: rust/src/library.rs rust/src/linkbar.rs rust/src/musicbuild.rs
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -839,10 +839,27 @@ msgstr "Demasiado pequeño para un enlace: rodea lo que enlaza."
 msgid "Where does the link go? Tap its page."
 msgstr "¿Adónde lleva el enlace? Toca su página."
 
+#. TRANSLATORS: the title of the keyboard that names the page New page... adds for a link (about 1500 px at
+#. 44 px).
+#: rust/src/editor.rs
+msgid "Name the new page"
+msgstr "Nombre de la página nueva"
+
+#: rust/src/editor.rs
+msgid "Could not save the page name."
+msgstr "No se pudo guardar el nombre de página."
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "Could not save the link."
 msgstr "No se pudo guardar el enlace."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
+#. end of the notebook and the new link goes to it.
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to the new page %d."
+msgstr "Enlazado con la nueva página %d."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
 #. the page with this name in the Index (%s).
@@ -910,10 +927,6 @@ msgstr "El enlace lleva al índice."
 #: rust/src/editor.rs
 msgid "Link removed. Its ink stays on the page."
 msgstr "Se quitó el enlace. Su tinta sigue en la página."
-
-#: rust/src/editor.rs
-msgid "Could not save the page name."
-msgstr "No se pudo guardar el nombre de página."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
 #. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
@@ -2395,6 +2408,30 @@ msgstr "Nuevo enlace"
 #: rust/src/linkbar.rs
 msgid "Areas"
 msgstr "Áreas"
+
+#. TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
+#. it (about 700 px at 44 px in bold upright, 600 sideways).
+#: rust/src/linkbar.rs
+msgid "New page..."
+msgstr "Página nueva..."
+
+#. TRANSLATORS: the header of Link to..., the card that picks where a new link goes (about 1100 px at 44 px
+#. in bold).
+#: rust/src/linkbar.rs
+msgid "Where does the link go?"
+msgstr "¿Adónde va el enlace?"
+
+#. TRANSLATORS: Link to...'s tool button that finds a page by its number or name for the link (in caps
+#. at 34 px under its icon: about 540 px, or two lines; 860 px when there are two buttons).
+#: rust/src/linkbar.rs
+msgid "Search"
+msgstr "Buscar"
+
+#. TRANSLATORS: Link to...'s tool button that opens the Pages view to tap the page the link goes to (in
+#. caps at 34 px under its icon: about 540 px, or two lines).
+#: rust/src/linkbar.rs
+msgid "Choose from the pages..."
+msgstr "Elegir entre las páginas..."
 
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.
 #: rust/src/musicbuild.rs

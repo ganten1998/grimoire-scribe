@@ -33,13 +33,23 @@ expect display.pen_mode is 0
 expect editor.strokes is 0
 expect editor.strip is 0
 expect editor.lasso is 0
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.modal is pages
 expect editor.picking is new
 expect editor.link_area is 1000 600 500 200
 expect editor.live_matches_render is 1
-# Back: no link, and still no ink
+# The Pages view's Back is Link to... again; its Cancel: no link, and still no ink
 tap 125 95
 wait 100
+expect editor.modal is linkto
+expect editor.linkto is pick
+expect editor.link_area is 1000 600 500 200
+expect editor.ui_at.1530.2370 is linkto.cancel
+tap 1530 2370
+wait 100
+expect editor.linkto is 0
 expect toast is No link made.
 expect editor.link_area is
 expect editor.links is 3 3
@@ -77,8 +87,8 @@ pen up 1500 700
 wait 100
 expect editor.strokes is 0
 expect display.last_fast not ink
-expect editor.modal is pages
-tap 125 95
+expect editor.modal is linkto
+tap 1530 2370
 wait 100
 expect editor.strokes is 0
 expect editor.links is 3 3

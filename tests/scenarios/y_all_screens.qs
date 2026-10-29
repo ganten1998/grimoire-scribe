@@ -502,6 +502,9 @@ wait 50
 expect editor.link_mode is 1
 pen line 300 1000 900 1200 30 0.6 0.6
 wait 150
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 shot 28-link-pick-new
 tap 1400 95
@@ -811,6 +814,9 @@ wait 50
 expect editor.link_mode is 1
 pen line 400 800 1000 1000 30 0.6 0.6
 wait 150
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.1239.1750 is linkto.pages
+tap 1239 1750
 expect editor.picking is new
 shot 49-link-pick-new-landscape
 tap 227 340
@@ -1037,6 +1043,9 @@ wait 50
 expect editor.link_mode is 1
 pen line 300 1500 900 1600 30 0.6 0.6
 wait 150
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.539 is linkto.pages
+tap 930 539
 expect editor.picking is new
 expect editor.pages_tab is pages
 tap 703 340

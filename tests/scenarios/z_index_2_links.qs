@@ -39,6 +39,9 @@ expect editor.live_matches_render is 1
 pen line 300 1000 900 1200 30 0.6 0.6
 expect editor.strokes is 1
 expect editor.link_mode is 0
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.modal is pages
 expect editor.picking is new
 expect editor.pages_tab is pages
@@ -103,9 +106,15 @@ expect editor.pages_tab is pages
 tap 850 95
 tap 1410 2395
 pen line 300 1400 900 1500 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 expect editor.picking is new
 expect editor.strokes is 1
 tap 125 95
+expect editor.linkto is pick
+expect editor.ui_at.1530.679 is linkto.cancel
+tap 1530 679
 expect toast is No link made.
 expect editor.strokes is 1
 expect editor.links is 0 0
@@ -115,6 +124,9 @@ pentap panel pages
 tap 850 95
 tap 1410 2395
 pen line 300 1400 900 1500 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 expect editor.modal is pages
 expect editor.pages_tab is pages
 tap 1155 340

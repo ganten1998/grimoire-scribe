@@ -29,6 +29,8 @@ const LINK_BOX_MIN_MM: f32 = 5.0;
 // The lasso keeps at most this many points: past it every other point goes and the spacing a new point
 // needs doubles, so a long scribble around an area costs a bounded memory and compose.
 const LASSO_MAX: usize = 4096;
+/// The most targets kept for Link to...'s Recent targets (it offers four of them).
+const RECENT_MAX: usize = 8;
 
 // settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 1, 5 and 7 are for later versions.
 /// the first notebook that opened after the update said what two fingers up and down do now
@@ -99,13 +101,16 @@ enum Owner {
     Find = 13,
     /// the pen drawing the dashed lasso around a new link's area (never ink)
     Lasso = 14,
+    /// a pointer that began on Link to... (its chips and tool row) or on New page...'s keyboard
+    LinkTo = 16,
     /// a pointer that began on the link-making strip (its Cancel, or the strip around it)
     Strip = 17,
 }
 
 /// Making a link without ink (PHASE2 6): the strip is up and the next pen contact on the page is the lasso
-/// (Armed), the lasso is being drawn (Lasso), or its area waits for where the link goes (Pick, the Pages
-/// view picking).
+/// (Armed), the lasso is being drawn (Lasso), its area waits for where the link goes (Pick: Link to..., or
+/// the Pages view under Choose from the pages...), or New page...'s keyboard names the page it will go to
+/// (Naming).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum LmState {
     #[default]
@@ -113,6 +118,7 @@ enum LmState {
     Armed,
     Lasso,
     Pick,
+    Naming,
 }
 
 /// The link being made: the strip, the lasso and the area. Screen-only: nothing here touches the page,
@@ -143,6 +149,10 @@ struct LinkMaking {
     /// a press on the strip (its Cancel inverts at the down)
     press: Press,
     cancel_down: bool,
+    /// came from the Links bar's New link: the bar comes back when the making ends
+    from_bar: bool,
+    /// New page...'s naming keyboard
+    kb: Keyboard,
 }
 
 // Every page visited while a notebook is open stays in memory with its history: undo
@@ -389,6 +399,11 @@ pub struct EditorState {
     lb: LinkBar,
     /// the Find sheet (findsheet.rs), over the page while it is open
     find: FindSheet,
+    /// Link to... (linkbar.rs in pick mode): where a new link goes, while its area waits (lm Pick)
+    lt: LinkBar,
+    /// the targets ("p<page id>") links were made to this session, newest last, at most RECENT_MAX: Link to...'s
+    /// Recent targets. Memory only; the notebook's closing clears it.
+    recent: Vec<FixedStr<NAV_TARGET_LEN>>,
     /// the page it shows above itself, if it does
     peek: Peek,
     /// two page canvases besides page_canvas for the peeks, and what they did since the bar opened
@@ -550,6 +565,20 @@ fn with_lb<R>(a: &mut App, f: impl FnOnce(&mut LinkBar, &mut App, &NotebookInfo,
     let r = f(&mut lb, a, &nb, &nav);
     let s = ed(a);
     s.lb = lb;
+    s.nb = nb;
+    s.nav = nav;
+    r
+}
+
+// The same for Link to... (the bar's frame in pick mode).
+fn with_lt<R>(a: &mut App, f: impl FnOnce(&mut LinkBar, &mut App, &NotebookInfo, &Nav) -> R) -> R {
+    let s = ed(a);
+    let mut lt = std::mem::take(&mut s.lt);
+    let nb = std::mem::take(&mut s.nb);
+    let nav = std::mem::take(&mut s.nav);
+    let r = f(&mut lt, a, &nb, &nav);
+    let s = ed(a);
+    s.lt = lt;
     s.nb = nb;
     s.nav = nav;
     r
@@ -1226,10 +1255,10 @@ fn touch_context(a: &App) {
     input_touch_context(TgView {
         scrolls_v: pans && (a.h - status_reserved(a)) as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
-        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open),
+        zoom_ok: a.settings.pinch_zoom && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open),
         gestures_on: a.settings.gestures,
         record: false,
-        keyboard_open: s.pv.kb.open || s.find.open,
+        keyboard_open: s.pv.kb.open || s.find.open || s.lm.kb.open,
     });
 }
 
@@ -1785,6 +1814,38 @@ fn draw_menus(a: &mut App, r: Rect) {
     if st == LmState::Armed || st == LmState::Lasso {
         draw_strip(a, r);
     }
+    // Link to..., where the bar draws (never up with it), laid out again as it is drawn (a turn).
+    let s = ed_ref(a);
+    if s.lt.open && !s.lt.hidden {
+        let (aw, ah) = (a.w, a.h);
+        let top_y = dock_top_y(a);
+        let (rect, top) = {
+            let lt = &mut ed(a).lt;
+            let top = lt.top;
+            linkbar_layout_pick(lt, aw, ah, top, top_y);
+            (lt.rect, top)
+        };
+        if rect_overlaps(r, rect) {
+            with_lt(a, |lt, a, nb, nav| linkbar_draw(lt, a, nb, nav, 0));
+        }
+        if !top {
+            a.toast_floor = rect.y;
+        }
+    }
+    // New page...'s keyboard, over it.
+    let s = ed_ref(a);
+    if s.lm.state == LmState::Naming && s.lm.kb.open {
+        let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+        let dock = s.lm.kb.dock_y;
+        let area = keyboard_modal_rect_docked(screen, dock);
+        if rect_overlaps(r, area) {
+            let App { screen: c, ed, .. } = a;
+            keyboard_draw(&mut ed.as_deref_mut().unwrap().lm.kb, c, screen);
+        }
+        if dock == 0 {
+            a.toast_floor = area.y;
+        }
+    }
 }
 
 /// The panel drawn again (a pen picked, the panel moved, folded or refit): its place composed from the layers, the
@@ -2189,6 +2250,7 @@ fn close_notebook(a: &mut App) {
         return;
     }
     lm_drop(s);
+    s.recent = Vec::new();
     s.back = Vec::new();
     s.boxes.stale = true;
     bar_drop(s);
@@ -2838,7 +2900,7 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open
+    s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open || s.lt.open
 }
 
 /// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
@@ -3133,11 +3195,13 @@ fn migration_reset(s: &mut EditorState) {
 }
 
 /// Link making ends with nothing drawn: for a caller that draws the whole screen next (a page change, the
-/// Pages view coming up, closing). A pen still drawing the lasso has the rest of its stroke ignored.
+/// Pages view coming up, closing). A pen still drawing the lasso has the rest of its stroke ignored; Link
+/// to... and New page...'s keyboard close with it.
 fn lm_drop(s: &mut EditorState) {
-    if s.owner == Owner::Lasso || s.owner == Owner::Strip {
+    if s.owner == Owner::Lasso || s.owner == Owner::Strip || s.owner == Owner::LinkTo {
         s.owner = Owner::None;
     }
+    s.lt = LinkBar::default();
     s.lm = LinkMaking::default();
 }
 
@@ -3153,7 +3217,8 @@ fn link_off(a: &mut App) {
     app_invalidate(a, u, RefreshMode::Ui);
 }
 
-/// Where link making draws now on the screen: the strip, the lasso so far, and the dotted rectangle.
+/// Where link making draws now on the screen: the strip, the lasso so far, the dotted rectangle, Link to...
+/// and New page...'s keyboard.
 fn lm_bounds(a: &App) -> Rect {
     let s = ed_ref(a);
     let mut u = RECT_EMPTY;
@@ -3161,8 +3226,12 @@ fn lm_bounds(a: &App) -> Rect {
         u = rect_union(s.lm.strip, strip_rect(a));
     }
     u = rect_union(u, s.lm.lasso_rect);
-    if s.lm.state == LmState::Pick {
-        u = rect_union(u, area_band(a));
+    u = rect_union(u, area_band(a));
+    if s.lt.open && !s.lt.hidden {
+        u = rect_union(u, s.lt.rect);
+    }
+    if s.lm.state == LmState::Naming && s.lm.kb.open {
+        u = rect_union(u, s.lm.kb.area);
     }
     rect_intersect(u, Rect { x: 0, y: 0, w: a.w, h: a.h })
 }
@@ -3203,6 +3272,11 @@ fn draw_strip(a: &mut App, r: Rect) {
     a.toast_floor = strip.y;
 }
 
+/// An area waits for where its link goes: Link to... (or what it opened) is up, and the dotted rectangle shows.
+fn area_waits(s: &EditorState) -> bool {
+    (s.lm.state == LmState::Pick || s.lm.state == LmState::Naming) && !rect_is_empty(s.lm.area)
+}
+
 /// The screen rect of the dotted rectangle around the area waiting for its target, and the band it paints
 /// (its halo included).
 fn area_screen(s: &EditorState) -> Rect {
@@ -3210,7 +3284,7 @@ fn area_screen(s: &EditorState) -> Rect {
 }
 fn area_band(a: &App) -> Rect {
     let s = ed_ref(a);
-    if s.lm.state != LmState::Pick || rect_is_empty(s.lm.area) {
+    if !area_waits(s) {
         return RECT_EMPTY;
     }
     rect_inflate(area_screen(s), ui_px(2.0) + 1)
@@ -3276,7 +3350,7 @@ fn lasso_too_small(r: Rect, dpi: f32) -> bool {
 /// Add a link, from the Index, the bar's New link or the add-link shortcut: the strip comes up and the next
 /// pen contact on the open page draws the lasso. Refused, with a toast, on a read-only page, while links.ini
 /// does not read, and on a page that has all the links it may.
-fn link_arm(a: &mut App) {
+fn link_arm(a: &mut App, from_bar: bool) {
     if refuse_readonly(a) {
         return;
     }
@@ -3298,7 +3372,7 @@ fn link_arm(a: &mut App) {
     }
     let strip = strip_rect(a);
     let s = ed(a);
-    s.lm = LinkMaking { state: LmState::Armed, strip, ..Default::default() };
+    s.lm = LinkMaking { state: LmState::Armed, strip, from_bar, ..Default::default() };
     compose(a, strip);
     app_invalidate(a, strip, RefreshMode::Ui);
 }
@@ -3383,7 +3457,7 @@ fn draw_lasso(a: &mut App, r: Rect) {
 /// The dotted rectangle around the area waiting for its target (6.5), where r meets it.
 fn draw_area_wait(a: &mut App, r: Rect) {
     let s = ed_ref(a);
-    if s.lm.state != LmState::Pick || rect_is_empty(s.lm.area) {
+    if !area_waits(s) {
         return;
     }
     let sr = area_screen(s);
@@ -3394,8 +3468,8 @@ fn draw_area_wait(a: &mut App, r: Rect) {
 }
 
 /// The pen lifted (or left) while drawing the lasso (6.5): its box is the area. Too small, and the strip
-/// stays for another try; otherwise the lasso and the strip go, the dotted rectangle shows the area, and the
-/// Pages view picks where the link goes.
+/// stays for another try; otherwise the lasso and the strip go, the dotted rectangle shows the area (a GL16
+/// flushed on its own), and Link to... opens to pick where the link goes (a GL16 of its card).
 fn lasso_end(a: &mut App) {
     let dpi = a.dpi;
     let s = ed(a);
@@ -3426,18 +3500,194 @@ fn lasso_end(a: &mut App) {
     let u = rect_union(rect_union(drawn, strip), area_band(a));
     compose(a, u);
     app_invalidate(a, u, RefreshMode::Ui);
-    // The Pages view picks where it goes (Link to... comes in its place later): its Full refresh covers
-    // the one above.
+    // (on its own: the rectangle's refresh and Link to...'s never merge into one union across the screen)
+    app_flush(a);
+    lt_open(a);
+}
+
+/// Where a card or keyboard docked at the top of the screen begins: 8 px below the clock corner when the
+/// corner is at the top (its square and the indicator's box with the room a tap has around it, status_zone),
+/// and below the status bar while it is up.
+fn dock_top_y(a: &App) -> i32 {
+    let z = status_zone(a);
+    let mut y = status_reserved(a);
+    if !rect_is_empty(z) && z.y < a.h / 2 {
+        y = y.max(z.y + z.h);
+    }
+    y + ui_px(8.0)
+}
+
+/// The Recent targets Link to... is offered, newest first: the targets links were made to this session,
+/// then the back list's pages (linkbar_build_pick leaves out the open page, repeats and pages gone).
+fn recent_targets(s: &EditorState) -> Vec<FixedStr<NAV_TARGET_LEN>> {
+    let mut v: Vec<FixedStr<NAV_TARGET_LEN>> = Vec::new();
+    // (a few dozen at most; with no room the chips are just not offered)
+    if v.try_reserve_exact(s.recent.len() + s.back.len()).is_err() {
+        return v;
+    }
+    v.extend(s.recent.iter().rev().copied());
+    for &pid in s.back.iter().rev() {
+        let mut t = String::new();
+        csnprintf!(&mut t, NAV_TARGET_LEN, "p%u", pid);
+        v.push(FixedStr::from_str(&t));
+    }
+    v
+}
+
+/// Link to... opens for the area that waits (6.6): docked at the top, below the clock corner, when the area
+/// is in the lower 45% of the screen, else at the bottom; one GL16 of its card.
+fn lt_open(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let top_y = dock_top_y(a);
+    let s = ed(a);
+    let sr = area_screen(s);
+    let top = linkbar_pick_docks_top(sr.y + sr.h / 2, ah);
+    let recent = recent_targets(s);
+    let mut lt = LinkBar::default();
+    if linkbar_build_pick(&mut lt, &s.nb, &s.nav, &recent, s.open_pid(), "", false) < 0 {
+        qlog!("index: no memory to list the Index for a link");
+    }
+    linkbar_layout_pick(&mut lt, aw, ah, top, top_y);
+    let rect = lt.rect;
+    s.lt = lt;
+    compose(a, rect);
+    app_invalidate(a, rect, RefreshMode::Ui);
+}
+
+/// What a tap on Link to... asked (6.6): a chip picks (New page... names a page first), Choose from the
+/// pages... opens the Pages view, Cancel makes no link, the pager shows another screenful.
+fn lt_result(a: &mut App, r: LbResult, d: Rect) {
+    if !rect_is_empty(d) {
+        app_invalidate(a, d, RefreshMode::Ui);
+    }
+    match r {
+        LbResult::Pick(i) => {
+            let Some(p) = ed_ref(a).lt.picks.get(i as usize).copied() else { return };
+            if p.kind == PickKind::NewPage {
+                newpage_start(a);
+            } else {
+                let target = p.target.as_str().to_string();
+                link_pick(a, &target);
+            }
+        }
+        LbResult::Choose => link_choose(a),
+        LbResult::Cancel => link_cancel(a, true),
+        LbResult::Pager => {
+            let g = ed(a).lt.grid;
+            compose(a, g);
+            app_invalidate(a, g, RefreshMode::Ui);
+        }
+        _ => {}
+    }
+}
+
+/// Choose from the pages... (6.9): the Pages view picks, Link to... waiting hidden under it; its Back
+/// comes back to Link to... (pages_event).
+fn link_choose(a: &mut App) {
+    if ed_ref(a).lt.no_pages {
+        return;
+    }
+    ed(a).lt.hidden = true;
     save_page(a);
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index, false)) {
-        link_cancel(a, false);
+        let s = ed(a);
+        s.lt.hidden = false;
+        let r = s.lt.rect;
+        compose(a, r);
+        app_invalidate(a, r, RefreshMode::Ui);
         return;
     }
     compose_all(a, RefreshMode::Full);
     // TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
     // box of a new link is drawn; tap the page (or the Index) it goes to.
     app_toast(a, tr("Where does the link go? Tap its page."), 3000);
+}
+
+/// New page... (6.8): a keyboard names the page to add, docked where Link to... is (at the top exactly when it
+/// is), Link to... hidden under it. Without page names that can be saved the page is added unnamed at once.
+fn newpage_start(a: &mut App) {
+    if !ed_ref(a).nav.writable {
+        newpage_done(a, "");
+        return;
+    }
+    let dock = if ed_ref(a).lt.top { dock_top_y(a) } else { 0 };
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let s = ed(a);
+    s.lm.state = LmState::Naming;
+    s.lt.hidden = true;
+    // TRANSLATORS: the title of the keyboard that names the page New page... adds for a link (about 1500 px at
+    // 44 px).
+    keyboard_open(&mut s.lm.kb, tr("Name the new page"), b"");
+    keyboard_set_dock(&mut s.lm.kb, dock);
+    s.lm.kb.area = keyboard_modal_rect_docked(screen, dock);
+    let u = rect_union(s.lt.rect, s.lm.kb.area);
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
+}
+
+/// New page...'s Cancel, or a tap outside its keyboard: no page is added, and Link to... is back.
+fn naming_back(a: &mut App) {
+    let s = ed(a);
+    if s.lm.state != LmState::Naming {
+        return;
+    }
+    let u = rect_union(s.lm.kb.area, s.lt.rect);
+    keyboard_close(&mut s.lm.kb);
+    s.lm.state = LmState::Pick;
+    s.lt.hidden = false;
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
+}
+
+/// New page...'s Done: a page at the end of the notebook, on its paper, named `name` (when there is one and
+/// the names can be saved), and the link goes to it. The editor stays on its page. Undo takes the link away,
+/// not the page.
+fn newpage_done(a: &mut App, name: &str) {
+    let s = ed(a);
+    let kb_area = if s.lm.kb.open { s.lm.kb.area } else { RECT_EMPTY };
+    keyboard_close(&mut s.lm.kb);
+    if s.lm.state == LmState::Naming {
+        s.lm.state = LmState::Pick;
+    }
+    s.lt.hidden = false;
+    let n = s.nb.npages();
+    let paper = s.nb.paper;
+    if store_add_page(&mut s.nb, n, paper) != 0 {
+        let u = rect_union(kb_area, s.lt.rect);
+        compose(a, u);
+        app_invalidate(a, u, RefreshMode::Ui);
+        app_toast(a, tr("Could not add a page"), 3000);
+        return;
+    }
+    let pid = s.nb.page_ids[n as usize];
+    s.changed = true;
+    let mut name_failed = false;
+    if !name.is_empty() && s.nav.writable && (nav_set_name(&mut s.nav, pid, name) != 0 || nav_save(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0) {
+        nav_set_name(&mut s.nav, pid, ""); // (it stays unnamed)
+        name_failed = true;
+    }
+    compose(a, kb_area);
+    app_invalidate(a, kb_area, RefreshMode::Ui);
+    let mut target = String::new();
+    csnprintf!(&mut target, NAV_TARGET_LEN, "p%u", pid);
+    link_pick_as(a, &target, n + 1);
+    if name_failed {
+        app_toast(a, tr("Could not save the page name."), 3000);
+    }
+}
+
+/// A finger or the pen on New page...'s keyboard (typing through the keyboard host).
+fn naming_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    let mut kb = std::mem::take(&mut ed(a).lm.kb);
+    let r = app_keyboard_pointer(a, &mut kb, ph, ev);
+    let text = kb.text;
+    ed(a).lm.kb = kb;
+    match r {
+        KbResult::Done => newpage_done(a, text.as_str().trim()),
+        KbResult::Cancel => naming_back(a),
+        _ => {}
+    }
 }
 
 /// A press on the strip (6.3): Cancel inverts at the down and cancels at the up if it was a tap; the rest of
@@ -3471,13 +3721,32 @@ fn strip_pointer(a: &mut App, ph: i32, ev: &InEvent) {
     }
 }
 
+/// Link making ends having drawn `u` (lm_bounds before it ended): the Pages view, if it was up for it,
+/// closes on the open page (its Full); else u is drawn again, a GL16.
+fn lm_close(a: &mut App, u: Rect) {
+    if ed_ref(a).pv.open {
+        pages_hide(a, -1);
+    } else {
+        compose(a, u);
+        app_invalidate(a, u, RefreshMode::Ui);
+    }
+}
+
 /// A new link's area goes to target ("index" or "p<page id>"): the link is made with a seed of its own,
-/// saved, and is one undo step (6.7); the Pages view closes on the open page.
+/// saved, and is one undo step (6.7); Link to... (or the Pages view) closes on the open page, and the bar
+/// comes back when its New link began it.
 fn link_pick(a: &mut App, target: &str) {
+    link_pick_as(a, target, -1);
+}
+
+/// link_pick for a page New page... just added, `new_page` its number (its own toast), -1 otherwise.
+fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
+    let u = lm_bounds(a);
     let s = ed(a);
+    let from_bar = s.lm.from_bar;
     if s.lm.state != LmState::Pick || s.page_ix().is_none() {
         lm_drop(s);
-        pages_hide(a, -1);
+        lm_close(a, u);
         return;
     }
     let pid = s.open_pid();
@@ -3494,10 +3763,24 @@ fn link_pick(a: &mut App, target: &str) {
     if !ok {
         nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
         migration_reset(s);
-        pages_hide(a, -1);
+        lm_close(a, u);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
         app_toast(a, tr("Could not save the link."), 3000);
+        if from_bar {
+            bar_open(a);
+        }
         return;
+    }
+    if target.starts_with('p') {
+        // (a Recent target of the next Link to...)
+        let t = FixedStr::<NAV_TARGET_LEN>::from_str(target);
+        s.recent.retain(|r| r.as_bytes() != t.as_bytes());
+        if s.recent.len() >= RECENT_MAX {
+            s.recent.remove(0);
+        }
+        if s.recent.try_reserve(1).is_ok() {
+            s.recent.push(t);
+        }
     }
     let made = nav_link_get(&s.nav, pid, seed);
     let mut records = Vec::new();
@@ -3512,7 +3795,11 @@ fn link_pick(a: &mut App, target: &str) {
     s.changed = true;
     let to = made.map_or(-1, |l| nav_link_page(&l, &s.nb));
     let mut msg = String::new();
-    if to >= 0 {
+    if new_page > 0 {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
+        // end of the notebook and the new link goes to it.
+        csnprintf!(&mut msg, 200, tr("Linked to the new page %d."), new_page);
+    } else if to >= 0 {
         let name = nav_name(&s.nav, s.nb.page_ids[to as usize]);
         if !name.is_empty() {
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
@@ -3528,13 +3815,18 @@ fn link_pick(a: &mut App, target: &str) {
         // Index (the list of named pages).
         csnprintf!(&mut msg, 200, "%s", tr("Linked to the Index."));
     }
-    pages_hide(a, -1); // (the screen composed whole: the rectangle goes, the eye shows the new box)
+    lm_close(a, u); // (the rectangle goes; with the eye on, compose draws the new box)
+    repaint_panel(a, RefreshMode::Ui); // (Undo is enabled now)
+    if from_bar {
+        bar_open(a); // (with the new entry, in the same pass)
+    }
     app_toast(a, &msg, 2500);
 }
 
-/// No link is made (6.10): from the strip's Cancel, the add-link action again, Close menu, and the Pages
-/// view's Back while it picks for a new link. The strip, the lasso and the rectangle go; `toast` says so.
-/// The Pages view picking for a link held on (its own path) just closes.
+/// No link is made (6.10): from the strip's or Link to...'s Cancel, a tap outside Link to..., the add-link
+/// action again, Close menu, and Back while Link to... is up. The strip, the lasso, the rectangle and Link
+/// to... go; `toast` says so; the bar comes back when its New link began it. The Pages view picking for a link
+/// held on (its own path) just closes.
 fn link_cancel(a: &mut App, toast: bool) {
     let s = ed(a);
     if s.pv.open && s.pv.picking && s.pv.pick_had {
@@ -3546,12 +3838,11 @@ fn link_cancel(a: &mut App, toast: bool) {
     }
     let u = lm_bounds(a);
     let s = ed(a);
+    let from_bar = s.lm.from_bar;
     lm_drop(s);
-    if s.pv.open {
-        pages_hide(a, -1);
-    } else {
-        compose(a, u);
-        app_invalidate(a, u, RefreshMode::Ui);
+    lm_close(a, u);
+    if from_bar {
+        bar_open(a);
     }
     if toast {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
@@ -3560,12 +3851,19 @@ fn link_cancel(a: &mut App, toast: bool) {
     }
 }
 
-/// A menu came up while the strip was up (any menu's button, on the panel or as an action): the link is not
-/// made, silently, and the strip goes in the menu's refresh. The Pages view picking for the area is the
-/// making's own (Pick), and stays.
+/// A menu came up while a link was being made (any menu's button, on the panel or as an action): the link is
+/// not made, silently, and the strip or Link to... goes in the menu's refresh. Link to... and the Pages view
+/// picking for the area are the making's own, and stay.
 fn lm_check_menus(a: &mut App) {
     let Some(s) = a.ed.as_deref() else { return };
-    if (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso) && s.owner != Owner::Lasso && sheet_open(s) {
+    let other = match s.lm.state {
+        LmState::Off => false,
+        LmState::Armed | LmState::Lasso => s.owner != Owner::Lasso && sheet_open(s),
+        LmState::Pick | LmState::Naming => {
+            s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.lb.open || s.find.open || (s.pv.open && !s.pv.picking)
+        }
+    };
+    if other {
         link_off(a);
     }
 }
@@ -3658,7 +3956,12 @@ fn link_to(a: &mut App, target: &str, done: &str) {
 fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
     match with_pv(a, |pv, a, nb, nav| pagesview_pointer(pv, a, nb, nav, ph, ev)) {
         PvResult::Close => {
-            if ed(a).pv.picking {
+            let s = ed(a);
+            if s.pv.picking && s.lm.state == LmState::Pick && s.lt.open {
+                // Choose from the pages...'s Back: Link to... again (the page, the rectangle and it, composed whole)
+                s.lt.hidden = false;
+                pages_hide(a, -1);
+            } else if s.pv.picking {
                 link_cancel(a, true);
             } else {
                 pages_hide(a, -1);
@@ -3666,7 +3969,7 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
         }
         PvResult::Link => {
             pages_hide(a, -1);
-            link_arm(a);
+            link_arm(a, false);
         }
         PvResult::Pick => {
             let s = ed(a);
@@ -4428,9 +4731,10 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
                 // read, so the Links bar lists none and cannot make one.
                 app_toast(a, tr("Links could not be read."), 3000);
             } else {
-                // The new link goes on the page that shows: commit to it first, then the strip.
+                // The new link goes on the page that shows: commit to it first, then the strip; the bar comes
+                // back once it is made or cancelled.
                 bar_stay(a);
-                link_arm(a);
+                link_arm(a, true);
             }
         }
         LbResult::Eye => {
@@ -4720,6 +5024,28 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
     if s.owner != Owner::None || s.pinching {
         return false;
     }
+    // New page...'s keyboard: Close menu and Back go back to Link to...; nothing else throws the typing away.
+    if s.lm.state == LmState::Naming && s.lm.kb.open {
+        if action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK {
+            naming_back(a);
+            return true;
+        }
+        return false;
+    }
+    // Link to... in front: Close menu, Back and add-link again make no link (6.10); another menu's button
+    // ends the making silently and opens its menu (8.11).
+    if s.lt.open && !s.lt.hidden {
+        if action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK || action == SHORTCUT_ADD_LINK {
+            link_cancel(a, true);
+            return true;
+        }
+        if menu_action(action) {
+            link_off(a);
+            open_menu(a, action);
+            return true;
+        }
+        return false;
+    }
     let mut action = action;
     let front = front_menu(s);
     if front != 0 && menu_action(action) {
@@ -4829,7 +5155,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, _x: f32, _y: f32, src: ActionSrc
         if ed(a).lm.state != LmState::Off {
             link_cancel(a, true);
         } else {
-            link_arm(a);
+            link_arm(a, false);
         }
     } else if action == SHORTCUT_NAME_PAGE {
         pages_name(a);
@@ -5139,7 +5465,7 @@ pub fn editor_enter(a: &mut App) {
     if turned {
         view_reset(a); // new notebook or turned
         let s = ed(a);
-        if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
+        if s.lm.state != LmState::Off && !(s.pv.open && s.pv.picking) {
             lm_drop(s); // (silently: the screen is composed whole below; a picking Pages view stays)
         }
     }
@@ -5233,6 +5559,15 @@ fn pinch(a: &mut App, ev: &InEvent) {
             app_invalidate(a, r, RefreshMode::Fast);
         }
         let s = ed(a);
+        if s.owner == Owner::LinkTo && !s.owner_is_pen {
+            // The first finger was on Link to... (a chip it pressed is let go) or New page...'s keyboard.
+            s.owner = Owner::None;
+            if s.lm.state != LmState::Naming {
+                let r = with_lt(a, |lt, a, _nb, _nav| linkbar_cancel_press(lt, a));
+                app_invalidate(a, r, RefreshMode::Fast);
+            }
+        }
+        let s = ed(a);
         if s.owner == Owner::Panel && !s.owner_is_pen {
             // The first finger had pressed a panel button: that press is cancelled.
             if s.has_pressed && s.pressed.id != P_GRIP && s.pressed.id != P_EXPAND {
@@ -5251,7 +5586,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
         // legacy one's, with the zoom setting).
         let classified = ev.value == 1;
         // (The bar does not pan or zoom the page behind it.)
-        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || (!classified && !pinch_zoom) {
+        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || (!classified && !pinch_zoom) {
             return;
         }
         s.pinching = true;
@@ -5386,8 +5721,8 @@ pub fn editor_suspend(a: &mut App) -> bool {
     let s = ed(a);
     bar_drop(s); // (the Kindle sleeps: it is not there on waking)
     find_drop(s);
-    if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
-        lm_drop(s); // (a lasso being drawn ends with it; a picking Pages view stays, as every sheet does)
+    if s.lm.state != LmState::Off && !(s.pv.open && s.pv.picking) {
+        lm_drop(s); // (a lasso being drawn ends with it, Link to... is not there on waking; a picking Pages view stays)
     }
     s.owner = Owner::None;
     s.has_pressed = false;
@@ -5448,7 +5783,7 @@ pub fn editor_event(a: &mut App, ev: &InEvent) {
 // front refuses or swaps for its own (editor_shortcut_at).
 fn editor_gesture(a: &mut App, ev: &InEvent) {
     let s = ed_ref(a);
-    if !s.open || s.pv.kb.open || s.find.open {
+    if !s.open || s.pv.kb.open || s.find.open || s.lm.kb.open {
         return;
     }
     let Some(key) = gesturemap_key_of_id(ev.value) else { return };
@@ -5558,6 +5893,39 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 s.owner = Owner::Outside;
                 if pen {
                     find_close(a);
+                } else {
+                    press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
+                }
+            }
+            return;
+        }
+        // New page...'s keyboard takes a contact on it; one outside it goes back to Link to... (a finger at the
+        // lift, a pen at its down, its stroke swallowed).
+        if s.lm.state == LmState::Naming && s.lm.kb.open {
+            if rect_contains(s.lm.kb.area, ev.x as i32, ev.y as i32) {
+                s.owner = Owner::LinkTo;
+                naming_pointer(a, 0, ev);
+            } else {
+                s.owner = Owner::Outside;
+                if pen {
+                    naming_back(a);
+                } else {
+                    press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
+                }
+            }
+            return;
+        }
+        // Link to... takes every contact: on it (its chips and tool row), or outside it, which makes no link (a
+        // finger at the lift, the clock's corner excepted; a pen at its down, its stroke swallowed).
+        if s.lt.open && !s.lt.hidden {
+            if rect_contains(s.lt.rect, ev.x as i32, ev.y as i32) {
+                s.owner = Owner::LinkTo;
+                let mut d = RECT_EMPTY;
+                with_lt(a, |lt, a, _nb, _nav| linkbar_pointer(lt, a, 0, ev, &mut d));
+            } else {
+                s.owner = Owner::Outside;
+                if pen {
+                    link_cancel(a, true);
                 } else {
                     press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
                 }
@@ -5678,6 +6046,26 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
         }
         Owner::Strip => strip_pointer(a, ph, ev),
+        Owner::LinkTo => {
+            if ed_ref(a).lm.state == LmState::Naming {
+                naming_pointer(a, ph, ev);
+                if ph == 2 {
+                    ed(a).owner = Owner::None;
+                }
+                return;
+            }
+            let mut d = RECT_EMPTY;
+            let r = with_lt(a, |lt, a, _nb, _nav| linkbar_pointer(lt, a, ph, ev, &mut d));
+            if ph == 2 {
+                ed(a).owner = Owner::None;
+            }
+            if touch_cancelled(ev) {
+                // (a second finger took the touch over: the chip is let go as it was pressed, and nothing is done)
+                app_invalidate(a, d, RefreshMode::Fast);
+            } else {
+                lt_result(a, r, d);
+            }
+        }
         Owner::Pages => {
             pages_event(a, ph, ev);
             if ph == 2 {
@@ -5741,6 +6129,19 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             // panel's Links button is the button again, which cancels; any other tap outside stays or closes,
             // and presses nothing. (The clock's corner is not shown with the bar or Find up: no tap is its.)
             if ev.value & TOUCH_F_CANCEL != 0 || moved {
+                return;
+            }
+            // New page...'s keyboard and Link to... leave the clock's corner its tap (rule 12).
+            if ed_ref(a).lm.state == LmState::Naming && ed_ref(a).lm.kb.open {
+                if !corner_tap(false) {
+                    naming_back(a);
+                }
+                return;
+            }
+            if ed_ref(a).lt.open && !ed_ref(a).lt.hidden {
+                if !corner_tap(false) {
+                    link_cancel(a, true);
+                }
                 return;
             }
             if ed_ref(a).find.open {
@@ -5965,6 +6366,13 @@ pub fn editor_tick(a: &mut App, now: u32) {
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && now.wrapping_sub(s.link_down_at) >= LINK_HOLD_MS {
         link_hold(a);
     }
+    // Typing on New page...'s keyboard pauses: its grayscale refresh.
+    let s = ed(a);
+    if s.open && s.lm.state == LmState::Naming && s.lm.kb.open {
+        let mut kb = std::mem::take(&mut s.lm.kb);
+        app_keyboard_tick(a, &mut kb, now);
+        ed(a).lm.kb = kb;
+    }
     // Typing on the Find sheet pauses: its keyboard's grayscale refresh, the card of rows with it.
     let s = ed(a);
     if s.open && s.find.open {
@@ -6152,7 +6560,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.open && s.lm.state == LmState::Lasso { s.lm.pts.len() as i32 } else { 0 });
     } else if key == "link_area" {
         // The area a new link waits to be given a target for, x y w h page px, empty otherwise.
-        if s.open && s.lm.state == LmState::Pick {
+        if s.open && area_waits(s) {
             let r = s.lm.area;
             csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
         } else {
@@ -6172,13 +6580,44 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         };
         csnprintf!(out, cap, "%s", name);
     } else if let Some(xy) = key.strip_prefix("ui_at.") {
-        // The name of what link making shows at screen point (X, Y), empty for none (the strip's Cancel now;
-        // the card and Link to... later).
+        // The name of what link making shows at screen point (X, Y), empty for none: Link to...'s chips and
+        // buttons, the strip's Cancel (the card later).
         let Some((xs, ys)) = xy.split_once('.') else { return -1 };
         let (x, y) = (atoi(xs), atoi(ys));
-        let on = s.open && a.scr == ScreenId::Editor && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
-        let name = if on && rect_contains(strip_cancel(s.lm.strip), x, y) { "strip.cancel" } else { "" };
-        csnprintf!(out, cap, "%s", name);
+        let here = s.open && a.scr == ScreenId::Editor;
+        let strip = here && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
+        let name = if here && s.lt.open {
+            linkbar_hit_name(&s.lt, x, y)
+        } else if strip && rect_contains(strip_cancel(s.lm.strip), x, y) {
+            "strip.cancel".to_string()
+        } else {
+            String::new()
+        };
+        csnprintf!(out, cap, "%s", &name);
+    } else if key == "linkto" {
+        // Link to...: closed (0), or picking where a new link goes (up, or hidden under what it opened).
+        csnprintf!(out, cap, "%s", if s.open && s.lt.open { "pick" } else { "0" });
+    } else if let Some(k) = key.strip_prefix("linkto.") {
+        if !linkbar_probe_pick(&s.lt, k, out, cap) {
+            return -1;
+        }
+    } else if key == "recent" {
+        // The Recent targets kept, as page numbers, newest first ("3 2"); empty for none.
+        let mut v = String::new();
+        for t in s.recent.iter().rev() {
+            let p = if s.open { nav_link_page(&NavLink { target: *t, ..Default::default() }, &s.nb) } else { -1 };
+            if p >= 0 {
+                if !v.is_empty() {
+                    v.push(' ');
+                }
+                v.push_str(&cformat!("%d", p + 1));
+            }
+        }
+        csnprintf!(out, cap, "%s", &v);
+    } else if key == "kb_dock" {
+        // Where the keyboard in front is docked (Find, New page...): top or bottom; empty for none.
+        let kb = if s.find.open { Some(&s.find.kb) } else if s.lm.kb.open { Some(&s.lm.kb) } else { None };
+        csnprintf!(out, cap, "%s", kb.map_or("", |k| if k.dock_y > 0 { "top" } else { "bottom" }));
     } else if key == "links" {
         // The open page's links: how many it has, and how many of them have their box on it.
         let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
@@ -6256,6 +6695,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if (key == "keyboard" || key == "text") && s.find.open {
         // Its keyboard's title and what the field holds (the Pages view's, otherwise).
         csnprintf!(out, cap, "%s", if key == "keyboard" { s.find.kb.title.as_str() } else { s.find.kb.text.as_str() });
+    } else if (key == "keyboard" || key == "text") && s.lm.kb.open {
+        // New page...'s.
+        csnprintf!(out, cap, "%s", if key == "keyboard" { s.lm.kb.title.as_str() } else { s.lm.kb.text.as_str() });
     } else if key == "bar" {
         // The Links bar: closed (0), open, or looking at another page (peek).
         csnprintf!(out, cap, "%s", if !s.lb.open { "0" } else if s.peek.active { "peek" } else { "open" });
@@ -6297,6 +6739,8 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         // What is in front (input goes to the first one open, in this order).
         let m = if s.find.open {
             "find"
+        } else if s.lt.open && !s.pv.open {
+            "linkto"
         } else if s.lb.open {
             "links"
         } else if s.pv.open {

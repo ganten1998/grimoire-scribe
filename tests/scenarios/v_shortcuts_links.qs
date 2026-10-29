@@ -42,6 +42,9 @@ expect editor.link_mode is 1
 pen line 300 1000 900 1200 30 0.6 0.6
 expect editor.strokes is 1
 expect editor.link_mode is 0
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.modal is pages
 expect editor.picking is new
 expect toast is Where does the link go? Tap its page.
@@ -62,6 +65,9 @@ key 308 0 1
 wait 60
 expect editor.link_mode is 1
 pen line 300 1600 900 1800 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 expect editor.picking is new
 tap 1440 95
 expect editor.modal is none

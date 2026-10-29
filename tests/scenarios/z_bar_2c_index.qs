@@ -15,6 +15,9 @@ pentap panel previous
 wait 100
 key 38 0
 pen line 300 1000 900 1200 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1250 95
 expect editor.link.1 is index

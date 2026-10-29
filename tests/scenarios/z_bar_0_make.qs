@@ -26,17 +26,26 @@ expect editor.page is 1
 key 38 0
 expect editor.link_mode is 1
 pen line 300 1000 900 1200 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 expect editor.pages_tab is pages
 tap 1155 340
 expect editor.links is 1 1
 key 38 0
 pen line 300 1400 900 1500 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 expect editor.picking is new
 tap 703 340
 expect editor.links is 2 2
 key 38 0
 pen line 300 1800 900 1900 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.679 is linkto.pages
+tap 930 679
 expect editor.picking is new
 tap 1155 340
 expect editor.links is 3 3

@@ -188,6 +188,93 @@ fn the_card_is_as_tall_as_its_rows_need() {
     check!(lb.rect == Rect { x: 20, y: 2648 - 20 - 456, w: 1946, h: 456 });
 }
 
+fn t(s: &str) -> FixedStr<NAV_TARGET_LEN> {
+    FixedStr::from_str(s)
+}
+
+fn chips(lb: &LinkBar) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut out = String::new();
+    for i in 1..=lb.picks.len() {
+        check!(linkbar_probe_pick(lb, &i.to_string(), &mut out, 64));
+        v.push(out.clone());
+    }
+    v
+}
+
+// Link to...'s chips (PHASE2 6.6): New page..., The Index, up to four recent targets (not the open page, the
+// Index, a page gone or a repeat), then every named page in the Index's order, the open page included.
+fn link_to_offers_its_chips_in_order() {
+    let nb = nb5();
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    check!(nav_set_name(&mut nav, 30, "Árbol") == 0);
+    check!(nav_set_name(&mut nav, 10, "One") == 0);
+    check!(nav_set_name(&mut nav, 50, "Arena") == 0);
+    let mut lb = LinkBar::default();
+    check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "", false) == 0);
+    check!(lb.open && lb.mode == LbMode::Pick && !lb.no_pages && lb.selected == -1);
+    check!(chips(&lb) == ["new", "index", "p1", "p3", "p5"]);
+    check!(lb.picks[0].kind == PickKind::NewPage && lb.picks[1].kind == PickKind::Index && lb.picks[2].kind == PickKind::Entry);
+    check!(lb.picks[3].target == "p30" && lb.picks[3].page == 2);
+    // the recent targets, newest first: the open page (p10), the Index, a page gone (p99), a repeat and a fifth left out
+    let recent = [t("p20"), t("p10"), t("index"), t("p99"), t("p20"), t("p40"), t("p30"), t("p50"), t("p40")];
+    check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "", false) == 0);
+    check!(chips(&lb) == ["new", "index", "recent p2", "recent p4", "recent p3", "recent p5", "p1", "p3", "p5"]);
+    let mut out = String::new();
+    check!(linkbar_probe_pick(&lb, "chips", &mut out, 16) && out == "9");
+    check!(linkbar_probe_pick(&lb, "10", &mut out, 16) && out.is_empty());
+    // the current target is marked wherever it is offered, and the pager opens on its first screen
+    check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "p50", true) == 0);
+    check!(lb.no_pages && lb.selected == 5);
+    check!(chips(&lb)[5] == "recent p5 current" && chips(&lb)[8] == "p5 current" && chips(&lb)[7] == "p3");
+    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+    check!(lb.screen == 0);
+    check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "p50", true) == 0);
+    lb.selected = 8;
+    linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+    check!(lb.screen == 1);
+    check!(linkbar_probe_pick(&lb, "screen", &mut out, 16) && out == "2/2");
+    // the Index is current: its chip
+    check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "index", true) == 0);
+    check!(lb.selected == 1 && chips(&lb)[1] == "index current");
+}
+
+// Link to...'s card: 316 + 140 R tall for R rows (1 to 3 upright, 1 or 2 sideways), at the bottom 20 px above
+// the edge or at the top at the line it is given; it docks at the top for an area whose centre is in the lower
+// 45% of the screen.
+fn link_to_is_laid_out_and_docked() {
+    let nb = nb5();
+    let mut lb = LinkBar::default();
+    let names = ["a", "b", "c", "d", "e"];
+    for (named, h_up, h_side) in [(0, 456, 456), (1, 596, 456), (2, 596, 596), (3, 736, 596), (5, 736, 596)] {
+        let mut nav = Nav::default();
+        nav_init(&mut nav);
+        for k in 0..named {
+            check!(nav_set_name(&mut nav, nb.page_ids[k], names[k]) == 0);
+        }
+        check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "", false) == 0);
+        linkbar_layout_pick(&mut lb, 1860, 2480, false, 0);
+        check!(lb.rect == Rect { x: 20, y: 2480 - 20 - h_up, w: 1820, h: h_up });
+        linkbar_layout_pick(&mut lb, 1860, 2480, true, 173);
+        check!(lb.top && lb.rect == Rect { x: 20, y: 173, w: 1820, h: h_up });
+        linkbar_layout_pick(&mut lb, 2480, 1860, false, 0);
+        check!(lb.rect == Rect { x: 20, y: 1860 - 20 - h_side, w: 2440, h: h_side });
+    }
+    let mut out = String::new();
+    check!(linkbar_probe_pick(&lb, "dock", &mut out, 16) && out == "bottom");
+    check!(linkbar_probe_pick(&lb, "rect", &mut out, 32) && out == "20 1244 2440 596");
+    // the dock rule: the lower 45%
+    check!(!linkbar_pick_docks_top(1363, 2480) && linkbar_pick_docks_top(1364, 2480));
+    check!(!linkbar_pick_docks_top(1022, 1860) && linkbar_pick_docks_top(1023, 1860));
+    // closed: nothing
+    let lb = LinkBar::default();
+    check!(linkbar_probe_pick(&lb, "rect", &mut out, 32) && out.is_empty());
+    check!(linkbar_probe_pick(&lb, "dock", &mut out, 32) && out.is_empty());
+    check!(linkbar_probe_pick(&lb, "1", &mut out, 32) && out.is_empty());
+    check!(!linkbar_probe_pick(&lb, "nonsense", &mut out, 32));
+}
+
 #[test]
 fn test_linkbar() {
     ui_init(300.0);
@@ -196,5 +283,7 @@ fn test_linkbar() {
     run!(the_index_and_missing_targets_are_entries);
     run!(the_bar_is_built_from_the_page);
     run!(the_card_is_as_tall_as_its_rows_need);
+    run!(link_to_offers_its_chips_in_order);
+    run!(link_to_is_laid_out_and_docked);
     done();
 }

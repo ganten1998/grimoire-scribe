@@ -22,6 +22,9 @@ pentap panel pages
 tap 850 95
 tap 1410 2395
 pen line 300 1000 900 1200 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1155 340
 expect editor.modal is none

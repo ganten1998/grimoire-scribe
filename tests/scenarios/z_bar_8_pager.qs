@@ -42,66 +42,105 @@ expect editor.page is 1
 # Thirteen links down the page, each to the next page: key 38 0 (add-link), the box, then the page picked
 key 38 0
 pen line 300 300 900 340 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 703 340
 expect editor.links is 1 1
 key 38 0
 pen line 300 450 900 490 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1155 340
 expect editor.links is 2 2
 key 38 0
 pen line 300 600 900 640 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1607 340
 expect editor.links is 3 3
 key 38 0
 pen line 300 750 900 790 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 251 680
 expect editor.links is 4 4
 key 38 0
 pen line 300 900 900 940 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 703 680
 expect editor.links is 5 5
 key 38 0
 pen line 300 1050 900 1090 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1155 680
 expect editor.links is 6 6
 key 38 0
 pen line 300 1200 900 1240 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 1607 680
 expect editor.links is 7 7
 key 38 0
 pen line 300 1350 900 1390 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 251 1020
 expect editor.links is 8 8
 key 38 0
 pen line 300 1500 900 1540 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 703 1020
 expect editor.links is 9 9
 key 38 0
 pen line 300 1650 900 1690 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 1155 1020
 expect editor.links is 10 10
 key 38 0
 pen line 300 1800 900 1840 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 1607 1020
 expect editor.links is 11 11
 key 38 0
 pen line 300 1950 900 1990 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 251 1360
 expect editor.links is 12 12
 key 38 0
 pen line 300 2100 900 2140 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.819 is linkto.pages
+tap 930 819
 expect editor.picking is new
 tap 703 1360
 expect editor.links is 13 13

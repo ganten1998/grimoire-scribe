@@ -46,6 +46,10 @@ expect editor.lasso is 0
 expect editor.link_area is
 expect editor.links_dirty is 0
 expect editor.ui_at.900.900 is
+expect editor.linkto is 0
+expect editor.linkto.rect is
+expect editor.recent is
+expect editor.kb_dock is
 expect editor.areas is 0
 expect editor.panel_at.1768.594 is
 expect editor.panel_at.1768.1242 is links

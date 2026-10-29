@@ -742,6 +742,7 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Could not save the links: that change was not redone.")));
     put(cformat!("%s", tr("Link change undone.")));
     put(cformat!("%s", tr("Link change redone.")));
+    put(cformat!(tr("Linked to the new page %d."), 2000));
     out.len()
 }
 
@@ -855,6 +856,14 @@ fn the_links_bar_strings_fit() {
             check!(at("no names", font_measure(FontFace::Regular, ts, tr("No page names match.")), 1700));
             // the link-making strip's line beside its Cancel (PHASE2 6.3)
             check!(at("strip", font_measure(FontFace::Bold, ts, tr("Draw around what links.")), 1400));
+            // Link to... (PHASE2 6.6): its header beside the pager, New page...'s chip label (in a chip's name room,
+            // as the bar's), its three tool words (caps at 34 px in a 580 px button), New page...'s keyboard title
+            check!(at("link to title", font_measure(FontFace::Bold, ts, tr("Where does the link go?")), 1100));
+            check!(at("new page chip", font_measure(FontFace::Regular, ts, tr("New page...")), 600));
+            for w in [tr("Search"), tr("Choose from the pages..."), tr("Cancel")] {
+                check!(at(w, font_measure(FontFace::Caps, small, w), 540));
+            }
+            check!(at("name new page", font_measure(FontFace::Bold, ts, tr("Name the new page")), 1000));
             // the tool words, caps at 34 px under their icons, in a 430 px button (sideways 585) inside its edge
             for w in [tr("Go to"), tr("New link"), tr("Areas"), tr("Index")] {
                 check!(at(w, font_measure(FontFace::Caps, small, w), 390));

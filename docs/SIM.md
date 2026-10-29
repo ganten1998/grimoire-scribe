@@ -260,7 +260,7 @@ shows what the app holds.
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
-| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above), empty for none, after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
@@ -273,7 +273,7 @@ shows what the app holds.
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
-| `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) or the Find sheet's (`Page number or name`) |
+| `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) the Find sheet's (`Page number or name`) or New page...'s (`Name the new page`) |
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
 | `editor.picking` | `new` while the Pages view picks where a link drawn just now goes, `had` while it picks for a link the page had (a finger held on it), else empty |
@@ -282,7 +282,12 @@ shows what the app holds.
 | `editor.lasso` | how many points the lasso being drawn holds (at most 4096), `0` otherwise |
 | `editor.link_area` | the area a new link waits to be given a target for (from the lasso's lift to the pick), `x y w h` in page px; empty otherwise |
 | `editor.undo_kind`, `editor.redo_kind` | the kind of step an undo (a redo) of the open page would apply: `add`, `erase`, `paper`, `clear` or `link`; empty for none |
-| `editor.ui_at.X.Y` | the name of what link making shows at screen point (X, Y): `strip.cancel`; empty for none. The way to check a raw tap on it, as `editor.panel_at` does for the panel |
+| `editor.ui_at.X.Y` | the name of what link making shows at screen point (X, Y): `strip.cancel`, or on Link to... `linkto.chip.N` (N from 1 across its screens), `linkto.search`, `linkto.pages`, `linkto.cancel`, `linkto.prev`, `linkto.next`; empty for none. The way to check a raw tap on it, as `editor.panel_at` does for the panel |
+| `editor.linkto` | `pick` while Link to... is open (up, or hidden under New page...'s keyboard or the Pages view it opened), else `0` |
+| `editor.linkto.rect`, `editor.linkto.dock` | its card, `x y w h`, and `top` or `bottom`; both empty while it is closed |
+| `editor.linkto.chips`, `editor.linkto.N`, `editor.linkto.screen` | how many chips it has on all its screens; chip N from 1: `new`, `index`, `recent p<page>`, `p<page>` (an Index entry), then ` current` on a marked target, empty past the last; its pager's screen, `S/T` |
+| `editor.recent` | the targets links were made to this session (Link to...'s Recent targets come from them, then from the back list), as page numbers newest first (`3 2`); empty for none |
+| `editor.kb_dock` | where the keyboard in front is docked (Find, New page...): `top` or `bottom`; empty with none |
 | `editor.links` | the open page's links: how many it has, then how many of them have a box: an area, or for a link without one (beta.5's) its ink on the page (`2 1`) |
 | `editor.link.N` | where the open page's link N goes (from 1, in `links.ini`'s order): `index`, `p<page id>`, or another version's target; empty past the last |
 | `editor.link.N.area` | the open page's link N's area (links.ini's `area.` line), `x y w h` in page px; empty for a link without one (a beta.5 link not migrated yet, or a dormant one) and past the last |
@@ -397,9 +402,17 @@ Add a link (`key 38 0`, the Index's Add a link, or the Links bar's New link) sho
 (upright at y 2330 to 2460, its Cancel 260 x 100 at x 1565, centre 1695 2395), and the next pen contact on the page
 draws the dashed lasso around the link's area: a `pen line` (or `pen down`, `pen move` lines and `pen up`) is that
 lasso, never ink, whatever the tool. Its box is the area (`editor.link_area`), unless it is under 5 mm both ways (a
-`pentap`): then the strip stays and says so. Until the Links bar's Link to... chooses where a link goes, the
-Pages view picks it as before (`editor.picking is new`). A scenario checks each raw tap on the strip with
-`editor.ui_at.X.Y` first.
+`pentap`): then the strip stays and says so. At the lift Link to... opens: "Where does the link go?" with the chips
+New page..., The Index, up to four recent targets and the Index's entries, and a tool row of Search, Choose from the
+pages... and Cancel. It is the Links bar's frame, 316 + 140 R px tall for R rows of chips (two columns of 878 x 124
+upright, at x 479 and 1381, rows 140 apart from its top + 214; three of 784 sideways), docked at the bottom 20 px
+above the edge, or at the top when the centre of the area is in the lower 45% of the screen (y 1364 or more upright),
+its top 8 px below the clock corner's zone (173 upright at 300 dpi with the status bar off). Its tool row's centre is
+90 px above the card's bottom: upright at the bottom y 2370, Search x 330, Choose from the pages... 930, Cancel 1530;
+sideways at the bottom y 1750, x 433, 1239 and 2045. Choose from the pages... opens the Pages view to pick
+(`editor.picking is new`); its Back comes back to Link to.... New page... opens a keyboard (`Name the new page`)
+docked as Link to... is: at the top its keys sit 1307 px higher than the coordinates below (Done 1643 1058). A
+scenario checks each raw tap on the strip and Link to... with `editor.ui_at.X.Y` first.
 
 ## Languages in tests
 

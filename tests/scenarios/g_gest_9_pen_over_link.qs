@@ -17,6 +17,9 @@ wait 100
 expect editor.pages is 2
 key 38 0
 pen line 300 1000 900 1200 30 0.6 0.6
+# Link to... opens: Choose from the pages... picks in the Pages view
+expect editor.ui_at.930.2370 is linkto.pages
+tap 930 2370
 expect editor.picking is new
 tap 703 340
 expect editor.links is 1 1

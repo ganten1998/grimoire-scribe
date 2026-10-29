@@ -15,6 +15,12 @@
 //! chips (R 1 to 3; two columns of 878 x 124, 24 px between and 16 px between rows), 20 px, a 140 px row of
 //! four tool buttons and 20 px padding: 316 + 140 R tall. Sideways: three columns of 784, at most two rows
 //! (six entries a screen either way), 2440 wide.
+//!
+//! Link to... (PHASE2 6.6) is the same frame in pick mode (LbMode::Pick): where a new link goes. Its chips are
+//! New page..., The Index, up to four recent targets and the Index's entries; its header is "Where does the link
+//! go?" with the pager and no X, and its tool row Search, Choose from the pages... (left out when the card opened
+//! it) and Cancel. It docks at the top of the screen, below the clock corner, when the area it is for is low on
+//! the page, so it never covers what is being linked.
 
 use crate::prelude::*;
 
@@ -40,6 +46,44 @@ const LB_GO: i32 = 7;
 const LB_NEW: i32 = 8;
 const LB_AREAS: i32 = 9;
 const LB_INDEX: i32 = 10;
+// (pick mode)
+const LB_SEARCH: i32 = 11;
+const LB_PAGES: i32 = 12;
+const LB_CANCEL: i32 = 13;
+
+/// The bar lists the page's links (List), or it is Link to..., picking where a new link goes (Pick).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LbMode {
+    #[default]
+    List,
+    Pick,
+}
+
+/// What a chip of Link to... is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickKind {
+    /// New page...: a page added at the end, named, and linked to
+    #[default]
+    NewPage,
+    /// The Index
+    Index,
+    /// a page linked to, or left, a moment ago
+    Recent,
+    /// a named page, in the Index's order
+    Entry,
+}
+
+/// A chip of Link to...: its kind, the target it gives ("index", "p<page id>"; empty for New page...) and
+/// the page's index (NAV_TO_INDEX for The Index, -1 for New page...).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LbPick {
+    pub kind: PickKind,
+    pub target: FixedStr<NAV_TARGET_LEN>,
+    pub page: i32,
+}
+
+/// The most recent targets Link to... offers.
+pub const LB_RECENT_MAX: usize = 4;
 
 /// What a tap on the bar asks the editor to do.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -61,6 +105,12 @@ pub enum LbResult {
     Index,
     /// the pager: another screenful of chips (the grid is drawn again)
     Pager,
+    /// Link to...: chip i of picks
+    Pick(i32),
+    /// Link to...: Search (Find in pick mode)
+    Search,
+    /// Link to...: Choose from the pages... (the Pages view picks)
+    Choose,
     /// the pressed button was let go: its rect is to be refreshed
     Changed,
 }
@@ -174,6 +224,20 @@ pub struct LinkBar {
     pub grid: Rect,
     /// the Areas button, which the eye's toggle draws again
     pub eye_button: Rect,
+    // Link to... (pick mode)
+    pub mode: LbMode,
+    /// every chip, all screens
+    pub picks: Vec<LbPick>,
+    /// docked at the top of the screen (else at the bottom)
+    pub top: bool,
+    /// the target marked as the current one (a retarget), empty for a new link
+    pub current: FixedStr<NAV_TARGET_LEN>,
+    /// Choose from the pages... is not offered (the card's Change where it goes)
+    pub no_pages: bool,
+    /// it stays open under Find's pick mode, New page...'s keyboard or the Pages view, and is not drawn
+    pub hidden: bool,
+    /// the pager was turned by hand: a layout keeps the screen it is on
+    paged: bool,
 }
 
 // (Arrays derive Default only up to 32 elements: written by hand, as EditorState's LinkBoxes.)
@@ -204,6 +268,13 @@ impl Default for LinkBar {
             rows: 1,
             grid: RECT_EMPTY,
             eye_button: RECT_EMPTY,
+            mode: LbMode::List,
+            picks: Vec::new(),
+            top: false,
+            current: FixedStr::default(),
+            no_pages: false,
+            hidden: false,
+            paged: false,
         }
     }
 }
@@ -362,6 +433,9 @@ fn draw_chip(c: &mut Canvas, r: Rect, num: i32, e: &LbEntry, label: &str, named:
 /// Draws the bar into a.screen and registers its hits; returns its card (its rect). `peek` is the page number
 /// being looked at above it (0 for none): then the header is the peek's, with the way back to the origin.
 pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav, peek: i32) -> Rect {
+    if lb.mode == LbMode::Pick {
+        return draw_pick(lb, a, nb, nav);
+    }
     hits_clear(&mut lb.hits);
     let card = lb.rect;
     let inn = inner(lb);
@@ -541,12 +615,18 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_X => LbResult::Cancel,
         LB_PREV => {
             lb.screen = (lb.screen - 1).max(0);
+            lb.paged = true;
             LbResult::Pager
         }
         LB_NEXT => {
             lb.screen = (lb.screen + 1).min(lb.screens - 1);
+            lb.paged = true;
             LbResult::Pager
         }
+        LB_CHIP if lb.mode == LbMode::Pick => LbResult::Pick(h.arg),
+        LB_SEARCH => LbResult::Search,
+        LB_PAGES => LbResult::Choose,
+        LB_CANCEL => LbResult::Cancel,
         LB_CHIP => {
             if h.arg == lb.selected {
                 LbResult::Commit
@@ -581,6 +661,9 @@ pub fn linkbar_cancel_press(lb: &mut LinkBar, a: &mut App) -> Rect {
 /// "pager" (`2/3`, empty with one screenful) and "rect" (the card, `x y w h`, empty while closed). false for
 /// another key.
 pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> bool {
+    if lb.mode == LbMode::Pick {
+        return linkbar_probe_pick(lb, key, out, cap);
+    }
     if key == "entries" {
         csnprintf!(out, cap, "%d", if lb.open { lb.n as i32 } else { 0 });
     } else if key == "pager" {
@@ -611,6 +694,295 @@ pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> b
             }
         } else {
             csnprintf!(out, cap, "%s", "");
+        }
+    } else {
+        return false;
+    }
+    true
+}
+
+// ---- Link to... (pick mode, PHASE2 6.6) ----
+
+/// Link to... for a link on the page whose id is open_pid: the chips New page..., The Index, up to four of
+/// `recent` (newest first: the targets picked a moment ago, then the back list), and every named page in the
+/// Index's order, the open page included. A recent target is left out when it is the open page, the Index, a
+/// page that is not here, or one already offered; `current` (a retarget's target, "" for a new link) marks
+/// its chips, and the pager opens on the first of them; `no_pages` leaves Choose from the pages... out.
+/// Returns -1 when there was no memory for the Index's entries: then only New page..., The Index and the
+/// recent targets are offered (Search still reaches every page).
+pub fn linkbar_build_pick(
+    lb: &mut LinkBar,
+    nb: &NotebookInfo,
+    nav: &Nav,
+    recent: &[FixedStr<NAV_TARGET_LEN>],
+    open_pid: u32,
+    current: &str,
+    no_pages: bool,
+) -> i32 {
+    let origin = nb.page_ids.iter().position(|&p| p == open_pid).map_or(-1, |i| i as i32);
+    *lb = LinkBar { open: true, mode: LbMode::Pick, origin, no_pages, ..Default::default() };
+    lb.current.set_cut(current);
+    // The Index's entries: page indices in its order.
+    let mut idx: Vec<i32> = Vec::new();
+    let mut named = 0usize;
+    let mut rc = 0;
+    if idx.try_reserve_exact(nb.page_ids.len()).is_ok() {
+        idx.resize(nb.page_ids.len(), 0);
+        named = (nav_index(nav, nb, &mut idx).max(0) as usize).min(idx.len());
+    } else {
+        rc = -1;
+    }
+    if lb.picks.try_reserve_exact(2 + LB_RECENT_MAX + named).is_err() {
+        rc = -1;
+        named = 0;
+        if lb.picks.try_reserve_exact(2 + LB_RECENT_MAX).is_err() {
+            return -1; // (no chips at all: the tool row alone)
+        }
+    }
+    lb.picks.push(LbPick { kind: PickKind::NewPage, target: FixedStr::default(), page: -1 });
+    lb.picks.push(LbPick { kind: PickKind::Index, target: FixedStr::from_str("index"), page: NAV_TO_INDEX });
+    let mut taken = 0;
+    for t in recent {
+        if taken >= LB_RECENT_MAX {
+            break;
+        }
+        let page = nav_link_page(&NavLink { target: *t, ..Default::default() }, nb);
+        if page < 0 || nb.page_ids[page as usize] == open_pid {
+            continue; // (the Index and pages that are not here are negative)
+        }
+        let again = lb.picks.iter().any(|p| p.kind == PickKind::Recent && p.target.as_bytes() == t.as_bytes());
+        if again {
+            continue;
+        }
+        lb.picks.push(LbPick { kind: PickKind::Recent, target: *t, page });
+        taken += 1;
+    }
+    for &i in &idx[..named] {
+        let mut target = FixedStr::<NAV_TARGET_LEN>::default();
+        let mut t = String::new();
+        csnprintf!(&mut t, NAV_TARGET_LEN, "p%u", nb.page_ids[i as usize]);
+        target.set_cut(&t);
+        lb.picks.push(LbPick { kind: PickKind::Entry, target, page: i });
+    }
+    lb.selected = if current.is_empty() { -1 } else { lb.picks.iter().position(|p| p.kind != PickKind::NewPage && p.target == current).map_or(-1, |i| i as i32) };
+    rc
+}
+
+/// Whether Link to... docks at the top: the area it is for (its screen rect's centre, `centre_y`) is in the
+/// lower 45% of an `ah` tall screen, where a card docked at the bottom would cover it.
+pub fn linkbar_pick_docks_top(centre_y: i32, ah: i32) -> bool {
+    centre_y as f32 >= 0.55 * ah as f32
+}
+
+/// Link to... on an aw x ah screen: the bar's frame, 316 + 140 R tall for R rows of chips (the most a screenful
+/// has), at the top with its top at top_y (below the clock corner), or at the bottom 20 px above the edge.
+pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y: i32) {
+    let (cols, max_rows) = grid_of(aw, ah);
+    let n = lb.picks.len() as i32;
+    lb.cols = cols;
+    lb.per = cols * max_rows;
+    lb.screens = ((n + lb.per - 1) / lb.per).max(1);
+    if !lb.paged && lb.selected >= 0 {
+        lb.screen = lb.selected / lb.per; // (the current target's screen)
+    }
+    lb.screen = clampi(lb.screen, 0, lb.screens - 1);
+    lb.rows = clampi((n + cols - 1) / cols, 1, max_rows);
+    lb.header_hint = false;
+    lb.top = top;
+    let h = u(316.0 + 140.0 * lb.rows as f32);
+    let y = if top { top_y } else { ah - u(20.0) - h };
+    lb.rect = Rect { x: u(20.0), y, w: aw - 2 * u(20.0), h };
+    let gtop = lb.rect.y + u(16.0) + u(36.0);
+    lb.grid = Rect { x: lb.rect.x, y: gtop, w: lb.rect.w, h: chips_y(lb) + lb.rows * u(124.0) + (lb.rows - 1) * u(16.0) - gtop };
+}
+
+/// A chip's label in Link to...: the page's Index name (bold, and true), "Page %d" for a page with none, "New
+/// page...", "The Index".
+fn pick_label(nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
+    match p.kind {
+        // TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
+        // it (about 700 px at 44 px in bold upright, 600 sideways).
+        PickKind::NewPage => (tr("New page...").to_string(), false),
+        PickKind::Index => (tr("The Index").to_string(), false),
+        _ => {
+            let e = LbEntry { target: p.target, page: p.page, count: 1, first_box: RECT_EMPTY };
+            entry_label(nb, nav, &e)
+        }
+    }
+}
+
+// A chip of Link to...: an icon in the bar's number slot (the Check on the current target), its label, and the
+// page's number at the right.
+fn draw_pick_chip(c: &mut Canvas, r: Rect, p: &LbPick, label: &str, named: bool, current: bool) {
+    ui_frame(c, r, u(16.0), 255, true, 0);
+    ui_frame(c, r, u(16.0), 0, false, if current { u(8.0) } else { u(3.0) });
+    let d = u(64.0);
+    let slot = Rect { x: r.x + u(18.0), y: r.y + (r.h - d) / 2, w: d, h: d };
+    let icon = if current {
+        IconKind::Check
+    } else {
+        match p.kind {
+            PickKind::NewPage => IconKind::Plus,
+            PickKind::Index => IconKind::Notebook,
+            PickKind::Recent => IconKind::Clock,
+            PickKind::Entry => IconKind::None,
+        }
+    };
+    if icon != IconKind::None {
+        ui_icon(c, icon, slot, 0);
+    }
+    let col_w = u(150.0);
+    let name = Rect { x: r.x + u(96.0), y: r.y, w: r.w - u(96.0) - col_w - u(14.0), h: r.h };
+    let ts = ui_text_size();
+    if named {
+        font_draw_left_name(c, FontFace::Bold, ts, name, label, 0);
+    } else {
+        font_draw_left(c, FontFace::Regular, ts, name, label, 0);
+    }
+    if p.page >= 0 {
+        let col = Rect { x: r.x + r.w - col_w - u(8.0), y: r.y, w: col_w, h: r.h };
+        font_draw_centered(c, FontFace::Regular, ui_small_size(), col, &cformat!(c_("bar", "p. %d"), p.page + 1), 0);
+    }
+}
+
+/// The tool row's buttons: Search, Choose from the pages... and Cancel, or Search and Cancel.
+fn pick_tools(lb: &LinkBar) -> Vec<(Rect, i32)> {
+    let inn = inner(lb);
+    let tg = u(20.0);
+    let ty = lb.rect.y + lb.rect.h - u(20.0) - u(140.0);
+    let ids: &[i32] = if lb.no_pages { &[LB_SEARCH, LB_CANCEL] } else { &[LB_SEARCH, LB_PAGES, LB_CANCEL] };
+    let k = ids.len() as i32;
+    let tw = (inn.w - (k - 1) * tg) / k;
+    ids.iter().enumerate().map(|(i, &id)| (Rect { x: inn.x + i as i32 * (tw + tg), y: ty, w: tw, h: u(140.0) }, id)).collect()
+}
+
+fn draw_pick(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav) -> Rect {
+    hits_clear(&mut lb.hits);
+    let card = lb.rect;
+    let inn = inner(lb);
+    let c = &mut a.screen;
+    ui_frame(c, card, u(24.0), 255, true, 0);
+    ui_frame(c, card, u(24.0), 0, false, u(6.0));
+    let gy = card.y + u(16.0);
+    canvas_fill(c, Rect { x: card.x + (card.w - u(160.0)) / 2, y: gy + u(14.0), w: u(160.0), h: u(8.0) }, 160);
+    let hy = gy + u(36.0);
+    let (bw, bh) = (u(118.0), u(100.0));
+    let mut right = inn.x + inn.w;
+    if lb.screens > 1 {
+        let next = Rect { x: right - bw, y: hy, w: bw, h: bh };
+        let label_w = u(110.0);
+        let lab = Rect { x: next.x - label_w, y: hy, w: label_w, h: bh };
+        let prev = Rect { x: lab.x - bw, y: hy, w: bw, h: bh };
+        ui_button(c, prev, IconKind::Prev, "", if lb.screen > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        ui_button(c, next, IconKind::Next, "", if lb.screen < lb.screens - 1 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        let mut pt = String::new();
+        csnprintf!(&mut pt, 16, "%d/%d", lb.screen + 1, lb.screens);
+        font_draw_centered(c, FontFace::Bold, ui_small_size(), lab, &pt, 0);
+        if lb.screen > 0 {
+            hits_add(&mut lb.hits, prev, LB_PREV, 0);
+        }
+        if lb.screen < lb.screens - 1 {
+            hits_add(&mut lb.hits, next, LB_NEXT, 0);
+        }
+        right = prev.x - u(16.0);
+    }
+    let ts = ui_text_size();
+    // TRANSLATORS: the header of Link to..., the card that picks where a new link goes (about 1100 px at 44 px
+    // in bold).
+    ui_text(c, FontFace::Bold, ts, ui_small_size(), Rect { x: inn.x, y: hy, w: right - inn.x, h: bh }, tr("Where does the link go?"), 1, false, 0);
+    let cy = chips_y(lb);
+    let ch = u(124.0);
+    let gap = u(24.0);
+    let cw = (inn.w - (lb.cols - 1) * gap) / lb.cols;
+    let first = lb.screen * lb.per;
+    for k in 0..lb.per {
+        let i = first + k;
+        if i as usize >= lb.picks.len() {
+            break;
+        }
+        let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
+        let p = lb.picks[i as usize];
+        let (label, named) = pick_label(nb, nav, &p);
+        let current = !lb.current.is_empty() && p.kind != PickKind::NewPage && p.target == lb.current.as_str();
+        draw_pick_chip(c, r, &p, &label, named, current);
+        hits_add(&mut lb.hits, r, LB_CHIP, i);
+    }
+    for (r, id) in pick_tools(lb) {
+        let (icon, label) = match id {
+            // TRANSLATORS: Link to...'s tool button that finds a page by its number or name for the link (in caps
+            // at 34 px under its icon: about 540 px, or two lines; 860 px when there are two buttons).
+            LB_SEARCH => (IconKind::Search, tr("Search")),
+            // TRANSLATORS: Link to...'s tool button that opens the Pages view to tap the page the link goes to (in
+            // caps at 34 px under its icon: about 540 px, or two lines).
+            LB_PAGES => (IconKind::Grid, tr("Choose from the pages...")),
+            _ => (IconKind::Close, tr("Cancel")),
+        };
+        ui_button(c, r, icon, label, ButtonStyle::Plain);
+        hits_add(&mut lb.hits, r, id, 0);
+    }
+    card
+}
+
+/// The name of what Link to... has at screen point (x, y), for the runner's editor.ui_at (docs/SIM.md):
+/// `linkto.chip.N` (N from 1 across the screens), `linkto.search`, `linkto.pages`, `linkto.cancel`,
+/// `linkto.prev`, `linkto.next`; empty for none.
+pub fn linkbar_hit_name(lb: &LinkBar, x: i32, y: i32) -> String {
+    if !lb.open || lb.hidden || lb.mode != LbMode::Pick {
+        return String::new();
+    }
+    match hits_find(&lb.hits, x as f32, y as f32) {
+        Some(h) if h.id == LB_CHIP => cformat!("linkto.chip.%d", h.arg + 1),
+        Some(h) => match h.id {
+            LB_SEARCH => "linkto.search",
+            LB_PAGES => "linkto.pages",
+            LB_CANCEL => "linkto.cancel",
+            LB_PREV => "linkto.prev",
+            LB_NEXT => "linkto.next",
+            _ => "",
+        }
+        .to_string(),
+        None => String::new(),
+    }
+}
+
+/// The runner's keys for Link to... (pick mode), without "editor.linkto.": "rect" (its card, empty closed),
+/// "dock" (top or bottom), "chips" (how many, all screens), "N" (chip N from 1: new, index, recent p<page>,
+/// p<page>, then " current" on the marked target; empty past the last), "screen" (S/T). false for another key.
+pub fn linkbar_probe_pick(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> bool {
+    if key == "rect" {
+        if lb.open {
+            csnprintf!(out, cap, "%d %d %d %d", lb.rect.x, lb.rect.y, lb.rect.w, lb.rect.h);
+        } else {
+            csnprintf!(out, cap, "%s", "");
+        }
+    } else if key == "dock" {
+        csnprintf!(out, cap, "%s", if !lb.open { "" } else if lb.top { "top" } else { "bottom" });
+    } else if key == "chips" {
+        csnprintf!(out, cap, "%d", if lb.open { lb.picks.len() as i32 } else { 0 });
+    } else if key == "screen" {
+        if lb.open {
+            csnprintf!(out, cap, "%d/%d", lb.screen + 1, lb.screens);
+        } else {
+            csnprintf!(out, cap, "%s", "");
+        }
+    } else if !key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()) {
+        let i = key.parse::<i32>().unwrap_or(0) - 1;
+        match lb.picks.get(i.max(0) as usize).filter(|_| lb.open && i >= 0) {
+            Some(p) => {
+                let mut v = match p.kind {
+                    PickKind::NewPage => "new".to_string(),
+                    PickKind::Index => "index".to_string(),
+                    PickKind::Recent => cformat!("recent p%d", p.page + 1),
+                    PickKind::Entry => cformat!("p%d", p.page + 1),
+                };
+                if !lb.current.is_empty() && p.kind != PickKind::NewPage && p.target == lb.current.as_str() {
+                    v.push_str(" current");
+                }
+                csnprintf!(out, cap, "%s", &v);
+            }
+            None => {
+                csnprintf!(out, cap, "%s", "");
+            }
         }
     } else {
         return false;
