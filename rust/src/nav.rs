@@ -310,8 +310,8 @@ fn name_line(n: &mut Nav, line: &[u8]) -> i32 {
     0
 }
 
-// link.<pid>=<seed, 1 to 8 hex digits>,<target, 1 to 15 bytes from ! to ~>
-fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
+// Read the identity even when the target belongs to a future version and must be carried.
+fn link_key(line: &[u8]) -> Option<(u32, u32, &[u8])> {
     let rest = line.strip_prefix(b"link.")?;
     let mut p = 0;
     let mut id: u64 = 0;
@@ -348,7 +348,12 @@ fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
     if digits == 0 || digits > 8 || !comma {
         return None;
     }
-    let target = &rest[p..];
+    Some((id as u32, seed, &rest[p..]))
+}
+
+// link.<pid>=<seed, 1 to 8 hex digits>,<target, 1 to 15 bytes from ! to ~>
+fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
+    let (pid, seed, target) = link_key(line)?;
     if target.is_empty() || target.len() >= NAV_TARGET_LEN {
         return None;
     }
@@ -356,7 +361,7 @@ fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
         return None;
     }
     // (all from ! to ~: ASCII)
-    Some((id as u32, seed, std::str::from_utf8(target).ok()?))
+    Some((pid, seed, std::str::from_utf8(target).ok()?))
 }
 
 // Parse the shared id/seed grammar through link_parse, then require four bounded decimals.
@@ -388,16 +393,16 @@ fn area_valid(r: Rect) -> bool {
         && r.y as i64 + r.h as i64 <= NAV_AREA_MAX as i64
 }
 
-fn link_line(n: &mut Nav, line: &[u8], areas: &mut Vec<(u32, u32, Rect)>) -> i32 {
+fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize) -> i32 {
     if let Some((pid, seed, target)) = link_parse(line) {
         return link_put(n, pid, seed, target);
     }
-    if let Some(area) = area_parse(line) {
+    if area_parse(line).is_some() {
         // Count every valid line, including duplicates, to bound work on hostile files.
-        if areas.len() >= NAV_LINKS_MAX as usize || areas.try_reserve(1).is_err() {
+        if *areas >= NAV_LINKS_MAX as usize {
             return -1;
         }
-        areas.push(area);
+        *areas += 1;
         return 0;
     }
     if !line.is_empty() && line[0] != b'#' {
@@ -429,8 +434,8 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
         fresh.writable = false;
         qlog!("index: page names could not be read; left unchanged");
     }
-    let mut areas = Vec::new();
-    let links_ok = (|| {
+    let mut areas = 0;
+    let mut links_ok = (|| {
         let path = path_for(id, "links.ini")?;
         text = read_sidecar(&path, NAV_LINKS_FILE_MAX).ok()?;
         match &text {
@@ -440,21 +445,28 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
     })()
     .is_some();
     fresh.links_file = text.is_some();
-    if links_ok {
-        // File order makes the last area win, even when it precedes its link.
-        for (pid, seed, area) in areas {
-            let at = link_slot(&fresh, pid, seed);
-            if let Some(l) = fresh.links.get_mut(at).filter(|l| l.pid == pid && l.seed == seed) {
+    if let (true, Some(t)) = (links_ok, &text) {
+        // Revisit the bounded input after all links are known. This keeps carried areas verbatim
+        // without allocating copies, and file order still makes the last attached area win.
+        links_ok = each_line(t, |n, line| {
+            let Some((pid, seed, area)) = area_parse(line) else { return 0 };
+            let at = link_slot(n, pid, seed);
+            if let Some(l) = n.links.get_mut(at).filter(|l| l.pid == pid && l.seed == seed) {
                 l.area = area;
                 l.has_area = true;
+            } else if n.links_unknown.split(|&c| c == b'\n').any(|l| link_key(l).is_some_and(|(p, s, _)| p == pid && s == seed)) {
+                // Its link is carried too: preserve the area under the same line and byte limits.
+                return carry(&mut n.links_unknown, line);
             } else {
-                fresh.areas_dropped += 1;
+                n.areas_dropped += 1;
             }
-        }
+            0
+        }, &mut fresh) == 0;
     }
     if !links_ok {
         fresh.links = Vec::new();
         fresh.links_unknown = Vec::new();
+        fresh.areas_dropped = 0;
         fresh.links_writable = false;
         fresh.links_file = true;
         qlog!("index: links could not be read; left unchanged");

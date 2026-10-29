@@ -290,6 +290,92 @@ fn links_save_prune_and_carry() {
     let _ = std::fs::remove_file(links_path());
 }
 
+fn future_link_areas_roundtrip() {
+    let nb = nb();
+    let mut order = nb.clone();
+    order.page_ids = vec![7, 9];
+    let target = "x".repeat(NAV_TARGET_LEN);
+    // Match numeric keys, regardless of spelling or whether the area precedes the link.
+    let future = format!("link.007=ABCD,{target}\nlink.9=0,{target}/longer\n");
+    let areas = "area.7=0000abcd,0001,2,3,4\narea.009=00000000,5,6,7,8\narea.7=ABCD,9,10,11,12\n";
+    let orphans = "area.7=abcd0,1,2,3,4\narea.8=abcd,1,2,3,4\narea.7=beef,1,2,3,4\narea.7=cafe,1,2,3,4\n";
+    let malformed = format!("link.7=0beef0000f,{target}\nlink.7=cafe!,{target}\n");
+    let known = "link.7=1,future/path\narea.7=1,20,30,40,50\n";
+    let text = format!("{areas}{orphans}{malformed}{future}{known}");
+    check!(write_file_atomic(&links_path(), text.as_bytes()) == 0);
+    let mut n = Nav::default();
+    check!(nav_load(nb.id.as_str(), &mut n) == 0 && n.links_writable);
+    check!(n.links.len() == 1 && n.areas_dropped == 4);
+    check!(nav_link_get(&n, 7, 0xabcd).is_none() && nav_link_get(&n, 9, 0).is_none());
+    check!(nav_link_get(&n, 7, 1).is_some_and(|l| l.has_area && l.area == rect(20, 30, 40, 50)));
+    for line in areas.lines() {
+        check!(has(&n.links_unknown, &format!("{line}\n")));
+    }
+    check!(nav_save_links(nb.id.as_str(), &mut n, &order) == 0 && n.areas_dropped == 0);
+    let saved = read_file(&links_path()).unwrap();
+    check!(has(&saved, &future) && has(&saved, &malformed));
+    for line in areas.lines() {
+        check!(has(&saved, &format!("{line}\n")));
+    }
+    for line in orphans.lines() {
+        check!(!has(&saved, &format!("{line}\n")));
+    }
+    check!(has(&saved, "link.7=00000001,future/path\narea.7=00000001,20,30,40,50\n"));
+    // Repeated saves neither drop nor duplicate carried areas.
+    for _ in 0..2 {
+        check!(nav_load(nb.id.as_str(), &mut n) == 0 && n.areas_dropped == 0);
+        check!(nav_save_links(nb.id.as_str(), &mut n, &order) == 0);
+        check!(read_file(&links_path()).as_deref() == Some(saved.as_slice()));
+    }
+    // Removing the carried link makes its areas true orphans on the next load.
+    let without_link = String::from_utf8(saved).unwrap().replace(&format!("link.007=ABCD,{target}\n"), "");
+    check!(write_file_atomic(&links_path(), without_link.as_bytes()) == 0);
+    check!(nav_load(nb.id.as_str(), &mut n) == 0 && n.areas_dropped == 2);
+    check!(nav_save_links(nb.id.as_str(), &mut n, &order) == 0);
+    let saved = read_file(&links_path()).unwrap();
+    check!(!has(&saved, "area.7=0000abcd,") && !has(&saved, "area.7=ABCD,"));
+    check!(has(&saved, "area.009=00000000,5,6,7,8\n"));
+    check!(std::fs::remove_file(links_path()).is_ok());
+}
+
+fn future_link_area_limits() {
+    let nb = nb();
+    let link = format!("link.7=abcd,{}\n", "x".repeat(NAV_TARGET_LEN));
+    let area = "area.7=abcd,1,2,3,4\n";
+    let mut text = format!("{link}{area}");
+    // The preserved area shares the carried-byte budget with the unknown link and other lines.
+    let mut left = NAV_UNKNOWN_MAX - text.len();
+    while left > 0 {
+        let mut len = left.min(256);
+        if left - len == 1 { len -= 1; }
+        text.push_str(&"x".repeat(len - 1));
+        text.push('\n');
+        left -= len;
+    }
+    let mut n = Nav::default();
+    check!(write_file_atomic(&links_path(), text.as_bytes()) == 0);
+    check!(nav_load(nb.id.as_str(), &mut n) == 0 && n.links_unknown.len() == NAV_UNKNOWN_MAX && n.areas_dropped == 0);
+    check!(nav_save_links(nb.id.as_str(), &mut n, &nb) == 0);
+    check!(nav_load(nb.id.as_str(), &mut n) == 0 && n.links_unknown.len() == NAV_UNKNOWN_MAX);
+    let refuses = |bytes: &[u8]| {
+        let mut n = Nav::default();
+        check!(write_file_atomic(&links_path(), bytes) == 0);
+        check!(nav_load(nb.id.as_str(), &mut n) == -1 && !n.links_writable);
+        check!(n.links.is_empty() && n.links_unknown.is_empty() && n.areas_dropped == 0);
+        check!(nav_save_links(nb.id.as_str(), &mut n, &nb) == -1);
+        check!(read_file(&links_path()).as_deref() == Some(bytes));
+    };
+    refuses(format!("{text}x\n").as_bytes());
+    // A syntactically valid area with a long zero-padded pid still obeys the 255-byte carry cap.
+    let long_area = format!("area.{}7=abcd,1,2,3,4\n", "0".repeat(256 - (area.len() - 1)));
+    check!(long_area.len() - 1 == 256);
+    refuses(format!("{link}{long_area}").as_bytes());
+    // Future-link areas still count toward the valid-area line cap alongside known-link areas.
+    let many = format!("{link}{area}link.7=1,index\n{}", "area.7=1,0,0,1,1\n".repeat(NAV_LINKS_MAX as usize));
+    refuses(many.as_bytes());
+    check!(std::fs::remove_file(links_path()).is_ok());
+}
+
 fn links_limits_and_unreadable() {
     let nb = nb();
     let mut n = Nav::default();
@@ -578,6 +664,8 @@ fn test_nav() {
     run!(links_follow_their_boxes);
     run!(link_areas_hit_and_migrate);
     run!(links_save_prune_and_carry);
+    run!(future_link_areas_roundtrip);
+    run!(future_link_area_limits);
     run!(links_limits_and_unreadable);
     run!(pdf_has_the_outline_and_links);
     check!(std::fs::remove_dir_all(&root).is_ok());
