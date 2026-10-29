@@ -20,6 +20,10 @@ const SETTLE_LEFT_MS: i32 = 150;
 // A finger held this long on a link (without moving) opens it to change or remove; a shorter tap
 // follows it.
 const LINK_HOLD_MS: u32 = 600;
+// Migrated link areas wait this long after the first migration before links.ini is written (the idle
+// ticks migrate a page each, so the notebook's pages are saved once); a failed write is tried again
+// this long after.
+const LINKS_FLUSH_MS: u32 = 2000;
 // A link's box drawn smaller than this both ways is no box: it is taken back.
 const LINK_BOX_MIN_MM: f32 = 5.0;
 
@@ -322,6 +326,16 @@ pub struct EditorState {
     back: Vec<u32>,
     /// the open page's link boxes (the eye, the bar's numbers)
     boxes: LinkBoxes,
+    // beta.5's links (an inked lasso, no area) migrate to areas, the box of their ink, as their pages are
+    // read and on idle ticks (PHASE2 5): an invisible rewrite, never an undo step, and never of the ink.
+    /// migrated areas are in the Nav and not yet in links.ini
+    links_dirty: bool,
+    /// page ids tried this session (migrated, dormant only, read-only, or unreadable): never tried twice
+    migrate_done: Vec<u32>,
+    /// when the next links.ini flush may be tried (a pause after a migration, or 2 s after a failed save)
+    links_try_at: u32,
+    /// "link areas left for a later save" was logged (once per notebook opened)
+    links_fail_logged: bool,
     /// the Links bar (linkbar.rs), over the page while it is open
     lb: LinkBar,
     /// the Find sheet (findsheet.rs), over the page while it is open
@@ -601,8 +615,62 @@ impl EditorState {
                 return None;
             }
             self.hist[e].page = p;
+            if self.open {
+                self.migrate_entry(e);
+            }
         }
         Some(pid)
+    }
+
+    // The page of cache entry e, just read (its first visit this session): its links with no area get
+    // the box of their ink, unless it was tried already, is read-only (a newer Grimoire's page may not
+    // show all its strokes, so its ink box could be wrong) or links.ini cannot be written. Tried
+    // whatever it had: a link drawn on it later this session is never migrated behind its back.
+    fn migrate_entry(&mut self, e: usize) {
+        let pid = self.hist[e].page_id;
+        if self.migrate_done.contains(&pid) || !self.nav.links_writable {
+            return;
+        }
+        if let Some(p) = self.hist[e].page.as_deref() {
+            if !p.readonly && nav_links_legacy(&self.nav, pid) > 0 && nav_link_migrate(&mut self.nav, p, pid) > 0 {
+                self.links_migrated();
+            }
+        }
+        self.migrate_tried(pid);
+    }
+
+    fn links_migrated(&mut self) {
+        if !self.links_dirty {
+            // (the flush waits for a pause: the idle ticks migrate a page each, and save once)
+            self.links_try_at = now_ms().wrapping_add(LINKS_FLUSH_MS);
+        }
+        self.links_dirty = true;
+        self.boxes.stale = true;
+    }
+
+    fn migrate_tried(&mut self, pid: u32) {
+        // (room for every page was made at the open; a page added since may need more. Without it the
+        // page is not remembered, and the idle ticks stop: see migrate_room)
+        if self.migrate_done.len() < self.migrate_done.capacity() || self.migrate_done.try_reserve(16).is_ok() {
+            self.migrate_done.push(pid);
+        }
+    }
+
+    // Whether every page tried can be remembered: the idle ticks migrate only then, so a page that
+    // could not be remembered is never read again and again.
+    fn migrate_room(&self) -> bool {
+        self.migrate_done.capacity() >= self.nb.page_ids.len()
+    }
+
+    // The first page in notebook order with a link that has no area and that this session has not
+    // tried, as an index; -1 for none.
+    fn migrate_next(&self) -> i32 {
+        for (i, &pid) in self.nb.page_ids.iter().enumerate() {
+            if !self.migrate_done.contains(&pid) && nav_links_legacy(&self.nav, pid) > 0 {
+                return i as i32;
+            }
+        }
+        -1
     }
 
     fn free_histories(&mut self) {
@@ -1937,6 +2005,24 @@ fn go_to_page_pushing(a: &mut App, index: i32) -> bool {
     ok
 }
 
+// Migrated link areas (PHASE2 5.4) into links.ini, the whole file: returns at once when none wait. A
+// failure keeps them in memory, says so in the log once, and is tried again LINKS_FLUSH_MS later.
+fn links_flush(a: &mut App) {
+    let s = ed(a);
+    if !s.open || !s.links_dirty || !s.nav.links_writable {
+        return;
+    }
+    if nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0 {
+        s.links_dirty = false;
+        return;
+    }
+    if !s.links_fail_logged {
+        s.links_fail_logged = true;
+        qlog!("index: link areas left for a later save");
+    }
+    s.links_try_at = now_ms().wrapping_add(LINKS_FLUSH_MS);
+}
+
 fn go_to_page(a: &mut App, index: i32) -> bool {
     let s = ed(a);
     s.link_mode = false; // (a link's box is drawn on the page Add a link was asked on)
@@ -1946,6 +2032,7 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
         compose_all(a, RefreshMode::Full);
         return false;
     }
+    links_flush(a);
     write_thumb_if_needed(a);
     let s = ed(a);
     let index = clampi(index, 0, s.nb.npages() - 1);
@@ -2059,6 +2146,7 @@ fn close_notebook(a: &mut App) {
         }
     }
     save_page(a);
+    links_flush(a); // (before the PDF, which reads the areas)
     write_thumb_if_needed(a);
     let dpi = a.dpi;
     let s = ed(a);
@@ -2110,6 +2198,8 @@ fn close_notebook(a: &mut App) {
     s.pv.tab_initialized = false;
     nav_free(&mut s.nav);
     nav_init(&mut s.nav);
+    s.links_dirty = false; // (what a failed flush kept is left for this notebook's next open)
+    s.migrate_done = Vec::new();
     s.open = false;
     store_take_restored_count(); // (page 1, read for the thumbnail above, was drawn as it is now)
     bgimage_forget(None); // the notebook's pictures (up to 3 pages' worth) and its failures
@@ -2142,6 +2232,15 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     }
     s.open = true;
     nav_load(s.nb.id.as_str(), &mut s.nav);
+    // The page it opens at was read before its links were: its beta.5 links migrate now, before the
+    // first tap.
+    s.links_dirty = false;
+    s.links_fail_logged = false;
+    s.migrate_done = Vec::new();
+    let _ = s.migrate_done.try_reserve_exact(s.nb.page_ids.len()); // (else no idle migration: migrate_room)
+    if let Some(e) = s.hist.iter().position(|h| h.page_id == s.nb.page_ids[s.index as usize]) {
+        s.migrate_entry(e);
+    }
     s.page_dirty = false;
     s.info_dirty = false;
     s.changed = false;
@@ -3526,6 +3625,7 @@ fn bar_commit(a: &mut App) {
         bar_cancel(a);
         return;
     }
+    links_flush(a);
     write_thumb_if_needed(a);
     let s = ed(a);
     let from = s.open_pid();
@@ -3536,6 +3636,9 @@ fn bar_commit(a: &mut App) {
     };
     if s.hist[e].page.is_none() {
         s.hist[e].page = s.ccache[pk.slot].page.take();
+        if s.hist[e].page.is_some() {
+            s.migrate_entry(e); // (its first visit: the bar read it, not page_at)
+        }
     }
     let ready = s.hist[e].page.is_some() && s.ccache[pk.slot].rows_done >= s.pgh && !s.ccache[pk.slot].white;
     if s.hist[e].page.is_none() {
@@ -4747,6 +4850,7 @@ pub fn editor_leave(a: &mut App) {
         find_drop(ed(a));
     }
     save_page(a);
+    links_flush(a);
     write_thumb_if_needed(a);
     // Out of the editor no page pans or zooms, and no gesture is its: only the master switch is told.
     input_touch_context(TgView { gestures_on: a.settings.gestures, ..TgView::default() });
@@ -4775,7 +4879,9 @@ pub fn editor_suspend(a: &mut App) -> bool {
     s.btn_down = false;
     s.nclicks = 0;
     s.hold_eraser = false; // (its release may never come: the Kindle sleeps, native PIN input takes the keys)
-    save_page(a)
+    let ok = save_page(a);
+    links_flush(a); // (a failure keeps the areas for later: the page's save says whether to stay)
+    ok
 }
 
 /// Whether the notebook's page itself is in front: a notebook is open and no sheet, menu, Pages view, Links bar
@@ -5273,6 +5379,30 @@ fn pictures_arrived(a: &mut App, page: bool, caches: bool) {
     }
 }
 
+// One idle tick's migration (PHASE2 5.3): the first page not tried with a link that has no area.
+fn migrate_step(a: &mut App) {
+    let s = ed(a);
+    let i = s.migrate_next();
+    if i < 0 {
+        return;
+    }
+    let pid = s.nb.page_ids[i as usize];
+    if let Some(e) = s.hist.iter().position(|h| h.page_id == pid && h.page.is_some()) {
+        s.migrate_entry(e);
+        return;
+    }
+    let mut p = None;
+    if store_load_page_pumped(&s.nb, i, s.pgw, s.pgh, &mut p) == 0 {
+        let s = ed(a);
+        if let Some(p) = p.as_deref() {
+            if !p.readonly && nav_link_migrate(&mut s.nav, p, pid) > 0 {
+                s.links_migrated();
+            }
+        }
+    }
+    ed(a).migrate_tried(pid); // (a page that does not read now is not tried again this session)
+}
+
 pub fn editor_tick(a: &mut App, now: u32) {
     let s = ed(a);
     // The pen gone for SETTLE_LEFT_MS (not just lifted high for a moment), or near for too long.
@@ -5335,6 +5465,19 @@ pub fn editor_tick(a: &mut App, now: u32) {
     let s = ed(a);
     if s.open && s.page_dirty && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !save_page(a) {
         ed(a).last_up = now;
+    }
+    // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
+    // over the page. A page not in the session cache is read for it and dropped (memory stays flat),
+    // with the pens pumped as it is read. Each page is tried once, whatever happens.
+    let s = ed(a);
+    if s.open && drained && s.owner == Owner::None && !s.pinching && !sheet_open(s) && !s.link_mode && s.nav.links_writable && s.migrate_room() {
+        migrate_step(a);
+    }
+    // Migrated areas are saved after a pause (and again 2 s after a failed save), apart from the
+    // page's own save: a migrated page is not page_dirty.
+    let s = ed(a);
+    if s.open && s.links_dirty && s.owner == Owner::None && (now.wrapping_sub(s.links_try_at) as i32) >= 0 {
+        links_flush(a);
     }
     // A page whose picture was made while a stroke or gesture was under way (editor_picture_made).
     let s = ed(a);
@@ -5476,6 +5619,26 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         };
         let mut first = 0;
         csnprintf!(out, cap, "%d %d", if has_page { nav_links_of(&s.nav, pid, &mut first) } else { 0 }, boxed);
+    } else if let Some(n) = key.strip_prefix("link.").and_then(|n| n.strip_suffix(".area")) {
+        // The open page's link N's area, x y w h in page px, empty for none (or no such link). Before
+        // the link.N arm: its atoi would read "1.area" as 1.
+        let mut first = 0;
+        let n_links = if has_page { nav_links_of(&s.nav, s.nb.page_ids[s.index as usize], &mut first) } else { 0 };
+        let i = atoi(n) - 1;
+        match (i >= 0 && i < n_links).then(|| s.nav.links[(first + i) as usize]).filter(|l| l.has_area) {
+            Some(l) => csnprintf!(out, cap, "%d %d %d %d", l.area.x, l.area.y, l.area.w, l.area.h),
+            None => csnprintf!(out, cap, "%s", ""),
+        };
+    } else if key == "migrate_left" {
+        // Pages of the open notebook with a link that has no area, not tried this session.
+        let left = if s.open {
+            s.nb.page_ids.iter().filter(|&&pid| !s.migrate_done.contains(&pid) && nav_links_legacy(&s.nav, pid) > 0).count()
+        } else {
+            0
+        };
+        csnprintf!(out, cap, "%d", left as i32);
+    } else if key == "links_dirty" {
+        csnprintf!(out, cap, "%d", if s.open && s.links_dirty { 1 } else { 0 });
     } else if let Some(n) = key.strip_prefix("link.") {
         // The open page's link N (from 1, in the order links.ini has them): where it goes.
         let mut first = 0;

@@ -280,6 +280,9 @@ shows what the app holds.
 | `editor.link_mode` | `1` after Add a link until the next ink stroke (the link's box) or a page change, else `0` |
 | `editor.links` | the open page's links: how many it has, then how many of them have their ink on it (`2 1`) |
 | `editor.link.N` | where the open page's link N goes (from 1, in `links.ini`'s order): `index`, `p<page id>`, or another version's target; empty past the last |
+| `editor.link.N.area` | the open page's link N's area (links.ini's `area.` line), `x y w h` in page px; empty for a link without one (a beta.5 link not migrated yet, or a dormant one) and past the last |
+| `editor.migrate_left` | how many pages of the open notebook have a link without an area and have not been tried this session: the idle ticks migrate one a tick (a page is tried once, at its first read or by the idle ticks) |
+| `editor.links_dirty` | `1` while migrated link areas wait to be written to links.ini (after a 2 s pause, or 2 s after a failed write), else `0` |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
