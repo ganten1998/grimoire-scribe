@@ -15,13 +15,14 @@ use std::process::{Command, Output};
 const BIN: &str = env!("CARGO_BIN_EXE_grimoire-headless");
 
 // ../Makefile's SIM_HOOKS: nothing else of the caller's reaches the app's test hooks.
-const SIM_HOOKS: [&str; 26] = [
+const SIM_HOOKS: [&str; 27] = [
     "GRIMOIRE_HOST",
     "GRIMOIRE_PASSCODE",
     "GRIMOIRE_SIM_ADDRS",
     "GRIMOIRE_HTTPD_DELAY_MS",
     "GRIMOIRE_BG_DELAY_MS",
     "GRIMOIRE_SIM_PRESSURE",
+    "GRIMOIRE_SIM_PEN_BUTTON2",
     "GRIMOIRE_BT_API",
     "GRIMOIRE_UPDATE_SCRIPT",
     "GRIMOIRE_UPDATE_REQUEST",
@@ -110,6 +111,24 @@ fn runner_needs_a_script() {
         root.display()
     );
     assert_eq!(stderr_unstamped(&o), want);
+}
+
+// The second button is an open-time capability and an explicitly opted-in runner
+// extension. Unsupported commands fail the run instead of quietly testing Button.
+#[test]
+fn runner_second_pen_button_requires_the_capability_hook() {
+    let d = scratch("pen-button2");
+    let script = d.join("button2.qs");
+    std::fs::write(&script, "side2 on\nside2 off\nside2 click 2 0 0\nwait 0\nquit\n").unwrap();
+    let root = d.join("without-cap");
+    let o = runner(&[("GRIMOIRE_ROOT", &root), ("GRIMOIRE_SCRIPT", &script)]);
+    assert_eq!(o.status.code(), Some(3), "{}", stderr_unstamped(&o));
+    assert!(stderr_unstamped(&o).contains("side2 needs GRIMOIRE_SIM_PEN_BUTTON2=1"));
+    let root = d.join("with-cap");
+    let o = runner(&[("GRIMOIRE_ROOT", &root), ("GRIMOIRE_SCRIPT", &script), ("GRIMOIRE_SIM_PEN_BUTTON2", Path::new("1"))]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr_unstamped(&o));
+    assert!(!stderr_unstamped(&o).contains("side2 needs"));
+    let _ = std::fs::remove_dir_all(d);
 }
 
 // A script that cannot be opened (input_open): the display closes as it does at the end of a run

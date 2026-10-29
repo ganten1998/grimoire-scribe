@@ -1160,18 +1160,21 @@ The Settings bottom row has five equal cells: KOReader, Controller, Gestures, Up
 Controller, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
 in English and Spanish, in both themes. Coordinates remain pending main-scenario verification.
 Buttons and Gestures share the seven registry groups and row descriptors from `actions.rs`.
-Source masks hide Momentary hold-eraser from gestures and prevent keys/pads learning their own
+Source masks expose every action to PEN. Hold eraser is pen-only in Gestures (hold/drag slots),
+and pan/zoom are PEN-only Pages actions 82/83 (drag slots). Keys/pads cannot learn their own
 Enable shortcuts or Bluetooth-controller switches; calibration stays outside the registry.
 
 The Gestures sheet has a master on/off row, an ideas line, seven group rows, Reset and Done.
-Groups filter for TOUCH or SHAPE, show the binding beside each action and a 96 px medoid
-thumbnail for a recorded shape. Paired rows learn one member at a time. A hold clears both
-sources for the row (both members of a pair); Reset restores built-ins and confirms first when shapes exist. It also
+Groups filter for TOUCH, SHAPE or PEN, show the first available binding in that order and a
+96 px medoid thumbnail for a recorded shape. `+N` counts other action/source bindings once
+per source, including both members of a pair. Unsupported three-finger bindings on a two-slot
+panel and unsupported pen buttons do not appear. Paired rows learn one member at a time.
+A hold clears touch, shape and pen sources for the row (both members of a pair); Reset restores built-ins and confirms first when shapes exist. It also
 recovers from an unreadable file. Learn/clear use copy-save-swap: failed persistence leaves the
 live map and record card intact.
 
 The record card keeps three sample slots, Use, Try again and Cancel. First input selects a
-pattern, one-finger swipe or shape. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
+pattern, one-finger swipe, shape or pen-button gesture. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
 shapes require two consistent samples, with an optional third. Conflict and accidental-slip
 checks run before saving, with progress/refusal text in the line's own rectangle. Moving a
 binding names the losing action; replacing a carried newer shape requires an explicit second
@@ -1203,7 +1206,35 @@ can show the one-time tip (`hints` bit 7). Match dispatch uses the common action
 and persistence; it does not establish real-hand success rates, false-fire rates or e-ink
 appearance. The pending study and the shape freeze gate are in [TOUCH-STUDY.md](index-hook/TOUCH-STUDY.md).
 
-The line-only progress/refusal refresh above is the phase 3 contract. At this source snapshot,
-`record_refusal` still calls `redraw_record_card` (whole-card Ui), as does sample progress;
-`draw_record_line` has the smaller refresh path. This remains an implementation deviation for
-the main owner to resolve; the contract is not evidence of a measured device refresh.
+A refusal without a trail or previously recognized pattern uses `draw_record_line` (line-only
+Ui). A candidate/sample change or removal of a trail redraws the card's dynamic area to restore
+its pixels and button hit regions. Neither path demonstrates a measured device refresh.
+
+
+## Pen-button recording and dispatch (Index phase 6)
+
+`penbutton.rs` is the pure, allocation-free recognizer shared by editor and Library. Each owns
+its own `PenButtons`. `App.pb_config` derives waits from live double/triple bindings through
+`app_gestures_sync` after load/save/reset; this recomputation performs no I/O. Event timestamps
+use wrapping u32 milliseconds. A click is at most 450 ms with no nib contact, multi-click gaps
+are at most 350 ms from release to next press, and the result resolves 350 ms after final release.
+A single click fires immediately only when neither double nor triple is bound. Hovering holds
+begin once at 1200 ms. Both owners tick only after the input queue is drained, so a queued release
+cannot be mistaken for a hold. Proximity loss cancels a pending sequence and ends capture.
+
+While the card is active, PenButton, proximity, contact and lift feed only its own recognizer.
+Fire/HoldBegin/DragBegin select a pen key; endings only end recognition. No editor action fires
+and no stroke enters the page. Drag recognition updates state at contact but defers its
+card/line Ui (GL16) display until lift or proximity loss. A nib tap starting on Use/Try again/Cancel uses normal Library
+pointer handling; a button drag cannot activate them. All ten Button/Button2 labels are translated
+and wrap at 64 px in the existing pattern area. The new card body mentions the pen; hold-eraser
+and pan/zoom refusals fit the same bilingual two-line status area. Save still uses
+`gesturemap_set` on a clone, atomic persistence, then map swap and timing sync. Existing shape
+first-Use checks, reassignment confirmation and newer-version replacement remain intact.
+
+In the editor, a bound pen drag owns `Owner::PenDrag` and raises capture-blocked, preventing
+page or Live view ink. Unbound drag uses Settings' side-button ink. Pan/zoom use Fast refreshes
+at most every 180 ms and Ui at the end; actions use their own refresh. Hold eraser starts at
+press for either its hold or drag binding and ends at release, coexisting with held keys.
+No GL16 or toast is submitted while the nib is down; deferred feedback appears after lift.
+Hardware BTN_STYLUS2 capability gates Button2; Eraser slot lines are always carried, never live.

@@ -115,6 +115,8 @@ enum Owner {
     /// a pointer that began on the link-making strip (its Cancel, or the strip around it)
     Strip = 17,
     Map = 18,
+    /// A bound side-button contact, swallowed without ink.
+    PenDrag = 19,
 }
 
 /// Making a link without ink (PHASE2 6): the strip is up and the next pen contact on the page is the lasso
@@ -276,17 +278,15 @@ pub struct EditorState {
     open: bool,
     /// compose leaves the panel out (editor_live_under_panel: Live view's page under it)
     live_no_panel: bool,
-    // Pen side button gestures (when not drawing): 3 quick clicks, or a ~1.2 s hold while
-    // hovering, clears the page (undoable). Holding it while drawing picks the button's tool.
-    btn_down: bool,
-    btn_used_for_ink: bool,
-    btn_hold_fired: bool,
-    btn_down_at: u32,
-    // A controller's Erase while held is down (app.c ends it at the release): a stroke that starts
-    // now erases as the pen's eraser end does.
+    pb: PenButtons,
+    pb_pen: PbPen,
+    pb_buttons: u8,
+    pb_erasers: u8,
+    pb_point: Option<(f32, f32)>,
+    pb_last: Option<(PenBtn, PenKind)>,
+    pb_drag: Option<PenDrag>,
     hold_eraser: bool,
-    clicks: [u32; 3],
-    nclicks: i32,
+    hold_eraser_key: bool,
     nb: NotebookInfo,
     index: i32,
     /// The open page (the C's Page *page, which lives in the session cache, hist): the page id of its
@@ -2559,7 +2559,7 @@ fn closed_record(_a: &mut App) {}
 
 fn close_notebook(a: &mut App) {
     let s = ed(a);
-    s.hold_eraser = false;
+    pb_reset(s);
     if !s.open {
         return;
     }
@@ -2829,9 +2829,6 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     if refuse_readonly(a) {
         // neither ink nor the eraser (tool, eraser end or side button)
         let s = ed(a);
-        if s.btn_down {
-            s.btn_used_for_ink = true;
-        }
         s.owner = Owner::Modal; // swallow the rest of this stroke
         s.has_pressed = false;
         return;
@@ -2854,14 +2851,8 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
         s.ex = ex;
         s.ey = ey;
         s.erase_dirty = RECT_EMPTY;
-        if s.btn_down {
-            s.btn_used_for_ink = true;
-        }
         display_live_ink(true); // a pen stroke too: its frames never wait (erase_end repaints them)
         return;
-    }
-    if s.btn_down {
-        s.btn_used_for_ink = true;
     }
     s.owner = Owner::Draw;
     let n = s.open_page().unwrap().strokes.len() as u32;
@@ -3342,6 +3333,8 @@ fn sheet_open(s: &EditorState) -> bool {
 pub fn editor_pen_not_ink(a: &App) -> bool {
     a.ed.as_deref().is_some_and(|s| {
         s.map.open
+            || s.owner == Owner::PenDrag
+            || s.pb_drag.is_some()
             || s.sh.preview.is_some()
             || s.lb.open
             || s.find.open
@@ -3356,11 +3349,13 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
+    if !s.open || pb_contact_bound(a, ev) || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
-    let mut ps = pen_stroke(st, ev.eraser || s.hold_eraser, ev.side_button);
+    let momentary = (ev.side_button && pb_momentary(a, PenBtn::Button))
+        || (ev.side_button2 && pb_momentary(a, PenBtn::Button2));
+    let mut ps = pen_stroke(st, ev.eraser || s.hold_eraser || momentary, ev.side_button);
     if ps.act == PenAct::White && st.current_tool == TOOL_ERASER {
         ps.tool = eraser_back(st);
     }
@@ -3394,39 +3389,194 @@ pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     out.exclude = s.panel;
 }
 
-// Side button: clicks and holds that happen while not drawing. A press used for something else (a
-// stroke, or the pen on a button or a sheet while it is held) is neither a click nor a hold.
-fn pen_button(a: &mut App, ev: &InEvent) {
-    let t = ev.t_ms;
+/// A bound side-button contact. Its viewport anchor is fixed for the whole contact.
+struct PenDrag {
+    button: PenBtn,
+    action: i32,
+    x: f32,
+    y: f32,
+    px: f32,
+    py: f32,
+    ox: f32,
+    oy: f32,
+    zoom: f32,
+    painted_at: u32,
+    changed: bool,
+}
+
+fn pb_bit(button: PenBtn) -> u8 {
+    match button { PenBtn::Button => 1, PenBtn::Button2 => 2, PenBtn::Eraser => 4 }
+}
+
+fn pb_key(button: PenBtn, kind: PenKind) -> GestureKey {
+    GestureKey::Pen { button, kind }
+}
+
+fn pb_momentary(a: &App, button: PenBtn) -> bool {
+    [PenKind::Hold, PenKind::Drag].iter().any(|&kind| {
+        gesturemap_action(&a.gestures, pb_key(button, kind)) == SHORTCUT_HOLD_ERASER
+    })
+}
+
+/// The early Live hook sees the button bits before the queued down reaches the editor.
+fn pb_contact_bound(a: &App, ev: &InEvent) -> bool {
+    [(PenBtn::Button, ev.side_button), (PenBtn::Button2, ev.side_button2)]
+        .iter().any(|&(button, down)| down && !pb_momentary(a, button)
+            && gesturemap_action(&a.gestures, pb_key(button, PenKind::Drag)) != 0)
+}
+
+fn pb_reset(s: &mut EditorState) {
+    s.pb = PenButtons::default();
+    s.pb_pen = PbPen::default();
+    s.pb_buttons = 0;
+    s.pb_erasers = 0;
+    s.pb_drag = None;
+    s.hold_eraser_key = false;
+    s.hold_eraser = false;
+}
+
+fn pb_dispatch(a: &mut App, action: i32) {
+    if action <= 0 || action == SHORTCUT_HOLD_ERASER { return; }
+    let (x, y) = ed_ref(a).pb_point.unwrap_or((a.w as f32 * 0.5, a.h as f32 * 0.5));
+    editor_shortcut_at(a, action, x, y, ActionSrc::Pen);
+}
+
+fn pb_drag_end(a: &mut App, button: PenBtn) {
+    if ed_ref(a).pb_drag.as_ref().is_none_or(|d| d.button != button) { return; }
+    let drag = ed(a).pb_drag.take().unwrap();
+    if drag.changed && a.scr == ScreenId::Editor && ed_ref(a).open {
+        compose_all(a, RefreshMode::Ui);
+    }
+    if !ed_ref(a).pb_pen.touching && ed_ref(a).owner == Owner::PenDrag {
+        ed(a).owner = Owner::None;
+    }
+}
+
+fn pb_out(a: &mut App, out: PbOut, t: u32) {
+    match out {
+        PbOut::None => {}
+        PbOut::Fire(button, kind) => {
+            ed(a).pb_last = Some((button, kind));
+            pb_dispatch(a, gesturemap_action(&a.gestures, pb_key(button, kind)));
+        }
+        PbOut::HoldBegin(button) => {
+            ed(a).pb_last = Some((button, PenKind::Hold));
+            pb_dispatch(a, gesturemap_action(&a.gestures, pb_key(button, PenKind::Hold)));
+        }
+        PbOut::HoldEnd(_) => {}
+        PbOut::DragBegin(button) => {
+            ed(a).pb_last = Some((button, PenKind::Drag));
+            let action = gesturemap_action(&a.gestures, pb_key(button, PenKind::Drag));
+            if action == 0 || pb_momentary(a, button) { return; }
+            if ed_ref(a).owner == Owner::Draw { draw_end(a); }
+            if ed_ref(a).owner == Owner::Erase { erase_end(a); }
+            let (x, y) = ed_ref(a).pb_point.unwrap_or((a.w as f32 * 0.5, a.h as f32 * 0.5));
+            let s = ed(a);
+            let (mut px, mut py) = (0.0, 0.0);
+            to_page(s, x, y, &mut px, &mut py);
+            let drag = PenDrag { button, action, x, y, px, py, ox: s.ox, oy: s.oy,
+                zoom: s.zoom, painted_at: t, changed: false };
+            // A bound contact is never ink, even if its action is refused by a sheet.
+            a.pen_action_down = true;
+            if action != GESTURE_PAN && action != GESTURE_ZOOM { pb_dispatch(a, action); }
+            if a.scr == ScreenId::Editor && ed_ref(a).open {
+                let s = ed(a);
+                s.pb_drag = Some(drag);
+                s.owner = Owner::PenDrag;
+                s.owner_is_pen = true;
+            }
+        }
+        PbOut::DragEnd(button) => pb_drag_end(a, button),
+    }
+}
+
+fn pb_drag_move(a: &mut App, ev: &InEvent) {
+    if !ev.x.is_finite() || !ev.y.is_finite() || sheet_open(ed_ref(a)) { return; }
+    let Some(d) = ed_ref(a).pb_drag.as_ref() else { return };
+    if d.action != GESTURE_PAN && d.action != GESTURE_ZOOM { return; }
+    let before = (ed_ref(a).zoom, ed_ref(a).ox, ed_ref(a).oy);
+    let (action, x, y, px, py, ox, oy, zoom) = (d.action, d.x, d.y, d.px, d.py, d.ox, d.oy, d.zoom);
+    let dpi = a.dpi;
     let s = ed(a);
-    if ev.side_button {
-        s.btn_down = true;
-        s.btn_down_at = t;
-        s.btn_used_for_ink = s.owner != Owner::None || sheet_open(s) || s.lm.state != LmState::Off;
-        s.btn_hold_fired = false;
-        return;
+    if action == GESTURE_PAN {
+        s.ox = ox - (ev.x - x) / zoom;
+        s.oy = oy - (ev.y - y) / zoom;
+    } else {
+        s.zoom = clampf(zoom * 1.25f32.powf((y - ev.y) / (dpi * 10.0 / 25.4)),
+            s.zoom_min, s.zoom_max);
+        s.ox = px - x / s.zoom;
+        s.oy = py - y / s.zoom;
     }
-    if !s.btn_down {
-        return;
-    }
-    s.btn_down = false;
-    if s.btn_used_for_ink || s.btn_hold_fired || t.wrapping_sub(s.btn_down_at) > 450 {
-        return;
-    }
-    // A click: keep the last three; three within 1.2 s clear the page.
-    if s.nclicks == 3 {
-        s.clicks[0] = s.clicks[1];
-        s.clicks[1] = s.clicks[2];
-        s.nclicks = 2;
-    }
-    s.clicks[s.nclicks as usize] = t;
-    s.nclicks += 1;
-    if s.nclicks == 3 && s.clicks[2].wrapping_sub(s.clicks[0]) <= 1200 {
-        s.nclicks = 0;
-        if s.owner == Owner::None && !sheet_open(s) {
-            clear_page(a);
+    view_clamp(a);
+    let s = ed(a);
+    if before != (s.zoom, s.ox, s.oy) {
+        let d = s.pb_drag.as_mut().unwrap();
+        d.changed = true;
+        if ev.t_ms.wrapping_sub(d.painted_at) >= 180 {
+            d.painted_at = ev.t_ms;
+            compose_all(a, RefreshMode::Fast);
         }
     }
+}
+
+/// Feed the shared timing model before any page/map pointer path can claim the nib.
+fn pb_input(a: &mut App, ev: &InEvent) -> bool {
+    if !matches!(ev.type_, InType::PenButton | InType::PenHover | InType::PenDown
+        | InType::PenMove | InType::PenUp | InType::PenLeave) { return false; }
+    if !ed_ref(a).open { return ev.type_ == InType::PenButton; }
+    if matches!(ev.type_, InType::PenDown | InType::PenHover) {
+        fs_abort_view(a, FsAbortView::Pen);
+    }
+    let consumed = ed_ref(a).owner == Owner::PenDrag;
+    let config = a.pb_config;
+    let s = ed(a);
+    match ev.type_ {
+        InType::PenLeave => s.pb_pen = PbPen::default(),
+        InType::PenButton => s.pb_pen.prox = true,
+        _ => {
+            s.pb_point = Some((ev.x, ev.y));
+            s.pb_pen = PbPen { prox: true,
+                touching: matches!(ev.type_, InType::PenDown | InType::PenMove) };
+        }
+    }
+    let pen = s.pb_pen;
+    s.pen_near = pen.prox;
+    if !pen.prox { s.pen_left = ev.t_ms; }
+    if ev.type_ != InType::PenLeave {
+        for (button, down) in [(PenBtn::Button, ev.side_button), (PenBtn::Button2, ev.side_button2)] {
+            if button == PenBtn::Button2 && !input_caps().pen_button2 { continue; }
+            if ev.type_ == InType::PenButton
+                && ((ev.value == 2) != (button == PenBtn::Button2)) { continue; }
+            let bit = pb_bit(button);
+            let was = ed_ref(a).pb_buttons & bit != 0;
+            if was == down { continue; }
+            let eraser = down && pb_momentary(a, button);
+            let s = ed(a);
+            if down { s.pb_buttons |= bit; } else { s.pb_buttons &= !bit; }
+            if eraser { s.pb_erasers |= bit; } else { s.pb_erasers &= !bit; }
+            s.hold_eraser = s.hold_eraser_key || s.pb_erasers != 0;
+            let out = penbutton_event(&mut s.pb, &config, PbIn { t_ms: ev.t_ms, button, down }, pen);
+            pb_out(a, out, ev.t_ms);
+        }
+    }
+    for _ in 0..3 {
+        let out = penbutton_pen(&mut ed(a).pb, &config, pen, ev.t_ms);
+        if out == PbOut::None { break; }
+        pb_out(a, out, ev.t_ms);
+    }
+    if ev.type_ == InType::PenLeave {
+        let s = ed(a);
+        s.pb_buttons = 0; s.pb_erasers = 0;
+        s.hold_eraser = s.hold_eraser_key;
+    }
+    if ed_ref(a).owner == Owner::PenDrag || consumed {
+        if ev.type_ == InType::PenMove { pb_drag_move(a, ev); }
+        if matches!(ev.type_, InType::PenUp | InType::PenLeave) {
+            ed(a).owner = Owner::None;
+        }
+        return true;
+    }
+    ev.type_ == InType::PenButton || a.scr != ScreenId::Editor
 }
 
 fn undo_redo(a: &mut App, undo: bool) {
@@ -3887,8 +4037,6 @@ fn link_arm(a: &mut App, from_bar: bool, redraw: Option<u32>) {
     let strip = strip_rect(a);
     let s = ed(a);
     s.lm = LinkMaking { state: LmState::Armed, strip, from_bar, redraw, ..Default::default() };
-    s.nclicks = 0;
-    if s.btn_down { s.btn_used_for_ink = true; }
     compose(a, strip);
     app_invalidate(a, strip, RefreshMode::Ui);
 }
@@ -6160,7 +6308,8 @@ fn open_menu(a: &mut App, action: i32) {
 /// Erase while held's button let go (false)
 pub fn editor_hold_eraser(a: &mut App, held: bool) {
     if let Some(s) = a.ed.as_deref_mut() {
-        s.hold_eraser = held; // (a stroke under way keeps what it does)
+        s.hold_eraser_key = held;
+        s.hold_eraser = held || s.pb_erasers != 0; // A stroke under way keeps what it does.
     }
 }
 
@@ -6196,6 +6345,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         return false;
     }
     if action == SHORTCUT_HOLD_ERASER {
+        s.hold_eraser_key = true;
         s.hold_eraser = true;
         return true;
     }
@@ -6352,7 +6502,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     } else if action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE {
         // The panel's arrows: next page on the last page adds one, as its + does. So does a gesture's turn
         // (settings.gesture_new_page, on by default); with it off, a gesture says where it stopped.
-        let (index, npages, may_add) = (ed(a).index, ed(a).nb.npages(), src != ActionSrc::Shape && a.settings.gesture_new_page,
+        let (index, npages, may_add) = (ed(a).index, ed(a).nb.npages(), src == ActionSrc::Touch && a.settings.gesture_new_page,
         );
         if src != ActionSrc::Key && src != ActionSrc::Pad {
             if action == SHORTCUT_NEXT_PAGE && index >= npages - 1 && !may_add {
@@ -7009,6 +7159,7 @@ pub fn editor_leave(a: &mut App) {
     // (They go with the screen: Pen feel or calibration comes up whole. A turn or the redraw after waking lays
     // this screen out again as it is, and they stay.)
     if !a.relayout {
+        pb_reset(ed(a));
         card_drop(ed(a));
         bar_drop(ed(a));
         find_drop(ed(a));
@@ -7023,6 +7174,8 @@ pub fn editor_leave(a: &mut App) {
 
 /// flush pending page/info saves; false if they failed
 pub fn editor_suspend(a: &mut App) -> bool {
+    a.pen_action_down = false;
+    a.pen_toast_pending = None;
     match a.ed.as_deref() {
         Some(s) if s.open => {}
         _ => return true,
@@ -7046,8 +7199,7 @@ pub fn editor_suspend(a: &mut App) -> bool {
     s.has_pressed = false;
     s.dragging = false;
     s.pinching = false;
-    s.btn_down = false;
-    s.nclicks = 0;
+    pb_reset(s);
     s.hold_eraser = false; // (its release may never come: the Kindle sleeps, native PIN input takes the keys)
     let ok = save_page(a);
     links_flush(a); // (a failure keeps the areas for later: the page's save says whether to stay)
@@ -7618,7 +7770,7 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
-    editor_event_in(a, ev);
+    if !pb_input(a, ev) { editor_event_in(a, ev); }
     lm_check_menus(a);
     touch_context(a);
 }
@@ -7735,10 +7887,6 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
     } else if ev.type_ == InType::PenDown || ev.type_ == InType::PenMove || ev.type_ == InType::PenHover {
         s.pen_near = true;
     }
-    if ev.type_ == InType::PenButton {
-        pen_button(a, ev);
-        return;
-    }
     if ev.type_ == InType::PinchBegin || ev.type_ == InType::PinchMove || ev.type_ == InType::PinchEnd {
         if ev.type_ == InType::PinchBegin {
             live_reset();
@@ -7764,9 +7912,6 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         return;
     }
     if ph == 0 {
-        if pen && s.btn_down {
-            s.btn_used_for_ink = true; // (pen_button: no click, no hold)
-        }
         // The pen wins over a finger on the page: its stroke starts, and the finger's session ends with
         // no follow. (A finger on anything else, or two fingers, still holds the gesture.)
         if pen && s.owner == Owner::Link {
@@ -7951,6 +8096,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         return;
     }
     match s.owner {
+        Owner::PenDrag => {}
         Owner::Draw => {
             if ph == 1 {
                 draw_sample(a, ev);
@@ -8392,23 +8538,13 @@ pub fn editor_tick(a: &mut App, now: u32) {
     if s.open && s.lb.open && s.owner == Owner::None && drained {
         prefetch_step(a);
     }
-    // Holding the button ~1.2 s while hovering (no ink) clears the page once: not a hold during
-    // which a sheet was in front of the page, nor one the pen pressed anything during.
-    let s = ed(a);
-    if s.btn_down && (sheet_open(s) || s.lm.state != LmState::Off) {
-        s.btn_used_for_ink = true;
-    }
-    if s.open
-        && s.btn_down
-        && !s.btn_used_for_ink
-        && !s.btn_hold_fired
-        && s.owner == Owner::None
-        && !sheet_open(s)
-        && now.wrapping_sub(s.btn_down_at) >= 1200
-    {
-        s.btn_hold_fired = true;
-        s.nclicks = 0;
-        clear_page(a);
+    if ed_ref(a).open && a.input_drained {
+        let config = a.pb_config;
+        for _ in 0..3 {
+            let out = penbutton_tick(&mut ed(a).pb, &config, now);
+            if out == PbOut::None { break; }
+            pb_out(a, out, now);
+        }
     }
     // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
     // tries again 2 s later, not at every tick: each try says so with a toast.
@@ -8478,6 +8614,22 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 /// The headless runner's "editor.*" keys, asked without the prefix (app_probe's contract);
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
+    if let Some(probe) = key.strip_prefix("pen.") {
+        let Some(s) = a.ed.as_deref() else {
+            out.clear();
+            if probe == "clicks" { out.push('0'); }
+            return if probe == "gesture" || probe == "clicks" { 0 } else { -1 };
+        };
+        if probe == "gesture" {
+            out.clear();
+            if let Some((button, kind)) = s.pb_last {
+                gesturemap_key_name(pb_key(button, kind), out);
+                *out = out.trim_start_matches("pen.").to_string();
+            }
+            return 0;
+        }
+        return if penbutton_probe(&s.pb, probe, out) { 0 } else { -1 };
+    }
     if let Some(probe) = key.strip_prefix("fshape.") {
         let Some(s) = a.ed.as_deref_mut() else { return -1 };
         match probe {
@@ -9111,6 +9263,124 @@ mod tests {
 
     fn fshape_event(a: &mut App, type_: InType, x: f32, y: f32, t_ms: u32) {
         editor_event(a, &InEvent { type_, x, y, t_ms, k_ms: t_ms, ..Default::default() });
+    }
+
+    fn pen_event(a: &mut App, type_: InType, side: bool, x: f32, y: f32, t_ms: u32) {
+        if matches!(type_, InType::PenUp | InType::PenLeave) { app_pen_feedback_end(a); }
+        editor_event(a, &InEvent { type_, side_button: side, x, y, t_ms, ..Default::default() });
+    }
+
+    #[test]
+    fn pen_drag_blocks_early_live_ink_and_dispatches_once() {
+        let mut a = fshape_app();
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Drag), SHORTCUT_ZOOM_IN), 0);
+        app_gestures_sync(&mut a);
+        let ink = ed_ref(&a).page_canvas.px.clone();
+        let ev = InEvent { type_: InType::PenDown, side_button: true, x: 500.0, y: 700.0, ..Default::default() };
+        let mut style = LiveStyle::default();
+        editor_live_style(&a, &ev, &mut style);
+        assert_eq!(style.enabled, 0);
+        pen_event(&mut a, InType::PenHover, false, 500.0, 700.0, 1000);
+        pen_event(&mut a, InType::PenButton, true, 500.0, 700.0, 1010);
+        pen_event(&mut a, InType::PenDown, true, 500.0, 700.0, 1020);
+        assert_eq!(ed_ref(&a).owner, Owner::PenDrag);
+        assert!(editor_pen_not_ink(&a));
+        assert_eq!(ed_ref(&a).zoom, 1.25);
+        pen_event(&mut a, InType::PenMove, true, 600.0, 800.0, 1220);
+        assert_eq!(ed_ref(&a).zoom, 1.25);
+        // Letting the button go swallows the rest of this contact too.
+        pen_event(&mut a, InType::PenButton, false, 600.0, 800.0, 1230);
+        assert_eq!(ed_ref(&a).owner, Owner::PenDrag);
+        pen_event(&mut a, InType::PenMove, false, 700.0, 900.0, 1240);
+        pen_event(&mut a, InType::PenUp, false, 700.0, 900.0, 1250);
+        assert_eq!(ed_ref(&a).owner, Owner::None);
+        assert_eq!(ed_ref(&a).page_canvas.px, ink);
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+    }
+
+    #[test]
+    fn pen_momentary_eraser_starts_on_press_and_preserves_a_key_hold() {
+        let mut a = fshape_app();
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Hold), SHORTCUT_HOLD_ERASER), SHORTCUT_CLEAR_PAGE);
+        app_gestures_sync(&mut a);
+        pen_event(&mut a, InType::PenHover, false, 400.0, 600.0, 1000);
+        pen_event(&mut a, InType::PenButton, true, 400.0, 600.0, 1010);
+        assert!(ed_ref(&a).hold_eraser);
+        editor_hold_eraser(&mut a, true);
+        pen_event(&mut a, InType::PenButton, false, 400.0, 600.0, 1100);
+        assert!(ed_ref(&a).hold_eraser);
+        editor_hold_eraser(&mut a, false);
+        assert!(!ed_ref(&a).hold_eraser);
+        pen_event(&mut a, InType::PenButton, true, 400.0, 600.0, 1200);
+        assert!(ed_ref(&a).hold_eraser);
+        pen_event(&mut a, InType::PenLeave, false, 400.0, 600.0, 1210);
+        assert!(!ed_ref(&a).hold_eraser);
+    }
+
+    #[test]
+    fn pen_pan_and_zoom_keep_the_anchor_and_finish_with_ui() {
+        for action in [GESTURE_PAN, GESTURE_ZOOM] {
+            let mut a = fshape_app();
+            assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Drag), action), 0);
+            app_gestures_sync(&mut a);
+            let s = ed(&mut a);
+            s.zoom = 2.0; s.ox = 100.0; s.oy = 100.0;
+            pen_event(&mut a, InType::PenHover, false, 500.0, 700.0, 1000);
+            pen_event(&mut a, InType::PenButton, true, 500.0, 700.0, 1010);
+            pen_event(&mut a, InType::PenDown, true, 500.0, 700.0, 1020);
+            a.dirty = RECT_EMPTY;
+            pen_event(&mut a, InType::PenMove, true, 550.0, 650.0, 1100);
+            assert!(rect_is_empty(a.dirty));
+            pen_event(&mut a, InType::PenMove, true, 600.0, 600.0, 1220);
+            assert_eq!(a.dirty_mode, RefreshMode::Fast);
+            let s = ed_ref(&a);
+            if action == GESTURE_PAN {
+                assert_eq!((s.zoom, s.ox, s.oy), (2.0, 50.0, 150.0));
+            } else {
+                assert!(s.zoom > 2.0);
+                assert!((s.ox + 500.0 / s.zoom - 350.0).abs() < 0.001);
+                assert!((s.oy + 700.0 / s.zoom - 450.0).abs() < 0.001);
+            }
+            pen_event(&mut a, InType::PenUp, true, 600.0, 600.0, 1230);
+            assert_eq!(a.dirty_mode, RefreshMode::Ui);
+            assert_eq!(ed_ref(&a).nb.page_ids, [1, 2]);
+            assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        }
+    }
+
+    #[test]
+    fn pen_page_turn_never_adds_a_page_and_preserves_map_keyboard() {
+        let mut a = fshape_app();
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Tap), SHORTCUT_NEXT_PAGE), 0);
+        ed(&mut a).index = 1; ed(&mut a).page = Some(2);
+        a.settings.gesture_new_page = true;
+        pb_out(&mut a, PbOut::Fire(PenBtn::Button, PenKind::Tap), 1000);
+        assert_eq!(ed_ref(&a).nb.page_ids, [1, 2]);
+        assert_eq!(a.toast.as_str(), "This is the last page.");
+        let s = ed(&mut a);
+        s.map.open = true;
+        keyboard_open(&mut s.map_kb, "Name", b"draft");
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Tap), SHORTCUT_UNDO), SHORTCUT_NEXT_PAGE);
+        pb_out(&mut a, PbOut::Fire(PenBtn::Button, PenKind::Tap), 1100);
+        assert!(ed_ref(&a).map.open && ed_ref(&a).map_kb.open);
+        assert_eq!(ed_ref(&a).map_kb.text.as_str(), "draft");
+    }
+
+    #[test]
+    fn pen_bound_drag_defers_feedback_until_the_nib_lifts() {
+        let mut a = fshape_app();
+        a.pen_action_down = true;
+        a.dirty = Rect::new(10, 10, 20, 20);
+        a.dirty_mode = RefreshMode::Ui;
+        let previous = a.toast;
+        app_toast(&mut a, "Undo", 1200);
+        assert_eq!(a.toast, previous);
+        assert!(a.pen_toast_pending.is_some());
+        app_flush(&mut a);
+        assert_eq!(a.dirty, Rect::new(10, 10, 20, 20));
+        app_pen_feedback_end(&mut a);
+        assert!(!a.pen_action_down && a.pen_toast_pending.is_none());
+        assert_eq!(a.toast.as_str(), "Undo");
     }
 
     #[test]

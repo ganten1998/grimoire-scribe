@@ -163,6 +163,36 @@ adds a page, as the next-page key does (`gesture_new_page=0` in settings.ini, th
 last page adds a page" row, or the `gesture-new-page` action turns that off: the swipe then only says it is the last page). A line `touch.2.up=nothing` turns a built-in off; the file is
 read at start and when shortcuts are reloaded.
 
+### Pen-button gestures
+
+Settings > Gestures records the pen button as well as fingers. Tap an action, click the
+button while hovering, or hold it / drag with it, then choose Use. The card shows the
+recognized name at 64 px, with Use, Try again and Cancel. A normal nib tap operates those
+buttons; recording draws no page ink. An occupied binding names its current action before
+Use moves it, then a toast names the action that lost it. Shape recording keeps its separate
+first-Use conflict check and second-Use confirmation when that check discovers a clash.
+
+The five slots are click (`tap`), double-click, triple-click, hold and drag. A click lasts at
+most 450 ms without nib contact. When double or triple is bound, a single click waits 350 ms
+after release. Without either, it acts at release. For double/triple, each next press must be
+within 350 ms of the previous release; recognition resolves 350 ms after the final release.
+The built-in triple-click and a 1.2 s hovering hold both clear the page; clearing the Clear
+page row removes both. Leaving pen proximity cancels an unfinished click sequence.
+
+Erase while held is pen-only in this sheet. Record a hold or drag for it: it erases from the
+button's press to its release, with no 1.2 s wait; short clicks can still have their own action.
+Pan with the pen and Zoom with the pen are Pages rows that accept only a button drag.
+A bound drag performs its action once and leaves no ink, including in Live view. Pan moves a
+scrollable page; zoom follows vertical motion around the starting point (up zooms in,
+1.25 times per 10 mm, within the zoom limits). An unbound drag retains Settings' side-button
+ink choice: nothing, eraser, highlighter or white. The Settings row changes only that choice.
+Pen Next page never adds a page at the end of a notebook.
+
+Rows show the first available source in touch, shape, pen order, then `+N` additional sources.
+Each action/source counts once even if several slots use it; paired rows summarize both actions.
+A two-slot panel skips three-finger bindings. A second button is shown only on hardware that
+reports it; unavailable Button2 and Eraser bindings remain in the file for compatible versions.
+
 ### gestures.ini by hand
 
 `gestures.ini` sits beside `shortcuts.ini` in `/mnt/us/grimoire/`. Settings > Gestures now
@@ -178,6 +208,13 @@ touch.2.down=nothing
 touch.2.tap=undo
 # one-finger swipes are also assignable
 touch.1.right=go-back
+# the pen button's double-click opens Links
+pen.Button.double=links
+# disable both clear-page built-ins
+pen.Button.triple=nothing
+pen.Button.hold=nothing
+# holding the button while moving the nib pans instead of drawing
+pen.Button.drag=pan
 ```
 
 `touch.1.up/down/left/right` are valid; `touch.1.tap` stays reserved for taps and links.
@@ -235,96 +272,104 @@ idle controller sends nothing, so it looks the same as one switched off. When an
 controller exclusively (a button mapper), Grimoire cannot get its presses: the toast and the
 Controller sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
 
-## Phase 3 action registry
+## Action registry (through phase 6)
 
 `rust/src/actions.rs` is the shared registry for parsing, dispatch and both learning sheets.
 Names below are the persistent INI values; numeric ids are internal. The new actions use ids
-56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`). Groups are Editing, Tools,
+56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`); later actions retain 78..81,
+and pen pan/zoom use 82/83. Groups are Editing, Tools,
 Pages, Index, Menus, Screen and System. `tool:pencil` remains a compatibility entry even though
 the current Tools learning list starts with the mechanical pencil.
 
 Toggle changes a boolean; Menu opens/closes a surface; Step moves one increment; Cycle advances
-through choices; OneShot runs once; Momentary lasts until release. A gesture has no release,
-so `hold-eraser` is key/pad only. Calibration is deliberately outside the assignable registry.
-`shortcuts` (Enable shortcuts) and `bluetooth-controller` are touch/shape only: a key or pad
-must not turn off its own input. Pen-button learning is reserved for a later phase.
+through choices; OneShot runs once; Momentary lasts until release. Touch patterns and shapes
+have no release, so `hold-eraser` accepts key, pad and only the pen's hold/drag slots. Calibration
+is deliberately outside the assignable registry. `shortcuts` (Enable shortcuts) and
+`bluetooth-controller` accept touch, shape and pen; keys/pads cannot turn off their own input.
+Every registered action accepts PEN. Pan and zoom accept only a pen drag.
 
 | Persistent action name | Kind | Group | Sources |
 | --- | --- | --- | --- |
-| `tool:pencil` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:mech` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:ballpoint` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:eraser` | Cycle | Editing | Key, pad, touch, shape |
-| `tool:highlighter` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:fountain` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:fineliner` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:marker` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:charcoal` | Cycle | Tools | Key, pad, touch, shape |
-| `tool:calligraphy` | Cycle | Tools | Key, pad, touch, shape |
-| `undo` | OneShot | Editing | Key, pad, touch, shape |
-| `redo` | OneShot | Editing | Key, pad, touch, shape |
-| `previous-page` | Step | Pages | Key, pad, touch, shape |
-| `next-page` | Step | Pages | Key, pad, touch, shape |
-| `previous-tool` | Step | Tools | Key, pad, touch, shape |
-| `next-tool` | Step | Tools | Key, pad, touch, shape |
-| `white` | Toggle | Editing | Key, pad, touch, shape |
-| `index` | Menu | Index | Key, pad, touch, shape |
-| `hold-eraser` | Momentary | Editing | Key, pad |
-| `eraser-mode` | Toggle | Editing | Key, pad, touch, shape |
-| `clear-page` | OneShot | Editing | Key, pad, touch, shape |
-| `first-page` | Step | Pages | Key, pad, touch, shape |
-| `last-page` | Step | Pages | Key, pad, touch, shape |
-| `new-page` | OneShot | Pages | Key, pad, touch, shape |
-| `fit-page` | OneShot | Pages | Key, pad, touch, shape |
-| `pages` | Menu | Pages | Key, pad, touch, shape |
-| `tool-picker` | Menu | Menus | Key, pad, touch, shape |
-| `paper` | Menu | Menus | Key, pad, touch, shape |
-| `display` | Menu | Menus | Key, pad, touch, shape |
-| `pen-feel` | Menu | Menus | Key, pad, touch, shape |
-| `fold-panel` | Toggle | Menus | Key, pad, touch, shape |
-| `library` | Menu | Menus | Key, pad, touch, shape |
-| `close-menu` | OneShot | Menus | Key, pad, touch, shape |
-| `picker-previous` | Step | Tools | Key, pad, touch, shape |
-| `picker-next` | Step | Tools | Key, pad, touch, shape |
-| `add-link` | Menu | Index | Key, pad, touch, shape |
-| `name-page` | Menu | Index | Key, pad, touch, shape |
-| `status-toggle` | Toggle | Menus | Key, pad, touch, shape |
-| `links` | Menu | Index | Key, pad, touch, shape |
-| `go-to-page` | Menu | Index | Key, pad, touch, shape |
-| `go-back` | OneShot | Index | Key, pad, touch, shape |
-| `link-areas` | Toggle | Index | Key, pad, touch, shape |
-| `landscape-fit` | Toggle | Pages | Key, pad, touch, shape |
-| `status-corner` | Cycle | Menus | Key, pad, touch, shape |
-| `gesture-new-page` | Toggle | Pages | Key, pad, touch, shape |
-| `status-mode` | Cycle | Menus | Key, pad, touch, shape |
-| `zoom-out` | Step | Pages | Key, pad, touch, shape |
-| `zoom-in` | Step | Pages | Key, pad, touch, shape |
-| `scroll-up` | Step | Pages | Key, pad, touch, shape |
-| `scroll-down` | Step | Pages | Key, pad, touch, shape |
-| `invert` | Toggle | Screen | Key, pad, touch, shape |
-| `light-down` | Step | Screen | Key, pad, touch, shape |
-| `light-up` | Step | Screen | Key, pad, touch, shape |
-| `warmth-down` | Step | Screen | Key, pad, touch, shape |
-| `warmth-up` | Step | Screen | Key, pad, touch, shape |
-| `rotation-lock` | Toggle | Screen | Key, pad, touch, shape |
-| `pinch-zoom` | Toggle | Screen | Key, pad, touch, shape |
-| `theme` | Cycle | Screen | Key, pad, touch, shape |
-| `side-button` | Cycle | Screen | Key, pad, touch, shape |
-| `mirror-pdf` | Toggle | Screen | Key, pad, touch, shape |
-| `sleep-screen` | Cycle | Screen | Key, pad, touch, shape |
-| `sleep` | OneShot | Screen | Key, pad, touch, shape |
-| `gestures` | Toggle | System | Key, pad, touch, shape |
-| `shortcuts` | Toggle | System | Touch, shape |
-| `bluetooth-controller` | Toggle | System | Touch, shape |
-| `language` | Cycle | System | Key, pad, touch, shape |
-| `sleep-after` | Cycle | System | Key, pad, touch, shape |
-| `update-channel` | Cycle | System | Key, pad, touch, shape |
+| `tool:pencil` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:mech` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:ballpoint` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:eraser` | Cycle | Editing | Key, pad, touch, shape, pen |
+| `tool:highlighter` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:fountain` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:fineliner` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:marker` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:charcoal` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `tool:calligraphy` | Cycle | Tools | Key, pad, touch, shape, pen |
+| `undo` | OneShot | Editing | Key, pad, touch, shape, pen |
+| `redo` | OneShot | Editing | Key, pad, touch, shape, pen |
+| `previous-page` | Step | Pages | Key, pad, touch, shape, pen |
+| `next-page` | Step | Pages | Key, pad, touch, shape, pen |
+| `previous-tool` | Step | Tools | Key, pad, touch, shape, pen |
+| `next-tool` | Step | Tools | Key, pad, touch, shape, pen |
+| `white` | Toggle | Editing | Key, pad, touch, shape, pen |
+| `index` | Menu | Index | Key, pad, touch, shape, pen |
+| `hold-eraser` | Momentary | Editing | Key, pad, pen (hold/drag) |
+| `eraser-mode` | Toggle | Editing | Key, pad, touch, shape, pen |
+| `clear-page` | OneShot | Editing | Key, pad, touch, shape, pen |
+| `first-page` | Step | Pages | Key, pad, touch, shape, pen |
+| `last-page` | Step | Pages | Key, pad, touch, shape, pen |
+| `new-page` | OneShot | Pages | Key, pad, touch, shape, pen |
+| `fit-page` | OneShot | Pages | Key, pad, touch, shape, pen |
+| `pages` | Menu | Pages | Key, pad, touch, shape, pen |
+| `tool-picker` | Menu | Menus | Key, pad, touch, shape, pen |
+| `paper` | Menu | Menus | Key, pad, touch, shape, pen |
+| `display` | Menu | Menus | Key, pad, touch, shape, pen |
+| `pen-feel` | Menu | Menus | Key, pad, touch, shape, pen |
+| `fold-panel` | Toggle | Menus | Key, pad, touch, shape, pen |
+| `library` | Menu | Menus | Key, pad, touch, shape, pen |
+| `close-menu` | OneShot | Menus | Key, pad, touch, shape, pen |
+| `picker-previous` | Step | Tools | Key, pad, touch, shape, pen |
+| `picker-next` | Step | Tools | Key, pad, touch, shape, pen |
+| `add-link` | Menu | Index | Key, pad, touch, shape, pen |
+| `name-page` | Menu | Index | Key, pad, touch, shape, pen |
+| `status-toggle` | Toggle | Menus | Key, pad, touch, shape, pen |
+| `links` | Menu | Index | Key, pad, touch, shape, pen |
+| `go-to-page` | Menu | Index | Key, pad, touch, shape, pen |
+| `go-back` | OneShot | Index | Key, pad, touch, shape, pen |
+| `link-areas` | Toggle | Index | Key, pad, touch, shape, pen |
+| `landscape-fit` | Toggle | Pages | Key, pad, touch, shape, pen |
+| `status-corner` | Cycle | Menus | Key, pad, touch, shape, pen |
+| `gesture-new-page` | Toggle | Pages | Key, pad, touch, shape, pen |
+| `status-mode` | Cycle | Menus | Key, pad, touch, shape, pen |
+| `zoom-out` | Step | Pages | Key, pad, touch, shape, pen |
+| `zoom-in` | Step | Pages | Key, pad, touch, shape, pen |
+| `scroll-up` | Step | Pages | Key, pad, touch, shape, pen |
+| `scroll-down` | Step | Pages | Key, pad, touch, shape, pen |
+| `invert` | Toggle | Screen | Key, pad, touch, shape, pen |
+| `light-down` | Step | Screen | Key, pad, touch, shape, pen |
+| `light-up` | Step | Screen | Key, pad, touch, shape, pen |
+| `warmth-down` | Step | Screen | Key, pad, touch, shape, pen |
+| `warmth-up` | Step | Screen | Key, pad, touch, shape, pen |
+| `rotation-lock` | Toggle | Screen | Key, pad, touch, shape, pen |
+| `pinch-zoom` | Toggle | Screen | Key, pad, touch, shape, pen |
+| `theme` | Cycle | Screen | Key, pad, touch, shape, pen |
+| `side-button` | Cycle | Screen | Key, pad, touch, shape, pen |
+| `mirror-pdf` | Toggle | Screen | Key, pad, touch, shape, pen |
+| `sleep-screen` | Cycle | Screen | Key, pad, touch, shape, pen |
+| `sleep` | OneShot | Screen | Key, pad, touch, shape, pen |
+| `gestures` | Toggle | System | Key, pad, touch, shape, pen |
+| `shortcuts` | Toggle | System | Touch, shape, pen |
+| `bluetooth-controller` | Toggle | System | Touch, shape, pen |
+| `language` | Cycle | System | Key, pad, touch, shape, pen |
+| `sleep-after` | Cycle | System | Key, pad, touch, shape, pen |
+| `update-channel` | Cycle | System | Key, pad, touch, shape, pen |
+| `shapes` | Toggle | Editing | Key, pad, touch, shape, pen |
+| `shape-hold` | Cycle | Editing | Key, pad, touch, shape, pen |
+| `shape-last` | OneShot | Editing | Key, pad, touch, shape, pen |
+| `index-map` | Menu | Index | Key, pad, touch, shape, pen |
+| `pan` | Momentary | Pages | Pen (drag only) |
+| `zoom` | Momentary | Pages | Pen (drag only) |
 
 Gestures do not need Enable shortcuts. `settings.gestures` gates touch patterns and finger
 shapes; pinch/pan retain their own setting. Recording preserves unrelated key and pad bindings.
 Each action has at most one touch pattern and one finger shape. Assigning an occupied pattern
 or an equivalent shape moves that source to the new action; the record card names the losing
-action before Use. Hold a Gestures row to clear its touch and shape bindings together. Clear,
+action before Use. Hold a Gestures row to clear its touch, shape and pen bindings together (both members of a pair). Clear,
 learn and reassignment save a copy atomically before replacing the active map. Failed saves
 leave the live map unchanged; an unreadable file can be replaced only with Reset.
 

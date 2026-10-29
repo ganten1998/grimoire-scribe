@@ -43,9 +43,9 @@ fn registry_names_groups_and_labels() {
         "status-corner",
         "gesture-new-page",
     ];
-    let expected_group_rows = [7usize, 11, 9, 7, 10, 10, 6];
+    let expected_group_rows = [10usize, 11, 11, 8, 10, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
-    check!(SHORTCUT_LAST == 77 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
+    check!(SHORTCUT_LAST == 83 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
     let mut all = Vec::new();
@@ -56,11 +56,11 @@ fn registry_names_groups_and_labels() {
         check!(action_by_name(name) == id);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 22);
+    check!(K_ACTIONS.len() == old_names.len() + 28);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 68);
+    check!(all.len() == 74);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -76,7 +76,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 68 && names.len() == 68);
+    check!(ids.len() == 74 && names.len() == 74);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want
@@ -109,22 +109,32 @@ fn registry_names_groups_and_labels() {
 }
 
 fn registry_sources_and_pair_rows() {
-    let key_pad = SRC_KEY | SRC_PAD;
-    let touch_shape = SRC_TOUCH | SRC_SHAPE;
+    let key_pad = SRC_KEY | SRC_PAD | SRC_PEN;
+    let touch_shape = SRC_TOUCH | SRC_SHAPE | SRC_PEN;
     check!(action_sources(SHORTCUT_HOLD_ERASER) == key_pad);
     check!(action_sources(SHORTCUT_SHORTCUTS) == touch_shape);
     check!(action_sources(SHORTCUT_BLUETOOTH_CONTROLLER) == touch_shape);
     for &(_, id) in K_ACTIONS.iter() {
         match id {
             SHORTCUT_HOLD_ERASER => {}
+            SHORTCUT_PEN_PAN | SHORTCUT_PEN_ZOOM => check!(action_sources(id) == SRC_PEN),
             SHORTCUT_SHORTCUTS | SHORTCUT_BLUETOOTH_CONTROLLER => {}
-            _ => check!(action_sources(id) == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE)),
+            _ => check!(action_sources(id) == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE | SRC_PEN)),
         }
     }
     check!(
         action_sources(SHORTCUT_TOOL_BASE + TOOL_ERASER.0)
-            == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE)
+            == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE | SRC_PEN)
     );
+    check!(SHORTCUT_SHAPES == 78 && SHORTCUT_SHAPE_HOLD == 79 && SHORTCUT_SHAPE_LAST == 80 && SHORTCUT_INDEX_MAP == 81);
+    check!(SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM == 83);
+    for id in (SHORTCUT_TOOL_BASE..SHORTCUT_TOOL_BASE + TOOL_COUNT as i32).chain(K_ACTIONS.iter().map(|(_, id)| *id)) {
+        check!(action_sources(id) & SRC_PEN != 0);
+    }
+    for id in [SHORTCUT_PEN_PAN, SHORTCUT_PEN_ZOOM] {
+        check!(action_info(id).is_some_and(|a| a.group as usize == GROUP_PAGES));
+        check!(ACTION_GROUPS[GROUP_PAGES].rows.iter().any(|r| r.act == [id, 0]));
+    }
     check!(action_info(SHORTCUT_GESTURE_NEW_PAGE).is_some_and(|a| a.group as usize == GROUP_PAGES));
     check!(action_info(SHORTCUT_STATUS_MODE).is_some_and(|a| a.group as usize == GROUP_MENUS));
     check!(action_info(SHORTCUT_ADD_LINK).is_some_and(|a| a.group as usize == GROUP_INDEX));

@@ -42,6 +42,10 @@ pub struct App {
     pub live_holds: Vec<crate::live_keys::LiveKey>,
     /// what each touch gesture does: the built-ins and gestures.ini (app_gestures_load)
     pub gestures: GestureMap,
+    pub pb_config: PbConfig,
+    /// A bound pen drag defers non-Fast presents and toasts until the nib lifts.
+    pub pen_action_down: bool,
+    pub pen_toast_pending: Option<(FixedStr<256>, i32)>,
     pub last_shortcut_code: i32,
     pub last_shortcut_mods: i32,
     pub last_shortcut_gamepad: bool,
@@ -219,8 +223,8 @@ struct LiveCap {
     asleep: bool,
     input_yielded: bool,
     editor: bool,
-    /// [eraser][side_button]
-    styles: [[LiveStyle; 2]; 2],
+    /// [eraser][Button + 2 * Button2]
+    styles: [[LiveStyle; 4]; 2],
 }
 
 thread_local! {
@@ -263,7 +267,7 @@ fn live_cap_sync(a: &App) {
         cap.editor = true;
         for (e, row) in cap.styles.iter_mut().enumerate() {
             for (side, style) in row.iter_mut().enumerate() {
-                let ev = InEvent { eraser: e == 1, side_button: side == 1, ..Default::default() };
+                let ev = InEvent { eraser: e == 1, side_button: side & 1 != 0, side_button2: side & 2 != 0, ..Default::default() };
                 editor_live_style(a, &ev, style);
             }
         }
@@ -734,6 +738,9 @@ fn hid_changed(a: &mut App, ev: &InEvent) {
 }
 
 pub fn app_event(a: &mut App, ev: &InEvent) {
+    if a.pen_action_down && matches!(ev.type_, InType::PenUp | InType::PenLeave) {
+        app_pen_feedback_end(a);
+    }
     app_event_screens(a, ev);
     live_block(false); // (the work before the screens' ends at any return)
     live_cap_sync(a);
@@ -976,11 +983,26 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
 /// need no Enable shortcuts: settings.gestures turns them off.
 pub fn app_gestures_load(a: &mut App) {
     let path = cformat!("%s/gestures.ini", &store_root());
+    gesturemap_pen_button2(&mut a.gestures, input_caps().pen_button2);
     let n = gesturemap_load(&mut a.gestures, &path);
+    app_gestures_sync(a);
     if n > 0 {
         qlog!("gestures: %d line(s) of gestures.ini not used", n);
     } else if n < 0 {
         qlog!("gestures: gestures.ini could not be read; the built-in gestures apply");
+    }
+}
+
+/// Refresh the pen timing policy after a map copy is saved and published.
+pub fn app_gestures_sync(a: &mut App) {
+    a.pb_config = gesturemap_pen_config(&a.gestures);
+}
+
+/// A bound drag ended. Its feedback is safe to show once the nib is up.
+pub fn app_pen_feedback_end(a: &mut App) {
+    a.pen_action_down = false;
+    if let Some((msg, ms)) = a.pen_toast_pending.take() {
+        app_toast(a, msg.as_str(), ms);
     }
 }
 
@@ -1035,6 +1057,12 @@ fn toast_follow(a: &mut App) {
 }
 
 pub fn app_toast(a: &mut App, msg: &str, ms: i32) {
+    if a.pen_action_down {
+        let mut text = FixedStr::default();
+        text.set_cut(msg);
+        a.pen_toast_pending = Some((text, ms));
+        return;
+    }
     toast_hide(a);
     a.toast.set_cut(msg); // (too long: cut between two characters)
     a.toast_until = now_ms().wrapping_add(ms as u32);
@@ -1066,7 +1094,7 @@ fn live_capture(ev: &mut InEvent) {
     }
     let mut style = LiveStyle::default();
     if cap.editor && !LIVE_CAPTURE_BLOCKED.with(|b| b.get()) && LIVE_UI_PENDING.with(|p| p.get()) == 0 {
-        style = cap.styles[ev.eraser as usize][ev.side_button as usize];
+        style = cap.styles[ev.eraser as usize][(ev.side_button as usize) | ((ev.side_button2 as usize) << 1)];
     }
     let ui = ev.type_ == InType::PenDown && (style.enabled == 0 || rect_contains(style.exclude, ev.x as i32, ev.y as i32));
     if ui {
@@ -1685,6 +1713,9 @@ pub fn app_flush(a: &mut App) {
 }
 
 fn app_flush_in(a: &mut App) {
+    if a.pen_action_down && (a.dirty_mode != RefreshMode::Fast || !rect_is_empty(with(|s| s.self_dirty))) {
+        return;
+    }
     if a.asleep {
         return; // the sleep screen stays up until wake
     }
@@ -1911,7 +1942,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("status.") {
         return status_probe(a, k, out, cap);
     }
-    if key.starts_with("fshape.") { return editor_probe(a, key, out, cap); }
+    if key.starts_with("fshape.") || key.starts_with("pen.") { return editor_probe(a, key, out, cap); }
     if let Some(k) = key.strip_prefix("editor.") {
         return editor_probe(a, k, out, cap);
     }
@@ -2077,6 +2108,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             || gesturemap_shape_newer(&a.gestures, act)
         {
             out.push_str("shape");
+        } else if let Some(k) = gesturemap_key_for(&a.gestures, act, ActionSrc::Pen) {
+            gesturemap_key_name(k, out);
         }
     } else if key == "rotation" {
         csnprintf!(out, cap, "%d", a.rotation);

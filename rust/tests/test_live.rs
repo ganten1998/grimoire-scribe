@@ -960,7 +960,7 @@ fn gate_sample(f: &LiveRawFrame, x: u32, y: u32) -> [u8; LIVE_SAMPLE_BYTES] {
     s[8..10].copy_from_slice(&(x as u16).to_le_bytes());
     s[10..12].copy_from_slice(&(y as u16).to_le_bytes());
     s[16] = f.state as u8;
-    s[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
+    s[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.side2 { LIVE_SIDE2 } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
     s
 }
 
@@ -974,7 +974,7 @@ fn gate(g: &mut LiveRawGate, cap: &LiveCapture, blocked: bool, f: &LiveRawFrame,
 fn raw_gate_follows_the_capture_state() {
     let style = LiveStyle { enabled: 1, tool: 3, exclude: Rect { x: 250, y: 0, w: 50, h: 400 }, ..Default::default() };
     let eraser = LiveStyle { enabled: 1, tool: 9, ..style };
-    let mut cap = LiveCapture { ok: true, editor: true, handled: 0, styles: [[style, style], [eraser, eraser]] };
+    let mut cap = LiveCapture { ok: true, editor: true, handled: 0, styles: [[style; 4], [eraser; 4]] };
     let mut g = LiveRawGate::default();
     let down = LiveRawFrame { us: 100, state: LIVE_PEN_TOUCH, down: true, ..Default::default() };
     let mv = LiveRawFrame { us: 104, state: LIVE_PEN_TOUCH, ..Default::default() };
@@ -1084,7 +1084,7 @@ fn a_pen_viewer_reads_the_raw_node_itself() {
     }
     check!(live_start(300, 400) == 0);
     let style = LiveStyle { enabled: 1, tool: 2, clip: Rect { x: 0, y: 0, w: 300, h: 400 }, exclude: Rect { x: 280, y: 0, w: 20, h: 400 }, ..Default::default() };
-    live_set_capture(&LiveCapture { ok: true, editor: true, handled: 0, styles: [[style; 2]; 2] });
+    live_set_capture(&LiveCapture { ok: true, editor: true, handled: 0, styles: [[style; 4]; 2] });
     live_set_raw_map(Some(&raw_map(&path)));
     let sv = socket_pair();
     check!(live_take_pen_viewer(sv[0]));
@@ -1221,4 +1221,31 @@ fn test_live() {
     run!(a_pen_viewer_reads_the_raw_node_itself);
     run!(a_layer_comes_with_the_tiles_and_goes);
     done();
+}
+
+#[test]
+fn second_button_capture_styles_prevent_provisional_drag_ink() {
+    let style = LiveStyle { enabled: 1, tool: 3, ..Default::default() };
+    let mut cap = LiveCapture { ok: true, editor: true, styles: [[style; 4]; 2], ..Default::default() };
+    // Button2 is a non-ink drag, alone and together with Button.
+    cap.styles[0][2] = LiveStyle::default();
+    cap.styles[0][3] = LiveStyle::default();
+    for side in [false, true] {
+        let mut g = LiveRawGate::default();
+        let frame = LiveRawFrame { us: 100, state: LIVE_PEN_TOUCH, down: true,
+            side, side2: true, ..Default::default() };
+        let output = gate(&mut g, &cap, false, &frame, 10, 10);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].1 & LIVE_DRAW, 0);
+        assert_eq!(output[0].1 & LIVE_SIDE2, LIVE_SIDE2);
+        assert_eq!(g.ui, 100);
+    }
+    let mut g = LiveRawGate::default();
+    let ordinary = LiveRawFrame { us: 200, state: LIVE_PEN_TOUCH, down: true, side: true, ..Default::default() };
+    assert_ne!(gate(&mut g, &cap, false, &ordinary, 10, 10)[0].1 & LIVE_DRAW, 0);
+    let mut raw = LiveRawPen::default();
+    let mut decoded = LiveRawFrame::default();
+    let event = LiveInputEvent { type_: 1, code: 0x14c, value: 1, ..Default::default() };
+    assert!(!live_raw_event(&mut raw, 0, &event, &mut decoded));
+    assert!(raw.side2 && !raw.side);
 }

@@ -37,7 +37,7 @@ root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named section
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
-root/gestures.ini                       touch bindings and recorded finger shapes, over the built-ins (2.0; settings.ini)
+root/gestures.ini                       touch, pen-button bindings and recorded finger shapes, over the built-ins (2.0; settings.ini)
 root/live-keys.ini                      the keys a Live view browser sends, the owner edits (2.0; settings.ini)
 root/touch-trace                        an empty file the owner makes: asks for touch-trace.txt (2.0)
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
@@ -916,12 +916,12 @@ starts, so an edit counts from the next start. It is independent of `shortcuts.i
 never changes the other, and Live view keys work whether or not keyboard shortcuts are on. Versions
 before 2.0.0-beta.6 never read it.
 
-`gestures.ini` (phase 3), beside the shortcut files, overlays touch bindings and recorded finger
-shapes on the built-ins. With no file, two fingers down open Pages, up opens the Links bar, left
+`gestures.ini`, beside the shortcut files, overlays touch and pen-button bindings and recorded
+finger shapes on the built-ins. With no file, two fingers down open Pages, up opens the Links bar, left
 turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
 have no built-in action. Three-finger patterns are available only when the panel reports at least
-three touch slots; the owner's Kindle reports two. The pen button keeps its existing triple-click and
-hold behavior in this phase.
+three touch slots; the owner's Kindle reports two. The pen button's built-ins are
+`pen.Button.triple=clear-page` and `pen.Button.hold=clear-page`; both may be cleared or rebound.
 
 The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
 duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
@@ -933,10 +933,12 @@ these three comment lines, byte for byte:
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 
-The keys phase 3 can set are:
+The live keys are:
 
 - `touch.1.<up|down|left|right>` for a one-finger swipe; `touch.1.tap` is refused.
 - `touch.<2|3>.<up|down|left|right|tap>` for two- and (on capable panels) three-finger patterns.
+- `pen.<Button|Button2>.<tap|double|triple|hold|drag>` for pen-button gestures. `Button2` is live
+  only when the pen reports BTN_STYLUS2.
 - `shape.<action>=1,N,S1,S2[,S3]` for a recorded shape. `N` is 2 or 3 samples. Each sample
   stores 32 normalized points in drawing order as x then y, two hexadecimal digits per coordinate
   (128 hexadecimal digits per sample). The encoder uses lowercase hex; the decoder accepts either
@@ -948,11 +950,27 @@ Touch and shape bindings accept registered actions that allow the matching sourc
 a cleared built-in touch slot. `hold-eraser` is refused for touch and shapes because it needs a
 release. Each action has at most one touch binding and one shape binding; shape lines are written in
 action-id order. Touch lines are written in one-finger up/down/left/right order, followed by two-
-finger up/down/left/right/tap, then three-finger in the same order. Pen lines are retained in the
-file for later phase work; this phase adds no pen-button gesture UI or dispatch.
+finger up/down/left/right/tap, then three-finger in the same order.
+
+Pen slots accept any registered action with the PEN source, or `nothing`. Every action allows
+PEN, including `shortcuts` and `bluetooth-controller`. The momentary `hold-eraser` value is
+legal only in `hold` and `drag` slots; it starts erasing at button press and ends at release,
+without waiting for hold recognition. `pan` and `zoom` are registered PEN-only actions (internal
+IDs 82/83), legal only in a pen `drag` slot. A bound drag owns the contact and leaves no ink;
+an unbound or `nothing` drag keeps Settings' side-button ink choice. Built-in triple and hold
+may both own `clear-page`; this deliberate duplicate is legal. Unsupported `pen.Button2.*`
+lines and all `pen.Eraser.*` lines are carried verbatim, never shown or dispatched. The eraser
+end continues to erase by contact, independently of gestures.
+
+A click is a press of at most 450 ms with no nib contact. When double or triple is bound,
+a single click waits 350 ms after release; otherwise it fires immediately. Double and triple
+require each next press within 350 ms of the previous release, and resolve 350 ms after the
+last release. A hovering hold fires once at 1200 ms. Nib contact while held begins a drag;
+lift or release ends it. Leaving proximity cancels pending clicks and ends holds/drags.
 
 After the comment header, the writer emits changed touch slots (`=nothing` for a cleared built-in),
-then retained pen lines, shape lines, and other carried lines in their read order. Line endings are
+then changed live pen slots (Button before Button2, tap/double/triple/hold/drag), shape lines,
+and carried lines in their read order. Line endings are
 LF. Unknown or newer-format lines are carried byte-for-byte, up to 1 KiB per line and 16 KiB total;
 the file itself is bounded to 64 KiB. A `shape.<action>` value with a nonzero unsupported format
 version is carried verbatim and shown as "finger shape (newer version)"; recording a replacement
@@ -964,7 +982,8 @@ Settings > Gestures reloads the map. A failed read leaves built-ins visible but 
 unwritable. Learning or clearing edits a copy and writes it atomically with `write_file_atomic`;
 the in-memory map changes only after a successful write. Reset is the recovery path: it removes the
 file even after an unreadable load, then restores the built-ins. Gestures do not require Enable
-shortcuts, and `.qpg` pages are unchanged by bindings or finger-shape trails.
+shortcuts. Saving, clearing, loading and resetting recompute pen multi-click waits from the live
+map. Hardware capability survives reset. `.qpg` pages are unchanged by bindings or finger-shape trails.
 
 The recognizer also writes a coordinate-free measurement after each grabbed two-finger session:
 

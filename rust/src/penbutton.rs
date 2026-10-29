@@ -30,10 +30,12 @@ fn button_at(i: usize) -> PenBtn { [PenBtn::Button, PenBtn::Button2, PenBtn::Era
 fn click_kind(n: u8) -> PenKind { match n { 2 => PenKind::Double, 3 => PenKind::Triple, _ => PenKind::Tap } }
 
 pub fn penbutton_event(p: &mut PenButtons, c: &PbConfig, e: PbIn, pen: PbPen) -> PbOut {
+    // Proximity loss ends active gestures even when delivered with a button release.
+    // As with penbutton_pen, repeated calls drain simultaneous ends.
+    if !pen.prox { return penbutton_pen(p, c, pen, e.t_ms); }
     p.pen = pen;
     let i = button_index(e.button);
     let s = &mut p.buttons[i];
-    if !pen.prox { *s = ButtonState::default(); return PbOut::None; }
     if e.down {
         if s.down { return PbOut::None; }
         // A press after the deadline starts a new count; normally tick already delivered the old one.
@@ -89,10 +91,10 @@ pub fn penbutton_tick(p: &mut PenButtons, c: &PbConfig, now: u32) -> PbOut {
     if !p.pen.prox { return PbOut::None; }
     for i in 0..3 {
         let s = &mut p.buttons[i];
-        if s.down && !s.used && !s.hold && !p.pen.touching && now.wrapping_sub(s.down_at) >= c.hold_ms {
+        if s.down && !s.used && !s.hold && !p.pen.touching && (now.wrapping_sub(s.down_at) as i32) >= c.hold_ms as i32 {
             s.hold = true; s.clicks = 0; return PbOut::HoldBegin(button_at(i));
         }
-        if !s.down && s.clicks > 0 && now.wrapping_sub(s.released_at) >= c.gap_ms {
+        if !s.down && s.clicks > 0 && (now.wrapping_sub(s.released_at) as i32) >= c.gap_ms as i32 {
             let kind = click_kind(s.clicks); s.clicks = 0; return PbOut::Fire(button_at(i), kind);
         }
     }

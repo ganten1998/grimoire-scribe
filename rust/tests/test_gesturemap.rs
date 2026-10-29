@@ -85,9 +85,7 @@ fn hold_eraser_is_not_a_touch_action() {
     check!(gesturemap_key_for(&m, SHORTCUT_HOLD_ERASER, ActionSrc::Touch).is_none());
 }
 
-// Pen lines are parsed and held (the pen's button keeps its own clicks for now); shape lines and lines
-// with an action or pen slot this version does not know are carried as they were, one per key (a
-// later line wins), and nothing of them acts on the touch gestures.
+// Live pen slots are separate from touch. Unsupported hardware, future slots and actions carry raw lines.
 fn pen_and_shape_lines_are_carried() {
     let (m, n) = parsed(
         "pen.Button.double=undo\npen.button2.TAP=nothing\npen.Eraser.drag=pan\npen.Button.drag=zoom\n\
@@ -97,17 +95,17 @@ fn pen_and_shape_lines_are_carried() {
     check!(n == 0);
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Double)) == SHORTCUT_UNDO);
     check!(gesturemap_action(&m, pen(PenBtn::Button2, PenKind::Tap)) == 0);
-    check!(gesturemap_action(&m, pen(PenBtn::Eraser, PenKind::Drag)) == GESTURE_PAN);
+    check!(gesturemap_action(&m, pen(PenBtn::Eraser, PenKind::Drag)) == 0);
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Drag)) == GESTURE_ZOOM);
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE); // its built-in
     check!(
         gesturemap_carried(&m)
-            == b"shape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
+            == b"pen.button2.TAP=nothing\npen.Eraser.drag=pan\nshape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
     );
     check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
     // pan and zoom are a drag slot's alone
     let (_, n) = parsed("pen.Button.tap=pan\n");
-    check!(n == 0); // (carried: a name a later version may give an action)
+    check!(n == 1); // known pan action is refused outside drag
     let (m, _) = parsed("pen.Button.hold=frobnicate\npen.Button.hold=undo\n");
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_UNDO && gesturemap_carried(&m).is_empty());
     // The carry's limits: a line of at most 1 KiB, 16 KiB in all.
@@ -270,6 +268,152 @@ fn atomic_saves_and_read_protection() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+fn pen_slots_write_clear_and_move() {
+    let (mut m, n) = parsed("pen.Button.triple=clear-page\npen.Button.hold=clear-page\npen.Button.tap=undo\n");
+    check!(n == 0);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Triple)) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Double), SHORTCUT_UNDO) == 0);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Tap)) == 0);
+    check!(gesturemap_key_for(&m, SHORTCUT_UNDO, ActionSrc::Pen) == Some(pen(PenBtn::Button, PenKind::Double)));
+    gesturemap_clear_action(&mut m, SHORTCUT_CLEAR_PAGE);
+    let mut bytes = Vec::new();
+    check!(gesturemap_format(&m, &mut bytes));
+    let text = String::from_utf8(bytes).unwrap();
+    check!(text.contains("pen.Button.triple=nothing\n") && text.contains("pen.Button.hold=nothing\n"));
+    check!(text.contains("pen.Button.tap=nothing\n") && text.contains("pen.Button.double=undo\n"));
+    let (mut back, n) = parsed(&text);
+    check!(n == 0 && gesturemap_key_for(&back, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen).is_none());
+    check!(gesturemap_pen_config(&back).waits == [true, false, false]);
+    gesturemap_clear_action(&mut back, SHORTCUT_UNDO);
+    check!(gesturemap_pen_config(&back).waits == [false; 3]);
+    let (mut m, n) = parsed("pen.Button.tap=clear-page\npen.Button.double=clear-page\n");
+    check!(n == 0 && gesturemap_key_for(&m, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen) == Some(pen(PenBtn::Button, PenKind::Double)));
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Triple)) == 0 && gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == 0);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Hold), SHORTCUT_CLEAR_PAGE) == 0);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Double)) == 0);
+}
+
+fn pen_slot_validation() {
+    for action in [SHORTCUT_PEN_PAN, SHORTCUT_PEN_ZOOM, SHORTCUT_HOLD_ERASER] {
+        let name = shortcut_action_name(action).unwrap();
+        for &kind in &[PenKind::Tap, PenKind::Double, PenKind::Triple, PenKind::Hold, PenKind::Drag] {
+            let mut m = GestureMap::default(); gesturemap_defaults(&mut m);
+            let k = pen(PenBtn::Button, kind);
+            let before = gesturemap_action(&m, k);
+            let mut key = String::new(); gesturemap_key_name(k, &mut key);
+            let valid = kind == PenKind::Drag || (action == SHORTCUT_HOLD_ERASER && kind == PenKind::Hold);
+            check!((gesturemap_parse(&mut m, format!("{key}={name}\n").as_bytes()) == 0) == valid);
+            if valid {
+                check!(gesturemap_action(&m, k) == action);
+            } else {
+                check!(gesturemap_action(&m, k) == before && !gesturemap_is_set(&m, k));
+                check!(gesturemap_set(&mut m, k, action) == -1);
+            }
+        }
+    }
+    let (mut m, _) = parsed("");
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Drag), GESTURE_PAN) == 0);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Drag), GESTURE_ZOOM) == GESTURE_PAN);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Tap), 9999) == -1);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button2, PenKind::Tap), SHORTCUT_UNDO) == -1);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Eraser, PenKind::Drag), GESTURE_PAN) == -1);
+    let (_, n) = parsed("touch.2.tap=pan\ntouch.1.left=zoom\nshape.pan=9,opaque\n");
+    check!(n == 3);
+}
+
+fn pen_hardware_capability_and_raw_carry() {
+    let raw = b"  PeN.Button2.DOUBLE = undo  \r\npen.Eraser.hold=clear-page\npen.Button.future=future-action\n";
+    let (mut m, _) = parsed("");
+    check!(gesturemap_parse(&mut m, raw) == 0 && gesturemap_carried(&m) == raw);
+    check!(gesturemap_key_for(&m, SHORTCUT_UNDO, ActionSrc::Pen).is_none());
+    gesturemap_clear_action(&mut m, SHORTCUT_UNDO);
+    gesturemap_clear_action(&mut m, SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_carried(&m) == raw);
+    let mut text = Vec::new(); check!(gesturemap_format(&m, &mut text) && text.ends_with(raw));
+    let mut live = GestureMap::default();
+    gesturemap_pen_button2(&mut live, true); gesturemap_defaults(&mut live);
+    check!(gesturemap_parse(&mut live, raw) == 0);
+    check!(gesturemap_action(&live, pen(PenBtn::Button2, PenKind::Double)) == SHORTCUT_UNDO);
+    check!(gesturemap_action(&live, pen(PenBtn::Eraser, PenKind::Hold)) == 0);
+    check!(gesturemap_key_for(&live, SHORTCUT_UNDO, ActionSrc::Pen) == Some(pen(PenBtn::Button2, PenKind::Double)));
+    check!(gesturemap_pen_config(&live).waits == [true, true, false]);
+    let c = gesturemap_pen_config(&live);
+    check!(c.gap_ms == 350 && c.press_ms == 450 && c.hold_ms == 1200);
+    check!(gesturemap_set(&mut live, pen(PenBtn::Button, PenKind::Tap), SHORTCUT_UNDO) == 0);
+    check!(gesturemap_action(&live, pen(PenBtn::Button2, PenKind::Double)) == 0);
+    check!(gesturemap_format(&live, &mut text));
+    check!(String::from_utf8_lossy(&text).contains("pen.Button2.double=nothing\n"));
+    let dir = format!("{}/gesturemap-pen-{}", tl_tmp(), std::process::id());
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = format!("{dir}/gestures.ini");
+    std::fs::write(&path, raw).unwrap();
+    check!(gesturemap_load(&mut live, &path) == 0);
+    check!(gesturemap_action(&live, pen(PenBtn::Button2, PenKind::Double)) == SHORTCUT_UNDO);
+    check!(gesturemap_save(&live, &path) == 0);
+    check!(gesturemap_reset(&mut live, &path) == 0);
+    check!(gesturemap_set(&mut live, pen(PenBtn::Button2, PenKind::Drag), SHORTCUT_PEN_PAN) == 0);
+    // A failed read also preserves capability but blocks every edit and write until Reset.
+    std::fs::write(&path, vec![b'#'; GESTURES_CAP as usize + 1]).unwrap();
+    check!(gesturemap_load(&mut live, &path) == -1);
+    check!(gesturemap_set(&mut live, pen(PenBtn::Button2, PenKind::Drag), GESTURE_ZOOM) == -1);
+    gesturemap_clear_action(&mut live, SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_action(&live, pen(PenBtn::Button, PenKind::Triple)) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_save(&live, &path) == -1);
+    check!(gesturemap_reset(&mut live, &path) == 0);
+    check!(gesturemap_set(&mut live, pen(PenBtn::Button2, PenKind::Tap), SHORTCUT_REDO) == 0);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn pen_forward_carry_refusal_is_atomic() {
+    let (mut m, _) = parsed("pen.Button.hold=undo\n");
+    let line = format!("pen.Button.hold={}\n", "x".repeat(1024));
+    check!(gesturemap_parse(&mut m, line.as_bytes()) == 1);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_UNDO);
+    check!(gesturemap_is_set(&m, pen(PenBtn::Button, PenKind::Hold)) && gesturemap_carried(&m).is_empty());
+    check!(gesturemap_parse(&mut m, b"  pen.Button.hold = future-action  \n") == 0);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_carried(&m) == b"  pen.Button.hold = future-action  \n");
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Hold), SHORTCUT_REDO) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_carried(&m).is_empty());
+}
+
+fn pen_carry_limits_and_read_failures() {
+    let (mut m, _) = parsed("pen.Button.hold=undo\n");
+    let mut full = String::new();
+    for i in 0..16 {
+        let key = format!("pen.Future{i:02}.tap=");
+        full.push_str(&key);
+        full.push_str(&"x".repeat(1023 - key.len()));
+        full.push('\n');
+    }
+    check!(gesturemap_parse(&mut m, full.as_bytes()) == 0);
+    check!(gesturemap_carried(&m).len() == 16384);
+    check!(gesturemap_parse(&mut m, b"pen.Button.hold=future-action\n") == 1);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_UNDO);
+    // Replacement first frees the old key's bytes, retaining the later raw spelling.
+    check!(gesturemap_parse(&mut m, b" PeN.Future00.Tap = replacement  \n") == 0);
+    check!(gesturemap_carried(&m).ends_with(b" PeN.Future00.Tap = replacement  \n"));
+    let line = format!("pen.Button2.tap={}", "x".repeat(1024 - "pen.Button2.tap=".len()));
+    let (m, n) = parsed(&line);
+    check!(n == 0 && gesturemap_carried(&m).len() == 1025); // cap excludes the added LF
+    let (_, n) = parsed(&(line + "x"));
+    check!(n == 1);
+    #[cfg(unix)] {
+        let dir = format!("{}/gesturemap-dangling-{}", tl_tmp(), std::process::id());
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = format!("{dir}/gestures.ini");
+        std::os::unix::fs::symlink("missing-target", &path).unwrap();
+        let mut m = GestureMap::default();
+        check!(gesturemap_load(&mut m, &path) == -1 && !m.writable);
+        check!(gesturemap_parse(&mut m, b"pen.Button.hold=undo\n") == 1);
+        check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
+        check!(gesturemap_save(&m, &path) == -1 && std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
+        check!(gesturemap_reset(&mut m, &path) == 0 && m.writable);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
 #[test]
 fn test_gesturemap() {
     run!(the_built_ins);
@@ -283,5 +427,10 @@ fn test_gesturemap() {
     run!(the_names);
     run!(writing_patterns_and_shapes);
     run!(atomic_saves_and_read_protection);
+    run!(pen_slots_write_clear_and_move);
+    run!(pen_slot_validation);
+    run!(pen_hardware_capability_and_raw_carry);
+    run!(pen_forward_carry_refusal_is_atomic);
+    run!(pen_carry_limits_and_read_failures);
     done();
 }

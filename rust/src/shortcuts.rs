@@ -60,7 +60,7 @@ pub const SHORTCUT_STATUS_CORNER: i32 = 53;
 /// Two fingers left on the last page add a page, or do not (settings.ini gesture_new_page; Rust only).
 pub const SHORTCUT_GESTURE_NEW_PAGE: i32 = 54;
 pub const SHORTCUT_STATUS_MODE: i32 = 55;
-pub const SHORTCUT_LAST: i32 = SHORTCUT_INDEX_MAP;
+pub const SHORTCUT_LAST: i32 = SHORTCUT_PEN_ZOOM;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. A page turned by a gesture adds a page on the last one unless settings.ini gesture_new_page is off.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -300,11 +300,15 @@ fn parse(map: &mut Shortcuts, text: &[u8], allow_key: bool, allow_pad: bool) {
 /// not there; Err when it is not a file, is over cap bytes, or cannot be read; else its text up to
 /// its first NUL.
 pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, ()> {
-    if !access_ok(path) {
-        return Ok(None);
-    }
     match std::fs::metadata(path) {
         Ok(st) if st.is_file() && st.len() <= cap => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // A dangling symlink is an existing unreadable mapping, not a missing file.
+            return match std::fs::symlink_metadata(path) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                _ => Err(()),
+            };
+        }
         _ => return Err(()),
     }
     // Bound the read too, including a file changed since stat.

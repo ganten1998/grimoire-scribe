@@ -65,7 +65,9 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `pen line X0 Y0 X1 Y1 STEPS P0 P1 [tx ty]` | a stroke with a pressure ramp |
 | `pen curve X Y R STEPS P [TURNS] [tx ty]` | cursive-like loops |
 | `eraser line X0 Y0 X1 Y1 STEPS` | the same with the eraser end |
-| `side on` / `side off` | hold the side button |
+| `side on` / `side off` | hold/release the first side button; existing event sequence is unchanged |
+| `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press |
+| `side2 on` / `side2 off`, `side2 click N [GAP_MS] [PRESS_MS]` | the second button, enabled by `GRIMOIRE_SIM_PEN_BUTTON2=1` |
 | `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1 |
 | `keyup CODE MODS [PAD]` | its release, as input_evdev.c reports one (a key or button let go, or no longer held after a resync) |
 | `axis CODE VALUE` | an axis of a controller as Linux's generic driver reports an Xbox One S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z 2 and ABS_RZ 5 0 to 1023), decided and decoded as input_evdev.c does: a trigger pulled past half its travel is a press of LT (or RT), let back to a quarter or under its release, once each way; the sticks do nothing |
@@ -185,6 +187,29 @@ sheet's Cancel 598 1693); the keyboard's page key is 928 1745 and its Cancel 279
 tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's corners are 298 223,
 2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
 Cancel 1240 1675. The editor's tool button is 2388 358.
+
+### Phase 6 pen-button recording
+
+`side click 2` is a double-click with 80 ms presses and 150 ms release-to-next-press gaps.
+With a double or triple slot bound, follow the final release with `wait 400` before checking
+dispatch: the recognizer waits 350 ms. Without either multi-click slot a single click acts at
+release. Triple-click requires each next press within 350 ms of the preceding release (the old
+three-clicks-within-1.2-seconds rule is retired). `side on`, `wait 1200`, `side off` records a
+hovering hold; `side on`, `pen down`, `pen move`, `pen up`, `side off` records a drag. Existing
+`side on/off` scripts retain their event sequence; the helper additionally establishes hover.
+
+The card owns a separate recognizer, so its result is `library.record is pattern pen.Button.double`
+and its translated name is in `library.record.line`. Tap Use (including `pentap`) to save through
+the normal conflict/reassignment flow. Pan/zoom accept only drag, and Hold eraser only hold/drag.
+A normal nib tap operates the card's buttons; a recorded drag never clicks them or draws ink.
+The editor's last gesture and pending count are `pen.gesture` / `pen.clicks`; recording does not
+change the editor's last gesture. `gestures.ACTION` includes pen keys after saving.
+
+`GRIMOIRE_SIM_PEN_BUTTON2=1` adds BTN_STYLUS2 capability and enables `side2` commands. Leave it
+unset to check that Button2 lines are carried without live rows. Eraser lines are always carried.
+The main scenario owner owns Phase 6 scenarios and the `pass-rust.qs` / `fail-rust.qs` probe checks;
+this document does not claim they have run. These helpers test event routing and timing, not
+physical button bounce, e-ink appearance or owner success rates.
 
 ### Phase 3 touch runner and recording
 
@@ -371,7 +396,10 @@ shows what the app holds.
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
 | `library.pair` | the Pair sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
 | `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
-| `gestures.ACTION` | binding for ACTION: its touch key (`touch.1.right`, `touch.2.down`) if present, otherwise `shape` for a known or carried newer shape; empty for none. Built-ins are in FORMAT.md. |
+| `gestures.ACTION` | binding for ACTION: touch key (`touch.1.right`, `touch.2.down`), `shape` for a known/carried newer shape, or pen key (`pen.Button.double`); built-ins in FORMAT.md; empty for none. |
+| `pen.gesture` | last editor-recognized button gesture: `Button.tap`, `Button.double`, `Button.triple`, `Button.hold`, `Button.drag` (or `Button2.*`); empty before any recognition |
+| `pen.clicks` | first button's pending multi-click count |
+| `editor.hold_eraser` | `1` while the momentary eraser is held, otherwise `0` |
 | `gestures.shape.ACTION` | sample count for ACTION's recorded shape; empty for none |
 | `gestures.shape_count`, `gestures.refused` | number of recorded shapes, and lines refused at the last map load |
 | `library.gestures_group` | open group (`editing`, `tools`, `pages`, `index`, `menus`, `screen`, `system`), else empty |
@@ -451,7 +479,7 @@ y_pagesize_1_ksc sets `GRIMOIRE_SIM_SIZE=1986x2648`, and y_all_screens sets `GRI
 and a made-up `GRIMOIRE_SIM_ADDRS`). The rule first unsets `GRIMOIRE_HOST`, `GRIMOIRE_PASSCODE`,
 `GRIMOIRE_SIM_ADDRS`, `GRIMOIRE_HTTPD_DELAY_MS`, `GRIMOIRE_BG_DELAY_MS`, `GRIMOIRE_SIM_PRESSURE`,
 `GRIMOIRE_SIM_STATS`, `GRIMOIRE_SIM_SIZE`, `GRIMOIRE_CHECK_FIT`, `GRIMOIRE_LANG`,
-`GRIMOIRE_L10N_DIR` and `GRIMOIRE_SLEEP_MINUTE_MS` (tests/share_check.sh does too), so only
+`GRIMOIRE_L10N_DIR`, `GRIMOIRE_SIM_PEN_BUTTON2` and `GRIMOIRE_SLEEP_MINUTE_MS` (tests/share_check.sh does too), so only
 `# env:` lines set them, and runs every scenario in English (`GRIMOIRE_LANG=en`) unless its
 `# env:` line names another language: the scenarios tap by coordinates and check English text. A
 `# pdfs: N` line wants the run to leave exactly N PDFs in its root's PDFs/ folder

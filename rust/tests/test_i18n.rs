@@ -933,7 +933,10 @@ fn gestures_and_record_card_strings_fit() {
         "Too easy to make by accident.",
         "Give it two turns or a loop.",
         "This replaces a shape from a newer Grimoire.",
-        "Draw a shape with one finger, or swipe or tap with two fingers.",
+        "Draw a shape with one finger, swipe or tap with two fingers, or use the pen's button.",
+        "Hold eraser needs the button held: hold it or drag with it.",
+        "Hold the pen button and drag with it.",
+        "Use the pen button for this action.",
     ];
     for language in ["en", "es"] {
         i18n_set(language);
@@ -972,7 +975,7 @@ fn gestures_and_record_card_strings_fit() {
             for group in ACTION_GROUPS.iter() {
                 for row in group.rows {
                     for action in row.act {
-                        if action == 0 || action_sources(action) & (SRC_TOUCH | SRC_SHAPE) == 0 {
+                        if action == 0 || action_sources(action) & (SRC_TOUCH | SRC_SHAPE | SRC_PEN) == 0 {
                             continue;
                         }
                         for source in [
@@ -996,6 +999,84 @@ fn gestures_and_record_card_strings_fit() {
     }
     ui_set_theme(UiTheme::Gothic);
     i18n_set("en");
+}
+
+// All pen names are shown at 64 px on the card and beside even the longest
+// registry row labels, with a thumbnail and the maximum paired-row source suffix.
+fn pen_gesture_labels_body_and_long_rows_fit() {
+    let names = [
+        "pen button click", "pen button double-click", "pen button triple-click",
+        "pen button hold", "pen button drag", "second pen button click",
+        "second pen button double-click", "second pen button triple-click",
+        "second pen button hold", "second pen button drag",
+    ];
+    let mut canvas = Canvas::default();
+    check!(canvas_init(&mut canvas, 1400, 260) == 0);
+    font_set_overflow_hook(Some(hook));
+    for language in ["en", "es"] {
+        i18n_set(language);
+        for theme in THEMES {
+            ui_set_theme(theme);
+            for name in names {
+                let label = tr(name);
+                if language == "es" { check!(label != name); }
+                let card_room = 1400 - if theme == UiTheme::Gothic { 88 } else { 72 };
+                set_hook_calls(0);
+                let lines = font_draw_wrapped(&mut canvas, FontFace::Bold, 64.0,
+                    Rect::new(0, 0, card_room, 260), label, 2, 0, true, 0);
+                check!((1..=2).contains(&lines) && hook_calls() == 0);
+                // Upright is the narrower width; sideways is capped at 1800 px.
+                for sheet_w in [1720, 1800] {
+                    let row_room = sheet_w - if theme == UiTheme::Gothic { 88 } else { 72 } - 140 - 30 - 120;
+                    for group in ACTION_GROUPS.iter() {
+                        for row in group.rows {
+                            if action_sources(row.act[0]) & SRC_PEN == 0 { continue; }
+                            let title = row.label.map(tr).unwrap_or_else(|| action_label(row.act[0]));
+                            let extra = cformat!(tr("+%d"), if row.act[1] == 0 { 2 } else { 5 });
+                            let binding = cformat!("%s %s", label, &extra);
+                            let text = cformat!(c_("gesture row", "%s: %s"), title, &binding);
+                            let mut widest = 0;
+                            let lines = font_wrap_lines(FontFace::Bold, ui_small_size(), &text, row_room, Some(&mut widest));
+                            if lines > 2 || widest > row_room {
+                                eprintln!("  {} {:?}: pen row {:?}, {} lines in {} px", language, theme, text, lines, row_room);
+                            }
+                            check!((1..=2).contains(&lines) && widest <= row_room && text.len() < 256);
+                        }
+                    }
+                }
+            }
+            for source in ["Pan with the pen", "Zoom with the pen"] {
+                check!(font_measure(FontFace::Bold, ui_text_size(), tr(source)) <= 1000);
+                if language == "es" { check!(tr(source) != source); }
+            }
+            // The action title shares the fixed card width. Long localized action names
+            // shrink from 64 to 34 px rather than clipping (especially long Spanish actions).
+            let title_room = 1400 - if theme == UiTheme::Gothic { 88 } else { 72 };
+            for group in ACTION_GROUPS.iter() {
+                for row in group.rows {
+                    for action in row.act {
+                        if action == 0 || action_sources(action) & (SRC_TOUCH | SRC_SHAPE | SRC_PEN) == 0 { continue; }
+                        let title = cformat!(tr("Do the gesture for %s"), action_label(action));
+                        set_hook_calls(0);
+                        ui_text(&mut canvas, FontFace::Bold, 64.0, ui_small_size(),
+                            Rect::new(0, 0, title_room, 76), &title, 1, true, 0);
+                        check!(hook_calls() == 0);
+                    }
+                }
+            }
+            // Same 1400 px card in both orientations, two lines inside its sheet.
+            let body = tr("Draw a shape with one finger, swipe or tap with two fingers, or use the pen's button.");
+            let room = 1400 - if theme == UiTheme::Gothic { 88 } else { 72 };
+            set_hook_calls(0);
+            ui_text(&mut canvas, FontFace::Regular, ui_text_size(), ui_small_size(),
+                Rect::new(0, 0, room, 90), body, 2, false, 0);
+            check!(hook_calls() == 0);
+        }
+    }
+    font_set_overflow_hook(None);
+    canvas_free(&mut canvas);
+    i18n_set("en");
+    ui_set_theme(UiTheme::Gothic);
 }
 
 // A translation can be longer than the English a buffer was sized for: i18n_copy cuts it between
@@ -1458,6 +1539,7 @@ fn test_i18n() {
     run!(rare_notices_fit);
     run!(the_links_bar_strings_fit);
     run!(gestures_and_record_card_strings_fit);
+    run!(pen_gesture_labels_body_and_long_rows_fit);
     run!(copies_cut_between_characters);
     run!(raw_labels_fit);
     run!(paper_is_the_same_in_every_language);

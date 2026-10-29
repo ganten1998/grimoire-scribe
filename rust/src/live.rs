@@ -86,7 +86,7 @@
 //!                kernel's time of the frame in microseconds, wrapping; never 0), u32 ms (the same
 //!                time in the Kindle's ms, for the latency meter), u16 x, y (the screen's pixels), u16
 //!                pressure (0..65535), i8 tilt x, y (degrees, the screen's frame), u8 LIVE_PEN_AWAY,
-//!                LIVE_PEN_HOVER or LIVE_PEN_TOUCH, u8 flags (LIVE_ERASER, LIVE_SIDE, LIVE_DOWN,
+//!                LIVE_PEN_HOVER or LIVE_PEN_TOUCH, u8 flags (LIVE_ERASER, LIVE_SIDE, LIVE_SIDE2, LIVE_DOWN,
 //!                LIVE_GAP, LIVE_DRAW), u16 0. LIVE_GAP breaks the stroke, and only LIVE_DOWN starts
 //!                one. A stream starts at the newest sample, without LIVE_DOWN, so it never draws a
 //!                stroke it saw only the end of.
@@ -160,6 +160,8 @@ pub const LIVE_SIDE: u8 = 2;
 pub const LIVE_DOWN: u8 = 4;
 pub const LIVE_GAP: u8 = 8;
 pub const LIVE_DRAW: u8 = 16;
+/// Second pen button, independent of the first side button.
+pub const LIVE_SIDE2: u8 = 32;
 /// What a pen sample draws, as the browser imitates it (frame 8); editor_live_style makes it, all
 /// zero (enabled 0) where a sample draws nothing.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -271,9 +273,9 @@ impl<const N: usize> Seq<N> {
         }
     }
 }
-/// live_set_capture's words: u8 ok, u8 editor, u16 0, u32 handled, then the four styles
-/// ([eraser][side], LIVE_STYLE_BYTES each).
-const CAPTURE_BYTES: usize = 8 + 4 * LIVE_STYLE_BYTES;
+/// live_set_capture's words: u8 ok, u8 editor, u16 0, u32 handled, then the eight styles
+/// ([eraser][Button + 2 * Button2], LIVE_STYLE_BYTES each).
+const CAPTURE_BYTES: usize = 8 + 8 * LIVE_STYLE_BYTES;
 const CAPTURE_WORDS: usize = CAPTURE_BYTES / 4;
 /// live_set_raw_map's words (raw_map_bytes)
 const MAP_BYTES: usize = 228;
@@ -823,6 +825,7 @@ pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
     } as u8;
     record[17] = (if ev.eraser { LIVE_ERASER } else { 0 })
         | (if ev.side_button { LIVE_SIDE } else { 0 })
+        | (if ev.side_button2 { LIVE_SIDE2 } else { 0 })
         | (if ev.type_ == InType::PenDown { LIVE_DOWN } else { 0 })
         | (if ev.gap { LIVE_GAP } else { 0 })
         | (if style.enabled != 0 { LIVE_DRAW } else { 0 });
@@ -844,14 +847,14 @@ pub fn live_sample(ev: &InEvent, style: &LiveStyle) -> u32 {
 /// What quick ink may draw, as app.rs's LiveCap has it, for the pen viewers that read the raw
 /// digitizer themselves: ok (Live view on, the app awake and holding its input), whether the editor
 /// is up (quick ink is the editor's only), the newest pen event the main loop has handled (its
-/// identity: App.live_processed), and the style of each eraser ([0] off, [1] on) and side button
-/// state, as editor_live_style makes them.
+/// identity: App.live_processed), and the style of each eraser ([0] off, [1] on) and the two independent
+/// button bits, as editor_live_style makes them.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LiveCapture {
     pub ok: bool,
     pub editor: bool,
     pub handled: u32,
-    pub styles: [[LiveStyle; 2]; 2],
+    pub styles: [[LiveStyle; 4]; 2],
 }
 
 fn capture_bytes(c: &LiveCapture) -> [u8; CAPTURE_BYTES] {
@@ -861,7 +864,7 @@ fn capture_bytes(c: &LiveCapture) -> [u8; CAPTURE_BYTES] {
     put32(&mut b[4..], c.handled);
     for (e, row) in c.styles.iter().enumerate() {
         for (side, style) in row.iter().enumerate() {
-            live_style_payload(&mut b[8 + (e * 2 + side) * LIVE_STYLE_BYTES..], style);
+            live_style_payload(&mut b[8 + (e * 4 + side) * LIVE_STYLE_BYTES..], style);
         }
     }
     b
@@ -1031,6 +1034,7 @@ const BTN_TOOL_PEN: u16 = 0x140;
 const BTN_TOOL_RUBBER: u16 = 0x141;
 const BTN_TOUCH: u16 = 0x14a;
 const BTN_STYLUS: u16 = 0x14b;
+const BTN_STYLUS2: u16 = 0x14c;
 const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
 const ABS_PRESSURE: u16 = 0x18;
@@ -1061,6 +1065,7 @@ pub struct LiveRawPen {
     pub tool_rubber: bool,
     pub touch: bool,
     pub side: bool,
+    pub side2: bool,
     /// x and y read since the pen came near
     pub placed: bool,
     /// the last frame sent had contact, was near
@@ -1083,6 +1088,7 @@ pub struct LiveRawFrame {
     pub gap: bool,
     pub eraser: bool,
     pub side: bool,
+    pub side2: bool,
     pub x: i32,
     pub y: i32,
     pub p: i32,
@@ -1114,6 +1120,7 @@ pub fn live_raw_event(st: &mut LiveRawPen, pmin: i32, ev: &LiveInputEvent, out: 
                 ms: (us / 1000) as u32, // (as now_ms() truncates: sec * 1000 + usec / 1000)
                 eraser: st.tool_rubber,
                 side: st.side,
+                side2: st.side2,
                 x: st.x,
                 y: st.y,
                 p: st.p,
@@ -1160,6 +1167,10 @@ pub fn live_raw_event(st: &mut LiveRawPen, pmin: i32, ev: &LiveInputEvent, out: 
         }
         (EV_KEY, BTN_STYLUS) => {
             st.side = ev.value != 0;
+            false
+        }
+        (EV_KEY, BTN_STYLUS2) => {
+            st.side2 = ev.value != 0;
             false
         }
         (EV_ABS, ABS_X) => {
@@ -1223,7 +1234,7 @@ pub fn live_raw_sample(m: &LiveRawMap, w: i32, h: i32, f: &LiveRawFrame, out: &m
     out[14] = clampf(m.tm[0] * tx + m.tm[1] * ty, -90.0, 90.0) as i8 as u8;
     out[15] = clampf(m.tm[2] * tx + m.tm[3] * ty, -90.0, 90.0) as i8 as u8;
     out[16] = f.state as u8;
-    out[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
+    out[17] = (if f.eraser { LIVE_ERASER } else { 0 }) | (if f.side { LIVE_SIDE } else { 0 }) | (if f.side2 { LIVE_SIDE2 } else { 0 }) | (if f.down { LIVE_DOWN } else { 0 }) | (if f.gap { LIVE_GAP } else { 0 });
     out[18] = 0;
     out[19] = 0;
 }
@@ -1279,7 +1290,7 @@ impl LiveRawGate {
 // The style a sample's eraser and side button state draws with (its flags), or none.
 fn gate_style(cap: &LiveCapture, free: bool, flags: u8) -> LiveStyle {
     if free {
-        cap.styles[(flags & LIVE_ERASER != 0) as usize][(flags & LIVE_SIDE != 0) as usize]
+        cap.styles[(flags & LIVE_ERASER != 0) as usize][(flags & LIVE_SIDE != 0) as usize | (((flags & LIVE_SIDE2 != 0) as usize) << 1)]
     } else {
         LiveStyle::default()
     }
@@ -1658,6 +1669,7 @@ fn raw_resync(r: &mut RawSource) {
         r.pen.tool_rubber = bit(BTN_TOOL_RUBBER);
         r.pen.touch = bit(BTN_TOUCH);
         r.pen.side = bit(BTN_STYLUS);
+        r.pen.side2 = bit(BTN_STYLUS2);
     }
 }
 #[cfg(not(feature = "kindle"))]
@@ -1780,8 +1792,8 @@ fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32,
 fn capture_read(b: &[u8; CAPTURE_BYTES]) -> LiveCapture {
     let mut c = LiveCapture { ok: b[0] != 0, editor: b[1] != 0, handled: get32(&b[4..]), ..Default::default() };
     for e in 0..2 {
-        for side in 0..2 {
-            c.styles[e][side] = live_style_read(&b[8 + (e * 2 + side) * LIVE_STYLE_BYTES..]);
+        for side in 0..4 {
+            c.styles[e][side] = live_style_read(&b[8 + (e * 4 + side) * LIVE_STYLE_BYTES..]);
         }
     }
     c
