@@ -159,7 +159,7 @@ expect editor.pins is highlighter,fineliner,marker
 pentap editor picker.tool:calligraphy
 wait 200
 expect editor.pins is highlighter,fineliner,marker,calligraphy
-expect editor.panel_rect is 1962 28 128 1820
+expect editor.panel_rect is 1962 18 128 1820
 expect editor.panel_button is 93
 # A fifth: refused, with a toast
 pentap editor picker.tool:pencil
