@@ -11,7 +11,7 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
-## 2.0.0-rc.6: notebook controls and Live pop-out (device checks pending)
+## 2.0.0-rc.6 (device checks pending)
 
 The candidate adds persistent/decoded preview reuse, explicit multi-select, notebook-hosted
 naming and numeric page navigation, live clock previews, and a single-view Live pop-out.
