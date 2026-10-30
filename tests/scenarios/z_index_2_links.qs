@@ -1,18 +1,18 @@
 # settings: status_mode=1
-# Links drawn on pages: Add a link in the Index, then the dashed lasso drawn around what links (a dot
+# Links drawn on pages: the toolbar Links action arms a dashed lasso around what links (a dot
 # is too small, and the strip stays), then its page picked; the lasso is never ink. A finger's tap
 # follows it, a finger held on it shows the long-press card, which changes where it goes (another page, the
-# Index) or deletes it; Back
+# current notebook via the destination browser) or deletes it; Back
 # while picking makes no link; Undo takes a link just made away and Redo brings it back; the links stay
 # through closing and opening the notebook.
 # env: GRIMOIRE_CHECK_FIT=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index .
+# copy: tests/fixtures/scen-tpl-nobg/notebooks/20261020-000000-0005 notebooks/link-origin
+# settings: mirror_pdf=0
 # rust-only
 wait 100
-tap 965 95
-wait 100
-tap 1564 2254
+tap library notebook.link-origin
 wait 200
 pentap panel next
 pentap panel next
@@ -22,13 +22,9 @@ pentap panel previous
 expect editor.page is 1
 pen line 300 600 900 620 30 0.5 0.9
 expect editor.strokes is 1
-# Add a link, from the Index tab of the Pages view
-pentap panel pages
-expect editor.modal is pages
-tap 850 95
-expect editor.pages_tab is index
-shot 01-index-add-a-link
-tap 1410 2395
+# The toolbar Links action replaces the retired Index footer.
+pentap panel links
+shot 01-toolbar-add-a-link
 expect editor.modal is none
 expect editor.link_mode is 1
 expect editor.strip is new
@@ -42,13 +38,13 @@ expect editor.strokes is 1
 expect editor.link_mode is 0
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.930.2370 is linkto.pages
-tap 930 2370
+tap panel linkto.pages
 expect editor.modal is pages
 expect editor.picking is new
 expect editor.pages_tab is pages
 expect toast is Where does the link go? Tap its page.
 shot 02-pick-new
-tap 1155 340
+tap panel pages.page.3
 expect editor.modal is none
 expect editor.page is 1
 expect editor.links is 1 1
@@ -81,7 +77,7 @@ tap 679 1558
 wait 100
 expect editor.linkto is pick
 expect editor.ui_at.480.2370 is linkto.search
-tap 480 2370
+tap panel linkto.search
 wait 100
 expect editor.find is pick
 tap 310 1725
@@ -96,7 +92,7 @@ tap 600 1100
 expect editor.page is 2
 pentap panel previous
 expect editor.page is 1
-# ... to the Index
+# Retarget through Notebooks to a page in this same notebook: a local p3 target.
 pen leave
 wait 1100
 touch down 600 1100
@@ -104,26 +100,29 @@ wait 800
 touch up 600 1100
 tap 679 1558
 wait 100
-expect editor.linkto.2 is index
-expect editor.ui_at.1381.2078 is linkto.chip.2
-tap 1381 2078
-wait 100
-expect editor.link.1 is index
-expect toast is Linked to the Index.
+tap panel linkto.elsewhere
+expect editor.destination is 1
+tap panel elsewhere.book.link-origin
+expect editor.destination.notebook is link-origin
+tap panel elsewhere.page.3
+expect editor.destination is 0
+expect editor.link.1 is p3
+expect toast is Linked to page 3.
 tap 600 1100
-expect editor.modal is pages
-expect editor.pages_tab is index
-tap 125 95
+expect editor.page is 3
 expect editor.modal is none
+pentap panel previous
+pentap panel previous
+expect editor.page is 1
 # ... deleted (the lasso left no ink: only the first stroke is on the page)
 pen leave
 wait 1100
 touch down 600 1100
 wait 800
 touch up 600 1100
-expect editor.link_card.rows is retarget redraw delete
-expect editor.ui_at.679.1688 is card.delete
-tap 679 1688
+expect editor.link_card.rows is rename retarget redraw delete
+expect editor.ui_at.679.1818 is card.delete
+tap 679 1818
 expect editor.links is 0 0
 expect editor.strokes is 1
 expect toast is Link deleted. Undo brings it back.
@@ -131,36 +130,30 @@ tap 600 1100
 expect editor.modal is none
 expect editor.page is 1
 # Back while picking: no link made, and no ink was ever drawn for it
-pentap panel pages
-# (on the tab it was left on: the Index, from following the link there; no hold path opens it on Pages now)
-expect editor.pages_tab is index
-tap 850 95
-tap 1410 2395
+pentap panel links
 pen line 300 1400 900 1500 30 0.6 0.6
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.930.679 is linkto.pages
-tap 930 679
+tap panel linkto.pages
 expect editor.picking is new
 expect editor.strokes is 1
-tap 125 95
+tap panel pages.back
 expect editor.linkto is pick
 expect editor.ui_at.1530.679 is linkto.cancel
-tap 1530 679
+tap panel linkto.cancel
 expect toast is No link made.
 expect editor.strokes is 1
 expect editor.links is 0 0
 expect editor.live_matches_render is 1
 # Making a link is an undo step: Undo takes the link away, Redo brings it back
-pentap panel pages
-tap 850 95
-tap 1410 2395
+pentap panel links
 pen line 300 1400 900 1500 30 0.6 0.6
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.930.679 is linkto.pages
-tap 930 679
+tap panel linkto.pages
 expect editor.modal is pages
 expect editor.pages_tab is pages
-tap 1155 340
+tap panel pages.page.3
 expect editor.links is 1 1
 expect editor.link.1 is p3
 pentap panel undo

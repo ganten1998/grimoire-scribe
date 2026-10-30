@@ -18,15 +18,13 @@ pentap panel previous
 pentap panel previous
 expect editor.page is 1
 pen line 300 600 900 620 30 0.5 0.9
-pentap panel pages
-tap 850 95
-tap 1410 2395
+pentap panel links
 pen line 300 1000 900 1200 30 0.6 0.6
 # Link to... opens: Choose from the pages... picks in the Pages view
 expect editor.ui_at.930.2370 is linkto.pages
-tap 930 2370
+tap panel linkto.pages
 expect editor.picking is new
-tap 1155 340
+tap panel pages.page.3
 expect editor.modal is none
 expect editor.links is 1 1
 expect editor.areas is 1
@@ -44,14 +42,12 @@ expect editor.eye_drawn is 0
 expect editor.areas is 0
 shot 02-eye-link-removed
 # and made again, and removed again
-pentap panel pages
-tap 850 95
-tap 1410 2395
+pentap panel links
 pen line 300 1400 900 1500 30 0.6 0.6
 expect editor.linkto.dock is top
 expect editor.ui_at.930.679 is linkto.pages
-tap 930 679
-tap 1155 340
+tap panel linkto.pages
+tap panel pages.page.3
 expect editor.eye_drawn is 1
 pen leave
 wait 1100
