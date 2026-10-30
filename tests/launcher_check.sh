@@ -252,6 +252,9 @@ suite() {
     check "$s the saved screen is put back" is "$(content "$T/sys/dev/fb0")" KINDLE
     check "$s the saved screen is dropped after" [ ! -e "$T/sys/var/tmp/grimoire-fb.dump" ]
     check "$s the heartbeat file is cleaned up" [ ! -e "$GRIMOIRE_TMP/grimoire.alive" ]
+    check "$s the running flag names the launcher and the build while Grimoire runs" \
+        grep -qE "^grimoire running=pid=[0-9]+ build=$BUILD_ID since=[0-9]+\$" "$SHIM_LOG"
+    check "$s the running flag goes with the restore" [ ! -e "$US/grimoire/.running" ]
     check "$s log: locale" has "$LOGF" "grimoire.sh: locale: LANG=es_ES.UTF-8"
     check "$s log: passcode" has "$LOGF" "grimoire.sh: device passcode: off"
     check "$s no passcode: nothing to tell the binary" has "$SHIM_LOG" "grimoire passcode note= flag=off"
@@ -505,6 +508,7 @@ suite() {
         check "$l: Grimoire is gone" fake_gone
         check "$l: the Kindle UI restored after" in_order "$STARTED" "$PILLOW_ON" "$HOME_UP"
         check "$l: the passcode back on" [ -e "$T/$PASSCODE_REL" ]
+        check "$l: the running flag gone" [ ! -e "$US/grimoire/.running" ]
     done
 
     # From Quire: the data moves once, never under a refused start or while the old app runs.
@@ -695,6 +699,8 @@ suite() {
         check "$s hosted $mode: status $expected ($rc)" is "$rc" "$expected"
         if [ "$expected" = 0 ]; then
             check "$s hosted $mode: Grimoire ran" has "$SHIM_LOG" "grimoire exits"
+            check "$s hosted $mode: with the running flag up" grep -q "^grimoire running=pid=" "$SHIM_LOG"
+            check "$s hosted $mode: and gone after" [ ! -e "$US/grimoire/.running" ]
         else
             check "$s hosted $mode: no UI or input takeover" sh -c '! grep -qE "^grimoire |lipc-|killall|iptables|^stop |^start " "$1"' sh "$SHIM_LOG"
             case $mode in
@@ -770,6 +776,7 @@ suite() {
     hosted_tree hosted-locked
     sleep 60 &
     holder=$!
+    echo "pid=$holder build=$BUILD_ID since=1" >"$US/grimoire/.running"
     mkdir -p "$T/sys/proc/$holder"
     printf 'sh\000%s\000' "$APP/grimoire.sh" >"$T/sys/proc/$holder/cmdline"
     echo "$holder" >"$GRIMOIRE_TMP/grimoire.launcher.pid"
@@ -791,6 +798,8 @@ suite() {
     check "$l: logged" has "$LOGF" "grimoire.sh: already running (launcher pid $holder), not starting another"
     check "$l: Grimoire not started" lacks "$SHIM_LOG" "$STARTED"
     check "$l: the lock stays the other's" is "$(content "$GRIMOIRE_TMP/grimoire.launcher.pid")" "$holder"
+    check "$s another Grimoire running: its running flag stays" is "$(content "$US/grimoire/.running")" \
+        "pid=$holder build=$BUILD_ID since=1"
     kill "$holder" 2>/dev/null
     wait "$holder" 2>/dev/null
     # documents/Grimoire.sh --hosted: inside KOReader it runs app/grimoire.sh --hosted in the
