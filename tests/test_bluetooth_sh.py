@@ -72,6 +72,25 @@ class BluetoothScript(unittest.TestCase):
               'log_file = /var/log/hid_passthrough.log\n', 0o644)
         return d
 
+    def stubborn_helper(self):
+        # A helper that ignores TERM (stuck detaching a device): stop-owned waits its 12 s, then KILLs.
+        d = os.path.join(self.root, 'bluetooth')
+        write(os.path.join(d, 'kindle-hid-passthrough'),
+              '#!/bin/sh\ntrap "" TERM\ntouch "%s/up"\nwhile :; do /bin/sleep 0.1; done\n' % self.tmp)
+        return d
+
+    def busybox_env(self, with_usleep):
+        # The Kindle's busybox: sleep takes whole seconds only, usleep takes microseconds. Both are
+        # recorded and return at once, so the test counts the waits instead of sitting through them.
+        bb = os.path.join(self.tmp, 'busybox')
+        log = os.path.join(self.tmp, 'naps')
+        write(os.path.join(bb, 'sleep'),
+              '#!/bin/sh\ncase "$1" in *[!0-9]*) echo "sleep: invalid number \'$1\'" >&2; exit 1 ;; esac\n'
+              'echo "sleep $1" >> "%s"\n' % log)
+        if with_usleep:
+            write(os.path.join(bb, 'usleep'), '#!/bin/sh\necho "usleep $1" >> "%s"\n' % log)
+        return dict(self.env, PATH=bb + ':' + self.env['PATH']), log
+
     def run_script(self, *args):
         p = subprocess.run(['sh', SCRIPT, *args], env=self.env, capture_output=True, text=True, timeout=30)
         return p.returncode, p.stdout.strip(), p.stderr
@@ -137,6 +156,35 @@ class BluetoothScript(unittest.TestCase):
         finally:
             other.kill()
             os.kill(int(real), signal.SIGKILL)
+
+
+    def stop_with_busybox(self, with_usleep):
+        self.stubborn_helper()
+        self.assertEqual(self.run_script('start')[1], 'owned')
+        env, log = self.busybox_env(with_usleep)
+        p = subprocess.run(['sh', SCRIPT, 'stop-owned'], env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.stdout.strip(), 'stopped')
+        self.assertNotIn('invalid number', p.stderr)
+        self.assertIn('the helper did not stop: killing it', p.stderr)
+        return read(log).split('\n')[:-1]
+
+    def test_the_stop_grace_waits_with_busybox_usleep(self):
+        # 12 s of grace before the KILL: sixty fifths of a second.
+        self.assertEqual(self.stop_with_busybox(True), ['usleep 200000'] * 60)
+
+    def test_the_stop_grace_waits_whole_seconds_without_usleep(self):
+        # No usleep and no fractions: twelve whole seconds, the same 12 s.
+        self.assertEqual(self.stop_with_busybox(False), ['sleep 1'] * 12)
+
+    def test_a_stale_lock_is_taken_after_its_wait(self):
+        env, log = self.busybox_env(True)
+        os.makedirs(os.path.join(self.tmp, 'state.lock'))
+        self.helper()
+        p = subprocess.run(['sh', SCRIPT, 'start'], env=env, capture_output=True, text=True, timeout=30)
+        self.assertIn('a stale lock: taking it', p.stderr)
+        self.assertNotIn('invalid number', p.stderr)
+        # 20 s of waiting (a hundred fifths) came before the lock was taken.
+        self.assertGreaterEqual(read(log).count('usleep 200000'), 100)
 
 
 if __name__ == '__main__':
