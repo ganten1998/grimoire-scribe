@@ -23,7 +23,7 @@ tap panel map.pages
 wait 200
 expect editor.tile.1 is Page 1 | p. 12
 expect editor.tile.2 is Page 2 (open)
-tap 396 296
+tap panel pages.page.1
 tap panel pages.copy
 wait 200
 expect editor.page is 2
@@ -36,7 +36,8 @@ expect editor.tile.1 is Page 1 | p. 12
 expect editor.tile.2 is Page 2 (open)
 expect editor.tile.3 is Page 3
 shot 01-book-and-notes
-tap 251 340
+tap panel pages.page.1
+tap panel pages.page.1
 wait 200
 expect editor.page is 1
 expect annotate.book_page is 12/96

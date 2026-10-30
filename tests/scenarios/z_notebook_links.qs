@@ -59,7 +59,7 @@ expect editor.page is 2
 tap panel pages
 tap panel map.pages
 waitbg
-tap 828 296
+tap panel pages.page.2
 tap panel pages.delete
 tap panel pages.back
 key 48 0
@@ -72,7 +72,8 @@ expect editor.notebook_id is A
 expect editor.links is 3 3
 expect toast not
 tap panel pages
-expect editor.map.foreign is 2
+expect editor.map.foreign is 1
+expect editor.map.stats is 3 0 2 2 6
 shot 05-deleted-destination
 tap panel map.back
 quit

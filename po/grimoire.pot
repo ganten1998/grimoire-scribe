@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-rc.4\n"
+"Project-Id-Version: Grimoire 2.0.0-rc.5\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 20:56-0500\n"
+"POT-Creation-Date: 2026-10-29 23:08-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -886,6 +886,7 @@ msgstr ""
 #. the main one), or at 34 px, or two lines of that.
 #: rust/src/calibrate.rs rust/src/editor.rs rust/src/keyboard.rs
 #: rust/src/library.rs rust/src/linkbar.rs rust/src/musicbuild.rs
+#: rust/src/pagesview.rs
 msgid "Cancel"
 msgstr ""
 
@@ -1176,8 +1177,6 @@ msgstr ""
 msgid "Link areas: Off"
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
-#. eye draws dotted boxes over the page where a finger's tap follows a link.
 #: rust/src/editor.rs
 msgid "Dotted boxes show where a finger tap follows a link. They never print."
 msgstr ""
@@ -2788,7 +2787,7 @@ msgstr ""
 msgid "Save PDF to %s now"
 msgstr ""
 
-#: rust/src/library.rs rust/src/mapview.rs
+#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Open"
 msgstr ""
 
@@ -3046,14 +3045,11 @@ msgstr ""
 
 #: rust/src/mapview.rs
 #, c-format
-msgid "Not linked yet: %d page. Show"
-msgid_plural "Not linked yet: %d pages. Show"
-msgstr[0] ""
-msgstr[1] ""
+msgid "View: %s"
+msgstr ""
 
 #: rust/src/mapview.rs
-#, c-format
-msgid "Not linked yet (%d)"
+msgid "Around"
 msgstr ""
 
 #: rust/src/mapview.rs
@@ -3061,7 +3057,18 @@ msgid "All"
 msgstr ""
 
 #: rust/src/mapview.rs
-msgid "Around"
+#, c-format
+msgid "Nodes: %d · Orphans: %d · Links: %d"
+msgstr ""
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages: %d here · %d across %d notebooks"
+msgstr ""
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages in this notebook: %d"
 msgstr ""
 
 #: rust/src/mapview.rs
@@ -3071,18 +3078,6 @@ msgstr ""
 
 #: rust/src/mapview.rs
 msgid "Around it"
-msgstr ""
-
-#: rust/src/mapview.rs
-msgid "Unlinked: Show"
-msgstr ""
-
-#: rust/src/mapview.rs
-msgid "Unlinked: Hide"
-msgstr ""
-
-#: rust/src/mapview.rs
-msgid "Tidy up"
 msgstr ""
 
 #: rust/src/mapview.rs rust/src/pagesview.rs

@@ -73,8 +73,8 @@ shot 03-shapes-menu-landscape
 tap panel shapes.done
 # The added Settings cog opens main Settings and Done restores this notebook.
 tap panel settings
-expect screen is library
-expect library.sheet is settings
+expect screen is editor
+expect editor.modal is settings
 tap library done
 expect screen is editor
 expect editor.modal is none

@@ -12,6 +12,7 @@ pub struct NotebookPicker {
     screen: usize,
     hits: HitList,
     press: Press,
+    previews: PagePreviewRequests,
 }
 pub enum NotebookPick { None, Cancel, Target(String) }
 impl NotebookPicker {
@@ -35,19 +36,19 @@ impl NotebookPicker {
             let cols=if w>h {6}else{4};let gap=u(35.0);let cw=(w-gap*(cols+1))/cols;
             let ch=u(340.0);let rows=((h-u(400.0))/ch).max(1);per=(cols*rows) as usize;total=nb.page_ids.len();
             self.screen=self.screen.min(total.saturating_sub(1)/per);
-            let first=self.screen*per;let last=(first+per).min(total);let mut missing=false;
+            let first=self.screen*per;let last=(first+per).min(total);
             for i in first..last {
                 let n=(i-first) as i32;let r=Rect::new(gap+n%cols*(cw+gap),u(220.0)+n/cols*ch,cw,u(235.0));
                 let mut thumb=Canvas::default();
                 if store_load_page_preview(nb,nb.page_ids[i],&mut thumb){canvas_blit_fit(&mut a.screen,&thumb,r);}
-                else {missing=true;font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0);}
+                else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0);}
                 ui_frame(&mut a.screen,r,u(8.0),0,false,u(3.0));
                 let name=nav_name(&self.nav,nb.page_ids[i]);
                 let label=if name.is_empty(){cformat!(tr("Page %d"),i as i32+1)}else{format!("{} · {}",i+1,name)};
                 font_draw_left_name(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+r.h+u(12.0),r.w,u(65.0)),&label,0);
                 hits_add(&mut self.hits,Rect::new(r.x,r.y,r.w,ch-u(15.0)),5,i as i32);
             }
-            if missing && !bg_pending(BgKind::PagePreviews,nb.id.as_str()) {bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),a.dpi,true);}
+            bg_request_page_previews(&mut self.previews,nb,first,last,a.dpi);
         } else {
             let row=u(150.0);per=((h-u(400.0))/row).max(1) as usize;
             let dirs:Vec<&str>=self.folders.iter().map(|s|s.as_str()).filter(|s|store_folder_parent(s)==self.folder).collect();

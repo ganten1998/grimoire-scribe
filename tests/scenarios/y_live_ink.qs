@@ -45,9 +45,9 @@ wait 700
 expect display.ink is 0
 expect editor.strokes is 0
 # A pressed panel button (Pages) is not live ink: a colour panel waits after it
-touch down 1768 1134
+touch down 1768 1242
 expect display.last_fast is wait
-touch up 1768 1134
+touch up 1768 1242
 wait 300
 expect editor.modal is map
 tap 125 95

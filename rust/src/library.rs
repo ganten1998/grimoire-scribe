@@ -135,6 +135,7 @@ struct Item {
 #[derive(Default)]
 pub struct LibraryState {
     settings_return_editor: bool,
+    settings_painting: bool,
     settings_editor_fit: bool,
     books: Vec<NotebookInfo>,
     folders: Vec<String>,
@@ -4001,7 +4002,11 @@ fn toast_floor(a: &App) -> i32 {
 }
 
 fn redraw(a: &mut App, m: RefreshMode) {
-    draw_base(a);
+    if lib(a).settings_return_editor && a.scr==ScreenId::Editor {
+        lib(a).settings_painting=true;
+        crate::editor::editor_settings_background(a);
+        lib(a).settings_painting=false;
+    } else {draw_base(a);}
     if lib(a).modal != Modal::None {
         hits_clear(&mut lib(a).hits); // a modal captures all input
         draw_modal(a);
@@ -4017,7 +4022,7 @@ fn open_modal(a: &mut App, m: Modal) {
 
 fn close_modal(a: &mut App) {
     if lib(a).settings_return_editor {
-        if lib(a).modal==Modal::Settings {let changed=lib(a).settings_editor_fit!=a.settings.landscape_fit;lib(a).settings_return_editor=false;lib(a).modal=Modal::None;app_switch(a,ScreenId::Editor);if changed {editor_fit_changed(a,true);}}
+        if lib(a).modal==Modal::Settings {let changed=lib(a).settings_editor_fit!=a.settings.landscape_fit;lib(a).settings_return_editor=false;lib(a).modal=Modal::None;library_leave(a);if changed {editor_fit_changed(a,true);}crate::editor::editor_settings_background(a);app_invalidate_all(a,RefreshMode::Ui);}
         else {lib(a).modal=Modal::Settings;redraw(a,RefreshMode::Ui);}
         return;
     }
@@ -4482,12 +4487,12 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_PENS => {
-            lib(a).modal = Modal::None;
+            if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             let tool = a.settings.current_tool;
             pensettings_open(a, tool);
         }
         H_SET_CALIB => {
-            lib(a).modal = Modal::None;
+            if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             calibrate_open(a);
         }
         H_SET_MIRROR => {
@@ -4690,6 +4695,7 @@ pub fn library_enter(a: &mut App) {
     let s = lib(a);
     if !relayout {
         s.modal = Modal::None;
+        s.settings_return_editor = false;
     }
     s.pressed = None;
     reload(a);
@@ -5138,6 +5144,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         let mut name = String::new();
         if let Some(hit) = hit {
             name.push_str(match hit.id {
+                H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
                 H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
                 H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
@@ -5850,5 +5857,13 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
 }
 
 pub fn library_settings_from_notebook(a:&mut App) {
-    app_switch(a,ScreenId::Library);lib(a).settings_return_editor=true;lib(a).settings_editor_fit=a.settings.landscape_fit;open_modal(a,Modal::Settings);
+    let fit=a.settings.landscape_fit;let s=lib(a);s.pressed=None;s.settings_return_editor=true;s.settings_editor_fit=fit;
+    open_modal(a,Modal::Settings);
 }
+
+/// The notebook hosts a settings dialog and all its nested sheets without changing screens.
+pub fn library_settings_active(a:&App)->bool {
+    a.scr==ScreenId::Editor && a.lib.as_deref().is_some_and(|s|s.settings_return_editor && !s.settings_painting)
+}
+pub fn library_settings_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
+pub fn library_settings_back(a:&mut App) {close_modal(a);}

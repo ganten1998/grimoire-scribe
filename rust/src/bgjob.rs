@@ -265,7 +265,7 @@ fn run_graph(j: &Job) -> i32 {
     let mut nav = Nav::default();
     if store_load_info(j.id.as_str(), &mut nb) != 0 || nav_load(j.id.as_str(), &mut nav) != 0 {return -1;}
     let mut graph = GraphModel::default();
-    if graph_build(&mut graph,&nb,&nav,0) != 0 {return -1;}
+    if graph_build(&mut graph,&nb,&nav_for_graph(&nav),0) != 0 {return -1;}
     let mut ini = GraphIni::default();
     if graph_ini_read_path(j.dir.as_str(),&mut ini) != 0 {return -1;}
     graph_layout_job(&mut graph,&mut ini,j.dir.as_str())
@@ -465,4 +465,28 @@ fn start_next() {
             pid
         );
     }
+}
+
+/// One attempt per visible page in an open browser. Missing/read-only pages must not cause
+/// completion -> redraw -> another child forever. Explicit cache invalidation allows a retry.
+#[derive(Clone,Debug,Default)]
+pub struct PagePreviewRequests {
+    id: FixedStr<STORE_ID_LEN>,
+    epoch: Option<(u64,i64,i64)>,
+    pages: Vec<u32>,
+}
+pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32) {
+    let epoch=store_page_previews_epoch(nb.id.as_str());
+    if requests.id!=nb.id || requests.epoch!=epoch {
+        *requests=PagePreviewRequests{id:nb.id,epoch,..Default::default()};
+    }
+    let last=last.min(nb.page_ids.len());let first=first.min(last);
+    if last-first>64 || bg_pending(BgKind::PagePreviews,nb.id.as_str()) {return;}
+    let pages=&nb.page_ids[first..last];
+    let missing=pages.iter().any(|pid|!requests.pages.contains(pid) && {
+        let mut preview=Canvas::default();!store_load_page_preview(nb,*pid,&mut preview)
+    });
+    if !missing || requests.pages.try_reserve(pages.len()).is_err() {return;}
+    for &pid in pages {if !requests.pages.contains(&pid){requests.pages.push(pid);}}
+    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),dpi,true);
 }

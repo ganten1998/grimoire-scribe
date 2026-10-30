@@ -67,25 +67,28 @@ expect editor.index_rows is 2
 pentap panel pages
 expect editor.map is graph
 shot 02-two-sections
-tap map-node 3
-tap map-node 3
+tap panel map.pages
+tap panel pages.page.3
+tap panel pages.page.3
 expect editor.page is 3
 expect editor.page_name is Notes
 expect editor.modal is none
 pen line 300 900 1000 950 40 0.5 0.9
 expect editor.live_matches_render is 1
 shot 03-jump-clear-page
-# A failed save must prevent Graph navigation from discarding this ink.
+# A failed save must prevent opening management, keep ink, and clear the departing graph.
 storage full
 pentap panel pages
-tap map-node 1
-tap map-node 1
+tap panel map.pages
+expect editor.modal is none
+expect editor.screen_composed is 1
 expect editor.page is 3
 expect editor.unsaved is 1
 storage ok
 pentap panel pages
-tap map-node 1
-tap map-node 1
+tap panel map.pages
+tap panel pages.page.1
+tap panel pages.page.1
 expect editor.page is 1
 # Insert after Start. Page id 3 must still open Notes at its new page number 4.
 pentap panel pages
@@ -98,24 +101,26 @@ expect editor.index_rows is 2
 pentap panel pages
 expect editor.map is graph
 shot 04-inserted-note
-tap map-node 3
-tap map-node 3
+tap panel map.pages
+tap panel pages.page.4
+tap panel pages.page.4
 expect editor.page is 4
 expect editor.page_name is Notes
 expect editor.strokes is 1
 pentap panel previous
 pentap panel previous
 expect editor.page is 2
-# Delete Start, selecting only its thumbnail checkbox in management.
+# Delete Start, selecting only its tile in management.
 pentap panel pages
 tap panel map.pages
-tap 396 296
+tap panel pages.page.1
 expect editor.ticked is 1
 tap panel pages.delete
 expect editor.index_rows is 1
 tap panel pages.graph
-tap map-node 3
-tap map-node 3
+tap panel map.pages
+tap panel pages.page.3
+tap panel pages.page.3
 expect editor.page is 3
 expect editor.page_name is Notes
 expect editor.strokes is 1

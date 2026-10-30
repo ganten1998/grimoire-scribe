@@ -16,23 +16,23 @@ expect screen is editor
 expect editor.panel_at.1768.358 is tool-picker
 expect editor.panel_at.1768.466 is eraser
 expect editor.panel_at.1768.1046 is
-expect editor.panel_at.1768.1134 is pages
-expect editor.panel_at.1768.1222 is next
-expect editor.panel_at.1768.1350 is links
-expect editor.panel_at.1768.1458 is paper
-expect editor.panel_at.1768.1566 is display
-expect editor.panel_at.1768.1674 is pen-feel
+expect editor.panel_at.1768.1242 is pages
+expect editor.panel_at.1768.1330 is next
+expect editor.panel_at.1768.1458 is links
+expect editor.panel_at.1768.1566 is paper
+expect editor.panel_at.1768.1674 is display
+expect editor.panel_at.1768.682 is pen-feel
 expect editor.panel_at.1768.1782 is settings
 expect editor.panel_at.1768.1890 is library
-expect editor.panel_at.1768.702 is
+expect editor.panel_at.1768.810 is
 expect editor.panel_at.300.300 is
 # a stroke: Undo is there, with no wait for the settle
 pen line 300 700 1300 720 20 0.6 0.6
-expect editor.panel_at.1768.702 is undo
+expect editor.panel_at.1768.810 is undo
 tap panel undo
 expect editor.strokes is 0
-expect editor.panel_at.1768.702 is
-expect editor.panel_at.1768.810 is redo
+expect editor.panel_at.1768.810 is
+expect editor.panel_at.1768.918 is redo
 tap panel redo
 expect editor.strokes is 1
 # a stroke and the tap in one go: the line waits for the stroke to be handled
@@ -56,8 +56,9 @@ expect editor.ui_at.900.900 is
 expect editor.link_card is 0
 # Settings returns to the same notebook after the toolbar action.
 pentap panel settings
-expect screen is library
-expect library.sheet is settings
+expect screen is editor
+expect editor.modal is settings
+expect status.front is 0
 tap library done
 expect screen is editor
 expect editor.strokes is 0

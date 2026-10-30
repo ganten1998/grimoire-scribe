@@ -357,7 +357,12 @@ shows what the app holds.
 | `native_pin` | native PIN ownership path is active (`GRIMOIRE_PASSCODE=enabled`) |
 | `input.yielded` | pen and touch have been handed to the native UI for sleep/unlock |
 | `sleep.wallpaper` | KOReader wallpaper is decoded and cached |
-| `editor.ticked` | pages ticked in the Pages view |
+| `editor.ticked` | selected pages in management (tap tile selects, double tap opens) |
+| `editor.pages.grid` | actual column and row counts of the current Pages geometry |
+| `editor.pages.context` | held page number while its context menu is open, else `0` |
+| `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
+| `editor.map.visible` | sorted page IDs actually shown in the current graph view |
+| `editor.map.stats` | graph nodes (All), current notebook orphans, valid links, current notebook pages, library page total |
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |

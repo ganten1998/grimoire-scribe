@@ -24,8 +24,10 @@ expect editor.map is graph
 tap panel map.back
 expect editor.modal is none
 tap panel settings
-expect screen is library
-expect library.sheet is settings
+expect screen is editor
+expect editor.modal is settings
+expect editor.screen_composed is 1
+shot 03b-settings-over-page
 tap library done
 expect screen is editor
 expect editor.notebook_id is A

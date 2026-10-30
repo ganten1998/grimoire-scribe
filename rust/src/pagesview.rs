@@ -29,6 +29,9 @@ const PG_NAME: i32 = 12;
 const PG_LINK: i32 = 13;
 const PG_GRAPH: i32 = 16;
 const PG_LIST: i32 = 17;
+const PG_CONTEXT_LINK: i32 = 18;
+const PG_CONTEXT_OPEN: i32 = 19;
+const PG_CONTEXT_CANCEL: i32 = 20;
 // (14 and 15 were the picking header's The Index and Remove link, retired with the Pages view's hold path:
 // a link held on opens the long-press card over the page instead)
 
@@ -105,11 +108,22 @@ pub struct PagesView {
     /// pagesview_probe's index_rows answers 0 until then (the probe gets the editor's Nav on every
     /// call here, where the C's view had none before it was first opened).
     pub nav_set: bool,
+    context: Option<i32>,
+    held: bool,
+    last_tap: Option<(i32, u32)>,
+    view_size: (i32,i32),
+    previews: PagePreviewRequests,
 }
 
 
 /// (cols, rows, cw, ch, th)
-fn geom(a: &App) -> (i32, i32, i32, i32, i32) {
+fn geom(a: &App, v: &PagesView) -> (i32, i32, i32, i32, i32) {
+    if v.unified && !v.picking {
+        let gap=ui_px(24.0);
+        let cw=(a.w-gap*4)/3;
+        let ch=(a.h-ui_px(190.0)-ui_px(170.0)-gap*4)/3;
+        return (3,3,cw,ch,ch-ui_px(58.0));
+    }
     let cols = if a.w > a.h { 6 } else { 4 };
     let m = ui_px(50.0);
     let cw = (a.w - m * (cols + 1)) / cols;
@@ -170,6 +184,10 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         v.tab_initialized = true;
     }
     v.current = current;
+    v.previews=PagePreviewRequests::default();
+    v.context = None;
+    v.held = false;
+    v.last_tap = None;
     v.picking = false;
     let npages = nb.npages() as usize;
     if v.sel.len() < npages {
@@ -183,7 +201,7 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     annotate_map_free(&mut v.book);
     annotate_map_load(nb.id.as_str(), &mut v.book); // (no labels if it is not there or does not read)
     v.open = true;
-    let (cols, rows, ..) = geom(a);
+    let (cols, rows, ..) = geom(a,v);
     v.screen = current / (cols * rows);
     true
 }
@@ -197,6 +215,7 @@ pub fn pagesview_pick(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         v.index_tab = false; // an Index with nothing to pick
     }
     v.picking = true;
+    let (cols,rows,..)=geom(a,v);v.screen=current/(cols*rows);
     true
 }
 
@@ -230,6 +249,9 @@ pub fn pagesview_name(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
 /// Closes it (and its number pad). Its ticks' memory stays for the next open.
 pub fn pagesview_close(v: &mut PagesView) {
     v.open = false;
+    v.press.down = false;
+    v.context = None;
+    v.last_tap = None;
     v.picking = false;
     end_name_only(v);
     keyboard_close(&mut v.kb);
@@ -371,6 +393,7 @@ fn draw_index(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, tota
 
 /// Draws the whole screen into a->screen (the caller refreshes it).
 pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav) {
+    if v.view_size!=(a.w,a.h) {v.view_size=(a.w,a.h);v.press=Press::default();v.last_tap=None;}
     if v.unified {v.index_tab=false;}
     hits_clear(&mut v.hits);
     let (aw, ah) = (a.w, a.h);
@@ -450,7 +473,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         }
     }
 
-    let (cols, rows, cw, ch, th) = geom(a);
+    let (cols, rows, cw, ch, th) = geom(a,v);
     let per = cols * rows;
     let mut screens = (nb.npages() + per - 1) / per;
     if v.index_tab {
@@ -467,9 +490,10 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     if !v.index_tab {
         v.screen = clampi(v.screen, 0, screens - 1);
     }
-    let c = &mut a.screen;
     let mut n = 0;
-    while !v.index_tab && n < per {
+    if v.unified { draw_tiles(v,a,nb,nav); }
+    let c=&mut a.screen;
+    while !v.unified && !v.index_tab && n < per {
         let i = v.screen * per + n;
         if i >= nb.npages() {
             break;
@@ -560,8 +584,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     }
     if v.unified && !v.index_tab {
         let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
-        let mut missing=false;for &pid in &nb.page_ids[first..last] {let mut c=Canvas::default();if !store_load_page_preview(nb,pid,&mut c){missing=true;break;}}
-        if missing && !bg_pending(BgKind::PagePreviews,nb.id.as_str()) {bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),a.dpi,true);}
+        bg_request_page_previews(&mut v.previews,nb,first,last,a.dpi);
     }
     let y = ah - ui_px(170.0);
     a.toast_floor = y; // keep a Copy page notice above the bottom controls when Pages reopens
@@ -626,6 +649,8 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
             if enabled {hits_add(&mut v.hits,r,id,0);}
         }
     }
+    if let Some(page)=v.context { draw_context(v,a,nb,page); }
+    let c=&mut a.screen;
     // A toast stays above the keys, as over the Library's keyboard: Go to page's "Enter a page number"
     // used to cover its 0 and del just as the number was put right, and a key pressed under a toast
     // refreshes the toast's width with it.
@@ -633,6 +658,49 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         keyboard_draw(&mut v.kb, c, Rect { x: 0, y: 0, w: aw, h: ah });
         a.toast_floor = v.kb.area.y;
     }
+}
+
+// Nine full-page previews, with labels outside the image and no framed blank containers.
+fn draw_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav) {
+    let (cols,rows,cw,ch,th)=geom(a,v);
+    let gap=ui_px(if v.picking {50.0}else{24.0});
+    let (mut pw,mut ph)=(0,0);store_notebook_page_size(nb,&mut pw,&mut ph);
+    let scale=(cw as f32/pw.max(1) as f32).min(th as f32/ph.max(1) as f32);
+    let (w,h)=((pw as f32*scale)as i32,(ph as f32*scale)as i32);
+    for slot in 0..cols*rows {
+        let i=v.screen*(cols*rows)+slot;
+        let Some(&pid)=nb.page_ids.get(i as usize)else{break};
+        let cell=Rect::new(gap+(slot%cols)*(cw+gap),ui_px(190.0)+gap+(slot/cols)*(ch+gap),cw,ch);
+        let image=Rect::new(cell.x+(cw-w)/2,cell.y,w,h);
+        let mut preview=Canvas::default();
+        if store_load_page_preview(nb,pid,&mut preview){canvas_blit_fit(&mut a.screen,&preview,image);}
+        else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),image,&format!("{}",i+1),0);}
+        // Selection is the whole tile; a narrow outline marks state without covering the page.
+        if !v.picking && v.sel.get(i as usize)==Some(&true) {
+            ui_frame(&mut a.screen,rect_inflate(image,ui_px(6.0)),0,0,false,ui_px(6.0));
+        }
+        let name=nav_name(nav,pid);
+        let mut label=if name.is_empty(){format!("{}",i+1)}else{format!("{} · {}",i+1,name)};
+        let bp=book_page(v,pid);if bp!=0 {label.push_str(" · ");label.push_str(&cformat!(tr("p. %d"),bp));}
+        font_draw_left_name(&mut a.screen,if i==v.current{FontFace::Bold}else{FontFace::Regular},ui_small_size(),Rect::new(image.x,image.y+h+ui_px(6.0),w,ui_px(46.0)),&label,0);
+        hits_add(&mut v.hits,cell,PG_OPEN,i);
+    }
+}
+
+fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,page:i32) {
+    hits_clear(&mut v.hits);
+    let w=ui_px(1000.0).min(a.w-ui_px(60.0));let h=ui_px(520.0);
+    let card=Rect::new((a.w-w)/2,(a.h-h)/2,w,h);
+    ui_frame(&mut a.screen,card,ui_px(18.0),255,true,0);
+    ui_frame(&mut a.screen,card,ui_px(18.0),0,false,ui_px(3.0));
+    font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(card.x,card.y,w,ui_px(100.0)),&cformat!(tr("Page %d"),page+1),0);
+    for (row,id,icon,label) in [(0,PG_CONTEXT_OPEN,IconKind::None,tr("Open")),(1,PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),(2,PG_CONTEXT_CANCEL,IconKind::None,tr("Cancel"))] {
+        let rect=Rect::new(card.x+ui_px(24.0),card.y+ui_px(110.0)+row*ui_px(130.0),w-ui_px(48.0),ui_px(120.0));
+        let enabled=nb.page_ids.get(page as usize).is_some();
+        ui_button(&mut a.screen,rect,icon,label,if enabled{ButtonStyle::Plain}else{ButtonStyle::Disabled});
+        if enabled{hits_add(&mut v.hits,rect,id,0);}
+    }
+    a.toast_floor=card.y;
 }
 
 // The whole view drawn again and refreshed (what the editor's compose_all does while it is open).
@@ -702,6 +770,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         return PvResult::None;
     }
     if phase == 0 {
+        v.held = false;
         press_begin(&mut v.press, ev.x, ev.y, ev.t_ms);
         return PvResult::None;
     }
@@ -709,13 +778,23 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if phase == 1 {
         return PvResult::None;
     }
+    v.press.down = false;
+    if v.held {v.held=false;return PvResult::None;}
     let Some(&hit) = hits_find(&v.hits, v.press.x0, v.press.y0) else {
+        if v.context.take().is_some(){redraw(v,a,nb,nav,RefreshMode::Ui);}
         return PvResult::None;
     };
     if !press_is_tap(&v.press, hit.r) {
         return PvResult::None;
     }
+    if v.unified && !v.picking && hit.id==PG_OPEN && ev.t_ms.wrapping_sub(v.press.t0)>=600 {
+        v.context=Some(hit.arg);v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);return PvResult::None;
+    }
     match hit.id {
+        PG_CONTEXT_CANCEL => {v.context=None;redraw(v,a,nb,nav,RefreshMode::Ui);}
+        PG_CONTEXT_LINK | PG_CONTEXT_OPEN => {
+            if let Some(page)=v.context.take(){v.target=page;return if hit.id==PG_CONTEXT_LINK {PvResult::Link}else{PvResult::Open};}
+        }
         PG_TAB => {
             v.index_tab = hit.arg != 0;
             if v.index_tab {
@@ -740,7 +819,14 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         PG_BACK => return PvResult::Close,
         PG_OPEN => {
             v.target = hit.arg;
-            return if v.picking { PvResult::Pick } else { PvResult::Open };
+            if v.picking {return PvResult::Pick;}
+            if !v.unified {return PvResult::Open;}
+            if v.last_tap.is_some_and(|(page,at)|page==hit.arg && ev.t_ms.wrapping_sub(at)<=450) {
+                v.last_tap=None;return PvResult::Open;
+            }
+            v.last_tap=Some((hit.arg,ev.t_ms));
+            if let Some(selected)=v.sel.get_mut(hit.arg as usize){*selected=!*selected;}
+            redraw(v,a,nb,nav,RefreshMode::Ui);
         }
         PG_LINK => return PvResult::Link,
         PG_TOGGLE => {
@@ -784,9 +870,14 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     PvResult::None
 }
 
-/// From the editor's tick: once typing on its keyboard pauses, the keyboard's grayscale refresh
-/// (app_keyboard_tick). Nothing else.
-pub fn pagesview_tick(v: &mut PagesView, a: &mut App, now: u32) {
+/// Held management tiles open their action card; paused typing gets its grayscale refresh.
+pub fn pagesview_tick(v: &mut PagesView, a: &mut App, nb:&NotebookInfo, nav:&Nav, now: u32) {
+    if v.open && v.unified && !v.picking && !v.kb.open && v.context.is_none() && v.press.down && !v.press.moved
+        && now.wrapping_sub(v.press.t0)>=600 {
+        if let Some(hit)=hits_find(&v.hits,v.press.x0,v.press.y0).copied().filter(|h|h.id==PG_OPEN) {
+            v.context=Some(hit.arg);v.held=true;v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);
+        }
+    }
     if v.open && v.kb.open {
         app_keyboard_tick(a, &mut v.kb, now);
     }
@@ -804,6 +895,7 @@ fn atoi(s: &str) -> i32 {
 /// its keyboard's title while that is up ("Page name", "Go to page"), else empty; "text" what it
 /// holds. 0, or -1 for a key it does not know.
 pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, out: &mut String, cap: usize) -> i32 {
+    if key=="context" {csnprintf!(out,cap,"%d",v.context.map_or(0,|p|p+1));return 0;}
     out.clear();
     if key == "pages_tab" {
         csnprintf!(out, cap, "%s", if v.index_tab { "index" } else { "pages" });
@@ -830,6 +922,8 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
 }
 
 pub fn pagesview_control_point(v:&PagesView,name:&str)->Option<(f32,f32)> {
-    let (id,arg)=match name {"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"delete"=>(PG_DELETE,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
+    let (id,arg)=match name {"link"=>(PG_CONTEXT_LINK,0),"open"=>(PG_CONTEXT_OPEN,0),"cancel"=>(PG_CONTEXT_CANCEL,0),"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"delete"=>(PG_DELETE,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
     v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
+
+pub fn pagesview_grid(v:&PagesView,a:&App)->(i32,i32) {let (cols,rows,..)=geom(a,v);(cols,rows)}

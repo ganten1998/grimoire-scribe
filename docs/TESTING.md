@@ -27,6 +27,26 @@ it and repeat a Grimoire round trip. In Grimoire Share > Wi-Fi, test On, wait fo
 address, transfer a page, then test Off locally (the SSH connection will drop). Check no saved
 network is lost. This candidate does not claim these physical transitions have been tested.
 
+## 2.0.0-rc.5: graph and page management
+
+Check October-2026-02: unlinked pages 13/14 and deleted pages must not appear as graph nodes.
+There is no Unlinked tray, zoom-button pair or Tidy up button. The compact footer's View button
+cycles All, Around and Fit; pinch zoom remains available. Node counts describe the displayed
+local and external nodes, orphans are current-notebook pages without valid links, links count
+valid outgoing links, and page totals distinguish this notebook from all notebooks.
+
+Pages shows nine previews per screen in either orientation. Tap toggles selection; a second tap
+on the same tile within 450 ms opens it. Hold for 600 ms for Open / Add a link / Cancel. Add a
+link opens the held page and arms its ink-free area selector; a failed page save must not arm a
+link on another page. Choose-from-pages destination picking remains a single-tap operation.
+
+Toggle Areas with both the current page and a linked-page preview showing; it must update on
+that press. The preview must stay a preview, with the origin/history unchanged until committed.
+Dismiss it, make/cancel/fail a cross-notebook link, and verify no thumbnail or picker pixels linger.
+Unavailable previews must stop background work after one attempt; reopening the browser or
+explicit cache invalidation permits another attempt. Main Settings stays over the notebook through nested sheets, rotation, pen input and Done; pen
+input must not draw through it. Pen feel is grouped beside drawing tools in the toolbar.
+
 ## 2.0.0-rc.3: unified Index and notebook links (device checks pending)
 
 Automated development checks cover stable cross-notebook targets, rename/folder-move identity,

@@ -12,6 +12,9 @@ pentap panel pages
 tap panel map.pages
 wait 200
 expect editor.modal is pages
+waitbg 5000
+wait 200
+expect bg.busy is 0
 expect editor.loaded_pages is 1
 shot many-pages-instant-grid
 tap 1700 2380

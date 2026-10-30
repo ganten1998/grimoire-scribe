@@ -25,10 +25,11 @@ expect editor.page is 1
 tap panel pages
 expect editor.map is graph
 # Around current page, then zoom and return to All.
-tap panel map.around
+tap panel map.view
 expect editor.map.mode is around
 shot 02-around
-tap panel map.all
+tap panel map.view
+tap panel map.view
 expect editor.map.mode is all
 rotate 1
 wait 300

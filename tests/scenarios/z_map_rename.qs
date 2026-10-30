@@ -4,8 +4,8 @@
 wait 300
 tap 200 400
 tap panel pages
-tap map-node 4
-expect editor.map.selected is 4
+tap map-node 2
+expect editor.map.selected is 2
 tap panel map.rename
 expect editor.keyboard is Name in the Index
 expect editor.text is
@@ -13,7 +13,7 @@ tap 221 2045
 expect editor.text is a
 tap 1643 2365
 expect editor.index_rows is 3
-expect toast is Page 4 is in the Index as a.
+expect toast is Page 2 is in the Index as a.
 expect editor.map is graph
 shot 01-renamed
 # Pan with a pen, preserving notebook ink.
@@ -29,7 +29,7 @@ shot 02-incoming
 
 tap panel bar.close
 tap panel pages
-tap panel map.around
+tap panel map.view
 expect editor.map is graph
 expect editor.map.mode is around
 tap 100 95

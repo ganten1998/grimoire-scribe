@@ -1489,6 +1489,20 @@ pub fn store_list(out: &mut Vec<NotebookInfo>) -> i32 {
     0
 }
 
+/// Footer totals, reading one notebook at a time without retaining every page list or writing
+/// legacy size metadata. Unreadable notebooks are omitted just as they are in the Library.
+pub fn store_page_totals()->Option<(usize,usize)> {
+    let dir=cformat!("%s/notebooks",&g_root());
+    let mut pages=0usize;let mut books=0usize;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let entry=entry.ok()?;let name=entry.file_name();let name=name.as_bytes();
+        if name.first()==Some(&b'.') || !id_ok(name) {continue;}
+        let mut nb=NotebookInfo::default();
+        if store_load_info(std::str::from_utf8(name).ok()?,&mut nb)==0 {pages+=nb.page_ids.len();books+=1;}
+    }
+    Some((pages,books))
+}
+
 // ---- folders ----
 
 type FolderName = FixedStr<STORE_NAME_LEN>;
@@ -3737,6 +3751,11 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     0
 }
 
+pub fn store_page_previews_epoch(id:&str)->Option<(u64,i64,i64)> {
+    let dir=notebook_dir(id.as_bytes())?;
+    let stamp=std::fs::metadata(format!("{dir}/.page-previews/generation")).ok()?;
+    Some((stamp.ino(),stamp.mtime(),stamp.mtime_nsec()))
+}
 pub fn store_page_previews_generation(id:&str)->u64 {
     let Some(dir)=notebook_dir(id.as_bytes())else{return 0};
     std::fs::metadata(format!("{dir}/.page-previews")).map(|s|(s.mtime()as u64).wrapping_mul(1_000_000_000).wrapping_add(s.mtime_nsec() as u64)).unwrap_or(0)

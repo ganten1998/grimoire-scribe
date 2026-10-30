@@ -1,15 +1,17 @@
 # rust-only
 # generate: tests/map_fixture.py 250
 # env: GRIMOIRE_CHECK_FIT=1
+# A notebook without links has no tiny dots or unlinked tray in either orientation.
 wait 200
 tap 326 608
 tap panel pages
 expect editor.map is graph
 expect editor.map.nodes is 250
-expect editor.map.tray is 249
-shot 01-collapsed-tray
-tap panel map.tray
-shot 02-expanded-tray
+expect editor.map.visible is
+expect editor.map.stats is 0 250 0 250 250
+shot 01-no-unlinked-tray
 rotate 1
 wait 100
-shot 03-expanded-landscape
+expect editor.map.visible is
+expect editor.screen_composed is 1
+shot 02-no-unlinked-landscape

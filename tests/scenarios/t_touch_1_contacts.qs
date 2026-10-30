@@ -72,16 +72,16 @@ pen leave
 frame 1100
 frame 0
 wait 1100
-expect editor.panel_at.1768.1134 is pages
+expect editor.panel_at.1768.1242 is pages
 expect display.presents not -1
-finger 1 down 1768 1134
+finger 1 down 1768 1242
 frame 40
-expect display.presents is fast 1712 1104 112 60
-finger 2 down 1400 1134
+expect display.presents is fast 1712 1212 112 60
+finger 2 down 1400 1242
 frame 20
-expect display.presents is fast 1712 1104 112 60
-finger 1 up 1768 1134
-finger 2 up 1400 1134
+expect display.presents is fast 1712 1212 112 60
+finger 1 up 1768 1242
+finger 2 up 1400 1242
 frame
 expect touch.contacts is 0
 expect editor.modal is none

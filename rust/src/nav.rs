@@ -1022,3 +1022,15 @@ pub fn nav_save_links(id: &str, nav: &mut Nav, nb: &NotebookInfo) -> i32 {
     }
     rc
 }
+
+/// Display-only graph input: unavailable notebook/page targets remain saved for repair in List.
+pub fn nav_for_graph(nav:&Nav)->Nav {
+    let mut result=nav.clone();
+    let mut books=std::collections::HashMap::<String,NotebookInfo>::new();
+    result.links.retain(|link| {
+        let Some((id,pid))=nav_external_target(link.target.as_str())else{return true};
+        let book=books.entry(id.to_string()).or_insert_with(||{let mut b=NotebookInfo::default();store_load_info(id,&mut b);b});
+        book.page_ids.contains(&pid)
+    });
+    result
+}

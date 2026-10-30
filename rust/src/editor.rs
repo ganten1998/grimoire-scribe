@@ -1102,6 +1102,10 @@ fn draw_panel(a: &mut App) {
     if !st.shapes { canvas_slash(c, icon, ui_px(4.0)); }
     hits_add(&mut s.hits, shapes, P_SHAPES, 0);
     y += btn_h() + gap();
+    let pen = Rect { x, y, w, h: btn_h() };
+    ui_button(c, pen, IconKind::Tune, "", ButtonStyle::Plain);
+    hits_add(&mut s.hits, pen, P_PENSET, 0);
+    y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
     let h = if s.open { s.cur_hist() } else { None };
@@ -1168,11 +1172,10 @@ fn draw_panel(a: &mut App) {
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
-    // Paper, Display, Pen feel, Library (icons only, like the rest of the panel).
-    let rest: [(IconKind, i32); 5] = [
+    // Paper, Display, Settings and Library (icons only, like the rest of the panel).
+    let rest: [(IconKind, i32); 4] = [
         (IconKind::Paper, P_PAPER),
         (IconKind::Brightness, P_DISPLAY),
-        (IconKind::Tune, P_PENSET),
         (IconKind::Gear, P_SETTINGS),
         (IconKind::Library, P_LIBRARY),
     ];
@@ -1222,6 +1225,7 @@ fn panel_name(h: &Hit) -> String {
 /// nothing). The hits go stale after a stroke until the settle, and a human tap settles first, so
 /// this does too.
 pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
+    if crate::library::library_settings_active(a){return crate::library::library_control_point(a,name);}
     let s = a.ed.as_deref()?;
     if a.scr != ScreenId::Editor || !s.open {
         return None;
@@ -1511,6 +1515,10 @@ fn view_clamp(a: &mut App) {
 /// front that does not pan the page (the Pages view, the sheets), a two-finger drag is always a swipe
 /// candidate: a pan there would move nothing.
 fn touch_context(a: &App) {
+    if crate::library::library_settings_active(a) {
+        let record=crate::library::library_record_active(a);
+        input_touch_context(TgView{gestures_on:record || a.settings.gestures,record,..TgView::default()});return;
+    }
     let Some(s) = a.ed.as_deref() else { return };
     let pans = s.open && !sheet_open(s);
     input_touch_context(TgView {
@@ -1951,19 +1959,32 @@ fn eye_reach(a: &App, sr: Rect) -> Rect {
 /// Only on the screen (never in the page canvas, so never in a thumbnail, the PDF, the share page or the sleep
 /// image), 1-bit, so DU and GL16 show it alike. At most LB_MAX boxes, each tested against r.
 fn draw_areas(a: &mut App, r: Rect) {
-    if !a.settings.link_areas || ed_ref(a).peek.active {
+    if !a.settings.link_areas {
         ed(a).boxes.drawn = 0;
         return;
     }
-    boxes_get(a);
-    ed(a).boxes.drawn = ed_ref(a).boxes.n;
+    // A peek is display-only: outline its links at its own viewport without committing it.
+    let (areas,numbers,n,zoom,ox,oy)=if ed_ref(a).peek.active {
+        let s=ed_ref(a);let pk=s.peek;
+        let mut links=[NavLink::default();LB_MAX];let mut areas=[RECT_EMPTY;LB_MAX];let mut numbers=[0;LB_MAX];
+        let page=s.hist.iter().find(|h|h.page_id==pk.pid).and_then(|h|h.page.as_deref()).or(s.ccache[pk.slot].page.as_deref());
+        let n=page.map_or(0,|p|nav_link_areas(&s.nav,p,pk.pid,NAV_LINK_MIN_MM*a.dpi/25.4,&mut links,&mut areas)as usize);
+        let mut entries=[LbEntry::default();LB_MAX];linkbar_group(&s.nb,&links[..n],&areas[..n],a.dpi,&mut entries,&mut numbers);
+        let top=status_reserved(a);let (zoom,ox,oy)=peek_view(a.w,a.h-top,s.pgw,s.pgh,a.settings.landscape_fit||top>0);
+        (areas,numbers,n,zoom,ox,oy-top as f32/zoom)
+    } else {
+        boxes_get(a);let s=ed_ref(a);(s.boxes.area,s.boxes.entry,s.boxes.n,s.zoom,s.ox,s.oy)
+    };
+    ed(a).boxes.drawn = n;
     let (thick, on, off, halo) = (ui_px(4.0), ui_px(16.0), ui_px(12.0), ui_px(2.0));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
-    for i in 0..ed_ref(a).boxes.n {
-        let s = ed_ref(a);
-        let sr = box_screen(s, s.boxes.area[i]);
-        let num = s.boxes.entry[i];
+    for i in 0..n {
+        let p=areas[i];
+        let x0=((p.x as f32-ox)*zoom).round()as i32;let y0=((p.y as f32-oy)*zoom).round()as i32;
+        let x1=(((p.x+p.w)as f32-ox)*zoom).round()as i32;let y1=(((p.y+p.h)as f32-oy)*zoom).round()as i32;
+        let sr=Rect::new(x0,y0,(x1-x0).max(1),(y1-y0).max(1));
+        let num = numbers[i];
         if !rect_overlaps(r, eye_reach(a, sr)) {
             continue;
         }
@@ -1993,44 +2014,22 @@ fn eye_bounds(a: &mut App) -> Rect {
     )
 }
 
-/// The eye turned on or off (the bar's Areas button, whose rect is `button`, or the link-areas action,
-/// with no button): remembered, the boxes drawn or taken away. The button goes out first on its own
-/// refresh, then the boxes' union; far apart (over 600 px between their centres) they are two presents
-/// anyway. No toast but the first time it comes on (hints bit 2).
-fn areas_toggle(a: &mut App, button: Rect) {
+/// The eye and its bar button update together, including any page being previewed. A single
+/// composition avoids split refreshes and restores anything the previous overlay covered.
+fn areas_toggle(a: &mut App, _button: Rect) {
     a.settings.link_areas = !a.settings.link_areas;
     let tip = a.settings.link_areas && a.settings.hints & HINT_EYE == 0;
-    if tip {
-        a.settings.hints |= HINT_EYE;
-    }
+    if tip { a.settings.hints |= HINT_EYE; }
     settings_save(&a.settings);
-    let un = eye_bounds(a);
-    if !rect_is_empty(button) {
-        compose(a, button);
-        app_invalidate(a, button, RefreshMode::Ui);
-        app_flush(a);
-    }
-    if !rect_is_empty(un) {
-        compose(a, un);
-        app_invalidate(a, un, RefreshMode::Ui);
-        if !rect_is_empty(button) {
-            let (bc, uc) = ((button.x + button.w / 2, button.y + button.h / 2), (un.x + un.w / 2, un.y + un.h / 2),
-            );
-            if (bc.0 - uc.0).abs().max((bc.1 - uc.1).abs()) > ui_px(600.0) {
-                app_flush(a);
-            }
-        }
-    }
+    compose_all(a, RefreshMode::Ui);
     if tip {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
-        // eye draws dotted boxes over the page where a finger's tap follows a link.
-        app_toast(a, tr("Dotted boxes show where a finger tap follows a link. They never print."), 4000,
-        );
+        app_toast(a, tr("Dotted boxes show where a finger tap follows a link. They never print."), 4000);
     }
 }
 
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
+    if crate::library::library_settings_active(a) {crate::library::library_settings_redraw(a);return;}
     if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.draw(a));return;}
     if ed_ref(a).map.open {
         map_draw(a, r);
@@ -2214,6 +2213,7 @@ fn draw_panel_over(a: &mut App) {
 /// Live view: where the panel is, for its layer (RECT_EMPTY where none shows: no notebook, or a menu, sheet,
 /// bar or the Pages view in front, which draw over the panel: the browser's layer would be over them).
 pub fn editor_live_panel(a: &App) -> Rect {
+    if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
         Some(s) if !sheet_open(s) => s.panel,
         _ => RECT_EMPTY,
@@ -2224,6 +2224,7 @@ pub fn editor_live_panel(a: &App) -> Rect {
 /// panel's rect, with a menu over it or not (the browser's layer is gone while one is up, and the tiles must not
 /// hold the panel then), and none where the Pages view covers the screen.
 pub fn editor_live_hole(a: &App) -> Rect {
+    if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
         Some(s) if s.open && !s.pv.open => s.panel,
         _ => RECT_EMPTY,
@@ -2235,6 +2236,7 @@ pub fn editor_live_hole(a: &App) -> Rect {
 /// none (empty) with a menu, sheet, bar or the Pages view in front, which draw over the panel. It is an
 /// overlay, so it moves with the panel at the next flush.
 pub fn editor_live_chip(a: &App, size: i32) -> Rect {
+    if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     let Some(s) = a.ed.as_deref() else { return RECT_EMPTY ;
     };
     if !s.open || sheet_open(s) {
@@ -3428,6 +3430,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
 /// A cheap snapshot for the early input hook. UI gestures never paint provisional ink. The
 /// real brush remains authoritative: textures, nibs and paper restoration arrive in the tiles.
 pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
+    if crate::library::library_settings_active(a) {return;}
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
     if !s.open || pb_contact_bound(a, ev) || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
@@ -3697,11 +3700,11 @@ fn undo_redo(a: &mut App, undo: bool) {
 fn pages_show(a: &mut App) {
     card_drop(ed(a));
     lm_drop(ed(a)); // (the view comes up whole)
-    if !save_page(a){return;}
+    if !save_page(a){compose_all(a,RefreshMode::Full);return;}
     ed(a).pv.unified=true;ed(a).pv.index_tab=false;ed(a).pv.tab_initialized=true;
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_open(pv, a, nb, nav, index)) {
-        return;
+        compose_all(a,RefreshMode::Full);return;
     }
     compose_all(a, RefreshMode::Full);
 }
@@ -3945,6 +3948,7 @@ fn link_off(a: &mut App) {
 /// and New page...'s keyboard.
 fn lm_bounds(a: &App) -> Rect {
     let s = ed_ref(a);
+    if s.destination.open { return Rect::new(0, 0, a.w, a.h); }
     let mut u = RECT_EMPTY;
     if s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso {
         u = rect_union(s.lm.strip, strip_rect(a));
@@ -4939,8 +4943,9 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             map_show(a, false);
         }
         PvResult::Link => {
-            pages_hide(a, -1);
-            link_arm(a, false, None);
+            let target=if ed_ref(a).pv.unified {ed_ref(a).pv.target}else{-1};
+            pages_hide(a, target);
+            if target<0 || ed_ref(a).index==target {link_arm(a, false, None);}
         }
         PvResult::Pick => {
             // (the view picks only for Choose from the pages..., a new link waiting in Link to...)
@@ -6340,7 +6345,10 @@ fn panel_act(a: &mut App, h: Hit) {
             let t = a.settings.current_tool;
             pensettings_open(a, t);
         }
-        P_SETTINGS => {if save_page(a){crate::library::library_settings_from_notebook(a);}}
+        P_SETTINGS => {
+            fs_abort_view(a,FsAbortView::Screen);settle_now(a);
+            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(ed(a));crate::library::library_settings_from_notebook(a);}
+        }
         P_LIBRARY => {
             app_toast(a, tr("Saving..."), 8000);
             app_flush(a);
@@ -6509,6 +6517,10 @@ pub fn editor_shortcut_at(a: &mut App, action: i32, x: f32, y: f32, src: ActionS
 }
 
 fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) -> bool {
+    if crate::library::library_settings_active(a) {
+        if action==SHORTCUT_GO_BACK || action==SHORTCUT_CLOSE_MENU {crate::library::library_settings_back(a);return true;}
+        return app_global_action(a,action,src);
+    }
     let action=if matches!(action,SHORTCUT_PAGES|SHORTCUT_INDEX){SHORTCUT_INDEX_MAP}else{action};
     if action == SHORTCUT_STATUS_MODE && !editor_busy(a) { status_cycle_mode(a); return true; }
     let asleep = a.asleep;
@@ -7398,7 +7410,7 @@ pub fn editor_suspend(a: &mut App) -> bool {
 /// The card, Link to... and Find PICK (phase 2) are sheets for every other purpose, but they leave the page's corner in
 /// front: the clock shows and keeps its tap with them up (rule 12), unless a keyboard covers the corner.
 pub fn editor_page_in_front(a: &App) -> bool {
-    a.ed.as_deref().is_some_and(|s| s.open && !corner_sheet_open(s) && !keyboard_over_corner(a, s))
+    !crate::library::library_settings_active(a) && a.ed.as_deref().is_some_and(|s| s.open && !corner_sheet_open(s) && !keyboard_over_corner(a, s))
 }
 
 /// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
@@ -7439,6 +7451,7 @@ fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
 /// more.) The clock and battery corner leaves a tap on a control to it, but for a link in its own corner,
 /// which is not one there: the corner's tap is the clock's, over a link too.
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
+    if crate::library::library_settings_active(a) {return true;}
     let s = ed_ref(a);
     if !s.open || corner_sheet_open(s) {
         return true;
@@ -7956,6 +7969,9 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
+    if crate::library::library_settings_active(a) {
+        crate::library::library_event(a,ev);touch_context(a);return;
+    }
     if !pb_input(a, ev) { editor_event_in(a, ev); }
     lm_check_menus(a);
     touch_context(a);
@@ -8019,7 +8035,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         let ph=app_pointer_phase(ev);
         if ph>=0 {let r=with_modal(a,|s|&mut s.destination,|p,a|p.pointer(a,ph,ev));match r {
             NotebookPick::Cancel=>{ed(a).lt.hidden=false;compose_all(a,RefreshMode::Full);},
-            NotebookPick::Target(t)=>{ed(a).lt.hidden=false;let target=if let Some((id,pid))=nav_external_target(t.as_str()){if ed_ref(a).nb.id==id{format!("p{pid}")}else{t.as_str().to_string()}}else{t.as_str().to_string()};link_pick(a,&target);},
+            NotebookPick::Target(t)=>{ed(a).lt.hidden=false;let target=if let Some((id,pid))=nav_external_target(t.as_str()){if ed_ref(a).nb.id==id{format!("p{pid}")}else{t.as_str().to_string()}}else{t.as_str().to_string()};link_pick(a,&target);compose_all(a,RefreshMode::Full);},
             NotebookPick::None=>{}
         }}
         return;
@@ -8647,6 +8663,7 @@ fn migrate_step(a: &mut App) {
 }
 
 pub fn editor_tick(a: &mut App, now: u32) {
+    if crate::library::library_settings_active(a) {crate::library::library_tick(a,now);touch_context(a);return;}
     if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
         let id=if ed_ref(a).destination.open {ed_ref(a).destination.selected.as_ref().map(|nb|nb.id)}else{Some(ed_ref(a).nb.id)};
         ed(a).previews_checked=now;
@@ -8707,7 +8724,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
         app_invalidate(a, d, RefreshMode::Ui);
     }
     if ed(a).open {
-        with_modal(a, |s| &mut s.pv, |pv, a| pagesview_tick(pv, a, now));
+        with_pv(a, |pv, a, nb, nav| pagesview_tick(pv, a, nb, nav, now));
     }
     let s = ed(a);
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && s.fs.state != FsState::Drawing
@@ -8817,6 +8834,14 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 /// The headless runner's "editor.*" keys, asked without the prefix (app_probe's contract);
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
+    if key=="pages.grid" {let (cols,rows)=crate::pagesview::pagesview_grid(&ed_ref(a).pv,a);csnprintf!(out,cap,"%d %d",cols,rows);return 0;}
+    if key=="pages.context" {return with_pv(a,|pv,_,nb,nav|pagesview_probe(pv,nb,nav,"context",out,cap));}
+    if key=="screen_composed" {
+        let before=a.screen.clone();compose(a,Rect::new(0,0,a.w,a.h));
+        let same=before.px==a.screen.px;a.screen=before;
+        csnprintf!(out,cap,"%d",same as i32);return 0;
+    }
+    if let Some(key)=key.strip_prefix("settings.") {return crate::library::library_probe(a,key,out,cap);}
     if let Some(probe) = key.strip_prefix("pen.") {
         let Some(s) = a.ed.as_deref() else {
             out.clear();
@@ -9198,7 +9223,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if s.map.open {
+        let m = if crate::library::library_settings_active(a) {"settings"} else if s.map.open {
             "map"
         } else if s.find.open {
             "find"
@@ -10001,7 +10026,7 @@ mod tests {
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_SHAPES, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_SETTINGS, P_LIBRARY]);
+            want.extend([P_TOOL, P_SHAPES, P_PENSET, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_SETTINGS, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
@@ -10365,4 +10390,8 @@ fn open_external_page(a:&mut App,id:&str,pid:u32,push_origin:bool)->bool {
         let mut back=std::mem::take(&mut ed(a).notebook_back);
         if push_origin {if back.len()>=32 {back.remove(0);}back.push(origin);}
         editor_open_notebook_at(a,id,pid,false);ed(a).notebook_back=back;ed_ref(a).open&&ed_ref(a).nb.id==id&&ed_ref(a).open_pid()==pid
+}
+
+pub fn editor_settings_background(a:&mut App) {
+    compose(a,Rect::new(0,0,a.w,a.h));
 }

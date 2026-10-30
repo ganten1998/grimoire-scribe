@@ -813,7 +813,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             a.last_shortcut_code = ev.value;
             a.last_shortcut_mods = ev.key_mods as i32;
             a.last_shortcut_gamepad = ev.gamepad;
-            if a.scr == ScreenId::Library && library_learn_key(a, ev.value, ev.gamepad) {
+            if (a.scr == ScreenId::Library || crate::library::library_settings_active(a)) && library_learn_key(a, ev.value, ev.gamepad) {
                 return;
             }
             let action = shortcuts_lookup(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32,
@@ -1592,7 +1592,7 @@ fn app_tick_screens(a: &mut App, now: u32) {
     let bt = bt_tick(&mut bt_reply);
     if bt != BtEvent::None {
         a.bt_changes = a.bt_changes.wrapping_add(1);
-        if a.scr == ScreenId::Library {
+        if a.scr == ScreenId::Library || crate::library::library_settings_active(a) {
             library_bt(a, bt, &bt_reply);
         }
     }

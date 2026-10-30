@@ -25,19 +25,21 @@ expect toast is Dotted boxes show where a finger tap follows a link. They never 
 shot 01-areas
 wait 4300
 expect toast is
-# off and on again: one refresh each, over the boxes alone, and no second tip
+# Off and on again: one consistent composition each, no stale overlays and no second tip
 expect display.presents not -1
 key 30 0
 wait 100
 expect settings.link_areas is 0
 expect editor.areas is 0
-expect display.presents is ui 297 997 606 906
+expect display.presents is ui 0 0 1860 2480
+expect editor.screen_composed is 1
 key 30 0
 wait 100
 expect settings.link_areas is 1
 expect editor.areas is 3
 expect toast is
-expect display.presents is ui 297 997 606 906
+expect display.presents is ui 0 0 1860 2480
+expect editor.screen_composed is 1
 # a stroke across a box: the page canvas is what a fresh render draws (the boxes are not in it)
 pen line 200 1050 1000 1100 30 0.5 0.5
 expect editor.strokes is 1
@@ -78,12 +80,12 @@ wait 300
 expect settings.link_areas is 0
 expect editor.areas is 0
 expect editor.bar is open
-expect display.presents is fast 940 2300 880 140, ui 940 2300 880 140, ui 297 997 606 906
+expect display.presents is fast 940 2300 880 140, ui 0 0 1860 2480
 tap 1155 2370
 wait 300
 expect settings.link_areas is 1
 expect editor.areas is 3
-expect display.presents is fast 940 2300 880 140, ui 940 2300 880 140, ui 297 997 606 906
+expect display.presents is fast 940 2300 880 140, ui 0 0 1860 2480
 shot 05-areas-from-the-bar
 key 37 0
 wait 300

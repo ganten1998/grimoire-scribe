@@ -647,8 +647,9 @@ shot 28-index-named
 tap panel map.back
 pentap panel previous
 tap panel pages
-tap map-node 3
-tap map-node 3
+tap panel map.pages
+tap panel pages.page.3
+tap panel pages.page.3
 expect editor.page is 3
 shot 28-index-jump
 # Add a link through the toolbar. The folder browser replaces the retired Index target.
@@ -1452,7 +1453,6 @@ tap panel bar.close
 tap panel pages
 wait 150
 expect editor.map is graph
-tap panel map.all
 wait 100
 expect editor.map.mode is all
 shot 72-index-map
@@ -1461,7 +1461,7 @@ shot 73-map-card
 rotate 1
 wait 100
 shot 74-map-card-landscape
-tap panel map.around
+tap panel map.view
 expect editor.map.mode is around
 shot 75-map-around-landscape
 rotate 0

@@ -27,7 +27,8 @@ pentap panel pages
 tap panel map.pages
 wait 300
 expect editor.modal is pages
-tap 703 340
+tap panel pages.page.2
+tap panel pages.page.2
 wait 300
 expect editor.page is 2
 pentap panel paper
@@ -56,8 +57,8 @@ expect editor.strokes is 1
 pentap panel pages
 tap panel map.pages
 wait 300
-tap 396 296
-tap 848 296
+tap panel pages.page.1
+tap panel pages.page.2
 wait 100
 expect editor.ticked is 2
 shot 02-two-ticked
@@ -76,7 +77,7 @@ expect editor.strokes is 0
 pentap panel pages
 tap panel map.pages
 wait 300
-tap 848 296
+tap panel pages.page.2
 wait 100
 expect editor.ticked is 1
 shot 03-one-ticked-copy-on
@@ -102,7 +103,8 @@ pentap panel pages
 tap panel map.pages
 wait 300
 expect editor.tile.1 is Page 1
-tap 251 340
+tap panel pages.page.1
+tap panel pages.page.1
 wait 300
 expect editor.page is 1
 expect editor.strokes is 1
@@ -123,7 +125,7 @@ expect editor.strokes is 0
 pentap panel pages
 tap panel map.pages
 wait 300
-tap 340 296
+tap panel pages.page.1
 wait 100
 expect editor.ticked is 1
 tap panel pages.copy

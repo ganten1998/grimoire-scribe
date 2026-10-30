@@ -23,7 +23,6 @@ enum MapLayout {
 enum MapHitKind {
     Control(u8),
     Node(usize),
-    Tray(usize),
     Link(usize),
 }
 #[derive(Clone, Copy, Debug)]
@@ -54,6 +53,8 @@ pub struct MapView {
     link_rows: Vec<NavLink>,
     notebook_name: String,
     foreign: Vec<ForeignPlace>,
+    link_count: usize,
+    page_totals: Option<(usize,usize)>,
     canvas: Canvas,
     g: GraphModel,
     ini: GraphIni,
@@ -72,23 +73,16 @@ pub struct MapView {
     drag: Option<MapDrag>,
     last_input_ms: u32,
     job_done: bool,
-    tray_expanded: bool,
+    view_fit: bool,
     w: i32,
     h: i32,
 }
 const BACK: u8 = 1;
 const LIST: u8 = 2;
-const ALL: u8 = 3;
-const AROUND: u8 = 4;
-const FIT: u8 = 5;
-const MINUS: u8 = 6;
-const PLUS: u8 = 7;
-const UNLINKED: u8 = 8;
-const TIDY: u8 = 9;
 const OPEN: u8 = 10;
 const AROUND_IT: u8 = 11;
 const RENAME: u8 = 12;
-const EXPAND_TRAY: u8 = 13;
+const VIEW: u8 = 16;
 const GRAPH: u8 = 14;
 const PAGES: u8 = 15;
 fn u(px: f32) -> i32 {
@@ -103,21 +97,12 @@ fn full(v: &MapView) -> Rect {
     }
 }
 fn plot(v: &MapView) -> Rect {
-    let bottom = if v.selected >= 0 { u(490.0) } else { u(340.0) };
-    let tray = if v.ini.show_unlinked && !v.g.tray.is_empty() {
-        if v.w > v.h {
-            u(520.0)
-        } else {
-            u(240.0)
-        }
-    } else {
-        0
-    };
+    let bottom = if v.selected >= 0 { u(370.0) } else { u(170.0) };
     Rect {
         x: u(16.0),
         y: u(270.0),
-        w: v.w - u(32.0) - if v.w > v.h { tray } else { 0 } - if v.foreign.is_empty(){0}else{u(470.0)},
-        h: v.h - u(270.0) - bottom - if v.w <= v.h { tray } else { 0 },
+        w: v.w - u(32.0) - if v.foreign.is_empty(){0}else{u(470.0)},
+        h: v.h - u(270.0) - bottom,
     }
 }
 fn save(v: &mut MapView) {
@@ -138,6 +123,7 @@ fn reserve<T>(v: &mut Vec<T>, n: usize) -> bool {
 }
 fn location(v: &MapView, i: usize) -> Option<(f32, f32)> {
     let n = &v.g.nodes[i];
+    if !n.linked { return None; }
     if v.mode == GraphMode::Around {
         return v.around.iter().find(|r| r.node == i as i32).map(|r| (r.x, r.y));
     }
@@ -205,8 +191,13 @@ fn default_fit(v: &mut MapView) {
         fit_points(v, true);
     }
 }
+fn around_centre(v:&MapView)->i32 {
+    if v.selected>=0 {return v.selected;}
+    if v.g.open>=0 && v.g.nodes[v.g.open as usize].linked {return v.g.open;}
+    v.g.nodes.iter().enumerate().filter(|(_,n)|n.linked).max_by_key(|(_,n)|n.degree).map_or(-1,|(i,_)|i as i32)
+}
 fn around(v: &mut MapView, centre: i32) -> bool {
-    if graph_around(&v.g, centre, 2, &mut v.around) < 0 {
+    if centre<0 || !v.g.nodes.get(centre as usize).is_some_and(|n|n.linked) || graph_around(&v.g, centre, 2, &mut v.around) < 0 {
         return false;
     }
     v.mode = GraphMode::Around;
@@ -214,7 +205,7 @@ fn around(v: &mut MapView, centre: i32) -> bool {
     true
 }
 fn layout(v: &mut MapView, a: &mut App, force: bool) -> bool {
-    let plan = if force {
+    let plan = if force || (v.ini.has_gen && v.ini.gen!=graph_gen(&v.g)) {
         GraphPlan::Full
     } else {
         graph_apply_ini(&mut v.g, &v.ini)
@@ -268,11 +259,12 @@ pub fn mapview_open(
     v.selected = -1;
     v.centre = -1;
     let n = nb.page_ids.len();
+    let graph_nav=nav_for_graph(nav);
     if canvas_init(&mut v.canvas, a.w, a.h) != 0
         || !reserve(&mut v.pages, n)
         || !reserve(&mut v.hits, n + 32)
         || !reserve(&mut v.labels, n)
-        || graph_build(&mut v.g, nb, nav, open_pid) != 0
+        || graph_build(&mut v.g, nb, &graph_nav, open_pid) != 0
     {
         app_toast(a, tr("Not enough memory for the map."), 3000);
         return false;
@@ -284,13 +276,14 @@ pub fn mapview_open(
         app_toast(a, tr("Not enough memory for the map."), 3000);
         return false;
     }
-    if (around_open || v.mode == GraphMode::Around) && !around(v, v.g.open) {
-        return false;
-    }
+    if (around_open || v.mode == GraphMode::Around) && !around(v, around_centre(v)) {v.mode=GraphMode::All;}
     save(v);
     v.link_rows=nav.links.iter().filter(|l|nb.page_ids.contains(&l.pid)).copied().collect();
     v.link_rows.sort_by_key(|l| (nav_external_target(l.target.as_str()).map_or(String::new(),|(id,_)|id.to_string()),l.pid,l.seed));
     v.notebook_name=nb.name.as_str().to_string();
+    v.link_count=graph_nav.links.iter().filter(|l|nb.page_ids.contains(&l.pid) &&
+        (l.target=="index" || nav_external_target(l.target.as_str()).is_some() || nav_link_page(l,nb)>=0)).count();
+    v.page_totals=store_page_totals();
     let mut seen=std::collections::HashSet::new();
     let mut books=std::collections::HashMap::<String,(NotebookInfo,Nav)>::new();
     for (row,l) in v.link_rows.iter().enumerate(){
@@ -298,6 +291,7 @@ pub fn mapview_open(
         if !seen.insert(l.target.as_str().to_string()){continue;}
         let (other,names)=books.entry(id.to_string()).or_insert_with(||{let mut b=NotebookInfo::default();let mut n=Nav::default();store_load_info(id,&mut b);nav_load(id,&mut n);(b,n)});
         let number=other.page_ids.iter().position(|&p|p==pid).map_or(0,|n|n+1);
+        if number==0 {continue;}
         let name=nav_name(names,pid);
         let title=if number==0 {tr("Page unavailable").to_string()}else if name.is_empty(){cformat!(tr("Page %d"),number as i32)}else{format!("{number} · {name}")};
         v.foreign.push(ForeignPlace{row,notebook:if other.name.is_empty(){tr("Notebook unavailable").to_string()}else{other.name.as_str().to_string()},label:title});
@@ -524,214 +518,38 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
             }
         }
     }
-    if v.ini.show_unlinked && v.zoom < 2.0 && v.mode == GraphMode::All {
-        for i in 0..v.g.nodes.len() {
-            let more = graph_sat_more(&v.g, i as i32);
-            if more > 0 {
-                if let Some(p) = location(v, i) {
-                    let (x, y) = screen_point(v, p);
-                    ui_text(
-                        c,
-                        FontFace::Bold,
-                        u(34.0) as f32,
-                        u(28.0) as f32,
-                        Rect {
-                            x: x as i32 + u(30.0),
-                            y: y as i32 + u(30.0),
-                            w: u(160.0),
-                            h: u(48.0),
-                        },
-                        &cformat!("+%d", more),
-                        1,
-                        false,
-                        0,
-                    );
-                }
-            }
-        }
-    }
-    canvas_reset_clip(c);
-    if v.ini.show_unlinked && !v.g.tray.is_empty() {
-        let right = v.w > v.h;
-        let tray = if right {
-            Rect {
-                x: v.w - u(500.0),
-                y: pr.y,
-                w: u(480.0),
-                h: pr.h,
-            }
-        } else {
-            Rect {
-                x: u(30.0),
-                y: pr.y + pr.h,
-                w: v.w - u(60.0),
-                h: u(230.0),
-            }
-        };
-        let title = if v.g.tray.len() > 200 && !v.tray_expanded {
-            cformat!(ng_("Not linked yet: %d page. Show", "Not linked yet: %d pages. Show", v.g.tray.len() as i64), v.g.tray.len() as i32)
-        } else {
-            cformat!(tr("Not linked yet (%d)"), v.g.tray.len() as i32)
-        };
-        let title_r = Rect { h: u(50.0), ..tray };
-        ui_text(
-            c,
-            FontFace::Bold,
-            u(34.0) as f32,
-            u(28.0) as f32,
-            title_r,
-            &title,
-            1,
-            false,
-            0,
-        );
-        if v.g.tray.len() > 200 && !v.tray_expanded {
-            v.hits.push(MapHit {
-                rect: title_r,
-                kind: MapHitKind::Control(EXPAND_TRAY),
-                centre: (0.0, 0.0),
-                radius: 0.0,
-            });
-        } else {
-            canvas_set_clip(c, tray);
-            for k in 0..v.g.tray.len() {
-                let i = v.g.tray[k] as usize;
-                let r = Rect {
-                    x: tray.x,
-                    y: tray.y + u(50.0) + k as i32 * u(40.0) - (v.oy.max(0.0) * v.zoom) as i32,
-                    w: tray.w,
-                    h: u(40.0),
-                };
-                if rect_overlaps(r, tray) {
-                    ui_text(
-                        c,
-                        FontFace::Regular,
-                        u(32.0) as f32,
-                        u(26.0) as f32,
-                        r,
-                        &label(v, nav, i),
-                        1,
-                        false,
-                        0,
-                    );
-                    v.hits.push(MapHit {
-                        rect: rect_intersect(r, tray),
-                        kind: MapHitKind::Tray(i),
-                        centre: (0.0, 0.0),
-                        radius: 0.0,
-                    });
-                }
-            }
-            canvas_reset_clip(c);
-        }
-    }
     canvas_reset_clip(c);
     if !v.notebook_name.is_empty(){font_draw_left_name(c,FontFace::Bold,u(34.0) as f32,Rect::new(pr.x,u(195.0),pr.w,u(65.0)),&v.notebook_name,0);}
     let tabs=index_navigation(c,v.w,0);
     for (i,id) in [BACK,GRAPH,LIST,PAGES].into_iter().enumerate() {
         v.hits.push(MapHit{rect:tabs[i],kind:MapHitKind::Control(id),centre:(0.0,0.0),radius:0.0});
     }
-    let bh=u(140.0);let gap=u(12.0);
-    let row=v.h-u(160.0);let width=(v.w-u(80.0))/3;
-    for (i,id,text) in [(0,ALL,tr("All")),(1,AROUND,tr("Around")),(2,FIT,tr("Fit"))] {
-        button(v,c,Rect::new(u(20.0)+i*(width+gap),row,width,bh),id,text,IconKind::None,id!=AROUND||v.g.open>=0||v.selected>=0);
+    let panel=Rect::new(u(20.0),v.h-u(150.0),v.w-u(40.0),u(130.0));
+    ui_frame(c,panel,u(12.0),255,true,0);ui_frame(c,panel,u(12.0),0,false,u(2.0));
+    let text=cformat!(tr("View: %s"),tr(if v.view_fit {n_("Fit")}else if v.mode==GraphMode::Around {n_("Around")}else{n_("All")}));
+    let width=u(420.0).min(v.w/3);
+    button(v,c,Rect::new(panel.x+u(12.0),panel.y+u(15.0),width,u(100.0)),VIEW,&text,IconKind::None,true);
+    let nodes=v.g.nodes.iter().enumerate().filter(|(i,_)|location(v,*i).is_some()).count()+v.foreign.len();
+    let orphans=v.g.nodes.iter().filter(|n|!n.linked).count();
+    let stats=cformat!(tr("Nodes: %d · Orphans: %d · Links: %d"),nodes as i32,orphans as i32,v.link_count as i32);
+    let pages=if let Some((total,books))=v.page_totals {cformat!(tr("Pages: %d here · %d across %d notebooks"),v.pages.len()as i32,total as i32,books as i32)}
+        else {cformat!(tr("Pages in this notebook: %d"),v.pages.len()as i32)};
+    let sx=panel.x+width+u(40.0);let sw=panel.x+panel.w-sx-u(16.0);
+    for (row,text) in [stats,pages].iter().enumerate() {
+        ui_text(c,FontFace::Regular,u(30.0)as f32,u(24.0)as f32,Rect::new(sx,panel.y+u(12.0)+row as i32*u(52.0),sw,u(52.0)),text,1,true,0);
     }
-    let bottom = v.h - if v.selected >= 0 { u(490.0) } else { u(340.0) };
-    if v.selected >= 0 {
-        let i = v.selected as usize;
-        let n = v.g.nodes[i];
-        ui_text(
-            c,
-            FontFace::Bold,
-            u(64.0) as f32,
-            u(34.0) as f32,
-            Rect {
-                x: u(30.0),
-                y: bottom,
-                w: v.w - u(60.0),
-                h: u(90.0),
-            },
-            &label(v, nav, i),
-            1,
-            false,
-            0,
-        );
-        let details = cformat!(
-            tr("Page %d. Links to %d, linked from %d."),
-            page_number(v, i) as i32,
-            n.links_to,
-            n.linked_from
-        );
-        ui_text(
-            c,
-            FontFace::Regular,
-            u(34.0) as f32,
-            u(28.0) as f32,
-            Rect {
-                x: u(30.0),
-                y: bottom + u(92.0),
-                w: v.w - u(60.0),
-                h: u(60.0),
-            },
-            &details,
-            1,
-            false,
-            0,
-        );
-        let w = (v.w - u(80.0)) / 3;
-        for (k, id, text) in [
-            (0, OPEN, tr("Open")),
-            (1, AROUND_IT, tr("Around it")),
-            (2, RENAME, tr("Rename")),
-        ] {
-            button(
-                v,
-                c,
-                Rect {
-                    x: u(20.0) + k * (w + gap),
-                    y: bottom + u(165.0),
-                    w,
-                    h: bh,
-                },
-                id,
-                text,
-                IconKind::None,
-                id != RENAME || nav.writable,
-            );
+    if v.selected>=0 {
+        let i=v.selected as usize;let n=v.g.nodes[i];
+        font_draw_left_name(c,FontFace::Bold,u(40.0)as f32,Rect::new(u(30.0),v.h-u(350.0),v.w-u(60.0),u(55.0)),&label(v,nav,i),0);
+        let details=cformat!(tr("Page %d. Links to %d, linked from %d."),page_number(v,i)as i32,n.links_to,n.linked_from);
+        font_draw_left(c,FontFace::Regular,u(28.0)as f32,Rect::new(u(30.0),v.h-u(295.0),v.w-u(60.0),u(45.0)),&details,0);
+        let gap=u(12.0);let bw=((v.w-u(64.0))/3).min(u(360.0));
+        for (k,id,text) in [(0,OPEN,tr("Open")),(1,AROUND_IT,tr("Around it")),(2,RENAME,tr("Rename"))] {
+            button(v,c,Rect::new(u(20.0)+k*(bw+gap),v.h-u(240.0),bw,u(80.0)),id,text,IconKind::None,id!=RENAME||nav.writable);
         }
-    } else {
-        let bw = u(220.0);
-        button(v, c, Rect { x: u(20.0), y: bottom + u(15.0), w: bw, h: bh }, MINUS, "", IconKind::Minus, true);
-        button(v, c, Rect { x: u(252.0), y: bottom + u(15.0), w: bw, h: bh }, PLUS, "", IconKind::Plus, true);
-        button(
-            v,
-            c,
-            Rect { x: u(500.0), y: bottom + u(15.0), w: u(640.0), h: bh },
-            UNLINKED,
-            tr(if v.ini.show_unlinked {
-                n_("Unlinked: Show")
-            } else {
-                n_("Unlinked: Hide")
-            }),
-            IconKind::None,
-            true,
-        );
-        button(
-            v,
-            c,
-            Rect {
-                x: v.w - u(470.0),
-                y: bottom + u(15.0),
-                w: u(450.0),
-                h: bh,
-            },
-            TIDY,
-            tr("Tidy up"),
-            IconKind::None,
-            v.layout != MapLayout::Running,
-        );
     }
 }
+
 pub fn mapview_draw(v: &mut MapView, a: &mut App, nav: &Nav, r: Rect) {
     if !v.open {
         return;
@@ -779,12 +597,6 @@ fn snapshot(v: &MapView) -> Canvas {
         canvas_blit(&mut c, &v.canvas, full(v), 0, 0);
     }
     c
-}
-fn zoom_at(v: &mut MapView, factor: f32, x: f32, y: f32) {
-    let z = (v.zoom * factor).clamp(0.25, 6.0);
-    v.ox += x / v.zoom - x / z;
-    v.oy += y / v.zoom - y / z;
-    v.zoom = z;
 }
 fn paint(v: &mut MapView, a: &mut App, nav: &Nav, mode: RefreshMode) {
     mapview_draw(v, a, nav, full(v));
@@ -857,7 +669,7 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
         RECT_EMPTY
     };
     match hit(v, e.x, e.y) {
-        Some(MapHitKind::Node(i) | MapHitKind::Tray(i)) => {
+        Some(MapHitKind::Node(i)) => {
             if selected == i as i32 {
                 return MapResult::Open(v.g.nodes[i].pid);
             }
@@ -869,45 +681,20 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
             LIST => {v.list=true;v.list_offset=0;},
             PAGES => return MapResult::Pages,
             GRAPH => {v.list=false;},
-            ALL => {
-                v.mode = GraphMode::All;
-                save(v);
-                default_fit(v);
-            }
-            AROUND | AROUND_IT => {
-                let centre = if v.selected >= 0 { v.selected } else { v.g.open };
-                if around(v, centre) {
-                    save(v);
-                    default_fit(v);
-                }
-            }
-            FIT => default_fit(v),
-            MINUS | PLUS => {
-                let r = plot(v);
-                zoom_at(
-                    v,
-                    if id == PLUS { 1.5 } else { 1.0 / 1.5 },
-                    (r.x + r.w / 2) as f32,
-                    (r.y + r.h / 2) as f32,
-                );
-            }
-            UNLINKED => {
-                v.ini.show_unlinked = !v.ini.show_unlinked;
-                save(v);
-                default_fit(v);
-            }
-            TIDY => {
-                if layout(v, a, true) {
-                    save(v);
-                    if v.mode == GraphMode::Around {
-                        around(v, v.centre);
-                    }
-                    default_fit(v);
-                }
+            AROUND_IT => {
+                if around(v, around_centre(v)) {v.view_fit=false;save(v);default_fit(v);}
             }
             OPEN if v.selected >= 0 => return MapResult::Open(v.g.nodes[v.selected as usize].pid),
             RENAME if v.selected >= 0 => return MapResult::Rename(v.g.nodes[v.selected as usize].pid),
-            EXPAND_TRAY => v.tray_expanded = true,
+            VIEW => {
+                if v.view_fit {v.view_fit=false;v.mode=GraphMode::All;}
+                else if v.mode==GraphMode::Around {v.view_fit=true;}
+                else {
+                    let centre=around_centre(v);
+                    if !around(v,centre) {v.view_fit=true;}
+                }
+                default_fit(v);save(v);
+            },
             _ => {}
         },
         None => v.selected = -1,
@@ -931,9 +718,9 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
         label_dirty = v.labels.iter().fold(label_dirty, |r, &l| rect_union(r, l));
         let card = Rect {
             x: 0,
-            y: v.h - u(490.0),
+            y: v.h - u(370.0),
             w: v.w,
-            h: u(490.0),
+            h: u(370.0),
         };
         app_invalidate(
             a,
@@ -1033,7 +820,7 @@ pub fn mapview_tick(v: &mut MapView, _a: &mut App, now: u32) -> MapResult {
 pub fn mapview_rebuild(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Nav, open_pid: u32) -> bool {
     save(v);
     let mut g = GraphModel::default();
-    if graph_build(&mut g, nb, nav, open_pid) != 0 {
+    if graph_build(&mut g, nb, &nav_for_graph(nav), open_pid) != 0 {
         return false;
     }
     let old = std::mem::replace(&mut v.g, g);
@@ -1063,6 +850,9 @@ pub fn mapview_probe(v: &MapView, key: &str, out: &mut String) -> bool {
     out.clear();
     match key {
         "" => out.push_str(if v.open { "graph" } else { "0" }),
+        "stats"=>{out.push_str(&format!("{} {} {} {} {}",v.g.nodes.iter().filter(|n|n.linked).count()+v.foreign.len(),v.g.nodes.iter().filter(|n|!n.linked).count(),v.link_count,v.pages.len(),v.page_totals.map_or(0,|p|p.0)));},
+        "view"=>out.push_str(if v.view_fit{"fit"}else if v.mode==GraphMode::Around{"around"}else{"all"}),
+        "visible"=>{let mut ids:Vec<_>=v.g.nodes.iter().enumerate().filter(|(i,_)|location(v,*i).is_some()).map(|(_,n)|n.pid).collect();ids.sort_unstable();out.push_str(&ids.iter().map(|p|p.to_string()).collect::<Vec<_>>().join(" "));},
         "nodes" => out.push_str(&v.g.nodes.len().to_string()),
         "edges" => out.push_str(&v.g.edges.len().to_string()),
         "force" => out.push_str(&v.g.force.len().to_string()),
@@ -1125,20 +915,13 @@ pub fn mapview_probe(v: &MapView, key: &str, out: &mut String) -> bool {
                 };
                 match hit(v, x, y) {
                     Some(MapHitKind::Node(i)) => out.push_str(&format!("node.{}", v.g.nodes[i].pid)),
-                    Some(MapHitKind::Tray(i)) => out.push_str(&format!("tray.{}", v.g.nodes[i].pid)),
                     Some(MapHitKind::Link(i)) => out.push_str(&format!("link.{}", i+1)),
                     Some(MapHitKind::Control(id)) => out.push_str(match id {
                         BACK => "back",
                         GRAPH => "graph",
                         LIST => "list",
                         PAGES => "pages",
-                        ALL => "all",
-                        AROUND => "around",
-                        FIT => "fit",
-                        MINUS => "minus",
-                        PLUS => "plus",
-                        UNLINKED => "unlinked",
-                        TIDY => "tidy",
+                        VIEW => "view",
                         OPEN => "card.open",
                         AROUND_IT => "card.around",
                         RENAME => "card.rename",
@@ -1301,7 +1084,7 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn failed_background_layout_reenables_tidy_visibly() {
+    fn failed_background_layout_preserves_retry_state() {
         let mut v=MapView{open:true,layout:MapLayout::Running,..Default::default()};
         mapview_background_done(&mut v,"",false);
         assert_eq!(v.layout,MapLayout::Seed);assert!(v.needs_redraw);assert!(!v.job_done);
@@ -1339,27 +1122,25 @@ mod tests {
         assert_eq!(hit(&v, 110.0, 100.0), Some(MapHitKind::Control(BACK)));
     }
     #[test]
-    fn trays_collapse_over_two_hundred_and_expand_in_both_orientations() {
-        for (w, h) in [(1860, 2480), (2480, 1860)] {
-            for n in [10, 250] {
-                let (mut v, nav) = view(w, h, n, false);
-                let mut c = Canvas::default();
-                canvas_init(&mut c, w, h);
-                render(&mut v, &mut c, &nav);
-                assert_eq!(v.g.tray.len(), n as usize);
-                assert_eq!(
-                    v.hits.iter().any(|h| h.kind == MapHitKind::Control(EXPAND_TRAY)),
-                    n > 200
-                );
-                v.tray_expanded = true;
-                render(&mut v, &mut c, &nav);
-                assert!(v.hits.iter().any(|h| matches!(h.kind, MapHitKind::Tray(_))));
-                v.ini.show_unlinked = false;
-                render(&mut v, &mut c, &nav);
-                assert!(!v.hits.iter().any(|h| matches!(h.kind, MapHitKind::Tray(_))));
+    fn unlinked_named_open_and_plain_pages_never_draw_or_hit() {
+        for (w,h) in [(1860,2480),(2480,1860)] {
+            let (mut v,mut nav)=view(w,h,250,false);
+            nav_set_name(&mut nav,13,"Named but unlinked");
+            let nb=NotebookInfo{page_ids:(1..=250).collect(),..Default::default()};
+            graph_build(&mut v.g,&nb,&nav,14);
+            graph_layout(&mut v.g,&mut ||{});
+            for show in [true,false] {
+                v.ini.show_unlinked=show;
+                for mode in [GraphMode::All,GraphMode::Around] {
+                    v.mode=mode;if mode==GraphMode::Around {around(&mut v,13);}
+                    let mut c=Canvas::default();canvas_init(&mut c,w,h);render(&mut v,&mut c,&nav);
+                    assert!(!v.hits.iter().any(|h|matches!(h.kind,MapHitKind::Node(_))));
+                    assert!(!v.hits.iter().any(|h|matches!(h.kind,MapHitKind::Control(6..=9|13))));
+                }
             }
         }
     }
+
 }
 
 /// Runner taps resolve the node on this host instead of hard-coding layout coordinates.
@@ -1371,7 +1152,6 @@ pub fn mapview_node_point(v: &MapView, pid: u32) -> Option<(f32, f32)> {
     let i = i as usize;
     v.hits.iter().find_map(|h| match h.kind {
         MapHitKind::Node(n) if n == i => Some(h.centre),
-        MapHitKind::Tray(n) if n == i => Some(((h.rect.x + h.rect.w / 2) as f32, (h.rect.y + h.rect.h / 2) as f32)),
         _ => None,
     })
 }
@@ -1409,7 +1189,7 @@ fn render_list(v:&mut MapView,c:&mut Canvas,nav:&Nav) {
 pub fn mapview_set_list(v:&mut MapView,a:&mut App,nav:&Nav) {v.list=true;paint(v,a,nav,RefreshMode::Full);}
 pub fn mapview_control_point(v:&MapView,name:&str)->Option<(f32,f32)> {
     if let Some(n)=name.strip_prefix("link."){let i=n.parse::<usize>().ok()?.checked_sub(1)?;return v.hits.iter().find(|h|h.kind==MapHitKind::Link(i)).map(|h|((h.rect.x+h.rect.w/2)as f32,(h.rect.y+h.rect.h/2)as f32));}
-    let id=match name{"back"=>BACK,"graph"=>GRAPH,"list"=>LIST,"pages"=>PAGES,"all"=>ALL,"around"=>AROUND,"fit"=>FIT,"rename"=>RENAME,"open"=>OPEN,"unlinked"=>UNLINKED,"tidy"=>TIDY,"tray"=>EXPAND_TRAY,_=>return None};
+    let id=match name{"view"=>VIEW,"back"=>BACK,"graph"=>GRAPH,"list"=>LIST,"pages"=>PAGES,"rename"=>RENAME,"open"=>OPEN,_=>return None};
     v.hits.iter().find(|h|h.kind==MapHitKind::Control(id)).map(|h|((h.rect.x+h.rect.w/2) as f32,(h.rect.y+h.rect.h/2) as f32))
 }
 

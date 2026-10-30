@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.0.0-rc.5 (2026-10-29)
+
+- Show only linked pages in the graph, including when the current or a named page has no links. Remove Unlinked and its tiny tray; exclude deleted cross-notebook destinations from the graph while retaining saved links for repair.
+- Replace graph footer controls with a compact panel: View cycles All / Around / Fit, with node, orphan and link counts plus current-notebook and library-wide page totals. Remove zoom and Tidy up buttons; retain pinch zoom and automatically lay out changed graphs.
+- Make Pages a 3×3 grid of full-page cached previews without empty framed containers or checkboxes. Tap selects, double tap opens, and holding a tile offers Open or Add a link from that page.
+- Stop retrying unavailable page previews after every redraw; retry on reopening or explicit cache invalidation. Keep background preview work bounded.
+- Update Areas immediately on both the current page and a linked-page preview without committing the preview. Clear the full notebook picker after link creation, including failed saves.
+- Move Pen feel into the toolbar's drawing-tools group. Open main Settings and its nested sheets over the notebook, preserving the current page instead of showing the Library underneath.
+
 ## 2.0.0-rc.4 (2026-10-29)
 
 - Add Wi-Fi controls to Share and Live view, with separate radio/connection status and On/Off buttons. Connect to saved networks without returning to the Kindle home screen.

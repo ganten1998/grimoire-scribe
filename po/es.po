@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 20:52-0500\n"
+"POT-Creation-Date: 2026-10-29 22:45-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -925,6 +925,7 @@ msgstr "Cancelar (toca con un dedo)"
 #. the main one), or at 34 px, or two lines of that.
 #: rust/src/calibrate.rs rust/src/editor.rs rust/src/keyboard.rs
 #: rust/src/library.rs rust/src/linkbar.rs rust/src/musicbuild.rs
+#: rust/src/pagesview.rs
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -1215,8 +1216,6 @@ msgstr "Áreas de enlace: Sí"
 msgid "Link areas: Off"
 msgstr "Áreas de enlace: No"
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: the first time the
-#. eye draws dotted boxes over the page where a finger's tap follows a link.
 #: rust/src/editor.rs
 msgid "Dotted boxes show where a finger tap follows a link. They never print."
 msgstr ""
@@ -2854,7 +2853,7 @@ msgstr "Fuente Terminess en los menús"
 msgid "Save PDF to %s now"
 msgstr "Guardar el PDF en %s ahora"
 
-#: rust/src/library.rs rust/src/mapview.rs
+#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Open"
 msgstr "Abrir"
 
@@ -3114,23 +3113,31 @@ msgstr "p. %d"
 
 #: rust/src/mapview.rs
 #, c-format
-msgid "Not linked yet: %d page. Show"
-msgid_plural "Not linked yet: %d pages. Show"
-msgstr[0] "Aún sin enlaces: %d página. Mostrar"
-msgstr[1] "Aún sin enlaces: %d páginas. Mostrar"
+msgid "View: %s"
+msgstr "Vista: %s"
 
 #: rust/src/mapview.rs
-#, c-format
-msgid "Not linked yet (%d)"
-msgstr "Sin enlazar (%d)"
+msgid "Around"
+msgstr "Alrededor"
 
 #: rust/src/mapview.rs
 msgid "All"
 msgstr "Todo"
 
 #: rust/src/mapview.rs
-msgid "Around"
-msgstr "Alrededor"
+#, c-format
+msgid "Nodes: %d · Orphans: %d · Links: %d"
+msgstr "Nodos: %d · Huérfanas: %d · Enlaces: %d"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages: %d here · %d across %d notebooks"
+msgstr "Páginas: %d aquí · %d en %d cuadernos"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages in this notebook: %d"
+msgstr "Páginas en este cuaderno: %d"
 
 #: rust/src/mapview.rs
 #, c-format
@@ -3140,18 +3147,6 @@ msgstr "Página %d. Enlaces a %d, desde %d."
 #: rust/src/mapview.rs
 msgid "Around it"
 msgstr "A su alrededor"
-
-#: rust/src/mapview.rs
-msgid "Unlinked: Show"
-msgstr "Sin enlazar: Mostrar"
-
-#: rust/src/mapview.rs
-msgid "Unlinked: Hide"
-msgstr "Sin enlazar: Ocultar"
-
-#: rust/src/mapview.rs
-msgid "Tidy up"
-msgstr "Reorganizar"
 
 #: rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Graph"
@@ -4355,6 +4350,25 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#, c-format
+#~ msgid "Not linked yet: %d page. Show"
+#~ msgid_plural "Not linked yet: %d pages. Show"
+#~ msgstr[0] "Aún sin enlaces: %d página. Mostrar"
+#~ msgstr[1] "Aún sin enlaces: %d páginas. Mostrar"
+
+#, c-format
+#~ msgid "Not linked yet (%d)"
+#~ msgstr "Sin enlazar (%d)"
+
+#~ msgid "Unlinked: Show"
+#~ msgstr "Sin enlazar: Mostrar"
+
+#~ msgid "Unlinked: Hide"
+#~ msgstr "Sin enlazar: Ocultar"
+
+#~ msgid "Tidy up"
+#~ msgstr "Reorganizar"
 
 #, c-format
 #~ msgid "Showing %s. Tap the page to stay."

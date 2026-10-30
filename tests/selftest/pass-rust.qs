@@ -57,10 +57,10 @@ expect editor.link_card.border is 0
 expect editor.recent is
 expect editor.kb_dock is
 expect editor.areas is 0
-expect editor.panel_at.1768.702 is
-expect editor.panel_at.1768.1350 is links
+expect editor.panel_at.1768.810 is
+expect editor.panel_at.1768.1458 is links
 pen line 300 700 1300 720 20 0.6 0.6
-expect editor.panel_at.1768.702 is undo
+expect editor.panel_at.1768.810 is undo
 expect editor.undo_kind is add
 tap panel undo
 expect editor.strokes is 0

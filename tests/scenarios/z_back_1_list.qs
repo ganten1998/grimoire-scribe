@@ -55,7 +55,8 @@ expect editor.back is 0 0
 pentap panel pages
 tap panel map.pages
 wait 300
-tap 703 340
+tap panel pages.page.2
+tap panel pages.page.2
 wait 400
 expect editor.page is 2
 expect editor.back is 1 1
@@ -71,7 +72,8 @@ expect editor.back is 1 1
 pentap panel pages
 tap panel map.pages
 wait 300
-tap 703 340
+tap panel pages.page.2
+tap panel pages.page.2
 wait 400
 expect editor.page is 2
 expect editor.back is 2 3
