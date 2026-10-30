@@ -22,7 +22,8 @@ expect editor.panel_at.1768.1350 is links
 expect editor.panel_at.1768.1458 is paper
 expect editor.panel_at.1768.1566 is display
 expect editor.panel_at.1768.1674 is pen-feel
-expect editor.panel_at.1768.1782 is library
+expect editor.panel_at.1768.1782 is settings
+expect editor.panel_at.1768.1890 is library
 expect editor.panel_at.1768.702 is
 expect editor.panel_at.300.300 is
 # a stroke: Undo is there, with no wait for the settle
@@ -53,7 +54,14 @@ expect editor.strokes is 0
 # no card, Link to... or strip up: nothing there by that name
 expect editor.ui_at.900.900 is
 expect editor.link_card is 0
-# a name that is not a button
+# Settings returns to the same notebook after the toolbar action.
+pentap panel settings
+expect screen is library
+expect library.sheet is settings
+tap library done
+expect screen is editor
+expect editor.strokes is 0
+# The pen-feel button still opens its screen
 pentap panel pen-feel
 wait 300
 expect screen is penset

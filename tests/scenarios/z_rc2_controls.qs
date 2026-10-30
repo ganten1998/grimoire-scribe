@@ -66,10 +66,21 @@ tap panel links
 expect editor.link_mode is 0
 rotate 1
 wait 200
-expect editor.panel_button is 99
+expect editor.panel_button is 93
 tap panel shapes
 expect editor.shapes_menu is 1
 shot 03-shapes-menu-landscape
 tap panel shapes.done
+# The added Settings cog opens main Settings and Done restores this notebook.
+tap panel settings
+expect screen is library
+expect library.sheet is settings
+tap library done
+expect screen is editor
+expect editor.modal is none
+expect editor.pins is highlighter,fineliner,marker
+expect editor.panel_button is 93
 tap panel display
+expect editor.modal is display
 shot 04-display-without-status-mode
+quit

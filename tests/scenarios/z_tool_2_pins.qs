@@ -6,7 +6,7 @@
 # While a pin is in use, the tool button's first tap picks its own pen back, and the next opens the
 # picker. The eraser, tapped on and off, goes back to the pen used just before it (a pin), or to
 # the tool button's pen once that pin is gone. Collapsed and expanded; turned sideways, where three
-# pins fit with the panel's margins (the buttons 1% smaller); a fourth pin is refused with a toast; the
+# pins fit with the panel's margins (the buttons 7% smaller); a fourth pin is refused with a toast; the
 # tool button's own pen pinned, the tool button shows a grid, which always opens the picker;
 # unpinning the pen in use moves it to the tool button. Last, every pin taken off: the panel is as
 # it was.
@@ -21,7 +21,7 @@ wait 400
 expect screen is editor
 expect editor.pins is
 expect settings.panel_tools is
-expect editor.panel_rect is 1704 220 128 1626
+expect editor.panel_rect is 1704 220 128 1734
 expect editor.panel_button is 100
 expect editor.tool_button is pencil
 # Pin mode: Highlighter, then Fineliner
@@ -46,7 +46,7 @@ pentap editor picker.tool:fineliner
 wait 200
 expect editor.pins is highlighter,fineliner
 expect settings.panel_tools is highlighter,fineliner
-expect editor.panel_rect is 1704 220 128 1842
+expect editor.panel_rect is 1704 220 128 1950
 expect editor.tool is pencil
 shot 02-two-pinned
 # Done, then a tap outside closes the picker
@@ -122,7 +122,7 @@ pen line 300 900 1300 900 60 0.7 0.7
 wait 300
 expect editor.strokes is 2
 expect editor.stroke_look is fineliner
-# Undo below the pins (594 + 2 x 108)
+# Undo below the pins, found by name
 pentap panel undo
 wait 300
 expect editor.strokes is 1
@@ -134,16 +134,16 @@ expect editor.panel_rect is 1712 220 120 120
 tap panel expand
 wait 300
 expect editor.panel is expanded
-expect editor.panel_rect is 1704 220 128 1842
+expect editor.panel_rect is 1704 220 128 1950
 # Sideways: two pins fit where the panel was (its place kept from the collapse)
 rotate 1
 wait 300
 expect size is 2480x1860
-expect editor.panel_rect is 1962 29 128 1819
-expect editor.panel_button is 100
+expect editor.panel_rect is 1962 18 128 1830
+expect editor.panel_button is 99
 shot 04-sideways-two-pins
-# The third pin added sideways (Marker): the panel moves up to keep its 12 px margins,
-# its buttons 1% smaller; the picker stays where it opened (the fineliner's pin is in use: the
+# The third pin added sideways (Marker): the panel keeps its 12 px margins,
+# its buttons 7% smaller; the picker stays where it opened (the fineliner's pin is in use: the
 # tool button's first tap picks its pencil)
 pentap panel tool-picker
 wait 200
@@ -157,8 +157,8 @@ pentap editor picker.tool:marker
 wait 200
 expect editor.pins is highlighter,fineliner,marker
 expect settings.panel_tools is highlighter,fineliner,marker
-expect editor.panel_rect is 1962 18 128 1830
-expect editor.panel_button is 99
+expect editor.panel_rect is 1962 18 128 1820
+expect editor.panel_button is 93
 # A fourth: refused, with a toast
 pentap editor picker.tool:calligraphy
 wait 200
@@ -188,7 +188,7 @@ expect editor.tool is marker
 rotate 0
 wait 300
 expect size is 1860x2480
-expect editor.panel_rect is 1704 220 128 1950
+expect editor.panel_rect is 1704 220 128 2058
 expect editor.panel_button is 100
 shot 07-upright-three-pins
 # The tool button's own pen pinned (Fineliner out, Pencil in): the tool button shows a grid (the
@@ -290,7 +290,7 @@ pentap editor picker.tool:pencil
 wait 200
 expect editor.pins is
 expect settings.panel_tools is
-expect editor.panel_rect is 1704 220 128 1626
+expect editor.panel_rect is 1704 220 128 1734
 pentap editor picker.pin-mode
 wait 200
 pentap 300 1800

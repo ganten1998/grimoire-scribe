@@ -1,8 +1,8 @@
 # settings: status_mode=1
 # The panel with 0 to 3 pinned pens on the Scribe 3's and the Scribe Colorsoft's screen
 # (1986x2648), upright and sideways: always inside the screen with 12 px free above and below it,
-# its buttons at full size (editor.panel_fits); older Scribes need a 1% reduction sideways with
-# three pins (z_tool_9_fit). Each
+# its buttons at full size (editor.panel_fits); older Scribes need smaller buttons sideways with
+# two or three pins (z_tool_9_fit). Each
 # pen is pinned in the tool picker's Pin mode, in a notebook b_library made.
 # root: b_library
 # env: GRIMOIRE_SIM_SIZE=1986x2648

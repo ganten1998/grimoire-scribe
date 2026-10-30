@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # The panel with 0 to 3 pinned pens on the 2022 and 2024 Scribes' screen (1860x2480), upright and
 # sideways: always inside the screen with 12 px free above and below it, its buttons at full size
-# (editor.panel_fits), but for three pins sideways, where they are 1% smaller. Each pen is pinned in the
+# (editor.panel_fits), but for two pins sideways (99 px) and three pins (93 px). Each pen is pinned in the
 # tool picker's Pin mode. (The Scribe 3's and the Colorsoft's screen: z_tool_a_fit_colorsoft.)
 # settings: mirror_pdf=0
 # rust-only
@@ -53,7 +53,8 @@ expect editor.pins is highlighter,fineliner
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-expect editor.panel_fits is 1
+expect editor.panel_fits is 0
+expect editor.panel_button is 99
 rotate 0
 wait 300
 expect editor.panel_fits is 1
@@ -73,7 +74,7 @@ expect editor.panel_fits is 1
 rotate 1
 wait 300
 expect editor.panel_fits is 0
-expect editor.panel_button is 99
+expect editor.panel_button is 93
 rotate 0
 wait 300
 expect editor.panel_fits is 1
@@ -96,9 +97,9 @@ expect editor.pins is highlighter,fineliner,marker
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-# Thirteen base buttons plus three pins fit within the margins; buttons are 99 px sideways.
+# Fourteen base buttons plus three pins fit within the margins; buttons are 93 px sideways.
 expect editor.panel_fits is 0
-expect editor.panel_button is 99
+expect editor.panel_button is 93
 shot 01-three-pins-sideways
 rotate 2
 wait 300
@@ -109,7 +110,7 @@ rotate 3
 wait 300
 expect size is 2480x1860
 expect editor.panel_fits is 0
-expect editor.panel_button is 99
+expect editor.panel_button is 93
 rotate 0
 wait 300
 expect editor.panel_fits is 1

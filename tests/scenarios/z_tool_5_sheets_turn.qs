@@ -150,11 +150,13 @@ wait 300
 expect editor.pages is 2
 pentap panel pages
 wait 300
+expect editor.map is graph
+pentap panel map.pages
 expect editor.modal is pages
 rotate 1
 wait 300
 expect editor.modal is pages
-tap 1870 95
+tap panel pages.all
 wait 100
 expect editor.ticked is 2
 shot 06-pages-sideways
@@ -168,7 +170,7 @@ wake
 wait 300
 expect editor.modal is pages
 expect editor.ticked is 2
-tap 125 95
+tap panel pages.back
 wait 300
 expect editor.modal is none
 expect editor.pages is 2
