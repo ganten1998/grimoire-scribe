@@ -1250,6 +1250,82 @@ fn a_layer_comes_with_the_tiles_and_goes() {
     canvas_free(&mut c);
 }
 
+// The parts of a run that changed: whole tiles, each stretch of them one part, the screen's edge
+// cut as the run is.
+fn a_run_splits_into_the_tiles_that_changed() {
+    let w = 300;
+    let sent = vec![255u8; (w * 128) as usize];
+    let r = Rect { x: 0, y: 64, w: 300, h: 64 }; // a whole row: four tiles of 64 and one of 44
+    let mut snap = vec![255u8; (r.w * r.h) as usize];
+    let mut out = [RECT_EMPTY; 8];
+    check!(live_changed_parts(&sent, w, &snap, r, &mut out) == 0);
+    snap[10 * 300 + 70] = 0; // tile 1
+    snap[63 * 300 + 299] = 0; // tile 4, the narrow one, its last pixel
+    let n = live_changed_parts(&sent, w, &snap, r, &mut out);
+    check!(n == 2 && out[0] == Rect { x: 64, y: 64, w: 64, h: 64 } && out[1] == Rect { x: 256, y: 64, w: 44, h: 64 });
+    snap[0] = 0; // tile 0 joins tile 1
+    let n = live_changed_parts(&sent, w, &snap, r, &mut out);
+    check!(n == 2 && out[0] == Rect { x: 0, y: 64, w: 128, h: 64 } && out[1].x == 256);
+    // No room for a second part: the first reaches over the rest that changed.
+    let n = live_changed_parts(&sent, w, &snap, r, &mut out[..1]);
+    check!(n == 1 && out[0] == Rect { x: 0, y: 64, w: 300, h: 64 });
+    // A run that starts inside the row compares the screen where it is.
+    let r = Rect { x: 128, y: 0, w: 128, h: 64 };
+    let mut sent = vec![255u8; (w * 128) as usize];
+    let mut snap = vec![255u8; (r.w * r.h) as usize];
+    sent[5 * 300 + 200] = 9;
+    snap[5 * 128 + 72] = 9; // the same pixel, as sent
+    check!(live_changed_parts(&sent, w, &snap, r, &mut out) == 0);
+    snap[5 * 128 + 72] = 10;
+    let n = live_changed_parts(&sent, w, &snap, r, &mut out);
+    check!(n == 1 && out[0] == Rect { x: 192, y: 0, w: 64, h: 64 });
+}
+
+// The tile frames up to the next batch end: (x, y, w, h, pixels, the frame's bytes); None when the
+// stream ended.
+fn batch_tiles(fd: i32) -> Option<Vec<(i32, i32, i32, i32, Vec<u8>, usize)>> {
+    let mut tiles = Vec::new();
+    loop {
+        let (type_, body) = read_frame(fd)?;
+        if type_ == LIVE_TILE_FRAME as u8 {
+            let px = decode_png(&body[8..]).map(|p| p.0).unwrap_or_default();
+            tiles.push((u16(&body) as i32, u16(&body[2..]) as i32, u16(&body[4..]) as i32, u16(&body[6..]) as i32, px, 5 + body.len()));
+        } else if type_ == LIVE_BATCH as u8 {
+            return Some(tiles);
+        }
+    }
+}
+
+// A redraw of a whole row (a toolbar's) that changed one tile of it sends that tile alone.
+fn a_wide_redraw_sends_only_the_tiles_that_changed() {
+    let (w, h) = (300, 200);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, w, h) == 0);
+    canvas_fill(&mut c, Rect { x: 0, y: 0, w, h }, 200);
+    check!(live_start(w, h) == 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h });
+    let sv = socket_pair();
+    check!(live_take_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    check!(batch_tiles(sv[1]).is_some_and(|t| !t.is_empty())); // the screen
+    canvas_fill(&mut c, Rect { x: 140, y: 10, w: 8, h: 8 }, 0);
+    canvas_fill(&mut c, Rect { x: 270, y: 30, w: 4, h: 4 }, 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h: 64 });
+    let t = batch_tiles(sv[1]).unwrap_or_default();
+    check!(t.len() == 2);
+    check!(t.first().is_some_and(|t| (t.0, t.1, t.2, t.3) == (128, 0, 64, 64) && t.4.len() == 64 * 64 && t.4[10 * 64 + 12] == 0 && t.4[0] == 200));
+    check!(t.get(1).is_some_and(|t| (t.0, t.1, t.2, t.3) == (256, 0, 44, 64) && t.4.len() == 44 * 64 && t.4[30 * 44 + 14] == 0));
+    // and the next one compares with what went, tile by tile
+    canvas_fill(&mut c, Rect { x: 0, y: 0, w: 2, h: 2 }, 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h: 64 });
+    let t = batch_tiles(sv[1]).unwrap_or_default();
+    check!(t.len() == 1 && t.first().is_some_and(|t| (t.0, t.1, t.2, t.3) == (0, 0, 64, 64)));
+    live_stop();
+    close(sv[1]);
+    canvas_free(&mut c);
+}
+
 #[test]
 fn test_live() {
     run!(marks_cover_exactly_the_tiles_a_rect_touches);
@@ -1275,6 +1351,8 @@ fn test_live() {
     run!(raw_gate_follows_the_capture_state);
     run!(a_pen_viewer_reads_the_raw_node_itself);
     run!(a_layer_comes_with_the_tiles_and_goes);
+    run!(a_run_splits_into_the_tiles_that_changed);
+    run!(a_wide_redraw_sends_only_the_tiles_that_changed);
     done();
 }
 

@@ -399,6 +399,37 @@ pub fn live_runs(words: &[u32; LIVE_WORDS], w: i32, h: i32, out: &mut [Rect]) ->
     n as i32
 }
 
+/// The parts of run r (one row of tiles, as live_runs cuts it) that changed: snap holds the run's
+/// pixels (r.h rows of r.w), sent the w-wide screen as the browser has it. Each part is a stretch of
+/// whole tiles of the run whose pixels differ, so a wide redraw that changed one tile sends that
+/// tile alone. At most out.len() parts: the last then reaches over the rest that changed.
+pub fn live_changed_parts(sent: &[u8], w: i32, snap: &[u8], r: Rect, out: &mut [Rect]) -> usize {
+    let (rw, rx) = (r.w.max(0) as usize, r.x as usize);
+    let mut n = 0usize;
+    let mut open = false;
+    let mut cx = 0usize;
+    while cx < rw && !out.is_empty() {
+        let cw = (LIVE_TILE as usize).min(rw - cx);
+        let changed = (0..r.h.max(0) as usize).any(|y| {
+            let at = (r.y as usize + y) * w as usize + rx + cx;
+            sent[at..at + cw] != snap[y * rw + cx..][..cw]
+        });
+        if changed {
+            if open || n == out.len() {
+                out[n - 1].w = r.x + (cx + cw) as i32 - out[n - 1].x;
+            } else {
+                out[n] = Rect { x: r.x + cx as i32, y: r.y, w: cw as i32, h: r.h };
+                n += 1;
+            }
+            open = true;
+        } else {
+            open = false;
+        }
+        cx += cw;
+    }
+    n
+}
+
 pub fn live_frame_header(out: &mut [u8; 5], len: u32, type_: u8) {
     let total = len.wrapping_add(1);
     out[0] = total as u8;
@@ -1512,11 +1543,15 @@ struct Png {
 impl Png {
     /// The w x h gray tile as a PNG, None when stb has no memory for it.
     fn of_tile(tile: &[u8], w: i32, h: i32) -> Option<Png> {
-        assert!(tile.len() >= (w as usize) * (h as usize));
+        Png::of_part(tile, w, w, h)
+    }
+    /// The same for the w x h rect at the start of rows stride bytes apart (a part of a run).
+    fn of_part(tile: &[u8], stride: i32, w: i32, h: i32) -> Option<Png> {
+        assert!(w <= stride && (h <= 0 || tile.len() >= (stride as usize) * (h as usize - 1) + w as usize));
         let mut len: libc::c_int = 0;
-        // SAFETY: stb reads h rows of w bytes from tile (checked above) and returns a malloc'ed
-        // buffer of len bytes, or null.
-        let ptr = unsafe { crate::ffi_stb::stbi_write_png_to_mem(tile.as_ptr(), w, w, h, 1, &mut len) };
+        // SAFETY: stb reads h rows of w bytes, stride apart, from tile (checked above) and returns a
+        // malloc'ed buffer of len bytes, or null.
+        let ptr = unsafe { crate::ffi_stb::stbi_write_png_to_mem(tile.as_ptr(), stride, w, h, 1, &mut len) };
         if ptr.is_null() {
             None
         } else {
@@ -2176,10 +2211,9 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                 // screen's epoch moved on under it (told at the top at once)
                 let mut ok = true;
                 let mut moved = false;
-                for &r in runs[..n as usize].iter() {
+                'runs: for &r in runs[..n as usize].iter() {
                     // A snapshot of the run, then the state again: a pairing card drawn meanwhile
                     // is never sent, and its tiles come again once it is gone (live_set_state).
-                    let mut changed = false;
                     for y in 0..r.h as usize {
                         let at = (r.y as usize + y) * (w as usize) + r.x as usize;
                         let row = &mut tile[y * r.w as usize..][..r.w as usize];
@@ -2187,7 +2221,6 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                         // frame's pixel bytes (w and h are the epoch's); the copy is one memcpy
                         // of bytes the main loop may be rewriting (benign: see live_push).
                         unsafe { std::ptr::copy_nonoverlapping(f.px().add(at) as *const u8, row.as_mut_ptr(), r.w as usize) };
-                        changed |= sent[at..at + r.w as usize] != *row;
                     }
                     fence(SeqCst);
                     if sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.epoch.load(SeqCst) != epoch {
@@ -2195,34 +2228,37 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                         moved = true;
                         break;
                     }
-                    if !changed {
-                        continue;
-                    }
-                    // No memory for the PNG: its marks back for the next try, which waits for a wake
-                    // and the batches' pace like any other (a retry at once would spin while the
-                    // memory stays short).
-                    let Some(png) = Png::of_tile(&tile, r.w, r.h) else {
-                        for i in 0..LIVE_WORDS {
-                            dirty[i].fetch_or(words[i], SeqCst);
+                    // Only the tiles of the run that changed, each stretch of them a PNG of its own.
+                    let mut parts = [RECT_EMPTY; 32];
+                    let np = live_changed_parts(&sent, w, &tile, r, &mut parts);
+                    for &p in parts[..np].iter() {
+                        let off = (p.x - r.x) as usize;
+                        // No memory for the PNG: its marks back for the next try, which waits for a
+                        // wake and the batches' pace like any other (a retry at once would spin while
+                        // the memory stays short).
+                        let Some(png) = Png::of_part(&tile[off..], r.w, p.w, p.h) else {
+                            for i in 0..LIVE_WORDS {
+                                dirty[i].fetch_or(words[i], SeqCst);
+                            }
+                            ok = false;
+                            break 'runs;
+                        };
+                        let mut at = [0u8; 8];
+                        put16(&mut at, p.x as u32);
+                        put16(&mut at[2..], p.y as u32);
+                        put16(&mut at[4..], p.w as u32);
+                        put16(&mut at[6..], p.h as u32);
+                        let sent_ok = send_frame(fd, LIVE_TILE_FRAME as u8, &at, png.as_slice());
+                        drop(png);
+                        if !sent_ok {
+                            child_exit();
                         }
-                        ok = false;
-                        break;
-                    };
-                    let mut at = [0u8; 8];
-                    put16(&mut at, r.x as u32);
-                    put16(&mut at[2..], r.y as u32);
-                    put16(&mut at[4..], r.w as u32);
-                    put16(&mut at[6..], r.h as u32);
-                    let sent_ok = send_frame(fd, LIVE_TILE_FRAME as u8, &at, png.as_slice());
-                    drop(png);
-                    if !sent_ok {
-                        child_exit();
+                        for y in 0..p.h as usize {
+                            let at = (p.y as usize + y) * (w as usize) + p.x as usize;
+                            sent[at..at + p.w as usize].copy_from_slice(&tile[y * r.w as usize + off..][..p.w as usize]);
+                        }
+                        out += 1;
                     }
-                    for y in 0..r.h as usize {
-                        let at = (r.y as usize + y) * (w as usize) + r.x as usize;
-                        sent[at..at + r.w as usize].copy_from_slice(&tile[y * r.w as usize..][..r.w as usize]);
-                    }
-                    out += 1;
                 }
                 // The layers that changed, after the tiles (the page under them first), each whole:
                 // one being written as it is read comes at the next wake, which its write makes.

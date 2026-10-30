@@ -700,8 +700,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    shared frame (`live_push`: a memcpy of the rect, before the toast is drawn, so neither the toast
    nor the chip is ever streamed) and mark its 64 px tiles, for each viewer slot. A paired
    `GET /live/stream` is handed to a viewer child (two at most; `live_take_viewer`), which owns the
-   socket: it takes its marks, compares the tiles with what it sent, sends the changed runs as gray
-   PNGs and a batch end, at most about 30 batches a second, a ping after 15 s idle. A slow browser
+   socket: it takes its marks, compares the tiles with what it sent, sends each stretch of changed
+   tiles in a marked run as a gray PNG (a row redrawn whole for one tile sends that tile) and a batch end, at most about 30 batches a second, a ping after 15 s idle. A slow browser
    only lets the marks pile up; the pen loop never waits. While the pairing card is up the state is
    LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the viewer checks the
    state again after copying each run, and the app sets the state before the card is drawn). Asleep
