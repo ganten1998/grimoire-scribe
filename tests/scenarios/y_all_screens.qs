@@ -626,6 +626,7 @@ pentap panel next
 wait 50
 expect editor.pages is 3
 pentap panel pages
+tap panel pages.graph
 wait 150
 expect editor.modal is map
 shot 28-index-graph
@@ -643,11 +644,11 @@ tap 133 1725
 tap 1643 2365
 expect editor.index_rows is 1
 tap panel pages
+tap panel pages.graph
 shot 28-index-named
 tap panel map.back
 pentap panel previous
 tap panel pages
-tap panel map.pages
 tap panel pages.page.3
 tap panel pages.page.3
 expect editor.page is 3
@@ -727,7 +728,6 @@ tap 1679 2205
 tap 1643 2365
 expect editor.index_rows is 0
 tap panel pages
-tap panel map.pages
 tap panel pages.all
 expect editor.ticked is 3
 shot 29-pages-all
@@ -994,6 +994,7 @@ tap 2182 1696
 wait 100
 expect editor.modal is none
 tap panel pages
+tap panel pages.graph
 wait 150
 expect editor.modal is map
 shot 49-index-landscape
@@ -1337,7 +1338,6 @@ expect settings.link_areas is 0
 # Go to opens Find over the bar: a number, a page there is not, a name that matches nothing, names
 tap panel bar.close
 tap panel pages
-tap panel map.pages
 tap 930 2395
 wait 300
 expect editor.find is go
@@ -1451,6 +1451,7 @@ expect editor.bar is open
 shot 71-incoming-bar
 tap panel bar.close
 tap panel pages
+tap panel pages.graph
 wait 150
 expect editor.map is graph
 wait 100

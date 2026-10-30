@@ -15,6 +15,7 @@ pentap panel next
 pentap panel next
 expect editor.page is 3
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.list is 0
 expect editor.index_rows is 0
@@ -65,6 +66,7 @@ tap 1643 2365
 expect editor.page_name is Start
 expect editor.index_rows is 2
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 shot 02-two-sections
 tap panel map.pages
@@ -79,26 +81,24 @@ shot 03-jump-clear-page
 # A failed save must prevent opening management, keep ink, and clear the departing graph.
 storage full
 pentap panel pages
-tap panel map.pages
 expect editor.modal is none
 expect editor.screen_composed is 1
 expect editor.page is 3
 expect editor.unsaved is 1
 storage ok
 pentap panel pages
-tap panel map.pages
 tap panel pages.page.1
 tap panel pages.page.1
 expect editor.page is 1
 # Insert after Start. Page id 3 must still open Notes at its new page number 4.
 pentap panel pages
-tap panel map.pages
 expect editor.modal is pages
 tap panel pages.new
 expect editor.page is 2
 expect editor.page_name is
 expect editor.index_rows is 2
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 shot 04-inserted-note
 tap panel map.pages
@@ -112,7 +112,6 @@ pentap panel previous
 expect editor.page is 2
 # Delete Start, selecting only its tile in management.
 pentap panel pages
-tap panel map.pages
 tap panel pages.page.1
 expect editor.ticked is 1
 tap panel pages.delete
@@ -126,6 +125,7 @@ expect editor.page_name is Notes
 expect editor.strokes is 1
 rotate 1
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.nodes is 3
 shot 05-graph-landscape
@@ -137,6 +137,7 @@ tap 200 400
 expect editor.page_name is Notes
 expect editor.loaded_pages is 1
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.index_rows is 1
 expect editor.loaded_pages is 1

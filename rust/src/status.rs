@@ -491,7 +491,7 @@ thread_local! {
 
 /// Whether the panel should hold the indicator now: it is on, and the page is in front.
 fn wanted(a: &App) -> bool {
-    a.settings.status_on && page_in_front(a)
+    a.settings.status_on && (page_in_front(a) || crate::editor::editor_status_preview(a))
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -518,6 +518,7 @@ pub fn status_tapped() -> bool {
 /// Whether the corner must hold its refreshes back: the pen is near, a stroke or another gesture
 /// is in progress, or the driver is in pen mode.
 fn status_busy(a: &App) -> bool {
+    if crate::editor::editor_status_preview(a) {return a.pen_action_down || editor_busy(a);}
     with(|s| s.pen_near) || editor_busy(a) || display_pen_mode_on()
 }
 

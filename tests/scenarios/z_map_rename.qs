@@ -4,6 +4,7 @@
 wait 300
 tap 200 400
 tap panel pages
+tap panel pages.graph
 tap map-node 2
 expect editor.map.selected is 2
 tap panel map.rename
@@ -29,6 +30,7 @@ shot 02-incoming
 
 tap panel bar.close
 tap panel pages
+tap panel pages.graph
 tap panel map.view
 expect editor.map is graph
 expect editor.map.mode is around

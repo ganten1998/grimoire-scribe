@@ -7,6 +7,7 @@ tap library notebook.A
 expect screen is editor
 expect editor.notebook_id is A
 tap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.list is 0
 expect editor.map.foreign is 1

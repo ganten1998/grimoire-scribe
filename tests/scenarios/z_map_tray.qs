@@ -5,6 +5,7 @@
 wait 200
 tap 326 608
 tap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.nodes is 250
 expect editor.map.visible is

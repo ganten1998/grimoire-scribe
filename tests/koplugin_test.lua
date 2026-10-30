@@ -646,7 +646,7 @@ do -- On a Kindle: Tools > Grimoire and the gesture.
     check("menu: Grimoire in the Tools tab", m and m.text == "Grimoire" and m.sorting_hint == "tools")
     local sub = m and m.sub_item_table or {}
     check("menu: Open Grimoire, Notebook PDFs, Reset pen calibration",
-        #sub == 5 and sub[1].text == "Open Grimoire" and sub[2].text == "Notebook PDFs"
+        #sub == 3 and sub[1].text == "Open Grimoire" and sub[2].text == "Notebook PDFs"
         and sub[3].text == "Reset pen calibration")
     check("menu: nothing run by showing it", calls_of("execute") == 0)
     check("menu: no message at an ordinary start", #W.scheduled == 0 and #W.shown == 0)
@@ -1455,7 +1455,7 @@ do -- In a book: Tools > Grimoire has Annotate this page in Grimoire, second; th
     local items = {}
     g:addToMainMenu(items)
     local sub = items.grimoire.sub_item_table
-    check("annotate: in a PDF, seven entries, Annotate second, Open this book third", #sub == 7
+    check("annotate: in a PDF, five entries, Annotate second, Open this book third", #sub == 5
         and sub[1].text == "Open Grimoire" and sub[2].text == "Annotate this page in Grimoire"
         and sub[3].text == "Open this book in Grimoire" and sub[4].text == "Notebook PDFs")
     check("annotate: the menu closes first (kept open by TouchMenu)", sub[2].keep_menu_open == true)
@@ -1860,7 +1860,7 @@ do -- The menu: in a PDF, Open this book in Grimoire (above); in an EPUB not (it
     local items = {}
     g:addToMainMenu(items)
     local sub = items.grimoire.sub_item_table
-    check("book: not in an EPUB's menu", #sub == 6 and sub[2].text == "Annotate this page in Grimoire"
+    check("book: not in an EPUB's menu", #sub == 4 and sub[2].text == "Annotate this page in Grimoire"
         and sub[3].text == "Notebook PDFs")
     local a = W.actions.grimoire_book
     check("book gesture: registered, in books only", a and a.event == "OpenBookInGrimoire"
@@ -2036,40 +2036,22 @@ do -- A PDF that needs a password: KOReader cannot draw it here; closed again, n
     check(s .. ": closed again, nothing drawn or sent", at("closeDocument") and not drew("drawPage") and not wrapped())
 end
 
-do -- The plugin uses KOReader's backend once at startup, without replacing network preferences.
-    world("wifi-start")
+do -- Wi-Fi belongs to KOReader's network controls, not the Grimoire handoff plugin.
+    world("wifi-left-alone")
     W.wifi_on,W.wifi_connected=false,false
     local g=koreader(false)
-    check("Wi-Fi: deferred until the UI loop",W.wifi_restores==0)
     run_ticks()
-    check("Wi-Fi: startup enables and checks the saved connection",W.wifi_on and W.wifi_restores==1 and W.wifi_checks==1)
-    g:new{ui=new_ui(true)};run_ticks()
-    check("Wi-Fi: only once per KOReader process",W.wifi_restores==1)
-    local items={};g:addToMainMenu(items);local controls=items.grimoire.sub_item_table
-    controls[4].callback()
-    check("Wi-Fi: manual off uses KOReader",not W.wifi_on)
-    g:new{ui=new_ui(false)};run_ticks()
-    check("Wi-Fi: manual off is not undone in the same process",not W.wifi_on and W.wifi_restores==1)
-    controls[4].callback()
-    check("Wi-Fi: manual on uses KOReader",W.wifi_on)
-    check("Wi-Fi: startup default enabled",controls[5].checked_func())
-    controls[5].callback()
-    check("Wi-Fi: startup option can be disabled",W.settings.grimoire_wifi_on_start==false)
-    world("wifi-opt-out");W.settings.grimoire_wifi_on_start=false
+    check("Wi-Fi: Grimoire does not change airplane/radio state at startup",not W.wifi_on and W.wifi_restores==0)
+    check("Wi-Fi: Grimoire does not schedule connection checks",W.wifi_checks==0)
+    local items={};g:addToMainMenu(items)
+    for _,item in ipairs(items.grimoire.sub_item_table) do
+        local label=item.text or (item.text_func and item.text_func()) or ""
+        check("Wi-Fi: no redundant Grimoire Wi-Fi menu",not label:find("Wi%-Fi"))
+    end
+    world("wifi-legacy-setting")
+    W.settings.grimoire_wifi_on_start=true
     koreader(false);run_ticks()
-    check("Wi-Fi: startup opt-out preserves the radio",W.wifi_restores==0)
-    world("wifi-pending");Network.pending_connection=true
-    koreader(false);run_ticks()
-    check("Wi-Fi: existing connection attempt is not duplicated",W.wifi_restores==0)
-    world("wifi-unsupported");W.wifi_supported=false
-    koreader(false);run_ticks()
-    check("Wi-Fi: unsupported device is left alone",W.wifi_restores==0)
-    world("wifi-error");W.wifi_error=true
-    koreader(false)
-    check("Wi-Fi: backend failure cannot escape the UI loop",pcall(run_ticks) and at("warn")~=nil)
-    world("wifi-disabled-before-tick")
-    koreader(false);W.settings.grimoire_wifi_on_start=false;run_ticks()
-    check("Wi-Fi: opt-out before scheduled task is honored",W.wifi_restores==0)
+    check("Wi-Fi: retired startup setting has no effect",W.wifi_restores==0)
 end
 
 print(string.format("koplugin test: %d of %d checks failed", fails, count))

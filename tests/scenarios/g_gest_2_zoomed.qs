@@ -51,6 +51,7 @@ expect editor.zoom is 2.25
 expect touch.gesture is
 # the Pages view does not pan: the same drag is a swipe, and two fingers up close it
 pentap panel pages
+tap panel pages.graph
 wait 200
 expect editor.modal is map
 expect editor.scrolls is 0 0

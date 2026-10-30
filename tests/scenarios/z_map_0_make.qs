@@ -7,6 +7,7 @@ tap 326 608
 expect editor.pages is 40
 expect editor.page is 3
 tap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.nodes is 40
 expect editor.map.tray is 2

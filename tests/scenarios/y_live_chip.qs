@@ -56,6 +56,7 @@ expect editor.modal is none
 expect live.chip is 136 739 42 42
 # The Pages view covers everything: none there either.
 tap panel pages
+tap panel pages.graph
 wait 500
 expect editor.modal is map
 tap panel map.list

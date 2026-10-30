@@ -149,6 +149,7 @@ pentap panel next
 wait 300
 expect editor.pages is 2
 pentap panel pages
+tap panel pages.graph
 wait 300
 expect editor.map is graph
 pentap panel map.pages

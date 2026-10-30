@@ -33,6 +33,7 @@ expect editor.links is 2 2
 tap panel redo
 expect editor.links is 3 3
 tap panel pages
+tap panel pages.graph
 expect editor.map.foreign is 2
 shot 03-notebook-groups
 tap panel map.list
@@ -57,7 +58,6 @@ expect editor.notebook_id is B
 expect editor.page is 2
 # Delete only the destination page; its old link must fail safely without changing the origin.
 tap panel pages
-tap panel map.pages
 waitbg
 tap panel pages.page.2
 tap panel pages.delete
@@ -72,6 +72,7 @@ expect editor.notebook_id is A
 expect editor.links is 3 3
 expect toast not
 tap panel pages
+tap panel pages.graph
 expect editor.map.foreign is 1
 expect editor.map.stats is 3 0 2 2 6
 shot 05-deleted-destination

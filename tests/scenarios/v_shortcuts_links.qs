@@ -112,6 +112,7 @@ expect editor.page is 1
 shot 04-named
 # The named page appears in Graph and in page management.
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.list is 0
 expect editor.index_rows is 1
@@ -158,6 +159,7 @@ expect editor.page_name is Notes
 expect editor.index_rows is 2
 # Management no longer changes the default Graph entry after naming Cancel or Done.
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 tap panel map.pages
 expect editor.modal is pages
@@ -170,6 +172,7 @@ expect editor.keyboard is Page name
 tap 217 2365
 expect editor.modal is none
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.list is 0
 tap panel map.back
@@ -180,6 +183,7 @@ tap 1643 2365
 expect editor.modal is none
 expect editor.page_name is Notes
 pentap panel pages
+tap panel pages.graph
 expect editor.map is graph
 expect editor.map.list is 0
 tap panel map.pages

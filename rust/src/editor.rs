@@ -50,8 +50,6 @@ const HINT_BAR_SHIFT: i32 = 3;
 const HINT_BAR_MASK: i32 = 3;
 /// The back list holds this many pages: the oldest is dropped past it.
 const BACK_MAX: usize = 32;
-// The "Move the pen away, then swipe." toast shows at most once in this long.
-const PEN_TOAST_EVERY_MS: u32 = 600_000;
 
 // The hits' ids (the panel's, the paper sheet's and the tool picker's).
 #[allow(dead_code)]
@@ -415,9 +413,6 @@ pub struct EditorState {
     pinch_classified: bool,
     /// a classified pan moved the page this session: the pan hint is due when it ends
     pinch_panned: bool,
-    /// when "Move the pen away, then swipe." last showed (the t_ms of the PinchEnd that showed it)
-    pen_toast_at: u32,
-    pen_toast_shown: bool,
     /// The pages the open notebook was left from by a link, the Pages view or Find, newest last, at most
     /// BACK_MAX (page ids): Back to the page before pops it. Memory only; a page turn does not push.
     back: Vec<u32>,
@@ -1233,6 +1228,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
     if let Some(n)=name.strip_prefix("pages."){return pagesview_control_point(&s.pv,n);}
+    if let Some(n)=name.strip_prefix("display."){return dispmenu_control_point(&s.dm,n);}
     if name=="elsewhere.current" {return s.destination.point(&format!("book.{}",s.nb.id));}
     if let Some(n)=name.strip_prefix("elsewhere."){return s.destination.point(n);}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
@@ -1471,6 +1467,13 @@ pub fn editor_status_changed(a: &mut App) {
         view_reset(a);
         compose_all(a, RefreshMode::Full);
     } else if let Some(s) = a.ed.as_deref_mut() { s.view_w = 0; }
+}
+
+/// A read-only live preview of the corner while adjusting it in Display.
+pub fn editor_status_preview(a:&App)->bool {
+    if crate::library::library_status_preview(a) {return true;}
+    a.scr==ScreenId::Editor && !crate::library::library_settings_active(a)
+        && a.ed.as_deref().is_some_and(|s|s.open && s.dm.open)
 }
 
 // ---- view ----
@@ -1881,7 +1884,7 @@ fn draw_shape_menu(a: &mut App) {
     s.tools_rect=Rect{x,y,w,h};
     ui_frame(c,s.tools_rect,ui_px(22.0),255,true,0);
     ui_frame(c,s.tools_rect,ui_px(22.0),0,false,ui_px(6.0));
-    font_draw_left(c,FontFace::Title,ui_title_size(),Rect{x:x+ui_px(30.0),y:y+ui_px(15.0),w:w-ui_px(60.0),h:ui_px(85.0)},tr("Smart shapes"),0);
+    font_draw_left(c,if ui_theme()==UiTheme::Gothic{FontFace::Title}else{FontFace::Bold},ui_title_size(),Rect{x:x+ui_px(30.0),y:y+ui_px(15.0),w:w-ui_px(60.0),h:ui_px(85.0)},tr("Smart shapes"),0);
     let rows=[
         (P_SHAPES,tr(if st.shapes {n_("Smart shapes: On")}else{n_("Smart shapes: Off")})),
         (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
@@ -2035,7 +2038,7 @@ fn compose(a: &mut App, r: Rect) {
         map_draw(a, r);
         return;
     }
-    if ed(a).pv.open {
+    if ed(a).pv.open && !ed_ref(a).pv.overlay {
         // the Pages view covers everything
         with_pv(a, pagesview_draw);
         return;
@@ -2095,6 +2098,10 @@ fn compose(a: &mut App, r: Rect) {
 /// Display, Custom music, the tool picker, Find with its keyboard, and the Links bar over everything; each where
 /// it meets r. The panel is under all of them, and only ever over the notebook page.
 fn draw_menus(a: &mut App, r: Rect) {
+    if ed_ref(a).pv.open && ed_ref(a).pv.overlay {
+        with_pv(a,|pv,a,_,_|pagesview_draw_overlay(pv,a));
+        return;
+    }
     let s = ed_ref(a);
     if s.paper_open && rect_overlaps(r, s.paper_rect) {
         draw_paper_sheet(a);
@@ -3713,7 +3720,7 @@ fn pages_show(a: &mut App) {
 fn index_show(a:&mut App) {map_show(a,false);}
 
 
-// name-page: the Pages view's naming keyboard for the open page, over its Index, as Name this page
+// name-page: the Pages view's naming keyboard for the open page, drawn over the notebook, as Name this page
 // there opens it; its Done or Cancel goes back to the page (pages_event). Nothing while the names
 // cannot be changed (that button is greyed out then).
 fn pages_name(a: &mut App) {
@@ -3721,7 +3728,8 @@ fn pages_name(a: &mut App) {
         return;
     }
     lm_drop(ed(a)); // (the view comes up whole)
-    save_page(a);
+    if !save_page(a){return;}
+    ed(a).pv.unified=true;
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_name(pv, a, nb, nav, index)) {
         return;
@@ -6212,7 +6220,8 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         LbResult::GoTo => {
             // Find acts on the page that shows: stay on it, then the sheet.
             bar_stay(a);
-            find_show(a);
+            let index=ed_ref(a).index;
+            if with_pv(a,|pv,a,nb,nav|pagesview_jump(pv,a,nb,nav,index)) {compose_all(a,RefreshMode::Ui);}
         }
         LbResult::NewLink => {
             let s = ed(a);
@@ -6330,7 +6339,7 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_CLEAR => clear_page(a),
         P_SHAPES => open_shape_menu(a),
-        P_PAGES => map_show(a,false),
+        P_PAGES => pages_show(a),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
         P_LINKS => {
             if ed_ref(a).lm.state != LmState::Off { link_cancel(a,true); }
@@ -8016,20 +8025,6 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
     editor_shortcut_at(a, action, ev.x2, ev.y2, ActionSrc::Touch);
 }
 
-// A two-finger swipe or tap refused only because the pen was near: said once in a while, never while
-// the pen is down (a toast is a GL16), and never twice within PEN_TOAST_EVERY_MS of the events' clock.
-fn pen_toast(a: &mut App, t_ms: u32) {
-    let s = ed(a);
-    if (s.owner != Owner::None && s.owner_is_pen) || (s.pen_toast_shown && t_ms.wrapping_sub(s.pen_toast_at) < PEN_TOAST_EVERY_MS) {
-        return;
-    }
-    s.pen_toast_at = t_ms;
-    s.pen_toast_shown = true;
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
-    // while the pen was near the screen, so nothing happened.
-    app_toast(a, tr("Move the pen away, then swipe."), 2000);
-}
-
 fn editor_event_in(a: &mut App, ev: &InEvent) {
     if ed_ref(a).destination.open {
         let ph=app_pointer_phase(ev);
@@ -8105,7 +8100,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         }
         // (before pinch(): a session no pinch started for, the Pages view's or a refused one's, says it too)
         if ev.type_ == InType::PinchEnd && ev.value == 1 {
-            pen_toast(a, ev.t_ms);
+            // Pen proximity can refuse a gesture silently; no toast over the notebook.
         }
         if !ed(a).pv.open {
             pinch(a, ev);
@@ -8664,6 +8659,12 @@ fn migrate_step(a: &mut App) {
 
 pub fn editor_tick(a: &mut App, now: u32) {
     if crate::library::library_settings_active(a) {crate::library::library_tick(a,now);touch_context(a);return;}
+    if !a.asleep && !ed_ref(a).pv.open && !ed_ref(a).destination.open && !editor_busy(a)
+        && now.wrapping_sub(a.last_input)>1000 && now.wrapping_sub(ed_ref(a).previews_checked)>1000 {
+        ed(a).previews_checked=now;
+        let (current,dpi)=(ed_ref(a).index,a.dpi);
+        with_pv(a,|pv,_,nb,_|pagesview_prefetch(pv,nb,current,dpi));
+    }
     if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
         let id=if ed_ref(a).destination.open {ed_ref(a).destination.selected.as_ref().map(|nb|nb.id)}else{Some(ed_ref(a).nb.id)};
         ed(a).previews_checked=now;
@@ -8835,7 +8836,7 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if key=="pages.grid" {let (cols,rows)=crate::pagesview::pagesview_grid(&ed_ref(a).pv,a);csnprintf!(out,cap,"%d %d",cols,rows);return 0;}
-    if key=="pages.context" {return with_pv(a,|pv,_,nb,nav|pagesview_probe(pv,nb,nav,"context",out,cap));}
+    if let Some(k)=key.strip_prefix("pages.") {return with_pv(a,|pv,_,nb,nav|pagesview_probe(pv,nb,nav,k,out,cap));}
     if key=="screen_composed" {
         let before=a.screen.clone();compose(a,Rect::new(0,0,a.w,a.h));
         let same=before.px==a.screen.px;a.screen=before;

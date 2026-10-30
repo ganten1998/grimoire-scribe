@@ -42,3 +42,5 @@ body.monitor.actual,:root:fullscreen body.actual{box-sizing:border-box;height:10
 #live .keys dt{font-family:monospace}
 #live .keys dd{margin:0}
 body.monitor #live .keys{position:fixed;z-index:7;top:60px;left:12px;right:12px}
+
+.popout-placeholder{max-width:40em;margin:4em auto;text-align:center}

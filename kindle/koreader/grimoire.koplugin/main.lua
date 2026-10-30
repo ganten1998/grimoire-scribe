@@ -73,10 +73,6 @@ local logger = require("logger")
 local STRINGS = {
     en = {
         open = "Open Grimoire",
-        wifi_start = "Turn on Wi-Fi when KOReader starts",
-        wifi_on = "Turn on Wi-Fi",
-        wifi_off = "Turn off Wi-Fi",
-        wifi_failed = "Could not change Wi-Fi. Check KOReader’s network menu.",
         pdfs = "Notebook PDFs",
         reset = "Reset pen calibration",
         preparing = "Preparing Grimoire...",
@@ -111,10 +107,6 @@ local STRINGS = {
     -- la pantalla táctil, Ajustes, cuaderno, and "detalles en" for where the log says more.
     es = {
         open = "Abrir Grimoire",
-        wifi_start = "Activar wifi al iniciar KOReader",
-        wifi_on = "Activar wifi",
-        wifi_off = "Desactivar wifi",
-        wifi_failed = "No se pudo cambiar el wifi. Revisa el menú de red de KOReader.",
         pdfs = "PDF de los cuadernos",
         reset = "Restablecer la calibración del lápiz",
         preparing = "Preparando Grimoire...",
@@ -454,48 +446,12 @@ local Grimoire = WidgetContainer:extend{
     orientation_sensor_code = orientation_sensor_code, -- (the test's stand-in has no /dev/input)
 }
 
--- Once per reader.lua process, after KOReader has initialized its own network manager.
--- Use its Kindle backend (wirelessEnable plus wifid.enable), saved networks and connection events.
--- Never reassert this on wake or while the owner reads, and never replace network.lua.
-local wifi_start_checked = false
-function Grimoire:wifiOnStartup()
-    if wifi_start_checked then return end
-    wifi_start_checked = true
-    if G_reader_settings:readSetting("grimoire_wifi_on_start") == false then return end
-    UIManager:nextTick(function()
-        local ok, why = pcall(function()
-            if G_reader_settings:readSetting("grimoire_wifi_on_start") == false then return end
-            if not (Device.hasWifiRestore and Device:hasWifiRestore()) then return end
-            local network = require("ui/network/manager")
-            if network.pending_connection or network.pending_connectivity_check then return end
-            network:restoreWifiAsync()
-            network:queryNetworkState()
-            if not network:isConnected() then network:scheduleConnectivityCheck() end
-        end)
-        if not ok then logger.warn("Grimoire: startup Wi-Fi unavailable:", why) end
-    end)
-end
-
-function Grimoire:toggleWifi()
-    local ok, why = pcall(function()
-        local network = require("ui/network/manager")
-        network:queryNetworkState()
-        if network:isWifiOn() then network:toggleWifiOff(nil, true)
-        else network:toggleWifiOn(nil, false, true) end
-    end)
-    if not ok then
-        logger.warn("Grimoire: Wi-Fi control unavailable:", why)
-        self:tell("wifi_failed")
-    end
-end
-
 function Grimoire:init()
     -- Grimoire is a Kindle Scribe app: nothing to offer anywhere else.
     if not Device:isKindle() then return end
     keep_alive_as_the_kindle_has_it()
     native_rotation_as_the_framebuffer_has_it()
     rotation_as_the_sensor_has_it(self.orientation_sensor_code)
-    self:wifiOnStartup()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- In the file browser's Open with... for the files Grimoire takes whole (isFileTypeSupported):
@@ -571,25 +527,6 @@ function Grimoire:addToMainMenu(menu_items)
             end,
         })
     end
-    table.insert(items, {
-        text_func = function()
-            local ok, on = pcall(function()
-                local network = require("ui/network/manager")
-                network:queryNetworkState()
-                return network:isWifiOn()
-            end)
-            return T(ok and on and "wifi_off" or "wifi_on")
-        end,
-        callback = function() self:toggleWifi() end,
-    })
-    table.insert(items, {
-        text = T("wifi_start"),
-        checked_func = function() return G_reader_settings:readSetting("grimoire_wifi_on_start") ~= false end,
-        callback = function()
-            G_reader_settings:saveSetting("grimoire_wifi_on_start",
-                G_reader_settings:readSetting("grimoire_wifi_on_start") == false)
-        end,
-    })
     menu_items.grimoire = {
         text = "Grimoire",
         sorting_hint = "tools",

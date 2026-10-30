@@ -102,6 +102,34 @@ const has = (o, op) => shownCalls(o).some(c => c[0] === op);
 const inks = o => has(o, 'fill') || has(o, 'stroke');
 
 module.exports = async function browserChecks(ok) {
+    // A real pop-out moves the same live DOM, rather than making a second client/video.
+    {
+        const {LivePopout} = require('../web/live.js');
+        const made = [];
+        function node(tag) {
+            const n = {tag, children: [], parent: null, style: {}, className: '',
+                append(...items) { for (const item of items) { if (item.parent) item.parent.children.splice(item.parent.children.indexOf(item),1); this.children.push(item); item.parent=this; } },
+                replaceWith(item) { const p=this.parent; const i=p.children.indexOf(this); if(item.parent)item.parent.children.splice(item.parent.children.indexOf(item),1);p.children[i]=item;item.parent=p;this.parent=null; },
+                addEventListener(type,fn) {this[type]=fn;}, cloneNode() {return node(tag);} };
+            made.push(n); return n;
+        }
+        const style=node('style');
+        const doc={title:'Live',body:node('body'),head:node('head'),createElement:node,querySelectorAll:()=>[style]};
+        const root=node('live'),canvas=node('canvas');root.append(canvas);doc.body.append(root);
+        let child,changes=0,opens=0;
+        const opener={open() {opens++;child={document:{head:node('head'),body:node('body')},closed:false,
+            focus(){},addEventListener(type,fn){this[type]=fn;},close(){this.closed=true;if(this.pagehide)this.pagehide();}};return child;}};
+        const pop=new LivePopout(opener,doc,root,{popoutActive:'Open',popoutReturn:'Back'},()=>changes++);
+        ok('pop-out: moves the one live canvas and leaves only a placeholder in the main tab',pop.open() && child.document.body.children[0]===root && root.children[0]===canvas && !doc.body.children.includes(root));
+        ok('pop-out: copies styles without opening another Live page or making a video',child.document.head.children.length===1 && opens===1 && !made.some(n=>n.tag==='video'));
+        pop.close();
+        ok('pop-out: restores the same canvas and view on close, exactly once',doc.body.children[0]===root && root.children[0]===canvas && child.closed && changes===2 && pop.win===null);
+        pop.open(); child.closed=true; child.document=null; pop.close();
+        ok('pop-out: an already-detached child document cannot strand the original canvas',doc.body.children[0]===root && root.children[0]===canvas && pop.win===null);
+        const blocked=new LivePopout({open:()=>null},doc,root,{},()=>{});
+        ok('pop-out: a blocked popup keeps the original view in place',!blocked.open() && doc.body.children[0]===root);
+    }
+
     let p = page();
     await turn();
     const tiles = p.readers['/live/stream'], pen = () => p.readers['/live/pen'];

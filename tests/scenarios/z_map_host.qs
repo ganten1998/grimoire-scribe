@@ -6,6 +6,7 @@ wait 300
 tap 200 400
 wait 200
 tap panel pages
+tap panel pages.graph
 wait 200
 expect editor.map is graph
 expect editor.modal is map
@@ -23,6 +24,7 @@ expect editor.page is 3
 key 48 0
 expect editor.page is 1
 tap panel pages
+tap panel pages.graph
 expect editor.map is graph
 # Around current page, then zoom and return to All.
 tap panel map.view

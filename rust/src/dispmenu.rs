@@ -47,6 +47,12 @@ const D_DONE: i32 = 7;
 const D_STATUS: i32 = 8;
 const D_FIT: i32 = 9;
 const D_CORNER: i32 = 10;
+
+pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
+    if !m.open{return None;}
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,_=>return None};
+    m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
+}
 const D_NEWPAGE: i32 = 11;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.

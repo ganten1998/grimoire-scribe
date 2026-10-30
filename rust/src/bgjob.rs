@@ -486,7 +486,8 @@ pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookIn
     let missing=pages.iter().any(|pid|!requests.pages.contains(pid) && {
         let mut preview=Canvas::default();!store_load_page_preview(nb,*pid,&mut preview)
     });
-    if !missing || requests.pages.try_reserve(pages.len()).is_err() {return;}
+    if requests.pages.try_reserve(pages.len()).is_err() {return;}
     for &pid in pages {if !requests.pages.contains(&pid){requests.pages.push(pid);}}
+    if !missing {return;}
     bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),dpi,true);
 }

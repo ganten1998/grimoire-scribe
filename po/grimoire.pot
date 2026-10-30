@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-rc.5\n"
+"Project-Id-Version: Grimoire 2.0.0-rc.6\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 23:08-0500\n"
+"POT-Creation-Date: 2026-10-30 07:54-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -270,7 +270,7 @@ msgstr ""
 msgid "Links on this page"
 msgstr ""
 
-#: rust/src/actions.rs rust/src/pagesview.rs
+#: rust/src/actions.rs rust/src/linkbar.rs rust/src/pagesview.rs
 msgid "Go to page"
 msgstr ""
 
@@ -1551,12 +1551,6 @@ msgstr ""
 msgid "That is not one of your finger shapes. Settings > Gestures lists them."
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
-#. while the pen was near the screen, so nothing happened.
-#: rust/src/editor.rs
-msgid "Move the pen away, then swipe."
-msgstr ""
-
 #: rust/src/editor.rs
 msgid ""
 "Shape made. Undo takes it away; the panel's shapes menu has the options."
@@ -1922,7 +1916,15 @@ msgstr ""
 #. TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
 #. the computer's other windows (the browser's own name for it is fine).
 #: rust/src/httpd.rs
-msgid "Picture in picture"
+msgid "Pop out"
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Live view is open in another window. Keep this tab open."
+msgstr ""
+
+#: rust/src/httpd.rs
+msgid "Bring Live view back"
 msgstr ""
 
 #: rust/src/httpd.rs
@@ -3217,7 +3219,7 @@ msgid "Copy page"
 msgstr ""
 
 #: rust/src/pagesview.rs
-msgid "Go to"
+msgid "Multi-select"
 msgstr ""
 
 #: rust/src/pagesview.rs

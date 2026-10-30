@@ -826,11 +826,61 @@
         for (const held of this.held.values()) if (held.action === 'hold-eraser') this.enqueue(held.code, held.mods, 2);
     };
 
+    // A pop-out adopts the one live view, leaving a placeholder in the original tab. It
+    // never navigates to /live or clones scripts/canvases, so the same streams and recorder stay.
+    class LivePopout {
+        constructor(opener, doc, root, words, changed) {
+            Object.assign(this, {opener, doc, root, words, changed, win: null, placeholder: null});
+        }
+        open() {
+            if (this.win && !this.win.closed) { this.win.focus(); return true; }
+            const win = this.opener.open('', '', 'popup,width=760,height=900');
+            if (!win) return false;
+            const doc = win.document;
+            doc.title = this.doc.title;
+            for (const node of this.doc.querySelectorAll('link[rel="stylesheet"], style')) {
+                const copy = node.cloneNode(true);
+                if (node.href) copy.href = node.href;
+                doc.head.append(copy);
+            }
+            doc.body.className = this.doc.body.className;
+            doc.body.style.cssText = this.doc.body.style.cssText;
+            const placeholder = this.doc.createElement('div');
+            placeholder.className = 'popout-placeholder';
+            const text = this.doc.createElement('p');
+            text.textContent = this.words.popoutActive;
+            const back = this.doc.createElement('button');
+            back.type = 'button'; back.textContent = this.words.popoutReturn;
+            back.addEventListener('click', () => this.close());
+            placeholder.append(text, back);
+            this.root.replaceWith(placeholder);
+            doc.body.append(this.root);
+            this.win = win; this.placeholder = placeholder;
+            win.addEventListener('pagehide', () => this.close());
+            this.changed(); win.focus();
+            return true;
+        }
+        close() {
+            const win = this.win;
+            if (!win) return;
+            this.win = null;
+            // Some browsers detach the child document before delivering its final pagehide.
+            try {
+                this.doc.body.className = win.document.body.className;
+                this.doc.body.style.cssText = win.document.body.style.cssText;
+            } catch (e) { /* the retained root/canvases still return below */ }
+            this.placeholder.replaceWith(this.root);
+            this.placeholder = null;
+            this.changed();
+            if (!win.closed) win.close();
+        }
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
             filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples,
             FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
-            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard};
+            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout};
         return;
     }
 
@@ -890,9 +940,23 @@
     // recording that is no WebM (an MP4), which has no transparency, so film has the paper drawn in
     // while Transparent paper is on; h264: the codec VideoEncoder takes at the screen's size
     // (probeH264: its first choice VideoEncoder takes), null for none, undefined while not known yet.
-    // pipWindow: Picture in picture's window while it is open (film is drawn at its pixels then).
+    // A pop-out moves the same live DOM to another window; film is for recording only.
     let pen = null, showPen = true, penShown = null, penQueued = false, filmPen = null;
-    let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, pipVideo = null, h264, probing = '', pipWindow = null;
+    let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, h264, probing = '';
+    const popout = new LivePopout(window, document, host, words, () => {
+        pipButton.setAttribute('aria-pressed', popout.win ? 'true' : 'false');
+        keyboard.release();
+        presentQueued = false; penQueued = false;
+        activeDocument().body.classList.toggle('clear', clear);
+        look(); setMonitor(monitor, false); layout();
+    });
+    function activeWindow() { return popout.win || window; }
+    function activeDocument() { return popout.win ? popout.win.document : document; }
+    function animationFrame(fn) {
+        const win = activeWindow();
+        return win.requestAnimationFrame ? win.requestAnimationFrame(fn) : requestAnimationFrame(fn);
+    }
+    addEventListener('pagehide', () => popout.close());
     const failedFilms = new Set();                     // (choices an encoder refused once it began)
     let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
     const bar = document.createElement('div');
@@ -920,7 +984,7 @@
     const clearButton = button(words.clear, () => {
         clear = !clear;
         clearButton.setAttribute('aria-pressed', clear ? 'true' : 'false');
-        document.body.classList.toggle('clear', clear);
+        activeDocument().body.classList.toggle('clear', clear);
         repaint(0, 0, raw.width, raw.height);
     });
     clearButton.setAttribute('aria-pressed', 'false');
@@ -1025,8 +1089,7 @@
     if (!canRecord) recordButton.hidden = true;
     const pipButton = button(words.pip, pip);
     pipButton.setAttribute('aria-pressed', 'false');
-    if (!document.pictureInPictureEnabled || !film.captureStream ||
-        !HTMLVideoElement.prototype.requestPictureInPicture) pipButton.hidden = true;
+    if (!window.open) pipButton.hidden = true;
     button(words.full, full);
     const monitorButton = button(words.monitor, () => setMonitor(!monitor, true));
     const debugButton = button(words.latency, () => {
@@ -1055,13 +1118,13 @@
     function setMonitor(on, gesture) {
         monitor = on; fit = true; showPen = true;
         penSwitch.setAttribute('aria-checked', 'true');
-        document.body.classList.toggle('monitor', on);
+        activeDocument().body.classList.toggle('monitor', on);
         monitorButton.setAttribute('aria-pressed', String(on));
         try { localStorage.setItem('grimoire.monitor', on ? '1' : '0'); } catch (e) {}
-        if (gesture && on && !document.fullscreenElement && document.documentElement.requestFullscreen)
-            document.documentElement.requestFullscreen().catch(() => {});
-        if (gesture && !on && document.fullscreenElement && document.exitFullscreen)
-            document.exitFullscreen().catch(() => {});
+        if (gesture && on && !activeDocument().fullscreenElement && activeDocument().documentElement.requestFullscreen)
+            activeDocument().documentElement.requestFullscreen().catch(() => {});
+        if (gesture && !on && activeDocument().fullscreenElement && activeDocument().exitFullscreen)
+            activeDocument().exitFullscreen().catch(() => {});
         layout();
     }
     async function syncClock() {
@@ -1126,14 +1189,16 @@
     addEventListener('keyup', e => keyboard.up(e));
     addEventListener('blur', () => keyboard.release());
     addEventListener('pagehide', () => keyboard.release());
-    document.addEventListener('visibilitychange', () => { if (document.hidden) keyboard.release(); });
+    document.addEventListener('visibilitychange', () => { if (activeDocument().hidden) keyboard.release(); });
     host.replaceChildren(bar, keysPanel, meter, stage);
     setMonitor(monitor, false);
-    addEventListener('keydown', e => {
+    function handleKeyDown(e) {
         if (keyboard.down(e) || e.repeat || e.isComposing || keyEditing(e.target) || e.defaultPrevented) return;
         if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) setMonitor(!monitor, true);
         if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
-    });
+    }
+    addEventListener('keydown', handleKeyDown);
+
     addEventListener('resize', layout);
     addEventListener('fullscreenchange', layout);
 
@@ -1147,9 +1212,9 @@
         warmthSlider.value = String(warmth());
         followButton.hidden = (invertChoice === null || invertChoice === kindleInvert) &&
             (warmthChoice === null || warmthChoice === (kindleWarmth || 0));
-        document.body.classList.toggle('inverted', on);
+        activeDocument().body.classList.toggle('inverted', on);
         light = lightColor(warmth());
-        document.body.style.setProperty('--light', 'rgb(' + light.join(',') + ')');
+        activeDocument().body.style.setProperty('--light', 'rgb(' + light.join(',') + ')');
         repaint(0, 0, raw.width, raw.height);
     }
     function status(text, live) {
@@ -1158,12 +1223,12 @@
     }
     function layout() {
         fitButton.textContent = fit ? words.actual : words.fit;
-        document.body.classList.toggle('actual', !fit);  // (actual size scrolls, full screen too: live.css)
+        activeDocument().body.classList.toggle('actual', !fit);  // (actual size scrolls, full screen too: live.css)
         if (!raw.width) return;
-        const ratio = window.devicePixelRatio || 1;
+        const ratio = activeWindow().devicePixelRatio || 1;
         let w = raw.width / ratio, h = raw.height / ratio;
         if (fit) {
-            const room = host.clientWidth, tall = innerHeight - (monitor ? 2 : bar.offsetHeight + 24);
+            const room = host.clientWidth, tall = (activeWindow().innerHeight || innerHeight) - (monitor ? 2 : bar.offsetHeight + 24);
             const scale = Math.min(room / raw.width, tall / raw.height);
             w = Math.max(1, Math.floor(raw.width * scale));
             h = Math.max(1, Math.floor(raw.height * scale));
@@ -1188,7 +1253,7 @@
     function penSoon() {
         if (penQueued) return;
         penQueued = true;
-        requestAnimationFrame(drawPen);
+        animationFrame(drawPen);
     }
     // The quick ink and the dot as far as the playout has reached (until), and again at the next frame
     // while samples are still to play. A sample's age counts as it shows.
@@ -1209,13 +1274,13 @@
             if (ink.pending(until)) penSoon();
         }
         if (penShown) penCtx.clearRect(penShown.x, penShown.y, penShown.w, penShown.h);
-        const m = showPen && raw.width ? penMark(pen, view.width / raw.width, window.devicePixelRatio || 1) : null;
+        const m = showPen && raw.width ? penMark(pen, view.width / raw.width, activeWindow().devicePixelRatio || 1) : null;
         penShown = m && m.box;
         if (m) drawMark(penCtx, m);
     }
     function samePen(a, b) { return a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.state === b.state); }
     // The pen moved, came, went, or was switched off: on the page at the next frame, in film now (it
-    // is drawn as frames come, so a recording and Picture in picture go on while the tab is hidden).
+    // is drawn as frames come, so a recording goes on while the tab is hidden).
     function movePen(next) {
         placePen(next);
         penSoon();
@@ -1228,9 +1293,8 @@
         if (was) filmDraw(was.box.x, was.box.y, was.box.w, was.box.h);
         if (filmPen) filmDraw(filmPen.box.x, filmPen.box.y, filmPen.box.w, filmPen.box.h);
     }
-    // film is kept only while something takes it: a recording, or Picture in picture showing.
-    function filming() { return !!recorder || pipShowing(); }
-    function pipShowing() { return !!pipVideo && document.pictureInPictureElement === pipVideo; }
+    // Film is kept only for recording; the pop-out renders the live canvases directly.
+    function filming() { return !!recorder; }
     // The mark's unit in film, which has the screen's own pixels: about as big as on a laptop at Fit.
     function filmMark() {
         if (!filming() || !showPen) return null;
@@ -1248,7 +1312,7 @@
         let rx0 = x0, ry0 = y0, rx1 = x1, ry1 = y1;  // (what was drawn again: the mark goes back over all of it)
         const paper = flat && clear ? (inverted() ? [0, 0, 0] : light) : null;
         if (fitIn.k < 1) {
-            // Smaller than the screen (Picture in picture at its window's pixels, a recording an
+            // Smaller than the screen (a recording at its
             // encoder takes only smaller): each film pixel the mean of what it covers, as on the page.
             const pw = Math.max(1, Math.round(shown.width * fitIn.k)), ph = Math.max(1, Math.round(shown.height * fitIn.k));
             const kx = shown.width / pw, ky = shown.height / ph;
@@ -1292,14 +1356,9 @@
         if (recorder && recorder.frame) recorder.frame();  // (CodecRecorder: film changed)
     }
     // All of film again, at the size it keeps (a recording's) or shown's: its mark worked out anew.
-    // Without a recording, film has Picture in picture's window's own pixels while it is open (so the
-    // video plays at about 1:1, the averaging done here, not by the browser's video scaler), else
-    // shown's size.
+    // The recording buffer follows the shown picture until recording fixes its size.
     function filmAll(force) {
-        const want = pipShowing() && pipWindow && pipWindow.width > 0 && pipWindow.height > 0
-            ? {w: Math.max(2, Math.round(pipWindow.width * (window.devicePixelRatio || 1))),
-               h: Math.max(2, Math.round(pipWindow.height * (window.devicePixelRatio || 1)))}
-            : {w: shown.width, h: shown.height};
+        const want = {w: shown.width, h: shown.height};
         if (!recorder && (film.width !== want.w || film.height !== want.h)) {
             film.width = want.w;
             film.height = want.h;
@@ -1389,7 +1448,7 @@
         dirty = dirty ? union(dirty, r) : r;
         if (presentQueued) return;
         presentQueued = true;
-        requestAnimationFrame(() => {
+        animationFrame(() => {
             present();
             painted();
             drawPen();
@@ -1428,43 +1487,22 @@
         throw new Error('unsupported live protocol');
     }
     function full() {
-        const el = document.documentElement;
-        if (document.fullscreenElement) document.exitFullscreen();
+        const el = activeDocument().documentElement;
+        if (activeDocument().fullscreenElement) activeDocument().exitFullscreen();
         else if (el.requestFullscreen) el.requestFullscreen();
     }
-    // Picture in picture: film, as Record takes it (shown with the pen), played in a video the browser
-    // floats over other windows. It goes on while this tab is hidden: film is drawn as tiles and pen
-    // frames come, not by animation frames.
-    async function pip() {
-        if (document.pictureInPictureElement) {
-            document.exitPictureInPicture().catch(() => {});
-            return;
-        }
-        if (!pipVideo) {
-            pipVideo = document.createElement('video');
-            pipVideo.muted = true;
-            pipVideo.playsInline = true;
-            pipVideo.className = 'pip';  // (in the page, out of sight: some browsers float only those)
-            pipVideo.srcObject = film.captureStream();
-            pipVideo.addEventListener('enterpictureinpicture', () => {
-                pipButton.setAttribute('aria-pressed', 'true');
-                filmAll();  // (what came while it opened)
-            });
-            pipVideo.addEventListener('leavepictureinpicture', () => {
-                pipButton.setAttribute('aria-pressed', 'false');
-                pipWindow = null;
-            });
-            document.body.append(pipVideo);
-            filmAll(true);  // a first frame, so the video knows its size
-        }
-        try {
-            await pipVideo.play();
-            const win = await pipVideo.requestPictureInPicture();
-            // Its window's size, and each change of it: film is drawn at its pixels.
-            pipWindow = win || null;
-            if (win && win.addEventListener) win.addEventListener('resize', () => { if (pipWindow === win) filmAll(); });
-            filmAll();
-        } catch (e) { /* refused (no picture yet, or not from a tap): the button stays as it was */ }
+    // Move the existing live DOM/canvases to one real window: no video encoding, second
+    // renderer, stream connection or watcher. Closing it returns the same view to this tab.
+    function pip() {
+        if (popout.win) { popout.close(); return; }
+        if (!popout.open()) return;
+        const win = popout.win;
+        win.addEventListener('keydown', handleKeyDown);
+        win.addEventListener('keyup', e => keyboard.up(e));
+        win.addEventListener('blur', () => keyboard.release());
+        win.addEventListener('resize', layout);
+        win.addEventListener('fullscreenchange', layout);
+        win.document.addEventListener('visibilitychange', () => { if (win.document.hidden) keyboard.release(); });
     }
     // Record: film (shown and the pen) at 15 frames a second, as an MP4 wherever the browser can make
     // one (recordType): by MediaRecorder, or by CodecRecorder where MediaRecorder writes no MP4. film
@@ -1514,13 +1552,13 @@
         recorder = null;
         flat = false;
         recordLabel();
-        if (filming()) filmAll();  // (Picture in picture goes on at shown's size)
+        if (filming()) filmAll();  // recording uses the newly laid-out picture
     }
     function save(blob, ext) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'Grimoire live view.' + ext;
-        document.body.append(a);
+        activeDocument().body.append(a);
         a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
@@ -1724,8 +1762,8 @@
                     }
                     if (paintSamples.length > 2048) paintSamples.splice(0, paintSamples.length - 2048);
                     // The dot plays out at the next frames (drawPen); a hidden tab has none, so a
-                    // recording or Picture in picture takes the newest place at once.
-                    if (document.hidden) placePen(dotShown() ? ink.pen : null);
+                    // recording takes the newest place at once.
+                    if (activeDocument().hidden) placePen(dotShown() ? ink.pen : null);
                     penSoon();
                 } else if (type === 5 && body[0] !== 0) {
                     ink.reset();

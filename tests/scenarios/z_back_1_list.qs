@@ -53,7 +53,6 @@ expect editor.page is 1
 expect editor.back is 0 0
 # the Pages view's Open does too
 pentap panel pages
-tap panel map.pages
 wait 300
 tap panel pages.page.2
 tap panel pages.page.2
@@ -70,7 +69,6 @@ wait 300
 expect editor.page is 3
 expect editor.back is 1 1
 pentap panel pages
-tap panel map.pages
 wait 300
 tap panel pages.page.2
 tap panel pages.page.2

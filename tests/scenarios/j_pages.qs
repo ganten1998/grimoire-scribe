@@ -27,7 +27,6 @@ pen curve 300 500 40 60 0.7 5
 wait 200
 expect editor.strokes is 1
 pentap panel pages
-tap panel map.pages
 wait 400
 shot 01-pages-view
 expect editor.modal is pages
@@ -53,7 +52,6 @@ expect editor.modal is none
 expect editor.page is 1
 expect editor.strokes is 1
 pentap panel pages
-tap panel map.pages
 wait 400
 expect editor.modal is pages
 tap panel pages.all

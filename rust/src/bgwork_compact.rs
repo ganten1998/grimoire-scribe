@@ -387,11 +387,13 @@ enum PageDone {
 
 // One listed page of nb: its file without the strokes that change nothing, if there are any.
 fn compact_page(nb: &NotebookInfo, dir: &str, pid: u32, parent: libc::pid_t, left_out: &mut i32) -> PageDone {
+    let preview_identity=store_page_preview_identity(nb,pid);
     let mut path = String::new();
     csnprintf!(&mut path, 700, "%s/p%u.qpg", dir, pid);
     let Some(was) = read_file(&path) else {
         return PageDone::Done; // no file (never written, or gone): no ink in it
     };
+    let preview_identity=preview_identity.filter(|stamp|store_page_preview_identity(nb,pid).as_ref()==Some(stamp));
     let mut p: Option<Box<Page>> = None;
     let mut res = PageDone::Done;
     let (mut w, mut h) = (0, 0);
@@ -452,6 +454,7 @@ fn compact_page(nb: &NotebookInfo, dir: &str, pid: u32, parent: libc::pid_t, lef
                     allow_stops(&old);
                 }
                 if rc == 0 {
+                    store_retag_compacted_preview(nb,pid,preview_identity.as_deref(),&data);
                     qlog!("compact: %s p%u: %d of %d strokes left out (%d erase), %u ms", &nb.id, pid, n, total, gone_erase, ms);
                     *left_out += n;
                 } else {

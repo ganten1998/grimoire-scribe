@@ -24,7 +24,6 @@ expect editor.pages is 3
 expect editor.page is 3
 # Page 2 goes onto sheet music: New page after it is page 3, on the notebook's medium rule.
 pentap panel pages
-tap panel map.pages
 wait 300
 expect editor.modal is pages
 tap panel pages.page.2
@@ -37,7 +36,6 @@ pentap 1066 1027
 wait 300
 expect editor.paper is 3
 pentap panel pages
-tap panel map.pages
 wait 300
 expect editor.tile.2 is Page 2 (open)
 shot 01-pages-new-copy-off
@@ -55,7 +53,7 @@ expect editor.page is 4
 expect editor.strokes is 1
 # Pages 1 and 2 ticked: Copy page is off, and New page goes after page 2, the last ticked.
 pentap panel pages
-tap panel map.pages
+tap panel pages.multi
 wait 300
 tap panel pages.page.1
 tap panel pages.page.2
@@ -63,7 +61,7 @@ wait 100
 expect editor.ticked is 2
 shot 02-two-ticked
 # Copy remains disabled with multiple pages selected.
-tap 665 2395
+tap 592 2395
 wait 100
 expect editor.modal is pages
 expect editor.pages is 4
@@ -75,7 +73,6 @@ expect editor.pages is 5
 expect editor.strokes is 0
 # Copy page: page 2 (ink on sheet music) ticked alone is copied right after it, as page 3.
 pentap panel pages
-tap panel map.pages
 wait 300
 tap panel pages.page.2
 wait 100
@@ -100,7 +97,6 @@ expect editor.strokes is 1
 expect editor.paper is 3
 # Page 1 is still the first: the Library's card.
 pentap panel pages
-tap panel map.pages
 wait 300
 expect editor.tile.1 is Page 1
 tap panel pages.page.1
@@ -112,7 +108,6 @@ expect editor.strokes is 1
 rotate 1
 wait 300
 pentap panel pages
-tap panel map.pages
 wait 300
 expect editor.modal is pages
 shot 04-pages-landscape
@@ -123,7 +118,6 @@ expect editor.page is 2
 expect editor.pages is 7
 expect editor.strokes is 0
 pentap panel pages
-tap panel map.pages
 wait 300
 tap panel pages.page.1
 wait 100

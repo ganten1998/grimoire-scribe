@@ -528,11 +528,13 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         draw_chip(c, r, i + 1, &e, &label, named, i == lb.selected);
         hits_add(&mut lb.hits, r, LB_CHIP, i);
     }
-    let ty=card.y+card.h-u(160.0);let gap=u(20.0);let width=(inn.w-gap)/2;
+    let ty=card.y+card.h-u(160.0);let gap=u(20.0);let width=(inn.w-2*gap)/3;
     let name=Rect::new(inn.x,ty,width,u(140.0));
     ui_button(c,name,IconKind::None,tr("Name page"),if nav.writable{ButtonStyle::Plain}else{ButtonStyle::Disabled});
     if nav.writable {hits_add(&mut lb.hits,name,LB_NAME,0);}
-    let eye=Rect::new(inn.x+width+gap,ty,width,u(140.0));
+    let go=Rect::new(inn.x+width+gap,ty,width,u(140.0));
+    ui_button(c,go,IconKind::None,tr("Go to page"),ButtonStyle::Plain);hits_add(&mut lb.hits,go,LB_GO,0);
+    let eye=Rect::new(inn.x+2*(width+gap),ty,width,u(140.0));
     ui_button(c,eye,IconKind::Eye,tr("Areas"),if a.settings.link_areas{ButtonStyle::Selected}else{ButtonStyle::Plain});
     if lb.links_ok {hits_add(&mut lb.hits,eye,LB_AREAS,0);}lb.eye_button=eye;
     card
@@ -1000,7 +1002,7 @@ pub fn linkbar_control_point(lb:&LinkBar,name:&str)->Option<(f32,f32)> {
             _=>return None,
         }
     } else {
-        if let Some(chip)=name.strip_prefix("chip.") {(LB_CHIP,chip.parse::<i32>().ok()?-1)} else {(match name {"name"=>LB_NAME,"back"=>LB_BACK,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)}
+        if let Some(chip)=name.strip_prefix("chip.") {(LB_CHIP,chip.parse::<i32>().ok()?-1)} else {(match name {"name"=>LB_NAME,"goto"=>LB_GO,"back"=>LB_BACK,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)}
     };
     lb.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
 }

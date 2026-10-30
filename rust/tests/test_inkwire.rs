@@ -374,7 +374,13 @@ fn compaction_takes_erased_ink_out() {
         check!(compact_note_page(nb.id.as_str(), nb.page_ids[0]) == 0 && compact_note_page(nb.id.as_str(), nb.page_ids[0]) == 0);
         check!(compact_note_page(nb.id.as_str(), nb.page_ids[1]) == 0 && compact_note_page(nb.id.as_str(), 999) == 0);
         check!(compact_listed(nb.id.as_str()) && exists(&lp));
+        store_save_page_preview(&nb,nb.page_ids[0],&before);
+        let mut cached_preview=Canvas::default();
+        check!(store_load_page_preview(&nb,nb.page_ids[0],&mut cached_preview));
+        let preview_pixels=cached_preview.px.clone();
         check!(bg_compact_pages(nb.id.as_str(), DPI) == 0);
+        check!(store_load_page_preview(&nb,nb.page_ids[0],&mut cached_preview));
+        check!(cached_preview.px==preview_pixels); // no re-render after equivalent storage compaction
         render_file(&nb, 0, PAGE_LAYER_ALL, &mut after, Some(&mut n_after));
         render_file(&nb, 0, PAGE_LAYER_INK, &mut after_ink, None);
         check!(n_before == 8 && n_after == 8 - expect);

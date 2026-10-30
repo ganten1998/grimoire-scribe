@@ -79,6 +79,7 @@ expect editor.page is 1
 # same links (same seeds, so the same N), the same areas, and D still dormant. Here last, as the copy moves
 # the later pages one on (z_link_0b_reopen opens it again).
 pentap panel pages
+tap panel pages.graph
 wait 300
 expect editor.modal is map
 tap panel map.pages

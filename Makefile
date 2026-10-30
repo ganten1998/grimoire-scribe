@@ -600,6 +600,7 @@ clean:
 .PHONY: rust-headless rust-tools rust-kindle rust-test rust-scenarios rust-l10n-check rust-check rust-package
 rust-check: test headless tools kindle
 	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios
+	python3 -I tests/pages_cache_check.py $(BUILD)/host/grimoire-headless $(BUILD)/pages-cache-check
 	$(MAKE) -o $(BUILD)/host/grimoire-headless l10n-check
 	$(MAKE) -o $(BUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library

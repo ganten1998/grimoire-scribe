@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.0.0-rc.6 (2026-10-30)
+
+- Open Pages directly from the toolbar page count. Add compact New/Copy/Delete icons, an explicit Multi-select mode, page borders and a distinct inner selection border.
+- Preload nearby page previews while idle, reuse decoded previews in Pages, and preserve valid disk previews across lossless background ink compaction.
+- Keep Name page and the swipe-up menu's numeric Go to page dialog over the notebook. Fix the Smart shapes heading font in Classic and preview clock size/corner changes live in Display; the default remains enabled, small and top left.
+- Remove the pen-proximity swipe notification and redundant KOReader Wi-Fi startup/manual controls from the Grimoire plugin. Use KOReader's network menu for connections.
+- Replace video Picture in picture with a real pop-out that moves the existing Live canvases and controls into one window, preserving the same streams and watcher. Closing the pop-out returns them to the original tab.
 - Reset stale pen, touch and gesture state after every wake, including wallpaper sleep and a missed sleep announcement; finish interrupted ink before accepting fresh input.
 - Close Live view's raw pen reader while asleep and reopen it after wake, even when its device path is unchanged. Fall back to the main input stream on device hangup/EOF. Explicitly leave hardware handwriting mode at sleep and reassert normal display mode at startup and wake.
 - Reclaim ended Live viewers before accepting reconnects and bound stale Wi-Fi sockets with TCP keepalive and an acknowledgement timeout on Kindle.

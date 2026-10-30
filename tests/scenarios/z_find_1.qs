@@ -40,7 +40,6 @@ wait 300
 expect editor.page is 1
 # from the Pages view: the view closes and Find opens over the page, in one Full
 pentap panel pages
-tap panel map.pages
 wait 400
 expect editor.modal is pages
 expect display.presents not -1

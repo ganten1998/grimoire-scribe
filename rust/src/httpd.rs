@@ -1377,7 +1377,9 @@ fn route_live_page(query: &[u8]) {
         live_word(&mut b, &mut n, "full", tr("Full screen"));
         // TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
         // the computer's other windows (the browser's own name for it is fine).
-        live_word(&mut b, &mut n, "pip", tr("Picture in picture"));
+        live_word(&mut b, &mut n, "pip", tr("Pop out"));
+        live_word(&mut b, &mut n, "popoutActive", tr("Live view is open in another window. Keep this tab open."));
+        live_word(&mut b, &mut n, "popoutReturn", tr("Bring Live view back"));
         live_word(&mut b, &mut n, "keys", tr("Keys"));
         live_word(&mut b, &mut n, "keysHint", tr("Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, then restart Live view."));
         live_word(&mut b, &mut n, "keysEmpty", tr("No Live view keys are assigned."));

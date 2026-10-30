@@ -74,7 +74,6 @@ tap panel tool-picker
 wait 400
 # The Pages view covers the whole screen: no panel on it at all.
 tap panel pages
-tap panel map.pages
 wait 500
 expect editor.modal is pages
 expect editor.layers is ok

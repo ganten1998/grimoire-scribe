@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 22:45-0500\n"
+"POT-Creation-Date: 2026-10-30 07:54-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -270,7 +270,7 @@ msgstr "Reloj y batería"
 msgid "Links on this page"
 msgstr "Enlaces de esta página"
 
-#: rust/src/actions.rs rust/src/pagesview.rs
+#: rust/src/actions.rs rust/src/linkbar.rs rust/src/pagesview.rs
 msgid "Go to page"
 msgstr "Ir a la página"
 
@@ -1600,12 +1600,6 @@ msgstr ""
 msgid "That is not one of your finger shapes. Settings > Gestures lists them."
 msgstr "No es una de tus figuras. Ajustes > Gestos las muestra."
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped or tapped
-#. while the pen was near the screen, so nothing happened.
-#: rust/src/editor.rs
-msgid "Move the pen away, then swipe."
-msgstr "Aparta el lápiz y desliza."
-
 #: rust/src/editor.rs
 msgid ""
 "Shape made. Undo takes it away; the panel's shapes menu has the options."
@@ -1975,8 +1969,18 @@ msgstr "Pantalla completa"
 #. TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
 #. the computer's other windows (the browser's own name for it is fine).
 #: rust/src/httpd.rs
-msgid "Picture in picture"
-msgstr "Imagen en imagen"
+msgid "Pop out"
+msgstr "Abrir en otra ventana"
+
+#: rust/src/httpd.rs
+msgid "Live view is open in another window. Keep this tab open."
+msgstr ""
+"La vista en directo está abierta en otra ventana. Mantén abierta esta "
+"pestaña."
+
+#: rust/src/httpd.rs
+msgid "Bring Live view back"
+msgstr "Devolver la vista en directo"
 
 #: rust/src/httpd.rs
 msgid "Keys"
@@ -3285,8 +3289,8 @@ msgid "Copy page"
 msgstr "Copiar página"
 
 #: rust/src/pagesview.rs
-msgid "Go to"
-msgstr "Ir a"
+msgid "Multi-select"
+msgstr "Selección múltiple"
 
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
@@ -4350,6 +4354,15 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Move the pen away, then swipe."
+#~ msgstr "Aparta el lápiz y desliza."
+
+#~ msgid "Picture in picture"
+#~ msgstr "Imagen en imagen"
+
+#~ msgid "Go to"
+#~ msgstr "Ir a"
 
 #, c-format
 #~ msgid "Not linked yet: %d page. Show"

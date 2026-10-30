@@ -870,13 +870,11 @@ Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks
 The app changes radio state only after an explicit button press, preserves that choice when it
 closes, and never restarts network services or changes firewall, boot or update settings.
 
-The updated KOReader plugin enables Wi-Fi once per KOReader start, including a restart returning
-from Grimoire, through KOReader's own Kindle network backend. Tools > Grimoire > Turn on Wi-Fi
-when KOReader starts is enabled by default and can be turned off. The same menu has a manual
-Wi-Fi control. Turning Wi-Fi off manually during a session is not undone by opening a book,
-waking the Kindle or opening another plugin menu; a new KOReader process applies the startup
-choice again. Existing KOReader connection attempts are left to finish. Install/update the
-Grimoire plugin and fully quit/reopen KOReader once to load changed plugin code.
+The Grimoire KOReader handoff plugin no longer changes Wi-Fi at startup or duplicates the network
+menu. Use KOReader's normal network controls to enable the shared Kindle radio and choose a network.
+The retired `grimoire_wifi_on_start` setting has no effect. Grimoire's Share controls remain explicit
+radio controls; they cannot connect without an available network and suitable credentials. Update
+the installed Grimoire plugin and restart KOReader to remove the old menu entries.
 
 The standalone helper uses only com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable,
 matching KOReader's Kindle backend. It refuses unknown radio properties before writing, checks

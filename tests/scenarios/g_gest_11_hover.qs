@@ -21,7 +21,7 @@ pen hover 700 1200
 swipe 2 1200 1200 0 400 1 295 0
 expect touch.reject is pen
 expect editor.modal is none
-expect toast is Move the pen away, then swipe.
+expect toast not Move the pen away, then swipe.
 wait 2100
 expect toast is
 pen hover 700 1200

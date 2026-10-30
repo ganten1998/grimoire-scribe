@@ -2786,12 +2786,36 @@ fn preview_stamp(source: &str) -> Option<String> {
     let gen=std::fs::metadata(generation).map(|g|format!("{}:{}:{}",g.ino(),g.mtime(),g.mtime_nsec())).unwrap_or_default();
     Some(format!("{}:{}:{}:{}:{}:{gen}", st.ino(), st.size(), st.mtime(), st.mtime_nsec(), st.ctime_nsec()))
 }
+fn preview_tag(path:&str)->Option<String> {
+    use std::io::Read;
+    let mut text=String::new();
+    std::fs::File::open(path).ok()?.take(256).read_to_string(&mut text).ok()?;
+    (text.len()<256).then_some(text)
+}
+/// A valid cache's source identity before lossless ink compaction rewrites its page file.
+pub fn store_page_preview_identity(nb:&NotebookInfo,pid:u32)->Option<String> {
+    let (source,_,stamp)=page_preview_files(nb,pid)?;
+    let identity=preview_stamp(&source)?;
+    (preview_tag(&stamp).as_deref()==Some(identity.as_str())).then_some(identity)
+}
+
+/// Lossless compaction changed storage identity, not pixels. Preserve the disk preview only
+/// when the exact compacted bytes are still current and its old stamp was valid beforehand.
+pub fn store_retag_compacted_preview(nb:&NotebookInfo,pid:u32,before:Option<&str>,data:&[u8]) {
+    let Some(before)=before else{return};
+    let Some((source,_,stamp))=page_preview_files(nb,pid)else{return};
+    let Some(now)=preview_stamp(&source)else{return};
+    if preview_tag(&stamp).as_deref()==Some(before)
+        && read_file(&source).as_deref()==Some(data)
+        && preview_stamp(&source).as_deref()==Some(now.as_str()) {
+        write_file_atomic(&stamp,now.as_bytes());
+    }
+}
 /// Small previews only; stale or malformed caches never replace page data.
 pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
     let Some((source, image, stamp)) = page_preview_files(nb, pid) else {return false};
     let Some(now) = preview_stamp(&source) else {return false};
-    if !std::fs::metadata(&stamp).is_ok_and(|m|m.len()<256)
-        || std::fs::read_to_string(stamp).ok().as_deref() != Some(now.as_str())
+    if preview_tag(&stamp).as_deref() != Some(now.as_str())
         || !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000) {return false;}
     if load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
         canvas_free(out);return false;

@@ -9,7 +9,6 @@ expect screen is editor
 expect editor.pages is 120
 expect editor.loaded_pages is 1
 pentap panel pages
-tap panel map.pages
 wait 200
 expect editor.modal is pages
 waitbg 5000
@@ -17,10 +16,10 @@ wait 200
 expect bg.busy is 0
 expect editor.loaded_pages is 1
 shot many-pages-instant-grid
-tap 1700 2380
+tap panel pages.next
 wait 100
 expect editor.loaded_pages is 1
-tap 930 2380
+tap panel pages.goto
 wait 100
 # Go to page... is the Find sheet: 1, 2, 0 on its digits row, then Done on the row "Go to page 120".
 expect editor.modal is find

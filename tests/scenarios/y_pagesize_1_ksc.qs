@@ -78,7 +78,6 @@ shot 05-new-page
 expect editor.strokes is 1
 # The Pages view: both pages, the notebook's shape
 pentap panel pages
-tap panel map.pages
 wait 400
 shot 06-pages
 expect editor.modal is pages

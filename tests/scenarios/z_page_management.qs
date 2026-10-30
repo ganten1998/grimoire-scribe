@@ -4,7 +4,7 @@
 wait 300
 tap library folder.Void
 tap library notebook.A
-tap panel pages
+swipe 2 930 900 0 400
 expect editor.map.visible is 1 2
 expect editor.map.foreign is 1
 expect editor.map.stats is 3 13 3 15 20
@@ -32,7 +32,7 @@ expect editor.modal is none
 expect editor.page is 2
 expect editor.screen_composed is 1
 # A held tile offers a link from that page, with no ink added by the selection.
-tap panel pages
+swipe 2 930 900 0 400
 tap panel map.pages
 touch down 318 550
 wait 700
@@ -109,6 +109,7 @@ tap library done
 expect editor.settings.sheet is settings
 tap library display
 expect editor.settings.sheet is display
+expect status.shown is 1
 expect editor.screen_composed is 1
 key 45 0
 expect editor.settings.sheet is settings
@@ -129,7 +130,7 @@ expect editor.modal is none
 expect editor.notebook_id is A
 expect editor.page is 1
 expect editor.screen_composed is 1
-tap panel pages
+swipe 2 930 900 0 400
 tap panel map.pages
 waitbg
 expect editor.pages.grid is 3 3
