@@ -4135,7 +4135,7 @@ fn lasso_begin(a: &mut App, ev: &InEvent) {
     let lm = &mut s.lm;
     lm.state = LmState::Lasso;
     lm.pts.clear();
-    lm.shape_preview=None;lm.shape_kind=ShapeKind::None;lm.shape_tried=false;
+    lm.shape_preview=None;lm.shape_kind=ShapeKind::None;lm.shape_tried=false;lm.outline=LinkOutline::default();
     lm.shape_anchor=(ev.x,ev.y);lm.shape_anchor_k=in_sample_ms(ev);
     if lm.pts.capacity() < LASSO_MAX {
         // (no room: the lasso is drawn as it goes and its box still makes the area; compose draws none of it)
@@ -4277,6 +4277,8 @@ fn lasso_end(a: &mut App) {
     if s.lm.state != LmState::Lasso {
         return;
     }
+    // (every attempt sets its own outline: one left by a snapped try that was too small never reaches the next)
+    s.lm.outline=LinkOutline::default();
     if let Some(pts)=s.lm.shape_preview.take() {
         let closed=matches!(s.lm.shape_kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse);
         s.lm.outline=LinkOutline::from_points(&pts,closed,s.pgw,s.pgh);
@@ -4293,6 +4295,7 @@ fn lasso_end(a: &mut App) {
         let s = ed(a);
         s.lm.state = LmState::Armed;
         s.lm.shape_kind = ShapeKind::None;
+        s.lm.outline = LinkOutline::default();
         s.lm.pts.clear();
         s.lm.lasso_rect = RECT_EMPTY;
         compose(a, drawn);
@@ -10154,6 +10157,40 @@ mod tests {
             a.w=1860;a.h=2480;a.settings.landscape_fit=true;
             assert_eq!(landscape_panel_slot(&a,true),None);
         }}
+    }
+
+    #[test]
+    fn a_snapped_link_try_that_was_too_small_leaves_no_outline_for_the_next_lasso() {
+        let root=std::env::temp_dir().join(format!("grimoire-link-outline-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);store_init(root.to_str().unwrap());
+        let mut nb=NotebookInfo::default();assert_eq!(store_create("Void","",PAPER_BLANK,&mut nb),0);
+        assert_eq!(store_add_page(&mut nb,1,PAPER_BLANK),0);
+        let mut a=fshape_app();
+        a.settings.shapes=false;
+        let s=ed(&mut a);s.nb=nb;nav_init(&mut s.nav);s.nav.links_writable=true;
+        link_arm(&mut a,false,None);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Armed);
+        // A small circle snapped (the hold), then lifted: too small for a link.
+        lasso_begin(&mut a,&InEvent{type_:InType::PenDown,x:300.0,y:300.0,..Default::default()});
+        let circle:Vec<(f32,f32)>=(0..24).map(|i|{let t=i as f32*std::f32::consts::TAU/24.0;
+            (300.0+10.0*t.cos(),300.0+10.0*t.sin())}).collect();
+        let s=ed(&mut a);s.lm.pts=circle.clone();s.lm.shape_preview=Some(circle);s.lm.shape_kind=ShapeKind::Circle;
+        lasso_end(&mut a);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Armed);
+        assert_eq!(ed_ref(&a).lm.outline.n,0);
+        // A freehand lasso around something else: its link keeps a plain box, and saves.
+        lasso_begin(&mut a,&InEvent{type_:InType::PenDown,x:500.0,y:600.0,..Default::default()});
+        let s=ed(&mut a);s.lm.bx0=500.0;s.lm.by0=600.0;s.lm.bx1=800.0;s.lm.by1=900.0;
+        s.lm.pts=vec![(500.0,600.0),(800.0,600.0),(800.0,900.0),(500.0,900.0)];
+        lasso_end(&mut a);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Pick);
+        assert_eq!(ed_ref(&a).lm.outline.n,0);
+        link_pick_as(&mut a,"index",0);
+        let s=ed_ref(&a);
+        let mut seeds=0;assert_eq!(nav_links_of(&s.nav,1,&mut seeds),1);
+        let l=s.nav.links.iter().find(|l|l.pid==1).unwrap();
+        assert!(l.has_area);assert_eq!(l.outline.n,0);
+        let _=std::fs::remove_dir_all(&root);
     }
 
     #[test]
