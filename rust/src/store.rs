@@ -2805,6 +2805,9 @@ pub fn store_retag_compacted_preview(nb:&NotebookInfo,pid:u32,before:Option<&str
     let Some(before)=before else{return};
     let Some((source,_,stamp))=page_preview_files(nb,pid)else{return};
     let Some(now)=preview_stamp(&source)else{return};
+    // The final component is the explicit/background-image invalidation generation. A
+    // lossless QPG rewrite can keep its pixels, but must not acknowledge a newer generation.
+    if before.splitn(6,':').nth(5)!=now.splitn(6,':').nth(5){return;}
     if preview_tag(&stamp).as_deref()==Some(before)
         && read_file(&source).as_deref()==Some(data)
         && preview_stamp(&source).as_deref()==Some(now.as_str()) {

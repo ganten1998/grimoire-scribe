@@ -42,7 +42,12 @@ fn notebook_targets_and_preview_caches_preserve_identity_and_page_data() {
     assert!(!store_load_page_preview(&a,a.page_ids[0],&mut preview));
     canvas_fill(&mut canvas,Rect::new(100,100,200,200),0);store_save_page_preview(&a,a.page_ids[0],&canvas);
     assert!(store_load_page_preview(&a,a.page_ids[0],&mut preview));assert!(preview.px.contains(&0));
-    store_invalidate_page_previews(a.id.as_str());assert!(!store_load_page_preview(&a,a.page_ids[0],&mut preview));
+    let before=store_page_preview_identity(&a,a.page_ids[0]).unwrap();
+    let mut source_dir=String::new();store_notebook_dir(a.id.as_str(),&mut source_dir,600);
+    let source_bytes=std::fs::read(format!("{source_dir}/p{}.qpg",a.page_ids[0])).unwrap();
+    store_invalidate_page_previews(a.id.as_str());
+    store_retag_compacted_preview(&a,a.page_ids[0],Some(&before),&source_bytes);
+    assert!(!store_load_page_preview(&a,a.page_ids[0],&mut preview),"compaction must not undo explicit invalidation");
     assert_eq!(store_build_page_previews(a.id.as_str(),"0:1",300.0),0);
     assert!(store_load_page_preview(&a,a.page_ids[0],&mut preview));
     assert_eq!(store_build_page_previews(a.id.as_str(),"0:1000",300.0),-1);
