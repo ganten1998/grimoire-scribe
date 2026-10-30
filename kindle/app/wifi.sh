@@ -10,9 +10,13 @@ read_radio() {
 }
 report() {
     read_radio || return 1
-    cm=$(get -s com.lab126.wifid cmState) || cm=unknown
     connected=0
-    case "$cm" in CONNECTED) connected=1;; unknown|'') connected=unknown;; esac
+    # Disconnect is asynchronous: wifid may briefly retain CONNECTED after its enable flag is 0.
+    # Disabled radio flags take precedence over that stale connection report.
+    if [ "$wireless:$enabled" = 1:1 ]; then
+        cm=$(get -s com.lab126.wifid cmState) || cm=unknown
+        case "$cm" in CONNECTED) connected=1;; unknown|'') connected=unknown;; esac
+    fi
     printf 'wireless=%s\nenabled=%s\nconnected=%s\n' "$wireless" "$enabled" "$connected"
 }
 case "${1:-}" in

@@ -121,7 +121,11 @@ pub fn wifi_request(action: WifiAction) -> bool {
             flags >= 0 && libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) >= 0
         };
         if !nonblocking {
-            let _ = child.kill();
+            // SAFETY: terminate only the process group created for this helper, including
+            // a lipc command it may already have forked before pipe setup failed.
+            unsafe {
+                libc::kill(-(child.id() as i32), libc::SIGKILL);
+            }
             let _ = child.wait();
             s.failed = true;
             return false;

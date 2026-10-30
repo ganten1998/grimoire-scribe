@@ -17,7 +17,7 @@ a=sys.argv[1:]
 if Path(sys.argv[0]).name=='lipc-get-prop':
     key=a[-1]
     if state.get('unavailable'):sys.exit(1)
-    if key=='cmState': print('CONNECTED' if state['wirelessEnable'] and state['enable'] else 'IDLE')
+    if key=='cmState': print('CONNECTED' if state.get('stale_cm') or (state['wirelessEnable'] and state['enable']) else 'IDLE')
     else:print('invalid' if state.get('invalid') else state[key])
 else:
     key,value=a[-2],int(a[-1])
@@ -51,6 +51,10 @@ class WifiHelper(unittest.TestCase):
         self.assertEqual(self.run_helper('off').returncode,0)
         self.assertEqual(self.writes(),['enable=0','wirelessEnable=0'])
         self.assertEqual(self.run_helper('off').returncode,0);self.assertEqual(len(self.writes()),2)
+    def test_stale_connected_state_cannot_override_disabled_radio_flags(self):
+        self.state(wirelessEnable=1,enable=1,stale_cm=True)
+        r=self.run_helper('off');self.assertEqual(r.returncode,0)
+        self.assertEqual(r.stdout,'wireless=0\nenabled=0\nconnected=0\n')
     def test_unknown_or_unavailable_backend_is_never_written(self):
         for flags in ({'unavailable':True},{'invalid':True}):
             self.state(wirelessEnable=0,enable=0,**flags)
