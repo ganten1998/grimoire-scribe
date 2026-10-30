@@ -641,6 +641,7 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
             g.nodes[src].linked = true;
             continue;
         }
+        if nav_external_target(l.target.as_str()).is_some(){g.nodes[src].linked=true;g.nodes[src].links_to+=1;continue;}
         let dst = graph_node_of(g, target_pid(l.target.as_bytes()));
         if dst < 0 {
             continue;

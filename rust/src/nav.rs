@@ -11,7 +11,7 @@ pub const NAV_UNKNOWN_MAX: usize = 16 * 1024;
 /// in a notebook
 pub const NAV_LINKS_MAX: i32 = 4000;
 pub const NAV_LINKS_PER_PAGE: i32 = 64;
-pub const NAV_TARGET_LEN: usize = 16;
+pub const NAV_TARGET_LEN: usize = 64;
 /// nav_link_page: the link goes to the Index
 pub const NAV_TO_INDEX: i32 = -2;
 /// a link's box is at least this a side, to tap or click
@@ -360,8 +360,10 @@ fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
     if target.iter().any(|&c| !(b'!'..=b'~').contains(&c)) {
         return None;
     }
-    // (all from ! to ~: ASCII)
-    Some((pid, seed, std::str::from_utf8(target).ok()?))
+    // Expanded targets are recognized only for notebook links; future unknown lines stay byte-exact.
+    let text=std::str::from_utf8(target).ok()?;
+    if target.len()>=16 && nav_external_target(text).is_none(){return None;}
+    Some((pid, seed, text))
 }
 
 // Parse the shared id/seed grammar through link_parse, then require four bounded decimals.
@@ -601,10 +603,34 @@ fn target_page(t: &[u8]) -> u32 {
     id as u32
 }
 
+/// Stable notebook/page identity, independent of notebook names, folders and page order.
+pub fn nav_external_target(target: &str) -> Option<(&str, u32)> {
+    let (id, page) = target.strip_prefix("n:")?.split_once(':')?;
+    if id.is_empty() || id.len() >= STORE_ID_LEN
+        || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') { return None; }
+    let pid = target_page(page.as_bytes());
+    (pid != 0).then_some((id, pid))
+}
+pub fn nav_notebook_target(id: &str, pid: u32) -> Option<String> {
+    let target = format!("n:{id}:p{pid}");
+    nav_external_target(&target)?;
+    Some(target)
+}
+pub fn nav_target_label(target: &str) -> Option<String> {
+    let (id, pid) = nav_external_target(target)?;
+    let mut nb = NotebookInfo::default();
+    if store_load_info(id, &mut nb) != 0 { return Some(tr("Notebook unavailable").to_string()); }
+    let page = nb.page_ids.iter().position(|&p| p == pid);
+    Some(match page {
+        Some(i) => format!("{} / {}", nb.name.as_str(), cformat!(tr("Page %d"), i as i32 + 1)),
+        None => format!("{} / {}", nb.name.as_str(), tr("Page unavailable")),
+    })
+}
+
 /// Adds the link of the strokes with `seed` on page pid, or changes its target. target: "index" or
 /// "p<page id>". -1 when it cannot (not writable, a bad target, the limits above).
 pub fn nav_link_set(nav: &mut Nav, pid: u32, seed: u32, target: &str) -> i32 {
-    if !nav.links_writable || (target != "index" && target_page(target.as_bytes()) == 0) {
+    if !nav.links_writable || (target != "index" && target_page(target.as_bytes()) == 0 && nav_external_target(target).is_none()) {
         return -1;
     }
     let mut first = 0;

@@ -87,6 +87,7 @@ const P_SHAPE_QUADS: i32 = 27;
 const P_SHAPE_ROUND: i32 = 28;
 const P_SHAPE_LINKS: i32 = 29;
 const P_SHAPE_DONE: i32 = 30;
+const P_SETTINGS: i32 = 31;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
@@ -468,6 +469,11 @@ pub struct EditorState {
 
     /// the Pages view (pagesview.h)
     pv: PagesView,
+    destination: NotebookPicker,
+    notebook_back: Vec<(FixedStr<STORE_ID_LEN>,u32)>,
+    requested_page: Option<u32>,
+    previews_checked: u32,
+    previews_generation: u64,
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
@@ -643,6 +649,7 @@ fn map_draw(a: &mut App, r: Rect) {
     }
 }
 fn map_show(a: &mut App, around: bool) {
+    app_toast(a,"",0);
     close_sheets(ed(a));
     pagesview_close(&mut ed(a).pv);
     link_off(a);
@@ -650,7 +657,7 @@ fn map_show(a: &mut App, around: bool) {
     let ok = with_map(a, |map, a, nb, nav| mapview_open(map, a, nb, nav, pid, around));
     if !ok {
         mapview_close(&mut ed(a).map);
-        index_show(a);
+        pages_show(a);
     }
     touch_context(a);
 }
@@ -663,6 +670,10 @@ fn map_hide(a: &mut App, draw: bool) {
         compose_all(a, RefreshMode::Full);
     }
     touch_context(a);
+}
+pub fn editor_previews_done(a:&mut App,id:&str) {
+    if a.scr==ScreenId::Editor && a.ed.as_deref().is_some_and(|s|(s.pv.open&&s.nb.id==id)
+        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {compose_all(a,RefreshMode::Ui);}
 }
 pub fn editor_map_done(a: &mut App,id:&str, ok: bool) {
     if let Some(s) = a.ed.as_deref_mut() {
@@ -681,10 +692,9 @@ fn map_result(a: &mut App, result: MapResult) {
                 compose_all(a, RefreshMode::Full);
             }
         }
-        MapResult::Pages | MapResult::List => {
-            map_hide(a, false);
-            index_show(a);
-        }
+        MapResult::Target(target) => {map_hide(a,false);if !follow_target(a,target.as_str()){compose_all(a,RefreshMode::Full);}}
+        MapResult::Pages => {map_hide(a,false);pages_show(a);}
+        MapResult::List => {map_hide(a,false);map_show(a,false);with_map(a,|map,a,_,nav|mapview_set_list(map,a,nav));}
         MapResult::Rename(pid) => {
             let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
             let s = ed(a);
@@ -1159,10 +1169,11 @@ fn draw_panel(a: &mut App) {
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
     // Paper, Display, Pen feel, Library (icons only, like the rest of the panel).
-    let rest: [(IconKind, i32); 4] = [
+    let rest: [(IconKind, i32); 5] = [
         (IconKind::Paper, P_PAPER),
         (IconKind::Brightness, P_DISPLAY),
         (IconKind::Tune, P_PENSET),
+        (IconKind::Gear, P_SETTINGS),
         (IconKind::Library, P_LIBRARY),
     ];
     for (icon, id) in rest {
@@ -1200,6 +1211,7 @@ fn panel_name(h: &Hit) -> String {
         P_PAPER => "paper".into(),
         P_DISPLAY => "display".into(),
         P_PENSET => "pen-feel".into(),
+        P_SETTINGS => "settings".into(),
         P_LIBRARY => "library".into(),
         _ => String::new(),
     }
@@ -1215,6 +1227,9 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
         return None;
     }
     if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
+    if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
+    if let Some(n)=name.strip_prefix("pages."){return pagesview_control_point(&s.pv,n);}
+    if let Some(n)=name.strip_prefix("elsewhere."){return s.destination.point(n);}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
     if let Some(control)=name.strip_prefix("linkto."){return linkbar_control_point(&s.lt,control);}
     if s.tools_open {
@@ -2015,6 +2030,7 @@ fn areas_toggle(a: &mut App, button: Rect) {
 
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
+    if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.draw(a));return;}
     if ed_ref(a).map.open {
         map_draw(a, r);
         return;
@@ -2342,6 +2358,7 @@ fn save_page(a: &mut App) -> bool {
         if s.index == 0 {
             s.thumb_dirty = true; // written when leaving the page (it is slow)
         }
+        store_save_page_preview(&s.nb,s.open_pid(),&s.page_canvas);
         s.page_dirty = false;
         s.info_dirty = true;
     }
@@ -2674,6 +2691,8 @@ fn close_notebook(a: &mut App) {
 
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
+    let requested=ed(a).requested_page.take();
+    ed(a).notebook_back.clear();
     close_notebook(a);
     // Every way into a notebook comes here (the Library's card and its menu, a new notebook): its
     // compaction, queued or running, is stopped before anything here reads or writes its pages (a
@@ -2690,7 +2709,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     store_restore_listed_pages(&s.nb);
     bgimage_retry_missing(); // (a picture the Library found missing may be there now)
     use_page_size(s);
-    s.index = clampi(s.nb.last_page, 0, s.nb.npages() - 1);
+    s.index = requested.and_then(|pid|s.nb.page_ids.iter().position(|&p|p==pid)).map_or_else(||clampi(s.nb.last_page,0,s.nb.npages()-1),|i|i as i32);
     s.page = s.page_at(s.index);
     if s.page.is_none() {
         s.free_histories();
@@ -2749,6 +2768,7 @@ fn first_open_tip(a: &mut App) {
 // notebook (or the notebook made) at this start, a change like any other: the notebook's PDF is
 // made again as it closes, and the Library's card too when the page is its first.
 pub fn editor_open_notebook_at(a: &mut App, id: &str, page_id: u32, added: bool) {
+    ed(a).requested_page=Some(page_id);
     editor_open_notebook(a, id);
     let s = ed(a);
     if !s.open || s.nb.id.as_bytes() != id.as_bytes() {
@@ -3372,7 +3392,8 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.map.open
+    s.destination.open
+        || s.map.open
         || s.pv.open
         || s.tools_open
         || s.mb.open
@@ -3674,7 +3695,8 @@ fn undo_redo(a: &mut App, undo: bool) {
 fn pages_show(a: &mut App) {
     card_drop(ed(a));
     lm_drop(ed(a)); // (the view comes up whole)
-    save_page(a);
+    if !save_page(a){return;}
+    ed(a).pv.unified=true;ed(a).pv.index_tab=false;ed(a).pv.tab_initialized=true;
     let index = ed(a).index;
     if !with_pv(a, |pv, a, nb, nav| pagesview_open(pv, a, nb, nav, index)) {
         return;
@@ -3683,10 +3705,8 @@ fn pages_show(a: &mut App) {
 }
 
 // Explicit Index entries stay on the list even on the first open with no named pages.
-fn index_show(a:&mut App) {
-    pages_show(a);
-    if ed_ref(a).pv.open {ed(a).pv.index_tab=true;compose_all(a,RefreshMode::Full);}
-}
+fn index_show(a:&mut App) {map_show(a,false);}
+
 
 // name-page: the Pages view's naming keyboard for the open page, over its Index, as Name this page
 // there opens it; its Done or Cancel goes back to the page (pages_event). Nothing while the names
@@ -3891,6 +3911,7 @@ fn migration_reset(s: &mut EditorState) {
 /// Pages view coming up, closing). A pen still drawing the lasso has the rest of its stroke ignored; Link
 /// to... and New page...'s keyboard close with it.
 fn lm_drop(s: &mut EditorState) {
+    s.destination=NotebookPicker::default();
     if s.owner == Owner::Lasso || s.owner == Owner::Strip || s.owner == Owner::LinkTo {
         s.owner = Owner::None;
     }
@@ -4371,7 +4392,8 @@ fn lt_result(a: &mut App, r: LbResult, d: Rect) {
         LbResult::Pick(i) => {
             let Some(p) = ed_ref(a).lt.picks.get(i as usize).copied() else { return ;
             };
-            if p.kind == PickKind::NewPage {
+            if p.kind == PickKind::Index {destination_open(a);}
+            else if p.kind == PickKind::NewPage {
                 newpage_start(a);
             } else {
                 let target = p.target.as_str().to_string();
@@ -4399,6 +4421,7 @@ fn link_choose(a: &mut App) {
     ed(a).lt.hidden = true;
     save_page(a);
     let index = ed(a).index;
+    ed(a).pv.unified=true;
     if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index)) {
         let s = ed(a);
         s.lt.hidden = false;
@@ -4598,7 +4621,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     s.links_dirty = false; // (the save wrote every migrated area too)
     s.changed = true;
     let to = made.map_or(-1, |l| nav_link_page(&l, &s.nb));
-    let msg = linked_msg(s, to, new_page);
+    let msg = nav_target_label(target).map_or_else(||linked_msg(s,to,new_page),|name|cformat!(tr("Linked to %s."),&name));
     lm_close(a, u); // (the rectangle goes; with the eye on, compose draws the new box)
     repaint_panel(a, RefreshMode::Ui); // (Undo is enabled now)
     if from_bar {
@@ -4710,7 +4733,7 @@ fn link_retarget(a: &mut App, target: &str, new_page: i32) {
     s.changed = true;
     let to = nav_link_page(&NavLink { target: FixedStr::from_str(target), ..Default::default() }, &s.nb,
     );
-    let msg = linked_msg(s, to, new_page);
+    let msg = nav_target_label(target).map_or_else(||linked_msg(s,to,new_page),|name|cformat!(tr("Linked to %s."),&name));
     lm_close(a, u);
     repaint_panel(a, RefreshMode::Ui);
     if from_bar {
@@ -4908,6 +4931,7 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
                 pages_hide(a, -1);
             }
         }
+        PvResult::List => {pagesview_close(&mut ed(a).pv);map_show(a,false);with_map(a,|map,a,_,nav|mapview_set_list(map,a,nav));}
         PvResult::Graph => {
             pagesview_close(&mut ed(a).pv);
             map_show(a, false);
@@ -4993,18 +5017,7 @@ fn link_follow(a: &mut App, x: f32, y: f32) {
     if !link_under(a, x, y, &mut l) {
         return;
     }
-    let to = nav_link_page(&l, &ed(a).nb);
-    if to >= 0 {
-        go_to_page_pushing(a, to);
-    } else if to == NAV_TO_INDEX {
-        pages_show(a);
-        ed(a).pv.index_tab = true;
-        compose_all(a, RefreshMode::Full);
-    } else {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
-        // whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
-        app_toast(a, tr("That link's page is not in this notebook."), 3000);
-    }
+    follow_target(a,l.target.as_str());
 }
 
 // ---- the long-press card (PHASE2 8) ----
@@ -6163,11 +6176,13 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         app_invalidate(a, d, RefreshMode::Ui);
     }
     match r {
+        LbResult::NamePage => {bar_stay(a);pages_name(a);}
         LbResult::Cancel => bar_cancel(a),
         LbResult::Peek(i) => {
             let Some(e) = ed_ref(a).lb.entries.get(i as usize).copied() else { return ;
             };
-            if e.page == NAV_TO_INDEX {
+            if nav_external_target(e.target.as_str()).is_some() {bar_stay(a);follow_target(a,e.target.as_str());}
+            else if e.page == NAV_TO_INDEX {
                 // The link target "index" keeps its list meaning; only the bar's Index button is the map.
                 if ed_ref(a).peek.active {bar_commit(a);}
                 bar_drop(ed(a));index_show(a);
@@ -6302,7 +6317,7 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_CLEAR => clear_page(a),
         P_SHAPES => open_shape_menu(a),
-        P_PAGES => pages_show(a),
+        P_PAGES => map_show(a,false),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
         P_LINKS => {
             if ed_ref(a).lm.state != LmState::Off { link_cancel(a,true); }
@@ -6317,6 +6332,7 @@ fn panel_act(a: &mut App, h: Hit) {
             let t = a.settings.current_tool;
             pensettings_open(a, t);
         }
+        P_SETTINGS => {if save_page(a){crate::library::library_settings_from_notebook(a);}}
         P_LIBRARY => {
             app_toast(a, tr("Saving..."), 8000);
             app_flush(a);
@@ -6437,12 +6453,7 @@ fn open_menu(a: &mut App, action: i32) {
         SHORTCUT_INDEX_MAP => map_show(a, false),
         SHORTCUT_GO_TO_PAGE => find_show(a),
         SHORTCUT_LINKS => bar_open(a),
-        SHORTCUT_PAGES | SHORTCUT_INDEX => {
-            let s = ed(a);
-            s.pv.index_tab = action == SHORTCUT_INDEX;
-            s.pv.tab_initialized = true;
-            pages_show(a);
-        }
+        SHORTCUT_PAGES | SHORTCUT_INDEX => map_show(a,false),
         SHORTCUT_TOOL_PICKER => open_tools(a),
         SHORTCUT_PAPER => panel_act(a, Hit { id: P_PAPER, ..Default::default() },
         ),
@@ -6490,11 +6501,16 @@ pub fn editor_shortcut_at(a: &mut App, action: i32, x: f32, y: f32, src: ActionS
 }
 
 fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) -> bool {
+    let action=if matches!(action,SHORTCUT_PAGES|SHORTCUT_INDEX){SHORTCUT_INDEX_MAP}else{action};
     if action == SHORTCUT_STATUS_MODE && !editor_busy(a) { status_cycle_mode(a); return true; }
     let asleep = a.asleep;
     let Some(s) = a.ed.as_deref_mut() else { return false ;
     };
     if !s.open || asleep || action == 0 {
+        return false;
+    }
+    if s.destination.open {
+        if action==SHORTCUT_GO_BACK||action==SHORTCUT_CLOSE_MENU {s.destination.open=false;s.lt.hidden=false;compose_all(a,RefreshMode::Full);return true;}
         return false;
     }
     if action == SHORTCUT_HOLD_ERASER {
@@ -6695,6 +6711,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     } else if action == SHORTCUT_NAME_PAGE {
         pages_name(a);
     } else if action == SHORTCUT_GO_BACK {
+        if ed_ref(a).back.is_empty() && !ed_ref(a).notebook_back.is_empty() {
+            if !save_page(a){return false;}
+            let mut stack=std::mem::take(&mut ed(a).notebook_back);
+            if let Some((id,pid))=stack.pop(){editor_open_notebook_at(a,id.as_str(),pid,false);ed(a).notebook_back=stack;}
+            return true;
+        }
         // Back to the page the last link, Find or Pages view left: the newest on the list that is still
         // in the notebook and is not the page on show, which is not pushed again.
         let s = ed(a);
@@ -7376,7 +7398,8 @@ pub fn editor_page_in_front(a: &App) -> bool {
 
 /// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
 fn corner_sheet_open(s: &EditorState) -> bool {
-    s.map.open
+    s.destination.open
+        || s.map.open
         || s.pv.open
         || s.tools_open
         || s.mb.open
@@ -7987,6 +8010,15 @@ fn pen_toast(a: &mut App, t_ms: u32) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
+    if ed_ref(a).destination.open {
+        let ph=app_pointer_phase(ev);
+        if ph>=0 {let r=with_modal(a,|s|&mut s.destination,|p,a|p.pointer(a,ph,ev));match r {
+            NotebookPick::Cancel=>{ed(a).lt.hidden=false;compose_all(a,RefreshMode::Full);},
+            NotebookPick::Target(t)=>{ed(a).lt.hidden=false;let target=if let Some((id,pid))=nav_external_target(t.as_str()){if ed_ref(a).nb.id==id{format!("p{pid}")}else{t.as_str().to_string()}}else{t.as_str().to_string()};link_pick(a,&target);},
+            NotebookPick::None=>{}
+        }}
+        return;
+    }
     if ed_ref(a).map.open {
         if matches!(ev.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd) {
             ed(a).owner = Owner::None;
@@ -8610,6 +8642,12 @@ fn migrate_step(a: &mut App) {
 }
 
 pub fn editor_tick(a: &mut App, now: u32) {
+    if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
+        let id=if ed_ref(a).destination.open {ed_ref(a).destination.selected.as_ref().map(|nb|nb.id)}else{Some(ed_ref(a).nb.id)};
+        ed(a).previews_checked=now;
+        if let Some(id)=id {let generation=store_page_previews_generation(id.as_str());if generation!=ed_ref(a).previews_generation {ed(a).previews_generation=generation;compose_all(a,RefreshMode::Ui);}}
+    }
+    if ed_ref(a).destination.open {return;}
     if ed_ref(a).map.open {
         if ed_ref(a).map_kb.open {
             let mut kb = std::mem::take(&mut ed(a).map_kb);
@@ -8906,7 +8944,11 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     let Some(s) = a.ed.as_deref() else { return -1 };
     let st = &a.settings;
     let has_page = s.open && s.page.is_some();
-    if key == "page" {
+    if key=="notebook_id" {csnprintf!(out,cap,"%s",s.nb.id.as_str());}
+    else if key=="destination" {csnprintf!(out,cap,"%d",s.destination.open as i32);}
+    else if key=="destination.folder" {csnprintf!(out,cap,"%s",s.destination.folder.as_str());}
+    else if key=="destination.notebook" {csnprintf!(out,cap,"%s",s.destination.selected.as_ref().map_or("",|b|b.id.as_str()));}
+    else if key == "page" {
         csnprintf!(out, cap, "%d", if s.open { s.index + 1 } else { 0 });
     } else if key == "loaded_pages" {
         csnprintf!(out, cap, "%d", if s.open { s.hist.len() as i32 } else { 0 });
@@ -9954,7 +9996,7 @@ mod tests {
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_SHAPES, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_LIBRARY]);
+            want.extend([P_TOOL, P_SHAPES, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_PENSET, P_SETTINGS, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));
@@ -10057,6 +10099,7 @@ mod tests {
             (P_PAPER, "paper"),
             (P_DISPLAY, "display"),
             (P_PENSET, "pen-feel"),
+            (P_SETTINGS, "settings"),
             (P_LIBRARY, "library"),
         ] {
             assert_eq!(panel_name(&h(id, 0)), name);
@@ -10279,4 +10322,28 @@ pub fn editor_map_point(a: &App, pid: u32) -> Option<(f32, f32)> {
 /// Replay page samples through the current viewport, as real input reaches it.
 pub fn editor_replay_point(a:&App,x:f32,y:f32)->(f32,f32) {
     let s=ed_ref(a);((x-s.ox)*s.zoom,(y-s.oy)*s.zoom)
+}
+
+fn destination_open(a:&mut App) {
+    let folder=ed_ref(a).nb.folder.as_str().to_string();
+    if with_modal(a,|s|&mut s.destination,|p,_|p.start(&folder)) {ed(a).lt.hidden=true;compose_all(a,RefreshMode::Full);}
+    else {app_toast(a,tr("Could not read the notebooks."),3000);}
+}
+fn follow_target(a:&mut App,target:&str)->bool {
+    if let Some((id,pid))=nav_external_target(target) {
+        let mut nb=NotebookInfo::default();
+        if store_load_info(id,&mut nb)!=0 || !nb.page_ids.contains(&pid) {app_toast(a,tr("That notebook or page is no longer available."),3000);return false;}
+        if ed_ref(a).nb.id==id {return nb.page_ids.iter().position(|&p|p==pid).is_some_and(|i|go_to_page_pushing(a,i as i32));}
+        if !save_page(a){return false;}
+        links_flush(a);if ed_ref(a).links_dirty {app_toast(a,tr("Could not save the links."),3000);return false;}
+        let i=nb.page_ids.iter().position(|&p|p==pid).unwrap();let mut checked=None;
+        if store_read_page(&nb,i as i32,&mut checked)!=0 {app_toast(a,tr("Could not open that page."),3000);return false;}drop(checked);
+        let origin=(ed_ref(a).nb.id,ed_ref(a).open_pid());
+        let mut back=std::mem::take(&mut ed(a).notebook_back);if back.len()>=32 {back.remove(0);}back.push(origin);
+        editor_open_notebook_at(a,id,pid,false);ed(a).notebook_back=back;ed_ref(a).open&&ed_ref(a).nb.id==id&&ed_ref(a).open_pid()==pid
+    } else if target=="index" {map_show(a,false);ed_ref(a).map.open}
+    else {
+        let l=NavLink{target:FixedStr::from_str(target),..Default::default()};let to=nav_link_page(&l,&ed_ref(a).nb);
+        if to>=0 {go_to_page_pushing(a,to)}else{app_toast(a,tr("That link's page is not in this notebook."),3000);false}
+    }
 }

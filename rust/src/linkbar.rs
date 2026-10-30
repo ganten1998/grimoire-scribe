@@ -52,6 +52,7 @@ const LB_SEARCH: i32 = 11;
 const LB_PAGES: i32 = 12;
 const LB_CANCEL: i32 = 13;
 const LB_AROUND: i32 = 14;
+const LB_NAME: i32 = 15;
 
 /// The bar lists the page's links (List), or it is Link to..., picking where a new link goes (Pick).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -101,6 +102,7 @@ pub enum LbResult {
     /// the back chip: "‹ Page 3" while peeking (look at the origin again), "Back to ..." otherwise
     Back,
     NewLink,
+    NamePage,
     GoTo,
     /// the Areas button: the eye turned on or off (the editor redraws the button and the boxes)
     Eye,
@@ -365,6 +367,7 @@ fn entry_name<'a>(nb: &NotebookInfo, nav: &'a Nav, e: &LbEntry) -> &'a str {
 /// What an entry is called: its Index name (and true), "Page %d" for a page with none (false), "The Index"
 /// (false); "" for a page that is not here.
 fn entry_label(nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
+    if let Some(label)=nav_target_label(e.target.as_str()){return (label,true);}
     if e.page == NAV_TO_INDEX {
         // TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
         // Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
@@ -383,13 +386,6 @@ fn entry_label(nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
 
 // The icon above a button's label, drawn dimmer: every other pixel of its dark ones cleared (a 50% ordered
 // dither, so it reads as off and not as the gray of a disabled button). `r` is the button.
-fn dim_icon(c: &mut Canvas, r: Rect) {
-    let inner = rect_inflate(r, -u(8.0));
-    let ts = ui_small_size().min(inner.h as f32 * 0.28);
-    let lh = (ts * 1.15) as i32;
-    let ir = Rect { x: inner.x, y: inner.y, w: inner.w, h: inner.h - lh };
-    dim(c, rect_inflate(ir, -(ir.w.min(ir.h) / 10)));
-}
 
 fn dim(c: &mut Canvas, r: Rect) {
     let r = rect_intersect(r, c.clip);
@@ -421,6 +417,8 @@ fn draw_chip(c: &mut Canvas, r: Rect, num: i32, e: &LbEntry, label: &str, named:
         let ih = u(56.0);
         ui_icon(c, IconKind::Notebook, Rect { x: name.x, y: r.y + (r.h - ih) / 2, w: ih, h: ih }, 0);
         font_draw_left(c, FontFace::Regular, ts, Rect { x: name.x + ih + u(10.0), y: name.y, w: name.w - ih - u(10.0), h: name.h }, tr("The Index"), 0);
+    } else if nav_external_target(e.target.as_str()).is_some() {
+        font_draw_left_name(c,FontFace::Bold,ts,name,label,0);
     } else if e.page < 0 {
         // A page that is not here: 50% dithered.
         // TRANSLATORS: a chip of the Links bar whose link goes to a page that is gone (about 700 px at 44 px).
@@ -495,53 +493,10 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         }
         right = prev.x - u(16.0);
     }
-    let ts = ui_text_size();
-    if peek > 0 {
-        // The way back to where the bar began, then what is on show.
-        // TRANSLATORS: the Links bar's chip, while a page is on show above it, that shows the page the bar began
-        // on again: a single angle quote and the page's number (up to 380 px at 44 px in bold).
-        let back_text = cformat!(tr("‹ Page %d"), lb.back_label);
-        let bwid = ui_chip_w(FontFace::Bold, ts, &back_text, bh, u(200.0), u(380.0));
-        let back = Rect { x: head.x, y: hy, w: bwid, h: bh };
-        ui_button(c, back, IconKind::None, &back_text, ButtonStyle::Plain);
-        hits_add(&mut lb.hits, back, LB_BACK, 0);
-        // (the page's own name, or its number: an entry looked at and the back list's page both are pages)
-        let name = if (peek as usize) <= nb.page_ids.len() { nav_name(nav, nb.page_ids[peek as usize - 1]) } else { "" };
-        let shown = if name.is_empty() { cformat!(tr("Page %d"), peek) } else { name.to_string() };
-        // TRANSLATORS: the Links bar's header while a page is on show above it: %s is its name (or "Page 3"), cut
-        // to fit; about 1000 px at 44 px.
-        let msg = cformat!(tr("Showing %s. Tap the page to stay."), &shown);
-        // (a name is cut to fit, as names are anywhere)
-        font_draw_left_name(c, FontFace::Regular, ts, Rect { x: back.x + back.w + u(20.0), y: hy, w: right - back.x - back.w - u(20.0), h: bh }, &msg, 0);
-    } else {
-        let mut tx = head.x;
-        if !lb.back_to.is_empty() {
-            // The back list has somewhere to go: a chip that looks there.
-            // TRANSLATORS: the Links bar's chip, with no page on show, that looks at the page the last link, Find or
-            // Pages view left: %s is its name (or "Page 3"); up to 560 px at 44 px in bold.
-            let bt = cformat!(tr("Back to %s"), lb.back_to.as_str());
-            let bwid = ui_chip_w(FontFace::Bold, ts, &bt, bh, u(260.0), u(560.0));
-            let back = Rect { x: head.x, y: hy, w: bwid, h: bh };
-            ui_button(c, back, IconKind::None, &bt, ButtonStyle::Plain);
-            hits_add(&mut lb.hits, back, LB_BACK, 0);
-            tx = back.x + back.w + u(20.0);
-        }
-        if lb.incoming > 0 {
-            let text = cformat!(ng_("%d page links here", "%d pages link here", lb.incoming as i64), lb.incoming);
-            let width = ui_chip_w(FontFace::Bold, ui_small_size(), &text, bh, u(360.0), u(620.0)).min(right - tx);
-            let chip = Rect { x: right - width, y: hy, w: width, h: bh };
-            ui_button(c, chip, IconKind::None, &text, ButtonStyle::Plain);
-            hits_add(&mut lb.hits, chip, LB_AROUND, 0);
-            right = chip.x - u(16.0);
-        }
-        // TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
-        let title = cformat!(tr("Links on this page (%d)"), lb.links);
-        ui_text(c, FontFace::Bold, ts, ui_small_size(), Rect { x: tx, y: hy, w: right - tx, h: bh }, &title, 1, false, 0);
-    }
-    if lb.header_hint && peek == 0 {
-        // TRANSLATORS: a second line of the Links bar's header the first three times it opens, at 34 px (about 1300 px).
-        font_draw_left(c, FontFace::Regular, ui_small_size(), Rect { x: head.x, y: hy + bh - u(4.0), w: head.w, h: u(60.0) }, tr("Tap a link to look. Tap the page to stay."), 0);
-    }
+    let ts=ui_text_size();
+    let page=if peek>0 {peek}else{lb.origin+1};
+    let title=format!("{} · {} / {}",nb.name.as_str(),page,nb.npages());
+    font_draw_left_name(c,FontFace::Bold,ts,Rect::new(head.x,hy,right-head.x,bh),&title,0);
     // The chips, or why there are none.
     let cy = chips_y(lb);
     let ch = u(124.0);
@@ -567,32 +522,13 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         draw_chip(c, r, i + 1, &e, &label, named, i == lb.selected);
         hits_add(&mut lb.hits, r, LB_CHIP, i);
     }
-    // The tool row: Go to, New link, Areas, Index.
-    let tg = u(20.0);
-    let tw = (inn.w - 3 * tg) / 4;
-    let ty = card.y + card.h - u(20.0) - u(140.0);
-    let tool = |k: i32| Rect { x: inn.x + k * (tw + tg), y: ty, w: tw, h: u(140.0) };
-    let can_link = !lb.readonly && lb.links_ok;
-    // TRANSLATORS: the Links bar's four tool buttons, each under its icon in caps at 34 px (about 400 px
-    // wide): look for a page by its number or name; draw a new link; show the link areas on the page; the
-    // Index.
-    ui_button(c, tool(0), IconKind::Search, tr("Go to"), ButtonStyle::Plain);
-    hits_add(&mut lb.hits, tool(0), LB_GO, 0);
-    // TRANSLATORS: the Links bar's tool button that starts a new link (400 px at 34 px caps, under its icon).
-    ui_button(c, tool(1), IconKind::LinkPlus, tr("New link"), if !can_link { ButtonStyle::Disabled } else if lb.n == 0 { ButtonStyle::Primary } else { ButtonStyle::Plain });
-    hits_add(&mut lb.hits, tool(1), LB_NEW, 0);
-    let eye_on = a.settings.link_areas;
-    let eye = tool(2);
-    // TRANSLATORS: the Links bar's tool button that shows or hides the dotted link areas on the page (400 px at
-    // 34 px caps, under its eye; the eye is dimmed while they are hidden).
-    ui_button(c, eye, IconKind::Eye, tr("Areas"), if !lb.links_ok { ButtonStyle::Disabled } else if eye_on { ButtonStyle::Selected } else { ButtonStyle::Plain });
-    if !eye_on && lb.links_ok {
-        dim_icon(c, eye);
-    }
-    hits_add(&mut lb.hits, eye, LB_AREAS, 0);
-    lb.eye_button = eye;
-    ui_button(c, tool(3), IconKind::Bubbles, tr("Index"), ButtonStyle::Plain);
-    hits_add(&mut lb.hits, tool(3), LB_INDEX, 0);
+    let ty=card.y+card.h-u(160.0);let gap=u(20.0);let width=(inn.w-gap)/2;
+    let name=Rect::new(inn.x,ty,width,u(140.0));
+    ui_button(c,name,IconKind::None,tr("Name page"),if nav.writable{ButtonStyle::Plain}else{ButtonStyle::Disabled});
+    if nav.writable {hits_add(&mut lb.hits,name,LB_NAME,0);}
+    let eye=Rect::new(inn.x+width+gap,ty,width,u(140.0));
+    ui_button(c,eye,IconKind::Eye,tr("Areas"),if a.settings.link_areas{ButtonStyle::Selected}else{ButtonStyle::Plain});
+    if lb.links_ok {hits_add(&mut lb.hits,eye,LB_AREAS,0);}lb.eye_button=eye;
     card
 }
 
@@ -668,6 +604,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_BACK => LbResult::Back,
         LB_GO => LbResult::GoTo,
         LB_NEW => LbResult::NewLink,
+        LB_NAME => LbResult::NamePage,
         LB_AREAS => LbResult::Eye,
         LB_INDEX => LbResult::Index,
         LB_AROUND => LbResult::Around,
@@ -859,7 +796,7 @@ fn pick_label(nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
         // TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
         // it (about 700 px at 44 px in bold upright, 600 sideways).
         PickKind::NewPage => (tr("New page...").to_string(), false),
-        PickKind::Index => (tr("The Index").to_string(), false),
+        PickKind::Index => (tr("Somewhere Else").to_string(), false),
         _ => {
             let e = LbEntry { target: p.target, page: p.page, count: 1, first_box: RECT_EMPTY };
             entry_label(nb, nav, &e)
@@ -1051,13 +988,13 @@ pub fn linkbar_control_point(lb:&LinkBar,name:&str)->Option<(f32,f32)> {
     if !lb.open||lb.hidden{return None;}
     let (id,arg)=if lb.mode==LbMode::Pick {
         match name {
-            "index"=>(LB_CHIP,lb.picks.iter().position(|p|p.kind==PickKind::Index)? as i32),
+            "elsewhere"=>(LB_CHIP,lb.picks.iter().position(|p|p.kind==PickKind::Index)? as i32),
             "pages"=>(LB_PAGES,0),"search"=>(LB_SEARCH,0),"cancel"=>(LB_CANCEL,0),
             n if n.starts_with("chip.")=>(LB_CHIP,n[5..].parse::<i32>().ok()?-1),
             _=>return None,
         }
     } else {
-        (match name {"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)
+        (match name {"name"=>LB_NAME,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)
     };
     lb.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
 }

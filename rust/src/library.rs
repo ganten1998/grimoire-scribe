@@ -134,6 +134,7 @@ struct Item {
 /// Its fields are the translator's, from the C struct, by the rules of PORTING.md.
 #[derive(Default)]
 pub struct LibraryState {
+    settings_return_editor: bool,
     books: Vec<NotebookInfo>,
     folders: Vec<String>,
     items: Vec<Item>,
@@ -4014,6 +4015,11 @@ fn open_modal(a: &mut App, m: Modal) {
 }
 
 fn close_modal(a: &mut App) {
+    if lib(a).settings_return_editor {
+        if lib(a).modal==Modal::Settings {lib(a).settings_return_editor=false;lib(a).modal=Modal::None;app_switch(a,ScreenId::Editor);}
+        else {lib(a).modal=Modal::Settings;redraw(a,RefreshMode::Ui);}
+        return;
+    }
     lib(a).modal = Modal::None;
     redraw(a, RefreshMode::Ui);
 }
@@ -5830,9 +5836,18 @@ mod tests {
 
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
+    if name.starts_with("notebook.")||name.starts_with("folder.") {
+        let s=a.lib.as_deref()?;
+        let i=s.items.iter().position(|it|if let Some(id)=name.strip_prefix("notebook."){!it.is_folder&&s.books[it.nb].id==id}else{it.is_folder&&it.folder==name.strip_prefix("folder.").unwrap()})?;
+        return s.hits.h.iter().find(|h|h.id==H_CARD&&h.arg==i as i32).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
+    }
     let points:Vec<_>=a.lib.as_deref()?.hits.h.iter().map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32)).collect();
     for (x,y) in points {
         let mut out=String::new();
         if library_probe(a,&format!("ui_at.{}.{}",x as i32,y as i32),&mut out,128)==0 && out==name{return Some((x,y));}
     }None
+}
+
+pub fn library_settings_from_notebook(a:&mut App) {
+    app_switch(a,ScreenId::Library);lib(a).settings_return_editor=true;open_modal(a,Modal::Settings);
 }

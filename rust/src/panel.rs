@@ -7,7 +7,7 @@
 use crate::prelude::*;
 
 /// Tool, eraser, undo, redo, clear, previous, next, links, paper, display, pen feel, library.
-pub const PANEL_BUTTONS: i32 = 13;
+pub const PANEL_BUTTONS: i32 = 14;
 /// px at 300 dpi
 pub const PANEL_MARGIN: i32 = 12;
 

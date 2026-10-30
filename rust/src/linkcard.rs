@@ -121,7 +121,7 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
         c.page = -1;
     }
     let name = if c.page >= 0 && (c.page as usize) < nb.page_ids.len() { nav_name(nav, nb.page_ids[c.page as usize]) } else { "" };
-    c.title = if c.page == NAV_TO_INDEX {
+    c.title = if let Some(label)=nav_target_label(c.target.as_str()){label} else if c.page == NAV_TO_INDEX {
         tr("The Index").to_string()
     } else if c.page < 0 {
         tr("Page not here").to_string()
@@ -141,7 +141,7 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
         c.nrows += 1;
     };
     // Rename: the page's Index name (D3), or the page added to the Index; none for the Index.
-    if c.page != NAV_TO_INDEX && !(many && c.page < 0) {
+    if nav_external_target(c.target.as_str()).is_none() && c.page != NAV_TO_INDEX && !(many && c.page < 0) {
         let label = if c.page >= 0 && name.is_empty() {
             // TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name in
             // the Index: %d is that page's number; the row names it (about 700 px at 44 px).

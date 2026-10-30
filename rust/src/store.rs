@@ -2760,6 +2760,48 @@ pub fn store_load_thumb(id: &str, out: &mut Canvas) -> i32 {
     load_pgm(&path, out)
 }
 
+fn page_preview_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, String)> {
+    let dir = notebook_dir(nb.id.as_bytes())?;
+    let source = format!("{dir}/p{pid}.qpg");
+    let cache = format!("{dir}/.page-previews");
+    Some((source, format!("{cache}/p{pid}.pgm"), format!("{cache}/p{pid}.stamp")))
+}
+fn preview_stamp(source: &str) -> Option<String> {
+    let st = std::fs::metadata(source).ok()?;
+    let generation=std::path::Path::new(source).parent()?.join(".page-previews/generation");
+    let gen=std::fs::metadata(generation).map(|g|format!("{}:{}:{}",g.ino(),g.mtime(),g.mtime_nsec())).unwrap_or_default();
+    Some(format!("{}:{}:{}:{}:{}:{gen}", st.ino(), st.size(), st.mtime(), st.mtime_nsec(), st.ctime_nsec()))
+}
+/// Small previews only; stale or malformed caches never replace page data.
+pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
+    let Some((source, image, stamp)) = page_preview_files(nb, pid) else {return false};
+    let Some(now) = preview_stamp(&source) else {return false};
+    if std::fs::read_to_string(stamp).ok().as_deref() != Some(now.as_str())
+        || !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000) {return false;}
+    if load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
+        canvas_free(out);return false;
+    }
+    true
+}
+pub fn store_save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) {
+    let Some((source, image, stamp)) = page_preview_files(nb,pid) else {return};
+    let Some(was) = preview_stamp(&source) else {return};
+    let Some(parent) = std::path::Path::new(&image).parent() else {return};
+    if std::fs::create_dir_all(parent).is_err() {return;}
+    let mut small=Canvas::default();
+    if canvas.w <= 0 || canvas.h <= 0 {return;}
+    let scale=(300.0 / canvas.w as f32).min(400.0 / canvas.h as f32).min(1.0);
+    if canvas_init(&mut small,(canvas.w as f32*scale).max(1.0) as i32,(canvas.h as f32*scale).max(1.0) as i32)!=0{return;}
+    canvas_downsample_keep_lines(&mut small,canvas,0.35);
+    let mine=format!("{image}.{}",std::process::id());
+    let tag=format!("{stamp}.{}",std::process::id());
+    if save_pgm(&mine,&small)==0 && preview_stamp(&source).as_deref()==Some(was.as_str())
+        && std::fs::rename(&mine,&image).is_ok() {
+        if write_file_atomic(&tag,was.as_bytes())==0 {let _=std::fs::rename(&tag,&stamp);}
+    }
+    let _=std::fs::remove_file(mine);let _=std::fs::remove_file(tag);
+}
+
 /// thumb.pgm as it is on disk now, in a number that changes whenever the file is written again (a
 /// write is a new file, renamed into place: its inode, size and times): 0 when there is none, else
 /// odd. A card read from it knows by this whether it was written since.
@@ -3669,4 +3711,41 @@ mod tests {
         );
         assert_eq!(b, b"name=a\xffb\nn=5 |");
     }
+}
+
+/// Visible-page preview jobs render outside the UI process, with bounded work and stale-write checks.
+pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
+    let mut nb=NotebookInfo::default();
+    if store_load_info(id,&mut nb)!=0{return -1;}
+    let Some((first,last))=range.split_once(':').and_then(|(a,b)|Some((a.parse::<usize>().ok()?,b.parse::<usize>().ok()?))) else{return -1};
+    if last.saturating_sub(first)>64{return -1;}
+    for i in first..last.min(nb.page_ids.len()) {
+        let pid=nb.page_ids[i];let mut cached=Canvas::default();
+        if store_load_page_preview(&nb,pid,&mut cached){continue;}
+        let Some((source,_,_))=page_preview_files(&nb,pid) else{continue};
+        let before=preview_stamp(&source);
+        let mut page=None;
+        if store_read_page(&nb,i as i32,&mut page)!=0 {continue;}
+        let Some(page)=page else{continue};
+        let mut full=Canvas::default();
+        if canvas_init(&mut full,page.w,page.h)!=0 {continue;}
+        page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
+        if before.is_some() && before==preview_stamp(&source){store_save_page_preview(&nb,pid,&full);}
+    }
+    0
+}
+
+pub fn store_page_previews_generation(id:&str)->u64 {
+    let Some(dir)=notebook_dir(id.as_bytes())else{return 0};
+    std::fs::metadata(format!("{dir}/.page-previews")).map(|s|(s.mtime()as u64).wrapping_mul(1_000_000_000).wrapping_add(s.mtime_nsec() as u64)).unwrap_or(0)
+}
+pub fn store_invalidate_page_previews(id:&str) {
+    let Some(dir)=notebook_dir(id.as_bytes())else{return};
+    let path=format!("{dir}/.page-previews");
+    if std::fs::create_dir_all(&path).is_ok(){write_file_atomic(&format!("{path}/generation"),b"changed");}
+}
+pub fn store_cleanup_preview_work(id:&str,pid:i32) {
+    let Some(dir)=notebook_dir(id.as_bytes())else{return};let path=format!("{dir}/.page-previews");
+    let Ok(entries)=std::fs::read_dir(path)else{return};
+    for e in entries.flatten(){let name=e.file_name();let name=name.to_string_lossy();if name.ends_with(&format!(".{pid}"))||name.ends_with(&format!(".{pid}.tmp")){let _=std::fs::remove_file(e.path());}}
 }

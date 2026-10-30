@@ -22,6 +22,7 @@ pub enum BgKind {
     ImportFolder = 3, // BG_IMPORT_FOLDER
     /// id: notebook, path: graph.ini; layout is computed and saved by the child.
     GraphLayout = 4,
+    PagePreviews = 5,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -78,7 +79,7 @@ pub fn bg_cancel_notebook(id: &str) {
         let mut dropped = 0;
         let mut i = 0;
         while i < s.q.len() {
-            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout) && s.q[i].id.as_bytes() == id.as_bytes() {
+            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) && s.q[i].id.as_bytes() == id.as_bytes() {
                 take(&mut s.q, i);
                 dropped += 1;
             } else {
@@ -91,7 +92,7 @@ pub fn bg_cancel_notebook(id: &str) {
         qlog!("bg: notebook work for %s dropped (the notebook opens or goes)", id);
     }
     let pid = with(|s| {
-        if s.pid > 0 && matches!(s.running.kind, BgKind::CompactPages | BgKind::GraphLayout) && s.running.id.as_bytes() == id.as_bytes() {
+        if s.pid > 0 && matches!(s.running.kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) && s.running.id.as_bytes() == id.as_bytes() {
             s.pid
         } else {
             -1
@@ -105,7 +106,8 @@ pub fn bg_cancel_notebook(id: &str) {
             let mut st = 0;
             libc::waitpid(pid, &mut st, 0);
         }
-        qlog!("bg: compaction of %s stopped (the notebook opens or goes)", id);
+        store_cleanup_preview_work(id,pid);
+        qlog!("bg: notebook work for %s stopped (the notebook opens or goes)", id);
         with(|s| s.pid = -1);
     }
 }
@@ -165,7 +167,7 @@ pub fn bg_detach_rest() {
         let mut left = Vec::new();
         let mut i = 0;
         while i < s.q.len() {
-            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout) {
+            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) {
                 left.push(take(&mut s.q, i));
             } else {
                 i += 1;
@@ -223,7 +225,7 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 5] = ["export", "compaction", "template", "import", "map layout"];
+const K_KIND_NAMES: [&str; 6] = ["export", "compaction", "template", "import", "map layout", "page previews"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -273,6 +275,7 @@ fn run_job(j: &Job) -> i32 {
     match j.kind {
         BgKind::MirrorPdf => run_mirror(j),
         BgKind::GraphLayout => run_graph(j),
+        BgKind::PagePreviews => store_build_page_previews(j.id.as_str(),j.dir.as_str(),j.dpi),
         BgKind::CompactPages => bg_compact_pages(j.id.as_str(), j.dpi),
         BgKind::Template => bg_template(j.id.as_str(), j.dir.as_str(), j.dpi),
         BgKind::ImportFolder => bg_import_folder(j.dir.as_str(), j.dpi),

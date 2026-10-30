@@ -69,6 +69,7 @@ pub mod shape;
 pub mod graph;
 pub mod musicbuild;
 pub mod nav;
+pub mod notebookpicker;
 pub mod page;
 pub mod paper;
 pub mod store;
@@ -162,6 +163,7 @@ pub mod prelude {
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;
+    pub use crate::notebookpicker::*;
     pub use crate::mapview::*;
     pub use crate::page::*;
     pub use crate::pagesview::*;

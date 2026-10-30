@@ -28,6 +28,7 @@ const PG_TAB: i32 = 11;
 const PG_NAME: i32 = 12;
 const PG_LINK: i32 = 13;
 const PG_GRAPH: i32 = 16;
+const PG_LIST: i32 = 17;
 // (14 and 15 were the picking header's The Index and Remove link, retired with the Pages view's hold path:
 // a link held on opens the long-press card over the page instead)
 
@@ -60,6 +61,7 @@ pub enum PvResult {
     /// stays behind jump_pad, for the test that holds the view to the C build)
     GoTo = 11,
     Graph = 12,
+    List = 13,
 }
 
 /// (The C keeps pointers to the editor's notebook and Nav, nb and nav; here the editor passes them
@@ -68,6 +70,7 @@ pub enum PvResult {
 #[derive(Clone, Debug, Default)]
 pub struct PagesView {
     pub open: bool,
+    pub unified: bool,
     /// the open page's index; the editor keeps it up to date
     pub current: i32,
     /// Go to page...'s number pad (only with jump_pad; else the Find sheet is Go to page...), and the
@@ -368,6 +371,7 @@ fn draw_index(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, tota
 
 /// Draws the whole screen into a->screen (the caller refreshes it).
 pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav) {
+    if v.unified {v.index_tab=false;}
     hits_clear(&mut v.hits);
     let (aw, ah) = (a.w, a.h);
     let c = &mut a.screen;
@@ -435,6 +439,17 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     hits_add(&mut v.hits, pages_tab, PG_TAB, 0);
     hits_add(&mut v.hits, index_tab, PG_TAB, 1);
     ui_rule(c, 0, aw, th0, ui_px(4.0), 0);
+    if v.unified {
+        canvas_fill(c,Rect::new(0,0,aw,th0),255);hits_clear(&mut v.hits);
+        if v.picking {
+            ui_button(c,back,IconKind::Back,"",ButtonStyle::Plain);hits_add(&mut v.hits,back,PG_BACK,0);
+            font_draw_left_name(c,FontFace::Bold,ui_title_size(),Rect::new(ui_px(230.0),by,aw-ui_px(280.0),bh),nb.name.as_str(),0);
+        } else {
+            let tabs=index_navigation(c,aw,2);
+            for (i,id) in [PG_BACK,PG_GRAPH,PG_LIST,PG_TAB].into_iter().enumerate(){hits_add(&mut v.hits,tabs[i],id,0);}
+        }
+    }
+
     let (cols, rows, cw, ch, th) = geom(a);
     let per = cols * rows;
     let mut screens = (nb.npages() + per - 1) / per;
@@ -462,7 +477,10 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         let tr_ = Rect { x: m + (n % cols) * (cw + m), y: th0 + m + (n / cols) * (ch + m), w: cw, h: th };
         let mut number = String::new();
         csnprintf!(&mut number, 24, "%d", i + 1);
-        font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.4, tr_, &number, 0);
+        let mut cached=Canvas::default();
+        if v.unified && store_load_page_preview(nb,nb.page_ids[i as usize],&mut cached) {
+            canvas_blit_fit(c,&cached,tr_);
+        } else {font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.4, tr_, &number, 0);}
         let cur = i == v.current;
         let sel = (i as usize) < v.sel.len() && v.sel[i as usize];
         ui_frame(c, rect_inflate(tr_, if cur { ui_px(8.0) } else { 0 }), ui_px(12.0), 0, false, if cur { ui_px(8.0) } else { ui_px(3.0) });
@@ -540,6 +558,11 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         }
         n += 1;
     }
+    if v.unified && !v.index_tab {
+        let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
+        let mut missing=false;for &pid in &nb.page_ids[first..last] {let mut c=Canvas::default();if !store_load_page_preview(nb,pid,&mut c){missing=true;break;}}
+        if missing && !bg_pending(BgKind::PagePreviews,nb.id.as_str()) {bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),a.dpi,true);}
+    }
     let y = ah - ui_px(170.0);
     a.toast_floor = y; // keep a Copy page notice above the bottom controls when Pages reopens
     let c = &mut a.screen;
@@ -589,6 +612,18 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
             if k == 1 {
                 hits_add(&mut v.hits, rcopy, PG_COPY, 0);
             }
+        }
+    }
+    if v.unified && !v.picking {
+        canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
+        v.hits.h.retain(|h|h.r.y<y);
+        let width=(aw-ui_px(80.0))/7;let gap=ui_px(8.0);
+        let labels=["",tr("New page"),tr("Copy page"),tr("Go to"),if all{tr("Select none")}else{tr("Select all")},del.as_str(),""];
+        for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_ALL,PG_DELETE,PG_NEXT].into_iter().enumerate(){
+            let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_DELETE=>k>0,_=>true};
+            let r=Rect::new(ui_px(20.0)+i as i32*(width+gap),y+ui_px(15.0),width,ui_px(140.0));
+            ui_button(c,r,if id==PG_PREV{IconKind::Prev}else if id==PG_NEXT{IconKind::Next}else{IconKind::None},labels[i],if enabled{ButtonStyle::Plain}else{ButtonStyle::Disabled});
+            if enabled {hits_add(&mut v.hits,r,id,0);}
         }
     }
     // A toast stays above the keys, as over the Library's keyboard: Go to page's "Enter a page number"
@@ -689,6 +724,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             redraw(v, a, nb, nav, RefreshMode::Full);
         }
         PG_GRAPH => return PvResult::Graph,
+        PG_LIST => return PvResult::List,
         PG_NAME => {
             open_naming(v, nb, nav);
             redraw(v, a, nb, nav, RefreshMode::Ui);
@@ -791,4 +827,9 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
         return -1;
     }
     0
+}
+
+pub fn pagesview_control_point(v:&PagesView,name:&str)->Option<(f32,f32)> {
+    let (id,arg)=match name {"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"delete"=>(PG_DELETE,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
+    v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }

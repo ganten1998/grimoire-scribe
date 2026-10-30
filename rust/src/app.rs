@@ -1513,11 +1513,16 @@ fn poll_jobs(a: &mut App) -> i32 {
     let mut done = -1;
     let mut done_id=FixedStr::new();
     let r = bg_poll_job(Some(&mut done),Some(&mut done_id));
+    if done == BgKind::PagePreviews as i32 {
+        crate::editor::editor_previews_done(a,done_id.as_str());
+        return 0;
+    }
     if done == BgKind::GraphLayout as i32 {
         crate::editor::editor_map_done(a,done_id.as_str(), r > 0);
         return 0;
     }
     if done == BgKind::Template as i32 {
+        store_invalidate_page_previews(done_id.as_str());
         bgimage_retry_missing();
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }

@@ -1,6 +1,6 @@
 // The editor's floating panel. With 0 to 3 pens pinned it fits the
 // 2022/2024 Scribes' screen and the Scribe 3's and Colorsoft's, upright and sideways, keeping its
-// 12 px margins (99 px buttons with three pins on older Scribes sideways, otherwise full size).
+// 12 px margins (93 px buttons with three pins on older Scribes sideways, otherwise full size).
 // The collapsed square never changes. Next and previous
 // tool go through its pens alone, and the tool picker's next and previous through the picker's nine.
 // Index loops and float comparisons are written as the C test writes them.
@@ -11,20 +11,20 @@ use grimoire::prelude::*;
 use testlib::*;
 
 fn fits_both_scribes_both_ways() {
-    check!(PANEL_BUTTONS == 13);
+    check!(PANEL_BUTTONS == 14);
     check!(PANEL_PINS_MAX == 3);
     for (w,h) in [(1860,2480),(2480,1860),(1986,2648),(2648,1986)] {
         for pins in 0..=PANEL_PINS_MAX as i32 {
             let f = panel_fit(h,pins);
             check!(panel_height(f,pins)+2*ui_px(PANEL_MARGIN as f32)<=h);
-            check!(panel_w()+2*ui_px(PANEL_MARGIN as f32)<=w && f.scale >= 0.99 && f.space >= 0.5);
-            check!(panel_btn_h(f)>=ui_px(99.0));
-            // Only three pins on the older Scribes in landscape need smaller buttons.
-            check!(panel_btn_h(f)==ui_px(if h==1860 && pins==3 {99.0}else{100.0}));
+            check!(panel_w()+2*ui_px(PANEL_MARGIN as f32)<=w && f.scale >= 0.93 && f.space >= 0.5);
+            check!(panel_btn_h(f)>=ui_px(93.0));
+            // Two or three pins on the older Scribes in landscape need smaller buttons.
+            check!(panel_btn_h(f)==ui_px(if h==1860 && pins==3 {93.0}else if h==1860 && pins==2 {99.0}else{100.0}));
             if h>=2480 {check!(f.scale==1.0 && f.space==1.0);}
         }
     }
-    check!(panel_height(PanelFit{scale:1.0,space:1.0},0)==1626);
+    check!(panel_height(PanelFit{scale:1.0,space:1.0},0)==1734);
     check!(panel_box()==ui_px(120.0));
 }
 
