@@ -115,9 +115,9 @@ fn plot(v: &MapView) -> Rect {
     };
     Rect {
         x: u(16.0),
-        y: u(190.0),
+        y: u(270.0),
         w: v.w - u(32.0) - if v.w > v.h { tray } else { 0 } - if v.foreign.is_empty(){0}else{u(470.0)},
-        h: v.h - u(190.0) - bottom - if v.w <= v.h { tray } else { 0 },
+        h: v.h - u(270.0) - bottom - if v.w <= v.h { tray } else { 0 },
     }
 }
 fn save(v: &mut MapView) {
@@ -555,7 +555,7 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
         let right = v.w > v.h;
         let tray = if right {
             Rect {
-                x: pr.x + pr.w + u(16.0),
+                x: v.w - u(500.0),
                 y: pr.y,
                 w: u(480.0),
                 h: pr.h,
@@ -1390,7 +1390,9 @@ pub fn index_navigation(c:&mut Canvas,w:i32,selected:usize)->[Rect;4] {
 fn render_list(v:&mut MapView,c:&mut Canvas,nav:&Nav) {
     let tabs=index_navigation(c,v.w,1);
     for (i,id) in [BACK,GRAPH,LIST,PAGES].into_iter().enumerate(){v.hits.push(MapHit{rect:tabs[i],kind:MapHitKind::Control(id),centre:(0.0,0.0),radius:0.0});}
-    let mut y=u(220.0);let mut group=String::new();
+    let heading=cformat!(tr("Links from %s"),&v.notebook_name);
+    font_draw_left_name(c,FontFace::Bold,ui_text_size(),Rect::new(u(40.0),u(205.0),v.w-u(80.0),u(65.0)),&heading,0);
+    let mut y=u(290.0);let mut group=String::new();
     if v.link_rows.is_empty(){font_draw_left_name(c,FontFace::Regular,ui_text_size(),Rect::new(u(50.0),y,v.w-u(100.0),u(120.0)),tr("No links in this notebook yet."),0);return;}
     for i in v.list_offset..v.link_rows.len(){
         let l=v.link_rows[i];let key=nav_external_target(l.target.as_str()).map_or(String::new(),|(id,_)|id.to_string());
@@ -1407,7 +1409,7 @@ fn render_list(v:&mut MapView,c:&mut Canvas,nav:&Nav) {
 pub fn mapview_set_list(v:&mut MapView,a:&mut App,nav:&Nav) {v.list=true;paint(v,a,nav,RefreshMode::Full);}
 pub fn mapview_control_point(v:&MapView,name:&str)->Option<(f32,f32)> {
     if let Some(n)=name.strip_prefix("link."){let i=n.parse::<usize>().ok()?.checked_sub(1)?;return v.hits.iter().find(|h|h.kind==MapHitKind::Link(i)).map(|h|((h.rect.x+h.rect.w/2)as f32,(h.rect.y+h.rect.h/2)as f32));}
-    let id=match name{"back"=>BACK,"graph"=>GRAPH,"list"=>LIST,"pages"=>PAGES,"all"=>ALL,"around"=>AROUND,"fit"=>FIT,_=>return None};
+    let id=match name{"back"=>BACK,"graph"=>GRAPH,"list"=>LIST,"pages"=>PAGES,"all"=>ALL,"around"=>AROUND,"fit"=>FIT,"rename"=>RENAME,"open"=>OPEN,"unlinked"=>UNLINKED,"tidy"=>TIDY,"tray"=>EXPAND_TRAY,_=>return None};
     v.hits.iter().find(|h|h.kind==MapHitKind::Control(id)).map(|h|((h.rect.x+h.rect.w/2) as f32,(h.rect.y+h.rect.h/2) as f32))
 }
 

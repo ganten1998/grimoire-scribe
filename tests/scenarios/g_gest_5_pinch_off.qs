@@ -12,7 +12,7 @@ tap 1564 2254
 wait 200
 expect screen is editor
 swipe 2 930 900 0 400
-expect editor.modal is pages
+expect editor.modal is map
 swipe 2 930 1400 0 -400
 expect editor.modal is none
 finger 1 down 800 1200

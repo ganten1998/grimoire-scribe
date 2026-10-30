@@ -3728,6 +3728,7 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         let mut page=None;
         if store_read_page(&nb,i as i32,&mut page)!=0 {continue;}
         let Some(page)=page else{continue};
+        if page.readonly {continue;}
         let mut full=Canvas::default();
         if canvas_init(&mut full,page.w,page.h)!=0 {continue;}
         page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);

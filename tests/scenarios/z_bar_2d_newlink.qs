@@ -10,7 +10,7 @@ wait 300
 swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
-tap 705 2370
+tap panel links
 wait 300
 expect editor.bar is 0
 expect editor.link_mode is 1
@@ -26,7 +26,7 @@ expect editor.strip is 0
 tap 1381 2218
 wait 300
 expect editor.bar is peek
-tap 705 2370
+tap panel links
 wait 300
 expect editor.bar is 0
 expect editor.page is 2

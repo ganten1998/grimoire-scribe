@@ -15,10 +15,10 @@ tap 510 460
 tap 1564 2254
 wait 400
 expect screen is editor
-# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 842 (the screen's height less its margin and the panel's 1626).
+# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 734 (the screen's height less its margin and the panel's 1734).
 drag touch 1737 260 133 1200 6
 wait 400
-expect editor.panel_rect is 100 842 128 1626
+expect editor.panel_rect is 100 734 128 1734
 expect editor.layers is ok
 # The Links bar, along the bottom, over the panel's foot; closed again.
 key 37 0
@@ -74,6 +74,7 @@ tap panel tool-picker
 wait 400
 # The Pages view covers the whole screen: no panel on it at all.
 tap panel pages
+tap panel map.pages
 wait 500
 expect editor.modal is pages
 expect editor.layers is ok
@@ -83,7 +84,7 @@ wait 500
 expect editor.modal is none
 expect editor.layers is ok
 # Dragged to the middle of the page (by its grip) and the Display sheet opened over most of it.
-drag touch 133 990 833 760 6
+drag touch 133 774 833 760 6
 wait 400
 expect editor.modal is none
 expect editor.layers is ok

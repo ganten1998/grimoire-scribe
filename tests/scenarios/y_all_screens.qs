@@ -627,25 +627,32 @@ wait 50
 expect editor.pages is 3
 pentap panel pages
 wait 150
-expect editor.modal is pages
+expect editor.modal is map
+shot 28-index-graph
+tap panel map.list
+shot 28-index-list-empty
+tap panel map.pages
 shot 28-pages
-tap 850 95
-shot 28-index-empty
-tap 1400 95
+tap panel pages.back
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
+tap panel bar.name
 shot 28-index-name-keyboard
 tap 133 1725
 tap 1643 2365
 expect editor.index_rows is 1
+tap panel pages
 shot 28-index-named
-tap 125 95
+tap panel map.back
 pentap panel previous
-pentap panel pages
-tap 900 300
+tap panel pages
+tap map-node 3
+tap map-node 3
+expect editor.page is 3
 shot 28-index-jump
-# a link: Add a link, its box, where it goes picked (the Index), then a finger held on it (the long-press card)
-pentap panel pages
-wait 150
-tap 1410 2395
+# Add a link through the toolbar. The folder browser replaces the retired Index target.
+tap panel links
 wait 50
 expect editor.link_mode is 1
 expect editor.strip is new
@@ -654,97 +661,80 @@ pen line 300 1000 900 1200 30 0.6 0.6
 wait 150
 expect editor.linkto is pick
 shot 28-link-linkto
-# Link to... opens: Choose from the pages... picks in the Pages view
-expect editor.ui_at.930.2370 is linkto.pages
-tap 930 2370
+tap panel linkto.pages
 expect editor.picking is new
 shot 28-link-pick-new
-# (no The Index in the picking header now: Back to Link to..., then its The Index chip)
-tap 125 95
-wait 100
+tap panel pages.back
 expect editor.linkto is pick
-expect editor.linkto.2 is index
-expect editor.ui_at.1381.2078 is linkto.chip.2
-tap 1381 2078
-wait 100
-expect editor.link.1 is index
+expect editor.linkto.2 is elsewhere
+tap panel linkto.elsewhere
+shot 28-link-notebooks
+tap panel elsewhere.current
+waitbg
+shot 28-link-notebook-pages
+tap panel elsewhere.page.1
+expect editor.link.1 is p1
+pen leave
+wait 1100
 touch down 600 1100
 wait 800
 touch up 600 1100
-wait 100
 expect editor.link_card is 1
 shot 28-link-card
 tap 1200 1900
-wait 100
 expect editor.modal is none
-# a second link to the Index, low on the page: Link to... docks at the top, and so do New page...'s keyboard and
-# Find in pick mode; then the bar's x2 row held (the card for both links)
-pentap panel pages
-wait 150
-tap 1410 2395
-wait 50
+# A second link low on the page: top-docked chooser and its keyboards, then the grouped x2 card.
+tap panel links
 pen line 300 2000 900 2150 30 0.6 0.6
-wait 150
 expect editor.linkto.dock is top
 shot 28-link-linkto-top
-expect editor.ui_at.479.387 is linkto.chip.1
-tap 479 387
-wait 100
+tap panel linkto.chip.1
 expect editor.kb_dock is top
 shot 28-link-newpage-keyboard
 tap 217 1058
-wait 100
 expect editor.linkto is pick
-expect editor.ui_at.330.679 is linkto.search
-tap 330 679
-wait 100
+tap panel linkto.search
 expect editor.find is pick
 expect editor.kb_dock is top
 shot 28-link-find-pick-top
 tap 217 1058
-wait 100
 expect editor.find is 0
-expect editor.linkto.2 is index
-expect editor.ui_at.1381.387 is linkto.chip.2
-tap 1381 387
-wait 100
+tap panel linkto.chip.3
 expect editor.links is 2 2
 pen leave
 wait 1100
 swipe 2 930 1300 0 -400
-wait 300
 expect editor.bar is open
 expect editor.bar.entries is 1
-expect editor.bar.1 is index
+expect editor.bar.1 is p1 x2
 touch down 479 2218
 wait 800
 touch up 479 2218
-wait 100
 expect editor.link_card is 1
 expect editor.link_card.links is 2
 shot 28-link-card-xn
 swipe 2 1300 300 0 400
-wait 300
 expect editor.link_card is 0
 expect editor.bar is 0
 pentap panel previous
 pentap panel next
-pentap panel pages
-tap 1400 95
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
+tap panel bar.name
 tap 1679 2205
 tap 1643 2365
 expect editor.index_rows is 0
-tap 430 95
-tap 1250 95
-wait 50
+tap panel pages
+tap panel map.pages
+tap panel pages.all
 expect editor.ticked is 3
 shot 29-pages-all
-tap 1630 95
+tap panel pages.delete
 wait 150
 shot 30-pages-deleted
 expect editor.pages is 1
-tap 125 95
-wait 100
+tap panel pages.back
 expect editor.modal is none
 pen curve 300 600 40 70 0.7 4
 pinch 900 900 300 700 6
@@ -757,8 +747,8 @@ wait 1100
 swipe 2 930 1200 0 400
 wait 300
 # (64, the pan hint; 2, the first link made above showed the first-link tip; 8, the Links bar showed its
-# second header line once)
-expect settings.hints is 74
+# second header line three times)
+expect settings.hints is 90
 expect editor.zoom not 1.00
 shot 31-zoom-pan-hint
 tap 930 74
@@ -1002,24 +992,24 @@ expect editor.modal is paper
 tap 2182 1696
 wait 100
 expect editor.modal is none
-pentap panel pages
+tap panel pages
 wait 150
-expect editor.modal is pages
-shot 49-pages-landscape
-tap 1300 95
+expect editor.modal is map
 shot 49-index-landscape
-tap 2100 95
+tap panel map.list
+shot 49-index-list-landscape
+tap panel map.pages
+shot 49-pages-landscape
+tap panel pages.back
+swipe 2 930 1300 0 -400
+wait 100
+tap panel bar.name
 shot 49-index-keyboard-landscape
 tap 280 1745
-tap 500 95
-tap 125 95
 wait 100
 expect editor.modal is none
-# a link, sideways: Add a link, its box, its page picked, a finger held on it (the long-press card)
-pentap panel pages
-wait 150
-tap 1300 95
-tap 1760 1775
+# The toolbar starts a link sideways, then its page is picked.
+tap panel links
 wait 50
 expect editor.link_mode is 1
 expect editor.strip is new
@@ -1272,11 +1262,7 @@ wait 300
 expect editor.bar is 0
 pentap panel next
 wait 100
-pentap panel pages
-wait 150
-tap 850 95
-wait 100
-tap 1410 2395
+tap panel links
 wait 50
 expect editor.link_mode is 1
 pen line 300 1500 900 1600 30 0.6 0.6
@@ -1292,11 +1278,11 @@ expect editor.links is 2 2
 pentap panel previous
 wait 100
 expect editor.page is 2
-pentap panel pages
+pen leave
+wait 1100
+swipe 2 930 1300 0 -400
 wait 150
-tap 850 95
-wait 100
-tap 1400 95
+tap panel bar.name
 wait 100
 tap 175 2205
 tap 221 2045
@@ -1307,7 +1293,6 @@ tap 221 2045
 expect editor.text is Arena
 tap 1643 2365
 wait 200
-tap 125 95
 wait 100
 expect editor.modal is none
 expect editor.index_rows is 1
@@ -1330,7 +1315,7 @@ expect editor.bar is peek
 expect editor.bar.peek is 2
 shot 66-bar-peek
 # X puts the page back and closes the bar
-tap 1761 2046
+tap panel bar.close
 wait 300
 expect editor.bar is 0
 expect editor.page is 3
@@ -1349,7 +1334,10 @@ tap 1155 2370
 wait 300
 expect settings.link_areas is 0
 # Go to opens Find over the bar: a number, a page there is not, a name that matches nothing, names
-tap 255 2370
+tap panel bar.close
+tap panel pages
+tap panel map.pages
+tap 930 2395
 wait 300
 expect editor.find is go
 shot 67-find-open
@@ -1391,7 +1379,7 @@ wait 300
 expect editor.bar is peek
 expect editor.bar.peek is 1
 shot 68-bar-peek-landscape
-tap 2381 1486
+tap panel bar.close
 wait 300
 expect editor.bar is 0
 expect editor.page is 3
@@ -1460,10 +1448,11 @@ swipe 2 930 1300 0 -400
 wait 150
 expect editor.bar is open
 shot 71-incoming-bar
-pentap editor bar.index
+tap panel bar.close
+tap panel pages
 wait 150
 expect editor.map is graph
-tap 1000 95
+tap panel map.all
 wait 100
 expect editor.map.mode is all
 shot 72-index-map
@@ -1472,16 +1461,16 @@ shot 73-map-card
 rotate 1
 wait 100
 shot 74-map-card-landscape
-tap 1310 95
+tap panel map.around
 expect editor.map.mode is around
 shot 75-map-around-landscape
 rotate 0
 wait 100
 shot 76-map-around
-tap 730 95
-expect editor.pages_tab is index
+tap panel map.list
+expect editor.map.list is 1
 shot 77-index-counts
-tap 1660 95
+tap panel map.graph
 expect editor.map is graph
 tap 100 95
 expect editor.map is 0

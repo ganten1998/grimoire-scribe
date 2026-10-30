@@ -56,8 +56,8 @@ pentap panel previous
 expect editor.page is 1
 # Ring C, hidden by the precise eraser: its link to the Index still works
 tap 1250 1100
-expect editor.modal is pages
-expect editor.pages_tab is index
+expect editor.modal is map
+expect editor.map.list is 0
 tap 125 95
 expect editor.modal is none
 expect editor.page is 1
@@ -80,14 +80,14 @@ expect editor.page is 1
 # the later pages one on (z_link_0b_reopen opens it again).
 pentap panel pages
 wait 300
-expect editor.modal is pages
-tap 450 95
+expect editor.modal is map
+tap panel map.pages
 wait 100
 expect editor.pages_tab is pages
 tap 396 296
 wait 100
 expect editor.ticked is 1
-tap 1410 2395
+tap panel pages.copy
 wait 300
 expect editor.modal is none
 expect editor.page is 2

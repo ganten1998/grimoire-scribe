@@ -1,5 +1,5 @@
 //! pagesview.h: the editor's Pages view, which covers the screen: numbered tiles a screenful at a
-//! time (it never reads or draws another page, so it opens at once in a notebook of any length),
+//! time. The UI reads only small cached previews; bounded background jobs render missing ones,
 //! ticks for Delete, a number pad for Go to page..., New page and Copy page. A page that holds a
 //! book page (a notebook annotated from KOReader, annotate.h) says which under its number ("p. 12"),
 //! from the notebook's source.ini, read as the view opens.

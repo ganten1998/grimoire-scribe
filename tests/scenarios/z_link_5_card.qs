@@ -101,9 +101,11 @@ expect editor.ui_at.1380.2370 is linkto.cancel
 expect editor.linkto.3 is p3 current
 shot 03-retarget
 expect editor.ui_at.1381.2078 is linkto.chip.2
-tap 1381 2078
+tap panel linkto.elsewhere
+tap panel elsewhere.current
+tap panel elsewhere.page.5
 wait 100
-expect toast is Linked to the Index.
+expect toast is Linked to Arena.
 expect editor.linkto is 0
 expect editor.link_card.border is 0
 expect editor.undo_kind is link
@@ -111,9 +113,11 @@ expect editor.links is 3 3
 pen leave
 wait 1100
 tap 600 1100
-expect editor.modal is pages
-expect editor.pages_tab is index
-tap 125 95
+expect editor.page is 5
+pentap panel previous
+pentap panel previous
+pentap panel previous
+pentap panel previous
 expect editor.modal is none
 pentap panel undo
 wait 300
@@ -219,7 +223,9 @@ expect editor.links is 3 3
 # Where the card goes: links near the right edge, at the bottom and at the top (each to the Index)
 key 38 0
 pen line 1250 600 1600 700 30 0.6 0.6
-tap 1381 2078
+tap panel linkto.elsewhere
+tap panel elsewhere.current
+tap panel elsewhere.page.5
 wait 100
 expect editor.links is 4 4
 key 38 0
@@ -227,11 +233,15 @@ pen line 300 2250 900 2350 30 0.6 0.6
 expect editor.linkto.dock is top
 expect editor.linkto.rect is 20 173 1820 736
 expect editor.ui_at.1381.387 is linkto.chip.2
-tap 1381 387
+tap panel linkto.elsewhere
+tap panel elsewhere.current
+tap panel elsewhere.page.5
 wait 100
 key 38 0
 pen line 600 250 1200 350 30 0.6 0.6
-tap 1381 2078
+tap panel linkto.elsewhere
+tap panel elsewhere.current
+tap panel elsewhere.page.5
 wait 100
 expect editor.links is 6 6
 pen leave
@@ -246,7 +256,7 @@ expect editor.link_card is 0
 touch down 600 2300
 wait 800
 touch up 600 2300
-expect editor.link_card.rect is 935 1924 780 536
+expect editor.link_card.rect is 289 1549 780 666
 shot 07-card-bottom
 tap 1200 1000
 expect editor.link_card is 0
@@ -273,7 +283,7 @@ touch down 992 1725
 wait 800
 touch up 992 1725
 expect editor.link_card is 1
-expect editor.link_card.rect is 757 1117 780 536
+expect editor.link_card.rect is 757 987 780 666
 shot 10-card-sideways-low
 tap 2200 300
 rotate 0

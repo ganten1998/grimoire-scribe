@@ -214,13 +214,13 @@ fn link_to_offers_its_chips_in_order() {
     let mut lb = LinkBar::default();
     check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "", false) == 0);
     check!(lb.open && lb.mode == LbMode::Pick && !lb.no_pages && lb.selected == -1);
-    check!(chips(&lb) == ["new", "index", "p1", "p3", "p5"]);
+    check!(chips(&lb) == ["new", "elsewhere", "p1", "p3", "p5"]);
     check!(lb.picks[0].kind == PickKind::NewPage && lb.picks[1].kind == PickKind::Index && lb.picks[2].kind == PickKind::Entry);
     check!(lb.picks[3].target == "p30" && lb.picks[3].page == 2);
     // the recent targets, newest first: the open page (p10), the Index, a page gone (p99), a repeat and a fifth left out
     let recent = [t("p20"), t("p10"), t("index"), t("p99"), t("p20"), t("p40"), t("p30"), t("p50"), t("p40")];
     check!(linkbar_build_pick(&mut lb, &nb, &nav, &recent, 10, "", false) == 0);
-    check!(chips(&lb) == ["new", "index", "recent p2", "recent p4", "recent p3", "recent p5", "p1", "p3", "p5"]);
+    check!(chips(&lb) == ["new", "elsewhere", "recent p2", "recent p4", "recent p3", "recent p5", "p1", "p3", "p5"]);
     let mut out = String::new();
     check!(linkbar_probe_pick(&lb, "chips", &mut out, 16) && out == "9");
     check!(linkbar_probe_pick(&lb, "10", &mut out, 16) && out.is_empty());
@@ -237,7 +237,7 @@ fn link_to_offers_its_chips_in_order() {
     check!(linkbar_probe_pick(&lb, "screen", &mut out, 16) && out == "2/2");
     // the Index is current: its chip
     check!(linkbar_build_pick(&mut lb, &nb, &nav, &[], 10, "index", true) == 0);
-    check!(lb.selected == 1 && chips(&lb)[1] == "index current");
+    check!(lb.selected == 1 && chips(&lb)[1] == "elsewhere current");
 }
 
 // Link to...'s card: 316 + 140 R tall for R rows (1 to 3 upright, 1 or 2 sideways), at the bottom 20 px above

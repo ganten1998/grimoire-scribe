@@ -29,7 +29,7 @@ key 16 0
 expect settings.pinch_zoom is 0
 key 16 0
 expect settings.pinch_zoom is 1
-expect editor.panel_rect is 1704 220 128 1626
+expect editor.panel_rect is 1704 220 128 1734
 expect display.presents not clear
 key 17 0
 expect settings.theme is classic

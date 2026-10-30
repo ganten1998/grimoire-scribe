@@ -4,6 +4,8 @@
 # finger's cancel, then the gesture): let go with a Fast refresh as it was pressed, not a Ui one, and nothing
 # is tapped.
 # root: z_bar_0_make
+# settings: shortcuts_enabled=1
+# copy: tests/fixtures/index-keys .
 wait 300
 tap 200 400
 wait 300
@@ -24,7 +26,8 @@ expect touch.contacts is 0
 expect editor.bar is open
 expect editor.bar.peek is 0
 # the Find sheet: a row of it
-tap 255 2370
+tap panel bar.close
+key 34 0
 wait 300
 expect editor.find is go
 tap 487 1725

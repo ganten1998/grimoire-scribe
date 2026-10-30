@@ -44,5 +44,5 @@ swipe 2 1240 900 0 -400
 expect touch.gesture is
 expect editor.modal is none
 shape Z 1100 950 45 600
-expect editor.modal is pages
+expect editor.modal is map
 expect fshape.fired is 1

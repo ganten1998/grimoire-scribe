@@ -11,6 +11,22 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.3: unified Index and notebook links (device checks pending)
+
+Automated development checks cover stable cross-notebook targets, rename/folder-move identity,
+unknown metadata preservation, cache invalidation and corruption, nested destination browsing,
+combined link Undo/Redo, reopening and cross-notebook Back, cancellation and failed saves.
+No physical acceptance of this rework is claimed.
+
+On RC3, check the four shared Index header buttons, default Graph entry and
+opposite-swipe dismissal, graph footer controls, link-only List and notebook group boundaries.
+Check the upward page-status panel, Name page, and Settings cog returning to the same notebook.
+Create links to notebooks in the same folder, nested folders and the root, including matching page
+numbers and notebook names. Cancel at both browser levels; rotate and sleep while selecting.
+Check cached previews appear without blocking taps and update after ink, erasing, Clear and changes
+to image paper. Verify rename/move/reorder, retarget/Undo/Redo, deleted destinations and preservation
+of the origin when storage is full. Test English/Spanish and both styles upright and sideways.
+
 ## 2.0.0-rc.2 (device checks pending)
 
 This candidate replaces the notebook status bar with the small top-left clock corner, makes the

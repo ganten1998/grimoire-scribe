@@ -11,10 +11,10 @@ wait 200
 expect screen is editor
 fpath 1300 1100 800 1100 400
 expect touch.gesture is
-expect editor.modal is pages
+expect editor.modal is map
 expect fshape.fired is 1
 fpath 1300 1100 800 1100 400
-expect editor.modal is pages
+expect editor.modal is map
 expect fshape.trail is
 expect fshape.fired is 0
 key 45 0
@@ -27,6 +27,6 @@ pentap panel tool-picker
 wait 1100
 expect editor.modal is tools
 fpath 1300 1100 800 1100 400
-expect editor.modal not pages
+expect editor.modal not map
 expect fshape.fired is 0
 expect fshape.trail is

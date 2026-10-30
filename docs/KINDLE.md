@@ -837,3 +837,22 @@ with More folders when needed. Folder ZIP exports include descendants and keep t
 PDF mirrors retain their existing filename convention (a slash in a logical folder becomes an
 underscore). Links between pages of one notebook can be made with New link and Choose from the pages.
 The selection stroke disappears; a visible border is ordinary ink drawn separately.
+
+
+## Unified Index and links between notebooks
+
+Tap the notebook page counter or swipe down with two fingers for the Index. Its header is Back,
+Graph, List and Pages. Back returns to the notebook. Graph keeps All, Around and Fit at the bottom;
+List contains existing links grouped by destination notebook and scrolls without footer options.
+Pages manages the current notebook's pages and shows small cached previews as they are generated.
+
+Swipe up with two fingers for page status: the notebook name, current/total page count, its links,
+Name page and Areas. The toolbar's link-plus button makes a link. In Where does the link go?,
+Somewhere Else starts in the current notebook's folder. Use `..` to go up, select a folder or
+notebook, then select a page from its preview grid. Back from the page grid returns to the folder;
+Back from the folder restores the chooser without making a link. Rotation keeps selection open.
+
+A link follows stable notebook/page IDs through renaming, folder moves and page reordering. A
+missing notebook or deleted destination page reports that it is unavailable. Existing Index links
+continue to open the unified Index. Clear page and its Undo/Redo include cross-notebook link areas.
+The notebook toolbar's settings cog opens the main Settings menu; Done returns to the notebook.

@@ -78,12 +78,12 @@ wait 300
 expect settings.link_areas is 0
 expect editor.areas is 0
 expect editor.bar is open
-expect display.presents is fast 940 2300 430 140, ui 940 2300 430 140, ui 297 997 606 906
+expect display.presents is fast 940 2300 880 140, ui 940 2300 880 140, ui 297 997 606 906
 tap 1155 2370
 wait 300
 expect settings.link_areas is 1
 expect editor.areas is 3
-expect display.presents is fast 940 2300 430 140, ui 940 2300 430 140, ui 297 997 606 906
+expect display.presents is fast 940 2300 880 140, ui 940 2300 880 140, ui 297 997 606 906
 shot 05-areas-from-the-bar
 key 37 0
 wait 300

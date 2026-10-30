@@ -740,7 +740,14 @@ contents a PDF reader lists), in notebook order, each opening its page.
 An optional UTF-8 file inside the notebook directory: `# ...`, then one
 `link.<page id>=<seed>,<target>` line per link drawn on a page. The seed is 8 hex digits (a reader
 takes 1 to 8, either case); the target is `index` (the Index) or `p<page id>` (a page of the
-notebook, the id from 1, no leading zeros). The last line for a page id and seed wins.
+notebook, the id from 1, no leading zeros). Current builds also write `n:<notebook ID>:p<page ID>`
+for a page in another notebook. The ID is the notebook directory's stable ID, never a display name,
+folder or arbitrary filesystem path; IDs allow only ASCII letters, digits, `_` and `-`, at most
+23 bytes. Page IDs are nonzero decimal u32 values without leading zeros. Targets have a 64-byte
+buffer including the terminator. Expanded targets are recognized only for this notebook-link
+syntax; other long future target lines remain byte-exact unknown data. Older readers carry these
+link and area lines but cannot follow the new destinations. New links cannot target `index`, but
+existing `index` links remain valid. The last line for a page id and seed wins.
 
 A link made by 2.0.0-beta.5 is the ink drawn around what links: the page's ink strokes (not erase
 strokes) whose seed is the link's; from 2.0.0-beta.6 a new link is drawn with a lasso that leaves no
@@ -1158,3 +1165,14 @@ Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choic
 1 prefer circles/default, 2 circles only), and `shape_links` (on by default). Prefer circles uses
 minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. Link areas retain
 rectangular bounds in links.ini; snapping changes their selection outline and bounds, not QPG data.
+
+
+## Disposable page previews: `.page-previews/`
+
+Each notebook may contain small `p<page ID>.pgm` previews, at most 300 by 400 pixels, and matching
+`.stamp` files. Stamps include the source page file's identity, size and precise modification time,
+plus a template-generation marker. A changed page or template invalidates the preview. The UI reads
+only bounded cached images; a background worker renders missing visible batches, capped at 64 pages.
+Worker writes use process-specific temporary names, verify the source did not change during rendering,
+and publish image then stamp. Preview errors never replace or modify page files. The entire cache
+can be removed without losing notebook data; page IDs keep previews correct when pages are reordered.

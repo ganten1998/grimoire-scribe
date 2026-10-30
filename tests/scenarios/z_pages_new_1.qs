@@ -24,6 +24,7 @@ expect editor.pages is 3
 expect editor.page is 3
 # Page 2 goes onto sheet music: New page after it is page 3, on the notebook's medium rule.
 pentap panel pages
+tap panel map.pages
 wait 300
 expect editor.modal is pages
 tap 703 340
@@ -35,10 +36,11 @@ pentap 1066 1027
 wait 300
 expect editor.paper is 3
 pentap panel pages
+tap panel map.pages
 wait 300
 expect editor.tile.2 is Page 2 (open)
 shot 01-pages-new-copy-off
-tap 450 2395
+tap panel pages.new
 wait 300
 expect editor.modal is none
 expect editor.page is 3
@@ -52,17 +54,19 @@ expect editor.page is 4
 expect editor.strokes is 1
 # Pages 1 and 2 ticked: Copy page is off, and New page goes after page 2, the last ticked.
 pentap panel pages
+tap panel map.pages
 wait 300
 tap 396 296
 tap 848 296
 wait 100
 expect editor.ticked is 2
 shot 02-two-ticked
-tap 1410 2395
+# Copy remains disabled with multiple pages selected.
+tap 665 2395
 wait 100
 expect editor.modal is pages
 expect editor.pages is 4
-tap 450 2395
+tap panel pages.new
 wait 300
 expect editor.modal is none
 expect editor.page is 3
@@ -70,12 +74,13 @@ expect editor.pages is 5
 expect editor.strokes is 0
 # Copy page: page 2 (ink on sheet music) ticked alone is copied right after it, as page 3.
 pentap panel pages
+tap panel map.pages
 wait 300
 tap 848 296
 wait 100
 expect editor.ticked is 1
 shot 03-one-ticked-copy-on
-tap 1410 2395
+tap panel pages.copy
 wait 300
 expect editor.modal is none
 expect editor.page is 3
@@ -94,6 +99,7 @@ expect editor.strokes is 1
 expect editor.paper is 3
 # Page 1 is still the first: the Library's card.
 pentap panel pages
+tap panel map.pages
 wait 300
 expect editor.tile.1 is Page 1
 tap 251 340
@@ -104,21 +110,23 @@ expect editor.strokes is 1
 rotate 1
 wait 300
 pentap panel pages
+tap panel map.pages
 wait 300
 expect editor.modal is pages
 shot 04-pages-landscape
-tap 720 1775
+tap panel pages.new
 wait 300
 expect editor.modal is none
 expect editor.page is 2
 expect editor.pages is 7
 expect editor.strokes is 0
 pentap panel pages
+tap panel map.pages
 wait 300
 tap 340 296
 wait 100
 expect editor.ticked is 1
-tap 1760 1775
+tap panel pages.copy
 wait 300
 expect editor.page is 2
 expect editor.pages is 8

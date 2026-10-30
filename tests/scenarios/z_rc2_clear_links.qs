@@ -28,7 +28,7 @@ expect editor.strokes is 1
 tap panel redo
 expect editor.links is 0 0
 expect editor.strokes is 0
-# The toolbar starts an ink-free, snapped link area, including a target of The Index.
+# The toolbar starts an ink-free, snapped link area, targeting an existing notebook page.
 tap panel links
 expect editor.link_mode is 1
 pen down 500 900 0.6
@@ -44,8 +44,9 @@ pen up 500 900
 pen leave
 expect editor.linkto is pick
 expect editor.link_area is 550 850 500 500
-tap panel linkto.index
-expect editor.link.1 is index
+tap panel linkto.pages
+tap panel pages.page.2
+expect editor.link.1 is p2
 expect editor.links is 1 1
 expect editor.strokes is 0
 wait 1100

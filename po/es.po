@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 15:30-0500\n"
+"POT-Creation-Date: 2026-10-29 19:51-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -71,7 +71,7 @@ msgstr "Herramientas"
 msgid "Pages..."
 msgstr "Páginas..."
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/mapview.rs
 msgid "Pages"
 msgstr "Páginas"
 
@@ -79,7 +79,7 @@ msgstr "Páginas"
 msgid "Index..."
 msgstr "Índice..."
 
-#: rust/src/actions.rs rust/src/linkbar.rs rust/src/mapview.rs
+#: rust/src/actions.rs rust/src/mapview.rs
 msgid "Index"
 msgstr "Índice"
 
@@ -1235,7 +1235,8 @@ msgstr ""
 "solo lectura."
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
-#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/pagesview.rs
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/nav.rs
+#: rust/src/notebookpicker.rs rust/src/pagesview.rs
 #, c-format
 msgid "Page %d"
 msgstr "Página %d"
@@ -1350,6 +1351,13 @@ msgstr "Nombre de la página nueva"
 msgid "Could not save the link."
 msgstr "No se pudo guardar el enlace."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+#. the page with this name in the Index (%s).
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to %s."
+msgstr "Enlazado con %s."
+
 #. TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
 #. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
 #. change, redraw or delete it).
@@ -1363,13 +1371,6 @@ msgstr "Enlazado. Tócalo con un dedo para ir; mantenlo pulsado para más."
 #, c-format
 msgid "Linked to the new page %d."
 msgstr "Enlazado con la nueva página %d."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
-#. the page with this name in the Index (%s).
-#: rust/src/editor.rs
-#, c-format
-msgid "Linked to %s."
-msgstr "Enlazado con %s."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
 #. page %d, which has no name in the Index.
@@ -1417,12 +1418,6 @@ msgstr "Cambio de enlace deshecho."
 #: rust/src/editor.rs
 msgid "Link change redone."
 msgstr "Cambio de enlace rehecho."
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
-#. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
-#: rust/src/editor.rs
-msgid "That link's page is not in this notebook."
-msgstr "La página de ese enlace no está en este cuaderno."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
 #. emptied page %d's name, which takes it out of the Index.
@@ -1489,6 +1484,12 @@ msgstr "Pausa para formas: Normal (0,55 s)"
 #: rust/src/editor.rs
 msgid "No shape in the last stroke."
 msgstr "No hay una forma en el último trazo."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
+#. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
+#: rust/src/editor.rs
+msgid "That link's page is not in this notebook."
+msgstr "La página de ese enlace no está en este cuaderno."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
 #. was tapped on a page from a newer Grimoire, which cannot be changed.
@@ -1591,7 +1592,8 @@ msgstr ""
 #. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
 #: rust/src/editor.rs
 msgid "Here two fingers move the page. Zoom out for page and link swipes."
-msgstr "Aquí dos dedos mueven la página. Aleja para deslizar entre páginas y enlaces."
+msgstr ""
+"Aquí dos dedos mueven la página. Aleja para deslizar entre páginas y enlaces."
 
 #. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
 #. about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
@@ -1611,6 +1613,22 @@ msgid ""
 msgstr ""
 "Forma hecha. Deshacer la quita; el menú de formas del panel tiene las "
 "opciones."
+
+#: rust/src/editor.rs
+msgid "Could not read the notebooks."
+msgstr "No se pudieron leer los cuadernos."
+
+#: rust/src/editor.rs
+msgid "That notebook or page is no longer available."
+msgstr "Ese cuaderno o esa página ya no están disponibles."
+
+#: rust/src/editor.rs
+msgid "Could not save the links."
+msgstr "No se pudieron guardar los enlaces."
+
+#: rust/src/editor.rs
+msgid "Could not open that page."
+msgstr "No se pudo abrir esa página."
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
 #. go to a page by typing its number or a name of the Index.
@@ -2968,41 +2986,16 @@ msgstr "Página no disponible"
 msgid "×%d"
 msgstr "×%d"
 
-#. TRANSLATORS: the Links bar's chip, while a page is on show above it, that shows the page the bar began
-#. on again: a single angle quote and the page's number (up to 380 px at 44 px in bold).
 #: rust/src/linkbar.rs
 #, c-format
 msgid "‹ Page %d"
 msgstr "‹ Página %d"
 
-#. TRANSLATORS: the Links bar's header while a page is on show above it: %s is its name (or "Page 3"), cut
-#. to fit; about 1000 px at 44 px.
-#: rust/src/linkbar.rs
-#, c-format
-msgid "Showing %s. Tap the page to stay."
-msgstr "Mostrando %s. Toca la página para quedarte."
-
-#. TRANSLATORS: the Links bar's chip, with no page on show, that looks at the page the last link, Find or
-#. Pages view left: %s is its name (or "Page 3"); up to 560 px at 44 px in bold.
 #: rust/src/linkbar.rs
 #, c-format
 msgid "Back to %s"
 msgstr "Volver a %s"
 
-#: rust/src/linkbar.rs
-#, c-format
-msgid "%d page links here"
-msgid_plural "%d pages link here"
-msgstr[0] "%d página enlaza aquí"
-msgstr[1] "%d páginas enlazan aquí"
-
-#. TRANSLATORS: the Links bar's header: %d is how many links the open page has (about 700 px at 44 px in bold).
-#: rust/src/linkbar.rs
-#, c-format
-msgid "Links on this page (%d)"
-msgstr "Enlaces de esta página (%d)"
-
-#. TRANSLATORS: a second line of the Links bar's header the first three times it opens, at 34 px (about 1300 px).
 #: rust/src/linkbar.rs
 msgid "Tap a link to look. Tap the page to stay."
 msgstr "Toca un enlace para mirarlo. Toca la página para quedarte."
@@ -3012,20 +3005,10 @@ msgstr "Toca un enlace para mirarlo. Toca la página para quedarte."
 msgid "No links on this page yet."
 msgstr "Esta página aún no tiene enlaces."
 
-#. TRANSLATORS: the Links bar's four tool buttons, each under its icon in caps at 34 px (about 400 px
-#. wide): look for a page by its number or name; draw a new link; show the link areas on the page; the
-#. Index.
 #: rust/src/linkbar.rs
-msgid "Go to"
-msgstr "Ir a"
+msgid "Name page"
+msgstr "Nombrar página"
 
-#. TRANSLATORS: the Links bar's tool button that starts a new link (400 px at 34 px caps, under its icon).
-#: rust/src/linkbar.rs
-msgid "New link"
-msgstr "Nuevo enlace"
-
-#. TRANSLATORS: the Links bar's tool button that shows or hides the dotted link areas on the page (400 px at
-#. 34 px caps, under its eye; the eye is dimmed while they are hidden).
 #: rust/src/linkbar.rs
 msgid "Areas"
 msgstr "Áreas"
@@ -3035,6 +3018,10 @@ msgstr "Áreas"
 #: rust/src/linkbar.rs
 msgid "New page..."
 msgstr "Página nueva..."
+
+#: rust/src/linkbar.rs
+msgid "Somewhere Else"
+msgstr "En otro lugar"
 
 #. TRANSLATORS: the header of Link to..., the card that picks where a new link goes (about 1100 px at 44 px
 #. in bold).
@@ -3110,6 +3097,14 @@ msgstr "Para cambiar uno, mantenlo pulsado en la página."
 msgid "Not enough memory for the map."
 msgstr "No hay memoria suficiente para el mapa."
 
+#: rust/src/mapview.rs rust/src/nav.rs
+msgid "Page unavailable"
+msgstr "Página no disponible"
+
+#: rust/src/mapview.rs rust/src/nav.rs
+msgid "Notebook unavailable"
+msgstr "Cuaderno no disponible"
+
 #. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
 #. annotated from KOReader): "p. 12". 355 px at 34 px.
 #: rust/src/mapview.rs rust/src/pagesview.rs
@@ -3128,14 +3123,6 @@ msgstr[1] "Aún sin enlaces: %d páginas. Mostrar"
 #, c-format
 msgid "Not linked yet (%d)"
 msgstr "Sin enlazar (%d)"
-
-#: rust/src/mapview.rs rust/src/pagesview.rs
-msgid "Graph"
-msgstr "Grafo"
-
-#: rust/src/mapview.rs
-msgid "List"
-msgstr "Lista"
 
 #: rust/src/mapview.rs
 msgid "All"
@@ -3165,6 +3152,23 @@ msgstr "Sin enlazar: Ocultar"
 #: rust/src/mapview.rs
 msgid "Tidy up"
 msgstr "Reorganizar"
+
+#: rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Graph"
+msgstr "Grafo"
+
+#: rust/src/mapview.rs
+msgid "List"
+msgstr "Lista"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Links from %s"
+msgstr "Enlaces de %s"
+
+#: rust/src/mapview.rs
+msgid "No links in this notebook yet."
+msgstr "Este cuaderno aún no tiene enlaces."
 
 #. TRANSLATORS: the title of the sheet that builds a music paper from parts.
 #: rust/src/musicbuild.rs
@@ -3200,6 +3204,14 @@ msgstr "%d de %d"
 #: rust/src/musicbuild.rs
 msgid "Use layout"
 msgstr "Usar este diseño"
+
+#: rust/src/notebookpicker.rs
+msgid "Notebooks"
+msgstr "Cuadernos"
+
+#: rust/src/notebookpicker.rs
+msgid "No notebooks here."
+msgstr "No hay cuadernos aquí."
 
 #. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
 #: rust/src/pagesview.rs
@@ -3276,6 +3288,10 @@ msgstr "Añadir enlace"
 #: rust/src/pagesview.rs
 msgid "Copy page"
 msgstr "Copiar página"
+
+#: rust/src/pagesview.rs
+msgid "Go to"
+msgstr "Ir a"
 
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
@@ -4279,6 +4295,23 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#, c-format
+#~ msgid "Showing %s. Tap the page to stay."
+#~ msgstr "Mostrando %s. Toca la página para quedarte."
+
+#, c-format
+#~ msgid "%d page links here"
+#~ msgid_plural "%d pages link here"
+#~ msgstr[0] "%d página enlaza aquí"
+#~ msgstr[1] "%d páginas enlazan aquí"
+
+#, c-format
+#~ msgid "Links on this page (%d)"
+#~ msgstr "Enlaces de esta página (%d)"
+
+#~ msgid "New link"
+#~ msgstr "Nuevo enlace"
 
 #~ msgid "Status display"
 #~ msgstr "Indicador de estado"

@@ -55,4 +55,24 @@ wait 1100
 tap 1200 1200
 expect editor.notebook_id is B
 expect editor.page is 2
+# Delete only the destination page; its old link must fail safely without changing the origin.
+tap panel pages
+tap panel map.pages
+waitbg
+tap 828 296
+tap panel pages.delete
+tap panel pages.back
+key 48 0
+expect editor.notebook_id is A
+expect editor.pages is 2
+pen leave
+wait 1100
+tap 1200 1200
+expect editor.notebook_id is A
+expect editor.links is 3 3
+expect toast not
+tap panel pages
+expect editor.map.foreign is 2
+shot 05-deleted-destination
+tap panel map.back
 quit

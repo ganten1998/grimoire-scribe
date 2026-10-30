@@ -494,9 +494,15 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         right = prev.x - u(16.0);
     }
     let ts=ui_text_size();
-    let page=if peek>0 {peek}else{lb.origin+1};
-    let title=format!("{} · {} / {}",nb.name.as_str(),page,nb.npages());
-    font_draw_left_name(c,FontFace::Bold,ts,Rect::new(head.x,hy,right-head.x,bh),&title,0);
+    let page=if peek>0 {peek}else{lb.origin+1};let mut left=head.x;
+    let back_text=if peek>0 {cformat!(tr("‹ Page %d"),lb.back_label)}else if !lb.back_to.is_empty(){cformat!(tr("Back to %s"),lb.back_to.as_str())}else{String::new()};
+    if !back_text.is_empty(){let bw=ui_chip_w(FontFace::Bold,ts,&back_text,bh,u(200.0),u(380.0));let back=Rect::new(left,hy,bw,bh);ui_button(c,back,IconKind::None,&back_text,ButtonStyle::Plain);hits_add(&mut lb.hits,back,LB_BACK,0);left+=bw+u(20.0);}
+    let count=Rect::new(right-u(230.0),hy,u(230.0),bh);
+    font_draw_centered(c,FontFace::Bold,ts,count,&format!("{} / {}",page,nb.npages()),0);
+    font_draw_left_name(c,FontFace::Bold,ts,Rect::new(left,hy,(count.x-left-u(15.0)).max(0),bh),nb.name.as_str(),0);
+    if lb.header_hint && peek==0 {
+        font_draw_left(c,FontFace::Regular,ui_small_size(),Rect::new(head.x,hy+bh-u(4.0),head.w,u(60.0)),tr("Tap a link to look. Tap the page to stay."),0);
+    }
     // The chips, or why there are none.
     let cy = chips_y(lb);
     let ch = u(124.0);
@@ -964,7 +970,7 @@ pub fn linkbar_probe_pick(lb: &LinkBar, key: &str, out: &mut String, cap: usize)
             Some(p) => {
                 let mut v = match p.kind {
                     PickKind::NewPage => "new".to_string(),
-                    PickKind::Index => "index".to_string(),
+                    PickKind::Index => "elsewhere".to_string(),
                     PickKind::Recent => cformat!("recent p%d", p.page + 1),
                     PickKind::Entry => cformat!("p%d", p.page + 1),
                 };
@@ -994,7 +1000,7 @@ pub fn linkbar_control_point(lb:&LinkBar,name:&str)->Option<(f32,f32)> {
             _=>return None,
         }
     } else {
-        (match name {"name"=>LB_NAME,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)
+        if let Some(chip)=name.strip_prefix("chip.") {(LB_CHIP,chip.parse::<i32>().ok()?-1)} else {(match name {"name"=>LB_NAME,"back"=>LB_BACK,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)}
     };
     lb.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
 }

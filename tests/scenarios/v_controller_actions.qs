@@ -57,17 +57,18 @@ expect editor.tool is calligraphy
 key 607 0 1
 wait 100
 expect editor.modal is none
+# The legacy Pages and Index actions now own the same unified Index menu.
 key 605 0 1
 wait 200
-expect editor.modal is pages
-expect editor.pages_tab is pages
+expect editor.modal is map
+expect editor.map.list is 0
 key 606 0 1
 wait 200
-expect editor.modal is pages
-expect editor.pages_tab is index
+expect editor.modal is none
 key 605 0 1
 wait 200
-expect editor.pages_tab is pages
+expect editor.modal is map
+expect editor.map.list is 0
 key 608 0 1
 wait 200
 expect editor.modal is paper
@@ -185,9 +186,7 @@ wait 100
 expect editor.modal is none
 # Close menu while the strip is up, and while the Pages view picks where a new link goes: no link is
 # made (the lasso left no ink, so the strokes stay as they were)
-key 606 0 1
-wait 200
-tap 1410 2395
+tap panel links
 wait 100
 expect editor.link_mode is 1
 key 613 0 1
@@ -195,9 +194,7 @@ wait 100
 expect editor.link_mode is 0
 expect toast is No link made.
 expect editor.strokes is 2
-key 606 0 1
-wait 200
-tap 1410 2395
+tap panel links
 wait 100
 pen line 300 1000 900 1200 30 0.6 0.6
 wait 200
@@ -230,7 +227,7 @@ pen line 300 1300 900 1320 10 0.6 0.7
 wait 100
 key 605 0 1
 wait 200
-expect editor.modal is pages
+expect editor.modal is map
 key 612 0 1
 wait 300
 expect screen is editor

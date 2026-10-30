@@ -3,7 +3,7 @@
 # root: z_bar_0_make
 # A press held on a Links bar row (PHASE2 8.10, D1): the long-press card for all of the entry's links on the page,
 # above the bar in the chip's column, with the heavy border on each; the bar stays under it. Its rows act on all
-# of them in one step: Delete 2 links (one Undo brings both back), Change where they go... (both to the Index,
+# of them in one step: Delete 2 links (one Undo brings both back), Change where they go... (both to page 5,
 # one Undo). While the bar looks at another page, the hold looks at the bar's own page again first, in the page
 # area's GL16 (no DU strips). Two fingers down close the card and the bar together.
 wait 3700
@@ -68,7 +68,7 @@ expect editor.bar.peek is 0
 expect editor.page is 1
 expect display.presents is fast 40 2156 878 124, ui 0 0 1860 2460, ui 40 1320 878 960
 shot 02-card-after-peek
-# Change where they go...: both to the Index in one step, one Undo brings both back
+# Change where they go...: both to page 5 in one step, one Undo brings both back
 expect editor.ui_at.430.1643 is card.retarget
 tap 430 1643
 wait 100
@@ -77,12 +77,14 @@ expect editor.linkto is pick
 expect editor.linkto.rect is 20 173 1820 596
 expect editor.linkto.3 is p3 current
 expect editor.ui_at.1381.387 is linkto.chip.2
-tap 1381 387
+tap panel linkto.elsewhere
+tap panel elsewhere.current
+tap panel elsewhere.page.5
 wait 100
-expect toast is Linked to the Index.
+expect toast is Linked to Arena.
 expect editor.bar is open
 expect editor.bar.entries is 2
-expect editor.bar.1 is index
+expect editor.bar.1 is p5 x2
 expect editor.bar.2 is p2
 expect editor.undo_kind is link
 tap 1715 2026
@@ -91,9 +93,11 @@ wait 300
 pen leave
 wait 1100
 tap 600 1850
-expect editor.modal is pages
-expect editor.pages_tab is index
-tap 125 95
+expect editor.page is 5
+pentap panel previous
+pentap panel previous
+pentap panel previous
+pentap panel previous
 wait 300
 tap 600 1450
 expect editor.page is 2

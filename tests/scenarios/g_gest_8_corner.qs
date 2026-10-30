@@ -79,7 +79,7 @@ frame 5
 finger 2 up 360 460
 frame
 expect touch.gesture is 2.down
-expect editor.modal is pages
+expect editor.modal is map
 expect settings.status_on is 0
 swipe 2 930 1400 0 -400
 expect editor.modal is none

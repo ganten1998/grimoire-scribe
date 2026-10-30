@@ -104,6 +104,7 @@ expect editor.index_rows is 1
 # rows it offers change, the card of rows between the two; a number the notebook does not have is a line that is
 # not a button, and Done leaves the sheet as it is
 pentap panel pages
+tap panel map.pages
 wait 400
 expect editor.modal is pages
 tap 930 2395

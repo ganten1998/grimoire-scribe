@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+## 2.0.0-rc.3 (2026-10-29)
+
+- Unify the Index under Back, Graph, List and Pages. Move graph view options to the bottom; show existing links in List without redundant footer controls.
+- Replace the upward panel's Add link and Graph buttons with page status and naming; add a main Settings cog in the notebook toolbar.
+- Replace new Index link destinations with Somewhere Else: browse folders and choose a page in another notebook. Stable notebook/page IDs survive renames and moves; Graph and List separate notebook destinations.
+- Cache small page previews for page management and link destinations; generate missing visible previews in bounded background jobs, with stale-cache checks.
+
 ## 2.0.0-rc.2 (2026-10-29)
 
 - Replace the notebook status bar with a small enabled top-left clock corner; remove the Display mode selector.

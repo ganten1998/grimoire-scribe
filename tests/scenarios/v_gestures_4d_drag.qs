@@ -21,12 +21,12 @@ pen down 500 1000 0.6
 expect pen.gesture is Button.drag
 expect display.ink is 0
 expect display.pen_mode is 0
-expect editor.modal is pages
+expect editor.modal is map
 pen move 900 1200 0.6
 expect display.ink is 0
 pen up 900 1200
 side off
 wait 100
-expect editor.modal is pages
+expect editor.modal is map
 expect editor.strokes is 1
 expect display.ink is 0

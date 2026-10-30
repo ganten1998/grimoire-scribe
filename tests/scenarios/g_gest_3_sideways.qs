@@ -21,7 +21,7 @@ expect editor.scale is 0.75
 expect editor.zoomed is 0
 expect editor.scrolls is 0 0
 swipe 2 1240 700 0 400
-expect editor.modal is pages
+expect editor.modal is map
 expect touch.gesture is 2.down
 swipe 2 1240 1300 0 -400
 expect editor.modal is none

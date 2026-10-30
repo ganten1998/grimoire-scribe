@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release 2.0.0-rc.2.** Earlier builds are in daily use on
+> **Pre-release 2.0.0-rc.3.** Earlier builds are in daily use on
 > Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -95,17 +95,15 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     left (a left hand) and the nib mirrors. Hold the pen upright and it keeps the 45 degree nib.
 - **The floating panel** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
   it anywhere; tap the corner arrows to fold it into a small box.
-- **Pen button**: hold it to highlight (or erase; Settings), click it three times to clear the page.
-- **Pages**: tap the page counter for a fast numbered grid, or **Go to page...** for a number pad.
-  The grid reads no other pages. Tap a tile to open it, or tick pages and delete them.
-  **New page** inserts a blank note after the open page or the last ticked page. Tick one page
-  and choose **Copy page** to duplicate its ink and paper right after it. Annotated book pages
-  show their source page number under the tile.
-  The **Index** tab lists named sections in page order. Choose **Name this page** to add the
-  open page, or rename it; an empty name removes it from the Index. Tap a section to jump there,
-  without adding controls over your writing. Names stay attached when pages are inserted or deleted.
-  A notebook ZIP keeps the section names too, and the notebook's PDF lists them as its table of
-  contents.
+- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
+  hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
+- **The Index**: tap the page counter or swipe down with two fingers. **Graph**, **List** and
+  **Pages** share one navigation bar; Back returns to the notebook. Graph groups destinations by
+  notebook, with All, Around and Fit at the bottom. List shows existing links. Pages has small
+  cached previews and controls for adding, copying, selecting and deleting pages.
+  Swipe up with two fingers for the page-status panel: notebook name, page count, link areas and
+  **Name page**. Page names stay attached when pages move and appear in the PDF table of contents.
+  The toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
 - **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
   browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
   a phone). The browser can fit the screen, go full screen, float it over your other windows
@@ -113,14 +111,17 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
-- **Links**: in the Index tab choose **Add a link**, draw around what should link (a box, a ring,
-  an underline), then tap the page it goes to, or **The Index**. A finger's tap on it later turns to
-  that page; hold a finger on it to change where it goes or remove it (the ink stays). Erasing or
-  undoing the ink takes the link away. In the notebook's PDF the links work too.
-  A page made by a newer Grimoire opens read-only (see Moving between versions).
-- **Clock and battery**: tap the top left corner of a notebook page with a finger to show the time
+- **Links**: tap the toolbar's link-plus button and draw around the area. Choose a page in this
+  notebook, or **Somewhere Else** to browse folders, pick another notebook and choose its page.
+  The selector starts in the current notebook's folder and shows cached page previews. Selection
+  strokes leave no ink. Draw a visible border separately if desired. A finger tap follows the link;
+  hold it to change its destination, redraw its area or delete it. Link edits have Undo/Redo.
+  Notebook IDs and page IDs keep cross-notebook links attached through renames, folder moves and
+  page reordering. Ordinary erasing leaves links intact; Clear page removes them with the ink.
+  Existing links to the old Index remain valid and open the unified Index.
+- **Clock and battery**: enabled by default, small and at the top left. It shows the time
   and a small battery with its percent (a bolt over it while it charges), in a box over the page;
-  tap it again to hide it. It shows on the notebook page only, never goes into a page, a PDF or
+  tap the corner to hide or show it. It shows on the notebook page only, never goes into a page, a PDF or
   Live view, and waits while the pen is near. Settings > Display sets its size and which corner it
   sits in (see docs/KINDLE.md).
 - **Pinch** to zoom up to 4x, or inward to return to the fitted page view. Grimoire turns with the Kindle (switchable).

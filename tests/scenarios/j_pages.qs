@@ -27,6 +27,7 @@ pen curve 300 500 40 60 0.7 5
 wait 200
 expect editor.strokes is 1
 pentap panel pages
+tap panel map.pages
 wait 400
 shot 01-pages-view
 expect editor.modal is pages
@@ -37,7 +38,7 @@ tap 1700 296
 wait 200
 shot 02-ticked-2-and-4
 expect editor.ticked is 2
-tap 1630 95
+tap panel pages.delete
 expect toast has Deleted 2 pages
 wait 400
 shot 03-after-delete
@@ -51,12 +52,13 @@ expect editor.modal is none
 expect editor.page is 1
 expect editor.strokes is 1
 pentap panel pages
+tap panel map.pages
 wait 400
 expect editor.modal is pages
-tap 1250 95
+tap panel pages.all
 wait 200
 expect editor.ticked is 3
-tap 1630 95
+tap panel pages.delete
 expect toast has Deleted 3 pages
 wait 400
 shot 05-all-deleted

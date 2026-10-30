@@ -9,25 +9,28 @@ wait 500
 expect screen is editor
 expect editor.pages is 1
 pentap panel pages
+tap panel map.pages
 wait 200
 expect editor.tile.1 is Page 1 (open) | p. 12
-tap 450 2395
+tap panel pages.new
 wait 200
 expect editor.page is 2
 expect editor.pages is 2
 expect editor.paper is 4
 expect editor.strokes is 0
 pentap panel pages
+tap panel map.pages
 wait 200
 expect editor.tile.1 is Page 1 | p. 12
 expect editor.tile.2 is Page 2 (open)
 tap 396 296
-tap 1410 2395
+tap panel pages.copy
 wait 200
 expect editor.page is 2
 expect editor.pages is 3
 expect annotate.role is document
 pentap panel pages
+tap panel map.pages
 wait 200
 expect editor.tile.1 is Page 1 | p. 12
 expect editor.tile.2 is Page 2 (open)

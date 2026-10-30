@@ -11,7 +11,7 @@ wait 200
 pen hover 100 1200
 swipe 2 1200 1200 0 400 1 295 0
 expect touch.gesture is 2.down
-expect editor.modal is pages
+expect editor.modal is map
 pen leave
 wait 1100
 swipe 2 1200 1500 0 -400

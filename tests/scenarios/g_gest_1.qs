@@ -26,7 +26,7 @@ wait 1100
 expect touch.gesture is
 expect display.presents not clear
 swipe 2 930 900 0 400
-expect editor.modal is pages
+expect editor.modal is map
 expect touch.gesture is 2.down
 expect display.presents is full 0 0 1860 2480
 swipe 2 930 1400 0 -400

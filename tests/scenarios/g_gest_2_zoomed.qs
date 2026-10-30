@@ -52,7 +52,7 @@ expect touch.gesture is
 # the Pages view does not pan: the same drag is a swipe, and two fingers up close it
 pentap panel pages
 wait 200
-expect editor.modal is pages
+expect editor.modal is map
 expect editor.scrolls is 0 0
 swipe 2 930 1400 0 -400
 expect editor.modal is none

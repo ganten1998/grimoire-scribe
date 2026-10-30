@@ -1229,6 +1229,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
     if let Some(n)=name.strip_prefix("pages."){return pagesview_control_point(&s.pv,n);}
+    if name=="elsewhere.current" {return s.destination.point(&format!("book.{}",s.nb.id));}
     if let Some(n)=name.strip_prefix("elsewhere."){return s.destination.point(n);}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
     if let Some(control)=name.strip_prefix("linkto."){return linkbar_control_point(&s.lt,control);}
@@ -2728,7 +2729,8 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
         s.migrate_entry(e);
     }
     s.page_dirty = false;
-    s.info_dirty = false;
+    s.info_dirty = requested.is_some() && s.nb.last_page != s.index;
+    if s.info_dirty {s.nb.last_page=s.index;}
     s.changed = false;
     if s.page_canvas.px.is_empty() && canvas_init(&mut s.page_canvas, s.pgw, s.pgh) != 0 {
         return;
@@ -5833,6 +5835,10 @@ fn bar_show(a: &mut App, count_open: bool) {
     lb.back_label = s.index + 1;
     if let Some((_, label)) = s.back_top() {
         lb.back_to.set_cut(&label);
+    } else if let Some((id,pid))=s.notebook_back.last() {
+        if let Some(label)=nav_target_label(&nav_notebook_target(id.as_str(),*pid).unwrap_or_default()) {
+            lb.back_to.set_cut(&label);
+        }
     }
     linkbar_layout(&mut lb, aw, ah);
     let rect = lb.rect;
@@ -6124,6 +6130,8 @@ fn bar_back(a: &mut App) {
         app_invalidate(a, rect_union(area, bar), RefreshMode::Ui);
     } else if let Some((t, _)) = s.back_top() {
         peek_page(a, t, -1, true);
+    } else if !s.notebook_back.is_empty() {
+        return_to_notebook(a);
     }
 }
 
@@ -6712,10 +6720,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         pages_name(a);
     } else if action == SHORTCUT_GO_BACK {
         if ed_ref(a).back.is_empty() && !ed_ref(a).notebook_back.is_empty() {
-            if !save_page(a){return false;}
-            let mut stack=std::mem::take(&mut ed(a).notebook_back);
-            if let Some((id,pid))=stack.pop(){editor_open_notebook_at(a,id.as_str(),pid,false);ed(a).notebook_back=stack;}
-            return true;
+            return return_to_notebook(a);
         }
         // Back to the page the last link, Find or Pages view left: the newest on the list that is still
         // in the notebook and is not the page on show, which is not pushed again.
@@ -10332,6 +10337,23 @@ fn destination_open(a:&mut App) {
 }
 fn follow_target(a:&mut App,target:&str)->bool {
     if let Some((id,pid))=nav_external_target(target) {
+        open_external_page(a,id,pid,true)
+    } else if target=="index" {map_show(a,false);ed_ref(a).map.open}
+    else {
+        let l=NavLink{target:FixedStr::from_str(target),..Default::default()};let to=nav_link_page(&l,&ed_ref(a).nb);
+        if to>=0 {go_to_page_pushing(a,to)}else{app_toast(a,tr("That link's page is not in this notebook."),3000);false}
+    }
+}
+
+// Both following a link and returning across notebooks must save the current links and validate
+// the requested page before closing the editor that owns the current notebook.
+fn return_to_notebook(a:&mut App)->bool {
+    let Some(&(id,pid))=ed_ref(a).notebook_back.last() else {return false;};
+    let mut stack=ed_ref(a).notebook_back.clone();stack.pop();
+    if !open_external_page(a,id.as_str(),pid,false) {return false;}
+    ed(a).notebook_back=stack;true
+}
+fn open_external_page(a:&mut App,id:&str,pid:u32,push_origin:bool)->bool {
         let mut nb=NotebookInfo::default();
         if store_load_info(id,&mut nb)!=0 || !nb.page_ids.contains(&pid) {app_toast(a,tr("That notebook or page is no longer available."),3000);return false;}
         if ed_ref(a).nb.id==id {return nb.page_ids.iter().position(|&p|p==pid).is_some_and(|i|go_to_page_pushing(a,i as i32));}
@@ -10340,11 +10362,7 @@ fn follow_target(a:&mut App,target:&str)->bool {
         let i=nb.page_ids.iter().position(|&p|p==pid).unwrap();let mut checked=None;
         if store_read_page(&nb,i as i32,&mut checked)!=0 {app_toast(a,tr("Could not open that page."),3000);return false;}drop(checked);
         let origin=(ed_ref(a).nb.id,ed_ref(a).open_pid());
-        let mut back=std::mem::take(&mut ed(a).notebook_back);if back.len()>=32 {back.remove(0);}back.push(origin);
+        let mut back=std::mem::take(&mut ed(a).notebook_back);
+        if push_origin {if back.len()>=32 {back.remove(0);}back.push(origin);}
         editor_open_notebook_at(a,id,pid,false);ed(a).notebook_back=back;ed_ref(a).open&&ed_ref(a).nb.id==id&&ed_ref(a).open_pid()==pid
-    } else if target=="index" {map_show(a,false);ed_ref(a).map.open}
-    else {
-        let l=NavLink{target:FixedStr::from_str(target),..Default::default()};let to=nav_link_page(&l,&ed_ref(a).nb);
-        if to>=0 {go_to_page_pushing(a,to)}else{app_toast(a,tr("That link's page is not in this notebook."),3000);false}
-    }
 }

@@ -37,6 +37,6 @@ expect editor.bar is open
 shot 04-page-status
 tap panel bar.name
 expect editor.modal is pages
-expect editor.keyboard is Page name
+expect editor.keyboard not
 key 1 0
 quit

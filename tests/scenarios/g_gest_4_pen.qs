@@ -14,7 +14,7 @@ pen leave
 wait 350
 swipe 2 1300 1500 0 400
 expect touch.gesture is 2.down
-expect editor.modal is pages
+expect editor.modal is map
 expect touch.reject is
 swipe 2 1300 1500 0 -400
 expect editor.modal is none

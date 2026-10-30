@@ -326,6 +326,7 @@ l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS))
 	done; done; \
 	if [ -n "$$failed" ]; then echo "L10N CHECK FAILED:$$failed"; exit 1; fi; \
 	echo "l10n-check: every language fits ($(L10N_LANGS))"
+	@if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then BUILD=$(BUILD) python3 tests/index_l10n_check.py; fi
 
 # ---- host tools (rust/src/bin: tools/*.c's ports) ----
 tools: $(BUILD)/host/grimoire-export $(BUILD)/host/tgstudy

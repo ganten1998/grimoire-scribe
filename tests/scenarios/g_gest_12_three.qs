@@ -10,4 +10,4 @@ wait 200
 expect screen is editor
 tapn 3 930 1100
 expect touch.gesture is 3.tap
-expect editor.modal is pages
+expect editor.modal is map

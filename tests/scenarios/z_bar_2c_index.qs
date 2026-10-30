@@ -1,37 +1,18 @@
-# settings: status_mode=1
 # rust-only
-# An entry for the Index: a tap on it leaves the bar for the Pages view's Index tab (there is no page to look at).
-# settings: shortcuts_enabled=1
+# copy: tests/fixtures/beta5-links .
 # settings: mirror_pdf=0
-# copy: tests/fixtures/index-keys .
+# Legacy Index links remain usable through the page-status menu after the destination chooser retired them.
 wait 300
-tap 965 95
-wait 100
-tap 1564 2254
-wait 200
-pentap panel next
-wait 100
-pentap panel previous
-wait 100
-key 38 0
-pen line 300 1000 900 1200 30 0.6 0.6
-# Link to... opens: its The Index chip (the Pages view's picking header has no The Index button now)
-expect editor.linkto.2 is index
-expect editor.linkto.rect is 20 2004 1820 456
-expect editor.ui_at.1381.2218 is linkto.chip.2
-tap 1381 2218
+tap 200 400
+wait 1700
 expect editor.link.1 is index
-expect editor.links is 1 1
-pen leave
-wait 1100
 swipe 2 930 1300 0 -400
 wait 300
 expect editor.bar is open
-expect editor.bar.entries is 1
-expect editor.bar.1 is index
-shot 01-bar-with-the-index
-tap 479 2218
+expect editor.bar.2 is index
+shot 01-legacy-index-link
+tap panel bar.chip.2
 wait 300
 expect editor.bar is 0
-expect editor.modal is pages
-expect editor.pages_tab is index
+expect editor.modal is map
+expect editor.map.list is 0

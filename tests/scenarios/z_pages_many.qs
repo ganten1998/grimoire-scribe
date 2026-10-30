@@ -9,6 +9,7 @@ expect screen is editor
 expect editor.pages is 120
 expect editor.loaded_pages is 1
 pentap panel pages
+tap panel map.pages
 wait 200
 expect editor.modal is pages
 expect editor.loaded_pages is 1

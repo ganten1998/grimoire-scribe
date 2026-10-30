@@ -23,7 +23,7 @@ expect editor.scale is 0.75
 expect editor.zoomed is 0
 # two fingers swipe: Pages opens and closes
 swipe 2 1240 700 0 400
-expect editor.modal is pages
+expect editor.modal is map
 swipe 2 1240 1300 0 -400
 expect editor.modal is none
 # pinched in it is zoomed, and a page turn rests it again

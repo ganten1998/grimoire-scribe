@@ -6,8 +6,7 @@ expect library.items is 1
 tap 326 608
 expect editor.pages is 40
 expect editor.page is 3
-key 37 0
-tap 1590 2370
+tap panel pages
 expect editor.map is graph
 expect editor.map.nodes is 40
 expect editor.map.tray is 2

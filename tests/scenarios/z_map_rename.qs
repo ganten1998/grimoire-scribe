@@ -3,11 +3,10 @@
 # env: GRIMOIRE_CHECK_FIT=1
 wait 300
 tap 200 400
-key 37 0
-tap 1590 2370
+tap panel pages
 tap map-node 4
 expect editor.map.selected is 4
-tap 1540 2380
+tap panel map.rename
 expect editor.keyboard is Name in the Index
 expect editor.text is
 tap 221 2045
@@ -28,7 +27,9 @@ key 37 0
 expect editor.bar.incoming is 1
 shot 02-incoming
 
-tap editor bar.incoming
+tap panel bar.close
+tap panel pages
+tap panel map.around
 expect editor.map is graph
 expect editor.map.mode is around
 tap 100 95
