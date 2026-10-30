@@ -856,3 +856,31 @@ A link follows stable notebook/page IDs through renaming, folder moves and page 
 missing notebook or deleted destination page reports that it is unavailable. Existing Index links
 continue to open the unified Index. Clear page and its Undo/Redo include cross-notebook link areas.
 The notebook toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
+
+
+## Wi-Fi in Grimoire and KOReader
+
+Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio controls. Turn on
+Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
+network. Radio-on and connected are shown separately; the Share address and QR code appear only
+when the system has an address. Add a new network or change its password in Kindle settings or
+KOReader's normal network menu. Grimoire does not read, replace or log saved network credentials.
+
+Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks usable locally.
+The app changes radio state only after an explicit button press, preserves that choice when it
+closes, and never restarts network services or changes firewall, boot or update settings.
+
+The updated KOReader plugin enables Wi-Fi once per KOReader start, including a restart returning
+from Grimoire, through KOReader's own Kindle network backend. Tools > Grimoire > Turn on Wi-Fi
+when KOReader starts is enabled by default and can be turned off. The same menu has a manual
+Wi-Fi control. Turning Wi-Fi off manually during a session is not undone by opening a book,
+waking the Kindle or opening another plugin menu; a new KOReader process applies the startup
+choice again. Existing KOReader connection attempts are left to finish. Install/update the
+Grimoire plugin and fully quit/reopen KOReader once to load changed plugin code.
+
+The standalone helper uses only com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable,
+matching KOReader's Kindle backend. It refuses unknown radio properties before writing, checks
+the properties again afterward, and reports failed or partial changes. A parent job bounds the
+helper to 12 seconds and kills only its own helper process group if it stalls. Status polling is
+limited to the visible Wi-Fi dialog, and stops after connecting, switching off or 45 seconds;
+Retry checks again. Physical airplane-mode transitions remain a device acceptance check.

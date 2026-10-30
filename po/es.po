@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 19:51-0500\n"
+"POT-Creation-Date: 2026-10-29 20:52-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -3662,11 +3662,72 @@ msgid "From a terminal: %s <address above>"
 msgstr "Desde una terminal: %s <dirección de arriba>"
 
 #: rust/src/share.rs
+msgid "Wi-Fi"
+msgstr "Wifi"
+
+#: rust/src/share.rs
+msgid "Checking Wi-Fi…"
+msgstr "Comprobando wifi…"
+
+#: rust/src/share.rs
+msgid "Could not read or change Wi-Fi."
+msgstr "No se pudo consultar ni cambiar el wifi."
+
+#: rust/src/share.rs
+msgid "Wi-Fi is off"
+msgstr "El wifi está desactivado"
+
+#: rust/src/share.rs
+msgid "Connected to Wi-Fi"
+msgstr "Conectado al wifi"
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; no connection yet"
+msgstr "Wifi activado; aún sin conexión"
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; connection unknown"
+msgstr "Wifi activado; conexión desconocida"
+
+#: rust/src/share.rs
+msgid "Wi-Fi unavailable"
+msgstr "Wifi no disponible"
+
+#: rust/src/share.rs
+msgid "Connects to saved networks."
+msgstr "Se conecta a redes guardadas."
+
+#: rust/src/share.rs
+msgid "Add new networks in Kindle settings or KOReader."
+msgstr "Añade redes en los ajustes del Kindle o en KOReader."
+
+#: rust/src/share.rs
+msgid "Turning Wi-Fi off disconnects SSH and sharing."
+msgstr "Desactivar el wifi desconecta SSH y la conexión compartida."
+
+#: rust/src/share.rs
+msgid "Turn on Wi-Fi"
+msgstr "Activar wifi"
+
+#: rust/src/share.rs
+msgid "Turn off Wi-Fi"
+msgstr "Desactivar wifi"
+
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#: rust/src/share.rs
+msgid "Retry"
+msgstr "Reintentar"
+
+#: rust/src/share.rs
 msgid "Share over Wi-Fi"
 msgstr "Compartir por Wi-Fi"
 
 #. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
 #. 44 px); Retry is the button's name.
+#: rust/src/share.rs
+msgid "No Wi-Fi connection yet"
+msgstr "Aún no hay conexión wifi"
+
 #: rust/src/share.rs
 msgid "Turn on Wi-Fi on the Kindle first"
 msgstr "Primero activa el Wi-Fi del Kindle"
@@ -3674,6 +3735,10 @@ msgstr "Primero activa el Wi-Fi del Kindle"
 #: rust/src/share.rs
 msgid "Could not start the server"
 msgstr "No se pudo iniciar el servidor"
+
+#: rust/src/share.rs
+msgid "Tap Wi-Fi to connect to a saved network."
+msgstr "Toca Wifi para conectarte a una red guardada."
 
 #: rust/src/share.rs
 msgid "Then tap Retry."
@@ -3687,11 +3752,6 @@ msgstr "¿Otra app usa el puerto? Inténtalo de nuevo."
 #: rust/src/share.rs
 msgid "Stop"
 msgstr "Detener"
-
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
-#: rust/src/share.rs
-msgid "Retry"
-msgstr "Reintentar"
 
 #. TRANSLATORS: the Share screen as the Kindle's sleep screen.
 #: rust/src/share.rs

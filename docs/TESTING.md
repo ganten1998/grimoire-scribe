@@ -11,6 +11,22 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.4: Wi-Fi controls (device checks pending)
+
+Automated checks cover helper write order, idempotence, unavailable/invalid properties, rejected
+and ignored writes, partial failures, strict status parsing, bounded output, stalled children,
+descriptor isolation and queued user actions. KOReader stubs cover deferred startup, one enable
+per process, the startup opt-out, existing connection attempts, unsupported backends, manual
+On/Off and failures that cannot escape the UI task. Wi-Fi dialogs are exercised in English and
+Spanish, both styles, upright and sideways, with and without an address, including Live view.
+
+On the Kindle, test from airplane mode: start KOReader and check it reconnects to a saved network.
+Turn Wi-Fi off manually and check opening another book or waking does not turn it back on.
+Disable the startup option and check the next full restart leaves the radio alone. Re-enable
+it and repeat a Grimoire round trip. In Grimoire Share > Wi-Fi, test On, wait for the actual QR
+address, transfer a page, then test Off locally (the SSH connection will drop). Check no saved
+network is lost. This candidate does not claim these physical transitions have been tested.
+
 ## 2.0.0-rc.3: unified Index and notebook links (device checks pending)
 
 Automated development checks cover stable cross-notebook targets, rename/folder-move identity,

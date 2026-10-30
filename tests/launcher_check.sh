@@ -41,13 +41,13 @@ wait_until() {  # wait_until TENTHS COMMAND...: polls the command until it succe
 }
 
 # Every script parses, with each shell at hand.
-for f in kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh "kindle/Grimoire - reset pen calibration.sh" \
+for f in kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh "kindle/Grimoire - reset pen calibration.sh" \
     kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh tests/koplugin_check.sh tests/shims/*; do
     check "sh -n $f" sh -n "$f"
     if command -v dash >/dev/null 2>&1; then check "dash -n $f" dash -n "$f"; fi
 done
 if command -v shellcheck >/dev/null 2>&1; then
-    check "shellcheck" shellcheck -s sh -S warning kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/update.sh \
+    check "shellcheck" shellcheck -s sh -S warning kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh \
         "kindle/Grimoire - reset pen calibration.sh" kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh \
         tests/koplugin_check.sh tests/shims/*
 else

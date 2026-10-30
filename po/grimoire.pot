@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-rc.3\n"
+"Project-Id-Version: Grimoire 2.0.0-rc.4\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-29 19:51-0500\n"
+"POT-Creation-Date: 2026-10-29 20:56-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -3589,17 +3589,82 @@ msgid "From a terminal: %s <address above>"
 msgstr ""
 
 #: rust/src/share.rs
+msgid "Wi-Fi"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Checking Wi-Fi…"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Could not read or change Wi-Fi."
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Wi-Fi is off"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Connected to Wi-Fi"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; no connection yet"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; connection unknown"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Wi-Fi unavailable"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Connects to saved networks."
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Add new networks in Kindle settings or KOReader."
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Turning Wi-Fi off disconnects SSH and sharing."
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Turn on Wi-Fi"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Turn off Wi-Fi"
+msgstr ""
+
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#: rust/src/share.rs
+msgid "Retry"
+msgstr ""
+
+#: rust/src/share.rs
 msgid "Share over Wi-Fi"
 msgstr ""
 
 #. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
 #. 44 px); Retry is the button's name.
 #: rust/src/share.rs
+msgid "No Wi-Fi connection yet"
+msgstr ""
+
+#: rust/src/share.rs
 msgid "Turn on Wi-Fi on the Kindle first"
 msgstr ""
 
 #: rust/src/share.rs
 msgid "Could not start the server"
+msgstr ""
+
+#: rust/src/share.rs
+msgid "Tap Wi-Fi to connect to a saved network."
 msgstr ""
 
 #: rust/src/share.rs
@@ -3613,11 +3678,6 @@ msgstr ""
 #. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
 #: rust/src/share.rs
 msgid "Stop"
-msgstr ""
-
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
-#: rust/src/share.rs
-msgid "Retry"
 msgstr ""
 
 #. TRANSLATORS: the Share screen as the Kindle's sleep screen.

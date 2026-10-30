@@ -579,6 +579,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let standin: Option<String> = None;
     bt_init(&store_root(), getenv("GRIMOIRE_BT_SCRIPT").as_deref(), standin.as_deref(),
     );
+    wifi_init(getenv("GRIMOIRE_WIFI_SCRIPT").as_deref());
     // Settings > Updates (update.h): the launcher says where update.sh and the request file are.
     let mut request = String::new();
     let asked = getenv("GRIMOIRE_UPDATE_REQUEST");
@@ -1595,6 +1596,7 @@ fn app_tick_screens(a: &mut App, now: u32) {
             library_bt(a, bt, &bt_reply);
         }
     }
+    wifi_tick();
     book_tick(a);
     let bg = poll_jobs(a);
     if bg != 0 {
@@ -2057,6 +2059,14 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     } else if key == "host" {
         csnprintf!(out, cap, "%s", app_host());
+    } else if key=="wifi.open" {
+        csnprintf!(out,cap,"%d",crate::share::share_wifi_open(a) as i32);
+    } else if key=="wifi.busy" {
+        csnprintf!(out,cap,"%d",wifi_busy() as i32);
+    } else if key=="wifi.failed" {
+        csnprintf!(out,cap,"%d",wifi_failed() as i32);
+    } else if key=="wifi.state" {
+        csnprintf!(out,cap,"%s",match wifi_status(){None=>"unknown",Some(st) if !st.wireless||!st.enabled=>"off",Some(st) if st.connected==Some(true)=>"connected",Some(_)=>"on"});
     } else if key == "live.on" {
         csnprintf!(out, cap, "%d", if live_on() { 1 } else { 0 });
     } else if key == "live.viewers" {

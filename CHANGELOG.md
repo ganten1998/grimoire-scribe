@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.0.0-rc.4 (2026-10-29)
+
+- Add Wi-Fi controls to Share and Live view, with separate radio/connection status and On/Off buttons. Connect to saved networks without returning to the Kindle home screen.
+- Bound the standalone Wi-Fi helper, keep it outside the drawing loop, verify radio state after changes, and leave saved networks and credentials untouched.
+- The KOReader Grimoire plugin turns on Wi-Fi once when KOReader starts, using KOReader's own Kindle backend. Tools > Grimoire offers manual Wi-Fi control and a startup opt-out. Manual off stays off for the rest of that KOReader process.
+
 ## 2.0.0-rc.3 (2026-10-29)
 
 - Unify the Index under Back, Graph, List and Pages. Move graph view options to the bottom; show existing links in List without redundant footer controls.

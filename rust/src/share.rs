@@ -13,6 +13,11 @@ const H_DONE: i32 = 1;
 const H_RETRY: i32 = 2;
 const H_STOP: i32 = 3;
 const H_LIVE: i32 = 4;
+const H_WIFI: i32 = 5;
+const H_WIFI_ON: i32 = 6;
+const H_WIFI_OFF: i32 = 7;
+const H_WIFI_CHECK: i32 = 8;
+const H_WIFI_DONE: i32 = 9;
 /// addresses listed: the first in big type, each other one on a small line
 const MAX_SHOWN: usize = 3;
 /// the code or the icon, the text, the counter, Done, Retry
@@ -29,6 +34,12 @@ struct Part {
 #[derive(Default)]
 pub struct ShareState {
     ret: ScreenId,
+    wifi_open: bool,
+    wifi_paint: Option<(Option<WifiStatus>, bool, bool)>,
+    wifi_check_at: u32,
+    wifi_watch_at: u32,
+    address_check_at: u32,
+    address_key: String,
     hits: HitList,
     counter: Rect,
     last_count: i32,
@@ -360,7 +371,36 @@ fn draw_addresses(a: &mut App, in_: Rect, ad: &[NetAddr], n: i32) {
     placed(a, "the text", Rect { x: col, y: top, w: col_w, h: end - top });
 }
 
+fn draw_wifi(a: &mut App) {
+    hits_clear(&mut s(a).hits);
+    canvas_fill(&mut a.screen,Rect::new(0,0,a.w,a.h),255);
+    let card=Rect::new(ui_px(70.0),(a.h-ui_px(1060.0))/2,a.w-ui_px(140.0),ui_px(1060.0));
+    let r=ui_sheet(&mut a.screen,card,tr("Wi-Fi"));
+    let state=wifi_status();let busy=wifi_changing()||(wifi_busy()&&state.is_none());let failed=wifi_failed();
+    let text=if busy {tr("Checking Wi-Fi…")} else if failed {tr("Could not read or change Wi-Fi.")}
+        else {match state {
+            Some(st) if !st.wireless||!st.enabled=>tr("Wi-Fi is off"),
+            Some(st) if st.connected==Some(true)=>tr("Connected to Wi-Fi"),
+            Some(st) if st.connected==Some(false)=>tr("Wi-Fi is on; no connection yet"),
+            Some(_)=>tr("Wi-Fi is on; connection unknown"),None=>tr("Wi-Fi unavailable"),
+        }};
+    font_draw_centered(&mut a.screen,FontFace::Bold,ui_text_size(),Rect::new(r.x,r.y,r.w,ui_px(130.0)),text,0);
+    for (i,text) in [tr("Connects to saved networks."),tr("Add new networks in Kindle settings or KOReader."),tr("Turning Wi-Fi off disconnects SSH and sharing.")].into_iter().enumerate() {
+        font_draw_left(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+ui_px(150.0+i as f32*80.0),r.w,ui_px(70.0)),text,0);
+    }
+    let gap=ui_px(30.0);let width=(r.w-gap)/2;let bh=ui_px(150.0);
+    for (id,label,col,row,enabled) in [(H_WIFI_ON,tr("Turn on Wi-Fi"),0,0,!busy&&state.is_some()),
+        (H_WIFI_OFF,tr("Turn off Wi-Fi"),1,0,!busy&&state.is_some()),
+        (H_WIFI_CHECK,tr("Retry"),0,1,!busy),(H_WIFI_DONE,tr("Done"),1,1,true)] {
+        let hit=Rect::new(r.x+col*(width+gap),r.y+r.h-2*bh-gap+row*(bh+gap),width,bh);
+        ui_button(&mut a.screen,hit,IconKind::None,label,if !enabled{ButtonStyle::Disabled}else if id==H_WIFI_DONE{ButtonStyle::Primary}else{ButtonStyle::Plain});
+        if enabled {hits_add(&mut s(a).hits,hit,id,0);}
+    }
+    s(a).wifi_paint=Some((state,busy,failed));
+}
 fn draw(a: &mut App) {
+    if s(a).wifi_open {draw_wifi(a);return;}
+
     hits_clear(&mut s(a).hits);
     s(a).parts.clear();
     let (w, h) = (a.w, a.h);
@@ -387,8 +427,8 @@ fn draw(a: &mut App) {
         let y0 = y;
         // TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
         // 44 px); Retry is the button's name.
-        let what = if started { tr("Turn on Wi-Fi on the Kindle first") } else { tr("Could not start the server") };
-        let then = if started { tr("Then tap Retry.") } else { tr("Is another app using the port? Try again.") };
+        let what = if started { if wifi_available(){tr("No Wi-Fi connection yet")}else{tr("Turn on Wi-Fi on the Kindle first")} } else { tr("Could not start the server") };
+        let then = if started { if wifi_available(){tr("Tap Wi-Fi to connect to a saved network.")}else{tr("Then tap Retry.")} } else { tr("Is another app using the port? Try again.") };
         draw_line(&mut a.screen, FontFace::Bold, ui_title_size(), Rect { x: in_.x, y, w: in_.w, h: ui_px(100.0) }, what, 0);
         y += ui_px(110.0);
         let end = draw_line(&mut a.screen, FontFace::Regular, ui_text_size(), Rect { x: in_.x, y, w: in_.w, h: ui_px(80.0) }, then, 60);
@@ -413,7 +453,7 @@ fn draw(a: &mut App) {
         hits_add(&mut s(a).hits, stop, H_STOP, 0);
         placed(a, "Stop", stop);
     }
-    if n == 0 && live {
+    if n == 0 && live && !wifi_available() {
         let retry = Rect { x: in_.x + (in_.w - bw) / 2, y: in_.y + in_.h - bh, w: bw, h: bh };
         ui_button(&mut a.screen, retry, IconKind::None, tr("Retry"), ButtonStyle::Plain);
         hits_add(&mut s(a).hits, retry, H_RETRY, 0);
@@ -426,12 +466,17 @@ fn draw(a: &mut App) {
         ui_button(&mut a.screen, live_btn, IconKind::Live, tr("Live view"), ButtonStyle::Plain);
         hits_add(&mut s(a).hits, live_btn, H_LIVE, 0);
         placed(a, "Live view", live_btn);
-    } else if n == 0 {
+    } else if n == 0 && !live {
         let retry = Rect { x: in_.x, y: in_.y + in_.h - bh, w: bw, h: bh };
         // TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
         ui_button(&mut a.screen, retry, IconKind::None, tr("Retry"), ButtonStyle::Plain);
         hits_add(&mut s(a).hits, retry, H_RETRY, 0);
         placed(a, "Retry", retry);
+    }
+    if wifi_available() {
+        let r=Rect::new(in_.x+(in_.w-bw)/2,in_.y+in_.h-bh,bw,bh);
+        ui_button(&mut a.screen,r,IconKind::None,tr("Wi-Fi"),ButtonStyle::Plain);
+        hits_add(&mut s(a).hits,r,H_WIFI,0);placed(a,"Wi-Fi",r);
     }
     check_layout(a, in_);
 }
@@ -464,6 +509,7 @@ pub fn share_open(a: &mut App) {
     let st = s(a);
     st.ret = scr;
     st.live = false;
+    st.wifi_open = false;
     app_switch(a, ScreenId::Share);
 }
 
@@ -499,6 +545,7 @@ pub fn share_init(a: &mut App) {
     a.share = Some(Box::default());
 }
 pub fn share_free(a: &mut App) {
+    wifi_free();
     httpd_stop();
     a.share = None;
 }
@@ -591,7 +638,15 @@ pub fn share_event(a: &mut App, ev: &InEvent) {
             ret
         }
     };
-    if h.id == H_DONE {
+    if h.id == H_WIFI {
+        s(a).wifi_open=true;s(a).wifi_paint=None;s(a).wifi_check_at=now_ms();s(a).wifi_watch_at=now_ms();
+        wifi_request(WifiAction::Status);draw(a);app_invalidate_all(a,RefreshMode::Ui);
+    } else if h.id==H_WIFI_ON||h.id==H_WIFI_OFF||h.id==H_WIFI_CHECK {
+        let action=if h.id==H_WIFI_ON{WifiAction::On}else if h.id==H_WIFI_OFF{WifiAction::Off}else{WifiAction::Status};
+        wifi_request(action);s(a).wifi_check_at=now_ms();s(a).wifi_watch_at=now_ms();draw(a);app_invalidate_all(a,RefreshMode::Ui);
+    } else if h.id==H_WIFI_DONE {
+        s(a).wifi_open=false;if !s(a).started {start(a);}draw(a);app_invalidate_all(a,RefreshMode::Ui);
+    } else if h.id == H_DONE {
         app_switch(a, back);
     } else if h.id == H_LIVE {
         live_view_open(a);
@@ -607,6 +662,20 @@ pub fn share_event(a: &mut App, ev: &InEvent) {
 
 pub fn share_tick(a: &mut App, now: u32) {
     httpd_poll();
+    if s(a).wifi_open {
+        if !wifi_busy()&&!wifi_failed()&&now.wrapping_sub(s(a).wifi_check_at)>2000
+            &&now.wrapping_sub(s(a).wifi_watch_at)<45000
+            &&wifi_status().is_some_and(|st|st.wireless&&st.enabled&&st.connected!=Some(true)) {
+            s(a).wifi_check_at=now;wifi_request(WifiAction::Status);
+        }
+        if s(a).wifi_paint!=Some((wifi_status(),wifi_changing()||(wifi_busy()&&wifi_status().is_none()),wifi_failed())) {draw(a);app_invalidate_all(a,RefreshMode::Ui);}
+        return;
+    }
+    if wifi_available()&&now.wrapping_sub(s(a).address_check_at)>2000 {
+        s(a).address_check_at=now;let mut addresses=Vec::new();net_ipv4_addrs(&mut addresses,MAX_SHOWN as i32);
+        let key=addresses.join(",");
+        if key!=s(a).address_key {s(a).address_key=key;draw(a);app_invalidate_all(a,RefreshMode::Ui);}
+    }
     if s(a).live {
         if httpd_live_pairings() != s(a).pairings {
             // A browser paired: the card's work is done (app.c says who is watching once its stream
@@ -645,3 +714,10 @@ pub fn share_tick(a: &mut App, now: u32) {
         app_invalidate(a, counter, RefreshMode::Ui);
     }
 }
+
+/// Test selectors resolve only visible controls, just like the screen's pointer handler.
+pub fn share_control_point(a:&App,name:&str)->Option<(f32,f32)> {
+    let id=match name {"wifi"=>H_WIFI,"wifi.on"=>H_WIFI_ON,"wifi.off"=>H_WIFI_OFF,"wifi.retry"=>H_WIFI_CHECK,"wifi.done"=>H_WIFI_DONE,"done"=>H_DONE,_=>return None};
+    a.share.as_ref()?.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
+}
+pub fn share_wifi_open(a:&App)->bool {a.scr==ScreenId::Share&&a.share.as_ref().is_some_and(|s|s.wifi_open)}

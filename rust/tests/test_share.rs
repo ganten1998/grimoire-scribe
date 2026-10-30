@@ -146,6 +146,24 @@ fn the_card_knows_whether_it_is_live_view() {
     check!(!share_live_card_up(&a) && a.share.is_none());
 }
 
+fn wifi_controls_remain_reachable_on_live_cards_without_an_address() {
+    let path=format!("{}/wifi-share-{}.sh",tl_tmp(),std::process::id());
+    std::fs::write(&path,"printf 'wireless=0\\nenabled=0\\nconnected=0\\n'\n").unwrap();
+    for lang in ["en","es"] {for gothic in [true,false] {for (w,h) in [(1860,2480),(2480,1860)] {
+        std::env::set_var("GRIMOIRE_SIM_ADDRS","");i18n_apply(lang);ui_set_theme(if gothic{UiTheme::Gothic}else{UiTheme::Classic});
+        wifi_init(Some(&path));
+        let mut a=App{w,h,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,w,h);a.settings.http_port=PORT;
+        share_init(&mut a);a.scr=ScreenId::Share;share_open_live(&mut a);
+        let (x,y)=grimoire::share::share_control_point(&a,"wifi").unwrap();
+        share_event(&mut a,&InEvent{type_:InType::TouchUp,x,y,..Default::default()});
+        check!(grimoire::share::share_wifi_open(&a));
+        let (x,y)=grimoire::share::share_control_point(&a,"wifi.done").unwrap();
+        share_event(&mut a,&InEvent{type_:InType::TouchUp,x,y,..Default::default()});
+        check!(!grimoire::share::share_wifi_open(&a));share_free(&mut a);wifi_init(None);
+    }}}
+    std::env::remove_var("GRIMOIRE_SIM_ADDRS");std::fs::remove_file(path).unwrap();
+}
+
 #[test]
 fn test_share() {
     let root = format!("{}/share-{}", tl_tmp(), std::process::id());
@@ -155,6 +173,7 @@ fn test_share() {
     check!(font_init() == 0);
     run!(every_screen_is_the_c_screen);
     run!(the_card_knows_whether_it_is_live_view);
+    run!(wifi_controls_remain_reachable_on_live_cards_without_an_address);
     let _ = std::fs::remove_dir_all(&root);
     done();
 }

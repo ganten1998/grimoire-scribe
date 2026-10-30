@@ -52,6 +52,7 @@ pub mod qr;
 pub mod shortcuts;
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
 pub mod update;
+pub mod wifi;
 pub mod util; // common.h (util.c)
 pub use util as common;
 
@@ -182,6 +183,7 @@ pub mod prelude {
     pub use crate::tplsheet::*;
     pub use crate::ui::*;
     pub use crate::update::*;
+    pub use crate::wifi::*;
     pub use crate::util::*;
     pub use crate::{buf_printf, cformat, csnprintf, qlog};
 }
