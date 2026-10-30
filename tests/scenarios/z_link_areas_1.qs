@@ -75,17 +75,17 @@ wait 300
 expect editor.bar is open
 expect editor.bar.rect is 20 1944 1820 516
 expect display.presents not -1
-tap 1155 2370
+tap panel bar.areas
 wait 300
 expect settings.link_areas is 0
 expect editor.areas is 0
 expect editor.bar is open
-expect display.presents is fast 940 2300 880 140, ui 0 0 1860 2480
-tap 1155 2370
+expect display.presents is fast 1240 2300 580 140, ui 0 0 1860 2480
+tap panel bar.areas
 wait 300
 expect settings.link_areas is 1
 expect editor.areas is 3
-expect display.presents is fast 940 2300 880 140, ui 0 0 1860 2480
+expect display.presents is fast 1240 2300 580 140, ui 0 0 1860 2480
 shot 05-areas-from-the-bar
 key 37 0
 wait 300
