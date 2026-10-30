@@ -75,6 +75,9 @@ pub struct TgFrame {
     pub k_ms: u32,
     pub n: usize,
     pub c: [TgContact; TG_MAX],
+    /// Final coordinates reported in the same SYN_REPORT as a tracking-ID release.
+    pub ended_n: usize,
+    pub ended: [TgContact;TG_MAX],
 }
 
 /// One column of the panel's slots, as EVIOCGMTSLOTS answers it for one ABS_MT code (`ask` is that
@@ -252,7 +255,7 @@ pub const TG_TUNE_V1: TgTune = TgTune {
 /// Provisional phase 3 defaults. No owner trace was supplied for the threshold study, so these
 /// remain the brief's measured-log-informed starting values rather than frozen study results.
 pub const TG_TUNE: TgTune = TgTune {
-    land_ms: 150,
+    land_ms: 200,
     palm_ms: 400,
     pen_window_ms: 1000,
     pen_gone_ms: 300,
@@ -274,7 +277,7 @@ pub const TG_TUNE: TgTune = TgTune {
     finger_ratio: 3.0,
     spread_max: 0.50,
     spread_opposite: true,
-    swipe_ms: 1200,
+    swipe_ms: 2500,
     follow_ms: 250,
     tap_lift_ms: 200,
     tap_ms: 400,
@@ -1785,6 +1788,23 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
         }
         if touchgest_busy(g) {
             g.ph = Ph::Suppressed;
+        }
+    }
+    // A fast stroke can report its final movement and tracking-ID release together. The
+    // released contacts are no longer down, but their last coordinates still decide the swipe.
+    if matches!(g.ph,Ph::Session|Ph::Follow|Ph::Grace|Ph::TapWait) {
+        for c in &f.ended[..f.ended_n.min(TG_MAX)] {
+            if let Some(t)=g.t.iter_mut().find(|t|t.on && t.id==c.id && t.slot==c.slot && !t.seen) {
+                t.c=*c;t.ix=ipx(c.x);t.iy=ipx(c.y);
+                t.far=t.far.max(dist(t.x0,t.y0,t.ix,t.iy));
+                t.broad|=c.major>g.tune.palm_major;
+                t.pen|=c.tool==1;t.palm|=c.tool==2;
+            }
+        }
+        if f.ended_n>0 && g.ph==Ph::Session && g.p[..g.p_n].iter().any(|&i|g.t[i].on && !g.t[i].seen)
+            && !g.pen_near(pen,out,k) {
+            if g.p[..g.p_n].iter().any(|&i|g.t[i].pen || g.t[i].palm) {g.reject(out,k,TgReject::Hand);}
+            else {g.session_frame(out,k,pen);}
         }
     }
     g.lifts(out, k);

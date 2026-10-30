@@ -5,7 +5,7 @@ local function check(value, message)
     checks = checks + 1
     assert(value, message or ("check " .. checks))
 end
-local Font = {fontmap = {cfont="NotoSans-Regular.ttf", tfont="NotoSans-Bold.ttf", other="DroidSansMono.ttf"},
+local Font = {fontmap = {cfont="NotoSans-Regular.ttf", ffont="NotoSans-Regular.ttf", tfont="NotoSans-Bold.ttf", other="DroidSansMono.ttf"},
               bold_font_variant={}, regular_font_variant={}}
 function Font:getFace(name) return {orig_font=name} end
 local TitleBar = {}
@@ -29,12 +29,21 @@ package.loaded["libs/libkoreader-lfs"] = {
 dofile(root .. "/kindle/koreader/patches/2-terminess-ui-font.lua")
 check(Font.fontmap.cfont == dir .. "/TerminessNerdFont-Regular.ttf", "stable regular preference")
 check(Font.fontmap.tfont == dir .. "/TerminessNerdFont-Bold.ttf", "matching bold family")
+check(Font.fontmap.ffont == "NotoSans-Regular.ttf", "reading footer keeps native battery symbol fallback")
 check(Font.fontmap.other == "DroidSansMono.ttf", "unrelated fonts unchanged")
 check(Font.bold_font_variant[Font.fontmap.cfont] == Font.fontmap.tfont, "real bold registered")
 local button = {setText=function(self, text, extra) self.text=text; self.extra=extra end}
 local menu = setmetatable({time_info=button}, {__index=TouchMenu})
 check(menu:updateItems(3) == 3, "original menu return value")
 check(button.text == "12:34 ⌁battery 50% +aux 100%", "main and auxiliary percentage gaps")
+check(button.text_font_face == "NotoSans-Regular.ttf", "battery uses KOReader's native font and symbol fallback")
+check(button.text_font_bold == false, "battery is not synthesized from an incompatible bold icon")
+for _, glyph in ipairs({"", "", "", "", ""}) do
+    status = "12:34 ⌁" .. glyph .. "50%"
+    menu:updateItems()
+    check(button.text:find(glyph, 1, true) ~= nil and button.text_font_face == "NotoSans-Regular.ttf", "charging and unplugged glyphs retain native symbol rendering")
+end
+status = "12:34 ⌁battery50% +aux100%"
 menu:updateItems(4)
 check(button.text == "12:34 ⌁battery 50% +aux 100%", "no accumulating spaces")
 local setter = button.setText

@@ -962,6 +962,13 @@ pub fn font_wrap_lines(f: FontFace, px: f32, utf8: &str, w: i32, widest: Option<
 /// ("Wide, no margin" breaks after its comma). Only text that still does not fit ends in "...".
 /// Returns the lines drawn.
 pub fn font_draw_wrapped(c: &mut Canvas, f: FontFace, px: f32, r: Rect, utf8: &str, max_lines: i32, line_h: i32, center: bool, gray: u8) -> i32 {
+    draw_wrapped(c,f,px,r,utf8,max_lines,line_h,center,gray,true)
+}
+/// Wrapped user-provided names may be ellipsized without reporting a translation overflow.
+pub fn font_draw_wrapped_name(c:&mut Canvas,f:FontFace,px:f32,r:Rect,text:&str,max_lines:i32,gray:u8)->i32 {
+    draw_wrapped(c,f,px,r,text,max_lines,0,false,gray,false)
+}
+fn draw_wrapped(c: &mut Canvas, f: FontFace, px: f32, r: Rect, utf8: &str, max_lines: i32, line_h: i32, center: bool, gray: u8,report:bool) -> i32 {
     if !with(|st| st.ready) {
         return 0;
     }
@@ -971,7 +978,7 @@ pub fn font_draw_wrapped(c: &mut Canvas, f: FontFace, px: f32, r: Rect, utf8: &s
         if center {
             font_draw_centered(c, f, px, r, utf8, gray);
         } else {
-            font_draw_left(c, f, px, r, utf8, gray);
+            draw_left(c,f,px,r,utf8,gray,report);
         }
         return 1;
     }
@@ -982,7 +989,7 @@ pub fn font_draw_wrapped(c: &mut Canvas, f: FontFace, px: f32, r: Rect, utf8: &s
     let shown = if n < max_lines { n } else { max_lines };
     // A word wider than the line, split between two of its letters with no hyphen: the hook hears
     // of it as of a cut (a translation should take a shorter word, or two).
-    if broken != 0 {
+    if report && broken != 0 {
         overflow(text, broken, r.w);
     }
     let asc = font_ascent(f, px);
@@ -995,7 +1002,7 @@ pub fn font_draw_wrapped(c: &mut Canvas, f: FontFace, px: f32, r: Rect, utf8: &s
         let mut fitted: Option<Vec<u8>> = None;
         if n > max_lines && i == shown - 1 {
             // The last line holds the rest of the text, cut short: the hook hears of the whole.
-            overflow(text, measure_n(f, px, t, s, None), r.w);
+            if report {overflow(text, measure_n(f, px, t, s, None), r.w);}
             fitted = fit(f, px, &t[s..], r.w, None);
             e = None;
         }

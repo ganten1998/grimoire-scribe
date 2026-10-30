@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.0.0-rc.7 (2026-10-30)
+
+- Preserve final touch movement delivered with finger lift-off, widen the second-finger landing window and accept deliberate two-finger swipes up to 2.5 seconds. Keep pen, palm, pinch and pan guards.
+- Show link areas as fine dotted outlines without number badges. Preserve snapped circles, ellipses, triangles and quadrilaterals through saving, copying, redraw and undo; taps follow their actual shapes.
+- Inherit the current page's layout for linked New page and Pages > New. Fresh notebooks default to Narrow, no margin.
+- Shorten the Library exit button to KOReader and give it the same width as neighboring buttons. Fit notebook/folder names in smaller text on up to two lines.
+- Set fresh/reset fountain-pen and highlighter defaults to the owner's captured settings: fountain 0.25–1 mm, fully opaque; highlighter 5 mm, 25–75% opacity. Preserve saved preferences and existing ink.
+- Keep KOReader's native font fallback for battery status and reading footers in the optional Terminess patch, preventing unrelated Nerd Font glyphs and faded charging icons. Allow explicit upgrades of the exact RC6 patch; preserve locally modified copies.
+
 ## 2.0.0-rc.6 (2026-10-30)
 
 - Open Pages directly from the toolbar page count. Add compact New/Copy/Delete icons, an explicit Multi-select mode, page borders and a distinct inner selection border.

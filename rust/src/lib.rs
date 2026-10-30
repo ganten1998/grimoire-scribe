@@ -44,6 +44,7 @@ pub mod i18n;
 pub mod json_min;
 pub mod koreader;
 pub mod latency;
+pub mod linkoutline;
 pub mod pair;
 pub mod pensync;
 pub mod penbutton;
@@ -158,6 +159,7 @@ pub mod prelude {
     pub use crate::keyboard::*;
     pub use crate::koreader::*;
     pub use crate::latency::*;
+    pub use crate::linkoutline::*;
     pub use crate::light::*;
     pub use crate::linkbar::*;
     pub use crate::linkcard::*;

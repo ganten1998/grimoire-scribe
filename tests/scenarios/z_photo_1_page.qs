@@ -12,7 +12,7 @@ wait 100
 tap 1564 2254
 wait 400
 expect screen is editor
-expect editor.paper is 1
+expect editor.paper is 5
 pentap panel paper
 wait 200
 expect editor.modal is paper
@@ -41,7 +41,7 @@ pentap panel undo
 wait 200
 pentap panel undo
 wait 300
-expect editor.paper is 1
+expect editor.paper is 5
 expect editor.strokes is 0
 pentap panel redo
 wait 300
@@ -50,7 +50,7 @@ pentap panel next
 wait 400
 expect editor.pages is 2
 expect editor.page is 2
-expect editor.paper is 1
+expect editor.paper is 5
 pentap panel library
 wait 600
 quit

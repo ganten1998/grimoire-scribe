@@ -31,6 +31,7 @@ pub struct NavLink {
     pub target: FixedStr<NAV_TARGET_LEN>,
     pub area: Rect,
     pub has_area: bool,
+    pub outline: LinkOutline,
 }
 #[derive(Clone, Debug, Default)]
 pub struct Nav {
@@ -395,7 +396,14 @@ fn area_valid(r: Rect) -> bool {
         && r.y as i64 + r.h as i64 <= NAV_AREA_MAX as i64
 }
 
-fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize) -> i32 {
+fn outline_parse(line:&[u8])->Option<(u32,u32,LinkOutline)> {
+    let rest=line.strip_prefix(b"outline.")?;let comma=rest.iter().position(|&c|c==b',')?;
+    let mut key=b"link.".to_vec();key.extend_from_slice(&rest[..comma]);key.extend_from_slice(b",index");
+    let (pid,seed,_)=link_parse(&key)?;
+    Some((pid,seed,LinkOutline::parse(std::str::from_utf8(&rest[comma+1..]).ok()?)?))
+}
+
+fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize, outlines:&mut usize) -> i32 {
     if let Some((pid, seed, target)) = link_parse(line) {
         return link_put(n, pid, seed, target);
     }
@@ -406,6 +414,9 @@ fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize) -> i32 {
         }
         *areas += 1;
         return 0;
+    }
+    if outline_parse(line).is_some() {
+        if *outlines>=NAV_LINKS_MAX as usize{return -1;}*outlines+=1;return 0;
     }
     if !line.is_empty() && line[0] != b'#' {
         return carry(&mut n.links_unknown, line);
@@ -437,11 +448,12 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
         qlog!("index: page names could not be read; left unchanged");
     }
     let mut areas = 0;
+    let mut outlines = 0;
     let mut links_ok = (|| {
         let path = path_for(id, "links.ini")?;
         text = read_sidecar(&path, NAV_LINKS_FILE_MAX).ok()?;
         match &text {
-            Some(t) => (each_line(t, |n, line| link_line(n, line, &mut areas), &mut fresh) == 0).then_some(()),
+            Some(t) => (each_line(t, |n, line| link_line(n, line, &mut areas,&mut outlines), &mut fresh) == 0).then_some(()),
             None => Some(()),
         }
     })()
@@ -451,11 +463,10 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
         // Revisit the bounded input after all links are known. This keeps carried areas verbatim
         // without allocating copies, and file order still makes the last attached area win.
         links_ok = each_line(t, |n, line| {
-            let Some((pid, seed, area)) = area_parse(line) else { return 0 };
+            let Some((pid,seed,area))=area_parse(line) else{return 0};
             let at = link_slot(n, pid, seed);
             if let Some(l) = n.links.get_mut(at).filter(|l| l.pid == pid && l.seed == seed) {
-                l.area = area;
-                l.has_area = true;
+                l.area=area;l.has_area=true;
             } else if n.links_unknown.split(|&c| c == b'\n').any(|l| link_key(l).is_some_and(|(p, s, _)| p == pid && s == seed)) {
                 // Its link is carried too: preserve the area under the same line and byte limits.
                 return carry(&mut n.links_unknown, line);
@@ -464,6 +475,19 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
             }
             0
         }, &mut fresh) == 0;
+        if links_ok {
+            links_ok=each_line(t,|n,line| {
+                let Some((pid,seed,outline))=outline_parse(line)else{return 0};
+                let at=link_slot(n,pid,seed);
+                if let Some(l)=n.links.get_mut(at).filter(|l|l.pid==pid && l.seed==seed) {
+                    if l.has_area && outline.within(l.area){l.outline=outline;}
+                    else{return carry(&mut n.links_unknown,line);}
+                } else if n.links_unknown.split(|&c|c==b'\n').any(|l|link_key(l).is_some_and(|(p,s,_)|p==pid && s==seed)) {
+                    return carry(&mut n.links_unknown,line);
+                } else {n.areas_dropped+=1;}
+                0
+            },&mut fresh)==0;
+        }
     }
     if !links_ok {
         fresh.links = Vec::new();
@@ -658,12 +682,20 @@ pub fn nav_link_set_area(nav: &mut Nav, pid: u32, seed: u32, area: Option<Rect>)
     let Some(l) = nav.links.get_mut(at).filter(|l| l.pid == pid && l.seed == seed) else { return -1 };
     l.area = area.unwrap_or(RECT_EMPTY);
     l.has_area = area.is_some();
+    l.outline=LinkOutline::default();
     0
+}
+
+pub fn nav_link_set_outline(nav:&mut Nav,pid:u32,seed:u32,outline:LinkOutline)->i32 {
+    if !nav.links_writable || !outline.valid(){return -1;}
+    let at=link_slot(nav,pid,seed);
+    let Some(link)=nav.links.get_mut(at).filter(|l|l.pid==pid && l.seed==seed && l.has_area)else{return -1;};
+    if !outline.within(link.area){return -1;}link.outline=outline;0
 }
 
 /// Restores an exact record. Unknown targets must survive undo as they survive a load.
 pub fn nav_link_put(nav: &mut Nav, l: &NavLink) -> i32 {
-    if !nav.links_writable || (l.has_area && !area_valid(l.area))
+    if !nav.links_writable || (l.has_area && !area_valid(l.area)) || !l.outline.within(l.area) || (l.outline.n>0 && !l.has_area)
         || l.target.is_empty() || !l.target.as_bytes().iter().all(|c| (b'!'..=b'~').contains(c)) {
         return -1;
     }
@@ -842,6 +874,8 @@ pub fn nav_link_at(nav: &Nav, p: &Page, pid: u32, x: f32, y: f32, min_px: f32, o
         if !(x >= b.x as f32 && x < (b.x + b.w) as f32 && y >= b.y as f32 && y < (b.y + b.h) as f32) {
             continue;
         }
+        let link=&nav.links[i];
+        if link.outline.n>0 && link.has_area && !link.outline.hit(link.area,b,x,y,min_px){continue;}
         let size = b.w as i64 * b.h as i64;
         // (links are in seed order: replacing only on a strictly smaller box keeps the lower seed)
         if best.is_none_or(|(_, s)| size < s) {
@@ -1005,6 +1039,11 @@ pub fn nav_save_links(id: &str, nav: &mut Nav, nb: &NotebookInfo) -> i32 {
             let area = cformat!("area.%u=%08x,%d,%d,%d,%d\n", l.pid, l.seed, r.x, r.y, r.w, r.h);
             if area.len() > NAV_LINKS_FILE_MAX - text.len() { return -1; }
             text.extend_from_slice(area.as_bytes());
+            if l.outline.n>0 {
+                if !l.outline.within(l.area){return -1;}
+                let outline=format!("outline.{}={:08x},{}\n",l.pid,l.seed,l.outline.text());
+                if outline.len()>NAV_LINKS_FILE_MAX-text.len(){return -1;}text.extend_from_slice(outline.as_bytes());
+            }
         }
     }
     if nav.links_unknown.len() > NAV_LINKS_FILE_MAX - text.len() {

@@ -62,7 +62,13 @@ fn gesture_keys_follow_the_older_ones() {
     settings_default(&mut s);
     check!(settings_save(&s) == 0);
     let got = read_file(&format!("{}/settings.ini", store_root())).unwrap_or_default();
-    let head = include_str!("fixtures/settings_default_head.ini").replace("status_on=0", "status_on=1");
+    // Keep the historic ordering fixture frozen; apply only the deliberate later default changes.
+    let head = include_str!("fixtures/settings_default_head.ini").replace("status_on=0", "status_on=1")
+        .replace("highlighter.size_min_mm=3.0000", "highlighter.size_min_mm=5.0000")
+        .replace("highlighter.size_max_mm=3.0000", "highlighter.size_max_mm=5.0000")
+        .replace("highlighter.opacity_min=0.5000", "highlighter.opacity_min=0.2500")
+        .replace("fountain.size_min_mm=0.2800", "fountain.size_min_mm=0.2500")
+        .replace("fountain.size_max_mm=0.8000", "fountain.size_max_mm=1.0000");
     let want = head.as_bytes();
     check!(got.len() > want.len() && &got[..want.len()] == want);
     let tail = String::from_utf8_lossy(&got[want.len().min(got.len())..]).to_string();

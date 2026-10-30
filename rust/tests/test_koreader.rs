@@ -44,6 +44,15 @@ fn discovery_and_owned_files() {
     check!(koreader_item_set(3, true) == 0); // known previous version can upgrade explicitly
     let data = read_file(&p);
     check!(data.as_deref() == Some(&b"new font patch"[..]));
+    let rc6=cformat!("%s/app/koreader/legacy/2-terminess-ui-font-rc6.lua",root.as_str());
+    check!(write_file_atomic(&rc6,b"rc6 font patch")==0);
+    check!(write_file_atomic(&p,b"rc6 font patch")==0);
+    check!(koreader_item_set(3,true)==0);
+    check!(read_file(&p).as_deref()==Some(&b"new font patch"[..]));
+    check!(write_file_atomic(&p,b"rc6 font patch with owner edits")==0);
+    check!(koreader_item_set(3,true)!=0 && koreader_item_set(3,false)!=0);
+    check!(read_file(&p).as_deref()==Some(&b"rc6 font patch with owner edits"[..]));
+    check!(write_file_atomic(&p,b"new font patch")==0);
     check!(koreader_item_set(3, false) == 0);
     src = cformat!("%s/app/koreader/grimoire.koplugin", root.as_str());
     check!(mkdir_p(&src) == 0);

@@ -96,13 +96,13 @@ fn unlink(path: &str) -> i32 {
 
 fn copy_owned(src: &str, dst: &str, enabled: bool) -> i32 {
     if accessible(dst, libc::F_OK) && !same(src, dst) {
-        // Allow an explicit upgrade/removal of our byte-exact beta.1/beta.2 Terminess patch.
+        // Allow an explicit upgrade/removal of our byte-exact earlier Terminess patches.
         // A modified copy or an unrelated patch stays untouched.
-        let mut legacy = String::new();
-        csnprintf!(&mut legacy, 1200, "%s/app/koreader/legacy/2-terminess-ui-font.lua", &store_root());
+        let legacy_root=format!("{}/app/koreader/legacy",store_root());
+        let owned=["2-terminess-ui-font.lua","2-terminess-ui-font-rc6.lua"].iter().any(|name|same(&format!("{legacy_root}/{name}"),dst));
         let name = src.rfind('/');
         match name {
-            Some(at) if &src[at + 1..] == "2-terminess-ui-font.lua" && same(&legacy, dst) => {}
+            Some(at) if &src[at + 1..] == "2-terminess-ui-font.lua" && owned => {}
             _ => return -1,
         }
     }

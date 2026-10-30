@@ -523,7 +523,7 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
         r.x,
         r.y + th + ui_px(14.0),
         r.w - more - ui_px(10.0),
-        ui_px(70.0),
+        ui_px(96.0),
     );
     // Gothic names use the pixel face's regular weight: its overprinted bold turns a name in
     // capitals into a solid black bar.
@@ -532,8 +532,8 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
     } else {
         FontFace::Bold
     };
-    font_draw_left_name(c, face, ui_text_size(), tr_, title, 0);
-    let lr = Rect::new(r.x, tr_.y + tr_.h, r.w - more - ui_px(10.0), ui_px(56.0));
+    ui_text_name(c, face, ui_text_size()*0.88, ui_small_size(), tr_, title, 2, 0);
+    let lr = Rect::new(r.x, tr_.y + tr_.h, r.w - more - ui_px(10.0), ui_px(40.0));
     let mut ls = ui_small_size();
     if font_measure(FontFace::Regular, ls, &line2) > lr.w {
         // Too long for the card (sideways in Classic, or in a longer language): a size smaller by
@@ -624,14 +624,13 @@ fn draw_base(a: &mut App) {
     let hosted = std::env::var_os("GRIMOIRE_HOST").is_some_and(|h| h == "koreader");
     if hosted {
         // TRANSLATORS: the Library's top bar when Grimoire was opened from KOReader: in place of Exit,
-        // it goes back to KOReader. This one button takes the width it needs.
-        btns[0].label = tr("Back to KOReader");
+        // it opens KOReader, using the same button width as its neighbors.
+        btns[0].label = "KOReader";
     }
     const NBTNS: usize = 5;
     // A word too long for its button (a translation) widens all five alike, as far as leaves the
     // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
-    // Hosted, Exit's longer "Back to KOReader" takes only its own room.
-    for (i, b) in btns.iter().enumerate().skip(if hosted { 1 } else { 0 }) {
+    for (i, b) in btns.iter().enumerate() {
         let need = ui_button_need_w(
             bh,
             b.icon,
@@ -651,14 +650,7 @@ fn draw_base(a: &mut App) {
         if !b.show {
             continue;
         }
-        let mut w = bw;
-        if i == 0 && hosted {
-            // as wide as its label needs, never narrower than the rest
-            let need = ui_button_need_w(bh, btns[0].icon, btns[0].label, ButtonStyle::Plain);
-            if need > w {
-                w = need;
-            }
-        }
+        let w = bw;
         rx -= w;
         let r = Rect::new(rx, by, w, bh);
         ui_button(
@@ -707,14 +699,12 @@ fn draw_base(a: &mut App) {
     } else {
         APP_NAME
     };
-    font_draw_left_name(
-        c,
-        FontFace::Title,
-        title_px,
-        Rect::new(x, 0, rx - x - ui_px(20.0), th),
-        title,
-        0,
-    );
+    let title_rect=Rect::new(x,0,rx-x-ui_px(20.0),th);
+    if !s.cur_folder.is_empty() {
+        ui_text_name(c,FontFace::Title,ui_title_size()*1.2,ui_small_size(),title_rect,title,2,0);
+    } else {
+        font_draw_left_name(c,FontFace::Title,title_px,title_rect,title,0);
+    }
     ui_rule(c, 0, aw, th, ui_px(4.0), 0);
     ui_frieze(c, 0, aw, th + ui_px(9.0), ui_px(28.0), 0);
 
@@ -4208,7 +4198,7 @@ fn act(a: &mut App, h: &Hit) {
             let mut new_name = FixedStr::<STORE_NAME_LEN>::new();
             unique_name(s, &base, &mut new_name);
             s.new_name = new_name;
-            s.new_paper = PAPER_MEDIUM;
+            s.new_paper = PAPER_NARROW_NM;
             s.new_tpl.clear();
             canvas_free(&mut s.tpl_prev);
             open_modal(a, Modal::New);
@@ -5144,6 +5134,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         let mut name = String::new();
         if let Some(hit) = hit {
             name.push_str(match hit.id {
+                H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
+                H_SET_THEME=>"theme",H_NEW_CREATE=>"create",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
                 H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",

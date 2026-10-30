@@ -1,5 +1,5 @@
 # settings: status_mode=1
-# New page and Copy page in the Pages view. New page adds a blank page of the notebook's own paper
+# New page and Copy page in the Pages view. New page adds a blank page of the current page's paper
 # after the open page, or after the last page ticked, and opens it; Copy page copies the one page
 # ticked, its ink and its paper, right after it, and opens the copy. Neither ever makes a page the
 # first. Then the same sideways, and all of it still there once the notebook opens again.
@@ -22,7 +22,7 @@ pen curve 300 500 40 60 0.7 3
 wait 200
 expect editor.pages is 3
 expect editor.page is 3
-# Page 2 goes onto sheet music: New page after it is page 3, on the notebook's medium rule.
+# Page 2 goes onto sheet music: New page after it is page 3, on the current page's sheet music.
 pentap panel pages
 wait 300
 expect editor.modal is pages
@@ -45,7 +45,7 @@ expect editor.modal is none
 expect editor.page is 3
 expect editor.pages is 4
 expect editor.strokes is 0
-expect editor.paper is 1
+expect editor.paper is 3
 # The page that was third is fourth now, with its ink.
 pentap panel next
 wait 200

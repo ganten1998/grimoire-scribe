@@ -7,7 +7,8 @@ apply them. Existing different patches at the same filename are kept.
 - 2-no-diagonal-screenshot.lua: disables the two diagonal screenshot gestures.
 - 2-mosaic-square-corners.lua: square folder tiles in Cover browser's mosaic view.
 - 2-terminess-ui-font.lua: Terminess / Terminus menus, a matched regular/bold font family,
-  and spacing between the dropdown menu's battery icon and percentage. Grimoire supplies
+  and spacing between the dropdown menu's battery icon and percentage. Battery status and reading
+  footers use KOReader's native font fallback so charging/unplugged symbols remain correct. Grimoire supplies
   Terminess and its OFL. This updates the script shipped with 1.1.0-beta.1 and 1.1.0-beta.2.
 
 Manual installation: copy only the .lua files you want into your KOReader installation's patches/

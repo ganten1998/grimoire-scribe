@@ -149,6 +149,7 @@ struct LinkMaking {
     shape_anchor_k: u32,
     shape_tried: bool,
     shape_kind: ShapeKind,
+    outline: LinkOutline,
     /// the last point the lasso went to, page px (the next segment starts there)
     last: (f32, f32),
     /// how far (screen px) a new point must be from the last one to be kept; doubles as the lasso fills
@@ -1939,26 +1940,18 @@ fn box_screen(s: &EditorState, p: Rect) -> Rect {
     }
 }
 
-/// Where a box's number tag goes: at its top-left, kept on the screen, and beside the clock's corner when
-/// it would fall in that (right of a corner on the left, left of one on the right).
-fn eye_tag(a: &App, sr: Rect) -> Rect {
-    let t = ui_px(52.0);
-    let mut r = Rect { x: clampi(sr.x, 0, (a.w - t).max(0)), y: clampi(sr.y, 0, (a.h - t).max(0)), w: t, h: t ,
-    };
-    let z = status_square(a);
-    if rect_overlaps(r, z) {
-        let x = if z.x == 0 { z.x + z.w + ui_px(8.0) } else { z.x - t - ui_px(8.0) };
-        r.x = clampi(x, 0, (a.w - t).max(0));
-    }
-    r
+/// The fine dotted outline, including its narrow contrasting edge over dark ink.
+fn eye_reach(_a: &App, sr: Rect) -> Rect {
+    rect_inflate(sr, ui_px(2.0) + 1)
 }
 
-/// Everything the eye draws for one box: its dashed outline with the halo, and its tag.
-fn eye_reach(a: &App, sr: Rect) -> Rect {
-    rect_union(rect_inflate(sr, ui_px(2.0) + 1), eye_tag(a, sr))
+fn draw_outline(c:&mut Canvas,outline:LinkOutline,source:Rect,target:Rect,view:(f32,f32,f32)) {
+    let (zoom,ox,oy)=view;
+    let points:Vec<_>=outline.points(source,target).iter().map(|&(x,y)|((x-ox)*zoom,(y-oy)*zoom)).collect();
+    canvas_dash_poly(c,&points,ui_px(2.0),ui_px(2.0),ui_px(8.0),ui_px(1.0),0);
 }
 
-/// The eye, over the page and under the panel: a dashed box with a number tag where every link's ink is.
+/// Fine dotted outlines over the page and under the panel, without number badges.
 /// Only on the screen (never in the page canvas, so never in a thumbnail, the PDF, the share page or the sleep
 /// image), 1-bit, so DU and GL16 show it alike. At most LB_MAX boxes, each tested against r.
 fn draw_areas(a: &mut App, r: Rect) {
@@ -1967,19 +1960,18 @@ fn draw_areas(a: &mut App, r: Rect) {
         return;
     }
     // A peek is display-only: outline its links at its own viewport without committing it.
-    let (areas,numbers,n,zoom,ox,oy)=if ed_ref(a).peek.active {
+    let (links,areas,n,zoom,ox,oy)=if ed_ref(a).peek.active {
         let s=ed_ref(a);let pk=s.peek;
-        let mut links=[NavLink::default();LB_MAX];let mut areas=[RECT_EMPTY;LB_MAX];let mut numbers=[0;LB_MAX];
+        let mut links=[NavLink::default();LB_MAX];let mut areas=[RECT_EMPTY;LB_MAX];
         let page=s.hist.iter().find(|h|h.page_id==pk.pid).and_then(|h|h.page.as_deref()).or(s.ccache[pk.slot].page.as_deref());
         let n=page.map_or(0,|p|nav_link_areas(&s.nav,p,pk.pid,NAV_LINK_MIN_MM*a.dpi/25.4,&mut links,&mut areas)as usize);
-        let mut entries=[LbEntry::default();LB_MAX];linkbar_group(&s.nb,&links[..n],&areas[..n],a.dpi,&mut entries,&mut numbers);
         let top=status_reserved(a);let (zoom,ox,oy)=peek_view(a.w,a.h-top,s.pgw,s.pgh,a.settings.landscape_fit||top>0);
-        (areas,numbers,n,zoom,ox,oy-top as f32/zoom)
+        (links,areas,n,zoom,ox,oy-top as f32/zoom)
     } else {
-        boxes_get(a);let s=ed_ref(a);(s.boxes.area,s.boxes.entry,s.boxes.n,s.zoom,s.ox,s.oy)
+        boxes_get(a);let s=ed_ref(a);(s.boxes.link,s.boxes.area,s.boxes.n,s.zoom,s.ox,s.oy)
     };
     ed(a).boxes.drawn = n;
-    let (thick, on, off, halo) = (ui_px(4.0), ui_px(16.0), ui_px(12.0), ui_px(2.0));
+    let (thick, on, off, halo) = (ui_px(2.0), ui_px(2.0), ui_px(8.0), ui_px(1.0));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
     for i in 0..n {
@@ -1987,18 +1979,11 @@ fn draw_areas(a: &mut App, r: Rect) {
         let x0=((p.x as f32-ox)*zoom).round()as i32;let y0=((p.y as f32-oy)*zoom).round()as i32;
         let x1=(((p.x+p.w)as f32-ox)*zoom).round()as i32;let y1=(((p.y+p.h)as f32-oy)*zoom).round()as i32;
         let sr=Rect::new(x0,y0,(x1-x0).max(1),(y1-y0).max(1));
-        let num = numbers[i];
         if !rect_overlaps(r, eye_reach(a, sr)) {
             continue;
         }
-        canvas_dash_rect(&mut a.screen, sr, thick, on, off, halo);
-        let tag = eye_tag(a, sr);
-        let c = &mut a.screen;
-        canvas_fill(c, tag, 0);
-        canvas_fill(c, rect_inflate(tag, -ui_px(3.0)), 255);
-        let mut text = String::new();
-        csnprintf!(&mut text, 8, "%d", num as i32);
-        font_draw_centered(c, FontFace::Bold, ui_small_size(), tag, &text, 0);
+        if links[i].outline.n>0 {draw_outline(&mut a.screen,links[i].outline,links[i].area,p,(zoom,ox,oy));}
+        else {canvas_dash_rect(&mut a.screen,sr,thick,on,off,halo);}
     }
     a.screen.clip = clip;
 }
@@ -3827,7 +3812,7 @@ fn pages_added(a: &mut App, at: i32) {
     pages_hide(a, at);
 }
 
-// New page: the notebook's own paper (Blank in a book's notebook: annotate.h), at the index the
+// New page: inherit the current page's paper (document pictures fall back to notebook paper), at the index the
 // Pages view gives, never the first, so the Library's card stays the same page. A page that holds
 // no book page (in no line of source.ini) is a note page: a book page annotated later still goes
 // before the first page that holds a later book page, after the notes on the one before.
@@ -3836,7 +3821,7 @@ fn pages_new(a: &mut App, at: i32) {
         return;
     }
     let s = ed(a);
-    let paper = s.nb.paper;
+    let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
     if at < 1 || store_add_page(&mut s.nb, at, paper) != 0 {
         app_toast(a, tr("Could not add a page"), 3000);
         return;
@@ -3903,12 +3888,12 @@ fn pages_copy(a: &mut App, index: i32) {
 
 /// A link as an undo step keeps it (history.rs stays free of the Nav).
 fn link_rec(l: &NavLink) -> LinkRec {
-    LinkRec { seed: l.seed, target: l.target, area: l.area, has_area: l.has_area ,
+    LinkRec { seed: l.seed, target: l.target, area: l.area, has_area: l.has_area, outline:l.outline,
     }
 }
 /// The link a step's record puts back on page pid.
 fn rec_link(pid: u32, r: &LinkRec) -> NavLink {
-    NavLink { pid, seed: r.seed, target: r.target, area: r.area, has_area: r.has_area ,
+    NavLink { pid, seed: r.seed, target: r.target, area: r.area, has_area: r.has_area, outline:r.outline,
     }
 }
 
@@ -4237,15 +4222,16 @@ fn draw_area_wait(a: &mut App, r: Rect) {
         return;
     }
     let sr = area_screen(s);
+    let (outline,area,view)=(s.lm.outline,s.lm.area,(s.zoom,s.ox,s.oy));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
-    canvas_dash_rect(&mut a.screen, sr, ui_px(3.0), ui_px(8.0), ui_px(8.0), ui_px(2.0),
-    );
+    if outline.n>0 {draw_outline(&mut a.screen,outline,area,area,view);}
+    else {canvas_dash_rect(&mut a.screen,sr,ui_px(2.0),ui_px(2.0),ui_px(8.0),ui_px(1.0));}
     a.screen.clip = clip;
 }
 
 /// Link selection uses the same shape policies as ink, but the snapped outline stays an overlay.
-fn link_shape_snap(a: &mut App) -> bool {
+fn link_shape_snap(a: &mut App,allow_open:bool) -> bool {
     if !a.settings.shapes || !a.settings.shape_links {return false;}
     let s=ed_ref(a);
     if s.lm.state!=LmState::Lasso {return false;}
@@ -4257,7 +4243,8 @@ fn link_shape_snap(a: &mut App) -> bool {
     let mut prm=shape_params(a.dpi,s.zoom,s.open_page().unwrap().paper,s.pgw);
     prm.quad_mode=a.settings.shape_quads;prm.circle_mode=a.settings.shape_round;
     let result=shape_recognize(&pts,&prm);
-    if !matches!(result.kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse) {return false;}
+    let closed=matches!(result.kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse);
+    if result.kind==ShapeKind::None || (!closed && !allow_open) {return false;}
     let clean:Vec<_>=result.pts.iter().map(|p|(p.x,p.y)).collect();
     let s=ed(a);s.lm.shape_preview=Some(clean);s.lm.shape_kind=result.kind;
     true
@@ -4268,7 +4255,7 @@ fn link_shape_tick(a: &mut App,now:u32) {
     if s.owner!=Owner::Lasso || s.lm.shape_tried || s.lm.shape_preview.is_some() || !a.input_drained
         || now.wrapping_sub(s.lm.shape_anchor_k)<a.settings.shape_hold_ms as u32 {return;}
     ed(a).lm.shape_tried=true;
-    if !link_shape_snap(a) {return;}
+    if !link_shape_snap(a,true) {return;}
     let s=ed_ref(a);
     let mut r=s.lm.lasso_rect;
     for &p in s.lm.shape_preview.as_ref().unwrap() {
@@ -4283,7 +4270,7 @@ fn link_shape_tick(a: &mut App,now:u32) {
 /// stays for another try; otherwise the lasso and the strip go, the dotted rectangle shows the area (a GL16
 /// flushed on its own), and Link to... opens to pick where the link goes (a GL16 of its card).
 fn lasso_end(a: &mut App) {
-    if ed_ref(a).lm.shape_preview.is_none() { link_shape_snap(a); }
+    if ed_ref(a).lm.shape_preview.is_none() { link_shape_snap(a,false); }
     let dpi = a.dpi;
     let s = ed(a);
     s.owner = Owner::None;
@@ -4291,13 +4278,16 @@ fn lasso_end(a: &mut App) {
         return;
     }
     if let Some(pts)=s.lm.shape_preview.take() {
+        let closed=matches!(s.lm.shape_kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse);
+        s.lm.outline=LinkOutline::from_points(&pts,closed,s.pgw,s.pgh);
         if let Some(&(x,y))=pts.first() {
             s.lm.bx0=x;s.lm.bx1=x;s.lm.by0=y;s.lm.by1=y;
             for (x,y) in pts {s.lm.bx0=s.lm.bx0.min(x);s.lm.bx1=s.lm.bx1.max(x);s.lm.by0=s.lm.by0.min(y);s.lm.by1=s.lm.by1.max(y);}
         }
     }
     let lm = &s.lm;
-    let r = lasso_area(lm.bx0, lm.by0, lm.bx1, lm.by1, s.pgw, s.pgh);
+    let mut r = lasso_area(lm.bx0, lm.by0, lm.bx1, lm.by1, s.pgw, s.pgh);
+    if lm.outline.n>0 {r.w=r.w.max(1);r.h=r.h.max(1);}
     let drawn = lm.lasso_rect;
     if lasso_too_small(r, dpi) {
         let s = ed(a);
@@ -4499,7 +4489,7 @@ fn newpage_done(a: &mut App, name: &str) {
     }
     s.lt.hidden = false;
     let n = s.nb.npages();
-    let paper = s.nb.paper;
+    let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
     if store_add_page(&mut s.nb, n, paper) != 0 {
         let u = rect_union(kb_area, s.lt.rect);
         compose(a, u);
@@ -4602,6 +4592,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     }
     let pid = s.open_pid();
     let area = s.lm.area;
+    let outline=s.lm.outline;
     lm_drop(s);
     let page = s.open_page().unwrap();
     // unique among the page's ink and link seeds: a link never takes in ink, and new ink never joins it
@@ -4610,6 +4601,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     s.boxes.stale = true;
     let ok = nav_link_set(&mut s.nav, pid, seed, target) == 0
         && nav_link_set_area(&mut s.nav, pid, seed, Some(area)) == 0
+        && nav_link_set_outline(&mut s.nav,pid,seed,outline)==0
         && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0;
     if !ok {
         nav_load(s.nb.id.as_str(), &mut s.nav); // (back to the links as saved)
@@ -4764,10 +4756,12 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
     let pid = s.open_pid();
     let from_bar = s.lm.from_bar;
     let old = nav_link_get(&s.nav, pid, seed);
+    let outline=s.lm.outline;
     lm_drop(s); // (the border goes with it)
     s.boxes.stale = true;
     let ok = old.is_some()
         && nav_link_set_area(&mut s.nav, pid, seed, Some(r)) == 0
+        && nav_link_set_outline(&mut s.nav,pid,seed,outline)==0
         && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0;
     if !ok {
         nav_load(s.nb.id.as_str(), &mut s.nav);
@@ -10160,6 +10154,27 @@ mod tests {
             a.w=1860;a.h=2480;a.settings.landscape_fit=true;
             assert_eq!(landscape_panel_slot(&a,true),None);
         }}
+    }
+
+    #[test]
+    fn link_outline_keeps_paper_and_ink_outside_its_narrow_halo() {
+        ui_init(300.0);
+        let mut c=Canvas::default();assert_eq!(canvas_init(&mut c,600,600),0);
+        canvas_fill(&mut c,Rect::new(0,0,600,600),123);
+        let points:Vec<_>=(0..=72).map(|i|{let t=i as f32*std::f32::consts::TAU/72.0;
+            (300.0+100.0*t.cos(),300.0+100.0*t.sin())}).collect();
+        let outline=LinkOutline::from_points(&points,true,600,600);
+        draw_outline(&mut c,outline,Rect::new(200,200,200,200),Rect::new(200,200,200,200),(1.0,0.0,0.0));
+        let mut dots=0;
+        for y in 0..600 {for x in 0..600 {
+            let v=c.px[y*600+x];
+            if v!=123 {
+                let radius=((x as f32-300.0).powi(2)+(y as f32-300.0).powi(2)).sqrt();
+                assert!((radius-100.0).abs()<5.0,"overlay touched paper far from border at {x},{y}");
+                assert!(v==0 || v==255);dots+=usize::from(v==0);
+            }
+        }}
+        assert!(dots>40);
     }
 
     #[test]

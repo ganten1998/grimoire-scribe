@@ -8,6 +8,9 @@
 local Font = require("ui/font")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
+-- Nerd Fonts reuse private-use codepoints. KOReader's battery glyphs must come from its
+-- shipped symbols font, rather than whichever unrelated icon Terminess has at that codepoint.
+local status_font = Font.fontmap.ffont or Font.fontmap.cfont or "NotoSans-Regular.ttf"
 
 local regular, bold
 local candidates = {}
@@ -58,7 +61,9 @@ bold = bold or regular
 if Font.bold_font_variant then Font.bold_font_variant[regular] = bold end
 if Font.regular_font_variant and bold ~= regular then Font.regular_font_variant[bold] = regular end
 for key, file in pairs(Font.fontmap) do
-    if type(file) == "string" and file:match("^NotoSans") then
+    -- Reading footers carry the same battery symbols as the dropdown. Their native font
+    -- must remain first, so KOReader can reach its matching private-use symbol fallback.
+    if type(file) == "string" and file:match("^NotoSans") and not key:match("ffont$") then
         Font.fontmap[key] = file:match("Bold") and bold or regular
     end
 end
@@ -85,9 +90,20 @@ pcall(function()
         local button = self.time_info
         if button and not button._grimoire_terminess_gap then
             button._grimoire_terminess_gap = true
+            button.text_font_face = status_font
+            button.text_font_bold = false
+            -- Older Button versions take a face object instead of text_font_face.
+            if button.face then
+                button.face = Font:getFace(status_font, button.face.orig_size)
+            end
+            button._grimoire_status_font_refresh = true
             local set = button.setText
             function button:setText(text, ...)
                 local spaced = type(text) == "string" and text:gsub("(%d+%%)", " %1") or text
+                if self._grimoire_status_font_refresh and type(spaced) == "string" then
+                    self._grimoire_status_font_refresh = nil
+                    self.text = nil -- force Button:setText to rebuild its label with the new face
+                end
                 return set(self, spaced, ...)
             end
         end

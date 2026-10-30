@@ -3528,7 +3528,7 @@ mod tests {
     #[test]
     fn swipe_and_tapn_are_a_batch_each() {
         fresh();
-        script("swipe", "swipe 2 930 900 0 400\ntapn 2 100 100\nswipe 2 930 900 0 400 10 295 160\nwait 0\n");
+        script("swipe", "swipe 2 930 900 0 400\ntapn 2 100 100\nswipe 2 930 900 0 400 10 295 240\nwait 0\n");
         input_touch_context(TgView { gestures_on: true, ..Default::default() });
         let b = batch();
         let types: Vec<InType> = b.iter().map(|e| e.type_).collect();

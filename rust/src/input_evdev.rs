@@ -374,6 +374,9 @@ const _: () = assert!(MAX_SLOTS == TG_MAX); // (mt_column's columns are touchges
 struct TouchSt {
     slot: i32,
     id: [i32; MAX_SLOTS],
+    ended_id: [i32;MAX_SLOTS],
+    ended_x: [i32;MAX_SLOTS],
+    ended_y: [i32;MAX_SLOTS],
     x: [i32; MAX_SLOTS],
     y: [i32; MAX_SLOTS],
     /// ABS_MT_TOOL_TYPE: 0 finger, 1 pen, 2 palm (MT_TOOL_PALM)
@@ -393,6 +396,9 @@ impl Default for TouchSt {
         TouchSt {
             slot: 0,
             id: [-1; MAX_SLOTS],
+            ended_id: [-1;MAX_SLOTS],
+            ended_x:[0;MAX_SLOTS],
+            ended_y:[0;MAX_SLOTS],
             x: [0; MAX_SLOTS],
             y: [0; MAX_SLOTS],
             tool: [0; MAX_SLOTS],
@@ -1495,6 +1501,7 @@ impl State {
     // tool, size and pressure, and the slot its next events are for. A panel with fewer slots than
     // MAX_SLOTS answers for its own only (mt_column), so a slot it does not have reads as no contact.
     fn touch_resync(&mut self) {
+        self.T.ended_id=[-1;MAX_SLOTS];
         let fd = self.touch.fd;
         let codes = [ABS_MT_TRACKING_ID, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOOL_TYPE, ABS_MT_TOUCH_MAJOR, ABS_MT_PRESSURE,
         ];
@@ -1526,20 +1533,22 @@ impl State {
         let now = now_ms();
         let mut f = TgFrame { k_ms: pensync_ms(self.T.frame_us, self.touch_mono, now), ..Default::default() };
         for s in 0..MAX_SLOTS {
-            if self.T.id[s] < 0 || f.n >= TG_MAX {
+            let ending=self.T.id[s]<0 && self.T.ended_id[s]>=0;
+            if (self.T.id[s]<0 && !ending) || f.n>=TG_MAX {
                 continue;
             }
-            let nx = norm(self.T.x[s], &self.touch.ax);
-            let ny = norm(self.T.y[s], &self.touch.ay);
+            let nx = norm(if ending{self.T.ended_x[s]}else{self.T.x[s]}, &self.touch.ax);
+            let ny = norm(if ending{self.T.ended_y[s]}else{self.T.y[s]}, &self.touch.ay);
             let (x, y) = self.map(&self.touch_cal, nx, ny);
             let tool = match self.T.tool[s] {
                 1 => 1,
                 2 => 2,
                 _ => 0,
             };
-            f.c[f.n] = TgContact { id: self.T.id[s], slot: s as i32, x, y, nx, ny, major: self.T.major[s], tool, pressure: self.T.pressure[s] ,
+            let contact=TgContact { id: if ending{self.T.ended_id[s]}else{self.T.id[s]}, slot: s as i32, x, y, nx, ny, major: self.T.major[s], tool, pressure: self.T.pressure[s] ,
             };
-            f.n += 1;
+            if ending {f.ended[f.ended_n]=contact;f.ended_n+=1;}
+            else {f.c[f.n]=contact;f.n+=1;}
         }
         let pen = TgPen { prox: self.P.prox, touching: self.P.was_touching, left_ms: self.pen_left_ms, last: self.pen_last ,
             hover: self.tg_hover,
@@ -1547,6 +1556,7 @@ impl State {
         let mut out = TgOut::default();
         let was_busy = touchgest_busy(&self.tg);
         touchgest_frame(&mut self.tg, &f, &pen, &mut out);
+        self.T.ended_id=[-1;MAX_SLOTS];
         self.tg_push(&out);
         self.touch_log(&f, &out, was_busy);
     }
@@ -1689,6 +1699,10 @@ impl State {
             match ev.code {
                 ABS_MT_SLOT => self.T.slot = clampi(ev.value, 0, MAX_SLOTS as i32 - 1),
                 ABS_MT_TRACKING_ID => {
+                    if ev.value<0 && self.T.id[s]>=0 {
+                        self.T.ended_id[s]=self.T.id[s];self.T.ended_x[s]=self.T.x[s];self.T.ended_y[s]=self.T.y[s];
+                    }
+                    else if ev.value>=0 {self.T.ended_id[s]=-1;}
                     if ev.value >= 0 && self.T.id[s] < 0 {
                         self.T.tool[s] = 0;
                         self.T.major[s] = 0;
@@ -1705,6 +1719,9 @@ impl State {
             }
         } else if ev.type_ == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0 {
             // Belt and braces: some panels only signal the final lift through BTN_TOUCH.
+            for s in 0..MAX_SLOTS {if self.T.id[s]>=0 {
+                self.T.ended_id[s]=self.T.id[s];self.T.ended_x[s]=self.T.x[s];self.T.ended_y[s]=self.T.y[s];
+            }}
             self.T.id = [-1; MAX_SLOTS];
         }
         None
@@ -3494,6 +3511,22 @@ mod tests {
 
     fn event(type_: u16, code: u16, value: i32, t_us: u64) -> PenEv {
         PenEv { type_, code, value, t_us }
+    }
+
+    #[test]
+    fn touch_release_keeps_final_coordinates_before_an_inactive_slot_reset() {
+        let mut s=State::default();s.T.id[0]=42;s.T.x[0]=700;s.T.y[0]=800;
+        for (code,value) in [(ABS_MT_POSITION_X,1000),(ABS_MT_POSITION_Y,1100),(ABS_MT_TRACKING_ID,-1),
+            (ABS_MT_POSITION_X,0),(ABS_MT_POSITION_Y,0)] {
+            s.handle_touch(&InputEvent{type_:EV_ABS,code,value,..Default::default()});
+        }
+        assert_eq!((s.T.id[0],s.T.ended_id[0],s.T.ended_x[0],s.T.ended_y[0]),(-1,42,1000,1100));
+        s.touch_frame();assert_eq!(s.T.ended_id,[-1;MAX_SLOTS]);
+        s.T.id[0]=50;s.T.x[0]=123;s.T.y[0]=456;
+        s.handle_touch(&InputEvent{type_:EV_KEY,code:BTN_TOUCH,value:0,..Default::default()});
+        assert_eq!((s.T.ended_id[0],s.T.ended_x[0],s.T.ended_y[0]),(50,123,456));
+        s.handle_touch(&InputEvent{type_:EV_ABS,code:ABS_MT_TRACKING_ID,value:51,..Default::default()});
+        assert_eq!(s.T.ended_id[0],-1,"reusing a slot cannot attach old coordinates to its new contact");
     }
 
     #[test]

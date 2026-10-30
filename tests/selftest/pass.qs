@@ -41,10 +41,10 @@ expect editor.paper is none
 expect editor.music is
 expect editor.ticked is 0
 expect editor.unsaved is 0
-# New notebook (medium rule is preselected), then Create
+# New notebook (Narrow, no margin is preselected), then Create
 tap 965 95
 expect library.sheet is new
-expect library.paper is 1
+expect library.paper is 5
 tap 1564 2254
 expect screen is editor
 expect library.sheet is none
@@ -52,7 +52,7 @@ expect editor.page is 1
 expect editor.pages is 1
 expect editor.tool is pencil
 expect editor.zoom is 1.00
-expect editor.paper is 1
+expect editor.paper is 5
 expect editor.panel is expanded
 expect editor.modal is none
 expect editor.ticked is 0

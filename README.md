@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release 2.0.0-rc.6.** Earlier builds are in daily use on
+> **Pre-release 2.0.0-rc.7.** Earlier builds are in daily use on
 > Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -242,7 +242,8 @@ and Terminess menu fonts. The font patch includes the font. Restart KOReader aft
 or the plugin. A different patch at the same filename is preserved; no patches are applied just
 by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
 from 1.1.0-beta.1: screenshot gestures and corners stay unchanged; Terminess now matches
-regular/bold fonts and separates the dropdown battery icon from its percentage. Fonts and manual
+regular/bold fonts and separates the dropdown battery icon from its percentage. Battery status and
+reading footers keep KOReader’s native font fallback, avoiding conflicting Nerd Font icons. Fonts and manual
 instructions are included.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom

@@ -11,6 +11,28 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.7 (device checks pending)
+
+Automated regressions cover fast lift-off packets and deliberate 1.6/2.4-second swipes, with
+pen/palm/pinch and stale tracking-ID guards. They do not measure the device's swipe failure rate.
+The link scenario draws circles, ellipses, triangles and uneven quadrilaterals, saves/reopens them,
+checks circle-corner exclusion and center navigation, and exercises undo/redo and clear. Sidecar
+tests protect malformed/unknown data and round-trip bounded geometry. The brush, stroke-hit and pen-settings fixtures were
+regenerated from C for the two changed tool defaults, keeping Rust/C parity.
+
+On the Kindle, try quick and slow two-finger page turns both ways, including after writing.
+Show Areas and check fine dotted borders with no number badges. Make links with each smart
+shape; confirm that visible curves match their tappable area after reopening and undo/redo.
+Change one page's paper, then create a linked New page and check it inherits that layout.
+Fresh notebooks should start on Narrow, no margin. Check long Library names and the equal-width
+KOReader button in Classic/Gothic and landscape. Saved custom tool preferences should survive;
+Reset/fresh fountain is 0.25–1 mm opaque, highlighter 5 mm with 25–75% opacity.
+
+If the optional Terminess patch is enabled, explicitly update it in Settings > KOReader and
+restart KOReader. Check its battery at several levels, charging and unplugged, in the dropdown
+and reading footer. Automated stubs verify native font selection and ownership-safe upgrades;
+they do not prove the physical battery glyph rendering.
+
 ## 2.0.0-rc.6 (device checks pending)
 
 The candidate adds persistent/decoded preview reuse, explicit multi-select, notebook-hosted

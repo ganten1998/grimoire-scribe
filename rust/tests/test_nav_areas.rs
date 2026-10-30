@@ -70,7 +70,7 @@ fn caps_and_protected_files(nb: &NotebookInfo, path: &str) {
     nav_init(&mut n);
     for pid in 1..=pages {
         for seed in [u32::MAX - 1, u32::MAX] {
-            let l = NavLink { pid, seed, target: FixedStr::from_str("future-target"), area: area(5000, 5000, 1000, 1000), has_area: true };
+            let l = NavLink { pid, seed, target: FixedStr::from_str("future-target"), area: area(5000, 5000, 1000, 1000), has_area: true, ..Default::default() };
             check!(nav_link_put(&mut n, &l) == 0);
         }
     }

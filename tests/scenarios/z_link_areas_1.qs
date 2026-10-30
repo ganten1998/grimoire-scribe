@@ -1,8 +1,8 @@
 # settings: status_mode=1
 # rust-only
-# The eye: dotted, numbered boxes over the page where a finger's tap follows a link. The link-areas
+# The eye: fine dotted outlines over the page where a finger's tap follows a link. The link-areas
 # action turns it on and off; the boxes are the links' areas padded to a finger's size, three of them
-# here, tagged 1 2 1 (the bar's entries: page 3 twice, page 2). They are on the screen only, so a
+# here (page 3 twice, page 2), without number badges. They are on the screen only, so a
 # stroke across one still renders as the page does, and the setting is kept through a restart. The
 # first time it comes on a toast says what the boxes are. (The bar's Areas button, which does the same,
 # is in z_bar_1_list.)

@@ -19,7 +19,7 @@ fn ids(p: &Page) -> Vec<StrokeId> {
 fn rec(seed: u32, target: &str) -> LinkRec {
     let mut t = FixedStr::<NAV_TARGET_LEN>::default();
     t.set(target);
-    LinkRec { seed, target: t, area: Rect { x: 10, y: 20, w: 30, h: 40 }, has_area: true }
+    LinkRec { seed, target: t, area: Rect { x: 10, y: 20, w: 30, h: 40 }, has_area: true, ..Default::default() }
 }
 fn made(pid: u32, seed: u32, target: &str) -> LinkEdit {
     LinkEdit { pid, records: vec![(None, Some(rec(seed, target)))] }

@@ -73,8 +73,8 @@ void tool_params_default(ToolKind t, ToolParams *o) {
         *o = (ToolParams){2.5000f, 7.0000f, 1.0000f, 1.0000f, 0.0000f, 0.6000f, 1.0000f, 30.0000f, 75.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_FOUNTAIN:
-        // Nib width 0.28..0.80 mm with pressure; the angled nib makes it calligraphic.
-        *o = (ToolParams){0.2800f, 0.8000f, 1.0000f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+        // Owner's 2026-10-30 settings: 0.25..1.00 mm, mirrored by the Rust defaults.
+        *o = (ToolParams){0.2500f, 1.0000f, 1.0000f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_FINELINER:
         *o = (ToolParams){0.2800f, 0.2800f, 1.0000f, 1.0000f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 1.0000f};
@@ -93,7 +93,7 @@ void tool_params_default(ToolKind t, ToolParams *o) {
         break;
     case TOOL_HIGHLIGHTER:
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
-        *o = (ToolParams){3.0000f, 3.0000f, 0.5000f, 0.7500f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+        *o = (ToolParams){5.0000f, 5.0000f, 0.2500f, 0.7500f, 0.0000f, 1.0000f, 1.0000f, 0.0000f, 90.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
         break;
     case TOOL_PENCIL:
     default:

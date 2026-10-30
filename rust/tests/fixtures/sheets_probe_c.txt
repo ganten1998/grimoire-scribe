@@ -470,15 +470,15 @@ penset pg tab 6 mode 2 23f6ee07f6789c17
 penset pg tab 7 mode 0 c1aa46538b8ef574
 penset pg tab 7 mode 1 c1aa46538b8ef574
 penset pg tab 7 mode 2 a98951df17c64ebc
-penset pg tab 5 mode 0 55d152ab0feda60e
-penset pg tab 5 mode 1 55d152ab0feda60e
-penset pg tab 5 mode 2 eb2c035a80d6879e
+penset pg tab 5 mode 0 37cd6231169e98a8
+penset pg tab 5 mode 1 37cd6231169e98a8
+penset pg tab 5 mode 2 0a5843b2df1eeb18
 penset pg tab 9 mode 0 9bad0aca0bd78a71
 penset pg tab 9 mode 1 9bad0aca0bd78a71
 penset pg tab 9 mode 2 d0a74ddfec948259
-penset pg tab 4 mode 0 70c1939938c0baf1
-penset pg tab 4 mode 1 70c1939938c0baf1
-penset pg tab 4 mode 2 d74560757ede85d9
+penset pg tab 4 mode 0 8412f161e882e971
+penset pg tab 4 mode 1 8412f161e882e971
+penset pg tab 4 mode 2 73611d9494b2ce59
 penset pg tab 3 mode 0 3261f87df4483617
 penset pg tab 3 mode 1 b029924c6393f853
 penset pg tab 3 mode 2 3261f87df4483617
@@ -500,15 +500,15 @@ penset pc tab 6 mode 2 f2cd6cd33189e521
 penset pc tab 7 mode 0 378089bae9b4e704
 penset pc tab 7 mode 1 378089bae9b4e704
 penset pc tab 7 mode 2 4d6fe3c5ff70c5ae
-penset pc tab 5 mode 0 90f14027850969f0
-penset pc tab 5 mode 1 90f14027850969f0
-penset pc tab 5 mode 2 ba6fd8f22e345842
+penset pc tab 5 mode 0 abc0ed28e80daf9c
+penset pc tab 5 mode 1 abc0ed28e80daf9c
+penset pc tab 5 mode 2 2c3ed8c06be13c66
 penset pc tab 9 mode 0 5ce651b701e77435
 penset pc tab 9 mode 1 5ce651b701e77435
 penset pc tab 9 mode 2 8f0c56573c201c2b
-penset pc tab 4 mode 0 273c39a521c99eaf
-penset pc tab 4 mode 1 273c39a521c99eaf
-penset pc tab 4 mode 2 57d7ab7a5823c5b1
+penset pc tab 4 mode 0 ac6e91cca6efb6b0
+penset pc tab 4 mode 1 ac6e91cca6efb6b0
+penset pc tab 4 mode 2 1673ed52ef035c56
 penset pc tab 3 mode 0 c89bf5e1c8172877
 penset pc tab 3 mode 1 b3be7494e3d7e35e
 penset pc tab 3 mode 2 c89bf5e1c8172877
@@ -530,15 +530,15 @@ penset lg tab 6 mode 2 a59e9dc8a31d5ff7
 penset lg tab 7 mode 0 5c91738b58581972
 penset lg tab 7 mode 1 5c91738b58581972
 penset lg tab 7 mode 2 a878eff9f085086a
-penset lg tab 5 mode 0 31d2c48c9201e8b4
-penset lg tab 5 mode 1 31d2c48c9201e8b4
-penset lg tab 5 mode 2 84aa0308a25bce34
+penset lg tab 5 mode 0 73a3b988905b8bda
+penset lg tab 5 mode 1 73a3b988905b8bda
+penset lg tab 5 mode 2 fdfc33d918e0745a
 penset lg tab 9 mode 0 598cae903c3419bb
 penset lg tab 9 mode 1 598cae903c3419bb
 penset lg tab 9 mode 2 535c01d25ad83673
-penset lg tab 4 mode 0 3e8cdcb88056ac6c
-penset lg tab 4 mode 1 3e8cdcb88056ac6c
-penset lg tab 4 mode 2 0e0e3ac77a033e0c
+penset lg tab 4 mode 0 41f17a3bc0f8b430
+penset lg tab 4 mode 1 41f17a3bc0f8b430
+penset lg tab 4 mode 2 cd14ab180197c8d0
 penset lg tab 3 mode 0 7ff291fa121cf1c7
 penset lg tab 3 mode 1 dec7a6e8a6d705ab
 penset lg tab 3 mode 2 7ff291fa121cf1c7
@@ -560,15 +560,15 @@ penset lc tab 6 mode 2 1b69b2fb9320c07d
 penset lc tab 7 mode 0 848d55207312b2a0
 penset lc tab 7 mode 1 848d55207312b2a0
 penset lc tab 7 mode 2 f764390f4e3aa49a
-penset lc tab 5 mode 0 7bc7a11c9fab4a06
-penset lc tab 5 mode 1 7bc7a11c9fab4a06
-penset lc tab 5 mode 2 78827a04b9a4aaa0
+penset lc tab 5 mode 0 17429ce15643d2de
+penset lc tab 5 mode 1 17429ce15643d2de
+penset lc tab 5 mode 2 e13d0e477cd411c0
 penset lc tab 9 mode 0 8a0608bd594bcb69
 penset lc tab 9 mode 1 8a0608bd594bcb69
 penset lc tab 9 mode 2 5ff577f280d81c0f
-penset lc tab 4 mode 0 ee72970a7d854a3a
-penset lc tab 4 mode 1 ee72970a7d854a3a
-penset lc tab 4 mode 2 691f9f9c478cb7e0
+penset lc tab 4 mode 0 b727a088b0a25c31
+penset lc tab 4 mode 1 b727a088b0a25c31
+penset lc tab 4 mode 2 2b55bd348f113913
 penset lc tab 3 mode 0 ce157dcb2401a8fb
 penset lc tab 3 mode 1 ce1a48163b1d08b2
 penset lc tab 3 mode 2 ce157dcb2401a8fb
@@ -701,11 +701,11 @@ penset pad tool 7 again probe pad_ink_near.1000.1000 rc 0 ''
 penset pad tool 7 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 7 again probe pad_ink_near.700.900 rc 0 ''
 penset pad tool 7 again probe bogus rc -1 ''
-penset pad tool 5 118b7c4ea1a4a3ab
-penset pad tool 5 again bbcc2f7e242d8c07
+penset pad tool 5 a2d4572a313ce595
+penset pad tool 5 again c11a1fd3ca17928d
 penset pad tool 5 again probe slider_pending rc 0 '0'
-penset pad tool 5 again probe param.size_min_mm rc 0 '0.2800'
-penset pad tool 5 again probe param.size_max_mm rc 0 '0.8000'
+penset pad tool 5 again probe param.size_min_mm rc 0 '0.2500'
+penset pad tool 5 again probe param.size_max_mm rc 0 '1.0000'
 penset pad tool 5 again probe param.opacity_max rc 0 '1.0000'
 penset pad tool 5 again probe param.pressure_floor rc 0 '0.0000'
 penset pad tool 5 again probe param.pressure_ceiling rc 0 '1.0000'
@@ -743,11 +743,11 @@ penset pad tool 9 again probe pad_ink_near.1000.1000 rc 0 ''
 penset pad tool 9 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 9 again probe pad_ink_near.700.900 rc 0 ''
 penset pad tool 9 again probe bogus rc -1 ''
-penset pad tool 4 a4e0580e245fdf33
-penset pad tool 4 again 357e29c00a9ff579
+penset pad tool 4 82489a2e0df04c8a
+penset pad tool 4 again 9a9c51736850c1ce
 penset pad tool 4 again probe slider_pending rc 0 '0'
-penset pad tool 4 again probe param.size_min_mm rc 0 '3.0000'
-penset pad tool 4 again probe param.size_max_mm rc 0 '3.0000'
+penset pad tool 4 again probe param.size_min_mm rc 0 '5.0000'
+penset pad tool 4 again probe param.size_max_mm rc 0 '5.0000'
 penset pad tool 4 again probe param.opacity_max rc 0 '0.7500'
 penset pad tool 4 again probe param.pressure_floor rc 0 '0.0000'
 penset pad tool 4 again probe param.pressure_ceiling rc 0 '1.0000'
@@ -786,13 +786,13 @@ penset pad tool 3 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 3 again probe pad_ink_near.700.900 rc 0 '0'
 penset pad tool 3 again probe bogus rc -1 ''
 penset pad pg tool 9 3893ba92248d127b
-penset pad pg tool 4 a4e0580e245fdf33
+penset pad pg tool 4 82489a2e0df04c8a
 penset pad pc tool 9 fe3d1190e8c72b7a
-penset pad pc tool 4 f9f5030892f54e46
+penset pad pc tool 4 00461e57d5a6eb28
 penset pad lg tool 9 5636593e82fff924
-penset pad lg tool 4 e480a0bb65cd5bca
+penset pad lg tool 4 95adc23625bc3158
 penset pad lc tool 9 a6e11b00543b053b
-penset pad lc tool 4 b083626ef2ce60ab
+penset pad lc tool 4 2947be3a7fb6b5de
 penset white tab 3dac9f73d9b91cb6
 penset white stroke 5d048a35b2c471b5
 penset white probe slider_pending rc 0 '0'
@@ -835,10 +835,10 @@ penset end probe pad_ink_near.1000.1000 rc 0 '0'
 penset end probe pad_ink_near.-5.x rc -1 ''
 penset end probe pad_ink_near.700.900 rc 0 '0'
 penset end probe bogus rc -1 ''
-penset fountain wiped (end) 8b05e61328dd37c2
+penset fountain wiped (end) f91b794a592435f4
 penset wiped probe slider_pending rc 0 '0'
-penset wiped probe param.size_min_mm rc 0 '0.2800'
-penset wiped probe param.size_max_mm rc 0 '0.8000'
+penset wiped probe param.size_min_mm rc 0 '0.2500'
+penset wiped probe param.size_max_mm rc 0 '1.0000'
 penset wiped probe param.opacity_max rc 0 '1.0000'
 penset wiped probe param.pressure_floor rc 0 '0.0000'
 penset wiped probe param.pressure_ceiling rc 0 '1.0000'

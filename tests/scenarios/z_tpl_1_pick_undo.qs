@@ -13,7 +13,7 @@ wait 100
 tap 1564 2254
 wait 400
 expect screen is editor
-expect editor.paper is 1
+expect editor.paper is 5
 pen line 300 640 1300 700 40 0.6 0.6
 wait 300
 expect editor.strokes is 1
@@ -50,7 +50,7 @@ pentap panel undo
 wait 200
 pentap panel undo
 wait 300
-expect editor.paper is 1
+expect editor.paper is 5
 expect editor.erase_strokes is 0
 expect editor.live_matches_render is 1
 shot 04-undone

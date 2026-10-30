@@ -785,6 +785,24 @@ stroke, and deleting a link never deletes ink either. A link with no such stroke
 erased in beta.5) stays as it is; a read-only page's links are not migrated (their ink boxes keep
 working). Copy page gives the copy every link of its page, with the same seeds, targets and areas.
 
+From 2.0.0-rc.7 a snapped link area also stores an optional
+`outline.<page id>=<seed>,<kind>,<x>:<y>,...` line. Kind is `c` (closed polygon) or `o`
+(open path); coordinates are integer page pixels, 0 to 6000, within the link's rectangular area.
+Closed paths have 3 to 64 points and open paths 2 to 64. The renderer closes a polygon itself.
+Dense curves are simplified before saving. Outlines attach after all area lines are read,
+regardless of file order; the last valid matching outline wins. Up to 4000 outline lines are
+accepted. Unknown or malformed bounded lines are preserved; an oversized unknown line protects
+the file from writes, as below. Outline records without a link are dropped on a successful save.
+An outline outside its area's bounds is preserved as opaque metadata and the rectangle keeps
+working. Copy, undo/redo, area redraw and clear retain or replace the full geometry together.
+Outlines remain overlays; page ink, page previews and exported page images do not contain them.
+PDF link annotations retain rectangular bounds.
+
+Earlier 2.0 builds use the rectangular fallback when they can carry these new records within
+their unknown-line limits. An outline line longer than 255 bytes, or unknown metadata over
+16 KiB, makes links read-only in those builds; they preserve the file instead of overwriting it.
+Reopen in rc.7 or newer to edit it. Notebook ink remains readable independently.
+
 What a 2.0.0-beta.5 build does with this file: it reads every `link.` line, and a link with an area but
 no ink does nothing there (one made from 2.0.0-beta.6 on), while a migrated link keeps working there
 through its ink. It carries the `area.` lines as unknown lines up to 16 KiB together (about 430 links);
@@ -1164,7 +1182,7 @@ Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choic
 `shape_quads` (0 uneven allowed, 1 rectangles/default, 2 squares only), `shape_round` (0 as drawn,
 1 prefer circles/default, 2 circles only), and `shape_links` (on by default). Prefer circles uses
 minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. Link areas retain
-rectangular bounds in links.ini; snapping changes their selection outline and bounds, not QPG data.
+rectangular bounds plus the optional bounded outline in links.ini; snapping never changes QPG data.
 
 
 ## Disposable page previews: `.page-previews/`

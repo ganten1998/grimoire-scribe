@@ -215,8 +215,8 @@ pub fn tool_params_default(t: ToolKind, out: &mut ToolParams) {
         TOOL_MECH_PENCIL => tp([0.3000, 0.3000, 0.5000, 0.9500, 0.0000, 1.0000, 1.5000, 0.0000, 90.0000, 0.0000, 0.0000, 0.5000, 0.0000]),
         TOOL_BALLPOINT => tp([0.3000, 0.4800, 0.8500, 1.0000, 0.0000, 1.0000, 1.5000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.5000]),
         TOOL_ERASER => tp([2.5000, 7.0000, 1.0000, 1.0000, 0.0000, 0.6000, 1.0000, 30.0000, 75.0000, 0.0000, 0.0000, 0.0000, 0.0000]),
-        // Nib width 0.28..0.80 mm with pressure; the angled nib makes it calligraphic.
-        TOOL_FOUNTAIN => tp([0.2800, 0.8000, 1.0000, 1.0000, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.0000]),
+        // Owner's 2026-10-30 settings: 0.25..1.00 mm; the angled nib makes it calligraphic.
+        TOOL_FOUNTAIN => tp([0.2500, 1.0000, 1.0000, 1.0000, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.0000]),
         TOOL_FINELINER => tp([0.2800, 0.2800, 1.0000, 1.0000, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 1.0000]),
         TOOL_MARKER => tp([1.0000, 1.0000, 0.9100, 1.0000, 0.0100, 1.0000, 1.0000, 0.0000, 75.0000, 1.5000, 0.0000, 0.1500, 0.5000]),
         // 0.30..0.55 mm, pressure-led with broad shading as the pen leans.
@@ -225,7 +225,7 @@ pub fn tool_params_default(t: ToolKind, out: &mut ToolParams) {
         // range here says when the nib starts to follow the pen's lean (see brush_nib_angle).
         TOOL_CALLIGRAPHY => tp([1.7500, 1.7500, 0.7500, 1.0000, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.5000]),
         // Broad and flat; darken-only blending keeps the writing underneath fully black.
-        TOOL_HIGHLIGHTER => tp([3.0000, 3.0000, 0.5000, 0.7500, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.0000]),
+        TOOL_HIGHLIGHTER => tp([5.0000, 5.0000, 0.2500, 0.7500, 0.0000, 1.0000, 1.0000, 0.0000, 90.0000, 0.0000, 0.0000, 0.0000, 0.0000]),
         // TOOL_PENCIL and any other: 0.12..0.32 mm: a sharp pencil; tilt still shades wider.
         _ => tp([0.1200, 0.3200, 0.8500, 0.9500, 0.0000, 1.0000, 1.0000, 25.0000, 55.0000, 4.0000, 0.7500, 0.7500, 0.0000]),
     };

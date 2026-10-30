@@ -11,7 +11,7 @@ tap 965 95
 wait 100
 tap 1564 2254
 wait 400
-expect editor.paper is 1
+expect editor.paper is 5
 key 314 0 1
 wait 80
 expect editor.pages is 1
@@ -20,7 +20,7 @@ key 315 0 1
 wait 200
 expect editor.pages is 2
 expect editor.page is 2
-expect editor.paper is 1
+expect editor.paper is 5
 # Page 2 onto a photo, then the key on it: a page on the notebook's paper, not the photo's picture
 pentap panel paper
 wait 200
@@ -36,7 +36,7 @@ key 106 0
 wait 400
 expect editor.pages is 3
 expect editor.page is 3
-expect editor.paper is 1
+expect editor.paper is 5
 expect annotate.role is
 pentap panel library
 wait 600

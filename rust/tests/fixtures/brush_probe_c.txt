@@ -10,12 +10,12 @@ pure t2 v2 1eb0297381747576
 pure t3 v0 a42b7cf7455f6a24
 pure t3 v1 08c239b5e80bbf39
 pure t3 v2 4bb116fb8e4706c1
-pure t4 v0 7a13d5e95f75b50e
-pure t4 v1 f4794b4de48a8d97
-pure t4 v2 d91e667f886b5478
-pure t5 v0 aafe3cb68b3c049e
-pure t5 v1 d11acb0b48e10476
-pure t5 v2 93b00f2efeb3c1dd
+pure t4 v0 5fdddc2477fe931c
+pure t4 v1 86ed10489bb594e3
+pure t4 v2 778e5a54d837b898
+pure t5 v0 c32ece7815b6531f
+pure t5 v1 0ba5048d21cbfe37
+pure t5 v2 e2d950482854f1cc
 pure t6 v0 54cf377efca04ac2
 pure t6 v1 166d7f6e0a4e7c60
 pure t6 v2 cc7ded3d8cff2d6e
@@ -31,7 +31,7 @@ pure t9 v2 189421552b70f0ae
 pure t12 v0 7767843571d13d64
 pure t12 v1 bbc5ed8a70c59510
 pure t12 v2 a9e8c27024a6c735
-table 3f94f8eea45fcaa5
+table 823bb12032dffab7
 smooth a0 4f514ec85b56fd5c
 smooth a1 09a3cf7836bdca6c
 smooth a2 22d3df4539897cbf
@@ -230,102 +230,102 @@ stroke t3 v2 dpi226 m4 d74f816b19ec7e29
 stroke t3 v2 dpi226 m5 943cf28841434e75
 stroke t3 v2 dpi226 m6 9c31498f716f8b71
 stroke t3 v2 dpi226 m7 f498d143e2e8aed0
-stroke t4 v0 dpi300 m0 40da0fa46c745852
-stroke t4 v0 dpi300 m1 90e556226cb00617
-stroke t4 v0 dpi300 m2 31d6efb4cb8205db
-stroke t4 v0 dpi300 m3 04d36bfc6bbbac6a
-stroke t4 v0 dpi300 m4 3f7ac83b0c1cf644
-stroke t4 v0 dpi300 m5 46efe3e0fb5b288b
-stroke t4 v0 dpi300 m6 026a253ee2bf9177
-stroke t4 v0 dpi300 m7 595c0b0b9be8ccc4
-stroke t4 v0 dpi226 m0 81a2aa5b36279751
-stroke t4 v0 dpi226 m1 6a893ac7b2f7de47
-stroke t4 v0 dpi226 m2 46d3010f6e2924f3
-stroke t4 v0 dpi226 m3 0b76ad8a44d5779e
-stroke t4 v0 dpi226 m4 2225810f7b0f04b7
-stroke t4 v0 dpi226 m5 decbb7b93b613a88
-stroke t4 v0 dpi226 m6 aa96a8e43298043f
-stroke t4 v0 dpi226 m7 748853ada4d1989f
-stroke t4 v1 dpi300 m0 cf6532933dc47c49
-stroke t4 v1 dpi300 m1 656a165d22e7ac9b
-stroke t4 v1 dpi300 m2 a93b71e277f6434a
-stroke t4 v1 dpi300 m3 2b784b6623af0a29
-stroke t4 v1 dpi300 m4 3ba53edc1784bc7f
-stroke t4 v1 dpi300 m5 416980b3d7a9e6a8
-stroke t4 v1 dpi300 m6 d5943259a92bb3ba
-stroke t4 v1 dpi300 m7 b270d823620a1391
-stroke t4 v1 dpi226 m0 2c5a663f7ff5e90c
-stroke t4 v1 dpi226 m1 04098e196725a916
-stroke t4 v1 dpi226 m2 d90b948bb65d326f
-stroke t4 v1 dpi226 m3 1a054ba73f9f14d1
-stroke t4 v1 dpi226 m4 36d40b76d1a5e4f2
-stroke t4 v1 dpi226 m5 90603c8abe950a67
-stroke t4 v1 dpi226 m6 c5a5d16aa933ecbb
-stroke t4 v1 dpi226 m7 f907a9dadce12aaa
-stroke t4 v2 dpi300 m0 8fed628716032a3b
-stroke t4 v2 dpi300 m1 eee36dd538fb49ea
-stroke t4 v2 dpi300 m2 f6bd5a411daa859a
-stroke t4 v2 dpi300 m3 1736749ad2d2032d
-stroke t4 v2 dpi300 m4 399f0afa33a2997b
-stroke t4 v2 dpi300 m5 9ec1ed3fa16cc47c
-stroke t4 v2 dpi300 m6 f1b3d86d2aa344ea
-stroke t4 v2 dpi300 m7 002f96cd558ddcfb
-stroke t4 v2 dpi226 m0 e3ca928613c4f55a
-stroke t4 v2 dpi226 m1 6746cc23e9a88efc
-stroke t4 v2 dpi226 m2 c0ce07e26fa51628
-stroke t4 v2 dpi226 m3 33222a43333b7582
-stroke t4 v2 dpi226 m4 ce73900d40d36ce2
-stroke t4 v2 dpi226 m5 dfe06d18f6e6840a
-stroke t4 v2 dpi226 m6 5401cd519f97cb3d
-stroke t4 v2 dpi226 m7 59d85843f3bc4c96
-stroke t5 v0 dpi300 m0 9e0f2ae0e7dbab8e
-stroke t5 v0 dpi300 m1 380c8813a54828a2
-stroke t5 v0 dpi300 m2 163b08ab147156dd
-stroke t5 v0 dpi300 m3 9e69395911273baf
-stroke t5 v0 dpi300 m4 a008c9b05a6ee9af
-stroke t5 v0 dpi300 m5 256402001d501d50
-stroke t5 v0 dpi300 m6 64cd945d7f0b8af7
-stroke t5 v0 dpi300 m7 07e2d22cfbdfa787
-stroke t5 v0 dpi226 m0 a85f088c1c2a3a2b
-stroke t5 v0 dpi226 m1 f40ce8b3e0820da7
-stroke t5 v0 dpi226 m2 e65755a09ddd6dbe
-stroke t5 v0 dpi226 m3 e5d7eb4031ac4a87
-stroke t5 v0 dpi226 m4 f70709e751c65078
-stroke t5 v0 dpi226 m5 c5c1f87de70fd661
-stroke t5 v0 dpi226 m6 48edce1af1208bdc
-stroke t5 v0 dpi226 m7 e36d01fc24a847d8
-stroke t5 v1 dpi300 m0 be57200918aaef1c
-stroke t5 v1 dpi300 m1 839466dd7ec177c6
-stroke t5 v1 dpi300 m2 24b391369e8a1fb6
-stroke t5 v1 dpi300 m3 6f6d0244b849deda
-stroke t5 v1 dpi300 m4 213b476d686c54f5
-stroke t5 v1 dpi300 m5 6ad0e5a2d31b4d7d
-stroke t5 v1 dpi300 m6 bad267e115dac937
-stroke t5 v1 dpi300 m7 6bc50046ec9919b6
-stroke t5 v1 dpi226 m0 f2ead1e3dfe96468
-stroke t5 v1 dpi226 m1 c00198520eac9a94
-stroke t5 v1 dpi226 m2 258ab556c35073f3
-stroke t5 v1 dpi226 m3 f34d5ba99c8df0bf
-stroke t5 v1 dpi226 m4 76ff126fdbfd89ab
-stroke t5 v1 dpi226 m5 533bdfc17dd23064
-stroke t5 v1 dpi226 m6 ba7ae81a5a088027
-stroke t5 v1 dpi226 m7 c850556d3cc3c9f2
-stroke t5 v2 dpi300 m0 514ff7fdefc3c50e
-stroke t5 v2 dpi300 m1 d32cbcd118dea976
-stroke t5 v2 dpi300 m2 909ab9dd48bf1ff3
-stroke t5 v2 dpi300 m3 df15ce4c85297387
-stroke t5 v2 dpi300 m4 323c18b2c545e697
-stroke t5 v2 dpi300 m5 2ac9bc5edaa7f73b
-stroke t5 v2 dpi300 m6 f8b9b76cf39428fb
-stroke t5 v2 dpi300 m7 051369107d7f1bdd
-stroke t5 v2 dpi226 m0 1433de616bff2880
-stroke t5 v2 dpi226 m1 8516de42cd7aab89
-stroke t5 v2 dpi226 m2 d02c635e13e27446
-stroke t5 v2 dpi226 m3 725f2bc7bdb0abcb
-stroke t5 v2 dpi226 m4 d93ec55d3abdbacd
-stroke t5 v2 dpi226 m5 33c0762690ecebaa
-stroke t5 v2 dpi226 m6 920810290200b1f8
-stroke t5 v2 dpi226 m7 f69ffdc5d49bfe0d
+stroke t4 v0 dpi300 m0 e8b0c9a7016d483b
+stroke t4 v0 dpi300 m1 9edd1463a77093e6
+stroke t4 v0 dpi300 m2 54e703642e1e2566
+stroke t4 v0 dpi300 m3 dfd1f81a8e77049b
+stroke t4 v0 dpi300 m4 6a8e9570186524f6
+stroke t4 v0 dpi300 m5 c886aa5c89e67c4c
+stroke t4 v0 dpi300 m6 b139c3246d73b652
+stroke t4 v0 dpi300 m7 0b9c1e737d2de70c
+stroke t4 v0 dpi226 m0 c9b88c4ef070ac9f
+stroke t4 v0 dpi226 m1 0563e06e3c0c138e
+stroke t4 v0 dpi226 m2 f93ee22d82ec6740
+stroke t4 v0 dpi226 m3 bf895b71fa5839d7
+stroke t4 v0 dpi226 m4 b0e77f15e0129488
+stroke t4 v0 dpi226 m5 bfbe72987ddc54a0
+stroke t4 v0 dpi226 m6 f16368f0d3693a26
+stroke t4 v0 dpi226 m7 bfca4b40cc1e0a29
+stroke t4 v1 dpi300 m0 45db6ef447ebc6fd
+stroke t4 v1 dpi300 m1 182b151d79d5ead5
+stroke t4 v1 dpi300 m2 773e136eaed0ae55
+stroke t4 v1 dpi300 m3 918be5bc6c9a5386
+stroke t4 v1 dpi300 m4 d3130caaca7e0124
+stroke t4 v1 dpi300 m5 a6cec8436480c194
+stroke t4 v1 dpi300 m6 17fbde0ea0514286
+stroke t4 v1 dpi300 m7 d6637debfdde3977
+stroke t4 v1 dpi226 m0 81c0c5cf6a61e8f9
+stroke t4 v1 dpi226 m1 5112fb997b2f7ac4
+stroke t4 v1 dpi226 m2 4df01def54faf253
+stroke t4 v1 dpi226 m3 dd7c5c6e1cd4d225
+stroke t4 v1 dpi226 m4 e512d997f421788d
+stroke t4 v1 dpi226 m5 810e28e16e587d1f
+stroke t4 v1 dpi226 m6 ccb072ea4d422b24
+stroke t4 v1 dpi226 m7 a600003156b237e4
+stroke t4 v2 dpi300 m0 a660f08c2a31ed28
+stroke t4 v2 dpi300 m1 d7375ef6d4db92d7
+stroke t4 v2 dpi300 m2 794923c09b6775d2
+stroke t4 v2 dpi300 m3 dc1fe4b198ab4197
+stroke t4 v2 dpi300 m4 63257769e7600d8b
+stroke t4 v2 dpi300 m5 7afc780f5c7788bd
+stroke t4 v2 dpi300 m6 e8cb8e223e5e941f
+stroke t4 v2 dpi300 m7 1102bad0063c980c
+stroke t4 v2 dpi226 m0 d3b43a7a0157955c
+stroke t4 v2 dpi226 m1 81107231c85301e7
+stroke t4 v2 dpi226 m2 5d23303823669470
+stroke t4 v2 dpi226 m3 1235c7cd3e756cd7
+stroke t4 v2 dpi226 m4 33cd8cfa93038f67
+stroke t4 v2 dpi226 m5 e9f7a0198872aba8
+stroke t4 v2 dpi226 m6 2bb15f6ae39563a5
+stroke t4 v2 dpi226 m7 a19e6cb03521939c
+stroke t5 v0 dpi300 m0 9dad2d95b6362979
+stroke t5 v0 dpi300 m1 afe56765d2b3ef03
+stroke t5 v0 dpi300 m2 b2c813cfe1d55cc4
+stroke t5 v0 dpi300 m3 1dda7d235452da4f
+stroke t5 v0 dpi300 m4 9aed3bf94011795a
+stroke t5 v0 dpi300 m5 62588d087d8f46f1
+stroke t5 v0 dpi300 m6 0fefdd787a434552
+stroke t5 v0 dpi300 m7 db792a790aa022a1
+stroke t5 v0 dpi226 m0 08243352f5aeff4f
+stroke t5 v0 dpi226 m1 d5ca01d2e4696f0a
+stroke t5 v0 dpi226 m2 699483f3c0a39d28
+stroke t5 v0 dpi226 m3 ba6ece2fd34236f6
+stroke t5 v0 dpi226 m4 c6a157a77bb0da1a
+stroke t5 v0 dpi226 m5 9d2b56f63d6251d3
+stroke t5 v0 dpi226 m6 dec67fe7046c1d69
+stroke t5 v0 dpi226 m7 85c7bfc3bee41ad7
+stroke t5 v1 dpi300 m0 786bcdaeae232ebb
+stroke t5 v1 dpi300 m1 d152eba774b887e4
+stroke t5 v1 dpi300 m2 267594676a84971c
+stroke t5 v1 dpi300 m3 32c72e9c2e8feda3
+stroke t5 v1 dpi300 m4 6f5378291a35e931
+stroke t5 v1 dpi300 m5 81397becba599249
+stroke t5 v1 dpi300 m6 894feb0e7a124187
+stroke t5 v1 dpi300 m7 feca7f8abd2e5c27
+stroke t5 v1 dpi226 m0 b5bdc4e5db56399c
+stroke t5 v1 dpi226 m1 3975ba7fb18ff55f
+stroke t5 v1 dpi226 m2 c4711389b76a86b6
+stroke t5 v1 dpi226 m3 07c5cd64d25ecf3d
+stroke t5 v1 dpi226 m4 e2be95e83c429763
+stroke t5 v1 dpi226 m5 c2ecf60b028378af
+stroke t5 v1 dpi226 m6 0cc110fe5d38a051
+stroke t5 v1 dpi226 m7 55e284da7f67deac
+stroke t5 v2 dpi300 m0 32421643e186845a
+stroke t5 v2 dpi300 m1 51af4db86fab3d56
+stroke t5 v2 dpi300 m2 c9de150040213866
+stroke t5 v2 dpi300 m3 e87c1d6d6caf220d
+stroke t5 v2 dpi300 m4 b344faa37b1fcc6d
+stroke t5 v2 dpi300 m5 851feb620d6d9518
+stroke t5 v2 dpi300 m6 b10738c8a745b313
+stroke t5 v2 dpi300 m7 bdf5885efdcc9232
+stroke t5 v2 dpi226 m0 ff29b8c320b1a138
+stroke t5 v2 dpi226 m1 06332a4572469863
+stroke t5 v2 dpi226 m2 0ecf45302c7cd1b5
+stroke t5 v2 dpi226 m3 156954d506fe41c5
+stroke t5 v2 dpi226 m4 6152400eb41d659f
+stroke t5 v2 dpi226 m5 9aef1faf27c06828
+stroke t5 v2 dpi226 m6 faed464ac3844043
+stroke t5 v2 dpi226 m7 f5ca71defcac39a4
 stroke t6 v0 dpi300 m0 b5cf361d991e091e
 stroke t6 v0 dpi300 m1 8de6bc44dd685959
 stroke t6 v0 dpi300 m2 e6a33aaff89de456

@@ -73,7 +73,7 @@ eraser line 790 560 810 780 15
 wait 500
 pentap panel undo
 wait 300
-expect editor.paper is 1
+expect editor.paper is 5
 waitbg
 wait 300
 expect editor.paper_cache is 0

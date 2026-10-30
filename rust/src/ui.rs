@@ -822,6 +822,17 @@ pub fn ui_text(c: &mut Canvas, f: FontFace, mut px: f32, mut min_px: f32, r: Rec
         font_draw_left(c, f, px, r, text, gray);
     }
 }
+/// The same adaptive sizing for arbitrary notebook/folder names. Their final ellipsis is
+/// intentional, as in font_draw_left_name, rather than a translation-fit error.
+pub fn ui_text_name(c:&mut Canvas,f:FontFace,px:f32,min_px:f32,r:Rect,text:&str,max_lines:i32,gray:u8) {
+    let min_px=min_px.min(px);
+    let size=font_fit_px(f,px,min_px,text,r.w);
+    if size>0.0 {font_draw_left_name(c,f,size,r,text,gray);}
+    else {
+        let lh=(font_ascent(f,min_px)+font_descent(f,min_px)).max(1);
+        font_draw_wrapped_name(c,f,min_px,r,text,max_lines.min((r.h/lh).max(1)),gray);
+    }
+}
 /// The width a box needs for its text: the text at px with pad on each side, kept within
 /// [min_w, max_w], for a chip or a button that grows with its label instead of cutting it.
 pub fn ui_text_box_w(f: FontFace, px: f32, text: &str, pad: i32, min_w: i32, max_w: i32) -> i32 {

@@ -125,11 +125,11 @@ penset pad tool 7 again probe pad_ink_near.1000.1000 rc 0 ''
 penset pad tool 7 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 7 again probe pad_ink_near.700.900 rc 0 ''
 penset pad tool 7 again probe bogus rc -1 ''
-penset pad tool 5 967b892abf35861b
-penset pad tool 5 again 511c16d4873c0777
+penset pad tool 5 bd1c44c79d5a7fa5
+penset pad tool 5 again 4fb789a408ae219d
 penset pad tool 5 again probe slider_pending rc 0 '0'
-penset pad tool 5 again probe param.size_min_mm rc 0 '0.2800'
-penset pad tool 5 again probe param.size_max_mm rc 0 '0.8000'
+penset pad tool 5 again probe param.size_min_mm rc 0 '0.2500'
+penset pad tool 5 again probe param.size_max_mm rc 0 '1.0000'
 penset pad tool 5 again probe param.opacity_max rc 0 '1.0000'
 penset pad tool 5 again probe param.pressure_floor rc 0 '0.0000'
 penset pad tool 5 again probe param.pressure_ceiling rc 0 '1.0000'
@@ -167,11 +167,11 @@ penset pad tool 9 again probe pad_ink_near.1000.1000 rc 0 ''
 penset pad tool 9 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 9 again probe pad_ink_near.700.900 rc 0 ''
 penset pad tool 9 again probe bogus rc -1 ''
-penset pad tool 4 1652e979e3a51483
-penset pad tool 4 again 9b4876ca677b20c9
+penset pad tool 4 46467edc3713188a
+penset pad tool 4 again 4623aad7f5375dce
 penset pad tool 4 again probe slider_pending rc 0 '0'
-penset pad tool 4 again probe param.size_min_mm rc 0 '3.0000'
-penset pad tool 4 again probe param.size_max_mm rc 0 '3.0000'
+penset pad tool 4 again probe param.size_min_mm rc 0 '5.0000'
+penset pad tool 4 again probe param.size_max_mm rc 0 '5.0000'
 penset pad tool 4 again probe param.opacity_max rc 0 '0.7500'
 penset pad tool 4 again probe param.pressure_floor rc 0 '0.0000'
 penset pad tool 4 again probe param.pressure_ceiling rc 0 '1.0000'
@@ -210,13 +210,13 @@ penset pad tool 3 again probe pad_ink_near.-5.x rc -1 ''
 penset pad tool 3 again probe pad_ink_near.700.900 rc 0 '0'
 penset pad tool 3 again probe bogus rc -1 ''
 penset pad pg tool 9 6fd96f9c97d86e2b
-penset pad pg tool 4 1652e979e3a51483
+penset pad pg tool 4 46467edc3713188a
 penset pad pc tool 9 c878d26e49dfe1a6
-penset pad pc tool 4 719a5a5cc23da7f8
+penset pad pc tool 4 082d08fc39a997b0
 penset pad lg tool 9 83bdf4891905c724
-penset pad lg tool 4 d5e5212fa67a63ca
+penset pad lg tool 4 2c14f1bbcd46dd58
 penset pad lc tool 9 73098b45d49f980b
-penset pad lc tool 4 0456d7317021f80d
+penset pad lc tool 4 5829e7e1db12c816
 penset white tab 3dac9f73d9b91cb6
 penset white stroke 254b1787b886cafd
 penset white probe slider_pending rc 0 '0'
@@ -259,10 +259,10 @@ penset end probe pad_ink_near.1000.1000 rc 0 '0'
 penset end probe pad_ink_near.-5.x rc -1 ''
 penset end probe pad_ink_near.700.900 rc 0 '0'
 penset end probe bogus rc -1 ''
-penset fountain wiped (end) 1f2e277d735c91c2
+penset fountain wiped (end) ef2a59aa45a51df4
 penset wiped probe slider_pending rc 0 '0'
-penset wiped probe param.size_min_mm rc 0 '0.2800'
-penset wiped probe param.size_max_mm rc 0 '0.8000'
+penset wiped probe param.size_min_mm rc 0 '0.2500'
+penset wiped probe param.size_max_mm rc 0 '1.0000'
 penset wiped probe param.opacity_max rc 0 '1.0000'
 penset wiped probe param.pressure_floor rc 0 '0.0000'
 penset wiped probe param.pressure_ceiling rc 0 '1.0000'

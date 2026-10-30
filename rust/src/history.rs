@@ -35,6 +35,7 @@ pub struct LinkRec {
     pub target: FixedStr<NAV_TARGET_LEN>,
     pub area: Rect,
     pub has_area: bool,
+    pub outline: LinkOutline,
 }
 
 /// One undo step's link changes on page `pid`: each record is (before, after) for one seed, None for

@@ -789,7 +789,9 @@ this sheet; patch toggles apply/remove only matching bundled files and preserve 
 The Terminess toggle writes the embedded regular/bold fonts into KOReader's `fonts/Grimoire`.
 Restart KOReader after any change. Font files can remain after disabling the patch; without it
 KOReader uses its original UI font. Since 2.0.0-beta.1 the Terminess patch matches regular and bold
-fonts and spaces the dropdown battery icon from its percentage. Exact old Grimoire Terminess bytes
+fonts and spaces the dropdown battery icon from its percentage. From 2.0.0-rc.7, dropdown status
+and reading footers retain KOReader's native font fallback: Terminess's unrelated private-use icons
+cannot replace battery symbols. Exact old Grimoire Terminess bytes
 are carried under `app/koreader/legacy` only for explicit migration; different user edits remain
 protected.
 
