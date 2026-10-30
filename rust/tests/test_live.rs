@@ -166,6 +166,29 @@ fn close(fd: i32) {
     unsafe { libc::close(fd) };
 }
 
+fn a_reconnect_reclaims_an_ended_viewer_without_a_poll_tick() {
+    check!(live_start(64, 64) == 0);
+    let first = socket_pair();
+    check!(live_take_viewer(first[0]));
+    close(first[0]);
+    check!(skip_head(first[1]));
+    let second = socket_pair();
+    check!(live_take_viewer(second[0]));
+    close(second[0]);
+    check!(skip_head(second[1]));
+    check!(live_viewers() == 2);
+    close(first[1]);
+    sleep_ms(100); // let the closed socket end its worker; deliberately no live_poll
+    let reconnect = socket_pair();
+    check!(live_take_viewer(reconnect[0]));
+    close(reconnect[0]);
+    // A failed take owns no socket: do not block reading it in the regression's failing case.
+    check!(!quiet(reconnect[1], 1000));
+    close(reconnect[1]);
+    close(second[1]);
+    live_stop();
+}
+
 fn a_viewer_sends_the_screen_then_what_changed() {
     let (w, h) = (300, 200);
     let mut c = Canvas::default();
@@ -1129,17 +1152,48 @@ fn a_pen_viewer_reads_the_raw_node_itself() {
         raw_ev(sec, usec + 4000, ABS, 0, 590), raw_ev(sec, usec + 4000, KEY, 0x14a, 1), raw_ev(sec, usec + 4000, ABS, 0x18, 900), raw_ev(sec, usec + 4000, SYN, 0, 0)]);
     let got = next_samples(sv[1], 2, &mut frames);
     check!(got.len() == 2 && got[1].1[17] & LIVE_DOWN != 0 && got[1].1[17] & LIVE_DRAW == 0 && u16(&got[1].1[8..]) == 305 - 6);
-    // Asleep: the node is read, nothing is sent.
+    // Sleep retires the raw reader. A replaced device at the same path must be opened again
+    // on wake, even when the calibration/map did not change. No held pen crosses that boundary.
     live_set_state(LIVE_ASLEEP);
     let mut st = [0u8; 3];
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_ASLEEP as u8);
     let (sec, usec) = mono_now();
     write_events(w, &[raw_ev(sec, usec, ABS, 0, 300), raw_ev(sec, usec, SYN, 0, 0)]);
     check!(quiet(sv[1], 100));
+    // SAFETY: remove/recreate the test's NUL-terminated FIFO path; old open fds stay valid.
+    unsafe { libc::unlink(c.as_ptr()) };
+    // SAFETY: mkfifo reads the same path and creates only this test's node.
+    check!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) } == 0);
+    // SAFETY: open reads the path; the returned descriptor is checked and closed below.
+    let replacement = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK) };
+    check!(replacement >= 0);
+    live_set_state(LIVE_AWAKE);
+    check!(next_kind(sv[1], LIVE_HELLO).is_some());
+    check!(next_kind(sv[1], LIVE_SAMPLES).is_some());
+    let (sec, usec) = mono_now();
+    write_events(replacement, &[raw_ev(sec, usec, KEY, 0x140, 1), raw_ev(sec, usec, ABS, 0, 200),
+        raw_ev(sec, usec, ABS, 1, 800), raw_ev(sec, usec, SYN, 0, 0)]);
+    let got = if quiet(sv[1], 2000) { Vec::new() } else { next_samples(sv[1], 1, &mut frames) };
+    check!(got.len() == 1 && u32_(&got[0].1) == (sec * 1_000_000 + usec) as u32
+        && got[0].1[16] == LIVE_PEN_HOVER as u8 && got[0].1[17] & (LIVE_DOWN | LIVE_DRAW) == 0);
+    // Unlike the simulator's O_RDWR FIFO, a real read-only input source can hang up. Retire
+    // it and use the main reader's ring; never spin on HUP/EOF and starve the app.
+    #[cfg(not(feature = "sim"))]
+    {
+        close(replacement);
+        sleep_ms(100);
+        let e = InEvent { type_: InType::PenHover, x: 90.0, y: 110.0, k_us: 7654321, ..Default::default() };
+        live_sample(&e, &style);
+        live_wake_samples();
+        let got = if quiet(sv[1], 2000) { Vec::new() } else { next_samples(sv[1], 1, &mut frames) };
+        check!(got.len() == 1 && u32_(&got[0].1) == 7654321);
+    }
     live_stop();
     close(sv[1]);
     close(tv[1]);
     close(w);
+    #[cfg(feature = "sim")]
+    close(replacement);
     // SAFETY: unlink reads the path.
     unsafe { libc::unlink(c.as_ptr()) };
     canvas_free(&mut c2);
@@ -1201,6 +1255,7 @@ fn test_live() {
     run!(marks_cover_exactly_the_tiles_a_rect_touches);
     run!(runs_join_neighbours_in_a_row_and_stay_on_screen);
     run!(frame_headers_are_little_endian);
+    run!(a_reconnect_reclaims_an_ended_viewer_without_a_poll_tick);
     run!(a_viewer_sends_the_screen_then_what_changed);
     run!(nothing_is_sent_while_the_pairing_card_is_up);
     run!(the_browser_is_told_when_the_colors_invert);

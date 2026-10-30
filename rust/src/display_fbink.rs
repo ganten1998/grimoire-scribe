@@ -598,6 +598,28 @@ fn set_pen_mode(s: &mut State, on: bool) {
     s.g_pen_mode = on;
 }
 
+// The cached mode is only ours while we own the awake panel. Native UI and suspend can change
+// it without going through set_pen_mode, whose same-value fast path must not apply here.
+pub fn display_power_reset() {
+    with(|s| {
+        s.g_stroke_pen = false;
+        s.g_ink = LiveInk::default();
+        s.g_frame_known = false;
+        s.g_live_area = RECT_EMPTY;
+        s.last_fast_wait = false;
+        if s.g_fd < 0 || !s.g_st.is_mtk {
+            return;
+        }
+        let rc = fbink_mtk_toggle_pen_mode(s.g_fd, false);
+        s.g_pen_mode = false;
+        if rc < 0 {
+            s.g_pen_ok = false;
+        }
+        qlog!("display: reset after ownership change: pen mode off -> %d, auto REAGL off -> %d",
+            rc, fbink_mtk_toggle_auto_reagl(s.g_fd, false));
+    });
+}
+
 pub fn display_live_ink(on: bool) {
     with(|s| live_ink_mark(&mut s.g_ink, on, now_ms()));
 }

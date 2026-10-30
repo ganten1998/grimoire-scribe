@@ -230,7 +230,7 @@ pub fn input_set_orientation(quarter_turns: i32) {
 pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
     platform::input_logical_to_panel(lx, ly, px, py)
 }
-/// Release pen and touch to the native PIN screen, then grab them after native unlock.
+/// Release pen and touch to native UI, or take them back and reset stale contacts after any wake.
 #[inline]
 pub fn input_set_grab(grab: bool) -> bool {
     platform::input_set_grab(grab)

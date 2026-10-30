@@ -135,6 +135,19 @@ pub fn display_broken() -> bool {
 pub fn display_wait() {
     platform::display_wait()
 }
+/// Finish our updates before handing the display to the screensaver/native UI. Pen mode is a
+/// device setting, so leave it explicitly even when no sleep image will be drawn.
+pub fn display_sleep() {
+    display_wait(); // exactly one waiter: the Kindle backend follows the quiet thread's books
+    display_wake();
+}
+/// Reassert normal display mode after native UI or hardware suspend may have changed it.
+pub fn display_wake() {
+    #[cfg(feature = "kindle")]
+    crate::display_fbink::display_power_reset();
+    #[cfg(not(feature = "kindle"))]
+    display_pen_mode(false);
+}
 #[inline]
 pub fn display_close() {
     platform::display_close()

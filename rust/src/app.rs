@@ -917,6 +917,10 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             qlog!("wake: out of the screensaver while Grimoire thought it was awake; repainting");
             a.asleep = true;
             live_hover_sync(a);
+            live_set_state(LIVE_ASLEEP);
+            if a.scr == ScreenId::Editor && !editor_suspend(a) {
+                qlog!("wake: could not save the interrupted page; keeping it in memory");
+            }
         }
         app_wake(a);
         return;
@@ -1308,6 +1312,7 @@ fn app_sleep(a: &mut App) {
     qlog!("sleep: mode %d", a.settings.sleep_mode);
     let mode = sleep_mode(a);
     with(|s| s.sleep_shown = mode);
+    display_sleep();
     if mode == 2 {
         a.input_yielded = true;
         live_hover_sync(a);
@@ -1369,13 +1374,22 @@ fn app_wake(a: &mut App) {
         return;
     }
     if a.input_yielded {
-        if !sys_kindle_ui(false) || !input_set_grab(true) {
+        if !sys_kindle_ui(false) {
             qlog!("wake: could not take the screen and input back; leaving");
             a.running = false;
             return;
         }
         a.input_yielded = false;
     }
+    // Wallpaper/page sleep also crosses a hardware suspend: releases may be lost and queued
+    // contacts may belong to the screensaver. Drain and resync every wake, suppressing contacts
+    // already down until they lift, just as after native unlock.
+    if !input_set_grab(true) {
+        qlog!("wake: could not reset input ownership; leaving");
+        a.running = false;
+        return;
+    }
+    display_wake();
     a.asleep = false;
     live_hover_sync(a);
     status_reset();

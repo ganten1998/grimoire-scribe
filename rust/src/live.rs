@@ -219,6 +219,7 @@ struct Shared {
     ring_only: AtomicU32,
     capture: Seq<CAPTURE_WORDS>,
     raw_map: Seq<MAP_WORDS>,
+    raw_epoch: AtomicU32,
     layers: [Seq<5>; LIVE_LAYERS],
     samples: [SampleSlot; LIVE_RING],
     dirty: [[AtomicU32; LIVE_WORDS]; LIVE_VIEWERS],
@@ -684,6 +685,7 @@ pub fn live_set_state(state: i32) {
     // state after its own fence, and sends nothing.
     let previous = sh.state.swap(state as u32, SeqCst);
     if previous != state as u32 {
+        sh.raw_epoch.fetch_add(1, SeqCst); // retire raw queues even if a worker misses a brief sleep
         live_reset(); // (no ink joins across a sleep or the pairing card)
     }
     if state != LIVE_AWAKE {
@@ -1736,15 +1738,24 @@ impl PenOut {
 // node is read empty either way, so what comes later is never stale. cap is the capture state as last
 // read whole: the main loop rewrites it at every pen event, and a read that meets a write keeps the
 // one before (an undrawn sample in a stroke would end its quick ink in the browser).
-fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32, sending: bool, gate: &mut LiveRawGate, cap: &mut LiveCapture, reset: &mut bool) {
+fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32, sending: bool, gate: &mut LiveRawGate, cap: &mut LiveCapture, reset: &mut bool) -> bool {
     let mut evs = [LiveInputEvent::default(); 64];
     let mut cap_b = [0u8; CAPTURE_BYTES];
     let mut have_cap = false;
     loop {
         // SAFETY: read into the local array of input_event records, at most its size in bytes.
         let got = unsafe { libc::read(r.fd, evs.as_mut_ptr() as *mut libc::c_void, std::mem::size_of_val(&evs)) };
-        if got <= 0 {
-            break;
+        if got < 0 {
+            if errno() == libc::EINTR {
+                continue;
+            }
+            if errno() == libc::EAGAIN || errno() == libc::EWOULDBLOCK {
+                break;
+            }
+            return false; // a detached digitizer: stop polling this descriptor
+        }
+        if got == 0 {
+            return false;
         }
         let n = got as usize / std::mem::size_of::<LiveInputEvent>();
         for ev in evs[..n].iter() {
@@ -1786,6 +1797,7 @@ fn raw_pump(sh: &Shared, r: &mut RawSource, o: &mut PenOut, fd: i32, epoch: u32,
         }
     }
     o.flush(fd, epoch);
+    true
 }
 
 /// capture_bytes read back.
@@ -1835,13 +1847,27 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
     let mut o = PenOut { out: [0u8; 13 + LIVE_SAMPLE_BYTES * LIVE_PEN_BATCH], n: 0, frame_reset: false, style: [0u8; LIVE_STYLE_BYTES], have_style: false, dead: false, last: now_ms() };
     let mut raw: Option<RawSource> = None;
     let mut map_seen: u32 = !0;
+    let mut raw_epoch: u32 = !0;
     // what the raw node's frames draw (live_raw_gate), and the capture state as last read whole
     let mut gate = LiveRawGate::default();
     let mut cap = LiveCapture::default();
     loop {
-        // The raw node: opened once the main loop publishes a map for it, let go when it takes it back.
+        let state = sh.state.load(SeqCst);
+        let next_raw_epoch = sh.raw_epoch.load(SeqCst);
+        // The device can suspend or be replaced with the very same path and calibration. Never
+        // keep its reader (or a held contact) across sleep; wake opens a fresh event queue.
+        if state != LIVE_AWAKE as u32 || raw_epoch != next_raw_epoch {
+            raw_close(raw.take());
+            raw_epoch = next_raw_epoch;
+            map_seen = !0;
+            gate.forget();
+            o.n = 0;
+            o.have_style = false;
+        }
+        // The raw node: only while awake, once the main loop publishes a map for it.
         let mut mb = [0u8; MAP_BYTES];
-        if let Some(v) = sh.raw_map.read(&mut mb) {
+        let map_version = if state == LIVE_AWAKE as u32 { sh.raw_map.read(&mut mb) } else { None };
+        if let Some(v) = map_version {
             if v != map_seen {
                 map_seen = v;
                 let m = if sh.ring_only.load(SeqCst) != 0 { None } else { raw_map_read(&mb) };
@@ -1866,7 +1892,6 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
                 }
             }
         }
-        let state = sh.state.load(SeqCst);
         let e = sh.ink_epoch.load(SeqCst);
         if state != told {
             if !send_state(fd, state, sh.invert.load(SeqCst), sh.warmth.load(SeqCst)) {
@@ -1897,9 +1922,16 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
         }
         if let Some(r) = raw.as_mut() {
             cursor = sh.sample_head.load(SeqCst); // (the ring's samples are the same frames, later)
-            raw_pump(sh, r, &mut o, fd, epoch, state == LIVE_AWAKE as u32, &mut gate, &mut cap, &mut reset);
+            let alive = raw_pump(sh, r, &mut o, fd, epoch, state == LIVE_AWAKE as u32, &mut gate, &mut cap, &mut reset);
             if o.dead {
                 child_exit();
+            }
+            if !alive {
+                raw_close(raw.take());
+                reset = true;
+                gate.forget();
+                o.n = 0;
+                o.have_style = false;
             }
         } else if state == LIVE_AWAKE as u32 {
             let head = sh.sample_head.load(SeqCst);
@@ -1963,10 +1995,12 @@ fn pen_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -> !
         if pf[1].revents & (libc::POLLHUP | libc::POLLERR | libc::POLLIN) != 0 {
             break;
         }
-        if rfd >= 0 && pf[2].revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+        if rfd >= 0 && pf[2].revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 {
             raw_close(raw.take()); // (the node went: the ring until a new map names it)
             reset = true;
             gate.forget();
+            o.n = 0;
+            o.have_style = false;
             cursor = sh.sample_head.load(SeqCst);
         }
         drain_wake(sh, slot, wake, pf[0].revents & libc::POLLIN != 0);
@@ -2025,6 +2059,16 @@ fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -
     }
     unsafe { libc::fcntl(fd, libc::F_SETFL, libc::fcntl(fd, libc::F_GETFL, 0) & !libc::O_NONBLOCK) };
     set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_NODELAY, 1);
+    // Wi-Fi can disappear across suspend without a FIN/RST. A successful write only means the
+    // local TCP buffer accepted it: bound unacknowledged data so stale viewers release slots.
+    set_int_opt(fd, libc::SOL_SOCKET, libc::SO_KEEPALIVE, 1);
+    #[cfg(target_os = "linux")]
+    {
+        set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_KEEPIDLE, 15);
+        set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_KEEPINTVL, 5);
+        set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_KEEPCNT, 3);
+        set_int_opt(fd, libc::IPPROTO_TCP, libc::TCP_USER_TIMEOUT, 15000);
+    }
     // A pen viewer's samples are small and want to go now: a small buffer, and a browser that takes
     // nothing for a second is gone; a tile viewer's PNGs are big: a browser that takes nothing for
     // 10 s is gone.
@@ -2309,6 +2353,10 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
 // A viewer child for the connection fd, in a free slot of its kind (the last free one).
 fn take_viewer(fd: i32, fast: bool) -> bool {
     let Some(f) = frame() else { return false };
+    // Reconnects are served before the next live_poll; reclaim workers that already ended.
+    for i in 0..LIVE_VIEWERS * 2 {
+        reap(i, false);
+    }
     let mut slot: i32 = -1;
     let v = with(|s| s.v);
     let first = if fast { LIVE_VIEWERS } else { 0 };

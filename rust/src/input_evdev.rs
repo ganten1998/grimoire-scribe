@@ -3209,6 +3209,25 @@ pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
     }
 }
 pub fn input_set_grab(grab: bool) -> bool {
+    if grab {
+        with(|s| {
+            // A wake can be followed by contacts already read in the same batch. Keep power,
+            // orientation and device notifications in order; never replay pre-wake gestures.
+            let mut read = s.qh;
+            let mut write = s.qh;
+            while read != s.qt {
+                let e = s.q[read];
+                read = (read + 1) % QN;
+                if matches!(e.type_, InType::Power | InType::PowerUp | InType::PowerHeld
+                    | InType::Sleep | InType::Wake | InType::Quit | InType::Orientation
+                    | InType::HidAttach | InType::HidDetach | InType::KeyUp) {
+                    s.q[write] = e;
+                    write = (write + 1) % QN;
+                }
+            }
+            s.qt = write;
+        });
+    }
     for i in 0..KEY_DEVS {
         let (init, fd) = with(|s| (s.keys_init, s.keys[i].fd));
         if !init {
@@ -3224,7 +3243,7 @@ pub fn input_set_grab(grab: bool) -> bool {
             });
         }
     }
-    // Forget touches that were used to type the PIN, including the final finger lift.
+    // Forget input used on the screensaver/PIN, including the final finger lift.
     if grab {
         let (pen_fd, touch_fd, wacom_fd) = with(|s| (s.pen.fd, s.touch.fd, s.wacom.fd));
         if pen_fd >= 0 {
@@ -3245,10 +3264,14 @@ pub fn input_set_grab(grab: bool) -> bool {
         s.tg_push(&out);
         let mut ok = true;
         let flag = if grab { 1 } else { 0 };
-        if s.pen.fd >= 0 && ioctl_grab(s.pen.fd, flag) != 0 {
+        // EVIOCGRAB is not idempotent: Linux 4.9 returns EBUSY even to the client already
+        // holding it (drivers/input/evdev.c: evdev_grab). Page/wallpaper sleep kept our grabs;
+        // reset their state without releasing ownership or trying to grab a second time.
+        let change_owner = s.input_grabbed != grab;
+        if change_owner && s.pen.fd >= 0 && ioctl_grab(s.pen.fd, flag) != 0 {
             ok = false;
         }
-        if s.touch.fd >= 0 && ioctl_grab(s.touch.fd, flag) != 0 {
+        if change_owner && s.touch.fd >= 0 && ioctl_grab(s.touch.fd, flag) != 0 {
             ok = false;
         }
         if !ok && grab {
@@ -3431,6 +3454,43 @@ pub fn input_touch_trace_event(line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wallpaper_wake_keeps_owned_grabs_but_discards_stale_contacts() {
+        let mut pipe = [-1; 2];
+        // SAFETY: pipe initializes this local descriptor pair; both ends are closed below.
+        assert_eq!(unsafe { libc::pipe(pipe.as_mut_ptr()) }, 0);
+        // SAFETY: close the writer, so draining the synthetic input descriptor cannot block.
+        unsafe { libc::close(pipe[1]) };
+        with(|s| {
+            *s = State::default();
+            s.pen.fd = pipe[0];
+            s.touch.fd = pipe[0];
+            s.input_grabbed = true;
+            s.P.touching = true;
+            s.side_reported = true;
+            s.qh = QN - 2;
+            s.qt = QN - 2;
+            for type_ in [InType::TouchDown, InType::Wake, InType::PenButton, InType::KeyUp,
+                InType::Gesture, InType::Power, InType::TouchUp] {
+                s.q_push(InEvent { type_, ..Default::default() });
+            }
+        });
+        // A pipe rejects EVIOCGRAB. Success proves a still-owned device was reset without
+        // trying to grab it again (a real evdev fd would reject that second grab with EBUSY).
+        assert!(input_set_grab(true));
+        with(|s| {
+            assert!(s.input_grabbed);
+            assert!(!s.P.touching && !s.side_reported);
+            let mut kept = Vec::new();
+            let mut e = InEvent::default();
+            while s.q_pop(&mut e) { kept.push(e.type_); }
+            assert_eq!(kept, [InType::Wake, InType::KeyUp, InType::Power]);
+            *s = State::default();
+        });
+        // SAFETY: the remaining pipe end is this test's and is no longer stored in State.
+        unsafe { libc::close(pipe[0]) };
+    }
 
     fn event(type_: u16, code: u16, value: i32, t_us: u64) -> PenEv {
         PenEv { type_, code, value, t_us }

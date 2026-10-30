@@ -186,6 +186,10 @@ From src/display_fbink.c and ~/.claude/projects/-Users-ganten/memory/kindle-hwtc
   for colour panels, on a signal of its own.
 - Pen mode, the live ink rule (live_ink_mark, live_ink_frame) and the colour panel's waits follow
   the C line for line.
+- At a power/ownership boundary, cached driver mode is no longer authoritative. Finish our
+  updates once before handing over, explicitly disable hardware pen mode, and reset the pixel
+  cache on wake/startup. Do not use an additional marker waiter to implement the reset. Reset
+  input after wallpaper/page sleep too; a native PIN is not the only source of lost releases.
 
 ### 6. The process model
 

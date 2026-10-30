@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reset stale pen, touch and gesture state after every wake, including wallpaper sleep and a missed sleep announcement; finish interrupted ink before accepting fresh input.
+- Close Live view's raw pen reader while asleep and reopen it after wake, even when its device path is unchanged. Fall back to the main input stream on device hangup/EOF. Explicitly leave hardware handwriting mode at sleep and reassert normal display mode at startup and wake.
+- Reclaim ended Live viewers before accepting reconnects and bound stale Wi-Fi sockets with TCP keepalive and an acknowledgement timeout on Kindle.
+
 ## 2.0.0-rc.5 (2026-10-29)
 
 - Show only linked pages in the graph, including when the current or a named page has no links. Remove Unlinked and its tiny tray; exclude deleted cross-notebook destinations from the graph while retaining saved links for repair.

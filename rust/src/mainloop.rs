@@ -380,6 +380,7 @@ fn run() -> i32 {
         qlog!("display_open failed");
         return 1;
     }
+    display_wake(); // the previous owner may have left the device's handwriting mode enabled
     qlog!("display %dx%d @ %.0f dpi", w, h, dpi);
     // The front light's levels, once: asking takes 95-191 ms on the Kindle, nothing can read the pens
     // meanwhile, and they are not open yet (light.h).
