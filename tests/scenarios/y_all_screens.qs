@@ -1326,19 +1326,19 @@ pen leave
 wait 1100
 swipe 2 930 1300 0 -400
 wait 300
-tap 1155 2370
+tap panel bar.areas
 wait 300
 expect settings.link_areas is 1
 expect editor.areas is 2
 shot 66-bar-areas
 wait 4300
-tap 1155 2370
+tap panel bar.areas
 wait 300
 expect settings.link_areas is 0
 # Go to opens Find over the bar: a number, a page there is not, a name that matches nothing, names
 tap panel bar.close
 tap panel pages
-tap 930 2395
+tap panel pages.goto
 wait 300
 expect editor.find is go
 shot 67-find-open

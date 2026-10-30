@@ -11,7 +11,37 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
-## 2.0.0-rc.4: Wi-Fi controls (device checks pending)
+## 2.0.0-rc.6: notebook controls and Live pop-out (device checks pending)
+
+The candidate adds persistent/decoded preview reuse, explicit multi-select, notebook-hosted
+naming and numeric page navigation, live clock previews, and a single-view Live pop-out.
+Automated regressions cover cold-process thumbnail reuse, updating only the edited preview,
+lossless compaction without reviving an invalidated cache, and changes within a coarse directory
+timestamp. Browser stand-ins check that popping out moves the same canvas and restores it on
+close without opening another Live client or making a video. These do not measure Kindle or
+Firefox responsiveness.
+
+On the Kindle, open Pages from the toolbar count, restart Grimoire and check the cached previews
+return promptly. Edit one page and check its preview changes. Tap selects one page; Multi-select
+allows several, with an inner selection border. Check the compact New/Copy/Delete controls,
+double-tap to open and long-press to add a link. Swipe up and test Name page and Go to page over
+the notebook. In Classic, check the Smart shapes title. In Display, change clock size/corner
+without closing the dialog; fresh settings default to a small enabled top-left clock.
+
+In Firefox Nightly, reload Live view after installing the candidate and use Pop out. Compare
+ink responsiveness, resize it, try keys and recording, then close it and check the same view
+returns to the original tab. Keep that tab open. Check the Kindle reports one watcher. Repeat
+sleep/wake with Live connected; the earlier reboot recovery does not prove this candidate's
+wake changes, which still need device acceptance.
+
+Update the optional KOReader Grimoire plugin and restart KOReader: its old Wi-Fi startup/manual
+controls should be absent. KOReader's own network menu remains responsible for connections.
+The USB transfer helper remains development-only.
+
+## 2.0.0-rc.4: Wi-Fi controls (superseded by rc.6)
+
+The KOReader startup/manual controls described here were removed in rc.6. The Grimoire Share
+controls remain; rc.4's KOReader-specific instructions are historical.
 
 Automated checks cover helper write order, idempotence, unavailable/invalid properties, rejected
 and ignored writes, partial failures, strict status parsing, bounded output, stalled children,

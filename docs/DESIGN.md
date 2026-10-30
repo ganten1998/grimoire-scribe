@@ -742,9 +742,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    inside a light edge and a dark one so it shows on white, gray, black and inverted pages, on a
    canvas over the averaged one (Show pen, on by default; the Mac simulator never says the pen
    left, as its mouse leaving the window is no IN_PEN_LEAVE, so there the dot stays where it was
-   last). Record and Picture in picture take a third canvas, film: the full-size picture with the
-   pen's mark drawn on it, kept as tiles and pen frames come (not by animation frames), so both go
-   on in a hidden tab.
+   last). Record takes a third canvas, film: the full-size picture with the pen's mark drawn on
+   it, kept as tiles and pen frames come (not by animation frames), so recording continues in a
+   hidden tab. Pop out moves the existing live DOM into another window; it does not use film.
 
    **Fast ink** shows what the pen writes in the browser before the tiles can: its samples come on
    a stream of their own (`GET /live/pen`, paired as `/live/stream` is), the page draws a quick
@@ -844,8 +844,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    the page once at its opacity, so its overlapping segments never add up to black over the writing
    it highlights. White ink and the precise eraser draw the paper's color (black while inverted;
    on transparent paper they take quick ink away). Nibs, grain, smoothing, tilt, the paper white
-   ink brings back and the stroke eraser are the tiles'. Record and Picture in picture take the
-   picture and the pen's dot, never the quick ink.
+   ink brings back and the stroke eraser are the tiles'. Record takes the picture and the pen's
+   dot, never the quick ink. Pop out keeps the same quick-ink canvas as the main view.
 
    The page plays the samples out at the pace the Kindle read them (Playout): each shows at its own
    time on the samples' timeline (the identities' microseconds unwrapped) plus an offset, the least
@@ -876,10 +876,11 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    the tiles on a canvas of their own and draws raw as the page with the layers that show; the quick
    ink keeps off the panel only while the panel shows. The Kindle's own screen is unchanged.
 
-   Picture in picture plays film at its window's own pixels (its size, and each resize, by
-   devicePixelRatio), averaged as the page view is (areaAverage), so the video plays at about 1:1
-   and its ruled lines keep their weight (the browser's video scaler made them uneven); a recording
-   keeps its own size.
+   Pop out adopts the existing live DOM/canvases into a same-origin blank window and copies only
+   styles. The original tab holds a placeholder and keeps the streams and JavaScript alive; no
+   second client, video encoder or renderer is created. Animation frames, viewport dimensions
+   and pixel ratio follow the active window. Closing it returns the same DOM to the original
+   tab. A recording keeps its own size independently.
 
    Monitor mode (M, or its button) fits the page, hides the controls until the pointer or keyboard
    focus reaches them, and asks for full screen when chosen; the browser remembers it (storage that

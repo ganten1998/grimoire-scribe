@@ -49,7 +49,7 @@ touch down 1768 1242
 expect display.last_fast is wait
 touch up 1768 1242
 wait 300
-expect editor.modal is map
+expect editor.modal is pages
 tap 125 95
 wait 300
 expect editor.modal is none

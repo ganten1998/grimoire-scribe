@@ -40,7 +40,14 @@ fn notebook_targets_and_preview_caches_preserve_identity_and_page_data() {
     // Even an identical page rewrite invalidates the old cache: identity includes the source inode.
     assert_eq!(store_save_page(&a,0,&page),0);
     assert!(!store_load_page_preview(&a,a.page_ids[0],&mut preview));
+    let mut cache_dir=String::new();store_notebook_dir(a.id.as_str(),&mut cache_dir,600);
+    let cache_dir=std::path::Path::new(&cache_dir).join(".page-previews");
+    let cache_time=std::fs::metadata(&cache_dir).unwrap().modified().unwrap();
+    let cache_generation=store_page_previews_generation(a.id.as_str());
     canvas_fill(&mut canvas,Rect::new(100,100,200,200),0);store_save_page_preview(&a,a.page_ids[0],&canvas);
+    // Coarse filesystem timestamps must not keep a decoded preview stale after an edit.
+    std::fs::File::open(&cache_dir).unwrap().set_times(std::fs::FileTimes::new().set_modified(cache_time)).unwrap();
+    assert_ne!(store_page_previews_generation(a.id.as_str()),cache_generation);
     assert!(store_load_page_preview(&a,a.page_ids[0],&mut preview));assert!(preview.px.contains(&0));
     let before=store_page_preview_identity(&a,a.page_ids[0]).unwrap();
     let mut source_dir=String::new();store_notebook_dir(a.id.as_str(),&mut source_dir,600);

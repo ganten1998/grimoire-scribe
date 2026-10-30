@@ -97,17 +97,18 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   it anywhere; tap the corner arrows to fold it into a small box.
 - **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
   hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
-- **The Index**: tap the page counter or swipe down with two fingers. **Graph**, **List** and
+- **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
   **Pages** share one navigation bar; Back returns to the notebook. Graph groups destinations by
   notebook, with All, Around and Fit at the bottom. List shows existing links. Pages has small
   cached previews and controls for adding, copying, selecting and deleting pages.
   Swipe up with two fingers for the page-status panel: notebook name, page count, link areas and
-  **Name page**. Page names stay attached when pages move and appear in the PDF table of contents.
+  **Name page** and **Go to page** over the notebook. Page names stay attached when pages move and appear in the PDF table of contents.
   The toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
 - **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
   browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
-  a phone). The browser can fit the screen, go full screen, float it over your other windows
-  (picture in picture), make the paper transparent (for a video over something else) and record.
+  a phone). The browser can fit the screen, go full screen, move the view into a separate window
+  (**Pop out**), make the paper transparent and record. Keep the original tab open while popped
+  out; closing the new window returns the view to that tab.
   A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.

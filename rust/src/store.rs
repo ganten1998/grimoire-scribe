@@ -2792,6 +2792,20 @@ fn preview_tag(path:&str)->Option<String> {
     std::fs::File::open(path).ok()?.take(256).read_to_string(&mut text).ok()?;
     (text.len()<256).then_some(text)
 }
+// Directory timestamps can have coarse resolution. Publish an opaque change token so an
+// already decoded Pages view notices rewritten previews even within the same timestamp tick.
+fn page_previews_changed(id:&str) {
+    use std::sync::atomic::{AtomicU32,Ordering};
+    static SERIAL:AtomicU32=AtomicU32::new(0);
+    let Some(dir)=notebook_dir(id.as_bytes())else{return};
+    let serial=SERIAL.fetch_add(1,Ordering::Relaxed);
+    let time=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let token=format!("{}:{time}:{serial}",std::process::id());
+    let path=format!("{dir}/.page-previews/updated");
+    let mine=format!("{path}.{}",std::process::id());
+    if write_file_atomic(&mine,token.as_bytes())==0 {let _=std::fs::rename(&mine,&path);}
+    let _=std::fs::remove_file(mine);
+}
 /// A valid cache's source identity before lossless ink compaction rewrites its page file.
 pub fn store_page_preview_identity(nb:&NotebookInfo,pid:u32)->Option<String> {
     let (source,_,stamp)=page_preview_files(nb,pid)?;
@@ -2839,7 +2853,9 @@ pub fn store_save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) {
     let tag=format!("{stamp}.{}",std::process::id());
     if save_pgm(&mine,&small)==0 && preview_stamp(&source).as_deref()==Some(was.as_str())
         && std::fs::rename(&mine,&image).is_ok() {
-        if write_file_atomic(&tag,was.as_bytes())==0 {let _=std::fs::rename(&tag,&stamp);}
+        if write_file_atomic(&tag,was.as_bytes())==0 && std::fs::rename(&tag,&stamp).is_ok() {
+            page_previews_changed(nb.id.as_str());
+        }
     }
     let _=std::fs::remove_file(mine);let _=std::fs::remove_file(tag);
 }
@@ -3785,12 +3801,17 @@ pub fn store_page_previews_epoch(id:&str)->Option<(u64,i64,i64)> {
 }
 pub fn store_page_previews_generation(id:&str)->u64 {
     let Some(dir)=notebook_dir(id.as_bytes())else{return 0};
+    if let Some(token)=preview_tag(&format!("{dir}/.page-previews/updated")) {
+        return bgimage_content_hash(token.as_bytes());
+    }
     std::fs::metadata(format!("{dir}/.page-previews")).map(|s|(s.mtime()as u64).wrapping_mul(1_000_000_000).wrapping_add(s.mtime_nsec() as u64)).unwrap_or(0)
 }
 pub fn store_invalidate_page_previews(id:&str) {
     let Some(dir)=notebook_dir(id.as_bytes())else{return};
     let path=format!("{dir}/.page-previews");
-    if std::fs::create_dir_all(&path).is_ok(){write_file_atomic(&format!("{path}/generation"),b"changed");}
+    if std::fs::create_dir_all(&path).is_ok() && write_file_atomic(&format!("{path}/generation"),b"changed")==0 {
+        page_previews_changed(id);
+    }
 }
 pub fn store_cleanup_preview_work(id:&str,pid:i32) {
     let Some(dir)=notebook_dir(id.as_bytes())else{return};let path=format!("{dir}/.page-previews");

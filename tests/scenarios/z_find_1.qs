@@ -43,7 +43,7 @@ pentap panel pages
 wait 400
 expect editor.modal is pages
 expect display.presents not -1
-tap 930 2395
+tap panel pages.goto
 wait 300
 expect editor.find is go
 expect editor.modal is find

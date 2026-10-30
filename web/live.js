@@ -933,7 +933,7 @@
     meter.className = 'latency';
     meter.hidden = true;
     try { monitor = localStorage.getItem('grimoire.monitor') === '1'; } catch (e) { /* private browsing */ }
-    const film = document.createElement('canvas');     // shown with the pen on it: what Record and PiP take
+    const film = document.createElement('canvas');     // shown with the pen on it: recording only
     const filmCtx = film.getContext('2d');
     // pen: where the Kindle's pen is (readPen), null while away; penShown, filmPen: its marks drawn on
     // the page and in film now, to take away; fitIn: shown's place in film (filmFit); flat: a

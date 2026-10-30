@@ -31,6 +31,7 @@ wait 400
 shot 01-pages-view
 expect editor.modal is pages
 expect editor.ticked is 0
+tap panel pages.multi
 tap panel pages.page.2
 expect editor.ticked is 1
 tap panel pages.page.4
