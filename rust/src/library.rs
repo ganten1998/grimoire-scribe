@@ -135,6 +135,7 @@ struct Item {
 #[derive(Default)]
 pub struct LibraryState {
     settings_return_editor: bool,
+    settings_editor_fit: bool,
     books: Vec<NotebookInfo>,
     folders: Vec<String>,
     items: Vec<Item>,
@@ -4016,7 +4017,7 @@ fn open_modal(a: &mut App, m: Modal) {
 
 fn close_modal(a: &mut App) {
     if lib(a).settings_return_editor {
-        if lib(a).modal==Modal::Settings {lib(a).settings_return_editor=false;lib(a).modal=Modal::None;app_switch(a,ScreenId::Editor);}
+        if lib(a).modal==Modal::Settings {let changed=lib(a).settings_editor_fit!=a.settings.landscape_fit;lib(a).settings_return_editor=false;lib(a).modal=Modal::None;app_switch(a,ScreenId::Editor);if changed {editor_fit_changed(a,true);}}
         else {lib(a).modal=Modal::Settings;redraw(a,RefreshMode::Ui);}
         return;
     }
@@ -5849,5 +5850,5 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
 }
 
 pub fn library_settings_from_notebook(a:&mut App) {
-    app_switch(a,ScreenId::Library);lib(a).settings_return_editor=true;open_modal(a,Modal::Settings);
+    app_switch(a,ScreenId::Library);lib(a).settings_return_editor=true;lib(a).settings_editor_fit=a.settings.landscape_fit;open_modal(a,Modal::Settings);
 }

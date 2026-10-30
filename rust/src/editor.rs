@@ -6363,7 +6363,7 @@ fn front_menu(s: &EditorState) -> i32 {
         return SHORTCUT_LINKS;
     }
     if s.pv.open {
-        return if s.pv.index_tab { SHORTCUT_INDEX } else { SHORTCUT_PAGES };
+        return if s.pv.unified&&!s.pv.picking{SHORTCUT_INDEX_MAP}else if s.pv.index_tab { SHORTCUT_INDEX } else { SHORTCUT_PAGES };
     }
     if s.tools_open {
         return SHORTCUT_TOOL_PICKER;
@@ -7085,7 +7085,7 @@ pub fn editor_enter(a: &mut App) {
         view_reset(a); // new notebook or turned
         let s = ed(a);
         card_drop(s); // (silently: the screen is composed whole below)
-        if s.lm.state != LmState::Off && !(s.pv.open && s.pv.picking) {
+        if s.lm.state != LmState::Off && !s.destination.open && !(s.pv.open && s.pv.picking) {
             lm_drop(s); // (silently: the screen is composed whole below; a picking Pages view stays)
         }
     }
@@ -7372,7 +7372,7 @@ pub fn editor_suspend(a: &mut App) -> bool {
     card_drop(s); // (the Kindle sleeps: it is not there on waking)
     bar_drop(s);
     find_drop(s);
-    if s.lm.state != LmState::Off && !(s.pv.open && s.pv.picking) {
+    if s.lm.state != LmState::Off && !s.destination.open && !(s.pv.open && s.pv.picking) {
         lm_drop(s); // (a lasso being drawn ends with it, Link to... is not there on waking; a picking Pages view stays)
     }
     s.owner = Owner::None;
@@ -7979,7 +7979,7 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
         // (the Pages view is two buttons' menu: Pages and Index)
         let owned = |k: GestureKey| {
             let act = gesturemap_action(m, k);
-            act == front || (act != 0 && (front == SHORTCUT_PAGES || front == SHORTCUT_INDEX) && (act == SHORTCUT_PAGES || act == SHORTCUT_INDEX))
+            act == front || (matches!(front,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP) && matches!(act,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP))
         };
         if owned(key) || owned(gesturemap_mirror(key)) {
             front
@@ -10325,6 +10325,7 @@ pub fn editor_replay_point(a:&App,x:f32,y:f32)->(f32,f32) {
 }
 
 fn destination_open(a:&mut App) {
+    if !save_page(a){return;}
     let folder=ed_ref(a).nb.folder.as_str().to_string();
     if with_modal(a,|s|&mut s.destination,|p,_|p.start(&folder)) {ed(a).lt.hidden=true;compose_all(a,RefreshMode::Full);}
     else {app_toast(a,tr("Could not read the notebooks."),3000);}

@@ -2776,7 +2776,8 @@ fn preview_stamp(source: &str) -> Option<String> {
 pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
     let Some((source, image, stamp)) = page_preview_files(nb, pid) else {return false};
     let Some(now) = preview_stamp(&source) else {return false};
-    if std::fs::read_to_string(stamp).ok().as_deref() != Some(now.as_str())
+    if !std::fs::metadata(&stamp).is_ok_and(|m|m.len()<256)
+        || std::fs::read_to_string(stamp).ok().as_deref() != Some(now.as_str())
         || !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000) {return false;}
     if load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
         canvas_free(out);return false;
