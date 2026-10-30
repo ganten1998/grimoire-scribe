@@ -444,6 +444,19 @@ folders keep different builds separate, and the collector refuses to overwrite d
 `DIST=/path/to/dist` selects a shared output folder across worktrees. Build intermediates remain
 under `build/`; Downloads is not a build destination. Collecting a build does not publish it.
 
+For development with an already configured KindleLab USB/MTP volume bridge, stage a collected
+bundle without closing Grimoire:
+
+```sh
+python3 tools/usb-stage.py dist/Grimoire-VERSION-COMMIT --receipt /tmp/grimoire-usb-stage.json
+```
+
+The command copies into a new `kindle-lab/grimoire-dev/` generation and checks every file against
+a fresh USB read, bypassing the Mac filesystem cache. `READY.json` is written only after those
+checks pass. This stages files only: it does not install plugins, overwrite the active app, or
+restart it. Installation still requires a normal Grimoire exit. This personal development helper
+does not install or distribute the USB bridge or its device controller.
+
 The compiled languages (`po/*.mo`) are committed, so building needs no gettext; only `make l10n`
 needs GNU gettext. [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh
 model, the brush model, the languages and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the
