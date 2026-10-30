@@ -48,7 +48,7 @@ expect editor.link_area is 1000 600 500 200
 expect editor.linkto.rect is 20 1864 1820 596
 expect editor.linkto.chips is 4
 expect editor.linkto.1 is new
-expect editor.linkto.2 is index
+expect editor.linkto.2 is elsewhere
 expect editor.linkto.3 is p3
 expect editor.linkto.4 is p5
 expect editor.linkto.5 is
