@@ -1,3 +1,4 @@
+# settings: status_size=0
 # rust-only
 # settings: mirror_pdf=0
 wait 300

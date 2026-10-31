@@ -125,6 +125,7 @@ const H_ABOUT_HIDE: i32 = 73;
 const H_ABOUT_PREV: i32 = 74;
 const H_ABOUT_NEXT: i32 = 75;
 const H_ABOUT_MORE: i32 = 76;
+const H_FMORE_MOVE: i32 = 77;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -3797,6 +3798,9 @@ fn draw_modal(a: &mut App) {
                     0,
                     ButtonStyle::Plain,
                 ),
+                // TRANSLATORS: a folder's menu (see Rename folder): to another folder or the top level,
+                // with everything in it.
+                menu_row(IconKind::FolderMove, tr("Move folder"), H_FMORE_MOVE, 0, ButtonStyle::Plain),
                 menu_row(
                     IconKind::Trash,
                     if it.count != 0 || it.has_children { tr("Remove folder (move its notebooks out first)") } else { tr("Remove folder") },
@@ -3814,7 +3818,10 @@ fn draw_modal(a: &mut App) {
             let Some(it) = it else { return };
             let s = lib(a);
             let mut rows: Vec<MenuRow> = Vec::with_capacity(14);
-            let curf = s.books[it.nb].folder;
+            // Where it is now: a notebook's folder, or the folder a folder is in.
+            let curf: FixedStr<STORE_NAME_LEN> =
+                if it.is_folder { FixedStr::from_str(store_folder_parent(it.folder.as_str())) } else { s.books[it.nb].folder };
+            let dests = move_dests(s, &it);
             // TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
             // notebook: "In: Library (top level)").
             rows.push(menu_row(
@@ -3824,21 +3831,22 @@ fn draw_modal(a: &mut App) {
                 0,
                 if !curf.is_empty() { ButtonStyle::Plain } else { ButtonStyle::Selected },
             ));
-            let mut f = s.folder_move_page * 6;
-            while f < s.folders.len() && f < (s.folder_move_page + 1) * 6 {
+            let mut k = s.folder_move_page * 6;
+            while k < dests.len() && k < (s.folder_move_page + 1) * 6 {
+                let f = dests[k];
                 let st = if curf != s.folders[f].as_str() { ButtonStyle::Plain } else { ButtonStyle::Selected };
                 rows.push(menu_row(IconKind::Folder, &s.folders[f], H_MOVE_TO, f as i32, st));
-                f += 1;
+                k += 1;
             }
             if s.folder_move_page > 0 {
                 rows.push(menu_row(IconKind::Back, tr("Previous folders"), H_MOVE_PREV, 0, ButtonStyle::Plain));
             }
-            if f < s.folders.len() {
+            if k < dests.len() {
                 rows.push(menu_row(IconKind::None, tr("More folders"), H_MOVE_NEXT, 0, ButtonStyle::Plain));
             }
             rows.push(menu_row(IconKind::FolderPlus, tr("New folder..."), H_MOVE_NEW, 0, ButtonStyle::Plain));
             rows.push(menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain));
-            // TRANSLATORS: the title of the list of folders a notebook can be moved to.
+            // TRANSLATORS: the title of the list of folders a notebook (or a folder) can be moved to.
             draw_menu(a, tr("Move to"), &rows);
         }
         Modal::Delete => {
@@ -4131,6 +4139,8 @@ fn kb_finished(a: &mut App, ok: bool) {
                 let mut path = FixedStr::new();
                 if !store_folder_join(parent.as_str(), &txt, &mut path) || store_add_folder(path.as_str()) != 0 {
                     app_toast(a, tr("Could not create the folder. Use a shorter name without a slash."), 3500);
+                } else if kbp == KbPurpose::MoveNewFolder && it.is_some_and(|it| it.is_folder) {
+                    move_folder(a, &it.unwrap(), path.as_str());
                 } else if kbp == KbPurpose::MoveNewFolder {
                     if let Some(it) = it.filter(|it| !it.is_folder) {
                         let id = lib(a).books[it.nb].id.as_str().to_string();
@@ -4170,6 +4180,40 @@ fn kb_finished(a: &mut App, ok: bool) {
     lib(a).modal = back;
     reload(a);
     redraw(a, RefreshMode::Ui);
+}
+
+/// Move to's folders for it (indices into s.folders): every folder for a notebook; for a folder,
+/// every folder but itself and those inside it (store_rename_folder refuses those).
+fn move_dests(s: &LibraryState, it: &Item) -> Vec<usize> {
+    (0..s.folders.len())
+        .filter(|&f| !it.is_folder || !store_folder_contains(it.folder.as_str(), s.folders[f].as_str()))
+        .collect()
+}
+
+/// A folder, with all it holds, into parent ("" the top level): its name stays, its notebooks' mirror
+/// PDFs follow. Refused (with a toast) when parent has a folder of that name.
+fn move_folder(a: &mut App, it: &Item, parent: &str) {
+    let old = it.folder.as_str().to_string();
+    if store_folder_parent(&old) == parent {
+        return;
+    }
+    let mut dest = FixedStr::new();
+    if !store_folder_join(parent, store_folder_leaf(&old), &mut dest) || store_rename_folder(&old, dest.as_str()) != 0 {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
+        // usually because the destination has a folder of that name.
+        app_toast(a, tr("Could not move the folder. Is there one of that name there?"), 3500);
+        return;
+    }
+    let ids: Vec<String> = lib(a)
+        .books
+        .iter()
+        .filter(|nb| store_folder_contains(&old, nb.folder.as_str())) // (the list is from before the move)
+        .map(|nb| nb.id.as_str().to_string())
+        .collect();
+    for id in ids {
+        mirror_follow(a, &id, false);
+    }
+    export_mirror_prune_folder(&old, &app_mirror_dir());
 }
 
 fn act(a: &mut App, h: &Hit) {
@@ -4586,7 +4630,7 @@ fn act(a: &mut App, h: &Hit) {
                 );
             }
         }
-        H_MORE_MOVE => {
+        H_MORE_MOVE | H_FMORE_MOVE => {
             lib(a).folder_move_page = 0;
             open_modal(a, Modal::Move);
         }
@@ -4594,8 +4638,10 @@ fn act(a: &mut App, h: &Hit) {
             let s = lib(a);
             if h.id == H_MOVE_PREV {
                 s.folder_move_page = s.folder_move_page.saturating_sub(1);
-            } else if (s.folder_move_page + 1) * 6 < s.folders.len() {
-                s.folder_move_page += 1;
+            } else if let Some(it) = target_item(s) {
+                if (s.folder_move_page + 1) * 6 < move_dests(s, &it).len() {
+                    s.folder_move_page += 1;
+                }
             }
             redraw(a, RefreshMode::Ui);
         }
@@ -4643,6 +4689,14 @@ fn act(a: &mut App, h: &Hit) {
                     export_mirror_prune_folder(it.folder.as_str(), &app_mirror_dir());
                 }
             }
+            lib(a).modal = Modal::None;
+            reload(a);
+            redraw(a, RefreshMode::Ui);
+        }
+        H_MOVE_TOP | H_MOVE_TO if it.is_some_and(|it| it.is_folder) => {
+            let it = it.unwrap();
+            let parent = if h.id == H_MOVE_TOP { String::new() } else { lib(a).folders[h.arg as usize].clone() };
+            move_folder(a, &it, &parent);
             lib(a).modal = Modal::None;
             reload(a);
             redraw(a, RefreshMode::Ui);
@@ -5192,7 +5246,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         if let Some(hit) = hit {
             name.push_str(match hit.id {
                 H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
-                H_SET_THEME=>"theme",H_NEW_CREATE=>"create",
+                H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_FMORE_MOVE=>"folder.move",H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
                 H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
@@ -5208,7 +5262,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 _ => "",
             });
-            if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_PAPER || hit.id == H_MOVE_TO { name.push_str(&hit.arg.to_string()); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
             } else if matches!(hit.id, H_GESTURE_ROW | H_BUTTON_ROW) {

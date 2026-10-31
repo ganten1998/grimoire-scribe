@@ -3259,7 +3259,7 @@ pub fn settings_default(s: &mut Settings) {
     s.white = false;
     s.before_eraser = -1;
     s.status_on = true;
-    s.status_size = 0;
+    s.status_size = 1;
     s.status_corner = 0;
     s.rotation_lock = 0;
     s.gestures = true;

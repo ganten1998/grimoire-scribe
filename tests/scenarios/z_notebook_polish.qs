@@ -1,3 +1,4 @@
+# settings: status_size=0
 # rust-only
 # generate: tests/page_management_fixture.py
 # settings: mirror_pdf=0

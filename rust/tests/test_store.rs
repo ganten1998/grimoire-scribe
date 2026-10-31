@@ -752,11 +752,12 @@ fn status_corner_keys() {
     let mut s = Settings::default();
     let mut t = Settings::default();
     settings_default(&mut s);
-    check!(s.status_on && s.status_size == 0 && s.status_corner == 0 && s.status_mode == 1);
+    // (medium by default since 2.0.0-rc.12)
+    check!(s.status_on && s.status_size == 1 && s.status_corner == 0 && s.status_mode == 1);
     check!(
         settings_save(&s) == 0
             && has_pins_line(&path, "status_on=1")
-            && has_pins_line(&path, "status_size=0")
+            && has_pins_line(&path, "status_size=1")
     );
     let text = read_file(&path).unwrap_or_default();
     let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
