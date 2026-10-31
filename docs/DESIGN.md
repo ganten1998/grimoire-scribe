@@ -700,11 +700,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    shared frame (`live_push`: a memcpy of the rect, before the toast is drawn, so neither the toast
    nor the chip is ever streamed) and mark its 64 px tiles, for each viewer slot. A paired
    `GET /live/stream` is handed to a viewer child (two at most; `live_take_viewer`), which owns the
-   socket: it takes its marks, compares the tiles with what it sent, sends the changed runs as gray
-   PNGs and a batch end, at most about 30 batches a second, a ping after 15 s idle. A slow browser
-   only lets the marks pile up; the pen loop never waits. While the pairing card is up the state is
-   LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the viewer checks the
-   state again after copying each run, and the app sets the state before the card is drawn). Asleep
+   socket: it takes its marks, compares the tiles with what it sent, sends each stretch of changed
+   tiles in a marked run as a gray PNG (a row redrawn whole for one tile sends that tile) and a
+   batch end, at most about 30 batches a second, a ping after 15 s idle. A slow browser only lets
+   the marks pile up; the pen loop never waits. The socket itself holds little, so a busy link
+   never fills with pictures already out of date: a 64 KiB send buffer, at most 32 KiB not yet
+   sent (TCP_NOTSENT_LOWAT), and a batch starts only while the socket is writable and holds under
+   48 KiB, sent or not, unacknowledged (SIOCOUTQ; SO_NWRITE in the simulator). Until then the marks
+   wait and gather, and the batch that goes reads the frame then: the newest pixels go, the ones
+   between never. A browser that takes none of it for 10 s is gone. While the pairing card is up
+   the state is LIVE_PAIRING and nothing is sent: the card's code never reaches a stream (the
+   viewer checks the state again after copying each run, and the app sets the state before the
+   card is drawn). Asleep
    it is LIVE_ASLEEP (the sleep screen is never pushed); a turn bumps the screen's epoch, and each
    viewer sends a new hello and every tile. The state frame also says whether Grimoire's colors are
    inverted (`live_set_invert`, from settings.invert at every tick: the frame holds the screen as
@@ -750,8 +757,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    a stream of their own (`GET /live/pen`, paired as `/live/stream` is), the page draws a quick
    line from them at once, and the tiles' real ink takes its place as it comes. A pen viewer child
    (two at most, `live_take_pen_viewer`; a browser with both streams counts once in
-   `live_viewers`) makes no PNG, keeps a 16 KiB send buffer and a 1 s send timeout, runs at the
-   ordinary priority where the tile viewers are niced, and sends what came as soon as it wakes: no
+   `live_viewers`) makes no PNG, keeps a 16 KiB send buffer and a 1 s send timeout, marks its packets low delay
+   (DSCP EF; on the Kindle SO_PRIORITY 5 too), which mac80211 and most Wi-Fi drivers send in WMM's
+   video queue ahead of the tiles' best effort, runs at the ordinary priority where the tile
+   viewers are niced, and sends what came as soon as it wakes: no
    PNG being made, full tile socket or 33 ms between batches is ever on its way. live.h
    (rust/src/live.rs's head) has the version 3 protocol byte by byte. `input_sample_hook` hands
    the app each pen event as it is read, before it is queued, the reads `work_pump` makes during

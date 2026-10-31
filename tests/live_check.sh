@@ -66,5 +66,8 @@ else echo "FAIL $left of $pids viewer(s) outlived the app"; fail=1; fi
 # Fast ink with the main loop busy: the ring's samples (before) against the pen viewer's own reader
 # of the raw digitizer (after), timed from each frame to the browser.
 python3 -I tests/live_pen_stall.py "$PORT" "$HEADLESS" "$B/pen-stall" || fail=1
+# A slow browser while the Kindle turns again and again: the pen's samples still come at once, and
+# the tile stream ends on the app's last screen.
+python3 -I tests/live_slow_reader.py "$PORT" "$HEADLESS" "$B/slow-reader" || fail=1
 if [ $fail -ne 0 ]; then echo "LIVE CHECK FAILED (app log: $B/app.log)"; exit 1; fi
 echo "LIVE CHECK PASSED"
