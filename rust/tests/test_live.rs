@@ -1326,6 +1326,130 @@ fn a_wide_redraw_sends_only_the_tiles_that_changed() {
     canvas_free(&mut c);
 }
 
+// A TCP connection over loopback, as a browser's is: (the app's end, the browser's), the browser's
+// receive buffer rcvbuf bytes (a slow link's window).
+fn tcp_pair(rcvbuf: i32) -> [i32; 2] {
+    // SAFETY: plain socket calls on descriptors made here, with local sockaddr_in and int values.
+    unsafe {
+        let l = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
+        let mut sa: libc::sockaddr_in = std::mem::zeroed();
+        #[cfg(target_vendor = "apple")]
+        {
+            sa.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
+        }
+        sa.sin_family = libc::AF_INET as libc::sa_family_t;
+        sa.sin_addr.s_addr = 0x7F00_0001u32.to_be();
+        let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        check!(libc::bind(l, &sa as *const libc::sockaddr_in as *const libc::sockaddr, len) == 0);
+        check!(libc::listen(l, 1) == 0);
+        check!(libc::getsockname(l, &mut sa as *mut libc::sockaddr_in as *mut libc::sockaddr, &mut len) == 0);
+        let c = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
+        libc::setsockopt(c, libc::SOL_SOCKET, libc::SO_RCVBUF, &rcvbuf as *const i32 as *const libc::c_void, 4);
+        check!(libc::connect(c, &sa as *const libc::sockaddr_in as *const libc::sockaddr, len) == 0);
+        let a = libc::accept(l, std::ptr::null_mut(), std::ptr::null_mut());
+        check!(a >= 0);
+        libc::close(l);
+        [a, c]
+    }
+}
+
+// Version v of a screen that does not compress (each its own noise), one pixel of it.
+fn noise(v: u32, x: i32, y: i32) -> u8 {
+    let mut k = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77) ^ v.wrapping_mul(0xC2B2_AE3D);
+    k ^= k >> 15;
+    k = k.wrapping_mul(0x2C1B_3C6D);
+    (k >> 24) as u8
+}
+
+// A browser that stops reading (a busy link) while the screen changes again and again, and a pen
+// stroke goes on: the pen's samples still come at once, and once the browser reads again it gets
+// the newest screen after little more than what the tile socket held, never the versions between.
+// (What the browser's own receive buffer holds is not the app's to bound: loopback's grows to
+// hundreds of KiB whatever SO_RCVBUF says, so it is measured and left out.)
+fn a_slow_browser_gets_the_newest_tiles_and_the_pen_never_waits() {
+    let (w, h) = (512, 512);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, w, h) == 0);
+    let paint = |c: &mut Canvas, v: u32| {
+        for y in 0..h {
+            for x in 0..w {
+                c.px[(y * c.stride + x) as usize] = noise(v, x, y);
+            }
+        }
+    };
+    paint(&mut c, 0);
+    check!(live_start(w, h) == 0);
+    live_push(&c, Rect { x: 0, y: 0, w, h });
+    let tv = tcp_pair(8 * 1024);
+    check!(live_take_viewer(tv[0]));
+    close(tv[0]);
+    let pv = socket_pair();
+    check!(live_take_pen_viewer(pv[0]));
+    close(pv[0]);
+    check!(skip_head(tv[1]) && skip_head(pv[1]));
+    check!(next_kind(pv[1], LIVE_SAMPLES).is_some()); // (the pen stream's start)
+    let mut shown = vec![0u8; (w * h) as usize];
+    let mut hellos = 0;
+    check!(read_batch(tv[1], &mut shown, w, h, &mut hellos) > 0 && hellos == 1);
+    let style = LiveStyle { enabled: 1, width_min: 1.0, width_max: 4.0, pressure_ceiling: 1.0, pressure_gamma: 1.0, opacity_max: 1.0, clip: Rect { x: 0, y: 0, w, h }, ..Default::default() };
+    // The browser reads nothing now: 20 new screens, 40 ms apart, a pen sample with each.
+    const VERSIONS: u32 = 20;
+    let mut pen_ms = Vec::new();
+    for v in 1..=VERSIONS {
+        paint(&mut c, v);
+        live_push(&c, Rect { x: 0, y: 0, w, h });
+        let e = InEvent { type_: if v == 1 { InType::PenDown } else { InType::PenMove }, x: v as f32, y: 9.0, pressure: 0.5, k_us: 1000 * v, k_ms: v, ..Default::default() };
+        let t0 = now_ms();
+        live_sample(&e, &style);
+        live_wake_samples();
+        let mut got = false;
+        while !got && now_ms().wrapping_sub(t0) < 1000 && !quiet(pv[1], 1000) {
+            let Some((type_, body)) = read_frame(pv[1]) else { break };
+            got = type_ == LIVE_SAMPLES as u8 && (8..body.len()).step_by(LIVE_SAMPLE_BYTES).any(|at| u32_(&body[at..]) == 1000 * v);
+        }
+        check!(got);
+        pen_ms.push(now_ms().wrapping_sub(t0));
+        sleep_ms(40);
+    }
+    pen_ms.sort();
+    eprintln!("    pen sample to the browser with the tile socket full: median {} ms, max {} ms", pen_ms[pen_ms.len() / 2], pen_ms[pen_ms.len() - 1]);
+    check!(pen_ms[pen_ms.len() - 1] < 25);
+    let mut held: libc::c_int = 0;
+    // SAFETY: ioctl FIONREAD writes one int to the local held.
+    check!(unsafe { libc::ioctl(tv[1], libc::FIONREAD, &mut held as *mut libc::c_int) } == 0);
+    // Reading again: everything up to a quiet stream, each tile known by its version.
+    let mut seen = std::collections::BTreeMap::new();
+    let (mut stale, mut fresh) = (0usize, 0usize);
+    let mut quiet_after = false;
+    while !quiet_after {
+        let Some(tiles) = batch_tiles(tv[1]) else { break };
+        for (x, y, tw, th, px, bytes) in tiles {
+            let v = (0..=VERSIONS).rev().find(|&v| px.len() == (tw * th) as usize && (0..th).all(|r| (0..tw).all(|q| px[(r * tw + q) as usize] == noise(v, x + q, y + r))));
+            *seen.entry(v).or_insert(0) += 1;
+            if v == Some(VERSIONS) { fresh += bytes } else { stale += bytes }
+            for r in 0..th.min(h - y) {
+                for q in 0..tw.min(w - x) {
+                    if let Some(&p) = px.get((r * tw + q) as usize) {
+                        shown[((y + r) * w + x + q) as usize] = p;
+                    }
+                }
+            }
+        }
+        quiet_after = quiet(tv[1], 300);
+    }
+    eprintln!("    after the pause: {} bytes of tiles from older screens ({} of them in the browser's buffer), {} of the newest; versions {:?}", stale, held, fresh, seen);
+    let newest = (0..h).all(|y| (0..w).all(|x| shown[(y * w + x) as usize] == noise(VERSIONS, x, y)));
+    check!(newest);
+    // What the socket held (the batch it was in the middle of, at most its buffer's worth) and the
+    // newest: not the screens between.
+    check!(seen.keys().all(|&v| v == Some(VERSIONS) || v.is_some_and(|v| v < VERSIONS / 2)));
+    check!(stale.saturating_sub(held as usize) < 160 * 1024);
+    live_stop();
+    close(tv[1]);
+    close(pv[1]);
+    canvas_free(&mut c);
+}
+
 #[test]
 fn test_live() {
     run!(marks_cover_exactly_the_tiles_a_rect_touches);
@@ -1353,6 +1477,7 @@ fn test_live() {
     run!(a_layer_comes_with_the_tiles_and_goes);
     run!(a_run_splits_into_the_tiles_that_changed);
     run!(a_wide_redraw_sends_only_the_tiles_that_changed);
+    run!(a_slow_browser_gets_the_newest_tiles_and_the_pen_never_waits);
     done();
 }
 

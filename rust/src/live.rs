@@ -5,8 +5,9 @@
 //! 64 px tiles are marked. A browser that has paired (pair.h) gets a viewer child of its own, forked
 //! by the share server: it sends the tiles that changed as gray PNGs over one long HTTP response
 //! (GET /live/stream), at most about 30 batches a second, and never holds up the pen: a slow
-//! browser only makes the marks pile up, and the next batch carries what is newest. Two viewers at
-//! most. Nothing is written to disk.
+//! browser only makes the marks pile up, and the next batch carries what is newest (its socket holds
+//! little, and a batch waits for room in it: tile_room). Two viewers at most. Nothing is written to
+//! disk.
 //!
 //! The pen has a stream of its own (GET /live/pen, fast ink): the browser draws a quick stroke from
 //! its samples the moment they come, and the tiles that carry the real one take its place as they
@@ -1576,6 +1577,54 @@ fn set_int_opt(fd: i32, level: libc::c_int, name: libc::c_int, v: libc::c_int) {
     unsafe { libc::setsockopt(fd, level, name, &v as *const libc::c_int as *const libc::c_void, std::mem::size_of::<libc::c_int>() as libc::socklen_t) };
 }
 
+// A tile viewer's socket holds little, so that what goes is what is newest, not what was handed to
+// the kernel before it: a small send buffer; at most TILE_UNSENT not yet sent (TCP_NOTSENT_LOWAT:
+// only below it is the socket writable and does a send go on; enough to keep the radio busy while
+// the next PNG is made); and a batch starts only while it holds under TILE_BACKLOG, sent or not,
+// that the browser has not acknowledged.
+const TILE_SNDBUF: libc::c_int = 64 * 1024;
+const TILE_UNSENT: libc::c_int = 32 * 1024;
+const TILE_BACKLOG: libc::c_int = 48 * 1024;
+#[cfg(target_os = "linux")]
+const TCP_NOTSENT_LOWAT: libc::c_int = libc::TCP_NOTSENT_LOWAT;
+#[cfg(target_vendor = "apple")]
+const TCP_NOTSENT_LOWAT: libc::c_int = 0x201; // (netinet/tcp.h; the libc crate has none for Darwin)
+#[cfg(target_os = "linux")]
+const SO_PRIORITY: libc::c_int = 12; // (asm-generic/socket.h)
+
+// What the socket holds, sent or not, that the browser has not acknowledged (SIOCOUTQ, Darwin's
+// SO_NWRITE); 0 where it cannot say.
+fn backlog(fd: i32) -> libc::c_int {
+    let mut n: libc::c_int = 0;
+    #[cfg(target_os = "linux")]
+    // SAFETY: ioctl SIOCOUTQ (TIOCOUTQ's number) writes one int to the local n.
+    if unsafe { libc::ioctl(fd, libc::TIOCOUTQ, &mut n as *mut libc::c_int) } != 0 {
+        n = 0;
+    }
+    #[cfg(target_vendor = "apple")]
+    {
+        let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        // SAFETY: getsockopt writes at most len bytes to the local n.
+        if unsafe { libc::getsockopt(fd, libc::SOL_SOCKET, libc::SO_NWRITE, &mut n as *mut libc::c_int as *mut libc::c_void, &mut len) } != 0 {
+            n = 0;
+        }
+    }
+    #[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+    let _ = fd;
+    n
+}
+
+// A tile viewer's socket now: writable (under TILE_UNSENT not yet sent), and what it holds. It may
+// start a batch only when it is writable and holds under TILE_BACKLOG; until then its marks stay
+// where they are and gather, and the batch it starts later reads the frame then: the newest pixels
+// go, the ones between never.
+fn tile_room(fd: i32) -> (bool, libc::c_int) {
+    let mut pf = libc::pollfd { fd, events: libc::POLLOUT, revents: 0 };
+    // SAFETY: poll reads and writes the local pollfd, without waiting.
+    let writable = unsafe { libc::poll(&mut pf, 1, 0) } == 1 && pf.revents & libc::POLLOUT != 0;
+    (writable, backlog(fd))
+}
+
 // _exit(0): ends the child at once, running none of the parent's exit handlers.
 fn child_exit() -> ! {
     // SAFETY: _exit takes no pointers and never returns.
@@ -2106,8 +2155,21 @@ fn viewer_main(f: Frame, slot: usize, fd: i32, wake: i32, parent: libc::pid_t) -
     }
     // A pen viewer's samples are small and want to go now: a small buffer, and a browser that takes
     // nothing for a second is gone; a tile viewer's PNGs are big: a browser that takes nothing for
-    // 10 s is gone.
-    set_int_opt(fd, libc::SOL_SOCKET, libc::SO_SNDBUF, if fast { 16 * 1024 } else { 256 * 1024 });
+    // 10 s is gone (the send timeout, or the wait for room below). Its socket holds little
+    // (TILE_SNDBUF): on a busy link the marks gather, not the PNGs.
+    set_int_opt(fd, libc::SOL_SOCKET, libc::SO_SNDBUF, if fast { 16 * 1024 } else { TILE_SNDBUF });
+    #[cfg(any(target_os = "linux", target_vendor = "apple"))]
+    if !fast {
+        set_int_opt(fd, libc::IPPROTO_TCP, TCP_NOTSENT_LOWAT, TILE_UNSENT); // (an old kernel refuses it: harmless)
+    }
+    // On the air the pen's packets go first: marked low delay (DSCP EF), which mac80211 and most
+    // Wi-Fi drivers send in WMM's video queue, ahead of the tiles' best effort (left so: a lower
+    // class could starve them). Best effort too: a driver that ignores it changes nothing.
+    if fast {
+        set_int_opt(fd, libc::IPPROTO_IP, libc::IP_TOS, 0xB8);
+        #[cfg(target_os = "linux")]
+        set_int_opt(fd, libc::SOL_SOCKET, SO_PRIORITY, 5); // (after IP_TOS, which sets its own)
+    }
     let tv = libc::timeval { tv_sec: if fast { 1 } else { 10 }, tv_usec: 0 };
     // SAFETY: setsockopt reads one timeval from the local tv.
     unsafe { libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_SNDTIMEO, &tv as *const libc::timeval as *const libc::c_void, std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
@@ -2148,6 +2210,10 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
     let mut ink_sent: u32 = 0;
     // each layer's version as the browser has it (odd: none yet, never a version written whole)
     let mut layer_sent: [u32; LIVE_LAYERS] = [!0; LIVE_LAYERS];
+    // waiting for room since then, and what the socket held when last looked at (a browser that
+    // takes nothing of it for 10 s is gone, as one that takes nothing of a send)
+    let mut stuck_since = now_ms();
+    let mut stuck_held: libc::c_int = 0;
     'main: loop {
         let state = sh.state.load(SeqCst);
         let invert = sh.invert.load(SeqCst);
@@ -2191,7 +2257,17 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             layer_sent = [!0; LIVE_LAYERS]; // (a hello takes them away: each comes again)
             pen = sh.pen.load(SeqCst);
         }
-        if state == LIVE_AWAKE as u32 {
+        // Room for a batch, and for the pen after it: else what changed waits in the marks.
+        let (writable, held) = if state == LIVE_AWAKE as u32 { tile_room(fd) } else { (true, 0) };
+        let room = writable && held < TILE_BACKLOG;
+        if room || held < stuck_held {
+            stuck_since = now_ms();
+        }
+        stuck_held = held;
+        if now_ms().wrapping_sub(stuck_since) >= 10000 {
+            break;
+        }
+        if state == LIVE_AWAKE as u32 && room {
             let (mut ack, mut ack_ms, mut ack_ink) = (0, 0, 0);
             // Before the marks: every pixel it vouches for is in this batch or an earlier one.
             read_ack(sh, &mut ack, &mut ack_ms, &mut ack_ink);
@@ -2330,7 +2406,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             pen = told_pen;
         }
         let mut since_pen = now_ms().wrapping_sub(last_pen);
-        if pen != told_pen && since_pen >= LIVE_PEN_MS {
+        if pen != told_pen && since_pen >= LIVE_PEN_MS && room {
             if !send_pen(fd, pen) {
                 break;
             }
@@ -2339,7 +2415,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
             last_sent = last_pen;
             since_pen = 0;
         }
-        if now_ms().wrapping_sub(last_sent) >= 15000 {
+        if now_ms().wrapping_sub(last_sent) >= 15000 && room {
             if !send_frame(fd, LIVE_PING as u8, &[], &[]) {
                 break;
             }
@@ -2353,7 +2429,16 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
         } else if pen != 0 {
             timeout = LIVE_PEN_MS as libc::c_int;
         }
-        let mut pf = [libc::pollfd { fd: wake, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
+        // No room: until the socket is writable again, or (writable, still holding too much, which
+        // no poll tells) a moment; the pen's place waits with the tiles.
+        let mut events = libc::POLLIN;
+        if !writable {
+            events |= libc::POLLOUT;
+            timeout = 1000;
+        } else if !room {
+            timeout = 10;
+        }
+        let mut pf = [libc::pollfd { fd: wake, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd, events, revents: 0 }];
         // SAFETY: poll reads and writes the two pollfds of the local array.
         let got = unsafe { libc::poll(pf.as_mut_ptr(), 2, timeout) };
         if got < 0 && errno() != libc::EINTR {
