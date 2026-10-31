@@ -281,6 +281,23 @@ struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Str
 
 #[derive(Default)]
 pub struct EditorState {
+    /// when the open page's Pages preview was last made from its canvas (save_page), and whether the
+    /// save under way is the idle autosave (which makes it at most every 30 s)
+    preview_saved_ms: u32,
+    autosaving: bool,
+    /// The page canvas as it was before the step under way, a copy of it between steps (base_follow):
+    /// what differs from it when a step ends is that step's patch (history.rs Patch), which undo and
+    /// redo swap back. `base_page` is the page it mirrors (canvas_page's), 0 for none; `base_hold`
+    /// keeps it as it was through an eraser sweep, which draws the page again as it goes.
+    base: Canvas,
+    base_page: usize,
+    base_hold: bool,
+    step_pushes: u64,
+    /// undos and redos done by swapping a patch back (a probe, editor.undo_patched)
+    undo_patched: u32,
+    /// the open page (its id) and how long its last whole drawing took, ms (KEEP_RENDER_MS when it came
+    /// from its kept drawing): a page this slow keeps its drawing at each save
+    full_ms: (u32, u32),
     map: MapView,
     map_kb: Keyboard,
     map_rename_pid: u32,
@@ -2387,6 +2404,14 @@ fn list_erased_pages(s: &mut EditorState) {
 
 // False if the page could not be written; it then stays dirty (and in memory), so callers
 // that would drop it (turning the page, closing) must stay put instead.
+// The idle autosave: save_page, marked so that it makes the Pages preview at most every 30 s.
+fn autosave(a: &mut App) -> bool {
+    ed(a).autosaving = true;
+    let ok = save_page(a);
+    ed(a).autosaving = false;
+    ok
+}
+
 fn save_page(a: &mut App) -> bool {
     let s = ed(a);
     if !s.open {
@@ -2406,10 +2431,22 @@ fn save_page(a: &mut App) -> bool {
         if s.index == 0 {
             s.thumb_dirty = true; // written when leaving the page (it is slow)
         }
-        // (its Pages preview is made again in the background, at the next pause or as the view opens:
-        // never here, on every page turn and autosave)
+        // Its Pages preview from the canvas, which is the page drawn already: a cache file written without
+        // waiting on the disk, at most every 30 s while writing goes on (always as the page is left: the
+        // turn, close and view paths save first). The background job leaves this page out (pagesview_prefetch).
         let pid = s.open_pid();
         pagesview_page_saved(&mut s.pv, pid);
+        let now = now_ms();
+        let whole = s.canvas_page == s.open_page_ref() && s.page_canvas.w == s.pgw && s.page_canvas.h == s.pgh
+            && !s.page_canvas.px.is_empty() && !s.picture_missing;
+        if whole && (!s.autosaving || now.wrapping_sub(s.preview_saved_ms) >= 30_000) {
+            store_save_page_preview(&s.nb, pid, &s.page_canvas);
+            // A page that took a second or more to draw keeps its drawing too, so it opens at once.
+            if s.full_ms.0 == pid && s.full_ms.1 >= KEEP_RENDER_MS {
+                store_save_page_render(&s.nb, pid, &s.page_canvas);
+            }
+            s.preview_saved_ms = now;
+        }
         s.page_dirty = false;
         s.info_dirty = true;
     }
@@ -2425,6 +2462,78 @@ fn save_page(a: &mut App) -> bool {
 
 // Draws r of the open page into the page canvas. An image paper's picture that is not there (a
 // template's, made in the background) draws white: noted, to be drawn once it is (editor_tick).
+// ---- the base canvas and the steps' patches ----
+
+/// The steps' patches keep at most this many bytes, the open page's newest first (an older step's
+/// undo draws its region again, as every undo did before 2.0.0-rc.10).
+const PATCH_CAP: usize = 24 << 20;
+
+fn base_valid(s: &EditorState) -> bool {
+    s.base_page != 0 && s.base_page == s.canvas_page && !s.base.px.is_empty()
+        && s.base.w == s.page_canvas.w && s.base.h == s.page_canvas.h && s.base.stride == s.page_canvas.stride
+}
+/// base becomes a copy of the page canvas (the page drawn whole, or another page come up).
+fn base_reset(s: &mut EditorState) {
+    s.base_page = 0;
+    if s.page_canvas.px.is_empty() || s.canvas_page == 0 {
+        return;
+    }
+    if s.base.w != s.page_canvas.w || s.base.h != s.page_canvas.h || s.base.px.len() != s.page_canvas.px.len() {
+        canvas_free(&mut s.base);
+        if canvas_init(&mut s.base, s.page_canvas.w, s.page_canvas.h) != 0 || s.base.px.len() != s.page_canvas.px.len() {
+            return;
+        }
+    }
+    s.base.px.copy_from_slice(&s.page_canvas.px);
+    s.base_page = s.canvas_page;
+}
+/// The page canvas changed over r outside a step (the page drawn again there): base follows.
+fn base_follow(s: &mut EditorState, r: Rect) {
+    if s.base_hold || !base_valid(s) {
+        return;
+    }
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: s.page_canvas.w, h: s.page_canvas.h });
+    let stride = s.page_canvas.stride;
+    for y in r.y..r.y + r.h {
+        let at = (y * stride + r.x) as usize;
+        s.base.px[at..at + r.w as usize].copy_from_slice(&s.page_canvas.px[at..at + r.w as usize]);
+    }
+}
+/// A stroke or an eraser sweep begins: base holds the page as it is now (copied again if it does not
+/// mirror this page), and the history's count of steps is noted.
+fn step_begin(s: &mut EditorState, hold: bool) {
+    if !base_valid(s) {
+        base_reset(s);
+    }
+    s.base_hold = hold;
+    s.step_pushes = s.cur_hist().map_or(0, |h| s.hist[h].h.pushes);
+}
+/// It ended, having changed the page canvas inside page rect r: the step it pushed, if any, keeps the
+/// tiles of r that changed (its patch); base mirrors the page canvas again.
+fn step_end(s: &mut EditorState, r: Rect) {
+    s.base_hold = false;
+    if !base_valid(s) {
+        return;
+    }
+    if let Some(h) = s.cur_hist() {
+        if s.hist[h].h.pushes != s.step_pushes && !s.picture_missing {
+            if let Some(p) = patch_capture(&s.base, &s.page_canvas, r) {
+                history_attach_patch(&mut s.hist[h].h, p);
+                let total: usize = s.hist.iter().map(|e| history_patch_bytes(&e.h)).sum();
+                if total > PATCH_CAP {
+                    for (i, e) in s.hist.iter_mut().enumerate() {
+                        if i != h {
+                            history_trim_patches(&mut e.h, 0);
+                        }
+                    }
+                    history_trim_patches(&mut s.hist[h].h, PATCH_CAP);
+                }
+            }
+        }
+    }
+    base_follow(s, r);
+}
+
 fn draw_page(a: &mut App, r: Rect) {
     let dpi = a.dpi;
     let s = ed(a);
@@ -2439,6 +2548,7 @@ fn draw_page(a: &mut App, r: Rect) {
     } else if whole {
         s.picture_missing = false;
     }
+    base_follow(s, r);
 }
 
 fn render_page_full(a: &mut App) {
@@ -2446,9 +2556,23 @@ fn render_page_full(a: &mut App) {
     s.boxes.stale = true; // (a page drawn whole is another page, or one that changed whole)
     let r = Rect { x: 0, y: 0, w: s.pgw, h: s.pgh ,
     };
-    draw_page(a, r);
+    // A dense page's drawing kept from before, when it is current (store_load_page_render): read back
+    // in a fraction of a second instead of drawing every stroke again.
+    let pid = s.open_pid();
+    let kept = s.page_ix().is_some() && !s.page_canvas.px.is_empty()
+        && store_load_page_render(&s.nb, pid, s.pgw, s.pgh, &mut s.page_canvas);
+    if kept {
+        s.picture_missing = false;
+        s.full_ms = (pid, KEEP_RENDER_MS);
+    } else {
+        let started = now_ms();
+        draw_page(a, r);
+        let s = ed(a);
+        s.full_ms = (pid, now_ms().wrapping_sub(started));
+    }
     let s = ed(a);
     s.canvas_page = s.open_page_ref();
+    base_reset(s);
     // An image paper's picture can have come since its paper alone was drawn (S->paper: a picture
     // made in the background draws white until it is there), and the page now shows it.
     if paper_is_image(s.open_page().unwrap().paper) {
@@ -2598,6 +2722,8 @@ fn use_page_size(s: &mut EditorState) {
     s.pgw = w;
     s.pgh = h;
     canvas_free(&mut s.page_canvas);
+    canvas_free(&mut s.base);
+    s.base_page = 0;
     s.canvas_page = 0;
     for k in 0..PAPER_COUNT as usize {
         canvas_free(&mut s.paper_prev[k]);
@@ -2950,6 +3076,7 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     }
     if ps.act == PenAct::Whole {
         s.owner = Owner::Erase;
+        step_begin(s, true); // (the sweep draws the page again as it goes: base keeps it as it was)
         s.snap = s.open_page().unwrap().strokes.iter().map(|x| stroke_id(x)).collect();
         s.removed.clear();
         let (mut ex, mut ey) = (0.0, 0.0);
@@ -2997,6 +3124,7 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     s.sh.preview = None;
     s.sh.last_kind = ShapeKind::None;
     s.cur = Some(cur);
+    step_begin(s, false); // (live ink goes straight onto the page canvas: base keeps the page under it)
     smoother_reset(&mut s.sm);
     // Ink asks for the pen mode (where it is on); an erase stroke is live ink without it, as the
     // stroke eraser is (the driver's pen path is for ink going down).
@@ -3109,7 +3237,18 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     show(a, region, RefreshMode::Fast);
 }
 
+// A stroke ends: draw_end_stroke keeps it (an undo step), and that step keeps the tiles it changed.
 fn draw_end(a: &mut App) {
+    let s = ed(a);
+    let mut r = s.cur.as_ref().map_or(RECT_EMPTY, |c| c.bbox);
+    if let Some(p) = s.sh.preview.as_ref() {
+        r = rect_union(r, rect_union(p.region, p.stroke.bbox));
+    }
+    draw_end_stroke(a);
+    step_end(ed(a), r);
+}
+
+fn draw_end_stroke(a: &mut App) {
     let shape_log = a.shape_log;
     let s = ed(a);
     let snapped = s.sh.preview.take();
@@ -3369,6 +3508,12 @@ fn erase_segment(a: &mut App, sx: f32, sy: f32, pressure: f32) {
 }
 
 fn erase_end(a: &mut App) {
+    let r = ed(a).erase_dirty;
+    erase_end_sweep(a);
+    step_end(ed(a), r);
+}
+
+fn erase_end_sweep(a: &mut App) {
     let s = ed(a);
     s.owner = Owner::None;
     s.boxes.stale = true;
@@ -3739,7 +3884,23 @@ fn undo_redo(a: &mut App, undo: bool) {
         return;
     }
     ed(a).boxes.stale = true;
-    draw_page(a, d); // (back to a template whose picture is still being made: white until it is)
+    // The step's own pixels swapped back where it kept them (history.rs Patch): a copy of what it
+    // touched, however dense the page. Else its region drawn again (back to a template whose picture
+    // is still being made: white until it is).
+    let s = ed(a);
+    if !base_valid(s) {
+        base_reset(s);
+    }
+    let swapped = if base_valid(s) && !s.picture_missing {
+        history_swap_patch(&mut s.hist[h].h, undo, &mut s.page_canvas, &mut s.base).is_some()
+    } else {
+        false
+    };
+    if swapped {
+        s.undo_patched += 1;
+    } else {
+        draw_page(a, d);
+    }
     let s = ed(a);
     let full = d.w >= s.pgw && d.h >= s.pgh;
     show(a, d, if full { RefreshMode::Full } else { RefreshMode::Ui },
@@ -6036,6 +6197,7 @@ fn bar_commit(a: &mut App) {
         let s = ed.as_deref_mut().unwrap();
         std::mem::swap(&mut s.page_canvas, &mut s.ccache[pk.slot].canvas);
         s.canvas_page = s.open_page_ref();
+        base_reset(s);
         s.boxes.stale = true;
         if s.open_page().is_some_and(|p| paper_is_image(p.paper)) {
             s.paper_stale = true;
@@ -7121,6 +7283,8 @@ pub fn editor_free(a: &mut App) {
     pagesview_free(&mut s.pv);
     nav_free(&mut s.nav);
     canvas_free(&mut s.page_canvas);
+    canvas_free(&mut s.base);
+    s.base_page = 0;
     for k in 0..PAPER_COUNT as usize {
         canvas_free(&mut s.paper_prev[k]);
     }
@@ -8050,6 +8214,9 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
     }
 }
 
+/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms.
+const KEEP_RENDER_MS: u32 = 1000;
+
 pub fn editor_event(a: &mut App, ev: &InEvent) {
     if crate::library::library_settings_active(a) {
         crate::library::library_event(a,ev);touch_context(a);return;
@@ -8880,7 +9047,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
     // tries again 2 s later, not at every tick: each try says so with a toast.
     let s = ed(a);
-    if s.open && s.page_dirty && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !save_page(a) {
+    if s.open && s.page_dirty && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
         ed(a).last_up = now;
     }
     // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
@@ -9369,6 +9536,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
+    } else if key == "undo_patched" {
+        // Undos and redos that swapped a patch back instead of drawing the region again.
+        csnprintf!(out, cap, "%u", s.undo_patched);
     } else if key == "live_matches_render" {
         // The open page drawn afresh, pixel for pixel what drawing, erasing and undoing left in the
         // page canvas: 1 when they are the same.

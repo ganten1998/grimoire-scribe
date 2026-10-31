@@ -141,6 +141,21 @@ fn same_place(e: &InEvent, x: f32, y: f32) -> bool {
 
 // One finger: TouchDown at once, TouchMove only when the place changes, TouchUp where it last was,
 // every value exactly the reader's (map()'s f32 and the normalized place), timed by the frame.
+/// Past 2^31 ms of uptime (24.9 days) a pen never seen is still no pen near: a swipe fires, and so does
+/// one recorded (k - 0 read as a signed number used to come out negative, a pen just gone).
+fn the_clock_past_2_31_ms_is_no_pen() {
+    for k in [100_000u32, 0x8000_0000u32 + 5_000] {
+        let mut r = Rig::new();
+        r.k = k;
+        let ev = swipe2(&mut r, 930.0, 1240.0, 0.0, mm(40.0), mm(25.0), 10);
+        check!(fired(&ev) != 0);
+        let mut r = Rig::new();
+        r.k = k;
+        record_mode(&mut r);
+        let ev = swipe2(&mut r, 930.0, 1240.0, 0.0, mm(40.0), mm(25.0), 10);
+        check!(fired(&ev) != 0);
+    }
+}
 fn one_finger_is_the_stream_it_was() {
     let mut r = Rig::new();
     r.down(0, 500.25, 700.5);
@@ -1271,6 +1286,7 @@ fn record_hover_three_and_measure() {
 
 #[test]
 fn test_touchgest() {
+    run!(the_clock_past_2_31_ms_is_no_pen);
     run!(one_finger_is_the_stream_it_was);
     run!(a_palm_cancels_and_suppresses);
     run!(a_second_finger_at_120_ms_pinches);

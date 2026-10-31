@@ -455,14 +455,44 @@ pub fn work_pump_set(f: Option<fn()>) {
     PUMP_PID.store(if f.is_some() { unsafe { libc::getpid() } } else { 0 }, Ordering::Relaxed);
 }
 
+thread_local! {
+    static PUMP_OFF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// Runs f with work_pump doing nothing: work that is no part of what the user waits on and must not
+/// read the pens in the middle of it (the renderer's fingerprint, page_render_fingerprint).
+pub fn work_pump_off<R>(f: impl FnOnce() -> R) -> R {
+    let was = PUMP_OFF.with(|p| p.replace(true));
+    let r = f();
+    PUMP_OFF.with(|p| p.set(was));
+    r
+}
+
 pub fn work_pump() {
+    if PUMP_OFF.with(|p| p.get()) {
+        return;
+    }
     let f = PUMP.load(Ordering::Relaxed);
     // SAFETY: getpid has no preconditions.
     if f != 0 && unsafe { libc::getpid() } == PUMP_PID.load(Ordering::Relaxed) {
         // SAFETY: PUMP only ever holds 0 or a `fn()` stored by work_pump_set, cast back to its type.
         let f: fn() = unsafe { std::mem::transmute::<usize, fn()>(f) };
         f();
+        let beat = PUMP_BEAT.load(Ordering::Relaxed);
+        if beat != 0 {
+            // SAFETY: PUMP_BEAT only ever holds 0 or a `fn()` stored by work_pump_beat_set.
+            let beat: fn() = unsafe { std::mem::transmute::<usize, fn()>(beat) };
+            beat();
+        }
     }
+}
+
+// The launcher's heartbeat as long work goes on (mainloop.rs sets it on the Kindle): work that pumps
+// is making progress, so a page that takes longer to draw than the watchdog waits (a page dense
+// enough to take 20 s did, 2.0.0-rc.9) is not a hang. The hook bounds it: only so long after the
+// main loop last went round.
+static PUMP_BEAT: AtomicUsize = AtomicUsize::new(0);
+pub fn work_pump_beat_set(f: Option<fn()>) {
+    PUMP_BEAT.store(f.map_or(0, |f| f as usize), Ordering::Relaxed);
 }
 
 // The work pump's mark (the runner's): fn and the process that set it.

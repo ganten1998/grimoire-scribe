@@ -402,6 +402,36 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
     c.clip = saved;
 }
 
+/// The renderer's own fingerprint: a small fixed page with a stroke of every tool (ink and white),
+/// drawn and hashed once per process. A drawing kept from an earlier render (store_load_page_render)
+/// is trusted only under the same fingerprint, so any change to how ink is drawn (a new build, a pen
+/// redrawn, another processor's floating point) retires every one of them by itself.
+pub fn page_render_fingerprint() -> u64 {
+    static FP: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *FP.get_or_init(|| {
+        let mut p = page_new(240, 160, PAPER_NARROW);
+        for t in 0..TOOL_COUNT as i32 {
+            let mut prm = ToolParams::default();
+            tool_params_default(ToolKind(t), &mut prm);
+            let mut s = stroke_new(ToolKind(t), &prm, 0x5EED_0000 ^ (t as u32).wrapping_mul(2654435761));
+            for k in 0..24 {
+                let f = k as f32 / 23.0;
+                let pt = PenSample { x: 12.0 + 216.0 * f, y: 10.0 + 14.0 * t as f32 + 6.0 * (f * 9.0).sin(),
+                    pressure: 0.2 + 0.7 * f, tilt_x: 30.0 * f - 15.0, tilt_y: 10.0, t_ms: k * 8, ..Default::default() };
+                stroke_append(&mut s, &pt, 300.0);
+            }
+            page_add(&mut p, s);
+        }
+        let mut c = Canvas::default();
+        if canvas_init(&mut c, p.w, p.h) != 0 {
+            return 0;
+        }
+        // (a few milliseconds that read no pens: work_pump_off)
+        work_pump_off(|| page_render(&mut c, &p, Rect { x: 0, y: 0, w: p.w, h: p.h }, 300.0));
+        c.px.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+    })
+}
+
 /// Renders the whole page then box-downsamples into thumb (thumb size sets the scale).
 pub fn page_render_thumb(thumb: &mut Canvas, p: &Page, dpi: f32) {
     let mut full = Canvas::default();

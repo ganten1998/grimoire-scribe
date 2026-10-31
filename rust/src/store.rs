@@ -2849,6 +2849,17 @@ pub fn store_retag_compacted_preview(nb:&NotebookInfo,pid:u32,before:Option<&str
         let tag=format!("{stamp}.{}",std::process::id());
         if write_cache_file(&tag,now.as_bytes())==0 && std::fs::rename(&tag,&stamp).is_err() {let _=std::fs::remove_file(tag);}
     }
+    // The kept drawing of a dense page likewise: same pixels, the new file identity.
+    if let Some((_,_,full))=page_render_files(nb,pid) {
+        if let Some(old)=preview_tag(&full) {
+            if let Some(rest)=old.strip_prefix(before) {
+                if rest.starts_with('|') && read_file(&source).as_deref()==Some(data) {
+                    let tag=format!("{full}.{}",std::process::id());
+                    if write_cache_file(&tag,format!("{now}{rest}").as_bytes())==0 && std::fs::rename(&tag,&full).is_err() {let _=std::fs::remove_file(tag);}
+                }
+            }
+        }
+    }
 }
 /// Small previews only; stale or malformed caches never replace page data.
 pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
@@ -2887,6 +2898,134 @@ pub fn store_page_preview_image(canvas: &Canvas, small: &mut Canvas) -> bool {
 }
 pub fn store_save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) {
     if save_page_preview(nb,pid,canvas) {page_previews_changed(nb.id.as_str());}
+}
+
+// ---- drawings kept for dense pages ----
+//
+// A page that takes long to draw (a dense one took 36 s on the Kindle, 2.0.0-rc.10) keeps its drawing
+// beside its preview: the whole page canvas, run-length coded, under the same stamp as the preview
+// (the page file's identity and the cache's invalidation generation) plus the renderer's fingerprint
+// and the page's size. Opening the page then reads it back instead of drawing every stroke again;
+// anything that does not match exactly is drawn as always.
+
+fn page_render_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, String)> {
+    let (source, image, _) = page_preview_files(nb, pid)?;
+    let base = image.strip_suffix(".pgm")?.to_string();
+    Some((source, format!("{base}.full"), format!("{base}.full.stamp")))
+}
+fn render_tag(stamp: &str, w: i32, h: i32) -> String {
+    format!("{stamp}|{w}x{h}|{:016x}", page_render_fingerprint())
+}
+// Runs of one byte (most of a page is paper, much of the rest one ink level) as (count - 1) | 0x80
+// then the byte; anything else as count - 1 then that many bytes. A dense page shrank 3 to 6 times.
+fn rle_encode(px: &[u8], out: &mut Vec<u8>) {
+    let n = px.len();
+    let mut i = 0;
+    while i < n {
+        let mut run = 1;
+        while i + run < n && run < 128 && px[i + run] == px[i] {
+            run += 1;
+        }
+        if run >= 3 {
+            out.push(0x80 | (run - 1) as u8);
+            out.push(px[i]);
+            i += run;
+            continue;
+        }
+        let start = i;
+        let mut lit = 0;
+        while i < n && lit < 128 {
+            if i + 2 < n && px[i] == px[i + 1] && px[i] == px[i + 2] {
+                break;
+            }
+            i += 1;
+            lit += 1;
+        }
+        out.push((lit - 1) as u8);
+        out.extend_from_slice(&px[start..start + lit]);
+    }
+}
+fn rle_decode(data: &[u8], px: &mut [u8]) -> bool {
+    let (mut i, mut o) = (0, 0);
+    while i < data.len() {
+        let c = data[i] as usize;
+        i += 1;
+        if c & 0x80 != 0 {
+            let run = (c & 0x7F) + 1;
+            let Some(&b) = data.get(i) else { return false };
+            if o + run > px.len() {
+                return false;
+            }
+            px[o..o + run].fill(b);
+            i += 1;
+            o += run;
+        } else {
+            let lit = c + 1;
+            if i + lit > data.len() || o + lit > px.len() {
+                return false;
+            }
+            px[o..o + lit].copy_from_slice(&data[i..i + lit]);
+            i += lit;
+            o += lit;
+        }
+    }
+    o == px.len()
+}
+/// Keeps page pid's drawing (its whole canvas, as drawn from the page file now on disk): a cache file,
+/// written without waiting on the disk. False if it was not kept.
+pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
+    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
+    let Some(was) = preview_stamp(&source) else { return false };
+    let Some(parent) = std::path::Path::new(&image).parent() else { return false };
+    if canvas.w <= 0 || canvas.h <= 0 || canvas.stride != canvas.w || std::fs::create_dir_all(parent).is_err() {
+        return false;
+    }
+    let mut bytes = Vec::new();
+    if bytes.try_reserve(canvas.px.len() / 3).is_err() {
+        return false;
+    }
+    rle_encode(&canvas.px[..(canvas.w * canvas.h) as usize], &mut bytes);
+    let mine = format!("{image}.{}", std::process::id());
+    let tag = format!("{stamp}.{}", std::process::id());
+    let mut saved = false;
+    if write_cache_file(&mine, &bytes) == 0 && preview_stamp(&source).as_deref() == Some(was.as_str())
+        && std::fs::rename(&mine, &image).is_ok() {
+        saved = write_cache_file(&tag, render_tag(&was, canvas.w, canvas.h).as_bytes()) == 0 && std::fs::rename(&tag, &stamp).is_ok();
+    }
+    let _ = std::fs::remove_file(mine);
+    let _ = std::fs::remove_file(tag);
+    saved
+}
+/// Page pid's kept drawing into out (a canvas of the page's size, w x h), when it is current: drawn
+/// from the page file now on disk, by this renderer, at this size. False otherwise (out unchanged).
+pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: &mut Canvas) -> bool {
+    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
+    let Some(now) = preview_stamp(&source) else { return false };
+    if preview_tag(&stamp).as_deref() != Some(render_tag(&now, w, h).as_str()) {
+        return false;
+    }
+    if out.w != w || out.h != h || out.stride != w {
+        return false;
+    }
+    let Some(data) = read_file(&image) else { return false };
+    let mut px = Vec::new();
+    if px.try_reserve_exact((w * h) as usize).is_err() {
+        return false;
+    }
+    px.resize((w * h) as usize, 0);
+    if !rle_decode(&data, &mut px) {
+        // (a write cut short: its stamp goes, so it is drawn and kept again)
+        let _ = std::fs::remove_file(stamp);
+        return false;
+    }
+    out.px[..(w * h) as usize].copy_from_slice(&px);
+    true
+}
+/// Whether page pid has a current kept drawing (it is kept fresh from then on, at every save).
+pub fn store_page_render_kept(nb: &NotebookInfo, pid: u32, w: i32, h: i32) -> bool {
+    let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
+    let Some(now) = preview_stamp(&source) else { return false };
+    preview_tag(&stamp).as_deref() == Some(render_tag(&now, w, h).as_str())
 }
 // One page's preview written, without telling an open view: a batch tells it once, at its end.
 fn save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
@@ -3826,11 +3965,17 @@ mod tests {
 pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     let mut nb=NotebookInfo::default();
     if store_load_info(id,&mut nb)!=0{return -1;}
-    let Some((first,last))=range.split_once(':').and_then(|(a,b)|Some((a.parse::<usize>().ok()?,b.parse::<usize>().ok()?))) else{return -1};
+    // "first:last", or "first:last:pid" to leave page pid out: the page open in the editor, whose preview
+    // is made from its canvas there (it is drawn already; drawing it again here, at every pause, kept a
+    // core busy for 20 s and more on a dense page, 2.0.0-rc.10).
+    let mut parts=range.split(':');
+    let (Some(Ok(first)),Some(Ok(last)))=(parts.next().map(str::parse::<usize>),parts.next().map(str::parse::<usize>)) else{return -1};
+    let skip=parts.next().and_then(|p|p.parse::<u32>().ok());
     if last.saturating_sub(first)>64{return -1;}
     let mut saved=false;
     for i in first..last.min(nb.page_ids.len()) {
         let pid=nb.page_ids[i];let mut cached=Canvas::default();
+        if Some(pid)==skip {continue;}
         if store_load_page_preview(&nb,pid,&mut cached){continue;}
         let Some((source,_,_))=page_preview_files(&nb,pid) else{continue};
         let before=preview_stamp(&source);

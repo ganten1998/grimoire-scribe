@@ -557,8 +557,20 @@ fn tooth_init() -> Box<[u8]> {
 
 #[inline]
 fn tooth_at(tooth: &[u8], x: i32, y: i32) -> f32 {
-    tooth[((y as u32 as usize) & (TOOTH_N - 1)) * TOOTH_N + ((x as u32 as usize) & (TOOTH_N - 1))] as f32 / 255.0
+    TOOTH_LEVEL[tooth[((y as u32 as usize) & (TOOTH_N - 1)) * TOOTH_N + ((x as u32 as usize) & (TOOTH_N - 1))] as usize]
 }
+// The tooth's levels as fractions, b / 255 for each byte b, worked out once: the very quotients the
+// pixel loop used to divide for (a float division is a slow, unpipelined instruction on the Kindle's
+// Cortex-A7, and textured pens did one or two a pixel).
+static TOOTH_LEVEL: [f32; 256] = {
+    let mut t = [0.0f32; 256];
+    let mut b = 0;
+    while b < 256 {
+        t[b] = b as f32 / 255.0;
+        b += 1;
+    }
+    t
+};
 
 // ---- renderer ----
 
@@ -699,6 +711,39 @@ fn restore_span(t: &mut DabTarget, c: &mut Canvas, y: i32, x0: i32, x1: i32) {
 // allow at 300 dpi has a radius of 354 px.
 const SPAN_MAX_R: f32 = 512.0;
 
+// The spacing-compensated share of a dab's opacity a when n dabs cover a pixel: 1 - (1 - a)^(1/n),
+// remembered by its exact inputs. Within a dab most pixels repeat a few values (a textured core has
+// one per tooth level), and the stroke's next dabs mostly share its 1/n, so powf runs a few hundred
+// times a dab instead of once a pixel; the same inputs give the same bits, so pages draw byte for byte
+// as before. On the Kindle a dense marker page drew 14% faster (Apple's powf is cheap enough that a
+// Mac gains nothing; the Kindle's is not).
+const SHARE_SLOTS: usize = 512;
+
+struct ShareMemo {
+    key: [u64; SHARE_SLOTS],
+    val: [f32; SHARE_SLOTS],
+}
+thread_local! {
+    // (each process and thread has its own: a forked child starts with a copy, still right)
+    static SHARE: std::cell::UnsafeCell<ShareMemo> = const {
+        std::cell::UnsafeCell::new(ShareMemo { key: [0; SHARE_SLOTS], val: [0.0; SHARE_SLOTS] })
+    };
+}
+#[inline(always)]
+fn share(m: &mut ShareMemo, a: f32, inv_n: f32) -> f32 {
+    // (a > 0.002 here, so no key is 0, the empty slot's)
+    let (ab, nb) = (a.to_bits(), inv_n.to_bits());
+    let key = (ab as u64) << 32 | nb as u64;
+    let i = ((ab ^ nb.rotate_left(13)).wrapping_mul(0x9E37_79B1) >> 23) as usize & (SHARE_SLOTS - 1);
+    if m.key[i] == key {
+        return m.val[i];
+    }
+    let v = 1.0 - (1.0 - a.min(0.999)).powf(inv_n);
+    m.key[i] = key;
+    m.val[i] = v;
+    v
+}
+
 // One dab. `erase` and `dry` are constants at each call (stamp), so each gets a copy of its own: the
 // ink copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
 // (Every `a * b + c` of the C that clang contracts is an fmla: PORTING.md, Floating point. The sites
@@ -786,6 +831,15 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
     // r_in^2 - 3, more than 1.4 / r_in inside the core, where the per-pixel path's float distance
     // cannot reach r_in, so it would have given each of them alpha 1 too. Byte for byte the same
     // (tests/test_erase.c compares the two).
+    // SAFETY: the memo is this thread's own and stamp_as never runs inside itself, so this is the
+    // only reference to it while the dab is drawn.
+    let memo: &mut ShareMemo = SHARE.with(|m| unsafe { &mut *m.get() });
+    // A round dab draws nothing past this far from its centre (a textured one's tooth and dust reach
+    // further, by at most half its roughness and the dust's width; a nib's shape is not round): each
+    // row visits only the pixels within it, plus a pixel's margin that no rounding can cross, and the
+    // pixels it skips are ones the test below would have skipped too.
+    let round = lk.nib == NibKind::None;
+    let reach_r = r_out + if lk.graphite { 0.5 * rough + dust_w } else { 0.0 } + 1.0;
     let spans = ERASE
         && BRUSH_ERASE_SPANS.load(Ordering::Relaxed)
         && !lk.graphite
@@ -819,8 +873,18 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
             }
         }
         // (the C moves x itself to hop over the span: here the hop is the next x to look at)
-        let mut next_x = box_.x;
-        for x in box_.x..box_.x + box_.w {
+        let (mut xa, mut xb) = (box_.x, box_.x + box_.w);
+        if round {
+            let q = fmla(reach_r, reach_r, -(dy * dy));
+            if q <= 0.0 {
+                continue; // (the whole row is more than reach_r from the centre)
+            }
+            let hw = q.sqrt() + 1.0;
+            xa = xa.max((s.x - 0.5 - hw).floor() as i32);
+            xb = xb.min((s.x - 0.5 + hw).ceil() as i32 + 1);
+        }
+        let mut next_x = xa;
+        for x in xa..xb {
             if x < next_x {
                 continue;
             }
@@ -865,7 +929,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
                         continue;
                     }
                     let a = op * 0.75 * fmla(0.5f32, t, 0.5);
-                    let ad = 1.0 - (1.0 - a.min(0.999)).powf(inv_n);
+                    let ad = share(memo, a, inv_n);
                     put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
                     continue;
                 }
@@ -907,7 +971,7 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
             if a <= 0.002 {
                 continue;
             }
-            let ad = if !lk.graphite && g_eff <= 0.0 && a == op { core_ad } else { 1.0 - (1.0 - a.min(0.999)).powf(inv_n) };
+            let ad = if !lk.graphite && g_eff <= 0.0 && a == op { core_ad } else { share(memo, a, inv_n) };
             put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
         }
     }

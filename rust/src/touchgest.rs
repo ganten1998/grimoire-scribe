@@ -581,6 +581,17 @@ fn over(a: u32, b: u32, ms: u32) -> bool {
     b.wrapping_sub(a) as i32 > ms as i32
 }
 
+/// How long ago (ms, at frame time k) the pen left proximity: a little below 0 for a frame older than
+/// the leave, i32::MAX for long ago. A pen not seen yet keeps left_ms 0, and once the clock is past 2^31
+/// ms (24.9 days since boot: a test machine's uptime, 2.0.0-rc.10) `k - 0` read as a signed number came
+/// out negative, which every check below took for a pen that had just left: two-finger gestures and
+/// their recording were refused as "the pen is near". Only a difference within PEN_BEHIND_MS behind is
+/// a frame behind the leave; any other negative one is wraparound, so long ago.
+fn pen_age(pen: &TgPen, k: u32) -> i32 {
+    let d = k.wrapping_sub(pen.left_ms) as i32;
+    if d <= -(PEN_BEHIND_MS as i32) { i32::MAX } else { d }
+}
+
 impl TouchGest {
     fn push(&self, out: &mut TgOut, mut e: InEvent, k: u32) {
         if out.n >= out.ev.len() {
@@ -599,8 +610,7 @@ impl TouchGest {
 
     /// The pen left less than ms before k (a frame older than the leave counts too).
     fn gone_within(pen: &TgPen, k: u32, ms: u32) -> bool {
-        let d = k.wrapping_sub(pen.left_ms) as i32;
-        d > -(PEN_BEHIND_MS as i32) && d < ms as i32
+        pen_age(pen, k) < ms as i32
     }
 
     fn flags(&self, i: usize) -> i32 {
@@ -857,7 +867,7 @@ impl TouchGest {
         self.pen_age = if pen.prox || pen.touching {
             -1
         } else {
-            k.wrapping_sub(pen.left_ms) as i32
+            pen_age(pen, k)
         };
         self.in_window = self.pen_window(pen, k);
         self.blocked = false;
@@ -879,7 +889,7 @@ impl TouchGest {
         self.pen_age = if pen.prox || pen.touching {
             -1
         } else {
-            k.wrapping_sub(pen.left_ms) as i32
+            pen_age(pen, k)
         };
         self.in_window = self.pen_window(pen, k);
         self.blocked = false;
@@ -935,7 +945,7 @@ impl TouchGest {
             return false;
         }
         let (lx, ly) = (ipx(pen.last.0), ipx(pen.last.1));
-        !(!pen.prox && at_least(pen.left_ms, k, self.tune.pen_gone_ms) && dist(t.ix, t.iy, lx, ly) >= self.thr.far)
+        !(!pen.prox && pen_age(pen, k) >= self.tune.pen_gone_ms as i32 && dist(t.ix, t.iy, lx, ly) >= self.thr.far)
     }
 
     /// The finger let through at track i meets the pen now: on the ink, the pen touches or hovers near
@@ -992,7 +1002,7 @@ impl TouchGest {
             && self.p_n == 2
             && !pen.prox
             && !pen.touching
-            && at_least(pen.left_ms, k, self.tune.pen_gone_ms)
+            && pen_age(pen, k) >= self.tune.pen_gone_ms as i32
         {
             let (x, y) = (ipx(pen.last.0), ipx(pen.last.1));
             return self.p[..self.p_n].iter().all(|&i| {
@@ -1757,7 +1767,7 @@ impl TouchGest {
             if pen.prox || pen.touching || Self::gone_within(pen, k, self.tune.pen_gone_ms) {
                 -1
             } else {
-                k.wrapping_sub(pen.left_ms) as i32
+                pen_age(pen, k)
             };
         let first = self.measure_lift.unwrap_or(k);
         self.measure = TgMeasure {

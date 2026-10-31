@@ -15,6 +15,24 @@ use crate::prelude::*;
 // so a hang can never leave the device stuck with its UI paused.
 const HEARTBEAT: &str = "/tmp/grimoire.alive";
 
+// When the main loop last went round, and when the heartbeat was last written (ms).
+#[cfg(feature = "kindle")]
+static LOOP_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+#[cfg(feature = "kindle")]
+static BEAT_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Long work keeps the heartbeat going (work_pump calls this): every 2 s, for up to two minutes
+/// after the main loop last went round, so a page that takes long to draw is not killed as a hang
+/// while a real one (a loop that never returns) still is.
+#[cfg(feature = "kindle")]
+fn pump_beat() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let now = now_ms();
+    if now.wrapping_sub(BEAT_MS.load(Relaxed)) > 2000 && now.wrapping_sub(LOOP_MS.load(Relaxed)) < 120_000 {
+        heartbeat();
+        BEAT_MS.store(now, Relaxed);
+    }
+}
+
 #[cfg(feature = "kindle")]
 fn heartbeat() {
     let Ok(path) = std::ffi::CString::new(HEARTBEAT) else { return };
@@ -410,6 +428,12 @@ fn run() -> i32 {
     heartbeat();
     #[cfg(feature = "kindle")]
     let mut last_beat = now_ms();
+    #[cfg(feature = "kindle")]
+    {
+        LOOP_MS.store(last_beat, std::sync::atomic::Ordering::Relaxed);
+        BEAT_MS.store(last_beat, std::sync::atomic::Ordering::Relaxed);
+        work_pump_beat_set(Some(pump_beat));
+    }
 
     while app.running {
         // A panel that took none of the first five refreshes is not Grimoire's to drive (a device
@@ -501,9 +525,14 @@ fn run() -> i32 {
             app_flush(&mut app);
         }
         #[cfg(feature = "kindle")]
-        if now_ms().wrapping_sub(last_beat) > 2000 {
-            heartbeat();
-            last_beat = now_ms();
+        {
+            let now = now_ms();
+            LOOP_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+            if now.wrapping_sub(last_beat) > 2000 {
+                heartbeat();
+                last_beat = now;
+                BEAT_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
     qlog!("exiting");

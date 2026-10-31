@@ -268,7 +268,9 @@ pub fn pagesview_draw_overlay(v:&mut PagesView,a:&mut App) {
 /// Warm the next management screen while the notebook is idle, rather than on its first open.
 pub fn pagesview_prefetch(v:&mut PagesView,nb:&NotebookInfo,current:i32,dpi:f32) {
     let first=(current.max(0) as usize/9)*9;
-    bg_request_page_previews(&mut v.previews,nb,first,first+9,dpi,false);
+    // (the open page's own preview is made from its canvas: editor save_page)
+    let open=nb.page_ids.get(current.max(0) as usize).copied();
+    bg_request_page_previews_but(&mut v.previews,nb,first,first+9,dpi,false,open);
 }
 
 /// The open page was saved: its tile is decoded again, and its preview may be made once more.

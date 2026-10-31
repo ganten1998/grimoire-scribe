@@ -62,6 +62,102 @@ pub struct Action {
     pub paper_new: PaperKind,
     /// ActKind::Link: its records (None for every other kind). Boxed: most actions are ink.
     pub link: Option<Box<LinkEdit>>,
+    /// The page pixels this step changed (Patch), when the editor took them: undo and redo swap them
+    /// with the page canvas instead of drawing the region again.
+    pub patch: Option<Box<Patch>>,
+}
+
+/// Page pixels a step changed, kept in square tiles of the page canvas: the ones under it while it is
+/// done, its own while it is undone. Undo and redo swap them with the canvas, so either costs a copy of
+/// what the step touched, on any page, however dense (a drawn undo took 4 to 11 s on the Kindle on a
+/// 1,090-stroke page, 2.0.0-rc.10). Taken by comparing the canvas before and after the step (the
+/// editor's base canvas and its page canvas), so only tiles that really changed are kept: a long thin
+/// stroke keeps a band of tiles, not its whole box.
+#[derive(Debug, Default)]
+pub struct Patch {
+    /// the canvas size it was taken on
+    pub w: i32,
+    pub h: i32,
+    /// its tiles' numbers (row * columns + column), ascending
+    pub tiles: Vec<u32>,
+    /// their pixels, tile after tile, each tile's rows packed (an edge tile only its part on the canvas)
+    pub px: Vec<u8>,
+}
+pub const PATCH_TILE: i32 = 32;
+
+fn tile_rect(w: i32, h: i32, t: u32) -> Rect {
+    let cols = (w + PATCH_TILE - 1) / PATCH_TILE;
+    let (tx, ty) = (t as i32 % cols, t as i32 / cols);
+    let (x, y) = (tx * PATCH_TILE, ty * PATCH_TILE);
+    Rect { x, y, w: PATCH_TILE.min(w - x), h: PATCH_TILE.min(h - y) }
+}
+
+/// The tiles over r where `after` differs from `before` (two canvases of one size, rows unpadded),
+/// with before's pixels. None when nothing differs or there is no memory (the step then has no patch).
+pub fn patch_capture(before: &Canvas, after: &Canvas, r: Rect) -> Option<Patch> {
+    let (w, h) = (after.w, after.h);
+    if before.w != w || before.h != h || before.stride != w || after.stride != w || w <= 0 || h <= 0 {
+        return None;
+    }
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w, h });
+    if rect_is_empty(r) {
+        return None;
+    }
+    let cols = (w + PATCH_TILE - 1) / PATCH_TILE;
+    let mut p = Patch { w, h, ..Default::default() };
+    for ty in r.y / PATCH_TILE..=(r.y + r.h - 1) / PATCH_TILE {
+        for tx in r.x / PATCH_TILE..=(r.x + r.w - 1) / PATCH_TILE {
+            let t = (ty * cols + tx) as u32;
+            let tr = tile_rect(w, h, t);
+            let rows = (tr.y..tr.y + tr.h).map(|y| (y * w + tr.x) as usize);
+            let differs = rows.clone().any(|at| before.px[at..at + tr.w as usize] != after.px[at..at + tr.w as usize]);
+            if !differs {
+                continue;
+            }
+            if p.tiles.try_reserve(1).is_err() || p.px.try_reserve((tr.w * tr.h) as usize).is_err() {
+                return None;
+            }
+            p.tiles.push(t);
+            for at in rows {
+                p.px.extend_from_slice(&before.px[at..at + tr.w as usize]);
+            }
+        }
+    }
+    if p.tiles.is_empty() {
+        return None;
+    }
+    p.px.shrink_to_fit();
+    p.tiles.shrink_to_fit();
+    Some(p)
+}
+
+/// Swaps the patch's pixels with the canvas's under its tiles (undo and redo alike), and copies the
+/// result to `mirror` (the editor's base canvas, which follows the page canvas between steps). The
+/// page rect the tiles cover; empty if the patch was taken on a canvas of another size.
+pub fn patch_swap(p: &mut Patch, c: &mut Canvas, mirror: &mut Canvas) -> Rect {
+    let (w, h) = (p.w, p.h);
+    if c.w != w || c.h != h || c.stride != w || mirror.w != w || mirror.h != h || mirror.stride != w {
+        return RECT_EMPTY;
+    }
+    let mut off = 0usize;
+    let mut dirty = RECT_EMPTY;
+    for &t in &p.tiles {
+        let tr = tile_rect(w, h, t);
+        for y in tr.y..tr.y + tr.h {
+            let at = (y * w + tr.x) as usize;
+            let n = tr.w as usize;
+            c.px[at..at + n].swap_with_slice(&mut p.px[off..off + n]);
+            mirror.px[at..at + n].copy_from_slice(&c.px[at..at + n]);
+            off += n;
+        }
+        dirty = rect_union(dirty, tr);
+    }
+    dirty
+}
+
+/// Bytes a patch keeps.
+pub fn patch_bytes(p: &Patch) -> usize {
+    p.px.len() + p.tiles.len() * 4
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +168,8 @@ pub struct History {
     pub redo: Vec<Action>,
     /// max undo depth (oldest dropped), default 500
     pub limit: i32,
+    /// steps pushed so far (an editor tells by it whether an action it ended pushed one)
+    pub pushes: u64,
 }
 
 pub fn history_init(h: &mut History) {
@@ -97,11 +195,52 @@ pub fn history_free(h: &mut History) {
 }
 
 fn push_undo(h: &mut History, a: Action) {
+    h.pushes += 1;
     clear_redo(h);
     if h.limit > 0 && h.undo.len() as i32 >= h.limit {
         h.undo.remove(0);
     }
     h.undo.push(a);
+}
+
+/// The step just pushed takes patch (its pixels: Patch). No step, no patch.
+pub fn history_attach_patch(h: &mut History, patch: Patch) {
+    if let Some(a) = h.undo.last_mut() {
+        a.patch = Some(Box::new(patch));
+    }
+}
+
+/// The step history_undo (`undone`) or history_redo just moved, its patch swapped with the canvas (and
+/// copied to mirror): the page rect it covered, or None when that step has none (the region must then
+/// be drawn again).
+pub fn history_swap_patch(h: &mut History, undone: bool, c: &mut Canvas, mirror: &mut Canvas) -> Option<Rect> {
+    let a = if undone { h.redo.last_mut() } else { h.undo.last_mut() }?;
+    let p = a.patch.as_deref_mut()?;
+    let r = patch_swap(p, c, mirror);
+    if rect_is_empty(r) {
+        a.patch = None;
+        return None;
+    }
+    Some(r)
+}
+
+/// Bytes the patches of h's steps keep.
+pub fn history_patch_bytes(h: &History) -> usize {
+    h.undo.iter().chain(h.redo.iter()).filter_map(|a| a.patch.as_deref()).map(patch_bytes).sum()
+}
+
+/// Drops patches, oldest first (the undo stack's bottom, then the redo stack's), until h keeps at most
+/// `cap` bytes of them. A step without one is drawn again when it is undone or redone, as before.
+pub fn history_trim_patches(h: &mut History, cap: usize) {
+    let mut total = history_patch_bytes(h);
+    for a in h.undo.iter_mut().chain(h.redo.iter_mut()) {
+        if total <= cap {
+            return;
+        }
+        if let Some(p) = a.patch.take() {
+            total -= patch_bytes(&p);
+        }
+    }
 }
 
 /// Record an action that has ALREADY been applied to the page.

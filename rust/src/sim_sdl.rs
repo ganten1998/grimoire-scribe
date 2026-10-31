@@ -545,7 +545,8 @@ impl State {
     /// The frame clock's now: where the last frame was, or now_ms() if that is later.
     fn tg_now(&self) -> u32 {
         let now = now_ms();
-        if (now.wrapping_sub(self.flast) as i32) > 0 {
+        // (flast 0: no frame yet; see fclock_start for why `now - 0` cannot be trusted)
+        if self.flast == 0 || (now.wrapping_sub(self.flast) as i32) > 0 {
             now
         } else {
             self.flast
@@ -556,7 +557,10 @@ impl State {
     fn fclock_start(&mut self) {
         if self.fclock_fresh {
             let now = now_ms();
-            if (now.wrapping_sub(self.fclock) as i32) > 0 {
+            // (0: not started. A started clock only moves forward; past 2^31 ms of uptime `now - 0` read
+            // as a signed number is negative, which kept a fresh run's frames at 0, next to a pen that
+            // "left" at 0: every gesture refused as the pen near, 2.0.0-rc.10.)
+            if self.fclock == 0 || (now.wrapping_sub(self.fclock) as i32) > 0 {
                 self.fclock = now;
             }
             self.fclock_fresh = false;

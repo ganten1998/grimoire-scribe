@@ -486,6 +486,10 @@ pub struct PagePreviewRequests {
 /// `waited`: a view on screen shows these pages (else an idle warm-up, which runs after anything asked
 /// for and never counts as one the user waits on).
 pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32,waited:bool) {
+    bg_request_page_previews_but(requests,nb,first,last,dpi,waited,None)
+}
+/// The same, leaving out page `skip` (the page open in the editor, whose preview comes from its canvas).
+pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32,waited:bool,skip:Option<u32>) {
     let epoch=store_page_previews_epoch(nb.id.as_str());
     if requests.id!=nb.id || requests.epoch!=epoch {
         *requests=PagePreviewRequests{id:nb.id,epoch,..Default::default()};
@@ -498,11 +502,12 @@ pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookIn
     }
     let pages=&nb.page_ids[first..last];
     // (a stamp check, not a decode: the view decodes what it shows itself)
-    let missing=pages.iter().any(|pid|!requests.pages.contains(pid) && store_page_preview_fresh(nb,*pid).is_none());
+    let missing=pages.iter().any(|pid|Some(*pid)!=skip && !requests.pages.contains(pid) && store_page_preview_fresh(nb,*pid).is_none());
     if requests.pages.try_reserve(pages.len()).is_err() {return;}
     for &pid in pages {if !requests.pages.contains(&pid){requests.pages.push(pid);}}
     if !missing {return;}
-    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),dpi,waited);
+    let range=match skip {Some(pid)=>format!("{first}:{last}:{pid}"),None=>format!("{first}:{last}")};
+    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&range),dpi,waited);
 }
 /// Page pid was saved: its preview may be made once more.
 pub fn bg_preview_retry(requests:&mut PagePreviewRequests,pid:u32) {
