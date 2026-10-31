@@ -10918,7 +10918,9 @@ mod tests {
             let v=c.px[y*600+x];
             if v!=123 {
                 let radius=((x as f32-300.0).powi(2)+(y as f32-300.0).powi(2)).sqrt();
-                assert!((radius-100.0).abs()<5.0,"overlay touched paper far from border at {x},{y}");
+                // (the band's square pen, halo included, reaches half its side times the diagonal, and a pixel more)
+                let reach=(link_band()+2*ui_px(1.0)) as f32*0.5*std::f32::consts::SQRT_2+1.5;
+                assert!((radius-100.0).abs()<reach,"overlay touched paper far from border at {x},{y}");
                 assert!(v==0 || v==255);dots+=usize::from(v==0);
             }
         }}
