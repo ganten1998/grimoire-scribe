@@ -1384,6 +1384,37 @@ fn route_live_page(query: &[u8]) {
         live_word(&mut b, &mut n, "keysHint", tr("Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, then restart Live view."));
         live_word(&mut b, &mut n, "keysEmpty", tr("No Live view keys are assigned."));
         live_word(&mut b, &mut n, "keysError", tr("Could not send keys. Release the keys and try again."));
+        // TRANSLATORS: Live view's controls in the browser: a slim bar of icon buttons beside the
+        // page (its name for screen readers), and the panel of view settings it opens, in groups.
+        live_word(&mut b, &mut n, "controls", tr("Live view controls"));
+        live_word(&mut b, &mut n, "settings", tr("View settings"));
+        live_word(&mut b, &mut n, "picture", tr("Picture"));
+        live_word(&mut b, &mut n, "penGroup", tr("Pen"));
+        live_word(&mut b, &mut n, "overPage", tr("Over the page"));
+        live_word(&mut b, &mut n, "diagnostics", tr("Diagnostics"));
+        // TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
+        // the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
+        // or larger by a step.
+        live_word(&mut b, &mut n, "size", tr("Size"));
+        live_word(&mut b, &mut n, "fitWidth", tr("Fit width"));
+        live_word(&mut b, &mut n, "smaller", tr("Smaller"));
+        live_word(&mut b, &mut n, "larger", tr("Larger"));
+        // TRANSLATORS: Live view's button in the browser: the page in a small window that floats over
+        // the computer's other windows (the browser's own name for it is fine). Pop out is the same
+        // where the browser has no such window.
+        live_word(&mut b, &mut n, "pictureInPicture", tr("Picture in picture"));
+        // TRANSLATORS: Live view in Firefox without picture in picture of its own: the page shows as a
+        // video, and Firefox floats it from its own button or its right-click menu.
+        live_word(&mut b, &mut n, "pipFirefoxHint", tr("Point at the picture and click Firefox's Picture-in-Picture button, or right-click it and choose Picture-in-Picture."));
+        // TRANSLATORS: Live view's help in the browser on how to get the sharpest picture in picture,
+        // which browsers give only to pages they treat as secure (the Kindle's page is plain HTTP).
+        // %s is this page's address. about:config, dom.securecontext.allowlist, chrome://flags,
+        // edge://flags, brave://flags and "Insecure origins treated as secure" are the browsers' own
+        // names: keep them as they are.
+        live_word(&mut b, &mut n, "pipHelp", tr("For the sharpest picture in picture, let your browser treat this address as secure:"));
+        live_word(&mut b, &mut n, "pipFirefoxHelp", tr("Firefox: open about:config, add %s to dom.securecontext.allowlist (separate several with commas), then reload this page."));
+        live_word(&mut b, &mut n, "pipChromeHelp", tr("Chrome, Edge, Brave or Arc: open chrome://flags (edge://flags, brave://flags), find \"Insecure origins treated as secure\", add %s, enable it and relaunch the browser."));
+        live_word(&mut b, &mut n, "pipSafariHelp", tr("Safari floats a video of the page instead, which works on this address as it is."));
         live_word(&mut b, &mut n, "old", tr("This browser cannot show Live view."));
         buf_printf!(&mut b, "};</script><template id=live-bat>");
         bat_svg(&mut b);
