@@ -298,6 +298,8 @@ pub struct EditorState {
     /// the open page (its id) and how long its last whole drawing took, ms (KEEP_RENDER_MS when it came
     /// from its kept drawing): a page this slow keeps its drawing at each save
     full_ms: (u32, u32),
+    /// whether the open page came up from its kept drawing (a probe, editor.page_kept)
+    page_kept: bool,
     map: MapView,
     map_kb: Keyboard,
     map_rename_pid: u32,
@@ -2442,7 +2444,7 @@ fn save_page(a: &mut App) -> bool {
         if whole && (!s.autosaving || now.wrapping_sub(s.preview_saved_ms) >= 30_000) {
             store_save_page_preview(&s.nb, pid, &s.page_canvas);
             // A page that took a second or more to draw keeps its drawing too, so it opens at once.
-            if s.full_ms.0 == pid && s.full_ms.1 >= KEEP_RENDER_MS {
+            if s.full_ms.0 == pid && s.full_ms.1 >= keep_render_ms() {
                 store_save_page_render(&s.nb, pid, &s.page_canvas);
             }
             s.preview_saved_ms = now;
@@ -2561,14 +2563,20 @@ fn render_page_full(a: &mut App) {
     let pid = s.open_pid();
     let kept = s.page_ix().is_some() && !s.page_canvas.px.is_empty()
         && store_load_page_render(&s.nb, pid, s.pgw, s.pgh, &mut s.page_canvas);
+    s.page_kept = kept;
     if kept {
         s.picture_missing = false;
-        s.full_ms = (pid, KEEP_RENDER_MS);
+        s.full_ms = (pid, u32::MAX); // (a page that keeps its drawing goes on keeping it)
     } else {
         let started = now_ms();
         draw_page(a, r);
         let s = ed(a);
         s.full_ms = (pid, now_ms().wrapping_sub(started));
+        // A page that took this long, as it is on disk (nothing unsaved), keeps its drawing at once:
+        // the next open is quick even if it is only read, never written.
+        if s.full_ms.1 >= keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
+            store_save_page_render(&s.nb, pid, &s.page_canvas);
+        }
     }
     let s = ed(a);
     s.canvas_page = s.open_page_ref();
@@ -3154,6 +3162,7 @@ fn draw_sample(a: &mut App, ev: &InEvent) {
     }
     let cur = s.cur.as_deref_mut().unwrap();
     smoother_apply(&mut s.sm, cur.params.smoothing, &mut p);
+    sample_as_stored(&mut p); // (drawn as the page file will keep it: what a reopen draws)
     stroke_append(cur, &p, dpi);
     if s.sh.preview.is_some() {
         if !shape_anchor_moved(s.sh.anchor,(ev.x,ev.y),dpi,true) { return; }
@@ -3215,7 +3224,8 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     s.sh.last_reason = r.reason;
     if r.kind == ShapeKind::None { shape_report(logging,"hold",&r,prm.burst,prm.zoom,elapsed,0); return; }
     let raw = s.cur.as_ref().unwrap();
-    let Some(stroke) = shape_stroke(raw, &r, dpi) else { return; };
+    let Some(mut stroke) = shape_stroke(raw, &r, dpi) else { return; };
+    stroke.pts.iter_mut().for_each(sample_as_stored);
     let region = rect_intersect(rect_union(raw.bbox, stroke.bbox), Rect {x:0,y:0,w:s.pgw,h:s.pgh});
     if rect_is_empty(region) { return; }
     let mut saved = Canvas::default();
@@ -6046,7 +6056,8 @@ pub fn editor_shape_last(a: &mut App) {
     let started = now_ms();
     let result = shape_recognize(&raw.pts,&prm);
     shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);
-    let Some(shape) = shape_stroke(raw,&result,dpi) else {app_toast(a,tr("No shape in the last stroke."),3000); return;};
+    let Some(mut shape) = shape_stroke(raw,&result,dpi) else {app_toast(a,tr("No shape in the last stroke."),3000); return;};
+    shape.pts.iter_mut().for_each(sample_as_stored);
     let index = p.strokes.len() as i32 - 1;
     let (history,page) = hist_page(&mut s.hist,hi,ip);
     let dirty = history_push_replace(history,page,index,shape);
@@ -8214,8 +8225,16 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
     }
 }
 
-/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms.
+/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms. (The
+/// simulator takes GRIMOIRE_KEEP_RENDER_MS instead, so scenarios can keep pages that draw quickly.)
 const KEEP_RENDER_MS: u32 = 1000;
+fn keep_render_ms() -> u32 {
+    #[cfg(feature = "sim")]
+    if let Some(ms) = std::env::var("GRIMOIRE_KEEP_RENDER_MS").ok().and_then(|v| v.parse().ok()) {
+        return ms;
+    }
+    KEEP_RENDER_MS
+}
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
     if crate::library::library_settings_active(a) {
@@ -9536,6 +9555,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
+    } else if key == "page_kept" {
+        // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
+        csnprintf!(out, cap, "%d", s.page_kept as i32);
     } else if key == "undo_patched" {
         // Undos and redos that swapped a patch back instead of drawing the region again.
         csnprintf!(out, cap, "%u", s.undo_patched);
@@ -9553,6 +9575,20 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
                 && pc.h == c.h
                 && pc.stride == c.stride
                 && c.px[..c.stride as usize * c.h as usize] == pc.px[..c.stride as usize * c.h as usize];
+            if !same && pc.px.len() == c.px.len() {
+                // (where they differ, in the log: the count, the box and the first pixel's two values)
+                let (mut n, mut x0, mut y0, mut x1, mut y1, mut first) = (0, i32::MAX, i32::MAX, -1, -1, None);
+                for (i, (&a, &b)) in pc.px.iter().zip(c.px.iter()).enumerate() {
+                    if a != b {
+                        let (x, y) = ((i as i32) % c.stride, (i as i32) / c.stride);
+                        n += 1; x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y);
+                        first.get_or_insert((x, y, a, b));
+                    }
+                }
+                let (fx, fy, fa, fb) = first.unwrap_or((0, 0, 0, 0));
+                qlog!("editor: live differs from a fresh drawing at %d pixels, %d,%d-%d,%d, first at %d,%d: %d live, %d drawn",
+                    n, x0, y0, x1, y1, fx, fy, fa as i32, fb as i32);
+            }
         }
         csnprintf!(out, cap, "%d", if same { 1 } else { 0 });
     } else if key == "stroke_screen_mm" {

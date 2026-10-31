@@ -2373,6 +2373,17 @@ const PAGE_V1_PAPERS: u32 = 17;
 /// Anything else (0, or a number no version uses) is damage.
 const PAGE_NEWER_MAX: u32 = 255;
 
+/// A pen sample as the page file keeps it and reads it back: pressure in steps of 1/65535, tilt in
+/// hundredths of a degree (the very conversions below and in page_deserialize). The editor draws every
+/// sample so, so the ink on the screen is exactly what opening the page again draws: before 2.0.0-rc.10
+/// a reopened page could differ by a gray level at a few pixels, which a page's kept drawing would
+/// then have carried (store_save_page_render).
+pub fn sample_as_stored(q: &mut PenSample) {
+    q.pressure = ((clampf(q.pressure, 0.0, 1.0) * 65535.0).round_ties_even() as i64) as u16 as f32 / 65535.0;
+    q.tilt_x = ((((clampf(q.tilt_x, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16 as i16) as f32 / 100.0;
+    q.tilt_y = ((((clampf(q.tilt_y, -90.0, 90.0) * 100.0).round_ties_even() as i64) as i16) as u16 as i16) as f32 / 100.0;
+}
+
 /// Page file format "QPG1" (little-endian), byte by byte in docs/FORMAT.md:
 ///   char magic[4]="QPG1"; u16 version; u16 paper; u32 w, h;   (these 16 bytes in every version)
 ///   (version 2, a paper 1.0.0-beta does not know: u32 paper follows h; the u16 then says
