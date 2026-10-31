@@ -245,7 +245,35 @@ pub const PAGE_LAYER_PAPER: i32 = 1;
 pub const PAGE_LAYER_INK: i32 = 2;
 pub const PAGE_LAYER_ALL: i32 = 3;
 pub fn page_render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32) {
-    render_layers(c, p, region, dpi, layers, None, -1, None)
+    render_layers(c, p, region, dpi, layers, None, -1, None, None)
+}
+/// page_render over the pixels of region in the tiles mask marks (a mask of the canvas's size): each as
+/// page_render draws it, every other pixel left as it was. A pixel is its paper and the dabs over it,
+/// one after another, so taking strokes off a page changes it only under their dabs: drawn again over
+/// their boxes, in the tiles they drew into (stroke_mark_tiles), a canvas of the page with them becomes
+/// the page without them. The stroke eraser on a dense page so draws a band of tiles, not the box of a
+/// stroke across it.
+pub fn page_render_tiles(c: &mut Canvas, p: &Page, region: Rect, mask: &Rc<TileMask>, dpi: f32) {
+    let region = rect_intersect(region, tile_mask_bounds(mask));
+    if mask.w != c.w || mask.h != c.h {
+        page_render(c, p, region, dpi); // (not this canvas's: all of it)
+        return;
+    }
+    render_layers(c, p, region, dpi, PAGE_LAYER_ALL, None, -1, None, Some(mask))
+}
+/// Marks in m the tiles stroke s draws into, as a dry run of its brush measures its dabs.
+pub fn stroke_mark_tiles(m: &mut TileMask, s: &Stroke, dpi: f32) {
+    if (s.tool.0 as u32) >= TOOL_COUNT as u32 {
+        return; // (never drawn)
+    }
+    let mut none = Canvas { px: Vec::new(), w: m.w, h: m.h, stride: m.w, clip: Rect { x: 0, y: 0, w: m.w, h: m.h } };
+    let mut b = BrushState::default();
+    stroke_brush_begin(&mut b, s, dpi, None, 0, 0, 0);
+    b.dry = true;
+    for q in &s.pts {
+        let r = brush_add(&mut b, &mut none, q);
+        tile_mask_mark(m, r);
+    }
 }
 /// The page's paper alone over region, as page_render draws it: an image paper from its notebook's
 /// picture (bgimage.c), any other kind by paper_render (which draws an image paper blank). Wherever
@@ -287,21 +315,24 @@ struct Pieces<'a> {
     pc: Vec<Option<Vec<Piece>>>,
 }
 
-// page_render_layers, leaving out the strokes marked in skip and stroke left_out, and drawing each
-// stroke from its pieces if ps is given (compaction).
-fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, skip: Option<&[bool]>, left_out: i32, mut ps: Option<&mut Pieces>) {
+// page_render_layers, leaving out the strokes marked in skip and stroke left_out, drawing each stroke
+// from its pieces if ps is given (compaction), and only the tiles of r that mask marks if it is given
+// (page_render_tiles).
+fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, skip: Option<&[bool]>, left_out: i32, mut ps: Option<&mut Pieces>, mask: Option<&Rc<TileMask>>) {
     let saved = c.clip;
     let r = rect_intersect(region, saved);
     if rect_is_empty(r) {
         return;
     }
     let n = p.strokes.len();
+    // (with a mask, a stroke that draws in none of its tiles there draws nothing)
+    let meets = |s: &Stroke| mask.is_none_or(|m| tile_mask_hits(m, rect_intersect(s.bbox, r)));
     // Erase strokes restore the paper under them: with the paper layer, a copy of the paper drawn
     // here, of the part of r their bboxes reach (u); without it, white.
     let mut u = RECT_EMPTY;
     if (layers & PAGE_LAYER_PAPER) != 0 && (layers & PAGE_LAYER_INK) != 0 {
         for i in 0..n {
-            if drawn(skip, left_out, i) && stroke_is_erase(&p.strokes[i]) {
+            if drawn(skip, left_out, i) && stroke_is_erase(&p.strokes[i]) && meets(&p.strokes[i]) {
                 u = rect_union(u, rect_intersect(p.strokes[i].bbox, r));
             }
         }
@@ -326,8 +357,8 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
                     b.x += a.w;
                     b.w -= a.w;
                 }
-                render_layers(c, p, a, dpi, layers, skip, left_out, ps.as_deref_mut());
-                render_layers(c, p, b, dpi, layers, skip, left_out, ps.as_deref_mut());
+                render_layers(c, p, a, dpi, layers, skip, left_out, ps.as_deref_mut(), mask);
+                render_layers(c, p, b, dpi, layers, skip, left_out, ps.as_deref_mut(), mask);
                 return;
             }
             static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -338,7 +369,24 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         }
     }
     if (layers & PAGE_LAYER_PAPER) != 0 {
-        page_paper_render(c, p, r, dpi);
+        match mask {
+            None => page_paper_render(c, p, r, dpi),
+            // Each tile row's runs of marked tiles. (The copy below then holds the paper only there,
+            // and the old canvas elsewhere: the masked dabs read it only there.)
+            Some(m) => {
+                let mut y = r.y;
+                while y < r.y + r.h {
+                    let h = (y / MASK_TILE + 1) * MASK_TILE - y;
+                    let h = h.min(r.y + r.h - y);
+                    let mut from = r.x;
+                    while let Some((x0, x1)) = tile_mask_run(m, y, from, r.x + r.w) {
+                        page_paper_render(c, p, Rect { x: x0, y, w: x1 - x0, h }, dpi);
+                        from = x1;
+                    }
+                    y += h;
+                }
+            }
+        }
     }
     if (layers & PAGE_LAYER_INK) == 0 {
         return;
@@ -354,7 +402,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
     let mut b = BrushState::default();
     for i in 0..n {
         let s: &Stroke = &p.strokes[i];
-        if !drawn(skip, left_out, i) || (s.tool.0 as u32) >= TOOL_COUNT as u32 || !rect_overlaps(s.bbox, r) {
+        if !drawn(skip, left_out, i) || (s.tool.0 as u32) >= TOOL_COUNT as u32 || !rect_overlaps(s.bbox, r) || !meets(s) {
             continue;
         }
         // An erase stroke stays inside its bbox, which u covers where it meets r: clipped to u it
@@ -369,6 +417,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         let Some(pcs) = pcs else {
             // whole (also when there was no memory to cut it)
             stroke_brush_begin(&mut b, s, dpi, copy.clone(), u.x, u.y, u.w);
+            b.mask = mask.cloned();
             for k in 0..s.pts.len() {
                 brush_add(&mut b, c, &s.pts[k]);
                 if (k & 127) == 127 {
@@ -388,6 +437,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
                 if stroke_is_erase(s) {
                     brush_set_erase(&mut b, copy.clone(), u.x, u.y, u.w);
                 }
+                b.mask = mask.cloned();
             }
             for m in pc.first..pc.end {
                 brush_add(&mut b, c, &s.pts[m as usize]);
@@ -544,7 +594,7 @@ fn ref_ready(x: &mut Compact, l: usize, r: Rect) {
     if l != 0 {
         canvas_fill(&mut x.layer[l], t, 255); // the ink layer starts white
     }
-    render_layers(&mut x.layer[l], x.p, t, x.dpi, if l != 0 { PAGE_LAYER_INK } else { PAGE_LAYER_ALL }, Some(&*x.drop), -1, Some(&mut x.ps));
+    render_layers(&mut x.layer[l], x.p, t, x.dpi, if l != 0 { PAGE_LAYER_INK } else { PAGE_LAYER_ALL }, Some(&*x.drop), -1, Some(&mut x.ps), None);
     for by in my0..=my1 {
         let at = (by * x.blocks_x + mx0) as usize;
         x.ready[l][at..at + (mx1 - mx0 + 1) as usize].fill(1);
@@ -574,7 +624,7 @@ fn differs_in(x: &mut Compact, l: usize, r: Rect, k: i32) -> i32 {
     if l != 0 {
         canvas_fill(&mut x.layer[l], r, 255);
     }
-    render_layers(&mut x.layer[l], x.p, r, x.dpi, if l != 0 { PAGE_LAYER_INK } else { PAGE_LAYER_ALL }, Some(&*x.drop), k, Some(&mut x.ps));
+    render_layers(&mut x.layer[l], x.p, r, x.dpi, if l != 0 { PAGE_LAYER_INK } else { PAGE_LAYER_ALL }, Some(&*x.drop), k, Some(&mut x.ps), None);
     let mut same = true;
     let c = &mut x.layer[l];
     for y in 0..r.h {
