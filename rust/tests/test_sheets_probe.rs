@@ -1117,6 +1117,11 @@ fn section(p: &mut Probe, name: &str, f: fn(&mut Probe)) {
 fn test_sheets_probe() {
     let root = format!("{}/sheets-{}", tl_tmp(), std::process::id());
     setup(&root);
+    // (a press on a sheet now shows at once, app_press_feedback: the display is open, as for the events)
+    #[cfg(feature = "sim")]
+    std::env::set_var("GRIMOIRE_SCRIPT", "/dev/null");
+    let (mut w, mut h, mut dpi) = (0, 0, 0.0f32);
+    let _ = display_open(&mut w, &mut h, &mut dpi);
     let mut p = Probe::new(&root);
     settings_default(&mut p.app.settings);
     section(&mut p, "labels", labels);
