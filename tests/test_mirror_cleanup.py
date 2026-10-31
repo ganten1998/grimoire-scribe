@@ -22,7 +22,8 @@ class MirrorCleanup(unittest.TestCase):
                 old.mkdir()
             if content:
                 (old / "notes.txt").write_bytes(b"keep this file")
-            actions = "tap 930 835\ntap 569 2205\ntap 1643 2365\n" if rename else "tap 930 995\n"
+            # (the folder menu's rows by name: rc.12 added Move folder between Rename and Remove)
+            actions = "tap library fmore.rename\ntap 569 2205\ntap 1643 2365\n" if rename else "tap library fmore.remove\n"
             script = root / "test.qs"
             script.write_text("wait 100\nexpect library.items is 1\ntap 547 1052\n"
                               "expect library.sheet is folder-more\n" +
