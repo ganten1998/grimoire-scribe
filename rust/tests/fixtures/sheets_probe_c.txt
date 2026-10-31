@@ -10,45 +10,45 @@ labels en classic 2d79fb97be86a4a1
 labels es gothic 09dd77e8971fa3b8
 labels es classic 8bb94f4d4a3dd0b7
 == music
-music pg L0 rect 60 149 1740 2032 systems 5 hash 4694f32d0d818ef6
-music pg L1 rect 60 149 1740 2032 systems 2 hash 03dd3ecf7d1e1b6b
-music pg L2 rect 60 149 1740 2032 systems 1 hash c4af00cb417ac7e7
-music pg L3 rect 60 149 1740 2032 systems 4 hash 1ea562b9bd51982d
-music pc L0 rect 60 149 1740 2032 systems 5 hash 7f7a6f58d2c2de5e
-music pc L1 rect 60 149 1740 2032 systems 2 hash 214bf26c846a9eac
-music pc L2 rect 60 149 1740 2032 systems 1 hash 233c672bd3edbc3d
-music pc L3 rect 60 149 1740 2032 systems 4 hash e54de642c1020a92
-music lg L0 rect 370 26 1740 1780 systems 5 hash 7e40630845a5a98b
-music lg L1 rect 370 26 1740 1780 systems 2 hash ccee6fdfd09a85d2
-music lg L2 rect 370 26 1740 1780 systems 1 hash e76802146a9dc830
-music lg L3 rect 370 26 1740 1780 systems 4 hash be3d359dc6e05368
-music lc L0 rect 370 26 1740 1780 systems 5 hash f386f11df932d729
-music lc L1 rect 370 26 1740 1780 systems 2 hash 4f5fdddb86c07013
-music lc L2 rect 370 26 1740 1780 systems 1 hash 4898cdfacefe8742
-music lc L3 rect 370 26 1740 1780 systems 4 hash c4b164afbabc0bf8
-music tap 4 2 -> 1 dirty 60 149 1740 2032 systems 3 n 4 kind 1124084001 hash 715cdf3baa0d07f4
-music tap 4 11 -> 1 dirty 60 149 1740 2032 systems 3 n 5 kind 1124804897 hash 784787a5e6a15270
-music tap 2 0 -> 1 dirty 60 149 1740 2032 systems 3 n 5 kind 1124804882 hash 69eadc75a6a380f1
-music tap 1 3 -> 1 dirty 60 149 1740 2032 systems 3 n 5 kind 1124831762 hash ae76b5c076bbb062
-music tap 3 1 -> 1 dirty 60 149 1740 2032 systems 4 n 4 kind 1140898082 hash a57eddfb4ec60a82
-music tap 6 0 -> -1 dirty 0 0 0 0 systems 4 n 4 kind 1140898082 hash a57eddfb4ec60a82
-music tap 6 0 -> -1 dirty 0 0 0 0 systems 4 n 4 kind 1140898082 hash a57eddfb4ec60a82
-music tap 5 0 -> 1 dirty 60 149 1740 2032 systems 3 n 4 kind 1124120866 hash aa304f75d66ffbd4
-music tap 4 9 -> 1 dirty 60 149 1740 2032 systems 3 n 5 kind 1124710690 hash 6f353a461567a699
-music tap 4 3 -> 1 dirty 60 149 1740 2032 systems 2 n 6 kind 1111079202 hash 5050349a784df2e0
-music tap 4 4 -> -1 dirty 0 0 0 0 systems 2 n 6 kind 1111079202 hash 5050349a784df2e0
-music tap 4 5 -> -1 dirty 0 0 0 0 systems 2 n 6 kind 1111079202 hash 5050349a784df2e0
-music tap 3 0 -> 1 dirty 60 149 1740 2032 systems 3 n 5 kind 1124309906 hash ddba4618f9cd6b6d
-music tap 1 0 -> -1 dirty 0 0 0 0 systems 3 n 5 kind 1124309906 hash ddba4618f9cd6b6d
-music tap 5 0 -> 1 dirty 60 149 1740 2032 systems 2 n 5 kind 1107532690 hash cb0dd8a92b347669
-music tap 5 0 -> 1 dirty 60 149 1740 2032 systems 1 n 5 kind 1090755474 hash 1745c2f162b03ca3
-music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 1745c2f162b03ca3
-music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 1745c2f162b03ca3
-music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 1745c2f162b03ca3
-music tap 6 0 -> 1 dirty 60 149 1740 2032 systems 2 n 5 kind 1107532690 hash cb0dd8a92b347669
+music pg L0 rect 60 111 1740 2147 systems 5 hash eeb0e379df6e62ba
+music pg L1 rect 60 111 1740 2147 systems 2 hash 2bf1738d1d625f8f
+music pg L2 rect 60 111 1740 2147 systems 1 hash 86a22025c35990b3
+music pg L3 rect 60 111 1740 2147 systems 4 hash 69d029962db00361
+music pc L0 rect 60 111 1740 2147 systems 5 hash b78f269b18f69334
+music pc L1 rect 60 111 1740 2147 systems 2 hash 10ccd925811be282
+music pc L2 rect 60 111 1740 2147 systems 1 hash dcad3b597451a033
+music pc L3 rect 60 111 1740 2147 systems 4 hash 6236471e522e1798
+music lg L0 rect 370 30 1740 1770 systems 5 hash 2c79e12b98e94760
+music lg L1 rect 370 30 1740 1770 systems 2 hash 68e8fbfe0e00d486
+music lg L2 rect 370 30 1740 1770 systems 1 hash 532bbe56504a9656
+music lg L3 rect 370 30 1740 1770 systems 4 hash 36b1c0cb6dd6a195
+music lc L0 rect 370 30 1740 1770 systems 5 hash e26323d86fcc387a
+music lc L1 rect 370 30 1740 1770 systems 2 hash eb7d69da05ebfa74
+music lc L2 rect 370 30 1740 1770 systems 1 hash 43c932e8d3d2c9e8
+music lc L3 rect 370 30 1740 1770 systems 4 hash 62f3e548ccca4a9d
+music tap 4 2 -> 1 dirty 60 111 1740 2147 systems 3 n 4 kind 1124084001 hash cc2a25095912c820
+music tap 4 11 -> 1 dirty 60 111 1740 2147 systems 3 n 5 kind 1124804897 hash 6c54c8747b98854c
+music tap 2 0 -> 1 dirty 60 111 1740 2147 systems 3 n 5 kind 1124804882 hash c2afbf8dc00589a5
+music tap 1 3 -> 1 dirty 60 111 1740 2147 systems 3 n 5 kind 1124831762 hash a157f6cd60ca4dfe
+music tap 3 1 -> 1 dirty 60 111 1740 2147 systems 4 n 4 kind 1140898082 hash 585a372a3b776d1e
+music tap 6 0 -> -1 dirty 0 0 0 0 systems 4 n 4 kind 1140898082 hash 585a372a3b776d1e
+music tap 6 0 -> -1 dirty 0 0 0 0 systems 4 n 4 kind 1140898082 hash 585a372a3b776d1e
+music tap 5 0 -> 1 dirty 60 111 1740 2147 systems 3 n 4 kind 1124120866 hash 56de8cc41d951b88
+music tap 4 9 -> 1 dirty 60 111 1740 2147 systems 3 n 5 kind 1124710690 hash b147f85da7ccd2ed
+music tap 4 3 -> 1 dirty 60 111 1740 2147 systems 2 n 6 kind 1111079202 hash 3bd0e069af51092c
+music tap 4 4 -> -1 dirty 0 0 0 0 systems 2 n 6 kind 1111079202 hash 3bd0e069af51092c
+music tap 4 5 -> -1 dirty 0 0 0 0 systems 2 n 6 kind 1111079202 hash 3bd0e069af51092c
+music tap 3 0 -> 1 dirty 60 111 1740 2147 systems 3 n 5 kind 1124309906 hash ab9179e5ed82f4f1
+music tap 1 0 -> -1 dirty 0 0 0 0 systems 3 n 5 kind 1124309906 hash ab9179e5ed82f4f1
+music tap 5 0 -> 1 dirty 60 111 1740 2147 systems 2 n 5 kind 1107532690 hash 5157706632d70c15
+music tap 5 0 -> 1 dirty 60 111 1740 2147 systems 1 n 5 kind 1090755474 hash 0a4501cc06808acf
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 0a4501cc06808acf
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 0a4501cc06808acf
+music tap 5 0 -> -1 dirty 0 0 0 0 systems 1 n 5 kind 1090755474 hash 0a4501cc06808acf
+music tap 6 0 -> 1 dirty 60 111 1740 2147 systems 2 n 5 kind 1107532690 hash 5157706632d70c15
 music done -> 3 open 0 kind 1107532690 saved 1107532690
 music again systems 2 n 5 kind 1107532690
-music outside -> 2 open 0 dirty 60 149 1740 2032
+music outside -> 2 open 0 dirty 60 111 1740 2147
 music cancel -> 2 open 0
 == templates
 tplsheet empty0 en pg templates ba67a13903b3cc30

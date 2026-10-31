@@ -10216,7 +10216,8 @@ mod tests {
         assert_eq!(editor_live_hole(&a), Rect::new(1704, 220, 128, 1520));
         for open in [
             |s: &mut EditorState, on: bool| s.pv.open = on,
-            |s: &mut EditorState, on: bool| s.tools_open = on,
+            // (the tool picker over the panel: beside it, the layer stays, the_live_toolbar_stays_...)
+            |s: &mut EditorState, on: bool| { s.tools_open = on; s.tools_rect = if on { s.panel } else { RECT_EMPTY }; },
             |s: &mut EditorState, on: bool| s.mb.open = on,
             |s: &mut EditorState, on: bool| s.dm.open = on,
             |s: &mut EditorState, on: bool| s.ts.open = on,
