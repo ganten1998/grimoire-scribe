@@ -563,6 +563,10 @@ struct State {
     q: Vec<InEvent>,
     qh: usize,
     qt: usize,
+    /// events dropped with the queue full since it last took one, and how many of them were lifts (a pen's
+    /// up or leave, a finger's up, a pinch's end): grimoire.log says so when it takes one again
+    q_dropped: u32,
+    q_lifts_dropped: u32,
     logged_pen: i32,
     logged_touch: i32,
 
@@ -694,6 +698,8 @@ impl Default for State {
             q: vec![InEvent::default(); QN],
             qh: 0,
             qt: 0,
+            q_dropped: 0,
+            q_lifts_dropped: 0,
             logged_pen: 0,
             logged_touch: 0,
             P: PenSt::default(),
@@ -835,7 +841,18 @@ impl State {
         }
         let n = (self.qt + 1) % QN;
         if n == self.qh {
-            return; // full: drop (the app drains every loop, so this is pathological)
+            // Full: dropped (the app drains every loop, so only work that held it seconds, the pens read
+            // meanwhile by the pump, fills it). A lift dropped leaves its gesture to the editor's recovery.
+            self.q_dropped = self.q_dropped.saturating_add(1);
+            if matches!(e.type_, InType::PenUp | InType::PenLeave | InType::TouchUp | InType::PinchEnd) {
+                self.q_lifts_dropped = self.q_lifts_dropped.saturating_add(1);
+            }
+            return;
+        }
+        if self.q_dropped > 0 {
+            qlog!("input: the event queue was full: %u events dropped, %u of them lifts", self.q_dropped, self.q_lifts_dropped);
+            self.q_dropped = 0;
+            self.q_lifts_dropped = 0;
         }
         if let Some(f) = self.sample_fn {
             if pen {
@@ -1597,6 +1614,9 @@ impl State {
                 ) {
                     self.tlog_line(f.k_ms, &line);
                 }
+            }
+            if touchgest_log_hand(&self.tg, grabbed, &mut line) {
+                self.tlog_line(f.k_ms, &line);
             }
             self.tlog.frames = 0;
             self.tlog.tip_frames = 0;
@@ -3511,6 +3531,28 @@ mod tests {
 
     fn event(type_: u16, code: u16, value: i32, t_us: u64) -> PenEv {
         PenEv { type_, code, value, t_us }
+    }
+
+    #[test]
+    fn a_full_queue_counts_what_it_drops_and_its_lifts() {
+        let mut s = State::default();
+        s.input_grabbed = true;
+        s.logged_pen = 1000;
+        s.logged_touch = 1000;
+        for _ in 0..QN - 1 {
+            s.q_push(InEvent { type_: InType::PenMove, ..Default::default() });
+        }
+        assert_eq!(s.q_dropped, 0);
+        for type_ in [InType::PenMove, InType::PenUp, InType::TouchUp, InType::PenLeave, InType::PinchEnd, InType::TouchMove] {
+            s.q_push(InEvent { type_, ..Default::default() });
+        }
+        assert_eq!((s.q_dropped, s.q_lifts_dropped), (6, 4));
+        let mut e = InEvent::default();
+        assert!(s.q_pop(&mut e));
+        // The next one it takes says how many went (grimoire.log), and the count starts again.
+        s.q_push(InEvent { type_: InType::PenDown, ..Default::default() });
+        assert_eq!((s.q_dropped, s.q_lifts_dropped), (0, 0));
+        assert_eq!((s.qt + QN - s.qh) % QN, QN - 1);
     }
 
     #[test]

@@ -1023,6 +1023,37 @@ a signed percent, `cos` is the smaller direction cosine from 0 to 100, and the t
 milliseconds. `pen` is time since pen lift, or `-1` while the pen is near. The line contains no
 coordinates and is silent while input is not grabbed. It follows the existing `touch: session` line.
 
+A single finger on the notebook's ink that the recognizer took for the pen's writing hand (it sent the
+notebook nothing) is named at its lift, after its `touch: fingertips` line:
+
+```text
+touch: a finger on the page was the pen's hand: the pen touched
+touch: a finger on the page was the pen's hand: the pen was near
+touch: a finger on the page was the pen's hand: the pen had left %u ms before
+```
+
+The editor's own lines follow link making and the contacts it ignores (at most 40 a minute, then
+`editor: 40 contact and link lines this minute: the rest of it is not logged`):
+
+```text
+link: %s -> %s, no contact owned
+link: %s -> %s, the pen|finger owns %s
+editor: a pen|finger down ignored: the pen|finger owns %s
+editor: a pen|finger down ignored: a pinch is under way
+editor: a pen|finger down while the pen|finger owned %s: its lift was lost
+editor: a lasso was left with no pen drawing it: back to the strip
+```
+
+When work held the app so long that the input queue (4096 events) filled, the next event it takes adds
+`input: the event queue was full: %u events dropped, %u of them lifts` (a lift is a pen's up or leave, a
+finger's up or a pinch's end: a gesture whose lift was dropped ends at the next down of its input, as
+`its lift was lost` says).
+
+The link-making states are `off`, `armed` (the strip is up), `lasso`, `pick` (Link to..., or what it
+opened) and `naming` (New page...'s keyboard); the owners are those of the `editor.owner` probe
+(docs/SIM.md): `draw`, `erase`, `panel`, `modal`, `display`, `pages`, `tools`, `build`, `templates`,
+`link`, `bar`, `outside`, `find`, `lasso`, `card`, `linkto`, `strip`, `map` and `pen-drag`.
+
 `bluetooth/` (2.0.0-beta.5 on) is not Grimoire's format: it is where the owner unpacks the
 Bluetooth helper (kindle-hid-passthrough), whose files, paired devices and their keys live there.
 Grimoire only reads whether its program is there, and on each start sets three lines of its
