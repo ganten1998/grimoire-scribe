@@ -1117,7 +1117,7 @@
     // once when it shows again (but a recording composes at once: composeSoon).
     // vpip: video picture in picture's parts and state (vpipMake).
     const vpip = {made: false, on: false, firefox: false, video: null, track: null, out: null, outCtx: null,
-        base: null, baseCtx: null, unit: 1, win: null, away: null};
+        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false};
     // (rafAsked, tickAsked: a frame asked of each clock and not come yet, so a hidden tab, whose
     // animation frames wait, piles up no requests.)
     let frameQueued = false, framing = false, layoutQueued = false, layoutApprox = false, stale = null, dirty = null;
@@ -1556,8 +1556,8 @@
         if (openSheet && !openSheet.contains(e.target) && !opener.contains(e.target)) closeSheet(false);
     });
     // The rail fades when it could cover the page (zoomed, Fit width, Monitor mode, a narrow window)
-    // and nothing has moved for 2.5 s; never while not live, with a sheet open, or with the pointer
-    // or focus on it. The check rides one 500 ms interval; a move only notes the time.
+    // and nothing has moved for 2.5 s; never while not live, with a sheet open, with the pointer or
+    // focus on it, or with the picture in another window (there is nothing here to cover). The check rides one 500 ms interval; a move only notes the time.
     let lastActivity = performance.now(), railHover = false, railFocus = false, idle = false, live = false;
     function awake() {
         lastActivity = performance.now();
@@ -1574,8 +1574,8 @@
     rail.addEventListener('focusin', () => { railFocus = true; awake(); });
     rail.addEventListener('focusout', () => { railFocus = false; awake(); });
     setInterval(() => {
-        const want = live && !openSheet && !railHover && !railFocus && (monitor || narrow || size.mode !== 'fit') &&
-            performance.now() - lastActivity > 2500;
+        const want = live && !openSheet && !railHover && !railFocus && !popout.win && !vpip.on &&
+            (monitor || narrow || size.mode !== 'fit') && performance.now() - lastActivity > 2500;
         if (want !== idle) setIdle(want);
     }, 500);
 
@@ -1683,11 +1683,13 @@
     // are made again only when their size changes (which clears them); while a resize lasts
     // (approx) the browser scales the picture into them at once, and the exact one follows 150 ms
     // after the last.
-    let settleTimer = 0;
+    // (settle: the last resize's exact picture; a timer of another window's cannot be cleared from
+    // this one, so a newer resize makes an older one's timer do nothing instead.)
+    let settle = 0;
     function layout(approx) {
         layoutQueued = layoutApprox = false;
         const away = !!popout.win, win = activeWindow();
-        narrow = !away && (innerWidth || 1000) <= 560;
+        narrow = (innerWidth || 1000) <= 560;  // (the rail stays in this tab, wherever the picture is)
         const fitted = monitor || away ? {mode: 'fit'} : size;
         const gutter = !away && !monitor && fitted.mode === 'fit';
         document.body.classList.toggle('live-rail', gutter);
@@ -1725,9 +1727,12 @@
             viewCtx.imageSmoothingEnabled = true;
             viewCtx.imageSmoothingQuality = 'high';
             viewCtx.drawImage(shown, 0, 0, vs.w, vs.h);
-            clearTimeout(settleTimer);
-            settleTimer = later(150, () => presentSoon(0, 0, raw.width, raw.height));
-        } else presentSoon(0, 0, raw.width, raw.height);
+            const mine = ++settle;
+            later(150, () => { if (mine === settle) presentSoon(0, 0, raw.width, raw.height); });
+        } else {
+            settle++;
+            presentSoon(0, 0, raw.width, raw.height);
+        }
     }
     function penSoon() {
         penQueued = true;
@@ -1750,7 +1755,12 @@
             if (ink.pending(until)) penSoon();
         }
         if (!raw.width) return;
-        if (vpip.on) { vpipDraw(until); return; }
+        if (vpip.on) {
+            if (vpip.refit && vpip.win) vpipFit(vpip.win.width, vpip.win.height);
+            vpip.refit = false;
+            vpipDraw(until);
+            return;
+        }
         const inkLook = {invert: inverted(), clear, light, exclude: layerOn[0]};
         inkCtx.clearRect(0, 0, inkLayer.width, inkLayer.height);
         if (drawable()) ink.draw(inkCtx, view.width / raw.width, inkLook, inkScratch(inkLayer.width, inkLayer.height), until);
@@ -2083,7 +2093,8 @@
     function vpipOn(w) {
         if (w && !vpip.win) {
             vpip.win = w;
-            w.addEventListener('resize', () => { if (vpip.win === w) { vpipFit(w.width, w.height); penSoon(); } });
+            // (refit at the next frame: a drag sends many, and each refit averages the whole picture)
+            w.addEventListener('resize', () => { if (vpip.win === w) { vpip.refit = true; penSoon(); } });
         }
         if (w) vpipFit(w.width, w.height);
         if (vpip.on) return;
@@ -2096,6 +2107,10 @@
         stage.replaceWith(vpip.away);
         pipButton.setAttribute('aria-pressed', 'true');
         averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
+        if (vpip.video.paused && vpip.video.play) {  // (a browser may have paused it, unseen in the page)
+            const played = vpip.video.play();
+            if (played && played.catch) played.catch(() => {});
+        }
         penSoon();
     }
     function vpipOff() {
