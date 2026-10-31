@@ -354,6 +354,7 @@ shows what the app holds.
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above; between two buttons or in the frame's margin beside one, the nearest, as a finger there takes it), empty for none (a greyed-out button), after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
+| `editor.erase_tiles` | `DRAWN BOXED`: the 16 px tiles the stroke eraser drew the page again in since the editor began (only those the strokes it took off drew into, page_render_tiles), and the tiles of those strokes' boxes, all it drew before 2.0.0-rc.12 (`391 11011`) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
 | `editor.loaded_pages` | pages currently loaded in the editor; opening or paging the number grid must not increase this |
 | `native_pin` | native PIN ownership path is active (`GRIMOIRE_PASSCODE=enabled`) |

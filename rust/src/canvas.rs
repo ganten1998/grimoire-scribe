@@ -755,6 +755,109 @@ pub fn canvas_invert(c: &mut Canvas, r: Rect) {
     }
 }
 
+/// Square tiles of a canvas (MASK_TILE px, from its top left) marked to be drawn again: where taking a
+/// stroke off a page can change it (page_render_tiles). A brush given one (BrushState.mask) draws only
+/// the pixels of its marked tiles, each exactly as it would without it.
+#[derive(Clone, Debug, Default)]
+pub struct TileMask {
+    /// the canvas's size
+    pub w: i32,
+    pub h: i32,
+    cols: i32,
+    rows: i32,
+    /// per tile, row after row: marked
+    on: Vec<bool>,
+    /// marked tiles above and left of each tile corner, (cols + 1) x (rows + 1): whether a rect meets
+    /// one is four reads (tile_mask_seal fills it)
+    sum: Vec<u32>,
+    /// the marked tiles, on the canvas
+    bounds: Rect,
+}
+/// Half the history's patch tile (history.rs PATCH_TILE): taking a stroke off the owner's dense page
+/// drew again 10 to 25% faster than with 32 px tiles; 8 px tiles gained little more.
+pub const MASK_TILE: i32 = 16;
+
+/// A mask of no tiles for a w x h canvas, or None when the memory is not there.
+pub fn tile_mask_new(w: i32, h: i32) -> Option<TileMask> {
+    let (cols, rows) = ((w.max(0) + MASK_TILE - 1) / MASK_TILE, (h.max(0) + MASK_TILE - 1) / MASK_TILE);
+    let n = cols as usize * rows as usize;
+    let mut on = Vec::new();
+    let mut sum = Vec::new();
+    if on.try_reserve_exact(n).is_err() || sum.try_reserve_exact((cols as usize + 1) * (rows as usize + 1)).is_err() {
+        return None;
+    }
+    on.resize(n, false);
+    Some(TileMask { w, h, cols, rows, on, sum, bounds: RECT_EMPTY })
+}
+/// Marks the tiles r meets (on the canvas).
+pub fn tile_mask_mark(m: &mut TileMask, r: Rect) {
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: m.w, h: m.h });
+    if rect_is_empty(r) {
+        return;
+    }
+    for ty in r.y / MASK_TILE..=(r.y + r.h - 1) / MASK_TILE {
+        let row = (ty * m.cols) as usize;
+        m.on[row + (r.x / MASK_TILE) as usize..=row + ((r.x + r.w - 1) / MASK_TILE) as usize].fill(true);
+    }
+    let (x0, y0) = (r.x / MASK_TILE * MASK_TILE, r.y / MASK_TILE * MASK_TILE);
+    let t = Rect { x: x0, y: y0, w: ((r.x + r.w - 1) / MASK_TILE + 1) * MASK_TILE - x0, h: ((r.y + r.h - 1) / MASK_TILE + 1) * MASK_TILE - y0 };
+    m.bounds = rect_union(m.bounds, rect_intersect(t, Rect { x: 0, y: 0, w: m.w, h: m.h }));
+    m.sum.clear();
+}
+/// Done marking: tile_mask_hits works from here on.
+pub fn tile_mask_seal(m: &mut TileMask) {
+    let w = m.cols as usize + 1;
+    m.sum.clear();
+    m.sum.resize(w * (m.rows as usize + 1), 0); // (reserved by tile_mask_new)
+    for ty in 0..m.rows as usize {
+        let mut across = 0;
+        for tx in 0..m.cols as usize {
+            across += m.on[ty * m.cols as usize + tx] as u32;
+            m.sum[(ty + 1) * w + tx + 1] = m.sum[ty * w + tx + 1] + across;
+        }
+    }
+}
+/// The marked tiles' bounds (empty: none marked).
+pub fn tile_mask_bounds(m: &TileMask) -> Rect {
+    m.bounds
+}
+/// How many marked tiles r meets (sealed masks only).
+pub fn tile_mask_count(m: &TileMask, r: Rect) -> u32 {
+    let r = rect_intersect(r, m.bounds);
+    if rect_is_empty(r) {
+        return 0;
+    }
+    let w = m.cols as usize + 1;
+    let (x0, x1) = ((r.x / MASK_TILE) as usize, ((r.x + r.w - 1) / MASK_TILE) as usize + 1);
+    let (y0, y1) = ((r.y / MASK_TILE) as usize, ((r.y + r.h - 1) / MASK_TILE) as usize + 1);
+    m.sum[y1 * w + x1] + m.sum[y0 * w + x0] - m.sum[y0 * w + x1] - m.sum[y1 * w + x0]
+}
+/// Whether r meets a marked tile (sealed masks only).
+#[inline]
+pub fn tile_mask_hits(m: &TileMask, r: Rect) -> bool {
+    tile_mask_count(m, r) != 0
+}
+/// The first run of row y's pixels from x0 to before x1 that lie in marked tiles, as (from, to), to
+/// excluded; None when there is none (y on the canvas, 0 <= x0 and x1 <= w).
+pub fn tile_mask_run(m: &TileMask, y: i32, x0: i32, x1: i32) -> Option<(i32, i32)> {
+    if x0 >= x1 {
+        return None;
+    }
+    let row = &m.on[(y / MASK_TILE * m.cols) as usize..][..m.cols as usize];
+    let (mut tx, last) = (x0 / MASK_TILE, (x1 - 1) / MASK_TILE);
+    while tx <= last && !row[tx as usize] {
+        tx += 1;
+    }
+    if tx > last {
+        return None;
+    }
+    let from = x0.max(tx * MASK_TILE);
+    while tx <= last && row[tx as usize] {
+        tx += 1;
+    }
+    Some((from, x1.min(tx * MASK_TILE)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

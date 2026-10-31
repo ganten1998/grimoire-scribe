@@ -390,6 +390,10 @@ pub struct BrushState {
     /// the tip variant (below): brush_begin sets the tool's current one,
     /// stroke_brush_begin the one its stroke was drawn with
     pub tip: u8,
+    /// Set by hand after begin: the dabs draw only the pixels of the mask's marked tiles (inside the
+    /// clip as ever), each as without it, and the brush moves on exactly as when it draws them all.
+    /// page_render_tiles draws so. None = every pixel.
+    pub mask: Option<std::rc::Rc<TileMask>>,
 }
 
 /// Tip variants (a stroke's ext[2], low 4 bits; docs/FORMAT.md): 0 is a tool's first tip, the one
@@ -611,10 +615,8 @@ pub fn brush_add(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
     }
     let mut dirty = RECT_EMPTY;
     if !b.have_prev {
-        dirty = stamp(b, c, s);
-        let mut r = 0.0f32;
-        let mut op = 0.0f32;
-        brush_dab(b.tool, &b.params, s, b.dpi, &mut r, &mut op);
+        let r;
+        (dirty, r) = stamp(b, c, s);
         b.carry = spacing_for(r);
         b.prev = *s;
         b.have_prev = true;
@@ -631,10 +633,8 @@ pub fn brush_add(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
     let mut d = b.carry;
     while d <= len {
         let m = interp(&b.prev, s, if len > 0.0 { d / len } else { 1.0 });
-        dirty = rect_union(dirty, stamp(b, c, &m));
-        let mut r = 0.0f32;
-        let mut op = 0.0f32;
-        brush_dab(b.tool, &b.params, &m, b.dpi, &mut r, &mut op);
+        let (box_, r) = stamp(b, c, &m);
+        dirty = rect_union(dirty, box_);
         d += spacing_for(r);
     }
     b.carry = d - len;
@@ -744,12 +744,13 @@ fn share(m: &mut ShareMemo, a: f32, inv_n: f32) -> f32 {
     v
 }
 
-// One dab. `erase` and `dry` are constants at each call (stamp), so each gets a copy of its own: the
-// ink copy is the dab as it was before erase strokes, with no erase test left in its pixel loop.
+// One dab, and its radius (what spaces the next). `erase` and `dry` are constants at each call (stamp),
+// so each gets a copy of its own: the ink copy is the dab as it was before erase strokes, with no erase
+// test left in its pixel loop.
 // (Every `a * b + c` of the C that clang contracts is an fmla: PORTING.md, Floating point. The sites
 // were read off the C build's IR, one by one.)
 #[inline(always)]
-fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
+fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> (Rect, f32) {
     let mut r = 0.0f32;
     let mut op = 0.0f32;
     brush_dab(b.tool, &b.params, s, b.dpi, &mut r, &mut op);
@@ -787,9 +788,25 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
         nsa = a.sin();
     }
     if op <= 0.0 {
-        return RECT_EMPTY;
+        return (RECT_EMPTY, r);
     }
     let grain = sane(b.params.grain, 0.0, 1.0, 0.0);
+    let rough = r * lk.rough * grain;
+    // Charcoal dust: loose specks up to this far past the edge, fixed to the paper.
+    let dust_w = if lk.dust > 0.0 { r * 0.40 } else { 0.0 };
+    let reach = if lk.graphite { (rough * 0.5).max(dust_w) } else { 0.0 };
+    let box_ = rect_intersect(rect_from_points(s.x, s.y, s.x, s.y, r + 1.0 + reach), c.clip);
+    if DRY {
+        return (box_, r); // where it would draw, and nothing drawn (BrushState.dry)
+    }
+    // A dab outside the clip, or in no marked tile of a mask (BrushState.mask), draws nothing: what
+    // only its pixels need is not worked out (a powf or two a dab, most of a page's dabs when a small
+    // region is drawn again). With a mask, a dab draws a row's pixels in its tiles a run at a time.
+    let mask_rc = b.mask.clone();
+    let mask = mask_rc.as_deref();
+    if rect_is_empty(box_) || mask.is_some_and(|m| !tile_mask_hits(m, box_)) {
+        return (box_, r);
+    }
     let pr = if grain > 0.0 { brush_pressure(&b.params, s.pressure) } else { 0.0 };
     if lk.jitter > 0.0 {
         let j = (hash2(b.seed, idx) & 0xFFFF) as f32 / 65535.0 - 0.5;
@@ -808,14 +825,6 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
     // valleys; the stroke edge follows the tooth too, so it is ragged instead of a smooth tube.
     let thr = grain * fmla(-lk.fill, pr, 0.80);
     let edge_w = (r * lk.edge).max(0.9);
-    let rough = r * lk.rough * grain;
-    // Charcoal dust: loose specks up to this far past the edge, fixed to the paper.
-    let dust_w = if lk.dust > 0.0 { r * 0.40 } else { 0.0 };
-    let reach = if lk.graphite { (rough * 0.5).max(dust_w) } else { 0.0 };
-    let box_ = rect_intersect(rect_from_points(s.x, s.y, s.x, s.y, r + 1.0 + reach), c.clip);
-    if DRY {
-        return box_; // where it would draw, and nothing drawn (BrushState.dry)
-    }
     // (the paper is shared with whoever made it: a count taken for the dab, not a copy)
     let paper_rc = b.paper.clone();
     let mut tg = DabTarget { ink: lk.ink, paper: paper_rc.as_deref().map(|v| &v[..]), x0: b.paper_x0, y0: b.paper_y0, stride: b.paper_stride, restored: false };
@@ -847,141 +856,154 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
         && g_eff <= 0.0
         && op >= 0.999
         && r_in <= SPAN_MAX_R;
-    for y in box_.y..box_.y + box_.h {
-        // Erase: the row, and the paper under it ((x, y) is inside the clip, stamp's box being
-        // clipped to it, so the paper covers it).
-        let row_at = y * c.stride;
-        let prow: isize = if ERASE && tg.paper.is_some() { (y - tg.y0) as isize * tg.stride as isize } else { 0 };
-        let dy = y as f32 + 0.5 - s.y;
-        let mut sx0 = box_.x + box_.w; // the row's core span (none: x never gets there)
-        let mut sx1 = sx0;
-        let q = if spans { fmla(r_in, r_in, -(dy * dy)) } else { 0.0 };
-        if q > 4.0 {
-            let hw = q.sqrt();
-            let mut a0 = (s.x - 0.5 - hw).ceil() as i32 + 1;
-            let mut a1 = (s.x - 0.5 + hw).floor() as i32 - 1;
-            if a0 < box_.x {
-                a0 = box_.x;
+    'rows: for y in box_.y..box_.y + box_.h {
+        // The row in one run, or with a mask a run of its marked tiles at a time (each pixel the same
+        // either way: nothing below depends on where a run starts or ends).
+        let mut from = box_.x;
+        while from < box_.x + box_.w {
+            let (rx0, rx1) = match mask {
+                None => (box_.x, box_.x + box_.w),
+                Some(m) => match tile_mask_run(m, y, from, box_.x + box_.w) {
+                    Some(run) => run,
+                    None => break,
+                },
+            };
+            from = rx1;
+            // Erase: the row, and the paper under it ((x, y) is inside the clip, stamp's box being
+            // clipped to it, so the paper covers it).
+            let row_at = y * c.stride;
+            let prow: isize = if ERASE && tg.paper.is_some() { (y - tg.y0) as isize * tg.stride as isize } else { 0 };
+            let dy = y as f32 + 0.5 - s.y;
+            let mut sx0 = rx1; // the row's core span (none: x never gets there)
+            let mut sx1 = sx0;
+            let q = if spans { fmla(r_in, r_in, -(dy * dy)) } else { 0.0 };
+            if q > 4.0 {
+                let hw = q.sqrt();
+                let mut a0 = (s.x - 0.5 - hw).ceil() as i32 + 1;
+                let mut a1 = (s.x - 0.5 + hw).floor() as i32 - 1;
+                if a0 < rx0 {
+                    a0 = rx0;
+                }
+                if a1 > rx1 - 1 {
+                    a1 = rx1 - 1;
+                }
+                if a0 <= a1 {
+                    restore_span(&mut tg, c, y, a0, a1);
+                    sx0 = a0;
+                    sx1 = a1;
+                }
             }
-            if a1 > box_.x + box_.w - 1 {
-                a1 = box_.x + box_.w - 1;
+            // (the C moves x itself to hop over the span: here the hop is the next x to look at)
+            let (mut xa, mut xb) = (rx0, rx1);
+            if round {
+                let q = fmla(reach_r, reach_r, -(dy * dy));
+                if q <= 0.0 {
+                    continue 'rows; // (the whole row is more than reach_r from the centre)
+                }
+                let hw = q.sqrt() + 1.0;
+                xa = xa.max((s.x - 0.5 - hw).floor() as i32);
+                xb = xb.min((s.x - 0.5 + hw).ceil() as i32 + 1);
             }
-            if a0 <= a1 {
-                restore_span(&mut tg, c, y, a0, a1);
-                sx0 = a0;
-                sx1 = a1;
-            }
-        }
-        // (the C moves x itself to hop over the span: here the hop is the next x to look at)
-        let (mut xa, mut xb) = (box_.x, box_.x + box_.w);
-        if round {
-            let q = fmla(reach_r, reach_r, -(dy * dy));
-            if q <= 0.0 {
-                continue; // (the whole row is more than reach_r from the centre)
-            }
-            let hw = q.sqrt() + 1.0;
-            xa = xa.max((s.x - 0.5 - hw).floor() as i32);
-            xb = xb.min((s.x - 0.5 + hw).ceil() as i32 + 1);
-        }
-        let mut next_x = xa;
-        for x in xa..xb {
-            if x < next_x {
-                continue;
-            }
-            let mut paper: u8 = 255;
-            if ERASE {
-                if x == sx0 {
-                    next_x = sx1 + 1;
+            let mut next_x = xa;
+            for x in xa..xb {
+                if x < next_x {
                     continue;
                 }
-                // A pixel already at its paper (or lighter) stays as it is (canvas_restore_px), so
-                // its coverage need not be worked out: most of a scrub goes over pixels its earlier
-                // dabs restored.
-                if let Some(pp) = tg.paper {
-                    paper = pp[(prow + (x - tg.x0) as isize) as usize];
-                }
-                if c.px[(row_at + x) as usize] >= paper {
+                let mut paper: u8 = 255;
+                if ERASE {
+                    if x == sx0 {
+                        next_x = sx1 + 1;
+                        continue;
+                    }
+                    // A pixel already at its paper (or lighter) stays as it is (canvas_restore_px), so
+                    // its coverage need not be worked out: most of a scrub goes over pixels its earlier
+                    // dabs restored.
+                    if let Some(pp) = tg.paper {
+                        paper = pp[(prow + (x - tg.x0) as isize) as usize];
+                    }
+                    if c.px[(row_at + x) as usize] >= paper {
+                        continue;
+                    }
+                } else if c.px[(row_at + x) as usize] <= tg.ink {
+                    // Deposit only darkens toward the tool's ink. Existing black PDF marks and
+                    // fully inked pixels cannot change, whatever the dab's shape or texture.
                     continue;
                 }
-            } else if c.px[(row_at + x) as usize] <= tg.ink {
-                // Deposit only darkens toward the tool's ink. Existing black PDF marks and
-                // fully inked pixels cannot change, whatever the dab's shape or texture.
-                continue;
-            }
-            let dx = x as f32 + 0.5 - s.x;
-            let mut d = fmla(dx, dx, dy * dy).sqrt();
-            let a: f32;
-            if lk.graphite {
-                let t = if lk.coarse {
-                    fmla(0.78f32, tooth_at(tooth, x >> 1, y >> 1), 0.22 * tooth_at(tooth, x, y))
+                let dx = x as f32 + 0.5 - s.x;
+                let mut d = fmla(dx, dx, dy * dy).sqrt();
+                let a: f32;
+                if lk.graphite {
+                    let t = if lk.coarse {
+                        fmla(0.78f32, tooth_at(tooth, x >> 1, y >> 1), 0.22 * tooth_at(tooth, x, y))
+                    } else {
+                        tooth_at(tooth, x, y)
+                    };
+                    let de = fmla(0.5 - t, rough, d); // peaks pick up graphite a little further out
+                    if de >= r_out {
+                        if dust_w <= 0.0 || de >= r_out + dust_w {
+                            continue;
+                        }
+                        // A speck where the paper catches it: rarer further from the edge.
+                        let chance = lk.dust * (1.0 - (de - r_out) / dust_w);
+                        let h = (hash2((x as u32).wrapping_mul(7).wrapping_add(seed), (y as u32).wrapping_mul(13).wrapping_add(0xD057)) & 0xFFFF) as f32 / 65535.0;
+                        if h >= chance {
+                            continue;
+                        }
+                        let a = op * 0.75 * fmla(0.5f32, t, 0.5);
+                        let ad = share(memo, a, inv_n);
+                        put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
+                        continue;
+                    }
+                    let prof = clampf((r_out - de) / edge_w, 0.0, 1.0);
+                    let lo = thr - lk.band;
+                    let hi = thr + lk.band;
+                    let mut k = clampf((t - lo) / (hi - lo), 0.0, 1.0);
+                    k = (k * k) * fmla(-2.0f32, k, 3.0);
+                    a = op * prof * lerpf(1.0, k, grain);
                 } else {
-                    tooth_at(tooth, x, y)
-                };
-                let de = fmla(0.5 - t, rough, d); // peaks pick up graphite a little further out
-                if de >= r_out {
-                    if dust_w <= 0.0 || de >= r_out + dust_w {
+                    if lk.nib == NibKind::Italic {
+                        // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
+                        let u = fmla(dx, nca, dy * nsa);
+                        let v = fmla(-dx, nsa, dy * nca) / ITALIC_RATIO;
+                        d = fmla(u, u, v * v).sqrt();
+                    } else if lk.nib == NibKind::BroadEdge || lk.nib == NibKind::Vertical {
+                        // A flat, square-cut nib (a superellipse): crisp angled ends like a real
+                        // broad-edge pen, hairlines along the edge, full width across it.
+                        let u = fmla(dx, nca, dy * nsa);
+                        let v = fmla(-dx, nsa, dy * nca) / BROAD_RATIO;
+                        let u2 = u * u;
+                        let v2 = v * v;
+                        d = fmla(u2, u2, v2 * v2).sqrt().sqrt();
+                    }
+                    if d >= r_out {
                         continue;
                     }
-                    // A speck where the paper catches it: rarer further from the edge.
-                    let chance = lk.dust * (1.0 - (de - r_out) / dust_w);
-                    let h = (hash2((x as u32).wrapping_mul(7).wrapping_add(seed), (y as u32).wrapping_mul(13).wrapping_add(0xD057)) & 0xFFFF) as f32 / 65535.0;
-                    if h >= chance {
-                        continue;
+                    let mut prof = if d <= r_in { 1.0 } else { (r_out - d) / (r_out - r_in) };
+                    if lk.core > 0.0 {
+                        prof = (prof * fmla(lk.core, 1.0 - d / r_out, 1.0)).min(1.0);
                     }
-                    let a = op * 0.75 * fmla(0.5f32, t, 0.5);
-                    let ad = share(memo, a, inv_n);
-                    put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
+                    let mut aa = op * prof;
+                    if g_eff > 0.0 {
+                        let v = 1.0 - tooth_at(tooth, x, y);
+                        aa *= clampf(fmla(-(g_eff * 1.4 * v), v, 1.0), 0.0, 1.0);
+                    }
+                    a = aa;
+                }
+                if a <= 0.002 {
                     continue;
                 }
-                let prof = clampf((r_out - de) / edge_w, 0.0, 1.0);
-                let lo = thr - lk.band;
-                let hi = thr + lk.band;
-                let mut k = clampf((t - lo) / (hi - lo), 0.0, 1.0);
-                k = (k * k) * fmla(-2.0f32, k, 3.0);
-                a = op * prof * lerpf(1.0, k, grain);
-            } else {
-                if lk.nib == NibKind::Italic {
-                    // Italic nib at 40 degrees, 4.5:1: the distance is measured in the nib's frame.
-                    let u = fmla(dx, nca, dy * nsa);
-                    let v = fmla(-dx, nsa, dy * nca) / ITALIC_RATIO;
-                    d = fmla(u, u, v * v).sqrt();
-                } else if lk.nib == NibKind::BroadEdge || lk.nib == NibKind::Vertical {
-                    // A flat, square-cut nib (a superellipse): crisp angled ends like a real
-                    // broad-edge pen, hairlines along the edge, full width across it.
-                    let u = fmla(dx, nca, dy * nsa);
-                    let v = fmla(-dx, nsa, dy * nca) / BROAD_RATIO;
-                    let u2 = u * u;
-                    let v2 = v * v;
-                    d = fmla(u2, u2, v2 * v2).sqrt().sqrt();
-                }
-                if d >= r_out {
-                    continue;
-                }
-                let mut prof = if d <= r_in { 1.0 } else { (r_out - d) / (r_out - r_in) };
-                if lk.core > 0.0 {
-                    prof = (prof * fmla(lk.core, 1.0 - d / r_out, 1.0)).min(1.0);
-                }
-                let mut aa = op * prof;
-                if g_eff > 0.0 {
-                    let v = 1.0 - tooth_at(tooth, x, y);
-                    aa *= clampf(fmla(-(g_eff * 1.4 * v), v, 1.0), 0.0, 1.0);
-                }
-                a = aa;
+                let ad = if !lk.graphite && g_eff <= 0.0 && a == op { core_ad } else { share(memo, a, inv_n) };
+                put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
             }
-            if a <= 0.002 {
-                continue;
-            }
-            let ad = if !lk.graphite && g_eff <= 0.0 && a == op { core_ad } else { share(memo, a, inv_n) };
-            put_px::<ERASE>(&mut tg, c, x, y, ad, a, paper);
         }
     }
     if tg.restored {
         b.restored = true;
     }
-    box_
+    (box_, r)
 }
 
-fn stamp(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> Rect {
+fn stamp(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> (Rect, f32) {
     if b.dry {
         return stamp_as::<false, true>(b, c, s);
     }

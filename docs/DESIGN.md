@@ -229,6 +229,19 @@ draws them. White ink and the precise eraser make them.
   still change the ink layer, so whether a stroke may go is `page_droppable`'s to say.
   `BrushState.dry`: dabs report the rect they would draw into and draw nothing, the brush moving on
   exactly as when it draws.
+- The stroke eraser draws the page again only where the strokes it took off drew (2.0.0-rc.12,
+  `page_render_tiles`, page.rs). A pixel is its paper and the dabs over it, one after another, so
+  taking strokes off changes the page only under their dabs: `stroke_mark_tiles` marks the 16 px
+  tiles their dabs reach (a dry run, `TileMask` in canvas.rs), and their boxes are drawn again only
+  in those tiles, over the page canvas, which keeps every other pixel. The paper goes down a run of
+  marked tiles at a time; a stroke whose box meets no marked tile is left out; a brush given the mask
+  (`BrushState.mask`) skips a dab in no marked tile and draws the others a run at a time, each pixel
+  as it would without the mask. tests/test_erase_tiles.rs compares it with fresh drawings on dense
+  random pages; `editor.erase_tiles` counts the tiles. On the owner's 1,090-stroke page (Mac
+  timings) the largest marker stroke, whose box is the whole page, draws 13 times faster, the longest
+  charcoal stroke 7 times, a sweep of the eraser 2.6 to 4.4 times. Every dab that draws nothing (out
+  of the clip or the mask) also skips the work only its pixels need (a powf or two), and the spacing
+  takes the dab's own radius instead of a second `brush_dab`.
 - Compaction, `page_droppable` (page.h): erased ink stays in the page file, in the strokes before
   the erase stroke, until something leaves it out. It marks the strokes that can go without
   changing a pixel of the page or of its ink layer: ink that later erase strokes restore entirely,

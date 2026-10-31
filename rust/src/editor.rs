@@ -295,6 +295,9 @@ pub struct EditorState {
     step_pushes: u64,
     /// undos and redos done by swapping a patch back (a probe, editor.undo_patched)
     undo_patched: u32,
+    /// the stroke eraser's tiles (MASK_TILE) drawn again, and those the boxes of what it took off
+    /// cover (a probe, editor.erase_tiles)
+    erase_tiles: (u32, u32),
     /// the open page (its id) and how long its last whole drawing took, ms (KEEP_RENDER_MS when it came
     /// from its kept drawing): a page this slow keeps its drawing at each save
     full_ms: (u32, u32),
@@ -2539,13 +2542,41 @@ fn step_end(s: &mut EditorState, r: Rect) {
 }
 
 fn draw_page(a: &mut App, r: Rect) {
+    draw_page_in(a, r, None);
+}
+/// The page drawn again where the strokes just taken off it (removed[first..], r their boxes) drew:
+/// over r, in the tiles they drew into (page_render_tiles), or all of r without the memory for the
+/// mask. The rect drawn.
+fn draw_page_without(a: &mut App, r: Rect, first: usize) -> Rect {
+    let dpi = a.dpi;
+    let s = ed(a);
+    let Some(mut m) = tile_mask_new(s.page_canvas.w, s.page_canvas.h) else {
+        draw_page(a, r);
+        return r;
+    };
+    for st in &s.removed[first..] {
+        stroke_mark_tiles(&mut m, st, dpi);
+    }
+    tile_mask_seal(&mut m);
+    let drawn = rect_intersect(r, tile_mask_bounds(&m));
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: m.w, h: m.h });
+    let boxed = if rect_is_empty(r) { 0 } else { ((r.x + r.w - 1) / MASK_TILE - r.x / MASK_TILE + 1) * ((r.y + r.h - 1) / MASK_TILE - r.y / MASK_TILE + 1) };
+    s.erase_tiles.0 = s.erase_tiles.0.wrapping_add(tile_mask_count(&m, drawn));
+    s.erase_tiles.1 = s.erase_tiles.1.wrapping_add(boxed as u32);
+    draw_page_in(a, drawn, Some(Rc::new(m)));
+    drawn
+}
+fn draw_page_in(a: &mut App, r: Rect, mask: Option<Rc<TileMask>>) {
     let dpi = a.dpi;
     let s = ed(a);
     bgimage_take_missing(); // (what drew white before)
     let ip = s.page_ix().unwrap();
-    page_render(&mut s.page_canvas, s.hist[ip].page.as_deref().unwrap(), r, dpi,
-    );
-    let whole = r.x <= 0 && r.y <= 0 && r.x + r.w >= s.pgw && r.y + r.h >= s.pgh;
+    let page = s.hist[ip].page.as_deref().unwrap();
+    match &mask {
+        Some(m) => page_render_tiles(&mut s.page_canvas, page, r, m, dpi),
+        None => page_render(&mut s.page_canvas, page, r, dpi),
+    }
+    let whole = mask.is_none() && r.x <= 0 && r.y <= 0 && r.x + r.w >= s.pgw && r.y + r.h >= s.pgh;
     if bgimage_take_missing() {
         s.picture_missing = true;
         s.picture_gen = bgimage_generation();
@@ -3483,6 +3514,7 @@ fn erase_segment(a: &mut App, sx: f32, sy: f32, pressure: f32) {
     let (mut x, mut y) = (0.0, 0.0);
     to_page(s, sx, sy, &mut x, &mut y);
     let mut d = RECT_EMPTY;
+    let first = s.removed.len(); // (this step's strokes go after)
     // (the open page's cache entry: nothing below adds or drops one)
     let ip = s.page_ix().unwrap();
     let n = s.hist[ip].page.as_deref().unwrap().strokes.len() as i32;
@@ -3513,7 +3545,9 @@ fn erase_segment(a: &mut App, sx: f32, sy: f32, pressure: f32) {
     s.ey = y;
     if !rect_is_empty(d) {
         ed(a).boxes.stale = true; // (a link's ink may be gone)
-        draw_page(a, d);
+        // Only where they drew: a marker stroke across the owner's 1,090-stroke page drew its box (the
+        // whole page) again in 34 s on the Kindle (2.0.0-rc.11); its tiles take a thirteenth of that.
+        let d = draw_page_without(a, d, first);
         show(a, d, RefreshMode::Fast);
         let s = ed(a);
         s.erase_dirty = rect_union(s.erase_dirty, d);
@@ -9561,6 +9595,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
+    } else if key == "erase_tiles" {
+        // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of
+        // what it took off (all it drew before 2.0.0-rc.12).
+        csnprintf!(out, cap, "%u %u", s.erase_tiles.0, s.erase_tiles.1);
     } else if key == "undo_patched" {
         // Undos and redos that swapped a patch back instead of drawing the region again.
         csnprintf!(out, cap, "%u", s.undo_patched);
