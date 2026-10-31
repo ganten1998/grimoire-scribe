@@ -248,17 +248,18 @@ pub fn linkcard_place_above(w: i32, h: i32, chip: Rect, bar: Rect, screen: Rect)
     Rect { x, y: bar.y - u(16.0) - h, w, h }
 }
 
-/// The heavy border's dashes and halo: 5 px dashes, 20 on and about 14 off, a 3 px white halo.
+/// The heavy border's band and halo: 5 px of dither (its dash lengths are unused since rc.12), a 3 px white halo.
 fn border_pen() -> (i32, i32, i32, i32) {
     (u(5.0), u(20.0), u(14.0), u(3.0))
 }
 
-/// The heavy border around r (screen px): a dashed rectangle with a white halo, and solid 24 px corner Ls of
+/// The heavy border around r (screen px): a dithered band with a white halo, and solid 24 px corner Ls of
 /// the same thickness, so the link held reads apart from the eye's lighter boxes. 1-bit (0 and 255 only): a DU
 /// shows it exactly. Clipped to the canvas's clip.
 pub fn linkcard_border(c: &mut Canvas, r: Rect) {
     let (t, on, off, halo) = border_pen();
-    canvas_dash_rect(c, r, t, on, off, halo);
+    let _ = (on, off);
+    canvas_dither_rect(c, r, t, halo); // (dithered whole, as the link outlines are: rc.12)
     let t = t.min(r.w).min(r.h);
     let l = u(24.0).min(r.w).min(r.h);
     let (x0, y0, x1, y1) = (r.x, r.y, r.x + r.w, r.y + r.h);
