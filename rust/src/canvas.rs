@@ -293,6 +293,87 @@ fn dash_runs(len: i32, on: i32, off: i32) -> Vec<(i32, i32)> {
     (0..n).map(|k| ((k as f32 * span).round() as i32, on)).collect()
 }
 
+/// A 1-bit 50% dither over r for a screen-only overlay (the link outlines, 2.0.0-rc.12): black where
+/// x + y is even, white where it is odd, anchored to the canvas so the pieces and refreshes of one band
+/// line up (a pixel's value depends only on where it is). Clipped like canvas_fill.
+pub fn canvas_fill_dither(c: &mut Canvas, r: Rect) {
+    let b = rect_intersect(rect_intersect(r, c.clip), Rect { x: 0, y: 0, w: c.w, h: c.h });
+    if rect_is_empty(b) {
+        return;
+    }
+    for y in b.y..b.y + b.h {
+        let row = (y * c.stride) as usize;
+        for x in b.x..b.x + b.w {
+            c.px[row + x as usize] = if (x + y) & 1 == 0 { 0 } else { 255 };
+        }
+    }
+}
+
+/// A rectangle outlined by a dithered band (canvas_fill_dither) `thick` px wide inside r, continuous and
+/// with square corners, over a white halo of `halo` px on both sides of every edge so it reads over ink
+/// and rules alike: the link areas' outline (2.0.0-rc.12; it was canvas_dash_rect's fine dots). Only 0
+/// and 255; clipped like canvas_fill.
+pub fn canvas_dither_rect(c: &mut Canvas, r: Rect, thick: i32, halo: i32) {
+    if rect_is_empty(r) || thick <= 0 {
+        return;
+    }
+    let t = thick.min(r.w).min(r.h);
+    let edges = [
+        Rect { x: r.x, y: r.y, w: r.w, h: t },
+        Rect { x: r.x, y: r.y + r.h - t, w: r.w, h: t },
+        Rect { x: r.x, y: r.y, w: t, h: r.h },
+        Rect { x: r.x + r.w - t, y: r.y, w: t, h: r.h },
+    ];
+    if halo > 0 {
+        for e in edges {
+            canvas_fill(c, rect_inflate(e, halo), 255);
+        }
+    }
+    for e in edges {
+        canvas_fill_dither(c, e);
+    }
+}
+
+/// A polyline as a continuous dithered band: a square pen `thick` px wide walks the path stamping
+/// canvas_fill_dither, so a path drawn piece by piece (each piece starting at the last one's final point)
+/// is the path drawn whole, pixel for pixel, the pattern anchored to the canvas. Each segment's length is
+/// rounded to a whole pixel and its final point is never stamped (the next piece's first). With `halo` > 0
+/// a white band of `halo` px goes down first on both sides; a caller drawing in pieces passes 0. The link
+/// lasso and snapped link outlines (2.0.0-rc.12; they were canvas_dash_poly's dashes). Only 0 and 255.
+pub fn canvas_dither_poly(c: &mut Canvas, pts: &[(f32, f32)], thick: i32, halo: i32) {
+    if pts.len() < 2 || thick <= 0 {
+        return;
+    }
+    let square = |x: f32, y: f32, t: i32| Rect {
+        x: (x - t as f32 / 2.0 + 0.5).floor() as i32,
+        y: (y - t as f32 / 2.0 + 0.5).floor() as i32,
+        w: t,
+        h: t,
+    };
+    let seg_len = |a: (f32, f32), b: (f32, f32)| -> i32 {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let l = (dx * dx + dy * dy).sqrt();
+        if l.is_finite() { l.round().min(1.0e6) as i32 } else { 0 }
+    };
+    for pass in [true, false] {
+        if pass && halo <= 0 {
+            continue;
+        }
+        for w in pts.windows(2) {
+            let l = seg_len(w[0], w[1]);
+            for t in 0..l {
+                let f = t as f32 / l as f32;
+                let (x, y) = (w[0].0 + (w[1].0 - w[0].0) * f, w[0].1 + (w[1].1 - w[0].1) * f);
+                if pass {
+                    canvas_fill(c, square(x, y, thick + 2 * halo), 255);
+                } else {
+                    canvas_fill_dither(c, square(x, y, thick));
+                }
+            }
+        }
+    }
+}
+
 /// A dashed rectangle for an overlay that is not ink: `thick` px dashes, `on` long with about `off` between,
 /// along the four edges of r (drawn inside it, as canvas_rect_outline does), each edge starting and ending
 /// on a dash so the corners are solid. A white halo band of `halo` px on both sides of every edge goes down
@@ -996,6 +1077,32 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn the_link_band_is_a_dither_anchored_to_the_canvas() {
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 40, 30), 0);
+        canvas_fill(&mut c, Rect { x: 0, y: 0, w: 40, h: 30 }, 128);
+        canvas_dither_rect(&mut c, Rect { x: 5, y: 5, w: 20, h: 12 }, 4, 1);
+        let px = |c: &Canvas, x: i32, y: i32| c.px[(y * c.stride + x) as usize];
+        // the band: black where x + y is even, white where odd, edges and corners alike
+        for (x, y) in [(5, 5), (6, 5), (24, 16), (23, 16), (5, 10), (8, 8)] {
+            assert_eq!(px(&c, x, y), if (x + y) % 2 == 0 { 0 } else { 255 }, "{x},{y}");
+        }
+        // the halo outside it, the inside untouched
+        assert_eq!(px(&c, 4, 10), 255);
+        assert_eq!(px(&c, 15, 11), 128);
+        // a polyline drawn in two pieces is the polyline drawn whole
+        let pts = [(3.0, 3.0), (30.0, 3.0), (30.0, 25.0)];
+        let (mut a, mut b) = (Canvas::default(), Canvas::default());
+        assert_eq!(canvas_init(&mut a, 40, 30), 0);
+        assert_eq!(canvas_init(&mut b, 40, 30), 0);
+        canvas_dither_poly(&mut a, &pts, 4, 0);
+        canvas_dither_poly(&mut b, &pts[..2], 4, 0);
+        canvas_dither_poly(&mut b, &pts[1..], 4, 0);
+        assert!(a.px == b.px);
+        assert!(a.px.iter().all(|&v| v == 0 || v == 255));
     }
 
     #[test]

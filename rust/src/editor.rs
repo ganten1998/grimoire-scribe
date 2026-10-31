@@ -2113,15 +2113,22 @@ fn box_screen(s: &EditorState, p: Rect) -> Rect {
     }
 }
 
-/// The fine dotted outline, including its narrow contrasting edge over dark ink.
+/// The link outlines' band (the eye's boxes and snapped outlines, the area waiting for its target, the lasso):
+/// 4 px of 50% dither at 300 dpi (2.0.0-rc.12; they were 2 px dots 8 px apart, which e-ink showed faint).
+fn link_band() -> i32 {
+    ui_px(4.0)
+}
+
+/// Where an outline around sr draws: a snapped outline's band is centred on its path, so half the band
+/// and the halo stand outside the area.
 fn eye_reach(_a: &App, sr: Rect) -> Rect {
-    rect_inflate(sr, ui_px(2.0) + 1)
+    rect_inflate(sr, link_band() / 2 + ui_px(1.0) + 1)
 }
 
 fn draw_outline(c:&mut Canvas,outline:LinkOutline,source:Rect,target:Rect,view:(f32,f32,f32)) {
     let (zoom,ox,oy)=view;
     let points:Vec<_>=outline.points(source,target).iter().map(|&(x,y)|((x-ox)*zoom,(y-oy)*zoom)).collect();
-    canvas_dash_poly(c,&points,ui_px(2.0),ui_px(2.0),ui_px(8.0),ui_px(1.0),0);
+    canvas_dither_poly(c,&points,link_band(),ui_px(1.0));
 }
 
 /// Fine dotted outlines over the page and under the panel, without number badges.
@@ -2144,7 +2151,7 @@ fn draw_areas(a: &mut App, r: Rect) {
         boxes_get(a);let s=ed_ref(a);(s.boxes.link,s.boxes.area,s.boxes.n,s.zoom,s.ox,s.oy)
     };
     ed(a).boxes.drawn = n;
-    let (thick, on, off, halo) = (ui_px(2.0), ui_px(2.0), ui_px(8.0), ui_px(1.0));
+    let (thick, halo) = (link_band(), ui_px(1.0));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
     for i in 0..n {
@@ -2156,7 +2163,7 @@ fn draw_areas(a: &mut App, r: Rect) {
             continue;
         }
         if links[i].outline.n>0 {draw_outline(&mut a.screen,links[i].outline,links[i].area,p,(zoom,ox,oy));}
-        else {canvas_dash_rect(&mut a.screen,sr,thick,on,off,halo);}
+        else {canvas_dither_rect(&mut a.screen,sr,thick,halo);}
     }
     a.screen.clip = clip;
 }
@@ -4413,7 +4420,7 @@ fn area_band(a: &App) -> Rect {
     if !area_waits(s) {
         return RECT_EMPTY;
     }
-    rect_inflate(area_screen(s), ui_px(2.0) + 1)
+    rect_inflate(area_screen(s), link_band() / 2 + ui_px(1.0) + 1)
 }
 
 /// A page point on the screen (screen = (page - o) * zoom), unrounded: the lasso drawn as the pen moves and
@@ -4436,7 +4443,7 @@ fn lasso_clip(a: &App) -> Rect {
 
 /// The lasso's dashes (6.4): 4 px, 12 on and 8 off, black, no halo.
 fn lasso_pen() -> (i32, i32, i32) {
-    (ui_px(4.0), ui_px(12.0), ui_px(8.0))
+    (link_band(), ui_px(12.0), ui_px(8.0)) // (its dash lengths, unused since the band is dithered whole: rc.12)
 }
 
 /// Whether point p (page px) joins the lasso after `last`: it must be `spacing` screen px from it. A full
@@ -4572,8 +4579,9 @@ fn lasso_move(a: &mut App, ev: &InEvent) {
     let clip = lasso_clip(a);
     let keep = a.screen.clip;
     canvas_set_clip(&mut a.screen, clip);
-    let ph = canvas_dash_poly(&mut a.screen, &[p0, p1], if hidden { 0 } else { thick }, on, off, 0, phase,
-    );
+    let _ = (on, off, phase);
+    canvas_dither_poly(&mut a.screen, &[p0, p1], if hidden { 0 } else { thick }, 0);
+    let ph = 0; // (a continuous band: no dash phase to carry)
     a.screen.clip = keep;
     let d = rect_intersect(seg, clip);
     let s = ed(a);
@@ -4595,7 +4603,8 @@ fn draw_lasso(a: &mut App, r: Rect) {
     let clip = a.screen.clip;
     let c = rect_intersect(r, lasso_clip(a));
     canvas_set_clip(&mut a.screen, c);
-    canvas_dash_poly(&mut a.screen, &pts, thick, on, off, 0, 0);
+    let _ = (on, off);
+    canvas_dither_poly(&mut a.screen, &pts, thick, 0);
     a.screen.clip = clip;
 }
 
@@ -4610,7 +4619,7 @@ fn draw_area_wait(a: &mut App, r: Rect) {
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
     if outline.n>0 {draw_outline(&mut a.screen,outline,area,area,view);}
-    else {canvas_dash_rect(&mut a.screen,sr,ui_px(2.0),ui_px(2.0),ui_px(8.0),ui_px(1.0));}
+    else {canvas_dither_rect(&mut a.screen,sr,link_band(),ui_px(1.0));}
     a.screen.clip = clip;
 }
 
