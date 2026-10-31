@@ -121,6 +121,15 @@ st, hd, body = get('/live/pair?code=' + code)
 check('the code works once', st == 302 and 'Set-Cookie' not in hd)
 st, hd, body = get('/live', session)
 check('/live with the session is the viewer', st == 200 and b'GRIMOIRE_LIVE_WORDS' in body)
+# Its words are one JSON object (the rail's, the size control's and picture in picture's help too).
+m = re.search(rb'window\.GRIMOIRE_LIVE_WORDS=(\{.*?\});</script>', body)
+try:
+    words = json.loads(m.group(1)) if m else {}
+except ValueError:
+    words = {}
+check('the viewer\'s words are JSON, with the rail\'s and picture in picture\'s (%d words)' % len(words),
+      all(k in words for k in ('controls', 'size', 'fitWidth', 'pictureInPicture', 'pipFirefoxHelp', 'old')) and
+      '%s' in words.get('pipChromeHelp', ''))
 
 # The clock and pen stream share exactly the same authentication rule.
 for route in ['/live/time', '/live/pen']:

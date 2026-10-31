@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rework Live view's browser controls into a slim rail beside the page, with View settings and Keys opening beside it; it fades only where it could cover the page. Add a Size control: Fit, Fit width and 25% to 200%, with Ctrl/Cmd+scroll, trackpad pinch and the - + 0 keys, remembered, area-averaged at every size up to 100% and pixelated above. Make Picture in picture float where the browser can: Document Picture-in-Picture moves only the page and draws it at that window's pixels, video PiP (Safari, Chromium and Firefox on plain HTTP) carries the quick ink and pen dot and sends frames only on change, else a pop-out; the main tab draws nothing meanwhile. View settings explains how to let Firefox and Chromium treat the Kindle's address as secure. Compose once per animation frame, skip work while hidden, avoid GPU readbacks and coalesce resizes.
+
 ## 2.0.0-rc.7 (2026-10-30)
 
 - Preserve final touch movement delivered with finger lift-off, widen the second-finger landing window and accept deliberate two-finger swipes up to 2.5 seconds. Keep pen, palm, pinch and pan guards.

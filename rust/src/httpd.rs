@@ -1375,8 +1375,8 @@ fn route_live_page(query: &[u8]) {
         live_word(&mut b, &mut n, "webmBrowser", tr("This browser cannot record MP4, so the video is WebM."));
         live_word(&mut b, &mut n, "stop", tr("Stop recording"));
         live_word(&mut b, &mut n, "full", tr("Full screen"));
-        // TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
-        // the computer's other windows (the browser's own name for it is fine).
+        // TRANSLATORS: Live view's button in the browser where it has no picture in picture: the
+        // screen in a separate window of its own.
         live_word(&mut b, &mut n, "pip", tr("Pop out"));
         live_word(&mut b, &mut n, "popoutActive", tr("Live view is open in another window. Keep this tab open."));
         live_word(&mut b, &mut n, "popoutReturn", tr("Bring Live view back"));

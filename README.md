@@ -106,9 +106,12 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   The toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
 - **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
   browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
-  a phone). The browser can fit the screen, go full screen, move the view into a separate window
-  (**Pop out**), make the paper transparent and record. Keep the original tab open while popped
-  out; closing the new window returns the view to that tab.
+  a phone). A slim rail beside the page holds the controls: **Size** (Fit, Fit width, 25% to
+  200%; Ctrl or Cmd with the scroll wheel, a trackpad pinch, or the - + 0 keys), **Picture in
+  picture**, Monitor mode, full screen, recording, **View settings** (transparent paper, colors,
+  the pen dot, the toolbar and clock layers, latency) and **Keys**. Picture in picture floats the
+  page over your other windows; keep the original tab open meanwhile, and close the small window
+  to bring the view back.
   A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
