@@ -73,7 +73,8 @@ pub struct MapView {
     drag: Option<MapDrag>,
     last_input_ms: u32,
     job_done: bool,
-    view_fit: bool,
+    // the user panned or pinched since the view was last fitted: View fits again first
+    view_touched: bool,
     w: i32,
     h: i32,
 }
@@ -85,6 +86,11 @@ const RENAME: u8 = 12;
 const VIEW: u8 = 16;
 const GRAPH: u8 = 14;
 const PAGES: u8 = 15;
+// The zoom a pinch stops at, out and in. Fitting the whole map may go further out (FIT_MIN), and a
+// pinch from there goes no further out than where it started.
+const ZOOM_MIN: f32 = 0.25;
+const ZOOM_MAX: f32 = 6.0;
+const FIT_MIN: f32 = 0.02;
 fn u(px: f32) -> i32 {
     ui_px(px)
 }
@@ -149,20 +155,12 @@ fn label(v: &MapView, nav: &Nav, i: usize) -> String {
         name.to_string()
     }
 }
-fn fit_points(v: &mut MapView, local: bool) {
+// Fits every drawn dot: the whole linked map in All, the rings in Around.
+fn fit_points(v: &mut MapView) {
     let r = plot(v);
     let mut bounds = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     let mut count = 0;
     for i in 0..v.g.nodes.len() {
-        if local && v.g.open >= 0 && i != v.g.open as usize {
-            let linked = graph_edge_between(&v.g, v.g.open, i as i32) >= 0
-                || graph_neighbours(&v.g, v.g.open)
-                    .iter()
-                    .any(|&n| graph_edge_between(&v.g, n, i as i32) >= 0);
-            if !linked {
-                continue;
-            }
-        }
         if let Some((x, y)) = location(v, i) {
             let pad = v.g.nodes[i].r + 12.0;
             bounds.0 = bounds.0.min(x - pad);
@@ -180,16 +178,14 @@ fn fit_points(v: &mut MapView, local: bool) {
     }
     let z = ((r.w - u(80.0)) as f32 / (bounds.2 - bounds.0).max(1.0))
         .min((r.h - u(80.0)) as f32 / (bounds.3 - bounds.1).max(1.0))
-        .clamp(0.25, 6.0);
+        .clamp(FIT_MIN, ZOOM_MAX);
     v.zoom = z;
     v.ox = (bounds.0 + bounds.2) * 0.5 - (r.x + r.w / 2) as f32 / z;
     v.oy = (bounds.1 + bounds.3) * 0.5 - (r.y + r.h / 2) as f32 / z;
 }
 fn default_fit(v: &mut MapView) {
-    fit_points(v, false);
-    if v.mode == GraphMode::All && v.g.open >= 0 && v.g.force.iter().any(|&i| v.g.nodes[i as usize].r * v.zoom < 10.0) {
-        fit_points(v, true);
-    }
+    fit_points(v);
+    v.view_touched = false;
 }
 fn around_centre(v:&MapView)->i32 {
     if v.selected>=0 {return v.selected;}
@@ -204,18 +200,30 @@ fn around(v: &mut MapView, centre: i32) -> bool {
     v.centre = centre;
     true
 }
-fn layout(v: &mut MapView, a: &mut App, force: bool) -> bool {
-    let plan = if force || (v.ini.has_gen && v.ini.gen!=graph_gen(&v.g)) {
-        GraphPlan::Full
-    } else {
-        graph_apply_ini(&mut v.g, &v.ini)
-    };
+// Places the map from graph.ini: kept positions stay, a few new pages go beside their neighbours,
+// a new link between far pages moves only its ends' neighbourhood, and a map that changed a lot is
+// laid out again from where its dots were (graph_layout_warm), in a bgjob child when it is big.
+fn layout(v: &mut MapView, a: &mut App) -> bool {
+    let mut plan = graph_apply_ini(&mut v.g, &v.ini);
+    if plan != GraphPlan::Full {
+        if graph_place_new(&mut v.g, &mut work_pump) < 0 {
+            return false;
+        }
+        if v.ini.has_gen && v.ini.gen != graph_gen(&v.g) {
+            match graph_relax_stressed(&mut v.g, &mut work_pump) {
+                -1 => return false,
+                -2 => plan = GraphPlan::Full,
+                _ => {}
+            }
+        }
+    }
+    let warm = v.g.force.iter().any(|&i| v.g.nodes[i as usize].placed);
     let ok = if plan == GraphPlan::Full {
         if graph_layout_in_process(&v.g) {
-            graph_layout(&mut v.g, &mut work_pump)
+            graph_layout_warm(&mut v.g, &mut work_pump)
         } else {
             v.layout = MapLayout::Seed;
-            if !graph_seed(&mut v.g, &mut work_pump) {
+            if !(if warm { graph_seed_kept(&mut v.g, &mut work_pump) } else { graph_seed(&mut v.g, &mut work_pump) }) {
                 return false;
             }
             let mut path = String::new();
@@ -231,10 +239,10 @@ fn layout(v: &mut MapView, a: &mut App, force: bool) -> bool {
             true
         }
     } else {
-        graph_place_new(&mut v.g, &mut work_pump) >= 0
+        true
     };
     if ok && v.layout != MapLayout::Running {
-        // A cached map can be reopened while its Tidy job is still running or queued.
+        // A cached map can be reopened while its layout job is still running or queued.
         v.layout = if bg_pending(BgKind::GraphLayout,v.id.as_str()){MapLayout::Running}else{MapLayout::Done};
     }
     ok
@@ -272,7 +280,7 @@ pub fn mapview_open(
     v.pages.extend_from_slice(&nb.page_ids);
     graph_ini_read(nb.id.as_str(), &mut v.ini);
     v.mode = v.ini.mode;
-    if !layout(v, a, false) {
+    if !layout(v, a) {
         app_toast(a, tr("Not enough memory for the map."), 3000);
         return false;
     }
@@ -526,7 +534,9 @@ fn render(v: &mut MapView, c: &mut Canvas, nav: &Nav) {
     }
     let panel=Rect::new(u(20.0),v.h-u(150.0),v.w-u(40.0),u(130.0));
     ui_frame(c,panel,u(12.0),255,true,0);ui_frame(c,panel,u(12.0),0,false,u(2.0));
-    let text=cformat!(tr("View: %s"),tr(if v.view_fit {n_("Fit")}else if v.mode==GraphMode::Around {n_("Around")}else{n_("All")}));
+    // After a pan or pinch the button first fits the current mode again, and says so.
+    let mode=tr(if v.mode==GraphMode::Around {n_("Around")}else{n_("All")});
+    let text=if v.view_touched {cformat!(tr("Fit: %s"),mode)}else{cformat!(tr("View: %s"),mode)};
     let width=u(420.0).min(v.w/3);
     button(v,c,Rect::new(panel.x+u(12.0),panel.y+u(15.0),width,u(100.0)),VIEW,&text,IconKind::None,true);
     let nodes=v.g.nodes.iter().enumerate().filter(|(i,_)|location(v,*i).is_some()).count()+v.foreign.len();
@@ -658,6 +668,7 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
     }
     if d.moved {
         if v.list {let rows=((d.y-e.y)/u(130.0) as f32) as i32;v.list_offset=(v.list_offset as i32+rows).clamp(0,v.link_rows.len().saturating_sub(1) as i32) as usize;}
+        else {v.view_touched=true;}
         paint(v, a, nav, RefreshMode::Ui);
         return MapResult::None;
     }
@@ -682,16 +693,16 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
             PAGES => return MapResult::Pages,
             GRAPH => {v.list=false;},
             AROUND_IT => {
-                if around(v, around_centre(v)) {v.view_fit=false;save(v);default_fit(v);}
+                if around(v, around_centre(v)) {save(v);default_fit(v);}
             }
             OPEN if v.selected >= 0 => return MapResult::Open(v.g.nodes[v.selected as usize].pid),
             RENAME if v.selected >= 0 => return MapResult::Rename(v.g.nodes[v.selected as usize].pid),
             VIEW => {
-                if v.view_fit {v.view_fit=false;v.mode=GraphMode::All;}
-                else if v.mode==GraphMode::Around {v.view_fit=true;}
-                else {
-                    let centre=around_centre(v);
-                    if !around(v,centre) {v.view_fit=true;}
+                // All and Around in turn; a view the user has moved is fitted again first, so a
+                // press always changes what is shown.
+                if !v.view_touched {
+                    if v.mode==GraphMode::Around {v.mode=GraphMode::All;}
+                    else {around(v,around_centre(v));}
                 }
                 default_fit(v);save(v);
             },
@@ -763,7 +774,8 @@ pub fn mapview_pinch(v: &mut MapView, a: &mut App, e: &InEvent) {
     let Some(d) = v.drag.as_mut() else {
         return;
     };
-    let z = (d.zoom * distance / d.distance).clamp(0.25, 6.0);
+    v.view_touched = true;
+    let z = (d.zoom * distance / d.distance).clamp(ZOOM_MIN.min(d.zoom), ZOOM_MAX);
     v.ox = d.ox + d.x / d.zoom - x / z;
     v.oy = d.oy + d.y / d.zoom - y / z;
     v.zoom = z;
@@ -797,15 +809,48 @@ pub fn mapview_background_done(v: &mut MapView,id:&str, ok: bool) {
         }
     }
 }
+// The dot a moved view is anchored on while the layout under it changes: the selected one when it is
+// drawn, else the drawn dot nearest the plot's centre; with its world point.
+fn view_anchor(v: &MapView) -> Option<(usize, f32, f32)> {
+    if v.selected >= 0 {
+        if let Some((x, y)) = location(v, v.selected as usize) {
+            return Some((v.selected as usize, x, y));
+        }
+    }
+    let r = plot(v);
+    let (cx, cy) = ((r.x + r.w / 2) as f32 / v.zoom + v.ox, (r.y + r.h / 2) as f32 / v.zoom + v.oy);
+    let mut best: Option<(f32, usize, f32, f32)> = None;
+    for i in 0..v.g.nodes.len() {
+        if let Some((x, y)) = location(v, i) {
+            let d = (x - cx).hypot(y - cy);
+            if best.is_none_or(|b| d < b.0) {
+                best = Some((d, i, x, y));
+            }
+        }
+    }
+    best.map(|b| (b.1, b.2, b.3))
+}
 pub fn mapview_tick(v: &mut MapView, _a: &mut App, now: u32) -> MapResult {
     if v.open && v.job_done && v.drag.is_none() && now.wrapping_sub(v.last_input_ms) >= 500 {
         let mut ini = GraphIni::default();
         if graph_ini_read(v.id.as_str(), &mut ini) == 0 {
+            // A view the user moved keeps the dot they were looking at under the same point;
+            // otherwise the finished layout is fitted, as the seed was.
+            let anchor = if v.view_touched { view_anchor(v) } else { None };
             v.ini = ini;
             graph_apply_ini(&mut v.g, &v.ini);
             graph_place_new(&mut v.g, &mut work_pump);
             if v.mode == GraphMode::Around {
                 around(v, v.centre);
+            }
+            match anchor {
+                None => default_fit(v),
+                Some((i, x, y)) => {
+                    if let Some((nx, ny)) = location(v, i) {
+                        v.ox += nx - x;
+                        v.oy += ny - y;
+                    }
+                }
             }
             v.layout = MapLayout::Done;
             v.needs_redraw = true;
@@ -823,21 +868,12 @@ pub fn mapview_rebuild(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Na
     if graph_build(&mut g, nb, &nav_for_graph(nav), open_pid, true) != 0 {
         return false;
     }
+    // save kept every dot the user has seen in v.ini, so layout starts from them: a rename moves
+    // nothing but a dot that grew into its neighbour, and a new link only its far ends' neighbours.
     let old = std::mem::replace(&mut v.g, g);
-    if !layout(v, a, false) {
+    if !layout(v, a) {
         v.g = old;
         return false;
-    }
-    // A rename changes membership (an unnamed satellite can become a named force node),
-    // but every dot the user has already seen stays where it was.
-    for node in &mut v.g.nodes {
-        let at = graph_node_of(&old, node.pid);
-        if at >= 0 && old.nodes[at as usize].placed {
-            let before = old.nodes[at as usize];
-            node.x = before.x;
-            node.y = before.y;
-            node.placed = true;
-        }
     }
     if v.mode == GraphMode::Around {
         around(v, v.centre);
@@ -851,7 +887,7 @@ pub fn mapview_probe(v: &MapView, key: &str, out: &mut String) -> bool {
     match key {
         "" => out.push_str(if v.open { "graph" } else { "0" }),
         "stats"=>{out.push_str(&format!("{} {} {} {} {}",v.g.nodes.iter().filter(|n|n.linked).count()+v.foreign.len(),v.g.nodes.iter().filter(|n|!n.linked).count(),v.link_count,v.pages.len(),v.page_totals.map_or(0,|p|p.0)));},
-        "view"=>out.push_str(if v.view_fit{"fit"}else if v.mode==GraphMode::Around{"around"}else{"all"}),
+        "view"=>{if v.view_touched{out.push_str("fit ");}out.push_str(if v.mode==GraphMode::Around{"around"}else{"all"});},
         "visible"=>{let mut ids:Vec<_>=v.g.nodes.iter().enumerate().filter(|(i,_)|location(v,*i).is_some()).map(|(_,n)|n.pid).collect();ids.sort_unstable();out.push_str(&ids.iter().map(|p|p.to_string()).collect::<Vec<_>>().join(" "));},
         "nodes" => out.push_str(&v.g.nodes.len().to_string()),
         "edges" => out.push_str(&v.g.edges.len().to_string()),
@@ -1054,7 +1090,7 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn cached_map_tidy_survives_close_reopen_completion_and_close() {
+    fn cached_map_layout_survives_close_reopen_completion_and_close() {
         let root=std::env::temp_dir().join(format!("grimoire-map-reopen-{}",std::process::id()));
         store_init(root.to_str().unwrap());let mut nb=NotebookInfo::default();assert_eq!(store_create("Map","",PAPER_BLANK,&mut nb),0);
         nb.page_ids=(1..=400).collect();nb.next_page_id=401;assert_eq!(store_save_info(&mut nb),0);
@@ -1062,8 +1098,8 @@ mod tests {
         assert_eq!(nav_save_links(nb.id.as_str(),&mut nav,&nb),0);
         let mut a=App{w:1860,h:2480,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,a.w,a.h);
         let mut v=MapView{id:nb.id,open:true,w:a.w,h:a.h,..Default::default()};v.pages=nb.page_ids.clone();
-        assert_eq!(graph_build(&mut v.g,&nb,&nav,1,true),0);assert!(graph_seed(&mut v.g,&mut ||{}));save(&mut v);
-        assert!(layout(&mut v,&mut a,true));assert_eq!(v.layout,MapLayout::Running);
+        assert_eq!(graph_build(&mut v.g,&nb,&nav,1,true),0);assert_eq!(v.g.force.len(),400);
+        assert!(layout(&mut v,&mut a));assert_eq!(v.layout,MapLayout::Running);assert_eq!(v.g.laid,GraphLaid::Seed);
         mapview_close(&mut v);
         assert!(mapview_open(&mut v,&mut a,&nb,&nav,1,false));assert_eq!(v.layout,MapLayout::Running);
         let until=now_ms().wrapping_add(10000);
@@ -1116,6 +1152,120 @@ mod tests {
             radius: 0.0,
         });
         assert_eq!(hit(&v, 110.0, 100.0), Some(MapHitKind::Control(BACK)));
+    }
+    // A notebook of n pages, `linked` of them linked in a chain from page 1, laid out and fitted.
+    fn chain_view(n: u32, linked: u32) -> (MapView, Nav, NotebookInfo) {
+        let (mut v, mut nav) = view(1860, 2480, n, false);
+        for pid in 1..linked {
+            assert_eq!(nav_link_set(&mut nav, pid, 1, &format!("p{}", pid + 1)), 0);
+        }
+        let nb = NotebookInfo { page_ids: (1..=n).collect(), ..Default::default() };
+        assert_eq!(graph_build(&mut v.g, &nb, &nav, 0, true), 0);
+        assert!(graph_layout(&mut v.g, &mut || {}));
+        default_fit(&mut v);
+        (v, nav, nb)
+    }
+    #[test]
+    fn view_cycles_all_and_around_and_a_moved_view_fits_first() {
+        let (mut v, nav, _) = chain_view(40, 12);
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        canvas_init(&mut a.screen, a.w, a.h);
+        let r = full(&v);
+        mapview_draw(&mut v, &mut a, &nav, r);
+        let press = |v: &mut MapView, a: &mut App| {
+            let (x, y) = mapview_control_point(v, "view").unwrap();
+            mapview_pointer(v, a, &nav, 0, &InEvent { x, y, t_ms: 0, ..Default::default() });
+            mapview_pointer(v, a, &nav, 2, &InEvent { x, y, t_ms: 40, ..Default::default() });
+        };
+        let mut probe = String::new();
+        // All fits every linked dot: each one inside the plot
+        let fitted = |v: &MapView| (0..v.g.nodes.len()).filter(|&i| location(v, i).is_some()).all(|i| rect_overlaps(visible_rect(v, i), plot(v)));
+        assert!(fitted(&v));
+        press(&mut v, &mut a);
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "around");
+        press(&mut v, &mut a);
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "all");
+        assert!(fitted(&v));
+        // a pan: the next press fits All again, without leaving it; the label says so first
+        let (z, ox, oy) = (v.zoom, v.ox, v.oy);
+        mapview_pointer(&mut v, &mut a, &nav, 0, &InEvent { x: 900.0, y: 1000.0, t_ms: 100, ..Default::default() });
+        mapview_pointer(&mut v, &mut a, &nav, 1, &InEvent { x: 1500.0, y: 1600.0, t_ms: 300, ..Default::default() });
+        mapview_pointer(&mut v, &mut a, &nav, 2, &InEvent { x: 1500.0, y: 1600.0, t_ms: 340, ..Default::default() });
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "fit all");
+        press(&mut v, &mut a);
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "all");
+        assert_eq!((v.zoom, v.ox, v.oy), (z, ox, oy));
+        // a pinch in Around: the next press fits Around again
+        press(&mut v, &mut a);
+        let around_view = (v.zoom, v.ox, v.oy);
+        mapview_pinch(&mut v, &mut a, &InEvent { type_: InType::PinchBegin, x: 800.0, y: 1000.0, x2: 1000.0, y2: 1000.0, t_ms: 400, ..Default::default() });
+        mapview_pinch(&mut v, &mut a, &InEvent { type_: InType::PinchMove, x: 700.0, y: 1000.0, x2: 1100.0, y2: 1000.0, t_ms: 700, ..Default::default() });
+        mapview_pinch(&mut v, &mut a, &InEvent { type_: InType::PinchEnd, t_ms: 740, ..Default::default() });
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "fit around");
+        press(&mut v, &mut a);
+        mapview_probe(&v, "view", &mut probe);
+        assert_eq!(probe, "around");
+        assert_eq!((v.zoom, v.ox, v.oy), around_view);
+        // a fit is no mode: the mode stays Around
+        assert_eq!(v.mode, GraphMode::Around);
+    }
+    #[test]
+    fn all_fits_the_whole_map_when_opened_from_an_unlinked_page() {
+        // 250 linked pages: the fit is far below the old tiny-dot limit, and the open page is plain
+        let (mut v, _, nb) = chain_view(300, 250);
+        let nav = { let mut n = Nav::default(); nav_init(&mut n); for pid in 1..250 { nav_link_set(&mut n, pid, 1, &format!("p{}", pid + 1)); } n };
+        assert_eq!(graph_build(&mut v.g, &nb, &nav, 290, true), 0);
+        assert!(graph_layout(&mut v.g, &mut || {}));
+        assert_eq!(v.g.nodes[289].tier, GraphTier::Hidden);
+        default_fit(&mut v);
+        let drawn: Vec<usize> = (0..v.g.nodes.len()).filter(|&i| location(&v, i).is_some()).collect();
+        assert_eq!(drawn.len(), 250);
+        let pr = plot(&v);
+        for &i in &drawn {
+            let (x, y) = screen_point(&v, location(&v, i).unwrap());
+            assert!(rect_contains(pr, x as i32, y as i32), "page {} off the plot", i + 1);
+        }
+    }
+    #[test]
+    fn a_finished_background_layout_is_fitted_unless_the_view_was_moved() {
+        let (mut v, _, _) = chain_view(20, 20);
+        let root=std::env::temp_dir().join(format!("grimoire-map-adopt-{}",std::process::id()));
+        store_init(root.to_str().unwrap());let mut nb=NotebookInfo::default();assert_eq!(store_create("Map","",PAPER_BLANK,&mut nb),0);
+        v.id = nb.id;
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        // the child's layout: the same map, twice as wide
+        let mut wide = v.g.clone();
+        for n in &mut wide.nodes { n.x *= 2.0; n.y *= 2.0; }
+        let mut ini = GraphIni::default();
+        graph_ini_store(&mut ini, &wide);
+        assert_eq!(graph_ini_write(nb.id.as_str(), &mut ini), 0);
+        v.layout = MapLayout::Running;
+        v.job_done = true;
+        mapview_tick(&mut v, &mut a, 10_000);
+        assert_eq!(v.layout, MapLayout::Done);
+        let adopted = (v.zoom, v.ox, v.oy);
+        default_fit(&mut v);
+        assert_eq!(adopted, (v.zoom, v.ox, v.oy));
+        // moved: the selected dot stays under the same screen point
+        for n in &mut wide.nodes { n.x *= 2.0; n.y *= 2.0; }
+        graph_ini_store(&mut ini, &wide);
+        assert_eq!(graph_ini_write(nb.id.as_str(), &mut ini), 0);
+        v.selected = 7;
+        v.view_touched = true;
+        v.ox += 50.0;
+        let before = screen_point(&v, location(&v, 7).unwrap());
+        v.layout = MapLayout::Running;
+        v.job_done = true;
+        mapview_tick(&mut v, &mut a, 20_000);
+        let after = screen_point(&v, location(&v, 7).unwrap());
+        assert!((before.0 - after.0).abs() < 0.01 && (before.1 - after.1).abs() < 0.01);
+        assert!(v.view_touched);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn unlinked_named_open_and_plain_pages_never_draw_or_hit() {

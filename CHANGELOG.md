@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep the graph's shape when links and pages change: a new link moves only its two pages and their neighbours, a few new pages are placed beside theirs, and a larger change is laid out again from the current positions. Naming an unlinked page or adding plain pages moves nothing. Unlinked pages no longer take hidden room, so maps are tighter with larger dots.
+- View now switches between All and Around. All always fits the whole linked graph; after a pan or pinch the button reads Fit and first fits the current view again. Background layouts are fitted when they finish unless the view was moved.
+- Lay out graphs faster by stopping once their shape settles, write graph.ini only when it changes, and draw labels and pinch previews with less work. Links to the same page of another notebook count once in a page's card.
+
 ## 2.0.0-rc.7 (2026-10-30)
 
 - Preserve final touch movement delivered with finger lift-off, widen the second-finger landing window and accept deliberate two-finger swipes up to 2.5 seconds. Keep pen, palm, pinch and pan guards.

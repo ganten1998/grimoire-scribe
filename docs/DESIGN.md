@@ -1146,7 +1146,18 @@ without loading page files. The current page has two rings, selection a third; l
 other labels and other dots. Select/deselect refreshes the labels and incident edges as well as
 the node and card, since a card-only update would leave stale bold edges and label knockouts.
 Pan/pinch previews are throttled to180ms and settle on release. Layouts over300force nodes run
-in a background child; a finished result is swapped in after500ms of idle time.
+in a background child; a finished result is swapped in after500ms of idle time, fitted unless the
+user has moved the view (then the dot under the plot's centre, or the selected one, stays put).
+
+Only linked pages are in the map's model: every other page is hidden, takes no room in the
+layout and no part in graph.ini's gen, so naming it or adding plain pages moves no dot. graph.ini
+keeps the layout. On opening, kept dots stay put, a few new pages go beside their neighbours, and
+a new link between far pages moves only its two ends and their neighbours (graph_relax_stressed);
+a map that changed a lot (over 10% new pages, or too many stretched links) is laid out again from
+where its dots were (graph_layout_warm), so it keeps its shape. The relaxation stops once the
+map's shape settles, usually well before its 300 steps. View cycles All (the whole linked map,
+fitted) and Around; after a pan or pinch its label reads Fit and the next press fits the current
+mode again, so a press always changes the view. Only All and Around are saved.
 
 Nested Library folders are logical slash-separated paths stored in notebook metadata and
 folders.ini. Notebook IDs and physical directories stay fixed. A subtree rename validates all
@@ -1244,7 +1255,7 @@ a matching open map adopts it only when idle. Failed map opens discard their par
 Seed positions stay in memory, so neither closing a map nor changing its view can publish seeds
 as a completed cache. A short `graph.ini.lock` transaction serializes preference changes with
 the child's final read/merge/write; layout computation happens before that lock is acquired.
-Reopening a map retains its running or queued Tidy job, so the completed layout is still adopted
+Reopening a map retains its running or queued layout job, so the completed layout is still adopted
 and an older cached view cannot overwrite it on close.
 
 Clear page saves removal of the current page's links before touching its ink, then records one
