@@ -4,6 +4,7 @@
 # settings: shapes=1
 # settings: shape_corner=0
 # settings: shape_min_mm=0
+# (0, rc.9 to rc.11's "Any", reads as 10 mm; the slider runs 3 to 40 mm since 2.0.0-rc.12)
 # The Smart shapes menu's two sliders (2.0.0-rc.12), upright and sideways, by finger and by pen. The
 # menu's place is checked first, then the tracks are pressed by coordinates: upright the menu is at
 # 568,220, each track starts 589 px into it and is 459 px long, Corner roundness's row is centred at
@@ -48,26 +49,26 @@ expect settings.shape_corner is 0
 expect editor.shapes_menu is 1
 # Smallest shape: a tap on the track, then one in the gap below the row.
 tap 1386 1070
-expect settings.shape_min_mm is 20
+expect settings.shape_min_mm is 21
 tap 1272 1136
-expect settings.shape_min_mm is 10
+expect settings.shape_min_mm is 12
 # A drag a palm cancels keeps the value it had come to (the cancel's place is off the screen).
 finger 1 down 1501 1070
 frame
-expect settings.shape_min_mm is 30
+expect settings.shape_min_mm is 31
 finger 1 move 1386 1070
 frame
-expect settings.shape_min_mm is 20
+expect settings.shape_min_mm is 21
 finger 2 down 1300 2000 0 2
 frame
-expect settings.shape_min_mm is 20
+expect settings.shape_min_mm is 21
 finger 1 up 1386 1070
 finger 2 up 1300 2000
 frame
 wait 100
-expect settings.shape_min_mm is 20
+expect settings.shape_min_mm is 21
 expect editor.shapes_menu is 1
-shot 03-smallest-20
+shot 03-smallest-21
 # A press cut short by the pen coming near (the Kindle cancels a touch the moment the pen arrives,
 # anywhere on the screen, often before the finger has moved a pixel): the press alone has set the
 # value, and the cancel keeps it. Before, the knob moved only with a move or at a lift, so the press
@@ -105,7 +106,7 @@ touch down 1530 840
 expect settings.shape_corner is 25
 touch up 1530 840
 tap 1553 976
-expect settings.shape_min_mm is 12
+expect settings.shape_min_mm is 14
 shot 05-sideways-set
 rotate 0
 wait 300

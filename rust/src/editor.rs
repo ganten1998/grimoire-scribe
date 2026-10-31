@@ -2024,15 +2024,15 @@ fn shape_slider(id: i32, band: Rect, st: &Settings) -> Slider {
         Slider{min:0.0,max:100.0,step:5.0,value:st.shape_corner as f32,label:tr("Corner roundness"),unit:"%",..Default::default()}
     } else {
         // TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
-        // value is "Any" or a size in mm).
-        Slider{min:0.0,max:40.0,step:1.0,value:st.shape_min_mm as f32,label:tr("Smallest shape"),unit:"mm",..Default::default()}
+        // value is a size in mm, 3 to 40).
+        Slider{min:SHAPE_MIN_LO_MM,max:SHAPE_MIN_HI_MM,step:1.0,value:st.shape_min_mm as f32,label:tr("Smallest shape"),unit:"mm",..Default::default()}
     };
     let row=rect_inflate(band,-ui_px(12.0));
     let ts=ui_text_size();
     let need=|label: &str, values: &[&str]| font_measure(FontFace::Regular,ts,label)+ui_px(16.0)
         +values.iter().map(|v| font_measure(FontFace::Bold,ts,v)).max().unwrap_or(0);
     let text_w=need(tr("Corner roundness"),&[c_("corners","Sharp"),&shape_corner_text(100)])
-        .max(need(tr("Smallest shape"),&[tr("Any"),"40 mm"]));
+        .max(need(tr("Smallest shape"),&["40 mm"]));
     sl.text_w=clampi(text_w,row.w*42/100,row.w*64/100);
     ui_slider_layout(&mut sl,row);
     let clear=(ui_slider_knob_radius()+ui_px(10.0)-ui_px(26.0)).max(0);
@@ -2053,8 +2053,7 @@ fn shape_slider_draw(c: &mut Canvas, id: i32, band: Rect, st: &Settings) {
         // TRANSLATORS: Corner roundness at 0: snapped polygons keep sharp corners.
         if st.shape_corner<=0 {c_("corners","Sharp").to_string()} else {shape_corner_text(st.shape_corner)}
     } else {
-        // TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
-        if st.shape_min_mm<=0 {tr("Any").to_string()} else {format!("{} mm",st.shape_min_mm)}
+        format!("{} mm",st.shape_min_mm)
     };
     ui_slider_draw(c,&sl,Some(&text));
 }
@@ -3342,12 +3341,10 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     let hold = shape_dwell_ms(hold_ms,s.sh.burst);
     if now.wrapping_sub(s.sh.anchor_k) < hold { return; }
     s.sh.still_fired = true;
-    // Smaller than the Smallest shape setting (its larger side, on the page): writing, left as drawn.
-    if min_mm > 0 && (raw.bbox.w.max(raw.bbox.h) as f32) < mm_to_px(min_mm as f32, dpi) {
-        if logging {qlog!("shape: hold none smaller than {min_mm} mm");}
-        return;
-    }
+    // Smallest shape is the recognizer's own floor, in the screen mm its gates use (2.0.0-rc.12: it
+    // was a second check in page mm, above a fixed 10 mm floor it could not lower).
     let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
+    prm.min_mm = min_mm as f32;
     prm.burst = s.sh.burst;
     prm.quad_mode=policy.0;prm.circle_mode=policy.1;prm.corner=corner as f32/100.0;
     work_pump();
@@ -6220,6 +6217,7 @@ pub fn editor_shape_hold_cycle(a: &mut App) {
     app_toast(a,tr(match a.settings.shape_hold_ms {400=>n_("Shape hold: Quick (0.4 s)"),900=>n_("Shape hold: Slow (0.9 s)"),_=>n_("Shape hold: Normal (0.55 s)")}),3000);
 }
 pub fn editor_shape_last(a: &mut App) {
+    let min_mm = a.settings.shape_min_mm;
     let (dpi,logging) = (a.dpi,a.shape_log);
     let (policy,corner)=((a.settings.shape_quads,a.settings.shape_round),a.settings.shape_corner);
     let s = ed(a);
@@ -6236,7 +6234,7 @@ pub fn editor_shape_last(a: &mut App) {
     }
     let raw = p.strokes.last().unwrap();
     let mut prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
-    prm.quad_mode=policy.0;prm.circle_mode=policy.1;prm.corner=corner as f32/100.0;
+    prm.quad_mode=policy.0;prm.circle_mode=policy.1;prm.corner=corner as f32/100.0;prm.min_mm=min_mm as f32;
     let started = now_ms();
     let result = shape_recognize(&raw.pts,&prm);
     shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);

@@ -73,7 +73,7 @@ fn gesture_keys_follow_the_older_ones() {
     let want = head.as_bytes();
     check!(got.len() > want.len() && &got[..want.len()] == want);
     let tail = String::from_utf8_lossy(&got[want.len().min(got.len())..]).to_string();
-    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\nshape_min_mm=0\nwhatsnew_seen=\nwhatsnew_hide=0\nshape_corner=0\n");
+    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\nshape_min_mm=10\nwhatsnew_seen=\nwhatsnew_hide=0\nshape_corner=0\n");
     // (undotted: no key before its "=" has a dot)
     for line in tail.lines() {
         let key = line.split('=').next().unwrap_or("");

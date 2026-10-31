@@ -843,7 +843,7 @@ opposite sides within 10 degrees of parallel are made parallel, so a parallelogr
 parallelogram and a trapezium keeps its parallel pair; a kite or any other quad stays as drawn.
 Corner roundness (Sharp by default) rounds the corners of snapped rectangles, squares, quads and
 triangles, as a share of the most rounding the shape can take (at 100% a square becomes a circle); the
-arcs are part of the stroke. Smallest shape (Any by default) leaves strokes smaller than it as drawn.
+arcs are part of the stroke. Smallest shape (10 mm by default, down to 3 mm) leaves strokes smaller than it as drawn; lower it to snap small shapes.
 Both sliders answer where they are first touched and save when the finger or pen lifts. The tool
 picker contains pens and ink. Ordinary writing, white ink and erasing keep their existing behavior.
 
