@@ -5,6 +5,9 @@
 - Make the Pages action open Pages, as the toolbar page count does. Keys, controller buttons, pen gestures and finger gestures you bound to Pages now open Pages instead of the Graph. The Buttons and Gestures sheets list the Graph once, as Graph (`index-map`); a saved `index` binding still opens the Graph. Two fingers down still open the Graph by default.
 - Open the same Go to page sheet from the Links bar as from the go-to-page action and Pages: one keyboard over the notebook that takes a page number or part of a page name.
 - Drop the numbered discs from Links bar rows, since link areas no longer carry numbers; each row starts with its name.
+- Keep the graph's shape when links and pages change: a new link moves only its two pages and their neighbours, a few new pages are placed beside theirs, and a larger change is laid out again from the current positions. Naming an unlinked page or adding plain pages moves nothing. Unlinked pages no longer take hidden room, so maps are tighter with larger dots.
+- View now switches between All and Around. All always fits the whole linked graph; after a pan or pinch the button reads Fit and first fits the current view again. Background layouts are fitted when they finish unless the view was moved.
+- Lay out graphs faster by stopping once their shape settles, write graph.ini only when it changes, and draw labels and pinch previews with less work. Links to the same page of another notebook count once in a page's card.
 
 ## 2.0.0-rc.7 (2026-10-30)
 

@@ -10,7 +10,9 @@ tap panel pages
 tap panel pages.graph
 expect editor.map is graph
 expect editor.map.nodes is 40
-expect editor.map.tray is 2
+# Only the 23 linked pages are laid out: the unlinked ones have no tray and take no room.
+expect editor.map.force is 23
+expect editor.map.tray is 0
 expect editor.map.layout is done
 shot 01-forty-pages
 tap map-node 7

@@ -99,7 +99,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
 - **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
   **Pages** share one navigation bar; Back returns to the notebook. Graph groups destinations by
-  notebook, with All, Around and Fit at the bottom. List shows existing links. Pages has small
+  notebook, with View at the bottom: All fits the whole linked map, Around the rings around a page,
+  and after a pan or pinch the button first fits the view again. List shows existing links. Pages has small
   cached previews and controls for adding, copying, selecting and deleting pages.
   Swipe up with two fingers for the page-status panel: notebook name, page count, link areas and
   **Name page** and **Go to page** over the notebook. Page names stay attached when pages move and appear in the PDF table of contents.

@@ -13,8 +13,7 @@ shot 01-compact-graph
 tap panel map.view
 expect editor.map.mode is around
 tap panel map.view
-expect editor.map.view is fit
-tap panel map.view
+expect editor.map.view is all
 expect editor.map.mode is all
 tap panel map.pages
 waitbg

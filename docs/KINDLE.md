@@ -844,7 +844,9 @@ The selection stroke disappears; a visible border is ordinary ink drawn separate
 ## Unified Index and links between notebooks
 
 Tap the notebook page counter or swipe down with two fingers for the Index. Its header is Back,
-Graph, List and Pages. Back returns to the notebook. Graph keeps All, Around and Fit at the bottom;
+Graph, List and Pages. Back returns to the notebook. Graph's View button at the bottom switches
+between All (the whole linked map, fitted) and Around (the rings around a page); after a pan or
+pinch it reads Fit and first fits the current view again;
 List contains existing links grouped by destination notebook and scrolls without footer options.
 Pages manages the current notebook's pages and shows small cached previews as they are generated.
 

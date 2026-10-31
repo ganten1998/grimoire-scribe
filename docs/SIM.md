@@ -365,6 +365,7 @@ shows what the app holds.
 | `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show |
 | `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
 | `editor.map.visible` | sorted page IDs actually shown in the current graph view |
+| `editor.map.view` | `all` or `around`, after `fit ` when a pan or pinch has moved the view (the next View press fits it again) |
 | `editor.map.stats` | graph nodes (All), current notebook orphans, valid links, current notebook pages, library page total |
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |

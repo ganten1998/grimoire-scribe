@@ -26,11 +26,22 @@ expect editor.page is 1
 tap panel pages
 tap panel pages.graph
 expect editor.map is graph
-# Around current page, then zoom and return to All.
+# Around current page, then back to All.
 tap panel map.view
 expect editor.map.mode is around
 shot 02-around
 tap panel map.view
+expect editor.map.mode is all
+expect editor.map.view is all
+# A panned view: View first fits All again (its label says Fit), then goes on to Around.
+drag pen 900 900 1300 1200 20
+expect editor.map.view is fit all
+shot 02b-panned
+tap panel map.view
+expect editor.map.view is all
+expect editor.map.mode is all
+tap panel map.view
+expect editor.map.mode is around
 tap panel map.view
 expect editor.map.mode is all
 rotate 1
