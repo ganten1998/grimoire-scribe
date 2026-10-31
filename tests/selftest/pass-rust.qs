@@ -5,7 +5,7 @@ wait 200
 expect running is 1
 expect status.zone is 0 0 165 165
 expect status.shown is 0
-expect gestures.pages is touch.2.down
+expect gestures.index-map is touch.2.down
 expect gestures.next-page is touch.2.left
 expect gestures.undo is
 expect settings.gestures is 1

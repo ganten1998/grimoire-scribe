@@ -497,3 +497,15 @@ independent project and is not affiliated with, endorsed by or supported by Amaz
 
 For the proposed selection-annotation and wireless Emacs/org-roam bridge, see
 [the source investigation and integration design](docs/INTEGRATIONS.md). These are future work.
+
+## Name, logo and forks
+
+Grimoire is free software, and you are welcome to fork it under the GPL. The name "Grimoire" and
+the bat logo identify the official builds, though. If you distribute builds of a modified version,
+please give it a different name and icon, and do not present it as the official app.
+
+Official builds come only from the releases on github.com/ganten1998/grimoire-scribe and
+codeberg.org/ganten1998/grimoire-scribe, and from the project's KPM feeds. Grimoire's in-app
+updater follows those feeds.
+
+Contributions are welcome. Open an issue first for a larger change so we can agree on its shape.

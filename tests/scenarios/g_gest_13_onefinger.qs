@@ -11,10 +11,10 @@ wait 200
 expect screen is editor
 fpath 1300 1100 800 1100 400
 expect touch.gesture is
-expect editor.modal is map
+expect editor.modal is pages
 expect fshape.fired is 1
 fpath 1300 1100 800 1100 400
-expect editor.modal is map
+expect editor.modal is pages
 expect fshape.trail is
 expect fshape.fired is 0
 key 45 0
