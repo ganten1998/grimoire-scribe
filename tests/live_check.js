@@ -12,7 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig, filmChoices, annexbNals,
+const { Frames, lightColor, liveBrightness, pictureLight, BRIGHT_MIN, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig, filmChoices, annexbNals,
     annexbSample, avcCOf, mp4Boxes,
         MP4_SCALE, CodecRecorder } = require(path.join(__dirname, '..', 'web', 'live.js'));
 
@@ -60,6 +60,15 @@ light('light: the warmest is amber (' + steps[24] + ')', steps[24][1] > 140 && s
     steps[24][2] > 45 && steps[24][2] < 80);
 light('light: past the warmest is the warmest', lightColor(99).join() === steps[24].join() &&
     lightColor(-5).join() === steps[0].join());
+// The picture's brightness: the light dimmed in proportion, warm or not, black staying black; as
+// stored, a percent in steps of 5 from BRIGHT_MIN to 100, and 100 for what cannot be read.
+light('brightness: 100% is the light itself', pictureLight(12, 100).join() === lightColor(12).join());
+light('brightness: half is half the light, its warmth kept (' + pictureLight(24, 50) + ')',
+    pictureLight(24, 50).every((v, i) => Math.abs(v - lightColor(24)[i] / 2) <= 0.5) && pictureLight(0, 50).join() === '128,128,128');
+light('brightness: the dimmest still shows paper apart from ink', pictureLight(0, BRIGHT_MIN)[0] > 0);
+light('brightness: stored values read back clamped to steps', liveBrightness('70') === 70 && liveBrightness('72') === 70 &&
+    liveBrightness('3') === BRIGHT_MIN && liveBrightness('250') === 100 && liveBrightness(null) === 100 &&
+    liveBrightness('') === 100 && liveBrightness('dim') === 100);
 const ok = light;
 // The pen frame: the stream's own (the pen live_stream.py read), little-endian, and away as null.
 if (pentxt && fs.existsSync(pentxt) && fs.readFileSync(pentxt, 'utf8').trim()) {

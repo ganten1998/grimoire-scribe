@@ -111,7 +111,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   a phone). A slim rail beside the page holds the controls: **Size** (Fit, Fit width, 25% to
   200%; Ctrl or Cmd with the scroll wheel, a trackpad pinch, or the - + 0 keys), **Picture in
   picture**, Monitor mode, full screen, recording, **View settings** (transparent paper, colors,
-  the pen dot, the toolbar and clock layers, latency) and **Keys**. Picture in picture floats the
+  warmth and brightness, the pen dot, the toolbar and clock layers, latency) and **Keys**. Picture in picture floats the
   page over your other windows; keep the original tab open meanwhile, and close the small window
   to bring the view back.
   A small icon in the top right corner says it is on; **Stop** on

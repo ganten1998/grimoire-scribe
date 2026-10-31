@@ -1324,6 +1324,9 @@ fn route_live_page(query: &[u8]) {
         // TRANSLATORS: Live view's slider in the browser: the picture's light from white to warm,
         // following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
         live_word(&mut b, &mut n, "warmth", tr("Warmth"));
+        // TRANSLATORS: Live view's slider in the browser, under Warmth: the picture's light from dim
+        // to full, this browser's own (the Kindle's light is unchanged). About 12 characters.
+        live_word(&mut b, &mut n, "brightness", tr("Brightness"));
         // TRANSLATORS: Live view's switch in the browser: where the Kindle's pen is, drawn over the
         // picture (a dot, see-through while it hovers over the screen, solid while it touches), in
         // recordings too.

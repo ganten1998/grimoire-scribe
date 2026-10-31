@@ -648,10 +648,10 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   p90, maximum), each from when the Kindle read the pen, plus the clocks' uncertainty. It times the
   browser's drawing callback, not when a monitor physically lights a pixel. A 240 fps video showing
   the pen and monitor together is the final check. USB mode and Wi-Fi power saving are not changed
-  by Live view. Live view is sometimes choppy, an open issue not explained yet: the Latency readout's
-  Playout delay stays at its 20 ms cap and the dot skips, in any browser, through restarts. While it
-  is, `ping -i 0.1` from the Kindle to the computer stalls about 250 ms in every 330 ms. On
-  2026-10-28 a change of the radio's power saving (`iw dev wlan0 set power_save on` or `off`) ended
+  by Live view. Live view is sometimes choppy, an open issue not explained yet: the dot skips, in
+  any browser, through restarts, and the Latency readout's Playout delay sat at its cap (20 ms when
+  this was seen; 2.0.0-rc.10 raised the cap to 160 ms). While it is, `ping -i 0.1` from the Kindle
+  to the computer stalls about 250 ms in every 330 ms. On 2026-10-28 a change of the radio's power saving (`iw dev wlan0 set power_save on` or `off`) ended
   it, in one direction in the afternoon and the other in the evening: neither setting is the cure.
   The rail's Size button (or Ctrl or Cmd with the scroll wheel, a trackpad pinch, and the keys -, +
   and 0 where live-keys.ini leaves them free) sets Fit, Fit width or 25% to 200% of the Kindle's

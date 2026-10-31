@@ -3,8 +3,8 @@
 // then the ink epochs in either order, the pen stream's states, Monitor mode, and how the pen
 // stream retries. Then the size engine (stored sizes, keys, Ctrl+wheel), one compose a frame and
 // no canvas made again for a resize that keeps the size, the rail (its sheets, fading, clicks
-// that give focus back), the held eraser's renewals, and picture in picture in each tier: the
-// page's own view drawing nothing while it floats.
+// that give focus back), the held eraser's renewals, picture in picture in each tier (the page's
+// own view drawing nothing while it floats), and View settings' Warmth and Brightness sliders.
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const SOURCE = fs.readFileSync(path.join(__dirname, '../web/live.js'), 'utf8');
@@ -557,5 +557,72 @@ module.exports = async function browserChecks(ok) {
         const q = page(null, {window: {open() {}}});
         await turn();
         ok('pip: without picture in picture, the button pops the picture out', !!q.button('pip') && !q.button('pictureInPicture'));
+    }
+    // View settings' sliders. A drag's steps draw the picture once a frame; a state frame while one is
+    // held never moves its thumb or the picture; let go on the Kindle's warmth (with no change event,
+    // as Chrome sends none for a drag that ends where the last one did) the picture follows the
+    // Kindle's again. Brightness dims the light, warm or not, inverted or on transparent paper, is
+    // remembered, and "As on the Kindle" leaves it be.
+    {
+        const {pictureLight} = require('../web/live.js');
+        const store = {'grimoire.live.brightness': '60'};
+        const q = page(null, {storage: store});
+        // (the Kindle's pixels: paper at the first, ink at the second, paper after)
+        q.raw.getImageData = (x, y, w, h) => {
+            const data = new Uint8ClampedArray(w * h * 4).fill(255);
+            data[4] = data[5] = data[6] = 0;
+            return {data};
+        };
+        const shownCtx = q.canvases[2].ctx;
+        const draws = () => shownCtx.calls.filter(c => c[0] === 'putImageData').length;
+        const px = i => {  // (pixel i of the picture as last drawn: r,g,b,a)
+            const c = shownCtx.calls.filter(c => c[0] === 'putImageData').pop();
+            return Array.from(c[1].data.slice(i * 4, i * 4 + 4)).join();
+        };
+        const lit = (warm, b, a = 255) => pictureLight(warm, b).concat(a).join();
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1)); t.push(frame(5, new Uint8Array([0, 0, 8]))); await turn(); q.paint();
+        const range = max => q.elements.find(e => e.tag === 'input' && e.type === 'range' && e.max === max);
+        const warmth = range('24'), bright = range('100');
+        ok('sliders: warmth shows the Kindle\'s, brightness the one remembered, its percent said', warmth.value === '8' &&
+            bright.value === '60' && bright['@aria-valuetext'] === '60%');
+        ok('sliders: the picture is in the Kindle\'s warmth at the remembered brightness, ink black', px(0) === lit(8, 60) &&
+            px(1) === '0,0,0,255');
+        warmth.listeners.pointerdown[0]({});
+        const before = draws();
+        for (const v of ['7', '5', '3']) { warmth.value = v; warmth.input(); }
+        ok('sliders: a drag\'s steps only ask for a frame', draws() === before && q.raf.length > 0);
+        q.paint();
+        ok('sliders: the frame draws the picture once, at the step reached', draws() === before + 1 && px(0) === lit(3, 60) &&
+            warmth.value === '3');
+        warmth.value = '8'; warmth.input(); q.paint();  // (back on the Kindle's, still held)
+        t.push(frame(5, new Uint8Array([0, 0, 20]))); await turn(); q.paint();
+        ok('sliders: the Kindle\'s warmth changing mid-drag, even dragged onto it, moves neither the thumb nor the picture',
+            warmth.value === '8' && px(0) === lit(8, 60));
+        warmth.value = '20'; warmth.input(); q.paint();
+        q.handlers['document.pointerup']({});
+        q.paint();
+        t.push(frame(5, new Uint8Array([0, 0, 22]))); await turn(); q.paint();
+        ok('sliders: let go on the Kindle\'s warmth, the picture follows the Kindle\'s again', warmth.value === '22' &&
+            px(0) === lit(22, 60) && q.button('follow').hidden === true);
+        bright.listeners.pointerdown[0]({});
+        bright.value = '35'; bright.input(); q.paint();
+        bright.change();
+        ok('sliders: brightness is the picture\'s at the next frame, and remembered', store['grimoire.live.brightness'] === '35' &&
+            px(0) === lit(22, 35) && px(1) === '0,0,0,255' && bright['@aria-valuetext'] === '35%');
+        const invert = q.button('invert');
+        invert.click(); q.paint();
+        ok('sliders: inverted, the paper is black and the ink in the dimmed warm light', px(0) === '0,0,0,255' && px(1) === lit(22, 35));
+        q.button('clear').click(); q.paint();
+        ok('sliders: on transparent paper too, inverted: the ink in the dimmed light, the paper clear', px(0).endsWith(',0') &&
+            px(1) === lit(22, 35));
+        invert.click(); q.paint();
+        ok('sliders: transparent paper, not inverted: black ink, no light to dim', px(0).endsWith(',0') && px(1) === '0,0,0,255');
+        q.button('clear').click();
+        warmth.listeners.pointerdown[0]({}); warmth.value = '2'; warmth.input(); warmth.change(); q.paint();
+        q.button('follow').click(); q.paint();
+        ok('sliders: As on the Kindle takes warmth back to the Kindle\'s and leaves brightness be', warmth.value === '22' &&
+            bright.value === '35' && px(0) === lit(22, 35));
     }
 };

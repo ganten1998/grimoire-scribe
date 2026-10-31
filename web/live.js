@@ -86,6 +86,20 @@
         const c = rgb(1e6 / (1e6 / 6500 + (1e6 / 2400 - 1e6 / 6500) * w)), white = rgb(6500);
         return c.map((v, i) => Math.round(Math.min(255, Math.max(0, v * 255 / white[i]))));
     }
+    // The picture's brightness, this page's own (the Kindle's light is never told): a percent of the
+    // light, BRIGHT_MIN..100 in steps of BRIGHT_STEP, stored as one. A stored value it cannot read
+    // is 100.
+    const BRIGHT_MIN = 10, BRIGHT_STEP = 5;
+    function liveBrightness(v) {
+        const n = Number(v);
+        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return 100;
+        return Math.min(100, Math.max(BRIGHT_MIN, Math.round(n / BRIGHT_STEP) * BRIGHT_STEP));
+    }
+    // The light the picture is drawn in: the front light's color at a warmth, dimmed to a brightness
+    // (a percent). The paper is in it, and the ink while inverted; black stays black.
+    function pictureLight(level, bright) {
+        return lightColor(level).map(v => Math.round(v * bright / 100));
+    }
     // A pen frame's place: {x, y, state} (1 hovering, 2 touching), or null while the pen is away.
     function readPen(body) {
         if (body.length < 5 || !body[4]) return null;
@@ -1022,9 +1036,9 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
-            filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples,
-            FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
+        module.exports = {Frames, lightColor, liveBrightness, pictureLight, BRIGHT_MIN, readPen, penMark, drawMark,
+            filmFit, recordType, H264, filmConfig, filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE,
+            CodecRecorder, readStyle, readSamples, FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
             dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout, ZOOMS, liveSize, sizeValue,
             viewSize, zoomStep, anchorScroll, pipTier};
         return;
@@ -1077,14 +1091,16 @@
     const layers = [{x: 0, y: 0, w: 0, h: 0, bmp: null}, {x: 0, y: 0, w: 0, h: 0, bmp: null}];
     const layerOn = [true, true];
     // size: the picture's size (liveSize), remembered; Monitor mode and a pop-out or PiP window fit
-    // it whatever it is. shownSize: viewSize's answer at the last layout.
-    let size = {mode: 'fit'}, shownSize = null;
+    // it whatever it is. shownSize: viewSize's answer at the last layout. bright: the picture's
+    // brightness (liveBrightness), remembered.
+    let size = {mode: 'fit'}, shownSize = null, bright = 100;
     try {
         layerOn[0] = localStorage.getItem('grimoire.layer.toolbar') !== '0';
         layerOn[1] = localStorage.getItem('grimoire.layer.status') !== '0';
         DOT.color = dotColor(localStorage.getItem('grimoire.dot.color'));
         DOT.size = dotSize(localStorage.getItem('grimoire.dot.size'));
         size = liveSize(localStorage.getItem('grimoire.live.size'));
+        bright = liveBrightness(localStorage.getItem('grimoire.live.brightness'));
     } catch (e) { /* private browsing: the defaults */ }
     const meter = document.createElement('output');
     meter.className = 'latency';
@@ -1148,11 +1164,12 @@
     addEventListener('pagehide', () => popout.close());
     const failedFilms = new Set();                     // (choices an encoder refused once it began)
     // One frame's work, once an animation frame at most (frameSoon): the layout if it was asked
-    // (layoutQueued; approx: while a resize lasts), the batches read since the last frame composed
-    // (stale, in raw's pixels) and shown, the changed rect (dirty, in shown's pixels) drawn where the
-    // picture is, the batches' quick ink retired, and the pen drawn (penQueued). A burst of batches
-    // after a Wi-Fi stall is one compose; a hidden tab has no frames, so its work waits and runs
-    // once when it shows again (but a recording composes at once: composeSoon).
+    // (layoutQueued; approx: while a resize lasts), the look a slider asked (lookQueued), the batches
+    // read since the last frame composed (stale, in raw's pixels) and shown, the changed rect (dirty,
+    // in shown's pixels) drawn where the picture is, the batches' quick ink retired, and the pen
+    // drawn (penQueued). A burst of batches after a Wi-Fi stall is one compose; a hidden tab has no
+    // frames, so its work waits and runs once when it shows again (but a recording composes at once:
+    // composeSoon).
     // vpip: video picture in picture's parts and state (vpipMake).
     const vpip = {made: false, on: false, firefox: false, video: null, track: null, out: null, outCtx: null,
         base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false, keep: 0};
@@ -1178,6 +1195,7 @@
         framing = true;
         try {
             if (layoutQueued) layout(layoutApprox);
+            if (lookQueued) look();
             composeStale();
             present();
             painted();
@@ -1365,22 +1383,43 @@
         invertChoice = want === kindleInvert ? null : want;  // (back to the Kindle's: following it again)
         look();
     });
-    const warmthLabel = el('label', 'warmth', pictureBox);
-    const warmthSlider = document.createElement('input');
-    warmthSlider.type = 'range';
-    warmthSlider.min = '0';
-    warmthSlider.max = String(WARMEST);
-    warmthSlider.step = '1';
-    warmthSlider.addEventListener('input', () => {
-        const want = Number(warmthSlider.value);
-        warmthChoice = want === (kindleWarmth || 0) ? null : want;  // (the Kindle's: following again)
-        look();
-    });
-    warmthLabel.append(words.warmth, warmthSlider);
+    // The sliders. A step only takes the value and asks for a frame, whose look() draws the picture
+    // once however many steps came (a look draws the whole screen again, too slow for every step of
+    // a drag). held: the slider a pointer is dragging, whose value nothing else sets until it is let
+    // go (a state frame meanwhile changes what the Kindle has, never the thumb); let go, a warmth
+    // that is the Kindle's follows the Kindle's again.
+    let held = null, lookQueued = false;
+    function slider(label, min, max, step, take) {
+        const row = el('label', 'slider', pictureBox);
+        const s = document.createElement('input');
+        s.type = 'range';
+        s.min = String(min);
+        s.max = String(max);
+        s.step = String(step);
+        s.addEventListener('pointerdown', () => { held = s; });
+        s.addEventListener('input', () => {
+            take(Number(s.value));
+            lookSoon();
+        });
+        s.addEventListener('change', letGo);
+        row.append(label, s);
+        return s;
+    }
+    function letGo() {
+        held = null;
+        if (warmthChoice === (kindleWarmth || 0)) warmthChoice = null;
+        lookSoon();
+    }
+    for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { if (held) letGo(); });
+    const warmthSlider = slider(words.warmth, 0, WARMEST, 1, v => { warmthChoice = v; });
     const followButton = button(words.follow, () => {
         invertChoice = warmthChoice = null;
         look();
     }, pictureBox, 'follow');
+    const brightSlider = slider(words.brightness, BRIGHT_MIN, 100, BRIGHT_STEP, v => {
+        bright = liveBrightness(v);
+        try { localStorage.setItem('grimoire.live.brightness', String(bright)); } catch (e) { /* this visit only */ }
+    });
     const clearButton = switchRow(words.clear, pictureBox, false, () => {
         clear = !clear;
         clearButton.setAttribute('aria-checked', String(clear));
@@ -1694,20 +1733,32 @@
 
     function inverted() { return invertChoice === null ? kindleInvert : invertChoice; }
     function warmth() { return warmthChoice === null ? (kindleWarmth || 0) : warmthChoice; }
-    // The Invert switch and the Warmth slider as they stand, "As on the Kindle" only while either says
-    // otherwise, the page (black while inverted) and the picture.
+    // The Invert switch and the Warmth and Brightness sliders as they stand, "As on the Kindle" only
+    // while the first two say otherwise, the page (black while inverted) and the picture.
     function look() {
+        lookQueued = false;
         const on = inverted();
         invertSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
-        warmthSlider.value = String(warmth());
+        showSlider(warmthSlider, warmth());
+        showSlider(brightSlider, bright);
+        brightSlider.setAttribute('aria-valuetext', pct(bright / 100));
         followButton.hidden = (invertChoice === null || invertChoice === kindleInvert) &&
             (warmthChoice === null || warmthChoice === (kindleWarmth || 0));
-        light = lightColor(warmth());
+        light = pictureLight(warmth(), bright);
         bodies(b => {
             b.classList.toggle('inverted', on);
             b.style.setProperty('--light', 'rgb(' + light.join(',') + ')');
         });
         repaint(0, 0, raw.width, raw.height);
+    }
+    // A slider at v, unless a pointer holds it (what it is dragged to stands) or it is there already.
+    function showSlider(s, v) {
+        if (s !== held && s.value !== String(v)) s.value = String(v);
+    }
+    // look() at the next frame (the sliders' steps).
+    function lookSoon() {
+        lookQueued = true;
+        frameSoon();
     }
     function status(text, on) {
         pill.textContent = text;
