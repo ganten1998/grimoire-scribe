@@ -633,7 +633,7 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   `input: the raw digitizer's place is N px from the pen's at best (...): Live view shows no
   hovering pen` that they did not match, and the hover dot then only shows where the pen lifted.
 - **Drawing while watching a computer**: pair Live view, then choose Monitor mode (M). It fits the
-  page and hides the controls until the pointer or keyboard focus reaches them. The browser draws
+  page and fades the rail of controls until the pointer moves or keyboard focus reaches it. The browser draws
   quick pressure-sensitive ink from pen samples, in the pen's own shade (the highlighter gray and
   see-through), then replaces it with Grimoire's exact image. Nibs and textured pens can change
   appearance at that handoff; white ink and precise erasing show the paper's color until the real
@@ -647,7 +647,18 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   is, `ping -i 0.1` from the Kindle to the computer stalls about 250 ms in every 330 ms. On
   2026-10-28 a change of the radio's power saving (`iw dev wlan0 set power_save on` or `off`) ended
   it, in one direction in the afternoon and the other in the evening: neither setting is the cure.
-  At actual size, full screen and Monitor mode scroll.
+  The rail's Size button (or Ctrl or Cmd with the scroll wheel, a trackpad pinch, and the keys -, +
+  and 0 where live-keys.ini leaves them free) sets Fit, Fit width or 25% to 200% of the Kindle's
+  pixels, remembered by the browser; a larger page scrolls and drags with the mouse.
+- **Picture in picture in the browser**: the rail's Picture in picture button floats the page over
+  other windows. Where the browser has Document Picture-in-Picture (Chrome, Edge, Brave, Arc and
+  Firefox 151 or later, on a page they treat as secure) the page itself moves there and draws at
+  that window's pixels. The Kindle's page is plain HTTP, so allow its address once: in Firefox add
+  the Kindle's IP address to `dom.securecontext.allowlist` in about:config; in Chromium browsers
+  add `http://<address>:<port>` under "Insecure origins treated as secure" in chrome://flags (edge://flags,
+  brave://flags) and relaunch. Without that, Chromium and Safari float a video of the page, Firefox offers its own
+  Picture-in-Picture button on a video of it, and other browsers open a separate window. View
+  settings repeats these steps whenever Document Picture-in-Picture is missing.
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in

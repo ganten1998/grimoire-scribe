@@ -1,23 +1,36 @@
 // Run the real page against small DOM/canvas stand-ins. Hold PNG decoding open to prove that
 // the independent pen reader paints anyway, and only the eventual tile paint retires its ink;
 // then the ink epochs in either order, the pen stream's states, Monitor mode, and how the pen
-// stream retries.
+// stream retries. Then the size engine (stored sizes, keys, Ctrl+wheel), one compose a frame and
+// no canvas made again for a resize that keeps the size, the rail (its sheets, fading, clicks
+// that give focus back), the held eraser's renewals, and picture in picture in each tier: the
+// page's own view drawing nothing while it floats.
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const SOURCE = fs.readFileSync(path.join(__dirname, '../web/live.js'), 'utf8');
 
 // A page on stand-ins. respond(url) answers its fetches (a stream by default: page.readers[url]
-// gets what the test pushes); timers are kept for the test to run (page.timers).
-function page(respond) {
+// gets what the test pushes); timers are kept for the test to run (page.timers), intervals too
+// (page.intervals). opts: storage (an object: localStorage works, kept there), window and
+// document (added to theirs), canvas (added to each canvas), video (added to each video).
+function page(respond, opts = {}) {
     const canvases = [], raf = [], readers = {}, handlers = {}, timers = [], fetches = [], toggles = [], elements = [];
+    const intervals = [];
     // The page's clock (performance.now): each paint is a frame 100 ms later, so a sample that came
     // before it has played out (the playout holds samples back by at most 20 ms).
     let clock = 1000;
-    let fullscreen = 0;
+    let fullscreen = 0, focused = null;
     function element(tag) {
-        const e = {tag, style: {}, classList: {toggle(name, on) { toggles.push([name, on]); }}, clientWidth: 100,
+        const names = new Set();
+        const e = {tag, style: {}, clientWidth: 192, clientHeight: 132, scrollLeft: 0, scrollTop: 0,
             clientLeft: 0, clientTop: 0, offsetLeft: 0, offsetTop: 0, offsetHeight: 20, width: 0, height: 0,
-            append() {}, replaceChildren() {}, setAttribute(k, v) { this['@' + k] = v; }, addEventListener(type, fn) { this[type] = fn; }};
+            classList: {toggle(name, on) { toggles.push([name, on]); if (on) names.add(name); else names.delete(name); },
+                add(name) { names.add(name); }, remove(name) { names.delete(name); }, contains: name => names.has(name)},
+            getBoundingClientRect() { return {left: 0, top: 0, width: 100, height: 100}; }, focus() { focused = e; },
+            blur() { e.blurred = (e.blurred || 0) + 1; },
+            contains: other => other === e, querySelector: () => null, replaceWith() {}, insertBefore() {},
+            append() {}, replaceChildren() {}, setAttribute(k, v) { this['@' + k] = v; },
+            addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); this[type] = fn; }, listeners: {}};
         elements.push(e);
         if (tag === 'canvas') {
             const ctx = {calls: [], getImageData(x, y, w, h) { return {data: new Uint8ClampedArray(w * h * 4)}; },
@@ -25,7 +38,14 @@ function page(respond) {
             for (const op of ['save', 'restore', 'beginPath', 'arc', 'fill', 'stroke', 'moveTo', 'lineTo', 'rect', 'clip',
                 'scale', 'fillRect', 'clearRect', 'drawImage', 'putImageData']) ctx[op] = (...args) => ctx.calls.push([op, ...args]);
             e.getContext = () => ctx; e.ctx = ctx; canvases.push(e);
+            // (each new size of its pixels, which clears it, counted)
+            let w = 0, h = 0;
+            e.sized = 0;
+            Object.defineProperty(e, 'width', {get: () => w, set: v => { if (v !== w) e.sized++; w = v; }});
+            Object.defineProperty(e, 'height', {get: () => h, set: v => { if (v !== h) e.sized++; h = v; }});
+            Object.assign(e, opts.canvas);
         }
+        if (tag === 'video') Object.assign(e, opts.video);
         return e;
     }
     const host = element('div'), body = element('body'); body.style.setProperty = () => {};
@@ -50,19 +70,24 @@ function page(respond) {
         if (url === '/live/keys') return {ok: true, json: async () => []};
         return stream(url);
     };
+    const store = opts.storage;
+    const document = Object.assign({getElementById: id => id === 'live' ? host : null, createElement: element, body, title: 'Live',
+        documentElement: html, pictureInPictureEnabled: false, querySelectorAll: () => [],
+        addEventListener(name, fn) { handlers['document.' + name] = fn; }}, opts.document);
     const context = {console, Uint8Array, Uint8ClampedArray, DataView, Blob, performance: {now: () => clock}, Promise, Math, Number, Date,
-        JSON, Set, Map, Object, Array, String,
-        document: {getElementById: id => id === 'live' ? host : null, createElement: element, body,
-            documentElement: html, pictureInPictureEnabled: false, addEventListener(name, fn) { handlers['document.' + name] = fn; }},
-        window: {GRIMOIRE_LIVE_WORDS: words, fetch, ReadableStream: function () {}, createImageBitmap: () => imagePromise,
-            devicePixelRatio: 1}, fetch, createImageBitmap: () => imagePromise, innerHeight: 150,
-        localStorage: {getItem() { throw Error('private storage'); }, setItem() { throw Error('private storage'); }},
+        JSON, Set, Map, Object, Array, String, document,
+        window: Object.assign({GRIMOIRE_LIVE_WORDS: words, fetch, ReadableStream: function () {}, createImageBitmap: () => imagePromise,
+            devicePixelRatio: 1, document}, opts.window), fetch, createImageBitmap: () => imagePromise, innerHeight: 150, innerWidth: 800,
+        localStorage: store ? {getItem: k => k in store ? store[k] : null, setItem(k, v) { store[k] = String(v); }}
+            : {getItem() { throw Error('private storage'); }, setItem() { throw Error('private storage'); }},
         sessionStorage: {getItem() { throw Error('private storage'); }, setItem() { throw Error('private storage'); }},
         location: {replace() {}, reload() {}},
         requestAnimationFrame: fn => raf.push(fn), addEventListener: (name, fn) => { handlers[name] = fn; },
-        setInterval() {}, setTimeout: (fn, ms) => timers.push({fn, ms}), clearTimeout() {}};
+        setInterval: (fn, ms) => intervals.push({fn, ms}), setTimeout: (fn, ms) => timers.push({fn, ms}), clearTimeout() {}};
     vm.runInNewContext(SOURCE, context);
-    return {canvases, raf, readers, handlers, timers, fetches, toggles, decode, elements, get now() { return clock; }, get fullscreen() { return fullscreen; },
+    return {canvases, raf, readers, handlers, timers, intervals, fetches, toggles, decode, elements, host, body, document,
+        get focused() { return focused; }, get now() { return clock; }, get fullscreen() { return fullscreen; },
+        view: canvases[3], button: label => elements.find(e => e.tag === 'button' && e.textContent === label),
         overlay: canvases[5].ctx, raw: canvases[1].ctx,
         advance(ms) { clock += ms; },
         paint() { clock += 100; const batch = raf.splice(0); for (const fn of batch) fn(clock); }};
@@ -312,25 +337,225 @@ module.exports = async function browserChecks(ok) {
     p.decode(bmp);
     for (let i = 0; i < 5; i++) await turn();
     const drewLayer = () => p.raw.calls.some(c => c[0] === 'drawImage' && c[1] === bmp && c[6] === 10 && c[7] === 20);
+    ok('layers: a batch is composed at the next animation frame, not as it is read', !drewLayer());
+    p.paint();
     ok('layers: the toolbar\'s layer drawn over the page, at its place', drewLayer());
     const toolbar = p.elements.find(e => e.textContent === 'toolbar');
     const status = p.elements.find(e => e.textContent === 'statusCorner');
     ok('layers: two switches, both on by default without storage', !!toolbar && !!status &&
        toolbar['@aria-checked'] === 'true' && status['@aria-checked'] === 'true');
     p.raw.calls = [];
-    toolbar.click();
+    toolbar.click(); p.paint();
     ok('layers: switched off, the page under the toolbar shows and the layer does not',
        toolbar['@aria-checked'] === 'false' && !drewLayer() && p.raw.calls.some(c => c[0] === 'drawImage' && c[1] !== bmp && c[6] === 10));
     p.raw.calls = [];
-    toolbar.click();
+    toolbar.click(); p.paint();
     ok('layers: on again, the layer is back', drewLayer());
     const empty = new Uint8Array(10);
     t2.push(frame(9, empty)); t2.push(batch(0, 1));
     for (let i = 0; i < 5; i++) await turn();
     p.raw.calls = [];
-    toolbar.click(); toolbar.click();
+    toolbar.click(); toolbar.click(); p.paint();
     ok('layers: one no longer on the screen draws nothing', !drewLayer());
     const select = p.elements.find(e => e.tag === 'select'), picker = p.elements.find(e => e.type === 'color');
     ok('dot: the size small and the first color by default, settable without storage', select.value === 'small' &&
        picker.value === '#f03c28' && (select.value = 'large', select.change(), true) && select.value === 'large');
+
+    // The size engine, in a 100 x 100 room (the stand-in viewport less the rail's gutter) with a
+    // 100 x 100 screen at one device pixel to a CSS pixel.
+    {
+        const store = {'grimoire.live.size': '0.5'};
+        const q = page(null, {storage: store});
+        await turn(); q.readers['/live/stream'].push(hello(1)); await turn(); q.paint();
+        ok('size: a remembered 50% shows the screen at 50 px, averaged into 50 x 50 pixels', q.view.style.width === '50px' &&
+            q.view.width === 50 && q.view.ctx.calls.some(c => c[0] === 'putImageData'));
+        q.handlers.keydown({key: '0'});
+        ok('size: 0 fits the page to its room, and is remembered', q.view.style.width === '100px' && store['grimoire.live.size'] === 'fit');
+        q.handlers.keydown({key: '='}); q.handlers.keydown({key: '+'});
+        q.view.ctx.calls = []; q.paint();
+        ok('size: = and + step up the presets; above actual size the canvas keeps the Kindle\'s pixels, enlarged pixelated',
+            q.view.style.width === '200px' && q.view.width === 100 && q.view.classList.contains('up') && store['grimoire.live.size'] === '2');
+        q.handlers.keydown({key: '-'});
+        ok('size: - steps down', q.view.style.width === '150px' && store['grimoire.live.size'] === '1.5');
+        const viewport = q.elements.find(e => e.className === 'viewport'), wheel = viewport.listeners.wheel[0], stage = q.elements.find(e => e.className === 'stage');
+        let prevented = 0;
+        wheel({ctrlKey: true, deltaY: -50, deltaMode: 0, clientX: 50, clientY: 50, preventDefault() { prevented++; }});
+        wheel({ctrlKey: false, deltaY: -50, preventDefault() { prevented++; }});
+        ok('size: Ctrl+wheel (a pinch) is taken from the browser\'s page zoom and previewed as a scale; a plain wheel scrolls',
+            prevented === 1 && /^scale\(/.test(stage.style.transform) && store['grimoire.live.size'] === '1.5');
+        q.timers.filter(t => t.ms === 150).pop().fn();
+        ok('size: the gesture commits 150 ms after its last event: larger, exact, remembered', store['grimoire.live.size'] === '2' &&
+            stage.style.transform === '' && q.view.style.width === '200px');
+        q.handlers.keydown({key: 'm'});
+        ok('size: Monitor mode fits the page (in all of the room: no padding, no rail gutter) without forgetting the size chosen',
+            q.view.style.width === '132px' && store['grimoire.live.size'] === '2');
+        q.handlers.keydown({key: 'm'});
+        ok('size: and the size comes back after it', q.view.style.width === '200px');
+    }
+    {
+        const q = page(url => url === '/live/keys' ? {ok: true, json: async () => [{code: 12, mods: 0, key: 'Minus', label: 'Undo', action: 'undo'}]} : null);
+        await turn(); q.readers['/live/stream'].push(hello(1)); await turn(); await turn();
+        q.handlers.keydown({key: '-', code: 'Minus', preventDefault() {}});
+        await turn();
+        ok('size: a key live-keys.ini binds goes to the Kindle, not to the size', q.fetches.includes('/live/key') && q.view.style.width === '100px');
+    }
+    // One compose an animation frame, of the batches' rects together; a resize that keeps the size
+    // makes no canvas again, and a burst of them is one layout.
+    {
+        const q = page();
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1)); await turn(); q.paint();
+        const tileAt = (x, y) => { const b = new Uint8Array(9), d = new DataView(b.buffer); d.setUint16(0, x, true); d.setUint16(2, y, true);
+            d.setUint16(4, 10, true); d.setUint16(6, 10, true); return frame(2, b); };
+        t.push(tileAt(0, 0)); t.push(batch(0, 1)); t.push(tileAt(50, 50)); t.push(batch(0, 1));
+        q.decode({close() {}});
+        for (let i = 0; i < 6; i++) await turn();
+        const composes = () => q.raw.calls.filter(c => c[0] === 'drawImage' && c[1] === q.canvases[0]);
+        ok('frames: batches read are not composed until the frame', composes().length === 0);
+        q.paint();
+        const c = composes();
+        ok('frames: two batches before one frame are one compose, of both rects', c.length === 1 && c[0].slice(2, 6).join() === '0,0,60,60');
+        const sized = q.view.sized;
+        q.handlers.resize(); q.handlers.resize(); q.handlers.resize();
+        ok('resize: a burst of resize events asks one frame', q.raf.length === 1);
+        q.paint();
+        ok('resize: a layout that keeps the size makes no canvas again (which clears it)', q.view.sized === sized);
+        const viewport = q.elements.find(e => e.className === 'viewport');
+        viewport.clientWidth = 142;
+        q.handlers.resize(); q.handlers.resize();
+        q.view.ctx.calls = []; q.paint();
+        ok('resize: a new size is one new canvas, scaled by the browser at once while the resize lasts', q.view.width === 50 &&
+            q.view.sized === sized + 2 && q.view.ctx.calls.some(c => c[0] === 'drawImage' && c[1] === q.canvases[2]) &&
+            !q.view.ctx.calls.some(c => c[0] === 'putImageData'));
+        q.timers.filter(t => t.ms === 150).pop().fn(); q.paint();
+        ok('resize: and the exact picture 150 ms after the last', q.view.ctx.calls.some(c => c[0] === 'putImageData'));
+    }
+    // The rail: its sheets, buttons that give focus back after a click, keys between its buttons,
+    // and fading only when it could cover the page and nothing moves.
+    {
+        const q = page();
+        await turn();
+        q.readers['/live/stream'].push(hello(1)); q.readers['/live/stream'].push(batch(0, 1));
+        await turn(); await turn(); q.paint();
+        ok('rail: nothing fades, and no timer runs, at load', !q.toggles.some(t => t[0] === 'chrome-idle' && t[1]) && q.timers.length === 0 &&
+            q.intervals.length === 1);
+        const sizeButton = q.elements.find(e => e['@aria-controls'] === 'live-size'), sizeSheet = q.elements.find(e => e.id === 'live-size');
+        const settings = q.elements.find(e => e['@aria-controls'] === 'live-settings'), settingsSheet = q.elements.find(e => e.id === 'live-settings');
+        sizeButton.click({detail: 1});
+        ok('rail: Size opens its sheet, keeping focus (it opens, it does not act)', !sizeSheet.hidden &&
+            sizeButton['@aria-expanded'] === 'true' && !sizeButton.blurred);
+        settings.click({detail: 1});
+        ok('rail: one sheet at a time', sizeSheet.hidden && !settingsSheet.hidden && sizeButton['@aria-expanded'] === 'false');
+        let prevented = false;
+        q.host.listeners.keydown[0]({key: 'Escape', target: settings, preventDefault() { prevented = true; }});
+        ok('rail: Escape closes it, focus back on its button, the key kept from the Kindle', settingsSheet.hidden &&
+            settings['@aria-expanded'] === 'false' && q.focused === settings && prevented);
+        sizeButton.click({detail: 1});
+        q.handlers.keydown({key: 'Escape', target: q.body, preventDefault() {}});
+        ok('rail: Escape closes it with the focus outside the controls too (a click gave it back)', sizeSheet.hidden &&
+            sizeButton['@aria-expanded'] === 'false');
+        const monitorButton = q.button('monitor');
+        q.host.listeners.keydown[0]({key: 'ArrowDown', target: monitorButton, preventDefault() {}});
+        ok('rail: Down moves to the next button', q.focused === q.button('full'));
+        monitorButton.click({detail: 1});
+        ok('rail: an action clicked with a pointer gives its focus back (no Space presses it again)', monitorButton.blurred === 1);
+        monitorButton.click({detail: 0});
+        ok('rail: one pressed from the keyboard keeps it', monitorButton.blurred === 1 && monitorButton['@aria-pressed'] === 'false');
+        q.intervals[0].fn();
+        ok('rail: at Fit it stays: it covers nothing', !q.toggles.some(t => t[0] === 'chrome-idle' && t[1]));
+        q.handlers.keydown({key: 'm'});
+        q.advance(3000); q.intervals[0].fn();
+        ok('rail: in Monitor mode it fades after 2.5 s with nothing moving', q.toggles.filter(t => t[0] === 'chrome-idle').pop()[1] === true);
+        q.handlers['document.pointermove']();
+        ok('rail: a move brings it back at once', q.toggles.filter(t => t[0] === 'chrome-idle').pop()[1] === false);
+    }
+    // A held eraser renews its lease on a timer of its own, only while it is held.
+    {
+        const sent = [];
+        const q = page((url, now, o) => {
+            if (url === '/live/keys') return {ok: true, json: async () => [{code: 18, mods: 0, key: 'e', label: 'Eraser', action: 'hold-eraser'}]};
+            if (url === '/live/key') { sent.push(o.headers['X-Grimoire-Key']); return {ok: true}; }
+            return null;
+        });
+        await turn(); await turn();
+        q.handlers.keydown({key: 'e', code: 'KeyE', preventDefault() {}});
+        await turn();
+        const renew = q.timers.filter(t => t.ms === 500);
+        ok('keys: holding the eraser arms one 500 ms renewal', renew.length === 1 && sent.join('|') === '18,0,1');
+        renew[0].fn(); await turn();
+        ok('keys: which renews the lease and arms the next', sent.join('|') === '18,0,1|18,0,2' && q.timers.filter(t => t.ms === 500).length === 2);
+        q.handlers.keyup({key: 'e', code: 'KeyE', preventDefault() {}}); await turn();
+        q.timers.filter(t => t.ms === 500).pop().fn(); await turn();
+        ok('keys: released, it renews no more', sent.join('|') === '18,0,1|18,0,2|18,0,0' && q.timers.filter(t => t.ms === 500).length === 2);
+    }
+    // Document Picture-in-Picture: the stage alone moves to its window, whose frames draw it; this
+    // tab is asked for none, and gets the same picture back, drawn whole, when it closes.
+    {
+        const pipRaf = [];
+        const pipBody = {className: '', style: {setProperty() {}}, classList: {toggle() {}}, append(n) { this.child = n; }};
+        const pipWin = {document: {head: {append() {}}, body: pipBody, addEventListener() {}}, closed: false, innerWidth: 100, innerHeight: 100,
+            devicePixelRatio: 1, listeners: {}, focus() {}, addEventListener(t, fn) { this.listeners[t] = fn; },
+            requestAnimationFrame: fn => pipRaf.push(fn), close() { this.closed = true; }};
+        let asked = null;
+        const q = page(null, {window: {documentPictureInPicture: {requestWindow(o) { asked = o; return Promise.resolve(pipWin); }}, open() {}}});
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1)); await turn(); q.paint();
+        const pip = q.button('pictureInPicture'), stage = q.elements.find(e => e.className === 'stage');
+        ok('pip: where the browser has Document PiP the button says Picture in picture', !!pip && !pip.hidden);
+        pip.click(); await turn();
+        ok('pip: a window of the screen\'s shape, half the screen tall, takes the stage alone', asked && asked.width === asked.height &&
+            pipBody.child === stage && / pip$/.test(pipBody.className) && pip['@aria-pressed'] === 'true');
+        pipRaf.splice(0).forEach(fn => fn());
+        t.push(batch(0, 1)); await turn(); await turn();
+        ok('pip: frames come from the PiP window only: this tab is asked for none', q.raf.length === 0 && pipRaf.length === 1);
+        pipRaf.splice(0).forEach(fn => fn());
+        q.view.ctx.calls = [];
+        pipWin.listeners.pagehide();
+        q.paint();
+        ok('pip: closed, the same picture comes back, drawn whole', pipWin.closed && pip['@aria-pressed'] === 'false' &&
+            q.view.ctx.calls.some(c => c[0] === 'drawImage' && c[1] === q.canvases[2] && c.slice(2, 6).join() === '0,0,100,100'));
+    }
+    // Video picture in picture (no Document PiP): its own canvas's video, a frame only when the
+    // picture changed, drawn by animation frames or (a hidden tab) the ticker; the page's view and
+    // its quick ink draw nothing meanwhile, and the view is drawn whole when it ends.
+    {
+        const track = {frames: 0, requestFrame() { this.frames++; }};
+        let fps = null;
+        const vwin = {width: 80, height: 80, addEventListener() {}};
+        const q = page(null, {
+            window: {HTMLCanvasElement: {prototype: {captureStream() {}}}, HTMLVideoElement: {prototype: {requestPictureInPicture() {}}}},
+            document: {pictureInPictureEnabled: true, pictureInPictureElement: null},
+            canvas: {captureStream(f) { fps = f; return {getVideoTracks: () => [track]}; }},
+            video: {play: () => Promise.resolve(), requestPictureInPicture: () => Promise.resolve(vwin)}});
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1)); await turn(); q.paint();
+        const video = q.elements.find(e => e.tag === 'video'), pip = q.button('pictureInPicture');
+        ok('pip (video): made at the first hello: a video of a canvas that makes frames only when asked', video && fps === 0 &&
+            track.frames === 1 && !!pip && !pip.hidden);
+        pip.click(); await turn(); q.paint();
+        const out = q.canvases.find(c => c.width === 80 && c.ctx.calls.some(x => x[0] === 'drawImage'));
+        ok('pip (video): floating, it is as big as its window\'s pixels', pip['@aria-pressed'] === 'true' && !!out && out.height === 80);
+        const frames = track.frames, viewCalls = q.view.ctx.calls.length, inkCalls = q.overlay.calls.length;
+        q.paint(); q.paint();
+        ok('pip (video): no frame while nothing changes', track.frames === frames);
+        t.push(frame(2, tile)); t.push(batch(0, 1)); q.decode({close() {}});
+        for (let i = 0; i < 6; i++) await turn();
+        q.timers.filter(x => x.ms === 16).pop().fn();
+        ok('pip (video): a change is one frame, from the ticker as well (a hidden tab has no animation frames)', track.frames === frames + 1);
+        q.paint();
+        ok('pip (video): meanwhile the page\'s view and its quick ink draw nothing', track.frames === frames + 1 &&
+            q.view.ctx.calls.length === viewCalls && q.overlay.calls.length === inkCalls);
+        video.leavepictureinpicture();
+        q.paint();
+        ok('pip (video): ended, the view is drawn whole again', pip['@aria-pressed'] === 'false' &&
+            q.view.ctx.calls.slice(viewCalls).some(c => c[0] === 'drawImage' && c[1] === q.canvases[2] && c.slice(2, 6).join() === '0,0,100,100'));
+    }
+    {
+        const q = page(null, {window: {open() {}}});
+        await turn();
+        ok('pip: without picture in picture, the button pops the picture out', !!q.button('pip') && !q.button('pictureInPicture'));
+    }
 };

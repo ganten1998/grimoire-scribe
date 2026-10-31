@@ -669,6 +669,109 @@ ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.
     ok('area: over paper where the film has no transparency', flat.data[3] === 255 && Math.abs(flat.data[0] - 150) <= 1 &&
        Math.abs(flat.data[1] - 75) <= 1);
 }
+// The span tables are kept between calls: the same pixels as the spans worked out afresh each
+// call (the reference below, rc.7's), to within a rounding, and every pixel the same whatever rect
+// asked for it (a changed rect's pixels are the whole picture's).
+{
+    function reference(read, sw, sh, dw, dh, d) {
+        const kx = sw / dw, ky = sh / dh;
+        const vx0 = Math.max(0, Math.floor(d.x / kx)), vy0 = Math.max(0, Math.floor(d.y / ky));
+        const vx1 = Math.min(dw, Math.ceil((d.x + d.w) / kx)), vy1 = Math.min(dh, Math.ceil((d.y + d.h) / ky));
+        if (vx1 <= vx0 || vy1 <= vy0) return null;
+        const sx0 = Math.floor(vx0 * kx), sy0 = Math.floor(vy0 * ky);
+        const rw = Math.min(sw, Math.ceil(vx1 * kx)) - sx0, rh = Math.min(sh, Math.ceil(vy1 * ky)) - sy0, ow = vx1 - vx0, oh = vy1 - vy0;
+        const src = read(sx0, sy0, rw, rh), out = new Float64Array(ow * oh * 4);
+        const spans = (v0, k, s0, limit, n) => Array.from({length: n}, (_, i) => {
+            const a = (v0 + i) * k - s0, b = Math.min(a + k, limit), cols = [];
+            for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
+            return cols;
+        });
+        const xs = spans(vx0, kx, sx0, rw, ow), ys = spans(vy0, ky, sy0, rh, oh);
+        for (let o = 0; o < oh; o++) for (let c = 0; c < ow; c++) {
+            const acc = [0, 0, 0, 0];
+            for (let j = 0; j < ys[o].length; j += 2) for (let i = 0; i < xs[c].length; i += 2) {
+                const q = ((ys[o][j]) * rw + xs[c][i]) * 4, w = ys[o][j + 1] * xs[c][i + 1] * src[q + 3];
+                for (let ch = 0; ch < 3; ch++) acc[ch] += src[q + ch] * w;
+                acc[3] += w;
+            }
+            const q = (o * ow + c) * 4;
+            for (let ch = 0; ch < 3; ch++) out[q + ch] = acc[3] > 0 ? acc[ch] / acc[3] : 0;
+            out[q + 3] = acc[3];
+        }
+        return {x: vx0, y: vy0, w: ow, h: oh, data: out};
+    }
+    let seed = 11, worst = 0, mismatched = 0;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let t = 0; t < 300; t++) {
+        const sw = 1 + Math.floor(rnd() * 120), sh = 1 + Math.floor(rnd() * 120);
+        const dw = 1 + Math.floor(rnd() * sw), dh = 1 + Math.floor(rnd() * sh);
+        const px = new Uint8ClampedArray(sw * sh * 4).map(() => rnd() < 0.5 ? 255 : Math.floor(rnd() * 256));
+        const read = (x, y, w, h) => {
+            const o = new Uint8ClampedArray(w * h * 4);
+            for (let r = 0; r < h; r++) o.set(px.subarray(((y + r) * sw + x) * 4, ((y + r) * sw + x + w) * 4), r * w * 4);
+            return o;
+        };
+        const x = Math.floor(rnd() * sw), y = Math.floor(rnd() * sh);
+        const d = {x, y, w: 1 + Math.floor(rnd() * (sw - x)), h: 1 + Math.floor(rnd() * (sh - y))};
+        const got = areaAverage(read, sw, sh, dw, dh, d, null), want = reference(read, sw, sh, dw, dh, d);
+        const whole = areaAverage(read, sw, sh, dw, dh, {x: 0, y: 0, w: sw, h: sh}, null);
+        for (let r = 0; r < got.h; r++) for (let c = 0; c < got.w; c++) for (let ch = 0; ch < 4; ch++) {
+            const g = got.data[(r * got.w + c) * 4 + ch];
+            if (got.data[(r * got.w + c) * 4 + 3] || ch === 3) worst = Math.max(worst, Math.abs(g - want.data[(r * want.w + c) * 4 + ch]));
+            if (g !== whole.data[((got.y + r) * whole.w + got.x + c) * 4 + ch]) mismatched++;
+        }
+    }
+    ok('area: kept span tables give the pixels worked out afresh, to within a rounding (' + worst.toFixed(2) + ')', worst < 1.01);
+    ok('area: a pixel is the same whatever rect asked for it', mismatched === 0);
+}
+// The chunk list: a big frame cut into many chunks comes out whole, once; the bytes still waiting
+// read back.
+{
+    const big = new Uint8Array(200005), d = new DataView(big.buffer);
+    d.setUint32(0, 200001, true); big[4] = 2;
+    for (let i = 5; i < big.length; i++) big[i] = i & 255;
+    const f = new Frames(), got = [];
+    for (let at = 0; at < big.length; at += 997) got.push(...f.push(big.subarray(at, at + 997)));
+    ok('frames: a 200 KB frame in 997-byte chunks comes once, its body whole and its own bytes', got.length === 1 &&
+       got[0].body.length === 200000 && got[0].body.byteOffset === 0 && got[0].body.buffer.byteLength === 200000 &&
+       got[0].body.every((v, i) => v === ((i + 5) & 255)) && f.buf.length === 0 && f.parts.length === 0);
+    f.push(new Uint8Array([3, 0, 0, 0, 4, 9]));
+    ok('frames: a frame cut short waits, its bytes kept', f.buf.join() === '3,0,0,0,4,9');
+    ok('frames: and is read when the rest comes', f.push(new Uint8Array([8]))[0].body.join() === '9,8' && f.size === 0);
+}
+// The size engine's pure parts.
+{
+    const {liveSize, sizeValue, viewSize, zoomStep, anchorScroll, ZOOMS, pipTier} = require('../web/live.js');
+    ok('size: what the browser remembers: Fit for anything else, kept to 25%..200%',
+       liveSize(null).mode === 'fit' && liveSize('fit').mode === 'fit' && liveSize('junk').mode === 'fit' && liveSize('-1').mode === 'fit' &&
+       liveSize('width').mode === 'width' && liveSize('0.5').k === 0.5 && liveSize('9').k === 2 && liveSize('0.01').k === 0.25 &&
+       sizeValue(liveSize('0.75')) === '0.75' && sizeValue({mode: 'width'}) === 'width');
+    const vs = (size, room, tall, ratio, rw = 1860, rh = 2480) => viewSize(size, room, tall, rw, rh, ratio);
+    const fit = vs({mode: 'fit'}, 1188, 768, 2);
+    ok('size: Fit, the whole page in the room (' + fit.cssW + ' x ' + fit.cssH + ' CSS, ' + fit.w + ' x ' + fit.h + ' px)',
+       fit.cssH === 768 && fit.cssW === 576 && fit.w === 1152 && fit.h === 1536 && !fit.up && Math.abs(fit.k - 1152 / 1860) < 1e-9);
+    const width = vs({mode: 'width'}, 1188, 768, 1);
+    ok('size: Fit width, the page as wide as the room, taller than it', width.cssW === 1188 && width.cssH === 1584);
+    const half = vs({mode: 'scale', k: 0.5}, 100, 100, 1.25), actual = vs({mode: 'scale', k: 1}, 100, 100, 1.25);
+    ok('size: 50% and actual size at a 1.25 pixel ratio: whole device pixels, one per Kindle pixel at 100%',
+       half.w === 930 && half.cssW === 744 && actual.w === 1860 && actual.cssW === 1488 && !actual.up);
+    const twice = vs({mode: 'scale', k: 2}, 100, 100, 2);
+    ok('size: 200% keeps the Kindle\'s pixels in the canvas, enlarged by the browser', twice.up && twice.w === 1860 &&
+       twice.cssW === 1860 && twice.k === 2);
+    const land = vs({mode: 'fit'}, 1000, 400, 1, 2480, 1860);
+    ok('size: a turned screen fits by its height', land.cssH === 400 && land.cssW === 533);
+    ok('size: the presets step up and down from any size, at the ends the ends',
+       zoomStep(0.48, 1) === 0.5 && zoomStep(0.48, -1) === 1 / 3 && zoomStep(1, 1) === 1.5 && zoomStep(2, 1) === 2 &&
+       zoomStep(0.25, -1) === 0.25 && zoomStep(0.5, -1) === 1 / 3 && ZOOMS.length === 8);
+    const a = anchorScroll({left: 100, top: 50, width: 200, height: 300}, {left: 50, top: 0, width: 400, height: 600}, 150, 200);
+    ok('size: zooming about the pointer keeps the point under it', a.dx === 0 && a.dy === 100);
+    const win = extra => Object.assign({open() {}, document: {}}, extra);
+    const capture = {HTMLCanvasElement: {prototype: {captureStream() {}}}};
+    ok('pip: each browser\'s tier', pipTier(win({documentPictureInPicture: {requestWindow() {}}})) === 'document' &&
+       pipTier(win(Object.assign({document: {pictureInPictureEnabled: true}, HTMLVideoElement: {prototype: {requestPictureInPicture() {}}}}, capture))) === 'video' &&
+       pipTier(win(Object.assign({navigator: {userAgent: 'Mozilla/5.0 (Macintosh) Gecko/20100101 Firefox/152.0'}}, capture))) === 'firefox' &&
+       pipTier(win({})) === 'popout' && pipTier({document: {}}) === '');
+}
 const clock = new PaintAges();
 clock.sync(1000, 1020, 0xfffffffa);
 clock.sync(1030, 1034, 14);

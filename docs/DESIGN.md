@@ -751,7 +751,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    left, as its mouse leaving the window is no IN_PEN_LEAVE, so there the dot stays where it was
    last). Record takes a third canvas, film: the full-size picture with the pen's mark drawn on
    it, kept as tiles and pen frames come (not by animation frames), so recording continues in a
-   hidden tab. Pop out moves the existing live DOM into another window; it does not use film.
+   hidden tab. Picture in picture does not use film (see below).
 
    **Fast ink** shows what the pen writes in the browser before the tiles can: its samples come on
    a stream of their own (`GET /live/pen`, paired as `/live/stream` is), the page draws a quick
@@ -854,7 +854,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    it highlights. White ink and the precise eraser draw the paper's color (black while inverted;
    on transparent paper they take quick ink away). Nibs, grain, smoothing, tilt, the paper white
    ink brings back and the stroke eraser are the tiles'. Record takes the picture and the pen's
-   dot, never the quick ink. Pop out keeps the same quick-ink canvas as the main view.
+   dot, never the quick ink. Document PiP and the pop-out keep the same quick-ink canvas as the
+   main view; video PiP draws the quick ink and the dot into its own frames.
 
    The page plays the samples out at the pace the Kindle read them (Playout): each shows at its own
    time on the samples' timeline (the identities' microseconds unwrapped) plus an offset, the least
@@ -885,15 +886,34 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    the tiles on a canvas of their own and draws raw as the page with the layers that show; the quick
    ink keeps off the panel only while the panel shows. The Kindle's own screen is unchanged.
 
-   Pop out adopts the existing live DOM/canvases into a same-origin blank window and copies only
-   styles. The original tab holds a placeholder and keeps the streams and JavaScript alive; no
-   second client, video encoder or renderer is created. Animation frames, viewport dimensions
-   and pixel ratio follow the active window. Closing it returns the same DOM to the original
-   tab. A recording keeps its own size independently.
+   The page works per animation frame: a batch read only unions its rect into what waits, and the
+   next frame composes it once (a burst after a Wi-Fi stall is one compose), shows it, draws the
+   changed rect where the picture is and retires the quick ink its batches vouch for. A hidden tab
+   has no frames, so its work waits and runs once on return; only a recording composes at once.
+   The canvases read back each batch (page, raw, shown) are `willReadFrequently`, so they stay in
+   memory and nothing goes to the GPU and back; areaAverage keeps its span tables and buffer
+   between calls. A resize lays out once a frame, makes no canvas again while the size holds,
+   scales the picture with the browser while the resize lasts and averages it exactly 150 ms
+   after. The size engine (Fit, Fit width, or k device pixels to each Kindle pixel, 25% to 200%,
+   remembered in localStorage) never makes a canvas larger than the Kindle's screen: above 100%
+   the browser enlarges it with `image-rendering: pixelated`.
 
-   Monitor mode (M, or its button) fits the page, hides the controls until the pointer or keyboard
-   focus reaches them, and asks for full screen when chosen; the browser remembers it (storage that
-   fails is ignored). Latency (its button) shows two ages at the animation frame that draws them,
+   Picture in picture takes the best tier the browser has. Document Picture-in-Picture (a secure
+   page only) and, without any, a pop-out adopt the live picture alone (its stage) into their
+   window and copy only styles; the original tab keeps a placeholder, the controls, the streams and
+   the JavaScript, and draws nothing: animation frames, size and pixel ratio follow that window,
+   which renders 1:1 at its own device pixels. Closing it returns the same picture. Video PiP
+   (Safari, Chromium on plain http; Firefox there through its own button on the video) floats a
+   video of a canvas of its own sized to the PiP window's pixels: the picture averaged into it,
+   the quick ink and the dot drawn over it, and `captureStream(0)` with `requestFrame` only when
+   something changed. The page's view is off meanwhile and frames come from a Worker's timer as
+   well as animation frames, since a hidden tab has none; the held eraser's lease renewals use
+   that timer too. No second client, stream or watcher is made in any tier. A recording keeps its
+   own size independently.
+
+   Monitor mode (M, or its button) fits the page, fades the controls rail until the pointer moves
+   or keyboard focus reaches it, and asks for full screen when chosen; the browser remembers it (storage that
+   fails is ignored). Latency (its switch in View settings) shows two ages at the animation frame that draws them,
    p50, p90 and the largest of the latest 1000: the pen's quick line, from its sample's Kindle
    time, and the page image, from the time of the newest sample its painted batch vouches for (the
    Kindle's own handling, rendering, PNGs and the network all in it); with the clocks'

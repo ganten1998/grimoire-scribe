@@ -23,24 +23,53 @@
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
-    // frames the chunk completes, each {type, body} (body: the payload, its own bytes).
+    // frames the chunk completes, each {type, body} (body: the payload, its own bytes). The chunks
+    // wait in a list (parts, the first read from at) and each body is copied once, when its frame is
+    // whole: joining them at every chunk copied a big frame over and over.
     function Frames() {
-        this.buf = new Uint8Array(0);
+        this.parts = [];
+        this.at = 0;
+        this.size = 0;  // (the bytes waiting)
     }
-    Frames.prototype.push = function (chunk) {
-        const joined = new Uint8Array(this.buf.length + chunk.length);
-        joined.set(this.buf);
-        joined.set(chunk, this.buf.length);
-        const out = [];
-        let at = 0;
-        while (joined.length - at >= 5) {
-            const len = new DataView(joined.buffer, at, 4).getUint32(0, true);
-            if (len < 1 || len > 64 * 1024 * 1024) throw new Error('bad frame');
-            if (joined.length - at < 4 + len) break;
-            out.push({type: joined[at + 4], body: joined.slice(at + 5, at + 4 + len)});
-            at += 4 + len;
+    // The bytes not read yet, joined (for the checks).
+    Object.defineProperty(Frames.prototype, 'buf', {get() { return this.peek(this.size); }});
+    // The next n waiting bytes, copied, without taking them.
+    Frames.prototype.peek = function (n) {
+        const out = new Uint8Array(n);
+        for (let i = 0, got = 0, at = this.at; got < n; i++, at = 0) {
+            const p = this.parts[i], k = Math.min(n - got, p.length - at);
+            out.set(p.subarray(at, at + k), got);
+            got += k;
         }
-        this.buf = joined.slice(at);
+        return out;
+    };
+    // The next n waiting bytes, taken: a copy (a slice when they are all in one chunk).
+    Frames.prototype.take = function (n) {
+        if (!n) return new Uint8Array(0);
+        const p = this.parts[0];
+        const out = p.length - this.at >= n ? p.slice(this.at, this.at + n) : this.peek(n);
+        this.size -= n;
+        for (let left = n; left > 0;) {
+            const q = this.parts[0], k = Math.min(left, q.length - this.at);
+            left -= k;
+            this.at += k;
+            if (this.at === q.length) { this.parts.shift(); this.at = 0; }
+        }
+        return out;
+    };
+    Frames.prototype.push = function (chunk) {
+        if (chunk.length) {
+            this.parts.push(chunk);
+            this.size += chunk.length;
+        }
+        const out = [];
+        while (this.size >= 5) {
+            const head = this.peek(5), len = head[0] | head[1] << 8 | head[2] << 16 | (head[3] << 24 >>> 0);
+            if (len < 1 || len > 64 * 1024 * 1024) throw new Error('bad frame');
+            if (this.size < 4 + len) break;
+            this.take(5);
+            out.push({type: head[4], body: this.take(len - 1)});
+        }
         return out;
     };
     // The front light's color at a warmth (0..WARMEST, the Kindle's amber level): 6500 K at 0 (white:
@@ -648,6 +677,26 @@
             layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         }
     };
+    // Each of the m output columns (or rows) of an axis of n source pixels: the source pixels it
+    // covers and how much of each (pairs), kept for the next call at the same sizes, as every batch
+    // and frame asks for them again; and the across pass's buffer, grown as needed and kept.
+    const spanCache = new Map();
+    let midBuf = new Float32Array(0);
+    function spanTable(n, m) {
+        const key = n + ':' + m;
+        let t = spanCache.get(key);
+        if (t) return t;
+        const k = n / m;
+        t = [];
+        for (let i = 0; i < m; i++) {
+            const a = i * k, b = Math.min(a + k, n), cols = [];
+            for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
+            t.push(cols);
+        }
+        if (spanCache.size >= 8) spanCache.delete(spanCache.keys().next().value);
+        spanCache.set(key, t);
+        return t;
+    }
     // A sw x sh source drawn into dw x dh pixels, each output pixel the mean of the area of the source
     // it covers (alpha-weighted, for transparent paper): the browser's own scaling (of a canvas, a
     // video, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone by
@@ -660,30 +709,21 @@
         const vx0 = Math.max(0, Math.floor(d.x / kx)), vy0 = Math.max(0, Math.floor(d.y / ky));
         const vx1 = Math.min(dw, Math.ceil((d.x + d.w) / kx)), vy1 = Math.min(dh, Math.ceil((d.y + d.h) / ky));
         if (vx1 <= vx0 || vy1 <= vy0) return null;
-        const sx0 = Math.floor(vx0 * kx), sy0 = Math.floor(vy0 * ky);
-        const sx1 = Math.min(sw, Math.ceil(vx1 * kx)), sy1 = Math.min(sh, Math.ceil(vy1 * ky));
+        // (The source rect read: what the output pixels' spans cover.)
+        const xs = spanTable(sw, dw), ys = spanTable(sh, dh), lastX = xs[vx1 - 1], lastY = ys[vy1 - 1];
+        const sx0 = xs[vx0][0], sy0 = ys[vy0][0];
+        const sx1 = lastX[lastX.length - 2] + 1, sy1 = lastY[lastY.length - 2] + 1;
         const rw = sx1 - sx0, rh = sy1 - sy0, ow = vx1 - vx0, oh = vy1 - vy0;
         const src = read(sx0, sy0, rw, rh);
-        // Each output column (row) as source columns (rows) of the rect read, and how much of each
-        // it covers.
-        function spans(v0, n, k, s0, limit) {
-            const out = [];
-            for (let i = 0; i < n; i++) {
-                const a = (v0 + i) * k - s0, b = Math.min(a + k, limit), cols = [];
-                for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
-                out.push(cols);
-            }
-            return out;
-        }
-        const xs = spans(vx0, ow, kx, sx0, rw), ys = spans(vy0, oh, ky, sy0, rh);
         // Across: rh rows of ow pixels, premultiplied.
-        const mid = new Float32Array(rh * ow * 4);
+        if (midBuf.length < rh * ow * 4) midBuf = new Float32Array(rh * ow * 4);
+        const mid = midBuf;
         for (let r = 0; r < rh; r++)
             for (let o = 0; o < ow; o++) {
-                const cols = xs[o];
+                const cols = xs[vx0 + o];
                 let cr = 0, cg = 0, cb = 0, ca = 0;
                 for (let j = 0; j < cols.length; j += 2) {
-                    const i = (r * rw + cols[j]) * 4, wa = cols[j + 1] * src[i + 3];
+                    const i = (r * rw + cols[j] - sx0) * 4, wa = cols[j + 1] * src[i + 3];
                     cr += src[i] * wa;
                     cg += src[i + 1] * wa;
                     cb += src[i + 2] * wa;
@@ -698,11 +738,11 @@
         // Down, then back from premultiplied (over under, where there is one).
         const p = new Uint8ClampedArray(ow * oh * 4);
         for (let o = 0; o < oh; o++) {
-            const rows = ys[o];
+            const rows = ys[vy0 + o];
             for (let c = 0; c < ow; c++) {
                 let cr = 0, cg = 0, cb = 0, ca = 0;
                 for (let j = 0; j < rows.length; j += 2) {
-                    const m = (rows[j] * ow + c) * 4, w = rows[j + 1];
+                    const m = ((rows[j] - sy0) * ow + c) * 4, w = rows[j + 1];
                     cr += mid[m] * w;
                     cg += mid[m + 1] * w;
                     cb += mid[m + 2] * w;
@@ -826,16 +866,85 @@
         for (const held of this.held.values()) if (held.action === 'hold-eraser') this.enqueue(held.code, held.mods, 2);
     };
 
-    // A pop-out adopts the one live view, leaving a placeholder in the original tab. It
+    // Whether a held key still needs its lease renewed (hold-eraser), so the renewals' timer runs
+    // only while one does.
+    LiveKeyboard.prototype.holding = function () {
+        for (const held of this.held.values()) if (held.action === 'hold-eraser') return true;
+        return false;
+    };
+
+    // The picture's size on this screen (the size engine). size: {mode: 'fit'} (the whole page in
+    // the room), {mode: 'width'} (the page's width), or {mode: 'scale', k}: k device pixels to each
+    // of the Kindle's (1 is Actual size, 100%). As the browser remembers it: 'fit', 'width' or k;
+    // anything else is Fit, and k is kept to ZOOMS' ends.
+    const ZOOMS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1, 1.5, 2];
+    const ZOOM_MIN = ZOOMS[0], ZOOM_MAX = ZOOMS[ZOOMS.length - 1];
+    function liveSize(v) {
+        if (v === 'width') return {mode: 'width'};
+        const k = Number(v);
+        if (v === null || v === undefined || v === '' || !Number.isFinite(k) || k <= 0) return {mode: 'fit'};
+        return {mode: 'scale', k: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k))};
+    }
+    function sizeValue(size) { return size.mode === 'scale' ? String(size.k) : size.mode; }
+    // A size in a room of room x tall CSS pixels, for an rw x rh screen at ratio device pixels to a
+    // CSS pixel: {cssW, cssH} on the page, {w, h} the canvas's pixels, which are never more than the
+    // Kindle's own (above that, up: the browser enlarges them, pixelated, so the e-ink pixels stay
+    // crisp and 200% costs no canvas four times the screen), and k, the device pixels it shows to
+    // each of the Kindle's (the size it says).
+    function viewSize(size, room, tall, rw, rh, ratio) {
+        let cssW, cssH;
+        if (size.mode === 'scale') {
+            cssW = Math.max(1, Math.round(rw * size.k)) / ratio;
+            cssH = Math.max(1, Math.round(rh * size.k)) / ratio;
+        } else {
+            const s = size.mode === 'width' ? room / rw : Math.min(room / rw, tall / rh);
+            cssW = Math.max(1, Math.floor(rw * s));
+            cssH = Math.max(1, Math.floor(rh * s));
+        }
+        const dw = Math.max(1, Math.round(cssW * ratio)), dh = Math.max(1, Math.round(cssH * ratio));
+        const up = dw > rw || dh > rh;
+        return {cssW, cssH, w: up ? rw : dw, h: up ? rh : dh, up, k: dw / rw};
+    }
+    // The next preset from k: up (dir > 0) or down, at the ends the end.
+    function zoomStep(k, dir) {
+        if (dir > 0) return ZOOMS.find(z => z > k + 1e-3) || ZOOM_MAX;
+        return [...ZOOMS].reverse().find(z => z < k - 1e-3) || ZOOM_MIN;
+    }
+    // How far to scroll (dx, dy) so the point at (cx, cy) on the picture, which was at rect before
+    // (its client rect: left, top, width, height), is under (cx, cy) again now it is at rect after.
+    function anchorScroll(before, after, cx, cy) {
+        const fx = before.width ? (cx - before.left) / before.width : 0.5;
+        const fy = before.height ? (cy - before.top) / before.height : 0.5;
+        return {dx: after.left - (cx - fx * after.width), dy: after.top - (cy - fy * after.height)};
+    }
+    // Which picture in picture this browser has: 'document' (Document Picture-in-Picture: the page's
+    // own canvases in a window that floats, drawn at its pixels; a secure page only), 'video' (a
+    // video of the picture that the browser floats: Safari, and Chromium on plain http), 'firefox'
+    // (no API, but Firefox floats a video from its own button on it), else 'popout' (a window of
+    // its own, which does not float), or '' for none.
+    function pipTier(win) {
+        if (win.documentPictureInPicture && win.documentPictureInPicture.requestWindow) return 'document';
+        const canvas = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype.captureStream;
+        if (canvas && win.document && win.document.pictureInPictureEnabled && win.HTMLVideoElement &&
+            win.HTMLVideoElement.prototype.requestPictureInPicture) return 'video';
+        if (canvas && win.navigator && /Firefox\//.test(win.navigator.userAgent || '')) return 'firefox';
+        return win.open ? 'popout' : '';
+    }
+
+    // A pop-out (or a Document Picture-in-Picture window) adopts the live picture alone (root: its
+    // stage), leaving a placeholder in the original tab, whose controls stay where they are. It
     // never navigates to /live or clones scripts/canvases, so the same streams and recorder stay.
     class LivePopout {
         constructor(opener, doc, root, words, changed) {
-            Object.assign(this, {opener, doc, root, words, changed, win: null, placeholder: null});
+            Object.assign(this, {opener, doc, root, words, changed, win: null, placeholder: null, mode: ''});
         }
-        open() {
+        open(width = 600, height = 800) {
             if (this.win && !this.win.closed) { this.win.focus(); return true; }
-            const win = this.opener.open('', '', 'popup,width=760,height=900');
+            const win = this.opener.open('', '', 'popup,width=' + width + ',height=' + height);
             if (!win) return false;
+            return this.adopt(win, 'popout');
+        }
+        adopt(win, mode) {
             const doc = win.document;
             doc.title = this.doc.title;
             for (const node of this.doc.querySelectorAll('link[rel="stylesheet"], style')) {
@@ -843,7 +952,7 @@
                 if (node.href) copy.href = node.href;
                 doc.head.append(copy);
             }
-            doc.body.className = this.doc.body.className;
+            doc.body.className = this.doc.body.className + ' pip';
             doc.body.style.cssText = this.doc.body.style.cssText;
             const placeholder = this.doc.createElement('div');
             placeholder.className = 'popout-placeholder';
@@ -855,7 +964,7 @@
             placeholder.append(text, back);
             this.root.replaceWith(placeholder);
             doc.body.append(this.root);
-            this.win = win; this.placeholder = placeholder;
+            this.win = win; this.placeholder = placeholder; this.mode = mode;
             win.addEventListener('pagehide', () => this.close());
             this.changed(); win.focus();
             return true;
@@ -864,11 +973,9 @@
             const win = this.win;
             if (!win) return;
             this.win = null;
-            // Some browsers detach the child document before delivering its final pagehide.
-            try {
-                this.doc.body.className = win.document.body.className;
-                this.doc.body.style.cssText = win.document.body.style.cssText;
-            } catch (e) { /* the retained root/canvases still return below */ }
+            this.mode = '';
+            // (Some browsers detach the child document before delivering its final pagehide: the
+            // retained root/canvases still return.)
             this.placeholder.replaceWith(this.root);
             this.placeholder = null;
             this.changed();
@@ -880,7 +987,8 @@
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
             filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples,
             FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
-            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout};
+            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout, ZOOMS, liveSize, sizeValue,
+            viewSize, zoomStep, anchorScroll, pipTier};
         return;
     }
 
@@ -891,24 +999,31 @@
         host.textContent = words.old;
         return;
     }
+    // The canvases read back at every batch live in memory (willReadFrequently), so their
+    // getImageData and the draws between them never go to the GPU and back; view, the picture as
+    // shown, stays on the GPU.
+    const cpu = {willReadFrequently: true};
     const page = document.createElement('canvas');     // the screen as the tiles have it: the page under the layers
-    const pageCtx = page.getContext('2d');
+    const pageCtx = page.getContext('2d', cpu);
     const raw = document.createElement('canvas');      // the screen as the Kindle has it, the layers switched on over the page
-    const rawCtx = raw.getContext('2d');
+    const rawCtx = raw.getContext('2d', cpu);
     const shown = document.createElement('canvas');    // how the page shows it, at its size (what Record takes)
-    const shownCtx = shown.getContext('2d');
+    const shownCtx = shown.getContext('2d', cpu);
     const view = document.createElement('canvas');     // shown at the size it takes on this screen
     const viewCtx = view.getContext('2d');
     view.className = 'screen';
     const penLayer = document.createElement('canvas'); // the pen over view: never in its averaged pixels
     const penCtx = penLayer.getContext('2d');
     penLayer.className = 'pen';
-    const stage = document.createElement('div');
+    const stage = document.createElement('div');       // the picture: all that a pop-out or PiP window takes
     stage.className = 'stage';
     const inkLayer = document.createElement('canvas');
     const inkCtx = inkLayer.getContext('2d');
     inkLayer.className = 'pen';
     stage.append(view, inkLayer, penLayer);
+    const viewport = document.createElement('div');    // the room the picture has: it scrolls when larger
+    viewport.className = 'viewport';
+    viewport.append(stage);
     const ink = new FastInk(), ages = new PaintAges(), playout = new Playout();
     // penEpoch: the ink epoch /live/pen is in (0 before its hello); tileInk: the one the picture as
     // drawn is in (the newest painted batch's), so quick ink is drawn only over the screen it was
@@ -923,11 +1038,15 @@
     // whether each shows here (layerOn: the toolbar, the clock and battery corner; both by default).
     const layers = [{x: 0, y: 0, w: 0, h: 0, bmp: null}, {x: 0, y: 0, w: 0, h: 0, bmp: null}];
     const layerOn = [true, true];
+    // size: the picture's size (liveSize), remembered; Monitor mode and a pop-out or PiP window fit
+    // it whatever it is. shownSize: viewSize's answer at the last layout.
+    let size = {mode: 'fit'}, shownSize = null;
     try {
         layerOn[0] = localStorage.getItem('grimoire.layer.toolbar') !== '0';
         layerOn[1] = localStorage.getItem('grimoire.layer.status') !== '0';
         DOT.color = dotColor(localStorage.getItem('grimoire.dot.color'));
         DOT.size = dotSize(localStorage.getItem('grimoire.dot.size'));
+        size = liveSize(localStorage.getItem('grimoire.live.size'));
     } catch (e) { /* private browsing: the defaults */ }
     const meter = document.createElement('output');
     meter.className = 'latency';
@@ -940,63 +1059,275 @@
     // recording that is no WebM (an MP4), which has no transparency, so film has the paper drawn in
     // while Transparent paper is on; h264: the codec VideoEncoder takes at the screen's size
     // (probeH264: its first choice VideoEncoder takes), null for none, undefined while not known yet.
-    // A pop-out moves the same live DOM to another window; film is for recording only.
+    // A pop-out moves the same live picture to another window; film is for recording only.
     let pen = null, showPen = true, penShown = null, penQueued = false, filmPen = null;
     let fitIn = {k: 1, x: 0, y: 0}, flat = false, recordAs = null, h264, probing = '';
-    const popout = new LivePopout(window, document, host, words, () => {
-        pipButton.setAttribute('aria-pressed', popout.win ? 'true' : 'false');
+    const popout = new LivePopout(window, document, stage, words, () => {
+        pipButton.setAttribute('aria-pressed', String(!!popout.win || vpip.on));
         keyboard.release();
-        presentQueued = false; penQueued = false;
-        activeDocument().body.classList.toggle('clear', clear);
-        look(); setMonitor(monitor, false); layout();
+        rafAsked = false;  // (a frame asked of a window now closed never comes)
+        layout();
+        presentSoon(0, 0, raw.width, raw.height);
     });
     function activeWindow() { return popout.win || window; }
     function activeDocument() { return popout.win ? popout.win.document : document; }
+    // The pages' bodies: this tab's and a pop-out's (or PiP window's), which wear the same look.
+    function bodies(fn) {
+        fn(document.body);
+        if (popout.win) fn(popout.win.document.body);
+    }
     function animationFrame(fn) {
         const win = activeWindow();
         return win.requestAnimationFrame ? win.requestAnimationFrame(fn) : requestAnimationFrame(fn);
     }
+    // A timer of the window the picture is in (which the browser slows down only when it is hidden).
+    function later(ms, fn) {
+        const win = activeWindow();
+        return win.setTimeout ? win.setTimeout(fn, ms) : setTimeout(fn, ms);
+    }
+    // Timers a hidden tab does not slow down: a Worker's (made from a Blob, so nothing is fetched),
+    // asked once each, else later's. The held eraser's lease renewals and video PiP's frames run on
+    // them: the browser slows a hidden tab's own timers to once a second, then once a minute.
+    const ticker = {worker: null, next: 1, waiting: new Map(), after(ms, fn) {
+        if (this.worker === null) {
+            this.worker = false;
+            try {
+                if (window.Worker && window.URL && URL.createObjectURL) {
+                    const src = 'onmessage=function(e){setTimeout(function(){postMessage(e.data[0])},e.data[1])}';
+                    this.worker = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
+                    this.worker.onmessage = e => {
+                        const f = this.waiting.get(e.data);
+                        this.waiting.delete(e.data);
+                        if (f) f();
+                    };
+                }
+            } catch (e) { this.worker = false; }
+        }
+        if (!this.worker) { later(ms, fn); return; }
+        this.waiting.set(this.next, fn);
+        this.worker.postMessage([this.next++, ms]);
+    }};
     addEventListener('pagehide', () => popout.close());
     const failedFilms = new Set();                     // (choices an encoder refused once it began)
-    let presentQueued = false, dirty = null;           // (present's rect still to draw, in shown's pixels)
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    const pill = document.createElement('span');
-    pill.className = 'pill';
-    pill.setAttribute('role', 'status');
-    pill.setAttribute('aria-live', 'polite');
-    function button(label, act) {
-        const b = document.createElement('button');
+    // One frame's work, once an animation frame at most (frameSoon): the layout if it was asked
+    // (layoutQueued; approx: while a resize lasts), the batches read since the last frame composed
+    // (stale, in raw's pixels) and shown, the changed rect (dirty, in shown's pixels) drawn where the
+    // picture is, the batches' quick ink retired, and the pen drawn (penQueued). A burst of batches
+    // after a Wi-Fi stall is one compose; a hidden tab has no frames, so its work waits and runs
+    // once when it shows again (but a recording composes at once: composeSoon).
+    // vpip: video picture in picture's parts and state (vpipMake).
+    const vpip = {made: false, on: false, firefox: false, video: null, track: null, out: null, outCtx: null,
+        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false};
+    // (rafAsked, tickAsked: a frame asked of each clock and not come yet, so a hidden tab, whose
+    // animation frames wait, piles up no requests.)
+    let frameQueued = false, framing = false, layoutQueued = false, layoutApprox = false, stale = null, dirty = null;
+    let rafAsked = false, tickAsked = false;
+    function frameSoon() {
+        if (framing) return;
+        frameQueued = true;
+        if (!rafAsked) {
+            rafAsked = true;
+            animationFrame(() => { rafAsked = false; frame(); });
+        }
+        if (vpip.on && !tickAsked) {  // (video PiP goes on while this tab is hidden)
+            tickAsked = true;
+            ticker.after(16, () => { tickAsked = false; frame(); });
+        }
+    }
+    function frame() {
+        if (!frameQueued) return;  // (the other clock came first)
+        frameQueued = false;
+        framing = true;
+        try {
+            if (layoutQueued) layout(layoutApprox);
+            composeStale();
+            present();
+            painted();
+        } finally { framing = false; }
+        if (penQueued) drawPen();
+    }
+    function layoutSoon(approx) {
+        layoutQueued = true;
+        layoutApprox = layoutApprox || !!approx;
+        frameSoon();
+    }
+    function composeSoon(x, y, w, h) {
+        const r = {x, y, w, h};
+        stale = stale ? union(stale, r) : r;
+        if (filming() && activeDocument().hidden) composeStale();
+        else frameSoon();
+    }
+    function composeStale() {
+        const s = stale;
+        stale = null;
+        if (s) compose(s.x, s.y, s.w, s.h);
+    }
+
+    // The controls: a rail in the page's side gutter, as Grimoire's panel is on the Kindle, with the
+    // ones used most (Size, picture in picture, Monitor mode, Full screen, Record) and two sheets
+    // that open beside it (View settings, Keys). At Fit it never covers the page; zoomed, at Fit
+    // width or in Monitor mode it fades while the pointer and keyboard are elsewhere.
+    function el(tag, cls, parent) {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (parent) parent.append(e);
+        return e;
+    }
+    // A button doing act; one clicked with a pointer gives its focus back, so a later Space or Enter
+    // (which live-keys.ini leaves unbound) cannot press it again. Sheet openers keep it (keep).
+    function button(label, act, parent, cls, keep) {
+        const b = el('button', cls, parent);
         b.type = 'button';
         b.textContent = label;
-        b.addEventListener('click', act);
-        bar.append(b);
+        b.addEventListener('click', e => {
+            act(e);
+            if (!keep && e && e.detail > 0 && b.blur) b.blur();
+        });
         return b;
     }
-    const bat = document.getElementById('live-bat');  // Grimoire's pixel bat (httpd.c), first in the bar
-    if (bat && bat.content) bar.append(bat.content.cloneNode(true));
-    bar.append(pill);
+    function switchRow(label, parent, on, act) {
+        const b = button(label, () => act(b), parent, 'switch');
+        b.setAttribute('role', 'switch');
+        b.setAttribute('aria-checked', String(on));
+        return b;
+    }
+    function sheet(id, label) {
+        const s = el('section', 'sheet');
+        s.id = id;
+        s.hidden = true;
+        s.setAttribute('role', 'group');
+        s.setAttribute('aria-label', label);
+        return s;
+    }
+    function group(parent, legend) {
+        const f = el('fieldset', '', parent);
+        el('legend', '', f).textContent = legend;
+        return f;
+    }
+    const rail = el('nav', 'rail');
+    rail.setAttribute('role', 'toolbar');
+    rail.setAttribute('aria-orientation', 'vertical');
+    rail.setAttribute('aria-label', words.controls);
+    const bat = document.getElementById('live-bat');  // Grimoire's pixel bat (httpd.rs), first in the rail
+    if (bat && bat.content) rail.append(bat.content.cloneNode(true));
+    const stateIcon = el('span', 'state', rail);     // (cast, as the Kindle's Live view icon: lit while live)
+    stateIcon.setAttribute('aria-hidden', 'true');
+    const pill = el('span', 'pill', rail);           // (the words: a flag beside the rail while not live)
+    pill.setAttribute('role', 'status');
+    pill.setAttribute('aria-live', 'polite');
+    el('span', 'sep', rail).setAttribute('aria-hidden', 'true');
+    const sizeSheet = sheet('live-size', words.size), settingsSheet = sheet('live-settings', words.settings);
+    const keysPanel = sheet('live-keys', words.keys);
+    keysPanel.classList.add('keys');
+    // One sheet open at a time, beside the button that opened it (opener), its first control focused.
+    // It closes with that button again, Escape (focus back on the button) or a press outside it.
+    let openSheet = null, opener = null, narrow = false;  // (narrow: a window too narrow for the rail beside the page)
+    function sheetButton(label, s, cls) {
+        const b = button(label, () => toggleSheet(s, b), rail, cls, true);
+        b.setAttribute('aria-controls', s.id);
+        b.setAttribute('aria-expanded', 'false');
+        return b;
+    }
+    function toggleSheet(s, from) {
+        const was = openSheet;
+        closeSheet(false);
+        if (was === s) return;
+        openSheet = s;
+        opener = from;
+        s.hidden = false;
+        from.setAttribute('aria-expanded', 'true');
+        placeSheet();
+        const first = s.querySelector && s.querySelector('button:not([hidden]), input, select');
+        if (first && first.focus) first.focus();
+    }
+    function closeSheet(refocus) {
+        if (!openSheet) return;
+        openSheet.hidden = true;
+        opener.setAttribute('aria-expanded', 'false');
+        if (refocus && opener.focus) opener.focus();
+        openSheet = opener = null;
+    }
+    function placeSheet() {
+        if (!openSheet || !opener.getBoundingClientRect) return;
+        if (narrow) { openSheet.style.top = ''; return; }  // (a bottom sheet: live.css)
+        const r = opener.getBoundingClientRect(), tall = openSheet.offsetHeight || 0;
+        openSheet.style.top = Math.max(12, Math.min(r.top, (innerHeight || 0) - tall - 12)) + 'px';
+    }
+    const sizeButton = sheetButton(words.size, sizeSheet, 'ic ic-size');
+    const tier = pipTier(window);
+    const pipButton = button(tier === 'popout' ? words.pip : words.pictureInPicture, pip, rail, 'ic ic-pip');
+    pipButton.setAttribute('aria-pressed', 'false');
+    pipButton.title = pipButton.textContent;
+    if (!tier) pipButton.hidden = true;
+    const monitorButton = button(words.monitor, () => setMonitor(!monitor, true), rail, 'ic ic-mon');
+    monitorButton.title = words.monitor;
+    const fullButton = button(words.full, full, rail, 'ic ic-full');
+    fullButton.title = words.full;
+    const recordButton = button(words.record, record, rail, 'ic ic-rec');
+    const canRecord = !!(window.MediaRecorder && film.captureStream) || !!(window.VideoEncoder && window.VideoFrame);
+    if (!canRecord) recordButton.hidden = true;
+    el('span', 'sep', rail).setAttribute('aria-hidden', 'true');
+    const settingsButton = sheetButton(words.settings, settingsSheet, 'ic ic-set');
+    settingsButton.title = words.settings;
+    const keysButton = sheetButton(words.keys, keysPanel, 'ic ic-keys');
+    keysButton.title = words.keys;
+    const railButtons = [sizeButton, pipButton, monitorButton, fullButton, recordButton, settingsButton, keysButton];
+
+    // Size: Fit, Fit width, the presets from 25% to 200% of the Kindle's pixels, and smaller and
+    // larger by a preset; Ctrl or Cmd with the wheel, or a trackpad's pinch, in between too.
+    const sizeHead = el('p', 'head', sizeSheet);
+    el('span', '', sizeHead).textContent = words.size;
+    const sizeShown = el('output', '', sizeHead);
+    const modes = el('div', 'seg', sizeSheet);
+    const fitChoice = button(words.fit, () => setSize({mode: 'fit'}), modes);
+    const widthChoice = button(words.fitWidth, () => setSize({mode: 'width'}), modes);
+    const presets = el('div', 'seg presets', sizeSheet);
+    const presetButtons = ZOOMS.map(z => {
+        const b = button(pct(z), () => setSize({mode: 'scale', k: z}), presets);
+        if (z === 1) b.title = words.actual;
+        return [b, z];
+    });
+    const steps = el('div', 'steps', sizeSheet);
+    const smaller = button('−', () => zoomBy(-1), steps);
+    smaller.setAttribute('aria-label', words.smaller);
+    smaller.title = words.smaller + ' (-)';
+    const larger = button('+', () => zoomBy(1), steps);
+    larger.setAttribute('aria-label', words.larger);
+    larger.title = words.larger + ' (+)';
+    // A size as a percent, in the page's language ("48 %" in Spanish).
+    function pct(k) {
+        try {
+            return new Intl.NumberFormat(document.documentElement.lang || undefined,
+                {style: 'percent', maximumFractionDigits: 0}).format(k);
+        } catch (e) { return Math.round(k * 100) + '%'; }
+    }
+    function sizeLabel() {
+        const k = shownSize ? shownSize.k : size.mode === 'scale' ? size.k : 1, text = pct(k);
+        const forced = monitor || !!popout.win;
+        const name = forced || size.mode === 'fit' ? words.fit : size.mode === 'width' ? words.fitWidth : '';
+        sizeButton.textContent = text;
+        sizeButton.title = words.size + ': ' + (name ? name + ' (' + text + ')' : text);
+        sizeButton.setAttribute('aria-label', sizeButton.title);
+        sizeShown.textContent = text;
+        fitChoice.setAttribute('aria-pressed', String(size.mode === 'fit'));
+        widthChoice.setAttribute('aria-pressed', String(size.mode === 'width'));
+        for (const [b, z] of presetButtons) b.setAttribute('aria-pressed', String(size.mode === 'scale' && Math.abs(size.k - z) < 1e-3));
+        smaller.disabled = larger.disabled = forced;
+    }
+
+    // View settings: the picture, the pen, what shows over the page, the latency readout, and, where
+    // the browser has no Document Picture-in-Picture, how to give it one.
+    const pictureBox = group(settingsSheet, words.picture);
     // invertChoice, warmthChoice: null while the picture follows the Kindle's Invert colors and front
     // light warmth, else this page's own. kindleWarmth: null on a Kindle without warm light.
-    let fit = true, clear = false, recorder = null, chunks = [], kindleInvert = false, invertChoice = null;
+    let clear = false, recorder = null, chunks = [], kindleInvert = false, invertChoice = null;
     let kindleWarmth = null, warmthChoice = null, light = [255, 255, 255];
-    const fitButton = button(words.actual, () => { fit = !fit; layout(); });
-    const clearButton = button(words.clear, () => {
-        clear = !clear;
-        clearButton.setAttribute('aria-pressed', clear ? 'true' : 'false');
-        activeDocument().body.classList.toggle('clear', clear);
-        repaint(0, 0, raw.width, raw.height);
-    });
-    clearButton.setAttribute('aria-pressed', 'false');
-    const invertSwitch = button(words.invert, () => {
+    const invertSwitch = switchRow(words.invert, pictureBox, false, () => {
         const want = !inverted();
         invertChoice = want === kindleInvert ? null : want;  // (back to the Kindle's: following it again)
         look();
     });
-    invertSwitch.setAttribute('role', 'switch');
-    invertSwitch.className = 'switch';
-    const warmthLabel = document.createElement('label');
-    warmthLabel.className = 'warmth';
+    const warmthLabel = el('label', 'warmth', pictureBox);
     const warmthSlider = document.createElement('input');
     warmthSlider.type = 'range';
     warmthSlider.min = '0';
@@ -1008,54 +1339,47 @@
         look();
     });
     warmthLabel.append(words.warmth, warmthSlider);
-    bar.append(warmthLabel);
     const followButton = button(words.follow, () => {
         invertChoice = warmthChoice = null;
         look();
+    }, pictureBox, 'follow');
+    const clearButton = switchRow(words.clear, pictureBox, false, () => {
+        clear = !clear;
+        clearButton.setAttribute('aria-checked', String(clear));
+        bodies(b => b.classList.toggle('clear', clear));
+        repaint(0, 0, raw.width, raw.height);
     });
-    look();
-    const penSwitch = button(words.pen, () => {
+    const penBox = group(settingsSheet, words.penGroup);
+    const penSwitch = switchRow(words.pen, penBox, true, () => {
         showPen = !showPen;
         penSwitch.setAttribute('aria-checked', showPen ? 'true' : 'false');
         movePen(pen);
     });
-    penSwitch.setAttribute('role', 'switch');
-    penSwitch.className = 'switch';
-    penSwitch.setAttribute('aria-checked', 'true');
     // The dot's color (a few presets and any other) and size, remembered in this browser.
-    const dotBox = document.createElement('span');
-    dotBox.className = 'dot';
+    const dotBox = el('div', 'dot', penBox);
     dotBox.setAttribute('role', 'group');
     dotBox.setAttribute('aria-label', words.dotColor);
     const swatches = DOT_COLORS.map((c, i) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'swatch';
+        const b = button('', () => setDot(c, DOT.size), dotBox, 'swatch');
         b.style.background = c;  // (inline: no pressed button's colors cover it)
         b.title = [words.dotRed, words.dotBlue, words.dotGreen, words.dotOrange, words.dotPurple][i] || c;
         b.setAttribute('aria-label', b.title);
-        b.addEventListener('click', () => setDot(c, DOT.size));
-        dotBox.append(b);
         return b;
     });
-    const dotPicker = document.createElement('input');
+    const dotPicker = el('input', '', dotBox);
     dotPicker.type = 'color';
     dotPicker.title = words.dotCustom;
     dotPicker.setAttribute('aria-label', words.dotCustom);
     dotPicker.addEventListener('input', () => setDot(dotPicker.value, DOT.size));
-    dotBox.append(dotPicker);
-    const dotSizes = document.createElement('select');
+    const dotSizes = el('select', '', dotBox);
     dotSizes.title = words.dotSize;
     dotSizes.setAttribute('aria-label', words.dotSize);
     for (const [v, label] of [['small', words.small], ['medium', words.medium], ['large', words.large]]) {
-        const o = document.createElement('option');
+        const o = el('option', '', dotSizes);
         o.value = v;
         o.textContent = label;
-        dotSizes.append(o);
     }
     dotSizes.addEventListener('change', () => setDot(DOT.color, dotSizes.value));
-    dotBox.append(dotSizes);
-    bar.append(dotBox);
     function setDot(color, size) {
         DOT.color = dotColor(color);
         DOT.size = dotSize(size);
@@ -1068,65 +1392,65 @@
         dotSizes.value = DOT.size;
         movePen(pen);
     }
-    setDot(DOT.color, DOT.size);
     // The toolbar and the clock and battery corner, each shown over the page or not.
-    const layerSwitches = [words.toolbar, words.statusCorner].map((label, i) => {
-        const b = button(label, () => {
-            layerOn[i] = !layerOn[i];
-            b.setAttribute('aria-checked', String(layerOn[i]));
-            try { localStorage.setItem(i ? 'grimoire.layer.status' : 'grimoire.layer.toolbar', layerOn[i] ? '1' : '0'); } catch (e) {}
-            const l = layers[i];
-            if (l.w) compose(l.x, l.y, l.w, l.h);
-            penSoon();  // (the quick ink keeps off the toolbar only while it shows)
-        });
-        b.setAttribute('role', 'switch');
-        b.className = 'switch';
+    const overBox = group(settingsSheet, words.overPage);
+    const layerSwitches = [words.toolbar, words.statusCorner].map((label, i) => switchRow(label, overBox, layerOn[i], b => {
+        layerOn[i] = !layerOn[i];
         b.setAttribute('aria-checked', String(layerOn[i]));
-        return b;
-    });
-    const recordButton = button(words.record, record);
-    const canRecord = !!(window.MediaRecorder && film.captureStream) || !!(window.VideoEncoder && window.VideoFrame);
-    if (!canRecord) recordButton.hidden = true;
-    const pipButton = button(words.pip, pip);
-    pipButton.setAttribute('aria-pressed', 'false');
-    if (!window.open) pipButton.hidden = true;
-    button(words.full, full);
-    const monitorButton = button(words.monitor, () => setMonitor(!monitor, true));
-    const debugButton = button(words.latency, () => {
+        try { localStorage.setItem(i ? 'grimoire.layer.status' : 'grimoire.layer.toolbar', layerOn[i] ? '1' : '0'); } catch (e) {}
+        const l = layers[i];
+        if (l.w) composeSoon(l.x, l.y, l.w, l.h);
+        penSoon();  // (the quick ink keeps off the toolbar only while it shows)
+    }));
+    const debugBox = group(settingsSheet, words.diagnostics);
+    const debugButton = switchRow(words.latency, debugBox, false, () => {
         debug = !debug;
         meter.hidden = !debug;
-        debugButton.setAttribute('aria-pressed', String(debug));
+        debugButton.setAttribute('aria-checked', String(debug));
         if (debug) syncClock();
     });
+    // How to make this page secure for Document Picture-in-Picture (which browsers give a secure
+    // page only: https, or one the browser is told to trust): only where it is missing.
+    if (tier !== 'document') {
+        const help = group(settingsSheet, words.pictureInPicture);
+        help.classList.add('help');
+        const loc = typeof location !== 'undefined' ? location : {};
+        for (const text of [words.pipHelp, words.pipFirefoxHelp.replace('%s', String(loc.hostname || '')),
+            words.pipChromeHelp.replace('%s', String(loc.origin || '')), words.pipSafariHelp])
+            el('p', '', help).textContent = text;
+    }
     // The quick ink is drawn only over the picture of the ink epoch it is in (penEpoch, tileInk).
     function drawable() { return penEpoch !== 0 && penEpoch === tileInk; }
     // The samples' pen over any picture of the same size (penW x penH, the pen stream's hello's): a
     // page turned keeps it, a turn of the screen takes it away until both streams are turned.
     function dotShown() { return penEpoch !== 0 && tileInk !== 0 && penW === raw.width && penH === raw.height; }
-    // A canvas as big as inkLayer for FastInk.draw's see-through runs (made at the first need).
-    function inkScratch() {
+    // A w x h canvas for FastInk.draw's see-through runs (made at the first need).
+    function inkScratch(w, h) {
         if (!layer) {
             const canvas = document.createElement('canvas');
             layer = {canvas, ctx: canvas.getContext('2d')};
         }
-        if (layer.canvas.width !== inkLayer.width || layer.canvas.height !== inkLayer.height) {
-            layer.canvas.width = inkLayer.width;
-            layer.canvas.height = inkLayer.height;
+        if (layer.canvas.width !== w || layer.canvas.height !== h) {
+            layer.canvas.width = w;
+            layer.canvas.height = h;
         }
         return layer;
     }
+    // Monitor mode fits the page (the size chosen comes back after it) and fades the rail.
     function setMonitor(on, gesture) {
-        monitor = on; fit = true; showPen = true;
+        monitor = on; showPen = true;
         penSwitch.setAttribute('aria-checked', 'true');
-        activeDocument().body.classList.toggle('monitor', on);
+        document.body.classList.toggle('monitor', on);
         monitorButton.setAttribute('aria-pressed', String(on));
         try { localStorage.setItem('grimoire.monitor', on ? '1' : '0'); } catch (e) {}
-        if (gesture && on && !activeDocument().fullscreenElement && activeDocument().documentElement.requestFullscreen)
-            activeDocument().documentElement.requestFullscreen().catch(() => {});
-        if (gesture && !on && activeDocument().fullscreenElement && activeDocument().exitFullscreen)
-            activeDocument().exitFullscreen().catch(() => {});
+        if (gesture && on && !document.fullscreenElement && document.documentElement.requestFullscreen)
+            document.documentElement.requestFullscreen().catch(() => {});
+        if (gesture && !on && document.fullscreenElement && document.exitFullscreen)
+            document.exitFullscreen().catch(() => {});
         layout();
     }
+    // The latency readout's clock, measured again every 30 s while it shows.
+    let syncing = false;
     async function syncClock() {
         ages.best = Infinity;
         for (let i = 0; debug && i < 8; i++) {
@@ -1137,6 +1461,10 @@
                 if (r.ok && Number.isInteger(data.ms)) ages.sync(start, end, data.ms);
             } catch (e) { /* try the next request */ }
         }
+        if (debug && !syncing) {
+            syncing = true;
+            later(30000, () => { syncing = false; if (debug) syncClock(); });
+        }
     }
     function showAges() {
         if (!debug) return;
@@ -1145,24 +1473,12 @@
             ' | ' + words.stats + ' | ' + words.playout + ': ' + (fastConnected ? playout.delay.toFixed(1) + ' ms' : '...') +
             ' | ' + words.clockError + ': ' + (ages.best < Infinity ? (ages.best / 2).toFixed(1) + ' ms' : '...');
     }
-    setInterval(() => { if (debug) syncClock(); }, 30000);
     recordLabel();
-    const keysPanel = document.createElement('section');
-    keysPanel.className = 'keys';
-    keysPanel.id = 'live-keys';
-    keysPanel.hidden = true;
-    const keysHint = document.createElement('p');
+    const keysHint = el('p', '', keysPanel);
     keysHint.textContent = words.keysHint;
-    const keysList = document.createElement('dl');
-    const keysMessage = document.createElement('p');
+    const keysList = el('dl', '', keysPanel);
+    const keysMessage = el('p', '', keysPanel);
     keysMessage.setAttribute('role', 'status');
-    keysPanel.append(keysHint, keysList, keysMessage);
-    const keysButton = button(words.keys, () => {
-        keysPanel.hidden = !keysPanel.hidden;
-        keysButton.setAttribute('aria-expanded', String(!keysPanel.hidden));
-    });
-    keysButton.setAttribute('aria-controls', keysPanel.id);
-    keysButton.setAttribute('aria-expanded', 'false');
     const keyboard = new LiveKeyboard([], async event => {
         const r = await fetch('/live/key', {method: 'POST', credentials: 'same-origin', cache: 'no-store',
             headers: {'X-Grimoire-Key': event.join(',')}});
@@ -1185,22 +1501,158 @@
         } catch (e) { keysMessage.textContent = words.keysError; }
     }
     loadKeys();
-    setInterval(() => keyboard.renew(), 500);
+    // A held eraser's lease renewed every 500 ms (the Kindle's lasts 1500) while one is held, on
+    // the ticker, so a hidden tab (the pop-out in front of it) keeps it.
+    let renewing = false;
+    function renewSoon() {
+        if (renewing || !keyboard.holding()) return;
+        renewing = true;
+        ticker.after(500, () => {
+            renewing = false;
+            keyboard.renew();
+            renewSoon();
+        });
+    }
     addEventListener('keyup', e => keyboard.up(e));
     addEventListener('blur', () => keyboard.release());
     addEventListener('pagehide', () => keyboard.release());
-    document.addEventListener('visibilitychange', () => { if (activeDocument().hidden) keyboard.release(); });
-    host.replaceChildren(bar, keysPanel, meter, stage);
-    setMonitor(monitor, false);
+    document.addEventListener('visibilitychange', () => {
+        if (activeDocument().hidden) keyboard.release();
+        if (document.hidden && filming()) composeStale();  // (a recording goes on: what waited for a frame)
+    });
     function handleKeyDown(e) {
-        if (keyboard.down(e) || e.repeat || e.isComposing || keyEditing(e.target) || e.defaultPrevented) return;
-        if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) setMonitor(!monitor, true);
-        if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) full();
+        if (e.key === 'Escape' && openSheet && !e.defaultPrevented) {  // (focus anywhere: a click gave it back)
+            if (e.preventDefault) e.preventDefault();
+            closeSheet(true);
+            return;
+        }
+        if (keyboard.down(e)) { renewSoon(); return; }
+        if (e.repeat || e.isComposing || keyEditing(e.target) || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key === 'm' || e.key === 'M') setMonitor(!monitor, true);
+        else if (e.key === 'f' || e.key === 'F') full();
+        else if (e.key === '+' || e.key === '=') zoomBy(1);  // (after live-keys.ini, whose bindings win)
+        else if (e.key === '-') zoomBy(-1);
+        else if (e.key === '0') setSize({mode: 'fit'});
     }
     addEventListener('keydown', handleKeyDown);
+    // In the rail, Up and Down (and Home, End) move between its buttons and never reach the Kindle;
+    // Escape closes a sheet.
+    host.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && openSheet) {
+            e.preventDefault();
+            closeSheet(true);
+            return;
+        }
+        const list = railButtons.filter(b => !b.hidden), i = list.indexOf(e.target), n = list.length;
+        if (i < 0) return;
+        const back = e.key === 'ArrowUp' || (narrow && e.key === 'ArrowLeft');
+        const on = e.key === 'ArrowDown' || (narrow && e.key === 'ArrowRight');
+        const j = back ? (i + n - 1) % n : on ? (i + 1) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
+        if (j < 0) return;
+        e.preventDefault();
+        list[j].focus();
+    });
+    document.addEventListener('pointerdown', e => {
+        if (openSheet && !openSheet.contains(e.target) && !opener.contains(e.target)) closeSheet(false);
+    });
+    // The rail fades when it could cover the page (zoomed, Fit width, Monitor mode, a narrow window)
+    // and nothing has moved for 2.5 s; never while not live, with a sheet open, with the pointer or
+    // focus on it, or with the picture in another window (there is nothing here to cover). The check rides one 500 ms interval; a move only notes the time.
+    let lastActivity = performance.now(), railHover = false, railFocus = false, idle = false, live = false;
+    function awake() {
+        lastActivity = performance.now();
+        if (idle) setIdle(false);
+    }
+    function setIdle(on) {
+        idle = on;
+        document.body.classList.toggle('chrome-idle', on);
+    }
+    document.addEventListener('pointermove', awake);
+    document.addEventListener('pointerdown', awake);
+    rail.addEventListener('pointerenter', () => { railHover = true; awake(); });
+    rail.addEventListener('pointerleave', () => { railHover = false; awake(); });
+    rail.addEventListener('focusin', () => { railFocus = true; awake(); });
+    rail.addEventListener('focusout', () => { railFocus = false; awake(); });
+    setInterval(() => {
+        const want = live && !openSheet && !railHover && !railFocus && !popout.win && !vpip.on &&
+            (monitor || narrow || size.mode !== 'fit') && performance.now() - lastActivity > 2500;
+        if (want !== idle) setIdle(want);
+    }, 500);
 
-    addEventListener('resize', layout);
-    addEventListener('fullscreenchange', layout);
+    addEventListener('resize', () => { layoutSoon(true); placeSheet(); });
+    addEventListener('fullscreenchange', () => layoutSoon());
+    // Ctrl or Cmd with the wheel, and a trackpad's pinch (which comes as that in Chrome and Firefox,
+    // and as gesture events in Safari), size the picture about the pointer: a CSS scale while the
+    // gesture lasts, the exact picture 150 ms after its last event.
+    let gesture = null, gestureTimer = 0, safariScale = 1;
+    function zoomGesture(f, cx, cy) {
+        if (monitor || popout.win || !shownSize) return;
+        if (!gesture) gesture = {k: shownSize.k, f: 1, before: view.getBoundingClientRect()};
+        gesture.f = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, gesture.k * gesture.f * f)) / gesture.k;
+        gesture.cx = cx;
+        gesture.cy = cy;
+        const b = gesture.before;
+        stage.style.transformOrigin = (cx - b.left) + 'px ' + (cy - b.top) + 'px';
+        stage.style.transform = 'scale(' + gesture.f + ')';
+        clearTimeout(gestureTimer);
+        gestureTimer = setTimeout(endGesture, 150);
+    }
+    function endGesture() {
+        const g = gesture;
+        gesture = null;
+        stage.style.transform = stage.style.transformOrigin = '';
+        if (g) setSize({mode: 'scale', k: g.k * g.f}, g.cx, g.cy);
+    }
+    viewport.addEventListener('wheel', e => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        zoomGesture(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)), e.clientX, e.clientY);
+    }, {passive: false});
+    viewport.addEventListener('gesturestart', e => { e.preventDefault(); safariScale = 1; });
+    viewport.addEventListener('gesturechange', e => {
+        e.preventDefault();
+        zoomGesture(e.scale / safariScale, e.clientX, e.clientY);
+        safariScale = e.scale;
+    });
+    viewport.addEventListener('gestureend', e => e.preventDefault());
+    // A picture larger than its room is dragged with the mouse to see the rest (and scrolls).
+    let pan = null;
+    viewport.addEventListener('pointerdown', e => {
+        if (e.button !== 0 || e.pointerType !== 'mouse' || !viewport.classList.contains('pannable')) return;
+        pan = {x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop};
+        if (viewport.setPointerCapture) viewport.setPointerCapture(e.pointerId);
+        viewport.classList.add('panning');
+        e.preventDefault();
+    });
+    viewport.addEventListener('pointermove', e => {
+        if (!pan) return;
+        viewport.scrollLeft = pan.left - (e.clientX - pan.x);
+        viewport.scrollTop = pan.top - (e.clientY - pan.y);
+    });
+    for (const type of ['pointerup', 'pointercancel']) viewport.addEventListener(type, () => {
+        pan = null;
+        viewport.classList.remove('panning');
+    });
+    // A size chosen: remembered, laid out at once, the point at (cx, cy) kept where it was.
+    function setSize(next, cx, cy) {
+        size = next;
+        try { localStorage.setItem('grimoire.live.size', sizeValue(size)); } catch (e) { /* this visit only */ }
+        if (monitor || popout.win || !raw.width) { sizeLabel(); return; }
+        const before = view.getBoundingClientRect ? view.getBoundingClientRect() : null;
+        layout();
+        if (before && cx !== undefined) {
+            const d = anchorScroll(before, view.getBoundingClientRect(), cx, cy);
+            viewport.scrollLeft += d.dx;
+            viewport.scrollTop += d.dy;
+        }
+    }
+    // Smaller or larger by a preset, about the middle of the room.
+    function zoomBy(dir) {
+        if (monitor || popout.win) return;
+        const r = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : null;
+        const k = shownSize ? shownSize.k : size.mode === 'scale' ? size.k : 1;
+        setSize({mode: 'scale', k: zoomStep(k, dir)}, r ? r.left + r.width / 2 : undefined, r ? r.top + r.height / 2 : 0);
+    }
 
     function inverted() { return invertChoice === null ? kindleInvert : invertChoice; }
     function warmth() { return warmthChoice === null ? (kindleWarmth || 0) : warmthChoice; }
@@ -1212,57 +1664,86 @@
         warmthSlider.value = String(warmth());
         followButton.hidden = (invertChoice === null || invertChoice === kindleInvert) &&
             (warmthChoice === null || warmthChoice === (kindleWarmth || 0));
-        activeDocument().body.classList.toggle('inverted', on);
         light = lightColor(warmth());
-        activeDocument().body.style.setProperty('--light', 'rgb(' + light.join(',') + ')');
+        bodies(b => {
+            b.classList.toggle('inverted', on);
+            b.style.setProperty('--light', 'rgb(' + light.join(',') + ')');
+        });
         repaint(0, 0, raw.width, raw.height);
     }
-    function status(text, live) {
+    function status(text, on) {
         pill.textContent = text;
-        pill.classList.toggle('on', !!live);
+        pill.classList.toggle('on', !!on);
+        rail.classList.toggle('live', !!on);
+        live = !!on;
+        if (!live && idle) setIdle(false);
     }
-    function layout() {
-        fitButton.textContent = fit ? words.actual : words.fit;
-        activeDocument().body.classList.toggle('actual', !fit);  // (actual size scrolls, full screen too: live.css)
-        if (!raw.width) return;
-        const ratio = activeWindow().devicePixelRatio || 1;
-        let w = raw.width / ratio, h = raw.height / ratio;
-        if (fit) {
-            const room = host.clientWidth, tall = (activeWindow().innerHeight || innerHeight) - (monitor ? 2 : bar.offsetHeight + 24);
-            const scale = Math.min(room / raw.width, tall / raw.height);
-            w = Math.max(1, Math.floor(raw.width * scale));
-            h = Math.max(1, Math.floor(raw.height * scale));
+    // The picture's size in its room: the viewport's, less its padding (none in Monitor mode, the
+    // rail's gutter beside a fitted page), or the whole of a pop-out's or PiP window's. The canvases
+    // are made again only when their size changes (which clears them); while a resize lasts
+    // (approx) the browser scales the picture into them at once, and the exact one follows 150 ms
+    // after the last.
+    // (settle: the last resize's exact picture; a timer of another window's cannot be cleared from
+    // this one, so a newer resize makes an older one's timer do nothing instead.)
+    let settle = 0;
+    function layout(approx) {
+        layoutQueued = layoutApprox = false;
+        const away = !!popout.win, win = activeWindow();
+        narrow = (innerWidth || 1000) <= 560;  // (the rail stays in this tab, wherever the picture is)
+        const fitted = monitor || away ? {mode: 'fit'} : size;
+        const gutter = !away && !monitor && fitted.mode === 'fit';
+        document.body.classList.toggle('live-rail', gutter);
+        const pad = monitor ? [0, 0, 0, 0] : [16, 16, gutter && narrow ? 76 : 16, gutter && !narrow ? 76 : 16];
+        viewport.style.padding = pad.map(v => v + 'px').join(' ');
+        fullButton.setAttribute('aria-pressed', String(!!document.fullscreenElement));
+        if (!raw.width) { sizeLabel(); return; }
+        const ratio = win.devicePixelRatio || 1;
+        const room = away ? win.innerWidth : viewport.clientWidth - pad[1] - pad[3];
+        const tall = away ? win.innerHeight : (viewport.clientHeight || innerHeight) - pad[0] - pad[2];
+        const vs = viewSize(fitted, Math.max(1, room || 1), Math.max(1, tall || 1), raw.width, raw.height, ratio);
+        const was = shownSize;
+        shownSize = vs;
+        sizeLabel();
+        viewport.classList.toggle('pannable', !away && (vs.cssW > room + 0.5 || vs.cssH > tall + 0.5));
+        if (was && was.cssW === vs.cssW && was.cssH === vs.cssH && view.width === vs.w && view.height === vs.h) return;
+        view.style.width = vs.cssW + 'px';
+        view.style.height = vs.cssH + 'px';
+        view.classList.toggle('up', vs.up);
+        inkLayer.classList.toggle('up', vs.up);
+        const resized = view.width !== vs.w || view.height !== vs.h;
+        if (resized) {
+            view.width = penLayer.width = inkLayer.width = vs.w;  // (which clears them)
+            view.height = penLayer.height = inkLayer.height = vs.h;
         }
-        view.style.width = w + 'px';
-        view.style.height = h + 'px';
-        view.width = Math.max(1, Math.round(w * ratio));
-        view.height = Math.max(1, Math.round(h * ratio));
-        penLayer.style.left = view.offsetLeft + view.clientLeft + 'px';  // (inside view's border)
-        penLayer.style.top = view.offsetTop + view.clientTop + 'px';
-        penLayer.style.width = w + 'px';
-        penLayer.style.height = h + 'px';
-        penLayer.width = view.width;  // (which clears it)
-        penLayer.height = view.height;
+        penLayer.style.left = view.offsetLeft + 'px';
+        penLayer.style.top = view.offsetTop + 'px';
+        penLayer.style.width = vs.cssW + 'px';
+        penLayer.style.height = vs.cssH + 'px';
         inkLayer.style.cssText = penLayer.style.cssText;
-        inkLayer.width = view.width; inkLayer.height = view.height;
         penShown = null;
         penSoon();
-        presentSoon(0, 0, raw.width, raw.height);
+        if (!resized || vpip.on) return;  // (only the browser's enlargement changed; or the view is off, until vpipOff)
+        if (approx && vs.w < shown.width && !vpip.on) {
+            viewCtx.imageSmoothingEnabled = true;
+            viewCtx.imageSmoothingQuality = 'high';
+            viewCtx.drawImage(shown, 0, 0, vs.w, vs.h);
+            const mine = ++settle;
+            later(150, () => { if (mine === settle) presentSoon(0, 0, raw.width, raw.height); });
+        } else {
+            settle++;
+            presentSoon(0, 0, raw.width, raw.height);
+        }
     }
-    // The pen on the page, at the next frame: its mark on penLayer, over view, in view's pixels.
     function penSoon() {
-        if (penQueued) return;
         penQueued = true;
-        animationFrame(drawPen);
+        frameSoon();
     }
     // The quick ink and the dot as far as the playout has reached (until), and again at the next frame
-    // while samples are still to play. A sample's age counts as it shows.
+    // while samples are still to play. A sample's age counts as it shows. On the page, on inkLayer
+    // and penLayer over view; in video PiP, on its film over its picture, sent as one video frame.
     function drawPen() {
         penQueued = false;
         const now = performance.now(), until = fastConnected ? playout.clock(now) : undefined;
-        inkCtx.clearRect(0, 0, inkLayer.width, inkLayer.height);
-        if (raw.width && drawable())
-            ink.draw(inkCtx, view.width / raw.width, {invert: inverted(), clear, light, exclude: layerOn[0]}, inkScratch(), until);
         let i = 0;
         while (i < paintSamples.length && !(until < paintSamples[i].t)) i++;
         if (debug) for (const s of paintSamples.slice(0, i)) ages.add(ages.samples, now, s.ms);
@@ -1273,10 +1754,32 @@
             if (!samePen(at, pen)) placePen(at);
             if (ink.pending(until)) penSoon();
         }
+        if (!raw.width) return;
+        if (vpip.on) {
+            if (vpip.refit && vpip.win) vpipFit(vpip.win.width, vpip.win.height);
+            vpip.refit = false;
+            vpipDraw(until);
+            return;
+        }
+        const inkLook = {invert: inverted(), clear, light, exclude: layerOn[0]};
+        inkCtx.clearRect(0, 0, inkLayer.width, inkLayer.height);
+        if (drawable()) ink.draw(inkCtx, view.width / raw.width, inkLook, inkScratch(inkLayer.width, inkLayer.height), until);
         if (penShown) penCtx.clearRect(penShown.x, penShown.y, penShown.w, penShown.h);
-        const m = showPen && raw.width ? penMark(pen, view.width / raw.width, activeWindow().devicePixelRatio || 1) : null;
+        const u = shownSize ? view.width / shownSize.cssW : activeWindow().devicePixelRatio || 1;
+        const m = showPen ? penMark(pen, view.width / raw.width, u) : null;
         penShown = m && m.box;
         if (m) drawMark(penCtx, m);
+    }
+    // Video PiP's frame: its picture, the quick ink and the dot laid in out, sent as one frame.
+    function vpipDraw(until) {
+        const c = vpip.outCtx, w = vpip.out.width, h = vpip.out.height, k = w / raw.width;
+        c.fillStyle = 'rgb(' + (inverted() ? [0, 0, 0] : light).join(',') + ')';  // (a video has no transparency)
+        c.fillRect(0, 0, w, h);
+        c.drawImage(vpip.base, 0, 0);
+        if (drawable()) ink.draw(c, k, {invert: inverted(), clear, light, exclude: layerOn[0]}, inkScratch(w, h), until);
+        const m = showPen ? penMark(pen, k, vpip.unit) : null;
+        if (m) drawMark(c, m);
+        if (vpip.track && vpip.track.requestFrame) vpip.track.requestFrame();
     }
     function samePen(a, b) { return a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.state === b.state); }
     // The pen moved, came, went, or was switched off: on the page at the next frame, in film now (it
@@ -1378,20 +1881,23 @@
     }
     // Record's button says what it makes: Record (MP4), or Record (WebM) with why in its tooltip where
     // it cannot be an MP4; plain Record while it is not known yet (the H.264 probe is a promise) or the
-    // browser names none. The MP4's tooltip says how (the codec and size VideoEncoder takes).
+    // browser names none. The MP4's tooltip says how (the codec and size VideoEncoder takes). The
+    // rail shows it as an icon, its words in the tooltip and to screen readers; pressed while it records.
     function recordLabel() {
         if (!canRecord) return;
+        recordButton.setAttribute('aria-pressed', String(!!recorder));
         if (recorder) {
-            recordButton.textContent = words.stop;
+            recordButton.textContent = recordButton.title = words.stop;
             return;
         }
         const viaRecorder = window.MediaRecorder ? t => MediaRecorder.isTypeSupported(t) : () => false;
         recordAs = recordType(viaRecorder, h264 || null);
         const waiting = h264 === undefined && !(recordAs.via === 'recorder' && recordAs.ext === 'mp4');
         recordButton.textContent = waiting || !recordAs.ext ? words.record : recordAs.ext === 'mp4' ? words.recordMp4 : words.recordWebm;
-        recordButton.title = waiting ? '' : recordAs.why ? words.webmBrowser :
+        const how = waiting ? '' : recordAs.why ? words.webmBrowser :
             recordAs.film ? recordAs.film.codec + ', ' + recordAs.film.width + ' x ' + recordAs.film.height + ' (WebCodecs, ' +
                 recordAs.film.format + (recordAs.film.hw ? ', ' + recordAs.film.hw : '') + ')' : '';
+        recordButton.title = recordButton.textContent + (how ? '\n' + how : '');
     }
     // The first of filmChoices that VideoEncoder takes for a w x h screen, asked when a hello gives the
     // size (and again, past the one that failed, when an encoder refused once it began). The answer
@@ -1423,36 +1929,38 @@
             recordLabel();
         })();
     }
-    // shown drawn into view, which has a pixel for each of the screen's, by areaAverage: only the
-    // rect that changed (in shown's pixels); at full size or larger, a plain draw.
+    // The changed rect of shown (dirty, its pixels) drawn where the picture is: in view, or in video
+    // PiP's picture while that floats (the page's view is off meanwhile, and catches up after).
     function present() {
-        presentQueued = false;
         const d = dirty;
         dirty = null;
         if (!raw.width || !d) return;
-        if (shown.width <= view.width && shown.height <= view.height) {
-            viewCtx.imageSmoothingEnabled = true;
-            viewCtx.clearRect(0, 0, view.width, view.height);
-            viewCtx.drawImage(shown, 0, 0, view.width, view.height);
+        if (vpip.on) averageInto(vpip.baseCtx, vpip.base, d);
+        else averageInto(viewCtx, view, d);
+    }
+    // A rect of shown into a canvas of its size or smaller: each pixel the mean of what it covers
+    // (areaAverage), only those the rect reaches; one of the Kindle's pixels each, a copy of the rect.
+    function averageInto(ctx, canvas, d) {
+        if (canvas.width === shown.width && canvas.height === shown.height) {
+            const x = Math.max(0, Math.floor(d.x)), y = Math.max(0, Math.floor(d.y));
+            const w = Math.min(shown.width, Math.ceil(d.x + d.w)) - x, h = Math.min(shown.height, Math.ceil(d.y + d.h)) - y;
+            if (w <= 0 || h <= 0) return;
+            ctx.clearRect(x, y, w, h);
+            ctx.drawImage(shown, x, y, w, h, x, y, w, h);
             return;
         }
         const out = areaAverage((x, y, w, h) => shownCtx.getImageData(x, y, w, h).data, shown.width, shown.height,
-            view.width, view.height, d, null);
+            canvas.width, canvas.height, d, null);
         if (!out) return;
-        const img = viewCtx.createImageData(out.w, out.h);
+        const img = ctx.createImageData(out.w, out.h);
         img.data.set(out.data);
-        viewCtx.putImageData(img, out.x, out.y);
+        ctx.putImageData(img, out.x, out.y);
     }
     function presentSoon(x, y, w, h) {
         const r = {x, y, w, h};
         dirty = dirty ? union(dirty, r) : r;
-        if (presentQueued) return;
-        presentQueued = true;
-        animationFrame(() => {
-            present();
-            painted();
-            drawPen();
-        });
+        penQueued = true;
+        frameSoon();
     }
     // The batches read since the last paint are on the page now, all their tiles in this same frame:
     // the picture is in their ink epoch, and the quick ink they vouch for goes. Their age is the
@@ -1487,22 +1995,150 @@
         throw new Error('unsupported live protocol');
     }
     function full() {
-        const el = activeDocument().documentElement;
-        if (activeDocument().fullscreenElement) activeDocument().exitFullscreen();
-        else if (el.requestFullscreen) el.requestFullscreen();
+        const doc = activeDocument(), el = doc.documentElement;
+        const done = doc.fullscreenElement ? doc.exitFullscreen() : el.requestFullscreen ? el.requestFullscreen() : null;
+        if (done && done.catch) done.catch(() => {});  // (a PiP window may not go full screen)
     }
-    // Move the existing live DOM/canvases to one real window: no video encoding, second
-    // renderer, stream connection or watcher. Closing it returns the same view to this tab.
+    // Picture in picture, the best this browser has (pipTier). Document PiP and the pop-out move
+    // the live picture itself (stage) to their window, with no video, second renderer, stream
+    // connection or watcher: its animation frames, size and pixel ratio are that window's, and this
+    // tab draws nothing until it closes and the same picture comes back. Video PiP floats a video
+    // of the picture instead (vpip). Each call that opens a window comes first in the click, which
+    // it needs.
     function pip() {
         if (popout.win) { popout.close(); return; }
-        if (!popout.open()) return;
-        const win = popout.win;
+        if (vpip.on) { vpipClose(); return; }
+        const tall = Math.round(((typeof screen !== 'undefined' && screen.availHeight) || 1000) * 0.5);
+        const aspect = raw.width && raw.height ? raw.width / raw.height : 0.75;
+        if (tier === 'document') {
+            let asked;
+            try {
+                asked = window.documentPictureInPicture.requestWindow({width: Math.round(tall * aspect), height: tall});
+            } catch (e) { return; }
+            asked.then(win => { if (!popout.win && popout.adopt(win, 'pip')) wire(win); }, () => {});
+        } else if (tier === 'video') vpipOpen();
+        else if (tier === 'firefox') vpipFirefox();
+        else if (popout.open(Math.round(tall * 1.2 * aspect), Math.round(tall * 1.2))) wire(popout.win);
+    }
+    function wire(win) {
         win.addEventListener('keydown', handleKeyDown);
         win.addEventListener('keyup', e => keyboard.up(e));
         win.addEventListener('blur', () => keyboard.release());
-        win.addEventListener('resize', layout);
-        win.addEventListener('fullscreenchange', layout);
+        win.addEventListener('resize', () => layoutSoon(true));
+        win.addEventListener('fullscreenchange', () => layoutSoon());
         win.document.addEventListener('visibilitychange', () => { if (win.document.hidden) keyboard.release(); });
+    }
+    // Video PiP (where there is no Document PiP: Safari, Chromium on plain http, and Firefox there,
+    // whose own button floats a video): out, a canvas of its own as big as the PiP window's pixels,
+    // is its video (captureStream(0): a frame only when requestFrame says it changed, none while
+    // nothing does). base has the picture averaged into it as on the page (present, dirty rects
+    // only); drawPen lays it, the quick ink and the dot in out and sends the frame. While it floats
+    // the page's view is off (a placeholder in its place), and frames come from the ticker as well
+    // as animation frames, since the tab is usually hidden then. Made at the first hello, so a click
+    // can float it at once (the video must have had a frame).
+    function vpipMake() {
+        if (vpip.made || (tier !== 'video' && tier !== 'firefox') || !raw.width) return;
+        vpip.made = true;
+        vpip.base = document.createElement('canvas');
+        vpip.baseCtx = vpip.base.getContext('2d');
+        vpip.out = document.createElement('canvas');
+        vpip.outCtx = vpip.out.getContext('2d', {alpha: false});
+        try {
+            const stream = vpip.out.captureStream(0);
+            vpip.track = stream.getVideoTracks()[0];
+            const v = vpip.video = document.createElement('video');
+            v.className = 'pipvideo';
+            v.muted = true;
+            v.playsInline = true;
+            v.autoplay = true;
+            v.srcObject = stream;
+            v.addEventListener('enterpictureinpicture', e => vpipOn(e.pictureInPictureWindow));
+            v.addEventListener('leavepictureinpicture', () => { if (!vpip.firefox) vpipOff(); });
+            host.append(v);
+        } catch (e) { vpip.video = null; return; }
+        vpipFit();
+        vpipDraw();  // (its first frame, at once)
+        const played = vpip.video.play();
+        if (played && played.catch) played.catch(() => {});
+    }
+    // out and base sized to a w x h window (CSS pixels; half the screen's height before one is
+    // known), the screen whole in it, in device pixels, at most the Kindle's own.
+    function vpipFit(w, h) {
+        const ratio = window.devicePixelRatio || 1;
+        if (!w || !h) h = w = ((typeof screen !== 'undefined' && screen.availHeight) || 1000) * 0.5 * ratio;
+        else { w *= ratio; h *= ratio; }
+        const k = Math.min(1, w / raw.width, h / raw.height);
+        const ow = Math.max(1, Math.round(raw.width * k)), oh = Math.max(1, Math.round(raw.height * k));
+        vpip.unit = ratio / Math.min(w / ow, h / oh);  // (the dot as big as on the page, in CSS pixels)
+        if (vpip.out.width === ow && vpip.out.height === oh) return;
+        vpip.out.width = vpip.base.width = ow;
+        vpip.out.height = vpip.base.height = oh;
+        averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
+    }
+    function vpipOpen() {
+        vpipMake();
+        if (!vpip.video) return;
+        let asked;
+        try { asked = vpip.video.requestPictureInPicture(); } catch (e) { return; }
+        asked.then(w => vpipOn(w), () => {});
+    }
+    // Firefox: the video in the page in the picture's place, for its own picture-in-picture button
+    // (shown while the pointer is on it, or in its context menu); Bring back ends it.
+    function vpipFirefox() {
+        vpipMake();
+        if (!vpip.video) return;
+        vpip.firefox = true;
+        vpipOn(null);
+    }
+    function vpipOn(w) {
+        if (w && !vpip.win) {
+            vpip.win = w;
+            // (refit at the next frame: a drag sends many, and each refit averages the whole picture)
+            w.addEventListener('resize', () => { if (vpip.win === w) { vpip.refit = true; penSoon(); } });
+        }
+        if (w) vpipFit(w.width, w.height);
+        if (vpip.on) return;
+        vpip.on = true;
+        vpip.away = vpip.away || awayNote(vpip.firefox ? words.pipFirefoxHint : words.popoutActive, vpipClose);
+        if (vpip.firefox) {
+            vpip.video.classList.add('shown');
+            vpip.away.insertBefore(vpip.video, vpip.away.lastChild);
+        }
+        stage.replaceWith(vpip.away);
+        pipButton.setAttribute('aria-pressed', 'true');
+        averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
+        if (vpip.video.paused && vpip.video.play) {  // (a browser may have paused it, unseen in the page)
+            const played = vpip.video.play();
+            if (played && played.catch) played.catch(() => {});
+        }
+        penSoon();
+    }
+    function vpipOff() {
+        if (!vpip.on) return;
+        vpip.on = false;
+        vpip.win = null;
+        if (vpip.firefox) {
+            vpip.firefox = false;
+            vpip.video.classList.remove('shown');
+            host.append(vpip.video);
+        }
+        vpip.away.replaceWith(stage);
+        vpip.away = null;
+        pipButton.setAttribute('aria-pressed', String(!!popout.win));
+        layoutSoon();
+        presentSoon(0, 0, raw.width, raw.height);  // (the page's view, off meanwhile, catches up)
+    }
+    function vpipClose() {
+        if (vpip.firefox || !document.pictureInPictureElement) { vpipOff(); return; }
+        const done = document.exitPictureInPicture();  // (then leavepictureinpicture)
+        if (done && done.catch) done.catch(() => vpipOff());
+    }
+    // This tab's note while the picture is elsewhere, with a button that brings it back.
+    function awayNote(text, back) {
+        const note = el('div', 'popout-placeholder');
+        el('p', '', note).textContent = text;
+        button(words.popoutReturn, back, note);
+        return note;
     }
     // Record: film (shown and the pen) at 15 frames a second, as an MP4 wherever the browser can make
     // one (recordType): by MediaRecorder, or by CodecRecorder where MediaRecorder writes no MP4. film
@@ -1617,6 +2253,11 @@
         return {x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y};
     }
 
+    host.replaceChildren(rail, sizeSheet, settingsSheet, keysPanel, meter, viewport);
+    setDot(DOT.color, DOT.size);
+    look();
+    setMonitor(monitor, false);
+
     // Draws the stream until it ends: 'bye' when Live view was turned off on the Kindle.
     async function read(reader) {
         const frames = new Frames();
@@ -1646,6 +2287,9 @@
                     movePen(null);  // (a hello takes the pen away: the next pen frame or sample is on the new screen)
                     probeH264(w, h);
                     layout();
+                    presentSoon(0, 0, w, h);
+                    if (vpip.made) vpipFit(vpip.win && vpip.win.width, vpip.win && vpip.win.height);
+                    else vpipMake();
                     if (filming()) filmAll();
                     tileHellos++;
                     for (const wake of helloWaiters.splice(0)) wake();
@@ -1690,7 +2334,7 @@
                             batchAckMs = d.getUint32(12, true);
                         }
                     }
-                    if (dirty) compose(dirty.x, dirty.y, dirty.w, dirty.h);
+                    if (dirty) composeSoon(dirty.x, dirty.y, dirty.w, dirty.h);
                     else presentSoon(0, 0, 1, 1);
                     status(words.live, true);
                 } else if (type === 6 && body.length >= 5) {
