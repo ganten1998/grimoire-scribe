@@ -139,7 +139,7 @@ expect editor.panel_rect is 1704 220 128 1950
 rotate 1
 wait 300
 expect size is 2480x1860
-expect editor.panel_rect is 1962 18 128 1830
+expect editor.panel_rect is 1962 30 128 1830
 expect editor.panel_button is 99
 shot 04-sideways-two-pins
 # The third pin added sideways (Marker): the panel keeps its 12 px margins,
@@ -157,7 +157,7 @@ pentap editor picker.tool:marker
 wait 200
 expect editor.pins is highlighter,fineliner,marker
 expect settings.panel_tools is highlighter,fineliner,marker
-expect editor.panel_rect is 1962 18 128 1820
+expect editor.panel_rect is 1962 30 128 1820
 expect editor.panel_button is 93
 # A fourth: refused, with a toast
 pentap editor picker.tool:calligraphy

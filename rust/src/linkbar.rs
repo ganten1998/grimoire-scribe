@@ -577,7 +577,8 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
     // The press is let go: drawn as it was, and refreshed whatever the tap did.
     canvas_invert(&mut a.screen, h.r);
     *dirty = h.r;
-    let held = ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS;
+    // (only a List chip has a hold, the long-press card: a slow press on anything else is its tap)
+    let held = h.id == LB_CHIP && lb.mode == LbMode::List && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS;
     if held || !press_is_tap(&lb.press, h.r) {
         return LbResult::None;
     }

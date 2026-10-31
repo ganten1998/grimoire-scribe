@@ -52,7 +52,8 @@ fn press_logic() {
     press_move(&mut p, 105.0, 103.0);
     check!(press_is_tap(&p, Rect { x: 50, y: 50, w: 100, h: 100 }));
     press_move(&mut p, 300.0, 100.0);
-    check!(!press_is_tap(&p, Rect { x: 50, y: 50, w: 400, h: 100 }));
+    check!(p.moved && press_is_tap(&p, Rect { x: 50, y: 50, w: 400, h: 100 }));
+    check!(!press_is_tap(&p, Rect { x: 50, y: 50, w: 200, h: 100 }));
 }
 
 fn slider_fine_drag() {

@@ -865,8 +865,13 @@ pub fn ui_name_label<'a>(name: &'a str, buf: &'a mut String, cap: usize) -> &'a 
     buf.as_str()
 }
 
-/// Tap tracking shared by screens: a press that starts and ends in the same rect within
-/// slop = tap. Long press = held > 600 ms without moving.
+/// How far a finger's tap may roll where it has no button to stay on (a link on the page, the clock's
+/// corner): a fingertip pressed firmly on glass rolls a few millimetres.
+pub const TAP_SLOP_MM: f32 = 5.0;
+
+/// Tap tracking shared by screens: a press that starts and ends in the same rect is a tap, however
+/// the fingertip rolled between (moved, past the slop, is for drags and holds). Long press = held >
+/// 600 ms without moving.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Press {
     pub down: bool,
@@ -890,9 +895,10 @@ pub fn press_move(p: &mut Press, x: f32, y: f32) {
         p.moved = true;
     }
 }
-/// call at release
+/// call at release (after press_move to the release's place: a cancelled touch's is off the screen,
+/// never a tap)
 pub fn press_is_tap(p: &Press, r: Rect) -> bool {
-    !p.moved && rect_contains(r, p.x0 as i32, p.y0 as i32) && rect_contains(r, p.x as i32, p.y as i32)
+    rect_contains(r, p.x0 as i32, p.y0 as i32) && rect_contains(r, p.x as i32, p.y as i32)
 }
 
 /// Hit regions registered while drawing; screens dispatch taps through them.
@@ -1037,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn a_press_is_a_tap_until_it_moves() {
+    fn a_press_is_a_tap_while_it_stays_in_its_rect() {
         ui_init(300.0);
         let mut p = Press::default();
         press_begin(&mut p, 100.0, 100.0, 7);
@@ -1047,12 +1053,16 @@ mod tests {
         press_move(&mut p, 120.0, 90.0);
         assert!(!p.moved);
         assert!(press_is_tap(&p, r));
-        // released outside the rect where it began, it is not a tap
+        // rolled past the slop, still in the rect where it began: moved (no tap for a drag), a tap
         press_move(&mut p, 149.0, 149.0);
         assert!(p.moved);
-        assert!(!press_is_tap(&p, r));
+        assert!(press_is_tap(&p, r));
+        // released outside the rect, or cancelled (off the screen), it is not a tap
         press_begin(&mut p, 100.0, 100.0, 8);
         press_move(&mut p, 100.0, 160.0);
+        assert!(!press_is_tap(&p, r));
+        press_begin(&mut p, 100.0, 100.0, 9);
+        press_move(&mut p, -10000.0, -10000.0);
         assert!(!press_is_tap(&p, r));
     }
 

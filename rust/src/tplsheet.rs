@@ -170,6 +170,8 @@ pub struct TplSheet {
     pub ix: BgIndex,
     pub current: PaperKind,
     pub current_path: FixedStr<TEMPLATE_PATH_MAX>,
+    /// the button or tile pressed, shown pressed until the lift (app_press_feedback)
+    pub pressed: Option<Rect>,
 }
 
 // ---- the sheet ----
@@ -394,6 +396,7 @@ a new page in Pages first.");
 /// draws into a->screen, returns its rect
 pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     hits_clear(&mut s.hits);
+    s.pressed = None;
     let mut g = PaperGrid::default();
     s.rect = paper_sheet_rect(a, &mut g);
     let c = &mut a.screen;
@@ -484,12 +487,17 @@ pub fn tplsheet_pointer(s: &mut TplSheet, a: &mut App, phase: i32, x: f32, y: f3
     }
     if phase == 0 {
         press_begin(&mut s.press, x, y, t);
+        if let Some(&h) = hits_find(&s.hits, x, y).filter(|_| rect_contains(s.rect, x as i32, y as i32)) {
+            app_press_feedback(a, h.r);
+            s.pressed = Some(h.r);
+        }
         return TsResult::None;
     }
     press_move(&mut s.press, x, y);
     if phase != 2 {
         return TsResult::None;
     }
+    *dirty = app_press_release(a, &mut s.pressed);
     if !rect_contains(s.rect, s.press.x0 as i32, s.press.y0 as i32) {
         *dirty = s.rect; // a tap outside the sheet cancels
         tplsheet_close(s);

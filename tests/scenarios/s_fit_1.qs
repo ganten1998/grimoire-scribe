@@ -87,8 +87,8 @@ expect settings.landscape_fit is 0
 tap 1462 1860
 wait 300
 expect editor.modal is none
-# upright the setting applies to a later turn only: the toast and the card's new checkbox, and no refresh
-# of the page
+# upright the setting applies to a later turn only: the toast and the card's new checkbox (after the
+# row's pressed look), and no refresh of the page
 rotate 0
 wait 1200
 expect editor.scale is 1.00
@@ -99,9 +99,9 @@ tap 930 986
 wait 300
 expect settings.landscape_fit is 1
 expect toast is Applies when the Kindle is sideways.
-expect display.presents is ui 180 326 1500 2034
+expect display.presents is fast 220 916 1420 140, ui 180 326 1500 2034
 tap 930 986
 wait 300
 expect settings.landscape_fit is 0
 expect toast is Applies when the Kindle is sideways.
-expect display.presents is ui 180 326 1500 2034
+expect display.presents is fast 220 916 1420 140, ui 180 326 1500 2034

@@ -35,6 +35,8 @@ pub struct DispMenu {
     pub last_draw: u32,
     pub last_apply: u32,
     pub press: Press,
+    /// the button pressed, shown pressed until the lift (app_press_feedback)
+    pub pressed: Option<Rect>,
 }
 
 const D_BRIGHT: i32 = 1;
@@ -183,6 +185,7 @@ fn draw_slider_row(m: &DispMenu, a: &mut App, which: i32, row: Rect) {
 /// Draws into a->screen; returns the rect covered.
 pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     hits_clear(&mut m.hits);
+    m.pressed = None;
     m.rect = card_rect(a);
     let in_ = ui_sheet(&mut a.screen, m.rect, tr("Display"));
     let rh = row_h(a);
@@ -274,7 +277,32 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     m.rect
 }
 
-/// Pointer phase 0 down / 1 move / 2 up. DM_CLOSED: the host should recompose m->rect.
+/// The touch ended with the recognizer's cancel (the pen came near, a second finger or a palm): a
+/// slider being dragged keeps the value it has now, applied and saved as its release would, never
+/// one read from the cancel's off-screen place; a button pressed is let go, doing nothing.
+pub fn dispmenu_cancel(m: &mut DispMenu, a: &mut App, dirty: &mut Rect) -> DmResult {
+    *dirty = RECT_EMPTY;
+    if !m.open || m.active == 0 {
+        m.active = 0;
+        *dirty = app_press_release(a, &mut m.pressed);
+        return DmResult::None;
+    }
+    match m.active {
+        D_SLEEP_AFTER => {
+            settings_save(&a.settings);
+            app_apply_sleep_policy(a);
+        }
+        D_BRIGHT => light_set_intensity(m.intensity),
+        _ => light_set_warmth(m.warmth),
+    }
+    dispmenu_draw(m, a);
+    *dirty = m.rect;
+    m.active = 0;
+    m.row_stale = false;
+    DmResult::None
+}
+
+/// Pointer phase 0 down / 1 move / 2 up (a cancelled touch goes to dispmenu_cancel). DM_CLOSED: the host should recompose m->rect.
 /// DM_INVERTED: colors flipped, the host should repaint everything (full refresh).
 pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f32, t: u32, dirty: &mut Rect) -> DmResult {
     let ph = phase;
@@ -298,6 +326,10 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             }
         }
         if m.active == 0 {
+            if let Some(h) = h {
+                app_press_feedback(a, h.r);
+                m.pressed = Some(h.r);
+            }
             return DmResult::None;
         }
     }
@@ -350,6 +382,7 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         return DmResult::None;
     }
     press_move(&mut m.press, x, y);
+    *dirty = app_press_release(a, &mut m.pressed);
     if !rect_contains(m.rect, m.press.x0 as i32, m.press.y0 as i32) {
         m.open = false; // a tap outside the sheet closes it
         *dirty = m.rect;

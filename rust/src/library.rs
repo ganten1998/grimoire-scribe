@@ -4689,8 +4689,7 @@ pub fn library_enter(a: &mut App) {
     }
     s.pressed = None;
     reload(a);
-    let record = library_record_active(a);
-    input_touch_context(TgView { gestures_on: record || a.settings.gestures, record, ..TgView::default() });
+    input_touch_context(library_touch_view(a));
     redraw(a, RefreshMode::Full);
 }
 
@@ -4708,7 +4707,23 @@ pub fn library_leave(a: &mut App) {
     input_touch_context(TgView { gestures_on: a.settings.gestures, record: false, ..TgView::default() });
 }
 
+/// What touchgest needs of the Library (input_touch_context): whether gestures are on, whether one is
+/// recorded, and whether the keyboard is up (its keys take two fingers rolling over one another).
+pub fn library_touch_view(a: &App) -> TgView {
+    let record = library_record_active(a);
+    let kb = a.lib.as_deref().filter(|s| s.modal == Modal::Kb).map(|s| s.kb.area);
+    TgView { gestures_on: record || a.settings.gestures, record, keyboard_open: kb.is_some(), keys: kb.unwrap_or(RECT_EMPTY), ..TgView::default() }
+}
+
 pub fn library_event(a: &mut App, ev: &InEvent) {
+    library_event_in(a, ev);
+    // (a keyboard opened or closed; the editor pushes its own as it enters)
+    if a.scr == ScreenId::Library {
+        input_touch_context(library_touch_view(a));
+    }
+}
+
+fn library_event_in(a: &mut App, ev: &InEvent) {
     if library_record_active(a) && record_event(a, ev) {
         return;
     }
@@ -4746,7 +4761,11 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
     if modal == Modal::Display {
         let mut d = Rect::default();
         let mut dm = std::mem::take(&mut lib(a).dm);
-        let r = dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d);
+        let r = if touch_cancelled(ev) {
+            dispmenu_cancel(&mut dm, a, &mut d)
+        } else {
+            dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d)
+        };
         lib(a).dm = dm;
         if r == DmResult::Closed {
             lib(a).modal = Modal::Settings; // back to the settings sheet it was opened from

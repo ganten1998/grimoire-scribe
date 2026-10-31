@@ -481,6 +481,7 @@ pub fn replay(split: &SplitTrace, names: &[String], tune: &TgTune) -> Vec<BlockR
             scrolls_h: first_pan,
             zoom_ok: true,
             gestures_on: true,
+            ink: true,
             ..Default::default()
         },
     );
@@ -497,6 +498,7 @@ pub fn replay(split: &SplitTrace, names: &[String], tune: &TgTune) -> Vec<BlockR
                     scrolls_h: pan,
                     zoom_ok: true,
                     gestures_on: true,
+                    ink: true,
                     ..Default::default()
                 },
             );

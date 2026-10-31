@@ -796,7 +796,13 @@ pub fn pensettings_event(a: &mut App, ev: &InEvent) {
         if ph == 1 {
             set_slider(a, active, ev, false, RefreshMode::Fast);
         } else if ph == 2 {
-            set_slider(a, active, ev, false, RefreshMode::Ui);
+            if touch_cancelled(ev) {
+                // (the pen came near, or a second finger: the slider keeps the value it has, never
+                // one read from the cancel's off-screen place)
+                repaint_sliders(a, RefreshMode::Ui);
+            } else {
+                set_slider(a, active, ev, false, RefreshMode::Ui);
+            }
             st(a).active = -1;
             settings_save(&a.settings);
         }

@@ -64,7 +64,7 @@ wait 300
 pentap panel tool-picker
 wait 200
 expect editor.modal is tools
-expect editor.tools_rect is 826 114 1116 768
+expect editor.tools_rect is 826 126 1116 768
 pentap 300 1700
 wait 200
 expect editor.modal is none

@@ -1007,6 +1007,10 @@ a 16 mm swipe within 1200 ms and a tap within 400 ms, with the other gates in
 Three-finger patterns require at least three reported slots; two-slot panels suppress them.
 Pen contact wins; nearby hover, resting palms and held contacts suppress actions. A fresh
 hover far from all fingers can permit a swipe, and pinch can start immediately after writing.
+One finger is held as the writing hand only on the notebook's ink (the page with nothing over it,
+off the panel and the link strip), by the same near and far rules; on the Library, a sheet, a
+keyboard or the panel a finger always counts. On a keyboard's keys a second finger landing before
+the first lifts is the next key (roll-over), never a two-finger session.
 A swipe refused only for the pen says so once in ten minutes. The editor tells
 touchgest what its screen allows (`touch_context`: whether the page pans, zooms, may start a gesture)
 after every event, so a sheet, the bar or a keyboard makes a drag a swipe, which the mirror rule closes

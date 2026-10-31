@@ -39,7 +39,7 @@ use std::cell::RefCell;
 /// The tap zone's side, in mm: a corner square. The indicator joins it while it is up, so a tap on it turns it off.
 const ZONE_MM: f32 = 14.0;
 /// A finger that moves farther than this from where it landed is not tapping.
-const SLOP_MM: f32 = 5.0;
+const SLOP_MM: f32 = TAP_SLOP_MM;
 /// Around the box's place, a tap still finds the corner: 4 mm.
 const PAD_MM: f32 = 4.0;
 /// A finger down longer than this is not a tap (a long press is the page's, a link's). A deliberate press
