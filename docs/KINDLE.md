@@ -320,6 +320,14 @@ Grimoire does not start an SSH server or keep Wi-Fi awake. The app must close be
 installed; its installer refuses to replace a running app. The test above covers the hosted
 session with networking awake, not a reboot or deep sleep.
 
+### The pen as a Mac tablet
+
+KOReader's SSH server also carries the pen to a Mac: `tools/scribe-tablet.c` (`make tablet`)
+streams the raw digitizer (WacomDigitizer, which KOReader never opens) and moves the Mac's pointer
+with it, for osu!. KOReader grabs the scaled pen (stylus-custom), so a second reader gets nothing
+from that one while KOReader runs. Setup, the pen area, osu!'s settings and the latency are in
+[TABLET.md](TABLET.md).
+
 ## The launcher
 
 `documents/Grimoire.sh` takes flags for tools such as KOReader's Grimoire plugin:
