@@ -442,7 +442,13 @@ between them landing and lifting, and what became of it (`touch: session 2 conta
 ms, lift gaps 0 40 ms: fired 2.down`, or `rejected pen`, `zoom`, `pan`, `palm`), a line with the
 fingertip size seen for each single finger, and for the first 300 two-finger frames of a run the raw
 contacts (slot, tracking id, tool, touch major, pressure, no coordinates). At most 2000 such lines a
-run.
+run. A single finger on the page taken for the writing hand (the pen touching, hovering near, or gone
+under a second, so the finger did nothing) says so at its lift: `touch: a finger on the page was the
+pen's hand: the pen was near`. Making a link, and a contact the notebook ignored, have lines of their
+own (`link: armed -> lasso, the pen owns lasso`; `editor: a finger down ignored: the pen owns lasso`;
+`editor: a pen down while the pen owned lasso: its lift was lost`, when a lift never arrived and the
+old gesture was ended as a cancel), at most 40 a minute; work that held the app long enough to fill
+the input queue says how many events it dropped (`input: the event queue was full: ...`).
 
 **The touch trace** records every contact frame so the thresholds can be tuned on real hands. It is
 off unless you turn it on:
@@ -676,7 +682,9 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   them), the contacts of the first 300 frames of each multi-finger touch (`touch: k ...`: slot,
   tracking id, tool, size and pressure, never where), each multi-finger touch's landing and lift
   gaps and what it became (`touch: session ...: fired 2.down`, `rejected pen`, `zoom`, `pan`,
-  `palm`), and a single finger's size at its lift (`touch: fingertips ...`), at most 2000 such lines
+  `palm`), and a single finger's size at its lift (`touch: fingertips ...`), followed by why it did
+  nothing when it was taken for the pen's writing hand (`touch: a finger on the page was the pen's
+  hand: the pen touched`, `was near` or `had left N ms before`), at most 2000 such lines
   per 60-second window. A capped window adds one `touch: log cap reached` notice; the first
   diagnostic after 60 seconds starts a fresh budget, so later sessions survive a long day.
   The 300-frame limit still applies to each contact session. With an empty `grimoire/touch-trace`, Grimoire also appends every touch frame with its

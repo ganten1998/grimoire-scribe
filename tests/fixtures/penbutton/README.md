@@ -3,6 +3,7 @@
 These are text bindings for the Phase 6 headless scenarios, not device captures.
 
 - pages binds the first button's drag to Pages.
+- pan binds the first button's drag to Pan (g_gest_15_link_then_finger.qs takes a lasso over with it).
 - single binds tap to Undo while the built-in triple still requires a 350 ms wait.
 - single-now clears the triple, allowing tap to resolve at release.
 - button2 supplies a second-button binding and an Eraser line. Unsupported slots must survive

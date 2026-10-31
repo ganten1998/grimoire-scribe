@@ -159,6 +159,18 @@ pub enum TgOutcome {
     Rejected(TgReject),
 }
 
+/// Why a lone finger on the ink was taken for the pen's writing hand (pen_hand): it sent nothing, and
+/// grimoire.log says why (touchgest_log_hand), as `touch.hand` does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TgHand {
+    /// the pen touched the screen
+    Touching,
+    /// the pen was near (in proximity), with no fresh hover sample HOVER_FAR_MM away
+    Near,
+    /// the pen had left this many ms before (under PEN_WINDOW_MS), the finger near its last point
+    Gone(u32),
+}
+
 /// Why a session was refused (touch.reject names them).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TgReject {
@@ -507,6 +519,8 @@ pub struct TouchGest {
     /// contact's landing and lift, in the order they landed
     sess: [(u32, u32); TG_MAX],
     sess_n: usize,
+    /// the session's lone finger was taken for the pen's hand, and why
+    hand: Option<TgHand>,
 }
 
 impl Default for TouchGest {
@@ -558,6 +572,7 @@ impl Default for TouchGest {
             result: Result_::None,
             sess: [(0, 0); TG_MAX],
             sess_n: 0,
+            hand: None,
         }
     }
 }
@@ -927,25 +942,28 @@ impl TouchGest {
         self.view.ink && !self.view.controls.iter().any(|&r| rect_contains(r, t.x0, t.y0))
     }
 
-    /// A lone finger landing at track i is the pen's writing hand: on the ink, with the pen touching,
-    /// or near or gone under PEN_WINDOW_MS, unless it is far, by the session rules for one finger (a
-    /// fresh hover sample HOVER_FAR_MM away, or the pen gone PEN_GONE_MS and FAR_MM from its last point).
-    fn pen_hand(&self, pen: &TgPen, k: u32, i: usize) -> bool {
+    /// A lone finger landing at track i is the pen's writing hand (and why): on the ink, with the pen
+    /// touching, or near or gone under PEN_WINDOW_MS, unless it is far, by the session rules for one finger
+    /// (a fresh hover sample HOVER_FAR_MM away, or the pen gone PEN_GONE_MS and FAR_MM from its last point).
+    fn pen_hand(&self, pen: &TgPen, k: u32, i: usize) -> Option<TgHand> {
         if !self.on_ink(i) {
-            return false;
+            return None;
         }
         if pen.touching {
-            return true;
+            return Some(TgHand::Touching);
         }
         if !self.pen_window(pen, k) {
-            return false;
+            return None;
         }
         let t = &self.t[i];
         if self.hover_at(pen, k).is_some_and(|(x, y)| dist(t.ix, t.iy, x, y) >= self.thr.hover_far) {
-            return false;
+            return None;
         }
         let (lx, ly) = (ipx(pen.last.0), ipx(pen.last.1));
-        !(!pen.prox && pen_age(pen, k) >= self.tune.pen_gone_ms as i32 && dist(t.ix, t.iy, lx, ly) >= self.thr.far)
+        if !pen.prox && pen_age(pen, k) >= self.tune.pen_gone_ms as i32 && dist(t.ix, t.iy, lx, ly) >= self.thr.far {
+            return None;
+        }
+        Some(if pen.prox { TgHand::Near } else { TgHand::Gone(pen_age(pen, k).max(0) as u32) })
     }
 
     /// The finger let through at track i meets the pen now: on the ink, the pen touches or hovers near
@@ -959,7 +977,7 @@ impl TouchGest {
             return true;
         }
         if self.tune.hover_far_mm <= 0.0 || self.tune.hover_age_ms == 0 {
-            return self.pen_hand(pen, k, i);
+            return self.pen_hand(pen, k, i).is_some();
         }
         let t = &self.t[i];
         self.hover_at(pen, k).is_some_and(|(x, y)| dist(t.ix, t.iy, x, y) < self.thr.hover_far)
@@ -1451,7 +1469,8 @@ impl TouchGest {
                     // finger may still make a gesture of it).
                     self.ph = Ph::One;
                     self.one = new[0];
-                    self.one_on = !self.pen_hand(pen, k, new[0]);
+                    self.hand = self.pen_hand(pen, k, new[0]);
+                    self.one_on = self.hand.is_none();
                     if self.one_on {
                         let e = self.touch_ev(InType::TouchDown, new[0]);
                         self.last = e;
@@ -1486,7 +1505,8 @@ impl TouchGest {
                     }
                     self.t[a].locked = true;
                     self.one = new[0];
-                    self.one_on = !self.pen_hand(pen, k, new[0]);
+                    self.hand = self.pen_hand(pen, k, new[0]);
+                    self.one_on = self.hand.is_none();
                     if self.one_on {
                         let e = self.touch_ev(InType::TouchDown, new[0]);
                         self.last = e;
@@ -1845,6 +1865,7 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
         // A touch session starts.
         g.sess_n = 0;
         g.result = Result_::None;
+        g.hand = None;
     }
     for c in &f.c[..f.n.min(TG_MAX)] {
         let i = match g.t.iter().position(|t| t.on && t.id == c.id && t.slot == c.slot) {
@@ -2035,6 +2056,12 @@ pub fn touchgest_probe(g: &TouchGest, key: &str, out: &mut String) -> bool {
         "touch.suppressed" => out.push_str(if quiet { "1" } else { "0" }),
         "touch.gesture" => out.push_str(touchgest_gesture_name(g.last_gesture)),
         "touch.reject" => out.push_str(g.last_reject.map_or("", touchgest_reject_name)),
+        "touch.hand" => out.push_str(match g.hand {
+            None => "",
+            Some(TgHand::Touching) => "touching",
+            Some(TgHand::Near) => "near",
+            Some(TgHand::Gone(_)) => "gone",
+        }),
         "touch.tune" => out.push_str(if g.tune == TG_TUNE_V1 { "v1" } else { "new" }),
         _ => return false,
     }
@@ -2138,6 +2165,23 @@ pub fn touchgest_log_fingertips(median: i32, max: i32, frames: i32, grabbed: boo
         return false;
     }
     out.push_str(&cformat!("touch: fingertips touch_major median %d max %d over %d frames", median, max, frames));
+    true
+}
+
+/// The last session's lone finger, if it was taken for the pen's writing hand and sent nothing: "touch: a
+/// finger on the page was the pen's hand: the pen touched" (or "was near", or "had left %u ms before"). The
+/// pen's rules, not a fault, when a finger seems dead on the page. False for any other session.
+pub fn touchgest_log_hand(g: &TouchGest, grabbed: bool, out: &mut String) -> bool {
+    out.clear();
+    let Some(h) = g.hand else { return false };
+    if !grabbed || g.sess_n != 1 {
+        return false;
+    }
+    match h {
+        TgHand::Touching => out.push_str("touch: a finger on the page was the pen's hand: the pen touched"),
+        TgHand::Near => out.push_str("touch: a finger on the page was the pen's hand: the pen was near"),
+        TgHand::Gone(ms) => out.push_str(&cformat!("touch: a finger on the page was the pen's hand: the pen had left %u ms before", ms)),
+    }
     true
 }
 

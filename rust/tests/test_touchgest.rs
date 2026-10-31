@@ -1115,6 +1115,62 @@ fn the_log_and_trace_lines() {
     check!(b.capacity() == cap);
 }
 
+// A lone finger on the ink taken for the pen's writing hand says why (touch.hand and grimoire.log's
+// line at its lift): the pen touching, near, or gone under a second; a finger let through, or one of a
+// pair, says nothing. (A finger that seemed dead on the page after a link was this, or a fault: the
+// log tells which.)
+fn the_hand_line() {
+    let mut r = tuned(&TG_TUNE);
+    let mut s = String::new();
+    r.pen.last = (900.0, 1100.0);
+    r.pen.prox = true;
+    r.pen.touching = true;
+    r.down(0, 900.0, 1200.0);
+    check!(r.frame(13).is_empty() && r.probe("touch.hand") == "touching");
+    r.up(0);
+    r.frame(13);
+    check!(touchgest_log_hand(&r.g, true, &mut s) && s == "touch: a finger on the page was the pen's hand: the pen touched");
+    check!(!touchgest_log_hand(&r.g, false, &mut s) && s.is_empty());
+    r.pen.touching = false;
+    r.down(0, 900.0, 1200.0);
+    check!(r.frame(13).is_empty() && r.probe("touch.hand") == "near");
+    r.up(0);
+    r.frame(13);
+    check!(touchgest_log_hand(&r.g, true, &mut s) && s == "touch: a finger on the page was the pen's hand: the pen was near");
+    r.pen.prox = false;
+    r.pen.left_ms = r.k;
+    r.k += 420;
+    r.down(0, 900.0, 1200.0);
+    check!(r.frame(13).is_empty() && r.probe("touch.hand") == "gone");
+    r.up(0);
+    r.frame(13);
+    check!(touchgest_log_hand(&r.g, true, &mut s) && s == "touch: a finger on the page was the pen's hand: the pen had left 420 ms before");
+    // The pen gone a second: the finger is a finger, and the next session forgets the last one's hand.
+    r.k += 1000;
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown] && r.probe("touch.hand").is_empty());
+    r.up(0);
+    r.frame(13);
+    check!(!touchgest_log_hand(&r.g, true, &mut s) && s.is_empty());
+    // Off the ink (a sheet in front) the pen near takes no finger.
+    touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+    r.pen.prox = true;
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown] && r.probe("touch.hand").is_empty());
+    r.up(0);
+    r.frame(13);
+    // A second finger joining the held one makes a session of two: no hand line.
+    touchgest_set_view(&mut r.g, TgView { gestures_on: true, ink: true, ..Default::default() });
+    r.down(0, 900.0, 1200.0);
+    r.frame(60);
+    r.down(1, 1200.0, 1200.0);
+    r.frame(13);
+    r.up(0);
+    r.up(1);
+    r.frame(13);
+    check!(touchgest_session_contacts(&r.g) == 2 && !touchgest_log_hand(&r.g, true, &mut s));
+}
+
 // A touch session's record: how many contacts, their landing and lift gaps from the first, how it
 // went; one contact logs no session line.
 fn the_session_line() {
@@ -1317,6 +1373,7 @@ fn test_touchgest() {
     run!(two_finger_taps);
     run!(the_log_and_trace_lines);
     run!(the_session_line);
+    run!(the_hand_line);
     run!(forgiving_tuning_edges);
     run!(following_lift_and_zoom_regrab);
     run!(record_hover_three_and_measure);

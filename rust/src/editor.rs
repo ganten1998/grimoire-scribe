@@ -123,6 +123,40 @@ enum Owner {
     PenDrag = 19,
 }
 
+/// The owner's name in grimoire.log and the `editor.owner` probe.
+fn owner_name(o: Owner) -> &'static str {
+    const K: [&str; 20] = [
+        "none", "draw", "erase", "panel", "modal", "display", "pages", "tools", "build", "templates", "link", "bar",
+        "outside", "find", "lasso", "card", "linkto", "strip", "map", "pen-drag",
+    ];
+    K[o as usize]
+}
+
+/// The editor's contact and link-making lines in grimoire.log: DIAG_LINES a minute, then one line saying the
+/// rest are dropped, until a minute from the window's first line has passed (the next line renews it).
+#[derive(Clone, Copy, Debug, Default)]
+struct DiagBudget {
+    start: Option<u32>,
+    lines: u16,
+}
+const DIAG_WINDOW_MS: u32 = 60_000;
+const DIAG_LINES: u16 = 40;
+
+impl DiagBudget {
+    /// Whether a line may go to the log at now (ms); the first refused one of a window says so itself.
+    fn admit(&mut self, now: u32) -> bool {
+        if self.start.is_none_or(|t| now.wrapping_sub(t) >= DIAG_WINDOW_MS) {
+            self.start = Some(now);
+            self.lines = 0;
+        }
+        self.lines = self.lines.saturating_add(1);
+        if self.lines == DIAG_LINES + 1 {
+            qlog!("editor: %d contact and link lines this minute: the rest of it is not logged", DIAG_LINES as i32);
+        }
+        self.lines <= DIAG_LINES
+    }
+}
+
 /// Making a link without ink (PHASE2 6): the strip is up and the next pen contact on the page is the lasso
 /// (Armed), the lasso is being drawn (Lasso), its area waits for where the link goes (Pick: Link to..., or
 /// the Pages view under Choose from the pages...), or New page...'s keyboard names the page it will go to
@@ -348,6 +382,9 @@ pub struct EditorState {
     // Pointer ownership: which input started the current gesture and what it does.
     owner: Owner,
     owner_is_pen: bool,
+    /// grimoire.log's contact and link-making lines (diag): their budget, and the link-making state last said
+    diag: DiagBudget,
+    lm_said: LmState,
 
     // Drawing
     cur: Option<Box<Stroke>>,
@@ -3765,8 +3802,9 @@ fn pb_out(a: &mut App, out: PbOut, t: u32) {
             ed(a).pb_last = Some((button, PenKind::Drag));
             let action = gesturemap_action(&a.gestures, pb_key(button, PenKind::Drag));
             if action == 0 || pb_momentary(a, button) { return; }
-            if ed_ref(a).owner == Owner::Draw { draw_end(a); }
-            if ed_ref(a).owner == Owner::Erase { erase_end(a); }
+            // (what the pen held ends first: ink kept as drawn, a lasso back to the strip; a lasso the drag
+            // took over stayed half drawn, and the next stroke was ink with the strip still up)
+            owner_cancel(a);
             let (x, y) = ed_ref(a).pb_point.unwrap_or((a.w as f32 * 0.5, a.h as f32 * 0.5));
             let s = ed(a);
             let (mut px, mut py) = (0.0, 0.0);
@@ -4540,14 +4578,7 @@ fn lasso_end(a: &mut App) {
     if lm.outline.n>0 {r.w=r.w.max(1);r.h=r.h.max(1);}
     let drawn = lm.lasso_rect;
     if lasso_too_small(r, dpi) {
-        let s = ed(a);
-        s.lm.state = LmState::Armed;
-        s.lm.shape_kind = ShapeKind::None;
-        s.lm.outline = LinkOutline::default();
-        s.lm.pts.clear();
-        s.lm.lasso_rect = RECT_EMPTY;
-        compose(a, drawn);
-        app_invalidate(a, drawn, RefreshMode::Ui);
+        lasso_cancel(a);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
         // stroke drawn was too small to be the link's box.
         app_toast(a, tr("Too small for a link: draw around what links."), 3000);
@@ -4568,6 +4599,25 @@ fn lasso_end(a: &mut App) {
     // (on its own: the rectangle's refresh and Link to...'s never merge into one union across the screen)
     app_flush(a);
     lt_open(a);
+}
+
+/// The lasso is given up and the strip waits for another (Armed), its dashes (and a snapped shape) taken off
+/// the screen in a Ui refresh: a lasso too small for a link (lasso_end), and one cancelled (owner_cancel).
+fn lasso_cancel(a: &mut App) {
+    let s = ed(a);
+    s.owner = Owner::None;
+    if s.lm.state != LmState::Lasso {
+        return;
+    }
+    let drawn = s.lm.lasso_rect;
+    s.lm.state = LmState::Armed;
+    s.lm.shape_preview = None;
+    s.lm.shape_kind = ShapeKind::None;
+    s.lm.outline = LinkOutline::default();
+    s.lm.pts.clear();
+    s.lm.lasso_rect = RECT_EMPTY;
+    compose(a, drawn);
+    app_invalidate(a, drawn, RefreshMode::Ui);
 }
 
 /// Where a card or keyboard docked at the top of the screen begins: 8 px below the clock corner when the
@@ -5097,6 +5147,33 @@ fn lm_check_menus(a: &mut App) {
     };
     if other {
         link_off(a);
+    }
+    lm_say(a);
+}
+
+/// grimoire.log follows link making: each change of its state (after the event, shortcut or tick that made
+/// it) with who has the contact then, so a log tells what was up when the pen or a finger stopped acting.
+fn lm_say(a: &mut App) {
+    let Some(s) = a.ed.as_deref_mut() else { return };
+    if s.lm.state == s.lm_said {
+        return;
+    }
+    // (armed: the strip is up; lasso: the pen draws it; pick: Link to... or what it opened; naming: New page...)
+    let name = |st: LmState| match st {
+        LmState::Off => "off",
+        LmState::Armed => "armed",
+        LmState::Lasso => "lasso",
+        LmState::Pick => "pick",
+        LmState::Naming => "naming",
+    };
+    let (from, to) = (name(s.lm_said), name(s.lm.state));
+    s.lm_said = s.lm.state;
+    if s.diag.admit(now_ms()) {
+        if s.owner == Owner::None {
+            qlog!("link: %s -> %s, no contact owned", from, to);
+        } else {
+            qlog!("link: %s -> %s, the %s owns %s", from, to, if s.owner_is_pen { "pen" } else { "finger" }, owner_name(s.owner));
+        }
     }
 }
 
@@ -8311,6 +8388,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         if phase >= 0 {
             if phase == 0 {
                 ed(a).owner = Owner::Map;
+                ed(a).owner_is_pen = matches!(ev.type_, InType::PenDown);
             }
             map_pointer(a, phase, ev);
             return;
@@ -8386,9 +8464,30 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         if pen && s.owner == Owner::Link {
             s.owner = Owner::None;
         }
+        if s.owner != Owner::None && s.owner != Owner::PenDrag && pen == s.owner_is_pen {
+            lift_lost(a, pen);
+        }
+        let s = ed(a);
         if s.owner != Owner::None || s.pinching {
+            if s.diag.admit(now_ms()) {
+                let (who, by) = (if pen { "pen" } else { "finger" }, if s.owner_is_pen { "pen" } else { "finger" });
+                if s.owner == Owner::None {
+                    qlog!("editor: a %s down ignored: a pinch is under way", who);
+                } else {
+                    qlog!("editor: a %s down ignored: the %s owns %s", who, by, owner_name(s.owner));
+                }
+            }
             return; // one gesture at a time
         }
+        if s.lm.state == LmState::Lasso {
+            // A lasso no pen draws any more (its pen was taken from it some other way): the strip again, so
+            // this contact is never ink under the strip, nor the old lasso's dashes left up.
+            if s.diag.admit(now_ms()) {
+                qlog!("editor: a lasso was left with no pen drawing it: back to the strip");
+            }
+            lasso_cancel(a);
+        }
+        let s = ed(a);
         s.owner_is_pen = pen;
         // The Find sheet: its rows and keyboard take the contact, a contact outside it is swallowed (a finger
         // decides at the lift, a pen at its down) and closes it.
@@ -8568,6 +8667,52 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
     if s.owner == Owner::None || pen != s.owner_is_pen {
         return;
     }
+    owner_pointer(a, ph, ev, pen);
+}
+
+/// A down from the input that already holds a gesture (a pen down while the pen draws, a finger down while a
+/// finger holds a button): that gesture's lift never came (lost in a full input queue, or a drop). It ends
+/// as a cancel (owner_cancel), the log says so, and the new contact starts as any other. (Before, the lost
+/// lift swallowed the next contact of that input: its down ignored, one gesture at a time, and its moves
+/// and lift going on with the old gesture.)
+fn lift_lost(a: &mut App, pen: bool) {
+    let s = ed(a);
+    if s.diag.admit(now_ms()) {
+        let who = if pen { "pen" } else { "finger" };
+        qlog!("editor: a %s down while the %s owned %s: its lift was lost", who, who, owner_name(s.owner));
+    }
+    owner_cancel(a);
+}
+
+/// The gesture the owner holds ends as a cancel: on a control, a sheet or a keyboard as the off-screen cancel
+/// ends a finger's there (nothing it pressed acts), ink and the eraser kept as far as they went, a lasso taken
+/// back to the strip (lasso_cancel). For a contact whose lift was lost (lift_lost), and one the pen's button
+/// takes over for a drag (pb_out).
+fn owner_cancel(a: &mut App) {
+    let s = ed_ref(a);
+    let (owner, pen, near) = (s.owner, s.owner_is_pen, s.pen_near);
+    let cancel = InEvent { type_: InType::TouchUp, x: -10000.0, y: -10000.0, value: TOUCH_F_CANCEL, ..Default::default() };
+    match owner {
+        Owner::None | Owner::PenDrag => {}
+        Owner::Draw => draw_end(a),
+        Owner::Erase => erase_end(a),
+        Owner::Lasso => lasso_cancel(a),
+        Owner::Map if !ed_ref(a).map.open => {}
+        _ => {
+            if !pen {
+                // (what editor_event_in does first with the cancel: a finger shape being drawn is dropped)
+                fs_abort_view(a, if near { FsAbortView::Pen } else { FsAbortView::Pending });
+            }
+            owner_pointer(a, 2, &cancel, pen);
+        }
+    }
+    ed(a).owner = Owner::None;
+}
+
+/// The rest of a contact (ph 1 a move, 2 its lift or the off-screen cancel) goes to what its down began: the
+/// owner, from the input (pen) that owns it.
+fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
+    let s = ed(a);
     match s.owner {
         Owner::PenDrag => {}
         Owner::Draw => {
@@ -9091,6 +9236,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
         render_page_full(a);
         compose_all(a, RefreshMode::Ui);
     }
+    lm_say(a);
     touch_context(a);
 }
 
@@ -9522,6 +9668,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         }
     } else if key == "hold_eraser" {
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
+    } else if key == "owner" {
+        // Who has the contact now: "none", or the owner and which input ("lasso pen", "link finger").
+        if s.owner == Owner::None {
+            csnprintf!(out, cap, "%s", "none");
+        } else {
+            csnprintf!(out, cap, "%s %s", owner_name(s.owner), if s.owner_is_pen { "pen" } else { "finger" });
+        }
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
         let m = if crate::library::library_settings_active(a) {"settings"} else if s.map.open {
@@ -10534,6 +10687,55 @@ mod tests {
         let l=s.nav.links.iter().find(|l|l.pid==1).unwrap();
         assert!(l.has_area);assert_eq!(l.outline.n,0);
         let _=std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_lasso_left_with_no_pen_goes_back_to_the_strip_never_ink() {
+        let root=std::env::temp_dir().join(format!("grimoire-link-orphan-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);store_init(root.to_str().unwrap());
+        let mut nb=NotebookInfo::default();assert_eq!(store_create("Void","",PAPER_BLANK,&mut nb),0);
+        assert_eq!(store_add_page(&mut nb,1,PAPER_BLANK),0);
+        let mut a=fshape_app();
+        a.settings.shapes=false;
+        let s=ed(&mut a);s.nb=nb;nav_init(&mut s.nav);s.nav.links_writable=true;
+        link_arm(&mut a,false,None);
+        let down=|x:f32,y:f32|InEvent{type_:InType::PenDown,x,y,pressure:0.6,..Default::default()};
+        editor_event_in(&mut a,&down(300.0,300.0));
+        editor_event_in(&mut a,&InEvent{type_:InType::PenMove,x:600.0,y:300.0,pressure:0.6,..Default::default()});
+        assert_eq!((ed_ref(&a).owner,ed_ref(&a).lm.state),(Owner::Lasso,LmState::Lasso));
+        // Something took the lasso's pen without ending it (a screen laid out again resets the owner): the
+        // next pen down is a lasso of its own, from where it lands, and never ink under the strip.
+        ed(&mut a).owner=Owner::None;
+        editor_event_in(&mut a,&down(500.0,900.0));
+        let s=ed_ref(&a);
+        assert_eq!((s.owner,s.owner_is_pen,s.lm.state),(Owner::Lasso,true,LmState::Lasso));
+        assert_eq!((s.lm.pts.len(),s.lm.bx0,s.lm.by0),(1,500.0,900.0));
+        assert_eq!(s.open_page().unwrap().strokes.len(),0);
+        // Its lift lost: the next down cancels it back to the strip and draws its own.
+        editor_event_in(&mut a,&down(200.0,1000.0));
+        let s=ed_ref(&a);
+        assert_eq!((s.owner,s.lm.state,s.lm.pts.len(),s.lm.bx0),(Owner::Lasso,LmState::Lasso,1,200.0));
+        assert_eq!(s.open_page().unwrap().strokes.len(),0);
+        let _=std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_contact_lines_have_a_budget_a_minute() {
+        let mut b=DiagBudget::default();
+        for _ in 0..DIAG_LINES {assert!(b.admit(5));}
+        assert!(!b.admit(6)); // (says so once)
+        for _ in 0..1000 {assert!(!b.admit(59_000));}
+        assert!(b.admit(60_005)); // a minute from the first line: a new window
+        assert_eq!(b.lines,1);
+        assert!(DiagBudget::default().admit(u32::MAX-10)); // (the clock wraps)
+    }
+
+    #[test]
+    fn owner_names_cover_every_owner() {
+        assert_eq!(owner_name(Owner::None),"none");
+        assert_eq!(owner_name(Owner::Lasso),"lasso");
+        assert_eq!(owner_name(Owner::LinkTo),"linkto");
+        assert_eq!(owner_name(Owner::PenDrag),"pen-drag");
     }
 
     #[test]

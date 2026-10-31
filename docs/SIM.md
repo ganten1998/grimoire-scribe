@@ -314,6 +314,7 @@ shows what the app holds.
 | `touch.suppressed` | `1` while contacts wait to lift (or a lone finger is held: the pen's hand, one beside a resting palm), else `0` |
 | `touch.gesture` | the last gesture fired, as gestures.ini names it after `touch.` (`1.up` through `1.right`, `2.up` through `2.tap`, and `3.up` through `3.tap`); empty before any |
 | `touch.reject` | the last refusal: `pen`, `apart`, `straight`, `short`, `direction`, `hand`, `spread`, `late`, `three`, `keyboard`, `off` or `slow`; empty before any, and a gesture fired clears it |
+| `touch.hand` | why the last session's lone finger on the notebook's ink was taken for the pen's writing hand and sent nothing: `touching` (the pen touched), `near` (it hovered, with no fresh hover sample 60 mm away) or `gone` (it had left under a second before, the finger near where it last touched); empty for a finger let through, and from the next session's first contact on (grimoire.log says the same at the lift: `touch: a finger on the page was the pen's hand: ...`) |
 | `pump.calls` | how many times long work called the work pump (`work_pump`, common.h: on the Kindle it reads the pens meanwhile) since this key was last checked, so `expect pump.calls not -1` only starts the count (the runner answers this one too) |
 | `keyboard.draws` | how many times an on-screen keyboard was drawn whole (`keyboard_draw`, keyboard.h) since this key was last checked, counted the same way (the runner answers this one too) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
@@ -354,6 +355,7 @@ shows what the app holds.
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above; between two buttons or in the frame's margin beside one, the nearest, as a finger there takes it), empty for none (a greyed-out button), after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
+| `editor.owner` | who has the contact now: `none`, or the owner and the input that began it, as grimoire.log's contact lines name them (`draw pen`, `lasso pen`, `link finger`, `linkto finger`, `outside pen`, `panel finger`, `strip finger`, `pen-drag pen`...). A down from the input that still owns a gesture ends that gesture as a cancel (its lift was lost: a stroke kept as drawn, a lasso back to the strip, a press let go) before it starts its own; legacy `touch down` twice, or `pen down` twice, with no lift between, makes one (g_gest_15b_lost_lift) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
 | `editor.loaded_pages` | pages currently loaded in the editor; opening or paging the number grid must not increase this |
 | `native_pin` | native PIN ownership path is active (`GRIMOIRE_PASSCODE=enabled`) |
@@ -538,6 +540,13 @@ them; at the top (`editor.kb_dock is top`) its keys sit 1307 px higher and the r
 keyboard (y 1169, its first row's centre 1247). New page... opens a keyboard (`Name the new page`)
 docked as Link to... is: at the top its keys sit 1307 px higher than the coordinates below (Done 1643 1058). A
 scenario checks each raw tap on the strip and Link to... with `editor.ui_at.X.Y` first.
+
+grimoire.log follows link making with a line at each change of its state (`link: armed -> lasso, the pen owns
+lasso`; the states are off, armed, lasso, pick and naming), and says when a contact is ignored because another
+owns the screen (`editor: a finger down ignored: the pen owns lasso`) or a lift was lost (`editor: a pen down
+while the pen owned lasso: its lift was lost`), 40 such lines a minute at most. The pen's button taking the pen
+over for a drag in the middle of the lasso (a drag bound to Pan, tests/fixtures/penbutton/pan) ends the lasso:
+the strip stays for another, and the next stroke is the lasso again, never ink (g_gest_15_link_then_finger).
 
 A finger held on a link (`touch down X Y`, `wait 800`, `touch up X Y`) shows its heavy border (four DU strips,
 each its own `fast` present in `display.presents`) and then the long-press card beside it (one `ui` of its rect):
