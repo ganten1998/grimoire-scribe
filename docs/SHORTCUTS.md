@@ -111,14 +111,14 @@ Actions, in the Buttons sheet's groups:
   sheet's corner cell does; docs/KINDLE.md, The clock and battery corner). With no notebook page in front
   they change the setting and say so with a toast, since it shows on a page only.
 
-`previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool button's
-pen and the pinned pens, top to bottom as the panel shows them, from the last round to the first and
-back. Pressed again and again they keep to the panel, so the highlight never jumps into the tool
-picker and back. With fewer than two pens on the panel they step to the tool picker's next or
+`previous-tool` and `next-tool` step through the pens on the editor's toolbar alone: the tool button's
+pen and the pinned pens, top to bottom as the toolbar shows them, from the last round to the first and
+back. Pressed again and again they keep to the toolbar, so the highlight never jumps into the tool
+picker and back. With fewer than two pens on the toolbar they step to the tool picker's next or
 previous pen in its order instead, and that pen goes to the tool button. With none pinned that walks
 all nine, from the highlighter round to the pencil and back. With only the tool button's own pen
 pinned (the button shows a grid), the first press brings the picker's next or previous pen onto the
-tool button, and from then on they go between those two, as with any two pens on the panel. The
+tool button, and from then on they go between those two, as with any two pens on the toolbar. The
 eraser is not among them: from the eraser they step from the pen it goes back to (with the fountain
 pen on the tool button and the highlighter and the fineliner pinned: highlighter, eraser, next tool:
 the fineliner); the eraser's own button goes back to that pen itself. They do nothing while the tool

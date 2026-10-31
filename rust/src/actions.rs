@@ -736,7 +736,7 @@ static ACTIONS: [ActionInfo; 72] = [
     nm(
         SHORTCUT_FOLD_PANEL,
         "fold-panel",
-        n_("Fold the panel"),
+        n_("Fold the toolbar"),
         GROUP_MENUS,
         IconKind::Collapse,
         ActionKind::Toggle,

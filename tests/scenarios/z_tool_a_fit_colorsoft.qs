@@ -87,7 +87,7 @@ pentap panel picker.pin-mode
 wait 200
 pentap panel picker.tool:calligraphy
 wait 200
-expect toast is The panel holds up to 3 pens. Unpin one first.
+expect toast is The toolbar holds up to 3 pens. Unpin one first.
 expect editor.pins is highlighter,fineliner,marker
 expect settings.panel_tools is highlighter,fineliner,marker
 expect editor.modal is tools

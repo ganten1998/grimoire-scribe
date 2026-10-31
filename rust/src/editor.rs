@@ -1812,10 +1812,10 @@ fn draw_tools(a: &mut App) {
     hits_add(&mut s.tools_hits, hb, P_PIN_MODE, 0);
     let mut title = String::new();
     if s.pin_mode {
-        // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+        // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
         // tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
         // in bold, or two lines at 34 px. Normally the title is Tools.
-        csnprintf!(&mut title, 160, tr("Pin to the panel (up to %d)"), PANEL_PINS_MAX as i32);
+        csnprintf!(&mut title, 160, tr("Pin to the toolbar (up to %d)"), PANEL_PINS_MAX as i32);
     } else {
         // TRANSLATORS: the title of the editor's tool picker.
         csnprintf!(&mut title, 160, "%s", tr("Tools"));
@@ -5568,10 +5568,10 @@ fn toggle_pin(a: &mut App, t: ToolKind) {
     if !settings_toggle_pin(st, t) {
         let mut msg = String::new();
         // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-        // panel holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
+        // toolbar holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
         // or two lines.
-        csnprintf!(&mut msg, 200, ng_("The panel holds up to %d pen. Unpin one first.",
-                                      "The panel holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
+        csnprintf!(&mut msg, 200, ng_("The toolbar holds up to %d pen. Unpin one first.",
+                                      "The toolbar holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
                    PANEL_PINS_MAX as i32);
         app_toast(a, &msg, 2500);
         return;
@@ -8678,7 +8678,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
         ed(a).sh.tip_pending = false;
         if a.settings.hints & (1 << 5) == 0 {
             a.settings.hints |= 1 << 5; settings_save(&a.settings);
-            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes menu has the options."),4000);
+            app_toast(a,tr("Shape made. Undo takes it away; the toolbar's Shapes menu has the options."),4000);
         }
     }
     if ed_ref(a).open && a.input_drained {

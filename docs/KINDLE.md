@@ -381,7 +381,7 @@ where the indicator shows, with 4 mm around it, whether it is up or not) turns o
 it charges), and the battery's percent. Tapping the indicator, or its corner again, turns it off.
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
 while a sheet, a menu, the Links bar, Link to..., a link's long-press card, Find, a keyboard or the Pages view is in front of the page, so it
-never gets in the way of another screen. The panel, or a link the way a finger tap would follow it,
+never gets in the way of another screen. The toolbar, or a link the way a finger tap would follow it,
 keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
 
 One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner and lifts in it,

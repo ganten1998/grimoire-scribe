@@ -93,7 +93,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     leans, like a real one: lean toward the bottom right (a right hand) and you get the classic
     45 degree italic, thick going down to the right and hairline going up; lean toward the bottom
     left (a left hand) and the nib mirrors. Hold the pen upright and it keeps the 45 degree nib.
-- **The floating panel** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
+- **The floating toolbar** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
   it anywhere; tap the corner arrows to fold it into a small box.
 - **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
   hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
@@ -145,7 +145,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 
 ## White ink, pinned pens and templates
 
-- **White ink**: tap the pen button on the panel; the picker's bottom row is **Black | White**.
+- **White ink**: tap the pen button on the toolbar; the picker's bottom row is **Black | White**.
   With White, every pen draws white with its own texture, taking ink away while the paper's lines
   stay. The pen in use shows a hollow icon while white is on.
 - **The eraser**: **Pen feel > the eraser's tab > Eraser** is **Whole strokes** (a touch takes the
@@ -159,7 +159,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   adjustment becomes. Move back within a knob-height band around the track for the knob to
   catch up and follow directly again. Release to keep the value; the next press starts normally.
 
-- **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the panel (up to four),
+- **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the toolbar (up to three),
   then Done. Each gets its own button under the pen button. From another tool, including the
   eraser, tap the top pen button once to select its pen and again to open the picker. If the
   button shows a grid, it opens the picker directly.
