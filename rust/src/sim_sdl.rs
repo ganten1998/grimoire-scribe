@@ -3564,6 +3564,7 @@ mod tests {
     #[test]
     fn pen_lines_tell_touchgest() {
         fresh();
+        input_touch_context(TgView { ink: true, ..Default::default() }); // (the notebook's page)
         script(
             "tgpen",
             "pen hover 300 300\nwait 0\npen leave\nwait 0\npentap 400 400\nwait 0\n\

@@ -152,7 +152,9 @@ at that line's time, and a `pentap` ends with the pen gone at its up (a nib tap 
 events it queues are as they were). A pen line while fingers are down ends them first, as the pen's
 arrival does on the Kindle. So contact-level touch after pen input waits out the pen window: `pen
 leave` if the pen is hovering, then `wait 1100` (two fingers are refused for 300 ms after the pen
-leaves and kept 40 mm from where it last touched until 1 s; one finger is the writing hand for 1 s).
+leaves and kept 40 mm from where it last touched until 1 s; one finger on the notebook's ink, off
+the panel, is the writing hand by the same rules, and anywhere else, the Library, a sheet or a
+keyboard, a finger is always a finger).
 
 The keyboard's keys in portrait (the Library's keyboard, for every name, at 300 dpi): shift
 175 2205, del 1679 2205, Cancel 217 2365, `-` 477 2365, the page key 696 2365 (labelled with a

@@ -18,7 +18,7 @@ impl Rig {
         let mut g = TouchGest::default();
         touchgest_init(&mut g, 300.0);
         touchgest_set_tune(&mut g, &TG_TUNE_V1);
-        touchgest_set_view(&mut g, TgView { zoom_ok: true, gestures_on: true, ..Default::default() });
+        touchgest_set_view(&mut g, TgView { zoom_ok: true, gestures_on: true, ink: true, ..Default::default() });
         Rig { g, pen: TgPen::default(), k: 100_000, c: Vec::new() }
     }
     /// A contact in slot id (its tracking id 100 + id), tool and touch_major given.
@@ -48,6 +48,22 @@ impl Rig {
             f.c[f.n] = o;
             f.n += 1;
         }
+        let mut out = TgOut::default();
+        touchgest_frame(&mut self.g, &f, &self.pen, &mut out);
+        self.k = self.k.wrapping_add(dt);
+        out.ev[..out.n].to_vec()
+    }
+    /// The frame at the current time with contact id's release reported at (x, y) in it.
+    fn frame_ended(&mut self, dt: u32, id: i32, x: f32, y: f32) -> Vec<InEvent> {
+        let mut f = TgFrame { k_ms: self.k, ..Default::default() };
+        let mut c = self.c.clone();
+        c.sort_by_key(|o| o.slot);
+        for o in c {
+            f.c[f.n] = o;
+            f.n += 1;
+        }
+        f.ended[0] = TgContact { id: 100 + id, slot: id, x, y, nx: x / 1860.0, ny: y / 2480.0, ..Default::default() };
+        f.ended_n = 1;
         let mut out = TgOut::default();
         touchgest_frame(&mut self.g, &f, &self.pen, &mut out);
         self.k = self.k.wrapping_add(dt);
@@ -216,6 +232,7 @@ fn a_second_finger_at_450_ms_is_a_palm() {
 // nothing, and one already down ends with the cancel, never with a lift in its place.
 fn the_pen_window_holds_one_finger() {
     let mut r = Rig::new();
+    r.pen.last = (900.0, 1100.0); // (where it last touched: near the finger)
     r.pen.prox = true;
     r.down(0, 900.0, 1200.0);
     check!(r.frame(13).is_empty() && r.probe("touch.suppressed") == "1");
@@ -249,6 +266,148 @@ fn the_pen_window_holds_one_finger() {
     r.down(0, 900.0, 1200.0);
     check!(r.frame(13).is_empty());
     r.up(0);
+    r.frame(13);
+}
+
+// The writing hand rests only on the notebook's ink: off it (the Library, a sheet, a keyboard) and on
+// the page's controls (the panel) a finger is a finger whatever the pen does.
+fn the_pen_window_is_the_inks_alone() {
+    let mut r = tuned(&TG_TUNE);
+    touchgest_set_view(&mut r.g, TgView { gestures_on: true, ..Default::default() });
+    r.pen.prox = true;
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.mv(0, 920.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchMove]); // (a pen near never cancels it there)
+    r.up(0);
+    check!(types(&r.frame(13)) == [InType::TouchUp]);
+    r.pen.prox = false;
+    r.pen.left_ms = r.k;
+    r.k += 400;
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.up(0);
+    r.frame(13);
+    // On the page: the panel's rect takes the finger, the ink beside it holds it.
+    let panel = Rect::new(1700, 200, 140, 1500);
+    touchgest_set_view(&mut r.g, TgView { gestures_on: true, ink: true, controls: [panel, RECT_EMPTY], ..Default::default() });
+    r.pen.prox = true;
+    r.pen.touching = true;
+    r.down(0, 1760.0, 900.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.up(0);
+    check!(types(&r.frame(13)) == [InType::TouchUp]);
+    r.down(0, 1500.0, 900.0);
+    check!(r.frame(13).is_empty() && r.probe("touch.suppressed") == "1");
+    r.up(0);
+    r.frame(13);
+}
+
+// On the ink, one finger far from the pen counts by the session rules: a fresh hover sample 60 mm
+// away, or the pen gone 300 ms and 40 mm from where it last touched. A far hover leaves a live press.
+fn one_finger_far_from_the_pen() {
+    let mut r = tuned(&TG_TUNE);
+    r.pen.prox = true;
+    r.pen.hover = Some((300.0, 300.0, r.k));
+    r.down(0, 900.0, 1800.0); // 1617 px (137 mm) from the hover
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.pen.hover = Some((310.0, 300.0, r.k));
+    r.mv(0, 905.0, 1800.0);
+    check!(types(&r.frame(13)) == [InType::TouchMove]);
+    r.k += 200; // the sample goes stale: the pen's place is not known, the press stays
+    r.mv(0, 910.0, 1800.0);
+    check!(types(&r.frame(13)) == [InType::TouchMove]);
+    r.pen.hover = Some((880.0, 1750.0, r.k)); // the pen comes over it
+    r.mv(0, 912.0, 1800.0);
+    let ev = r.frame(13);
+    check!(ev.len() == 1 && is_cancel(&ev[0]));
+    r.up(0);
+    r.frame(13);
+    // A hover near the landing holds it; so does a stale far one.
+    r.pen.hover = Some((900.0, 1700.0, r.k));
+    r.down(0, 900.0, 1800.0);
+    check!(r.frame(13).is_empty());
+    r.up(0);
+    r.frame(13);
+    r.pen.hover = Some((300.0, 300.0, r.k.wrapping_sub(200)));
+    r.down(0, 900.0, 1800.0);
+    check!(r.frame(13).is_empty());
+    r.up(0);
+    r.frame(13);
+    // Gone: under 300 ms always held; then held near its last point, a finger far from it counts.
+    r.pen.prox = false;
+    r.pen.hover = None;
+    r.pen.last = (300.0, 300.0);
+    r.pen.left_ms = r.k;
+    r.k += 200;
+    r.down(0, 900.0, 1800.0);
+    check!(r.frame(13).is_empty());
+    r.up(0);
+    r.frame(13);
+    r.k += 200;
+    r.down(0, 350.0, 350.0);
+    check!(r.frame(13).is_empty());
+    r.up(0);
+    r.frame(13);
+    r.down(0, 900.0, 1800.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.up(0);
+    check!(types(&r.frame(13)) == [InType::TouchUp]);
+}
+
+// A finger's last movement reported with its release (a flick) ends its stream where it lifted: a
+// TouchMove there, then the TouchUp at the same place.
+fn one_finger_lifts_where_it_ended() {
+    let mut r = Rig::new();
+    r.down(0, 900.0, 1200.0);
+    check!(types(&r.frame(13)) == [InType::TouchDown]);
+    r.up(0);
+    let ev = r.frame_ended(13, 0, 980.0, 1210.0);
+    check!(types(&ev) == [InType::TouchMove, InType::TouchUp]);
+    check!(same_place(&ev[0], 980.0, 1210.0) && same_place(&ev[1], 980.0, 1210.0));
+    // Released where it last was: the TouchUp alone.
+    r.down(0, 900.0, 1200.0);
+    r.frame(13);
+    r.up(0);
+    check!(types(&r.frame_ended(13, 0, 900.0, 1200.0)) == [InType::TouchUp]);
+}
+
+// The keyboard: a second finger landing while the first is down (fast typing rolls over) is the next
+// key, never a two-finger session: the first lifts where it is, the second goes down.
+fn keyboard_roll_over_types_both_keys() {
+    let mut r = Rig::new();
+    let keys = Rect::new(0, 1640, 1860, 840);
+    touchgest_set_view(&mut r.g, TgView { gestures_on: true, keyboard_open: true, keys, ..Default::default() });
+    r.down(0, 221.0, 2045.0);
+    check!(types(&r.frame(60)) == [InType::TouchDown]);
+    r.down(1, 398.0, 2045.0);
+    let ev = r.frame(40);
+    check!(types(&ev) == [InType::TouchUp, InType::TouchDown]);
+    check!(same_place(&ev[0], 221.0, 2045.0) && same_place(&ev[1], 398.0, 2045.0));
+    r.up(0);
+    check!(r.frame(40).is_empty()); // (the first finger's lift went out already)
+    r.mv(1, 400.0, 2045.0);
+    check!(types(&r.frame(13)) == [InType::TouchMove]);
+    r.up(1);
+    check!(types(&r.frame(13)) == [InType::TouchUp]);
+    // The second lifting first: its lift, and the first lifting later gives nothing.
+    r.down(0, 221.0, 2045.0);
+    r.frame(60);
+    r.down(1, 398.0, 2045.0);
+    r.frame(40);
+    r.up(1);
+    check!(types(&r.frame(40)) == [InType::TouchUp]);
+    r.up(0);
+    check!(r.frame(13).is_empty() && r.probe("touch.contacts") == "0");
+    // Off the keys (a row of the sheet over them, say) the same pair is a two-finger session, as it
+    // always was: the first finger's press is cancelled, never tapped.
+    r.down(0, 221.0, 1200.0);
+    r.frame(60);
+    r.down(1, 398.0, 2045.0);
+    let ev = r.frame(40);
+    check!(ev.len() == 2 && is_cancel(&ev[0]) && ev[1].type_ == InType::PinchBegin);
+    r.up(0);
+    r.up(1);
     r.frame(13);
 }
 
@@ -841,6 +1000,7 @@ fn resting_contacts() {
 fn the_tick() {
     let mut r = Rig::new();
     r.pen.left_ms = r.k.wrapping_sub(500);
+    r.pen.last = (950.0, 1200.0);
     r.down(0, 900.0, 1200.0);
     r.frame(13);
     check!(r.probe("touch.class") == "suppressed");
@@ -1116,6 +1276,10 @@ fn test_touchgest() {
     run!(a_second_finger_at_120_ms_pinches);
     run!(a_second_finger_at_450_ms_is_a_palm);
     run!(the_pen_window_holds_one_finger);
+    run!(the_pen_window_is_the_inks_alone);
+    run!(one_finger_far_from_the_pen);
+    run!(one_finger_lifts_where_it_ended);
+    run!(keyboard_roll_over_types_both_keys);
     run!(value_0_is_never_a_classified_pinch);
     run!(a_pinch_commits_past_the_dead_zone);
     run!(a_third_finger);

@@ -1514,17 +1514,22 @@ fn view_clamp(a: &mut App) {
 
 /// What touchgest needs of the editor to tell a pan from a swipe, and to let a pinch zoom: whether the
 /// page scrolls on each axis, whether a pinch may zoom, whether gestures are on and whether a keyboard
-/// is up. Pushed whenever any of these may have changed (the end of view_clamp, editor_event,
-/// editor_shortcut_at, editor_tick and editor_enter), cheap: it stores a small struct. With a surface in
+/// is up, and where a finger may be the pen's writing hand (the page's ink, off its controls). Pushed
+/// whenever any of these may have changed (the end of view_clamp, editor_event, editor_shortcut_at,
+/// editor_tick and editor_enter), cheap: it stores a small struct. With a surface in
 /// front that does not pan the page (the Pages view, the sheets), a two-finger drag is always a swipe
 /// candidate: a pan there would move nothing.
 fn touch_context(a: &App) {
     if crate::library::library_settings_active(a) {
-        let record=crate::library::library_record_active(a);
-        input_touch_context(TgView{gestures_on:record || a.settings.gestures,record,..TgView::default()});return;
+        input_touch_context(crate::library::library_touch_view(a));return;
     }
     let Some(s) = a.ed.as_deref() else { return };
     let pans = s.open && !sheet_open(s);
+    let keyboard_open = s.map_kb.open || s.pv.kb.open || s.find.open || s.lm.kb.open || s.card.kb.open;
+    // The pen's hand rests on the page alone: nothing over it, and never on its panel or the strip.
+    let ink = pans && a.scr == ScreenId::Editor && !keyboard_open && matches!(s.lm.state, LmState::Off | LmState::Armed | LmState::Lasso);
+    let strip = if matches!(s.lm.state, LmState::Armed | LmState::Lasso) { s.lm.strip } else { RECT_EMPTY };
+    let keys = [&s.map_kb, &s.pv.kb, &s.find.kb, &s.lm.kb, &s.card.kb].into_iter().find(|k| k.open).map_or(RECT_EMPTY, |k| k.area);
     input_touch_context(TgView {
         scrolls_v: pans && (a.h - status_reserved(a)) as f32 / s.zoom < s.pgh as f32 - 0.5,
         scrolls_h: pans && a.w as f32 / s.zoom < s.pgw as f32 - 0.5,
@@ -1533,7 +1538,10 @@ fn touch_context(a: &App) {
             && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open),
         gestures_on: a.settings.gestures,
         record: false,
-        keyboard_open: s.map_kb.open || s.pv.kb.open || s.find.open || s.lm.kb.open || s.card.kb.open,
+        keyboard_open,
+        ink,
+        controls: [s.panel, strip],
+        keys,
     });
 }
 

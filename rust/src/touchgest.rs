@@ -14,10 +14,14 @@
 //! owner's touch traces (touch-trace.txt) will set them.
 //!
 //! One finger is the stream it always was: TouchDown at once, TouchMove when the place changes,
-//! TouchUp at the lift, nothing added in between. While the pen is near, or for a second after it
-//! leaves, a finger is the writing hand resting on the screen and gives nothing, and a finger that
-//! was already down ends with the off-screen cancel (TOUCH_F_CANCEL, x = y = -10000), never a lift
-//! in its place, which could follow a link or press a button under the palm.
+//! TouchUp at the lift, nothing added in between. On the notebook's ink (the page in front with
+//! nothing over it, off its panel: TgView.ink), while the pen is near, or for a second after it
+//! leaves, a finger is the writing hand resting on the screen and gives nothing, unless it is far
+//! from the pen by the session rules below (a fresh hover 60 mm away, or the pen gone 300 ms and the
+//! finger 40 mm from where it last touched); a finger that was already down and that the pen reaches
+//! ends with the off-screen cancel (TOUCH_F_CANCEL, x = y = -10000), never a lift in its place, which
+//! could follow a link or press a button under the palm. Anywhere else (the Library, a sheet, a
+//! keyboard, the panel) a finger is always a finger.
 //!
 //! A second finger starts a two-finger session: the first finger's stream ends with the cancel, and
 //! PinchBegin (value 1) names both fingers by the order they landed in. Within 150 ms of the first it
@@ -125,6 +129,15 @@ pub struct TgView {
     /// phase 3's recording; always false now
     pub record: bool,
     pub keyboard_open: bool,
+    /// the notebook's page is in front with nothing over it (no sheet, keyboard, bar, picker or
+    /// menu): the only surface where a finger near the pen is the writing hand
+    pub ink: bool,
+    /// controls on that page (the panel, the link-making strip): a finger landing on one is never
+    /// the writing hand
+    pub controls: [Rect; 2],
+    /// the on-screen keyboard's keys: a finger landing on them while another is down there is the next
+    /// key (typing rolls over), never a two-finger session
+    pub keys: Rect,
 }
 
 /// What one call made: its events in order (the caller queues them as they are), and what it
@@ -875,22 +888,71 @@ impl TouchGest {
         self.begun = false;
     }
 
-    fn hover_far(&self, pen: &TgPen, k: u32) -> bool {
+    /// The pen's hover point, when a sample is fresh enough to trust (and the tuning reads hovers).
+    fn hover_at(&self, pen: &TgPen, k: u32) -> Option<(i32, i32)> {
         if self.tune.hover_far_mm <= 0.0 || self.tune.hover_age_ms == 0 || pen.touching {
-            return false;
+            return None;
         }
-        let Some((x, y, at)) = pen.hover else {
-            return false;
-        };
+        let (x, y, at) = pen.hover?;
         let age = k.wrapping_sub(at) as i32;
         if age < 0 || age as u32 > self.tune.hover_age_ms {
-            return false;
+            return None;
         }
-        let (x, y) = (ipx(x), ipx(y));
+        Some((ipx(x), ipx(y)))
+    }
+
+    fn hover_far(&self, pen: &TgPen, k: u32) -> bool {
+        let Some((x, y)) = self.hover_at(pen, k) else {
+            return false;
+        };
         self.p[..self.p_n].iter().all(|&i| {
             let t = &self.t[i];
             !t.on || dist(t.ix, t.iy, x, y) >= self.thr.hover_far
         })
+    }
+
+    /// Track i landed on the notebook's ink, off its controls: the only place the writing hand rests.
+    fn on_ink(&self, i: usize) -> bool {
+        let t = &self.t[i];
+        self.view.ink && !self.view.controls.iter().any(|&r| rect_contains(r, t.x0, t.y0))
+    }
+
+    /// A lone finger landing at track i is the pen's writing hand: on the ink, with the pen touching,
+    /// or near or gone under PEN_WINDOW_MS, unless it is far, by the session rules for one finger (a
+    /// fresh hover sample HOVER_FAR_MM away, or the pen gone PEN_GONE_MS and FAR_MM from its last point).
+    fn pen_hand(&self, pen: &TgPen, k: u32, i: usize) -> bool {
+        if !self.on_ink(i) {
+            return false;
+        }
+        if pen.touching {
+            return true;
+        }
+        if !self.pen_window(pen, k) {
+            return false;
+        }
+        let t = &self.t[i];
+        if self.hover_at(pen, k).is_some_and(|(x, y)| dist(t.ix, t.iy, x, y) >= self.thr.hover_far) {
+            return false;
+        }
+        let (lx, ly) = (ipx(pen.last.0), ipx(pen.last.1));
+        !(!pen.prox && at_least(pen.left_ms, k, self.tune.pen_gone_ms) && dist(t.ix, t.iy, lx, ly) >= self.thr.far)
+    }
+
+    /// The finger let through at track i meets the pen now: on the ink, the pen touches or hovers near
+    /// it by a fresh sample (with hovers unread, the landing's rule again). A pen still near but far
+    /// from the finger, or with no fresh sample to say where it is, leaves the press alone.
+    fn pen_reaches(&self, pen: &TgPen, k: u32, i: usize) -> bool {
+        if !self.on_ink(i) {
+            return false;
+        }
+        if pen.touching {
+            return true;
+        }
+        if self.tune.hover_far_mm <= 0.0 || self.tune.hover_age_ms == 0 {
+            return self.pen_hand(pen, k, i);
+        }
+        let t = &self.t[i];
+        self.hover_at(pen, k).is_some_and(|(x, y)| dist(t.ix, t.iy, x, y) < self.thr.hover_far)
     }
 
     /// The pen near a session (every frame of it): a fresh far hover sample can clear proximity;
@@ -1375,11 +1437,11 @@ impl TouchGest {
             Ph::Idle => {
                 self.result = Result_::None;
                 if !palms && n == 1 {
-                    // One finger: its stream, unless the pen window holds it (a second finger may
-                    // still make a gesture of it).
+                    // One finger: its stream, unless it is the pen's hand on the ink (a second
+                    // finger may still make a gesture of it).
                     self.ph = Ph::One;
                     self.one = new[0];
-                    self.one_on = !self.pen_window(pen, k);
+                    self.one_on = !self.pen_hand(pen, k, new[0]);
                     if self.one_on {
                         let e = self.touch_ev(InType::TouchDown, new[0]);
                         self.last = e;
@@ -1401,6 +1463,27 @@ impl TouchGest {
             }
             Ph::One => {
                 let a = self.one;
+                let on_keys = |t: &Track| rect_contains(self.view.keys, t.x0, t.y0);
+                if !self.view.record && !palms && n == 1 && on_keys(&self.t[a]) && on_keys(&self.t[new[0]]) {
+                    // Typing: a second finger landing before the first lifts (roll-over) is the next
+                    // key. The first finger's press ends with its lift where it is, and waits to lift;
+                    // the new one is the finger followed, so both keys type, in order.
+                    if self.one_on {
+                        let mut e = self.last;
+                        e.type_ = InType::TouchUp;
+                        e.value = self.flags(a);
+                        self.push(out, e, k);
+                    }
+                    self.t[a].locked = true;
+                    self.one = new[0];
+                    self.one_on = !self.pen_hand(pen, k, new[0]);
+                    if self.one_on {
+                        let e = self.touch_ev(InType::TouchDown, new[0]);
+                        self.last = e;
+                        self.push(out, e, k);
+                    }
+                    return;
+                }
                 if !palms && n == 2 && self.slots >= 3 && !over(self.t[a].down_k, k, 250) {
                     self.cancel_one(out, k);
                     self.start_three(&[a, new[0], new[1]], pen, out, k);
@@ -1574,7 +1657,7 @@ impl TouchGest {
                     if at_least(t.down_k, k, self.tune.land_ms) {
                         self.ph = Ph::Suppressed; // the pen's hand: quiet until it lifts
                     }
-                } else if self.pen_window(pen, k) {
+                } else if self.pen_reaches(pen, k, a) {
                     self.cancel_one(out, k);
                     self.suppress();
                 } else if t.c.nx != self.last.nx || t.c.ny != self.last.ny {
@@ -1791,7 +1874,23 @@ pub fn touchgest_frame(g: &mut TouchGest, f: &TgFrame, pen: &TgPen, out: &mut Tg
         }
     }
     // A fast stroke can report its final movement and tracking-ID release together. The
-    // released contacts are no longer down, but their last coordinates still decide the swipe.
+    // released contacts are no longer down, but their last coordinates still decide the swipe,
+    // and end one finger's stream where it lifted (a TouchMove there before its TouchUp).
+    if g.ph == Ph::One && g.one_on {
+        let one = g.t[g.one];
+        if let Some(c) = f.ended[..f.ended_n.min(TG_MAX)].iter().find(|c| one.on && !one.seen && c.id == one.id && c.slot == one.slot) {
+            if c.nx != g.last.nx || c.ny != g.last.ny {
+                let t = &mut g.t[g.one];
+                t.c = *c;
+                t.ix = ipx(c.x);
+                t.iy = ipx(c.y);
+                t.far = t.far.max(dist(t.x0, t.y0, t.ix, t.iy));
+                let e = g.touch_ev(InType::TouchMove, g.one);
+                g.last = e;
+                g.push(out, e, k);
+            }
+        }
+    }
     if matches!(g.ph,Ph::Session|Ph::Follow|Ph::Grace|Ph::TapWait) {
         for c in &f.ended[..f.ended_n.min(TG_MAX)] {
             if let Some(t)=g.t.iter_mut().find(|t|t.on && t.id==c.id && t.slot==c.slot && !t.seen) {
