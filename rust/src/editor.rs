@@ -7070,6 +7070,16 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         }
         return true;
     }
+    // The Pages view in front: the page-turn actions turn its screen (keys, a controller, a gesture; its
+    // arrows left the bottom row in 2.0.0-rc.12, where one finger flicked sideways turns it too).
+    if (action == SHORTCUT_NEXT_PAGE || action == SHORTCUT_PREV_PAGE) && s.pv.open {
+        if s.pv.kb.open {
+            return false;
+        }
+        let next = action == SHORTCUT_NEXT_PAGE;
+        with_pv(a, |pv, a, nb, nav| pagesview_turn(pv, a, nb, nav, next));
+        return true;
+    }
     let picker_move = action == SHORTCUT_PICKER_NEXT || action == SHORTCUT_PICKER_PREV;
     if picker_move && s.tools_open && !s.pv.open {
         // In the open picker the step is its choice, as a tap on the pen is but for closing it.
@@ -9407,6 +9417,7 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 /// The headless runner's "editor.*" keys, asked without the prefix (app_probe's contract);
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
+    if key=="pages.screen" {let pv=&ed_ref(a).pv;csnprintf!(out,cap,"%d",if !pv.open {0} else if pv.index_tab {pv.index_screen+1} else {pv.screen+1});return 0;}
     if key=="pages.grid" {let (cols,rows)=crate::pagesview::pagesview_grid(&ed_ref(a).pv,a);csnprintf!(out,cap,"%d %d",cols,rows);return 0;}
     if let Some(k)=key.strip_prefix("pages.") {return with_pv(a,|pv,_,nb,nav|pagesview_probe(pv,nb,nav,k,out,cap));}
     if key=="screen_composed" {

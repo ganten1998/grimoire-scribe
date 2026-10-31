@@ -16,8 +16,11 @@ wait 200
 expect bg.busy is 0
 expect editor.loaded_pages is 1
 shot many-pages-instant-grid
-tap panel pages.next
+pen leave
+wait 1100
+fpath 1400 1300 600 1320 200
 wait 100
+expect editor.pages.screen is 2
 expect editor.loaded_pages is 1
 tap panel pages.goto
 wait 100

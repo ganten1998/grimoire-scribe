@@ -67,6 +67,9 @@ pub struct MapView {
     around: Vec<GraphRing>,
     centre: i32,
     selected: i32,
+    /// when the selected node was selected (event ms): a pen's tap on it again sooner than PEN_REOPEN_MS is
+    /// the stylus bouncing, not a second tap
+    selected_k: u32,
     layout: MapLayout,
     hits: Vec<MapHit>,
     labels: Vec<Rect>,
@@ -612,6 +615,9 @@ fn paint(v: &mut MapView, a: &mut App, nav: &Nav, mode: RefreshMode) {
     mapview_draw(v, a, nav, full(v));
     app_invalidate(a, full(v), mode);
 }
+/// A pen's second tap on the node it selected counts after this long (a stylus bounce is shorter).
+const PEN_REOPEN_MS: u32 = 450;
+
 pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &InEvent) -> MapResult {
     v.last_input_ms = e.t_ms;
     if phase == 0 {
@@ -691,8 +697,14 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
     };
     match hit(v, e.x, e.y) {
         Some(MapHitKind::Node(i)) => {
-            if selected == i as i32 {
+            // A tap selects, a tap on the selected node opens it, by pen as by finger (2.0.0-rc.12: a pen's
+            // tap often reached the Kindle as two, which selected and opened at once).
+            let pen = e.type_ == InType::PenUp || e.type_ == InType::PenLeave;
+            if selected == i as i32 && !(pen && e.t_ms.wrapping_sub(v.selected_k) < PEN_REOPEN_MS) {
                 return MapResult::Open(v.g.nodes[i].pid);
+            }
+            if selected != i as i32 {
+                v.selected_k = e.t_ms;
             }
             v.selected = i as i32;
         }

@@ -715,11 +715,12 @@ fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool) {
     canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
     v.hits.h.retain(|h|h.r.y<y);
     let side=ui_px(120.0);let gap=ui_px(12.0);
-    let widths=[side,side,side,side,ui_px(260.0),ui_px(260.0),side];
-    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-6*gap)/7+ui_px(80.0)));
-    let total: i32=widths.iter().sum::<i32>()+6*gap;
+    // (no arrows since 2.0.0-rc.12: one finger flicked sideways, or the page-turn action, turns the screen)
+    let widths=[side,side,side,ui_px(260.0),ui_px(260.0)];
+    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-4*gap)/5+ui_px(80.0)));
+    let total: i32=widths.iter().sum::<i32>()+4*gap;
     let mut x=(aw-total)/2;
-    for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL,PG_NEXT].into_iter().enumerate(){
+    for (i,id) in [PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL].into_iter().enumerate(){
         let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,_=>true};
         let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
         let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
@@ -938,6 +939,12 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         app_invalidate(a, back, RefreshMode::Ui);
     }
     if v.held {v.held=false;return PvResult::None;}
+    if v.unified && !touch_cancelled(ev) {
+        if let Some(next) = flick(v, ev) {
+            pagesview_turn(v, a, nb, nav, next);
+            return PvResult::None;
+        }
+    }
     let Some(&hit) = hits_find(&v.hits, v.press.x0, v.press.y0) else {
         if v.context.take().is_some(){redraw(v,a,nb,nav,RefreshMode::Ui);}
         return PvResult::None;
@@ -1049,6 +1056,35 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         _ => {}
     }
     PvResult::None
+}
+
+/// One finger flicked sideways over the grid (at least 12 mm, mostly sideways, within 800 ms): Some(true)
+/// for the next screen (to the left), Some(false) for the previous, as on the notebook's page.
+fn flick(v: &PagesView, ev: &InEvent) -> Option<bool> {
+    let (dx, dy) = (ev.x - v.press.x0, ev.y - v.press.y0);
+    let quick = ev.t_ms.wrapping_sub(v.press.t0) < 800;
+    (quick && dx.abs() >= ui_px(140.0) as f32 && dx.abs() > 1.5 * dy.abs()).then_some(dx < 0.0)
+}
+
+/// The grid's next (or previous) screen in the tab in front (the pages, or the Index's list): a flick, or
+/// the page-turn actions while the view is up (keys, a controller, a gesture). False at either end.
+pub fn pagesview_turn(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, next: bool) -> bool {
+    let screens = if v.index_tab {
+        (nav_index(nav, nb, &mut []) + index_rows(a) - 1) / index_rows(a)
+    } else {
+        let (cols, rows, ..) = geom(a, v);
+        (nb.npages() + cols * rows - 1) / (cols * rows)
+    }
+    .max(1);
+    let cur = if v.index_tab { v.index_screen } else { v.screen };
+    let to = cur + if next { 1 } else { -1 };
+    if to < 0 || to >= screens {
+        return false;
+    }
+    if v.index_tab { v.index_screen = to } else { v.screen = to }
+    v.context = None;
+    redraw(v, a, nb, nav, RefreshMode::Full);
+    true
 }
 
 /// Held management tiles open their action card; paused typing gets its grayscale refresh.
