@@ -24,11 +24,16 @@ expect status.text is
 expect status.rect is
 expect status.front is 0
 expect status.zone is 0 0 165 165
-# The Library has no corner: a tap there is nothing to it, and the Display sheet's size shows nothing on it.
+# The Library has no corner: a tap there is nothing to it (it is the bat's, which opens What's new), and
+# the Display sheet's size shows nothing on it.
 tap 70 70
 wait 300
 expect settings.status_on is 0
 expect status.shown is 0
+expect library.sheet is about
+tap library about.close
+wait 100
+expect library.sheet is none
 # Its Settings, where the size is set, and the controller's button turn it on: it is a setting, and the Library
 # does not show it.
 key 31 0

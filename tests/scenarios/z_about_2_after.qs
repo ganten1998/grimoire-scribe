@@ -1,4 +1,4 @@
-# root: z_about_update
+# root: z_about_1_update
 # The start after the update's first: What's new does not open again.
 # rust-only
 wait 300
