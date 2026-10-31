@@ -772,7 +772,7 @@ fn status_corner_keys() {
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);
     // a file with neither key: the defaults
     check!(write_file_atomic(&path, b"invert=1\n") == 0);
-    check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 0);
+    check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 1);
     // a size past the range is the nearest, a third state is on; both go back as they were
     check!(write_file_atomic(&path, b"status_on=2\nstatus_size=7\n") == 0);
     check!(settings_load(&mut t) == 0 && t.status_on && t.status_size == 2);

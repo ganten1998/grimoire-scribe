@@ -846,7 +846,9 @@ name. A Links-bar incoming-pages chip opens Around for the current page.
 
 Folders may contain subfolders. Open a folder and use Folder to create one inside it; Back goes up
 one level. Renaming a folder also renames its descendants. Move to folder lists full destinations,
-with More folders when needed. Folder ZIP exports include descendants and keep their hierarchy.
+with More folders when needed. A folder moves too (Move folder in its menu), with everything in it,
+to the top level or into another folder that is not inside it; a folder of the same name there
+refuses it. Folder ZIP exports include descendants and keep their hierarchy.
 PDF mirrors retain their existing filename convention (a slash in a logical folder becomes an
 underscore). Links between pages of one notebook can be made with New link and Choose from the pages.
 The selection stroke disappears; a visible border is ordinary ink drawn separately.

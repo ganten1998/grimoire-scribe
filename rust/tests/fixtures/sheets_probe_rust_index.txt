@@ -3,32 +3,32 @@ pages pg index 9da346a0073d9b40
 pages pg many index 0 (screen 0) fc76c5f1c052ddbc
 pages pg many index 1 (screen 1) b9d8bd40d9aa2997
 pages pg many index 2 (screen 1) b9d8bd40d9aa2997
-pages pg name only 1 90bdc00d200fe91e
+pages pg name only 1 a95b02a4bb50fa0a
 pages pg readonly index f9a9d2be2ceb31ce
 pages pg unreadable index f21bc2df79c2135b
 pages pc index b09764da17a4873c
 pages pc many index 0 (screen 0) 676741f1a66ca45d
 pages pc many index 1 (screen 1) de7933d07bd63368
 pages pc many index 2 (screen 1) de7933d07bd63368
-pages pc name only 1 32923048218670eb
+pages pc name only 1 4caa48c41b8269a2
 pages pc readonly index 56ed37ebe3135814
 pages pc unreadable index a79be2aff87a8cc1
 pages lg index d7544f11e9ec0752
 pages lg many index 0 (screen 0) fd5e643b2f794790
 pages lg many index 1 (screen 1) 7872641cdf1e2ff3
 pages lg many index 2 (screen 1) 7872641cdf1e2ff3
-pages lg name only 1 c1784e4b6840dcd8
+pages lg name only 1 3171b872c2471398
 pages lg readonly index 59126216705361e4
 pages lg unreadable index f7a3e6c348cf0aaf
 pages lc index 5f34fb0afb8e6650
 pages lc many index 0 (screen 0) 68aebda02fe8eccd
 pages lc many index 1 (screen 1) 960597b0f4abd2e8
 pages lc many index 2 (screen 1) 960597b0f4abd2e8
-pages lc name only 1 a752ac6ff4a23685
+pages lc name only 1 81bbc5c1fb8340c8
 pages lc readonly index 36b0404e7d431993
 pages lc unreadable index f75fcd39f3352873
 pages tap 11 1 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 0 9da346a0073d9b40
-pages tap 12 0 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 1 0d9666134ac37d40
+pages tap 12 0 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 1 1181b579b370a7dc
 pages lang en pg 352708f69705cc0d
 pages lang en pc e578334094739855
 pages lang en lg 17d865ef0e63adfe

@@ -1,6 +1,6 @@
 //! keyboard.h: on-screen keyboard modal for naming notebooks and folders.
-//! QWERTY + numbers row, shift, space, backspace, Cancel / Done, and a key to a page of accented
-//! letters (and back). Pen or finger taps. The text is UTF-8: a key types a whole character and
+//! QWERTY + numbers row, shift, space, backspace, Cancel / Done, - ' and . beside the space bar, and
+//! a key each to a page of symbols and a page of accented letters (and back). Pen or finger taps. The text is UTF-8: a key types a whole character and
 //! backspace takes a whole character away.
 
 use crate::prelude::*;
@@ -21,6 +21,7 @@ pub enum KbResult {
 /// other keys have codes below 32.
 pub const KB_KEY_SHIFT: u32 = 1;
 pub const KB_KEY_PAGE: u32 = 2;
+pub const KB_KEY_SYMBOLS: u32 = 3;
 pub const KB_KEY_BKSP: u32 = 8;
 pub const KB_KEY_DONE: u32 = 13;
 pub const KB_KEY_CANCEL: u32 = 27;
@@ -31,7 +32,7 @@ pub struct Keyboard {
     pub title: FixedStr<64>,
     pub text: FixedStr<KB_TEXT_MAX>,
     pub shift: bool,
-    /// 0 letters, 1 accents, 2 number pad
+    /// 0 letters, 1 accents, 2 number pad, 3 symbols
     pub page: i32,
     /// where it was last drawn (whole modal)
     pub area: Rect,
@@ -82,7 +83,7 @@ const fn row(keys: &[u16]) -> [u16; 11] {
 
 /// The character keys of each page, row by row (zero-terminated). Rows 0-2 span the keyboard;
 /// row 3 sits between shift and delete.
-const K_ROWS: [[[u16; 11]; 4]; 2] = [
+const K_ROWS: [[[u16; 11]; 4]; 3] = [
     [
         row(&['1' as u16, '2' as u16, '3' as u16, '4' as u16, '5' as u16, '6' as u16, '7' as u16, '8' as u16, '9' as u16, '0' as u16]),
         row(&['q' as u16, 'w' as u16, 'e' as u16, 'r' as u16, 't' as u16, 'y' as u16, 'u' as u16, 'i' as u16, 'o' as u16, 'p' as u16]),
@@ -99,6 +100,15 @@ const K_ROWS: [[[u16; 11]; 4]; 2] = [
         row(&[0xE2, 0xEA, 0xEE, 0xF4, 0xFB, 0xE4, 0xEB, 0xEF, 0xF6, 0xFC]),
         row(&[0xF1, 0xE7, 0xE3, 0xF5, 0xDF, 0x153, 0xE6, 0xF8, 0xE5]),
         row(&[0xBF, 0xA1, 0xAB, 0xBB, 0xB7]),
+    ],
+    // Symbols: the digits again (for "(2)" without a trip back), under them what shift gives on a
+    // US keyboard's digits, then the rest of the punctuation names and searches take, brackets, the
+    // euro, the pound and the degree sign. (- ' and . are beside the space bar on every page.)
+    [
+        row(&['1' as u16, '2' as u16, '3' as u16, '4' as u16, '5' as u16, '6' as u16, '7' as u16, '8' as u16, '9' as u16, '0' as u16]),
+        row(&['!' as u16, '@' as u16, '#' as u16, '$' as u16, '%' as u16, '^' as u16, '&' as u16, '*' as u16, '(' as u16, ')' as u16]),
+        row(&['?' as u16, ',' as u16, '"' as u16, ':' as u16, ';' as u16, '_' as u16, '+' as u16, '=' as u16, '/' as u16, '~' as u16]),
+        row(&['[' as u16, ']' as u16, '<' as u16, '>' as u16, 0x20AC, 0xA3, 0xB0]),
     ],
 ];
 
@@ -292,7 +302,11 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
         n += 1;
         return n;
     }
-    let rows = &K_ROWS[if page != 0 { 1 } else { 0 }];
+    let rows = &K_ROWS[match page {
+        0 => 0,
+        3 => 2,
+        _ => 1,
+    }];
     let mut n = 0;
     let kh = ui_px(150.0);
     let gap = ui_px(10.0);
@@ -325,23 +339,26 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
     }
     keys[n] = Key { r: Rect { x: bx, y, w: inner_x + inner_w - bx, h: kh }, code: KB_KEY_BKSP };
     n += 1;
-    // Row 5: cancel, -, the other page (as wide as shift), space, ., done.
+    // Row 5: cancel (as wide as shift), -, the symbols page, the accents page, space, ', ., done (as
+    // wide as shift).
     y += kh + gap;
-    let cw = kw * 2;
-    keys[n] = Key { r: Rect { x: inner_x, y, w: cw, h: kh }, code: KB_KEY_CANCEL };
+    keys[n] = Key { r: Rect { x: inner_x, y, w: wide, h: kh }, code: KB_KEY_CANCEL };
     n += 1;
-    keys[n] = Key { r: Rect { x: inner_x + cw + gap, y, w: kw, h: kh }, code: '-' as u32 };
+    let mut x = inner_x + wide + gap;
+    for code in ['-' as u32, KB_KEY_SYMBOLS, KB_KEY_PAGE] {
+        keys[n] = Key { r: Rect { x, y, w: kw, h: kh }, code };
+        n += 1;
+        x += kw + gap;
+    }
+    let done_x = inner_x + inner_w - wide;
+    let ax = done_x - 2 * (kw + gap);
+    keys[n] = Key { r: Rect { x, y, w: ax - gap - x, h: kh }, code: KEY_SPACE };
     n += 1;
-    let px = inner_x + cw + kw + 2 * gap;
-    keys[n] = Key { r: Rect { x: px, y, w: wide, h: kh }, code: KB_KEY_PAGE };
+    keys[n] = Key { r: Rect { x: ax, y, w: kw, h: kh }, code: '\'' as u32 };
     n += 1;
-    let sx = px + wide + gap;
-    let dx = inner_x + inner_w - cw - gap - kw;
-    keys[n] = Key { r: Rect { x: sx, y, w: dx - gap - sx, h: kh }, code: KEY_SPACE };
+    keys[n] = Key { r: Rect { x: ax + kw + gap, y, w: kw, h: kh }, code: '.' as u32 };
     n += 1;
-    keys[n] = Key { r: Rect { x: dx, y, w: kw, h: kh }, code: '.' as u32 };
-    n += 1;
-    keys[n] = Key { r: Rect { x: inner_x + inner_w - cw, y, w: cw, h: kh }, code: KB_KEY_DONE };
+    keys[n] = Key { r: Rect { x: done_x, y, w: wide, h: kh }, code: KB_KEY_DONE };
     n += 1;
     n
 }
@@ -366,16 +383,24 @@ pub fn keyboard_close(kb: &mut Keyboard) {
 fn key_label<'a>(kb: &Keyboard, code: u32, ch: &'a mut [u8; 8]) -> &'a str {
     match code {
         // TRANSLATORS: the keyboard's named keys, in bold at 44 px: shift (250 px wide), delete
-        // (261), the space bar, and Cancel and Done (334).
+        // (261), the space bar (355), and Cancel and Done (250).
         KB_KEY_SHIFT => c_("key", "shift"),
         KB_KEY_BKSP => c_("key", "del"),
         KB_KEY_DONE => tr("Done"),
         KB_KEY_CANCEL => tr("Cancel"),
+        // The two page keys: each to its page, and on it back to the letters.
         KB_KEY_PAGE => {
-            if kb.page != 0 {
+            if kb.page == 1 {
                 "abc"
             } else {
                 "\u{e1}\u{e9}" // a and e acute
+            }
+        }
+        KB_KEY_SYMBOLS => {
+            if kb.page == 3 {
+                "abc"
+            } else {
+                "#+="
             }
         }
         KEY_SPACE => c_("key", "space"),
@@ -496,7 +521,7 @@ pub fn keyboard_key_rect(kb: &Keyboard, code: u32, r: &mut Rect) -> bool {
 
 /// Pointer events only (pen or touch, already unified by the caller as down/move/up).
 /// *dirty receives the rect needing redraw (may be empty). Characters and backspace type on
-/// touch-down (no waiting for the lift); Shift, the page key, Cancel and Done act on release.
+/// touch-down (no waiting for the lift); Shift, the page keys, Cancel and Done act on release.
 /// phase: 0 down, 1 move, 2 up.
 pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, dirty: &mut Rect) -> KbResult {
     *dirty = RECT_EMPTY;
@@ -515,7 +540,7 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         }
         *dirty = keys[kb.pressed_key as usize].r;
         let c = keys[kb.pressed_key as usize].code;
-        if c == KB_KEY_SHIFT || c == KB_KEY_PAGE || c == KB_KEY_DONE || c == KB_KEY_CANCEL {
+        if c == KB_KEY_SHIFT || c == KB_KEY_PAGE || c == KB_KEY_SYMBOLS || c == KB_KEY_DONE || c == KB_KEY_CANCEL {
             return KbResult::None;
         }
         kb.typed = true; // type now: the lift only releases the key
@@ -557,8 +582,9 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
             *dirty = kb.area;
             return KbResult::Changed;
         }
-        KB_KEY_PAGE => {
-            kb.page = (kb.page == 0) as i32;
+        KB_KEY_PAGE | KB_KEY_SYMBOLS => {
+            let to = if keys[k as usize].code == KB_KEY_PAGE { 1 } else { 3 };
+            kb.page = if kb.page == to { 0 } else { to };
             *dirty = kb.area;
             return KbResult::Changed;
         }

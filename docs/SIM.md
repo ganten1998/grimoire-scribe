@@ -157,15 +157,20 @@ the panel, is the writing hand by the same rules, and anywhere else, the Library
 keyboard, a finger is always a finger).
 
 The keyboard's keys in portrait (the Library's keyboard, for every name, at 300 dpi): shift
-175 2205, del 1679 2205, Cancel 217 2365, `-` 477 2365, the page key 696 2365 (labelled with a
-and e acute on the letters page, abc on the accents page), space 1060 2365, `.` 1382 2365, Done
-1643 2365. On the letters page: y 1725 the digits and y 1885 q to p at x = 133 + 177 n, y 2045
+175 2205, del 1679 2205, and along the bottom Cancel 175 2365, `-` 393 2365, the symbols key 570
+2365 (labelled #+=, abc on the symbols page), the accents key 747 2365 (labelled with a and e
+acute, abc on the accents page), space 1018 2365, `'` 1289 2365, `.` 1466 2365 and Done 1685
+2365 (Cancel 217, the accents key 696, space 1060 and Done 1643, where they were before the
+symbols page came, are still on them). On the letters page: y 1725 the digits and y 1885 q to p at x = 133 + 177 n, y 2045
 a to l at x = 221 + 177 n, y 2205 z to m at x = 393 + 177 n. On the accents page: y 1725 a e i o u with an acute, then with a grave, at x = 133 + 177 n; y 1885 the
 same with a circumflex, then a diaeresis, at the same x; y 2045 n tilde, c cedilla, a and o
 tilde, sharp s, oe, ae, o slash, a ring at x = 221 + 177 n; y 2205 the inverted question and
-exclamation marks, the angle quotes and the middle dot at x = 570 + 177 n. In Spanish the letters
-page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n.
-tests/scenarios/u_accents.qs types accented names with them.
+exclamation marks, the angle quotes and the middle dot at x = 570 + 177 n. On the symbols page:
+y 1725 the digits, y 1885 `! @ # $ % ^ & * ( )`, y 2045 `? , " : ; _ + = / ~`, each at x = 133 +
+177 n; y 2205 `[ ] < >`, the euro, the pound and the degree sign at x = 393 + 177 n. In Spanish
+the letters page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n.
+tests/scenarios/u_accents.qs types accented names with them, u_keyboard_symbols.qs a name with
+symbols.
 
 These hold in both styles, in English and in Spanish (tests/scenarios/y_all_screens.qs taps them
 in each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and
@@ -183,9 +188,12 @@ top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows a
 sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
 is 1240 1099 and its Done 1770 1419; the Language list's Cancel 1240 1055. The first card's menu
 button is 431 896; in a notebook's menu Move to folder is 1240 790 and Delete 1240 1110, Delete's
-Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Cancel at 1240 950. Share's
+Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Move folder at 1240 790
+and Cancel at 1240 1110. Share's
 Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
-sheet's Cancel 598 1693); the keyboard's page key is 928 1745 and its Cancel 279 1745. Pen feel's
+sheet's Cancel 598 1693); the keyboard's bottom row is at y 1745: Cancel 221, `-` 517, the
+symbols key 756, the accents key 995 (928 is on it too), space 1360, `'` 1723, `.` 1962 and Done
+2258 (Cancel's 279 is on it too). Pen feel's
 tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's corners are 298 223,
 2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
 Cancel 1240 1675. The editor's tool button is 2388 358.
@@ -416,7 +424,7 @@ shows what the app holds.
 | `library.gestures.learning` | action being recorded, or `0` |
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
-| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. A notebook's menu has `more.move`; a folder's `fmore.rename`, `fmore.move` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next` |
 | `library.about.page`, `library.about.pages`, `library.about.full` | What's new while it is open (else `0`): the page shown (from 1) and the pages the notes take on the sheet, and `1` once Read all shows the whole notes (the card: `0`). Its hits: `about` (the bat and the name beside it, at the top level; in a folder `back` is where the bat is), `about.close`, `about.hide`, `about.more` (Read all), `about.prev`, `about.next` |
 | `settings.whatsnew_hide` | `1` while What's new's Don't show this again is ticked |
 | `settings.rotation_lock` | `0` follows the sensor, `1..4` locks rotation to stored value minus 1 |
@@ -442,6 +450,8 @@ shows what the app holds.
 | `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
 | `library.folder` | the open folder, empty at the top level |
+| `library.folders` | every folder by its path, as Move to lists them, joined by `, ` (`Archive, Archive/School`); empty with none |
+| `library.mirror` | the mirror PDFs (`PDFs/`) by directory: `.` for the top and each directory in it, sorted, with how many PDFs it holds (`. 0, Archive_School 1`), so a directory left behind shows as `School 0` |
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |
 | `library.page`, `library.pages` | the page of cards (from 1) and how many there are |
 | `library.text` | the keyboard's text while it is open |
@@ -663,6 +673,7 @@ for700ms and requires this counter to remain zero. `z_shape_last` checks one Rep
 and both new action families. The test runner ticks during an explicit `wait` with the nib down.
 
 `tap library NAME` and `touch down|move|up library NAME` resolve the Library control by its
-`library.ui_at` name, including a binding row or a record-card button. They fail if that control
-is not currently reachable. These commands make recording and controller tests independent of
-menu spacing; unit checks still verify separate, on-screen hit targets.
+`library.ui_at` name, including a binding row or a record-card button; `notebook.ID` and
+`folder.PATH` are a card, `notebook-menu.ID` and `folder-menu.PATH` its menu button. They fail
+if that control is not currently reachable. These commands make recording and controller tests
+independent of menu spacing; unit checks still verify separate, on-screen hit targets.

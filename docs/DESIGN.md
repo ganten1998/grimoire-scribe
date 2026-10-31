@@ -47,7 +47,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | power.h/.c | the power key (press, release, 4 s hold) and the power service's state, as pure logic | input |
 | fbcheck.h/.c | framebuffer readback at 8 and 32 bpp, refresh health, the dpi choice (pure) | - |
 | ui.h/.c | widgets (button, slider, sheet, toast, hit lists) in two themes; `ui_frame` draws any box in the theme's shape (rounded, or cut corners via `canvas_chamfer_rect`), plus gothic ornaments (rules, arch frieze, quatrefoil); icons are Terminess Nerd Font glyphs | canvas, font |
-| keyboard.h/.c | on-screen keyboard modal (rename / name a notebook): UTF-8, a letters page and an accents page | ui |
+| keyboard.h/.c | on-screen keyboard modal (rename / name a notebook): UTF-8, a letters page, a symbols page and an accents page | ui |
 | qr.h/.c | QR codes as whole-pixel modules (the Share screen's address), with third_party/qrcodegen | canvas |
 | app.h/.c | App struct, main loop glue, dirty-rect + refresh accumulation, screen switch, toasts, power button and sleep | all screens |
 | httpd.h/.c, web/studio.* | share server (pages and fonts in-process, renders in a forked child) and the browser's Effects studio | export, store |
@@ -266,10 +266,12 @@ draws them. White ink and the precise eraser make them.
   `font_has_glyph(face, cp)` tells whether a face has its own glyph, without the Terminess
   fallback.
 - The keyboard's text is UTF-8 and its keys carry code points (`KB_KEY_*` below 32 for the named
-  keys). There are two pages, letters and accents (`Keyboard.page`); `keyboard_upper()` is the
-  shift case map (Latin-1 and Latin Extended-A), `keyboard_key_rect()` locates a key on the page
-  showing (for tests and scripts), and `keyboard_open` keeps valid UTF-8 and drops control
-  characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
+  keys). There are three pages of characters, letters, symbols and accents (`Keyboard.page`), each
+  with `-`, `'` and `.` beside the space bar and two page keys, #+= to the symbols page and áé to
+  the accents page, each labelled abc on its own page to go back to the letters (Go to page's
+  number pad is a fourth page). `keyboard_upper()` is the shift case map (Latin-1 and Latin
+  Extended-A), `keyboard_key_rect()` locates a key on the page showing (for tests and scripts), and
+  `keyboard_open` keeps valid UTF-8 and drops control characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
   the letters page's middle row ends with ñ after l (`k_row_es`), as Spanish keyboards have it, and
   is then as wide as the row above; the accents page keeps ñ in every language.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
@@ -996,7 +998,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
 One level. A notebook's `folder` field ("" = top level). The library shows folders first as
 cards; tapping one lists its notebooks (with a back button). New notebooks are created in
 the open folder. Card menu: Rename, Move to folder (pick existing / new via keyboard / top
-level), Delete. Folders sort by name with accents folded (`cmp_name` in store.c: Latin-1 and
+level), Delete. A folder's menu: Rename folder, Move folder (the same list, less the folder itself
+and the folders inside it; it goes with all it holds, and its notebooks' mirror PDFs follow),
+Remove folder (only an empty one). Folders sort by name with accents folded (`cmp_name` in store.c: Latin-1 and
 Latin Extended-A letters compare as their base letters, ß as ss, æ as ae, œ as oe, ĳ as ij, þ as
 th, combining accents dropped), so Álgebra sorts among the A's; names that fold equal go by their
 bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character

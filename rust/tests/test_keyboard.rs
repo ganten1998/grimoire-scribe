@@ -1,7 +1,7 @@
 // test_keyboard.c: the on-screen keyboard through its public API (keyboard.h). The text is
 // UTF-8: keys type whole characters, backspace removes whole characters, shift gives accented
-// capitals, the accents page is one key away, and a name opened for renaming keeps its accents
-// and is never cut inside a character.
+// capitals, the accents page and the symbols page are a key away, and a name opened for renaming
+// keeps its accents and is never cut inside a character.
 #![allow(clippy::needless_range_loop, clippy::manual_range_contains, clippy::neg_cmp_op_on_partial_ord, clippy::int_plus_one, clippy::missing_const_for_thread_local)]
 mod testlib;
 
@@ -40,7 +40,8 @@ fn open_kb(kb: &mut Keyboard, initial: &[u8]) {
 }
 
 // Types valid UTF-8 key by key, as a person would: a capital with shift and its small letter's
-// key, an accented letter from the accents page. False if a character has no key.
+// key, an accented letter from the accents page, a symbol from the symbols page. False if a
+// character has no key.
 fn type_text(kb: &mut Keyboard, s: &str) -> bool {
     for ch in s.chars() {
         let cp = ch as u32;
@@ -53,8 +54,17 @@ fn type_text(kb: &mut Keyboard, s: &str) -> bool {
             c += 1;
         }
         let mut r = Rect::default();
-        if !keyboard_key_rect(kb, key, &mut r) {
-            press(kb, KB_KEY_PAGE);
+        // Not here: back to the letters, then the accents page, then the symbols page.
+        for to in [0, 1, 3] {
+            if keyboard_key_rect(kb, key, &mut r) {
+                break;
+            }
+            if kb.page != 0 {
+                press(kb, if kb.page == 1 { KB_KEY_PAGE } else { KB_KEY_SYMBOLS });
+            }
+            if to != 0 {
+                press(kb, if to == 1 { KB_KEY_PAGE } else { KB_KEY_SYMBOLS });
+            }
         }
         if !keyboard_key_rect(kb, key, &mut r) {
             return false;
@@ -269,7 +279,10 @@ fn long_name_tail_is_whole_characters() {
 }
 
 // The letters page kept its keys where they were (tests/scenarios/b_library.qs types "School"
-// by coordinates), with the accents key beside the space bar.
+// by coordinates), with the accents key beside the space bar. Below them Cancel, the accents key,
+// the space bar and Done take the taps the scenarios make there, upright and sideways, beside the
+// keys that came with the symbols page: - and the symbols key left of the accents key, ' and .
+// right of the space bar.
 fn letters_layout_kept() {
     let mut kb = Keyboard::default();
     open_kb(&mut kb, b"");
@@ -280,11 +293,77 @@ fn letters_layout_kept() {
         keyboard_pointer(&mut kb, 2, t[0] as f32, t[1] as f32, 40, &mut d);
     }
     check!(text(&kb) == b"School");
-    let (mut r, mut sh, mut sp) = (Rect::default(), Rect::default(), Rect::default());
-    check!(keyboard_key_rect(&kb, KB_KEY_PAGE, &mut r) && keyboard_key_rect(&kb, KB_KEY_SHIFT, &mut sh) && keyboard_key_rect(&kb, ' ' as u32, &mut sp));
-    check!(r.w == sh.w && r.h == sh.h && r.y == sp.y && r.x + r.w < sp.x);
+    let key = |kb: &Keyboard, code: u32| {
+        let mut r = Rect::default();
+        check!(keyboard_key_rect(kb, code, &mut r));
+        r
+    };
+    let (sh, z) = (key(&kb, KB_KEY_SHIFT), key(&kb, 'z' as u32));
+    let row = [KB_KEY_CANCEL, '-' as u32, KB_KEY_SYMBOLS, KB_KEY_PAGE, ' ' as u32, '\'' as u32, '.' as u32, KB_KEY_DONE].map(|c| key(&kb, c));
+    for (i, r) in row.iter().enumerate() {
+        check!(r.y == sh.y + sh.h + 10 && r.h == sh.h);
+        check!(i == 0 || r.x == row[i - 1].x + row[i - 1].w + 10);
+        check!(r.w == if i == 0 || i == 7 { sh.w } else if i == 4 { 355 } else { z.w });
+    }
+    check!(row[0].x == sh.x && row[7].x + row[7].w == 1810);
+    for (screen, y, taps) in [
+        (Rect { x: 0, y: 0, w: 1860, h: 2480 }, 2365, &[(217, KB_KEY_CANCEL), (696, KB_KEY_PAGE), (1060, ' ' as u32), (1643, KB_KEY_DONE)][..]),
+        (Rect { x: 0, y: 0, w: 2480, h: 1860 }, 1745, &[(279, KB_KEY_CANCEL), (928, KB_KEY_PAGE), (1416, ' ' as u32), (2201, KB_KEY_DONE)][..]),
+    ] {
+        G_C.with(|c| keyboard_draw(&mut kb, &mut c.borrow_mut(), screen));
+        for &(x, code) in taps {
+            check!(rect_contains(key(&kb, code), x, y));
+        }
+    }
+    draw(&mut kb);
     keyboard_pointer(&mut kb, 0, 1643.0, 2365.0, 0, &mut d);
     check!(keyboard_pointer(&mut kb, 2, 1643.0, 2365.0, 40, &mut d) == KbResult::Done);
+}
+
+// The symbols key opens the symbols page and, labelled abc there, takes it back to the letters; the
+// accents key on it goes to the accents page, whose symbols key goes to the symbols page. On it
+// "Joe's notes (2)!" types (the owner's name with an apostrophe, and the rest), and shift leaves
+// a symbol as it is.
+fn symbols_page() {
+    let mut kb = Keyboard::default();
+    open_kb(&mut kb, b"");
+    let mut r = Rect::default();
+    check!(!keyboard_key_rect(&kb, '!' as u32, &mut r) && keyboard_key_rect(&kb, '\'' as u32, &mut r));
+    check!(press(&mut kb, KB_KEY_SYMBOLS) && kb.page == 3);
+    check!(keyboard_key_rect(&kb, '!' as u32, &mut r) && keyboard_key_rect(&kb, '1' as u32, &mut r) && !keyboard_key_rect(&kb, 'a' as u32, &mut r));
+    check!(press(&mut kb, KB_KEY_SYMBOLS) && kb.page == 0);
+    check!(press(&mut kb, KB_KEY_SYMBOLS) && press(&mut kb, KB_KEY_PAGE) && kb.page == 1);
+    check!(press(&mut kb, KB_KEY_SYMBOLS) && kb.page == 3);
+    check!(press(&mut kb, KB_KEY_PAGE) && press(&mut kb, KB_KEY_PAGE) && kb.page == 0);
+    check!(type_text(&mut kb, "Joe's notes (2)!"));
+    check!(text(&kb) == b"Joe's notes (2)!");
+    press(&mut kb, KB_KEY_SHIFT);
+    press(&mut kb, '&' as u32);
+    check!(text(&kb) == b"Joe's notes (2)!&" && kb.shift); // (no capital: shift waits for a letter)
+    open_kb(&mut kb, b"");
+    let all = "1234567890!@#$%^&*()?,\":;_+=/~[]<>\u{20ac}\u{a3}\u{b0}-'. ";
+    check!(type_text(&mut kb, all));
+    check!(kb.text.as_str() == all);
+}
+
+// Every character on the symbols page and beside the space bar is drawn in every face of both
+// themes: the theme's own glyph, or (above U+007F, where font.rs borrows) Terminess's.
+fn symbols_in_every_face() {
+    const FACES: [FontFace; FontFace::COUNT] = [FontFace::Regular, FontFace::Bold, FontFace::Title, FontFace::Caps, FontFace::Fixed, FontFace::FixedBold];
+    for cp in "1234567890!@#$%^&*()?,\":;_+=/~[]<>\u{20ac}\u{a3}\u{b0}-'.".chars().map(|c| c as u32) {
+        for th in [UiTheme::Classic, UiTheme::Gothic] {
+            ui_set_theme(th);
+            for (f, face) in FACES.into_iter().enumerate() {
+                // (Classic's faces are Terminess's: there a symbol above U+007F must be its own)
+                let ok = font_has_glyph(face, cp) || (cp > 0x7F && th == UiTheme::Gothic);
+                if !ok {
+                    eprintln!("  U+{:04X} missing in face {} ({:?})", cp, f, th as i32);
+                }
+                check!(ok);
+            }
+        }
+    }
+    ui_set_theme(UiTheme::Gothic);
 }
 
 // In Spanish the letters page has n tilde right of l, as Spanish keyboards do: "Año" and "AÑO"
@@ -347,7 +426,7 @@ fn accents_in_every_face() {
 // what font_draw_centered draws at that size, in both styles.
 fn one_character_keys_at_title_size() {
     // page, code, label, word
-    const K: [(i32, u32, &str, bool); 10] = [
+    const K: [(i32, u32, &str, bool); 15] = [
         (0, 'a' as u32, "a", false),
         (1, 0xE1, "\u{e1}", false),
         (1, 0xF1, "\u{f1}", false),
@@ -358,6 +437,11 @@ fn one_character_keys_at_title_size() {
         (1, KB_KEY_PAGE, "abc", true),
         (0, KB_KEY_SHIFT, "shift", true),
         (0, KB_KEY_PAGE, "\u{e1}\u{e9}", true),
+        (0, '\'' as u32, "'", false),
+        (0, KB_KEY_SYMBOLS, "#+=", true),
+        (3, '&' as u32, "&", false),
+        (3, 0x20AC, "\u{20ac}", false),
+        (3, KB_KEY_SYMBOLS, "abc", true),
     ];
     for (theme, th) in [UiTheme::Gothic, UiTheme::Classic].into_iter().enumerate() {
         ui_set_theme(th);
@@ -365,7 +449,13 @@ fn one_character_keys_at_title_size() {
         open_kb(&mut kb, b"");
         for (page, code, label, word) in K {
             if kb.page != page {
-                press(&mut kb, KB_KEY_PAGE);
+                let back = if kb.page == 1 { KB_KEY_PAGE } else { KB_KEY_SYMBOLS };
+                if kb.page != 0 {
+                    press(&mut kb, back);
+                }
+                if page != 0 {
+                    press(&mut kb, if page == 1 { KB_KEY_PAGE } else { KB_KEY_SYMBOLS });
+                }
             }
             let mut r = Rect::default();
             let mut want = Canvas::default();
@@ -495,6 +585,8 @@ fn test_keyboard() {
     run!(long_name_tail_is_whole_characters);
     run!(letters_layout_kept);
     run!(spanish_letters_have_enye);
+    run!(symbols_page);
+    run!(symbols_in_every_face);
     run!(accents_in_every_face);
     run!(one_character_keys_at_title_size);
     run!(typed_name_is_stored_whole);

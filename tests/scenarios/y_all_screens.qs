@@ -816,7 +816,7 @@ tap 548 1052
 wait 50
 expect library.sheet is folder-more
 shot 39-folder-more-holding
-tap 930 1155
+tap library done
 wait 50
 expect library.sheet is none
 tap 326 608
@@ -855,7 +855,7 @@ wait 50
 expect library.sheet is none
 tap 1151 1052
 wait 50
-tap 930 995
+tap library fmore.remove
 wait 100
 expect library.sheet is none
 expect library.items is 1
@@ -1093,7 +1093,9 @@ tap 431 896
 wait 50
 expect library.sheet is folder-more
 shot 53-folder-more-landscape
-tap 1240 950
+expect library.ui_at.1240.790 is fmore.move
+expect library.ui_at.1240.1110 is done
+tap library done
 wait 50
 expect library.sheet is none
 tap 2155 95
