@@ -23,6 +23,8 @@ echo "grimoire lc_all=${LC_ALL-(unset)} lang=${LANG-(unset)}" >>"$SHIM_LOG"
 # The passcode note the launcher passed, and whether the passcode is set while Grimoire runs.
 if [ -e "${GRIMOIRE_SYSROOT:?}/var/local/system/userpasswdenabled" ]; then flag=on; else flag=off; fi
 echo "grimoire passcode note=${GRIMOIRE_PASSCODE:-} flag=$flag" >>"$SHIM_LOG"
+# The launcher's Grimoire-runs flag for the USB file connection, as Grimoire finds it.
+echo "grimoire running=$(cat "$GRIMOIRE_ROOT/.running" 2>/dev/null)" >>"$SHIM_LOG"
 echo $$ >"${SHIM_STATE:?}/grimoire.pid"
 beat() { : >"${GRIMOIRE_TMP:?}/grimoire.alive"; }
 case "${FAKE_MODE:-normal}" in

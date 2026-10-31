@@ -16,17 +16,28 @@ JOBS=${BT_JOBS:-btmanagerd acsbtfd}
 
 say() { echo "bluetooth.sh: $*" >&2; }
 
+# A fifth of a second, counted in STEP fifths. The Kindle's busybox sleep takes whole seconds only
+# ("sleep: invalid number '0.2'", and no wait at all), so usleep first; a shell with neither a
+# fraction nor usleep sleeps a whole second, which counts as five, so every wait below keeps its length.
+nap() {
+    STEP=1
+    usleep 200000 2>/dev/null && return 0
+    sleep 0.2 2>/dev/null && return 0
+    sleep 1
+    STEP=5
+}
+
 # One run at a time (Grimoire's start and the launcher's stop can meet): a lock directory, given
 # up after 20 s by a run that finds it stale.
 lock() {
     i=0
     until mkdir "$STATE.lock" 2>/dev/null; do
-        i=$((i + 1))
         if [ $i -ge 100 ]; then
             say "a stale lock: taking it"
             rm -rf "$STATE.lock"
         fi
-        sleep 0.2
+        nap
+        i=$((i + STEP))
     done
     trap 'rmdir "$STATE.lock" 2>/dev/null' EXIT
 }
@@ -118,8 +129,8 @@ bt_start() {
             echo failed
             return 1
         fi
-        i=$((i + 1))
-        sleep 0.2
+        nap
+        i=$((i + STEP))
     done
     say "the helper started but does not answer yet"
     echo owned
@@ -141,8 +152,8 @@ bt_stop_owned() {
         # The helper detaches its devices on the way out (it gives that 10 s): wait 12, then insist.
         i=0
         while kill -0 "$pid" 2>/dev/null && [ $i -lt 60 ]; do
-            i=$((i + 1))
-            sleep 0.2
+            nap
+            i=$((i + STEP))
         done
         if kill -0 "$pid" 2>/dev/null; then
             say "the helper did not stop: killing it"

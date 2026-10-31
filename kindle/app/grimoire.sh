@@ -246,6 +246,7 @@ IPTABLES_ADDED=no
 STOPPED_JOBS=""
 RESTORED=no
 PREVENT_BEFORE=0  # preventScreenSaver to put back: off, or hosted, what KOReader had
+RUNNING=$ROOT/.running  # Grimoire runs (for the USB file connection, below)
 # Native PIN flag (never modified here) and legacy beta.1 recovery markers.
 PASSCODE=$SYS/var/local/system/userpasswdenabled
 PASSCODE_MARK=$ROOT/.passcode-paused
@@ -271,6 +272,7 @@ restore() {
     else
         log "restoring the Kindle UI"
     fi
+    rm -f "$RUNNING"
     if [ "$IPTABLES_ADDED" = yes ]; then
         iptables -D INPUT -i wlan0 -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null
     fi
@@ -342,6 +344,12 @@ stop_grimoire() {
 trap 'restore; release' EXIT
 # Never hand the screen back to the Kindle while Grimoire still has it.
 trap 'stop_grimoire; restore; exit 1' INT TERM HUP
+# Grimoire is about to run: the USB file connection (KindleLab's bridge on a Mac) keeps grimoire/
+# read-only while this file is there, but for photos, templates, import and PDFs, so the Mac cannot
+# change notebooks or settings that Grimoire holds and writes back. restore() takes it away; one that
+# a crash or a power loss left behind names a launcher that is gone, which the Kindle's USB
+# controller checks.
+echo "pid=$$ build=$(cat "$DIR/BUILD_ID" 2>/dev/null) since=$(date +%s)" >"$RUNNING" 2>/dev/null
 
 if [ -n "$HOSTED" ]; then
     log "starting Grimoire hosted by KOReader (reader.lua pid $KO_READER; KOReader stopped the framework: ${KO_STOP_FRAMEWORK:-no}, awesome: ${KO_AWESOME_STOPPED:-no}) on $(cat "$SYS/etc/prettyversion.txt" 2>/dev/null)"

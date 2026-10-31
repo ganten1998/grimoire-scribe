@@ -573,7 +573,7 @@ kpm-check: kpm-package
 # host exporter, the ARM build), and the zip people install: what it holds, that two clean builds
 # make the same bytes, and its launchers run against stand-ins for the Kindle's tools; then the KPM
 # package and the KOReader patches.
-.PHONY: package-check launcher-check mirror-cleanup-check
+.PHONY: package-check launcher-check mirror-cleanup-check usb-stage-check
 mirror-cleanup-check: $(BUILD)/host/grimoire-headless
 	BUILD=$(BUILD) python3 -m unittest discover -s tests -p 'test_mirror_cleanup.py' -v
 package-check: package
@@ -582,7 +582,9 @@ package-check: package
 	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
-check: rust-check package-check launcher-check kpm-check kopatch-check wifi-check dist
+usb-stage-check:
+	python3 -m unittest discover -s tests -p 'test_usb_stage.py' -v
+check: rust-check package-check launcher-check kpm-check kopatch-check wifi-check usb-stage-check dist
 	@echo "CHECK PASSED"
 
 clean:
