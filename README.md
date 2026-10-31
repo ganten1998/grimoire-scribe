@@ -454,8 +454,12 @@ python3 tools/usb-stage.py dist/Grimoire-VERSION-COMMIT --receipt /tmp/grimoire-
 ```
 
 The command copies into a new `kindle-lab/grimoire-dev/` generation and checks every file against
-a fresh USB read, bypassing the Mac filesystem cache. `READY.json` is written only after those
-checks pass. This stages files only: it does not install plugins, overwrite the active app, or
+a fresh USB read, bypassing the Mac filesystem cache. It writes to the bridge's local WebDAV
+address, not through the Finder mount, so macOS leaves no `._` files beside the bundle.
+`READY.json` is written only after those checks pass. `--prune-keep N` keeps only the newest N
+generations (alone, or after staging), and `--clean-sidecars` removes the `._` and `.DS_Store`
+files that older versions left there. It runs on Python 3.9 or newer, the Mac's own
+`/usr/bin/python3` included. This stages files only: it does not install plugins, overwrite the active app, or
 restart it. Installation still requires a normal Grimoire exit. This personal development helper
 does not install or distribute the USB bridge or its device controller.
 
