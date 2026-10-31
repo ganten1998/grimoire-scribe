@@ -6212,10 +6212,10 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         LbResult::Commit => bar_commit(a),
         LbResult::Back => bar_back(a),
         LbResult::GoTo => {
-            // Find acts on the page that shows: stay on it, then the sheet.
+            // Find acts on the page that shows: stay on it, then the sheet (the go-to-page action's, which
+            // takes a page number or a name).
             bar_stay(a);
-            let index=ed_ref(a).index;
-            if with_pv(a,|pv,a,nb,nav|pagesview_jump(pv,a,nb,nav,index)) {compose_all(a,RefreshMode::Ui);}
+            find_show(a);
         }
         LbResult::NewLink => {
             let s = ed(a);

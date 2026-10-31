@@ -46,18 +46,22 @@ tap 1643 2365
 expect editor.modal is none
 expect editor.page is 1
 expect editor.screen_composed is 1
-# The status menu owns a separate numeric jump instead of opening Pages or Find.
+# The Links bar's Go to page opens the Find sheet over the page, as the go-to-page action does (a
+# number or a name), never the Pages view.
 pen leave
 wait 1100
 swipe 2 930 1400 0 -400
 tap panel bar.goto
-expect editor.pages.overlay is 1
-expect editor.pages.keyboard is Go to page
-expect editor.find is 0
+expect editor.find is go
+expect editor.modal is find
+expect editor.bar is 0
+expect editor.keyboard is Page number or name
 expect editor.screen_composed is 1
-shot 04-numeric-jump-over-page
-tap 1518 1725
-tap 1643 2365
+shot 04-find-over-page
+tap 487 1725
+expect editor.find.1 is Go to page 3
+tap 930 1390
+wait 300
 expect editor.page is 3
 expect editor.modal is none
 expect editor.screen_composed is 1
