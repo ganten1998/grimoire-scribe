@@ -11,7 +11,10 @@ fn versions_order_as_kpm_orders_them() {
     check!(update_version_key("2.0.0", &mut k) && k[2] == 9999);
     check!(update_version_key("2.0.1", &mut k) && k[2] == 19999);
     check!(update_version_key("1.2.0", &mut k) && k[0] == 1 && k[1] == 2 && k[2] == 9999);
-    check!(!update_version_key("2.0", &mut k) && !update_version_key("2.0.0-beta.0", &mut k) && !update_version_key("2.0.0-beta.01", &mut k));
+    check!(!update_version_key("2.0", &mut k) && !update_version_key("2.0.0-beta.01", &mut k));
+    // 2.0.0-beta.0, the first public beta, is 2.0.1000, before beta.1 and every rc
+    check!(update_version_key("2.0.0-beta.0", &mut k) && k == [2, 0, 1000]);
+    check!(update_version_cmp("2.0.0-beta.0", "2.0.0-beta.1") < 0 && update_version_cmp("2.0.0-beta.0", "1.2.0") > 0);
     check!(!update_version_key("2.0.0-alpha.1", &mut k) && !update_version_key("2.0.0-beta.1000", &mut k) && !update_version_key("v2.0.0", &mut k));
     // (The C also asks with NULL: Rust has no NULL string.)
     check!(!update_version_key("2.0.0 ", &mut k) && !update_version_key("", &mut k));

@@ -11,6 +11,16 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.0
+
+Checked by the owner on 2.0.0-rc.12 (Kindle Scribe 2024, firmware 5.20.1.0.2): What's new and its signature,
+undo and redo on the 1,090-stroke page, folders moving, the keyboard's symbols, Pages' flicks and long-press
+card, the Graph's pen tap, the new shape modes and sliders, Live view's MP4 recording and picture in picture
+in Chrome, and the new layouts. Two things were not right and are fixed in beta.0, not yet seen on a Kindle:
+the link outline (now visibly dithered) and link snapping (now with every Smart shapes setting). Still needs a
+device: installing this beta from KPM (`;kpm install` from the Kindle's search bar), the first test of the
+public feed.
+
 ## 2.0.0-rc.12 (device checks pending)
 
 On the Kindle: a folder's menu, Move folder, into another folder and back; type "Joe's notes (2)!" on the keyboard

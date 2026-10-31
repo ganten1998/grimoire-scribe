@@ -17,15 +17,37 @@ carved-stone frames and pointed arches
 Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 
 <p>
-<img src="docs/screens/library.png" width="32%" alt="Library">
-<img src="docs/screens/pens.png" width="32%" alt="Charcoal and the calligraphy pen">
-<img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
+<img src="docs/screens/demo-vase.png" width="32%" alt="A vase shaded with the pencil and charcoal">
+<img src="docs/screens/demo-room.png" width="32%" alt="A room drawn on one page of over a thousand strokes">
+<img src="docs/screens/demo-iso.png" width="32%" alt="Isometric paper">
 </p>
+<p>
+<img src="docs/screens/whatsnew.png" width="32%" alt="The Library and What's new">
+<img src="docs/screens/papers.png" width="32%" alt="Choosing a notebook's paper">
+<img src="docs/screens/graph.png" width="32%" alt="The Graph of a notebook's linked pages">
+</p>
+<p>
+<img src="docs/screens/tools.png" width="32%" alt="The tool picker">
+<img src="docs/screens/shapes.png" width="32%" alt="Smart shapes">
+</p>
+<p><img src="docs/screens/liveview.png" width="97%" alt="Live view: the Kindle's screen in a browser, live"></p>
 
-> **Pre-release 2.0.0-rc.10.** Earlier builds are in daily use on
-> Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
-> damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
-> and then (Library > Share makes that one click).
+The pages above were drawn on a Kindle Scribe in Grimoire; the last picture is Live view, the
+Kindle's screen in a computer's browser as you write.
+
+> **Pre-release 2.0.0-beta.0.** The first public beta: Grimoire is in daily use on a Kindle
+> Scribe, and every build passes several hundred automated checks, but it is a beta: it autosaves every
+> stroke and keeps damaged files instead of overwriting them, and you should still copy your notebooks
+> off now and then (Library > Share makes that one click).
+
+## Support Grimoire
+
+Grimoire is free, open source and made by one person, with a lot of care. If it has earned a place
+in your notebook, you can support its development on Ko-fi:
+
+<a href="https://ko-fi.com/B0B7EF4TJ"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support Grimoire on Ko-fi" height="36"></a>
+
+Feedback and feature requests are welcome in the issues too.
 
 ## Will it run on my Kindle?
 
@@ -504,8 +526,10 @@ For the proposed selection-annotation and wireless Emacs/org-roam bridge, see
 ## Name, logo and forks
 
 Grimoire is free software, and you are welcome to fork it under the GPL. The name "Grimoire" and
-the bat logo identify the official builds, though. If you distribute builds of a modified version,
-please give it a different name and icon, and do not present it as the official app.
+the bat logo identify the official builds, though, and are not part of what the GPL licenses: if you
+distribute builds of a modified version, give it a different name and a different icon, do not use the
+bat logo or the screenshots here to present it, and do not present it as the official app or imply
+that it is endorsed by this project.
 
 Official builds come only from the releases on github.com/ganten1998/grimoire-scribe and
 codeberg.org/ganten1998/grimoire-scribe, and from the project's KPM feeds. Grimoire's in-app

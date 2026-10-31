@@ -53,7 +53,7 @@ class PackageTests(unittest.TestCase):
         nums = list(map(kpm.package_version, ordered))
         self.assertEqual(nums, sorted(nums))
         self.assertEqual(kpm.package_version('1.1.0-rc.1'), [1, 1, 5001])
-        for bad in ['1.1', '1.1.0-rc.0', '1.1.0-rc.1000', '1.1.0-dev.1', '../evil']:
+        for bad in ['1.1', '1.1.0-rc.00', '1.1.0-rc.1000', '1.1.0-dev.1', '../evil']:
             with self.assertRaises(ValueError):
                 kpm.package_version(bad)
 

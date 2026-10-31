@@ -73,7 +73,13 @@ fn version_key(b: &[u8], key: &mut [u32; 3]) -> bool {
         } else {
             return false;
         }
-        if at(p) == b'0' || !number(b, &mut p, &mut n, 999) || n < 1 {
+        // (N from 0: 2.0.0-beta.0 is the first public beta; no leading zeros, so "beta.01" is no version)
+        if at(p) == b'0' {
+            p += 1;
+            if at(p).is_ascii_digit() {
+                return false;
+            }
+        } else if !number(b, &mut p, &mut n, 999) || n < 1 {
             return false;
         }
         stage += n;

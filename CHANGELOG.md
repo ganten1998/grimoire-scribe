@@ -1,6 +1,14 @@
 # Changelog
 
-## 2.0.0-rc.12 (2026-10-31)
+## 2.0.0-beta.0 (2026-10-31)
+
+The first public beta of Grimoire 2.0, the rewrite in Rust: everything in the candidates below
+(2.0.0-rc.1 to rc.12), tested on a Kindle Scribe, plus:
+
+- Link outlines are a grainy dithered band (a 1 px pattern read as a plain gray line on the Kindle).
+- A link's lasso snaps with every Smart shapes setting, Corner roundness and Smallest shape too.
+
+## 2.0.0-rc.12 (candidate, folded into 2.0.0-beta.0)
 
 - Folders can move: a folder's menu has Move folder, which takes it, with everything in it, to the top level or into another folder (never into itself or a folder inside it). New folder... works there too, and its notebooks' mirror PDFs follow. Renaming or moving a folder no longer leaves empty mirror directories behind.
 - The keyboard has an apostrophe beside the space bar, and a symbols page (the #+= key): ! @ # $ % ^ & * ( ) ? , " : ; _ + = / ~ [ ] < > and the euro, pound and degree signs, with the digits on it too. Letters stay where they were.
@@ -15,11 +23,11 @@
 - The clock and battery corner is medium by default (settings saved before keep their size).
 - Live view: a Brightness slider under Warmth dims the picture in this browser only, and the Kindle's warmth no longer moves the Warmth slider while you drag it.
 
-## 2.0.0-rc.11 (2026-10-31)
+## 2.0.0-rc.11 (candidate, folded into 2.0.0-beta.0)
 
 - Add What's new, under the bat: Grimoire's bat now stands left of its name in the Library (in place of the emblem, and in Classic too), and a tap on either opens a card with a note from the author, signed by hand with the bat beside the signature, Read all for the whole note in larger type, and Don't show this again. The first start after an update opens it by itself once, unless that box is ticked.
 
-## 2.0.0-rc.10 (2026-10-31)
+## 2.0.0-rc.10 (candidate, folded into 2.0.0-beta.0)
 
 - Undo and redo are a copy of what the step changed, however dense the page: each step keeps the tiles of the page it touched. On a page of 1,090 strokes an undo took 4 to 11 s, until the launcher stopped Grimoire as hung.
 - Pages that take a second or more to draw keep their drawing, so they open at once. A very dense page took 36 s to draw on the Kindle, longer than the launcher waits, so its notebook would not open; long drawing now keeps the launcher's heartbeat going too.
@@ -28,7 +36,7 @@
 - Live view's pen plays out smoothly through Wi-Fi stalls: its clock follows the pen exactly on a clean link (a few milliseconds behind), and after a stall it moves on a little quicker for a moment instead of freezing and jumping. Drawn ink no longer steps back for a frame when the delay changes.
 - Two-finger gestures, and recording them, worked again on a device or computer up more than 24.9 days (the time since boot passed 2^31 ms and a pen never seen counted as one that had just left).
 
-## 2.0.0-rc.9 (2026-10-31)
+## 2.0.0-rc.9 (candidate, folded into 2.0.0-beta.0)
 
 - Turn the page with one finger: swipe left for the next page and right for the previous one, as on the Kindle's own books (two fingers still work, and Settings > Gestures can rebind either).
 - Take pen taps in the Graph: a dot or Back tapped with the pen is a tap even when the tip slides a millimetre or two, instead of a small pan.
@@ -39,7 +47,7 @@
 - Keep the toolbar in Live view while the tool picker (or its Pin mode, or the Smart shapes menu) is open beside it, as on the Kindle.
 - Keep Live view's picture in picture playing on a still page, so Firefox offers its own Picture-in-Picture button and other browsers never show a black window.
 
-## 2.0.0-rc.8 (2026-10-30)
+## 2.0.0-rc.8 (candidate, folded into 2.0.0-beta.0)
 
 - Answer every finger tap on buttons, sheets, the keyboard, the Links bar and the toolbar at once, even while the pen hovers or has just lifted. The pen's palm window now applies only over the notebook page, and a finger landing well away from the pen counts there too.
 - Keep a slider's value when its touch is cancelled (the pen arriving or a second finger). Brightness, warmth, Sleep after and the pen feel sliders no longer jump to their minimum.
@@ -60,7 +68,7 @@
 - Lay out graphs faster by stopping once their shape settles, write graph.ini only when it changes, and draw labels and pinch previews with less work. Links to the same page of another notebook count once in a page's card.
 - Rework Live view's browser controls into a slim rail beside the page, with View settings and Keys opening beside it; it fades only where it could cover the page. Add a Size control: Fit, Fit width and 25% to 200%, with Ctrl/Cmd+scroll, trackpad pinch and the - + 0 keys, remembered, area-averaged at every size up to 100% and pixelated above. Make Picture in picture float where the browser can: Document Picture-in-Picture moves only the page and draws it at that window's pixels, video PiP (Safari, Chromium and Firefox on plain HTTP) carries the quick ink and pen dot and sends frames only on change, else a pop-out; the main tab draws nothing meanwhile. View settings explains how to let Firefox and Chromium treat the Kindle's address as secure. Compose once per animation frame, skip work while hidden, avoid GPU readbacks and coalesce resizes.
 
-## 2.0.0-rc.7 (2026-10-30)
+## 2.0.0-rc.7 (candidate, folded into 2.0.0-beta.0)
 
 - Preserve final touch movement delivered with finger lift-off, widen the second-finger landing window and accept deliberate two-finger swipes up to 2.5 seconds. Keep pen, palm, pinch and pan guards.
 - Show link areas as fine dotted outlines without number badges. Preserve snapped circles, ellipses, triangles and quadrilaterals through saving, copying, redraw and undo; taps follow their actual shapes.
@@ -69,7 +77,7 @@
 - Set fresh/reset fountain-pen and highlighter defaults to the owner's captured settings: fountain 0.25–1 mm, fully opaque; highlighter 5 mm, 25–75% opacity. Preserve saved preferences and existing ink.
 - Keep KOReader's native font fallback for battery status and reading footers in the optional Terminess patch, preventing unrelated Nerd Font glyphs and faded charging icons. Allow explicit upgrades of the exact RC6 patch; preserve locally modified copies.
 
-## 2.0.0-rc.6 (2026-10-30)
+## 2.0.0-rc.6 (candidate, folded into 2.0.0-beta.0)
 
 - Open Pages directly from the toolbar page count. Add compact New/Copy/Delete icons, an explicit Multi-select mode, page borders and a distinct inner selection border.
 - Preload nearby page previews while idle, reuse decoded previews in Pages, and preserve valid disk previews across lossless background ink compaction.
@@ -80,7 +88,7 @@
 - Close Live view's raw pen reader while asleep and reopen it after wake, even when its device path is unchanged. Fall back to the main input stream on device hangup/EOF. Explicitly leave hardware handwriting mode at sleep and reassert normal display mode at startup and wake.
 - Reclaim ended Live viewers before accepting reconnects and bound stale Wi-Fi sockets with TCP keepalive and an acknowledgement timeout on Kindle.
 
-## 2.0.0-rc.5 (2026-10-29)
+## 2.0.0-rc.5 (candidate, folded into 2.0.0-beta.0)
 
 - Show only linked pages in the graph, including when the current or a named page has no links. Remove Unlinked and its tiny tray; exclude deleted cross-notebook destinations from the graph while retaining saved links for repair.
 - Replace graph footer controls with a compact panel: View cycles All / Around / Fit, with node, orphan and link counts plus current-notebook and library-wide page totals. Remove zoom and Tidy up buttons; retain pinch zoom and automatically lay out changed graphs.
@@ -89,20 +97,20 @@
 - Update Areas immediately on both the current page and a linked-page preview without committing the preview. Clear the full notebook picker after link creation, including failed saves.
 - Move Pen feel into the toolbar's drawing-tools group. Open main Settings and its nested sheets over the notebook, preserving the current page instead of showing the Library underneath.
 
-## 2.0.0-rc.4 (2026-10-29)
+## 2.0.0-rc.4 (candidate, folded into 2.0.0-beta.0)
 
 - Add Wi-Fi controls to Share and Live view, with separate radio/connection status and On/Off buttons. Connect to saved networks without returning to the Kindle home screen.
 - Bound the standalone Wi-Fi helper, keep it outside the drawing loop, verify radio state after changes, and leave saved networks and credentials untouched.
 - The KOReader Grimoire plugin turns on Wi-Fi once when KOReader starts, using KOReader's own Kindle backend. Tools > Grimoire offers manual Wi-Fi control and a startup opt-out. Manual off stays off for the rest of that KOReader process.
 
-## 2.0.0-rc.3 (2026-10-29)
+## 2.0.0-rc.3 (candidate, folded into 2.0.0-beta.0)
 
 - Unify the Index under Back, Graph, List and Pages. Move graph view options to the bottom; show existing links in List without redundant footer controls.
 - Replace the upward panel's Add link and Graph buttons with page status and naming; add a main Settings cog in the notebook toolbar.
 - Replace new Index link destinations with Somewhere Else: browse folders and choose a page in another notebook. Stable notebook/page IDs survive renames and moves; Graph and List separate notebook destinations.
 - Cache small page previews for page management and link destinations; generate missing visible previews in bounded background jobs, with stale-cache checks.
 
-## 2.0.0-rc.2 (2026-10-29)
+## 2.0.0-rc.2 (candidate, folded into 2.0.0-beta.0)
 
 - Replace the notebook status bar with a small enabled top-left clock corner; remove the Display mode selector.
 - The toolbar link-plus button creates a link directly; swipe up with two fingers for the Links bar.
@@ -111,7 +119,7 @@
 - Pen-button Clear page defaults to hold only. Recording still recognizes multiple clicks when no multi-click action is bound.
 - KOReader startup uses the orientation sensor after restoring book/browser settings, including saved rotation 0, just as returning from Grimoire does. Accelerometer ignore and lock settings remain honored.
 
-## 2.0.0-rc.1 (2026-10-29)
+## 2.0.0-rc.1 (candidate, folded into 2.0.0-beta.0)
 
 - **Links without ink:** draw around an area to select it, then choose a page in the same notebook
   or The Index. The selection disappears; a visible border is ordinary ink drawn separately.

@@ -13,9 +13,9 @@ import zipfile
 
 def package_version(version):
     """KPM v2 has integer triples, no prerelease field. Preserve beta < rc < final < next patch."""
-    m = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-(beta|rc)\.([1-9]\d{0,2}))?', version)
+    m = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-(beta|rc)\.(0|[1-9]\d{0,2}))?', version)
     if not m:
-        raise ValueError('Expected MAJOR.MINOR.PATCH[-beta.N|-rc.N], with N=1..999')
+        raise ValueError('Expected MAJOR.MINOR.PATCH[-beta.N|-rc.N], with N=0..999 (2.0.0-beta.0 is the first public beta)')
     major, minor, patch = map(int, m.group(1, 2, 3))
     stage = 9999 if not m[4] else (1000 if m[4] == 'beta' else 5000) + int(m[5])
     return [major, minor, patch * 10000 + stage]

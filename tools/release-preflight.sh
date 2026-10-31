@@ -15,8 +15,8 @@ bad() {  # bad MESSAGE: one problem
 }
 
 VERSION=$(cat VERSION 2>/dev/null) || VERSION=
-if ! printf '%s\n' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[1-9][0-9]{0,2})?$'; then
-    bad "VERSION ($VERSION) is not MAJOR.MINOR.PATCH[-beta.N|-rc.N] with N from 1 to 999"
+if ! printf '%s\n' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.(0|[1-9][0-9]{0,2}))?$'; then
+    bad "VERSION ($VERSION) is not MAJOR.MINOR.PATCH[-beta.N|-rc.N] with N from 0 to 999"
     echo "RELEASE PREFLIGHT FAILED"
     exit 1
 fi
