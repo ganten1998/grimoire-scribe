@@ -117,9 +117,9 @@ Commits on `rc8`:
   connection; `install_mac.sh rollback` returns to `pre-rc8`. `manage.py clean PATH... [--delete]`
   lists (removes) Mac metadata and `KindleLab(Upload|Backup)-*` copies already on the Kindle, and
   refuses to delete while uploads are still journaled.
-- `6ab964d`, `f1d6a85`, `eb23cf1`: a file that changed size on the Kindle while read is a 409,
-  not a session teardown, and `usb-status` is read as it is now (it changes size every write);
-  test tidying.
+- `6ab964d`, `f1d6a85`, `eb23cf1`, `7017e38`: a file that changed size on the Kindle while read
+  is a 409, not a session teardown, and `usb-status` is read as it is now (it changes size every
+  write); `grimoire_running` refreshed on every connected tick; test tidying.
 
 ## l10n
 
@@ -150,6 +150,10 @@ No user-facing strings changed (no `tr()` text, no app UI). Nothing for the cata
   18799, fake Kindle): Digest mount works with the password from the environment, the `mount`
   line has no token, a `cp` of a quarantined file plus `mkdir`, `mv`, `rm`, `rmdir` reach the
   Kindle as one upload each, and the `._` files stay in `state/sidecars`.
+- A by-hand smoke run of the bridge's real `main()` and supervisor (port 18797, scratch state,
+  a fake transport, mount and unmount commands stubbed): absent, then connected and mounted with
+  the controller heartbeat and `grimoire_running` in `status.json`, then gone and unmounted after
+  the configured delay, then a clean SIGTERM exit.
 - Scenarios: no Rust or web code changed, so no `.qs` scenario touches this lane's code; none run.
 - Not run: `make check` (the integrator's), anything on the Kindle or against the live bridge.
 
