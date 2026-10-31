@@ -26,8 +26,12 @@ fn the_built_ins() {
     check!(gesturemap_action(&m, touch(2, TouchKind::Left)) == SHORTCUT_NEXT_PAGE);
     check!(gesturemap_action(&m, touch(2, TouchKind::Right)) == SHORTCUT_PREV_PAGE);
     check!(gesturemap_action(&m, touch(2, TouchKind::Tap)) == 0);
+    // (one finger left and right turn the page too, from 2.0.0-rc.9)
+    check!(gesturemap_action(&m, touch(1, TouchKind::Left)) == SHORTCUT_NEXT_PAGE);
+    check!(gesturemap_action(&m, touch(1, TouchKind::Right)) == SHORTCUT_PREV_PAGE);
     for kind in [TouchKind::Up, TouchKind::Down, TouchKind::Left, TouchKind::Right, TouchKind::Tap] {
-        check!(gesturemap_action(&m, touch(3, kind)) == 0 && gesturemap_action(&m, touch(1, kind)) == 0);
+        let one = matches!(kind, TouchKind::Left | TouchKind::Right) || gesturemap_action(&m, touch(1, kind)) == 0;
+        check!(gesturemap_action(&m, touch(3, kind)) == 0 && one);
         check!(!gesturemap_is_set(&m, touch(2, kind)));
     }
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Triple)) == 0);
@@ -209,7 +213,7 @@ fn writing_patterns_and_shapes() {
     check!(gesturemap_format(&m, &mut text) && text.starts_with(b"# Grimoire: gestures (Settings > Gestures)."));
     let z = recorded_samples("Z");
     check!(gesturemap_shape_set(&mut m, SHORTCUT_UNDO, &z) == 0);
-    check!(gesturemap_set(&mut m, touch(1, TouchKind::Left), SHORTCUT_UNDO) == 0);
+    check!(gesturemap_set(&mut m, touch(1, TouchKind::Left), SHORTCUT_UNDO) == SHORTCUT_NEXT_PAGE);
     check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_REDO) == 0);
     check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_UNDO) == SHORTCUT_REDO);
     check!(gesturemap_action(&m, touch(1, TouchKind::Left)) == 0);

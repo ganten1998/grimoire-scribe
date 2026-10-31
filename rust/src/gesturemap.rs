@@ -88,8 +88,9 @@ fn tk(k: TouchKind) -> usize {
 }
 
 /// The built-ins only: two fingers down open the Graph, up the Links bar, left and right turn the page;
+/// one finger swiped left or right turns the page too (2.0.0-rc.9: easier, and what readers expect);
 /// holding the pen's button clears the page; triple click is unassigned.
-/// Two- and three-finger taps and one finger's gestures do nothing.
+/// Two- and three-finger taps and one finger's other gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
     let pen_button2 = m.pen_button2;
     *m = GestureMap::default();
@@ -99,6 +100,8 @@ pub fn gesturemap_defaults(m: &mut GestureMap) {
     m.touch[0][tk(TouchKind::Up)] = SHORTCUT_LINKS;
     m.touch[0][tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
     m.touch[0][tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
+    m.touch1[tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
+    m.touch1[tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
     m.pen[PenBtn::Button as usize][PenKind::Hold as usize] = SHORTCUT_CLEAR_PAGE;
 }
 

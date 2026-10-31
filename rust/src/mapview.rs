@@ -639,7 +639,9 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
         let Some(d) = v.drag.as_mut() else {
             return MapResult::None;
         };
-        if (e.x - d.x).hypot(e.y - d.y) > u(12.0) as f32 {
+        // A pen tip slides a millimetre or two on a tap, a fingertip rolls: a tap until TAP_SLOP_MM,
+        // as on every other screen (at 1 mm the pen's taps on dots and Back turned into small pans).
+        if (e.x - d.x).hypot(e.y - d.y) > mm_to_px(TAP_SLOP_MM, a.dpi) {
             d.moved = true;
         }
         if d.moved {
@@ -666,7 +668,15 @@ pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &
         paint(v, a, nav, RefreshMode::Ui);
         return MapResult::None;
     }
-    if d.moved {
+    // A press that starts and ends on the same control is its tap, however it slid between.
+    let same_control = match (hit(v, d.x, d.y), hit(v, e.x, e.y)) {
+        (Some(MapHitKind::Control(p)), Some(MapHitKind::Control(q))) => p == q,
+        _ => false,
+    };
+    if d.moved && same_control {
+        v.ox = d.ox;
+        v.oy = d.oy;
+    } else if d.moved {
         if v.list {let rows=((d.y-e.y)/u(130.0) as f32) as i32;v.list_offset=(v.list_offset as i32+rows).clamp(0,v.link_rows.len().saturating_sub(1) as i32) as usize;}
         else {v.view_touched=true;}
         paint(v, a, nav, RefreshMode::Ui);
@@ -1060,6 +1070,20 @@ mod tests {
         assert_eq!(v.zoom,2.0);assert!((v.ox+900.0/v.zoom-900.0).abs()<0.001);assert!((v.oy+1000.0/v.zoom-1000.0).abs()<0.001);
         mapview_pinch(&mut v,&mut a,&InEvent{type_:InType::PinchEnd,t_ms:540,..Default::default()});
         assert!(v.drag.is_none()&&v.needs_redraw);
+    }
+    #[test]
+    fn a_pen_tap_that_slides_a_little_still_selects_its_dot() {
+        let (mut v,nav)=view(1860,2480,4,true);
+        let mut a=App{w:1860,h:2480,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,a.w,a.h);
+        mapview_draw(&mut v,&mut a,&nav,Rect::new(0,0,1860,2480));
+        let i=(0..v.g.nodes.len()).find(|&i| v.g.nodes[i].linked && i as i32!=v.selected).unwrap();
+        let n=v.g.nodes[i];let (x,y)=screen_point(&v,(n.x,n.y));
+        // ~2 mm of slide, as a pen tip does on a tap: still the dot's tap, not a pan.
+        mapview_pointer(&mut v,&mut a,&nav,0,&InEvent{x,y,t_ms:0,..Default::default()});
+        mapview_pointer(&mut v,&mut a,&nav,1,&InEvent{x:x+18.0,y:y+12.0,t_ms:60,..Default::default()});
+        mapview_pointer(&mut v,&mut a,&nav,2,&InEvent{x:x+18.0,y:y+12.0,t_ms:90,..Default::default()});
+        assert_eq!(v.selected,i as i32);
+        assert!(!v.view_touched);
     }
     #[test]
     fn background_completion_belongs_only_to_its_notebook() {

@@ -1117,7 +1117,7 @@
     // once when it shows again (but a recording composes at once: composeSoon).
     // vpip: video picture in picture's parts and state (vpipMake).
     const vpip = {made: false, on: false, firefox: false, video: null, track: null, out: null, outCtx: null,
-        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false};
+        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false, keep: 0};
     // (rafAsked, tickAsked: a frame asked of each clock and not come yet, so a hidden tab, whose
     // animation frames wait, piles up no requests.)
     let frameQueued = false, framing = false, layoutQueued = false, layoutApprox = false, stale = null, dirty = null;
@@ -2044,7 +2044,9 @@
         vpip.out = document.createElement('canvas');
         vpip.outCtx = vpip.out.getContext('2d', {alpha: false});
         try {
-            const stream = vpip.out.captureStream(0);
+            // (Firefox floats only a video that is playing: frames as the canvas changes, at most 30 a
+            // second, plus the keepalive below; elsewhere frames only when vpipDraw asks for one.)
+            const stream = vpip.out.captureStream(tier === 'firefox' ? 30 : 0);
             vpip.track = stream.getVideoTracks()[0];
             const v = vpip.video = document.createElement('video');
             v.className = 'pipvideo';
@@ -2106,6 +2108,14 @@
         }
         stage.replaceWith(vpip.away);
         pipButton.setAttribute('aria-pressed', 'true');
+        // A still page gives the video no new frames, and a browser may then show its window black or
+        // (Firefox) offer no button for it: one frame a second keeps it playing (a copy, no averaging).
+        if (vpip.keep && typeof clearInterval === 'function') clearInterval(vpip.keep);
+        vpip.keep = setInterval(() => {
+            if (!vpip.on || !vpip.track) return;
+            vpip.outCtx.drawImage(vpip.out, 0, 0);
+            if (vpip.track.requestFrame) vpip.track.requestFrame();
+        }, 1000);
         averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
         if (vpip.video.paused && vpip.video.play) {  // (a browser may have paused it, unseen in the page)
             const played = vpip.video.play();
@@ -2117,6 +2127,8 @@
         if (!vpip.on) return;
         vpip.on = false;
         vpip.win = null;
+        if (vpip.keep && typeof clearInterval === 'function') clearInterval(vpip.keep);
+        vpip.keep = 0;
         if (vpip.firefox) {
             vpip.firefox = false;
             vpip.video.classList.remove('shown');
