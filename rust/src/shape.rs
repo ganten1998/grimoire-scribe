@@ -60,6 +60,11 @@ pub const SHAPE_TURN_PAD: f32 = 0.6;
 /// directions is the thickness, its width square to that the size across (a square's side both).
 pub const SHAPE_CLOSED_ACROSS_MM: f32 = 10.0;
 pub const SHAPE_CLOSED_THICK_MM: f32 = 4.0;
+/// A small round shape's worst point may stray this far from its ellipse, whatever its size (screen mm).
+pub const SHAPE_HAND_JITTER_MM: f32 = 0.75;
+/// Smallest shape's range (screen mm).
+pub const SHAPE_MIN_LO_MM: f32 = 3.0;
+pub const SHAPE_MIN_HI_MM: f32 = 40.0;
 /// Each polygon edge's chord / path at least this.
 pub const SHAPE_SEG_STRAIGHT: f32 = 0.93;
 /// Every corner within this many degrees of 90 makes a rectangle (otherwise a quad).
@@ -215,12 +220,14 @@ pub struct ShapeParams {
     /// 0 to 1: a snapped polygon's corners rounded, all with one radius, this fraction of the
     /// largest that fits (see fillet); 0 leaves them sharp.
     pub corner: f32,
+    /// the smallest closed shape, screen mm across (Smallest shape; see shape_floor)
+    pub min_mm: f32,
 }
 
 /// The parameters for a page drawn at `zoom`, outside a writing burst, v1.5's kinds off, corners
 /// sharp.
 pub fn shape_params(dpi: f32, zoom: f32, paper: PaperKind, page_w: i32) -> ShapeParams {
-    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false, quad_mode: 0, circle_mode: 0, corner: 0.0 }
+    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false, quad_mode: 0, circle_mode: 0, corner: 0.0, min_mm: SHAPE_CLOSED_ACROSS_MM }
 }
 
 /// What the gates measured, for the shape-log (no coordinates). Lengths are screen mm, angles are
@@ -434,6 +441,12 @@ pub fn shape_in_burst(lift: Option<&PenSample>, first: &PenSample, dpi: f32, zoo
     d <= SHAPE_BURST_MM as f64 * mm
 }
 
+/// The Smallest shape setting as the recognizer's floor (screen mm): within SHAPE_MIN_LO_MM to
+/// SHAPE_MIN_HI_MM, SHAPE_CLOSED_ACROSS_MM when it is no number.
+pub fn shape_floor(min_mm: f32) -> f32 {
+    if min_mm.is_nan() { SHAPE_CLOSED_ACROSS_MM } else { min_mm.clamp(SHAPE_MIN_LO_MM, SHAPE_MIN_HI_MM) }
+}
+
 /// Page px per screen mm.
 fn px_per_mm(dpi: f32, zoom: f32) -> f64 {
     if !dpi.is_finite() || !zoom.is_finite() || dpi <= 0.0 || zoom <= 0.0 {
@@ -531,6 +544,8 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
     let mut r = ShapeResult::default();
     let mm = px_per_mm(prm.dpi, prm.zoom);
     let tol = if prm.burst { SHAPE_BURST_TOL as f64 } else { 1.0 };
+    let floor = shape_floor(prm.min_mm) as f64;
+    let k = (floor / SHAPE_CLOSED_ACROSS_MM as f64).min(1.0);
     if !mm.is_finite() || mm <= 0.0 || pts.iter().any(|s| !s.x.is_finite() || !s.y.is_finite()) {
         r.reason = ShapeReason::Degenerate;
         return Some(r);
@@ -552,7 +567,7 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
     let diag = norm(p(x1 - x0, y1 - y0));
     r.features.diag_mm = (diag / mm) as f32;
     // Nothing smaller than the smallest closed shape (a 12 mm line has a 12 mm diagonal).
-    if diag < SHAPE_CLOSED_ACROSS_MM as f64 * mm {
+    if diag < floor * mm {
         r.reason = ShapeReason::TooSmall;
         return Some(r);
     }
@@ -604,11 +619,11 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
     let (thick, across) = widths(&q[i..=j]);
     r.features.across_mm = (across / mm) as f32;
     r.features.thick_mm = (thick / mm) as f32;
-    if across < SHAPE_CLOSED_ACROSS_MM as f64 * mm {
+    if across < floor * mm {
         r.reason = ShapeReason::TooNarrow;
         return Some(r);
     }
-    if thick < SHAPE_CLOSED_THICK_MM as f64 * mm {
+    if thick < SHAPE_CLOSED_THICK_MM as f64 * k * mm {
         r.reason = ShapeReason::TooThin;
         return Some(r);
     }
@@ -678,7 +693,7 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
     let cut = shape_collect(q[..i].iter().chain(&q[j + 1..]).copied(), q.len())?;
     let stray = SHAPE_CLOSE_GAP as f64 * diag * tol;
     let poly = polygon(&cyc, seg_min, diag, mm, tol, &mut r.features).filter(|pg| cut.iter().all(|&c| outline_dist(c, &pg.1) <= stray));
-    let ell = ellipse(lp, &cut, diag, tol, &mut r.features);
+    let ell = ellipse(lp, &cut, diag, mm, tol, &mut r.features);
     let first = raw[0];
     let pstep = page_step(prm);
     // Both can pass (a long ellipse's quarters are nearly straight): the closer outline wins.
@@ -1649,7 +1664,7 @@ fn solve<const N: usize>(mut m: [[f64; N]; N], mut r: [f64; N]) -> Option<[f64; 
 /// squares A s^2 + B t^2 + C s + D t = 1, then the radial errors. Some when both errors pass. The
 /// fit and its RMS are the loop's; the largest error is also taken over `cut`, the ends the
 /// closure cut away, which the ellipse must account for too.
-fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellipse> {
+fn ellipse(lp: &[P], cut: &[P], diag: f64, mm: f64, tol: f64, f: &mut ShapeFeatures) -> Option<Ellipse> {
     let (c0, th0) = pca(lp);
     let (u, v) = (unit(th0), unit(th0 + std::f64::consts::FRAC_PI_2));
     // (scaled to about 1, so the normal equations stay well conditioned)
@@ -1711,7 +1726,11 @@ fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> O
     f.rms = (rms_px / yard) as f32;
     f.max_err = (emax / yard) as f32;
     f.axis_ratio = (eb / ea) as f32;
-    if rms_px > SHAPE_ELLIPSE_RMS as f64 * yard * tol || emax > SHAPE_ELLIPSE_MAX as f64 * yard * tol {
+    // A hand's wobble has a size of its own too: a small round shape (Smallest shape below the default
+    // 10 mm) may stray SHAPE_HAND_JITTER_MM at its worst point. It never exceeds the relative limit at
+    // the default floor's sizes (a yardstick of 5 mm or more), so those verdicts are as they were.
+    let emax_ok = (SHAPE_ELLIPSE_MAX as f64 * yard).max(SHAPE_HAND_JITTER_MM as f64 * mm);
+    if rms_px > SHAPE_ELLIPSE_RMS as f64 * yard * tol || emax > emax_ok * tol {
         return None;
     }
     Some(Ellipse { c, th, a: ea, b: eb, rms_px })

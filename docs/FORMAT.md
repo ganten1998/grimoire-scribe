@@ -1215,7 +1215,7 @@ closed. It keeps an atomic replacement of graph.ini from invalidating the writer
 Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choices 400/550/900),
 `shape_quads` (0 uneven allowed, 1 rectangles/default, 2 squares only), `shape_round` (0 as drawn,
 1 prefer circles/default, 2 circles only), `shape_corner` (0 to 100, Corner roundness; 0 sharp),
-`shape_min_mm` (0 to 40, Smallest shape; 0 any size) and `shape_links` (on by default). Prefer
+`shape_min_mm` (Smallest shape: the smallest closed shape a held stroke snaps to, screen mm across, 3 to 40, 10 by default; since 2.0.0-rc.12 the recognizer's own floor, which rc.9 to rc.11 could only raise above a fixed 10 mm, and their 0 for Any reads as 10) and `shape_links` (on by default). Prefer
 circles uses minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. An
 ellipse's fit errors are held to its minor semi-axis but never less than half its major one, so a
 long ellipse passes as surely as a round one. Uneven allowed keeps a quad whose corners are not all

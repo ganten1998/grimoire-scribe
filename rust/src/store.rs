@@ -148,7 +148,8 @@ pub struct Settings {
     /// Round shapes: 0 as drawn, 1 prefer circles, 2 circles only.
     pub shape_round: i32,
     pub shape_links: bool,
-    /// Smart shapes snap only strokes at least this big (mm, the larger side; 0: any size). rc.9.
+    /// The smallest closed shape a held stroke snaps to, screen mm across, 3 to 40 (10 by default;
+    /// rc.9 to rc.11 saved 0 for their 10 mm). Since 2.0.0-rc.12 the recognizer's own floor.
     pub shape_min_mm: i32,
     /// What's new (about.rs): the version whose notes were last shown or due (settings.ini
     /// whatsnew_seen), and Don't show this again (whatsnew_hide). 2.0.0.
@@ -3274,7 +3275,7 @@ pub fn settings_default(s: &mut Settings) {
     s.shape_quads = 1;
     s.shape_round = 1;
     s.shape_links = true;
-    s.shape_min_mm = 0;
+    s.shape_min_mm = 10;
     s.whatsnew_seen.clear();
     s.whatsnew_hide = false;
     s.shape_corner = 0;
@@ -3608,7 +3609,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"shape_quads" => s.shape_quads = keep_int("shape_quads", v, 0, 2),
         b"shape_round" => s.shape_round = keep_int("shape_round", v, 0, 2),
         b"shape_links" => s.shape_links = keep_bool("shape_links", v),
-        b"shape_min_mm" => s.shape_min_mm = keep_int("shape_min_mm", v, 0, 40),
+        // (0 was rc.9 to rc.11's "Any", which still meant the recognizer's 10 mm: it reads as that)
+        b"shape_min_mm" => s.shape_min_mm = match keep_int("shape_min_mm", v, 0, 40) { 0 => 10, mm => mm.max(3) },
         b"whatsnew_seen" => clean_line(&mut s.whatsnew_seen, v),
         b"whatsnew_hide" => s.whatsnew_hide = keep_bool("whatsnew_hide", v),
         b"shape_corner" => s.shape_corner = keep_int("shape_corner", v, 0, 100),
