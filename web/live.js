@@ -23,24 +23,53 @@
 (function () {
     'use strict';
     // The stream's frames from its chunks as they come: a frame may be cut anywhere. push gives the
-    // frames the chunk completes, each {type, body} (body: the payload, its own bytes).
+    // frames the chunk completes, each {type, body} (body: the payload, its own bytes). The chunks
+    // wait in a list (parts, the first read from at) and each body is copied once, when its frame is
+    // whole: joining them at every chunk copied a big frame over and over.
     function Frames() {
-        this.buf = new Uint8Array(0);
+        this.parts = [];
+        this.at = 0;
+        this.size = 0;  // (the bytes waiting)
     }
-    Frames.prototype.push = function (chunk) {
-        const joined = new Uint8Array(this.buf.length + chunk.length);
-        joined.set(this.buf);
-        joined.set(chunk, this.buf.length);
-        const out = [];
-        let at = 0;
-        while (joined.length - at >= 5) {
-            const len = new DataView(joined.buffer, at, 4).getUint32(0, true);
-            if (len < 1 || len > 64 * 1024 * 1024) throw new Error('bad frame');
-            if (joined.length - at < 4 + len) break;
-            out.push({type: joined[at + 4], body: joined.slice(at + 5, at + 4 + len)});
-            at += 4 + len;
+    // The bytes not read yet, joined (for the checks).
+    Object.defineProperty(Frames.prototype, 'buf', {get() { return this.peek(this.size); }});
+    // The next n waiting bytes, copied, without taking them.
+    Frames.prototype.peek = function (n) {
+        const out = new Uint8Array(n);
+        for (let i = 0, got = 0, at = this.at; got < n; i++, at = 0) {
+            const p = this.parts[i], k = Math.min(n - got, p.length - at);
+            out.set(p.subarray(at, at + k), got);
+            got += k;
         }
-        this.buf = joined.slice(at);
+        return out;
+    };
+    // The next n waiting bytes, taken: a copy (a slice when they are all in one chunk).
+    Frames.prototype.take = function (n) {
+        if (!n) return new Uint8Array(0);
+        const p = this.parts[0];
+        const out = p.length - this.at >= n ? p.slice(this.at, this.at + n) : this.peek(n);
+        this.size -= n;
+        for (let left = n; left > 0;) {
+            const q = this.parts[0], k = Math.min(left, q.length - this.at);
+            left -= k;
+            this.at += k;
+            if (this.at === q.length) { this.parts.shift(); this.at = 0; }
+        }
+        return out;
+    };
+    Frames.prototype.push = function (chunk) {
+        if (chunk.length) {
+            this.parts.push(chunk);
+            this.size += chunk.length;
+        }
+        const out = [];
+        while (this.size >= 5) {
+            const head = this.peek(5), len = head[0] | head[1] << 8 | head[2] << 16 | (head[3] << 24 >>> 0);
+            if (len < 1 || len > 64 * 1024 * 1024) throw new Error('bad frame');
+            if (this.size < 4 + len) break;
+            this.take(5);
+            out.push({type: head[4], body: this.take(len - 1)});
+        }
         return out;
     };
     // The front light's color at a warmth (0..WARMEST, the Kindle's amber level): 6500 K at 0 (white:
@@ -648,6 +677,26 @@
             layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         }
     };
+    // Each of the m output columns (or rows) of an axis of n source pixels: the source pixels it
+    // covers and how much of each (pairs), kept for the next call at the same sizes, as every batch
+    // and frame asks for them again; and the across pass's buffer, grown as needed and kept.
+    const spanCache = new Map();
+    let midBuf = new Float32Array(0);
+    function spanTable(n, m) {
+        const key = n + ':' + m;
+        let t = spanCache.get(key);
+        if (t) return t;
+        const k = n / m;
+        t = [];
+        for (let i = 0; i < m; i++) {
+            const a = i * k, b = Math.min(a + k, n), cols = [];
+            for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
+            t.push(cols);
+        }
+        if (spanCache.size >= 8) spanCache.delete(spanCache.keys().next().value);
+        spanCache.set(key, t);
+        return t;
+    }
     // A sw x sh source drawn into dw x dh pixels, each output pixel the mean of the area of the source
     // it covers (alpha-weighted, for transparent paper): the browser's own scaling (of a canvas, a
     // video, and drawImage even at "high") picks pixels, so 1 px lines came out bright, dim or gone by
@@ -660,30 +709,21 @@
         const vx0 = Math.max(0, Math.floor(d.x / kx)), vy0 = Math.max(0, Math.floor(d.y / ky));
         const vx1 = Math.min(dw, Math.ceil((d.x + d.w) / kx)), vy1 = Math.min(dh, Math.ceil((d.y + d.h) / ky));
         if (vx1 <= vx0 || vy1 <= vy0) return null;
-        const sx0 = Math.floor(vx0 * kx), sy0 = Math.floor(vy0 * ky);
-        const sx1 = Math.min(sw, Math.ceil(vx1 * kx)), sy1 = Math.min(sh, Math.ceil(vy1 * ky));
+        // (The source rect read: what the output pixels' spans cover.)
+        const xs = spanTable(sw, dw), ys = spanTable(sh, dh), lastX = xs[vx1 - 1], lastY = ys[vy1 - 1];
+        const sx0 = xs[vx0][0], sy0 = ys[vy0][0];
+        const sx1 = lastX[lastX.length - 2] + 1, sy1 = lastY[lastY.length - 2] + 1;
         const rw = sx1 - sx0, rh = sy1 - sy0, ow = vx1 - vx0, oh = vy1 - vy0;
         const src = read(sx0, sy0, rw, rh);
-        // Each output column (row) as source columns (rows) of the rect read, and how much of each
-        // it covers.
-        function spans(v0, n, k, s0, limit) {
-            const out = [];
-            for (let i = 0; i < n; i++) {
-                const a = (v0 + i) * k - s0, b = Math.min(a + k, limit), cols = [];
-                for (let s = Math.floor(a); s < b; s++) cols.push(s, (Math.min(b, s + 1) - Math.max(a, s)) / (b - a));
-                out.push(cols);
-            }
-            return out;
-        }
-        const xs = spans(vx0, ow, kx, sx0, rw), ys = spans(vy0, oh, ky, sy0, rh);
         // Across: rh rows of ow pixels, premultiplied.
-        const mid = new Float32Array(rh * ow * 4);
+        if (midBuf.length < rh * ow * 4) midBuf = new Float32Array(rh * ow * 4);
+        const mid = midBuf;
         for (let r = 0; r < rh; r++)
             for (let o = 0; o < ow; o++) {
-                const cols = xs[o];
+                const cols = xs[vx0 + o];
                 let cr = 0, cg = 0, cb = 0, ca = 0;
                 for (let j = 0; j < cols.length; j += 2) {
-                    const i = (r * rw + cols[j]) * 4, wa = cols[j + 1] * src[i + 3];
+                    const i = (r * rw + cols[j] - sx0) * 4, wa = cols[j + 1] * src[i + 3];
                     cr += src[i] * wa;
                     cg += src[i + 1] * wa;
                     cb += src[i + 2] * wa;
@@ -698,11 +738,11 @@
         // Down, then back from premultiplied (over under, where there is one).
         const p = new Uint8ClampedArray(ow * oh * 4);
         for (let o = 0; o < oh; o++) {
-            const rows = ys[o];
+            const rows = ys[vy0 + o];
             for (let c = 0; c < ow; c++) {
                 let cr = 0, cg = 0, cb = 0, ca = 0;
                 for (let j = 0; j < rows.length; j += 2) {
-                    const m = (rows[j] * ow + c) * 4, w = rows[j + 1];
+                    const m = ((rows[j] - sy0) * ow + c) * 4, w = rows[j + 1];
                     cr += mid[m] * w;
                     cg += mid[m + 1] * w;
                     cb += mid[m + 2] * w;
@@ -826,16 +866,85 @@
         for (const held of this.held.values()) if (held.action === 'hold-eraser') this.enqueue(held.code, held.mods, 2);
     };
 
-    // A pop-out adopts the one live view, leaving a placeholder in the original tab. It
+    // Whether a held key still needs its lease renewed (hold-eraser), so the renewals' timer runs
+    // only while one does.
+    LiveKeyboard.prototype.holding = function () {
+        for (const held of this.held.values()) if (held.action === 'hold-eraser') return true;
+        return false;
+    };
+
+    // The picture's size on this screen (the size engine). size: {mode: 'fit'} (the whole page in
+    // the room), {mode: 'width'} (the page's width), or {mode: 'scale', k}: k device pixels to each
+    // of the Kindle's (1 is Actual size, 100%). As the browser remembers it: 'fit', 'width' or k;
+    // anything else is Fit, and k is kept to ZOOMS' ends.
+    const ZOOMS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1, 1.5, 2];
+    const ZOOM_MIN = ZOOMS[0], ZOOM_MAX = ZOOMS[ZOOMS.length - 1];
+    function liveSize(v) {
+        if (v === 'width') return {mode: 'width'};
+        const k = Number(v);
+        if (v === null || v === undefined || v === '' || !Number.isFinite(k) || k <= 0) return {mode: 'fit'};
+        return {mode: 'scale', k: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k))};
+    }
+    function sizeValue(size) { return size.mode === 'scale' ? String(size.k) : size.mode; }
+    // A size in a room of room x tall CSS pixels, for an rw x rh screen at ratio device pixels to a
+    // CSS pixel: {cssW, cssH} on the page, {w, h} the canvas's pixels, which are never more than the
+    // Kindle's own (above that, up: the browser enlarges them, pixelated, so the e-ink pixels stay
+    // crisp and 200% costs no canvas four times the screen), and k, the device pixels it shows to
+    // each of the Kindle's (the size it says).
+    function viewSize(size, room, tall, rw, rh, ratio) {
+        let cssW, cssH;
+        if (size.mode === 'scale') {
+            cssW = Math.max(1, Math.round(rw * size.k)) / ratio;
+            cssH = Math.max(1, Math.round(rh * size.k)) / ratio;
+        } else {
+            const s = size.mode === 'width' ? room / rw : Math.min(room / rw, tall / rh);
+            cssW = Math.max(1, Math.floor(rw * s));
+            cssH = Math.max(1, Math.floor(rh * s));
+        }
+        const dw = Math.max(1, Math.round(cssW * ratio)), dh = Math.max(1, Math.round(cssH * ratio));
+        const up = dw > rw || dh > rh;
+        return {cssW, cssH, w: up ? rw : dw, h: up ? rh : dh, up, k: dw / rw};
+    }
+    // The next preset from k: up (dir > 0) or down, at the ends the end.
+    function zoomStep(k, dir) {
+        if (dir > 0) return ZOOMS.find(z => z > k + 1e-3) || ZOOM_MAX;
+        return [...ZOOMS].reverse().find(z => z < k - 1e-3) || ZOOM_MIN;
+    }
+    // How far to scroll (dx, dy) so the point at (cx, cy) on the picture, which was at rect before
+    // (its client rect: left, top, width, height), is under (cx, cy) again now it is at rect after.
+    function anchorScroll(before, after, cx, cy) {
+        const fx = before.width ? (cx - before.left) / before.width : 0.5;
+        const fy = before.height ? (cy - before.top) / before.height : 0.5;
+        return {dx: after.left - (cx - fx * after.width), dy: after.top - (cy - fy * after.height)};
+    }
+    // Which picture in picture this browser has: 'document' (Document Picture-in-Picture: the page's
+    // own canvases in a window that floats, drawn at its pixels; a secure page only), 'video' (a
+    // video of the picture that the browser floats: Safari, and Chromium on plain http), 'firefox'
+    // (no API, but Firefox floats a video from its own button on it), else 'popout' (a window of
+    // its own, which does not float), or '' for none.
+    function pipTier(win) {
+        if (win.documentPictureInPicture && win.documentPictureInPicture.requestWindow) return 'document';
+        const canvas = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype.captureStream;
+        if (canvas && win.document && win.document.pictureInPictureEnabled && win.HTMLVideoElement &&
+            win.HTMLVideoElement.prototype.requestPictureInPicture) return 'video';
+        if (canvas && win.navigator && /Firefox\//.test(win.navigator.userAgent || '')) return 'firefox';
+        return win.open ? 'popout' : '';
+    }
+
+    // A pop-out (or a Document Picture-in-Picture window) adopts the live picture alone (root: its
+    // stage), leaving a placeholder in the original tab, whose controls stay where they are. It
     // never navigates to /live or clones scripts/canvases, so the same streams and recorder stay.
     class LivePopout {
         constructor(opener, doc, root, words, changed) {
-            Object.assign(this, {opener, doc, root, words, changed, win: null, placeholder: null});
+            Object.assign(this, {opener, doc, root, words, changed, win: null, placeholder: null, mode: ''});
         }
-        open() {
+        open(width = 600, height = 800) {
             if (this.win && !this.win.closed) { this.win.focus(); return true; }
-            const win = this.opener.open('', '', 'popup,width=760,height=900');
+            const win = this.opener.open('', '', 'popup,width=' + width + ',height=' + height);
             if (!win) return false;
+            return this.adopt(win, 'popout');
+        }
+        adopt(win, mode) {
             const doc = win.document;
             doc.title = this.doc.title;
             for (const node of this.doc.querySelectorAll('link[rel="stylesheet"], style')) {
@@ -843,7 +952,7 @@
                 if (node.href) copy.href = node.href;
                 doc.head.append(copy);
             }
-            doc.body.className = this.doc.body.className;
+            doc.body.className = this.doc.body.className + ' pip';
             doc.body.style.cssText = this.doc.body.style.cssText;
             const placeholder = this.doc.createElement('div');
             placeholder.className = 'popout-placeholder';
@@ -855,7 +964,7 @@
             placeholder.append(text, back);
             this.root.replaceWith(placeholder);
             doc.body.append(this.root);
-            this.win = win; this.placeholder = placeholder;
+            this.win = win; this.placeholder = placeholder; this.mode = mode;
             win.addEventListener('pagehide', () => this.close());
             this.changed(); win.focus();
             return true;
@@ -864,11 +973,9 @@
             const win = this.win;
             if (!win) return;
             this.win = null;
-            // Some browsers detach the child document before delivering its final pagehide.
-            try {
-                this.doc.body.className = win.document.body.className;
-                this.doc.body.style.cssText = win.document.body.style.cssText;
-            } catch (e) { /* the retained root/canvases still return below */ }
+            this.mode = '';
+            // (Some browsers detach the child document before delivering its final pagehide: the
+            // retained root/canvases still return.)
             this.placeholder.replaceWith(this.root);
             this.placeholder = null;
             this.changed();
@@ -880,7 +987,8 @@
         module.exports = {Frames, lightColor, readPen, penMark, drawMark, filmFit, recordType, H264, filmConfig,
             filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE, CodecRecorder, readStyle, readSamples,
             FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
-            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout};
+            dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout, ZOOMS, liveSize, sizeValue,
+            viewSize, zoomStep, anchorScroll, pipTier};
         return;
     }
 
