@@ -2705,6 +2705,10 @@ fn access_ok(path: &str) -> bool {
 // ---- thumbnails ----
 
 fn save_pgm(path: &str, t: &Canvas) -> i32 {
+    pgm_bytes(t).map_or(-1, |buf| write_file_atomic(path, &buf))
+}
+
+fn pgm_bytes(t: &Canvas) -> Option<Vec<u8>> {
     let hdr = cformat!("P5\n%d %d\n255\n", t.w, t.h);
     let (w, h, stride) = (
         t.w.max(0) as usize,
@@ -2713,13 +2717,28 @@ fn save_pgm(path: &str, t: &Canvas) -> i32 {
     );
     let mut buf: Vec<u8> = Vec::new();
     if buf.try_reserve_exact(hdr.len() + w * h).is_err() {
-        return -1;
+        return None;
     }
     buf.extend_from_slice(hdr.as_bytes());
     for y in 0..h {
         buf.extend_from_slice(&t.px[y * stride..y * stride + w]);
     }
-    write_file_atomic(path, &buf)
+    Some(buf)
+}
+
+// The page previews are a disposable cache: written to a per-process name and renamed into place,
+// never fsynced (a torn file fails its stamp or its size check and is made again). Each fsync on the
+// Kindle waits 15-25 ms.
+fn write_cache_file(path: &str, data: &[u8]) -> i32 {
+    #[cfg(feature = "sim")]
+    if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
+        return -1;
+    }
+    if std::fs::write(path, data).is_err() {
+        let _ = std::fs::remove_file(path);
+        return -1;
+    }
+    0
 }
 
 fn load_pgm(path: &str, out: &mut Canvas) -> i32 {
@@ -2803,7 +2822,7 @@ fn page_previews_changed(id:&str) {
     let token=format!("{}:{time}:{serial}",std::process::id());
     let path=format!("{dir}/.page-previews/updated");
     let mine=format!("{path}.{}",std::process::id());
-    if write_file_atomic(&mine,token.as_bytes())==0 {let _=std::fs::rename(&mine,&path);}
+    if write_cache_file(&mine,token.as_bytes())==0 {let _=std::fs::rename(&mine,&path);}
     let _=std::fs::remove_file(mine);
 }
 /// A valid cache's source identity before lossless ink compaction rewrites its page file.
@@ -2825,39 +2844,66 @@ pub fn store_retag_compacted_preview(nb:&NotebookInfo,pid:u32,before:Option<&str
     if preview_tag(&stamp).as_deref()==Some(before)
         && read_file(&source).as_deref()==Some(data)
         && preview_stamp(&source).as_deref()==Some(now.as_str()) {
-        write_file_atomic(&stamp,now.as_bytes());
+        let tag=format!("{stamp}.{}",std::process::id());
+        if write_cache_file(&tag,now.as_bytes())==0 && std::fs::rename(&tag,&stamp).is_err() {let _=std::fs::remove_file(tag);}
     }
 }
 /// Small previews only; stale or malformed caches never replace page data.
 pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
-    let Some((source, image, stamp)) = page_preview_files(nb, pid) else {return false};
-    let Some(now) = preview_stamp(&source) else {return false};
-    if preview_tag(&stamp).as_deref() != Some(now.as_str())
-        || !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000) {return false;}
-    if load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
-        canvas_free(out);return false;
+    store_load_page_preview_as(nb,pid,out).is_some()
+}
+/// The same, with the page file identity the preview shows (store_page_source_identity's then).
+pub fn store_load_page_preview_as(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> Option<String> {
+    let (_, image, stamp) = page_preview_files(nb, pid)?;
+    let now = store_page_preview_fresh(nb, pid)?;
+    if !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000)
+        || load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
+        // A current stamp over an image that does not read (a cache write cut short: they are never
+        // fsynced): the stamp goes, so the preview counts as missing and is made again.
+        canvas_free(out);let _=std::fs::remove_file(stamp);return None;
     }
+    Some(now)
+}
+/// Whether page pid's preview on disk is current, without decoding it: its identity when it is.
+pub fn store_page_preview_fresh(nb: &NotebookInfo, pid: u32) -> Option<String> {
+    let (source, _, stamp) = page_preview_files(nb, pid)?;
+    let now = preview_stamp(&source)?;
+    (preview_tag(&stamp).as_deref() == Some(now.as_str())).then_some(now)
+}
+/// Page pid's file as it is now (inode, size, times, and the previews' invalidation generation): a
+/// decoded preview made at this identity still shows the page.
+pub fn store_page_source_identity(nb: &NotebookInfo, pid: u32) -> Option<String> {
+    preview_stamp(&page_preview_files(nb, pid)?.0)
+}
+/// The small preview of a full page canvas, as the cache keeps it (at most 300 x 400).
+pub fn store_page_preview_image(canvas: &Canvas, small: &mut Canvas) -> bool {
+    if canvas.w <= 0 || canvas.h <= 0 {return false;}
+    let scale=(300.0 / canvas.w as f32).min(400.0 / canvas.h as f32).min(1.0);
+    if canvas_init(small,(canvas.w as f32*scale).max(1.0) as i32,(canvas.h as f32*scale).max(1.0) as i32)!=0{return false;}
+    canvas_downsample_keep_lines(small,canvas,0.35);
     true
 }
 pub fn store_save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) {
-    let Some((source, image, stamp)) = page_preview_files(nb,pid) else {return};
-    let Some(was) = preview_stamp(&source) else {return};
-    let Some(parent) = std::path::Path::new(&image).parent() else {return};
-    if std::fs::create_dir_all(parent).is_err() {return;}
+    if save_page_preview(nb,pid,canvas) {page_previews_changed(nb.id.as_str());}
+}
+// One page's preview written, without telling an open view: a batch tells it once, at its end.
+fn save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
+    let Some((source, image, stamp)) = page_preview_files(nb,pid) else {return false};
+    let Some(was) = preview_stamp(&source) else {return false};
+    let Some(parent) = std::path::Path::new(&image).parent() else {return false};
+    if std::fs::create_dir_all(parent).is_err() {return false;}
     let mut small=Canvas::default();
-    if canvas.w <= 0 || canvas.h <= 0 {return;}
-    let scale=(300.0 / canvas.w as f32).min(400.0 / canvas.h as f32).min(1.0);
-    if canvas_init(&mut small,(canvas.w as f32*scale).max(1.0) as i32,(canvas.h as f32*scale).max(1.0) as i32)!=0{return;}
-    canvas_downsample_keep_lines(&mut small,canvas,0.35);
+    if !store_page_preview_image(canvas,&mut small) {return false;}
+    let Some(bytes)=pgm_bytes(&small) else {return false};
     let mine=format!("{image}.{}",std::process::id());
     let tag=format!("{stamp}.{}",std::process::id());
-    if save_pgm(&mine,&small)==0 && preview_stamp(&source).as_deref()==Some(was.as_str())
+    let mut saved=false;
+    if write_cache_file(&mine,&bytes)==0 && preview_stamp(&source).as_deref()==Some(was.as_str())
         && std::fs::rename(&mine,&image).is_ok() {
-        if write_file_atomic(&tag,was.as_bytes())==0 && std::fs::rename(&tag,&stamp).is_ok() {
-            page_previews_changed(nb.id.as_str());
-        }
+        saved=write_cache_file(&tag,was.as_bytes())==0 && std::fs::rename(&tag,&stamp).is_ok();
     }
     let _=std::fs::remove_file(mine);let _=std::fs::remove_file(tag);
+    saved
 }
 
 /// thumb.pgm as it is on disk now, in a number that changes whenever the file is written again (a
@@ -3777,6 +3823,7 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     if store_load_info(id,&mut nb)!=0{return -1;}
     let Some((first,last))=range.split_once(':').and_then(|(a,b)|Some((a.parse::<usize>().ok()?,b.parse::<usize>().ok()?))) else{return -1};
     if last.saturating_sub(first)>64{return -1;}
+    let mut saved=false;
     for i in first..last.min(nb.page_ids.len()) {
         let pid=nb.page_ids[i];let mut cached=Canvas::default();
         if store_load_page_preview(&nb,pid,&mut cached){continue;}
@@ -3789,8 +3836,10 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         let mut full=Canvas::default();
         if canvas_init(&mut full,page.w,page.h)!=0 {continue;}
         page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
-        if before.is_some() && before==preview_stamp(&source){store_save_page_preview(&nb,pid,&full);}
+        if before.is_some() && before==preview_stamp(&source){saved|=save_page_preview(&nb,pid,&full);}
     }
+    // (one change for the batch: an open view repaints its tiles once, not once per page)
+    if saved {page_previews_changed(id);}
     0
 }
 

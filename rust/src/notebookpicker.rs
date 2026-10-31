@@ -13,6 +13,7 @@ pub struct NotebookPicker {
     hits: HitList,
     press: Press,
     previews: PagePreviewRequests,
+    cache: PreviewCache,
 }
 pub enum NotebookPick { None, Cancel, Target(String) }
 impl NotebookPicker {
@@ -32,23 +33,13 @@ impl NotebookPicker {
         font_draw_left_name(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(u(210.0),u(20.0),w-u(250.0),u(150.0)),&title,0);
         let per;
         let total;
-        if let Some(nb)=&self.selected {
-            let cols=if w>h {6}else{4};let gap=u(35.0);let cw=(w-gap*(cols+1))/cols;
-            let ch=u(340.0);let rows=((h-u(400.0))/ch).max(1);per=(cols*rows) as usize;total=nb.page_ids.len();
+        if let Some(nb)=self.selected.take() {
+            (per,total)=self.page_grid(a,&nb);
             self.screen=self.screen.min(total.saturating_sub(1)/per);
+            self.draw_pages(a,&nb,false);
             let first=self.screen*per;let last=(first+per).min(total);
-            for i in first..last {
-                let n=(i-first) as i32;let r=Rect::new(gap+n%cols*(cw+gap),u(220.0)+n/cols*ch,cw,u(235.0));
-                let mut thumb=Canvas::default();
-                if store_load_page_preview(nb,nb.page_ids[i],&mut thumb){canvas_blit_fit(&mut a.screen,&thumb,r);}
-                else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0);}
-                ui_frame(&mut a.screen,r,u(8.0),0,false,u(3.0));
-                let name=nav_name(&self.nav,nb.page_ids[i]);
-                let label=if name.is_empty(){cformat!(tr("Page %d"),i as i32+1)}else{format!("{} · {}",i+1,name)};
-                font_draw_left_name(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+r.h+u(12.0),r.w,u(65.0)),&label,0);
-                hits_add(&mut self.hits,Rect::new(r.x,r.y,r.w,ch-u(15.0)),5,i as i32);
-            }
-            bg_request_page_previews(&mut self.previews,nb,first,last,a.dpi);
+            bg_request_page_previews(&mut self.previews,&nb,first,last,a.dpi,true);
+            self.selected=Some(nb);
         } else {
             let row=u(150.0);per=((h-u(400.0))/row).max(1) as usize;
             let dirs:Vec<&str>=self.folders.iter().map(|s|s.as_str()).filter(|s|store_folder_parent(s)==self.folder).collect();
@@ -74,6 +65,48 @@ impl NotebookPicker {
         let count=format!("{} / {}",self.screen+1,total.div_ceil(per).max(1));
         font_draw_centered(&mut a.screen,FontFace::Regular,ui_text_size(),Rect::new(w/2-u(200.0),bottom,u(400.0),u(140.0)),&count,0);
     }
+    // (tiles a screenful, tiles in all) of the selected notebook's page grid
+    fn page_grid(&self,a:&App,nb:&NotebookInfo)->(usize,usize) {
+        let (w,h)=(a.w,a.h);let cols=if w>h {6}else{4};
+        let rows=((h-ui_px(400.0))/ui_px(340.0)).max(1);((cols*rows) as usize,nb.page_ids.len())
+    }
+    // The screenful of page tiles (`again`: each cell cleared first and its hit kept), and where they are.
+    // The previews decode once while they stay on screen (PreviewCache), not at every redraw.
+    fn draw_pages(&mut self,a:&mut App,nb:&NotebookInfo,again:bool)->Rect {
+        let w=a.w;let h=a.h;let u=ui_px;
+        let cols=if w>h {6}else{4};let gap=u(35.0);let cw=(w-gap*(cols+1))/cols;let ch=u(340.0);
+        let (per,total)=self.page_grid(a,nb);
+        self.cache.sync(nb,false);
+        let first=self.screen*per;let last=(first+per).min(total);
+        let mut dirty=RECT_EMPTY;
+        for i in first..last {
+            let n=(i-first) as i32;let r=Rect::new(gap+n%cols*(cw+gap),u(220.0)+n/cols*ch,cw,u(235.0));
+            let cell=Rect::new(r.x,r.y,r.w,ch-u(15.0));
+            if again {canvas_fill(&mut a.screen,cell,255);}
+            if let Some(thumb)=self.cache.get(nb,nb.page_ids[i]){canvas_blit_fit(&mut a.screen,thumb,r);}
+            else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0);}
+            ui_frame(&mut a.screen,r,u(8.0),0,false,u(3.0));
+            let name=nav_name(&self.nav,nb.page_ids[i]);
+            let label=if name.is_empty(){cformat!(tr("Page %d"),i as i32+1)}else{format!("{} · {}",i+1,name)};
+            font_draw_left_name(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+r.h+u(12.0),r.w,u(65.0)),&label,0);
+            if !again {hits_add(&mut self.hits,cell,5,i as i32);}
+            dirty=rect_union(dirty,cell);
+        }
+        self.cache.retain(&nb.page_ids[first..last]);
+        dirty
+    }
+    /// New previews came while a notebook's pages are up: only its tiles are drawn again (the caller
+    /// refreshes the rect returned; RECT_EMPTY when no page grid shows).
+    pub fn repaint_pages(&mut self,a:&mut App)->Rect {
+        let Some(nb)=self.selected.take() else{return RECT_EMPTY};
+        let r=self.draw_pages(a,&nb,true);
+        self.selected=Some(nb);
+        r
+    }
+    /// How many decoded previews it keeps (the runner's editor.destination.cached).
+    pub fn cached(&self)->usize {self.cache.len()}
+    /// The previews generation its tiles were drawn at.
+    pub fn previews_generation(&self)->u64 {self.cache.generation()}
     pub fn pointer(&mut self,a:&mut App,ph:i32,e:&InEvent)->NotebookPick {
         if ph==0 {press_begin(&mut self.press,e.x,e.y,e.t_ms);if let Some(hit)=hits_find(&self.hits,e.x,e.y){app_press_feedback(a,hit.r);}return NotebookPick::None;}
         press_move(&mut self.press,e.x,e.y);if ph!=2{return NotebookPick::None;}

@@ -22,6 +22,7 @@ pub enum BgKind {
     ImportFolder = 3, // BG_IMPORT_FOLDER
     /// id: notebook, path: graph.ini; layout is computed and saved by the child.
     GraphLayout = 4,
+    /// id: notebook, path: "first:last" page indexes; writes the missing small previews.
     PagePreviews = 5,
 }
 
@@ -110,6 +111,11 @@ pub fn bg_cancel_notebook(id: &str) {
         qlog!("bg: notebook work for %s stopped (the notebook opens or goes)", id);
         with(|s| s.pid = -1);
     }
+}
+/// A queued job of this kind for notebook id is now one the user waits on (bg_queue's notify): a
+/// view opened over an idle warm-up does not wait behind a mirror PDF.
+pub fn bg_promote(kind:BgKind,id:&str) {
+    with(|s|for j in s.q.iter_mut().filter(|j|j.kind==kind&&j.id.as_str()==id) {j.notify=true;});
 }
 /// Running includes an exited child until it is reaped, so a reopened view still receives its result.
 pub fn bg_pending(kind:BgKind,id:&str)->bool {
@@ -331,6 +337,8 @@ fn rank(j: &Job) -> i32 {
         BgKind::GraphLayout => 1,
         BgKind::MirrorPdf => 2,
         BgKind::ImportFolder => 3,
+        // (an idle warm-up of the Pages view's previews: after anything asked for, with compaction)
+        BgKind::PagePreviews => 4,
         _ => 4,
     }
 }
@@ -475,19 +483,72 @@ pub struct PagePreviewRequests {
     epoch: Option<(u64,i64,i64)>,
     pages: Vec<u32>,
 }
-pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32) {
+/// `waited`: a view on screen shows these pages (else an idle warm-up, which runs after anything asked
+/// for and never counts as one the user waits on).
+pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32,waited:bool) {
     let epoch=store_page_previews_epoch(nb.id.as_str());
     if requests.id!=nb.id || requests.epoch!=epoch {
         *requests=PagePreviewRequests{id:nb.id,epoch,..Default::default()};
     }
     let last=last.min(nb.page_ids.len());let first=first.min(last);
-    if last-first>64 || bg_pending(BgKind::PagePreviews,nb.id.as_str()) {return;}
+    if last-first>64 {return;}
+    if bg_pending(BgKind::PagePreviews,nb.id.as_str()) {
+        if waited {bg_promote(BgKind::PagePreviews,nb.id.as_str());}
+        return;
+    }
     let pages=&nb.page_ids[first..last];
-    let missing=pages.iter().any(|pid|!requests.pages.contains(pid) && {
-        let mut preview=Canvas::default();!store_load_page_preview(nb,*pid,&mut preview)
-    });
+    // (a stamp check, not a decode: the view decodes what it shows itself)
+    let missing=pages.iter().any(|pid|!requests.pages.contains(pid) && store_page_preview_fresh(nb,*pid).is_none());
     if requests.pages.try_reserve(pages.len()).is_err() {return;}
     for &pid in pages {if !requests.pages.contains(&pid){requests.pages.push(pid);}}
     if !missing {return;}
-    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),dpi,true);
+    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&format!("{first}:{last}")),dpi,waited);
+}
+/// Page pid was saved: its preview may be made once more.
+pub fn bg_preview_retry(requests:&mut PagePreviewRequests,pid:u32) {
+    requests.pages.retain(|&p|p!=pid);
+}
+
+/// The decoded previews a view shows, for the screenful on it (the Pages view's grid, the link
+/// destination picker's). Each keeps the page file identity it shows, so a new preview elsewhere in the
+/// notebook keeps the tiles whose pages did not change instead of decoding them all again.
+#[derive(Clone,Debug,Default)]
+pub struct PreviewCache {
+    notebook: FixedStr<STORE_ID_LEN>,
+    generation: u64,
+    tiles: Vec<(u32,String,Canvas)>,
+}
+impl PreviewCache {
+    /// Before a draw: another notebook empties it; new previews (or a forced check, as a view opens)
+    /// keep only the tiles whose page files are as they were.
+    pub fn sync(&mut self,nb:&NotebookInfo,force:bool) {
+        if self.notebook!=nb.id {self.tiles.clear();self.notebook=nb.id;self.generation=store_page_previews_generation(nb.id.as_str());return;}
+        let generation=store_page_previews_generation(nb.id.as_str());
+        if generation==self.generation && !force {return;}
+        self.generation=generation;
+        self.tiles.retain(|(pid,identity,_)|store_page_source_identity(nb,*pid).as_deref()==Some(identity.as_str()));
+    }
+    /// Page pid's preview: decoded once, from the disk cache, while it stays on screen.
+    pub fn get(&mut self,nb:&NotebookInfo,pid:u32)->Option<&Canvas> {
+        if !self.tiles.iter().any(|t|t.0==pid) {
+            let mut preview=Canvas::default();
+            let identity=store_load_page_preview_as(nb,pid,&mut preview)?;
+            if self.tiles.try_reserve(1).is_err() {return None;}
+            self.tiles.push((pid,identity,preview));
+        }
+        self.tiles.iter().find(|t|t.0==pid).map(|t|&t.2)
+    }
+    pub fn has(&self,pid:u32)->bool {self.tiles.iter().any(|t|t.0==pid)}
+    /// A preview made here (the open page, from its canvas) for the page file at `identity`.
+    pub fn put(&mut self,pid:u32,identity:String,preview:Canvas) {
+        self.forget(pid);
+        if self.tiles.try_reserve(1).is_ok() {self.tiles.push((pid,identity,preview));}
+    }
+    pub fn forget(&mut self,pid:u32) {self.tiles.retain(|t|t.0!=pid);}
+    /// Only the tiles of these pages (the screenful on show) stay.
+    pub fn retain(&mut self,pids:&[u32]) {self.tiles.retain(|t|pids.contains(&t.0));}
+    /// The previews generation its tiles were checked at (store_page_previews_generation's then).
+    pub fn generation(&self)->u64 {self.generation}
+    pub fn len(&self)->usize {self.tiles.len()}
+    pub fn is_empty(&self)->bool {self.tiles.is_empty()}
 }
