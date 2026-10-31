@@ -721,7 +721,12 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    every stream starts with one. The browser's picture follows both until its own Invert colors
    switch or Warmth slider says otherwise: inverted, the whole page is black; warmth tints the
    picture's light (the paper, or the ink when inverted) from white at 0 to 2400 K at 24, in even
-   steps of mireds, in the pixels so a recording has it. The page itself is dark, as every share
+   steps of mireds, in the pixels so a recording has it. Its Brightness slider (10% to 100%,
+   remembered by the browser in localStorage, never sent to the Kindle) dims that light the same
+   way, warm or not: black stays black, and on transparent paper only inverted ink has light to
+   dim. A slider's step only asks for a frame, which draws the whole picture once however many
+   steps came, and nothing sets a slider a pointer holds: a state frame meanwhile changes what the
+   Kindle has, not the thumb, and a warmth let go on the Kindle's follows the Kindle's again. The page itself is dark, as every share
    page is (httpd.c's :root colors), around a screen drawn as the Kindle draws it. The canvas on
    the page has a pixel for each of the screen's and is filled by averaging (web/live.js present():
    each pixel the alpha-weighted mean of the area of the full-size picture it covers, for the rect
@@ -975,7 +980,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    libx264, a real H.264 stream put in an MP4 that ffmpeg must decode to the stream's own frames at
    their times), runs the page itself on DOM and canvas stand-ins (tests/live_browser_check.js: the
    quick ink painted while PNGs decode and retired by the batch that holds it, the ink epochs in
-   either order, the pen stream's states, Monitor mode, and how the pen stream retries), and checks
+   either order, the pen stream's states, Monitor mode, how the pen stream retries, and the Warmth
+   and Brightness sliders: never moved while held, one draw a frame, brightness composed with
+   warmth, inverted colors and transparent paper and remembered), and checks
    that no viewer outlives the app. test_live (rust/tests/test_live.rs) checks the ring, the frames
    and the watermark against the viewer children over socket pairs.
 2. **SSH / rsync** - `tools/grimoire-pull` (Mac) rsyncs `root/notebooks` from the Kindle
