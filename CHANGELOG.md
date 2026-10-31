@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0-rc.12 (2026-10-31)
+
+- Folders can move: a folder's menu has Move folder, which takes it, with everything in it, to the top level or into another folder (never into itself or a folder inside it). New folder... works there too, and its notebooks' mirror PDFs follow. Renaming or moving a folder no longer leaves empty mirror directories behind.
+- The keyboard has an apostrophe beside the space bar, and a symbols page (the #+= key): ! @ # $ % ^ & * ( ) ? , " : ; _ + = / ~ [ ] < > and the euro, pound and degree signs, with the digits on it too. Letters stay where they were.
+- Pages: hold a page for Rename, and Delete moved from the bottom row to the held page's menu (it deletes the ticked pages when the held one is ticked, else that page). The bottom row's arrows are gone: one finger flicked sideways turns the screen, as on the notebook's page, and so do the page-turn keys and controller buttons while Pages is up.
+- In the Graph, a pen's tap selects a node as a finger's does; a second tap opens it (a pen's tap often reached the Kindle as two and opened at once).
+- Smallest shape now sets the real size floor, 3 to 40 mm (10 by default, as before): lowered, small circles, squares and triangles snap (it could only ever raise a fixed 10 mm floor). With Round shapes: As drawn, long and egg-shaped ovals snap to clean ellipses; with Four sides: Uneven allowed, parallelograms (slanted, turned, thin or steep) and trapeziums snap with their corners where they were drawn.
+- Add Corner roundness to the Smart shapes menu: it rounds the corners of snapped rectangles, squares, four-sided shapes and triangles (Sharp by default). The menu's sliders answer where they are first touched, a tap anywhere on one sets it, and a touch cut short by the pen coming near keeps its value.
+- Link outlines (the eye's boxes, the area waiting for its target, the lasso and the held link's border) are a slightly thicker dithered band instead of fine dots, so e-ink shows them clearly.
+- The stroke eraser is much faster on dense pages: taking a stroke off draws the page again only where that stroke was. On a 1,090-stroke page a marker stroke across the page goes in about 3 seconds instead of 34; sweeps through many strokes are 2.5 to 4 times faster.
+- A pen or finger lift the Kindle missed (for example while a dense page kept Grimoire busy) no longer swallows your next stroke or tap, and pressing the pen's button for a drag while drawing a link's lasso no longer leaves the lasso stuck. grimoire.log now says why a finger on the page did nothing, follows each step of making a link, and counts events dropped while Grimoire was busy.
+- The tool picker shows Black or White as picked at once (it kept the old choice until opened again).
+- The clock and battery corner is medium by default (settings saved before keep their size).
+- Live view: a Brightness slider under Warmth dims the picture in this browser only, and the Kindle's warmth no longer moves the Warmth slider while you drag it.
+
 ## 2.0.0-rc.11 (2026-10-31)
 
 - Add What's new, under the bat: Grimoire's bat now stands left of its name in the Library (in place of the emblem, and in Classic too), and a tap on either opens a card with a note from the author, signed by hand with the bat beside the signature, Read all for the whole note in larger type, and Don't show this again. The first start after an update opens it by itself once, unless that box is ticked.

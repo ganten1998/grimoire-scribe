@@ -6,6 +6,14 @@ why. Newest decisions first within each section.
 
 ## Next: 2.1 (deferred by the owner, 2026-10-31)
 
+- **Cross-platform tablet bridge** (owner, 2026-10-31; started, not finished: the weekly limit). One small
+  dependency-free Rust tool for Windows (InjectSyntheticPointerInput PT_PEN), macOS (CGEvent tablet subtype)
+  and Linux (uinput pen tablet), reading Grimoire's own Live view pen stream (/live/pen, pairing code; no SSH),
+  plus a device-side Tablet mode so the pen draws no ink while it drives the computer. tools/scribe-tablet.c
+  (Mac, over KOReader's SSH, round 1) is the stopgap; plan in the rc.12 session notes.
+- **The KOReader library entry for Grimoire** as an option in the KOReader sheet (owner, 2026-10-31).
+- **Stroke eraser sweeps on dense pages**: batch a sweep's redraws (needs an input-peek API) and cache brush
+  checkpoints (the eraser lane's notes, rc.12).
 - **Custom Paper builder.** A picker tile that builds custom versions of ruled, dot grid, graph
   paper, cross grid, isometric, hexagon and Seyes paper (spacing, line weight, margins). Needs a
   new paper namespace in the page format (docs/FORMAT.md); older versions show such pages as
@@ -78,6 +86,7 @@ why. Newest decisions first within each section.
 
 ## Done
 
+- 2.0.0-rc.12: folders movable; keyboard apostrophe and symbols; Pages Rename/Delete in the held page's menu and flicks instead of arrows; Graph pen tap selects; Smallest shape is the real floor; ellipses and parallelograms snap; Corner roundness; dithered link outlines; stroke eraser tiles; lost-lift recovery and input diagnostics; ink picker; clock medium; Live view Brightness.
 - 2.0.0-rc.11: What's new under the bat (look C, picked by the owner): the owner's note (`docs/WHATSNEW.md`)
   and hand signature with the bat (`assets/signature.pgm`, from the notebook "2.0b1 sig"); opens once after an update.
 - 2.0.0-rc.10: instant undo and redo on any page; dense pages open from their kept drawing; the

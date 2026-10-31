@@ -11,6 +11,16 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.12 (device checks pending)
+
+On the Kindle: a folder's menu, Move folder, into another folder and back; type "Joe's notes (2)!" on the keyboard
+(the apostrophe beside the space bar, the rest on #+=). In Pages, flick one finger sideways (and a controller's
+page-turn buttons) to change screens; hold a page for Rename and Delete. In the Graph, one pen tap selects, a second
+opens. Smart shapes with Smallest shape at 4 mm: small circles, squares and triangles snap; slanted parallelograms
+snap with Uneven allowed; Corner roundness at about 40% rounds a rectangle. Make a link and check the dithered
+outline; then fingers still work (if not, send grimoire.log: it now says why). Erase a stroke on the dense page.
+In the browser, drag Warmth and Brightness both ways.
+
 ## 2.0.0-rc.11 (device checks pending)
 
 On the Kindle: the first start after installing opens What's new by itself over the Library, once (the

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-31 07:15-0500\n"
+"POT-Creation-Date: 2026-10-31 14:50-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1018,7 +1018,9 @@ msgstr "Esquina del reloj: abajo a la derecha"
 msgid "Clock corner: bottom left"
 msgstr "Esquina del reloj: abajo a la izquierda"
 
-#: rust/src/dispmenu.rs
+#. TRANSLATORS: Live view's slider in the browser, under Warmth: the picture's light from dim
+#. to full, this browser's own (the Kindle's light is unchanged). About 12 characters.
+#: rust/src/dispmenu.rs rust/src/httpd.rs
 msgid "Brightness"
 msgstr "Brillo"
 
@@ -1238,16 +1240,31 @@ msgstr "Ajustar áreas de enlace: Sí"
 msgid "Snap link areas: Off"
 msgstr "Ajustar áreas de enlace: No"
 
+#. TRANSLATORS: the Smart shapes menu's slider that rounds the corners of the rectangles,
+#. triangles and other polygons a stroke snaps to (its value is "Sharp" or a percentage).
+#. At 44 px left of its value; label and value share up to 64% of the 1032 px row.
+#: rust/src/editor.rs
+msgid "Corner roundness"
+msgstr "Redondeo de esquinas"
+
 #. TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
-#. value is "Any" or a size in mm).
+#. value is a size in mm, 3 to 40).
 #: rust/src/editor.rs
 msgid "Smallest shape"
 msgstr "Mínimo"
 
-#. TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
+#. TRANSLATORS: Corner roundness at 0: snapped polygons keep sharp corners.
 #: rust/src/editor.rs
-msgid "Any"
-msgstr "Cualquiera"
+msgctxt "corners"
+msgid "Sharp"
+msgstr "Ninguno"
+
+#. TRANSLATORS: Corner roundness's value, a percentage of the most rounding a shape can take
+#. ("25%"; in Spanish "25 %", the usual spacing), right of its slider's name in bold at 44 px.
+#: rust/src/editor.rs
+#, c-format
+msgid "%d%%"
+msgstr "%d %%"
 
 #: rust/src/editor.rs
 msgid ""
@@ -2197,7 +2214,7 @@ msgid "use the address shown on the Kindle"
 msgstr "usa la dirección que muestra el Kindle"
 
 #. TRANSLATORS: the keyboard's named keys, in bold at 44 px: shift (250 px wide), delete
-#. (261), the space bar, and Cancel and Done (334).
+#. (261), the space bar (355), and Cancel and Done (250).
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "shift"
@@ -2279,7 +2296,9 @@ msgstr "Cuaderno nuevo"
 msgid "Name: %s"
 msgstr "Nombre: %s"
 
-#: rust/src/library.rs rust/src/mapview.rs
+#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+#. a name (its naming keyboard, titled Page name).
+#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Rename"
 msgstr "Renombrar"
 
@@ -3005,6 +3024,12 @@ msgstr "Borrar"
 msgid "Rename folder"
 msgstr "Renombrar la carpeta"
 
+#. TRANSLATORS: a folder's menu (see Rename folder): to another folder or the top level,
+#. with everything in it.
+#: rust/src/library.rs
+msgid "Move folder"
+msgstr "Mover la carpeta"
+
 #: rust/src/library.rs
 msgid "Remove folder (move its notebooks out first)"
 msgstr "Quitar la carpeta (primero saca sus cuadernos)"
@@ -3025,7 +3050,7 @@ msgstr "Más carpetas"
 msgid "New folder..."
 msgstr "Carpeta nueva..."
 
-#. TRANSLATORS: the title of the list of folders a notebook can be moved to.
+#. TRANSLATORS: the title of the list of folders a notebook (or a folder) can be moved to.
 #: rust/src/library.rs
 msgid "Move to"
 msgstr "Mover a"
@@ -3060,6 +3085,12 @@ msgstr "No se pudo mover el cuaderno."
 #: rust/src/library.rs
 msgid "Could not rename the folder. Check the name and destination."
 msgstr "No se pudo renombrar la carpeta. Comprueba el nombre y el destino."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
+#. usually because the destination has a folder of that name.
+#: rust/src/library.rs
+msgid "Could not move the folder. Is there one of that name there?"
+msgstr "No se pudo mover la carpeta. ¿Hay allí una con ese nombre?"
 
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
 #: rust/src/library.rs
@@ -4514,6 +4545,9 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Any"
+#~ msgstr "Cualquiera"
 
 #~ msgid "Index map"
 #~ msgstr "Mapa del índice"
