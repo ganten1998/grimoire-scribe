@@ -851,10 +851,9 @@ fn panel_rect_at(a: &App, x: i32, y: i32) -> Rect {
     let s = ed_ref(a);
     let w = if s.collapsed { box_() } else { pw() };
     let h = if s.collapsed { box_() } else { panel_height(g_fit(), npins(&a.settings)) };
-    // Its margins above and below stay free wherever it goes (fit_panel_to leaves room for them).
-    let m = if h + 2 * ui_px(PANEL_MARGIN as f32) <= a.h { ui_px(PANEL_MARGIN as f32) } else { 0 };
+    // Anywhere on the screen, up to its very edges (fit_panel_to still sizes it with room to spare).
     let x = clampi(x, 0, a.w - w);
-    let y = clampi(y, m, a.h - h - m);
+    let y = clampi(y, 0, a.h - h);
     Rect { x, y, w, h }
 }
 
@@ -9454,11 +9453,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "panel_button" {
         csnprintf!(out, cap, "%d", btn_h()); // an expanded panel's buttons' height, px
     } else if key == "panel_fits" {
-        // 1 while the panel is inside the screen with its margins free above and below it, its
-        // buttons at full size (as without pins, upright or sideways)
+        // 1 while the panel is inside the screen, its buttons at full size (as without pins,
+        // upright or sideways)
         let p = s.panel;
-        let m = ui_px(PANEL_MARGIN as f32);
-        let in_ = p.x >= 0 && p.x + p.w <= a.w && p.y >= m && p.y + p.h <= a.h - m;
+        let in_ = p.x >= 0 && p.x + p.w <= a.w && p.y >= 0 && p.y + p.h <= a.h;
         csnprintf!(out, cap, "%d", if in_ && btn_h() == ui_px(100.0) { 1 } else { 0 });
     } else if key == "pins" {
         settings_pins_text(st, out, cap); // the pinned pens in pin order, as settings.ini names them
@@ -10078,9 +10076,9 @@ mod tests {
             ed(&mut a).panel = p;
             draw_panel(&mut a);
             let s = ed_ref(&a);
-            // Inside the screen, its margins free.
+            // Inside the screen, fitted with room for its margins (though it may go up to the edges).
             let m = ui_px(PANEL_MARGIN as f32);
-            assert!(p.x >= 0 && p.x + p.w <= w && p.y >= m && p.y + p.h <= h - m);
+            assert!(p.x >= 0 && p.x + p.w <= w && p.y >= 0 && p.y + p.h <= h && p.h + 2 * m <= h);
             assert_eq!(p.h, panel_height(g_fit(), pins as i32));
             // The buttons from the top: grip, collapse, the tool button, the pins, the eraser, (undo,
             // redo, clear and previous greyed out), the page chip, next, links, paper, display, pen feel,
@@ -10099,7 +10097,7 @@ mod tests {
         let mut a = app(1860, 2480, 1860, 2480);
         ed(&mut a).collapsed = true;
         let p = panel_rect_at(&a, 5000, -50);
-        assert_eq!(p, Rect::new(1860 - panel_box(), ui_px(PANEL_MARGIN as f32), panel_box(), panel_box()));
+        assert_eq!(p, Rect::new(1860 - panel_box(), 0, panel_box(), panel_box()));
         ed(&mut a).panel = p;
         draw_panel(&mut a);
         let s = ed_ref(&a);

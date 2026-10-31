@@ -1,14 +1,15 @@
 //! panel.h: the editor's floating panel's measures, as pure logic (unit-tested on the host by
 //! tests/test_panel.c): its 14 buttons and one more for each pen pinned under the tool button, and
 //! how they shrink to fit a screen too short for them (the Kindle turned sideways, with pens
-//! pinned). The panel keeps 12 px free above and below it. Then the pens on it, which next and
-//! previous tool go through, and the tool picker's, which its own next and previous go through.
+//! pinned). The panel is sized to leave 12 px free above and below it, though it may be dragged up
+//! to the screen's very edges. Then the pens on it, which next and previous tool go through, and the
+//! tool picker's, which its own next and previous go through.
 
 use crate::prelude::*;
 
 /// Tool, eraser, undo, redo, clear, previous, next, links, paper, display, pen feel, settings, library.
 pub const PANEL_BUTTONS: i32 = 14;
-/// px at 300 dpi
+/// px at 300 dpi, the room panel_fit leaves above and below the panel
 pub const PANEL_MARGIN: i32 = 12;
 
 /// How far the panel is shrunk: every measure by scale, and the room between the buttons (their
