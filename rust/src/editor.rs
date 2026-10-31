@@ -698,7 +698,7 @@ fn map_result(a: &mut App, result: MapResult) {
                 return;
             }
             let name = nav_name(&s.nav, pid).as_bytes();
-            keyboard_open(&mut s.map_kb, tr("Name in the Index"), name);
+            keyboard_open(&mut s.map_kb, tr("Page name"), name);
             s.map_rename_pid = pid;
             s.map_kb.area = keyboard_modal_rect_docked(screen, 0);
             compose_all(a, RefreshMode::Ui);
@@ -722,7 +722,7 @@ fn map_pointer(a: &mut App, phase: i32, ev: &InEvent) {
                     let open = s.open_pid();
                     let number = s.nb.page_ids.iter().position(|&p| p == pid).map_or(0, |i| i + 1);
                     with_map(a, |map, a, nb, nav| mapview_rebuild(map, a, nb, nav, open));
-                    let msg = cformat!(tr("Page %d is in the Index as %s."), number as i32, text.as_str().trim());
+                    let msg = cformat!(tr("Page %d is named %s."), number as i32, text.as_str().trim());
                     app_toast(a, &msg, 2500);
                 } else {
                     nav_load(s.nb.id.as_str(), &mut s.nav);
@@ -1891,7 +1891,7 @@ fn draw_shape_menu(a: &mut App) {
         (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
         (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
         (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
-        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Link areas: On")}else{n_("Link areas: Off")})),
+        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Snap link areas: On")}else{n_("Snap link areas: Off")})),
         (P_SHAPE_DONE,tr("Done")),
     ];
     for (i,(id,label)) in rows.into_iter().enumerate() {
@@ -2011,7 +2011,7 @@ fn areas_toggle(a: &mut App, _button: Rect) {
     settings_save(&a.settings);
     compose_all(a, RefreshMode::Ui);
     if tip {
-        app_toast(a, tr("Dotted boxes show where a finger tap follows a link. They never print."), 4000);
+        app_toast(a, tr("Dotted outlines show where a finger tap follows a link. They never print."), 4000);
     }
 }
 
@@ -2754,7 +2754,7 @@ fn first_open_tip(a: &mut App) {
     settings_save(&a.settings);
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
     // two fingers dragged up and down on a page do now.
-    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down show all pages."), 6000,
+    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down open the Graph."), 6000,
     );
 }
 
@@ -5294,9 +5294,8 @@ fn card_rename(a: &mut App) {
     let s = ed(a);
     let mut name = String::new();
     i18n_copy(&mut name, nav_name(&s.nav, pid), NAV_NAME_LEN);
-    // TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
-    // 1500 px at 44 px).
-    keyboard_open(&mut s.card.kb, tr("Name in the Index"), name.as_bytes());
+    // TRANSLATORS: the title of the keyboard that names the page a held link goes to (about 1500 px at 44 px).
+    keyboard_open(&mut s.card.kb, tr("Page name"), name.as_bytes());
     keyboard_set_dock(&mut s.card.kb, dock);
     s.card.kb.area = keyboard_modal_rect_docked(screen, dock);
     let u = rect_union(s.card.kb.area, s.card.rect);
@@ -5355,14 +5354,14 @@ fn rename_done(a: &mut App, name: &str) {
     } else if !name.is_empty() {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // gave page %d the Index name %s.
-        csnprintf!(&mut msg, 200, tr("Page %d is in the Index as %s."), number, name);
+        // gave page %d the name %s.
+        csnprintf!(&mut msg, 200, tr("Page %d is named %s."), number, name);
         app_toast(a, &msg, 3000);
     } else if !old.is_empty() {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // emptied page %d's name, which takes it out of the Index.
-        csnprintf!(&mut msg, 200, tr("Page %d is not in the Index now."), number);
+        // emptied page %d's name.
+        csnprintf!(&mut msg, 200, tr("Page %d has no name now."), number);
         app_toast(a, &msg, 3000);
     }
 }

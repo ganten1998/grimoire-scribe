@@ -623,8 +623,8 @@ fn draw_base(a: &mut App) {
     // back to KOReader.
     let hosted = std::env::var_os("GRIMOIRE_HOST").is_some_and(|h| h == "koreader");
     if hosted {
-        // TRANSLATORS: the Library's top bar when Grimoire was opened from KOReader: in place of Exit,
-        // it opens KOReader, using the same button width as its neighbors.
+        // The Library's top bar when Grimoire was opened from KOReader: in place of Exit, it opens
+        // KOReader (a name, not translated), using the same button width as its neighbors.
         btns[0].label = "KOReader";
     }
     const NBTNS: usize = 5;
@@ -1793,7 +1793,7 @@ fn record_slot_refusal(action: i32, key: GestureKey) -> Option<&'static str> {
     if action == SHORTCUT_HOLD_ERASER && !matches!(key,
         GestureKey::Pen { kind: PenKind::Hold | PenKind::Drag, .. }) {
         // TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
-        return Some(tr("Hold eraser needs the button held: hold it or drag with it."));
+        return Some(tr("Erase while held needs the button held: hold it or drag with it."));
     }
     if matches!(action, SHORTCUT_PEN_PAN | SHORTCUT_PEN_ZOOM) && !matches!(key,
         GestureKey::Pen { kind: PenKind::Drag, .. }) {
@@ -3157,13 +3157,13 @@ fn draw_settings(a: &mut App) {
     // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
     static BTN_ROWS: [&str; 4] = [
         // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-        n_("Holding the pen button does nothing (tap to change)"),
-        n_("Holding the pen button erases (tap to change)"),
-        n_("Holding the pen button highlights (tap to change)"),
+        n_("Holding the pen button while writing does nothing (tap to change)"),
+        n_("Holding the pen button while writing erases (tap to change)"),
+        n_("Holding the pen button while writing highlights (tap to change)"),
         // TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
         // draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
         // at 44 px, sideways 1610, or two lines at 34 px.
-        n_("Holding the pen button draws white (tap to change)"),
+        n_("Holding the pen button while writing draws white (tap to change)"),
     ];
     canvas_fill(c, r4, 255);
     ui_icon(
@@ -5405,7 +5405,7 @@ mod tests {
         record_side(&mut a, 100, true); record_side(&mut a, 180, false);
         library_tick(&mut a, 530);
         assert!(lib(&mut a).record_key.is_none());
-        assert_eq!(probe(&mut a, "record.line"), "Hold eraser needs the button held: hold it or drag with it.");
+        assert_eq!(probe(&mut a, "record.line"), "Erase while held needs the button held: hold it or drag with it.");
         record_side(&mut a, 1000, true);
         library_tick(&mut a, 2199);
         assert!(lib(&mut a).record_key.is_none());
@@ -5423,7 +5423,7 @@ mod tests {
         assert!(lib(&mut a).record_key.is_none());
         record_shape_sample(&mut a, FsSample::default());
         assert_eq!(lib(&mut a).record_sample_count, 0);
-        assert_eq!(probe(&mut a, "record.line"), "Hold eraser needs the button held: hold it or drag with it.");
+        assert_eq!(probe(&mut a, "record.line"), "Erase while held needs the button held: hold it or drag with it.");
 
         for action in [SHORTCUT_PEN_PAN, SHORTCUT_PEN_ZOOM] {
             open_record_card(&mut a, action);

@@ -31,7 +31,7 @@ shot 01-card
 expect editor.ui_at.679.1428 is card.rename
 tap 679 1428
 wait 100
-expect editor.keyboard is Name in the Index
+expect editor.keyboard is Page name
 expect editor.text is Árbol
 expect editor.kb_dock is bottom
 expect editor.link_card is 1
@@ -50,7 +50,7 @@ tap 1726 1885
 expect editor.text is Cap
 tap 1643 2365
 wait 100
-expect toast is Page 3 is in the Index as Cap.
+expect toast is Page 3 is named Cap.
 expect editor.link_card.title is Cap
 expect editor.link_card is 1
 expect editor.keyboard is
@@ -142,7 +142,7 @@ wait 100
 expect editor.linkto is 0
 expect editor.link_card.border is 0
 expect toast is
-# An unnamed target (page 2): Add page 2 to the Index...; named Two
+# An unnamed target (page 2): Name page 2...; named Two
 touch down 600 1450
 wait 800
 touch up 600 1450
@@ -154,7 +154,7 @@ shot 04-card-unnamed
 expect editor.ui_at.679.1728 is card.rename
 tap 679 1728
 wait 100
-expect editor.keyboard is Name in the Index
+expect editor.keyboard is Page name
 expect editor.text is
 expect editor.kb_dock is top
 tap 175 898
@@ -164,7 +164,7 @@ tap 1549 578
 expect editor.text is Two
 tap 1643 1058
 wait 100
-expect toast is Page 2 is in the Index as Two.
+expect toast is Page 2 is named Two.
 expect editor.index_rows is 3
 expect editor.link_card.title is Two
 tap 1200 600

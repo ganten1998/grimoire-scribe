@@ -146,11 +146,11 @@ fn the_rows_follow_the_link() {
     linkcard_set(&mut c, 10, &[1], &nb, &nav, false, false);
     check!(c.open && c.page == 2 && c.target == "p30" && c.title == "Árbol");
     check!(rows(&c) == "rename retarget redraw delete");
-    check!(c.labels[0] == "Rename in the Index" && c.labels[3] == "Delete link");
+    check!(c.labels[0] == "Rename the page" && c.labels[3] == "Delete link");
     check!(linkcard_size(&c) == (780, 666));
-    // to an unnamed page: Add page 2 to the Index...
+    // to an unnamed page: Name page 2...
     linkcard_set(&mut c, 10, &[2], &nb, &nav, false, false);
-    check!(c.title == "Page 2" && rows(&c) == "rename retarget redraw delete" && c.labels[0] == "Add page 2 to the Index...");
+    check!(c.title == "Page 2" && rows(&c) == "rename retarget redraw delete" && c.labels[0] == "Name page 2...");
     // to the Index: no Rename
     linkcard_set(&mut c, 10, &[3], &nb, &nav, false, false);
     check!(c.title == "The Index" && rows(&c) == "retarget redraw delete" && linkcard_size(&c) == (780, 536));

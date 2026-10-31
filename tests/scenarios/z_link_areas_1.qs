@@ -21,7 +21,7 @@ wait 200
 expect settings.link_areas is 1
 expect editor.areas is 3
 expect settings.hints is 6
-expect toast is Dotted boxes show where a finger tap follows a link. They never print.
+expect toast is Dotted outlines show where a finger tap follows a link. They never print.
 shot 01-areas
 wait 4300
 expect toast is

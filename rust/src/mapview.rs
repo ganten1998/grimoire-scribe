@@ -1180,7 +1180,7 @@ fn render_list(v:&mut MapView,c:&mut Canvas,nav:&Nav) {
         if i==v.list_offset||key!=group {if y+u(210.0)>v.h{break;}canvas_fill(c,Rect::new(u(30.0),y,v.w-u(60.0),u(70.0)),225);font_draw_left_name(c,FontFace::Bold,ui_text_size(),Rect::new(u(50.0),y,v.w-u(100.0),u(70.0)),&title,0);y+=u(85.0);group=key;}
         if y+u(120.0)>v.h{break;}
         let from=v.pages.iter().position(|&p|p==l.pid).map_or(0,|n|n+1);
-        let destination=v.foreign.iter().find(|f|f.row==i).map(|f|f.label.clone()).or_else(||nav_target_label(l.target.as_str())).unwrap_or_else(||if l.target=="index"{tr("Index").to_string()}else{let pid=l.target.as_str().strip_prefix('p').and_then(|p|p.parse().ok()).unwrap_or(0);let name=nav_name(nav,pid);if name.is_empty(){cformat!(tr("Page %d"),v.pages.iter().position(|&p|p==pid).map_or(0,|n|n+1)as i32)}else{name.to_string()}});
+        let destination=v.foreign.iter().find(|f|f.row==i).map(|f|f.label.clone()).or_else(||nav_target_label(l.target.as_str())).unwrap_or_else(||if l.target=="index"{tr("The Index").to_string()}else{let pid=l.target.as_str().strip_prefix('p').and_then(|p|p.parse().ok()).unwrap_or(0);let name=nav_name(nav,pid);if name.is_empty(){cformat!(tr("Page %d"),v.pages.iter().position(|&p|p==pid).map_or(0,|n|n+1)as i32)}else{name.to_string()}});
         let text=format!("{}  →  {}",cformat!(tr("Page %d"),from as i32),destination);
         let r=Rect::new(u(45.0),y,v.w-u(90.0),u(115.0));font_draw_left_name(c,FontFace::Regular,ui_text_size(),r,&text,0);canvas_hline(c,r.x,r.w,r.y+r.h,u(2.0),180);
         v.hits.push(MapHit{rect:r,kind:MapHitKind::Link(i),centre:(0.0,0.0),radius:0.0});y+=u(130.0);
