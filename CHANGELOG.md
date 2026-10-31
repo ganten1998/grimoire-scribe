@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.0-rc.11 (2026-10-31)
+
+- Add What's new, under the bat: Grimoire's bat now stands left of its name in the Library (in place of the emblem, and in Classic too), and a tap on either opens a card with a note from the author, signed by hand with the bat beside the signature, Read all for the whole note in larger type, and Don't show this again. The first start after an update opens it by itself once, unless that box is ticked.
+
 ## 2.0.0-rc.10 (2026-10-31)
 
 - Undo and redo are a copy of what the step changed, however dense the page: each step keeps the tiles of the page it touched. On a page of 1,090 strokes an undo took 4 to 11 s, until the launcher stopped Grimoire as hung.

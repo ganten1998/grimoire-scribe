@@ -150,6 +150,13 @@ pub struct Settings {
     pub shape_links: bool,
     /// Smart shapes snap only strokes at least this big (mm, the larger side; 0: any size). rc.9.
     pub shape_min_mm: i32,
+    /// What's new (about.rs): the version whose notes were last shown or due (settings.ini
+    /// whatsnew_seen), and Don't show this again (whatsnew_hide). 2.0.0.
+    pub whatsnew_seen: FixedStr<32>,
+    pub whatsnew_hide: bool,
+    /// Memory only, never saved: this start follows an update (a file a Grimoire saved, its notes seen
+    /// an older version's) and the box is not ticked, so the Library opens What's new once.
+    pub whatsnew_due: bool,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
     /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
@@ -3265,6 +3272,9 @@ pub fn settings_default(s: &mut Settings) {
     s.shape_round = 1;
     s.shape_links = true;
     s.shape_min_mm = 0;
+    s.whatsnew_seen.clear();
+    s.whatsnew_hide = false;
+    s.whatsnew_due = false;
     s.hints = 0;
     s.link_areas = false;
 }
@@ -3595,6 +3605,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"shape_round" => s.shape_round = keep_int("shape_round", v, 0, 2),
         b"shape_links" => s.shape_links = keep_bool("shape_links", v),
         b"shape_min_mm" => s.shape_min_mm = keep_int("shape_min_mm", v, 0, 40),
+        b"whatsnew_seen" => clean_line(&mut s.whatsnew_seen, v),
+        b"whatsnew_hide" => s.whatsnew_hide = keep_bool("whatsnew_hide", v),
         b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
@@ -3705,6 +3717,10 @@ pub fn settings_load(s: &mut Settings) -> i32 {
         // no gestures key (a fresh install has no file; a file this build saved has the key). The
         // one-time toasts of what changed (hints bits 0 and 8) are for this owner only.
         s.upgraded = s.version == SETTINGS_VERSION && !has_gestures;
+        // What's new is for an update: a file a Grimoire saved (it has the version key) whose notes
+        // seen were another version's. A fresh start, or a file written by hand, records this
+        // version's as seen.
+        s.whatsnew_due = s.version > 0 && !s.whatsnew_hide && s.whatsnew_seen.as_str() != GRIMOIRE_VERSION;
         settings_upgrade(s);
     } else {
         s.version = SETTINGS_VERSION;
@@ -3715,6 +3731,9 @@ pub fn settings_load(s: &mut Settings) -> i32 {
         _ => {}
     }
     s.status_mode = 1;
+    if !s.whatsnew_due {
+        s.whatsnew_seen.set(GRIMOIRE_VERSION);
+    }
     rc
 }
 
@@ -3876,6 +3895,8 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "shape_round", s.shape_round);
     put_int(&mut b, "shape_links", s.shape_links as i32);
     put_int(&mut b, "shape_min_mm", s.shape_min_mm);
+    put(&mut b, "whatsnew_seen", s.whatsnew_seen.as_str());
+    put_int(&mut b, "whatsnew_hide", s.whatsnew_hide as i32);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

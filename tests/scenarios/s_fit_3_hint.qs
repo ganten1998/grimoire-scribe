@@ -4,6 +4,7 @@
 # the first time the page comes up sideways whole, why two fingers swipe there now; a fresh install is not.
 # (The first-open tip, hints bit 0, is g_hint_1_first_open's: it is already seen here.)
 # settings: settings_version=3
+# settings: whatsnew_hide=1
 # settings: hints=1
 # settings: mirror_pdf=0
 wait 300

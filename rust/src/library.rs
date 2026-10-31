@@ -25,6 +25,7 @@ enum Modal {
     Pair = 15,      // MOD_PAIR
     Updates = 16,   // MOD_UPDATES
     Gestures = 17,  // MOD_GESTURES
+    About = 18,     // (Rust only: the bat's What's new)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -118,6 +119,12 @@ const H_RECORD_RETRY: i32 = 65;
 const H_RECORD_CANCEL: i32 = 66;
 const H_GESTURES_RESET_CONFIRM: i32 = 67;
 const H_GESTURES_RESET_CANCEL: i32 = 68;
+const H_ABOUT: i32 = 71;
+const H_ABOUT_CLOSE: i32 = 72;
+const H_ABOUT_HIDE: i32 = 73;
+const H_ABOUT_PREV: i32 = 74;
+const H_ABOUT_NEXT: i32 = 75;
+const H_ABOUT_MORE: i32 = 76;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -186,6 +193,11 @@ pub struct LibraryState {
     gestures_file_readable: bool,
     gestures_refused: i32,
     gestures_reset_confirm: bool,
+    /// The About sheet: its page, Compact's Read all tapped, and where the bat is (it hangs from it).
+    about_page: i32,
+    about_pages: i32,
+    about_full: bool,
+    about_bat: Rect,
     record_action: i32,
     record_next_action: i32,
     record_started: u32,
@@ -675,16 +687,13 @@ fn draw_base(a: &mut App) {
             0,
         );
         x += ui_px(115.0);
-    } else if ui_theme() == UiTheme::Gothic {
-        ui_emblem(
-            c,
-            (x + ui_px(55.0)) as f32,
-            th as f32 / 2.0,
-            ui_px(52.0) as f32,
-            0,
-            255,
-        );
-        x += ui_px(140.0);
+    } else {
+        // The bat, Grimoire's mark: a tap on it (or on the name beside it) opens What's new.
+        let k = ui_px(3.0);
+        let bat = Rect::new(x, (th - BAT_H * k) / 2, BAT_W * k, BAT_H * k);
+        draw_bat(c, bat.x, bat.y, k);
+        s.about_bat = bat;
+        x += bat.w + ui_px(34.0);
     }
     // (A folder's name, cut short if it must be; else the app's.)
     let mut label = String::new();
@@ -704,6 +713,8 @@ fn draw_base(a: &mut App) {
         ui_text_name(c,FontFace::Title,ui_title_size()*1.2,ui_small_size(),title_rect,title,2,0);
     } else {
         font_draw_left_name(c,FontFace::Title,title_px,title_rect,title,0);
+        let name_w = font_measure(FontFace::Title, title_px, title).min(title_rect.w);
+        hits_add(&mut s.hits, Rect::new(0, 0, x + name_w + ui_px(20.0), th), H_ABOUT, 0);
     }
     ui_rule(c, 0, aw, th, ui_px(4.0), 0);
     ui_frieze(c, 0, aw, th + ui_px(9.0), ui_px(28.0), 0);
@@ -3304,6 +3315,19 @@ fn draw_modal(a: &mut App) {
     match modal {
         Modal::New => draw_new(a),
         Modal::Settings => draw_settings(a),
+        Modal::About => {
+            let (aw, ah, hide) = (a.w, a.h, a.settings.whatsnew_hide);
+            let App { screen: c, lib, .. } = a;
+            let s = lib.as_deref_mut().unwrap();
+            let h = crate::about::about_draw(c, aw, ah, s.about_bat, s.about_page, s.about_full, hide);
+            s.about_page = s.about_page.clamp(0, (h.pages - 1).max(0));
+            s.about_pages = h.pages;
+            for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.hide, H_ABOUT_HIDE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE)] {
+                if !rect_is_empty(r) {
+                    hits_add(&mut s.hits, r, id, 0);
+                }
+            }
+        }
         Modal::Updates => {
             let mut status = String::new();
             let mut channel = String::new();
@@ -4179,6 +4203,26 @@ fn act(a: &mut App, h: &Hit) {
         H_SHARE => share_open(a),
         H_SETTINGS => open_modal(a, Modal::Settings),
         H_EXIT => a.running = false,
+        H_ABOUT => {
+            let s = lib(a);
+            s.about_page = 0;
+            s.about_full = false;
+            open_modal(a, Modal::About);
+        }
+        H_ABOUT_CLOSE => close_modal(a),
+        H_ABOUT_HIDE => {
+            a.settings.whatsnew_hide = !a.settings.whatsnew_hide;
+            settings_save(&a.settings);
+            redraw(a, RefreshMode::Ui);
+        }
+        H_ABOUT_PREV | H_ABOUT_NEXT => {
+            lib(a).about_page += if h.id == H_ABOUT_NEXT { 1 } else { -1 };
+            redraw(a, RefreshMode::Ui);
+        }
+        H_ABOUT_MORE => {
+            lib(a).about_full = true;
+            redraw(a, RefreshMode::Ui);
+        }
         H_PREV | H_NEXT => {
             let s = lib(a);
             // Only the visible page's thumbnails stay in memory (each is ~0.5 MB).
@@ -4659,6 +4703,17 @@ pub fn library_enter(a: &mut App) {
         s.settings_return_editor = false;
     }
     s.pressed = None;
+    // What's new opens by itself once after an update (Settings.whatsnew_due): over the Library the
+    // first time it shows, this version's notes then recorded as seen.
+    if !relayout && a.settings.whatsnew_due {
+        a.settings.whatsnew_due = false;
+        a.settings.whatsnew_seen.set(GRIMOIRE_VERSION);
+        settings_save(&a.settings);
+        let s = lib(a);
+        s.about_page = 0;
+        s.about_full = false;
+        s.modal = Modal::About;
+    }
     reload(a);
     input_touch_context(library_touch_view(a));
     redraw(a, RefreshMode::Full);
@@ -5046,7 +5101,7 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
 /// "templates.*" keys reach it whole (docs/SIM.md).
 // The script runner's "library.*" keys (app_probe forwards them without the prefix).
 pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
-    static SHEETS: [&str; 18] = [
+    static SHEETS: [&str; 19] = [
         "none",        // MOD_NONE
         "new",         // MOD_NEW
         "settings",    // MOD_SETTINGS
@@ -5065,6 +5120,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         "pair",        // MOD_PAIR
         "updates",     // MOD_UPDATES
         "gestures",    // MOD_GESTURES
+        "about",       // (What's new)
     ];
     if a.lib.is_none() {
         return -1;
@@ -5076,6 +5132,17 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             Some(m) => csnprintf!(out, cap, "%s", *m),
             None => csnprintf!(out, cap, "%d", s.modal as i32),
         };
+    } else if let Some(k) = key.strip_prefix("about.") {
+        // What's new: its page (from 1) and pages, and whether Read all shows the whole notes.
+        let open = s.modal == Modal::About;
+        let v = match k {
+            "page" if open => s.about_page + 1,
+            "pages" if open => s.about_pages,
+            "full" if open => s.about_full as i32,
+            "page" | "pages" | "full" => 0,
+            _ => return -1,
+        };
+        csnprintf!(out, cap, "%d", v);
     } else if key == "gestures_group" {
         let group = if s.modal == Modal::Gestures && s.gestures_group >= 0 {
             ACTION_GROUPS.get(s.gestures_group as usize).map_or("", |g| g.probe)
@@ -5137,6 +5204,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
                 H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
+                H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close", H_ABOUT_HIDE => "about.hide",
+                H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 _ => "",
             });
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }

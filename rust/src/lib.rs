@@ -79,6 +79,7 @@ pub mod templates; // templates.h's surface (bodies in bgwork_template.rs)
 pub mod tplsheet;
 
 // ---- wave 3: the UI and the app ----
+pub mod about; // the About sheet, What's new (Rust only, 2.0.0)
 pub mod app;
 pub mod bat; // header only
 pub mod calibrate;

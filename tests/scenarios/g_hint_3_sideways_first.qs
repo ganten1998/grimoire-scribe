@@ -4,6 +4,7 @@
 # is whole (the sideways hint, bit 8) and the first-open tip (bit 0) waits for the next open, instead of
 # replacing it at once and leaving bit 8 saved as seen.
 # settings: settings_version=3
+# settings: whatsnew_hide=1
 # settings: mirror_pdf=0
 wait 300
 expect settings.hints is 0

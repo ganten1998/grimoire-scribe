@@ -399,7 +399,7 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates` or `gestures` |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates`, `gestures` or `about` (What's new, Rust only) |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
@@ -417,6 +417,8 @@ shows what the app holds.
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
 | `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow |
+| `library.about.page`, `library.about.pages`, `library.about.full` | What's new while it is open (else `0`): the page shown (from 1) and the pages the notes take on the sheet, and `1` once Read all shows the whole notes (the card: `0`). Its hits: `about` (the bat and the name beside it, at the top level; in a folder `back` is where the bat is), `about.close`, `about.hide`, `about.more` (Read all), `about.prev`, `about.next` |
+| `settings.whatsnew_hide` | `1` while What's new's Don't show this again is ticked |
 | `settings.rotation_lock` | `0` follows the sensor, `1..4` locks rotation to stored value minus 1 |
 | `touch.tune` | `v1` or `new` (provisional `TG_TUNE`) |
 | `fshape.last` | `<fired\|reject\|refused\|cancel> <action\|reason> <d1> <thr> <d2>`, empty before any outcome |

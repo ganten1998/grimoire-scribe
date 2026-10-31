@@ -11,10 +11,18 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.11 (device checks pending)
+
+On the Kindle: the first start after installing opens What's new by itself over the Library, once (the
+next start does not). The bat left of Grimoire's name, or the name, opens it again; Read all shows the
+whole notes; Don't show this again, ticked, keeps the next update's notes from opening by themselves.
+
 ## 2.0.0-rc.10 (device checks pending)
 
 On the Kindle: open the notebook with the dense page (October-2026-02, page 72): the first open draws it
-(it may take half a minute, and must not be stopped), every later open is at once. On that page, undo
+(it may take half a minute, and must not be stopped), every later open is at once. After writing on it,
+pause two seconds before leaving the page (the idle save keeps its drawing), or the next open draws it
+again once. On that page, undo
 and redo ten strokes in a row: each is immediate. Write on it with Live view open: the browser's ink
 follows smoothly; with the Latency readout on, the playout delay stays a few milliseconds on a clean
 link and rises only while Wi-Fi stalls.

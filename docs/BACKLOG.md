@@ -78,6 +78,8 @@ why. Newest decisions first within each section.
 
 ## Done
 
+- 2.0.0-rc.11: What's new under the bat (look C, picked by the owner): the owner's note (`docs/WHATSNEW.md`)
+  and hand signature with the bat (`assets/signature.pgm`, from the notebook "2.0b1 sig"); opens once after an update.
 - 2.0.0-rc.10: instant undo and redo on any page; dense pages open from their kept drawing; the
   heartbeat goes on through long drawing; no background redraw of the open page; faster exact
   brushes on the Kindle; Live view playout smooth through Wi-Fi stalls; gestures past 24.9 days of

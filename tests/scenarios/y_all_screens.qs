@@ -1478,4 +1478,25 @@ expect editor.map is 0
 pentap panel library
 wait 300
 expect screen is library
+# What's new: the card and Read all's whole notes, upright and sideways (from the top level: a
+# folder's bar has its name where the bat is).
+tap library back
+wait 100
+tap library about
+wait 100
+expect library.sheet is about
+shot 78-whatsnew-card
+rotate 1
+wait 100
+shot 79-whatsnew-card-sideways
+tap library about.more
+wait 100
+expect library.about.full is 1
+shot 80-whatsnew-all-sideways
+rotate 0
+wait 100
+shot 81-whatsnew-all
+tap library about.close
+wait 100
+expect library.sheet is none
 quit
