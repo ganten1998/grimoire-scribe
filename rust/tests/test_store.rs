@@ -747,6 +747,27 @@ fn shape_preferences_and_retired_bar_migration() {
     check!(!t.status_on && t.status_mode==1 && t.shape_quads==2 && t.shape_round==2 && !t.shape_links);
 }
 
+// Corner roundness (2.0.0-rc.12): sharp without the key, clamped to 0..100, a value past the range
+// written back as it was until the setting changes, the last known key.
+fn shape_corner_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.shape_corner == 0);
+    check!(write_file_atomic(&path, b"shape_corner=35\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.shape_corner == 35);
+    check!(write_file_atomic(&path, b"shape_corner=150\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.shape_corner == 100);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "shape_corner=150"));
+    s.shape_corner = 40;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "shape_corner=40"));
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("whatsnew_hide=") < at("shape_corner="));
+    check!(write_file_atomic(&path, b"shape_corner=-3\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.shape_corner == 0);
+}
+
 fn status_corner_keys() {
     let path = format!("{}/settings.ini", store_root());
     let mut s = Settings::default();
@@ -1196,6 +1217,7 @@ fn test_store() {
     run!(before_eraser);
     run!(status_corner_keys);
     run!(shape_preferences_and_retired_bar_migration);
+    run!(shape_corner_key);
     run!(gesture_keys);
     run!(rotation_lock_key);
     run!(safe_names);

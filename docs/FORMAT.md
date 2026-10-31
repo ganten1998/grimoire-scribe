@@ -861,6 +861,7 @@ line. Values are clamped to their ranges when read.
 | `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `rotation_lock`. Since 2.0.0-beta.5, as `gestures` |
 | `whatsnew_seen` | the version whose What's new notes were last shown or due (`2.0.0-rc.11`): the first start after an update opens them once over the Library, when the file was saved by a Grimoire before (it has `settings_version`) and this names another version. A file without `settings_version` (a fresh start, or one written by hand) records the running version as seen. Written after `shape_min_mm`. Since 2.0.0-rc.11, as `gestures` |
 | `whatsnew_hide` | 0 or 1: What's new's Don't show this again, off by default; on, an update opens no notes by themselves (the bat in the Library's top bar still opens them). Written after `whatsnew_seen`. Since 2.0.0-rc.11, as `gestures` |
+| `shape_corner` | 0 to 100: Smart shapes' Corner roundness, the corners of a snapped rectangle, square, quad or triangle rounded by this percentage of the largest radius the shape holds (one radius for every corner; at 100 the arcs at the ends of its tightest edge meet in its middle, so a square is a circle), 0 (Sharp) by default, clamped to 0..100. The arcs are part of the stroke's points (the stroke is ink); link areas keep sharp corners. Written after `whatsnew_hide`. Since 2.0.0-rc.12, as `gestures` |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -1182,9 +1183,16 @@ closed. It keeps an atomic replacement of graph.ini from invalidating the writer
 
 Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choices 400/550/900),
 `shape_quads` (0 uneven allowed, 1 rectangles/default, 2 squares only), `shape_round` (0 as drawn,
-1 prefer circles/default, 2 circles only), and `shape_links` (on by default). Prefer circles uses
-minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. Link areas retain
-rectangular bounds plus the optional bounded outline in links.ini; snapping never changes QPG data.
+1 prefer circles/default, 2 circles only), `shape_corner` (0 to 100, Corner roundness; 0 sharp),
+`shape_min_mm` (0 to 40, Smallest shape; 0 any size) and `shape_links` (on by default). Prefer
+circles uses minor/major axis ratio 0.72; As drawn keeps the recognizer's 0.88 threshold. An
+ellipse's fit errors are held to its minor semi-axis but never less than half its major one, so a
+long ellipse passes as surely as a round one. Uneven allowed keeps a quad whose corners are not all
+within 15 degrees of square with its corners as found, opposite edges within 10 degrees of parallel
+made parallel (both pairs: a parallelogram, one pair: a trapezium), and a parallel pair within
+5 degrees of the page's axes put on them; a quad that is not convex stays as found. Link areas
+retain rectangular bounds plus the optional bounded outline in links.ini; snapping never changes
+QPG data.
 
 
 ## Disposable page previews: `.page-previews/`

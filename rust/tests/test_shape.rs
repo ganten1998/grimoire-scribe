@@ -10,6 +10,7 @@ mod testlib;
 use grimoire::prelude::*;
 use shape_corpus::*;
 use testlib::*;
+use std::f64::consts::PI;
 
 /// The corpus's seed; SHAPE_SEED=n in the environment draws another corpus (to check the rates are
 /// not one lucky draw).
@@ -1231,6 +1232,305 @@ fn v15_negatives_still_pass() {
     check!(closed2 == 0);
 }
 
+// ---- 2.0.0-rc.12: long ellipses as drawn, uneven quads, Corner roundness ----
+
+fn with_modes(quads: i32, round: i32) -> ShapeParams {
+    let mut p = prm();
+    p.quad_mode = quads;
+    p.circle_mode = round;
+    p
+}
+
+/// A hand whose wobble grows with the shape's size (`major` mm), as a real one's does.
+fn sized_hand(major: f64, rng: &mut Rng) -> Hand {
+    Hand { wobble: (major * rng.range(0.004, 0.01)).clamp(0.1, 0.8), jitter: 0.06, round: rng.range(0.3, 1.2), wave: major * rng.range(0.5, 1.0), step: PEN_STEP_MM }
+}
+
+/// Ellipses a quarter to four fifths as thick as long, turned any way and drawn as a hand draws
+/// them (an egg of up to 3%, ends pointed or sides flatter, wavering with their size, gaps and
+/// overshoots, held): Round shapes: As drawn snaps them as ellipses. Their errors used to be held
+/// to the minor semi-axis alone, and the long ones failed (of these strokes, 28 in 100 snapped a
+/// quarter across, 75 at 0.3).
+/// Clean ones keep their axes and their turn; Prefer circles and Circles only map them as before.
+fn long_ellipses_snap_as_drawn() {
+    let mut rng = Rng::new(seed(1212));
+    for aspect in [0.25, 0.3, 0.4, 0.5, 0.65, 0.8] {
+        let n = 100;
+        let mut ok = 0;
+        let mut wrong: Vec<String> = Vec::new();
+        for _ in 0..n {
+            let a = rng.range(14.0, 45.0);
+            let oval = trace_oval(a, a * aspect, rng.range(0.0, 2.0 * PI), rng.coin(), rng.range(-0.04, 0.12), rng.range(0.0, 0.03), rng.range(1.7, 2.4));
+            let path = place(&oval, rng.range(0.0, PI), rng.range(60.0, 90.0), rng.range(60.0, 140.0));
+            let h = sized_hand(2.0 * a, &mut rng);
+            let r = rec(&held(pen(&path, h, &mut rng), &mut rng));
+            if r.kind == ShapeKind::Ellipse {
+                ok += 1;
+            } else if wrong.len() < 3 {
+                wrong.push(format!("a{a:.0} {:?}/{:?} c{} rms{:.3} max{:.3} ax{:.2}", r.kind, r.reason, r.features.corners, r.features.rms, r.features.max_err, r.features.axis_ratio));
+            }
+        }
+        eprintln!("  hand-drawn ellipses {aspect:.2} across: {ok}/{n}");
+        for w in &wrong {
+            eprintln!("    {w}");
+        }
+        check!(ok >= if aspect < 0.3 { 90 } else { 95 });
+    }
+    // Clean, at every turn: its semi-axes as drawn, its long axis turned as drawn (or onto the
+    // page's axes within 6 degrees).
+    for aspect in [0.25, 0.4, 0.6] {
+        for deg in (0..180).step_by(25) {
+            let th = (deg as f64).to_radians();
+            let r = rec(&clean(&place(&trace_ellipse(30.0, 30.0 * aspect, 0.4, deg % 2 == 0, 0.0), th, 70.0, 70.0)));
+            check!(r.kind == ShapeKind::Ellipse);
+            if r.kind != ShapeKind::Ellipse {
+                continue;
+            }
+            let (cx, cy) = (px(70.0), px(70.0));
+            let d = |q: &PenSample| mm_of(1.0) * (q.x as f64 - cx).hypot(q.y as f64 - cy);
+            check_near!(r.pts.iter().map(d).fold(0.0, f64::max), 30.0, 0.2);
+            check_near!(r.pts.iter().map(d).fold(f64::MAX, f64::min), 30.0 * aspect, 0.2);
+            // (its long axis from the outline's second moments: its points are even in the
+            // eccentric angle, so they are exact)
+            let q = &r.pts[..r.pts.len() - 1];
+            let (mut sxx, mut syy, mut sxy) = (0.0, 0.0, 0.0);
+            for p in q {
+                let (x, y) = (p.x as f64 - cx, p.y as f64 - cy);
+                sxx += x * x;
+                syy += y * y;
+                sxy += x * y;
+            }
+            let got = (0.5 * (2.0 * sxy).atan2(sxx - syy)).to_degrees().rem_euclid(180.0);
+            let want = if deg <= 6 || deg >= 174 { 0.0 } else { deg as f64 };
+            check!((got - want).abs().min(180.0 - (got - want).abs()) < 1.0);
+        }
+    }
+    // The modes: 0.8 across is an ellipse as drawn, a circle when circles are preferred (0.72); a
+    // third across is an ellipse in both, and a circle only in Circles only.
+    let round = clean(&place(&trace_ellipse(30.0, 24.0, 0.3, true, 0.0), 0.5, 70.0, 70.0));
+    let long = clean(&place(&trace_ellipse(36.0, 12.0, 0.3, true, 0.0), 0.5, 70.0, 70.0));
+    check!(shape_recognize(&round, &with_modes(0, 0)).kind == ShapeKind::Ellipse);
+    check!(shape_recognize(&round, &with_modes(0, 1)).kind == ShapeKind::Circle);
+    check!(shape_recognize(&long, &with_modes(0, 0)).kind == ShapeKind::Ellipse);
+    check!(shape_recognize(&long, &with_modes(0, 1)).kind == ShapeKind::Ellipse);
+    check!(shape_recognize(&long, &with_modes(0, 2)).kind == ShapeKind::Circle);
+}
+
+/// Rectangles a fifth to nine tenths as thick as long, their corners rounded by the hand up to
+/// 7 mm, are never ellipses (nor circles): a box leaves errors about three times the ellipse's gate
+/// whatever its aspect, against the longer yardstick too.
+fn sloppy_rectangles_are_no_ellipses() {
+    let mut rng = Rng::new(seed(4512));
+    let mut round = 0;
+    for aspect in [0.2, 0.3, 0.45, 0.6, 0.9] {
+        for corner in [0.5, 2.0, 4.0, 7.0] {
+            for _ in 0..15 {
+                let w = rng.range(30.0, 80.0);
+                let h = (w * aspect).max(5.0);
+                let v = place(&[(-w / 2.0, -h / 2.0), (w / 2.0, -h / 2.0), (w / 2.0, h / 2.0), (-w / 2.0, h / 2.0)], rng.range(0.0, PI), 90.0, 110.0);
+                let path = trace_polygon(&v, rng.f(), rng.coin(), rng.range(-0.04, 0.10));
+                let hand = Hand { round: corner, ..sized_hand(w, &mut rng) };
+                let r = rec(&held(pen(&path, hand, &mut rng), &mut rng));
+                if matches!(r.kind, ShapeKind::Ellipse | ShapeKind::Circle) {
+                    round += 1;
+                    eprintln!("  a {aspect} rectangle, corners {corner} mm: {:?} rms{:.3}", r.kind, r.features.rms);
+                }
+            }
+        }
+    }
+    check!(round == 0);
+}
+
+/// The snapped quad's four corners and edges (None unless it has exactly four).
+fn quad_corners(r: &ShapeResult) -> Option<Vec<PenSample>> {
+    Some(corners_of(&r.pts)).filter(|c| c.len() == 4)
+}
+
+/// Whether edges k and k + 2 of the quad are parallel (to a ten-thousandth of a radian).
+fn parallel(c: &[PenSample], k: usize) -> bool {
+    let e = |k: usize| ((c[(k + 1) % 4].x - c[k].x) as f64, (c[(k + 1) % 4].y - c[k].y) as f64);
+    let (a, b) = (e(k), e(k + 2));
+    (a.0 * b.1 - a.1 * b.0).abs() / (a.0.hypot(a.1) * b.0.hypot(b.1)) < 1e-4
+}
+
+/// The farthest any snapped corner is from the nearest drawn one (mm).
+fn corners_off(c: &[PenSample], v: &[Pt]) -> f64 {
+    c.iter().map(|q| v.iter().map(|t| mm_of(1.0) * (q.x as f64 - px(t.0)).hypot(q.y as f64 - px(t.1))).fold(f64::MAX, f64::min)).fold(0.0, f64::max)
+}
+
+/// Four sides: Uneven allowed keeps a quad that is no rectangle with straight edges and its corners
+/// where they were drawn, opposite edges within 10 degrees of parallel made parallel: every
+/// parallelogram (slanted either way, turned, thin or tall, to 30 and 150 degree corners, whose
+/// obtuse corners turned too little for the corner finder before: none of these at 60 degrees
+/// snapped, 44 in 60 at -50) comes out an exact one; a
+/// trapezium has its one pair made parallel; a kite stays as drawn. A quad near square in every
+/// corner is a rectangle in every mode (a square in Squares only), as a parallelogram is in the
+/// two strict modes.
+fn uneven_quads_keep_their_corners() {
+    let mut rng = Rng::new(seed(2612));
+    for slant in [-50.0, -35.0, -20.0, 20.0, 30.0, 45.0, 60.0] {
+        let (mut ok, n) = (0, 60);
+        for i in 0..n {
+            let w = rng.range(25.0, 70.0);
+            let h = w * [0.3, 0.6, 1.0][i % 3];
+            let v = place(&parallelogram(w, h, slant), rng.range(0.0, 2.0 * PI), 90.0, 110.0);
+            let path = trace_polygon(&v, rng.f(), rng.coin(), rng.range(-0.04, 0.10));
+            let hand = hand_for(h.min(w), w.max(h), if i % 2 == 0 { Noise::Steady } else { Noise::Rough }, &mut rng);
+            let r = rec(&held(pen(&path, hand, &mut rng), &mut rng));
+            if r.kind == ShapeKind::Quad {
+                if let Some(c) = quad_corners(&r) {
+                    ok += (parallel(&c, 0) && parallel(&c, 1)) as i32;
+                }
+            } else {
+                eprintln!("  parallelogram {slant} degrees, {:.0} by {:.0}: {:?} {:?} c{}", w, h, r.kind, r.reason, r.features.corners);
+            }
+        }
+        eprintln!("  parallelograms slanted {slant} degrees: {ok}/{n} exact");
+        check!(ok >= 57);
+    }
+    // Clean and turned off the page's axes, the corners are where they were drawn.
+    for (slant, rot) in [(30.0, 20.0), (-45.0, 110.0), (60.0, 200.0), (25.0, 320.0)] {
+        let v = place(&parallelogram(50.0, 25.0, slant), (rot as f64).to_radians(), 80.0, 90.0);
+        let r = rec(&clean(&trace_polygon(&v, 0.3, true, 0.03)));
+        check!(r.kind == ShapeKind::Quad);
+        let c = quad_corners(&r);
+        check!(c.as_ref().is_some_and(|c| parallel(c, 0) && parallel(c, 1) && corners_off(c, &v) < 0.5));
+    }
+    // Drawn 3 degrees off level, its base is made level: the quad turned about its middle, so its
+    // corners move by the turn (3 degrees, 30 mm out).
+    let v = place(&parallelogram(50.0, 25.0, 30.0), 3f64.to_radians(), 80.0, 90.0);
+    let r = rec(&clean(&trace_polygon(&v, 0.3, true, 0.03)));
+    check!(r.kind == ShapeKind::Quad);
+    let c = quad_corners(&r);
+    check!(c.as_ref().is_some_and(|c| (0..4).any(|k| c[k].y == c[(k + 1) % 4].y) && corners_off(c, &v) < 2.0));
+    // A trapezium keeps its corners, its bases parallel and its legs not; one whose bases are 6
+    // degrees apart has them made parallel, each turned 3 degrees about its middle (the long one's
+    // ends move 1.6 mm).
+    for (tilt, rot) in [(0.0, 25.0), (6.0, 25.0), (0.0, 140.0)] {
+        let mut v: Vec<Pt> = vec![(-30.0, 15.0), (-14.0, -15.0), (14.0, -15.0), (30.0, 15.0)];
+        // (the top base turned by `tilt` about its middle)
+        let t = (tilt as f64).to_radians();
+        for k in [1, 2] {
+            let x = v[k].0;
+            v[k] = (x * t.cos(), -15.0 + x * t.sin());
+        }
+        let v = place(&v, (rot as f64).to_radians(), 80.0, 90.0);
+        let r = rec(&clean(&trace_polygon(&v, 0.2, false, 0.03)));
+        check!(r.kind == ShapeKind::Quad);
+        let c = quad_corners(&r);
+        check!(c.as_ref().is_some_and(|c| (parallel(c, 0) ^ parallel(c, 1)) && corners_off(c, &v) < if tilt > 0.0 { 2.0 } else { 0.5 }));
+    }
+    // A kite, no two sides near parallel: as drawn.
+    let v = place(&[(-30.0, 0.0), (0.0, -17.0), (17.0, 0.0), (0.0, 17.0)], 0.4, 80.0, 90.0);
+    let r = rec(&clean(&trace_polygon(&v, 0.1, true, 0.03)));
+    check!(r.kind == ShapeKind::Quad);
+    let c = quad_corners(&r);
+    check!(c.as_ref().is_some_and(|c| !parallel(c, 0) && !parallel(c, 1) && corners_off(c, &v) < 0.5));
+    // In each mode: a quad 5 to 7 degrees off square in its corners, and a parallelogram.
+    let near: Vec<Pt> = vec![(30.0, 30.0), (64.0, 32.0), (63.0, 55.0), (30.5, 53.0)];
+    let near = clean(&trace_polygon(&near, 0.05, true, 0.03));
+    let para = clean(&trace_polygon(&place(&parallelogram(40.0, 20.0, 30.0), 0.0, 60.0, 60.0), 0.1, true, 0.03));
+    for (mode, a, b) in [(0, ShapeKind::Rectangle, ShapeKind::Quad), (1, ShapeKind::Rectangle, ShapeKind::Rectangle), (2, ShapeKind::Square, ShapeKind::Square)] {
+        check!(shape_recognize(&near, &with_modes(mode, 0)).kind == a);
+        check!(shape_recognize(&para, &with_modes(mode, 0)).kind == b);
+    }
+}
+
+/// Corner roundness: a snapped polygon's corners become arcs of one radius, that fraction of the
+/// largest that fits, in the stroke's own points (smooth: a circle's spacing of that radius, the
+/// edges' 2 mm between); the stroke still closes exactly, starts where the drawing did and goes its
+/// way; at the most a square is a circle and an equilateral triangle its inscribed circle; arcs never
+/// run into each other; lines, ellipses and circles are no polygons and keep their points.
+fn corner_roundness_rounds_polygons() {
+    let at = |f: f32| {
+        let mut p = prm();
+        p.corner = f;
+        p
+    };
+    // A level 60 by 30 mm rectangle at a half: the most is half its short side, 15 mm, so 7.5 mm.
+    let rect = clean_held(&trace_polygon(&[(20.0, 20.0), (80.0, 20.0), (80.0, 50.0), (20.0, 50.0)], 0.1, true, 0.03));
+    let sharp = shape_recognize(&rect, &at(0.0));
+    let r = shape_recognize(&rect, &at(0.5));
+    check!(sharp.kind == ShapeKind::Rectangle && r.kind == ShapeKind::Rectangle);
+    if r.kind == ShapeKind::Rectangle && sharp.kind == ShapeKind::Rectangle {
+        check!(closes_exactly(&r));
+        // the edges where they were (the box the same), the corner cut by r (sqrt 2 - 1)
+        let (b0, b1) = (bbox(&sharp), bbox(&r));
+        check!((b0.0 - b1.0).abs() < 0.01 && (b0.1 - b1.1).abs() < 0.01 && (b0.2 - b1.2).abs() < 0.01 && (b0.3 - b1.3).abs() < 0.01);
+        let cut = r.pts.iter().map(|q| mm_of(1.0) * ((q.x - b1.0) as f64).hypot((q.y - b1.1) as f64)).fold(f64::MAX, f64::min);
+        check_near!(cut, 7.5 * (2f64.sqrt() - 1.0), 0.05);
+        // smooth, and not excessive: no turn over 6 degrees, no piece over 2 mm, under 200 points
+        let n = r.pts.len() - 1;
+        let mut most: f64 = 0.0;
+        for k in 0..n {
+            let (a, b, c) = (r.pts[(k + n - 1) % n], r.pts[k], r.pts[(k + 1) % n]);
+            let (u, w) = (((b.x - a.x) as f64, (b.y - a.y) as f64), ((c.x - b.x) as f64, (c.y - b.y) as f64));
+            most = most.max((u.0 * w.1 - u.1 * w.0).atan2(u.0 * w.0 + u.1 * w.1).abs().to_degrees());
+            check!(mm_of(1.0) * u.0.hypot(u.1) <= 2.0 + 1e-6);
+        }
+        check!(most < 6.0 && r.pts.len() < 200);
+        // its start where the sharp one starts (the first point on an edge, a step from a corner),
+        // the same way round
+        check!(d_px(&r.pts[0], &sharp.pts[0]) < 0.01);
+        check!((area2(&r.pts) > 0.0) == (area2(&sharp.pts) > 0.0));
+    }
+    // At the most: a square is a circle, an equilateral triangle its inscribed circle.
+    let sq = shape_recognize(&clean(&trace_polygon(&[(30.0, 30.0), (60.0, 30.0), (60.0, 60.0), (30.0, 60.0)], 0.2, true, 0.03)), &at(1.0));
+    check!(sq.kind == ShapeKind::Square);
+    check!(sq.pts.iter().all(|q| (mm_of(1.0) * ((q.x as f64 - px(45.0)).hypot(q.y as f64 - px(45.0))) - 15.0).abs() < 0.02));
+    let s = 40.0;
+    let tri: Vec<Pt> = vec![(30.0, 70.0), (30.0 + s, 70.0), (30.0 + s / 2.0, 70.0 - s * 3f64.sqrt() / 2.0)];
+    let t = shape_recognize(&clean(&trace_polygon(&tri, 0.1, true, 0.03)), &at(1.0));
+    check!(t.kind == ShapeKind::Triangle);
+    if t.kind == ShapeKind::Triangle {
+        // (the snapped triangle is made exactly equilateral about its own centre)
+        let (cx, cy) = (t.pts.iter().map(|q| q.x as f64).sum::<f64>() / t.pts.len() as f64, t.pts.iter().map(|q| q.y as f64).sum::<f64>() / t.pts.len() as f64);
+        let d: Vec<f64> = t.pts.iter().map(|q| (q.x as f64 - cx).hypot(q.y as f64 - cy)).collect();
+        let (lo, hi) = (d.iter().cloned().fold(f64::MAX, f64::min), d.iter().cloned().fold(0.0, f64::max));
+        check!(mm_of(1.0) * (hi - lo) < 0.3);
+        check_near!(mm_of(1.0) * hi, s / (2.0 * 3f64.sqrt()), 0.3);
+    }
+    // A parallelogram, a trapezium, a kite and a right triangle at every roundness: one turn in all,
+    // every turn the same way (no arc runs back into the last).
+    let shapes: Vec<Vec<Pt>> = vec![
+        place(&parallelogram(50.0, 20.0, 40.0), 0.3, 70.0, 70.0),
+        vec![(40.0, 80.0), (55.0, 50.0), (75.0, 50.0), (100.0, 80.0)],
+        place(&[(-30.0, 0.0), (0.0, -17.0), (17.0, 0.0), (0.0, 17.0)], 0.4, 80.0, 90.0),
+        vec![(30.0, 30.0), (80.0, 30.0), (30.0, 60.0)],
+    ];
+    for v in &shapes {
+        let s = clean(&trace_polygon(v, 0.15, true, 0.03));
+        for f in [0.2, 0.6, 1.0] {
+            let r = shape_recognize(&s, &at(f));
+            check!(matches!(r.kind, ShapeKind::Quad | ShapeKind::Triangle));
+            let n = r.pts.len() - 1;
+            let (mut sum, mut pos, mut neg) = (0.0, 0, 0);
+            for k in 0..n {
+                let (a, b, c) = (r.pts[(k + n - 1) % n], r.pts[k], r.pts[(k + 1) % n]);
+                let (u, w) = (((b.x - a.x) as f64, (b.y - a.y) as f64), ((c.x - b.x) as f64, (c.y - b.y) as f64));
+                let turn = (u.0 * w.1 - u.1 * w.0).atan2(u.0 * w.0 + u.1 * w.1);
+                sum += turn;
+                // (a straight edge's points turn by float noise, a millionth of a radian)
+                if turn > 1e-4 {
+                    pos += 1;
+                } else if turn < -1e-4 {
+                    neg += 1;
+                }
+            }
+            check!((sum.abs() - 2.0 * PI).abs() < 1e-3);
+            check!(pos == 0 || neg == 0);
+            check!(closes_exactly(&r));
+        }
+    }
+    // Not polygons: the same points at any roundness.
+    for path in [vec![(20.0, 20.0), (70.0, 40.0)], trace_ellipse(30.0, 15.0, 0.4, true, 0.0), trace_ellipse(20.0, 20.0, 0.4, true, 0.0)] {
+        let path = if path.len() == 2 { path } else { place(&path, 0.3, 70.0, 70.0) };
+        let s = clean(&path);
+        let (a, b) = (shape_recognize(&s, &at(0.0)), shape_recognize(&s, &at(1.0)));
+        check!(a.kind != ShapeKind::None && a.kind == b.kind && a.pts == b.pts);
+    }
+}
+
 #[test]
 fn test_shape() {
     run!(clean_positives_snap_to_their_kind);
@@ -1258,5 +1558,9 @@ fn test_shape() {
     run!(each_gate_says_why);
     run!(v15_arrows_polylines_and_arcs);
     run!(v15_negatives_still_pass);
+    run!(long_ellipses_snap_as_drawn);
+    run!(sloppy_rectangles_are_no_ellipses);
+    run!(uneven_quads_keep_their_corners);
+    run!(corner_roundness_rounds_polygons);
     done();
 }

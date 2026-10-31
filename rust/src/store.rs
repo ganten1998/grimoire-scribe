@@ -154,6 +154,9 @@ pub struct Settings {
     /// whatsnew_seen), and Don't show this again (whatsnew_hide). 2.0.0.
     pub whatsnew_seen: FixedStr<32>,
     pub whatsnew_hide: bool,
+    /// Smart shapes round a snapped polygon's corners by this percentage of the largest radius that
+    /// fits (shape.rs fillet; 0: sharp). 2.0.0-rc.12.
+    pub shape_corner: i32,
     /// Memory only, never saved: this start follows an update (a file a Grimoire saved, its notes seen
     /// an older version's) and the box is not ticked, so the Library opens What's new once.
     pub whatsnew_due: bool,
@@ -3274,6 +3277,7 @@ pub fn settings_default(s: &mut Settings) {
     s.shape_min_mm = 0;
     s.whatsnew_seen.clear();
     s.whatsnew_hide = false;
+    s.shape_corner = 0;
     s.whatsnew_due = false;
     s.hints = 0;
     s.link_areas = false;
@@ -3607,6 +3611,7 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"shape_min_mm" => s.shape_min_mm = keep_int("shape_min_mm", v, 0, 40),
         b"whatsnew_seen" => clean_line(&mut s.whatsnew_seen, v),
         b"whatsnew_hide" => s.whatsnew_hide = keep_bool("whatsnew_hide", v),
+        b"shape_corner" => s.shape_corner = keep_int("shape_corner", v, 0, 100),
         b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
@@ -3897,6 +3902,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "shape_min_mm", s.shape_min_mm);
     put(&mut b, "whatsnew_seen", s.whatsnew_seen.as_str());
     put_int(&mut b, "whatsnew_hide", s.whatsnew_hide as i32);
+    put_int(&mut b, "shape_corner", s.shape_corner);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

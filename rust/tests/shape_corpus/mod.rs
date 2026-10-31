@@ -250,6 +250,29 @@ pub fn trace_ellipse(a: f64, b: f64, start: f64, forward: bool, extra: f64) -> V
         .collect()
 }
 
+/// An ellipse as a hand draws one: trace_ellipse's, made an egg by `egg` (a third harmonic of the
+/// radius) and its ends pointed (`power` under 2) or its sides flatter (over 2): the superellipse
+/// |x / a|^power + |y / b|^power = 1, which is the ellipse at 2.
+pub fn trace_oval(a: f64, b: f64, start: f64, forward: bool, extra: f64, egg: f64, power: f64) -> Vec<Pt> {
+    let n = 600;
+    let span = 2.0 * PI * (1.0 + extra) * if forward { 1.0 } else { -1.0 };
+    let bend = |c: f64| c.signum() * c.abs().powf(2.0 / power);
+    (0..=n)
+        .map(|k| {
+            let t = start + span * k as f64 / n as f64;
+            let g = 1.0 + egg * (3.0 * t + 0.7).cos();
+            (a * bend(t.cos()) * g, b * bend(t.sin()) * g)
+        })
+        .collect()
+}
+
+/// A parallelogram w wide and h tall whose sides lean `slant` degrees from upright (0 is a
+/// rectangle), centred on the origin, its corners in order.
+pub fn parallelogram(w: f64, h: f64, slant: f64) -> Vec<Pt> {
+    let dx = h * slant.to_radians().tan();
+    vec![(-w / 2.0 - dx / 2.0, -h / 2.0), (w / 2.0 - dx / 2.0, -h / 2.0), (w / 2.0 + dx / 2.0, h / 2.0), (-w / 2.0 + dx / 2.0, h / 2.0)]
+}
+
 /// The kinds the positives come in, with what each must be recognized as.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pos {
