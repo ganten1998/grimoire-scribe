@@ -557,38 +557,76 @@
     };
     // The playout: when each sample shows, on this computer's clock. The Kindle reads the pen at an
     // even pace, but the samples reach the page in bursts (Wi-Fi, and the Kindle's own work); drawn as
-    // they come, the line grows in jerks and the dot skips. Each is shown instead at its own time plus
-    // offset (the least this computer's clock has run ahead of the samples' recently: the quickest
-    // path from the pen to here) plus delay: what most samples come late by (the 90th percentile of
-    // the last ones) and one sample's spacing more, so the sample after the clock is there too and
-    // the dot glides between the two, at most PLAYOUT_MAX. A burst within it plays out as the pen
-    // moved; one later than that shows the moment it comes. The delay rises at once and falls slowly.
-    const PLAYOUT_MAX = 20, PLAYOUT_SPAN = 4000;
+    // they come, the line grows in jerks and the dot skips. Each is shown instead on a clock of its
+    // own that runs behind the samples by `delay`: what most samples come late by over the last two
+    // seconds (their 95th percentile, past the quickest path from the pen to here, `offset`) and one
+    // sample's spacing more, at most PLAYOUT_MAX. That clock never runs backwards and never jumps: it
+    // runs faster (up to twice) while it is behind where it should be and slower while ahead, and
+    // stops at the newest sample. A Wi-Fi stall of a quarter second plays out as the pen moving on a
+    // little quicker for a moment, not as a freeze and then a jump, and on a clean link the delay is
+    // a few milliseconds. (Before 2.0.0-rc.10 the delay was capped at 20 ms, so a longer stall froze
+    // then jumped, and when the delay rose the clock went back, taking drawn ink away for a frame.)
+    const PLAYOUT_MAX = 160, PLAYOUT_SPAN = 4000, PLAYOUT_LATE_SPAN = 2000, PLAYOUT_GAP = 60;
     function Playout() { this.reset(); }
     Playout.prototype.reset = function () {
         this.seen = []; this.lates = []; this.offset = null; this.delay = 0; this.last = null; this.spacing = 0;
+        this.newest = -Infinity; this.shown = null; this.shownAt = 0; this.wantAt = -Infinity;
+        this.resume = null; this.before = null;
     };
     Playout.prototype.arrive = function (t, now) {
         if (this.last !== null && t > this.last)  // (the samples' own spacing, eased: about 4 ms on a Scribe)
             this.spacing += (Math.min(10, t - this.last) - this.spacing) * (this.spacing ? 0.05 : 1);
+        // A gap in the samples (the pen away, then back): nothing to show between, so once the clock has
+        // shown what came before it, it goes straight to the sample after (clock), never gliding across.
+        if (this.last !== null && t - this.last > PLAYOUT_GAP && this.resume === null) {
+            this.before = this.last;
+            this.resume = t;
+        }
         this.last = t;
+        if (t > this.newest) this.newest = t;
         const d = now - t;
         this.seen.push([now, d]);
         while (this.seen.length && (now - this.seen[0][0] > PLAYOUT_SPAN || this.seen.length > 2048)) this.seen.shift();
         let least = Infinity;
         for (const s of this.seen) if (s[1] < least) least = s[1];
         // (a jump of the samples' line, a reset, can make the old offsets meaningless: start again)
-        if (this.offset !== null && Math.abs(least - this.offset) > 5000) { this.seen = [[now, d]]; least = d; this.lates = []; }
+        if (this.offset !== null && Math.abs(least - this.offset) > 5000) {
+            this.seen = [[now, d]]; least = d; this.lates = []; this.shown = null; this.newest = t;
+        }
         this.offset = least;
-        this.lates.push(d - least);
-        if (this.lates.length > 120) this.lates.shift();
-        const sorted = [...this.lates].sort((x, y) => x - y);
-        const want = Math.min(PLAYOUT_MAX, sorted[Math.floor((sorted.length - 1) * 0.9)] + this.spacing);
-        this.delay = want > this.delay ? want : this.delay + (want - this.delay) * 0.02;
+        this.lates.push([now, d - least]);
+        while (this.lates.length && (now - this.lates[0][0] > PLAYOUT_LATE_SPAN || this.lates.length > 1024)) this.lates.shift();
+        // (the percentile at most every 50 ms: a sort of the window, not one per sample)
+        if (now - this.wantAt >= 50 || this.lates.length < 8) {
+            this.wantAt = now;
+            const sorted = this.lates.map(x => x[1]).sort((x, y) => x - y);
+            this.want = Math.min(PLAYOUT_MAX, sorted[Math.floor((sorted.length - 1) * 0.95)] + this.spacing);
+        }
+        // The target rises at once (the clock then slows to meet it) and falls over about a second.
+        this.delay = this.want > this.delay ? this.want : this.delay + (this.want - this.delay) * 0.01;
     };
-    // The timeline's time showing now (Infinity before any sample: draw what there is).
+    // The timeline's time showing now (Infinity before any sample: draw what there is): where the
+    // clock has got to, moved on from where it was at the last call by the time since, at its rate.
     Playout.prototype.clock = function (now) {
-        return this.offset === null ? Infinity : now - this.offset - this.delay;
+        if (this.offset === null) return Infinity;
+        const ideal = now - this.offset - this.delay;
+        if (this.shown === null || Math.abs(ideal - this.shown) > 2000) {
+            this.shown = Math.min(ideal, this.newest);  // (a start, or a gap too long to glide over)
+            this.shownAt = now;
+            return this.shown;
+        }
+        if (this.resume !== null && this.shown >= this.before) {
+            this.shown = Math.max(this.shown, Math.min(ideal, this.resume));
+            this.resume = null;
+        }
+        // It follows where it should be (ideal) exactly while that moves on as time does, and only when
+        // ideal jumps (the delay rose or fell, a burst came) does it go at half to twice its pace to
+        // meet it: never back, never past the newest sample.
+        const dt = Math.max(0, now - this.shownAt);
+        this.shownAt = now;
+        const slow = this.shown + dt * 0.5, quick = this.shown + dt * 2;
+        this.shown = Math.max(this.shown, Math.min(Math.max(ideal, slow), quick, this.newest));
+        return this.shown;
     };
     // What each tool deposits, 0 (black) .. 255 (src/brush.c's look_of, by tool id): the quick
     // line's shade, before the picture's own look (inverted, the warm light, transparent paper).

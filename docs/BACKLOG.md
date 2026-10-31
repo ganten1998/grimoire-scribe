@@ -21,11 +21,9 @@ why. Newest decisions first within each section.
 
 ## In progress
 
-- **Undo on dense pages (rc.10).** An undo redraws the whole region under the removed stroke: 4 to
-  11 s on the Kindle on a 1,090-stroke page, until the launcher's watchdog killed the app
-  (evidence `~/KindleLab/evidence/rc8-crash-20261031-0503/`). Fix: keep the pixels each stroke
-  covered when it finished, so undo is a copy; a long redraw must also keep the watchdog fed.
-- **Live view smoothness.** The intermittent lag measured so far was the Kindle's 2.4 GHz link
+- **Live view smoothness.** rc.10 replaced the playout (smooth through stalls); still to measure on
+  the device with the owner. Ideas left: a 'Wi-Fi is stalling' hint when lateness stays high,
+  decode/compose/average in a Worker, 4-bit tiles on a congested link. The intermittent lag measured so far was the Kindle's 2.4 GHz link
   stalling (5 GHz was clean). When it lags: check the band (`iw dev wlan0 link`) and a
   `ping -i 0.1` from the Kindle while it happens; the page's Latency readout shows playout pinned
   at 20 ms during bursts.
@@ -39,6 +37,18 @@ why. Newest decisions first within each section.
   with the owner present: `install_mac.sh`, then `install_usb_daemon.sh` on the Kindle.
 
 ## To investigate
+
+- **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
+  under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
+  seconds a sweep.
+- **Brushes on the Kindle.** A dense page still takes about 30 s to draw the first time (marker 23 s,
+  charcoal 10 s of it). Exact speedups left: a per-dab table for core pixels (no sqrt, no powf), the
+  graphite path's per-pixel divisions.
+- **Times past 2^32 ms (49.7 days of uptime).** A touch gesture crossing the wrap of the frame clock
+  fails (found by a unit test); the 2^31 case is fixed in rc.10.
+- **The KOReader plugin as a book (owner idea, 2026-10-31).** Installed as a file KOReader's library
+  shows, removed by long-press > Delete like any book, instead of a plugin folder. Needs research on
+  KOReader's file browser and a precedent before building.
 
 - **Kindle Click (Amazon's Bluetooth page turner, 2026).** Grimoire accepts any input device that
   sends ordinary key codes, so it works if the firmware exposes it as an input device while
@@ -67,6 +77,11 @@ why. Newest decisions first within each section.
   install).
 
 ## Done
+
+- 2.0.0-rc.10: instant undo and redo on any page; dense pages open from their kept drawing; the
+  heartbeat goes on through long drawing; no background redraw of the open page; faster exact
+  brushes on the Kindle; Live view playout smooth through Wi-Fi stalls; gestures past 24.9 days of
+  uptime.
 
 - 2.0.0-rc.9: one-finger page turns; pen taps in the Graph; papers in three rows with cross grid,
   isometric, hexagon and Seyes; Custom music 8-line tab, presets and new default; Smallest shape

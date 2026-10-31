@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-rc.10 (2026-10-31)
+
+- Undo and redo are a copy of what the step changed, however dense the page: each step keeps the tiles of the page it touched. On a page of 1,090 strokes an undo took 4 to 11 s, until the launcher stopped Grimoire as hung.
+- Pages that take a second or more to draw keep their drawing, so they open at once. A very dense page took 36 s to draw on the Kindle, longer than the launcher waits, so its notebook would not open; long drawing now keeps the launcher's heartbeat going too.
+- The page being written on no longer gets drawn again in the background for its Pages preview at every pause (on a dense page that kept a core busy for 20 s at a time); its preview comes from the page already on screen.
+- Pens draw the same pixels faster on the Kindle (about 14% on a dense page): no float division a pixel for the paper's tooth, opacity shares remembered, round dabs trimmed to their circle.
+- Live view's pen plays out smoothly through Wi-Fi stalls: its clock follows the pen exactly on a clean link (a few milliseconds behind), and after a stall it moves on a little quicker for a moment instead of freezing and jumping. Drawn ink no longer steps back for a frame when the delay changes.
+- Two-finger gestures, and recording them, worked again on a device or computer up more than 24.9 days (the time since boot passed 2^31 ms and a pen never seen counted as one that had just left).
+
 ## 2.0.0-rc.9 (2026-10-31)
 
 - Turn the page with one finger: swipe left for the next page and right for the previous one, as on the Kindle's own books (two fingers still work, and Settings > Gestures can rebind either).

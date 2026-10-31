@@ -533,8 +533,9 @@ ok('fast: the timeline runs on across the wrap, in milliseconds', Math.abs(fastI
         ink2.accept(sm, inkStyle);
         po.arrive(sm.t, i < 5 ? now + i * 4 : now + 76 + 30);
     }
-    ok('playout: the offset is the quickest path, the delay at most PLAYOUT_MAX', po.offset === now && po.delay <= 20 && po.delay > 0);
-    const until = po.clock(now + 50);
+    ok('playout: the offset is the quickest path, the delay at most PLAYOUT_MAX', po.offset === now && po.delay <= 160 && po.delay > 0);
+    // (at a time the clock has reached the samples: it runs po.delay behind them)
+    const until = po.clock(now + 50 + po.delay);
     const at = ink2.penAt(until);
     ok('playout: the dot glides between samples', at && at.state === 2 && at.x > 300 && Math.abs((at.x - 300) / 10 * 4 - until) < 1e-6);
     ok('playout: more is still to play, so another frame is asked', ink2.pending(until) && !ink2.pending(1e9));
@@ -587,7 +588,49 @@ ok('fast: the timeline runs on across the wrap, in milliseconds', Math.abs(fastI
         ' px; played out sd ' + sq.toFixed(2) + ' px, max ' + most.toFixed(1) + ' px, added delay ' +
         delays[delays.length - 1].toFixed(1) + ' ms');
     ok('playout: bursts every 20 ms play out as a glide (the steps\' spread a tenth of drawing them as they come or less)',
-       sq < sp / 10 && most < 5 && delays[delays.length - 1] <= 20);
+       sq < sp / 10 && most < 5 && delays[delays.length - 1] <= 30);
+    // A Wi-Fi stall: the pen moves on (1 px every 4 ms) but nothing reaches the page for 250 ms, then
+    // it all comes at once. Drawn as it comes the dot jumps 60 px; played out the clock never goes back
+    // and the dot moves on a little quicker for a moment (2.0.0-rc.10).
+    const ink5 = new FastInk(), po5 = new Playout();
+    const arr5 = [];
+    for (let i = 0; i < 1500; i++) {
+        const sent = i * 4 + 3;
+        arr5.push({i, at: sent >= 2000 && sent < 2250 ? 2250 : sent});
+    }
+    let n5 = 0, newest5 = null, lastUntil = -Infinity, back = false;
+    const plain5 = [], played5 = [], delays5 = [];
+    for (let now = 100; now < 5900; now += 1000 / 60) {
+        while (n5 < arr5.length && arr5[n5].at <= now) {
+            const sm = makeSample(1e6 + arr5[n5].i * 4000, 100 + arr5[n5].i, 1, 0);
+            ink5.accept(sm, inkStyle);
+            po5.arrive(sm.t, arr5[n5].at);
+            newest5 = sm;
+            n5++;
+        }
+        const until = po5.clock(now);
+        if (until < lastUntil) back = true;
+        lastUntil = until;
+        plain5.push(newest5 ? newest5.x : 0);
+        const at = ink5.penAt(until);
+        played5.push(at ? at.x : 0);
+        delays5.push(po5.delay);
+    }
+    const jump = xs => Math.max(...xs.slice(1).map((x, k) => x - xs[k]).slice(60));
+    console.log('     playout: a 250 ms stall: drawn as it comes the dot jumps ' + jump(plain5).toFixed(1) +
+        ' px a frame; played out at most ' + jump(played5).toFixed(1) + ' px (the pen moves 4.2 px a frame), delay ' +
+        Math.max(...delays5).toFixed(0) + ' ms at most, ' + delays5[delays5.length - 1].toFixed(1) + ' ms at the end');
+    ok('playout: after a stall the clock never goes back, and the dot catches up in steps under 3x its own',
+       !back && jump(plain5) > 40 && jump(played5) < 3 * 4.2 + 0.5);
+    ok('playout: the delay comes back down once the link is clean again', delays5[delays5.length - 1] < 25);
+    // The pen away for a second (no samples), then a new stroke: it shows within its delay, not after a
+    // glide across the empty second.
+    const po6 = new Playout();
+    for (let i = 0; i < 100; i++) po6.arrive(1000 + i * 4, 5000 + i * 4);
+    for (let now = 5000; now < 5400; now += 16) po6.clock(now);
+    po6.arrive(1000 + 99 * 4 + 1000, 5000 + 99 * 4 + 1000);
+    const resumed = po6.clock(5000 + 99 * 4 + 1000 + 16);
+    ok('playout: after a gap the next sample shows within its delay', resumed >= 1000 + 99 * 4 + 1000 - 1);
 }
 let commands = [];
 const ctx = new Proxy({}, {get: (_, key) => (...args) => commands.push([key, ...args]),

@@ -11,6 +11,14 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.10 (device checks pending)
+
+On the Kindle: open the notebook with the dense page (October-2026-02, page 72): the first open draws it
+(it may take half a minute, and must not be stopped), every later open is at once. On that page, undo
+and redo ten strokes in a row: each is immediate. Write on it with Live view open: the browser's ink
+follows smoothly; with the Latency readout on, the playout delay stays a few milliseconds on a clean
+link and rises only while Wi-Fi stalls.
+
 ## 2.0.0-rc.9 (device checks pending)
 
 On the Kindle: swipe one finger left and right across a page to turn it; a slow or steep stroke
