@@ -8,6 +8,7 @@
 - Add four papers: cross grid (5 mm reticle), isometric (5 mm triangles), hexagon (4 mm sides) and Seyes rule. Older versions show pages on them as blank "Newer paper", keeping their ink.
 - Custom music gains an 8-line tab part and a Start from row (grand staff and 4 to 7 string bass tabs, which leave the main grid), and new layouts start as treble, bass and 6-line tab.
 - Add a Smallest shape slider to the Smart shapes menu: a held stroke smaller than it stays as drawn (Any by default, as before).
+- Keep the toolbar in Live view while the tool picker (or its Pin mode, or the Smart shapes menu) is open beside it, as on the Kindle.
 - Keep Live view's picture in picture playing on a still page, so Firefox offers its own Picture-in-Picture button and other browsers never show a black window.
 
 ## 2.0.0-rc.8 (2026-10-30)

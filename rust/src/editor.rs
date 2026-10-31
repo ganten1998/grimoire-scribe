@@ -2258,6 +2258,9 @@ pub fn editor_live_panel(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
         Some(s) if !sheet_open(s) => s.panel,
+        // The tool picker (and its Pin mode, and the Smart shapes menu) opens beside the panel, which stays
+        // on the Kindle's screen: so it does in the browser, unless the menu is over it.
+        Some(s) if s.tools_open && !sheet_open_besides_tools(s) && rect_is_empty(rect_intersect(s.tools_rect, s.panel)) => s.panel,
         _ => RECT_EMPTY,
     }
 }
@@ -3446,10 +3449,12 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
+    s.tools_open || sheet_open_besides_tools(s)
+}
+fn sheet_open_besides_tools(s: &EditorState) -> bool {
     s.destination.open
         || s.map.open
         || s.pv.open
-        || s.tools_open
         || s.mb.open
         || s.dm.open
         || s.paper_open
@@ -9572,6 +9577,26 @@ mod tests {
         a
     }
 
+    #[test]
+    fn the_live_toolbar_stays_beside_the_tool_picker_but_not_under_a_menu_over_it() {
+        let mut a = app(1860, 2480, 1860, 2480);
+        let s = ed(&mut a);
+        s.panel = Rect { x: 1700, y: 300, w: 140, h: 900 };
+        assert_eq!(editor_live_panel(&a), ed_ref(&a).panel);
+        // The tool picker and its Pin mode open beside the panel: the browser keeps the toolbar.
+        let s = ed(&mut a);
+        s.tools_open = true;
+        s.pin_mode = true;
+        s.tools_rect = Rect { x: 500, y: 300, w: 1180, h: 900 };
+        assert_eq!(editor_live_panel(&a), ed_ref(&a).panel);
+        // A menu over the panel, or any other sheet, takes the layer away (it would be over them).
+        ed(&mut a).tools_rect = Rect { x: 600, y: 300, w: 1180, h: 900 };
+        assert!(rect_is_empty(editor_live_panel(&a)));
+        let s = ed(&mut a);
+        s.tools_rect = Rect { x: 500, y: 300, w: 1180, h: 900 };
+        s.paper_open = true;
+        assert!(rect_is_empty(editor_live_panel(&a)));
+    }
     fn fshape_app() -> App {
         #[cfg(feature = "sim")]
         {
