@@ -110,10 +110,14 @@ expect editor.strokes is 1
 pentap panel previous
 pentap panel previous
 expect editor.page is 2
-# Delete Start, selecting only its tile in management.
+# Delete Start, selecting only its tile in management, from its held tile's card (tile 1's centre is 318 551).
 pentap panel pages
 tap panel pages.page.1
 expect editor.ticked is 1
+touch down 318 551
+wait 700
+touch up 318 551
+expect editor.pages.context is 1
 tap panel pages.delete
 expect editor.index_rows is 1
 tap panel pages.graph

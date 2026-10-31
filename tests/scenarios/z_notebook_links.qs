@@ -60,6 +60,11 @@ expect editor.page is 2
 tap panel pages
 waitbg
 tap panel pages.page.2
+# (Delete is on its held tile's card: tile 2's centre is 930 551)
+touch down 930 551
+wait 700
+touch up 930 551
+expect editor.pages.context is 2
 tap panel pages.delete
 tap panel pages.back
 key 48 0
