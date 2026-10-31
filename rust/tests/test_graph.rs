@@ -26,8 +26,36 @@ fn tmp_path(name: &str) -> String {
 
 fn built(b: &Book, open: u32) -> GraphModel {
     let mut g = GraphModel::default();
-    check!(graph_build(&mut g, &b.nb, &b.nav, open) == 0);
+    check!(graph_build(&mut g, &b.nb, &b.nav, open, false) == 0);
     g
+}
+
+// The view's model: linked pages only (mapview and the bgjob child build this one).
+fn linked_built(b: &Book, open: u32) -> GraphModel {
+    let mut g = GraphModel::default();
+    check!(graph_build(&mut g, &b.nb, &b.nav, open, true) == 0);
+    g
+}
+
+// What the view does on opening a map with a kept layout (mapview's layout, in-process): the kept
+// positions, the new pages placed, a new link's stretched edge relaxed, and a full layout from the
+// kept positions when either asks for one. Returns the plan it ended with.
+fn reopen(g: &mut GraphModel, ini: &GraphIni) -> GraphPlan {
+    let mut plan = graph_apply_ini(g, ini);
+    if plan != GraphPlan::Full {
+        check!(graph_place_new(g, &mut || {}) >= 0);
+        if ini.has_gen && ini.gen != graph_gen(g) && graph_relax_stressed(g, &mut || {}) == -2 {
+            plan = GraphPlan::Full;
+        }
+    }
+    if plan == GraphPlan::Full {
+        check!(graph_layout_warm(g, &mut || {}));
+    }
+    plan
+}
+
+fn moved(a: &GraphModel, b: &GraphModel, pid: u32) -> f32 {
+    dist(node(a, pid), node(b, pid))
 }
 
 fn node(g: &GraphModel, pid: u32) -> &GraphNode {
@@ -197,7 +225,7 @@ fn bands_and_degrees() {
     // a notebook past STORE_MAX_PAGES is refused
     let big = book(&(1..=STORE_MAX_PAGES as u32 + 1).collect::<Vec<u32>>());
     let mut gb = GraphModel::default();
-    check!(graph_build(&mut gb, &big.nb, &big.nav, 0) == -1 && gb.nodes.is_empty());
+    check!(graph_build(&mut gb, &big.nb, &big.nav, 0, false) == -1 && gb.nodes.is_empty());
 }
 
 fn radius_formula() {
@@ -421,7 +449,7 @@ fn layout_pumps() {
     check!(graph_layout_in_process(&g));
     let mut pumps = 0;
     graph_layout(&mut g, &mut || pumps += 1);
-    check!(pumps >= GRAPH_STEPS / GRAPH_PUMP_STEPS);
+    check!(g.relaxed >= 60 && g.relaxed <= GRAPH_STEPS && pumps >= g.relaxed / GRAPH_PUMP_STEPS);
     // the biggest map laid out in the app's process: the longest stretch without a pump (the
     // Kindle is some 20x slower than the host, and its pen must be read every 100 ms)
     let most = all_force_book(GRAPH_INPROC_MAX as usize, 450, 13);
@@ -1039,6 +1067,8 @@ fn layout_job_writes_atomically() {
     check!(graph_ini_write_path(&path,&mut back)==0);
     check!(graph_layout_job(&mut g,&mut ini,&path)==0);
     check!(ini.mode==GraphMode::All && !ini.show_unlinked && ini.unknown==b"newer=kept\n");
+    // (that second job started from the first one's positions: graph_layout_warm)
+    check!(graph_ini_read_path(&path, &mut back) == 0 && back == ini);
 
     // the parent, reading it, finds the layout ready, and lays nothing out
     let mut view = built(&b, 0);
@@ -1060,7 +1090,7 @@ fn big_layout_within_bound() {
     let ms = t.elapsed().as_millis();
     eprintln!("  2000 force nodes, 4000 edges: laid out in {ms} ms ({pumps} pumps)");
     check!(ms < 60_000);
-    check!(pumps >= GRAPH_STEPS / GRAPH_PUMP_STEPS && force_placed(&g) && all_finite(&g));
+    check!(pumps >= g.relaxed / GRAPH_PUMP_STEPS && force_placed(&g) && all_finite(&g));
     check!(overlaps(&g) == 0);
     let t = std::time::Instant::now();
     let mut s = built(&b, 0);
@@ -1086,10 +1116,255 @@ fn big_layout_within_bound() {
     let t = std::time::Instant::now();
     let mut again = GraphModel::default();
     for _ in 0..10 {
-        graph_build(&mut again, &b.nb, &b.nav, 0);
+        graph_build(&mut again, &b.nb, &b.nav, 0, false);
     }
     eprintln!("  the build: {} us each", t.elapsed().as_micros() / 10);
     check!(again.edges == g.edges);
+}
+
+// ---- the linked-only model (the view's) ----
+
+// Only linked pages are force nodes; every other page, named or open, is hidden and has no
+// satellites, so it takes no room. Adding plain pages and naming unlinked ones changes neither the
+// gen nor any position.
+fn linked_only_model() {
+    let b = fixture();
+    let g = linked_built(&b, 11);
+    for pid in [21u32, 22, 23, 30, 40, 20, 50, 10] {
+        check!(node(&g, pid).tier == GraphTier::Force);
+    }
+    // 31 32 24 25 41 13 12 are plain, 11 is open and plain
+    for pid in [31u32, 32, 24, 25, 41, 13, 12, 11] {
+        check!(node(&g, pid).tier == GraphTier::Hidden && node(&g, pid).sat_rank == -1);
+    }
+    check!(g.tray.is_empty() && g.nodes.iter().all(|n| n.sats == 0));
+    check!(g.force.len() == 8);
+    // 60 chapters, linked in a chain, each with 29 plain pages after it: the same layout as
+    // without the plain pages
+    let mut pids = Vec::new();
+    let mut lean = Vec::new();
+    for c in 0..60u32 {
+        lean.push(c * 100 + 1);
+        for k in 0..30 {
+            pids.push(c * 100 + 1 + k);
+        }
+    }
+    let mut full = book(&pids);
+    let mut bare = book(&lean);
+    for c in 0..60u32 {
+        name(&mut full, c * 100 + 1, &format!("Chapter {c}"));
+        name(&mut bare, c * 100 + 1, &format!("Chapter {c}"));
+        if c > 0 {
+            check!(link(&mut full, c * 100 + 1, 1, (c - 1) * 100 + 1) == 0);
+            check!(link(&mut bare, c * 100 + 1, 1, (c - 1) * 100 + 1) == 0);
+        }
+    }
+    let mut gf = linked_built(&full, 5);
+    let mut gb = linked_built(&bare, 0);
+    check!(graph_gen(&gf) == graph_gen(&gb) && gf.force.len() == 60 && !gf.nodes[4].placed);
+    graph_layout(&mut gf, &mut || {});
+    graph_layout(&mut gb, &mut || {});
+    check!(lean.iter().all(|&pid| node(&gf, pid).x.to_bits() == node(&gb, pid).x.to_bits() && node(&gf, pid).y.to_bits() == node(&gb, pid).y.to_bits()));
+    // the old model gave each chapter an invisible disc for its 29 satellites
+    let (span, old_span) = {
+        let width = |g: &GraphModel| {
+            let xs = g.force.iter().filter(|&&v| g.nodes[v as usize].linked).map(|&v| g.nodes[v as usize].x);
+            let (lo, hi) = xs.fold((f32::MAX, f32::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+            hi - lo
+        };
+        (width(&gf), width(&laid_out(&full, 0)))
+    };
+    eprintln!("  60 linked chapters of 30 pages: {span:.0} wide, {old_span:.0} with satellites");
+    check!(span * 1.5 < old_span);
+    // 50 more plain pages and 10 named unlinked ones, and an unlinked page opened: the gen and every
+    // visible position stay as they were
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &gf);
+    let mut more = full.clone();
+    for k in 0..50 {
+        more.nb.page_ids.push(9000 + k);
+    }
+    for c in 0..10u32 {
+        name(&mut more, c * 100 + 7, "Named, no links");
+    }
+    let mut again = linked_built(&more, 9003);
+    check!(graph_gen(&again) == ini.gen);
+    check!(reopen(&mut again, &ini) == GraphPlan::Ready);
+    check!(lean.iter().all(|&pid| node(&again, pid).x.to_bits() == node(&gf, pid).x.to_bits() && node(&again, pid).y.to_bits() == node(&gf, pid).y.to_bits()));
+    check!(graph_persisted(node(&again, 101)) && !graph_persisted(node(&again, 107)));
+}
+
+// Links to the same page of another notebook count once, as links to one page of this one do.
+fn external_links_count_distinct_pages() {
+    let mut b = book(&[1, 2, 3]);
+    link_raw(&mut b, 1, 1, "n:other-book:p5");
+    link_raw(&mut b, 1, 2, "n:other-book:p5");
+    link_raw(&mut b, 1, 3, "n:other-book:p6");
+    link_raw(&mut b, 2, 4, "n:other-book:p5");
+    check!(link(&mut b, 1, 5, 3) == 0 && link(&mut b, 1, 6, 3) == 0);
+    let g = linked_built(&b, 0);
+    check!(node(&g, 1).links_to == 3 && node(&g, 2).links_to == 1 && node(&g, 3).linked_from == 1);
+}
+
+// ---- what a changed map moves ----
+
+// A laid-out chain of linked pages gets one new link between its two ends: only those two pages and
+// their neighbours move, the new edge comes in from across the map, and reopening it again moves
+// nothing at all.
+fn new_link_moves_only_its_ends() {
+    let pids = scattered_pids(40);
+    let mut b = book(&pids);
+    for k in 1..pids.len() {
+        check!(link(&mut b, pids[k - 1], 1, pids[k]) == 0);
+    }
+    for k in (0..40).step_by(8) {
+        name(&mut b, pids[k], &format!("Part {k}"));
+    }
+    let mut g = linked_built(&b, 0);
+    graph_layout(&mut g, &mut || {});
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &g);
+    // reopened unchanged: bit for bit
+    let mut same = linked_built(&b, pids[3]);
+    check!(reopen(&mut same, &ini) == GraphPlan::Ready && same_places(&same, &g));
+    // the two linked pages furthest apart
+    let (mut fa, mut fb, mut far) = (0u32, 0u32, 0.0f32);
+    for &x in &pids {
+        for &y in &pids {
+            if dist(node(&g, x), node(&g, y)) > far {
+                (fa, fb, far) = (x, y, dist(node(&g, x), node(&g, y)));
+            }
+        }
+    }
+    check!(far > 3.0 * GRAPH_SPRING_L);
+    let mut more = b.clone();
+    check!(link(&mut more, fa, 9, fb) == 0);
+    let mut h = linked_built(&more, 0);
+    check!(graph_gen(&h) != ini.gen);
+    check!(reopen(&mut h, &ini) == GraphPlan::Ready);
+    let near = |pid: u32| {
+        let i = graph_node_of(&h, pid);
+        pid == fa || pid == fb || graph_neighbours(&h, i).iter().any(|&j| h.nodes[j as usize].pid == fa || h.nodes[j as usize].pid == fb)
+    };
+    let shifted: Vec<u32> = pids.iter().copied().filter(|&pid| moved(&g, &h, pid) > 0.0).collect();
+    eprintln!("  one new link across a 40-page chain: {} pages moved", shifted.len());
+    check!(!shifted.is_empty() && shifted.iter().all(|&pid| near(pid)));
+    check!(dist(node(&h, fa), node(&h, fb)) < far * 0.75 && overlaps(&h) == 0 && all_finite(&h));
+    // stored and reopened: nothing moves again
+    graph_ini_store(&mut ini, &h);
+    let mut back = linked_built(&more, 0);
+    check!(reopen(&mut back, &ini) == GraphPlan::Ready && same_places(&back, &h));
+    // a map whose edges are all long has no stressed edge; too many stressed nodes ask for a warm
+    // layout instead
+    let wide = all_force_book(200, 300, 81);
+    let mut w = linked_built(&wide, 0);
+    graph_layout(&mut w, &mut || {});
+    let mut scaled = g.clone();
+    for n in &mut scaled.nodes {
+        n.x *= 4.0;
+        n.y *= 4.0;
+    }
+    check!(graph_relax_stressed(&mut scaled, &mut || {}) == 0);
+    // a freshly laid-out map, dense or sparse, has none
+    for m in [&w, &g] {
+        let mut fresh = m.clone();
+        check!(graph_relax_stressed(&mut fresh, &mut || {}) == 0);
+    }
+    let mut torn = w.clone();
+    for &v in torn.force.iter().take(20) {
+        torn.nodes[v as usize].x += 5000.0;
+    }
+    let before = torn.clone();
+    check!(graph_relax_stressed(&mut torn, &mut || {}) == -2 && same_places(&torn, &before));
+}
+
+// More than GRAPH_RELAYOUT_PCT new pages: the map is laid out again from its kept positions, so the
+// pages it kept stay about where they were (the median within half a rest length), with the usual
+// invariants and the same result every time.
+fn warm_layout_keeps_the_shape() {
+    let base = random_book(500, 260, 30, 91);
+    let mut g = linked_built(&base, 0);
+    graph_layout(&mut g, &mut || {});
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &g);
+    let kept: Vec<u32> = g.force.iter().map(|&v| g.nodes[v as usize].pid).collect();
+    let mut more = base.clone();
+    let mut r = Lcg(92);
+    let add = kept.len() * 15 / 100 + 1;
+    for k in 0..add as u32 {
+        let pid = 20_000 + k;
+        more.nb.page_ids.push(pid);
+        check!(link(&mut more, pid, 1, kept[r.below(kept.len() as u32) as usize]) == 0);
+    }
+    let mut h = linked_built(&more, 0);
+    check!(graph_apply_ini(&mut h, &ini) == GraphPlan::Full);
+    let mut h2 = h.clone();
+    check!(graph_layout_warm(&mut h, &mut || {}));
+    check!(graph_layout_warm(&mut h2, &mut || {}) && same_places(&h, &h2));
+    let mut moves: Vec<f32> = kept.iter().map(|&pid| moved(&g, &h, pid)).collect();
+    moves.sort_unstable_by(|a, b| a.total_cmp(b));
+    let median = moves[moves.len() / 2];
+    // what the RC7 view did: a full layout from the seed
+    let mut cold = linked_built(&more, 0);
+    graph_layout(&mut cold, &mut || {});
+    let mut cold_moves: Vec<f32> = kept.iter().map(|&pid| moved(&g, &cold, pid)).collect();
+    cold_moves.sort_unstable_by(|a, b| a.total_cmp(b));
+    eprintln!("  {add} new pages on {} linked: kept pages moved {median:.1} (median), {:.1} laid out afresh, in {} steps",
+        kept.len(), cold_moves[cold_moves.len() / 2], h.relaxed);
+    check!(median < GRAPH_SPRING_L * 0.5);
+    check!(force_placed(&h) && all_finite(&h) && overlaps(&h) == 0 && h.laid == GraphLaid::Done);
+    check!(h.relaxed <= GRAPH_WARM_STEPS);
+    // the view's seed while a child runs it: kept positions, the new pages beside them
+    let mut shown = linked_built(&more, 0);
+    graph_apply_ini(&mut shown, &ini);
+    check!(graph_seed_kept(&mut shown, &mut || {}) && shown.laid == GraphLaid::Seed && force_placed(&shown) && overlaps(&shown) == 0);
+    check!(kept.iter().all(|&pid| moved(&g, &shown, pid) == 0.0));
+}
+
+// The relaxation stops once settled, well before GRAPH_STEPS on a typical notebook, and still lays
+// it out the same way each time with no overlap.
+fn relaxation_stops_when_settled() {
+    for (pages, links, names, seed) in [(300usize, 200usize, 30usize, 95u64), (800, 300, 40, 75)] {
+        let b = random_book(pages, links, names, seed);
+        let mut g = linked_built(&b, 0);
+        graph_layout(&mut g, &mut || {});
+        let mut again = linked_built(&b, 0);
+        graph_layout(&mut again, &mut || {});
+        eprintln!("  {pages} pages, {} linked: settled in {} steps", g.force.len(), g.relaxed);
+        check!(g.relaxed < GRAPH_STEPS && g.relaxed >= 60 && same_places(&g, &again) && overlaps(&g) == 0);
+    }
+}
+
+// A page named on a laid-out map grows, while a new page is placed elsewhere: the repair still sets
+// the grown dot apart from its neighbours.
+fn repair_runs_with_new_pages() {
+    let b = random_book(120, 160, 0, 97);
+    let mut g = linked_built(&b, 0);
+    graph_layout(&mut g, &mut || {});
+    let mut ini = GraphIni::default();
+    graph_ini_store(&mut ini, &g);
+    // the unnamed linked page closest to another dot
+    let mut best = (f32::MAX, 0u32);
+    for &v in &g.force {
+        for &w in &g.force {
+            let (p, q) = (&g.nodes[v as usize], &g.nodes[w as usize]);
+            if v != w && !p.named {
+                let gap = dist(p, q) - p.r - q.r;
+                if gap < best.0 {
+                    best = (gap, p.pid);
+                }
+            }
+        }
+    }
+    let mut more = b.clone();
+    name(&mut more, best.1, "Grown");
+    let new_pid = 50_000;
+    more.nb.page_ids.push(new_pid);
+    check!(link(&mut more, new_pid, 1, g.nodes[g.force[0] as usize].pid) == 0);
+    let mut h = linked_built(&more, 0);
+    check!(graph_apply_ini(&mut h, &ini) == GraphPlan::Incremental);
+    check!(graph_place_new(&mut h, &mut || {}) == 1);
+    check!(overlaps(&h) == 0 && force_placed(&h));
 }
 
 #[test]
@@ -1115,6 +1390,12 @@ fn test_graph() {
     run!(gen_encoding_and_mismatch);
     run!(layout_job_writes_atomically);
     run!(big_layout_within_bound);
+    run!(linked_only_model);
+    run!(external_links_count_distinct_pages);
+    run!(new_link_moves_only_its_ends);
+    run!(warm_layout_keeps_the_shape);
+    run!(relaxation_stops_when_settled);
+    run!(repair_runs_with_new_pages);
     let _ = std::fs::remove_dir_all(tmp());
     done();
 }

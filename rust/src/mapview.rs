@@ -264,7 +264,7 @@ pub fn mapview_open(
         || !reserve(&mut v.pages, n)
         || !reserve(&mut v.hits, n + 32)
         || !reserve(&mut v.labels, n)
-        || graph_build(&mut v.g, nb, &graph_nav, open_pid) != 0
+        || graph_build(&mut v.g, nb, &graph_nav, open_pid, true) != 0
     {
         app_toast(a, tr("Not enough memory for the map."), 3000);
         return false;
@@ -820,7 +820,7 @@ pub fn mapview_tick(v: &mut MapView, _a: &mut App, now: u32) -> MapResult {
 pub fn mapview_rebuild(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Nav, open_pid: u32) -> bool {
     save(v);
     let mut g = GraphModel::default();
-    if graph_build(&mut g, nb, &nav_for_graph(nav), open_pid) != 0 {
+    if graph_build(&mut g, nb, &nav_for_graph(nav), open_pid, true) != 0 {
         return false;
     }
     let old = std::mem::replace(&mut v.g, g);
@@ -864,13 +864,8 @@ pub fn mapview_probe(v: &MapView, key: &str, out: &mut String) -> bool {
                 .to_string(),
         ),
         "tray" => out.push_str(&v.g.tray.len().to_string()),
-        "orphans" => out.push_str(
-            &v.g.nodes
-                .iter()
-                .filter(|n| n.tier == GraphTier::Force && n.degree == 0)
-                .count()
-                .to_string(),
-        ),
+        // (the footer's: pages without a link)
+        "orphans" => out.push_str(&v.g.nodes.iter().filter(|n| !n.linked).count().to_string()),
         "selected" => {
             if v.selected >= 0 {
                 out.push_str(&page_number(v, v.selected as usize).to_string());
@@ -899,6 +894,7 @@ pub fn mapview_probe(v: &MapView, key: &str, out: &mut String) -> bool {
                             GraphTier::Force => "force",
                             GraphTier::Satellite => "satellite",
                             GraphTier::Tray => "tray",
+                            GraphTier::Hidden => "hidden",
                         },
                         n.r * v.zoom,
                         x,
@@ -961,7 +957,7 @@ mod tests {
             ..Default::default()
         };
         v.pages = nb.page_ids.clone();
-        assert_eq!(graph_build(&mut v.g, &nb, &nav, if linked { 1 } else { 0 }), 0);
+        assert_eq!(graph_build(&mut v.g, &nb, &nav, if linked { 1 } else { 0 }, true), 0);
         assert!(graph_layout(&mut v.g, &mut || {}));
         assert!(reserve(&mut v.hits, n as usize + 32));
         assert!(reserve(&mut v.labels, n as usize));
@@ -1062,11 +1058,11 @@ mod tests {
         let root=std::env::temp_dir().join(format!("grimoire-map-reopen-{}",std::process::id()));
         store_init(root.to_str().unwrap());let mut nb=NotebookInfo::default();assert_eq!(store_create("Map","",PAPER_BLANK,&mut nb),0);
         nb.page_ids=(1..=400).collect();nb.next_page_id=401;assert_eq!(store_save_info(&mut nb),0);
-        let mut nav=Nav::default();nav_init(&mut nav);for pid in 1..=400{assert_eq!(nav_set_name(&mut nav,pid,"Named"),0);}
-        assert_eq!(nav_save(nb.id.as_str(),&mut nav,&nb),0);
+        let mut nav=Nav::default();nav_init(&mut nav);for pid in 1..400{assert_eq!(nav_link_set(&mut nav,pid,1,&format!("p{}",pid+1)),0);}
+        assert_eq!(nav_save_links(nb.id.as_str(),&mut nav,&nb),0);
         let mut a=App{w:1860,h:2480,dpi:300.0,..Default::default()};canvas_init(&mut a.screen,a.w,a.h);
         let mut v=MapView{id:nb.id,open:true,w:a.w,h:a.h,..Default::default()};v.pages=nb.page_ids.clone();
-        assert_eq!(graph_build(&mut v.g,&nb,&nav,1),0);assert!(graph_seed(&mut v.g,&mut ||{}));save(&mut v);
+        assert_eq!(graph_build(&mut v.g,&nb,&nav,1,true),0);assert!(graph_seed(&mut v.g,&mut ||{}));save(&mut v);
         assert!(layout(&mut v,&mut a,true));assert_eq!(v.layout,MapLayout::Running);
         mapview_close(&mut v);
         assert!(mapview_open(&mut v,&mut a,&nb,&nav,1,false));assert_eq!(v.layout,MapLayout::Running);
@@ -1127,7 +1123,7 @@ mod tests {
             let (mut v,mut nav)=view(w,h,250,false);
             nav_set_name(&mut nav,13,"Named but unlinked");
             let nb=NotebookInfo{page_ids:(1..=250).collect(),..Default::default()};
-            graph_build(&mut v.g,&nb,&nav,14);
+            graph_build(&mut v.g,&nb,&nav,14,true);
             graph_layout(&mut v.g,&mut ||{});
             for show in [true,false] {
                 v.ini.show_unlinked=show;

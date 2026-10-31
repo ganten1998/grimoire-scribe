@@ -265,7 +265,7 @@ fn run_graph(j: &Job) -> i32 {
     let mut nav = Nav::default();
     if store_load_info(j.id.as_str(), &mut nb) != 0 || nav_load(j.id.as_str(), &mut nav) != 0 {return -1;}
     let mut graph = GraphModel::default();
-    if graph_build(&mut graph,&nb,&nav_for_graph(&nav),0) != 0 {return -1;}
+    if graph_build(&mut graph,&nb,&nav_for_graph(&nav),0,true) != 0 {return -1;}
     let mut ini = GraphIni::default();
     if graph_ini_read_path(j.dir.as_str(),&mut ini) != 0 {return -1;}
     graph_layout_job(&mut graph,&mut ini,j.dir.as_str())

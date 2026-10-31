@@ -91,6 +91,9 @@ fn graph_child_writes_the_notebooks_layout() {
     let mut nav = Nav::default(); nav_init(&mut nav);
     check!(nav_set_name(&mut nav,nb.page_ids[0],"Start")==0);
     check!(nav_save(nb.id.as_str(),&mut nav,&nb)==0);
+    // (the map lays out linked pages only)
+    check!(nav_link_set(&mut nav,nb.page_ids[0],1,"index")==0);
+    check!(nav_save_links(nb.id.as_str(),&mut nav,&nb)==0);
     let mut path = String::new(); check!(graph_ini_path(nb.id.as_str(),&mut path)==0);
     bg_queue(BgKind::GraphLayout,Some(nb.id.as_str()),Some(&path),300.0,true);
     let mut ended = [Ended::default();1];

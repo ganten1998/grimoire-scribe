@@ -13,6 +13,11 @@
 //! - the tray: unnamed, unlinked pages before the first named page, which belong to no section.
 //!   The view lists them in notebook order beside the graph.
 //!
+//! The view shows linked pages only, so it builds a linked-only model (graph_build's linked_only):
+//! a page is a force node when it is linked, and every other page is hidden. A hidden page takes no
+//! room in the layout and no part in graph.ini's gen, so naming it or adding plain pages moves no
+//! dot.
+//!
 //! Links between two pages make one edge per pair, with the directions it has and how many links
 //! it stands for. Links to the Index are a badge on the page and never an edge: every page that
 //! links to the Index would make it a hub pulling the whole map into a hairball.
@@ -21,8 +26,10 @@
 //! about 300 Barnes-Hut steps of springs and repulsion, then the components packed side by side.
 //! Floats come out differently on arm64 and armv7 (fused multiply-adds, libm), so the result is
 //! kept in graph.ini and laid out again only when the graph changed a lot; a new page is placed
-//! beside its neighbours and only its neighbourhood moves. The tests assert invariants, never
-//! coordinates.
+//! beside its neighbours and only its neighbourhood moves, and a new link between two far pages
+//! moves only those pages and their neighbours (graph_relax_stressed). A layout done again over a
+//! kept one starts from it (graph_layout_warm), so the map keeps its shape. The relaxation stops
+//! once it has settled. The tests assert invariants, never coordinates.
 //!
 //! Every loop of the layout runs in page-id order and every tie is broken by page id, never by a
 //! page's place in the notebook: moving a page in the notebook moves no dot.
@@ -78,9 +85,22 @@ pub const GRAPH_GRAVITY: f32 = 0.02;
 pub const GRAPH_DAMPING: f32 = 0.9;
 /// Barnes-Hut: a cell of side s at distance d acts as one body when s < theta x d.
 pub const GRAPH_THETA: f32 = 0.9;
-/// Steps of a full layout, and of an incremental one (over the new pages' 2-hop neighbourhood).
+/// Steps of a full layout, and of an incremental one (over the new pages' 2-hop neighbourhood), at
+/// most: a full layout stops once it has settled (GRAPH_SETTLE).
 pub const GRAPH_STEPS: i32 = 300;
 pub const GRAPH_INC_STEPS: i32 = 40;
+/// A layout done again over kept positions (graph_layout_warm): its steps at most, and how far one
+/// step moves a node, so the nodes drift from where they were instead of jumping.
+pub const GRAPH_WARM_STEPS: i32 = 120;
+pub const GRAPH_WARM_MOVE: f32 = 15.0;
+/// The relaxation has settled when, over SETTLE_RUN steps, the moving nodes changed the map's shape
+/// by less than this fraction of a rest length each on average (shape_drift). A laid-out map never
+/// comes quite to rest: its nodes keep trembling by about a tenth of a rest length.
+pub const GRAPH_SETTLE: f32 = 0.2;
+/// graph_relax_stressed: an edge longer than this many rest lengths (and much longer than most of
+/// the map's) is stressed; past GRAPH_STRESS_MAX nodes to move, the map is laid out again instead.
+pub const GRAPH_STRESS_LEN: f32 = 2.5;
+pub const GRAPH_STRESS_MAX: usize = 64;
 /// The pump callback runs every this many steps, and once per collision round: for 300 nodes at
 /// most 0.9 ms of work on the test host between two calls, some 18 ms on the Kindle (the plan's
 /// host x20).
@@ -106,6 +126,11 @@ const SLACK: f32 = 2.0;
 const SLACK_EPS: f32 = 0.01;
 // One step moves a node at most this far, so a close pair's repulsion cannot throw it across the map.
 const MAX_MOVE: f32 = 40.0;
+// See GRAPH_SETTLE: the shape is measured every SETTLE_RUN steps, from SETTLE_MIN on. Measured on
+// the test corpus, stopping there keeps the mean edge and the extent within 5% of GRAPH_STEPS',
+// which themselves wander by 3% between 300 and 1000 steps.
+const SETTLE_MIN: i32 = 60;
+const SETTLE_RUN: i32 = 20;
 // Rounds of the collision pass, at most: a few are enough once spread has opened a dense component
 // (2000 nodes take 3); the cap only bounds the work in a case nobody has met.
 const COLLIDE_ROUNDS: i32 = 100;
@@ -151,6 +176,8 @@ pub enum GraphTier {
     Satellite = 1,
     /// unnamed and unlinked, before the first named page: in the tray
     Tray = 2,
+    /// not linked, in a linked-only model (graph_build's linked_only): never drawn, never laid out
+    Hidden = 3,
 }
 
 /// What last placed the force nodes (the view's editor.map.layout probe reads 'seed' and 'done').
@@ -260,6 +287,8 @@ pub struct GraphModel {
     /// how many components the force nodes make
     pub ncomp: i32,
     pub laid: GraphLaid,
+    /// the steps the last relaxation ran (it stops early once settled: graph_layout's probe)
+    pub relaxed: i32,
     // The page-id table: node + 1 in each used slot, 0 in an empty one.
     slots: Vec<u16>,
     // Each node's place in page-id order: what ties are broken by.
@@ -570,7 +599,9 @@ pub fn graph_sat_more(g: &GraphModel, head: i32) -> i32 {
 }
 
 /// Builds the map of notebook nb: its pages, Index names and links (nav), and the open page
-/// (open_pid, 0 for none). Nothing is placed yet. -1 for a notebook with more pages than
+/// (open_pid, 0 for none). Nothing is placed yet. With linked_only (the view's model), the linked
+/// pages are the force nodes and every other page is GraphTier::Hidden, the open page and named
+/// pages too: no satellites, no tray. -1 for a notebook with more pages than
 /// STORE_MAX_PAGES (the pid table is sized for those), with g left empty.
 ///
 /// One pass over the pages, the names and the links, each looked up in the pid table, so it is
@@ -579,8 +610,9 @@ pub fn graph_sat_more(g: &GraphModel, head: i32) -> i32 {
 /// link (the page is a force node, so the link can be seen) but is no edge and no degree: a loop
 /// says nothing about where the page belongs. A page listed twice has its links at its first
 /// place (as nav_link_page finds it); every place of a named page is named, so each node's section
-/// is nav_section_of's.
-pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u32) -> i32 {
+/// is nav_section_of's. A page's links to one page of another notebook count once in links_to, as
+/// its links to one page of this notebook do.
+pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u32, linked_only: bool) -> i32 {
     *g = GraphModel { open: -1, ..GraphModel::default() };
     let n = nb.page_ids.len();
     if n > STORE_MAX_PAGES {
@@ -627,6 +659,7 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     }
     // Every link once: a badge, a loop, or a directed pair.
     let mut pairs: Vec<(u32, u32, u8)> = graph_buffer(nav.links.len())?;
+    let mut external: Vec<(usize, &str)> = graph_buffer(nav.links.len())?;
     g.edges = graph_buffer(nav.links.len())?;
     g.force = graph_buffer(n)?;
     g.tray = graph_buffer(n)?;
@@ -641,7 +674,7 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
             g.nodes[src].linked = true;
             continue;
         }
-        if nav_external_target(l.target.as_str()).is_some(){g.nodes[src].linked=true;g.nodes[src].links_to+=1;continue;}
+        if nav_external_target(l.target.as_str()).is_some(){g.nodes[src].linked=true;external.push((src,l.target.as_str()));continue;}
         let dst = graph_node_of(g, target_pid(l.target.as_bytes()));
         if dst < 0 {
             continue;
@@ -658,6 +691,12 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         } else {
             pairs.push((g.rank[dst], g.rank[src], GRAPH_DIR_BA));
         }
+    }
+    // Each page's distinct pages of other notebooks.
+    external.sort_unstable();
+    external.dedup();
+    for &(src, _) in &external {
+        g.nodes[src].links_to += 1;
     }
     // One edge per pair: the pair's links side by side once sorted.
     sort_pairs(&mut pairs, n)?;
@@ -712,6 +751,10 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         }
         g.nodes[i].section = head;
         let nd = g.nodes[i];
+        if linked_only {
+            g.nodes[i].tier = if nd.linked { GraphTier::Force } else { GraphTier::Hidden };
+            continue;
+        }
         let plain = !nd.named && !nd.linked;
         if plain && head >= 0 {
             let h = head as usize;
@@ -1245,7 +1288,11 @@ fn seed_all(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
 // When only a few of a component's nodes move (an incremental placement), the tree of the ones that
 // do not is built once for every step, and the moving ones push each other pair by pair: rebuilding
 // a 2000-node tree 40 times was most of the cost of placing one page.
-fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut dyn FnMut()) -> Option<()> {
+//
+// It stops early once settled (GRAPH_SETTLE): most maps keep their shape well before GRAPH_STEPS,
+// and the test reads the same floats on every run, so the result stays deterministic. One step moves
+// a node at most max_move. g.relaxed says how many steps ran.
+fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f32, pump: &mut dyn FnMut()) -> Option<()> {
     let nc = cs.hub.len();
     let mut active = graph_filled(nc, false)?;
     for &v in &g.force {
@@ -1271,7 +1318,18 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
             still[c] = Some(t);
         }
     }
+    let n_moving: usize = moving.iter().map(|m| m.len()).sum();
+    let settled = GRAPH_SETTLE * GRAPH_SPRING_L * n_moving as f32;
+    let mut was: Vec<f32> = graph_buffer(2 * n_moving)?;
+    for m in &moving {
+        for &v in m {
+            was.push(g.nodes[v as usize].x);
+            was.push(g.nodes[v as usize].y);
+        }
+    }
+    g.relaxed = 0;
     for step in 0..steps {
+        g.relaxed = step + 1;
         for &v in &g.force {
             lay.fx[v as usize] = 0.0;
             lay.fy[v as usize] = 0.0;
@@ -1339,8 +1397,8 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
             if !s2.is_finite() {
                 vx = 0.0;
                 vy = 0.0;
-            } else if s2 > MAX_MOVE * MAX_MOVE {
-                let k = MAX_MOVE / s2.sqrt();
+            } else if s2 > max_move * max_move {
+                let k = max_move / s2.sqrt();
                 vx *= k;
                 vy *= k;
             }
@@ -1352,8 +1410,59 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, pump: &mut d
         if (step + 1) % GRAPH_PUMP_STEPS == 0 {
             pump();
         }
+        if (step + 1) % SETTLE_RUN == 0 {
+            // (the nodes of the components that relax: a lone node, or one in a still component, has
+            // no say in it)
+            let mut drift = 0.0f32;
+            let mut k = 0;
+            for m in &moving {
+                drift += shape_drift(g, m, &mut was[k..k + 2 * m.len()]);
+                k += 2 * m.len();
+            }
+            if step + 1 >= SETTLE_MIN && drift < settled {
+                break;
+            }
+        }
     }
     Some(())
+}
+
+// How far nodes moved since `was` (their x, y in turn), the moving and turning of the whole set
+// left out: those change no shape, and a settled component keeps turning a little. The mean
+// translation and the best rotation (2D Procrustes) are taken out, then the distances summed. was
+// becomes the nodes' positions now.
+fn shape_drift(g: &GraphModel, nodes: &[u32], was: &mut [f32]) -> f32 {
+    if nodes.is_empty() {
+        return 0.0;
+    }
+    let (mut px, mut py, mut qx, mut qy) = (0f64, 0f64, 0f64, 0f64);
+    for (k, &v) in nodes.iter().enumerate() {
+        px += was[2 * k] as f64;
+        py += was[2 * k + 1] as f64;
+        qx += g.nodes[v as usize].x as f64;
+        qy += g.nodes[v as usize].y as f64;
+    }
+    let m = nodes.len() as f64;
+    let (px, py, qx, qy) = ((px / m) as f32, (py / m) as f32, (qx / m) as f32, (qy / m) as f32);
+    let (mut cross, mut dot) = (0f64, 0f64);
+    for (k, &v) in nodes.iter().enumerate() {
+        let (ax, ay) = (was[2 * k] - px, was[2 * k + 1] - py);
+        let (bx, by) = (g.nodes[v as usize].x - qx, g.nodes[v as usize].y - qy);
+        cross += fmla(ax, by, -(ay * bx)) as f64;
+        dot += fmla(ax, bx, ay * by) as f64;
+    }
+    let turn = cross.atan2(dot) as f32;
+    let (sn, cs) = turn.sin_cos();
+    let mut sum = 0.0f32;
+    for (k, &v) in nodes.iter().enumerate() {
+        let (ax, ay) = (was[2 * k] - px, was[2 * k + 1] - py);
+        let (bx, by) = (g.nodes[v as usize].x - qx, g.nodes[v as usize].y - qy);
+        let (rx, ry) = (fmla(cs, ax, -(sn * ay)), fmla(sn, ax, cs * ay));
+        sum += (bx - rx).hypot(by - ry);
+        was[2 * k] = g.nodes[v as usize].x;
+        was[2 * k + 1] = g.nodes[v as usize].y;
+    }
+    sum
 }
 
 // Sets one pair apart when either is movable and their clear discs (lay.eff) come closer than the
@@ -1573,6 +1682,73 @@ fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
     Some(())
 }
 
+// pack for a map laid out again over kept positions: the components stay where they were, and one
+// that has come to touch another (it grew, or is new) is moved straight away from it, the bigger of
+// the two staying put, round after round until none touch. The biggest component never moves. Its
+// pairs are O(c^2) a round, for c components, which a 2000-node map's child can afford.
+fn pack_warm(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
+    let nc = cs.hub.len();
+    let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(nc)?;
+    for c in 0..nc {
+        let m = cs.members(c);
+        let (mut sx, mut sy) = (0f64, 0f64);
+        for &v in m {
+            sx += g.nodes[v as usize].x as f64;
+            sy += g.nodes[v as usize].y as f64;
+        }
+        let cx = (sx / m.len() as f64) as f32;
+        let cy = (sy / m.len() as f64) as f32;
+        let mut r = 0.0f32;
+        for &v in m {
+            let nd = &g.nodes[v as usize];
+            let (dx, dy) = (nd.x - cx, nd.y - cy);
+            r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
+        }
+        discs.push((c, cx, cy, r));
+    }
+    discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    let start: Vec<(f32, f32)> = graph_collect(discs.iter().map(|d| (d.1, d.2)), nc)?;
+    for _ in 0..COLLIDE_ROUNDS {
+        let mut moved = false;
+        for a in 0..nc {
+            for b in a + 1..nc {
+                let (ca, ax, ay, ra) = discs[a];
+                let (cb, bx, by, rb) = discs[b];
+                let need = ra + rb + COMP_GAP;
+                let (dx, dy) = (bx - ax, by - ay);
+                let d = fmla(dx, dx, dy * dy).sqrt();
+                if d >= need - SLACK_EPS {
+                    continue;
+                }
+                let (ux, uy) = if d > 1e-3 {
+                    (dx / d, dy / d)
+                } else {
+                    let pa = g.nodes[cs.hub[ca] as usize].pid;
+                    let pb = g.nodes[cs.hub[cb] as usize].pid;
+                    let t = pid_unit(pa ^ pb.rotate_left(16), SALT_APART) * TAU;
+                    (t.cos(), t.sin())
+                };
+                discs[b].1 = fmla(ux, need + SLACK - d, bx);
+                discs[b].2 = fmla(uy, need + SLACK - d, by);
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+    for (k, &(c, cx, cy, _)) in discs.iter().enumerate() {
+        let (ox, oy) = (cx - start[k].0, cy - start[k].1);
+        if ox != 0.0 || oy != 0.0 {
+            for &v in cs.members(c) {
+                g.nodes[v as usize].x += ox;
+                g.nodes[v as usize].y += oy;
+            }
+        }
+    }
+    Some(())
+}
+
 // Whole world units, as graph.ini keeps them: what the view shows is what the next visit loads,
 // bit for bit. (Adding 0.0 turns the -0.0 that rounding -0.3 gives into the 0.0 that reading "0"
 // back gives.)
@@ -1633,13 +1809,62 @@ pub fn graph_layout(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
         lay.movable[v as usize] = true;
     }
     seed_all(g, &lay, &cs)?;
-    relax(g, &mut lay, &cs, GRAPH_STEPS, pump)?;
+    relax(g, &mut lay, &cs, GRAPH_STEPS, MAX_MOVE, pump)?;
     spread(g, &lay, &cs, pump)?;
     pack(g, &lay, &cs)?;
     collide(g, &lay, SLACK, pump)?;
     snap(g, &lay);
     place_satellites(g);
     g.laid = GraphLaid::Done;
+    Some(())
+    })
+}
+
+/// A full layout that starts from the kept one (graph_apply_ini's positions): the nodes that have
+/// none are placed beside their neighbours (as graph_place_new does), then every force node relaxes
+/// for at most GRAPH_WARM_STEPS steps of at most GRAPH_WARM_MOVE each, so the map keeps its shape
+/// and its dots drift instead of jumping. The components stay where they were, set apart only when
+/// they touch; overlaps are set apart and positions rounded, then the satellites. For a map that
+/// changed a lot (graph_relayout_needed) or a new link that stretched many edges
+/// (graph_relax_stressed); with nothing kept it is graph_layout's seed that starts it.
+pub fn graph_layout_warm(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
+    if !g.force.iter().any(|&v| g.nodes[v as usize].placed) {
+        return graph_layout(g, pump);
+    }
+    graph_layout_attempt(g, |g| {
+    let cs = comps_of(g)?;
+    let mut lay = Lay::new(g)?;
+    let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
+    place_fresh(g, &lay, &fresh);
+    for &v in &g.force {
+        lay.movable[v as usize] = true;
+    }
+    relax(g, &mut lay, &cs, GRAPH_WARM_STEPS, GRAPH_WARM_MOVE, pump)?;
+    spread(g, &lay, &cs, pump)?;
+    pack_warm(g, &lay, &cs)?;
+    collide(g, &lay, SLACK, pump)?;
+    snap(g, &lay);
+    place_satellites(g);
+    g.laid = GraphLaid::Done;
+    Some(())
+    })
+}
+
+/// What the view shows while a bgjob child runs graph_layout_warm: the kept positions, and the
+/// nodes that have none placed beside their neighbours and set apart from the rest, with nothing
+/// relaxed (O(n + e) but for the collision pass). Like graph_seed, it is not kept (GraphLaid::Seed).
+pub fn graph_seed_kept(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
+    graph_layout_attempt(g, |g| {
+    let mut lay = Lay::new(g)?;
+    let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
+    place_fresh(g, &lay, &fresh);
+    for &v in &fresh {
+        lay.movable[v] = true;
+    }
+    collide(g, &lay, SLACK, pump)?;
+    snap(g, &lay);
+    place_satellites(g);
+    g.laid = GraphLaid::Seed;
     Some(())
     })
 }
@@ -1743,10 +1968,11 @@ fn place_fresh(g: &mut GraphModel, lay: &Lay, fresh: &[usize]) {
 /// Places the force nodes that have no position yet (new pages, and the open page), keeping every
 /// other: each new one goes beside its placed neighbours, or beside its section's named page,
 /// then GRAPH_INC_STEPS steps run over the new pages' 2-hop neighbourhood with everything else
-/// fixed, and overlaps are set apart by moving only that neighbourhood. Last, a repair: dots that
-/// came to overlap while nothing moved (a page that got a name is bigger, and its satellites need
-/// room) are set apart, and only those move. A layout that was clean is left bit for bit as it was
-/// outside the new pages' neighbourhood. Satellites follow their heads. Returns how many it placed.
+/// fixed, and overlaps are set apart by moving only that neighbourhood. Last, a repair over every
+/// force node: dots that came to overlap while nothing moved (a page that got a name is bigger, and
+/// its satellites need room) are set apart, and only those move. A layout that was clean is left
+/// bit for bit as it was outside the new pages' neighbourhood. Satellites follow their heads.
+/// Returns how many it placed.
 pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
     let mut placed = 0;
     let ok = graph_layout_attempt(g, |g| {
@@ -1765,12 +1991,13 @@ pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
                 }
             }
         }
-        relax(g, &mut lay, &cs, GRAPH_INC_STEPS, pump)?;
+        relax(g, &mut lay, &cs, GRAPH_INC_STEPS, MAX_MOVE, pump)?;
         collide(g, &lay, SLACK, pump)?;
     }
-    if fresh.is_empty() {
-        // With new nodes, even the repair and rounding must keep the distant nodes fixed.
-        for &v in &g.force { lay.movable[v as usize] = true; }
+    // The repair moves only pairs that overlap, so the distant nodes of a clean layout stay put, and
+    // rounding leaves their whole units as they are.
+    for &v in &g.force {
+        lay.movable[v as usize] = true;
     }
     collide(g, &lay, 0.0, pump)?;
     snap(g, &lay);
@@ -1782,10 +2009,75 @@ pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
     if ok { placed } else { -1 }
 }
 
+/// After graph_place_new over a map whose links changed (graph.ini's gen differs): a new link
+/// between two pages that kept far-apart places leaves a long edge across the map. Every edge
+/// longer than GRAPH_STRESS_LEN rest lengths, and than twice the map's upper quartile of edges (a
+/// freshly laid-out map has none, dense or sparse), is stressed: its two pages and their
+/// neighbours relax GRAPH_INC_STEPS steps with everything else fixed, overlaps are set apart by
+/// moving only them, and they are rounded. Returns how many nodes moved (0: no stressed edge), -2
+/// when that would be more than GRAPH_STRESS_MAX (lay the map out again: graph_layout_warm), -1
+/// when out of memory (g as it was).
+pub fn graph_relax_stressed(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
+    let mut moved = 0;
+    let ok = graph_layout_attempt(g, |g| {
+    let m = g.edges.len();
+    let length = |g: &GraphModel, e: &GraphEdge| {
+        let (a, b) = (&g.nodes[e.a as usize], &g.nodes[e.b as usize]);
+        if a.placed && b.placed { (b.x - a.x).hypot(b.y - a.y) } else { 0.0 }
+    };
+    let mut lengths: Vec<f32> = graph_collect(g.edges.iter().map(|e| length(g, e)), m)?;
+    lengths.sort_unstable_by(|a, b| a.total_cmp(b));
+    let quartile = if m > 3 { lengths[(m - 1) * 3 / 4] * 2.0 } else { 0.0 };
+    let lim = (GRAPH_STRESS_LEN * GRAPH_SPRING_L).max(quartile);
+    let mut lay = Lay::new(g)?;
+    let mut ends: Vec<usize> = graph_buffer(2 * GRAPH_STRESS_MAX)?;
+    for e in &g.edges {
+        if length(g, e) > lim {
+            for v in [e.a as usize, e.b as usize] {
+                if !lay.movable[v] {
+                    if ends.len() == 2 * GRAPH_STRESS_MAX {
+                        moved = -2;
+                        return Some(());
+                    }
+                    lay.movable[v] = true;
+                    ends.push(v);
+                }
+            }
+        }
+    }
+    let mut count = ends.len();
+    for &v in &ends {
+        for j in g.adj_at[v] as usize..g.adj_at[v + 1] as usize {
+            let u = g.adj[j] as usize;
+            if !lay.movable[u] {
+                lay.movable[u] = true;
+                count += 1;
+            }
+        }
+    }
+    if count > GRAPH_STRESS_MAX {
+        moved = -2;
+        return Some(());
+    }
+    if count == 0 {
+        return Some(());
+    }
+    let cs = comps_of(g)?;
+    relax(g, &mut lay, &cs, GRAPH_INC_STEPS, MAX_MOVE, pump)?;
+    collide(g, &lay, SLACK, pump)?;
+    snap(g, &lay);
+    place_satellites(g);
+    moved = count as i32;
+    Some(())
+    });
+    if ok { moved } else { -1 }
+}
+
 /// Puts graph.ini's kept positions on the force nodes it keeps (graph_persisted), and says what
 /// is left to do. The gen is not needed for that: the positions say which pages are new. A gen
-/// that differs while no page is new means links changed between pages that kept their places,
-/// and those stay put (nothing moves between visits); graph_ini_store then writes the new gen.
+/// that differs means links changed between pages that kept their places: the view runs
+/// graph_relax_stressed after graph_place_new, so only a new link's far ends and their neighbours
+/// move; graph_ini_store then writes the new gen.
 pub fn graph_apply_ini(g: &mut GraphModel, ini: &GraphIni) -> GraphPlan {
     let mut kept = 0;
     let mut fresh = 0;
@@ -1864,13 +2156,15 @@ pub fn graph_ini_update_preferences(id:&str,mode:GraphMode,show_unlinked:bool)->
     update_preferences_path(&path,mode,show_unlinked)
 }
 
-/// The work of a bgjob child for a big or Tidy-up layout, on a model the child built itself
+/// The work of a bgjob child for a big layout, on a model the child built itself
 /// (store_load_info, nav_load, graph_build; the open page does not matter, as it is not kept) and
 /// the graph.ini it read (for its mode, unlinked choice, pins and carried lines, and to honour a
-/// refusal): the full layout, unpumped, then graph.ini written whole and atomically at path. 0, or
-/// -1 when the write failed or the file was refused.
+/// refusal): the full layout, unpumped, from the kept positions when it has any (graph_layout_warm),
+/// then graph.ini written whole and atomically at path. 0, or -1 when the write failed or the file
+/// was refused.
 pub fn graph_layout_job(g: &mut GraphModel, ini: &mut GraphIni, path: &str) -> i32 {
-    if !graph_layout(g, &mut || {}) { return -1; }
+    graph_apply_ini(g, ini);
+    if !graph_layout_warm(g, &mut || {}) { return -1; }
     graph_ini_store(ini, g);
     let Some(_lock)=cache_lock(path) else{return -1;};
     // View choices may have changed while the child was laying out. Keep the latest metadata;
@@ -2344,7 +2638,7 @@ mod allocation_tests {
         for allowed in 0..32 {
             GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(Some(allowed)));
             let mut g = GraphModel::default();
-            let rc = graph_build(&mut g, &nb, &nav, 1);
+            let rc = graph_build(&mut g, &nb, &nav, 1, false);
             GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(None));
             if rc == 0 { succeeded = true; break; }
             assert_eq!(rc, -1);
@@ -2358,19 +2652,31 @@ mod allocation_tests {
         let mut nav = Nav::default(); nav_init(&mut nav);
         assert_eq!(nav_link_set(&mut nav, 1, 7, "p2"), 0);
         assert_eq!(nav_link_set(&mut nav, 2, 8, "p3"), 0);
-        let mut base = GraphModel::default(); assert_eq!(graph_build(&mut base, &nb, &nav, 1), 0);
+        let mut base = GraphModel::default(); assert_eq!(graph_build(&mut base, &nb, &nav, 1, true), 0);
         assert!(graph_seed(&mut base, &mut || {}));
-        let mut succeeded = false;
-        for allowed in 0..256 {
-            let mut g = base.clone();
-            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(Some(allowed)));
-            let ok = graph_layout(&mut g, &mut || {});
-            GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(None));
-            if ok { succeeded = true; break; }
-            assert_eq!(g.nodes, base.nodes);
-            assert_eq!(g.laid, base.laid);
+        // the full layout, the warm one over the seed, and the stressed-edge pass over a stretched
+        // edge (node 2 far from its neighbours)
+        let mut far = base.clone();
+        far.nodes[2].x += 4000.0;
+        type Run = fn(&mut GraphModel) -> bool;
+        let runs: [(Run, &GraphModel); 3] = [
+            (|g| graph_layout(g, &mut || {}), &base),
+            (|g| graph_layout_warm(g, &mut || {}), &base),
+            (|g| graph_relax_stressed(g, &mut || {}) > 0, &far),
+        ];
+        for (run, start) in runs {
+            let mut succeeded = false;
+            for allowed in 0..256 {
+                let mut g = start.clone();
+                GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(Some(allowed)));
+                let ok = run(&mut g);
+                GRAPH_ALLOCATIONS_LEFT.with(|left| left.set(None));
+                if ok { succeeded = true; break; }
+                assert_eq!(g.nodes, start.nodes);
+                assert_eq!(g.laid, start.laid);
+            }
+            assert!(succeeded);
         }
-        assert!(succeeded);
     }
     #[test]
     fn impossible_buffer_capacity_is_refused() {

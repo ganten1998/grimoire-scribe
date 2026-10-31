@@ -23,7 +23,7 @@ fn notebook_targets_and_preview_caches_preserve_identity_and_page_data() {
     let mut loaded=Nav::default();assert_eq!(nav_load(a.id.as_str(),&mut loaded),0);
     assert_eq!(loaded.links[0].target.as_str(),target);
     assert_eq!(loaded.links_unknown,nav.links_unknown);
-    let mut graph=GraphModel::default();assert_eq!(graph_build(&mut graph,&a,&loaded,0),0);
+    let mut graph=GraphModel::default();assert_eq!(graph_build(&mut graph,&a,&loaded,0,true),0);
     assert!(graph.nodes[0].linked);assert_eq!(graph.nodes[0].links_to,1);
     assert_eq!(store_rename(b.id.as_str(),"Renamed destination"),0);
     assert_eq!(store_set_folder(b.id.as_str(),"Moved/Nested"),0);
