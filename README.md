@@ -442,6 +442,7 @@ make dist      # complete installable bundle in dist/Grimoire-VERSION-COMMIT/
 make package   # build/dist/Grimoire.zip
 make kpm-package # build/kpm/*.kpkg and preview/stable repository manifests
 make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
+make tablet    # build/host/scribe-tablet: the pen as a Mac tablet for osu! (docs/TABLET.md)
 make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
 ```
 
@@ -472,7 +473,8 @@ The compiled languages (`po/*.mo`) are committed, so building needs no gettext; 
 needs GNU gettext. [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh
 model, the brush model, the languages and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the
 files byte by byte; [docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle and
-KOReader; [docs/TRANSLATING.md](docs/TRANSLATING.md) how to improve a translation or add one.
+KOReader; [docs/TRANSLATING.md](docs/TRANSLATING.md) how to improve a translation or add one;
+[docs/TABLET.md](docs/TABLET.md) the Mac tool that makes the pen a tablet, over SSH.
 
 ## License and credits
 

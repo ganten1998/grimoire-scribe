@@ -57,7 +57,7 @@ HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
-.PHONY: all sim headless test tools kindle package scenarios check clean icon logo l10n l10n-check
+.PHONY: all sim headless test tools tablet kindle package scenarios check clean icon logo l10n l10n-check
 .PHONY: c-headless c-test c-tools c-kindle c-check c-package c-icon c-logo
 all: sim headless test tools kindle dist
 
@@ -353,6 +353,13 @@ logo: $(BUILD)/host/mklogo
 $(BUILD)/host/mklogo: FORCE
 	$(call RCARGO) build --bin mklogo
 	@$(call RCOPY,$(RTARGET)/debug/mklogo,$@)
+
+# The Kindle Scribe's pen as a Mac tablet, over SSH (docs/TABLET.md; macOS only, not in check:
+# tests/tablet_check.sh checks it).
+tablet: $(BUILD)/host/scribe-tablet
+$(BUILD)/host/scribe-tablet: tools/scribe-tablet.c
+	@mkdir -p $(BUILD)/host
+	$(HOSTCC) -std=gnu11 $(WARN) -O2 tools/scribe-tablet.c -o $@ -framework ApplicationServices
 
 # The C tree's: tools/grimoire-export.c, mkicon.c and mklogo.c (the same bytes as the Rust ones).
 c-tools: $(CBUILD)/host/grimoire-export

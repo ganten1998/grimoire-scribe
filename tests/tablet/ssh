@@ -1,0 +1,8 @@
+#!/bin/sh
+# A stand-in for ssh, for tests/tablet_check.sh: notes its arguments in $TABLET_FAKE/args and runs
+# the remote command (its last argument) here, with the Kindle's paths moved under $TABLET_FAKE
+# (devices, input/eventN: a captured stream, pid) and its character-device test made a file test.
+for a in "$@"; do last=$a; printf '%s\n' "$a"; done > "$TABLET_FAKE/args"
+cmd=$(printf '%s' "$last" | sed -e "s#/proc/bus/input/devices#$TABLET_FAKE/devices#g" \
+    -e "s#/dev/input/#$TABLET_FAKE/input/#g" -e "s#/tmp/scribe-tablet.pid#$TABLET_FAKE/pid#g" -e 's#\[ -c #[ -f #g')
+exec /bin/sh -c "$cmd"
