@@ -39,7 +39,7 @@ shot 03-new-sheet-landscape-toast-above-its-buttons
 tap library paper.custom
 wait 200
 expect library.sheet is music
-expect toast.rect is 422 752 1636 110
+expect toast.rect is 422 895 1636 110
 shot 04-music-landscape-toast-clear-of-its-controls
 tap 100 900
 wait 200

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-31 02:28-0500\n"
+"POT-Creation-Date: 2026-10-31 04:03-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1098,7 +1098,6 @@ msgstr "Partitura a medida..."
 #. TRANSLATORS: the paper sheets' button that opens the Templates sheet, of pictures copied into
 #. grimoire/templates to write on as paper (a button: 348 px at 44 px, or two lines at 34 px).
 #: rust/src/editor.rs rust/src/library.rs
-
 msgid "More layouts..."
 msgstr "Más diseños..."
 
@@ -1219,9 +1218,8 @@ msgstr "Ajustar áreas de enlace: No"
 #. TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
 #. value is "Any" or a size in mm).
 #: rust/src/editor.rs
-
 msgid "Smallest shape"
-msgstr "Forma más pequeña"
+msgstr "Mínimo"
 
 #. TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
 #: rust/src/editor.rs
@@ -3300,13 +3298,6 @@ msgstr "(añade una parte abajo)"
 msgid "Add a part"
 msgstr "Añadir una parte"
 
-#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (962 px at 44
-#. px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
-#: rust/src/musicbuild.rs
-
-msgid "Start from"
-msgstr "Partir de"
-
 #. TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
 #: rust/src/musicbuild.rs
 msgid "Systems per page"
@@ -3317,6 +3308,13 @@ msgstr "Sistemas por página"
 #, c-format
 msgid "%d of %d"
 msgstr "%d de %d"
+
+#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (under the
+#. page preview, 600 px at 44 px); under it, the layouts' names are the papers' own (Grand staff,
+#. 4-string bass...).
+#: rust/src/musicbuild.rs
+msgid "Start from"
+msgstr "Partir de"
 
 #. TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).
 #: rust/src/musicbuild.rs
@@ -3512,7 +3510,6 @@ msgid "7-string bass"
 msgstr "Bajo de 7 cuerdas"
 
 #: rust/src/paper.rs
-
 msgctxt "paper"
 msgid "Cross grid"
 msgstr "Cuadrícula de cruces"
@@ -3528,7 +3525,6 @@ msgid "Hexagon"
 msgstr "Hexágonos"
 
 #: rust/src/paper.rs
-
 msgctxt "paper"
 msgid "Seyes rule"
 msgstr "Pauta Seyès"
@@ -3598,7 +3594,6 @@ msgid "Tab, 7 lines"
 msgstr "Tablatura, 7 líneas"
 
 #: rust/src/paper.rs
-
 msgctxt "music part"
 msgid "Tab, 8 lines"
 msgstr "Tablatura, 8 líneas"

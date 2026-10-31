@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0-rc.8\n"
+"Project-Id-Version: Grimoire 2.0.0-rc.9\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-31 02:28-0500\n"
+"POT-Creation-Date: 2026-10-31 04:03-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -3216,12 +3216,6 @@ msgstr ""
 msgid "Add a part"
 msgstr ""
 
-#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (962 px at 44
-#. px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
-#: rust/src/musicbuild.rs
-msgid "Start from"
-msgstr ""
-
 #. TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
 #: rust/src/musicbuild.rs
 msgid "Systems per page"
@@ -3231,6 +3225,13 @@ msgstr ""
 #: rust/src/musicbuild.rs
 #, c-format
 msgid "%d of %d"
+msgstr ""
+
+#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (under the
+#. page preview, 600 px at 44 px); under it, the layouts' names are the papers' own (Grand staff,
+#. 4-string bass...).
+#: rust/src/musicbuild.rs
+msgid "Start from"
 msgstr ""
 
 #. TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).

@@ -33,10 +33,10 @@ const PRESET_ROWS: i32 = (N_PRESETS + ADD_COLS - 1) / ADD_COLS;
 const N_PARTS: i32 = K_PARTS.len() as i32;
 const ADD_COLS: i32 = 3;
 const ADD_ROWS: i32 = (N_PARTS + ADD_COLS - 1) / ADD_COLS;
-// Fixed rows: heading, gap, heading, gap, heading, gap; plus title 120, padding 72, buttons 190.
-const FIXED_H: i32 = 120 + 72 + 70 + 20 + 70 + 20 + 70 + 20 + 190;
-// the parts, the Add grid, the presets' grid (as wide as the Add grid's), systems per page
-const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + PRESET_ROWS + 1;
+// Fixed rows: heading, gap, heading, gap; plus title 120, padding 72, buttons 190.
+const FIXED_H: i32 = 120 + 72 + 70 + 20 + 70 + 20 + 190;
+// the parts, the Add grid, systems per page (the presets sit under the preview, in its column)
+const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + 1;
 
 fn row_h(a: &App) -> i32 {
     clampi((a.h - ui_px(80.0) - ui_px(FIXED_H as f32)) / ROWS, ui_px(80.0), ui_px(115.0))
@@ -203,20 +203,6 @@ pub fn musicbuild_draw(b: &mut MusicBuild, a: &mut App) -> Rect {
         }
     }
     y += ADD_ROWS * rh + ui_px(20.0);
-    // TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (962 px at 44
-    // px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
-    font_draw_left(c, FontFace::Bold, ts, Rect { x: in_.x, y, w: lw, h: ui_px(70.0) }, tr("Start from"), 0);
-    y += ui_px(70.0);
-    let mut qs = ui_text_size();
-    for (name, _, _) in K_PRESETS {
-        qs = qs.min(ui_button_text_px(Rect { x: 0, y: 0, w: bw, h: rh - pad }, c_("paper", name), ButtonStyle::Plain));
-    }
-    for i in 0..N_PRESETS {
-        let r = Rect { x: in_.x + (i % ADD_COLS) * (bw + pad), y: y + (i / ADD_COLS) * rh + pad / 2, w: bw, h: rh - pad };
-        ui_button_text_at(c, r, c_("paper", K_PRESETS[i as usize].0), ButtonStyle::Plain, qs);
-        hits_add(&mut b.hits, r, B_PRESET, i);
-    }
-    y += PRESET_ROWS * rh + ui_px(20.0);
     // Systems per page: [-] N [+]
     let srow = Rect { x: in_.x, y, w: lw, h: rh };
     // TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
@@ -237,7 +223,28 @@ pub fn musicbuild_draw(b: &mut MusicBuild, a: &mut App) -> Rect {
     csnprintf!(&mut val, 32, tr("%d of %d"), b.m.systems, mx);
     font_draw_centered(c, FontFace::Bold, ts, Rect { x: less.x + bs, y, w: more.x - less.x - bs, h: rh }, &val, 0);
     // The page as it will look.
-    let mut pv = Rect { x: in_.x + lw + ui_px(50.0), y: in_.y, w: in_.w - lw - ui_px(50.0), h: in_.h - ui_px(190.0) };
+    // Under it, in its column: layouts to start from, in rows of three.
+    let col = Rect { x: in_.x + lw + ui_px(50.0), y: in_.y, w: in_.w - lw - ui_px(50.0), h: in_.h - ui_px(190.0) };
+    let block = ui_px(70.0) + PRESET_ROWS * rh;
+    {
+        let mut y = col.y + col.h - block;
+        // TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (under the
+        // page preview, 600 px at 44 px); under it, the layouts' names are the papers' own (Grand staff,
+        // 4-string bass...).
+        font_draw_left(c, FontFace::Bold, ts, Rect { x: col.x, y, w: col.w, h: ui_px(70.0) }, tr("Start from"), 0);
+        y += ui_px(70.0);
+        let pw = (col.w - (ADD_COLS - 1) * pad) / ADD_COLS;
+        let mut qs = ui_text_size();
+        for (name, _, _) in K_PRESETS {
+            qs = qs.min(ui_button_text_px(Rect { x: 0, y: 0, w: pw, h: rh - pad }, c_("paper", name), ButtonStyle::Plain));
+        }
+        for i in 0..N_PRESETS {
+            let r = Rect { x: col.x + (i % ADD_COLS) * (pw + pad), y: y + (i / ADD_COLS) * rh + pad / 2, w: pw, h: rh - pad };
+            ui_button_text_at(c, r, c_("paper", K_PRESETS[i as usize].0), ButtonStyle::Plain, qs);
+            hits_add(&mut b.hits, r, B_PRESET, i);
+        }
+    }
+    let mut pv = Rect { h: col.h - block - ui_px(30.0), ..col };
     if pv.h * 3 / 4 < pv.w {
         pv.x += (pv.w - pv.h * 3 / 4) / 2;
         pv.w = pv.h * 3 / 4;
