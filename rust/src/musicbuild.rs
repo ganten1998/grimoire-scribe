@@ -12,16 +12,30 @@ const B_LESS: i32 = 5;
 const B_MORE: i32 = 6;
 const B_CANCEL: i32 = 7;
 const B_DONE: i32 = 8;
+const B_PRESET: i32 = 9;
 
 // The order parts are offered in the "Add" grid.
-const K_PARTS: [MusicPart; 11] =
-    [PART_TREBLE, PART_BASS, PART_ALTO, PART_TENOR, PART_PERC, PART_STAFF, PART_LYRICS, PART_TAB4, PART_TAB5, PART_TAB6, PART_TAB7];
+const K_PARTS: [MusicPart; 12] = [
+    PART_TREBLE, PART_BASS, PART_ALTO, PART_TENOR, PART_PERC, PART_STAFF, PART_LYRICS, PART_TAB4, PART_TAB5, PART_TAB6,
+    PART_TAB7, PART_TAB8,
+];
+// Layouts to start from: the papers the pickers offered before rc.9 (Grand staff, the bass tabs),
+// each as parts with its systems per page (as the fixed papers have them).
+const K_PRESETS: [(&str, [MusicPart; 2], i32); 5] = [
+    ("Grand staff", [PART_TREBLE, PART_BASS], 5),
+    ("4-string bass", [PART_TAB4, PART_NONE], 10),
+    ("5-string bass", [PART_TAB5, PART_NONE], 10),
+    ("6-string bass", [PART_TAB6, PART_NONE], 9),
+    ("7-string bass", [PART_TAB7, PART_NONE], 8),
+];
+const N_PRESETS: i32 = K_PRESETS.len() as i32;
 const N_PARTS: i32 = K_PARTS.len() as i32;
 const ADD_COLS: i32 = 3;
 const ADD_ROWS: i32 = (N_PARTS + ADD_COLS - 1) / ADD_COLS;
-// Fixed rows: heading, gap, heading, gap; plus title 120, padding 72, buttons 190.
-const FIXED_H: i32 = 120 + 72 + 70 + 20 + 70 + 20 + 190;
-const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + 1;
+// Fixed rows: heading, gap, heading, gap, heading, gap; plus title 120, padding 72, buttons 190.
+const FIXED_H: i32 = 120 + 72 + 70 + 20 + 70 + 20 + 70 + 20 + 190;
+// the parts, the Add grid, the presets' row, systems per page
+const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + 1 + 1;
 
 fn row_h(a: &App) -> i32 {
     clampi((a.h - ui_px(80.0) - ui_px(FIXED_H as f32)) / ROWS, ui_px(80.0), ui_px(115.0))
@@ -188,6 +202,21 @@ pub fn musicbuild_draw(b: &mut MusicBuild, a: &mut App) -> Rect {
         }
     }
     y += ADD_ROWS * rh + ui_px(20.0);
+    // TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (962 px at 44
+    // px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
+    font_draw_left(c, FontFace::Bold, ts, Rect { x: in_.x, y, w: lw, h: ui_px(70.0) }, tr("Start from"), 0);
+    y += ui_px(70.0);
+    let pw = (lw - (N_PRESETS - 1) * pad) / N_PRESETS;
+    let mut qs = ui_text_size();
+    for (name, _, _) in K_PRESETS {
+        qs = qs.min(ui_button_text_px(Rect { x: 0, y: 0, w: pw, h: rh - pad }, c_("paper", name), ButtonStyle::Plain));
+    }
+    for i in 0..N_PRESETS {
+        let r = Rect { x: in_.x + i * (pw + pad), y: y + pad / 2, w: pw, h: rh - pad };
+        ui_button_text_at(c, r, c_("paper", K_PRESETS[i as usize].0), ButtonStyle::Plain, qs);
+        hits_add(&mut b.hits, r, B_PRESET, i);
+    }
+    y += rh + ui_px(20.0);
     // Systems per page: [-] N [+]
     let srow = Rect { x: in_.x, y, w: lw, h: rh };
     // TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
@@ -288,6 +317,21 @@ pub fn musicbuild_pointer(b: &mut MusicBuild, a: &mut App, phase: i32, x: f32, y
             }
             m.part[m.n as usize] = MusicPart(i);
             m.n += 1;
+        }
+        B_PRESET => {
+            let Some(&(_, parts, systems)) = K_PRESETS.get(i as usize) else {
+                return MbResult::None;
+            };
+            let mut m = MusicLayout { systems, ..Default::default() };
+            for p in parts.into_iter().filter(|&p| p != PART_NONE) {
+                m.part[m.n as usize] = p;
+                m.n += 1;
+            }
+            b.m = m;
+            clamp_systems(b, a);
+            musicbuild_draw(b, a);
+            *dirty = b.rect;
+            return MbResult::Changed;
         }
         B_LESS => b.m.systems -= 1,
         B_MORE => b.m.systems += 1,

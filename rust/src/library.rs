@@ -830,28 +830,25 @@ fn draw_new(a: &mut App) {
     // The tiles over the name rows and the buttons (420 px), under the heading (80): upright in 6
     // columns, sideways in 7 (tplsheet.h).
     let gap = ui_px(30.0);
-    let g = paper_grid(
+    let g = paper_grid_cols(
         PAPER_SHEET_TILES,
         in_.w,
         in_.h - ui_px(80.0) - ui_px(420.0),
         gap,
         ui_px(100.0),
         ui_px(300.0),
-        PAPER_GRID_MIN_COLS,
+        PAPER_PICKER_COLS,
     );
     let gridw = g.cols * g.tw + (g.cols - 1) * gap;
     let ty = in_.y + ui_px(80.0);
     let tpl = !s.new_tpl.is_empty();
     let new_custom = !tpl && paper_is_custom(s.new_paper);
     for i in 0..PAPER_SHEET_TILES {
-        // The last two tiles. Custom music: the chosen layout, or the last one built. More papers:
-        // the template chosen on the Templates sheet it opens (S->new_paper is then what the
-        // notebook is made on if the template cannot be used).
-        let custom = i == PAPER_COUNT;
-        let more = i == PAPER_COUNT + 1;
-        let k = if more {
-            PAPER_BLANK
-        } else if custom {
+        // The last tile, Custom music: the chosen layout, or the last one built. (More layouts...,
+        // the Templates sheet, is a button beside Cancel: S->new_paper is then what the notebook is
+        // made on if the template cannot be used.)
+        let custom = i == PICKER_PAPERS;
+        let k = if custom {
             if new_custom {
                 s.new_paper
             } else {
@@ -867,27 +864,10 @@ fn draw_new(a: &mut App) {
             g.th,
         );
         canvas_fill(c, tr_, 255);
-        let pv = if more {
-            if tpl && !s.tpl_prev.px.is_empty() {
-                Some(&s.tpl_prev)
-            } else {
-                None
-            }
-        } else {
-            paper_preview(s, dpi, k)
-        };
-        if let Some(pv) = pv {
+        if let Some(pv) = paper_preview(s, dpi, k) {
             canvas_blit_fit(c, pv, tr_);
-        } else if more {
-            paper_tile_more(c, tr_);
         }
-        let sel = if more {
-            tpl
-        } else if custom {
-            new_custom
-        } else {
-            !tpl && s.new_paper == k
-        };
+        let sel = if custom { new_custom } else { !tpl && s.new_paper == k };
         ui_frame(
             c,
             rect_inflate(tr_, if sel { ui_px(10.0) } else { 0 }),
@@ -898,31 +878,18 @@ fn draw_new(a: &mut App) {
         );
         let mut label = paper_label(k);
         if custom {
-            // TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
-            // a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
-            // one line or two).
+            // TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens a sheet
+            // that builds a music paper from parts (192 px at 31 px in New notebook sideways, on one
+            // line or two).
             label = tr("Custom music...");
-        }
-        if more {
-            // TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
-            // Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
-            // at 31 px in New notebook sideways, on one line or two).
-            label = tr("More papers...");
         }
         // (A label wider than its tile goes on two lines under it, as most do sideways: labels side
         // by side never run into each other.)
         paper_tile_label(c, tr_, gap, label, sel);
-        let id = if more {
-            H_PAPER_MORE
-        } else if custom {
-            H_PAPER_CUSTOM
-        } else {
-            H_PAPER
-        };
         hits_add(
             &mut s.hits,
             Rect::new(tr_.x, tr_.y, tr_.w, g.th + ui_px(90.0)),
-            id,
+            if custom { H_PAPER_CUSTOM } else { H_PAPER },
             k.0 as i32,
         );
     }
@@ -977,6 +944,10 @@ fn draw_new(a: &mut App) {
     );
     hits_add(&mut s.hits, cancel, H_CANCEL, 0);
     hits_add(&mut s.hits, create, H_NEW_CREATE, 0);
+    // More layouts... (the Templates sheet) beside Cancel, selected while a template is chosen.
+    let more = Rect::new(cancel.x + bw + ui_px(30.0), cancel.y, bw, bh);
+    ui_button(c, more, IconKind::None, tr("More layouts..."), if tpl { ButtonStyle::Selected } else { ButtonStyle::Plain });
+    hits_add(&mut s.hits, more, H_PAPER_MORE, PAPER_BLANK.0 as i32);
 }
 
 /// A row of draw_menu's list (the C's MenuRow, its label owned).

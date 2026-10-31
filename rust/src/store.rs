@@ -148,6 +148,8 @@ pub struct Settings {
     /// Round shapes: 0 as drawn, 1 prefer circles, 2 circles only.
     pub shape_round: i32,
     pub shape_links: bool,
+    /// Smart shapes snap only strokes at least this big (mm, the larger side; 0: any size). rc.9.
+    pub shape_min_mm: i32,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
     /// The eye: dotted boxes over the page where a finger tap follows a link (settings.ini link_areas).
@@ -3112,6 +3114,7 @@ pub fn settings_default(s: &mut Settings) {
     s.shape_quads = 1;
     s.shape_round = 1;
     s.shape_links = true;
+    s.shape_min_mm = 0;
     s.hints = 0;
     s.link_areas = false;
 }
@@ -3441,6 +3444,7 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"shape_quads" => s.shape_quads = keep_int("shape_quads", v, 0, 2),
         b"shape_round" => s.shape_round = keep_int("shape_round", v, 0, 2),
         b"shape_links" => s.shape_links = keep_bool("shape_links", v),
+        b"shape_min_mm" => s.shape_min_mm = keep_int("shape_min_mm", v, 0, 40),
         b"rotation_lock" => s.rotation_lock = keep_int("rotation_lock", v, 0, 4),
         b"status_mode" => s.status_mode = keep_int("status_mode", v, 0, 2),
         b"gesture_new_page" => s.gesture_new_page = keep_bool("gesture_new_page", v),
@@ -3721,6 +3725,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "shape_quads", s.shape_quads);
     put_int(&mut b, "shape_round", s.shape_round);
     put_int(&mut b, "shape_links", s.shape_links as i32);
+    put_int(&mut b, "shape_min_mm", s.shape_min_mm);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

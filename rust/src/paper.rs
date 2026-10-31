@@ -33,7 +33,16 @@ pub const PAPER_BASS5: PaperKind = PaperKind(14);
 pub const PAPER_BASS6: PaperKind = PaperKind(15);
 pub const PAPER_BASS7: PaperKind = PaperKind(16);
 /// fixed kinds end here
-pub const PAPER_COUNT: i32 = 17;
+// 2.0.0-rc.9: cross grid, isometric, hexagon and Seyes (French ruling). Older versions draw them
+// blank and call them "Newer paper"; their pages are version 2 (store.rs PAGE_V1_PAPERS).
+pub const PAPER_RETICLE: PaperKind = PaperKind(17);
+pub const PAPER_ISO: PaperKind = PaperKind(18);
+pub const PAPER_HEX: PaperKind = PaperKind(19);
+pub const PAPER_SEYES: PaperKind = PaperKind(20);
+pub const PAPER_COUNT: i32 = 21;
+/// The fixed kinds the pickers show (paper_at); Grand staff and the bass tabs are built on the
+/// Custom music sheet since rc.9 (their kinds stay: pages on them draw as always).
+pub const PICKER_PAPERS: i32 = 16;
 /// A custom music layout (see MusicLayout): this flag | systems << 24 | part i << 4*i.
 /// The top four bits name the namespace: 0x5 is image papers (below), 0x6 is reserved for a
 /// ruled-paper builder (docs/FORMAT.md).
@@ -81,7 +90,9 @@ pub const PART_TAB5: MusicPart = MusicPart(8);
 pub const PART_TAB6: MusicPart = MusicPart(9);
 pub const PART_TAB7: MusicPart = MusicPart(10);
 pub const PART_LYRICS: MusicPart = MusicPart(11);
-pub const PART_COUNT: i32 = 12;
+/// 8-string tab (rc.9; a layout with it is a "Newer paper" to older versions)
+pub const PART_TAB8: MusicPart = MusicPart(12);
+pub const PART_COUNT: i32 = 13;
 
 pub const MUSIC_MAX_PARTS: usize = 6;
 pub const MUSIC_MAX_SYSTEMS: i32 = 12;
@@ -163,6 +174,9 @@ fn part_lines(p: MusicPart) -> i32 {
     if p >= PART_TAB4 && p <= PART_TAB7 {
         return 4 + (p.0 - PART_TAB4.0);
     }
+    if p == PART_TAB8 {
+        return 8;
+    }
     if p == PART_LYRICS {
         1
     } else {
@@ -219,16 +233,17 @@ pub fn music_max_systems(m: &MusicLayout, page_h: i32, dpi: f32) -> i32 {
     best
 }
 
-/// treble staff over 6-line tab, 5 systems
+/// treble staff, bass staff and 6-line tab, 3 systems (rc.9; was treble over tab, 5 systems)
 pub fn music_default() -> PaperKind {
-    let mut m = MusicLayout { systems: 5, n: 2, ..Default::default() };
+    let mut m = MusicLayout { systems: 3, n: 3, ..Default::default() };
     m.part[0] = PART_TREBLE;
-    m.part[1] = PART_TAB6;
+    m.part[1] = PART_BASS;
+    m.part[2] = PART_TAB6;
     music_encode(&m)
 }
 
 /// Pickers offer the fixed kinds in paper_at() order, then one "Custom music" tile.
-pub const PAPER_PICKER_COUNT: i32 = PAPER_COUNT + 1;
+pub const PAPER_PICKER_COUNT: i32 = PICKER_PAPERS + 1;
 
 // The English names are identifiers too: /api/list.json gives them to scripts (httpd.c), so they
 // never change with the language; paper_label is what the screens and the share pages show.
@@ -262,6 +277,10 @@ pub fn paper_name(k: PaperKind) -> &'static str {
         PAPER_BASS5 => nc_("paper", "5-string bass"),
         PAPER_BASS6 => nc_("paper", "6-string bass"),
         PAPER_BASS7 => nc_("paper", "7-string bass"),
+        PAPER_RETICLE => nc_("paper", "Cross grid"),
+        PAPER_ISO => nc_("paper", "Isometric"),
+        PAPER_HEX => nc_("paper", "Hexagon"),
+        PAPER_SEYES => nc_("paper", "Seyes rule"),
         _ => {
             if paper_is_known(k) {
                 return nc_("paper", "Custom music");
@@ -294,6 +313,7 @@ pub fn music_part_name(p: MusicPart) -> &'static str {
         PART_TAB5 => nc_("music part", "Tab, 5 lines"),
         PART_TAB6 => nc_("music part", "Tab, 6 lines"),
         PART_TAB7 => nc_("music part", "Tab, 7 lines"),
+        PART_TAB8 => nc_("music part", "Tab, 8 lines"),
         PART_LYRICS => nc_("music part", "Lyric line"),
         _ => "",
     }
@@ -303,28 +323,29 @@ pub fn part_label(p: MusicPart) -> &'static str {
     c_("music part", music_part_name(p))
 }
 
-/// The order papers are offered in pickers (index 0..PAPER_COUNT-1 -> kind).
+/// The order papers are offered in pickers (index 0..PICKER_PAPERS-1 -> kind), in the owner's three
+/// rows of six (rc.9): the rules without and with a margin; Cornell, dots, graph, music, tab, blank;
+/// cross grid, isometric, hexagon, Seyes, then the pickers' Custom music tile.
 pub fn paper_at(index: i32) -> PaperKind {
-    const ORDER: [PaperKind; PAPER_COUNT as usize] = [
-        PAPER_NARROW,
-        PAPER_MEDIUM,
-        PAPER_WIDE,
+    const ORDER: [PaperKind; PICKER_PAPERS as usize] = [
         PAPER_NARROW_NM,
         PAPER_MEDIUM_NM,
         PAPER_WIDE_NM,
+        PAPER_NARROW,
+        PAPER_MEDIUM,
+        PAPER_WIDE,
         PAPER_CORNELL,
         PAPER_DOTS,
         PAPER_GRID,
         PAPER_MUSIC,
-        PAPER_GRAND,
         PAPER_TAB,
-        PAPER_BASS4,
-        PAPER_BASS5,
-        PAPER_BASS6,
-        PAPER_BASS7,
         PAPER_BLANK,
+        PAPER_RETICLE,
+        PAPER_ISO,
+        PAPER_HEX,
+        PAPER_SEYES,
     ];
-    ORDER[clampi(index, 0, PAPER_COUNT - 1) as usize]
+    ORDER[clampi(index, 0, PICKER_PAPERS - 1) as usize]
 }
 
 const NARROW_MM: f32 = 5.5;
@@ -648,6 +669,122 @@ fn grid(c: &mut Canvas, dpi: f32) {
     }
 }
 
+// 5 mm cross grid (a reticle): a small cross at every crossing, placed as the dot grid's dots.
+fn reticle(c: &mut Canvas, dpi: f32) {
+    let pitch = mm_to_px(5.0, dpi);
+    let arm = px_mm(0.9, dpi);
+    let t = thick(2.0, dpi);
+    let ox = (c.w as f32 % pitch) / 2.0 + pitch / 2.0;
+    let oy = mm_to_px(10.0, dpi);
+    let bottom = c.h as f32 - mm_to_px(8.0, dpi);
+    let mut j = 0;
+    loop {
+        let y = lrintf(fmla(j as f32, pitch, oy));
+        if y as f32 > bottom {
+            break;
+        }
+        let mut i = 0;
+        loop {
+            let x = fmla(i as f32, pitch, ox);
+            if x > c.w as f32 - pitch / 2.0 {
+                break;
+            }
+            let xi = lrintf(x);
+            canvas_hline(c, xi - arm, xi + arm + 1, y, t, 140);
+            canvas_vline(c, xi, y - arm, y + arm + 1, t, 140);
+            i += 1;
+        }
+        j += 1;
+    }
+}
+
+// Isometric paper: equilateral triangles of 5 mm sides, lines vertical and at 30 degrees both ways.
+// Every line is drawn over the whole page and the clip keeps what the region needs; one gray, so the
+// crossings come out the same whatever order or region draws them.
+fn iso(c: &mut Canvas, dpi: f32) {
+    let side = mm_to_px(5.0, dpi);
+    let col = side * 0.866_025_4; // between vertical lines
+    let (w, h) = (c.w as f32, c.h as f32);
+    let lw = thick(2.0, dpi) as f32 * 0.75;
+    let g = 190;
+    let mut x = (w % col) / 2.0;
+    while x < w {
+        canvas_line_aa(c, x, 0.0, x, h, lw, g);
+        x += col;
+    }
+    // y = y0 + x tan(30) and y = y0 - x tan(30); y0 steps by a side along the left edge.
+    let rise = w * 0.577_350_3;
+    let mut y0 = -rise;
+    while y0 < h + rise {
+        canvas_line_aa(c, 0.0, y0, w, y0 + rise, lw, g);
+        canvas_line_aa(c, 0.0, y0, w, y0 - rise, lw, g);
+        y0 += side;
+    }
+}
+
+// Hexagon paper: flat-topped hexagons of 4 mm sides. Each hexagon draws its top, upper left and
+// lower left edges, which between them draw every edge of the tiling once.
+fn hex(c: &mut Canvas, dpi: f32) {
+    let a = mm_to_px(4.0, dpi);
+    let hh = a * 0.866_025_4; // half a hexagon's height
+    let (w, h) = (c.w as f32, c.h as f32);
+    let lw = thick(2.0, dpi) as f32 * 0.75;
+    let g = 175;
+    let cols = (w / (1.5 * a)) as i32 + 2;
+    let rows = (h / (2.0 * hh)) as i32 + 2;
+    let x0 = (w - (cols - 1) as f32 * 1.5 * a) / 2.0;
+    for i in 0..cols {
+        let cx = fmla(i as f32, 1.5 * a, x0);
+        let shift = if i % 2 != 0 { hh } else { 0.0 };
+        for j in -1..rows {
+            let cy = fmla(j as f32, 2.0 * hh, shift);
+            let (l, top, bot) = (cx - a, cy - hh, cy + hh);
+            canvas_line_aa(c, cx - a / 2.0, top, cx + a / 2.0, top, lw, g);
+            canvas_line_aa(c, l, cy, cx - a / 2.0, top, lw, g);
+            canvas_line_aa(c, l, cy, cx - a / 2.0, bot, lw, g);
+        }
+    }
+}
+
+// Seyes (French) ruling: a strong line every 8 mm with three faint ones between, a vertical line
+// every 8 mm, and a margin line.
+fn seyes(c: &mut Canvas, dpi: f32) {
+    let (w, h) = (c.w, c.h);
+    let step = mm_to_px(2.0, dpi);
+    let first = mm_to_px(20.0, dpi);
+    let bottom = h - px_mm(10.0, dpi);
+    let faint = thick(1.0, dpi);
+    let strong = thick(2.0, dpi);
+    let margin = px_mm(30.0, dpi);
+    let mut i = 0;
+    let mut last = lrintf(first);
+    loop {
+        let y = lrintf(fmla(step, i as f32, first));
+        if y > bottom {
+            break;
+        }
+        if i % 4 == 0 {
+            canvas_hline(c, 0, w, y, strong, 160);
+            last = y;
+        } else {
+            canvas_hline(c, 0, w, y, faint, 205);
+        }
+        i += 1;
+    }
+    let top = lrintf(first);
+    let pitch = mm_to_px(8.0, dpi);
+    let mut k = 1;
+    loop {
+        let x = lrintf(fmla(pitch, k as f32, margin as f32));
+        if x >= w {
+            break;
+        }
+        canvas_vline(c, x, top, last + 1, faint, 185);
+        k += 1;
+    }
+    canvas_vline(c, margin, 0, h, strong, 120);
+}
+
 // Cornell notes: medium rule, a cue column on the left, a summary block at the bottom.
 fn cornell(c: &mut Canvas, dpi: f32) {
     ruled(c, MEDIUM_MM, dpi, false);
@@ -716,6 +853,10 @@ pub fn paper_render(c: &mut Canvas, k: PaperKind, region: Rect, dpi: f32) {
         PAPER_BASS5 => bass_tab(c, 5, dpi),
         PAPER_BASS6 => bass_tab(c, 6, dpi),
         PAPER_BASS7 => bass_tab(c, 7, dpi),
+        PAPER_RETICLE => reticle(c, dpi),
+        PAPER_ISO => iso(c, dpi),
+        PAPER_HEX => hex(c, dpi),
+        PAPER_SEYES => seyes(c, dpi),
         _ => {
             // anything else (a newer version's paper) stays blank
             if let Some(m) = decode(k) {
@@ -737,14 +878,18 @@ mod tests {
     #[test]
     fn the_pickers_offer_every_fixed_kind_once() {
         let mut seen = [false; PAPER_COUNT as usize];
-        for i in 0..PAPER_COUNT {
+        for i in 0..PICKER_PAPERS {
             let k = paper_at(i);
             assert!(k.0 < PAPER_COUNT as u32 && !seen[k.0 as usize]);
             seen[k.0 as usize] = true;
             assert!(paper_is_known(k) && paper_sanitize(k.0, PAPER_BLANK) == k);
         }
-        assert_eq!((paper_at(-5), paper_at(99)), (PAPER_NARROW, PAPER_BLANK));
-        assert_eq!(PAPER_PICKER_COUNT, 18);
+        // (Grand staff and the bass tabs are built on the Custom music sheet)
+        for k in [PAPER_GRAND, PAPER_BASS4, PAPER_BASS5, PAPER_BASS6, PAPER_BASS7] {
+            assert!(!seen[k.0 as usize] && paper_is_known(k));
+        }
+        assert_eq!((paper_at(-5), paper_at(99)), (PAPER_NARROW_NM, PAPER_SEYES));
+        assert_eq!(PAPER_PICKER_COUNT, 17);
     }
 
     #[test]
@@ -771,10 +916,10 @@ mod tests {
     #[test]
     fn custom_layouts_round_trip() {
         let d = music_default();
-        assert_eq!(d, PaperKind(0x45000091));
+        assert_eq!(d, PaperKind(0x43000921)); // (rc.9: treble, bass and 6-line tab, 3 systems)
         let mut m = MusicLayout::default();
         assert!(paper_is_custom(d) && music_decode(d, &mut m));
-        assert_eq!((m.systems, m.n, m.part[0], m.part[1], m.part[2]), (5, 2, PART_TREBLE, PART_TAB6, PART_NONE));
+        assert_eq!((m.systems, m.n, m.part[0], m.part[1], m.part[2]), (3, 3, PART_TREBLE, PART_BASS, PART_TAB6));
         assert_eq!(music_encode(&m), d);
         // Out of range counts are clamped on the way in.
         m.systems = 99;
@@ -783,13 +928,13 @@ mod tests {
         assert_eq!(music_encode(&m).0 >> 24, 0x41);
         // Malformed layouts decode to nothing, and leave what the caller passed.
         let mut keep = MusicLayout { systems: 7, ..Default::default() };
-        for bad in [0x40000000, 0x41000000, 0x40000001, 0x4d000001, 0x410000c1, 0x41000fff, 0x4fffffff, 0x50000000, 3] {
+        for bad in [0x40000000, 0x41000000, 0x40000001, 0x4d000001, 0x410000d1, 0x41000fff, 0x4fffffff, 0x50000000, 3] {
             assert!(!music_decode(PaperKind(bad), &mut keep), "{bad:x}");
             assert_eq!(keep.systems, 7);
             assert!(!paper_is_known(PaperKind(bad)) || bad == 0x50000000 || bad == 3);
         }
         assert!(paper_is_custom(PaperKind(0x40000000)) && !paper_is_custom(PaperKind(0x50000000)));
-        assert_eq!(paper_sanitize(0x410000c1, PAPER_MEDIUM), PAPER_MEDIUM);
+        assert_eq!(paper_sanitize(0x410000d1, PAPER_MEDIUM), PAPER_MEDIUM); // (part 13: none yet; 12 is 8-line tab since rc.9)
         assert!(music_decode(PaperKind(0x41000c01), &mut keep)); // (a part after a gap is not read)
         assert_eq!(paper_sanitize(0x41000009, PAPER_MEDIUM), PaperKind(0x41000009));
         assert_eq!(paper_sanitize(0x50000001, PAPER_MEDIUM), PAPER_MEDIUM); // an image needs its notebook
@@ -811,9 +956,15 @@ mod tests {
 
     #[test]
     fn how_many_systems_fit() {
-        let mut m = MusicLayout::default();
-        assert!(music_decode(music_default(), &mut m));
+        // (treble over 6-line tab: the default before rc.9)
+        let mut m = MusicLayout { systems: 5, n: 2, ..Default::default() };
+        m.part[0] = PART_TREBLE;
+        m.part[1] = PART_TAB6;
         assert_eq!((music_max_systems(&m, 1000, 300.0), music_max_systems(&m, 2480, 300.0), music_max_systems(&m, 3500, 300.0)), (2, 6, 9));
+        // The rc.9 default's three systems fit on a Scribe page.
+        let mut d = MusicLayout::default();
+        assert!(music_decode(music_default(), &mut d));
+        assert!(music_max_systems(&d, 2480, 300.0) >= d.systems);
         // More staff spaces fit at a lower resolution.
         assert_eq!((music_max_systems(&m, 1000, 226.0), music_max_systems(&m, 3500, 226.0)), (3, 12));
     }

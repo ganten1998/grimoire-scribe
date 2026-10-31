@@ -92,7 +92,9 @@ const K_KIND_NAME: [&str; K_COUNT] =
 // An image paper (namespace 0x5) with the colour bits set: a later version's, which this one does
 // not know (well-formed image papers are this version's own: tests/test_templates.c).
 const IMAGE_PAPER: u32 = 0x5C000001;
-const MUSIC_NEWER: u32 = 0x4100000C; // custom music with a part this version lacks
+const MUSIC_NEWER: u32 = 0x4100000D; // custom music with a part this version lacks (12, 8-line tab, came in rc.9)
+/// the fixed kinds 1.0.0-beta knows: a page on one of them is version 1 (store.rs PAGE_V1_PAPERS)
+const BETA_KINDS: u32 = 17;
 
 fn custom_layout() -> MusicLayout {
     MusicLayout { systems: 4, n: 3, part: [PART_TREBLE, PART_BASS, PART_LYRICS, PART_NONE, PART_NONE, PART_NONE] }
@@ -248,7 +250,7 @@ fn beta_opens_what_we_write() {
         let ver = rd16(&d[4..]);
         check!(ver == 1 || ver == 2); // never a version 1.0.0-beta sets aside
         let known = paper_is_known(p.paper);
-        check!(ver as u32 == if p.paper.0 >= PAPER_COUNT as u32 { 2 } else { 1 });
+        check!(ver as u32 == if p.paper.0 >= BETA_KINDS { 2 } else { 1 });
         if ver == 2 {
             check!(rd16(&d[6..]) as u32 == if paper_is_custom(p.paper) { PAPER_MUSIC.0 } else { PAPER_BLANK.0 });
         }
@@ -271,7 +273,7 @@ fn beta_opens_what_we_write() {
         check!(beta_resave(&d, &mut b2) == 0);
         if !b2.is_empty() {
             let l2 = b2.len();
-            check!(rd16(&b2[4..]) == if known && p.paper.0 >= PAPER_COUNT as u32 { 2 } else { 1 });
+            check!(rd16(&b2[4..]) == if known && p.paper.0 >= BETA_KINDS { 2 } else { 1 });
             if !known {
                 check!(rd16(&b2[6..]) as u32 == BETA_PAPER_BLANK);
             }

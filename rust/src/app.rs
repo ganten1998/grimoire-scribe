@@ -1997,7 +1997,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 34] = [
+    let nums: [(&str, i32); 35] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -2019,6 +2019,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.shape_quads", st.shape_quads),
         ("settings.shape_round", st.shape_round),
         ("settings.shape_links", st.shape_links as i32),
+        ("settings.shape_min_mm", st.shape_min_mm),
         ("settings.status_size", st.status_size),
         ("settings.status_corner", st.status_corner),
         ("settings.rotation_lock", st.rotation_lock),
@@ -2200,6 +2201,7 @@ pub fn app_probe_music(m: Option<&MusicLayout>, out: &mut String, cap: usize) {
         p[PART_TAB5.0 as usize] = Some("tab5");
         p[PART_TAB6.0 as usize] = Some("tab6");
         p[PART_TAB7.0 as usize] = Some("tab7");
+        p[PART_TAB8.0 as usize] = Some("tab8");
         p[PART_LYRICS.0 as usize] = Some("lyrics");
         p
     };
@@ -2252,9 +2254,9 @@ mod tests {
         assert_eq!(out, "5: treble tab6 bass");
         // A part with no short name shows as its number.
         m.part[1] = PART_NONE;
-        m.part[2] = MusicPart(12);
+        m.part[2] = MusicPart(13);
         app_probe_music(Some(&m), &mut out, 64);
-        assert_eq!(out, "5: treble 0 12");
+        assert_eq!(out, "5: treble 0 13");
         // Cut as the C's buffer cuts it: "5:" then one byte of " treble", then nothing more.
         app_probe_music(Some(&m), &mut out, 4);
         assert_eq!(out, "5: ");

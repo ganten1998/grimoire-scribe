@@ -68,11 +68,12 @@ fn gesture_keys_follow_the_older_ones() {
         .replace("highlighter.size_max_mm=3.0000", "highlighter.size_max_mm=5.0000")
         .replace("highlighter.opacity_min=0.5000", "highlighter.opacity_min=0.2500")
         .replace("fountain.size_min_mm=0.2800", "fountain.size_min_mm=0.2500")
-        .replace("fountain.size_max_mm=0.8000", "fountain.size_max_mm=1.0000");
+        .replace("fountain.size_max_mm=0.8000", "fountain.size_max_mm=1.0000")
+        .replace("music_layout=1157628049", "music_layout=1124075809"); // (rc.9: treble, bass and tab)
     let want = head.as_bytes();
     check!(got.len() > want.len() && &got[..want.len()] == want);
     let tail = String::from_utf8_lossy(&got[want.len().min(got.len())..]).to_string();
-    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\n");
+    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\nshape_min_mm=0\n");
     // (undotted: no key before its "=" has a dot)
     for line in tail.lines() {
         let key = line.split('=').next().unwrap_or("");

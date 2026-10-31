@@ -109,20 +109,20 @@ fn probe(s: &TplSheet, key: &str) -> String {
 fn paper_grid_layouts() {
     let mut a = new_app();
     let mut g = PaperGrid::default();
-    // The editor's Paper sheet (and the Templates sheet in its place): upright the papers keep their
-    // 6 columns, More papers... a row of its own; sideways 7 columns keep them as big as before.
+    // The editor's Paper sheet: the owner's three rows of six in both orientations (rc.9; More
+    // layouts... and Photos... are buttons beside Cancel).
     a.w = 1860;
     a.h = 2480;
     let mut r = paper_sheet_rect(&a, &mut g);
-    check!(g.cols == 6 && g.rows == 4 && g.tw == 249 && g.th == 332);
+    check!(g.cols == 6 && g.rows == 3 && g.tw == 249 && g.th == 332);
     check!(r.y >= 0 && r.y + r.h <= a.h && r.x >= 0 && r.x + r.w <= a.w);
     a.w = 2480;
     a.h = 1860;
     r = paper_sheet_rect(&a, &mut g);
-    check!(g.cols == 7 && g.rows == 3 && g.tw == 274 && g.th == 365);
+    check!(g.cols == 6 && g.rows == 3 && g.tw == 274 && g.th == 365);
     check!(r.y >= 0 && r.y + r.h <= a.h);
-    // New notebook's tiles in the room draw_new gives them (Gothic and Classic): upright 6 columns,
-    // sideways 7, at the size 6 had before More papers... came (its labels' room stays 222 px).
+    // New notebook's tiles in the room draw_new gives them (Gothic and Classic): six columns, three
+    // rows, either way up.
     struct Nb {
         w: i32,
         h: i32,
@@ -131,13 +131,13 @@ fn paper_grid_layouts() {
         tw: i32,
     }
     let nb = [
-        Nb { w: 1640, h: 1590, cols: 6, rows: 4, tw: 222 },
-        Nb { w: 1648, h: 1608, cols: 6, rows: 4, tw: 226 },
-        Nb { w: 1720, h: 1070, cols: 7, rows: 3, tw: 192 },
-        Nb { w: 1728, h: 1088, cols: 7, rows: 3, tw: 196 },
+        Nb { w: 1640, h: 1590, cols: 6, rows: 3, tw: 248 },
+        Nb { w: 1648, h: 1608, cols: 6, rows: 3, tw: 249 },
+        Nb { w: 1720, h: 1070, cols: 6, rows: 3, tw: 192 },
+        Nb { w: 1728, h: 1088, cols: 6, rows: 3, tw: 196 },
     ];
     for i in 0..nb.len() {
-        g = paper_grid(PAPER_SHEET_TILES, nb[i].w, nb[i].h, 30, 100, 300, PAPER_GRID_MIN_COLS);
+        g = paper_grid_cols(PAPER_SHEET_TILES, nb[i].w, nb[i].h, 30, 100, 300, PAPER_PICKER_COLS);
         check!(g.cols == nb[i].cols && g.rows == nb[i].rows && g.tw == nb[i].tw);
     }
     // Any box: the tiles fit it, and no other number of columns (at least the minimum) makes them
@@ -448,7 +448,7 @@ fn labels_keep_to_their_tiles() {
     paper_sheet_rect(&a, &mut g[1]);
     const BOX: [[i32; 2]; 4] = [[1640, 1590], [1648, 1608], [1720, 1070], [1728, 1088]]; // New notebook's
     for i in 0..4 {
-        g[2 + i] = paper_grid(PAPER_SHEET_TILES, BOX[i][0], BOX[i][1], 30, 100, 300, PAPER_GRID_MIN_COLS);
+        g[2 + i] = paper_grid_cols(PAPER_SHEET_TILES, BOX[i][0], BOX[i][1], 30, 100, 300, PAPER_PICKER_COLS);
     }
     let mut c = Canvas::default();
     check!(canvas_init(&mut c, 700, 600) == 0);
@@ -461,13 +461,7 @@ fn labels_keep_to_their_tiles() {
             for k in 0..6 {
                 let tr_ = Rect { x: 200, y: 20, w: g[k].tw, h: g[k].th };
                 for i in 0..PAPER_SHEET_TILES {
-                    let label = if i < PAPER_COUNT {
-                        paper_label(paper_at(i))
-                    } else if i == PAPER_COUNT {
-                        tr("Custom music...")
-                    } else {
-                        tr("More papers...")
-                    };
+                    let label = if i < PICKER_PAPERS { paper_label(paper_at(i)) } else { tr("Custom music...") };
                     for sel in 0..2 {
                         let all = Rect { x: 0, y: 0, w: c.w, h: c.h };
                         canvas_fill(&mut c, all, 255);

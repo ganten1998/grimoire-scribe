@@ -84,6 +84,7 @@ const P_SHAPE_HOLD: i32 = 26;
 const P_SHAPE_QUADS: i32 = 27;
 const P_SHAPE_ROUND: i32 = 28;
 const P_SHAPE_LINKS: i32 = 29;
+const P_SHAPE_MIN: i32 = 64;
 const P_SHAPE_DONE: i32 = 30;
 const P_SETTINGS: i32 = 31;
 
@@ -1288,7 +1289,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
         let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}
             else if let Some(control)=name.strip_prefix("shapes.") {
                 match control {"on"=>Some((P_SHAPES,0)),"hold"=>Some((P_SHAPE_HOLD,0)),"quads"=>Some((P_SHAPE_QUADS,0)),
-                    "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
+                    "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"min"=>Some((P_SHAPE_MIN,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
             }
             else if let Some(tool)=name.strip_prefix("picker.tool:") {
                 let action=shortcut_action(&format!("tool:{tool}"));
@@ -1400,39 +1401,10 @@ fn draw_paper_sheet(a: &mut App) {
     let page_custom = page_k.is_some_and(|k| paper_is_known(k) && paper_is_custom(k));
     let page_picture = page_k.is_some_and(paper_is_image);
     for i in 0..PAPER_SHEET_EDITOR_TILES {
-        // The last three tiles. Custom music shows this page's layout, or the last one built (also
-        // for a newer layout this build cannot draw, which is then not selected either). More
-        // papers opens the Templates sheet: it shows this page's picture when the page is on one.
-        // Photos... opens it on the photos (the sign for more: a book page is a page's own picture
-        // too, so a photo's is never told from it here).
-        let custom = i == PAPER_COUNT;
-        let more = i == PAPER_COUNT + 1;
-        let photos = i == PAPER_COUNT + 2;
-        if photos {
-            let tr_ = Rect {
-                x: in_.x + (in_.w - gridw) / 2 + (i % g.cols) * (g.tw + gap_),
-                y: in_.y + (i / g.cols) * g.cell_h,
-                w: g.tw,
-                h: g.th,
-            };
-            canvas_fill(c, tr_, 255);
-            paper_tile_more(c, tr_);
-            ui_frame(c, tr_, ui_px(12.0), 0, false, ui_px(3.0));
-            // TRANSLATORS: the editor's Paper sheet's tile that opens the Photos sheet (photos copied into
-            // grimoire/photos), under its tile: as Custom music... and More papers... (their room).
-            paper_tile_label(c, tr_, gap_, tr("Photos..."), false);
-            hits_add(&mut s.modal_hits, Rect { x: tr_.x, y: tr_.y, w: g.tw, h: g.th + ui_px(90.0) ,
-                }, P_PICK_PHOTOS, 0,
-            );
-            continue;
-        }
-        let k = if more {
-            if page_picture {
-                page_k.unwrap()
-            } else {
-                PAPER_BLANK
-            }
-        } else if custom {
+        // The last tile: Custom music shows this page's layout, or the last one built (also for a
+        // newer layout this build cannot draw, which is then not selected either).
+        let custom = i == PICKER_PAPERS;
+        let k = if custom {
             if page_custom {
                 page_k.unwrap()
             } else {
@@ -1448,19 +1420,10 @@ fn draw_paper_sheet(a: &mut App) {
             h: g.th,
         };
         canvas_fill(c, tr_, 255);
-        let pv = if more && !page_picture { None } else { paper_preview(s, dpi, k) };
-        if let Some(pv) = pv {
+        if let Some(pv) = paper_preview(s, dpi, k) {
             canvas_blit_fit(c, pv, tr_);
-        } else if more {
-            paper_tile_more(c, tr_);
         }
-        let sel = if more {
-            page_picture
-        } else if custom {
-            page_custom
-        } else {
-            page_k == Some(k)
-        };
+        let sel = if custom { page_custom } else { page_k == Some(k) };
         ui_frame(
             c,
             rect_inflate(tr_, if sel { ui_px(10.0) } else { 0 }),
@@ -1469,31 +1432,32 @@ fn draw_paper_sheet(a: &mut App) {
             false,
             if sel { ui_px(9.0) } else { ui_px(3.0) },
         );
-        // (Custom music... and More papers... as in New notebook, which says their room.)
-        let label = if more {
-            tr("More papers...")
-        } else if custom {
-            tr("Custom music...")
-        } else {
-            paper_label(k)
-        };
+        // (Custom music... as in New notebook, which says its room.)
+        let label = if custom { tr("Custom music...") } else { paper_label(k) };
         paper_tile_label(c, tr_, gap_, label, sel);
         hits_add(
             &mut s.modal_hits,
             Rect { x: tr_.x, y: tr_.y, w: g.tw, h: g.th + ui_px(90.0) ,
             },
-            if more {
-                P_PICK_MORE
-            } else if custom {
-                P_PICK_CUSTOM
-            } else {
-                P_PICK_PAPER
-            },
+            if custom { P_PICK_CUSTOM } else { P_PICK_PAPER },
             k.0 as i32,
         );
     }
-    let cancel = Rect { x: in_.x + in_.w - ui_px(380.0), y: in_.y + in_.h - ui_px(140.0), w: ui_px(380.0), h: ui_px(140.0) ,
-    };
+    // Along the bottom, right to left: Cancel, Photos... (the Templates sheet on the photos) and More
+    // layouts... (the Templates sheet), selected while the page is on a picture.
+    let (bw, bh, bgap) = (ui_px(380.0), ui_px(140.0), ui_px(30.0));
+    let by = in_.y + in_.h - bh;
+    let cancel = Rect { x: in_.x + in_.w - bw, y: by, w: bw, h: bh };
+    let photos = Rect { x: cancel.x - bgap - bw, y: by, w: bw, h: bh };
+    let more = Rect { x: photos.x - bgap - bw, y: by, w: bw, h: bh };
+    // TRANSLATORS: the paper sheets' button that opens the Templates sheet, of pictures copied into
+    // grimoire/templates to write on as paper (a button: 348 px at 44 px, or two lines at 34 px).
+    ui_button(c, more, IconKind::None, tr("More layouts..."), if page_picture { ButtonStyle::Selected } else { ButtonStyle::Plain });
+    hits_add(&mut s.modal_hits, more, P_PICK_MORE, if page_picture { page_k.unwrap().0 as i32 } else { PAPER_BLANK.0 as i32 });
+    // TRANSLATORS: the editor's Paper sheet's button that opens the Photos sheet (photos copied into
+    // grimoire/photos), beside More layouts... (its room).
+    ui_button(c, photos, IconKind::None, tr("Photos..."), ButtonStyle::Plain);
+    hits_add(&mut s.modal_hits, photos, P_PICK_PHOTOS, 0);
     ui_button(c, cancel, IconKind::None, tr("Cancel"), ButtonStyle::Plain);
     hits_add(&mut s.modal_hits, cancel, P_PICK_CANCEL, 0);
 }
@@ -1936,7 +1900,7 @@ fn draw_shape_menu(a: &mut App) {
     let App {screen:c,settings:st,ed,..}=a;
     let s=ed.as_deref_mut().unwrap(); hits_clear(&mut s.tools_hits);
     let (w,rh,g)=(ui_px(1116.0).min(aw-ui_px(20.0)),ui_px(120.0),ui_px(16.0));
-    let h=ui_px(140.0)+6*rh+5*g;
+    let h=ui_px(140.0)+7*rh+6*g;
     let mut x=s.panel.x-w-ui_px(20.0);
     if x<ui_px(10.0) {x=s.panel.x+s.panel.w+ui_px(20.0);}
     x=clampi(x,ui_px(10.0),aw-w-ui_px(10.0));
@@ -1950,13 +1914,31 @@ fn draw_shape_menu(a: &mut App) {
         (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
         (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
         (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
+        (P_SHAPE_MIN,""),
         (P_SHAPE_LINKS,tr(if st.shape_links {n_("Snap link areas: On")}else{n_("Snap link areas: Off")})),
         (P_SHAPE_DONE,tr("Done")),
     ];
     for (i,(id,label)) in rows.into_iter().enumerate() {
         let r=Rect{x:x+ui_px(30.0),y:y+ui_px(110.0)+i as i32*(rh+g),w:w-ui_px(60.0),h:rh};
+        if id==P_SHAPE_MIN {shape_min_draw(c,r,st.shape_min_mm);hits_add(&mut s.tools_hits,r,id,0);continue;}
         ui_button(c,r,IconKind::None,label,ButtonStyle::Plain);hits_add(&mut s.tools_hits,r,id,0);
     }
+}
+
+// The Smart shapes menu's slider: the smallest stroke a shape snaps (0 mm: any size).
+fn shape_min_slider(r: Rect, mm: i32) -> Slider {
+    // TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
+    // value is "Any" or a size in mm).
+    let mut sl=Slider{min:0.0,max:40.0,step:1.0,value:mm as f32,label:tr("Smallest shape"),unit:"mm",..Default::default()};
+    ui_slider_layout(&mut sl,rect_inflate(r,-ui_px(12.0)));
+    sl
+}
+fn shape_min_draw(c: &mut Canvas, r: Rect, mm: i32) {
+    let sl=shape_min_slider(r,mm);
+    canvas_fill(c,r,255);
+    // TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
+    let text=if mm<=0 {tr("Any").to_string()} else {format!("{mm} mm")};
+    ui_slider_draw(c,&sl,Some(&text));
 }
 
 // ---- the eye: where a finger tap follows a link ----
@@ -3068,7 +3050,7 @@ fn shape_report(enabled: bool, mode: &str, result: &ShapeResult, burst: bool, zo
 // A still pen sends no samples on some hardware, so this is driven by the 30 ms wall-clock tick.
 fn shape_hold_tick(a: &mut App, now: u32) {
     if !a.settings.shapes || !a.input_drained { return; }
-    let (dpi, hold_ms, logging) = (a.dpi, a.settings.shape_hold_ms, a.shape_log);
+    let (dpi, hold_ms, logging, min_mm) = (a.dpi, a.settings.shape_hold_ms, a.shape_log, a.settings.shape_min_mm);
     let policy=(a.settings.shape_quads,a.settings.shape_round);
     let s = ed(a);
     if s.owner != Owner::Draw || s.sh.still_fired || s.sh.preview.is_some() { return; }
@@ -3076,6 +3058,11 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     let hold = shape_dwell_ms(hold_ms,s.sh.burst);
     if now.wrapping_sub(s.sh.anchor_k) < hold { return; }
     s.sh.still_fired = true;
+    // Smaller than the Smallest shape setting (its larger side, on the page): writing, left as drawn.
+    if min_mm > 0 && (raw.bbox.w.max(raw.bbox.h) as f32) < mm_to_px(min_mm as f32, dpi) {
+        if logging {qlog!("shape: hold none smaller than {min_mm} mm");}
+        return;
+    }
     let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
     prm.burst = s.sh.burst;
     prm.quad_mode=policy.0;prm.circle_mode=policy.1;
@@ -8556,6 +8543,27 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         }
         Owner::Tools => {
             press_move(&mut s.tools_press, ev.x, ev.y);
+            let on_min = hits_find(&s.tools_hits, s.tools_press.x0, s.tools_press.y0).filter(|h| h.id == P_SHAPE_MIN).map(|h| h.r);
+            if let Some(row) = on_min {
+                // The Smallest shape slider follows the finger; a cancelled touch keeps the value it had.
+                if !touch_cancelled(ev) {
+                    let mut sl = shape_min_slider(row, a.settings.shape_min_mm);
+                    if ui_slider_set_from_x(&mut sl, ev.x) {
+                        a.settings.shape_min_mm = sl.value as i32;
+                        shape_min_draw(&mut a.screen, row, a.settings.shape_min_mm);
+                        app_invalidate(a, row, RefreshMode::Fast);
+                    }
+                }
+                if ph == 2 {
+                    let s = ed(a);
+                    s.owner = Owner::None;
+                    s.tools_pressed = None;
+                    settings_save(&a.settings);
+                    shape_min_draw(&mut a.screen, row, a.settings.shape_min_mm);
+                    app_invalidate(a, row, RefreshMode::Ui);
+                }
+                return;
+            }
             if ph != 2 {
                 return;
             }

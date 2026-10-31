@@ -153,7 +153,7 @@ fn labels(p: &mut Probe) {
     paper_sheet_rect(&a, &mut g[1]);
     const BOX: [[i32; 2]; 4] = [[1640, 1590], [1648, 1608], [1720, 1070], [1728, 1088]];
     for i in 0..4 {
-        g[2 + i] = paper_grid(PAPER_SHEET_TILES, BOX[i][0], BOX[i][1], 30, 100, 300, PAPER_GRID_MIN_COLS);
+        g[2 + i] = paper_grid_cols(PAPER_SHEET_TILES, BOX[i][0], BOX[i][1], 30, 100, 300, PAPER_PICKER_COLS);
     }
     for k in 0..6 {
         p.out.push_str(&cformat!("grid %d cols %d rows %d tw %d th %d cell %d\n", k as i32, g[k].cols, g[k].rows, g[k].tw, g[k].th, g[k].cell_h));
@@ -168,13 +168,7 @@ fn labels(p: &mut Probe) {
             for k in 0..6 {
                 let tr_ = Rect { x: 200, y: 20, w: g[k].tw, h: g[k].th };
                 for i in 0..PAPER_SHEET_TILES {
-                    let label = if i < PAPER_COUNT {
-                        paper_label(paper_at(i))
-                    } else if i == PAPER_COUNT {
-                        tr("Custom music...")
-                    } else {
-                        tr("More papers...")
-                    };
+                    let label = if i < PICKER_PAPERS { paper_label(paper_at(i)) } else { tr("Custom music...") };
                     for sel in 0..2 {
                         let all = Rect { x: 0, y: 0, w: c.w, h: c.h };
                         canvas_fill(&mut c, all, 255);
@@ -1041,6 +1035,8 @@ fn penset_events(p: &mut Probe) {
 // on the pad shows its tilt in Pen feel's readout only when input_caps says the pen reports it: the
 // headless runner's does (the sim build), the host's platform does not, and the C probe was recorded
 // both ways (sheets_probe_c_tilt.txt holds the one section that differs).
+// (labels and music were recorded from this build in rc.9: the paper pickers' three rows
+// of six, the Custom music sheet's presets and 8-line tab. The C tree keeps the old pickers.)
 fn recorded(name: &str) -> String {
     let all = if cfg!(feature = "sim") && name == "penset events" {
         include_str!("fixtures/sheets_probe_c_tilt.txt")

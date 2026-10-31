@@ -670,6 +670,9 @@ fn part_lines(p: MusicPart) -> i32 {
     if p >= PART_TAB4 && p <= PART_TAB7 {
         return 4 + (p.0 - PART_TAB4.0);
     }
+    if p == PART_TAB8 {
+        return 8; // (rc.9: the old rule for a part that came later)
+    }
     if p == PART_LYRICS {
         1
     } else {
@@ -735,10 +738,14 @@ fn music_layouts_at_both_heights() {
         }
     }
     check!(wrong == 0 && layouts > 100000 && more > 0);
-    // The default (treble over 6-line tab): 6 systems on a Scribe 2 page, 7 on a Colorsoft page.
-    let mut d = MusicLayout::default();
-    check!(music_decode(music_default(), &mut d));
+    // Treble over 6-line tab (the default before rc.9): 6 systems on a Scribe 2 page, 7 on a
+    // Colorsoft page.
+    let mut d = MusicLayout { systems: 5, n: 2, ..Default::default() };
+    d.part[0] = PART_TREBLE;
+    d.part[1] = PART_TAB6;
     check!(music_max_systems(&d, H2, DPI) == 6 && music_max_systems(&d, H3, DPI) == 7);
+    // The rc.9 default (treble, bass, 6-line tab) fits its three systems on both.
+    check!(music_decode(music_default(), &mut d) && music_max_systems(&d, H2, DPI) >= d.systems && music_max_systems(&d, H3, DPI) >= d.systems);
     // Rendering stays a pure function of the page: any region of a 1986x2648 or an 1860x2480 page
     // renders as the same region of the whole page does.
     let mut big = MusicLayout { systems: 7, n: 2, ..Default::default() };

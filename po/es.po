@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-30 21:03-0500\n"
+"POT-Creation-Date: 2026-10-31 02:28-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -233,7 +233,6 @@ msgid "Pen feel"
 msgstr "Sensibilidad"
 
 #: rust/src/actions.rs
-
 msgid "Fold the toolbar"
 msgstr "Plegar la barra de herramientas"
 
@@ -643,22 +642,18 @@ msgstr "Zoom con pellizco desactivado."
 
 #. TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
 #: rust/src/app.rs
-
 msgid "Holding the pen button while writing does nothing"
 msgstr "Mantener el botón del lápiz al escribir no hace nada"
 
 #: rust/src/app.rs
-
 msgid "Holding the pen button while writing erases"
 msgstr "Mantener el botón del lápiz al escribir borra"
 
 #: rust/src/app.rs
-
 msgid "Holding the pen button while writing highlights"
 msgstr "Mantener el botón del lápiz al escribir resalta"
 
 #: rust/src/app.rs
-
 msgid "Holding the pen button while writing draws white"
 msgstr "Mantener el botón del lápiz al escribir dibuja en blanco"
 
@@ -1093,25 +1088,25 @@ msgstr "No se pudo guardar el nombre de página."
 msgid "Paper for this page"
 msgstr "Papel de esta página"
 
-#. TRANSLATORS: the editor's Paper sheet's tile that opens the Photos sheet (photos copied into
-#. grimoire/photos), under its tile: as Custom music... and More papers... (their room).
-#: rust/src/editor.rs
-msgid "Photos..."
-msgstr "Fotos..."
-
-#. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens the
-#. Templates sheet, of pictures copied into grimoire/templates to write on as paper (192 px
-#. at 31 px in New notebook sideways, on one line or two).
-#: rust/src/editor.rs rust/src/library.rs
-msgid "More papers..."
-msgstr "Más papeles..."
-
-#. TRANSLATORS: the last paper's tile but one, here and in the editor's paper sheet: it opens
-#. a sheet that builds a music paper from parts (192 px at 31 px in New notebook sideways, on
-#. one line or two).
+#. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens a sheet
+#. that builds a music paper from parts (192 px at 31 px in New notebook sideways, on one
+#. line or two).
 #: rust/src/editor.rs rust/src/library.rs
 msgid "Custom music..."
 msgstr "Partitura a medida..."
+
+#. TRANSLATORS: the paper sheets' button that opens the Templates sheet, of pictures copied into
+#. grimoire/templates to write on as paper (a button: 348 px at 44 px, or two lines at 34 px).
+#: rust/src/editor.rs rust/src/library.rs
+
+msgid "More layouts..."
+msgstr "Más diseños..."
+
+#. TRANSLATORS: the editor's Paper sheet's button that opens the Photos sheet (photos copied into
+#. grimoire/photos), beside More layouts... (its room).
+#: rust/src/editor.rs
+msgid "Photos..."
+msgstr "Fotos..."
 
 #: rust/src/editor.rs
 msgid "From"
@@ -1214,20 +1209,31 @@ msgid "Round shapes: Prefer circles"
 msgstr "Formas redondas: Preferir círculos"
 
 #: rust/src/editor.rs
-
 msgid "Snap link areas: On"
 msgstr "Ajustar áreas de enlace: Sí"
 
 #: rust/src/editor.rs
-
 msgid "Snap link areas: Off"
 msgstr "Ajustar áreas de enlace: No"
 
+#. TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
+#. value is "Any" or a size in mm).
 #: rust/src/editor.rs
 
+msgid "Smallest shape"
+msgstr "Forma más pequeña"
+
+#. TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
+#: rust/src/editor.rs
+msgid "Any"
+msgstr "Cualquiera"
+
+#: rust/src/editor.rs
 msgid ""
 "Dotted outlines show where a finger tap follows a link. They never print."
-msgstr "Los contornos punteados muestran dónde un toque con el dedo sigue un enlace. Nunca se imprimen."
+msgstr ""
+"Los contornos punteados muestran dónde un toque con el dedo sigue un enlace. "
+"Nunca se imprimen."
 
 #: rust/src/editor.rs
 msgid "Could not save this page. Is the storage full?"
@@ -1258,10 +1264,11 @@ msgstr "No se pudo abrir ese cuaderno"
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
 #. two fingers dragged up and down on a page do now.
 #: rust/src/editor.rs
-
 msgid ""
 "New: two fingers up show this page's links. Two fingers down open the Graph."
-msgstr "Novedad: dos dedos hacia arriba muestran los enlaces de esta página. Dos dedos hacia abajo abren el grafo."
+msgstr ""
+"Novedad: dos dedos hacia arriba muestran los enlaces de esta página. Dos "
+"dedos hacia abajo abren el grafo."
 
 #: rust/src/editor.rs
 msgid "This page is already empty"
@@ -1451,7 +1458,8 @@ msgstr "Enlace borrado. Deshacer lo recupera."
 msgid "The toolbar holds up to %d pen. Unpin one first."
 msgid_plural "The toolbar holds up to %d pens. Unpin one first."
 msgstr[0] "En la barra de herramientas cabe hasta %d lápiz. Quita uno primero."
-msgstr[1] "En la barra de herramientas caben hasta %d lápices. Quita uno primero."
+msgstr[1] ""
+"En la barra de herramientas caben hasta %d lápices. Quita uno primero."
 
 #: rust/src/editor.rs
 msgid "Hold: Quick"
@@ -1607,10 +1615,11 @@ msgid "That is not one of your finger shapes. Settings > Gestures lists them."
 msgstr "No es una de tus figuras. Ajustes > Gestos las muestra."
 
 #: rust/src/editor.rs
-
 msgid ""
 "Shape made. Undo takes it away; the toolbar's Shapes menu has the options."
-msgstr "Forma hecha. Deshacer la quita; el menú de formas de la barra de herramientas tiene las opciones."
+msgstr ""
+"Forma hecha. Deshacer la quita; el menú de formas de la barra de "
+"herramientas tiene las opciones."
 
 #: rust/src/editor.rs
 msgid "Could not read the notebooks."
@@ -2011,27 +2020,22 @@ msgstr ""
 #. TRANSLATORS: Live view's controls in the browser: a slim bar of icon buttons beside the
 #. page (its name for screen readers), and the panel of view settings it opens, in groups.
 #: rust/src/httpd.rs
-
 msgid "Live view controls"
 msgstr "Controles de la vista en directo"
 
 #: rust/src/httpd.rs
-
 msgid "View settings"
 msgstr "Ajustes de la vista"
 
 #: rust/src/httpd.rs
-
 msgid "Picture"
 msgstr "Imagen"
 
 #: rust/src/httpd.rs
-
 msgid "Pen"
 msgstr "Lápiz"
 
 #: rust/src/httpd.rs
-
 msgid "Over the page"
 msgstr "Sobre la página"
 
@@ -2043,22 +2047,18 @@ msgstr "Diagnóstico"
 #. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
 #. or larger by a step.
 #: rust/src/httpd.rs
-
 msgid "Size"
 msgstr "Tamaño"
 
 #: rust/src/httpd.rs
-
 msgid "Fit width"
 msgstr "Ajustar al ancho"
 
 #: rust/src/httpd.rs
-
 msgid "Smaller"
 msgstr "Más pequeño"
 
 #: rust/src/httpd.rs
-
 msgid "Larger"
 msgstr "Más grande"
 
@@ -2075,7 +2075,9 @@ msgstr "Imagen en imagen"
 msgid ""
 "Point at the picture and click Firefox's Picture-in-Picture button, or right-"
 "click it and choose Picture-in-Picture."
-msgstr "Señala la imagen y pulsa el botón Picture-in-Picture de Firefox, o haz clic derecho sobre ella y elige Picture-in-Picture."
+msgstr ""
+"Señala la imagen y pulsa el botón Picture-in-Picture de Firefox, o haz clic "
+"derecho sobre ella y elige Picture-in-Picture."
 
 #. TRANSLATORS: Live view's help in the browser on how to get the sharpest picture in picture,
 #. which browsers give only to pages they treat as secure (the Kindle's page is plain HTTP).
@@ -2086,14 +2088,18 @@ msgstr "Señala la imagen y pulsa el botón Picture-in-Picture de Firefox, o haz
 msgid ""
 "For the sharpest picture in picture, let your browser treat this address as "
 "secure:"
-msgstr "Para la imagen en imagen más nítida, haz que tu navegador trate esta dirección como segura:"
+msgstr ""
+"Para la imagen en imagen más nítida, haz que tu navegador trate esta "
+"dirección como segura:"
 
 #: rust/src/httpd.rs
 #, c-format
 msgid ""
 "Firefox: open about:config, add %s to dom.securecontext.allowlist (separate "
 "several with commas), then reload this page."
-msgstr "Firefox: abre about:config, añade %s a dom.securecontext.allowlist (separa varias con comas) y vuelve a cargar esta página."
+msgstr ""
+"Firefox: abre about:config, añade %s a dom.securecontext.allowlist (separa "
+"varias con comas) y vuelve a cargar esta página."
 
 #: rust/src/httpd.rs
 #, c-format
@@ -2101,13 +2107,18 @@ msgid ""
 "Chrome, Edge, Brave or Arc: open chrome://flags (edge://flags, brave://"
 "flags), find \"Insecure origins treated as secure\", add %s, enable it and "
 "relaunch the browser."
-msgstr "Chrome, Edge, Brave o Arc: abre chrome://flags (edge://flags, brave://flags), busca \"Insecure origins treated as secure\", añade %s, actívalo y reinicia el navegador."
+msgstr ""
+"Chrome, Edge, Brave o Arc: abre chrome://flags (edge://flags, brave://"
+"flags), busca \"Insecure origins treated as secure\", añade %s, actívalo y "
+"reinicia el navegador."
 
 #: rust/src/httpd.rs
 msgid ""
 "Safari floats a video of the page instead, which works on this address as it "
 "is."
-msgstr "Safari hace flotar un vídeo de la página, que funciona con esta dirección tal como está."
+msgstr ""
+"Safari hace flotar un vídeo de la página, que funciona con esta dirección "
+"tal como está."
 
 #: rust/src/httpd.rs
 msgid "This browser cannot show Live view."
@@ -2520,9 +2531,10 @@ msgstr "Grimoire guarda hasta 32 figuras."
 
 #. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
 #: rust/src/library.rs
-
 msgid "Erase while held needs the button held: hold it or drag with it."
-msgstr "Borrar mientras se mantiene necesita el botón pulsado: mantenlo o arrastra con él."
+msgstr ""
+"Borrar mientras se mantiene necesita el botón pulsado: mantenlo o arrastra "
+"con él."
 
 #. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
 #: rust/src/library.rs
@@ -2724,17 +2736,15 @@ msgstr "Copiar los PDF a %s (USB)"
 
 #. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
 #: rust/src/library.rs
-
 msgid "Holding the pen button while writing does nothing (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
+msgstr ""
+"Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
 
 #: rust/src/library.rs
-
 msgid "Holding the pen button while writing erases (tap to change)"
 msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
 
 #: rust/src/library.rs
-
 msgid "Holding the pen button while writing highlights (tap to change)"
 msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
 
@@ -2742,9 +2752,9 @@ msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
 #. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
 #. at 44 px, sideways 1610, or two lines at 34 px.
 #: rust/src/library.rs
-
 msgid "Holding the pen button while writing draws white (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
+msgstr ""
+"Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
 
 #: rust/src/library.rs
 msgid "Turn with the Kindle (portrait and landscape)"
@@ -3155,7 +3165,6 @@ msgstr "Nombrar la página %d..."
 #. TRANSLATORS: a row of the long-press card of a link: rename the page it goes to (everywhere the
 #. page is listed; about 700 px at 44 px).
 #: rust/src/linkcard.rs
-
 msgid "Rename the page"
 msgstr "Renombrar la página"
 
@@ -3199,7 +3208,6 @@ msgid "To change one, hold it on the page."
 msgstr "Para cambiar uno, mantenlo pulsado en la página."
 
 #: rust/src/mapview.rs
-
 msgid "Not enough memory for the graph."
 msgstr "No hay memoria suficiente para el grafo."
 
@@ -3291,6 +3299,13 @@ msgstr "(añade una parte abajo)"
 #: rust/src/musicbuild.rs
 msgid "Add a part"
 msgstr "Añadir una parte"
+
+#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (962 px at 44
+#. px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
+#: rust/src/musicbuild.rs
+
+msgid "Start from"
+msgstr "Partir de"
 
 #. TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
 #: rust/src/musicbuild.rs
@@ -3497,6 +3512,28 @@ msgid "7-string bass"
 msgstr "Bajo de 7 cuerdas"
 
 #: rust/src/paper.rs
+
+msgctxt "paper"
+msgid "Cross grid"
+msgstr "Cuadrícula de cruces"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Isometric"
+msgstr "Isométrico"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Hexagon"
+msgstr "Hexágonos"
+
+#: rust/src/paper.rs
+
+msgctxt "paper"
+msgid "Seyes rule"
+msgstr "Pauta Seyès"
+
+#: rust/src/paper.rs
 msgctxt "paper"
 msgid "Custom music"
 msgstr "Partitura a medida"
@@ -3559,6 +3596,12 @@ msgstr "Tablatura, 6 líneas"
 msgctxt "music part"
 msgid "Tab, 7 lines"
 msgstr "Tablatura, 7 líneas"
+
+#: rust/src/paper.rs
+
+msgctxt "music part"
+msgid "Tab, 8 lines"
+msgstr "Tablatura, 8 líneas"
 
 #: rust/src/paper.rs
 msgctxt "music part"

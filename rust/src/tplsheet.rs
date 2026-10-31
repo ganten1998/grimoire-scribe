@@ -16,10 +16,13 @@ const CHECK_MS: u32 = 1500;
 
 // ---- the paper pickers' layout ----
 
-/// The paper pickers' tiles: the fixed papers in paper_at() order, then Custom music..., then More
-/// papers... (this sheet); the editor's Paper sheet also has Photos... (this sheet on the photos).
-pub const PAPER_SHEET_TILES: i32 = PAPER_PICKER_COUNT + 1;
-pub const PAPER_SHEET_EDITOR_TILES: i32 = PAPER_SHEET_TILES + 1;
+/// The paper pickers' tiles: the fixed papers in paper_at() order, then Custom music... More layouts...
+/// (this sheet) and, in the editor's Paper sheet, Photos... (this sheet on the photos) are buttons
+/// beside Cancel since rc.9, so the tiles keep the owner's three rows of six.
+pub const PAPER_SHEET_TILES: i32 = PAPER_PICKER_COUNT;
+pub const PAPER_SHEET_EDITOR_TILES: i32 = PAPER_PICKER_COUNT;
+/// The pickers' columns: always six, so each row is one of the owner's rows (rc.9).
+pub const PAPER_PICKER_COLS: i32 = 6;
 
 /// A grid of n tiles (each 3:4 with label_h px for its label under it, gap px apart) in a box
 /// avail_w wide and avail_h tall: the number of columns, at least min_cols, that makes the tiles
@@ -69,6 +72,18 @@ pub fn paper_grid(mut n: i32, avail_w: i32, avail_h: i32, gap: i32, label_h: i32
     best
 }
 pub const PAPER_GRID_MIN_COLS: i32 = 6;
+/// paper_grid with exactly `cols` columns (the paper pickers' rows are fixed: PAPER_PICKER_COLS).
+pub fn paper_grid_cols(n: i32, avail_w: i32, avail_h: i32, gap: i32, label_h: i32, max_w: i32, cols: i32) -> PaperGrid {
+    let cols = cols.max(1);
+    let rows = (n.max(1) + cols - 1) / cols;
+    let mut tw = ((avail_w - (cols - 1) * gap) / cols).min(max_w);
+    let max_th = avail_h / rows - label_h;
+    if tw * 4 / 3 > max_th {
+        tw = max_th * 3 / 4;
+    }
+    let tw = tw.max(1);
+    PaperGrid { cols, rows, tw, th: tw * 4 / 3, cell_h: tw * 4 / 3 + label_h }
+}
 /// The editor's Paper sheet on this screen, and the grid of its PAPER_SHEET_EDITOR_TILES tiles (the
 /// Templates sheet takes the same place and tiles).
 pub fn paper_sheet_rect(a: &App, g: &mut PaperGrid) -> Rect {
@@ -77,7 +92,18 @@ pub fn paper_sheet_rect(a: &App, g: &mut PaperGrid) -> Rect {
     // Beside the tiles: the title (120), the sheet's insets (72), its buttons (190), a margin (80).
     let avail_w = a.w - 2 * m - ui_px(72.0);
     let avail_h = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
-    *g = paper_grid(PAPER_SHEET_EDITOR_TILES, avail_w, avail_h, gap, ui_px(100.0), a.w / 6, PAPER_GRID_MIN_COLS);
+    *g = paper_grid_cols(PAPER_SHEET_EDITOR_TILES, avail_w, avail_h, gap, ui_px(100.0), a.w / 6, PAPER_PICKER_COLS);
+    let sheet_h = ui_px(120.0) + ui_px(72.0) + g.rows * g.cell_h + ui_px(190.0);
+    Rect { x: m, y: (a.h - sheet_h) / 3, w: a.w - 2 * m, h: sheet_h }
+}
+/// The Templates (and Photos) sheet's place: as the Paper sheet's was before rc.9 (19 tiles: 24
+/// templates a page upright, 21 sideways), so the shorter three-row Paper sheet leaves it as big.
+fn templates_sheet_rect(a: &App, g: &mut PaperGrid) -> Rect {
+    let m = ui_px(70.0);
+    let gap = ui_px(30.0);
+    let avail_w = a.w - 2 * m - ui_px(72.0);
+    let avail_h = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
+    *g = paper_grid(19, avail_w, avail_h, gap, ui_px(100.0), a.w / 6, PAPER_GRID_MIN_COLS);
     let sheet_h = ui_px(120.0) + ui_px(72.0) + g.rows * g.cell_h + ui_px(190.0);
     Rect { x: m, y: (a.h - sheet_h) / 3, w: a.w - 2 * m, h: sheet_h }
 }
@@ -398,7 +424,7 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     hits_clear(&mut s.hits);
     s.pressed = None;
     let mut g = PaperGrid::default();
-    s.rect = paper_sheet_rect(a, &mut g);
+    s.rect = templates_sheet_rect(a, &mut g);
     let c = &mut a.screen;
     // TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
     // write on as paper), which More papers... opens (1560 px at 64 px).
