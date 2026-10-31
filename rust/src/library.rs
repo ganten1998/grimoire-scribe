@@ -4160,16 +4160,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                     {
                         app_toast(a, tr("Could not rename the folder. Check the name and destination."), 3500);
                     } else {
-                        let ids: Vec<String> = lib(a)
-                            .books
-                            .iter()
-                            .filter(|nb| store_folder_contains(it.folder.as_str(), nb.folder.as_str()))
-                            .map(|nb| nb.id.as_str().to_string())
-                            .collect();
-                        for id in ids {
-                            mirror_follow(a, &id, false);
-                        }
-                        export_mirror_prune_folder(it.folder.as_str(), &app_mirror_dir());
+                        folder_follow(a, it.folder.as_str());
                     }
                 }
             }
@@ -4204,16 +4195,24 @@ fn move_folder(a: &mut App, it: &Item, parent: &str) {
         app_toast(a, tr("Could not move the folder. Is there one of that name there?"), 3500);
         return;
     }
-    let ids: Vec<String> = lib(a)
-        .books
-        .iter()
-        .filter(|nb| store_folder_contains(&old, nb.folder.as_str())) // (the list is from before the move)
-        .map(|nb| nb.id.as_str().to_string())
-        .collect();
+    folder_follow(a, &old);
+}
+
+/// After the folder old was renamed or moved (the lists still from before): the mirror PDFs of the
+/// notebooks in it and in the folders inside it follow, and the mirror directories those folders
+/// leave behind go if empty.
+fn folder_follow(a: &mut App, old: &str) {
+    let s = lib(a);
+    let ids: Vec<String> =
+        s.books.iter().filter(|nb| store_folder_contains(old, nb.folder.as_str())).map(|nb| nb.id.as_str().to_string()).collect();
+    let gone: Vec<String> = s.folders.iter().filter(|f| store_folder_contains(old, f)).cloned().collect();
     for id in ids {
         mirror_follow(a, &id, false);
     }
-    export_mirror_prune_folder(&old, &app_mirror_dir());
+    let mirror_dir = app_mirror_dir();
+    for f in gone {
+        export_mirror_prune_folder(&f, &mirror_dir);
+    }
 }
 
 fn act(a: &mut App, h: &Hit) {
@@ -5246,7 +5245,9 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         if let Some(hit) = hit {
             name.push_str(match hit.id {
                 H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
-                H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_FMORE_MOVE=>"folder.move",H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",
+                H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_MORE_MOVE=>"more.move",
+                H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
+                H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
                 H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
@@ -5262,7 +5263,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 _ => "",
             });
-            if hit.id == H_PAPER || hit.id == H_MOVE_TO { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
             } else if matches!(hit.id, H_GESTURE_ROW | H_BUTTON_ROW) {
@@ -5335,6 +5337,24 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "%s", NAMES[bt_state() as usize]);
     } else if key == "folder" {
         csnprintf!(out, cap, "%s", &s.cur_folder);
+    } else if key == "folders" {
+        csnprintf!(out, cap, "%s", &s.folders.join(", "));
+    } else if key == "mirror" {
+        // The mirror PDFs by directory: "." (the top) and each directory under it, sorted, with how many
+        // PDFs it holds ("School 0" for one left empty).
+        let count = |dir: &std::path::Path| {
+            std::fs::read_dir(dir).map_or(0, |d| d.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".pdf")).count())
+        };
+        let root = std::path::PathBuf::from(app_mirror_dir());
+        let mut dirs: Vec<String> = std::fs::read_dir(&root)
+            .map(|d| d.flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default();
+        dirs.sort();
+        let mut text = format!(". {}", count(&root));
+        for d in dirs {
+            text.push_str(&format!(", {} {}", d, count(&root.join(&d))));
+        }
+        csnprintf!(out, cap, "%s", &text);
     } else if key == "items" {
         csnprintf!(out, cap, "%d", s.items.len() as i32);
     } else if key == "page" {
@@ -5952,10 +5972,18 @@ mod tests {
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
-    if name.starts_with("notebook.")||name.starts_with("folder.") {
+    // A card ("notebook.ID", "folder.PATH"), or its menu button ("notebook-menu.ID", "folder-menu.PATH").
+    let card=match name.split_once('.') {
+        Some(("notebook",rest))=>Some((false,rest,H_CARD)),
+        Some(("folder",rest))=>Some((true,rest,H_CARD)),
+        Some(("notebook-menu",rest))=>Some((false,rest,H_CARD_MORE)),
+        Some(("folder-menu",rest))=>Some((true,rest,H_CARD_MORE)),
+        _=>None,
+    };
+    if let Some((folder,rest,id))=card {
         let s=a.lib.as_deref()?;
-        let i=s.items.iter().position(|it|if let Some(id)=name.strip_prefix("notebook."){!it.is_folder&&s.books[it.nb].id==id}else{it.is_folder&&it.folder==name.strip_prefix("folder.").unwrap()})?;
-        return s.hits.h.iter().find(|h|h.id==H_CARD&&h.arg==i as i32).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
+        let i=s.items.iter().position(|it|it.is_folder==folder&&if folder{it.folder==rest}else{s.books[it.nb].id==rest})?;
+        return s.hits.h.iter().find(|h|h.id==id&&h.arg==i as i32).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
     }
     let points:Vec<_>=a.lib.as_deref()?.hits.h.iter().map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32)).collect();
     for (x,y) in points {

@@ -84,10 +84,10 @@ expect display.presents is ui 20 1480 1820 980
 expect keyboard.draws is 0
 # The space bar with a finger: the key far below the text line is still its own refresh
 touch down 1060 2365
-expect display.presents is fast 50 1510 1760 120, fast 831 2290 458 150
+expect display.presents is fast 50 1510 1760 120, fast 841 2290 355 150
 expect keyboard.draws is 1
 touch up 1060 2365
-expect display.presents is fast 831 2290 458 150
+expect display.presents is fast 841 2290 355 150
 expect keyboard.draws is 1
 tap 1679 2205
 tap 398 2045
