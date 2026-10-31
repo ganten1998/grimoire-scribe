@@ -74,6 +74,8 @@ pub enum PvResult {
 #[derive(Clone, Debug, Default)]
 pub struct PagesView {
     pub open: bool,
+    /// the control pressed (not a tile: a tile's tap redraws it at once), shown pressed until the lift
+    pub pressed: Option<Rect>,
     pub unified: bool,
     /// the open page's index; the editor keeps it up to date
     pub current: i32,
@@ -429,6 +431,7 @@ fn draw_index(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, tota
 
 /// Draws the whole screen into a->screen (the caller refreshes it).
 pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav) {
+    v.pressed = None;
     if v.overlay {pagesview_draw_overlay(v,a);return;}
     if v.view_size!=(a.w,a.h) {v.view_size=(a.w,a.h);v.press=Press::default();v.last_tap=None;}
     if v.unified {v.index_tab=false;}
@@ -822,6 +825,10 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if phase == 0 {
         v.held = false;
         press_begin(&mut v.press, ev.x, ev.y, ev.t_ms);
+        if let Some(&h) = hits_find(&v.hits, ev.x, ev.y).filter(|h| h.id != PG_OPEN && h.id != PG_TOGGLE) {
+            app_press_feedback(a, h.r);
+            v.pressed = Some(h.r);
+        }
         return PvResult::None;
     }
     press_move(&mut v.press, ev.x, ev.y);
@@ -829,6 +836,10 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         return PvResult::None;
     }
     v.press.down = false;
+    let back = app_press_release(a, &mut v.pressed);
+    if !rect_is_empty(back) {
+        app_invalidate(a, back, RefreshMode::Ui);
+    }
     if v.held {v.held=false;return PvResult::None;}
     let Some(&hit) = hits_find(&v.hits, v.press.x0, v.press.y0) else {
         if v.context.take().is_some(){redraw(v,a,nb,nav,RefreshMode::Ui);}

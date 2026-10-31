@@ -1838,6 +1838,19 @@ pub fn app_press_feedback(a: &mut App, r: Rect) {
     display_present(&a.screen, r, RefreshMode::Fast);
 }
 
+/// The pressed look app_press_feedback gave `pressed`, taken off at the lift, before what the tap does
+/// draws: the rect to refresh, empty when nothing was pressed or the surface was drawn again since
+/// (its draw forgets the press).
+pub fn app_press_release(a: &mut App, pressed: &mut Option<Rect>) -> Rect {
+    match pressed.take() {
+        Some(r) => {
+            canvas_invert(&mut a.screen, r);
+            r
+        }
+        None => RECT_EMPTY,
+    }
+}
+
 /// typing paused this long: the keyboard's grayscale refresh
 const KB_SETTLE_MS: u32 = 900;
 

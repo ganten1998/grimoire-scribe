@@ -462,6 +462,8 @@ pub struct EditorState {
     tools_rect: Rect,
     tools_hits: HitList,
     tools_press: Press,
+    /// the picker's button pressed, shown pressed until the lift (app_press_feedback)
+    tools_pressed: Option<Rect>,
 
     /// the Pages view (pagesview.h)
     pv: PagesView,
@@ -1752,6 +1754,7 @@ const K_INKS: [Ink; 2] = [
 const N_INKS: i32 = K_INKS.len() as i32;
 
 fn draw_tools(a: &mut App) {
+    ed(a).tools_pressed = None;
     if ed_ref(a).shapes_menu { draw_shape_menu(a); return; }
     let (aw, ah) = (a.w, a.h);
     let App { screen: c, settings: st, ed, .. } = a;
@@ -8238,6 +8241,10 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         if s.tools_open {
             s.owner = Owner::Tools;
             press_begin(&mut s.tools_press, ev.x, ev.y, ev.t_ms);
+            if let Some(h) = hits_find(&s.tools_hits, ev.x, ev.y).copied() {
+                app_press_feedback(a, h.r);
+                ed(a).tools_pressed = Some(h.r);
+            }
             return;
         }
         if s.mb.open {
@@ -8491,6 +8498,11 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 return;
             }
             s.owner = Owner::None;
+            let mut pressed = s.tools_pressed.take();
+            let back = app_press_release(a, &mut pressed);
+            if !rect_is_empty(back) {
+                app_invalidate(a, back, RefreshMode::Ui);
+            }
             tools_tap(a);
         }
         Owner::Build => {
