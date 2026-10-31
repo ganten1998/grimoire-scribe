@@ -656,7 +656,17 @@ band, resume fine control on either side, release without a jump and check the s
 an in-progress stroke has a snapped preview, or `0` otherwise. `editor.stroke_shape` reports its lowercase recognized kind,
 or `none`; `editor.undo_kind` and `redo_kind` also accept `replace`. `pentap panel shapes` toggles recognition.
 `z_shape_circle` checks a held circle, one-step undo/redo and replay equivalence; `z_shape_move_on`
-checks moving on from the preview restores the freehand stroke.
+checks moving on from the preview restores the freehand stroke. `settings.shape_quads`,
+`settings.shape_round`, `settings.shape_corner` and `settings.shape_min_mm` report the menu's other
+controls. `editor.stroke_turn_deg` is the newest stroke's sharpest turn from one piece to the next,
+in whole degrees, the turn through its start included when it is closed (90 at a snapped rectangle's
+corners, a few where Corner roundness made them arcs); empty with no stroke. The Smart shapes menu's
+named targets are `shapes.on`, `shapes.hold`, `shapes.quads`, `shapes.round`, `shapes.corner`,
+`shapes.min`, `shapes.links` and `shapes.done` (`tap panel NAME`); a slider's target is the middle
+of its row, whose hit takes the gaps beside it too. `z_shape_4_ellipses` to `z_shape_7_rounded` hold
+generated hand-like strokes (ellipses as drawn, uneven quads, each Four sides mode, Corner
+roundness); `z_shape_8_sliders` drags both sliders by finger and pen, upright and sideways, through
+a palm's and the pen's cancels, and `z_shape_9_saved` finds its values in settings.ini.
 
 `z_sideways_toolbar` checks rotation with the toolbar on either side of the page, then disables
 `landscape_fit` and verifies the saved placement is retained. The full-page landscape gap is 24 px at 300 dpi.

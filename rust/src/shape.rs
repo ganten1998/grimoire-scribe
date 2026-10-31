@@ -2,8 +2,9 @@
 //!
 //! The editor hands it a raw ink stroke when the nib has been held still at the end of one; it says
 //! whether the stroke is a line, a rectangle, a square, a quad, a triangle, an ellipse or a circle,
-//! and gives the clean points that replace the raw ones. When it says no it says why (a
-//! ShapeReason), for the shape-log the owner tunes the gates from.
+//! and gives the clean points that replace the raw ones (a polygon's corners rounded when Corner
+//! roundness asks: ShapeParams::corner, fillet). When it says no it says why (a ShapeReason), for
+//! the shape-log the owner tunes the gates from.
 //!
 //! It is pure geometry. Timing features would be useless: the headless runner's batches share one
 //! time, and a relayed pen sends nothing while it is still. So only the positions decide, and the
@@ -65,13 +66,20 @@ pub const SHAPE_SEG_STRAIGHT: f32 = 0.93;
 pub const SHAPE_RECT_DEG: f32 = 15.0;
 /// A rectangle within this many degrees of the page's axes is put on them.
 pub const SHAPE_AXIS_DEG: f32 = 5.0;
+/// An uneven quad's opposite edges within this many degrees of parallel are made parallel (two
+/// such pairs make a parallelogram, one a trapezium; see uneven_quad).
+pub const SHAPE_PARALLEL_DEG: f32 = 10.0;
 /// A rectangle whose sides differ by at most this fraction of the longer is a square.
 pub const SHAPE_SQUARE_SIDES: f32 = 0.10;
 /// A triangle within this many degrees of equilateral or right-angled is made so.
 pub const SHAPE_TRI_DEG: f32 = 7.0;
-/// An ellipse's RMS and largest radial errors at most these fractions of its minor semi-axis.
+/// An ellipse's RMS and largest radial errors at most these fractions of its minor semi-axis, or
+/// of SHAPE_ELLIPSE_MAJOR_FRAC of its major one when that is more (see ellipse()).
 pub const SHAPE_ELLIPSE_RMS: f32 = 0.06;
 pub const SHAPE_ELLIPSE_MAX: f32 = 0.20;
+/// A long ellipse's errors are measured against this fraction of its major semi-axis, when that is
+/// more than its minor one.
+pub const SHAPE_ELLIPSE_MAJOR_FRAC: f32 = 0.5;
 /// An ellipse whose minor / major axis is at least this is a circle.
 pub const SHAPE_CIRCLE_RATIO: f32 = 0.88;
 /// An ellipse within this many degrees of the page's axes is put on them.
@@ -145,7 +153,7 @@ pub enum ShapeKind {
     Line = 1,
     Rectangle = 2,
     Square = 3,
-    /// four straight edges that are not a rectangle (a diamond, a trapezium)
+    /// four straight edges that are not a rectangle (a parallelogram, a trapezium, a kite)
     Quad = 4,
     Triangle = 5,
     Ellipse = 6,
@@ -204,11 +212,15 @@ pub struct ShapeParams {
     pub quad_mode: i32,
     /// 0 follows the fitted ratio, 1 favors circles except obvious ovals, 2 makes circles.
     pub circle_mode: i32,
+    /// 0 to 1: a snapped polygon's corners rounded, all with one radius, this fraction of the
+    /// largest that fits (see fillet); 0 leaves them sharp.
+    pub corner: f32,
 }
 
-/// The parameters for a page drawn at `zoom`, outside a writing burst, v1.5's kinds off.
+/// The parameters for a page drawn at `zoom`, outside a writing burst, v1.5's kinds off, corners
+/// sharp.
 pub fn shape_params(dpi: f32, zoom: f32, paper: PaperKind, page_w: i32) -> ShapeParams {
-    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false, quad_mode: 0, circle_mode: 0 }
+    ShapeParams { dpi, zoom, paper, page_w, burst: false, extras: false, quad_mode: 0, circle_mode: 0, corner: 0.0 }
 }
 
 /// What the gates measured, for the shape-log (no coordinates). Lengths are screen mm, angles are
@@ -236,8 +248,9 @@ pub struct ShapeFeatures {
     pub turning: f32,
     /// ShortStraw's corners on the closed path (on the open one, ends included, for v1.5's kinds)
     pub corners: i32,
-    /// the ellipse fit's RMS and largest radial errors / the minor semi-axis (an arc's / its
-    /// radius; 0 when not fitted); the largest includes the ends the closure cut away
+    /// the ellipse fit's RMS and largest radial errors / the yardstick its gate holds them to (the
+    /// minor semi-axis, or half the major on a long ellipse; an arc's / its radius; 0 when not
+    /// fitted); the largest includes the ends the closure cut away
     pub rms: f32,
     pub max_err: f32,
     /// the fitted ellipse's minor / major axis
@@ -677,7 +690,7 @@ fn recognize_inner(pts: &[PenSample], prm: &ShapeParams) -> Option<ShapeResult> 
     if let (true, Some((kind, verts))) = (use_poly, poly) {
         let (kind, verts) = snap_polygon(kind, verts, prm, mm)?;
         r.kind = kind;
-        r.pts = finish(pts, &start_closed(&verts, sign, first, pstep)?, end_t)?;
+        r.pts = finish(pts, &start_closed(&verts, sign, first, pstep, prm.corner as f64)?, end_t)?;
         return Some(r);
     }
     if let Some(el) = ell {
@@ -1019,7 +1032,8 @@ fn seg_offset(c: &[P], cyclic: bool, a: usize, b: usize) -> f64 {
 /// ShortStraw's corners (Wolin, Eoff and Hammond 2008) on the resampled path, closed or open (an
 /// open path's ends are corners). Its two passes test segments with the edge test, so they agree
 /// with it: a segment that is not straight gets a corner at its smallest straw in its middle
-/// half; a corner whose two segments make one straight one goes (the straightest such first).
+/// half (on a closed path, one that stands off its chord as no edge may gets one at its farthest
+/// point); a corner whose two segments make one straight one goes (the straightest such first).
 /// "One straight one" is also held to a line's offset from its chord (line_allow, `mm` and `tol`
 /// as the line gate's) plus MERGE_SLACK steps: a short edge turned square off a long one bows the
 /// pair by less than chord / path can see (4.5 mm on 60 is 0.933 straight), but its corner stands
@@ -1093,6 +1107,33 @@ fn straw_corners(c: &[P], cyclic: bool, seg_min: f64, mm: f64, tol: f64) -> Opti
             }
             added = Some(best);
             break;
+        }
+        // On a closed path, a segment straight by chord / path that stands off its chord farther
+        // than the merge below allows an edge is two edges too: an obtuse corner (a parallelogram's
+        // 140 or 150 degrees, a trapezium's) turns too little for either test above to see it, and
+        // the merge, which tests both, would not have taken it away. It gets a corner at its point
+        // farthest from the chord, the vertex. (Only once nothing fails chord / path, so a shape the
+        // first test splits is split as before.)
+        if added.is_none() && cyclic {
+            for k in 0..nc {
+                let (a, b) = (corners[k], corners[(k + 1) % nc]);
+                let n = span(m, cyclic, a, b);
+                if n < 4 {
+                    continue;
+                }
+                let (pa, pb) = (c[a], c[b % m]);
+                let mut far = (a + 1) % m;
+                for o in 2..n {
+                    let i = (a + o) % m;
+                    if seg_dist(c[i], pa, pb) > seg_dist(c[far], pa, pb) {
+                        far = i;
+                    }
+                }
+                if seg_dist(c[far], pa, pb) > line_allow(dist(pa, pb), mm, tol) + slack {
+                    added = Some(far);
+                    break;
+                }
+            }
         }
         match added {
             Some(b) if !corners.contains(&b) => {
@@ -1212,13 +1253,14 @@ fn mean_mod(angles: &[f64], k: f64) -> f64 {
 }
 
 /// Makes the polygon what it is closest to: a rectangle or square (on the page's axes when near
-/// them, then on the grid), an equilateral or right triangle, or the quad or triangle as found.
+/// them, then on the grid), an equilateral or right triangle, an uneven quad made clean
+/// (uneven_quad), or the triangle as found.
 fn snap_polygon(kind: ShapeKind, v: Vec<P>, prm: &ShapeParams, mm: f64) -> Option<(ShapeKind, Vec<P>)> {
     let ang = corner_angles(&v)?;
     let deg = |a: f64| a.to_degrees();
     if kind == ShapeKind::Quad {
         if prm.quad_mode == 0 && !ang.iter().all(|&a| (deg(a) - 90.0).abs() <= SHAPE_RECT_DEG as f64) {
-            return Some((kind, v));
+            return Some((kind, uneven_quad(v)?));
         }
         return rectangle(&v, prm, mm);
     }
@@ -1252,6 +1294,74 @@ fn snap_polygon(kind: ShapeKind, v: Vec<P>, prm: &ShapeParams, mm: f64) -> Optio
         return Some((ShapeKind::Triangle, out));
     }
     Some((kind, v))
+}
+
+/// Four sides: Uneven allowed keeps a quad that is no rectangle with the corners found (its edges
+/// are straight already), but each pair of opposite edges within SHAPE_PARALLEL_DEG of parallel is
+/// made parallel, as a rectangle's corners are made square: two such pairs make the parallelogram
+/// whose corners move least (the corners' centroid, and half of each diagonal: each corner moves by
+/// half the distance between the diagonals' middles), one pair a trapezium (the pair turned to its
+/// mean direction about each edge's middle, the corners sliding along the other two edges). The
+/// parallel pair nearest the page's axes, within SHAPE_AXIS_DEG of them, is then put on them, the
+/// quad turned about its centroid. A quad that is not convex (a dart) stays as found.
+fn uneven_quad(v: Vec<P>) -> Option<Vec<P>> {
+    let d: Vec<P> = shape_collect((0..4).map(|k| sub(v[(k + 1) % 4], v[k])), 4)?;
+    let turns: Vec<f64> = shape_collect((0..4).map(|k| cross(d[k], d[(k + 1) % 4])), 4)?;
+    if !(turns.iter().all(|&t| t > 0.0) || turns.iter().all(|&t| t < 0.0)) {
+        return Some(v);
+    }
+    // (an edge's line direction, modulo pi; the angle between two lines, in [0, pi / 2])
+    let dir = |a: P| a.y.atan2(a.x);
+    let apart = |a: P, b: P| {
+        let t = (dir(a) - dir(b)).rem_euclid(std::f64::consts::PI);
+        t.min(std::f64::consts::PI - t)
+    };
+    let lim = (SHAPE_PARALLEL_DEG as f64).to_radians();
+    let par = [apart(d[0], d[2]) <= lim, apart(d[1], d[3]) <= lim];
+    let (mut out, pairs): (Vec<P>, &[usize]) = match par {
+        [true, true] => {
+            let c = centroid(&v);
+            let (h0, h1) = (scale(sub(v[0], v[2]), 0.5), scale(sub(v[1], v[3]), 0.5));
+            (shape_copy(&[add(c, h0), add(c, h1), sub(c, h0), sub(c, h1)], 0)?, &[0, 1])
+        }
+        [true, false] | [false, true] => {
+            // The pair is edges o and o + 2; edges o + 1 and o + 3 keep their lines.
+            let o = if par[0] { 0 } else { 1 };
+            let th = mean_mod(&[dir(d[o]), dir(d[o + 2])], 2.0);
+            let line = |k: usize| -> (P, P) {
+                if k % 2 == o {
+                    (lerp(v[k], v[(k + 1) % 4], 0.5), unit(th))
+                } else {
+                    (v[k], scale(d[k], 1.0 / norm(d[k])))
+                }
+            };
+            let mut t = shape_buffer(4)?;
+            for k in 0..4 {
+                match intersect(line((k + 3) % 4), line(k)) {
+                    Some(q) => t.push(q),
+                    None => return Some(v),
+                }
+            }
+            (t, if o == 0 { &[0] } else { &[1] })
+        }
+        _ => return Some(v),
+    };
+    // The parallel pair nearest the axes, and how far it is turned off them.
+    let q = std::f64::consts::FRAC_PI_2;
+    let off = |k: usize| {
+        let a = dir(sub(out[k + 1], out[k]));
+        a - (a / q).round() * q
+    };
+    let best = pairs.iter().map(|&k| off(k)).min_by(|a, b| a.abs().total_cmp(&b.abs()))?;
+    if best != 0.0 && best.abs().to_degrees() <= SHAPE_AXIS_DEG as f64 {
+        let c = centroid(&out);
+        let (cs, sn) = ((-best).cos(), (-best).sin());
+        for a in out.iter_mut() {
+            let r = sub(*a, c);
+            *a = add(c, p(fmla(r.x, cs, -(r.y * sn)), fmla(r.x, sn, r.y * cs)));
+        }
+    }
+    Some(out)
 }
 
 /// A quad whose corners are all near square, as a rectangle: its edges' mean direction (on the
@@ -1365,13 +1475,16 @@ fn rectangle(v: &[P], prm: &ShapeParams, mm: f64) -> Option<(ShapeKind, Vec<P>)>
 }
 
 /// A closed polygon's outline as the snapped points: turned to go the stroke's way (`sign`, the
-/// winding's), starting at the outline's point nearest the stroke's first point (its nearest vertex
-/// when that is within a point step), with a point at least every `step` and the last point exactly
-/// the first.
-fn start_closed(v: &[P], sign: f64, first: P, step: f64) -> Option<Vec<P>> {
+/// winding's), its corners rounded by `round` (fillet; 0 sharp), starting at the outline's point
+/// nearest the stroke's first point (its nearest vertex when that is within a point step), with a
+/// point at least every `step` and the last point exactly the first.
+fn start_closed(v: &[P], sign: f64, first: P, step: f64, round: f64) -> Option<Vec<P>> {
     let mut v = shape_copy(v, 0)?;
     if area2(&v) * sign < 0.0 {
         v.reverse();
+    }
+    if round > 0.0 {
+        v = fillet(&v, round)?;
     }
     let n = v.len();
     let (mut be, mut bt, mut bd) = (0, 0.0, f64::MAX);
@@ -1402,6 +1515,71 @@ fn start_closed(v: &[P], sign: f64, first: P, step: f64) -> Option<Vec<P>> {
     }
     // (chain ends on v[be], the start, when the start is a vertex)
     segments(&chain, true, step)
+}
+
+/// The polygon with its corners rounded (Corner roundness): every corner an arc of one radius,
+/// `f` (0 to 1) of the largest the polygon holds, at which the two arcs at the ends of its tightest
+/// edge meet in its middle (a corner that turns by phi leaves its edges r tan(phi / 2) from the
+/// vertex, so an edge of length l between turns phi and psi holds r up to l / (tan(phi / 2) +
+/// tan(psi / 2))). So no arc ever runs into the next, whatever the corners' angles: at 1 a square
+/// is a circle, a rectangle a stadium, a triangle its inscribed circle. Each arc has the points of
+/// a circle of its radius (shape_ellipse_vertices) over its turn, at least 2 pieces; the straight
+/// edges between are single pieces, which segments cuts. The vertices in their order, the first not
+/// repeated; a corner that does not turn is left as it is.
+fn fillet(v: &[P], f: f64) -> Option<Vec<P>> {
+    let n = v.len();
+    let dirs: Vec<P> = shape_collect((0..n).map(|k| {
+        let d = sub(v[(k + 1) % n], v[k]);
+        scale(d, 1.0 / norm(d).max(1e-9))
+    }), n)?;
+    // the turn at vertex k, from edge k - 1 to edge k (signed, the way angles grow when positive)
+    let turn: Vec<f64> = shape_collect((0..n).map(|k| angle_between(dirs[(k + n - 1) % n], dirs[k])), n)?;
+    let half = |k: usize| (0.5 * turn[k].abs()).tan();
+    let mut rmax = f64::MAX;
+    for k in 0..n {
+        let den = half(k) + half((k + 1) % n);
+        if den > 1e-9 {
+            rmax = rmax.min(dist(v[k], v[(k + 1) % n]) / den);
+        }
+    }
+    let r = f.clamp(0.0, 1.0) * rmax;
+    if rmax == f64::MAX || !r.is_finite() || r <= 0.0 {
+        return shape_copy(v, 0);
+    }
+    let pi2 = 2.0 * std::f64::consts::PI;
+    let per = shape_ellipse_vertices(r as f32) as f64;
+    let count = (0..n).map(|k| ((per * turn[k].abs() / pi2).ceil() as usize).max(2) + 1).sum::<usize>();
+    let mut out: Vec<P> = shape_buffer(count)?;
+    // (where two arcs meet on the tightest edge their ends are one point but for rounding, which
+    // could leave a piece a ten-thousandth of a pixel long pointing anywhere: a thousandth is one)
+    let put = |q: P, out: &mut Vec<P>| {
+        if out.last().is_none_or(|&l| dist(l, q) > 1e-3) {
+            out.push(q);
+        }
+    };
+    for k in 0..n {
+        let (din, phi) = (dirs[(k + n - 1) % n], turn[k]);
+        if phi.abs() < 1e-9 {
+            put(v[k], &mut out);
+            continue;
+        }
+        let t = r * half(k);
+        let a = madd(v[k], din, -t);
+        // the centre is on the side the corner turns to, r from the incoming edge
+        let side = if phi > 0.0 { 1.0 } else { -1.0 };
+        let c = madd(a, p(-din.y, din.x), side * r);
+        let ra = sub(a, c);
+        let pieces = ((per * phi.abs() / pi2).ceil() as usize).max(2);
+        for i in 0..=pieces {
+            let (sn, cs) = (phi * i as f64 / pieces as f64).sin_cos();
+            put(add(c, p(fmla(ra.x, cs, -(ra.y * sn)), fmla(ra.x, sn, ra.y * cs))), &mut out);
+        }
+    }
+    // (the last arc's end and the first arc's start can meet, on the tightest edge)
+    while out.len() > 1 && dist(out[out.len() - 1], out[0]) <= 1e-3 {
+        out.pop();
+    }
+    Some(out)
 }
 
 /// The points along a chain of vertices, each piece cut into equal parts no longer than `step`.
@@ -1524,10 +1702,16 @@ fn ellipse(lp: &[P], cut: &[P], diag: f64, tol: f64, f: &mut ShapeFeatures) -> O
         emax = emax.max(radial(q).abs());
     }
     let rms_px = (s2 / lp.len() as f64).sqrt();
-    f.rms = (rms_px / eb) as f32;
-    f.max_err = (emax / eb) as f32;
+    // The yardstick: the minor semi-axis, but never under half the major one. A hand's wobble and
+    // the way it bends an ellipse (an egg, a lemon, flatter sides) grow with the whole ellipse, not
+    // its thickness: held to its minor semi-axis, a long one drawn as carefully as a round one
+    // fails from an aspect of about 0.3 down. From an aspect of a half up nothing changes, and a
+    // box stays far outside (a rectangle's RMS error is about 0.17 of the yardstick at any aspect).
+    let yard = eb.max(SHAPE_ELLIPSE_MAJOR_FRAC as f64 * ea);
+    f.rms = (rms_px / yard) as f32;
+    f.max_err = (emax / yard) as f32;
     f.axis_ratio = (eb / ea) as f32;
-    if rms_px > SHAPE_ELLIPSE_RMS as f64 * eb * tol || emax > SHAPE_ELLIPSE_MAX as f64 * eb * tol {
+    if rms_px > SHAPE_ELLIPSE_RMS as f64 * yard * tol || emax > SHAPE_ELLIPSE_MAX as f64 * yard * tol {
         return None;
     }
     Some(Ellipse { c, th, a: ea, b: eb, rms_px })
@@ -1947,6 +2131,49 @@ mod allocation_tests {
         let obvious=Ellipse{b:50.0,..e};
         assert_eq!(ellipse_outline(&obvious,1.0,p(300.0,200.0),1).unwrap().0,ShapeKind::Ellipse);
         assert_eq!(ellipse_outline(&obvious,1.0,p(300.0,200.0),2).unwrap().0,ShapeKind::Circle);
+    }
+    #[test]
+    fn fillet_fits_its_arcs_and_uneven_quads_make_only_near_pairs_parallel() {
+        // A 100 by 40 rectangle at the most: r is 20, half its short side, so the short edges are
+        // all arc and the long ones keep 60 straight; at a half, r is 10.
+        let v=vec![p(0.0,0.0),p(100.0,0.0),p(100.0,40.0),p(0.0,40.0)];
+        for (f,r) in [(1.0,20.0),(0.5,10.0)] {
+            let out=fillet(&v,f).unwrap();
+            for q in &out {
+                let c=p(q.x.clamp(r,100.0-r),q.y.clamp(r,40.0-r));
+                let on_edge=(q.y.abs()<1e-9||(q.y-40.0).abs()<1e-9)&&(r-1e-9..=100.0-r+1e-9).contains(&q.x)
+                    ||(q.x.abs()<1e-9||(q.x-100.0).abs()<1e-9)&&(r-1e-9..=40.0-r+1e-9).contains(&q.y);
+                assert!(on_edge||(dist(*q,c)-r).abs()<1e-9);
+            }
+            assert!(out.windows(2).all(|w|dist(w[0],w[1])>1e-3));
+        }
+        // A dart (one corner turning the other way) is rounded on both sides, still one turn; an
+        // uneven quad of it is as found.
+        let dart=vec![p(0.0,0.0),p(100.0,50.0),p(0.0,100.0),p(30.0,50.0)];
+        let out=fillet(&dart,0.5).unwrap();
+        let n=out.len();
+        let turn:f64=(0..n).map(|k|angle_between(sub(out[k],out[(k+n-1)%n]),sub(out[(k+1)%n],out[k]))).sum();
+        assert!((turn.abs()-2.0*std::f64::consts::PI).abs()<1e-9);
+        assert_eq!(uneven_quad(dart.clone()).unwrap(),dart);
+        // A kite keeps its corners; a quad with one pair 4 degrees apart has that pair made parallel
+        // and the other left; with both near (and neither near the page's axes), the corners move
+        // by half the gap between the diagonals' middles.
+        let kite=vec![p(0.0,0.0),p(60.0,-40.0),p(100.0,0.0),p(60.0,40.0)];
+        assert_eq!(uneven_quad(kite.clone()).unwrap(),kite);
+        let t=4f64.to_radians();
+        let trap=vec![p(0.0,0.0),p(100.0,0.0),p(80.0,50.0),p(80.0-60.0*t.cos(),50.0+60.0*t.sin())];
+        let q=uneven_quad(trap).unwrap();
+        let apart=|k:usize|{
+            let (a,b)=(sub(q[(k+1)%4],q[k]),sub(q[(k+3)%4],q[(k+2)%4]));
+            let t=(a.y.atan2(a.x)-b.y.atan2(b.x)).rem_euclid(std::f64::consts::PI);
+            t.min(std::f64::consts::PI-t)
+        };
+        assert!(apart(0)<1e-9 && apart(1)>0.1);
+        let par=vec![p(0.0,0.0),p(100.0,30.0),p(130.0,82.0),p(28.0,50.0)];
+        let q=uneven_quad(par.clone()).unwrap();
+        let half=scale(sub(lerp(par[1],par[3],0.5),lerp(par[0],par[2],0.5)),0.5);
+        assert!((dist(q[0],par[0])-norm(half)).abs()<1e-9);
+        assert!(dist(add(q[0],q[2]),add(q[1],q[3]))<1e-9);
     }
 
 }

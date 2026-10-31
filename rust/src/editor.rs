@@ -85,6 +85,7 @@ const P_SHAPE_QUADS: i32 = 27;
 const P_SHAPE_ROUND: i32 = 28;
 const P_SHAPE_LINKS: i32 = 29;
 const P_SHAPE_MIN: i32 = 64;
+const P_SHAPE_CORNER: i32 = 65;
 const P_SHAPE_DONE: i32 = 30;
 const P_SETTINGS: i32 = 31;
 
@@ -528,6 +529,8 @@ pub struct EditorState {
     tools_press: Press,
     /// the picker's button pressed, shown pressed until the lift (app_press_feedback)
     tools_pressed: Option<Rect>,
+    /// a press on a Smart shapes slider has come over its track: the knob follows it to the lift
+    tools_slider: bool,
 
     /// the Pages view (pagesview.h)
     pv: PagesView,
@@ -1359,7 +1362,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
         let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}
             else if let Some(control)=name.strip_prefix("shapes.") {
                 match control {"on"=>Some((P_SHAPES,0)),"hold"=>Some((P_SHAPE_HOLD,0)),"quads"=>Some((P_SHAPE_QUADS,0)),
-                    "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"min"=>Some((P_SHAPE_MIN,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
+                    "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"min"=>Some((P_SHAPE_MIN,0)),"corner"=>Some((P_SHAPE_CORNER,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
             }
             else if let Some(i)=name.strip_prefix("picker.ink.") {i.parse::<i32>().ok().map(|i|(P_PICK_INK,i))}
             else if let Some(tool)=name.strip_prefix("picker.tool:") {
@@ -1972,8 +1975,19 @@ fn draw_shape_menu(a: &mut App) {
     let (aw,ah)=(a.w,a.h);
     let App {screen:c,settings:st,ed,..}=a;
     let s=ed.as_deref_mut().unwrap(); hits_clear(&mut s.tools_hits);
+    let rows=[
+        (P_SHAPES,tr(if st.shapes {n_("Smart shapes: On")}else{n_("Smart shapes: Off")})),
+        (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
+        (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
+        (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
+        (P_SHAPE_CORNER,""),
+        (P_SHAPE_MIN,""),
+        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Snap link areas: On")}else{n_("Snap link areas: Off")})),
+        (P_SHAPE_DONE,tr("Done")),
+    ];
+    let n=rows.len() as i32;
     let (w,rh,g)=(ui_px(1116.0).min(aw-ui_px(20.0)),ui_px(120.0),ui_px(16.0));
-    let h=ui_px(140.0)+7*rh+6*g;
+    let h=ui_px(140.0)+n*rh+(n-1)*g;
     let mut x=s.panel.x-w-ui_px(20.0);
     if x<ui_px(10.0) {x=s.panel.x+s.panel.w+ui_px(20.0);}
     x=clampi(x,ui_px(10.0),aw-w-ui_px(10.0));
@@ -1982,36 +1996,81 @@ fn draw_shape_menu(a: &mut App) {
     ui_frame(c,s.tools_rect,ui_px(22.0),255,true,0);
     ui_frame(c,s.tools_rect,ui_px(22.0),0,false,ui_px(6.0));
     font_draw_left(c,if ui_theme()==UiTheme::Gothic{FontFace::Title}else{FontFace::Bold},ui_title_size(),Rect{x:x+ui_px(30.0),y:y+ui_px(15.0),w:w-ui_px(60.0),h:ui_px(85.0)},tr("Smart shapes"),0);
-    let rows=[
-        (P_SHAPES,tr(if st.shapes {n_("Smart shapes: On")}else{n_("Smart shapes: Off")})),
-        (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
-        (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
-        (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
-        (P_SHAPE_MIN,""),
-        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Snap link areas: On")}else{n_("Snap link areas: Off")})),
-        (P_SHAPE_DONE,tr("Done")),
-    ];
     for (i,(id,label)) in rows.into_iter().enumerate() {
         let r=Rect{x:x+ui_px(30.0),y:y+ui_px(110.0)+i as i32*(rh+g),w:w-ui_px(60.0),h:rh};
-        if id==P_SHAPE_MIN {shape_min_draw(c,r,st.shape_min_mm);hits_add(&mut s.tools_hits,r,id,0);continue;}
+        if shape_slider_id(id) {
+            // (a slider's hit is its row and the gaps beside it, so a finger a little off still drags it)
+            let band=Rect{y:r.y-g/2,h:r.h+g,..r};
+            shape_slider_draw(c,id,band,st);hits_add(&mut s.tools_hits,band,id,0);continue;
+        }
         ui_button(c,r,IconKind::None,label,ButtonStyle::Plain);hits_add(&mut s.tools_hits,r,id,0);
     }
 }
 
-// The Smart shapes menu's slider: the smallest stroke a shape snaps (0 mm: any size).
-fn shape_min_slider(r: Rect, mm: i32) -> Slider {
-    // TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
-    // value is "Any" or a size in mm).
-    let mut sl=Slider{min:0.0,max:40.0,step:1.0,value:mm as f32,label:tr("Smallest shape"),unit:"mm",..Default::default()};
-    ui_slider_layout(&mut sl,rect_inflate(r,-ui_px(12.0)));
+// Whether a Smart shapes menu hit is one of its sliders.
+fn shape_slider_id(id: i32) -> bool {
+    id==P_SHAPE_CORNER || id==P_SHAPE_MIN
+}
+// The Smart shapes menu's sliders: Corner roundness (snapped polygons' corners, sharp at 0, as a
+// percentage of the largest rounding that fits) and Smallest shape (the smallest stroke a shape
+// snaps; 0 mm: any size). Both have the same text part, wide enough for either one's label and
+// widest value, so their tracks line up; the track starts the knob's radius past the value, so
+// the knob at 0 never covers it.
+fn shape_slider(id: i32, band: Rect, st: &Settings) -> Slider {
+    let mut sl=if id==P_SHAPE_CORNER {
+        // TRANSLATORS: the Smart shapes menu's slider that rounds the corners of the rectangles,
+        // triangles and other polygons a stroke snaps to (its value is "Sharp" or a percentage).
+        // At 44 px left of its value; label and value share up to 64% of the 1032 px row.
+        Slider{min:0.0,max:100.0,step:5.0,value:st.shape_corner as f32,label:tr("Corner roundness"),unit:"%",..Default::default()}
+    } else {
+        // TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
+        // value is "Any" or a size in mm).
+        Slider{min:0.0,max:40.0,step:1.0,value:st.shape_min_mm as f32,label:tr("Smallest shape"),unit:"mm",..Default::default()}
+    };
+    let row=rect_inflate(band,-ui_px(12.0));
+    let ts=ui_text_size();
+    let need=|label: &str, values: &[&str]| font_measure(FontFace::Regular,ts,label)+ui_px(16.0)
+        +values.iter().map(|v| font_measure(FontFace::Bold,ts,v)).max().unwrap_or(0);
+    let text_w=need(tr("Corner roundness"),&[c_("corners","Sharp"),&shape_corner_text(100)])
+        .max(need(tr("Smallest shape"),&[tr("Any"),"40 mm"]));
+    sl.text_w=clampi(text_w,row.w*42/100,row.w*64/100);
+    ui_slider_layout(&mut sl,row);
+    let clear=(ui_slider_knob_radius()+ui_px(10.0)-ui_px(26.0)).max(0);
+    sl.track.x+=clear;sl.track.w-=clear;
     sl
 }
-fn shape_min_draw(c: &mut Canvas, r: Rect, mm: i32) {
-    let sl=shape_min_slider(r,mm);
-    canvas_fill(c,r,255);
-    // TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
-    let text=if mm<=0 {tr("Any").to_string()} else {format!("{mm} mm")};
+fn shape_corner_text(pct: i32) -> String {
+    let mut t=String::new();
+    // TRANSLATORS: Corner roundness's value, a percentage of the most rounding a shape can take
+    // ("25%"; in Spanish "25 %", the usual spacing), right of its slider's name in bold at 44 px.
+    csnprintf!(&mut t,16,tr("%d%%"),pct);
+    t
+}
+fn shape_slider_draw(c: &mut Canvas, id: i32, band: Rect, st: &Settings) {
+    let sl=shape_slider(id,band,st);
+    canvas_fill(c,band,255);
+    let text=if id==P_SHAPE_CORNER {
+        // TRANSLATORS: Corner roundness at 0: snapped polygons keep sharp corners.
+        if st.shape_corner<=0 {c_("corners","Sharp").to_string()} else {shape_corner_text(st.shape_corner)}
+    } else {
+        // TRANSLATORS: the Smallest shape slider at 0: strokes of any size become shapes.
+        if st.shape_min_mm<=0 {tr("Any").to_string()} else {format!("{} mm",st.shape_min_mm)}
+    };
     ui_slider_draw(c,&sl,Some(&text));
+}
+/// A press on a Smart shapes slider at x (screen px), its hit `h`: once the press has come over the
+/// track (from the knob's radius before its start on) the knob follows it, set from x and clamped
+/// to the ends; a press on the name and value alone moves nothing. The setting changes at once; it
+/// is saved at the lift.
+fn shape_slider_follow(a: &mut App, h: Hit, x: f32) {
+    let mut sl=shape_slider(h.id,h.r,&a.settings);
+    let s=ed(a);
+    if !s.tools_slider && x<(sl.track.x-ui_slider_knob_radius()) as f32 {return;}
+    s.tools_slider=true;
+    if !ui_slider_set_from_x(&mut sl,x) {return;}
+    if h.id==P_SHAPE_CORNER {a.settings.shape_corner=sl.value as i32;} else {a.settings.shape_min_mm=sl.value as i32;}
+    shape_slider_draw(&mut a.screen,h.id,h.r,&a.settings);
+    app_invalidate(a,h.r,RefreshMode::Fast);
 }
 
 // ---- the eye: where a finger tap follows a link ----
@@ -3276,7 +3335,7 @@ fn shape_report(enabled: bool, mode: &str, result: &ShapeResult, burst: bool, zo
 fn shape_hold_tick(a: &mut App, now: u32) {
     if !a.settings.shapes || !a.input_drained { return; }
     let (dpi, hold_ms, logging, min_mm) = (a.dpi, a.settings.shape_hold_ms, a.shape_log, a.settings.shape_min_mm);
-    let policy=(a.settings.shape_quads,a.settings.shape_round);
+    let (policy,corner)=((a.settings.shape_quads,a.settings.shape_round),a.settings.shape_corner);
     let s = ed(a);
     if s.owner != Owner::Draw || s.sh.still_fired || s.sh.preview.is_some() { return; }
     let Some(raw) = s.cur.as_ref().filter(|raw| !stroke_is_erase(raw)) else { return; };
@@ -3290,7 +3349,7 @@ fn shape_hold_tick(a: &mut App, now: u32) {
     }
     let mut prm = shape_params(dpi, s.zoom, s.open_page().unwrap().paper, s.pgw);
     prm.burst = s.sh.burst;
-    prm.quad_mode=policy.0;prm.circle_mode=policy.1;
+    prm.quad_mode=policy.0;prm.circle_mode=policy.1;prm.corner=corner as f32/100.0;
     work_pump();
     let started = now_ms();
     let r = shape_recognize(&raw.pts, &prm);
@@ -4555,7 +4614,8 @@ fn draw_area_wait(a: &mut App, r: Rect) {
     a.screen.clip = clip;
 }
 
-/// Link selection uses the same shape policies as ink, but the snapped outline stays an overlay.
+/// Link selection uses the same shape policies as ink, but the snapped outline stays an overlay (and
+/// keeps sharp corners: Corner roundness is the ink's).
 fn link_shape_snap(a: &mut App,allow_open:bool) -> bool {
     if !a.settings.shapes || !a.settings.shape_links {return false;}
     let s=ed_ref(a);
@@ -6161,7 +6221,7 @@ pub fn editor_shape_hold_cycle(a: &mut App) {
 }
 pub fn editor_shape_last(a: &mut App) {
     let (dpi,logging) = (a.dpi,a.shape_log);
-    let policy=(a.settings.shape_quads,a.settings.shape_round);
+    let (policy,corner)=((a.settings.shape_quads,a.settings.shape_round),a.settings.shape_corner);
     let s = ed(a);
     if s.owner != Owner::None || sheet_open(s) || s.open_page().is_none_or(|p| p.readonly) {return;}
     let (Some(ip),Some(hi)) = (s.page_ix(),s.cur_hist()) else {return;};
@@ -6176,7 +6236,7 @@ pub fn editor_shape_last(a: &mut App) {
     }
     let raw = p.strokes.last().unwrap();
     let mut prm = shape_params(dpi,s.zoom,p.paper,s.pgw);
-    prm.quad_mode=policy.0;prm.circle_mode=policy.1;
+    prm.quad_mode=policy.0;prm.circle_mode=policy.1;prm.corner=corner as f32/100.0;
     let started = now_ms();
     let result = shape_recognize(&raw.pts,&prm);
     shape_report(logging,"last",&result,false,prm.zoom,now_ms().wrapping_sub(started),0);
@@ -8641,10 +8701,16 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         }
         if s.tools_open {
             s.owner = Owner::Tools;
+            s.tools_slider = false;
             press_begin(&mut s.tools_press, ev.x, ev.y, ev.t_ms);
             if let Some(h) = hits_find(&s.tools_hits, ev.x, ev.y).copied() {
-                app_press_feedback(a, h.r);
-                ed(a).tools_pressed = Some(h.r);
+                if shape_slider_id(h.id) {
+                    // A slider answers the first contact (no pressed look: its knob goes there).
+                    shape_slider_follow(a, h, ev.x);
+                } else {
+                    app_press_feedback(a, h.r);
+                    ed(a).tools_pressed = Some(h.r);
+                }
             }
             return;
         }
@@ -8941,24 +9007,23 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
         }
         Owner::Tools => {
             press_move(&mut s.tools_press, ev.x, ev.y);
-            let on_min = hits_find(&s.tools_hits, s.tools_press.x0, s.tools_press.y0).filter(|h| h.id == P_SHAPE_MIN).map(|h| h.r);
-            if let Some(row) = on_min {
-                // The Smallest shape slider follows the finger; a cancelled touch keeps the value it had.
+            let slider = hits_find(&s.tools_hits, s.tools_press.x0, s.tools_press.y0).filter(|h| shape_slider_id(h.id)).copied();
+            if let Some(h) = slider {
+                // A Smart shapes slider follows the press to its lift, where the value is saved; a
+                // cancelled touch (the pen came, a second finger) keeps the value it had come to.
                 if !touch_cancelled(ev) {
-                    let mut sl = shape_min_slider(row, a.settings.shape_min_mm);
-                    if ui_slider_set_from_x(&mut sl, ev.x) {
-                        a.settings.shape_min_mm = sl.value as i32;
-                        shape_min_draw(&mut a.screen, row, a.settings.shape_min_mm);
-                        app_invalidate(a, row, RefreshMode::Fast);
-                    }
+                    shape_slider_follow(a, h, ev.x);
                 }
                 if ph == 2 {
                     let s = ed(a);
                     s.owner = Owner::None;
                     s.tools_pressed = None;
-                    settings_save(&a.settings);
-                    shape_min_draw(&mut a.screen, row, a.settings.shape_min_mm);
-                    app_invalidate(a, row, RefreshMode::Ui);
+                    // (a press that stayed on the name changed nothing, and gets no refresh)
+                    if std::mem::take(&mut s.tools_slider) {
+                        settings_save(&a.settings);
+                        shape_slider_draw(&mut a.screen, h.id, h.r, &a.settings);
+                        app_invalidate(a, h.r, RefreshMode::Ui);
+                    }
                 }
                 return;
             }
@@ -8970,6 +9035,11 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
             let back = app_press_release(a, &mut pressed);
             if !rect_is_empty(back) {
                 app_invalidate(a, back, RefreshMode::Ui);
+            }
+            // A cancelled touch presses nothing and closes nothing: the palm a pen comes down beside
+            // is cancelled when it does, and the pen's own contact, next, finds the menu still open.
+            if touch_cancelled(ev) {
+                return;
             }
             tools_tap(a);
         }
@@ -9762,6 +9832,26 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "stroke_points" {
         let x = if has_page { newest(s) } else { None };
         csnprintf!(out, cap, "%d", x.map_or(0, |x| x.pts.len() as i32));
+    } else if key == "stroke_turn_deg" {
+        // The newest stroke's sharpest turn from one piece to the next, in whole degrees, the turn
+        // through its start included when it is closed: 90 at a snapped rectangle's corners, a few
+        // where Corner roundness made them arcs. Empty with no stroke or fewer than three points.
+        let x = if has_page { newest(s) } else { None };
+        if let Some(x) = x.filter(|x| x.pts.len() >= 3) {
+            let q = &x.pts;
+            let closed = q[0].x == q[q.len() - 1].x && q[0].y == q[q.len() - 1].y;
+            let v: Vec<(f32, f32)> = q[..q.len() - closed as usize].iter().map(|p| (p.x, p.y)).collect();
+            let n = v.len();
+            let mut most = 0.0f32;
+            for k in if closed { 0..n } else { 1..n - 1 } {
+                let (a, b, c) = (v[(k + n - 1) % n], v[k], v[(k + 1) % n]);
+                let (u, w) = ((b.0 - a.0, b.1 - a.1), (c.0 - b.0, c.1 - b.1));
+                if (u.0 != 0.0 || u.1 != 0.0) && (w.0 != 0.0 || w.1 != 0.0) {
+                    most = most.max(fmla(u.0, w.1, -(u.1 * w.0)).atan2(fmla(u.0, w.0, u.1 * w.1)).abs().to_degrees());
+                }
+            }
+            csnprintf!(out, cap, "%d", most.round() as i32);
+        }
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
@@ -10815,6 +10905,27 @@ mod tests {
             }
         }}
         assert!(dots>40);
+    }
+
+    #[test]
+    fn the_shape_sliders_line_up_and_their_knobs_clear_their_values() {
+        let _a = app(1860, 2480, 1860, 2480);
+        let mut st = Settings::default();
+        settings_default(&mut st);
+        let band = Rect { x: 598, y: 866, w: 1056, h: 136 };
+        for th in [UiTheme::Gothic, UiTheme::Classic] {
+            ui_set_theme(th);
+            let (c, m) = (shape_slider(P_SHAPE_CORNER, band, &st), shape_slider(P_SHAPE_MIN, band, &st));
+            assert_eq!((c.track, c.text_w), (m.track, m.text_w));
+            // the knob at 0 a little past the end of the value, and each label and value whole
+            assert!(c.track.x - ui_slider_knob_radius() >= c.r.x + c.text_w + ui_px(8.0));
+            let ts = ui_text_size();
+            for (label, value) in [("Corner roundness", "Sharp"), ("Corner roundness", "100%"), ("Smallest shape", "40 mm")] {
+                assert!(font_measure(FontFace::Regular, ts, label) + ui_px(16.0) + font_measure(FontFace::Bold, ts, value) <= c.text_w);
+            }
+            assert!(c.track.w >= ui_px(300.0));
+        }
+        ui_set_theme(UiTheme::Gothic);
     }
 
     #[test]

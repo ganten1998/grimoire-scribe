@@ -527,10 +527,16 @@ pub struct Slider {
     pub value: f32,
     pub label: &'static str,
     pub unit: &'static str,
+    /// the label's and value's part of the row, left of the track (0: 42% of the row)
+    pub text_w: i32,
+}
+/// The width of a slider's label and value part (Slider::text_w, or 42% of the row).
+fn slider_text_w(s: &Slider, row_w: i32) -> i32 {
+    if s.text_w > 0 { s.text_w } else { row_w * 42 / 100 }
 }
 pub fn ui_slider_layout(s: &mut Slider, row: Rect) {
     s.r = row;
-    let label_w = row.w * 42 / 100;
+    let label_w = slider_text_w(s, row.w);
     let knob = ui_px(26.0);
     s.track = Rect { x: row.x + label_w + knob, y: row.y + row.h / 2 - ui_px(5.0), w: row.w - label_w - 2 * knob, h: ui_px(10.0) ,
     };
@@ -543,13 +549,14 @@ fn slider_t(s: &Slider) -> f32 {
     }
 }
 
-fn slider_knob_radius() -> i32 {
+/// The knob's radius (the Gothic lozenge is wider than the gap ui_slider_layout leaves it).
+pub fn ui_slider_knob_radius() -> i32 {
     ui_px(if gothic() { 32.0 } else { 26.0 })
 }
 
 pub fn ui_slider_draw(c: &mut Canvas, s: &Slider, value_text: Option<&str>) {
     canvas_fill(c, s.r, 255);
-    let label_w = s.r.w * 42 / 100;
+    let label_w = slider_text_w(s, s.r.w);
     let mut vbuf = String::new();
     let value_text: &str = match value_text {
         Some(t) => t,
@@ -578,7 +585,7 @@ pub fn ui_slider_draw(c: &mut Canvas, s: &Slider, value_text: Option<&str>) {
         canvas_fill(c, Rect { x: tr.x, y: tr.y, w: fx - tr.x, h: tr.h ,
             }, 0,
         );
-        canvas_lozenge(c, fx as f32, cy, slider_knob_radius() as f32, 0);
+        canvas_lozenge(c, fx as f32, cy, ui_slider_knob_radius() as f32, 0);
         canvas_lozenge(c, fx as f32, cy, ui_px(20.0) as f32, 255);
         canvas_lozenge(c, fx as f32, cy, ui_px(10.0) as f32, 0);
         return;
@@ -587,7 +594,7 @@ pub fn ui_slider_draw(c: &mut Canvas, s: &Slider, value_text: Option<&str>) {
     canvas_round_rect(c, Rect { x: tr.x, y: tr.y, w: fx - tr.x + tr.h / 2, h: tr.h ,
         }, tr.h / 2, 0, true, 0,
     );
-    canvas_disc_aa(c, fx as f32, cy, slider_knob_radius() as f32, 0, 1.0);
+    canvas_disc_aa(c, fx as f32, cy, ui_slider_knob_radius() as f32, 0, 1.0);
     canvas_disc_aa(c, fx as f32, cy, ui_px(12.0) as f32, 255, 1.0);
 }
 fn slider_set_value(s: &mut Slider, mut v: f32) -> bool {
@@ -629,7 +636,7 @@ pub fn ui_slider_drag_to(s: &mut Slider, drag: &mut SliderDrag, x: f32, y: f32, 
     let changed;
     // In a band as tall as the visible knob, catch up to the pointer and track it directly.
     // Leaving that band after a hold resumes fine motion from the current value.
-    if !drag.held || distance <= slider_knob_radius() as f32 {
+    if !drag.held || distance <= ui_slider_knob_radius() as f32 {
         changed = ui_slider_set_from_x(s, x);
         drag.value = s.value;
     } else {

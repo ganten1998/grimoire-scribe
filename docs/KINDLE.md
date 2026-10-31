@@ -827,9 +827,17 @@ Hold the pen still at the end of a drawn shape to preview a straightened line, c
 Move the nib on to keep the freehand drawing instead. Lift to keep the preview as one stroke; Undo removes it.
 The Shapes button below the eraser opens its own menu: On/Off, Quick/Normal/Slow hold time,
 four-sided shapes (uneven allowed, rectangles, or squares only), round shapes (as drawn, prefer
-circles, or circles only), and link-area snapping. Rectangles and Prefer circles are the defaults;
-Prefer circles keeps a clearly elongated oval as an ellipse. The tool picker contains pens and ink.
-Ordinary writing, white ink and erasing keep their existing behavior.
+circles, or circles only), Corner roundness, Smallest shape, and link-area snapping. Rectangles and
+Prefer circles are the defaults; Prefer circles keeps a clearly elongated oval as an ellipse, and As
+drawn keeps every ellipse that is not nearly round, long thin ones too. Uneven allowed keeps any
+four straight sides that are not close to a rectangle with their corners where they were drawn:
+opposite sides within 10 degrees of parallel are made parallel, so a parallelogram comes out a clean
+parallelogram and a trapezium keeps its parallel pair; a kite or any other quad stays as drawn.
+Corner roundness (Sharp by default) rounds the corners of snapped rectangles, squares, quads and
+triangles, as a share of the most rounding the shape can take (at 100% a square becomes a circle); the
+arcs are part of the stroke. Smallest shape (Any by default) leaves strokes smaller than it as drawn.
+Both sliders answer where they are first touched and save when the finger or pen lifts. The tool
+picker contains pens and ink. Ordinary writing, white ink and erasing keep their existing behavior.
 
 Link-area snapping starts enabled. A held selection previews the clean outline; moving on restores
 the freehand selection. Closed selections also snap on lift. The link uses the snapped outline's
