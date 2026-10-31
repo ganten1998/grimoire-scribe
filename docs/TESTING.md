@@ -11,6 +11,14 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.8 (device checks pending)
+
+On the Kindle: right after writing, tap toolbar buttons, Library buttons and sheet rows with a
+finger while the pen still hovers; each must answer the first time. Drag the brightness slider and
+bring the pen close mid-drag: the value must stay. Type quickly on the naming keyboard. Drag the
+toolbar to the very top. Open the Graph, add a link and reopen it: the map keeps its shape. In the
+browser, try the Live view rail, the size control and picture in picture in each browser you use.
+
 ## 2.0.0-rc.7 (device checks pending)
 
 Automated regressions cover fast lift-off packets and deliberate 1.6/2.4-second swipes, with

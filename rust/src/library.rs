@@ -5734,9 +5734,9 @@ mod tests {
         assert_eq!(learn_row_at(2, 2).unwrap().act, [SHORTCUT_ZOOM_OUT, SHORTCUT_ZOOM_IN]);
         assert_eq!(learn_row_at(2, 7).unwrap().act, [SHORTCUT_LANDSCAPE_FIT, 0]);
         assert_eq!(learn_row_at(2, 8).unwrap().act, [SHORTCUT_GESTURE_NEW_PAGE, 0]);
-        assert_eq!(group_row_count(3), 8);
+        assert_eq!(group_row_count(3), 7);
         assert_eq!(ACTION_GROUPS[3].probe, "index");
-        assert_eq!(learn_row_at(3, 7).unwrap().act, [SHORTCUT_LINK_AREAS, 0]);
+        assert_eq!(learn_row_at(3, 6).unwrap().act, [SHORTCUT_LINK_AREAS, 0]);
         assert_eq!(group_row_count(4), 9);
         assert!(learn_row_at(4, 9).is_none());
         assert_eq!(group_row_count(5), 10);

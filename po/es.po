@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-30 07:54-0500\n"
+"POT-Creation-Date: 2026-10-30 21:03-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -79,7 +79,7 @@ msgstr "Páginas"
 msgid "Index..."
 msgstr "Índice..."
 
-#: rust/src/actions.rs rust/src/mapview.rs
+#: rust/src/actions.rs
 msgid "Index"
 msgstr "Índice"
 
@@ -233,8 +233,9 @@ msgid "Pen feel"
 msgstr "Sensibilidad"
 
 #: rust/src/actions.rs
-msgid "Fold the panel"
-msgstr "Plegar el panel"
+
+msgid "Fold the toolbar"
+msgstr "Plegar la barra de herramientas"
 
 #. TRANSLATORS: the share index's heading over the notebooks in no folder.
 #: rust/src/actions.rs rust/src/httpd.rs
@@ -401,9 +402,9 @@ msgstr "Pausa para formas"
 msgid "Shape the last stroke"
 msgstr "Dar forma al último trazo"
 
-#: rust/src/actions.rs
-msgid "Index map"
-msgstr "Mapa del índice"
+#: rust/src/actions.rs rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Graph"
+msgstr "Grafo"
 
 #: rust/src/actions.rs
 msgid "Pan with the pen"
@@ -642,20 +643,24 @@ msgstr "Zoom con pellizco desactivado."
 
 #. TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
 #: rust/src/app.rs
-msgid "Holding the pen button does nothing"
-msgstr "Mantener presionado el botón del lápiz no hace nada"
+
+msgid "Holding the pen button while writing does nothing"
+msgstr "Mantener el botón del lápiz al escribir no hace nada"
 
 #: rust/src/app.rs
-msgid "Holding the pen button erases"
-msgstr "Mantener presionado el botón del lápiz borra"
+
+msgid "Holding the pen button while writing erases"
+msgstr "Mantener el botón del lápiz al escribir borra"
 
 #: rust/src/app.rs
-msgid "Holding the pen button highlights"
-msgstr "Mantener presionado el botón del lápiz resalta"
+
+msgid "Holding the pen button while writing highlights"
+msgstr "Mantener el botón del lápiz al escribir resalta"
 
 #: rust/src/app.rs
-msgid "Holding the pen button draws white"
-msgstr "Mantener presionado el botón del lápiz dibuja en blanco"
+
+msgid "Holding the pen button while writing draws white"
+msgstr "Mantener el botón del lápiz al escribir dibuja en blanco"
 
 #. TRANSLATORS: PDF mirror setting feedback; toast, 1700 px at 44 px bold.
 #: rust/src/app.rs
@@ -1066,18 +1071,18 @@ msgstr "Esta página es ahora la pantalla de reposo"
 msgid "Could not save the sleep screen"
 msgstr "No se pudo guardar la pantalla de reposo"
 
-#. TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
-#. 1500 px at 44 px).
-#: rust/src/editor.rs
-msgid "Name in the Index"
-msgstr "Nombre en el índice"
+#. TRANSLATORS: the title of the keyboard that names the page a held link goes to (about 1500 px at 44 px).
+#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+#: rust/src/editor.rs rust/src/pagesview.rs
+msgid "Page name"
+msgstr "Nombre de página"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-#. gave page %d the Index name %s.
+#. gave page %d the name %s.
 #: rust/src/editor.rs
 #, c-format
-msgid "Page %d is in the Index as %s."
-msgstr "La página %d está en el índice como %s."
+msgid "Page %d is named %s."
+msgstr "La página %d se llama %s."
 
 #: rust/src/editor.rs
 msgid "Could not save the page name."
@@ -1156,13 +1161,13 @@ msgctxt "panel"
 msgid "Pin"
 msgstr "Fijar"
 
-#. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+#. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
 #. tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
 #. in bold, or two lines at 34 px. Normally the title is Tools.
 #: rust/src/editor.rs
 #, c-format
-msgid "Pin to the panel (up to %d)"
-msgstr "Fijar en el panel (hasta %d)"
+msgid "Pin to the toolbar (up to %d)"
+msgstr "Fijar en la barra de herramientas (hasta %d)"
 
 #. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
 #. Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
@@ -1209,18 +1214,20 @@ msgid "Round shapes: Prefer circles"
 msgstr "Formas redondas: Preferir círculos"
 
 #: rust/src/editor.rs
-msgid "Link areas: On"
-msgstr "Áreas de enlace: Sí"
+
+msgid "Snap link areas: On"
+msgstr "Ajustar áreas de enlace: Sí"
 
 #: rust/src/editor.rs
-msgid "Link areas: Off"
-msgstr "Áreas de enlace: No"
+
+msgid "Snap link areas: Off"
+msgstr "Ajustar áreas de enlace: No"
 
 #: rust/src/editor.rs
-msgid "Dotted boxes show where a finger tap follows a link. They never print."
-msgstr ""
-"Los recuadros punteados muestran dónde un toque con el dedo sigue un enlace. "
-"Nunca se imprimen."
+
+msgid ""
+"Dotted outlines show where a finger tap follows a link. They never print."
+msgstr "Los contornos punteados muestran dónde un toque con el dedo sigue un enlace. Nunca se imprimen."
 
 #: rust/src/editor.rs
 msgid "Could not save this page. Is the storage full?"
@@ -1251,11 +1258,10 @@ msgstr "No se pudo abrir ese cuaderno"
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
 #. two fingers dragged up and down on a page do now.
 #: rust/src/editor.rs
+
 msgid ""
-"New: two fingers up show this page's links. Two fingers down show all pages."
-msgstr ""
-"Novedad: dos dedos hacia arriba muestran los enlaces de esta página; hacia "
-"abajo, todas las páginas."
+"New: two fingers up show this page's links. Two fingers down open the Graph."
+msgstr "Novedad: dos dedos hacia arriba muestran los enlaces de esta página. Dos dedos hacia abajo abren el grafo."
 
 #: rust/src/editor.rs
 msgid "This page is already empty"
@@ -1419,11 +1425,11 @@ msgid "Link change redone."
 msgstr "Cambio de enlace rehecho."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-#. emptied page %d's name, which takes it out of the Index.
+#. emptied page %d's name.
 #: rust/src/editor.rs
 #, c-format
-msgid "Page %d is not in the Index now."
-msgstr "La página %d ya no está en el índice."
+msgid "Page %d has no name now."
+msgstr "La página %d ya no tiene nombre."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card of a Links bar
 #. row deleted its links; Undo brings them back (the ink around them stays).
@@ -1438,14 +1444,14 @@ msgid "Link deleted. Undo brings it back."
 msgstr "Enlace borrado. Deshacer lo recupera."
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-#. panel holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
+#. toolbar holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
 #. or two lines.
 #: rust/src/editor.rs
 #, c-format
-msgid "The panel holds up to %d pen. Unpin one first."
-msgid_plural "The panel holds up to %d pens. Unpin one first."
-msgstr[0] "En el panel cabe hasta %d herramienta. Quita una primero."
-msgstr[1] "En el panel caben hasta %d herramientas. Quita una primero."
+msgid "The toolbar holds up to %d pen. Unpin one first."
+msgid_plural "The toolbar holds up to %d pens. Unpin one first."
+msgstr[0] "En la barra de herramientas cabe hasta %d lápiz. Quita uno primero."
+msgstr[1] "En la barra de herramientas caben hasta %d lápices. Quita uno primero."
 
 #: rust/src/editor.rs
 msgid "Hold: Quick"
@@ -1601,11 +1607,10 @@ msgid "That is not one of your finger shapes. Settings > Gestures lists them."
 msgstr "No es una de tus figuras. Ajustes > Gestos las muestra."
 
 #: rust/src/editor.rs
+
 msgid ""
-"Shape made. Undo takes it away; the panel's shapes menu has the options."
-msgstr ""
-"Forma hecha. Deshacer la quita; el menú de formas del panel tiene las "
-"opciones."
+"Shape made. Undo takes it away; the toolbar's Shapes menu has the options."
+msgstr "Forma hecha. Deshacer la quita; el menú de formas de la barra de herramientas tiene las opciones."
 
 #: rust/src/editor.rs
 msgid "Could not read the notebooks."
@@ -1818,7 +1823,7 @@ msgstr "Emparejando en el Kindle..."
 msgid "Live view is off on the Kindle"
 msgstr "La vista en directo está apagada en el Kindle"
 
-#: rust/src/httpd.rs rust/src/mapview.rs
+#: rust/src/httpd.rs
 msgid "Fit"
 msgstr "Ajustar"
 
@@ -1966,8 +1971,8 @@ msgstr "Dejar de grabar"
 msgid "Full screen"
 msgstr "Pantalla completa"
 
-#. TRANSLATORS: Live view's button in the browser: the screen in a small window that floats over
-#. the computer's other windows (the browser's own name for it is fine).
+#. TRANSLATORS: Live view's button in the browser where it has no picture in picture: the
+#. screen in a separate window of its own.
 #: rust/src/httpd.rs
 msgid "Pop out"
 msgstr "Abrir en otra ventana"
@@ -2002,6 +2007,107 @@ msgstr "No hay teclas asignadas a la vista en directo."
 msgid "Could not send keys. Release the keys and try again."
 msgstr ""
 "No se pudieron enviar las teclas. Suelta las teclas e inténtalo de nuevo."
+
+#. TRANSLATORS: Live view's controls in the browser: a slim bar of icon buttons beside the
+#. page (its name for screen readers), and the panel of view settings it opens, in groups.
+#: rust/src/httpd.rs
+
+msgid "Live view controls"
+msgstr "Controles de la vista en directo"
+
+#: rust/src/httpd.rs
+
+msgid "View settings"
+msgstr "Ajustes de la vista"
+
+#: rust/src/httpd.rs
+
+msgid "Picture"
+msgstr "Imagen"
+
+#: rust/src/httpd.rs
+
+msgid "Pen"
+msgstr "Lápiz"
+
+#: rust/src/httpd.rs
+
+msgid "Over the page"
+msgstr "Sobre la página"
+
+#: rust/src/httpd.rs
+msgid "Diagnostics"
+msgstr "Diagnóstico"
+
+#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
+#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
+#. or larger by a step.
+#: rust/src/httpd.rs
+
+msgid "Size"
+msgstr "Tamaño"
+
+#: rust/src/httpd.rs
+
+msgid "Fit width"
+msgstr "Ajustar al ancho"
+
+#: rust/src/httpd.rs
+
+msgid "Smaller"
+msgstr "Más pequeño"
+
+#: rust/src/httpd.rs
+
+msgid "Larger"
+msgstr "Más grande"
+
+#. TRANSLATORS: Live view's button in the browser: the page in a small window that floats over
+#. the computer's other windows (the browser's own name for it is fine). Pop out is the same
+#. where the browser has no such window.
+#: rust/src/httpd.rs
+msgid "Picture in picture"
+msgstr "Imagen en imagen"
+
+#. TRANSLATORS: Live view in Firefox without picture in picture of its own: the page shows as a
+#. video, and Firefox floats it from its own button or its right-click menu.
+#: rust/src/httpd.rs
+msgid ""
+"Point at the picture and click Firefox's Picture-in-Picture button, or right-"
+"click it and choose Picture-in-Picture."
+msgstr "Señala la imagen y pulsa el botón Picture-in-Picture de Firefox, o haz clic derecho sobre ella y elige Picture-in-Picture."
+
+#. TRANSLATORS: Live view's help in the browser on how to get the sharpest picture in picture,
+#. which browsers give only to pages they treat as secure (the Kindle's page is plain HTTP).
+#. %s is this page's address. about:config, dom.securecontext.allowlist, chrome://flags,
+#. edge://flags, brave://flags and "Insecure origins treated as secure" are the browsers' own
+#. names: keep them as they are.
+#: rust/src/httpd.rs
+msgid ""
+"For the sharpest picture in picture, let your browser treat this address as "
+"secure:"
+msgstr "Para la imagen en imagen más nítida, haz que tu navegador trate esta dirección como segura:"
+
+#: rust/src/httpd.rs
+#, c-format
+msgid ""
+"Firefox: open about:config, add %s to dom.securecontext.allowlist (separate "
+"several with commas), then reload this page."
+msgstr "Firefox: abre about:config, añade %s a dom.securecontext.allowlist (separa varias con comas) y vuelve a cargar esta página."
+
+#: rust/src/httpd.rs
+#, c-format
+msgid ""
+"Chrome, Edge, Brave or Arc: open chrome://flags (edge://flags, brave://"
+"flags), find \"Insecure origins treated as secure\", add %s, enable it and "
+"relaunch the browser."
+msgstr "Chrome, Edge, Brave o Arc: abre chrome://flags (edge://flags, brave://flags), busca \"Insecure origins treated as secure\", añade %s, actívalo y reinicia el navegador."
+
+#: rust/src/httpd.rs
+msgid ""
+"Safari floats a video of the page instead, which works on this address as it "
+"is."
+msgstr "Safari hace flotar un vídeo de la página, que funciona con esta dirección tal como está."
 
 #: rust/src/httpd.rs
 msgid "This browser cannot show Live view."
@@ -2109,12 +2215,6 @@ msgstr "Carpeta"
 #: rust/src/library.rs
 msgid "New"
 msgstr "Nuevo"
-
-#. TRANSLATORS: the Library's top bar when Grimoire was opened from KOReader: in place of Exit,
-#. it goes back to KOReader. This one button takes the width it needs.
-#: rust/src/library.rs
-msgid "Back to KOReader"
-msgstr "Volver a KOReader"
 
 #: rust/src/library.rs
 msgid "This folder is empty"
@@ -2420,10 +2520,9 @@ msgstr "Grimoire guarda hasta 32 figuras."
 
 #. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
 #: rust/src/library.rs
-msgid "Hold eraser needs the button held: hold it or drag with it."
-msgstr ""
-"Borrar mientras se pulsa necesita el botón pulsado: mantenlo o arrastra con "
-"él."
+
+msgid "Erase while held needs the button held: hold it or drag with it."
+msgstr "Borrar mientras se mantiene necesita el botón pulsado: mantenlo o arrastra con él."
 
 #. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
 #: rust/src/library.rs
@@ -2625,25 +2724,27 @@ msgstr "Copiar los PDF a %s (USB)"
 
 #. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
 #: rust/src/library.rs
-msgid "Holding the pen button does nothing (tap to change)"
-msgstr ""
-"Mantener presionado el botón del lápiz no hace nada (toca para cambiar)"
+
+msgid "Holding the pen button while writing does nothing (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
 
 #: rust/src/library.rs
-msgid "Holding the pen button erases (tap to change)"
-msgstr "Mantener presionado el botón del lápiz borra (toca para cambiar)"
+
+msgid "Holding the pen button while writing erases (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
 
 #: rust/src/library.rs
-msgid "Holding the pen button highlights (tap to change)"
-msgstr "Mantener presionado el botón del lápiz resalta (toca para cambiar)"
+
+msgid "Holding the pen button while writing highlights (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
 
 #. TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
 #. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
 #. at 44 px, sideways 1610, or two lines at 34 px.
 #: rust/src/library.rs
-msgid "Holding the pen button draws white (tap to change)"
-msgstr ""
-"Mantener presionado el botón del lápiz dibuja en blanco (toca para cambiar)"
+
+msgid "Holding the pen button while writing draws white (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
 
 #: rust/src/library.rs
 msgid "Turn with the Kindle (portrait and landscape)"
@@ -2973,7 +3074,7 @@ msgstr "Movido a %s"
 
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
 #. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
-#: rust/src/linkbar.rs rust/src/linkcard.rs
+#: rust/src/linkbar.rs rust/src/linkcard.rs rust/src/mapview.rs
 msgid "The Index"
 msgstr "El índice"
 
@@ -3044,18 +3145,19 @@ msgstr "Buscar"
 msgid "Choose from the pages..."
 msgstr "Elegir entre las páginas..."
 
-#. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name in
-#. the Index: %d is that page's number; the row names it (about 700 px at 44 px).
+#. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name:
+#. %d is that page's number; the row names it (about 700 px at 44 px).
 #: rust/src/linkcard.rs
 #, c-format
-msgid "Add page %d to the Index..."
-msgstr "Añadir la página %d al índice..."
+msgid "Name page %d..."
+msgstr "Nombrar la página %d..."
 
-#. TRANSLATORS: a row of the long-press card of a link: rename the page it goes to, in the Index
-#. (everywhere the page is listed; about 700 px at 44 px).
+#. TRANSLATORS: a row of the long-press card of a link: rename the page it goes to (everywhere the
+#. page is listed; about 700 px at 44 px).
 #: rust/src/linkcard.rs
-msgid "Rename in the Index"
-msgstr "Renombrar en el índice"
+
+msgid "Rename the page"
+msgstr "Renombrar la página"
 
 #. TRANSLATORS: a row of the long-press card of a Links bar row of several links: change where all of them
 #. go (about 700 px at 44 px).
@@ -3097,8 +3199,9 @@ msgid "To change one, hold it on the page."
 msgstr "Para cambiar uno, mantenlo pulsado en la página."
 
 #: rust/src/mapview.rs
-msgid "Not enough memory for the map."
-msgstr "No hay memoria suficiente para el mapa."
+
+msgid "Not enough memory for the graph."
+msgstr "No hay memoria suficiente para el grafo."
 
 #: rust/src/mapview.rs rust/src/nav.rs
 msgid "Page unavailable"
@@ -3116,17 +3219,22 @@ msgid "p. %d"
 msgstr "p. %d"
 
 #: rust/src/mapview.rs
-#, c-format
-msgid "View: %s"
-msgstr "Vista: %s"
-
-#: rust/src/mapview.rs
 msgid "Around"
 msgstr "Alrededor"
 
 #: rust/src/mapview.rs
 msgid "All"
 msgstr "Todo"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Fit: %s"
+msgstr "Ajuste: %s"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "View: %s"
+msgstr "Vista: %s"
 
 #: rust/src/mapview.rs
 #, c-format
@@ -3151,10 +3259,6 @@ msgstr "Página %d. Enlaces a %d, desde %d."
 #: rust/src/mapview.rs
 msgid "Around it"
 msgstr "A su alrededor"
-
-#: rust/src/mapview.rs rust/src/pagesview.rs
-msgid "Graph"
-msgstr "Grafo"
 
 #: rust/src/mapview.rs
 msgid "List"
@@ -3211,11 +3315,6 @@ msgstr "Cuadernos"
 #: rust/src/notebookpicker.rs
 msgid "No notebooks here."
 msgstr "No hay cuadernos aquí."
-
-#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
-#: rust/src/pagesview.rs
-msgid "Page name"
-msgstr "Nombre de página"
 
 #. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
 #. open page in bold.
@@ -4355,11 +4454,24 @@ msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
 
+#~ msgid "Index map"
+#~ msgstr "Mapa del índice"
+
+#~ msgid "Name in the Index"
+#~ msgstr "Nombre en el índice"
+
+#~ msgid "Back to KOReader"
+#~ msgstr "Volver a KOReader"
+
+#, c-format
+#~ msgid "Add page %d to the Index..."
+#~ msgstr "Añadir la página %d al índice..."
+
+#~ msgid "Rename in the Index"
+#~ msgstr "Renombrar en el índice"
+
 #~ msgid "Move the pen away, then swipe."
 #~ msgstr "Aparta el lápiz y desliza."
-
-#~ msgid "Picture in picture"
-#~ msgstr "Imagen en imagen"
 
 #~ msgid "Go to"
 #~ msgstr "Ir a"

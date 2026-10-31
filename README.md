@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release 2.0.0-rc.7.** Earlier builds are in daily use on
+> **Pre-release 2.0.0-rc.8.** Earlier builds are in daily use on
 > Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
 > and then (Library > Share makes that one click).

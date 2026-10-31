@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-rc.8 (2026-10-30)
 
+- Answer every finger tap on buttons, sheets, the keyboard, the Links bar and the toolbar at once, even while the pen hovers or has just lifted. The pen's palm window now applies only over the notebook page, and a finger landing well away from the pen counts there too.
+- Keep a slider's value when its touch is cancelled (the pen arriving or a second finger). Brightness, warmth, Sleep after and the pen feel sliders no longer jump to their minimum.
+- Let the on-screen keyboard take a key pressed while the previous finger is still lifting, count a slightly rolled tap that stays on its button, and answer slow presses on the Links bar.
+- Show a pressed look at once on Display, Paper, Pages and the tool picker, and share the toolbar's column between its buttons so a finger between two takes the nearest.
+- Let the toolbar be dragged right up to the screen's top edge (and bottom).
+- Start every link lasso fresh, so a "Too small" try with a snapped shape can no longer break the next link.
+- Save pages without rebuilding their Pages preview on the spot, repaint only the changed tiles in Pages, and share decoded previews with the link destination picker.
+- Let a Wi-Fi change finish when Grimoire exits, and keep a Turn on/off tap queued behind a failed status check.
+- Picture in picture really floats: the browser's own always-on-top window where it allows one (see the page's tip for making the Kindle's address count as secure), else a video of the page that includes the quick ink and only draws when something changes, else a pop-out window. While the picture is away the page's own view stops drawing.
+- Choose the Live view size: Fit, Fit width or 25 to 200 percent, with Ctrl or Cmd and the scroll wheel, a trackpad pinch, or the + - and 0 keys, remembered in the browser.
+- Send only the Live view tiles that changed, drop tiles a newer picture has replaced, and keep the pen stream ahead of tiles on a busy Wi-Fi link.
 - Make the Pages action open Pages, as the toolbar page count does. Keys, controller buttons, pen gestures and finger gestures you bound to Pages now open Pages instead of the Graph. The Buttons and Gestures sheets list the Graph once, as Graph (`index-map`); a saved `index` binding still opens the Graph. Two fingers down still open the Graph by default.
 - Open the same Go to page sheet from the Links bar as from the go-to-page action and Pages: one keyboard over the notebook that takes a page number or part of a page name.
 - Drop the numbered discs from Links bar rows, since link areas no longer carry numbers; each row starts with its name.
