@@ -29,6 +29,9 @@ struct Job {
 #[derive(Default)]
 struct State {
     script: String,
+    /// the helper was there at init (it does not come or go while Grimoire runs: checked once, not at
+    /// every Share tick and draw)
+    available: bool,
     job: Option<Job>,
     status: Option<WifiStatus>,
     failed: bool,
@@ -39,14 +42,17 @@ thread_local! {static STATE:RefCell<State>=RefCell::new(State::default());}
 pub fn wifi_init(script: Option<&str>) {
     wifi_free();
     STATE.with(|s| {
+        let script = script.unwrap_or("").to_string();
+        let available = std::fs::metadata(&script).is_ok_and(|m| m.is_file());
         *s.borrow_mut() = State {
-            script: script.unwrap_or("").to_string(),
+            script,
+            available,
             ..State::default()
         }
     });
 }
 pub fn wifi_available() -> bool {
-    STATE.with(|s| std::fs::metadata(&s.borrow().script).is_ok_and(|m| m.is_file()))
+    STATE.with(|s| s.borrow().available)
 }
 pub fn wifi_changing() -> bool {
     STATE.with(|s| {
@@ -218,7 +224,9 @@ pub fn wifi_tick() -> bool {
             None
         };
         s.failed = s.status.is_none();
-        if s.failed {
+        // A Turn on/off tapped during the first status check still runs when that check failed (the
+        // helper checks the radio itself before it changes anything); only a failed change drops it.
+        if s.failed && job.action != WifiAction::Status {
             s.queued = None;
         }
         true
@@ -236,11 +244,18 @@ pub fn wifi_tick() -> bool {
     }
     changed || next.is_some()
 }
+/// At exit: a status check is stopped; a radio change in flight is let finish on its own (its two
+/// lipc steps cut between would leave the radio half on for KOReader). It is in its own process group,
+/// about a second from done, and init reaps it once Grimoire is gone.
 pub fn wifi_free() {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.queued = None;
         if let Some(mut job) = s.job.take() {
+            if job.action != WifiAction::Status {
+                // (dropping the Child neither kills nor waits; its report to the closed pipe comes last)
+                return;
+            }
             // SAFETY: the group belongs only to this helper, not to Grimoire or KOReader.
             unsafe {
                 libc::kill(-(job.child.id() as i32), libc::SIGKILL);
@@ -345,6 +360,45 @@ mod tests {
         assert!(!wifi_busy());
         assert!(wifi_failed());
         wifi_free();
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_radio_change_finishes_after_exit_and_a_tap_survives_a_failed_status() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("wifi-exit-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let script = root.join("helper.sh");
+        let done = root.join("changed");
+        // status fails (no report); on/off changes the radio after a moment, then reports
+        fs::write(&script, format!("case $1 in status) sleep 0.1; exit 1;; esac\nsleep 0.2\ntouch '{}'\nprintf 'wireless=1\\nenabled=1\\nconnected=0\\n'\n", done.display())).unwrap();
+        wifi_init(script.to_str());
+        assert!(wifi_available());
+        // A Turn on tapped while the first status check runs: the check fails, the tap still runs.
+        assert!(wifi_request(WifiAction::Status));
+        assert!(wifi_request(WifiAction::On));
+        let began = Instant::now();
+        while (wifi_busy() || wifi_changing()) && began.elapsed() < Duration::from_secs(5) {
+            wifi_tick();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(done.exists(), "the queued Turn on was dropped");
+        assert!(!wifi_failed());
+        fs::remove_file(&done).unwrap();
+        // Exit during a radio change: the helper is not killed, and finishes.
+        assert!(wifi_request(WifiAction::Off));
+        wifi_free();
+        assert!(!wifi_busy());
+        let began = Instant::now();
+        while !done.exists() && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(done.exists(), "the radio change was killed at exit");
+        // The helper is checked once: availability does not touch storage again.
+        fs::remove_file(&script).unwrap();
+        assert!(wifi_available());
+        wifi_init(None);
+        assert!(!wifi_available());
         fs::remove_dir_all(root).unwrap();
     }
 }

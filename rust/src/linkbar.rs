@@ -248,6 +248,8 @@ pub struct LinkBar {
     pub held: i32,
     /// when the press on the bar began (now_ms, the editor's clock: its tick times the hold)
     pub down_at: u32,
+    /// another notebook's targets as labelled at this open (their notebook.ini read once, not at every draw)
+    foreign: Vec<(FixedStr<NAV_TARGET_LEN>, String)>,
 }
 
 // (Arrays derive Default only up to 32 elements: written by hand, as EditorState's LinkBoxes.)
@@ -288,6 +290,7 @@ impl Default for LinkBar {
             paged: false,
             held: -1,
             down_at: 0,
+            foreign: Vec::new(),
         }
     }
 }
@@ -366,8 +369,18 @@ fn entry_name<'a>(nb: &NotebookInfo, nav: &'a Nav, e: &LbEntry) -> &'a str {
 
 /// What an entry is called: its Index name (and true), "Page %d" for a page with none (false), "The Index"
 /// (false); "" for a page that is not here.
-fn entry_label(nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
-    if let Some(label)=nav_target_label(e.target.as_str()){return (label,true);}
+fn entry_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, String)>, nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
+    if nav_external_target(e.target.as_str()).is_some() {
+        if let Some((_, label)) = foreign.iter().find(|(t, _)| *t == e.target) {
+            return (label.clone(), true);
+        }
+        if let Some(label) = nav_target_label(e.target.as_str()) {
+            if foreign.try_reserve(1).is_ok() {
+                foreign.push((e.target, label.clone()));
+            }
+            return (label, true);
+        }
+    }
     if e.page == NAV_TO_INDEX {
         // TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
         // Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
@@ -519,7 +532,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         }
         let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
         let e = lb.entries[i as usize];
-        let (label, named) = entry_label(nb, nav, &e);
+        let (label, named) = entry_label(&mut lb.foreign, nb, nav, &e);
         draw_chip(c, r, &e, &label, named, i == lb.selected);
         hits_add(&mut lb.hits, r, LB_CHIP, i);
     }
@@ -795,7 +808,7 @@ pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y:
 
 /// A chip's label in Link to...: the page's Index name (bold, and true), "Page %d" for a page with none, "New
 /// page...", "The Index".
-fn pick_label(nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
+fn pick_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, String)>, nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
     match p.kind {
         // TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
         // it (about 700 px at 44 px in bold upright, 600 sideways).
@@ -803,7 +816,7 @@ fn pick_label(nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
         PickKind::Index => (tr("Somewhere Else").to_string(), false),
         _ => {
             let e = LbEntry { target: p.target, page: p.page, count: 1, first_box: RECT_EMPTY };
-            entry_label(nb, nav, &e)
+            entry_label(foreign, nb, nav, &e)
         }
     }
 }
@@ -899,7 +912,7 @@ fn draw_pick(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav) -> Rec
         }
         let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
         let p = lb.picks[i as usize];
-        let (label, named) = pick_label(nb, nav, &p);
+        let (label, named) = pick_label(&mut lb.foreign, nb, nav, &p);
         let current = !lb.current.is_empty() && p.kind != PickKind::NewPage && p.target == lb.current.as_str();
         draw_pick_chip(c, r, &p, &label, named, current);
         hits_add(&mut lb.hits, r, LB_CHIP, i);
@@ -1001,4 +1014,36 @@ pub fn linkbar_control_point(lb:&LinkBar,name:&str)->Option<(f32,f32)> {
         if let Some(chip)=name.strip_prefix("chip.") {(LB_CHIP,chip.parse::<i32>().ok()?-1)} else {(match name {"name"=>LB_NAME,"goto"=>LB_GO,"back"=>LB_BACK,"index"=>LB_INDEX,"incoming"=>LB_AROUND,"new"=>LB_NEW,"areas"=>LB_AREAS,"close"=>LB_X,_=>return None},0)}
     };
     lb.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn another_notebooks_label_is_read_once_per_open_bar() {
+        let root = std::env::temp_dir().join(format!("grimoire-bar-labels-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut other = NotebookInfo::default();
+        assert_eq!(store_create("Other", "", PAPER_BLANK, &mut other), 0);
+        assert_eq!(store_add_page(&mut other, 1, PAPER_BLANK), 0);
+        let target = nav_notebook_target(other.id.as_str(), other.page_ids[0]).unwrap();
+        let e = LbEntry { target: FixedStr::from_str(&target), page: -1, count: 1, first_box: RECT_EMPTY };
+        let (nb, nav) = (NotebookInfo::default(), Nav::default());
+        let mut lb = LinkBar::default();
+        let (first, named) = entry_label(&mut lb.foreign, &nb, &nav, &e);
+        assert!(named && first.starts_with("Other / "), "{first}");
+        // Its notebook.ini goes: the open bar still draws the label it read, without reading again.
+        let info = format!("{}/notebooks/{}/notebook.ini", root.display(), other.id.as_str());
+        std::fs::remove_file(&info).unwrap();
+        assert_eq!(entry_label(&mut lb.foreign, &nb, &nav, &e).0, first);
+        let p = LbPick { kind: PickKind::Recent, target: e.target, page: -1 };
+        assert_eq!(pick_label(&mut lb.foreign, &nb, &nav, &p).0, first);
+        assert_eq!(lb.foreign.len(), 1);
+        // A new open reads it again.
+        let mut fresh = LinkBar::default();
+        assert_ne!(entry_label(&mut fresh.foreign, &nb, &nav, &e).0, first);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

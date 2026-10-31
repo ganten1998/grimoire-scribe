@@ -117,11 +117,11 @@ pub struct PagesView {
     context: Option<i32>,
     held: bool,
     last_tap: Option<(i32, u32)>,
+    /// the press's down, at its kernel time (in_sample_ms): how long a tile was held
+    down_k: u32,
     view_size: (i32,i32),
     previews: PagePreviewRequests,
-    cached: Vec<(u32, Canvas)>,
-    cache_notebook: FixedStr<STORE_ID_LEN>,
-    cache_generation: u64,
+    cache: PreviewCache,
 }
 
 
@@ -195,7 +195,7 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     v.current = current;
     v.overlay = false;
     v.multi_select = false;
-    if v.cache_notebook!=nb.id {v.cached.clear();v.cache_notebook=nb.id;}
+    v.cache.sync(nb,true); // (a page saved since, here or elsewhere, is decoded again)
     v.previews=PagePreviewRequests::default();
     v.context = None;
     v.held = false;
@@ -268,8 +268,26 @@ pub fn pagesview_draw_overlay(v:&mut PagesView,a:&mut App) {
 /// Warm the next management screen while the notebook is idle, rather than on its first open.
 pub fn pagesview_prefetch(v:&mut PagesView,nb:&NotebookInfo,current:i32,dpi:f32) {
     let first=(current.max(0) as usize/9)*9;
-    bg_request_page_previews(&mut v.previews,nb,first,first+9,dpi);
+    bg_request_page_previews(&mut v.previews,nb,first,first+9,dpi,false);
 }
+
+/// The open page was saved: its tile is decoded again, and its preview may be made once more.
+pub fn pagesview_page_saved(v:&mut PagesView,pid:u32) {
+    v.cache.forget(pid);
+    bg_preview_retry(&mut v.previews,pid);
+}
+
+/// The open page's tile from its canvas in memory, as the view opens on it: the page was just saved,
+/// and its preview on disk waits for the background job. Nothing when that one is current.
+pub fn pagesview_seed(v:&mut PagesView,nb:&NotebookInfo,pid:u32,canvas:&Canvas) {
+    if v.cache.has(pid) || store_page_preview_fresh(nb,pid).is_some() {return;}
+    let Some(identity)=store_page_source_identity(nb,pid) else{return};
+    let mut small=Canvas::default();
+    if store_page_preview_image(canvas,&mut small) {v.cache.put(pid,identity,small);}
+}
+
+/// The previews generation the view's tiles were drawn at (0 before the first).
+pub fn pagesview_previews_generation(v:&PagesView)->u64 {v.cache.generation()}
 
 /// Closes it (and its number pad). Its ticks' memory stays for the next open.
 pub fn pagesview_close(v: &mut PagesView) {
@@ -289,8 +307,7 @@ pub fn pagesview_free(v: &mut PagesView) {
     v.sel = Vec::new();
     v.tab_initialized = false;
     v.nav_set = false;
-    v.cached.clear();
-    v.cache_notebook=FixedStr::new();
+    v.cache = PreviewCache::default();
 }
 
 // The book page page pid holds, or 0.
@@ -531,10 +548,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         let tr_ = Rect { x: m + (n % cols) * (cw + m), y: th0 + m + (n / cols) * (ch + m), w: cw, h: th };
         let mut number = String::new();
         csnprintf!(&mut number, 24, "%d", i + 1);
-        let mut cached=Canvas::default();
-        if v.unified && store_load_page_preview(nb,nb.page_ids[i as usize],&mut cached) {
-            canvas_blit_fit(c,&cached,tr_);
-        } else {font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.4, tr_, &number, 0);}
+        font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.4, tr_, &number, 0);
         let cur = i == v.current;
         let sel = (i as usize) < v.sel.len() && v.sel[i as usize];
         ui_frame(c, rect_inflate(tr_, if cur { ui_px(8.0) } else { 0 }), ui_px(12.0), 0, false, if cur { ui_px(8.0) } else { ui_px(3.0) });
@@ -614,7 +628,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     }
     if v.unified && !v.index_tab {
         let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
-        bg_request_page_previews(&mut v.previews,nb,first,last,a.dpi);
+        bg_request_page_previews(&mut v.previews,nb,first,last,a.dpi,true);
     }
     let y = ah - ui_px(170.0);
     a.toast_floor = y; // keep a Copy page notice above the bottom controls when Pages reopens
@@ -668,20 +682,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         }
     }
     if v.unified && !v.picking {
-        canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
-        v.hits.h.retain(|h|h.r.y<y);
-        let side=ui_px(120.0);let gap=ui_px(12.0);
-        let widths=[side,side,side,side,ui_px(260.0),ui_px(260.0),side,side];
-        let widths=widths.map(|w|w.min((aw-ui_px(40.0)-7*gap)/8+ui_px(80.0)));
-        let total: i32=widths.iter().sum::<i32>()+7*gap;
-        let mut x=(aw-total)/2;
-        for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL,PG_DELETE,PG_NEXT].into_iter().enumerate(){
-            let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_DELETE=>k>0,_=>true};
-            let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
-            let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_DELETE=>(IconKind::Trash,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
-            ui_button(c,r,icon,label,if !enabled{ButtonStyle::Disabled}else if id==PG_MULTI&&v.multi_select{ButtonStyle::Selected}else{ButtonStyle::Plain});
-            if enabled {hits_add(&mut v.hits,r,id,0);}
-        }
+        draw_footer(v,a,screens,k,all);
     }
     if let Some(page)=v.context { draw_context(v,a,nb,page); }
     let c=&mut a.screen;
@@ -694,40 +695,125 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     }
 }
 
-// Nine full-page previews. Cache decoded images while open; the disk cache survives app restarts.
-fn draw_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav) {
-    let generation=store_page_previews_generation(nb.id.as_str());
-    if generation!=v.cache_generation {v.cached.clear();v.cache_generation=generation;}
-    let (cols,rows,cw,ch,th)=geom(a,v);
+// The unified view's bottom row (its buttons follow the ticks: Copy page for one, Delete for any).
+fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool) {
+    let (aw,ah)=(a.w,a.h);
+    let y=ah-ui_px(170.0);
+    let c=&mut a.screen;
+    canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
+    v.hits.h.retain(|h|h.r.y<y);
+    let side=ui_px(120.0);let gap=ui_px(12.0);
+    let widths=[side,side,side,side,ui_px(260.0),ui_px(260.0),side,side];
+    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-7*gap)/8+ui_px(80.0)));
+    let total: i32=widths.iter().sum::<i32>()+7*gap;
+    let mut x=(aw-total)/2;
+    for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL,PG_DELETE,PG_NEXT].into_iter().enumerate(){
+        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_DELETE=>k>0,_=>true};
+        let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
+        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_DELETE=>(IconKind::Trash,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
+        ui_button(c,r,icon,label,if !enabled{ButtonStyle::Disabled}else if id==PG_MULTI&&v.multi_select{ButtonStyle::Selected}else{ButtonStyle::Plain});
+        if enabled {hits_add(&mut v.hits,r,id,0);}
+    }
+}
+
+// Tile `slot` of the screenful: its cell (preview and label, what a tap opens), its preview's place, and
+// that place's height.
+fn tile_rects(v:&PagesView,a:&App,nb:&NotebookInfo,slot:i32)->(Rect,Rect,i32) {
+    let (cols,_,cw,ch,th)=geom(a,v);
     let gap=ui_px(if v.picking {50.0}else{24.0});
     let (mut pw,mut ph)=(0,0);store_notebook_page_size(nb,&mut pw,&mut ph);
     let scale=(cw as f32/pw.max(1) as f32).min(th as f32/ph.max(1) as f32);
     let (w,h)=((pw as f32*scale)as i32,(ph as f32*scale)as i32);
+    let cell=Rect::new(gap+(slot%cols)*(cw+gap),ui_px(190.0)+gap+(slot/cols)*(ch+gap),cw,ch);
+    (cell,Rect::new(cell.x+(cw-w)/2,cell.y,w,h),h)
+}
+
+// Page i's tile, over what is there (the caller clears its cell when drawing it again).
+fn draw_tile(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,slot:i32,i:i32,pid:u32)->Rect {
+    let (cell,image,h)=tile_rects(v,a,nb,slot);
+    let w=image.w;
+    if let Some(preview)=v.cache.get(nb,pid){canvas_blit_fit(&mut a.screen,preview,image);}
+    else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),image,&format!("{}",i+1),0);}
+    ui_frame(&mut a.screen,image,0,0,false,ui_px(2.0));
+    if !v.picking && v.sel.get(i as usize)==Some(&true) {
+        let inner=rect_inflate(image,-ui_px(7.0));
+        ui_frame(&mut a.screen,inner,0,0,false,ui_px(4.0));
+    }
+    let name=nav_name(nav,pid);
+    let mut label=if name.is_empty(){format!("{}",i+1)}else{format!("{} · {}",i+1,name)};
+    let bp=book_page(v,pid);if bp!=0 {label.push_str(" · ");label.push_str(&cformat!(tr("p. %d"),bp));}
+    font_draw_left_name(&mut a.screen,if i==v.current{FontFace::Bold}else{FontFace::Regular},ui_small_size(),Rect::new(image.x,image.y+h+ui_px(6.0),w,ui_px(46.0)),&label,0);
+    cell
+}
+
+// The tiles of pages `only` (page indexes; None: the whole screenful) drawn again in their cells, and
+// where they are. Hits stay as they were: the cells do not move.
+fn redraw_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,only:Option<&[i32]>)->Rect {
+    let (cols,rows,..)=geom(a,v);
+    let mut dirty=RECT_EMPTY;
     for slot in 0..cols*rows {
         let i=v.screen*(cols*rows)+slot;
         let Some(&pid)=nb.page_ids.get(i as usize)else{break};
-        let cell=Rect::new(gap+(slot%cols)*(cw+gap),ui_px(190.0)+gap+(slot/cols)*(ch+gap),cw,ch);
-        let image=Rect::new(cell.x+(cw-w)/2,cell.y,w,h);
-        if !v.cached.iter().any(|(p,_)|*p==pid) {
-            let mut preview=Canvas::default();
-            if store_load_page_preview(nb,pid,&mut preview){v.cached.push((pid,preview));}
-        }
-        if let Some((_,preview))=v.cached.iter().find(|(p,_)|*p==pid){canvas_blit_fit(&mut a.screen,preview,image);}
-        else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),image,&format!("{}",i+1),0);}
-        ui_frame(&mut a.screen,image,0,0,false,ui_px(2.0));
-        if !v.picking && v.sel.get(i as usize)==Some(&true) {
-            let inner=rect_inflate(image,-ui_px(7.0));
-            ui_frame(&mut a.screen,inner,0,0,false,ui_px(4.0));
-        }
-        let name=nav_name(nav,pid);
-        let mut label=if name.is_empty(){format!("{}",i+1)}else{format!("{} · {}",i+1,name)};
-        let bp=book_page(v,pid);if bp!=0 {label.push_str(" · ");label.push_str(&cformat!(tr("p. %d"),bp));}
-        font_draw_left_name(&mut a.screen,if i==v.current{FontFace::Bold}else{FontFace::Regular},ui_small_size(),Rect::new(image.x,image.y+h+ui_px(6.0),w,ui_px(46.0)),&label,0);
+        if only.is_some_and(|o|!o.contains(&i)) {continue;}
+        let (cell,..)=tile_rects(v,a,nb,slot);
+        canvas_fill(&mut a.screen,cell,255);
+        dirty=rect_union(dirty,draw_tile(v,a,nb,nav,slot,i,pid));
+    }
+    dirty
+}
+
+// Nine full-page previews. Cache decoded images while open; the disk cache survives app restarts.
+fn draw_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav) {
+    v.cache.sync(nb,false);
+    let (cols,rows,..)=geom(a,v);
+    for slot in 0..cols*rows {
+        let i=v.screen*(cols*rows)+slot;
+        let Some(&pid)=nb.page_ids.get(i as usize)else{break};
+        let cell=draw_tile(v,a,nb,nav,slot,i,pid);
         hits_add(&mut v.hits,cell,PG_OPEN,i);
     }
-    let first=(v.screen*cols*rows).max(0) as usize;
+    retain_screen(v,a,nb);
+}
+
+// Only the screenful's decoded previews stay.
+fn retain_screen(v:&mut PagesView,a:&App,nb:&NotebookInfo) {
+    let (cols,rows,..)=geom(a,v);
+    let first=((v.screen*cols*rows).max(0) as usize).min(nb.page_ids.len());
     let end=(first+(cols*rows) as usize).min(nb.page_ids.len());
-    v.cached.retain(|(pid,_)|nb.page_ids[first..end].contains(pid));
+    v.cache.retain(&nb.page_ids[first..end]);
+}
+
+/// New previews came while the grid is up: only its tiles are drawn again (the caller refreshes the
+/// rect returned). RECT_EMPTY when no grid shows (a keyboard, the card over it): it is drawn whole when
+/// that goes.
+pub fn pagesview_repaint_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav)->Rect {
+    if !v.open || !v.unified || v.index_tab || v.overlay || v.kb.open || v.context.is_some() || v.view_size!=(a.w,a.h) {
+        return RECT_EMPTY;
+    }
+    v.cache.sync(nb,false);
+    let r=redraw_tiles(v,a,nb,nav,None);
+    retain_screen(v,a,nb);
+    r
+}
+
+// A tap changed the ticks (sel as it was before): the tiles that changed, and the bottom row when its
+// buttons did, are drawn again and refreshed on their own, not the whole view.
+fn repaint_ticks(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,before:&[bool]) {
+    let npages=nb.npages();
+    let changed:Vec<i32>=(0..npages).filter(|&i|before.get(i as usize)!=v.sel.get(i as usize)).collect();
+    let k_was=before.iter().take(npages as usize).filter(|&&t|t).count() as i32;
+    let k=ticked_in(v,npages);
+    let r=redraw_tiles(v,a,nb,nav,Some(&changed));
+    if !rect_is_empty(r) {app_invalidate(a,r,RefreshMode::Ui);}
+    if (k_was==1)!=(k==1) || (k_was>0)!=(k>0) || (k_was==npages)!=(k==npages) {
+        // (on its own: a tile near the top and the bottom row never merge into one refresh of the screen)
+        app_flush(a);
+        let (cols,rows,..)=geom(a,v);
+        let screens=((npages+cols*rows-1)/(cols*rows)).max(1);
+        draw_footer(v,a,screens,k,k==npages);
+        let y=a.h-ui_px(170.0);
+        app_invalidate(a,Rect::new(0,y,a.w,a.h-y),RefreshMode::Ui);
+    }
 }
 
 fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,page:i32) {
@@ -814,6 +900,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     }
     if phase == 0 {
         v.held = false;
+        v.down_k = in_sample_ms(ev);
         press_begin(&mut v.press, ev.x, ev.y, ev.t_ms);
         if let Some(&h) = hits_find(&v.hits, ev.x, ev.y).filter(|h| h.id != PG_OPEN && h.id != PG_TOGGLE) {
             app_press_feedback(a, h.r);
@@ -838,7 +925,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if !press_is_tap(&v.press, hit.r) {
         return PvResult::None;
     }
-    if v.unified && !v.picking && hit.id==PG_OPEN && ev.t_ms.wrapping_sub(v.press.t0)>=600 {
+    if v.unified && !v.picking && hit.id==PG_OPEN && in_sample_ms(ev).wrapping_sub(v.down_k)>=600 {
         v.context=Some(hit.arg);v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);return PvResult::None;
     }
     match hit.id {
@@ -872,13 +959,16 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             v.target = hit.arg;
             if v.picking {return PvResult::Pick;}
             if !v.unified {return PvResult::Open;}
-            if v.last_tap.is_some_and(|(page,at)|page==hit.arg && ev.t_ms.wrapping_sub(at)<=450) {
+            // (the taps' own times, the kernel's: a second tap read late, behind a refresh, still opens)
+            let at_k=in_sample_ms(ev);
+            if v.last_tap.is_some_and(|(page,at)|page==hit.arg && at_k.wrapping_sub(at)<=450) {
                 v.last_tap=None;return PvResult::Open;
             }
-            v.last_tap=Some((hit.arg,ev.t_ms));
+            v.last_tap=Some((hit.arg,at_k));
+            let before=v.sel.clone();
             if !v.multi_select {v.sel.fill(false);}
             if let Some(selected)=v.sel.get_mut(hit.arg as usize){*selected=!*selected;}
-            redraw(v,a,nb,nav,RefreshMode::Ui);
+            repaint_ticks(v,a,nb,nav,&before);
         }
         PG_LINK => return PvResult::Link,
         PG_TOGGLE => {
@@ -957,7 +1047,7 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
     if key=="context" {csnprintf!(out,cap,"%d",v.context.map_or(0,|p|p+1));return 0;}
     if key=="overlay" {csnprintf!(out,cap,"%d",v.overlay as i32);return 0;}
     if key=="multi" {csnprintf!(out,cap,"%d",v.multi_select as i32);return 0;}
-    if key=="cached" {csnprintf!(out,cap,"%d",v.cached.len());return 0;}
+    if key=="cached" {csnprintf!(out,cap,"%d",v.cache.len());return 0;}
     out.clear();
     if key == "pages_tab" {
         csnprintf!(out, cap, "%s", if v.index_tab { "index" } else { "pages" });

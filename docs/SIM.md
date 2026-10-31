@@ -362,6 +362,7 @@ shows what the app holds.
 | `editor.ticked` | selected pages in management (tap tile selects, double tap opens) |
 | `editor.pages.grid` | actual column and row counts of the current Pages geometry |
 | `editor.pages.context` | held page number while its context menu is open, else `0` |
+| `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show |
 | `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
 | `editor.map.visible` | sorted page IDs actually shown in the current graph view |
 | `editor.map.stats` | graph nodes (All), current notebook orphans, valid links, current notebook pages, library page total |

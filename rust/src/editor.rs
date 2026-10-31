@@ -473,7 +473,6 @@ pub struct EditorState {
     notebook_back: Vec<(FixedStr<STORE_ID_LEN>,u32)>,
     requested_page: Option<u32>,
     previews_checked: u32,
-    previews_generation: u64,
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
@@ -673,7 +672,24 @@ fn map_hide(a: &mut App, draw: bool) {
 }
 pub fn editor_previews_done(a:&mut App,id:&str) {
     if a.scr==ScreenId::Editor && a.ed.as_deref().is_some_and(|s|(s.pv.open&&s.nb.id==id)
-        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {compose_all(a,RefreshMode::Ui);}
+        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {previews_repaint(a);}
+}
+
+// The notebook whose page previews show (the Pages view's, or the destination picker's pages), and the
+// previews generation its tiles were drawn at.
+fn previews_shown(s:&EditorState)->Option<(FixedStr<STORE_ID_LEN>,u64)> {
+    if s.destination.open {return s.destination.selected.as_ref().map(|nb|(nb.id,s.destination.previews_generation()));}
+    s.pv.open.then(||(s.nb.id,pagesview_previews_generation(&s.pv)))
+}
+
+// New previews were written (the tick saw them, or their job ended): only the tiles are drawn again, in
+// a GL16 of the grid, and never twice for the same previews.
+fn previews_repaint(a:&mut App) {
+    let Some((id,drawn))=previews_shown(ed_ref(a)) else{return};
+    if store_page_previews_generation(id.as_str())==drawn {return;}
+    let r=if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.repaint_pages(a))}
+        else {with_pv(a,pagesview_repaint_tiles)};
+    if !rect_is_empty(r) {app_invalidate(a,r,RefreshMode::Ui);}
 }
 pub fn editor_map_done(a: &mut App,id:&str, ok: bool) {
     if let Some(s) = a.ed.as_deref_mut() {
@@ -2396,7 +2412,10 @@ fn save_page(a: &mut App) -> bool {
         if s.index == 0 {
             s.thumb_dirty = true; // written when leaving the page (it is slow)
         }
-        store_save_page_preview(&s.nb,s.open_pid(),&s.page_canvas);
+        // (its Pages preview is made again in the background, at the next pause or as the view opens:
+        // never here, on every page turn and autosave)
+        let pid = s.open_pid();
+        pagesview_page_saved(&mut s.pv, pid);
         s.page_dirty = false;
         s.info_dirty = true;
     }
@@ -3741,7 +3760,18 @@ fn pages_show(a: &mut App) {
     if !with_pv(a, |pv, a, nb, nav| pagesview_open(pv, a, nb, nav, index)) {
         compose_all(a,RefreshMode::Full);return;
     }
+    pages_seed_open(ed(a));
     compose_all(a, RefreshMode::Full);
+}
+
+// The open page's tile from its canvas, so the view shows it at once (its saved preview is made in the
+// background). Not for a page that did not save, nor one drawn only in part.
+fn pages_seed_open(s: &mut EditorState) {
+    if s.page_dirty || s.page_ix().is_none() || s.page_canvas.w != s.pgw || s.page_canvas.h != s.pgh {
+        return;
+    }
+    let pid = s.open_pid();
+    pagesview_seed(&mut s.pv, &s.nb, pid, &s.page_canvas);
 }
 
 // Explicit Index entries stay on the list even on the first open with no named pages.
@@ -4178,7 +4208,7 @@ fn lasso_begin(a: &mut App, ev: &InEvent) {
     let lm = &mut s.lm;
     lm.state = LmState::Lasso;
     lm.pts.clear();
-    lm.shape_preview=None;lm.shape_kind=ShapeKind::None;lm.shape_tried=false;
+    lm.shape_preview=None;lm.shape_kind=ShapeKind::None;lm.shape_tried=false;lm.outline=LinkOutline::default();
     lm.shape_anchor=(ev.x,ev.y);lm.shape_anchor_k=in_sample_ms(ev);
     if lm.pts.capacity() < LASSO_MAX {
         // (no room: the lasso is drawn as it goes and its box still makes the area; compose draws none of it)
@@ -4320,6 +4350,8 @@ fn lasso_end(a: &mut App) {
     if s.lm.state != LmState::Lasso {
         return;
     }
+    // (every attempt sets its own outline: one left by a snapped try that was too small never reaches the next)
+    s.lm.outline=LinkOutline::default();
     if let Some(pts)=s.lm.shape_preview.take() {
         let closed=matches!(s.lm.shape_kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse);
         s.lm.outline=LinkOutline::from_points(&pts,closed,s.pgw,s.pgh);
@@ -4336,6 +4368,7 @@ fn lasso_end(a: &mut App) {
         let s = ed(a);
         s.lm.state = LmState::Armed;
         s.lm.shape_kind = ShapeKind::None;
+        s.lm.outline = LinkOutline::default();
         s.lm.pts.clear();
         s.lm.lasso_rect = RECT_EMPTY;
         compose(a, drawn);
@@ -4469,7 +4502,9 @@ fn link_choose(a: &mut App) {
     save_page(a);
     let index = ed(a).index;
     ed(a).pv.unified=true;
-    if !with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index)) {
+    if with_pv(a, |pv, a, nb, nav| pagesview_pick(pv, a, nb, nav, index)) {
+        pages_seed_open(ed(a));
+    } else {
         let s = ed(a);
         s.lt.hidden = false;
         let r = s.lt.rect;
@@ -8720,9 +8755,8 @@ pub fn editor_tick(a: &mut App, now: u32) {
         with_pv(a,|pv,_,nb,_|pagesview_prefetch(pv,nb,current,dpi));
     }
     if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
-        let id=if ed_ref(a).destination.open {ed_ref(a).destination.selected.as_ref().map(|nb|nb.id)}else{Some(ed_ref(a).nb.id)};
         ed(a).previews_checked=now;
-        if let Some(id)=id {let generation=store_page_previews_generation(id.as_str());if generation!=ed_ref(a).previews_generation {ed(a).previews_generation=generation;compose_all(a,RefreshMode::Ui);}}
+        previews_repaint(a);
     }
     if ed_ref(a).destination.open {return;}
     if ed_ref(a).map.open {
@@ -9033,6 +9067,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     else if key=="destination" {csnprintf!(out,cap,"%d",s.destination.open as i32);}
     else if key=="destination.folder" {csnprintf!(out,cap,"%s",s.destination.folder.as_str());}
     else if key=="destination.notebook" {csnprintf!(out,cap,"%s",s.destination.selected.as_ref().map_or("",|b|b.id.as_str()));}
+    else if key=="destination.cached" {csnprintf!(out,cap,"%d",s.destination.cached());}
     else if key == "page" {
         csnprintf!(out, cap, "%d", if s.open { s.index + 1 } else { 0 });
     } else if key == "loaded_pages" {
@@ -10213,6 +10248,40 @@ mod tests {
             a.w=1860;a.h=2480;a.settings.landscape_fit=true;
             assert_eq!(landscape_panel_slot(&a,true),None);
         }}
+    }
+
+    #[test]
+    fn a_snapped_link_try_that_was_too_small_leaves_no_outline_for_the_next_lasso() {
+        let root=std::env::temp_dir().join(format!("grimoire-link-outline-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);store_init(root.to_str().unwrap());
+        let mut nb=NotebookInfo::default();assert_eq!(store_create("Void","",PAPER_BLANK,&mut nb),0);
+        assert_eq!(store_add_page(&mut nb,1,PAPER_BLANK),0);
+        let mut a=fshape_app();
+        a.settings.shapes=false;
+        let s=ed(&mut a);s.nb=nb;nav_init(&mut s.nav);s.nav.links_writable=true;
+        link_arm(&mut a,false,None);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Armed);
+        // A small circle snapped (the hold), then lifted: too small for a link.
+        lasso_begin(&mut a,&InEvent{type_:InType::PenDown,x:300.0,y:300.0,..Default::default()});
+        let circle:Vec<(f32,f32)>=(0..24).map(|i|{let t=i as f32*std::f32::consts::TAU/24.0;
+            (300.0+10.0*t.cos(),300.0+10.0*t.sin())}).collect();
+        let s=ed(&mut a);s.lm.pts=circle.clone();s.lm.shape_preview=Some(circle);s.lm.shape_kind=ShapeKind::Circle;
+        lasso_end(&mut a);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Armed);
+        assert_eq!(ed_ref(&a).lm.outline.n,0);
+        // A freehand lasso around something else: its link keeps a plain box, and saves.
+        lasso_begin(&mut a,&InEvent{type_:InType::PenDown,x:500.0,y:600.0,..Default::default()});
+        let s=ed(&mut a);s.lm.bx0=500.0;s.lm.by0=600.0;s.lm.bx1=800.0;s.lm.by1=900.0;
+        s.lm.pts=vec![(500.0,600.0),(800.0,600.0),(800.0,900.0),(500.0,900.0)];
+        lasso_end(&mut a);
+        assert_eq!(ed_ref(&a).lm.state,LmState::Pick);
+        assert_eq!(ed_ref(&a).lm.outline.n,0);
+        link_pick_as(&mut a,"index",0);
+        let s=ed_ref(&a);
+        let mut seeds=0;assert_eq!(nav_links_of(&s.nav,1,&mut seeds),1);
+        let l=s.nav.links.iter().find(|l|l.pid==1).unwrap();
+        assert!(l.has_area);assert_eq!(l.outline.n,0);
+        let _=std::fs::remove_dir_all(&root);
     }
 
     #[test]
