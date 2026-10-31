@@ -2113,9 +2113,9 @@ fn box_screen(s: &EditorState, p: Rect) -> Rect {
 }
 
 /// The link outlines' band (the eye's boxes and snapped outlines, the area waiting for its target, the lasso):
-/// 4 px of 50% dither at 300 dpi (2.0.0-rc.12; they were 2 px dots 8 px apart, which e-ink showed faint).
+/// 6 px of a 2 px checkerboard at 300 dpi (2.0.0-rc.12; they were 2 px dots 8 px apart, which e-ink showed faint).
 fn link_band() -> i32 {
-    ui_px(4.0)
+    ui_px(6.0) // (three dither cells: the grain shows)
 }
 
 /// Where an outline around sr draws: a snapped outline's band is centred on its path, so half the band
@@ -4632,7 +4632,9 @@ fn link_shape_snap(a: &mut App,allow_open:bool) -> bool {
         pts.push(PenSample{x,y,pressure:0.5,t_ms:(i as u32)*10,..Default::default()});
     }
     let mut prm=shape_params(a.dpi,s.zoom,s.open_page().unwrap().paper,s.pgw);
+    // (every Smart shapes setting, as ink snaps with it: Four sides, Round shapes, Corner roundness, Smallest shape)
     prm.quad_mode=a.settings.shape_quads;prm.circle_mode=a.settings.shape_round;
+    prm.corner=a.settings.shape_corner as f32/100.0;prm.min_mm=a.settings.shape_min_mm as f32;
     let result=shape_recognize(&pts,&prm);
     let closed=matches!(result.kind,ShapeKind::Rectangle|ShapeKind::Square|ShapeKind::Quad|ShapeKind::Triangle|ShapeKind::Circle|ShapeKind::Ellipse);
     if result.kind==ShapeKind::None || (!closed && !allow_open) {return false;}

@@ -293,9 +293,13 @@ fn dash_runs(len: i32, on: i32, off: i32) -> Vec<(i32, i32)> {
     (0..n).map(|k| ((k as f32 * span).round() as i32, on)).collect()
 }
 
-/// A 1-bit 50% dither over r for a screen-only overlay (the link outlines, 2.0.0-rc.12): black where
-/// x + y is even, white where it is odd, anchored to the canvas so the pieces and refreshes of one band
-/// line up (a pixel's value depends only on where it is). Clipped like canvas_fill.
+/// A 1-bit 50% dither over r for a screen-only overlay (the link outlines, 2.0.0-rc.12): a checkerboard
+/// of DITHER_CELL px squares, so e-ink shows it grainy (a 1 px checker reads as a plain gray line at 300
+/// dpi), anchored to the canvas so the pieces and refreshes of one band line up (a pixel's value depends
+/// only on where it is). Clipped like canvas_fill.
+/// The link outlines' dither cell, px (2 at 300 dpi: visibly grainy, still a fine band).
+pub const DITHER_CELL: i32 = 2;
+
 pub fn canvas_fill_dither(c: &mut Canvas, r: Rect) {
     let b = rect_intersect(rect_intersect(r, c.clip), Rect { x: 0, y: 0, w: c.w, h: c.h });
     if rect_is_empty(b) {
@@ -304,7 +308,7 @@ pub fn canvas_fill_dither(c: &mut Canvas, r: Rect) {
     for y in b.y..b.y + b.h {
         let row = (y * c.stride) as usize;
         for x in b.x..b.x + b.w {
-            c.px[row + x as usize] = if (x + y) & 1 == 0 { 0 } else { 255 };
+            c.px[row + x as usize] = if (x.div_euclid(DITHER_CELL) + y.div_euclid(DITHER_CELL)) & 1 == 0 { 0 } else { 255 };
         }
     }
 }
@@ -1088,7 +1092,7 @@ mod tests {
         let px = |c: &Canvas, x: i32, y: i32| c.px[(y * c.stride + x) as usize];
         // the band: black where x + y is even, white where odd, edges and corners alike
         for (x, y) in [(5, 5), (6, 5), (24, 16), (23, 16), (5, 10), (8, 8)] {
-            assert_eq!(px(&c, x, y), if (x + y) % 2 == 0 { 0 } else { 255 }, "{x},{y}");
+            assert_eq!(px(&c, x, y), if (x / DITHER_CELL + y / DITHER_CELL) % 2 == 0 { 0 } else { 255 }, "{x},{y}");
         }
         // the halo outside it, the inside untouched
         assert_eq!(px(&c, 4, 10), 255);

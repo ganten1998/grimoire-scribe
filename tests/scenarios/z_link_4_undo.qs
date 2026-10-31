@@ -102,4 +102,4 @@ wait 300
 expect editor.links is 2 2
 expect toast is
 # (the panel's refresh, Redo enabled now, joins the boxes' one: a GL16 over the page, never a Full or a DU)
-expect display.presents is fast 1718 760 100 100, ui 296 220 1536 1734
+expect display.presents is fast 1718 760 100 100, ui 295 220 1537 1734
