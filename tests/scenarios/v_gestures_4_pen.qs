@@ -31,8 +31,8 @@ expect library.record is 0
 expect gestures.links is touch.2.up
 expect library.gestures.1 is Links on this page: 2 fingers up +1
 pen leave
-expect library.ui_at.930.1790 is done
-tap 930 1790
+expect library.ui_at.930.1690 is done
+tap 930 1690
 wait 100
 expect library.ui_at.930.2030 is done
 tap 930 2030

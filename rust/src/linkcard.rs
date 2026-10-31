@@ -1,6 +1,6 @@
 //! The long-press card (Rust only, the Index's phase 2): a finger held on a link, or on a row of the Links bar,
 //! shows a heavy dashed border around the link's area and, beside it, a card of what can be done with it:
-//! Rename in the Index (or Add page %d to the Index...), Change where it goes..., Redraw the area and Delete
+//! Rename the page (or Name page %d...), Change where it goes..., Redraw the area and Delete
 //! link. The page stays in view (R2). An editor-hosted sheet like linkbar.rs: it draws itself and takes the taps,
 //! and says what was asked (LcResult); the editor does it. Its functions never reach back into the editor's
 //! state (PORTING.md, Sheets and keyboards): the editor takes the card out of its state for each call that also
@@ -22,7 +22,7 @@ const LC_ROW: i32 = 1;
 /// What a row of the card does.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CardRow {
-    /// Rename in the Index (D3: the target page's Index name, everywhere), or Add page %d to the Index...
+    /// Rename the page (D3: the target page's name, everywhere), or Name page %d...
     #[default]
     Rename,
     /// Change where it goes... (Change where they go... for N links)
@@ -143,13 +143,13 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
     // Rename: the page's Index name (D3), or the page added to the Index; none for the Index.
     if nav_external_target(c.target.as_str()).is_none() && c.page != NAV_TO_INDEX && !(many && c.page < 0) {
         let label = if c.page >= 0 && name.is_empty() {
-            // TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name in
-            // the Index: %d is that page's number; the row names it (about 700 px at 44 px).
-            cformat!(tr("Add page %d to the Index..."), c.page + 1)
+            // TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name:
+            // %d is that page's number; the row names it (about 700 px at 44 px).
+            cformat!(tr("Name page %d..."), c.page + 1)
         } else {
-            // TRANSLATORS: a row of the long-press card of a link: rename the page it goes to, in the Index
-            // (everywhere the page is listed; about 700 px at 44 px).
-            tr("Rename in the Index").to_string()
+            // TRANSLATORS: a row of the long-press card of a link: rename the page it goes to (everywhere the
+            // page is listed; about 700 px at 44 px).
+            tr("Rename the page").to_string()
         };
         let on = c.page >= 0 && nav.writable;
         add(c, CardRow::Rename, on, label);

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make the Pages action open Pages, as the toolbar page count does. Keys, controller buttons, pen gestures and finger gestures you bound to Pages now open Pages instead of the Graph. The Buttons and Gestures sheets list the Graph once, as Graph (`index-map`); a saved `index` binding still opens the Graph. Two fingers down still open the Graph by default.
+- Open the same Go to page sheet from the Links bar as from the go-to-page action and Pages: one keyboard over the notebook that takes a page number or part of a page name.
+- Drop the numbered discs from Links bar rows, since link areas no longer carry numbers; each row starts with its name.
+
 ## 2.0.0-rc.7 (2026-10-30)
 
 - Preserve final touch movement delivered with finger lift-off, widen the second-finger landing window and accept deliberate two-finger swipes up to 2.5 seconds. Keep pen, palm, pinch and pan guards.

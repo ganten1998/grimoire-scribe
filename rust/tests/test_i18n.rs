@@ -725,9 +725,9 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Applies when the Kindle is sideways.")));
     put(cformat!("%s", tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this.")));
     // (and the first notebook's, as two fingers up and down start to mean something)
-    put(cformat!("%s", tr("New: two fingers up show this page's links. Two fingers down show all pages.")));
+    put(cformat!("%s", tr("New: two fingers up show this page's links. Two fingers down open the Graph.")));
     // The Links bar's and the eye's toasts.
-    put(cformat!("%s", tr("Dotted boxes show where a finger tap follows a link. They never print.")));
+    put(cformat!("%s", tr("Dotted outlines show where a finger tap follows a link. They never print.")));
     put(cformat!("%s", tr("This page is read-only.")));
     put(cformat!("%s", tr("Links could not be read.")));
     // Making a link without ink (PHASE2 14): its refusals, the pick, and undoing it.
@@ -743,8 +743,8 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!("%s", tr("Link change undone.")));
     put(cformat!("%s", tr("Link change redone.")));
     put(cformat!(tr("Linked to the new page %d."), 2000));
-    put(cformat!(tr("Page %d is in the Index as %s."), 2000, "Wwwwwwwwwwwwwwwwwwww"));
-    put(cformat!(tr("Page %d is not in the Index now."), 2000));
+    put(cformat!(tr("Page %d is named %s."), 2000, "Wwwwwwwwwwwwwwwwwwww"));
+    put(cformat!(tr("Page %d has no name now."), 2000));
     put(cformat!("%s", tr("Link deleted. Undo brings it back.")));
     put(cformat!("%s", tr("Links deleted. Undo brings them back.")));
     put(cformat!("%s", tr("New area saved. Undo brings the old one back.")));
@@ -840,7 +840,7 @@ fn the_links_bar_strings_fit() {
             check!(at("hint", font_measure(FontFace::Regular, small, tr("Tap a link to look. Tap the page to stay.")), 1700));
             check!(at("none", font_measure(FontFace::Regular, ts, tr("No links on this page yet.")), 1700));
             check!(at("unreadable", font_measure(FontFace::Regular, ts, tr("Links could not be read.")), 1700));
-            // a chip: "Page 2000" in its name room (878 - 96 - 150 - 14), the right column (144 px), "not here"
+            // a chip: "Page 2000" in its name room (878 - 18 - 150 - 14), the right column (144 px), "not here"
             check!(at("page n", font_measure(FontFace::Regular, ts, &cformat!(tr("Page %d"), 2000)), 600));
             check!(at("p. n", font_measure(FontFace::Regular, small, &cformat!(c_("bar", "p. %d"), 2000)), 144));
             check!(at("x n", font_measure(FontFace::Regular, small, &cformat!(tr("×%d"), 64)), 144));
@@ -863,7 +863,7 @@ fn the_links_bar_strings_fit() {
             // the link-making strip's line beside its Cancel (PHASE2 6.3)
             check!(at("strip", font_measure(FontFace::Bold, ts, tr("Draw around what links.")), 1400));
             check!(at("strip redraw", font_measure(FontFace::Bold, ts, tr("Draw the link's new area.")), 1400));
-            check!(at("name in index", font_measure(FontFace::Bold, ts, tr("Name in the Index")), 1000));
+            check!(at("page name", font_measure(FontFace::Bold, ts, tr("Page name")), 1000));
             // Link to... (PHASE2 6.6): its header beside the pager, New page...'s chip label (in a chip's name room,
             // as the bar's), its three tool words (caps at 34 px in a 580 px button), New page...'s keyboard title
             check!(at("link to title", font_measure(FontFace::Bold, ts, tr("Where does the link go?")), 1100));
@@ -878,8 +878,8 @@ fn the_links_bar_strings_fit() {
             check!(at("card title", font_measure(FontFace::Bold, ts, &cformat!(tr("Page %d"), 2000)), 550));
             check!(at("card not here", font_measure(FontFace::Bold, ts, tr("Page not here")), 550));
             for w in [
-                cformat!(tr("Add page %d to the Index..."), 2000),
-                tr("Rename in the Index").to_string(),
+                cformat!(tr("Name page %d..."), 2000),
+                tr("Rename the page").to_string(),
                 tr("Change where it goes...").to_string(),
                 tr("Change where they go...").to_string(),
                 tr("Redraw the area").to_string(),
@@ -934,7 +934,7 @@ fn gestures_and_record_card_strings_fit() {
         "Give it two turns or a loop.",
         "This replaces a shape from a newer Grimoire.",
         "Draw a shape with one finger, swipe or tap with two fingers, or use the pen's button.",
-        "Hold eraser needs the button held: hold it or drag with it.",
+        "Erase while held needs the button held: hold it or drag with it.",
         "Hold the pen button and drag with it.",
         "Use the pen button for this action.",
     ];

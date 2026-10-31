@@ -8,13 +8,13 @@ tap panel pages.graph
 tap map-node 2
 expect editor.map.selected is 2
 tap panel map.rename
-expect editor.keyboard is Name in the Index
+expect editor.keyboard is Page name
 expect editor.text is
 tap 221 2045
 expect editor.text is a
 tap 1643 2365
 expect editor.index_rows is 3
-expect toast is Page 2 is in the Index as a.
+expect toast is Page 2 is named a.
 expect editor.map is graph
 shot 01-renamed
 # Pan with a pen, preserving notebook ink.

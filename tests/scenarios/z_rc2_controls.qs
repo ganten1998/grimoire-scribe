@@ -54,7 +54,7 @@ tap panel picker.tool:marker
 expect editor.pins is highlighter,fineliner,marker
 tap panel picker.tool:calligraphy
 expect editor.pins is highlighter,fineliner,marker
-expect toast is The panel holds up to 3 pens. Unpin one first.
+expect toast is The toolbar holds up to 3 pens. Unpin one first.
 shot 02-three-pins-tool-picker
 tap panel picker.pin-mode
 tap panel picker.tool:pencil

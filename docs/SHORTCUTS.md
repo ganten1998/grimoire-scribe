@@ -17,7 +17,7 @@ optional input devices again.
 **Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
 has seven registry groups: **Editing** (undo, redo, erase and clear), **Tools** (pens and tool
 steps), **Pages** (page movement, zoom, scroll and sideways behavior), **Index** (links, finding
-and naming), **Menus** (surfaces, panel and status), **Screen** (light, warmth, rotation and
+and naming), **Menus** (surfaces, toolbar and status), **Screen** (light, warmth, rotation and
 appearance) and **System** (gesture switch, language, sleep after and update channel).
 The registry table below gives the exact membership and source restrictions. Open a group,
 tap a row, then press the button; Done goes back up to the list. One button per action: a button
@@ -83,40 +83,42 @@ Actions, in the Buttons sheet's groups:
   it), `hold-eraser` (Erase while held: while its key or button is down, a stroke the pen starts
   erases as its eraser end does, by the eraser's mode; one under way when it is let go keeps
   erasing), `eraser-mode` (Whole strokes and Precise in turn, which a toast says), `white` (white
-  ink on and off), `clear-page` (as the panel's broom: no question, one undo step).
+  ink on and off), `clear-page` (as the toolbar's broom: no question, one undo step).
 - **Tools**: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
   `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
   `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker).
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
   notebook's own paper right after the open one, which opens, as the Pages view's New page does),
-  `fit-page` (the page's whole width again after a pinch), `pages` and `index` (the Pages view on
-  its Pages or its Index tab), `landscape-fit` (sideways, the whole page or the page's width, in turn:
+  `fit-page` (the page's whole width again after a pinch), `pages` (the Index on its Pages view, as
+  the toolbar's page count opens it), `landscape-fit` (sideways, the whole page or the page's width, in turn:
   the Display sheet's "Sideways, show the whole page" row, with a toast; upright only the toast, as it
   applies when the Kindle is sideways), `add-link` (Add a link) and `name-page` (Name the page), both
   below, and `gesture-new-page` ("Swiping past the last page adds a page": turns that behavior on
   or off, as the Display sheet's checkbox does).
 - **Index**: `links` (the Links bar: the links on the open page, one row for each page they lead to; it
   opens and closes with its own button, and two fingers up also open it, two fingers down close it),
-  `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's Go to page
-  opens, closed again by its own button), `go-back` (Back to the page before: the page a link, the Pages
+  `index-map` (the Index on its Graph, as two fingers down open it; the Buttons and Gestures sheets
+  call it Graph, and an old `index` line is read as `index-map`),
+  `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's and the
+  Links bar's Go to page open, closed again by its own button), `go-back` (Back to the page before: the page a link, the Pages
   view or Find left, the newest first, up to 32, forgotten when the notebook closes; a page turn leaves
-  nothing on that list, the page on show is never the one it goes back to, and with none a toast says so) and `link-areas` (dotted boxes over the page where a
+  nothing on that list, the page on show is never the one it goes back to, and with none a toast says so) and `link-areas` (dotted outlines over the page where a
   finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
-- **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the panel, or
+- **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the toolbar, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`, `status-toggle` (the
   small clock and battery on a notebook page on and off, as a finger tap in its corner does) and
   `status-corner` (the next of the page's four corners for it, clockwise from the top left, as the Display
   sheet's corner cell does; docs/KINDLE.md, The clock and battery corner). With no notebook page in front
   they change the setting and say so with a toast, since it shows on a page only.
 
-`previous-tool` and `next-tool` step through the pens on the editor's panel alone: the tool button's
-pen and the pinned pens, top to bottom as the panel shows them, from the last round to the first and
-back. Pressed again and again they keep to the panel, so the highlight never jumps into the tool
-picker and back. With fewer than two pens on the panel they step to the tool picker's next or
+`previous-tool` and `next-tool` step through the pens on the editor's toolbar alone: the tool button's
+pen and the pinned pens, top to bottom as the toolbar shows them, from the last round to the first and
+back. Pressed again and again they keep to the toolbar, so the highlight never jumps into the tool
+picker and back. With fewer than two pens on the toolbar they step to the tool picker's next or
 previous pen in its order instead, and that pen goes to the tool button. With none pinned that walks
 all nine, from the highlighter round to the pencil and back. With only the tool button's own pen
 pinned (the button shows a grid), the first press brings the picker's next or previous pen onto the
-tool button, and from then on they go between those two, as with any two pens on the panel. The
+tool button, and from then on they go between those two, as with any two pens on the toolbar. The
 eraser is not among them: from the eraser they step from the pen it goes back to (with the fountain
 pen on the tool button and the highlighter and the fineliner pinned: highlighter, eraser, next tool:
 the fineliner); the eraser's own button goes back to that pen itself. They do nothing while the tool
@@ -143,9 +145,10 @@ view then opens again on the tab it was left on. Where the notebook's `nav.ini` 
 does nothing (Name this page is greyed out then). Neither acts while a menu is open, and the
 starter mappings give them no key or button.
 
-A menu's button opens its menu as the panel's button does, and closes it when pressed again; with
-another menu in front it closes that one and opens its own. `pages` and `index` turn the Pages
-view to their tab, and close it on their own. `close-menu` closes whatever menu is in front: a link
+A menu's button opens its menu as the toolbar's button does, and closes it when pressed again; with
+another menu in front it closes that one and opens its own. `pages` opens the Index on its Pages
+view and `index-map` on its Graph. Over the Index's Graph or List, `pages` turns it to Pages; on
+Pages it closes it. `index-map` closes the Index from any of its views. `close-menu` closes whatever menu is in front: a link
 being placed is not made, as Back there does, nor one still waiting for its box. `paper` owns the
 paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-feel` and
 `close-menu` go back. No menu button acts while the Pages view's keyboard is open, so typing is
@@ -158,7 +161,7 @@ them in Reload shortcuts.ini; their other lines still work.
 
 Two-finger gestures are bound to the same actions in `gestures.ini` (docs/FORMAT.md) and need no Enable
 shortcuts: the Settings switch for them is `gestures` in settings.ini. Their built-ins are two fingers
-down `pages`, up `links`, left `next-page`, right `previous-page`, and a page turned left on the last page
+down `index-map`, up `links`, left `next-page`, right `previous-page`, and a page turned left on the last page
 adds a page, as the next-page key does (`gesture_new_page=0` in settings.ini, the Display sheet's "Swiping past the
 last page adds a page" row, or the `gesture-new-page` action turns that off: the swipe then only says it is the last page). A line `touch.2.up=nothing` turns a built-in off; the file is
 read at start and when shortcuts are reloaded.
@@ -223,7 +226,7 @@ least three reported slots; a two-slot panel neither shows three-finger rows nor
 partial three-finger attempt into a two-finger action. `shape.ACTION` stores two or three
 recorded samples; it is best created with the record card, not hand-written.
 
-The provisional `TG_TUNE` accepts a 16 mm swipe within 1200 ms, with each finger travelling
+The provisional `TG_TUNE` accepts a 16 mm swipe within 2.5 s, with each finger travelling
 at least 8 mm, and a two-finger tap within 400 ms moving at most 6 mm. These are implementation
 defaults, not owner measurements; see [the pending study](index-hook/TOUCH-STUDY.md). Two fingers
 pan while zoomed in. Nearby writing, palms and extra fingers suppress actions; a recent, distant
@@ -307,7 +310,7 @@ Every registered action accepts PEN. Pan and zoom accept only a pen drag.
 | `previous-tool` | Step | Tools | Key, pad, touch, shape, pen |
 | `next-tool` | Step | Tools | Key, pad, touch, shape, pen |
 | `white` | Toggle | Editing | Key, pad, touch, shape, pen |
-| `index` | Menu | Index | Key, pad, touch, shape, pen |
+| `index` | Menu | Index (read as `index-map`) | Key, pad, touch, shape, pen |
 | `hold-eraser` | Momentary | Editing | Key, pad, pen (hold/drag) |
 | `eraser-mode` | Toggle | Editing | Key, pad, touch, shape, pen |
 | `clear-page` | OneShot | Editing | Key, pad, touch, shape, pen |
@@ -433,9 +436,9 @@ controller's axes (`axis CODE VALUE`, its triggers read as LT and RT) and device
 helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controller discovery or
 real button numbering on a Kindle.
 
-`status-mode` cycles Bar, Corner and Off. `status-toggle` toggles the selected bar or corner.
+`status-mode` is kept as an alias of `status-toggle`.
 
 Smart-shape actions are `shapes` (toggle recognition), `shape-hold` (cycle400/550/900ms) and
 `shape-last` (replace the last drawn stroke with its recognized shape, with one undo step).
-`index-map` opens/closes the graph; `index` still opens the named-page list. All four may be
+`index-map` opens/closes the Index on its Graph; `index` is read as `index-map`. All four may be
 assigned to keyboard, controller, touch-pattern or recorded finger-shape input.

@@ -24,7 +24,7 @@ expect screen is library
 tap 200 400
 wait 600
 expect screen is editor
-expect toast is New: two fingers up show this page's links. Two fingers down show all pages.
+expect toast is New: two fingers up show this page's links. Two fingers down open the Graph.
 expect settings.hints is 257
 wait 6300
 expect toast is

@@ -99,8 +99,8 @@ wait 100
 expect library.ui_at.1360.1650 is record.cancel
 pentap 1360 1650
 wait 100
-expect library.ui_at.930.1790 is done
-pentap 930 1790
+expect library.ui_at.930.1690 is done
+pentap 930 1690
 wait 100
 expect library.ui_at.930.1069 is gestures.group.pages
 pentap 930 1069

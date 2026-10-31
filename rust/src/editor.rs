@@ -698,7 +698,7 @@ fn map_result(a: &mut App, result: MapResult) {
                 return;
             }
             let name = nav_name(&s.nav, pid).as_bytes();
-            keyboard_open(&mut s.map_kb, tr("Name in the Index"), name);
+            keyboard_open(&mut s.map_kb, tr("Page name"), name);
             s.map_rename_pid = pid;
             s.map_kb.area = keyboard_modal_rect_docked(screen, 0);
             compose_all(a, RefreshMode::Ui);
@@ -722,7 +722,7 @@ fn map_pointer(a: &mut App, phase: i32, ev: &InEvent) {
                     let open = s.open_pid();
                     let number = s.nb.page_ids.iter().position(|&p| p == pid).map_or(0, |i| i + 1);
                     with_map(a, |map, a, nb, nav| mapview_rebuild(map, a, nb, nav, open));
-                    let msg = cformat!(tr("Page %d is in the Index as %s."), number as i32, text.as_str().trim());
+                    let msg = cformat!(tr("Page %d is named %s."), number as i32, text.as_str().trim());
                     app_toast(a, &msg, 2500);
                 } else {
                     nav_load(s.nb.id.as_str(), &mut s.nav);
@@ -1812,10 +1812,10 @@ fn draw_tools(a: &mut App) {
     hits_add(&mut s.tools_hits, hb, P_PIN_MODE, 0);
     let mut title = String::new();
     if s.pin_mode {
-        // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the panel under the
+        // TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
         // tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
         // in bold, or two lines at 34 px. Normally the title is Tools.
-        csnprintf!(&mut title, 160, tr("Pin to the panel (up to %d)"), PANEL_PINS_MAX as i32);
+        csnprintf!(&mut title, 160, tr("Pin to the toolbar (up to %d)"), PANEL_PINS_MAX as i32);
     } else {
         // TRANSLATORS: the title of the editor's tool picker.
         csnprintf!(&mut title, 160, "%s", tr("Tools"));
@@ -1891,7 +1891,7 @@ fn draw_shape_menu(a: &mut App) {
         (P_SHAPE_HOLD,tr(shape_hold_label(st.shape_hold_ms))),
         (P_SHAPE_QUADS,tr(match st.shape_quads {0=>n_("Four sides: Uneven allowed"),2=>n_("Four sides: Squares only"),_=>n_("Four sides: Rectangles")})),
         (P_SHAPE_ROUND,tr(match st.shape_round {0=>n_("Round shapes: As drawn"),2=>n_("Round shapes: Circles only"),_=>n_("Round shapes: Prefer circles")})),
-        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Link areas: On")}else{n_("Link areas: Off")})),
+        (P_SHAPE_LINKS,tr(if st.shape_links {n_("Snap link areas: On")}else{n_("Snap link areas: Off")})),
         (P_SHAPE_DONE,tr("Done")),
     ];
     for (i,(id,label)) in rows.into_iter().enumerate() {
@@ -2011,7 +2011,7 @@ fn areas_toggle(a: &mut App, _button: Rect) {
     settings_save(&a.settings);
     compose_all(a, RefreshMode::Ui);
     if tip {
-        app_toast(a, tr("Dotted boxes show where a finger tap follows a link. They never print."), 4000);
+        app_toast(a, tr("Dotted outlines show where a finger tap follows a link. They never print."), 4000);
     }
 }
 
@@ -2754,7 +2754,7 @@ fn first_open_tip(a: &mut App) {
     settings_save(&a.settings);
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
     // two fingers dragged up and down on a page do now.
-    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down show all pages."), 6000,
+    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down open the Graph."), 6000,
     );
 }
 
@@ -5294,9 +5294,8 @@ fn card_rename(a: &mut App) {
     let s = ed(a);
     let mut name = String::new();
     i18n_copy(&mut name, nav_name(&s.nav, pid), NAV_NAME_LEN);
-    // TRANSLATORS: the title of the keyboard that names, in the Index, the page a held link goes to (about
-    // 1500 px at 44 px).
-    keyboard_open(&mut s.card.kb, tr("Name in the Index"), name.as_bytes());
+    // TRANSLATORS: the title of the keyboard that names the page a held link goes to (about 1500 px at 44 px).
+    keyboard_open(&mut s.card.kb, tr("Page name"), name.as_bytes());
     keyboard_set_dock(&mut s.card.kb, dock);
     s.card.kb.area = keyboard_modal_rect_docked(screen, dock);
     let u = rect_union(s.card.kb.area, s.card.rect);
@@ -5355,14 +5354,14 @@ fn rename_done(a: &mut App, name: &str) {
     } else if !name.is_empty() {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // gave page %d the Index name %s.
-        csnprintf!(&mut msg, 200, tr("Page %d is in the Index as %s."), number, name);
+        // gave page %d the name %s.
+        csnprintf!(&mut msg, 200, tr("Page %d is named %s."), number, name);
         app_toast(a, &msg, 3000);
     } else if !old.is_empty() {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // emptied page %d's name, which takes it out of the Index.
-        csnprintf!(&mut msg, 200, tr("Page %d is not in the Index now."), number);
+        // emptied page %d's name.
+        csnprintf!(&mut msg, 200, tr("Page %d has no name now."), number);
         app_toast(a, &msg, 3000);
     }
 }
@@ -5568,10 +5567,10 @@ fn toggle_pin(a: &mut App, t: ToolKind) {
     if !settings_toggle_pin(st, t) {
         let mut msg = String::new();
         // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
-        // panel holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
+        // toolbar holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
         // or two lines.
-        csnprintf!(&mut msg, 200, ng_("The panel holds up to %d pen. Unpin one first.",
-                                      "The panel holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
+        csnprintf!(&mut msg, 200, ng_("The toolbar holds up to %d pen. Unpin one first.",
+                                      "The toolbar holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
                    PANEL_PINS_MAX as i32);
         app_toast(a, &msg, 2500);
         return;
@@ -6212,10 +6211,10 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         LbResult::Commit => bar_commit(a),
         LbResult::Back => bar_back(a),
         LbResult::GoTo => {
-            // Find acts on the page that shows: stay on it, then the sheet.
+            // Find acts on the page that shows: stay on it, then the sheet (the go-to-page action's, which
+            // takes a page number or a name).
             bar_stay(a);
-            let index=ed_ref(a).index;
-            if with_pv(a,|pv,a,nb,nav|pagesview_jump(pv,a,nb,nav,index)) {compose_all(a,RefreshMode::Ui);}
+            find_show(a);
         }
         LbResult::NewLink => {
             let s = ed(a);
@@ -6369,8 +6368,8 @@ fn panel_act(a: &mut App, h: Hit) {
 }
 
 // The menu in front of the page, as the action of its button: the tool picker, Paper (the paper
-// sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
-// tab); 0 with none.
+// sheet, its Templates sheet and Custom music), Display, or the Index (index-map, whichever of its
+// views shows; Pages for a picking Pages view); 0 with none.
 fn front_menu(s: &EditorState) -> i32 {
     if s.map.open {
         return SHORTCUT_INDEX_MAP;
@@ -6382,7 +6381,7 @@ fn front_menu(s: &EditorState) -> i32 {
         return SHORTCUT_LINKS;
     }
     if s.pv.open {
-        return if s.pv.unified&&!s.pv.picking{SHORTCUT_INDEX_MAP}else if s.pv.index_tab { SHORTCUT_INDEX } else { SHORTCUT_PAGES };
+        return if (s.pv.unified&&!s.pv.picking)||s.pv.index_tab{SHORTCUT_INDEX_MAP}else{SHORTCUT_PAGES};
     }
     if s.tools_open {
         return SHORTCUT_TOOL_PICKER;
@@ -6402,7 +6401,6 @@ fn menu_action(action: i32) -> bool {
         || action == SHORTCUT_GO_TO_PAGE
         || action == SHORTCUT_LINKS
         || action == SHORTCUT_PAGES
-        || action == SHORTCUT_INDEX
         || action == SHORTCUT_TOOL_PICKER
         || action == SHORTCUT_PAPER
         || action == SHORTCUT_DISPLAY
@@ -6472,7 +6470,7 @@ fn open_menu(a: &mut App, action: i32) {
         SHORTCUT_INDEX_MAP => map_show(a, false),
         SHORTCUT_GO_TO_PAGE => find_show(a),
         SHORTCUT_LINKS => bar_open(a),
-        SHORTCUT_PAGES | SHORTCUT_INDEX => map_show(a,false),
+        SHORTCUT_PAGES => pages_show(a), // (the toolbar's page count)
         SHORTCUT_TOOL_PICKER => open_tools(a),
         SHORTCUT_PAPER => panel_act(a, Hit { id: P_PAPER, ..Default::default() },
         ),
@@ -6524,7 +6522,6 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if action==SHORTCUT_GO_BACK || action==SHORTCUT_CLOSE_MENU {crate::library::library_settings_back(a);return true;}
         return app_global_action(a,action,src);
     }
-    let action=if matches!(action,SHORTCUT_PAGES|SHORTCUT_INDEX){SHORTCUT_INDEX_MAP}else{action};
     if action == SHORTCUT_STATUS_MODE && !editor_busy(a) { status_cycle_mode(a); return true; }
     let asleep = a.asleep;
     let Some(s) = a.ed.as_deref_mut() else { return false ;
@@ -6604,7 +6601,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         return false;
     }
     let mut action = action;
-    let front = front_menu(s);
+    let mut front = front_menu(s);
+    // The Index's Pages view is Pages' own menu as well: pages there closes it, as index-map does.
+    if action == SHORTCUT_PAGES && front == SHORTCUT_INDEX_MAP && s.pv.open {
+        front = SHORTCUT_PAGES;
+    }
     if front != 0 && menu_action(action) {
         if s.pv.open && s.pv.kb.open {
             return false;
@@ -6613,14 +6614,6 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if front == SHORTCUT_LINKS && s.peek.active && action != SHORTCUT_LINKS && action != SHORTCUT_CLOSE_MENU {
             bar_commit(a);
             open_menu(a, action);
-            return true;
-        }
-        if (action == SHORTCUT_PAGES || action == SHORTCUT_INDEX) && action != front && s.pv.open {
-            s.pv.index_tab = action == SHORTCUT_INDEX; // the other tab, as a tap on it
-            if s.pv.index_tab {
-                pagesview_untick(&mut s.pv);
-            }
-            compose_all(a, RefreshMode::Full);
             return true;
         }
         let leaves = action == SHORTCUT_PEN_FEEL || action == SHORTCUT_LIBRARY;
@@ -7994,16 +7987,17 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
     };
     let front = front_menu(s);
     // With the bar up two fingers down always close it, back to where it began, whatever is bound (without this
-    // 2-down would fall through to Pages, which swaps the menu and keeps the page the bar was looking at).
+    // 2-down would fall through to the Graph, which swaps the menu and keeps the page the bar was looking at).
     let action = if front == SHORTCUT_LINKS && key == (GestureKey::Touch { fingers: 2, kind: TouchKind::Down ,
             }) {
         SHORTCUT_LINKS
     } else if front != 0 {
         let m = &a.gestures;
-        // (the Pages view is two buttons' menu: Pages and Index)
+        // (the Graph's gesture closes a picking Pages view too; a Pages gesture over the Index goes on to
+        // the action, which closes the Index's Pages view or turns its Graph or List to Pages)
         let owned = |k: GestureKey| {
             let act = gesturemap_action(m, k);
-            act == front || (matches!(front,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP) && matches!(act,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP))
+            act == front || (front == SHORTCUT_PAGES && act == SHORTCUT_INDEX_MAP)
         };
         if owned(key) || owned(gesturemap_mirror(key)) {
             front
@@ -8683,7 +8677,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
         ed(a).sh.tip_pending = false;
         if a.settings.hints & (1 << 5) == 0 {
             a.settings.hints |= 1 << 5; settings_save(&a.settings);
-            app_toast(a,tr("Shape made. Undo takes it away; the panel's shapes menu has the options."),4000);
+            app_toast(a,tr("Shape made. Undo takes it away; the toolbar's Shapes menu has the options."),4000);
         }
     }
     if ed_ref(a).open && a.input_drained {

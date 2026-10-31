@@ -257,16 +257,6 @@ pub fn pagesview_name(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     true
 }
 
-/// The swipe-up menu's own numeric jump, kept over the page it acts on.
-pub fn pagesview_jump(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,current:i32)->bool {
-    if !pagesview_open(v,a,nb,nav,current){return false;}
-    v.overlay=true;
-    v.naming=false;
-    keyboard_open(&mut v.kb,tr("Go to page"),b"");
-    v.kb.page=2;
-    true
-}
-
 pub fn pagesview_draw_overlay(v:&mut PagesView,a:&mut App) {
     hits_clear(&mut v.hits);
     keyboard_draw(&mut v.kb,&mut a.screen,Rect::new(0,0,a.w,a.h));

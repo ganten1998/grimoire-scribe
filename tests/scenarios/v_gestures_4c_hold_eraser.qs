@@ -22,7 +22,7 @@ pen hover 930 1100
 side click 1
 wait 400
 expect library.record is wait
-expect library.record.line is Hold eraser needs the button held: hold it or drag with it.
+expect library.record.line is Erase while held needs the button held: hold it or drag with it.
 expect library.ui_at.930.1650 is record.retry
 pentap 930 1650
 wait 100

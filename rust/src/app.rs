@@ -2387,7 +2387,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         SHORTCUT_SIDE_BUTTON => {
             a.settings.side_button = (a.settings.side_button + 1) % 4;
             // TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
-            const ROWS: [&str; 4] = [n_("Holding the pen button does nothing"), n_("Holding the pen button erases"), n_("Holding the pen button highlights"), n_("Holding the pen button draws white")];
+            const ROWS: [&str; 4] = [n_("Holding the pen button while writing does nothing"), n_("Holding the pen button while writing erases"), n_("Holding the pen button while writing highlights"), n_("Holding the pen button while writing draws white")];
             msg.push_str(tr(ROWS[a.settings.side_button as usize]));
         }
         SHORTCUT_MIRROR_PDF => {

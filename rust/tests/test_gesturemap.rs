@@ -21,7 +21,7 @@ fn parsed(text: &str) -> (GestureMap, i32) {
 fn the_built_ins() {
     let mut m = GestureMap::default();
     gesturemap_defaults(&mut m);
-    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_INDEX_MAP);
     check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == SHORTCUT_LINKS);
     check!(gesturemap_action(&m, touch(2, TouchKind::Left)) == SHORTCUT_NEXT_PAGE);
     check!(gesturemap_action(&m, touch(2, TouchKind::Right)) == SHORTCUT_PREV_PAGE);
@@ -34,6 +34,11 @@ fn the_built_ins() {
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
     check!(gesturemap_action(&m, pen(PenBtn::Button2, PenKind::Triple)) == 0);
     check!(m.refused == 0 && gesturemap_carried(&m).is_empty());
+    // The retired Index list's name loads as the Graph's, and is written as index-map.
+    let (m, n) = parsed("touch.3.up=index\n");
+    check!(n == 0 && gesturemap_action(&m, touch(3, TouchKind::Up)) == SHORTCUT_INDEX_MAP);
+    let mut text = Vec::new();
+    check!(gesturemap_format(&m, &mut text) && String::from_utf8_lossy(&text).contains("\ntouch.3.up=index-map\n"));
 }
 
 fn a_line_overrides_and_nothing_turns_off() {
@@ -80,7 +85,7 @@ fn hold_eraser_is_not_a_touch_action() {
     let (m, n) = parsed("touch.2.up=undo\ntouch.2.up=hold-eraser\ntouch.2.down=hold-eraser\n");
     check!(n == 2);
     check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == SHORTCUT_UNDO);
-    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_INDEX_MAP);
     // and nothing reaches it by looking for the gesture of the action either
     check!(gesturemap_key_for(&m, SHORTCUT_HOLD_ERASER, ActionSrc::Touch).is_none());
 }
@@ -102,7 +107,7 @@ fn pen_and_shape_lines_are_carried() {
         gesturemap_carried(&m)
             == b"pen.button2.TAP=nothing\npen.Eraser.drag=pan\nshape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
     );
-    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_INDEX_MAP);
     // pan and zoom are a drag slot's alone
     let (_, n) = parsed("pen.Button.tap=pan\n");
     check!(n == 1); // known pan action is refused outside drag
@@ -129,7 +134,7 @@ fn loading_the_file() {
     check!(gesturemap_load(&mut m, &format!("{dir}/gestures.ini")) == 0);
     check!(gesturemap_action(&m, touch(2, TouchKind::Up)) == SHORTCUT_LINKS);
     check!(gesturemap_load(&mut m, &dir) == -1); // a folder
-    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES && m.refused == 0);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_INDEX_MAP && m.refused == 0);
     let big = format!("{dir}/big.ini");
     std::fs::write(&big, vec![b'#'; 65537]).unwrap();
     check!(gesturemap_load(&mut m, &big) == -1);
@@ -158,10 +163,10 @@ fn the_mirror() {
 fn key_for_order() {
     let (m, _) = parsed("touch.2.tap=undo\ntouch.3.down=undo\ntouch.2.right=undo\n");
     check!(gesturemap_key_for(&m, SHORTCUT_UNDO, ActionSrc::Touch) == Some(touch(2, TouchKind::Right)));
-    check!(gesturemap_key_for(&m, SHORTCUT_PAGES, ActionSrc::Touch) == Some(touch(2, TouchKind::Down)));
+    check!(gesturemap_key_for(&m, SHORTCUT_INDEX_MAP, ActionSrc::Touch) == Some(touch(2, TouchKind::Down)));
     check!(gesturemap_key_for(&m, SHORTCUT_REDO, ActionSrc::Touch).is_none());
     check!(gesturemap_key_for(&m, SHORTCUT_NONE, ActionSrc::Touch).is_none());
-    check!(gesturemap_key_for(&m, SHORTCUT_PAGES, ActionSrc::Key).is_none() && gesturemap_key_for(&m, SHORTCUT_PAGES, ActionSrc::Pad).is_none());
+    check!(gesturemap_key_for(&m, SHORTCUT_INDEX_MAP, ActionSrc::Key).is_none() && gesturemap_key_for(&m, SHORTCUT_INDEX_MAP, ActionSrc::Pad).is_none());
     check!(gesturemap_key_for(&m, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen) == Some(pen(PenBtn::Button, PenKind::Hold)));
     let (m, _) = parsed("touch.3.left=undo\ntouch.3.up=undo\n");
     check!(gesturemap_key_for(&m, SHORTCUT_UNDO, ActionSrc::Touch) == Some(touch(3, TouchKind::Up)));
@@ -209,7 +214,7 @@ fn writing_patterns_and_shapes() {
     check!(gesturemap_set(&mut m, touch(2, TouchKind::Tap), SHORTCUT_UNDO) == SHORTCUT_REDO);
     check!(gesturemap_action(&m, touch(1, TouchKind::Left)) == 0);
     check!(gesturemap_shape_of(&m, SHORTCUT_UNDO).is_some()); // a pattern does not clear its shape
-    check!(gesturemap_set(&mut m, touch(2, TouchKind::Down), 0) == SHORTCUT_PAGES);
+    check!(gesturemap_set(&mut m, touch(2, TouchKind::Down), 0) == SHORTCUT_INDEX_MAP);
     check!(gesturemap_format(&m, &mut text));
     let formatted = String::from_utf8(text.clone()).unwrap();
     check!(formatted.contains("touch.2.down=nothing\n") && formatted.contains("touch.2.tap=undo\nshape.undo=1,2,"));
@@ -264,7 +269,7 @@ fn atomic_saves_and_read_protection() {
     check!(gesturemap_shape_set(&mut m, SHORTCUT_UNDO, &recorded_samples("Z")) == -1);
     check!(gesturemap_save(&m, &path) == -1 && std::fs::metadata(&path).unwrap().len() == GESTURES_CAP + 1);
     check!(gesturemap_reset(&mut m, &path) == 0 && m.writable && !std::path::Path::new(&path).exists());
-    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_PAGES);
+    check!(gesturemap_action(&m, touch(2, TouchKind::Down)) == SHORTCUT_INDEX_MAP);
     std::fs::remove_dir_all(dir).unwrap();
 }
 

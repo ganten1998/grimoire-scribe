@@ -43,7 +43,7 @@ fn registry_names_groups_and_labels() {
         "status-corner",
         "gesture-new-page",
     ];
-    let expected_group_rows = [10usize, 11, 11, 8, 9, 10, 6];
+    let expected_group_rows = [10usize, 11, 11, 7, 9, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
     check!(SHORTCUT_LAST == 83 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
@@ -56,11 +56,11 @@ fn registry_names_groups_and_labels() {
         check!(action_by_name(name) == id);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 27);
+    check!(K_ACTIONS.len() == old_names.len() + 26);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 73);
+    check!(all.len() == 72);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -76,7 +76,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 73 && names.len() == 73);
+    check!(ids.len() == 72 && names.len() == 72);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want
@@ -138,6 +138,10 @@ fn registry_sources_and_pair_rows() {
     check!(action_info(SHORTCUT_GESTURE_NEW_PAGE).is_some_and(|a| a.group as usize == GROUP_PAGES));
     check!(action_info(SHORTCUT_STATUS_MODE).is_none());
     check!(action_by_name("status-mode") == SHORTCUT_STATUS);
+    // The Index list's row is gone: its name is the Graph's, and pages has a row of its own.
+    check!(action_info(SHORTCUT_INDEX).is_none() && action_by_name("index") == SHORTCUT_INDEX_MAP);
+    check!(shortcut_action_name(SHORTCUT_INDEX_MAP) == Some("index-map") && action_by_name("pages") == SHORTCUT_PAGES);
+    check!(!ACTION_GROUPS[GROUP_INDEX].rows.iter().any(|r| r.act[0] == SHORTCUT_INDEX));
     check!(action_info(SHORTCUT_ADD_LINK).is_some_and(|a| a.group as usize == GROUP_INDEX));
     check!(action_info(SHORTCUT_NAME_PAGE).is_some_and(|a| a.group as usize == GROUP_INDEX));
     check!(action_info(SHORTCUT_ZOOM_OUT).is_some_and(|a| a.pair == SHORTCUT_ZOOM_IN));
