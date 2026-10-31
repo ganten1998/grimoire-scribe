@@ -1,6 +1,7 @@
 //! pagesview.h: the editor's Pages view, which covers the screen: numbered tiles a screenful at a
 //! time. The UI reads only small cached previews; bounded background jobs render missing ones,
-//! ticks for Delete, a number pad for Go to page..., New page and Copy page. A page that holds a
+//! ticks for Delete (a held tile's card: Open, Add a link, Rename, Delete), a number pad for Go to
+//! page..., New page and Copy page. A page that holds a
 //! book page (a notebook annotated from KOReader, annotate.h) says which under its number ("p. 12"),
 //! from the notebook's source.ini, read as the view opens.
 //!
@@ -33,6 +34,8 @@ const PG_CONTEXT_LINK: i32 = 18;
 const PG_CONTEXT_OPEN: i32 = 19;
 const PG_CONTEXT_CANCEL: i32 = 20;
 const PG_MULTI: i32 = 21;
+const PG_CONTEXT_RENAME: i32 = 22;
+const PG_CONTEXT_DELETE: i32 = 23;
 // (14 and 15 were the picking header's The Index and Remove link, retired with the Pages view's hold path:
 // a link held on opens the long-press card over the page instead)
 
@@ -45,15 +48,16 @@ pub enum PvResult {
     Close = 1, // PV_CLOSE
     /// a tile tapped, or a page number entered: the view closes on page `target`
     Open = 2, // PV_OPEN
-    /// Delete: the editor deletes the ticked pages (pagesview_ticked), the view stays
+    /// Delete: the editor deletes the ticked pages (pagesview_ticked), the view stays (the held page's
+    /// Delete ticks only that page first, unless it is one of the ticked ones)
     Delete = 3, // PV_DELETE
     /// New page: the editor adds a page at index `target` (after the last page ticked, or after
     /// the open page: never first) and opens it
     New = 4, // PV_NEW
     /// Copy page (one page ticked): the editor copies page `target` right after it
     Copy = 5, // PV_COPY
-    /// save kb.text as the open page's section name; empty removes it (then, when name_only, the
-    /// view closes on the page, as on PV_CLOSE)
+    /// save kb.text as page `name_page`'s section name (the open page's, or the held page's after its
+    /// Rename); empty removes it (then, when name_only, the view closes on the page, as on PV_CLOSE)
     Name = 6, // PV_NAME
     /// Add a link (the Index tab): the editor waits for the link's box on the open page
     Link = 7, // PV_LINK
@@ -93,6 +97,8 @@ pub struct PagesView {
     pub press: Press,
     /// after PV_OPEN, PV_NEW, PV_COPY: a page index (see PvResult)
     pub target: i32,
+    /// the page the naming keyboard names, PV_NAME's (the open page, or a held tile's after Rename)
+    pub name_page: i32,
     /// source.ini: which page holds which book page (empty for most)
     pub book: AnnotateMap,
     pub index_tab: bool,
@@ -231,11 +237,13 @@ pub fn pagesview_pick(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     true
 }
 
-// The naming keyboard for the open page, holding its name (Name this page, pagesview_name).
-fn open_naming(v: &mut PagesView, nb: &NotebookInfo, nav: &Nav) {
+// The naming keyboard for page `page` (the open one, or a held tile's Rename), holding its name (Name
+// this page, pagesview_name); its Done names that page (name_page).
+fn open_naming(v: &mut PagesView, nb: &NotebookInfo, nav: &Nav, page: i32) {
     v.naming = true;
+    v.name_page = page;
     // TRANSLATORS: the naming keyboard's title, 96 px text-field header.
-    keyboard_open(&mut v.kb, tr("Page name"), nav_name(nav, nb.page_ids[v.current as usize]).as_bytes());
+    keyboard_open(&mut v.kb, tr("Page name"), nav_name(nav, nb.page_ids[page as usize]).as_bytes());
 }
 
 /// The same on its Index tab with the naming keyboard up for the open page, as Name this page opens
@@ -255,7 +263,8 @@ pub fn pagesview_name(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     v.tab_initialized = true;
     v.name_only = true;
     v.overlay = v.unified;
-    open_naming(v, nb, nav);
+    let current = v.current;
+    open_naming(v, nb, nav, current);
     true
 }
 
@@ -686,7 +695,7 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     if v.unified && !v.picking {
         draw_footer(v,a,screens,k,all);
     }
-    if let Some(page)=v.context { draw_context(v,a,nb,page); }
+    if let Some(page)=v.context { draw_context(v,a,nb,nav,page); }
     let c=&mut a.screen;
     // A toast stays above the keys, as over the Library's keyboard: Go to page's "Enter a page number"
     // used to cover its 0 and del just as the number was put right, and a key pressed under a toast
@@ -697,7 +706,8 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     }
 }
 
-// The unified view's bottom row (its buttons follow the ticks: Copy page for one, Delete for any).
+// The unified view's bottom row (its buttons follow the ticks: Copy page for one; a held tile's card
+// has Delete).
 fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool) {
     let (aw,ah)=(a.w,a.h);
     let y=ah-ui_px(170.0);
@@ -705,14 +715,14 @@ fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool) {
     canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
     v.hits.h.retain(|h|h.r.y<y);
     let side=ui_px(120.0);let gap=ui_px(12.0);
-    let widths=[side,side,side,side,ui_px(260.0),ui_px(260.0),side,side];
-    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-7*gap)/8+ui_px(80.0)));
-    let total: i32=widths.iter().sum::<i32>()+7*gap;
+    let widths=[side,side,side,side,ui_px(260.0),ui_px(260.0),side];
+    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-6*gap)/7+ui_px(80.0)));
+    let total: i32=widths.iter().sum::<i32>()+6*gap;
     let mut x=(aw-total)/2;
-    for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL,PG_DELETE,PG_NEXT].into_iter().enumerate(){
-        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_DELETE=>k>0,_=>true};
+    for (i,id) in [PG_PREV,PG_NEW,PG_COPY,PG_JUMP,PG_MULTI,PG_ALL,PG_NEXT].into_iter().enumerate(){
+        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,_=>true};
         let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
-        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_DELETE=>(IconKind::Trash,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
+        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
         ui_button(c,r,icon,label,if !enabled{ButtonStyle::Disabled}else if id==PG_MULTI&&v.multi_select{ButtonStyle::Selected}else{ButtonStyle::Plain});
         if enabled {hits_add(&mut v.hits,r,id,0);}
     }
@@ -807,7 +817,7 @@ fn repaint_ticks(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,before:&[
     let k=ticked_in(v,npages);
     let r=redraw_tiles(v,a,nb,nav,Some(&changed));
     if !rect_is_empty(r) {app_invalidate(a,r,RefreshMode::Ui);}
-    if (k_was==1)!=(k==1) || (k_was>0)!=(k>0) || (k_was==npages)!=(k==npages) {
+    if (k_was==1)!=(k==1) || (k_was==npages)!=(k==npages) {
         // (on its own: a tile near the top and the bottom row never merge into one refresh of the screen)
         app_flush(a);
         let (cols,rows,..)=geom(a,v);
@@ -818,16 +828,24 @@ fn repaint_ticks(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,before:&[
     }
 }
 
-fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,page:i32) {
+// A held tile's card: Open, Add a link, Rename (its naming keyboard), Delete (the ticked pages when it
+// is one of them, else it alone) and Cancel.
+fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,page:i32) {
     hits_clear(&mut v.hits);
-    let w=ui_px(1000.0).min(a.w-ui_px(60.0));let h=ui_px(520.0);
+    let w=ui_px(1000.0).min(a.w-ui_px(60.0));let h=ui_px(780.0);
     let card=Rect::new((a.w-w)/2,(a.h-h)/2,w,h);
     ui_frame(&mut a.screen,card,ui_px(18.0),255,true,0);
     ui_frame(&mut a.screen,card,ui_px(18.0),0,false,ui_px(3.0));
     font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(card.x,card.y,w,ui_px(100.0)),&cformat!(tr("Page %d"),page+1),0);
-    for (row,id,icon,label) in [(0,PG_CONTEXT_OPEN,IconKind::None,tr("Open")),(1,PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),(2,PG_CONTEXT_CANCEL,IconKind::None,tr("Cancel"))] {
+    let k=ticked_in(v,nb.npages());
+    let del=if k>1 && pagesview_ticked(v,page) {cformat!(tr("Delete (%d)"),k)}else{tr("Delete").to_string()};
+    // TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+    // a name (its naming keyboard, titled Page name).
+    let rename=tr("Rename");
+    for (row,id,icon,label) in [(0,PG_CONTEXT_OPEN,IconKind::None,tr("Open")),(1,PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),
+        (2,PG_CONTEXT_RENAME,IconKind::Rename,rename),(3,PG_CONTEXT_DELETE,IconKind::Trash,del.as_str()),(4,PG_CONTEXT_CANCEL,IconKind::None,tr("Cancel"))] {
         let rect=Rect::new(card.x+ui_px(24.0),card.y+ui_px(110.0)+row*ui_px(130.0),w-ui_px(48.0),ui_px(120.0));
-        let enabled=nb.page_ids.get(page as usize).is_some();
+        let enabled=nb.page_ids.get(page as usize).is_some() && (id!=PG_CONTEXT_RENAME || nav.writable);
         ui_button(&mut a.screen,rect,icon,label,if enabled{ButtonStyle::Plain}else{ButtonStyle::Disabled});
         if enabled{hits_add(&mut v.hits,rect,id,0);}
     }
@@ -935,6 +953,17 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         PG_CONTEXT_LINK | PG_CONTEXT_OPEN => {
             if let Some(page)=v.context.take(){v.target=page;return if hit.id==PG_CONTEXT_LINK {PvResult::Link}else{PvResult::Open};}
         }
+        // Rename: the naming keyboard over the grid, for the held page; its Cancel gives the grid back.
+        PG_CONTEXT_RENAME => {
+            if let Some(page)=v.context.take(){open_naming(v,nb,nav,page);redraw(v,a,nb,nav,RefreshMode::Ui);}
+        }
+        // Delete: the ticked pages when the held one is ticked, else that page alone (as if it were the one tick).
+        PG_CONTEXT_DELETE => {
+            if let Some(page)=v.context.take() {
+                if !pagesview_ticked(v,page) {v.sel.fill(false);if let Some(t)=v.sel.get_mut(page as usize){*t=true;}}
+                return PvResult::Delete;
+            }
+        }
         PG_TAB => {
             v.index_tab = hit.arg != 0;
             if v.index_tab {
@@ -945,7 +974,8 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
         PG_GRAPH => return PvResult::Graph,
         PG_LIST => return PvResult::List,
         PG_NAME => {
-            open_naming(v, nb, nav);
+            let current = v.current;
+            open_naming(v, nb, nav, current);
             redraw(v, a, nb, nav, RefreshMode::Ui);
         }
         // Go to page... leaves for the Find sheet (page number or name); it is not there while picking.
@@ -1076,7 +1106,7 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
 }
 
 pub fn pagesview_control_point(v:&PagesView,name:&str)->Option<(f32,f32)> {
-    let (id,arg)=match name {"link"=>(PG_CONTEXT_LINK,0),"open"=>(PG_CONTEXT_OPEN,0),"cancel"=>(PG_CONTEXT_CANCEL,0),"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"multi"=>(PG_MULTI,0),"goto"=>(PG_JUMP,0),"prev"=>(PG_PREV,0),"next"=>(PG_NEXT,0),"delete"=>(PG_DELETE,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
+    let (id,arg)=match name {"link"=>(PG_CONTEXT_LINK,0),"open"=>(PG_CONTEXT_OPEN,0),"cancel"=>(PG_CONTEXT_CANCEL,0),"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"multi"=>(PG_MULTI,0),"goto"=>(PG_JUMP,0),"prev"=>(PG_PREV,0),"next"=>(PG_NEXT,0),"rename"=>(PG_CONTEXT_RENAME,0),"delete"=>(PG_CONTEXT_DELETE,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
     v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 

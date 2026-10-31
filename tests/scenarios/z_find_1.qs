@@ -47,7 +47,7 @@ tap panel pages.goto
 wait 300
 expect editor.find is go
 expect editor.modal is find
-expect display.presents is fast 664 2325 120 140, full 0 0 1860 2480
+expect display.presents is fast 730 2325 120 140, full 0 0 1860 2480
 # a number the notebook does not have
 tap 1549 1725
 expect editor.find.1 is There is no page 9 (5 pages).

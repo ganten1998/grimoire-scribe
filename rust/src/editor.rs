@@ -5240,8 +5240,9 @@ fn pages_event(a: &mut App, ph: i32, ev: &InEvent) {
             pages_copy(a, to);
         }
         PvResult::Name => {
+            // (the open page, or the held tile's after its card's Rename)
             let s = ed(a);
-            let pid = s.nb.page_ids[s.index as usize];
+            let Some(&pid) = s.nb.page_ids.get(s.pv.name_page as usize) else { return };
             let mut old = String::new();
             i18n_copy(&mut old, nav_name(&s.nav, pid), NAV_NAME_LEN);
             let text = s.pv.kb.text;

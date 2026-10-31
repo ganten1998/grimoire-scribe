@@ -1,5 +1,5 @@
 # settings: status_mode=1
-# Pages view: previews, tick pages 2 and 4, delete; open a page from its preview; select all + delete
+# Pages view: previews, tick pages 2 and 4, delete (a held page's card); open a page from its preview; select all + delete
 # rust-only
 wait 200
 tap 965 95
@@ -38,6 +38,11 @@ tap panel pages.page.4
 wait 200
 shot 02-ticked-2-and-4
 expect editor.ticked is 2
+# Delete is on a held page's card: page 4's (ticked), so it deletes both (tile 4's centre is 318 1249)
+touch down 318 1249
+wait 700
+touch up 318 1249
+expect editor.pages.context is 4
 tap panel pages.delete
 expect toast has Deleted 2 pages
 wait 400
@@ -58,6 +63,10 @@ expect editor.modal is pages
 tap panel pages.all
 wait 200
 expect editor.ticked is 3
+touch down 318 551
+wait 700
+touch up 318 551
+expect editor.pages.context is 1
 tap panel pages.delete
 expect toast has Deleted 3 pages
 wait 400

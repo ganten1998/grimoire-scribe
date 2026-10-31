@@ -121,9 +121,12 @@ local and external nodes, orphans are current-notebook pages without valid links
 valid outgoing links, and page totals distinguish this notebook from all notebooks.
 
 Pages shows nine previews per screen in either orientation. Tap toggles selection; a second tap
-on the same tile within 450 ms opens it. Hold for 600 ms for Open / Add a link / Cancel. Add a
-link opens the held page and arms its ink-free area selector; a failed page save must not arm a
-link on another page. Choose-from-pages destination picking remains a single-tap operation.
+on the same tile within 450 ms opens it. Hold for 600 ms for Open / Add a link / Rename / Delete /
+Cancel. Add a link opens the held page and arms its ink-free area selector; a failed page save must
+not arm a link on another page. Rename opens Page name over the grid for the held page (not the open
+one), holding its name. Delete deletes the ticked pages when the held page is one of them (it reads
+Delete (N) then), else the held page alone; the bottom row has no Delete. Choose-from-pages
+destination picking remains a single-tap operation.
 
 Toggle Areas with both the current page and a linked-page preview showing; it must update on
 that press. The preview must stay a preview, with the origin/history unchanged until committed.
