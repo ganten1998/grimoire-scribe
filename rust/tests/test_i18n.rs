@@ -840,7 +840,7 @@ fn the_links_bar_strings_fit() {
             check!(at("hint", font_measure(FontFace::Regular, small, tr("Tap a link to look. Tap the page to stay.")), 1700));
             check!(at("none", font_measure(FontFace::Regular, ts, tr("No links on this page yet.")), 1700));
             check!(at("unreadable", font_measure(FontFace::Regular, ts, tr("Links could not be read.")), 1700));
-            // a chip: "Page 2000" in its name room (878 - 96 - 150 - 14), the right column (144 px), "not here"
+            // a chip: "Page 2000" in its name room (878 - 18 - 150 - 14), the right column (144 px), "not here"
             check!(at("page n", font_measure(FontFace::Regular, ts, &cformat!(tr("Page %d"), 2000)), 600));
             check!(at("p. n", font_measure(FontFace::Regular, small, &cformat!(c_("bar", "p. %d"), 2000)), 144));
             check!(at("x n", font_measure(FontFace::Regular, small, &cformat!(tr("×%d"), 64)), 144));

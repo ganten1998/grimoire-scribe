@@ -338,7 +338,7 @@ shows what the app holds.
 | `editor.find.N` | row N of the card as drawn, from 1: `Go to page 3`, a name (`Árbol`), `There is no page 9 (5 pages).` or `No page names match.` (the last two are lines, not buttons); empty past the last |
 | `editor.bar` | the Links bar: `0` while it is closed, `open` while it is up, `peek` while it shows another page above itself (an entry tapped, or "Back to ..."): the open page, its history and `notebook.last_page` stay the page the bar began on until that page is stayed on |
 | `editor.bar.entries` | how many entries the bar lists (one per place the open page's links go; two to one page are one entry, counted), 0 while it is closed |
-| `editor.bar.N` | entry N of the bar (from 1, in reading order, as the eye numbers the boxes): `p3` for page 3, `p3 x2` when two links go there, `index` for the Index, `missing` for a page that is gone; empty past the last |
+| `editor.bar.N` | entry N of the bar (from 1, in reading order): `p3` for page 3, `p3 x2` when two links go there, `index` for the Index, `missing` for a page that is gone; empty past the last |
 | `editor.bar.pager` | the bar's screenful out of how many (`2/3`), six entries a screen; empty with one screenful or while it is closed |
 | `editor.bar.peek` | the page number the bar shows above itself, `0` when it shows none (also while it is closed) |
 | `editor.canvas_cache` | what the bar's page canvas cache did since the bar opened, `HITS MISSES ENTRIES`: taps that found their page drawn already, taps that did not (it was read and drawn then, or only partly drawn ahead), and the pages it holds now (the pages the entries go to are got ready, a 160-row band a tick, while nothing touches the screen: `1 0 2`) |

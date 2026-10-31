@@ -399,18 +399,13 @@ fn dim(c: &mut Canvas, r: Rect) {
     }
 }
 
-// A chip: the entry's number in a black disc, its name, and at the right where it goes and how many links.
-fn draw_chip(c: &mut Canvas, r: Rect, num: i32, e: &LbEntry, label: &str, named: bool, selected: bool) {
+// A chip: the entry's name, and at the right where it goes and how many links (no number: the page's link
+// areas have none to match).
+fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, selected: bool) {
     ui_frame(c, r, u(16.0), 255, true, 0);
     ui_frame(c, r, u(16.0), 0, false, if selected { u(8.0) } else { u(3.0) });
-    let d = u(64.0);
-    let disc = Rect { x: r.x + u(18.0), y: r.y + (r.h - d) / 2, w: d, h: d };
-    canvas_disc_aa(c, disc.x as f32 + d as f32 / 2.0, disc.y as f32 + d as f32 / 2.0, d as f32 / 2.0, 0, 1.0);
-    let mut nt = String::new();
-    csnprintf!(&mut nt, 8, "%d", num);
-    font_draw_centered(c, FontFace::Bold, ui_small_size(), disc, &nt, 255);
     let col_w = u(150.0);
-    let name = Rect { x: r.x + u(96.0), y: r.y, w: r.w - u(96.0) - col_w - u(14.0), h: r.h };
+    let name = Rect { x: r.x + u(18.0), y: r.y, w: r.w - u(18.0) - col_w - u(14.0), h: r.h };
     let ts = ui_text_size();
     if e.page == NAV_TO_INDEX {
         // The Notebook icon and "The Index".
@@ -525,7 +520,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
         let e = lb.entries[i as usize];
         let (label, named) = entry_label(nb, nav, &e);
-        draw_chip(c, r, i + 1, &e, &label, named, i == lb.selected);
+        draw_chip(c, r, &e, &label, named, i == lb.selected);
         hits_add(&mut lb.hits, r, LB_CHIP, i);
     }
     let ty=card.y+card.h-u(160.0);let gap=u(20.0);let width=(inn.w-2*gap)/3;
@@ -812,8 +807,8 @@ fn pick_label(nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
     }
 }
 
-// A chip of Link to...: an icon in the bar's number slot (the Check on the current target), its label, and the
-// page's number at the right.
+// A chip of Link to...: an icon in its left slot (the Check on the current target), its label, and the page's
+// number at the right.
 fn draw_pick_chip(c: &mut Canvas, r: Rect, p: &LbPick, label: &str, named: bool, current: bool) {
     ui_frame(c, r, u(16.0), 255, true, 0);
     ui_frame(c, r, u(16.0), 0, false, if current { u(8.0) } else { u(3.0) });

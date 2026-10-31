@@ -1022,8 +1022,8 @@ there. Off, the width fills the screen as upright and a vertical two-finger drag
 
 **The Links bar** (linkbar.rs, hosted by the editor as dispmenu.rs is) is a card along the bottom with one
 chip per place the open page's links go (the Index, a named page, a numbered page or a page that is
-gone), numbered in reading order and counted when two links share a page; a tool row has Go to, New
-link, Areas and Index. It opens and closes on one Ui refresh of its card (no flash). Tapping a chip
+gone), in reading order and counted when two links share a page, with no number (the page's link
+areas have none); a tool row has Name page, Go to page (the Find sheet) and Areas. It opens and closes on one Ui refresh of its card (no flash). Tapping a chip
 peeks: the page above the bar is that page, drawn from a small canvas cache (the origin's own canvas
 is never touched, so nothing autosaves, undoes or follows a link on the peeked page), and the view
 is never saved. Staying (a finger tap on the page, a pen down outside, the chip again) commits it: the
