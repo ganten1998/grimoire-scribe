@@ -3,27 +3,5 @@
   "id": "grimoirestable",
   "name": "Grimoire stable",
   "description": "Grimoire official stable channel",
-  "packages": {
-    "grimoire": {
-      "name": "Grimoire",
-      "author": "Ganten",
-      "description": "Handwriting notebooks for the jailbroken Kindle Scribe. 1.2.0",
-      "artifacts": [
-        {
-          "url": "https://github.com/ganten1998/grimoire-scribe/releases/download/v1.2.0/grimoire_1.2.9999_kindlehf.kpkg",
-          "version": [
-            1,
-            2,
-            9999
-          ],
-          "dependencies": [],
-          "supported_platforms": [
-            "kindlehf"
-          ],
-          "grimoire_version": "1.2.0",
-          "sha256": "b05bd0aad4950ecd05495e139d8fe4b2eda95972fc3c97a96e70959e07f99cbf"
-        }
-      ]
-    }
-  }
+  "packages": {}
 }
