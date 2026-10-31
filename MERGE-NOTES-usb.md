@@ -137,7 +137,7 @@ No user-facing strings changed (no `tr()` text, no app UI). Nothing for the cata
   stage under `/usr/bin/python3` 3.9.6. Also run by hand against the rc8 bridge app itself (fake
   Kindle behind it) under both Pythons: stage, `--clean-sidecars`, `--prune-keep 1` all worked,
   no `._` object reached the fake Kindle.
-- KindleLab: `venv/bin/python -m unittest test_kindle_volume`: 39 tests OK (sidecars kept on
+- KindleLab: `venv/bin/python -m unittest test_kindle_volume`: 35 tests OK (sidecars kept on
   the Mac and hidden, guard 423s and its exceptions, placeholders, streamed and ranged GETs from
   one download, Digest share and token share, backoff, open-error reasons, strange listings,
   mount parsing, unmount rule, controller heartbeat, cache during a transfer, attach retry,
