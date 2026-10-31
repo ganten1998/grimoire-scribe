@@ -4746,7 +4746,11 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
     if modal == Modal::Display {
         let mut d = Rect::default();
         let mut dm = std::mem::take(&mut lib(a).dm);
-        let r = dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d);
+        let r = if touch_cancelled(ev) {
+            dispmenu_cancel(&mut dm, a, &mut d)
+        } else {
+            dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d)
+        };
         lib(a).dm = dm;
         if r == DmResult::Closed {
             lib(a).modal = Modal::Settings; // back to the settings sheet it was opened from

@@ -6979,7 +6979,13 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
     s.has_pressed = false;
     if s.dragging {
         s.dragging = false;
-        let (x, y) = ((ev.x - s.grab_dx) as i32, (ev.y - s.grab_dy) as i32);
+        // (a cancel, the pen come near or a second finger, leaves it where it was last drawn: its
+        // off-screen place would throw it into the corner)
+        let (x, y) = if touch_cancelled(ev) {
+            (s.panel.x, s.panel.y)
+        } else {
+            ((ev.x - s.grab_dx) as i32, (ev.y - s.grab_dy) as i32)
+        };
         move_panel_to(a, x, y, RefreshMode::Ui);
         // Also clean up wherever the panel passed through.
         let s = ed(a);
@@ -8533,8 +8539,11 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
         }
         Owner::Display => {
             let mut d = RECT_EMPTY;
-            let r = with_modal(a, |s| &mut s.dm, |dm, a| dispmenu_pointer(dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d),
-            );
+            let r = if touch_cancelled(ev) {
+                with_modal(a, |s| &mut s.dm, |dm, a| dispmenu_cancel(dm, a, &mut d))
+            } else {
+                with_modal(a, |s| &mut s.dm, |dm, a| dispmenu_pointer(dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d))
+            };
             if r == DmResult::Inverted {
                 compose_all(a, RefreshMode::Full);
             } else if r == DmResult::Refit {

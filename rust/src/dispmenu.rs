@@ -274,7 +274,31 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     m.rect
 }
 
-/// Pointer phase 0 down / 1 move / 2 up. DM_CLOSED: the host should recompose m->rect.
+/// The touch ended with the recognizer's cancel (the pen came near, a second finger or a palm): a
+/// slider being dragged keeps the value it has now, applied and saved as its release would, never
+/// one read from the cancel's off-screen place; a button pressed is let go, doing nothing.
+pub fn dispmenu_cancel(m: &mut DispMenu, a: &mut App, dirty: &mut Rect) -> DmResult {
+    *dirty = RECT_EMPTY;
+    if !m.open || m.active == 0 {
+        m.active = 0;
+        return DmResult::None;
+    }
+    match m.active {
+        D_SLEEP_AFTER => {
+            settings_save(&a.settings);
+            app_apply_sleep_policy(a);
+        }
+        D_BRIGHT => light_set_intensity(m.intensity),
+        _ => light_set_warmth(m.warmth),
+    }
+    dispmenu_draw(m, a);
+    *dirty = m.rect;
+    m.active = 0;
+    m.row_stale = false;
+    DmResult::None
+}
+
+/// Pointer phase 0 down / 1 move / 2 up (a cancelled touch goes to dispmenu_cancel). DM_CLOSED: the host should recompose m->rect.
 /// DM_INVERTED: colors flipped, the host should repaint everything (full refresh).
 pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f32, t: u32, dirty: &mut Rect) -> DmResult {
     let ph = phase;
