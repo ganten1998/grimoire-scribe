@@ -595,6 +595,11 @@ fn test_tplsheet() {
     store_set_device(DPI, 1860, 2480);
     ui_init(DPI);
     check!(font_init() == 0);
+    // (a press on a sheet now shows at once, app_press_feedback: the display is open)
+    #[cfg(feature = "sim")]
+    std::env::set_var("GRIMOIRE_SCRIPT", "/dev/null");
+    let (mut w, mut h, mut dpi) = (0, 0, 0.0f32);
+    let _ = display_open(&mut w, &mut h, &mut dpi);
     run!(paper_grid_layouts);
     run!(pages_of_tiles);
     run!(tile_fills_in);

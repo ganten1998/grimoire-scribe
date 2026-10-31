@@ -163,7 +163,7 @@ fn every_action_by_name() {
         named += 1;
         check!(shortcut_action(name) == a);
     }
-    check!(named == 10 + 8 + 27 + 22 + 4 + 2); // the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only)
+    check!(named == 10 + 8 + 27 + 22 + 4 + 2 - 1); // the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only); 2.0.0-rc.8 reads "index" only as another name for the Graph (index-map)
     let path = format!("{}/shortcuts-new.ini", tl_tmp());
     let text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n\
                 pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n\
