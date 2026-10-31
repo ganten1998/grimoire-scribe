@@ -8385,12 +8385,16 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
             s.owner = Owner::None;
             // Decided at the lift, in this order: a cancel (the touch became a gesture, or the pen came)
-            // ends silently; the corner's tap is the clock's alone; an unmoved, unheld tap follows the link.
-            let (x0, y0, moved) = (s.link_press.x0, s.link_press.y0, s.link_press.moved);
+            // ends silently; the corner's tap is the clock's alone; an unheld tap that lifts within
+            // TAP_SLOP_MM of where it landed (as the corner's) follows the link.
+            let lp = s.link_press;
+            let (x0, y0) = (lp.x0, lp.y0);
+            let slop = mm_to_px(TAP_SLOP_MM, a.dpi);
+            let rolled = (lp.x - x0).abs() > slop || (lp.y - y0).abs() > slop;
             if touch_cancelled(ev) || fs_finish_event(a, ev) || corner_tap(false) {
                 return;
             }
-            if !ed_ref(a).link_held && !moved {
+            if !ed_ref(a).link_held && !rolled {
                 link_follow(a, x0, y0);
             }
         }
