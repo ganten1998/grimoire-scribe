@@ -477,6 +477,8 @@ pub struct EditorState {
     // panel, or unpins it.
     tools_open: bool,
     shapes_menu: bool,
+    /// the ink the picker last drew selected (white or not): the probe's, tools.ink
+    tools_ink_drawn: Option<bool>,
     pin_mode: bool,
     /// where its top is meant to be: the panel's, as it opened (it stays there while pins move the
     /// panel; laid out again at a turn)
@@ -1319,6 +1321,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
                 match control {"on"=>Some((P_SHAPES,0)),"hold"=>Some((P_SHAPE_HOLD,0)),"quads"=>Some((P_SHAPE_QUADS,0)),
                     "round"=>Some((P_SHAPE_ROUND,0)),"links"=>Some((P_SHAPE_LINKS,0)),"min"=>Some((P_SHAPE_MIN,0)),"done"=>Some((P_SHAPE_DONE,0)),_=>None}
             }
+            else if let Some(i)=name.strip_prefix("picker.ink.") {i.parse::<i32>().ok().map(|i|(P_PICK_INK,i))}
             else if let Some(tool)=name.strip_prefix("picker.tool:") {
                 let action=shortcut_action(&format!("tool:{tool}"));
                 (action>=SHORTCUT_TOOL_BASE && action<SHORTCUT_TOOL_BASE+TOOL_COUNT as i32).then_some((P_PICK_TOOL,action-SHORTCUT_TOOL_BASE))
@@ -1905,6 +1908,7 @@ fn draw_tools(a: &mut App) {
     // The ink row, out of use in Pin mode (the pins are pens, whatever they draw).
     let iy = y + ui_px(100.0) + rows * bh + (rows - 1) * g + g;
     let iw = (gridw - (N_INKS - 1) * g) / N_INKS;
+    s.tools_ink_drawn = None;
     for i in 0..N_INKS {
         let r = Rect { x: x + ui_px(30.0) + i * (iw + g), y: iy, w: iw, h: inkh ,
         };
@@ -1912,6 +1916,7 @@ fn draw_tools(a: &mut App) {
         let stl = if s.pin_mode {
             ButtonStyle::Disabled
         } else if st.white == ink.white {
+            s.tools_ink_drawn = Some(ink.white);
             ButtonStyle::Selected
         } else {
             ButtonStyle::Plain
@@ -5878,9 +5883,13 @@ fn tools_tap(a: &mut App) {
             let st = &mut a.settings;
             st.white = K_INKS[clampi(h.arg, 0, N_INKS - 1) as usize].white;
             settings_save(st);
-            draw_panel_over(a); // the pen in use shows whether it draws white (the picker over the panel where it covers it)
+            // The picker shows the ink now picked, and the panel's pen whether it draws white (the picker
+            // beside the panel is outside the panel's rect: both are composed again, 2.0.0-rc.12).
             let s = ed(a);
             let r = rect_union(s.panel, s.tools_rect);
+            if !s.pv.open {
+                compose(a, r);
+            }
             app_invalidate(a, r, RefreshMode::Ui);
         }
         P_PICK_TOOL => {
@@ -7085,6 +7094,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         a.settings.white = !a.settings.white;
         settings_save(&a.settings);
         repaint_panel(a, RefreshMode::Ui);
+        // (an open picker's ink row follows)
+        if ed_ref(a).tools_open && !ed_ref(a).shapes_menu && !ed_ref(a).pv.open {
+            let r = ed_ref(a).tools_rect;
+            compose(a, r);
+            app_invalidate(a, r, RefreshMode::Ui);
+        }
     } else {
         return false;
     }
@@ -9520,6 +9535,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         } else {
             csnprintf!(out, cap, "%s", "");
         }
+    } else if key == "tools.ink" {
+        // The ink the open picker shows selected: "white", "black", or "" with no picker (or Pin mode).
+        let v = if s.tools_open && !s.shapes_menu { s.tools_ink_drawn.map_or("", |w| if w { "white" } else { "black" }) } else { "" };
+        csnprintf!(out, cap, "%s", v);
     } else if key == "hold_eraser" {
         csnprintf!(out, cap, "%d", if s.hold_eraser { 1 } else { 0 }); // Erase while held is down
     } else if key == "modal" {
