@@ -3,7 +3,8 @@
 # env: GRIMOIRE_KEEP_RENDER_MS=0
 # rust-only
 # A page that takes long to draw keeps its drawing and opens from it (GRIMOIRE_KEEP_RENDER_MS=0 here
-# makes every page count as slow): drawn the first time, kept at the save, read back at the next open,
+# makes every page count as slow): drawn the first time, kept at the idle save (2 s after the pen lifts;
+# turning or closing writes the page alone), read back at the next open,
 # exactly what drawing it again gives (live_matches_render), and drawn again once its file changes.
 wait 300
 tap 965 95
@@ -19,7 +20,7 @@ pen line 300 900 1300 900 80 0.7 0.7
 side on
 pen line 280 880 1300 910 60 0.5 0.5
 side off
-wait 700
+wait 2500
 expect editor.strokes is 3
 expect editor.live_matches_render is 1
 pentap panel library
@@ -31,9 +32,9 @@ expect screen is editor
 expect editor.page_kept is 1
 expect editor.strokes is 3
 expect editor.live_matches_render is 1
-# A new stroke saved: the next open is from the drawing kept at that save
+# A new stroke, saved idle: the next open is from the drawing kept at that save
 pen line 400 1400 1200 1450 50 0.8 0.8
-wait 700
+wait 2500
 pentap panel library
 wait 1500
 tap 326 608

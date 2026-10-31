@@ -2434,14 +2434,16 @@ fn save_page(a: &mut App) -> bool {
             s.thumb_dirty = true; // written when leaving the page (it is slow)
         }
         // Its Pages preview from the canvas, which is the page drawn already: a cache file written without
-        // waiting on the disk, at most every 30 s while writing goes on (always as the page is left: the
-        // turn, close and view paths save first). The background job leaves this page out (pagesview_prefetch).
+        // waiting on the disk, by the idle autosave alone (2 s after the pen lifts, at most every 30 s).
+        // Turning the page and closing write the page and nothing more, so they never wait on a cache
+        // file; a page left before its idle save gets its preview from the background job when Pages
+        // next opens elsewhere (pagesview_prefetch leaves the open page out).
         let pid = s.open_pid();
         pagesview_page_saved(&mut s.pv, pid);
         let now = now_ms();
         let whole = s.canvas_page == s.open_page_ref() && s.page_canvas.w == s.pgw && s.page_canvas.h == s.pgh
             && !s.page_canvas.px.is_empty() && !s.picture_missing;
-        if whole && (!s.autosaving || now.wrapping_sub(s.preview_saved_ms) >= 30_000) {
+        if whole && s.autosaving && now.wrapping_sub(s.preview_saved_ms) >= 30_000 {
             store_save_page_preview(&s.nb, pid, &s.page_canvas);
             // A page that took a second or more to draw keeps its drawing too, so it opens at once.
             if s.full_ms.0 == pid && s.full_ms.1 >= keep_render_ms() {
@@ -2581,6 +2583,7 @@ fn render_page_full(a: &mut App) {
     let s = ed(a);
     s.canvas_page = s.open_page_ref();
     base_reset(s);
+    s.preview_saved_ms = now_ms().wrapping_sub(30_000); // (a page opened: its first idle save writes them)
     // An image paper's picture can have come since its paper alone was drawn (S->paper: a picture
     // made in the background draws white until it is there), and the page now shows it.
     if paper_is_image(s.open_page().unwrap().paper) {
