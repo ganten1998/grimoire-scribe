@@ -266,10 +266,9 @@ static K_PAGES: [LearnRow; 11] = [
     lr(None, [SHORTCUT_PEN_ZOOM, 0], IconKind::Expand),
 ];
 
-static K_INDEX: [LearnRow; 8] = [
+static K_INDEX: [LearnRow; 7] = [
     lr(None, [SHORTCUT_LINKS, 0], IconKind::Link),
     lr(None,[SHORTCUT_INDEX_MAP,0],IconKind::Grid),
-    lr(None, [SHORTCUT_INDEX, 0], IconKind::None),
     lr(None, [SHORTCUT_GO_TO_PAGE, 0], IconKind::Search),
     lr(None, [SHORTCUT_GO_BACK, 0], IconKind::Back),
     lr(None, [SHORTCUT_ADD_LINK, 0], IconKind::LinkPlus),
@@ -385,7 +384,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 63] = [
+pub static K_ACTIONS: [(&str, i32); 62] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -393,7 +392,6 @@ pub static K_ACTIONS: [(&str, i32); 63] = [
     ("previous-tool", SHORTCUT_PREV_TOOL),
     ("next-tool", SHORTCUT_NEXT_TOOL),
     ("white", SHORTCUT_WHITE),
-    ("index", SHORTCUT_INDEX),
     ("hold-eraser", SHORTCUT_HOLD_ERASER),
     ("eraser-mode", SHORTCUT_ERASER_MODE),
     ("clear-page", SHORTCUT_CLEAR_PAGE),
@@ -461,7 +459,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 73] = [
+static ACTIONS: [ActionInfo; 72] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -633,14 +631,6 @@ static ACTIONS: [ActionInfo; 73] = [
         GROUP_EDITING,
         IconKind::None,
         ActionKind::Toggle,
-    ),
-    nm(
-        SHORTCUT_INDEX,
-        "index",
-        n_("Index"),
-        GROUP_INDEX,
-        IconKind::None,
-        ActionKind::Menu,
     ),
     ai(
         SHORTCUT_HOLD_ERASER,
@@ -1062,7 +1052,7 @@ static ACTIONS: [ActionInfo; 73] = [
     nm(SHORTCUT_SHAPES,"shapes",n_("Smart shapes"),GROUP_EDITING,IconKind::Grid,ActionKind::Toggle),
     nm(SHORTCUT_SHAPE_HOLD,"shape-hold",n_("Shape hold time"),GROUP_EDITING,IconKind::Clock,ActionKind::Cycle),
     nm(SHORTCUT_SHAPE_LAST,"shape-last",n_("Shape the last stroke"),GROUP_EDITING,IconKind::Grid,ActionKind::OneShot),
-    nm(SHORTCUT_INDEX_MAP,"index-map",n_("Index map"),GROUP_INDEX,IconKind::Grid,ActionKind::Menu),
+    nm(SHORTCUT_INDEX_MAP,"index-map",n_("Graph"),GROUP_INDEX,IconKind::Grid,ActionKind::Menu),
     ai(
         SHORTCUT_PEN_PAN, "pan", n_("Pan with the pen"), None, IconKind::Next,
         GROUP_PAGES, 0, ActionKind::Momentary, SRC_PEN,
@@ -1079,6 +1069,7 @@ pub fn action_info(id: i32) -> Option<&'static ActionInfo> {
 
 pub fn action_by_name(name: &str) -> i32 {
     if name == "status-mode" { return SHORTCUT_STATUS; } // retired display-mode binding
+    if name == "index" { return SHORTCUT_INDEX_MAP; } // retired Index list binding: the Graph now
     for &(n, id) in TOOL_NAMES.iter() {
         if n == name {
             return id;

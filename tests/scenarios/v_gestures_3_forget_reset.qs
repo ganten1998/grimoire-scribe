@@ -19,15 +19,15 @@ expect gestures.undo is
 expect toast is No gestures for Undo now.
 tap library done
 wait 100
-tap library gestures.group.pages
+tap library gestures.group.index
 wait 100
-touch down library gestures.row.7
+touch down library gestures.row.2
 wait 700
-touch up library gestures.row.7
-expect gestures.pages is
+touch up library gestures.row.2
+expect gestures.index-map is
 tap library done
 wait 100
 tap library gestures.reset
 wait 100
-expect gestures.pages is touch.2.down
+expect gestures.index-map is touch.2.down
 expect gestures.undo is

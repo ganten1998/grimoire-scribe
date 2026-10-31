@@ -942,7 +942,7 @@ never changes the other, and Live view keys work whether or not keyboard shortcu
 before 2.0.0-beta.6 never read it.
 
 `gestures.ini`, beside the shortcut files, overlays touch and pen-button bindings and recorded
-finger shapes on the built-ins. With no file, two fingers down open Pages, up opens the Links bar, left
+finger shapes on the built-ins. With no file, two fingers down open the Graph, up opens the Links bar, left
 turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
 have no built-in action. Three-finger patterns are available only when the panel reports at least
 three touch slots; the owner's Kindle reports two. The pen button's built-ins are
@@ -954,7 +954,7 @@ these three comment lines, byte for byte:
 
 ```ini
 # Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
-# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
+# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 

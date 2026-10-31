@@ -44,4 +44,4 @@ wait 100
 tap library gestures.reset.confirm
 wait 100
 expect gestures.shape_count is 0
-expect gestures.pages is touch.2.down
+expect gestures.index-map is touch.2.down

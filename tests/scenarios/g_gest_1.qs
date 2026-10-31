@@ -73,5 +73,6 @@ wait 100
 pentap panel next
 wait 100
 expect editor.pages is 4
-expect gestures.pages is touch.2.down
+expect gestures.index-map is touch.2.down
+expect gestures.pages is
 expect gestures.links is touch.2.up

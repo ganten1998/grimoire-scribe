@@ -8,4 +8,4 @@ tap panel pages.graph
 expect editor.map is 0
 expect editor.modal is pages
 expect editor.pages_tab is pages
-expect toast is Not enough memory for the map.
+expect toast is Not enough memory for the graph.

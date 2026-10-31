@@ -57,18 +57,29 @@ expect editor.tool is calligraphy
 key 607 0 1
 wait 100
 expect editor.modal is none
-# The legacy Pages and Index actions now own the same unified Index menu.
+# Pages opens the Index on its Pages view, as the toolbar's page count does; the old index line is
+# read as index-map (the Graph), which closes the Index from there and opens it on its Graph.
 key 605 0 1
+wait 200
+expect editor.modal is pages
+expect editor.pages_tab is pages
+key 606 0 1
+wait 200
+expect editor.modal is none
+key 606 0 1
 wait 200
 expect editor.modal is map
 expect editor.map.list is 0
-key 606 0 1
+# Pages over the Graph turns it to Pages, and closes it there.
+key 605 0 1
+wait 200
+expect editor.modal is pages
+key 605 0 1
 wait 200
 expect editor.modal is none
 key 605 0 1
 wait 200
-expect editor.modal is map
-expect editor.map.list is 0
+expect editor.modal is pages
 key 608 0 1
 wait 200
 expect editor.modal is paper
@@ -225,7 +236,7 @@ expect screen is editor
 storage full
 pen line 300 1300 900 1320 10 0.6 0.7
 wait 100
-key 605 0 1
+key 606 0 1
 wait 200
 expect editor.modal is map
 key 612 0 1

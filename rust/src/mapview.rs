@@ -250,7 +250,7 @@ pub fn mapview_open(
     *v = MapView::default();
     #[cfg(feature = "sim")]
     if std::env::var_os("GRIMOIRE_SIM_MAP_NOMEM").is_some_and(|s| s == "1") {
-        app_toast(a, tr("Not enough memory for the map."), 3000);
+        app_toast(a, tr("Not enough memory for the graph."), 3000);
         return false;
     }
     v.w = a.w;
@@ -266,14 +266,14 @@ pub fn mapview_open(
         || !reserve(&mut v.labels, n)
         || graph_build(&mut v.g, nb, &graph_nav, open_pid) != 0
     {
-        app_toast(a, tr("Not enough memory for the map."), 3000);
+        app_toast(a, tr("Not enough memory for the graph."), 3000);
         return false;
     }
     v.pages.extend_from_slice(&nb.page_ids);
     graph_ini_read(nb.id.as_str(), &mut v.ini);
     v.mode = v.ini.mode;
     if !layout(v, a, false) {
-        app_toast(a, tr("Not enough memory for the map."), 3000);
+        app_toast(a, tr("Not enough memory for the graph."), 3000);
         return false;
     }
     if (around_open || v.mode == GraphMode::Around) && !around(v, around_centre(v)) {v.mode=GraphMode::All;}

@@ -76,12 +76,12 @@ wait 100
 tap library buttons.group.index
 wait 100
 expect library.buttons_group is index
-tap library buttons.row.6
+tap library buttons.row.5
 wait 100
 expect library.learning is add-link
 key 321 0 1
 wait 100
-tap library buttons.row.7
+tap library buttons.row.6
 wait 100
 expect library.learning is name-page
 key 322 0 1

@@ -7,19 +7,19 @@ wait 100
 tap library gestures
 wait 100
 expect library.sheet is gestures
-tap library gestures.group.pages
+tap library gestures.group.index
 wait 100
-expect library.gestures_group is pages
-tap library gestures.row.7
+expect library.gestures_group is index
+tap library gestures.row.2
 wait 100
-expect library.gestures.learning is pages
+expect library.gestures.learning is index-map
 swipe 2 930 1100 0 400
 expect library.record is pattern touch.2.down
 expect library.record.line is 2 fingers down
 tap library record.use
 wait 100
 expect library.record is 0
-expect gestures.pages is touch.2.down
+expect gestures.index-map is touch.2.down
 tap library done
 wait 100
 tap library gestures.group.editing

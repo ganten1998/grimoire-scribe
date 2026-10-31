@@ -87,7 +87,7 @@ fn tk(k: TouchKind) -> usize {
     k as usize
 }
 
-/// The built-ins only: two fingers down open Pages, up the Links bar, left and right turn the page;
+/// The built-ins only: two fingers down open the Graph, up the Links bar, left and right turn the page;
 /// holding the pen's button clears the page; triple click is unassigned.
 /// Two- and three-finger taps and one finger's gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
@@ -95,7 +95,7 @@ pub fn gesturemap_defaults(m: &mut GestureMap) {
     *m = GestureMap::default();
     m.pen_button2 = pen_button2;
     m.writable = true;
-    m.touch[0][tk(TouchKind::Down)] = SHORTCUT_PAGES;
+    m.touch[0][tk(TouchKind::Down)] = SHORTCUT_INDEX_MAP;
     m.touch[0][tk(TouchKind::Up)] = SHORTCUT_LINKS;
     m.touch[0][tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
     m.touch[0][tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
@@ -497,7 +497,7 @@ pub fn gesturemap_carried(m: &GestureMap) -> &[u8] {
 pub const GM_SHAPES_MAX: usize = FS_SHAPES_MAX;
 const HEADER: &str = concat!(
     "# Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:\n",
-    "# touch.2.down=pages, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page\n",
+    "# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page\n",
     "# shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.\n",
 );
 

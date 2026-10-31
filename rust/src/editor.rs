@@ -6369,8 +6369,8 @@ fn panel_act(a: &mut App, h: Hit) {
 }
 
 // The menu in front of the page, as the action of its button: the tool picker, Paper (the paper
-// sheet, its Templates sheet and Custom music), Display, or Pages or Index (the Pages view on that
-// tab); 0 with none.
+// sheet, its Templates sheet and Custom music), Display, or the Index (index-map, whichever of its
+// views shows; Pages for a picking Pages view); 0 with none.
 fn front_menu(s: &EditorState) -> i32 {
     if s.map.open {
         return SHORTCUT_INDEX_MAP;
@@ -6382,7 +6382,7 @@ fn front_menu(s: &EditorState) -> i32 {
         return SHORTCUT_LINKS;
     }
     if s.pv.open {
-        return if s.pv.unified&&!s.pv.picking{SHORTCUT_INDEX_MAP}else if s.pv.index_tab { SHORTCUT_INDEX } else { SHORTCUT_PAGES };
+        return if (s.pv.unified&&!s.pv.picking)||s.pv.index_tab{SHORTCUT_INDEX_MAP}else{SHORTCUT_PAGES};
     }
     if s.tools_open {
         return SHORTCUT_TOOL_PICKER;
@@ -6402,7 +6402,6 @@ fn menu_action(action: i32) -> bool {
         || action == SHORTCUT_GO_TO_PAGE
         || action == SHORTCUT_LINKS
         || action == SHORTCUT_PAGES
-        || action == SHORTCUT_INDEX
         || action == SHORTCUT_TOOL_PICKER
         || action == SHORTCUT_PAPER
         || action == SHORTCUT_DISPLAY
@@ -6472,7 +6471,7 @@ fn open_menu(a: &mut App, action: i32) {
         SHORTCUT_INDEX_MAP => map_show(a, false),
         SHORTCUT_GO_TO_PAGE => find_show(a),
         SHORTCUT_LINKS => bar_open(a),
-        SHORTCUT_PAGES | SHORTCUT_INDEX => map_show(a,false),
+        SHORTCUT_PAGES => pages_show(a), // (the toolbar's page count)
         SHORTCUT_TOOL_PICKER => open_tools(a),
         SHORTCUT_PAPER => panel_act(a, Hit { id: P_PAPER, ..Default::default() },
         ),
@@ -6524,7 +6523,6 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if action==SHORTCUT_GO_BACK || action==SHORTCUT_CLOSE_MENU {crate::library::library_settings_back(a);return true;}
         return app_global_action(a,action,src);
     }
-    let action=if matches!(action,SHORTCUT_PAGES|SHORTCUT_INDEX){SHORTCUT_INDEX_MAP}else{action};
     if action == SHORTCUT_STATUS_MODE && !editor_busy(a) { status_cycle_mode(a); return true; }
     let asleep = a.asleep;
     let Some(s) = a.ed.as_deref_mut() else { return false ;
@@ -6604,7 +6602,11 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         return false;
     }
     let mut action = action;
-    let front = front_menu(s);
+    let mut front = front_menu(s);
+    // The Index's Pages view is Pages' own menu as well: pages there closes it, as index-map does.
+    if action == SHORTCUT_PAGES && front == SHORTCUT_INDEX_MAP && s.pv.open {
+        front = SHORTCUT_PAGES;
+    }
     if front != 0 && menu_action(action) {
         if s.pv.open && s.pv.kb.open {
             return false;
@@ -6613,14 +6615,6 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if front == SHORTCUT_LINKS && s.peek.active && action != SHORTCUT_LINKS && action != SHORTCUT_CLOSE_MENU {
             bar_commit(a);
             open_menu(a, action);
-            return true;
-        }
-        if (action == SHORTCUT_PAGES || action == SHORTCUT_INDEX) && action != front && s.pv.open {
-            s.pv.index_tab = action == SHORTCUT_INDEX; // the other tab, as a tap on it
-            if s.pv.index_tab {
-                pagesview_untick(&mut s.pv);
-            }
-            compose_all(a, RefreshMode::Full);
             return true;
         }
         let leaves = action == SHORTCUT_PEN_FEEL || action == SHORTCUT_LIBRARY;
@@ -7994,16 +7988,17 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
     };
     let front = front_menu(s);
     // With the bar up two fingers down always close it, back to where it began, whatever is bound (without this
-    // 2-down would fall through to Pages, which swaps the menu and keeps the page the bar was looking at).
+    // 2-down would fall through to the Graph, which swaps the menu and keeps the page the bar was looking at).
     let action = if front == SHORTCUT_LINKS && key == (GestureKey::Touch { fingers: 2, kind: TouchKind::Down ,
             }) {
         SHORTCUT_LINKS
     } else if front != 0 {
         let m = &a.gestures;
-        // (the Pages view is two buttons' menu: Pages and Index)
+        // (the Graph's gesture closes a picking Pages view too; a Pages gesture over the Index goes on to
+        // the action, which closes the Index's Pages view or turns its Graph or List to Pages)
         let owned = |k: GestureKey| {
             let act = gesturemap_action(m, k);
-            act == front || (matches!(front,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP) && matches!(act,SHORTCUT_PAGES|SHORTCUT_INDEX|SHORTCUT_INDEX_MAP))
+            act == front || (front == SHORTCUT_PAGES && act == SHORTCUT_INDEX_MAP)
         };
         if owned(key) || owned(gesturemap_mirror(key)) {
             front
