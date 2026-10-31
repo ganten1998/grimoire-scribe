@@ -10,7 +10,7 @@
 wait 300
 tap 965 95
 wait 100
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 # (the previews: a slowed job, waited for)

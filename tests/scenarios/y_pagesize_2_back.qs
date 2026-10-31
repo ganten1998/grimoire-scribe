@@ -38,17 +38,16 @@ expect editor.strokes is 3
 pentap panel paper
 wait 300
 expect editor.modal is paper
-pentap 1622 1452
+pentap panel paper.custom
 wait 300
 shot 04-custom-music
 expect editor.modal is music
-expect editor.music is 5: treble tab6
-expect editor.music_max is 7
-pentap 1008 1772
-pentap 1008 1772
+expect editor.music is 3: treble bass tab6
+expect editor.music_max is 4
+pentap panel music.more
 wait 200
-expect editor.music is 7: treble tab6
-pentap 289 1932
+expect editor.music is 4: treble bass tab6
+pentap panel music.cancel
 wait 300
 expect editor.modal is none
 expect editor.strokes is 3

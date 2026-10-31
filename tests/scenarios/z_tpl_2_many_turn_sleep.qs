@@ -13,7 +13,7 @@ tap 1564 2254
 wait 400
 pentap panel paper
 wait 200
-pentap 232 1750
+pentap panel paper.more
 wait 200
 expect editor.modal is templates
 expect templates.page is 1
@@ -70,7 +70,7 @@ expect editor.picture is shown
 shot 08-on-grid-43
 pentap panel paper
 wait 200
-pentap 232 1750
+pentap panel paper.more
 wait 300
 expect templates.selected is Grid 43
 expect templates.page is 2
@@ -85,7 +85,7 @@ wait 600
 expect screen is library
 tap 965 95
 wait 100
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.page is 1

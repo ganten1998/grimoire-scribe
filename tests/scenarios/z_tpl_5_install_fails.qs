@@ -13,7 +13,7 @@ expect screen is editor
 expect editor.paper is 1
 pentap panel paper
 wait 200
-pentap 232 1750
+pentap panel paper.more
 waitbg
 wait 300
 expect editor.modal is templates

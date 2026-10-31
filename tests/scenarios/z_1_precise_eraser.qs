@@ -14,7 +14,7 @@
 wait 300
 tap 965 95
 wait 100
-tap 510 460
+tap library paper.1
 tap 1564 2254
 wait 400
 expect screen is editor
@@ -95,9 +95,9 @@ expect editor.live_matches_render is 1
 pentap panel paper
 wait 200
 expect editor.modal is paper
-pentap 1348 1035
+pentap panel paper.3
 wait 400
-expect editor.paper is 8
+expect editor.paper is 3
 expect editor.live_matches_render is 1
 eraser line 300 1180 700 1280 20
 wait 700
@@ -124,7 +124,7 @@ wait 400
 expect editor.page is 2
 pentap panel paper
 wait 200
-pentap 511 1035
+pentap panel paper.10
 wait 400
 expect editor.paper is 10
 pen line 300 700 1300 760 60 0.7 0.7

@@ -29,13 +29,14 @@ const K_PRESETS: [(&str, [MusicPart; 2], i32); 5] = [
     ("7-string bass", [PART_TAB7, PART_NONE], 8),
 ];
 const N_PRESETS: i32 = K_PRESETS.len() as i32;
+const PRESET_ROWS: i32 = (N_PRESETS + ADD_COLS - 1) / ADD_COLS;
 const N_PARTS: i32 = K_PARTS.len() as i32;
 const ADD_COLS: i32 = 3;
 const ADD_ROWS: i32 = (N_PARTS + ADD_COLS - 1) / ADD_COLS;
 // Fixed rows: heading, gap, heading, gap, heading, gap; plus title 120, padding 72, buttons 190.
 const FIXED_H: i32 = 120 + 72 + 70 + 20 + 70 + 20 + 70 + 20 + 190;
-// the parts, the Add grid, the presets' row, systems per page
-const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + 1 + 1;
+// the parts, the Add grid, the presets' grid (as wide as the Add grid's), systems per page
+const ROWS: i32 = MUSIC_MAX_PARTS as i32 + ADD_ROWS + PRESET_ROWS + 1;
 
 fn row_h(a: &App) -> i32 {
     clampi((a.h - ui_px(80.0) - ui_px(FIXED_H as f32)) / ROWS, ui_px(80.0), ui_px(115.0))
@@ -206,17 +207,16 @@ pub fn musicbuild_draw(b: &mut MusicBuild, a: &mut App) -> Rect {
     // px); under it, the layouts' names are the papers' own (Grand staff, 4-string bass...).
     font_draw_left(c, FontFace::Bold, ts, Rect { x: in_.x, y, w: lw, h: ui_px(70.0) }, tr("Start from"), 0);
     y += ui_px(70.0);
-    let pw = (lw - (N_PRESETS - 1) * pad) / N_PRESETS;
     let mut qs = ui_text_size();
     for (name, _, _) in K_PRESETS {
-        qs = qs.min(ui_button_text_px(Rect { x: 0, y: 0, w: pw, h: rh - pad }, c_("paper", name), ButtonStyle::Plain));
+        qs = qs.min(ui_button_text_px(Rect { x: 0, y: 0, w: bw, h: rh - pad }, c_("paper", name), ButtonStyle::Plain));
     }
     for i in 0..N_PRESETS {
-        let r = Rect { x: in_.x + i * (pw + pad), y: y + pad / 2, w: pw, h: rh - pad };
+        let r = Rect { x: in_.x + (i % ADD_COLS) * (bw + pad), y: y + (i / ADD_COLS) * rh + pad / 2, w: bw, h: rh - pad };
         ui_button_text_at(c, r, c_("paper", K_PRESETS[i as usize].0), ButtonStyle::Plain, qs);
         hits_add(&mut b.hits, r, B_PRESET, i);
     }
-    y += rh + ui_px(20.0);
+    y += PRESET_ROWS * rh + ui_px(20.0);
     // Systems per page: [-] N [+]
     let srow = Rect { x: in_.x, y, w: lw, h: rh };
     // TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
@@ -356,4 +356,35 @@ pub fn musicbuild_pointer(b: &mut MusicBuild, a: &mut App, phase: i32, x: f32, y
     musicbuild_draw(b, a);
     *dirty = b.rect;
     MbResult::Changed
+}
+
+/// The centre of the Custom music sheet's control NAME, for scenarios: "music.done", "music.cancel",
+/// "music.less", "music.more", "music.add.<part>" (app_probe_music's short names: treble, tab6...),
+/// "music.preset.<0-4>", "music.up.<row>", "music.down.<row>", "music.remove.<row>" (rows from 1).
+pub fn musicbuild_control_point(b: &MusicBuild, name: &str) -> Option<(f32, f32)> {
+    if !b.open {
+        return None;
+    }
+    let name = name.strip_prefix("music.")?;
+    const SHORT: [(&str, MusicPart); 12] = [("treble", PART_TREBLE), ("bass", PART_BASS), ("alto", PART_ALTO), ("tenor", PART_TENOR),
+        ("drums", PART_PERC), ("plain", PART_STAFF), ("lyrics", PART_LYRICS), ("tab4", PART_TAB4), ("tab5", PART_TAB5),
+        ("tab6", PART_TAB6), ("tab7", PART_TAB7), ("tab8", PART_TAB8)];
+    let (id, arg) = match name {
+        "done" => (B_DONE, None),
+        "cancel" => (B_CANCEL, None),
+        "less" => (B_LESS, None),
+        "more" => (B_MORE, None),
+        _ => {
+            let (kind, rest) = name.split_once('.')?;
+            match kind {
+                "add" => (B_ADD, Some(SHORT.iter().find(|(n, _)| *n == rest)?.1 .0)),
+                "preset" => (B_PRESET, Some(rest.parse::<i32>().ok()?)),
+                "up" => (B_UP, Some(rest.parse::<i32>().ok()? - 1)),
+                "down" => (B_DOWN, Some(rest.parse::<i32>().ok()? - 1)),
+                "remove" => (B_REMOVE, Some(rest.parse::<i32>().ok()? - 1)),
+                _ => return None,
+            }
+        }
+    };
+    b.hits.h.iter().find(|h| h.id == id && arg.is_none_or(|v| h.arg == v)).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
 }

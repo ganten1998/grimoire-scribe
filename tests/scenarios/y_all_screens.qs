@@ -486,14 +486,14 @@ tap 965 95
 wait 50
 expect library.sheet is new
 shot 19-new
-tap 1625 1330
+tap library paper.custom
 wait 100
 expect library.sheet is music
 shot 20-music
-tap 290 1935
+tap library music.cancel
 wait 50
 expect library.sheet is new
-tap 300 1650
+tap library paper.more
 wait 100
 expect library.sheet is templates
 expect templates.count is 0
@@ -501,7 +501,7 @@ shot 20-templates-empty-new
 tap 300 2123
 wait 50
 expect library.sheet is new
-tap 1600 1975
+tap library new.rename
 wait 50
 expect library.sheet is keyboard
 expect library.hint is 1
@@ -580,7 +580,7 @@ pentap panel paper
 wait 100
 expect editor.modal is paper
 shot 25-paper
-tap 232 1750
+tap panel paper.more
 wait 100
 expect editor.modal is templates
 expect templates.count is 0
@@ -589,7 +589,7 @@ tap 300 2123
 wait 100
 expect editor.modal is paper
 # photos: the Photos sheet with no photos yet, then Back to the Paper sheet
-tap 511 1750
+tap panel paper.photos
 wait 100
 expect editor.modal is templates
 expect templates.count is 0
@@ -938,7 +938,7 @@ tap 1585 95
 wait 100
 expect library.sheet is new
 shot 46-new-landscape
-tap 1462 1116
+tap library paper.more
 wait 100
 expect library.sheet is templates
 shot 46-templates-empty-new-landscape
@@ -974,7 +974,7 @@ pentap panel paper
 wait 150
 expect editor.modal is paper
 shot 48-paper-landscape
-tap 1544 1300
+tap panel paper.more
 wait 100
 expect editor.modal is templates
 shot 48-templates-empty-landscape
@@ -982,7 +982,7 @@ tap 300 1694
 wait 100
 expect editor.modal is paper
 # photos, sideways
-tap 1848 1300
+tap panel paper.photos
 wait 100
 expect editor.modal is templates
 expect templates.count is 0
@@ -1200,11 +1200,11 @@ wait 50
 tap 279 1745
 wait 50
 expect library.sheet is new
-tap 1240 1116
+tap library paper.custom
 wait 100
 expect library.sheet is music
 shot 65-music-landscape
-tap 598 1693
+tap library music.cancel
 wait 50
 expect library.sheet is new
 tap 570 1700

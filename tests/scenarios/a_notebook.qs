@@ -9,7 +9,7 @@ tap 965 95
 wait 200
 shot 02-new-sheet
 expect library.sheet is new
-tap 510 460
+tap library paper.1
 wait 100
 expect library.paper is 1
 tap 1564 2254

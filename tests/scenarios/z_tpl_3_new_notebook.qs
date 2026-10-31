@@ -12,7 +12,7 @@ wait 300
 tap 965 95
 wait 100
 expect library.sheet is new
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.count is 2
@@ -25,18 +25,18 @@ expect library.sheet is new
 expect library.paper is template
 expect library.template is Lined
 shot 01-new-on-a-template
-tap 550 850
+tap library paper.10
 wait 100
 expect library.paper is 10
 expect library.template is
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.selected is
 tap 232 452
 wait 200
 expect library.template is Dots
-tap 300 1650
+tap library paper.more
 wait 200
 expect templates.selected is Dots
 tap 511 452

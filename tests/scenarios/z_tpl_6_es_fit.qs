@@ -13,7 +13,7 @@ tap 965 95
 wait 100
 expect library.sheet is new
 shot 01-new-gothic
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 # (50 previews made in the background: waitbg waits for them, however long the machine takes)
@@ -36,7 +36,7 @@ wait 300
 tap 1585 95
 wait 100
 expect library.sheet is new
-tap 1462 1116
+tap library paper.more
 wait 200
 expect library.sheet is templates
 shot 04-templates-gothic-sideways
@@ -65,7 +65,7 @@ tap 965 95
 wait 100
 expect library.sheet is new
 shot 06-new-classic
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.ready is 50
@@ -82,7 +82,7 @@ rotate 1
 wait 300
 tap 1585 95
 wait 100
-tap 1462 1116
+tap library paper.more
 wait 200
 expect library.sheet is templates
 shot 08-templates-classic-sideways
@@ -105,7 +105,7 @@ pentap panel paper
 wait 200
 expect editor.modal is paper
 shot 09-paper-classic
-pentap 232 1750
+pentap panel paper.more
 wait 200
 expect editor.modal is templates
 shot 10-templates-editor-classic
@@ -120,7 +120,7 @@ pentap panel paper
 wait 200
 expect editor.modal is paper
 shot 11-paper-classic-sideways
-tap 1544 1300
+tap panel paper.more
 wait 200
 expect editor.modal is templates
 tap 2260 1694

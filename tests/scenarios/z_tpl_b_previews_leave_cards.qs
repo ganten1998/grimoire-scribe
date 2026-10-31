@@ -12,7 +12,7 @@ expect library.card.1 is thumb
 tap 965 95
 wait 100
 expect library.sheet is new
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.ready is 0

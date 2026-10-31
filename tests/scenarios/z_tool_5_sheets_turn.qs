@@ -7,7 +7,7 @@
 wait 300
 tap 965 95
 wait 100
-tap 510 460
+tap library paper.1
 tap 1564 2254
 wait 400
 expect screen is editor
@@ -63,7 +63,7 @@ rotate 1
 wait 300
 expect editor.modal is paper
 shot 03-paper-sideways
-tap 325 843
+tap panel paper.10
 wait 300
 expect editor.modal is none
 expect editor.paper is 10
@@ -77,44 +77,44 @@ wait 300
 wake
 wait 300
 expect editor.modal is paper
-tap 1348 1035
+tap panel paper.9
 wait 300
 expect editor.modal is none
-expect editor.paper is 8
+expect editor.paper is 9
 # Custom music (from the paper sheet): turned, its Cancel there; again, asleep and awake, a bass
 # staff added, then Cancel
 pentap panel paper
 wait 200
-pentap 1622 1452
+pentap panel paper.custom
 wait 200
 expect editor.modal is music
 rotate 1
 wait 300
 expect editor.modal is music
 shot 04-music-sideways
-tap 598 1693
+tap panel music.cancel
 wait 200
 expect editor.modal is none
 rotate 0
 wait 300
 pentap panel paper
 wait 200
-pentap 1622 1452
+pentap panel paper.custom
 wait 200
 expect editor.modal is music
-expect editor.music is 5: treble tab6
+expect editor.music is 3: treble bass tab6
 sleep
 wait 300
 wake
 wait 300
 expect editor.modal is music
-pentap 579 1279
+pentap panel music.add.bass
 wait 200
-expect editor.music is 4: treble tab6 bass
-tap 290 1935
+expect editor.music is 3: treble bass tab6 bass
+tap panel music.cancel
 wait 200
 expect editor.modal is none
-expect editor.paper is 8
+expect editor.paper is 9
 # The Display sheet: turned, its sleep screen row there (and back), asleep and awake, Done
 pentap panel display
 wait 200

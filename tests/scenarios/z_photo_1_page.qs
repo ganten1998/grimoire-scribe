@@ -16,7 +16,7 @@ expect editor.paper is 5
 pentap panel paper
 wait 200
 expect editor.modal is paper
-pentap 511 1750
+pentap panel paper.photos
 wait 300
 expect editor.modal is templates
 expect templates.count is 2

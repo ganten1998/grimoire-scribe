@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0-rc.9 (2026-10-31)
+
+- Turn the page with one finger: swipe left for the next page and right for the previous one, as on the Kindle's own books (two fingers still work, and Settings > Gestures can rebind either).
+- Take pen taps in the Graph: a dot or Back tapped with the pen is a tap even when the tip slides a millimetre or two, instead of a small pan.
+- Arrange the paper pickers in three rows of six: the rules without and then with a margin; Cornell notes, dot grid, graph paper, sheet music, guitar tab and blank; then cross grid, isometric, hexagon, Seyes rule and Custom music. More layouts... (the templates) and, in a notebook, Photos... are buttons beside Cancel.
+- Add four papers: cross grid (5 mm reticle), isometric (5 mm triangles), hexagon (4 mm sides) and Seyes rule. Older versions show pages on them as blank "Newer paper", keeping their ink.
+- Custom music gains an 8-line tab part and a Start from row (grand staff and 4 to 7 string bass tabs, which leave the main grid), and new layouts start as treble, bass and 6-line tab.
+- Add a Smallest shape slider to the Smart shapes menu: a held stroke smaller than it stays as drawn (Any by default, as before).
+- Keep Live view's picture in picture playing on a still page, so Firefox offers its own Picture-in-Picture button and other browsers never show a black window.
+
 ## 2.0.0-rc.8 (2026-10-30)
 
 - Answer every finger tap on buttons, sheets, the keyboard, the Links bar and the toolbar at once, even while the pen hovers or has just lifted. The pen's palm window now applies only over the notebook page, and a finger landing well away from the pen counts there too.

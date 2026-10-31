@@ -22,7 +22,7 @@ wait 400
 expect editor.page is 1
 pentap panel paper
 wait 200
-pentap 232 1750
+pentap panel paper.more
 waitbg
 wait 300
 expect templates.ready is 2
@@ -61,7 +61,7 @@ wait 400
 expect editor.page is 2
 pentap panel paper
 wait 200
-pentap 232 1750
+pentap panel paper.more
 wait 300
 expect editor.modal is templates
 pentap 232 452

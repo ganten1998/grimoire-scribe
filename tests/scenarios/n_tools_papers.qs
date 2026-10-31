@@ -6,7 +6,7 @@ tap 965 95
 wait 100
 shot 01-new-sheet-papers
 expect library.sheet is new
-tap 1066 893
+tap library paper.3
 wait 50
 expect library.paper is 3
 tap 1564 2254
@@ -40,18 +40,18 @@ expect toast is
 pentap panel paper
 wait 200
 expect editor.modal is paper
-pentap 1622 1452
+pentap panel paper.custom
 wait 200
 shot 04-builder
 expect editor.modal is music
-expect editor.music is 5: treble tab6
-pentap 579 1279
-expect editor.music is 4: treble tab6 bass
-pentap 1571 1943
+expect editor.music is 3: treble bass tab6
+pentap panel music.add.bass
+expect editor.music is 3: treble bass tab6 bass
+pentap panel music.done
 wait 500
 shot 05-custom-page
 expect editor.modal is none
 expect editor.paper is custom
-expect editor.music is 4: treble tab6 bass
+expect editor.music is 3: treble bass tab6 bass
 expect editor.strokes is 3
 quit

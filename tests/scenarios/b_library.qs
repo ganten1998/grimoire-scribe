@@ -5,7 +5,7 @@ wait 200
 tap 965 95
 wait 100
 expect library.sheet is new
-tap 790 460
+tap library paper.2
 expect library.paper is 2
 tap 1564 2254
 wait 300
@@ -20,7 +20,7 @@ expect library.items is 1
 tap 965 95
 wait 100
 expect library.sheet is new
-tap 1066 893
+tap library paper.3
 expect library.paper is 3
 tap 1564 2254
 wait 300

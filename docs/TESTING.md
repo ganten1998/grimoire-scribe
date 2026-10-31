@@ -11,6 +11,15 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-rc.9 (device checks pending)
+
+On the Kindle: swipe one finger left and right across a page to turn it; a slow or steep stroke
+must not. In the Graph, tap dots and Back with the pen. Open Paper and New notebook: check the
+three rows, the four new papers, More layouts... and Photos... beside Cancel. In Custom music,
+add an 8-line tab and try each Start from layout. In Smart shapes, set Smallest shape to about
+15 mm and check that a small held circle stays as drawn while a big one snaps. In Firefox, start
+picture in picture from the rail, then use Firefox's own button on the picture.
+
 ## 2.0.0-rc.8 (device checks pending)
 
 On the Kindle: right after writing, tap toolbar buttons, Library buttons and sheet rows with a

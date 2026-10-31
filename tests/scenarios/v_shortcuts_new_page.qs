@@ -24,7 +24,7 @@ expect editor.paper is 5
 # Page 2 onto a photo, then the key on it: a page on the notebook's paper, not the photo's picture
 pentap panel paper
 wait 200
-pentap 511 1750
+pentap panel paper.photos
 wait 300
 waitbg
 wait 300

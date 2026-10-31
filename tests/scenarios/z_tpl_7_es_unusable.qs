@@ -8,7 +8,7 @@
 wait 300
 tap 965 95
 wait 100
-tap 300 1650
+tap library paper.more
 wait 200
 expect library.sheet is templates
 # (the previews job finds them unusable, and the sheet takes them out once it ends)
@@ -35,7 +35,7 @@ tap 1560 1930
 wait 100
 tap 965 95
 wait 100
-tap 300 1650
+tap library paper.more
 wait 200
 expect templates.count is 0
 shot 03-unusable-classic

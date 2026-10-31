@@ -20,7 +20,7 @@ expect editor.strokes is 1
 pentap panel paper
 wait 200
 expect editor.modal is paper
-pentap 232 1750
+pentap panel paper.more
 wait 300
 expect editor.modal is templates
 expect templates.count is 2
@@ -72,7 +72,7 @@ expect editor.picture is shown
 pentap panel paper
 wait 200
 shot 05-paper-sheet-on-a-template
-pentap 232 1750
+pentap panel paper.more
 wait 300
 expect templates.selected is Lined
 shot 06-lined-selected

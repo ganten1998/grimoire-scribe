@@ -4,7 +4,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 510 460
+tap library paper.1
 tap 1564 2254
 wait 300
 expect screen is editor
@@ -144,7 +144,7 @@ pentap panel paper
 wait 200
 shot 04-paper-sheet
 expect editor.modal is paper
-pentap 1066 1027
+pentap panel paper.3
 wait 300
 shot 05-paper-music
 expect editor.modal is none

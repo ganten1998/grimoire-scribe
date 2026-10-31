@@ -7,7 +7,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 510 460
+tap library paper.1
 tap 1564 2254
 wait 300
 expect screen is editor
@@ -32,7 +32,7 @@ wait 300
 expect editor.page is 2
 pentap panel paper
 wait 200
-pentap 1066 1027
+pentap panel paper.3
 wait 300
 expect editor.paper is 3
 pentap panel pages

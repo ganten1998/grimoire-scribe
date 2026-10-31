@@ -5136,8 +5136,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_GESTURE_GROUP => "gestures.group.", H_GESTURE_ROW => "gestures.row.",
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
+                H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
                 _ => "",
             });
+            if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
             } else if matches!(hit.id, H_GESTURE_ROW | H_BUTTON_ROW) {
@@ -5826,6 +5828,7 @@ mod tests {
 
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
+    if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
     if name.starts_with("notebook.")||name.starts_with("folder.") {
         let s=a.lib.as_deref()?;
         let i=s.items.iter().position(|it|if let Some(id)=name.strip_prefix("notebook."){!it.is_folder&&s.books[it.nb].id==id}else{it.is_folder&&it.folder==name.strip_prefix("folder.").unwrap()})?;

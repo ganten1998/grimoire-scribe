@@ -1279,6 +1279,15 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     }
     if name=="map.current" {return mapview_node_point(&s.map,s.open_pid());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
+    if name.starts_with("music."){return musicbuild_control_point(&s.mb,name);}
+    // The Paper sheet's tiles and buttons: paper.<kind number>, paper.custom, paper.more, paper.photos,
+    // paper.cancel (only while it shows: its Cancel is among the hits).
+    if let Some(n)=name.strip_prefix("paper.") {
+        if !s.modal_hits.h.iter().any(|h|h.id==P_PICK_CANCEL) {return None;}
+        let (id,arg)=match n {"custom"=>(P_PICK_CUSTOM,None),"more"=>(P_PICK_MORE,None),"photos"=>(P_PICK_PHOTOS,None),
+            "cancel"=>(P_PICK_CANCEL,None),k=>(P_PICK_PAPER,Some(k.parse::<i32>().ok()?))};
+        return s.modal_hits.h.iter().find(|h|h.id==id&&arg.is_none_or(|v|h.arg==v)).map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32));
+    }
     if let Some(n)=name.strip_prefix("pages."){return pagesview_control_point(&s.pv,n);}
     if let Some(n)=name.strip_prefix("display."){return dispmenu_control_point(&s.dm,n);}
     if name=="elsewhere.current" {return s.destination.point(&format!("book.{}",s.nb.id));}

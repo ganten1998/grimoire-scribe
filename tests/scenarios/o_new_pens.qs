@@ -5,7 +5,7 @@
 wait 200
 tap 965 95
 wait 100
-tap 510 460
+tap library paper.1
 wait 50
 expect library.paper is 1
 tap 1564 2254

@@ -22,7 +22,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/music.png" width="32%" alt="Custom music paper builder">
 </p>
 
-> **Pre-release 2.0.0-rc.8.** Earlier builds are in daily use on
+> **Pre-release 2.0.0-rc.9.** Earlier builds are in daily use on
 > Kindle Scribes; this candidate still needs its device acceptance checks. It autosaves every stroke and keeps
 > damaged files instead of overwriting them, but treat it as a pre-release: copy your notebooks off now
 > and then (Library > Share makes that one click).
@@ -78,10 +78,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
   Finnish). Shift gives capitals and **abc** returns to the letters. With Grimoire in Spanish, the
   letters page has **ñ** too, after l.
-- **Paper**: narrow, medium and wide rule (with or without margin), Cornell, dot grid, graph,
-  blank, sheet music, grand staff, guitar tab, 4 to 7 string bass tab, and **Custom music**:
-  stack treble, bass, alto, tenor, drum and plain staves, tabs and lyric lines, and choose how
-  many systems fit on a page. Each page can have its own paper.
+- **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
+  sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
+  music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric
+  lines (or start from grand staff or a 4 to 7 string bass tab), and choose how many systems fit
+  on a page. Each page can have its own paper.
 - **Pens**: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
   calligraphy pen, highlighter. Every pen's pressure and tilt response can be tuned
   (Settings > Pen sensitivity). The eraser takes away whole strokes, or set to **Precise** only
@@ -169,7 +170,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   button shows a grid, it opens the picker directly.
 - **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
   closed (upright, 3:4, 1860 x 2480 is best, light lines on white work best on e-ink). In a
-  notebook, Paper > **More papers...** shows them; New notebook has the same tile. Each notebook
+  notebook, Paper > **More layouts...** shows them; New notebook has the same button. Each notebook
   keeps its own copy of a template it uses.
 - **Pages you already have**: put a folder of page pictures (PNG or JPG, one per page, such as a
   PDF exported as pictures with `pdftoppm -gray -png -r 200 file.pdf page`) in
