@@ -374,6 +374,8 @@ pub struct EditorState {
     drag_start_rect: Rect,
     last_drag_paint: u32,
     hits: HitList,
+    /// every button the expanded panel draws, greyed out ones too: what panel_tile_hit tiles
+    panel_cells: Vec<Rect>,
     press: Press,
     pressed: Hit,
     has_pressed: bool,
@@ -1010,6 +1012,7 @@ fn draw_panel(a: &mut App) {
     let s = ed.as_deref_mut().unwrap();
     let p = s.panel;
     hits_clear(&mut s.hits);
+    s.panel_cells.clear();
     s.white_mark = false;
     s.tool_button_shows = TB_NONE;
     if s.collapsed {
@@ -1049,6 +1052,7 @@ fn draw_panel(a: &mut App) {
     ui_icon(c, IconKind::Collapse, col, 0);
     hits_add(&mut s.hits, grip, P_GRIP, 0);
     hits_add(&mut s.hits, rect_inflate(col, ui_px(10.0)), P_COLLAPSE, 0);
+    s.panel_cells.extend([grip, rect_inflate(col, ui_px(10.0))]);
     let mut y = p.y + head_h();
     canvas_hline(c, p.x + ui_px(6.0), p.x + p.w - ui_px(6.0), y - ui_px(4.0), ui_px(3.0), 0,
     );
@@ -1079,6 +1083,7 @@ fn draw_panel(a: &mut App) {
         );
     }
     hits_add(&mut s.hits, rt, P_TOOLPICK, 0);
+    s.panel_cells.push(rt);
     y += btn_h() + gap();
     for i in 0..npins(st) {
         let rp = Rect { x, y, w, h: btn_h() ,
@@ -1086,12 +1091,14 @@ fn draw_panel(a: &mut App) {
         let t = st.pins[i as usize];
         draw_pen_button(c, st, s, rp, t);
         hits_add(&mut s.hits, rp, P_TOOL, t.0);
+        s.panel_cells.push(rp);
         y += btn_h() + gap();
     }
     let re = Rect { x, y, w, h: btn_h() ,
     };
     ui_button(c, re, IconKind::Eraser, "", tool_style(st, TOOL_ERASER));
     hits_add(&mut s.hits, re, P_TOOL, TOOL_ERASER.0);
+    s.panel_cells.push(re);
     y += btn_h() + gap();
     let shapes = Rect { x, y, w, h:btn_h() };
     ui_button(c, shapes, IconKind::None, "", ButtonStyle::Plain);
@@ -1099,10 +1106,12 @@ fn draw_panel(a: &mut App) {
     font_draw_icon(c, FontFace::Regular, if st.shapes {0xF0831} else {0xF0832}, icon, 0);
     if !st.shapes { canvas_slash(c, icon, ui_px(4.0)); }
     hits_add(&mut s.hits, shapes, P_SHAPES, 0);
+    s.panel_cells.push(shapes);
     y += btn_h() + gap();
     let pen = Rect { x, y, w, h: btn_h() };
     ui_button(c, pen, IconKind::Tune, "", ButtonStyle::Plain);
     hits_add(&mut s.hits, pen, P_PENSET, 0);
+    s.panel_cells.push(pen);
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
@@ -1116,6 +1125,7 @@ fn draw_panel(a: &mut App) {
     if cu {
         hits_add(&mut s.hits, ru, P_UNDO, 0);
     }
+    s.panel_cells.push(ru);
     y += btn_h() + gap();
     let rr = Rect { x, y, w, h: btn_h() ,
     };
@@ -1124,6 +1134,7 @@ fn draw_panel(a: &mut App) {
     if cr {
         hits_add(&mut s.hits, rr, P_REDO, 0);
     }
+    s.panel_cells.push(rr);
     y += btn_h() + gap();
     let rc = Rect { x, y, w, h: btn_h() ,
     }; // clear the page right away (no confirmation)
@@ -1134,6 +1145,7 @@ fn draw_panel(a: &mut App) {
     if can_clear {
         hits_add(&mut s.hits, rc, P_CLEAR, 0);
     }
+    s.panel_cells.push(rc);
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
@@ -1144,6 +1156,7 @@ fn draw_panel(a: &mut App) {
     if s.index > 0 {
         hits_add(&mut s.hits, rp, P_PREV, 0);
     }
+    s.panel_cells.push(rp);
     y += btn_h() + gap();
     let mut lab = String::new();
     // (a page the Links bar is looking at shows its own number)
@@ -1155,6 +1168,7 @@ fn draw_panel(a: &mut App) {
     font_draw_centered(c, FontFace::Bold, ui_small_size() * (if fit.scale < 1.0 { fit.scale } else { 1.0 }), lr, &lab, 0,
     );
     hits_add(&mut s.hits, lr, P_PAGES, 0);
+    s.panel_cells.push(lr);
     y += label_h() + gap();
     let last = s.index >= s.nb.npages() - 1;
     let rn = Rect { x, y, w, h: btn_h() ,
@@ -1162,11 +1176,13 @@ fn draw_panel(a: &mut App) {
     ui_button(c, rn, if last { IconKind::Plus } else { IconKind::Next }, "", ButtonStyle::Plain,
     );
     hits_add(&mut s.hits, rn, P_NEXT, 0);
+    s.panel_cells.push(rn);
     y += btn_h() + gap();
     // Add a link directly; the upward two-finger swipe opens the Links bar.
     let rl = Rect { x, y, w, h: btn_h() };
     ui_button(c, rl, IconKind::LinkPlus, "", ButtonStyle::Plain);
     hits_add(&mut s.hits, rl, P_LINKS, 0);
+    s.panel_cells.push(rl);
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
@@ -1182,8 +1198,25 @@ fn draw_panel(a: &mut App) {
         };
         ui_button(c, r, icon, "", ButtonStyle::Plain);
         hits_add(&mut s.hits, r, id, 0);
+        s.panel_cells.push(r);
         y += btn_h() + gap();
     }
+}
+
+/// The expanded panel's button at (x, y): the one there, or for a finger landing between buttons (a
+/// gap, a divider, the frame's margin beside them) the nearest one, so the column has no dead strips
+/// (the nearest by rows first: beside a button is that button). None on a greyed-out button, as ever.
+fn panel_hit_at(s: &EditorState, x: f32, y: f32) -> Option<Hit> {
+    if let Some(&h) = hits_find(&s.hits, x, y) {
+        return Some(h);
+    }
+    let (xi, yi) = (x as i32, y as i32);
+    if s.collapsed || !rect_contains(s.panel, xi, yi) || s.panel_cells.iter().any(|&r| rect_contains(r, xi, yi)) {
+        return None;
+    }
+    let off = |lo: i32, len: i32, v: i32| (lo - v).max(v - (lo + len - 1)).max(0);
+    let cell = s.panel_cells.iter().min_by_key(|r| (off(r.y, r.h, yi), off(r.x, r.w, xi)))?;
+    hits_find(&s.hits, (cell.x + cell.w / 2) as f32, (cell.y + cell.h / 2) as f32).copied()
 }
 
 /// The runner's name for a panel button (`tap panel NAME`, `editor.panel_at.X.Y`): grip, collapse,
@@ -6953,8 +6986,7 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
     let s = ed(a);
     if ph == 0 {
         press_begin(&mut s.press, ev.x, ev.y, ev.t_ms);
-        let hl = if modal { &s.modal_hits } else { &s.hits };
-        let h = hits_find(hl, ev.x, ev.y).copied();
+        let h = if modal { hits_find(&s.modal_hits, ev.x, ev.y).copied() } else { panel_hit_at(s, ev.x, ev.y) };
         s.has_pressed = h.is_some();
         s.dragging = false;
         if let Some(h) = h {
@@ -7014,7 +7046,9 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
         app_invalidate(a, h.r, if touch_cancelled(ev) { RefreshMode::Fast } else { RefreshMode::Ui },
         );
     }
-    if !press_is_tap(&p, h.r) && !rect_contains(h.r, ev.x as i32, ev.y as i32) {
+    // (a lift on the button pressed, or for the panel on the strip around it that took the landing)
+    let lifted_on = if modal { rect_contains(h.r, ev.x as i32, ev.y as i32) } else { panel_hit_at(ed_ref(a), ev.x, ev.y) == Some(h) };
+    if !press_is_tap(&p, h.r) && !lifted_on {
         return;
     }
     if modal {
@@ -8949,7 +8983,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             settle_now(a);
         }
         let s = ed_ref(a);
-        let name = if open { hits_find(&s.hits, x as f32, y as f32).map(panel_name).unwrap_or_default() } else { String::new() };
+        let name = if open { panel_hit_at(s, x as f32, y as f32).as_ref().map(panel_name).unwrap_or_default() } else { String::new() };
         csnprintf!(out, cap, "%s", &name);
         return 0;
     }
