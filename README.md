@@ -22,14 +22,15 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <img src="docs/screens/demo-iso.png" width="32%" alt="Isometric paper">
 </p>
 <p>
-<img src="docs/screens/whatsnew.png" width="32%" alt="The Library and What's new">
-<img src="docs/screens/papers.png" width="32%" alt="Choosing a notebook's paper">
-<img src="docs/screens/graph.png" width="32%" alt="The Graph of a notebook's linked pages">
+<img src="docs/screens/tools.png" width="32%" alt="The tool picker over a page">
+<img src="docs/screens/shapes.png" width="32%" alt="Smart shapes over a page">
+<img src="docs/screens/pages.png" width="32%" alt="The Pages view of a notebook">
 </p>
 <p>
-<img src="docs/screens/tools.png" width="32%" alt="The tool picker">
-<img src="docs/screens/shapes.png" width="32%" alt="Smart shapes">
+<img src="docs/screens/whatsnew.png" width="32%" alt="The Library and What's new">
+<img src="docs/screens/graph.png" width="32%" alt="The Graph of a notebook's linked pages">
 </p>
+<p><img src="docs/screens/papers.png" width="97%" alt="The papers a notebook can have"></p>
 <p><img src="docs/screens/liveview.png" width="97%" alt="Live view: the Kindle's screen in a browser, live"></p>
 
 The pages above were drawn on a Kindle Scribe in Grimoire; the last picture is Live view, the
