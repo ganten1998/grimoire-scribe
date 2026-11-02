@@ -38,7 +38,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | common.h / util.c | Rect math, mm_to_px, clampf, time, logging, string helpers, dates (in the language in use) | - |
 | i18n.h/.c | the language in use, lookups in the embedded catalogs (po/*.mo) with English fallback, plural rules, the language list (see Languages) | common |
 | canvas.h/.c | 8-bit gray canvas, clip, fill, AA lines/discs, ink deposit, blit, downsample | common |
-| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme | canvas |
+| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme. DotGothic16 is the Japanese fallback for kana and kanji in both themes | canvas |
 | paper.h/.c | page backgrounds (rules, staves); a kind it does not know draws blank ("Newer paper") | canvas |
 | brush.h/.c | tool params, pressure/tilt mapping, deterministic dab renderer, smoother | canvas |
 | page.h/.c | Stroke, Page, hit-test, page render, thumbnail | brush, paper |
@@ -276,13 +276,24 @@ draws them. White ink and the precise eraser make them.
   as a theta. `pixel_drop` sets Jersey 10's inverted exclamation mark (U+00A1) two design pixels
   lower in every Gothic weight: the font draws it exactly as its i, and two pixels is the depth of
   the face's descenders. ASCII never takes these paths and draws as it always has.
-  `font_has_glyph(face, cp)` tells whether a face has its own glyph, without the Terminess
-  fallback.
+  `font_face_has_glyph(face, cp)` tells whether a face has its own glyph, without the Terminess
+  or DotGothic16 fallback; `font_has_glyph(face, cp)` also counts those fallbacks.
 - The keyboard's text is UTF-8 and its keys carry code points (`KB_KEY_*` below 32 for the named
-  keys). There are three pages of characters, letters, symbols and accents (`Keyboard.page`), each
-  with `-`, `'` and `.` beside the space bar and two page keys, #+= to the symbols page and áé to
-  the accents page, each labelled abc on its own page to go back to the letters (Go to page's
-  number pad is a fourth page). `keyboard_upper()` is the shift case map (Latin-1 and Latin
+  keys, `KB_KEY_FLICK` + row for the kana pad's own keys). There are four pages of characters,
+  letters, symbols, accents and kana (`Keyboard.page`); the first three have `-`, `'` and `.`
+  beside the space bar and two page keys, #+= to the symbols page and áé to the accents page, each
+  labelled abc on its own page to go back to the letters (Go to page's number pad is a fifth page).
+  In Japanese the letters page's accents key is あ instead (`KB_KEY_KANA`: the accents page has
+  nothing a Japanese name needs), and the kana page is a phone's flick pad: twelve keys in three
+  columns, あ か さ / た な は / ま や ら / わ ゛ ー, where a tap types the row's first kana and a
+  swipe left, up, right or down the rest (`k_kana`: tap, left, up, right, down, 0 where the row has
+  none, and a row with nothing that way types its first). Its keys type on the lift, not on the
+  touch-down, since which kana it is is the swipe: `Keyboard.flick` holds the way the pressed key
+  is swiped (0 still on it), the key's label shows that kana while the finger moves, and the pen
+  may end well off the key. ゛ (`KB_KEY_DAKU`) and 小 (`KB_KEY_SMALL`) rewrite the last character
+  of the text instead of adding one (`change_last`): the voiced kana of か さ た は rows, the small
+  あ つ や わ, and they type on the lift too. Every kana the pad types, and ー ゛ 小, is drawn in
+  every theme: DotGothic16 covers what the pixel and Terminess faces lack. `keyboard_upper()` is the shift case map (Latin-1 and Latin
   Extended-A), `keyboard_key_rect()` locates a key on the page showing (for tests and scripts), and
   `keyboard_open` keeps valid UTF-8 and drops control characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
   the letters page's middle row ends with ñ after l (`k_row_es`), as Spanish keyboards have it, and
@@ -309,8 +320,9 @@ draws them. White ink and the precise eraser make them.
   "key"...), and `NG_(one, many, n)` gives the plural form for n. Each language is
   `po/<lang>.po`, compiled by msgfmt to `po/<lang>.mo`, which is committed (building needs no
   gettext) and embedded like the fonts: `build/gen/l10n.c` holds every po/*.mo, named by its file
-  (po/es.mo is "es"). The list of languages (code, name in the language itself, number of plural
-  forms, plural rule) is `k_langs` in src/i18n.c, English first.
+  (po/es.mo is "es", po/ja.mo is "ja"). The list of languages (code, name in the language itself,
+  number of plural forms, plural rule) is `k_langs` in src/i18n.c, English first. Japanese has one
+  plural form (`plural_zero`); its kana and kanji come from DotGothic16, the embedded fallback.
 - Lookups (i18n.c) read a GNU .mo as msgfmt writes it, in either byte order: a binary search over
   the English strings, a context stored as `ctx\004English`, a plural's forms one after another.
   A string the catalog lacks, or leaves empty, gives the English: the very pointer the code passed.

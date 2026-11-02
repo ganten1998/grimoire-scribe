@@ -1,7 +1,7 @@
 //! font.h: TrueType text via stb_truetype, fonts embedded at build time
 //! (build/gen/fonts.c, from assets/*.ttf via xxd -i). Glyph bitmaps are cached per size.
 
-use crate::assets::{FONT_JACQUARD24, FONT_JERSEY10, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR};
+use crate::assets::{FONT_DOTGOTHIC16, FONT_JACQUARD24, FONT_JERSEY10, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR};
 use crate::ffi_stb::*;
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -32,12 +32,13 @@ impl FontFace {
 
 // The embedded TrueType files. Terminess (with the Nerd Font icons) is always there; the
 // pixel faces belong to the gothic theme: Jacquard 24 (pixel blackletter) for titles, Jersey
-// 10 for text and labels.
+// 10 for text and labels. DotGothic16 is the Japanese fallback, in the same pixel style.
 const TTF_TERM: usize = 0;
 const TTF_TERM_BOLD: usize = 1;
 const TTF_JACQUARD: usize = 2;
 const TTF_JERSEY: usize = 3;
-const TTF_COUNT: usize = 4;
+const TTF_JP: usize = 4;
+const TTF_COUNT: usize = 5;
 
 /// Font units per design pixel (0 = an outline font, drawn smooth). Measured: every outline
 /// point of these files sits on this grid.
@@ -237,7 +238,13 @@ pub fn font_init() -> i32 {
         if st.ready {
             return None;
         }
-        let data: [&'static [u8]; TTF_COUNT] = [FONT_TERMINESS_REGULAR, FONT_TERMINESS_BOLD, FONT_JACQUARD24, FONT_JERSEY10];
+        let data: [&'static [u8]; TTF_COUNT] = [
+            FONT_TERMINESS_REGULAR,
+            FONT_TERMINESS_BOLD,
+            FONT_JACQUARD24,
+            FONT_JERSEY10,
+            FONT_DOTGOTHIC16,
+        ];
         for (i, d) in data.iter().enumerate() {
             if !init_font(&mut st.font[i], d) {
                 return Some(i);
@@ -589,12 +596,19 @@ fn layout(
     let mut i = from;
     while at(s, i) != 0 && end.is_none_or(|e| i < e) {
         let cp = utf8_next(s, &mut i);
-        // Glyphs a theme face lacks (symbols, arrows) come from Terminess at the asked size.
+        // Glyphs a theme face lacks (symbols, arrows, Japanese) come from Terminess at the
+        // asked size, or, when Terminess lacks them too, from DotGothic16.
         let mut ttf = m.ttf;
         let mut gpx = fpx;
-        if ttf != TTF_TERM && ttf != TTF_TERM_BOLD && cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0 {
-            ttf = if m.embolden { TTF_TERM_BOLD } else { TTF_TERM };
-            gpx = px;
+        if cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0 {
+            if ttf != TTF_TERM && ttf != TTF_TERM_BOLD {
+                ttf = if m.embolden { TTF_TERM_BOLD } else { TTF_TERM };
+                gpx = px;
+            }
+            if find_glyph_index(&st.font[ttf], cp) == 0 && find_glyph_index(&st.font[TTF_JP], cp) != 0 {
+                ttf = TTF_JP;
+                gpx = px;
+            }
         }
         if prev != 0 && prev_ttf == ttf as i32 {
             pen += units_to_px(st, ttf, gpx, kern_advance(&st.font[ttf], prev, cp));
@@ -652,15 +666,27 @@ pub fn font_measure(f: FontFace, px: f32, utf8: &str) -> i32 {
     measure(f, px, cstr(utf8).as_bytes())
 }
 
-/// Whether the face (as the current theme maps it) has its own glyph for cp, not Terminess's.
-pub fn font_has_glyph(f: FontFace, cp: u32) -> bool {
+/// Whether the face (as the current theme maps it) has its own glyph for cp, without either
+/// fallback.
+pub fn font_face_has_glyph(f: FontFace, cp: u32) -> bool {
     with(|st| st.ready && find_glyph_index(&st.font[face_of(st, f).ttf], cp) != 0)
 }
 
-/// utf8 without the characters no face draws (every face takes what it lacks from Terminess, so one
-/// Terminess lacks too would show as a box: Chinese, Japanese, Korean, most Vietnamese letters), and
-/// without the spaces that leaves doubled, first or last. Returns how many characters it left out:
-/// 0, and out is utf8 as it is (cut to cap between characters). Before font_init, none.
+/// Whether it can draw cp: its own glyph, or the Terminess or DotGothic16 fallback.
+pub fn font_has_glyph(f: FontFace, cp: u32) -> bool {
+    font_face_has_glyph(f, cp)
+        || with(|st| {
+            st.ready
+                && (find_glyph_index(&st.font[TTF_TERM], cp) != 0
+                    || find_glyph_index(&st.font[TTF_JP], cp) != 0)
+        })
+}
+
+/// utf8 without the characters no face draws (every face takes what it lacks from Terminess or
+/// DotGothic16, so what neither has would show as a box: most Vietnamese letters and rare CJK
+/// characters), and without the spaces that leaves doubled, first or last. Returns how many
+/// characters it left out: 0, and out is utf8 as it is (cut to cap between characters). Before
+/// font_init, none.
 pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
     if cap == 0 {
         return 0;
@@ -673,7 +699,11 @@ pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
         let c = i;
         let cp = utf8_next(s, &mut i);
         let n = i - c;
-        if cp > 0x7F && with(|st| st.ready && find_glyph_index(&st.font[TTF_TERM], cp) == 0) {
+        if cp > 0x7F
+            && with(|st| {
+                st.ready && find_glyph_index(&st.font[TTF_TERM], cp) == 0 && find_glyph_index(&st.font[TTF_JP], cp) == 0
+            })
+        {
             left_out += 1;
             continue;
         }
@@ -831,8 +861,24 @@ fn next_char(t: &[u8], mut s: usize) -> usize {
     s
 }
 
+/// True for a character Japanese breaks lines between: kana, kanji, CJK punctuation and fullwidth
+/// forms. (Latin words, including accented ones, must stay whole.)
+fn cjk(cp: u32) -> bool {
+    (0x2E80..=0x9FFF).contains(&cp) || (0xF900..=0xFAFF).contains(&cp) || (0xFE30..=0xFE4F).contains(&cp) || (0xFF00..=0xFFEF).contains(&cp)
+}
+
+fn has_cjk(t: &[u8], mut s: usize, e: usize) -> bool {
+    while s < e {
+        if cjk(utf8_next(t, &mut s)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// As many whole words on each line as fit w; a word wider than w on its own is broken between its
 /// characters (at least one to a line), and *broken gets the widest such word's width (else 0).
+/// A CJK run is not reported: Japanese has no spaces, and breaks between its characters by rule.
 /// Keeps up to max lines; returns how many the text needs.
 fn wrap_greedy(f: FontFace, px: f32, t: &[u8], w: i32, out: &mut [Span], max: usize, broken: &mut i32) -> usize {
     let mut n = 0;
@@ -860,7 +906,7 @@ fn wrap_greedy(f: FontFace, px: f32, t: &[u8], w: i32, out: &mut [Span], max: us
                     we += 1;
                 }
                 let ww = measure_n(f, px, t, s, Some(we));
-                if ww > *broken {
+                if ww > *broken && !has_cjk(t, s, we) {
                     *broken = ww;
                 }
                 let mut fits = next_char(t, s);
@@ -1153,9 +1199,10 @@ mod tests {
         let mut out = String::new();
         assert_eq!(font_drawable_copy("Hello", &mut out, 20), 0);
         assert_eq!(out, "Hello");
-        // Japanese is in no face; the spaces it leaves doubled, first or last go with it
-        assert_eq!(font_drawable_copy("\u{65e5}\u{672c} a \u{8a9e} b \u{3042}", &mut out, 40), 4);
-        assert_eq!(out, "a b");
+        // Japanese comes from DotGothic16; an emoji neither it nor Terminess has goes, and the
+        // spaces that leaves doubled, first or last go with it
+        assert_eq!(font_drawable_copy("\u{65e5}\u{672c} a \u{8a9e} b \u{3042}\u{1f600}", &mut out, 40), 1);
+        assert_eq!(out, "\u{65e5}\u{672c} a \u{8a9e} b \u{3042}");
         // cut between two characters, never inside one
         assert_eq!(font_drawable_copy("\u{f1}\u{f1}\u{f1}", &mut out, 5), 0);
         assert_eq!(out, "\u{f1}\u{f1}");

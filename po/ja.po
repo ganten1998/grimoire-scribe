@@ -1,0 +1,4502 @@
+# Grimoire in Japanese
+# This file is distributed under the same license as Grimoire: GPL-3.0-or-later.
+# Translations contributed to it are under that license too. po/ja-glossary.md lists the
+
+msgid ""
+msgstr ""
+"Project-Id-Version: Grimoire 2.0.0-beta.1\n"
+"Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
+"POT-Creation-Date: 2026-10-31 17:00-0500\n"
+"PO-Revision-Date: 2026-11-01 00:00+0000\n"
+"Last-Translator: draft\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. TRANSLATORS: the What's new card's box (1040 px at 44 px; on the sheet, what Close leaves):
+#. when ticked, What's new no longer opens by itself after an update (the bat in the Library's
+#. top bar still opens it).
+#: rust/src/about.rs
+msgid "Don't show this again"
+msgstr "次回から表示しない"
+
+#. TRANSLATORS: What's new's button that closes it (a word under an icon, at 34 px: 200 px).
+#: rust/src/about.rs
+msgid "Close"
+msgstr "閉じる"
+
+#. TRANSLATORS: the card's title (and the sheet's when the notes have none): what this version
+#. brings (520 px at 44 px in bold).
+#: rust/src/about.rs
+msgid "What's new"
+msgstr "新機能"
+
+#. TRANSLATORS: the What's new card's button to the whole notes (330 px at 44 px in bold).
+#: rust/src/about.rs
+msgid "Read all"
+msgstr "すべて読む"
+
+#: rust/src/actions.rs
+msgid "Previous / next tool"
+msgstr "前 / 次のツール"
+
+#: rust/src/actions.rs
+msgid "Previous / next in the picker"
+msgstr "選択肢の前 / 次"
+
+#: rust/src/actions.rs
+msgid "Previous / next page"
+msgstr "前 / 次のページ"
+
+#: rust/src/actions.rs
+msgid "First / last page"
+msgstr "最初 / 最後のページ"
+
+#: rust/src/actions.rs
+msgid "Zoom out / zoom in"
+msgstr "縮小 / 拡大"
+
+#: rust/src/actions.rs
+msgid "Scroll up / down"
+msgstr "上 / 下にスクロール"
+
+#: rust/src/actions.rs
+msgid "Light down / up"
+msgstr "明るさを下げる / 上げる"
+
+#: rust/src/actions.rs
+msgid "Warmth down / up"
+msgstr "色温度を下げる / 上げる"
+
+#: rust/src/actions.rs
+msgid "Editing..."
+msgstr "編集中..."
+
+#: rust/src/actions.rs
+msgid "Editing"
+msgstr "編集"
+
+#: rust/src/actions.rs
+msgid "Tools..."
+msgstr "ツール..."
+
+#. TRANSLATORS: the title of the editor's tool picker.
+#: rust/src/actions.rs rust/src/editor.rs
+msgid "Tools"
+msgstr "ツール"
+
+#: rust/src/actions.rs
+msgid "Pages..."
+msgstr "ページ..."
+
+#: rust/src/actions.rs rust/src/mapview.rs
+msgid "Pages"
+msgstr "ページ"
+
+#: rust/src/actions.rs
+msgid "Index..."
+msgstr "索引..."
+
+#: rust/src/actions.rs
+msgid "Index"
+msgstr "索引"
+
+#: rust/src/actions.rs
+msgid "Menus..."
+msgstr "メニュー..."
+
+#: rust/src/actions.rs
+msgid "Menus"
+msgstr "メニュー"
+
+#: rust/src/actions.rs
+msgid "Screen..."
+msgstr "画面..."
+
+#: rust/src/actions.rs
+msgid "Screen"
+msgstr "画面"
+
+#: rust/src/actions.rs
+msgid "System..."
+msgstr "システム..."
+
+#: rust/src/actions.rs
+msgid "System"
+msgstr "システム"
+
+#. TRANSLATORS: the drawing tools: in the editor's tool picker (268 px at 34 px in Gothic, 284 in
+#. Classic, where the Mechanical pencil and the Calligraphy pen go by shorter names) and after
+#. "Pen feel:".
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Pencil"
+msgstr "鉛筆"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Mechanical pencil"
+msgstr "シャープペンシル"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Ballpoint"
+msgstr "ボールペン"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Eraser"
+msgstr "消しゴム"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Highlighter"
+msgstr "蛍光ペン"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Fountain pen"
+msgstr "万年筆"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Fineliner"
+msgstr "細書きペン"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Marker"
+msgstr "マーカー"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Charcoal"
+msgstr "木炭"
+
+#: rust/src/actions.rs rust/src/brush.rs
+msgctxt "tool"
+msgid "Calligraphy pen"
+msgstr "カリグラフィーペン"
+
+#: rust/src/actions.rs
+msgid "Undo"
+msgstr "元に戻す"
+
+#: rust/src/actions.rs
+msgid "Redo"
+msgstr "やり直し"
+
+#: rust/src/actions.rs
+msgid "Previous page"
+msgstr "前のページへ"
+
+#: rust/src/actions.rs
+msgid "Next page"
+msgstr "次のページ"
+
+#: rust/src/actions.rs
+msgid "Previous tool"
+msgstr "以前のツール"
+
+#: rust/src/actions.rs
+msgid "Next tool"
+msgstr "次のツール"
+
+#: rust/src/actions.rs
+msgid "White ink"
+msgstr "白インク"
+
+#: rust/src/actions.rs
+msgid "Erase while held"
+msgstr "押しながら消去"
+
+#: rust/src/actions.rs
+msgid "Eraser mode"
+msgstr "消しゴムモード"
+
+#: rust/src/actions.rs
+msgid "Clear page"
+msgstr "ページをクリアする"
+
+#: rust/src/actions.rs
+msgid "First page"
+msgstr "最初のページ"
+
+#: rust/src/actions.rs
+msgid "Last page"
+msgstr "最後のページ"
+
+#: rust/src/actions.rs rust/src/pagesview.rs
+msgid "New page"
+msgstr "新しいページ"
+
+#: rust/src/actions.rs
+msgid "Fit page"
+msgstr "ページに合わせる"
+
+#: rust/src/actions.rs
+msgid "Tool picker"
+msgstr "ツールピッカー"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Paper"
+msgstr "紙"
+
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Display"
+msgstr "画面"
+
+#: rust/src/actions.rs
+msgid "Pen feel"
+msgstr "ペンの感触"
+
+#: rust/src/actions.rs
+msgid "Fold the toolbar"
+msgstr "ツールバーを折りたたむ"
+
+#. TRANSLATORS: the share index's heading over the notebooks in no folder.
+#: rust/src/actions.rs rust/src/httpd.rs
+msgid "Library"
+msgstr "ライブラリ"
+
+#: rust/src/actions.rs
+msgid "Close menu"
+msgstr "メニューを閉じる"
+
+#: rust/src/actions.rs
+msgid "Previous in the picker"
+msgstr "ピッカーの前へ"
+
+#: rust/src/actions.rs
+msgid "Next in the picker"
+msgstr "次にピッカーで"
+
+#: rust/src/actions.rs
+msgctxt "buttons"
+msgid "Add a link"
+msgstr "リンクを追加する"
+
+#: rust/src/actions.rs
+msgid "Name the page"
+msgstr "ページに名前を付けます"
+
+#: rust/src/actions.rs
+msgid "Clock and battery"
+msgstr "時計とバッテリー"
+
+#: rust/src/actions.rs
+msgid "Links on this page"
+msgstr "このページのリンク"
+
+#: rust/src/actions.rs rust/src/linkbar.rs rust/src/pagesview.rs
+msgid "Go to page"
+msgstr "ページに移動"
+
+#: rust/src/actions.rs
+msgid "Back to the page before"
+msgstr "前のページに戻る"
+
+#: rust/src/actions.rs
+msgid "Show link areas"
+msgstr "リンクエリアを表示"
+
+#: rust/src/actions.rs
+msgid "Whole page sideways"
+msgstr "ページ全体を横向きに"
+
+#: rust/src/actions.rs
+msgid "Clock and battery corner"
+msgstr "時計・電池コーナー"
+
+#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
+#. (off: it only says it is the last page). About 1000 px at 44 px.
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Swiping past the last page adds a page"
+msgstr "最後のページを越えてスワイプするとページが追加されます"
+
+#: rust/src/actions.rs
+msgid "Zoom out"
+msgstr "ズームアウト"
+
+#: rust/src/actions.rs
+msgid "Zoom in"
+msgstr "ズームイン"
+
+#: rust/src/actions.rs
+msgid "Scroll up"
+msgstr "上にスクロール"
+
+#: rust/src/actions.rs
+msgid "Scroll down"
+msgstr "下にスクロールします"
+
+#. TRANSLATORS: Live view's switch in the browser: the picture white on black. It follows
+#. Invert colors on the Kindle until it is switched; then "As on the Kindle" goes back to that.
+#: rust/src/actions.rs rust/src/httpd.rs
+msgid "Invert colors"
+msgstr "色を反転する"
+
+#: rust/src/actions.rs
+msgid "Less light"
+msgstr "光が少ない"
+
+#: rust/src/actions.rs
+msgid "More light"
+msgstr "より多くの光"
+
+#: rust/src/actions.rs
+msgid "Less warmth"
+msgstr "暖かさの低下"
+
+#: rust/src/actions.rs
+msgid "More warmth"
+msgstr "さらなる暖かさ"
+
+#: rust/src/actions.rs
+msgid "Lock rotation"
+msgstr "回転をロックする"
+
+#: rust/src/actions.rs
+msgid "Pinch to zoom"
+msgstr "ピンチしてズーム"
+
+#: rust/src/actions.rs
+msgid "Switch theme"
+msgstr "テーマを切り替える"
+
+#: rust/src/actions.rs
+msgid "Side button"
+msgstr "サイドボタン"
+
+#: rust/src/actions.rs
+msgid "PDF copies"
+msgstr "PDF コピー"
+
+#: rust/src/actions.rs
+msgid "Sleep screen"
+msgstr "スリープ画面"
+
+#: rust/src/actions.rs
+msgid "Sleep now"
+msgstr "もう寝てください"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Gestures"
+msgstr "ジェスチャー"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Enable shortcuts"
+msgstr "ショートカットを有効にする"
+
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Bluetooth controller"
+msgstr "Bluetoothコントローラー"
+
+#. TRANSLATORS: the title of the list of languages (Settings > Language).
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Language"
+msgstr "言語"
+
+#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
+#: rust/src/actions.rs rust/src/dispmenu.rs
+msgid "Sleep after"
+msgstr "後は寝る"
+
+#: rust/src/actions.rs
+msgid "Update channel"
+msgstr "チャンネルを更新する"
+
+#: rust/src/actions.rs rust/src/editor.rs
+msgid "Smart shapes"
+msgstr "スマートな形状"
+
+#: rust/src/actions.rs
+msgid "Shape hold time"
+msgstr "形状保持時間"
+
+#: rust/src/actions.rs
+msgid "Shape the last stroke"
+msgstr "最後のストロークを形作る"
+
+#: rust/src/actions.rs rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Graph"
+msgstr "グラフ"
+
+#: rust/src/actions.rs
+msgid "Pan with the pen"
+msgstr "ペンでパンする"
+
+#: rust/src/actions.rs
+msgid "Zoom with the pen"
+msgstr "ペンでズームする"
+
+#. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
+#: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
+msgid "Untitled"
+msgstr "無題"
+
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
+#. and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
+#. two. This one: the picture of the page KOReader sent is damaged or missing.
+#: rust/src/app.rs
+msgid "Could not open the page KOReader sent: its picture does not read."
+msgstr "KOReader が送信したページを開けませんでした。画像が読み取れません。"
+
+#. TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
+#. written.
+#: rust/src/app.rs
+msgid "Could not add the page KOReader sent. Is the storage full?"
+msgstr ""
+"KOReader が送信したページを追加できませんでした。ストレージがいっぱいですか?"
+
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+#: rust/src/app.rs
+#, c-format
+msgid "Could not open the page KOReader sent (see %s)."
+msgstr "KOReader が送信したページを開けませんでした (%s を参照)。"
+
+#. TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
+#. toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
+#. than a notebook holds; %d is that number (2000).
+#: rust/src/app.rs
+#, c-format
+msgid "The book has more pages than a notebook holds (%d)."
+msgstr "この本にはノートに収まるページよりも多くのページがあります (%d)。"
+
+#. TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
+#: rust/src/app.rs
+msgid "Could not open the book KOReader sent: a page's picture does not read."
+msgstr "KOReader が送った本を開けませんでした。ページの画像が読み取れません。"
+
+#. TRANSLATORS: (as above) the pages could not be added: a file could not be written.
+#: rust/src/app.rs
+msgid "Could not add the book's pages. Is the storage full?"
+msgstr "本のページを追加できませんでした。ストレージがいっぱいですか?"
+
+#. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
+#: rust/src/app.rs
+#, c-format
+msgid "Could not open the book KOReader sent (see %s)."
+msgstr "KOReader が送信した本を開けませんでした (%s を参照)。"
+
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
+#: rust/src/app.rs
+#, c-format
+msgid "Added %d page of the book."
+msgid_plural "Added %d pages of the book."
+msgstr[0] "本の%dページを追加しました。"
+
+#. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+#. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
+#: rust/src/app.rs
+#, c-format
+msgid "Adding the book's pages: %d of %d"
+msgstr "本のページの追加: %d の %d"
+
+#. TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
+#: rust/src/app.rs
+msgid "The last update did not install. grimoire.log says why."
+msgstr ""
+"最後のアップデートはインストールされませんでした。 grimoire.log がその理由を"
+"語ります。"
+
+#. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
+#. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
+#: rust/src/app.rs
+msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
+msgstr "Kindle パスコードがオフのままです。 Kindle 設定で再度オンにします。"
+
+#. TRANSLATORS: %s is the app's name, Grimoire.
+#: rust/src/app.rs
+#, c-format
+msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
+msgstr ""
+"ペンが見つかりません。 %s は Kindle Scribe 用に作られています。書くにはペンが"
+"必要です。"
+
+#. TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
+#. or page turner comes or goes. "Held by another app": another program (a button mapper)
+#. takes its presses, so Grimoire gets none.
+#: rust/src/app.rs
+msgid "Controller disconnected"
+msgstr "コントローラーが切断されました"
+
+#: rust/src/app.rs
+msgid "Controller held by another app"
+msgstr "別のアプリが保持しているコントローラー"
+
+#: rust/src/app.rs
+msgid "Controller connected"
+msgstr "コントローラーが接続されています"
+
+#. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
+#. or the server's port is taken).
+#: rust/src/app.rs
+msgid "Could not start Live view"
+msgstr "ライブビューを開始できませんでした"
+
+#. TRANSLATORS: a toast as Live view stops (the Stop button on its card).
+#: rust/src/app.rs
+msgid "Live view ended."
+msgstr "ライブビューが終了しました。"
+
+#. TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
+#: rust/src/app.rs
+msgid "Live view turned off: no one watched for 10 minutes."
+msgstr "ライブビューがオフになりました。10 分間誰も視聴しませんでした。"
+
+#. TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
+#: rust/src/app.rs
+msgid "A computer is watching this screen."
+msgstr "コンピューターがこの画面を見ています。"
+
+#. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
+#. saved (a full storage), so it stays once.
+#: rust/src/app.rs
+msgid "Could not save this page. Hold power 4 s again to leave anyway."
+msgstr ""
+"このページを保存できませんでした。とにかく終了するには、もう一度電源を 4 秒押"
+"し続けます。"
+
+#. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
+#. %s is the app's name, Grimoire.
+#: rust/src/app.rs
+#, c-format
+msgid "Saved. Leaving %s."
+msgstr "保存されました。 %sを出発します。"
+
+#: rust/src/app.rs
+#, c-format
+msgid "Leaving %s without this page."
+msgstr "このページを表示せずに %s を終了します。"
+
+#. TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
+#. installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
+#. opens the new one next time.
+#: rust/src/app.rs
+msgid "Updating. Open Grimoire from KOReader again in a moment."
+msgstr "更新中。すぐに KOReader から Grimoire を再度開きます。"
+
+#: rust/src/app.rs
+msgid "Updating. Grimoire starts again by itself."
+msgstr "更新中。 Grimoire が自動的に再起動します。"
+
+#. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
+#: rust/src/app.rs
+#, c-format
+msgid "Imported a notebook of %d page."
+msgid_plural "Imported a notebook of %d pages."
+msgstr[0] "%dページのノートブックをインポートしました。"
+
+#. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
+#. that says why. The folder stays where it was.
+#: rust/src/app.rs
+#, c-format
+msgid "Could not import a folder of pages (see %s)."
+msgstr "ページのフォルダーをインポートできませんでした (%s を参照)。"
+
+#. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
+#: rust/src/app.rs
+#, c-format
+msgid "PDF saved to %s"
+msgstr "PDF が %s に保存されました"
+
+#: rust/src/app.rs
+msgid "Could not save the PDF"
+msgstr "PDFを保存できませんでした"
+
+#. TRANSLATORS: a page that could not be read; %s is the log file that says which.
+#: rust/src/app.rs
+#, c-format
+msgid "A damaged page was set aside; a blank one took its place (see %s)"
+msgstr ""
+"破損したページは脇に置かれていました。空のものが代わりに使用されました (%s を"
+"参照)"
+
+#: rust/src/app.rs rust/src/library.rs
+msgid "Could not save shortcuts.ini"
+msgstr "shortcuts.iniを保存できませんでした"
+
+#. TRANSLATORS: light action before its cached level is known; toast, 1700 px at 44 px.
+#: rust/src/app.rs
+msgid "Light not ready yet."
+msgstr "ライトはまだ準備ができていません。"
+
+#. TRANSLATORS: cached light step and maximum; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Warmth %d of %d"
+msgstr "%dの暖かさ%d"
+
+#: rust/src/app.rs
+#, c-format
+msgid "Light %d of %d"
+msgstr "%dのライト%d"
+
+#. TRANSLATORS: rotation action feedback, toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Rotation locked."
+msgstr "回転がロックされています。"
+
+#: rust/src/app.rs
+msgid "Rotation follows the Kindle."
+msgstr "回転はKindleに従います。"
+
+#. TRANSLATORS: pinch zoom toggle feedback, toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Pinch zoom on."
+msgstr "ピンチズームオン。"
+
+#: rust/src/app.rs
+msgid "Pinch zoom off."
+msgstr "ピンチズームをオフにします。"
+
+#. TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
+#: rust/src/app.rs
+msgid "Holding the pen button while writing does nothing"
+msgstr "ペンボタンを押しながら書いても何も起こらない"
+
+#: rust/src/app.rs
+msgid "Holding the pen button while writing erases"
+msgstr "ペンボタンを押しながら書くと消去できる"
+
+#: rust/src/app.rs
+msgid "Holding the pen button while writing highlights"
+msgstr "ペンボタンを押したままハイライトを書く"
+
+#: rust/src/app.rs
+msgid "Holding the pen button while writing draws white"
+msgstr "ペンボタンを押しながら書くと白く描画されます"
+
+#. TRANSLATORS: PDF mirror setting feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "PDF copies on."
+msgstr "PDF のコピーがオンになります。"
+
+#: rust/src/app.rs
+msgid "PDF copies off."
+msgstr "PDF はコピーオフになります。"
+
+#. TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
+#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
+#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: the page I'm on (tap to change)"
+msgstr "スリープ画面: 現在閲覧しているページ (タップして変更)"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: a pinned page (tap to change)"
+msgstr "スリープ画面: 固定されたページ (タップして変更)"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: the Kindle's own screensaver (tap to change)"
+msgstr "スリープ画面：Kindle独自のスクリーンセーバー（タップして変更）"
+
+#: rust/src/app.rs rust/src/dispmenu.rs
+msgid "Sleep screen: KOReader wallpaper (tap to change)"
+msgstr "スリープ画面：KOReaderの壁紙（タップして変更します）"
+
+#. TRANSLATORS: gestures action feedback; off names the recovery menu. Toast, two 1700 px lines at 44 px.
+#: rust/src/app.rs
+msgid "Gestures on."
+msgstr "ジェスチャーオン。"
+
+#: rust/src/app.rs
+msgid "Gestures off. Settings > Gestures turns them back on."
+msgstr "ジェスチャーはオフです。 [設定] > [ジェスチャー] で再びオンにします。"
+
+#. TRANSLATORS: shortcut enablement feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Shortcuts on."
+msgstr "ショートカットオン。"
+
+#: rust/src/app.rs
+msgid "Shortcuts off."
+msgstr "ショートカットはオフです。"
+
+#. TRANSLATORS: Bluetooth controller setting feedback; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+msgid "Bluetooth controller on."
+msgstr "Bluetoothコントローラーがオン。"
+
+#: rust/src/app.rs
+msgid "Bluetooth controller off."
+msgstr "Bluetooth コントローラーがオフになっています。"
+
+#: rust/src/app.rs
+msgid "Never"
+msgstr "決してしない"
+
+#. TRANSLATORS: sleep timeout after cycling, %s is its value; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Sleep after: %s"
+msgstr "次の睡眠: %s"
+
+#. TRANSLATORS: update channels, used in a toast with Update channel: %s; 1700 px at 44 px.
+#: rust/src/app.rs
+msgid "Automatic"
+msgstr "自動"
+
+#: rust/src/app.rs
+msgid "Preview"
+msgstr "プレビュー"
+
+#: rust/src/app.rs
+msgid "Stable"
+msgstr "安定版"
+
+#. TRANSLATORS: selected update channel, %s is its name; toast, 1700 px at 44 px bold.
+#: rust/src/app.rs
+#, c-format
+msgid "Update channel: %s"
+msgstr "アップデートチャンネル: %s"
+
+#: rust/src/bgwork_template.rs
+msgid "Templates for Grimoire"
+msgstr "Grimoire用テンプレート"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Copy pictures here to write on them as paper: PNG or JPG files, upright, in "
+"the shape of a Kindle Scribe page (3:4). 1860 x 2480 pixels is best. Light "
+"lines on white work best on e-ink: dark areas hide your writing."
+msgstr ""
+"紙として書き込む画像をここにコピーします。PNG または JPG の画像を、Kindle Scribe"
+"のページと同じ縦長（3:4）で入れてください。1860 x 2480"
+"ピクセルが最適です。電子ペーパーでは白地に薄い線が最も見やすく、濃い部分は書き込みを隠します。"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Copy them in over USB while Grimoire is closed. A notebook keeps its own "
+"copy of each template it uses, so changing or deleting a file here never "
+"changes pages already written on it. Grimoire keeps its previews of these "
+"files in the .cache folder."
+msgstr ""
+"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各テンプレートのコピーを独自に保持するため、ここで"
+"ファイルを変更または削除しても、すでに書き込んだページは変わりません。Grimoire はこれらのファイルのプレビューを .cache"
+"フォルダーに保存します。"
+
+#: rust/src/bgwork_template.rs
+msgid "Photos for Grimoire"
+msgstr "Grimoireの写真"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Copy photos here to write on them: JPG or PNG files, as your phone or camera "
+"saved them. In a notebook, open Paper and pick Photos...: the photo becomes "
+"the open page's paper, fitted to the page and turned upright. For a page of "
+"its own, add a new page in Pages first."
+msgstr ""
+"書き込む写真をここにコピーします。スマートフォンやカメラで保存したままの JPG または PNG ファイルを入れてください。ノート内で「"
+"紙」を開き、「写真...」を選ぶと、その写真が開いているページの紙になり、ページに合わせて縦向きに調整されます。写真だけのページにする場"
+"合は、先に「ページ」で新しいページを追加してください。"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Copy them in over USB while Grimoire is closed. A notebook keeps its own "
+"copy of each photo it uses, so changing or deleting a file here never "
+"changes pages already written on it. Grimoire keeps its previews of these "
+"files in the .cache folder."
+msgstr ""
+"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各写真のコピーを独自に保持するため、ここでファイル"
+"を変更または削除しても、すでに書き込んだページは変わりません。Grimoire はこれらのファイルのプレビューを .cache"
+"フォルダーに保存します。"
+
+#: rust/src/bgwork_template.rs
+msgid "Importing pages into Grimoire"
+msgstr "Grimoire へのページのインポート"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"To write on pages you already have, such as a PDF saved as pictures, put a "
+"folder of PNG or JPG files here, one picture a page, and start Grimoire. The "
+"folder's name becomes the notebook's name, and the pages follow the file "
+"names in order (page-2 comes before page-10). Gray pictures import faster "
+"and take less room than colour ones."
+msgstr ""
+"すでにあるページ（画像として保存した PDF など）に書き込むには、PNG または JPG ファイルを 1 ページに 1"
+"枚ずつ入れたフォルダーをここに置き、Grimoire"
+"を起動します。フォルダー名がノート名になり、ページはファイル名の順に並びます（page-2 は page-10"
+"より前）。グレースケール画像はカラー画像より速く読み込め、容量も少なくて済みます。"
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Grimoire imports each folder in the background and then moves it into the "
+"done folder. Copy folders in over USB while Grimoire is closed."
+msgstr ""
+"Grimoire は各フォルダーをバックグラウンドで読み込み、その後 done フォルダーへ移動します。フォルダーは Grimoire"
+"を閉じている間に USB 経由でコピーしてください。"
+
+#: rust/src/brush.rs
+msgctxt "tool"
+msgid "Tool"
+msgstr "ツール"
+
+#. TRANSLATORS: Pen feel's sliders, each label left of its value, at 44 px: in Gothic about 530 px
+#. beside a width (up to "12.00 mm"), 570 beside an angle, 630 beside a plain number ("1.25"); in
+#. Classic 560, 600 and 640.
+#: rust/src/brush.rs
+msgid "Min width"
+msgstr "最小幅"
+
+#: rust/src/brush.rs
+msgid "Max width"
+msgstr "最大幅"
+
+#: rust/src/brush.rs
+msgid "Light darkness"
+msgstr "明るい闇"
+
+#: rust/src/brush.rs
+msgid "Full darkness"
+msgstr "完全な暗闇"
+
+#: rust/src/brush.rs
+msgid "Pressure deadzone"
+msgstr "圧力不感帯"
+
+#: rust/src/brush.rs
+msgid "Pressure full at"
+msgstr "圧力全開"
+
+#: rust/src/brush.rs
+msgid "Pressure curve"
+msgstr "圧力曲線"
+
+#: rust/src/brush.rs
+msgid "Tilt starts at"
+msgstr "チルト開始位置"
+
+#: rust/src/brush.rs
+msgid "Tilt full at"
+msgstr "いっぱいに傾けると"
+
+#: rust/src/brush.rs
+msgid "Tilt widens"
+msgstr "傾きが広がる"
+
+#: rust/src/brush.rs
+msgid "Tilt lightens"
+msgstr "傾きが軽くなる"
+
+#: rust/src/brush.rs
+msgid "Grain"
+msgstr "穀物"
+
+#: rust/src/brush.rs
+msgid "Smoothing"
+msgstr "スムージング"
+
+#. TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+#: rust/src/calibrate.rs
+msgid "Calibrate the pen"
+msgstr "ペンを調整する"
+
+#: rust/src/calibrate.rs
+msgid "Calibrate touch"
+msgstr "タッチを調整する"
+
+#: rust/src/calibrate.rs
+msgid "Check it"
+msgstr "チェックしてください"
+
+#. TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
+#. tap five targets, one after another, with the pen, then with a finger; then draw to check.
+#: rust/src/calibrate.rs
+msgid "Draw in the box: the line should sit right under the tip."
+msgstr "ボックス内に描画します。線は先端の真下に来るはずです。"
+
+#. TRANSLATORS: the target is the circle with a cross on it; the second number is how many.
+#: rust/src/calibrate.rs
+#, c-format
+msgid "Tap with the pen tip on the center of the target (%d of %d)."
+msgstr "ターゲット（%d、%d）の中心をペン先でタップします。"
+
+#: rust/src/calibrate.rs
+#, c-format
+msgid "Tap with a finger on the center of the target (%d of %d)."
+msgstr "ターゲット（%d、%d）の中心を指でタップします。"
+
+#. TRANSLATORS: calibration's buttons, bars across the screen (1708 px at 44 px). While the
+#. pen is calibrated, a finger works them, and the pen while touch is.
+#: rust/src/calibrate.rs
+msgid "Cancel (tap with a finger)"
+msgstr "キャンセル（指でタップ）"
+
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
+#: rust/src/calibrate.rs rust/src/editor.rs rust/src/keyboard.rs
+#: rust/src/library.rs rust/src/linkbar.rs rust/src/musicbuild.rs
+#: rust/src/pagesview.rs
+msgid "Cancel"
+msgstr "キャンセル"
+
+#: rust/src/calibrate.rs
+msgid "Touch was fine: skip (tap with the pen)"
+msgstr "タッチは問題ありませんでした: スキップ (ペンでタップ)"
+
+#: rust/src/calibrate.rs
+msgid "Save"
+msgstr "保存"
+
+#: rust/src/calibrate.rs
+msgid "Start over"
+msgstr "やり直す"
+
+#: rust/src/calibrate.rs
+msgid "Cancel (keep the old calibration)"
+msgstr "キャンセル (古いキャリブレーションを保持)"
+
+#. TRANSLATORS: calibration's notes, in bold under what to do (1740 px at 44 px).
+#: rust/src/calibrate.rs
+msgid "Those taps did not make sense. Let's try again."
+msgstr "それらのタップは意味がありませんでした。もう一度試してみましょう。"
+
+#: rust/src/calibrate.rs
+#, c-format
+msgid "The center was off by %.1f mm. Let's try again."
+msgstr "中心が%.1fmmずれていました。もう一度試してみましょう。"
+
+#: rust/src/calibrate.rs
+msgid "Pen done."
+msgstr "ペン完成。"
+
+#: rust/src/calibrate.rs
+msgid "Calibration saved"
+msgstr "キャリブレーションが保存されました"
+
+#. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
+#. which a tap moves to the next size. Two lines of about 365 px at 34 px.
+#: rust/src/dispmenu.rs
+msgid "Clock size: small"
+msgstr "時計のサイズ: 小"
+
+#: rust/src/dispmenu.rs
+msgid "Clock size: medium"
+msgstr "時計のサイズ: 中"
+
+#: rust/src/dispmenu.rs
+msgid "Clock size: large"
+msgstr "時計サイズ: 大"
+
+#. TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
+#. clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+#: rust/src/dispmenu.rs
+msgid "Clock corner: top left"
+msgstr "時計の角：左上"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: top right"
+msgstr "時計コーナー：右上"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: bottom right"
+msgstr "時計コーナー：右下"
+
+#: rust/src/dispmenu.rs
+msgid "Clock corner: bottom left"
+msgstr "時計の角：左下"
+
+#. TRANSLATORS: Live view's slider in the browser, under Warmth: the picture's light from dim
+#. to full, this browser's own (the Kindle's light is unchanged). About 12 characters.
+#: rust/src/dispmenu.rs rust/src/httpd.rs
+msgid "Brightness"
+msgstr "明るさ"
+
+#. TRANSLATORS: Live view's slider in the browser: the picture's light from white to warm,
+#. following the Kindle's front light warmth until it is moved ("As on the Kindle" again).
+#: rust/src/dispmenu.rs rust/src/httpd.rs
+msgid "Warmth"
+msgstr "色温度"
+
+#. TRANSLATORS: the Sleep after slider's value: minutes, or never.
+#: rust/src/dispmenu.rs
+#, c-format
+msgid "%d min"
+msgstr "%d分"
+
+#: rust/src/dispmenu.rs
+msgctxt "sleep after"
+msgid "never"
+msgstr "なし"
+
+#. TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
+#: rust/src/dispmenu.rs
+msgid "Front light controls are not available here."
+msgstr "フロントライトのコントロールはここでは利用できません。"
+
+#: rust/src/dispmenu.rs
+msgid "This Kindle has no warmth control."
+msgstr "このKindleには暖かさコントロールがありません。"
+
+#: rust/src/dispmenu.rs
+msgid "Invert colors in Grimoire (white on black)"
+msgstr "Grimoire で色を反転 (黒地に白)"
+
+#. TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
+#. the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
+#: rust/src/dispmenu.rs
+msgid "Sideways, show the whole page"
+msgstr "横向きにページ全体を表示"
+
+#. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
+#: rust/src/dispmenu.rs
+msgid "Sleep"
+msgstr "スリープ"
+
+#: rust/src/dispmenu.rs
+msgid "Sleep screen: Kindle PIN (native unlock)"
+msgstr "スリープ画面: Kindle PIN (ネイティブロック解除)"
+
+#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
+#: rust/src/dispmenu.rs
+msgid "Pin this page"
+msgstr "このページを固定する"
+
+#. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
+#. at 44 px, on the keyboard 334 px at 44 px in bold.
+#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
+#. that (116 px at 34 px, as Pin).
+#: rust/src/dispmenu.rs rust/src/editor.rs rust/src/i18n.rs
+#: rust/src/keyboard.rs rust/src/library.rs rust/src/share.rs
+msgid "Done"
+msgstr "完了"
+
+#: rust/src/dispmenu.rs
+msgid "This page is now the sleep screen"
+msgstr "このページはスリープ画面になりました"
+
+#: rust/src/dispmenu.rs
+msgid "Could not save the sleep screen"
+msgstr "スリープ画面を保存できませんでした"
+
+#. TRANSLATORS: the title of the keyboard that names the page a held link goes to (about 1500 px at 44 px).
+#. TRANSLATORS: the naming keyboard's title, 96 px text-field header.
+#: rust/src/editor.rs rust/src/pagesview.rs
+msgid "Page name"
+msgstr "ページ名"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. gave page %d the name %s.
+#: rust/src/editor.rs
+#, c-format
+msgid "Page %d is named %s."
+msgstr "ページ %d の名前は %s です。"
+
+#: rust/src/editor.rs
+msgid "Could not save the page name."
+msgstr "ページ名を保存できませんでした。"
+
+#. TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
+#: rust/src/editor.rs
+msgid "Paper for this page"
+msgstr "このページの用紙"
+
+#. TRANSLATORS: the last paper's tile, here and in the editor's paper sheet: it opens a sheet
+#. that builds a music paper from parts (192 px at 31 px in New notebook sideways, on one
+#. line or two).
+#: rust/src/editor.rs rust/src/library.rs
+msgid "Custom music..."
+msgstr "カスタム音楽..."
+
+#. TRANSLATORS: the paper sheets' button that opens the Templates sheet, of pictures copied into
+#. grimoire/templates to write on as paper (a button: 348 px at 44 px, or two lines at 34 px).
+#: rust/src/editor.rs rust/src/library.rs
+msgid "More layouts..."
+msgstr "さらにレイアウト..."
+
+#. TRANSLATORS: the editor's Paper sheet's button that opens the Photos sheet (photos copied into
+#. grimoire/photos), beside More layouts... (its room).
+#: rust/src/editor.rs
+msgid "Photos..."
+msgstr "写真..."
+
+#: rust/src/editor.rs
+msgid "From"
+msgstr "から"
+
+#: rust/src/editor.rs
+msgid "To"
+msgstr "に"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
+#. "Sideways, show the whole page" was changed with the Kindle upright, where it makes no
+#. difference yet.
+#: rust/src/editor.rs
+msgid "Applies when the Kindle is sideways."
+msgstr "Kindleが横向きの場合に適用されます。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now shows
+#. the whole page when the Kindle is turned sideways.
+#: rust/src/editor.rs
+msgid "Sideways shows the whole page."
+msgstr "横向きにするとページ全体が表示されます。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now fills the
+#. width with the page when the Kindle is turned sideways.
+#: rust/src/editor.rs
+msgid "Sideways fills the width."
+msgstr "横に幅を埋めます。"
+
+#. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
+#. the pens draw black ink. 426 px at 44 px, or two lines at 34 px.
+#: rust/src/editor.rs
+msgctxt "ink"
+msgid "Black"
+msgstr "黒"
+
+#. TRANSLATORS: the other choice of the tool picker's ink row: the pens draw white ink, which
+#. takes away the ink under it and keeps the paper's lines (426 px at 44 px).
+#: rust/src/editor.rs
+msgctxt "ink"
+msgid "White"
+msgstr "白"
+
+#. TRANSLATORS: the tool picker's button at the top right that starts choosing the pens pinned
+#. to the panel, beside a pin (116 px at 34 px; the button widens for a longer word).
+#: rust/src/editor.rs
+msgctxt "panel"
+msgid "Pin"
+msgstr "固定"
+
+#. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
+#. tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
+#. in bold, or two lines at 34 px. Normally the title is Tools.
+#: rust/src/editor.rs
+#, c-format
+msgid "Pin to the toolbar (up to %d)"
+msgstr "ツールバーにピン留め(%dまで)"
+
+#. TRANSLATORS: the tool picker's shorter names for the Mechanical pencil and the
+#. Calligraphy pen (268 px at 34 px in Gothic, 284 in Classic, as the other tools' names).
+#: rust/src/editor.rs
+msgctxt "tool"
+msgid "Mechanical"
+msgstr "シャープ"
+
+#: rust/src/editor.rs
+msgctxt "tool"
+msgid "Calligraphy"
+msgstr "カリグラフィー"
+
+#: rust/src/editor.rs
+msgid "Smart shapes: On"
+msgstr "スマートシェイプ: オン"
+
+#: rust/src/editor.rs
+msgid "Smart shapes: Off"
+msgstr "スマートシェイプ: オフ"
+
+#: rust/src/editor.rs
+msgid "Four sides: Uneven allowed"
+msgstr "四辺：凹凸可"
+
+#: rust/src/editor.rs
+msgid "Four sides: Squares only"
+msgstr "4辺：正方形のみ"
+
+#: rust/src/editor.rs
+msgid "Four sides: Rectangles"
+msgstr "4辺：長方形"
+
+#: rust/src/editor.rs
+msgid "Round shapes: As drawn"
+msgstr "丸い形状: 描画どおり"
+
+#: rust/src/editor.rs
+msgid "Round shapes: Circles only"
+msgstr "丸型：円のみ"
+
+#: rust/src/editor.rs
+msgid "Round shapes: Prefer circles"
+msgstr "丸い形状: 円を好む"
+
+#: rust/src/editor.rs
+msgid "Snap link areas: On"
+msgstr "スナップリンクエリア：オン"
+
+#: rust/src/editor.rs
+msgid "Snap link areas: Off"
+msgstr "スナップリンクエリア：オフ"
+
+#. TRANSLATORS: the Smart shapes menu's slider that rounds the corners of the rectangles,
+#. triangles and other polygons a stroke snaps to (its value is "Sharp" or a percentage).
+#. At 44 px left of its value; label and value share up to 64% of the 1032 px row.
+#: rust/src/editor.rs
+msgid "Corner roundness"
+msgstr "角の丸み"
+
+#. TRANSLATORS: the Smart shapes menu's slider, the smallest stroke that becomes a shape (its
+#. value is a size in mm, 3 to 40).
+#: rust/src/editor.rs
+msgid "Smallest shape"
+msgstr "最小形状"
+
+#. TRANSLATORS: Corner roundness at 0: snapped polygons keep sharp corners.
+#: rust/src/editor.rs
+msgctxt "corners"
+msgid "Sharp"
+msgstr "シャープ"
+
+#. TRANSLATORS: Corner roundness's value, a percentage of the most rounding a shape can take
+#. ("25%"; in Spanish "25 %", the usual spacing), right of its slider's name in bold at 44 px.
+#: rust/src/editor.rs
+#, c-format
+msgid "%d%%"
+msgstr "%d%%"
+
+#: rust/src/editor.rs
+msgid ""
+"Dotted outlines show where a finger tap follows a link. They never print."
+msgstr "点線の枠は、指でタップするとリンクをたどれる場所を示します。印刷されることはありません。"
+
+#: rust/src/editor.rs
+msgid "Could not save this page. Is the storage full?"
+msgstr "このページを保存できませんでした。ストレージがいっぱいですか?"
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
+#: rust/src/editor.rs
+msgid "This page was made by a newer Grimoire. It is read-only here."
+msgstr ""
+"このページは新しい Grimoire によって作成されました。ここでは読み取り専用で"
+"す。"
+
+#: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/nav.rs
+#: rust/src/notebookpicker.rs rust/src/pagesview.rs
+#, c-format
+msgid "Page %d"
+msgstr "ページ %d"
+
+#: rust/src/editor.rs
+msgid "Could not open that page"
+msgstr "そのページを開けませんでした"
+
+#: rust/src/editor.rs
+msgid "Could not open that notebook"
+msgstr "そのノートを開けませんでした"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
+#. two fingers dragged up and down on a page do now.
+#: rust/src/editor.rs
+msgid ""
+"New: two fingers up show this page's links. Two fingers down open the Graph."
+msgstr "新機能: 2 本指を上に動かすと、このページのリンクが表示されます。2 本指を下に動かすとグラフが開きます。"
+
+#: rust/src/editor.rs
+msgid "This page is already empty"
+msgstr "このページはすでに空です"
+
+#: rust/src/editor.rs
+msgid "Could not save the links. The page was not cleared."
+msgstr "リンクを保存できませんでした。ページはクリアされませんでした。"
+
+#: rust/src/editor.rs
+msgid "Page cleared"
+msgstr "ページがクリアされました"
+
+#: rust/src/editor.rs
+msgid "Could not delete those pages"
+msgstr "それらのページを削除できませんでした"
+
+#. TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
+#: rust/src/editor.rs
+#, c-format
+msgid "Deleted %d page (kept in %s)"
+msgid_plural "Deleted %d pages (kept in %s)"
+msgstr[0] "削除された %d ページ (%s に保持)"
+
+#: rust/src/editor.rs
+msgid "Could not add a page"
+msgstr "ページを追加できませんでした"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
+#. Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
+#: rust/src/editor.rs
+msgid "Could not copy that page"
+msgstr "そのページをコピーできませんでした"
+
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): the page was copied, but the links drawn on it could not be saved for the copy.
+#: rust/src/editor.rs
+msgid "The copy has no links: they could not be saved."
+msgstr "コピーにはリンクがありません。保存できませんでした。"
+
+#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
+#. lines): %d is the page it copies.
+#: rust/src/editor.rs
+#, c-format
+msgid "This page is a copy of page %d."
+msgstr "このページは %d ページのコピーです。"
+
+#. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
+#. bold): the next pen stroke draws the link's new area, and leaves no ink.
+#: rust/src/editor.rs
+msgid "Draw the link's new area."
+msgstr "リンクの新しい領域を描画します。"
+
+#: rust/src/editor.rs
+msgid "Draw around what links."
+msgstr "どのリンクを中心に描画します。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link was asked while
+#. the notebook's links.ini could not be read, so no link can be made.
+#: rust/src/editor.rs
+msgid "Links could not be read in this notebook."
+msgstr "このノートブックではリンクを読み取ることができませんでした。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
+#. has the most links a page may have; %d is that number (64).
+#: rust/src/editor.rs
+#, c-format
+msgid "This page has %d links: delete one to add another."
+msgstr ""
+"このページには %d リンクがあります。別のリンクを追加するには、1 つを削除して"
+"ください。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
+#. stroke drawn was too small to be the link's box.
+#: rust/src/editor.rs
+msgid "Too small for a link: draw around what links."
+msgstr "リンクとしては小さすぎます。リンクを囲むように描画します。"
+
+#. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
+#. box of a new link is drawn; tap the page (or the Index) it goes to.
+#: rust/src/editor.rs
+msgid "Where does the link go? Tap its page."
+msgstr "リンクはどこに行くのでしょうか?そのページをタップします。"
+
+#. TRANSLATORS: the title of the keyboard that names the page New page... adds for a link (about 1500 px at
+#. 44 px).
+#: rust/src/editor.rs
+msgid "Name the new page"
+msgstr "新しいページに名前を付けます"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
+#: rust/src/editor.rs
+msgid "Could not save the link."
+msgstr "リンクを保存できませんでした。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+#. the page with this name in the Index (%s).
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to %s."
+msgstr "%sとリンクしています。"
+
+#. TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
+#. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
+#. change, redraw or delete it).
+#: rust/src/editor.rs
+msgid "Linked. Tap it with a finger to go there; hold it for more."
+msgstr ""
+"リンクされています。指でタップしてそこに移動します。それをもっと保持してくだ"
+"さい。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
+#. end of the notebook and the new link goes to it.
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to the new page %d."
+msgstr "新しいページ %d にリンクします。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
+#. page %d, which has no name in the Index.
+#: rust/src/editor.rs
+#, c-format
+msgid "Linked to page %d."
+msgstr "%d ページにリンクされています。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to the
+#. Index (the list of named pages).
+#: rust/src/editor.rs
+msgid "Linked to the Index."
+msgstr "インデックスにリンクされています。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Redraw the
+#. area gave the link the area just drawn; Undo brings the old one back.
+#: rust/src/editor.rs
+msgid "New area saved. Undo brings the old one back."
+msgstr "新しいエリアが保存されました。元に戻すと古いものに戻ります。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
+#. (its Cancel, or Back while picking where it goes), and no link was made.
+#: rust/src/editor.rs
+msgid "No link made."
+msgstr "リンクは作成されていません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
+#. could not save links.ini, so the change is still there.
+#: rust/src/editor.rs
+msgid "Could not save the links: that change was not undone."
+msgstr "リンクを保存できませんでした。その変更は元に戻されませんでした。"
+
+#. TRANSLATORS: the same toast for Redo.
+#: rust/src/editor.rs
+msgid "Could not save the links: that change was not redone."
+msgstr "リンクを保存できませんでした。その変更はやり直されませんでした。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo took back a link change
+#. (a link made, deleted or changed), which shows nowhere on the page while the eye is off.
+#: rust/src/editor.rs
+msgid "Link change undone."
+msgstr "リンクの変更が取り消されました。"
+
+#. TRANSLATORS: the same toast for Redo.
+#: rust/src/editor.rs
+msgid "Link change redone."
+msgstr "リンク変更をやり直しました。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
+#. emptied page %d's name.
+#: rust/src/editor.rs
+#, c-format
+msgid "Page %d has no name now."
+msgstr "ページ %d には現在名前がありません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card of a Links bar
+#. row deleted its links; Undo brings them back (the ink around them stays).
+#: rust/src/editor.rs
+msgid "Links deleted. Undo brings them back."
+msgstr "リンクは削除されました。元に戻すと元に戻ります。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card deleted the
+#. link; Undo brings it back (the ink around it stays).
+#: rust/src/editor.rs
+msgid "Link deleted. Undo brings it back."
+msgstr "リンクが削除されました。元に戻すと元に戻ります。"
+
+#. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
+#. toolbar holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
+#. or two lines.
+#: rust/src/editor.rs
+#, c-format
+msgid "The toolbar holds up to %d pen. Unpin one first."
+msgid_plural "The toolbar holds up to %d pens. Unpin one first."
+msgstr[0] "ツールバーには %d ペンまでが入ります。まず 1 つのピンを外します。"
+
+#: rust/src/editor.rs
+msgid "Hold: Quick"
+msgstr "ホールド: クイック"
+
+#: rust/src/editor.rs
+msgid "Hold: Slow"
+msgstr "ホールド: ゆっくり"
+
+#: rust/src/editor.rs
+msgid "Hold: Normal"
+msgstr "ホールド：ノーマル"
+
+#: rust/src/editor.rs
+msgid "Smart shapes on. Hold the pen still at the end of a shape."
+msgstr "スマートシェイプがオン。図形の端でペンを動かさないようにします。"
+
+#: rust/src/editor.rs
+msgid "Smart shapes off."
+msgstr "スマートシェイプがオフです。"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Quick (0.4 s)"
+msgstr "形状保持：クイック（0.4秒）"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Slow (0.9 s)"
+msgstr "形状保持：遅い（0.9秒）"
+
+#: rust/src/editor.rs
+msgid "Shape hold: Normal (0.55 s)"
+msgstr "形状保持：ノーマル(0.55秒)"
+
+#: rust/src/editor.rs
+msgid "No shape in the last stroke."
+msgstr "最後のストロークでは形がありません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
+#. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
+#: rust/src/editor.rs
+msgid "That link's page is not in this notebook."
+msgstr "そのリンクのページはこのノートブックにはありません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
+#. was tapped on a page from a newer Grimoire, which cannot be changed.
+#: rust/src/editor.rs rust/src/linkcard.rs
+msgid "This page is read-only."
+msgstr "このページは読み取り専用です。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): links.ini could not be
+#. read, so the Links bar lists none and cannot make one.
+#. TRANSLATORS: the same when links.ini cannot be read, so the bar lists none (about 1300 px at 44 px).
+#: rust/src/editor.rs rust/src/linkbar.rs
+msgid "Links could not be read."
+msgstr "リンクを読み取れませんでした。"
+
+#: rust/src/editor.rs
+msgid "Saving..."
+msgstr "保存中..."
+
+#: rust/src/editor.rs
+msgid "Saved"
+msgstr "保存されました"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+#. to the next page on the last one, with adding a page by swiping turned off.
+#: rust/src/editor.rs
+msgid "This is the last page."
+msgstr "これが最後のページです。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
+#. to the previous page on the first one.
+#: rust/src/editor.rs
+msgid "This is the first page."
+msgstr "これが最初のページです。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
+#. before was asked with no page to go back to.
+#: rust/src/editor.rs
+msgid "Nothing to go back to."
+msgstr "戻るものは何もありません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one now add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds a page."
+msgstr "最後のページを越えてスワイプすると、ページが追加されます。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
+#. next page on the last one no longer add a page.
+#: rust/src/editor.rs
+msgid "Swiping past the last page adds no page."
+msgstr "最後のページを越えてスワイプしてもページは追加されません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
+#. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
+#: rust/src/editor.rs
+#, c-format
+msgid "Eraser: %s"
+msgstr "消しゴム：%s"
+
+#. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
+#. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
+#: rust/src/editor.rs rust/src/pensettings.rs
+msgctxt "eraser"
+msgid "Precise"
+msgstr "精密"
+
+#. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
+#. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
+#: rust/src/editor.rs rust/src/pensettings.rs
+msgctxt "eraser"
+msgid "Whole strokes"
+msgstr "ストローク全体"
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
+#. on the Templates sheet could not become the page's paper (or the new notebook's); %s is
+#. the log file that says why.
+#: rust/src/editor.rs rust/src/library.rs
+#, c-format
+msgid "Could not use that template (see %s)."
+msgstr "そのテンプレートは使用できませんでした (%s を参照)。"
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
+#. Photos sheet could not become the page's paper; %s is the log file that says why.
+#: rust/src/editor.rs
+#, c-format
+msgid "Could not use that photo (see %s)."
+msgstr "その写真は使用できませんでした (%s を参照)。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update:
+#. the editor now shows the whole page when the Kindle is sideways, which two-finger swipes need.
+#: rust/src/editor.rs
+msgid ""
+"Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom "
+"in; Display changes this."
+msgstr "横向きではページ全体が表示されるようになり、2 本指のスワイプが使えます。ピンチで拡大できます。表示は「画面」で変更できます。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
+#. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
+#: rust/src/editor.rs
+msgid "Here two fingers move the page. Zoom out for page and link swipes."
+msgstr ""
+"ここでは 2 本の指でページを移動します。ページとリンクのスワイプをズームアウト"
+"します。"
+
+#. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
+#. about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
+#: rust/src/editor.rs
+msgid "That is not one of your finger shapes. Settings > Gestures lists them."
+msgstr ""
+"それはあなたの指の形ではありません。 [設定] > [ジェスチャー] にそれらのリスト"
+"が表示されます。"
+
+#: rust/src/editor.rs
+msgid ""
+"Shape made. Undo takes it away; the toolbar's Shapes menu has the options."
+msgstr "図形を作成しました。元に戻すと取り消せます。ツールバーの「図形」メニューにオプションがあります。"
+
+#: rust/src/editor.rs
+msgid "Could not read the notebooks."
+msgstr "ノートを読むことができませんでした。"
+
+#: rust/src/editor.rs
+msgid "That notebook or page is no longer available."
+msgstr "そのノートブックまたはページはもう利用できません。"
+
+#: rust/src/editor.rs
+msgid "Could not save the links."
+msgstr "リンクを保存できませんでした。"
+
+#: rust/src/editor.rs
+msgid "Could not open that page."
+msgstr "そのページを開けませんでした。"
+
+#. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
+#. go to a page by typing its number or a name of the Index.
+#: rust/src/findsheet.rs
+msgid "Page number or name"
+msgstr "ページ番号またはページ名"
+
+#. TRANSLATORS: a row of the Find sheet while it picks where a new link goes (Link to...'s Search),
+#. for a page number typed, which a tap links to (about 1300 px at 44 px): %d is the number.
+#: rust/src/findsheet.rs
+#, c-format
+msgid "Link to page %d"
+msgstr "%dページへのリンク"
+
+#: rust/src/findsheet.rs
+#, c-format
+msgid "Go to page %d"
+msgstr "%dのページへ"
+
+#. TRANSLATORS: a line of the Find sheet for a page number the notebook does not have (not a button, about
+#. 1300 px at 44 px): the first %d is the number typed, the second how many pages it has.
+#: rust/src/findsheet.rs
+#, c-format
+msgid "There is no page %d (%d page)."
+msgid_plural "There is no page %d (%d pages)."
+msgstr[0] "%dのページ（%dのページ）はありません。"
+
+#. TRANSLATORS: a line of the Find sheet when no page name has what was typed (not a button, about
+#. 1300 px at 44 px).
+#: rust/src/findsheet.rs
+msgid "No page names match."
+msgstr "一致するページ名はありません。"
+
+#. TRANSLATORS: a row of the Find sheet, in its right column at 34 px (about 150 px): the page a name is on, %d its number ("p. 12").
+#. TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
+#. to, %d its number ("p. 12").
+#: rust/src/findsheet.rs rust/src/linkbar.rs rust/src/linkcard.rs
+#, c-format
+msgctxt "bar"
+msgid "p. %d"
+msgstr "p. %d"
+
+#. TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.
+#: rust/src/httpd.rs
+msgid "not found"
+msgstr "見つからない"
+
+#. TRANSLATORS: on the share index, under a notebook: its pages, when it last changed and its
+#. paper, then links to it as a page of pictures and to the studio (Effects).
+#: rust/src/httpd.rs
+#, c-format
+msgid "%d page"
+msgid_plural "%d pages"
+msgstr[0] "%dページ"
+
+#: rust/src/httpd.rs
+msgctxt "share link"
+msgid "pages"
+msgstr "ページ"
+
+#: rust/src/httpd.rs
+msgctxt "share link"
+msgid "effects"
+msgstr "エフェクト"
+
+#. TRANSLATORS: PDF download status in Share. {done}/{total} are page counts;
+#. {percent} includes the percent sign: sent to the browser, not saved to its disk.
+#: rust/src/httpd.rs
+msgid "Preparing PDF..."
+msgstr "PDF を準備しています..."
+
+#: rust/src/httpd.rs
+msgid "Preparing PDF: {done} / {total} pages"
+msgstr "PDF の準備中: {完了} / {合計} ページ"
+
+#: rust/src/httpd.rs
+msgid "Sending PDF: {percent}"
+msgstr "PDF の送信: {パーセント}"
+
+#: rust/src/httpd.rs
+msgid "Sent to your browser. Check Downloads."
+msgstr "ブラウザに送信されます。ダウンロードを確認します。"
+
+#: rust/src/httpd.rs
+msgid "PDF download failed. Please try again."
+msgstr "PDFのダウンロードに失敗しました。もう一度試してください。"
+
+#: rust/src/httpd.rs
+msgid ""
+"Download status unavailable. Check your browser's Downloads and the Kindle's "
+"Wi-Fi."
+msgstr "ダウンロードの状態を確認できません。ブラウザーのダウンロードと Kindle の Wi-Fi を確認してください。"
+
+#: rust/src/httpd.rs
+msgid "Dismiss"
+msgstr "解雇する"
+
+#: rust/src/httpd.rs
+msgid "Waiting for an export slot..."
+msgstr "エクスポートスロットを待っています..."
+
+#. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
+#: rust/src/httpd.rs
+#, c-format
+msgid "%d notebook on your Kindle"
+msgid_plural "%d notebooks on your Kindle"
+msgstr[0] "Kindle 上の %d ノートブック"
+
+#. TRANSLATORS: the share index's big link to a zip of every notebook.
+#: rust/src/httpd.rs
+msgid "Download everything (zip)"
+msgstr "すべてダウンロード（zip）"
+
+#. TRANSLATORS: on the share index, under a folder with no notebooks.
+#: rust/src/httpd.rs
+msgctxt "folder"
+msgid "empty"
+msgstr "空"
+
+#: rust/src/httpd.rs
+msgid "Page"
+msgstr "ページ"
+
+#: rust/src/httpd.rs
+msgid "Go"
+msgstr "行く"
+
+#. TRANSLATORS: a notebook's share page: back to the index, then its downloads (the zip holds
+#. the PDF, a PNG of each page and the notebook's own files), the studio, and its pages.
+#: rust/src/httpd.rs
+msgid "all notebooks"
+msgstr "すべてのノートブック"
+
+#: rust/src/httpd.rs
+msgid "ZIP (PDF + PNG pages + raw)"
+msgstr "ZIP (PDF + PNG ページ + 未加工)"
+
+#: rust/src/httpd.rs
+msgid "Effects (transparent, colors, gradients, filters)"
+msgstr "効果（透明、色、グラデーション、フィルター）"
+
+#. TRANSLATORS: the studio's page while its script starts, or in a browser without JavaScript.
+#: rust/src/httpd.rs
+msgid "Loading the studio..."
+msgstr "スタジオを読み込んでいます..."
+
+#: rust/src/httpd.rs
+msgid "The studio needs JavaScript."
+msgstr "スタジオにはJavaScriptが必要です。"
+
+#. TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
+#. browser page's title, and the pairing card's on the Kindle.
+#. TRANSLATORS: the Share screen's title.
+#. TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
+#. is on): 388 px at 44 px, or 34 px under its icon.
+#: rust/src/httpd.rs rust/src/share.rs
+msgid "Live view"
+msgstr "ライブビュー"
+
+#. TRANSLATORS: Live view's page in the browser while its script starts.
+#. TRANSLATORS: Live view's status in the browser, and its buttons (the browser's own words
+#. for these are fine: they are not on the Kindle).
+#: rust/src/httpd.rs
+msgid "Connecting..."
+msgstr "接続中..."
+
+#. TRANSLATORS: Live view's page in a browser without JavaScript.
+#: rust/src/httpd.rs
+msgid "Live view needs JavaScript."
+msgstr "ライブビューにはJavaScriptが必要です。"
+
+#: rust/src/httpd.rs
+msgid "Reconnecting..."
+msgstr "再接続中..."
+
+#: rust/src/httpd.rs
+msgid "Live"
+msgstr "ライブ"
+
+#: rust/src/httpd.rs
+msgid "The Kindle is asleep"
+msgstr "Kindle はスリープ状態です"
+
+#: rust/src/httpd.rs
+msgid "Pairing on the Kindle..."
+msgstr "Kindleでペアリングしています..."
+
+#: rust/src/httpd.rs
+msgid "Live view is off on the Kindle"
+msgstr "Kindleではライブビューがオフになっています"
+
+#: rust/src/httpd.rs
+msgid "Fit"
+msgstr "フィット"
+
+#: rust/src/httpd.rs
+msgid "Actual size"
+msgstr "実寸"
+
+#: rust/src/httpd.rs
+msgid "Transparent paper"
+msgstr "透明紙"
+
+#: rust/src/httpd.rs
+msgid "As on the Kindle"
+msgstr "Kindleと同様"
+
+#. TRANSLATORS: Live view's switch in the browser: where the Kindle's pen is, drawn over the
+#. picture (a dot, see-through while it hovers over the screen, solid while it touches), in
+#. recordings too.
+#: rust/src/httpd.rs
+msgid "Show pen"
+msgstr "ペンを表示"
+
+#. TRANSLATORS: Live view's controls in the browser for the pen's dot: its color (a few named
+#. ones, and any other from the browser's color picker) and its size.
+#: rust/src/httpd.rs
+msgid "Pen dot color"
+msgstr "ペンのドットの色"
+
+#: rust/src/httpd.rs
+msgid "Red"
+msgstr "赤"
+
+#: rust/src/httpd.rs
+msgid "Blue"
+msgstr "ブルー"
+
+#: rust/src/httpd.rs
+msgid "Green"
+msgstr "緑"
+
+#: rust/src/httpd.rs
+msgid "Orange"
+msgstr "オレンジ"
+
+#: rust/src/httpd.rs
+msgid "Purple"
+msgstr "紫"
+
+#: rust/src/httpd.rs
+msgid "Other color"
+msgstr "他の色"
+
+#: rust/src/httpd.rs
+msgid "Pen dot size"
+msgstr "ペンのドットサイズ"
+
+#. TRANSLATORS: the pen dot's sizes in Live view's browser page.
+#: rust/src/httpd.rs
+msgid "Small"
+msgstr "小"
+
+#: rust/src/httpd.rs
+msgid "Medium"
+msgstr "中"
+
+#: rust/src/httpd.rs
+msgid "Large"
+msgstr "大"
+
+#. TRANSLATORS: Live view's switches in the browser: the notebook's toolbar, and the clock and
+#. battery corner, each drawn over the page in the browser or not (the Kindle is unchanged).
+#: rust/src/httpd.rs
+msgid "Show toolbar"
+msgstr "ツールバーを表示"
+
+#: rust/src/httpd.rs
+msgid "Show clock and battery"
+msgstr "時計とバッテリーを表示"
+
+#. TRANSLATORS: Live view's button in the browser that fits the page to the window and tucks the
+#. controls away, for drawing on the Kindle while looking at the computer; M is its key.
+#: rust/src/httpd.rs
+msgid "Monitor mode (M)"
+msgstr "モニターモード(M)"
+
+#. TRANSLATORS: Live view's button in the browser that shows or hides its latency readout.
+#: rust/src/httpd.rs
+msgid "Latency"
+msgstr "レイテンシ"
+
+#. TRANSLATORS: the latency readout: how late the pen's quick line shows in the browser, from
+#. when the Kindle read the pen to when the browser draws it.
+#: rust/src/httpd.rs
+msgid "Pen age at paint"
+msgstr "ペイント時のペンの年齢"
+
+#. TRANSLATORS: the latency readout: how late Grimoire's exact image of the page (the real ink
+#. that replaces the quick line) shows in the browser, from when the Kindle read the pen.
+#: rust/src/httpd.rs
+msgid "Page image age at paint"
+msgstr "ペイント時のページ画像の古さ"
+
+#. TRANSLATORS: the latency readout's three numbers for each line: the median, the 90th
+#. percentile and the largest of the latest measurements.
+#: rust/src/httpd.rs
+msgid "p50 / p90 / max"
+msgstr "p50 / p90 / 最大"
+
+#. TRANSLATORS: the latency readout: how far off its times may be, the Kindle's clock and the
+#. computer's being compared over the network.
+#: rust/src/httpd.rs
+msgid "Clock uncertainty"
+msgstr "クロックの不確実性"
+
+#. TRANSLATORS: the latency readout: how long the browser holds the pen's samples back so that
+#. a burst of them draws as a smooth line instead of a jump.
+#: rust/src/httpd.rs
+msgid "Playout delay"
+msgstr "プレイアウト遅延"
+
+#: rust/src/httpd.rs
+msgid "Record"
+msgstr "記録"
+
+#. TRANSLATORS: Live view's Record button where the browser can make no MP4 at all (WebM is the
+#. other video format), and its tooltip saying why.
+#: rust/src/httpd.rs
+msgid "Record (WebM)"
+msgstr "レコード (WebM)"
+
+#. TRANSLATORS: Live view's Record button where the browser records an MP4.
+#: rust/src/httpd.rs
+msgid "Record (MP4)"
+msgstr "レコード (MP4)"
+
+#: rust/src/httpd.rs
+msgid "This browser cannot record MP4, so the video is WebM."
+msgstr "このブラウザは MP4 を録画できないため、ビデオは WebM です。"
+
+#: rust/src/httpd.rs
+msgid "Stop recording"
+msgstr "録音を停止する"
+
+#: rust/src/httpd.rs
+msgid "Full screen"
+msgstr "全画面表示"
+
+#. TRANSLATORS: Live view's button in the browser where it has no picture in picture: the
+#. screen in a separate window of its own.
+#: rust/src/httpd.rs
+msgid "Pop out"
+msgstr "ポップアウト"
+
+#: rust/src/httpd.rs
+msgid "Live view is open in another window. Keep this tab open."
+msgstr ""
+"別ウィンドウでライブビューが開きます。このタブを開いたままにしてください。"
+
+#: rust/src/httpd.rs
+msgid "Bring Live view back"
+msgstr "ライブビューを元に戻す"
+
+#: rust/src/httpd.rs
+msgid "Keys"
+msgstr "キー"
+
+#: rust/src/httpd.rs
+msgid ""
+"Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, "
+"then restart Live view."
+msgstr ""
+"このページにフォーカスがある間は、ショートカットで Grimoire を操作できます。live-keys.ini"
+"を編集してから、ライブビューを再起動してください。"
+
+#: rust/src/httpd.rs
+msgid "No Live view keys are assigned."
+msgstr "ライブビューキーは割り当てられていません。"
+
+#: rust/src/httpd.rs
+msgid "Could not send keys. Release the keys and try again."
+msgstr "キーを送信できませんでした。キーを放して、もう一度試してください。"
+
+#. TRANSLATORS: Live view's controls in the browser: a slim bar of icon buttons beside the
+#. page (its name for screen readers), and the panel of view settings it opens, in groups.
+#: rust/src/httpd.rs
+msgid "Live view controls"
+msgstr "ライブビューコントロール"
+
+#: rust/src/httpd.rs
+msgid "View settings"
+msgstr "設定を表示する"
+
+#: rust/src/httpd.rs
+msgid "Picture"
+msgstr "画像"
+
+#: rust/src/httpd.rs
+msgid "Pen"
+msgstr "ペン"
+
+#: rust/src/httpd.rs
+msgid "Over the page"
+msgstr "ページ全体にわたって"
+
+#: rust/src/httpd.rs
+msgid "Diagnostics"
+msgstr "診断"
+
+#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
+#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
+#. or larger by a step.
+#: rust/src/httpd.rs
+msgid "Size"
+msgstr "サイズ"
+
+#: rust/src/httpd.rs
+msgid "Fit width"
+msgstr "フィット幅"
+
+#: rust/src/httpd.rs
+msgid "Smaller"
+msgstr "より小さい"
+
+#: rust/src/httpd.rs
+msgid "Larger"
+msgstr "より大きな"
+
+#. TRANSLATORS: Live view's button in the browser: the page in a small window that floats over
+#. the computer's other windows (the browser's own name for it is fine). Pop out is the same
+#. where the browser has no such window.
+#: rust/src/httpd.rs
+msgid "Picture in picture"
+msgstr "ピクチャー・イン・ピクチャー"
+
+#. TRANSLATORS: Live view in Firefox without picture in picture of its own: the page shows as a
+#. video, and Firefox floats it from its own button or its right-click menu.
+#: rust/src/httpd.rs
+msgid ""
+"Point at the picture and click Firefox's Picture-in-Picture button, or right-"
+"click it and choose Picture-in-Picture."
+msgstr ""
+"画像をポイントして Firefox"
+"のピクチャーインピクチャーボタンをクリックするか、右クリックして「ピクチャーインピクチャー」を選びます。"
+
+#. TRANSLATORS: Live view's help in the browser on how to get the sharpest picture in picture,
+#. which browsers give only to pages they treat as secure (the Kindle's page is plain HTTP).
+#. %s is this page's address. about:config, dom.securecontext.allowlist, chrome://flags,
+#. edge://flags, brave://flags and "Insecure origins treated as secure" are the browsers' own
+#. names: keep them as they are.
+#: rust/src/httpd.rs
+msgid ""
+"For the sharpest picture in picture, let your browser treat this address as "
+"secure:"
+msgstr "最も鮮明なピクチャーインピクチャーにするには、ブラウザーにこのアドレスを安全なものとして扱わせてください:"
+
+#: rust/src/httpd.rs
+#, c-format
+msgid ""
+"Firefox: open about:config, add %s to dom.securecontext.allowlist (separate "
+"several with commas), then reload this page."
+msgstr ""
+"Firefox: about:config を開き、dom.securecontext.allowlist に %s"
+"を追加して（複数はカンマで区切ります）、このページを再読み込みします。"
+
+#: rust/src/httpd.rs
+#, c-format
+msgid ""
+"Chrome, Edge, Brave or Arc: open chrome://flags (edge://flags, brave://"
+"flags), find \"Insecure origins treated as secure\", add %s, enable it and "
+"relaunch the browser."
+msgstr ""
+"Chrome、Edge、Brave、Arc:"
+"chrome://flags（edge://flags、brave://flags）を開き、「Insecure origins"
+"treated as secure」を見つけて %s を追加し、有効にしてブラウザーを再起動します。"
+
+#: rust/src/httpd.rs
+msgid ""
+"Safari floats a video of the page instead, which works on this address as it "
+"is."
+msgstr "Safari は代わりにページの動画をフローティング表示します。これはこのアドレスのままで動作します。"
+
+#: rust/src/httpd.rs
+msgid "This browser cannot show Live view."
+msgstr "このブラウザではライブビューを表示できません。"
+
+#. TRANSLATORS: Live view's page while it is off on the Kindle.
+#: rust/src/httpd.rs
+msgid "Live view is off. On the Kindle, open Share and tap Live view."
+msgstr ""
+"ライブビューはオフです。 Kindle で、[共有] を開き、[ライブビュー] をタップし"
+"ます。"
+
+#. TRANSLATORS: Live view's code form in the browser: the six digits the Kindle shows.
+#: rust/src/httpd.rs
+msgid "Type the code shown on the Kindle:"
+msgstr "Kindle に表示されているコードを入力します。"
+
+#. TRANSLATORS: the code form's button: start watching the Kindle's screen.
+#: rust/src/httpd.rs
+msgid "Watch"
+msgstr "見る"
+
+#. TRANSLATORS: the code form after a wrong code, and after five (the Kindle shows a new one).
+#: rust/src/httpd.rs
+msgid "That code is not the one on the Kindle."
+msgstr "そのコードはKindleのものではありません。"
+
+#: rust/src/httpd.rs
+msgid "Too many tries. Wait 30 seconds, then type the new code."
+msgstr "試行回数が多すぎます。 30 秒待ってから、新しいコードを入力します。"
+
+#. TRANSLATORS: Live view's answer to a third computer (two can watch at once).
+#: rust/src/httpd.rs
+msgid "Two computers are watching already."
+msgstr "すでに 2 台のコンピューターが監視しています。"
+
+#. TRANSLATORS: the answer in a browser to a download (or the notebooks' page) while only Live view
+#. keeps the server up: the Share screen must be open for those.
+#: rust/src/httpd.rs
+msgid "Open Share on the Kindle to download."
+msgstr "Kindle で [共有] を開いてダウンロードします。"
+
+#: rust/src/httpd.rs
+msgid "export failed"
+msgstr "エクスポートに失敗しました"
+
+#: rust/src/httpd.rs
+msgid "no such notebook"
+msgstr "そんなノートはない"
+
+#. TRANSLATORS: the answer to a browser that asked for the Kindle by another name than its
+#. address (as a page on another site would).
+#: rust/src/httpd.rs
+msgid "use the address shown on the Kindle"
+msgstr "Kindle に表示されているアドレスを使用してください"
+
+#. TRANSLATORS: the keyboard's named keys, in bold at 44 px: shift (250 px wide), delete
+#. (261), the space bar (355), and Cancel and Done (250).
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "shift"
+msgstr "シフト"
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "del"
+msgstr "削除"
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "space"
+msgstr "スペース"
+
+#: rust/src/library.rs
+#, c-format
+msgid "%d notebook"
+msgid_plural "%d notebooks"
+msgstr[0] "%dノート"
+
+#: rust/src/library.rs
+#, c-format
+msgid "%d page, %s"
+msgid_plural "%d pages, %s"
+msgstr[0] "%dページ、%s"
+
+#: rust/src/library.rs
+msgid "Exit"
+msgstr "終了"
+
+#: rust/src/library.rs
+msgid "Settings"
+msgstr "設定"
+
+#: rust/src/library.rs
+msgid "Share"
+msgstr "共有"
+
+#. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
+#: rust/src/library.rs
+msgid "Folder"
+msgstr "フォルダー"
+
+#: rust/src/library.rs
+msgid "New"
+msgstr "新規"
+
+#: rust/src/library.rs
+msgid "This folder is empty"
+msgstr "このフォルダは空です"
+
+#: rust/src/library.rs
+msgid "No notebooks yet"
+msgstr "まだノートはありません"
+
+#: rust/src/library.rs
+msgid "Tap New to start one."
+msgstr "「新規」をタップして開始します。"
+
+#. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
+#. TRANSLATORS: (also) between the Templates sheet's page buttons, in bold: 440 px at 44 px.
+#: rust/src/library.rs rust/src/tplsheet.rs
+#, c-format
+msgid "Page %d of %d"
+msgstr "%d/%dのページ"
+
+#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
+#: rust/src/library.rs
+msgid "New notebook"
+msgstr "新しいノート"
+
+#. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
+#. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
+#: rust/src/library.rs
+#, c-format
+msgid "Name: %s"
+msgstr "名前: %s"
+
+#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+#. a name (its naming keyboard, titled Page name).
+#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Rename"
+msgstr "名前を変更"
+
+#: rust/src/library.rs
+#, c-format
+msgid "In: %s"
+msgstr "で: %s"
+
+#: rust/src/library.rs
+msgid "Library (top level)"
+msgstr "ライブラリ（最上位）"
+
+#: rust/src/library.rs
+msgid "Create"
+msgstr "作成"
+
+#: rust/src/library.rs
+msgid "Controller buttons"
+msgstr "コントローラーのボタン"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Press a button for %s"
+msgstr "%sのボタンを押してください"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Do the gesture for %s"
+msgstr "%s のジェスチャーを実行します"
+
+#. TRANSLATORS: (Buttons sheet) an action no controller button does.
+#: rust/src/library.rs
+msgctxt "buttons"
+msgid "none"
+msgstr "なし"
+
+#: rust/src/library.rs
+msgid "1 finger up"
+msgstr "指1本立て"
+
+#: rust/src/library.rs
+msgid "1 finger down"
+msgstr "指1本下"
+
+#: rust/src/library.rs
+msgid "1 finger left"
+msgstr "指1本残ってます"
+
+#: rust/src/library.rs
+msgid "1 finger right"
+msgstr "右指1本"
+
+#: rust/src/library.rs
+msgid "2 fingers up"
+msgstr "指2本立て"
+
+#: rust/src/library.rs
+msgid "2 fingers down"
+msgstr "指2本下"
+
+#: rust/src/library.rs
+msgid "2 fingers left"
+msgstr "残り指2本"
+
+#: rust/src/library.rs
+msgid "2 fingers right"
+msgstr "右指2本"
+
+#: rust/src/library.rs
+msgid "2-finger tap"
+msgstr "2本指タップ"
+
+#: rust/src/library.rs
+msgid "3 fingers up"
+msgstr "指3本立て"
+
+#: rust/src/library.rs
+msgid "3 fingers down"
+msgstr "指3本下"
+
+#: rust/src/library.rs
+msgid "3 fingers left"
+msgstr "残り指3本"
+
+#: rust/src/library.rs
+msgid "3 fingers right"
+msgstr "右3本指"
+
+#: rust/src/library.rs
+msgid "3-finger tap"
+msgstr "3本指タップ"
+
+#: rust/src/library.rs
+msgid "pen button click"
+msgstr "ペンボタンのクリック"
+
+#: rust/src/library.rs
+msgid "pen button double-click"
+msgstr "ペンボタンのダブルクリック"
+
+#: rust/src/library.rs
+msgid "pen button triple-click"
+msgstr "ペンボタンのトリプルクリック"
+
+#: rust/src/library.rs
+msgid "pen button hold"
+msgstr "ペンのボタンを押し続ける"
+
+#: rust/src/library.rs
+msgid "pen button drag"
+msgstr "ペンボタンのドラッグ"
+
+#: rust/src/library.rs
+msgid "second pen button click"
+msgstr "2番目のペンボタンをクリック"
+
+#: rust/src/library.rs
+msgid "second pen button double-click"
+msgstr "2番目のペンボタンをダブルクリック"
+
+#: rust/src/library.rs
+msgid "second pen button triple-click"
+msgstr "2番目のペンボタンをトリプルクリック"
+
+#: rust/src/library.rs
+msgid "second pen button hold"
+msgstr "2番目のペンボタンを押し続ける"
+
+#: rust/src/library.rs
+msgid "second pen button drag"
+msgstr "2番目のペンボタンをドラッグ"
+
+#: rust/src/library.rs
+msgid "no gesture"
+msgstr "ジェスチャーなし"
+
+#: rust/src/library.rs
+msgid "finger shape"
+msgstr "指の形"
+
+#: rust/src/library.rs
+msgid "finger shape (newer version)"
+msgstr "指の形状 (新しいバージョン)"
+
+#. TRANSLATORS: extra binding sources on a Gestures row, after its first touch, shape or pen binding.
+#: rust/src/library.rs
+#, c-format
+msgid "+%d"
+msgstr "+%d"
+
+#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+#: rust/src/library.rs
+msgid "Could not save controller.ini"
+msgstr "controller.iniを保存できませんでした"
+
+#: rust/src/library.rs
+#, c-format
+msgid "No buttons for %s now."
+msgstr "現在、%s のボタンはありません。"
+
+#: rust/src/library.rs
+msgid "Could not save the gestures."
+msgstr "ジェスチャを保存できませんでした。"
+
+#: rust/src/library.rs
+#, c-format
+msgid "No gestures for %s now."
+msgstr "現在、%s のジェスチャーはありません。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): malformed or unknown
+#. gestures.ini lines were skipped; %d is their count.
+#: rust/src/library.rs
+#, c-format
+msgid "%d line of gestures.ini could not be used."
+msgid_plural "%d lines of gestures.ini could not be used."
+msgstr[0] "gestures.iniの%dラインは使用できませんでした。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): the current gestures.ini
+#. is unreadable; Reset gestures is the recovery action.
+#: rust/src/library.rs
+msgid "gestures.ini could not be read: Reset makes a new one."
+msgstr ""
+"gestures.ini を読み取れませんでした: リセットすると新しいものが作成されます。"
+
+#. TRANSLATORS: the record card already has a shape sample; repeat that shape.
+#: rust/src/library.rs
+msgid "Not like the first one: draw it again."
+msgstr "最初のものとは異なり、もう一度描きます。"
+
+#. TRANSLATORS: a single-finger tap or hold on the record card cannot be assigned.
+#: rust/src/library.rs
+msgid "One finger is kept for taps and links."
+msgstr "1 本の指はタップとリンクのために保持されます。"
+
+#: rust/src/library.rs
+msgid "The pen is near: move it away."
+msgstr "ペンが近くにあります。ペンを遠ざけてください。"
+
+#: rust/src/library.rs
+msgid "Put the fingers down together."
+msgstr "指を一緒に下ろします。"
+
+#: rust/src/library.rs
+msgid "Swipe in a straight line."
+msgstr "直線にスワイプします。"
+
+#: rust/src/library.rs
+msgid "Swipe farther."
+msgstr "さらにスワイプします。"
+
+#: rust/src/library.rs
+msgid "Move both fingers the same way."
+msgstr "両方の指を同じように動かします。"
+
+#: rust/src/library.rs
+msgid "Your hand moved: try again."
+msgstr "手が動いたので、もう一度試してください。"
+
+#: rust/src/library.rs
+msgid "Two fingers spreading is kept for zoom."
+msgstr "ズームのために 2 本の指を広げたままにします。"
+
+#: rust/src/library.rs
+msgid "Keep the fingers 1 to 8 cm apart."
+msgstr "指は1～8cm程度離してください。"
+
+#: rust/src/library.rs
+msgid "Too slow: do it in one go."
+msgstr "遅すぎる: 一度に実行してください。"
+
+#: rust/src/library.rs
+msgid "This Kindle feels two fingers at most."
+msgstr "このKindleはせいぜい指2本くらいの感覚です。"
+
+#: rust/src/library.rs
+msgid "Draw it bigger: at least 2 cm across."
+msgstr "少なくとも幅 2 cm の大きめに描きます。"
+
+#: rust/src/library.rs
+msgid "Too slow: draw it in one go."
+msgstr "遅すぎる: 一度に描きます。"
+
+#: rust/src/library.rs
+msgid "Start moving as soon as you touch."
+msgstr "タッチするとすぐに動き始めます。"
+
+#: rust/src/library.rs
+msgid "You held still, so it stopped."
+msgstr "あなたがじっとしていたので、止まりました。"
+
+#: rust/src/library.rs
+msgid "Too straight: give it two turns."
+msgstr "真っ直ぐすぎる場合は 2 回転させてください。"
+
+#: rust/src/library.rs
+msgid "Too many turns: draw a simpler shape."
+msgstr "回転数が多すぎます。より単純な形状を描画してください。"
+
+#: rust/src/library.rs
+msgid "Use a fingertip, not the hand."
+msgstr "手ではなく指先を使いましょう。"
+
+#: rust/src/library.rs
+msgid "One stroke, without lifting."
+msgstr "持ち上げずに一ストローク。"
+
+#: rust/src/library.rs
+msgid "Grimoire keeps up to 32 shapes."
+msgstr "Grimoire は最大 32 個の形状を保持します。"
+
+#. TRANSLATORS: record card refusal, at most two lines at 34 px in 1292 px.
+#: rust/src/library.rs
+msgid "Erase while held needs the button held: hold it or drag with it."
+msgstr ""
+"押しながら消去するには、ボタンを押したままにする必要があります。ボタンを押し"
+"たままにするか、押したままドラッグします。"
+
+#. TRANSLATORS: record card refusal for Pan/Zoom with the pen; same two-line budget.
+#: rust/src/library.rs
+msgid "Hold the pen button and drag with it."
+msgstr "ペンのボタンを押したままドラッグします。"
+
+#: rust/src/library.rs
+msgid "Use the pen button for this action."
+msgstr "この操作にはペン ボタンを使用します。"
+
+#. TRANSLATORS: the record card's status line (1320 px at 44 px or two lines at 34 px);
+#. %s is the action that currently owns this gesture.
+#: rust/src/library.rs
+#, c-format
+msgid "Now for %s. Use moves it here."
+msgstr "さて%sです。使用するとここに移動します。"
+
+#. TRANSLATORS: the record card's status line; %s is the action that already owns this shape.
+#: rust/src/library.rs
+#, c-format
+msgid "That is the shape for %s. Use moves it here."
+msgstr "それが%sの形状です。使用するとここに移動します。"
+
+#. TRANSLATORS: the record card's status line; %s is the action whose shape is too close.
+#: rust/src/library.rs
+#, c-format
+msgid "Too close to the shape for %s."
+msgstr "%sの形状に近すぎます。"
+
+#: rust/src/library.rs
+msgid "Checking that a slip cannot draw it..."
+msgstr "伝票が描けないことを確認中..."
+
+#. TRANSLATORS: two lines on the record card when a slip or palm could match this shape.
+#: rust/src/library.rs
+msgid "Too easy to make by accident."
+msgstr "簡単すぎて偶然作ってしまいます。"
+
+#: rust/src/library.rs
+msgid "Give it two turns or a loop."
+msgstr "2回転または1周させます。"
+
+#: rust/src/library.rs
+msgid "Good. Draw it again (2 of 3)."
+msgstr "良い。もう一度描きます (2/3)。"
+
+#: rust/src/library.rs
+msgid "Once more makes it surer, or Use."
+msgstr "もう一度確認するか、使用してください。"
+
+#. TRANSLATORS: a toast when a touch or pen gesture is reassigned; %s is the action that loses it.
+#: rust/src/library.rs
+#, c-format
+msgid "That gesture is no longer for %s."
+msgstr "そのジェスチャーはもはや %s のものではありません。"
+
+#: rust/src/library.rs
+msgid "This replaces a shape from a newer Grimoire."
+msgstr "これは、新しい Grimoire の形状を置き換えます。"
+
+#. TRANSLATORS: a toast when a recorded finger shape is moved; %s is the action that loses it.
+#: rust/src/library.rs
+#, c-format
+msgid "That shape is no longer for %s."
+msgstr "あの形状はもう%sにはありません。"
+
+#: rust/src/library.rs
+#, c-format
+msgid "That button is no longer for %s."
+msgstr "そのボタンは %s ではなくなりました。"
+
+#: rust/src/library.rs
+msgid "No controller or keyboard connected"
+msgstr "コントローラーまたはキーボードが接続されていません"
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
+#. (a button mapper) holds it, so Grimoire gets none of its presses.
+#: rust/src/library.rs
+#, c-format
+msgid "%s: held by another app"
+msgstr "%s: 別のアプリによって保持されています"
+
+#. TRANSLATORS: (Controller sheet) %s is the controller's or keyboard's own name.
+#: rust/src/library.rs
+#, c-format
+msgid "%s connected"
+msgstr "%sが接続されました"
+
+#: rust/src/library.rs
+msgid "Could not pair that controller"
+msgstr "そのコントローラーをペアリングできませんでした"
+
+#: rust/src/library.rs
+msgid "Paired. The controller connects in a moment."
+msgstr "ペアリングしました。コントローラーはすぐに接続されます。"
+
+#: rust/src/library.rs
+msgid "Forgotten."
+msgstr "忘れられた。"
+
+#: rust/src/library.rs
+msgid "Could not forget that controller"
+msgstr "あのコントローラーが忘れられなかった"
+
+#. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
+#: rust/src/library.rs
+#, c-format
+msgctxt "gesture row"
+msgid "%s: %s"
+msgstr "%s: %s"
+
+#: rust/src/library.rs
+msgid "Gestures: on (tap to change)"
+msgstr "ジェスチャー: オン (タップして変更)"
+
+#: rust/src/library.rs
+msgid "Ideas: a two-finger tap for Undo, a finger shape for Pages."
+msgstr "アイデア: 元に戻すには 2 本の指でタップし、ページには指の形をします。"
+
+#: rust/src/library.rs
+msgid "Reset buttons"
+msgstr "リセットボタン"
+
+#: rust/src/library.rs
+msgid "Reset gestures"
+msgstr "リセットジェスチャ"
+
+#: rust/src/library.rs
+msgid "Reset gestures?"
+msgstr "ジェスチャーをリセットしますか?"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Reset gestures? %d finger shape will be deleted."
+msgid_plural "Reset gestures? %d finger shapes will be deleted."
+msgstr[0] "ジェスチャーをリセットしますか? %d の指の形状が削除されます。"
+
+#: rust/src/library.rs
+msgid "Reset"
+msgstr "リセット"
+
+#. TRANSLATORS: record card instructions, about 1312 px at 44 px or two lines at 34 px, upright and sideways.
+#: rust/src/library.rs
+msgid ""
+"Draw a shape with one finger, swipe or tap with two fingers, or use the "
+"pen's button."
+msgstr "1 本指で図形を描く、2 本指でスワイプまたはタップする、ペンのボタンを使う、のいずれかで描けます。"
+
+#: rust/src/library.rs
+msgid "One stroke, without lifting. Two turns or a loop."
+msgstr "持ち上げずに一ストローク。 2 ターンまたはループ。"
+
+#: rust/src/library.rs
+msgid "Use"
+msgstr "使用する"
+
+#: rust/src/library.rs
+msgid "Try again"
+msgstr "もう一度試してください"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Automatic (%s)"
+msgstr "自動 (%s)"
+
+#. TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
+#. lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
+#. 34 px). Sideways they are 80 px wider.
+#: rust/src/library.rs
+msgid "Pen sensitivity (pressure + tilt per tool)"
+msgstr "ペンの感度 (ツールごとの圧力 + 傾き)"
+
+#: rust/src/library.rs
+msgid "Calibrate pen and touch"
+msgstr "ペンとタッチを調整する"
+
+#: rust/src/library.rs
+msgid "Display: brightness, warmth, invert"
+msgstr "表示: 明るさ、暖かさ、反転"
+
+#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
+#: rust/src/library.rs
+msgid "Style: Gothic (tap for Classic)"
+msgstr "スタイル: ゴシック (タップするとクラシック)"
+
+#: rust/src/library.rs
+msgid "Style: Classic (tap for Gothic)"
+msgstr "スタイル: クラシック (タップするとゴシック)"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Mirror PDFs to %s (USB)"
+msgstr "PDF を %s (USB) にミラーリング"
+
+#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+#: rust/src/library.rs
+msgid "Holding the pen button while writing does nothing (tap to change)"
+msgstr ""
+"書き込み中にペンボタンを押し続けても何も起こりません (タップして変更します)"
+
+#: rust/src/library.rs
+msgid "Holding the pen button while writing erases (tap to change)"
+msgstr "ペンボタンを押しながら書くと消去（タップで変更）"
+
+#: rust/src/library.rs
+msgid "Holding the pen button while writing highlights (tap to change)"
+msgstr "ペンボタンを押したままハイライトを書く（タップして変更）"
+
+#. TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
+#. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
+#. at 44 px, sideways 1610, or two lines at 34 px.
+#: rust/src/library.rs
+msgid "Holding the pen button while writing draws white (tap to change)"
+msgstr "ペンボタンを押しながら書くと白く描画されます（タップして変更します）"
+
+#: rust/src/library.rs
+msgid "Turn with the Kindle (portrait and landscape)"
+msgstr "Kindleで回転（縦横）"
+
+#: rust/src/library.rs
+msgid "Pinch with two fingers to zoom"
+msgstr "2 本の指でピンチしてズームします"
+
+#. TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+#: rust/src/library.rs
+#, c-format
+msgid "Language: %s"
+msgstr "言語: %s"
+
+#. TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
+#. device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
+#: rust/src/library.rs
+msgid "pen: none"
+msgstr "ペン：なし"
+
+#: rust/src/library.rs
+#, c-format
+msgid "pen: %s, pressure, tilt"
+msgstr "ペン: %s、筆圧、傾き"
+
+#: rust/src/library.rs
+#, c-format
+msgid "pen: %s, pressure"
+msgstr "ペン：%s、筆圧"
+
+#: rust/src/library.rs
+#, c-format
+msgid "pen: %s, tilt"
+msgstr "ペン：%s、チルト"
+
+#: rust/src/library.rs
+#, c-format
+msgid "pen: %s"
+msgstr "ペン：%s"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Data: %s"
+msgstr "データ：%s"
+
+#: rust/src/library.rs
+msgid "Controller"
+msgstr "コントローラー"
+
+#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
+#: rust/src/library.rs
+msgid "Updates"
+msgstr "アップデート"
+
+#: rust/src/library.rs
+msgid "Updates come through KPM, which is not here."
+msgstr "アップデートは KPM を通じて行われますが、ここにはありません。"
+
+#: rust/src/library.rs
+msgid "Checking for updates..."
+msgstr "アップデートをチェックしています..."
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s is available."
+msgstr "Grimoire %sもございます。"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s is the newest."
+msgstr "Grimoire %sが最新です。"
+
+#: rust/src/library.rs
+msgid "Could not check. Is Wi-Fi on?"
+msgstr "確認できませんでした。 Wi-Fiはオンになってますか？"
+
+#: rust/src/library.rs
+msgid "Could not check for updates."
+msgstr "アップデートを確認できませんでした。"
+
+#: rust/src/library.rs
+#, c-format
+msgid "This is Grimoire %s."
+msgstr "Grimoire %sです。"
+
+#: rust/src/library.rs
+msgid "Updates: betas and releases (tap for releases only)"
+msgstr "アップデート: ベータ版とリリース (リリースのみをタップ)"
+
+#: rust/src/library.rs
+msgid "Updates: releases only (tap for betas too)"
+msgstr "アップデート: リリースのみ (タップするとベータ版も表示されます)"
+
+#. TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
+#. installs it, and Grimoire starts again.
+#: rust/src/library.rs
+#, c-format
+msgid "Update to %s"
+msgstr "%sにアップデート"
+
+#: rust/src/library.rs
+msgid "Check for updates"
+msgstr "アップデートをチェックする"
+
+#: rust/src/library.rs
+msgid "Update"
+msgstr "アップデート"
+
+#: rust/src/library.rs
+msgid "Searching... Put the controller in pairing mode."
+msgstr "検索中... コントローラーをペアリングモードにします。"
+
+#: rust/src/library.rs
+msgid "Pairing..."
+msgstr "ペアリング中..."
+
+#: rust/src/library.rs
+msgid "Tap a controller to pair it."
+msgstr "コントローラーをタップしてペアリングします。"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Forget %s"
+msgstr "%sのことは忘れてください"
+
+#: rust/src/library.rs
+msgid "Search again"
+msgstr "再検索"
+
+#. TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
+#: rust/src/library.rs
+msgid "Pair a controller"
+msgstr "コントローラーをペアリングする"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Mappings: %d; rejected: %d"
+msgstr "マッピング: %d;拒否されました: %d"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Last input: %s %d; modifiers: %d"
+msgstr "最後の入力: %s %d;モディファイア: %d"
+
+#: rust/src/library.rs
+msgid "Press a connected key or controller button"
+msgstr "接続されているキーまたはコントローラーのボタンを押します"
+
+#. TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
+#. would not start.
+#: rust/src/library.rs
+msgid "Bluetooth: starting..."
+msgstr "Bluetooth: 開始しています..."
+
+#: rust/src/library.rs
+msgid "Bluetooth did not start (see grimoire.log)"
+msgstr "Bluetooth が起動しませんでした (grimoire.log を参照)"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Reload shortcuts.ini (%d, %d refused)"
+msgstr "shortcuts.ini をリロード (%d、%d は拒否されました)"
+
+#: rust/src/library.rs
+msgid "No Bluetooth helper in grimoire/bluetooth"
+msgstr "grimoire/bluetooth には Bluetooth ヘルパーはありません"
+
+#: rust/src/library.rs
+msgid "Pair a controller..."
+msgstr "コントローラーをペアリング..."
+
+#: rust/src/library.rs
+msgid "Buttons..."
+msgstr "ボタン..."
+
+#. TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
+#. keyboard's buttons as shortcuts.
+#: rust/src/library.rs
+msgid "Controller and keys"
+msgstr "コントローラーとキー"
+
+#: rust/src/library.rs
+msgid "Install / update Grimoire plugin"
+msgstr "Grimoireプラグインのインストール/アップデート"
+
+#: rust/src/library.rs
+msgid "KOReader not found"
+msgstr "KOReaderが見つかりません"
+
+#: rust/src/library.rs
+msgid "Remove Grimoire plugin"
+msgstr "Grimoireプラグインを削除する"
+
+#: rust/src/library.rs
+msgid "Disable diagonal screenshot gestures"
+msgstr "斜めのスクリーンショットジェスチャーを無効にする"
+
+#: rust/src/library.rs
+msgid "Square folder corners"
+msgstr "フォルダーの角を四角にする"
+
+#: rust/src/library.rs
+msgid "Terminess menu font"
+msgstr "Terminess メニューフォント"
+
+#. TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
+#. Kindle's storage the PDF goes in.
+#: rust/src/library.rs
+#, c-format
+msgid "Save PDF to %s now"
+msgstr "今すぐ PDF を %s に保存します"
+
+#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
+msgid "Open"
+msgstr "開く"
+
+#: rust/src/library.rs
+msgid "Move to folder"
+msgstr "フォルダに移動"
+
+#: rust/src/library.rs rust/src/pagesview.rs
+msgid "Delete"
+msgstr "削除"
+
+#: rust/src/library.rs
+msgid "Rename folder"
+msgstr "フォルダーの名前を変更する"
+
+#. TRANSLATORS: a folder's menu (see Rename folder): to another folder or the top level,
+#. with everything in it.
+#: rust/src/library.rs
+msgid "Move folder"
+msgstr "フォルダを移動する"
+
+#: rust/src/library.rs
+msgid "Remove folder (move its notebooks out first)"
+msgstr "フォルダーを削除（先にノートを移動）"
+
+#: rust/src/library.rs
+msgid "Remove folder"
+msgstr "フォルダーを削除する"
+
+#: rust/src/library.rs
+msgid "Previous folders"
+msgstr "前のフォルダー"
+
+#: rust/src/library.rs
+msgid "More folders"
+msgstr "次のフォルダー"
+
+#: rust/src/library.rs
+msgid "New folder..."
+msgstr "新しいフォルダ..."
+
+#. TRANSLATORS: the title of the list of folders a notebook (or a folder) can be moved to.
+#: rust/src/library.rs
+msgid "Move to"
+msgstr "移動先"
+
+#. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
+#: rust/src/library.rs
+#, c-format
+msgid "Delete \"%s\"?"
+msgstr "「%s」を削除しますか?"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Delete (moves it to %s)"
+msgstr "削除（%sに移動）"
+
+#: rust/src/library.rs
+msgid "Keep it"
+msgstr "残す"
+
+#: rust/src/library.rs
+msgid "Could not create the notebook (storage full?)"
+msgstr "ノートブックを作成できませんでした (ストレージがいっぱいですか?)"
+
+#: rust/src/library.rs
+msgid "Could not create the folder. Use a shorter name without a slash."
+msgstr ""
+"フォルダーを作成できませんでした。スラッシュを含まない短い名前を使用してくだ"
+"さい。"
+
+#: rust/src/library.rs
+msgid "Could not move the notebook."
+msgstr "ノートブックを移動できませんでした。"
+
+#: rust/src/library.rs
+msgid "Could not rename the folder. Check the name and destination."
+msgstr ""
+"フォルダーの名前を変更できませんでした。名前と目的地を確認してください。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
+#. usually because the destination has a folder of that name.
+#: rust/src/library.rs
+msgid "Could not move the folder. Is there one of that name there?"
+msgstr "フォルダーを移動できませんでした。そこにその名前の人はいますか？"
+
+#. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
+#: rust/src/library.rs
+#, c-format
+msgid "Notebook %s"
+msgstr "ノート %s"
+
+#. TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
+#: rust/src/library.rs
+msgctxt "keyboard"
+msgid "Folder"
+msgstr "フォルダー"
+
+#: rust/src/library.rs
+msgctxt "keyboard"
+msgid "Name"
+msgstr "名前"
+
+#. TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
+#: rust/src/library.rs
+msgid "Could not start the update"
+msgstr "アップデートを開始できませんでした"
+
+#: rust/src/library.rs
+msgid "Updated. Restart KOReader to apply."
+msgstr "更新されました。適用するにはKOReaderを再起動してください。"
+
+#: rust/src/library.rs
+msgid "Could not update KOReader. A different patch or a storage error?"
+msgstr ""
+"KOReaderをアップデートできませんでした。パッチが違うのか、それともストレージ"
+"エラーですか?"
+
+#: rust/src/library.rs
+msgid "Saving the PDF in the background..."
+msgstr "PDF をバックグラウンドで保存しています..."
+
+#. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
+#: rust/src/library.rs
+#, c-format
+msgid "Moved to %s"
+msgstr "%sに移動しました"
+
+#. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
+#. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
+#: rust/src/linkbar.rs rust/src/linkcard.rs rust/src/mapview.rs
+msgid "The Index"
+msgstr "インデックス"
+
+#. TRANSLATORS: a chip of the Links bar whose link goes to a page that is gone (about 700 px at 44 px).
+#: rust/src/linkbar.rs rust/src/linkcard.rs
+msgid "Page not here"
+msgstr "ここにないページ"
+
+#. TRANSLATORS: a chip of the Links bar, under the page's number in its right column: how many links go
+#. to that page (a multiplication sign and the count, "x2").
+#: rust/src/linkbar.rs rust/src/linkcard.rs
+#, c-format
+msgid "×%d"
+msgstr "×%d"
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "‹ Page %d"
+msgstr "‹ ページ %d"
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Back to %s"
+msgstr "%sに戻る"
+
+#: rust/src/linkbar.rs
+msgid "Tap a link to look. Tap the page to stay."
+msgstr "リンクをタップしてご覧ください。ページをタップして滞在します。"
+
+#. TRANSLATORS: the Links bar's chip area when the open page has no links (about 1300 px at 44 px).
+#: rust/src/linkbar.rs
+msgid "No links on this page yet."
+msgstr "このページにはまだリンクがありません。"
+
+#: rust/src/linkbar.rs
+msgid "Name page"
+msgstr "名前ページ"
+
+#: rust/src/linkbar.rs
+msgid "Areas"
+msgstr "エリア"
+
+#. TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
+#. it (about 700 px at 44 px in bold upright, 600 sideways).
+#: rust/src/linkbar.rs
+msgid "New page..."
+msgstr "新しいページ..."
+
+#: rust/src/linkbar.rs
+msgid "Somewhere Else"
+msgstr "どこか他の場所"
+
+#. TRANSLATORS: the header of Link to..., the card that picks where a new link goes (about 1100 px at 44 px
+#. in bold).
+#: rust/src/linkbar.rs
+msgid "Where does the link go?"
+msgstr "リンクはどこに行くのでしょうか?"
+
+#. TRANSLATORS: Link to...'s tool button that finds a page by its number or name for the link (in caps
+#. at 34 px under its icon: about 540 px, or two lines; 860 px when there are two buttons).
+#: rust/src/linkbar.rs
+msgid "Search"
+msgstr "検索"
+
+#. TRANSLATORS: Link to...'s tool button that opens the Pages view to tap the page the link goes to (in
+#. caps at 34 px under its icon: about 540 px, or two lines).
+#: rust/src/linkbar.rs
+msgid "Choose from the pages..."
+msgstr "ページから選択してください..."
+
+#. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name:
+#. %d is that page's number; the row names it (about 700 px at 44 px).
+#: rust/src/linkcard.rs
+#, c-format
+msgid "Name page %d..."
+msgstr "名前ページ %d..."
+
+#. TRANSLATORS: a row of the long-press card of a link: rename the page it goes to (everywhere the
+#. page is listed; about 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Rename the page"
+msgstr "ページの名前を変更する"
+
+#. TRANSLATORS: a row of the long-press card of a Links bar row of several links: change where all of them
+#. go (about 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Change where they go..."
+msgstr "行く場所を変えて…"
+
+#. TRANSLATORS: a row of the long-press card of a link: pick another place for it to go (about 700 px at
+#. 44 px).
+#: rust/src/linkcard.rs
+msgid "Change where it goes..."
+msgstr "行き先を変えて…"
+
+#. TRANSLATORS: a row of the long-press card of a link: draw a new area for it with the pen (about 700 px
+#. at 44 px).
+#: rust/src/linkcard.rs
+msgid "Redraw the area"
+msgstr "エリアを再描画する"
+
+#. TRANSLATORS: a row of the long-press card of a Links bar row: delete all its links on this page, %d
+#. of them (about 700 px at 44 px). The ink around them stays.
+#: rust/src/linkcard.rs
+#, c-format
+msgid "Delete %d link"
+msgid_plural "Delete %d links"
+msgstr[0] "%dリンクを削除"
+
+#. TRANSLATORS: a row of the long-press card of a link: delete the link (the ink around it stays; about
+#. 700 px at 44 px).
+#: rust/src/linkcard.rs
+msgid "Delete link"
+msgstr "リンクを削除"
+
+#. TRANSLATORS: the last line of the long-press card of a Links bar row of several links (34 px, about
+#. 700 px): its rows act on all of them; one is changed alone by holding it on the page.
+#: rust/src/linkcard.rs
+msgid "To change one, hold it on the page."
+msgstr "変更するには、ページ上でそれを押し続けます。"
+
+#: rust/src/mapview.rs
+msgid "Not enough memory for the graph."
+msgstr "グラフを作成するためのメモリが不足しています。"
+
+#: rust/src/mapview.rs rust/src/nav.rs
+msgid "Page unavailable"
+msgstr "ページが利用できません"
+
+#: rust/src/mapview.rs rust/src/nav.rs
+msgid "Notebook unavailable"
+msgstr "ノートブックが使用できません"
+
+#. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
+#. annotated from KOReader): "p. 12". 355 px at 34 px.
+#: rust/src/mapview.rs rust/src/pagesview.rs
+#, c-format
+msgid "p. %d"
+msgstr "p. %d"
+
+#: rust/src/mapview.rs
+msgid "Around"
+msgstr "周り"
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr "すべて"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Fit: %s"
+msgstr "適合: %s"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "View: %s"
+msgstr "ビュー: %s"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Nodes: %d · Orphans: %d · Links: %d"
+msgstr "ノード: %d · オーファン: %d · リンク: %d"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages: %d here · %d across %d notebooks"
+msgstr "ページ: ここに %d · %d ノートブック全体の %d"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages in this notebook: %d"
+msgstr "このノートブックのページ: %d"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Page %d. Links to %d, linked from %d."
+msgstr "%dページ。 %dへのリンク、%dからのリンク。"
+
+#: rust/src/mapview.rs
+msgid "Around it"
+msgstr "その周り"
+
+#: rust/src/mapview.rs
+msgid "List"
+msgstr "リスト"
+
+#: rust/src/mapview.rs
+#, c-format
+msgid "Links from %s"
+msgstr "%s からのリンク"
+
+#: rust/src/mapview.rs
+msgid "No links in this notebook yet."
+msgstr "このノートブックにはまだリンクがありません。"
+
+#. TRANSLATORS: the title of the sheet that builds a music paper from parts.
+#: rust/src/musicbuild.rs
+msgid "Custom music"
+msgstr "カスタム楽譜"
+
+#. TRANSLATORS: the Custom music sheet's headings, over the layout's parts and over the parts to
+#. add (962 px at 44 px).
+#: rust/src/musicbuild.rs
+msgid "Each system, top to bottom"
+msgstr "各システムを上から下まで"
+
+#: rust/src/musicbuild.rs
+msgid "(add a part below)"
+msgstr "(以下に一部を追加)"
+
+#: rust/src/musicbuild.rs
+msgid "Add a part"
+msgstr "パーツを追加する"
+
+#. TRANSLATORS: left of the systems' count and its - and + buttons (481 px at 44 px).
+#: rust/src/musicbuild.rs
+msgid "Systems per page"
+msgstr "ページあたりのシステム数"
+
+#. TRANSLATORS: the systems per page, of the most that fit (275 px at 44 px).
+#: rust/src/musicbuild.rs
+#, c-format
+msgid "%d of %d"
+msgstr "%dの%d"
+
+#. TRANSLATORS: the Custom music sheet's heading over ready-made layouts to start from (under the
+#. page preview, 600 px at 44 px); under it, the layouts' names are the papers' own (Grand staff,
+#. 4-string bass...).
+#: rust/src/musicbuild.rs
+msgid "Start from"
+msgstr "から開始"
+
+#. TRANSLATORS: takes the layout built on the Custom music sheet (342 px at 34 px, under a check).
+#: rust/src/musicbuild.rs
+msgid "Use layout"
+msgstr "レイアウトを使用する"
+
+#: rust/src/notebookpicker.rs
+msgid "Notebooks"
+msgstr "ノート"
+
+#: rust/src/notebookpicker.rs
+msgid "No notebooks here."
+msgstr "ここにはノートはありません。"
+
+#. TRANSLATORS: under each page's picture in the Pages view (436 px at 44 px sideways), the
+#. open page in bold.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Page %d (open)"
+msgstr "ページ %d (開く)"
+
+#: rust/src/pagesview.rs
+msgid "Name a page to list it here."
+msgstr "ここにリストするにはページに名前を付けます。"
+
+#: rust/src/pagesview.rs
+msgid "Page names could not be read."
+msgstr "ページ名を読み取れませんでした。"
+
+#: rust/src/pagesview.rs
+#, c-format
+msgid "%d link here"
+msgid_plural "%d links here"
+msgstr[0] "%dリンクはこちら"
+
+#. TRANSLATORS: the Pages view's buttons, each under its icon (322 px at 34 px in Gothic, 344 in
+#. Classic): Delete, with how many pages are ticked; tick all of them, or none.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Delete (%d)"
+msgstr "削除 (%d)"
+
+#: rust/src/pagesview.rs
+msgid "Rename this page"
+msgstr "このページの名前を変更します"
+
+#: rust/src/pagesview.rs
+msgid "Name this page"
+msgstr "このページに名前を付ける"
+
+#: rust/src/pagesview.rs
+msgid "Select none"
+msgstr "何も選択しない"
+
+#: rust/src/pagesview.rs
+msgid "Select all"
+msgstr "すべて選択"
+
+#. TRANSLATORS: Pages tab, with the notebook's page count (about 400 px wide, 44 px text).
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Pages (%d)"
+msgstr "ページ (%d)"
+
+#. TRANSLATORS: Index tab, with the number of named sections (about 400 px, 44 px text).
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Index (%d)"
+msgstr "インデックス (%d)"
+
+#: rust/src/pagesview.rs
+msgid "Go to page..."
+msgstr "ページに移動..."
+
+#. TRANSLATORS: the Index tab's bottom button, under its icon (290 px at 34 px): draw a
+#. link on the open page to another page (or to the Index).
+#: rust/src/pagesview.rs
+msgid "Add a link"
+msgstr "リンクを追加する"
+
+#: rust/src/pagesview.rs
+msgid "Copy page"
+msgstr "ページをコピーする"
+
+#: rust/src/pagesview.rs
+msgid "Multi-select"
+msgstr "複数選択"
+
+#: rust/src/pagesview.rs
+msgid "Enter a page number in this notebook."
+msgstr "このノートブックにページ番号を入力します。"
+
+#. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
+#. of a document imported as pictures (named as the other papers are, below).
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Imported page"
+msgstr "読み込んだページ"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Template"
+msgstr "テンプレート"
+
+#. TRANSLATORS: papers, named under each paper's picture in New notebook and in the editor's
+#. paper sheet: 192 px at 31 px in New notebook sideways (222 upright; Classic 4 px more), on
+#. one line or two (a break after a comma is preferred: "Narrow," over "no margin"). Also on the
+#. share pages.
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Narrow rule"
+msgstr "細罫"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Medium rule"
+msgstr "中罫"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Wide rule"
+msgstr "太罫"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Sheet music"
+msgstr "五線譜"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Blank"
+msgstr "白紙"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Narrow, no margin"
+msgstr "細罫（余白なし）"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Medium, no margin"
+msgstr "中罫（余白なし）"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Wide, no margin"
+msgstr "太罫（余白なし）"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Grand staff"
+msgstr "大譜表"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Guitar tab"
+msgstr "ギタータブ"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Dot grid"
+msgstr "ドット方眼"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Graph paper"
+msgstr "方眼紙"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Cornell notes"
+msgstr "コーネルノート"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "4-string bass"
+msgstr "4弦ベース"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "5-string bass"
+msgstr "5弦ベース"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "6-string bass"
+msgstr "6弦ベース"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "7-string bass"
+msgstr "7弦ベース"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Cross grid"
+msgstr "クロス方眼"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Isometric"
+msgstr "アイソメ"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Hexagon"
+msgstr "六角形"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Seyes rule"
+msgstr "セイエス罫"
+
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Custom music"
+msgstr "カスタム楽譜"
+
+#. TRANSLATORS: a paper made by a newer Grimoire, which this one draws blank.
+#: rust/src/paper.rs
+msgctxt "paper"
+msgid "Newer paper"
+msgstr "新しい紙"
+
+#. TRANSLATORS: the parts a custom music layout stacks: on the Custom music sheet's buttons
+#. (280 px at 44 px in Gothic, 298 in Classic, or two lines at 34 px) and in its list of the
+#. layout's parts.
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Treble staff"
+msgstr "ト音譜表"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Bass staff"
+msgstr "ヘ音譜表"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Alto staff"
+msgstr "ハ音譜表"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tenor staff"
+msgstr "テノール譜表"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Drum staff"
+msgstr "ドラム譜"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Plain staff"
+msgstr "無記号譜表"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tab, 4 lines"
+msgstr "タブ 4線"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tab, 5 lines"
+msgstr "タブ 5線"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tab, 6 lines"
+msgstr "タブ 6線"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tab, 7 lines"
+msgstr "タブ 7線"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Tab, 8 lines"
+msgstr "タブ 8線"
+
+#: rust/src/paper.rs
+msgctxt "music part"
+msgid "Lyric line"
+msgstr "歌詞行"
+
+#. TRANSLATORS: an angle on Pen feel's sliders and in its readout ("45 deg"); "%d°" is fine.
+#: rust/src/pensettings.rs
+#, c-format
+msgid "%d deg"
+msgstr "%d度"
+
+#. TRANSLATORS: the value of Pen feel's Tilt widens slider: how much wider the line gets with the
+#. pen on its side, a percentage ("+35%"; in Spanish "+35 %", the usual spacing), up
+#. to +400%. Right of its slider's name, at 44 px in bold: the two share 740 px, the value takes
+#. what it needs (about 150 px for "+400 %" in Gothic, 120 in Classic) and the name the rest.
+#: rust/src/pensettings.rs
+#, c-format
+msgid "+%.0f%%"
+msgstr "+%.0f%%"
+
+#. TRANSLATORS: the axes of Pen feel's pressure graph: under it, how hard the pen presses; over
+#. it, how much ink that puts down. Up to 570 px at 34 px (the test pad starts there).
+#: rust/src/pensettings.rs
+msgid "pen pressure"
+msgstr "筆圧"
+
+#. TRANSLATORS: over Pen feel's pressure graph (see pen pressure): how much ink.
+#: rust/src/pensettings.rs
+msgid "ink"
+msgstr "インク"
+
+#. TRANSLATORS: Pen feel's readout line, until the pen draws on the test pad (1760 px at
+#. 34 px; the readings below take that room too).
+#: rust/src/pensettings.rs
+msgid "Draw on the pad to see live pressure and tilt."
+msgstr "パッド上に描画して、実際の圧力と傾きを確認します。"
+
+#. TRANSLATORS: the tilt in Pen feel's readout (below), from a pen that does not report it.
+#: rust/src/pensettings.rs
+msgid "tilt: not reported"
+msgstr "傾き: 報告されていない"
+
+#. TRANSLATORS: the tilt in Pen feel's readout (below): the pen's lean, and what it counts
+#. for (0 to 1).
+#: rust/src/pensettings.rs
+#, c-format
+msgid "tilt %d deg -> %.2f"
+msgstr "傾斜 %d 度 -> %.2f"
+
+#. TRANSLATORS: Pen feel's readout while the calligraphy pen draws on the test pad, two
+#. spaces apart: the raw pressure and what the curve makes of it, the tilt (above), the
+#. nib's width and angle (1760 px at 34 px).
+#: rust/src/pensettings.rs
+#, c-format
+msgid "pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg"
+msgstr "圧力 %.2f -> %.2f %s ペン先 %.2f mm、%d 度"
+
+#. TRANSLATORS: Pen feel's readout while a tool draws on the test pad, two spaces apart:
+#. the raw pressure and what the curve makes of it, the tilt (above), the line's width
+#. and its ink (0 to 1) (1760 px at 34 px).
+#: rust/src/pensettings.rs
+#, c-format
+msgid "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f"
+msgstr "圧力 %.2f -> %.2f %s 幅 %.2f mm インク %.2f"
+
+#. TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (570 px at
+#. 44 px in Gothic, 600 in Classic, beside an angle).
+#: rust/src/pensettings.rs
+msgid "Nib follows lean from"
+msgstr "ニブはリーンをフォローします"
+
+#: rust/src/pensettings.rs
+msgid "Nib fully follows at"
+msgstr "ペン先は完全に追従します"
+
+#. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
+#. TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
+#: rust/src/pensettings.rs
+msgid "Reset pad"
+msgstr "リセット"
+
+#: rust/src/pensettings.rs
+msgid "Clear"
+msgstr "消去"
+
+#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
+#: rust/src/pensettings.rs
+msgid "Reset tool"
+msgstr "リセットツール"
+
+#. TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
+#. tool's name (1200 px at 70 px).
+#: rust/src/pensettings.rs
+#, c-format
+msgid "Pen feel: %s"
+msgstr "ペンタッチ：%s"
+
+#. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
+#: rust/src/pensettings.rs
+msgid "test pad"
+msgstr "テストパッド"
+
+#. TRANSLATORS: the same while the pens draw white ink, which shows only over ink: the pad then
+#. has a black part to try it on (1180 px at 34 px).
+#: rust/src/pensettings.rs
+msgid "test pad (white ink: try it on the black)"
+msgstr "テストパッド（白インク：黒で試してください）"
+
+#. TRANSLATORS: Pen feel's eraser tab: the name of the row that picks how the eraser works, left
+#. of its two choices, as a slider's name is left of it (720 px at 44 px, or two lines at 34 px).
+#: rust/src/pensettings.rs
+msgid "Eraser:"
+msgstr "消しゴム:"
+
+#: rust/src/pensettings.rs
+msgid "The eraser removes whole strokes; harder pressure = bigger reach."
+msgstr ""
+"消しゴムはストローク全体を削除します。より強い圧力 = より大きなリーチ。"
+
+#. TRANSLATORS: under Pen feel's Eraser row while the precise eraser is picked (1760 px at 44 px).
+#: rust/src/pensettings.rs
+msgid ""
+"The eraser takes away only what it touches; harder pressure = bigger reach."
+msgstr "消しゴムは触れた部分だけを消します。強く押すほど、消える範囲が広がります。"
+
+#: rust/src/pensettings.rs
+msgid "Reset to defaults"
+msgstr "デフォルトにリセットする"
+
+#. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
+#. sideways (beside the QR code), 1640 upright.
+#: rust/src/share.rs
+msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+msgstr ""
+"ページは PNG、ノートブックは PDF または zip、フォルダーなどすべては zip で"
+"す。"
+
+#: rust/src/share.rs
+msgid "Effects: transparent, recolored or filtered copies of any page."
+msgstr "効果: 任意のページの透明、色変更、またはフィルター処理されたコピー。"
+
+#: rust/src/share.rs
+msgid "Same Wi-Fi network only. Keep this screen open while downloading."
+msgstr ""
+"同じ Wi-Fi ネットワークのみ。ダウンロード中はこの画面を開いたままにしてくださ"
+"い。"
+
+#. TRANSLATORS: how many downloads the Share screen has answered since it opened.
+#: rust/src/share.rs
+#, c-format
+msgid "Downloads served: %d"
+msgstr "提供されるダウンロード: %d"
+
+#. TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
+#: rust/src/share.rs
+#, c-format
+msgid "%d computer watching"
+msgid_plural "%d computers watching"
+msgstr[0] "%d コンピューター視聴"
+
+#. TRANSLATORS: Live view's pairing card, under the code: a line each, 1578 px at 34 px
+#. sideways (beside the QR code), 1640 upright.
+#: rust/src/share.rs
+msgid "Same Wi-Fi network only. The code works once."
+msgstr "同じ Wi-Fi ネットワークのみ。コードは一度だけ機能します。"
+
+#: rust/src/share.rs
+msgid "The computer sees what this screen shows, not the code."
+msgstr "コンピュータはコードではなく、この画面に表示される内容を認識します。"
+
+#. TRANSLATORS: over the Share screen's address (1640 px at 44 px upright, 1578 sideways beside
+#. the QR code), with its QR code, or without one (no Wi-Fi address).
+#: rust/src/share.rs
+msgid "Scan with your phone, or open this in a browser:"
+msgstr "携帯電話でスキャンするか、ブラウザでこれを開きます。"
+
+#: rust/src/share.rs
+msgid "On your computer, open this in a browser:"
+msgstr "コンピュータのブラウザでこれを開きます。"
+
+#. TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
+#: rust/src/share.rs
+#, c-format
+msgid "Also: %s (%s)"
+msgstr "こちらも: %s (%s)"
+
+#. TRANSLATORS: Live view's pairing card, over the code a computer types (1640 px at 44 px
+#. upright, 1578 sideways).
+#: rust/src/share.rs
+msgid "Then type this code:"
+msgstr "次に、次のコードを入力します。"
+
+#. TRANSLATORS: the last help line, with the command a computer pulls everything with.
+#: rust/src/share.rs
+#, c-format
+msgid "From a terminal: %s <address above>"
+msgstr "端末から: %s <上記のアドレス>"
+
+#: rust/src/share.rs
+msgid "Wi-Fi"
+msgstr "Wi-Fi"
+
+#: rust/src/share.rs
+msgid "Checking Wi-Fi…"
+msgstr "Wi-Fiをチェック中…"
+
+#: rust/src/share.rs
+msgid "Could not read or change Wi-Fi."
+msgstr "Wi-Fi の読み取りまたは変更ができませんでした。"
+
+#: rust/src/share.rs
+msgid "Wi-Fi is off"
+msgstr "Wi-Fiはオフです"
+
+#: rust/src/share.rs
+msgid "Connected to Wi-Fi"
+msgstr "Wi-Fiに接続"
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; no connection yet"
+msgstr "Wi-Fi はオンです。まだ接続されていません"
+
+#: rust/src/share.rs
+msgid "Wi-Fi is on; connection unknown"
+msgstr "Wi-Fi はオンです。接続が不明"
+
+#: rust/src/share.rs
+msgid "Wi-Fi unavailable"
+msgstr "Wi-Fiは利用できません"
+
+#: rust/src/share.rs
+msgid "Connects to saved networks."
+msgstr "保存されたネットワークに接続します。"
+
+#: rust/src/share.rs
+msgid "Add new networks in Kindle settings or KOReader."
+msgstr "Kindle 設定または KOReader で新しいネットワークを追加します。"
+
+#: rust/src/share.rs
+msgid "Turning Wi-Fi off disconnects SSH and sharing."
+msgstr "Wi-Fi をオフにすると、SSH と共有が切断されます。"
+
+#: rust/src/share.rs
+msgid "Turn on Wi-Fi"
+msgstr "Wi-Fiをオンにする"
+
+#: rust/src/share.rs
+msgid "Turn off Wi-Fi"
+msgstr "Wi-Fiをオフにする"
+
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#: rust/src/share.rs
+msgid "Retry"
+msgstr "再試行"
+
+#: rust/src/share.rs
+msgid "Share over Wi-Fi"
+msgstr "Wi-Fi で共有"
+
+#. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
+#. 44 px); Retry is the button's name.
+#: rust/src/share.rs
+msgid "No Wi-Fi connection yet"
+msgstr "Wi-Fi 接続がまだありません"
+
+#: rust/src/share.rs
+msgid "Turn on Wi-Fi on the Kindle first"
+msgstr "まず Kindle の Wi-Fi をオンにします"
+
+#: rust/src/share.rs
+msgid "Could not start the server"
+msgstr "サーバーを起動できませんでした"
+
+#: rust/src/share.rs
+msgid "Tap Wi-Fi to connect to a saved network."
+msgstr "Wi-Fi をタップして、保存したネットワークに接続します。"
+
+#: rust/src/share.rs
+msgid "Then tap Retry."
+msgstr "次に、「再試行」をタップします。"
+
+#: rust/src/share.rs
+msgid "Is another app using the port? Try again."
+msgstr "別のアプリがポートを使用していますか?もう一度やり直してください。"
+
+#. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
+#: rust/src/share.rs
+msgid "Stop"
+msgstr "停止"
+
+#. TRANSLATORS: the Share screen as the Kindle's sleep screen.
+#: rust/src/share.rs
+msgid "Asleep"
+msgstr "眠っている"
+
+#: rust/src/share.rs
+msgid "Wake the Kindle to share again."
+msgstr "再度共有するには、Kindle を起動してください。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the clock and battery were turned
+#. on with a shortcut where no notebook page is in front; they show on a page only.
+#: rust/src/status.rs
+msgid "Clock and battery on. They show on a notebook page."
+msgstr ""
+"時計とバッテリーがオンになっています。これらはノートブックのページに表示され"
+"ます。"
+
+#. TRANSLATORS: a toast: the clock and battery were turned off with a shortcut.
+#: rust/src/status.rs
+msgid "Clock and battery off."
+msgstr "時計とバッテリーがオフになっています。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) when the status-corner shortcut moves the
+#. clock and battery where no notebook page is in front: which corner of the page they sit in now.
+#: rust/src/status.rs
+msgid "Clock and battery: top left corner of the page"
+msgstr "時計とバッテリー: ページの左上隅"
+
+#: rust/src/status.rs
+msgid "Clock and battery: top right corner of the page"
+msgstr "時計とバッテリー: ページの右上隅"
+
+#: rust/src/status.rs
+msgid "Clock and battery: bottom right corner of the page"
+msgstr "時計とバッテリー: ページの右下隅"
+
+#: rust/src/status.rs
+msgid "Clock and battery: bottom left corner of the page"
+msgstr "時計とバッテリー: ページの左下隅"
+
+#. TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
+#. offer (1560 px at 64 px in bold, sideways 2180).
+#: rust/src/tplsheet.rs
+msgid "No templates yet"
+msgstr "まだテンプレートがありません"
+
+#. TRANSLATORS: the same for the Photos sheet, when grimoire/photos has no photo (as above).
+#: rust/src/tplsheet.rs
+msgid "No photos yet"
+msgstr "写真はまだありません"
+
+#. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); %s is the folder on the Kindle's storage.
+#: rust/src/tplsheet.rs
+#, c-format
+msgid ""
+"Copy JPG or PNG photos into the %s folder over USB while Grimoire is closed."
+msgstr "Grimoire を閉じている間に、JPG または PNG の写真を USB 経由で %s フォルダーにコピーしてください。"
+
+#. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); %s is the folder on the Kindle's storage.
+#: rust/src/tplsheet.rs
+#, c-format
+msgid ""
+"Copy PNG or JPG pictures into the %s folder over USB while Grimoire is "
+"closed."
+msgstr "Grimoire を閉じている間に、PNG または JPG の画像を USB 経由で %s フォルダーにコピーしてください。"
+
+#. TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
+#. 2180); README.txt is the file Grimoire wrote in that folder.
+#: rust/src/tplsheet.rs
+msgid ""
+"Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 "
+"pixels. The README.txt there says more."
+msgstr ""
+"ページと同じ縦長（3:4）の画像が最適で、1860 x 2480 ピクセルが理想です。詳しくはそこの README.txt"
+"に書かれています。"
+
+#: rust/src/tplsheet.rs
+msgid ""
+"A photo becomes the open page's paper, upright and fitted to the page. For a "
+"page of its own, add a new page in Pages first."
+msgstr ""
+"写真は開いているページの紙になり、ページに合わせて縦向きに調整されます。写真だけのページにする場合は、先に「ページ」で新しいページを追加"
+"してください。"
+
+#. TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
+#. does not read, or too big): how many; %s is the log file, which says which (by number). Up
+#. to 2 lines of 1560 px at 34 px, sideways 2180.
+#: rust/src/tplsheet.rs
+#, c-format
+msgid "Grimoire cannot use %d file there (see %s)."
+msgid_plural "Grimoire cannot use %d files there (see %s)."
+msgstr[0] "Grimoire はそこで %d ファイルを使用できません (%s を参照)。"
+
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: rust/src/tplsheet.rs
+msgid "Templates"
+msgstr "テンプレート"
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: rust/src/tplsheet.rs
+msgid "Photos"
+msgstr "写真"
+
+#. TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
+#. 34 px).
+#: rust/src/tplsheet.rs
+msgid "Back"
+msgstr "戻る"
+
+#. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
+#. Library's cards, which are narrow when the Kindle is sideways.
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Jan"
+msgstr "1月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Feb"
+msgstr "2月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Mar"
+msgstr "3月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Apr"
+msgstr "4月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "May"
+msgstr "5月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Jun"
+msgstr "6月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Jul"
+msgstr "7月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Aug"
+msgstr "8月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Sep"
+msgstr "9月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Oct"
+msgstr "10月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Nov"
+msgstr "11月"
+
+#: rust/src/util.rs
+msgctxt "month"
+msgid "Dec"
+msgstr "12月"
+
+#. TRANSLATORS: a date and time, "Oct 10, 14:32": the month (as above), the day, then hours and
+#. minutes on the 24-hour clock. Reorder them with %1$s, %2$d, %3$02d and %4$02d ("%2$d %1$s,
+#. %3$02d:%4$02d" is "10 Oct, 14:32"), using that form for all four.
+#: rust/src/util.rs
+#, c-format
+msgctxt "date"
+msgid "%s %d, %02d:%02d"
+msgstr "%1$s%2$d日, %3$02d:%4$02d"
+
+#. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as
+#. above), then the day. "%2$d %1$s" is "10 Oct".
+#: rust/src/util.rs
+#, c-format
+msgctxt "date"
+msgid "%s %d"
+msgstr "%1$s%2$d日"
+
+#. TRANSLATORS: the studio's presets, each a whole look, on buttons.
+#: web/studio.js
+msgctxt "studio"
+msgid "Original"
+msgstr "オリジナル"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Transparent"
+msgstr "透明"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Signature"
+msgstr "署名"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Warm"
+msgstr "暖色"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Sepia"
+msgstr "セピア"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Parchment"
+msgstr "羊皮紙"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Blueprint"
+msgstr "青写真"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Chalkboard"
+msgstr "黒板"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Night"
+msgstr "夜"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Sunset ink"
+msgstr "夕焼けインク"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Aurora"
+msgstr "オーロラ"
+
+#. TRANSLATORS: the studio could not get a page from the Kindle: its answer (an
+#. HTTP status, 404) for that address.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "The Kindle answered %d for %s"
+msgstr "%2$s に対して Kindle は %1$d を返しました"
+
+#. TRANSLATORS: %s is what went wrong, in the browser's words.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "The Kindle stopped answering (%s). Is the Share screen still open?"
+msgstr "Kindle が応答を停止しました (%s)。共有画面はまだ開いていますか?"
+
+#. TRANSLATORS: the Warmth slider's value: cooler (blue) or warmer (orange), by how much.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "cool %d"
+msgstr "クールな%d"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "warm %d"
+msgstr "暖かい%d"
+
+#. TRANSLATORS: the studio's controls: a heading per section, then the labels of its rows and
+#. of the choices on its buttons. Ink is the writing; the paper lines are the page's ruling.
+#: web/studio.js
+msgctxt "studio"
+msgid "Background"
+msgstr "背景"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "White"
+msgstr "白"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Color"
+msgstr "色"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Gradient"
+msgstr "グラデーション"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "From"
+msgstr "から"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "To"
+msgstr "に"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Angle"
+msgstr "角度"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Paper lines"
+msgstr "紙のライン"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Show"
+msgstr "表示する"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Hide"
+msgstr "隠す"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Strength"
+msgstr "強さ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Ink (your writing)"
+msgstr "インク（あなたの書いたもの）"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "As written"
+msgstr "書いてある通り"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Across"
+msgstr "アクロス"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "The writing"
+msgstr "執筆"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "The page"
+msgstr "ページ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Look"
+msgstr "見てください"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tone"
+msgstr "トーン"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "None"
+msgstr "なし"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Gray"
+msgstr "グレー"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Duotone"
+msgstr "デュオトーン"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Invert"
+msgstr "反転"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Shadows"
+msgstr "影"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Highlights"
+msgstr "ハイライト"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Warmth"
+msgstr "色温度"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tint"
+msgstr "色合い"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Tint amount"
+msgstr "ティント量"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Brightness"
+msgstr "明るさ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Contrast"
+msgstr "コントラスト"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Crop and size"
+msgstr "トリミングとサイズ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Crop"
+msgstr "作物"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Whole page"
+msgstr "ページ全体"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Trim to ink"
+msgstr "インクに合わせる"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Margin"
+msgstr "マージン"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Size"
+msgstr "サイズ"
+
+#. TRANSLATORS: names for a screen reader: the picture, the page number's box, the arrows.
+#: web/studio.js
+msgctxt "studio"
+msgid "Preview"
+msgstr "プレビュー"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Page"
+msgstr "ページ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Previous page"
+msgstr "前のページへ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Next page"
+msgstr "次のページ"
+
+#. TRANSLATORS: over the studio's picture: %s is the box with the page's number, %d the pages.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Page %s of %d"
+msgstr "%s/%dのページ"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Presets"
+msgstr "プリセット"
+
+#. TRANSLATORS: the studio's downloads: this page as a PNG, every page as PNGs in a zip, or as
+#. one PDF (%d is how many pages the notebook has).
+#: web/studio.js
+msgctxt "studio"
+msgid "Export"
+msgstr "エクスポート"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "PNG, this page"
+msgstr "PNG、このページ"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "PNGs, all %d page (zip)"
+msgid_plural "PNGs, all %d pages (zip)"
+msgstr[0] "PNG、すべての %d ページ (zip)"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "PDF, all %d page"
+msgid_plural "PDF, all %d pages"
+msgstr[0] "PDF、%dの全ページ"
+
+#. TRANSLATORS: copies the ImageMagick command below the picture's settings.
+#: web/studio.js
+msgctxt "studio"
+msgid "Copy command"
+msgstr "コピーコマンド"
+
+#. TRANSLATORS: over the command that makes the same picture with ImageMagick, and the links
+#. to the page's two layers (its ink, its paper) it is made from.
+#: web/studio.js
+msgctxt "studio"
+msgid ""
+"The same picture from the page’s two layers, with ImageMagick 7 in a macOS "
+"or Linux terminal. Download the layers into one folder and run it there:"
+msgstr ""
+"macOS または Linux のターミナルで ImageMagick 7 を使い、ページの 2"
+"つのレイヤー（インクと紙）から同じ画像を作るコマンドです。レイヤーを 1 つのフォルダーにダウンロードし、そこで実行してください:"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Try again"
+msgstr "もう一度試してください"
+
+#. TRANSLATORS: the picture's size in pixels, whether it has transparent parts, and whether
+#. Trim to ink found no ink (then the whole page is kept).
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, transparent, no ink to trim to"
+msgstr "%d × %d ピクセル、透明、トリミングするインクなし"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, transparent"
+msgstr "%d × %d ピクセル、透明"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px, no ink to trim to"
+msgstr "%d × %d ピクセル、トリミングするインクがありません"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "%d × %d px"
+msgstr "%d × %d ピクセル"
+
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Loading page %d..."
+msgstr "ページ %d を読み込み中..."
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Not loaded"
+msgstr "ロードされていません"
+
+#. TRANSLATORS: an export's progress, page by page.
+#: web/studio.js
+#, javascript-format
+msgctxt "studio"
+msgid "Page %d of %d..."
+msgstr "%d の %d ページ..."
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Working..."
+msgstr "働いています..."
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Done."
+msgstr "完了しました。"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Selected: press Cmd/Ctrl+C"
+msgstr "選択済み: Cmd/Ctrl+C を押します"
+
+#: web/studio.js
+msgctxt "studio"
+msgid "Copied"
+msgstr "コピーされました"

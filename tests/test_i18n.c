@@ -199,6 +199,7 @@ static const struct {
     const char *code, *plural_forms;
 } k_rules[] = {
     {"es", "Plural-Forms: nplurals=2; plural=(n != 1);"},
+    {"ja", "Plural-Forms: nplurals=1; plural=0;"},
 };
 
 TEST(catalogs_hold_together) {
@@ -247,6 +248,8 @@ TEST(lookups) {
     CHECK(!strcmp(C_("nonesuch", "May"), "May"));
     CHECK(!strcmp(_("May"), "May"));
     CHECK(!strcmp(C_("date", "%s %d"), "%2$d %1$s"));
+    CHECK(i18n_set("ja") && !strcmp(_("Language"), "\xe8\xa8\x80\xe8\xaa\x9e"));
+    CHECK(!strcmp(C_("paper", "Blank"), "\xe7\x99\xbd\xe7\xb4\x99"));
     // A locale name picks its language by the language part; one it lacks is English.
     CHECK(i18n_set("es_MX.UTF-8") && !strcmp(i18n_current(), "es"));
     CHECK(!i18n_set("fr_FR.UTF-8") && !strcmp(i18n_current(), "en") && !strcmp(_("Language"), "Language"));
@@ -260,12 +263,18 @@ TEST(plurals) {
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d cuaderno"));
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 2), "%d cuadernos"));
     CHECK(!strcmp(NG_("%d page, %s", "%d pages, %s", 21), "%d p\xc3\xa1ginas, %s"));
+    // Japanese has one form: 0, 1 and 2 all take it.
+    i18n_set("ja");
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 0), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 2), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
     // Missing: the English form for the count.
     CHECK(!strcmp(NG_("%d frog", "%d frogs", 1), "%d frog") && !strcmp(NG_("%d frog", "%d frogs", 3), "%d frogs"));
     i18n_set("en");
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d notebook"));
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 0), "%d notebooks"));
-    CHECK(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("xx") == 0);
+    CHECK(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("ja") == 1 &&
+          i18n_plural_forms("xx") == 0);
 }
 
 // A catalog that does not read is refused whole (its language is then English), whatever is wrong.

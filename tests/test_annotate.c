@@ -587,9 +587,9 @@ TEST(starts_with_requests) {
     NotebookInfo *other = calloc(1, sizeof *other);
     CHECK(load(r.nb, other) && !strcmp(other->source, "ffff0000"));
     CHECK(!strcmp(other->name, "Le Petit Prince : \xc3\xa9" "dition illustr\xc3\xa9" "e 2"));  // (its PDF's name apart)
-    // Books whose titles Grimoire's fonts draw none of (Japanese): named after their titles all the
-    // same, the second with " 2", as any two notebooks of one name would share a PDF; that PDF has
-    // the title as its name. The screens show them as Untitled and Untitled 2 (ui_name_label).
+    // A Japanese title is drawable now (DotGothic16): both notebooks keep it, the second with " 2",
+    // as any two notebooks of one name would share a PDF. The screens show the name as it is
+    // (ui_name_label).
     const char *ja = "\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82\xe3\x82\x8b";
     for (int i = 0; i < 2; i++) {
         snprintf(text, sizeof text,
@@ -607,7 +607,8 @@ TEST(starts_with_requests) {
         export_mirror_path(other, "PDFs", pdf, sizeof pdf);
         snprintf(want, sizeof want, "PDFs/%s%s.pdf", ja, i ? " 2" : "");
         CHECK(!strcmp(pdf, want));
-        CHECK(!strcmp(ui_name_label(other->name, label, sizeof label), i ? "Untitled 2" : "Untitled"));
+        snprintf(want, sizeof want, "%s%s", ja, i ? " 2" : "");
+        CHECK(!strcmp(ui_name_label(other->name, label, sizeof label), want));
     }
     free(other);
 

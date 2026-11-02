@@ -25,8 +25,9 @@ same app as this zip, preserves notebooks/settings, and installs no KOReader plu
 SHORTCUTS: Library > Settings > Shortcuts enables optional keyboard/controller button mappings.
 Edit grimoire/shortcuts.ini, then Reload shortcuts.ini there. Bluetooth pairing is external;
 8BitDo hardware compatibility is not yet confirmed. Analog sticks and hats are not mapped.
-LANGUAGE: English or Spanish (a draft), in Settings > Language (Ajustes > Idioma in Spanish).
-Automatic, the default, follows the Kindle's own language; pick English there to switch back.
+LANGUAGE: English, Spanish or Japanese, in Settings > Language (Ajustes > Idioma in
+Spanish, 設定 > 言語 in Japanese). Automatic, the default, follows the Kindle's own language; pick
+English there to switch back.
 PASSCODE: from the Kindle Library, Grimoire leaves the Device Passcode on. When the Kindle
 sleeps, Grimoire hands the screen and touch input to the Kindle's own keypad, and takes them back
 after the Kindle reports the unlock. Confirmed upright and sideways on the Scribe 2024 with

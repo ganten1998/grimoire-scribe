@@ -855,7 +855,7 @@ pub fn ui_chip_w(f: FontFace, px: f32, text: &str, h: i32, min_w: i32, max_w: i3
 }
 /// A notebook's or folder's name as the screens show it: name itself when the fonts draw all of it,
 /// else without what they cannot (font_drawable_copy), and Untitled when no letter is left ("Untitled
-/// 2" for a book's title in Japanese and its " 2"). The name stays whole in the files. Returns name
+/// 2" for a book's title of emoji and its " 2"). The name stays whole in the files. Returns name
 /// or buf (cap bytes).
 pub fn ui_name_label<'a>(name: &'a str, buf: &'a mut String, cap: usize) -> &'a str {
     if cap == 0 || font_drawable_copy(name, buf, cap) == 0 {

@@ -17,11 +17,14 @@ extern unsigned char Jacquard24_Regular_ttf[];
 extern unsigned int Jacquard24_Regular_ttf_len;
 extern unsigned char Jersey10_Regular_ttf[];
 extern unsigned int Jersey10_Regular_ttf_len;
+extern unsigned char DotGothic16_Regular_ttf[];
+extern unsigned int DotGothic16_Regular_ttf_len;
 
 // The embedded TrueType files. Terminess (with the Nerd Font icons) is always there; the
 // pixel faces belong to the gothic theme: Jacquard 24 (pixel blackletter) for titles, Jersey
-// 10 for text and labels.
-enum { TTF_TERM, TTF_TERM_BOLD, TTF_JACQUARD, TTF_JERSEY, TTF_COUNT };
+// 10 for text and labels. DotGothic16 is the Japanese fallback: it has the kana and kanji no
+// Latin face has, in the same pixel style.
+enum { TTF_TERM, TTF_TERM_BOLD, TTF_JACQUARD, TTF_JERSEY, TTF_JP, TTF_COUNT };
 static stbtt_fontinfo g_font[TTF_COUNT];
 static bool g_ready;
 // Font units per design pixel (0 = an outline font, drawn smooth). Measured: every outline
@@ -91,7 +94,7 @@ static void cache_flush(void) {
 int font_init(void) {
     if (g_ready) return 0;
     const unsigned char *data[TTF_COUNT] = {TerminessNerdFontMono_Regular_ttf, TerminessNerdFontMono_Bold_ttf,
-                                            Jacquard24_Regular_ttf, Jersey10_Regular_ttf};
+                                            Jacquard24_Regular_ttf, Jersey10_Regular_ttf, DotGothic16_Regular_ttf};
     for (int i = 0; i < TTF_COUNT; i++)
         if (!stbtt_InitFont(&g_font[i], data[i], stbtt_GetFontOffsetForIndex(data[i], 0))) {
             qlog("font: init failed for face %d", i);
@@ -327,12 +330,19 @@ static int layout(Canvas *c, FontFace f, float px, int x, int baseline, const ch
     int prev_ttf = -1;
     while (*s && (!end || s < end)) {
         uint32_t cp = utf8_next(&s);
-        // Glyphs a theme face lacks (symbols, arrows) come from Terminess at the asked size.
+        // Glyphs a theme face lacks (symbols, arrows, Japanese) come from Terminess at the
+        // asked size, or, when Terminess lacks them too, from DotGothic16.
         int ttf = m.ttf;
         float gpx = fpx;
-        if (ttf != TTF_TERM && ttf != TTF_TERM_BOLD && cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[ttf], (int)cp)) {
-            ttf = m.embolden ? TTF_TERM_BOLD : TTF_TERM;
-            gpx = px;
+        if (cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[ttf], (int)cp)) {
+            if (ttf != TTF_TERM && ttf != TTF_TERM_BOLD) {
+                ttf = m.embolden ? TTF_TERM_BOLD : TTF_TERM;
+                gpx = px;
+            }
+            if (!stbtt_FindGlyphIndex(&g_font[ttf], (int)cp) && stbtt_FindGlyphIndex(&g_font[TTF_JP], (int)cp)) {
+                ttf = TTF_JP;
+                gpx = px;
+            }
         }
         const stbtt_fontinfo *fi = &g_font[ttf];
         if (prev && prev_ttf == ttf) pen += units_to_px(ttf, gpx, stbtt_GetCodepointKernAdvance(fi, (int)prev, (int)cp));
@@ -368,8 +378,15 @@ int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char
 
 int font_measure(FontFace f, float px, const char *utf8) { return layout(NULL, f, px, 0, 0, utf8, NULL, 0); }
 
-bool font_has_glyph(FontFace f, uint32_t cp) {
+bool font_face_has_glyph(FontFace f, uint32_t cp) {
     return g_ready && stbtt_FindGlyphIndex(&g_font[face_of(f).ttf], (int)cp) != 0;
+}
+
+bool font_has_glyph(FontFace f, uint32_t cp) {
+    if (font_face_has_glyph(f, cp)) return true;
+    if (!g_ready) return false;
+    return stbtt_FindGlyphIndex(&g_font[TTF_TERM], (int)cp) != 0 ||
+           stbtt_FindGlyphIndex(&g_font[TTF_JP], (int)cp) != 0;
 }
 
 int font_drawable_copy(const char *utf8, char *out, size_t cap) {
@@ -380,7 +397,8 @@ int font_drawable_copy(const char *utf8, char *out, size_t cap) {
         const char *c = s;
         uint32_t cp = utf8_next(&s);
         size_t n = (size_t)(s - c);
-        if (g_ready && cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[TTF_TERM], (int)cp)) {
+        if (g_ready && cp > 0x7F && !stbtt_FindGlyphIndex(&g_font[TTF_TERM], (int)cp) &&
+            !stbtt_FindGlyphIndex(&g_font[TTF_JP], (int)cp)) {
             left_out++;
             continue;
         }
@@ -475,8 +493,41 @@ static const char *next_char(const char *s) {
     return s;
 }
 
+// True for a character Japanese breaks lines between: kana, kanji, CJK punctuation and fullwidth
+// forms. (Latin words, including accented ones, must stay whole.)
+static bool cjk_at(const char *s) {
+    const unsigned char *p = (const unsigned char *)s;
+    uint32_t cp;
+    int n;
+    if ((p[0] & 0xE0) == 0xC0) {
+        cp = p[0] & 0x1F;
+        n = 1;
+    } else if ((p[0] & 0xF0) == 0xE0) {
+        cp = p[0] & 0x0F;
+        n = 2;
+    } else if ((p[0] & 0xF8) == 0xF0) {
+        cp = p[0] & 0x07;
+        n = 3;
+    } else {
+        return false;
+    }
+    for (int i = 1; i <= n; i++) {
+        if (!p[i] || (p[i] & 0xC0) != 0x80) return false;
+        cp = cp << 6 | (p[i] & 0x3F);
+    }
+    return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0xFE30 && cp <= 0xFE4F) || (cp >= 0xFF00 && cp <= 0xFFEF);
+}
+
+static bool has_cjk(const char *s, const char *e) {
+    for (; s < e; s = next_char(s))
+        if (cjk_at(s)) return true;
+    return false;
+}
+
 // As many whole words on each line as fit w; a word wider than w on its own is broken between its
 // characters (at least one to a line), and *broken gets the widest such word's width (else 0).
+// A CJK run is not reported: Japanese has no spaces, and breaks between its characters by rule.
 // Keeps up to max lines; returns how many the text needs.
 static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, int max, int *broken) {
     int n = 0;
@@ -493,7 +544,7 @@ static int wrap_greedy(FontFace f, float px, const char *s, int w, Span *out, in
             const char *we = s;
             while (*we && *we != ' ') we++;
             int ww = measure_n(f, px, s, we);
-            if (ww > *broken) *broken = ww;
+            if (ww > *broken && !has_cjk(s, we)) *broken = ww;
             fits = next_char(s);
             while (*fits && *fits != ' ' && measure_n(f, px, s, next_char(fits)) <= w) fits = next_char(fits);
         }

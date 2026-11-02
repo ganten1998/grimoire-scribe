@@ -25,12 +25,16 @@ bool font_gothic(void);
 // Draws UTF-8 text with its baseline at y. Returns advance width in px.
 int font_draw(Canvas *c, FontFace f, float px, int x, int baseline_y, const char *utf8, uint8_t gray);
 int font_measure(FontFace f, float px, const char *utf8);
-// Whether the face (as the current theme maps it) has its own glyph for cp, not Terminess's.
+// Whether the face (as the current theme maps it) has its own glyph for cp, without either
+// fallback.
+bool font_face_has_glyph(FontFace f, uint32_t cp);
+// Whether it can draw cp: its own glyph, or the Terminess or DotGothic16 fallback.
 bool font_has_glyph(FontFace f, uint32_t cp);
-// utf8 without the characters no face draws (every face takes what it lacks from Terminess, so one
-// Terminess lacks too would show as a box: Chinese, Japanese, Korean, most Vietnamese letters), and
-// without the spaces that leaves doubled, first or last. Returns how many characters it left out:
-// 0, and out is utf8 as it is (cut to cap between characters). Before font_init, none.
+// utf8 without the characters no face draws (every face takes what it lacks from Terminess, or from
+// DotGothic16 for Japanese; what neither has would show as a box: rare CJK characters and most
+// Vietnamese letters), and without the spaces that leaves doubled, first or last. Returns how many
+// characters it left out: 0, and out is utf8 as it is (cut to cap between characters). Before
+// font_init, none.
 int font_drawable_copy(const char *utf8, char *out, size_t cap);
 int font_ascent(FontFace f, float px);   // px above baseline
 int font_descent(FontFace f, float px);  // px below baseline (positive)

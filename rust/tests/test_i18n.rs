@@ -281,7 +281,10 @@ fn count_entry(code: &str, e: &I18nEntry, forms: i32, bad: &mut i32) {
 }
 
 // The Plural-Forms line each language's catalog must carry: src/i18n.c has the same rule by hand.
-const K_RULES: [(&str, &str); 1] = [("es", "Plural-Forms: nplurals=2; plural=(n != 1);")];
+const K_RULES: [(&str, &str); 2] = [
+    ("es", "Plural-Forms: nplurals=2; plural=(n != 1);"),
+    ("ja", "Plural-Forms: nplurals=1; plural=0;"),
+];
 
 fn catalogs_hold_together() {
     // Every catalog is for a language of the list (English needs none), and reads.
@@ -348,12 +351,18 @@ fn plurals() {
     check!(ng_("%d notebook", "%d notebooks", 1) == "%d cuaderno");
     check!(ng_("%d notebook", "%d notebooks", 2) == "%d cuadernos");
     check!(ng_("%d page, %s", "%d pages, %s", 21) == "%d p\u{e1}ginas, %s");
+    // Japanese has one form: 0, 1 and 2 all take it.
+    i18n_set("ja");
+    let ja_notebook = "%d\u{30ce}\u{30fc}\u{30c8}";
+    check!(ng_("%d notebook", "%d notebooks", 0) == ja_notebook);
+    check!(ng_("%d notebook", "%d notebooks", 1) == ja_notebook);
+    check!(ng_("%d notebook", "%d notebooks", 2) == ja_notebook);
     // Missing: the English form for the count.
     check!(ng_("%d frog", "%d frogs", 1) == "%d frog" && ng_("%d frog", "%d frogs", 3) == "%d frogs");
     i18n_set("en");
     check!(ng_("%d notebook", "%d notebooks", 1) == "%d notebook");
     check!(ng_("%d notebook", "%d notebooks", 0) == "%d notebooks");
-    check!(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("xx") == 0);
+    check!(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("ja") == 1 && i18n_plural_forms("xx") == 0);
 }
 
 fn rd32(m: &[u8], at: usize) -> u32 {

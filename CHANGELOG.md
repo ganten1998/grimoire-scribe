@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji. `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
+- A Japanese keyboard, as a phone has it: with Grimoire in Japanese the keyboard's accents key is
+  あ, and it opens a flick kana pad, twelve keys in three columns (あ か さ / た な は / ま や ら /
+  わ ゛ ー). Tap a key for its row's first kana, swipe left, up, right or down for the rest; ゛
+  voices the kana before it (か to が), 小 makes it small (つ to っ), ー types straight, and abc
+  goes back to the letters. Every keyboard has it, so notebook, folder, page and link names all
+  take kana. Every other language keeps áé there.
+
 ## 2.0.0-beta.1 (2026-11-01)
 
 The first public beta of Grimoire 2.0, the same app as 2.0.0-beta.0, which tested the KPM pipeline:

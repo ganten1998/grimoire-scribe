@@ -115,8 +115,8 @@ failure and timeout; other firmware still needs a device check ([TESTING.md](TES
 
 ## The language
 
-The screens are in English or Spanish: settings.ini `language=` is `auto` (the default), `en` or
-`es` (docs/FORMAT.md). For `auto` the binary looks once at startup, before it draws anything, and
+The screens are in English, Spanish or Japanese: settings.ini `language=` is `auto` (the default),
+`en`, `es` or `ja` (docs/FORMAT.md). For `auto` the binary looks once at startup, before it draws anything, and
 the first of these that is set decides:
 
 1. `GRIMOIRE_LANG`, should a launcher set it (none does today);
@@ -136,9 +136,10 @@ i18n: language es (set in Settings)
 ```
 
 A `language=` this version does not speak (a newer one's) works as `auto` and adds `; settings.ini
-says language=xx, a language this version does not speak`. A Kindle set to Spanish gets every
-screen, the share pages and the studio in Spanish; grimoire.log stays English, and so do paths,
-file names and folder names. The launcher's own `locale: LANG=...` line reads the same file.
+says language=xx, a language this version does not speak`. A Kindle set to Spanish or Japanese
+gets every screen, the share pages and the studio in that language; grimoire.log stays English,
+and so do paths, file names and folder names. Japanese uses DotGothic16 for kana and kanji, the
+pixel fallback that keeps the Gothic style. The launcher's own `locale: LANG=...` line reads the same file.
 
 ## KOReader
 
@@ -150,7 +151,7 @@ Notebook PDFs (KOReader's file browser in `grimoire/PDFs`, closing an open book 
 note that Grimoire rewrites those files) and Reset pen calibration (after a confirmation it runs
 `grimoire/app/grimoire.sh --reset-calibration`), and KOReader's gestures get an Open Grimoire
 action (`grimoire_open`). Its words are its own, since KOReader's catalogs do not have them:
-English and Spanish, picked by KOReader's language setting, English for any other.
+English, Spanish and Japanese, picked by KOReader's language setting, English for any other.
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
@@ -504,8 +505,8 @@ lists acceptance targets and decision rules; synthetic fixtures cannot satisfy t
    together. Pinch straight after writing and re-grab a finger briefly during pinch/pan.
 2. Write with the palm resting, then hold/read for several minutes: no page turns, menus or
    shapes should fire. Try a distant fresh pen hover and a nearby hover separately.
-3. Check KOReader | Controller | Gestures | Updates | Done upright and sideways, in English
-   and Spanish, in Gothic and Classic. All five labels should fit.
+3. Check KOReader | Controller | Gestures | Updates | Done upright and sideways, in English,
+   Spanish and Japanese, in Gothic and Classic. All five labels should fit.
 4. In Gestures record a two-finger tap for Undo; then reassign an occupied pattern. The card
    must name the action losing it. Try fingers far apart, diagonal motion and the nearby pen;
    each refusal should give its reason, with readable text.

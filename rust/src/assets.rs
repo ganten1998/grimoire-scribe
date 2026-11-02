@@ -12,6 +12,7 @@ pub static FONT_TERMINESS_REGULAR: &[u8] = include_bytes!("../../assets/Termines
 pub static FONT_TERMINESS_BOLD: &[u8] = include_bytes!("../../assets/TerminessNerdFontMono-Bold.ttf");
 pub static FONT_JACQUARD24: &[u8] = include_bytes!("../../assets/Jacquard24-Regular.ttf");
 pub static FONT_JERSEY10: &[u8] = include_bytes!("../../assets/Jersey10-Regular.ttf");
+pub static FONT_DOTGOTHIC16: &[u8] = include_bytes!("../../assets/DotGothic16-Regular.ttf");
 
 /// The maintainer's handwritten eraser practice, kept as strokes rather than a flat picture
 /// (assets/eraser-sample.qpg; the C's grimoire_eraser_sample).

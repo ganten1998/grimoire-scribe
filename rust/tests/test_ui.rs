@@ -241,7 +241,8 @@ fn pin_grid_and_hollow_icons() {
 }
 
 // A name keeps every letter in the files; the screens leave out what the fonts cannot draw (it
-// would show as a box), and a name left with no letter reads Untitled, with what is left.
+// would show as a box; Japanese has DotGothic16, an emoji has no face), and a name left with no
+// letter reads Untitled, with what is left.
 fn name_labels() {
     let mut buf = String::new();
     let plain = "Le Petit Prince";
@@ -250,16 +251,21 @@ fn name_labels() {
     // (the C compares the pointers: the label is the name itself when all of it is drawn)
     check!(std::ptr::eq(ui_name_label(plain, &mut buf, 200), plain) && std::ptr::eq(ui_name_label(greek, &mut buf, 200), greek));
     check!(ui_name_label("1984", &mut buf, 200).as_bytes()[0] == b'1'); // (all of it drawn: as it is)
-    // Japanese, in the middle and alone; Vietnamese marks Terminess lacks (e with circumflex and
-    // acute, e with circumflex and dot below).
-    check!(font_drawable_copy("Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3", &mut buf, 200) == 2);
+    // Japanese comes from DotGothic16; an emoji has no face. Vietnamese marks Terminess lacks
+    // (e with circumflex and acute, e with circumflex and dot below) are left out too.
+    check!(font_drawable_copy("Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3", &mut buf, 200) == 0);
+    check!(buf == "Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3");
+    check!(font_drawable_copy("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == 1);
     check!(buf == "Pok\u{e9}mon Vol. 3");
-    check!(ui_name_label("Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3", &mut buf, 200) == "Pok\u{e9}mon Vol. 3");
+    check!(ui_name_label("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == "Pok\u{e9}mon Vol. 3");
     let ja = "\u{543e}\u{8f29}\u{306f}\u{732b}\u{3067}\u{3042}\u{308b}";
-    check!(font_drawable_copy(ja, &mut buf, 200) == 7 && buf.is_empty());
-    check!(ui_name_label(ja, &mut buf, 200) == "Untitled");
+    check!(font_drawable_copy(ja, &mut buf, 200) == 0 && buf == ja);
+    check!(ui_name_label(ja, &mut buf, 200) == ja);
     let numbered = cformat!("%s 2", ja);
-    check!(ui_name_label(&numbered, &mut buf, 200) == "Untitled 2");
+    check!(ui_name_label(&numbered, &mut buf, 200) == numbered.as_str());
+    let emoji = "\u{1f600}";
+    check!(font_drawable_copy(emoji, &mut buf, 200) == 1 && buf.is_empty());
+    check!(ui_name_label(emoji, &mut buf, 200) == "Untitled");
     check!(ui_name_label("Ti\u{1ebf}ng Vi\u{1ec7}t", &mut buf, 200) == "Ting Vit");
     // Cut to the buffer between two characters.
     let mut small = String::new();
