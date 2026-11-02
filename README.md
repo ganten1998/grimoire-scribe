@@ -475,6 +475,27 @@ folders keep different builds separate, and the collector refuses to overwrite d
 `DIST=/path/to/dist` selects a shared output folder across worktrees. Build intermediates remain
 under `build/`; Downloads is not a build destination. Collecting a build does not publish it.
 
+For a one-command dev build that leaves the released app and your notebooks alone, use MTP:
+
+```
+make dev                          # build + copy "Grimoire (dev)" over the USB cable
+tools/kindle-dev --mount PATH     # if the mounted Kindle is not found automatically
+make dev-ssh                      # alternatively, build and restart it over SSH
+```
+
+`tools/kindle-dev` builds `build/dist/Grimoire.zip` on the computer (the Kindle does not compile
+it), takes its self-contained launcher, renames the Library entry to **Grimoire (dev)** and gives
+it its own data root (`/mnt/us/dev/grimoire`), then copies it to the Kindle's `documents` folder
+as `Grimoire (dev).sh`. The release's `documents/Grimoire.sh` and `/mnt/us/grimoire` are
+untouched, so both entries coexist and the dev copy cannot write into your real notebooks. MTP
+cannot start apps: close Grimoire (dev) if it is open, then tap it in the Library. Set the Scribe
+to USB file transfer (MTP) and unlock it; on Linux `gio`/GVFS mounts it, or pass `--mount` (or
+`GRIMOIRE_MTP_MOUNT`). `--no-build` copies the existing zip; `--zip PATH` a `make dist` or
+release zip.
+
+`make dev-ssh` builds and restarts the normal launcher over SSH instead (dropbear or USBNetwork,
+not KOReader's; quit KOReader first).
+
 For development with an already configured KindleLab USB/MTP volume bridge, stage a collected
 bundle without closing Grimoire:
 
