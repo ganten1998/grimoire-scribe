@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.1 (2026-11-01)
+
+The first public beta of Grimoire 2.0, the same app as 2.0.0-beta.0, which tested the KPM pipeline:
+installed with `;kpm install grimoire` from the preview feed, it unpacked, opened from KOReader and kept
+every notebook. Everything in 2.0.0-beta.0 and the candidates below.
+
 ## 2.0.0-beta.0 (2026-10-31)
 
 The first public beta of Grimoire 2.0, the rewrite in Rust: everything in the candidates below

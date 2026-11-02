@@ -11,6 +11,14 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## 2.0.0-beta.1
+
+The same app as 2.0.0-beta.0. Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2), from the
+public preview feed after removing Grimoire through KPM: `;kpm install grimoire` from the Kindle's search bar
+installed beta.0, it unpacked at its first launch from KOReader and opened with every notebook and setting kept.
+The home Library did not list the Grimoire launcher until it rescans (KOReader pauses the Kindle's indexer);
+not yet confirmed after a rescan.
+
 ## 2.0.0-beta.0
 
 Checked by the owner on 2.0.0-rc.12 (Kindle Scribe 2024, firmware 5.20.1.0.2): What's new and its signature,
