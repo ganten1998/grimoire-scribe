@@ -60,7 +60,7 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 | Kindle | Status |
 |---|---|
 | Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.20.1.0.2; a tester runs it on 5.20.1 (Vera). |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works**: Used daily on 5.20.1.0.2. Same platform. If the screen is upside down, see Troubleshooting. |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** A tester uses it daily on 5.20.1.0.2; another runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
@@ -474,27 +474,6 @@ patch ZIP, KPM package and manifests, checksums, and source revision in `dist/`.
 folders keep different builds separate, and the collector refuses to overwrite different files.
 `DIST=/path/to/dist` selects a shared output folder across worktrees. Build intermediates remain
 under `build/`; Downloads is not a build destination. Collecting a build does not publish it.
-
-For a one-command dev build that leaves the released app and your notebooks alone, use MTP:
-
-```
-make dev                          # build + copy "Grimoire (dev)" over the USB cable
-tools/kindle-dev --mount PATH     # if the mounted Kindle is not found automatically
-make dev-ssh                      # alternatively, build and restart it over SSH
-```
-
-`tools/kindle-dev` builds `build/dist/Grimoire.zip` on the computer (the Kindle does not compile
-it), takes its self-contained launcher, renames the Library entry to **Grimoire (dev)** and gives
-it its own data root (`/mnt/us/dev/grimoire`), then copies it to the Kindle's `documents` folder
-as `Grimoire (dev).sh`. The release's `documents/Grimoire.sh` and `/mnt/us/grimoire` are
-untouched, so both entries coexist and the dev copy cannot write into your real notebooks. MTP
-cannot start apps: close Grimoire (dev) if it is open, then tap it in the Library. Set the Scribe
-to USB file transfer (MTP) and unlock it; on Linux `gio`/GVFS mounts it, or pass `--mount` (or
-`GRIMOIRE_MTP_MOUNT`). `--no-build` copies the existing zip; `--zip PATH` a `make dist` or
-release zip.
-
-`make dev-ssh` builds and restarts the normal launcher over SSH instead (dropbear or USBNetwork,
-not KOReader's; quit KOReader first).
 
 For development with an already configured KindleLab USB/MTP volume bridge, stage a collected
 bundle without closing Grimoire:
