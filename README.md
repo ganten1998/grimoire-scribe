@@ -19,7 +19,7 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 <p>
 <img src="docs/screens/demo-vase.png" width="32%" alt="A vase shaded with the pencil and charcoal">
 <img src="docs/screens/demo-room.png" width="32%" alt="A room drawn on one page of over a thousand strokes">
-<img src="docs/screens/demo-iso.png" width="32%" alt="Isometric paper">
+<img src="docs/screens/demo-iso.png" width="32%" alt="A drawing on isometric paper">
 </p>
 <p>
 <img src="docs/screens/tools.png" width="32%" alt="The tool picker over a page">
