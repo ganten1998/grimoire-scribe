@@ -24,7 +24,7 @@ shot 03-settings-english
 # Cancel in the list changes nothing
 tap 930 1580
 wait 200
-tap 930 1265
+tap 930 1425
 wait 200
 expect library.sheet is settings
 expect language is en

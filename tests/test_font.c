@@ -408,7 +408,7 @@ TEST(bold_differs_only_at_marks) {
     for (int z = 0; z < 3; z++) {
         float px = sizes[z];
         for (uint32_t cp = 0x21; cp <= 0x17F; cp++) {
-            if ((cp > 0x7E && cp < 0xA1) || !font_has_glyph(FONT_BOLD, cp)) continue;
+            if ((cp > 0x7E && cp < 0xA1) || !font_face_has_glyph(FONT_BOLD, cp)) continue;
             char s[4] = {0};
             if (cp < 0x80) s[0] = (char)cp;
             else s[0] = (char)(0xC0 | cp >> 6), s[1] = (char)(0x80 | (cp & 0x3F));

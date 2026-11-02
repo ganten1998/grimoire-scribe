@@ -69,9 +69,10 @@ int annotate_insert_at(const NotebookInfo *nb, const AnnotateMap *m, int page, i
 
 // A new notebook's name: the title on one line (control characters as spaces, one space between two
 // words, none first or last), without broken UTF-8, cut to the name limit between two characters,
-// never inside one. Every other character stays, also one Grimoire's fonts cannot draw (Chinese,
-// Japanese, Korean): the screens leave it out where they draw the name (ui_name_label), and the
-// PDF's file name keeps it. Empty when nothing is left (the caller names it Untitled).
+// never inside one. Every other character stays, also one the screens cannot draw (most Chinese,
+// Korean and Vietnamese characters, rare CJK): the screens leave it out where they draw the name
+// (ui_name_label), and the PDF's file name keeps it. Empty when nothing is left (the caller names
+// it Untitled).
 void annotate_name(const char *title, char *out, size_t cap);
 
 // Whether data is a PNG whose chunks are all there, in order, and whose critical ones (IHDR, PLTE,

@@ -121,7 +121,7 @@ int ui_text_box_w(FontFace f, float px, const char *text, int pad, int min_w, in
 int ui_chip_w(FontFace f, float px, const char *text, int h, int min_w, int max_w);
 // A notebook's or folder's name as the screens show it: name itself when the fonts draw all of it,
 // else without what they cannot (font_drawable_copy), and Untitled when no letter is left ("Untitled
-// 2" for a book's title in Japanese and its " 2"). The name stays whole in the files. Returns name
+// 2" for a book's title of emoji and its " 2"). The name stays whole in the files. Returns name
 // or buf (cap bytes).
 const char *ui_name_label(const char *name, char *buf, size_t cap);
 

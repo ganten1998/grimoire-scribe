@@ -386,8 +386,8 @@ fn names() {
     let mut ends = String::new();
     annotate_name(b"ab\xe2\x82\xac", &mut ends, 5); // "ab" + a 3-byte character: it does not fit whole
     check!(ends == "ab");
-    // Every letter stays, also what Grimoire's fonts cannot draw (the name is the PDF's too; only the
-    // screens leave that out, ui_name_label): Greek, Cyrillic, Japanese, Vietnamese.
+    // Every letter stays, also what Grimoire's screens cannot draw (the name is the PDF's too; only
+    // the screens leave that out, ui_name_label): Greek, Cyrillic, Japanese, Vietnamese.
     annotate_name("Война αβ 戦争".as_bytes(), &mut out, STORE_NAME_LEN);
     check!(out == "Война αβ 戦争");
     annotate_name("Pokémon 漫画 Vol. 3".as_bytes(), &mut out, STORE_NAME_LEN);
@@ -638,9 +638,9 @@ fn starts_with_requests() {
     let mut other = NotebookInfo::default();
     check!(load(r.nb.as_str(), &mut other) && other.source == "ffff0000");
     check!(other.name == "Le Petit Prince : édition illustrée 2"); // (its PDF's name apart)
-    // Books whose titles Grimoire's fonts draw none of (Japanese): named after their titles all the
-    // same, the second with " 2", as any two notebooks of one name would share a PDF; that PDF has
-    // the title as its name. The screens show them as Untitled and Untitled 2 (ui_name_label).
+    // A Japanese title is drawable now (DotGothic16): both notebooks keep it, the second with " 2",
+    // as any two notebooks of one name would share a PDF. The screens show the name as it is
+    // (ui_name_label).
     let ja = "吾輩は猫である";
     for i in 0..2 {
         let text = format!(
@@ -660,7 +660,8 @@ fn starts_with_requests() {
         want = format!("PDFs/{}{}.pdf", ja, if i != 0 { " 2" } else { "" });
         check!(pdf == want);
         let mut label = String::new();
-        check!(ui_name_label(other.name.as_str(), &mut label, 64) == if i != 0 { "Untitled 2" } else { "Untitled" });
+        let label_want = if i != 0 { format!("{} 2", ja) } else { ja.to_string() };
+        check!(ui_name_label(other.name.as_str(), &mut label, 64) == label_want.as_str());
     }
 
     // A page whose file is gone (or does not read) shows the notebook's paper, Blank: never another

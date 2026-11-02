@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji. `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
+
 ## 2.0.0-beta.1 (2026-11-01)
 
 The first public beta of Grimoire 2.0, the same app as 2.0.0-beta.0, which tested the KPM pipeline:

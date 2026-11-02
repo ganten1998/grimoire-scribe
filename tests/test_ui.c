@@ -186,24 +186,29 @@ TEST(pin_grid_and_hollow_icons) {
 }
 
 // A name keeps every letter in the files; the screens leave out what the fonts cannot draw (it
-// would show as a box), and a name left with no letter reads Untitled, with what is left.
+// would show as a box; Japanese has DotGothic16, an emoji has no face), and a name left with no
+// letter reads Untitled, with what is left.
 TEST(name_labels) {
     char buf[200];
     const char *plain = "Le Petit Prince", *greek = "\xce\xb1\xce\xb2 \xd0\x92\xd0\xbe\xd0\xb9\xd0\xbd\xd0\xb0";
     CHECK(font_drawable_copy(plain, buf, sizeof buf) == 0 && !strcmp(buf, plain));
     CHECK(ui_name_label(plain, buf, sizeof buf) == plain && ui_name_label(greek, buf, sizeof buf) == greek);
     CHECK(ui_name_label("1984", buf, sizeof buf)[0] == '1');  // (all of it drawn: as it is)
-    // Japanese, in the middle and alone; Vietnamese marks Terminess lacks (e with circumflex and
-    // acute, e with circumflex and dot below).
-    CHECK(font_drawable_copy("Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3", buf, sizeof buf) == 2);
+    // Japanese comes from DotGothic16; an emoji has no face. Vietnamese marks Terminess lacks
+    // (e with circumflex and acute, e with circumflex and dot below) are left out too.
+    CHECK(font_drawable_copy("Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3", buf, sizeof buf) == 0);
+    CHECK(!strcmp(buf, "Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3"));
+    CHECK(font_drawable_copy("Pok\xc3\xa9mon \xf0\x9f\x98\x80 Vol. 3", buf, sizeof buf) == 1);
     CHECK(!strcmp(buf, "Pok\xc3\xa9mon Vol. 3"));
-    CHECK(!strcmp(ui_name_label("Pok\xc3\xa9mon \xe6\xbc\xab\xe7\x94\xbb Vol. 3", buf, sizeof buf), "Pok\xc3\xa9mon Vol. 3"));
+    CHECK(!strcmp(ui_name_label("Pok\xc3\xa9mon \xf0\x9f\x98\x80 Vol. 3", buf, sizeof buf), "Pok\xc3\xa9mon Vol. 3"));
     const char *ja = "\xe5\x90\xbe\xe8\xbc\xa9\xe3\x81\xaf\xe7\x8c\xab\xe3\x81\xa7\xe3\x81\x82\xe3\x82\x8b";
-    CHECK(font_drawable_copy(ja, buf, sizeof buf) == 7 && !buf[0]);
-    CHECK(!strcmp(ui_name_label(ja, buf, sizeof buf), "Untitled"));
+    CHECK(font_drawable_copy(ja, buf, sizeof buf) == 0 && !strcmp(buf, ja));
+    CHECK(!strcmp(ui_name_label(ja, buf, sizeof buf), ja));
     char numbered[64];
     snprintf(numbered, sizeof numbered, "%s 2", ja);
-    CHECK(!strcmp(ui_name_label(numbered, buf, sizeof buf), "Untitled 2"));
+    CHECK(!strcmp(ui_name_label(numbered, buf, sizeof buf), numbered));
+    CHECK(font_drawable_copy("\xf0\x9f\x98\x80", buf, sizeof buf) == 1 && !buf[0]);
+    CHECK(!strcmp(ui_name_label("\xf0\x9f\x98\x80", buf, sizeof buf), "Untitled"));
     CHECK(!strcmp(ui_name_label("Ti\xe1\xba\xbfng Vi\xe1\xbb\x87t", buf, sizeof buf), "Ting Vit"));
     // Cut to the buffer between two characters.
     char small[6];

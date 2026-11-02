@@ -409,7 +409,7 @@ fn accents_in_every_face() {
         for (theme, th) in [UiTheme::Gothic, UiTheme::Classic].into_iter().enumerate() {
             ui_set_theme(th);
             for (f, face) in FACES.into_iter().enumerate() {
-                let ok = font_has_glyph(face, cp) && font_has_glyph(face, keyboard_upper(cp));
+                let ok = font_face_has_glyph(face, cp) && font_face_has_glyph(face, keyboard_upper(cp));
                 if !ok {
                     eprintln!("  U+{:04X} missing in face {} (theme {})", cp, f, theme);
                 }

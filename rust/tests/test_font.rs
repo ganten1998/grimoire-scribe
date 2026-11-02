@@ -498,7 +498,7 @@ fn bold_differs_only_at_marks() {
     for z in 0..3 {
         let px = SIZES[z];
         for cp in 0x21u32..=0x17F {
-            if (cp > 0x7E && cp < 0xA1) || !font_has_glyph(FontFace::Bold, cp) {
+            if (cp > 0x7E && cp < 0xA1) || !font_face_has_glyph(FontFace::Bold, cp) {
                 continue;
             }
             // (cp < 0x80 is one byte, else the two bytes of a code point below U+0800)

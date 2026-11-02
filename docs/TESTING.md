@@ -338,7 +338,8 @@ Not yet on a Kindle: the owner has not tested this release's bundle, so nothing 
 seen on a device. `make check` covers the recognizer's thresholds on recorded frames, every gesture and
 the bar's and Find's flows in the headless runner (two fingers, taps, the pen near, the corner), the
 Live view page and its pen path against a stand-in digitizer, the update script against a stand-in KPM,
-the package and its clean-build comparison, and the fit of every new string in English and Spanish. It
+the package and its clean-build comparison, and the fit of every new string in English, Spanish and
+Japanese. It
 cannot say how the thresholds feel under a hand, how the Links bar's refreshes look, whether the palm is
 ignored, or how Live view looks in a real browser over Wi-Fi.
 

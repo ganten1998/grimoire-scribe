@@ -65,7 +65,7 @@ all: sim headless test tools kindle dist
 
 # ---- generated: embedded fonts ----
 FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacquard24-Regular.ttf \
-         Jersey10-Regular.ttf
+         Jersey10-Regular.ttf DotGothic16-Regular.ttf
 $(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
 	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
@@ -78,8 +78,8 @@ $(BUILD)/gen/eraser_sample.c: assets/eraser-sample.qpg
 # ---- generated: the languages ----
 # po/<lang>.po is a language's translations, for translators; po/<lang>.mo is it compiled by
 # msgfmt, committed like assets/icon.png so that building needs no gettext. Each .mo is embedded
-# like the fonts, with a table src/i18n.c finds them in by name (po/es.mo: "es"; the language list
-# itself is in src/i18n.c).
+# like the fonts, with a table src/i18n.c finds them in by name (po/es.mo: "es", po/ja.mo: "ja";
+# the language list itself is in src/i18n.c).
 L10N_MO := $(sort $(wildcard po/*.mo))
 $(BUILD)/gen/l10n.c: $(L10N_MO) Makefile
 	@mkdir -p $(BUILD)/gen

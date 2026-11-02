@@ -262,7 +262,7 @@ TEST(accents_in_every_face) {
         for (int theme = THEME_GOTHIC; theme <= THEME_CLASSIC; theme++) {
             ui_set_theme((UiTheme)theme);
             for (int f = 0; f < FONT_FACE_COUNT; f++) {
-                bool ok = font_has_glyph((FontFace)f, cp) && font_has_glyph((FontFace)f, keyboard_upper(cp));
+                bool ok = font_face_has_glyph((FontFace)f, cp) && font_face_has_glyph((FontFace)f, keyboard_upper(cp));
                 if (!ok) fprintf(stderr, "  U+%04X missing in face %d (theme %d)\n", cp, f, theme);
                 CHECK(ok);
             }
