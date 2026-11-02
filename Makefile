@@ -6,6 +6,8 @@
 #   make tools     host CLI grimoire-export          -> build/host/grimoire-export
 #   make kindle    static armhf binary (cargo zigbuild) -> build/kindle/grimoire
 #   make package   Kindle zip (scriptlet + app)      -> build/dist/Grimoire.zip
+#   make dev       build a separate "Grimoire (dev)" and copy it over MTP (tools/kindle-dev)
+#   make dev-ssh   build, copy and start Grimoire on a Kindle over SSH (tools/kindle-dev-ssh)
 #   make dist      complete installable bundle       -> dist/Grimoire-VERSION-COMMIT/
 #   make check     make rust-check (tests + scenarios + the languages + share server + exporter +
 #                  ARM build) + the zip, its launchers, the KPM package and the KOReader patches
@@ -57,13 +59,13 @@ HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
-.PHONY: all sim headless test tools tablet kindle package scenarios check clean icon logo l10n l10n-check
+.PHONY: all sim headless test tools tablet kindle package dev dev-ssh scenarios check clean icon logo l10n l10n-check
 .PHONY: c-headless c-test c-tools c-kindle c-check c-package c-icon c-logo
 all: sim headless test tools kindle dist
 
 # ---- generated: embedded fonts ----
 FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacquard24-Regular.ttf \
-         Jersey10-Regular.ttf
+         Jersey10-Regular.ttf DotGothic16-Regular.ttf
 $(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
 	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
@@ -76,8 +78,8 @@ $(BUILD)/gen/eraser_sample.c: assets/eraser-sample.qpg
 # ---- generated: the languages ----
 # po/<lang>.po is a language's translations, for translators; po/<lang>.mo is it compiled by
 # msgfmt, committed like assets/icon.png so that building needs no gettext. Each .mo is embedded
-# like the fonts, with a table src/i18n.c finds them in by name (po/es.mo: "es"; the language list
-# itself is in src/i18n.c).
+# like the fonts, with a table src/i18n.c finds them in by name (po/es.mo: "es", po/ja.mo: "ja";
+# the language list itself is in src/i18n.c).
 L10N_MO := $(sort $(wildcard po/*.mo))
 $(BUILD)/gen/l10n.c: $(L10N_MO) Makefile
 	@mkdir -p $(BUILD)/gen
@@ -360,6 +362,17 @@ tablet: $(BUILD)/host/scribe-tablet
 $(BUILD)/host/scribe-tablet: tools/scribe-tablet.c
 	@mkdir -p $(BUILD)/host
 	$(HOSTCC) -std=gnu11 $(WARN) -O2 tools/scribe-tablet.c -o $@ -framework ApplicationServices
+
+# MTP: a separate "Grimoire (dev)" with its own data root; the release and its notebooks stay
+# untouched. The Kindle must be in USB file transfer (MTP) mode, and the app is tapped in the
+# Library afterwards (MTP cannot start it). tools/kindle-dev --mount/--no-build/--zip.
+dev:
+	tools/kindle-dev
+
+# SSH: build, copy and start Grimoire on a Kindle over SSH (tools/kindle-dev-ssh: GRIMOIRE_HOST,
+# default "kindle"; --no-build, --zip and --logs).
+dev-ssh:
+	tools/kindle-dev-ssh
 
 # The C tree's: tools/grimoire-export.c, mkicon.c and mklogo.c (the same bytes as the Rust ones).
 c-tools: $(CBUILD)/host/grimoire-export
