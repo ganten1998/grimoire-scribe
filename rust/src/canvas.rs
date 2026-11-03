@@ -719,34 +719,43 @@ pub fn canvas_blit(dst: &mut Canvas, src: &Canvas, srect: Rect, dx: i32, dy: i32
 
 // The two downsamples read a whole page for a thumbnail or a paper's preview: the pens are read
 // every 64 rows of it (work_pump, common.h).
+/// The source span each output coordinate of a box-filter resample covers: its first source pixel
+/// and one past its last, clamped to the source. The spans depend on one axis only, so they are made
+/// once per axis rather than once per output pixel (a page-to-thumbnail resample is millions of
+/// output-box reads, and this was two 64-bit divisions per output pixel on top of them).
+fn resample_spans(dst_n: i32, src_n: i32) -> Vec<(i32, i32)> {
+    let mut v = Vec::with_capacity(dst_n.max(0) as usize);
+    for i in 0..dst_n {
+        let a = (i as i64 * src_n as i64 / dst_n as i64) as i32;
+        let mut b = ((i + 1) as i64 * src_n as i64 / dst_n as i64) as i32;
+        if b <= a {
+            b = a + 1;
+        }
+        v.push((a, b.min(src_n)));
+    }
+    v
+}
+
 /// Box-filter downsample whole src into dst (dst size defines the scale).
 pub fn canvas_downsample(dst: &mut Canvas, src: &Canvas) {
+    let xs = resample_spans(dst.w, src.w);
+    let ys = resample_spans(dst.h, src.h);
     for y in 0..dst.h {
-        let sy0 = (y as i64 * src.h as i64 / dst.h as i64) as i32;
-        let mut sy1 = ((y + 1) as i64 * src.h as i64 / dst.h as i64) as i32;
-        if sy1 <= sy0 {
-            sy1 = sy0 + 1;
-        }
+        let (sy0, sy1) = ys[y as usize];
         if (sy0 >> 6) != (sy1 >> 6) {
             work_pump();
         }
         for x in 0..dst.w {
-            let sx0 = (x as i64 * src.w as i64 / dst.w as i64) as i32;
-            let mut sx1 = ((x + 1) as i64 * src.w as i64 / dst.w as i64) as i32;
-            if sx1 <= sx0 {
-                sx1 = sx0 + 1;
-            }
-            let (mut sum, mut n) = (0u32, 0u32);
-            let mut yy = sy0;
-            while yy < sy1 && yy < src.h {
-                let mut xx = sx0;
-                while xx < sx1 && xx < src.w {
-                    sum += src.px[(yy * src.stride + xx) as usize] as u32;
-                    n += 1;
-                    xx += 1;
+            let (sx0, sx1) = xs[x as usize];
+            let w = (sx1 - sx0) as usize;
+            let mut sum = 0u32;
+            for yy in sy0..sy1 {
+                let at = (yy * src.stride + sx0) as usize;
+                for &v in &src.px[at..at + w] {
+                    sum += v as u32;
                 }
-                yy += 1;
             }
+            let n = ((sy1 - sy0) * (sx1 - sx0)) as u32;
             dst.px[(y * dst.stride + x) as usize] = (sum + n / 2).checked_div(n).map_or(255, |v| v as u8);
         }
     }
@@ -755,37 +764,25 @@ pub fn canvas_downsample(dst: &mut Canvas, src: &Canvas) {
 /// Downsample keeping thin dark lines visible: each output pixel blends the box average
 /// toward the box minimum (weight 0..1). Used for paper previews.
 pub fn canvas_downsample_keep_lines(dst: &mut Canvas, src: &Canvas, weight: f32) {
+    let xs = resample_spans(dst.w, src.w);
+    let ys = resample_spans(dst.h, src.h);
     for y in 0..dst.h {
-        let sy0 = (y as i64 * src.h as i64 / dst.h as i64) as i32;
-        let mut sy1 = ((y + 1) as i64 * src.h as i64 / dst.h as i64) as i32;
-        if sy1 <= sy0 {
-            sy1 = sy0 + 1;
-        }
+        let (sy0, sy1) = ys[y as usize];
         if (sy0 >> 6) != (sy1 >> 6) {
             work_pump();
         }
         for x in 0..dst.w {
-            let sx0 = (x as i64 * src.w as i64 / dst.w as i64) as i32;
-            let mut sx1 = ((x + 1) as i64 * src.w as i64 / dst.w as i64) as i32;
-            if sx1 <= sx0 {
-                sx1 = sx0 + 1;
-            }
-            let (mut sum, mut n) = (0u32, 0u32);
-            let mut mn = 255u8;
-            let mut yy = sy0;
-            while yy < sy1 && yy < src.h {
-                let mut xx = sx0;
-                while xx < sx1 && xx < src.w {
-                    let v = src.px[(yy * src.stride + xx) as usize];
+            let (sx0, sx1) = xs[x as usize];
+            let w = (sx1 - sx0) as usize;
+            let (mut sum, mut mn) = (0u32, 255u8);
+            for yy in sy0..sy1 {
+                let at = (yy * src.stride + sx0) as usize;
+                for &v in &src.px[at..at + w] {
                     sum += v as u32;
-                    n += 1;
-                    if v < mn {
-                        mn = v;
-                    }
-                    xx += 1;
+                    mn = mn.min(v);
                 }
-                yy += 1;
             }
+            let n = ((sy1 - sy0) * (sx1 - sx0)) as u32;
             let avg = if n != 0 { sum as f32 / n as f32 } else { 255.0 };
             let v = lerpf(avg, mn as f32, weight);
             dst.px[(y * dst.stride + x) as usize] = v.round_ties_even() as i32 as u8;
@@ -801,29 +798,34 @@ pub fn canvas_blit_fit(dst: &mut Canvas, src: &Canvas, box_: Rect) {
     let ox = box_.x + (box_.w - w) / 2;
     let oy = box_.y + (box_.h - h) / 2;
     let clip = rect_intersect(Rect { x: ox, y: oy, w, h }, dst.clip);
+    // As in canvas_downsample: an output column's source span is the same on every row.
+    let mut xs: Vec<(i32, i32)> = Vec::with_capacity(clip.w.max(0) as usize);
+    for x in clip.x..clip.x + clip.w {
+        let sx0 = ((x - ox) as f32 / sc) as i32;
+        let mut sx1 = ((x - ox + 1) as f32 / sc) as i32;
+        if sx1 <= sx0 {
+            sx1 = sx0 + 1;
+        }
+        xs.push((sx0, sx1.min(src.w)));
+    }
     for y in clip.y..clip.y + clip.h {
         let sy0 = ((y - oy) as f32 / sc) as i32;
         let mut sy1 = ((y - oy + 1) as f32 / sc) as i32;
         if sy1 <= sy0 {
             sy1 = sy0 + 1;
         }
-        for x in clip.x..clip.x + clip.w {
-            let sx0 = ((x - ox) as f32 / sc) as i32;
-            let mut sx1 = ((x - ox + 1) as f32 / sc) as i32;
-            if sx1 <= sx0 {
-                sx1 = sx0 + 1;
-            }
-            let (mut sum, mut n) = (0u32, 0u32);
-            let mut yy = sy0;
-            while yy < sy1 && yy < src.h {
-                let mut xx = sx0;
-                while xx < sx1 && xx < src.w {
-                    sum += src.px[(yy * src.stride + xx) as usize] as u32;
-                    n += 1;
-                    xx += 1;
+        let sy1 = sy1.min(src.h);
+        for (i, x) in (clip.x..clip.x + clip.w).enumerate() {
+            let (sx0, sx1) = xs[i];
+            let w = (sx1 - sx0) as usize;
+            let mut sum = 0u32;
+            for yy in sy0..sy1 {
+                let at = (yy * src.stride + sx0) as usize;
+                for &v in &src.px[at..at + w] {
+                    sum += v as u32;
                 }
-                yy += 1;
             }
+            let n = ((sy1 - sy0) * (sx1 - sx0)) as u32;
             dst.px[(y * dst.stride + x) as usize] = sum.checked_div(n).map_or(255, |v| v as u8);
         }
     }
@@ -1289,6 +1291,144 @@ mod tests {
         assert_eq!(canvas_dash_poly(&mut n, &[(5.0, 5.0), (15.0, 5.0)], 0, 4, 3, 0, 0), 3);
         assert_eq!(canvas_dash_poly(&mut n, &[], 2, 4, 3, 0, -1), 6);
         assert!(n.px.iter().all(|&p| p == 255));
+    }
+
+    // The resamplers as they were, to prove the hoisted spans left every pixel where it was.
+    fn ref_downsample(dst: &mut Canvas, src: &Canvas) {
+        for y in 0..dst.h {
+            let sy0 = (y as i64 * src.h as i64 / dst.h as i64) as i32;
+            let mut sy1 = ((y + 1) as i64 * src.h as i64 / dst.h as i64) as i32;
+            if sy1 <= sy0 {
+                sy1 = sy0 + 1;
+            }
+            for x in 0..dst.w {
+                let sx0 = (x as i64 * src.w as i64 / dst.w as i64) as i32;
+                let mut sx1 = ((x + 1) as i64 * src.w as i64 / dst.w as i64) as i32;
+                if sx1 <= sx0 {
+                    sx1 = sx0 + 1;
+                }
+                let (mut sum, mut n) = (0u32, 0u32);
+                let mut yy = sy0;
+                while yy < sy1 && yy < src.h {
+                    let mut xx = sx0;
+                    while xx < sx1 && xx < src.w {
+                        sum += src.px[(yy * src.stride + xx) as usize] as u32;
+                        n += 1;
+                        xx += 1;
+                    }
+                    yy += 1;
+                }
+                dst.px[(y * dst.stride + x) as usize] = (sum + n / 2).checked_div(n).map_or(255, |v| v as u8);
+            }
+        }
+    }
+    fn ref_downsample_keep_lines(dst: &mut Canvas, src: &Canvas, weight: f32) {
+        for y in 0..dst.h {
+            let sy0 = (y as i64 * src.h as i64 / dst.h as i64) as i32;
+            let mut sy1 = ((y + 1) as i64 * src.h as i64 / dst.h as i64) as i32;
+            if sy1 <= sy0 {
+                sy1 = sy0 + 1;
+            }
+            for x in 0..dst.w {
+                let sx0 = (x as i64 * src.w as i64 / dst.w as i64) as i32;
+                let mut sx1 = ((x + 1) as i64 * src.w as i64 / dst.w as i64) as i32;
+                if sx1 <= sx0 {
+                    sx1 = sx0 + 1;
+                }
+                let (mut sum, mut n) = (0u32, 0u32);
+                let mut mn = 255u8;
+                let mut yy = sy0;
+                while yy < sy1 && yy < src.h {
+                    let mut xx = sx0;
+                    while xx < sx1 && xx < src.w {
+                        let v = src.px[(yy * src.stride + xx) as usize];
+                        sum += v as u32;
+                        n += 1;
+                        if v < mn {
+                            mn = v;
+                        }
+                        xx += 1;
+                    }
+                    yy += 1;
+                }
+                let avg = if n != 0 { sum as f32 / n as f32 } else { 255.0 };
+                let v = lerpf(avg, mn as f32, weight);
+                dst.px[(y * dst.stride + x) as usize] = v.round_ties_even() as i32 as u8;
+            }
+        }
+    }
+    fn ref_blit_fit(dst: &mut Canvas, src: &Canvas, box_: Rect) {
+        let sc = (box_.w as f32 / src.w as f32).min(box_.h as f32 / src.h as f32);
+        let w = (src.w as f32 * sc) as i32;
+        let h = (src.h as f32 * sc) as i32;
+        let ox = box_.x + (box_.w - w) / 2;
+        let oy = box_.y + (box_.h - h) / 2;
+        let clip = rect_intersect(Rect { x: ox, y: oy, w, h }, dst.clip);
+        for y in clip.y..clip.y + clip.h {
+            let sy0 = ((y - oy) as f32 / sc) as i32;
+            let mut sy1 = ((y - oy + 1) as f32 / sc) as i32;
+            if sy1 <= sy0 {
+                sy1 = sy0 + 1;
+            }
+            for x in clip.x..clip.x + clip.w {
+                let sx0 = ((x - ox) as f32 / sc) as i32;
+                let mut sx1 = ((x - ox + 1) as f32 / sc) as i32;
+                if sx1 <= sx0 {
+                    sx1 = sx0 + 1;
+                }
+                let (mut sum, mut n) = (0u32, 0u32);
+                let mut yy = sy0;
+                while yy < sy1 && yy < src.h {
+                    let mut xx = sx0;
+                    while xx < sx1 && xx < src.w {
+                        sum += src.px[(yy * src.stride + xx) as usize] as u32;
+                        n += 1;
+                        xx += 1;
+                    }
+                    yy += 1;
+                }
+                dst.px[(y * dst.stride + x) as usize] = sum.checked_div(n).map_or(255, |v| v as u8);
+            }
+        }
+    }
+
+    #[test]
+    fn resampling_keeps_every_pixel_of_the_old_loops() {
+        let mut seed = 0x1234_5678u32;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 24) as u8
+        };
+        let sizes = [(1, 1), (2, 3), (7, 5), (37, 23), (120, 80)];
+        let dsts = [(1, 1), (3, 2), (5, 9), (31, 17), (64, 40), (200, 120)];
+        for &(sw, sh) in &sizes {
+            let mut src = Canvas::default();
+            assert_eq!(canvas_init(&mut src, sw, sh), 0);
+            for p in src.px.iter_mut() {
+                *p = next();
+            }
+            for &(dw, dh) in &dsts {
+                let mut a = Canvas::default();
+                let mut b = Canvas::default();
+                assert_eq!(canvas_init(&mut a, dw, dh), 0);
+                assert_eq!(canvas_init(&mut b, dw, dh), 0);
+                canvas_downsample(&mut a, &src);
+                ref_downsample(&mut b, &src);
+                assert!(a.px == b.px, "downsample {sw}x{sh} -> {dw}x{dh}");
+                for weight in [0.0, 0.35, 1.0] {
+                    canvas_downsample_keep_lines(&mut a, &src, weight);
+                    ref_downsample_keep_lines(&mut b, &src, weight);
+                    assert!(a.px == b.px, "keep lines {weight} {sw}x{sh} -> {dw}x{dh}");
+                }
+                // A fitted box at an offset, partly outside the destination and its clip.
+                let bx = Rect { x: 1, y: 2, w: (dw - 3).max(1), h: (dh - 4).max(1) };
+                canvas_set_clip(&mut a, Rect { x: 1, y: 0, w: (dw - 2).max(1), h: dh });
+                canvas_set_clip(&mut b, Rect { x: 1, y: 0, w: (dw - 2).max(1), h: dh });
+                canvas_blit_fit(&mut a, &src, bx);
+                ref_blit_fit(&mut b, &src, bx);
+                assert!(a.px == b.px, "blit fit {sw}x{sh} -> {dw}x{dh}");
+            }
+        }
     }
 }
 
