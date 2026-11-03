@@ -13,7 +13,7 @@
 // recording machine's: Apple's on the owner's Mac):
 //   clang -O1 -ffp-contract=on -std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -DGRIMOIRE_VERSION='"x"' \
 //     rust/tests/fixtures/brush_probe.c <a two-line i18n stub> src/brush.c src/canvas.c src/util.c -lm
-// (the stub defines i18n_get and i18n_getc to return their msgid).
+// (the stub defines i18n_get and i18n_getc to return their msgid.)
 // (the C tests index by position, and so do these ports of them)
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 mod testlib;

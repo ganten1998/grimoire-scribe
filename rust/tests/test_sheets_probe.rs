@@ -1123,11 +1123,25 @@ fn penset_events(p: &mut Probe) {
 // both ways (sheets_probe_c_tilt.txt holds the one section that differs).
 // (labels and music were recorded from this build in rc.9: the paper pickers' three rows
 // of six, the Custom music sheet's presets and 8-line tab. The C tree keeps the old pickers.)
+// SHEETS_PROBE_FIXTURE / SHEETS_PROBE_TILT_FIXTURE name a recording made with this machine's own
+// C probe, for a machine whose libm differs from the recording Mac's (test_brush's
+// BRUSH_PROBE_FIXTURE the same way); unset, the committed recordings are compared. A recording
+// made here must keep the committed file's "labels" and "music" sections (the C tree's pickers
+// are the old ones, the committed lines are this build's): take every other section from the C
+// probe's output and those two from fixtures/sheets_probe_c.txt.
+fn probe_fixture(env: &str, fallback: &'static str) -> String {
+    match std::env::var(env) {
+        Ok(path) => std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{env}: {path}: {e}")),
+        Err(_) => fallback.to_string(),
+    }
+}
+
 fn recorded(name: &str) -> String {
     let all = if cfg!(feature = "sim") && name == "penset events" {
-        include_str!("fixtures/sheets_probe_c_tilt.txt")
+        probe_fixture("SHEETS_PROBE_TILT_FIXTURE", include_str!("fixtures/sheets_probe_c_tilt.txt"))
     } else {
-        include_str!("fixtures/sheets_probe_c.txt")
+        probe_fixture("SHEETS_PROBE_FIXTURE", include_str!("fixtures/sheets_probe_c.txt"))
     };
     let mut out = String::new();
     let mut on = false;
